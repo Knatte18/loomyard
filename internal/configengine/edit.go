@@ -91,7 +91,7 @@ func scaffoldIfMissing(path, configDir, template string) (scaffolded bool, err e
 		return false, nil
 	}
 
-	// Create _lyx/config/ directory if needed.
+	// Create _lym/config/ directory if needed.
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return false, fmt.Errorf("create config directory: %w", err)
 	}
@@ -221,7 +221,7 @@ func Edit(dirs Dirs, spec Spec, layer Layer, edit EditorFunc) error {
 	return nil
 }
 
-// EditPath is Edit's body for a file at a told path, with no _lyx/ check:
+// EditPath is Edit's body for a file at a told path, with no _lym/ check:
 // it scaffolds path from template when absent (creating its parent directory), runs the editor,
 // and loops on a YAML parse error.
 // An unchanged unparseable save returns ErrAborted, and any abort removes a file EditPath scaffolded.

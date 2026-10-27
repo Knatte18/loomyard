@@ -20,7 +20,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/runproc"
@@ -149,7 +149,7 @@ func absoluteOrAsGiven(path string) string {
 // A side whose current branch is local-only is left out of the request and named in LocalSkipped, and with no side left no child is spawned.
 // A local-only records branch spawns nothing either, since the child's push cannot run without the records side.
 // A failed or never-run push leaves the commits local; the next detached push carries them, and creates a never-pushed branch's upstream.
-func SpawnStatusPush(l *lyxcwd.Location, gateSlug string) (SpawnResult, error) {
+func SpawnStatusPush(l *lymcwd.Location, gateSlug string) (SpawnResult, error) {
 	req, localSkipped, err := statusPushRequest(l, gateSlug)
 	if err != nil {
 		return SpawnResult{}, err
@@ -163,7 +163,7 @@ func SpawnStatusPush(l *lyxcwd.Location, gateSlug string) (SpawnResult, error) {
 }
 
 // statusPushRequest builds the detached push request for l's status records and names the local-only branches it left out.
-func statusPushRequest(l *lyxcwd.Location, gateSlug string) (req PushSpawn, localSkipped []string, err error) {
+func statusPushRequest(l *lymcwd.Location, gateSlug string) (req PushSpawn, localSkipped []string, err error) {
 	isPrime, err := IsPrimeWorktree(l)
 	if err != nil {
 		return PushSpawn{}, nil, err
@@ -194,7 +194,7 @@ func statusPushRequest(l *lyxcwd.Location, gateSlug string) (req PushSpawn, loca
 
 // parentLockHeldBy reports whether a live parent lock record names l's pair slug, which holds exactly for the pushes a Finalize spawns past its parent-side merge.
 // A failed read is logged and reads as not held.
-func parentLockHeldBy(l *lyxcwd.Location) bool {
+func parentLockHeldBy(l *lymcwd.Location) bool {
 	store := parentlock.Store{Dir: parentlock.Dir(BoardDir(l.HubPath))}
 	held, err := store.HeldBy(l.WorktreeName)
 	if err != nil {
@@ -218,7 +218,7 @@ func localMarkOfCurrentBranch(worktree string) (branch string, marked bool, err 
 
 // SpawnPairPush launches the detached push of the task pair at l: its code worktree and its paired records worktree.
 // A failed or never-run push leaves the pair's commits local; the pair's next detached push carries them, and creates a never-pushed branch's upstream.
-func SpawnPairPush(l *lyxcwd.Location) error {
+func SpawnPairPush(l *lymcwd.Location) error {
 	_, err := SpawnStatusPush(l, "")
 	return err
 }

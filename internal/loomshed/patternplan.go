@@ -23,7 +23,7 @@ const patternHeadroomCheck = "pattern-headroom"
 const patternCardHeadroomCheck = "pattern-card-headroom"
 
 // patternHeadroomWayForward is the fix both headroom findings name.
-const patternHeadroomWayForward = "shorten the prescribed lines or move detail into the entries' background files, and when that is not enough ask the parent to record a `changes` decision that shortens other entries with `lyx loom decision add --pattern-entry ... --pattern-action changes --pattern-text ...` and prescribe those lines on a card; once the plan is approved, the parent passes `--amends-plan` as well"
+const patternHeadroomWayForward = "shorten the prescribed lines or move detail into the entries' background files, and when that is not enough ask the parent to record a `changes` decision that shortens other entries with `lym loom decision add --pattern-entry ... --pattern-action changes --pattern-text ...` and prescribe those lines on a card; once the plan is approved, the parent passes `--amends-plan` as well"
 
 // patternRemovesPrescribedCheck names the finding patternPlanFindings appends when a card fences a line for an entry the plan removes.
 const patternRemovesPrescribedCheck = "pattern-removes-prescribed"
@@ -111,7 +111,7 @@ func patternPlanFindings(plan *planparser.Plan, cards []planparser.Card, worktre
 		}
 		findings = append(findings, planindex.Finding{
 			Check:    patternLineUnprescribedCheck,
-			Detail:   fmt.Sprintf("the plan declares %s and no card fences its overview line; way forward: prescribe the entry's whole overview line in a fenced block on a pending card that edits PATTERN.md, or, when that card is done, on a card inserted with `lyx loom insert-card` after the last begun batch", planBullet(change)),
+			Detail:   fmt.Sprintf("the plan declares %s and no card fences its overview line; way forward: prescribe the entry's whole overview line in a fenced block on a pending card that edits PATTERN.md, or, when that card is done, on a card inserted with `lym loom insert-card` after the last begun batch", planBullet(change)),
 			Severity: planindex.SeverityBlocking,
 		})
 	}

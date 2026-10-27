@@ -1,4 +1,4 @@
-// Package creelcli builds the `lyx creel` group over internal/creelengine: `post`, `inject`, `interrupt`, `forward`, `read`, `inbox`, `log`, `hold`, `release` and the hidden `daemon`.
+// Package creelcli builds the `lym creel` group over internal/creelengine: `post`, `inject`, `interrupt`, `forward`, `read`, `inbox`, `log`, `hold`, `release` and the hidden `daemon`.
 // The design, the protocol and the delivery rules are documented in internal/creelengine; this package wires them to the hub, its worktrees and their agent panes.
 //
 // Every operator verb resolves the mode from its cwd and refuses a standalone directory, since creel needs a hub.
@@ -9,7 +9,7 @@
 // A client that gives up connecting quotes the started daemon's lines from that log.
 // The daemon writes its start header and its pid-tagged warnings to its stderr, which that spawn points at the daemon log, so a start failure reaches the file.
 // `read` prints plain text: each message is a header line and its body, with a blank line between two.
-// The header names the message's id, its sender and the `lyx creel post --reply <id>` command.
+// The header names the message's id, its sender and the `lym creel post --reply <id>` command.
 // It also names the message a reply answers and the receiver a returned message ended unread at, and the posting time once the message is more than five minutes old by the client's clock.
 // `read --envelope` prints the messages as one JSON envelope line with every field instead, for programs.
 // The flag is not named `--json`, which would shadow the root's global `--json` help flag on a verb that marks mail read.
@@ -20,7 +20,7 @@
 // The refusal fallback line opens with that statement too for a post or inject that stored before it refused.
 // `inbox` prints the caller's unread counts as `inbox.senders`, a list of `{from, unread}`, and no other key.
 // GoClient is the one Go-side caller of creel, so no other module builds a creel request by hand.
-// NewProgramClient signs as `<shortname>:<PROGRAM>` and claims no strand, whatever `$LYX_STRAND_NAME` holds, and NewStrandClient claims a strand and no program; the daemon's identity rules still decide who the caller is.
+// NewProgramClient signs as `<shortname>:<PROGRAM>` and claims no strand, whatever `$LYM_STRAND_NAME` holds, and NewStrandClient claims a strand and no program; the daemon's identity rules still decide who the caller is.
 // Both refuse a location outside a hub with the way forward, start the daemon through the spawn seam when none answers, and connect on the first call.
 // Every call passes a 30-second timeout, so a caller under a lock waits at most that long per call.
 // Post, Inject, InjectCommand, Hold, Release and Withdraw send the matching verb; withdraw has no CLI verb.

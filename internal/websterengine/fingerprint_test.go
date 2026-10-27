@@ -386,7 +386,7 @@ func TestPlanEditErrors(t *testing.T) {
 		if !errors.Is(err, ErrFingerprintMismatch) {
 			t.Fatalf("PlanEditError() after a Card Index edit = %v; want ErrFingerprintMismatch", err)
 		}
-		if want := "run `lyx webster rebaseline` to accept it"; !strings.Contains(err.Error(), want) {
+		if want := "run `lym webster rebaseline` to accept it"; !strings.Contains(err.Error(), want) {
 			t.Errorf("PlanEditError() = %q; want it to offer %q", err, want)
 		}
 	})

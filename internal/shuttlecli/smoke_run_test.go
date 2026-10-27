@@ -4,7 +4,7 @@
 // point: the shared helpers (the orphaned-conhost
 // teardown guard) used across this file, smoke_guardrail_test.go, and
 // smoke_interrupt_test.go, plus TestSmokeShuttleRunWritesOutputAndCleans —
-// the full round-trip proof that `lyx shuttle run` drives a REAL claude in a
+// the full round-trip proof that `lym shuttle run` drives a REAL claude in a
 // REAL tmux pane to a "done" outcome, writes the file-contract output, and
 // cleans up the strand and run directory afterward. Follows the
 // internal/reedcli/smoke_*.go conventions: opt-in via -tags llm, skipped
@@ -199,7 +199,7 @@ func deferHubRelease(t *testing.T, hub string) {
 	})
 }
 
-// reedStatusStrand runs `lyx reed status` in the current worktree and returns
+// reedStatusStrand runs `lym reed status` in the current worktree and returns
 // the tracked strand record for guid, or ok=false if status does not list
 // it — the shared assertion helper this file's and smoke_guardrail_test.go's
 // tests use to confirm a run's post-outcome reed state.
@@ -223,7 +223,7 @@ func reedStatusStrand(t *testing.T, guid string) (map[string]any, bool) {
 	return nil, false
 }
 
-// TestSmokeShuttleRunWritesOutputAndCleans drives one full `lyx shuttle run` against a REAL claude
+// TestSmokeShuttleRunWritesOutputAndCleans drives one full `lym shuttle run` against a REAL claude
 // in a REAL tmux pane: `up` boots the substrate first (a strand must exist in an up'd session
 // before AddStrand can bind a pane to it), then `run` blocks until the agent writes the requested
 // output file and the run loop classifies it "done".
@@ -231,7 +231,7 @@ func reedStatusStrand(t *testing.T, guid string) (map[string]any, bool) {
 // directory are cleaned up afterward — the same happy path the sandbox suite's S1 scenario
 // exercises manually.
 func TestSmokeShuttleRunWritesOutputAndCleans(t *testing.T) {
-	llmkit.Claude(t, "LYX_REED_CLAUDE")
+	llmkit.Claude(t, "LYM_REED_CLAUDE")
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	deferHubRelease(t, h.Path)

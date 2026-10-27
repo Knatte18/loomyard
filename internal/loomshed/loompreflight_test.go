@@ -202,7 +202,7 @@ func TestLoomPreflight_Call_HalfFinishedWithoutGotoStuckNamesReentry(t *testing.
 	}
 
 	pointer := shedfake.RequireOutcome(t, NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: t.TempDir()}), shedengine.Stuck)
-	for _, want := range []string{"seed a new run", "lyx loom goto --to " + NameLoomPreflight} {
+	for _, want := range []string{"seed a new run", "lym loom goto --to " + NameLoomPreflight} {
 		if !strings.Contains(pointer.Reason, want) {
 			t.Errorf("Reason = %q; want it to contain %q", pointer.Reason, want)
 		}
@@ -254,7 +254,7 @@ func TestLoomPreflight_Call_BatcherConfig(t *testing.T) {
 			name:        "a profile carrying master_base is Stuck with the reconcile way forward",
 			config:      "active: \"mine\"\nprofiles:\n  mine:\n    batchifier: cost\n    max_cards: 6\n    budget: 450000\n    weights:\n      master_base: 52000\n",
 			wantOutcome: shedengine.Stuck,
-			wantReason:  []string{batchifierReasonPrefix, "batcher.yaml", "master_base", `way forward: run "lyx config reconcile --apply", then re-step`},
+			wantReason:  []string{batchifierReasonPrefix, "batcher.yaml", "master_base", `way forward: run "lym config reconcile --apply", then re-step`},
 		},
 		{
 			name:        "a malformed profile is Stuck with the fix-and-re-step way forward",

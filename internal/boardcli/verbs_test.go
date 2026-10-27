@@ -395,7 +395,7 @@ func stepOwners(t *testing.T, f *cliFixture) {
 // stepProjects drives the project kind through a seeded hub:
 // list and get carry parent_beam, empty under a grouping project and the beam once the project is hand-marked a beam.
 // A task slug ending in the records suffix and one equal to a configured junction name are refused with fabric's reason.
-// A member's project change is refused naming `lyx batten cancel <slug> --remove` while a directory stands at its pair worktree path.
+// A member's project change is refused naming `lym batten cancel <slug> --remove` while a directory stands at its pair worktree path.
 func stepProjects(t *testing.T, f *cliFixture) {
 	mustUpsert(t, `{"slug":"proj","title":"Proj","kind":"project","labels":["bug"]}`)
 	mustUpsert(t, `{"slug":"member","title":"Member","kind":"task","labels":["bug"],"project":"proj"}`)
@@ -438,7 +438,7 @@ func stepProjects(t *testing.T, f *cliFixture) {
 		want string
 	}{
 		{fabricengine.RecordsBranchName("made"), "must not end in"},
-		{"docs", "reserved for lyx hub geometry"},
+		{"docs", "reserved for lym hub geometry"},
 	}
 	for _, tt := range refusals {
 		result := runJSON(t, 1, "upsert", `{"slug":"`+tt.slug+`","title":"T","kind":"task","labels":["bug"]}`)
@@ -451,8 +451,8 @@ func stepProjects(t *testing.T, f *cliFixture) {
 		t.Fatalf("create the pair worktree directory: %v", err)
 	}
 	result := runJSON(t, 1, "upsert", `{"slug":"member","project":"other"}`)
-	if msg, _ := result["error"].(string); !strings.Contains(msg, "lyx batten cancel member --remove") {
-		t.Errorf("upsert a project change on an entry with a pair: error = %q, want it to name `lyx batten cancel member --remove`", msg)
+	if msg, _ := result["error"].(string); !strings.Contains(msg, "lym batten cancel member --remove") {
+		t.Errorf("upsert a project change on an entry with a pair: error = %q, want it to name `lym batten cancel member --remove`", msg)
 	}
 }
 
@@ -699,7 +699,7 @@ func stepRunSettings(t *testing.T, f *cliFixture) {
 		{name: "a shape mismatch", payload: `{"slug":"bad","run_settings":{"loom":{"review_max_bounces":{"a":1}}}}`, wantErr: []string{"loom", "review_max_bounces"}},
 		{name: "a closed key", payload: `{"slug":"bad","run_settings":{"loom":{"discussion_advisors":[{"name":"critic","model":"sonnet[low]"}]}}}`, wantErr: []string{"loom", "discussion_advisors"}},
 		{name: "a profile that is not a string", payload: `{"slug":"bad","profile":3}`, wantErr: []string{"profile must be a string"}},
-		{name: "an unknown profile", payload: `{"slug":"bad","profile":"heavy"}`, wantErr: []string{`"heavy"`, "known: docs, light, solid, speed, wide", "lyx config profiles --set heavy="}},
+		{name: "an unknown profile", payload: `{"slug":"bad","profile":"heavy"}`, wantErr: []string{`"heavy"`, "known: docs, light, solid, speed, wide", "lym config profiles --set heavy="}},
 	}
 	for _, tt := range refusals {
 		t.Run("refuses "+tt.name, func(t *testing.T) {

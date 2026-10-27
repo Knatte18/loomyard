@@ -12,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // BeamLandMember is an open board entry whose parent is a beam.
@@ -42,7 +42,7 @@ type landingSeams struct {
 }
 
 // hubLandingSeams builds the landingSeams over the hub of location.
-func hubLandingSeams(location *lyxcwd.Location, slug string) landingSeams {
+func hubLandingSeams(location *lymcwd.Location, slug string) landingSeams {
 	return landingSeams{
 		Project: func() (bool, error) {
 			owners, err := boardengine.ReadOwners(fabricengine.BoardDir(location.HubPath))
@@ -64,7 +64,7 @@ func (c *battenCLI) entryIsProject() (bool, error) {
 
 // ReadBeamLandBlockers reads what still works under the beam slug: its open member entries, through any depth of grouping projects, and the local pairs forked from it.
 // The beam's own orch is no blocker, since it runs until the beam comes down.
-func ReadBeamLandBlockers(prime *lyxcwd.Location, slug string) (BeamLandBlockers, error) {
+func ReadBeamLandBlockers(prime *lymcwd.Location, slug string) (BeamLandBlockers, error) {
 	members, err := beamMembers(prime, slug)
 	if err != nil {
 		return BeamLandBlockers{}, err
@@ -77,7 +77,7 @@ func ReadBeamLandBlockers(prime *lyxcwd.Location, slug string) (BeamLandBlockers
 }
 
 // BeamLandRefusal refuses the landing of the beam slug while anything works under it, naming each way forward.
-func BeamLandRefusal(prime *lyxcwd.Location, slug string) error {
+func BeamLandRefusal(prime *lymcwd.Location, slug string) error {
 	blockers, err := ReadBeamLandBlockers(prime, slug)
 	if err != nil {
 		return err
@@ -93,19 +93,19 @@ func beamLandRefusal(slug string, blockers BeamLandBlockers) error {
 	var ways []string
 	for _, member := range blockers.Members {
 		if member.HasPair {
-			ways = append(ways, fmt.Sprintf("the open entry %s is a member of the beam: land it with `lyx batten run %s`, or end it with `lyx batten cancel %s --remove`", member.Slug, member.Slug, member.Slug))
+			ways = append(ways, fmt.Sprintf("the open entry %s is a member of the beam: land it with `lym batten run %s`, or end it with `lym batten cancel %s --remove`", member.Slug, member.Slug, member.Slug))
 			continue
 		}
-		ways = append(ways, fmt.Sprintf("the open entry %s is a member of the beam and has no pair on this machine: move its `project` off the beam with `lyx board upsert`, or land it where it runs", member.Slug))
+		ways = append(ways, fmt.Sprintf("the open entry %s is a member of the beam and has no pair on this machine: move its `project` off the beam with `lym board upsert`, or land it where it runs", member.Slug))
 	}
 	for _, pair := range blockers.ChildPairs {
-		ways = append(ways, fmt.Sprintf("the pair %s was forked from the beam: land it with `lyx batten run %s`, or end it with `lyx batten cancel %s --remove`", pair, pair, pair))
+		ways = append(ways, fmt.Sprintf("the pair %s was forked from the beam: land it with `lym batten run %s`, or end it with `lym batten cancel %s --remove`", pair, pair, pair))
 	}
 	return fmt.Errorf("battencli: the beam %s cannot land while work remains under it; way forward: %s", slug, strings.Join(ways, "; "))
 }
 
 // beamMembers lists, sorted, the open tasks and beam projects whose parent, through any depth of grouping projects, is the beam slug.
-func beamMembers(prime *lyxcwd.Location, slug string) ([]BeamLandMember, error) {
+func beamMembers(prime *lymcwd.Location, slug string) ([]BeamLandMember, error) {
 	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(prime.HubPath))
 	if err != nil {
 		return nil, fmt.Errorf("battencli: read the board for the members of the beam %s: %w", slug, err)
@@ -136,7 +136,7 @@ func beamMembers(prime *lyxcwd.Location, slug string) ([]BeamLandMember, error) 
 }
 
 // pairPresent reports whether this machine holds the worktree of slug's pair.
-func pairPresent(prime *lyxcwd.Location, slug string) (bool, error) {
+func pairPresent(prime *lymcwd.Location, slug string) (bool, error) {
 	info, err := os.Stat(fabricengine.WorktreePath(prime, slug))
 	if os.IsNotExist(err) {
 		return false, nil
@@ -145,7 +145,7 @@ func pairPresent(prime *lyxcwd.Location, slug string) (bool, error) {
 }
 
 // beamChildPairs lists, sorted, the local pairs whose origin record names the beam slug as their parent worktree.
-func beamChildPairs(prime *lyxcwd.Location, slug string) ([]string, error) {
+func beamChildPairs(prime *lymcwd.Location, slug string) ([]string, error) {
 	worktrees, err := fabricengine.List(prime.AnchorPath())
 	if err != nil {
 		return nil, fmt.Errorf("battencli: list the worktrees for the pairs forked from the beam %s: %w", slug, err)

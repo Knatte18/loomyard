@@ -15,17 +15,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
-// seedLoomConfig creates <anchorPath>/_lyx/config/loom.yaml with the embedded template's contents.
+// seedLoomConfig creates <anchorPath>/_lym/config/loom.yaml with the embedded template's contents.
 // It seeds the one config load loomengine.LoadConfig performs strictly.
 func seedLoomConfig(t *testing.T, anchorPath string) {
 	t.Helper()
-	configDir := filepath.Join(anchorPath, "_lyx", "config")
+	configDir := filepath.Join(anchorPath, "_lym", "config")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 	}
@@ -38,11 +38,11 @@ func seedLoomConfig(t *testing.T, anchorPath string) {
 // hubDeploy is the deploy value the hub's landing.yaml carries in hubLocation, so a wired config reading a pair's copy instead differs from it.
 const hubDeploy = "./deploy-hub.sh"
 
-// seedLandingConfig creates <baseDir>/_lyx/config/landing.yaml with the embedded template's contents, its deploy set to deploy.
+// seedLandingConfig creates <baseDir>/_lym/config/landing.yaml with the embedded template's contents, its deploy set to deploy.
 // landingshed.LoadConfig is strict (an absent file is an error), so wire() fails on every test that wires a hub without this seed.
 func seedLandingConfig(t *testing.T, baseDir, deploy string) {
 	t.Helper()
-	configDir := filepath.Join(baseDir, "_lyx", "config")
+	configDir := filepath.Join(baseDir, "_lym", "config")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 	}
@@ -53,13 +53,13 @@ func seedLandingConfig(t *testing.T, baseDir, deploy string) {
 	}
 }
 
-// hubLocation returns a *lyxcwd.Location standing in for a real hub location.
+// hubLocation returns a *lymcwd.Location standing in for a real hub location.
 // Its anchor path is seeded on disk with loom.yaml and a pair landing.yaml that blanks deploy,
 // and its hub is seeded with loom's repo default, the hub-wide landing.yaml at the board dir and both loom stencils.
-func hubLocation(t *testing.T, worktreeName, anchorRel string) *lyxcwd.Location {
+func hubLocation(t *testing.T, worktreeName, anchorRel string) *lymcwd.Location {
 	t.Helper()
 	hub := t.TempDir()
-	loc := &lyxcwd.Location{HubPath: hub, WorktreeName: worktreeName, AnchorRel: anchorRel}
+	loc := &lymcwd.Location{HubPath: hub, WorktreeName: worktreeName, AnchorRel: anchorRel}
 	// hubgeom.ReedGeometry stats the worktree's .git entry to tell the prime from a task worktree.
 	if err := os.MkdirAll(filepath.Join(loc.WorktreePath(), ".git"), 0o755); err != nil {
 		t.Fatalf("MkdirAll(.git) = %v; want nil", err)
@@ -75,9 +75,9 @@ func hubLocation(t *testing.T, worktreeName, anchorRel string) *lyxcwd.Location 
 
 // hubLocationAt returns a Location whose anchor is anchorPath, under a hub that holds the hub-wide language.yaml languageContent when that is non-empty and none otherwise.
 // The hub is anchorPath's parent directory, so a test's plan fixtures and its language file share one temp tree.
-func hubLocationAt(t *testing.T, anchorPath, languageContent string) *lyxcwd.Location {
+func hubLocationAt(t *testing.T, anchorPath, languageContent string) *lymcwd.Location {
 	t.Helper()
-	loc := &lyxcwd.Location{HubPath: filepath.Dir(anchorPath), WorktreeName: filepath.Base(anchorPath), AnchorRel: "."}
+	loc := &lymcwd.Location{HubPath: filepath.Dir(anchorPath), WorktreeName: filepath.Base(anchorPath), AnchorRel: "."}
 	if languageContent != "" {
 		languagePath := configengine.ConfigFile(fabricengine.BoardDir(loc.HubPath), "language")
 		if err := os.MkdirAll(filepath.Dir(languagePath), 0o755); err != nil {
@@ -94,7 +94,7 @@ func hubLocationAt(t *testing.T, anchorPath, languageContent string) *lyxcwd.Loc
 // Each old, new pair of replacements is applied after it.
 func seedDarnHubConfig(t *testing.T, hub, verifyAttempts string, replacements ...string) {
 	t.Helper()
-	configDir := filepath.Join(fabricengine.BoardDir(hub), "_lyx", "config")
+	configDir := filepath.Join(fabricengine.BoardDir(hub), "_lym", "config")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 	}
@@ -108,7 +108,7 @@ func seedDarnHubConfig(t *testing.T, hub, verifyAttempts string, replacements ..
 // writeHubGateConfig writes contents as the hub-wide gate.yaml in hub's board directory.
 func writeHubGateConfig(t *testing.T, hub, contents string) {
 	t.Helper()
-	configDir := filepath.Join(fabricengine.BoardDir(hub), "_lyx", "config")
+	configDir := filepath.Join(fabricengine.BoardDir(hub), "_lym", "config")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 	}

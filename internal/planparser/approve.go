@@ -14,23 +14,12 @@ import (
 // approvedLinePrefix is the exact frontmatter line prefix SetApproved rewrites or inserts.
 const approvedLinePrefix = "approved:"
 
-// SetApproved flips the plan overview's `approved:` frontmatter key to true, leaving every other
-// byte of the file untouched: the remaining frontmatter keys, their order, the "---" fences, the
-// framing paragraph, the Card Index, and every plan-level body section.
-// It resolves the overview path as filepath.Join(planDir, overviewFileName), reusing the
-// package's own overviewFileName constant rather than a new literal, and never composes the
-// `_lyx` literal itself, per the Lyxdirs Single-Declarer Invariant.
-// It reads the file, separates the leading frontmatter block with splitFrontmatter, rewrites only
-// the approved: line's value, and writes the file back -- it never round-trips the frontmatter
-// through the YAML decoder, since that would not preserve the body and would reorder or requote
-// the keys.
-// SetApproved is idempotent: an overview already carrying approved: true is a successful no-op
-// leaving the file byte-identical. When the frontmatter block carries no approved: key at all,
-// SetApproved inserts approved: true into the block rather than failing, so the seam is total over
-// every plan ParsePlan accepts.
-// A missing overview file, an unreadable overview file, and a file with no "---"-fenced
-// frontmatter block are each an error, wrapped with this package's "planparser:" error prefix
-// convention.
+// SetApproved flips the plan overview's `approved:` frontmatter key to true, leaving every other byte of the file untouched: the remaining frontmatter keys, their order, the "---" fences, the framing paragraph, the Card Index, and every plan-level body section.
+// It resolves the overview path as filepath.Join(planDir, overviewFileName), reusing the package's own overviewFileName constant rather than a new literal, and never composes the `_lym` literal itself, per the Lymdirs Single-Declarer Invariant.
+// It reads the file, separates the leading frontmatter block with splitFrontmatter, rewrites only the approved: line's value, and writes the file back -- it never round-trips the frontmatter through the YAML decoder, since that would not preserve the body and would reorder or requote the keys.
+// SetApproved is idempotent: an overview already carrying approved: true is a successful no-op leaving the file byte-identical.
+// When the frontmatter block carries no approved: key at all, SetApproved inserts approved: true into the block rather than failing, so the seam is total over every plan ParsePlan accepts.
+// A missing overview file, an unreadable overview file, and a file with no "---"-fenced frontmatter block are each an error, wrapped with this package's "planparser:" error prefix convention.
 func SetApproved(planDir string) error {
 	overviewPath := filepath.Join(planDir, overviewFileName)
 

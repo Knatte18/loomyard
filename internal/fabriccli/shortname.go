@@ -1,4 +1,4 @@
-// shortname.go implements `lyx fabric shortname [<shortname>]`: it prints the hub's recorded shortname,
+// shortname.go implements `lym fabric shortname [<shortname>]`: it prints the hub's recorded shortname,
 // or records one on a hub that has none, which is how a repo bound before shortnames existed gets its shortname.
 
 package fabriccli
@@ -27,7 +27,7 @@ func runShortname(ctx context.Context, out io.Writer, args []string) int {
 
 	if len(args) == 0 {
 		if !found {
-			return output.Err(out, "this hub records no repo shortname; way forward: run `lyx fabric shortname <shortname>`, 2-6 characters matching [a-z][a-z0-9]{1,5}")
+			return output.Err(out, "this hub records no repo shortname; way forward: run `lym fabric shortname <shortname>`, 2-6 characters matching [a-z][a-z0-9]{1,5}")
 		}
 		return output.Ok(out, map[string]any{"shortname": recorded})
 	}

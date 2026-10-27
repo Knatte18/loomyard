@@ -16,7 +16,7 @@ import (
 //testtiming:keep pins every field of the driver launch spec: prompt, the empty skill list, the report as its single output file, the resolved model, effort and version, the name override, role, display anchor and the zero-valued fields; it names Spec.Skills, so the skills-in-one-turn task owns it, and its covering test runs the spec without asserting the fields
 func TestDriverSpec(t *testing.T) {
 	prompt := "drive the run"
-	reportPath := "/hub/wt/.lyx/shed/wt/drive-report-20260920-120000-cafe.md"
+	reportPath := "/hub/wt/.lym/shed/wt/drive-report-20260920-120000-cafe.md"
 	settings := shuttleengine.ModelChoice{
 		Engine:  "b",
 		Model:   "claude-resolved-model-id",

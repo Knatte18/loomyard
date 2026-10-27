@@ -21,8 +21,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
@@ -43,7 +43,7 @@ func newAnchorHub(t *testing.T) *hubforge.Hub {
 func beginAnchorChange(t *testing.T, h *hubforge.Hub, slug, target string) (*fabricengine.AnchorChange, error) {
 	t.Helper()
 
-	pair, err := lyxcwd.NamedWorktree(h.Path, slug)
+	pair, err := lymcwd.NamedWorktree(h.Path, slug)
 	if err != nil {
 		t.Fatalf("NamedWorktree(%s): %v", slug, err)
 	}
@@ -119,7 +119,7 @@ func requireNoMoveRecord(t *testing.T, weftPath string) {
 func requireWiredOnlyAt(t *testing.T, h *hubforge.Hub, slug, anchor string, other ...string) {
 	t.Helper()
 
-	for _, name := range []string{lyxdirs.LyxDirName, lyxdirs.DotLyxDirName} {
+	for _, name := range []string{lymdirs.LymDirName, lymdirs.DotLymDirName} {
 		if !wiredAt(t, h, slug, anchor, name) {
 			t.Errorf("%s of %s at %s is no link; want it wired there", name, slug, anchor)
 		}
@@ -130,7 +130,7 @@ func requireWiredOnlyAt(t *testing.T, h *hubforge.Hub, slug, anchor string, othe
 		}
 	}
 	scratch := filepath.Join(h.PairCodeWorktree(slug), ".scratch")
-	want := filepath.Join(h.PairRecordsSibling(slug), anchor, lyxdirs.DotLyxDirName, "scratch")
+	want := filepath.Join(h.PairRecordsSibling(slug), anchor, lymdirs.DotLymDirName, "scratch")
 	if target, err := fslink.RawTarget(scratch); err != nil || filepath.Clean(target) != filepath.Clean(want) {
 		t.Errorf("scratch link of %s = (%q, %v); want it to point at %s", slug, target, err, want)
 	}
@@ -141,16 +141,16 @@ func requireMovedToSub(t *testing.T, h *hubforge.Hub, slug string) {
 	t.Helper()
 
 	weft := h.PairRecordsSibling(slug)
-	if marker := gitkit.Git(t, weft, "show", "HEAD:"+lyxcwd.AnchorFileName); marker != "sub" {
+	if marker := gitkit.Git(t, weft, "show", "HEAD:"+lymcwd.AnchorFileName); marker != "sub" {
 		t.Errorf("committed marker of %s = %q; want sub", slug, marker)
 	}
 	for _, tracked := range gitkit.LsFiles(t, weft) {
-		if tracked != lyxcwd.AnchorFileName && !strings.HasPrefix(tracked, "sub/") {
+		if tracked != lymcwd.AnchorFileName && !strings.HasPrefix(tracked, "sub/") {
 			t.Errorf("weft of %s tracks %s; want everything but the marker under sub/", slug, tracked)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(weft, "sub", lyxdirs.LyxDirName)); err != nil {
-		t.Errorf("weft of %s has no sub/%s: %v", slug, lyxdirs.LyxDirName, err)
+	if _, err := os.Stat(filepath.Join(weft, "sub", lymdirs.LymDirName)); err != nil {
+		t.Errorf("weft of %s has no sub/%s: %v", slug, lymdirs.LymDirName, err)
 	}
 	if status := gitkit.GitStatusPorcelain(t, weft); status != "" {
 		t.Errorf("weft of %s status = %q; want a clean tree", slug, status)
@@ -170,8 +170,8 @@ func TestAnchorChange(t *testing.T) {
 		hubforge.AddPair(t, h, mover)
 		hubforge.AddPair(t, h, "stayer")
 		weft := h.PairRecordsSibling(mover)
-		if err := os.WriteFile(filepath.Join(weft, lyxdirs.DotLyxDirName, "kept.txt"), []byte("kept\n"), 0o644); err != nil {
-			t.Fatalf("write the untracked file in .lyx: %v", err)
+		if err := os.WriteFile(filepath.Join(weft, lymdirs.DotLymDirName, "kept.txt"), []byte("kept\n"), 0o644); err != nil {
+			t.Fatalf("write the untracked file in .lym: %v", err)
 		}
 
 		c, err := beginAnchorChange(t, h, mover, "sub")
@@ -187,8 +187,8 @@ func TestAnchorChange(t *testing.T) {
 		if subject := gitkit.Git(t, weft, "log", "-1", "--format=%s"); !strings.Contains(subject, "fabric anchor") {
 			t.Errorf("weft HEAD subject = %q; want the anchor move commit", subject)
 		}
-		if got, err := os.ReadFile(filepath.Join(weft, "sub", lyxdirs.DotLyxDirName, "kept.txt")); err != nil || string(got) != "kept\n" {
-			t.Errorf("sub/.lyx/kept.txt = (%q, %v); want the file moved with .lyx", got, err)
+		if got, err := os.ReadFile(filepath.Join(weft, "sub", lymdirs.DotLymDirName, "kept.txt")); err != nil || string(got) != "kept\n" {
+			t.Errorf("sub/.lym/kept.txt = (%q, %v); want the file moved with .lym", got, err)
 		}
 		if _, err := os.Stat(filepath.Join(h.Path, "_launchers", "sub", mover)); err != nil {
 			t.Errorf("launcher directory at sub: %v; want it", err)
@@ -201,7 +201,7 @@ func TestAnchorChange(t *testing.T) {
 			t.Errorf("hub workspace file = (%q, %v); want it to name %s/sub", workspace, err, mover)
 		}
 		excludes := gitkit.ExcludeLines(t, h.PairCodeWorktree(mover))
-		for _, want := range []string{"/" + lyxdirs.LyxDirName, "/" + lyxdirs.DotLyxDirName, "/sub/" + lyxdirs.LyxDirName} {
+		for _, want := range []string{"/" + lymdirs.LymDirName, "/" + lymdirs.DotLymDirName, "/sub/" + lymdirs.LymDirName} {
 			if !slices.Contains(excludes, want) {
 				t.Errorf("exclude lines = %v; want %q among them", excludes, want)
 			}
@@ -253,9 +253,9 @@ func TestAnchorChange(t *testing.T) {
 				name:   "An empty own marker",
 				target: "sub",
 				setup: func(t *testing.T, h *hubforge.Hub, weft, warp string) {
-					writeFile(t, filepath.Join(weft, lyxcwd.AnchorFileName), "\n")
+					writeFile(t, filepath.Join(weft, lymcwd.AnchorFileName), "\n")
 				},
-				want: []string{lyxcwd.AnchorFileName, "is empty"},
+				want: []string{lymcwd.AnchorFileName, "is empty"},
 			},
 			{
 				name:   "A target the anchor validator rejects",
@@ -296,9 +296,9 @@ func TestAnchorChange(t *testing.T) {
 				name:   "A real wired name under the target",
 				target: "sub",
 				setup: func(t *testing.T, h *hubforge.Hub, weft, warp string) {
-					writeFile(t, filepath.Join(warp, "sub", lyxdirs.LyxDirName, "real.txt"), "real\n")
+					writeFile(t, filepath.Join(warp, "sub", lymdirs.LymDirName, "real.txt"), "real\n")
 				},
-				want: []string{"real " + lyxdirs.LyxDirName, "move it out of sub in the warp checkout and commit that"},
+				want: []string{"real " + lymdirs.LymDirName, "move it out of sub in the warp checkout and commit that"},
 			},
 			{
 				name:   "A move lock held by a live change",
@@ -309,7 +309,7 @@ func TestAnchorChange(t *testing.T) {
 					writeMoveRecord(t, weft, fabricengine.MoveRecord{A: ".", B: "sub", Kind: fabricengine.MoveKindMove, PID: pid, StartTime: startTime})
 					holdMoveLock(t, weft)
 				},
-				want:   []string{fmt.Sprintf("in progress in process %d", os.Getpid()), "lyx fabric anchor"},
+				want:   []string{fmt.Sprintf("in progress in process %d", os.Getpid()), "lym fabric anchor"},
 				record: true,
 			},
 			{
@@ -319,7 +319,7 @@ func TestAnchorChange(t *testing.T) {
 					writeMoveRecord(t, weft, fabricengine.MoveRecord{A: ".", B: "sub", Kind: fabricengine.MoveKindMove, PID: 4242})
 					holdMoveLock(t, weft)
 				},
-				want:   []string{"is starting in another process", "lyx fabric anchor"},
+				want:   []string{"is starting in another process", "lym fabric anchor"},
 				record: true,
 			},
 			{
@@ -336,33 +336,33 @@ func TestAnchorChange(t *testing.T) {
 				setup: func(t *testing.T, h *hubforge.Hub, weft, warp string) {
 					writeMoveRecord(t, weft, fabricengine.MoveRecord{A: ".", B: "sub", Kind: fabricengine.MoveKindMove, PID: 4242})
 				},
-				want:   []string{"was interrupted", "lyx fabric anchor " + mover + " --set sub"},
+				want:   []string{"was interrupted", "lym fabric anchor " + mover + " --set sub"},
 				record: true,
 			},
 			{
 				name:   "A weft with no committed marker",
 				target: "sub",
 				setup: func(t *testing.T, h *hubforge.Hub, weft, warp string) {
-					gitkit.Git(t, weft, "rm", "-q", lyxcwd.AnchorFileName)
+					gitkit.Git(t, weft, "rm", "-q", lymcwd.AnchorFileName)
 					gitkit.Git(t, weft, "commit", "-q", "-m", "drop the marker")
 				},
-				want: []string{"no committed " + lyxcwd.AnchorFileName, "lyx fabric reconcile"},
+				want: []string{"no committed " + lymcwd.AnchorFileName, "lym fabric reconcile"},
 			},
 			{
 				name:   "An untracked path under the wired names",
 				target: "sub",
 				setup: func(t *testing.T, h *hubforge.Hub, weft, warp string) {
-					writeFile(t, filepath.Join(weft, lyxdirs.LyxDirName, "stray.txt"), "stray\n")
+					writeFile(t, filepath.Join(weft, lymdirs.LymDirName, "stray.txt"), "stray\n")
 				},
-				want: []string{"stray.txt", "lyx fabric commit"},
+				want: []string{"stray.txt", "lym fabric commit"},
 			},
 			{
 				name:   "An uncommitted change of the marker",
 				target: "other",
 				setup: func(t *testing.T, h *hubforge.Hub, weft, warp string) {
-					writeFile(t, filepath.Join(weft, lyxcwd.AnchorFileName), "sub\n")
+					writeFile(t, filepath.Join(weft, lymcwd.AnchorFileName), "sub\n")
 				},
-				want: []string{"uncommitted change of " + lyxcwd.AnchorFileName, "restore " + lyxcwd.AnchorFileName},
+				want: []string{"uncommitted change of " + lymcwd.AnchorFileName, "restore " + lymcwd.AnchorFileName},
 			},
 		}
 		for _, tt := range tests {
@@ -394,8 +394,8 @@ func TestAnchorChange(t *testing.T) {
 				if got := gitkit.GitStatusPorcelain(t, weft); got != status {
 					t.Errorf("weft status = %q; want %q unchanged", got, status)
 				}
-				if !wiredAt(t, h, mover, ".", lyxdirs.LyxDirName) {
-					t.Errorf("the pair's %s junction is gone after the refusal", lyxdirs.LyxDirName)
+				if !wiredAt(t, h, mover, ".", lymdirs.LymDirName) {
+					t.Errorf("the pair's %s junction is gone after the refusal", lymdirs.LymDirName)
 				}
 				recordAfter, foundAfter, _ := fabricengine.ReadMoveRecord(weft)
 				if foundAfter != foundBefore || (tt.record && recordAfter.A != recordBefore.A) || (!tt.record && foundAfter) {
@@ -486,7 +486,7 @@ func TestAnchorChange(t *testing.T) {
 		landed, err := c.Apply(fabricengine.NewMutations(""))
 		c.Close()
 
-		if !landed || !errors.Is(err, hookErr) || !strings.Contains(err.Error(), "lyx fabric anchor "+mover+" --set sub") {
+		if !landed || !errors.Is(err, hookErr) || !strings.Contains(err.Error(), "lym fabric anchor "+mover+" --set sub") {
 			t.Errorf("Apply() = (landed %v, %v); want landed true, the injected failure and the re-run named", landed, err)
 		}
 		if _, found, _ := fabricengine.ReadMoveRecord(weft); !found {
@@ -516,7 +516,7 @@ func TestAnchorChange(t *testing.T) {
 		landed, err := c.Apply(fabricengine.NewMutations(""))
 		c.Close()
 
-		if !landed || !errors.Is(err, readErr) || !strings.Contains(err.Error(), "lyx fabric anchor "+mover+" --set sub") {
+		if !landed || !errors.Is(err, readErr) || !strings.Contains(err.Error(), "lym fabric anchor "+mover+" --set sub") {
 			t.Errorf("Apply() = (landed %v, %v); want landed true, the read failure and the re-run named", landed, err)
 		}
 		if _, found, _ := fabricengine.ReadMoveRecord(weft); !found {
@@ -527,7 +527,7 @@ func TestAnchorChange(t *testing.T) {
 		}
 	})
 
-	t.Run("A restore that fails keeps the record, and the re-run refuses over both .lyx directories", func(t *testing.T) {
+	t.Run("A restore that fails keeps the record, and the re-run refuses over both .lym directories", func(t *testing.T) {
 		h := newAnchorHub(t)
 		hubforge.AddPair(t, h, mover)
 		weft := h.PairRecordsSibling(mover)
@@ -535,8 +535,8 @@ func TestAnchorChange(t *testing.T) {
 			if afterCommit {
 				return nil
 			}
-			// The move already renamed .lyx to sub/.lyx, so a non-empty .lyx makes the rename back fail.
-			writeFile(t, filepath.Join(weft, lyxdirs.DotLyxDirName, "blocker.txt"), "blocker\n")
+			// The move already renamed .lym to sub/.lym, so a non-empty .lym makes the rename back fail.
+			writeFile(t, filepath.Join(weft, lymdirs.DotLymDirName, "blocker.txt"), "blocker\n")
 			return errors.New("injected failure before the commit")
 		})
 
@@ -547,7 +547,7 @@ func TestAnchorChange(t *testing.T) {
 		landed, err := c.Apply(fabricengine.NewMutations(""))
 		c.Close()
 
-		if landed || err == nil || !strings.Contains(err.Error(), "lyx fabric anchor "+mover+" --set sub") {
+		if landed || err == nil || !strings.Contains(err.Error(), "lym fabric anchor "+mover+" --set sub") {
 			t.Errorf("Apply() = (landed %v, %v); want landed false and the re-run named", landed, err)
 		}
 		if _, found, _ := fabricengine.ReadMoveRecord(weft); !found {
@@ -557,9 +557,9 @@ func TestAnchorChange(t *testing.T) {
 		status := gitkit.GitStatusPorcelain(t, weft)
 		_, err = beginAnchorChange(t, h, mover, "sub")
 		if err == nil {
-			t.Fatalf("the re-run's BeginAnchorChange() succeeded; want a refusal over both .lyx directories")
+			t.Fatalf("the re-run's BeginAnchorChange() succeeded; want a refusal over both .lym directories")
 		}
-		for _, want := range []string{filepath.Join(weft, lyxdirs.DotLyxDirName), filepath.Join(weft, "sub", lyxdirs.DotLyxDirName), "by hand"} {
+		for _, want := range []string{filepath.Join(weft, lymdirs.DotLymDirName), filepath.Join(weft, "sub", lymdirs.DotLymDirName), "by hand"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("the re-run's error = %q; want it to contain %q", err, want)
 			}
@@ -569,11 +569,11 @@ func TestAnchorChange(t *testing.T) {
 		}
 	})
 
-	t.Run("A re-run after a kill before the commit finishes at sub keeping the file in .lyx", func(t *testing.T) {
+	t.Run("A re-run after a kill before the commit finishes at sub keeping the file in .lym", func(t *testing.T) {
 		h := newAnchorHub(t)
 		hubforge.AddPair(t, h, mover)
 		weft := h.PairRecordsSibling(mover)
-		writeFile(t, filepath.Join(weft, lyxdirs.DotLyxDirName, "kept.txt"), "kept\n")
+		writeFile(t, filepath.Join(weft, lymdirs.DotLymDirName, "kept.txt"), "kept\n")
 		killAt(t, false)
 
 		c, err := beginAnchorChange(t, h, mover, "sub")
@@ -589,16 +589,16 @@ func TestAnchorChange(t *testing.T) {
 		}
 		completeAnchorChange(t, rerun)
 		requireMovedToSub(t, h, mover)
-		if got, err := os.ReadFile(filepath.Join(weft, "sub", lyxdirs.DotLyxDirName, "kept.txt")); err != nil || string(got) != "kept\n" {
-			t.Errorf("sub/.lyx/kept.txt = (%q, %v); want the file kept", got, err)
+		if got, err := os.ReadFile(filepath.Join(weft, "sub", lymdirs.DotLymDirName, "kept.txt")); err != nil || string(got) != "kept\n" {
+			t.Errorf("sub/.lym/kept.txt = (%q, %v); want the file kept", got, err)
 		}
 	})
 
-	t.Run("A re-run after a kill between the commit and the wiring finishes at sub keeping the file in .lyx", func(t *testing.T) {
+	t.Run("A re-run after a kill between the commit and the wiring finishes at sub keeping the file in .lym", func(t *testing.T) {
 		h := newAnchorHub(t)
 		hubforge.AddPair(t, h, mover)
 		weft := h.PairRecordsSibling(mover)
-		writeFile(t, filepath.Join(weft, lyxdirs.DotLyxDirName, "kept.txt"), "kept\n")
+		writeFile(t, filepath.Join(weft, lymdirs.DotLymDirName, "kept.txt"), "kept\n")
 		killAt(t, true)
 
 		c, err := beginAnchorChange(t, h, mover, "sub")
@@ -606,7 +606,7 @@ func TestAnchorChange(t *testing.T) {
 			t.Fatalf("BeginAnchorChange() error = %v; want nil", err)
 		}
 		applyUntilKilled(t, c)
-		if marker := gitkit.Git(t, weft, "show", "HEAD:"+lyxcwd.AnchorFileName); marker != "sub" {
+		if marker := gitkit.Git(t, weft, "show", "HEAD:"+lymcwd.AnchorFileName); marker != "sub" {
 			t.Fatalf("committed marker after the kill = %q; want the commit to have landed", marker)
 		}
 		fabricengine.SetAnchorFailHookForTest(t, nil)
@@ -617,8 +617,8 @@ func TestAnchorChange(t *testing.T) {
 		}
 		completeAnchorChange(t, rerun)
 		requireMovedToSub(t, h, mover)
-		if got, err := os.ReadFile(filepath.Join(weft, "sub", lyxdirs.DotLyxDirName, "kept.txt")); err != nil || string(got) != "kept\n" {
-			t.Errorf("sub/.lyx/kept.txt = (%q, %v); want the file kept", got, err)
+		if got, err := os.ReadFile(filepath.Join(weft, "sub", lymdirs.DotLymDirName, "kept.txt")); err != nil || string(got) != "kept\n" {
+			t.Errorf("sub/.lym/kept.txt = (%q, %v); want the file kept", got, err)
 		}
 	})
 
@@ -626,7 +626,7 @@ func TestAnchorChange(t *testing.T) {
 		h, prime := newIntegrateHub(t)
 		primeWeft := h.PrimeRecords()
 		upstream := gitkit.RevParse(t, primeWeft, "@{upstream}")
-		writeFile(t, filepath.Join(primeWeft, lyxdirs.DotLyxDirName, "kept.txt"), "kept\n")
+		writeFile(t, filepath.Join(primeWeft, lymdirs.DotLymDirName, "kept.txt"), "kept\n")
 
 		c, err := h.Topology.BeginAnchorChange(prime, "sub")
 		if err != nil {
@@ -637,14 +637,14 @@ func TestAnchorChange(t *testing.T) {
 		if !gitkit.IsAncestor(t, primeWeft, upstream, "HEAD") {
 			t.Errorf("the upstream tip %s is no ancestor of HEAD; want the local commits replayed on it", upstream)
 		}
-		if got := gitkit.Git(t, primeWeft, "show", "HEAD:sub/"+lyxdirs.LyxDirName+"/local.txt"); got != "local" {
-			t.Errorf("sub/_lyx/local.txt at HEAD = %q; want the local commit's file moved to sub", got)
+		if got := gitkit.Git(t, primeWeft, "show", "HEAD:sub/"+lymdirs.LymDirName+"/local.txt"); got != "local" {
+			t.Errorf("sub/_lym/local.txt at HEAD = %q; want the local commit's file moved to sub", got)
 		}
-		if marker := gitkit.Git(t, primeWeft, "show", "HEAD:"+lyxcwd.AnchorFileName); marker != "sub" {
+		if marker := gitkit.Git(t, primeWeft, "show", "HEAD:"+lymcwd.AnchorFileName); marker != "sub" {
 			t.Errorf("committed marker = %q; want sub", marker)
 		}
-		if got, err := os.ReadFile(filepath.Join(primeWeft, "sub", lyxdirs.DotLyxDirName, "kept.txt")); err != nil || string(got) != "kept\n" {
-			t.Errorf("sub/.lyx/kept.txt = (%q, %v); want .lyx moved with the integration", got, err)
+		if got, err := os.ReadFile(filepath.Join(primeWeft, "sub", lymdirs.DotLymDirName, "kept.txt")); err != nil || string(got) != "kept\n" {
+			t.Errorf("sub/.lym/kept.txt = (%q, %v); want .lym moved with the integration", got, err)
 		}
 		requireWiredOnlyAt(t, h, prime.WorktreeName, "sub", ".")
 		requireNoMoveRecord(t, primeWeft)
@@ -685,7 +685,7 @@ func TestAnchorChange(t *testing.T) {
 	t.Run("A re-run after a killed integration on a checkout already at sub finishes", func(t *testing.T) {
 		h, prime := newIntegrateHub(t)
 		primeWeft := h.PrimeRecords()
-		writeFile(t, filepath.Join(primeWeft, lyxdirs.DotLyxDirName, "kept.txt"), "kept\n")
+		writeFile(t, filepath.Join(primeWeft, lymdirs.DotLymDirName, "kept.txt"), "kept\n")
 		killAt(t, true)
 
 		c, err := h.Topology.BeginAnchorChange(prime, "sub")
@@ -693,7 +693,7 @@ func TestAnchorChange(t *testing.T) {
 			t.Fatalf("BeginAnchorChange() error = %v; want nil", err)
 		}
 		applyUntilKilled(t, c)
-		if marker := gitkit.Git(t, primeWeft, "show", "HEAD:"+lyxcwd.AnchorFileName); marker != "sub" {
+		if marker := gitkit.Git(t, primeWeft, "show", "HEAD:"+lymcwd.AnchorFileName); marker != "sub" {
 			t.Fatalf("committed marker after the kill = %q; want the integration to have landed", marker)
 		}
 		fabricengine.SetAnchorFailHookForTest(t, nil)
@@ -706,13 +706,13 @@ func TestAnchorChange(t *testing.T) {
 
 		requireWiredOnlyAt(t, h, prime.WorktreeName, "sub", ".")
 		requireNoMoveRecord(t, primeWeft)
-		if got, err := os.ReadFile(filepath.Join(primeWeft, "sub", lyxdirs.DotLyxDirName, "kept.txt")); err != nil || string(got) != "kept\n" {
-			t.Errorf("sub/.lyx/kept.txt = (%q, %v); want the file kept", got, err)
+		if got, err := os.ReadFile(filepath.Join(primeWeft, "sub", lymdirs.DotLymDirName, "kept.txt")); err != nil || string(got) != "kept\n" {
+			t.Errorf("sub/.lym/kept.txt = (%q, %v); want the file kept", got, err)
 		}
 	})
 
 	t.Run("UpstreamRunUnfinished reads the status at the fetched upstream tip", func(t *testing.T) {
-		const statusRel = "_lyx/shed/" + mover + "/status.json"
+		const statusRel = "_lym/shed/" + mover + "/status.json"
 		tests := []struct {
 			name string
 			// upstreamRel and upstreamState are the status the second clone pushes, none when upstreamRel is empty.
@@ -722,7 +722,7 @@ func TestAnchorChange(t *testing.T) {
 			{name: "A checked-out status that reads unfinished and an upstream that reads finished is finished", upstreamRel: statusRel, upstreamState: "done", want: false},
 			{name: "An upstream status that reads unfinished is unfinished", upstreamRel: statusRel, upstreamState: "running", want: true},
 			{name: "An upstream with no status is finished", want: false},
-			{name: "An upstream status in the legacy self directory counts", upstreamRel: "_lyx/shed/self/status.json", upstreamState: "paused", want: true},
+			{name: "An upstream status in the legacy self directory counts", upstreamRel: "_lym/shed/self/status.json", upstreamState: "paused", want: true},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -741,7 +741,7 @@ func TestAnchorChange(t *testing.T) {
 				}
 				gitkit.Git(t, other, "push", "-q", "origin", branch)
 				gitkit.Git(t, weft, "fetch", "-q", "origin")
-				pair, err := lyxcwd.NamedWorktree(h.Path, mover)
+				pair, err := lymcwd.NamedWorktree(h.Path, mover)
 				if err != nil {
 					t.Fatalf("NamedWorktree: %v", err)
 				}
@@ -760,9 +760,9 @@ func TestAnchorChange(t *testing.T) {
 	})
 }
 
-// newIntegrateHub builds a "." hub whose prime weft holds a local commit of _lyx/local.txt and whose upstream a second clone moved to sub, with the new tip fetched.
+// newIntegrateHub builds a "." hub whose prime weft holds a local commit of _lym/local.txt and whose upstream a second clone moved to sub, with the new tip fetched.
 // It returns the hub and the prime's Location at its own anchor.
-func newIntegrateHub(t *testing.T) (*hubforge.Hub, *lyxcwd.Location) {
+func newIntegrateHub(t *testing.T) (*hubforge.Hub, *lymcwd.Location) {
 	t.Helper()
 
 	h := newAnchorHub(t)
@@ -771,11 +771,11 @@ func newIntegrateHub(t *testing.T) (*hubforge.Hub, *lyxcwd.Location) {
 	if _, err := fabricengine.CoalescePushBothAt(second.PrimeWorktree(), second.PrimeRecords(), fabricengine.SyncOptions{}); err != nil {
 		t.Fatalf("push the re-anchored prime from the second clone: %v", err)
 	}
-	gitkit.CommitFile(t, h.PrimeRecords(), lyxdirs.LyxDirName+"/local.txt", "local\n", "local commit")
+	gitkit.CommitFile(t, h.PrimeRecords(), lymdirs.LymDirName+"/local.txt", "local\n", "local commit")
 	gitkit.Git(t, h.PrimeRecords(), "fetch", "-q", "origin")
 	branch := gitkit.CurrentBranch(t, h.PrimeRecords())
 	gitkit.Git(t, h.PrimeRecords(), "branch", "-q", "--set-upstream-to=origin/"+branch, branch)
-	prime, err := lyxcwd.NamedWorktree(h.Path, h.Location.WorktreeName)
+	prime, err := lymcwd.NamedWorktree(h.Path, h.Location.WorktreeName)
 	if err != nil {
 		t.Fatalf("NamedWorktree: %v", err)
 	}

@@ -14,17 +14,17 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// openTerminalWindow opens a terminal window titled title whose shell runs `lyxPath reed attach` in dir, through the launcher this machine resolves.
-func openTerminalWindow(dir, title, lyxPath string) error {
+// openTerminalWindow opens a terminal window titled title whose shell runs `lymPath reed attach` in dir, through the launcher this machine resolves.
+func openTerminalWindow(dir, title, lymPath string) error {
 	launcher, err := termwindow.Resolve()
 	if err != nil {
 		return err
 	}
-	return launcher.OpenAttach(dir, title, lyxPath)
+	return launcher.OpenAttach(dir, title, lymPath)
 }
 
 // windowCmd builds the `window` subcommand.
-// It opens a window on any directory the caller names; the window runs only `lyx reed attach` there, which attaches to that worktree's own reed session and nothing else.
+// It opens a window on any directory the caller names; the window runs only `lym reed attach` there, which attaches to that worktree's own reed session and nothing else.
 func (c *reedCLI) windowCmd() *cobra.Command {
 	var title string
 
@@ -33,14 +33,14 @@ func (c *reedCLI) windowCmd() *cobra.Command {
 		Short:       "open a desktop terminal window attached to a worktree's reed session",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `window opens one desktop terminal window whose shell runs
-"lyx reed attach" in the told worktree directory, and returns once the
+"lym reed attach" in the told worktree directory, and returns once the
 launcher process has started, so the window outlives this command. The
 title defaults to the directory's base name. A directory that does not
 exist is refused before any launcher runs, and a machine with no terminal
 launcher reports why on the envelope.
 
 Example:
-  lyx reed window /path/to/hub/my-task --title my-task`,
+  lym reed window /path/to/hub/my-task --title my-task`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -57,9 +57,9 @@ Example:
 			if windowTitle == "" {
 				windowTitle = filepath.Base(dir)
 			}
-			lyxPath, err := os.Executable()
+			lymPath, err := os.Executable()
 			if err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("window: resolve the running lyx: %v", err)))
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("window: resolve the running lym: %v", err)))
 				return nil
 			}
 
@@ -67,7 +67,7 @@ Example:
 			if open == nil {
 				open = openTerminalWindow
 			}
-			if err := open(dir, windowTitle, lyxPath); err != nil {
+			if err := open(dir, windowTitle, lymPath); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("window: %v", err)))
 				return nil
 			}

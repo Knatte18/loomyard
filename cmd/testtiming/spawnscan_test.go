@@ -25,10 +25,10 @@ func prodExecutable() { _, _ = os.Executable() }
 import (
 	"testing"
 
-	"example.com/m/internal/testkit/lyxbin"
+	"example.com/m/internal/testkit/lymbin"
 )
 
-func TestUntaggedLyxbin(t *testing.T) { lyxbin.Build(t) }
+func TestUntaggedLymbin(t *testing.T) { lymbin.Build(t) }
 
 func TestUntaggedUnresolved(t *testing.T) {
 	f := func() {}
@@ -53,12 +53,12 @@ import (
 	"example.com/m/internal/testkit/gitonlykit"
 	"example.com/m/internal/testkit/gokit"
 	"example.com/m/internal/testkit/quietkit"
-	"example.com/m/internal/testkit/lyxbin"
+	"example.com/m/internal/testkit/lymbin"
 )
 
 type row struct{ fn func() }
 
-func TestLyxbin(t *testing.T) { lyxbin.Build(t) }
+func TestLymbin(t *testing.T) { lymbin.Build(t) }
 
 func TestExecutable(t *testing.T) { _, _ = os.Executable() }
 
@@ -151,9 +151,9 @@ func TestScanSpawns(t *testing.T) {
 	outOfProcess := spawnVerdict{outOfProcess: true}
 	unresolved := spawnVerdict{unresolved: true}
 	want := map[string]spawnVerdict{
-		"TestUntaggedLyxbin":     {},
+		"TestUntaggedLymbin":     {},
 		"TestUntaggedUnresolved": {},
-		"TestLyxbin":             outOfProcess,
+		"TestLymbin":             outOfProcess,
 		"TestExecutable":         outOfProcess,
 		"TestArgsProgram":        outOfProcess,
 		"TestArgsRest":           {},

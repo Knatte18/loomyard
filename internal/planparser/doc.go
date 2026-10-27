@@ -1,12 +1,12 @@
 // Package planparser is the SOLE parser AND SOLE writer of the on-disk plan format written
-// under `_lyx/plan/` (see contracts/specs/loom-plan-spec.md, the pinned spec this package
-// implements). No other package may read or write `_lyx/plan/` directly — every consumer
+// under `_lym/plan/` (see contracts/specs/loom-plan-spec.md, the pinned spec this package
+// implements). No other package may read or write `_lym/plan/` directly — every consumer
 // (the batcher, webster's master, and fork prompt rendering) goes through
 // planparser.ParsePlan and the Plan/Card model it returns.
-// The package's write paths are the only places any `_lyx/plan/` byte is ever rewritten:
+// The package's write paths are the only places any `_lym/plan/` byte is ever rewritten:
 // SetApproved (the approval flag), RewriteRefs (ref substitution across the plan, rewrite.go), AppendAmendment (the append-only amendment log, amendment.go), InsertCard and RemoveCard (one card added or dropped with the cards after it renumbered, renumber.go), and RestoreRenumber (the undo of an interrupted renumber, restore.go).
 // So the on-disk grammar has exactly one reader and named writers, and the rest of webster never re-derives it.
-// Overlay (overlay.go) is a read path beside them and writes no `_lyx/plan/` byte:
+// Overlay (overlay.go) is a read path beside them and writes no `_lym/plan/` byte:
 // it lays proposed contents of the overview and the cards the Card Index lists over a plan directory, and a plan parsed through it reads, rewrites (Plan.RewriteRefs) and re-parses (Plan.Reparse) in memory.
 //
 // # The Glyph Conversion Chokepoint Invariant
@@ -14,7 +14,7 @@
 // loomyard performs no glyph-to-path or path-to-glyph conversion of its own, bar the external-test unit mappings below.
 // glyph.Self (glyphref.go) is the only path->glyph call, Glyph.UnitPath is the only glyph->path call, and glyph.Parse plus Glyph.String are the only glyph grammar.
 // No `strings.TrimSuffix(s, "#")` over a glyph-typed value, no reading Glyph.Unit as a disk path, and no local regex over a glyph string anywhere in this package or its callers;
-// cmd/lyx/constraintchokepoint_test.go guards this mechanically.
+// cmd/lym/constraintchokepoint_test.go guards this mechanically.
 // goPackageDir and GoPackageCounterpart (targetdirs.go) are the sanctioned adjustments beside Glyph.UnitPath, for the external-test pseudo-unit only:
 // quarry names an external test package's unit `<dir>_test`, a pseudo-path with no directory, which Glyph.UnitPath returns unchanged.
 // goPackageDir maps that pseudo-unit to its package directory.
@@ -27,15 +27,14 @@
 // # Path ownership
 //
 // planparser owns not only the plan format but where the plan directory lives.
-// PlanDirName and PlanDirRel declare the worktree-relative token (`_lyx/plan`,
-// forward-slash, a document token used for Card.SourcePath); PlanDir and
-// PlanOverview declare the absolute form.
+// PlanDirName and PlanDirRel declare the worktree-relative token (`_lym/plan`, forward-slash, a document token used for Card.SourcePath);
+// PlanDir and PlanOverview declare the absolute form.
 // PlanScratchDir declares the plan directory's never-tracked mirror, joined from the same segment as PlanDir, and RenumberJournalPath the journal under it.
 // InsertCard and RemoveCard write that journal before they touch the plan directory and remove it when they finish, so a journal found on disk is an interrupted renumber.
 // RestoreRenumber is the journal's only reader: it undoes that renumber from the journal, which discards any edit made to the journaled files since.
 // All file operations of a renumber go through RenumberIO, the raw I/O seam OSRenumberIO fills from the standard library.
-// The package itself never resolves cwd: its loomyard imports are internal/lyxdirs and internal/pattern, the latter for the entry-line cap alone.
-// The caller supplies the anchor path, which in a lyx worktree is lyxcwd.Location.AnchorPath() and never WorktreePath().
+// The package itself never resolves cwd: its loomyard imports are internal/lymdirs and internal/pattern, the latter for the entry-line cap alone.
+// The caller supplies the anchor path, which in a lym worktree is lymcwd.Location.AnchorPath() and never WorktreePath().
 //
 // # Type model
 //

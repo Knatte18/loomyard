@@ -26,7 +26,7 @@ const (
 	BoardTidyRole = "board-tidy"
 	// tidyStencilName is the registered name of the board-tidy agent's opening stencil.
 	tidyStencilName = "beam-template-board-tidy"
-	// tidySkill is the one skill the agent needs: the board, read and amended through `lyx board`.
+	// tidySkill is the one skill the agent needs: the board, read and amended through `lym board`.
 	tidySkill = "ly:board"
 )
 
@@ -163,10 +163,10 @@ func (d *daemon) spawnTidy(now time.Time, cfg Config, landed []string) error {
 	if err != nil {
 		return fmt.Errorf("read the nearest live orch: %w", err)
 	}
-	if err := os.MkdirAll(d.geom.MarkerDir, 0o755); err != nil {
+	if err := os.MkdirAll(d.geom.TidyDir, 0o755); err != nil {
 		return err
 	}
-	reportPath := filepath.Join(d.geom.MarkerDir, "board-tidy-"+now.UTC().Format("20060102T150405Z")+".md")
+	reportPath := filepath.Join(d.geom.TidyDir, now.UTC().Format("20060102T150405Z")+".md")
 	prompt, err := TidyPrompt(d.deps.StencilsDir, TidyPromptInput{Landed: landed, ReportPath: reportPath, Parent: orch})
 	if err != nil {
 		return err

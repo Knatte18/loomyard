@@ -18,7 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/landingshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
@@ -40,9 +40,9 @@ func TestLandingDeps_ConfigNoticeSeamsOverRealHub(t *testing.T) {
 	gitkit.CommitFile(t, taskRecords, configengine.ConfigFileRel("loom"), "task_setting: changed\n", "task: change loom config")
 	gitkit.CommitFile(t, taskRecords, configengine.ConfigFileRel("board"), "task_setting: changed\n", "task: change board config")
 
-	taskLocation, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree("task"))
+	taskLocation, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("task"))
 	if err != nil {
-		t.Fatalf("lyxcwd.ResolveWorktree(task) error = %v; want nil", err)
+		t.Fatalf("lymcwd.ResolveWorktree(task) error = %v; want nil", err)
 	}
 	deps := landingDeps(taskLocation, shedrun.RecipeLoom, websterengine.Geometry{}, "task", "main",
 		true, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(taskLocation), parentLockDeps(taskLocation, shedrun.SelfRunID, "", ""))
@@ -139,9 +139,9 @@ func TestParentRecordsCommitter_CommitsTheRecordedParent(t *testing.T) {
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPairWith(t, h, "b", fabricengine.AddOptions{SkipPush: true, Beam: true})
 	hubforge.AddPairWith(t, h, "m", fabricengine.AddOptions{SkipPush: true, Parent: "b"})
-	member, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree("m"))
+	member, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("m"))
 	if err != nil {
-		t.Fatalf("lyxcwd.ResolveWorktree(m) error = %v; want nil", err)
+		t.Fatalf("lymcwd.ResolveWorktree(m) error = %v; want nil", err)
 	}
 	beamRecords, primeRecords := h.PairRecordsSibling("b"), h.PrimeRecords()
 	record := filepath.Join(beamRecords, shedrun.RunsRootRel(), "sibling", "status.json")

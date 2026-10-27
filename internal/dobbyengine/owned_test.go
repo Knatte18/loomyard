@@ -39,11 +39,11 @@ func TestOwnedElsewhere(t *testing.T) {
 			nilSeam    bool
 			wantAdopt  string
 		}{
-			{"a beam", "beam", nil, false, "lyx adopt beam on this machine"},
-			{"root", "root", nil, false, "lyx adopt root on this machine"},
-			{"a nil seam", "", nil, true, "lyx adopt task on this machine"},
-			{"a failing seam", "beam", errors.New("board unreadable"), false, "lyx adopt task on this machine"},
-			{"an empty answer", "", nil, false, "lyx adopt task on this machine"},
+			{"a beam", "beam", nil, false, "lym adopt beam on this machine"},
+			{"root", "root", nil, false, "lym adopt root on this machine"},
+			{"a nil seam", "", nil, true, "lym adopt task on this machine"},
+			{"a failing seam", "beam", errors.New("board unreadable"), false, "lym adopt task on this machine"},
+			{"an empty answer", "", nil, false, "lym adopt task on this machine"},
 		} {
 			t.Run(row.name, func(t *testing.T) {
 				t.Parallel()

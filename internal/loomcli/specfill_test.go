@@ -14,7 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -22,9 +22,9 @@ import (
 )
 
 // TestSpecFor_FillsRunIdentityForSelf verifies that a spec armed for "self" reports the worktree
-// slug as RunID, a StepsDir under the slug's .lyx scratch directory, and the loom routing entry.
+// slug as RunID, a StepsDir under the slug's .lym scratch directory, and the loom routing entry.
 func TestSpecFor_FillsRunIdentityForSelf(t *testing.T) {
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "wt", AnchorRel: "."}
+	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "wt", AnchorRel: "."}
 	c := &loomCLI{
 		location:  loc,
 		runID:     shedrun.SelfRunID,
@@ -39,7 +39,7 @@ func TestSpecFor_FillsRunIdentityForSelf(t *testing.T) {
 	if spec.RunID != "wt" {
 		t.Errorf("RunID = %q, want %q", spec.RunID, "wt")
 	}
-	wantSteps := filepath.Join(loc.AnchorPath(), ".lyx", "shed", "wt", "steps")
+	wantSteps := filepath.Join(loc.AnchorPath(), ".lym", "shed", "wt", "steps")
 	if spec.StepsDir != wantSteps {
 		t.Errorf("StepsDir = %q, want %q", spec.StepsDir, wantSteps)
 	}
@@ -95,11 +95,11 @@ func TestSpecFor_FillsRunIdentityForSelf(t *testing.T) {
 	}
 }
 
-// TestSpecFor_LegacySelfDirKeepsSlugRunID verifies that with only a legacy _lyx/shed/self/ present,
+// TestSpecFor_LegacySelfDirKeepsSlugRunID verifies that with only a legacy _lym/shed/self/ present,
 // RunID stays the slug while StepsDir keeps the legacy "self" segment.
 func TestSpecFor_LegacySelfDirKeepsSlugRunID(t *testing.T) {
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "wt", AnchorRel: "."}
-	if err := os.MkdirAll(filepath.Join(loc.AnchorPath(), "_lyx", "shed", "self"), 0o755); err != nil {
+	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "wt", AnchorRel: "."}
+	if err := os.MkdirAll(filepath.Join(loc.AnchorPath(), "_lym", "shed", "self"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	c := &loomCLI{location: loc, runID: shedrun.SelfRunID}
@@ -109,7 +109,7 @@ func TestSpecFor_LegacySelfDirKeepsSlugRunID(t *testing.T) {
 	if spec.RunID != "wt" {
 		t.Errorf("RunID = %q, want %q", spec.RunID, "wt")
 	}
-	wantSuffix := filepath.Join(".lyx", "shed", "self", "steps")
+	wantSuffix := filepath.Join(".lym", "shed", "self", "steps")
 	if !strings.HasSuffix(spec.StepsDir, wantSuffix) {
 		t.Errorf("StepsDir = %q, want suffix %q", spec.StepsDir, wantSuffix)
 	}

@@ -109,7 +109,7 @@ func (run *Run) wakesOnBackground(held *heldTurnEnd) bool {
 }
 
 // apiErrorContinueLine is the one line an agent whose turn ended on an API error across a machine sleep is given to carry on.
-const apiErrorContinueLine = "[lyx] Your last turn ended on an API error while the machine slept; it is awake again. Carry on with your task where you stopped."
+const apiErrorContinueLine = "[lym] Your last turn ended on an API error while the machine slept; it is awake again. Carry on with your task where you stopped."
 
 // continueAPIErrorStall types apiErrorContinueLine into the run's pane when held is an API-error turn end that stalled across a detected sleep, and reports whether it did.
 // It sends only when no pause covers the run, the session state names the newest turn end an API error, a sleep of at least pauserecord.SleepTolerance lies after the latest turn start Wait read, no continue is recorded for this turn, and no turn start was read past held.

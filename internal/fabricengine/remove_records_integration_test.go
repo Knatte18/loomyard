@@ -55,7 +55,7 @@ func TestRemove_CommitsPendingRecordsIntoArchiveTag(t *testing.T) {
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 
 	weftWorktree := fabricengine.RecordsWorktreePath(l, slug)
-	rel := "_lyx/shed/" + slug + "/drive-reports/stop.md"
+	rel := "_lym/shed/" + slug + "/drive-reports/stop.md"
 	writeFile(t, filepath.Join(weftWorktree, filepath.FromSlash(rel)), "stopped\n")
 	warpTip := gitkit.RevParse(t, fabricengine.WorktreePath(l, slug), "HEAD")
 
@@ -95,7 +95,7 @@ func TestRemove_OutOfPathspecSiblingDirtRefusesBeforeAnyMutation(t *testing.T) {
 
 	weftWorktree := fabricengine.RecordsWorktreePath(l, slug)
 	writeFile(t, filepath.Join(weftWorktree, "stray.txt"), "not a record\n")
-	writeFile(t, filepath.Join(weftWorktree, "_lyx", "record.txt"), "a record\n")
+	writeFile(t, filepath.Join(weftWorktree, "_lym", "record.txt"), "a record\n")
 	tipBefore := gitkit.RevParse(t, weftWorktree, "HEAD")
 
 	res, err := h.Topology.Remove(l, slug, false, false)
@@ -108,7 +108,7 @@ func TestRemove_OutOfPathspecSiblingDirtRefusesBeforeAnyMutation(t *testing.T) {
 	if !strings.Contains(err.Error(), "uncommitted changes") || !strings.Contains(err.Error(), "stray.txt") {
 		t.Errorf("error = %q; want it to name the uncommitted out-of-pathspec path", err.Error())
 	}
-	if strings.Contains(err.Error(), "_lyx/record.txt") {
+	if strings.Contains(err.Error(), "_lym/record.txt") {
 		t.Errorf("error = %q; the in-pathspec record must not be named as dirt", err.Error())
 	}
 	if n := res.Mutated().Len(); n != 0 {
@@ -128,8 +128,8 @@ func TestRemove_OutOfPathspecSiblingDirtRefusesBeforeAnyMutation(t *testing.T) {
 	if forced.ArchiveTag == "" {
 		t.Errorf("forced Remove ArchiveTag is empty; want the archive to run")
 	}
-	if got := showAtTag(t, h.RecordsBare, forced.ArchiveTag, "_lyx/record.txt"); got != "a record\n" {
-		t.Errorf("forced Remove archived _lyx/record.txt = %q; want the committed record", got)
+	if got := showAtTag(t, h.RecordsBare, forced.ArchiveTag, "_lym/record.txt"); got != "a record\n" {
+		t.Errorf("forced Remove archived _lym/record.txt = %q; want the committed record", got)
 	}
 }
 
@@ -224,11 +224,11 @@ func TestRemoveRefusal_ProbeLeavesPairUntouched(t *testing.T) {
 		t.Fatalf("remove stray file: %v", err)
 	}
 
-	writeFile(t, filepath.Join(weftWorktree, "_lyx", "record.txt"), "a record\n")
+	writeFile(t, filepath.Join(weftWorktree, "_lym", "record.txt"), "a record\n")
 	if err := h.Topology.RemoveRefusal(l, slug, false); err != nil {
 		t.Errorf("RemoveRefusal with only an in-pathspec record = %v; want nil", err)
 	}
-	if _, err := os.Stat(filepath.Join(weftWorktree, "_lyx", "record.txt")); err != nil {
+	if _, err := os.Stat(filepath.Join(weftWorktree, "_lym", "record.txt")); err != nil {
 		t.Errorf("the probe disturbed the uncommitted record: %v", err)
 	}
 

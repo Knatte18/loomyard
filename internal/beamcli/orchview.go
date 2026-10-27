@@ -1,4 +1,4 @@
-// orchview.go reads one worktree's orch for `lyx beam status`: whether its strand and its watcher are live and the session its state records.
+// orchview.go reads one worktree's orch for `lym beam status`: whether its strand and its watcher are live and the session its state records.
 
 package beamcli
 
@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 )
@@ -20,9 +20,9 @@ type orchView struct {
 }
 
 // readOrchView reads the orch of the worktree named worktree, the prime's name or a beam's slug.
-// It takes no part in any start: the strand's liveness is the one `lyx orch status` reads, and the watcher's is a probe of its lock.
-func readOrchView(prime *lyxcwd.Location, worktree string) (orchView, error) {
-	location, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(prime, worktree))
+// It takes no part in any start: the strand's liveness is the one `lym orch status` reads, and the watcher's is a probe of its lock.
+func readOrchView(prime *lymcwd.Location, worktree string) (orchView, error) {
+	location, err := lymcwd.ResolveWorktree(fabricengine.WorktreePath(prime, worktree))
 	if err != nil {
 		return orchView{}, fmt.Errorf("resolve the worktree: %w", err)
 	}

@@ -24,7 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // openFreshFabric opens a brand-new *fabricengine.Fabric handle over warpPath, independent of any
@@ -33,9 +33,9 @@ import (
 func openFreshFabric(t *testing.T, warpPath string) *fabricengine.Fabric {
 	t.Helper()
 
-	l, err := lyxcwd.ResolveWorktree(warpPath)
+	l, err := lymcwd.ResolveWorktree(warpPath)
 	if err != nil {
-		t.Fatalf("lyxcwd.ResolveWorktree(%s): %v", warpPath, err)
+		t.Fatalf("lymcwd.ResolveWorktree(%s): %v", warpPath, err)
 	}
 	f, err := fabricengine.Open(l)
 	if err != nil {
@@ -1573,7 +1573,7 @@ func TestMergeVerbs_ForeignMergeState_EverySideAndShapeRefuses(t *testing.T) {
 			branch, conflictPath := "other", "plain-conflict.txt"
 			if tt.onWeft {
 				dir = h.PrimeRecords()
-				branch, conflictPath = "other-weft", "_lyx/plain-conflict.txt"
+				branch, conflictPath = "other-weft", "_lym/plain-conflict.txt"
 			}
 
 			setupConflictingDivergence(t, dir, branch, conflictPath)

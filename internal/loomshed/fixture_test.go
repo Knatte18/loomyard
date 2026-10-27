@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 )
@@ -75,13 +75,11 @@ func writeDiscussionFixture(t *testing.T, dir, decisionRecord, supportLog string
 	return decisionRecordPath, supportLogPath
 }
 
-// seedPlanFormatFixture writes a syntactically complete, one-card plan-format plan under
-// <anchorPath>/_lyx/plan/, approved or not per approved. The sole card carries a Create group so
-// path-missing never fires regardless of worktreeRoot's contents — a Create group's targets stay
-// exempt from on-disk existence checking.
+// seedPlanFormatFixture writes a syntactically complete, one-card plan-format plan under <anchorPath>/_lym/plan/, approved or not per approved.
+// The sole card carries a Create group so path-missing never fires regardless of worktreeRoot's contents — a Create group's targets stay exempt from on-disk existence checking.
 func seedPlanFormatFixture(t *testing.T, anchorPath string, approved bool) {
 	t.Helper()
-	plankit.Write(t, filepath.Join(anchorPath, lyxdirs.LyxDirName, "plan"), firstCardPlan(approved, "none", "internal/firstcard/new.go", ""))
+	plankit.Write(t, filepath.Join(anchorPath, lymdirs.LymDirName, "plan"), firstCardPlan(approved, "none", "internal/firstcard/new.go", ""))
 }
 
 // firstCardPlan describes a one-card plan whose sole Create group targets createTarget and, when useTarget is non-empty, whose card also uses useTarget.
@@ -117,7 +115,7 @@ func seedPlanContextFixture(t *testing.T, anchorPath, renamePair, planSection, r
 	if planSection != "" {
 		plan.Sections = append(plan.Sections, plankit.Section{Heading: "PATTERN changes", Body: planSection})
 	}
-	plankit.Write(t, filepath.Join(anchorPath, lyxdirs.LyxDirName, "plan"), plan)
+	plankit.Write(t, filepath.Join(anchorPath, lymdirs.LymDirName, "plan"), plan)
 
 	recordPath := filepath.Join(anchorPath, "decision-record.md")
 	if recordSection != "absent" {
@@ -159,7 +157,7 @@ func seedFormatInvalidPlanFixture(t *testing.T, anchorPath string) {
 	}
 	files["00-overview.md"] = []byte(overview)
 
-	planDir := filepath.Join(anchorPath, lyxdirs.LyxDirName, "plan")
+	planDir := filepath.Join(anchorPath, lymdirs.LymDirName, "plan")
 	if err := os.MkdirAll(planDir, 0o755); err != nil {
 		t.Fatalf("mkdir plan dir: %v", err)
 	}
@@ -170,11 +168,10 @@ func seedFormatInvalidPlanFixture(t *testing.T, anchorPath string) {
 	}
 }
 
-// seedGlyphPlanFixture writes a syntactically complete, one-card language: go plan under
-// <anchorPath>/_lyx/plan/. createTarget names the card's sole Create group entry; when useTarget is
-// non-empty it also carries a Uses: entry naming useTarget, so a test can add a second glyph target
-// resolved outside the Create inversion.
+// seedGlyphPlanFixture writes a syntactically complete, one-card language: go plan under <anchorPath>/_lym/plan/.
+// createTarget names the card's sole Create group entry;
+// when useTarget is non-empty it also carries a Uses: entry naming useTarget, so a test can add a second glyph target resolved outside the Create inversion.
 func seedGlyphPlanFixture(t *testing.T, anchorPath string, approved bool, createTarget, useTarget string) {
 	t.Helper()
-	plankit.Write(t, filepath.Join(anchorPath, lyxdirs.LyxDirName, "plan"), firstCardPlan(approved, "go", createTarget, useTarget))
+	plankit.Write(t, filepath.Join(anchorPath, lymdirs.LymDirName, "plan"), firstCardPlan(approved, "go", createTarget, useTarget))
 }

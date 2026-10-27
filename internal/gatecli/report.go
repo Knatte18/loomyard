@@ -1,4 +1,4 @@
-// report.go implements `lyx gate report`, the read-only totals of this machine's tier run records per slug and gate key.
+// report.go implements `lym gate report`, the read-only totals of this machine's tier run records per slug and gate key.
 
 package gatecli
 
@@ -17,14 +17,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 )
 
-// sinceLayout is the date form `lyx gate report --since` takes.
+// sinceLayout is the date form `lym gate report --since` takes.
 const sinceLayout = "2006-01-02"
 
-// reportCmd builds `lyx gate report`.
+// reportCmd builds `lym gate report`.
 func reportCmd() *cobra.Command {
 	var slug, since string
 	cmd := &cobra.Command{
@@ -62,7 +62,7 @@ It takes no slot and changes nothing.`,
 
 // runReportVerb reads the run records of the worktree that contains the seam cwd and reports them.
 func runReportVerb(ctx context.Context, out io.Writer, slug string, since time.Time) int {
-	cwd, err := lyxcwd.CwdFrom(ctx)
+	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("gate report: cannot read the working directory: %v; way forward: re-run the same command", err))
 	}
@@ -71,7 +71,7 @@ func runReportVerb(ctx context.Context, out io.Writer, slug string, since time.T
 		return output.Err(out, fmt.Sprintf("gate report: %v; way forward: re-run the same command", err))
 	}
 	if !inHub {
-		if location, err = lyxcwd.ResolveWorktree(cwd); err != nil {
+		if location, err = lymcwd.ResolveWorktree(cwd); err != nil {
 			return output.Err(out, fmt.Sprintf("gate report: resolve the worktree of %s: %v; way forward: run the same command from a git worktree", cwd, err))
 		}
 	}
@@ -83,7 +83,7 @@ func runReportVerb(ctx context.Context, out io.Writer, slug string, since time.T
 }
 
 // runLogDirOf returns the directory the tier run records of location go in: the board's gate directory inside a hub, the worktree's own outside every hub.
-func runLogDirOf(location *lyxcwd.Location, inHub bool) string {
+func runLogDirOf(location *lymcwd.Location, inHub bool) string {
 	if inHub {
 		return gateslot.RunLogDir(gateslot.Dir(fabricengine.BoardDir(location.HubPath)))
 	}

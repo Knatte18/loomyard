@@ -441,7 +441,7 @@ func deadLoopWorld(t *testing.T) *waitWorld {
 // assertLoopExited checks env is the interrupted loop-exited stop and the status file records it.
 func assertLoopExited(t *testing.T, w *waitWorld, env map[string]any, code int) {
 	t.Helper()
-	wantError := "shedverbs: step " + w.readStatus().CurrentProducer + " interrupted (loop-exited); way forward: read loop.trace_copy and loop.stderr_path, apply the interrupted rule under loop.interrupt_policy, then re-run lyx shed step run-1 --until-stop"
+	wantError := "shedverbs: step " + w.readStatus().CurrentProducer + " interrupted (loop-exited); way forward: read loop.trace_copy and loop.stderr_path, apply the interrupted rule under loop.interrupt_policy, then re-run lym shed step run-1 --until-stop"
 	loop := loopOf(t, env)
 	if code != 1 || env["kind"] != KindInterrupted || env["error"] != wantError || loop["stop"] != string(LoopStopInterrupted) {
 		t.Errorf("exit/kind/error/stop = %d/%v/%v/%v; want the interrupted loop-exited stop", code, env["kind"], env["error"], loop["stop"])
@@ -566,7 +566,7 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 
 		env, code := w.wait()
 
-		wantError := "shedverbs: the run lock is held, so the dead loop of run run-1 is not yet stopped; way forward: re-run lyx shed step run-1 --until-stop once the holder ends"
+		wantError := "shedverbs: the run lock is held, so the dead loop of run run-1 is not yet stopped; way forward: re-run lym shed step run-1 --until-stop once the holder ends"
 		if code != 1 || env["error"] != wantError || loopOf(t, env)["stop"] != string(LoopStopBusy) {
 			t.Errorf("exit/error/stop = %d/%v/%v; want the busy stop", code, env["error"], loopOf(t, env)["stop"])
 		}
@@ -871,7 +871,7 @@ func TestUntilStop_LoserWaitsOnWinner(t *testing.T) {
 
 		env, code := w.wait()
 
-		if code != 1 || !strings.Contains(env["error"].(string), "no such file; way forward: re-run lyx shed step run-1 --until-stop") {
+		if code != 1 || !strings.Contains(env["error"].(string), "no such file; way forward: re-run lym shed step run-1 --until-stop") {
 			t.Errorf("exit/error = %d/%v; want the start error with its way forward", code, env["error"])
 		}
 		w.assertNotFailed()

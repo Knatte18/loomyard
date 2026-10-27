@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // MergeStateActive reports whether l's weft sibling worktree is mid-merge AT THE GIT LEVEL — a live
@@ -25,7 +25,7 @@ import (
 // Fabric.MergeInProgress cannot serve as this probe: it is mergeRecordExists()'s bare boolean, never
 // consults foreignMergeStatePresent, and is therefore false in precisely the foreign-state case this
 // probe exists to catch — and it needs an open *Fabric, which a caller closure driving this probe
-// does not hold. MergeStateActive takes an l *lyxcwd.Location instead, matching CommitAnchoredPaths
+// does not hold. MergeStateActive takes an l *lymcwd.Location instead, matching CommitAnchoredPaths
 // and PushAnchored.
 //
 // A non-nil error is surfaced rather than swallowed: the decision that an unreadable probe means
@@ -33,7 +33,7 @@ import (
 //
 // This is a read-only probe, so it returns no result type and embeds no MutationRecord, per the
 // Mutation Record Invariant's "a read-only one must not" clause.
-func MergeStateActive(l *lyxcwd.Location) (bool, error) {
+func MergeStateActive(l *lymcwd.Location) (bool, error) {
 	repo := gitrepo.New(RecordsWorktree(l))
 
 	mergeHeadPresent, err := repo.MergeHeadPresent()

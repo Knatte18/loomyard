@@ -15,8 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loggerconfig"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxtemp"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 )
@@ -60,12 +60,12 @@ func battenListed(report battencli.CleanupReport) map[string]any {
 }
 
 // primeSegments returns the cleanup of the hub prime at location and of the handoffs of every orch of the hub, in the order the verb runs them: batten, board, orch, scratch, logs and temp.
-func primeSegments(location *lyxcwd.Location) []segment {
+func primeSegments(location *lymcwd.Location) []segment {
 	return segmentsOver(location, orchcli.HubOrchs)
 }
 
 // segmentsOver is primeSegments with hubOrchs, the lister of the worktrees the orch segment cleans.
-func segmentsOver(location *lyxcwd.Location, hubOrchs func(*lyxcwd.Location) ([]*lyxcwd.Location, error)) []segment {
+func segmentsOver(location *lymcwd.Location, hubOrchs func(*lymcwd.Location) ([]*lymcwd.Location, error)) []segment {
 	openBoard := func() (*boardengine.Board, error) {
 		return boardengine.OpenHub(location.HubPath)
 	}
@@ -135,7 +135,7 @@ func segmentsOver(location *lyxcwd.Location, hubOrchs func(*lyxcwd.Location) ([]
 			return map[string]any{"removed": removed}, nil
 		}},
 		{name: "temp", run: func(apply bool) (any, error) {
-			root, err := lyxtemp.ProcessRoot()
+			root, err := lymtemp.ProcessRoot()
 			if err != nil {
 				return nil, err
 			}

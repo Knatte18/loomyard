@@ -1,6 +1,6 @@
 # Issue 411: a gated Burler round whose Stop shuttle never took.
 source:
-  transcript: ~/.claude/projects/-home-knatte-Code-loomyard-LYXHUB-test-suite-prune-rest/97d818aa-8fb0-4103-9b56-0ae4da2a75b7.jsonl
+  transcript: ~/.claude/projects/-home-knatte-Code-loomyard-LYMHUB-test-suite-prune-rest/97d818aa-8fb0-4103-9b56-0ae4da2a75b7.jsonl
   session_id: 97d818aa-8fb0-4103-9b56-0ae4da2a75b7
   run: test-suite-prune-rest Webster-Burler round 2, run 976daeeb219e18f87d1a6954c562b64e
 date: 2026-10-06

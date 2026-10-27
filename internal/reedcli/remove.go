@@ -52,7 +52,7 @@ func waitParentExit(waitPID int) error {
 	return nil
 }
 
-// spawnDetachedRemove starts a detached `lyx reed remove <guid>` in the invoking worktree, handing it
+// spawnDetachedRemove starts a detached `lym reed remove <guid>` in the invoking worktree, handing it
 // this process's pid so it removes only once the pane's descendant (this process) is gone. It is a
 // no-op under a test binary (suppress), where re-exec'ing os.Executable() would run the suite.
 func (c *reedCLI) spawnDetachedRemove(guid string, recursive bool) error {
@@ -127,11 +127,11 @@ never silently orphaned.
 
 --name resolves the guid among this worktree's strands and refuses an unknown
 or ambiguous name. --detach (with --name) lets a strand remove itself: it
-resolves the guid, starts a detached "lyx reed remove <guid>" that waits for
+resolves the guid, starts a detached "lym reed remove <guid>" that waits for
 this process to exit before removing, prints {"detached": true, "guid",
 "name"} and returns at once, since reed kills the strand's pane before it
 re-applies the layout. --detach first marks the strand retiring (shown by
-"lyx reed status"), and clears the mark if the detached remover cannot be
+"lym reed status"), and clears the mark if the detached remover cannot be
 started. The detached remover is a no-op for a guid already gone, answering
 ok with an empty "removed" list; a positional <guid> typed by an operator
 still errors on an unknown guid.
@@ -140,8 +140,8 @@ A remove under an invalid window_split or window_share_max still removes,
 skips the even layout of a shared window and adds a "warning" naming the key.
 
 Example:
-  lyx reed remove 3fae21ac9b1d4c0e --recursive
-  lyx reed remove --name driver --detach`,
+  lym reed remove 3fae21ac9b1d4c0e --recursive
+  lym reed remove --name driver --detach`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -186,7 +186,7 @@ Example:
 
 			removed, err := c.strandEngine().RemoveStrand(guid, recursive)
 			if waitPID != 0 && errors.Is(err, reedengine.ErrUnknownStrand) {
-				// The detached remover found its strand already gone, as when `lyx loom start` replaced it under a new guid first: nothing left to remove.
+				// The detached remover found its strand already gone, as when `lym loom start` replaced it under a new guid first: nothing left to remove.
 				logger.Info("reed: detached remove found its strand already gone", "guid", guid)
 				clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
 					"removed": []map[string]any{},

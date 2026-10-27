@@ -1,6 +1,6 @@
 # A Webster Master whose batch fork was killed by an API error.
 source:
-  transcript: ~/.claude/projects/-home-knatte-Code-loomyard-LYXHUB-card-batching/74a42312-8d0f-4201-aafb-a1681a5404aa.jsonl
+  transcript: ~/.claude/projects/-home-knatte-Code-loomyard-LYMHUB-card-batching/74a42312-8d0f-4201-aafb-a1681a5404aa.jsonl
   session_id: 74a42312-8d0f-4201-aafb-a1681a5404aa
   run: card-batching Webster Master, run 2ceab74cf70f87ce2485d4b1225ce682
 date: 2026-10-07

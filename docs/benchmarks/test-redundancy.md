@@ -5,7 +5,7 @@ Each test ran alone under one coverage binary per package, and a candidate has e
 A candidate is evidence, not a verdict: coverage blocks do not see assertions.
 Only the removable set may be deleted together; the reading rules are in `pattern/PATTERN-test-speed.md`'s test economy section.
 
-## cmd/lyx
+## cmd/lym
 
 64 tests, wall 11.40s, serial 11.37s.
 
@@ -572,7 +572,7 @@ No candidates.
 
 Kept:
 
-- `TestRefuseUncontainedPath`: the containment assertion shared by the portal and launcher teardown helpers refusing ".."-derived paths that once let `lyx fabric remove ..` delete a hub; coverage of its blocks by other tests does not show an assertion of this
+- `TestRefuseUncontainedPath`: the containment assertion shared by the portal and launcher teardown helpers refusing ".."-derived paths that once let `lym fabric remove ..` delete a hub; coverage of its blocks by other tests does not show an assertion of this
 - `TestPruneEmptyAncestors_RefusesEscapingIntermediate`: the empty-ancestor sweep refusing a symlinked intermediate that escapes the hub, with an empty out-of-container victim that survives; coverage of its blocks by other tests does not show an assertion of this
 - `TestReachableAnchor`: the reachableAnchor walk's outcomes (newest, nearest-older one and several steps back, none, empty index); coverage of its blocks by other tests does not show an assertion of this
 - `TestClassifyPaths`: classifyPaths' routing buckets, including segment-boundary names and the never-committed bucket landing in neither side; coverage of its blocks by other tests does not show an assertion of this
@@ -612,9 +612,9 @@ Kept:
 - `TestWorktreePath`: WorktreePath joining the hub path and slug; coverage of its blocks by other tests does not show an assertion of this
 - `TestUnseedJunctionRecords_RemovesEveryHealthyJunction`: every healthy junction being removed with each removed name reported, and an empty slice being a (nil, nil) no-op; coverage of its blocks by other tests does not show an assertion of this
 - `TestExcludePatternFor_AnchorsToRepoRoot`: the git-exclude pattern being slash-anchored at the repo root and carrying the anchor subpath, in the untagged tier; coverage of its blocks by other tests does not show an assertion of this
-- `TestJunctionNames_NoFallbackOnLoadFailure`: a config-load failure surfacing as an error and a nil name slice instead of defaulting to _lyx; coverage of its blocks by other tests does not show an assertion of this
+- `TestJunctionNames_NoFallbackOnLoadFailure`: a config-load failure surfacing as an error and a nil name slice instead of defaulting to _lym; coverage of its blocks by other tests does not show an assertion of this
 - `TestBoardDir`: BoardDir joining the hub with BoardDirName; coverage of its blocks by other tests does not show an assertion of this
-- `TestHubPath`: HubPath joining parent and name with HubSuffix, pinning the literal -LYXHUB suffix; coverage of its blocks by other tests does not show an assertion of this
+- `TestHubPath`: HubPath joining parent and name with HubSuffix, pinning the literal -LYMHUB suffix; coverage of its blocks by other tests does not show an assertion of this
 - `TestIsReservedHubName`: the reserved hub-entry predicate slug validation gates on, over every geometry-owned name and near-misses; coverage of its blocks by other tests does not show an assertion of this
 - `TestWriteLaunchers_RunScriptContentAndFilename`: the run launcher keeping its "run"+ext filename and a content that invokes "loom start"; coverage of its blocks by other tests does not show an assertion of this
 - `TestMergeErrors_PinnedStrings`: the exact Error() string of each named merge error and of MergeGuardError; coverage of its blocks by other tests does not show an assertion of this
@@ -629,7 +629,7 @@ Kept:
 - `TestMutationRecord_EmbedsAndMarshalsUnderMutationsKey`: an embedded MutationRecord marshalling under the "mutations" key; coverage of its blocks by other tests does not show an assertion of this
 - `TestOrigin_JSONRoundTrip`: Origin's parent_branch and parent_worktree wire keys round-tripping and a legacy record decoding with an empty ParentWorktree; coverage of its blocks by other tests does not show an assertion of this
 - `TestOriginRecordPaths`: OriginRecordPath and OriginRecordPathFor joining the anchor and OriginRecordRel at a root and a subpath anchor, both ending in the shared suffix; coverage of its blocks by other tests does not show an assertion of this
-- `TestPortalsDirAndLaunchersDir`: PortalsDir, launchersDir and portalTarget joining the hub, slug, anchor and _lyx; coverage of its blocks by other tests does not show an assertion of this
+- `TestPortalsDirAndLaunchersDir`: PortalsDir, launchersDir and portalTarget joining the hub, slug, anchor and _lym; coverage of its blocks by other tests does not show an assertion of this
 - `TestMirroredPortalLauncherMethods`: the AnchorRel-mirrored portal and launcher accessors at the root and a nested subpath, with distinct subpaths never colliding; coverage of its blocks by other tests does not show an assertion of this
 - `TestRemoveLaunchers_DirRemovalIsContained`: launcher-directory removal acting through the containment root so an escaping intermediate cannot delete an outside directory; coverage of its blocks by other tests does not show an assertion of this
 - `TestRemoveLaunchers_EmptyDirRemovedAndRecorded`: an empty launcher directory being removed and recorded exactly once with a silent second call; coverage of its blocks by other tests does not show an assertion of this
@@ -640,11 +640,11 @@ Kept:
 - `TestClassifyCorrespondence`: an exact index hit, a gap falling back to the nearest older entry with Exact false, and the ErrNoCorrespondence cases; coverage of its blocks by other tests does not show an assertion of this
 - `TestShortnameRecord_RoundTrip`: the shortname record round-tripping through its file; coverage of its blocks by other tests does not show an assertion of this
 - `TestValidateWorktreeSlug`: every slug validation rule over a table of accepted and refused slugs; coverage of its blocks by other tests does not show an assertion of this
-- `TestSpecsDir`: SpecsDir deriving _board/_lyx/specs, being a child of BoardDir and a sibling of StencilsDir; coverage of its blocks by other tests does not show an assertion of this
-- `TestStencilsDir`: StencilsDir deriving _board/_lyx/stencils and being a child of BoardDir; coverage of its blocks by other tests does not show an assertion of this
-- `TestStructuralNameSets_ForAConfigNamingNeitherStructuralDirectory`: _lyx always wired and routed, .lyx wired but never routed, .lyx refused as a slug and counted once in the reserved set; coverage of its blocks by other tests does not show an assertion of this
-- `TestDeployedLyxPathspec_YieldsNoDuplicateLyx`: a deployed "_lyx _pattern" pathspec yielding exactly one _lyx in the wired, routing and slug-reserved sets; coverage of its blocks by other tests does not show an assertion of this
-- `TestHubReservedNames_StillReturnsExactlyTheThreeHubStructuralTokens`: HubReservedNames returning exactly the three hub tokens without .lyx; coverage of its blocks by other tests does not show an assertion of this
+- `TestSpecsDir`: SpecsDir deriving _board/_lym/specs, being a child of BoardDir and a sibling of StencilsDir; coverage of its blocks by other tests does not show an assertion of this
+- `TestStencilsDir`: StencilsDir deriving _board/_lym/stencils and being a child of BoardDir; coverage of its blocks by other tests does not show an assertion of this
+- `TestStructuralNameSets_ForAConfigNamingNeitherStructuralDirectory`: _lym always wired and routed, .lym wired but never routed, .lym refused as a slug and counted once in the reserved set; coverage of its blocks by other tests does not show an assertion of this
+- `TestDeployedLymPathspec_YieldsNoDuplicateLym`: a deployed "_lym _pattern" pathspec yielding exactly one _lym in the wired, routing and slug-reserved sets; coverage of its blocks by other tests does not show an assertion of this
+- `TestHubReservedNames_StillReturnsExactlyTheThreeHubStructuralTokens`: HubReservedNames returning exactly the three hub tokens without .lym; coverage of its blocks by other tests does not show an assertion of this
 - `TestConfigTemplate`: the config template being valid YAML with both keys, resolving to an empty branch prefix and an empty pathspec, and degrading to the structural sets alone; coverage of its blocks by other tests does not show an assertion of this
 - `TestAppendWarpSHATrailer_SubjectIsNeverATrailerBlock`: a single-line message, even one shaped like a trailer, getting its Warp-SHA trailer in a new paragraph; coverage of its blocks by other tests does not show an assertion of this
 - `TestParseWarpSHATrailer`: parseWarpSHATrailer returning ok=false when absent, the last trailer winning, and whitespace being tolerated; coverage of its blocks by other tests does not show an assertion of this
@@ -652,13 +652,13 @@ Kept:
 - `TestAppendSnapshotTrailers_RejectsInvalidTags`: out-of-charset tags, and a valid tag before an invalid one, being rejected with *ErrInvalidSnapshotTag and an empty message; coverage of its blocks by other tests does not show an assertion of this
 - `TestNormalizeWarpURL`: normalizeWarpURL's trailing-slash and .git stripping and host lowercasing while local paths and scp forms keep their case; coverage of its blocks by other tests does not show an assertion of this
 - `TestResolveEffectiveWarpURL`: every row of the warp-binding conflict rule; coverage of its blocks by other tests does not show an assertion of this
-- `TestWarpLyxLinkMethods`: WarpLyxLink and WarpLyxLinkHere mirroring AnchorRel and pairing with the weft sibling; coverage of its blocks by other tests does not show an assertion of this
+- `TestWarpLymLinkMethods`: WarpLymLink and WarpLymLinkHere mirroring AnchorRel and pairing with the weft sibling; coverage of its blocks by other tests does not show an assertion of this
 - `TestWarpJunctions`: WarpJunctions returning one record per name in input order with the Link and Target composed from the worktree, weft sibling and anchor; coverage of its blocks by other tests does not show an assertion of this
 - `TestWarpJunctionsHere`: the slug-free junction accessor returning the expected Name, Link and Target at a root and nested anchor and agreeing with WarpJunctions; coverage of its blocks by other tests does not show an assertion of this
 - `TestWarpLayoutFor_FastPathCarriesEveryField`: the fast-path warp layout carrying every field; coverage of its blocks by other tests does not show an assertion of this
-- `TestWeftPathAccessors`: WeftWorktree, WeftWorktreePath, WeftLyxDir and WeftLyxDirFor mirroring AnchorRel and pairing with the warp side; coverage of its blocks by other tests does not show an assertion of this
+- `TestWeftPathAccessors`: WeftWorktree, WeftWorktreePath, WeftLymDir and WeftLymDirFor mirroring AnchorRel and pairing with the warp side; coverage of its blocks by other tests does not show an assertion of this
 - `TestRemoveJunctionRecords_ContinuesPastFailure`: the removal loop continuing past a per-junction failure and an empty slice being a no-op; coverage of its blocks by other tests does not show an assertion of this
-- `TestAdd_WiresJunctionsEagerly`: a successful Add leaving the new worktree's junctions wired at once, with _lyx and _extra resolving to their weft directories; coverage of its blocks by other tests does not show an assertion of this
+- `TestAdd_WiresJunctionsEagerly`: a successful Add leaving the new worktree's junctions wired at once, with _lym and _extra resolving to their weft directories; coverage of its blocks by other tests does not show an assertion of this
 - `TestAdd_DropsParentRunRecords_SubpathAnchor`: the run-records drop at a subpath anchor joining the root under AnchorRel for both the index drop and the first weft commit; coverage of its blocks by other tests does not show an assertion of this
 - `TestArchiveWeftTip_NoOriginSkips`: a weft repo with no origin giving a skip reason, no tag and no error; coverage of its blocks by other tests does not show an assertion of this
 - `TestArchiveWeftTip_UnreachableOriginErrors`: a configured but unreachable origin giving an error naming the tag and no tag on the real remote; coverage of its blocks by other tests does not show an assertion of this
@@ -679,9 +679,9 @@ Kept:
 - `TestUnwireJunctions_RefusesLinkOutsideItsWorktree`: the junction-removal executor refusing a link that escapes the worktree and leaving it on disk; coverage of its blocks by other tests does not show an assertion of this
 - `TestCloneHub_TeardownSucceedsOnAHalfBuiltHub`: teardownHub removing a half-built hub on the token it minted though neither side exists yet; coverage of its blocks by other tests does not show an assertion of this
 - `TestRemoveWarpWorktreeDir_FallbackRefusesRegisteredWorktreeWithUntrackedFiles`: the directory-removal fallback refusing a registered worktree with untracked files and leaving it on disk; coverage of its blocks by other tests does not show an assertion of this
-- `TestDotLyxJunction_LifecycleWiresSeedsBothExcludesAndUnwires`: wiring creating the .lyx junction to the weft, seeding the warp and weft excludes and unwiring removing them; coverage of its blocks by other tests does not show an assertion of this
-- `TestDotLyxJunction_WeftExcludeSeededBeforeFirstWrite`: the weft exclude being seeded before the first write so .lyx never shows as untracked dirt; coverage of its blocks by other tests does not show an assertion of this
-- `TestDotLyxJunction_AdoptsPreExistingRealDotLyx`: a pre-existing real .lyx directory being moved into the weft target and replaced by a junction with a no-op second wiring; coverage of its blocks by other tests does not show an assertion of this
+- `TestDotLymJunction_LifecycleWiresSeedsBothExcludesAndUnwires`: wiring creating the .lym junction to the weft, seeding the warp and weft excludes and unwiring removing them; coverage of its blocks by other tests does not show an assertion of this
+- `TestDotLymJunction_WeftExcludeSeededBeforeFirstWrite`: the weft exclude being seeded before the first write so .lym never shows as untracked dirt; coverage of its blocks by other tests does not show an assertion of this
+- `TestDotLymJunction_AdoptsPreExistingRealDotLym`: a pre-existing real .lym directory being moved into the weft target and replaced by a junction with a no-op second wiring; coverage of its blocks by other tests does not show an assertion of this
 - `TestOpen`: Open returning *ErrMissingPath naming the warp path first, then the weft path, and a non-nil handle when both exist; coverage of its blocks by other tests does not show an assertion of this
 - `TestNew_HappyPath`: newPaired yielding a non-nil warp and weft when both paths exist as directories, in the untagged tier; coverage of its blocks by other tests does not show an assertion of this
 - `TestScopedPathspec`: ScopedPathspec returning the entries unchanged at the root and prefixed by a nested relPath; coverage of its blocks by other tests does not show an assertion of this
@@ -692,14 +692,14 @@ Kept:
 - `TestInstallPostCheckoutHook_ChainedWrapperIsExecutable`: the chained wrapper carrying the executable bit so git runs both hooks; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
 - `TestInstallPostCheckoutHook_HonoursCoreHooksPath`: the hook landing where core.hooksPath points; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
 - `TestHubReserved_BoardExcludedFromPathspecRoutes`: _board appearing in neither WiredNames nor ScopedPathspec over a loaded config, guarding the wiring guard's live surface; coverage of its blocks by other tests does not show an assertion of this
-- `TestHubScratchAndLogsDir`: HubScratchDir being board-anchored, a sibling of the stencils _lyx tree, ignoring AnchorRel, and HubLogsDir deriving from it; coverage of its blocks by other tests does not show an assertion of this
-- `TestHubLogsDir_MkdirAllIdempotentAgainstFabricCreatedDotLyx`: the logs directory's MkdirAll succeeding twice over an existing scratch directory; coverage of its blocks by other tests does not show an assertion of this
+- `TestHubScratchAndLogsDir`: HubScratchDir being board-anchored, a sibling of the stencils _lym tree, ignoring AnchorRel, and HubLogsDir deriving from it; coverage of its blocks by other tests does not show an assertion of this
+- `TestHubLogsDir_MkdirAllIdempotentAgainstFabricCreatedDotLym`: the logs directory's MkdirAll succeeding twice over an existing scratch directory; coverage of its blocks by other tests does not show an assertion of this
 - `TestWireJunctions_MaterialisesMissingWeftTarget`: WireJunctions creating a missing weft target so the junction resolves at once and a second call succeeds; coverage of its blocks by other tests does not show an assertion of this
 - `TestWireJunctions_RefusesRealWarpDirectory`: a real directory at the warp junction path being refused with the path and the reconcile remedy named; coverage of its blocks by other tests does not show an assertion of this
 - `TestUnwireJunctions_ReportsAndClearsEveryJunction`: unwiring reporting every junction in JunctionsRemoved and clearing every exclude line; coverage of its blocks by other tests does not show an assertion of this
-- `TestDetectWarpPollution_LyxTrackedAsRestorable`: a tracked _lyx path in the warp index being reported with an automated restore remedy; coverage of its blocks by other tests does not show an assertion of this
+- `TestDetectWarpPollution_LymTrackedAsRestorable`: a tracked _lym path in the warp index being reported with an automated restore remedy; coverage of its blocks by other tests does not show an assertion of this
 - `TestDetectWarpPollution_RaddleNoLongerReported`: a tracked _raddle path no longer being reported as pollution; coverage of its blocks by other tests does not show an assertion of this
-- `TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth`: a worktree with _lyx wired and the second junction missing gaining only the missing one; coverage of its blocks by other tests does not show an assertion of this
+- `TestWireJunctions_UpgradesLymOnlyWorktreeToBoth`: a worktree with _lym wired and the second junction missing gaining only the missing one; coverage of its blocks by other tests does not show an assertion of this
 - `TestManifestWiredJunctionWalk`: a path reachable only through a wired junction being recorded once under the weft sibling's path; coverage of its blocks by other tests does not show an assertion of this
 - `TestVerbCases_StatesRestrictionIsWellFormed`: hostile-input and CloneHub{Reset} cases restricting States to clean and ordinary verbs inheriting the full matrix; coverage of its blocks by other tests does not show an assertion of this
 - `TestMatchParentBranch`: matchParentBranch's matching, skipping and normalization over hand-built entries; coverage of its blocks by other tests does not show an assertion of this
@@ -711,16 +711,16 @@ Kept:
 - `TestStageAndCommit_PathspecMissMarkerSurvivesTheErrorChain`: git's "did not match any files" text surviving gitrepo.StageAndCommit's error chain, which the pathspec tolerance matches on; coverage of its blocks by other tests does not show an assertion of this
 - `TestPushAnchored_PushesAndRecordsBranchPush`: a successful weft push advancing the bare remote and recording exactly one KindBranchPushed entry; coverage of its blocks by other tests does not show an assertion of this
 - `TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejectedUnwrapped`: a diverged weft remote returning gitrepo.ErrPushRejected unwrapped; coverage of its blocks by other tests does not show an assertion of this
-- `TestHealthy_RealDirNotAJunction`: a real directory where the _lyx junction belongs reporting "warp _lyx is not a junction"; coverage of its blocks by other tests does not show an assertion of this
+- `TestHealthy_RealDirNotAJunction`: a real directory where the _lym junction belongs reporting "warp _lym is not a junction"; coverage of its blocks by other tests does not show an assertion of this
 - `TestUnwire_PreservesUserSymlinkAtAnchor`: Unwire leaving a hand-authored symlink at the anchor in place; coverage of its blocks by other tests does not show an assertion of this
 - `TestSnapshotWarpSHA_PerBranchScoping`: snapshotWarpSHA scanning only the weft worktree's current branch, so a tag on another branch reads absent; coverage of its blocks by other tests does not show an assertion of this
 - `TestSnapshotWarpSHA_TopologicalOrderBeatsCommitDate`: a back-dated side commit merged back resolving to the topologically newest baseline, with RebuildIndex agreeing with the incremental index; coverage of its blocks by other tests does not show an assertion of this
 - `TestWeftSHAForWarpSHA_CorrespondenceOverwrite_EmptyCommitWins`: a warp SHA recorded by a content commit and a tags-only commit resolving to the newer empty commit with identical trees and an agreeing rebuild; coverage of its blocks by other tests does not show an assertion of this
 - `TestSnapshotWarpSHA_DanglingWarpSHA_ReturnsRawWithSHAExistsFalse`: a recorded Warp-SHA whose warp commit was rewritten away being returned raw with SHAExists false; coverage of its blocks by other tests does not show an assertion of this
-- `TestStatus_DetectsWarpPollutionUnderSubpathAnchor`: Status reporting a tracked <anchor>/_lyx file under a subpath anchor with a git rm --cached remedy; coverage of its blocks by other tests does not show an assertion of this
+- `TestStatus_DetectsWarpPollutionUnderSubpathAnchor`: Status reporting a tracked <anchor>/_lym file under a subpath anchor with a git rm --cached remedy; coverage of its blocks by other tests does not show an assertion of this
 - `TestCommitSeededStencils_ScopedCommitExcludesUnrelatedDirt`: a scoped commit confined to the stencils subtree, leaving unrelated board dirt untouched, recording file_written and commit_created and never pushing; coverage of its blocks by other tests does not show an assertion of this
 - `TestUnwire_RemovesOnDiskJunctionsIncludingStale`: Unwire removing every on-disk fabric junction including one absent from the pathspec; coverage of its blocks by other tests does not show an assertion of this
-- `TestUnwire_PreservesWeftLyxAndOptionalContent`: weft-side _lyx and .lyx surviving Unwire with their content, WeftContent "preserved" and no clear commit in the weft log; coverage of its blocks by other tests does not show an assertion of this
+- `TestUnwire_PreservesWeftLymAndOptionalContent`: weft-side _lym and .lym surviving Unwire with their content, WeftContent "preserved" and no clear commit in the weft log; coverage of its blocks by other tests does not show an assertion of this
 - `TestUnwireVerbResult_HasNoGitignoreField`: UnwireVerbResult carrying no Gitignore field so the CLI envelope never gains a gitignore key; coverage of its blocks by other tests does not show an assertion of this
 - `TestUnwire_NeverWiredWarpIsIdempotentNoOp`: a second Unwire call against an already torn-down pair being a clean no-op; coverage of its blocks by other tests does not show an assertion of this
 - `TestUnwire_PreservesRepoWideRecords`: the repo-wide weft:main records surviving a worktree's Unwire so a later reconcile can re-wire; coverage of its blocks by other tests does not show an assertion of this
@@ -732,7 +732,7 @@ Kept:
 - `TestCommitWeft_UntrackedNewFileCountsAsMatch`: an untracked new directory counting as a pathspec match while a nonexistent first entry is dropped; coverage of its blocks by other tests does not show an assertion of this
 - `TestCommitWeft_IndexOnlyDeletionCountsAsMatch`: an index-only deletion counting as a pathspec match so Unwire's deletion commit lands; coverage of its blocks by other tests does not show an assertion of this
 - `TestCommitWeft_ExcludeMagicPassesThroughUntouched`: an :(exclude) pathspec entry passing through untouched while a positive entry still commits and the excluded artifact stays unstaged; coverage of its blocks by other tests does not show an assertion of this
-- `TestResolvedDefaultRoutingNames_IsLyxAlone`: the resolved default routing set being _lyx alone so a template change cannot silently widen it; coverage of its blocks by other tests does not show an assertion of this
+- `TestResolvedDefaultRoutingNames_IsLymAlone`: the resolved default routing set being _lym alone so a template change cannot silently widen it; coverage of its blocks by other tests does not show an assertion of this
 - `TestList_ParsesPrunable`: List reporting a deleted-but-unpruned worktree as Prunable and the prime as not; coverage of its blocks by other tests does not show an assertion of this
 - `TestList_NotAGitRepo`: List outside any git repository failing with both the local context and git's own explanation; coverage of its blocks by other tests does not show an assertion of this
 
@@ -754,7 +754,7 @@ No coverage:
 - `TestCommit_PartialFailure_WarpLandsWeftCommitFails`: unclassifiable call
 - `TestCommit_PartialFailure_WarpCommitFails`: unclassifiable call
 - `TestCommit_PartialFailure_CommittedButUnrecorded`: unclassifiable call
-- `TestCommit_LyxOnlyPathspec_NeverProducesWarpCommit`: unclassifiable call
+- `TestCommit_LymOnlyPathspec_NeverProducesWarpCommit`: unclassifiable call
 - `TestContainedWorktreeAdd_RefusesSymlinkedTarget`: unclassifiable call
 - `TestContainedWorktreeAdd_PlacesWorktreeAtTarget`: unclassifiable call
 - `TestContainedWorktreeAdd_FailsClosedOnStagingLeafSwap`: unclassifiable call
@@ -837,7 +837,7 @@ No coverage:
 - `TestCommit_WarpOnlyTagged_InvokesPushRecorderOnce`: unclassifiable call
 - `TestCommit_InvalidTag_OtherwiseEmpty_NothingCommitted`: unclassifiable call
 - `TestCommit_DirtyWeftIndex_UnchangedContentWithTags_SurfacesPartialCommitError`: unclassifiable call
-- `TestCommit_DotLyxPath_HardErrorsAndCommitsNothing`: unclassifiable call
+- `TestCommit_DotLymPath_HardErrorsAndCommitsNothing`: unclassifiable call
 - `TestCommittedAnchoredFile`: unclassifiable call
 - `TestRemove_DoesNotDeleteOutsideHubThroughLauncherSymlink`: unclassifiable call
 - `TestAddRollback_RefusesJunctionRemovalOutsideItsWorktree`: unclassifiable call
@@ -852,7 +852,7 @@ No coverage:
 - `TestDiff_MergesWarpAndWeftSides`: unclassifiable call
 - `TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline`: unclassifiable call
 - `TestDiff_NoWeftCorrespondence_BeforeFirstSync`: unclassifiable call
-- `TestDotLyxJunction_AdoptionDoesNotOverreachIntoLyxOrPattern`: unclassifiable call
+- `TestDotLymJunction_AdoptionDoesNotOverreachIntoLymOrPattern`: unclassifiable call
 - `TestHealthy_ReasonCauses`: unclassifiable call
 - `TestHubContainment_CloneWiresNoBoardJunction`: unclassifiable call
 - `TestHubContainment_AddWiresNoBoardJunction`: unclassifiable call
@@ -957,8 +957,8 @@ No coverage:
 - `TestMergeStateActive`: unclassifiable call
 - `TestMergeWeftLocal_TargetWeftRewritesStatusManyTimes_WarpAdvancesWeftUnchanged`: unclassifiable call
 - `TestMergeWeftLocal_TargetWeftDivergedStatus_ContentUnchanged`: unclassifiable call
-- `TestMergeWeftLocal_BothSidesEvolveLyxFromSharedBase_NowCompletes`: unclassifiable call
-- `TestMergeWeftLocal_MergeIn_ParentLyxNeverReachesChildWeft`: unclassifiable call
+- `TestMergeWeftLocal_BothSidesEvolveLymFromSharedBase_NowCompletes`: unclassifiable call
+- `TestMergeWeftLocal_MergeIn_ParentLymNeverReachesChildWeft`: unclassifiable call
 - `TestMergeWeftLocal_MergeIn_WarpConflictReachesUnifyConflictPaths`: unclassifiable call
 - `TestMidMerge_FabricParkedWithConflicts_Parked`: unclassifiable call
 - `TestMidMerge_FabricParkedResolved_ParkedNoConflicts`: unclassifiable call
@@ -1090,7 +1090,7 @@ No coverage:
 - `TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth`: unclassifiable call
 - `TestCommit_EntryMatchingOnlyAnIgnoredFile_DegradesToCleanNoOp`: unclassifiable call
 - `TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing`: unclassifiable call
-- `TestCommitWeft_WidenedPathspecTolerance_LyxChangeStillCommitsWithEmptyOptionalDir`: unclassifiable call
+- `TestCommitWeft_WidenedPathspecTolerance_LymChangeStillCommitsWithEmptyOptionalDir`: unclassifiable call
 - `TestWeftGuards_DirtyWeftDoesNotRefuseWarpDirtyStillDoes`: unclassifiable call
 - `TestWeftGuards_DetachedWeftDoesNotRefuseWarpDetachedStillDoes`: unclassifiable call
 - `TestWeftGuards_NoWeftCounterpartMergesSourceNotFoundStillWarpOnly`: unclassifiable call
@@ -1182,7 +1182,7 @@ No candidates.
 
 No coverage:
 
-- `TestCopyRepoCallerSet_LyxcwdOnly`: spawns
+- `TestCopyRepoCallerSet_LymcwdOnly`: spawns
 - `TestHermeticGitEnv_QuietAndPinned`: spawns
 - `TestCopiedRepoScenario`: spawns
 - `TestMustRun_Failure`: spawns
@@ -1364,11 +1364,11 @@ No test lacks coverage.
 | `TestArm_ExplicitVsImplicitProduceIdenticalStaticHeaderFields` | `TestEnsureDurableSink_ConcurrentRedirectIsRaceFree` | yes |
 | `TestWriteDurable_SizeCapStopsWritesAfterSingleTruncationMarker` | `TestWriteDurable_ConcurrentWarnCallsProduceOneFileAndOneTruncationMarker` | no |
 | `TestWriteDurable_SurvivesLogsDirRenameMidProcess` | `TestLogging_RoutesRecordsByLevelAndVerbosity` | yes |
-| `TestIsLyxWorktree_GatesTheCwdAnchoredFallback` | `TestDurableSink_CwdFallbackFollowsLyxOwnership` | yes |
+| `TestIsLymWorktree_GatesTheCwdAnchoredFallback` | `TestDurableSink_CwdFallbackFollowsLymOwnership` | yes |
 | `TestEnsureDurableSink_ArmingDoesNotSweep` | `TestLogging_RoutesRecordsByLevelAndVerbosity` | yes |
 | `TestSpan_PathsAreExplicitAndIndependentOfSiblings` | `TestLogging_RoutesRecordsByLevelAndVerbosity`, `TestSpan_DurableSinkCarriesInfoSpanPathButNoOpenCloseRecords` | no |
 | `TestSpan_DurableSinkCarriesInfoSpanPathButNoOpenCloseRecords` | `TestSpan_EndWithErrorReachesBothSinksAtWarn`, `TestSpan_PathsAreExplicitAndIndependentOfSiblings` | yes |
-| `TestLogsDir_AnchorsAtAnchorPath` | `TestDurableSink_CwdFallbackFollowsLyxOwnership` | yes |
+| `TestLogsDir_AnchorsAtAnchorPath` | `TestDurableSink_CwdFallbackFollowsLymOwnership` | yes |
 
 No coverage:
 
@@ -1381,7 +1381,7 @@ No coverage:
 - `TestSweep_GrammarScope`: unclassifiable call
 - `TestSweep_DeleteFailureTolerance`: unclassifiable call
 - `TestSweep_EmptyOrAbsentDirectory`: unclassifiable call
-- `TestDurableSink_CwdFallbackFollowsLyxOwnership`: spawns
+- `TestDurableSink_CwdFallbackFollowsLymOwnership`: spawns
 
 ## internal/loggerconfig
 
@@ -1612,7 +1612,7 @@ No coverage:
 - `TestWebsterProducer_Call`: unclassifiable call
 - `TestWebsterProducer_CommitsTheRunRecordOnDoneOnly`: unclassifiable call
 
-## internal/lyxcwd
+## internal/lymcwd
 
 23 tests, wall 1.39s, serial 1.37s.
 
@@ -2149,8 +2149,8 @@ Kept:
 - `TestParsePaneGeneration`: pins the generation answer parser: a well-formed answer, trimmed whitespace, and an error for an empty, short, long, blank-field or tmux absent-session answer; its covering tests run this code without asserting it
 - `TestPaneGeneration_RecordedAndSameIncarnation`: pins Recorded and SameIncarnation: a renamed session is the same incarnation, a different session id, server pid or creation time is not; its covering tests run this code without asserting it
 - `TestLaunchScriptCleanup`: pins every path forgetting a strand deleting exactly that strand's launch script, a recursive remove deleting the subtree's, a replace keeping the survivor's, and a remove without a script succeeding with no launch-script warning; its covering tests run this code without asserting it
-- `TestStripAgentNameEnv_DropsNameAndParentOnly`: pins the pane env dropping exactly LYX_STRAND_NAME and LYX_PARENT and keeping a longer key sharing the prefix; its covering tests run this code without asserting it
-- `TestWithOpLock_PathIsUnderDotLyx`: pins the lock file living under the anchor path's .lyx, not the worktree root's, for a subpath-anchored fixture, and a second acquisition succeeding after release; its covering tests run this code without asserting it
+- `TestStripAgentNameEnv_DropsNameAndParentOnly`: pins the pane env dropping exactly LYM_STRAND_NAME and LYM_PARENT and keeping a longer key sharing the prefix; its covering tests run this code without asserting it
+- `TestWithOpLock_PathIsUnderDotLym`: pins the lock file living under the anchor path's .lym, not the worktree root's, for a subpath-anchored fixture, and a second acquisition succeeding after release; its covering tests run this code without asserting it
 - `TestWithOpLock_SerializesConcurrentCalls`: pins a second withOpLock blocking until the first releases and then proceeding; its covering tests run this code without asserting it
 - `TestEngine_SocketAndSessionName`: pins Socket() returning the told socket key and SessionName() the worktree basename; its covering tests run this code without asserting it
 - `TestWithTryOpLock`: pins withTryOpLock running fn on a free lock with acquired true, wrapping fn's error with acquired still true, and deferring with (false, nil) and no fn call or tmux call while the lock is held; its covering tests run this code without asserting it
@@ -2162,7 +2162,7 @@ Kept:
 - `TestReapSession_CallOrdering`: pins list-panes running before kill-session and a list-panes failure still reaching kill-session, with the pane list feeding the reap roots; its covering tests run this code without asserting it
 - `TestPaneCreationSitesRouteThroughThePreludeChokepoint`: pins that no file outside the pane-creation allowlist holds the "split-window" string literal, so every strand pane is created through the prelude chokepoint; its covering tests run this code without asserting it
 - `TestLaunchStrandLockedStillComposesThePrelude`: pins launchStrandLocked still calling composePaneLaunchLine, so the allowlisted chokepoint cannot become a plain pass-through; its covering tests run this code without asserting it
-- `TestPaneBinPrelude_ComposesPrependThenExport`: pins the prelude's own shape per dialect: one line, the PATH prepend of the executable's directory before the LYX_BIN export of the full path, joined by "; "; its covering tests run this code without asserting it
+- `TestPaneBinPrelude_ComposesPrependThenExport`: pins the prelude's own shape per dialect: one line, the PATH prepend of the executable's directory before the LYM_BIN export of the full path, joined by "; "; its covering tests run this code without asserting it
 - `TestComposePaneLaunchLine`: pins the composed pane launch line per dialect: prelude, name and parent exports then the command on one line, the prelude alone for an empty command, and only the prelude dropped with a warning naming the strand when the executable cannot be resolved; its covering tests run this code without asserting it
 - `TestStageLaunchScript_WriteFailureDegrades`: pins an unwritable launch directory returning the composed line unchanged and logging the strand and script path; its covering tests run this code without asserting it
 - `TestProbeCapability`: pins the capability probe's three outcomes with a fake run: healthy, a version below the pin and a missing required subcommand, the last two as *CapabilityError; its covering tests run this code without asserting it
@@ -2207,7 +2207,7 @@ Kept:
 - `TestWatchdogOption`: pins the watchdog option validating and normalizing: on and off in any case or padding, and an empty, numeric, true, yes or misspelled value rejected naming the offending value; its covering tests run this code without asserting it
 - `TestWatchdogTemplateDefault_BothGOOS`: pins both embedded templates and the shipped accessor declaring the watchdog default line, reading the posix and windows files directly since ConfigTemplate exposes only one; its covering tests run this code without asserting it
 - `TestTmuxQuoteValue`: pins the tmux double-quote escaping of a double quote, a backslash and a dollar sign; its covering tests run this code without asserting it
-- `TestResizeSignalPath`: pins the signal path being the anchor path's .lyx directory plus reed-resize.signal, the same directory as the state; its covering tests run this code without asserting it
+- `TestResizeSignalPath`: pins the signal path being the anchor path's .lym directory plus reed-resize.signal, the same directory as the state; its covering tests run this code without asserting it
 - `TestWatchState`: pins the watcher's pure contracts on a synthetic clock: default timing, per-mode ticker cadence, debounce and coalescing of signals, one follow-up for signals during an apply, the escalating retry cap with per-streak reset, deferral costing no budget and a fresh signal re-arming an exhausted streak; its covering tests run this code without asserting it
 - `TestWatchLoop_StaleSignalFileRemovedAtStart`: pins a signal file present before the loop starts being removed at start, so an old resize does not trigger an apply; its covering tests run this code without asserting it
 - `TestWatchLoop_PollModeByDefault`: pins the loop repeating reapplyLayout cycles at the poll cadence and probing the hook every cycle while show-options reports no hook, never promoting; its covering tests run this code without asserting it
@@ -3093,7 +3093,7 @@ No test lacks coverage.
 
 No test lacks coverage.
 
-## internal/testkit/lyxbin
+## internal/testkit/lymbin
 
 3 tests, wall 6.22s, serial 6.21s.
 
@@ -3518,13 +3518,13 @@ No coverage:
 - `TestRun_SuiteSubcommands`: unclassifiable call
 - `TestRun_FetchReportRoutesToFetch`: unclassifiable call
 - `TestRun_RejectsBadInvocation`: unclassifiable call
-- `TestPathResolveGuard_NoBarePathLyxOutsideResolve`: spawns
+- `TestPathResolveGuard_NoBarePathLymOutsideResolve`: spawns
 - `TestRunFetch_StampsTheResolvedBinary`: unclassifiable call
 - `TestRunFetch_HubAbsent`: unclassifiable call
 - `TestRunFetch_MissingReport`: unclassifiable call
-- `TestResolveLyx_DevBinaryExists`: unclassifiable call
-- `TestResolveLyx_DevBinaryMissingFallsBackToProd`: unclassifiable call
-- `TestResolveLyx_DevBinaryMissingAndLookPathFails`: unclassifiable call
+- `TestResolveLym_DevBinaryExists`: unclassifiable call
+- `TestResolveLym_DevBinaryMissingFallsBackToProd`: unclassifiable call
+- `TestResolveLym_DevBinaryMissingAndLookPathFails`: unclassifiable call
 - `TestEnsureGitExclude`: unclassifiable call
 - `TestRunSuite_HubAbsent`: unclassifiable call
 - `TestRunSuite_PerSuiteSpec`: unclassifiable call

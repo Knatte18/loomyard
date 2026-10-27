@@ -202,7 +202,7 @@ func TestRecordsReplay(t *testing.T) {
 			t.Parallel()
 			f := newRecordsFixture(t)
 			weft, branch := f.primeWeft()
-			const statusRel = "_lyx/shed/run1/status.json"
+			const statusRel = "_lym/shed/run1/status.json"
 			gitkit.CommitFile(t, weft, statusRel, "base\n", "base status")
 			gitkit.Git(t, weft, "push", "origin", branch)
 			tip := gitkit.CommitFile(t, weft, statusRel, "local\n", "local status")
@@ -252,7 +252,7 @@ func TestRecordsReplay(t *testing.T) {
 			t.Parallel()
 			f := newRecordsFixture(t)
 			weft, branch := f.primeWeft()
-			status := gitkit.CommitFile(t, weft, "_lyx/shed/neve/status.json", statusJSON("Run-Shed"), "neve status")
+			status := gitkit.CommitFile(t, weft, "_lym/shed/neve/status.json", statusJSON("Run-Shed"), "neve status")
 			tip := gitkit.CommitFile(t, weft, "notes/keep.md", "keep\n", "keep")
 			f.originCommit(branch, "notes/up.md", "up\n", "upstream work")
 			gitkit.Git(t, weft, "fetch")
@@ -298,7 +298,7 @@ func TestRecordsReplay(t *testing.T) {
 			t.Parallel()
 			f := newRecordsFixture(t)
 			weft, branch := f.primeWeft()
-			const statusRel = "_lyx/shed/neve/status.json"
+			const statusRel = "_lym/shed/neve/status.json"
 			status := gitkit.CommitFile(t, weft, statusRel, statusJSON("Run-Shed"), "neve status")
 			keep := gitkit.CommitFile(t, weft, "notes/keep.md", "keep\n", "keep")
 			f.originCommit(branch, "notes/up.md", "up\n", "upstream work")
@@ -321,7 +321,7 @@ func TestRecordsReplay(t *testing.T) {
 			if got := tagsOf(t, weft, fabricengine.ArchiveTagPrefix+"*"); len(got) != 0 {
 				t.Errorf("archive tags = %v, want none, so no run listing reads the set-aside commit", got)
 			}
-			if got := gitkit.LsFiles(t, weft, "_lyx/shed/neve"); len(got) != 0 {
+			if got := gitkit.LsFiles(t, weft, "_lym/shed/neve"); len(got) != 0 {
 				t.Errorf("replayed tip still tracks the run directory: %v", got)
 			}
 			requireClean(t, weft)
@@ -347,7 +347,7 @@ func TestRecordsReplay(t *testing.T) {
 				weft, branch := f.primeWeft()
 				if row.withPair {
 					hubforge.AddPair(t, f.hub, "neve")
-					statusPath := filepath.Join(f.hub.PairCodeWorktree("neve"), "_lyx", "shed", "neve", "status.json")
+					statusPath := filepath.Join(f.hub.PairCodeWorktree("neve"), "_lym", "shed", "neve", "status.json")
 					if err := os.MkdirAll(filepath.Dir(statusPath), 0o755); err != nil {
 						t.Fatalf("mkdir for %s: %v", statusPath, err)
 					}
@@ -362,7 +362,7 @@ func TestRecordsReplay(t *testing.T) {
 				if primeStatus == "" {
 					primeStatus = statusJSON("Run-Shed")
 				}
-				local := gitkit.CommitFile(t, weft, "_lyx/shed/neve/status.json", primeStatus, "neve prime status")
+				local := gitkit.CommitFile(t, weft, "_lym/shed/neve/status.json", primeStatus, "neve prime status")
 				f.originCommit(branch, "notes/up.md", "up\n", "upstream work")
 				gitkit.Git(t, weft, "fetch")
 
@@ -580,7 +580,7 @@ func TestRecordsReplay(t *testing.T) {
 			board := f.hub.BoardDir()
 			branch := gitkit.CurrentBranch(t, board)
 			stencilRel := fabricengine.StencilsSubtreeRel() + "/loom/s.md"
-			seed := gitkit.CommitFile(t, board, stencilRel, "seeded\n", fabricengine.SeedCommitMessage("stencils", "(0123456789ab production /bin/lyx)"))
+			seed := gitkit.CommitFile(t, board, stencilRel, "seeded\n", fabricengine.SeedCommitMessage("stencils", "(0123456789ab production /bin/lym)"))
 			upstream := f.originCommit(branch, stencilRel, "remote\n", "operator edit")
 			gitkit.Git(t, board, "fetch")
 
@@ -680,7 +680,7 @@ func TestRecordsReplay(t *testing.T) {
 
 			neveBoard := gitkit.CommitFile(t, board, "board.json", boardFileOf(t, boardEntry("neve", withBoardStatus(boardengine.RunStatus("running", "Implementer"))), boardEntry("other", withBoardTitle("O"))), "neve runs")
 			otherBoard := gitkit.CommitFile(t, board, "board.json", boardFileOf(t, boardEntry("neve", withBoardStatus(boardengine.RunStatus("running", "Implementer"))), boardEntry("other", withBoardTitle("O2"))), "retitle other")
-			neveWeft := gitkit.CommitFile(t, weft, "_lyx/shed/neve/status.json", statusJSON("Run-Shed"), "neve status")
+			neveWeft := gitkit.CommitFile(t, weft, "_lym/shed/neve/status.json", statusJSON("Run-Shed"), "neve status")
 			keepWeft := gitkit.CommitFile(t, weft, "notes/keep.md", "keep\n", "keep")
 			f.originCommit(boardBranch, "board.json", boardFileOf(t, boardEntry("neve", withBoardStatus("done")), boardEntry("other", withBoardTitle("O"))), "neve done")
 			f.originCommit(weftBranch, "notes/up.md", "up\n", "upstream work")
@@ -709,7 +709,7 @@ func TestRecordsReplay(t *testing.T) {
 			if len(weftOutcome.SetAside) != 1 || weftOutcome.SetAside[0].Commit != neveWeft || !slices.Equal(weftOutcome.Replayed, []string{keepWeft}) {
 				t.Errorf("weft outcome = %+v, want %s set aside and %s replayed", weftOutcome, neveWeft, keepWeft)
 			}
-			if got := gitkit.LsFiles(t, weft, "_lyx/shed/neve"); len(got) != 0 {
+			if got := gitkit.LsFiles(t, weft, "_lym/shed/neve"); len(got) != 0 {
 				t.Errorf("replayed prime-weft tip still tracks the run directory: %v", got)
 			}
 			for _, dir := range []string{board, weft} {

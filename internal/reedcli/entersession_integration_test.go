@@ -12,7 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
@@ -21,7 +21,7 @@ func TestEnterSession_DrivesTheToldTmux(t *testing.T) {
 	t.Parallel()
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	prime := h.PrimeWorktree()
-	location, err := lyxcwd.ResolveWorktree(prime)
+	location, err := lymcwd.ResolveWorktree(prime)
 	if err != nil {
 		t.Fatalf("ResolveWorktree: %v", err)
 	}

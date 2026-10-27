@@ -6,7 +6,7 @@
 // The `switch` verb is the exception: it is told its socket and client on its flags, so it skips that resolution and never touches the engine.
 // The geometry step is hubgeom.ReedGeometry: this file is where the resolved Location becomes the
 // reedengine.Geometry the engine is told, and the engine never sees the Location.
-// The resolved *lyxcwd.Location is named "location" throughout, never "layout": "layout" is a live
+// The resolved *lymcwd.Location is named "location" throughout, never "layout": "layout" is a live
 // first-class term in this very module (the tmux window_layout string, planLayout,
 // applyLayoutLocked, select-layout), and it is also the name of the Engine field that held a
 // Location before the told-geometry refactor replaced it with geom.
@@ -23,7 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
@@ -35,7 +35,7 @@ import (
 type reedCLI struct {
 	eng *reedengine.Engine
 
-	// hubPath is the hub path PersistentPreRunE stored off the resolved *lyxcwd.Location — the hub
+	// hubPath is the hub path PersistentPreRunE stored off the resolved *lymcwd.Location — the hub
 	// path alone, deliberately not the whole Location, since ensureWatchdogSpawned needs nothing
 	// else from it and a stored Location would invite other code to re-read geometry the engine was
 	// already told.
@@ -63,7 +63,7 @@ type reedCLI struct {
 	endProcesses func(ctx context.Context) ([]runproc.Ended, error)
 
 	// openTerminal is the test seam for the window verb; nil means termwindow.Resolve then Launcher.OpenAttach.
-	openTerminal func(dir, title, lyxPath string) error
+	openTerminal func(dir, title, lymPath string) error
 
 	// watchdogTiming, when non-nil, replaces watchdogDefaultTiming() in watchdogCmd's loop so a test can shorten how long it waits on the daemon.
 	// Production never sets it.
@@ -108,7 +108,7 @@ func (c *reedCLI) strandEngine() strandOps {
 //
 // The parent "reed" command carries a PersistentPreRunE that resolves cwd -> location -> config -> geometry ->
 // *reedengine.Engine into c, skipping that resolution entirely when the group command itself is
-// invoked (bare "lyx reed" listing or an unknown-subcommand error via GroupRunE) so neither path
+// invoked (bare "lym reed" listing or an unknown-subcommand error via GroupRunE) so neither path
 // requires a git repository.
 // Every verb card (22-27) creates its own (c *reedCLI) xCmd() builder and registers it here via
 // parent.AddCommand — this card registers no subcommands itself.
@@ -127,7 +127,7 @@ carry none of ".", ":", "\" or any control character or invalid UTF-8 — tmux
 silently rewrites all of these and would then create a session reed can never
 address or tear down. Every reed verb refuses up front, naming the directory,
 rather than booting substrate it cannot reach.`,
-		// RunE is set so that bare "lyx reed" lists subcommands and "lyx reed bogus"
+		// RunE is set so that bare "lym reed" lists subcommands and "lym reed bogus"
 		// emits a JSON error envelope instead of falling through to cobra's plain-text help.
 		RunE: clihelp.GroupRunE,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -143,16 +143,16 @@ rather than booting substrate it cannot reach.`,
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
-			cwd, err := lyxcwd.CwdFrom(ctx)
+			cwd, err := lymcwd.CwdFrom(ctx)
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
 
-			location, err := lyxcwd.Resolve(cwd)
+			location, err := lymcwd.Resolve(cwd)
 			if err != nil {
-				// lyxcwd.Resolve's error is already self-describing (it IS the
+				// lymcwd.Resolve's error is already self-describing (it IS the
 				// "not a git repository" sentinel); pass it through bare rather than
 				// doubling that same text on top of it.
 				output.Err(out, err.Error())
@@ -160,7 +160,7 @@ rather than booting substrate it cannot reach.`,
 				return nil
 			}
 
-			// The _lyx/config/ root is anchored at location.AnchorPath(), not WorktreeRoot or
+			// The _lym/config/ root is anchored at location.AnchorPath(), not WorktreeRoot or
 			// any fabric sibling — reed config lives with the worktree the operator is
 			// actually standing in.
 			cfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(location), "reed")
@@ -200,7 +200,7 @@ func RunCLI(out io.Writer, args []string) int {
 // RunCLIIn is RunCLI's seam-cwd-carrying sibling: an empty cwd means "read the process cwd" and
 // delegates to clihelp.Execute exactly as RunCLI always has, while any other value seeds cwd into
 // the execution context via clihelp.ExecuteIn.
-// The branch exists because lyxcwd.WithCwd panics on an empty directory, so a uniform delegation to
+// The branch exists because lymcwd.WithCwd panics on an empty directory, so a uniform delegation to
 // ExecuteIn would panic on every existing RunCLI call.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {

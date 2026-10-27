@@ -117,7 +117,7 @@ func mount(root *cobra.Command, newRoot func() *cobra.Command, data []byte) {
 func newShortcutCmd(s Shortcut, newRoot func() *cobra.Command) *cobra.Command {
 	expansions := make([]string, len(s.Argvs))
 	for i, argv := range s.Argvs {
-		expansions[i] = "lyx " + strings.Join(argv, " ")
+		expansions[i] = "lym " + strings.Join(argv, " ")
 	}
 	return &cobra.Command{
 		Use:                s.Name + " [<args>...]",

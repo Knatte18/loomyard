@@ -114,7 +114,7 @@ func allDiscussionSectionsContent() string {
 	return b.String()
 }
 
-// addedDecisionEntryForTest is one `Added after Discussion` entry, the kind `lyx loom decision add` appends.
+// addedDecisionEntryForTest is one `Added after Discussion` entry, the kind `lym loom decision add` appends.
 const addedDecisionEntryForTest = "### Added after Discussion (parent, 2026-03-04): Keep the cache\n\nDecision: keep it.\n\nRationale: it is hot.\n\n"
 
 // darnRecordFixture is decisionRecordFixture over a clean record, with the darn history seam returning versions and a commit seam counting its calls into commits and returning commitErr.
@@ -297,15 +297,13 @@ func TestValidateDiscussionCmd(t *testing.T) {
 	}
 }
 
-// planFixture writes a minimal, genuinely valid format-4 plan under <anchorPath>/_lyx/plan/,
-// materializing every path the card names under worktreeRoot, then returns a *loomCLI wired only
-// with the two plan path fields validatePlanCmd's RunE reads. approved controls the overview
-// frontmatter's approved: value, so callers can trip plan-unapproved without touching anything
-// else. The sole card is a format-4 Create card carrying a pinned Commit: value.
+// planFixture writes a minimal, genuinely valid format-4 plan under <anchorPath>/_lym/plan/, materializing every path the card names under worktreeRoot, then returns a *loomCLI wired only with the two plan path fields validatePlanCmd's RunE reads.
+// approved controls the overview frontmatter's approved: value, so callers can trip plan-unapproved without touching anything else.
+// The sole card is a format-4 Create card carrying a pinned Commit: value.
 func planFixture(t *testing.T, anchorPath, worktreeRoot string, approved bool) *loomCLI {
 	t.Helper()
 
-	plankit.Write(t, filepath.Join(anchorPath, "_lyx", "plan"), plankit.Plan{
+	plankit.Write(t, filepath.Join(anchorPath, "_lym", "plan"), plankit.Plan{
 		Approved: approved,
 		Language: "none",
 		Cards: []plankit.Card{{
@@ -325,14 +323,11 @@ func planFixture(t *testing.T, anchorPath, worktreeRoot string, approved bool) *
 	}}
 }
 
-// glyphPlanFixture writes a syntactically complete, one-card language: go plan under
-// <anchorPath>/_lyx/plan/, whose sole card's Create group targets createTarget, and returns a
-// *loomCLI wired with anchorPath and worktreeRoot -- duplicated from
-// internal/loomshed/planvalidate_test.go's own seedGlyphPlanFixture.
+// glyphPlanFixture writes a syntactically complete, one-card language: go plan under <anchorPath>/_lym/plan/, whose sole card's Create group targets createTarget, and returns a *loomCLI wired with anchorPath and worktreeRoot -- duplicated from internal/loomshed/planvalidate_test.go's own seedGlyphPlanFixture.
 func glyphPlanFixture(t *testing.T, anchorPath, worktreeRoot, createTarget string) *loomCLI {
 	t.Helper()
 
-	plankit.Write(t, filepath.Join(anchorPath, "_lyx", "plan"), plankit.Plan{
+	plankit.Write(t, filepath.Join(anchorPath, "_lym", "plan"), plankit.Plan{
 		Approved: true,
 		Language: "go",
 		Cards: []plankit.Card{{
@@ -584,7 +579,7 @@ func TestValidatePlanCmd(t *testing.T) {
 		if exitCode := clihelp.Execute(c.validatePlanCmd(), &out, nil); exitCode != 1 {
 			t.Fatalf("exit code = %d; want 1 (output: %q)", exitCode, out.String())
 		}
-		envelope.RequireErr(t, out.String(), "lyx config language")
+		envelope.RequireErr(t, out.String(), "lym config language")
 	})
 
 	t.Run("UnparsableGateConfigIsRefusedNamingTheWayForward", func(t *testing.T) {
@@ -602,12 +597,12 @@ func TestValidatePlanCmd(t *testing.T) {
 		if exitCode := clihelp.Execute(c.validatePlanCmd(), &out, nil); exitCode != 1 {
 			t.Fatalf("exit code = %d; want 1 (output: %q)", exitCode, out.String())
 		}
-		envelope.RequireErr(t, out.String(), "lyx config gate")
+		envelope.RequireErr(t, out.String(), "lym config gate")
 	})
 
 	t.Run("NoGateConfigRunsTheVerbAndReportsNoRawCommand", func(t *testing.T) {
 		anchorPath := t.TempDir()
-		plankit.Write(t, filepath.Join(anchorPath, "_lyx", "plan"), plankit.Plan{
+		plankit.Write(t, filepath.Join(anchorPath, "_lym", "plan"), plankit.Plan{
 			Approved: true,
 			Language: "none",
 			Cards: []plankit.Card{{

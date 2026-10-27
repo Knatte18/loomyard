@@ -45,7 +45,7 @@ func preGoto(target, slug, ownStatusPath string, childStatus func() (string, err
 			}
 		}
 	}
-	return fmt.Errorf("batten goto: %s is reachable only once the child run is done (child state %q); way forward: \"lyx batten step %s\" drives Run-Shed until the child run finishes, and \"lyx batten status %s\" shows where it is", target, childState, slug, slug)
+	return fmt.Errorf("batten goto: %s is reachable only once the child run is done (child state %q); way forward: \"lym batten step %s\" drives Run-Shed until the child run finishes, and \"lym batten status %s\" shows where it is", target, childState, slug, slug)
 }
 
 // readStatusFile decodes a status file without taking its lock;

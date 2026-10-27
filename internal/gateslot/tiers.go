@@ -37,8 +37,8 @@ type Tier struct {
 	Covers []int
 	// Slots is how many gate slots the tier holds; 0 means every slot.
 	Slots int
-	// PrebuiltLyx makes a run of the tier prebuild lyx from the worktree first.
-	PrebuiltLyx bool
+	// PrebuiltLym makes a run of the tier prebuild lym from the worktree first.
+	PrebuiltLym bool
 	// Manual keeps the tier out of a tier range, so it runs only when named by number, such as a tier that spends tokens.
 	Manual bool
 	// Filter is the tier's own test-filter expression, which a run renders into the command's {filter} placeholder.
@@ -61,7 +61,7 @@ type tierFile struct {
 	Counter     string            `yaml:"counter"`
 	Covers      []int             `yaml:"covers"`
 	Slots       yaml.Node         `yaml:"slots"`
-	PrebuiltLyx bool              `yaml:"prebuilt_lyx"`
+	PrebuiltLym bool              `yaml:"prebuilt_lym"`
 	Manual      bool              `yaml:"manual"`
 	Filter      string            `yaml:"filter"`
 	SharedBuild bool              `yaml:"shared_build"`
@@ -132,7 +132,7 @@ func decodeTier(key string, number int, file tierFile) (Tier, error) {
 		Counter:     file.Counter,
 		Covers:      file.Covers,
 		Slots:       1,
-		PrebuiltLyx: file.PrebuiltLyx,
+		PrebuiltLym: file.PrebuiltLym,
 		Manual:      file.Manual,
 		Filter:      file.Filter,
 		SharedBuild: file.SharedBuild,
@@ -229,9 +229,9 @@ func applyTierParallel(entries map[string]yaml.Node, tiers map[string]Tier, mach
 // With a machine layer the stacked document cannot tell which layer holds the entry, so both steps are named.
 func undeclaredTierParallelWayForward(name string, machineLayerApplies bool) string {
 	if !machineLayerApplies {
-		return fmt.Sprintf("remove tier_parallel.%s with \"lyx config gate\"", name)
+		return fmt.Sprintf("remove tier_parallel.%s with \"lym config gate\"", name)
 	}
-	return fmt.Sprintf("remove tier_parallel.%s with \"lyx config gate\" when the hub file holds it, or in the editor session of \"lyx config gate --layer machine\" when the machine file does", name)
+	return fmt.Sprintf("remove tier_parallel.%s with \"lym config gate\" when the hub file holds it, or in the editor session of \"lym config gate --layer machine\" when the machine file does", name)
 }
 
 // sortedKeys returns the keys of m in ascending order.
@@ -244,12 +244,12 @@ func sortedKeys[V any](m map[string]V) []string {
 	return keys
 }
 
-// useRefusal returns a use-time refusal naming lyx config gate and closing with the role clause.
+// useRefusal returns a use-time refusal naming lym config gate and closing with the role clause.
 func useRefusal(format string, args ...any) error {
-	return fmt.Errorf("gate config: %s; fix it with \"lyx config gate\" from the prime%s", fmt.Sprintf(format, args...), roleClause)
+	return fmt.Errorf("gate config: %s; fix it with \"lym config gate\" from the prime%s", fmt.Sprintf(format, args...), roleClause)
 }
 
-// Tier returns the declared tier with the given number, or refuses naming lyx config gate.
+// Tier returns the declared tier with the given number, or refuses naming lym config gate.
 func (c Config) Tier(number int) (Tier, error) {
 	tier, ok := c.Tiers[tierKey(number)]
 	if !ok {
@@ -259,7 +259,7 @@ func (c Config) Tier(number int) (Tier, error) {
 }
 
 // Gate returns the named gate key's tiers and scope.
-// It refuses, naming lyx config gate, a hub with no tier0, a key the config does not hold, an empty tier list, and a listed tier the hub does not declare.
+// It refuses, naming lym config gate, a hub with no tier0, a key the config does not hold, an empty tier list, and a listed tier the hub does not declare.
 func (c Config) Gate(key string) (GateKey, error) {
 	if _, declared := c.Tiers[tierKey(0)]; !declared {
 		return GateKey{}, useRefusal("the hub declares no tier0, so no gate has a tier to run")
@@ -288,13 +288,13 @@ func (c Config) TierList(gate string) ([]int, error) {
 	return key.Tiers, nil
 }
 
-// GateCall renders the one call a site runs for the named gate key: `lyx gate test --wait --gate <key>` followed by one `--card <id>` per card id given.
+// GateCall renders the one call a site runs for the named gate key: `lym gate test --wait --gate <key>` followed by one `--card <id>` per card id given.
 // It refuses, with the refusals Gate gives, a key the config cannot run.
 func (c Config) GateCall(key string, cards ...string) (string, error) {
 	if _, err := c.Gate(key); err != nil {
 		return "", err
 	}
-	words := []string{"lyx", "gate", "test", "--wait", "--gate", key}
+	words := []string{"lym", "gate", "test", "--wait", "--gate", key}
 	for _, card := range cards {
 		words = append(words, "--card", card)
 	}

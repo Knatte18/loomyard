@@ -18,14 +18,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // driveContainmentGateRefusal drives a real containment refusal through UnwireJunctions: a junction
 // name of "../<escapeName>" cancels the slug segment and lands the "link" at the hub itself, escaping
 // the worktree UnwireJunctions was asked to operate on. This is the same reach point
 // TestUnwireJunctions_RefusesLinkOutsideItsWorktree (destructivegaps_integration_test.go) proves live:
-// junction.go:368's UnwireJunctions, through unseedLyxJunction, into unseedJunctionRecords's
+// junction.go:368's UnwireJunctions, through unseedLymJunction, into unseedJunctionRecords's
 // pathRequest and removeLink call at junction.go:474-483.
 func driveContainmentGateRefusal(t testing.TB, h *hubforge.Hub, slug, escapeName string) error {
 	t.Helper()
@@ -111,7 +111,7 @@ func driveDirtinessGateRefusal(t testing.TB, h *hubforge.Hub, slug string) error
 
 	hubforge.AddPair(t, h, slug)
 
-	pairLocation := &lyxcwd.Location{HubPath: h.Path, WorktreeName: slug, AnchorRel: h.Location.AnchorRel}
+	pairLocation := &lymcwd.Location{HubPath: h.Path, WorktreeName: slug, AnchorRel: h.Location.AnchorRel}
 	warpTarget := h.PairCodeWorktree(slug)
 
 	trackedFile := filepath.Join(warpTarget, "dirt.txt")

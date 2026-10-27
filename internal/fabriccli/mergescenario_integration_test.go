@@ -1,6 +1,6 @@
 //go:build tier1
 
-// mergescenario_integration_test.go drives the "lyx fabric merge", "merge-in", "merge-stage" and "status" verbs end-to-end against one real hubforge pair, through fabriccli.RunCLIIn, as an ordered scenario.
+// mergescenario_integration_test.go drives the "lym fabric merge", "merge-in", "merge-stage" and "status" verbs end-to-end against one real hubforge pair, through fabriccli.RunCLIIn, as an ordered scenario.
 // It is the CLI-boundary counterpart to internal/fabricengine's own merge integration tests, which cover the same matrix at the Go-API layer:
 // it asserts the JSON envelope shape at the CLI boundary — exit codes, the sorted "conflicts" array, "partial" staying false on a conflict envelope, the fixed error text a pinned typed error surfaces through — and the optional "warnings" key that reports a mid-run parent merge while webster state sits under the anchor.
 // Package fabriccli_test, sharing the single TestMain in testmain_test.go.
@@ -163,7 +163,7 @@ func assertOneWebsterWarning(t *testing.T, env envelope.Envelope) {
 		t.Fatalf("warnings = %v; want exactly one entry", raw)
 	}
 	s, _ := warnings[0].(string)
-	for _, want := range []string{"Webster is mid-run in this worktree", "lyx webster record-batch"} {
+	for _, want := range []string{"Webster is mid-run in this worktree", "lym webster record-batch"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("warnings[0] = %q; want it to contain %q", s, want)
 		}
@@ -463,7 +463,7 @@ func TestRunCLI_MergeScenario(t *testing.T) {
 			}
 
 			result := envelope.RequireErr(t, output, "")
-			wantErr := `fabricengine: merge produced conflicts and was aborted; run "lyx fabric merge-in" in the source branch's own worktree first, then retry`
+			wantErr := `fabricengine: merge produced conflicts and was aborted; run "lym fabric merge-in" in the source branch's own worktree first, then retry`
 			if result.Error != wantErr {
 				t.Errorf("RunCLI(merge) [would conflict] error = %q; want %q", result.Error, wantErr)
 			}

@@ -11,7 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
@@ -26,7 +26,7 @@ import (
 
 // runLockIdentity returns the run part of a parent lock owner for the run runID of the worktree loc: the slug, the pair path and the resolved run id.
 // The process fields are left zero for the caller to fill.
-func runLockIdentity(loc *lyxcwd.Location, runID string) parentlock.Owner {
+func runLockIdentity(loc *lymcwd.Location, runID string) parentlock.Owner {
 	return parentlock.Owner{
 		Slug:  seedSlug(loc.WorktreeName),
 		Pair:  loc.WorktreePath(),
@@ -36,7 +36,7 @@ func runLockIdentity(loc *lyxcwd.Location, runID string) parentlock.Owner {
 
 // selfLockOwner returns the seam naming the calling process as owner of the run runID of the worktree loc, read at call time.
 // The loop's hooks run in the loop process, so the owner they name is the loop.
-func selfLockOwner(loc *lyxcwd.Location, runID string) func() parentlock.Owner {
+func selfLockOwner(loc *lymcwd.Location, runID string) func() parentlock.Owner {
 	return func() parentlock.Owner {
 		owner := runLockIdentity(loc, runID)
 		process := proc.SelfRecord()
@@ -47,7 +47,7 @@ func selfLockOwner(loc *lyxcwd.Location, runID string) func() parentlock.Owner {
 }
 
 // readAgentStates returns the reading of every live agent run of the worktree loc as the parent lock's idle rule folds it.
-func readAgentStates(loc *lyxcwd.Location, cfg shuttleengine.Config) func() ([]parentlock.AgentState, error) {
+func readAgentStates(loc *lymcwd.Location, cfg shuttleengine.Config) func() ([]parentlock.AgentState, error) {
 	return func() ([]parentlock.AgentState, error) {
 		engines, err := shuttleengines.New(cfg, fabricengine.ConfigDirs(loc))
 		if err != nil {

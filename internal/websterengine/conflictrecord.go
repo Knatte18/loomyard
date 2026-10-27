@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 const (
@@ -22,7 +22,7 @@ const (
 
 // ConflictRecordRel returns the conflict record's forward-slashed path relative to the anchor, as recipe text names it.
 func ConflictRecordRel() string {
-	return path.Join(lyxdirs.DotLyxDirName, websterDirName, conflictRecordName)
+	return path.Join(lymdirs.DotLymDirName, websterDirName, conflictRecordName)
 }
 
 // ConflictRecordPath returns the conflict record's path under the told scratchDir.

@@ -1,6 +1,6 @@
 //go:build tier0
 
-// startdobbies_test.go pins that `lyx beam start` starts the worktree's dobby once, before it touches a strand, and that a dobby that does not start only warns.
+// startdobbies_test.go pins that `lym beam start` starts the worktree's dobby once, before it touches a strand, and that a dobby that does not start only warns.
 
 package orchcli
 
@@ -19,7 +19,7 @@ func TestStart_StartsTheDobbiesFirst(t *testing.T) {
 
 	tests := []struct {
 		name string
-		// recorded seeds a session id, so the bring-up of `lyx beam start` is a resume.
+		// recorded seeds a session id, so the bring-up of `lym beam start` is a resume.
 		recorded string
 		// seam, when false, leaves the start without a dobby seam.
 		seam    bool
@@ -32,15 +32,15 @@ func TestStart_StartsTheDobbiesFirst(t *testing.T) {
 	}{
 		{name: "a successful dobby start runs before the strand is launched", seam: true, entry: dobbyengine.StartEntry{Worktree: "main", Outcome: dobbyengine.OutcomeStarted}, wantFirst: "dobby"},
 		{
-			name: "a failing dobby start still launches the strand and warns naming lyx beam start", seam: true,
+			name: "a failing dobby start still launches the strand and warns naming lym beam start", seam: true,
 			entry:   dobbyengine.StartEntry{Worktree: "payments", Outcome: dobbyengine.OutcomeFailed, Detail: "start the dobby: spawn failed"},
 			seamErr: errors.New("payments: start the dobby: spawn failed"), wantFirst: "dobby",
-			wantWarning: []string{"payments", "spawn failed", "lyx beam start"},
+			wantWarning: []string{"payments", "spawn failed", "lym beam start"},
 		},
 		{
 			name: "a refused dobby start warns with the engine's detail", seam: true,
-			entry:     dobbyengine.StartEntry{Worktree: "payments", Outcome: dobbyengine.OutcomeRefused, Detail: "the landing hold stands; see `lyx batten status payments`"},
-			wantFirst: "dobby", wantWarning: []string{"the landing hold stands", "lyx beam start"},
+			entry:     dobbyengine.StartEntry{Worktree: "payments", Outcome: dobbyengine.OutcomeRefused, Detail: "the landing hold stands; see `lym batten status payments`"},
+			wantFirst: "dobby", wantWarning: []string{"the landing hold stands", "lym beam start"},
 		},
 		{name: "a resume start calls the seam first too", recorded: recordedTestSessionID, seam: true, entry: dobbyengine.StartEntry{Outcome: dobbyengine.OutcomeLive}, wantFirst: "dobby"},
 		{name: "a nil seam starts nothing"},

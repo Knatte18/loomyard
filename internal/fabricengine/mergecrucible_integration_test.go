@@ -23,7 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // assertSoleGuardReason fails unless err is a *fabricengine.MergeGuardError carrying exactly the one
@@ -113,7 +113,7 @@ func TestMergeCrucible_WeftDetachedDoesNotRefuse(t *testing.T) {
 // The reconstructed state is byte-for-byte what a kill between the two MergeStart calls leaves —
 // merge.go persists WarpOutcome only after the warp MergeStart returns, so WeftOutcome is still
 // empty at that instant. Without the guard, MergeContinue committed the warp side, then failed
-// concluding a weft side that was never started, returned "run \"lyx fabric merge --continue\" again"
+// concluding a weft side that was never started, returned "run \"lym fabric merge --continue\" again"
 // (an instruction
 // that could never succeed), and left the pair out of correspondence.
 // MergeAbort must still recover the same record — that is the whole point of refusing.
@@ -278,9 +278,9 @@ func TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming(t *testing.T)
 	gitkit.CommitFile(t, h.PrimeWorktree(), "conflict.txt", "prime side\n", "prime: warp conflict")
 	gitkit.CommitFile(t, h.PrimeRecords(), "prime-only.txt", "prime weft\n", "prime: weft advance")
 
-	primeLocation, err := lyxcwd.ResolveWorktree(h.PrimeWorktree())
+	primeLocation, err := lymcwd.ResolveWorktree(h.PrimeWorktree())
 	if err != nil {
-		t.Fatalf("lyxcwd.ResolveWorktree(%s): %v", h.PrimeWorktree(), err)
+		t.Fatalf("lymcwd.ResolveWorktree(%s): %v", h.PrimeWorktree(), err)
 	}
 	prime, err := fabricengine.Open(primeLocation)
 	if err != nil {
@@ -807,9 +807,9 @@ func TestMergeCrucible_RemoveRefusesWhenALinkedPairIsConsumingTheSource(t *testi
 		t.Fatalf("Stat(%s) = %v; want not-exist — a record in the prime shape would let this test pass without the linked glob", primeRecord, err)
 	}
 
-	primeLocation, err := lyxcwd.ResolveWorktree(h.PrimeWorktree())
+	primeLocation, err := lymcwd.ResolveWorktree(h.PrimeWorktree())
 	if err != nil {
-		t.Fatalf("lyxcwd.ResolveWorktree(%s): %v", h.PrimeWorktree(), err)
+		t.Fatalf("lymcwd.ResolveWorktree(%s): %v", h.PrimeWorktree(), err)
 	}
 
 	_, err = h.Topology.Remove(primeLocation, sourceSlug, false, false)

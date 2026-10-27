@@ -15,22 +15,22 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
-// seedLyxConfig creates <tmpDir>/_lyx/config/<module>.yaml with content, the
+// seedLymConfig creates <tmpDir>/_lym/config/<module>.yaml with content, the
 // minimal on-disk shape LoadConfig needs (no git repository required).
-func seedLyxConfig(t *testing.T, tmpDir, module, content string) {
+func seedLymConfig(t *testing.T, tmpDir, module, content string) {
 	t.Helper()
-	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
-	if err := os.Mkdir(lyxDir, 0o755); err != nil {
-		t.Fatalf("mkdir _lyx: %v", err)
+	lymDir := filepath.Join(tmpDir, lymdirs.LymDirName)
+	if err := os.Mkdir(lymDir, 0o755); err != nil {
+		t.Fatalf("mkdir _lym: %v", err)
 	}
 	configDir := configengine.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0o755); err != nil {
-		t.Fatalf("mkdir _lyx/config: %v", err)
+		t.Fatalf("mkdir _lym/config: %v", err)
 	}
 	configFile := configengine.ConfigFile(tmpDir, module)
 	if err := os.WriteFile(configFile, []byte(content), 0o644); err != nil {
@@ -46,9 +46,9 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	// Seed the config file with the template itself: this is exactly the
-	// file "lyx config reconcile" would produce, so LoadConfig must accept
+	// file "lym config reconcile" would produce, so LoadConfig must accept
 	// it verbatim and every default must resolve.
-	seedLyxConfig(t, tmpDir, "shuttle", shuttleengine.ConfigTemplate())
+	seedLymConfig(t, tmpDir, "shuttle", shuttleengine.ConfigTemplate())
 
 	cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "shuttle")
 	if err != nil {
@@ -99,8 +99,8 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 
 	t.Run("RepoDefaultResolvesBeneathSparseWorktreeFile", func(t *testing.T) {
 		board, anchor := t.TempDir(), t.TempDir()
-		seedLyxConfig(t, board, "shuttle", strings.Replace(shuttleengine.ConfigTemplate(), "run_timeout_min: 30", "run_timeout_min: 45", 1))
-		seedLyxConfig(t, anchor, "shuttle", "startup_timeout_s: 120\n")
+		seedLymConfig(t, board, "shuttle", strings.Replace(shuttleengine.ConfigTemplate(), "run_timeout_min: 30", "run_timeout_min: 45", 1))
+		seedLymConfig(t, anchor, "shuttle", "startup_timeout_s: 120\n")
 
 		cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "shuttle")
 		if err != nil {
@@ -187,7 +187,7 @@ func TestLoadConfig_RetiredClaudeKeys(t *testing.T) {
 		t.Parallel()
 
 		anchor := t.TempDir()
-		seedLyxConfig(t, anchor, "shuttle", shuttleengine.ConfigTemplate()+
+		seedLymConfig(t, anchor, "shuttle", shuttleengine.ConfigTemplate()+
 			"claude: /opt/claude\nclaude_deny_agent_tool: false\nclaude_deny_ask_user_question: false\n"+
 			"claude_prompt_cache_ttl: 1h\nclaude_prompt_cache_ttl_roles:\n  orch: 1h\nclaude_deny_python: false\n")
 
@@ -285,7 +285,7 @@ func TestLoadConfig_EngineKey(t *testing.T) {
 					seeded = append(seeded, tt.engineLine)
 				}
 			}
-			seedLyxConfig(t, tmpDir, "shuttle", strings.Join(seeded, "\n"))
+			seedLymConfig(t, tmpDir, "shuttle", strings.Join(seeded, "\n"))
 
 			cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "shuttle")
 			if tt.wantErr != "" {
@@ -322,7 +322,7 @@ func TestLoadConfig_BackgroundShellWaitMin(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
 			seeded := strings.Replace(shuttleengine.ConfigTemplate(), "background_shell_wait_min: 10", "background_shell_wait_min: "+tt.value, 1)
-			seedLyxConfig(t, tmpDir, "shuttle", seeded)
+			seedLymConfig(t, tmpDir, "shuttle", seeded)
 
 			cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "shuttle")
 			if tt.wantErr {
@@ -382,7 +382,7 @@ func TestLoadConfig_SubmitSettleKeys(t *testing.T) {
 			}
 			tmpDir := t.TempDir()
 			seeded := strings.Replace(shuttleengine.ConfigTemplate(), tt.key+": "+def, tt.key+": "+tt.value, 1)
-			seedLyxConfig(t, tmpDir, "shuttle", seeded)
+			seedLymConfig(t, tmpDir, "shuttle", seeded)
 
 			cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "shuttle")
 			if tt.wantErr {
@@ -412,7 +412,7 @@ func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
 	// seeded value, and the never-seeded "shuttle" module reads back the
 	// template default instead.
 	seeded := strings.Replace(shuttleengine.ConfigTemplate(), "poll_interval_ms: 1000", "poll_interval_ms: 1500", 1)
-	seedLyxConfig(t, tmpDir, "othershuttle", seeded)
+	seedLymConfig(t, tmpDir, "othershuttle", seeded)
 
 	logs := logcapture.Capture(t)
 	cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "othershuttle")
@@ -452,7 +452,7 @@ func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
 
 func TestLoadConfig_UninitializedFallsBackToTemplate(t *testing.T) {
 	tmpDir := t.TempDir()
-	// Do NOT create _lyx/ -- LoadConfig must degrade to the embedded template.
+	// Do NOT create _lym/ -- LoadConfig must degrade to the embedded template.
 
 	cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "shuttle")
 	if err != nil {

@@ -1,7 +1,7 @@
 //go:build tier0
 
 // status_completeness_test.go guards quarry's status vocabulary against silent widening.
-// quarry.Status.Known() moved the definition of "readable" from lyx to quarry, so a status quarry
+// quarry.Status.Known() moved the definition of "readable" from lym to quarry, so a status quarry
 // adds later would pass the guard in doneCheckVerdicts and land on the resolved and stillExists
 // booleans, which derive only from quarry.StatusFound, quarry.StatusMultipart and
 // quarry.StatusNotFound — a fifth status would read as not-resolved-but-still-existing and produce

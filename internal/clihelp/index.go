@@ -22,7 +22,7 @@ func Invocable(cmd *cobra.Command) bool {
 }
 
 // RenderIndex renders the nested markdown list of every command under root whose audience annotation equals audience.
-// It indents two spaces per level and implies `lyx` plus the parent path by nesting.
+// It indents two spaces per level and implies `lym` plus the parent path by nesting.
 // A group prints in group form when only a descendant prints.
 // A runnable group prints in leaf form when its own annotation matches.
 // A command without an annotation never prints.

@@ -3,7 +3,7 @@
 // RunStdin is the second checked form, Run with a stdin text fed to git, for a command such as `cat-file --batch-check` that reads its operands there.
 // RunGit is the raw form, for the sites where a non-zero exit is an answer rather than a failure.
 // Both wrap one unexported exec core, and an exec-level failure, git not being runnable at all, is returned unwrapped so errors.As on *GitError means "git ran and rejected this".
-// The floor error of a git below lyx's minimum is the other non-*GitError result, since no git command ran to produce it.
+// The floor error of a git below lym's minimum is the other non-*GitError result, since no git command ran to produce it.
 //
 // # Floor
 //
@@ -26,7 +26,7 @@
 // # Stall bound
 //
 // The low-speed limit covers a transfer, never the connection's setup, so a TLS handshake the remote never answers would run to curl's connect timeout or the deadline.
-// A remote subcommand therefore runs with GIT_TRACE_PACKET pointed at a file in lyxtemp's run directory, removed after the call.
+// A remote subcommand therefore runs with GIT_TRACE_PACKET pointed at a file in lymtemp's run directory, removed after the call.
 // git writes the file's first line only once the remote's first packet arrives, so a file still empty 30 s into the call is a remote that never answered:
 // the call is killed as at the deadline and run once more, with fresh bounds.
 // A stalled call received no ref advertisement and so changed nothing on the remote, which is what makes the retry safe for a push.
@@ -38,9 +38,9 @@
 // # Environment
 //
 // Every git child inherits the process environment except GIT_DIR and GIT_WORK_TREE, which are dropped so the child follows the directory it is run in, as the in-process reads do, and one command never reads one repository and writes another.
-// Bound: an operator who sets either variable to point `lyx` at another repository has it ignored; `lyx`'s own post-checkout hook already unsets them.
+// Bound: an operator who sets either variable to point `lym` at another repository has it ignored; `lym`'s own post-checkout hook already unsets them.
 // Every git child also runs with GIT_OPTIONAL_LOCKS=0, whatever the process environment sets it to, so a read-only command such as `git status` never takes the index lock to write back a refreshed stat cache.
-// Such a probe holds no lyx lock, and its index lock would otherwise fail a concurrent locked commit's `git add` on the same worktree with "index.lock: File exists".
+// Such a probe holds no lym lock, and its index lock would otherwise fail a concurrent locked commit's `git add` on the same worktree with "index.lock: File exists".
 // Bound: a read probe leaves the stat cache unrefreshed, so a later probe may re-read files a refresh would have cached.
 //
 // The bounds are not configuration.

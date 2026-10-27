@@ -61,8 +61,8 @@ func TestMoveInProgress(t *testing.T) {
 		want         []string
 	}{
 		{"NoRecord", nil, false, false, nil},
-		{"LockFree", &staleRecord, false, true, []string{"interrupted", "`lyx fabric anchor beam --set b`"}},
-		{"LockHeldByLiveRecordProcess", &liveRecord, true, true, []string{"in progress", fmt.Sprint(os.Getpid()), "wait for it", "`lyx fabric anchor beam --set b`"}},
+		{"LockFree", &staleRecord, false, true, []string{"interrupted", "`lym fabric anchor beam --set b`"}},
+		{"LockHeldByLiveRecordProcess", &liveRecord, true, true, []string{"in progress", fmt.Sprint(os.Getpid()), "wait for it", "`lym fabric anchor beam --set b`"}},
 		{"LockHeldOverStaleRecord", &staleRecord, true, true, []string{"starting in another process", "wait for it", "run the verb again"}},
 	}
 	for _, tt := range tests {

@@ -13,7 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -21,7 +21,7 @@ import (
 // The add verb's pair push runs in the foreground: a detached one would fork this test binary, and the tests read the pushed branches on the remote.
 func TestMain(m *testing.M) {
 	gitkit.HermeticGitEnv()
-	fabriccli.SetPairPushForTest(func(l *lyxcwd.Location) error {
+	fabriccli.SetPairPushForTest(func(l *lymcwd.Location) error {
 		_, err := fabricengine.PushPairAnchored(l, fabricengine.EnvSyncOptions(), fabricengine.LockWaitUnbounded)
 		return err
 	})

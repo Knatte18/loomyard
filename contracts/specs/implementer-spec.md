@@ -17,7 +17,7 @@ Every implementer builds the same row with the same edges, so no row is skipped 
 
 ## In
 
-- The approved plan: the flat card list under `_lyx/plan/`, read through `internal/planparser`, the plan format's sole parser ([loom-plan-spec.md](loom-plan-spec.md)).
+- The approved plan: the flat card list under `_lym/plan/`, read through `internal/planparser`, the plan format's sole parser ([loom-plan-spec.md](loom-plan-spec.md)).
 - The task branch, checked out in the task's worktree, with the plan committed on it.
 
 How the cards are grouped into units of work is the implementer's own call, configured by the implementer's own config: webster batches through `batcher.yaml`.
@@ -27,8 +27,8 @@ The plan writer writes a flat plan and never groups its cards.
 
 - **Commits on the task branch** that build the plan, leaving a clean tree.
   The implementer never pushes: the landing rows push the branch.
-- **A durable run directory** of the implementer's own under `_lyx/`, holding its state file and run record, which Go commits once the row reports Done.
-  Webster's is `_lyx/webster/`, holding `state.json`, `outcome.yaml` and `summary.md`.
+- **A durable run directory** of the implementer's own under `_lym/`, holding its state file and run record, which Go commits once the row reports Done.
+  Webster's is `_lym/webster/`, holding `state.json`, `outcome.yaml` and `summary.md`.
 - **An outcome**, returned as the row's shed outcome:
 
 | Outcome | Meaning | Route |

@@ -6,7 +6,7 @@
 # Repair guide for a stopped run
 
 You are the one-shot fork a driver spawned at an `error` or `interrupted` stop.
-You read the stop's evidence, repair what a `lyx` verb can repair, write the stop report and any repair records, and edit nothing else.
+You read the stop's evidence, repair what a `lym` verb can repair, write the stop report and any repair records, and edit nothing else.
 Your reply is a short conclusion and exactly one action for the driver to run: a named repair verb, a re-launch of the loop, or an escalation.
 The run id, the report path and the envelope arrive in the driver's brief; the evidence is the envelope's `loop.trace_copy`, `loop.stderr_path`, the `trace_file` it names and the child traces under the trace directory.
 
@@ -16,20 +16,20 @@ Read `loop.trace_copy` and the child traces it names.
 Identify the half-finished mutation from the `fabric: mutation` records (attrs `kind`, `target`, `detail`) and the `shed: step`, `shed: step done` and `shed: step refused` boundary records.
 Restore a state the next step can proceed from, then name the re-launch as the driver's action.
 
-Repairs act through `lyx`'s own verbs, plus read-only git for diagnosis:
+Repairs act through `lym`'s own verbs, plus read-only git for diagnosis:
 
-- Partial `lyx fabric add` (worktrees created, a later step failed): `lyx fabric remove [--force] [--remote] <slug>` removes the pair; a code branch it leaves behind falls under the stranded-branch exception.
-- Partial `lyx fabric remove`: re-run `lyx fabric remove [--force] <slug>`, or `lyx fabric prune --apply [--force]` for an orphaned half-pair.
-- Stranded remote records branch: `lyx fabric cleanup --apply [--force] --remote`.
+- Partial `lym fabric add` (worktrees created, a later step failed): `lym fabric remove [--force] [--remote] <slug>` removes the pair; a code branch it leaves behind falls under the stranded-branch exception.
+- Partial `lym fabric remove`: re-run `lym fabric remove [--force] <slug>`, or `lym fabric prune --apply [--force]` for an orphaned half-pair.
+- Stranded remote records branch: `lym fabric cleanup --apply [--force] --remote`.
 - Stranded remote code branch the failed step created and pushed: the stranded-branch exception.
-- Drifted or broken records side of a pair: `lyx fabric reconcile`.
-- `lyx reed ...` only for strands the trace names as the failed step's own.
+- Drifted or broken records side of a pair: `lym fabric reconcile`.
+- `lym reed ...` only for strands the trace names as the failed step's own.
 
-Never: `lyx shed pause` as a repair, hand-edit a status file or `seed.json`, re-seed, force-push, or delete a branch or worktree the trace does not name as created by the failed step.
-A crash window outside this list, or one no `lyx` verb can repair, escalates by design.
+Never: `lym shed pause` as a repair, hand-edit a status file or `seed.json`, re-seed, force-push, or delete a branch or worktree the trace does not name as created by the failed step.
+A crash window outside this list, or one no `lym` verb can repair, escalates by design.
 
 Prefer not to merge the parent into a task worktree while its in-flight producer is still running;
-when a parent fix is needed mid-run, `lyx fabric merge-in` is survivable and will warn.
+when a parent fix is needed mid-run, `lym fabric merge-in` is survivable and will warn.
 Only a clean merge survives: a conflicted merge-in, once resolved, is refused by record-batch until HEAD returns to the batch report's `head_sha`.
 
 Traces can be swept before a later read, so each repair record copies the trace lines it acted on.
@@ -37,7 +37,7 @@ Traces can be swept before a later read, so each repair record copies the trace 
 ## Stranded-branch exception
 
 The one raw-git mutation: deleting a code branch the failed step's trace proves it created.
-Code branches only; a stranded records branch goes through `lyx fabric cleanup`.
+Code branches only; a stranded records branch goes through `lym fabric cleanup`.
 
 - Local delete: a `branch_created` entry for exactly that branch in the failed step's trace or a child trace sharing its id, and no later `branch_deleted` entry for it.
   Run `git -C <repo> branch -D <branch>`.
@@ -62,16 +62,16 @@ The `reinvoke` sub-case counts toward the cap.
 
 ## Binary watch
 
-The watch is a background shell loop that resolves the `lyx` executable once, checks its modification time about once a minute, and exits when it changes.
-It never runs a long-lived `lyx` process, which would block a deploy's overwrite on Windows.
-When it exits, read `lyx shed status <run-id>` once, and re-step only if `binary_changed` is true, the clean-tree guard passes and `hand_back` is false; otherwise re-arm the watch.
+The watch is a background shell loop that resolves the `lym` executable once, checks its modification time about once a minute, and exits when it changes.
+It never runs a long-lived `lym` process, which would block a deploy's overwrite on Windows.
+When it exits, read `lym shed status <run-id>` once, and re-step only if `binary_changed` is true, the clean-tree guard passes and `hand_back` is false; otherwise re-arm the watch.
 A stop marked `hand_back` starts no watch and is handed back to the parent.
 A watch job that ends by the harness timeout is re-armed, never read as a resume.
 
 ## Interrupted invocations
 
 An invocation that was killed, timed out or exited without a parseable envelope wrote no envelope.
-Read `lyx shed status <run-id>` once and branch on that read:
+Read `lym shed status <run-id>` once and branch on that read:
 
 - `current_producer` or `history_length` changed, or `state` is no longer running: the run advanced; continue from the fresh status.
 - Unchanged and `interrupt_policy: reinvoke`: re-invoke the step; this counts toward the repair cap.

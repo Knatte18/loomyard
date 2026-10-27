@@ -578,7 +578,7 @@ func TestReconcileReportHead_UncleanParentMergesRefused(t *testing.T) {
 			if err == nil {
 				t.Fatal("error = nil; want refusal")
 			}
-			for _, want := range []string{"does not match the worktree's actual HEAD", report, head, "merge commit " + head + " does not qualify", tc.wantReason, "way forward: 1) lyx webster reset --to report-head --batch 01"} {
+			for _, want := range []string{"does not match the worktree's actual HEAD", report, head, "merge commit " + head + " does not qualify", tc.wantReason, "way forward: 1) lym webster reset --to report-head --batch 01"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("error %q missing %q", err, want)
 				}
@@ -633,7 +633,7 @@ func TestRefuseMidMerge(t *testing.T) {
 	if err == nil {
 		t.Fatal("mid-merge: error = nil; want refusal")
 	}
-	for _, want := range []string{"lyx fabric merge --continue", "lyx fabric merge --abort", "git merge --continue", "git merge --abort", "a session lyx refuses the verb from reports status: FAILED and the orch runs it"} {
+	for _, want := range []string{"lym fabric merge --continue", "lym fabric merge --abort", "git merge --continue", "git merge --abort", "a session lym refuses the verb from reports status: FAILED and the orch runs it"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q missing %q", err, want)
 		}

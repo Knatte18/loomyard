@@ -39,16 +39,16 @@ func (b *Board) Rename(selector any, to string) (RenameResult, error) {
 func (s *Store) Rename(selector any, to string) (RenameResult, error) {
 	current, found := s.GetTask(selector)
 	if !found {
-		return RenameResult{}, fmt.Errorf("task not found: %v: check the slug, id or handle with lyx board list", selector)
+		return RenameResult{}, fmt.Errorf("task not found: %v: check the slug, id or handle with lym board list", selector)
 	}
 	if IsRunStatus(current.Status) {
 		return RenameResult{}, &RunLockedError{Slug: current.Slug, Status: *current.Status}
 	}
 	if current.Kind == KindProject && current.Beam {
-		return RenameResult{}, fmt.Errorf("entry %q is a beam, and a beam's slug stays fixed while it lives: change its title with `lyx board upsert` instead", current.Slug)
+		return RenameResult{}, fmt.Errorf("entry %q is a beam, and a beam's slug stays fixed while it lives: change its title with `lym board upsert` instead", current.Slug)
 	}
 	if s.pairExists != nil && s.pairExists(current.Slug) {
-		return RenameResult{}, fmt.Errorf("entry %q has a pair, and its slug names that pair: end the pair first with `lyx batten cancel %s --remove`, then rename", current.Slug, current.Slug)
+		return RenameResult{}, fmt.Errorf("entry %q has a pair, and its slug names that pair: end the pair first with `lym batten cancel %s --remove`, then rename", current.Slug, current.Slug)
 	}
 	if to == "" {
 		return RenameResult{}, fmt.Errorf("rename target must be a non-empty slug: pass the new slug in \"to\"")
@@ -57,7 +57,7 @@ func (s *Store) Rename(selector any, to string) (RenameResult, error) {
 		return RenameResult{}, fmt.Errorf("%w: pick a shorter target slug", err)
 	}
 	if _, taken := s.GetTask(to); taken {
-		return RenameResult{}, fmt.Errorf("slug %q already names an entry: pick another target slug, or fold the two entries with \"lyx board merge\"", to)
+		return RenameResult{}, fmt.Errorf("slug %q already names an entry: pick another target slug, or fold the two entries with \"lym board merge\"", to)
 	}
 
 	renameSlug(s.tasks, current.Slug, to)

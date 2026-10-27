@@ -29,7 +29,7 @@ import (
 )
 
 // scrubProbeEnv is a process variable the cold-boot test sets and its engine's scrub names, so the stripped-key record is observable.
-const scrubProbeEnv = "LYX_REED_SCRUB_PROBE"
+const scrubProbeEnv = "LYM_REED_SCRUB_PROBE"
 
 // newColdScratchEngine builds an *Engine rooted at a fresh t.TempDir(), against the real,
 // LoadConfig-resolved cfg, on its own scratch socket derived from that tmpDir's own hash — the same

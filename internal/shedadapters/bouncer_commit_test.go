@@ -216,7 +216,7 @@ func TestBouncer_ConvergedSettle_CarryOverFailureBlocksTheSettle(t *testing.T) {
 			if tt.seamErr != nil && !errors.Is(err, tt.seamErr) {
 				t.Errorf("Call() error = %v; want errors.Is(err, %v)", err, tt.seamErr)
 			}
-			for _, want := range []string{"shedadapters: gate (bouncer): carry over round 1's open findings", tt.wantCause, "way forward:", "`## Open risks`", "lyx loom start"} {
+			for _, want := range []string{"shedadapters: gate (bouncer): carry over round 1's open findings", tt.wantCause, "way forward:", "`## Open risks`", "lym loom start"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("Call() error = %q; want it to contain %q", err, want)
 				}

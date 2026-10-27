@@ -127,7 +127,7 @@ func (n rowNotifier) setMarkerLine(prefix, line string) {
 // RowStopNotice sends the notice of the stop at the row producer after Run-Shed, which the stop chain gave back with the report at reportPath and whose stop key's history length is historyLen, and reports whether it was posted.
 // The line names the row, the reason cut to one line, the report and the way forward, and goes out as HandBackNotice sends a line, so a stop is noticed once.
 func RowStopNotice(ctx context.Context, deps RowNoticeDeps, slug, scratchDir, producer, reason, reportPath string, historyLen int) bool {
-	line := fmt.Sprintf("%s %s: %s failed: %s; report %s; way forward: fix the cause, then run \"lyx batten run %s\"",
+	line := fmt.Sprintf("%s %s: %s failed: %s; report %s; way forward: fix the cause, then run \"lym batten run %s\"",
 		noticePrefix, slug, producer, oneLine(reason, noticeErrorMax), reportPath, slug)
 	return HandBackNotice(ctx, deps, slug, scratchDir, producer, historyLen, line)
 }

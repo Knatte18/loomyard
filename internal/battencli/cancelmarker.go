@@ -1,4 +1,4 @@
-// cancelmarker.go implements the cancel marker of "lyx batten cancel": a record that a cancel of a slug is under way, whose writer's liveness is a lock it holds, never its pid.
+// cancelmarker.go implements the cancel marker of "lym batten cancel": a record that a cancel of a slug is under way, whose writer's liveness is a lock it holds, never its pid.
 //
 // A driving verb and a second cancel read the marker to refuse while a cancel runs, and to point at the cancel that finishes an interrupted one.
 // The lock is held exclusively from the marker's write to its release, so a marker whose lock is free belongs to a writer that died.
@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -60,7 +60,7 @@ func judgeCancelMarker(presentBefore, lockFree, presentUnderLock bool) (present,
 
 // readCancelMarker reads the cancel marker of slug and the liveness of its writer.
 // A marker that does not decode reads present with its fields empty, so a torn write never hides a cancel.
-func readCancelMarker(location *lyxcwd.Location, slug string) (cancelMarkerReading, error) {
+func readCancelMarker(location *lymcwd.Location, slug string) (cancelMarkerReading, error) {
 	markerPath := shedrun.CancelMarker(location, slug)
 	presentBefore, err := markerExists(markerPath)
 	if err != nil || !presentBefore {
@@ -118,7 +118,7 @@ type heldCancelMarker struct {
 // takeCancelMarker takes the marker's lock exclusively, waiting at most wait, and writes the marker with this process's pid, start time and the time now.
 // A shared probe of a reader holds the lock briefly, which the wait outlasts.
 // A lock not taken within the wait refuses as a live cancel.
-func takeCancelMarker(location *lyxcwd.Location, slug string, wait time.Duration) (heldCancelMarker, error) {
+func takeCancelMarker(location *lymcwd.Location, slug string, wait time.Duration) (heldCancelMarker, error) {
 	markerPath := shedrun.CancelMarker(location, slug)
 	lockPath := shedrun.CancelMarkerLock(location, slug)
 	if err := os.MkdirAll(shedrun.ScratchRoot(location), 0o755); err != nil {
@@ -169,5 +169,5 @@ func cancelMarkerRefusal(slug string, reading cancelMarkerReading) error {
 		return fmt.Errorf("a cancel of %s is under way (pid %d, since %s); way forward: wait for the cancel (pid %d) to end, seeing it with \"ps -p %d\" or in Task Manager on Windows, then run the verb again",
 			slug, pid, reading.Marker.StartedAt, pid, pid)
 	}
-	return fmt.Errorf("a cancel of %s was interrupted; way forward: run \"lyx batten cancel %s\" from the prime to finish it", slug, slug)
+	return fmt.Errorf("a cancel of %s was interrupted; way forward: run \"lym batten cancel %s\" from the prime to finish it", slug, slug)
 }

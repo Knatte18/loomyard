@@ -82,7 +82,7 @@ type configFile struct {
 }
 
 // ErrConfigAbsent is LoadConfig's error for a baseDir with no gate.yaml.
-// Its way forward is `lyx fabric reconcile` in a hub, which writes the file from the template, and `lyx config gate` outside every hub, which writes the worktree's own file.
+// Its way forward is `lym fabric reconcile` in a hub, which writes the file from the template, and `lym config gate` outside every hub, which writes the worktree's own file.
 var ErrConfigAbsent = errors.New("gate config absent")
 
 // ConfigOpenMaps returns the gate.yaml keys whose entries belong to the operator, which configengine carries whole through reconcile and the layer stack.
@@ -143,16 +143,16 @@ func ConfigFiles(dirs configengine.Dirs) []string {
 
 // LoadConfig loads the gate config strictly through the hub-wide layer stack under dirs, this machine's override included:
 // an absent hub file is ErrConfigAbsent, and a value below 1 fails naming its key.
-// Outside every hub, where dirs tell no board, the file is the worktree's own and its absence names `lyx config gate` as the way to write it.
+// Outside every hub, where dirs tell no board, the file is the worktree's own and its absence names `lym config gate` as the way to write it.
 // Every other failure names each file that can hold the value and its way forward, so each gate site that wraps it carries the clause.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	spec := ConfigSpec()
 	files := ConfigFiles(dirs)
 	if _, err := os.Stat(files[0]); errors.Is(err, os.ErrNotExist) {
 		if dirs.Board == "" {
-			return Config{}, fmt.Errorf("%w; run \"lyx config gate\" to write this worktree's own gate.yaml, creating the worktree's _lyx directory first when it is absent, since the write refuses without it; a session lyx refuses the verb from reports status: FAILED and the orch runs it", ErrConfigAbsent)
+			return Config{}, fmt.Errorf("%w; run \"lym config gate\" to write this worktree's own gate.yaml, creating the worktree's _lym directory first when it is absent, since the write refuses without it; a session lym refuses the verb from reports status: FAILED and the orch runs it", ErrConfigAbsent)
 		}
-		return Config{}, fmt.Errorf("%w; run \"lyx fabric reconcile\"; a session lyx refuses the verb from reports status: FAILED and the orch runs it", ErrConfigAbsent)
+		return Config{}, fmt.Errorf("%w; run \"lym fabric reconcile\"; a session lym refuses the verb from reports status: FAILED and the orch runs it", ErrConfigAbsent)
 	}
 	if err := refuseRetiredGateLists(files[0]); err != nil {
 		return Config{}, err
@@ -201,14 +201,14 @@ func withConfigWayForward(err error, files []string, local string) error {
 		removeLocal = fmt.Sprintf("; remove %s, which takes no gate key", local)
 	}
 	if len(files) < 2 {
-		return fmt.Errorf("%w; fix it with \"lyx config gate\" from the prime%s%s", err, removeLocal, roleClause)
+		return fmt.Errorf("%w; fix it with \"lym config gate\" from the prime%s%s", err, removeLocal, roleClause)
 	}
 	hub, machine := files[0], files[1]
 	return fmt.Errorf("%w; the hub file %s, the machine file %s or the file the error names holds the value: "+
-		"fix the hub file with \"lyx config gate\" from the prime, "+
-		"and the machine file with \"lyx config gate --layer machine\" from the prime, "+
+		"fix the hub file with \"lym config gate\" from the prime, "+
+		"and the machine file with \"lym config gate --layer machine\" from the prime, "+
 		"or, when that refuses a key the machine file holds, by removing %s; "+
-		"\"lyx config gate --resolved\" names the layer holding each value%s%s",
+		"\"lym config gate --resolved\" names the layer holding each value%s%s",
 		err, hub, machine, machine, removeLocal, roleClause)
 }
 
@@ -341,7 +341,7 @@ func refuseRetiredGateLists(hubFile string) error {
 	}
 	for i := 0; i+1 < len(gates.Content); i += 2 {
 		if gates.Content[i+1].Kind == yaml.SequenceNode {
-			return fmt.Errorf("gate config key %q: the retired list shape; fix it with \"lyx fabric reconcile\" (or \"lyx config reconcile --layer default --apply\") from the prime, which migrates it%s", "gates."+gates.Content[i].Value, roleClause)
+			return fmt.Errorf("gate config key %q: the retired list shape; fix it with \"lym fabric reconcile\" (or \"lym config reconcile --layer default --apply\") from the prime, which migrates it%s", "gates."+gates.Content[i].Value, roleClause)
 		}
 	}
 	return nil
@@ -360,11 +360,11 @@ func decodeGates(entries map[string]yaml.Node) (map[string]GateKey, error) {
 		switch key.Scope {
 		case scopeCard:
 			if name != "card" && name != "batch" {
-				return nil, guidedError{fmt.Errorf("gate config key %q: scope card is only for the card and batch keys; fix it with \"lyx config gate\" from the prime%s", path, roleClause)}
+				return nil, guidedError{fmt.Errorf("gate config key %q: scope card is only for the card and batch keys; fix it with \"lym config gate\" from the prime%s", path, roleClause)}
 			}
 		case scopeDiff, scopeAll:
 		default:
-			return nil, guidedError{fmt.Errorf("gate config key %q: scope %q; want card, diff or all; fix it with \"lyx config gate\" from the prime%s", path, key.Scope, roleClause)}
+			return nil, guidedError{fmt.Errorf("gate config key %q: scope %q; want card, diff or all; fix it with \"lym config gate\" from the prime%s", path, key.Scope, roleClause)}
 		}
 		gates[name] = key
 	}

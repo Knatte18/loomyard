@@ -61,7 +61,7 @@ func TestWriteFailedStop(t *testing.T) {
 				StatusLockPath: shed.StatusLockPath,
 				Error:          "step child exited 2",
 				Transient:      "network",
-				WayForward:     "re-run lyx shed step",
+				WayForward:     "re-run lym shed step",
 			})
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("WriteFailedStop error = %v; want error %v", err, tt.wantErr)
@@ -80,7 +80,7 @@ func TestWriteFailedStop(t *testing.T) {
 				}
 				return
 			}
-			if file.State != StateFailed || file.Error != "step child exited 2; way forward: re-run lyx shed step" || file.Transient != "network" {
+			if file.State != StateFailed || file.Error != "step child exited 2; way forward: re-run lym shed step" || file.Transient != "network" {
 				t.Errorf("State, Error, Transient = %q, %q, %q; want failed with the error, its way forward and the class", file.State, file.Error, file.Transient)
 			}
 			if !reflect.DeepEqual(file.History, seed.History) || file.CurrentProducer != "B" || !file.PauseRequested || file.PauseBefore != "A" {

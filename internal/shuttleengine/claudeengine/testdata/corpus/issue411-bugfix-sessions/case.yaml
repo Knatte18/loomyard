@@ -1,6 +1,6 @@
 # Issue 411, second run: the same absorbed notification in another gated Burler round.
 source:
-  transcript: ~/.claude/projects/-home-knatte-Code-loomyard-LYXHUB-bugfix-sessions/3c2c87b2-91e2-498b-9337-16ff67e20974.jsonl
+  transcript: ~/.claude/projects/-home-knatte-Code-loomyard-LYMHUB-bugfix-sessions/3c2c87b2-91e2-498b-9337-16ff67e20974.jsonl
   session_id: 3c2c87b2-91e2-498b-9337-16ff67e20974
   run: bugfix-sessions Webster-Burler round 2, run d9a47c207a52c3c94532ffc39927988b
 date: 2026-10-07

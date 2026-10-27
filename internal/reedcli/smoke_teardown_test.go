@@ -90,7 +90,7 @@ func TestSmokeTeardown(t *testing.T) {
 		return
 	}
 
-	// DownForceKillsSighupImmunePaneChildren is the regression guard for the reap-is-inert defect this round's R1 review found: reed's force-kill fallback for a straggling pane child was unreachable, because waitProcessExit blocked on os.Process.Wait, which returns ECHILD IMMEDIATELY for any pid that is not a child of the calling process — and every pane pid is a child of the TMUX server, never of lyx.
+	// DownForceKillsSighupImmunePaneChildren is the regression guard for the reap-is-inert defect this round's R1 review found: reed's force-kill fallback for a straggling pane child was unreachable, because waitProcessExit blocked on os.Process.Wait, which returns ECHILD IMMEDIATELY for any pid that is not a child of the calling process — and every pane pid is a child of the TMUX server, never of lym.
 	// Every other reap step passed anyway, because their payloads (`sleep 300`, `pwsh -NoExit`) die to tmux's own SIGHUP cascade without reed ever needing to force-kill anything, so they could never distinguish "reed reaped it" from "tmux did".
 	//
 	// This step's payload is chosen to make exactly that distinction: the pane runs a descendant that TRAPS SIGHUP, so tmux's cascade cannot reap it and only reed's explicit force-kill can.
@@ -221,7 +221,7 @@ func TestSmokeTeardown(t *testing.T) {
 		return
 	}
 
-	// DownInOneWorktreeLeavesSiblingSessionAlive codifies the CROSS-WORKTREE SCOPE invariant: the tmux server identity is per-hub (the -L socket derives from the hub) and shared by sibling worktrees, so `lyx reed down` in worktree A must tear down ONLY A's session, never worktree B's session, panes, or agents that share the same hub socket.
+	// DownInOneWorktreeLeavesSiblingSessionAlive codifies the CROSS-WORKTREE SCOPE invariant: the tmux server identity is per-hub (the -L socket derives from the hub) and shared by sibling worktrees, so `lym reed down` in worktree A must tear down ONLY A's session, never worktree B's session, panes, or agents that share the same hub socket.
 	// (This psmux port backs each session with its own `psmux.exe server -s <session> -L <socket>` process on the shared socket, so "no duplicate server" is verified per session: exactly one backing process per live session, never two, zero once killed.)
 	// Two worktrees under one hub `up` (same socket, distinct sessions, one backing process each), each adds a live strand;
 	// A goes `down`;

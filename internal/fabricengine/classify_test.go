@@ -8,7 +8,7 @@ package fabricengine
 import "testing"
 
 // TestClassifyPaths covers relPath "."
-// and "sub" scoping, the _lyxfoo/.lyxfoo segment-boundary cases, empty input, all-warp and all-weft
+// and "sub" scoping, the _lymfoo/.lymfoo segment-boundary cases, empty input, all-warp and all-weft
 // inputs, a routingNames set with more than two entries, and the never-committed bucket — including
 // the case that distinguishes the correct implementation from the dangerous one: a never-committed
 // path must land in neither weft nor warp, not merely "not weft".
@@ -26,17 +26,17 @@ func TestClassifyPaths(t *testing.T) {
 		wantNeverCommitted  []string
 	}{
 		{
-			name:         "under_lyx_is_weft",
+			name:         "under_lym_is_weft",
 			relPath:      ".",
-			routingNames: []string{"_lyx", "_extra"},
-			files:        []string{"_lyx/module/state.json"},
+			routingNames: []string{"_lym", "_extra"},
+			files:        []string{"_lym/module/state.json"},
 			wantWarp:     nil,
-			wantWeft:     []string{"_lyx/module/state.json"},
+			wantWeft:     []string{"_lym/module/state.json"},
 		},
 		{
 			name:         "under_extra_is_weft",
 			relPath:      ".",
-			routingNames: []string{"_lyx", "_extra"},
+			routingNames: []string{"_lym", "_extra"},
 			files:        []string{"_extra/notes.md"},
 			wantWarp:     nil,
 			wantWeft:     []string{"_extra/notes.md"},
@@ -44,40 +44,40 @@ func TestClassifyPaths(t *testing.T) {
 		{
 			name:         "warp_source_path_is_warp",
 			relPath:      ".",
-			routingNames: []string{"_lyx", "_extra"},
-			files:        []string{"cmd/lyx/main.go"},
-			wantWarp:     []string{"cmd/lyx/main.go"},
+			routingNames: []string{"_lym", "_extra"},
+			files:        []string{"cmd/lym/main.go"},
+			wantWarp:     []string{"cmd/lym/main.go"},
 			wantWeft:     nil,
 		},
 		{
 			name:         "relpath_dot_scopes_prefix_at_root",
 			relPath:      ".",
-			routingNames: []string{"_lyx"},
-			files:        []string{"_lyx/state.json", "sub/_lyx/state.json"},
-			wantWarp:     []string{"sub/_lyx/state.json"},
-			wantWeft:     []string{"_lyx/state.json"},
+			routingNames: []string{"_lym"},
+			files:        []string{"_lym/state.json", "sub/_lym/state.json"},
+			wantWarp:     []string{"sub/_lym/state.json"},
+			wantWeft:     []string{"_lym/state.json"},
 		},
 		{
 			name:         "relpath_sub_scopes_prefix_under_sub",
 			relPath:      "sub",
-			routingNames: []string{"_lyx"},
-			files:        []string{"sub/_lyx/state.json", "_lyx/state.json"},
-			wantWarp:     []string{"_lyx/state.json"},
-			wantWeft:     []string{"sub/_lyx/state.json"},
+			routingNames: []string{"_lym"},
+			files:        []string{"sub/_lym/state.json", "_lym/state.json"},
+			wantWarp:     []string{"_lym/state.json"},
+			wantWeft:     []string{"sub/_lym/state.json"},
 		},
 		{
-			name:         "lyxfoo_is_a_segment_boundary_miss_so_warp",
+			name:         "lymfoo_is_a_segment_boundary_miss_so_warp",
 			relPath:      ".",
-			routingNames: []string{"_lyx"},
-			files:        []string{"_lyxfoo/state.json"},
-			wantWarp:     []string{"_lyxfoo/state.json"},
+			routingNames: []string{"_lym"},
+			files:        []string{"_lymfoo/state.json"},
+			wantWarp:     []string{"_lymfoo/state.json"},
 			wantWeft:     nil,
 		},
 		{
 			name:                "empty_file_list_yields_three_empty_lists",
 			relPath:             ".",
-			routingNames:        []string{"_lyx"},
-			neverCommittedNames: []string{".lyx"},
+			routingNames:        []string{"_lym"},
+			neverCommittedNames: []string{".lym"},
 			files:               nil,
 			wantWarp:            nil,
 			wantWeft:            nil,
@@ -86,70 +86,70 @@ func TestClassifyPaths(t *testing.T) {
 		{
 			name:         "all_warp_inputs",
 			relPath:      ".",
-			routingNames: []string{"_lyx"},
-			files:        []string{"cmd/lyx/main.go", "go.mod", "README.md"},
-			wantWarp:     []string{"cmd/lyx/main.go", "go.mod", "README.md"},
+			routingNames: []string{"_lym"},
+			files:        []string{"cmd/lym/main.go", "go.mod", "README.md"},
+			wantWarp:     []string{"cmd/lym/main.go", "go.mod", "README.md"},
 			wantWeft:     nil,
 		},
 		{
 			name:         "all_weft_inputs",
 			relPath:      ".",
-			routingNames: []string{"_lyx", "_extra"},
-			files:        []string{"_lyx/a.json", "_extra/notes.md"},
+			routingNames: []string{"_lym", "_extra"},
+			files:        []string{"_lym/a.json", "_extra/notes.md"},
 			wantWarp:     nil,
-			wantWeft:     []string{"_lyx/a.json", "_extra/notes.md"},
+			wantWeft:     []string{"_lym/a.json", "_extra/notes.md"},
 		},
 		{
 			name:         "routingNames_with_more_than_two_entries",
 			relPath:      ".",
-			routingNames: []string{"_lyx", "_extra", "_board", "_launchers"},
-			files:        []string{"_board/entry.md", "_launchers/run.sh", "cmd/lyx/main.go", "_extra/notes.md"},
-			wantWarp:     []string{"cmd/lyx/main.go"},
+			routingNames: []string{"_lym", "_extra", "_board", "_launchers"},
+			files:        []string{"_board/entry.md", "_launchers/run.sh", "cmd/lym/main.go", "_extra/notes.md"},
+			wantWarp:     []string{"cmd/lym/main.go"},
 			wantWeft:     []string{"_board/entry.md", "_launchers/run.sh", "_extra/notes.md"},
 		},
 		{
-			name:                "dotlyx_path_lands_in_neither_weft_nor_warp",
+			name:                "dotlym_path_lands_in_neither_weft_nor_warp",
 			relPath:             ".",
-			routingNames:        []string{"_lyx", "_extra"},
-			neverCommittedNames: []string{".lyx"},
-			files:               []string{".lyx/webster/state.json.lock"},
+			routingNames:        []string{"_lym", "_extra"},
+			neverCommittedNames: []string{".lym"},
+			files:               []string{".lym/webster/state.json.lock"},
 			wantWarp:            nil,
 			wantWeft:            nil,
-			wantNeverCommitted:  []string{".lyx/webster/state.json.lock"},
+			wantNeverCommitted:  []string{".lym/webster/state.json.lock"},
 		},
 		{
-			name:                "dotlyxfoo_is_a_segment_boundary_miss_so_warp",
+			name:                "dotlymfoo_is_a_segment_boundary_miss_so_warp",
 			relPath:             ".",
-			routingNames:        []string{"_lyx"},
-			neverCommittedNames: []string{".lyx"},
-			files:               []string{".lyxfoo/state.json"},
-			wantWarp:            []string{".lyxfoo/state.json"},
+			routingNames:        []string{"_lym"},
+			neverCommittedNames: []string{".lym"},
+			files:               []string{".lymfoo/state.json"},
+			wantWarp:            []string{".lymfoo/state.json"},
 			wantWeft:            nil,
 			wantNeverCommitted:  nil,
 		},
 		{
-			name:                "dotlyx_prefix_wins_over_weft_when_names_would_overlap",
+			name:                "dotlym_prefix_wins_over_weft_when_names_would_overlap",
 			relPath:             "sub",
-			routingNames:        []string{"_lyx"},
-			neverCommittedNames: []string{".lyx"},
-			files:               []string{"sub/.lyx/state.json.lock", "sub/_lyx/state.json"},
+			routingNames:        []string{"_lym"},
+			neverCommittedNames: []string{".lym"},
+			files:               []string{"sub/.lym/state.json.lock", "sub/_lym/state.json"},
 			wantWarp:            nil,
-			wantWeft:            []string{"sub/_lyx/state.json"},
-			wantNeverCommitted:  []string{"sub/.lyx/state.json.lock"},
+			wantWeft:            []string{"sub/_lym/state.json"},
+			wantNeverCommitted:  []string{"sub/.lym/state.json.lock"},
 		},
 		{
 			name:                "mixed_bucket_with_relpath_not_dot",
 			relPath:             "sub",
-			routingNames:        []string{"_lyx", "_extra"},
-			neverCommittedNames: []string{".lyx"},
+			routingNames:        []string{"_lym", "_extra"},
+			neverCommittedNames: []string{".lym"},
 			files: []string{
-				"sub/_lyx/module/state.json",
-				"sub/.lyx/module/state.json.lock",
+				"sub/_lym/module/state.json",
+				"sub/.lym/module/state.json.lock",
 				"warp/main.go",
 			},
 			wantWarp:           []string{"warp/main.go"},
-			wantWeft:           []string{"sub/_lyx/module/state.json"},
-			wantNeverCommitted: []string{"sub/.lyx/module/state.json.lock"},
+			wantWeft:           []string{"sub/_lym/module/state.json"},
+			wantNeverCommitted: []string{"sub/.lym/module/state.json.lock"},
 		},
 	}
 	for _, tt := range tests {
@@ -175,16 +175,16 @@ func TestClassifyPaths(t *testing.T) {
 //testtiming:keep every input path landing in exactly one output slice in input order; coverage of its blocks by other tests does not show an assertion of this
 func TestClassifyPaths_PartitionsInputWithNothingLostOrDuplicated(t *testing.T) {
 	relPath := "."
-	routingNames := []string{"_lyx", "_extra"}
-	neverCommittedNames := []string{".lyx"}
+	routingNames := []string{"_lym", "_extra"}
+	neverCommittedNames := []string{".lym"}
 	files := []string{
-		"cmd/lyx/main.go",
-		"_lyx/module/state.json",
+		"cmd/lym/main.go",
+		"_lym/module/state.json",
 		"go.mod",
 		"_extra/notes.md",
-		"_lyxfoo/notweft.json",
-		".lyx/webster/state.json.lock",
-		".lyxfoo/notnevercommitted.json",
+		"_lymfoo/notweft.json",
+		".lym/webster/state.json.lock",
+		".lymfoo/notnevercommitted.json",
 	}
 
 	warp, weft, neverCommitted := classifyPaths(relPath, routingNames, neverCommittedNames, files)

@@ -178,7 +178,7 @@ func TestMergeIn_RecordAppearingWhileWaitingForLock_RefusesInsteadOfOverwriting(
 
 	hub, f, _, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
 	setupConflictingDivergence(t, hub.PrimeWorktree(), "feature", "clash.txt")
-	commitOnWeftBranch("feature-weft", "_lyx/clean.txt", "clean\n", "weft: clean branch")
+	commitOnWeftBranch("feature-weft", "_lym/clean.txt", "clean\n", "weft: clean branch")
 
 	held, done := launchBlockedOnLock(t, f, func() error {
 		_, mergeErr := f.MergeIn("feature")
@@ -213,7 +213,7 @@ func TestMerge_RecordAppearingWhileWaitingForLock_RefusesInsteadOfOverwriting(t 
 
 	_, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
 	commitOnWarpBranch("feature", "clean-warp.txt", "clean\n", "warp: clean branch")
-	commitOnWeftBranch("feature-weft", "_lyx/clean-weft.txt", "clean\n", "weft: clean branch")
+	commitOnWeftBranch("feature-weft", "_lym/clean-weft.txt", "clean\n", "weft: clean branch")
 
 	held, done := launchBlockedOnLock(t, f, func() error {
 		_, mergeErr := f.Merge("feature", fabricengine.MergeOptions{})
@@ -249,7 +249,7 @@ func TestMergeIn_StartsAreReReadUnderLock(t *testing.T) {
 
 	h, f, _, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
-	commitOnWeftBranch("feature-weft", "_lyx/clean.txt", "clean\n", "weft: clean branch")
+	commitOnWeftBranch("feature-weft", "_lym/clean.txt", "clean\n", "weft: clean branch")
 
 	warpBeforeWait := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 	weftBeforeWait := fabricengine.CurrentSHAForTest(t, h.PrimeRecords())
@@ -265,7 +265,7 @@ func TestMergeIn_StartsAreReReadUnderLock(t *testing.T) {
 	// The lock's holder lands a commit on each side's current branch — what a concurrent Commit does —
 	// before this MergeIn gets its turn.
 	gitkit.CommitFile(t, h.PrimeWorktree(), "landed-mid-wait.txt", "landed while merge-in waited\n", "concurrent commit")
-	gitkit.CommitFile(t, h.PrimeRecords(), "_lyx/landed-mid-wait.txt", "landed while merge-in waited\n", "concurrent weft commit")
+	gitkit.CommitFile(t, h.PrimeRecords(), "_lym/landed-mid-wait.txt", "landed while merge-in waited\n", "concurrent weft commit")
 	landedWarpSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 	landedWeftSHA := fabricengine.CurrentSHAForTest(t, h.PrimeRecords())
 
@@ -303,7 +303,7 @@ func newCleanMergeablePair(t *testing.T) (*hubforge.Hub, *fabricengine.Fabric) {
 
 	h, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
 	commitOnWarpBranch("feature", "clean-warp.txt", "clean\n", "warp: clean branch")
-	commitOnWeftBranch("feature-weft", "_lyx/clean-weft.txt", "clean\n", "weft: clean branch")
+	commitOnWeftBranch("feature-weft", "_lym/clean-weft.txt", "clean\n", "weft: clean branch")
 	return h, f
 }
 
@@ -409,7 +409,7 @@ func TestMergeIn_PairTurningDirtyWhileWaitingForLock_RefusesPreservingDirt(t *te
 	h, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
 	gitkit.CommitFile(t, h.PrimeWorktree(), "overlap.txt", "seed content\n", "seed overlap.txt")
 	commitOnWarpBranch("feature", "overlap.txt", "feature content\n", "feature: modify overlap.txt")
-	commitOnWeftBranch("feature-weft", "_lyx/clean-weft.txt", "clean\n", "weft: clean branch")
+	commitOnWeftBranch("feature-weft", "_lym/clean-weft.txt", "clean\n", "weft: clean branch")
 
 	held, done := launchBlockedOnLock(t, f, func() error {
 		_, mergeErr := f.MergeIn("feature")
@@ -447,7 +447,7 @@ func TestMerge_PairTurningDirtyWhileWaitingForLock_RefusesPreservingDirt(t *test
 	h, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
 	gitkit.CommitFile(t, h.PrimeWorktree(), "overlap.txt", "seed content\n", "seed overlap.txt")
 	commitOnWarpBranch("feature", "overlap.txt", "feature content\n", "feature: modify overlap.txt")
-	commitOnWeftBranch("feature-weft", "_lyx/clean-weft.txt", "clean\n", "weft: clean branch")
+	commitOnWeftBranch("feature-weft", "_lym/clean-weft.txt", "clean\n", "weft: clean branch")
 
 	var mergeRes fabricengine.MergeResult
 	held, done := launchBlockedOnLock(t, f, func() error {

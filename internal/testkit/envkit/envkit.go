@@ -159,7 +159,7 @@ func LandingDeps(dir string) landingshed.Deps {
 		Shuttle:          &shedfake.MergeShuttle{},
 		EnginesRun:       func() ([]string, error) { return nil, nil },
 		TaskHead:         func() (string, error) { return "head", nil },
-		BaseCommand:      func() (string, error) { return "lyx gate test --wait --tier 0 --all", nil },
+		BaseCommand:      func() (string, error) { return "lym gate test --wait --tier 0 --all", nil },
 		GateTiers:        fixedGateTiers,
 		VerifyHold:       verifytree.NewPauseHold(pauserecord.Geometry{}, nil),
 		Lock: landingshed.ParentLockDeps{
@@ -193,7 +193,7 @@ func ReworkDeps(t testing.TB, dir string) loomshed.PRReworkDeps {
 	return loomshed.PRReworkDeps{
 		PlanDir:        mustMkdir(t, filepath.Join(dir, "rework-plan")),
 		ReworkDir:      mustMkdir(t, filepath.Join(dir, "rework-rounds")),
-		ReworkDirRel:   "_lyx/loom/rework",
+		ReworkDirRel:   "_lym/loom/rework",
 		ReviewsDir:     mustMkdir(t, filepath.Join(dir, "rework-reviews")),
 		AmendmentPath:  filepath.Join(dir, "rework-amendment.yaml"),
 		ReadCommitted:  func(string) ([]byte, bool, error) { return nil, false, nil },
@@ -275,7 +275,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		Models:             modelspec.Registry{"opus": {Engine: "claude", Model: "claude-opus-test"}},
 		Setting:            TemplateSetting,
 		SettingKnown:       configreg.CheckSettingKey,
-		Resume:             "lyx loom resume",
+		Resume:             "lym loom resume",
 		ExecutableSetting:  TemplateSetting,
 		Segments: map[string]shedrecipe.SegmentSettings{
 			"Discussion-Review": fullEnvSegment(3, "loom.yaml"),
@@ -466,7 +466,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			MarkWatched:          func(context.Context) (bool, error) { return false, nil },
 		},
 		Command: shedadapters.CommandDeps{
-			Lyx:     "lyx",
+			Lym:     "lym",
 			Slug:    "fullenv-slug",
 			TaskDir: func() (string, error) { return "", nil },
 			Dir:     dir,
@@ -474,7 +474,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			Run: func(context.Context, string, string, string, time.Duration) (shedadapters.CommandResult, error) {
 				return shedadapters.CommandResult{}, nil
 			},
-			Rerun: "lyx batten run fullenv-slug",
+			Rerun: "lym batten run fullenv-slug",
 		},
 	}
 }

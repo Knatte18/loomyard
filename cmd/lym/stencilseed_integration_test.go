@@ -1,0 +1,395 @@
+//go:build tier1
+
+// stencilseed_integration_test.go pins the root pre-run's stencil-seed path against real hubs.
+// stencilSeedTarget's hub-presence gate is pinned against the defect that a plain repository with no hub-level sibling used to seed a fictional hub, and against a narrowing onto preflight.Wired, which would stop seeding in three real-hub situations that seed correctly today.
+// seedStencilsAt is driven directly because seedStencils is a no-op under testing.Testing():
+// the first call seeds and commits both subtrees, and a second call writes nothing.
+// A command driven through the root is asserted to leave the hub unseeded under go test and never to widen its envelope with a mutations or partial key.
+
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/Knatte18/loomyard/internal/buildvcs"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+)
+
+// TestStencilSeedTarget_PlainRepoHasNoHub is the negative row and the defect this task exists to
+// close: a plain git repository with no hub-level sibling beside it must not be treated as a seed
+// target, and stencilSeedTarget must not have caused any hub-level _board directory to spring into
+// existence beside it.
+func TestStencilSeedTarget_PlainRepoHasNoHub(t *testing.T) {
+	t.Parallel()
+
+	repoDir := t.TempDir()
+	gitkit.Git(t, repoDir, "init")
+
+	ctx := lymcwd.WithCwd(t.Context(), repoDir)
+	hub, worktree, ok := stencilSeedTarget(ctx)
+	if ok {
+		t.Errorf("stencilSeedTarget(plain repo) ok = true, hub = %q, worktree = %q; want ok = false", hub, worktree)
+	}
+
+	// The absent path is pinned via fabricengine.BoardDir applied to the repository's parent
+	// directory, not a joined "_board" literal, per the geometry-literal enforcement walk.
+	wantAbsent := fabricengine.BoardDir(filepath.Dir(repoDir))
+	if _, err := os.Stat(wantAbsent); !os.IsNotExist(err) {
+		t.Errorf("stat %s after stencilSeedTarget(plain repo) = %v; want it still absent -- a plain repo with no hub-level sibling must never cause a hub-level _board directory to be created", wantAbsent, err)
+	}
+}
+
+// TestStencilSeeding_HubScenario drives seedStencilsAt and stencilSeedTarget against one hubforge hub.
+// The steps run serially in this order and the first-seed steps rely on the first seed that the "first seed" step performs; the last step removes a worktree, so it stays last.
+// The test calls t.Parallel but no step does, because the steps share the one hub fixture and its mutations.
+func TestStencilSeeding_HubScenario(t *testing.T) {
+	t.Parallel()
+
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	worktree := hub.PrimeWorktree()
+	stencilsDir := fabricengine.StencilsDir(hub.Path)
+	specsDir := fabricengine.SpecsDir(hub.Path)
+	specsSubtreeRel := fabricengine.SpecsSubtreeRel()
+	discussionPath := filepath.Join(stencilsDir, "loom", "loom-template-discussion.md")
+	specNames := []string{"loom-plan-spec", "loom-final-summary-spec"}
+	board := hub.BoardDir()
+	branch := gitkit.CurrentBranch(t, board)
+	unreachableOrigin := filepath.Join(t.TempDir(), "gone")
+	// The identity drives only the writer keys in the banners; the commit label always names the running test binary.
+	identity := buildvcs.Identity{Revision: "0123456789abcdef0123456789abcdef01234567", Time: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)}
+	seed := func() { seedStencilsAt(hub.Path, worktree, stencilstore.ModeProduction, identity) }
+	seedSubject := func(subtree string) string {
+		return fabricengine.SeedCommitMessage(subtree, fabricengine.BinaryLabel())
+	}
+	// moveUpstream commits a file on the records bare from a second clone.
+	moveUpstream := func(t *testing.T, rel string) string {
+		t.Helper()
+		other := filepath.Join(t.TempDir(), "other")
+		gitkit.Git(t, filepath.Dir(other), "clone", "--branch", branch, hub.RecordsBare, other)
+		sha := gitkit.CommitFile(t, other, rel, "upstream\n", "upstream: "+rel)
+		gitkit.Git(t, other, "push", "origin", branch)
+		return sha
+	}
+
+	if _, err := os.Stat(stencilsDir); !os.IsNotExist(err) {
+		t.Fatalf("precondition failed: %s already exists", stencilsDir)
+	}
+
+	if !t.Run("first seed writes the stencils and commits them", func(t *testing.T) {
+		seed()
+
+		if _, err := os.Stat(discussionPath); err != nil {
+			t.Fatalf("stat %s after seedStencilsAt: %v; want the seeded stencil to exist", discussionPath, err)
+		}
+		if status := gitkit.GitStatusPorcelain(t, hub.BoardDir()); status != "" {
+			t.Errorf("git status --porcelain in %s = %q after seedStencilsAt; want a clean tree, the seeded stencils committed", hub.BoardDir(), status)
+		}
+		want := seedSubject("specs") + "\n" + seedSubject("stencils")
+		if got := gitkit.Git(t, board, "log", "--format=%s", "-2"); got != want {
+			t.Errorf("last two commit subjects = %q, want %q: both seed commits, labelled with the running binary, still on Bolt", got, want)
+		}
+		if !strings.HasPrefix(seedSubject("stencils"), "lym: seed stencils (") || !strings.HasPrefix(seedSubject("specs"), "lym: seed specs (") {
+			t.Errorf("seed subjects %q and %q do not carry a parenthesised label", seedSubject("stencils"), seedSubject("specs"))
+		}
+	}) {
+		return
+	}
+
+	// Relies on the first seed: the specs subtree is what that call wrote alongside the stencils.
+	if !t.Run("first seed also seeds the specs subtree untouched", func(t *testing.T) {
+		for _, name := range specNames {
+			path := stencilstore.Path(specsDir, name)
+			onDisk, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read %s after seedStencilsAt: %v; want the seeded spec %q to exist", path, err, name)
+			}
+
+			hash, ok := stencilstore.ParseStamp(onDisk)
+			if !ok || hash == "" {
+				t.Errorf("stencilstore.ParseStamp(%s) = %q, %v; want a parseable, non-empty hash", path, hash, ok)
+			}
+
+			if state := stencilstore.Classify(onDisk, true, onDisk); state != stencilstore.StateUntouched {
+				t.Errorf("stencilstore.Classify(%s) = %v; want StateUntouched immediately after seeding", path, state)
+			}
+		}
+
+		attrsPath := filepath.Join(specsDir, ".gitattributes")
+		if _, err := os.Stat(attrsPath); err != nil {
+			t.Errorf("stat %s after seedStencilsAt: %v; want a seeded .gitattributes in the specs subtree", attrsPath, err)
+		}
+	}) {
+		return
+	}
+
+	// Relies on the first seed: git ls-files rather than os.Stat catches a write-but-never-stage defect.
+	if !t.Run("seeded specs files are tracked in the board repository", func(t *testing.T) {
+		stdout, stderr, exitCode, err := gitexec.RunGit([]string{"ls-files", specsSubtreeRel}, hub.BoardDir())
+		if err != nil || exitCode != 0 {
+			t.Fatalf("git ls-files %s (in %s) failed: %v (exit code %d); stderr: %s", specsSubtreeRel, hub.BoardDir(), err, exitCode, stderr)
+		}
+		if stdout == "" {
+			t.Fatalf("git ls-files %s (in %s) returned nothing; want the seeded specs files to be tracked", specsSubtreeRel, hub.BoardDir())
+		}
+
+		lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
+		for _, name := range specNames {
+			want := filepath.ToSlash(filepath.Join(specsSubtreeRel, stencilstore.RelPath(name)))
+			if !slices.Contains(lines, want) {
+				t.Errorf("git ls-files %s (in %s) = %q; want it to list %s", specsSubtreeRel, hub.BoardDir(), stdout, want)
+			}
+		}
+	}) {
+		return
+	}
+
+	// Relies on the first seed: the second call must leave what the first produced untouched.
+	if !t.Run("second seed writes nothing", func(t *testing.T) {
+		before := map[string][]byte{discussionPath: nil}
+		for _, name := range specNames {
+			before[stencilstore.Path(specsDir, name)] = nil
+		}
+		for path := range before {
+			content, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read %s after first seedStencilsAt: %v", path, err)
+			}
+			before[path] = content
+		}
+
+		// The seed commits are pushed, then the origin is made unreachable: a pass with nothing due must succeed without ever fetching.
+		gitkit.Git(t, board, "push", "origin", branch)
+		gitkit.Git(t, board, "remote", "set-url", "origin", unreachableOrigin)
+		tip := gitkit.RevParse(t, board, "HEAD")
+		logs := logcapture.Capture(t)
+
+		seed()
+
+		for path, want := range before {
+			got, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read %s after second seedStencilsAt: %v", path, err)
+			}
+			if string(got) != string(want) {
+				t.Errorf("%s changed on a second seedStencilsAt run; want it byte-identical to the first run's output", path)
+			}
+		}
+
+		if status := gitkit.GitStatusPorcelain(t, hub.BoardDir()); status != "" {
+			t.Errorf("git status --porcelain in %s after a second seedStencilsAt run = %q; want a clean tree", hub.BoardDir(), status)
+		}
+		if gitkit.RevParse(t, board, "HEAD") != tip || strings.Contains(logs.String(), "board not brought up to date") {
+			t.Errorf("a pass with nothing due touched Bolt: head %s, want %s; log %q", gitkit.RevParse(t, board, "HEAD"), tip, logs.String())
+		}
+	}) {
+		return
+	}
+
+	// Relies on the second seed: the origin is still unreachable.
+	if !t.Run("a deleted stencil is not reseeded while the origin is unreachable", func(t *testing.T) {
+		if err := os.Remove(discussionPath); err != nil {
+			t.Fatalf("delete the seeded stencil: %v", err)
+		}
+		logs := logcapture.Capture(t)
+
+		seed()
+
+		if _, err := os.Stat(discussionPath); !os.IsNotExist(err) {
+			t.Errorf("stat %s = %v; want it still deleted, since nothing is written when the fetch fails", discussionPath, err)
+		}
+		if !strings.Contains(logs.String(), string(fabricengine.BoltSkipFetchFailed)) {
+			t.Errorf("log %q does not carry the fetch Warn", logs.String())
+		}
+	}) {
+		return
+	}
+
+	// Relies on the deleted stencil: the reseed is what restores it.
+	if !t.Run("with the origin back and a moved upstream the reseed lands on the pulled copy", func(t *testing.T) {
+		gitkit.Git(t, board, "remote", "set-url", "origin", hub.RecordsBare)
+		upstream := moveUpstream(t, "notes/up.md")
+		// A later writer, so the reseeded banner differs from the committed copy and there is something to commit.
+		later := buildvcs.Identity{Revision: "fedcba9876543210fedcba9876543210fedcba98", Time: identity.Time.Add(time.Hour)}
+
+		seedStencilsAt(hub.Path, worktree, stencilstore.ModeProduction, later)
+
+		if _, err := os.Stat(discussionPath); err != nil {
+			t.Fatalf("stat %s: %v; want the stencil reseeded", discussionPath, err)
+		}
+		if !gitkit.IsAncestor(t, board, upstream, "HEAD") || gitkit.RevListCount(t, board, upstream+"..HEAD") != 1 {
+			t.Errorf("the reseed is not exactly one commit on top of upstream %s", upstream)
+		}
+		if got := gitkit.Git(t, board, "log", "--format=%s", "-1"); got != seedSubject("stencils") {
+			t.Errorf("reseed subject = %q, want %q", got, seedSubject("stencils"))
+		}
+	}) {
+		return
+	}
+
+	// Relies on the reseed: its seed commit is the one ahead of the moved upstream.
+	if !t.Run("a seed commit ahead of a moved upstream is dropped", func(t *testing.T) {
+		gitkit.Git(t, board, "push", "origin", branch)
+		gitkit.Git(t, board, "rm", "-q", "--", filepath.ToSlash(filepath.Join(fabricengine.StencilsSubtreeRel(), "loom", "loom-template-discussion.md")))
+		gitkit.Git(t, board, "commit", "-q", "-m", seedSubject("stencils"))
+		dropped := gitkit.RevParse(t, board, "HEAD")
+		upstream := moveUpstream(t, "notes/up2.md")
+
+		seed()
+
+		if gitkit.IsAncestor(t, board, dropped, "HEAD") {
+			t.Errorf("the seed commit %s survived the pull-first drop", dropped)
+		}
+		if _, err := os.Stat(discussionPath); err != nil {
+			t.Errorf("stat %s: %v; want the stencil back after the drop", discussionPath, err)
+		}
+		if got := gitkit.RevParse(t, board, "HEAD"); got != upstream {
+			t.Errorf("head = %s, want upstream %s: the drop leaves nothing to regenerate", got, upstream)
+		}
+	}) {
+		return
+	}
+
+	// Relies on the drop: the board is level with its upstream again.
+	if !t.Run("a board commit ahead of a moved upstream is replayed and the write runs", func(t *testing.T) {
+		boardkit.InstallReplay(t)
+		gitkit.CommitFile(t, board, "notes/card.md", "card\n", "board: add a card")
+		upstream := moveUpstream(t, "notes/up3.md")
+		if err := os.Remove(discussionPath); err != nil {
+			t.Fatalf("delete the seeded stencil: %v", err)
+		}
+
+		seed()
+
+		if _, err := os.Stat(discussionPath); err != nil {
+			t.Errorf("stat %s: %v; want the stencil written back after the replay", discussionPath, err)
+		}
+		if got, want := gitkit.Git(t, board, "log", "--format=%s", upstream+"..HEAD"), seedSubject("stencils")+"\nboard: add a card"; got != want {
+			t.Errorf("commits over the moved upstream = %q, want the written stencil's seed commit over the replayed board commit %q", got, want)
+		}
+		if got := gitkit.RevParse(t, board, "HEAD~2"); got != upstream {
+			t.Errorf("the replayed commit sits on %s, want the moved upstream %s", got, upstream)
+		}
+	}) {
+		return
+	}
+
+	// Relies on the replay: the board commit is still ahead of origin.
+	// The deleted file is a spec, a path no commit ahead touches, so the skip is the conflict and not a dirty path.
+	if !t.Run("a board commit conflicting with a moved upstream skips the write", func(t *testing.T) {
+		specPath := stencilstore.Path(specsDir, specNames[0])
+		tip := gitkit.RevParse(t, board, "HEAD")
+		moveUpstream(t, "notes/card.md")
+		if err := os.Remove(specPath); err != nil {
+			t.Fatalf("delete the seeded spec: %v", err)
+		}
+		logs := logcapture.Capture(t)
+
+		seed()
+
+		if _, err := os.Stat(specPath); !os.IsNotExist(err) {
+			t.Errorf("stat %s = %v; want it still deleted, since the write is skipped", specPath, err)
+		}
+		if gitkit.RevParse(t, board, "HEAD") != tip {
+			t.Errorf("head moved off the board commit %s", tip)
+		}
+		for _, want := range []string{"notes/card.md", "lym board sync"} {
+			if !strings.Contains(logs.String(), want) {
+				t.Errorf("log %q does not carry the divergence Warn naming %s", logs.String(), want)
+			}
+		}
+	}) {
+		return
+	}
+
+	// Every one of these target rows would fail if the gate were preflight.Wired instead of preflight.HubPresent, which is why they are here.
+	targets := []struct {
+		name string
+		// cwd returns the directory to inject as the resolved cwd; it may mutate the hub, so the rows run in order and the destructive row is last.
+		cwd          func(t *testing.T) string
+		wantWorktree string
+	}{
+		{
+			name:         "OrdinaryWorktreeInHub",
+			cwd:          func(t *testing.T) string { return hub.PrimeWorktree() },
+			wantWorktree: hub.PrimeWorktree(),
+		},
+		{
+			name:         "HubLevelBoardDirectory",
+			cwd:          func(t *testing.T) string { return hub.BoardDir() },
+			wantWorktree: fabricengine.BoardDir(hub.Path),
+		},
+		{
+			name: "WorktreeWithPairedSiblingRemoved",
+			cwd: func(t *testing.T) string {
+				if err := os.RemoveAll(hub.PrimeRecords()); err != nil {
+					t.Fatalf("remove paired-sibling worktree: %v", err)
+				}
+				return hub.PrimeWorktree()
+			},
+			wantWorktree: hub.PrimeWorktree(),
+		},
+	}
+	for _, tt := range targets {
+		if !t.Run("stencilSeedTarget "+tt.name, func(t *testing.T) {
+			ctx := lymcwd.WithCwd(t.Context(), tt.cwd(t))
+			gotHub, gotWorktree, ok := stencilSeedTarget(ctx)
+			if !ok {
+				t.Fatalf("stencilSeedTarget(%s) ok = false; want true", tt.name)
+			}
+			if gotHub != hub.Path {
+				t.Errorf("stencilSeedTarget(%s) hub = %q; want %q", tt.name, gotHub, hub.Path)
+			}
+			if gotWorktree != tt.wantWorktree {
+				t.Errorf("stencilSeedTarget(%s) worktree = %q; want %q", tt.name, gotWorktree, tt.wantWorktree)
+			}
+		}) {
+			return
+		}
+	}
+}
+
+// TestSeedStencils_NoOpAndEnvelopeUnderRoot drives one read-only command through the root against a real hub and asserts both that seedStencils stays a no-op under testing.Testing() -- without that guard every untagged cmd/lym test driving a Runnable command would spawn git -- and that the emitted JSON object carries neither a "mutations" nor a "partial" key, so a pre-run seed never widens a command's envelope.
+// It chdirs, which is process-global state, so it does not run in parallel.
+func TestSeedStencils_NoOpAndEnvelopeUnderRoot(t *testing.T) {
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	stencilsDir := fabricengine.StencilsDir(hub.Path)
+	if _, err := os.Stat(stencilsDir); !os.IsNotExist(err) {
+		t.Fatalf("precondition failed: %s already exists", stencilsDir)
+	}
+
+	t.Chdir(hub.PrimeWorktree())
+
+	var out bytes.Buffer
+	code := run([]string{"board", "--board-path", hub.BoardDir(), "list"}, &out)
+	if code != 0 {
+		t.Fatalf("run([board --board-path ... list]) exit = %d; want 0; output: %s", code, out.String())
+	}
+
+	if _, err := os.Stat(stencilsDir); !os.IsNotExist(err) {
+		t.Errorf("stat %s after run() under go test = %v; want it still absent -- seedStencils must be a no-op under testing.Testing()", stencilsDir, err)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatalf("unmarshal board list output: %v; output: %s", err, out.String())
+	}
+	for _, key := range []string{"mutations", "partial"} {
+		if _, has := result[key]; has {
+			t.Errorf("board list envelope carries a %q key; want none -- a pre-run seed must never widen a command's envelope", key)
+		}
+	}
+}

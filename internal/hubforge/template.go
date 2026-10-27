@@ -19,8 +19,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxtemp"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 )
 
 // TemplatePairSlug is the slug of the one pair a pair-carrying Shape's template is built with.
@@ -87,7 +87,7 @@ func templateFor(tb testing.TB, shape Shape) *hubTemplate {
 
 	defer markFixtureBuild()()
 
-	root, err := lyxtemp.MkdirTemp(templatePrefix + "*")
+	root, err := lymtemp.MkdirTemp(templatePrefix + "*")
 	if err != nil {
 		tb.Fatalf("hubforge: template %q: mkdir: %v", name, err)
 	}
@@ -164,7 +164,7 @@ func CopyHub(tb testing.TB, shape Shape) *Hub {
 	return hub
 }
 
-// commitRelocatedBinding folds the board checkout's relocated `.lyx-warp` binding into the board's one commit and force-pushes it to the copy's own records bare.
+// commitRelocatedBinding folds the board checkout's relocated `.lym-warp` binding into the board's one commit and force-pushes it to the copy's own records bare.
 // The relocation rewrites the binding's working-tree file, but the committed blob, compressed in the object store, still names the template's warp bare;
 // amending the commit leaves the board clean against its HEAD and its upstream, with the one-commit history a fresh hub's board has.
 func commitRelocatedBinding(tb testing.TB, boardDir string) {
@@ -211,9 +211,9 @@ func hubAt(tb testing.TB, root string, shape Shape) *Hub {
 		return filepath.Join(root, rel)
 	}
 
-	loc, err := lyxcwd.Resolve(rebase(template.primeCwd))
+	loc, err := lymcwd.Resolve(rebase(template.primeCwd))
 	if err != nil {
-		tb.Fatalf("hubAt: lyxcwd.Resolve(%s): %v", rebase(template.primeCwd), err)
+		tb.Fatalf("hubAt: lymcwd.Resolve(%s): %v", rebase(template.primeCwd), err)
 	}
 
 	registerTeardown(tb, rebase(template.hub.Path))

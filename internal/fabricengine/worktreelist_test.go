@@ -163,11 +163,9 @@ func TestList_ParsesPrunable(t *testing.T) {
 // repository fails with an error that carries BOTH local context (the source directory and git's
 // exit code) AND git's own explanation.
 //
-// The earlier rule here was that git's stderr must never appear. That rule left the operator with a
-// bare exit number as the sole account of a git failure — a live round watched two simultaneous
-// `lyx fabric add` calls report "failed (git exit 255)" with git's actual reason discarded — while
-// nineteen other RunGit sites in this same package already printed stderr. Local context alone is
-// not a diagnosis;
+// The earlier rule here was that git's stderr must never appear.
+// That rule left the operator with a bare exit number as the sole account of a git failure — a live round watched two simultaneous `lym fabric add` calls report "failed (git exit 255)" with git's actual reason discarded — while nineteen other RunGit sites in this same package already printed stderr.
+// Local context alone is not a diagnosis;
 // the context is what tells the operator WHERE, and git's stderr is what tells them WHY.
 //
 //testtiming:keep List outside any git repository failing with both the local context and git's own explanation; coverage of its blocks by other tests does not show an assertion of this

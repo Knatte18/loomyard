@@ -5,7 +5,7 @@
 // The binary also runs under tmux isolation through tmuxkit.Main.
 //
 // This file is required rather than tidy: card 19's integration test drives RunCLIIn, which now
-// reaches preflight.ResolveMode and through it lyxcwd.Resolve's real `git rev-parse` spawn, in a
+// reaches preflight.ResolveMode and through it lymcwd.Resolve's real `git rev-parse` spawn, in a
 // package that spawns git from no test today. The Hermetic Git Test Environment guard is
 // token-keyed and will not catch a spawn reached indirectly through a CLI seam, so nothing else
 // would flag the gap.

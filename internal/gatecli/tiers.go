@@ -1,4 +1,4 @@
-// tiers.go plans the tier runs of one `lyx gate test` call from the loaded gate config and the request, and renders a tier's command.
+// tiers.go plans the tier runs of one `lym gate test` call from the loaded gate config and the request, and renders a tier's command.
 
 package gatecli
 
@@ -24,7 +24,7 @@ const (
 	scopeVet     = "vet"
 )
 
-// roleClause closes every refusal that sends the caller to `lyx config gate`: the steps need the prime, so any other session reports and the orch takes them.
+// roleClause closes every refusal that sends the caller to `lym config gate`: the steps need the prime, so any other session reports and the orch takes them.
 const roleClause = "; a session that is not the prime takes none of these steps; it reports status: FAILED and the orch runs them"
 
 // invocation is one run of a tier's command: the directory it runs in and the words its {targets} takes.
@@ -68,7 +68,7 @@ func tierName(number int) string {
 // A guard run is a placeholder whose packages and names the run fills from sc.guards.
 // A covered tier is named on request.stderr when it has one.
 // A tier a no-test-class scope runs whole is named on request.stderr when it has one.
-// It refuses, naming `lyx config gate`, a hub with no tier0, an undeclared tier, a dangling covers entry, words after `--` for a tier whose command lacks {args}, a guard group whose tier is undeclared or whose command lacks {targets} or {args}, and --guards under the none scoper.
+// It refuses, naming `lym config gate`, a hub with no tier0, an undeclared tier, a dangling covers entry, words after `--` for a tier whose command lacks {args}, a guard group whose tier is undeclared or whose command lacks {targets} or {args}, and --guards under the none scoper.
 // It refuses --guards under the dotnet scoper too, naming only dropping --guards, since no config change gives a C# hub the guard tests.
 func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun, error) {
 	if _, err := cfg.Tier(0); err != nil {
@@ -235,9 +235,9 @@ func vetStepRun(cfg gateslot.Config, number int, goBinary string, modules []modu
 	}, nil
 }
 
-// configRefusal returns a refusal that sends the caller to `lyx config gate` and closes with the role clause.
+// configRefusal returns a refusal that sends the caller to `lym config gate` and closes with the role clause.
 func configRefusal(format string, args ...any) error {
-	return fmt.Errorf("gate test: %s; way forward: fix it with \"lyx config gate\" from the prime%s", fmt.Sprintf(format, args...), roleClause)
+	return fmt.Errorf("gate test: %s; way forward: fix it with \"lym config gate\" from the prime%s", fmt.Sprintf(format, args...), roleClause)
 }
 
 // listedTiers returns the tier numbers request names, ascending and without repeats: the --tier values and, with --upto N, every tier cfg declares numbered 0 through N that is not manual.
@@ -348,7 +348,7 @@ func filterArgument(goos string, number int, tier gateslot.Tier, terms []string)
 	}
 	quoted, err := verifyrun.QuoteArg(goos, expression)
 	if err != nil {
-		return "", fmt.Errorf("gate test: the filter of %s cannot be quoted for the shell: %w; way forward: fix the tier's filter with \"lyx config gate\" from the prime%s", tierName(number), err, roleClause)
+		return "", fmt.Errorf("gate test: the filter of %s cannot be quoted for the shell: %w; way forward: fix the tier's filter with \"lym config gate\" from the prime%s", tierName(number), err, roleClause)
 	}
 	return "--filter " + quoted, nil
 }

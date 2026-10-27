@@ -1,6 +1,6 @@
 //go:build tier0
 
-// beamdown_test.go pins that `lyx beam stop` removes the orch strand first and then ends the dobby only when it is live, so a second call stops nothing.
+// beamdown_test.go pins that `lym beam stop` removes the orch strand first and then ends the dobby only when it is live, so a second call stops nothing.
 
 package orchcli
 

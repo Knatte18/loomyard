@@ -151,7 +151,7 @@ func appendClaudeHook(t *testing.T, fx *recoverFixture, hook string, at time.Tim
 		t.Fatalf("open events file %s: %v", path, err)
 	}
 	defer f.Close()
-	if _, err := fmt.Fprintf(f, "{\"lyx_stamp\":%q,\"lyx_at\":%q}\n%s\n", hook, at.UTC().Format(time.RFC3339), line); err != nil {
+	if _, err := fmt.Fprintf(f, "{\"lym_stamp\":%q,\"lym_at\":%q}\n%s\n", hook, at.UTC().Format(time.RFC3339), line); err != nil {
 		t.Fatalf("append %s hook to %s: %v", hook, path, err)
 	}
 }

@@ -28,7 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -42,17 +42,17 @@ import (
 )
 
 // driveRefusal is the refusal of a second Go driver for a run one already drives.
-const driveRefusal = "loom: drive: a Go driver already drives this run; way forward: transient, `lyx loom status` shows the run, and the live driver settles it"
+const driveRefusal = "loom: drive: a Go driver already drives this run; way forward: transient, `lym loom status` shows the run, and the live driver settles it"
 
 // driveCmd builds the hidden `drive` subcommand.
 func (c *loomCLI) driveCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "drive",
 		Hidden:      true,
-		Short:       "drive this worktree's go-seeded loom run, settling its stops by rule (spawned by lyx loom start)",
+		Short:       "drive this worktree's go-seeded loom run, settling its stops by rule (spawned by lym loom start)",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
-		Long: `drive is the Go driver of a go-seeded loom run, spawned by lyx loom start, by
-lyx loom resume and by a hand-over from a driver of an older build. It steps the
+		Long: `drive is the Go driver of a go-seeded loom run, spawned by lym loom start, by
+lym loom resume and by a hand-over from a driver of an older build. It steps the
 run through the --until-stop loop, settles each stop by a closed rule table, asks
 a cold tackler agent about a stop no rule settles, and hands everything it cannot
 settle back to the run's parent in a stop report.
@@ -71,7 +71,7 @@ once. It removes the park marker and the resume report on start.`,
 				Path:        shedrun.DriverLock(c.location, c.runID),
 				Stale:       stale,
 				Refusal:     driveRefusal,
-				RetryClause: "re-run lyx loom drive or lyx loom start",
+				RetryClause: "re-run lym loom drive or lym loom start",
 			}
 			clihelp.SetExit(ctx, sheddriver.DriveVerb(cmd.OutOrStdout(), driveLock, func(release func() error) (map[string]any, error) {
 				deps, err := c.goDriverDepsFor(release)
@@ -89,7 +89,7 @@ once. It removes the park marker and the resume report on start.`,
 }
 
 // driveEnvelopePath composes the path of one saved stop envelope, sheddriver.EnvelopeFileName's drive-envelope-<compact-timestamp>-<4-hex>.json beside the run's drive reports.
-func driveEnvelopePath(l *lyxcwd.Location, runID string, now func() time.Time, rand func() string) string {
+func driveEnvelopePath(l *lymcwd.Location, runID string, now func() time.Time, rand func() string) string {
 	return filepath.Join(shedrun.DriveReportsDir(l, runID), sheddriver.EnvelopeFileName(now(), rand()))
 }
 
@@ -136,7 +136,7 @@ func loomArbiterSeam(arbiterDeps shedarbiter.Deps, runID string) *sheddriver.Arb
 
 // goDriverDepsFor assembles the Go driver's seams for the run the pre-run armed.
 // release is the driver lock's early release, which the hand-over calls before it spawns its successor.
-// Every closure reads on demand, and the on-disk lyx path is resolved once, here.
+// Every closure reads on demand, and the on-disk lym path is resolved once, here.
 func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error) {
 	arbiterDeps, err := c.arbiterDepsFor()
 	if err != nil {
@@ -148,7 +148,7 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 	}
 	executable, err := os.Executable()
 	if err != nil {
-		return sheddriver.Deps{}, fmt.Errorf("loom: drive: resolve the lyx executable: %w", err)
+		return sheddriver.Deps{}, fmt.Errorf("loom: drive: resolve the lym executable: %w", err)
 	}
 
 	location := c.location
@@ -361,7 +361,7 @@ func writeDrivePausedNote(frictionDir, runID string, stop sheddriver.Stop) error
 
 // worktreeSnapshot reads the state of the task's code worktree a tackler must leave as it found it: HEAD, branch and the SHA-256 of each tracked dirty path.
 // The records side is left out, since the run's own records change under every step.
-func worktreeSnapshot(location *lyxcwd.Location) (sheddriver.WorktreeSnapshot, error) {
+func worktreeSnapshot(location *lymcwd.Location) (sheddriver.WorktreeSnapshot, error) {
 	fab, err := fabricengine.Open(location)
 	if err != nil {
 		return sheddriver.WorktreeSnapshot{}, err
@@ -399,8 +399,8 @@ func worktreeSnapshot(location *lyxcwd.Location) (sheddriver.WorktreeSnapshot, e
 }
 
 // dirtyPathsOutsideRecords lists the pair's uncommitted or untracked paths outside the run's own records directories.
-// Both sides join onto the task worktree, since the records side reaches it through the `_lyx` junction.
-func dirtyPathsOutsideRecords(location *lyxcwd.Location, runID string) ([]string, error) {
+// Both sides join onto the task worktree, since the records side reaches it through the `_lym` junction.
+func dirtyPathsOutsideRecords(location *lymcwd.Location, runID string) ([]string, error) {
 	fab, err := fabricengine.Open(location)
 	if err != nil {
 		return nil, err
@@ -435,9 +435,9 @@ func newestAttemptsFor(tacklerDir, arbiterDir string, key sheddriver.StopKey) (t
 	return tackler, arbiter, tacklerApplied, nil
 }
 
-// spawnDetachedDrive starts `lyx loom drive` from the lyx at exe for the task worktree l as a detached process, its output appended to the driver log, and returns its pid.
+// spawnDetachedDrive starts `lym loom drive` from the lym at exe for the task worktree l as a detached process, its output appended to the driver log, and returns its pid.
 // The child is reaped in the background, so a driver that exits at once never reads alive as a zombie.
-func spawnDetachedDrive(l *lyxcwd.Location, exe string) (int, error) {
+func spawnDetachedDrive(l *lymcwd.Location, exe string) (int, error) {
 	logPath := loomengine.LoomDriverLog(l)
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
 		return 0, err

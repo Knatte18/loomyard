@@ -15,16 +15,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// commitAnchorMarker commits a .lyx-anchor holding anchor, and an empty file under the anchor directory, in the pair's records worktree.
+// commitAnchorMarker commits a .lym-anchor holding anchor, and an empty file under the anchor directory, in the pair's records worktree.
 func commitAnchorMarker(t *testing.T, h *hubforge.Hub, slug, anchor string) {
 	t.Helper()
 
 	root := h.PairRecordsSibling(slug)
-	if err := os.WriteFile(filepath.Join(root, lyxcwd.AnchorFileName), []byte(anchor+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, lymcwd.AnchorFileName), []byte(anchor+"\n"), 0o644); err != nil {
 		t.Fatalf("write the marker of %s: %v", slug, err)
 	}
 	if !strings.HasPrefix(anchor, "..") {
@@ -41,7 +41,7 @@ func commitAnchorMarker(t *testing.T, h *hubforge.Hub, slug, anchor string) {
 }
 
 // seedBattenRun gives slug a batten seed and status under the prime, so a pass reads it as a run of the prime's.
-func seedBattenRun(t *testing.T, prime *lyxcwd.Location, slug string) {
+func seedBattenRun(t *testing.T, prime *lymcwd.Location, slug string) {
 	t.Helper()
 
 	for path, content := range map[string]string{
@@ -69,14 +69,14 @@ func TestDobbyRuns_PairAtItsOwnAnchor(t *testing.T) {
 	}
 	commitAnchorMarker(t, h, "moved", "sub")
 
-	movedStatus := shedrun.StatusFile(&lyxcwd.Location{HubPath: h.Path, WorktreeName: "moved", AnchorRel: "sub"}, shedrun.SelfRunID)
+	movedStatus := shedrun.StatusFile(&lymcwd.Location{HubPath: h.Path, WorktreeName: "moved", AnchorRel: "sub"}, shedrun.SelfRunID)
 	if err := os.MkdirAll(filepath.Dir(movedStatus), 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", filepath.Dir(movedStatus), err)
 	}
 	if err := os.WriteFile(movedStatus, []byte(`{}`), 0o644); err != nil {
 		t.Fatalf("write %s: %v", movedStatus, err)
 	}
-	brokenStatus := shedrun.StatusFile(&lyxcwd.Location{HubPath: h.Path, WorktreeName: "broken", AnchorRel: "."}, shedrun.SelfRunID)
+	brokenStatus := shedrun.StatusFile(&lymcwd.Location{HubPath: h.Path, WorktreeName: "broken", AnchorRel: "."}, shedrun.SelfRunID)
 
 	pauseRecord := filepath.Join(t.TempDir(), "pause.json")
 	geom := dobbyengine.Geometry{}
@@ -103,7 +103,7 @@ func TestDobbyRuns_PairAtItsOwnAnchor(t *testing.T) {
 		if _, listed := dirs[filepath.Dir(brokenStatus)]; !listed {
 			t.Errorf("dobbyWatchDirs() = %v; want the other pair's status directory %s", dirs, filepath.Dir(brokenStatus))
 		}
-		if _, listed := dirs[filepath.Dir(shedrun.StatusFile(&lyxcwd.Location{HubPath: h.Path, WorktreeName: "moved", AnchorRel: "."}, shedrun.SelfRunID))]; listed {
+		if _, listed := dirs[filepath.Dir(shedrun.StatusFile(&lymcwd.Location{HubPath: h.Path, WorktreeName: "moved", AnchorRel: "."}, shedrun.SelfRunID))]; listed {
 			t.Errorf("dobbyWatchDirs() = %v; want no status directory of the moved pair at the prime's anchor", dirs)
 		}
 	})
@@ -112,7 +112,7 @@ func TestDobbyRuns_PairAtItsOwnAnchor(t *testing.T) {
 		commitAnchorMarker(t, h, "broken", "../out")
 
 		views, err := battencli.DobbyRuns(prime, geom, newParents(), pauseRecord)
-		if !errors.Is(err, lyxcwd.ErrInvalidAnchor) || !strings.Contains(err.Error(), "broken") {
+		if !errors.Is(err, lymcwd.ErrInvalidAnchor) || !strings.Contains(err.Error(), "broken") {
 			t.Fatalf("dobbyRuns() = %v, %v; want an error naming the pair and wrapping ErrInvalidAnchor", views, err)
 		}
 

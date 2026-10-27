@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 func TestWriteSeed_ReadSeed_RoundTrip(t *testing.T) {
@@ -196,7 +196,7 @@ func TestRecipeNames(t *testing.T) {
 }
 
 // writeLegacySeedFile creates l's self run directory holding raw seed.json bytes.
-func writeLegacySeedFile(t *testing.T, l *lyxcwd.Location, body string) {
+func writeLegacySeedFile(t *testing.T, l *lymcwd.Location, body string) {
 	t.Helper()
 	if err := os.MkdirAll(RunDir(l, "self"), 0o755); err != nil {
 		t.Fatal(err)
@@ -252,8 +252,8 @@ func TestWriteSeed_RefusesDisagreeingSeed(t *testing.T) {
 	if !strings.Contains(err.Error(), RecipeLoom) || !strings.Contains(err.Error(), RecipeBatten) {
 		t.Errorf("WriteSeed() error = %q; want it to name both the existing (%q) and incoming (%q) recipe", err.Error(), RecipeLoom, RecipeBatten)
 	}
-	if !strings.Contains(err.Error(), "way forward:") || !strings.Contains(err.Error(), "lyx shed status self") {
-		t.Errorf("WriteSeed() error = %q; want a way forward naming lyx shed status for the run", err.Error())
+	if !strings.Contains(err.Error(), "way forward:") || !strings.Contains(err.Error(), "lym shed status self") {
+		t.Errorf("WriteSeed() error = %q; want a way forward naming lym shed status for the run", err.Error())
 	}
 
 	// The way forward taken: driving the existing seed means re-writing it unchanged, which is idempotent.
@@ -340,7 +340,7 @@ func TestList_MissingParentDirectory(t *testing.T) {
 }
 
 func TestMissingSeedMessage(t *testing.T) {
-	got := MissingSeedMessage("lyx batten step", "example-run", []string{"b-run", "a-run"}, "seed a run first")
+	got := MissingSeedMessage("lym batten step", "example-run", []string{"b-run", "a-run"}, "seed a run first")
 	if !strings.Contains(got, "example-run") {
 		t.Errorf("MissingSeedMessage() = %q; want it to name the addressed run-id", got)
 	}
@@ -356,7 +356,7 @@ func TestMissingSeedMessage(t *testing.T) {
 }
 
 func TestMissingSeedMessage_EmptyListing(t *testing.T) {
-	got := MissingSeedMessage("lyx batten step", "example-run", nil, "seed a run first")
+	got := MissingSeedMessage("lym batten step", "example-run", nil, "seed a run first")
 	if !strings.Contains(got, "no run is seeded yet") {
 		t.Errorf("MissingSeedMessage() = %q; want it to say plainly that no run is seeded yet", got)
 	}

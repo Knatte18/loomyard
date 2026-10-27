@@ -14,7 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -28,7 +28,7 @@ func TestBurlerGeometry(t *testing.T) {
 	// target is deliberately not under stateDir, since that is the whole reason
 	// WorktreeRoot and AnchorPath exist as separate fields.
 	target := filepath.Join(string(filepath.Separator), "home", "operator", "src", "distinctive-repo-name")
-	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lyx-state", "abcd1234")
+	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lym-state", "abcd1234")
 
 	hash8 := "abcd1234"
 
@@ -56,21 +56,21 @@ func TestBurlerGeometry(t *testing.T) {
 	}
 }
 
-// TestStandaloneDirs pins each told-stateDir directory builder to its own subdirectory of stateDir, and that no two of them converge: StencilsDir and SpecsDir are separate directories under the durable lyx directory, and LogsDir is a third under the ephemeral one, deliberately a different directory from the "logs" directory ReedGeometry's LogsDir field names for a different producer.
+// TestStandaloneDirs pins each told-stateDir directory builder to its own subdirectory of stateDir, and that no two of them converge: StencilsDir and SpecsDir are separate directories under the durable lym directory, and LogsDir is a third under the ephemeral one, deliberately a different directory from the "logs" directory ReedGeometry's LogsDir field names for a different producer.
 func TestStandaloneDirs(t *testing.T) {
 	t.Parallel()
 
-	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lyx-state", "abcd1234")
+	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lym-state", "abcd1234")
 
 	cases := []struct {
 		name string
 		got  string
 		want string
 	}{
-		{"StencilsDir", StencilsDir(stateDir), filepath.Join(stateDir, lyxdirs.LyxDirName, "stencils")},
-		{"SpecsDir", SpecsDir(stateDir), filepath.Join(stateDir, lyxdirs.LyxDirName, "specs")},
-		{"LogsDir", LogsDir(stateDir), filepath.Join(stateDir, lyxdirs.DotLyxDirName, "logs")},
-		{"PauseGeometry", PauseGeometry(stateDir).RecordPath, filepath.Join(stateDir, lyxdirs.DotLyxDirName, lyxdirs.PauseDirName, pauserecord.RecordFileName)},
+		{"StencilsDir", StencilsDir(stateDir), filepath.Join(stateDir, lymdirs.LymDirName, "stencils")},
+		{"SpecsDir", SpecsDir(stateDir), filepath.Join(stateDir, lymdirs.LymDirName, "specs")},
+		{"LogsDir", LogsDir(stateDir), filepath.Join(stateDir, lymdirs.DotLymDirName, "logs")},
+		{"PauseGeometry", PauseGeometry(stateDir).RecordPath, filepath.Join(stateDir, lymdirs.DotLymDirName, lymdirs.PauseDirName, pauserecord.RecordFileName)},
 	}
 	if slug := PauseGeometry(stateDir).Slug; slug != "" {
 		t.Errorf("PauseGeometry(%q).Slug = %q; want empty", stateDir, slug)
@@ -103,7 +103,7 @@ func TestReedGeometry(t *testing.T) {
 	// target is deliberately not under stateDir, since that is the whole reason
 	// AnchorPath and PaneCwd exist as separate fields.
 	target := filepath.Join(string(filepath.Separator), "home", "operator", "src", "distinctive-repo-name")
-	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lyx-state", "abcd1234")
+	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lym-state", "abcd1234")
 	hash8 := "abcd1234"
 
 	got := ReedGeometry(target, stateDir, hash8)
@@ -118,7 +118,7 @@ func TestReedGeometry(t *testing.T) {
 		t.Errorf("ReedGeometry() NameSlug/ParentName = %q/%q; want both empty", got.NameSlug, got.ParentName)
 	}
 
-	if want := "lyx-" + hash8; got.SocketKey != want {
+	if want := "lym-" + hash8; got.SocketKey != want {
 		t.Errorf("ReedGeometry().SocketKey = %q; want %q", got.SocketKey, want)
 	}
 	if want := "distinctive-repo-name-" + hash8; got.SessionName != want {
@@ -162,7 +162,7 @@ func TestReedGeometry(t *testing.T) {
 func TestReedGeometry_SessionNameSanitizesTheReadableHalf(t *testing.T) {
 	t.Parallel()
 
-	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lyx-state", "abcd1234")
+	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lym-state", "abcd1234")
 	hash8 := "abcd1234"
 
 	cases := []struct {
@@ -205,7 +205,7 @@ func TestWebsterGeometry(t *testing.T) {
 	t.Parallel()
 
 	target := filepath.Join(string(filepath.Separator), "home", "operator", "src", "distinctive-repo-name")
-	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lyx-state", "abcd1234")
+	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lym-state", "abcd1234")
 
 	got := WebsterGeometry(target, stateDir)
 
@@ -238,7 +238,7 @@ func TestWebsterGeometry(t *testing.T) {
 	if want := planparser.PlanDir(stateDir); got.PlanDir != want {
 		t.Errorf("WebsterGeometry().PlanDir = %q; want %q", got.PlanDir, want)
 	}
-	if want := filepath.Join(stateDir, lyxdirs.LyxDirName, "stencils"); got.StencilsDir != want {
+	if want := filepath.Join(stateDir, lymdirs.LymDirName, "stencils"); got.StencilsDir != want {
 		t.Errorf("WebsterGeometry().StencilsDir = %q; want %q", got.StencilsDir, want)
 	}
 	// This equality pins the one-construction-site property: WebsterGeometry's StencilsDir
@@ -246,7 +246,7 @@ func TestWebsterGeometry(t *testing.T) {
 	if want := StencilsDir(stateDir); got.StencilsDir != want {
 		t.Errorf("WebsterGeometry().StencilsDir = %q; want %q (StencilsDir(stateDir))", got.StencilsDir, want)
 	}
-	if want := filepath.Join(stateDir, lyxdirs.LyxDirName, "specs"); got.SpecsDir != want {
+	if want := filepath.Join(stateDir, lymdirs.LymDirName, "specs"); got.SpecsDir != want {
 		t.Errorf("WebsterGeometry().SpecsDir = %q; want %q", got.SpecsDir, want)
 	}
 	// This equality pins the one-construction-site property: WebsterGeometry's SpecsDir field
@@ -264,8 +264,8 @@ func TestWebsterGeometry(t *testing.T) {
 	if withConfig.GateConfig == nil {
 		t.Fatal("WebsterGeometry().GateConfig = nil; want the worktree's gate config reader")
 	}
-	if _, err := withConfig.GateConfig(); err == nil || !strings.Contains(err.Error(), "lyx config gate") {
-		t.Errorf("GateConfig() over a worktree with no gate.yaml = %v; want an error naming lyx config gate", err)
+	if _, err := withConfig.GateConfig(); err == nil || !strings.Contains(err.Error(), "lym config gate") {
+		t.Errorf("GateConfig() over a worktree with no gate.yaml = %v; want an error naming lym config gate", err)
 	}
 	configFile := configengine.ConfigFile(realTarget, "gate")
 	if err := os.MkdirAll(filepath.Dir(configFile), 0o755); err != nil {

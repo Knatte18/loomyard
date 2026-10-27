@@ -18,7 +18,7 @@
 // A comma-plus-conjunction break that opens no clause, such as one that joins a list item or a compound predicate, is a finding.
 // An uncertain case errs toward flagging, since joining the two lines always passes.
 // A finding is the line of a checked break that passes none of these.
-// A directive comment (`//go:`, `//lyx:`, `//testtiming:`, `//nolint`) ends the block it sits in, so the prose above it is still checked.
+// A directive comment (`//go:`, `//lym:`, `//testtiming:`, `//nolint`) ends the block it sits in, so the prose above it is still checked.
 // A paragraph, the lines of a block between blank comment lines, is skipped whole when any of its lines is indented code, a doc-comment list item or a heading.
 // The paragraphs around it are still checked.
 // A generated file is skipped whole.

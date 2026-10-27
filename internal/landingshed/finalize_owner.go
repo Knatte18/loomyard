@@ -15,7 +15,7 @@ import (
 const OwnerHaltPrefix = "owner check: "
 
 // ownerRerun is the way forward of an owner check that could not be judged: the run's re-entry once the cause is gone.
-const ownerRerun = `re-run "lyx loom resume" in the task worktree`
+const ownerRerun = `re-run "lym loom resume" in the task worktree`
 
 // ownerChecks halts a landing on a machine that does not own the run and its parent.
 // stop is false when the landing may go on, including a run whose pair has no batten run record, which the reconcile judges not at all and so reads as owned here.
@@ -74,7 +74,7 @@ func (fz *Finalize) ownerChecks(ctx context.Context) (shedengine.Outcome, sheden
 	return fz.ownerHalt(ctx, ownerHaltReason(fz.deps.Slug, fz.adoptSubject(), runOwner, parent))
 }
 
-// adoptSubject reads what `lyx adopt` takes to move the run, "" when no seam is wired or the read fails, which ownerHaltReason reads as the slug.
+// adoptSubject reads what `lym adopt` takes to move the run, "" when no seam is wired or the read fails, which ownerHaltReason reads as the slug.
 func (fz *Finalize) adoptSubject() string {
 	if fz.deps.AdoptSubject == nil {
 		return ""
@@ -94,7 +94,7 @@ func (fz *Finalize) ownerHalt(ctx context.Context, reason string) (shedengine.Ou
 }
 
 // ownerHaltReason words the reason of an owner halt for the run slug.
-// subject is what `lyx adopt` takes to move the run, the beam or `root`, and reads as slug when empty.
+// subject is what `lym adopt` takes to move the run, the beam or `root`, and reads as slug when empty.
 // runOwner is the machine owning the run, empty when this machine does; the parent is judged by parent.Here.
 // Each wording names the owners at fault and the adopt commands that move them, with `root` for the prime.
 func ownerHaltReason(slug, subject, runOwner string, parent ParentOwnership) string {
@@ -105,19 +105,19 @@ func ownerHaltReason(slug, subject, runOwner string, parent ParentOwnership) str
 	if parent.Slug != "" {
 		parentSubject, parentName = parent.Slug, fmt.Sprintf("the parent pair %q", parent.Slug)
 	}
-	adoptParentHere := "lyx adopt " + parentSubject
-	adoptRunWithParent := fmt.Sprintf("lyx adopt %s %s --keep-local", parentSubject, subject)
+	adoptParentHere := "lym adopt " + parentSubject
+	adoptRunWithParent := fmt.Sprintf("lym adopt %s %s --keep-local", parentSubject, subject)
 	if parentSubject == subject {
-		adoptRunWithParent = fmt.Sprintf("lyx adopt %s --keep-local", subject)
+		adoptRunWithParent = fmt.Sprintf("lym adopt %s --keep-local", subject)
 	}
-	adoptOnParentOwner := fmt.Sprintf(`run "lyx adopt %s" on machine %q`, subject, parent.Owner)
+	adoptOnParentOwner := fmt.Sprintf(`run "lym adopt %s" on machine %q`, subject, parent.Owner)
 
 	switch {
 	case runOwner == "":
 		return fmt.Sprintf(`%s is owned by machine %q, so this machine does not land on it; way forward: adopt it here with "%s", which resumes the halted run, or %s, which stops at its first step and names "--keep-local" and "--drop-local" when that machine drove the run before and holds local commits or a live pair for it`,
 			parentName, parent.Owner, adoptParentHere, adoptOnParentOwner)
 	case parent.Here:
-		return fmt.Sprintf(`this run is owned by machine %q, so this machine does not land it; way forward: run "lyx adopt %s --keep-local" here`, runOwner, subject)
+		return fmt.Sprintf(`this run is owned by machine %q, so this machine does not land it; way forward: run "lym adopt %s --keep-local" here`, runOwner, subject)
 	default:
 		return fmt.Sprintf(`this run is owned by machine %q and %s by machine %q, so this machine lands neither; way forward: %s, or run "%s" here`,
 			runOwner, parentName, parent.Owner, adoptOnParentOwner, adoptRunWithParent)
@@ -157,5 +157,5 @@ func (fz *Finalize) adopterFirstRepair(parentHandle parentMerger) string {
 	if len(commits) > 1 {
 		repair = fmt.Sprintf(`run "git rebase --onto %s~1 %s %s" in the parent's worktree, and on a conflict run "git rebase --abort" and drop the squash by hand`, squash, squash, fz.deps.ParentBranch)
 	}
-	return fmt.Sprintf(`; origin's parent branch already holds this task's work, so this machine's squash %s duplicates it; way forward: %s, then run "lyx fabric remove %s", leaving the owner pause standing`, squash, repair, fz.deps.Slug)
+	return fmt.Sprintf(`; origin's parent branch already holds this task's work, so this machine's squash %s duplicates it; way forward: %s, then run "lym fabric remove %s", leaving the owner pause standing`, squash, repair, fz.deps.Slug)
 }

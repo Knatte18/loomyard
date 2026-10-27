@@ -7,7 +7,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -39,7 +39,7 @@ Steps, in order:
   6. each moved run not done that this machine now owns is resumed as a detached first
      pass, a beam's pawl run only when this machine also owns its parent; a child halted
      at Finalize's owner check is resumed
-  7. the beam steps of the prime with root and of each adopted beam, as "lyx beam start"
+  7. the beam steps of the prime with root and of each adopted beam, as "lym beam start"
      runs them: its dobby and orch; a beam whose landing holds it gets none
   8. the finalize gate starts detached in the prime; red only reports
 
@@ -48,9 +48,9 @@ beam_steps, prime_beam_steps, and suite or suite_warning. A slug's error never s
 the others.
 
 Example:
-  lyx adopt payments
-  lyx adopt root
-  lyx adopt --all --keep-local`,
+  lym adopt payments
+  lym adopt root
+  lym adopt --all --keep-local`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -58,12 +58,12 @@ Example:
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
-			cwd, err := lyxcwd.CwdFrom(ctx)
+			cwd, err := lymcwd.CwdFrom(ctx)
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
-			location, err := lyxcwd.Resolve(cwd)
+			location, err := lymcwd.Resolve(cwd)
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
@@ -122,7 +122,7 @@ func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value seeds cwd into the execution context, because lyxcwd.WithCwd panics on an empty directory.
+// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value seeds cwd into the execution context, because lymcwd.WithCwd panics on an empty directory.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)

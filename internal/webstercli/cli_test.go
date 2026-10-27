@@ -23,7 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/testkit/indexkit"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
@@ -79,7 +79,7 @@ func TestFabricSync_GuardOrdering(t *testing.T) {
 			t.Setenv("FABRIC_SKIP_PUSH", "")
 
 			hub := t.TempDir()
-			layout := &lyxcwd.Location{HubPath: hub, WorktreeName: filepath.Base(filepath.Join(hub, "pair")), AnchorRel: "."}
+			layout := &lymcwd.Location{HubPath: hub, WorktreeName: filepath.Base(filepath.Join(hub, "pair")), AnchorRel: "."}
 			open := func() (*fabricengine.Fabric, error) { return fabricengine.Open(layout) }
 
 			committed, err := fabricSync(open, layout.AnchorRel, "guard probe")
@@ -111,7 +111,7 @@ func TestFabricSync_GuardOrdering(t *testing.T) {
 func newTestCLI(t *testing.T) (*websterCLI, string) {
 	t.Helper()
 	hub := t.TempDir()
-	layout := &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "backend"}
+	layout := &lymcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "backend"}
 	c := &websterCLI{
 		cfg:        websterengine.Config{},
 		geom:       hubGeometryWithIndex(layout),
@@ -488,7 +488,7 @@ func seedTwoCardGlyphPlanDir(t *testing.T, planDir, worktreeRoot string) {
 }
 
 // TestValidateCmd_ScopeFollowsRunProgress is R4-07's direct regression test.
-// The verb advertises itself as the gate "lyx webster run" applies, and Run scopes that gate by the run's begun cards;
+// The verb advertises itself as the gate "lym webster run" applies, and Run scopes that gate by the run's begun cards;
 // validate ran the whole-plan check set unconditionally, so the instant one Create card landed the verb exited 1 over a plan Run resumes without complaint.
 //
 // One plan drives every row.
@@ -632,7 +632,7 @@ func TestValidateCmd_RefusesBackwardPlanWithNoRun(t *testing.T) {
 	if exitCode != 1 {
 		t.Fatalf("validate of a backward plan with no run recorded = %d; want 1, output: %s", exitCode, out.String())
 	}
-	for _, want := range []string{"batch order: dependency on a later batch", "lyx webster rebaseline --card NN", "lyx webster run --fresh"} {
+	for _, want := range []string{"batch order: dependency on a later batch", "lym webster rebaseline --card NN", "lym webster run --fresh"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output missing %q; got %q", want, out.String())
 		}
@@ -691,7 +691,7 @@ func TestValidateCmd_RebaselinesStalePlanFingerprint(t *testing.T) {
 }
 
 // TestBringUpDisposition_RecoverAndRun proves the two verbs that spawn an agent boot the standalone reed session first.
-// recover-batch is R4-11's regression: it spawns a COLD recovery strand through reed.AddStrand, which needs a live reed session, but it never called the in-process bring-up seam wireStandalone arms, so in standalone mode (where the session is gone once a run ends) it failed inside AddStrand advising `lyx reed up`, a hub-only verb that cannot reach standalone geometry.
+// recover-batch is R4-11's regression: it spawns a COLD recovery strand through reed.AddStrand, which needs a live reed session, but it never called the in-process bring-up seam wireStandalone arms, so in standalone mode (where the session is gone once a run ends) it failed inside AddStrand advising `lym reed up`, a hub-only verb that cannot reach standalone geometry.
 // Its batch 99 exists in no plan, so findBatch refuses it immediately: the bring-up message can only win over the batch-not-found message if the guard runs before the spawn machinery, which makes this an ordering proof.
 // Each row's fake returns an error so the call ends right after the reedUp check, never reaching the spawn.
 func TestBringUpDisposition_RecoverAndRun(t *testing.T) {
@@ -1287,7 +1287,7 @@ func TestRebaselineCmd_Refusals(t *testing.T) {
 				})
 				return []string{"--card", "1"}
 			},
-			wantIn: []string{"1) lyx webster reset --to start; 2) lyx webster run"},
+			wantIn: []string{"1) lym webster reset --to start; 2) lym webster run"},
 		},
 		{
 			name: "named card of a done batch",
@@ -1422,7 +1422,7 @@ func TestRunStateVerbs_NoRunRefusal(t *testing.T) {
 		wantIn string
 	}{
 		{"accept-audit", (*websterCLI).acceptAuditCmd, "webster run"},
-		{"restore-plan", (*websterCLI).restorePlanCmd, "lyx webster run"},
+		{"restore-plan", (*websterCLI).restorePlanCmd, "lym webster run"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

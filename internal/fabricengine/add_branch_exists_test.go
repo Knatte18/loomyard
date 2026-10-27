@@ -36,7 +36,7 @@ func TestAdd_ExistingBranchErrorNamesRemedy(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Add(%q) error = nil; want branch-already-exists rejection", slug)
 	}
-	for _, want := range []string{"already exists", "lyx fabric checkout " + slug, "git branch -D " + slug, "lyx fabric add <slug> --adopt-local"} {
+	for _, want := range []string{"already exists", "lym fabric checkout " + slug, "git branch -D " + slug, "lym fabric add <slug> --adopt-local"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("Add(%q) error = %q; want substring %q", slug, err.Error(), want)
 		}
@@ -45,7 +45,7 @@ func TestAdd_ExistingBranchErrorNamesRemedy(t *testing.T) {
 
 // TestAdd_LeftoverWorktreeDirErrorNamesRemedy plants a bare directory at the warp worktree path for a
 // slug whose branch does not exist, so Add reaches its dir-exists guard, and asserts the error names
-// the leftover-cleanup recovery (F4): a stranded directory is invisible to `lyx fabric list`/`prune`,
+// the leftover-cleanup recovery (F4): a stranded directory is invisible to `lym fabric list`/`prune`,
 // so a bare "already exists" left an operator with no path forward.
 func TestAdd_LeftoverWorktreeDirErrorNamesRemedy(t *testing.T) {
 	t.Parallel()

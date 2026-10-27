@@ -1,5 +1,5 @@
 // anchordeps.go fills the verb's anchorDeps over a hub: the board's owners, the reed, run, gate and hibernate readers, the parent lock, the dobby end and start, and the engine's change.
-// Every dobby, reed and run reader goes through the same internal package the rest of lyx reads that state with.
+// Every dobby, reed and run reader goes through the same internal package the rest of lym reads that state with.
 
 package fabriccli
 
@@ -23,8 +23,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/proc"
@@ -44,7 +44,7 @@ const hibernateRequestFileName = "request.json"
 // hibernateDaemonLive reports whether the hub's hibernate request names a daemon that is still running.
 // A hub with no request file has none.
 func hibernateDaemonLive(hub string) (bool, error) {
-	path := filepath.Join(fabricengine.HubScratchDir(hub), lyxdirs.HibernateDirName, hibernateRequestFileName)
+	path := filepath.Join(fabricengine.HubScratchDir(hub), lymdirs.HibernateDirName, hibernateRequestFileName)
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return false, nil
@@ -64,7 +64,7 @@ func hibernateDaemonLive(hub string) (bool, error) {
 
 // hubAnchorDeps fills anchorDeps over the hub of acting.
 // The prime is resolved again at each call that needs it, since a move of the prime changes the anchor its geometry is told.
-func hubAnchorDeps(acting *lyxcwd.Location) (anchorDeps, error) {
+func hubAnchorDeps(acting *lymcwd.Location) (anchorDeps, error) {
 	primeName, err := fabricengine.PrimeName(acting)
 	if err != nil {
 		return anchorDeps{}, err
@@ -72,7 +72,7 @@ func hubAnchorDeps(acting *lyxcwd.Location) (anchorDeps, error) {
 	hub := acting.HubPath
 	boardDir := fabricengine.BoardDir(hub)
 	runProcDir := fabricengine.RunProcDir(hub)
-	prime := func() (*lyxcwd.Location, error) { return lyxcwd.NamedWorktree(hub, primeName) }
+	prime := func() (*lymcwd.Location, error) { return lymcwd.NamedWorktree(hub, primeName) }
 	// dobbyOwner is the owner a worktree's dobby registers its process under.
 	dobbyOwner := func(worktree string) string {
 		if worktree == primeName {
@@ -85,14 +85,14 @@ func hubAnchorDeps(acting *lyxcwd.Location) (anchorDeps, error) {
 		GOOS:   runtime.GOOS,
 		Acting: acting.WorktreeName,
 		Prime:  primeName,
-		Worktree: func(slug string) (*lyxcwd.Location, bool, error) {
+		Worktree: func(slug string) (*lymcwd.Location, bool, error) {
 			if slug != primeName {
 				present, err := pairPresent(acting, slug)
 				if err != nil || !present {
 					return nil, false, err
 				}
 			}
-			location, err := lyxcwd.NamedWorktree(hub, slug)
+			location, err := lymcwd.NamedWorktree(hub, slug)
 			return location, err == nil, err
 		},
 		IsBeam: func(slug string) (bool, error) {
@@ -129,28 +129,28 @@ func hubAnchorDeps(acting *lyxcwd.Location) (anchorDeps, error) {
 			}
 			return owners.AdoptSubject(slug, func(entry string) (string, error) { return hubgeom.ParentOf(primeLocation, entry) })
 		},
-		UpstreamAnchor: func(location *lyxcwd.Location) (string, bool, error) {
+		UpstreamAnchor: func(location *lymcwd.Location) (string, bool, error) {
 			names, err := fabricengine.RepoWiredNames(location)
 			if err != nil {
 				return "", false, err
 			}
 			return fabricengine.UpstreamAnchor(location, names)
 		},
-		MoveRecord: func(location *lyxcwd.Location) (fabricengine.MoveRecord, bool, error) {
+		MoveRecord: func(location *lymcwd.Location) (fabricengine.MoveRecord, bool, error) {
 			return fabricengine.ReadMoveRecord(fabricengine.RecordsWorktreePath(location, location.WorktreeName))
 		},
 		ReedHeld: reedHeld,
-		DriverLockHeld: func(location *lyxcwd.Location) (bool, error) {
+		DriverLockHeld: func(location *lymcwd.Location) (bool, error) {
 			return lockHeld(shedrun.DriverLock(location, shedrun.SelfRunID))
 		},
-		BattenLive: func(location *lyxcwd.Location) (bool, error) {
+		BattenLive: func(location *lymcwd.Location) (bool, error) {
 			records, err := runproc.List(runProcDir, location.WorktreeName)
 			return hasProcessRole(records, runproc.RoleBatten), err
 		},
-		RunUnfinished: func(location *lyxcwd.Location) (bool, error) {
+		RunUnfinished: func(location *lymcwd.Location) (bool, error) {
 			return runStatusUnfinished(shedrun.StatusFile(location, shedrun.SelfRunID))
 		},
-		UpstreamRunUnfinished: func(location *lyxcwd.Location) (bool, error) {
+		UpstreamRunUnfinished: func(location *lymcwd.Location) (bool, error) {
 			names, err := fabricengine.RepoWiredNames(location)
 			if err != nil {
 				return false, err
@@ -183,7 +183,7 @@ func hubAnchorDeps(acting *lyxcwd.Location) (anchorDeps, error) {
 			}
 			var held []string
 			for _, worktree := range worktrees {
-				location, err := lyxcwd.NamedWorktree(hub, worktree)
+				location, err := lymcwd.NamedWorktree(hub, worktree)
 				if err != nil {
 					return nil, err
 				}
@@ -233,8 +233,8 @@ func hubAnchorDeps(acting *lyxcwd.Location) (anchorDeps, error) {
 				return nil
 			}
 		},
-		Note: func(line string) { fmt.Fprintln(os.Stderr, "lyx fabric anchor: "+line) },
-		AcquireParentLock: func(ctx context.Context, location *lyxcwd.Location) (func(), error) {
+		Note: func(line string) { fmt.Fprintln(os.Stderr, "lym fabric anchor: "+line) },
+		AcquireParentLock: func(ctx context.Context, location *lymcwd.Location) (func(), error) {
 			return acquireBranchLock(ctx, location, boardDir)
 		},
 		EndDobbies: func(worktrees []string, spare ...string) ([]string, error) {
@@ -261,7 +261,7 @@ func hubAnchorDeps(acting *lyxcwd.Location) (anchorDeps, error) {
 			_, err = dobbyengine.EnsureLive(hubgeom.DobbyStart(primeLocation), worktrees)
 			return err
 		},
-		Begin: func(location *lyxcwd.Location, target string) (anchorChange, error) {
+		Begin: func(location *lymcwd.Location, target string) (anchorChange, error) {
 			cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(location))
 			if err != nil {
 				return nil, err
@@ -280,7 +280,7 @@ func hubAnchorDeps(acting *lyxcwd.Location) (anchorDeps, error) {
 }
 
 // pairPresent reports whether the hub holds a pair called slug on this machine: a registered, unpruned worktree whose directory exists.
-func pairPresent(acting *lyxcwd.Location, slug string) (bool, error) {
+func pairPresent(acting *lymcwd.Location, slug string) (bool, error) {
 	worktrees, err := hubWorktrees(acting)
 	if err != nil {
 		return false, err
@@ -289,7 +289,7 @@ func pairPresent(acting *lyxcwd.Location, slug string) (bool, error) {
 }
 
 // hubWorktrees lists the names of the hub's warp worktrees that are registered, unpruned and present on disk, the prime included.
-func hubWorktrees(acting *lyxcwd.Location) ([]string, error) {
+func hubWorktrees(acting *lymcwd.Location) ([]string, error) {
 	entries, err := fabricengine.List(acting.AnchorPath())
 	if err != nil {
 		return nil, err
@@ -310,7 +310,7 @@ func hubWorktrees(acting *lyxcwd.Location) ([]string, error) {
 
 // foreignOwner returns the machine other than this one that the board at boardDir names as the effective owner of slug, empty when none does.
 // The prime reads as the board's prime owner.
-func foreignOwner(prime *lyxcwd.Location, boardDir, slug string) (string, error) {
+func foreignOwner(prime *lymcwd.Location, boardDir, slug string) (string, error) {
 	machine, err := machinename.Name()
 	if err != nil {
 		return "", fmt.Errorf("this machine's name is unknown: %w", err)
@@ -332,14 +332,14 @@ func foreignOwner(prime *lyxcwd.Location, boardDir, slug string) (string, error)
 	return owner, nil
 }
 
-// reedHeld reports whether the reed state under location's anchored `.lyx` holds a session or a strand, live or stored.
-// A worktree with no `.lyx` directory holds none, and the read creates none.
-func reedHeld(location *lyxcwd.Location) (bool, error) {
-	dotLyx := filepath.Join(fabricengine.WorktreePath(location, location.WorktreeName), location.AnchorRel, lyxdirs.DotLyxDirName)
-	if _, err := os.Stat(dotLyx); errors.Is(err, fs.ErrNotExist) {
+// reedHeld reports whether the reed state under location's anchored `.lym` holds a session or a strand, live or stored.
+// A worktree with no `.lym` directory holds none, and the read creates none.
+func reedHeld(location *lymcwd.Location) (bool, error) {
+	dotLym := filepath.Join(fabricengine.WorktreePath(location, location.WorktreeName), location.AnchorRel, lymdirs.DotLymDirName)
+	if _, err := os.Stat(dotLym); errors.Is(err, fs.ErrNotExist) {
 		return false, nil
 	}
-	state, err := reedengine.LoadState(dotLyx)
+	state, err := reedengine.LoadState(dotLym)
 	if err != nil || state == nil {
 		return false, err
 	}
@@ -385,7 +385,7 @@ func runStatusUnfinished(path string) (bool, error) {
 
 // dobbyPassInFlight describes the pass of the dobby of worktree that is in flight, empty when none is.
 // A pass is in flight while a run the dobby drives holds its driver lock, or while the dobby has a live child process other than a registered push or board sync, which a spawned pass not yet holding its lock is.
-func dobbyPassInFlight(acting *lyxcwd.Location, primeName, runProcDir, owner, worktree string) (string, error) {
+func dobbyPassInFlight(acting *lymcwd.Location, primeName, runProcDir, owner, worktree string) (string, error) {
 	records, err := runproc.List(runProcDir, owner)
 	if err != nil {
 		return "", err
@@ -422,7 +422,7 @@ func dobbyPassInFlight(acting *lyxcwd.Location, primeName, runProcDir, owner, wo
 		}
 	}
 
-	prime, err := lyxcwd.NamedWorktree(acting.HubPath, primeName)
+	prime, err := lymcwd.NamedWorktree(acting.HubPath, primeName)
 	if err != nil {
 		return "", err
 	}
@@ -444,7 +444,7 @@ func dobbyPassInFlight(acting *lyxcwd.Location, primeName, runProcDir, owner, wo
 		if parent != worktree {
 			continue
 		}
-		location, err := lyxcwd.NamedWorktree(acting.HubPath, pair)
+		location, err := lymcwd.NamedWorktree(acting.HubPath, pair)
 		if err != nil {
 			return "", err
 		}
@@ -458,7 +458,7 @@ func dobbyPassInFlight(acting *lyxcwd.Location, primeName, runProcDir, owner, wo
 }
 
 // acquireBranchLock takes the parent lock of the branch checked out in location's code worktree as the calling process, queuing behind a holder, and returns the release.
-func acquireBranchLock(ctx context.Context, location *lyxcwd.Location, boardDir string) (func(), error) {
+func acquireBranchLock(ctx context.Context, location *lymcwd.Location, boardDir string) (func(), error) {
 	branch, err := gitrepo.New(fabricengine.WorktreePath(location, location.WorktreeName)).CurrentBranch()
 	if err != nil {
 		return nil, fmt.Errorf("read the branch of %s to lock it: %w", location.WorktreeName, err)
@@ -473,7 +473,7 @@ func acquireBranchLock(ctx context.Context, location *lyxcwd.Location, boardDir 
 		StartTime: startTime,
 	}
 	waiter := parentlock.Waiter{OnWait: func(holder parentlock.Record) {
-		fmt.Fprintf(os.Stderr, "lyx fabric anchor: waiting for the parent lock of %s, held by %s\n", branch, holder.Owner.Slug)
+		fmt.Fprintf(os.Stderr, "lym fabric anchor: waiting for the parent lock of %s, held by %s\n", branch, holder.Owner.Slug)
 	}}
 	if _, err := store.Acquire(ctx, branch, owner, waiter); err != nil {
 		return nil, fmt.Errorf("take the parent lock of %s: %w", branch, err)

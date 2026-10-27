@@ -75,7 +75,7 @@ type loopWaitResult struct {
 // anything else spawns a loop and follows it.
 func runUntilStop(ctx context.Context, spec *Spec, argv []string, out io.Writer) int {
 	loop := spec.Loop
-	rerun := fmt.Sprintf("lyx shed step %s --until-stop", spec.RunID)
+	rerun := fmt.Sprintf("lym shed step %s --until-stop", spec.RunID)
 	if err := os.MkdirAll(filepath.Dir(loop.EnvelopePath), 0o755); err != nil {
 		return output.Err(out, fmt.Sprintf("shedverbs: create the loop directory: %v; way forward: re-run %s", err, rerun))
 	}
@@ -500,7 +500,7 @@ func loopExitStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, detail str
 
 	var buf bytes.Buffer
 	if failed.Busy {
-		text := fmt.Sprintf("shedverbs: the run lock is held, so the dead loop of run %s is not yet stopped; way forward: re-run lyx shed step %s --until-stop once the holder ends", spec.RunID, spec.RunID)
+		text := fmt.Sprintf("shedverbs: the run lock is held, so the dead loop of run %s is not yet stopped; way forward: re-run lym shed step %s --until-stop once the holder ends", spec.RunID, spec.RunID)
 		obj.Stop, obj.Detail = LoopStopBusy, text
 		step := map[string]any{"kind": KindBusy, "transient": "", "run_id": spec.RunID, "trace_file": logger.TraceFile(), "envelope_path": ""}
 		output.ErrFields(&buf, text, loopEnvelope(step, obj))

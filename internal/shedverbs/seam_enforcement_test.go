@@ -40,10 +40,10 @@ var shedverbsAllowedImports = []string{
 	"github.com/spf13/cobra",
 }
 
-// shedverbsDeniedLyxcwdImport is the exact import path the no-resolver clause excludes from this
+// shedverbsDeniedLymcwdImport is the exact import path the no-resolver clause excludes from this
 // package's production files, named here so a violation of that specific rule is reported by name
 // rather than only implied by its absence from the allowlist above.
-const shedverbsDeniedLyxcwdImport = "github.com/Knatte18/loomyard/internal/lyxcwd"
+const shedverbsDeniedLymcwdImport = "github.com/Knatte18/loomyard/internal/lymcwd"
 
 // isModuleCLIImportPath reports whether importPath has the <module>cli shape this package must
 // never import: an internal/ path whose final segment ends in "cli".
@@ -62,7 +62,7 @@ func isModuleCLIImportPath(importPath string) bool {
 
 // TestNoResolverNoModuleCLIInvariant_AllowlistOnly verifies that every non-test .go file in this
 // package imports only stdlib or an entry in shedverbsAllowedImports, and separately asserts that no
-// production import path is shedverbsDeniedLyxcwdImport or matches the <module>cli shape.
+// production import path is shedverbsDeniedLymcwdImport or matches the <module>cli shape.
 func TestNoResolverNoModuleCLIInvariant_AllowlistOnly(t *testing.T) {
 	scankit.AssertImportAllowlistNoStale(t, "internal/shedverbs", shedverbsAllowedImports...)
 
@@ -71,7 +71,7 @@ func TestNoResolverNoModuleCLIInvariant_AllowlistOnly(t *testing.T) {
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal/shedverbs"}, Shallow: true}, func(f *scankit.File) {
 		for _, imp := range f.AST(t, parser.ImportsOnly).Imports {
 			importPath := strings.Trim(imp.Path.Value, `"`)
-			if importPath == shedverbsDeniedLyxcwdImport {
+			if importPath == shedverbsDeniedLymcwdImport {
 				deniedFound = append(deniedFound, f.Rel)
 			}
 			if isModuleCLIImportPath(importPath) {
@@ -82,7 +82,7 @@ func TestNoResolverNoModuleCLIInvariant_AllowlistOnly(t *testing.T) {
 	scankit.RequireFloor(t, scanned, 1, "shedverbs denied-import scan")
 
 	if len(deniedFound) > 0 {
-		t.Errorf("no-resolver seam violated; %s imported directly in: %v", shedverbsDeniedLyxcwdImport, deniedFound)
+		t.Errorf("no-resolver seam violated; %s imported directly in: %v", shedverbsDeniedLymcwdImport, deniedFound)
 	}
 	if len(moduleCLIFound) > 0 {
 		t.Errorf("no-<module>cli seam violated; a <module>cli-shaped import was found in: %v", moduleCLIFound)

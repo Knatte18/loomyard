@@ -16,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // TestWriteCarryOver_Real_CommitsTheRecordAlone asserts writeCarryOver puts the segment's entry into the decision record and commits that record and nothing else.
@@ -25,7 +25,7 @@ func TestWriteCarryOver_Real_CommitsTheRecordAlone(t *testing.T) {
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	const slug = "carryoverrecord"
 	hubforge.AddPair(t, hub, slug)
-	location, err := lyxcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
+	location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
 	if err != nil {
 		t.Fatalf("ResolveWorktree error = %v; want nil", err)
 	}
@@ -58,7 +58,7 @@ func TestWriteCarryOver_Real_CommitsTheRecordAlone(t *testing.T) {
 		t.Fatalf("read decision record: %v", err)
 	}
 	record := string(recordBytes)
-	for _, want := range []string{"<!-- lyx:carry-over Plan-Review -->", "cache-key (class design, severity MEDIUM, open in rounds 1, 2)", "<!-- /lyx:carry-over Plan-Review -->"} {
+	for _, want := range []string{"<!-- lym:carry-over Plan-Review -->", "cache-key (class design, severity MEDIUM, open in rounds 1, 2)", "<!-- /lym:carry-over Plan-Review -->"} {
 		if !strings.Contains(record, want) {
 			t.Errorf("decision record does not contain %q:\n%s", want, record)
 		}

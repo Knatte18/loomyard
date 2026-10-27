@@ -19,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -352,7 +352,7 @@ func TestDobbyRunCells_ReadsTheRunsFromDisk(t *testing.T) {
 	cells := NewDobbyRunCells(prime, pauseRecordPath)
 	cells.childStatus = func(string) (string, error) { return childStatusPath, nil }
 	childPair := locationkit.Location(t.TempDir(), "run-a", ".")
-	cells.childPair = func(string) (*lyxcwd.Location, error) { return childPair, nil }
+	cells.childPair = func(string) (*lymcwd.Location, error) { return childPair, nil }
 	if err := shedrun.WriteSeed(childPair, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo}); err != nil {
 		t.Fatal(err)
 	}
@@ -427,7 +427,7 @@ func TestDobbyRunCells_ReadsTheRunsFromDisk(t *testing.T) {
 	seedless := locationkit.Location(t.TempDir(), "run-c", ".")
 	cells2 := NewDobbyRunCells(prime2, pauseRecordPath)
 	cells2.childStatus = func(string) (string, error) { return childStatusPath, nil }
-	cells2.childPair = func(slug string) (*lyxcwd.Location, error) {
+	cells2.childPair = func(slug string) (*lymcwd.Location, error) {
 		if slug == "run-d" {
 			return nil, errors.New("no pair")
 		}
@@ -458,7 +458,7 @@ func TestDobbyRunCells_ResolvesTheChildPairAgainInEachRunShedSpell(t *testing.T)
 	}
 	writeOverviewFile(t, filepath.Join(worktree, ".git", "HEAD"), []byte("ref: refs/heads/main\n"), minutesAgo(200))
 	// The hub-wide marker anchors every worktree that records none of its own.
-	marker := filepath.Join(fabricengine.BoardDir(hub), lyxcwd.AnchorFileName)
+	marker := filepath.Join(fabricengine.BoardDir(hub), lymcwd.AnchorFileName)
 	setAnchor := func(anchorRel string) {
 		t.Helper()
 		writeOverviewFile(t, marker, []byte(anchorRel+"\n"), minutesAgo(1))
@@ -607,9 +607,9 @@ func TestOrchsAtOrBelow(t *testing.T) {
 		}
 		return parent, nil
 	}
-	var locations []*lyxcwd.Location
+	var locations []*lymcwd.Location
 	for _, name := range []string{"main", "a", "a-child", "a-grandchild", "b", "broken", "loop-x", "loop-y"} {
-		locations = append(locations, &lyxcwd.Location{WorktreeName: name})
+		locations = append(locations, &lymcwd.Location{WorktreeName: name})
 	}
 
 	tests := []struct {

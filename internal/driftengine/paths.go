@@ -6,14 +6,14 @@ import (
 	"path"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // driftDirName is the directory segment both the durable and the ephemeral drift directory carry.
 const driftDirName = "drift"
 
 // Paths holds every path the drift module reads or writes, joined onto one anchor root.
-// The durable files lie under _lyx/drift and are fabric-synced; the ephemeral files lie under .lyx/drift and are never tracked.
+// The durable files lie under _lym/drift and are fabric-synced; the ephemeral files lie under .lym/drift and are never tracked.
 type Paths struct {
 	// Scope is the durable scope record.
 	Scope string
@@ -41,8 +41,8 @@ type Paths struct {
 
 // NewPaths returns the drift paths joined onto the told anchor root.
 func NewPaths(anchorRoot string) Paths {
-	durable := filepath.Join(anchorRoot, lyxdirs.LyxDirName, driftDirName)
-	ephemeral := filepath.Join(anchorRoot, lyxdirs.DotLyxDirName, driftDirName)
+	durable := filepath.Join(anchorRoot, lymdirs.LymDirName, driftDirName)
+	ephemeral := filepath.Join(anchorRoot, lymdirs.DotLymDirName, driftDirName)
 	return Paths{
 		Scope:          filepath.Join(durable, "scope.json"),
 		BaselineReport: filepath.Join(durable, "baseline.md"),
@@ -58,7 +58,7 @@ func NewPaths(anchorRoot string) Paths {
 	}
 }
 
-// DirRel returns the durable drift directory relative to the anchor root, `_lyx/drift`, always forward-slashed, for a commit pathspec.
+// DirRel returns the durable drift directory relative to the anchor root, `_lym/drift`, always forward-slashed, for a commit pathspec.
 func DirRel() string {
-	return path.Join(lyxdirs.LyxDirName, driftDirName)
+	return path.Join(lymdirs.LymDirName, driftDirName)
 }

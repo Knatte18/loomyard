@@ -1,4 +1,4 @@
-// byname.go resolves a strand's name to its guid, and waits out a parent process, for `lyx reed remove --name`.
+// byname.go resolves a strand's name to its guid, and waits out a parent process, for `lym reed remove --name`.
 // A strand that removes itself (the loom driver) cannot know its own guid when its prompt is composed,
 // but it does know its role segment.
 

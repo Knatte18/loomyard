@@ -1,6 +1,6 @@
-// codebinding.go owns the .lyx-warp warp-URL binding: a plain single-line record kept at the board
+// codebinding.go owns the .lym-warp warp-URL binding: a plain single-line record kept at the board
 // root, recorded once on weft:main.
-// It holds the warp URL only, never the subpath — each worktree's .lyx-anchor, at its weft root, owns that.
+// It holds the warp URL only, never the subpath — each worktree's .lym-anchor, at its weft root, owns that.
 // The record is written to disk here but committed onto weft:main by the CLI layer through Bolt;
 // this file spawns no git and never calls Bolt itself.
 
@@ -14,7 +14,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // ErrNoWarpBinding matches, under errors.Is, the refusal of a weft that records no warp binding when none was supplied: resolveEffectiveWarpURL's and CloneHub's one-argument form's.
@@ -23,20 +23,16 @@ var ErrNoWarpBinding = errors.New("no recorded warp binding")
 // ErrWarpBindingMismatch matches, under errors.Is, resolveEffectiveWarpURL's refusal to re-point a recorded binding at a different warp URL.
 var ErrWarpBindingMismatch = errors.New("warp binding mismatch")
 
-// WarpBindingFileName is the filename of the recorded warp-URL binding at the board root
-// (<boardDir>/.lyx-warp).
+// WarpBindingFileName is the filename of the recorded warp-URL binding at the board root (<boardDir>/.lym-warp).
 // It holds only the warp URL string, plus a trailing newline.
-// This is a structural per-repo record, written once at clone and read on every subsequent clone or
-// reconcile — never a config or env override.
-// It is distinct from lyxcwd.AnchorFileName: the anchor says where in warp lyx is rooted, this says
-// which warp repo the weft pairs with.
-// Exported because both fabricengine_test integration tests and this package's own reconcile code
-// need to name the file.
-const WarpBindingFileName = ".lyx-warp"
+// This is a structural per-repo record, written once at clone and read on every subsequent clone or reconcile — never a config or env override.
+// It is distinct from lymcwd.AnchorFileName: the anchor says where in warp lym is rooted, this says which warp repo the weft pairs with.
+// Exported because both fabricengine_test integration tests and this package's own reconcile code need to name the file.
+const WarpBindingFileName = ".lym-warp"
 
-// readWarpBinding reads the recorded warp-URL binding from <boardDir>/.lyx-warp and reports whether a
+// readWarpBinding reads the recorded warp-URL binding from <boardDir>/.lym-warp and reports whether a
 // usable URL was found.
-// It mirrors lyxcwd's readRecordedAnchor: any read error (an absent board directory, an absent
+// It mirrors lymcwd's readRecordedAnchor: any read error (an absent board directory, an absent
 // binding file, or an unreadable file) and an empty-after-trim result both report ("", false), so the
 // caller treats a corrupt or missing record the same as a genuinely unbound weft.
 func readWarpBinding(boardDir string) (warpURL string, found bool) {
@@ -56,7 +52,7 @@ func readWarpBinding(boardDir string) (warpURL string, found bool) {
 // the warp binding recorded at the hub's board dir, else the origin remote of l's warp worktree.
 // The binding wins when both exist, since it is the hub's recorded pairing.
 // It returns an error naming both sources when neither yields a URL.
-func HubRepoURL(l *lyxcwd.Location) (string, error) {
+func HubRepoURL(l *lymcwd.Location) (string, error) {
 	if recorded, found := readWarpBinding(BoardDir(l.HubPath)); found {
 		return recorded, nil
 	}
@@ -67,7 +63,7 @@ func HubRepoURL(l *lyxcwd.Location) (string, error) {
 	return origin, nil
 }
 
-// writeWarpBinding writes warpURL plus a trailing newline to <boardDir>/.lyx-warp, replacing any
+// writeWarpBinding writes warpURL plus a trailing newline to <boardDir>/.lym-warp, replacing any
 // existing content.
 // The caller is responsible for committing the result onto weft:main through Bolt;
 // this function only touches the working tree.
@@ -142,7 +138,7 @@ func resolveEffectiveWarpURL(recorded string, found bool, supplied string) (effe
 	if !found && supplied == "" {
 		return "", false, &sentinelError{
 			sentinel: ErrNoWarpBinding,
-			msg:      "weft has no recorded warp binding; supply the warp URL explicitly: lyx fabric clone <weft-url> <warp-url>",
+			msg:      "weft has no recorded warp binding; supply the warp URL explicitly: lym fabric clone <weft-url> <warp-url>",
 		}
 	}
 	if !found && supplied != "" {

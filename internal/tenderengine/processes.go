@@ -1,4 +1,4 @@
-// processes.go reads the processes registered to runs and the lyx processes no record owns, for the status report's processes part.
+// processes.go reads the processes registered to runs and the lym processes no record owns, for the status report's processes part.
 
 package tenderengine
 
@@ -12,11 +12,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/runproc"
 )
 
-// ProcessReport lists the run processes registered in the owner record and the lyx processes no record owns.
+// ProcessReport lists the run processes registered in the owner record and the lym processes no record owns.
 type ProcessReport struct {
 	// Owned holds each live registered process, grouped by owner in name order.
 	Owned []OwnedProcess `json:"owned"`
-	// Unregistered holds each lyx process in a deleted directory of the hub that no record owns.
+	// Unregistered holds each lym process in a deleted directory of the hub that no record owns.
 	Unregistered []StaleProcess `json:"unregistered"`
 	// UnregisteredSupported is false where the platform cannot list processes.
 	UnregisteredSupported bool `json:"unregistered_supported"`

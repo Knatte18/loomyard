@@ -23,8 +23,8 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -48,7 +48,7 @@ type turnHub struct {
 // newTurnHub forges a hub, chdirs into its prime worktree, brings reed up and builds a runner, tearing reed down at cleanup.
 func newTurnHub(t *testing.T) turnHub {
 	t.Helper()
-	llmkit.Claude(t, "LYX_REED_CLAUDE")
+	llmkit.Claude(t, "LYM_REED_CLAUDE")
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	deferHubRelease(t, h.Path)
 	registerReedServer(t, h)
@@ -237,7 +237,7 @@ func (w *turnWatch) keepOnFailure() {
 	w.mu.Lock()
 	data := w.events
 	w.mu.Unlock()
-	dir, err := makeKeepDir("lyx-turn-scenario-")
+	dir, err := makeKeepDir("lym-turn-scenario-")
 	if err != nil {
 		w.t.Logf("keep evidence: %v", err)
 		return
@@ -440,8 +440,8 @@ func TestSmokeTurnsSessionHooks(t *testing.T) {
 	stamped := map[string]bool{}
 	for _, line := range bytes.Split(events, []byte("\n")) {
 		var stamp struct {
-			Hook string `json:"lyx_stamp"`
-			At   string `json:"lyx_at"`
+			Hook string `json:"lym_stamp"`
+			At   string `json:"lym_at"`
 		}
 		if json.Unmarshal(line, &stamp) != nil || stamp.Hook == "" {
 			continue
@@ -702,15 +702,15 @@ func TestSmokeTurnsHookCapture(t *testing.T) {
 	evidence = append(evidence, "registry after /exit: "+registryEntries(t, sessionID))
 
 	// The pane is back at its shell after /exit, so reed's own resume sees it alive and relaunches nothing; type the strand's recorded resume command into it.
-	cwd, err := lyxcwd.Getwd()
+	cwd, err := lymcwd.Getwd()
 	if err != nil {
-		t.Fatalf("lyxcwd.Getwd: %v", err)
+		t.Fatalf("lymcwd.Getwd: %v", err)
 	}
-	layout, err := lyxcwd.Resolve(cwd)
+	layout, err := lymcwd.Resolve(cwd)
 	if err != nil {
-		t.Fatalf("lyxcwd.Resolve: %v", err)
+		t.Fatalf("lymcwd.Resolve: %v", err)
 	}
-	reedState, err := reedengine.LoadState(filepath.Join(layout.AnchorPath(), lyxdirs.DotLyxDirName))
+	reedState, err := reedengine.LoadState(filepath.Join(layout.AnchorPath(), lymdirs.DotLymDirName))
 	if err != nil || reedState == nil {
 		t.Fatalf("load reed state: %v", err)
 	}
@@ -735,7 +735,7 @@ func TestSmokeTurnsHookCapture(t *testing.T) {
 	evidence = append(evidence, "registry after the kill: "+registryEntries(t, sessionID))
 
 	readings := sampler.finish()
-	dir, err := makeKeepDir("lyx-hook-capture-")
+	dir, err := makeKeepDir("lym-hook-capture-")
 	if err != nil {
 		t.Fatalf("keep evidence: %v", err)
 	}
@@ -759,7 +759,7 @@ func TestSmokeTurnsHookCapture(t *testing.T) {
 }
 
 // keepDirEnv, when set, names the directory under which a scenario keeps its evidence instead of the OS temp dir, which a gate run removes with its package.
-const keepDirEnv = "LYX_TURN_KEEP_DIR"
+const keepDirEnv = "LYM_TURN_KEEP_DIR"
 
 // makeKeepDir creates a fresh evidence directory named by prefix under keepDirEnv's directory, or the OS temp dir when it is unset.
 func makeKeepDir(prefix string) (string, error) {

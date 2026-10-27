@@ -1,5 +1,5 @@
 // notice.go renders the run notices the Run-Shed row hands to InnerRunDeps.Notify, decides when a pending notice may go, and keeps the episode bookkeeping that holds each condition to one notice.
-// A notice is informational: it never changes the row's outcome, and the orch acts on it only through "lyx batten status <slug>".
+// A notice is informational: it never changes the row's outcome, and the orch acts on it only through "lym batten status <slug>".
 
 package battenshed
 
@@ -389,8 +389,8 @@ func (p *innerRunProducer) noticeCondition(ctx context.Context, w *childWait, se
 	return p.judgeAgents(ctx, w)
 }
 
-// loomStartRemedy is the step the operator takes to bring a driver back, which `lyx loom resume` does not: it never spawns an LLM driver.
-const loomStartRemedy = `run "lyx loom start" in the task worktree to bring a driver back`
+// loomStartRemedy is the step the operator takes to bring a driver back, which `lym loom resume` does not: it never spawns an LLM driver.
+const loomStartRemedy = `run "lym loom start" in the task worktree to bring a driver back`
 
 // driverNotRevivedText is the driver-dead condition text of a halted or awaiting child whose driver strand a revive failed to bring back.
 const driverNotRevivedText = "driver strand could not be revived; " + loomStartRemedy

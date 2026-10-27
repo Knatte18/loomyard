@@ -29,7 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/landingshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
@@ -70,14 +70,12 @@ func resolutionShuttle(worktreeRoot, resolved string, paths ...string) *shedfake
 	}}
 }
 
-// openFabricAtLanding opens a *fabricengine.Fabric on the code worktree at path, via
-// lyxcwd.ResolveWorktree + fabricengine.Open -- the only production constructor either producer's
-// pair-opener closures may legally wrap.
+// openFabricAtLanding opens a *fabricengine.Fabric on the code worktree at path, via lymcwd.ResolveWorktree + fabricengine.Open -- the only production constructor either producer's pair-opener closures may legally wrap.
 func openFabricAtLanding(t *testing.T, path string) *fabricengine.Fabric {
 	t.Helper()
-	l, err := lyxcwd.ResolveWorktree(path)
+	l, err := lymcwd.ResolveWorktree(path)
 	if err != nil {
-		t.Fatalf("lyxcwd.ResolveWorktree(%s): %v", path, err)
+		t.Fatalf("lymcwd.ResolveWorktree(%s): %v", path, err)
 	}
 	f, err := fabricengine.Open(l)
 	if err != nil {
@@ -89,9 +87,9 @@ func openFabricAtLanding(t *testing.T, path string) *fabricengine.Fabric {
 // configNoticeSeams wires Deps.ConfigChanges to fabricengine.ReadConfigChanges on the real pair at taskCode, against branch parent, and returns it with a Deps.Notify that appends every notice to notices.
 func configNoticeSeams(t *testing.T, taskBranch, taskCode string, notices *[]string) (func() (fabricengine.ConfigChanges, error), func(string) error) {
 	t.Helper()
-	l, err := lyxcwd.ResolveWorktree(taskCode)
+	l, err := lymcwd.ResolveWorktree(taskCode)
 	if err != nil {
-		t.Fatalf("lyxcwd.ResolveWorktree(%s): %v", taskCode, err)
+		t.Fatalf("lymcwd.ResolveWorktree(%s): %v", taskCode, err)
 	}
 	changes := func() (fabricengine.ConfigChanges, error) {
 		return fabricengine.ReadConfigChanges(l, taskBranch, "parent", []string{configengine.ConfigFileRel("loom")})
@@ -220,14 +218,14 @@ func TestFinalize_OverRealHub(t *testing.T) {
 		}
 
 		// The landing commit's subject is the description title, its body is the description body,
-		// and its trailer block is the fixed line, then the line of the one engine that ran, then the task's `Lyx-Task` line.
+		// and its trailer block is the fixed line, then the line of the one engine that ran, then the task's `Lym-Task` line.
 		msgCmd := exec.Command("git", "log", "-1", "--format=%B")
 		msgCmd.Dir = parentCode
 		msgOut, err := msgCmd.Output()
 		if err != nil {
 			t.Fatalf("git log -1 --format=%%B in %s: %v", parentCode, err)
 		}
-		wantMsg := "A landing title\n\nA landing body.\n\nCreated using Loomyard\nCo-Authored-By: Test Author <test@example.com>\nLyx-Task: task"
+		wantMsg := "A landing title\n\nA landing body.\n\nCreated using Loomyard\nCo-Authored-By: Test Author <test@example.com>\nLym-Task: task"
 		if got := strings.TrimSpace(string(msgOut)); got != wantMsg {
 			t.Errorf("landing commit message = %q; want %q", got, wantMsg)
 		}

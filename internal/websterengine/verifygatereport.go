@@ -60,7 +60,7 @@ type VerifyGateReport struct {
 const (
 	// FixerFork is the fixer fork Merriam spawns in its own session, on its own model.
 	FixerFork = "fork"
-	// FixerCold is the cold fixer strand `lyx webster fix-verify` spawns at the recovery role.
+	// FixerCold is the cold fixer strand `lym webster fix-verify` spawns at the recovery role.
 	FixerCold = "cold"
 )
 
@@ -147,7 +147,7 @@ func logTail(output string) string {
 }
 
 // verifyGateWayForward returns the one line naming Merriam's way forward from a verify-gate failure, never fixing the findings itself and ending the turn:
-// for FixerCold, run `lyx webster fix-verify` backgrounded and spawn no fork;
+// for FixerCold, run `lym webster fix-verify` backgrounded and spawn no fork;
 // otherwise spawn one fixer fork with the prompt file at fixPromptPath.
 func verifyGateWayForward(fixer, fixPromptPath string) string {
 	if fixer == FixerCold {

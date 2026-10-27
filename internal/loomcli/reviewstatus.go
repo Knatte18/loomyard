@@ -1,4 +1,4 @@
-// reviewstatus.go fills shedverbs.Hooks.Waiting for loom, so `lyx loom status` reports a run that waits on a gate slot, the parent lock, a verify or a shuttle.
+// reviewstatus.go fills shedverbs.Hooks.Waiting for loom, so `lym loom status` reports a run that waits on a gate slot, the parent lock, a verify or a shuttle.
 
 package loomcli
 
@@ -12,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -160,7 +160,7 @@ func parentLockWaiting(waitPath string, alive func(pid int, startTime string) bo
 
 // reviewWaitingFor builds the Waiting hook for loc's worktree, or nil when no location is wired.
 // A gate wait is reported first and never hides the rest; after it come a parent lock wait, a verify and a shuttle wait, of which the first live one wins.
-func reviewWaitingFor(loc *lyxcwd.Location) func(st shedengine.Status) (string, error) {
+func reviewWaitingFor(loc *lymcwd.Location) func(st shedengine.Status) (string, error) {
 	if loc == nil {
 		return nil
 	}

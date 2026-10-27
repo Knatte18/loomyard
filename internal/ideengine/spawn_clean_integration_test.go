@@ -17,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
@@ -202,7 +202,7 @@ func checkPrimeNameFailureOpensBareFolder(t *testing.T, h *hubforge.Hub, slug st
 		t.Fatalf("mkdir: %v", err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(notGitDir) })
-	l := &lyxcwd.Location{RepoName: h.Location.RepoName, HubPath: h.Path, WorktreeName: notGit, AnchorRel: h.Location.AnchorRel}
+	l := &lymcwd.Location{RepoName: h.Location.RepoName, HubPath: h.Path, WorktreeName: notGit, AnchorRel: h.Location.AnchorRel}
 	logBuf := logcapture.Capture(t)
 
 	if _, err := Spawn(l, slug); err != nil {

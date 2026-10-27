@@ -1,18 +1,18 @@
 // Package dobbyengine is the engine of dobby, the daemon that drives the batten runs of one beam worktree.
-// It runs behind the hidden `lyx beam dobby` verb, one process per beam worktree on its owning machine, and is told every path it touches.
+// It runs behind the hidden `lym beam dobby` verb, one process per beam worktree on its owning machine, and is told every path it touches.
 //
 // The prime is the root beam: its dobby has an empty slug in Geometry, and the dobby of any other beam carries that beam's slug.
 //
 // The package holds:
 //
 //   - Geometry is the absolute paths and names the hub wiring tells the engine.
-//   - State is dobby's tolerant JSON record under the worktree's `.lyx/beam/` directory, read with ReadState and rewritten under its lock with UpdateState.
+//   - State is dobby's tolerant JSON record under the worktree's `.lym/beam/` directory, read with ReadState and rewritten under its lock with UpdateState.
 //     A record that does not decode reads as absent with one Warn, so a hand-damaged file never wedges the beam.
-//   - The PassExit codes are what a `lyx batten run` pass exits with for a refusal dobby reads by code.
+//   - The PassExit codes are what a `lym batten run` pass exits with for a refusal dobby reads by code.
 //   - EnsureLive starts the dobby of each worktree it is named, the prime's name or beam slugs, each only when Live reads its lock free, through SpawnDetached.
 //     It records this machine as the prime owner first when the prime is named and none is recorded, and reports per worktree; it is idempotent.
-//     A named prime or beam another machine owns is refused naming `lyx adopt root` or `lyx adopt <slug>` with its owner.
-//     A named beam whose landing hold stands is refused naming `lyx batten status <slug>` and spawns nothing, through StartDeps.LandingHeld, and a nil one reads as no hold standing.
+//     A named prime or beam another machine owns is refused naming `lym adopt root` or `lym adopt <slug>` with its owner.
+//     A named beam whose landing hold stands is refused naming `lym batten status <slug>` and spawns nothing, through StartDeps.LandingHeld, and a nil one reads as no hold standing.
 //     OwnedWorktrees lists the prime and every local beam this machine may start, the set a caller that narrows nothing names.
 //     A worktree with an anchor change standing on its own records worktree or the prime's is refused with the change's way forward and starts nothing, through StartDeps.MoveInProgress, and a nil one reads as no change standing.
 //   - Config is beam.yaml, loaded strictly because dobby only ever runs inside a hub.
@@ -28,7 +28,7 @@
 //   - It wakes on a watch event and on its timer, coalescing events to at most one tick a second.
 //     The timer starts at the probe interval and doubles to a minute while no run is in flight, and returns to the probe interval on an event or while a run is in flight.
 //     Where the watch does not open, as on WSL or through a junction, the timer alone drives the loop at the probe cadence, and no wake is shorter than a second.
-//   - Between ticks it calls the binary check, which re-execs onto a changed lyx binary.
+//   - Between ticks it calls the binary check, which re-execs onto a changed lym binary.
 //   - A tick's failure is logged once per episode and the loop goes on; a cancelled context ends it after the tick in flight.
 //   - While any path of Geometry.MoveRecords exists, an anchor change stands on the dobby's own records worktree or the prime's, and a tick spawns no pass, starts no task and runs no board-tidy step, the tidy agent being a strand whose state sits at the anchor.
 //     The state record's upkeep and the landing count go on, a full pass the dobby owes stays owed, and the first tick of the episode logs it once.
@@ -50,7 +50,7 @@
 //   - A refused continue pass owes a full pass; a covered pass counts as no failure; any other non-zero exit counts a failure by its error text, retried on the next probe tick.
 //     The third failure in a row with one text posts one notice to the nearest live orch, and an exit 0 clears the count and the noticed texts.
 //   - A pass that exits as owned by another machine keeps the run's full pass owed and marks it owned elsewhere in the state record.
-//     Dobby pauses the run under the owner caller, releases the parent lock record naming its child, and posts one notice naming `lyx adopt <subject>` per owner episode, the subject read through `Deps.AdoptSubject` and the slug when that seam is nil or fails, with no failing-pass notice.
+//     Dobby pauses the run under the owner caller, releases the parent lock record naming its child, and posts one notice naming `lym adopt <subject>` per owner episode, the subject read through `Deps.AdoptSubject` and the slug when that seam is nil or fails, with no failing-pass notice.
 //     A failed pause warns once per episode and is recorded; it is never retried blind, since while the mark stands and no pause covers the run, each probe tick gives it a full pass, which is refused again or exits 0 and clears the mark.
 //     While the mark stands and a pause covers the run, it gets no pass, a start's and a wake's included, but the full pass at the lift of the covering pause.
 //     Once the owner pause stands, each probe tick reads the run's effective owner from the local Bolt with no pull, and when it no longer reads another machine, dobby lifts its own owner pause and runs a full pass.
@@ -63,7 +63,7 @@
 //     A first pass refused for a covering pause is no refused start: no notice, no marker and no backoff, and the start waits for the lift.
 //     Any other first pass that exits non-zero and leaves no status file, a refusal as owned elsewhere included, is a refused start: one notice per refusal text, and a retry from one probe interval, doubling up to an hour, or at once when the entry changes.
 //     The backoff, the last refusal text and the noticed texts are kept in the state record, and cleared when a pass claims the task or its board entry changes.
-//   - A task is started only from an empty status, by its parent's dobby or a hand-run `lyx batten run`, and never twice while a pass of it is in flight.
+//   - A task is started only from an empty status, by its parent's dobby or a hand-run `lym batten run`, and never twice while a pass of it is in flight.
 //     Across machines only the owner machine's dobby of the parent runs, and a release written on another machine reaches this dobby when this machine's board is next pulled.
 //   - Bound: per run at most one pass per probe interval plus one per write of the child's status file, and at most one in flight.
 //     A run counts as in flight for the loop's backoff while the planner could give it a pass on the next probe tick.
@@ -77,7 +77,7 @@
 //
 //   - After the scheduling steps, each tick of a beam's dobby reads Deps.CanLand, whose LandReading says whether nothing works under the beam any more and which other machine, if any, owns the beam's parent.
 //     The prime's dobby and a nil CanLand post none; the tick runs on every board change the dobby watches and on every pass exit, so a member's teardown, a cancel with `--remove`, a member moved off the project and one marked done by hand each trigger it.
-//   - A passing reading with no sent episode in State.LandNotice posts one notice to the beam's own orch naming `lyx beam land <slug>`, or, when another machine owns the parent, that it does and `lyx adopt <subject>` instead, and records the episode as sent.
+//   - A passing reading with no sent episode in State.LandNotice posts one notice to the beam's own orch naming `lym beam land <slug>`, or, when another machine owns the parent, that it does and `lym adopt <subject>` instead, and records the episode as sent.
 //     A reading that does not pass clears the episode, so a member opened again re-arms the notice; a restarted dobby reads the record and sends no second notice.
 //   - A failed read or post is logged once per episode and changes nothing: a failed post leaves the episode unsent for the next tick.
 //
@@ -86,12 +86,12 @@
 //   - Each tick reads the batten history of every run whose parent worktree is this dobby's, whatever the run's state, and records each Land Done as counted in the state record, so a landing a hand pass or a pass a dead dobby left made is counted and a restart counts none twice.
 //     A record read for the first time, or rewritten fresh over one that did not decode, counts every landing already there as seen, so run records left from before the dobby trigger no tidy.
 //     While a tidy agent is in flight nothing is counted, so the record's slugs since the last tidy are exactly the agent's.
-//   - At every `board_tidy_every` landings, 0 meaning never, dobby spawns the board-tidy agent unless one is in flight: a fresh shuttle run in a window of the worktree's reed session, role BoardTidyRole, its prompt TidyPrompt over the landed slugs and a parent directive naming the nearest live orch, its one output the report under the marker directory.
+//   - At every `board_tidy_every` landings, 0 meaning never, dobby spawns the board-tidy agent unless one is in flight: a fresh shuttle run in a window of the worktree's reed session, role BoardTidyRole, its prompt TidyPrompt over the landed slugs and a parent directive naming the nearest live orch, its one output the report `.lym/beam/tidy/<UTC timestamp>.md`.
 //     The agent in flight is kept in the state record, so a restart or a re-exec spawns no second.
 //   - Once the report exists dobby posts its path to the nearest live orch and ends the agent through shuttle's stop verb.
 //     Past `board_tidy_timeout_min` it ends the agent the same way, posts a no-report line naming the slugs, and keeps them in the state record for the next tidy.
 //   - Bound: a fresh record loses a tidy in flight and the slugs landed since the last tidy, and the next tidy may spawn while the old agent runs until its timeout.
-//     A landing whose run records `lyx batten cleanup --apply` removed before dobby read them is not counted.
+//     A landing whose run records `lym batten cleanup --apply` removed before dobby read them is not counted.
 //
 // The view:
 //
@@ -101,6 +101,6 @@
 //     The `max_runs` reason falls, in board order as the start step walks, on the tasks nothing else holds once the runs that take a slot fill it; a task with no reason starts on the dobby's next tick.
 //   - Bound: a first pass in flight that has left no status file is in no file, so its task reads as ready and its slot as free until the status appears.
 //
-// Told-geometry tier: the package takes every absolute path from its caller and imports neither internal/lyxcwd nor any CLI package, per PATTERN-cwd-resolution.
+// Told-geometry tier: the package takes every absolute path from its caller and imports neither internal/lymcwd nor any CLI package, per PATTERN-cwd-resolution.
 // Its seam_enforcement_test.go enforces that membership mechanically.
 package dobbyengine

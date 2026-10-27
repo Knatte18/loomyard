@@ -14,7 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
@@ -54,7 +54,7 @@ func (r *fakeRecorder) record(run fakeRun) {
 func fakeRootFactory(rec *fakeRecorder) func() *cobra.Command {
 	return func() *cobra.Command {
 		var verbosity int
-		root := &cobra.Command{Use: "lyx", SilenceUsage: true, SilenceErrors: true}
+		root := &cobra.Command{Use: "lym", SilenceUsage: true, SilenceErrors: true}
 		clihelp.InstallJSONHelp(root)
 		root.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "increase log verbosity")
 
@@ -66,7 +66,7 @@ func fakeRootFactory(rec *fakeRecorder) func() *cobra.Command {
 				Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 			}
 			cmd.RunE = func(cmd *cobra.Command, args []string) error {
-				cwd, _ := lyxcwd.CwdFrom(cmd.Context())
+				cwd, _ := lymcwd.CwdFrom(cmd.Context())
 				run := fakeRun{Path: path, Verbosity: verbosity, Cwd: cwd}
 				if len(args) > 0 {
 					run.Args = append([]string(nil), args...)
@@ -153,12 +153,12 @@ func TestShortcut_Run(t *testing.T) {
 		{name: "a doubled verbosity word counts twice", args: []string{"-vv", "s"}, wantRuns: []fakeRun{beamStart(2), reedAttach(2, "")}},
 		{name: "a verbosity word after the shortcut reaches every argv", args: []string{"s", "-v"}, wantRuns: []fakeRun{beamStart(1), reedAttach(1, "")}},
 		{name: "a verbosity word with a value reaches every argv", args: []string{"s", "--verbose=2"}, wantRuns: []fakeRun{beamStart(2), reedAttach(2, "")}},
-		{name: "json prints the shortcut's help as JSON and runs nothing", args: []string{"s", "--json"}, wantOut: []string{`"name": "lyx s"`}},
-		{name: "json with a value prints the JSON help", args: []string{"s", "--json=true"}, wantOut: []string{`"name": "lyx s"`}},
+		{name: "json prints the shortcut's help as JSON and runs nothing", args: []string{"s", "--json"}, wantOut: []string{`"name": "lym s"`}},
+		{name: "json with a value prints the JSON help", args: []string{"s", "--json=true"}, wantOut: []string{`"name": "lym s"`}},
 		{name: "a false-valued json word is dropped and the argvs run", args: []string{"s", "--json=false"}, wantRuns: []fakeRun{beamStart(0), reedAttach(0, "")}},
-		{name: "help prints the shortcut's text help and runs nothing", args: []string{"s", "--help"}, wantOut: []string{"shortcut: lyx beam start, then lyx reed attach"}},
-		{name: "a short help word prints the text help", args: []string{"s", "-h"}, wantOut: []string{"shortcut: lyx beam start, then lyx reed attach"}},
-		{name: "a shorthand run holding help prints the text help", args: []string{"s", "-vh"}, wantOut: []string{"shortcut: lyx beam start, then lyx reed attach"}},
+		{name: "help prints the shortcut's text help and runs nothing", args: []string{"s", "--help"}, wantOut: []string{"shortcut: lym beam start, then lym reed attach"}},
+		{name: "a short help word prints the text help", args: []string{"s", "-h"}, wantOut: []string{"shortcut: lym beam start, then lym reed attach"}},
+		{name: "a shorthand run holding help prints the text help", args: []string{"s", "-vh"}, wantOut: []string{"shortcut: lym beam start, then lym reed attach"}},
 		{name: "words after the double dash are trailing, help included", args: []string{"s", "--", "-h"}, wantRuns: []fakeRun{beamStart(0), reedAttach(0, "", "-h")}},
 		{
 			name: "a global flag with a bad value fails in the last argv's root after the earlier argvs ran", args: []string{"s", "--json=bogus"},
@@ -214,10 +214,10 @@ func TestMount_File(t *testing.T) {
 		{
 			name: "the shipped file mounts exactly a, s, p and r", data: shortcutFile,
 			wantMounted: map[string]string{
-				"a": "shortcut: lyx reed attach",
-				"s": "shortcut: lyx beam start, then lyx reed attach",
-				"p": "shortcut: lyx tender pause",
-				"r": "shortcut: lyx tender resume",
+				"a": "shortcut: lym reed attach",
+				"s": "shortcut: lym beam start, then lym reed attach",
+				"p": "shortcut: lym tender pause",
+				"r": "shortcut: lym tender resume",
 			},
 		},
 		{name: "malformed YAML mounts nothing", data: []byte("attach: [reed, attach")},

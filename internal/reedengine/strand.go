@@ -84,10 +84,10 @@ func validateDisplay(display render.Display) error {
 // The error names the way forward: remove the strand and add it again.
 func refuseWindowMove(name string, current, next render.Display) error {
 	if isOwnWindow(current) != isOwnWindow(next) || isOverview(current) != isOverview(next) {
-		return fmt.Errorf("strand %q cannot move between own-window, overview and another anchor; way forward: lyx reed remove --name %s, then add it again with the new anchor", name, name)
+		return fmt.Errorf("strand %q cannot move between own-window, overview and another anchor; way forward: lym reed remove --name %s, then add it again with the new anchor", name, name)
 	}
 	if isOwnWindow(current) && (current.Window != next.Window || current.WindowSize != next.WindowSize) {
-		return fmt.Errorf("strand %q cannot change its window group; way forward: lyx reed remove --name %s, then add it again with the new group", name, name)
+		return fmt.Errorf("strand %q cannot change its window group; way forward: lym reed remove --name %s, then add it again with the new group", name, name)
 	}
 	return nil
 }
@@ -177,7 +177,7 @@ func descendantSubtree(strands []Strand, guid string) []string {
 	return out
 }
 
-// defaultRole is the role a spec naming neither Role nor NameOverride takes, so an operator's `lyx reed add --cmd …` keeps working.
+// defaultRole is the role a spec naming neither Role nor NameOverride takes, so an operator's `lym reed add --cmd …` keeps working.
 const defaultRole = "strand"
 
 // validateNaming refuses, before any tmux command, an add or replace whose name no geometry-told prefix can form,
@@ -187,14 +187,14 @@ const defaultRole = "strand"
 func (e *Engine) validateNaming(spec AddSpec) (string, error) {
 	shortname, slug := e.geom.NameShortname, e.geom.NameSlug
 	if shortname == "" {
-		return "", fmt.Errorf("no strand name can be formed: this hub records no shortname; way forward: lyx fabric shortname <shortname> records it, then retry; a session lyx refuses the verb from reports status: FAILED and the orch runs it")
+		return "", fmt.Errorf("no strand name can be formed: this hub records no shortname; way forward: lym fabric shortname <shortname> records it, then retry; a session lym refuses the verb from reports status: FAILED and the orch runs it")
 	}
 	if err := agentname.ValidateShortname(shortname); err != nil {
 		return "", fmt.Errorf("no strand name can be formed: the told shortname is invalid: %w", err)
 	}
 	if slug != "" {
 		if err := agentname.ValidateSlug(slug); err != nil {
-			return "", fmt.Errorf("no strand name can be formed: worktree %q does not fit the name grammar [a-z][a-z0-9-]*; way forward: lyx fabric add <slug> creates the task under a slug that fits; a session lyx refuses the verb from reports status: FAILED and the orch runs it: %w",
+			return "", fmt.Errorf("no strand name can be formed: worktree %q does not fit the name grammar [a-z][a-z0-9-]*; way forward: lym fabric add <slug> creates the task under a slug that fits; a session lym refuses the verb from reports status: FAILED and the orch runs it: %w",
 				e.geom.WorktreeName, err)
 		}
 	}
@@ -221,7 +221,7 @@ func (e *Engine) strandNameLocked(st *ReedState, spec AddSpec) (string, error) {
 		full := n.String()
 		for _, s := range st.Strands {
 			if s.Name == full {
-				return "", fmt.Errorf("strand name %q is already held by strand %s; way forward: lyx reed remove --name %s frees it, or pass another role",
+				return "", fmt.Errorf("strand name %q is already held by strand %s; way forward: lym reed remove --name %s frees it, or pass another role",
 					full, s.GUID, n.Role)
 			}
 		}
@@ -402,7 +402,7 @@ func (e *Engine) addStrandLocked(st *ReedState, spec AddSpec) (Strand, error) {
 	if isOverview(spec.Display) {
 		for _, held := range st.Strands {
 			if isOverview(held.Display) {
-				return Strand{}, fmt.Errorf("strand %q already holds the overview window; way forward: lyx reed remove --name %s, then add this strand again", held.Name, held.Name)
+				return Strand{}, fmt.Errorf("strand %q already holds the overview window; way forward: lym reed remove --name %s, then add this strand again", held.Name, held.Name)
 			}
 		}
 	}
@@ -584,7 +584,7 @@ func (e *Engine) AddStrandUnless(spec AddSpec, unlessName string) (Strand, bool,
 			return err
 		}
 		if booted {
-			// Attributable in the log: a session appearing out of a bare `lyx reed add` must name
+			// Attributable in the log: a session appearing out of a bare `lym reed add` must name
 			// the verb that caused it, alongside this engine's socket and session name.
 			logger.Info("reed: add self-healed a cold worktree's session", "socket", e.Socket(), "session", e.SessionName())
 		}
@@ -761,7 +761,7 @@ func alivePanePIDs(paneIDs []string, live []LivePane) []int {
 // per hub and shared by every worktree in it, and tmux pane ids are server-global, so a pane id a
 // stale or copied reed.json carries is routinely a valid, addressable id belonging to a SIBLING
 // worktree's live session. Reproduced live (R5 review finding R5-F4): with svc-beta's reed.json
-// copied into svc-alpha, a `lyx reed remove` run in svc-alpha killed svc-beta's strand pane and its
+// copied into svc-alpha, a `lym reed remove` run in svc-alpha killed svc-beta's strand pane and its
 // running process and reported ok:true, while svc-beta was left showing only that its strand had
 // died.
 // Membership, not aliveness, is the filter: a dead-but-present corpse is still this session's pane
@@ -941,7 +941,7 @@ func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 				// removeStrandLocked already pruned st.Strands in memory, but
 				// reconcileApplyPersistLocked's own SaveState never ran (it
 				// failed before reaching it) — persist the pruned state here
-				// so a later "lyx reed resume" does not resurrect the strand
+				// so a later "lym reed resume" does not resurrect the strand
 				// this call just removed.
 				if err := SaveState(e.stateDir(), st); err != nil {
 					return fmt.Errorf("save state after emptying session: %w", err)

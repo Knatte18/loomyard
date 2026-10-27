@@ -12,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -21,7 +21,7 @@ func TestWireLanding_TellsLanguageSkills(t *testing.T) {
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	const slug = "languagelanding"
 	hubforge.AddPair(t, hub, slug)
-	location, err := lyxcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
+	location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
 	if err != nil {
 		t.Fatalf("ResolveWorktree error = %v; want nil", err)
 	}

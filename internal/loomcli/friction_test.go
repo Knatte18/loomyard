@@ -19,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -128,7 +128,7 @@ func TestEnsureFrictionDirAfterSeed(t *testing.T) {
 func TestReflectFriction_DepsValidationFailureReportsFailed(t *testing.T) {
 	t.Parallel()
 
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 
 	c := &loomCLI{
 		location:    loc,
@@ -156,7 +156,7 @@ func TestReflectFriction_DepsValidationFailureReportsFailed(t *testing.T) {
 func newRelativeFrictionCLI(t *testing.T) *loomCLI {
 	t.Helper()
 	return &loomCLI{
-		location:    &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."},
+		location:    &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."},
 		frictionDir: "relative-friction-dir",
 		runDeps:     websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: "stencils"}},
 	}

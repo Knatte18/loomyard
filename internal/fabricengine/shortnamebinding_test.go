@@ -1,6 +1,6 @@
 //go:build tier0
 
-// shortnamebinding_test.go covers the .lyx-shortname record's read/write helpers and every row of resolveEffectiveShortname.
+// shortnamebinding_test.go covers the .lym-shortname record's read/write helpers and every row of resolveEffectiveShortname.
 
 package fabricengine
 
@@ -72,9 +72,9 @@ func TestResolveEffectiveShortname(t *testing.T) {
 		{name: "fresh with shortname records", freshBind: true, supplied: "lx", wantEff: "lx", wantWrite: true},
 		{name: "record present derives", recorded: "lx", found: true, wantEff: "lx"},
 		{name: "record present equal shortname", recorded: "lx", found: true, supplied: "lx", wantEff: "lx"},
-		{name: "record present differing shortname refuses", recorded: "lx", found: true, supplied: "ly", wantErrSubs: []string{`"lx"`, "lyx fabric shortname"}},
+		{name: "record present differing shortname refuses", recorded: "lx", found: true, supplied: "ly", wantErrSubs: []string{`"lx"`, "lym fabric shortname"}},
 		{name: "bound without record takes shortname", supplied: "lx", wantEff: "lx", wantWrite: true},
-		{name: "bound without record or shortname warns", wantWarnSub: "lyx fabric shortname"},
+		{name: "bound without record or shortname warns", wantWarnSub: "lym fabric shortname"},
 		{name: "invalid supplied shortname refuses first", recorded: "lx", found: true, supplied: "L", wantErrSubs: []string{"invalid"}},
 	}
 	for _, tt := range tests {

@@ -61,7 +61,7 @@ const (
 
 // validatePermissionMode resolves a run's or an opened session's permission mode into whether its launch lines carry --dangerously-skip-permissions.
 // An opened session is always interactive.
-// Empty and "bypass" skip in either run mode, because every session lyx launches into reed needs bypass to work unattended;
+// Empty and "bypass" skip in either run mode, because every session lym launches into reed needs bypass to work unattended;
 // "prompt" adds nothing and is the per-call opt-out.
 // "prompt" on an autonomous run is an error, since a run that prompts with nobody to answer stalls;
 // any other value is an error naming the three legal values.
@@ -116,7 +116,7 @@ const promptCacheTTLEnvKey = "CLAUDE_CODE_PROMPT_CACHE_TTL"
 // BASH_DEFAULT_TIMEOUT_MS is left at Claude Code's default, so only a call that sets an explicit timeout runs past the default.
 const bashMaxTimeoutEnvKey = "BASH_MAX_TIMEOUT_MS"
 
-// bashMaxTimeout is the Bash tool timeout ceiling every lyx-spawned session runs under.
+// bashMaxTimeout is the Bash tool timeout ceiling every lym-spawned session runs under.
 const bashMaxTimeout = time.Hour
 
 // bashMaxTimeoutMS is bashMaxTimeout as the decimal millisecond string bashMaxTimeoutEnvKey takes.
@@ -134,7 +134,7 @@ func validatePromptCacheTTL(key, value string) error {
 	if validPromptCacheTTLs[value] {
 		return nil
 	}
-	return fmt.Errorf("claudeengine: invalid %s %q; valid values are 5m, 1h (case-sensitive); fix it in claude.yaml with lyx config claude", key, value)
+	return fmt.Errorf("claudeengine: invalid %s %q; valid values are 5m, 1h (case-sensitive); fix it in claude.yaml with lym config claude", key, value)
 }
 
 // resolvePromptCacheTTL returns the prompt-cache TTL for a strand's role.
@@ -188,22 +188,22 @@ const envFileName = "bash-env.sh"
 
 // envFileContentPosix is the env file's content on a host whose Bash tool reads native paths.
 // Its first statement makes /dev/null the default stdin of the Bash tool's shell, so an interpreter left reading the tool's open stdin ends at once instead of hanging the session.
-// Its second prepends the parent directory of the spawning binary's path, which reed's pane prelude exports in LYX_BIN, to PATH,
-// so the tool's shell resolves `lyx` to that binary after the operator's rc has reordered PATH.
-// It adds nothing when LYX_BIN is unset or empty.
+// Its second prepends the parent directory of the spawning binary's path, which reed's pane prelude exports in LYM_BIN, to PATH,
+// so the tool's shell resolves `lym` to that binary after the operator's rc has reordered PATH.
+// It adds nothing when LYM_BIN is unset or empty.
 // The file runs those two statements and nothing else, and every expansion is double-quoted so a path with spaces holds.
 // It changes only the default stdin and PATH of the tool's own shell: a heredoc, pipe or redirect attached to a command still supplies that command's stdin,
 // a child `bash` the agent starts does not re-run the file, and it grants or denies nothing, so the agents' permission rules are untouched.
 const envFileContentPosix = "exec </dev/null\n" +
-	"if [ -n \"${" + agentname.LyxBinEnv + ":-}\" ]; then PATH=\"${" + agentname.LyxBinEnv + "%/*}:$PATH\"; fi\n"
+	"if [ -n \"${" + agentname.LymBinEnv + ":-}\" ]; then PATH=\"${" + agentname.LymBinEnv + "%/*}:$PATH\"; fi\n"
 
-// envFileContentWindows is the env file's content on a Windows host, where LYX_BIN holds a native path the Bash tool's shell must convert first.
-// It behaves as the POSIX content, but converts LYX_BIN with `cygpath -u` into the scratch variable __lyx_bin_dir before taking the parent directory, and unsets the variable afterwards.
-// It changes nothing about PATH when `cygpath` is absent or LYX_BIN is unset or empty.
+// envFileContentWindows is the env file's content on a Windows host, where LYM_BIN holds a native path the Bash tool's shell must convert first.
+// It behaves as the POSIX content, but converts LYM_BIN with `cygpath -u` into the scratch variable __lym_bin_dir before taking the parent directory, and unsets the variable afterwards.
+// It changes nothing about PATH when `cygpath` is absent or LYM_BIN is unset or empty.
 const envFileContentWindows = "exec </dev/null\n" +
-	"if [ -n \"${" + agentname.LyxBinEnv + ":-}\" ] && command -v cygpath >/dev/null 2>&1; then " +
-	"__lyx_bin_dir=\"$(cygpath -u \"$" + agentname.LyxBinEnv + "\")\"; " +
-	"PATH=\"${__lyx_bin_dir%/*}:$PATH\"; unset __lyx_bin_dir; fi\n"
+	"if [ -n \"${" + agentname.LymBinEnv + ":-}\" ] && command -v cygpath >/dev/null 2>&1; then " +
+	"__lym_bin_dir=\"$(cygpath -u \"$" + agentname.LymBinEnv + "\")\"; " +
+	"PATH=\"${__lym_bin_dir%/*}:$PATH\"; unset __lym_bin_dir; fi\n"
 
 // envFileContentFor returns the env file's content for the host goos names.
 func envFileContentFor(goos string) string {
@@ -222,7 +222,7 @@ func envFileContentFor(goos string) string {
 // When notice is non-empty it rides the line as --append-system-prompt,
 // so the session is told which tools are denied;
 // an empty notice leaves the line unchanged.
-// It names the session with --name, passed as a reference to LYX_STRAND_NAME rather than a value:
+// It names the session with --name, passed as a reference to LYM_STRAND_NAME rather than a value:
 // shuttle builds this line before reed forms the strand's name,
 // so the pane shell expands the variable from the export reed's launch script makes.
 // It adds --dangerously-skip-permissions when skipPermissions is true, the mode validatePermissionMode resolved.
@@ -263,7 +263,7 @@ func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model
 
 // buildOpenCmd composes the pane-shell line of a named interactive session that takes no prompt.
 // A fresh session is named with --session-id; when resume is true the line takes over the session sessionID names with --resume instead.
-// It names the session with --name as a reference to LYX_STRAND_NAME, as buildLaunchCmd does, and appends --model and --effort only when non-empty.
+// It names the session with --name as a reference to LYM_STRAND_NAME, as buildLaunchCmd does, and appends --model and --effort only when non-empty.
 // It appends --dangerously-skip-permissions when skipPermissions is true, on the fresh and the resume form alike.
 // Reed replays the resume line verbatim, so a resume without the flag would bring a bypass session back prompting.
 // It passes no prompt, no --settings (the session takes the worktree's own settings) and no environment assignment, so the line is one pipeline that OrElse may join.
@@ -290,7 +290,7 @@ func buildOpenCmd(sh shell.Shell, bin, sessionID, model, effort string, skipPerm
 // Bypass is the default, and spec.PermissionMode "prompt" opts out per call;
 // the session still loads Claude Code's own settings layers, whose deny rules and hooks Claude Code applies in bypass too, and carries no shuttle --settings or guard.
 // "prompt" adds nothing, so it cannot override a default mode the settings set.
-// The session takes no turn until text reaches its pane through the operator, `lyx shuttle send` or creel, each bounded by its own rules.
+// The session takes no turn until text reaches its pane through the operator, `lym shuttle send` or creel, each bounded by its own rules.
 // ResumeCmd resumes the session and falls back to a fresh start under the same id, because Claude Code keeps no transcript for a session that never took a turn, so --resume fails there.
 // Bound: the fresh line runs whenever the resume line exits nonzero, including a resumed session that ends nonzero after a working life;
 // a fresh start under a session id whose transcript exists fails at once, so the fallback never starts a second live session over a recorded one.
@@ -335,7 +335,7 @@ var _ shuttleengine.SessionOpener = (*Claude)(nil)
 // timeout, and it came back on the provider default model rather than the one the caller pinned.
 // It carries the notice too, when non-empty: Claude Code re-renders the system prompt from the current flags after a compaction and where recording is not enabled,
 // so a resume line without --append-system-prompt would lose the notice.
-// It carries --name as a reference to LYX_STRAND_NAME, not a value, for the same reason buildLaunchCmd does,
+// It carries --name as a reference to LYM_STRAND_NAME, not a value, for the same reason buildLaunchCmd does,
 // and because reed replays this line on every resume, a line without it would bring Claude back unnamed.
 // When forkSubagents is true, the line is wrapped to keep the fork-subagent capability.
 // It carries the promptCacheTTLEnvKey assignment too: the resumed claude inherits nothing from the launch, so without it the session would fall back to Claude Code's default TTL.

@@ -11,17 +11,17 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
 
-// TestSpecFor_FillsRunIdentityForSlug verifies that a spec armed for a slug carries that slug as RunID, a StepsDir and ScratchDir under its .lyx tree, batten's own routing and its own missing-status way forward, an empty FrictionDir since batten carries no agent friction directory, and, for the step verb, a non-nil BuildShed.
+// TestSpecFor_FillsRunIdentityForSlug verifies that a spec armed for a slug carries that slug as RunID, a StepsDir and ScratchDir under its .lym tree, batten's own routing and its own missing-status way forward, an empty FrictionDir since batten carries no agent friction directory, and, for the step verb, a non-nil BuildShed.
 func TestSpecFor_FillsRunIdentityForSlug(t *testing.T) {
 	t.Parallel()
 
-	const wayForward = `way forward: "lyx batten run task-a" creates the lifecycle's status file`
+	const wayForward = `way forward: "lym batten run task-a" creates the lifecycle's status file`
 	want, err := battenrecipe.Routing()
 	if err != nil {
 		t.Fatal(err)
@@ -31,7 +31,7 @@ func TestSpecFor_FillsRunIdentityForSlug(t *testing.T) {
 		t.Run(verb, func(t *testing.T) {
 			t.Parallel()
 
-			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
+			loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
 			c := &battenCLI{
 				location:  loc,
 				slug:      "task-a",
@@ -50,7 +50,7 @@ func TestSpecFor_FillsRunIdentityForSlug(t *testing.T) {
 			if spec.Caller != "orch" {
 				t.Errorf("Caller = %q, want %q", spec.Caller, "orch")
 			}
-			wantSteps := filepath.Join(loc.AnchorPath(), ".lyx", "shed", "task-a", "steps")
+			wantSteps := filepath.Join(loc.AnchorPath(), ".lym", "shed", "task-a", "steps")
 			if spec.StepsDir != wantSteps {
 				t.Errorf("StepsDir = %q, want %q", spec.StepsDir, wantSteps)
 			}

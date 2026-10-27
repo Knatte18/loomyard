@@ -15,7 +15,7 @@ import (
 // Env.Shuttle is never read: the seats run through Env.Seats.
 //
 // The table arrives as a shedadapters.TableSource closure evaluated once per Call, so the seats' stencils are read at call time.
-// It is a closure rather than recipe Config because building the table needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly; internal/loomcli's wire() supplies it.
+// It is a closure rather than recipe Config because building the table needs a *lymcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly; internal/loomcli's wire() supplies it.
 // The resolved gate is stamped onto each table the source returns, so the row's "gates" key guards the lead whatever table the source builds.
 // A table with no advisors is the single-agent case: one lead writing the discussion alone.
 //

@@ -972,15 +972,15 @@ func TestReconcileHubWideAt_MigratesLegacyFabricConfig(t *testing.T) {
 		{
 			name:         "both legacy files present, both values migrate, both files pruned",
 			legacyFirst:  "branch_prefix: hanf/\n",
-			legacySecond: "pathspec: _lyx custom-dir\n",
+			legacySecond: "pathspec: _lym custom-dir\n",
 			apply:        true,
 			wantApplied:  ptr(true),
 			wantMigrated: []string{"warp", "weft"},
-			wantFabric:   []string{"branch_prefix: hanf/", "pathspec: _lyx custom-dir"},
+			wantFabric:   []string{"branch_prefix: hanf/", "pathspec: _lym custom-dir"},
 			wantPruned:   []string{"warp", "weft"},
 		},
 		{
-			// _lyx is structural, injected in code and never read from the pathspec key, so the sparse fabric.yaml holds no pathspec and the load resolves the template's empty one.
+			// _lym is structural, injected in code and never read from the pathspec key, so the sparse fabric.yaml holds no pathspec and the load resolves the template's empty one.
 			name:             "only warp.yaml present, the seeded file holds only the legacy unit",
 			legacyFirst:      "branch_prefix: hanf/\n",
 			apply:            true,
@@ -1000,7 +1000,7 @@ func TestReconcileHubWideAt_MigratesLegacyFabricConfig(t *testing.T) {
 		{
 			name:        "fabric.yaml already present, legacy files untouched and not migrated",
 			legacyFirst: "branch_prefix: stale/\n",
-			fabric:      "branch_prefix: existing/\npathspec: _lyx\n",
+			fabric:      "branch_prefix: existing/\npathspec: _lym\n",
 			apply:       true,
 			wantFabric:  []string{"branch_prefix: existing/"},
 			wantKept:    []string{"warp"},
@@ -1310,7 +1310,7 @@ func TestReconcileAll_HubWideCopy(t *testing.T) {
 			wantDivergent: []string{"types.bug: Local bug"},
 			wantKept:      true,
 		},
-		{name: "copy holding a template default over a hub file lacking that key is retired", copyFile: "readme: ${env:LYX_README:-README.md}\n", hubFile: hubBoard, wantRetired: true},
+		{name: "copy holding a template default over a hub file lacking that key is retired", copyFile: "readme: ${env:LYM_README:-README.md}\n", hubFile: hubBoard, wantRetired: true},
 		{
 			name:          "copy value differing from both the template and the hub file is divergent",
 			copyFile:      "readme: custom.md\n",
@@ -1495,7 +1495,7 @@ func TestReconcileAll_MigratesToSparse(t *testing.T) {
 	t.Parallel()
 	const (
 		stripFile    = "discussion_timeout_min: 480\nreview_max_bounces: 99\n"
-		markerPlan   = "plan: \"${env:LYXMIG_PLAN:-sonnet}\"\n"
+		markerPlan   = "plan: \"${env:LYMMIG_PLAN:-sonnet}\"\n"
 		literalPlan  = "plan: sonnet\n"
 		defaultAlias = "zephyr:\n  engine: claude\n  model: claude-zephyr-1\n"
 	)
@@ -1970,7 +1970,7 @@ func TestReconcile_MovesKeysAcrossModules(t *testing.T) {
 	t.Parallel()
 	claudeTemplate, _ := configreg.Template("claude")
 	claudeModule, _ := configreg.Lookup("claude")
-	const templateBinary = "${env:LYX_SHUTTLE_CLAUDE:-}"
+	const templateBinary = "${env:LYM_SHUTTLE_CLAUDE:-}"
 	const tunedGeneric = "Tuned for the hub."
 	const formerRoles = "prompt_cache_ttl_roles:\n  driver: 1h\n  webster: 1h\n"
 	burlerToday := burlerFixture(t, func(cfg *lenses.Config) {

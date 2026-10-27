@@ -1,4 +1,4 @@
-// run.go implements the `run` shuttle verb: the flag-to-Spec mapper that turns a "lyx shuttle run"
+// run.go implements the `run` shuttle verb: the flag-to-Spec mapper that turns a "lym shuttle run"
 // invocation into a blocking shuttleengine.Runner.Run call and prints its classified outcome as a
 // single JSON envelope.
 
@@ -70,10 +70,10 @@ must not already exist when the run starts: a stale file would satisfy the
 contract immediately, so the run is rejected instead.
 
 Example (autonomous, two output files):
-  lyx shuttle run --prompt "review this diff" --output-file review.md --output-file findings.json
+  lym shuttle run --prompt "review this diff" --output-file review.md --output-file findings.json
 
 Example (interactive, agent may ask clarifying questions):
-  lyx shuttle run --prompt-file task.md --output-file result.md --interactive
+  lym shuttle run --prompt-file task.md --output-file result.md --interactive
 
 --effort overrides the provider's reasoning-effort level; empty defers to
 the provider default.`,

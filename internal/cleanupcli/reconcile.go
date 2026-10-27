@@ -9,7 +9,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hibernateengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/tendercli"
@@ -23,10 +23,10 @@ const (
 )
 
 // reentry is what a stop that cleanup's own repair leaves undone is followed by.
-const reentry = "then re-run lyx cleanup --apply from the prime"
+const reentry = "then re-run lym cleanup --apply from the prime"
 
 // reconcileHub runs the hub-scope origin reconcile from the prime, judging only unless apply is set.
-func reconcileHub(prime *lyxcwd.Location, apply bool) (fabricengine.OriginReport, error) {
+func reconcileHub(prime *lymcwd.Location, apply bool) (fabricengine.OriginReport, error) {
 	teardown, err := pairteardown.New(prime)
 	if err != nil {
 		return fabricengine.OriginReport{}, err
@@ -37,7 +37,7 @@ func reconcileHub(prime *lyxcwd.Location, apply bool) (fabricengine.OriginReport
 
 // cleanupSeamOptions returns the hub's seam options extended with the wake hold.
 // WakeHeld reads the pause record for a live entry of the slug whose caller is the hibernate daemon, and LiftWakeHold lifts that entry by identity through tender.
-func cleanupSeamOptions(prime *lyxcwd.Location) pairteardown.SeamOptions {
+func cleanupSeamOptions(prime *lymcwd.Location) pairteardown.SeamOptions {
 	opts := pairteardown.HubSeamOptions(prime)
 	opts.WakeHeld = func(slug string) (bool, error) {
 		_, held, err := wakeEntry(prime, slug)
@@ -59,7 +59,7 @@ func cleanupSeamOptions(prime *lyxcwd.Location) pairteardown.SeamOptions {
 }
 
 // wakeEntry returns the live pause entry the hibernate daemon wrote for slug, and whether there is one.
-func wakeEntry(prime *lyxcwd.Location, slug string) (pauserecord.Entry, bool, error) {
+func wakeEntry(prime *lymcwd.Location, slug string) (pauserecord.Entry, bool, error) {
 	geometry, err := hubgeom.PauseGeometry(prime)
 	if err != nil {
 		return pauserecord.Entry{}, false, err

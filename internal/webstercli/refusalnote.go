@@ -1,4 +1,4 @@
-// refusalnote.go records the friction note a `lyx webster` refusal leaves, at the one place every verb's output passes through.
+// refusalnote.go records the friction note a `lym webster` refusal leaves, at the one place every verb's output passes through.
 // A verb stays unaware of it: noteRefusals wraps the verb's RunE, tees what the verb prints, and reads the envelope back.
 package webstercli
 

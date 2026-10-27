@@ -51,7 +51,7 @@ type StatusReport struct {
 	Sessions []SessionStatus `json:"sessions"`
 	// Stale holds the processes running a replaced binary.
 	Stale StaleReport `json:"stale"`
-	// Processes holds the run processes registered in the owner record, the orphans among them, and the lyx processes no record owns.
+	// Processes holds the run processes registered in the owner record, the orphans among them, and the lym processes no record owns.
 	Processes ProcessReport `json:"processes"`
 	// Owners holds each local pair with its effective owner, then each run-held entry owned by another machine that has no local pair.
 	Owners []PairOwner `json:"owners"`
@@ -92,7 +92,7 @@ type SessionStatus struct {
 type StaleReport struct {
 	// Supported is false where the platform cannot list processes.
 	Supported bool `json:"supported"`
-	// Processes holds each process running a replaced lyx inside the hub.
+	// Processes holds each process running a replaced lym inside the hub.
 	Processes []StaleProcess `json:"processes"`
 	// Error is the message of a failed process reading, empty otherwise.
 	Error string `json:"error,omitempty"`
@@ -106,7 +106,7 @@ type StaleProcess struct {
 }
 
 // Resume lifts live entries and gives each session they interrupted one line.
-// A slug with no entry of its own that a live hub entry covers is refused, naming `lyx tender resume`; resuming nothing succeeds.
+// A slug with no entry of its own that a live hub entry covers is refused, naming `lym tender resume`; resuming nothing succeeds.
 func Resume(deps Deps, req ResumeRequest) (ResumeReport, error) {
 	return liftEntries(deps, func(record *pauserecord.Record) ([]pauserecord.Entry, error) {
 		var targets, kept []pauserecord.Entry
@@ -119,7 +119,7 @@ func Resume(deps Deps, req ResumeRequest) (ResumeReport, error) {
 		}
 		if len(targets) == 0 {
 			if _, covered := record.Covering(req.Slug); req.Slug != "" && covered {
-				return nil, fmt.Errorf("pause: %q has no pause of its own, and a hub-wide pause covers it; way forward: run \"lyx tender resume\" to lift the hub pause", req.Slug)
+				return nil, fmt.Errorf("pause: %q has no pause of its own, and a hub-wide pause covers it; way forward: run \"lym tender resume\" to lift the hub pause", req.Slug)
 			}
 			return nil, nil
 		}
@@ -357,7 +357,7 @@ func sendFailureReason(err error) string {
 }
 
 // ReviveLine is the one line revive types, into a session stalled on an API error.
-const ReviveLine = "[lyx] Your last turn stopped on an API error. Carry on where you stopped: rerun the tool call that failed. If nothing was cut, end your turn."
+const ReviveLine = "[lym] Your last turn stopped on an API error. Carry on where you stopped: rerun the tool call that failed. If nothing was cut, end your turn."
 
 // Orch results a revive reports.
 const (

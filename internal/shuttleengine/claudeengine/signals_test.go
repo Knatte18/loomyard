@@ -18,9 +18,9 @@ import (
 // transcriptPlaceholder in a chunk is replaced by the JSON-encoded path of the row's transcript file.
 const transcriptPlaceholder = `"TRANSCRIPT"`
 
-// signalStamp builds one stamp line for hook with the given lyx_at text.
+// signalStamp builds one stamp line for hook with the given lym_at text.
 func signalStamp(hook, at string) string {
-	return fmt.Sprintf(`{"lyx_stamp":%q,"lyx_at":%q}`+"\n", hook, at)
+	return fmt.Sprintf(`{"lym_stamp":%q,"lym_at":%q}`+"\n", hook, at)
 }
 
 // signalPayload builds one newline-terminated payload line from fields plus the hook name and a session id.

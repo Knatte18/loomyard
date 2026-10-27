@@ -47,7 +47,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -104,7 +104,7 @@ producers:
 // A pass ends by itself, with a Yield while a stubbed child stays as it is, so no sleep or pause seam is replaced.
 func wireForHub(t *testing.T, h *hubforge.Hub, slug string, readStatus func(statusPath, statusLockPath string) (shedengine.Status, bool, error)) *battenCLI {
 	t.Helper()
-	// The board default layer holds every Command row's command empty, so a stepped row passes on and no test runs the test binary through {lyx}.
+	// The board default layer holds every Command row's command empty, so a stepped row passes on and no test runs the test binary through {lym}.
 	writeBoardBattenCommands(t, h, nil)
 	c := &battenCLI{location: h.Location}
 	if err := c.wire(h.Location, slug); err != nil {
@@ -211,7 +211,7 @@ func pathExists(path string) bool {
 	return err == nil
 }
 
-// TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating pins both reconcile calls of `lyx batten run`.
+// TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating pins both reconcile calls of `lym batten run`.
 // With a fresh stamp the first call is a no-op, so the new pair losing the prime's retired key can only come from the unconditional pair call after the create row.
 // Against an absent stamp, `arm` for run reconciles ahead of armAt's non-prime refusal and its auto-seed.
 func TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating(t *testing.T) {
@@ -268,11 +268,11 @@ func TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating(t *t
 	if _, statErr := os.Stat(stampPath); statErr != nil {
 		t.Errorf("stamp after arm for run: %v; want the reconcile to have run ahead of armAt's refusal", statErr)
 	}
-	pairLocation, err := lyxcwd.Resolve(pair)
+	pairLocation, err := lymcwd.Resolve(pair)
 	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(%s): %v", pair, err)
+		t.Fatalf("lymcwd.Resolve(%s): %v", pair, err)
 	}
-	for name, location := range map[string]*lyxcwd.Location{"prime": h.Location, "pair": pairLocation} {
+	for name, location := range map[string]*lymcwd.Location{"prime": h.Location, "pair": pairLocation} {
 		if _, found, err := shedrun.ReadSeed(location, slug); err != nil || found {
 			t.Errorf("%s holds a seed for %q (found %v, err %v); want none before the refusal", name, slug, found, err)
 		}
@@ -402,7 +402,7 @@ func stepSeedChild_WritesASeedTheChildBootstrapAgreesWith(t *testing.T, h *hubfo
 	}
 
 	// The load-bearing assertion: this is byte-for-byte what loom's own bootstrap writes on its
-	// first "lyx loom start" in that worktree. It must be a no-op, never a refusal.
+	// first "lym loom start" in that worktree. It must be a no-op, never a refusal.
 	bootstrapSeed := shedrun.Seed{
 		Recipe: seed.Recipe,
 		Driver: seed.Driver,
@@ -471,7 +471,7 @@ func stepRealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring(t *testing.T
 }
 
 // stepFourRowRun_SeedsChildCommitsAndTearsDown drives a spawn stub plus a read-status answering StateDone through the whole row list one row at a time: Worktree-Create, Seed-Child, the three Command rows, Run-Shed, Land, Worktree-Teardown.
-// It asserts the pair exists on disk after the create row, that the child's own _lyx/shed/<slug>/seed.json exists after the seed row, names the Board task's own "type" as its recipe, carries the pair's recorded parent branch as params.parent, and is committed (not merely written) on the child's own records pair, and that the pair is gone after the teardown row.
+// It asserts the pair exists on disk after the create row, that the child's own _lym/shed/<slug>/seed.json exists after the seed row, names the Board task's own "type" as its recipe, carries the pair's recorded parent branch as params.parent, and is committed (not merely written) on the child's own records pair, and that the pair is gone after the teardown row.
 // It runs once per recipe a child may run.
 func stepFourRowRun_SeedsChildCommitsAndTearsDown(t *testing.T, h *hubforge.Hub) {
 	for _, recipe := range []string{shedrun.RecipeLoom, shedrun.RecipeDarn} {
@@ -599,7 +599,7 @@ func fourRowRunForRecipe(t *testing.T, h *hubforge.Hub, recipe string) {
 
 	// Teardown's own top.Remove call passes remote: true -- a batten-driven teardown is the task's
 	// final removal, and nothing will ever re-adopt its records branch, so the remote copy must not
-	// linger where "lyx fabric cleanup" (its own enumeration is local-branches-only) can never reach
+	// linger where "lym fabric cleanup" (its own enumeration is local-branches-only) can never reach
 	// it. See F-CLEANUP-REMOTE-ORPHAN.
 	recordsBranch := fabricengine.RecordsBranchName(slug)
 	if err := exec.Command("git", "-C", h.RecordsBare, "rev-parse", "--verify", "refs/heads/"+recordsBranch).Run(); err == nil {
@@ -739,7 +739,7 @@ func stepTeardown_UnreachableRemoteHaltsBeforeRemovalResumably(t *testing.T, h *
 	if !errors.Is(err, fabricengine.ErrArchiveFailed) {
 		t.Errorf("Teardown.Remove() error = %v; want it to wrap fabricengine.ErrArchiveFailed", err)
 	}
-	if !strings.Contains(err.Error(), "lyx batten run "+slug) {
+	if !strings.Contains(err.Error(), "lym batten run "+slug) {
 		t.Errorf("Teardown.Remove() error = %q; want it to name the resume", err.Error())
 	}
 	if !pathExists(h.PairCodeWorktree(slug)) {
@@ -776,12 +776,12 @@ func stepTeardown_AlreadyGonePairWithNoBranchIsDone(t *testing.T, h *hubforge.Hu
 	}
 }
 
-// stepStepDrivenRunShed_ReturnsOnTheChildsStateChange proves Run-Shed's one check per pass through a step: a running child yields from every "lyx batten step" without blocking or persisting anything, and the step after the child's state changes ends Stuck, naming the change.
+// stepStepDrivenRunShed_ReturnsOnTheChildsStateChange proves Run-Shed's one check per pass through a step: a running child yields from every "lym batten step" without blocking or persisting anything, and the step after the child's state changes ends Stuck, naming the change.
 //
 // The steps run on the real clock with no sleep: a pass returns at once, and the change, not a poll interval, is what ends one with a verdict.
 func stepStepDrivenRunShed_ReturnsOnTheChildsStateChange(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-step-reentrant"
-	// The pair must already exist on disk: InnerRun's ResolveStatus resolves the child worktree's own *lyxcwd.Location, which requires a real git worktree there, standing in for a Worktree-Create that already completed on an earlier step -- exactly as stepMidListResume_SkipsTheCompletedCreateRow's own fixture does.
+	// The pair must already exist on disk: InnerRun's ResolveStatus resolves the child worktree's own *lymcwd.Location, which requires a real git worktree there, standing in for a Worktree-Create that already completed on an earlier step -- exactly as stepMidListResume_SkipsTheCompletedCreateRow's own fixture does.
 	hubforge.AddPair(t, h, slug)
 
 	childState := shedengine.StateRunning
@@ -973,7 +973,7 @@ func stepCreateRow_PairWithoutOriginRecordIsIncomplete(t *testing.T, h *hubforge
 	}
 }
 
-// stepCreateRow_LeftoverBranchIsRewordedForPrime pins createRefusal's own wiring into the CreateWorktree closure: a leftover code branch from an earlier torn-down pair must reach the closure's caller worded for an operator standing in prime, never fabric's own raw "lyx fabric checkout" advice, which would switch prime itself onto the task's branch.
+// stepCreateRow_LeftoverBranchIsRewordedForPrime pins createRefusal's own wiring into the CreateWorktree closure: a leftover code branch from an earlier torn-down pair must reach the closure's caller worded for an operator standing in prime, never fabric's own raw "lym fabric checkout" advice, which would switch prime itself onto the task's branch.
 // Calls c.env.CreateWorktree directly, the production closure, rather than createRefusal in isolation, so a future edit that drops the reword call fails here.
 func stepCreateRow_LeftoverBranchIsRewordedForPrime(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-leftover-branch"
@@ -1003,10 +1003,10 @@ func stepCreateRow_LeftoverBranchIsRewordedForPrime(t *testing.T, h *hubforge.Hu
 	if !errors.As(err, &precondition) {
 		t.Errorf("CreateWorktree() error = %v; want a *battenshed.PreconditionError", err)
 	}
-	if strings.Contains(err.Error(), "lyx fabric checkout") {
-		t.Errorf("CreateWorktree() error = %q; want it to never name \"lyx fabric checkout\" from prime", err.Error())
+	if strings.Contains(err.Error(), "lym fabric checkout") {
+		t.Errorf("CreateWorktree() error = %q; want it to never name \"lym fabric checkout\" from prime", err.Error())
 	}
-	for _, want := range []string{slug, "lyx batten cancel " + slug + " --remove"} {
+	for _, want := range []string{slug, "lym batten cancel " + slug + " --remove"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("CreateWorktree() error = %q; want it to contain %q", err.Error(), want)
 		}
@@ -1029,7 +1029,7 @@ func stepCreateRow_IncompletePairRefusesRatherThanSkippingAdd(t *testing.T, h *h
 	if err == nil {
 		t.Fatal("CreateWorktree() error = nil; want a refusal naming the incomplete pair, not silent success")
 	}
-	for _, want := range []string{slug, "not fully created", "lyx fabric remove --force " + slug, "git branch -D " + slug} {
+	for _, want := range []string{slug, "not fully created", "lym fabric remove --force " + slug, "git branch -D " + slug} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("CreateWorktree() error = %q; want it to contain %q", err.Error(), want)
 		}
@@ -1073,7 +1073,7 @@ func TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixe
 	if err == nil {
 		t.Fatal("CreateWorktree() error = nil; want the incomplete-pair refusal")
 	}
-	removeCommand := "lyx fabric remove --force " + slug
+	removeCommand := "lym fabric remove --force " + slug
 	branchCommand := "git branch -D " + branch
 	for _, want := range []string{removeCommand, branchCommand} {
 		if !strings.Contains(err.Error(), want) {
@@ -1509,7 +1509,7 @@ func stepRecordsPrimeRefusal(t *testing.T, h *hubforge.Hub) {
 		})
 	}
 
-	if pathExists(filepath.Join(recordsPrimeCwd, "_lyx", "shed", "some-slug")) {
+	if pathExists(filepath.Join(recordsPrimeCwd, "_lym", "shed", "some-slug")) {
 		t.Errorf("a run directory was seeded under the records prime; the refusal must land before the auto-seed")
 	}
 }
@@ -1691,7 +1691,7 @@ func stepStopReport_ReadsTheParkMarkersContentAndTime(t *testing.T, h *hubforge.
 	if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(marker, []byte("/wt/_lyx/drive-reports/drive-1.md\n"), 0o644); err != nil {
+	if err := os.WriteFile(marker, []byte("/wt/_lym/drive-reports/drive-1.md\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	parkedAt := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
@@ -1700,7 +1700,7 @@ func stepStopReport_ReadsTheParkMarkersContentAndTime(t *testing.T, h *hubforge.
 	}
 
 	path, at, found, err := c.env.InnerRun.StopReport()
-	if err != nil || !found || path != "/wt/_lyx/drive-reports/drive-1.md" || !at.Equal(parkedAt) {
+	if err != nil || !found || path != "/wt/_lym/drive-reports/drive-1.md" || !at.Equal(parkedAt) {
 		t.Errorf("StopReport() = %q, %s, found=%v, %v; want the marker's path and file time", path, at, found, err)
 	}
 }
@@ -1784,8 +1784,8 @@ func stepStatusFlagsAHaltedBattenOverADoneChild(t *testing.T, h *hubforge.Hub) {
 	}
 
 	flag, _ := statusEnvelope()[childDoneFlagKey].(string)
-	if !strings.Contains(flag, `"lyx batten run `+slug+`"`) {
-		t.Errorf("status envelope %s = %q; want it to name \"lyx batten run %s\"", childDoneFlagKey, flag, slug)
+	if !strings.Contains(flag, `"lym batten run `+slug+`"`) {
+		t.Errorf("status envelope %s = %q; want it to name \"lym batten run %s\"", childDoneFlagKey, flag, slug)
 	}
 
 	if err := os.Remove(childStatus); err != nil {
@@ -1798,7 +1798,7 @@ func stepStatusFlagsAHaltedBattenOverADoneChild(t *testing.T, h *hubforge.Hub) {
 
 // stepSeedChild_WritesTheRunSettingsIntoThePairsLocalLayer drives Worktree-Create and Seed-Child over a task carrying run settings:
 // the pair's local loom file holds the key, the loom loader resolves it, and the per-worktree config files show no change since the fork point.
-// A second task whose board entry carries a key the local layer closes, written past `lyx board upsert`, stands Seed-Child Stuck naming the module, the key and the way forward, with no child seed and no local file written.
+// A second task whose board entry carries a key the local layer closes, written past `lym board upsert`, stands Seed-Child Stuck naming the module, the key and the way forward, with no child seed and no local file written.
 func stepSeedChild_WritesTheRunSettingsIntoThePairsLocalLayer(t *testing.T, h *hubforge.Hub) {
 	runWorktreeCreateAndSeedChild := func(t *testing.T, slug string, settings map[string]any) shedengine.StepResult {
 		t.Helper()
@@ -1886,7 +1886,7 @@ func stepSeedChild_WritesTheRunSettingsIntoThePairsLocalLayer(t *testing.T, h *h
 		if result.Outcome != shedengine.Stuck {
 			t.Fatalf("Seed-Child outcome = %q; want stuck", result.Outcome)
 		}
-		for _, want := range []string{"darn", "verify", "lyx board upsert", "lyx batten run " + slug} {
+		for _, want := range []string{"darn", "verify", "lym board upsert", "lym batten run " + slug} {
 			if !strings.Contains(result.Reason, want) {
 				t.Errorf("stuck reason %q lacks %q", result.Reason, want)
 			}

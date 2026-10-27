@@ -19,8 +19,8 @@ func TestHandsBack(t *testing.T) {
 		reason   string
 		want     bool
 	}{
-		{"LandingStopAtParentAlign", "Parent-Align", LandingStopPrefix + "the fixer escalated; way forward: resolve it, then `lyx loom resume`", true},
-		{"LandingStopAtMergeIn", "Merge-In", LandingStopPrefix + "the fixer escalated; way forward: resolve it, then `lyx loom resume`", true},
+		{"LandingStopAtParentAlign", "Parent-Align", LandingStopPrefix + "the fixer escalated; way forward: resolve it, then `lym loom resume`", true},
+		{"LandingStopAtMergeIn", "Merge-In", LandingStopPrefix + "the fixer escalated; way forward: resolve it, then `lym loom resume`", true},
 		{"LandingStopAtFinalize", "Finalize", LandingStopPrefix + "the fixer's change is over the caps; way forward: review it", true},
 		{"UndecodableAttemptRecordAtParentAlign", "Parent-Align", LandingStopPrefix + "the fixer attempt record of Parent-Align does not decode: p; way forward: remove p", true},
 		{"UndecodableAttemptRecordAtMergeIn", "Merge-In", LandingStopPrefix + "the fixer attempt record of Merge-In does not decode: p; way forward: remove p", true},

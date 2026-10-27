@@ -1,6 +1,6 @@
 //go:build tier0
 
-// remove_test.go covers the verdict `lyx fabric remove` takes from an origin reconcile report, and the remover's choice between the local removal and the ordinary one over fake seams.
+// remove_test.go covers the verdict `lym fabric remove` takes from an origin reconcile report, and the remover's choice between the local removal and the ordinary one over fake seams.
 
 package fabriccli
 
@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 )
 
-const goneWayForward = "`lyx fabric remove` of the pair removes the pair and clears this record"
+const goneWayForward = "`lym fabric remove` of the pair removes the pair and clears this record"
 
 func branch(repo, slug string, prime bool, state fabricengine.BranchState, wayForward string) fabricengine.BranchOutcome {
 	return fabricengine.BranchOutcome{Branch: repo + "/" + string(state), Repo: repo, Slug: slug, Prime: prime, State: state, WayForward: wayForward}
@@ -47,7 +47,7 @@ func TestRemoveVerdict(t *testing.T) {
 		{
 			name:    "StoppedRefusesNamingTheWayForwardAndTheRerun",
 			report:  reportOf(stopped, branch("code", "s", false, fabricengine.BranchDiverged, "WF-CODE")),
-			refusal: []string{"WF-CODE", "lyx fabric remove s again"},
+			refusal: []string{"WF-CODE", "lym fabric remove s again"},
 		},
 		{
 			name:   "StoppedOnlyByAGoneCodeBranchIsTheOrdinaryRemoval",
@@ -60,19 +60,19 @@ func TestRemoveVerdict(t *testing.T) {
 		{
 			name:         "GoneThenDivergedRecordsRefusesNamingTheDivergedBranch",
 			report:       reportOf(stopped, goneCode, divergedRecords),
-			refusal:      []string{"WF-RECORDS", "lyx fabric remove s again"},
+			refusal:      []string{"WF-RECORDS", "lym fabric remove s again"},
 			notInRefusal: []string{"removes the pair and clears this record"},
 		},
 		{
 			name:         "GoneThenDivergedBoltRefusesNamingTheBoltBranch",
 			report:       reportOf(stopped, goneCode, divergedBolt),
-			refusal:      []string{"WF-BOLT", "lyx fabric remove s again"},
+			refusal:      []string{"WF-BOLT", "lym fabric remove s again"},
 			notInRefusal: []string{"removes the pair and clears this record"},
 		},
 		{
 			name:         "GoneThenOwnBusyRecordsThenDivergedBoltRefusesNamingTheBoltBranch",
 			report:       reportOf(stopped, goneCode, busyOwnRecords, divergedBolt),
-			refusal:      []string{"WF-BOLT", "lyx fabric remove s again"},
+			refusal:      []string{"WF-BOLT", "lym fabric remove s again"},
 			notInRefusal: []string{"removes the pair and clears this record", "WF-BUSY-RECORDS"},
 		},
 		{

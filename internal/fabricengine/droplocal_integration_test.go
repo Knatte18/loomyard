@@ -15,7 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // TestDropLocal covers a records branch and a code branch ahead of origin tagged and moved to origin's tips with the mutations recorded, and a dirty tracked path refusing with nothing tagged or moved.
@@ -106,25 +106,25 @@ func TestDropLocal(t *testing.T) {
 			{
 				"OriginsTipCarriesAnotherMarker",
 				func(t *testing.T, pair *movesPair) []string {
-					originCommitFile(t, pair.RecordsBare, pair.recordsName, lyxcwd.AnchorFileName, "sub\n")
+					originCommitFile(t, pair.RecordsBare, pair.recordsName, lymcwd.AnchorFileName, "sub\n")
 					gitkit.Git(t, pair.records, "fetch", "origin")
 					gitkit.CommitFile(t, pair.records, "notes/local.md", "records", "local records")
-					return []string{"lyx fabric anchor task --set sub", "re-run the same `lyx adopt` with `--drop-local`"}
+					return []string{"lym fabric anchor task --set sub", "re-run the same `lym adopt` with `--drop-local`"}
 				},
 			},
 			{
 				"LocalWeftAheadWithAReAnchorNotYetPushed",
 				func(t *testing.T, pair *movesPair) []string {
-					gitkit.CommitFile(t, pair.records, lyxcwd.AnchorFileName, "sub\n", "re-anchor")
-					return []string{"lyx fabric anchor task --set .", "re-run the same `lyx adopt` with `--drop-local`"}
+					gitkit.CommitFile(t, pair.records, lymcwd.AnchorFileName, "sub\n", "re-anchor")
+					return []string{"lym fabric anchor task --set .", "re-run the same `lym adopt` with `--drop-local`"}
 				},
 			},
 			{
 				"OwnMarkerEmpty",
 				func(t *testing.T, pair *movesPair) []string {
 					gitkit.CommitFile(t, pair.records, "notes/local.md", "records", "local records")
-					writeFile(t, filepath.Join(pair.records, lyxcwd.AnchorFileName), "\n")
-					return []string{lyxcwd.AnchorFileName}
+					writeFile(t, filepath.Join(pair.records, lymcwd.AnchorFileName), "\n")
+					return []string{lymcwd.AnchorFileName}
 				},
 			},
 		}

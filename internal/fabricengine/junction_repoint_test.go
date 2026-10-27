@@ -1,22 +1,12 @@
 //go:build tier1
 
-// junction_repoint_test.go proves WireJunctions (via seedLyxJunction) repairs
-// a corrupted warp _lyx junction — one that dangles, or resolves to the wrong
-// target — instead of refusing it as a real pre-existing directory. A live
-// review round found the pre-fix code fell through the "predates weft"
-// refusal for both drift shapes, and Reconcile's documented contract
-// ("handles both the missing-junction and the wrong-target cases") was false
-// as a result; only the missing-junction case had test coverage
-// (TestReconcile_DifferentialEquivalence/JunctionRepointed). This file adds
-// the two drift shapes that were unrepairable pre-fix. Fabric-only: warp's
-// seedLyxJunction has the same unfixed gap, so a differential harness would
-// diverge here.
+// junction_repoint_test.go proves WireJunctions (via seedLymJunction) repairs a corrupted warp _lym junction — one that dangles, or resolves to the wrong target — instead of refusing it as a real pre-existing directory.
+// A live review round found the pre-fix code fell through the "predates weft" refusal for both drift shapes, and Reconcile's documented contract ("handles both the missing-junction and the wrong-target cases") was false as a result;
+// only the missing-junction case had test coverage (TestReconcile_DifferentialEquivalence/JunctionRepointed).
+// This file adds the two drift shapes that were unrepairable pre-fix.
+// Fabric-only: warp's seedLymJunction has the same unfixed gap, so a differential harness would diverge here.
 //
-// From card 15 onward, seedLyxJunction's per-junction repair loop runs over
-// two junctions (_lyx and a second, non-_lyx junction), so this file also
-// carries the non-_lyx counterparts of both repoint cases: the per-junction
-// refusal/repair behaviour must hold identically for the second, non-_lyx
-// junction, which has no _lyx-shaped shortcut to fall back on.
+// From card 15 onward, seedLymJunction's per-junction repair loop runs over two junctions (_lym and a second, non-_lym junction), so this file also carries the non-_lym counterparts of both repoint cases: the per-junction refusal/repair behaviour must hold identically for the second, non-_lym junction, which has no _lym-shaped shortcut to fall back on.
 //
 // Package fabricengine_test to reuse the external-test-package fixture idiom
 // of lifecycle_differential_test.go; shares the single TestMain in
@@ -35,8 +25,8 @@ import (
 )
 
 // TestWireJunctions_RepairsCorruptedJunctions points a warp junction at an unrelated (but real)
-// directory, and at a target that does not exist, once for the _lyx junction and once for the
-// second, non-_lyx junction, then asserts WireJunctions removes and recreates each at the correct
+// directory, and at a target that does not exist, once for the _lym junction and once for the
+// second, non-_lym junction, then asserts WireJunctions removes and recreates each at the correct
 // weft target instead of refusing it as pre-existing user content.
 // The steps share one hub and run serially in table order: each step's WireJunctions call leaves
 // every junction healthy again, so the next step starts from a repaired hub.
@@ -70,10 +60,10 @@ func TestWireJunctions_RepairsCorruptedJunctions(t *testing.T) {
 		corruptTarget func(t *testing.T) string
 	}{
 		{
-			name:          "lyx_wrong_target",
-			link:          fabricengine.CodeLyxLink(l, slug),
-			correctTarget: fabricengine.WeftLyxDirFor(l, slug),
-			corruptTarget: func(t *testing.T) string { return realDirectory(t, "not-the-weft-lyx-dir") },
+			name:          "lym_wrong_target",
+			link:          fabricengine.CodeLymLink(l, slug),
+			correctTarget: fabricengine.WeftLymDirFor(l, slug),
+			corruptTarget: func(t *testing.T) string { return realDirectory(t, "not-the-weft-lym-dir") },
 		},
 		{
 			name:          "extra_wrong_target",
@@ -82,9 +72,9 @@ func TestWireJunctions_RepairsCorruptedJunctions(t *testing.T) {
 			corruptTarget: func(t *testing.T) string { return realDirectory(t, "not-the-weft-extra-dir") },
 		},
 		{
-			name:          "lyx_dangling",
-			link:          fabricengine.CodeLyxLink(l, slug),
-			correctTarget: fabricengine.WeftLyxDirFor(l, slug),
+			name:          "lym_dangling",
+			link:          fabricengine.CodeLymLink(l, slug),
+			correctTarget: fabricengine.WeftLymDirFor(l, slug),
 			corruptTarget: func(t *testing.T) string { return missingDirectory(t, "does-not-exist") },
 		},
 		{
@@ -103,7 +93,7 @@ func TestWireJunctions_RepairsCorruptedJunctions(t *testing.T) {
 				t.Fatalf("seed corrupted junction: %v", err)
 			}
 
-			if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
+			if err := fabricengine.WireJunctions(l, slug, []string{"_lym", "_extra"}); err != nil {
 				t.Fatalf("WireJunctions: %v", err)
 			}
 

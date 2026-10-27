@@ -475,11 +475,11 @@ func runStaleBuildReconcile(t *testing.T, run staleRun) {
 		pushBoardFromSecondClone(t, h.BoardDir())
 		movedUpstream = "moved-upstream.txt"
 	}
-	// The machine file sits under the board dir's never-tracked .lyx, which no reconcile reads or writes.
+	// The machine file sits under the board dir's never-tracked .lym, which no reconcile reads or writes.
 	const machineBytes = "slots: 1\ntier_parallel:\n  tier0: 8\n"
 	machineFile := configengine.MachineFile(h.BoardDir(), "gate")
 	if err := os.MkdirAll(filepath.Dir(machineFile), 0o755); err != nil {
-		t.Fatalf("create the board's .lyx config dir: %v", err)
+		t.Fatalf("create the board's .lym config dir: %v", err)
 	}
 	if err := os.WriteFile(machineFile, []byte(machineBytes), 0o644); err != nil {
 		t.Fatalf("seed the machine file: %v", err)
@@ -503,7 +503,7 @@ func runStaleBuildReconcile(t *testing.T, run staleRun) {
 		t.Errorf("origin board branch %q -> %q; want no synchronous push", originBoardBefore, got)
 	}
 
-	wantSubject := "lyx: reconcile hub-wide config for build " + fabricengine.BinaryLabel()
+	wantSubject := "lym: reconcile hub-wide config for build " + fabricengine.BinaryLabel()
 	if got := gitkit.Git(t, h.BoardDir(), "log", "-1", "--format=%s"); got != wantSubject {
 		t.Errorf("hub-wide commit subject = %q; want %q", got, wantSubject)
 	}
@@ -820,7 +820,7 @@ func TestEnsure_FailedWalkNamesTheFileAndLeavesTheTreeAsItWas(t *testing.T) {
 		name string
 		// breakConfig breaks one config file of h and returns the worktree the walk fails in, the repo holding the file, and the file.
 		breakConfig func(t *testing.T, h *hubforge.Hub) (worktree, repo, file string)
-		// module is the module whose "lyx config" the message names; empty when the failure names no module.
+		// module is the module whose "lym config" the message names; empty when the failure names no module.
 		module string
 		repair func(t *testing.T, h *hubforge.Hub)
 		// afterRepair, when set, checks the pair after the repaired walk.
@@ -907,7 +907,7 @@ func TestEnsure_FailedWalkNamesTheFileAndLeavesTheTreeAsItWas(t *testing.T) {
 			},
 			module:          "fabric",
 			unmigratedBoard: true,
-			wantInMessage:   "lyx config fabric --layer default",
+			wantInMessage:   "lym config fabric --layer default",
 			repair: func(t *testing.T, h *hubforge.Hub) {
 				m, _ := configreg.Lookup("fabric")
 				hubforge.SeedFabricConfig(t, h, m.Template())
@@ -957,8 +957,8 @@ func TestEnsure_FailedWalkNamesTheFileAndLeavesTheTreeAsItWas(t *testing.T) {
 				if worktreeErr.File != file {
 					t.Errorf("WorktreeError.File = %q; want %q", worktreeErr.File, file)
 				}
-				if !strings.Contains(err.Error(), "lyx config "+tc.module) {
-					t.Errorf("message %q does not name lyx config %s", err.Error(), tc.module)
+				if !strings.Contains(err.Error(), "lym config "+tc.module) {
+					t.Errorf("message %q does not name lym config %s", err.Error(), tc.module)
 				}
 			}
 			if tc.wantInMessage != "" && !strings.Contains(err.Error(), tc.wantInMessage) {
@@ -1065,7 +1065,7 @@ func TestEnsureOrWarn_WarnsWithTheWayForward(t *testing.T) {
 
 			hubreconcile.EnsureOrWarn(geom, opts)
 
-			for _, want := range []string{wantNamed, wayForwardText, "`lyx beam start`"} {
+			for _, want := range []string{wantNamed, wayForwardText, "`lym beam start`"} {
 				if !strings.Contains(logs.String(), want) {
 					t.Errorf("EnsureOrWarn log lacks %q:\n%s", want, logs.String())
 				}
@@ -1169,9 +1169,9 @@ func TestEnsure_UnwiredPairIsLeftUnwrittenAndStampIsWritten(t *testing.T) {
 
 	h := newStaleHub(t, "pair-a")
 	geom := geometryOf(h)
-	junction := filepath.Join(h.PairCodeWorktree("pair-a"), "_lyx")
+	junction := filepath.Join(h.PairCodeWorktree("pair-a"), "_lym")
 	if err := os.Remove(junction); err != nil {
-		t.Fatalf("remove _lyx junction: %v", err)
+		t.Fatalf("remove _lym junction: %v", err)
 	}
 	before := commitCount(t, h.PairRecordsSibling("pair-a"))
 
@@ -1344,7 +1344,7 @@ func TestEnsure_UnpushedHubWideCommitOverMovedUpstreamLeavesStampAbsent(t *testi
 		if got := commitCount(t, u.board); got != u.before+1 {
 			t.Errorf("second Ensure changed the board commits: %d -> %d; want no new commit", u.before+1, got)
 		}
-		for _, want := range []string{u.hubWidePath, "lyx board sync"} {
+		for _, want := range []string{u.hubWidePath, "lym board sync"} {
 			if !strings.Contains(logs.String(), want) {
 				t.Errorf("log lacks the divergence Warn naming %q:\n%s", want, logs.String())
 			}

@@ -58,11 +58,11 @@ state and reports and starts over on that mismatch, or while audit findings
 are pending: it discards them, with a warning each, once their suspect paths
 match the run's start commit, and refuses while any differs, while HEAD is
 not the run's start commit, or while a pending plan path differs from the
-plan the run recorded (restore it with "lyx webster restore-plan"); with an
+plan the run recorded (restore it with "lym webster restore-plan"); with an
 unchanged plan and nothing pending --fresh is a no-op and the run RESUMES
 from state.json, so a fully-completed plan re-reports done without
 re-driving anything -- force a from-scratch re-run of an unchanged plan by
-editing the plan or archiving _lyx/webster/state.json aside by hand), refuses
+editing the plan or archiving _lym/webster/state.json aside by hand), refuses
 a run whose batch is at a dead end (a dead recovery with no retry, or its
 recoveries spent), naming the batch-start reset, archives any stale
 outcome.yaml/summary.md,
@@ -70,13 +70,13 @@ spawns a fresh Master session via shuttle (fork-authorized, never resumed),
 and blocks until Master writes its own outcome.yaml and summary.md
 (done/stuck) or the shuttle spawn itself ends died/timed-out. Every
 exit except a "run is already in progress" refusal (another
-"lyx webster run" already owns the run -- this call touched nothing) runs
+"lym webster run" already owns the run -- this call touched nothing) runs
 a backstop fabric commit before printing its envelope, so a run that ends in
 error still leaves its completed batches' artifacts committed.
 
 Example:
-  lyx webster run
-  lyx webster run --fresh`,
+  lym webster run
+  lym webster run --fresh`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
 
@@ -97,7 +97,7 @@ Example:
 			}
 
 			// Standalone mode boots its own reed session here, idempotently, because nothing else
-			// can: `lyx reed up` is hub-only. AddStrand now self-heals a cold worktree on its own,
+			// can: `lym reed up` is hub-only. AddStrand now self-heals a cold worktree on its own,
 			// so this call is no longer the only thing standing between a standalone spawn and a
 			// dead end (pre-fix the spawn died on "no reed session" with an impossible recourse,
 			// found live in crucible round fable5-high-r3, F-A1) — it stays as a deliberate early,
@@ -107,7 +107,7 @@ Example:
 			// operator's or loom's own to manage.
 			if c.reedUp != nil {
 				if err := c.reedUp(); err != nil {
-					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: bring up the standalone reed session: %v; way forward: transient, re-run `lyx webster run`", err)))
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: bring up the standalone reed session: %v; way forward: transient, re-run `lym webster run`", err)))
 					return nil
 				}
 			}

@@ -20,7 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
-// writeLensesYAML writes contents to the lenses.yaml path under baseDir, creating the _lyx/config directory tree first.
+// writeLensesYAML writes contents to the lenses.yaml path under baseDir, creating the _lym/config directory tree first.
 func writeLensesYAML(t *testing.T, baseDir, contents string) {
 	t.Helper()
 	path := configengine.ConfigFile(baseDir, "lenses")
@@ -123,7 +123,7 @@ func TestLoad(t *testing.T) {
 		boardDir, anchor := t.TempDir(), t.TempDir()
 		writeLensesYAML(t, boardDir, "lenses:\n  a: default prose\n")
 		localFile := configengine.LocalFile(anchor, "lenses")
-		// The worktree needs its _lyx/ for the load to read its layers at all.
+		// The worktree needs its _lym/ for the load to read its layers at all.
 		if err := os.MkdirAll(configengine.ConfigDir(anchor), 0o755); err != nil {
 			t.Fatalf("MkdirAll(%s): %v", configengine.ConfigDir(anchor), err)
 		}
@@ -230,7 +230,7 @@ func TestLoad(t *testing.T) {
 
 	t.Run("a lens prose holding an unset env marker with no default fails the load", func(t *testing.T) {
 		anchor := t.TempDir()
-		writeLensesYAML(t, anchor, "lenses:\n  cost: |\n    Check ${env:LYX_LENSES_TEST_UNSET_NAME}.\n")
+		writeLensesYAML(t, anchor, "lenses:\n  cost: |\n    Check ${env:LYM_LENSES_TEST_UNSET_NAME}.\n")
 
 		_, err := Load(configengine.Dirs{Anchor: anchor})
 		if err == nil || !strings.HasPrefix(err.Error(), "lenses: ") {

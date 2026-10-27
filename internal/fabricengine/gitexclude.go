@@ -1,7 +1,7 @@
 // gitexclude.go owns every read-modify-write of a git repository's `.git/info/exclude`, on both the
 // warp and the weft side.
 // It exists because that file is repo-wide rather than per-worktree — git resolves `info/exclude` to
-// the COMMON gitdir — so two `lyx fabric` verbs running in two worktrees of one hub edit the same
+// the COMMON gitdir — so two `lym fabric` verbs running in two worktrees of one hub edit the same
 // bytes, and an unsynchronised read-modify-write between them loses whichever update lands first.
 // Worse than losing an update: `os.WriteFile` truncates before it writes, so a concurrent reader can
 // observe an EMPTY file and then write back that emptiness plus its own additions, destroying the
@@ -24,7 +24,7 @@ import (
 // gitExcludeLockFileName is the flock file guarding `.git/info/exclude`.
 // It sits beside the file it guards, inside the common gitdir, so it is repo-wide by the same
 // mechanism the exclude file is and is never a candidate for tracking.
-const gitExcludeLockFileName = "exclude.lyx.lock"
+const gitExcludeLockFileName = "exclude.lym.lock"
 
 // resolveGitExcludePath returns the absolute path of the `.git/info/exclude` belonging to the
 // repository checked out at repoDir.
@@ -88,7 +88,7 @@ func mutateGitExclude(repoDir string, rewrite func(content string) (string, erro
 // ExcludeAnchoredDir makes git ignore the directory dirName at the anchor subpath anchorRel of the repository checked out at worktreeDir,
 // and returns the exclude file's resolved path and whether it wrote anything.
 // It first asks `git check-ignore` whether the directory is already ignored — by a tracked `.gitignore`, the operator's global excludes or any other source — and writes nothing when it is.
-// Otherwise it appends `/<anchorRel>/<dirName>/` to the shared `info/exclude` through mutateGitExclude, so the write holds the same lock and atomic replace as every `lyx fabric` verb.
+// Otherwise it appends `/<anchorRel>/<dirName>/` to the shared `info/exclude` through mutateGitExclude, so the write holds the same lock and atomic replace as every `lym fabric` verb.
 // The leading slash anchors the entry to this anchor's own directory, where a bare name would match at any depth;
 // the trailing slash is kept because dirName is a real directory, not a junction.
 // git reports a directory holding tracked content as not ignored even when a rule covers it,
@@ -124,15 +124,15 @@ func ExcludeAnchoredDir(worktreeDir, anchorRel, dirName string) (excludePath str
 }
 
 // scratchDirName is the directory name agents keep scratch files under, at a warp repo's root.
-// The root entry is a fabric-wired link into the weft-side `.lyx` that agents write through.
-// It is agent scratch, not lyx state, so it is declared here and not in `internal/lyxdirs`.
+// The root entry is a fabric-wired link into the weft-side `.lym` that agents write through.
+// It is agent scratch, not lym state, so it is declared here and not in `internal/lymdirs`.
 const scratchDirName = ".scratch"
 
 // writeFileAtomically replaces path with content via a same-directory temp file and a rename, so a
 // concurrent reader observes either the whole old file or the whole new one and never the empty
 // window os.WriteFile's truncate-then-write opens.
 func writeFileAtomically(path string, content []byte) error {
-	temp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".lyx-*")
+	temp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".lym-*")
 	if err != nil {
 		return fmt.Errorf("create temp file beside %s: %w", path, err)
 	}

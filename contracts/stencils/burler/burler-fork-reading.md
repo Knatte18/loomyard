@@ -12,7 +12,7 @@ Before you leave this step, read:
 - for each symbol the target changes, guards or removes: its direct callers and callees, and every path that reaches it from another process, such as a child the code spawns or a command that calls the guarded verb in-process;
 - for each state, setting or file a decision introduces or changes: the existing code paths that also write, reset or reapply it, such as other verbs, hooks, resize or apply steps, and restart paths, and the code that reads it;
 - for each output, key, string, file shape or behaviour the target changes: every test, caller, doc and fixture that reads or asserts it;
-- the board entry of the task the target belongs to, through `lyx board get`;
+- the board entry of the task the target belongs to, through `lym board get`;
 - the `pattern/` background file of every PATTERN entry the target names or touches;
 - the failure, restart and resume paths of each change the target makes.
 

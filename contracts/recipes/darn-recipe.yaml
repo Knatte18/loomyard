@@ -36,7 +36,7 @@
 # description stands.
 #
 # The perch's answer key is the task's board entry, which the discussion gate's commit snapshots into
-# _lyx/discussion/board-entry.md, as amended by the decision record's `Added after Discussion`
+# _lym/discussion/board-entry.md, as amended by the decision record's `Added after Discussion`
 # entries; the record's other sections are the writer's own claim, reviewed against the snapshot.
 #
 # Finalize declares on_reroute: Code-Bouncer, the row a conflict or a merge too large to land sends
@@ -121,8 +121,8 @@ producers:
       # names the answer key instead: the board entry snapshot and the decision record. The rubric
       # names the diff as the subject.
       artifact_paths:
-        - _lyx/discussion/board-entry.md
-        - _lyx/discussion/decision-record.md
+        - _lym/discussion/board-entry.md
+        - _lym/discussion/decision-record.md
       rubric_stencil: loom-rubric-code-review
       # No commit_seam: Code-Burler-Fix runs fix-scope: source and commits each fix itself.
       # carry_over names this row's own segment: the Bouncer files the round's still-open findings
@@ -152,8 +152,8 @@ producers:
             section and derive the range exactly as written there.
         fasit:
           paths:
-            - _lyx/discussion/board-entry.md
-            - _lyx/discussion/decision-record.md
+            - _lym/discussion/board-entry.md
+            - _lym/discussion/decision-record.md
           instructions: >
             The board entry snapshot named above is the task's scope, as amended by the
             `Added after Discussion` entries of the decision record named above, which win where

@@ -7,20 +7,20 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // worktreeName is the worktree name of every syntheticLocation, the run-id "self" resolves to.
 const worktreeName = "worktree"
 
-// syntheticLocation returns a *lyxcwd.Location anchored at a t.TempDir()-rooted worktree, with no
+// syntheticLocation returns a *lymcwd.Location anchored at a t.TempDir()-rooted worktree, with no
 // git or filesystem I/O of its own -- every constructor under test is a plain filepath.Join, so this
 // only needs to carry an AnchorPath() that resolves predictably.
-func syntheticLocation(t *testing.T) *lyxcwd.Location {
+func syntheticLocation(t *testing.T) *lymcwd.Location {
 	t.Helper()
 	hub := t.TempDir()
-	return &lyxcwd.Location{
+	return &lymcwd.Location{
 		RepoName:     "repo",
 		HubPath:      hub,
 		WorktreeName: worktreeName,
@@ -28,96 +28,96 @@ func syntheticLocation(t *testing.T) *lyxcwd.Location {
 	}
 }
 
-// TestPathConstructors pins every path constructor's layout under the anchor: durable files under _lyx/shed/<run>, ephemeral ones under .lyx/shed/<run>.
+// TestPathConstructors pins every path constructor's layout under the anchor: durable files under _lym/shed/<run>, ephemeral ones under .lym/shed/<run>.
 func TestPathConstructors(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name string
-		got  func(l *lyxcwd.Location) string
-		want func(l *lyxcwd.Location) string
+		got  func(l *lymcwd.Location) string
+		want func(l *lymcwd.Location) string
 	}{
-		{"RunDir", func(l *lyxcwd.Location) string { return RunDir(l, "self") },
-			func(l *lyxcwd.Location) string { return filepath.Join(l.AnchorPath(), "_lyx", "shed", worktreeName) }},
-		{"SeedFile", func(l *lyxcwd.Location) string { return SeedFile(l, "self") },
-			func(l *lyxcwd.Location) string { return filepath.Join(RunDir(l, "self"), "seed.json") }},
-		{"StatusFile", func(l *lyxcwd.Location) string { return StatusFile(l, "self") },
-			func(l *lyxcwd.Location) string { return filepath.Join(RunDir(l, "self"), "status.json") }},
-		{"StepsDir", func(l *lyxcwd.Location) string { return StepsDir(l, "self") },
-			func(l *lyxcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "steps") }},
-		{"LoopLock", func(l *lyxcwd.Location) string { return LoopLock(l, "self") },
-			func(l *lyxcwd.Location) string { return filepath.Join(StepsDir(l, "self"), "loop.lock") }},
-		{"LoopPIDFile", func(l *lyxcwd.Location) string { return LoopPIDFile(l, "self") },
-			func(l *lyxcwd.Location) string { return filepath.Join(StepsDir(l, "self"), "loop.pid") }},
-		{"LoopLog", func(l *lyxcwd.Location) string { return LoopLog(l, "self") },
-			func(l *lyxcwd.Location) string { return filepath.Join(StepsDir(l, "self"), "loop.log") }},
-		{"LoopEnvelope", func(l *lyxcwd.Location) string { return LoopEnvelope(l, "self") },
-			func(l *lyxcwd.Location) string { return filepath.Join(StepsDir(l, "self"), "loop-envelope.json") }},
-		{"LoopDelivered", func(l *lyxcwd.Location) string { return LoopDelivered(l, "self", "abc") },
-			func(l *lyxcwd.Location) string {
+		{"RunDir", func(l *lymcwd.Location) string { return RunDir(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join(l.AnchorPath(), "_lym", "shed", worktreeName) }},
+		{"SeedFile", func(l *lymcwd.Location) string { return SeedFile(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join(RunDir(l, "self"), "seed.json") }},
+		{"StatusFile", func(l *lymcwd.Location) string { return StatusFile(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join(RunDir(l, "self"), "status.json") }},
+		{"StepsDir", func(l *lymcwd.Location) string { return StepsDir(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "steps") }},
+		{"LoopLock", func(l *lymcwd.Location) string { return LoopLock(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join(StepsDir(l, "self"), "loop.lock") }},
+		{"LoopPIDFile", func(l *lymcwd.Location) string { return LoopPIDFile(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join(StepsDir(l, "self"), "loop.pid") }},
+		{"LoopLog", func(l *lymcwd.Location) string { return LoopLog(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join(StepsDir(l, "self"), "loop.log") }},
+		{"LoopEnvelope", func(l *lymcwd.Location) string { return LoopEnvelope(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join(StepsDir(l, "self"), "loop-envelope.json") }},
+		{"LoopDelivered", func(l *lymcwd.Location) string { return LoopDelivered(l, "self", "abc") },
+			func(l *lymcwd.Location) string {
 				return filepath.Join(StepsDir(l, "self"), "loop-envelope.abc.delivered.json")
 			}},
-		{"StepTraceCopy", func(l *lyxcwd.Location) string { return StepTraceCopy(l, "self", "t1") },
-			func(l *lyxcwd.Location) string { return filepath.Join(StepsDir(l, "self"), "t1.trace.log") }},
-		{"StepStderr", func(l *lyxcwd.Location) string { return StepStderr(l, "self", "t1") },
-			func(l *lyxcwd.Location) string { return filepath.Join(StepsDir(l, "self"), "t1.stderr.log") }},
-		{"ScratchDir", func(l *lyxcwd.Location) string { return ScratchDir(l, "self") },
-			func(l *lyxcwd.Location) string { return filepath.Join(l.AnchorPath(), ".lyx", "shed", worktreeName) }},
-		{"GateFindingsFile", func(l *lyxcwd.Location) string { return GateFindingsFile(l, "self", "Darn-Write") },
-			func(l *lyxcwd.Location) string {
+		{"StepTraceCopy", func(l *lymcwd.Location) string { return StepTraceCopy(l, "self", "t1") },
+			func(l *lymcwd.Location) string { return filepath.Join(StepsDir(l, "self"), "t1.trace.log") }},
+		{"StepStderr", func(l *lymcwd.Location) string { return StepStderr(l, "self", "t1") },
+			func(l *lymcwd.Location) string { return filepath.Join(StepsDir(l, "self"), "t1.stderr.log") }},
+		{"ScratchDir", func(l *lymcwd.Location) string { return ScratchDir(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join(l.AnchorPath(), ".lym", "shed", worktreeName) }},
+		{"GateFindingsFile", func(l *lymcwd.Location) string { return GateFindingsFile(l, "self", "Darn-Write") },
+			func(l *lymcwd.Location) string {
 				return filepath.Join(ScratchDir(l, "self"), "gate-findings", "Darn-Write.md")
 			}},
-		{"RunLock", func(l *lyxcwd.Location) string { return RunLock(l, "self") },
-			func(l *lyxcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "run.lock") }},
-		{"StatusLock", func(l *lyxcwd.Location) string { return StatusLock(l, "self") },
-			func(l *lyxcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "status.json.lock") }},
-		{"LastCommitMarker", func(l *lyxcwd.Location) string { return LastCommitMarker(l, "self") },
-			func(l *lyxcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "last-commit") }},
-		{"BattenWatchedMarker", func(l *lyxcwd.Location) string { return BattenWatchedMarker(l, "self") },
-			func(l *lyxcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), BattenWatchedFileName) }},
-		{"DriveReportsDir", func(l *lyxcwd.Location) string { return DriveReportsDir(l, "self") },
-			func(l *lyxcwd.Location) string { return filepath.Join(RunDir(l, "self"), "drive-reports") }},
-		{"ArbiterDir", func(l *lyxcwd.Location) string { return ArbiterDir(l, "self") },
-			func(l *lyxcwd.Location) string { return filepath.Join(RunDir(l, "self"), "arbiter") }},
-		{"ArbiterAttemptDir", func(l *lyxcwd.Location) string { return ArbiterAttemptDir(l, "self", 2) },
-			func(l *lyxcwd.Location) string { return filepath.Join(ArbiterDir(l, "self"), "attempt-2") }},
-		{"ArbiterMarker", func(l *lyxcwd.Location) string { return ArbiterMarker(l, "self") },
-			func(l *lyxcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "arbiter-inflight.json") }},
-		{"DriverLock", func(l *lyxcwd.Location) string { return DriverLock(l, "self") },
-			func(l *lyxcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "driver.lock") }},
-		{"TacklerDir", func(l *lyxcwd.Location) string { return TacklerDir(l, "self") },
-			func(l *lyxcwd.Location) string { return filepath.Join(RunDir(l, "self"), "tackler") }},
-		{"TacklerRel", func(l *lyxcwd.Location) string { return TacklerRel(l, "self") },
-			func(l *lyxcwd.Location) string { return filepath.Join("_lyx", "shed", worktreeName, "tackler") }},
-		{"TacklerAttemptDir", func(l *lyxcwd.Location) string { return TacklerAttemptDir(l, "self", 2) },
-			func(l *lyxcwd.Location) string { return filepath.Join(TacklerDir(l, "self"), "attempt-2") }},
-		{"TacklerMarker", func(l *lyxcwd.Location) string { return TacklerMarker(l, "self") },
-			func(l *lyxcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "tackler-inflight.json") }},
-		{"CancelMarker", func(l *lyxcwd.Location) string { return CancelMarker(l, "self") },
-			func(l *lyxcwd.Location) string {
+		{"RunLock", func(l *lymcwd.Location) string { return RunLock(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "run.lock") }},
+		{"StatusLock", func(l *lymcwd.Location) string { return StatusLock(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "status.json.lock") }},
+		{"LastCommitMarker", func(l *lymcwd.Location) string { return LastCommitMarker(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "last-commit") }},
+		{"BattenWatchedMarker", func(l *lymcwd.Location) string { return BattenWatchedMarker(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), BattenWatchedFileName) }},
+		{"DriveReportsDir", func(l *lymcwd.Location) string { return DriveReportsDir(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join(RunDir(l, "self"), "drive-reports") }},
+		{"ArbiterDir", func(l *lymcwd.Location) string { return ArbiterDir(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join(RunDir(l, "self"), "arbiter") }},
+		{"ArbiterAttemptDir", func(l *lymcwd.Location) string { return ArbiterAttemptDir(l, "self", 2) },
+			func(l *lymcwd.Location) string { return filepath.Join(ArbiterDir(l, "self"), "attempt-2") }},
+		{"ArbiterMarker", func(l *lymcwd.Location) string { return ArbiterMarker(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "arbiter-inflight.json") }},
+		{"DriverLock", func(l *lymcwd.Location) string { return DriverLock(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "driver.lock") }},
+		{"TacklerDir", func(l *lymcwd.Location) string { return TacklerDir(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join(RunDir(l, "self"), "tackler") }},
+		{"TacklerRel", func(l *lymcwd.Location) string { return TacklerRel(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join("_lym", "shed", worktreeName, "tackler") }},
+		{"TacklerAttemptDir", func(l *lymcwd.Location) string { return TacklerAttemptDir(l, "self", 2) },
+			func(l *lymcwd.Location) string { return filepath.Join(TacklerDir(l, "self"), "attempt-2") }},
+		{"TacklerMarker", func(l *lymcwd.Location) string { return TacklerMarker(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "tackler-inflight.json") }},
+		{"CancelMarker", func(l *lymcwd.Location) string { return CancelMarker(l, "self") },
+			func(l *lymcwd.Location) string {
 				return filepath.Join(ScratchRoot(l), worktreeName+".cancel.json")
 			}},
-		{"CancelMarkerSlug", func(l *lyxcwd.Location) string { return CancelMarker(l, worktreeName) },
-			func(l *lyxcwd.Location) string {
-				return filepath.Join(l.AnchorPath(), ".lyx", "shed", worktreeName+".cancel.json")
+		{"CancelMarkerSlug", func(l *lymcwd.Location) string { return CancelMarker(l, worktreeName) },
+			func(l *lymcwd.Location) string {
+				return filepath.Join(l.AnchorPath(), ".lym", "shed", worktreeName+".cancel.json")
 			}},
-		{"CancelMarkerLock", func(l *lyxcwd.Location) string { return CancelMarkerLock(l, "self") },
-			func(l *lyxcwd.Location) string {
+		{"CancelMarkerLock", func(l *lymcwd.Location) string { return CancelMarkerLock(l, "self") },
+			func(l *lymcwd.Location) string {
 				return filepath.Join(ScratchRoot(l), worktreeName+".cancel.lock")
 			}},
-		{"CancelMarkerLockSlug", func(l *lyxcwd.Location) string { return CancelMarkerLock(l, worktreeName) },
-			func(l *lyxcwd.Location) string {
-				return filepath.Join(l.AnchorPath(), ".lyx", "shed", worktreeName+".cancel.lock")
+		{"CancelMarkerLockSlug", func(l *lymcwd.Location) string { return CancelMarkerLock(l, worktreeName) },
+			func(l *lymcwd.Location) string {
+				return filepath.Join(l.AnchorPath(), ".lym", "shed", worktreeName+".cancel.lock")
 			}},
-		{"SettleRecords", func(l *lyxcwd.Location) string { return SettleRecords(l, "self") },
-			func(l *lyxcwd.Location) string { return filepath.Join(RunDir(l, "self"), "go-settle.jsonl") }},
+		{"SettleRecords", func(l *lymcwd.Location) string { return SettleRecords(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join(RunDir(l, "self"), "go-settle.jsonl") }},
 		{"PrimeRunLock", PrimeRunLock,
-			func(l *lyxcwd.Location) string { return filepath.Join(l.AnchorPath(), ".lyx", "shed", "run.lock") }},
+			func(l *lymcwd.Location) string { return filepath.Join(l.AnchorPath(), ".lym", "shed", "run.lock") }},
 		{"LandLock", LandLock,
-			func(l *lyxcwd.Location) string { return filepath.Join(l.AnchorPath(), ".lyx", "shed", "land.lock") }},
-		{"SeedRel", func(l *lyxcwd.Location) string { return SeedRel(l, "self") },
-			func(l *lyxcwd.Location) string { return filepath.Join("_lyx", "shed", worktreeName, "seed.json") }},
-		{"StatusRel", func(l *lyxcwd.Location) string { return StatusRel(l, "self") },
-			func(l *lyxcwd.Location) string { return filepath.Join("_lyx", "shed", worktreeName, "status.json") }},
+			func(l *lymcwd.Location) string { return filepath.Join(l.AnchorPath(), ".lym", "shed", "land.lock") }},
+		{"SeedRel", func(l *lymcwd.Location) string { return SeedRel(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join("_lym", "shed", worktreeName, "seed.json") }},
+		{"StatusRel", func(l *lymcwd.Location) string { return StatusRel(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join("_lym", "shed", worktreeName, "status.json") }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -149,7 +149,7 @@ func TestBattenWatchedContent(t *testing.T) {
 		wantContent string
 	}{
 		{name: "pid alone", pid: 4242, wantContent: "4242\n"},
-		{name: "pid with scratch directory and row", pid: 4242, scratchDir: "/hub/.lyx/batten", producer: "Run-Shed", wantContent: "4242\n/hub/.lyx/batten\nRun-Shed\n"},
+		{name: "pid with scratch directory and row", pid: 4242, scratchDir: "/hub/.lym/batten", producer: "Run-Shed", wantContent: "4242\n/hub/.lym/batten\nRun-Shed\n"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -182,9 +182,9 @@ func TestParkMarker(t *testing.T) {
 			if got != want {
 				t.Errorf("ParkMarker(l, %q) = %q; want %q", runID, got, want)
 			}
-			rel, err := filepath.Rel(filepath.Join(l.AnchorPath(), ".lyx"), got)
+			rel, err := filepath.Rel(filepath.Join(l.AnchorPath(), ".lym"), got)
 			if err != nil || strings.HasPrefix(rel, "..") {
-				t.Errorf("ParkMarker(l, %q) = %q; want it under the .lyx tree", runID, got)
+				t.Errorf("ParkMarker(l, %q) = %q; want it under the .lym tree", runID, got)
 			}
 			report := ResumeReport(l, runID)
 			if report == got || filepath.Dir(report) != filepath.Dir(got) || filepath.Dir(report) != ScratchDir(l, runID) {
@@ -198,7 +198,7 @@ func TestRunsRootRel(t *testing.T) {
 	t.Parallel()
 	l := syntheticLocation(t)
 	root := RunsRootRel()
-	if want := filepath.Join(lyxdirs.LyxDirName, "shed"); root != want {
+	if want := filepath.Join(lymdirs.LymDirName, "shed"); root != want {
 		t.Errorf("RunsRootRel() = %q; want %q", root, want)
 	}
 	if got, want := RunsRoot(l), filepath.Dir(RunDir(l, "x")); got != want {
@@ -218,8 +218,8 @@ func TestRunsRootRel(t *testing.T) {
 	}
 
 	for runID, want := range map[string][2]string{
-		"x":    {"_lyx/shed/x/seed.json", "_lyx/shed/x/status.json"},
-		"self": {"_lyx/shed/self/seed.json", "_lyx/shed/self/status.json"},
+		"x":    {"_lym/shed/x/seed.json", "_lym/shed/x/status.json"},
+		"self": {"_lym/shed/self/seed.json", "_lym/shed/self/status.json"},
 	} {
 		seedRel, statusRel, err := TreeRunFileRels(runID)
 		if err != nil || seedRel != want[0] || statusRel != want[1] {
@@ -252,7 +252,7 @@ func TestDriveReportsRel(t *testing.T) {
 	t.Parallel()
 	anchored := syntheticLocation(t)
 	anchored.AnchorRel = "sub"
-	for name, l := range map[string]*lyxcwd.Location{
+	for name, l := range map[string]*lymcwd.Location{
 		"unanchored": syntheticLocation(t),
 		"anchored":   anchored,
 	} {

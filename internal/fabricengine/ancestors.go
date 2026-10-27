@@ -33,7 +33,7 @@ import (
 // Remove and Prune that wrap it in surfaceRefusal, which by design discards anything that is NOT a
 // *destructiveRefusal. While this guard returned a plain error it was therefore silently swallowed:
 // a static symlink planted at the _launchers container made the whole teardown refuse —
-// correctly, nothing escaped — while `lyx fabric remove` reported "ok":true, "partial":false and an
+// correctly, nothing escaped — while `lym fabric remove` reported "ok":true, "partial":false and an
 // exit 0, with the launcher scripts still on disk and no signal to the operator that a containment
 // guard had fired at all (fabric's R8 crucible round, finding L2; R2's M2 dishonest-success shape on
 // the teardown path). Typing it as the gate's own refusal is what makes PATTERN-fabric-git's "a gate

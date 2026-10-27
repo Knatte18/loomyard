@@ -20,9 +20,9 @@
 // The key `lens_set` in the base file picks one by that name, and `""` picks none.
 // A layer lens or fan replaces the base entry of the same name whole or adds one the base lacks, and a name the repo's own file defines still beats the layer.
 // A layer fan holds the base fan's entries first, in base order, so a layer only appends.
-// Only the base file may hold `lens_set`: the hub file in a hub, set with `lyx config lenses --layer default --set lens_set=<name>` from the hub's prime worktree.
+// Only the base file may hold `lens_set`: the hub file in a hub, set with `lym config lenses --layer default --set lens_set=<name>` from the hub's prime worktree.
 // A worktree file holding another value than the base's, and a name no layer carries, are refused naming that command.
-// lyx picks no layer itself.
+// lym picks no layer itself.
 //
 // # Remove
 //

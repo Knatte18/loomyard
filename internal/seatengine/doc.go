@@ -35,7 +35,7 @@
 //
 // # Told geometry
 //
-// The package is told the absolute paths it works on through Geometry and derives none of its own, so it imports neither internal/lyxcwd nor a geometry constructor and runs in a directory that is not a git repository (PATTERN-cwd-resolution).
+// The package is told the absolute paths it works on through Geometry and derives none of its own, so it imports neither internal/lymcwd nor a geometry constructor and runs in a directory that is not a git repository (PATTERN-cwd-resolution).
 //
 // # The shuttle seam
 //

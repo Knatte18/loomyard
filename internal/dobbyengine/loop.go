@@ -53,7 +53,7 @@ type Deps struct {
 	Machine func() (string, error)
 	// Owner returns the machine that owns this dobby's beam, the prime owner for the prime; empty means no other machine owns it.
 	Owner func() (string, error)
-	// CheckBinary re-execs onto a changed lyx binary and returns when the binary is unchanged.
+	// CheckBinary re-execs onto a changed lym binary and returns when the binary is unchanged.
 	CheckBinary func()
 	// ProbeInterval is batten's `notice_probe_s`; a value below one second is floored to it with one Warn.
 	ProbeInterval time.Duration
@@ -63,7 +63,7 @@ type Deps struct {
 	// Runs lists the batten runs whose parent worktree is this dobby's own, read from the prime's local batten status files and never from the board.
 	// A run's parent is the one its pair's origin record names, the prime for none, so a run whose task Land already pruned from the board is still listed.
 	Runs func() ([]RunView, error)
-	// SpawnPass starts `<lyx> batten run <slug>` with the hidden continue and no-reopen flags as asked, in its own process group with the prime's anchor as its working directory, logged at Info.
+	// SpawnPass starts `<lym> batten run <slug>` with the hidden continue and no-reopen flags as asked, in its own process group with the prime's anchor as its working directory, logged at Info.
 	// The pass registers itself in `internal/runproc` as the run's batten, so dobby registers nothing.
 	// The channel delivers the pass's exit once.
 	SpawnPass func(slug string, continuePass, noReopen bool) (<-chan PassExit, error)
@@ -75,7 +75,7 @@ type Deps struct {
 	ReleaseParentLock func(ctx context.Context, slug string) error
 	// SlugOwner returns the effective owner of slug on the local Bolt, with no pull; empty means no other machine owns it.
 	SlugOwner func(slug string) (string, error)
-	// AdoptSubject returns the beam or `root` that `lyx adopt` takes to move slug on the local Bolt; nil, or an error, names the slug.
+	// AdoptSubject returns the beam or `root` that `lym adopt` takes to move slug on the local Bolt; nil, or an error, names the slug.
 	AdoptSubject func(slug string) (string, error)
 	// LiftOwnerPause lifts the pause entry of the slug's own scope that carries the owner caller.
 	LiftOwnerPause func(ctx context.Context, slug string) error

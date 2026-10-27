@@ -44,14 +44,14 @@ func TestRefuseStartOwnedElsewhere(t *testing.T) {
 				},
 			}},
 			parent:     "b",
-			wantErrors: []string{`"there"`, "`lyx adopt b`"},
+			wantErrors: []string{`"there"`, "`lym adopt b`"},
 			wantOwner:  "there",
 			wantPulls:  1,
 		},
 		{
 			name:       "RootTaskOwnedElsewhereNamesRoot",
 			fake:       fakeOwners{machine: "here", owners: boardengine.Owners{Prime: "there", Entries: map[string]boardengine.OwnerEntry{slug: {IsTask: true}}}},
-			wantErrors: []string{`"there"`, "`lyx adopt root`"},
+			wantErrors: []string{`"there"`, "`lym adopt root`"},
 			wantOwner:  "there",
 			wantPulls:  1,
 		},
@@ -65,7 +65,7 @@ func TestRefuseStartOwnedElsewhere(t *testing.T) {
 		{
 			name:       "EntryOwnedElsewhereRefuses",
 			fake:       fakeOwners{machine: "here", owners: ownedBy("here", "there", false)},
-			wantErrors: []string{`"there"`, "`lyx adopt some-beam`"},
+			wantErrors: []string{`"there"`, "`lym adopt some-beam`"},
 			wantOwner:  "there",
 			wantPulls:  1,
 		},
@@ -82,13 +82,13 @@ func TestRefuseStartOwnedElsewhere(t *testing.T) {
 		{
 			name:       "UnreachablePullRefusesNamingTheRerun",
 			fake:       fakeOwners{machine: "here", pullErr: fmt.Errorf("%w: fetch failed", boardengine.ErrOwnerOriginUnreachable)},
-			wantErrors: []string{"needs origin", "lyx batten run " + slug, "once origin answers"},
+			wantErrors: []string{"needs origin", "lym batten run " + slug, "once origin answers"},
 			wantPulls:  1,
 		},
 		{
 			name:       "DivergedPullRefusesNamingItsDetail",
-			fake:       fakeOwners{machine: "here", pullErr: errors.New("the board could not be brought up to date: diverged; run lyx board sync")},
-			wantErrors: []string{"diverged; run lyx board sync"},
+			fake:       fakeOwners{machine: "here", pullErr: errors.New("the board could not be brought up to date: diverged; run lym board sync")},
+			wantErrors: []string{"diverged; run lym board sync"},
 			wantPulls:  1,
 		},
 		{
@@ -105,7 +105,7 @@ func TestRefuseStartOwnedElsewhere(t *testing.T) {
 		{
 			name:       "LostPrimeClaimReadsTheOtherMachinesClaim",
 			fake:       fakeOwners{machine: "here", owners: ownedBy("", "", false), primeLostTo: "there"},
-			wantErrors: []string{`"there"`, "`lyx adopt some-beam`"},
+			wantErrors: []string{`"there"`, "`lym adopt some-beam`"},
 			wantOwner:  "there",
 			wantPulls:  1,
 			wantSets:   []string{"prime"},

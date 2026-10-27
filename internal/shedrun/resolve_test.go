@@ -7,13 +7,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// mkShedDir creates _lyx/shed/<segment> under l's anchor.
-func mkShedDir(t *testing.T, l *lyxcwd.Location, segment string) {
+// mkShedDir creates _lym/shed/<segment> under l's anchor.
+func mkShedDir(t *testing.T, l *lymcwd.Location, segment string) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Join(l.AnchorPath(), "_lyx", "shed", segment), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(l.AnchorPath(), "_lym", "shed", segment), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
 }
@@ -50,11 +50,11 @@ func TestRunDirResolution(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name string
-		// existing lists the _lyx/shed segments created before resolving.
+		// existing lists the _lym/shed segments created before resolving.
 		existing []string
 		ids      []string
 		wantSeg  string
-		// wantScratchSelfSeg, when set, is the .lyx/shed segment ScratchDir(self) must resolve to.
+		// wantScratchSelfSeg, when set, is the .lym/shed segment ScratchDir(self) must resolve to.
 		wantScratchSelfSeg string
 	}{
 		{"a new run is addressed by self or slug at the slug dir", nil, []string{SelfRunID, worktreeName}, worktreeName, ""},
@@ -69,7 +69,7 @@ func TestRunDirResolution(t *testing.T) {
 			for _, seg := range tt.existing {
 				mkShedDir(t, l, seg)
 			}
-			want := filepath.Join(l.AnchorPath(), "_lyx", "shed", tt.wantSeg)
+			want := filepath.Join(l.AnchorPath(), "_lym", "shed", tt.wantSeg)
 			for _, id := range tt.ids {
 				if got := RunDir(l, id); got != want {
 					t.Errorf("RunDir(%q) = %q; want %q", id, got, want)
@@ -79,7 +79,7 @@ func TestRunDirResolution(t *testing.T) {
 				}
 			}
 			if tt.wantScratchSelfSeg != "" {
-				wantScratch := filepath.Join(l.AnchorPath(), ".lyx", "shed", tt.wantScratchSelfSeg)
+				wantScratch := filepath.Join(l.AnchorPath(), ".lym", "shed", tt.wantScratchSelfSeg)
 				if got := ScratchDir(l, SelfRunID); got != wantScratch {
 					t.Errorf("ScratchDir(self) = %q; want %q", got, wantScratch)
 				}
@@ -91,7 +91,7 @@ func TestRunDirResolution(t *testing.T) {
 //testtiming:keep pins that self resolves against the told location, so a WriteSeed lands at SeedRel and SeedFile, which its covering tests do not
 func TestSelfResolvesAgainstTheToldLocation(t *testing.T) {
 	a := syntheticLocation(t)
-	b := &lyxcwd.Location{RepoName: "repo", HubPath: a.HubPath, WorktreeName: "child-slug", AnchorRel: "."}
+	b := &lymcwd.Location{RepoName: "repo", HubPath: a.HubPath, WorktreeName: "child-slug", AnchorRel: "."}
 	if got := ResolveRunID(b, SelfRunID); got != "child-slug" {
 		t.Errorf("ResolveRunID(b, self) = %q; want child-slug", got)
 	}
@@ -114,7 +114,7 @@ func TestReadWriteSeed_InvalidResolvedIDRefused(t *testing.T) {
 	if _, _, err := ReadSeed(l, "a/b"); err == nil {
 		t.Error("ReadSeed with an invalid id = nil; want error")
 	}
-	empty := &lyxcwd.Location{HubPath: l.HubPath, AnchorRel: "."}
+	empty := &lymcwd.Location{HubPath: l.HubPath, AnchorRel: "."}
 	if err := WriteSeed(empty, SelfRunID, Seed{Recipe: RecipeLoom, Driver: DriverGo}); err == nil {
 		t.Error("WriteSeed(self) with an empty worktree name = nil; want error")
 	}

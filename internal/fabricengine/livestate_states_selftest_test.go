@@ -21,7 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // structuralStateNames is the set of states this suite also proves against a manifest diff: applying
@@ -131,10 +131,10 @@ func assertBothNewShapes(t *testing.T, checkout, beforeStatus string) {
 // The warp checkout and the repo-wide board checkout must carry no git status --porcelain output at
 // all. The prime weft sibling is allowed exactly one line: the freshly materialised, still-empty
 // structural wiring directory WireJunctions creates before anything has ever been synced into it — git
-// never tracks an empty directory, so it shows as untracked ("?? _lyx/" at anchor ".", "?? backend/" at
+// never tracks an empty directory, so it shows as untracked ("?? _lym/" at anchor ".", "?? backend/" at
 // anchor "backend", where the whole untracked subtree collapses to its top segment).
 // This is fabric's own machine-local wiring scratch, not operator dirt — the same status
-// junction.go's own doc comment gives ".lyx" ("always lyx's own machine-local scratch"). Anything beyond
+// junction.go's own doc comment gives ".lym" ("always lym's own machine-local scratch"). Anything beyond
 // that single expected line is a genuine finding, not baseline noise.
 func assertCleanHubEstablished(t *testing.T, h *hubforge.Hub) {
 	t.Helper()
@@ -152,7 +152,7 @@ func assertCleanHubEstablished(t *testing.T, h *hubforge.Hub) {
 
 	allowed := "?? " + h.Anchor + "/"
 	if h.Anchor == "." {
-		allowed = "?? " + lyxdirs.LyxDirName + "/"
+		allowed = "?? " + lymdirs.LymDirName + "/"
 	}
 	for _, line := range strings.Split(weftStatus, "\n") {
 		if line == "" || line == allowed {

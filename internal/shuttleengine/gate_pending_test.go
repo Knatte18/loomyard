@@ -319,8 +319,8 @@ func TestAttachGated_Pending(t *testing.T) {
 			}
 			clk := newFakeClock(time.Now())
 			fx := newFixture(t, reed, engine, withConfig(fastConfig), withSeparateRunDir(), withClock(clk))
-			runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
-			seedPresentReedState(t, dotLyxDir)
+			runner, dotLymDir, runRoot := fx.Runner, fx.DotLym, fx.RunRoot
+			seedPresentReedState(t, dotLymDir)
 			if tt.sendText != "" {
 				stubInputSleep(t)
 			}

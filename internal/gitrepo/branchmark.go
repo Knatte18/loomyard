@@ -10,9 +10,9 @@ import (
 	"github.com/go-git/go-git/v5"
 )
 
-// LocalBranchKey is the last segment of the git config key `branch.<branch>.lyxlocal` that marks a branch local-only.
+// LocalBranchKey is the last segment of the git config key `branch.<branch>.lymlocal` that marks a branch local-only.
 // The key lives in the branch's own config section, so deleting the branch drops the mark with it.
-const LocalBranchKey = "lyxlocal"
+const LocalBranchKey = "lymlocal"
 
 // ErrLocalBranch is returned by a push of a branch carrying the local-only mark, before any git push runs.
 var ErrLocalBranch = errors.New("gitrepo: branch is local-only, never pushed")

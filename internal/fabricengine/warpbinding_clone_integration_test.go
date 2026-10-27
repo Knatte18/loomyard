@@ -23,10 +23,10 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// seedWeftBinding commits a .lyx-warp file containing warpURL plus a trailing newline onto
+// seedWeftBinding commits a .lym-warp file containing warpURL plus a trailing newline onto
 // bareRemote's main branch, mirroring what a prior clone would have left there.
 // It wraps commitFileOnBranch so every test in this file states the binding it is seeding in terms
 // of the URL alone, not the record's on-disk shape.
@@ -35,11 +35,8 @@ func seedWeftBinding(t *testing.T, dir, bareRemote, warpURL string) {
 	commitFileOnBranch(t, dir, bareRemote, "main", fabricengine.WarpBindingFileName, warpURL+"\n")
 }
 
-// noProbeResidueInParent asserts that clonParent contains neither a directory named after
-// derivedName-LYXHUB nor any directory whose name begins with the probe's throwaway-clone prefix — the
-// filesystem property the pre-hub probe exists to guarantee on every failure path.
-// It reads the prefix through fabricengine.WarpProbeDirPrefixForTest so this file has a single source
-// of truth for the literal, shared with TestCloneHub_HubExistsCheckPrecedesProbeInTwoArgForm below.
+// noProbeResidueInParent asserts that clonParent contains neither a directory named after derivedName-LYMHUB nor any directory whose name begins with the probe's throwaway-clone prefix — the filesystem property the pre-hub probe exists to guarantee on every failure path.
+// It reads the prefix through fabricengine.WarpProbeDirPrefixForTest so this file has a single source of truth for the literal, shared with TestCloneHub_HubExistsCheckPrecedesProbeInTwoArgForm below.
 func noProbeResidueInParent(t *testing.T, cloneParent string, derivedNames ...string) {
 	t.Helper()
 
@@ -289,7 +286,7 @@ func TestCloneHub_UnboundWeftNamesTwoArgForm(t *testing.T) {
 	if !errors.Is(err, fabricengine.ErrNoWarpBinding) {
 		t.Errorf("CloneHub() error = %v; want errors.Is ErrNoWarpBinding", err)
 	}
-	if !strings.Contains(err.Error(), "lyx fabric clone <weft-url> <warp-url>") {
+	if !strings.Contains(err.Error(), "lym fabric clone <weft-url> <warp-url>") {
 		t.Errorf("CloneHub() error = %q; want it to contain the two-argument remedy", err.Error())
 	}
 
@@ -469,10 +466,7 @@ func TestCloneHub_AbsenceDiscriminatorDistinguishesMissingFromBroken(t *testing.
 	})
 }
 
-// TestCloneHub_BackfillsBindingOnPreBindingHub asserts that a weft carrying .lyx-anchor but no
-// .lyx-warp — a hub cloned before this change — writes the record and reports
-// WarpBindingRecorded == true given an explicit warp URL, with no ForceBootstrap: the anchor alone
-// satisfies the old-order guard.
+// TestCloneHub_BackfillsBindingOnPreBindingHub asserts that a weft carrying .lym-anchor but no .lym-warp — a hub cloned before this change — writes the record and reports WarpBindingRecorded == true given an explicit warp URL, with no ForceBootstrap: the anchor alone satisfies the old-order guard.
 func TestCloneHub_BackfillsBindingOnPreBindingHub(t *testing.T) {
 	t.Parallel()
 
@@ -481,7 +475,7 @@ func TestCloneHub_BackfillsBindingOnPreBindingHub(t *testing.T) {
 	warpBare := makeBareRemote(t, fixtures, "backfill-warp")
 	weftBare := makeBareRemote(t, fixtures, "backfill-weft")
 	warpURL := filepath.ToSlash(warpBare)
-	commitFileOnBranch(t, fixtures, weftBare, "main", lyxcwd.AnchorFileName, ".\n")
+	commitFileOnBranch(t, fixtures, weftBare, "main", lymcwd.AnchorFileName, ".\n")
 
 	cloneParent := t.TempDir()
 	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
@@ -502,7 +496,7 @@ func TestCloneHub_BackfillsBindingOnPreBindingHub(t *testing.T) {
 }
 
 // TestCloneHub_OldOrderInvocationIsRefused is the regression test that matters most: passing an
-// ordinary source repo (no lyx markers) as the weft candidate and a real repo as the warp — the
+// ordinary source repo (no lym markers) as the weft candidate and a real repo as the warp — the
 // pre-change argument order — with ForceBootstrap left false must be refused, must create no hub, and
 // must leave the rejected repo completely untouched.
 //
@@ -533,7 +527,7 @@ func TestCloneHub_OldOrderInvocationIsRefused(t *testing.T) {
 	if !strings.Contains(err.Error(), "check the argument order") {
 		t.Errorf("CloneHub() error = %q; want it to contain %q", err.Error(), "check the argument order")
 	}
-	if want := lyxcwd.AnchorFileName + " on weft:main or main-weft"; !strings.Contains(err.Error(), want) {
+	if want := lymcwd.AnchorFileName + " on weft:main or main-weft"; !strings.Contains(err.Error(), want) {
 		t.Errorf("CloneHub() error = %q; want it to contain %q", err.Error(), want)
 	}
 
@@ -550,7 +544,7 @@ func TestCloneHub_OldOrderInvocationIsRefused(t *testing.T) {
 }
 
 // TestCloneHub_AnchorBearingWeftPassesGuard asserts, specifically for the guard rather than the
-// backfill outcome, that a weft whose HEAD carries .lyx-anchor but no .lyx-warp passes the old-order
+// backfill outcome, that a weft whose HEAD carries .lym-anchor but no .lym-warp passes the old-order
 // guard and bootstraps with ForceBootstrap false.
 // This setup overlaps TestCloneHub_BackfillsBindingOnPreBindingHub, but is kept as its own test so a
 // guard regression names itself rather than hiding behind the backfill assertion.
@@ -576,7 +570,7 @@ func TestCloneHub_AnchorBearingWeftPassesGuard(t *testing.T) {
 			if tt.branch != "main" {
 				seedWeftBranchFromMain(t, fixtures, weftBare, tt.branch)
 			}
-			commitFileOnBranch(t, fixtures, weftBare, tt.branch, lyxcwd.AnchorFileName, ".\n")
+			commitFileOnBranch(t, fixtures, weftBare, tt.branch, lymcwd.AnchorFileName, ".\n")
 
 			cloneParent := t.TempDir()
 			res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{

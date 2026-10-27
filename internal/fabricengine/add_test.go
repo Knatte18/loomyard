@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 func TestAdd_WiresSlugValidation(t *testing.T) {
@@ -24,14 +24,14 @@ func TestAdd_WiresSlugValidation(t *testing.T) {
 		{"SeparatorRefused", "nested/slug", true},
 		{"JunctionNameRefused", "_extra", true},
 		{"RaddleAccepted", "_raddle", false},
-		{"DotLyxRefused", ".lyx", true},
+		{"DotLymRefused", ".lym", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			topology := fabricengine.NewTopology(fabricengine.Config{Pathspec: "_lyx _extra"})
+			topology := fabricengine.NewTopology(fabricengine.Config{Pathspec: "_lym _extra"})
 			// The layout points at a non-repo temp dir: validation must run before Add consults it,
 			// so no git error can mask the validation error.
-			layout := &lyxcwd.Location{HubPath: filepath.Dir(t.TempDir()), WorktreeName: filepath.Base(t.TempDir())}
+			layout := &lymcwd.Location{HubPath: filepath.Dir(t.TempDir()), WorktreeName: filepath.Base(t.TempDir())}
 
 			_, err := topology.Add(layout, tt.slug, fabricengine.AddOptions{})
 			if got := errors.Is(err, fabricengine.ErrInvalidSlug); got != tt.wantRefuse {

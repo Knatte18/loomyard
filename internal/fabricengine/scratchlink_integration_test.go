@@ -1,7 +1,7 @@
 //go:build tier1
 
 // scratchlink_integration_test.go covers the scratch step of fabric wiring against real hubs.
-// It pins the root `.scratch` becoming a link into the weft-side `.lyx`, the adoption of a real directory, and the shapes the step leaves as found.
+// It pins the root `.scratch` becoming a link into the weft-side `.lym`, the adoption of a real directory, and the shapes the step leaves as found.
 // It also pins the step's reports when a seam refuses it after its classification.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -19,22 +19,22 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 const scratchNoteName = "note.txt"
 
 // scratchPaths returns the prime pair's root `.scratch` entry and the weft-side directory it links to.
-func scratchPaths(l *lyxcwd.Location, slug string) (root, target string) {
+func scratchPaths(l *lymcwd.Location, slug string) (root, target string) {
 	root = filepath.Join(fabricengine.WorktreePath(l, slug), ".scratch")
-	target = filepath.Join(fabricengine.RecordsWorktreePath(l, slug), l.AnchorRel, lyxdirs.DotLyxDirName, "scratch")
+	target = filepath.Join(fabricengine.RecordsWorktreePath(l, slug), l.AnchorRel, lymdirs.DotLymDirName, "scratch")
 	return root, target
 }
 
 // scratchHubRelative returns path relative to the hub, slash-separated, as a mutation record names it.
-func scratchHubRelative(t *testing.T, l *lyxcwd.Location, path string) string {
+func scratchHubRelative(t *testing.T, l *lymcwd.Location, path string) string {
 	t.Helper()
 	rel, err := filepath.Rel(l.HubPath, path)
 	if err != nil {
@@ -44,7 +44,7 @@ func scratchHubRelative(t *testing.T, l *lyxcwd.Location, path string) string {
 }
 
 // wireWithRecord runs WireJunctionsWith over the repo-wide name-set and returns its record.
-func wireWithRecord(t *testing.T, l *lyxcwd.Location, slug string) *fabricengine.Mutations {
+func wireWithRecord(t *testing.T, l *lymcwd.Location, slug string) *fabricengine.Mutations {
 	t.Helper()
 	names, err := fabricengine.RepoWiredNames(l)
 	if err != nil {
@@ -122,7 +122,7 @@ func removeTarget(t *testing.T, target string) {
 
 // removeWeftWorktreeDuringTrackedCheck makes the scratch step's tracked-path check delete slug's weft worktree and answer false,
 // so the worktree is gone between the step's first check and its classification of the root.
-func removeWeftWorktreeDuringTrackedCheck(t *testing.T, l *lyxcwd.Location, slug string) {
+func removeWeftWorktreeDuringTrackedCheck(t *testing.T, l *lymcwd.Location, slug string) {
 	t.Helper()
 	fabricengine.SetScratchPathTrackedForTest(t, func(string, string) (bool, error) {
 		if err := os.RemoveAll(fabricengine.RecordsWorktreePath(l, slug)); err != nil {
@@ -146,7 +146,7 @@ func trackScratchFile(t *testing.T, dir, root string) {
 }
 
 // writeLegacyScratchExclude replaces the exclude file's `/.scratch` line with the legacy `/.scratch/`.
-func writeLegacyScratchExclude(t *testing.T, l *lyxcwd.Location, slug string) {
+func writeLegacyScratchExclude(t *testing.T, l *lymcwd.Location, slug string) {
 	t.Helper()
 	path := excludeFilePath(t, l, slug)
 	data, err := os.ReadFile(path)
@@ -186,7 +186,7 @@ func makeReadOnly(t *testing.T, dir string) {
 type scratchShapeCase struct {
 	name string
 	// arrange shapes the prime pair's root `.scratch`, its target and its exclude.
-	arrange func(t *testing.T, l *lyxcwd.Location, slug string)
+	arrange func(t *testing.T, l *lymcwd.Location, slug string)
 	// leaves reports whether the step leaves both the root entry and the target as arranged.
 	leaves bool
 	// phrase is the part of the left report that names this shape.
@@ -196,7 +196,7 @@ type scratchShapeCase struct {
 var scratchShapeCases = []scratchShapeCase{
 	{
 		name: "LinkToAnotherTarget",
-		arrange: func(t *testing.T, l *lyxcwd.Location, slug string) {
+		arrange: func(t *testing.T, l *lymcwd.Location, slug string) {
 			root, _ := scratchPaths(l, slug)
 			other := filepath.Join(t.TempDir(), "elsewhere")
 			if err := os.MkdirAll(other, 0o755); err != nil {
@@ -212,7 +212,7 @@ var scratchShapeCases = []scratchShapeCase{
 	},
 	{
 		name: "RealDirectoryWhileTargetExists",
-		arrange: func(t *testing.T, l *lyxcwd.Location, slug string) {
+		arrange: func(t *testing.T, l *lymcwd.Location, slug string) {
 			root, _ := scratchPaths(l, slug)
 			replaceLinkWithRealDirectory(t, root)
 		},
@@ -221,7 +221,7 @@ var scratchShapeCases = []scratchShapeCase{
 	},
 	{
 		name: "RegularFile",
-		arrange: func(t *testing.T, l *lyxcwd.Location, slug string) {
+		arrange: func(t *testing.T, l *lymcwd.Location, slug string) {
 			root, _ := scratchPaths(l, slug)
 			removeRootLink(t, root)
 			if err := os.WriteFile(root, []byte("not a directory"), 0o644); err != nil {
@@ -233,7 +233,7 @@ var scratchShapeCases = []scratchShapeCase{
 	},
 	{
 		name: "TrackedContentWhileTargetAbsent",
-		arrange: func(t *testing.T, l *lyxcwd.Location, slug string) {
+		arrange: func(t *testing.T, l *lymcwd.Location, slug string) {
 			root, target := scratchPaths(l, slug)
 			removeRootLink(t, root)
 			trackScratchFile(t, fabricengine.WorktreePath(l, slug), root)
@@ -244,7 +244,7 @@ var scratchShapeCases = []scratchShapeCase{
 	},
 	{
 		name: "TrackedContentWithRootDeletedByHand",
-		arrange: func(t *testing.T, l *lyxcwd.Location, slug string) {
+		arrange: func(t *testing.T, l *lymcwd.Location, slug string) {
 			root, _ := scratchPaths(l, slug)
 			removeRootLink(t, root)
 			trackScratchFile(t, fabricengine.WorktreePath(l, slug), root)
@@ -257,7 +257,7 @@ var scratchShapeCases = []scratchShapeCase{
 	},
 	{
 		name: "FailedRename",
-		arrange: func(t *testing.T, l *lyxcwd.Location, slug string) {
+		arrange: func(t *testing.T, l *lymcwd.Location, slug string) {
 			skipUnlessChmodBlocksWrites(t)
 			root, target := scratchPaths(l, slug)
 			replaceLinkWithRealDirectory(t, root)
@@ -269,14 +269,14 @@ var scratchShapeCases = []scratchShapeCase{
 	},
 	{
 		name: "FailedExcludeWrite",
-		arrange: func(t *testing.T, l *lyxcwd.Location, slug string) {
+		arrange: func(t *testing.T, l *lymcwd.Location, slug string) {
 			skipUnlessChmodBlocksWrites(t)
 			root, target := scratchPaths(l, slug)
 			replaceLinkWithRealDirectory(t, root)
 			removeTarget(t, target)
 			writeLegacyScratchExclude(t, l, slug)
 			infoDir := filepath.Dir(excludeFilePath(t, l, slug))
-			if _, err := os.Stat(filepath.Join(infoDir, "exclude.lyx.lock")); err != nil {
+			if _, err := os.Stat(filepath.Join(infoDir, "exclude.lym.lock")); err != nil {
 				t.Fatalf("exclude lock file missing before the chmod: %v", err)
 			}
 			makeReadOnly(t, infoDir)
@@ -286,7 +286,7 @@ var scratchShapeCases = []scratchShapeCase{
 	},
 	{
 		name: "FailedTargetCreation",
-		arrange: func(t *testing.T, l *lyxcwd.Location, slug string) {
+		arrange: func(t *testing.T, l *lymcwd.Location, slug string) {
 			root, target := scratchPaths(l, slug)
 			removeRootLink(t, root)
 			removeTarget(t, target)
@@ -617,8 +617,8 @@ func TestWireJunctions_ScratchLinkRefusedAfterClassify(t *testing.T) {
 
 		_, pair := reconcilePrimePair(t, h)
 
-		if !strings.Contains(pair.Detail, target) || !strings.Contains(pair.Detail, "lyx fabric reconcile") {
-			t.Errorf("Detail = %q; want it to name %s and `lyx fabric reconcile`", pair.Detail, target)
+		if !strings.Contains(pair.Detail, target) || !strings.Contains(pair.Detail, "lym fabric reconcile") {
+			t.Errorf("Detail = %q; want it to name %s and `lym fabric reconcile`", pair.Detail, target)
 		}
 	})
 
@@ -636,8 +636,8 @@ func TestWireJunctions_ScratchLinkRefusedAfterClassify(t *testing.T) {
 
 		_, pair := reconcilePrimePair(t, h)
 
-		if !strings.Contains(pair.Detail, root) || !strings.Contains(pair.Detail, "lyx fabric reconcile") {
-			t.Errorf("Detail = %q; want it to name %s and `lyx fabric reconcile`", pair.Detail, root)
+		if !strings.Contains(pair.Detail, root) || !strings.Contains(pair.Detail, "lym fabric reconcile") {
+			t.Errorf("Detail = %q; want it to name %s and `lym fabric reconcile`", pair.Detail, root)
 		}
 
 		fabricengine.SetScratchBeforeLinkHookForTest(t, nil)
@@ -661,8 +661,8 @@ func TestWireJunctions_ScratchLinkRefusedAfterClassify(t *testing.T) {
 
 		_, pair := reconcilePrimePair(t, h)
 
-		if !strings.Contains(pair.Detail, root) || !strings.Contains(pair.Detail, "lyx fabric reconcile") {
-			t.Errorf("Detail = %q; want it to name %s and `lyx fabric reconcile`", pair.Detail, root)
+		if !strings.Contains(pair.Detail, root) || !strings.Contains(pair.Detail, "lym fabric reconcile") {
+			t.Errorf("Detail = %q; want it to name %s and `lym fabric reconcile`", pair.Detail, root)
 		}
 	})
 }
@@ -773,7 +773,7 @@ func TestRemove_UnlinksScratchLinkBeforeWorktreeRemoval(t *testing.T) {
 }
 
 // linkAnchoredScratch creates a link named `.scratch` inside the anchor directory of slug's warp worktree, pointing at the same name under the weft anchor as every wired junction does.
-func linkAnchoredScratch(t *testing.T, l *lyxcwd.Location, slug string) string {
+func linkAnchoredScratch(t *testing.T, l *lymcwd.Location, slug string) string {
 	t.Helper()
 	target := filepath.Join(fabricengine.RecordsWorktreePath(l, slug), l.AnchorRel, ".scratch")
 	if err := os.MkdirAll(target, 0o755); err != nil {
@@ -834,7 +834,7 @@ func TestScratchNameAtSubpathAnchor(t *testing.T) {
 			t.Errorf("record %+v lacks link_removed at the anchored .scratch", result.Mutations.Entries())
 		}
 		if result.LinksRemoved != 3 {
-			t.Errorf("LinksRemoved = %d; want 3 (_lyx, .lyx and the anchored .scratch)", result.LinksRemoved)
+			t.Errorf("LinksRemoved = %d; want 3 (_lym, .lym and the anchored .scratch)", result.LinksRemoved)
 		}
 	})
 }
@@ -851,15 +851,15 @@ func reconcilePrimePair(t *testing.T, h *hubforge.Hub) (fabricengine.ReconcileRe
 }
 
 // addRawWarpWorktree adds a warp worktree named slug straight through git, with no weft branch, and returns its path.
-// With realLyxDir it also puts a real `_lyx` directory at the worktree's anchor.
-func addRawWarpWorktree(t *testing.T, h *hubforge.Hub, slug string, realLyxDir bool) string {
+// With realLymDir it also puts a real `_lym` directory at the worktree's anchor.
+func addRawWarpWorktree(t *testing.T, h *hubforge.Hub, slug string, realLymDir bool) string {
 	t.Helper()
 	l := h.Location
 	path := fabricengine.WorktreePath(l, slug)
 	gitkit.Git(t, h.PrimeWorktree(), "worktree", "add", "-b", slug, path)
-	if realLyxDir {
-		if err := os.MkdirAll(filepath.Join(path, l.AnchorRel, lyxdirs.LyxDirName), 0o755); err != nil {
-			t.Fatalf("create real _lyx directory: %v", err)
+	if realLymDir {
+		if err := os.MkdirAll(filepath.Join(path, l.AnchorRel, lymdirs.LymDirName), 0o755); err != nil {
+			t.Fatalf("create real _lym directory: %v", err)
 		}
 	}
 	return path
@@ -906,15 +906,15 @@ func TestReconcile_ScratchLink(t *testing.T) {
 		root, target := scratchPaths(l, slug)
 		replaceLinkWithRealDirectory(t, root)
 		removeTarget(t, target)
-		lyxLink := fabricengine.WarpLyxLinkHere(l)
-		if err := fslink.Remove(lyxLink); err != nil {
-			t.Fatalf("remove %s: %v", lyxLink, err)
+		lymLink := fabricengine.WarpLymLinkHere(l)
+		if err := fslink.Remove(lymLink); err != nil {
+			t.Fatalf("remove %s: %v", lymLink, err)
 		}
-		if err := os.MkdirAll(lyxLink, 0o755); err != nil {
-			t.Fatalf("create real %s: %v", lyxLink, err)
+		if err := os.MkdirAll(lymLink, 0o755); err != nil {
+			t.Fatalf("create real %s: %v", lymLink, err)
 		}
-		if err := os.WriteFile(filepath.Join(lyxLink, "held.txt"), []byte("held"), 0o644); err != nil {
-			t.Fatalf("write into real %s: %v", lyxLink, err)
+		if err := os.WriteFile(filepath.Join(lymLink, "held.txt"), []byte("held"), 0o644); err != nil {
+			t.Fatalf("write into real %s: %v", lymLink, err)
 		}
 
 		_, pair := reconcilePrimePair(t, h)
@@ -939,18 +939,18 @@ func TestReconcile_ScratchLink(t *testing.T) {
 		slug := l.WorktreeName
 		root, _ := scratchPaths(l, slug)
 		replaceLinkWithRealDirectory(t, root)
-		weftLyx := filepath.Join(fabricengine.RecordsWorktreePath(l, slug), l.AnchorRel, lyxdirs.DotLyxDirName)
-		if err := os.RemoveAll(weftLyx); err != nil {
-			t.Fatalf("remove %s: %v", weftLyx, err)
+		weftLym := filepath.Join(fabricengine.RecordsWorktreePath(l, slug), l.AnchorRel, lymdirs.DotLymDirName)
+		if err := os.RemoveAll(weftLym); err != nil {
+			t.Fatalf("remove %s: %v", weftLym, err)
 		}
-		if err := os.WriteFile(weftLyx, []byte("not a directory"), 0o644); err != nil {
-			t.Fatalf("write %s: %v", weftLyx, err)
+		if err := os.WriteFile(weftLym, []byte("not a directory"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", weftLym, err)
 		}
 
 		_, pair := reconcilePrimePair(t, h)
 
-		if !strings.Contains(pair.Detail, root) || !strings.Contains(pair.Detail, "lyx fabric reconcile") {
-			t.Errorf("Detail = %q; want it to name %s and `lyx fabric reconcile`", pair.Detail, root)
+		if !strings.Contains(pair.Detail, root) || !strings.Contains(pair.Detail, "lym fabric reconcile") {
+			t.Errorf("Detail = %q; want it to name %s and `lym fabric reconcile`", pair.Detail, root)
 		}
 		if got := describeEntry(t, root); got != "dir" {
 			t.Errorf("root .scratch = %q; want the real directory left", got)
@@ -962,7 +962,7 @@ func TestReconcile_ScratchLink(t *testing.T) {
 
 	for _, tt := range []struct {
 		name       string
-		realLyxDir bool
+		realLymDir bool
 		action     fabricengine.ReconcileAction
 	}{
 		{"RawAdoptedPairGetsNothing", false, fabricengine.ReconcileActionRawAdopted},
@@ -974,7 +974,7 @@ func TestReconcile_ScratchLink(t *testing.T) {
 			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 			l := h.Location
 			const slug = "scratch-raw"
-			addRawWarpWorktree(t, h, slug, tt.realLyxDir)
+			addRawWarpWorktree(t, h, slug, tt.realLymDir)
 
 			result, err := h.Topology.Reconcile(l)
 			if err != nil {
@@ -1014,7 +1014,7 @@ func TestReconcile_ScratchLink(t *testing.T) {
 			if pair.Error != "" {
 				t.Errorf("Error = %q; want none", pair.Error)
 			}
-			for _, want := range []string{tt.phrase, named, "lyx fabric reconcile"} {
+			for _, want := range []string{tt.phrase, named, "lym fabric reconcile"} {
 				if !strings.Contains(pair.Detail, want) {
 					t.Errorf("Detail = %q; want it to contain %q", pair.Detail, want)
 				}
@@ -1029,7 +1029,7 @@ func assertWarnNames(t *testing.T, logs, path string) {
 	if !strings.Contains(logs, path) {
 		t.Errorf("warn %q does not name %q", logs, path)
 	}
-	if !strings.Contains(logs, "lyx fabric reconcile") {
-		t.Errorf("warn %q does not name `lyx fabric reconcile`", logs)
+	if !strings.Contains(logs, "lym fabric reconcile") {
+		t.Errorf("warn %q does not name `lym fabric reconcile`", logs)
 	}
 }

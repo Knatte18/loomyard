@@ -1,7 +1,7 @@
-// Package termwindow opens a desktop terminal window that runs "lyx reed attach" in a worktree, so the operator can watch a run in a window of its own.
+// Package termwindow opens a desktop terminal window that runs "lym reed attach" in a worktree, so the operator can watch a run in a window of its own.
 // The launcher is chosen per platform: Windows Terminal (wt.exe) into wsl.exe on WSL, Konsole on any other Linux with a graphical session.
 // Elsewhere Resolve reports ErrNoLauncher and nothing opens.
-// The window is a detached process: once it starts, lyx neither waits for it nor learns whether it stays open.
+// The window is a detached process: once it starts, lym neither waits for it nor learns whether it stays open.
 // It closes itself when the run ends: on a 0 attach exit, or on any other attach exit once the run's worktree is removed within a bounded wait.
 // Otherwise it keeps an interactive shell and the attach's output.
 package termwindow
@@ -91,11 +91,11 @@ func (l Launcher) Name() string {
 	return l.name
 }
 
-// OpenAttach opens one window titled title whose login shell runs "<lyxPath> reed attach" in dir.
+// OpenAttach opens one window titled title whose login shell runs "<lymPath> reed attach" in dir.
 // The window closes when the attach exits 0, which includes an operator detach and an ended pair session, or, after any other attach exit, as soon as dir is removed within pairGoneWaitSeconds seconds; otherwise it stays open as a shell.
 // It returns once the launcher process has started; an error means it could not start.
-func (l Launcher) OpenAttach(dir, title, lyxPath string) error {
-	cmd := exec.Command(l.program, l.arguments(dir, title, attachLine(lyxPath, dir))...)
+func (l Launcher) OpenAttach(dir, title, lymPath string) error {
+	cmd := exec.Command(l.program, l.arguments(dir, title, attachLine(lymPath, dir))...)
 	proc.Detach(cmd)
 	logger.Info("termwindow: spawning terminal window", "launcher", l.name, "dir", dir, "title", title)
 	if err := cmd.Start(); err != nil {
@@ -108,8 +108,8 @@ func (l Launcher) OpenAttach(dir, title, lyxPath string) error {
 const pairGoneWaitSeconds = 30
 
 // attachLine is the window's shell line with the wait the window ends on a removed worktree for.
-func attachLine(lyxPath, dir string) string {
-	return attachLineWaiting(lyxPath, dir, pairGoneWaitSeconds)
+func attachLine(lymPath, dir string) string {
+	return attachLineWaiting(lymPath, dir, pairGoneWaitSeconds)
 }
 
 // attachLineWaiting is the window's shell line: it runs the attach and keeps its status.
@@ -117,11 +117,11 @@ func attachLine(lyxPath, dir string) string {
 // Otherwise it prints the status and that it waits up to waitSeconds seconds for dir to be removed.
 // It polls once a second and exits as soon as dir is no longer a directory.
 // When the wait ends with dir present it execs an interactive shell, keeping the attach's output on screen.
-func attachLineWaiting(lyxPath, dir string, waitSeconds int) string {
+func attachLineWaiting(lymPath, dir string, waitSeconds int) string {
 	sh := shell.Posix()
 	gone := "[ -d " + sh.Quote(dir) + " ] || exit 0"
 	return sh.Chain(
-		sh.Invoke(lyxPath)+" reed attach",
+		sh.Invoke(lymPath)+" reed attach",
 		"status=$?",
 		"if [ $status -eq 0 ]; then exit 0; fi",
 		"echo "+sh.Quote("reed attach ended with status")+" $status "+sh.Quote(fmt.Sprintf("- waiting up to %ds for the run worktree to be removed", waitSeconds)),

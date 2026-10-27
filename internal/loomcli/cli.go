@@ -1,13 +1,7 @@
-// cli.go builds the cobra command tree for the loom module and the RunCLI seam that wires it into
-// the standard io.Writer-based call contract.
-// The parent "loom" command carries a PersistentPreRunE that resolves cwd once into a
-// *lyxcwd.Location and delegates the whole engine-stack construction to c.wire (wiring.go), storing
-// the resolved ingredients on loomCLI exactly once per invocation.
-// loom is hub-only: it resolves through lyxcwd.Resolve the way internal/reedcli does, never through
-// preflight.ResolveMode's degrade-to-standalone probe -- loom needs a wired fabric to commit its
-// seed into, so there is no meaningful standalone mode (see the plan's
-// hub-only-resolution-for-loom decision). The resolved value is named "location" throughout, never
-// "loc" or "cwd".
+// cli.go builds the cobra command tree for the loom module and the RunCLI seam that wires it into the standard io.Writer-based call contract.
+// The parent "loom" command carries a PersistentPreRunE that resolves cwd once into a *lymcwd.Location and delegates the whole engine-stack construction to c.wire (wiring.go), storing the resolved ingredients on loomCLI exactly once per invocation.
+// loom is hub-only: it resolves through lymcwd.Resolve the way internal/reedcli does, never through preflight.ResolveMode's degrade-to-standalone probe -- loom needs a wired fabric to commit its seed into, so there is no meaningful standalone mode (see the plan's hub-only-resolution-for-loom decision).
+// The resolved value is named "location" throughout, never "loc" or "cwd".
 
 package loomcli
 
@@ -23,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -40,10 +34,10 @@ import (
 
 // loomCLI carries the fields wire (wiring.go) populates; every loom verb hangs off this receiver.
 type loomCLI struct {
-	// location is the resolved *lyxcwd.Location for this invocation. wire reads it to anchor every
+	// location is the resolved *lymcwd.Location for this invocation. wire reads it to anchor every
 	// config load and to build the reed/webster geometries; no verb needs it directly.
-	location *lyxcwd.Location
-	// cwd is the resolved cwd string the pre-run read via lyxcwd.CwdFrom. It travels to
+	location *lymcwd.Location
+	// cwd is the resolved cwd string the pre-run read via lymcwd.CwdFrom. It travels to
 	// preflightEntry as Env.Cwd, and that entry makes the same preflightshed.NewPreflight(name,
 	// env.Cwd) call over this exact cwd -- Preflight is the one row that spawns git.
 	cwd string
@@ -103,10 +97,10 @@ type loomCLI struct {
 	spawnWatchdog func(hubPath, tmuxPath, shellPath string, suppress bool)
 	// midMerge is the seam through which start reads the pair's merge state before spawning or resuming a driver.
 	// The Test Tier Purity Invariant bars an untagged test from building a real mid-merge pair, so a test substitutes a canned state or error.
-	midMerge func(*lyxcwd.Location) (fabricengine.MidMergeState, error)
+	midMerge func(*lymcwd.Location) (fabricengine.MidMergeState, error)
 	// recordedParentBranch is the seam through which start and resume read the pair's recorded parent branch, to tell a parked merge-in of that branch from any other merge state.
 	// A test substitutes a canned branch or error.
-	recordedParentBranch func(*lyxcwd.Location) (string, error)
+	recordedParentBranch func(*lymcwd.Location) (string, error)
 	// parentCodeDirt is the seam through which the Finalize goto guard reads the parent pair's code checkout, its tracked dirty paths and whether fabric holds a merge record on that pair.
 	// An untagged test cannot build a real parent pair, so it substitutes canned answers.
 	parentCodeDirt func() (checkout string, paths []string, mergeRecord bool, err error)
@@ -162,13 +156,13 @@ type loomCLI struct {
 	// rowFrictionStatus is the status the Friction-Reflect row's closure recorded in this process;
 	// empty when the row did not run here. loomPostRun reports it on RunDone.
 	rowFrictionStatus string
-	// spawnGoDriver is the seam through which a Go-driver spawn starts a detached `lyx loom drive` and returns its pid.
+	// spawnGoDriver is the seam through which a Go-driver spawn starts a detached `lym loom drive` and returns its pid.
 	// It is spawnDetachedDrive over the receiver's location in production; the Test Tier Purity Invariant bars a real spawn from an untagged file, so a test substitutes a counting fake.
 	spawnGoDriver func() (int, error)
-	// spawnGoDriverFrom is spawnGoDriver for a caller that resolved the lyx executable path itself, as a driver handing over after a deploy replaced the file it runs from.
+	// spawnGoDriverFrom is spawnGoDriver for a caller that resolved the lym executable path itself, as a driver handing over after a deploy replaced the file it runs from.
 	spawnGoDriverFrom func(executable string) (int, error)
 	// ownerOf judges who owns the run of slug; newLoomCLI sets it to runOwnerVerdict over this machine's name, and nil reads as owned here and calls nothing.
-	ownerOf func(l *lyxcwd.Location, slug string) (ownerVerdict, error)
+	ownerOf func(l *lymcwd.Location, slug string) (ownerVerdict, error)
 }
 
 // newLoomCLI is the only place production code may build a *loomCLI: it is what keeps suppressWatchdogSpawn and spawnWatchdog set identically on every constructed receiver,
@@ -182,7 +176,7 @@ func newLoomCLI() *loomCLI {
 		spec:                  &shedverbs.Spec{},
 	}
 	c.parentCodeDirt = c.parentCodeDirtFromFabric
-	c.ownerOf = func(l *lyxcwd.Location, slug string) (ownerVerdict, error) {
+	c.ownerOf = func(l *lymcwd.Location, slug string) (ownerVerdict, error) {
 		return runOwnerVerdict(l, slug, machinename.Name)
 	}
 	c.spawnGoDriverFrom = func(executable string) (int, error) { return spawnDetachedDrive(c.location, executable) }
@@ -218,14 +212,9 @@ func (s runnerMasterStarter) StartMaster(spec shuttleengine.Spec, gate shuttleen
 	return run, nil
 }
 
-// resolvePersistentPreRun resolves cwd via lyxcwd.CwdFrom, resolves it into a *lyxcwd.Location via
-// lyxcwd.Resolve, and delegates the whole engine-stack construction to c.wire (wiring.go), storing
-// the resolved ingredients on c.
-// Skips resolution entirely when the loom group command itself is invoked (bare listing or
-// unknown-subcommand error path via clihelp.GroupRunE), so neither path requires a git repository to
-// be present.
-// It also skips the circling, decision and peers groups and their verbs, which resolve their own target worktree in their own PersistentPreRunE:
-// cmd/lyx sets cobra.EnableTraverseRunHooks, so this pre-run still runs for them and would otherwise arm them, reading a slug as a run-id.
+// resolvePersistentPreRun resolves cwd via lymcwd.CwdFrom, resolves it into a *lymcwd.Location via lymcwd.Resolve, and delegates the whole engine-stack construction to c.wire (wiring.go), storing the resolved ingredients on c.
+// Skips resolution entirely when the loom group command itself is invoked (bare listing or unknown-subcommand error path via clihelp.GroupRunE), so neither path requires a git repository to be present.
+// It also skips the circling, decision and peers groups and their verbs, which resolve their own target worktree in their own PersistentPreRunE: cmd/lym sets cobra.EnableTraverseRunHooks, so this pre-run still runs for them and would otherwise arm them, reading a slug as a run-id.
 // The checklist pane verb is skipped too, because arming refuses a missing seed and a pane must outlive one.
 func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) error {
 	if cmd.Name() == "loom" || cmd.Name() == "checklist" || inReviewGroup(cmd) {
@@ -235,7 +224,7 @@ func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
 
-	cwd, err := lyxcwd.CwdFrom(ctx)
+	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
 		output.Err(out, err.Error())
 		clihelp.Abort(ctx, 1)
@@ -244,7 +233,7 @@ func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 
 	armed, err := c.arm(cwd, cmd.Name(), args)
 	if err != nil {
-		// arm's own lyxcwd.Resolve error is already self-describing (it IS the "not a git
+		// arm's own lymcwd.Resolve error is already self-describing (it IS the "not a git
 		// repository" sentinel); pass it through bare rather than doubling that same text on
 		// top of it -- exactly as every other arm/wire error is reported.
 		clihelp.Abort(ctx, c.reportArmFailure(out, cmd, args, err))
@@ -294,7 +283,7 @@ func inReviewGroup(cmd *cobra.Command) bool {
 // resolved location, the two status-file paths, and a handful of cheap path accessors -- no module
 // config, no engine, no producer.
 //
-// The set is the two read-only status verbs (status, pause), the three standalone format self-checks (validate-discussion, validate-plan, validate-description) and the two lints (lint-comments, lint-pattern), which read only c.env's path fields and never a loaded config, and commit-records, which commits through fabric and builds no producer, so a broken module config must not refuse it at the driver's last act, and the three plan card verbs (insert-card, remove-card, restore-renumber), which read only c.env.AnchorPath, and fmt, which reads only c.env.WorktreeRoot and c.cwd, the cwd the pre-run read through lyxcwd.CwdFrom.
+// The set is the two read-only status verbs (status, pause), the three standalone format self-checks (validate-discussion, validate-plan, validate-description) and the two lints (lint-comments, lint-pattern), which read only c.env's path fields and never a loaded config, and commit-records, which commits through fabric and builds no producer, so a broken module config must not refuse it at the driver's last act, and the three plan card verbs (insert-card, remove-card, restore-renumber), which read only c.env.AnchorPath, and fmt, which reads only c.env.WorktreeRoot and c.cwd, the cwd the pre-run read through lymcwd.CwdFrom.
 // Crucible round sonnet5-xhigh-r8's F2 extended the set from the original two after finding the writer agents' own stencil-mandated pre-handoff self-check failed on an unrelated module's broken config, the identical hazard that got status/pause this lightweight path in the first place (see wireLightweight's own doc comment for that history).
 // Every other verb builds or drives producers and keeps the full wire(), including its early config refusal.
 // "step" is deliberately excluded from this set for that same reason: it drives a producer through shedengine.Shed's own Step, so it needs the full wire() and its early config refusal exactly as "start" and "run" do.
@@ -319,23 +308,23 @@ no detached driver. It is the escape hatch for debugging and CI.
 run is NOT tmux-free. Every LLM row underneath it -- Discussion-Write,
 Plan-Write, Describe, and all three review segments -- spawns its agent through
 shuttle into a reed pane, so a live tmux session is required. run
-ensures that session itself, exactly as "lyx loom start" does, rather than
+ensures that session itself, exactly as "lym loom start" does, rather than
 failing several producers deep once a row first tries to add a strand.
 What run does not do is add the status strand or spawn a detached driver.
 
 run needs a seed and a status file, writes neither and commits nothing.
-The seed comes from "lyx loom start", which seeds and spawns the LLM driver,
-or from "lyx shed seed self --recipe loom --driver go --param
+The seed comes from "lym loom start", which seeds and spawns the LLM driver,
+or from "lym shed seed self --recipe loom --driver go --param
 parent=<parent-branch>", which writes a driverless seed; <parent-branch> is
 the pair's recorded parent branch, "parent_branch" in fabric's origin record.
-Only "lyx loom start" or a first "lyx loom step" writes the status file, so
-after a driverless seed "lyx loom step" comes first. An optional run-id
+Only "lym loom start" or a first "lym loom step" writes the status file, so
+after a driverless seed "lym loom step" comes first. An optional run-id
 positional addresses a run other than this worktree's own default ("self"),
 and run refuses when no seed already exists at that run-id.
 
 Example:
-  lyx loom run
-  lyx loom run <run-id>`,
+  lym loom run
+  lym loom run <run-id>`,
 	},
 	Step: shedverbs.VerbText{
 		Use:      "step [<run-id>]",
@@ -343,14 +332,14 @@ Example:
 		Short:    "drive exactly one producer of a seeded run, reporting a JSON envelope",
 		Long: `step needs a seed at the addressed run-id and refuses without one, since it
 never writes a seed itself. With one, it runs the seed-agreement,
-status-seeding and commit block "lyx loom start" runs, then drives exactly one
+status-seeding and commit block "lym loom start" runs, then drives exactly one
 producer through shedengine.Shed's own Step.
 
-Two routes write the seed: "lyx loom start", which seeds and spawns the LLM
-driver, and "lyx shed seed self --recipe loom --driver go --param
+Two routes write the seed: "lym loom start", which seeds and spawns the LLM
+driver, and "lym shed seed self --recipe loom --driver go --param
 parent=<parent-branch>", which writes a driverless seed; <parent-branch> is the
 pair's recorded parent branch, "parent_branch" in fabric's origin record. After
-a driverless seed the first driving call is "lyx loom step", whose bootstrap
+a driverless seed the first driving call is "lym loom step", whose bootstrap
 seeds the status file; from then on step or run drives.
 
 step spawns no detached driver and loops over nothing: it is the single-producer primitive an external supervisor
@@ -368,9 +357,9 @@ An optional run-id positional addresses a run other than this worktree's
 own default ("self").
 
 Example:
-  lyx loom step
-  lyx loom step --parent main
-  lyx loom step <run-id>`,
+  lym loom step
+  lym loom step --parent main
+  lym loom step <run-id>`,
 	},
 	Status: shedverbs.VerbText{
 		Use:      "status [<run-id>]",
@@ -398,10 +387,10 @@ own default ("self"); status refuses when no seed already exists at that
 run-id.
 
 Example:
-  lyx loom status
-  lyx loom status --watch
-  lyx loom status --watch --interval 200ms
-  lyx loom status <run-id>`,
+  lym loom status
+  lym loom status --watch
+  lym loom status --watch --interval 200ms
+  lym loom status <run-id>`,
 	},
 	Pause: shedverbs.VerbText{
 		Use:      "pause [<run-id>]",
@@ -417,26 +406,26 @@ conditions, and refuses beside --before or --after.
 
 --by <label> records a free-text caller label, such as operator or the orch's
 strand name, beside the condition it accompanies. The label is recorded in
-the paused run's pause_reason; shed is reserved for lyx's own automatic steps
+the paused run's pause_reason; shed is reserved for lym's own automatic steps
 and refused.
 
 A bare pause, with no flag, refuses for a loom run: it no longer stops
-anything. The refusal names the two ways forward: "lyx tender pause <slug>"
+anything. The refusal names the two ways forward: "lym tender pause <slug>"
 stops the run's agents now, and "--after <current_producer>" halts the run at
 its next producer boundary.
 
 --after naming a row that waits for the parent lock also ends that wait
 mid-row, halting the run at the row; the condition stays recorded until
-"lyx loom goto" clears it, and "lyx loom resume" then moves the run.
+"lym loom goto" clears it, and "lym loom resume" then moves the run.
 
 An optional run-id positional addresses a run other than this worktree's
 own default ("self"); pause refuses when no seed already exists at that
 run-id.
 
 Example:
-  lyx loom pause --after Plan-Write
-  lyx loom pause <run-id> --before Plan-Write
-  lyx loom pause --clear`,
+  lym loom pause --after Plan-Write
+  lym loom pause <run-id> --before Plan-Write
+  lym loom pause --clear`,
 	},
 	Goto: shedverbs.VerbText{
 		Use:      "goto [<run-id>]",
@@ -448,7 +437,7 @@ and resets only what the target row needs to run:
 the error, the transient mark, a pending resume label and the pause conditions.
 It records a "goto" history entry and itself as the run's pause reason.
 It is refused onto a review or fix row of a review segment whose verdict has settled.
-A bounce-budget-exhausted halt is lifted only by "lyx loom resume", never by goto.
+A bounce-budget-exhausted halt is lifted only by "lym loom resume", never by goto.
 It refuses while a driver holds the run lock and on a done run, and
 never re-opens a finished run. goto moves a halted run only back, to a row at or before its current row (strictly before when the run is awaiting), and refuses a running run.
 
@@ -457,8 +446,8 @@ own default ("self"); goto refuses when no seed already exists at that
 run-id.
 
 Example:
-  lyx loom goto --to Plan-Write
-  lyx loom goto <run-id> --to Plan-Write`,
+  lym loom goto --to Plan-Write
+  lym loom goto <run-id> --to Plan-Write`,
 	},
 }
 
@@ -482,12 +471,10 @@ A verb taking an optional <slug> addresses the task worktree it runs in; from
 the prime the slug is required.
 
 Example:
-  lyx loom start
-  lyx loom status --watch
-  lyx loom circling accept <slug>`,
-		// RunE is set so that bare "lyx loom" lists subcommands and "lyx
-		// loom bogus" emits a JSON error envelope instead of falling
-		// through to cobra's plain-text help.
+  lym loom start
+  lym loom status --watch
+  lym loom circling accept <slug>`,
+		// RunE is set so that bare "lym loom" lists subcommands and "lym loom bogus" emits a JSON error envelope instead of falling through to cobra's plain-text help.
 		RunE:              clihelp.GroupRunE,
 		PersistentPreRunE: c.resolvePersistentPreRun,
 	}
@@ -498,7 +485,7 @@ Example:
 
 	// Each generic verb takes at most one positional argument -- the run-id arm resolves (arm.go). None declared an Args validator before this card, so a second positional
 	// was silently swallowed and the command addressed "self" regardless -- the worst of the
-	// available behaviours. "lyx loom start" keeps its own arity (no positional at all): it takes
+	// available behaviours. "lym loom start" keeps its own arity (no positional at all): it takes
 	// no run-id.
 	runVerb.Args = cobra.MaximumNArgs(1)
 	stepVerb.Args = cobra.MaximumNArgs(1)
@@ -522,7 +509,7 @@ func RunCLI(out io.Writer, args []string) int {
 // RunCLIIn is RunCLI's seam-cwd-carrying sibling: an empty cwd means "read the process cwd" and
 // delegates to clihelp.Execute exactly as RunCLI always has, while any other value seeds cwd into
 // the execution context via clihelp.ExecuteIn.
-// The branch exists because lyxcwd.WithCwd panics on an empty directory, so a uniform delegation to
+// The branch exists because lymcwd.WithCwd panics on an empty directory, so a uniform delegation to
 // ExecuteIn would panic on every existing RunCLI call.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {

@@ -11,7 +11,7 @@ import (
 
 // LandReading is what one read of a beam's landing state tells the dobby.
 // Passes reports whether the landing's refusal finds nothing working under the beam.
-// ParentOwner and ParentSubject name the machine that owns the beam's parent and what `lyx adopt` takes to move it, both empty unless another machine owns it.
+// ParentOwner and ParentSubject name the machine that owns the beam's parent and what `lym adopt` takes to move it, both empty unless another machine owns it.
 type LandReading struct {
 	Passes        bool
 	ParentOwner   string
@@ -67,7 +67,7 @@ func (d *daemon) landNotice(ctx context.Context) error {
 // landNoticeText is the notice of a passing reading: the beam's land command, or the adopt that takes the parent over when another machine owns it.
 func (d *daemon) landNoticeText(reading LandReading) string {
 	if reading.ParentOwner != "" {
-		return fmt.Sprintf("%s: nothing works under the beam any more, but machine %s owns its parent, so it cannot land here; run `lyx adopt %s` to take the parent over", d.geom.Slug, reading.ParentOwner, reading.ParentSubject)
+		return fmt.Sprintf("%s: nothing works under the beam any more, but machine %s owns its parent, so it cannot land here; run `lym adopt %s` to take the parent over", d.geom.Slug, reading.ParentOwner, reading.ParentSubject)
 	}
-	return fmt.Sprintf("%s: nothing works under the beam any more; run `lyx beam land %s` to land it", d.geom.Slug, d.geom.Slug)
+	return fmt.Sprintf("%s: nothing works under the beam any more; run `lym beam land %s` to land it", d.geom.Slug, d.geom.Slug)
 }

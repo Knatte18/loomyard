@@ -1,5 +1,5 @@
 // wiring.go implements wire, extracted from the pre-run (cli.go's resolvePersistentPreRun) so a test
-// can drive it against a hand-built *lyxcwd.Location and stay tier 1.
+// can drive it against a hand-built *lymcwd.Location and stay tier 1.
 // wire resolves no cwd and spawns no process -- every path it touches is either caller-supplied
 // (location, cwd) or a plain config read anchored at location.AnchorPath(), so a test can drive it
 // directly without breaching the Test Tier Purity Invariant.
@@ -30,7 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/planglyph"
@@ -91,7 +91,7 @@ type commitStatusDeps struct {
 // The directory pathspec is whole rather than per-file because StageAndCommit runs `git add -- <pathspec>`:
 // an archive commits both the new timestamped sibling and the covered files' removal from the friction directory,
 // and a transition whose commit was skipped mid-merge is caught up by the next one.
-func statusCommitPathspec(location *lyxcwd.Location, runID string) []string {
+func statusCommitPathspec(location *lymcwd.Location, runID string) []string {
 	paths := []string{shedrun.StatusRel(location, runID)}
 	if holdsFile(loomengine.LoomReviewsDir(location)) {
 		paths = append(paths, loomengine.LoomReviewsDirRel())
@@ -117,14 +117,14 @@ func statusCommitPathspec(location *lyxcwd.Location, runID string) []string {
 // an archived run record alone does not match, because once its deletions are committed nothing under webster's directory is left.
 // A failed tracked check keeps the path, since dropping it could leave the deletions unstaged.
 // The plan amendment record joins when it exists or is tracked, so its removal is staged in the same commit.
-func planCommitPathspec(location *lyxcwd.Location) []string {
+func planCommitPathspec(location *lymcwd.Location) []string {
 	return planCommitPathspecWith(location, func(rel string) (bool, error) {
 		return fabricengine.PathTracked(location.AnchorPath(), rel)
 	})
 }
 
 // planCommitPathspecWith is planCommitPathspec with the index lookup injected as tracked.
-func planCommitPathspecWith(location *lyxcwd.Location, tracked func(rel string) (bool, error)) []string {
+func planCommitPathspecWith(location *lymcwd.Location, tracked func(rel string) (bool, error)) []string {
 	paths := []string{planparser.PlanDirRel()}
 	if holdsFile(websterengine.Dir(location.AnchorPath())) {
 		paths = append(paths, websterengine.DirRel())
@@ -175,7 +175,7 @@ func holdsFile(dir string) bool {
 }
 
 // loomCommitStatusDeps builds a commitStatusDeps over location and runID, filling each field from fabric: MergeActive from fabricengine.MergeStateActive, Commit from fabricengine.CommitAnchoredPaths scoped to statusCommitPathspec (the status file, plus the review round record, the loom durable directory and the drive reports when each holds a file), Spawn from spawnStatusPush, which pushes the run records and, in a task pair, the task branch, and Push from fabricengine.PushPairAnchored, the same push run synchronously.
-func loomCommitStatusDeps(location *lyxcwd.Location, runID string) commitStatusDeps {
+func loomCommitStatusDeps(location *lymcwd.Location, runID string) commitStatusDeps {
 	return commitStatusDeps{
 		MergeActive: func() (bool, error) {
 			return fabricengine.MergeStateActive(location)
@@ -248,12 +248,9 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 // which they cannot.
 // validate-plan loads the hub-wide language.yaml itself for its rename-tool-missing check, and that read is none of wire()'s module configs.
 //
-// It exists because wire() below loads eight module configs, a model-spec registry and the active
-// batchifier before any verb body runs, so a fault in ANY of them refused "lyx loom status" and
-// "lyx loom pause" outright -- including a fault an agent loom itself spawned, which is how this was
-// found: a Discussion-Write agent rewrote loom.yaml mid-run and from that moment the operator had
-// neither the read-out nor the emergency brake for a run that was still going. pause is the
-// documented graceful-stop mechanism; losing it to an unrelated config problem inverts the cost.
+// It exists because wire() below loads eight module configs, a model-spec registry and the active batchifier before any verb body runs, so a fault in ANY of them refused "lym loom status" and "lym loom pause" outright -- including a fault an agent loom itself spawned, which is how this was found: a Discussion-Write agent rewrote loom.yaml mid-run and from that moment the operator had neither the read-out nor the emergency brake for a run that was still going.
+// pause is the documented graceful-stop mechanism;
+// losing it to an unrelated config problem inverts the cost.
 //
 // Crucible round sonnet5-xhigh-r8's F2 extended this path to validate-discussion/validate-plan for
 // the identical reason: both writer agents' own stencils instruct them to run these two verbs as a
@@ -270,7 +267,7 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 // keep failing early on a bad config, because for them an unloadable config is a real refusal rather
 // than an unrelated one. That is the same reasoning wire()'s own landingCfg comment already gives
 // for loading landing.yaml eagerly.
-func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
+func (c *loomCLI) wireLightweight(location *lymcwd.Location, cwd string) {
 	c.location = location
 	c.cwd = cwd
 	// CommitStatus is filled here too, even though no verb on this path writes the status file and so
@@ -314,7 +311,7 @@ func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
 
 // committedAnchoredReader returns the seam that reads an anchor-relative file as committed at HEAD for location, with found false when HEAD has no such file.
 // Building it opens nothing: the fabric is read on each call.
-func committedAnchoredReader(location *lyxcwd.Location) func(anchorRel string) ([]byte, bool, error) {
+func committedAnchoredReader(location *lymcwd.Location) func(anchorRel string) ([]byte, bool, error) {
 	return func(anchorRel string) ([]byte, bool, error) {
 		return fabricengine.CommittedAnchoredFile(location, anchorRel)
 	}
@@ -322,7 +319,7 @@ func committedAnchoredReader(location *lyxcwd.Location) func(anchorRel string) (
 
 // discussionCommitPathspec is the pathspec CommitDiscussion stages: the whole discussion directory and the plan amendment record.
 // A parent-review round directory an older binary left stays committed as it is and is staged no more.
-func discussionCommitPathspec(location *lyxcwd.Location) []string {
+func discussionCommitPathspec(location *lymcwd.Location) []string {
 	paths := []string{loomengine.DiscussionDirRel()}
 	return append(paths, amendmentPathspec(location, func(rel string) (bool, error) {
 		return fabricengine.PathTracked(location.AnchorPath(), rel)
@@ -332,7 +329,7 @@ func discussionCommitPathspec(location *lyxcwd.Location) []string {
 // amendmentPathspec is the plan amendment record's pathspec: the record when it exists or git tracks it, and nothing otherwise.
 // A tracked record that is absent is a deletion to stage.
 // A failed tracked check adds nothing, so git is never handed a pathspec matching nothing.
-func amendmentPathspec(location *lyxcwd.Location, tracked func(rel string) (bool, error)) []string {
+func amendmentPathspec(location *lymcwd.Location, tracked func(rel string) (bool, error)) []string {
 	rel := loomengine.LoomAmendmentRecordRel()
 	if _, err := os.Stat(loomengine.LoomAmendmentRecord(location)); err == nil {
 		return []string{rel}
@@ -344,15 +341,15 @@ func amendmentPathspec(location *lyxcwd.Location, tracked func(rel string) (bool
 }
 
 // commitDiscussion commits the discussion artifacts of location's worktree through the fabric.
-// It is the body of the CommitDiscussion seam, shared with `lyx loom decision add`, which commits the record it appends to.
-func commitDiscussion(location *lyxcwd.Location) error {
+// It is the body of the CommitDiscussion seam, shared with `lym loom decision add`, which commits the record it appends to.
+func commitDiscussion(location *lymcwd.Location) error {
 	_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, discussionCommitPathspec(location), fmt.Sprintf("loom: discussion artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 	return err
 }
 
 // discussionHistory returns the seam that reads every committed version of location's decision record, newest first.
 // Building it opens nothing: the fabric is read on each call.
-func discussionHistory(location *lyxcwd.Location) func() ([][]byte, error) {
+func discussionHistory(location *lymcwd.Location) func() ([][]byte, error) {
 	return func() ([][]byte, error) {
 		return fabricengine.CommittedAnchoredFileHistory(location, loomengine.DiscussionDecisionRecordRel())
 	}
@@ -361,7 +358,7 @@ func discussionHistory(location *lyxcwd.Location) func() ([][]byte, error) {
 // writeCarryOver writes entry into the decision record of location's worktree and commits the record alone.
 // It is the body of the CarryOver seam.
 // An unchanged record commits nothing, and a write or commit error is returned as the seam's error.
-func writeCarryOver(location *lyxcwd.Location, entry discussionparser.CarryOver) error {
+func writeCarryOver(location *lymcwd.Location, entry discussionparser.CarryOver) error {
 	if err := discussionparser.WriteCarryOver(loomengine.DiscussionDecisionRecord(location), entry); err != nil {
 		return err
 	}
@@ -375,7 +372,7 @@ const loomProgram = "LOOM"
 // wire builds the whole engine stack onto c from location and cwd: every module config anchored at
 // location.AnchorPath(), the reed engine and shuttle runner, the assembled websterengine.RunDeps, and
 // the assembled shedrecipe.Env/shedbuild.ShedPaths pair wrapping it.
-func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
+func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	anchorPath := location.AnchorPath()
 
 	loomCfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(location), "loom")
@@ -501,7 +498,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		Batcher:    activeBatcher,
 		Geom:       websterGeom,
 		// FrictionDir covers the Master and verify-fix prompts only: the per-batch fork and recovery
-		// prompts are composed in a separate `lyx webster` process (begin-batch/recover-batch), which
+		// prompts are composed in a separate `lym webster` process (begin-batch/recover-batch), which
 		// resolves the same value itself in internal/webstercli, per the
 		// webstercli-resolves-the-friction-directory-in-hub-mode Shared Decision.
 		FrictionDir: frictionDir,
@@ -703,8 +700,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// approved settle that commits its overlay fix -- and that is intentional and matches the
 		// discussion precedent: the commit keeps the artifact durable, it does not certify it. The
 		// pathspec is the whole plan directory via
-		// planparser.PlanDirRel(), never a hand-built filepath.Join naming the _lyx literal, which
-		// the Lyxdirs Single-Declarer Invariant forbids in production path-construction context;
+		// planparser.PlanDirRel(), never a hand-built filepath.Join naming the _lym literal, which
+		// the Lymdirs Single-Declarer Invariant forbids in production path-construction context;
 		// planCommitPathspec adds webster's durable directory when Plan-Write's rotation moved a run record out of it.
 		// An amendment record the settle judged is removed first, so the deletion is staged by the same commit.
 		CommitPlan: func() error {
@@ -764,7 +761,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		Setting: configreg.SettingLookup(fabricengine.ConfigDirs(location)),
 		// SettingKnown and Resume serve a recipe row's entry gate: its operands are checked at build and its evaluation errors name the resume command.
 		SettingKnown: configreg.CheckSettingKey,
-		Resume:       "lyx loom resume",
+		Resume:       "lym loom resume",
 
 		ReviewCirclingCheckpoint: loomCfg.ReviewCirclingCheckpoint,
 		ReviewTimeout:            reviewSettings.Timeout,
@@ -951,15 +948,15 @@ func segmentBounces(statusPath, statusLockPath string, routing func() (shedengin
 }
 
 // loomMissingStatusWayForward is the told trailing clause for a missing status file: loom's own start verb is what bootstraps one.
-const loomMissingStatusWayForward = "way forward: run \"lyx loom start\" first to bootstrap this task"
+const loomMissingStatusWayForward = "way forward: run \"lym loom start\" first to bootstrap this task"
 
 // loomRerouteCapWayForward is the told clause a reroute-cap halt ends with, whichever row's reroute hit the cap.
 // The halt is resumed once the cause its reason quotes is cleared.
-const loomRerouteCapWayForward = "run \"lyx loom resume\" in the task worktree once the cause the halt's reason quotes is cleared: for a parent-branch reroute, once the parent branch has settled; for a fixer whose attempts are spent, once the failing tests are fixed on the task branch; for a fixer whose change is over the caps, once the fixer's commits are reviewed and fixed on the task branch; for a Webster plan conflict, once the run's parent has recorded the fix with \"lyx loom decision add\" and \"--amends-plan\", then run \"lyx loom goto --to Plan-Burler-Review\""
+const loomRerouteCapWayForward = "run \"lym loom resume\" in the task worktree once the cause the halt's reason quotes is cleared: for a parent-branch reroute, once the parent branch has settled; for a fixer whose attempts are spent, once the failing tests are fixed on the task branch; for a fixer whose change is over the caps, once the fixer's commits are reviewed and fixed on the task branch; for a Webster plan conflict, once the run's parent has recorded the fix with \"lym loom decision add\" and \"--amends-plan\", then run \"lym loom goto --to Plan-Burler-Review\""
 
 // loomBudgetWayForward is the told clause a bounce-budget-exhausted halt ends with, whichever row's budget ran out.
 // Only the resume grants a budget; a goto keeps the spent one.
-const loomBudgetWayForward = "run \"lyx loom resume\" in the task worktree: the resume grants the row one more budget; a goto keeps the spent budget and grants none"
+const loomBudgetWayForward = "run \"lym loom resume\" in the task worktree: the resume grants the row one more budget; a goto keeps the spent budget and grants none"
 
 // hubConfigWayForward is the trailing clause for a failed load of the hub-wide landing config: reconciling the hub's config is what restores it.
-const hubConfigWayForward = "way forward: run lyx config reconcile --apply in the hub, then step again"
+const hubConfigWayForward = "way forward: run lym config reconcile --apply in the hub, then step again"

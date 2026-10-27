@@ -43,7 +43,7 @@ func TestCommit_PartialFailure_WarpLandsWeftCommitFails(t *testing.T) {
 	}
 	t.Cleanup(func() { os.Remove(lockPath) })
 
-	result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "two-sided commit", nil, SyncOptions{})
+	result, err := f.Commit([]string{"README", "_lym/config.yaml"}, "two-sided commit", nil, SyncOptions{})
 	if err == nil {
 		t.Fatal("Commit() error = nil; want an error (weft commit should fail)")
 	}
@@ -94,7 +94,7 @@ func TestCommit_PartialFailure_WarpCommitFails(t *testing.T) {
 	}
 	t.Cleanup(func() { os.Remove(lockPath) })
 
-	result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "two-sided commit", nil, SyncOptions{})
+	result, err := f.Commit([]string{"README", "_lym/config.yaml"}, "two-sided commit", nil, SyncOptions{})
 	if err == nil {
 		t.Fatal("Commit() error = nil; want an error (warp commit should fail)")
 	}
@@ -141,7 +141,7 @@ func TestCommit_PartialFailure_CommittedButUnrecorded(t *testing.T) {
 		t.Fatalf("MkdirAll(%q): %v", corrPath, err)
 	}
 
-	result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "two-sided commit", nil, SyncOptions{})
+	result, err := f.Commit([]string{"README", "_lym/config.yaml"}, "two-sided commit", nil, SyncOptions{})
 	if err == nil {
 		t.Fatal("Commit() error = nil; want an error (RecordCorrespondence should fail)")
 	}

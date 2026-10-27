@@ -34,7 +34,7 @@ func ReadAmendment(path string) (AmendmentRecord, bool, error) {
 	}
 	var record AmendmentRecord
 	if err := yaml.Unmarshal(data, &record); err != nil {
-		return AmendmentRecord{}, false, fmt.Errorf("amendment record %s does not decode: %w; way forward: rewrite the file as a valid record, `titles` listing the pending amending decision entries' titles and `written_at` the current UTC time, or remove it when no amendment is pending, run `lyx fabric commit`, then re-run the refused step, which is the goto, `lyx loom resume` for a failed Plan-Bouncer commit seam, or the `decision add` call; a session lyx refuses the verb from reports status: FAILED", path, err)
+		return AmendmentRecord{}, false, fmt.Errorf("amendment record %s does not decode: %w; way forward: rewrite the file as a valid record, `titles` listing the pending amending decision entries' titles and `written_at` the current UTC time, or remove it when no amendment is pending, run `lym fabric commit`, then re-run the refused step, which is the goto, `lym loom resume` for a failed Plan-Bouncer commit seam, or the `decision add` call; a session lym refuses the verb from reports status: FAILED", path, err)
 	}
 	return record, true, nil
 }

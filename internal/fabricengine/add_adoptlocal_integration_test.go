@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 func TestAdd_AdoptLocal(t *testing.T) {
@@ -25,7 +25,7 @@ func TestAdd_AdoptLocal(t *testing.T) {
 	l := h.Location
 	prime := h.PrimeWorktree()
 	defaultBranch := gitOut(t, prime, "rev-parse", "--abbrev-ref", "HEAD")
-	addAdopting := func(acting *lyxcwd.Location, slug string) (fabricengine.AddResult, error) {
+	addAdopting := func(acting *lymcwd.Location, slug string) (fabricengine.AddResult, error) {
 		return h.Topology.Add(acting, slug, fabricengine.AddOptions{SkipPush: true, AdoptLocal: true})
 	}
 	// branchPrefix is what a pair's slug is prefixed with to name its warp branch.
@@ -78,7 +78,7 @@ func TestAdd_AdoptLocal(t *testing.T) {
 		if err == nil {
 			t.Fatalf("Add(%q, AdoptLocal) over a checked-out branch = nil; want a refusal", slug)
 		}
-		for _, want := range []string{filepath.Base(elsewhere), "lyx fabric checkout"} {
+		for _, want := range []string{filepath.Base(elsewhere), "lym fabric checkout"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("Add(%q, AdoptLocal) error = %v; want it to contain %q", slug, err, want)
 			}
@@ -109,7 +109,7 @@ func TestAdd_AdoptLocal(t *testing.T) {
 
 	t.Run("the default branch makes a root pair", func(t *testing.T) {
 		slug := strings.TrimPrefix(defaultBranch, branchPrefix)
-		acting, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(l, "probe"))
+		acting, err := lymcwd.ResolveWorktree(fabricengine.WorktreePath(l, "probe"))
 		if err != nil {
 			t.Fatalf("ResolveWorktree of the probe pair: %v", err)
 		}

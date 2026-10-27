@@ -9,7 +9,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // resolveWeftBranch finds weftBranch for a verb about to use it.
@@ -20,7 +20,7 @@ import (
 // A weft repo with no origin remote skips the origin step.
 // A failed probe, fetch or branch creation is a returned error naming origin and the branch, never a fall-through to exists=false.
 // It pushes, replaces and deletes nothing on origin.
-func resolveWeftBranch(rec *Mutations, l *lyxcwd.Location, weftBranch string, consultOrigin bool) (exists bool, fromOrigin bool, err error) {
+func resolveWeftBranch(rec *Mutations, l *lymcwd.Location, weftBranch string, consultOrigin bool) (exists bool, fromOrigin bool, err error) {
 	if weftBranchExists(l, weftBranch) {
 		return true, false, nil
 	}

@@ -308,14 +308,14 @@ const gateSelectSettleMS = 150
 //	❯ No, exit
 //	  Yes, I trust this folder
 //
-// so a bare Enter confirmed "No, exit" and claude quit. Every agent lyx spawned in a directory
+// so a bare Enter confirmed "No, exit" and claude quit. Every agent lym spawned in a directory
 // claude had not previously been accepted in therefore died at startup, reported only as an opaque
 // pane-died outcome (crucible round opus-medium-r5, R5-2). Which option the caret starts on is the
 // provider's choice and has already changed once, so this reads the caret rather than assuming it.
 //
 // When capture carries no caret line, or no line naming the accepting option, it returns NO inputs
 // at all rather than a blind Enter: pressing whatever is selected is exactly how the old form
-// refused on lyx's behalf. The caller re-probes on its next liveness tick and the startup window
+// refused on lym's behalf. The caller re-probes on its next liveness tick and the startup window
 // bounds the retries, so returning nothing costs a bounded wait and never a wrong keypress.
 // A caret and accepting option that are NOT adjacent (acceptLineIsGateOption, the same rule
 // Startup's own gate evidence applies) also press nothing: a real gate's caret sits on one of two

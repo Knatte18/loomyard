@@ -63,8 +63,8 @@ func TestResolve_ChoosesLauncherPerPlatform(t *testing.T) {
 func TestLauncher_ArgumentsOpenTitledWindowRunningAttach(t *testing.T) {
 	t.Parallel()
 
-	line := attachLine("/opt/lyx dev/lyx", "/hub/my slug")
-	const wantLine = `'/opt/lyx dev/lyx' reed attach; status=$?; if [ $status -eq 0 ]; then exit 0; fi; ` +
+	line := attachLine("/opt/lym dev/lym", "/hub/my slug")
+	const wantLine = `'/opt/lym dev/lym' reed attach; status=$?; if [ $status -eq 0 ]; then exit 0; fi; ` +
 		`echo 'reed attach ended with status' $status '- waiting up to 30s for the run worktree to be removed'; ` +
 		`i=0; while [ $i -lt 30 ]; do [ -d '/hub/my slug' ] || exit 0; sleep 1; i=$((i+1)); done; ` +
 		`[ -d '/hub/my slug' ] || exit 0; exec bash`

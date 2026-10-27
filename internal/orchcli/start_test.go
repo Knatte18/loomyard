@@ -22,8 +22,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -177,8 +177,8 @@ func newStartHarness(t *testing.T, strands ...reedengine.StrandStatus) *startHar
 	}
 	h := &startHarness{
 		cli: c, strands: fake, starter: &fakeStarter{guid: "new-guid", sessionID: "minted-id"},
-		exe:   "/fixed/lyx",
-		build: statuspane.BuildIdentity{Path: "/fixed/lyx", Size: 1, ModTime: 2},
+		exe:   "/fixed/lym",
+		build: statuspane.BuildIdentity{Path: "/fixed/lym", Size: 1, ModTime: 2},
 	}
 	fake.calls, h.starter.calls = &h.calls, &h.calls
 	h.creel = &scriptedCreel{fakeCreel: &fakeCreel{}, order: &h.calls}
@@ -226,7 +226,7 @@ func (h *startHarness) runWith(t *testing.T, opts BeamUpOptions) (int, map[strin
 		}
 	}
 	if h.pauseOwned {
-		h.cli.pauseOwned = func(_ *lyxcwd.Location, slug string) error {
+		h.cli.pauseOwned = func(_ *lymcwd.Location, slug string) error {
 			h.callsAtOwnerPause = len(h.calls)
 			if h.pauseOwnedErr != nil {
 				return h.pauseOwnedErr
@@ -280,7 +280,7 @@ const (
 func TestStart_EnsuresTheRunsStrandBeforeTheOrch(t *testing.T) {
 	t.Parallel()
 
-	otherBuild := statuspane.BuildIdentity{Path: "/older/lyx", Size: 9, ModTime: 9}
+	otherBuild := statuspane.BuildIdentity{Path: "/older/lym", Size: 9, ModTime: 9}
 	wantDisplay := render.Display{Anchor: render.AnchorOverview, Title: "beam: prime"}
 	tests := []struct {
 		name    string
@@ -455,7 +455,7 @@ func TestStart_NoStrandLaunchesAndSpawnsWatcher(t *testing.T) {
 	if spec.SkillLoadTimeout != h.cli.cfg.HandoffTimeout() {
 		t.Errorf("SkillLoadTimeout = %v; want the handoff timeout %v", spec.SkillLoadTimeout, h.cli.cfg.HandoffTimeout())
 	}
-	if want := "cd '" + h.cli.location.AnchorPath() + "'; lyx orch resume-context"; spec.ContextAfterCompaction != want {
+	if want := "cd '" + h.cli.location.AnchorPath() + "'; lym orch resume-context"; spec.ContextAfterCompaction != want {
 		t.Errorf("ContextAfterCompaction = %q; want %q", spec.ContextAfterCompaction, want)
 	}
 	if spec.Model != "opus" || spec.Effort != "high" {
@@ -802,8 +802,8 @@ func TestPrimePaths_JoinsRuleFilesAndPrimeRoot(t *testing.T) {
 	hub := t.TempDir()
 	got := PrimePaths(locationkit.Location(hub, "main", "sub/dir"))
 	want := orchengine.Paths{
-		HubRulesPath: filepath.Join(fabricengine.BoardDir(hub), lyxdirs.LyxDirName, "orch", "rules.md"),
-		OwnRulesPath: filepath.Join(hub, "main", "sub", "dir", lyxdirs.LyxDirName, "orch", "rules.md"),
+		HubRulesPath: filepath.Join(fabricengine.BoardDir(hub), lymdirs.LymDirName, "orch", "rules.md"),
+		OwnRulesPath: filepath.Join(hub, "main", "sub", "dir", lymdirs.LymDirName, "orch", "rules.md"),
 		PrimeRoot:    filepath.Join(hub, "main"),
 	}
 	if got.HubRulesPath != want.HubRulesPath || got.OwnRulesPath != want.OwnRulesPath || got.PrimeRoot != want.PrimeRoot {
@@ -856,14 +856,14 @@ func TestStart_Refusals(t *testing.T) {
 			seed: func(t *testing.T, h *startHarness) {
 				h.creel.withdrawErrs = []error{errors.New("creel: the worktree's reed state is unreadable")}
 			},
-			wantIn: []string{"creel: the worktree's reed state is unreadable", "way forward", "lyx beam start"},
+			wantIn: []string{"creel: the worktree's reed state is unreadable", "way forward", "lym beam start"},
 		},
 		{
 			name: "a first withdraw that cannot reach creel reports its error with the way forward",
 			seed: func(t *testing.T, h *startHarness) {
 				h.creel.withdrawErrs = []error{errors.New("creel: the daemon did not start; log: listen failed")}
 			},
-			wantIn: []string{"creel: the daemon did not start; log: listen failed", "way forward", "lyx beam start"},
+			wantIn: []string{"creel: the daemon did not start; log: listen failed", "way forward", "lym beam start"},
 		},
 		{
 			name: "a first withdraw refused for a program claim from a non-orch pane names the orch's pane and a terminal outside every strand pane",
@@ -879,7 +879,7 @@ func TestStart_Refusals(t *testing.T) {
 					return beamFacts{slug: "b", here: "desktop", owner: "laptop"}, nil
 				}
 			},
-			wantIn:             []string{`"laptop"`, "lyx adopt b"},
+			wantIn:             []string{`"laptop"`, "lym adopt b"},
 			wantNothingStarted: true,
 		},
 		{
@@ -889,17 +889,17 @@ func TestStart_Refusals(t *testing.T) {
 					return beamFacts{here: "desktop", owner: "laptop"}, nil
 				}
 			},
-			wantIn:             []string{`"laptop"`, "lyx adopt root"},
+			wantIn:             []string{`"laptop"`, "lym adopt root"},
 			wantNothingStarted: true,
 		},
 		{
 			name: "a standing anchor change names its way forward",
 			seed: func(t *testing.T, h *startHarness) {
 				h.cli.readBeamFacts = func() (beamFacts, error) {
-					return beamFacts{slug: "b", here: "desktop", moveWayForward: "run `lyx fabric anchor b --set sub` to finish it"}, nil
+					return beamFacts{slug: "b", here: "desktop", moveWayForward: "run `lym fabric anchor b --set sub` to finish it"}, nil
 				}
 			},
-			wantIn:             []string{"anchor change", "run `lyx fabric anchor b --set sub` to finish it"},
+			wantIn:             []string{"anchor change", "run `lym fabric anchor b --set sub` to finish it"},
 			wantNothingStarted: true,
 		},
 		{
@@ -909,7 +909,7 @@ func TestStart_Refusals(t *testing.T) {
 					return beamFacts{slug: "b", here: "desktop", held: true, status: boardengine.RunStatus("running", "Land")}, nil
 				}
 			},
-			wantIn:             []string{"landing", "lyx batten status b"},
+			wantIn:             []string{"landing", "lym batten status b"},
 			wantNothingStarted: true,
 		},
 		{
@@ -919,7 +919,7 @@ func TestStart_Refusals(t *testing.T) {
 					t.Fatal(err)
 				}
 			},
-			wantIn: []string{"shortname record", "lyx fabric shortname"},
+			wantIn: []string{"shortname record", "lym fabric shortname"},
 		},
 	}
 	for _, c := range cases {
@@ -1163,7 +1163,7 @@ func TestStart_ReconcilesTheHubFirst(t *testing.T) {
 			wantOK: true,
 			check: func(t *testing.T, h *startHarness, env map[string]any) {
 				warning := warningText(env)
-				if !strings.Contains(warning, "tender down") || !strings.Contains(warning, "re-run `lyx beam start`, which pauses it again") || len(envList(t, env, "owner_pauses")) != 0 || len(h.starter.specs) != 1 {
+				if !strings.Contains(warning, "tender down") || !strings.Contains(warning, "re-run `lym beam start`, which pauses it again") || len(envList(t, env, "owner_pauses")) != 0 || len(h.starter.specs) != 1 {
 					t.Errorf("warning = %q, starts = %d; want the failure and the re-run named, nothing paused and one launch", warning, len(h.starter.specs))
 				}
 			},

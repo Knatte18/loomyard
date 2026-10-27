@@ -27,7 +27,7 @@ func indexFixtureCommand(use, short, audience string, run bool) *cobra.Command {
 func TestRenderIndex_FormsAndFiltering(t *testing.T) {
 	t.Parallel()
 
-	root := &cobra.Command{Use: "lyx"}
+	root := &cobra.Command{Use: "lym"}
 	root.PersistentFlags().Bool("verbose", false, "")
 	root.PersistentFlags().Bool("json", false, "")
 

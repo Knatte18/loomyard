@@ -19,7 +19,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -228,7 +228,7 @@ func validateDetachedToldPaths(anchorPath, worktreeRoot, paneCwd string) error {
 //
 // It exists because the two fields are ADJACENT PARAMETERS OF THE SAME TYPE with no structural
 // distinction between them, while their consumers are semantically distinct: anchorPath sites the
-// run-dir root (.lyx is the anchor-side sibling of _lyx) and is where reed keeps the reed.json the
+// run-dir root (.lym is the anchor-side sibling of _lym) and is where reed keeps the reed.json the
 // orphan sweep reads; worktreeRoot is what a relative OutputFiles entry resolves against, as the run
 // verb's own help promises. (paneCwd, the fork audit's workdir, is a third told path — see Runner's
 // own doc comment — but NewRunner derives it from anchorPath rather than taking it as a parameter
@@ -1011,17 +1011,17 @@ func (r *Runner) RunGated(spec Spec, gate GateSpec) (Result, error) {
 //     and the state a `git clean -xdf` leaves — a sanctioned operator action under the
 //     Durable-vs-Ephemeral State Invariant. What the sweep then destroys is not inert: events.jsonl is
 //     the file the provider's Stop hook is still appending to, and run.json is the ONLY map from a
-//     strand guid back to a run, so afterwards `lyx shuttle interrupt/send <guid>` answers "is not a
+//     strand guid back to a run, so afterwards `lym shuttle interrupt/send <guid>` answers "is not a
 //     shuttle strand" for an agent still working in its pane — the exact outcome findRunByStrand's
 //     own message was hardened to avoid.
 //
 // Skipping the absent case costs no cleanup. This sweep runs BEFORE AddStrand, which cannot succeed
-// without a live reed session — and a live session means `lyx reed up` has already written a
+// without a live reed session — and a live session means `lym reed up` has already written a
 // reed.json. So the sweeps forgone here belong either to a Start that is about to fail anyway, or to
 // the dangerous case; after the next `up` the file is present again (with zero strands after a
 // `down`) and ordinary sweeping resumes unchanged.
 func (r *Runner) sweepOrphansOpportunistic() {
-	st, err := reedengine.LoadState(filepath.Join(r.anchorPath, lyxdirs.DotLyxDirName))
+	st, err := reedengine.LoadState(filepath.Join(r.anchorPath, lymdirs.DotLymDirName))
 	if err != nil {
 		logger.Warn("shuttle: orphan sweep: load reed state failed, skipping this sweep (non-fatal, new run proceeds)", "anchorPath", r.anchorPath, "error", err)
 		return
@@ -1238,7 +1238,7 @@ func notShuttleOrLiveStrandError(guid string, liveErr error) error {
 // in-process Run handle.
 // Unlike Send/Interrupt, Inject deliberately skips the requireReadyAgentPane guard to deliver keys
 // while the provider is busy.
-// It refuses any input list holding the engine's interrupt key or a control character in a text, and names "lyx shuttle interrupt", the guarded way to send the interrupt key.
+// It refuses any input list holding the engine's interrupt key or a control character in a text, and names "lym shuttle interrupt", the guarded way to send the interrupt key.
 // Empty inputs is rejected.
 func (r *Runner) Inject(guid string, inputs []PaneInput) error {
 	if r.toldErr != nil {
@@ -1380,16 +1380,15 @@ func liveStrand(reed ReedOps, guid string) (reedengine.StrandStatus, error) {
 			// agent was working in a pane tmux reported alive), and it sends an operator looking for
 			// a corpse instead of for the binding reed dropped.
 			if s.PaneID == "" {
-				return reedengine.StrandStatus{}, fmt.Errorf("shuttle: reed tracks strand %q but holds no pane id for it — either its pane binding was cleared as stale (reed does that when the persisted pane generation is not the session incarnation now running: a restored backup, a copied .lyx, or a reed.json older than the session) or the strand was added anchor:hidden and never given a pane. Its agent may still be working in a pane reed can no longer address, so keys have nowhere to go; check \"lyx reed status\"", guid)
+				return reedengine.StrandStatus{}, fmt.Errorf("shuttle: reed tracks strand %q but holds no pane id for it — either its pane binding was cleared as stale (reed does that when the persisted pane generation is not the session incarnation now running: a restored backup, a copied .lym, or a reed.json older than the session) or the strand was added anchor:hidden and never given a pane. Its agent may still be working in a pane reed can no longer address, so keys have nowhere to go; check \"lym reed status\"", guid)
 			}
 			return reedengine.StrandStatus{}, fmt.Errorf("shuttle: strand %q has no live pane — its run already reached a terminal outcome or its pane died; keys would be silently dropped", guid)
 		}
 		return s, nil
 	}
-	// Naming only the completed-and-cleaned-up cause would be wrong more often than right: a
-	// `lyx reed remove`, a `down`/`up` cycle, and a server rebirth all reach this same branch with
-	// the run still very much unfinished (proven live). State what was observed, then the causes.
-	return reedengine.StrandStatus{}, fmt.Errorf("shuttle: strand %q is not tracked by reed — either its run completed and was cleaned up, or reed's strand table was reset under it (a reed remove/down, or a lost or rebuilt reed.json); check \"lyx reed status\"", guid)
+	// Naming only the completed-and-cleaned-up cause would be wrong more often than right: a `lym reed remove`, a `down`/`up` cycle, and a server rebirth all reach this same branch with the run still very much unfinished (proven live).
+	// State what was observed, then the causes.
+	return reedengine.StrandStatus{}, fmt.Errorf("shuttle: strand %q is not tracked by reed — either its run completed and was cleaned up, or reed's strand table was reset under it (a reed remove/down, or a lost or rebuilt reed.json); check \"lym reed status\"", guid)
 }
 
 // playInputs plays inputs into guid's pane through reed in order, with

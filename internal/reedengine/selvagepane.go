@@ -143,7 +143,7 @@ func (e *Engine) ensureSelvagePaneLocked(st *ReedState) error {
 
 	// Selvage's trailing split-window argument is e.cfg.Shell, the same way
 	// new-session already launches the session's first pane — an ordinary
-	// interactive shell, never a re-exec of lyx.
+	// interactive shell, never a re-exec of lym.
 	paneID, err := e.splitSelvagePaneAtBottomLocked(live, e.cfg.Shell)
 	if err != nil {
 		return fmt.Errorf("split Selvage pane: %w", err)

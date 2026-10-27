@@ -46,7 +46,7 @@ Webster runs the cards in that order as written and never sorts them, so a card 
 ## On-disk layout
 
 ```
-_lyx/plan/
+_lym/plan/
   00-overview.md       # frontmatter + Card Index + task framing + optional plan-level sections
   NN-<card-slug>.md    # one file per card (NN = zero-padded card order)
   amendments.md        # optional; append-only handle-substitution log, see Plan: handles below
@@ -203,7 +203,7 @@ The author resolves it by writing the exported name (as a glyph), or by `//`-esc
 ## Card path resolution: `root:` and `//`
 
 `00-overview.md`'s frontmatter may carry an optional **plan-level** `root: <worktree-relative-dir>`.
-When set, every path-shaped card entry in the plan resolves as `<root>/<path>` **unless** the path starts with `//`, which is *always* worktree-root-relative (root set or not — one rule, no special cases): that is how a card names a file outside the shared root, e.g. `//cmd/lyx/main.go`.
+When set, every path-shaped card entry in the plan resolves as `<root>/<path>` **unless** the path starts with `//`, which is *always* worktree-root-relative (root set or not — one rule, no special cases): that is how a card names a file outside the shared root, e.g. `//cmd/lym/main.go`.
 This is purely a token-economy shorthand for a plan whose cards repeat the same directory prefix over and over.
 The degenerate `root: "."` case (the worktree root itself) resolves a card path to the raw path unchanged, rather than the unclean `"./<raw>"` a literal string join would produce.
 
@@ -294,7 +294,7 @@ Cards are numbered flat across the whole plan — no batch-scoped restart, no `N
 Numbers run from the overview's `first_card:` (default `1`) upward with no gap, so a rework generation can continue the numbering of the generation it retires.
 The per-card file prefix `NN` (zero-padded) must equal the heading `N`.
 
-A card is inserted or removed with `lyx loom insert-card` or `lyx loom remove-card`, which move every later card by one in file name prefix, heading number, explicit `Commit:` prefix and Card Index number.
+A card is inserted or removed with `lym loom insert-card` or `lym loom remove-card`, which move every later card by one in file name prefix, heading number, explicit `Commit:` prefix and Card Index number.
 They rewrite every card id naming a moved card, `<N>-<slug>` or its zero-padded file form `<NN>-<slug>`, to the new number, so a card that refers to another card names it by its card id.
 They report lines that name a moved number bare in prose, and never rewrite them.
 
@@ -313,14 +313,14 @@ A departure from an entry the task declares changed in the overview's `## PATTER
 
 ## verify model
 
-The hub's tests run through `lyx gate test`, which runs the numbered tiers `gate.yaml` declares over a scope lyx computes.
-A gate key names a site's tiers and its scope, `card`, `diff` or `all`, and every site runs `lyx gate test --wait --gate <key>`:
+The hub's tests run through `lym gate test`, which runs the numbered tiers `gate.yaml` declares over a scope lym computes.
+A gate key names a site's tiers and its scope, `card`, `diff` or `all`, and every site runs `lym gate test --wait --gate <key>`:
 the `card` key runs per card and the `batch` key per batch, both over the cards' packages, `webster-fix` in Webster's verify fixers, `webster` once for the whole plan, and `parent-align` and `finalize` at Parent-Align and Finalize.
 The hub's tiers and gate keys reach the plan writer and the plan reviewer in their prompts, rendered from `gate.yaml`.
 A plan author names no gate, tier list or target list, because the Go-rendered prompts and the gates carry them.
 
 The per-card **`**Verify:**`** field stays the optional, rare escape hatch for what no gate expresses — a cheap, targeted check where it is useful.
-A `**Verify:**` line that tests is one `lyx gate test --wait` call with a gate key or a tier list and a scope form, such as `lyx gate test --wait --tier 1 --card <card id>`, and never a raw test command or a target list.
+A `**Verify:**` line that tests is one `lym gate test --wait` call with a gate key or a tier list and a scope form, such as `lym gate test --wait --tier 1 --card <card id>`, and never a raw test command or a target list.
 The plan-level `## verify:` body section in `00-overview.md` is accepted and ignored: the parser still reads it, and the plan gate reports an informational finding, because the `webster` gate key has replaced it.
 
 Parent-Align and Finalize run their own gate keys, `parent-align` and `finalize`, in the task worktree whenever the tree differs from the last verified tree, which `internal/verifytree` records,
@@ -330,14 +330,14 @@ Both also halt Stuck on a dirty tree, so only committed content is ever verified
 The tiers below match this repo's own test-tier discipline:
 
 - **Tier 1 (per card, automatic, no author action).**
-  Implemented as the Go-rendered per-card gate: the hub's `card` key call, `lyx gate test --wait --gate card --card <card id>`, then the comment line-break lint and the PATTERN headroom lint.
-  The gate call computes the card's packages per module from the plan and runs the guard step over the `//lyx:guard` tests itself, so the prompt names no package.
-  The card gate does not build or test the rest of the module; a card that breaks a package outside its targets passes it unless the break is in a `//lyx:guard` test, and the batch gate or the `webster` gate catches that.
+  Implemented as the Go-rendered per-card gate: the hub's `card` key call, `lym gate test --wait --gate card --card <card id>`, then the comment line-break lint and the PATTERN headroom lint.
+  The gate call computes the card's packages per module from the plan and runs the guard step over the `//lym:guard` tests itself, so the prompt names no package.
+  The card gate does not build or test the rest of the module; a card that breaks a package outside its targets passes it unless the break is in a `//lym:guard` test, and the batch gate or the `webster` gate catches that.
   Untagged tests are fast by construction, per the Test Tier Purity Invariant's own discipline — no cwd resolution, no process spawn.
   Fully mechanical — no author enumerates a file list, which is what made V1-style `verify:` lists grow long in practice.
 - **Tier 2 (per batch for its own packages, plan-level for the whole suite).**
   Real git-against-remote tests, built via `internal/hubforge` with real repository creation and a real clone, are genuinely slower.
-  The batch gate is the hub's `batch` key call, `lyx gate test --wait --gate batch` with one `--card <card id>` per card of the batch, run once per batch by the fork after its last card; Go never runs it, and the `webster` gate catches a fork that skips it;
+  The batch gate is the hub's `batch` key call, `lym gate test --wait --gate batch` with one `--card <card id>` per card of the batch, run once per batch by the fork after its last card; Go never runs it, and the `webster` gate catches a fork that skips it;
   the `webster` gate stays the once-per-plan run, a must-pass gate on Merriam that sends a failure back to Merriam to fix.
   The Concurrency section's post-merge backstop assumes the same gate.
 - **Tier 3 (rare, explicit only, never automatic).**
@@ -408,17 +408,17 @@ The rows that name `internal/planglyph` as their emitter are an exception: that 
 `card-fabric-reference` is the other exception: it is a `planparser` function outside both entry points, which the plan index appends to its own format validation.
 `done-card-edited` is the third: `loomshed.ValidatePlan` appends it after the index's validation.
 `rename-tool-missing`, `pattern-changes-mismatch`, `pattern-removes-prescribed`, `pattern-headroom`, `pattern-card-headroom` and `pattern-line-unprescribed` join it, appended by `loomshed` outside the `planparser` entry points in every mode (default, `--lens-review` and `--rework`, and the Plan-Write, Plan-Burler-Fix and PR-Rework gates).
-`rename-tool-missing` is one blocking finding per symbol `Rename` pair of a card not recorded done, raised when `language.yaml` lists no `rename_tools`; its way forward is to set `rename_tools` with `lyx config language` from the prime, or recast the card.
+`rename-tool-missing` is one blocking finding per symbol `Rename` pair of a card not recorded done, raised when `language.yaml` lists no `rename_tools`; its way forward is to set `rename_tools` with `lym config language` from the prime, or recast the card.
 A file pair raises none.
 `pattern-changes-mismatch` is one blocking finding per entry (ID, action and text) that the decision record's `## PATTERN changes` section and the overview's section do not both declare; its way forward is to copy the record's bullets into the overview's section, one per entry, without the added-after-Discussion suffix.
-It runs only on a loom run, and an absent record adds nothing; a record whose section is malformed is a returned error naming `lyx loom validate-discussion`, since the plan writer cannot fix the record.
+It runs only on a loom run, and an absent record adds nothing; a record whose section is malformed is a returned error naming `lym loom validate-discussion`, since the plan writer cannot fix the record.
 The four PATTERN checks run only in a worktree holding a `PATTERN.md` and with a base overview told to the gate, and read the overview at the task branch's merge base with its parent, or at `HEAD` with no parent recorded.
 `pattern-removes-prescribed` is one blocking finding per `removes` entry of the overview's `## PATTERN changes` section that a card not recorded done fences a line for; its way forward is to drop the fenced line from the card.
-`pattern-headroom` is one blocking finding when the overview projected from every card's fenced entry lines and the `removes` entries grows past the headroom line; its way forward is to shorten the prescribed lines or move detail into background files, and when that is not enough to record a `changes` decision that shortens other entries with `lyx loom decision add`, passing `--amends-plan` once the plan is approved.
+`pattern-headroom` is one blocking finding when the overview projected from every card's fenced entry lines and the `removes` entries grows past the headroom line; its way forward is to shorten the prescribed lines or move detail into background files, and when that is not enough to record a `changes` decision that shortens other entries with `lym loom decision add`, passing `--amends-plan` once the plan is approved.
 `pattern-card-headroom` is one blocking finding per card not recorded done whose own step grows the projected overview past the headroom line, the bound that card's `lint-pattern` gate step applies against the commit before it, so a plan whose final size passes still fails when an intermediate card does not.
 The projection starts at the worktree's overview and takes those cards in plan order; a card's step applies its fenced entry lines, then drops each `removes` entry whose backticked ID it is the first such card to name, and a `removes` entry no such card names is dropped before the first card.
 Its way forward is `pattern-headroom`'s.
-`pattern-line-unprescribed` runs only on a loom run: it is one blocking finding per `adds` or `changes` entry that no card fences a line for and whose overview bullet still equals the base's; its way forward is to prescribe the entry's whole overview line in a fenced block on a pending card that edits `PATTERN.md`, or on a card inserted with `lyx loom insert-card` when that card is done.
+`pattern-line-unprescribed` runs only on a loom run: it is one blocking finding per `adds` or `changes` entry that no card fences a line for and whose overview bullet still equals the base's; its way forward is to prescribe the entry's whole overview line in a fenced block on a pending card that edits `PATTERN.md`, or on a card inserted with `lym loom insert-card` when that card is done.
 `fabric-vocabulary-name` is the fourth: it is a `planparser` function outside both entry points, which the plan index appends to its format, rework and dispatch validation.
 `edit-test-file` is the fifth: it is a `planparser` function outside both entry points, which the plan index appends to its format and rework validation.
 The rows below stay in one fixed order regardless of which entry point runs them, and `plan-unapproved` keeps its position-three slot in that order even though it alone belongs to the wider entry point:
@@ -485,7 +485,7 @@ The rows below stay in one fixed order regardless of which entry point runs them
     A nested module is a directory below the root holding a `go.mod`, on disk or created by a card's `Create` (or the New side of a `Rename`) at or below the card, minus those a `Delete` or a `Rename` Old side removes; the overview's `## verify:` section is never read, since no gate runs it.
     So `./...` from the root, which the go tool limits to the root module, is silent.
     One finding per command, attributed to the card, or empty for the overview; its way forward is to run the command as `go -C <module>` with module-relative package paths.
-    Runs under any `language:`, since it reads `go` commands rather than glyphs; reported by both plan gates, `lyx loom validate-plan` and dispatch through `ValidateFormat`.
+    Runs under any `language:`, since it reads `go` commands rather than glyphs; reported by both plan gates, `lym loom validate-plan` and dispatch through `ValidateFormat`.
     It only refuses and removes no guard: it misses a command built from a variable, inside `bash -c`, after a subshell, or with an import-path package argument, and webster's gates still catch those at run time.
     A `Move` of a `go.mod` is not counted, so its verdict on a later card can differ between the plan gate and dispatch.
 31. `resign-head-mismatch` — an `Edit` re-sign arrow whose head `quarry.Name` cannot name, or names as a member other than the arrow's own glyph; a changed receiver type names another member, while a value-to-pointer receiver change keeps the member path and matches.
@@ -532,25 +532,25 @@ The rows below stay in one fixed order regardless of which entry point runs them
     Each span is matched on its own, with the same rule the implementer audit uses.
     The finding names the card, or for the overview the section the hit is in, and the matched text.
     Its way forward is to take the data from committed test data an earlier card creates, or to drop the command.
-    The path rule also runs over each card id, since a slug ending in the fabric suffix makes every command naming the card, its own `lyx gate test --card` run included, a fabric reference to the implementer audit.
+    The path rule also runs over each card id, since a slug ending in the fabric suffix makes every command naming the card, its own `lym gate test --card` run included, a fabric reference to the implementer audit.
     That finding names the card and the matched id, and its way forward is to rename the card in the Card Index and its file name.
-    The plan index runs it in its format validation, so both plan gates and `lyx loom validate-plan`'s default and `--rework` modes report it; `--require-approved`, webster's own `validate` verb and dispatch validation do not run it.
+    The plan index runs it in its format validation, so both plan gates and `lym loom validate-plan`'s default and `--rework` modes report it; `--require-approved`, webster's own `validate` verb and dispatch validation do not run it.
     It only refuses and removes no guard: it misses a spelling in `bash -c "…"` or built from a variable, the rest of a span after an unterminated quote, a spelling in an inline span or prose, and a fabric-repo path not spelled as a name ending in the suffix, and the implementer audit stays the guard for those.
 38. `verify-module-wide` — a raw Go test, build or vet command in a card's `**Verify:**` value whose package argument holds `...` or equals `all`, or a raw Go test command whose `-tags` value names `tmux`, `llm`, `tier2` or `tier3`.
     An agent's settings deny such a command, so it can never run under a fork.
     It splits a chain as `verify-nested-module` does, at `&&`, `||`, `;`, `|` and a newline after joining line continuations, skips a `go -C <dir>` and a leading environment assignment, and stops reading a command at `--` or `-args`; a flag that takes a value takes the next field.
     One finding per command, attributed to the card; the overview's `## verify:` section is never read.
-    Its way forward is `lyx gate test --wait --tier <n> --card <id>` over the card's own scope, run in the foreground under the gate rule in the agent's system prompt.
-    Runs under any `language:` and is reported by both plan gates, `lyx loom validate-plan` and dispatch through `ValidateFormat`.
+    Its way forward is `lym gate test --wait --tier <n> --card <id>` over the card's own scope, run in the foreground under the gate rule in the agent's system prompt.
+    Runs under any `language:` and is reported by both plan gates, `lym loom validate-plan` and dispatch through `ValidateFormat`.
     It only refuses: it misses a command built from a variable or behind `bash -c`.
 39. `pattern-entry-line-cap` — a card that prescribes a verbatim `PATTERN.md` entry line whose rule text is over the cap: a line inside a fenced code block of the card file that opens with ``- `PATTERN-`` and whose rule text, the part between the name and a trailing `(test)` or background link, exceeds `pattern.MaxEntryTextChars` runes.
     It scans fenced blocks only, whatever the fence's info string and including an unclosed fence; inline spans and prose are never scanned, since an entry line carries backticks of its own.
     One finding per line, attributed to the card, naming the entry, the length and the cap; its way forward is to shorten the line or move the detail to the entry's background file.
-    Runs under any `language:` and is reported by both plan gates, `lyx loom validate-plan` and dispatch through `ValidateFormat`.
+    Runs under any `language:` and is reported by both plan gates, `lym loom validate-plan` and dispatch through `ValidateFormat`.
     It measures verbatim lines only, so a declared `adds` or `changes` entry is prescribed as its whole overview line in a fenced block, which `pattern-headroom` and `pattern-line-unprescribed` then check.
     An undeclared prose edit of `PATTERN.md` passes, and the plan-writer stencil states that rule.
 40. `done-card-edited` — a card of a batch webster's run record holds done whose file no longer hashes to what the batch recorded at begin.
-    `loomshed.ValidatePlan` appends it outside both planparser entry points, from the run record and the card bytes alone, so both plan gates and `lyx loom validate-plan` report it.
+    `loomshed.ValidatePlan` appends it outside both planparser entry points, from the run record and the card bytes alone, so both plan gates and `lym loom validate-plan` report it.
     A plan with no run record, a record without recorded hashes and a card of a batch that is not done report nothing; an unreadable card file is a returned error.
     The finding names the card.
     Its way forward is to restore the card file, because a done card is frozen: a finding against its work goes in a follow-up card placed after the last begun batch, with its Card Index line in `00-overview.md`.
@@ -561,17 +561,17 @@ The rows below stay in one fixed order regardless of which entry point runs them
     An external `_test` unit counts as its package's directory for the owner check.
     A name fails the host-geometry rule when `last` has no such test prefix, is a retired host-geometry identifier, and `first` is `internal` or `cmd`.
     One blocking finding per name, attributed to the card naming the member, naming `PATTERN-fabric-vocabulary` and the rule broken; its way forward is to rename the member.
-    Runs under any `language:`, and the plan index appends it to its format, rework and dispatch validation, so both plan gates, `lyx loom validate-plan`'s default and `--rework` modes and webster dispatch report it; dispatch drops a finding against a completed card, and `--require-approved` and webster's own `validate` verb do not run it.
+    Runs under any `language:`, and the plan index appends it to its format, rework and dispatch validation, so both plan gates, `lym loom validate-plan`'s default and `--rework` modes and webster dispatch report it; dispatch drops a finding against a completed card, and `--require-approved` and webster's own `validate` verb do not run it.
     It only refuses: it misses a name spelled only in prose, such as a test row or subtest name, or built at implementation time, which the verify gate still catches, and it may refuse a host-geometry helper declared in a `_test.go` file under `internal/`, which the scan admits.
-42. `verify-package-missing` — a relative package argument (`.`, `..`, `./…` or `../…`, a trailing `/...` removed, not a `.go` file) of a raw Go test, build or vet command or a `lyx gate test` command in a card's `**Verify:**` value that names no directory.
+42. `verify-package-missing` — a relative package argument (`.`, `..`, `./…` or `../…`, a trailing `/...` removed, not a `.go` file) of a raw Go test, build or vet command or a `lym gate test` command in a card's `**Verify:**` value that names no directory.
     A directory counts when it is on disk under the worktree root, or equals or is an ancestor of a directory a card creates: a card's value reads the targets of non-`Delete` groups of that card and the earlier ones, a `Rename` pair's `New` side included; an external `_test` unit counts as its package's directory.
-    It splits a chain as `verify-nested-module` does and follows a literal `cd <dir>` and a `go -C <dir>`, `lyx gate test -C <dir>` or `--dir <dir>` the same way; `--tags` skips its value for `lyx gate test`, and reading stops at `--`.
+    It splits a chain as `verify-nested-module` does and follows a literal `cd <dir>` and a `go -C <dir>`, `lym gate test -C <dir>` or `--dir <dir>` the same way; `--tags` skips its value for `lym gate test`, and reading stops at `--`.
     A card's value is skipped when that card or an earlier one holds a `Move` group, since a `Move`'s destination lives in `Intent` prose.
     The overview's `## verify:` section is never read.
     One finding per argument, with the argument as its ref.
     When the argument ends in `_test` and its `_test`-less spelling is a directory, the detail names that spelling as the replacement.
     Its way forward is to correct the Verify line.
-    It runs right after `verify-module-wide` in `Validate` and `ValidateFormat`, under any `language:`, and both plan gates, `lyx loom validate-plan` and dispatch report it; dispatch drops a finding against a completed card.
+    It runs right after `verify-module-wide` in `Validate` and `ValidateFormat`, under any `language:`, and both plan gates, `lym loom validate-plan` and dispatch report it; dispatch drops a finding against a completed card.
     It only refuses: it misses an argument behind a variable or inside `bash -c`, an argument after an unplaceable `cd` or `-C` or after a `cd` in a pipeline stage or after `||`, an import path, a module-wide pattern whose stem exists and a `.go` file argument, and a directory an earlier card deletes is left to that card's own verify run.
 43. `edit-test-file` — a file self glyph in a card's `**Edit:**` or `**Extends:**` group whose path ends in `_test.go`.
     Only `Edit` and `Extends` groups are read, so a `Create`, `Delete`, `Rename`, `Move`, `Prosa` or `Custom` group and `Uses` never trip it, and neither does a member glyph, a `plan:` handle or a path with no extension, since a card file's plain `x_test.go` path is canonicalized into its file self glyph at parse time.
@@ -580,14 +580,14 @@ The rows below stay in one fixed order regardless of which entry point runs them
     Its way forward is to name each existing test function, fake or helper the card changes as a member glyph under `**Edit:**`, to declare each new one as a `**Create:**` `plan:` handle on the package directory (or on `<dir>_test` for an external test package), to keep a new test file a `**Create:**` path, and, for a change confined to the file's header such as its build constraint, to name every member of that file.
     Skipped under `language: none`, whose plan forgoes every glyph check and has neither a self glyph to read nor a member glyph or handle to name.
     It reads plan text only, so it fires whether or not the file exists, and only refuses.
-    The plan index appends it to its format and rework validation, so both plan gates and `lyx loom validate-plan`'s default and `--rework` modes report it; format validation skips a done card, rework skips none because a rework generation is a fresh plan whose prior cards are archived, and dispatch, `--require-approved` and webster's own `validate` verb do not run it.
+    The plan index appends it to its format and rework validation, so both plan gates and `lym loom validate-plan`'s default and `--rework` modes report it; format validation skips a done card, rework skips none because a rework generation is a fresh plan whose prior cards are archived, and dispatch, `--require-approved` and webster's own `validate` verb do not run it.
 44. `verify-raw-command` — a card's `**Verify:**` line holding a command the hub's `refuse_raw` list names, read in command position over each command of the line, past a leading `env`, `exec`, `xargs`, `sudo` or `time` launcher.
     Go re-runs a `**Verify:**` line outside any agent hook, so the shell guard cannot refuse it there.
-    One blocking finding per command, attributed to the card; its way forward is a `lyx gate test --wait` call with a tier list and a scope form.
+    One blocking finding per command, attributed to the card; its way forward is a `lym gate test --wait` call with a tier list and a scope form.
     `loomshed.ValidatePlan` and `loomshed.ValidateReworkPlan` append it from the hub's `gate.yaml` list outside both planparser entry points; an absent `gate.yaml` or an empty list reports nothing.
     A done card is not read, since its file is frozen, and the rework gate reads the fresh generation's cards.
     It reads static text only: a test hidden behind a script in the line passes.
-45. `verify-gate-no-wait` — a `lyx gate test` call in a card's `**Verify:**` line without `--wait`.
+45. `verify-gate-no-wait` — a `lym gate test` call in a card's `**Verify:**` line without `--wait`.
     A call without it exits 75 on a busy slot instead of waiting for one, which fails a verify line no agent can re-run.
     It is appended and scoped as `verify-raw-command` is; one blocking finding per call, and its way forward is to add `--wait`.
 46. `plan-verify-retired` (informational) — an overview carrying a `## verify:` section.
@@ -607,7 +607,7 @@ The rows below stay in one fixed order regardless of which entry point runs them
     Its way forward is to change the head to a free signature, or to remove or re-sign the other declaration on an earlier card.
     Emitted by `internal/planglyph`'s resolve pass at every gate, since it reads plan text and the tree's overloads.
 50. `resign-not-done` — under `language: csharp`, a recorded `Edit` re-sign arrow whose minted id does not resolve in the tree, so the card's edit does not match its arrow.
-    One blocking finding attributed to the card; its way forward is to make the edit match the arrow's head, or to correct the head to the signature the card wrote and run `lyx webster rebaseline --card <N>` naming that card.
+    One blocking finding attributed to the card; its way forward is to make the edit match the arrow's head, or to correct the head to the signature the card wrote and run `lym webster rebaseline --card <N>` naming that card.
     It is raised only at webster's record-batch and recover-batch, never at a plan gate, and when every arrow of the batch is done webster rewrites each old glyph to its new one plan-wide.
 
 51. `extends-overlap` — a ref that a card names under an `Extends` group and also under any other type label of the same card.
@@ -632,11 +632,11 @@ Only the rework gate runs it: `planglyph.ValidateRework` runs it after the forma
 
 ## Worked example
 
-A complete plan for a fictional task ("add a `--json` flag to `lyx board list`"), byte-consistent with the golden fixture `internal/planparser`'s own tests parse.
+A complete plan for a fictional task ("add a `--json` flag to `lym board list`"), byte-consistent with the golden fixture `internal/planparser`'s own tests parse.
 Across its seven card files this example demonstrates every plan-format feature: seven of the eight type labels are exercised across the suite of cards below (`Create`, `Edit`, `Custom`, `Delete`, `Rename`, `Move`, `Prosa`), flat `N` card headings, a `## Shared Decisions` overview entry, a plan-level `root:` with `//`-escaped entries, a pinned `Commit:`/`Verify:` pair, and a `Rename` card with its plan-level `## Rename mechanic` section.
 Card 2 is additionally the multi-label example: it carries an `**Edit:**` group followed by a `**Create:**` group.
 
-`_lyx/plan/00-overview.md`:
+`_lym/plan/00-overview.md`:
 
 ```markdown
 ---
@@ -646,9 +646,9 @@ root: internal/boardcli
 language: go
 ---
 
-# Plan: add --json to `lyx board list`
+# Plan: add --json to `lym board list`
 
-Add a `--json` output mode to `lyx board list`, emitting one JSON object per row via the
+Add a `--json` output mode to `lym board list`, emitting one JSON object per row via the
 `internal/output` envelope, with tests and help text updated, and the row mapper relocated ahead
 of a later extraction.
 
@@ -685,10 +685,10 @@ of a later extraction.
 
 ## verify:
 
-lyx gate test ./internal/boardcli ./internal/boardengine ./cmd/lyx
+lym gate test ./internal/boardcli ./internal/boardengine ./cmd/lym
 ```
 
-`_lyx/plan/01-json-row-type.md`:
+`_lym/plan/01-json-row-type.md`:
 
 ```markdown
 # Card 1 — json-row-type
@@ -699,10 +699,10 @@ lyx gate test ./internal/boardcli ./internal/boardengine ./cmd/lyx
 **Intent:** Define the `RowJSON` struct carrying the list command's existing table columns as JSON-taggable fields.
 
 **Commit:** `1: json-row-type`
-**Verify:** lyx gate test --wait ./internal/boardcli
+**Verify:** lym gate test --wait ./internal/boardcli
 ```
 
-`_lyx/plan/02-json-flag.md`:
+`_lym/plan/02-json-flag.md`:
 
 ```markdown
 # Card 2 — json-flag
@@ -721,7 +721,7 @@ lyx gate test ./internal/boardcli ./internal/boardengine ./cmd/lyx
 **ImpactSummary:** Adds a --json flag to the list command and branches its row-emission path on it.
 ```
 
-`_lyx/plan/03-json-emission.md`:
+`_lym/plan/03-json-emission.md`:
 
 ```markdown
 # Card 3 — json-emission
@@ -736,7 +736,7 @@ lyx gate test ./internal/boardcli ./internal/boardengine ./cmd/lyx
 **Intent:** Introduce `emitJSON`, a new helper in a new file, marshaling each row through `output.Ok` when `--json` is set.
 ```
 
-`_lyx/plan/04-legacy-rows-delete.md`:
+`_lym/plan/04-legacy-rows-delete.md`:
 
 ```markdown
 # Card 4 — legacy-rows-delete
@@ -749,7 +749,7 @@ lyx gate test ./internal/boardcli ./internal/boardengine ./cmd/lyx
 **ImpactSummary:** Deletes the legacy row-conversion file; no remaining callers reference it.
 ```
 
-`_lyx/plan/05-rowmapper-rename.md`:
+`_lym/plan/05-rowmapper-rename.md`:
 
 ```markdown
 # Card 5 — rowmapper-rename
@@ -761,18 +761,18 @@ lyx gate test ./internal/boardcli ./internal/boardengine ./cmd/lyx
 **Intent:** Rename the row mapper and its file to make the JSON-oriented behavior explicit ahead of a later extraction.
 ```
 
-`_lyx/plan/06-helppins-move.md`:
+`_lym/plan/06-helppins-move.md`:
 
 ```markdown
 # Card 6 — helppins-move
 
 **Move:**
-- `//cmd/lyx/helppins.go`
+- `//cmd/lym/helppins.go`
 
-**Intent:** Relocate the pinned help-tree fixture to `//cmd/lyx/helptree/helppins.go` ahead of the CLI help-tree split, with no behavior change in this card.
+**Intent:** Relocate the pinned help-tree fixture to `//cmd/lym/helptree/helppins.go` ahead of the CLI help-tree split, with no behavior change in this card.
 ```
 
-`_lyx/plan/07-json-docs.md`:
+`_lym/plan/07-json-docs.md`:
 
 ```markdown
 # Card 7 — json-docs
@@ -791,6 +791,6 @@ Card 5's `New` side, `plan:internal/boardengine#MapRowJSON`, is a handle rather 
 
 ## Related
 
-- [webster-spec.md](webster-spec.md#the-summary-artifact--_lyxwebstersummarymd) and `internal/websterengine`'s package documentation — the module that consumes this format.
+- [webster-spec.md](webster-spec.md#the-summary-artifact--_lymwebstersummarymd) and `internal/websterengine`'s package documentation — the module that consumes this format.
 - `contracts/stencils/loom/loom-template-plan.md` — the LLM-facing compact spec `Plan-Write` actually reads; this doc is the Go-parser's own fuller contract, not the agent's prompt.
 - [`internal/fabricengine`](../../internal/fabricengine/doc.go) — `ChangedFilesSince`/`SHAExists` used for contract verification.

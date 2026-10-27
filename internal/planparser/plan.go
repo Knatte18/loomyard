@@ -1,4 +1,4 @@
-// plan.go defines planparser's public struct model: Plan (the whole parsed `_lyx/plan/` directory)
+// plan.go defines planparser's public struct model: Plan (the whole parsed `_lym/plan/` directory)
 // and Card (one flat, format-5 plan-format card), plus CardType (a card's own type label),
 // TargetGroup (one type label's own occurrence on a card), and MovePair (the normalized-path pair
 // a Rename group's Pairs field carries).
@@ -126,7 +126,7 @@ type Card struct {
 	// Summary is the Card Index entry's one-line summary.
 	Summary string
 
-	// SourcePath is the card's bare worktree-relative source-identity token `_lyx/plan/NN-<slug>.md`.
+	// SourcePath is the card's bare worktree-relative source-identity token `_lym/plan/NN-<slug>.md`.
 	SourcePath string
 
 	// Type is the first recognized type label the card body carried, or CardTypeUnknown when none.

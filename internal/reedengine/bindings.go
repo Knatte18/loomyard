@@ -2,7 +2,7 @@
 // Alt+Up and Alt+Down step across windows in index order, and a left click on the shell button returns to the strands' window.
 // The builder is pure; pinBindingsLocked issues its argvs, each non-fatal, from the geometry pin path that boot and the attach pre-flight both run.
 // The pin stamps the server with the build that made it, and every op under the blocking op lock re-pins when the stamp is absent, unparseable or another build's with a commit time not after the running build's, so a deploy reaches a running server at its first reed op.
-// Alt+Up, Alt+Down and the shell and window clicks write the follow state off, and the follow button toggles it; @lyx_follow is the one option these bindings write that a Go decision reads.
+// Alt+Up, Alt+Down and the shell and window clicks write the follow state off, and the follow button toggles it; @lym_follow is the one option these bindings write that a Go decision reads.
 
 package reedengine
 
@@ -18,11 +18,11 @@ import (
 )
 
 const (
-	// hiddenWindowCondition is true in a window a step landed on that carries @lyx_hidden.
-	hiddenWindowCondition = "#{@lyx_hidden}"
+	// hiddenWindowCondition is true in a window a step landed on that carries @lym_hidden.
+	hiddenWindowCondition = "#{@lym_hidden}"
 
-	// viewWindowID expands, at click time, to the id of the window carrying @lyx_strands, and to nothing when no window does.
-	viewWindowID = "#{W:#{?#{@lyx_strands},#{window_id},}}"
+	// viewWindowID expands, at click time, to the id of the window carrying @lym_strands, and to nothing when no window does.
+	viewWindowID = "#{W:#{?#{@lym_strands},#{window_id},}}"
 
 	// selectStrandsWindowCommand selects the strands' window, and does nothing when no window carries the marker.
 	// It is expanded by run-shell -C at click time.
@@ -34,11 +34,11 @@ const (
 
 // followCommandOption is the server-global user option holding the shell line the follow button runs.
 // The button reads it through `#{E:...}` inside run-shell, which keeps the composed line out of tmux's nested command-string quoting.
-const followCommandOption = "@lyx_follow_command"
+const followCommandOption = "@lym_follow_command"
 
 // bindingsBuildOption is the server-global user option naming the build whose bindings the server holds: its VCS commit time in RFC 3339 UTC, a space, then its revision label.
 // It is unset when no build pinned them, or when the one that did carries no VCS stamp.
-const bindingsBuildOption = "@lyx_bindings_build"
+const bindingsBuildOption = "@lym_bindings_build"
 
 // bindingsBuildStamp returns the bindingsBuildOption value naming build, and the empty string for a build with no VCS stamp.
 func bindingsBuildStamp(build buildvcs.Identity) string {
@@ -101,7 +101,7 @@ func followClickCommand(followJump bool) string {
 // switchPrev and switchNext are the shell lines run-shell runs for M-Left and M-Right;
 // an empty one leaves its key unbound.
 // followJump reports that the follow button's jump line is pinned in followCommandOption, so a click that turns follow on runs it.
-// M-Down and M-Up write follow off, then step to the next and previous window with tmux's own wrap, in every window, and the step then goes on if it landed on a window carrying @lyx_hidden.
+// M-Down and M-Up write follow off, then step to the next and previous window with tmux's own wrap, in every window, and the step then goes on if it landed on a window carrying @lym_hidden.
 // The write comes first so it lands also when the step wraps onto the current window.
 // Hidden windows sit after the shell window, so one conditional step reaches a visible window: forward onto the session's first window, the overview, and back onto the strands' window, the shell.
 // The status click and each step are dispatched by chained commands, joined by tmux's escaped `\;` separator argument, since only one range type matches a click.

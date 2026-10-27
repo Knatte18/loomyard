@@ -1,5 +1,5 @@
 // scratchlink.go implements the scratch step of fabric wiring.
-// The warp worktree's root `.scratch` becomes a directory link into the pair's weft-side `.lyx`.
+// The warp worktree's root `.scratch` becomes a directory link into the pair's weft-side `.lym`.
 // Files an agent writes under `.scratch/` then never change the root entry's own modification time, which source-scan tests hash into their `go test` cache key.
 // The step runs under every wiring verb and adopts an existing real `.scratch` by moving it into the link target.
 // It never fails wiring: what it cannot settle it leaves as found and reports with a way forward.
@@ -16,15 +16,15 @@ import (
 	"syscall"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
-// scratchTargetName is the directory under the weft-side `.lyx` the root `.scratch` link points at.
+// scratchTargetName is the directory under the weft-side `.lym` the root `.scratch` link points at.
 const scratchTargetName = "scratch"
 
 // scratchReconcileHint is the closing way forward every scratch report shares.
-const scratchReconcileHint = "then rerun `lyx fabric reconcile`"
+const scratchReconcileHint = "then rerun `lym fabric reconcile`"
 
 // scratchBeforeLinkHook, when non-nil, runs between the classification of the root `.scratch` and the creation of its link.
 // It exists only so a test can recreate `.scratch` in that window; production never sets it.
@@ -55,14 +55,14 @@ func (o scratchOutcome) detail() string {
 }
 
 // scratchLinkTarget returns the weft-side directory the root `.scratch` link of slug's warp worktree points at.
-// It is built like every weft-side junction target and never by resolving the warp `.lyx` link.
-func scratchLinkTarget(l *lyxcwd.Location, slug string) string {
-	return filepath.Join(RecordsWorktreePath(l, slug), l.AnchorRel, lyxdirs.DotLyxDirName, scratchTargetName)
+// It is built like every weft-side junction target and never by resolving the warp `.lym` link.
+func scratchLinkTarget(l *lymcwd.Location, slug string) string {
+	return filepath.Join(RecordsWorktreePath(l, slug), l.AnchorRel, lymdirs.DotLymDirName, scratchTargetName)
 }
 
 // withoutRootScratchLink returns names without the root scratch link's name when the anchor is the worktree root.
 // It returns names unchanged otherwise, since a subpath anchor's on-disk scan never sees the root link.
-func withoutRootScratchLink(l *lyxcwd.Location, names []string) []string {
+func withoutRootScratchLink(l *lymcwd.Location, names []string) []string {
 	if filepath.Clean(l.AnchorRel) != "." {
 		return names
 	}
@@ -119,7 +119,7 @@ func seedScratchLinkExclude(rec *Mutations, worktreeDir string) (excludePath str
 // and every other shape is left as found.
 // It never returns an error and removes nothing; a leave or a failure comes back in the outcome with its way forward.
 // It creates nothing when the pair's weft worktree is absent.
-func wireScratchLink(rec *Mutations, l *lyxcwd.Location, slug string) scratchOutcome {
+func wireScratchLink(rec *Mutations, l *lymcwd.Location, slug string) scratchOutcome {
 	warp := WorktreePath(l, slug)
 	root := filepath.Join(warp, scratchDirName)
 	target := scratchLinkTarget(l, slug)
@@ -169,7 +169,7 @@ func wireScratchLink(rec *Mutations, l *lyxcwd.Location, slug string) scratchOut
 // It does nothing when the entry is absent, is not a link, or is a link that does not resolve into the pair's weft worktree;
 // git's own worktree removal unlinks such a link without following it.
 // A gate refusal comes back naming the root and the manual removal that lets a rerun proceed.
-func unlinkScratchLink(rec *Mutations, l *lyxcwd.Location, slug string) error {
+func unlinkScratchLink(rec *Mutations, l *lymcwd.Location, slug string) error {
 	warp := WorktreePath(l, slug)
 	root := filepath.Join(warp, scratchDirName)
 
@@ -198,13 +198,13 @@ func unlinkScratchLink(rec *Mutations, l *lyxcwd.Location, slug string) error {
 		force:     false,
 	}
 	if err := removeLink(rec, req); err != nil {
-		return fmt.Errorf("remove scratch link %s: %w; remove the root %s link by hand and rerun `lyx fabric remove`", root, err, scratchDirName)
+		return fmt.Errorf("remove scratch link %s: %w; remove the root %s link by hand and rerun `lym fabric remove`", root, err, scratchDirName)
 	}
 	return nil
 }
 
 // linkAbsentScratchRoot creates the target and the link for a root `.scratch` that does not exist.
-func linkAbsentScratchRoot(rec *Mutations, l *lyxcwd.Location, slug, root, target string) scratchOutcome {
+func linkAbsentScratchRoot(rec *Mutations, l *lymcwd.Location, slug, root, target string) scratchOutcome {
 	if !weftWorktreePresent(l, slug) {
 		return scratchOutcome{}
 	}
@@ -216,7 +216,7 @@ func linkAbsentScratchRoot(rec *Mutations, l *lyxcwd.Location, slug, root, targe
 
 // restoreScratchTarget handles a root `.scratch` that is a link: a link to the expected target gets the target recreated when absent,
 // and a link to anything else is left.
-func restoreScratchTarget(rec *Mutations, l *lyxcwd.Location, slug, root, target string) scratchOutcome {
+func restoreScratchTarget(rec *Mutations, l *lymcwd.Location, slug, root, target string) scratchOutcome {
 	raw, err := fslink.RawTarget(root)
 	if err != nil {
 		return scratchFailure(root, target, root, err)
@@ -241,7 +241,7 @@ func restoreScratchTarget(rec *Mutations, l *lyxcwd.Location, slug, root, target
 }
 
 // adoptScratchDirectory moves a real root `.scratch` into the absent target and links it; with the target present it leaves the directory.
-func adoptScratchDirectory(rec *Mutations, l *lyxcwd.Location, slug, root, target string) scratchOutcome {
+func adoptScratchDirectory(rec *Mutations, l *lymcwd.Location, slug, root, target string) scratchOutcome {
 	exists, err := scratchTargetExists(target)
 	if err != nil {
 		return scratchFailure(root, target, target, err)
@@ -317,8 +317,8 @@ func scratchTargetExists(target string) (bool, error) {
 }
 
 // weftWorktreePresent reports whether slug's weft worktree directory exists.
-// The step creates nothing without it, since a weft torn down mid-repair would otherwise get a plain directory recreated at its `.lyx/scratch` path.
-func weftWorktreePresent(l *lyxcwd.Location, slug string) bool {
+// The step creates nothing without it, since a weft torn down mid-repair would otherwise get a plain directory recreated at its `.lym/scratch` path.
+func weftWorktreePresent(l *lymcwd.Location, slug string) bool {
 	_, err := os.Stat(RecordsWorktreePath(l, slug))
 	return !errors.Is(err, fs.ErrNotExist)
 }

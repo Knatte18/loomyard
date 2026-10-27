@@ -22,17 +22,17 @@ func TestBeamLandRefusal(t *testing.T) {
 		{
 			name:       "MemberWithAPairNamesItsLandAndItsCancel",
 			blockers:   BeamLandBlockers{Members: []BeamLandMember{{Slug: "m1", HasPair: true}}},
-			wantErrors: []string{"m1", "`lyx batten run m1`", "`lyx batten cancel m1 --remove`"},
+			wantErrors: []string{"m1", "`lym batten run m1`", "`lym batten cancel m1 --remove`"},
 		},
 		{
 			name:       "MemberWithNoPairNamesMovingItsProject",
 			blockers:   BeamLandBlockers{Members: []BeamLandMember{{Slug: "m2"}}},
-			wantErrors: []string{"m2", "no pair on this machine", "`project`", "`lyx board upsert`"},
+			wantErrors: []string{"m2", "no pair on this machine", "`project`", "`lym board upsert`"},
 		},
 		{
 			name:       "MemberRunningWithAPairIsNamedLikeAnyMemberWithAPair",
 			blockers:   BeamLandBlockers{Members: []BeamLandMember{{Slug: "m3", HasPair: true, Running: true}}},
-			wantErrors: []string{"m3", "`lyx batten cancel m3 --remove`"},
+			wantErrors: []string{"m3", "`lym batten cancel m3 --remove`"},
 		},
 		{
 			name:       "EveryMemberIsNamed",
@@ -42,7 +42,7 @@ func TestBeamLandRefusal(t *testing.T) {
 		{
 			name:       "ChildPairNamesItsLandAndItsCancel",
 			blockers:   BeamLandBlockers{ChildPairs: []string{"c1"}},
-			wantErrors: []string{"pair c1", "`lyx batten run c1`", "`lyx batten cancel c1 --remove`"},
+			wantErrors: []string{"pair c1", "`lym batten run c1`", "`lym batten cancel c1 --remove`"},
 		},
 		{
 			name:       "EveryBlockerIsNamedTogether",
@@ -70,7 +70,7 @@ func TestBeamLandRefusal(t *testing.T) {
 					t.Errorf("beamLandRefusal() = %q; want it to carry %q", err.Error(), want)
 				}
 			}
-			if strings.Contains(err.Error(), "lyx orch") {
+			if strings.Contains(err.Error(), "lym orch") {
 				t.Errorf("beamLandRefusal() = %q; want no orch way forward, since the beam's orch runs until Beam-Down", err.Error())
 			}
 		})

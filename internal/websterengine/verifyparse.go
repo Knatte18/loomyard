@@ -46,7 +46,7 @@ const (
 const subtestIndent = 4
 
 // ParseVerifyFailures returns the failure identities of a failed verify run's output, as the verify gate names them.
-// `lyx webster verify` calls it so the verb reports the identities the gate does.
+// `lym webster verify` calls it so the verb reports the identities the gate does.
 func ParseVerifyFailures(output string) []VerifyFailure {
 	return parseVerifyFailures(output, false)
 }

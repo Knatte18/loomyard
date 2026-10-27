@@ -1,6 +1,6 @@
 # A Plan-Write writer that stopped to ask its parent, and was answered in its own session.
 source:
-  transcript: ~/.claude/projects/-home-knatte-Code-loomyard-LYXHUB-bugfix-sessions/88a2c2aa-bdc2-401b-bf76-73c3813b0c62.jsonl
+  transcript: ~/.claude/projects/-home-knatte-Code-loomyard-LYMHUB-bugfix-sessions/88a2c2aa-bdc2-401b-bf76-73c3813b0c62.jsonl
   session_id: 88a2c2aa-bdc2-401b-bf76-73c3813b0c62
   run: bugfix-sessions Plan-Write, run 51c3b5673e6b946af73c516ebb16b201
 date: 2026-10-06

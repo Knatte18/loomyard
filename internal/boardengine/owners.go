@@ -10,7 +10,7 @@ import (
 	"fmt"
 )
 
-// RootSubject is what `lyx adopt` takes to move the ownership of the root project, the one the board's prime owner records.
+// RootSubject is what `lym adopt` takes to move the ownership of the root project, the one the board's prime owner records.
 const RootSubject = "root"
 
 // ProjectRecipe is the recipe of a beam project's run, the only recipe a project carries.
@@ -119,7 +119,7 @@ func checkOwnerPayload(s *Store, fields map[string]any) error {
 	if err != nil {
 		return fmt.Errorf("entry %q: resolve what adopt takes: %w", slug, err)
 	}
-	return fmt.Errorf("entry %q is owned by %q, and a board write never changes an owner: run `lyx adopt %s` from this machine's prime to take it over", slug, effective, subject)
+	return fmt.Errorf("entry %q is owned by %q, and a board write never changes an owner: run `lym adopt %s` from this machine's prime to take it over", slug, effective, subject)
 }
 
 // Effective returns the owner machine the entry slug reads as, where "" means owned by no other machine.
@@ -144,7 +144,7 @@ func (o Owners) Effective(slug string, parentOf func(slug string) (string, error
 	return o.Effective(parent, parentOf)
 }
 
-// AdoptSubject returns what `lyx adopt` takes to move the ownership of the entry slug: the slug itself for a beam project, else the nearest beam project above it, else RootSubject.
+// AdoptSubject returns what `lym adopt` takes to move the ownership of the entry slug: the slug itself for a beam project, else the nearest beam project above it, else RootSubject.
 // A slug the board does not hold is its own subject.
 // parentOf is read as for Effective, and an error from it is returned.
 func (o Owners) AdoptSubject(slug string, parentOf func(slug string) (string, error)) (string, error) {

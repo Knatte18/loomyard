@@ -299,7 +299,7 @@ func checkName(handle Handle, want string) error {
 	if got == want {
 		return nil
 	}
-	return fmt.Errorf("seatengine: strand %q started as %q, because another strand holds that name; way forward: run \"lyx reed remove --name %s\", then re-step the row", want, got, want)
+	return fmt.Errorf("seatengine: strand %q started as %q, because another strand holds that name; way forward: run \"lym reed remove --name %s\", then re-step the row", want, got, want)
 }
 
 // stopSeat stops handle through its Stop, which records the stop before it removes the strand.
@@ -307,7 +307,7 @@ func checkName(handle Handle, want string) error {
 func stopSeat(handle Handle) error {
 	guid := handle.StrandGUID()
 	if err := handle.Stop(); err != nil {
-		return fmt.Errorf("%w: strand %s: %v; way forward: run \"lyx reed remove %s\", then re-step the row", ErrSeatNotStopped, guid, err, guid)
+		return fmt.Errorf("%w: strand %s: %v; way forward: run \"lym reed remove %s\", then re-step the row", ErrSeatNotStopped, guid, err, guid)
 	}
 	return nil
 }

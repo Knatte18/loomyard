@@ -100,13 +100,13 @@ func endedReason(how string) string {
 	if how == "done" {
 		ended = "its landing is done and its board entry is done"
 	}
-	return fmt.Sprintf(`origin ended this run: %s; way forward: pause the run, then run "lyx cleanup --apply" from the prime, whose hub reconcile tears this pair down`, ended)
+	return fmt.Sprintf(`origin ended this run: %s; way forward: pause the run, then run "lym cleanup --apply" from the prime, whose hub reconcile tears this pair down`, ended)
 }
 
 // stoppedReason words the Stuck reason of a run origin's judgment stopped: the branch that stopped it, its state and its way forward, then the row's re-entry.
 // The branch is the one whose way forward the entry carries; an entry with no such branch names none.
 func stoppedReason(entry fabricengine.EntryOutcome, branches []fabricengine.BranchOutcome) string {
-	const reentry = `then run "lyx loom resume" in the task worktree`
+	const reentry = `then run "lym loom resume" in the task worktree`
 	for _, branch := range branches {
 		if branch.WayForward != "" && branch.WayForward == entry.WayForward {
 			return fmt.Sprintf("origin reconcile stopped this run: branch %s is %s against origin; way forward: %s; %s", branch.Branch, branch.State, branch.WayForward, reentry)

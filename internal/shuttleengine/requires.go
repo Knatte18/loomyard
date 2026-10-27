@@ -54,9 +54,9 @@ func (k ModelKey) Wrap(err error) error {
 	var wayForward string
 	switch {
 	case k.Module != "" && k.Key != "" && k.Entry != "":
-		wayForward = fmt.Sprintf("set the model of %s in %s in %s.yaml to an alias whose engine meets them with lyx config %s, then re-run the verb, or under the role's row re-step the row", k.Entry, k.Key, k.Module, k.Module)
+		wayForward = fmt.Sprintf("set the model of %s in %s in %s.yaml to an alias whose engine meets them with lym config %s, then re-run the verb, or under the role's row re-step the row", k.Entry, k.Key, k.Module, k.Module)
 	case k.Module != "" && k.Key != "":
-		wayForward = fmt.Sprintf("set %s in %s.yaml to an alias whose engine meets them with lyx config %s --set %s=<alias>, then re-run the verb, or under the role's row re-step the row", k.Key, k.Module, k.Module, k.Key)
+		wayForward = fmt.Sprintf("set %s in %s.yaml to an alias whose engine meets them with lym config %s --set %s=<alias>, then re-run the verb, or under the role's row re-step the row", k.Key, k.Module, k.Module, k.Key)
 	case k.DefaultEngine:
 		wayForward = "set engine: in shuttle.yaml to an engine that meets them, then re-run the verb"
 	default:
@@ -164,7 +164,7 @@ func (r *Runner) checkRequirementsAtAttach(spec Spec, candidate attachCandidate,
 	}
 	err = unmetRequirements(r.engines, engineName, engine, requiredOf(spec.Requires, candidate.state.ForkSubagents))
 	if err != nil {
-		return fmt.Errorf("%w; way forward: end the run's live strand with \"lyx reed remove %s\", then re-step the row once the run record in %s is older than twice startup_timeout_s (%s)", err, candidate.state.StrandGUID, candidate.runDir, minAge)
+		return fmt.Errorf("%w; way forward: end the run's live strand with \"lym reed remove %s\", then re-step the row once the run record in %s is older than twice startup_timeout_s (%s)", err, candidate.state.StrandGUID, candidate.runDir, minAge)
 	}
 	return nil
 }

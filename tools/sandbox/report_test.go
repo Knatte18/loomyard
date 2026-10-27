@@ -1,7 +1,7 @@
 //go:build tier0
 
 // report_test.go contains unit tests for the sandbox-report.json contract and the fetchReport validate/stamp/fetch pipeline.
-// All tests use t.TempDir() -- no real lyx, claude, or network calls are made.
+// All tests use t.TempDir() -- no real lym, claude, or network calls are made.
 // The runFetch tests rewrite the package-level devBinPath and lookPath seams, so they do not call t.Parallel; the fetchReport tests touch no seam and run in parallel.
 
 package main
@@ -19,7 +19,7 @@ import (
 // fakeBinaryInfo returns a fixed binaryInfo for fetchReport tests.
 func fakeBinaryInfo() binaryInfo {
 	return binaryInfo{
-		Path:    "/fake/lyx.exe",
+		Path:    "/fake/lym.exe",
 		Size:    1234,
 		ModTime: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 		SHA256:  "abc123def456",
@@ -198,15 +198,15 @@ func makeFetchHubRepo(t *testing.T) (parentDir, repoDir string) {
 	return parentDir, repoDir
 }
 
-// stubLyxLookPath stubs resolveLyx to return sourceProd.
-func stubLyxLookPath(t *testing.T, fakeLyx string) func() {
+// stubLymLookPath stubs resolveLym to return sourceProd.
+func stubLymLookPath(t *testing.T, fakeLym string) func() {
 	t.Helper()
 	oldDevBinPath := devBinPath
-	devBinPath = func() (string, error) { return filepath.Join(t.TempDir(), "lyx"), nil }
+	devBinPath = func() (string, error) { return filepath.Join(t.TempDir(), "lym"), nil }
 	oldLookPath := lookPath
 	lookPath = func(name string) (string, error) {
-		if name == "lyx" {
-			return fakeLyx, nil
+		if name == "lym" {
+			return fakeLym, nil
 		}
 		return "", fmt.Errorf("not found on PATH: %s", name)
 	}
@@ -216,24 +216,24 @@ func stubLyxLookPath(t *testing.T, fakeLyx string) func() {
 	}
 }
 
-// TestRunFetch_StampsTheResolvedBinary verifies runFetch fetches a valid report and stamps it with the fingerprint of the binary resolveLyx picked: the on-PATH binary as prod, or the dev binary as dev without consulting PATH at all.
+// TestRunFetch_StampsTheResolvedBinary verifies runFetch fetches a valid report and stamps it with the fingerprint of the binary resolveLym picked: the on-PATH binary as prod, or the dev binary as dev without consulting PATH at all.
 func TestRunFetch_StampsTheResolvedBinary(t *testing.T) {
 	tests := []struct {
 		name       string
 		wantSource string
-		// stubSeams installs the resolveLyx seams and returns the binary runFetch must resolve.
+		// stubSeams installs the resolveLym seams and returns the binary runFetch must resolve.
 		stubSeams func(t *testing.T, parentDir string) string
 	}{
 		{
 			name:       "on-PATH binary is prod",
 			wantSource: sourceProd,
 			stubSeams: func(t *testing.T, parentDir string) string {
-				fakeLyx := filepath.Join(parentDir, "lyx.exe")
-				if err := os.WriteFile(fakeLyx, []byte("fake lyx binary"), 0o755); err != nil {
-					t.Fatalf("write fake lyx: %v", err)
+				fakeLym := filepath.Join(parentDir, "lym.exe")
+				if err := os.WriteFile(fakeLym, []byte("fake lym binary"), 0o755); err != nil {
+					t.Fatalf("write fake lym: %v", err)
 				}
-				t.Cleanup(stubLyxLookPath(t, fakeLyx))
-				return fakeLyx
+				t.Cleanup(stubLymLookPath(t, fakeLym))
+				return fakeLym
 			},
 		},
 		{
@@ -244,14 +244,14 @@ func TestRunFetch_StampsTheResolvedBinary(t *testing.T) {
 				if err := os.MkdirAll(devBinDir, 0o755); err != nil {
 					t.Fatalf("mkdir dev-bin dir: %v", err)
 				}
-				devLyx := filepath.Join(devBinDir, "lyx")
-				if err := os.WriteFile(devLyx, []byte("fake dev lyx binary"), 0o755); err != nil {
-					t.Fatalf("write fake dev lyx: %v", err)
+				devLym := filepath.Join(devBinDir, "lym")
+				if err := os.WriteFile(devLym, []byte("fake dev lym binary"), 0o755); err != nil {
+					t.Fatalf("write fake dev lym: %v", err)
 				}
 
 				oldDevBinPath := devBinPath
 				t.Cleanup(func() { devBinPath = oldDevBinPath })
-				devBinPath = func() (string, error) { return devLyx, nil }
+				devBinPath = func() (string, error) { return devLym, nil }
 
 				oldLookPath := lookPath
 				t.Cleanup(func() { lookPath = oldLookPath })
@@ -259,7 +259,7 @@ func TestRunFetch_StampsTheResolvedBinary(t *testing.T) {
 					t.Errorf("unexpected lookPath call for %q; a resolvable dev binary should skip the PATH fallback", name)
 					return "", fmt.Errorf("not found on PATH: %s", name)
 				}
-				return devLyx
+				return devLym
 			},
 		},
 	}
@@ -322,11 +322,11 @@ func TestRunFetch_MissingReport(t *testing.T) {
 	parentDir, _ := makeFetchHubRepo(t)
 	loomyardRoot := t.TempDir()
 
-	fakeLyx := filepath.Join(parentDir, "lyx.exe")
-	if err := os.WriteFile(fakeLyx, []byte("fake lyx binary"), 0o755); err != nil {
-		t.Fatalf("write fake lyx: %v", err)
+	fakeLym := filepath.Join(parentDir, "lym.exe")
+	if err := os.WriteFile(fakeLym, []byte("fake lym binary"), 0o755); err != nil {
+		t.Fatalf("write fake lym: %v", err)
 	}
-	restore := stubLyxLookPath(t, fakeLyx)
+	restore := stubLymLookPath(t, fakeLym)
 	defer restore()
 
 	err := runFetch(parentDir, loomyardRoot)

@@ -155,7 +155,7 @@ type Result struct {
 	// ReconcileHubWideAt sets it on a board that carries no base-sparse marker, for the keys equal to the template or a former template value.
 	Stripped []string
 	// Inherited lists, sorted, the dotted keys the repo default holds that the worktree file lacked and whose value differs from the template's or that the template lacks.
-	// After the strip the worktree resolves each of them to the default's value, so the operator can pin the old value with lyx config.
+	// After the strip the worktree resolves each of them to the default's value, so the operator can pin the old value with lym config.
 	// Set only by ReconcileAll, together with Stripped.
 	Inherited []string
 	// Moved lists, sorted, the declared key moves that changed this file, each as "<source module>.<source key> -> <target module>.<target key>".
@@ -726,7 +726,7 @@ func WriteBaseSparseMarker(boardDir string) error {
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		return &FileError{Path: marker, Err: fmt.Errorf("mkdir config dir for the base-sparse marker: %w", err)}
 	}
-	if err := fsx.AtomicWriteBytes(marker, []byte("# This board's base config files are sparse over lyx's template.\n")); err != nil {
+	if err := fsx.AtomicWriteBytes(marker, []byte("# This board's base config files are sparse over lym's template.\n")); err != nil {
 		return &FileError{Path: marker, Err: fmt.Errorf("write the base-sparse marker: %w", err)}
 	}
 	return nil

@@ -3,7 +3,7 @@
 
 package orchengine
 
-// StartAction is the branch the bring-up of `lyx beam start` takes.
+// StartAction is the branch the bring-up of `lym beam start` takes.
 type StartAction int
 
 const (

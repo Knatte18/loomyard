@@ -1,7 +1,7 @@
 //go:build tier1
 
-// reconcile_empty_anchor_integration_test.go pins Reconcile's refusal to wire a pair whose own lyx-anchor marker is present but empty.
-// lyxcwd treats an empty marker as absent and answers the "." anchor.
+// reconcile_empty_anchor_integration_test.go pins Reconcile's refusal to wire a pair whose own lym-anchor marker is present but empty.
+// lymcwd treats an empty marker as absent and answers the "." anchor.
 // Wiring such a pair on a subpath-anchored hub laid a full SECOND junction set at the repo root beside the live set at the real anchor.
 // The refusal is per pair: the other pairs are still reconciled.
 //
@@ -18,8 +18,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // pairResultFor returns the reconcile outcome of the warp worktree called slug, failing the test when the pass reported none.
@@ -59,16 +59,16 @@ func TestReconcile_RefusesEmptyAnchorMarkerInsteadOfWiringAtTheRoot(t *testing.T
 			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend", Pairs: []string{hubforge.TemplatePairSlug}})
 			failing, healthy := tt.failing(h), tt.healthy(h)
 
-			wantInError := []string{lyxcwd.AnchorFileName, "git -C"}
+			wantInError := []string{lymcwd.AnchorFileName, "git -C"}
 			if tt.moveRecord {
 				writeMoveRecord(t, fabricengine.RecordsWorktreePath(h.Location, failing), fabricengine.MoveRecord{A: "backend", B: "x", Kind: fabricengine.MoveKindMove, PID: 4242})
-				wantInError = []string{"interrupted", "lyx fabric anchor " + failing + " --set x"}
+				wantInError = []string{"interrupted", "lym fabric anchor " + failing + " --set x"}
 			} else {
-				markerPath := filepath.Join(fabricengine.RecordsWorktreePath(h.Location, failing), lyxcwd.AnchorFileName)
+				markerPath := filepath.Join(fabricengine.RecordsWorktreePath(h.Location, failing), lymcwd.AnchorFileName)
 				if err := os.WriteFile(markerPath, []byte("   \n"), 0o644); err != nil {
 					t.Fatalf("truncate %s: %v", markerPath, err)
 				}
-				truncatedAt, err := lyxcwd.NamedWorktree(h.Path, failing)
+				truncatedAt, err := lymcwd.NamedWorktree(h.Path, failing)
 				if err != nil {
 					t.Fatalf("NamedWorktree(%s) after truncation: %v", failing, err)
 				}
@@ -93,13 +93,13 @@ func TestReconcile_RefusesEmptyAnchorMarkerInsteadOfWiringAtTheRoot(t *testing.T
 			}
 
 			warpRoot := fabricengine.WorktreePath(h.Location, failing)
-			for _, name := range []string{lyxdirs.LyxDirName, lyxdirs.DotLyxDirName, fabricengine.BoardDirName} {
+			for _, name := range []string{lymdirs.LymDirName, lymdirs.DotLymDirName, fabricengine.BoardDirName} {
 				rootLink := filepath.Join(warpRoot, name)
 				if _, statErr := os.Lstat(rootLink); statErr == nil {
 					t.Errorf("a second junction %s was wired at the warp worktree root; want none", rootLink)
 				}
 			}
-			anchoredLink := filepath.Join(warpRoot, "backend", lyxdirs.LyxDirName)
+			anchoredLink := filepath.Join(warpRoot, "backend", lymdirs.LymDirName)
 			if _, statErr := os.Lstat(anchoredLink); statErr != nil {
 				t.Errorf("anchored junction %s went missing: %v", anchoredLink, statErr)
 			}

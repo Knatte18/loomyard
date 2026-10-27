@@ -1,6 +1,6 @@
 //go:build tier0
 
-// removename_test.go pins `lyx reed remove --name`'s Tier 1 surface: the argument rules, the parent-exit wait over a fake liveness check, and the help text of the three new flags.
+// removename_test.go pins `lym reed remove --name`'s Tier 1 surface: the argument rules, the parent-exit wait over a fake liveness check, and the help text of the three new flags.
 // It spawns nothing and drives no tmux; the live self-removal is smoke_removebyname_test.go.
 // TestWaitParentExit swaps the package-level pidAlive, so it does not call t.Parallel.
 

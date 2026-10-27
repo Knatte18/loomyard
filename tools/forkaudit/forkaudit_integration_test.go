@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // workMarker is the file that marks a directory as a forkaudit work directory.
@@ -825,7 +825,7 @@ func stateText(t *testing.T, run recordsRun) string {
 func recordsRepo(t *testing.T, runs []recordsRun) string {
 	t.Helper()
 	dir := tempDir(t)
-	statePath := filepath.Join(lyxdirs.LyxDirName, "webster", "state.json")
+	statePath := filepath.Join(lymdirs.LymDirName, "webster", "state.json")
 	gitkit.Git(t, dir, "init", "-b", "main")
 	gitkit.Git(t, dir, "commit", "--allow-empty", "-m", "initial")
 	for _, run := range runs {
@@ -834,7 +834,7 @@ func recordsRepo(t *testing.T, runs []recordsRun) string {
 		paths := []string{statePath}
 		writeFile(t, filepath.Join(dir, statePath), stateText(t, run))
 		for name, content := range run.planCards {
-			rel := filepath.Join(lyxdirs.LyxDirName, "plan", name)
+			rel := filepath.Join(lymdirs.LymDirName, "plan", name)
 			writeFile(t, filepath.Join(dir, rel), content)
 			paths = append(paths, rel)
 		}
@@ -897,8 +897,8 @@ func cardPackLine(start time.Time, after time.Duration) string {
 // writeTrace writes a trace file with a header record and lines into the logs directory of the worktree <hub>/<run>.
 func writeTrace(t *testing.T, hub, run string, lines []string) {
 	t.Helper()
-	content := "command=lyx argv=webster trace=abc pid=1 worktree_root=" + filepath.Join(hub, run) + "\n" + strings.Join(lines, "\n") + "\n"
-	writeFile(t, filepath.Join(hub, run, lyxdirs.DotLyxDirName, "logs", "trace-20261014T090000Z-abc-1.log"), content)
+	content := "command=lym argv=webster trace=abc pid=1 worktree_root=" + filepath.Join(hub, run) + "\n" + strings.Join(lines, "\n") + "\n"
+	writeFile(t, filepath.Join(hub, run, lymdirs.DotLymDirName, "logs", "trace-20261014T090000Z-abc-1.log"), content)
 }
 
 // traceCase is one fork with its run's records and trace file, and the cells its report row must hold.
@@ -1121,7 +1121,7 @@ func TestForkauditPlanSection(t *testing.T) {
 			"00-overview.md": "# Plan\n\n**Edit:**\n- `internal/ignored#One`\n",
 			"01-alpha.md": "# Card 1\n\n**Create:**\n- `pkg/new.go`\n- `plan:pkg#Added` -> `func Added()`\n\n" +
 				"**Edit:**\n- `pkg/a.go`\n- `internal/x#Thing`\n\n**Uses:**\n- `internal/y#Helper`\n- `internal/dir/`\n\n" +
-				"**Verify:**\n- `lyx gate test ./pkg`\n",
+				"**Verify:**\n- `lym gate test ./pkg`\n",
 			"02-beta.md": "# Card 2\n\n**Edit:**\n- `internal/x#Thing`\n- `internal/z#Other`\n- `internal/z#Third`\n- `docs/overview.md`\n",
 		}},
 		{name: "alpha-two", kind: "local"},

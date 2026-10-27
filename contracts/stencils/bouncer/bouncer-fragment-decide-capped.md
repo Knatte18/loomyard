@@ -3,5 +3,5 @@
 
 On the ground of the operator decision you applied, record the segment's outcome with the one option this round has.
 This round is at or past the perch's hard cap, so the segment can only be accepted:
-   - `lyx loom circling accept {{.slug}}` ends the segment unconverged on this round.
+   - `lym loom circling accept {{.slug}}` ends the segment unconverged on this round.
      The segment passes with its open findings, recorded as unconverged.

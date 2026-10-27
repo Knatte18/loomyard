@@ -24,7 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -50,7 +50,7 @@ var weftVerbNames = map[string]bool{
 // only push, rejecting others with "subcommand requires a worktree context".
 func addWeftVerbs(cmd *cobra.Command) {
 	var (
-		l        *lyxcwd.Location
+		l        *lymcwd.Location
 		pathspec []string
 		fab      *fabricengine.Fabric
 		bypass   bool
@@ -112,11 +112,8 @@ func addWeftVerbs(cmd *cobra.Command) {
 		}
 		l = resolved
 
-		// Build from fabricengine's own routing set (PathspecNames), never a raw, unfiltered
-		// Config.Dirs(): with _lyx no longer in template.yaml's default, a repo's pathspec
-		// names only whatever optional directory an operator has added, so a raw-Dirs()
-		// sync would silently stop syncing _lyx entirely. The routing set can never name
-		// .lyx either, since it excludes structuralNeverCommittedDirs by construction.
+		// Build from fabricengine's own routing set (PathspecNames), never a raw, unfiltered Config.Dirs(): with _lym no longer in template.yaml's default, a repo's pathspec names only whatever optional directory an operator has added, so a raw-Dirs() sync would silently stop syncing _lym entirely.
+		// The routing set can never name .lym either, since it excludes structuralNeverCommittedDirs by construction.
 		routingNames, err := fabricengine.PathspecNames(fabricengine.ConfigDirs(l))
 		if err != nil {
 			output.Err(out, err.Error())
@@ -145,9 +142,9 @@ func addWeftVerbs(cmd *cobra.Command) {
 warp<->weft pair, each labelled with which side (warp or weft) it changed on.
 
 status also reports merge_in_progress: whether THIS pair has a fabric merge
-parked awaiting "lyx fabric merge --continue" or "lyx fabric merge --abort".
+parked awaiting "lym fabric merge --continue" or "lym fabric merge --abort".
 It does NOT report whether some other pair in the hub is mid-merge on this
-pair's branch, so "lyx fabric remove" refusing on that hub-wide condition can
+pair's branch, so "lym fabric remove" refusing on that hub-wide condition can
 coexist with merge_in_progress being false here.
 
 status also reports failed_pushes: every push origin refused that this machine
@@ -197,14 +194,14 @@ Every fabric weft commit carries a trailing "Warp-SHA: <sha>" trailer naming the
 paired warp repo's current HEAD, recorded into the correspondence index immediately
 after the commit lands.
 
-Staging is scoped to the durable structural directory (_lyx -- code-injected, never listed
+Staging is scoped to the durable structural directory (_lym -- code-injected, never listed
 in the fabric config) plus whatever the fabric config's optional pathspec adds (default:
-none). The machine-local scratch directory (.lyx) is NEVER staged or committed -- a path
+none). The machine-local scratch directory (.lym) is NEVER staged or committed -- a path
 under it in a commit request is refused, not silently dropped.
 
 Related commands:
-  lyx fabric push   — commit then push in the same process
-  lyx fabric sync   — commit then async-push (detached child process)`,
+  lym fabric push   — commit then push in the same process
+  lym fabric sync   — commit then async-push (detached child process)`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -225,7 +222,7 @@ Related commands:
 		Args:        cobra.NoArgs,
 		Short:       "commit weft changes and push both sides (records only in the prime)",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `Commit weft changes exactly as "lyx fabric commit" does, then push the unpushed
+		Long: `Commit weft changes exactly as "lym fabric commit" does, then push the unpushed
 commits of both the warp branch and the weft branch in the same process.
 The push is plain and rebase-free, never a force, and waits for a push already
 running under fabric's push lock.
@@ -236,8 +233,8 @@ branch is the operator's parent branch: when it has unpushed commits the
 envelope carries code_push_skipped, naming the branch, and the operator pushes it.
 
 Related commands:
-  lyx fabric commit — commit only
-  lyx fabric sync   — commit then async-push (detached child process)`,
+  lym fabric commit — commit only
+  lym fabric sync   — commit then async-push (detached child process)`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -245,7 +242,7 @@ Related commands:
 			out := cmd.OutOrStdout()
 
 			if bypass {
-				// The bypass branch has no *lyxcwd.Location in scope (it takes the injected
+				// The bypass branch has no *lymcwd.Location in scope (it takes the injected
 				// --warp-path/--weft-path values and returns before resolveWarpLocation runs), so its
 				// recorder is built with an empty hub root: it appends no path-targeted entries of
 				// its own, only Extends CoalescePushRequest's already-converted record, and Extend
@@ -255,12 +252,12 @@ Related commands:
 				teardownSlug, _ := cmd.Flags().GetString(fabricengine.TeardownSlugFlag)
 				parentLocked, _ := cmd.Flags().GetBool(fabricengine.ParentLockedFlag)
 				// The child starts in the hub's board worktree, so the hub is the parent of the worktree root the ungated resolution finds there.
-				cwd, err := lyxcwd.CwdFrom(cmd.Context())
+				cwd, err := lymcwd.CwdFrom(cmd.Context())
 				if err != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 					return nil
 				}
-				hubLocation, err := lyxcwd.ResolveWorktree(cwd)
+				hubLocation, err := lymcwd.ResolveWorktree(cwd)
 				if err != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 					return nil
@@ -365,7 +362,7 @@ fetched and inspected against its upstream tracking ref:
 		Args:        cobra.NoArgs,
 		Short:       "commit weft changes and async-push both sides (records only in the prime)",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `Commit weft changes exactly as "lyx fabric commit" does, then hand the push
+		Long: `Commit weft changes exactly as "lym fabric commit" does, then hand the push
 of both the warp branch and the weft branch to a detached child process and
 return immediately — the push happens in the background, coalesced under
 fabric's push lock.
@@ -374,8 +371,8 @@ code branch is the operator's parent branch to push.
 A branch marked local-only is left out, and the envelope's local_skipped names it.
 
 Related commands:
-  lyx fabric commit — commit only
-  lyx fabric push   — commit then push in the same process`,
+  lym fabric commit — commit only
+  lym fabric push   — commit then push in the same process`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -424,7 +421,7 @@ If <since-warp-sha> predates any recorded correspondence, the weft side is
 empty and the result's no_weft_correspondence field is true.
 
 Example:
-  lyx fabric diff abc1234`,
+  lym fabric diff abc1234`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -446,7 +443,7 @@ Example:
 
 	cmd.AddCommand(statusCmd, commitCmd, pushCmd, pullCmd, syncCmd, diffCmd)
 
-	addMergeVerbs(cmd, func() *fabricengine.Fabric { return fab }, func() *lyxcwd.Location { return l })
+	addMergeVerbs(cmd, func() *fabricengine.Fabric { return fab }, func() *lymcwd.Location { return l })
 }
 
 // changeEntriesMap flattens a []fabricengine.ChangeEntry into the map shape

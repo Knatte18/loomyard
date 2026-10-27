@@ -1,7 +1,7 @@
 // ownwindow.go holds the own-window placement.
 // That is the session-wide window listing, the presence of own-window panes, and the windows' creation, grouping and removal.
 // An own-window strand lives outside the shell window; its pane is read through the session listing instead.
-// It also holds the move that breaks a strand pane an older lyx left in the shell window out into a window of its own.
+// It also holds the move that breaks a strand pane an older lym left in the shell window out into a window of its own.
 
 package reedengine
 
@@ -17,11 +17,11 @@ import (
 
 // ownWindowOption is the window option reed sets on every own window it opens.
 // Unlike the display-only options, Go decides on it: reconcile ends only a window carrying it.
-const ownWindowOption = "@lyx_own"
+const ownWindowOption = "@lym_own"
 
 // groupWindowOption is the window option naming the group a shared window holds.
 // Go decides on it: a group window is found by it, never by window name.
-const groupWindowOption = "@lyx_group"
+const groupWindowOption = "@lym_group"
 
 // windowPane is one pane of the session-wide listing.
 type windowPane struct {
@@ -47,7 +47,7 @@ func (w windowPane) livePane() LivePane {
 }
 
 // windowPaneFormat is the session-wide listing format of windowPane: window id, own flag, group (or "-"), pane id, dead flag, pid, then the tail joining the pane title, current command and start command with paneTailSeparator.
-const windowPaneFormat = "#{window_id} #{?#{@lyx_own},1,0} #{?#{@lyx_group},#{@lyx_group},-} #{pane_id} #{pane_dead} #{pane_pid} #{pane_title}\t#{pane_current_command}\t#{pane_start_command}"
+const windowPaneFormat = "#{window_id} #{?#{@lym_own},1,0} #{?#{@lym_group},#{@lym_group},-} #{pane_id} #{pane_dead} #{pane_pid} #{pane_title}\t#{pane_current_command}\t#{pane_start_command}"
 
 // parseWindowPanes parses a windowPaneFormat listing, skipping a line it cannot parse.
 func parseWindowPanes(out string) []windowPane {
@@ -160,7 +160,7 @@ func (e *Engine) strandsElsewhereLocked(strands []Strand, windows []windowPane) 
 }
 
 // unseenWindowOption is the display-only window option marking an own window the operator has not selected since it opened.
-const unseenWindowOption = "@lyx_unseen"
+const unseenWindowOption = "@lym_unseen"
 
 // isOwnWindow reports whether d places a strand in a window of its own, outside window 0: the own-window anchor or the overview anchor.
 func isOwnWindow(d render.Display) bool {
@@ -224,7 +224,7 @@ func planOwnWindowPlacement(groups map[string]WindowGroup, d render.Display, sha
 }
 
 // groupLiveCount counts the strands of group other than self whose binding names a listed pane, alive or dead, since a dead pane still occupies the shared window.
-// It also returns the id of the window carrying the group's @lyx_group option and the own marker, empty when none is listed.
+// It also returns the id of the window carrying the group's @lym_group option and the own marker, empty when none is listed.
 func groupLiveCount(strands []Strand, group, self string, windows []windowPane) (count int, groupWindow string) {
 	listed := make(map[string]bool, len(windows))
 	for _, w := range windows {
@@ -348,7 +348,7 @@ func (e *Engine) listStrandAndWindowPanes(st *ReedState) ([]LivePane, []windowPa
 }
 
 // listReconcilePanesLocked returns the panes of the shell window and the panes of the whole session, after breaking any strand pane left in the shell window out into a window of its own.
-// The shell window is the one the Selvage pane or the @lyx_strands marker names; with neither, the current window is listed and nothing is moved, so a viewer on a shared agent window never has that window's panes broken out of it.
+// The shell window is the one the Selvage pane or the @lym_strands marker names; with neither, the current window is listed and nothing is moved, so a viewer on a shared agent window never has that window's panes broken out of it.
 // When a pane moved, both listings are taken again, so reconcile judges a moved pane only as an own-window pane.
 // A failed listing, before or after a move, is returned as an error.
 func (e *Engine) listReconcilePanesLocked(st *ReedState) ([]LivePane, []windowPane, error) {

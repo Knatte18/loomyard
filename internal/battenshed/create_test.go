@@ -99,19 +99,19 @@ func TestWorktreeCreate_CreateErrorsStickWithTheirTextVerbatim(t *testing.T) {
 		},
 		{
 			name:       "PreconditionErrorHalts",
-			err:        &PreconditionError{Unmet: "the source worktree has uncommitted tracked changes: a.go", WayForward: `commit or revert them, then run "lyx batten run myslug" again`, Err: errors.New("cause")},
-			wantReason: `the source worktree has uncommitted tracked changes: a.go; way forward: commit or revert them, then run "lyx batten run myslug" again`,
+			err:        &PreconditionError{Unmet: "the source worktree has uncommitted tracked changes: a.go", WayForward: `commit or revert them, then run "lym batten run myslug" again`, Err: errors.New("cause")},
+			wantReason: `the source worktree has uncommitted tracked changes: a.go; way forward: commit or revert them, then run "lym batten run myslug" again`,
 			wantHalt:   true,
 		},
 		{
 			name:       "WrappedPreconditionErrorHalts",
-			err:        fmt.Errorf("create the pair: %w", &PreconditionError{Unmet: "task branch task-myslug is left from an earlier pair of this slug", WayForward: `run "lyx batten cancel myslug --remove" from the prime`}),
-			wantReason: `task branch task-myslug is left from an earlier pair of this slug; way forward: run "lyx batten cancel myslug --remove" from the prime`,
+			err:        fmt.Errorf("create the pair: %w", &PreconditionError{Unmet: "task branch task-myslug is left from an earlier pair of this slug", WayForward: `run "lym batten cancel myslug --remove" from the prime`}),
+			wantReason: `task branch task-myslug is left from an earlier pair of this slug; way forward: run "lym batten cancel myslug --remove" from the prime`,
 			wantHalt:   true,
 		},
 		{
 			name:       "PreExistingBranchRemedySurvivesVerbatim",
-			err:        errors.New(`branch "task-slug" already exists; switch a pair onto it with "lyx fabric checkout task-slug", or delete it first with "git branch -D task-slug" if it is a leftover from a removed pair`),
+			err:        errors.New(`branch "task-slug" already exists; switch a pair onto it with "lym fabric checkout task-slug", or delete it first with "git branch -D task-slug" if it is a leftover from a removed pair`),
 			wantReason: "switch a pair onto it with",
 		},
 		{

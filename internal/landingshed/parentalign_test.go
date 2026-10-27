@@ -239,13 +239,13 @@ func TestMergeIn_RunsStatusCommitThenLockThenSyncThenMergeAndVerify(t *testing.T
 			name:        "an ended run that landed halts naming the landing",
 			report:      fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryEnded, How: "done"}}},
 			wantOutcome: shedengine.Stuck, wantEvents: "commit-status,reconcile", wantHalt: true,
-			wantInReason: []string{"its landing is done", `"lyx cleanup --apply" from the prime`},
+			wantInReason: []string{"its landing is done", `"lym cleanup --apply" from the prime`},
 		},
 		{
 			name:        "an ended run removed from the board halts naming the removal",
 			report:      fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryEnded, How: "removed"}}},
 			wantOutcome: shedengine.Stuck, wantEvents: "commit-status,reconcile", wantHalt: true,
-			wantInReason: []string{"removed from the board", `"lyx cleanup --apply" from the prime`},
+			wantInReason: []string{"removed from the board", `"lym cleanup --apply" from the prime`},
 		},
 		{
 			name: "a stopped run names the branch and its way forward, then the resume",
@@ -254,8 +254,8 @@ func TestMergeIn_RunsStatusCommitThenLockThenSyncThenMergeAndVerify(t *testing.T
 				Entries:  []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryStopped, WayForward: stoppedWayForward}},
 			},
 			wantOutcome: shedengine.Stuck, wantEvents: "commit-status,reconcile",
-			wantInReason: []string{"branch main is diverged against origin", stoppedWayForward + `; then run "lyx loom resume"`},
-			wantNotIn:    []string{"lyx cleanup --apply"},
+			wantInReason: []string{"branch main is diverged against origin", stoppedWayForward + `; then run "lym loom resume"`},
+			wantNotIn:    []string{"lym cleanup --apply"},
 		},
 		{
 			name:         "a reconcile error is returned as an error",
@@ -382,7 +382,7 @@ func TestMergeIn_MergeTip(t *testing.T) {
 	t.Run("a resolver answer that the upstream ref is missing is Stuck with its way forward", func(t *testing.T) {
 		t.Parallel()
 		fx := newMergeInFixture(t)
-		const reason = `the upstream ref of "main" is missing; way forward: fetch it, then run "lyx loom resume"`
+		const reason = `the upstream ref of "main" is missing; way forward: fetch it, then run "lym loom resume"`
 		fx.resolver.result = mergeresolve.Result{Outcome: mergeresolve.OutcomeStuck, Reason: reason}
 
 		outcome, ptr := fx.call(t)
@@ -803,8 +803,8 @@ func TestMergeIn_UnreadableLockRecordHaltsNamingTheReleaseVerb(t *testing.T) {
 
 	outcome, ptr := fx.call(t)
 
-	if outcome != shedengine.Stuck || !ptr.Halt || !strings.Contains(ptr.Reason, `"lyx batten lock release main"`) {
-		t.Errorf("Call() = %q, %+v; want a halting Stuck naming lyx batten lock release", outcome, ptr)
+	if outcome != shedengine.Stuck || !ptr.Halt || !strings.Contains(ptr.Reason, `"lym batten lock release main"`) {
+		t.Errorf("Call() = %q, %+v; want a halting Stuck naming lym batten lock release", outcome, ptr)
 	}
 	if got := strings.Join(fx.events, ","); got != "commit-status" {
 		t.Errorf("events = %q; want only the status commit before the local-tip read's lock", got)

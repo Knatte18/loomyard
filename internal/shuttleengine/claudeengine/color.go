@@ -1,4 +1,4 @@
-// color.go maps lyx's palette to Claude Code's /color names and builds the key choreography that sets a session's prompt-bar color.
+// color.go maps lym's palette to Claude Code's /color names and builds the key choreography that sets a session's prompt-bar color.
 
 package claudeengine
 

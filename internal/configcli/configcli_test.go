@@ -28,7 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/lenses"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runprofile"
 )
 
@@ -67,7 +67,7 @@ func worktreeDirs(baseDir string) configDirs {
 
 // hubFixture is a layout whose worktree and board dir are separate directories under one hub.
 type hubFixture struct {
-	layout   *lyxcwd.Location
+	layout   *lymcwd.Location
 	worktree string
 	board    string
 }
@@ -76,7 +76,7 @@ type hubFixture struct {
 func newHubFixture(t *testing.T) hubFixture {
 	t.Helper()
 	hub := t.TempDir()
-	layout := &lyxcwd.Location{HubPath: hub, WorktreeName: "wt", AnchorRel: "."}
+	layout := &lymcwd.Location{HubPath: hub, WorktreeName: "wt", AnchorRel: "."}
 	fx := hubFixture{layout: layout, worktree: baseDirOf(layout), board: fabricengine.BoardDir(hub)}
 	for _, dir := range []string{fx.worktree, fx.board} {
 		if err := os.MkdirAll(configengine.ConfigDir(dir), 0o755); err != nil {
@@ -177,7 +177,7 @@ func TestEditOne(t *testing.T) {
 	}
 }
 
-// TestRunCLIIn_FromNonGitDirectory pins the verbs that answer before any layout resolves: bare `lyx config` prints help naming reconcile, menu and every module; a bad argument, and a verb that needs a repository, each exit 1 with a JSON error envelope naming the way forward.
+// TestRunCLIIn_FromNonGitDirectory pins the verbs that answer before any layout resolves: bare `lym config` prints help naming reconcile, menu and every module; a bad argument, and a verb that needs a repository, each exit 1 with a JSON error envelope naming the way forward.
 // The bare row passes an empty argument list, since a nil one would make cobra read the test binary's own flags.
 func TestRunCLIIn_FromNonGitDirectory(t *testing.T) {
 	t.Parallel()
@@ -199,7 +199,7 @@ func TestRunCLIIn_FromNonGitDirectory(t *testing.T) {
 			name:     "unknown argument names itself and the way forward",
 			args:     []string{"bogus"},
 			wantCode: 1,
-			wantErr:  []string{"unknown subcommand", "bogus", `run "lyx config" to list modules and verbs`},
+			wantErr:  []string{"unknown subcommand", "bogus", `run "lym config" to list modules and verbs`},
 		},
 		{
 			name:     "menu rejects an argument before resolving any cwd",
@@ -227,16 +227,16 @@ func TestRunCLIIn_FromNonGitDirectory(t *testing.T) {
 			}
 
 			if code != tt.wantCode {
-				t.Fatalf("lyx config %v = %d; want %d; output: %q", tt.args, code, tt.wantCode, out.String())
+				t.Fatalf("lym config %v = %d; want %d; output: %q", tt.args, code, tt.wantCode, out.String())
 			}
 			got := out.String()
 			if tt.wantHelp {
 				if strings.HasPrefix(strings.TrimSpace(got), "{") {
-					t.Errorf("lyx config printed an envelope; want help text: %q", got)
+					t.Errorf("lym config printed an envelope; want help text: %q", got)
 				}
 				for _, want := range append([]string{"reconcile", "menu"}, configreg.Names()...) {
 					if !strings.Contains(got, want) {
-						t.Errorf("lyx config output does not name %q: %q", want, got)
+						t.Errorf("lym config output does not name %q: %q", want, got)
 					}
 				}
 				return
@@ -625,7 +625,7 @@ func TestDispatchHubWideBoard(t *testing.T) {
 	const edited = "readme: Edited.md\ndesign_prefix: d-\ntypes:\n  bug: a defect\nlabels:\n  old: kept\n"
 	const rival = "readme: Rival.md\ndesign_prefix: d-\ntypes:\n  bug: a defect\nlabels:\n  old: kept\n"
 	const invalid = "readme: [a]\ndesign_prefix: d-\ntypes:\n  bug: a defect\nlabels:\n  old: kept\n"
-	const unresolved = "readme: ${env:LYX_CONFIGCLI_TEST_UNSET}\ndesign_prefix: d-\ntypes:\n  bug: a defect\nlabels:\n  old: kept\n"
+	const unresolved = "readme: ${env:LYM_CONFIGCLI_TEST_UNSET}\ndesign_prefix: d-\ntypes:\n  bug: a defect\nlabels:\n  old: kept\n"
 	const listShaped = "types:\n  bug: a defect\nlabels:\n  - old\n"
 	loomRival := configengine.SparseBaseHeader + "review_max_bounces: 3\n"
 
@@ -940,7 +940,7 @@ func TestDispatchHubWideBoard(t *testing.T) {
 			wantCommits: 1,
 			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
 				assertDarnSaveRefused(t, fx, hubFile, out, darnSeeded, darnWithTreeScope("\n  tools: ./tools/...\n  tools/: ./tools/..."),
-					[]string{`"tools" and "tools/"`, `copy it out of that path, re-open "lyx config darn"`}, nil)
+					[]string{`"tools" and "tools/"`, `copy it out of that path, re-open "lym config darn"`}, nil)
 			},
 		},
 		{
@@ -1536,7 +1536,7 @@ func TestDispatchLayers(t *testing.T) {
 		},
 		{
 			name: "machine layer of a hub-wide module with no machine key is refused naming its hub file verb", module: "fabric", layer: "machine",
-			setFlags: []string{"remote=origin"}, wantCode: 1, wantErr: "lyx config fabric",
+			setFlags: []string{"remote=origin"}, wantCode: 1, wantErr: "lym config fabric",
 			check: func(t *testing.T, fx hubFixture, out string) {
 				assertFile(t, configengine.MachineFile(fx.board, "fabric"), "", true)
 			},
@@ -1588,7 +1588,7 @@ func TestDispatchLayers(t *testing.T) {
 			name: "a standalone worktree's gate set writes its own gate.yaml and runs no sync", module: "gate", noBoard: true,
 			setFlags: []string{"slots=6"},
 			check: func(t *testing.T, fx hubFixture, out string) {
-				assertJSONOkContains(t, out, map[string]any{"module": "gate", "message": "edited _lyx/config/gate.yaml"})
+				assertJSONOkContains(t, out, map[string]any{"module": "gate", "message": "edited _lym/config/gate.yaml"})
 				cfg, err := gateslot.LoadConfig(configengine.Dirs{Anchor: fx.worktree})
 				if err != nil || cfg.Slots != 6 {
 					t.Errorf("gateslot.LoadConfig() = (%+v, %v); want the worktree's own file read with slots 6", cfg, err)
@@ -1599,7 +1599,7 @@ func TestDispatchLayers(t *testing.T) {
 			name: "a standalone worktree's gate edit through the editor writes its own gate.yaml and runs no sync", module: "gate", noBoard: true,
 			editor: fakeEditor("slots: 3\nbusy_quit_sec: 120\n", nil),
 			check: func(t *testing.T, fx hubFixture, out string) {
-				assertJSONOkContains(t, out, map[string]any{"module": "gate", "message": "edited _lyx/config/gate.yaml"})
+				assertJSONOkContains(t, out, map[string]any{"module": "gate", "message": "edited _lym/config/gate.yaml"})
 				cfg, err := gateslot.LoadConfig(configengine.Dirs{Anchor: fx.worktree})
 				if err != nil || cfg.Slots != 3 {
 					t.Errorf("gateslot.LoadConfig() = (%+v, %v); want the worktree's own file read with slots 3", cfg, err)

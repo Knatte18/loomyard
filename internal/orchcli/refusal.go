@@ -35,13 +35,13 @@ func beamUpRefusal(slug, here, owner string, moveWayForward string, held bool, s
 		subject, adopted = "the prime", "root"
 	}
 	if boardengine.OwnedElsewhere(owner, here) {
-		return fmt.Errorf("orch: %s is owned by machine %q, not this machine (%q); way forward: run `lyx adopt %s` from this machine's prime to take it over, then run `lyx beam start` again", subject, owner, here, adopted)
+		return fmt.Errorf("orch: %s is owned by machine %q, not this machine (%q); way forward: run `lym adopt %s` from this machine's prime to take it over, then run `lym beam start` again", subject, owner, here, adopted)
 	}
 	if moveWayForward != "" {
 		return fmt.Errorf("orch: an anchor change stands on %s or the prime; way forward: %s", subject, moveWayForward)
 	}
 	if held {
-		return fmt.Errorf("orch: %s is held by its landing run (status %q); way forward: watch it with `lyx batten status %s`, and run `lyx beam start` again once the landing has ended", subject, status, slug)
+		return fmt.Errorf("orch: %s is held by its landing run (status %q); way forward: watch it with `lym batten status %s`, and run `lym beam start` again once the landing has ended", subject, status, slug)
 	}
 	return nil
 }
@@ -57,7 +57,7 @@ func refuseNonPrime(worktreeName, primeName string, primeNameErr error, beam boo
 		return nil
 	}
 	return fmt.Errorf(
-		"orch: lyx orch runs from the hub's prime worktree or a beam; %q is neither the prime worktree (%q is) nor a beam -- re-run it from the prime, or make a project a beam with `lyx beam create <slug>`",
+		"orch: lym orch runs from the hub's prime worktree or a beam; %q is neither the prime worktree (%q is) nor a beam -- re-run it from the prime, or make a project a beam with `lym beam create <slug>`",
 		worktreeName, primeName,
 	)
 }

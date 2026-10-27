@@ -20,7 +20,7 @@ func TestParseTraceEvents(t *testing.T) {
 	}{
 		{
 			name:        "fixture git",
-			events:      version + `{"event":"def_param","scope":"env","param":"LYX_FIXTURE_GIT","value":"1"}` + "\n" + `{"event":"cmd_name","name":"commit","hierarchy":"commit"}` + "\n",
+			events:      version + `{"event":"def_param","scope":"env","param":"LYM_FIXTURE_GIT","value":"1"}` + "\n" + `{"event":"cmd_name","name":"commit","hierarchy":"commit"}` + "\n",
 			wantName:    "commit",
 			wantFixture: true,
 			wantOK:      true,
@@ -89,7 +89,7 @@ func TestTraceEnv(t *testing.T) {
 	got := strings.Join(traceEnv("/tmp/trace"), "\n")
 	for _, want := range []string{
 		"GIT_TRACE2_EVENT=/tmp/trace",
-		"GIT_TRACE2_ENV_VARS=LYX_FIXTURE_GIT",
+		"GIT_TRACE2_ENV_VARS=LYM_FIXTURE_GIT",
 		"GIT_CONFIG_COUNT=1",
 		"GIT_CONFIG_KEY_0=trace2.maxFiles",
 		"GIT_CONFIG_VALUE_0=0",

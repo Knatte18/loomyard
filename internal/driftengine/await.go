@@ -100,11 +100,11 @@ func (p *DriftAwait) await(ctx context.Context) (shedengine.Outcome, shedengine.
 // awaitWaysForward names the ways forward of a Drift-Await Stuck.
 // A capture is one of them only while HEAD is on the branch point.
 func awaitWaysForward(onBranchPoint bool) string {
-	deferring := "lyx drift defer followed by lyx loom resume, which goes on with regression deferred"
+	deferring := "lym drift defer followed by lym loom resume, which goes on with regression deferred"
 	if !onBranchPoint {
 		return deferring
 	}
-	return "lyx drift capture followed by lyx loom resume, which captures again on the branch point and re-enters this row, or " + deferring
+	return "lym drift capture followed by lym loom resume, which captures again on the branch point and re-enters this row, or " + deferring
 }
 
 // logClause returns ", log <path>", or nothing when log is empty.

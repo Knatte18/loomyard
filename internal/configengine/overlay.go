@@ -75,9 +75,9 @@ func overlayTemplate(spec Spec, value string, hub bool) ([]byte, error) {
 // selectorWayForward is the way forward of a refusal of a base-layer selector value.
 func selectorWayForward(spec Spec, hub bool) string {
 	if hub {
-		return fmt.Sprintf("run \"lyx config %s --layer default --set %s=<name>\" from the hub's prime worktree%s", spec.Name, spec.Overlay.Selector, boardDirWayForwardClause)
+		return fmt.Sprintf("run \"lym config %s --layer default --set %s=<name>\" from the hub's prime worktree%s", spec.Name, spec.Overlay.Selector, boardDirWayForwardClause)
 	}
-	return fmt.Sprintf("run \"lyx config %s --set %s=<name>\"", spec.Name, spec.Overlay.Selector)
+	return fmt.Sprintf("run \"lym config %s --set %s=<name>\"", spec.Name, spec.Overlay.Selector)
 }
 
 // selectorValue reads the selector's top-level scalar from doc.
@@ -114,7 +114,7 @@ func selectorRefusal(dirs Dirs, spec Spec, path string, heldBefore bool) error {
 	if heldBefore {
 		fmt.Fprintf(&wayForward, "delete the %s line from %s in an editor, then ", selector, path)
 	}
-	fmt.Fprintf(&wayForward, "set it in the base with \"lyx config %s --layer default --set %s=<name>\" from the hub's prime worktree%s", spec.Name, selector, boardDirWayForwardClause)
+	fmt.Fprintf(&wayForward, "set it in the base with \"lym config %s --layer default --set %s=<name>\" from the hub's prime worktree%s", spec.Name, selector, boardDirWayForwardClause)
 	return MarkInvalid(fmt.Errorf("config file %s holds %s, which only the base file %s may hold; way forward: %s", path, selector, basePath, wayForward.String()))
 }
 

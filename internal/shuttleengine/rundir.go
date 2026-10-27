@@ -16,7 +16,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -49,16 +49,16 @@ func newRunID() (string, error) {
 // created. cfg.RunDir wins when non-empty — a relative value is resolved
 // against anchorPath, an already-absolute value is used verbatim.
 // When cfg.RunDir is empty, the default is
-// filepath.Join(anchorPath, lyxdirs.DotLyxDirName, "shuttle"): the
-// ephemeral, machine-local .lyx tree, built from lyxdirs.DotLyxDirName, never
-// a literal ".lyx" inline.
+// filepath.Join(anchorPath, lymdirs.DotLymDirName, "shuttle"): the
+// ephemeral, machine-local .lym tree, built from lymdirs.DotLymDirName, never
+// a literal ".lym" inline.
 // Both branches share anchorPath as their base deliberately: one
 // function must never resolve against two different bases when
 // the repo is subpath-anchored, or a subpath-anchored repo would end up with two
 // distinct run-dir roots depending on which branch a given cfg took.
 func runDirRoot(cfg Config, anchorPath string) string {
 	if cfg.RunDir == "" {
-		return filepath.Join(anchorPath, lyxdirs.DotLyxDirName, "shuttle")
+		return filepath.Join(anchorPath, lymdirs.DotLymDirName, "shuttle")
 	}
 	if filepath.IsAbs(cfg.RunDir) {
 		return cfg.RunDir

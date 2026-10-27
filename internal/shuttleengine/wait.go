@@ -1,31 +1,19 @@
-// wait.go implements Run.Wait: the poll loop that reads a run's events.jsonl, classifies its
-// terminal outcome (done/died/timeout), probes the startup window for a trust-dialog
-// dismissal or a fast-failing dead pane, and runs the done-outcome cleanup (strand removal + run
-// dir deletion).
-// It also hosts awaitStartup, the startup probe run.go's own start method calls before issuing a run
-// handle at all, and abandonStartup, start's teardown for a provider that never became ready or never took its first input.
-// Wait and awaitStartup are the only two places in the run loop that sleep — both through the clock
-// seam defined here, which lets tests replay a whole poll sequence instantly.
-// A pane that goes not-live (crashed, killed, or exited) is classified done rather than died when
-// every output file already exists — the file contract can be satisfied an instant before the
-// process disappears, racing ahead of its own Stop hook.
-// died is reserved for a strand reed STILL TRACKS AND STILL HOLDS A PANE FOR, whose pane is not
-// alive; the two ways reed's own bookkeeping can go away instead — a strand it no longer tracks
-// (errStrandNotTracked) and a strand whose pane binding it cleared (errStrandPaneBindingCleared) —
-// are mechanism failures, not classifications.
-// A turn end without every output file never ends the run: Wait logs the hold and keeps polling the same agent,
-// so every other exit (OutcomeDone, OutcomeDied, a liveness mechanism failure, OutcomeTimeout) is the only way out.
-// That observation is logged at Info, so it reaches internal/logger's DURABLE trace sink
-// (.lyx/logs/trace-<stamp>-<trace>-<pid>.log, unconditionally enabled at Info) and not the detached
-// driver's own log, which captures stderr and therefore only Warn and above. An operator asking "is
-// this interview waiting for me, or is it wedged?" reads the trace sink.
-// An autonomous run's pane that shows a permission or input dialog past a bound is also reported to the parent, once per dialog, through the same notifier; see dialog.go.
-// A hold never extends run.deadline: a held run is bounded by its caller's own Spec.Timeout (run_timeout_min only where that is zero),
-// and by the liveness check, which still classifies a dead pane.
+// wait.go implements Run.Wait: the poll loop that reads a run's events.jsonl, classifies its terminal outcome (done/died/timeout), probes the startup window for a trust-dialog dismissal or a fast-failing dead pane, and runs the done-outcome cleanup (strand removal + run dir deletion).
+// It also hosts awaitStartup, the startup probe run.go's own start method calls before issuing a run handle at all, and abandonStartup, start's teardown for a provider that never became ready or never took its first input.
+// Wait and awaitStartup are the only two places in the run loop that sleep — both through the clock seam defined here, which lets tests replay a whole poll sequence instantly.
+// A pane that goes not-live (crashed, killed, or exited) is classified done rather than died when every output file already exists — the file contract can be satisfied an instant before the process disappears, racing ahead of its own Stop hook.
+// died is reserved for a strand reed STILL TRACKS AND STILL HOLDS A PANE FOR, whose pane is not alive;
+// the two ways reed's own bookkeeping can go away instead — a strand it no longer tracks (errStrandNotTracked) and a strand whose pane binding it cleared (errStrandPaneBindingCleared) — are mechanism failures, not classifications.
+// A turn end without every output file never ends the run: Wait logs the hold and keeps polling the same agent, so every other exit (OutcomeDone, OutcomeDied, a liveness mechanism failure, OutcomeTimeout) is the only way out.
+// That observation is logged at Info, so it reaches internal/logger's DURABLE trace sink (.lym/logs/trace-<stamp>-<trace>-<pid>.log, unconditionally enabled at Info) and not the detached driver's own log, which captures stderr and therefore only Warn and above.
+// An operator asking "is this interview waiting for me, or is it wedged?"
+// reads the trace sink.
+// An autonomous run's pane that shows a permission or input dialog past a bound is also reported to the parent, once per dialog, through the same notifier;
+// see dialog.go.
+// A hold never extends run.deadline: a held run is bounded by its caller's own Spec.Timeout (run_timeout_min only where that is zero), and by the liveness check, which still classifies a dead pane.
 // A turn end that leaves a fork or an awaited shell outstanding while an output file is missing is a wait, never a held stop, and expires into no hold or notice.
-// It is bounded only by the run's own deadline and the liveness check, so a shell that never ends ends the run OutcomeTimeout, and lyx reaps no shell.
-// A turn end whose only outstanding work is shells the session does not await is no work product's wait:
-// a gated run judges it as a plain turn end at once, and an ungated run with an output file missing holds it once every such shell has been outstanding for the shell wait bound, which notifies the parent once.
+// It is bounded only by the run's own deadline and the liveness check, so a shell that never ends ends the run OutcomeTimeout, and lym reaps no shell.
+// A turn end whose only outstanding work is shells the session does not await is no work product's wait: a gated run judges it as a plain turn end at once, and an ungated run with an output file missing holds it once every such shell has been outstanding for the shell wait bound, which notifies the parent once.
 // A gated run's waiting turn end on a fork or an awaited shell is never an arrival: it waits until the task's completion starts the next turn, bounded by the run deadline and the liveness check.
 // At the deadline classifyDeadlineExpiry ends the run OutcomeDone when the output files exist, and finalize evaluates the gate once more over the tree as it stands.
 // Every shell outstanding when the run ends, by whatever exit, is recorded in Result.EndedShells.
@@ -173,21 +161,17 @@ const maxStatusRetries = 2
 // errStrandNotTracked reports that reed answered the liveness check successfully but its strand table
 // no longer holds this run's guid.
 //
-// It exists because that answer says nothing about the agent. A strand reed still tracks whose pane is
-// not alive IS a dead run; a strand reed does not track at all is reed's own bookkeeping going away
-// under a run whose agent very often keeps working — reed's strand table is reset by an ordinary
-// `lyx reed down`/`remove`, by a `git clean -xdf` of .lyx (a sanctioned operator action under the
-// Durable-vs-Ephemeral State Invariant), by reed's own documented remedy for a corrupt reed.json
-// ("delete it by hand to keep the session"), and by a worktree renamed while a run is in flight, which
-// leaves this process's told anchor path pointing at a directory reed then re-creates empty.
-// Classifying any of those OutcomeDied reports a live agent as gone, and an unattended caller answers
-// "died" by respawning — leaving two agents on one worktree, the first unreachable. That is the
-// duplicate-agent hazard reed's own foreign-session refusal exists to prevent, one layer up.
-// Interrupt/Send already draw exactly this distinction (see requireLiveStrand); this is Wait's half.
+// It exists because that answer says nothing about the agent.
+// A strand reed still tracks whose pane is not alive IS a dead run;
+// a strand reed does not track at all is reed's own bookkeeping going away under a run whose agent very often keeps working — reed's strand table is reset by an ordinary `lym reed down`/`remove`, by a `git clean -xdf` of .lym (a sanctioned operator action under the Durable-vs-Ephemeral State Invariant), by reed's own documented remedy for a corrupt reed.json ("delete it by hand to keep the session"), and by a worktree renamed while a run is in flight, which leaves this process's told anchor path pointing at a directory reed then re-creates empty.
+// Classifying any of those OutcomeDied reports a live agent as gone, and an unattended caller answers "died" by respawning — leaving two agents on one worktree, the first unreachable.
+// That is the duplicate-agent hazard reed's own foreign-session refusal exists to prevent, one layer up.
+// Interrupt/Send already draw exactly this distinction (see requireLiveStrand);
+// this is Wait's half.
 var errStrandNotTracked = errors.New(
 	"reed's strand table no longer holds this run's strand — reed's bookkeeping was reset under the run " +
 		"(a reed remove/down, a lost or rebuilt reed.json, or a worktree renamed while the run was in flight), " +
-		`which says nothing about the agent: its process may still be working in its pane. Check "lyx reed status"`)
+		`which says nothing about the agent: its process may still be working in its pane. Check "lym reed status"`)
 
 // errStrandPaneBindingCleared reports that reed answered the liveness check successfully and still
 // lists this run's strand, but holds NO pane id for it.
@@ -196,7 +180,7 @@ var errStrandNotTracked = errors.New(
 // swallow: a strand reed tracks with no pane bound is not a strand whose pane died, it is a strand
 // reed can no longer address at all. Reed clears every pane binding in a state file whose recorded
 // pane generation is not the incarnation now running (adoptPaneGenerationLocked — a restored backup,
-// a hand-copied .lyx, or simply a reed.json older than the session), and Status then reports the
+// a hand-copied .lym, or simply a reed.json older than the session), and Status then reports the
 // strand with an empty PaneID, which its liveness lookup answers false for. Reproduced live in round
 // 4 against a real agent: reed logged the clear, shuttle answered ok:true outcome:"died" 4 seconds
 // later, and tmux still reported the pane alive with the agent working inside it — after which
@@ -207,8 +191,8 @@ var errStrandNotTracked = errors.New(
 var errStrandPaneBindingCleared = errors.New(
 	"reed still tracks this run's strand but holds no pane id for it — its pane binding was cleared " +
 		"as stale (reed does that when the persisted pane generation is not the session incarnation now " +
-		"running: a restored backup, a copied .lyx, or a reed.json older than the session), " +
-		`which says nothing about the agent: its process may still be working in a pane reed can no longer address. Check "lyx reed status"`)
+		"running: a restored backup, a copied .lym, or a reed.json older than the session), " +
+		`which says nothing about the agent: its process may still be working in a pane reed can no longer address. Check "lym reed status"`)
 
 // ErrNotStarted reports that a run's provider never became ready inside its startup window or never took its first input.
 // StartGated wraps it, after tearing the strand down, when awaitStartup's loop resolves not-ready or a start-time send fails —
@@ -228,7 +212,7 @@ var ErrNotStarted = errors.New("shuttle: the provider never became ready")
 // no-session error and, before this, a wholly zero Result.
 //
 // It is deliberately NOT reclassified as OutcomeDied. reed returns the same untyped error for its
-// foreign-session refusal — a renamed worktree or a copied .lyx, where the run may well be alive
+// foreign-session refusal — a renamed worktree or a copied .lym, where the run may well be alive
 // under another session — and reed exposes no sentinel that tells the two apart, so guessing "died"
 // would report a live agent as dead.
 // The same reasoning binds the two cases where reed does NOT fail: a Status that succeeds without
@@ -766,7 +750,7 @@ func (run *Run) abandonStartup(outcome Outcome, cause error) (Result, error) {
 	removeNote := "the strand was removed"
 	if rerr := run.removeStartupStrand(); rerr != nil {
 		logger.Warn("shuttle: startup: remove strand after not-ready teardown failed", "strandGUID", run.state.StrandGUID, "attempts", startupRemoveAttempts, "error", rerr)
-		removeNote = fmt.Sprintf("the strand could NOT be removed after %d attempts (%v); remove it by hand (\"lyx reed status\" / \"lyx reed remove\")", startupRemoveAttempts, rerr)
+		removeNote = fmt.Sprintf("the strand could NOT be removed after %d attempts (%v); remove it by hand (\"lym reed status\" / \"lym reed remove\")", startupRemoveAttempts, rerr)
 	} else {
 		run.startupStrandRemoved = true
 	}
@@ -849,7 +833,7 @@ func startupCaptureExcerpt(capture string) string {
 // done when every output file exists, so the gate runs as at any turn end, and held at once when one is missing.
 // A fork and an awaited shell keep the turn waiting however long they run.
 // A hold never extends run.deadline, so a held run is bounded by its caller's own deadline and by the liveness check.
-// A waiting turn end on a fork or an awaited shell is bounded only by the run's own deadline and the liveness check, and lyx reaps no shell.
+// A waiting turn end on a fork or an awaited shell is bounded only by the run's own deadline and the liveness check, and lym reaps no shell.
 // Returns outcome == "" and a nil held turn end when there is nothing new to classify yet.
 func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
 	run.eventsRead = false
@@ -1126,7 +1110,7 @@ func (run *Run) logPayloadShellPastBound(task BackgroundTask, outstanding, bound
 
 // logEndedShells logs at Info the shells outstanding at the run's end.
 // With the strand removed it says the removal ended them; on every other end it says the run ended with them outstanding and the strand is left to its caller.
-// lyx kills no shell itself, so a shell detached from the pane's process tree survives the removal.
+// lym kills no shell itself, so a shell detached from the pane's process tree survives the removal.
 func (run *Run) logEndedShells(ended []EndedShell, strandRemoved bool) {
 	if len(ended) == 0 {
 		return
@@ -1842,7 +1826,7 @@ func (run *Run) finalizeAndRemoveDiedWindow(outcome Outcome) (Result, error) {
 
 // removeDiedOwnWindowStrand saves a died run's last pane capture to died-capture.txt in the run directory and removes the run's strand, when the strand is tracked, own-window and present.
 // A window 0 strand is left to reed's reconcile.
-// A failed capture or write is a Warn and the removal still runs; a failed removal is a Warn naming `lyx reed remove` as the way forward.
+// A failed capture or write is a Warn and the removal still runs; a failed removal is a Warn naming `lym reed remove` as the way forward.
 func (run *Run) removeDiedOwnWindowStrand() {
 	guid := run.state.StrandGUID
 	reed := run.runner.reed
@@ -1861,7 +1845,7 @@ func (run *Run) removeDiedOwnWindowStrand() {
 		logger.Warn("shuttle: died run: save the last pane capture failed (non-fatal)", "runDir", run.runDir, "strandGUID", guid, "error", err)
 	}
 	if _, err := reed.RemoveStrand(guid, false); err != nil {
-		logger.Warn("shuttle: died run: remove the own-window strand failed; run \"lyx reed remove\" to clear it", "strandGUID", guid, "error", err)
+		logger.Warn("shuttle: died run: remove the own-window strand failed; run \"lym reed remove\" to clear it", "strandGUID", guid, "error", err)
 		return
 	}
 	logger.Info("shuttle: removed a died run's own-window strand", "runDir", run.runDir, "strandGUID", guid)

@@ -29,7 +29,7 @@ func (e *codedRefusal) Unwrap() error { return e.sentinel }
 // Claim is what a client sends with each request.
 // It states who the client says it is; the daemon decides who it is from the peer's process ancestry where the platform allows.
 type Claim struct {
-	// StrandName is the client's $LYX_STRAND_NAME.
+	// StrandName is the client's $LYM_STRAND_NAME.
 	StrandName string `json:"strand_name,omitempty"`
 	// Program is the full name of a program sender, set only through the Go client API; the CLI has no flag for it.
 	Program string `json:"program,omitempty"`
@@ -55,7 +55,7 @@ func resolveSender(peerPID int, claim Claim, shortname string, strands []Strand,
 	pane, unreadable := paneOfPeer(peerPID, strands, strandsErr, parentPID)
 	if pane != nil {
 		if claim.StrandName != "" && claim.StrandName != pane.Name {
-			return Sender{}, fmt.Errorf("creel: LYX_STRAND_NAME names %s but the calling process runs in the pane of %s", claim.StrandName, pane.Name)
+			return Sender{}, fmt.Errorf("creel: LYM_STRAND_NAME names %s but the calling process runs in the pane of %s", claim.StrandName, pane.Name)
 		}
 		if program == "" {
 			return StrandSender(pane.Name), nil
@@ -70,7 +70,7 @@ func resolveSender(peerPID int, claim Claim, shortname string, strands []Strand,
 	}
 	if _, named := findStrand(strands, claim.StrandName); named && claim.StrandName != "" {
 		return Sender{}, &codedRefusal{
-			message:  fmt.Sprintf("creel: LYX_STRAND_NAME names %s but the calling process runs in no strand pane", claim.StrandName),
+			message:  fmt.Sprintf("creel: LYM_STRAND_NAME names %s but the calling process runs in no strand pane", claim.StrandName),
 			sentinel: ErrStrandClaimOutsidePane,
 		}
 	}

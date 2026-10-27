@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -17,7 +17,7 @@ import (
 //testtiming:keep pins the report path composed under the drive-reports directory with a timestamp ahead of the random part, differing across two calls under a frozen clock and deterministic under a fixed rand; the covering integration test only runs the composer
 func TestDriverReportPath(t *testing.T) {
 	t.Parallel()
-	l := &lyxcwd.Location{}
+	l := &lymcwd.Location{}
 	now := func() time.Time { return time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC) }
 
 	// Two calls under a frozen clock must produce two different paths.

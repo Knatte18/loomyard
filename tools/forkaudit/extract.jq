@@ -5,8 +5,8 @@
 # $run (the run name of the fork's project directory), $rel (the transcript's path relative to the projects directory)
 # and $plan (the plan directory the prompt's card lines name).
 #
-# A fork of the card arm has no pack file and no inline pack: its pack text is the results of its successful `lyx loom card-pack` calls, joined in call order.
-# A successful call is a Bash tool use whose command holds `lyx loom card-pack` and whose result holds a `### ` subsection heading; a refused call, whose result is a failure envelope, is no call.
+# A fork of the card arm has no pack file and no inline pack: its pack text is the results of its successful `lym loom card-pack` calls, joined in call order.
+# A successful call is a Bash tool use whose command holds `lym loom card-pack` and whose result holds a `### ` subsection heading; a refused call, whose result is a failure envelope, is no call.
 # Each card's spans are listed after the earlier cards' edits, so a span counts as reached when it is read after the call that lists it and before the next edit,
 # the first-work-turn span metrics are null, and the card-pack calls inside the counted range are netted out of ex_net and pre_edit_net.
 
@@ -34,7 +34,7 @@ def cls:
   elif .name=="Glob" then ["glob"]
   elif .name=="Read" then (if .input.offset==null and .input.limit==null then ["rfull"] else ["rpart"] end)
   elif .name=="Bash" then [ segs[] |
-      if test("^lyx (quarry|glyph)") then "quarry"
+      if test("^lym (quarry|glyph)") then "quarry"
       elif (stage0|test("^(git )?(grep|rg)( |$)")) then ("grep", (select(stage0|test("func |type |[A-Za-z]*[a-z][A-Z][A-Za-z0-9]*|\\b[A-Z][a-z]+[A-Za-z0-9]*"))|"gmem"))
       elif (stage0|test("^cat [^<]")) and (test("\\.go|\\.md|\\.ya?ml|/")) then (if piped and test("\\| *(head|tail|sed|awk|grep)") then "rpart" else "rfull" end)
       elif (stage0|test("^(awk|sed -n|head|tail|nl) ")) and (piped|not) then "rpart"
@@ -93,9 +93,9 @@ if $mode == "arms" then [markers[] | {arm, trace}] else
 | ($p | test("\n[0-9 ]*\t?## Start here")) as $starthere
 | ($p | test("## Kick-start pack")) as $inlinepack
 | ($p | test("Your first turn, before any edit, reads in parallel every card file")) as $rafphrase
-| ($p | contains("lyx loom card-pack")) as $cardpack
+| ($p | contains("lym loom card-pack")) as $cardpack
 | ([ $tu | to_entries[]
-      | select(.value.name=="Bash" and ((.value.input.command//"")|contains("lyx loom card-pack")) and (($rbyid[.value.id]//"")|test("(^|\n)### ")))
+      | select(.value.name=="Bash" and ((.value.input.command//"")|contains("lym loom card-pack")) and (($rbyid[.value.id]//"")|test("(^|\n)### ")))
       | {i: .key, id: .value.id} ]) as $cpcalls
 | (if $cardpack then $cpcalls else [] end) as $cpn
 | ($cpn | map(.id)) as $cpids

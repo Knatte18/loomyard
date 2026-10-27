@@ -31,7 +31,7 @@ func archiveTagsAt(t *testing.T, repoRoot string) []string {
 	return strings.Fields(out)
 }
 
-// TestRemove_ArchivesWeftTipBeforeTeardown covers the happy path: the tag on the origin points at the tip carrying the committed _lyx file, and the result names it.
+// TestRemove_ArchivesWeftTipBeforeTeardown covers the happy path: the tag on the origin points at the tip carrying the committed _lym file, and the result names it.
 func TestRemove_ArchivesWeftTipBeforeTeardown(t *testing.T) {
 	t.Parallel()
 
@@ -40,7 +40,7 @@ func TestRemove_ArchivesWeftTipBeforeTeardown(t *testing.T) {
 	l := h.Location
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
-	tip := gitkit.CommitFile(t, fabricengine.RecordsWorktreePath(l, slug), "_lyx/record.txt", "run record\n", "record")
+	tip := gitkit.CommitFile(t, fabricengine.RecordsWorktreePath(l, slug), "_lym/record.txt", "run record\n", "record")
 
 	res, err := topology.Remove(l, slug, false, false)
 	if err != nil {
@@ -68,7 +68,7 @@ func TestRemove_ReusesSameTipArchiveTag(t *testing.T) {
 	weftRoot := mustRecordsRepoRoot(t, l)
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
-	tip := gitkit.CommitFile(t, fabricengine.RecordsWorktreePath(l, slug), "_lyx/record.txt", "run record\n", "record")
+	tip := gitkit.CommitFile(t, fabricengine.RecordsWorktreePath(l, slug), "_lym/record.txt", "run record\n", "record")
 
 	// Plant the state an earlier archive leaves: a lightweight tag at the tip, as archiveWeftTip itself creates, pushed to the origin.
 	wantTag := "archive/" + slug + "/" + tip[:12]
@@ -102,7 +102,7 @@ func TestRemove_PendingRecordsAreCommittedAndArchivedOnce(t *testing.T) {
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 
 	weftWorktree := fabricengine.RecordsWorktreePath(l, slug)
-	dir := filepath.Join(weftWorktree, "_lyx")
+	dir := filepath.Join(weftWorktree, "_lym")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", dir, err)
 	}
@@ -129,8 +129,8 @@ func TestRemove_PendingRecordsAreCommittedAndArchivedOnce(t *testing.T) {
 	if got := tagTargetAt(t, h.RecordsBare, wantTag); got != tip {
 		t.Errorf("origin tag %s points at %q; want the post-commit tip %s", wantTag, got, tip)
 	}
-	if got := showAtTag(t, h.RecordsBare, wantTag, "_lyx/record.txt"); got != "run record\n" {
-		t.Errorf("archived _lyx/record.txt = %q; want the committed record", got)
+	if got := showAtTag(t, h.RecordsBare, wantTag, "_lym/record.txt"); got != "run record\n" {
+		t.Errorf("archived _lym/record.txt = %q; want the committed record", got)
 	}
 	if tags := archiveTagsAt(t, weftRoot); len(tags) != 1 {
 		t.Errorf("local archive tags = %v; want exactly one", tags)
@@ -179,7 +179,7 @@ func TestRemove_ForceStillArchives(t *testing.T) {
 	l := h.Location
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
-	tip := gitkit.CommitFile(t, fabricengine.RecordsWorktreePath(l, slug), "_lyx/record.txt", "run record\n", "record")
+	tip := gitkit.CommitFile(t, fabricengine.RecordsWorktreePath(l, slug), "_lym/record.txt", "run record\n", "record")
 
 	res, err := topology.Remove(l, slug, true, false)
 	if err != nil {
@@ -203,7 +203,7 @@ func TestRemove_RemoteFalseStillPushesArchiveTag(t *testing.T) {
 	l := h.Location
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
-	tip := gitkit.CommitFile(t, fabricengine.RecordsWorktreePath(l, slug), "_lyx/record.txt", "run record\n", "record")
+	tip := gitkit.CommitFile(t, fabricengine.RecordsWorktreePath(l, slug), "_lym/record.txt", "run record\n", "record")
 
 	res, err := topology.Remove(l, slug, false, false)
 	if err != nil {

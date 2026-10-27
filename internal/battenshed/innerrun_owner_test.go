@@ -24,7 +24,7 @@ import (
 func (h *lockHarness) ownerNotices() int {
 	count := 0
 	for _, line := range h.notices {
-		if strings.Contains(line, "lyx adopt") {
+		if strings.Contains(line, "lym adopt") {
 			count++
 		}
 	}
@@ -207,9 +207,9 @@ func TestInnerRun_OwnerCheck(t *testing.T) {
 		// wantAdopt is the adopt command the hold reason and the notice name.
 		wantAdopt string
 	}{
-		{"a beam member names its beam", "beam", "lyx adopt beam"},
-		{"a root task names root", "root", "lyx adopt root"},
-		{"a verdict with no subject names the slug", "", "lyx adopt myslug"},
+		{"a beam member names its beam", "beam", "lym adopt beam"},
+		{"a root task names root", "root", "lym adopt root"},
+		{"a verdict with no subject names the slug", "", "lym adopt myslug"},
 	}
 	for _, tt := range adoptTests {
 		t.Run("the notice and the hold reason name the adopt subject: "+tt.name, func(t *testing.T) {
@@ -241,7 +241,7 @@ func TestInnerRun_OwnerCheck(t *testing.T) {
 
 		h.runChecks(6)
 
-		h.requireAdoptNotice("lyx adopt myslug")
+		h.requireAdoptNotice("lym adopt myslug")
 	})
 
 	t.Run("a running child with no driver is noticed once the owner pause lifts and an owned-here verdict follows, and not while the pause covers it", func(t *testing.T) {

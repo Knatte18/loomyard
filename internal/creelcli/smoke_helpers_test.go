@@ -1,6 +1,6 @@
 //go:build tier2 || tier3
 
-// smoke_helpers_test.go builds what both smoke tiers share: a hub with a live reed session, a strand added through `lyx reed add`, the creel daemon run in process on the real socket, and pane polling.
+// smoke_helpers_test.go builds what both smoke tiers share: a hub with a live reed session, a strand added through `lym reed add`, the creel daemon run in process on the real socket, and pane polling.
 
 package creelcli
 
@@ -20,7 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxtemp"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -65,14 +65,14 @@ func newSmokeHub(t *testing.T) *smokeHub {
 
 	var up bytes.Buffer
 	if code := reedcli.RunCLIIn(smoke.cwd, &up, []string{"up"}); code != 0 {
-		t.Fatalf("lyx reed up = %d; output: %s", code, up.String())
+		t.Fatalf("lym reed up = %d; output: %s", code, up.String())
 	}
 	t.Cleanup(func() {
 		var down bytes.Buffer
 		reedcli.RunCLIIn(smoke.cwd, &down, []string{"down"})
 	})
 
-	root, err := lyxtemp.ProcessRoot()
+	root, err := lymtemp.ProcessRoot()
 	if err != nil {
 		t.Fatalf("ProcessRoot() = %v", err)
 	}
@@ -83,19 +83,19 @@ func newSmokeHub(t *testing.T) *smokeHub {
 	return smoke
 }
 
-// addStrand runs `lyx reed add --cmd <command> --role <role>` in the hub and returns the strand's name and guid.
+// addStrand runs `lym reed add --cmd <command> --role <role>` in the hub and returns the strand's name and guid.
 func (s *smokeHub) addStrand(t *testing.T, role, command string) (name, guid string) {
 	t.Helper()
 	var out bytes.Buffer
 	if code := reedcli.RunCLIIn(s.cwd, &out, []string{"add", "--cmd", command, "--role", role}); code != 0 {
-		t.Fatalf("lyx reed add --cmd %q = %d; output: %s", command, code, out.String())
+		t.Fatalf("lym reed add --cmd %q = %d; output: %s", command, code, out.String())
 	}
 	var added struct {
 		Name string `json:"name"`
 		GUID string `json:"guid"`
 	}
 	if err := json.Unmarshal(out.Bytes(), &added); err != nil || added.GUID == "" {
-		t.Fatalf("lyx reed add printed %q; want the strand's name and guid: %v", out.String(), err)
+		t.Fatalf("lym reed add printed %q; want the strand's name and guid: %v", out.String(), err)
 	}
 	return added.Name, added.GUID
 }

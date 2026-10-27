@@ -22,8 +22,8 @@ These tasks landed since the last tidy:
 ## What you do
 
 1. Read each landed task's commit and its run's decision record, and set them against the board's notes.
-   Read the board through `lyx board` only, and never touch its files by hand.
-2. Make each obvious amendment yourself through `lyx board`: drop a sentence a landing made stale, or note that part of a note is now built.
+   Read the board through `lym board` only, and never touch its files by hand.
+2. Make each obvious amendment yourself through `lym board`: drop a sentence a landing made stale, or note that part of a note is now built.
    Draft a body in `.scratch/` first, and amend from the draft.
 3. Write the report to `{{.report_path}}`, then end your turn.
    The report lists what you changed, and each note a landing superseded whole or changed in scope or design, with why.

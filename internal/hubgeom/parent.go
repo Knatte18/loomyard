@@ -12,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // Parent is the resolved parent of a task worktree's runs.
@@ -32,7 +32,7 @@ type Parent struct {
 // A hub with no recorded shortname yields no parent and a warning, since no name can be formed.
 // The name depends only on the recorded worktree name and the shortname, never on the parent worktree still existing.
 // Origin read errors, and any other error telling the prime from a pair, are returned.
-func ResolveParent(l *lyxcwd.Location) (Parent, error) {
+func ResolveParent(l *lymcwd.Location) (Parent, error) {
 	origin, originFound, err := fabricengine.ReadOriginFor(l, l.WorktreeName)
 	if err != nil {
 		return Parent{}, fmt.Errorf("hubgeom: read origin record for %q: %w", l.WorktreeName, err)
@@ -54,7 +54,7 @@ func ResolveParent(l *lyxcwd.Location) (Parent, error) {
 
 // parentNameOrEmpty is ResolveParent's name for the geometry tellers: an unresolvable parent logs a warning naming consumer and yields no parent,
 // since the parent is an optional escalation channel.
-func parentNameOrEmpty(l *lyxcwd.Location, consumer string) string {
+func parentNameOrEmpty(l *lymcwd.Location, consumer string) string {
 	resolved, err := ResolveParent(l)
 	if err != nil {
 		logger.Warn("hubgeom: parent unresolvable; "+consumer+" get no parent", "worktree", l.WorktreeName, "error", err)

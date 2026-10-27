@@ -1,4 +1,4 @@
-// driverresume.go implements the resume branch both `lyx loom start` and `lyx loom resume` take: typing the one resume line into a parked loom driver's pane instead of spawning a fresh driver.
+// driverresume.go implements the resume branch both `lym loom start` and `lym loom resume` take: typing the one resume line into a parked loom driver's pane instead of spawning a fresh driver.
 
 package loomcli
 
@@ -57,7 +57,7 @@ func (c *loomCLI) resumeReportPath(runID string) (string, error) {
 // driverBusyMessage is the refusal message for a resume line that a busy driver pane would not take.
 // err carries shuttle's reason, which quotes the draft; the message adds the way forward, with retry the calling verb.
 func driverBusyMessage(err error, retry string) string {
-	return err.Error() + `; clear or send the draft in the driver's pane, then run "` + retry + `" again, or run "lyx batten run <slug>" from the prime`
+	return err.Error() + `; clear or send the draft in the driver's pane, then run "` + retry + `" again, or run "lym batten run <slug>" from the prime`
 }
 
 // resumeParkedDriver resumes the live, parked driver strand guid by typing driverResumeLine into its pane, then removes the park marker and the resume-report file.
@@ -101,7 +101,7 @@ func (c *loomCLI) resumeParkedDriver(guid, retry string) (string, error) {
 		if errors.Is(sendErr, shuttleengine.ErrSessionBusy) {
 			return "", fmt.Errorf("loom: the driver's pane did not take the resume line: %w", sendErr)
 		}
-		return "", fmt.Errorf("loom: could not deliver the resume line to the driver after %d attempt(s): %w; the driver may have resumed on its own (a re-step it starts itself removes the park marker), so check the run's status with \"lyx loom status\", and run \"%s\" again if it is still halted", attempts, sendErr, retry)
+		return "", fmt.Errorf("loom: could not deliver the resume line to the driver after %d attempt(s): %w; the driver may have resumed on its own (a re-step it starts itself removes the park marker), so check the run's status with \"lym loom status\", and run \"%s\" again if it is still halted", attempts, sendErr, retry)
 	}
 
 	if err := os.Remove(shedrun.ParkMarker(c.location, runID)); err != nil && !errors.Is(err, os.ErrNotExist) {

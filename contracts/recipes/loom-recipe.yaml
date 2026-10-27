@@ -52,8 +52,8 @@
 # carrying cost a pre-release, single-operator system does not need when the operator can simply
 # re-run.
 # A run parked on Merge-In, the row now named Parent-Align, is carried across by rename and not
-# restarted: `lyx loom` rewrites the old name in its status file through LoomRetiredRows, and the row
-# keeps its position, so `lyx loom peers` reports the same positions.
+# restarted: `lym loom` rewrites the old name in its status file through LoomRetiredRows, and the row
+# keeps its position, so `lym loom peers` reports the same positions.
 #
 # Every review segment follows the same shared-segment on_stuck ring: Discussion-Bouncer,
 # Discussion-Burler-Review and Discussion-Burler-Fix carry segment: Discussion-Review, the three
@@ -122,8 +122,8 @@ producers:
       reviewer_fan_setting: loom.discussion_reviewer_fan
       auto_accept_setting: loom.discussion_auto_accept
       artifact_paths:
-        - _lyx/discussion/decision-record.md
-        - _lyx/discussion/support-log.md
+        - _lym/discussion/decision-record.md
+        - _lym/discussion/support-log.md
       rubric_stencil: loom-rubric-discussion-review
       # commit_seam is required rather than optional here: Discussion-Burler-Fix runs fix-scope: overlay
       # and an overlay round runs no git at all, and nothing else in this segment commits, so without
@@ -157,8 +157,8 @@ producers:
       profile:
         target:
           paths:
-            - _lyx/discussion/decision-record.md
-            - _lyx/discussion/support-log.md
+            - _lym/discussion/decision-record.md
+            - _lym/discussion/support-log.md
         fasit:
           instructions: >
             The authority for this round is the rubric supplied in the prompt. The mechanical
@@ -202,8 +202,8 @@ producers:
       profile:
         target:
           paths:
-            - _lyx/discussion/decision-record.md
-            - _lyx/discussion/support-log.md
+            - _lym/discussion/decision-record.md
+            - _lym/discussion/support-log.md
         # fix-scope: overlay, for the reason the review row gives.
         fix-scope: overlay
 
@@ -243,7 +243,7 @@ producers:
       # consumers accept a directory: shedadapters.NewBouncer stats nothing, and burlerengine's own
       # path check documents that a file and a directory both satisfy it.
       artifact_paths:
-        - _lyx/plan
+        - _lym/plan
       rubric_stencil: loom-rubric-plan-review
       # commit_seam is required rather than optional here: Plan-Burler-Fix runs fix-scope: overlay and
       # an overlay round runs no git at all, and nothing else in this segment commits, so without
@@ -287,17 +287,17 @@ producers:
       profile:
         target:
           paths:
-            - _lyx/plan
+            - _lym/plan
         fasit:
           paths:
-            - _lyx/discussion/decision-record.md
+            - _lym/discussion/decision-record.md
           instructions: >
             The decision record named above is the answer key: the plan's job is to implement the
             decisions and constraints it settles. In a rework generation the live generation's
             findings.md joins it: every finding is covered by some card, and every card's scope is
             licensed by the decision record or a finding. The live generation's round is, among
-            _lyx/loom/rework/round-<N>/ directories, the highest N whose record.json carries a
-            class and whose first_card equals the first_card in _lyx/plan/00-overview.md's
+            _lym/loom/rework/round-<N>/ directories, the highest N whose record.json carries a
+            class and whose first_card equals the first_card in _lym/plan/00-overview.md's
             frontmatter (absent means 1). With no such round (generation 0, or a fresh Plan-Write
             plan after an operator goto Plan-Write), the decision record alone is the answer key.
             The round's prior-generation/ archive is context, never the subject of a finding. The
@@ -308,19 +308,19 @@ producers:
             plan's overview file: a fixer that set the flag would be approving the very artifact
             the review round is judging, and this row already has write access to the overview
             because it runs fix-scope: overlay with the plan directory in its target paths. When
-            .lyx/webster/plan-conflict.md exists, Webster's begin-batch refused the approved plan
+            .lym/webster/plan-conflict.md exists, Webster's begin-batch refused the approved plan
             against the current tree: each blocking finding it lists is a finding of this round,
             fixed by editing only cards Webster's auto-rebaseline accepts: a pending card, or a
-            card of a failed or in-flight batch. When _lyx/loom/amendment.yaml exists, each
+            card of a failed or in-flight batch. When _lym/loom/amendment.yaml exists, each
             decision-record entry it names by title is a finding for each card that entry names
             while the entry's change is uncarried for that card, or, when the entry names no
             card, a finding until some card carries it. An entry's change is carried for a named
             card when that card carries it, or, for a named card whose batch is done, when a card
-            inserted with lyx loom insert-card after the last begun batch carries it. A decision
+            inserted with lym loom insert-card after the last begun batch carries it. A decision
             names each card by slug as well as number, because insert-card renumbers every later
             card, so match cards by slug. Such a finding is fixed by editing only cards Webster's
             auto-rebaseline accepts, a pending card or a card of a failed or in-flight batch, or
-            by inserting a card with lyx loom insert-card after the last begun batch.
+            by inserting a card with lym loom insert-card after the last begun batch.
         rubric_stencil: loom-rubric-plan-review
         # fix-scope: overlay, matching the Discussion-Burler-Review row above. The plan directory is fabric
         # records content reached through the junction, and the Fabric Git Invariant reserves committing that
@@ -355,7 +355,7 @@ producers:
       profile:
         target:
           paths:
-            - _lyx/plan
+            - _lym/plan
         # fix-scope: overlay, for the reason the review row gives.
         fix-scope: overlay
 
@@ -404,15 +404,15 @@ producers:
       # The rubric is where the diff itself is named as the subject, which reaches the judge and the
       # fixer round alike because both rows read it.
       artifact_paths:
-        - _lyx/discussion/decision-record.md
-        - _lyx/plan
+        - _lym/discussion/decision-record.md
+        - _lym/plan
       rubric_stencil: loom-rubric-code-review
       # No commit_seam key, deliberately unlike both Discussion-Bouncer and Plan-Bouncer:
       # Code-Burler-Fix runs fix-scope: source and commits each fix itself, so there is no artifact
       # left for a loop-owner seam to commit. bouncerEntry documents the resulting nil Commit as a
       # legitimate configuration and never an error. The segment's own round artifacts are
-      # uncommitted by construction -- Env.RunRoot lands under the ephemeral .lyx tree, not the
-      # durable _lyx one.
+      # uncommitted by construction -- Env.RunRoot lands under the ephemeral .lym tree, not the
+      # durable _lym one.
       # carry_over names this row's own segment: the Bouncer files the round's still-open findings
       # under it in the decision record's Open risks section, and a test pins it equal to segment.
       carry_over: Code-Review
@@ -447,8 +447,8 @@ producers:
             does not restate the derivation.
         fasit:
           paths:
-            - _lyx/discussion/decision-record.md
-            - _lyx/plan
+            - _lym/discussion/decision-record.md
+            - _lym/plan
           instructions: >
             The decision record and the plan directory named above are the answer key: the diff's
             job is to make the change the decision record settles and to implement the cards the
@@ -464,7 +464,7 @@ producers:
         # here. An overlay round runs no git at all and restricts writes to Target.Paths, which this
         # profile deliberately leaves empty -- a fixer that cannot write source cannot fix a diff.
         fix-scope: source
-        # tool-use is required: the round reads _lyx/shed/<slug>/status.json and runs read-only git to
+        # tool-use is required: the round reads _lym/shed/<slug>/status.json and runs read-only git to
         # obtain the diff, which is its entire subject.
         tool-use: true
         # The round reviews code, so its seats load the hub's language skills after their own.

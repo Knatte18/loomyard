@@ -1,8 +1,8 @@
-# SANDBOX-WEBSTER-SUITE -- lyx webster black-box suite
+# SANDBOX-WEBSTER-SUITE -- lym webster black-box suite
 
 ## What this is
 
-A structured test-loop for exercising `lyx webster` against a **live tmux server and a logged-in claude** in the sandbox Hub's Fabric repo. `webster` is the implementer module, with its own plan format and report contract: instead of spawning a fresh reed/tmux strand per batch, one long-lived **Master** session reads the whole flat card-list plan (plan-format, parsed by `internal/planparser`, grouped into execution batches by `internal/batcher`'s config-selected batchifier -- the `cautious` cost profile by default) and the repo's rules once, never the code, then forks one implementer per batch in-session (Claude Code's Agent tool, `subagent_type: "fork"`), each fork reading its cards' code itself -- no `spawn-batch`/`poll` verbs exist here;
+A structured test-loop for exercising `lym webster` against a **live tmux server and a logged-in claude** in the sandbox Hub's Fabric repo. `webster` is the implementer module, with its own plan format and report contract: instead of spawning a fresh reed/tmux strand per batch, one long-lived **Master** session reads the whole flat card-list plan (plan-format, parsed by `internal/planparser`, grouped into execution batches by `internal/batcher`'s config-selected batchifier -- the `cautious` cost profile by default) and the repo's rules once, never the code, then forks one implementer per batch in-session (Claude Code's Agent tool, `subagent_type: "fork"`), each fork reading its cards' code itself -- no `spawn-batch`/`poll` verbs exist here;
 Master itself brackets each fork with `begin-batch`/`await-batch`/`record-batch` calls (forks are BACKGROUNDED agents on current Claude Code -- the Agent call returns immediately, so Master long-polls `await-batch` for the batch report instead of relying on a synchronous fork return, and never ends its turn while a batch is open).
 This suite is deliberately narrow: one scenario, because webster's pure Go-level mechanics (fingerprinting, `--fresh` archiving, `run.lock` contention, plan validation) are webster-local code already covered by the hermetic and `-tags integration` test tiers -- what is genuinely live-only here is the fork loop itself (W1).
 
@@ -11,23 +11,23 @@ This suite is deliberately narrow: one scenario, because webster's pure Go-level
 Before starting a session:
 
 1. **Deploy a fresh dev binary.**
-   Run `deploy-dev` to build `lyx.exe` into `.dev-bin` as current source.
-   The suite resolves `.dev-bin` itself and prepends it to the agent's PATH (the fingerprint header's `Source: dev` line confirms the dev build is under test) -- no PATH setup needed for the DRIVING agent, and production `lyx` stays untouched.
+   Run `deploy-dev` to build `lym.exe` into `.dev-bin` as current source.
+   The suite resolves `.dev-bin` itself and prepends it to the agent's PATH (the fingerprint header's `Source: dev` line confirms the dev build is under test) -- no PATH setup needed for the DRIVING agent, and production `lym` stays untouched.
    The deployed binary is a snapshot -- re-deploy after any source change you want to test.
    **Pane-resolution caveat (webster-specific, load-bearing):** the dev-PATH prepend covers only the driving agent's own calls.
-   Master's bracket verbs run inside the reed pane's claude, whose Bash tool resolves `lyx` through the login-shell snapshot -- on a machine whose shell profile prepends the production bin dir (e.g. `~/.local/bin` on Linux), that is the PRODUCTION binary, and the run under test silently mixes dev (outer `run`, prompt rendering) with prod (every `begin/await/record/recover-batch` Master calls).
+   Master's bracket verbs run inside the reed pane's claude, whose Bash tool resolves `lym` through the login-shell snapshot -- on a machine whose shell profile prepends the production bin dir (e.g. `~/.local/bin` on Linux), that is the PRODUCTION binary, and the run under test silently mixes dev (outer `run`, prompt rendering) with prod (every `begin/await/record/recover-batch` Master calls).
    Three crucible rounds hit this in a row;
    when prod is stale enough the run fails with a confusing config error from the wrong binary, and when prod is merely different the mismatch is silent and the fingerprint header attests a binary Master never ran.
-   Before trusting any W1 verdict, make the pane-resolved `lyx` the same build as `.dev-bin` (deploy the branch build to the production location for the session and restore it at teardown, or verify `lyx webster status` from inside a pane names no config error a dev-binary call does not).
+   Before trusting any W1 verdict, make the pane-resolved `lym` the same build as `.dev-bin` (deploy the branch build to the production location for the session and restore it at teardown, or verify `lym webster status` from inside a pane names no config error a dev-binary call does not).
 2. **Materialize the hub.**
    Run `sandbox/build.cmd` (or `sandbox/build.cmd -reset` to start clean);
    the session cwd is the Hub's Fabric repo root, the same operating model as the main suite.
 3. **Live-tmux and claude requirement.** tmux (or the Windows tmux port) on PATH, PowerShell 7,
    and a logged-in `claude` on PATH.
    If any of these is unavailable in the session, **note that as the session outcome rather than treating it as a webster defect** -- the `**Covers:** webster` tag on W1 satisfies the sandbox coverage guard (`sandbox_coverage_test.go`) regardless of runtime availability.
-4. **Wired worktree required.** `lyx webster` requires a worktree wired by `lyx fabric clone`/`lyx fabric add` -- which materializes `_lyx/config/webster.yaml`, `batcher.yaml`, plus `shuttle.yaml`/`reed.yaml` since webster branches off shuttle directly -- exactly like `lyx shuttle`/`lyx burler` do.
-5. **`lyx reed up` is no longer required before a spawn, but still an option.** `webster run` spawns the Master session through shuttle, which reaches `AddStrand`, which self-heals a cold worktree by booting the session with `up`'s own semantics before adding the strand -- a bare reed session is no longer a precondition for the spawn to succeed.
-   An operator may still run `lyx reed up` explicitly first, e.g. to watch the session come up in a separate pane before `webster run` starts.
+4. **Wired worktree required.** `lym webster` requires a worktree wired by `lym fabric clone`/`lym fabric add` -- which materializes `_lym/config/webster.yaml`, `batcher.yaml`, plus `shuttle.yaml`/`reed.yaml` since webster branches off shuttle directly -- exactly like `lym shuttle`/`lym burler` do.
+5. **`lym reed up` is no longer required before a spawn, but still an option.** `webster run` spawns the Master session through shuttle, which reaches `AddStrand`, which self-heals a cold worktree by booting the session with `up`'s own semantics before adding the strand -- a bare reed session is no longer a precondition for the spawn to succeed.
+   An operator may still run `lym reed up` explicitly first, e.g. to watch the session come up in a separate pane before `webster run` starts.
 6. **Attached interactive terminal.**
    Launch `sandbox/webster-suite.cmd` from a real, attached console -- never redirected, backgrounded, or detached.
    Without a TTY the driving claude session cannot idle between turns waiting for notifications, so the process ends as soon as a turn ends and the remaining scenarios are silently abandoned.
@@ -35,26 +35,26 @@ Before starting a session:
 
 ## Black-box rule
 
-**The agent under test works exclusively inside the Hub's Fabric repo (`lyx-test-LYXHUB/lyx-test`).
-It tests `lyx.exe` as a black box -- exactly as a real user with only the binary on PATH.
-It must not look for, read, or reason about the lyx source tree.
+**The agent under test works exclusively inside the Hub's Fabric repo (`lym-test-LYMHUB/lym-test`).
+It tests `lym.exe` as a black box -- exactly as a real user with only the binary on PATH.
+It must not look for, read, or reason about the lym source tree.
 No peeking at `C:\Code\loomyard\` or any other path outside the Hub.**
 
-Discovering the command surface is done via `lyx webster --help` and `lyx webster <subcommand> --help` alone -- not from documentation outside the Hub.
-The plan file(s) under `_lyx/plan/` are the one artifact the agent must construct itself per each scenario's Goal below: a plan-format flat card list -- `00-overview.md` (frontmatter `format: 5` / `approved: true`, a `## Card Index`) plus one `NN-<card-slug>.md` per card carrying one or more bold type labels from the eight-name set (`**Create:**`/`**Edit:**`/`**Extends:**`/`**Delete:**`/`**Rename:**`/`**Move:**`/`**Prosa:**`/`**Custom:**`), each with its own backtick-wrapped target bullets, an optional `**Uses:**`, a required `**Intent:**`, and an `**ImpactSummary:**` on cards with an `Edit`/`Extends`/`Delete` group -- a field with no content is omitted rather than carrying a `none` sentinel -- reason the shape out from `lyx webster validate`'s error messages, which name every violated check.
+Discovering the command surface is done via `lym webster --help` and `lym webster <subcommand> --help` alone -- not from documentation outside the Hub.
+The plan file(s) under `_lym/plan/` are the one artifact the agent must construct itself per each scenario's Goal below: a plan-format flat card list -- `00-overview.md` (frontmatter `format: 5` / `approved: true`, a `## Card Index`) plus one `NN-<card-slug>.md` per card carrying one or more bold type labels from the eight-name set (`**Create:**`/`**Edit:**`/`**Extends:**`/`**Delete:**`/`**Rename:**`/`**Move:**`/`**Prosa:**`/`**Custom:**`), each with its own backtick-wrapped target bullets, an optional `**Uses:**`, a required `**Intent:**`, and an `**ImpactSummary:**` on cards with an `Edit`/`Extends`/`Delete` group -- a field with no content is omitted rather than carrying a `none` sentinel -- reason the shape out from `lym webster validate`'s error messages, which name every violated check.
 Keep every scenario's plan cards trivial -- e.g. "create `resultN.md` containing the single line `OK`" -- so a real fork finishes each batch in one card, one commit, fast.
 
 ### Controlled exceptions
 
 One sanctioned deviation from the pure black-box rule, mirroring the reed/shuttle/burler suites' own controlled-exception notes:
 
-- **Direct `tmux -L <socket> list-panes`/`ls`** is allowed only to confirm Master's own strand exists (or was cleaned up), where `<socket>` is read from `lyx reed status` output -- this is also how W1 confirms no EXTRA strand appears per batch (a fork is not a new strand;
+- **Direct `tmux -L <socket> list-panes`/`ls`** is allowed only to confirm Master's own strand exists (or was cleaned up), where `<socket>` is read from `lym reed status` output -- this is also how W1 confirms no EXTRA strand appears per batch (a fork is not a new strand;
   there is exactly one implementer-bearing strand, Master's own, for the whole run).
 
 ## Fingerprint header
 
 The launcher prepends a "binary under test" fingerprint block to this file when it copies it into the Hub's Fabric repo.
-The fingerprint records the absolute path, file size, modification time, and a short SHA-256 of the `lyx.exe` binary at launch time.
+The fingerprint records the absolute path, file size, modification time, and a short SHA-256 of the `lym.exe` binary at launch time.
 
 The same fingerprint identifies the binary for the report's provenance: a separate fetch step (run after this session) stamps it into `meta.fingerprint` of the fetched `sandbox-report.json` so a maintainer can reproduce the exact binary that produced each finding.
 The agent does not need to transcribe the fingerprint anywhere itself.
@@ -64,8 +64,8 @@ The agent does not need to transcribe the fingerprint anywhere itself.
 For each scenario below:
 
 - Read the **Goal** -- it names the task, not the commands.
-  Discover the commands via `lyx webster`, `lyx webster <subcommand>`, and `--help` flags (S0 ethos).
-- **Watch** what lyx does.
+  Discover the commands via `lym webster`, `lym webster <subcommand>`, and `--help` flags (S0 ethos).
+- **Watch** what lym does.
   Note where it stalls, guesses wrong, or hits an error.
 - Record the outcome per the verdict buckets: `OK` (worked) / `WARN` (rough edge) / `FAIL` (broke).
 
@@ -74,7 +74,7 @@ For each scenario below:
 - `OK`   -- completed without friction
 - `WARN` -- completed but with confusion, awkward UX, or a non-fatal error
 - `FAIL` -- did not complete;
-  lyx broke, panicked, or gave wrong output
+  lym broke, panicked, or gave wrong output
 
 ## Capturing findings
 
@@ -109,23 +109,23 @@ Confine all free text to the `title`/`body` string fields so the JSON stays well
 
 **Covers:** webster
 
-**Goal:** Pin a tiny two-card plan whose cards each just write one fixed-content file, run `lyx webster run`, and confirm it drives itself end-to-end -- via in-session Agent-tool forks, not new reed strands -- to a `"outcome":"done"` outcome with both batches' cards committed.
+**Goal:** Pin a tiny two-card plan whose cards each just write one fixed-content file, run `lym webster run`, and confirm it drives itself end-to-end -- via in-session Agent-tool forks, not new reed strands -- to a `"outcome":"done"` outcome with both batches' cards committed.
 
-**Watch:** `lyx webster run` blocks until the run reaches a terminal outcome;
+**Watch:** `lym webster run` blocks until the run reaches a terminal outcome;
 the printed JSON envelope reports `"outcome":"done"` with `batches_done: 2`.
-Confirm **Master grounds itself instead of refusing**: attach early (`lyx reed attach <guid>`) and confirm the freshly spawned Master's FIRST actions are the two read-only orientation checks the master template opens with (`lyx webster status` and `ls _lyx/plan/`), after which it proceeds into the loop -- it must NOT end its turn asking whether the harness/prompt is real.
+Confirm **Master grounds itself instead of refusing**: attach early (`lym reed attach <guid>`) and confirm the freshly spawned Master's FIRST actions are the two read-only orientation checks the master template opens with (`lym webster status` and `ls _lym/plan/`), after which it proceeds into the loop -- it must NOT end its turn asking whether the harness/prompt is real.
 This is the injection-refusal failure mode the grounding block is tuned against (rounds fable-r1 and opus-r2, crucible);
 an occasional refusal here is a real, highest-priority finding, not a transient.
-Confirm **one fork per batch, no extra reed strands during batches**: `lyx reed status` shows exactly one implementer-bearing strand for the entire run (Master's own) -- never a second strand appearing and disappearing per batch.
+Confirm **one fork per batch, no extra reed strands during batches**: `lym reed status` shows exactly one implementer-bearing strand for the entire run (Master's own) -- never a second strand appearing and disappearing per batch.
 Confirm **per-batch weft commits landing**: `state.json` committed at each batch's `begin-batch` (start-SHA + batch entry durable before the fork),
 and the batch report plus `state.json` committed at each batch's `record-batch` (the main per-batch sync) -- inspect the weft's own commit log for both.
 Confirm **digest envelopes from `record-batch`**: each batch's fork-return is followed by a `record-batch` call whose JSON response carries webster's pinned digest fields (`batch`, `status`, `head_sha`, `deviations`, `dead_reason`, `elapsed_s` -- webster's own minimal fork-return digest, never raw report prose;
 absent optional fields may be omitted).
-Confirm **digest carry-forward**: batch 2's rendered fork prompt (`.lyx/webster/prompts/02-*.md`) embeds batch 1's one-line persisted digest in its "Prior-batch context" section.
-Confirm **a valid `summary.md`** at exit: `_lyx/webster/summary.md` exists, its first line is `# <title>`,
-and the rest is a non-empty narrative -- alongside `_lyx/webster/outcome.yaml`.
+Confirm **digest carry-forward**: batch 2's rendered fork prompt (`.lym/webster/prompts/02-*.md`) embeds batch 1's one-line persisted digest in its "Prior-batch context" section.
+Confirm **a valid `summary.md`** at exit: `_lym/webster/summary.md` exists, its first line is `# <title>`,
+and the rest is a non-empty narrative -- alongside `_lym/webster/outcome.yaml`.
 Afterward, Master's pane/run dir is cleaned up (no leftover strand;
-`lyx reed status` no longer lists it).
+`lym reed status` no longer lists it).
 
 Confirm **fork-transcript flush timing**, as its own assertion (`W1b`) with its own verdict:
 by the time a fork has COMPLETED (its report file has landed -- the moment `await-batch` returns `{"report": true}` and Master calls `record-batch`), the fork's `subagents/<id>.jsonl` transcript file already exists on disk (under the session's `~/.claude/projects/<encoded-cwd>/<sessionID>/subagents/` directory) -- the incremental per-batch audit's transcript-count-before-report-presence check (`record-batch`, with its bounded settle retry) depends on this flush having already happened within seconds of the report, not merely by session end. (Forks are backgrounded on current Claude Code, so "the Agent call returning" is the spawn acknowledgment, not completion.)
@@ -151,9 +151,9 @@ sandbox-report.json written: <count of WARN/FAIL items>
 
 ## Teardown
 
-After the session summary is recorded and `./sandbox-report.json` is written, run `lyx reed down` to tear down the tmux session/server the scenarios booted.
+After the session summary is recorded and `./sandbox-report.json` is written, run `lym reed down` to tear down the tmux session/server the scenarios booted.
 An orphaned tmux server holds open handles inside the Hub's Fabric repo and blocks the next `sandbox/build.cmd -reset`.
-The launcher also runs `lyx reed down` itself after the session ends (deterministic backstop), but run it here anyway -- defense-in-depth,
+The launcher also runs `lym reed down` itself after the session ends (deterministic backstop), but run it here anyway -- defense-in-depth,
 and it keeps the Hub clean while the session is still open for inspection.
 
 ## Notes

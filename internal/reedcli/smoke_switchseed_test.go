@@ -1,9 +1,6 @@
 //go:build tier2
 
-// smoke_switchseed_test.go pins noise class 3's suppression directly:
-// TestSmokeSwitchDeclinesStencilSeedPass arranges both stencilstore Warn emitters cmd/lyx's root
-// PersistentPreRunE can reach (the dev-refusal warn and the port-back drift warn) and asserts that
-// `lyx reed switch`'s stderr is empty.
+// smoke_switchseed_test.go pins noise class 3's suppression directly: TestSmokeSwitchDeclinesStencilSeedPass arranges both stencilstore Warn emitters cmd/lym's root PersistentPreRunE can reach (the dev-refusal warn and the port-back drift warn) and asserts that `lym reed switch`'s stderr is empty.
 // The verb runs with a socket path nothing listens on, so it fails fast without touching a tmux server;
 // the assertion runs the built binary as a plain subprocess and reads its own stderr stream directly.
 
@@ -21,20 +18,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
-	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 )
 
-// TestSmokeSwitchDeclinesStencilSeedPass is the regression pin: a dev-stamped real binary runs
-// `lyx reed switch` against a hub carrying both a stale-but-untouched board stencil (the
-// dev-refusal warn's precondition) and a drifted contracts/stencils worktree copy (the port-back
-// drift warn's precondition), and stderr must come back empty.
-// Assert emptiness only -- never a line count and never a particular message: either emitter alone is
-// enough to make stderr non-empty pre-fix, and post-fix stderr is silent because the pass does not run
-// at all for an opted-out command.
+// TestSmokeSwitchDeclinesStencilSeedPass is the regression pin: a dev-stamped real binary runs `lym reed switch` against a hub carrying both a stale-but-untouched board stencil (the dev-refusal warn's precondition) and a drifted contracts/stencils worktree copy (the port-back drift warn's precondition), and stderr must come back empty.
+// Assert emptiness only -- never a line count and never a particular message: either emitter alone is enough to make stderr non-empty pre-fix, and post-fix stderr is silent because the pass does not run at all for an opted-out command.
 func TestSmokeSwitchDeclinesStencilSeedPass(t *testing.T) {
 	t.Parallel()
 	// The dev channel stamp makes stencilstore.ModeFor return ModeDev, which warns instead of refreshing an untouched stencil.
-	lyxExe := lyxbin.BuildWithLDFlags(t, "-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev")
+	lymExe := lymbin.BuildWithLDFlags(t, "-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev")
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	deferHubRelease(t, h.PrimeWorktree())
@@ -78,17 +70,17 @@ func TestSmokeSwitchDeclinesStencilSeedPass(t *testing.T) {
 
 	// The verb fails against the dead socket, so only the stderr stream is asserted, never the exit status.
 	deadSocket := filepath.Join(t.TempDir(), "no-server")
-	cmd := exec.Command(lyxExe, "reed", "switch", "--next", "--socket", deadSocket, "--client", "no-client", "--tmux", "tmux")
+	cmd := exec.Command(lymExe, "reed", "switch", "--next", "--socket", deadSocket, "--client", "no-client", "--tmux", "tmux")
 	cmd.Dir = h.PrimeWorktree()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	var exitErr *exec.ExitError
 	if err := cmd.Run(); err != nil && !errors.As(err, &exitErr) {
-		t.Fatalf("lyx reed switch: %v; stdout: %s; stderr: %s", err, stdout.String(), stderr.String())
+		t.Fatalf("lym reed switch: %v; stdout: %s; stderr: %s", err, stdout.String(), stderr.String())
 	}
 
 	if stderr.Len() != 0 {
-		t.Errorf("lyx reed switch stderr = %q; want empty -- switch must decline the root pre-run's stencil-seed pass entirely", stderr.String())
+		t.Errorf("lym reed switch stderr = %q; want empty -- switch must decline the root pre-run's stencil-seed pass entirely", stderr.String())
 	}
 }

@@ -20,7 +20,7 @@ import (
 // hash-derived, so no unused parameter is added for symmetry with the reed builder.
 //
 // WebsterDir, ReportsDir, ScratchDir and PromptsDir come from the four websterengine accessors
-// applied to stateDir, so standalone's _lyx/webster and .lyx/webster pair are ordinary directory
+// applied to stateDir, so standalone's _lym/webster and .lym/webster pair are ordinary directory
 // siblings under <state>, at the same mirrored subpaths a hub uses.
 //
 // PlanDir and StencilsDir are the defaults only: the CLI argument boundary may override either
@@ -32,7 +32,7 @@ import (
 // VerifyDir is verifytree.Dir(stateDir), so the verified-tree record sits beside webster's other never-tracked state.
 //
 // GateConfig loads the gate config over the target worktree's own directory at each call, the file the gate verb reads outside every hub;
-// a worktree with none is refused naming `lyx config gate`.
+// a worktree with none is refused naming `lym config gate`.
 //
 // WorktreeRoot is target, never stateDir: it is the fork-audit workdir and the {{.worktree_root}}
 // token's value in standalone, since target is the git repository an implementer's work happens

@@ -333,27 +333,27 @@ func TestRenumberVerbs_Refusals(t *testing.T) {
 			return d
 		}, run: runRemove("2"), want: []string{"lock held", "way forward: transient, re-run the refused verb; nothing is mutated"}, untouched: true},
 		{name: "insert: journal unreadable", prepare: withJournalRead("ReadFile", "renumber-journal.json", 1), run: runInsert("2"), want: []string{"way forward: transient, re-run the refused verb; nothing is mutated"}, untouched: true},
-		{name: "insert: journal present", prepare: interruptInsert, run: runInsert("2"), want: []string{"a renumber journal already exists", "way forward: run lyx loom restore-renumber, then re-run the verb"}},
-		{name: "remove: journal present", prepare: interruptInsert, run: runRemove("2"), want: []string{"way forward: run lyx loom restore-renumber, then re-run the verb"}},
+		{name: "insert: journal present", prepare: interruptInsert, run: runInsert("2"), want: []string{"a renumber journal already exists", "way forward: run lym loom restore-renumber, then re-run the verb"}},
+		{name: "remove: journal present", prepare: interruptInsert, run: runRemove("2"), want: []string{"way forward: run lym loom restore-renumber, then re-run the verb"}},
 		{name: "insert: failed reversal", prepare: func(t *testing.T, d renumberDeps) renumberDeps {
 			d.ops = failingOps(d.ops, "WriteFile", "00-overview.md", 2)
 			return d
-		}, run: runInsert("2"), want: []string{"renumber reversal failed", "way forward: run lyx loom restore-renumber"}, then: []cardVerbRun{runRemove("2"), runInsert("2")}},
+		}, run: runInsert("2"), want: []string{"renumber reversal failed", "way forward: run lym loom restore-renumber"}, then: []cardVerbRun{runRemove("2"), runInsert("2")}},
 		{name: "insert: plan does not parse", prepare: func(t *testing.T, d renumberDeps) renumberDeps {
 			if err := os.Remove(filepath.Join(d.planDir, "00-overview.md")); err != nil {
 				t.Fatal(err)
 			}
 			return d
-		}, run: runInsert("2"), want: []string{"plan overview not found", "way forward: fix the file the message names so lyx loom validate-plan parses it, then re-run the verb"}},
+		}, run: runInsert("2"), want: []string{"plan overview not found", "way forward: fix the file the message names so lym loom validate-plan parses it, then re-run the verb"}},
 		{name: "remove: index and card files disagree", prepare: func(t *testing.T, d renumberDeps) renumberDeps {
 			plankit.WriteTree(t, d.planDir, map[string]string{"09-orphan.md": "# Card 9 — orphan\n"})
 			return d
-		}, run: runRemove("2"), want: []string{"index-file-mismatch", "way forward: run lyx loom validate-plan and fix its index-file-mismatch and card-numbering findings, then re-run the verb"}},
-		{name: "restore: no journal", run: runRestore, want: []string{"no renumber journal to restore", "way forward: nothing to restore, lyx loom insert-card or lyx loom remove-card is the verb to run"}, untouched: true},
+		}, run: runRemove("2"), want: []string{"index-file-mismatch", "way forward: run lym loom validate-plan and fix its index-file-mismatch and card-numbering findings, then re-run the verb"}},
+		{name: "restore: no journal", run: runRestore, want: []string{"no renumber journal to restore", "way forward: nothing to restore, lym loom insert-card or lym loom remove-card is the verb to run"}, untouched: true},
 		{name: "restore: journal does not decode", prepare: func(t *testing.T, d renumberDeps) renumberDeps {
 			plankit.WriteTree(t, filepath.Dir(d.journalPath), map[string]string{"renumber-journal.json": "not json"})
 			return d
-		}, run: runRestore, want: []string{"does not decode", "way forward: delete the named journal file, then run lyx loom validate-plan, whose findings name any card left inconsistent"}, untouched: true},
+		}, run: runRestore, want: []string{"does not decode", "way forward: delete the named journal file, then run lym loom validate-plan, whose findings name any card left inconsistent"}, untouched: true},
 		{name: "restore: journal names a path outside the plan directory", prepare: func(t *testing.T, d renumberDeps) renumberDeps {
 			plankit.WriteTree(t, filepath.Dir(d.journalPath), map[string]string{"renumber-journal.json": `{"files":{},"created":["../x.md"]}`})
 			return d
@@ -362,7 +362,7 @@ func TestRenumberVerbs_Refusals(t *testing.T) {
 			interruptInsert(t, d)
 			d.ops = failingOps(d.ops, "WriteFile", "03-gamma.md", 1)
 			return d
-		}, run: runRestore, want: []string{"way forward: transient, re-run lyx loom restore-renumber, the journal is kept"}},
+		}, run: runRestore, want: []string{"way forward: transient, re-run lym loom restore-renumber, the journal is kept"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -395,7 +395,7 @@ func TestRenumberVerbs_Refusals(t *testing.T) {
 					t.Fatalf("follow-up exit = %d (%s); want 1", code, nextOut.String())
 				}
 				nextMessage, _ := decodeEnvelope(t, nextOut.Bytes())["error"].(string)
-				if !strings.Contains(nextMessage, "way forward: run lyx loom restore-renumber") {
+				if !strings.Contains(nextMessage, "way forward: run lym loom restore-renumber") {
 					t.Errorf("follow-up message %q does not name restore-renumber", nextMessage)
 				}
 			}

@@ -32,7 +32,7 @@ const (
 	compareLockRetry = 2 * time.Second
 )
 
-// Command returns the cobra command for `lyx drift`: the bare group and its verbs.
+// Command returns the cobra command for `lym drift`: the bare group and its verbs.
 func Command() *cobra.Command {
 	drift := &cobra.Command{
 		Use:   "drift",
@@ -41,7 +41,7 @@ func Command() *cobra.Command {
 task's scope, a capture takes the suite's profile on the task's branch point,
 and Drift-Verify compares the task's code against it. The verbs run inside a
 loom or darn run's worktree and judge the run's status, so each refusal names
-its way forward. See lyx config drift for the capture and compare commands.`,
+its way forward. See lym config drift for the capture and compare commands.`,
 		RunE: clihelp.GroupRunE,
 	}
 	drift.AddCommand(scopeCmd(), acceptCmd(), withdrawCmd(), compareCmd(), captureCmd(), deferCmd(), waiveCmd(), statusCmd(), captureChildCmd())
@@ -83,7 +83,7 @@ names, which it requires. It runs once, at Drift-Baseline; a second call is
 refused, and the agent then writes baseline.md alone and ends its turn.
 
 Example:
-  lyx drift scope --scope partial --skip slow_test --skip flaky_test`,
+  lym drift scope --scope partial --skip slow_test --skip flaky_test`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runVerb(cmd, "scope", func(w *worktree) (any, error) {
@@ -119,7 +119,7 @@ the only way to re-accept a test it withdrew. A halt that is no decision halt
 refuses the parent's accept of a withdrawn test or under scope full.
 
 Example:
-  lyx drift accept parser_roundtrip --reason "the format changed on purpose"`,
+  lym drift accept parser_roundtrip --reason "the format changed on purpose"`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runVerb(cmd, "accept", func(w *worktree) (any, error) {
@@ -149,10 +149,10 @@ func withdrawCmd() *cobra.Command {
 again. The run's parent uses it at a Drift-Verify halt to overrule an
 acceptance; the agent then fixes the drift or reports it in verify-report.md,
 and only the parent re-accepts the test at a decision halt. A test that is not
-accepted is refused; lyx drift status lists the accepted tests.
+accepted is refused; lym drift status lists the accepted tests.
 
 Example:
-  lyx drift withdraw parser_roundtrip`,
+  lym drift withdraw parser_roundtrip`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runVerb(cmd, "withdraw", func(w *worktree) (any, error) {
@@ -174,7 +174,7 @@ func spentRefusal(st driftengine.VerbStatus, err error) error {
 	if st.AtAgentSession() {
 		return fmt.Errorf("%w; way forward: write what you found to verify-report.md and end your turn, which stops the row", err)
 	}
-	return fmt.Errorf("%w; way forward: lyx loom resume spawns a fresh agent with a fresh budget, since a halt's run spends the counter of no live session", err)
+	return fmt.Errorf("%w; way forward: lym loom resume spawns a fresh agent with a fresh budget, since a halt's run spends the counter of no live session", err)
 }
 
 // takeRun checks the Drift-Verify row, reads the declared step, and takes one run of the session's budget.
@@ -216,7 +216,7 @@ the budget is spent the agent writes what it found to verify-report.md and
 ends its turn, and a caller at a halt resumes the run for a fresh budget.
 
 Example:
-  lyx drift compare`,
+  lym drift compare`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runVerb(cmd, "compare", func(w *worktree) (any, error) {
@@ -259,7 +259,7 @@ func captureCmd() *cobra.Command {
 		Long: `capture takes the suite's profile on the task's branch point. It runs at
 Drift-Baseline, or at a Drift-Await halt, with HEAD on the branch point and a
 clean tracked tree, starts the capture in a detached process that outlives this
-call, and returns once its record reads running; lyx drift status shows it.
+call, and returns once its record reads running; lym drift status shows it.
 Another capture holding the lock is refused.
 
 --side is the Drift-Verify agent's form: it captures a spare profile into a
@@ -267,7 +267,7 @@ numbered directory under the side directory, spends one run of the session's
 budget, and needs no clean tree.
 
 Example:
-  lyx drift capture`,
+  lym drift capture`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if side {
@@ -357,7 +357,7 @@ func captureChildCmd() *cobra.Command {
 		Short:       "run the main capture of the detached child",
 		Hidden:      true,
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
-		Long: `capture-child is the body of the process "lyx drift capture" spawns detached.
+		Long: `capture-child is the body of the process "lym drift capture" spawns detached.
 It holds the capture's named job, runs the main capture under the capture lock,
 re-checking the precondition under the lock, and releases the job as its last
 act. It writes nothing to its log once the capture has returned.`,
@@ -456,13 +456,13 @@ func deferCmd() *cobra.Command {
 		Short:       "settle the baseline wait with no baseline taken",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `defer sets the baseline as awaited with none taken, so the run goes on to
-code changes; run lyx loom resume after it. It settles a Drift-Await halt or a
+code changes; run lym loom resume after it. It settles a Drift-Await halt or a
 Drift-Baseline capture halt, and is refused while a capture runs. Drift-Verify
 then halts on no counted capture, unless a passed capture exists, and only the
 run's parent waives there.
 
 Example:
-  lyx drift defer`,
+  lym drift defer`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runVerb(cmd, "defer", func(w *worktree) (any, error) {
@@ -488,12 +488,12 @@ func waiveCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `waive records that the run goes on with no regression compare, with the
 reason. It is admitted only at the blocked Drift-Verify halt that finds no
-counted capture, so only the run's parent waives; run lyx loom resume after it.
+counted capture, so only the run's parent waives; run lym loom resume after it.
 At any other Drift-Verify halt it is refused, naming the halt's own ways
 forward.
 
 Example:
-  lyx drift waive --reason "the suite cannot run on this machine"`,
+  lym drift waive --reason "the suite cannot run on this machine"`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runVerb(cmd, "waive", func(w *worktree) (any, error) {
@@ -524,7 +524,7 @@ and the compare marker are held, and how many runs the Drift-Verify agent
 session has taken. It changes nothing.
 
 Example:
-  lyx drift status`,
+  lym drift status`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runVerb(cmd, "status", func(w *worktree) (any, error) { return readStatus(w) })
@@ -569,7 +569,7 @@ func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value seeds cwd into the execution context, because lyxcwd.WithCwd panics on an empty directory.
+// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value seeds cwd into the execution context, because lymcwd.WithCwd panics on an empty directory.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)

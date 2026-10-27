@@ -145,8 +145,8 @@ func TestBouncer_Escalation_AwaitsWithTheRecordAndLeavesItUntouched(t *testing.T
 				t.Errorf("Call() pointer = %q; want %q", ptr.Path, want)
 			}
 			atCap := tt.hardCap != 0 && 2 >= tt.hardCap
-			requireReasonContains(t, ptr.Reason, "round 2", "cause: "+string(tt.wantCause), escalationPath(cfg.RunDir, 2), "lyx loom circling accept my-task", "lyx loom resume")
-			if strings.Contains(ptr.Reason, "lyx loom circling continue") == atCap {
+			requireReasonContains(t, ptr.Reason, "round 2", "cause: "+string(tt.wantCause), escalationPath(cfg.RunDir, 2), "lym loom circling accept my-task", "lym loom resume")
+			if strings.Contains(ptr.Reason, "lym loom circling continue") == atCap {
 				t.Errorf("Reason = %q; want it to name the continue verb exactly when the round is below the hard cap", ptr.Reason)
 			}
 			notice := requireEscalation(t, cfg, tt.wantCause)
@@ -159,10 +159,10 @@ func TestBouncer_Escalation_AwaitsWithTheRecordAndLeavesItUntouched(t *testing.T
 				t.Errorf("escalation brief = %q, err = %v; want a rendered brief naming round 2", brief, err)
 			}
 			if atCap {
-				if !strings.Contains(string(brief), "can only be accepted:") || strings.Contains(string(brief), "lyx loom circling continue") {
+				if !strings.Contains(string(brief), "can only be accepted:") || strings.Contains(string(brief), "lym loom circling continue") {
 					t.Errorf("escalation brief = %q; want the accept-only offer", brief)
 				}
-			} else if !strings.Contains(string(brief), "lyx loom circling continue my-task") {
+			} else if !strings.Contains(string(brief), "lym loom circling continue my-task") {
 				t.Errorf("escalation brief = %q; want it to offer the continue verb", brief)
 			}
 			if _, err := os.Stat(focusPath(cfg.RunDir, 3)); err != nil {
@@ -256,8 +256,8 @@ func TestBouncer_Escalation_RecordedDecision(t *testing.T) {
 
 			if tt.wantReEscalate {
 				ptr := shedfake.RequireOutcome(t, b, shedengine.Awaiting)
-				requireReasonContains(t, ptr.Reason, "cause: hard-cap", "lyx loom circling accept my-task")
-				if strings.Contains(ptr.Reason, "lyx loom circling continue") {
+				requireReasonContains(t, ptr.Reason, "cause: hard-cap", "lym loom circling accept my-task")
+				if strings.Contains(ptr.Reason, "lym loom circling continue") {
 					t.Errorf("Reason = %q; want no continue verb at the hard cap", ptr.Reason)
 				}
 				if cause, notice, exists, err := readEscalation(cfg.RunDir, 2); err != nil || !exists || cause != EscalationHardCap || notice == "" {
@@ -320,7 +320,7 @@ func TestBouncer_Escalation_MissingStencilStillAwaitsWithThePlainReason(t *testi
 
 	ptr := shedfake.RequireOutcome(t, b, shedengine.Awaiting)
 	requireEscalation(t, cfg, EscalationBudget)
-	requireReasonContains(t, ptr.Reason, "round 2", "cause: budget", "lyx loom circling accept my-task", "lyx loom resume")
+	requireReasonContains(t, ptr.Reason, "round 2", "cause: budget", "lym loom circling accept my-task", "lym loom resume")
 	if strings.Contains(ptr.Reason, "brief at") {
 		t.Errorf("Reason = %q; want no brief path when the render failed", ptr.Reason)
 	}
@@ -343,7 +343,7 @@ func TestBouncer_Escalation_FailedRecordWriteErrorsNamingTheWayForward(t *testin
 	if err == nil {
 		t.Fatal("Call() error = nil; want the failed notice write")
 	}
-	for _, want := range []string{"write parent notice", noticePath, "way forward:", "lyx loom start"} {
+	for _, want := range []string{"write parent notice", noticePath, "way forward:", "lym loom start"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("Call() error %q lacks %q", err.Error(), want)
 		}
@@ -357,7 +357,7 @@ func TestBouncer_Escalation_MalformedRecordHaltsStuckNamingTheWayForward(t *test
 	}
 
 	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
-	requireReasonContains(t, ptr.Reason, "round 2", "unreadable", "way forward:", escalationPath(cfg.RunDir, 2), "lyx loom start")
+	requireReasonContains(t, ptr.Reason, "round 2", "unreadable", "way forward:", escalationPath(cfg.RunDir, 2), "lym loom start")
 	if ptr.ParentNotice != "" {
 		t.Errorf("ParentNotice = %q; want none", ptr.ParentNotice)
 	}
@@ -698,7 +698,7 @@ func runSoftCapRuleRow(t *testing.T, row softCapRuleRow, path softCapPath) {
 	}
 	if row.wantOutcome == shedengine.Awaiting {
 		requireReasonContains(t, ptr.Reason, "cause: "+string(row.wantCause))
-		if row.wantCause == EscalationHardCap && strings.Contains(ptr.Reason, "lyx loom circling continue") {
+		if row.wantCause == EscalationHardCap && strings.Contains(ptr.Reason, "lym loom circling continue") {
 			t.Errorf("Reason = %q; want no continue verb at the hard cap", ptr.Reason)
 		}
 		requireEscalation(t, &cfg, row.wantCause)

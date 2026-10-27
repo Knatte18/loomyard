@@ -1,4 +1,4 @@
-// Package boardcli is the `lyx board` command: the task-tracker board's verbs over one `board.json` store, whose entries carry a kind and labels.
+// Package boardcli is the `lym board` command: the task-tracker board's verbs over one `board.json` store, whose entries carry a kind and labels.
 //
 // The verb tree:
 //   - `upsert`, `upsert-batch`, `set-status`, `remove`, `get`, `list`, `list-full`, `merge` and `set-deps` come from `storeVerbs`.
@@ -9,7 +9,7 @@
 // Each prints the fields an applied run prints, filled with what it would change, plus `"applied": false`;
 // `prune` prints `removed` and `retire-legacy` prints `legacy_files`.
 //
-// A `PersistentPreRunE` resolves configuration once: it loads the hub's `<hub>/_board/_lyx/config/board.yaml` through `boardengine.LoadConfig`, whatever worktree the verb runs in, and derives the board data dir from the worktree layout.
+// A `PersistentPreRunE` resolves configuration once: it loads the hub's `<hub>/_board/_lym/config/board.yaml` through `boardengine.LoadConfig`, whatever worktree the verb runs in, and derives the board data dir from the worktree layout.
 // The hidden `--board-path` flag overrides the data dir for the detached sync child and skips both,
 // so the config is path-only.
 // `sync` takes the hidden `--deferrable` flag the detached sync child carries:
@@ -27,7 +27,7 @@
 // `ParentOf` is `hubgeom.ParentOf`, the one parent resolver.
 // `get` carries the entry's `parent_beam` beside `task` in its envelope, the slug of the beam above it and empty when the prime is its parent, and gives a project its effective owner as it gives a task's; `list` carries `parent_beam` on each entry that has one.
 //
-// A payload argument that is a bare handle, in either letter case, reads as `{"handle":…}`, so `lyx board get B4` works and a verb that needs further keys refuses it as missing them.
+// A payload argument that is a bare handle, in either letter case, reads as `{"handle":…}`, so `lym board get B4` works and a verb that needs further keys refuses it as missing them.
 // `depends_on`, merge's `remove_slugs` and intake's `into` stay slugs.
 // Every verb prints JSON through `internal/output`, one object per line, errors included.
 // `list` and `find` take `--text` to print the compact one-line-per-entry listing instead;
@@ -49,7 +49,7 @@
 // `set-status` and `prune` never refuse on it.
 // `rename` refuses to rename a held entry, and renames an entry a held task depends on.
 //
-// Every verb's board carries the caller's `LYX_STRAND_NAME` as `boardengine.Config.StrandName`, so `upsert`, `upsert-batch`, `merge` and `promote` refuse a write that creates or promotes a task from a run agent's session, naming a note as the way forward.
+// Every verb's board carries the caller's `LYM_STRAND_NAME` as `boardengine.Config.StrandName`, so `upsert`, `upsert-batch`, `merge` and `promote` refuse a write that creates or promotes a task from a run agent's session, naming a note as the way forward.
 //
 // `rename {slug|id, to}` changes one entry's slug in one write and prints `{"task":{…},"mentions":[…]}`: the renamed entry, and the slugs of the entries whose body or brief still name the old slug as a whole word, `[]` when none does.
 //
@@ -61,10 +61,10 @@
 // It must be an object of module name to keys, and `configreg.PrepareRunSettings` migrates and validates it; a refusal names the module and the key, and the board stores the migrated result.
 // A payload's `profile` is checked on the same paths: it must be a string, and a non-empty one must name a run profile in the hub's `profiles.yaml` (`runprofile.Load` over the board dir), else the refusal names the known profiles and the way forward; `""` clears it.
 // Whether the profile holds a block for the task's recipe is checked at Seed-Child, which resolves the recipe.
-// A change to either stored value is refused from a session whose `LYX_STRAND_NAME` carries a task slug (`agentname.TaskSlug`), the same guard as a hub-wide config write, and names the operator or the hub orch as the way forward.
+// A change to either stored value is refused from a session whose `LYM_STRAND_NAME` carries a task slug (`agentname.TaskSlug`), the same guard as a hub-wide config write, and names the operator or the hub orch as the way forward.
 // The guard reads outside the write lock and stops a mistaken write, not a determined one.
 // A change on an entry held by a run past `Worktree-Create` and `Seed-Child` still succeeds and adds a `notice` field to the envelope:
-// it applies to the next run's Seed-Child, and the running pair takes it through `lyx config <module> --layer local --set` in the pair.
+// it applies to the next run's Seed-Child, and the running pair takes it through `lym config <module> --layer local --set` in the pair.
 // Value semantics, such as a positive integer, stay with the module's load.
 //
 // `set-deps`, `upsert`, `upsert-batch` and `merge` add the sibling warning to the success envelope's `notice`, joined after a run-settings notice, one line per pair, a batch pair once;

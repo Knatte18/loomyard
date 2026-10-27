@@ -45,7 +45,7 @@ state, and prints nothing on success: the Alt-key bindings call it through
 tmux's run-shell.
 
 Example:
-  lyx reed switch --next --socket /tmp/tmux-1000/default --client /dev/pts/3 --tmux /usr/bin/tmux`,
+  lym reed switch --next --socket /tmp/tmux-1000/default --client /dev/pts/3 --tmux /usr/bin/tmux`,
 		Annotations: map[string]string{
 			clihelp.AudienceAnnotation:        clihelp.AudienceRole,
 			clihelp.SkipStencilSeedAnnotation: clihelp.AnnotationEnabled,

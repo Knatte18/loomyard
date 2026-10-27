@@ -16,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/landingshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -35,19 +35,19 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 	}
 	const trees = `tree_scope: {"docs": "", "tools": "./tools/..."}`
 	// The non-scoped rows render their own key's call over the whole tree.
-	const landingCall = "lyx gate test --wait --gate finalize"
+	const landingCall = "lym gate test --wait --gate finalize"
 	// scopedCall is the call a tree-scoped site runs: its row key's call followed by the touched trees' targets.
 	scopedCall := func(gateKey, targets string) string {
-		return "lyx gate test --wait --gate " + gateKey + " " + targets
+		return "lym gate test --wait --gate " + gateKey + " " + targets
 	}
 	writeHubGateConfig(t, hub.Path, strings.Replace(gateslot.ConfigTemplate(), "tiers: {}", `tiers:
   tier0: {command: "go test -json {targets} {args}", all_targets: ./..., timeout_min: 60, counter: go-json}`, 1))
 	seed(t, trees)
 
 	prime := hub.PrimeWorktree()
-	resolve := func(t *testing.T, slug string) *lyxcwd.Location {
+	resolve := func(t *testing.T, slug string) *lymcwd.Location {
 		t.Helper()
-		location, err := lyxcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
+		location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
 		if err != nil {
 			t.Fatalf("ResolveWorktree(%s) = %v; want nil", hub.PairCodeWorktree(slug), err)
 		}
@@ -186,8 +186,8 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 
 	if !t.Run("a tree key with a leading dot is refused with the editor way forward", func(t *testing.T) {
 		seed(t, `tree_scope: {"./tools": ""}`)
-		assertRefusal(t, seam, "./tools", "lyx config darn's editor")
-		wantRefusal := []string{"./tools", "lyx config darn's editor", "then re-run the lyx command that refused"}
+		assertRefusal(t, seam, "./tools", "lym config darn's editor")
+		wantRefusal := []string{"./tools", "lym config darn's editor", "then re-run the lym command that refused"}
 		_, commandErr := deps.VerifyCommand("finalize")
 		if commandErr == nil {
 			t.Error("VerifyCommand(finalize) error = nil; want a refusal")
@@ -204,7 +204,7 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 
 	if !t.Run("a darn.yaml that does not unmarshal is refused with the hub config way forward", func(t *testing.T) {
 		seed(t, trees)
-		path := filepath.Join(fabricengine.BoardDir(hub.Path), "_lyx", "config", "darn.yaml")
+		path := filepath.Join(fabricengine.BoardDir(hub.Path), "_lym", "config", "darn.yaml")
 		if err := os.WriteFile(path, []byte("writer: [\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}

@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // renumberJournalFileName is the journal's file name under the plan scratch directory.
@@ -24,10 +24,10 @@ const renumberJournalFileName = "renumber-journal.json"
 // renumberJournalTempSuffix is appended to the journal path to form the temporary name the journal is written under before it is renamed into place.
 const renumberJournalTempSuffix = ".tmp"
 
-// PlanScratchDir returns the absolute path to the plan directory's never-tracked mirror, `<anchor>/.lyx/plan`, for the worktree anchored at anchorPath.
+// PlanScratchDir returns the absolute path to the plan directory's never-tracked mirror, `<anchor>/.lym/plan`, for the worktree anchored at anchorPath.
 // The caller supplies the anchor as for PlanDir.
 func PlanScratchDir(anchorPath string) string {
-	return filepath.Join(anchorPath, lyxdirs.DotLyxDirName, PlanDirName)
+	return filepath.Join(anchorPath, lymdirs.DotLymDirName, PlanDirName)
 }
 
 // RenumberJournalPath returns the absolute path to the renumber journal under the plan scratch directory of the worktree anchored at anchorPath.

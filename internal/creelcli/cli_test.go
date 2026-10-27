@@ -1,6 +1,6 @@
 //go:build tier1
 
-// cli_test.go drives the `lyx creel` verbs through RunCLIIn over a hubforge hub, with the daemon run in process on a fake delivery and fake clocks.
+// cli_test.go drives the `lym creel` verbs through RunCLIIn over a hubforge hub, with the daemon run in process on a fake delivery and fake clocks.
 // The rows set the strand name in the environment and replace the package's client seam, which is process-global state, so the test does not run in parallel.
 
 package creelcli
@@ -32,8 +32,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxtemp"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/testkit/creelfake"
@@ -93,7 +93,7 @@ func runCreelSplit(cwd string, stderr io.Writer, args ...string) cliRun {
 	cmd.SetOut(&out)
 	cmd.SetErr(stderr)
 	cmd.SetArgs(args)
-	code := clihelp.RunRootCtx(lyxcwd.WithCwd(context.Background(), cwd), cmd, &out)
+	code := clihelp.RunRootCtx(lymcwd.WithCwd(context.Background(), cwd), cmd, &out)
 	run := cliRun{code: code, raw: out.String()}
 	_ = json.Unmarshal([]byte(strings.TrimSpace(run.raw)), &run.fields)
 	return run
@@ -145,7 +145,7 @@ func runCreelInto(cwd string, out, stderr io.Writer, args ...string) int {
 	cmd.SetOut(out)
 	cmd.SetErr(stderr)
 	cmd.SetArgs(args)
-	return clihelp.RunRootCtx(lyxcwd.WithCwd(context.Background(), cwd), cmd, out)
+	return clihelp.RunRootCtx(lymcwd.WithCwd(context.Background(), cwd), cmd, out)
 }
 
 // awaitStderr polls the buffer until it holds want, under a real-time deadline that only bounds a failing test.
@@ -198,7 +198,7 @@ func (r *rig) name(role string) string { return r.short + ":" + role }
 func newRig(t *testing.T) *rig {
 	t.Helper()
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	root, err := lyxtemp.ProcessRoot()
+	root, err := lymtemp.ProcessRoot()
 	if err != nil {
 		t.Fatalf("ProcessRoot() = %v", err)
 	}
@@ -269,7 +269,7 @@ func (r *rig) sweepLast() {
 }
 
 func TestCreelCLI(t *testing.T) {
-	// LYX_STRAND_NAME and the client seam are process-global, so no row runs in parallel.
+	// LYM_STRAND_NAME and the client seam are process-global, so no row runs in parallel.
 	t.Setenv(agentname.StrandNameEnv, "")
 
 	t.Run("every verb refuses a standalone repository naming that creel needs a hub", func(t *testing.T) {
@@ -501,8 +501,8 @@ func TestCreelCLI(t *testing.T) {
 		if timedOut.code != ExitWaitTimeout || timedOut.fields["stall"] != string(creelengine.StallTooShort) || timedOut.fields["stall_at"] == nil {
 			t.Fatalf("creel inject --wait --timeout 5s = (%d, %q); want exit %d with the too-short stall", timedOut.code, timedOut.raw, ExitWaitTimeout)
 		}
-		if reason, _ := timedOut.fields["stall_reason"].(string); !strings.Contains(reason, "lyx reed attach") {
-			t.Errorf("stall_reason = %q; want the way forward naming lyx reed attach", reason)
+		if reason, _ := timedOut.fields["stall_reason"].(string); !strings.Contains(reason, "lym reed attach") {
+			t.Errorf("stall_reason = %q; want the way forward naming lym reed attach", reason)
 		}
 	})
 
@@ -568,7 +568,7 @@ func TestCreelCLI(t *testing.T) {
 		r.clientClock.Advance(6 * time.Minute)
 		read := runCreel(r.cwd, "read")
 		posted := epoch.Format(time.RFC3339)
-		want := fmt.Sprintf("#1 from %[1]s, posted %[2]s — reply with: lyx creel post --reply 1 <text>\nnote to self\n\n#2 from %[1]s, posted %[2]s — reply with: lyx creel post --reply 2 <text>\nand another\n", alpha, posted)
+		want := fmt.Sprintf("#1 from %[1]s, posted %[2]s — reply with: lym creel post --reply 1 <text>\nnote to self\n\n#2 from %[1]s, posted %[2]s — reply with: lym creel post --reply 2 <text>\nand another\n", alpha, posted)
 		if read.code != 0 || read.raw != want {
 			t.Fatalf("creel read = (%d, %q); want exit 0 with %q", read.code, read.raw, want)
 		}
@@ -986,7 +986,7 @@ func TestCreelCLI(t *testing.T) {
 	})
 
 	// The Go client rows make the test process the pane of the hub's orch strand, the one pane that may also claim a program name.
-	orchRig := func(t *testing.T) (r *rig, orch string, location *lyxcwd.Location) {
+	orchRig := func(t *testing.T) (r *rig, orch string, location *lymcwd.Location) {
 		t.Helper()
 		r = newRig(t)
 		orch = r.name("orch")
@@ -995,7 +995,7 @@ func TestCreelCLI(t *testing.T) {
 		strand.PanePID = os.Getpid()
 		r.delivery.SetStrands(strand)
 		r.startDaemon(t)
-		location, err := lyxcwd.Resolve(r.cwd)
+		location, err := lymcwd.Resolve(r.cwd)
 		if err != nil {
 			t.Fatalf("Resolve(%q) = %v", r.cwd, err)
 		}
@@ -1156,7 +1156,7 @@ func TestCreelCLI(t *testing.T) {
 					_ = conn.Close()
 				}
 			})
-			location, err := lyxcwd.Resolve(r.cwd)
+			location, err := lymcwd.Resolve(r.cwd)
 			if err != nil {
 				t.Fatalf("Resolve(%q) = %v", r.cwd, err)
 			}
@@ -1180,11 +1180,11 @@ func TestCreelCLI(t *testing.T) {
 	})
 
 	t.Run("a Go client on a location outside a hub is refused naming the way forward", func(t *testing.T) {
-		for name, build := range map[string]func(*lyxcwd.Location) (*GoClient, error){
-			"program": func(l *lyxcwd.Location) (*GoClient, error) { return NewProgramClient(l, "BATTEN") },
-			"strand":  func(l *lyxcwd.Location) (*GoClient, error) { return NewStrandClient(l, "ly:orch") },
+		for name, build := range map[string]func(*lymcwd.Location) (*GoClient, error){
+			"program": func(l *lymcwd.Location) (*GoClient, error) { return NewProgramClient(l, "BATTEN") },
+			"strand":  func(l *lymcwd.Location) (*GoClient, error) { return NewStrandClient(l, "ly:orch") },
 		} {
-			for _, location := range []*lyxcwd.Location{nil, {}} {
+			for _, location := range []*lymcwd.Location{nil, {}} {
 				if _, err := build(location); err == nil || !strings.Contains(err.Error(), "way forward") {
 					t.Errorf("%s client on %+v = %v; want a refusal naming the way forward", name, location, err)
 				}

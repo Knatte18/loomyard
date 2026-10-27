@@ -99,7 +99,7 @@ func TestPlanReset(t *testing.T) {
 
 	fx.step(t, "detached head refuses", func(t *testing.T) {
 		fx.deps.Branch = func() (string, error) { return "", errors.New("HEAD is detached") }
-		fx.wantRefusal(t, ResetToStart, "HEAD is detached", "git switch", "re-run `lyx webster reset --to start`")
+		fx.wantRefusal(t, ResetToStart, "HEAD is detached", "git switch", "re-run `lym webster reset --to start`")
 	})
 
 	fx.step(t, "parent branch refuses", func(t *testing.T) {
@@ -109,7 +109,7 @@ func TestPlanReset(t *testing.T) {
 
 	fx.step(t, "no recorded target refuses", func(t *testing.T) {
 		fx.deps.State.Batches = map[int]*BatchState{}
-		fx.wantRefusal(t, ResetToPreFix, "no pre-fix head", "way forward: run `lyx webster run`")
+		fx.wantRefusal(t, ResetToPreFix, "no pre-fix head", "way forward: run `lym webster run`")
 	})
 
 	fx.step(t, "missing commit refuses", func(t *testing.T) {
@@ -124,7 +124,7 @@ func TestPlanReset(t *testing.T) {
 		side := gitkit.CommitFile(t, fx.root, "c.txt", "side", "side")
 		gitkit.Git(t, fx.root, "checkout", "task")
 		fx.deps.State.PreFixHead = side
-		fx.wantRefusal(t, ResetToPreFix, "not an ancestor of HEAD", "lyx webster reset --to start")
+		fx.wantRefusal(t, ResetToPreFix, "not an ancestor of HEAD", "lym webster reset --to start")
 	})
 
 	// The orphan commits this step makes sit on no branch, so no later step reads them.
@@ -150,7 +150,7 @@ func TestPlanReset(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(fx.root, "b.txt"), []byte("edited"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		fx.wantRefusal(t, ResetToStart, "b.txt", "git checkout -- <path>", "re-run `lyx webster reset --to start`")
+		fx.wantRefusal(t, ResetToStart, "b.txt", "git checkout -- <path>", "re-run `lym webster reset --to start`")
 	})
 
 	fx.step(t, "untracked file is not dirt", func(t *testing.T) {
@@ -316,13 +316,13 @@ func TestPlanReset(t *testing.T) {
 		side := gitkit.CommitFile(t, fx.root, "d.txt", "side", "side")
 		gitkit.Git(t, fx.root, "checkout", "task")
 		writeReport(side)
-		fx.wantBatchRefusal(t, ResetToReportHead, 1, "not an ancestor of HEAD", "lyx webster reset --to start")
+		fx.wantBatchRefusal(t, ResetToReportHead, 1, "not an ancestor of HEAD", "lym webster reset --to start")
 
 		writeReport(fx.first)
 		t.Cleanup(func() { gitkit.Git(t, fx.root, "checkout", "--", "b.txt") })
 		if err := os.WriteFile(filepath.Join(fx.root, "b.txt"), []byte("edited"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		fx.wantBatchRefusal(t, ResetToReportHead, 1, "b.txt", "re-run `lyx webster reset --to report-head --batch 01`")
+		fx.wantBatchRefusal(t, ResetToReportHead, 1, "b.txt", "re-run `lym webster reset --to report-head --batch 01`")
 	})
 }

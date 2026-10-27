@@ -15,8 +15,8 @@ import (
 
 // gitDirName is the per-repository git administrative entry repositoryRootOf looks for, present as a
 // directory in an ordinary clone and as a file in a linked worktree.
-// It is a plain literal rather than an internal/lyxdirs constant: lyxdirs is the single declarer of
-// loomyard's own "_lyx" and ".lyx" directories and has never owned git's.
+// It is a plain literal rather than an internal/lymdirs constant: lymdirs is the single declarer of
+// loomyard's own "_lym" and ".lym" directories and has never owned git's.
 const gitDirName = ".git"
 
 // ResolveToldDir makes one told directory flag absolute against cwd: the empty string stays empty
@@ -36,7 +36,7 @@ const gitDirName = ".git"
 // relative value. filepath.Join silently drops an empty path element rather than failing, so an
 // empty cwd would return flagValue unresolved (still relative), silently violating this function's
 // own documented "every path this module hands downstream must be absolute" postcondition. Every
-// production call site supplies cwd from an already-resolved lyxcwd.CwdFrom(ctx) or the standalone
+// production call site supplies cwd from an already-resolved lymcwd.CwdFrom(ctx) or the standalone
 // prologue's own told cwd, neither of which is ever empty, so this precondition is not
 // live-exploitable today.
 func ResolveToldDir(cwd, flagValue string) string {
@@ -56,7 +56,7 @@ func ResolveToldDir(cwd, flagValue string) string {
 func pathContains(outer, inner string) bool {
 	// filepath.Rel is case-SENSITIVE, while Windows paths are not, so LOCALAPPDATA and a target that
 	// differ only in case (C:\\Users\\X vs c:\\users\\x — one directory) read as disjoint. Folded here
-	// on Windows alone, matching lyxcwd.samePath's rule exactly. Not reachable from this project's
+	// on Windows alone, matching lymcwd.samePath's rule exactly. Not reachable from this project's
 	// Linux hosts and therefore never driven live; it is a mechanical mirror of an already-stated
 	// rule, not a verified behaviour.
 	if runtime.GOOS == "windows" {
@@ -75,11 +75,11 @@ func pathContains(outer, inner string) bool {
 //
 // Plain Normalize is not enough here. It falls back to Clean whenever filepath.EvalSymlinks fails,
 // and EvalSymlinks fails when ANY component is missing — which the derived state directory's own
-// leaf (<stateHome>/lyx/<hash8>) routinely is on a first run. The target, meanwhile, has already been
+// leaf (<stateHome>/lym/<hash8>) routinely is on a first run. The target, meanwhile, has already been
 // through Normalize with every symlink resolved. Comparing a resolved string against an unresolved
 // one made refuseNestedStandaloneGeometry — and shuttleengine's own validateDetachedToldPaths, which
 // compares the same two strings — both answer "disjoint" for a state home that reaches inside the
-// target through a symlink, and lyx then wrote its state tree, run locks and trace logs into the
+// target through a symlink, and lym then wrote its state tree, run locks and trace logs into the
 // operator's checkout: exactly the outcome the guard exists to prevent (crucible round
 // opus-medium-r6, R6-15).
 func NormalizeForContainment(path string) string {
@@ -109,7 +109,7 @@ func NormalizeForContainment(path string) string {
 // It walks the filesystem rather than asking git, and that is deliberate on two counts. It keeps
 // wire free of process spawns, which is what lets this module's whole wiring truth table be driven
 // from untagged tests under the Test Tier Purity Invariant. And it is not a cwd query: dir arrives
-// already resolved and already absolute, so internal/lyxcwd remains the sole owner of turning a
+// already resolved and already absolute, so internal/lymcwd remains the sole owner of turning a
 // working directory into a Location, per the Cwd Resolution Invariant — this only lifts an
 // already-resolved path to the root of the tree it lives in.
 //
@@ -121,7 +121,7 @@ func NormalizeForContainment(path string) string {
 // path element rather than failing, so an empty dir would search from this PROCESS's own cwd rather
 // than from any path the caller actually meant — a landmine rather than a clean failure. The sole
 // production call site (resolveStandaloneTarget) can never pass one: its own dir is always derived
-// from cwd, which is refused upstream by lyxcwd.CwdFrom before wire is ever reached, so this
+// from cwd, which is refused upstream by lymcwd.CwdFrom before wire is ever reached, so this
 // precondition is not live-exploitable today.
 //
 // The walk honors GIT_CEILING_DIRECTORIES as git's own discovery does, so it names the repository git would:

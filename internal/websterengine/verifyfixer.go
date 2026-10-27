@@ -1,4 +1,4 @@
-// verifyfixer.go implements the cold verify-gate fixer `lyx webster fix-verify` drives:
+// verifyfixer.go implements the cold verify-gate fixer `lym webster fix-verify` drives:
 // the spawn-or-attach of a strand at the recovery role with the cold verify-fix prompt, the bounded wait that classifies it done on its reply file or dead, and its terminal record.
 
 package websterengine
@@ -20,7 +20,7 @@ import (
 )
 
 // fixVerifyCommand is the verb that runs the cold fixer, as the gate's way forward names it and Master runs it.
-const fixVerifyCommand = "lyx webster fix-verify"
+const fixVerifyCommand = "lym webster fix-verify"
 
 // verifyFixerStrandRole is the reed strand role the cold fixer runs under.
 const verifyFixerStrandRole = "verify-fixer"
@@ -95,7 +95,7 @@ func FixVerifySpawnOrAttach(deps FixVerifyDeps, st *State, clk Clock) (*VerifyFi
 
 	choice, ok := deps.Roles[RoleRecovery]
 	if !ok {
-		return nil, false, fmt.Errorf("webster: no resolved model-spec for role %q; way forward: set %s in webster.yaml with lyx config webster, then re-run `%s`", RoleRecovery, RoleRecovery, fixVerifyCommand)
+		return nil, false, fmt.Errorf("webster: no resolved model-spec for role %q; way forward: set %s in webster.yaml with lym config webster, then re-run `%s`", RoleRecovery, RoleRecovery, fixVerifyCommand)
 	}
 	if err := roleAuditEngine(deps.Engines, RoleRecovery, choice); err != nil {
 		return nil, false, err

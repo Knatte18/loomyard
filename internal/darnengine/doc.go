@@ -2,11 +2,11 @@
 //
 // `darn.yaml` is a hub-wide config module with these keys: `writer`, the model-spec of the darn writer's session; `writer_timeout_min`, its wall-clock budget in minutes; `tree_scope`, the key that lets a diff wholly under the hub's non-production trees run a narrower set of targets, described in the tree scope paragraph below; `verify_attempts`, how many times a verify gate, the writer's or a Code-Review fix round's, re-prompts its session before it halts the run for the parent; the shed driver and tackler overrides; and `pr_review`.
 // The darn recipe's Code-Review perch takes its models, fans, budgets and auto-accept flag from `loom.yaml`'s Code-Review keys, as loom's does, so darn.yaml holds none of them.
-// The retired `verify` key, once the hub's whole verify command, is dropped at load and pruned by `lyx config reconcile`: the hub's `landing` gate in `gate.yaml` replaces it.
+// The retired `verify` key, once the hub's whole verify command, is dropped at load and pruned by `lym config reconcile`: the hub's `landing` gate in `gate.yaml` replaces it.
 // The retired `tree_scope_verify` key is dropped at load too, and MigrateConfig, darn's reconcile migration, prunes it while it is still in the hub file:
 // held empty it empties `tree_scope` so an off hub stays off, and held set it keeps `tree_scope`.
 // A hub file without the key is left alone, so trees the operator adds later are never touched.
-// The module is hub-wide, so a task cannot weaken `tree_scope` through its own tree, and `lyx config darn --set` writes it from the prime.
+// The module is hub-wide, so a task cannot weaken `tree_scope` through its own tree, and `lym config darn --set` writes it from the prime.
 // LoadConfig loads the file strictly and validates the `writer` model-spec and the shed overrides at load time, leaving `verify_attempts` to its reader.
 //
 // Tree scope lets a diff wholly under the hub's non-production trees run each darn verify site's own gate key over the touched trees' targets, in place of the key's scope.
@@ -19,7 +19,7 @@
 // TreeScopedTargets classifies a diff's changed paths: a path lies in a tree when it equals the tree path or starts with it and a slash, a path touches every tree it lies in, the diff is tree-scoped when every path lies in some tree, and an empty path list is tree-scoped.
 // The targets are the touched trees' non-empty targets, deduplicated, in tree-path order, so no path text reaches the call.
 // When no touched tree contributes a target, as for a docs-only diff, the answer is scoped with no targets, which every darn site runs as nothing.
-// `lyx config darn --set tree_scope.tools=./tools/... --set tree_scope.docs=` turns tree scope on for a hub.
+// `lym config darn --set tree_scope.tools=./tools/... --set tree_scope.docs=` turns tree scope on for a hub.
 // A tree-scoped diff gets no whole-module run before it lands, so a break outside the listed trees that neither the trees' tests nor the guard-marked scans exercise can reach the parent; the bound is what the hub lists as non-production.
 //
 // DarnTable composes the darn writer's session as a one-seat seat table, from a DarnInputs the caller tells it, the resolved Config and a model registry.

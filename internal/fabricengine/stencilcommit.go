@@ -1,4 +1,4 @@
-// stencilcommit.go declares the board's seeded-subtree vocabulary: the stencils and specs subtree prefixes, the commit subjects that name the writing binary, the test for a droppable seed commit, and CommitSeededStencils, the locked, pathspec-scoped commit an operator-requested `lyx stencil sync` lands its written files through.
+// stencilcommit.go declares the board's seeded-subtree vocabulary: the stencils and specs subtree prefixes, the commit subjects that name the writing binary, the test for a droppable seed commit, and CommitSeededStencils, the locked, pathspec-scoped commit an operator-requested `lym stencil sync` lands its written files through.
 
 package fabricengine
 
@@ -13,17 +13,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // StencilsSubtreeRel returns the board-repo-relative, slash-separated prefix every path of the stencils subtree hangs off, the board-relative counterpart of StencilsDir(hub).
 func StencilsSubtreeRel() string {
-	return path.Join(lyxdirs.LyxDirName, stencilsDirName)
+	return path.Join(lymdirs.LymDirName, stencilsDirName)
 }
 
 // SpecsSubtreeRel returns the board-repo-relative, slash-separated prefix every path of the deployed-specs subtree hangs off, the board-relative counterpart of SpecsDir(hub).
 func SpecsSubtreeRel() string {
-	return path.Join(lyxdirs.LyxDirName, specsDirName)
+	return path.Join(lymdirs.LymDirName, specsDirName)
 }
 
 // StencilSeedResult reports what CommitSeededStencils did: the landed commit SHA and whether a
@@ -88,13 +88,13 @@ func CommitSeededStencils(hub, subtreeRel, subtreeDir string, writtenRelPaths []
 }
 
 const (
-	seedSubjectPrefix = "lyx: seed "
-	syncSubjectPrefix = "lyx: sync "
+	seedSubjectPrefix = "lym: seed "
+	syncSubjectPrefix = "lym: sync "
 )
 
 // BinaryLabel renders the running binary for a commit subject:
 // `(<revision label> <channel> <executable path>)`, from the binary's VCS stamp, its build channel and its resolved path.
-// Every lyx commit that names its writer shares this one label.
+// Every lym commit that names its writer shares this one label.
 func BinaryLabel() string {
 	executable, err := os.Executable()
 	if err != nil {
@@ -117,15 +117,15 @@ func SeedCommitMessage(subtree, label string) string {
 	return seedSubjectPrefix + subtree + " " + label
 }
 
-// SyncCommitMessage returns the subject of an operator-requested `lyx stencil sync` commit for a subtree.
+// SyncCommitMessage returns the subject of an operator-requested `lym stencil sync` commit for a subtree.
 // label is the already-parenthesised BinaryLabel.
 func SyncCommitMessage(subtree, label string) string {
 	return syncSubjectPrefix + subtree + " " + label
 }
 
 // IsSeedCommit reports whether a commit is a droppable seeding commit:
-// its first line is `lyx: seed <subtree>` followed by one space and a non-empty parenthesised label, and every path lies under the stencils or specs subtree.
-// A bare `lyx: seed <subtree>` subject, a sync commit, a hub-wide config commit and a commit touching any other path all answer false.
+// its first line is `lym: seed <subtree>` followed by one space and a non-empty parenthesised label, and every path lies under the stencils or specs subtree.
+// A bare `lym: seed <subtree>` subject, a sync commit, a hub-wide config commit and a commit touching any other path all answer false.
 func IsSeedCommit(message string, paths []string) bool {
 	subject, _, _ := strings.Cut(message, "\n")
 	rest, found := strings.CutPrefix(subject, seedSubjectPrefix)

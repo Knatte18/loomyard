@@ -11,7 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
@@ -33,7 +33,7 @@ A worktree that cannot be read is skipped with a warning in the log, so one
 broken worktree never hides the rest.
 
 Example:
-  lyx reed list`,
+  lym reed list`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -76,7 +76,7 @@ Example:
 
 // worktreeDirectory reads one worktree's name directory, answering nothing for a worktree that cannot be resolved or read.
 func worktreeDirectory(path string) []reedengine.DirectoryRow {
-	location, err := lyxcwd.ResolveWorktree(path)
+	location, err := lymcwd.ResolveWorktree(path)
 	if err != nil {
 		logger.Warn("reed list: skipping a worktree that does not resolve", "path", path, "err", err)
 		return nil

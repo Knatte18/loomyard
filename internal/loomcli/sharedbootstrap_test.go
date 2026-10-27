@@ -23,7 +23,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -64,7 +64,7 @@ func TestBootstrapStage_ConstantsAreDistinctAndZeroValued(t *testing.T) {
 // new-tests-stay-untagged-and-pure Shared Decision); that deeper coverage belongs to a tagged suite.
 func TestSeedAndCommitBootstrap_SecondCallDoesNotDivergeOnErrSeedExists(t *testing.T) {
 	dir := t.TempDir()
-	loc := &lyxcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."}
+	loc := &lymcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."}
 	c := &loomCLI{
 		location: loc,
 		shedPaths: shedbuild.ShedPaths{
@@ -95,7 +95,7 @@ func TestSeedAndCommitBootstrap_SecondCallDoesNotDivergeOnErrSeedExists(t *testi
 // the idempotency seedAndCommitBootstrap's own comment relies on to make a crashed-and-resumed bootstrap safe to re-run.
 func TestLoomSeedFor_WriteSeedIsIdempotent(t *testing.T) {
 	dir := t.TempDir()
-	loc := &lyxcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."}
+	loc := &lymcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."}
 
 	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, loomSeedFor(shedrun.RecipeLoom, "main", shedrun.DriverGo)); err != nil {
 		t.Fatalf("first WriteSeed(...) = %v; want nil", err)
@@ -152,7 +152,7 @@ func TestResolveSeedDriver(t *testing.T) {
 	}
 }
 
-// TestResolveSeedRecipe covers resolveSeedRecipe's read-through: an unseeded worktree takes loom, and a recorded recipe is preserved, so `lyx loom start` never writes a recipe over an existing seed.
+// TestResolveSeedRecipe covers resolveSeedRecipe's read-through: an unseeded worktree takes loom, and a recorded recipe is preserved, so `lym loom start` never writes a recipe over an existing seed.
 func TestResolveSeedRecipe(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -183,7 +183,7 @@ func TestResolveSeedRecipe(t *testing.T) {
 // SelfRunID) alongside the status file and origin record, so a crashed-and-resumed bootstrap's
 // seed self-heals into the fabric exactly as the status file and origin record already do.
 func TestBootstrapCommitPaths_IncludesSeedRel(t *testing.T) {
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "task-slug", AnchorRel: "."}
+	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "task-slug", AnchorRel: "."}
 	got := bootstrapCommitPaths(loc)
 
 	want := []string{
@@ -206,7 +206,7 @@ func TestBootstrapCommitPaths_IncludesSeedRel(t *testing.T) {
 // standing up a real fabric fixture.
 func TestBuildLoomShed_OutputShape(t *testing.T) {
 	dir := t.TempDir()
-	loc := &lyxcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."}
+	loc := &lymcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."}
 	c := &loomCLI{
 		location: loc,
 		shedPaths: shedbuild.ShedPaths{

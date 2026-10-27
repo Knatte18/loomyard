@@ -7,19 +7,19 @@
 // Board holds one store, board.json, and every entry in it is a task, a note or a project, named by its kind.
 // Only a task is claimable, bar a project that is a beam, and only a task carries depends_on.
 // A note is an idea or observation that is not yet work to run: one note per entry, and a relation between notes is a sentence in a body.
-// Promote turns a note into a task once the operator decides to build it, and refuses a project, which is made a beam with `lyx beam create`.
+// Promote turns a note into a task once the operator decides to build it, and refuses a project, which is made a beam with `lym beam create`.
 //
 // A project groups entries.
 // It carries a type label as a task does, and carries no depends_on, profile, run_settings or priority, and no recipe but `pawl`: a write giving it one is refused naming the entry and the field to drop.
 // Its project, order and beam keys are the membership and the beam flag: a project carries order and beam, no task or note does, and an older binary keeps all three as unknown keys.
-// No task depends on a project: a write that sets or changes an entry's depends_on to name one is refused, naming the project's task members as what to depend on, or `lyx board set-deps` to drop the dependency.
+// No task depends on a project: a write that sets or changes an entry's depends_on to name one is refused, naming the project's task members as what to depend on, or `lym board set-deps` to drop the dependency.
 // A dependency on a project that a write leaves unchanged is never judged, so a done task naming a promoted project takes a later write.
 //
 // Membership is the project key on a task or note and the order key on a project, both accepted by an upsert.
 // A write that sets or changes one, an entry new to the board counting as set, is judged.
 // It is refused when project names an absent entry, a non-project, the entry itself, a done project, a project a run holds or a chain of projects with a cycle.
 // It is refused too when order names an entry whose project is not this project or names one entry twice.
-// A change of project on an entry whose pair exists, which Config.PairExists reports and nil reads as absent for every entry, is refused naming `lyx batten cancel <slug> --remove`.
+// A change of project on an entry whose pair exists, which Config.PairExists reports and nil reads as absent for every entry, is refused naming `lym batten cancel <slug> --remove`.
 // Each refusal names the entry, the field and the slug at fault.
 // An entry whose project the write leaves unchanged is never refused, so marking a project done refuses nothing.
 // Prune drops the pruned slugs from every order, and keeps a done project while an entry the same prune does not remove names it in project.
@@ -31,11 +31,11 @@
 // The beam flag marks a project as a beam, and only the beam verbs write it.
 // An upsert, batch or merge payload may carry beam only as the entry's stored value, false for a new entry, which is dropped as a no-op.
 // Any other value is refused.
-// True names `lyx beam create <slug>`, for a project, and for a task a project entry made under a slug of its own.
-// False on a beam says the flag stays set for the beam's life, which ends when `lyx beam land <slug>` lands it and marks the project done.
+// True names `lym beam create <slug>`, for a project, and for a task a project entry made under a slug of its own.
+// False on a beam says the flag stays set for the beam's life, which ends when `lym beam land <slug>` lands it and marks the project done.
 // The replay is not routed through that rule, as the owner rule is not, so a hand edit of board.json can still set the flag.
 // SetOwners writes the flag through OwnerRequest.Beam, in the one commit that records the owner.
-// OwnerEntry carries IsProject and Beam for `lyx adopt`'s beam admission.
+// OwnerEntry carries IsProject and Beam for `lym adopt`'s beam admission.
 //
 // # Labels
 //
@@ -81,7 +81,7 @@
 // Batten's Seed-Child writes it into the pair's local config layer.
 // A write of an empty object clears the field, which board.json then omits.
 // A run_settings change is never a scope change, so the run lock lets a run-held entry take it.
-// `lyx board intake` never sets the field.
+// `lym board intake` never sets the field.
 //
 // A task may also carry a profile: the name of a run profile in the hub's `profiles.yaml` (see `internal/runprofile`), whose block for the task's recipe Seed-Child writes under the task's run_settings.
 // A write of an empty string clears it, and the task then takes its recipe's default profile; the README entry cell names only a profile the task carries.
@@ -95,7 +95,7 @@
 // The README states it under its render time, and Board.PrimeOwner reads it for the list view.
 // The effective owner of an entry is what Owners.Effective resolves: a beam project's recorded owner, else its parent's owner, and for every other entry its parent's owner, the parent pair resolved through Config.ParentOf and the prime's owner for the root;
 // a run status on an entry changes nothing about whose owner it reads, a board with no prime owner reads the root as owned by no other machine, and a slug the board does not hold reads the same.
-// Owners.AdoptSubject names what `lyx adopt` takes for an entry: the beam project itself, else its nearest beam, else RootSubject.
+// Owners.AdoptSubject names what `lym adopt` takes for an entry: the beam project itself, else its nearest beam, else RootSubject.
 // A project's recipe is ProjectRecipe, `pawl`, or none, which a beam project reads as `pawl`; no task carries it, and a write giving a project another recipe, or a task `pawl`, is refused naming the fix.
 // Board copies Config.ParentOf onto every store it builds, so reads and writes resolve parents alike, and nil reads every parent as the prime.
 // ParentBeam is the board half of the one parent resolver: it walks an entry's project links upward and returns the nearest open project that is a beam, "" meaning the prime.
@@ -107,14 +107,14 @@
 // It pulls the board level with its upstream, writes one commit "board: owner <machine> for <slugs>" that sets each named beam project's owner, the prime owner when asked and an optional claim status on its slug, and pushes it.
 // A named task or grouping project gets no owner, and a Beam request sets the beam flag and `recipe: pawl` on a named project in the same commit.
 // A claim writes the run status alone, never an owner, and lands only on a task or on a project whose beam flag is set; any other entry keeps its status, and a claim on an entry whose effective owner is another machine is reported in OwnerWrite.Lost.
-// Without Takeover it leaves an entry whose effective owner is another machine untouched and reports it in OwnerWrite.Lost; `lyx adopt` alone passes Takeover.
+// Without Takeover it leaves an entry whose effective owner is another machine untouched and reports it in OwnerWrite.Lost; `lym adopt` alone passes Takeover.
 // A competing write origin already holds wins the replay of a rejected push, and the owners re-read from the local board.json after the push decide Recorded and Lost.
-// An origin that does not answer is ErrOwnerOriginUnreachable, and a push a held lock keeps deferring is refused naming `lyx board sync`.
+// An origin that does not answer is ErrOwnerOriginUnreachable, and a push a held lock keeps deferring is refused naming `lym board sync`.
 // ReadOwners reads the owners the local board.json records.
 // The list and get views carry each task's and project's effective owner as owner_machine, never an owner recorded on a task, and Board.EffectiveOwner resolves one slug's;
 // a list whose parent resolver fails leaves the cell empty and still succeeds.
 //
-// An upsert payload may carry owner_machine only as the entry's effective owner, which is dropped as a no-op; any other value is refused naming `lyx adopt`.
+// An upsert payload may carry owner_machine only as the entry's effective owner, which is dropped as a no-op; any other value is refused naming `lym adopt`.
 // The rule runs from the store's upsert, batch and merge paths, never from the replay, which applies an owner change through its own entry writes.
 //
 // # Slug rule
@@ -138,7 +138,7 @@
 // An existing entry without a created date keeps none, since no write knows when it was added.
 // An upsert may carry either date as an RFC 3339 time, which is how a backfill writes them, and the run lock lets such a write through on a held entry, since the dates are not scope.
 // A merge gives the upserted entry the oldest created date among it and the entries it removes.
-// No view stores an age: the README and `lyx board list --text` compute each as they render, in one compact unit such as `3d` or `5w`, through FormatAge.
+// No view stores an age: the README and `lym board list --text` compute each as they render, in one compact unit such as `3d` or `5w`, through FormatAge.
 //
 // # Unknown keys
 //
@@ -174,8 +174,8 @@
 // A draft task keeps its Ready or layer section and its After column, and its title cell opens with a `draft` code span before the bold title.
 // Ready holds the open tasks with no open dependency, and is always written, as `_None._` when empty.
 // A dependency on a done task does not count, and one on a running task does, so a task waiting on a run is not Ready.
-// Layer A holds the tasks that wait only on Running or Ready entries, Layer B those that wait on something in Layer A, and so on; ComputeLayers names each task's subsection, and the same name is the layer field of `lyx board list`.
-// Each subsection, Done included, is one markdown table in RenderOrder's order: a task subsection and a Notes type subsection by handle, and Done its tasks before its notes, each by handle, so `lyx board list` and `find` follow the same order.
+// Layer A holds the tasks that wait only on Running or Ready entries, Layer B those that wait on something in Layer A, and so on; ComputeLayers names each task's subsection, and the same name is the layer field of `lym board list`.
+// Each subsection, Done included, is one markdown table in RenderOrder's order: a task subsection and a Notes type subsection by handle, and Done its tasks before its notes, each by handle, so `lym board list` and `find` follow the same order.
 // A row opens with the entry's handle, and a Notes row adds the P column after it, H for a high priority, L for a low one and blank for normal.
 // The row then holds the bold title, with the brief as a `• ` bullet under it in the same cell, then a `• ` bullet `profile: <name>` when the task names a run profile, and then one `• ` bullet per run setting, a code span such as `loom: code_max_bounces 1` with a nested key as its dotted path, sorted, so the settings stack in height and add no column, the slug linked to its design doc when the entry has a body, the one `Age<br>Revised` cell, the entry's age above the time since its last revision, blank for an unknown date, and the labels that are not type labels.
 // The Running, Ready and layer tables add a Recipe column after the slug, the recipe the task runs, `loom` when its recipe field is empty; the Notes and Done tables have none.
@@ -203,16 +203,16 @@
 // set-status is itself unguarded, so a live run's status can be cleared by hand.
 // Prune passes, since a held entry's dependency on a done entry that the same write removes is not a change; every other depends_on change is refused.
 // The refusal is a *RunLockedError that matches ErrRunLocked through errors.Is.
-// Its message names the entry, its status and both ways forward: a finding goes to a note of its own, and an abandoned run is ended with `lyx batten cancel <slug>` from the prime, which clears the status.
+// Its message names the entry, its status and both ways forward: a finding goes to a note of its own, and an abandoned run is ended with `lym batten cancel <slug>` from the prime, which clears the status.
 //
 // # The landing hold
 //
 // Whether an entry is held and whether its run is in flight are two questions with two readers.
 // `RunHolds` answers the first: it is true for every entry `IsRunStatus` accepts, except a beam project whose producer half is `Worktree-Create`, `Beam-Up` or `Beam-Await`, the rows a pawl run stands at before it reaches Parent-Align, a halt at any of them included.
 // `boardengine` imports no recipe package, so the pawl recipe's own test pins that list against the claim row's and the recipe's row names.
-// The readers that ask whether an entry is held switch on it: membership of a task in a beam, the Project layer, a member forking from its beam, a verb running inside the beam and the `lyx loom peers` list.
+// The readers that ask whether an entry is held switch on it: membership of a task in a beam, the Project layer, a member forking from its beam, a verb running inside the beam and the `lym loom peers` list.
 // The readers that ask whether a run is in flight keep `IsRunStatus` and see the pawl run at every row: adopt's started-entry test, tender's owner-pause selection, batten's owner check and the parent dobby's driven runs.
-// A beam project whose run status stands but holds nothing keeps its scope fields editable, and refuses only its removal (a prune, a remove or a merge that leaves it absent) and a change of `project`, `kind`, `recipe` or `beam`, with a *BeamRunLockedError that matches ErrRunLocked and names `lyx batten cancel <slug>`.
+// A beam project whose run status stands but holds nothing keeps its scope fields editable, and refuses only its removal (a prune, a remove or a merge that leaves it absent) and a change of `project`, `kind`, `recipe` or `beam`, with a *BeamRunLockedError that matches ErrRunLocked and names `lym batten cancel <slug>`.
 // From Parent-Align on the full run lock applies as before.
 //
 // # Draft
@@ -220,7 +220,7 @@
 // Every new task is `draft` (StatusDraft), by one rule at the write critical section: after the mutation, each entry of kind task whose status is empty (IsEmptyStatus: nil or the empty string) is given `draft`.
 // So a create of any verb, a batch or merge create, a note or project upserted to a task and a promoted note are `draft` even when the payload sets `status` to null.
 // An entry that was a task before the write keeps an empty status the write left untouched, so an edit of a released task leaves it released.
-// A task is released by a null status: `lyx board set-status '{"slug":"<slug>","status":null}'`, an upsert setting `status` to null on a task, or a merge whose `set_status` sets null.
+// A task is released by a null status: `lym board set-status '{"slug":"<slug>","status":null}'`, an upsert setting `status` to null on a task, or a merge whose `set_status` sets null.
 // An empty string written to a task whose loaded status differs is `draft`, not a release.
 // The owner write and the replay of a local commit run no draft rule: the first never makes a task, and the second copies entries a critical-section write already normalised.
 //
@@ -240,7 +240,7 @@
 // A reference to the same entry under a new name is no scope change, so the write critical section judges the dates and the run lock against the loaded entries with the rename applied:
 // the rename revises no entry, and a held task that depends on the renamed entry, or a held project that orders it, takes the rewrite.
 // The renamed entry itself must not be held by a run, and the refusal is the run lock's *RunLockedError.
-// A beam is refused, since its slug stays fixed while it lives and its title is changed with `lyx board upsert`, and so is an entry whose pair exists on this machine, naming `lyx batten cancel <slug> --remove`.
+// A beam is refused, since its slug stays fixed while it lives and its title is changed with `lym board upsert`, and so is an entry whose pair exists on this machine, naming `lym batten cancel <slug> --remove`.
 // A target that is empty, longer than MaxSlugLength or already an entry's slug is refused too.
 // Body and brief text is never rewritten; the result names every entry whose body or brief still holds the old slug with no letter, digit, '-' or '_' beside it.
 // The render after the write drops the old slug's design doc and writes the new one.
@@ -265,7 +265,7 @@
 //
 // The detached sync path talks to git through fabricengine.Bolt, never hand-rolled gitexec calls,
 // under board's own board.lock/board.push.lock write and push locks.
-// The detached sync is spawned as `lyx board sync --deferrable` in the board directory, so its network gate is held under the hub scope.
+// The detached sync is spawned as `lym board sync --deferrable` in the board directory, so its network gate is held under the hub scope.
 // Under a pause it defers instead of waiting: it exits with one Info line before it commits or pushes anything, or at its push's network call when the pause came later, leaving the change for the next sync.
 //
 // # Storage
@@ -296,7 +296,7 @@
 //
 // # Replay
 //
-// FabricReplay implements the board seam fabricengine declares for a records replay, installed process-wide by the lyx root pre-run.
+// FabricReplay implements the board seam fabricengine declares for a records replay, installed process-wide by the lym root pre-run.
 // Apply re-applies a local board commit onto the board checked out at origin's tip, one change at a time: each added or removed entry, each changed entry's fields as one change, and each design file the commit touches.
 // A change passes the board's own checks, the run lock included, against the board as the kept changes before it left it, and an added entry takes the next id of origin's board.json and a handle free there, never its local one.
 // Where both sides changed the same field or design file since the merge base, or origin removed the entry, origin's side is kept and the local value is reported lost;
@@ -306,7 +306,7 @@
 //
 // # loomyard's own area labels
 //
-// Before deploying the landed binary, write this list into the hub's live <hub>/_board/_lyx/config/board.yaml, then delete this paragraph.
+// Before deploying the landed binary, write this list into the hub's live <hub>/_board/_lym/config/board.yaml, then delete this paragraph.
 // The migration turns every bracketed brief prefix on loomyard's live board that is not a type into a label, and the board refuses writes until board.yaml lists them.
 // The PR description must quote this snippet verbatim, because the hub copies the list from the PR description, not from the diff.
 //

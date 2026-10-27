@@ -20,7 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fsx"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
@@ -44,7 +44,7 @@ type configDirs struct {
 // A write is refused from a worktree that is not the hub's prime, and from a session whose strandName parses as a name carrying a slug, wherever its worktree resolves;
 // the hub orch's slug-free name and an empty name pass.
 // The refusal guards a mistaken write, not a determined agent: it reads the strand name the caller passes and nothing else about the session.
-func hubWriteRefusal(l *lyxcwd.Location, strandName string) (string, error) {
+func hubWriteRefusal(l *lymcwd.Location, strandName string) (string, error) {
 	if agentname.TaskSlug(strandName) != "" {
 		return fmt.Sprintf("a hub-wide config write is refused from the task session %s; way forward: the operator or the hub orch runs the write from the prime worktree", strandName), nil
 	}
@@ -76,7 +76,7 @@ func (d configDirs) refuseHubWrite(out io.Writer) (exitCode int, refused bool) {
 
 // dirsOf returns the config base dirs for the worktree l resolves to.
 // The board is empty when the hub's board dir does not exist, as for a worktree that is no hub's.
-func dirsOf(l *lyxcwd.Location) configDirs {
+func dirsOf(l *lymcwd.Location) configDirs {
 	return configDirs{worktree: baseDirOf(l), board: fabricengine.ConfigDirs(l).Board}
 }
 
@@ -110,7 +110,7 @@ func (d configDirs) selectedLayer(module configreg.Module) (configengine.Layer, 
 	case d.layer == string(configengine.LayerMachine) && !module.HubWide:
 		return "", fmt.Errorf("%s is a per-worktree module and has no machine file; way forward: --layer local", module.Name)
 	case d.layer == string(configengine.LayerMachine) && len(configengine.MachineKeys(module.Spec())) == 0:
-		return "", fmt.Errorf("%s has no machine key; way forward: \"lyx config %s\" from the hub's prime worktree", module.Name, module.Name)
+		return "", fmt.Errorf("%s has no machine key; way forward: \"lym config %s\" from the hub's prime worktree", module.Name, module.Name)
 	}
 	return configengine.Layer(d.layer), nil
 }
@@ -166,7 +166,7 @@ func newHubCommit(boardDir string) hubCommitFunc {
 // Then the reconcile writes, its files are committed in _board and the commit is pushed.
 // A write that fails part-way is undone, restoring every config file of the board dir.
 // A write that succeeded but was not committed, or committed but not pushed, is reported as an error naming the files left for the next board sync.
-func reconcileDefaultLayer(l *lyxcwd.Location, out io.Writer, apply bool, guard func() (string, error)) int {
+func reconcileDefaultLayer(l *lymcwd.Location, out io.Writer, apply bool, guard func() (string, error)) int {
 	board := fabricengine.ConfigDirs(l).Board
 	if board == "" {
 		return output.Err(out, "reconcile --layer default needs a hub's board dir, and this checkout is not a hub; way forward: run it with no --layer")
@@ -372,7 +372,7 @@ func setHubWide(dirs configDirs, out io.Writer, module configreg.Module, pairs [
 	return reportHubWrite(out, module.Name, path, commitErr, writeErr, extra)
 }
 
-// editHubWide edits a hub-wide module's file through a staging copy under the worktree's .lyx,
+// editHubWide edits a hub-wide module's file through a staging copy under the worktree's .lym,
 // so the editor never holds the board write lock.
 // Only the copy into the board dir, its validation and its commit run under the lock.
 // An absent file is staged as the sparse header, or as the template for a seed-only module.
@@ -454,5 +454,5 @@ func copyStagedToHub(path, staging string, base []byte, template, boardDir strin
 // hubFileLoadRefusal returns the editor's refusal of a save the module's loader newly rejects, which keeps the staging copy.
 // The refusal tells the operator to copy the staging copy out, since every open of the editor overwrites it with the hub file's bytes.
 func hubFileLoadRefusal(loadErr error, module configreg.Module, path, staging string) string {
-	return fmt.Sprintf("%v; %s unchanged; your edit is kept at %s; way forward: copy it out of that path, re-open \"lyx config %s\" and re-apply the edit from the copy with the named key fixed, since every open of the editor overwrites that path with the hub file's bytes", loadErr, path, staging, module.Name)
+	return fmt.Sprintf("%v; %s unchanged; your edit is kept at %s; way forward: copy it out of that path, re-open \"lym config %s\" and re-apply the edit from the copy with the named key fixed, since every open of the editor overwrites that path with the hub file's bytes", loadErr, path, staging, module.Name)
 }

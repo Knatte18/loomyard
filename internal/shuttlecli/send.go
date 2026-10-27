@@ -32,7 +32,7 @@ The fixed message tail "Answer briefly, then continue your task." is appended
 to <text> unless it already ends with it.
 
 Example:
-  lyx shuttle send 3fae21ac9b1d4c0e "read updated-task.md and continue"`,
+  lym shuttle send 3fae21ac9b1d4c0e "read updated-task.md and continue"`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -46,7 +46,7 @@ Example:
 				if err != nil {
 					logger.Warn("shuttle: sending despite an unreadable pause record", "path", c.pause.RecordPath, "cause", err)
 				} else if coverage.Covered {
-					clihelp.SetExit(cmd.Context(), output.Err(out, pauserecord.CoveredError(coverage.Entry, c.pause.Slug, "re-run lyx shuttle send").Error()))
+					clihelp.SetExit(cmd.Context(), output.Err(out, pauserecord.CoveredError(coverage.Entry, c.pause.Slug, "re-run lym shuttle send").Error()))
 					return nil
 				}
 			}
@@ -55,7 +55,7 @@ Example:
 				message := err.Error()
 				var paused *shuttleengine.PausedError
 				if errors.As(err, &paused) {
-					message = pauserecord.CoveredError(paused.Entry, paused.Slug, "re-run lyx shuttle send").Error()
+					message = pauserecord.CoveredError(paused.Entry, paused.Slug, "re-run lym shuttle send").Error()
 				}
 				clihelp.SetExit(cmd.Context(), output.Err(out, message))
 				return nil

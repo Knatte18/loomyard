@@ -1,16 +1,16 @@
-// Package gatecli provides the cobra command tree for `lyx gate`, whose verb `test` is the sanctioned route for running the hub's test tiers, whose verb `status` shows who holds the hub's gate slots, whose verb `report` totals the run records per gate key and whose verb `card-verify` runs a plan card's `**Verify:**` line.
+// Package gatecli provides the cobra command tree for `lym gate`, whose verb `test` is the sanctioned route for running the hub's test tiers, whose verb `status` shows who holds the hub's gate slots, whose verb `report` totals the run records per gate key and whose verb `card-verify` runs a plan card's `**Verify:**` line.
 //
 // The module is not standalone-capable and does not go through internal/cliwire: it has no target directory, state, plan or stencils to wire, and it resolves hub membership itself.
 //
 // # Verb
 //
-// `lyx gate test [-C <dir>] [--gate <key>] [--tier N]... [--upto N] [--card <id>]... [--base <rev>] [--all] [--guards] [--wait] [<targets>...] [-- <args>]` runs the tiers the hub declares in gate.yaml, in ascending tier number, and then the vet step and the guard step below when they are planned.
+// `lym gate test [-C <dir>] [--gate <key>] [--tier N]... [--upto N] [--card <id>]... [--base <rev>] [--all] [--guards] [--wait] [<targets>...] [-- <args>]` runs the tiers the hub declares in gate.yaml, in ascending tier number, and then the vet step and the guard step below when they are planned.
 // A run that fails does not stop the call: every later tier, vet and guard run still runs, so a failure the change under test did not cause, such as one present at the base, hides no later check.
 // When a run failed, the verb closes with one stderr line naming each failed run, a vet run as `vet tierN` and a guard run as `guard tierN`, with its exit code.
 // A refusal, a slot wait that does not end with the slots held and a terminating signal still end the call at once.
 // `--gate <key>` runs the tiers and the scope the `gates` key of that name holds, and `listedTiers` takes the key's tiers as the listed tiers.
 // It goes with none of `--tier`, `--upto`, `--all` and `--base`, which is refused before hub resolution naming the key and the flag to drop, since the key's tiers and scope come from gate.yaml.
-// Once the config is loaded, a key the config does not hold, an empty tier list and an undeclared tier are refused with `gateslot.Config.Gate`'s way forward naming `lyx config gate`.
+// Once the config is loaded, a key the config does not hold, an empty tier list and an undeclared tier are refused with `gateslot.Config.Gate`'s way forward naming `lym config gate`.
 // A key of scope `card` takes the `--card` ids as the card form and is refused, naming the key and the way forward of passing `--card <id>` per card, when none is given;
 // a key of scope `all` is the `--all` form, and a key of scope `diff` is the computed form.
 // `--card` ids beside a key of another scope are ignored, and explicit `<targets>` beside `--gate` replace the key's scope.
@@ -29,10 +29,10 @@
 // Terms that push the expression past `greenCommandBudget` are dropped and the tier's `filter` stands alone, so that project runs whole within itself, and an Info log names the tier.
 // A command without `{filter}` renders no filter whatever terms it is given.
 // A tier's `filter` applies at whole scope too, landing gates included, bounded by the executable, hub-file-only `tiers` key.
-// The command runs through the shell `verifyrun.ShellFor` names, as a tied child in the run directory, with this process's environment less the strand-name and trace-id variables, less an inherited `gateslot.PrebuiltLyxEnv`, plus the tier's `env` with `{parallel}` filled, plus the lease's `gateslot.InheritEnv` and the enclosing-gate pid.
+// The command runs through the shell `verifyrun.ShellFor` names, as a tied child in the run directory, with this process's environment less the strand-name and trace-id variables, less an inherited `gateslot.PrebuiltLymEnv`, plus the tier's `env` with `{parallel}` filled, plus the lease's `gateslot.InheritEnv` and the enclosing-gate pid.
 // The tier's `dir`, relative to the worktree root, is the run directory.
-// A tier with `prebuilt_lyx` first builds `lyx` at the tier's `parallel`, inside its slots and timeout, only where the worktree root holds `cmd/lyx`, and exports `gateslot.PrebuiltLyxEnv`.
-// Inside a hub the binary is copied into the pool's store (`gateslot.Pool.PrebuiltDir`) as `lyx-` and the first 16 hex digits of its SHA-256, the build directory is removed, and the variable names the stored copy;
+// A tier with `prebuilt_lym` first builds `lym` at the tier's `parallel`, inside its slots and timeout, only where the worktree root holds `cmd/lym`, and exports `gateslot.PrebuiltLymEnv`.
+// Inside a hub the binary is copied into the pool's store (`gateslot.Pool.PrebuiltDir`) as `lym-` and the first 16 hex digits of its SHA-256, the build directory is removed, and the variable names the stored copy;
 // outside a hub the variable names the build directory's binary, which is removed after the tier.
 // Go keys a cached test result on the variable's value, so a path named by the binary's content keeps a re-run on an unchanged tree cached, and a stored binary already present is reused with its modification time set, marking its last use.
 // Each store prunes the other entries unused for two hours.
@@ -76,7 +76,7 @@
 // An empty scope, such as a diff of Markdown files only, runs no listed tier's command, bar a tier with `carry: false`: each other listed tier passes with zero discovered, is logged so, takes no slot, and only the guard step runs; a `shared_build` tier that only has the build to run takes its slots for it, as the Build step section says.
 // A tier with `carry: false` runs whole over its `all_targets` in its `dir` under every scope form but explicit targets, the empty scope included, so a timing or capture tier never goes unrun on a computed scope.
 // The import graph cannot see everything a narrower run skips, such as `go build ./...`, so that is left to the whole runs at `final` and `landing`.
-// Once the config is loaded, `planTierRuns` refuses, before any slot and naming `lyx config gate`: words after `--` for a tier whose command lacks `{args}`, an undeclared tier, a hub with no `tier0`, a `covers` entry naming a tier the hub does not declare, and, for the guard step below, a guard group whose tier the hub does not declare.
+// Once the config is loaded, `planTierRuns` refuses, before any slot and naming `lym config gate`: words after `--` for a tier whose command lacks `{args}`, an undeclared tier, a hub with no `tier0`, a `covers` entry naming a tier the hub does not declare, and, for the guard step below, a guard group whose tier the hub does not declare.
 // Every such refusal closes with the clause that a session that is not the prime takes none of the steps, reports status: FAILED and leaves them to the orch.
 //
 // # Inert paths
@@ -99,7 +99,7 @@
 // The first such tier in plan order whose run takes slots, one with invocations left after the green record's subtraction or one with only a build to run, runs `runBuild` inside its slots, before its own command, and no later tier runs it again.
 // A call whose opted-in tiers are all carried, or whose shares are empty, such as an inert-only, all-inert-card or empty diff, runs no build, bar a `carry: false` tier, which runs whole and so runs the build before its command.
 // A `shared_build` tier whose share selected no test class has no invocation and takes its slots only to run the build, so a compile break still fails the gate; it then passes with nothing discovered.
-// The command runs through the platform shell as a tied child in the build's `dir`, with the call's environment, the slot's inherited variable and the build's `env`; the words after `--` never reach it, and lyx adds no MSBuild or compiler-server switch.
+// The command runs through the platform shell as a tied child in the build's `dir`, with the call's environment, the slot's inherited variable and the build's `env`; the words after `--` never reach it, and lym adds no MSBuild or compiler-server switch.
 // Its output passes to stdout and into its log, and it is bounded by its own `timeout_min` counted from the hold, so the tier's `timeout_min` starts after it.
 // A timeout kills the tree, exits 1 and prints and logs `gateslot.BuildTimeoutLine`.
 // A shell that cannot start is refused naming the build's `dir`, halts the call with exit 1 and writes no build record.
@@ -107,9 +107,9 @@
 // A failed or timed-out build is a failed run counted before that tier, and the call exits with the first failed run's code in plan order.
 // Every tier that opts into the build from there on runs no command: it writes a run record with outcome failed, the build's exit code and `blocked_by` the build's log, prints `gate test: tierN did not run, since the build failed; see <log>` and no tier summary line, and the closing line names it blocked by the build.
 // Tiers that do not opt in still run.
-// `lyx gate report` totals build records apart, in `build_runs` and `build_seconds`.
+// `lym gate report` totals build records apart, in `build_runs` and `build_seconds`.
 //
-// Bound: a `shared_build` tier whose command lacks `--no-build` builds again inside its own run, since lyx does not read the command.
+// Bound: a `shared_build` tier whose command lacks `--no-build` builds again inside its own run, since lym does not read the command.
 //
 // # Vet step
 //
@@ -121,14 +121,14 @@
 //
 // # Guard step
 //
-// With `--guards`, and under the `go` scoper after any computed, `--base` or `--card` scope, the verb runs, after the listed tiers, the step `guardStepRun` builds over the module's `//lyx:guard` tests outside the scope.
+// With `--guards`, and under the `go` scoper after any computed, `--base` or `--card` scope, the verb runs, after the listed tiers, the step `guardStepRun` builds over the module's `//lym:guard` tests outside the scope.
 // `impactset.DeriveTargets` names those packages for a narrower computed or `--base` scope, and an `impactset.ModuleGuardTests` scan of the module at the run directory, which is `tier0`'s dir or the `-C` directory of explicit targets, names them for a `--card` scope, a scope fallen back to whole, and `--guards` over explicit targets.
 // So the round and darn writer gates, which run `--base`, keep the guard coverage they have had, where every guard package counts as outside a tier that does not compile it.
 // The scan reads each guard test's tier from its file's `tierN` build tag, a file naming none counting as `tier0`, and the step plans one guard run per tier holding guard tests, ascending.
 // A guard run is one run of that tier's command with the group's guard packages as `{targets}` and `-run '^(<names>)$'` after any words from `--` as `{args}`, so the guard's own pattern is the last `-run` and wins over one among those words.
-// It acquires that tier's slots after the last listed tier and vet run released their own, runs under that tier's `timeout_min` and `prebuilt_lyx`, and is logged as a guard step; a failed guard run, like a failed listed tier, stops no later run.
+// It acquires that tier's slots after the last listed tier and vet run released their own, runs under that tier's `timeout_min` and `prebuilt_lym`, and is logged as a guard step; a failed guard run, like a failed listed tier, stops no later run.
 // A group is skipped when the call ran its tier, or a tier covering it, whole, and a group whose tier the green record holds green carries.
-// A group whose tier is undeclared, or whose command lacks `{targets}` or `{args}`, is refused before any slot, naming `lyx config gate`.
+// A group whose tier is undeclared, or whose command lacks `{targets}` or `{args}`, is refused before any slot, naming `lym config gate`.
 // A scan error refuses the call before any slot with the file, the line when there is one and a way forward for its kind:
 // move a misplaced marker directly above its `func Test…` line, move a marked test out of a `tier2` or `tier3` file into a `tier0` or `tier1` file, or make an unparsable or unreadable file readable and parseable.
 // Any other scan error, such as an unreadable package directory, names the module directory and the way forward to make `go list ./...` succeed there.
@@ -137,11 +137,11 @@
 //
 // # Hub resolution
 //
-// The directory is resolved with lyxcwd.ResolveWorktree, which finds the containing worktree from any directory inside it, a nested module directory included, then preflight.BoardLyxPresent.
+// The directory is resolved with lymcwd.ResolveWorktree, which finds the containing worktree from any directory inside it, a nested module directory included, then preflight.BoardLymPresent.
 // It does not use the standalone-capable CLIs' mode resolution, whose anchor gate would refuse a nested module directory.
-// Inside a hub the config is `gateslot.LoadConfig` over the hub, this machine's override included; an absent gate.yaml is refused with a way forward naming `lyx fabric reconcile`, an invalid one with an error that names each file in the stack and its way forward, and a hub with no tier is refused naming `lyx config gate`.
-// Outside every hub, in a git worktree whose hub carries no board, the worktree's own gate.yaml is read through the same loader with only the anchor told, and the run is unslotted; with none, the call is refused naming `lyx config gate`.
-// A directory in no git worktree has no worktree layer to read, so it is refused naming `lyx config gate` run in a git worktree.
+// Inside a hub the config is `gateslot.LoadConfig` over the hub, this machine's override included; an absent gate.yaml is refused with a way forward naming `lym fabric reconcile`, an invalid one with an error that names each file in the stack and its way forward, and a hub with no tier is refused naming `lym config gate`.
+// Outside every hub, in a git worktree whose hub carries no board, the worktree's own gate.yaml is read through the same loader with only the anchor told, and the run is unslotted; with none, the call is refused naming `lym config gate`.
+// A directory in no git worktree has no worktree layer to read, so it is refused naming `lym config gate` run in a git worktree.
 //
 // # Slots
 //
@@ -153,13 +153,13 @@
 // A tier with `slots: all` holds every slot and waits behind the pool's drain.
 // Outside a hub the tiers run unslotted.
 //
-// `lyx gate status` reads the pool of the hub that contains the working directory and changes nothing.
+// `lym gate status` reads the pool of the hub that contains the working directory and changes nothing.
 // It answers an ok envelope with `in_hub`, the pool's `slots` count, `draining`, whether a multi-slot acquire holds the drain so new single-slot runs wait while a slot is free, and `held`, one entry per held slot, oldest first, with its `slot` number, `worktree`, `site`, `tier`, `pid` and `started` time.
 // Outside every hub it answers `in_hub: false` and nothing held.
 //
 // # Inheritance
 //
-// When the slot variable gateslot.InheritEnv names a slot of the pool that is held, the run goes inside that slot without acquiring, whatever slots its tiers ask for, so a verify command that calls `lyx gate test` cannot deadlock.
+// When the slot variable gateslot.InheritEnv names a slot of the pool that is held, the run goes inside that slot without acquiring, whatever slots its tiers ask for, so a verify command that calls `lym gate test` cannot deadlock.
 // Bound: a forged variable naming any held slot runs unslotted inside that holder's slot.
 // The standing agent deny refuses an agent command that names the variable, and an operator shell or a script that hides the name is outside the bound.
 //
@@ -168,7 +168,7 @@
 //
 // # Green record
 //
-// `lyx gate test` carries a green tier forward over an unchanged tree, at every site and manual run alike.
+// `lym gate test` carries a green tier forward over an unchanged tree, at every site and manual run alike.
 // The record is one JSON file per worktree, `green.json` in the worktree's never-tracked gate directory, `gateslot.WaitDir` of the anchor, read tolerantly:
 // an unreadable or malformed file reads as empty.
 // An entry holds the tier fingerprint, HEAD's tree and commit, the module directory, the args after `--`, and either `whole` or the green package set, plus its write time.
@@ -210,13 +210,13 @@
 //
 // A tier's output goes through its counter, `go-json` or `vstest`, which passes the text on and counts the tests it reports.
 // After each tier the verb prints `gateslot.TierSummaryLine` to stderr and writes the run record and log through `gateslot.WriteRunRecord` under `gateslot.RunLogDir`:
-// the board's gate directory inside a hub, so the records outlive the worktree, and the worktree's own `.lyx` gate directory outside every hub.
+// the board's gate directory inside a hub, so the records outlive the worktree, and the worktree's own `.lym` gate directory outside every hub.
 // The record's slug is the one the pair's fabric origin record names, empty for the prime and outside every hub.
 // A write failure is logged and decides nothing.
 // The `go-json` counter also keeps, per package, the gap from its `start` event to its next event and its closing event's elapsed time, and the record carries them as `launches`; a cached package and one with no test files are left out, and a `vstest` run records none.
 // The `go-json` counter also keeps, per package, the number of tests that ran in it, and a `vstest` run keeps none.
 // A `go-json` tier under the `go` scoper fails when a package holding a test under the tier's tag ran none, since the tier's command then lacks its tag: a package with a `Test` function in a file whose build constraint holds under `tierN` on the host's GOOS and GOARCH.
-// The failure exits 1 and its line, naming the tier, the package and `lyx config gate`, goes to stderr and the log before the summary line.
+// The failure exits 1 and its line, naming the tier, the package and `lym config gate`, goes to stderr and the log before the summary line.
 // A run whose words after `--` carry `-run`, `-skip`, `-list` or `-bench` is exempt, since its filter may match nothing; the guard step's own `-run` filter exempts nothing.
 // Otherwise a tier that discovers no tests passes with zero counted, as a package with only a `TestMain` does.
 //
@@ -241,9 +241,9 @@
 // The window counts whole samples, a pid's first sample is its baseline, and any sample below 90 percent restarts the count.
 // The verb prints `gateslot.WatchdogLine` to its stderr after the quit, and a halt names `gateslot.BusyQuitWayForward`.
 // Off Linux `proc.TreeCPU` reports `errors.ErrUnsupported`, the watchdog logs that no watchdog applies and ends, and the tier runs as before.
-// The watchdog is off when `busy_quit_sec` is 0, when the words after `--` carry `-bench` or `-fuzz`, which keep a core busy by intent, and when `LYX_GATE_TEST_PID` names a live ancestor, the pid an outer `lyx gate test` sets in the tier's environment, since that run's watchdog already sees this run's test binaries.
+// The watchdog is off when `busy_quit_sec` is 0, when the words after `--` carry `-bench` or `-fuzz`, which keep a core busy by intent, and when `LYM_GATE_TEST_PID` names a live ancestor, the pid an outer `lym gate test` sets in the tier's environment, since that run's watchdog already sees this run's test binaries.
 // An empty, unparsable or non-ancestor value is ignored, such as one a tmux server a test started carried into its panes after leaving the outer run's tree.
-// An inherited slot does not turn it off: a verify run holds a slot and passes it to a verify command that calls `lyx gate test`, which is the outermost gate run there.
+// An inherited slot does not turn it off: a verify run holds a slot and passes it to a verify command that calls `lym gate test`, which is the outermost gate run there.
 // It watches `.test` processes only, so a `vstest` tier is bounded by its `timeout_min` alone.
 //
 // # Example
@@ -271,7 +271,7 @@
 //	    parallel: 4
 //	    timeout_min: 30
 //	    covers: [0]
-//	    prebuilt_lyx: true
+//	    prebuilt_lym: true
 //	  tier2:
 //	    about: tmux tests
 //	    command: go test -json -tags tier2 {targets} {args}
@@ -281,7 +281,7 @@
 //	    parallel: 4
 //	    timeout_min: 30
 //	    covers: [0]
-//	    prebuilt_lyx: true
+//	    prebuilt_lym: true
 //	gates:
 //	  card: {tiers: [0], scope: card}
 //	  batch: {tiers: [0, 1], scope: card}
@@ -293,11 +293,11 @@
 //	  code-burler-fix: {tiers: [0, 1], scope: diff}
 //	  drift-verify: {tiers: [0, 1], scope: diff}
 //
-// A tier is written whole with one flow mapping, for example `lyx config gate --set 'tiers.tier0={command: "go test -json {targets} {args}", all_targets: ./..., counter: go-json, timeout_min: 10}'`.
+// A tier is written whole with one flow mapping, for example `lym config gate --set 'tiers.tier0={command: "go test -json {targets} {args}", all_targets: ./..., counter: go-json, timeout_min: 10}'`.
 //
 // # Report
 //
-// `lyx gate report [--slug <slug>] [--since <YYYY-MM-DD>]` reads this machine's run records through `gateslot.ReadRunRecords`, from the board's gate run directory inside a hub and the worktree's own outside every hub, and prints one row per slug and gate key.
+// `lym gate report [--slug <slug>] [--since <YYYY-MM-DD>]` reads this machine's run records through `gateslot.ReadRunRecords`, from the board's gate run directory inside a hub and the worktree's own outside every hub, and prints one row per slug and gate key.
 // A row holds the tier runs, the carried tiers, the summed slot wait (a record's start minus its wait start), the summed wall time, and the launch time with its share, the launch time being the sum of the records' launch gaps and its share that sum over their summed package time.
 // A record from before `--gate` has no key and groups under its tier list and scope form, such as `tiers 0,1 all`; a record without a launch list adds nothing to the launch time, and a group whose records hold none shows no launch time.
 // A malformed `--since` is refused naming the expected form before hub resolution.
@@ -305,9 +305,9 @@
 //
 // # Card verify
 //
-// `lyx gate card-verify <card id>` runs one plan card's `**Verify:**` line through `internal/cardverify`'s `Runner`, the runner webster's record-batch re-run shares.
-// It sits under `lyx gate` rather than `lyx webster`, since the fork-mode hook refuses every `lyx webster` command from a fork, and it carries the role audience annotation because the implementer fork's prompt names it.
-// An id is a card's number or its `N-slug`, read from the plan at the anchor's plan directory; an unknown id is refused naming the plan's ids, and a worktree with no plan is refused naming the way forward to run it from the task worktree whose `_lyx/plan` holds the card.
+// `lym gate card-verify <card id>` runs one plan card's `**Verify:**` line through `internal/cardverify`'s `Runner`, the runner webster's record-batch re-run shares.
+// It sits under `lym gate` rather than `lym webster`, since the fork-mode hook refuses every `lym webster` command from a fork, and it carries the role audience annotation because the implementer fork's prompt names it.
+// An id is a card's number or its `N-slug`, read from the plan at the anchor's plan directory; an unknown id is refused naming the plan's ids, and a worktree with no plan is refused naming the way forward to run it from the task worktree whose `_lym/plan` holds the card.
 // A card with no `**Verify:**` line passes with a message saying so.
 // The line's output passes through to the terminal and the verb exits with the line's own code; a line that timed out or did not start exits 1.
 // Inside a hub a line that is not a `--wait` gate call takes one slot of the hub's pool; outside every hub it runs unslotted.

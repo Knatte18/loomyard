@@ -309,7 +309,7 @@ func reapSessionVia(cmd TmuxCmd, shellPath, socketKey, sessionName string, timeo
 // EndSessionByName is the third engine-less exported function in this package, beside ReapSession:
 // it ends the named session of a pair whose worktree is already gone.
 // Engine.Down cannot, because withOpLock's live-worktree validator refuses a gone root,
-// and creating the op lock would recreate the gone worktree's .lyx directory.
+// and creating the op lock would recreate the gone worktree's .lym directory.
 //
 // It takes no lock and writes no state, because both lived under the gone worktree and nothing is left to guard;
 // it reads no geometry beyond the two strings it is told.

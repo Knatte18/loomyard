@@ -16,7 +16,7 @@ func TestPawlRecheckLines(t *testing.T) {
 	t.Parallel()
 
 	member := battencli.BeamLandBlockers{Members: []battencli.BeamLandMember{{Slug: "m", HasPair: true}}}
-	refusal := errors.New("battencli: the beam b cannot land while work remains under it; way forward: end m with `lyx batten cancel m --remove`; end the pair p with `lyx batten cancel p --remove`")
+	refusal := errors.New("battencli: the beam b cannot land while work remains under it; way forward: end m with `lym batten cancel m --remove`; end the pair p with `lym batten cancel p --remove`")
 
 	tests := []struct {
 		name          string
@@ -36,28 +36,28 @@ func TestPawlRecheckLines(t *testing.T) {
 			beamOwner:     "here",
 			parentOwner:   "here",
 			parentSubject: "root",
-			want:          []string{"end m with `lyx batten cancel m --remove`", "end the pair p with `lyx batten cancel p --remove`"},
+			want:          []string{"end m with `lym batten cancel m --remove`", "end the pair p with `lym batten cancel p --remove`"},
 		},
 		{
 			name:          "ABeamAnotherMachineOwnsNamesAdoptOfTheBeam",
 			beamOwner:     "other",
 			parentOwner:   "here",
 			parentSubject: "root",
-			want:          []string{"the beam b is owned by other, not this machine (here): run `lyx adopt b` to take it"},
+			want:          []string{"the beam b is owned by other, not this machine (here): run `lym adopt b` to take it"},
 		},
 		{
 			name:          "AParentAnotherMachineOwnsNamesAdoptOfItsSubject",
 			beamOwner:     "here",
 			parentOwner:   "other",
 			parentSubject: "outer-beam",
-			want:          []string{"the beam's parent is owned by other, not this machine (here): run `lyx adopt outer-beam` to take it"},
+			want:          []string{"the beam's parent is owned by other, not this machine (here): run `lym adopt outer-beam` to take it"},
 		},
 		{
 			name:          "ThePrimeAnotherMachineOwnsNamesAdoptRoot",
 			beamOwner:     "here",
 			parentOwner:   "other",
 			parentSubject: "root",
-			want:          []string{"the beam's parent is owned by other, not this machine (here): run `lyx adopt root` to take it"},
+			want:          []string{"the beam's parent is owned by other, not this machine (here): run `lym adopt root` to take it"},
 		},
 		{
 			name:          "EveryFailureGivesItsOwnLineInOrder",
@@ -68,8 +68,8 @@ func TestPawlRecheckLines(t *testing.T) {
 			parentSubject: "root",
 			want: []string{
 				"end m",
-				"the beam b is owned by other, not this machine (here): run `lyx adopt b` to take it",
-				"the beam's parent is owned by third, not this machine (here): run `lyx adopt root` to take it",
+				"the beam b is owned by other, not this machine (here): run `lym adopt b` to take it",
+				"the beam's parent is owned by third, not this machine (here): run `lym adopt root` to take it",
 			},
 		},
 	}

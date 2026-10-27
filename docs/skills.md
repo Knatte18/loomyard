@@ -1,24 +1,24 @@
 # LoomYard skills — plan & fate of the mill skill set
 
-> **Status: Design / plan — not built.** Authored once the `lyx` spine (`shuttle → burler → shed → loom`) can consume it.
+> **Status: Design / plan — not built.** Authored once the `lym` spine (`shuttle → burler → shed → loom`) can consume it.
 
 In mill the skills *were* the orchestrator (LLM-driven).
-In lyx, orchestration is Go (`loom`), so the `mill-*` lifecycle family becomes `lyx` verbs, not skills. **~44 mill skills → ~10 real LY skills.**
+In lym, orchestration is Go (`loom`), so the `mill-*` lifecycle family becomes `lym` verbs, not skills. **~44 mill skills → ~10 real LY skills.**
 
 ## Decision rules
 
 | Condition | Fate |
 |---|---|
-| One `lyx` verb / deterministic | **`lyx` verb** (no skill) |
+| One `lym` verb / deterministic | **`lym` verb** (no skill) |
 | Low value even in mill | **Discard** |
 | Git mechanics at commit time | **loom commit path** — Go-deterministic (fabric state) + webster's fork prompt template (worktree code). *Not* CLAUDE.md: always-on text gets forgotten |
 | Session-coloring fact, unenforceable at a point-of-use | **CLAUDE.md** (loads every session; no mill skill lands here) |
 | Judgment, operator-invoked | **skill** |
-| Judgment, lyx-spawned / autonomous | **prompt template** (stencil + shuttle) — Go can't call a skill |
+| Judgment, lym-spawned / autonomous | **prompt template** (stencil + shuttle) — Go can't call a skill |
 | Judgment in both | one instruction set → **skill + prompt** |
 
 - **Name reflects scope:** `ly-*` loomyard · `craft` generic authoring · `golang-*`/`csharp-*` language · `raddle-*` nav-docs.
-- **Explicit `lyx` commands by default;** `--help --json` is the self-healing fallback when the CLI drifts.
+- **Explicit `lym` commands by default;** `--help --json` is the self-healing fallback when the CLI drifts.
 
 ## Ecosystem & naming
 
@@ -27,7 +27,7 @@ Mirrors millhouse's `millhouse` / `mill` / `millpy` split — the plugin takes t
 | Name | Kind | millhouse mirror |
 |---|---|---|
 | **LoomYard** | repo / ecosystem | `millhouse` |
-| **`lyx`** | executable (`ly` + `x`, **x = executable**) | `millpy` |
+| **`lym`** | executable (`ly` + `x`, **x = executable**) | `millpy` |
 | **`ly`** | core plugin (`ly-*`) | `mill` |
 | **`craft`** | generic authoring plugin (language-agnostic, reusable) | *(mill:testing/linting/…)* |
 | **`golang` / `csharp` / `python`** | language plugins (install per language) | same |
@@ -45,7 +45,7 @@ Installed set for LoomYard: **`ly + craft + golang + raddle`**.
 | `ly-workflow` | Map: module catalogue + common flows + mental model + `--help --json` fallback |
 | `ly-triage` | **Pure judgment, zero board relation.** Go supplies both inputs (fetched items + a board snapshot); the skill emits a decisions artifact (per item: new / fold-into-slug / skip). Go does *all* board I/O (upsert/merge) and the fetch/close. The skill never reads or writes the board |
 | `ly-git-resolve` | Merge/rebase/cherry-pick conflict resolution — skill now; prompt template (`git-conflict-resolve-template.md`) later for `--auto` |
-| `ly-selfreport` *(opt.)* | Reflect on a session → file bugs via `lyx selfreport` |
+| `ly-selfreport` *(opt.)* | Reflect on a session → file bugs via `lym selfreport` |
 
 #### `ly-triage` contract — whole board in, delta out
 
@@ -142,37 +142,37 @@ shares the burler round discipline).
 
 | mill skill | Merges into |
 |---|---|
-| mill:mill-ghissues-to-tasks | **splits**: fetch + close + board writes → `lyx` verb / Go; analysis → `ly-triage` |
+| mill:mill-ghissues-to-tasks | **splits**: fetch + close + board writes → `lym` verb / Go; analysis → `ly-triage` |
 | mill:mill-report-to-tasks | `ly-triage` (source is already a JSON file — no fetch; Go still owns board writes) |
 | mill:mill-fold | `ly-triage` (fold *judgment* only; Go executes the merge/upsert) |
 | mill:mill-autofix | `loom --auto` + `ly-triage` (thin driver at most) |
 
-### → a `lyx` verb (no skill)
+### → a `lym` verb (no skill)
 
 | mill skill | Replaced by |
 |---|---|
-| mill:mill-setup | `lyx fabric clone` / `lyx init` |
-| mill:git-clone | `lyx fabric clone` |
-| mill:mill-spawn | `lyx fabric add` (+ loom) |
-| mill:mill-claim | `lyx fabric add` / loom |
+| mill:mill-setup | `lym fabric clone` / `lym init` |
+| mill:git-clone | `lym fabric clone` |
+| mill:mill-spawn | `lym fabric add` (+ loom) |
+| mill:mill-claim | `lym fabric add` / loom |
 | mill:mill-start | loom Discussion phase (a producer prompt) |
 | mill:mill-plan | loom Plan phase |
 | mill:mill-go | loom Webster phase |
 | mill:mill-finalize | loom Finalize |
-| mill:mill-merge | loom Finalize + `lyx fabric cleanup` (conflict → `ly-git-resolve`) |
+| mill:mill-merge | loom Finalize + `lym fabric cleanup` (conflict → `ly-git-resolve`) |
 | mill:mill-merge-in | loom / fabric merge (conflict → `ly-git-resolve`) |
-| mill:mill-cleanup | `lyx fabric cleanup` |
-| mill:mill-abandon | `lyx loom abandon` |
-| mill:mill-pause | `lyx tender pause <slug>` |
+| mill:mill-cleanup | `lym fabric cleanup` |
+| mill:mill-abandon | `lym loom abandon` |
+| mill:mill-pause | `lym tender pause <slug>` |
 | mill:mill-resume | loom resume + fabric-sync + session-sync |
-| mill:mill-status | `lyx loom status` |
-| mill:mill-inspect | `lyx board` / `lyx loom status` |
-| mill:mill-add | `lyx board upsert` |
-| mill:mill-color | `lyx ide` |
-| mill:mill-terminal | `lyx ide` |
-| mill:mill-vscode | `lyx ide` |
-| mill:millhouse-issue | `lyx selfreport` |
-| mill:git-issue | `lyx selfreport` / `gh` |
+| mill:mill-status | `lym loom status` |
+| mill:mill-inspect | `lym board` / `lym loom status` |
+| mill:mill-add | `lym board upsert` |
+| mill:mill-color | `lym ide` |
+| mill:mill-terminal | `lym ide` |
+| mill:mill-vscode | `lym ide` |
+| mill:millhouse-issue | `lym selfreport` |
+| mill:git-issue | `lym selfreport` / `gh` |
 
 ### → loom commit path (Go-deterministic + prompt template)
 
@@ -181,10 +181,10 @@ The rules live where commits actually happen.
 
 | mill skill | Why |
 |---|---|
-| mill:git-commit | Mechanics (stage-by-name, no `-A`, no force-push, no `--no-verify`, set upstream) enforced **in Go** where lyx commits fabric state; message format + commit-per-fix ride **webster's fork prompt template** for worktree code. Lint / raddle-sync / main-gate are loom's job, not per-commit |
+| mill:git-commit | Mechanics (stage-by-name, no `-A`, no force-push, no `--no-verify`, set upstream) enforced **in Go** where lym commits fabric state; message format + commit-per-fix ride **webster's fork prompt template** for worktree code. Lint / raddle-sync / main-gate are loom's job, not per-commit |
 | mill:git-workflow | Branch / PR / rebase / main-gate are **loom-enforced** (breaking them is clumsiness, not a rule to restate); message + staging discipline ride webster's fork prompt template |
 
-### → burler's prompt template (lyx-spawned judgment)
+### → burler's prompt template (lym-spawned judgment)
 
 | mill skill | Why |
 |---|---|
@@ -201,11 +201,11 @@ The rules live where commits actually happen.
 | mill:git-log | low value; git history suffices |
 | mill:git-pr | push-to-main is OK → PR is the exception; use `gh` ad-hoc |
 
-**Tally:** 9 → LY skill · 4 merged · 22 → `lyx` verb · 2 → loom commit path · 1 → burler prompt · 6 discarded = 44.
+**Tally:** 9 → LY skill · 4 merged · 22 → `lym` verb · 2 → loom commit path · 1 → burler prompt · 6 discarded = 44.
 
 ## Open decisions
 
 - **`craft` name** — vs `authoring` / `core` (the language-agnostic authoring plugin).
-- **`ly-selfreport` / `ly-autofix`** — thin skills, or lean on `lyx selfreport` + `loom --auto`.
+- **`ly-selfreport` / `ly-autofix`** — thin skills, or lean on `lym selfreport` + `loom --auto`.
 - **`raddle`-native generator timing** — millhouse-codeguide is the stopgap;
   the plugin boundary is the same either way.

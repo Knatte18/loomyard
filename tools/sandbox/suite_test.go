@@ -1,7 +1,7 @@
 //go:build tier0
 
 // suite_test.go contains unit tests for the suite launcher functions: binary fingerprinting, scheme rendering, git-exclude management, and the runSuite orchestration.
-// All tests use seam stubs and temp directories -- no real lyx, claude, or network calls are made.
+// All tests use seam stubs and temp directories -- no real lym, claude, or network calls are made.
 // The runSuite and launchAgent tests rewrite package-level seams (devBinPath, lookPath, launchAgent, reedDown, interactiveStdio) or os.Stderr, so they do not call t.Parallel; the pure tests run in parallel, which Go starts only after every serial test has restored its seams.
 
 package main
@@ -22,9 +22,9 @@ import (
 func TestBinaryFingerprint(t *testing.T) {
 	t.Parallel()
 
-	content := []byte("fake lyx binary content for testing")
+	content := []byte("fake lym binary content for testing")
 	tmpDir := t.TempDir()
-	binPath := filepath.Join(tmpDir, "lyx.exe")
+	binPath := filepath.Join(tmpDir, "lym.exe")
 	if err := os.WriteFile(binPath, content, 0o755); err != nil {
 		t.Fatalf("write fake binary: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestRenderScheme_ContainsHeaderAndBody(t *testing.T) {
 			t.Parallel()
 
 			info := binaryInfo{
-				Path:    "/fake/lyx.exe",
+				Path:    "/fake/lym.exe",
 				Size:    1234,
 				ModTime: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 				SHA256:  "abc123def456",
@@ -84,7 +84,7 @@ func TestRenderScheme_ContainsHeaderAndBody(t *testing.T) {
 				label string
 				want  string
 			}{
-				{"path", "/fake/lyx.exe"},
+				{"path", "/fake/lym.exe"},
 				{"size", "1234 bytes"},
 				{"sha256", "abc123def456"},
 				{"source", "Source: " + source},
@@ -191,19 +191,19 @@ func TestEnsureGitExclude(t *testing.T) {
 
 // stubSuiteSeams replaces devBinPath, lookPath, launchAgent, and reedDown
 // with test stubs and returns a restore function.
-func stubSuiteSeams(t *testing.T, fakeLyx, fakeClaude string, launchFn func(dir, claude, instruction, binDir string) int) func() {
+func stubSuiteSeams(t *testing.T, fakeLym, fakeClaude string, launchFn func(dir, claude, instruction, binDir string) int) func() {
 	t.Helper()
 	oldDevBinPath := devBinPath
 	oldLookPath := lookPath
 	oldLaunchAgent := launchAgent
 	oldReedDown := reedDown
 	devBinPath = func() (string, error) {
-		return filepath.Join(t.TempDir(), "lyx"), nil
+		return filepath.Join(t.TempDir(), "lym"), nil
 	}
 	lookPath = func(name string) (string, error) {
 		switch name {
-		case "lyx":
-			return fakeLyx, nil
+		case "lym":
+			return fakeLym, nil
 		case "claude":
 			return fakeClaude, nil
 		default:
@@ -211,7 +211,7 @@ func stubSuiteSeams(t *testing.T, fakeLyx, fakeClaude string, launchFn func(dir,
 		}
 	}
 	launchAgent = launchFn
-	reedDown = func(repoDir, lyxPath string) error { return nil }
+	reedDown = func(repoDir, lymPath string) error { return nil }
 	return func() {
 		devBinPath = oldDevBinPath
 		lookPath = oldLookPath
@@ -224,7 +224,7 @@ func stubSuiteSeams(t *testing.T, fakeLyx, fakeClaude string, launchFn func(dir,
 func stubReedDownNoop(t *testing.T) {
 	t.Helper()
 	old := reedDown
-	reedDown = func(repoDir, lyxPath string) error { return nil }
+	reedDown = func(repoDir, lymPath string) error { return nil }
 	t.Cleanup(func() { reedDown = old })
 }
 
@@ -262,14 +262,14 @@ func makeHubRepo(t *testing.T) (parentDir, repoDir string) {
 	return parentDir, repoDir
 }
 
-// makeFakeLyx writes a small binary file to tmpDir and returns its path.
-func makeFakeLyx(t *testing.T, tmpDir string) string {
+// makeFakeLym writes a small binary file to tmpDir and returns its path.
+func makeFakeLym(t *testing.T, tmpDir string) string {
 	t.Helper()
-	fakeLyx := filepath.Join(tmpDir, "lyx.exe")
-	if err := os.WriteFile(fakeLyx, []byte("fake lyx binary"), 0o755); err != nil {
-		t.Fatalf("write fake lyx: %v", err)
+	fakeLym := filepath.Join(tmpDir, "lym.exe")
+	if err := os.WriteFile(fakeLym, []byte("fake lym binary"), 0o755); err != nil {
+		t.Fatalf("write fake lym: %v", err)
 	}
-	return fakeLyx
+	return fakeLym
 }
 
 // TestRunSuite_HubAbsent verifies that runSuite returns an error when the Hub repo subdirectory
@@ -308,7 +308,7 @@ func TestRunSuite_PerSuiteSpec(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Run("default run", func(t *testing.T) {
 				parentDir, repoDir := makeHubRepo(t)
-				fakeLyx := makeFakeLyx(t, parentDir)
+				fakeLym := makeFakeLym(t, parentDir)
 				fakeClaude := filepath.Join(parentDir, "claude.exe")
 
 				// Pre-create a stale report from a prior run.
@@ -318,7 +318,7 @@ func TestRunSuite_PerSuiteSpec(t *testing.T) {
 				}
 
 				var gotDir, gotClaude, gotInstruction, gotBinDir string
-				restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
+				restore := stubSuiteSeams(t, fakeLym, fakeClaude, func(dir, claude, instruction, binDir string) int {
 					if _, statErr := os.Stat(stalePath); !os.IsNotExist(statErr) {
 						t.Errorf("stale report should be removed before launch; stat err = %v", statErr)
 					}
@@ -388,12 +388,12 @@ func TestRunSuite_PerSuiteSpec(t *testing.T) {
 
 			t.Run("prompt override", func(t *testing.T) {
 				parentDir, _ := makeHubRepo(t)
-				fakeLyx := makeFakeLyx(t, parentDir)
+				fakeLym := makeFakeLym(t, parentDir)
 				fakeClaude := filepath.Join(parentDir, "claude.exe")
 				customPrompt := "Do the " + tt.name + " thing entirely differently."
 
 				var gotInstruction string
-				restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
+				restore := stubSuiteSeams(t, fakeLym, fakeClaude, func(dir, claude, instruction, binDir string) int {
 					gotInstruction = instruction
 					return 0
 				})
@@ -420,14 +420,14 @@ func TestRunSuite_DevBinaryPrependsBinDir(t *testing.T) {
 	if err := os.MkdirAll(devBinDir, 0o755); err != nil {
 		t.Fatalf("mkdir dev-bin dir: %v", err)
 	}
-	devLyx := filepath.Join(devBinDir, "lyx")
-	if err := os.WriteFile(devLyx, []byte("fake dev lyx binary"), 0o755); err != nil {
-		t.Fatalf("write fake dev lyx: %v", err)
+	devLym := filepath.Join(devBinDir, "lym")
+	if err := os.WriteFile(devLym, []byte("fake dev lym binary"), 0o755); err != nil {
+		t.Fatalf("write fake dev lym: %v", err)
 	}
 
 	oldDevBinPath := devBinPath
 	defer func() { devBinPath = oldDevBinPath }()
-	devBinPath = func() (string, error) { return devLyx, nil }
+	devBinPath = func() (string, error) { return devLym, nil }
 
 	oldLookPath := lookPath
 	defer func() { lookPath = oldLookPath }()
@@ -459,20 +459,20 @@ func TestRunSuite_DevBinaryPrependsBinDir(t *testing.T) {
 // TestRunSuite_Overrides verifies that runSuite honours -claude and -prompt override arguments.
 func TestRunSuite_Overrides(t *testing.T) {
 	parentDir, _ := makeHubRepo(t)
-	fakeLyx := makeFakeLyx(t, parentDir)
+	fakeLym := makeFakeLym(t, parentDir)
 
 	customClaude := filepath.Join(parentDir, "custom-claude.exe")
 	customPrompt := "Do something entirely custom."
 
 	oldDevBinPath := devBinPath
 	defer func() { devBinPath = oldDevBinPath }()
-	devBinPath = func() (string, error) { return filepath.Join(t.TempDir(), "lyx"), nil }
+	devBinPath = func() (string, error) { return filepath.Join(t.TempDir(), "lym"), nil }
 
 	oldLookPath := lookPath
 	defer func() { lookPath = oldLookPath }()
 	lookPath = func(name string) (string, error) {
-		if name == "lyx" {
-			return fakeLyx, nil
+		if name == "lym" {
+			return fakeLym, nil
 		}
 		t.Errorf("unexpected lookPath call for %q; claude override should skip PATH lookup", name)
 		return "", fmt.Errorf("not found")
@@ -502,10 +502,10 @@ func TestRunSuite_Overrides(t *testing.T) {
 // tolerated (interactive sessions are expected to exit manually).
 func TestRunSuite_NonZeroLaunchTolerated(t *testing.T) {
 	parentDir, _ := makeHubRepo(t)
-	fakeLyx := makeFakeLyx(t, parentDir)
+	fakeLym := makeFakeLym(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
+	restore := stubSuiteSeams(t, fakeLym, fakeClaude, func(dir, claude, instruction, binDir string) int {
 		return 2
 	})
 	defer restore()
@@ -522,17 +522,17 @@ func TestRunSuite_NonZeroLaunchTolerated(t *testing.T) {
 // resolved from PATH.
 func TestRunSuite_ClaudeNotFound(t *testing.T) {
 	parentDir, _ := makeHubRepo(t)
-	fakeLyx := makeFakeLyx(t, parentDir)
+	fakeLym := makeFakeLym(t, parentDir)
 
 	oldDevBinPath := devBinPath
 	defer func() { devBinPath = oldDevBinPath }()
-	devBinPath = func() (string, error) { return filepath.Join(t.TempDir(), "lyx"), nil }
+	devBinPath = func() (string, error) { return filepath.Join(t.TempDir(), "lym"), nil }
 
 	oldLookPath := lookPath
 	defer func() { lookPath = oldLookPath }()
 	lookPath = func(name string) (string, error) {
-		if name == "lyx" {
-			return fakeLyx, nil
+		if name == "lym" {
+			return fakeLym, nil
 		}
 		return "", fmt.Errorf("executable file not found in %%PATH%%")
 	}
@@ -565,7 +565,7 @@ func TestSuiteSpecs_ReedTeardownFlag(t *testing.T) {
 	}
 }
 
-// TestRunSuite_ReedTeardown verifies that a live-reed suite calls reedDown exactly once, after the agent session ends and whatever the agent's exit code, with the repo directory and the resolved lyx; that the core suite never calls it; and that a reedDown error does not turn a completed session into a launcher failure.
+// TestRunSuite_ReedTeardown verifies that a live-reed suite calls reedDown exactly once, after the agent session ends and whatever the agent's exit code, with the repo directory and the resolved lym; that the core suite never calls it; and that a reedDown error does not turn a completed session into a launcher failure.
 func TestRunSuite_ReedTeardown(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -578,29 +578,29 @@ func TestRunSuite_ReedTeardown(t *testing.T) {
 		{"creel suite tears down once after the agent", creelSuite, 0, nil, 1},
 		{"core suite never tears down", mainSuite, 0, nil, 0},
 		{"teardown runs after a non-zero agent exit", burlerSuite, 2, nil, 1},
-		{"a teardown failure is tolerated", burlerSuite, 0, fmt.Errorf("lyx reed down: exit status 1"), 1},
+		{"a teardown failure is tolerated", burlerSuite, 0, fmt.Errorf("lym reed down: exit status 1"), 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			parentDir, repoDir := makeHubRepo(t)
-			fakeLyx := makeFakeLyx(t, parentDir)
+			fakeLym := makeFakeLym(t, parentDir)
 			fakeClaude := filepath.Join(parentDir, "claude.exe")
 
 			agentDone := false
-			restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
+			restore := stubSuiteSeams(t, fakeLym, fakeClaude, func(dir, claude, instruction, binDir string) int {
 				agentDone = true
 				return tt.agentExit
 			})
 			defer restore()
 
-			var gotDir, gotLyx string
+			var gotDir, gotLym string
 			teardownCalls := 0
-			reedDown = func(dir, lyx string) error {
+			reedDown = func(dir, lym string) error {
 				if !agentDone {
 					t.Error("reedDown called before launchAgent returned")
 				}
 				teardownCalls++
-				gotDir, gotLyx = dir, lyx
+				gotDir, gotLym = dir, lym
 				return tt.teardownErr
 			}
 
@@ -616,8 +616,8 @@ func TestRunSuite_ReedTeardown(t *testing.T) {
 			if gotDir != repoDir {
 				t.Errorf("reedDown dir = %q; want %q", gotDir, repoDir)
 			}
-			if gotLyx != fakeLyx {
-				t.Errorf("reedDown lyx = %q; want %q", gotLyx, fakeLyx)
+			if gotLym != fakeLym {
+				t.Errorf("reedDown lym = %q; want %q", gotLym, fakeLym)
 			}
 		})
 	}
@@ -625,7 +625,7 @@ func TestRunSuite_ReedTeardown(t *testing.T) {
 
 // TestIsCharDevice_RegularFile verifies that isCharDevice reports false for a regular file.
 func TestIsCharDevice_RegularFile(t *testing.T) {
-	f, err := os.Open(makeFakeLyx(t, t.TempDir()))
+	f, err := os.Open(makeFakeLym(t, t.TempDir()))
 	if err != nil {
 		t.Fatalf("open temp file: %v", err)
 	}

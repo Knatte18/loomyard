@@ -43,49 +43,49 @@ func TestFinalize_OwnerChecks(t *testing.T) {
 		{name: "run and parent owned here lands", report: active, parent: here, wantOutcome: shedengine.Done},
 		{
 			name: "run owned elsewhere halts naming the owner and keep-local with the run's beam", report: ownedElsewhere("desk"), parent: here, subject: "beam", wantOutcome: shedengine.Stuck,
-			wantInReason: []string{`machine "desk"`, `"lyx adopt beam --keep-local"`},
+			wantInReason: []string{`machine "desk"`, `"lym adopt beam --keep-local"`},
 		},
 		{
 			name: "run with no adopt subject names its slug", report: ownedElsewhere("desk"), parent: here, wantOutcome: shedengine.Stuck,
-			wantInReason: []string{`machine "desk"`, `"lyx adopt me --keep-local"`},
+			wantInReason: []string{`machine "desk"`, `"lym adopt me --keep-local"`},
 		},
 		{
 			name: "prime owned elsewhere halts naming its owner and both adopt forms with root", report: active, parent: primeElsewhere, subject: "root", wantOutcome: shedengine.Stuck,
-			wantInReason: []string{"the prime", `machine "laptop"`, `"lyx adopt root"`, `"lyx adopt root" on machine "laptop"`, `"--keep-local" and "--drop-local"`},
+			wantInReason: []string{"the prime", `machine "laptop"`, `"lym adopt root"`, `"lym adopt root" on machine "laptop"`, `"--keep-local" and "--drop-local"`},
 		},
 		{
 			name: "parent pair owned elsewhere halts naming its slug in the adopt form", report: active, parent: pairElsewhere, subject: "base", wantOutcome: shedengine.Stuck,
-			wantInReason: []string{`the parent pair "base"`, `machine "laptop"`, `"lyx adopt base"`, `"lyx adopt base" on machine "laptop"`},
+			wantInReason: []string{`the parent pair "base"`, `machine "laptop"`, `"lym adopt base"`, `"lym adopt base" on machine "laptop"`},
 		},
 		{
 			name: "root run and prime both elsewhere name both owners and the one adopt of root", report: ownedElsewhere("desk"), parent: primeElsewhere, subject: "root", wantOutcome: shedengine.Stuck,
-			wantInReason: []string{`machine "desk"`, `machine "laptop"`, `"lyx adopt root" on machine "laptop"`, `"lyx adopt root --keep-local"`},
+			wantInReason: []string{`machine "desk"`, `machine "laptop"`, `"lym adopt root" on machine "laptop"`, `"lym adopt root --keep-local"`},
 		},
 		{
 			name: "beam run and prime both elsewhere name root and the beam in the run's form", report: ownedElsewhere("desk"), parent: primeElsewhere, subject: "me", wantOutcome: shedengine.Stuck,
-			wantInReason: []string{`machine "desk"`, `machine "laptop"`, `"lyx adopt me" on machine "laptop"`, `"lyx adopt root me --keep-local"`},
+			wantInReason: []string{`machine "desk"`, `machine "laptop"`, `"lym adopt me" on machine "laptop"`, `"lym adopt root me --keep-local"`},
 		},
 		{
 			name: "member run and its beam both elsewhere name the beam once", report: ownedElsewhere("desk"), parent: pairElsewhere, subject: "base", wantOutcome: shedengine.Stuck,
-			wantInReason: []string{`machine "desk"`, `machine "laptop"`, `"lyx adopt base --keep-local"`},
+			wantInReason: []string{`machine "desk"`, `machine "laptop"`, `"lym adopt base --keep-local"`},
 		},
 		{
 			name: "beam run and parent pair both elsewhere name the parent slug in the run's form", report: ownedElsewhere("desk"), parent: pairElsewhere, subject: "me", wantOutcome: shedengine.Stuck,
-			wantInReason: []string{`machine "desk"`, `machine "laptop"`, `"lyx adopt base me --keep-local"`},
+			wantInReason: []string{`machine "desk"`, `machine "laptop"`, `"lym adopt base me --keep-local"`},
 		},
 		{
 			name: "an unreachable origin halts naming the re-run", report: unreachable, parent: here, wantOutcome: shedengine.Stuck,
-			wantInReason: []string{"origin was unreachable", `"lyx loom resume"`, "once origin answers"},
+			wantInReason: []string{"origin was unreachable", `"lym loom resume"`, "once origin answers"},
 		},
 		{name: "a parent holding the work lands under an owned-elsewhere report", report: ownedElsewhere("desk"), holds: true, parent: primeElsewhere, wantOutcome: shedengine.Done},
 		{name: "a parent holding the work lands under an unreachable report", report: unreachable, holds: true, parent: here, wantOutcome: shedengine.Done},
 		{
 			name: "a failed read of whether the parent holds the work halts", report: active, holdsErr: errors.New("no origin record"), parent: here, wantOutcome: shedengine.Stuck,
-			wantInReason: []string{"no origin record", `"lyx loom resume"`},
+			wantInReason: []string{"no origin record", `"lym loom resume"`},
 		},
 		{
 			name: "a failed read of the parent's owner halts", report: active, parentErr: errors.New("board unreadable"), wantOutcome: shedengine.Stuck,
-			wantInReason: []string{"board unreadable", `"lyx loom resume"`},
+			wantInReason: []string{"board unreadable", `"lym loom resume"`},
 		},
 	}
 	for _, tt := range tests {

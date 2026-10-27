@@ -464,7 +464,7 @@ func TestReconcile_SourceDirNeverFailsReconcile(t *testing.T) {
 // TestReconcile_ModeDevRefusalNamesItsRemedy pins the dev-mode refusal's message, not just its
 // behaviour. The refusal is one-way -- an older installed binary running in production mode DOES
 // refresh, so it can downgrade a board's stencils, after which a newer dev build can only warn,
-// on every invocation, forever. A warning that does not name "lyx stencil sync" reads as benign
+// on every invocation, forever. A warning that does not name "lym stencil sync" reads as benign
 // housekeeping while it is reporting that every producer will run on the older on-disk prompt.
 func TestReconcile_ModeDevRefusalNamesItsRemedy(t *testing.T) {
 	recorded := Writer{Revision: "recorded-rev"}
@@ -474,9 +474,9 @@ func TestReconcile_ModeDevRefusalNamesItsRemedy(t *testing.T) {
 		older func(Writer) Ordering
 		want  []string
 	}{
-		{"DevMode", ModeDev, nil, []string{"lyx stencil sync", "OLDER", "family-one", "family-two"}},
-		{"UnstampedMode", ModeUnstamped, nil, []string{"lyx stencil sync", "update-plugins.sh", "OLDER", "family-one", "family-two"}},
-		{"ProductionRecordedNotOlder", ModeProduction, func(Writer) Ordering { return RecordedNotOlder }, []string{"lyx stencil sync", "family-one", "family-two", "recorded-rev", "running-rev"}},
+		{"DevMode", ModeDev, nil, []string{"lym stencil sync", "OLDER", "family-one", "family-two"}},
+		{"UnstampedMode", ModeUnstamped, nil, []string{"lym stencil sync", "update-plugins.sh", "OLDER", "family-one", "family-two"}},
+		{"ProductionRecordedNotOlder", ModeProduction, func(Writer) Ordering { return RecordedNotOlder }, []string{"lym stencil sync", "family-one", "family-two", "recorded-rev", "running-rev"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

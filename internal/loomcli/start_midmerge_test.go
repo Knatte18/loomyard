@@ -18,7 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -28,8 +28,8 @@ import (
 var ownLeftoverState = fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Verb: fabricengine.MergeVerbMergeIn, Source: "main", Conflicts: []string{"a.go"}}
 
 // parentBranchSeam answers the recorded parent branch main, or the failure err when it is non-nil.
-func parentBranchSeam(err error) func(*lyxcwd.Location) (string, error) {
-	return func(*lyxcwd.Location) (string, error) {
+func parentBranchSeam(err error) func(*lymcwd.Location) (string, error) {
+	return func(*lymcwd.Location) (string, error) {
 		if err != nil {
 			return "", err
 		}
@@ -66,7 +66,7 @@ type fakeMidMerge struct {
 	err   error
 }
 
-func (f *fakeMidMerge) probe(*lyxcwd.Location) (fabricengine.MidMergeState, error) {
+func (f *fakeMidMerge) probe(*lymcwd.Location) (fabricengine.MidMergeState, error) {
 	f.calls++
 	return f.state, f.err
 }
@@ -121,7 +121,7 @@ func assertNothingPutToWork(t *testing.T, c *loomCLI, starter *fakeDriverStarter
 }
 
 func TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals(t *testing.T) {
-	fabricMsg := []string{"lyx fabric merge-stage", "lyx fabric merge --continue", "lyx fabric merge --abort", "a session lyx refuses the verb from reports status: FAILED and the orch runs it"}
+	fabricMsg := []string{"lym fabric merge-stage", "lym fabric merge --continue", "lym fabric merge --abort", "a session lym refuses the verb from reports status: FAILED and the orch runs it"}
 	tests := []struct {
 		name      string
 		driver    string
@@ -264,7 +264,7 @@ func TestRunDriverSpawnAndWait_MidMerge_LiveWorkingDriverNotProbed(t *testing.T)
 func TestRunDriverSpawnAndWait_MidMerge_ProbeErrorRefuses(t *testing.T) {
 	tests := []struct {
 		name  string
-		probe func(*lyxcwd.Location) (fabricengine.MidMergeState, error)
+		probe func(*lymcwd.Location) (fabricengine.MidMergeState, error)
 		// wantIn are substrings of the error message, when the failure is canned.
 		wantIn []string
 		// producer is the row the persisted status names as current;
@@ -275,10 +275,10 @@ func TestRunDriverSpawnAndWait_MidMerge_ProbeErrorRefuses(t *testing.T) {
 		// statusUnreadable puts a directory where the status file belongs, so reading it fails without a decode failure.
 		statusUnreadable bool
 	}{
-		{name: "probe error names the failure and the retry", probe: (&fakeMidMerge{err: errors.New("boom")}).probe, wantIn: []string{"boom", `re-run "lyx loom start"`}},
+		{name: "probe error names the failure and the retry", probe: (&fakeMidMerge{err: errors.New("boom")}).probe, wantIn: []string{"boom", `re-run "lym loom start"`}},
 		{name: "real probe on a non-pair", probe: fabricengine.MidMerge},
-		{name: "unreadable parent branch at Parent-Align names the failure and the way forward", probe: (&fakeMidMerge{state: ownLeftoverState}).probe, producer: loomshed.NameParentAlign, parentErr: errors.New("origin boom"), wantIn: []string{"origin boom", `"lyx loom start --parent <branch>"`, `re-run "lyx loom start"`}},
-		{name: "unreadable status file names the failure and the retry", probe: (&fakeMidMerge{state: ownLeftoverState}).probe, statusUnreadable: true, wantIn: []string{state.ErrRead.Error(), `re-run "lyx loom start"`}},
+		{name: "unreadable parent branch at Parent-Align names the failure and the way forward", probe: (&fakeMidMerge{state: ownLeftoverState}).probe, producer: loomshed.NameParentAlign, parentErr: errors.New("origin boom"), wantIn: []string{"origin boom", `"lym loom start --parent <branch>"`, `re-run "lym loom start"`}},
+		{name: "unreadable status file names the failure and the retry", probe: (&fakeMidMerge{state: ownLeftoverState}).probe, statusUnreadable: true, wantIn: []string{state.ErrRead.Error(), `re-run "lym loom start"`}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

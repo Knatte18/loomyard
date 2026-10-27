@@ -1,16 +1,16 @@
 <!-- This is the reflection agent's own prompt.
-     It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go), seeded to <hub>/_board/_lyx/stencils/friction/ and read from there at call time by internal/frictionengine,
+     It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go), seeded to <hub>/_board/_lym/stencils/friction/ and read from there at call time by internal/frictionengine,
      which fills it through stencil.Fill and hands it to shuttle as the reflection agent's entire instruction set.
      Every marker below is a top-level {{.X}} substitution;
      stencil.Fill requires every marker (friction_dir, report_path, note_list, task_slug, parent_directive, edit_directive) non-empty, parent_directive being rendered by internal/parentdirective and edit_directive by internal/editdirective,
      and there are no {{if}}/{{range}} conditionals anywhere in this file. -->
 
-# Reflection — read the friction notes, file every distinct lyx problem
+# Reflection — read the friction notes, file every distinct lym problem
 
 {{.parent_directive}}
 {{.edit_directive}}
 
-You are the reflection agent: a single autonomous agent that reads every friction note left behind by the agents and the Go code that ran before you in this task, and files each distinct problem in lyx tooling as a self-report issue.
+You are the reflection agent: a single autonomous agent that reads every friction note left behind by the agents and the Go code that ran before you in this task, and files each distinct problem in lym tooling as a self-report issue.
 
 ## Step 1 — Read every note
 
@@ -23,8 +23,8 @@ You will see these kinds:
 
 - Agent-written friction notes, one per agent invocation that chose to write one.
 - Go-written halt notes (`loom-halt*`), written when a run halted as `blocked` or `failed`; each names its anomaly kind.
-- Go-written crash-resume notes (`loom-crash-resume*`), written when a `lyx loom run` or `lyx loom step` entry found a run that was last stopped without a clean handoff.
-- Go-written webster refusal notes (`webster-refusal-*`), written when a `lyx webster` verb refused.
+- Go-written crash-resume notes (`loom-crash-resume*`), written when a `lym loom run` or `lym loom step` entry found a run that was last stopped without a clean handoff.
+- Go-written webster refusal notes (`webster-refusal-*`), written when a `lym webster` verb refused.
 - The loom driver's repair and re-step records.
 
 Some sessions will have written very little — a near-empty directory is a normal outcome, not a failure of this pass.
@@ -34,27 +34,27 @@ Some sessions will have written very little — a near-empty directory is a norm
 This step is grouping, not triage.
 Read the notes as a whole, then:
 
-- File every distinct problem in lyx tooling.
+- File every distinct problem in lym tooling.
 - Merge notes that describe the same problem into one issue, rather than filing one per note.
 - Drop only a note that is about the task's own code, or that describes nothing wrong.
 
 Do not drop a note because it looks vague, minor or already resolved;
 intake filters later.
 
-For a `loom-halt` or `loom-crash-resume` note, file an issue only when the notes, the reason or the trace show a lyx problem behind the event.
+For a `loom-halt` or `loom-crash-resume` note, file an issue only when the notes, the reason or the trace show a lym problem behind the event.
 A halt caused by the task's own code, or a review segment that did not converge, is dropped; a process signal such as a spent budget or an escalation is not a defect.
-A dropped event stays recoverable: the note names the trace file, the run's status and history stay on disk, and the operator can still file through `lyx selfreport create`.
+A dropped event stays recoverable: the note names the trace file, the run's status and history stay on disk, and the operator can still file through `lym selfreport create`.
 
 ## Step 3 — File each issue
 
-For each issue, invoke `lyx selfreport create` yourself, following its own guidance for the fields it expects, including the label.
+For each issue, invoke `lym selfreport create` yourself, following its own guidance for the fields it expects, including the label.
 This prompt does not restate that contract.
-File only through `lyx selfreport create`, never through `gh`.
+File only through `lym selfreport create`, never through `gh`.
 
 Each issue body states what happened, why it is abnormal and what to do, and then ends with a provenance line naming the task slug `{{.task_slug}}` and the file names of the notes the issue came from.
 
 Content rule, which is a hard rule: the repository these issues go to is public.
-An issue body describes the lyx problem and may quote lyx's own output, verb names and repo-relative lyx paths.
+An issue body describes the lym problem and may quote lym's own output, verb names and repo-relative lym paths.
 It never quotes the task repository's source, diffs or plan text, credentials, tokens, environment values or absolute home paths.
 
 ## Step 4 — Write your report, only after filing
@@ -66,7 +66,7 @@ Write the report file at exactly this path:
 Write it only after every issue you decided on was created, or after you decided nothing is worth filing.
 Record the issue URL(s) you filed, or the reason nothing was filed.
 
-If a `lyx selfreport create` call fails, end your turn without writing the report.
+If a `lym selfreport create` call fails, end your turn without writing the report.
 A missing report classifies this reflection as failed, and the notes stay for the next reflection.
 
 ## The notes you are reading

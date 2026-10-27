@@ -1,6 +1,6 @@
 //go:build tier0
 
-// specsdir_test.go covers SpecsDir's derivation from BoardDir and lyxdirs.LyxDirName, and its
+// specsdir_test.go covers SpecsDir's derivation from BoardDir and lymdirs.LymDirName, and its
 // sibling relationship to StencilsDir.
 
 package fabricengine
@@ -11,11 +11,11 @@ import (
 	"testing"
 )
 
-//testtiming:keep SpecsDir deriving _board/_lyx/specs, being a child of BoardDir and a sibling of StencilsDir; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep SpecsDir deriving _board/_lym/specs, being a child of BoardDir and a sibling of StencilsDir; coverage of its blocks by other tests does not show an assertion of this
 func TestSpecsDir(t *testing.T) {
 	hub := "/h"
 	got := SpecsDir(hub)
-	want := filepath.Join(hub, "_board", "_lyx", "specs")
+	want := filepath.Join(hub, "_board", "_lym", "specs")
 	if got != want {
 		t.Errorf("SpecsDir(%q) = %q; want %q", hub, got, want)
 	}

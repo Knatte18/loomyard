@@ -196,7 +196,7 @@ func TestAssertRecordMatchesDiff(t *testing.T) {
 		},
 		{
 			name:       "FileWritten_OutsideGitNotExempt",
-			rec:        buildRecord(mutation(fabricengine.KindFileWritten, "_lyx/config/fabric.yaml")),
+			rec:        buildRecord(mutation(fabricengine.KindFileWritten, "_lym/config/fabric.yaml")),
 			unfiltered: nil,
 			wantFail:   true,
 		},

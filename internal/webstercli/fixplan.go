@@ -48,7 +48,7 @@ func (c *websterCLI) fixPlanCmd() *cobra.Command {
 plan-conflict record the latest begin-batch refusal left -- or, on a
 re-entrant call, attaches to the fixer a prior call spawned and has not yet
 seen end. The fixer edits the cards the conflict names so they match the
-tree, runs "lyx webster rebaseline" naming them, and writes a reply whose
+tree, runs "lym webster rebaseline" naming them, and writes a reply whose
 first line is its verdict: "fixed" when every finding was a stale name, path
 or glyph, "plan_writer" when a fix would change what a card does, in which
 case it leaves the plan as the run recorded it. A call that spawns first
@@ -74,8 +74,8 @@ once, so the strand survives a crash. Under a pause that covers the pair it
 refuses first, claiming Master into it.
 
 Example:
-  lyx webster fix-plan
-  lyx webster fix-plan --wait 8m`,
+  lym webster fix-plan
+  lym webster fix-plan --wait 8m`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
@@ -107,7 +107,7 @@ Example:
 				return nil
 			}
 			if st == nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, `webster: no run in progress; run "lyx webster run" first`))
+				clihelp.SetExit(cmd.Context(), output.Err(out, `webster: no run in progress; run "lym webster run" first`))
 				return nil
 			}
 
@@ -119,7 +119,7 @@ Example:
 			// Standalone mode boots its own reed session here, as fix-verify does, since nothing else can reach standalone geometry.
 			if c.reedUp != nil {
 				if err := c.reedUp(); err != nil {
-					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: bring up the standalone reed session: %v; way forward: transient, re-run `lyx webster fix-plan`", err)))
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: bring up the standalone reed session: %v; way forward: transient, re-run `lym webster fix-plan`", err)))
 					return nil
 				}
 			}

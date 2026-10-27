@@ -1,11 +1,9 @@
 // geometry.go declares Geometry, the struct webster is told its coordinates through.
-// It declares the type only — no constructor, no validator, and no default; populating every field
-// with a usable absolute path is entirely the caller's obligation, exactly as
-// internal/reedengine/geometry.go does for reed.
-// hubgeom.WebsterGeometry is the hub-mode teller that builds a Geometry from a resolved
-// *lyxcwd.Location; internal/standalonegeom is the told-mode sibling that builds one from a
-// standalone state tree. The dependency direction is one-way: those packages import websterengine,
-// never the reverse.
+// It declares the type only — no constructor, no validator, and no default;
+// populating every field with a usable absolute path is entirely the caller's obligation, exactly as internal/reedengine/geometry.go does for reed.
+// hubgeom.WebsterGeometry is the hub-mode teller that builds a Geometry from a resolved *lymcwd.Location;
+// internal/standalonegeom is the told-mode sibling that builds one from a standalone state tree.
+// The dependency direction is one-way: those packages import websterengine, never the reverse.
 
 package websterengine
 
@@ -24,7 +22,7 @@ var errNoIndex = errors.New("webster: the geometry carries no code index; the CL
 // No method here validates or recomputes any field — populating every path field with a usable absolute
 // path is entirely the caller's obligation.
 type Geometry struct {
-	// AnchorRoot is the base every _lyx/.lyx join and every module config read hangs off.
+	// AnchorRoot is the base every _lym/.lym join and every module config read hangs off.
 	AnchorRoot string
 	// WorktreeRoot is the repo checkout the head-SHA capture and the dirty-worktree check read.
 	// It is also the fork-audit workdir, which must equal the pane's actual cwd
@@ -71,7 +69,7 @@ type Geometry struct {
 	// Empty in standalone mode, where no pool means no wait.
 	GateWaitDir string
 	// GateConfig is the told reader of the gate config the verify gate renders its `webster` gate call from, read at each call so an edit between two arrivals takes effect.
-	// A refusal it returns names `lyx config gate`.
+	// A refusal it returns names `lym config gate`.
 	GateConfig func() (gateslot.Config, error)
 	// ParentName is the told parent agent name the master and recovery prompts render their parent directive from.
 	// Empty means no parent, which renders the no-parent variant.

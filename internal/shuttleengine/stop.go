@@ -9,7 +9,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
-// runOutcomeStopped is the RunState.Outcome of a run lyx stopped before it finished.
+// runOutcomeStopped is the RunState.Outcome of a run lym stopped before it finished.
 // It is a record-only terminal value, never a Result.Outcome.
 const runOutcomeStopped = "stopped"
 

@@ -69,7 +69,7 @@ func TestPRReviewEntry(t *testing.T) {
 		want  []string
 	}{
 		{"MissingKey", Config{}, true, []string{prReviewTestRow, "pr_review_setting", "way forward: set pr_review_setting to a module.key reference such as loom.pr_review"}},
-		{"NonBoolValue", Config{"pr_review_setting": "loom.pr_review"}, "yes", []string{prReviewTestRow, "loom.pr_review", "way forward: set loom.pr_review to true or false through `lyx config loom` from the prime"}},
+		{"NonBoolValue", Config{"pr_review_setting": "loom.pr_review"}, "yes", []string{prReviewTestRow, "loom.pr_review", "way forward: set loom.pr_review to true or false through `lym config loom` from the prime"}},
 		{"UnknownKey", Config{"pr_review_setting": "loom.pr_review", "bogus_key": "x"}, true, []string{prReviewTestRow, "bogus_key", "way forward: remove the key; a PRReview row takes pr_review_setting"}},
 	}
 	for _, tt := range refusals {

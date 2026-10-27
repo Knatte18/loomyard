@@ -22,7 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
@@ -44,7 +44,7 @@ func newResetFixture(t *testing.T, h *hubforge.Hub, slug string) *resetFixture {
 
 	hubforge.AddPair(t, h, slug)
 	checkout := h.PairCodeWorktree(slug)
-	loc, err := lyxcwd.ResolveWorktree(checkout)
+	loc, err := lymcwd.ResolveWorktree(checkout)
 	if err != nil {
 		t.Fatalf("ResolveWorktree(%s): %v", checkout, err)
 	}
@@ -396,7 +396,7 @@ func TestResetCmd(t *testing.T) {
 		}
 		t.Cleanup(func() { _ = held.Release() })
 
-		fx.wantRefusal(t, []string{"--to", "start"}, "run.lock held", "lyx webster status")
+		fx.wantRefusal(t, []string{"--to", "start"}, "run.lock held", "lym webster status")
 
 		code, envelope := fx.reset(t, "--to", "report-head", "--batch", "1")
 		if code != 0 || envelope["ok"] != true || envelope["target"] != "report-head" || envelope["sha"] != fx.base {
@@ -532,7 +532,7 @@ func TestResetCmd(t *testing.T) {
 
 		fx.wantRefusal(t, []string{"--to", "start"},
 			"could not remove recovery strand strand-live", "reed is down",
-			"run `lyx reed remove strand-live`", "re-run `lyx webster reset --to start`")
+			"run `lym reed remove strand-live`", "re-run `lym webster reset --to start`")
 		loaded, err := websterengine.LoadState(fx.cli.geom.WebsterDir, fx.cli.geom.ScratchDir)
 		if err != nil || loaded == nil || loaded.PreFixHead != fx.base {
 			t.Errorf("state after the refusal = %+v, %v; want it unsaved with PreFixHead %s", loaded, err, fx.base)
@@ -554,8 +554,8 @@ func TestResetCmd(t *testing.T) {
 				fx.saveState(t, startedAt(fx.base))
 			},
 			attempts: []refusalAttempt{
-				{[]string{"--to", "bogus"}, []string{`"bogus"`, "is not one of start, pre-fix, report-head, last-batch-head, batch-start", "lyx webster reset --to start", "--batch NN for report-head or batch-start"}},
-				{nil, []string{"is not one of start, pre-fix, report-head, last-batch-head, batch-start", "lyx webster reset --to start"}},
+				{[]string{"--to", "bogus"}, []string{`"bogus"`, "is not one of start, pre-fix, report-head, last-batch-head, batch-start", "lym webster reset --to start", "--batch NN for report-head or batch-start"}},
+				{nil, []string{"is not one of start, pre-fix, report-head, last-batch-head, batch-start", "lym webster reset --to start"}},
 			},
 		},
 		{
@@ -571,12 +571,12 @@ func TestResetCmd(t *testing.T) {
 				}
 				t.Cleanup(func() { _ = held.Release() })
 			},
-			attempts: []refusalAttempt{{[]string{"--to", "start"}, []string{"run.lock held", "lyx webster status"}}},
+			attempts: []refusalAttempt{{[]string{"--to", "start"}, []string{"run.lock held", "lym webster status"}}},
 		},
 		{
 			name:     "no run",
 			arrange:  func(*testing.T, *resetFixture) {},
-			attempts: []refusalAttempt{{[]string{"--to", "start"}, []string{"no state.json", "run `lyx webster run` first"}}},
+			attempts: []refusalAttempt{{[]string{"--to", "start"}, []string{"no state.json", "run `lym webster run` first"}}},
 		},
 		{
 			name: "merge in progress",
@@ -587,7 +587,7 @@ func TestResetCmd(t *testing.T) {
 					t.Fatal(err)
 				}
 			},
-			attempts: []refusalAttempt{{[]string{"--to", "start"}, []string{"merge in progress", "lyx fabric merge --abort", refusedVerbClause}}},
+			attempts: []refusalAttempt{{[]string{"--to", "start"}, []string{"merge in progress", "lym fabric merge --abort", refusedVerbClause}}},
 		},
 		{
 			name: "detached head",
@@ -595,7 +595,7 @@ func TestResetCmd(t *testing.T) {
 				fx.saveState(t, startedAt(fx.base))
 				gitkit.Git(t, fx.checkout, "checkout", "--detach")
 			},
-			attempts: []refusalAttempt{{[]string{"--to", "start"}, []string{"git switch <task-branch>", "re-run `lyx webster reset --to start`"}}},
+			attempts: []refusalAttempt{{[]string{"--to", "start"}, []string{"git switch <task-branch>", "re-run `lym webster reset --to start`"}}},
 		},
 		{
 			name: "parent branch",
@@ -611,7 +611,7 @@ func TestResetCmd(t *testing.T) {
 				fx.saveState(t, startedAt(fx.base))
 				fx.cli.parentBranch = func() (string, error) { return "", errors.New("no origin record") }
 			},
-			attempts: []refusalAttempt{{[]string{"--to", "start"}, []string{"the parent branch is unknown", "lyx fabric reconcile", refusedVerbClause}}},
+			attempts: []refusalAttempt{{[]string{"--to", "start"}, []string{"the parent branch is unknown", "lym fabric reconcile", refusedVerbClause}}},
 		},
 		{
 			name: "non-pair branch refused by fabric",
@@ -627,7 +627,7 @@ func TestResetCmd(t *testing.T) {
 				fx.saveState(t, &websterengine.State{MasterSessionID: "master-session", Batches: map[int]*websterengine.BatchState{}})
 			},
 			attempts: []refusalAttempt{
-				{[]string{"--to", "pre-fix"}, []string{"no pre-fix head", "run `lyx webster run`"}},
+				{[]string{"--to", "pre-fix"}, []string{"no pre-fix head", "run `lym webster run`"}},
 			},
 		},
 		{
@@ -650,7 +650,7 @@ func TestResetCmd(t *testing.T) {
 				fx.saveState(t, st)
 			},
 			attempts: []refusalAttempt{
-				{[]string{"--to", "pre-fix"}, []string{"not an ancestor of HEAD", "lyx webster reset --to start"}},
+				{[]string{"--to", "pre-fix"}, []string{"not an ancestor of HEAD", "lym webster reset --to start"}},
 			},
 		},
 		{
@@ -661,7 +661,7 @@ func TestResetCmd(t *testing.T) {
 					t.Fatal(err)
 				}
 			},
-			attempts: []refusalAttempt{{[]string{"--to", "start"}, []string{"later.txt", "git checkout -- <path>", "re-run `lyx webster reset --to start`"}}},
+			attempts: []refusalAttempt{{[]string{"--to", "start"}, []string{"later.txt", "git checkout -- <path>", "re-run `lym webster reset --to start`"}}},
 		},
 		{
 			name: "remote-only commit names the ours merge",
@@ -693,7 +693,7 @@ func TestResetCmd(t *testing.T) {
 				"git's keep form would overwrite uncommitted changes",
 				"run `git checkout -- own.txt` to drop the run's own change",
 				"commit other.txt, or restore it yourself",
-				"re-run `lyx webster reset --to start`",
+				"re-run `lym webster reset --to start`",
 			}}},
 		},
 	}

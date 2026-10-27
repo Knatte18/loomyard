@@ -13,7 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
-// writeBeamLayer writes document as beam.yaml under baseDir's _lyx/config.
+// writeBeamLayer writes document as beam.yaml under baseDir's _lym/config.
 func writeBeamLayer(t *testing.T, baseDir, document string) {
 	t.Helper()
 	path := configengine.ConfigFile(baseDir, "beam")
@@ -36,7 +36,7 @@ func TestLoadConfig(t *testing.T) {
 	}{
 		{name: "the template defaults", want: Config{MaxRuns: 3, BoardTidyEvery: 5, BoardTidyTimeoutMin: 30}},
 		{name: "a worktree layer's max_runs of 0 starts none", worktree: "max_runs: 0\n", want: Config{MaxRuns: 0, BoardTidyEvery: 5, BoardTidyTimeoutMin: 30}},
-		{name: "a negative board_tidy_every is refused naming the key", worktree: "board_tidy_every: -1\n", wantErr: []string{"board_tidy_every", "lyx config beam --set"}},
+		{name: "a negative board_tidy_every is refused naming the key", worktree: "board_tidy_every: -1\n", wantErr: []string{"board_tidy_every", "lym config beam --set"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

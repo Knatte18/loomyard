@@ -18,7 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
-// TestNames pins the registry's ORDER and shape: every `lyx config` surface (help text, unknown-module error, --print sections, reconcile output, menu numbering) renders it in registry order,
+// TestNames pins the registry's ORDER and shape: every `lym config` surface (help text, unknown-module error, --print sections, reconcile output, menu numbering) renders it in registry order,
 // so an out-of-sort or repeated entry is user-visible, and every module carries a template and a load check.
 // Membership is pinned by TestRegistration_MatchesDeclarers.
 func TestNames(t *testing.T) {

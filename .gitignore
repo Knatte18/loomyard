@@ -1,8 +1,8 @@
 .vscode/settings.json
 
 # Compiled binary — built with `go build` / `go install`, never committed.
-/lyx
-lyx.exe
+/lym
+lym.exe
 
 # Same for `go build ./tools/godocreflow/...` run without -o from the repo root.
 /godocreflow
@@ -16,7 +16,7 @@ godocreflow.exe
 .dev-bin/
 
 # Machine-local reed session state (per-cwd), never committed.
-.lyx/
+.lym/
 
 # Leftover mill-era directories
 **/.millhouse/

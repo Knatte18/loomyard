@@ -132,7 +132,7 @@ type ArbiterOutcome struct {
 
 // HandOverSeam hands the run to a fresh driver of a newer build.
 type HandOverSeam struct {
-	// OnDiskBuild reads the build identity of the lyx executable now on disk.
+	// OnDiskBuild reads the build identity of the lym executable now on disk.
 	OnDiskBuild func() (buildvcs.Identity, error)
 	// BuildChanged reports whether the last step ran a known build other than onDisk.
 	BuildChanged func(onDisk buildvcs.Identity) bool
@@ -140,9 +140,9 @@ type HandOverSeam struct {
 	DirtyPaths func() ([]string, error)
 	// ReleaseLock releases the driver lock.
 	ReleaseLock func() error
-	// Executable is the on-disk lyx path resolved when the driver was wired, before any deploy replaced it.
+	// Executable is the on-disk lym path resolved when the driver was wired, before any deploy replaced it.
 	Executable string
-	// SpawnSuccessor starts a detached driver of the on-disk build from the lyx at executable.
+	// SpawnSuccessor starts a detached driver of the on-disk build from the lym at executable.
 	SpawnSuccessor func(executable string) error
 }
 

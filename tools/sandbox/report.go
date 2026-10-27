@@ -31,7 +31,7 @@ type reportMeta struct {
 	Fingerprint reportFingerprint `json:"fingerprint"`
 }
 
-// reportFingerprint identifies the exact lyx binary that produced a report.
+// reportFingerprint identifies the exact lym binary that produced a report.
 type reportFingerprint struct {
 	Path    string `json:"path"`
 	SHA256  string `json:"sha256"`
@@ -48,8 +48,8 @@ type reportItem struct {
 	Body  string `json:"body"`
 }
 
-// runFetch executes "sandbox fetch" after a suite session. Re-resolves lyx,
-// re-fingerprints it, and fetches agent-written sandbox-report.json.
+// runFetch executes "sandbox fetch" after a suite session.
+// Re-resolves lym, re-fingerprints it, and fetches agent-written sandbox-report.json.
 func runFetch(parentDir, loomyardRoot string) error {
 	warpRepoDir := filepath.Join(parentDir, hubName, repoDirName)
 
@@ -59,14 +59,14 @@ func runFetch(parentDir, loomyardRoot string) error {
 		return fmt.Errorf("stat warp repo %s: %w", warpRepoDir, err)
 	}
 
-	lyxPath, source, err := resolveLyx()
+	lymPath, source, err := resolveLym()
 	if err != nil {
 		return err
 	}
 
-	info, err := binaryFingerprint(lyxPath, source)
+	info, err := binaryFingerprint(lymPath, source)
 	if err != nil {
-		return fmt.Errorf("fingerprint lyx binary: %w", err)
+		return fmt.Errorf("fingerprint lym binary: %w", err)
 	}
 
 	destPath, count, err := fetchReport(warpRepoDir, loomyardRoot, info)

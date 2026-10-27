@@ -3,8 +3,8 @@
 // review_test.go — untagged Tier-1 unit tests for ResolveReview and LoomReviewsDir.
 // ResolveReview's tests mirror discussion_test.go's shape: pure Go over an in-memory Config and a
 // temp-dir modelspec registry, no live hub, reed, or network involved.
-// LoomReviewsDir's test mirrors discussionpath_test.go's shape: pure path arithmetic over a hand-built lyxcwd.Location;
-// the accessor is durable, rooted under _lyx.
+// LoomReviewsDir's test mirrors discussionpath_test.go's shape: pure path arithmetic over a hand-built lymcwd.Location;
+// the accessor is durable, rooted under _lym.
 
 package loomengine
 
@@ -18,8 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lenses"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -375,17 +375,17 @@ func TestResolveReviewAndJudge_MalformedSpec(t *testing.T) {
 	}
 }
 
-// TestLoomReviewsDir verifies LoomReviewsDir's returned path is AnchorPath-anchored, sits under the durable _lyx tree rather than the ephemeral one, and equals the anchor joined with its Rel form, whose exact value is pinned too.
+// TestLoomReviewsDir verifies LoomReviewsDir's returned path is AnchorPath-anchored, sits under the durable _lym tree rather than the ephemeral one, and equals the anchor joined with its Rel form, whose exact value is pinned too.
 func TestLoomReviewsDir(t *testing.T) {
-	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
+	l := &lymcwd.Location{
+		HubPath:      filepath.Join("home", "user", "repo-LYMHUB"),
 		WorktreeName: "repo",
 		// AnchorRel deliberately differs from "." to prove the accessor follows the
 		// anchored subpath, not the bare worktree root.
 		AnchorRel: filepath.Join("sub", "dir"),
 	}
 
-	want := filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName, "reviews")
+	want := filepath.Join(l.AnchorPath(), lymdirs.LymDirName, "reviews")
 	if got := LoomReviewsDir(l); got != want {
 		t.Errorf("LoomReviewsDir() = %q; want %q", got, want)
 	}
@@ -393,7 +393,7 @@ func TestLoomReviewsDir(t *testing.T) {
 	if got, rel := LoomReviewsDir(l), filepath.Join(l.AnchorPath(), LoomReviewsDirRel()); got != rel {
 		t.Errorf("LoomReviewsDir() = %q; want it to equal %q", got, rel)
 	}
-	if got := LoomReviewsDirRel(); got != filepath.Join(lyxdirs.LyxDirName, "reviews") {
-		t.Errorf("LoomReviewsDirRel() = %q; want %q", got, filepath.Join(lyxdirs.LyxDirName, "reviews"))
+	if got := LoomReviewsDirRel(); got != filepath.Join(lymdirs.LymDirName, "reviews") {
+		t.Errorf("LoomReviewsDirRel() = %q; want %q", got, filepath.Join(lymdirs.LymDirName, "reviews"))
 	}
 }

@@ -21,12 +21,12 @@ import (
 // tasks.json is always written, overwriting any existing file, and holds one "reed attach" task, run on demand or by its seeded key binding;
 // no task runs on folder open, so opening the folder starts no session and no agent.
 // Neither file touches .gitignore; the caller keeps .vscode/ out of git through info/exclude.
-// lyxPath is the resolved absolute lyx path stamped into the task;
-// an empty lyxPath becomes "lyx", so a resolution failure upstream still produces a runnable (PATH-dependent) task file rather than a broken one.
+// lymPath is the resolved absolute lym path stamped into the task;
+// an empty lymPath becomes "lym", so a resolution failure upstream still produces a runnable (PATH-dependent) task file rather than a broken one.
 // Returns an error if I/O fails (but not if settings.json already exists).
-func WriteConfig(worktreeDir, relpath, slug, color, lyxPath string) error {
-	if lyxPath == "" {
-		lyxPath = "lyx"
+func WriteConfig(worktreeDir, relpath, slug, color, lymPath string) error {
+	if lymPath == "" {
+		lymPath = "lym"
 	}
 
 	dir := filepath.Join(worktreeDir, relpath)
@@ -47,7 +47,7 @@ func WriteConfig(worktreeDir, relpath, slug, color, lyxPath string) error {
 				"titleBar.inactiveForeground": "#ffffffaa",
 			},
 			"files.watcherExclude": map[string]any{
-				"**/_lyx/**": true,
+				"**/_lym/**": true,
 			},
 			"window.title":                                 slug,
 			"workbench.startupEditor":                      "none",
@@ -66,7 +66,7 @@ func WriteConfig(worktreeDir, relpath, slug, color, lyxPath string) error {
 		return err
 	}
 
-	return writeAttachTask(filepath.Join(vscodePath, "tasks.json"), lyxPath)
+	return writeAttachTask(filepath.Join(vscodePath, "tasks.json"), lymPath)
 }
 
 // attachTaskLabel names the reed attach task; the seeded key binding finds the task by this label.
@@ -74,14 +74,14 @@ const attachTaskLabel = "reed attach"
 
 // writeAttachTask writes a tasks.json holding the single on-demand "reed attach" task, overwriting any existing file.
 // The task carries no runOptions, so VS Code runs it only from "Tasks: Run Task" or its seeded key binding, never on folder open.
-func writeAttachTask(tasksPath, lyxPath string) error {
+func writeAttachTask(tasksPath, lymPath string) error {
 	tasks := map[string]any{
 		"version": "2.0.0",
 		"tasks": []map[string]any{
 			{
 				"label":   attachTaskLabel,
 				"type":    "shell",
-				"command": lyxPath,
+				"command": lymPath,
 				"args":    []string{"reed", "attach"},
 				"presentation": map[string]any{
 					"reveal": "always",

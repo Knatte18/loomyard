@@ -5,7 +5,7 @@ REM Fixed file names, overwritten every run; the report names the plan it drew.
 REM The one argument is the plan directory, made absolute here (%~f1) because the tool runs
 REM from the repo root (%~dp0..\.., two levels up from this tools\plandag folder) so
 REM `go run` finds go.mod; restore cwd on exit:
-REM plandag.cmd ..\some-pair\_lyx\plan
+REM plandag.cmd ..\some-pair\_lym\plan
 if "%~1"=="" (
 	echo usage: plandag.cmd ^<plan-dir^> 1>&2
 	exit /b 2

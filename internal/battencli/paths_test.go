@@ -7,17 +7,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
-// locationFixtures returns two synthetic *lyxcwd.Location fixtures: one anchored at the worktree
+// locationFixtures returns two synthetic *lymcwd.Location fixtures: one anchored at the worktree
 // root ("."), and one anchored at a subpath, so every path constructor is exercised against both
 // anchoring shapes.
-func locationFixtures(t *testing.T) map[string]*lyxcwd.Location {
+func locationFixtures(t *testing.T) map[string]*lymcwd.Location {
 	t.Helper()
 	hub := t.TempDir()
-	return map[string]*lyxcwd.Location{
+	return map[string]*lymcwd.Location{
 		"RootAnchored": {
 			RepoName:     "example",
 			HubPath:      hub,
@@ -35,7 +35,7 @@ func locationFixtures(t *testing.T) map[string]*lyxcwd.Location {
 
 // TestPaths_ResolveUnderTheAnchorBySegment asserts, over a root-anchored and a subpath-anchored Location, the path constructors' whole contract:
 //   - BattenDir, PrimeRunLock and LandLock sit at their fixed spots under the ephemeral segment;
-//   - StatusFile lives under the fabric-synced _lyx segment while RunLock, StatusLock, PrimeRunLock and LandLock stay under the never-tracked .lyx segment, per the Durable-vs-Ephemeral State Invariant;
+//   - StatusFile lives under the fabric-synced _lym segment while RunLock, StatusLock, PrimeRunLock and LandLock stay under the never-tracked .lym segment, per the Durable-vs-Ephemeral State Invariant;
 //   - the two per-slug locks sit under BattenDir, and StatusFile, RunLock and StatusLock are pairwise distinct -- RunLock differing from StatusLock is what shedengine.Shed's own validation rejects outright, and it must not first surface at runtime;
 //   - every path stays under the Location's own anchor and none contains a managed task worktree's own path -- this package's half of the Batten Bookend Invariant's mechanical proxy, since every seam resolves against the prime Location's anchored tree, never the managed slug's worktree, which does not exist at wiring time.
 //
@@ -49,8 +49,8 @@ func TestPaths_ResolveUnderTheAnchorBySegment(t *testing.T) {
 
 			const managedSlug = "managed-task-slug"
 			separator := string(filepath.Separator)
-			durablePrefix := filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName) + separator
-			ephemeralPrefix := filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName) + separator
+			durablePrefix := filepath.Join(l.AnchorPath(), lymdirs.LymDirName) + separator
+			ephemeralPrefix := filepath.Join(l.AnchorPath(), lymdirs.DotLymDirName) + separator
 
 			dir := BattenDir(l, managedSlug)
 			statusFile := StatusFile(l, managedSlug)
@@ -59,13 +59,13 @@ func TestPaths_ResolveUnderTheAnchorBySegment(t *testing.T) {
 			primeRunLock := PrimeRunLock(l)
 			landLock := LandLock(l)
 
-			if want := filepath.Join(l.AnchorPath(), ".lyx", "shed", managedSlug); dir != want {
+			if want := filepath.Join(l.AnchorPath(), ".lym", "shed", managedSlug); dir != want {
 				t.Errorf("BattenDir() = %q; want %q", dir, want)
 			}
-			if want := filepath.Join(l.AnchorPath(), ".lyx", "shed", "run.lock"); primeRunLock != want {
+			if want := filepath.Join(l.AnchorPath(), ".lym", "shed", "run.lock"); primeRunLock != want {
 				t.Errorf("PrimeRunLock() = %q; want %q", primeRunLock, want)
 			}
-			if want := filepath.Join(l.AnchorPath(), ".lyx", "shed", "land.lock"); landLock != want {
+			if want := filepath.Join(l.AnchorPath(), ".lym", "shed", "land.lock"); landLock != want {
 				t.Errorf("LandLock() = %q; want %q", landLock, want)
 			}
 
@@ -78,7 +78,7 @@ func TestPaths_ResolveUnderTheAnchorBySegment(t *testing.T) {
 				}
 			}
 
-			// Only the two ephemeral locks live under BattenDir: StatusFile is durable, under the mirrored _lyx segment instead.
+			// Only the two ephemeral locks live under BattenDir: StatusFile is durable, under the mirrored _lym segment instead.
 			for pathName, got := range map[string]string{"RunLock": runLock, "StatusLock": statusLock} {
 				if !strings.HasPrefix(got, dir+separator) {
 					t.Errorf("%s() = %q; want it under BattenDir %q", pathName, got, dir)

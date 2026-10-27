@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	mergeWayForwardClause = `conclude it with "lyx fabric merge --continue" or discard it with "lyx fabric merge --abort", then resume; a session lyx refuses the verb from reports status: FAILED and the orch runs it`
+	mergeWayForwardClause = `conclude it with "lym fabric merge --continue" or discard it with "lym fabric merge --abort", then resume; a session lym refuses the verb from reports status: FAILED and the orch runs it`
 	resolverRanReason     = "the resolver ran"
 )
 
@@ -67,7 +67,7 @@ func TestPreMerge_ClearsOwnParkedMergeIn(t *testing.T) {
 			stopGUID:   "guid-1",
 			stopErr:    stopErr,
 			wantCalls:  "stop",
-			wantReason: `a conflict session of this run (strand guid-1) is still live and could not be stopped: stop boom; way forward: run "lyx reed remove guid-1", then "lyx loom resume"`,
+			wantReason: `a conflict session of this run (strand guid-1) is still live and could not be stopped: stop boom; way forward: run "lym reed remove guid-1", then "lym loom resume"`,
 		},
 		{
 			name:      "an unreadable strand table is an error with no abort",

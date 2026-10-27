@@ -37,7 +37,7 @@ type Row struct {
 }
 
 // steerPythonDeny refuses a Bash python invocation; it must contain no single/double quote or backslash (checked at init).
-const steerPythonDeny = "lyx agents never run Python; edit files with Edit or Write, search and read with grep, awk, cat or sed -n"
+const steerPythonDeny = "lym agents never run Python; edit files with Edit or Write, search and read with grep, awk, cat or sed -n"
 
 // noticePythonDeny announces the python deny in the same wording as its steer.
 const noticePythonDeny = steerPythonDeny + "."
@@ -84,7 +84,7 @@ const rmCommandPattern = commandPositionPattern + `rm([^A-Za-z0-9_./-]|$)`
 const shellExpansionPattern = "[$][A-Za-z0-9_{@*(]|`"
 
 // steerSleepDeny refuses a Bash systemctl machine sleep command; it must contain no single/double quote or backslash (checked at init).
-const steerSleepDeny = "the machine sleep commands are refused here; a hibernate goes through lyx hibernate request, which waits until every session is paused, and a pair agent asks its parent session to run it"
+const steerSleepDeny = "the machine sleep commands are refused here; a hibernate goes through lym hibernate request, which waits until every session is paused, and a pair agent asks its parent session to run it"
 
 // noticeSleepDeny announces the sleep deny in the same wording as its steer.
 const noticeSleepDeny = steerSleepDeny + "."
@@ -103,8 +103,8 @@ const goArgumentsPattern = `(([^;&|\\]|\\[^n])*[[:space:]])?`
 // goWordPattern matches the characters of one command-line word.
 const goWordPattern = `[^[:space:]"\\;&|()` + "`" + `]*`
 
-// lyxEnvNamesPattern matches the name of the slot-inheritance variable, the strand-name variable or the prebuilt-binary variable.
-const lyxEnvNamesPattern = `(` + gateslot.InheritEnv + `|` + agentname.StrandNameEnv + `|` + gateslot.PrebuiltLyxEnv + `)`
+// lymEnvNamesPattern matches the name of the slot-inheritance variable, the strand-name variable or the prebuilt-binary variable.
+const lymEnvNamesPattern = `(` + gateslot.InheritEnv + `|` + agentname.StrandNameEnv + `|` + gateslot.PrebuiltLymEnv + `)`
 
 // rawGoCommandPattern is the grep -E pattern the raw go deny matches against the raw PreToolUse payload JSON.
 // It matches three shapes.
@@ -116,8 +116,8 @@ const lyxEnvNamesPattern = `(` + gateslot.InheritEnv + `|` + agentname.StrandNam
 // It falsely denies a word holding ... or the word all inside a quoted argument of the go command itself, such as a -run filter.
 const rawGoCommandPattern = `(` + goSubcommandPattern + `(test|build|vet)[[:space:]]` + goArgumentsPattern + `(` + goWordPattern + `\.\.\.` + goWordPattern + `|all)([[:space:]"\\;&|()` + "`" + `]|$))` +
 	`|(` + goSubcommandPattern + `test[[:space:]]` + goArgumentsPattern + `-{1,2}tags[[:space:]=]+[^[:space:];&|]*(tier2|tier3))` +
-	`|(` + commandFieldPattern + `(` + shellUnitPattern + `*([^A-Za-z0-9_"\\'<]|\\[^"]))?` + lyxEnvNamesPattern + `)` +
-	`|(` + commandFieldPattern + shellUnitPattern + `*` + doubleQuotedOpenPattern + `[$]\{?` + lyxEnvNamesPattern + `)`
+	`|(` + commandFieldPattern + `(` + shellUnitPattern + `*([^A-Za-z0-9_"\\'<]|\\[^"]))?` + lymEnvNamesPattern + `)` +
+	`|(` + commandFieldPattern + shellUnitPattern + `*` + doubleQuotedOpenPattern + `[$]\{?` + lymEnvNamesPattern + `)`
 
 // refuseRawPattern returns the grep -E pattern the refuse-raw deny matches against the raw PreToolUse payload JSON.
 // It matches any listed prefix in command position, its words joined by whitespace runs and the last followed by a word end, so go testing is no go test.
@@ -146,7 +146,7 @@ const forbiddenNoticeChars = forbiddenSteerChars + "\n\r"
 // foreground is the engine's phrase for running a long command in the foreground, which the raw go and refuse-raw rows' steers and notices carry.
 // refuseRaw lists the command prefixes the hub refuses to run raw; a non-empty list adds the refuse-raw row after the raw go row, and an empty one adds none.
 func Rows(foreground string, refuseRaw []string) []Row {
-	rawGoSteer := "raw module-wide, tmux-tier and llm-tier go runs are refused here. Gate rule: run lyx gate test in the foreground " + foreground + ", never in the background, for example lyx gate test ./internal/x, and use its --tier flag for a tier. When it answers that no gate slot is free yet, run the same command again in a turn that does nothing else, so the prompt cache stays warm between calls. Run every other check in the foreground too, and never cd into the directory you already work in. The slot, strand and prebuilt-binary environment variables belong to lyx, and a command setting or reading any of them is refused"
+	rawGoSteer := "raw module-wide, tmux-tier and llm-tier go runs are refused here. Gate rule: run lym gate test in the foreground " + foreground + ", never in the background, for example lym gate test ./internal/x, and use its --tier flag for a tier. When it answers that no gate slot is free yet, run the same command again in a turn that does nothing else, so the prompt cache stays warm between calls. Run every other check in the foreground too, and never cd into the directory you already work in. The slot, strand and prebuilt-binary environment variables belong to lym, and a command setting or reading any of them is refused"
 	rows := rowsBeforeRefuseRaw(rawGoSteer)
 	if len(refuseRaw) > 0 {
 		rows = append(rows, refuseRawRow(foreground, refuseRaw))
@@ -160,7 +160,7 @@ func refuseRawRow(foreground string, refuseRaw []string) Row {
 	for i, prefix := range refuseRaw {
 		forms[i] = strings.Fields(prefix)
 	}
-	steer := "a raw " + strings.Join(refuseRaw, " or ") + " run is refused here. Gate rule: run lyx gate test in the foreground " + foreground + ", never in the background, with --tier to name the tiers or --card to name a card, for example lyx gate test ./internal/x. When it answers that no gate slot is free yet, run the same command again in a turn that does nothing else, so the prompt cache stays warm between calls"
+	steer := "a raw " + strings.Join(refuseRaw, " or ") + " run is refused here. Gate rule: run lym gate test in the foreground " + foreground + ", never in the background, with --tier to name the tiers or --card to name a card, for example lym gate test ./internal/x. When it answers that no gate slot is free yet, run the same command again in a turn that does nothing else, so the prompt cache stays warm between calls"
 	return Row{
 		// Installed for every run, the orch included, when the hub's gate config lists a prefix.
 		// A guardrail, not a barrier: refuseRawPattern states what it lets through.
@@ -188,7 +188,7 @@ func rowsBeforeRefuseRaw(rawGoSteer string) []Row {
 			Forms:    [][]string{{"python"}, {"python3"}},
 		},
 		{
-			// Installed for every run, the orch included, so no session reaches the gate slots around lyx gate test.
+			// Installed for every run, the orch included, so no session reaches the gate slots around lym gate test.
 			// A guardrail, not a barrier: rawGoCommandPattern states what it lets through and what it falsely denies.
 			Name:     "raw-go",
 			Patterns: []string{rawGoCommandPattern},

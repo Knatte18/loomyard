@@ -49,17 +49,9 @@
 // # CloneHub{Reset: true}
 //
 // This column is re-scoped to the ownership axis and is not run against the ten states.
-// resetHub declares dirtinessNA (clone.go:585), so no dirtiness state can refuse it — total hub
-// destruction on --reset is correct behaviour — which would make the permitted root the hub root
-// itself and the manifest diff vacuous across all ten states.
-// The gate is structurally unreachable for Reset: resetHub refuses a non-hub at its own pre-flight
-// (clone.go:573-577, !looksLikeHub) BEFORE the pathRequest at :579 is built, and the gate's
-// pathOwnershipFabricHub predicate is that SAME looksLikeHub call (destroy.go:346-350), so a
-// RefusedByGate(CheckOwnership) expectation would fail against a correct binary.
-// This column therefore uses RefusedBefore("is not a fabric hub") and drives exactly two targets: a
-// <derived>-LYXHUB-named directory that is not a hub (refused at the pre-flight, contents surviving —
-// R4's `clone --reset` defect), and a real hub (torn down and rebuilt through fabriccli.CloneAndWire,
-// the positive case proving the column is not trivially always-refusing).
+// resetHub declares dirtinessNA (clone.go:585), so no dirtiness state can refuse it — total hub destruction on --reset is correct behaviour — which would make the permitted root the hub root itself and the manifest diff vacuous across all ten states.
+// The gate is structurally unreachable for Reset: resetHub refuses a non-hub at its own pre-flight (clone.go:573-577, !looksLikeHub) BEFORE the pathRequest at :579 is built, and the gate's pathOwnershipFabricHub predicate is that SAME looksLikeHub call (destroy.go:346-350), so a RefusedByGate(CheckOwnership) expectation would fail against a correct binary.
+// This column therefore uses RefusedBefore("is not a fabric hub") and drives exactly two targets: a <derived>-LYMHUB-named directory that is not a hub (refused at the pre-flight, contents surviving — R4's `clone --reset` defect), and a real hub (torn down and rebuilt through fabriccli.CloneAndWire, the positive case proving the column is not trivially always-refusing).
 //
 // # The seventeen hostile-input cases
 //
@@ -92,8 +84,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -237,7 +229,7 @@ var Omissions = []Omission{
 	{Verb: "Pull", State: "staleWiredJunction", Reason: "Pull's only gate call is Fabric.ResetHard (destroy.go:762), a warp checkout reset rather than a path executor"},
 	{Verb: "Add", State: "trackedSymlinkAtWiredPath", Reason: "Add's gate calls (add.go:263-295) act on the pair it is creating; that junction path does not exist before Run"},
 	{Verb: "Add", State: "staleWiredJunction", Reason: "Add's gate calls (add.go:263-295) act on the pair it is creating; that junction path does not exist before Run"},
-	{Verb: "UnwireJunctions", State: "unrelatedGitCloneAtWeftNamedPath", Reason: "UnwireJunctions' only gate call is the removeLink inside unseedJunctionRecords (junction.go:474-483), reached via unseedLyxJunction; it never visits a weft-named path"},
+	{Verb: "UnwireJunctions", State: "unrelatedGitCloneAtWeftNamedPath", Reason: "UnwireJunctions' only gate call is the removeLink inside unseedJunctionRecords (junction.go:474-483), reached via unseedLymJunction; it never visits a weft-named path"},
 
 	// Card 19's full-matrix run: Reconcile has no path-executor gate call at all -- reconcile.go
 	// contains no pathRequest -- so no structural state, of any shape, names a path Reconcile's own
@@ -293,10 +285,7 @@ func hubRelative(tb testing.TB, h *hubforge.Hub, abs string) string {
 	return filepath.ToSlash(rel)
 }
 
-// firstWiredJunctionLink returns the warp-side path of slug's first wired junction (e.g. "_lyx"),
-// resolved via fabricengine.WiredNames and fabricengine.WarpJunctions -- the same accessors
-// unwireJunctionsCase's own Run uses -- for a cell whose structural states need a real, pre-existing
-// link to remove and replant, per the geometry-through-accessors Shared Decision.
+// firstWiredJunctionLink returns the warp-side path of slug's first wired junction (e.g. "_lym"), resolved via fabricengine.WiredNames and fabricengine.WarpJunctions -- the same accessors unwireJunctionsCase's own Run uses -- for a cell whose structural states need a real, pre-existing link to remove and replant, per the geometry-through-accessors Shared Decision.
 func firstWiredJunctionLink(tb testing.TB, h *hubforge.Hub, slug string) string {
 	tb.Helper()
 
@@ -328,14 +317,14 @@ func pairPermittedRoots(tb testing.TB, h *hubforge.Hub, slug string) []string {
 // A permitted root that never matches anything in a given hub's own anchor is harmless: DiffManifest's
 // pathPermitted only ever narrows what a diff flags, never widens it, so carrying the unused anchor's
 // variant alongside the live one cannot hide a genuine unpermitted change.
-// The synthetic *lyxcwd.Location built here (HubPath left empty) is legal because every accessor this
+// The synthetic *lymcwd.Location built here (HubPath left empty) is legal because every accessor this
 // function calls composes paths via filepath.Join, which drops an empty leading HubPath cleanly,
 // leaving exactly the hub-relative suffix an accessor would otherwise require a real hub to produce.
 func slugPermittedRoots(slug string) []string {
 	// A Remove or Prune cell rewrites the hub workspace file, which is named after the warp repo.
-	roots := []string{filepath.ToSlash(fabricengine.HubWorkspacePath(&lyxcwd.Location{RepoName: "warp-bare"}))}
+	roots := []string{filepath.ToSlash(fabricengine.HubWorkspacePath(&lymcwd.Location{RepoName: "warp-bare"}))}
 	for _, anchor := range []string{".", "backend"} {
-		loc := &lyxcwd.Location{WorktreeName: slug, AnchorRel: anchor}
+		loc := &lymcwd.Location{WorktreeName: slug, AnchorRel: anchor}
 		launcher := fabricengine.LauncherDir(loc, slug)
 		roots = append(roots,
 			filepath.ToSlash(slug),
@@ -701,7 +690,7 @@ func cleanupCase() VerbCase {
 
 // checkoutPermittedRoots returns the one root a proceeding Checkout cell may touch: the hub workspace file, whose first folder takes the prime's new branch name.
 func checkoutPermittedRoots() []string {
-	return []string{filepath.ToSlash(fabricengine.HubWorkspacePath(&lyxcwd.Location{RepoName: "warp-bare"}))}
+	return []string{filepath.ToSlash(fabricengine.HubWorkspacePath(&lymcwd.Location{RepoName: "warp-bare"}))}
 }
 
 // checkoutCase builds Topology.Checkout's VerbCase.
@@ -717,7 +706,7 @@ func checkoutCase() VerbCase {
 			slug := "verb-checkout-owner"
 			hubforge.AddPair(tb, h, slug)
 			// Remove the pair's own worktrees (never its branches), so both branches are free for
-			// the prime pair to switch onto — mirroring the everyday "lyx fabric checkout" reuse
+			// the prime pair to switch onto — mirroring the everyday "lym fabric checkout" reuse
 			// add.go's own error message points to ("switch a pair onto it"). Without this, `git
 			// switch` refuses because the branch is already checked out at the pair worktree this
 			// same Arrange just created.
@@ -879,14 +868,11 @@ func unwireJunctionsCase() VerbCase {
 			return res.Mutated(), err
 		},
 		Expect: func(state string) Expectation {
-			// The wired junction names are structural (lyxdirs.LyxDirName, lyxdirs.DotLyxDirName),
-			// never operator-editable per junctionnames.go, so both anchor variants of both names
-			// are permitted unconditionally — matching slugPermittedRoots' "harmless if unused"
-			// posture.
+			// The wired junction names are structural (lymdirs.LymDirName, lymdirs.DotLymDirName), never operator-editable per junctionnames.go, so both anchor variants of both names are permitted unconditionally — matching slugPermittedRoots' "harmless if unused" posture.
 			var permitted []string
 			for _, anchor := range []string{".", "backend"} {
-				loc := &lyxcwd.Location{WorktreeName: "verb-unwire-owner", AnchorRel: anchor}
-				for _, name := range []string{lyxdirs.LyxDirName, lyxdirs.DotLyxDirName} {
+				loc := &lymcwd.Location{WorktreeName: "verb-unwire-owner", AnchorRel: anchor}
+				for _, name := range []string{lymdirs.LymDirName, lymdirs.DotLymDirName} {
 					permitted = append(permitted, filepath.ToSlash(fabricengine.WarpJunctions(loc, "verb-unwire-owner", []string{name})[0].Link))
 				}
 			}
@@ -1005,7 +991,7 @@ func pullCase() VerbCase {
 }
 
 // cloneHubResetNonHubCase builds the CloneHub{Reset: true} column's non-hub target: an operator
-// directory whose name happens to match the derived <name>-LYXHUB path is refused at resetHub's own
+// directory whose name happens to match the derived <name>-LYMHUB path is refused at resetHub's own
 // pre-flight, contents fully surviving — R4's `clone --reset` defect.
 func cloneHubResetNonHubCase() VerbCase {
 	return VerbCase{
@@ -1113,7 +1099,7 @@ func slugHostileInputs() []struct {
 		{"DotDot", "..", "a slug must name a directory"},
 		{"Escaping", "../x", "a slug must be a single path component"},
 		{"WeftSuffixed", "hostile" + weftname.Suffix, "that suffix is reserved for weft worktrees"},
-		{"ReservedHubName", fabricengine.BoardDirName, "that name is reserved for lyx hub geometry"},
+		{"ReservedHubName", fabricengine.BoardDirName, "that name is reserved for lym hub geometry"},
 		{"LeadingDash", "-flag", ""},
 	}
 }

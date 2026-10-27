@@ -1,5 +1,5 @@
 // Package pairteardown is the one sequence that ends a pair: it waits for the pair's loom driver to go quiet, probes for removal refusals, kills the pair's step loop, ends the pair's reed session, and only then removes the pair.
-// `lyx fabric remove` calls Teardown.Run, and batten's Worktree-Teardown row calls the two phases, Teardown.EndSession and Teardown.RemovePair, so the two callers cannot drift.
+// `lym fabric remove` calls Teardown.Run, and batten's Worktree-Teardown row calls the two phases, Teardown.EndSession and Teardown.RemovePair, so the two callers cannot drift.
 //
 // The sequence lives in its own package because reedengine imports fabricengine: fabric cannot end a session itself without an import cycle.
 // The package sits outside the Fabric Vocabulary owner set, so it says "pair" and "task worktree" and passes fabricengine.RemoveResult through whole.
@@ -18,8 +18,8 @@
 //     It passes, and the owned-process end and the loop end reach it, when a live waiting marker of the slug names the holder's own pid, a holder waiting at the network gate,
 //     or when a pause covers the slug and no parent lock record names it, a step waiting on its interrupted agent; the paused pass applies to a known and an unknown holder alike.
 //     Any other holder is an ErrDriverBusy refusal with nothing ended.
-//     Under a pause with a parent lock record naming the slug, the refusal names resuming the run so the step finishes its merge: `lyx tender resume` with no slug, lifting every live entry of the hub, when a hub entry covers the slug, and `lyx tender resume <slug>` when slug entries alone do.
-//     Unpaused it names `lyx tender pause <slug>` and then running the removal again, with no pause step when a parent lock record names the slug, since a pause would turn the next attempt into the paused refusal.
+//     Under a pause with a parent lock record naming the slug, the refusal names resuming the run so the step finishes its merge: `lym tender resume` with no slug, lifting every live entry of the hub, when a hub entry covers the slug, and `lym tender resume <slug>` when slug entries alone do.
+//     Unpaused it names `lym tender pause <slug>` and then running the removal again, with no pause step when a parent lock record names the slug, since a pause would turn the next attempt into the paused refusal.
 //  2. Refusal probe.
 //     Topology.RemoveRefusal answers whether Remove would refuse, with nothing touched.
 //     A refusal is returned unchanged, so a refused removal leaves the session and its strands live and ends no registered process.
@@ -30,7 +30,7 @@
 //     without RefuseWhenBusy the survivors are logged at Warn, set on SessionResult.Survivors, and the sequence goes on.
 //     Any other error from the end is returned for every caller.
 //     With the task worktree present the driver lock is then probed: a lock still held means a process the owner record does not reach, such as one an older binary started.
-//     With RefuseWhenBusy that is an ErrDriverBusy refusal whose way forward is `lyx tender status` and `ps` on Linux, and on Windows, where the end signals nothing, the driver's recorded pid with `taskkill /PID <pid> /T /F` or, with no driver record, the lock path and Task Manager;
+//     With RefuseWhenBusy that is an ErrDriverBusy refusal whose way forward is `lym tender status` and `ps` on Linux, and on Windows, where the end signals nothing, the driver's recorded pid with `taskkill /PID <pid> /T /F` or, with no driver record, the lock path and Task Manager;
 //     without it SessionResult.DriverWasLive is set and the sequence goes on.
 //     The pair's drift capture job is then terminated by name, for a present or a gone task worktree, since on Windows the owner-record end signals nothing and only the detached capture child holds that job;
 //     on Linux the capture is a registered process the owner-record end already ended, so the call ends nothing.
@@ -65,14 +65,14 @@
 // A task worktree already gone is not landed, and a failed read of the answer leaves the board alone.
 // An entry with no status, a done status or a status without the run form is kept.
 // A landed run's entry is marked done.
-// Otherwise an entry whose run batten never seeded, or whose batten run is paused, blocked, failed or awaiting, is cleared; a batten run that is done marks it done; a running one holds it, and the settle only warns, naming `lyx batten status <slug>` and `lyx batten pause <slug>`.
+// Otherwise an entry whose run batten never seeded, or whose batten run is paused, blocked, failed or awaiting, is cleared; a batten run that is done marks it done; a running one holds it, and the settle only warns, naming `lym batten status <slug>` and `lym batten pause <slug>`.
 // A running record holds the claim that way only while the run has a live lifecycle owner:
 // a registered batten process of the slug, or, between two passes, a live dobby registered under the run's parent (the parent beam's slug, or the hub owner for the prime) with batten's status reading running and no cancel marker of the slug standing, which is the gap dobby drives.
 // Every reader of that liveness, the claim settlement, the session end and the driver checks, reads the gap between passes as alive, and a halted status as settled.
-// With no owner alive the claim is kept all the same and the warning names `lyx batten cancel <slug>` instead, to end the run and release the claim, since batten's own pause has no process to reach.
+// With no owner alive the claim is kept all the same and the warning names `lym batten cancel <slug>` instead, to end the run and release the claim, since batten's own pause has no process to reach.
 // A board or status read failure warns and writes nothing, and a failed removal settles nothing.
 // A removal with Request.LeaveClaim set, in origin mode, reads no landed answer and settles no claim, leaving the claim to the caller, which clears it under its own locks.
-// A run whose Finalize merged but failed its done mark and stopped on its push holds no Finalize Done, so its entry ends cleared, for the operator to mark done with `lyx board set-status`.
+// A run whose Finalize merged but failed its done mark and stopped on its push holds no Finalize Done, so its entry ends cleared, for the operator to mark done with `lym board set-status`.
 //
 // # Local mode
 //
@@ -91,7 +91,7 @@
 //
 // # Cancel phase
 //
-// EndForCancel serves `lyx batten cancel`, the one caller, from the prime and after its own refusals.
+// EndForCancel serves `lym batten cancel`, the one caller, from the prime and after its own refusals.
 // It ends the run's owned processes and strands first and waits for the run lock after, since a cancel ends the holder instead of waiting for it,
 // and it skips the quiet wait, the removal refusal probe and the pre-end run-lock wait.
 // It reads whether the task worktree is gone once, then runs these steps in order and stops at the first error:
@@ -118,7 +118,7 @@
 //  8. Loop-lock release.
 //     With CancelRequest.Keep the teardown's mark is withdrawn, so the kept pair holds no mark; without it the mark stays for the removal that follows.
 //
-// Every refusal names `lyx batten cancel <slug>` as the way to run the phase again.
+// Every refusal names `lym batten cancel <slug>` as the way to run the phase again.
 // The removal that follows a cancel without Keep is RemovePair with Request.LeaveClaim, which leaves the board claim to the cancel.
 //
 // # Origin seams
@@ -138,19 +138,19 @@
 //
 // A pair is quiet when its run lock and its loop lock are free and its driver strand is absent, dead, retiring or parked.
 // A held loop lock reads as busy, and the refusal names the live loop and the way forward of pausing the run or retrying once it stops.
-// The refusal for a busy driver names the slug's live owned processes by role and pid, and its way forward is retrying once the driver has written its report, or `lyx tender pause <slug>` and then the removal again, which the skip lets through.
+// The refusal for a busy driver names the slug's live owned processes by role and pid, and its way forward is retrying once the driver has written its report, or `lym tender pause <slug>` and then the removal again, which the skip lets through.
 // A pair whose task worktree is gone is quiet by exception: neither the run lock nor reed's strand table can be probed there, and the session is ended by exact name with no wait.
 // "Gone" means the task worktree path is not a registered linked worktree.
 //
 // # Ending before a bare session end
 //
-// EndBeforeSessionDown serves `lyx reed down`, which ends a session with no teardown.
+// EndBeforeSessionDown serves `lym reed down`, which ends a session with no teardown.
 // It reads only local state and makes no network call, in this order and stopping at the first that holds:
 // a live pause entry covers the slug, the local board entry reads done, the status history holds a Finalize Done with no registered batten alive, or the run is not running.
 // Not running is no Go-driver lock held, the loop lock free, no live driver strand and no registered batten alive; there is no stopped reading, since that is a reconcile verdict.
-// It then waits for the run lock as a skipped teardown does, with the retry step `lyx reed down`, and ends the slug's registered processes with the dobby role spared:
+// It then waits for the run lock as a skipped teardown does, with the retry step `lym reed down`, and ends the slug's registered processes with the dobby role spared:
 // a beam's dobby runs from the hub root outside the session, and its member runs still need it, so it stays live, while a teardown's own end ends a landed beam's dobby.
-// A run that holds none of the readings is running and unpaused, and is refused with an error wrapping ErrRunRunning that names `lyx tender pause <slug>` and then `lyx reed down` again, with nothing ended.
+// A run that holds none of the readings is running and unpaused, and is refused with an error wrapping ErrRunRunning that names `lym tender pause <slug>` and then `lym reed down` again, with nothing ended.
 // A refusal of the run-lock wait is returned as it is, and survivors of the end are returned wrapped, each named by pid.
 //
 // # Caller policies

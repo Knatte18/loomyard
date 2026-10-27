@@ -39,7 +39,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // TestCommit_TwoSided_WarpFirstOrdering asserts that a two-sided Fabric.Commit's weft commit
@@ -53,7 +53,7 @@ func TestCommit_TwoSided_WarpFirstOrdering(t *testing.T) {
 	fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp change")
 	fabricengine.WriteWeftConfigContentForTest(t, weftPath, "weft change")
 
-	result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "two-sided commit", nil, fabricengine.SyncOptions{})
+	result, err := f.Commit([]string{"README", "_lym/config.yaml"}, "two-sided commit", nil, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
@@ -80,7 +80,7 @@ func TestCommit_TwoSided_RecordsCorrespondence(t *testing.T) {
 	fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp change")
 	fabricengine.WriteWeftConfigContentForTest(t, weftPath, "weft change")
 
-	result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "two-sided commit", nil, fabricengine.SyncOptions{})
+	result, err := f.Commit([]string{"README", "_lym/config.yaml"}, "two-sided commit", nil, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
@@ -106,7 +106,7 @@ func TestCommit_ResultFields(t *testing.T) {
 		fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp change")
 		fabricengine.WriteWeftConfigContentForTest(t, weftPath, "weft change")
 
-		result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "two-sided commit", nil, fabricengine.SyncOptions{})
+		result, err := f.Commit([]string{"README", "_lym/config.yaml"}, "two-sided commit", nil, fabricengine.SyncOptions{})
 		if err != nil {
 			t.Fatalf("Commit() error = %v", err)
 		}
@@ -150,7 +150,7 @@ func TestCommit_ResultFields(t *testing.T) {
 
 		fabricengine.WriteWeftConfigContentForTest(t, weftPath, "weft only change")
 
-		result, err := f.Commit([]string{"_lyx/config.yaml"}, "weft only commit", nil, fabricengine.SyncOptions{})
+		result, err := f.Commit([]string{"_lym/config.yaml"}, "weft only commit", nil, fabricengine.SyncOptions{})
 		if err != nil {
 			t.Fatalf("Commit() error = %v", err)
 		}
@@ -175,7 +175,7 @@ func TestCommit_SnapshotTrailers(t *testing.T) {
 		fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp change")
 		fabricengine.WriteWeftConfigContentForTest(t, weftPath, "weft change")
 
-		result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "tagged commit", []string{"tag1", "tag2"}, fabricengine.SyncOptions{})
+		result, err := f.Commit([]string{"README", "_lym/config.yaml"}, "tagged commit", []string{"tag1", "tag2"}, fabricengine.SyncOptions{})
 		if err != nil {
 			t.Fatalf("Commit() error = %v", err)
 		}
@@ -196,7 +196,7 @@ func TestCommit_SnapshotTrailers(t *testing.T) {
 		fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp change")
 		fabricengine.WriteWeftConfigContentForTest(t, weftPath, "weft change")
 
-		result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "untagged commit", nil, fabricengine.SyncOptions{})
+		result, err := f.Commit([]string{"README", "_lym/config.yaml"}, "untagged commit", nil, fabricengine.SyncOptions{})
 		if err != nil {
 			t.Fatalf("Commit() error = %v", err)
 		}
@@ -218,7 +218,7 @@ func TestCommit_MessageHandling(t *testing.T) {
 	fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp change")
 	fabricengine.WriteWeftConfigContentForTest(t, weftPath, "weft change")
 
-	result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "custom commit message", []string{"tag1"}, fabricengine.SyncOptions{})
+	result, err := f.Commit([]string{"README", "_lym/config.yaml"}, "custom commit message", []string{"tag1"}, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
@@ -252,7 +252,7 @@ func TestCommit_InvokesPushRecorder(t *testing.T) {
 		fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp change")
 		fabricengine.WriteWeftConfigContentForTest(t, weftPath, "weft change")
 
-		if _, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "two-sided commit", nil, fabricengine.SyncOptions{}); err != nil {
+		if _, err := f.Commit([]string{"README", "_lym/config.yaml"}, "two-sided commit", nil, fabricengine.SyncOptions{}); err != nil {
 			t.Fatalf("Commit() error = %v", err)
 		}
 
@@ -261,7 +261,7 @@ func TestCommit_InvokesPushRecorder(t *testing.T) {
 			t.Fatalf("push recorder invocation count = %d; want 1 (calls: %+v)", len(calls), calls)
 		}
 		// The push request names the records worktree of the warp location, which the plain fixture's separate weft repo is not.
-		warpLocation, err := lyxcwd.ResolveWorktree(warpPath)
+		warpLocation, err := lymcwd.ResolveWorktree(warpPath)
 		if err != nil {
 			t.Fatalf("ResolveWorktree: %v", err)
 		}
@@ -273,7 +273,7 @@ func TestCommit_InvokesPushRecorder(t *testing.T) {
 
 	t.Run("TaskPairPushesBothSides", func(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{hubforge.TemplatePairSlug}})
-		pairLocation, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree(hubforge.TemplatePairSlug))
+		pairLocation, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(hubforge.TemplatePairSlug))
 		if err != nil {
 			t.Fatalf("ResolveWorktree: %v", err)
 		}
@@ -413,7 +413,7 @@ func TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline(t *testing
 
 	fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp change 1")
 	fabricengine.WriteWeftConfigContentForTest(t, weftPath, "identical content")
-	result1, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "commit 1", []string{"raddle"}, fabricengine.SyncOptions{})
+	result1, err := f.Commit([]string{"README", "_lym/config.yaml"}, "commit 1", []string{"raddle"}, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("Commit() round 1 error = %v", err)
 	}
@@ -434,7 +434,7 @@ func TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline(t *testing
 	// diff against HEAD finds nothing changed — the unchanged-content case.
 	fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp change 2")
 	fabricengine.WriteWeftConfigContentForTest(t, weftPath, "identical content")
-	result2, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "commit 2", []string{"raddle"}, fabricengine.SyncOptions{})
+	result2, err := f.Commit([]string{"README", "_lym/config.yaml"}, "commit 2", []string{"raddle"}, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("Commit() round 2 error = %v", err)
 	}
@@ -457,12 +457,8 @@ func TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline(t *testing
 	}
 }
 
-// writeFabricAnchor records anchor as the .lyx-anchor marker under
-// warpPath's hub board directory, so a subsequent lyxcwd.ResolveWorktree
-// call resolves l.AnchorRel to anchor rather than falling back to a
-// cwd-derived ".". Mirrors lyxcwd's own anchor_test.go writeAnchor,
-// duplicated here rather than imported since that helper lives in the
-// lyxcwd_test package.
+// writeFabricAnchor records anchor as the .lym-anchor marker under warpPath's hub board directory, so a subsequent lymcwd.ResolveWorktree call resolves l.AnchorRel to anchor rather than falling back to a cwd-derived ".".
+// Mirrors lymcwd's own anchor_test.go writeAnchor, duplicated here rather than imported since that helper lives in the lymcwd_test package.
 func writeFabricAnchor(t *testing.T, warpPath, anchor string) {
 	t.Helper()
 
@@ -470,18 +466,15 @@ func writeFabricAnchor(t *testing.T, warpPath, anchor string) {
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("mkdir board dir: %v", err)
 	}
-	anchorPath := filepath.Join(boardDir, lyxcwd.AnchorFileName)
+	anchorPath := filepath.Join(boardDir, lymcwd.AnchorFileName)
 	if err := os.WriteFile(anchorPath, []byte(anchor), 0o644); err != nil {
 		t.Fatalf("write %s: %v", anchorPath, err)
 	}
 }
 
-// TestCommit_NestedRelPath_ClassifiesWeftFileUnderRelPath is the regression guard for the card-6
-// fix: Fabric.Commit must classify against the resolved worktree's l.RelPath, not a hardcoded ".".
-// With a recorded two-segment anchor ("wts/some-task"), a file physically nested at
-// <RelPath>/_lyx/...
-// in the weft checkout must still route to the weft side and land in a real commit — proving the
-// fix beyond the RelPath=="."
+// TestCommit_NestedRelPath_ClassifiesWeftFileUnderRelPath is the regression guard for the card-6 fix: Fabric.Commit must classify against the resolved worktree's l.RelPath, not a hardcoded ".".
+// With a recorded two-segment anchor ("wts/some-task"), a file physically nested at <RelPath>/_lym/...
+// in the weft checkout must still route to the weft side and land in a real commit — proving the fix beyond the RelPath=="."
 // coverage every other test in this file exercises.
 func TestCommit_NestedRelPath_ClassifiesWeftFileUnderRelPath(t *testing.T) {
 	// Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
@@ -495,14 +488,14 @@ func TestCommit_NestedRelPath_ClassifiesWeftFileUnderRelPath(t *testing.T) {
 		t.Fatalf("mkdir anchor in code worktree: %v", err)
 	}
 
-	nestedDir := filepath.Join(weftPath, filepath.FromSlash(anchor), "_lyx")
+	nestedDir := filepath.Join(weftPath, filepath.FromSlash(anchor), "_lym")
 	if err := os.MkdirAll(nestedDir, 0o755); err != nil {
 		t.Fatalf("mkdir nested weft dir: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(nestedDir, "nested.yaml"), []byte("nested weft content"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	nestedRel := anchor + "/_lyx/nested.yaml"
+	nestedRel := anchor + "/_lym/nested.yaml"
 
 	result, err := f.Commit([]string{nestedRel}, "nested relpath commit", nil, fabricengine.SyncOptions{})
 	if err != nil {
@@ -617,7 +610,7 @@ func TestCommit_PathspecFilteredToNothing_WithTags_LandsEmptyWeftCommit(t *testi
 
 	fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp change")
 
-	result, err := f.Commit([]string{"README", "_lyx/doesnotexist"}, "commit", []string{"raddle"}, fabricengine.SyncOptions{})
+	result, err := f.Commit([]string{"README", "_lym/doesnotexist"}, "commit", []string{"raddle"}, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
@@ -733,7 +726,7 @@ func TestCommit_SkipGit_WithTags_NoWeftCommitNoError(t *testing.T) {
 	fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp change")
 	fabricengine.WriteWeftConfigContentForTest(t, weftPath, "weft change")
 
-	result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "skip git", []string{"raddle"}, fabricengine.SyncOptions{SkipGit: true})
+	result, err := f.Commit([]string{"README", "_lym/config.yaml"}, "skip git", []string{"raddle"}, fabricengine.SyncOptions{SkipGit: true})
 	if err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
@@ -869,10 +862,10 @@ func TestCommit_DirtyWeftIndex_UnchangedContentWithTags_SurfacesPartialCommitErr
 	}
 	gitkit.MustRun(t, weftPath, "git", "add", "leftover.txt")
 
-	// _lyx/config.yaml is left at its fixture-default content, so the
+	// _lym/config.yaml is left at its fixture-default content, so the
 	// weft-side pathspec's own StageAndCommit reports committed=false and
 	// the empty-commit rule's !committed fall-through fires.
-	result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "dirty index, tagged", []string{"raddle"}, fabricengine.SyncOptions{})
+	result, err := f.Commit([]string{"README", "_lym/config.yaml"}, "dirty index, tagged", []string{"raddle"}, fabricengine.SyncOptions{})
 	if err == nil {
 		t.Fatal("Commit() error = nil; want an error (CommitEmpty should refuse on the dirty index)")
 	}
@@ -932,11 +925,11 @@ func TestCommitWeft_PathspecMatchesNothing_WithTags_LandsEmptyCommit(t *testing.
 	}
 }
 
-// TestCommit_DotLyxPath_HardErrorsAndCommitsNothing asserts that a Fabric.Commit call naming a path
-// under the never-committed structural directory (.lyx) fails with an error naming that path, and
+// TestCommit_DotLymPath_HardErrorsAndCommitsNothing asserts that a Fabric.Commit call naming a path
+// under the never-committed structural directory (.lym) fails with an error naming that path, and
 // that nothing landed on either side: the never-committed check runs before any lock is taken or
 // any commit attempted, so a rejected call must leave both warp and weft HEAD unmoved.
-func TestCommit_DotLyxPath_HardErrorsAndCommitsNothing(t *testing.T) {
+func TestCommit_DotLymPath_HardErrorsAndCommitsNothing(t *testing.T) {
 	// Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
 	f, warpPath, weftPath := fabricengine.NewCommitFixtureForTest(t)
 	fabricengine.SwapPushRecorderForTest(t)
@@ -944,7 +937,7 @@ func TestCommit_DotLyxPath_HardErrorsAndCommitsNothing(t *testing.T) {
 	warpSHABefore := fabricengine.CurrentSHAForTest(t, warpPath)
 	weftSHABefore := fabricengine.CurrentSHAForTest(t, weftPath)
 
-	offendingPath := ".lyx/webster/state.json.lock"
+	offendingPath := ".lym/webster/state.json.lock"
 	result, err := f.Commit([]string{offendingPath}, "should never land", nil, fabricengine.SyncOptions{})
 	if err == nil {
 		t.Fatalf("Commit(%q) error = nil; want a hard error naming the offending path", offendingPath)

@@ -1,10 +1,7 @@
 // status.go implements the paired warp↔weft status view and warp-pollution detection for fabric.
 //
-// Status enumerates all warp worktrees via List, pairs each with its weft sibling, reports branch,
-// in-sync verdict, junction health, and scans the warp index for any _lyx
-// paths that have been accidentally git-tracked (warp pollution).
-// A pair is InSync when weftBranch == RecordsBranchName(warpBranch),
-// and DriftReason states the expected suffixed branch rather than a bare mismatch.
+// Status enumerates all warp worktrees via List, pairs each with its weft sibling, reports branch, in-sync verdict, junction health, and scans the warp index for any _lym paths that have been accidentally git-tracked (warp pollution).
+// A pair is InSync when weftBranch == RecordsBranchName(warpBranch), and DriftReason states the expected suffixed branch rather than a bare mismatch.
 //
 // Status computes its in-sync verdict inline (branch correspondence via RecordsBranchName, then junction health via checkJunctionHealth, both already defined in reconcile.go) rather than
 // calling the shared Healthy helper (drift.go) — Status already has warpBranch/weftBranch in hand
@@ -20,11 +17,11 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // PollutionEntry describes a single tracked path in the warp index that should never be committed
-// there (e.g. _lyx, which belongs exclusively in the weft).
+// there (e.g. _lym, which belongs exclusively in the weft).
 type PollutionEntry struct {
 	// Path is the relative path reported by git ls-files.
 	Path string `json:"path"`
@@ -46,7 +43,7 @@ type PairStatus struct {
 	InSync bool `json:"in_sync"`
 	// DriftReason describes why the pair is out of sync. Empty when InSync is true.
 	DriftReason string `json:"drift_reason,omitempty"`
-	// JunctionHealthy reports whether the warp _lyx junction exists and points to the weft.
+	// JunctionHealthy reports whether the warp _lym junction exists and points to the weft.
 	JunctionHealthy bool `json:"junction_healthy"`
 	// JunctionReason describes the junction problem. Empty when JunctionHealthy is true.
 	JunctionReason string `json:"junction_reason,omitempty"`
@@ -64,9 +61,9 @@ type StatusResult struct {
 // Status returns the paired warp↔weft status view for all worktrees reachable from the given
 // layout, plus warp-pollution detection on the warp index.
 // For each warp worktree, it reports branch status, in-sync verdict, junction health, and
-// warp-tracked _lyx paths.
+// warp-tracked _lym paths.
 // Per-worktree errors are recorded inline in PairStatus.DriftReason / PairStatus.JunctionReason.
-func (t *Topology) Status(l *lyxcwd.Location) (StatusResult, error) {
+func (t *Topology) Status(l *lymcwd.Location) (StatusResult, error) {
 	entries, err := List(l.WorktreePath())
 	if err != nil {
 		return StatusResult{}, fmt.Errorf("list worktrees: %w", err)
@@ -135,9 +132,7 @@ func (t *Topology) Status(l *lyxcwd.Location) (StatusResult, error) {
 			pair.InSync = true
 		}
 
-		// Scan the warp index for _lyx paths that must never be tracked there, scoped through this
-		// pair's own anchor — on a subpath-anchored hub the tracked content sits at
-		// <anchor>/_lyx/..., which a root-relative pathspec never matches.
+		// Scan the warp index for _lym paths that must never be tracked there, scoped through this pair's own anchor — on a subpath-anchored hub the tracked content sits at <anchor>/_lym/..., which a root-relative pathspec never matches.
 		pollution, pollErr := detectWarpPollution(warpPath, warpLayout.AnchorRel)
 		if pollErr != nil {
 			// Non-fatal: record the error inline and continue. Remedy stays
@@ -155,15 +150,15 @@ func (t *Topology) Status(l *lyxcwd.Location) (StatusResult, error) {
 	return result, nil
 }
 
-// detectWarpPollution scans the warp worktree index for _lyx paths that should
+// detectWarpPollution scans the warp worktree index for _lym paths that should
 // never be tracked in the warp repo.
 //
 // anchorRel scopes the pathspec through the pair's recorded anchor, exactly as Fabric.Commit scopes
 // its own routing prefixes. This is load-bearing rather than tidy: a subpath-anchored hub keeps its
-// durable tree at <anchor>/_lyx, which a bare "_lyx" pathspec never matches, so the scan reported a
+// durable tree at <anchor>/_lym, which a bare "_lym" pathspec never matches, so the scan reported a
 // genuinely polluted index as clean — a false negative in the one verb that advertises the check.
 //
-// Every match under _lyx has a junction wired to restore, so the remedy is
+// Every match under _lym has a junction wired to restore, so the remedy is
 // always the git rm --cached command that removes the file from the index
 // without deleting it from disk, plus a reminder to restore the
 // junction/exclude entry. No pollution class in this scan lacks an automated
@@ -179,7 +174,7 @@ func detectWarpPollution(warpPath, anchorRel string) ([]PollutionEntry, error) {
 
 	out, err := gitexec.Run(args, warpPath)
 	if err != nil {
-		return nil, fmt.Errorf("scan the warp index for lyx-managed paths: %w", err)
+		return nil, fmt.Errorf("scan the warp index for lym-managed paths: %w", err)
 	}
 
 	output := strings.TrimSpace(out)
@@ -195,7 +190,7 @@ func detectWarpPollution(warpPath, anchorRel string) ([]PollutionEntry, error) {
 		}
 
 		// Offer git rm --cached as the remedy, plus a reminder to restore the
-		// junction and exclude entry so lyx topology is intact afterwards.
+		// junction and exclude entry so lym topology is intact afterwards.
 		remedy := fmt.Sprintf(
 			"git -C %s rm --cached -- %s  # then restore junction and git-exclude entry",
 			warpPath, tracked,

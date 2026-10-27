@@ -38,6 +38,6 @@ func prReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduce
 	case bool:
 		return landingshed.NewPRReview(row.Name, enabled), nil
 	default:
-		return nil, fmt.Errorf("shedrecipe: %s: row %q: setting %q (%s) holds a %T, want a bool; way forward: set %s to true or false through `lyx config %s` from the prime", prReviewEngine, row.Name, ref.Text, ref, value, ref.Text, ref.Module)
+		return nil, fmt.Errorf("shedrecipe: %s: row %q: setting %q (%s) holds a %T, want a bool; way forward: set %s to true or false through `lym config %s` from the prime", prReviewEngine, row.Name, ref.Text, ref, value, ref.Text, ref.Module)
 	}
 }

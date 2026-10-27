@@ -161,7 +161,7 @@
 //
 // # No burlerengine import — the Treadle Runner-Seam Invariant
 //
-// This package imports only the allowlist seam_enforcement_test.go holds, and never internal/burlerengine, internal/lyxcwd or any internal/*cli package;
+// This package imports only the allowlist seam_enforcement_test.go holds, and never internal/burlerengine, internal/lymcwd or any internal/*cli package;
 // the test enforces it.
 // It defines its own vocabulary — Verdict, AttemptInput/AttemptResult — rather than reusing burlerengine.Verdict/Finding;
 // a round-runner adapter maps its own domain's result type onto treadle's.
@@ -169,11 +169,11 @@
 //
 // # Geometry-blindness and fabric-blindness
 //
-// treadleengine never imports internal/lyxcwd directly — the ban is a
+// treadleengine never imports internal/lymcwd directly — the ban is a
 // discipline against deriving geometry, not an isolation guarantee, since
 // the package's own allowlist permits internal/logger and
-// internal/shuttleengine, each of which imports lyxcwd directly — and
-// never constructs a _lyx path itself: Engine.Run operates on a
+// internal/shuttleengine, each of which imports lymcwd directly — and
+// never constructs a _lym path itself: Engine.Run operates on a
 // caller-supplied absolute runDir, and a block's Profile carries GateDir —
 // the absolute cwd the gate command runs in — supplied by the caller
 // (which resolves it from its own geometry) rather than resolved by this

@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxtemp"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
@@ -24,10 +24,10 @@ func TestCheckSocketPath(t *testing.T) {
 		uid     int
 		wantErr bool
 	}{
-		{"short directory", "/tmp/lyx123", 1000, false},
+		{"short directory", "/tmp/lym123", 1000, false},
 		{"directory at the limit", "/tmp/" + strings.Repeat("d", 107-len("/tmp/")-len("/tmux-1000/")-maxKeyBytes), 1000, false},
 		{"directory one byte over", "/tmp/" + strings.Repeat("d", 107-len("/tmp/")-len("/tmux-1000/")-maxKeyBytes+1), 1000, true},
-		{"run directory of the widest uid", "/tmp/lyx-4294967295/r0a1b2c", 4294967295, false},
+		{"run directory of the widest uid", "/tmp/lym-4294967295/r0a1b2c", 4294967295, false},
 		{"longer uid widens the path", "/tmp/" + strings.Repeat("d", 107-len("/tmp/")-len("/tmux-1000/")-maxKeyBytes), 1000000, true},
 	}
 	for _, tt := range tests {
@@ -46,7 +46,7 @@ func TestCheckSocketPath(t *testing.T) {
 func TestSetEnv(t *testing.T) {
 	t.Setenv("TMUX", "/outer/tmux,1,0")
 	t.Setenv("TMUX_PANE", "%3")
-	t.Setenv("LYX_REED_TMUX_CONF", "/operator/tmux.conf")
+	t.Setenv("LYM_REED_TMUX_CONF", "/operator/tmux.conf")
 	t.Setenv("TMUX_TMPDIR", "/elsewhere")
 	// TMP and TEMP are the Windows temp variables; setting them first has t.Setenv restore them.
 	for _, name := range []string{"TMPDIR", "TMP", "TEMP", "GIT_CEILING_DIRECTORIES"} {
@@ -70,7 +70,7 @@ func TestSetEnv(t *testing.T) {
 			t.Errorf("t.TempDir() = %q, want it under %q", got, dir)
 		}
 	})
-	for _, name := range []string{"TMUX", "TMUX_PANE", "LYX_REED_TMUX_CONF"} {
+	for _, name := range []string{"TMUX", "TMUX_PANE", "LYM_REED_TMUX_CONF"} {
 		if v, ok := os.LookupEnv(name); ok {
 			t.Errorf("%s still set to %q", name, v)
 		}
@@ -81,7 +81,7 @@ func TestListSockets_OwnDirectoryOnly(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("unix sockets under TMUX_TMPDIR are not used on Windows")
 	}
-	dir, err := lyxtemp.MkdirTemp(dirPrefix)
+	dir, err := lymtemp.MkdirTemp(dirPrefix)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestRemoveDeadSocket(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("unix sockets are not used on Windows")
 	}
-	dir, err := lyxtemp.MkdirTemp(dirPrefix)
+	dir, err := lymtemp.MkdirTemp(dirPrefix)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func TestRemoveDeadSocket(t *testing.T) {
 }
 
 func TestMaxKeyBytes_HoldsReedServerName(t *testing.T) {
-	hub := "/" + strings.Repeat("h", 300) + "-LYXHUB"
+	hub := "/" + strings.Repeat("h", 300) + "-LYMHUB"
 	if got := len(reedengine.ServerName(hub)); got > maxKeyBytes {
 		t.Errorf("reedengine.ServerName of an over-long hub path is %d bytes, over the kit's %d-byte key bound", got, maxKeyBytes)
 	}
@@ -183,7 +183,7 @@ func TestCheckSockets(t *testing.T) {
 
 	newDir := func(t *testing.T) string {
 		t.Helper()
-		dir, err := lyxtemp.MkdirTemp(dirPrefix)
+		dir, err := lymtemp.MkdirTemp(dirPrefix)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -220,9 +220,9 @@ func TestCheckSockets(t *testing.T) {
 			registerKey("checkreg2")
 			listen(t, dir, "checkreg2")
 		}, allowed: false, wantNamed: "checkreg2"},
-		{name: "reed probe socket with tmux allowed", setup: func(t *testing.T, dir string) { listen(t, dir, "lyx-p1a2b3c4") }, allowed: true, wantQuiet: true},
-		{name: "reed probe socket with tmux disallowed", setup: func(t *testing.T, dir string) { listen(t, dir, "lyx-p1a2b3c5") }, allowed: false, wantNamed: "lyx-p1a2b3c5"},
-		{name: "lyx-p key that is no probe key with tmux allowed", setup: func(t *testing.T, dir string) { listen(t, dir, "lyx-pnothex") }, allowed: true, wantNamed: "lyx-pnothex"},
+		{name: "reed probe socket with tmux allowed", setup: func(t *testing.T, dir string) { listen(t, dir, "lym-p1a2b3c4") }, allowed: true, wantQuiet: true},
+		{name: "reed probe socket with tmux disallowed", setup: func(t *testing.T, dir string) { listen(t, dir, "lym-p1a2b3c5") }, allowed: false, wantNamed: "lym-p1a2b3c5"},
+		{name: "lym-p key that is no probe key with tmux allowed", setup: func(t *testing.T, dir string) { listen(t, dir, "lym-pnothex") }, allowed: true, wantNamed: "lym-pnothex"},
 		{name: "no per-user directory", setup: func(t *testing.T, dir string) {}, allowed: false, wantQuiet: true},
 		{name: "per-user directory without a socket, as a client probe leaves it", setup: func(t *testing.T, dir string) {
 			if err := os.MkdirAll(socketDir(dir, os.Getuid()), 0o700); err != nil {

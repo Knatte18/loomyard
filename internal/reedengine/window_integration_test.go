@@ -1,7 +1,7 @@
 //go:build tier2
 
 // window_integration_test.go proves OpenWindow against a real tmux.
-// The window opens detached without moving the current window, carries @lyx_hidden, reads remain-on-exit off while the strands' window still reads on, closes when its command exits (also when it exits at once), and a second call while it is live starts nothing.
+// The window opens detached without moving the current window, carries @lym_hidden, reads remain-on-exit off while the strands' window still reads on, closes when its command exits (also when it exits at once), and a second call while it is live starts nothing.
 // One cold session serves every step.
 
 package reedengine
@@ -16,12 +16,12 @@ import (
 )
 
 // TestOpenWindow_RealTmux runs its steps in order on one cold session.
-// It overrides the executable path so the window's `lyx` is a stub that sleeps for its first argument's seconds, which makes it process-global state, so it does not run in parallel.
+// It overrides the executable path so the window's `lym` is a stub that sleeps for its first argument's seconds, which makes it process-global state, so it does not run in parallel.
 func TestOpenWindow_RealTmux(t *testing.T) {
 	stubDir := t.TempDir()
-	stub := filepath.Join(stubDir, "lyx")
+	stub := filepath.Join(stubDir, "lym")
 	if err := os.WriteFile(stub, []byte("#!/bin/sh\nsleep \"$1\"\n"), 0o755); err != nil {
-		t.Fatalf("write lyx stub: %v", err)
+		t.Fatalf("write lym stub: %v", err)
 	}
 	withInjectedExecutablePath(t, func() (string, error) { return stub, nil })
 
@@ -77,9 +77,9 @@ func TestOpenWindow_RealTmux(t *testing.T) {
 		if got := remainOnExit(strandWindow); got != "on" {
 			t.Errorf("strand window remain-on-exit = %q, want on", got)
 		}
-		hidden, err := e.tmux.output("display-message", "-p", "-t", opened.WindowID, "#{@lyx_hidden}")
+		hidden, err := e.tmux.output("display-message", "-p", "-t", opened.WindowID, "#{@lym_hidden}")
 		if err != nil || strings.TrimSpace(hidden) != "1" {
-			t.Errorf("new window @lyx_hidden = (%q, %v), want 1", strings.TrimSpace(hidden), err)
+			t.Errorf("new window @lym_hidden = (%q, %v), want 1", strings.TrimSpace(hidden), err)
 		}
 	})
 

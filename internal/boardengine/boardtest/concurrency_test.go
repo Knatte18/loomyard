@@ -34,7 +34,7 @@ import (
 func TestConcurrentReadsDuringUpserts(t *testing.T) {
 	t.Parallel()
 	cwd := seedWiki(t, 100)
-	// seedWiki creates _lyx/config/board.yaml with path: board, so the board dir is <cwd>/board
+	// seedWiki creates _lym/config/board.yaml with path: board, so the board dir is <cwd>/board
 	cfg := boardengine.Config{Path: filepath.Join(cwd, "board"), Readme: "Home.md", DesignPrefix: "proposal-", Types: []boardengine.Label{{Name: "bug"}, {Name: "enhancement"}}, Labels: []boardengine.Label{{Name: "undecided"}}, SkipGit: true}
 	w := boardengine.New(cfg)
 
@@ -130,7 +130,7 @@ func TestConcurrentReadsDuringUpserts(t *testing.T) {
 func TestConcurrentUpsertsDoNotLoseWrites(t *testing.T) {
 	t.Parallel()
 	cwd := seedWiki(t, 0)
-	// seedWiki creates _lyx/config/board.yaml with path: board, so the board dir is <cwd>/board
+	// seedWiki creates _lym/config/board.yaml with path: board, so the board dir is <cwd>/board
 	cfg := boardengine.Config{Path: filepath.Join(cwd, "board"), Readme: "Home.md", DesignPrefix: "proposal-", Types: []boardengine.Label{{Name: "bug"}, {Name: "enhancement"}}, Labels: []boardengine.Label{{Name: "undecided"}}, SkipGit: true}
 	w := boardengine.New(cfg)
 
@@ -170,7 +170,7 @@ func TestConcurrentUpsertsDoNotLoseWrites(t *testing.T) {
 // price reads pay for a busy writer.
 func BenchmarkGetDuringUpsert(b *testing.B) {
 	cwd := seedWiki(b, 100)
-	// seedWiki creates _lyx/config/board.yaml with path: board, so the board dir is <cwd>/board
+	// seedWiki creates _lym/config/board.yaml with path: board, so the board dir is <cwd>/board
 	cfg := boardengine.Config{Path: filepath.Join(cwd, "board"), Readme: "Home.md", DesignPrefix: "proposal-", Types: []boardengine.Label{{Name: "bug"}, {Name: "enhancement"}}, Labels: []boardengine.Label{{Name: "undecided"}}, SkipGit: true}
 	w := boardengine.New(cfg)
 

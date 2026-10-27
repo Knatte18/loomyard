@@ -29,7 +29,7 @@ import (
 
 // runLockName is the exclusive-lease file name inside the webster scratch
 // dir, held for the ENTIRE duration of one Run call:
-// without it, two concurrent `lyx webster run` invocations would each
+// without it, two concurrent `lym webster run` invocations would each
 // cold-start from the same state.json and reports, then both drive the
 // Master spawn at once.
 const runLockName = "run.lock"
@@ -37,7 +37,7 @@ const runLockName = "run.lock"
 // masterAwaitedShellPrefixes are Master's backgrounded, blocking verbs: the failure ladder's recovery verb, the verify gate's cold fixer verb and the plan-conflict rung's plan fixer verb.
 // A prefix keeps its verb out of the background-shell wait marker;
 // it is also what keeps the verb holding a gated turn end, which one waiting only on non-awaited shells is judged as a plain turn end.
-var masterAwaitedShellPrefixes = []string{"lyx webster recover-batch", fixVerifyCommand, fixPlanCommand}
+var masterAwaitedShellPrefixes = []string{"lym webster recover-batch", fixVerifyCommand, fixPlanCommand}
 
 // ErrRunBusy marks Run's fail-fast refusal when another invocation already holds scratchDir's
 // run.lock.
@@ -53,7 +53,7 @@ var ErrRunBusy = errors.New("webster: run is already in progress")
 // Batch rather than surface a diagnosable error.
 var ErrNilBatcher = errors.New("webster: RunDeps.Batcher not populated")
 
-// RunActive reports whether a live `lyx webster run` currently holds scratchDir's run.lock.
+// RunActive reports whether a live `lym webster run` currently holds scratchDir's run.lock.
 // It probes non-blocking: if the lock can be acquired, no run owns it and the probe returns false;
 // otherwise it returns true.
 // Probe errors (filesystem failures) are returned so the caller can decide.
@@ -153,7 +153,7 @@ type RunDeps struct {
 	ParentBranch ParentBranchFunc
 
 	// ReentryStep is the plain step that re-enters the run after accept-audit, closing every pending-findings and run-exit way forward.
-	// Empty means `lyx webster run`; the shed adapter sets "re-step the <row> row".
+	// Empty means `lym webster run`; the shed adapter sets "re-step the <row> row".
 	// The reset route ends in it too, since the reset archives the run record and a plain run starts over.
 	ReentryStep string
 
@@ -173,12 +173,12 @@ func (d RunDeps) instructionFiles() ([]string, error) {
 	return d.InstructionFiles()
 }
 
-// reentryStep returns the step that re-enters the run, defaulting to `lyx webster run`.
+// reentryStep returns the step that re-enters the run, defaulting to `lym webster run`.
 func (d RunDeps) reentryStep() string {
 	return stepOrRun(d.ReentryStep)
 }
 
-// stepOrRun returns step, or `lyx webster run` when step is empty.
+// stepOrRun returns step, or `lym webster run` when step is empty.
 func stepOrRun(step string) string {
 	if step == "" {
 		return stepRun
@@ -191,8 +191,8 @@ func stepOrRun(step string) string {
 // clear the re-renderable prompts dir, and re-init, rather than refusing with
 // ErrFingerprintMismatch.
 // It also discards pending audit findings, on an unchanged plan too, once their suspect paths match the run's start commit.
-// AutoRebaseline lets a plan that changed since the run recorded it be rebaselined on entry instead of refused with ErrFingerprintMismatch, accepting exactly what `lyx webster rebaseline` accepts when it names every changed card;
-// it applies only without Fresh, and `lyx webster run` never sets it.
+// AutoRebaseline lets a plan that changed since the run recorded it be rebaselined on entry instead of refused with ErrFingerprintMismatch, accepting exactly what `lym webster rebaseline` accepts when it names every changed card;
+// it applies only without Fresh, and `lym webster run` never sets it.
 type RunOptions struct {
 	Fresh          bool
 	AutoRebaseline bool
@@ -244,10 +244,10 @@ func newRunGUID() (string, error) {
 
 // runExitWayForward is the trailing way-forward clause every run-exit refusal carries:
 // state.json keeps every terminal batch, so a fresh Master resumes and re-drives each batch without a done record.
-const runExitWayForward = "; way forward: re-run `lyx webster run`; a fresh Master resumes from state.json and re-drives every batch without a done record"
+const runExitWayForward = "; way forward: re-run `lym webster run`; a fresh Master resumes from state.json and re-drives every batch without a done record"
 
 // masterRerunWayForward is the trailing way-forward clause of the Master-ended-early errors.
-const masterRerunWayForward = "; way forward: re-run `lyx webster run` (re-step the Webster row); a fresh Master resumes from state.json"
+const masterRerunWayForward = "; way forward: re-run `lym webster run` (re-step the Webster row); a fresh Master resumes from state.json"
 
 // MasterDiedError marks Run's mapping of a shuttle OutcomeDied result for Master's own spawn: its
 // pane died (or it never became ready) before it ever reached its own outcome-file final action.
@@ -373,7 +373,7 @@ func countBegunForkBatches(st *State, sessionID string) int {
 	return count
 }
 
-// Run drives one `lyx webster run` invocation to completion: the run-level mutex, validation gate,
+// Run drives one `lym webster run` invocation to completion: the run-level mutex, validation gate,
 // state-phase entry-time reclaim, plan-fingerprint crash/resume guard with its --fresh escape, and
 // Master spawn to outcome.
 // ErrRunBusy and ErrFingerprintMismatch are exported sentinels;
@@ -405,7 +405,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		return RunResult{}, fmt.Errorf("webster: acquire run lock in %s: %w", deps.Geom.ScratchDir, err)
 	}
 	if !locked {
-		return RunResult{}, fmt.Errorf("%w: %q (run.lock held); way forward: wait for it to finish, or check `lyx webster status`", ErrRunBusy, deps.Geom.ScratchDir)
+		return RunResult{}, fmt.Errorf("%w: %q (run.lock held); way forward: wait for it to finish, or check `lym webster status`", ErrRunBusy, deps.Geom.ScratchDir)
 	}
 	defer runLock.Release()
 
@@ -431,7 +431,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	// state phase has settled, because its resolve-backed half must be scoped by the completed
 	// cards only state.json knows about (see the ValidateDispatch call below).
 	if !plan.Approved {
-		return RunResult{}, fmt.Errorf("webster: plan %s is not approved (frontmatter approved: is not true); webster never runs an unapproved plan; way forward: approve the plan through its review, then re-run `lyx webster run`", deps.Geom.PlanDir)
+		return RunResult{}, fmt.Errorf("webster: plan %s is not approved (frontmatter approved: is not true); webster never runs an unapproved plan; way forward: approve the plan through its review, then re-run `lym webster run`", deps.Geom.PlanDir)
 	}
 
 	if deps.Batcher == nil {
@@ -634,7 +634,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	// the whole plan on a resume reported every completed Create/Delete/Rename card as a blocking
 	// defect (create-already-exists, glyph-not-found — the plan working exactly as designed) and
 	// permanently refused the very resume this verb's own help promises, wedging both the
-	// documented `lyx webster run` resume flow and loom's own Webster-row re-drive. The scoping is
+	// documented `lym webster run` resume flow and loom's own Webster-row re-drive. The scoping is
 	// the same one begin-batch already uses; a fresh run has no completed cards and gets the
 	// whole-plan answer unchanged. The plan-unapproved gate, which ValidateDispatch's format-only
 	// set deliberately omits, already fired at entry above.
@@ -669,7 +669,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 			// Its own returned error, named for quarry rather than the plan — a gate that could not
 			// read the code has not found a plan defect to refuse the run over, matching
 			// internal/loomshed/planvalidate.go's producer-side disposition.
-			quarryStep := "re-run `lyx webster run`"
+			quarryStep := "re-run `lym webster run`"
 			if rebaselineStep != "" {
 				quarryStep = rebaselineStep
 			}
@@ -682,7 +682,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		for i, f := range findings {
 			msgs[i] = f.Error()
 		}
-		wayForward := "fix the named cards in the plan, run `lyx webster rebaseline --card NN` naming each card you edited when state.json already records this run, then re-run `lyx webster run`"
+		wayForward := "fix the named cards in the plan, run `lym webster rebaseline --card NN` naming each card you edited when state.json already records this run, then re-run `lym webster run`"
 		if rebaselineStep != "" {
 			wayForward = "fix the named cards in the plan, then " + rebaselineStep
 		}
@@ -793,7 +793,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		if errors.Is(err, shuttleengine.ErrRequirementsUnmet) {
 			return RunResult{}, fmt.Errorf("webster: start master: %w", err)
 		}
-		return RunResult{}, fmt.Errorf("webster: start master: %w; way forward: transient, re-run `lyx webster run`", err)
+		return RunResult{}, fmt.Errorf("webster: start master: %w; way forward: transient, re-run `lym webster run`", err)
 	}
 
 	// Record and persist Master's strand GUID the instant it exists — BEFORE
@@ -936,7 +936,7 @@ func mapMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPa
 	outcome, err := parseOutcome(outcomePath)
 	if err != nil {
 		// Run archives a stale outcome.yaml at entry, so a re-run starts a fresh Master that writes a new one.
-		return RunResult{}, fmt.Errorf("%w; way forward: re-run `lyx webster run`; the stale file is archived and a fresh Master writes a new one", err)
+		return RunResult{}, fmt.Errorf("%w; way forward: re-run `lym webster run`; the stale file is archived and a fresh Master writes a new one", err)
 	}
 
 	var summaryTitle string
@@ -998,7 +998,7 @@ func batchIdentity(b batcher.Batch) (number int, slug string) {
 // zeroBatchesError is the refusal for a plan whose cards form no batch: nothing to build is a malformed plan.
 // A set step replaces the manual rebaseline and run verbs in the way forward, an empty one keeps them.
 func zeroBatchesError(planDir, step string) error {
-	wayForward := "fix the plan's cards, run `lyx webster rebaseline --card NN` naming each card you edited when state.json already records this run, then re-run `lyx webster run`"
+	wayForward := "fix the plan's cards, run `lym webster rebaseline --card NN` naming each card you edited when state.json already records this run, then re-run `lym webster run`"
 	if step != "" {
 		wayForward = "fix the plan's cards, then " + step
 	}

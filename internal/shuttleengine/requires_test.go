@@ -67,7 +67,7 @@ func (r *requiresRig) startRecord(forkSubagents bool) (runDir string) {
 	if err := saveRunState(runDir, state); err != nil {
 		r.t.Fatalf("saveRunState: %v", err)
 	}
-	seedPresentReedState(r.t, r.fx.DotLyx)
+	seedPresentReedState(r.t, r.fx.DotLym)
 	return runDir
 }
 
@@ -115,7 +115,7 @@ func TestRunner_Requires(t *testing.T) {
 		key  ModelKey
 		want string
 	}{
-		{"a named key", ModelKey{Module: "loom", Key: "discussion"}, "set discussion in loom.yaml to an alias whose engine meets them with lyx config loom --set discussion=<alias>"},
+		{"a named key", ModelKey{Module: "loom", Key: "discussion"}, "set discussion in loom.yaml to an alias whose engine meets them with lym config loom --set discussion=<alias>"},
 		{"a list entry", ModelKey{Module: "loom", Key: "discussion_advisors", Entry: "skeptic"}, "set the model of skeptic in discussion_advisors in loom.yaml"},
 		{"the default engine", ModelKey{DefaultEngine: true}, "set engine: in shuttle.yaml to an engine that meets them, then re-run the verb"},
 		{"the zero key", ModelKey{}, "set the seat's model to an alias whose engine meets them"},
@@ -178,7 +178,7 @@ func TestRunner_Requires(t *testing.T) {
 	attachWayForward := func(rig *requiresRig, runDir string) []string {
 		minAge := 2 * time.Duration(rig.fx.Runner.cfg.StartupTimeoutS) * time.Second
 		return []string{
-			fmt.Sprintf(`lyx reed remove %s`, "strand-1"),
+			fmt.Sprintf(`lym reed remove %s`, "strand-1"),
 			runDir,
 			fmt.Sprintf("older than twice startup_timeout_s (%s)", minAge),
 		}

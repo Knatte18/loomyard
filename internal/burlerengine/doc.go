@@ -20,7 +20,7 @@
 // internal/hubgeom and internal/standalonegeom are Geometry's two sole constructors, in hub mode
 // and told mode respectively.
 // This property is a review obligation here, not machine-enforced — this package has no
-// import-allowlist test policing the absence of internal/lyxcwd.
+// import-allowlist test policing the absence of internal/lymcwd.
 // See PATTERN-cwd-resolution.
 //
 // # Skills and the parent directive
@@ -51,7 +51,7 @@
 // Its spec declares the review file as its only output file.
 // Its gate is the review-parse entry (ReviewGateEntry) alone.
 // It sets ForkSubagents exactly when the profile names a cluster fan.
-// The review half's files are the explore step, the review step and the review-file format, written to a fresh directory under the anchor's .lyx.
+// The review half's files are the explore step, the review step and the review-file format, written to a fresh directory under the anchor's .lym.
 // The reviewer's prompt carries the PATTERN directive; it carries no friction directive.
 // The accepted review is the part of a done reviewer's end acceptReview takes: the cluster audit for a fanned round, then ParseCurrentReview on the review file.
 // Its ReviewResult carries the verdict, the findings and the Digest, the hex SHA-256 of the accepted bytes.
@@ -103,16 +103,16 @@
 // Those assets are the two seat stencils, burler-template-{reviewer,fixer}.md, and the instruction files burler-step-1-explore.md, burler-step-review.md, burler-review-format.md and burler-step-fix.md.
 // The prompts ship as embedded defaults in the top-level stencils package.
 // They are read from the hub's stencils directory (see fabricengine.StencilsDir) at call time via stencilstore.Read, never from a compiled-in copy — see prompt.go.
-// Each half renders its instruction files per call and writes them to a fresh directory under .lyx, AnchorPath-anchored so it is a
-// directory sibling of the durable _lyx tree
-// (via lyxdirs.DotLyxDirName, machine-local, never committed —
-// distinct from the committed _lyx), then runs its seat from its stencil, which
+// Each half renders its instruction files per call and writes them to a fresh directory under .lym, AnchorPath-anchored so it is a
+// directory sibling of the durable _lym tree
+// (via lymdirs.DotLymDirName, machine-local, never committed —
+// distinct from the committed _lym), then runs its seat from its stencil, which
 // names the files' absolute paths so the agent reads each step's rules when it
 // reaches that step. A half never prunes these per-call directories itself —
-// they accumulate under .lyx/burler in a long-lived worktree.
-// This is accepted machine-local litter, not a leak: .lyx is never
+// they accumulate under .lym/burler in a long-lived worktree.
+// This is accepted machine-local litter, not a leak: .lym is never
 // committed, so it carries no cross-machine cost, and whatever clears a
-// worktree's .lyx tree wholesale (a future caller-side cleanup step, or
+// worktree's .lym tree wholesale (a future caller-side cleanup step, or
 // manual deletion) removes it along with everything else machine-local
 // there.
 //
@@ -128,7 +128,7 @@
 //
 // The seats engine stops every seat before it returns, through each handle's Stop, which records the stop in the seat's run record before it removes the strand, so a later attach probe reads the seat as stopped and never halts on it.
 // A seat that timed out or whose wait returned an error is stopped as well, since it may still be running.
-// A seat that cannot be stopped is seatengine.ErrSeatNotStopped, returned wrapped in ErrHalfNotStopped beside it, so a caller matching either sees it; it is never retried or archived over, and its message ends with the way forward (run "lyx reed remove <guid>", then re-step the row).
+// A seat that cannot be stopped is seatengine.ErrSeatNotStopped, returned wrapped in ErrHalfNotStopped beside it, so a caller matching either sees it; it is never retried or archived over, and its message ends with the way forward (run "lym reed remove <guid>", then re-step the row).
 // Any other start error is a pre-strand failure, returned wrapped.
 //
 // # Resuming a half
@@ -218,9 +218,9 @@
 //     "<module-or-target>: fix <finding-id> — <one-line what/why>") and
 //     never pushes. If the round dies mid-fix, git log shows exactly which
 //     findings landed.
-//   - FixScopeOverlay: the target is lyx system/orchestration state (plan,
+//   - FixScopeOverlay: the target is lym system/orchestration state (plan,
 //     discussion, review artifacts), reached through
-//     the _lyx junction. The fixer's write surface is EXACTLY Target.Paths plus
+//     the _lym junction. The fixer's write surface is EXACTLY Target.Paths plus
 //     the fixer-report, never the review file, and the round runs NO git
 //     commands at all — the Fabric Git Invariant reserves committing that
 //     class of file to the loop owner, never an agent.
@@ -230,13 +230,11 @@
 //
 // # Fabric-blindness
 //
-// burlerengine never imports the fabric module and never constructs a
-// _lyx/... path — the results return the review/fixer-report paths the caller supplied (resolved absolute).
+// burlerengine never imports the fabric module and never constructs a _lym/...
+// path — the results return the review/fixer-report paths the caller supplied (resolved absolute).
 // Committing them is the loop owner's job (loom's Burler review and fix rows plus the Bouncer segments), via the fabric engine in-process.
 // See PATTERN-fabric-git.
-// The one exception an agent DOES commit is its own code
-// under FixScopeSource — that is an ordinary repo commit, not a fabric
-// operation.
+// The one exception an agent DOES commit is its own code under FixScopeSource — that is an ordinary repo commit, not a fabric operation.
 //
 // # Cluster fan-out (fork subagents)
 //
@@ -288,7 +286,7 @@
 // the fanned part carries the spawn mechanics, the fork rules and the consolidation rules.
 //
 // Fork discipline is fixed boilerplate the handler composes into every fork's prompt, never per-lens:
-// read-only evidence gathering only (no Write/Edit/delete of any file, repo or `_lyx`);
+// read-only evidence gathering only (no Write/Edit/delete of any file, repo or `_lym`);
 // git commands that read only, such as git diff, git log and git show, and none that changes the repository, its index, its refs or its working tree;
 // no touching the round's ReviewPath/FixerReportPath;
 // and no nested Agent calls (forks cannot spawn forks).
@@ -337,7 +335,7 @@
 // Cluster rounds weaken nothing about fabric-blindness: forks write no
 // files at all — read-only evidence gathering, findings returned only as
 // their final message — so the write-surface story above (this package
-// never imports fabric, never constructs a _lyx/... path) is exactly as
+// never imports fabric, never constructs a _lym/... path) is exactly as
 // true for a cluster round as for a solo one.
 //
 // # What the halves return
@@ -362,6 +360,6 @@
 // The gate (through CheckReviewFile) and that parse both reach ParseCurrentReview, the strict parse of the current round's review:
 // ParseReview plus a non-empty `fix` on every finding, `verdict` and `findings` as the frontmatter's only top-level keys, and one `### [SEVERITY]` prose block per finding matching the frontmatter's count per severity.
 // ParseReview stays tolerant of `fix`, so a prior round's review written before the key existed still hydrates and still feeds a Bouncer's evidence.
-// `lyx burler validate-review <review-file>` is the gate's self-check verb:
+// `lym burler validate-review <review-file>` is the gate's self-check verb:
 // it runs CheckReviewFile read-only and needs no hub, mode or git repository.
 package burlerengine

@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -25,7 +25,7 @@ import (
 // so its entries stay tracked but absent on disk.
 // The drop is an index manipulation on a worktree that never had the files, so it deletes nothing and stays outside the Fabric Destruction Chokepoint.
 // An index-only removal after a full checkout would not do: shedrun reads seeds from disk.
-func createWeftWorktreeDroppingRuns(rec *Mutations, l *lyxcwd.Location, slug, branch, startPoint string) (rootTracked bool, err error) {
+func createWeftWorktreeDroppingRuns(rec *Mutations, l *lymcwd.Location, slug, branch, startPoint string) (rootTracked bool, err error) {
 	weftPath := RecordsWorktreePath(l, slug)
 	weftRepoRoot, err := RecordsRepoRoot(l)
 	if err != nil {

@@ -27,7 +27,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
@@ -106,7 +106,7 @@ func (r *Runner) attach(spec Spec, gate GateSpec, removeSuperseded bool) (*Run, 
 		return nil, false, err
 	}
 
-	// Told-Geometry / Lyxdirs Single-Declarer Invariants: the scan root comes from the existing
+	// Told-Geometry / Lymdirs Single-Declarer Invariants: the scan root comes from the existing
 	// runDirRoot helper, never a path built here.
 	root := runDirRoot(r.cfg, r.anchorPath)
 	candidates, err := collectAttachCandidates(root, normalized.OutputFiles)
@@ -133,11 +133,11 @@ func (r *Runner) attach(spec Spec, gate GateSpec, removeSuperseded bool) (*Run, 
 	// finishedDespiteMechanismFailure: an unreadable, absent, or unanswerable strand table says
 	// "reed's own bookkeeping has gone wrong", never "did this run finish", and the file contract
 	// answers the second question without needing reed at all.
-	dotLyxDir := filepath.Join(r.anchorPath, lyxdirs.DotLyxDirName)
-	st, err := reedengine.LoadState(dotLyxDir)
+	dotLymDir := filepath.Join(r.anchorPath, lymdirs.DotLymDirName)
+	st, err := reedengine.LoadState(dotLymDir)
 	if err != nil {
 		if finished, ok := soleFinishedCandidate(candidates, normalized); ok {
-			logger.Warn("shuttle: attach: harvesting a finished run despite an unreadable reed state file", "runDir", finished.runDir, "strandGUID", finished.state.StrandGUID, "error", err, "seeAlso", "lyx reed status")
+			logger.Warn("shuttle: attach: harvesting a finished run despite an unreadable reed state file", "runDir", finished.runDir, "strandGUID", finished.state.StrandGUID, "error", err, "seeAlso", "lym reed status")
 			run, err := r.reconstruct(finished, normalized, gate)
 			if err != nil {
 				return nil, false, err
@@ -145,11 +145,11 @@ func (r *Runner) attach(spec Spec, gate GateSpec, removeSuperseded bool) (*Run, 
 			return run, true, nil
 		}
 		warnAttachCandidates(candidates, "shuttle: attach: load reed state failed", err)
-		return nil, false, fmt.Errorf("shuttle: attach: load reed state at %s: %w — an absent or unreadable strand table is not evidence any run is dead; check \"lyx reed status\"", dotLyxDir, err)
+		return nil, false, fmt.Errorf("shuttle: attach: load reed state at %s: %w — an absent or unreadable strand table is not evidence any run is dead; check \"lym reed status\"", dotLymDir, err)
 	}
 	if st == nil {
 		if finished, ok := soleFinishedCandidate(candidates, normalized); ok {
-			logger.Warn("shuttle: attach: harvesting a finished run despite an absent reed state file", "runDir", finished.runDir, "strandGUID", finished.state.StrandGUID, "seeAlso", "lyx reed status")
+			logger.Warn("shuttle: attach: harvesting a finished run despite an absent reed state file", "runDir", finished.runDir, "strandGUID", finished.state.StrandGUID, "seeAlso", "lym reed status")
 			run, err := r.reconstruct(finished, normalized, gate)
 			if err != nil {
 				return nil, false, err
@@ -157,7 +157,7 @@ func (r *Runner) attach(spec Spec, gate GateSpec, removeSuperseded bool) (*Run, 
 			return run, true, nil
 		}
 		warnAttachCandidates(candidates, "shuttle: attach: no reed state file", nil)
-		return nil, false, fmt.Errorf("shuttle: attach: no reed state file at %s — an absent strand table is not evidence any of the %d matching run dir(s) are dead; check \"lyx reed status\"", dotLyxDir, len(candidates))
+		return nil, false, fmt.Errorf("shuttle: attach: no reed state file at %s — an absent strand table is not evidence any of the %d matching run dir(s) are dead; check \"lym reed status\"", dotLymDir, len(candidates))
 	}
 
 	// Second reed read, only once the first reported present: is this guid tracked, and is its pane
@@ -165,7 +165,7 @@ func (r *Runner) attach(spec Spec, gate GateSpec, removeSuperseded bool) (*Run, 
 	status, err := r.reed.Status()
 	if err != nil {
 		if finished, ok := soleFinishedCandidate(candidates, normalized); ok {
-			logger.Warn("shuttle: attach: harvesting a finished run despite a failing reed status", "runDir", finished.runDir, "strandGUID", finished.state.StrandGUID, "error", err, "seeAlso", "lyx reed status")
+			logger.Warn("shuttle: attach: harvesting a finished run despite a failing reed status", "runDir", finished.runDir, "strandGUID", finished.state.StrandGUID, "error", err, "seeAlso", "lym reed status")
 			run, err := r.reconstruct(finished, normalized, gate)
 			if err != nil {
 				return nil, false, err
@@ -173,7 +173,7 @@ func (r *Runner) attach(spec Spec, gate GateSpec, removeSuperseded bool) (*Run, 
 			return run, true, nil
 		}
 		warnAttachCandidates(candidates, "shuttle: attach: reed status failed", err)
-		return nil, false, fmt.Errorf("shuttle: attach: reed status: %w — check \"lyx reed status\"", err)
+		return nil, false, fmt.Errorf("shuttle: attach: reed status: %w — check \"lym reed status\"", err)
 	}
 
 	minAge := 2 * time.Duration(r.cfg.StartupTimeoutS) * time.Second
@@ -194,7 +194,7 @@ func (r *Runner) attach(spec Spec, gate GateSpec, removeSuperseded bool) (*Run, 
 	// The multiplicity rule applies only to the surviving attachable set, never to raw matches — see
 	// candidate-evaluation-order.
 	if len(errored) > 0 {
-		return nil, false, fmt.Errorf("shuttle: attach: %d candidate run dir(s) under %s cannot be confirmed dead or alive (untracked or with a cleared pane binding, younger than %s): %s — check \"lyx reed status\" and either wait or clear the stale directory by hand", len(errored), root, minAge, joinRunDirs(errored))
+		return nil, false, fmt.Errorf("shuttle: attach: %d candidate run dir(s) under %s cannot be confirmed dead or alive (untracked or with a cleared pane binding, younger than %s): %s — check \"lym reed status\" and either wait or clear the stale directory by hand", len(errored), root, minAge, joinRunDirs(errored))
 	}
 	if len(attachable) > 1 {
 		return nil, false, fmt.Errorf("shuttle: attach: %d live runs match the same output files, refusing to pick one: %s", len(attachable), joinRunDirs(attachable))
@@ -238,7 +238,7 @@ func (r *Runner) removeSupersededStrands(candidates []attachCandidate, strands [
 		}
 		logger.Warn("shuttle: attach: removing the strand of a superseded run before a fresh run", "runDir", c.runDir, "strandGUID", c.state.StrandGUID)
 		if err := r.stopRecorded(c.runDir, c.state.StrandGUID); err != nil {
-			return fmt.Errorf("shuttle: attach: could not remove the superseded strand %s of run %s: %w; way forward: run \"lyx reed remove %s\", then re-step the row", c.state.StrandGUID, c.runDir, err, c.state.StrandGUID)
+			return fmt.Errorf("shuttle: attach: could not remove the superseded strand %s of run %s: %w; way forward: run \"lym reed remove %s\", then re-step the row", c.state.StrandGUID, c.runDir, err, c.state.StrandGUID)
 		}
 	}
 	return nil
@@ -257,7 +257,7 @@ func (r *Runner) removeSupersededStrands(candidates []attachCandidate, strands [
 // finish" — the agent's own output files — is one call away. Reproduced live in crucible round
 // opus5-high-r7 against the real built binary: a Discussion-Write whose agent had written both
 // declared output files before its driver died, with reed's strand table removed under it (the
-// `git clean -xdf` of `.lyx` that sweepOrphansOpportunistic's own doc comment names as a sanctioned
+// `git clean -xdf` of `.lym` that sweepOrphansOpportunistic's own doc comment names as a sanctioned
 // operator action), hard-failed the step with "attach: no reed state file" instead of harvesting the
 // finished work — the exact rework the Completion Signal Invariant exists to
 // prevent, one layer earlier than the six exits already hardened.
@@ -570,13 +570,13 @@ func dispositionCandidate(c attachCandidate, strands []reedengine.StrandStatus, 
 	// sweepOrphansOpportunistic, which runs inside Start, which this error path never reaches.
 	//
 	// The two reed-state answers differ in whether anything repairs them, and only one of them
-	// does. An ABSENT reed.json is recreated in-band by "lyx reed up", or simply by "lyx loom start"
-	// and "lyx loom run", which both call reed.Up() themselves. An UNREADABLE one is not: reed
-	// refuses every verb that loads state, "lyx reed up" included, and declines to repair it on
+	// does. An ABSENT reed.json is recreated in-band by "lym reed up", or simply by "lym loom start"
+	// and "lym loom run", which both call reed.Up() themselves. An UNREADABLE one is not: reed
+	// refuses every verb that loads state, "lym reed up" included, and declines to repair it on
 	// purpose, because every repair it could perform amounts to discarding the strand table (see
 	// reedengine's unreadableStateError, which states this and names the operator's two real
-	// remedies — "lyx reed down", or deleting the file by hand). Confirmed live in crucible round
-	// opus5-high-r7: "lyx loom run" over a truncated reed.json refuses at its own reed.Up() and
+	// remedies — "lym reed down", or deleting the file by hand). Confirmed live in crucible round
+	// opus5-high-r7: "lym loom run" over a truncated reed.json refuses at its own reed.Up() and
 	// never reaches this file at all. That is why soleFinishedCandidate, not this age escape, is
 	// what keeps a finished run harvestable through those gates.
 	return leftoverThenAgeVerdict(c, spec, minAge, now)
@@ -623,13 +623,13 @@ func isTerminalOutcome(outcome string) bool {
 
 // warnAttachCandidates logs one logger.Warn per candidate naming its run directory and strand guid,
 // for the two reed-state-gate error dispositions that apply uniformly to every candidate collected
-// so far — the operator escape for both is out of band, via "lyx reed status".
+// so far — the operator escape for both is out of band, via "lym reed status".
 func warnAttachCandidates(candidates []attachCandidate, msg string, err error) {
 	for _, c := range candidates {
 		if err != nil {
-			logger.Warn(msg, "runDir", c.runDir, "strandGUID", c.state.StrandGUID, "error", err, "seeAlso", "lyx reed status")
+			logger.Warn(msg, "runDir", c.runDir, "strandGUID", c.state.StrandGUID, "error", err, "seeAlso", "lym reed status")
 		} else {
-			logger.Warn(msg, "runDir", c.runDir, "strandGUID", c.state.StrandGUID, "seeAlso", "lyx reed status")
+			logger.Warn(msg, "runDir", c.runDir, "strandGUID", c.state.StrandGUID, "seeAlso", "lym reed status")
 		}
 	}
 }

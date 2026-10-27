@@ -1,6 +1,6 @@
 <!-- This is the darn recipe's Describe session's entire instruction set. It is shipped as an embedded
      default in the top-level stencils package (stencils/stencils.go), seeded to
-     <hub>/_board/_lyx/stencils/landing/, and read from there at call time by internal/seatengine,
+     <hub>/_board/_lym/stencils/landing/, and read from there at call time by internal/seatengine,
      which fills it from the lead's value map that landingshed's DarnDescribeTable builds, then hands it to shuttle as the describing agent's whole
      prompt. The markers are slug, decision_record_path, task_branch, parent_branch, merge_base, review_dir and description_path, plus the two directives. Every marker below is a top-level {{.X}} substitution; stencil.FillWith requires every
      marker non-empty, parent_directive (rendered by internal/parentdirective) and edit_directive (rendered unconditionally by internal/editdirective) included, and there are no {{if}}/{{range}} conditionals anywhere in this file. -->
@@ -18,7 +18,7 @@ The change was reviewed and may have been fixed after its first description was 
 
 Read only these sources, and use read-only git for the diff:
 
-- The board entry, via `lyx board get '{"slug":"{{.slug}}"}'`.
+- The board entry, via `lym board get '{"slug":"{{.slug}}"}'`.
 - The decision record `{{.decision_record_path}}`.
   Its `Added after Discussion` entries amend the board entry and win over its body where they differ.
   Its other sections are the writer's own account of scope and early calls, which you read as a claim to check against the diff.
@@ -45,5 +45,5 @@ Naming a module is fine when the change touches it.
 
 - Write no `Co-Authored-By` line — the landing step appends the configured trailer block itself.
 - Never commit, and never run any git command that changes the repository.
-- Before ending your turn, run `lyx loom validate-description` and fix every finding it reports.
+- Before ending your turn, run `lym loom validate-description` and fix every finding it reports.
   A clean `validate-description` run is the last thing you do in this session.

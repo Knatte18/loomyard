@@ -16,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/loomcli"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -81,7 +81,7 @@ func TestRunOwnerVerdict(t *testing.T) {
 					gitkit.Git(t, repo, "remote", "set-url", "origin", "http://127.0.0.1:1/x.git")
 				}
 			}
-			taskLocation, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree(slug))
+			taskLocation, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(slug))
 			if err != nil {
 				t.Fatalf("resolve the pair's worktree: %v", err)
 			}

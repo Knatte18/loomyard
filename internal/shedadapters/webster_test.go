@@ -165,7 +165,7 @@ func TestWebsterProducer_OutcomeStuck(t *testing.T) {
 				seedWebsterConflictRecord(t, deps, "finding-a", "finding-b")
 			},
 			wantReroute:    true,
-			wantReasonHas:  []string{stuckReason, "lyx loom resume", "pending cards"},
+			wantReasonHas:  []string{stuckReason, "lym loom resume", "pending cards"},
 			wantReasonLack: []string{"plan review took place", "plan review found"},
 			wantRouted:     "- finding-a\n- finding-b\n",
 		},
@@ -175,7 +175,7 @@ func TestWebsterProducer_OutcomeStuck(t *testing.T) {
 				seedWebsterConflictRecord(t, deps, "finding-a", "finding-b")
 				writeWebsterFile(t, websterengine.RoutedConflictPath(scratch), "- finding-a\n- finding-b\n")
 			},
-			wantReasonHas:  []string{"the same webster plan conflict recurred", stuckReason, "--amends-plan", "lyx loom goto --to Plan-Burler-Review", "lyx loom resume"},
+			wantReasonHas:  []string{"the same webster plan conflict recurred", stuckReason, "--amends-plan", "lym loom goto --to Plan-Burler-Review", "lym loom resume"},
 			wantReasonLack: []string{"review"},
 			wantRouted:     "- finding-a\n- finding-b\n",
 		},
@@ -301,7 +301,7 @@ func TestWebsterProducer_OtherEngineErrors(t *testing.T) {
 		{name: "NilBatcher", err: websterengine.ErrNilBatcher},
 		{name: "PlainUnmatchedError", err: errors.New("webster: plan validation refused this run")},
 		{name: "AutoRebaselineWrap", err: autoRebaselineErr, wantStuck: true},
-		{name: "BatchDeadEnd", err: fmt.Errorf("%w: batch 01-a is dead and its recovery earns no retry; way forward: 1) lyx webster reset --to batch-start --batch 01; 2) re-step the loom row", websterengine.ErrBatchDeadEnd), wantStuck: true},
+		{name: "BatchDeadEnd", err: fmt.Errorf("%w: batch 01-a is dead and its recovery earns no retry; way forward: 1) lym webster reset --to batch-start --batch 01; 2) re-step the loom row", websterengine.ErrBatchDeadEnd), wantStuck: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -331,7 +331,7 @@ func TestWebsterProducer_OtherEngineErrors(t *testing.T) {
 }
 
 func pendingAuditErr() error {
-	return fmt.Errorf("%w: 1 correctness finding(s): 1) parent-write: wrote internal/x.go; way forward: 1) lyx webster accept-audit; 2) re-step the loom row", websterengine.ErrPendingAuditFindings)
+	return fmt.Errorf("%w: 1 correctness finding(s): 1) parent-write: wrote internal/x.go; way forward: 1) lym webster accept-audit; 2) re-step the loom row", websterengine.ErrPendingAuditFindings)
 }
 
 // TestWebsterProducer_PendingAuditFindingsIsStuck covers a pending-audit refusal: it is a Stuck
@@ -346,7 +346,7 @@ func TestWebsterProducer_PendingAuditFindingsIsStuck(t *testing.T) {
 		wantReentryStep string
 	}{
 		{"RowReentryStepIsHandedToTheRun", "", "re-step the loom row"},
-		{"CallersStepIsKept", "lyx webster run", "lyx webster run"},
+		{"CallersStepIsKept", "lym webster run", "lym webster run"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -359,7 +359,7 @@ func TestWebsterProducer_PendingAuditFindingsIsStuck(t *testing.T) {
 			if ptr.Path != "" {
 				t.Errorf("Call() path = %q; want empty", ptr.Path)
 			}
-			for _, want := range []string{"internal/x.go", "lyx webster accept-audit", "re-step the loom row"} {
+			for _, want := range []string{"internal/x.go", "lym webster accept-audit", "re-step the loom row"} {
 				if !strings.Contains(ptr.Reason, want) {
 					t.Errorf("Reason = %q; want it to contain %q", ptr.Reason, want)
 				}
@@ -402,7 +402,7 @@ func TestWebsterProducer_PendingAuditFindingsBlocksRun(t *testing.T) {
 	if res.State != shedengine.StateBlocked {
 		t.Errorf("Step() state = %q; want %q", res.State, shedengine.StateBlocked)
 	}
-	if !strings.Contains(res.Reason, "lyx webster accept-audit") {
+	if !strings.Contains(res.Reason, "lym webster accept-audit") {
 		t.Errorf("Step() reason = %q; want it to name the accept-audit verb", res.Reason)
 	}
 
@@ -504,7 +504,7 @@ func (doneProducer) Call(context.Context) (shedengine.Outcome, shedengine.Output
 // TestWebsterProducer_ConflictRerouteCapThenRepeatHalts proves a new plan conflict that meets shed's reroute cap halts with the told clause and counts as routed.
 // Resuming the halt without the hand edit halts again as a repeat and adds no reroute.
 func TestWebsterProducer_ConflictRerouteCapThenRepeatHalts(t *testing.T) {
-	const capWayForward = "run \"lyx loom resume\" in the task worktree once the cause the halt's reason quotes is cleared: for a Webster plan conflict, once the run's parent has recorded the fix with \"lyx loom decision add\" and \"--amends-plan\""
+	const capWayForward = "run \"lym loom resume\" in the task worktree once the cause the halt's reason quotes is cleared: for a Webster plan conflict, once the run's parent has recorded the fix with \"lym loom decision add\" and \"--amends-plan\""
 	deps := websterDepsWithScratch(t)
 	seedWebsterConflictRecord(t, deps, "finding-a")
 	dir := t.TempDir()

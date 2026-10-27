@@ -1,6 +1,6 @@
 // skip.go decides which pairs skip the quiet wait and waits for such a pair's run lock before its owned processes are ended.
 // A holder a pause or a network-gate wait leaves behind passes the wait, since the owned-process end and the loop end reach it.
-// It also holds EndBeforeSessionDown, the local-state reading and owned-process end `lyx reed down` runs before it kills a pair's session.
+// It also holds EndBeforeSessionDown, the local-state reading and owned-process end `lym reed down` runs before it kills a pair's session.
 
 package pairteardown
 
@@ -72,16 +72,16 @@ func (t *Teardown) EndBeforeSessionDown(ctx context.Context, slug string) ([]run
 		}
 	}
 	if !settled {
-		return nil, fmt.Errorf("%w: pair %q; pause it with `lyx tender pause %s`, then run `lyx reed down` again", ErrRunRunning, slug, slug)
+		return nil, fmt.Errorf("%w: pair %q; pause it with `lym tender pause %s`, then run `lym reed down` again", ErrRunRunning, slug, slug)
 	}
 
-	if err := t.awaitOrPass(ctx, slug, covered, hubEntry, "`lyx reed down`"); err != nil {
+	if err := t.awaitOrPass(ctx, slug, covered, hubEntry, "`lym reed down`"); err != nil {
 		return nil, err
 	}
 	ended, err := t.endOwned(slug, runproc.RoleDobby)
 	var survivors *runproc.SurvivorsError
 	if errors.As(err, &survivors) {
-		return ended, fmt.Errorf("processes of pair %q survived the end: %s; run `lyx reed down` again once they are gone: %w", slug, survivorNames(survivors.Survivors), err)
+		return ended, fmt.Errorf("processes of pair %q survived the end: %s; run `lym reed down` again once they are gone: %w", slug, survivorNames(survivors.Survivors), err)
 	}
 	if err != nil {
 		return ended, fmt.Errorf("end the pair's registered processes: %w", err)
@@ -202,9 +202,9 @@ func runLockRefusal(holder int, holderKnown bool, slug, lockPath, goos, retry st
 	base := fmt.Errorf("%w: the run lock %s of pair %q is held by %s", ErrDriverBusy, lockPath, slug, holderText)
 
 	if paused {
-		resume := fmt.Sprintf("`lyx tender resume %s`", slug)
+		resume := fmt.Sprintf("`lym tender resume %s`", slug)
 		if hubEntry {
-			resume = "`lyx tender resume` with no slug, which lifts every live entry of the hub, other pairs' pauses and a pause held for another machine included,"
+			resume = "`lym tender resume` with no slug, which lifts every live entry of the hub, other pairs' pauses and a pause held for another machine included,"
 		}
 		return fmt.Errorf("%w, and a parent lock record names the pair; resume the run with %s so the step finishes its merge, then run %s again;"+
 			" under a pause held for another machine the run is not resumed: run %s again once the holder ends, and never lift that pause",
@@ -213,14 +213,14 @@ func runLockRefusal(holder int, holderKnown bool, slug, lockPath, goos, retry st
 
 	pauseStep := ""
 	if !parentLocked {
-		pauseStep = fmt.Sprintf("pause the run with `lyx tender pause %s`, then run %s again; ", slug, retry)
+		pauseStep = fmt.Sprintf("pause the run with `lym tender pause %s`, then run %s again; ", slug, retry)
 	}
 	if holderKnown {
 		return fmt.Errorf("%w; %srun %s again once that pid ends", base, pauseStep, retry)
 	}
-	find := "find its holder in the replaced-binary part of `lyx tender status` or with `ps` and end it"
+	find := "find its holder in the replaced-binary part of `lym tender status` or with `ps` and end it"
 	if goos == "windows" {
-		find = "end the pair's `lyx loom drive` process in Task Manager"
+		find = "end the pair's `lym loom drive` process in Task Manager"
 	}
 	return fmt.Errorf("%w; %s%s, then run %s again", base, pauseStep, find, retry)
 }

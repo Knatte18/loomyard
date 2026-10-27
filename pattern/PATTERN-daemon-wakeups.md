@@ -6,7 +6,7 @@ A process that waits without a bound wakes cheaply: at most once a second, backi
 
 An unbounded wait is a loop that lives as long as a run or a session and has no deadline of its own:
 
-- the detached daemons `lyx reed watchdog` and `lyx orch watch`,
+- the detached daemons `lym reed watchdog` and `lym orch watch`,
 - the resize watch loop's poll mode in `internal/reedengine/watchloop.go`, whose timer starts at a two-second base and backs off to a minute while nothing changes,
 - dobby's loop in `internal/dobbyengine/loop.go`, which wakes on a file event or its timer, at most one tick a second, and doubles the timer from batten's probe interval to a minute while no run is in flight,
 - batten's Land row land-lock wait in `internal/battenshed/land.go`, which polls from one second and doubles to thirty seconds,
@@ -16,7 +16,7 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
 - the pause hold in `internal/pauserecord/hold.go`, which polls from one second and doubles to five seconds while the covering entry is unchanged,
 - shuttle's `Wait`,
 - webster's long poll,
-- `lyx shed status --watch`,
+- `lym shed status --watch`,
 - the gate test's CPU watchdog in `internal/gatecli/watchdog.go`, which samples once per period, 5 seconds in production, for as long as go test runs and spawns nothing,
 - the `--until-stop` waiter in `internal/shedverbs/loopwait.go`, whose event source is `internal/fswatch` on the run's steps directory and whose timer starts at the one-second floor,
 - the step watchdog in `internal/shedverbs/loopwatchdog.go`, which wakes at most once a second and backs off to a minute while the child shows no change,
@@ -39,10 +39,10 @@ A bounded wait that ends within a minute is outside the rule.
 
 ## The guard
 
-`cmd/lyx/daemonwakeups_test.go` holds the scan:
+`cmd/lym/daemonwakeups_test.go` holds the scan:
 
 - Over a declared list of the unbounded-wait files, it fails on a sub-second duration literal and on an integer constant named `…MS` or `…Ms` below 1000.
-- A line that must keep one, such as a bounded retry, carries `//lyx:one-shot <reason>`; a bare annotation without a reason does not let the line through.
+- A line that must keep one, such as a bounded retry, carries `//lym:one-shot <reason>`; a bare annotation without a reason does not let the line through.
 - Over every production file under `internal/` and `cmd/`, it fails on a `time.NewTicker` or `time.Tick` call outside the declared list.
   The way forward is to list the loop or explain it in the same commit.
 

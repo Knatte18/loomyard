@@ -26,7 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runprofile"
 )
 
@@ -40,7 +40,7 @@ func TestConfigOverRealHub(t *testing.T) {
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	// Topology.Add wires the new pair's junctions itself, reading the wired name-set from the real repo-wide fabric.yaml.
-	// Without that the worktree has no _lyx, so configengine.Edit→FindBaseDir would error.
+	// Without that the worktree has no _lym, so configengine.Edit→FindBaseDir would error.
 	if _, err := h.Topology.Add(h.Location, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("Topology.Add(%q): %v", slug, err)
 	}
@@ -53,9 +53,9 @@ func TestConfigOverRealHub(t *testing.T) {
 	t.Setenv("FABRIC_SKIP_PUSH", "")
 
 	if !t.Run("per-worktree edit is synced into the fabric worktree and the code side stays pristine", func(t *testing.T) {
-		codeLayout, err := lyxcwd.Resolve(codeWorktreePath)
+		codeLayout, err := lymcwd.Resolve(codeWorktreePath)
 		if err != nil {
-			t.Fatalf("lyxcwd.Resolve(%q): %v", codeWorktreePath, err)
+			t.Fatalf("lymcwd.Resolve(%q): %v", codeWorktreePath, err)
 		}
 
 		// A task session's own edit syncs through fabriccli.RunCLIIn, which runs without a parent and so passes the role guard.
@@ -107,8 +107,8 @@ func TestConfigOverRealHub(t *testing.T) {
 		if err != nil {
 			t.Fatalf("code-side git ls-files failed: %v", err)
 		}
-		if strings.Contains(string(allFilesOut), "_lyx") {
-			t.Errorf("_lyx should be excluded from code-side git tracking; git ls-files output: %q", string(allFilesOut))
+		if strings.Contains(string(allFilesOut), "_lym") {
+			t.Errorf("_lym should be excluded from code-side git tracking; git ls-files output: %q", string(allFilesOut))
 		}
 
 		outStr := out.String()
@@ -183,7 +183,7 @@ func TestConfigOverRealHub(t *testing.T) {
 
 			var out bytes.Buffer
 			if code := RunCLIIn(row.cwd, &out, args); code != row.wantCode {
-				t.Fatalf("lyx config %s = %d; want %d; output: %s", strings.Join(args, " "), code, row.wantCode, out.String())
+				t.Fatalf("lym config %s = %d; want %d; output: %s", strings.Join(args, " "), code, row.wantCode, out.String())
 			}
 			after := readChecked()
 			if row.wantCode != 0 {
@@ -205,7 +205,7 @@ func TestConfigOverRealHub(t *testing.T) {
 
 		var out bytes.Buffer
 		if code := RunCLIIn(primeWorktreePath, &out, []string{"gate", "--layer", "machine", "--set", "tier_parallel.tier0=8"}); code != 0 {
-			t.Fatalf("lyx config gate --layer machine --set tier_parallel.tier0=8 = %d; want 0; output: %s", code, out.String())
+			t.Fatalf("lym config gate --layer machine --set tier_parallel.tier0=8 = %d; want 0; output: %s", code, out.String())
 		}
 		if data, err := os.ReadFile(configengine.MachineFile(boardDir, "gate")); err != nil || string(data) != "tier_parallel:\n    tier0: \"8\"\n" {
 			t.Errorf("machine gate file = %q, %v; want tier_parallel.tier0: 8", data, err)
@@ -236,15 +236,15 @@ func TestConfigOverRealHub(t *testing.T) {
 		}
 
 		// The real command meets the no-terminal refusal before any listing, so this drives menu with a terminal answer of true to reach its hub-write guard.
-		codeLayout, err := lyxcwd.Resolve(codeWorktreePath)
+		codeLayout, err := lymcwd.Resolve(codeWorktreePath)
 		if err != nil {
-			t.Fatalf("lyxcwd.Resolve(%q): %v", codeWorktreePath, err)
+			t.Fatalf("lymcwd.Resolve(%q): %v", codeWorktreePath, err)
 		}
 		dirs := dirsOf(codeLayout)
 		dirs.hubWriteGuard = realHubWriteGuard(codeLayout)
 		var out bytes.Buffer
 		if code := menu(dirs, strings.NewReader(strconv.Itoa(boardChoice)+"\n"), &out, makeNeverCalledEditor(t), nil, nil, true); code != 1 {
-			t.Fatalf("lyx config menu = %d; want 1; output: %s", code, out.String())
+			t.Fatalf("lym config menu = %d; want 1; output: %s", code, out.String())
 		}
 		menuListing, envelope, _ := strings.Cut(out.String(), "{")
 		if !strings.Contains(menuListing, "board") {
@@ -282,7 +282,7 @@ func TestConfigOverRealHub(t *testing.T) {
 			cmd.SetIn(tt.in)
 			var out bytes.Buffer
 			if code := clihelp.ExecuteIn(cmd, codeWorktreePath, &out, tt.args); code != 1 {
-				t.Fatalf("lyx config %s (%s) = %d; want 1; output: %s", tt.args[0], tt.name, code, out.String())
+				t.Fatalf("lym config %s (%s) = %d; want 1; output: %s", tt.args[0], tt.name, code, out.String())
 			}
 			assertJSONErrContains(t, out.String(), "--print")
 		}
@@ -295,7 +295,7 @@ func TestConfigOverRealHub(t *testing.T) {
 		t.Run("hub-wide "+row.module+" --set commits in _board", func(t *testing.T) {
 			var out bytes.Buffer
 			if code := RunCLIIn(primeWorktreePath, &out, []string{row.module, "--set", row.set}); code != 0 {
-				t.Fatalf("lyx config %s --set %s = %d; output: %s", row.module, row.set, code, out.String())
+				t.Fatalf("lym config %s --set %s = %d; output: %s", row.module, row.set, code, out.String())
 			}
 
 			hubFile := configengine.ConfigFile(boardDir, row.module)
@@ -363,7 +363,7 @@ func TestConfigOverRealHub(t *testing.T) {
 		const machineBytes = "slots: 1\ntier_parallel:\n  tier0: 8\n"
 		machineFile := configengine.MachineFile(boardDir, "gate")
 		if err := os.MkdirAll(filepath.Dir(machineFile), 0o755); err != nil {
-			t.Fatalf("create the board's .lyx config dir: %v", err)
+			t.Fatalf("create the board's .lym config dir: %v", err)
 		}
 		if err := os.WriteFile(machineFile, []byte(machineBytes), 0o644); err != nil {
 			t.Fatalf("seed the machine file: %v", err)
@@ -394,7 +394,7 @@ func TestConfigOverRealHub(t *testing.T) {
 			wantErr string
 		}{
 			{name: "apply from a task pair", cwd: codeWorktreePath, args: []string{"--layer", "default", "--apply"}, wantErr: "prime worktree"},
-			{name: "the board dir", cwd: boardDir, args: []string{"--apply"}, wantErr: "lyx config reconcile --layer default"},
+			{name: "the board dir", cwd: boardDir, args: []string{"--apply"}, wantErr: "lym config reconcile --layer default"},
 			{name: "a layer other than default", cwd: primeWorktreePath, args: []string{"--layer", "local", "--apply"}, wantErr: "--layer default alone"},
 			{name: "the board dir with a layer other than default", cwd: boardDir, args: []string{"--layer", "local"}, wantErr: "prime worktree"},
 		}
@@ -438,7 +438,7 @@ func TestConfigOverRealHub(t *testing.T) {
 
 		// A hub-wide orch rules file left uncommitted in Bolt must stay out of the config commit.
 		const rulesContent = "an uncommitted rule\n"
-		rulesRel := filepath.Join("_lyx", "orch", "rules.md")
+		rulesRel := filepath.Join("_lym", "orch", "rules.md")
 		rulesFile := filepath.Join(boardDir, rulesRel)
 		if err := os.MkdirAll(filepath.Dir(rulesFile), 0o755); err != nil {
 			t.Fatalf("create the board orch dir: %v", err)

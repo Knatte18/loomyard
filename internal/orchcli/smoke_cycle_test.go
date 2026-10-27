@@ -3,9 +3,9 @@
 // smoke_cycle_test.go drives one full handoff cycle against a real Claude Code session in a real reed strand: start, one turn that launches a background task, a manual cycle, and the assertions that the handoff was written, the session was cleared and the resume prompt was typed.
 // It also records, without failing, the two questions only a live session answers: whether a background task's completion notification survives `/clear`, and whether the session's `SendMessage` address does.
 //
-// Like the loomcli smoke tests it drives the real built cmd/lyx binary as a subprocess, never RunCLI in-process, because `lyx beam start` spawns a detached `lyx orch watch` from os.Executable(), which must never be this test binary (Live-Substrate Spawn Observability Invariant).
+// Like the loomcli smoke tests it drives the real built cmd/lym binary as a subprocess, never RunCLI in-process, because `lym beam start` spawns a detached `lym orch watch` from os.Executable(), which must never be this test binary (Live-Substrate Spawn Observability Invariant).
 // The one in-process call is BeamUp, whose watcher spawn is a no-op under `go test`, so the test starts the built binary's watcher itself.
-// The threshold is set far above anything the session can reach so the manual `lyx orch refresh` is the only trigger;
+// The threshold is set far above anything the session can reach so the manual `lym orch refresh` is the only trigger;
 // the threshold-triggered path is covered by the watcher's unit cases.
 //
 // The test skips when tmux or a `claude` binary is unavailable, and needs a logged-in Claude Code install.
@@ -26,7 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -34,23 +34,23 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
-	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // smokeRun runs exe with args in dir, bounded by timeout, and returns the combined output and exit code.
 func smokeRun(t *testing.T, exe, dir string, timeout time.Duration, args ...string) (string, int) {
 	t.Helper()
-	out, code, err := lyxbin.Run(exe, dir, timeout, args...)
+	out, code, err := lymbin.Run(exe, dir, timeout, args...)
 	if err != nil {
-		t.Fatalf("lyx %v: %v", args, err)
+		t.Fatalf("lym %v: %v", args, err)
 	}
 	return out, code
 }
 
 // smokeBeamUp brings the orch of the hub's prime up through BeamUp, failing unless it succeeds.
 // BeamUp spawns no watcher under `go test`, since re-executing the test binary would run the suite, so the built binary's `orch watch` is started detached here, as the production spawn does.
-func smokeBeamUp(t *testing.T, exe string, location *lyxcwd.Location) {
+func smokeBeamUp(t *testing.T, exe string, location *lymcwd.Location) {
 	t.Helper()
 	opts := BeamUpOptions{Index: func() (string, error) { return runHelpIndex(exe) }}
 	if _, err := BeamUp(location, opts); err != nil {
@@ -71,7 +71,7 @@ func smokeBeamUp(t *testing.T, exe string, location *lyxcwd.Location) {
 	go func() { _ = cmd.Wait() }()
 }
 
-// smokeStatus runs `lyx orch status` and decodes its envelope.
+// smokeStatus runs `lym orch status` and decodes its envelope.
 func smokeStatus(t *testing.T, exe, prime string) map[string]any {
 	t.Helper()
 	out, code := smokeRun(t, exe, prime, 30*time.Second, "orch", "status")
@@ -183,16 +183,16 @@ func waitFor(t *testing.T, attempts int, what string, cond func() bool) {
 
 // TestSmokeOrch_OneFullCycle drives start, one background-task turn, a manual cycle and the assertions.
 func TestSmokeOrch_OneFullCycle(t *testing.T) {
-	tmuxPath := os.Getenv("LYX_LOOM_TMUX")
+	tmuxPath := os.Getenv("LYM_LOOM_TMUX")
 	if tmuxPath == "" {
 		var err error
 		if tmuxPath, err = exec.LookPath("tmux"); err != nil {
-			t.Skip("tmux not found on PATH; set LYX_LOOM_TMUX to override")
+			t.Skip("tmux not found on PATH; set LYM_LOOM_TMUX to override")
 		}
 	}
-	llmkit.Claude(t, "LYX_SHUTTLE_CLAUDE")
+	llmkit.Claude(t, "LYM_SHUTTLE_CLAUDE")
 
-	exe := lyxbin.Build(t)
+	exe := lymbin.Build(t)
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	// The soft threshold sits above the hard one, so the manual cycle stays the only trigger.

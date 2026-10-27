@@ -54,10 +54,10 @@ func TestRemove_LocalPair(t *testing.T) {
 		{
 			name: "CommittedRunRecord",
 			setup: func(t *testing.T, h *hubforge.Hub) {
-				rel := "_lyx/shed/" + slug + "/status.json"
+				rel := "_lym/shed/" + slug + "/status.json"
 				weft := fabricengine.RecordsWorktreePath(h.Location, slug)
 				writeFile(t, filepath.Join(weft, filepath.FromSlash(rel)), "{}\n")
-				if _, committed, err := fabricengine.CommitRecordsPaths(fabricengine.NewMutations(""), weft, h.Location.AnchorRel, []string{"_lyx"}, "record", fabricengine.SyncOptions{}); err != nil || !committed {
+				if _, committed, err := fabricengine.CommitRecordsPaths(fabricengine.NewMutations(""), weft, h.Location.AnchorRel, []string{"_lym"}, "record", fabricengine.SyncOptions{}); err != nil || !committed {
 					t.Fatalf("commit the run record: committed = %v, err = %v", committed, err)
 				}
 			},
@@ -68,7 +68,7 @@ func TestRemove_LocalPair(t *testing.T) {
 			name: "UncommittedRecord",
 			setup: func(t *testing.T, h *hubforge.Hub) {
 				weft := fabricengine.RecordsWorktreePath(h.Location, slug)
-				writeFile(t, filepath.Join(weft, "_lyx", "shed", slug, "drive-reports", "stop.md"), "stopped\n")
+				writeFile(t, filepath.Join(weft, "_lym", "shed", slug, "drive-reports", "stop.md"), "stopped\n")
 			},
 			wantMarkBranch: slug,
 			wantTip:        true,
@@ -208,7 +208,7 @@ func TestOriginWrites_LocalMarkedBranch(t *testing.T) {
 		if !ok || refusal.Check != fabricengine.CheckOwnership {
 			t.Fatalf("gate error = %v; want a %s refusal", err, fabricengine.CheckOwnership)
 		}
-		for _, want := range []string{"local-only", "lyx fabric remove"} {
+		for _, want := range []string{"local-only", "lym fabric remove"} {
 			if !strings.Contains(refusal.Reason, want) {
 				t.Errorf("refusal reason %q does not name %q", refusal.Reason, want)
 			}

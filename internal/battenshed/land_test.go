@@ -298,7 +298,7 @@ func TestLand_DirtyPrimeWait(t *testing.T) {
 		if err != nil || outcome != shedengine.Stuck {
 			t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
 		}
-		for _, want := range []string{`lyx batten goto myslug --to Land`, `lyx batten run myslug`} {
+		for _, want := range []string{`lym batten goto myslug --to Land`, `lym batten run myslug`} {
 			if !strings.Contains(ptr.Reason, want) {
 				t.Errorf("reason = %q; want it to contain %q", ptr.Reason, want)
 			}
@@ -358,7 +358,7 @@ func TestLand_LandLockWait(t *testing.T) {
 		if err != nil || outcome != shedengine.Stuck {
 			t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
 		}
-		if !strings.Contains(ptr.Reason, `lyx batten goto myslug --to Land`) {
+		if !strings.Contains(ptr.Reason, `lym batten goto myslug --to Land`) {
 			t.Errorf("reason = %q; want the goto way forward", ptr.Reason)
 		}
 		if len(f.notices) != 0 {

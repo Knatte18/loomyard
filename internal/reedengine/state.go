@@ -1,8 +1,5 @@
-// state.go defines the persisted strand record and ReedState container, plus the .lyx/reed.json
-// load/save wrappers.
-// This is the module's dumb-carrier contract in concrete form: Strand stores every field a caller
-// writes (cmd, resumeCmd, sessionId, worktree, name) and reedengine itself reads none of them
-// semantically — only Display decides where a strand's pane goes.
+// state.go defines the persisted strand record and ReedState container, plus the .lym/reed.json load/save wrappers.
+// This is the module's dumb-carrier contract in concrete form: Strand stores every field a caller writes (cmd, resumeCmd, sessionId, worktree, name) and reedengine itself reads none of them semantically — only Display decides where a strand's pane goes.
 // Retiring is the one field reed itself owns: lifecycle bookkeeping set by a reed verb (MarkRetiring), never written by a caller of AddStrand.
 
 package reedengine
@@ -44,9 +41,9 @@ type Strand struct {
 	// Provider is the opaque tag its spawner set; reed stores it and keys the session namers by it, never reading what it means.
 	// A strand recorded before the field existed, or added outside shuttle, decodes with none.
 	Provider string `json:"provider,omitempty"`
-	// LyxBin is the absolute `lyx` path the strand's pane prelude exported as LYX_BIN at its latest launch, empty when no prelude was composed.
+	// LymBin is the absolute `lym` path the strand's pane prelude exported as LYM_BIN at its latest launch, empty when no prelude was composed.
 	// A strand recorded before the field existed decodes with none.
-	LyxBin string `json:"lyxBin,omitempty"`
+	LymBin string `json:"lymBin,omitempty"`
 	// Color is the palette color Segment resolved to, filled on the strand an add or replace returns.
 	// It is never persisted.
 	Color segmentcolor.Color `json:"-"`
@@ -116,7 +113,7 @@ func (g PaneGeneration) SameIncarnation(other PaneGeneration) bool {
 		g.Created == other.Created
 }
 
-// reedStateFileName is the reed.json file name inside .lyx directory.
+// reedStateFileName is the reed.json file name inside .lym directory.
 const reedStateFileName = "reed.json"
 
 // UnmarshalJSON decodes a ReedState, refusing a file whose entire content is the JSON document
@@ -143,12 +140,12 @@ func (s *ReedState) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// LoadState reads the ReedState persisted at dotLyxDir/reed.json.
+// LoadState reads the ReedState persisted at dotLymDir/reed.json.
 // Returns (nil, nil) if absent, (nil, err) on corrupt or read errors.
 // A corrupt-file error is self-describing — it names the file and both remedies — so callers pass
 // it through bare rather than prefixing it (see unreadableStateError).
-func LoadState(dotLyxDir string) (*ReedState, error) {
-	path := filepath.Join(dotLyxDir, reedStateFileName)
+func LoadState(dotLymDir string) (*ReedState, error) {
+	path := filepath.Join(dotLymDir, reedStateFileName)
 	lockPath := path + ".lock"
 
 	v, found, err := state.ReadJSON[ReedState](path, lockPath)
@@ -185,15 +182,15 @@ func LoadState(dotLyxDir string) (*ReedState, error) {
 func unreadableStateError(path string, err error) error {
 	return fmt.Errorf(
 		"reed state file %s is unreadable: %w — the tmux session it describes may still be running, "+
-			`so reed will not guess at its contents. Either run "lyx reed down" to tear that session down and clear the file, `+
+			`so reed will not guess at its contents. Either run "lym reed down" to tear that session down and clear the file, `+
 			"or delete %s by hand to keep the session for now (its panes and their processes keep running, untracked, "+
 			"but are reaped by the next up/resume/add/remove — attach is the way back to that work) and lose only reed's strand tracking",
 		path, err, path)
 }
 
-// SaveState writes s to dotLyxDir/reed.json atomically.
-func SaveState(dotLyxDir string, s *ReedState) error {
-	path := filepath.Join(dotLyxDir, reedStateFileName)
+// SaveState writes s to dotLymDir/reed.json atomically.
+func SaveState(dotLymDir string, s *ReedState) error {
+	path := filepath.Join(dotLymDir, reedStateFileName)
 	lockPath := path + ".lock"
 	return state.WriteJSON(path, lockPath, s)
 }

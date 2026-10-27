@@ -43,7 +43,7 @@ type tierResult struct {
 	buildFailed bool
 }
 
-// runTier runs the tier of run in ctx with its slots held: it prebuilds `lyx` when the tier asks, then runs each invocation's command through the platform shell as a tied child, stopping at the first non-zero exit.
+// runTier runs the tier of run in ctx with its slots held: it prebuilds `lym` when the tier asks, then runs each invocation's command through the platform shell as a tied child, stopping at the first non-zero exit.
 // The tier's timeout_min bounds the prebuild and every invocation together, counted from the call; a tier that outlives it has its process tree killed, exits 1 and prints and logs gateslot.TierTimeoutLine.
 // env is the environment every command gets, before the tier's own env is added.
 // When the resulting GOFLAGS carries `-trimpath`, it logs a line saying so before the first command and returns the line for the caller to print.
@@ -56,7 +56,7 @@ func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, requ
 	var logBuffer bytes.Buffer
 	counter, err := newCounter(run.tier.Counter, io.MultiWriter(out, &logBuffer))
 	if err != nil {
-		return tierResult{refusal: fmt.Sprintf("gate test: %v; way forward: fix the counter of %s with \"lyx config gate\" from the prime%s", err, tierName(run.number), roleClause)}
+		return tierResult{refusal: fmt.Sprintf("gate test: %v; way forward: fix the counter of %s with \"lym config gate\" from the prime%s", err, tierName(run.number), roleClause)}
 	}
 
 	tierCtx, cancel := context.WithTimeout(ctx, timeout)
@@ -113,23 +113,23 @@ func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, requ
 	return tierResult{record: record, log: logBuffer.Bytes(), trimpathNote: trimpathNote}
 }
 
-// runInvocations prebuilds `lyx` when the tier asks, then runs each invocation of run in order under ctx, stopping at the first non-zero exit.
+// runInvocations prebuilds `lym` when the tier asks, then runs each invocation of run in order under ctx, stopping at the first non-zero exit.
 // It returns that exit code, the commands it rendered and a refusal when a command could not be run at all.
 func runInvocations(ctx context.Context, run tierRun, counter counter, env []string, request testRequest) (exit int, commands []string, refusal string) {
 	if len(run.invocations) == 0 {
 		return 0, nil, ""
 	}
-	if run.tier.PrebuiltLyx {
-		bin, cleanup, err := prebuildLyx(ctx, request.goBinary, request.root, run.tier.Parallel, request.prebuiltStore)
+	if run.tier.PrebuiltLym {
+		bin, cleanup, err := prebuildLym(ctx, request.goBinary, request.root, run.tier.Parallel, request.prebuiltStore)
 		if err != nil {
 			if ctx.Err() != nil {
 				return 1, nil, ""
 			}
-			return 0, nil, fmt.Sprintf("gate test: cannot build lyx for the tier: %v; way forward: fix the build, then re-run the same command", err)
+			return 0, nil, fmt.Sprintf("gate test: cannot build lym for the tier: %v; way forward: fix the build, then re-run the same command", err)
 		}
 		defer cleanup()
 		if bin != "" {
-			env = append(slices.Clone(env), gateslot.PrebuiltLyxEnv+"="+bin)
+			env = append(slices.Clone(env), gateslot.PrebuiltLymEnv+"="+bin)
 		}
 	}
 
@@ -211,7 +211,7 @@ func emptyTierFailure(run tierRun, root string, ran map[string]int, args []strin
 		return ""
 	}
 	sort.Strings(empty)
-	return fmt.Sprintf("gate test: %s ran no test in %s although it holds tests under the build tag %s; the tier's command lacks its tag; way forward: add -tags %s to the tier's command with \"lyx config gate\" from the prime%s", tag, strings.Join(empty, ", "), tag, tag, roleClause)
+	return fmt.Sprintf("gate test: %s ran no test in %s although it holds tests under the build tag %s; the tier's command lacks its tag; way forward: add -tags %s to the tier's command with \"lym config gate\" from the prime%s", tag, strings.Join(empty, ", "), tag, tag, roleClause)
 }
 
 // isFilterFlag reports whether arg is one of filterFlags, spelled with one or two dashes, with or without the `test.` prefix and with or without an `=` value.

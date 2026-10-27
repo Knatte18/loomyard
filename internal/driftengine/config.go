@@ -109,12 +109,12 @@ func ConfigSpec() configengine.Spec {
 // LoadConfig loads and validates the drift module's configuration strictly through the hub-wide layer stack under dirs.
 // A declared step needs a command holding {baseline_dir} and a timeout_min of at least 1, and its dir defaults to ".";
 // an all-empty step is undeclared and loads as the zero CommandStep.
-// Every refusal names the key and lyx config drift as the way forward.
+// Every refusal names the key and lym config drift as the way forward.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.Load(dirs, ConfigSpec())
 	if err != nil {
 		if strings.Contains(err.Error(), "not initialized") {
-			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"")
+			return Config{}, fmt.Errorf("not initialized here; run \"lym fabric reconcile\"")
 		}
 		return Config{}, err
 	}
@@ -152,7 +152,7 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 
 // refuseKey builds the refusal of a drift config key, naming the key and its way forward.
 func refuseKey(key, want string) error {
-	return fmt.Errorf("drift config key %q: %s; way forward: fix it with lyx config drift", key, want)
+	return fmt.Errorf("drift config key %q: %s; way forward: fix it with lym config drift", key, want)
 }
 
 // decodeStep validates one declared command step and fills its defaults; a step with no key set is undeclared and decodes to the zero CommandStep.
@@ -192,7 +192,7 @@ func (c Config) Step(name string) (CommandStep, error) {
 		return CommandStep{}, fmt.Errorf("drift: %q is not a command step; want %s or %s", name, stepCapture, stepCompare)
 	}
 	if step.Command == "" {
-		return CommandStep{}, fmt.Errorf("drift: %s is not declared; way forward: declare it with lyx config drift --set '%s={command: ..., timeout_min: N}'", name, name)
+		return CommandStep{}, fmt.Errorf("drift: %s is not declared; way forward: declare it with lym config drift --set '%s={command: ..., timeout_min: N}'", name, name)
 	}
 	return step, nil
 }

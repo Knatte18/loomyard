@@ -1,7 +1,7 @@
 //go:build tier0
 
 // arm_seed_test.go covers arm's seed-presence refusal: resolveRunID drives the whole check against
-// a hand-built *lyxcwd.Location, with no real git repository behind it (shedrun.ReadSeed and
+// a hand-built *lymcwd.Location, with no real git repository behind it (shedrun.ReadSeed and
 // shedrun.List are both plain filesystem reads under AnchorPath), so this file stays Tier 1.
 
 package loomcli
@@ -12,13 +12,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // seedRunID seeds a run-id under loc with shedrun.RecipeLoom/shedrun.DriverGo, t.Fatal-ing on
 // failure.
-func seedRunID(t *testing.T, loc *lyxcwd.Location, runID string) {
+func seedRunID(t *testing.T, loc *lymcwd.Location, runID string) {
 	t.Helper()
 	if err := shedrun.WriteSeed(loc, runID, shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo}); err != nil {
 		t.Fatalf("shedrun.WriteSeed(%q) = %v; want nil", runID, err)
@@ -57,7 +57,7 @@ func TestResolveRunID(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+			loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 			c := &loomCLI{}
 
 			err := c.resolveRunID(loc, tt.verb, tt.args)
@@ -77,15 +77,15 @@ func TestResolveRunID(t *testing.T) {
 			if !strings.Contains(err.Error(), c.runID) {
 				t.Errorf("resolveRunID(%q) error = %q; want it to name the addressed run-id %q", tt.verb, err.Error(), c.runID)
 			}
-			if !strings.Contains(err.Error(), "lyx loom start") {
-				t.Errorf("resolveRunID(%q) error = %q; want it to name \"lyx loom start\"", tt.verb, err.Error())
+			if !strings.Contains(err.Error(), "lym loom start") {
+				t.Errorf("resolveRunID(%q) error = %q; want it to name \"lym loom start\"", tt.verb, err.Error())
 			}
-			const driverlessSeed = "lyx shed seed self --recipe loom --driver go --param parent=<parent-branch>"
-			if got := strings.Contains(err.Error(), driverlessSeed) && strings.Contains(err.Error(), "lyx loom step"); got != tt.wantDriverless {
+			const driverlessSeed = "lym shed seed self --recipe loom --driver go --param parent=<parent-branch>"
+			if got := strings.Contains(err.Error(), driverlessSeed) && strings.Contains(err.Error(), "lym loom step"); got != tt.wantDriverless {
 				t.Errorf("resolveRunID(%q) error = %q; names the driverless route = %v, want %v", tt.verb, err.Error(), got, tt.wantDriverless)
 			}
-			if !tt.wantDriverless && strings.Contains(err.Error(), "lyx shed seed") {
-				t.Errorf("resolveRunID(%q) error = %q; want no \"lyx shed seed\" route", tt.verb, err.Error())
+			if !tt.wantDriverless && strings.Contains(err.Error(), "lym shed seed") {
+				t.Errorf("resolveRunID(%q) error = %q; want no \"lym shed seed\" route", tt.verb, err.Error())
 			}
 			// The pre-existing-worktree case shedrun.MissingSeedMessage documents.
 			if !strings.Contains(err.Error(), "no run is seeded yet") {
@@ -104,7 +104,7 @@ func TestResolveRunID(t *testing.T) {
 // TestResolveRunID_RefusalNamesEveryExistingRunID asserts the refusal's text lists every run-id
 // shedrun.List finds, sorted, when the addressed run-id itself has no seed.
 func TestResolveRunID_RefusalNamesEveryExistingRunID(t *testing.T) {
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 	seedRunID(t, loc, "alpha")
 	seedRunID(t, loc, "bravo")
 	c := &loomCLI{}
@@ -118,8 +118,8 @@ func TestResolveRunID_RefusalNamesEveryExistingRunID(t *testing.T) {
 			t.Errorf("resolveRunID error = %q; want it to list the existing run-id %q", err.Error(), want)
 		}
 	}
-	if !strings.Contains(err.Error(), "lyx loom start") {
-		t.Errorf("resolveRunID error = %q; want it to name \"lyx loom start\" as the remedy", err.Error())
+	if !strings.Contains(err.Error(), "lym loom start") {
+		t.Errorf("resolveRunID error = %q; want it to name \"lym loom start\" as the remedy", err.Error())
 	}
 }
 
@@ -127,7 +127,7 @@ func TestResolveRunID_RefusalNamesEveryExistingRunID(t *testing.T) {
 // present at the addressed run-id, with no seed beside it, still refuses -- the inconsistency the
 // refusal exists to catch (e.g. a worktree from before this task).
 func TestResolveRunID_StatusFilePresentWithNoSeedTakesTheSameRefusal(t *testing.T) {
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 	statusPath := shedrun.StatusFile(loc, shedrun.SelfRunID)
 	if err := os.MkdirAll(filepath.Dir(statusPath), 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(statusPath), err)
@@ -159,7 +159,7 @@ func TestResolveRecipe(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+			loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 			if tt.seed != nil {
 				if err := shedrun.WriteSeed(loc, tt.seeded, *tt.seed); err != nil {
 					t.Fatalf("shedrun.WriteSeed() = %v; want nil", err)

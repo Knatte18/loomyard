@@ -197,11 +197,11 @@ func TestPeersShowVerb(t *testing.T) {
 	}{
 		{name: "a decision record is printed", slug: "running-peer", record: "decision", want: "# Decision record\n"},
 		{name: "a plan is printed", slug: "running-peer", record: "plan", want: "# Plan\n"},
-		{name: "an unknown slug", slug: "ghost", record: "plan", wantErr: []string{`unknown slug "ghost"`, `"lyx loom peers" lists the in-flight peers`}},
-		{name: "a slug holding no run status", slug: "finished", record: "plan", wantErr: []string{`"finished" holds no run status`, `"lyx loom peers" lists the in-flight peers`}},
+		{name: "an unknown slug", slug: "ghost", record: "plan", wantErr: []string{`unknown slug "ghost"`, `"lym loom peers" lists the in-flight peers`}},
+		{name: "a slug holding no run status", slug: "finished", record: "plan", wantErr: []string{`"finished" holds no run status`, `"lym loom peers" lists the in-flight peers`}},
 		{name: "the caller's own slug", slug: "me", record: "plan", wantErr: []string{"this worktree's own run", "read your own records in this worktree"}},
 		{name: "an unknown record name", slug: "running-peer", record: "notes", wantErr: []string{`unknown record "notes"`, "pass --record decision or --record plan"}},
-		{name: "a record the peer does not have yet", slug: "awaiting-peer", record: "plan", wantErr: []string{`"awaiting-peer" has no plan yet`, `"lyx loom peers" shows which records exist`}},
+		{name: "a record the peer does not have yet", slug: "awaiting-peer", record: "plan", wantErr: []string{`"awaiting-peer" has no plan yet`, `"lym loom peers" shows which records exist`}},
 		{name: "a hub with no board", slug: "running-peer", record: "plan", noBoard: true, wantErr: []string{"this hub has no board", "nothing to compare"}},
 	}
 	for _, tt := range tests {

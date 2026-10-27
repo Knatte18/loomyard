@@ -1,19 +1,19 @@
-// Package shortcutcli mounts the top-level operator shortcuts (`lyx a`, `lyx s`, `lyx p`, `lyx r`) declared in one embedded file.
+// Package shortcutcli mounts the top-level operator shortcuts (`lym a`, `lym s`, `lym p`, `lym r`) declared in one embedded file.
 //
 // # The file
 //
 // shortcuts.yaml maps a shortcut name to one argv, a list of words, or to a list of argvs run in order.
-// An argv names lyx words only, never a shell string.
+// An argv names lym words only, never a shell string.
 // The file is embedded in the binary, so a shortcut is added only by a commit to it; no hub, repo or user can add or change one.
 // Any other shape of a value is a parse error naming the shortcut.
-// Parsing rejects neither an empty argv nor an unknown command; the guard in `cmd/lyx` checks the shipped file against the real root.
+// Parsing rejects neither an empty argv nor an unknown command; the guard in `cmd/lym` checks the shipped file against the real root.
 //
 // # Mount
 //
-// `newRoot` in `cmd/lyx` calls Mount, so every root it builds, the fresh roots a shortcut runs its argvs on included, carries the same shortcuts.
-// Mount adds one root command per shortcut under the group GroupID, which cobra lists as `Shortcuts:` in `lyx --help`.
+// `newRoot` in `cmd/lym` calls Mount, so every root it builds, the fresh roots a shortcut runs its argvs on included, carries the same shortcuts.
+// Mount adds one root command per shortcut under the group GroupID, which cobra lists as `Shortcuts:` in `lym --help`.
 // A file that does not parse logs one Warn and mounts nothing.
-// Shortcuts are not modules: they have no `Command()` or `RunCLI`, and the module guards in `cmd/lyx` skip their group.
+// Shortcuts are not modules: they have no `Command()` or `RunCLI`, and the module guards in `cmd/lym` skip their group.
 //
 // # Words
 //

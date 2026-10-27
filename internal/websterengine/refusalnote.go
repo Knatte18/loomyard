@@ -1,4 +1,4 @@
-// refusalnote.go writes the friction note a `lyx webster` refusal leaves.
+// refusalnote.go writes the friction note a `lym webster` refusal leaves.
 
 package websterengine
 
@@ -11,7 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/friction"
 )
 
-// RefusalNote describes one refused `lyx webster` invocation.
+// RefusalNote describes one refused `lym webster` invocation.
 // Fields holds every envelope key but `ok` and `error`, which is where a refusal carries its class, such as `plan_drifted` or `batch_failed`.
 type RefusalNote struct {
 	Verb    string
@@ -34,7 +34,7 @@ func WriteRefusalNote(frictionDir string, n RefusalNote) error {
 	}
 
 	var b strings.Builder
-	b.WriteString("lyx webster " + n.Verb + " refused\n\n")
+	b.WriteString("lym webster " + n.Verb + " refused\n\n")
 	b.WriteString("Arguments: " + n.Args + "\n\n")
 	b.WriteString("```\n" + n.Message + "\n```\n")
 

@@ -19,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // pairFabric adds a task pair for slug to h and opens the fabric handle on the pair's warp worktree.
@@ -28,7 +28,7 @@ func pairFabric(t *testing.T, h *hubforge.Hub, slug string) (*fabricengine.Fabri
 
 	hubforge.AddPair(t, h, slug)
 	warp := h.PairCodeWorktree(slug)
-	loc, err := lyxcwd.ResolveWorktree(warp)
+	loc, err := lymcwd.ResolveWorktree(warp)
 	if err != nil {
 		t.Fatalf("ResolveWorktree(%s): %v", warp, err)
 	}

@@ -27,7 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -161,7 +161,7 @@ func TestGateParity_DiscussionGate(t *testing.T) {
 	}
 }
 
-// planFixtureInvalidFormat writes a plan under <anchorPath>/_lyx/plan/ whose frontmatter carries an
+// planFixtureInvalidFormat writes a plan under <anchorPath>/_lym/plan/ whose frontmatter carries an
 // unrecognized format value, tripping format-unrecognized regardless of mode, and returns a
 // *loomCLI wired only with the two plan path fields validatePlanCmd's RunE reads. It is a local
 // helper distinct from validate_test.go's planFixture, which always writes the recognized format.
@@ -187,7 +187,7 @@ func planFixtureInvalidFormat(t *testing.T, anchorPath, worktreeRoot string) *lo
 	}
 	files["00-overview.md"] = overview
 
-	planDir := filepath.Join(anchorPath, "_lyx", "plan")
+	planDir := filepath.Join(anchorPath, "_lym", "plan")
 	if err := os.MkdirAll(planDir, 0o755); err != nil {
 		t.Fatalf("mkdir plan dir: %v", err)
 	}
@@ -205,9 +205,9 @@ func planFixtureInvalidFormat(t *testing.T, anchorPath, worktreeRoot string) *lo
 }
 
 // fabricReferenceCommand is a command that reaches a sibling worktree of the fabric repo, the shape card-fabric-reference refuses in a plan's verify: section.
-var fabricReferenceCommand = "cat " + fabricengine.RecordsWorktree(&lyxcwd.Location{HubPath: "/hub", WorktreeName: "task"}) + "/_lyx/plan.md"
+var fabricReferenceCommand = "cat " + fabricengine.RecordsWorktree(&lymcwd.Location{HubPath: "/hub", WorktreeName: "task"}) + "/_lym/plan.md"
 
-// verifySectionPlanFixture writes a language: none plan under <anchorPath>/_lyx/plan/ whose verify: section runs verifyBody, and returns a *loomCLI wired with anchorPath and worktreeRoot.
+// verifySectionPlanFixture writes a language: none plan under <anchorPath>/_lym/plan/ whose verify: section runs verifyBody, and returns a *loomCLI wired with anchorPath and worktreeRoot.
 func verifySectionPlanFixture(t *testing.T, anchorPath, worktreeRoot, verifyBody string) *loomCLI {
 	t.Helper()
 	return verifyPlanFixture(t, anchorPath, worktreeRoot, "none", verifyBody, "")
@@ -217,7 +217,7 @@ func verifySectionPlanFixture(t *testing.T, anchorPath, worktreeRoot, verifyBody
 func verifyPlanFixture(t *testing.T, anchorPath, worktreeRoot, language, verifyBody, cardVerify string) *loomCLI {
 	t.Helper()
 
-	plankit.Write(t, filepath.Join(anchorPath, "_lyx", "plan"), plankit.Plan{
+	plankit.Write(t, filepath.Join(anchorPath, "_lym", "plan"), plankit.Plan{
 		Approved: true,
 		Language: language,
 		Sections: []plankit.Section{{Heading: "verify:", Body: verifyBody}},
@@ -239,13 +239,7 @@ func verifyPlanFixture(t *testing.T, anchorPath, worktreeRoot, language, verifyB
 	}}
 }
 
-// glyphRepoPlanFixture writes a syntactically complete, one-card language: go plan under
-// <anchorPath>/_lyx/plan/ whose sole card's Create group targets createTarget and, when useTarget
-// is non-empty, whose Uses: field also names useTarget, and returns a *loomCLI wired with
-// anchorPath and worktreeRoot -- duplicated from internal/loomcli/validate_test.go's own
-// glyphPlanFixture, extended
-// with the optional Uses: field this parity table's fifth and sixth fixtures both need to reach the
-// resolve-backed half without the Uses target also tripping the Create-side inversion.
+// glyphRepoPlanFixture writes a syntactically complete, one-card language: go plan under <anchorPath>/_lym/plan/ whose sole card's Create group targets createTarget and, when useTarget is non-empty, whose Uses: field also names useTarget, and returns a *loomCLI wired with anchorPath and worktreeRoot -- duplicated from internal/loomcli/validate_test.go's own glyphPlanFixture, extended with the optional Uses: field this parity table's fifth and sixth fixtures both need to reach the resolve-backed half without the Uses target also tripping the Create-side inversion.
 func glyphRepoPlanFixture(t *testing.T, anchorPath, worktreeRoot, createTarget, useTarget string) *loomCLI {
 	t.Helper()
 
@@ -253,7 +247,7 @@ func glyphRepoPlanFixture(t *testing.T, anchorPath, worktreeRoot, createTarget, 
 	if useTarget != "" {
 		uses = []string{useTarget}
 	}
-	plankit.Write(t, filepath.Join(anchorPath, "_lyx", "plan"), plankit.Plan{
+	plankit.Write(t, filepath.Join(anchorPath, "_lym", "plan"), plankit.Plan{
 		Approved: true,
 		Language: "go",
 		Cards: []plankit.Card{{
@@ -278,7 +272,7 @@ func glyphRepoPlanFixture(t *testing.T, anchorPath, worktreeRoot, createTarget, 
 func symbolRenamePlanFixture(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
 	t.Helper()
 
-	plankit.Write(t, filepath.Join(anchorPath, "_lyx", "plan"), plankit.Plan{
+	plankit.Write(t, filepath.Join(anchorPath, "_lym", "plan"), plankit.Plan{
 		Approved: true,
 		Language: "none",
 		Sections: []plankit.Section{{Heading: "Rename mechanic", Body: "1. Run the rename tool."}},
@@ -407,7 +401,7 @@ func TestGateParity_PlanGate(t *testing.T) {
 			name: "PatternEntryLineCap",
 			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
 				c := planFixture(t, anchorPath, worktreeRoot, true)
-				cardFile := filepath.Join(anchorPath, "_lyx", "plan", "01-validate-fixture.md")
+				cardFile := filepath.Join(anchorPath, "_lym", "plan", "01-validate-fixture.md")
 				data, err := os.ReadFile(cardFile)
 				if err != nil {
 					t.Fatalf("read card file: %v", err)

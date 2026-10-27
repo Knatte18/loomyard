@@ -30,10 +30,10 @@ func roleAuditEngine(engines AuditEngines, role Role, choice shuttleengine.Model
 	if name == "" {
 		name = engines.DefaultName()
 	}
-	const wayForward = "set %s in webster.yaml to an alias whose engine audits forks with lyx config webster, then re-run the verb, or under the Webster row re-step the row"
+	const wayForward = "set %s in webster.yaml to an alias whose engine audits forks with lym config webster, then re-run the verb, or under the Webster row re-step the row"
 	engine, err := engines.Lookup(choice.Engine)
 	if err != nil {
-		return fmt.Errorf("webster: the %s role's engine %q is not held by this lyx: %w; way forward: "+wayForward, role, name, err, role)
+		return fmt.Errorf("webster: the %s role's engine %q is not held by this lym: %w; way forward: "+wayForward, role, name, err, role)
 	}
 	if _, ok := engine.(AuditEngine); !ok {
 		return fmt.Errorf("webster: the %s role's engine %q cannot audit forks, which webster needs; way forward: "+wayForward, role, name, role)
@@ -53,7 +53,7 @@ func MasterInstructionFiles(engines AuditEngines, master shuttleengine.ModelChoi
 			if name == "" {
 				name = engines.DefaultName()
 			}
-			return nil, fmt.Errorf("webster: the master role's engine %q is not held by this lyx: %w; way forward: set master in webster.yaml to an alias whose engine the set holds with lyx config webster, then re-run the verb", name, err)
+			return nil, fmt.Errorf("webster: the master role's engine %q is not held by this lym: %w; way forward: set master in webster.yaml to an alias whose engine the set holds with lym config webster, then re-run the verb", name, err)
 		}
 		lister, ok := engine.(shuttleengine.InstructionFileLister)
 		if !ok {
@@ -73,7 +73,7 @@ func sessionAuditEngine(engines AuditEngines, session, recorded string) (AuditEn
 		if recorded == "" {
 			return nil, fmt.Errorf("webster: resolve the default engine for session %s, which records none: %w", session, err)
 		}
-		return nil, fmt.Errorf("webster: session %s ran under engine %q, which this lyx does not hold: %w; way forward: re-run the verb, or under the Webster row re-step the row, with a lyx whose engine set holds %q", session, recorded, err, recorded)
+		return nil, fmt.Errorf("webster: session %s ran under engine %q, which this lym does not hold: %w; way forward: re-run the verb, or under the Webster row re-step the row, with a lym whose engine set holds %q", session, recorded, err, recorded)
 	}
 	auditEngine, ok := engine.(AuditEngine)
 	if ok {

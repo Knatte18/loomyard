@@ -1,6 +1,6 @@
 //go:build tier0
 
-// prebuild_test.go covers the prebuilt lyx store over plain files: the content-derived name, reuse of a stored binary, refreshing a missing entry, pruning by last use, a destination another run published first and a store that cannot be created.
+// prebuild_test.go covers the prebuilt lym store over plain files: the content-derived name, reuse of a stored binary, refreshing a missing entry, pruning by last use, a destination another run published first and a store that cannot be created.
 
 package gatecli
 
@@ -26,8 +26,8 @@ func TestStorePrebuilt(t *testing.T) {
 		}
 	}
 
-	// builtContent is the build's content, and contentName the store entry name its SHA-256 gives: `lyx-` and the first 16 hex digits.
-	const builtContent, contentName = "built lyx", "lyx-1d3aedeaa33d679f"
+	// builtContent is the build's content, and contentName the store entry name its SHA-256 gives: `lym-` and the first 16 hex digits.
+	const builtContent, contentName = "built lym", "lym-e6717f894100bad1"
 
 	tests := []struct {
 		name string
@@ -47,9 +47,9 @@ func TestStorePrebuilt(t *testing.T) {
 		{name: "StoreDirIsARegularFile", storeIsFile: true},
 		{
 			name:       "OtherEntriesPrunedPastRetention",
-			stored:     map[string]time.Duration{"lyx-0000000000000000": prebuiltRetention + time.Minute, "lyx-1111111111111111": prebuiltRetention - time.Minute, "lyx-2222222222222222.partial-1": 3 * prebuiltRetention},
-			wantKept:   []string{"lyx-1111111111111111"},
-			wantPruned: []string{"lyx-0000000000000000", "lyx-2222222222222222.partial-1"},
+			stored:     map[string]time.Duration{"lym-0000000000000000": prebuiltRetention + time.Minute, "lym-1111111111111111": prebuiltRetention - time.Minute, "lym-2222222222222222.partial-1": 3 * prebuiltRetention},
+			wantKept:   []string{"lym-1111111111111111"},
+			wantPruned: []string{"lym-0000000000000000", "lym-2222222222222222.partial-1"},
 		},
 	}
 	for _, tt := range tests {
@@ -57,7 +57,7 @@ func TestStorePrebuilt(t *testing.T) {
 			t.Parallel()
 
 			buildDir, storeDir := t.TempDir(), filepath.Join(t.TempDir(), "prebuilt")
-			bin := filepath.Join(buildDir, "lyx")
+			bin := filepath.Join(buildDir, "lym")
 			writeAged(t, bin, builtContent, 0)
 			if tt.storeIsFile {
 				writeAged(t, storeDir, "not a directory", 0)
@@ -123,7 +123,7 @@ func TestStorePrebuilt(t *testing.T) {
 		t.Parallel()
 
 		dir := t.TempDir()
-		src := filepath.Join(dir, "lyx")
+		src := filepath.Join(dir, "lym")
 		writeAged(t, src, builtContent, 0)
 		dst := filepath.Join(dir, contentName)
 		if err := os.Mkdir(dst, 0o755); err != nil {

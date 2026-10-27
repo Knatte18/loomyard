@@ -2,12 +2,12 @@
 
 // seam_enforcement_test.go enforces the Shed Producer-Seam Invariant: production code in
 // internal/shedengine imports ONLY the standard library, internal/state, and internal/lock — never
-// internal/loomengine, never any adapter package, never internal/lyxcwd, and never internal/logger.
+// internal/loomengine, never any adapter package, never internal/lymcwd, and never internal/logger.
 // Like internal/treadleengine's seam_enforcement_test.go, this check is an ALLOWLIST: any import
 // outside the allowed set fails the test, so a future stray dependency is caught with no list
 // maintenance required.
 // One observation worth recording about today's allowlist, though this test checks direct imports
-// only and enforces nothing beyond that: the exclusion of internal/lyxcwd happens to hold
+// only and enforces nothing beyond that: the exclusion of internal/lymcwd happens to hold
 // transitively too, because internal/lock imports no internal package at all and internal/state
 // imports only internal/fsx and internal/lock.
 

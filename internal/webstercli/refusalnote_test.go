@@ -51,9 +51,9 @@ func TestNoteRefusals_ArgumentRefusals_WriteOneNoteEach(t *testing.T) {
 		verb string
 		want []string
 	}{
-		{"begin-batch", []string{"begin-batch", "x"}, "begin-batch", []string{"lyx webster begin-batch refused", "Arguments: x", `"x" is not a valid batch number`}},
-		{"recover-batch", []string{"recover-batch", "x"}, "recover-batch", []string{"lyx webster recover-batch refused", "Arguments: x", `"x" is not a valid batch number`}},
-		{"rebaseline", []string{"rebaseline", "--card", "abc"}, "rebaseline", []string{"lyx webster rebaseline refused", "Arguments: --card=[abc]", `--card "abc" is not a card number`}},
+		{"begin-batch", []string{"begin-batch", "x"}, "begin-batch", []string{"lym webster begin-batch refused", "Arguments: x", `"x" is not a valid batch number`}},
+		{"recover-batch", []string{"recover-batch", "x"}, "recover-batch", []string{"lym webster recover-batch refused", "Arguments: x", `"x" is not a valid batch number`}},
+		{"rebaseline", []string{"rebaseline", "--card", "abc"}, "rebaseline", []string{"lym webster rebaseline refused", "Arguments: --card=[abc]", `--card "abc" is not a card number`}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -106,7 +106,7 @@ func TestNoteRefusals_VerbEnvelopes(t *testing.T) {
 		// wantNote lists what the single note must carry; empty means no note at all.
 		wantNote []string
 	}{
-		{"an ErrFields refusal writes a note carrying its field", stubRefusal, []string{"stub"}, 1, []string{"lyx webster stub refused", "webster: the plan drifted", "plan_drifted: true"}},
+		{"an ErrFields refusal writes a note carrying its field", stubRefusal, []string{"stub"}, 1, []string{"lym webster stub refused", "webster: the plan drifted", "plan_drifted: true"}},
 		{"an ok envelope writes nothing", okVerb, []string{"report"}, 0, nil},
 	}
 	for _, tc := range cases {

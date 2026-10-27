@@ -4,7 +4,7 @@
 //
 // Tests cover: the strict Load contract using yamlengine + envsource, missing-key detection,
 // absent-file errors, env variable resolution via templates, nested-key handling, the
-// not-initialized error path, the ConfigDir/ConfigFile/ LyxDirName path constructors configengine
+// not-initialized error path, the ConfigDir/ConfigFile/ LymDirName path constructors configengine
 // singly declares, and the degrading LoadOrTemplate contract -- its two proven-absence fallback
 // triggers, the strict-when-present boundary it shares with Load, and the absence-only
 // discrimination that keeps a stat failure from being mistaken for absence.
@@ -21,25 +21,25 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
-// baseState is how much of a base directory's _lyx tree newBase creates.
+// baseState is how much of a base directory's _lym tree newBase creates.
 type baseState int
 
 const (
 	// baseAbsent returns a base directory that does not exist on disk.
 	baseAbsent baseState = iota
-	// baseNone creates the base directory and nothing in it: no _lyx/.
+	// baseNone creates the base directory and nothing in it: no _lym/.
 	baseNone
-	// baseLyx creates _lyx/ alone.
-	baseLyx
-	// baseConfigDir creates _lyx/config/ with no module file.
+	// baseLym creates _lym/ alone.
+	baseLym
+	// baseConfigDir creates _lym/config/ with no module file.
 	baseConfigDir
-	// baseWithFile creates _lyx/config/ and writes content as the module's config file.
+	// baseWithFile creates _lym/config/ and writes content as the module's config file.
 	baseWithFile
-	// baseUnreadable creates _lyx/config/ with a directory where the module's config file belongs, so reading it fails without the file being absent.
+	// baseUnreadable creates _lym/config/ with a directory where the module's config file belongs, so reading it fails without the file being absent.
 	baseUnreadable
 )
 
@@ -50,13 +50,13 @@ func newBase(t *testing.T, state baseState, module, content string) (baseDir, pa
 	switch state {
 	case baseAbsent:
 		baseDir = filepath.Join(baseDir, "does-not-exist")
-	case baseLyx:
-		if err := os.Mkdir(filepath.Join(baseDir, lyxdirs.LyxDirName), 0755); err != nil {
-			t.Fatalf("failed to create _lyx: %v", err)
+	case baseLym:
+		if err := os.Mkdir(filepath.Join(baseDir, lymdirs.LymDirName), 0755); err != nil {
+			t.Fatalf("failed to create _lym: %v", err)
 		}
 	case baseConfigDir, baseWithFile, baseUnreadable:
 		if err := os.MkdirAll(configengine.ConfigDir(baseDir), 0755); err != nil {
-			t.Fatalf("failed to create _lyx/config: %v", err)
+			t.Fatalf("failed to create _lym/config: %v", err)
 		}
 		if state == baseUnreadable {
 			if err := os.Mkdir(configengine.ConfigFile(baseDir, module), 0755); err != nil {
@@ -253,7 +253,7 @@ func TestLoad(t *testing.T) {
 }
 
 // TestLoad_Refusals pins the strict loader's refusals and the text that names the way forward:
-// an absent file points at "lyx config reconcile", a refusal reconcile cannot fix never hints at it.
+// an absent file points at "lym config reconcile", a refusal reconcile cannot fix never hints at it.
 func TestLoad_Refusals(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -279,7 +279,7 @@ func TestLoad_Refusals(t *testing.T) {
 			name:     "absent config file",
 			state:    baseConfigDir,
 			template: "path: _board\n",
-			wantErr:  []string{"not found", "lyx config reconcile"},
+			wantErr:  []string{"not found", "lym config reconcile"},
 		},
 		{
 			name:     "absent hub-wide board-dir base",
@@ -287,14 +287,14 @@ func TestLoad_Refusals(t *testing.T) {
 			template: "path: _board\n",
 			boardDir: true,
 			hubWide:  true,
-			wantErr:  []string{"not found", "lyx fabric reconcile", "a session lyx refuses the verb from reports status: FAILED and the orch runs it"},
+			wantErr:  []string{"not found", "lym fabric reconcile", "a session lym refuses the verb from reports status: FAILED and the orch runs it"},
 		},
 		{
 			name:     "absent per-worktree board-dir base",
 			state:    baseConfigDir,
 			template: "path: _board\n",
 			boardDir: true,
-			wantErr:  []string{"not found", "lyx loom resume", "hub reconcile seeds the default from the prime", "a session lyx refuses the verb from reports status: FAILED and the orch runs it"},
+			wantErr:  []string{"not found", "lym loom resume", "hub reconcile seeds the default from the prime", "a session lym refuses the verb from reports status: FAILED and the orch runs it"},
 		},
 		{
 			name:     "config file that cannot be read",
@@ -308,7 +308,7 @@ func TestLoad_Refusals(t *testing.T) {
 			template:    "server:\n  host: localhost\n",
 			content:     "server:\n",
 			wantErr:     []string{"server"},
-			wantNotErr:  []string{"lyx config reconcile"},
+			wantNotErr:  []string{"lym config reconcile"},
 			wantInvalid: true,
 		},
 		{
@@ -317,7 +317,7 @@ func TestLoad_Refusals(t *testing.T) {
 			template:    "server: localhost\n",
 			content:     "server:\n  host: x\n",
 			wantErr:     []string{"server"},
-			wantNotErr:  []string{"lyx config reconcile"},
+			wantNotErr:  []string{"lym config reconcile"},
 			wantInvalid: true,
 		},
 		{
@@ -326,7 +326,7 @@ func TestLoad_Refusals(t *testing.T) {
 			template:    "items:\n  - name: a\n    size: 1\n",
 			content:     "items:\n  - name: a\n",
 			wantErr:     []string{"missing keys", "items"},
-			wantNotErr:  []string{"lyx config reconcile"},
+			wantNotErr:  []string{"lym config reconcile"},
 			wantInvalid: true,
 		},
 		{
@@ -335,7 +335,7 @@ func TestLoad_Refusals(t *testing.T) {
 			template:    "path: _board\n",
 			content:     "path: [unclosed\n",
 			wantErr:     []string{"board.yaml"},
-			wantNotErr:  []string{"lyx config reconcile"},
+			wantNotErr:  []string{"lym config reconcile"},
 			wantInvalid: true,
 		},
 		{
@@ -344,7 +344,7 @@ func TestLoad_Refusals(t *testing.T) {
 			template:    "path: _board\ntoken: ${env:TEST_FILL_UNSET_VAR}\n",
 			content:     "path: custom\n",
 			wantErr:     []string{"TEST_FILL_UNSET_VAR"},
-			wantNotErr:  []string{"lyx config reconcile"},
+			wantNotErr:  []string{"lym config reconcile"},
 			wantInvalid: true,
 		},
 		{
@@ -353,7 +353,7 @@ func TestLoad_Refusals(t *testing.T) {
 			template:    openMapTemplate,
 			content:     "name: x\nlabels:\n  - bug\n  - docs\n",
 			wantErr:     []string{"labels"},
-			wantNotErr:  []string{"lyx config reconcile"},
+			wantNotErr:  []string{"lym config reconcile"},
 			wantInvalid: true,
 		},
 	}
@@ -388,7 +388,7 @@ func TestLoad_Refusals(t *testing.T) {
 				t.Errorf("Load error marked ErrInvalid = %v; want %v: %v", got, tc.wantInvalid, err)
 			}
 
-			// An absent file or _lyx/ degrades under LoadOrTemplate; a present path errors exactly as under Load.
+			// An absent file or _lym/ degrades under LoadOrTemplate; a present path errors exactly as under Load.
 			if tc.state != baseWithFile && tc.state != baseUnreadable {
 				return
 			}
@@ -423,7 +423,7 @@ func TestMarkInvalid(t *testing.T) {
 	}
 }
 
-// TestLoadOrTemplate pins the degrading loader: proven absence of _lyx/, of the config file or of the base directory resolves the template with env overrides honored, and a present file loads exactly as the strict loader loads it.
+// TestLoadOrTemplate pins the degrading loader: proven absence of _lym/, of the config file or of the base directory resolves the template with env overrides honored, and a present file loads exactly as the strict loader loads it.
 // It serializes its rows because they swap the process-global logger output and set env variables.
 func TestLoadOrTemplate(t *testing.T) {
 	tests := []struct {
@@ -431,7 +431,7 @@ func TestLoadOrTemplate(t *testing.T) {
 		state baseState
 	}{
 		{
-			loadCase{name: "absent _lyx resolves the template", template: "path: _board\nhome: Home.md\n", contains: []string{"path: _board", "home: Home.md"}},
+			loadCase{name: "absent _lym resolves the template", template: "path: _board\nhome: Home.md\n", contains: []string{"path: _board", "home: Home.md"}},
 			baseNone,
 		},
 		{
@@ -444,7 +444,7 @@ func TestLoadOrTemplate(t *testing.T) {
 		},
 		{
 			loadCase{
-				name:     "env override reaches the template with no _lyx on disk",
+				name:     "env override reaches the template with no _lym on disk",
 				template: "path: ${env:TEST_FALLBACK_VAR:-default_path}\n",
 				env:      map[string]string{"TEST_FALLBACK_VAR": "overridden_value"},
 				contains: []string{"path: overridden_value"},
@@ -529,7 +529,7 @@ func TestLoadOrTemplate(t *testing.T) {
 	}
 }
 
-// TestLoadOrTemplate_UnsetRequiredEnv_WrapsAsConfigTemplate pins the fallback tail's own error wrap: with no _lyx/ on disk, a template whose required ${env:NAME} marker has no variable returns an error naming "config template:" and the module, and never a config-file path that does not exist.
+// TestLoadOrTemplate_UnsetRequiredEnv_WrapsAsConfigTemplate pins the fallback tail's own error wrap: with no _lym/ on disk, a template whose required ${env:NAME} marker has no variable returns an error naming "config template:" and the module, and never a config-file path that does not exist.
 func TestLoadOrTemplate_UnsetRequiredEnv_WrapsAsConfigTemplate(t *testing.T) {
 	t.Parallel()
 	baseDir := t.TempDir()
@@ -549,10 +549,10 @@ func TestLoadOrTemplate_UnsetRequiredEnv_WrapsAsConfigTemplate(t *testing.T) {
 	}
 }
 
-// TestLoadOrTemplate_LyxDirStatFailure_DoesNotFallback tests absence-only discrimination: an _lyx/ that exists but cannot be stat'd makes LoadOrTemplate return an error rather than falling back to the template.
+// TestLoadOrTemplate_LymDirStatFailure_DoesNotFallback tests absence-only discrimination: an _lym/ that exists but cannot be stat'd makes LoadOrTemplate return an error rather than falling back to the template.
 //
-//testtiming:keep pins that an _lyx/ that cannot be stat'd errors instead of resolving the template, which no covering test reaches
-func TestLoadOrTemplate_LyxDirStatFailure_DoesNotFallback(t *testing.T) {
+//testtiming:keep pins that an _lym/ that cannot be stat'd errors instead of resolving the template, which no covering test reaches
+func TestLoadOrTemplate_LymDirStatFailure_DoesNotFallback(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("chmod-based permission denial is not meaningful on Windows")
@@ -561,7 +561,7 @@ func TestLoadOrTemplate_LyxDirStatFailure_DoesNotFallback(t *testing.T) {
 		t.Skip("root ignores directory mode bits")
 	}
 
-	tmpDir, _ := newBase(t, baseLyx, "board", "")
+	tmpDir, _ := newBase(t, baseLym, "board", "")
 	t.Cleanup(func() {
 		if err := os.Chmod(tmpDir, 0755); err != nil {
 			t.Errorf("failed to restore tmpDir mode: %v", err)
@@ -574,7 +574,7 @@ func TestLoadOrTemplate_LyxDirStatFailure_DoesNotFallback(t *testing.T) {
 
 	resolved, err := configengine.LoadOrTemplate(configengine.Dirs{Anchor: tmpDir}, boardSpec("path: _board\n", nil))
 	if err == nil {
-		t.Fatalf("expected error for unstattable _lyx/, got nil")
+		t.Fatalf("expected error for unstattable _lym/, got nil")
 	}
 	if errors.Is(err, configengine.ErrNotInitialized) {
 		t.Errorf("expected a stat failure to NOT satisfy errors.Is(err, ErrNotInitialized), got: %v", err)
@@ -584,7 +584,7 @@ func TestLoadOrTemplate_LyxDirStatFailure_DoesNotFallback(t *testing.T) {
 	}
 }
 
-// TestFindBaseDir pins that a base directory holding _lyx/ is returned as is, and that one without it is refused with an error that satisfies errors.Is(err, ErrNotInitialized) -- the sentinel is wrapped, not returned bare -- while its text still says "not initialized", since strict callers match on that text.
+// TestFindBaseDir pins that a base directory holding _lym/ is returned as is, and that one without it is refused with an error that satisfies errors.Is(err, ErrNotInitialized) -- the sentinel is wrapped, not returned bare -- while its text still says "not initialized", since strict callers match on that text.
 //
 //testtiming:keep pins FindBaseDir's own return value and its wrapped sentinel, which the covering Edit rows only match as text
 func TestFindBaseDir(t *testing.T) {
@@ -594,8 +594,8 @@ func TestFindBaseDir(t *testing.T) {
 		state baseState
 		want  bool
 	}{
-		{"_lyx present", baseLyx, true},
-		{"_lyx absent", baseNone, false},
+		{"_lym present", baseLym, true},
+		{"_lym absent", baseNone, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -637,7 +637,7 @@ func TestErrNotInitialized_NotMatchedByUnrelatedError(t *testing.T) {
 	}
 }
 
-// TestConfigPaths pins the path constructors configengine singly declares: ConfigDir and ConfigFile live under LyxDirName, StagingFile lives under the .lyx counterpart, ConfigFileRel is relative and in lockstep with ConfigFile, and LyxDirName is "_lyx" -- the token internal/lyxdirs is the sole declarer of.
+// TestConfigPaths pins the path constructors configengine singly declares: ConfigDir and ConfigFile live under LymDirName, StagingFile lives under the .lym counterpart, ConfigFileRel is relative and in lockstep with ConfigFile, and LymDirName is "_lym" -- the token internal/lymdirs is the sole declarer of.
 func TestConfigPaths(t *testing.T) {
 	t.Parallel()
 
@@ -647,17 +647,17 @@ func TestConfigPaths(t *testing.T) {
 		got  string
 		want string
 	}{
-		{"ConfigDir", configengine.ConfigDir(base), filepath.Join(base, lyxdirs.LyxDirName, "config")},
-		{"ConfigFile", configengine.ConfigFile(base, "myapp"), filepath.Join(base, lyxdirs.LyxDirName, "config", "myapp.yaml")},
-		{"ScratchDir", configengine.ScratchDir(base), filepath.Join(base, lyxdirs.DotLyxDirName, "config")},
-		{"StagingFile", configengine.StagingFile(base, "board"), filepath.Join(base, lyxdirs.DotLyxDirName, "config", "board.yaml")},
-		{"ConfigFileRel loom", configengine.ConfigFileRel("loom"), filepath.Join(lyxdirs.LyxDirName, "config", "loom.yaml")},
-		{"ConfigFileRel board", configengine.ConfigFileRel("board"), filepath.Join(lyxdirs.LyxDirName, "config", "board.yaml")},
-		{"SparseMarker", configengine.SparseMarker(base), filepath.Join(base, lyxdirs.LyxDirName, "config", "sparse")},
-		{"SparseMarkerRel", configengine.SparseMarkerRel(), filepath.Join(lyxdirs.LyxDirName, "config", "sparse")},
+		{"ConfigDir", configengine.ConfigDir(base), filepath.Join(base, lymdirs.LymDirName, "config")},
+		{"ConfigFile", configengine.ConfigFile(base, "myapp"), filepath.Join(base, lymdirs.LymDirName, "config", "myapp.yaml")},
+		{"ScratchDir", configengine.ScratchDir(base), filepath.Join(base, lymdirs.DotLymDirName, "config")},
+		{"StagingFile", configengine.StagingFile(base, "board"), filepath.Join(base, lymdirs.DotLymDirName, "config", "board.yaml")},
+		{"ConfigFileRel loom", configengine.ConfigFileRel("loom"), filepath.Join(lymdirs.LymDirName, "config", "loom.yaml")},
+		{"ConfigFileRel board", configengine.ConfigFileRel("board"), filepath.Join(lymdirs.LymDirName, "config", "board.yaml")},
+		{"SparseMarker", configengine.SparseMarker(base), filepath.Join(base, lymdirs.LymDirName, "config", "sparse")},
+		{"SparseMarkerRel", configengine.SparseMarkerRel(), filepath.Join(lymdirs.LymDirName, "config", "sparse")},
 		{"SparseMarker is SparseMarkerRel under the base", configengine.SparseMarker(base), filepath.Join(base, configengine.SparseMarkerRel())},
-		{"BaseSparseMarker", configengine.BaseSparseMarker(base), filepath.Join(base, lyxdirs.LyxDirName, "config", "base-sparse")},
-		{"BaseSparseMarkerRel", configengine.BaseSparseMarkerRel(), filepath.Join(lyxdirs.LyxDirName, "config", "base-sparse")},
+		{"BaseSparseMarker", configengine.BaseSparseMarker(base), filepath.Join(base, lymdirs.LymDirName, "config", "base-sparse")},
+		{"BaseSparseMarkerRel", configengine.BaseSparseMarkerRel(), filepath.Join(lymdirs.LymDirName, "config", "base-sparse")},
 		{"BaseSparseMarker is BaseSparseMarkerRel under the base", configengine.BaseSparseMarker(base), filepath.Join(base, configengine.BaseSparseMarkerRel())},
 		{"BaseSparseMarker differs from SparseMarker", fmt.Sprint(configengine.BaseSparseMarker(base) != configengine.SparseMarker(base)), "true"},
 		{"ConfigFile is ConfigFileRel under the base", configengine.ConfigFile(base, "myapp"), filepath.Join(base, configengine.ConfigFileRel("myapp"))},
@@ -669,12 +669,12 @@ func TestConfigPaths(t *testing.T) {
 	}
 
 	if got := configengine.StagingFile(base, "board"); got == configengine.ConfigFile(base, "board") {
-		t.Errorf("StagingFile equals ConfigFile %q; want the .lyx counterpart", got)
+		t.Errorf("StagingFile equals ConfigFile %q; want the .lym counterpart", got)
 	}
 	if got := configengine.ConfigFileRel("loom"); filepath.IsAbs(got) {
 		t.Errorf("ConfigFileRel(%q) = %q; want a relative path", "loom", got)
 	}
-	if lyxdirs.LyxDirName != "_lyx" {
-		t.Errorf("LyxDirName = %q; want %q", lyxdirs.LyxDirName, "_lyx")
+	if lymdirs.LymDirName != "_lym" {
+		t.Errorf("LymDirName = %q; want %q", lymdirs.LymDirName, "_lym")
 	}
 }

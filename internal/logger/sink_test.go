@@ -1,7 +1,7 @@
 //go:build tier0
 
 // sink_test.go covers the durable sink's naming, lazy-open header composition, both open triggers, and the size-cap truncation marker.
-// Every case calls SetDurableSinkDir(t.TempDir()) at its own start, never sharing one call across cases, so no lyxcwd.Resolve ever runs (Test Tier Purity) and every case starts from a fully reset sink regardless of what an earlier case in this file (or logger_test.go/span_test.go) already triggered.
+// Every case calls SetDurableSinkDir(t.TempDir()) at its own start, never sharing one call across cases, so no lymcwd.Resolve ever runs (Test Tier Purity) and every case starts from a fully reset sink regardless of what an earlier case in this file (or logger_test.go/span_test.go) already triggered.
 // No test in this file calls t.Parallel: each rewrites the process-global durable sink state that SetDurableSinkDir resets.
 
 package logger
@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 var sinkTestFilePattern = regexp.MustCompile(`^trace-\d{8}T\d{6}Z-[0-9a-f]{16}-(\d+)\.log$`)
@@ -139,8 +139,8 @@ func TestEnsureDurableSink_CreatesOneNamedFileWithHeader(t *testing.T) {
 			if err != nil {
 				t.Fatalf("os.Getwd() error = %v; want nil", err)
 			}
-			if _, err := os.Stat(filepath.Join(cwd, ".lyx", "logs")); err == nil {
-				t.Errorf("cwd-derived sink location %q exists; want no file there when the override redirects the sink", filepath.Join(cwd, ".lyx", "logs"))
+			if _, err := os.Stat(filepath.Join(cwd, ".lym", "logs")); err == nil {
+				t.Errorf("cwd-derived sink location %q exists; want no file there when the override redirects the sink", filepath.Join(cwd, ".lym", "logs"))
 			}
 		})
 	}
@@ -152,14 +152,14 @@ func TestEnsureDurableSink_CreatesOneNamedFileWithHeader(t *testing.T) {
 //testtiming:keep a guard that an adopted path-traversal trace ID cannot place the file above the logs directory, which no covering test asserts
 func TestEnsureDurableSink_AdoptedTraceIDCannotEscapeTheLogsDirectory(t *testing.T) {
 	grandparent := t.TempDir()
-	parent := filepath.Join(grandparent, "state", ".lyx")
+	parent := filepath.Join(grandparent, "state", ".lym")
 	dir := filepath.Join(parent, "logs")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("os.MkdirAll(%q) error = %v; want nil", dir, err)
 	}
 
 	resetTraceState(t)
-	t.Setenv("LYX_TRACE_ID", "ci-run/../../pwned")
+	t.Setenv("LYM_TRACE_ID", "ci-run/../../pwned")
 	SetDurableSinkDir(dir)
 	t.Cleanup(func() { SetDurableSinkDir("") })
 
@@ -365,7 +365,7 @@ func TestWriteDurable_SizeCapStopsWritesAfterSingleTruncationMarker(t *testing.T
 }
 
 // TestWriteDurable_SurvivesLogsDirRenameMidProcess is the load-bearing regression guard for this batch.
-// Against the pre-batch code, sinkWriter is an *os.File opened once and held for the process lifetime: a POSIX rename of that file's directory leaves the held descriptor still valid and still pointed at the (now differently-named) underlying file, so a second write through that stale descriptor never becomes visible under a directory freshly recreated at the original path -- exactly what a fabric content-adoption step recreating .lyx/logs after moving the old tree away would do.
+// Against the pre-batch code, sinkWriter is an *os.File opened once and held for the process lifetime: a POSIX rename of that file's directory leaves the held descriptor still valid and still pointed at the (now differently-named) underlying file, so a second write through that stale descriptor never becomes visible under a directory freshly recreated at the original path -- exactly what a fabric content-adoption step recreating .lym/logs after moving the old tree away would do.
 // Against the handle-free sink (writeDurable opens, appends, and closes sinkPath per record), the second write re-opens by path and lands in the freshly recreated directory, because no descriptor survives from the first write to intercept it.
 // The rename succeeding plus the second record landing under the recreated original directory are the only observables available on Linux; enumerating open file descriptors is deliberately out of scope.
 //
@@ -414,36 +414,36 @@ func TestWriteDurable_SurvivesLogsDirRenameMidProcess(t *testing.T) {
 	}
 }
 
-// TestIsLyxWorktree_GatesTheCwdAnchoredFallback pins R6-6's decision: the durable sink's cwd-anchored fallback may arm only inside a worktree lyx actually owns. lyxcwd.Resolve succeeds for any plain git repository standing at its root, and cmd/lyx force-arms the sink on every non-zero exit, so without this gate every refusal — a standalone webster/burler invocation refused before its own sink redirect, or an unknown subcommand that never reached wiring — created <repo>/.lyx/logs inside a checkout lyx does not own.
+// TestIsLymWorktree_GatesTheCwdAnchoredFallback pins R6-6's decision: the durable sink's cwd-anchored fallback may arm only inside a worktree lym actually owns. lymcwd.Resolve succeeds for any plain git repository standing at its root, and cmd/lym force-arms the sink on every non-zero exit, so without this gate every refusal — a standalone webster/burler invocation refused before its own sink redirect, or an unknown subcommand that never reached wiring — created <repo>/.lym/logs inside a checkout lym does not own.
 //
-//testtiming:keep pins isLyxWorktree for a plain checkout and an anchored worktree without git, which its covering integration test reaches only through the real call site
-func TestIsLyxWorktree_GatesTheCwdAnchoredFallback(t *testing.T) {
+//testtiming:keep pins isLymWorktree for a plain checkout and an anchored worktree without git, which its covering integration test reaches only through the real call site
+func TestIsLymWorktree_GatesTheCwdAnchoredFallback(t *testing.T) {
 	t.Parallel()
 
-	t.Run("a plain checkout is not a lyx worktree", func(t *testing.T) {
+	t.Run("a plain checkout is not a lym worktree", func(t *testing.T) {
 		t.Parallel()
 
 		hub := t.TempDir()
 		if err := os.MkdirAll(filepath.Join(hub, "plain"), 0o755); err != nil {
 			t.Fatalf("MkdirAll() error = %v", err)
 		}
-		layout := &lyxcwd.Location{RepoName: "plain", HubPath: hub, WorktreeName: "plain", AnchorRel: "."}
-		if isLyxWorktree(layout) {
-			t.Errorf("isLyxWorktree(%q) = true; want false — arming here writes .lyx into a repository lyx does not own", layout.AnchorPath())
+		layout := &lymcwd.Location{RepoName: "plain", HubPath: hub, WorktreeName: "plain", AnchorRel: "."}
+		if isLymWorktree(layout) {
+			t.Errorf("isLymWorktree(%q) = true; want false — arming here writes .lym into a repository lym does not own", layout.AnchorPath())
 		}
 	})
 
-	t.Run("an anchored worktree carrying _lyx is a lyx worktree", func(t *testing.T) {
+	t.Run("an anchored worktree carrying _lym is a lym worktree", func(t *testing.T) {
 		t.Parallel()
 
 		hub := t.TempDir()
 		anchor := filepath.Join(hub, "wired", "backend")
-		if err := os.MkdirAll(filepath.Join(anchor, lyxdirs.LyxDirName), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(anchor, lymdirs.LymDirName), 0o755); err != nil {
 			t.Fatalf("MkdirAll() error = %v", err)
 		}
-		layout := &lyxcwd.Location{RepoName: "wired", HubPath: hub, WorktreeName: "wired", AnchorRel: "backend"}
-		if !isLyxWorktree(layout) {
-			t.Errorf("isLyxWorktree(%q) = false; want true — this is exactly the worktree the fallback exists for", layout.AnchorPath())
+		layout := &lymcwd.Location{RepoName: "wired", HubPath: hub, WorktreeName: "wired", AnchorRel: "backend"}
+		if !isLymWorktree(layout) {
+			t.Errorf("isLymWorktree(%q) = false; want true — this is exactly the worktree the fallback exists for", layout.AnchorPath())
 		}
 	})
 }

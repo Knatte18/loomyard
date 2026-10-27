@@ -1,6 +1,6 @@
 //go:build tier1
 
-// create_integration_test.go runs "lyx beam create" through RunCLIIn over a hubforge hub: from the parent beam of the entry it names, where it reaches the verb's own refusal, and from the prime, which it refuses naming the parent beam.
+// create_integration_test.go runs "lym beam create" through RunCLIIn over a hubforge hub: from the parent beam of the entry it names, where it reaches the verb's own refusal, and from the prime, which it refuses naming the parent beam.
 
 package beamcli_test
 

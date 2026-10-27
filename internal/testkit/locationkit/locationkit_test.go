@@ -8,7 +8,7 @@ import (
 )
 
 func TestLocation_CarriesToldFields(t *testing.T) {
-	hub := filepath.Join("home", "user", "repo-LYXHUB")
+	hub := filepath.Join("home", "user", "repo-LYMHUB")
 	l := Location(hub, "slug", "sub/dir")
 
 	if l.HubPath != hub || l.WorktreeName != "slug" || l.AnchorRel != "sub/dir" {
@@ -20,7 +20,7 @@ func TestLocation_CarriesToldFields(t *testing.T) {
 }
 
 func TestLocation_PathsJoinFields(t *testing.T) {
-	hub := filepath.Join("home", "user", "repo-LYXHUB")
+	hub := filepath.Join("home", "user", "repo-LYMHUB")
 	l := Location(hub, "slug", "sub")
 
 	wantWorktree := filepath.Join(hub, "slug")

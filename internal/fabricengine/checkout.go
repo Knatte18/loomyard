@@ -20,7 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // CheckoutResult contains the fields produced by a successful Checkout.
@@ -39,7 +39,7 @@ type CheckoutResult struct {
 // weft branches when their suffixed siblings don't exist, re-pointing junctions, and refreshing the
 // correspondence index — rolling back both sides on failure to preserve all-or-nothing semantics.
 // A weft that carries a move record, a weft whose own anchor marker is empty, and a target weft branch anchored elsewhere than the worktree, are refused with an error wrapping ErrAnchorChange before anything is switched.
-func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (res CheckoutResult, err error) {
+func (t *Topology) Checkout(l *lymcwd.Location, branch string) (res CheckoutResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
 
@@ -137,7 +137,7 @@ func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (res CheckoutResu
 
 	// Refresh correspondence index for the new branch; switch is complete regardless of failure.
 	if err := refreshCorrIndexAfterSwitch(l.WorktreePath(), weftWorktree); err != nil {
-		return CheckoutResult{}, fmt.Errorf("checkout to %q completed, but refreshing the correspondence index failed (re-run `lyx fabric checkout` to retry): %w", branch, err)
+		return CheckoutResult{}, fmt.Errorf("checkout to %q completed, but refreshing the correspondence index failed (re-run `lym fabric checkout` to retry): %w", branch, err)
 	}
 
 	return CheckoutResult{
@@ -153,7 +153,7 @@ func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (res CheckoutResu
 // The refusal wraps ErrAnchorChange and names the commands that settle it with the cost of each:
 // the anchor change commits the new marker on the branch being left, which every machine that checks it out shares,
 // and an anchor directory the current warp checkout does not track is first brought in by a code commit on that same branch.
-func refuseTargetAnchorChange(l *lyxcwd.Location, branch string) error {
+func refuseTargetAnchorChange(l *lymcwd.Location, branch string) error {
 	weftBranch := RecordsBranchName(branch)
 	weftRepoRoot, err := RecordsRepoRoot(l)
 	if err != nil {
@@ -184,7 +184,7 @@ func refuseTargetAnchorChange(l *lyxcwd.Location, branch string) error {
 		}
 		tracked = strings.TrimSpace(listed) != ""
 	}
-	steps := fmt.Sprintf("run `lyx fabric anchor --set %s`, which commits the new marker on the weft branch being left, shared by every machine that checks it out, so their pulls and pushes then stop until each integrates it; then run the checkout again", targetAnchor)
+	steps := fmt.Sprintf("run `lym fabric anchor --set %s`, which commits the new marker on the weft branch being left, shared by every machine that checks it out, so their pulls and pushes then stop until each integrates it; then run the checkout again", targetAnchor)
 	if !tracked {
 		steps = fmt.Sprintf("first update this warp checkout by hand to a commit that tracks %s, such as merging the target warp branch %s into the current one or committing the %s directory on it, which is a code commit on the branch being left, shared by every machine that checks it out; then %s",
 			targetAnchor, branch, targetAnchor, steps)
@@ -226,7 +226,7 @@ func targetWeftTip(weftRepoRoot, weftBranch string) (string, error) {
 // rec is Checkout's own recorder;
 // it records KindWorktreeSwitched at the weft worktree root with the branch switched to as Detail on every path, and additionally records KindBranchCreated for a created branch: from the resolver when adopted from origin, here when forked, since `switch -c` creates it.
 // An unreachable origin is an error and forks nothing.
-func (t *Topology) switchOrForkWeft(rec *Mutations, l *lyxcwd.Location, branch string) (created bool, err error) {
+func (t *Topology) switchOrForkWeft(rec *Mutations, l *lymcwd.Location, branch string) (created bool, err error) {
 	weftWorktree := RecordsWorktree(l)
 	weftBranch := RecordsBranchName(branch)
 
@@ -277,7 +277,7 @@ func (t *Topology) switchOrForkWeft(rec *Mutations, l *lyxcwd.Location, branch s
 // records KindWorktreeSwitched for either of this function's own git switch calls that succeeds — a
 // rollback switch is a real mutation of the working tree, and the record must carry it, in order,
 // which is the whole point of Checkout's both-sides-rollback case.
-func (t *Topology) rollbackSwitch(rec *Mutations, l *lyxcwd.Location, originalBranch, originalWeftBranch, forkedWeftBranch string) {
+func (t *Topology) rollbackSwitch(rec *Mutations, l *lymcwd.Location, originalBranch, originalWeftBranch, forkedWeftBranch string) {
 	if _, err := gitexec.Run([]string{"switch", originalBranch}, l.WorktreePath()); err == nil {
 		rec.Append(KindWorktreeSwitched, l.WorktreePath(), originalBranch)
 	}

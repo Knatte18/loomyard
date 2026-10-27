@@ -161,7 +161,7 @@ func refuseRecoveringDoneReport(reportsDir string, number int, slug string, prio
 		return nil
 	}
 	if report.Status == ReportStatusOK {
-		return fmt.Errorf("webster: batch %02d-%s already has a report with status: OK at %s — recover-batch never archives finished work; record it with `lyx webster record-batch %d` instead", number, slug, reportPath, number)
+		return fmt.Errorf("webster: batch %02d-%s already has a report with status: OK at %s — recover-batch never archives finished work; record it with `lym webster record-batch %d` instead", number, slug, reportPath, number)
 	}
 	return nil
 }
@@ -257,17 +257,17 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 
 	patternChanges, err := discussionparser.DeclaredPatternChanges(deps.Geom.DecisionRecordPath)
 	if err != nil {
-		return nil, fmt.Errorf("%w re-run `lyx webster recover-batch %d`", err, number)
+		return nil, fmt.Errorf("%w re-run `lym webster recover-batch %d`", err, number)
 	}
 
 	head, err := deps.Geom.git().HeadSHA(deps.Geom.WorktreeRoot)
 	if err != nil {
-		return nil, fmt.Errorf("webster: read HEAD before spawning the recovery of batch %02d: %w; way forward: transient, re-run `lyx webster recover-batch %d`", number, err, number)
+		return nil, fmt.Errorf("webster: read HEAD before spawning the recovery of batch %02d: %w; way forward: transient, re-run `lym webster recover-batch %d`", number, err, number)
 	}
 
 	cardHashes, err := batchCardHashes(batch, deps.Geom.PlanDir)
 	if err != nil {
-		return nil, fmt.Errorf("%w; way forward: transient, re-run `lyx webster recover-batch %d`", err, number)
+		return nil, fmt.Errorf("%w; way forward: transient, re-run `lym webster recover-batch %d`", err, number)
 	}
 
 	if err := refuseRecoveringDoneReport(deps.Geom.ReportsDir, number, slug, prior); err != nil {
@@ -309,7 +309,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	notePath := friction.NotePath(deps.FrictionDir, batchName+"-recovery")
 	uncommittedPaths, err := uncommittedPathsBlock(deps)
 	if err != nil {
-		return nil, fmt.Errorf("webster: list the worktree's uncommitted paths for batch %s: %w; way forward: transient, re-run `lyx webster recover-batch %d`", batchName, err, number)
+		return nil, fmt.Errorf("webster: list the worktree's uncommitted paths for batch %s: %w; way forward: transient, re-run `lym webster recover-batch %d`", batchName, err, number)
 	}
 	prompt, err := RenderRecoveryPrompt(batch, cardGates, batchGate, prevDigest, failureDigestBlock(prior), uncommittedPaths, reportPath, deps.Geom.RepoRoot, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.GateTiers, deps.RenameTools, patternChanges, deps.Config.SelfFixCap, notePath, deps.Geom.ParentName)
 	if err != nil {
@@ -334,7 +334,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 
 	run, err := deps.Starter.Start(spec)
 	if err != nil {
-		return nil, fmt.Errorf("webster: start recovery strand for batch %s: %w; way forward: transient, re-run `lyx webster recover-batch %d`", batchName, err, number)
+		return nil, fmt.Errorf("webster: start recovery strand for batch %s: %w; way forward: transient, re-run `lym webster recover-batch %d`", batchName, err, number)
 	}
 
 	runState, runDir, err := shuttleengine.FindRun(deps.ShuttleCfg, deps.Geom.AnchorRoot, run.StrandGUID())
@@ -504,7 +504,7 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 	}
 	if prior != nil && prior.Recoveries >= maxRecoveries && !rendersNewAmendment(prior) && !waitsOnParent(prior) {
 		return nil, false, fmt.Errorf("%w: batch %02d has had %d recoveries; %s; or %s", ErrRecoveryExhausted, batchNumber, prior.Recoveries,
-			wayForwardSteps(resetVerb(ResetToBatchStart, batchNumber), fmt.Sprintf("lyx webster recover-batch %d", batchNumber)), freshRestartSteps(stepRun))
+			wayForwardSteps(resetVerb(ResetToBatchStart, batchNumber), fmt.Sprintf("lym webster recover-batch %d", batchNumber)), freshRestartSteps(stepRun))
 	}
 	if prior != nil && prior.Terminal && prior.Status == DigestStatusFailed && allReadOnlyFabricReferences(prior.Uncheckable, deps.ReadOnly) {
 		// An evidence failure returns the wrap unchanged: its way forward names this verb for the re-run.
@@ -538,18 +538,18 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 			}
 			wayForward := resetToStartSteps(stepRun)
 			if len(contracts.Uncleared) == 0 && allPathlessFabricReference(contracts.Rest) {
-				wayForward = fmt.Sprintf("way forward: when the worktree is clean and HEAD is the batch's start commit (\"%s\" moves it there if the batch committed), or the batch's commits are kept and every recorded command is read-only, \"lyx webster accept-audit --batch %d\" then \"lyx webster recover-batch %d\"; otherwise %s", resetVerb(ResetToBatchStart, batchNumber), batchNumber, batchNumber, freshRestartSteps(stepRun))
+				wayForward = fmt.Sprintf("way forward: when the worktree is clean and HEAD is the batch's start commit (\"%s\" moves it there if the batch committed), or the batch's commits are kept and every recorded command is read-only, \"lym webster accept-audit --batch %d\" then \"lym webster recover-batch %d\"; otherwise %s", resetVerb(ResetToBatchStart, batchNumber), batchNumber, batchNumber, freshRestartSteps(stepRun))
 			}
 			return nil, false, &recoveryNeedsFreshError{msg: fmt.Sprintf("webster: batch %02d failed on findings recovery cannot check: %s; %s", batchNumber, strings.Join(what, ", "), wayForward)}
 		}
 		if len(contracts.Uncleared) > 0 {
-			return nil, false, fmt.Errorf("webster: batch %02d failed on contract file(s) a fork, recovery or verify-fixer session wrote last: %s", batchNumber, contractDeleteClause(contracts.Uncleared, fmt.Sprintf("lyx webster recover-batch %d", batchNumber)))
+			return nil, false, fmt.Errorf("webster: batch %02d failed on contract file(s) a fork, recovery or verify-fixer session wrote last: %s", batchNumber, contractDeleteClause(contracts.Uncleared, fmt.Sprintf("lym webster recover-batch %d", batchNumber)))
 		}
 	}
 
 	referenced, err := laterDeleteReferenceReasons(deps.Plan, deps.Batches, deps.State, batch.Cards, deps.Geom)
 	if err != nil {
-		return nil, false, fmt.Errorf("%w; way forward: transient, re-run `lyx webster recover-batch %d`", err, batchNumber)
+		return nil, false, fmt.Errorf("%w; way forward: transient, re-run `lym webster recover-batch %d`", err, batchNumber)
 	}
 	if len(referenced) > 0 {
 		return nil, false, fmt.Errorf("%w: batch %02d: %s; way forward: %s", ErrRecoveryDeleteReferenced, batchNumber, strings.Join(referenced, "; "), deleteReferencedWayForward(batchNumber, prior != nil && len(prior.Uncheckable) > 0))
@@ -623,7 +623,7 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 	}
 	bs, ok := st.Batches[batchNumber]
 	if !ok || bs == nil {
-		return nil, fmt.Errorf("webster: no recorded state for batch %d at recovery terminal persistence — state.json changed underneath the recovery wait; way forward: re-run `lyx webster recover-batch %d`", batchNumber, batchNumber)
+		return nil, fmt.Errorf("webster: no recorded state for batch %d at recovery terminal persistence — state.json changed underneath the recovery wait; way forward: re-run `lym webster recover-batch %d`", batchNumber, batchNumber)
 	}
 
 	batch, err := findBatch(deps.Batches, batchNumber)

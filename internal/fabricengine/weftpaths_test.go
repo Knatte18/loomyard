@@ -1,7 +1,7 @@
 //go:build tier0
 
-// weftpaths_test.go covers the weft-sibling path accessors relocated from internal/lyxcwd in this
-// batch — RecordsWorktree, RecordsWorktreePath, WeftLyxDir and WeftLyxDirFor — with both AnchorRel "."
+// weftpaths_test.go covers the weft-sibling path accessors relocated from internal/lymcwd in this
+// batch — RecordsWorktree, RecordsWorktreePath, WeftLymDir and WeftLymDirFor — with both AnchorRel "."
 // (root) and subpath cases, pinning the "-weft" sibling naming across container/base/subpath
 // combinations the illusion depends on.
 // WeftRaddleDir had zero production callers and is deleted outright rather than relocated, so it
@@ -13,13 +13,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// TestWeftPathAccessors covers RecordsWorktree, RecordsWorktreePath, WeftLyxDir and WeftLyxDirFor,
-// verifying AnchorRel-mirroring and junction pairing against the warp-side worktree.
+// TestWeftPathAccessors covers RecordsWorktree, RecordsWorktreePath, WeftLymDir and WeftLymDirFor, verifying AnchorRel-mirroring and junction pairing against the warp-side worktree.
 //
-//testtiming:keep RecordsWorktree, RecordsWorktreePath, WeftLyxDir and WeftLyxDirFor mirroring AnchorRel and pairing with the warp side; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep RecordsWorktree, RecordsWorktreePath, WeftLymDir and WeftLymDirFor mirroring AnchorRel and pairing with the warp side; coverage of its blocks by other tests does not show an assertion of this
 func TestWeftPathAccessors(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -29,8 +28,8 @@ func TestWeftPathAccessors(t *testing.T) {
 
 		wantWeftWorktree     string
 		wantWeftWorktreePath string
-		wantWeftLyxDir       string
-		wantWeftLyxDirFor    string
+		wantWeftLymDir       string
+		wantWeftLymDirFor    string
 	}{
 		{
 			name:                 "/h /h/main feat . case",
@@ -39,8 +38,8 @@ func TestWeftPathAccessors(t *testing.T) {
 			relPath:              ".",
 			wantWeftWorktree:     filepath.Join("/h", "feat-weft"),
 			wantWeftWorktreePath: filepath.Join("/h", "x-weft"),
-			wantWeftLyxDir:       filepath.Join("/h", "feat-weft", "_lyx"),
-			wantWeftLyxDirFor:    filepath.Join("/h", "x-weft", "_lyx"),
+			wantWeftLymDir:       filepath.Join("/h", "feat-weft", "_lym"),
+			wantWeftLymDirFor:    filepath.Join("/h", "x-weft", "_lym"),
 		},
 		{
 			name:                 "/h /h/main feat sub case",
@@ -49,8 +48,8 @@ func TestWeftPathAccessors(t *testing.T) {
 			relPath:              "sub",
 			wantWeftWorktree:     filepath.Join("/h", "feat-weft"),
 			wantWeftWorktreePath: filepath.Join("/h", "x-weft"),
-			wantWeftLyxDir:       filepath.Join("/h", "feat-weft", "sub", "_lyx"),
-			wantWeftLyxDirFor:    filepath.Join("/h", "x-weft", "sub", "_lyx"),
+			wantWeftLymDir:       filepath.Join("/h", "feat-weft", "sub", "_lym"),
+			wantWeftLymDirFor:    filepath.Join("/h", "x-weft", "sub", "_lym"),
 		},
 		{
 			name:                 "/h /h/main feat sub/dir case",
@@ -59,14 +58,14 @@ func TestWeftPathAccessors(t *testing.T) {
 			relPath:              "sub/dir",
 			wantWeftWorktree:     filepath.Join("/h", "feat-weft"),
 			wantWeftWorktreePath: filepath.Join("/h", "y-weft"),
-			wantWeftLyxDir:       filepath.Join("/h", "feat-weft", "sub/dir", "_lyx"),
-			wantWeftLyxDirFor:    filepath.Join("/h", "y-weft", "sub/dir", "_lyx"),
+			wantWeftLymDir:       filepath.Join("/h", "feat-weft", "sub/dir", "_lym"),
+			wantWeftLymDirFor:    filepath.Join("/h", "y-weft", "sub/dir", "_lym"),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			loc := &lyxcwd.Location{
+			loc := &lymcwd.Location{
 				HubPath:      tt.hub,
 				WorktreeName: "feat",
 				AnchorRel:    tt.relPath,
@@ -80,12 +79,12 @@ func TestWeftPathAccessors(t *testing.T) {
 				t.Errorf("RecordsWorktreePath(l, %q) = %q; want %q", tt.slug, got, tt.wantWeftWorktreePath)
 			}
 
-			if got := WeftLyxDir(loc); got != tt.wantWeftLyxDir {
-				t.Errorf("WeftLyxDir(l) = %q; want %q", got, tt.wantWeftLyxDir)
+			if got := WeftLymDir(loc); got != tt.wantWeftLymDir {
+				t.Errorf("WeftLymDir(l) = %q; want %q", got, tt.wantWeftLymDir)
 			}
 
-			if got := WeftLyxDirFor(loc, tt.slug); got != tt.wantWeftLyxDirFor {
-				t.Errorf("WeftLyxDirFor(l, %q) = %q; want %q", tt.slug, got, tt.wantWeftLyxDirFor)
+			if got := WeftLymDirFor(loc, tt.slug); got != tt.wantWeftLymDirFor {
+				t.Errorf("WeftLymDirFor(l, %q) = %q; want %q", tt.slug, got, tt.wantWeftLymDirFor)
 			}
 
 			// Verify junction pairing: the warp and weft worktree bases differ

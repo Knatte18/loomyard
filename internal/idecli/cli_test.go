@@ -19,11 +19,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/ideengine"
 )
 
-// TestRunCLI_SpawnScenario drives "lyx ide spawn" against one hub: dispatch with a stubbed launcher and a temporary keybindings file, then the missing-slug error.
+// TestRunCLI_SpawnScenario drives "lym ide spawn" against one hub: dispatch with a stubbed launcher and a temporary keybindings file, then the missing-slug error.
 // Neither step depends on the other's state.
 // Stays serial (no t.Parallel): the dispatch step swaps the package-level ideengine.CodeLauncher and ideengine.KeybindingsPath and restores them in a defer, which under t.Parallel() is both a data race on a production package-level variable and a restore firing while sibling tests still run.
 func TestRunCLI_SpawnScenario(t *testing.T) {
-	// Create a real hub so lyxcwd.Resolve succeeds inside the PersistentPreRunE.
+	// Create a real hub so lymcwd.Resolve succeeds inside the PersistentPreRunE.
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPairWith(t, h, "child", fabricengine.AddOptions{SkipPush: true})
 
@@ -65,8 +65,8 @@ func TestRunCLI_SpawnScenario(t *testing.T) {
 			t.Errorf("keybindings = %+v; want outcome created", envelope.Keybindings)
 		}
 		data, err := os.ReadFile(keybindingsPath)
-		if err != nil || !strings.Contains(string(data), "// lyx:begin") || !strings.Contains(string(data), "workbench.action.terminal.sendSequence") {
-			t.Errorf("seeded file = %q, %v; want the lyx block", data, err)
+		if err != nil || !strings.Contains(string(data), "// lym:begin") || !strings.Contains(string(data), "workbench.action.terminal.sendSequence") {
+			t.Errorf("seeded file = %q, %v; want the lym block", data, err)
 		}
 	}) {
 		return
@@ -122,7 +122,7 @@ func TestRunCLI_SpawnScenario(t *testing.T) {
 		wantVerb  string
 		wantUsage bool
 	}{
-		{name: "seed without a slug", args: []string{"seed"}, wantVerb: "usage: lyx ide seed", wantUsage: true},
+		{name: "seed without a slug", args: []string{"seed"}, wantVerb: "usage: lym ide seed", wantUsage: true},
 		{name: "seed of a slug with no pair", args: []string{"seed", "nosuch"}, wantVerb: "seed"},
 		{name: "open of a slug with no pair", args: []string{"open", "nosuch"}, wantVerb: "open"},
 		{name: "open of a path-shaped slug", args: []string{"open", "../child"}, wantVerb: "open"},
@@ -152,10 +152,7 @@ func TestRunCLI_SpawnScenario(t *testing.T) {
 	}
 }
 
-// TestRunCLI_NotAGitRepo verifies that "lyx ide menu" run from a non-git temp directory surfaces
-// lyxcwd's bare ErrNotAGitRepo sentinel with no "failed to resolve layout:" prefix and no raw
-// "fatal:" git stderr — the PersistentPreRunE aborts before menu's body runs, so the interactive
-// picker is never reached.
+// TestRunCLI_NotAGitRepo verifies that "lym ide menu" run from a non-git temp directory surfaces lymcwd's bare ErrNotAGitRepo sentinel with no "failed to resolve layout:" prefix and no raw "fatal:" git stderr — the PersistentPreRunE aborts before menu's body runs, so the interactive picker is never reached.
 func TestRunCLI_NotAGitRepo(t *testing.T) {
 	tmpDir := t.TempDir()
 

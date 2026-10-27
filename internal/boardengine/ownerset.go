@@ -269,7 +269,7 @@ func pushOwnerCommit(bolt *fabricengine.Bolt, opts fabricengine.SyncOptions, rec
 			return nil
 		}
 		if attempt == 2 {
-			return errors.New("board: a held board lock deferred the push of the owner commit, and the board is still ahead of origin: run `lyx board sync`, then re-run the verb")
+			return errors.New("board: a held board lock deferred the push of the owner commit, and the board is still ahead of origin: run `lym board sync`, then re-run the verb")
 		}
 		sleep(ownerPushRetryWait)
 	}

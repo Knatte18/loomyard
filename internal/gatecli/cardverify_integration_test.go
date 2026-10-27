@@ -1,6 +1,6 @@
 //go:build tier1
 
-// cardverify_integration_test.go drives `lyx gate card-verify` in-process over a git worktree outside every hub holding a plan, whose card lines spawn a shell.
+// cardverify_integration_test.go drives `lym gate card-verify` in-process over a git worktree outside every hub holding a plan, whose card lines spawn a shell.
 // It is Tier 2: it spawns git and the shell.
 
 package gatecli
@@ -51,7 +51,7 @@ func TestGateCardVerify(t *testing.T) {
 			name:      "a worktree with no plan is refused naming the task worktree",
 			id:        "1",
 			wantExit:  1,
-			wantParts: []string{"holds no plan", "run it from the task worktree whose _lyx/plan holds the card"},
+			wantParts: []string{"holds no plan", "run it from the task worktree whose _lym/plan holds the card"},
 		},
 		{
 			name:      "a card with no verify line passes saying so",

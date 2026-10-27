@@ -19,7 +19,7 @@ func cardGateCommand(card planparser.Card, gate gateslot.Config) ([]string, erro
 	if err != nil {
 		return nil, err
 	}
-	return []string{call, "lyx loom lint-comments", "lyx loom lint-pattern"}, nil
+	return []string{call, "lym loom lint-comments", "lym loom lint-pattern"}, nil
 }
 
 // renderCardGates renders each card in declared order as its pointer bullet with one indented sub-bullet per gate step.

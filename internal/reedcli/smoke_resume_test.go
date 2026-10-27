@@ -199,7 +199,7 @@ func TestSmokeCrashRecovery(t *testing.T) {
 // runs a real subscription session (~1-3 min).
 func TestSmokeClaudeResumeRecallsCodeword(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
-	claudePath := llmkit.Claude(t, "LYX_REED_CLAUDE")
+	claudePath := llmkit.Claude(t, "LYM_REED_CLAUDE")
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	deferHubRelease(t, h.PrimeWorktree())

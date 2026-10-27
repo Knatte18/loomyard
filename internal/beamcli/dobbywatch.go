@@ -9,14 +9,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fswatch"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // dobbyWatchDirs returns the lister of the directories dobby watches, each with the file names it cares about, empty meaning every entry.
 // They are the prime's batten runs directory, where a new run appears, each run's directory for batten's own status file, each task pair's status directory for the child's, the board's `board.json` and the hub's pause record.
-func dobbyWatchDirs(prime *lyxcwd.Location, pauseRecordPath, boardDir string) func() map[string][]string {
+func dobbyWatchDirs(prime *lymcwd.Location, pauseRecordPath, boardDir string) func() map[string][]string {
 	return func() map[string][]string {
 		dirs := map[string][]string{
 			shedrun.RunsRoot(prime):       nil,

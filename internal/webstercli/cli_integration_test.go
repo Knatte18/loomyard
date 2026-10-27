@@ -15,7 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
 )
@@ -31,24 +31,20 @@ import (
 // standalonegeom.LogsDir, whose first line's worktree_root= field names target. That positive
 // assertion is the load-bearing half -- it fails against pre-fix source, where nothing is written
 // there at all -- while the target-directory emptiness assertion above pins the defect's actual
-// symptom. t.Setenv("LYX_TRACE", "1") lifts the durable sink's testing.Testing() suppression, since
+// symptom. t.Setenv("LYM_TRACE", "1") lifts the durable sink's testing.Testing() suppression, since
 // without that lift the sink stays closed for the whole process and the positive assertion would pass
 // for the same wrong reason the emptiness assertion passes today while F22 is live.
 //
-// The cleanliness assertion above is deliberately scoped to "status", an invocation that reaches
-// wiring. It does NOT extend to an invocation that fails before standalonestate.Derive (a cobra
-// flag-parsing failure, a root pre-run failure, or a Derive failure itself): under the real lyx
-// binary, logger.NotifyExit force-arms the sink on a pre-redirect non-zero exit and the cwd fallback
-// then writes one trace file into the target over that bounded window. NotifyExit is called only
-// from cmd/lyx/main.go -- mentioned here, not read -- and this test drives RunCLIIn directly, so
-// NotifyExit never executes in this process at all; a broader "target always stays clean" claim would
-// be false of the shipped path even though this test could not observe it either way.
+// The cleanliness assertion above is deliberately scoped to "status", an invocation that reaches wiring.
+// It does NOT extend to an invocation that fails before standalonestate.Derive (a cobra flag-parsing failure, a root pre-run failure, or a Derive failure itself): under the real lym binary, logger.NotifyExit force-arms the sink on a pre-redirect non-zero exit and the cwd fallback then writes one trace file into the target over that bounded window.
+// NotifyExit is called only from cmd/lym/main.go -- mentioned here, not read -- and this test drives RunCLIIn directly, so NotifyExit never executes in this process at all;
+// a broader "target always stays clean" claim would be false of the shipped path even though this test could not observe it either way.
 func TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged(t *testing.T) {
 	target := t.TempDir()
 	stateHome := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", stateHome)
 	t.Setenv("LOCALAPPDATA", t.TempDir())
-	t.Setenv("LYX_TRACE", "1")
+	t.Setenv("LYM_TRACE", "1")
 	t.Cleanup(func() { logger.SetDurableSinkDir("") })
 
 	stateDir, _, err := standalonestate.Derive(target)
@@ -85,7 +81,7 @@ func TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged(t *testing.T) {
 	// forced logger.Info call after the invocation is what proves WHERE wireStandalone pointed the
 	// sink -- exactly the mechanism internal/webstercli/wiring_test.go's own sink-redirect tests use.
 	// Against pre-fix source (no redirect at all), this call falls back to the process's real cwd via
-	// ensureDurableSink's dir=="" branch (which LYX_TRACE=1 unblocks), landing the trace file
+	// ensureDurableSink's dir=="" branch (which LYM_TRACE=1 unblocks), landing the trace file
 	// somewhere other than logsDir below and failing this test's positive assertion correctly.
 	logger.Info("cli_integration_test: arm the sink")
 
@@ -142,8 +138,8 @@ func TestRunCLIIn_WronglyEnteredHub_Refuses(t *testing.T) {
 		t.Fatalf("RunCLIIn(%q, [status]) = %d; want non-zero", sub, exitCode)
 	}
 	got := out.String()
-	if !strings.Contains(got, lyxcwd.AnchorFileName) {
-		t.Errorf("RunCLIIn(%q, [status]) output missing the gated cwd-anchor error naming %s; got: %q", sub, lyxcwd.AnchorFileName, got)
+	if !strings.Contains(got, lymcwd.AnchorFileName) {
+		t.Errorf("RunCLIIn(%q, [status]) output missing the gated cwd-anchor error naming %s; got: %q", sub, lymcwd.AnchorFileName, got)
 	}
 	if strings.Contains(got, "\"stateDir\"") || strings.Contains(got, "\"mode\"") {
 		t.Errorf("RunCLIIn(%q, [status]) output looks like a standalone session's own output, not a refusal; got: %q", sub, got)

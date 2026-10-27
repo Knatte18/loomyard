@@ -12,7 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Knatte18/loomyard/internal/fsx"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
@@ -20,7 +20,7 @@ const waitGlobPattern = "wait-*.yaml"
 
 // Wait is one waiter's record: the site that waits for a slot, its process and when the wait began.
 type Wait struct {
-	// Site is the `lyx gate test` command or the Go-side site label.
+	// Site is the `lym gate test` command or the Go-side site label.
 	Site string `yaml:"site"`
 	// PID is the waiting process.
 	PID int `yaml:"pid"`
@@ -30,7 +30,7 @@ type Wait struct {
 
 // WaitDir returns the directory under anchorRoot that keeps a worktree's wait records.
 func WaitDir(anchorRoot string) string {
-	return filepath.Join(anchorRoot, lyxdirs.DotLyxDirName, gateDirName)
+	return filepath.Join(anchorRoot, lymdirs.DotLymDirName, gateDirName)
 }
 
 // WriteWait writes w as a uniquely named record in dir and returns its path, which the writer removes once the wait ends.

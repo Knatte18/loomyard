@@ -14,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -22,17 +22,17 @@ import (
 
 // worktree is the task worktree a drift verb runs in, with its drift paths.
 type worktree struct {
-	location *lyxcwd.Location
+	location *lymcwd.Location
 	paths    driftengine.Paths
 }
 
 // openWorktree resolves the worktree of the command's cwd.
 func openWorktree(cmd *cobra.Command) (*worktree, error) {
-	cwd, err := lyxcwd.CwdFrom(cmd.Context())
+	cwd, err := lymcwd.CwdFrom(cmd.Context())
 	if err != nil {
 		return nil, err
 	}
-	location, err := lyxcwd.Resolve(cwd)
+	location, err := lymcwd.Resolve(cwd)
 	if err != nil {
 		return nil, err
 	}
@@ -56,14 +56,14 @@ func (w *worktree) verbStatus() (driftengine.VerbStatus, error) {
 		return driftengine.VerbStatus{}, err
 	}
 	if !found {
-		return driftengine.VerbStatus{}, errors.New("drift: this worktree has no run status; way forward: lyx drift verbs run inside a loom or darn run's worktree")
+		return driftengine.VerbStatus{}, errors.New("drift: this worktree has no run status; way forward: lym drift verbs run inside a loom or darn run's worktree")
 	}
 	seed, seedFound, err := shedrun.ReadSeed(w.location, shedrun.SelfRunID)
 	if err != nil {
 		return driftengine.VerbStatus{}, err
 	}
 	if !seedFound {
-		return driftengine.VerbStatus{}, errors.New("drift: this worktree's run has no seed; way forward: lyx drift verbs run inside a loom or darn run's worktree")
+		return driftengine.VerbStatus{}, errors.New("drift: this worktree's run has no seed; way forward: lym drift verbs run inside a loom or darn run's worktree")
 	}
 	captureHeld, err := driftengine.ProbeLock(w.paths.CaptureLock)
 	if err != nil {
@@ -96,7 +96,7 @@ func (w *worktree) gitFacts() (head, branchPoint string, dirty []string, err err
 		return "", "", nil, err
 	}
 	if !found {
-		return "", "", nil, errors.New("drift: this worktree has no origin record, so its branch point is unknown; way forward: lyx fabric reconcile")
+		return "", "", nil, errors.New("drift: this worktree has no origin record, so its branch point is unknown; way forward: lym fabric reconcile")
 	}
 	if branchPoint, err = fabric.MergeBase(origin.ParentBranch); err != nil {
 		return "", "", nil, fmt.Errorf("drift: find the branch point against %s: %w", origin.ParentBranch, err)

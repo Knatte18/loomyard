@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Launcher for the lyx SANDBOX-REED-SUITE: runs the interactive reed black-box
+# Launcher for the lym SANDBOX-REED-SUITE: runs the interactive reed black-box
 # agent session (live tmux required). The machine-specific parent directory
 # is hardcoded HERE (the base under which sandbox Hubs are created, mirroring
 # the win/ launcher's C:\Code) -- the Go tool stays general.

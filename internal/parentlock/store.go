@@ -17,7 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
@@ -33,7 +33,7 @@ var ErrUnreadable = errors.New("parent lock record unreadable")
 
 // Dir returns the hub-wide parent lock directory under boardDir.
 func Dir(boardDir string) string {
-	return filepath.Join(boardDir, lyxdirs.DotLyxDirName, dirName)
+	return filepath.Join(boardDir, lymdirs.DotLymDirName, dirName)
 }
 
 // Owner names the run and the process that own a lock or hold a ticket.

@@ -1,64 +1,64 @@
-// Package configcli is the `lyx config` command: it edits or sets a module's configuration under `_lyx/config/` and syncs fabric on success.
+// Package configcli is the `lym config` command: it edits or sets a module's configuration under `_lym/config/` and syncs fabric on success.
 //
-// A hub-wide module (`configreg.Module.HubWide`, named by the registry) is edited at `<BoardDir>/_lyx/config/` instead, and its edit is committed in `_board` through `fabricengine.Bolt.CommitWritten` and pushed, where a per-worktree module syncs fabric.
+// A hub-wide module (`configreg.Module.HubWide`, named by the registry) is edited at `<BoardDir>/_lym/config/` instead, and its edit is committed in `_board` through `fabricengine.Bolt.CommitWritten` and pushed, where a per-worktree module syncs fabric.
 // `--set` writes the hub file under the board write lock, validates it with the strict `configengine.Load` and restores the previous bytes when that fails.
-// An editor edit works on a staging copy under the worktree's `.lyx`, so the editor never holds the lock;
+// An editor edit works on a staging copy under the worktree's `.lym`, so the editor never holds the lock;
 // only the copy into `_board`, its validation and its commit run under it, and the copy is refused when the hub file changed while the editor was open.
-// `--print` and `lyx config menu` read a hub-wide module at the board dir too.
+// `--print` and `lym config menu` read a hub-wide module at the board dir too.
 //
 // # Layers
 //
-// A module's config resolves through layers: the embedded template, the repo default under the board dir, the worktree's own file, an untracked machine override under the board dir's `.lyx` and an untracked local override under the worktree's `.lyx`.
+// A module's config resolves through layers: the embedded template, the repo default under the board dir, the worktree's own file, an untracked machine override under the board dir's `.lym` and an untracked local override under the worktree's `.lym`.
 // `--layer default|worktree|machine|local` selects the file a verb addresses; no flag selects the module's own file, the worktree file of a per-worktree module and the hub file of a hub-wide one.
-// `--layer default` writes `<BoardDir>/_lyx/config/<module>.yaml` of any module through the board write path above, guard, lock, strict validation and commit included.
+// `--layer default` writes `<BoardDir>/_lym/config/<module>.yaml` of any module through the board write path above, guard, lock, strict validation and commit included.
 // `--layer worktree` writes the worktree file and syncs fabric; the hub-wide module has none, so it is refused with `--layer default` from the prime and `--layer local` as the ways forward.
 // `--layer machine` addresses `configengine.MachineFile` of the board dir for a hub-wide module with `machine` keys (`configengine.MachineKeys`), a never-tracked file that bounds a resource every worktree of the hub on this machine shares.
 // It passes the default layer's write guard below, never commits and runs no fabric sync, refuses a key the machine layer closes before writing anything, checks that the stack still loads over the prime's worktree and puts the file back when it does not.
-// It is refused on a per-worktree module, with `--layer local` as the way forward, and on a hub-wide module with no machine key, with `lyx config <module>` from the prime as the way forward; both refusals touch no file.
+// It is refused on a per-worktree module, with `--layer local` as the way forward, and on a hub-wide module with no machine key, with `lym config <module>` from the prime as the way forward; both refusals touch no file.
 // `--layer local` writes `configengine.LocalFile` of the anchor, never commits and runs no fabric sync, and refuses a key the local layer closes (`configengine.ValidateLocal`), leaving the file as it was.
 // Under a board every file layer of a module that is not seed-only is sparse, the repo default included: `--set` on any layer writes only the keys set through `yamlengine.SetSparse`, and an editor edit of an absent base scaffolds `configengine.SparseBaseHeader` while an absent layer above it is scaffolded empty.
 // `--print --layer <name>` prints that layer's file verbatim; `--print` of all modules prints each module's own file.
-// `lyx config menu` marks each module with the layers that hold a file, as `loom (default, local)` or `gate (default, machine)`, or `(template)` when none does.
-// `lyx config <module> --resolved` prints the merged result through `configengine.Provenance`, each unit's line comment naming the layer it came from: `template`, `template:<value>` for a unit only the template overlay the base picks holds, `default`, `worktree`, `machine` or `local`.
+// `lym config menu` marks each module with the layers that hold a file, as `loom (default, local)` or `gate (default, machine)`, or `(template)` when none does.
+// `lym config <module> --resolved` prints the merged result through `configengine.Provenance`, each unit's line comment naming the layer it came from: `template`, `template:<value>` for a unit only the template overlay the base picks holds, `default`, `worktree`, `machine` or `local`.
 // It is read-only, refused beside `--print`, `--set` or `--layer` and without a module, and errors on an absent base layer as the module's loader does.
 //
-// A write to the default or the machine layer, by `--set`, by an editor edit or through the menu, is refused from any worktree that is not the hub's prime and from a session whose `LYX_STRAND_NAME` parses as a name carrying a slug, wherever its worktree resolves.
+// A write to the default or the machine layer, by `--set`, by an editor edit or through the menu, is refused from any worktree that is not the hub's prime and from a session whose `LYM_STRAND_NAME` parses as a name carrying a slug, wherever its worktree resolves.
 // The refusal names the way forward, the operator or the hub orch running the write from the prime, and leaves the file unchanged with no editor opened.
 // The hub orch's slug-free name and an unset name pass; a print, a worktree write and a local write never consult the guard.
 // The bound: it guards a mistaken write, not a determined agent, so a direct file write to the board dir's config, an environment cleared without naming the variable, and an unset hidden behind a script still pass.
 //
-// With a module name, `lyx config <module>` opens the file in the editor ($VISUAL, then $EDITOR, then `code --wait` when `code` is on PATH, then notepad on Windows or nano and then vi elsewhere) through `configengine.Edit`.
+// With a module name, `lym config <module>` opens the file in the editor ($VISUAL, then $EDITOR, then `code --wait` when `code` is on PATH, then notepad on Windows or nano and then vi elsewhere) through `configengine.Edit`.
 // An editor result that is empty or whitespace-only aborts the edit and leaves the layer, or the hub file, unchanged: the report is `aborted: <path> unchanged`, with no commit and no sync.
 // Removing the file stays the way to clear a sparse layer.
 // With no module and neither `--print` nor `--set`, it prints its help, which names `reconcile` and every known module, and resolves no cwd.
 // An argument that is neither a subcommand nor a module is refused as an unknown subcommand.
 //
-// `lyx config menu` is the interactive picker bare `lyx config` used to open.
-// It lists every module marked with the layers that hold a file, reads one choice, and edits that module through the same path as `lyx config <module>`;
+// `lym config menu` is the interactive picker bare `lym config` used to open.
+// It lists every module marked with the layers that hold a file, reads one choice, and edits that module through the same path as `lym config <module>`;
 // `q` quits.
-// Unlike bare `lyx config`, it resolves a cwd.
+// Unlike bare `lym config`, it resolves a cwd.
 //
 // `--print` writes the on-disk YAML verbatim, for one module or for all of them, and never opens an editor.
 //
 // Every editor path refuses when the command's input is not a terminal, and writes nothing:
-// `lyx config <module>` on any layer and `lyx config menu` return a refusal whose way forward is `lyx config <module> --print` to read and `lyx config <module> --set key=value` to write.
+// `lym config <module>` on any layer and `lym config menu` return a refusal whose way forward is `lym config <module> --print` to read and `lym config <module> --set key=value` to write.
 // The refusal comes before the layer is dispatched, the hub-write guard is consulted, a file is scaffolded or the editor runs, and `menu` refuses before it lists or reads a choice.
 // `--print` and `--set` need no terminal and are unaffected.
 // The bound: the guard stops a caller with no terminal, such as an agent's shell; a caller with a terminal and an editor that exits at once is covered by the empty-result abort above.
 //
 // `--set key=value` (repeatable) writes values through `configengine.Set` with no editor and syncs once.
-// A worktree-layer write with no board, a worktree that is no hub's, runs no fabric sync and answers `edited _lyx/config/<module>.yaml`.
-// In such a worktree an empty `--layer` on a hub-wide module selects the worktree layer, so `lyx config gate` writes that worktree's own `gate.yaml`; inside a hub it keeps selecting the hub file.
-// A key under one of the module's declared open maps (`configreg.Module.OpenMaps`) adds or rewrites one entry with a scalar value, as in `lyx config board --set labels.quarry="glyphs and the quarry index"`.
-// A value whose first non-blank character is `{` or `[` writes the entry as a YAML flow mapping or list instead, replacing it whole, as in `lyx config gate --set 'tiers.tier0={command: "go test -json {targets} {args}", timeout_min: 60, counter: go-json}'`.
+// A worktree-layer write with no board, a worktree that is no hub's, runs no fabric sync and answers `edited _lym/config/<module>.yaml`.
+// In such a worktree an empty `--layer` on a hub-wide module selects the worktree layer, so `lym config gate` writes that worktree's own `gate.yaml`; inside a hub it keeps selecting the hub file.
+// A key under one of the module's declared open maps (`configreg.Module.OpenMaps`) adds or rewrites one entry with a scalar value, as in `lym config board --set labels.quarry="glyphs and the quarry index"`.
+// A value whose first non-blank character is `{` or `[` writes the entry as a YAML flow mapping or list instead, replacing it whole, as in `lym config gate --set 'tiers.tier0={command: "go test -json {targets} {args}", timeout_min: 60, counter: go-json}'`.
 // It refuses when the map holds a list,
 // and removing an entry stays an editor edit.
 // A key that is itself a declared open map holding a scalar or a list, such as loom's model keys `reviewer_model`, `fixer_model` and each segment's `*_reviewer_model` and `*_fixer_model`, and each perch's fan keys `*_reviewer_fan` and `*_fixer_fan` in loom, takes either shape:
-// a value starting with `[` is written as a YAML flow list of scalars or mappings of scalars and any other value as a string, as in `lyx config loom --set 'plan_reviewer_model=["opus[medium]", "sonnet[high]"]'`.
+// a value starting with `[` is written as a YAML flow list of scalars or mappings of scalars and any other value as a string, as in `lym config loom --set 'plan_reviewer_model=["opus[medium]", "sonnet[high]"]'`.
 // An entry holding `[` or `]` must be quoted, and a bracketed value that is not such a list is refused, never written as a string.
 // Any other key must exist in the template;
 // pre-existing keys the template lacks are preserved and reported in a `preserved` field.
-// A module whose spec sets `configengine.Spec.JSONEntries`, the run profiles of `profiles`, takes instead a top-level name and a JSON object, as in `lyx config profiles --set wide='{"loom":{"loom":{"code_max_bounces":2}}}'`:
+// A module whose spec sets `configengine.Spec.JSONEntries`, the run profiles of `profiles`, takes instead a top-level name and a JSON object, as in `lym config profiles --set wide='{"loom":{"loom":{"code_max_bounces":2}}}'`:
 // the object replaces that entry whole or is appended as a new one, the other entries left as they are, and a value that is not a JSON object is refused.
 // An absent hub file starts from the template.
 // A module with a template overlay picks its layer through a selector key only the base file may hold, so a hub worktree write picking a layer the base does not pick is refused, naming `--layer default` from the prime worktree.
@@ -71,14 +71,14 @@
 // The way forward is to copy the staging copy out of that path, re-open the editor and re-apply the edit from the copy with the named key fixed, since every open of the editor overwrites the staging copy with the hub file's bytes.
 // A darn save that empties `tree_scope` is an ordinary save: it turns tree scope off.
 //
-// `lyx config reconcile` drops or fills keys across every module against its template, carrying each module's open maps whole;
+// `lym config reconcile` drops or fills keys across every module against its template, carrying each module's open maps whole;
 // it judges a file against the template its base layer's picked overlay composes, so a lens entry equal to the picked layer's prose is dropped.
 // It is a dry run unless applied.
 // A per-name map entry holding the template's value is reported under `dropped` and left out of the written file, and applying rewrites a file whenever the reconcile adds, removes or drops anything.
 // A module that retires keys or floors a value declares a migration, which reconcile runs over its present file first;
 // the dry run lists each rewrite under the module's `migrated` key, and applying writes the migrated file, even when the reconcile itself adds, removes and drops nothing.
 // With no `--layer` it reconciles the worktree's own and local files.
-// `lyx config reconcile --layer default` reconciles every file under `<BoardDir>/_lyx/config/` instead, the hub-wide modules' files and each per-worktree module's repo default:
+// `lym config reconcile --layer default` reconciles every file under `<BoardDir>/_lym/config/` instead, the hub-wide modules' files and each per-worktree module's repo default:
 // renamed keys are migrated, keys the template lacks are pruned, an absent file is seeded sparse, and each entry carries the `seed` it started from.
 // It never fills a base, and its dry run and apply list the one-time base strip under `stripped` as pending, which only the hub reconcile of a start verb performs;
 // the envelope then carries a top-level `base_strip` field saying so, and `--apply` writes no board marker.

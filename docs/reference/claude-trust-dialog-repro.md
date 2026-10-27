@@ -18,24 +18,24 @@ exactly how an earlier reproduction attempt lost the finding.
 
 ## Steps
 
-1. Build `lyx` from this branch: `go build ./cmd/lyx` (cgo required).
+1. Build `lym` from this branch: `go build ./cmd/lym` (cgo required).
 2. Choose a hub path containing a fresh UTC timestamp so it cannot have been trusted before,
-   for example `$HOME/Code/r5sandbox/trust-repro-<YYYYMMDD-HHMMSS>-LYXHUB`.
-   Create a fixture hub there through lyx's own clone flow (`lyx clone`; pin the exact
-   invocation from `lyx clone --help`).
+   for example `$HOME/Code/r5sandbox/trust-repro-<YYYYMMDD-HHMMSS>-LYMHUB`.
+   Create a fixture hub there through lym's own clone flow (`lym clone`; pin the exact
+   invocation from `lym clone --help`).
    The fixture must not be hand-assembled (hubforge Fabric-Fixture Invariant spirit).
 3. Before launching, prove that the child worktree's absolute path is untrusted:
    `jq --arg p "<abs worktree path>" '.projects | has($p)' ~/.claude.json` must print `false`.
    If it prints `true`, pick a new timestamp — the run would pass silently and prove nothing.
-4. In that worktree, run `lyx shed seed self --recipe loom --driver llm --param parent=<recorded parent branch>`,
-   then `lyx loom start`.
-   `lyx loom start` reads and writes only the `self` run (`shedrun.SelfRunID`, via
+4. In that worktree, run `lym shed seed self --recipe loom --driver llm --param parent=<recorded parent branch>`,
+   then `lym loom start`.
+   `lym loom start` reads and writes only the `self` run (`shedrun.SelfRunID`, via
    `seedAndCommitBootstrap` and `resolveRunID`).
    `WriteSeed` refuses a seed whose params disagree with `loomSeedFor`'s `{"parent": <parent>}`,
    so the seed must be at `self`, and it must carry the same parent that `start` resolves.
    An unseeded `start` records the llm driver on its own, so the explicit seed only pins the
    driver against a changed default.
-   Confirm the llm arm ran: `lyx reed status` must list a strand named
+   Confirm the llm arm ran: `lym reed status` must list a strand named
    `driverStrandDisplayName`'s value (the loom driver).
    There must be no detached go runner: the driver log named by `LoomDriverLog` is absent or
    empty for this run.
@@ -52,7 +52,7 @@ exactly how an earlier reproduction attempt lost the finding.
    Had the trust dialog instead never cleared, `start` would refuse with shuttle's `ErrNotStarted`
    message instead of returning success, and `startup-capture.txt` would be left in the driver's
    run dir as the diagnosis artifact (the last pane capture taken before the not-ready teardown).
-7. Tear the fixture down afterwards (`lyx` teardown / removing the hub dir).
+7. Tear the fixture down afterwards (`lym` teardown / removing the hub dir).
    The `~/.claude.json` entry it leaves is harmless: Claude Code appends an entry for every
    launch directory anyway.
 

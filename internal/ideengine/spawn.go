@@ -2,7 +2,7 @@
 // It assigns a title-bar color, generates the worktree's .vscode/ config, and launches VS Code;
 // it regenerates tasks.json on every call and keeps .vscode/ out of git through info/exclude.
 // A task slug opens its bare folder.
-// The prime instead opens the lyx-generated hub workspace <hub>/<RepoName>.code-workspace (prime, Bolt, every task pair), regenerated on every prime spawn.
+// The prime instead opens the lym-generated hub workspace <hub>/<RepoName>.code-workspace (prime, Bolt, every task pair), regenerated on every prime spawn.
 
 package ideengine
 
@@ -15,7 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/vscode"
 )
 
@@ -35,11 +35,11 @@ var KeybindingsPath = vscode.UserKeybindingsPath
 // When slug names the prime, Spawn regenerates the hub workspace file <hub>/<RepoName>.code-workspace, whose settings carry the prime's .vscode/settings.json, and launches that file instead;
 // every error on that path is returned, never degraded to the bare folder.
 // A failure to resolve the prime's name is logged and degrades to the bare-folder path.
-// Before launching it seeds the lyx block of key bindings into the user's VS Code keybindings.json and returns the outcome beside the error;
+// Before launching it seeds the lym block of key bindings into the user's VS Code keybindings.json and returns the outcome beside the error;
 // a skipped seed never fails the spawn.
-func Spawn(l *lyxcwd.Location, slug string) (vscode.KeybindingsResult, error) {
+func Spawn(l *lymcwd.Location, slug string) (vscode.KeybindingsResult, error) {
 	worktreeDir, color, primeName, primeResolved := resolveSpawnTarget(l, slug, targetUnknown)
-	own, err := lyxcwd.NamedWorktree(l.HubPath, slug)
+	own, err := lymcwd.NamedWorktree(l.HubPath, slug)
 	if err != nil {
 		return vscode.KeybindingsResult{}, fmt.Errorf("read the anchor of %q: %w", slug, err)
 	}
@@ -64,29 +64,29 @@ func Spawn(l *lyxcwd.Location, slug string) (vscode.KeybindingsResult, error) {
 
 // SeedTask writes task slug's title-bar color and .vscode/ config, as Spawn does for a task pair, and launches nothing.
 // It leaves the user's keybindings.json alone.
-func SeedTask(l *lyxcwd.Location, slug string) error {
+func SeedTask(l *lymcwd.Location, slug string) error {
 	worktreeDir, color, _, _ := resolveSpawnTarget(l, slug, targetTask)
 	return writeWorktreeConfig(l, worktreeDir, slug, color)
 }
 
 // OpenTask launches VS Code on task slug's bare folder at the task's own anchor, as Spawn does for a task pair, and writes nothing.
-func OpenTask(l *lyxcwd.Location, slug string) error {
-	own, err := lyxcwd.NamedWorktree(l.HubPath, slug)
+func OpenTask(l *lymcwd.Location, slug string) error {
+	own, err := lymcwd.NamedWorktree(l.HubPath, slug)
 	if err != nil {
 		return fmt.Errorf("read the anchor of %q: %w", slug, err)
 	}
 	return CodeLauncher(filepath.Join(fabricengine.WorktreePath(l, slug), own.AnchorRel))
 }
 
-// writeWorktreeConfig writes slug's .vscode/ config at slug's own anchor through writeVSCodeConfig, stamping in the absolute lyx path.
+// writeWorktreeConfig writes slug's .vscode/ config at slug's own anchor through writeVSCodeConfig, stamping in the absolute lym path.
 // The path degrades to the empty string on error so vscode.WriteConfig's own bare-name fallback rule applies.
-func writeWorktreeConfig(l *lyxcwd.Location, worktreeDir, slug, color string) error {
-	own, err := lyxcwd.NamedWorktree(l.HubPath, slug)
+func writeWorktreeConfig(l *lymcwd.Location, worktreeDir, slug, color string) error {
+	own, err := lymcwd.NamedWorktree(l.HubPath, slug)
 	if err != nil {
 		return fmt.Errorf("read the anchor of %q: %w", slug, err)
 	}
-	lyxPath, _ := os.Executable()
-	return writeVSCodeConfig(own, worktreeDir, slug, color, lyxPath)
+	lymPath, _ := os.Executable()
+	return writeVSCodeConfig(own, worktreeDir, slug, color, lymPath)
 }
 
 // seedKeybindings seeds the user's keybindings.json through the KeybindingsPath seam; a path it cannot resolve is a skip.
@@ -101,7 +101,7 @@ func seedKeybindings() vscode.KeybindingsResult {
 // writeVSCodeConfig keeps .vscode/ out of git and writes the .vscode/ config at the worktree's anchor.
 // When .vscode/tasks.json is already tracked, it logs one warning and writes neither file nor the exclude line.
 // Otherwise it first adds an anchored .vscode line to the shared info/exclude, then calls vscode.WriteConfig.
-func writeVSCodeConfig(l *lyxcwd.Location, worktreeDir, slug, color, lyxPath string) error {
+func writeVSCodeConfig(l *lymcwd.Location, worktreeDir, slug, color, lymPath string) error {
 	tasksRel := path.Join(filepath.ToSlash(l.AnchorRel), ".vscode", "tasks.json")
 	tracked, err := fabricengine.PathTracked(worktreeDir, tasksRel)
 	if err != nil {
@@ -118,7 +118,7 @@ func writeVSCodeConfig(l *lyxcwd.Location, worktreeDir, slug, color, lyxPath str
 	if changed {
 		logger.Info("excluded .vscode/ from git", "slug", slug, "exclude", excludePath)
 	}
-	if err := vscode.WriteConfig(worktreeDir, l.AnchorRel, slug, color, lyxPath); err != nil {
+	if err := vscode.WriteConfig(worktreeDir, l.AnchorRel, slug, color, lymPath); err != nil {
 		return fmt.Errorf("write vscode config: %w", err)
 	}
 	return nil
@@ -154,7 +154,7 @@ func primeResolveLogLevel(target spawnTarget, err error) (level slog.Level, log 
 // A prime-resolution failure is logged here, once, at the level primeResolveLogLevel picks for target, and degrades rather than failing the spawn:
 // PickColor skips its prime-skip step, and the returned flag is false.
 // A wrong title-bar color or a missing hub workspace is not worth aborting over.
-func resolveSpawnTarget(l *lyxcwd.Location, slug string, target spawnTarget) (worktreeDir, color, primeName string, primeResolved bool) {
+func resolveSpawnTarget(l *lymcwd.Location, slug string, target spawnTarget) (worktreeDir, color, primeName string, primeResolved bool) {
 	worktreeDir = fabricengine.WorktreePath(l, slug)
 	primeName, primeErr := fabricengine.PrimeName(l)
 	if level, ok := primeResolveLogLevel(target, primeErr); ok {

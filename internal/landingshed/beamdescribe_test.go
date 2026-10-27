@@ -48,7 +48,7 @@ func TestBeamDescribe(t *testing.T) {
 		},
 		{
 			name: "EmptyBriefAndNoSubjectsAreRefusedNamingTheWayOut", title: "Ship the beam",
-			wantErr: []string{"body is empty", `"lyx batten cancel my-beam"`, `"lyx board upsert"`, `"lyx beam land my-beam"`},
+			wantErr: []string{"body is empty", `"lym batten cancel my-beam"`, `"lym board upsert"`, `"lym beam land my-beam"`},
 		},
 		{
 			name: "EntrySeamErrorIsReturned", entryErr: readErr,

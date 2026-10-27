@@ -1,21 +1,21 @@
-# SANDBOX-BURLER-SUITE -- lyx burler black-box suite
+# SANDBOX-BURLER-SUITE -- lym burler black-box suite
 
 ## What this is
 
-A structured test-loop for exercising `lyx burler` against a **live tmux server and a logged-in claude** in the sandbox Hub's Fabric repo.
+A structured test-loop for exercising `lym burler` against a **live tmux server and a logged-in claude** in the sandbox Hub's Fabric repo.
 Like `SANDBOX-SHUTTLE-SUITE.md`, the value here is partly **visual**: a burler round doing real review+fix work in a pane, a verdict coming back.
 Not an automated suite -- an agent drives it, an operator watches.
 
 burler drives one review+fix round over an artifact: an A phase reviews the target against a fasit (a source of truth) and writes a structured review file (verdict + findings), then a B phase fixes what A found and writes a fixer report.
-Scenarios S1-S3 prove one burler round end-to-end through the debug CLI (`lyx burler run`), never review quality -- they are deliberately trivial (a toy chair/table color mismatch) so the assertions are about the mechanics (verdict parse, file contract, fix actually applied), not about whether the review is insightful.
+Scenarios S1-S3 prove one burler round end-to-end through the debug CLI (`lym burler run`), never review quality -- they are deliberately trivial (a toy chair/table color mismatch) so the assertions are about the mechanics (verdict parse, file contract, fix actually applied), not about whether the review is insightful.
 
 ## Pre-conditions
 
 Before starting a session:
 
 1. **Deploy a fresh dev binary.**
-   Run `deploy-dev` to build `lyx.exe` into `.dev-bin` as current source.
-   The suite resolves `.dev-bin` itself and prepends it to the agent's PATH (the fingerprint header's `Source: dev` line confirms the dev build is under test) -- no PATH setup needed, and production `lyx` stays untouched.
+   Run `deploy-dev` to build `lym.exe` into `.dev-bin` as current source.
+   The suite resolves `.dev-bin` itself and prepends it to the agent's PATH (the fingerprint header's `Source: dev` line confirms the dev build is under test) -- no PATH setup needed, and production `lym` stays untouched.
    The deployed binary is a snapshot -- re-deploy after any source change you want to test.
 2. **Materialize the hub.**
    Run `sandbox/build.cmd` (or `sandbox/build.cmd -reset` to start clean);
@@ -23,7 +23,7 @@ Before starting a session:
 3. **Live-tmux and claude requirement.** tmux (or the Windows tmux port) on PATH, PowerShell 7,
    and a logged-in `claude` on PATH.
    If any of these is unavailable in the session, **note that as the session outcome rather than treating it as a burler defect** -- the `**Covers:** burler` tag on S1 satisfies the sandbox coverage guard (`sandbox_coverage_test.go`) regardless of runtime availability.
-4. **Wired worktree required.** `lyx burler run` requires a worktree wired by `lyx fabric clone`/`lyx fabric add` -- which materializes `_lyx/config/shuttle.yaml` and `reed.yaml` eagerly -- exactly like `lyx shuttle` and `lyx reed` do -- burler wires the real shuttle substrate (reed + claude) on every invocation and has no config file of its own;
+4. **Wired worktree required.** `lym burler run` requires a worktree wired by `lym fabric clone`/`lym fabric add` -- which materializes `_lym/config/shuttle.yaml` and `reed.yaml` eagerly -- exactly like `lym shuttle` and `lym reed` do -- burler wires the real shuttle substrate (reed + claude) on every invocation and has no config file of its own;
    the profile YAML is the only burler-specific input.
 5. **Attached interactive terminal.**
    Launch `sandbox/burler-suite.cmd` from a real, attached console -- never redirected, backgrounded, or detached.
@@ -32,19 +32,19 @@ Before starting a session:
 
 ## Black-box rule
 
-**The agent under test works exclusively inside the Hub's Fabric repo (`lyx-test-LYXHUB/lyx-test`).
-It tests `lyx.exe` as a black box -- exactly as a real user with only the binary on PATH.
-It must not look for, read, or reason about the lyx source tree.
+**The agent under test works exclusively inside the Hub's Fabric repo (`lym-test-LYMHUB/lym-test`).
+It tests `lym.exe` as a black box -- exactly as a real user with only the binary on PATH.
+It must not look for, read, or reason about the lym source tree.
 No peeking at `C:\Code\loomyard\` or any other path outside the Hub.**
 
-Discovering the command surface is done via `lyx burler --help`/`lyx burler run --help` alone -- not from documentation outside the Hub.
+Discovering the command surface is done via `lym burler --help`/`lym burler run --help` alone -- not from documentation outside the Hub.
 The profile YAML file is the one artifact the agent must construct itself (paths, rubric, fix-scope, output paths) per the scenario's Goal below;
 each command's `--help` example profile is the reference for the file's shape.
 
 ## Fingerprint header
 
 The launcher prepends a "binary under test" fingerprint block to this file when it copies it into the Hub's Fabric repo.
-The fingerprint records the absolute path, file size, modification time, and a short SHA-256 of the `lyx.exe` binary at launch time.
+The fingerprint records the absolute path, file size, modification time, and a short SHA-256 of the `lym.exe` binary at launch time.
 
 The same fingerprint identifies the binary for the report's provenance: a separate fetch step (run after this session) stamps it into `meta.fingerprint` of the fetched `sandbox-report.json` so a maintainer can reproduce the exact binary that produced each finding.
 The agent does not need to transcribe the fingerprint anywhere itself.
@@ -54,12 +54,12 @@ The agent does not need to transcribe the fingerprint anywhere itself.
 For each scenario below:
 
 - Read the **Goal** -- it names the task, not the commands.
-  Discover the commands via `lyx burler`'s own `--help` (S0 ethos).
+  Discover the commands via `lym burler`'s own `--help` (S0 ethos).
 - Run every scenario-driving command in the **foreground** and wait for it to return before moving on.
-  **Never background or detach a command** -- `lyx burler run` blocks until it reaches a terminal outcome by design, so there is nothing to wait for asynchronously,
+  **Never background or detach a command** -- `lym burler run` blocks until it reaches a terminal outcome by design, so there is nothing to wait for asynchronously,
   and no completion notification will ever be delivered back into this session.
   Assume no async signal arrives, ever.
-- **Watch** what lyx does.
+- **Watch** what lym does.
   Note where it stalls, guesses wrong, or hits an error.
 - Record the outcome per the verdict buckets: `OK` (worked) / `WARN` (rough edge) / `FAIL` (broke).
 
@@ -68,7 +68,7 @@ For each scenario below:
 - `OK`   -- completed without friction
 - `WARN` -- completed but with confusion, awkward UX, or a non-fatal error
 - `FAIL` -- did not complete;
-  lyx broke, panicked, or gave wrong output
+  lym broke, panicked, or gave wrong output
 
 ## Capturing findings
 
@@ -103,12 +103,12 @@ Confine all free text to the `title`/`body` string fields so the JSON stays well
 
 **Covers:** burler
 
-**Goal:** "Create a fixture text file describing a chair and a table whose colors DO NOT match, write a profile YAML that reviews it against the rule 'the chair's color must match the table's color', run `lyx burler run --profile <file>`, and confirm the round finds the mismatch, fixes it, and reports the fix."
+**Goal:** "Create a fixture text file describing a chair and a table whose colors DO NOT match, write a profile YAML that reviews it against the rule 'the chair's color must match the table's color', run `lym burler run --profile <file>`, and confirm the round finds the mismatch, fixes it, and reports the fix."
 
 **Watch:** Create a small fixture file in the Hub's Fabric repo (e.g. `chair-table.txt`) whose text states a chair color and a table color that disagree (e.g. "The chair is red.
 The table is blue.").
 Write a profile YAML naming that file as `target`, an inline `fasit.instructions` stating the rule "the chair's color must match the table's color" (no fasit paths needed -- the rule itself is the source of truth here), a short `rubric` mapping a color mismatch to a BLOCKING finding, `fix-scope: overlay`, `tool-use: false`, `cluster-fan` omitted (empty -- a solo round, since naming a fan is what activates clustering), and fresh `review-path` / `fixer-report-path` (files that do not already exist).
-Run `lyx burler run --profile <file>`.
+Run `lym burler run --profile <file>`.
 The command blocks until the round finishes;
 the printed JSON envelope reports `"outcome":"done"` and `"verdict":"BLOCKING"`;
 the review file at `review-path` opens with YAML frontmatter carrying at least one `BLOCKING`-severity finding;
@@ -128,7 +128,7 @@ and the fixer-report at `fixer-report-path` exists and is non-empty (it must des
 **Watch:** Reuse S1's fixture file (or a fresh copy) but edit it so the chair's and table's colors already match (e.g. "The chair is red.
 The table is red.").
 Write a profile YAML identical in shape to S1's but with fresh `review-path` / `fixer-report-path` (S1's output files already exist and must not be reused).
-Run `lyx burler run --profile <file>`.
+Run `lym burler run --profile <file>`.
 The JSON envelope reports `"outcome":"done"` and `"verdict":"APPROVED"`;
 the review file's frontmatter carries zero `BLOCKING`-severity findings (non-blocking MEDIUM/LOW/NIT polish findings are legal and do not fail this scenario);
 the fixer-report still exists and is non-empty.
@@ -145,7 +145,7 @@ A review with polish findings runs the fixer, and the fixer-report is its own.
 
 **Goal:** "Confirm four profile-level mistakes are each rejected with a distinct, sane error in the JSON envelope: an unknown cluster fan name, an empty fasit, a re-run against an already-existing review-path, and a review-path identical to the fixer-report-path."
 
-**Watch:** Four separate `lyx burler run` invocations, each expected to exit non-zero with an error in the JSON envelope (not a panic, not a silent zero-exit):
+**Watch:** Four separate `lym burler run` invocations, each expected to exit non-zero with an error in the JSON envelope (not a panic, not a silent zero-exit):
 
 1. Take a valid profile (e.g. a copy of S1's) and set `cluster-fan: no-such-fan`.
    The run must fail with a validation error naming the unknown fan.
@@ -177,9 +177,9 @@ sandbox-report.json written: <count of WARN/FAIL items>
 
 ## Teardown
 
-After the session summary is recorded and `./sandbox-report.json` is written, run `lyx reed down` to tear down the tmux session/server the scenarios booted with `lyx reed up`.
+After the session summary is recorded and `./sandbox-report.json` is written, run `lym reed down` to tear down the tmux session/server the scenarios booted with `lym reed up`.
 An orphaned tmux server holds open handles inside the Hub's Fabric repo and blocks the next `sandbox/build.cmd -reset`.
-The launcher also runs `lyx reed down` itself after the session ends (deterministic backstop), but run it here anyway -- defense-in-depth,
+The launcher also runs `lym reed down` itself after the session ends (deterministic backstop), but run it here anyway -- defense-in-depth,
 and it keeps the Hub clean while the session is still open for inspection.
 
 ## Notes

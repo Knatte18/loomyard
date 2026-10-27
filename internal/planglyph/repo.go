@@ -75,7 +75,7 @@ func ensureResolveCoverage(targets []string, results []quarry.ResolveResult) err
 }
 
 // TOC opens a quarry.Repo rooted at worktreeRoot and answers a table-of-contents query for target
-// under the zero quarry.TOCOptions — the same default the lyx quarry toc verb reports. It returns
+// under the zero quarry.TOCOptions — the same default the lym quarry toc verb reports. It returns
 // quarry's own answer and error unchanged, so a caller distinguishes an infrastructure failure
 // from a negative query answer with errors.Is(err, ErrQuarryUnavailable) exactly as openRepo's
 // other callers do.

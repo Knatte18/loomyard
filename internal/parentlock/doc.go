@@ -1,6 +1,6 @@
 // Package parentlock owns the parent lock: one record per parent branch that lets a single run at a time move that parent, valid exactly while its owner process lives.
 //
-// The package is told every directory it works on and derives none beyond Dir, which spells the ephemeral directory name only through internal/lyxdirs.
+// The package is told every directory it works on and derives none beyond Dir, which spells the ephemeral directory name only through internal/lymdirs.
 //
 // Moving, merging into or landing on a local parent branch happens only in a run's Finalize, under this lock for that parent (PATTERN-parent-lock).
 //

@@ -102,8 +102,8 @@ func TestRun_RerouteCapHaltsOnFourthRerouteAndResumeGrantsThreeMore(t *testing.T
 		wayForward string
 		wantClause string
 	}{
-		{"told way forward", "run \"lyx batten land\" again", "way forward: run \"lyx batten land\" again"},
-		{"fallback way forward", "", "way forward: \"lyx shed run\" resumes the row"},
+		{"told way forward", "run \"lym batten land\" again", "way forward: run \"lym batten land\" again"},
+		{"fallback way forward", "", "way forward: \"lym shed run\" resumes the row"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			shed, a := rerouteShed(t, []rerouteOutcome{callReroute})

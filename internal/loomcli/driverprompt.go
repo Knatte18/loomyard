@@ -40,7 +40,7 @@ const driverNotifyMarker = "parent_notify"
 // The guide marker is filled with the deployed path of the repair guide stencil, the copy the fork the driver spawns at a failure stop reads.
 // The prompt is the driver's whole procedure, so the session depends on no installed skill.
 // At a done run or a busy refusal, as its last act after writing its stop report, the session runs driverTeardownCommand to end its own strand;
-// at every other stop it parks, leaving the session open for `lyx loom start` to resume by typing one line.
+// at every other stop it parks, leaving the session open for `lym loom start` to resume by typing one line.
 // The park and the command ride this loom-launched prompt alone, as markers the recipe-blind stencil body never names.
 // The teardown at done is what keeps batten's half of the end-to-end criterion:
 // batten's Inner-Run row, on a done child, waits for the driver strand to end before it returns Done and teardown runs (callDone),
@@ -125,10 +125,10 @@ func readBattenWatch(markerPath string, isAlive func(pid int) bool) (battenWatch
 }
 
 // driverRecordsCommand commits the run records; driverTeardownCommand runs it first, and driverParkCommand extends it.
-const driverRecordsCommand = "lyx loom commit-records"
+const driverRecordsCommand = "lym loom commit-records"
 
 // driverParkCommand is the command a parking driver runs after its stop report: it commits the run records and writes the park marker holding reportPath.
-// The marker is written by Go rather than by the agent, since a driver that skipped writing it left `lyx loom start` refusing to resume.
+// The marker is written by Go rather than by the agent, since a driver that skipped writing it left `lym loom start` refusing to resume.
 // The prompt names it so the driver stencil can stay recipe-blind.
 func driverParkCommand(reportPath string) string {
 	return fmt.Sprintf("%s --park %q", driverRecordsCommand, reportPath)
@@ -137,7 +137,7 @@ func driverParkCommand(reportPath string) string {
 // driverArbiterCommand is the command a driver runs at a stop it cannot settle: it spawns the run's arbiter, or returns the verdict of one that already judged the stop.
 // The envelope and report paths are angle-bracket placeholders the driver fills from the stop in hand, as the stencil's `--before <producer>` is.
 func driverArbiterCommand(runID string) string {
-	return fmt.Sprintf("lyx loom arbiter %s --envelope <envelope_path> --report <report_path>", runID)
+	return fmt.Sprintf("lym loom arbiter %s --envelope <envelope_path> --report <report_path>", runID)
 }
 
 // driverTeardownCommand is the end-of-session command a loom-launched driver runs after its stop report.
@@ -145,4 +145,4 @@ func driverArbiterCommand(runID string) string {
 // The two are joined with `;` rather than `&&` so the strand removal runs even when the commit fails:
 // a driver that stayed open on a failed commit would leave its strand alive for a run that has finished.
 // It is built from driverStrandDisplayName so the name cannot drift from the strand's own.
-const driverTeardownCommand = driverRecordsCommand + "; lyx reed remove --name " + driverStrandDisplayName + " --detach"
+const driverTeardownCommand = driverRecordsCommand + "; lym reed remove --name " + driverStrandDisplayName + " --detach"

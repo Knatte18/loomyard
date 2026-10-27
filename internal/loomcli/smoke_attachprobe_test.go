@@ -40,7 +40,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -330,12 +330,10 @@ func TestSmokeLeadSeat_HarvestsAFinishedRunWithReedStateGone(t *testing.T) {
 	// crash after its agent finished leaves behind.
 	waitForOutputFile(t, outputFile, 30*time.Second)
 
-	// Now take reed's strand table away under the still-"running" record -- the `git clean -xdf` of
-	// `.lyx` the Durable-vs-Ephemeral State Invariant sanctions, or reed's own documented remedy for a
-	// corrupt state file. Restored on cleanup so registerBootstrapTeardown's own Down() can still find
-	// the session it has to tear down.
-	dotLyxDir := filepath.Join(reedGeom.AnchorPath, lyxdirs.DotLyxDirName)
-	reedStatePath := filepath.Join(dotLyxDir, "reed.json")
+	// Now take reed's strand table away under the still-"running" record -- the `git clean -xdf` of `.lym` the Durable-vs-Ephemeral State Invariant sanctions, or reed's own documented remedy for a corrupt state file.
+	// Restored on cleanup so registerBootstrapTeardown's own Down() can still find the session it has to tear down.
+	dotLymDir := filepath.Join(reedGeom.AnchorPath, lymdirs.DotLymDirName)
+	reedStatePath := filepath.Join(dotLymDir, "reed.json")
 	savedReedState, err := os.ReadFile(reedStatePath)
 	if err != nil {
 		t.Fatalf("read reed state before removing it: %v", err)
@@ -433,7 +431,7 @@ func TestSmokeLeadSeat_RerunRemovesTheSupersededStrand(t *testing.T) {
 	t.Cleanup(func() { _, _ = reedEngine.RemoveStrand(other.StrandGUID(), false) })
 
 	// Leave the first run's record at a terminal outcome, as a halted run does, with its pane still alive.
-	runRoot := filepath.Join(reedGeom.AnchorPath, lyxdirs.DotLyxDirName, "shuttle")
+	runRoot := filepath.Join(reedGeom.AnchorPath, lymdirs.DotLymDirName, "shuttle")
 	if shuttleCfg.RunDir != "" {
 		runRoot = shuttleCfg.RunDir
 		if !filepath.IsAbs(runRoot) {

@@ -1,7 +1,7 @@
 //go:build tier0
 
 // exec_test.go tests the exit-state holder, the Execute seam adapter, and WrapRun.
-// Tests use synthetic cobra command trees built in-test — no real lyx commands.
+// Tests use synthetic cobra command trees built in-test — no real lym commands.
 
 package clihelp
 
@@ -16,7 +16,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // handlerReturning returns a WrapRun-compatible handler function that writes
@@ -172,9 +172,7 @@ func TestExecute_ConcurrentInvocationsDoNotCrossExitCodes(t *testing.T) {
 	wg.Wait()
 }
 
-// TestExecuteIn_HandlerObservesInjectedCwd verifies that a handler reading
-// lyxcwd.CwdFrom(cmd.Context()) observes the exact directory passed to
-// ExecuteIn.
+// TestExecuteIn_HandlerObservesInjectedCwd verifies that a handler reading lymcwd.CwdFrom(cmd.Context()) observes the exact directory passed to ExecuteIn.
 func TestExecuteIn_HandlerObservesInjectedCwd(t *testing.T) {
 	t.Parallel()
 
@@ -185,9 +183,9 @@ func TestExecuteIn_HandlerObservesInjectedCwd(t *testing.T) {
 	root.AddCommand(&cobra.Command{
 		Use: "where",
 		RunE: WrapRunCtx(func(ctx context.Context, _ io.Writer, _ []string) int {
-			cwd, err := lyxcwd.CwdFrom(ctx)
+			cwd, err := lymcwd.CwdFrom(ctx)
 			if err != nil {
-				t.Fatalf("lyxcwd.CwdFrom() error = %v; want nil", err)
+				t.Fatalf("lymcwd.CwdFrom() error = %v; want nil", err)
 			}
 			got = cwd
 			return 0
@@ -199,7 +197,7 @@ func TestExecuteIn_HandlerObservesInjectedCwd(t *testing.T) {
 		t.Errorf("ExecuteIn(where) = %d; want 0", code)
 	}
 	if got != want {
-		t.Errorf("lyxcwd.CwdFrom(cmd.Context()) = %q; want %q", got, want)
+		t.Errorf("lymcwd.CwdFrom(cmd.Context()) = %q; want %q", got, want)
 	}
 }
 
@@ -209,9 +207,9 @@ func TestExecuteIn_HandlerObservesInjectedCwd(t *testing.T) {
 func TestExecute_HandlerObservesProcessCwd(t *testing.T) {
 	t.Parallel()
 
-	want, err := lyxcwd.Getwd()
+	want, err := lymcwd.Getwd()
 	if err != nil {
-		t.Fatalf("lyxcwd.Getwd() error = %v; want nil", err)
+		t.Fatalf("lymcwd.Getwd() error = %v; want nil", err)
 	}
 	var got string
 
@@ -219,9 +217,9 @@ func TestExecute_HandlerObservesProcessCwd(t *testing.T) {
 	root.AddCommand(&cobra.Command{
 		Use: "where",
 		RunE: WrapRunCtx(func(ctx context.Context, _ io.Writer, _ []string) int {
-			cwd, cwdErr := lyxcwd.CwdFrom(ctx)
+			cwd, cwdErr := lymcwd.CwdFrom(ctx)
 			if cwdErr != nil {
-				t.Fatalf("lyxcwd.CwdFrom() error = %v; want nil", cwdErr)
+				t.Fatalf("lymcwd.CwdFrom() error = %v; want nil", cwdErr)
 			}
 			got = cwd
 			return 0
@@ -233,7 +231,7 @@ func TestExecute_HandlerObservesProcessCwd(t *testing.T) {
 		t.Errorf("Execute(where) = %d; want 0", code)
 	}
 	if got != want {
-		t.Errorf("lyxcwd.CwdFrom(cmd.Context()) via Execute = %q; want process cwd %q", got, want)
+		t.Errorf("lymcwd.CwdFrom(cmd.Context()) via Execute = %q; want process cwd %q", got, want)
 	}
 }
 
@@ -250,9 +248,9 @@ func TestRunRootCtx_PropagatesContextValue(t *testing.T) {
 	root.AddCommand(&cobra.Command{
 		Use: "leaf",
 		RunE: WrapRunCtx(func(ctx context.Context, _ io.Writer, _ []string) int {
-			cwd, err := lyxcwd.CwdFrom(ctx)
+			cwd, err := lymcwd.CwdFrom(ctx)
 			if err != nil {
-				t.Fatalf("lyxcwd.CwdFrom() error = %v; want nil", err)
+				t.Fatalf("lymcwd.CwdFrom() error = %v; want nil", err)
 			}
 			got = cwd
 			return 0
@@ -264,7 +262,7 @@ func TestRunRootCtx_PropagatesContextValue(t *testing.T) {
 	root.SetOut(&buf)
 	root.SetErr(&buf)
 
-	ctx := lyxcwd.WithCwd(context.Background(), want)
+	ctx := lymcwd.WithCwd(context.Background(), want)
 	if code := RunRootCtx(ctx, root, &buf); code != 0 {
 		t.Errorf("RunRootCtx() = %d; want 0", code)
 	}
@@ -286,9 +284,9 @@ func TestWrapRunCtx_ReceivesCommandContext(t *testing.T) {
 	root.AddCommand(&cobra.Command{
 		Use: "leaf",
 		RunE: WrapRunCtx(func(ctx context.Context, _ io.Writer, _ []string) int {
-			cwd, err := lyxcwd.CwdFrom(ctx)
+			cwd, err := lymcwd.CwdFrom(ctx)
 			if err != nil {
-				t.Fatalf("lyxcwd.CwdFrom() error = %v; want nil", err)
+				t.Fatalf("lymcwd.CwdFrom() error = %v; want nil", err)
 			}
 			got = cwd
 			return 0

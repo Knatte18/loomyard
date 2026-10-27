@@ -1,4 +1,4 @@
-// build.go identifies the running lyx build and records which strand a bootstrap launched from it, so a bootstrap keeps a live status strand of the current build and replaces one of an older build.
+// build.go identifies the running lym build and records which strand a bootstrap launched from it, so a bootstrap keeps a live status strand of the current build and replaces one of an older build.
 
 package statuspane
 
@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 )
 
-// BuildIdentity names one lyx build by the running executable's symlink-resolved path, size and modification time.
+// BuildIdentity names one lym build by the running executable's symlink-resolved path, size and modification time.
 // A rebuilt binary at the same path changes size or mtime, which is the signal a live status strand launched from the older build needs to be replaced.
 type BuildIdentity struct {
 	Path    string `json:"path"`
@@ -17,7 +17,7 @@ type BuildIdentity struct {
 	ModTime int64  `json:"mod_time_unix_nano"`
 }
 
-// Sidecar records which strand a bootstrap last added or replaced as a status strand and the build identity of the lyx that launched it.
+// Sidecar records which strand a bootstrap last added or replaced as a status strand and the build identity of the lym that launched it.
 type Sidecar struct {
 	GUID  string        `json:"guid"`
 	Build BuildIdentity `json:"build"`
@@ -76,7 +76,7 @@ func WriteSidecar(path, guid string, build BuildIdentity) error {
 }
 
 // StrandCurrent reports whether a status strand may be kept: it is live, and the sidecar names its guid and records build.
-// A missing or unreadable sidecar means the strand may run a different lyx build, so it is not current.
+// A missing or unreadable sidecar means the strand may run a different lym build, so it is not current.
 func StrandCurrent(live bool, guid string, sidecar *Sidecar, build BuildIdentity) bool {
 	return live && sidecar != nil && sidecar.GUID == guid && sidecar.Build == build
 }

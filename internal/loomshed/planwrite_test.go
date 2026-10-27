@@ -55,7 +55,7 @@ func (c *planCommitRecorder) Commit() error {
 	return c.commitErr
 }
 
-// setupPlanDir creates a plan directory (_lyx/plan) under a fresh t.TempDir() anchor, writes the
+// setupPlanDir creates a plan directory (_lym/plan) under a fresh t.TempDir() anchor, writes the
 // given top-level file names (each with content equal to its own name) directly under it, and
 // returns the anchor path and the plan directory's absolute path.
 func setupPlanDir(t *testing.T, fileNames ...string) (anchorPath, planDir string) {

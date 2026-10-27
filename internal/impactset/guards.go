@@ -1,4 +1,4 @@
-// guards.go finds the top-level tests marked `//lyx:guard` by a static parse of the `_test.go` files of the module's package directories.
+// guards.go finds the top-level tests marked `//lym:guard` by a static parse of the `_test.go` files of the module's package directories.
 
 package impactset
 
@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	guardMarker       = "//lyx:guard"
+	guardMarker       = "//lym:guard"
 	testtimingKeepTag = "//testtiming:keep"
 )
 
@@ -37,7 +37,7 @@ const (
 	GuardParse GuardScanKind = "parse"
 )
 
-// GuardTest is a test marked `//lyx:guard`: its name and the tier of the file declaring it.
+// GuardTest is a test marked `//lym:guard`: its name and the tier of the file declaring it.
 type GuardTest struct {
 	// Name is the top-level test function's name.
 	Name string
@@ -66,7 +66,7 @@ func IsGuardScanError(err error) bool {
 	return errors.As(err, &scanErr)
 }
 
-// FindGuardTests returns, per package directory, the tests marked `//lyx:guard` in its `_test.go` files, sorted by name, each with the tier of its file.
+// FindGuardTests returns, per package directory, the tests marked `//lym:guard` in its `_test.go` files, sorted by name, each with the tier of its file.
 // The caller passes the package directories, worktree-relative and slash-separated.
 // A marker not directly above a top-level `func Test…` line, or in a `tier2` or `tier3` file, is an error naming the file and line.
 func FindGuardTests(worktree string, dirs []string) (map[string][]GuardTest, error) {
@@ -98,7 +98,7 @@ func FindGuardTests(worktree string, dirs []string) (map[string][]GuardTest, err
 // moduleDirsFormat is the `go list -f` template ModuleGuardTests reads: one NUL-terminated record per entry, its directory then its error, tab-separated.
 const moduleDirsFormat = `{{.Dir}}{{"\t"}}{{with .Error}}{{.Err}}{{end}}{{"\x00"}}`
 
-// ModuleGuardTests returns, per package directory of the module at moduleDir, the tests marked `//lyx:guard` with their file's tier, keyed by the module-relative, slash-separated directory.
+// ModuleGuardTests returns, per package directory of the module at moduleDir, the tests marked `//lym:guard` with their file's tier, keyed by the module-relative, slash-separated directory.
 // It lists the packages under the tier tags `tier0` through `tier3` with `go list -e`, so a package whose test file cannot be read stays listed and the scan reports that file as a GuardParse error.
 // A failed `go list` run, or an entry with no directory such as an unreadable package directory, is a plain error naming moduleDir and the enumeration's own error, and so is a listed package directory outside moduleDir.
 // A marker the scan rejects is a *GuardScanError.

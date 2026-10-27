@@ -79,7 +79,7 @@ func TestWindowOrder(t *testing.T) {
 // TestEnsureShellWindow drives the shell window check through its callers, OpenWindow and AttachArgv.
 // It captures the process-global logger, so it does not run in parallel.
 func TestEnsureShellWindow(t *testing.T) {
-	withInjectedExecutablePath(t, func() (string, error) { return "/opt/lyx/bin/lyx", nil })
+	withInjectedExecutablePath(t, func() (string, error) { return "/opt/lym/bin/lym", nil })
 
 	// The fake derives its session pane listing from list-panes, placing every pane in window @0.
 	const (

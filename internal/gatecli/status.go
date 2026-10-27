@@ -1,4 +1,4 @@
-// status.go implements `lyx gate status`, the read-only view of which slots of the hub's gate-slot pool are held, by which run and tier, and since when.
+// status.go implements `lym gate status`, the read-only view of which slots of the hub's gate-slot pool are held, by which run and tier, and since when.
 
 package gatecli
 
@@ -12,11 +12,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 )
 
-// statusCmd builds `lyx gate status`.
+// statusCmd builds `lym gate status`.
 func statusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "status",
@@ -38,7 +38,7 @@ Outside every hub it answers in_hub false, since the tiers run unslotted there.`
 
 // runStatus writes the status of the gate-slot pool of the hub that contains the seam cwd and returns the verb's exit code.
 func runStatus(ctx context.Context, out io.Writer) int {
-	cwd, err := lyxcwd.CwdFrom(ctx)
+	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("gate status: cannot read the working directory: %v; way forward: re-run the same command", err))
 	}

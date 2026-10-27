@@ -347,11 +347,11 @@ func TestUpsertFieldAllowlist(t *testing.T) {
 			// wantNot lists the substrings the refusal must not carry.
 			wantNot []string
 		}{
-			{"true on a project", map[string]any{"slug": "grouper", "beam": true}, []string{`"grouper"`, "lyx beam create grouper"}, nil},
-			{"true on a task", map[string]any{"slug": "work", "beam": true}, []string{`"work"`, "lyx board upsert", "lyx beam create <that slug>"}, []string{"lyx beam promote", "lyx beam create work"}},
-			{"true on a new project", map[string]any{"slug": "fresh", "kind": "project", "beam": true}, []string{`"fresh"`, "lyx beam create fresh"}, nil},
-			{"true on a new task", map[string]any{"slug": "fresh", "kind": "task", "beam": true}, []string{`"fresh"`, "lyx board upsert", "lyx beam create <that slug>"}, []string{"lyx beam promote", "lyx beam create fresh"}},
-			{"false on a beam", map[string]any{"slug": "beamer", "beam": false}, []string{`"beamer"`, "stays set for the beam's life", "lyx beam land beamer"}, nil},
+			{"true on a project", map[string]any{"slug": "grouper", "beam": true}, []string{`"grouper"`, "lym beam create grouper"}, nil},
+			{"true on a task", map[string]any{"slug": "work", "beam": true}, []string{`"work"`, "lym board upsert", "lym beam create <that slug>"}, []string{"lym beam promote", "lym beam create work"}},
+			{"true on a new project", map[string]any{"slug": "fresh", "kind": "project", "beam": true}, []string{`"fresh"`, "lym beam create fresh"}, nil},
+			{"true on a new task", map[string]any{"slug": "fresh", "kind": "task", "beam": true}, []string{`"fresh"`, "lym board upsert", "lym beam create <that slug>"}, []string{"lym beam promote", "lym beam create fresh"}},
+			{"false on a beam", map[string]any{"slug": "beamer", "beam": false}, []string{`"beamer"`, "stays set for the beam's life", "lym beam land beamer"}, nil},
 			{"not a boolean", map[string]any{"slug": "work", "beam": "yes"}, []string{`"work"`, "true or false"}, nil},
 		}
 		for _, tt := range refused {
@@ -528,8 +528,8 @@ func TestUpsertFieldAllowlist(t *testing.T) {
 					}
 					err := entryPoint.write(s, map[string]any{"slug": "t1", "title": "T2", "owner_machine": tt.owner})
 					if tt.wantErr {
-						if err == nil || !stringContains(err.Error(), "lyx adopt") || !stringContains(err.Error(), `"neve"`) {
-							t.Fatalf("write error = %v; want a refusal naming the owner and `lyx adopt`", err)
+						if err == nil || !stringContains(err.Error(), "lym adopt") || !stringContains(err.Error(), `"neve"`) {
+							t.Fatalf("write error = %v; want a refusal naming the owner and `lym adopt`", err)
 						}
 						return
 					}
@@ -806,8 +806,8 @@ func TestMergeTasks(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err := s.MergeTasks([]string{"gone"}, map[string]any{"slug": "p", "kind": "project", "beam": true}, nil)
-		if err == nil || !stringContains(err.Error(), "lyx beam create p") {
-			t.Errorf("MergeTasks with beam true = %v; want a refusal naming lyx beam create p", err)
+		if err == nil || !stringContains(err.Error(), "lym beam create p") {
+			t.Errorf("MergeTasks with beam true = %v; want a refusal naming lym beam create p", err)
 		}
 		if _, found := s.GetTask("gone"); !found || len(s.Tasks()) != 1 {
 			t.Errorf("a refused merge changed the store: %+v", s.Tasks())
@@ -1236,8 +1236,8 @@ func TestUpsertTasksBatch(t *testing.T) {
 			{"slug": "t", "title": "T"},
 			{"slug": "p", "kind": "project", "beam": true},
 		})
-		if err == nil || !stringContains(err.Error(), "lyx beam create p") {
-			t.Errorf("UpsertTasksBatch with beam true = %v; want a refusal naming lyx beam create p", err)
+		if err == nil || !stringContains(err.Error(), "lym beam create p") {
+			t.Errorf("UpsertTasksBatch with beam true = %v; want a refusal naming lym beam create p", err)
 		}
 		if len(s.Tasks()) != 0 {
 			t.Errorf("a refused batch changed the store: %+v", s.Tasks())
@@ -1880,14 +1880,14 @@ func TestPromote(t *testing.T) {
 		}
 	})
 
-	t.Run("a project refused naming lyx beam create", func(t *testing.T) {
+	t.Run("a project refused naming lym beam create", func(t *testing.T) {
 		s := seed(t)
 		if _, err := s.UpsertTask(map[string]any{"slug": "proj", "kind": "project"}); err != nil {
 			t.Fatal(err)
 		}
 		_, changed, err := s.Promote("proj")
-		if err == nil || changed || !stringContains(err.Error(), `"proj"`) || !stringContains(err.Error(), "lyx beam create proj") {
-			t.Fatalf("changed %v, err %v; want a refusal naming proj and lyx beam create", changed, err)
+		if err == nil || changed || !stringContains(err.Error(), `"proj"`) || !stringContains(err.Error(), "lym beam create proj") {
+			t.Fatalf("changed %v, err %v; want a refusal naming proj and lym beam create", changed, err)
 		}
 		if stored, _ := s.GetTask("proj"); stored.Kind != boardengine.KindProject {
 			t.Errorf("a refused promote changed the project: kind %q", stored.Kind)

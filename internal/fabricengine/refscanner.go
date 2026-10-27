@@ -10,20 +10,20 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// spellingPattern matches a fabric-driving command spelling (lyx fabric/weft/warp) in command
+// spellingPattern matches a fabric-driving command spelling (lym fabric/weft/warp) in command
 // position: the start of the command, or after a shell separator (`;`, `&`, `|`, `(`, a newline, `$(`
 // or a backtick), optionally behind command wrappers, env assignments and a directory prefix.
 // It runs over the command with its quoted spans blanked (see blankQuoted), so a search pattern
-// such as `grep "lyx fabric remove" doc.md` is text, not an invocation.
+// such as `grep "lym fabric remove" doc.md` is text, not an invocation.
 // A spelling hidden inside a quoted `bash -c "…"` is not caught; the audit guards well-meaning
 // agents against a slip, not an adversary.
 var spellingPattern = regexp.MustCompile(
 	"(?:^|[;&|(\\n`]|\\$\\()\\s*(?:(?:env|exec|command|nohup|time|xargs)\\s+|\\w+=\\S*\\s+)*" +
-		`(?:\S*[/\\])?lyx(?:\.exe)?\s+(?:fabric|weft|warp)\b`,
+		`(?:\S*[/\\])?lym(?:\.exe)?\s+(?:fabric|weft|warp)\b`,
 )
 
 // heredocOpener matches a heredoc redirection (`<<EOF`, `<<-EOF`, `<<'EOF'`, `<<"EOF"`) and captures
@@ -94,15 +94,14 @@ type RefScanner struct {
 
 // NewRefScanner returns a RefScanner for l's worktree, compiling its regexes once so repeated
 // Matches calls (e.g. over every Bash command in a transcript) never recompile them.
-func NewRefScanner(l *lyxcwd.Location) *RefScanner {
+func NewRefScanner(l *lymcwd.Location) *RefScanner {
 	return &RefScanner{
 		rule:         NewReferenceRule(),
 		exactPattern: regexp.MustCompile(regexp.QuoteMeta(RecordsWorktree(l))),
 	}
 }
 
-// Matches reports whether cmd references fabric's two-checkout mechanism, either by spelling
-// (lyx fabric/weft/warp, in command position) or by touching a weft sibling worktree's path.
+// Matches reports whether cmd references fabric's two-checkout mechanism, either by spelling (lym fabric/weft/warp, in command position) or by touching a weft sibling worktree's path.
 func (s *RefScanner) Matches(cmd string) bool {
 	if s.exactPattern.MatchString(stripHeredocBodies(cmd)) {
 		return true
@@ -187,7 +186,7 @@ var readOnlyCommands = map[string]bool{
 	"cat": true, "head": true, "tail": true, "ls": true, "wc": true, "grep": true, "jq": true, "cut": true,
 }
 
-// FabricReaderVerbs returns the names of the `lyx fabric` verbs that only read: list, pairs, status, diff, shortname, prune and cleanup.
+// FabricReaderVerbs returns the names of the `lym fabric` verbs that only read: list, pairs, status, diff, shortname, prune and cleanup.
 // It declares names only; the arguments each verb may take without mutating stay with the consumer that applies them.
 // Every call returns a fresh slice, so no caller can change another's set.
 func FabricReaderVerbs() []string {
@@ -198,20 +197,20 @@ func FabricReaderVerbs() []string {
 var substitutionMarkers = []string{"$(", "`", "<(", ">("}
 
 // IsReadOnlyCommand reports whether cmd is built only from allow-listed read forms, each in command position, joined by `|`, `||`, `;`, `&&` or a newline.
-// The forms are the readers cat, head, tail, ls, wc, grep, jq and cut; `lyx` help (command words then `--help` or `-h`); the `lyx fabric` readers list, pairs, status, shortname, diff with one revision, prune and cleanup without flags; and a closed set of `git` reads, optionally behind `-C <dir>`.
+// The forms are the readers cat, head, tail, ls, wc, grep, jq and cut; `lym` help (command words then `--help` or `-h`); the `lym fabric` readers list, pairs, status, shortname, diff with one revision, prune and cleanup without flags; and a closed set of `git` reads, optionally behind `-C <dir>`.
 // A reader segment is not read-only when it holds an unquoted `(` or `)`, or a `$` its single-quote-blanked view keeps whose next raw character is anything but whitespace, a double quote or the segment's end, which rejects every parameter and arithmetic expansion and the ANSI-C quote `$'…'`, while a regex anchor such as `a$` stays read-only.
-// It is false for any output redirection (`>`, `>>`, `>|`, `&>`, a numbered descriptor redirection, `<>`), for command or process substitution, for backgrounding, and for any other command or form, `sort`, `tee`, `find`, `env`, `xargs`, an interpreter, `go` and every other `lyx` or `git` invocation included.
-// A `lyx`, `git` or `sed` segment is split into shell words, honouring single and double quotes, and judged on the dequoted text.
+// It is false for any output redirection (`>`, `>>`, `>|`, `&>`, a numbered descriptor redirection, `<>`), for command or process substitution, for backgrounding, and for any other command or form, `sort`, `tee`, `find`, `env`, `xargs`, an interpreter, `go` and every other `lym` or `git` invocation included.
+// A `lym`, `git` or `sed` segment is split into shell words, honouring single and double quotes, and judged on the dequoted text.
 // Such a word may hold neither `$` nor a backslash, quoted or not, nor an unquoted brace or parenthesis; a leading `~` is text.
 // A quoted word starting with `-` is still a flag, so a quoted writing flag is rejected.
-// A glob character (`*`, `?`, `[`, `#`, or `^` at a word's start) is rejected in every `lyx` word, quoted or not.
+// A glob character (`*`, `?`, `[`, `#`, or `^` at a word's start) is rejected in every `lym` word, quoted or not.
 // In a `git` word a quoted one is text wherever a positional is admitted, and an unquoted one is rejected except after the `--` of `log`, `show`, `diff` and `status`, where every word is a pathspec.
 // `sed` is read-only only as the quiet flag (`-n`, `--quiet` or `--silent`), one script of print commands joined by `;` that each take a line-number or `/RE/` address or a range of two, and file words.
 // The two stderr redirections `2>&1` and `2>/dev/null`, each a whole token that does not open its segment, are dropped before the redirection scan; every other redirection fails it.
 // A separator or redirection character inside a quoted span is text.
 // A substitution is found with only single-quoted spans blanked, because a shell runs one inside double quotes.
 // A command word is read in its original spelling, so a first word holding a quote or a backslash, quoted whole or only in part, is never read-only: it is not a name the list can match.
-// A trailing `--json` is a help form of a `lyx` segment, except for a command that declares a `--json` of its own, local or persistent on a group, which shadows the global flag and runs.
+// A trailing `--json` is a help form of a `lym` segment, except for a command that declares a `--json` of its own, local or persistent on a group, which shadows the global flag and runs.
 // The classifier does not know that set; a test over the real command tree pins it, so a new one is a reviewed change against this rule.
 // Today those are the generic shed `status` verbs under each mount, which only read.
 // The classifier assumes bash or zsh with any glob option set and sees static shape only, so a loop, an expansion, a substitution, a zsh glob qualifier, a bash extglob and a command behind `bash -c` stay non-read-only.
@@ -290,7 +289,7 @@ func opensSegment(view []rune, at int) bool {
 	return true
 }
 
-// readOnlySegment reports whether one separated segment, in its raw text, is a listed reader, a read-only lyx form, a read-only git form or a read-only sed print.
+// readOnlySegment reports whether one separated segment, in its raw text, is a listed reader, a read-only lym form, a read-only git form or a read-only sed print.
 // A listed reader is read-only only when readOnlyReaderSegment admits it.
 func readOnlySegment(segment string) bool {
 	fields := strings.Fields(segment)
@@ -300,7 +299,7 @@ func readOnlySegment(segment string) bool {
 	if readOnlyCommands[fields[0]] {
 		return readOnlyReaderSegment(segment)
 	}
-	if fields[0] != "lyx" && fields[0] != "git" && fields[0] != "sed" {
+	if fields[0] != "lym" && fields[0] != "git" && fields[0] != "sed" {
 		return false
 	}
 	words, ok := splitShellWords(segment)
@@ -308,8 +307,8 @@ func readOnlySegment(segment string) bool {
 		return false
 	}
 	switch fields[0] {
-	case "lyx":
-		return readOnlyLyxSegment(words)
+	case "lym":
+		return readOnlyLymSegment(words)
 	case "git":
 		return readOnlyGitSegment(words)
 	}
@@ -399,19 +398,19 @@ func holdsGlobCharacter(text string) bool {
 	return strings.ContainsAny(text, "*?[#") || strings.HasPrefix(text, "^")
 }
 
-// lyxCommandWord matches a cobra verb name: lowercase letters with inner hyphens.
-var lyxCommandWord = regexp.MustCompile(`^[a-z]+(-[a-z]+)*$`)
+// lymCommandWord matches a cobra verb name: lowercase letters with inner hyphens.
+var lymCommandWord = regexp.MustCompile(`^[a-z]+(-[a-z]+)*$`)
 
-// isLyxCommandWord reports whether word is an unquoted cobra verb name.
-func isLyxCommandWord(word shellWord) bool {
-	return !word.quoted && lyxCommandWord.MatchString(word.text)
+// isLymCommandWord reports whether word is an unquoted cobra verb name.
+func isLymCommandWord(word shellWord) bool {
+	return !word.quoted && lymCommandWord.MatchString(word.text)
 }
 
-// readOnlyLyxSegment reports whether words, the words of one `lyx` segment, are a help form or a `lyx fabric` reader.
+// readOnlyLymSegment reports whether words, the words of one `lym` segment, are a help form or a `lym fabric` reader.
 // The help form is command words then `--help` or `-h` as the last word, or command words alone then `--json` as the last word, or `--help` or `-h` then `--json`, since the global `--json` raises help.
 // A fabric reader is one of FabricReaderVerbs under the argument rule that keeps it from mutating: `diff` takes exactly one word not starting with `-`, and the rest take none.
 // A word holding a glob character, quoted or not, rejects the segment.
-func readOnlyLyxSegment(words []shellWord) bool {
+func readOnlyLymSegment(words []shellWord) bool {
 	if slices.ContainsFunc(words, func(word shellWord) bool { return holdsGlobCharacter(word.text) }) {
 		return false
 	}
@@ -421,7 +420,7 @@ func readOnlyLyxSegment(words []shellWord) bool {
 		rest = rest[:len(rest)-1]
 	}
 	allCommandWords := func(candidates []shellWord) bool {
-		return !slices.ContainsFunc(candidates, func(word shellWord) bool { return !isLyxCommandWord(word) })
+		return !slices.ContainsFunc(candidates, func(word shellWord) bool { return !isLymCommandWord(word) })
 	}
 	if len(rest) > 0 {
 		last := rest[len(rest)-1].text
@@ -432,7 +431,7 @@ func readOnlyLyxSegment(words []shellWord) bool {
 	if trailingJSON {
 		return allCommandWords(rest)
 	}
-	if len(rest) < 2 || !isLyxCommandWord(rest[0]) || rest[0].text != "fabric" || !isLyxCommandWord(rest[1]) || !slices.Contains(FabricReaderVerbs(), rest[1].text) {
+	if len(rest) < 2 || !isLymCommandWord(rest[0]) || rest[0].text != "fabric" || !isLymCommandWord(rest[1]) || !slices.Contains(FabricReaderVerbs(), rest[1].text) {
 		return false
 	}
 	args := rest[2:]

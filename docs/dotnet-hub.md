@@ -39,8 +39,8 @@ Under a narrowed scope the expression is the tier's `filter` ANDed with the sele
 A `filter` is allowed only when the command holds `{filter}`.
 A landing tier uses its `filter` only to exclude categories, such as `Category!=Slow`, since it applies at whole scope too and a filter that matches no test passes the tier vacuously and writes a green entry later gates carry.
 
-`shared_build: true` makes the tier depend on the hub's `build` step, which lyx runs once per call before it, so the tier's command carries `--no-build`.
-A command without `--no-build` builds again inside its own run, since lyx does not read the command.
+`shared_build: true` makes the tier depend on the hub's `build` step, which lym runs once per call before it, so the tier's command carries `--no-build`.
+A command without `--no-build` builds again inside its own run, since lym does not read the command.
 
 A selected class that the tier's `filter` excludes entirely, or a project the tier does not run as a test project, runs no test and passes.
 On Microsoft.Testing.Platform a session that ran zero tests exits 8, so put `--ignore-exit-code 8` in the command of every tier that holds `{filter}`, or `TESTINGPLATFORM_EXITCODE_IGNORE: "8"` in its `env`.
@@ -59,7 +59,7 @@ build:
 It builds the whole solution whatever the tiers' scopes, and relies on MSBuild's incremental up-to-date checks for the projects a change did not touch.
 It restores implicitly, so there is no separate restore step: NuGet's no-op restore does real work only when a project file or package reference changed.
 The properties on the command make the gated and baseline projects test projects, so the tiers' `--no-build` runs find them built.
-lyx adds no MSBuild or compiler-server switch to the command, and the words after `--` never reach it.
+lym adds no MSBuild or compiler-server switch to the command, and the words after `--` never reach it.
 Its output passes into the call's output and its own log.
 `build` has its own `timeout_min`, counted from the slot hold, and the tier's `timeout_min` starts after the build.
 
@@ -124,7 +124,7 @@ tiers:
 Run it only through a direct call, which passes `--wait` so its drain is not dropped at the keep-cache-warm cap:
 
 ```
-lyx gate test --wait --tier 2 -- <benchmark arguments>
+lym gate test --wait --tier 2 -- <benchmark arguments>
 ```
 
 Three paths still skip or narrow a `carry: false` tier: a verify site's verified-tree record, explicit targets, and a listed tier whose `covers` names it.
@@ -136,11 +136,11 @@ So keep the tier out of darn's gate keys and out of every tier's `covers`, and n
 refuse_raw: ["dotnet test"]
 ```
 
-The shell guard then refuses an agent's raw `dotnet test` and steers it to `lyx gate test`.
+The shell guard then refuses an agent's raw `dotnet test` and steers it to `lym gate test`.
 
 ## Warm build processes
 
-lyx sets nothing that disables MSBuild node reuse or the shared compiler server, so the SDK's defaults keep build processes warm where the platform allows it.
+lym sets nothing that disables MSBuild node reuse or the shared compiler server, so the SDK's defaults keep build processes warm where the platform allows it.
 On Linux, idle nodes outlive the build's process, since only a cancelled call kills its process group, and serve later gate calls until the SDK's idle timeout.
 On Windows, the build runs in a job object that ends every process it started, so nodes and the compiler server end with each build or tier run.
 The saving there is the one build per call and the `--no-build` test runs, not warmth across calls.
@@ -173,10 +173,10 @@ A fan entry replaces the template's whole list, so the entry above repeats the t
 
 ## Before installing
 
-Take a `lyx gate report` baseline on OSL-1046 before installing the binary that lands this feature, so the machine's tier run totals can be compared after:
+Take a `lym gate report` baseline on OSL-1046 before installing the binary that lands this feature, so the machine's tier run totals can be compared after:
 
 ```
-lyx gate report --slug <slug>
+lym gate report --slug <slug>
 ```
 
 A report row totals the build step's runs and time apart, in `build_runs` and `build_seconds`.

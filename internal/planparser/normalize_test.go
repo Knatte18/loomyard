@@ -31,14 +31,14 @@ func TestNormalizeCardPath(t *testing.T) {
 		{
 			name: "// always worktree-root-relative, root set",
 			root: "internal/boardcli",
-			raw:  "//cmd/lyx/main.go",
-			want: "cmd/lyx/main.go",
+			raw:  "//cmd/lym/main.go",
+			want: "cmd/lym/main.go",
 		},
 		{
 			name: "// always worktree-root-relative, root absent",
 			root: "",
-			raw:  "//cmd/lyx/main.go",
-			want: "cmd/lyx/main.go",
+			raw:  "//cmd/lym/main.go",
+			want: "cmd/lym/main.go",
 		},
 		{
 			name: "root set joins root/path",
@@ -132,12 +132,12 @@ func TestNormalizeCard(t *testing.T) {
 			name: "both endpoints of a rename pair, a malformed bullet untouched",
 			card: Card{
 				Targets:   []string{"list.go"},
-				Pairs:     []MovePair{{Old: "old.go", New: "//cmd/lyx/new.go"}},
+				Pairs:     []MovePair{{Old: "old.go", New: "//cmd/lym/new.go"}},
 				RenameRaw: []string{"a malformed bullet, left as-is"},
 			},
 			want: Card{
 				Targets:   []string{"internal/boardcli/list.go"},
-				Pairs:     []MovePair{{Old: "internal/boardcli/old.go", New: "cmd/lyx/new.go"}},
+				Pairs:     []MovePair{{Old: "internal/boardcli/old.go", New: "cmd/lym/new.go"}},
 				RenameRaw: []string{"a malformed bullet, left as-is"},
 			},
 		},
@@ -155,16 +155,16 @@ func TestNormalizeCard(t *testing.T) {
 		{
 			name: "target groups and the flat Targets agree, a symbol passing through verbatim",
 			card: Card{
-				Targets: []string{"list.go", "//cmd/lyx/main.go", "boardcli.RowJSON"},
+				Targets: []string{"list.go", "//cmd/lym/main.go", "boardcli.RowJSON"},
 				TargetGroups: []TargetGroup{
-					{Type: CardTypeEdit, Refs: []string{"list.go", "//cmd/lyx/main.go"}},
+					{Type: CardTypeEdit, Refs: []string{"list.go", "//cmd/lym/main.go"}},
 					{Type: CardTypeCreate, Refs: []string{"boardcli.RowJSON"}},
 				},
 			},
 			want: Card{
-				Targets: []string{"internal/boardcli/list.go", "cmd/lyx/main.go", "boardcli.RowJSON"},
+				Targets: []string{"internal/boardcli/list.go", "cmd/lym/main.go", "boardcli.RowJSON"},
 				TargetGroups: []TargetGroup{
-					{Type: CardTypeEdit, Refs: []string{"internal/boardcli/list.go", "cmd/lyx/main.go"}},
+					{Type: CardTypeEdit, Refs: []string{"internal/boardcli/list.go", "cmd/lym/main.go"}},
 					{Type: CardTypeCreate, Refs: []string{"boardcli.RowJSON"}},
 				},
 			},
@@ -174,21 +174,21 @@ func TestNormalizeCard(t *testing.T) {
 			name: "a rename group's own pairs are root-joined",
 			card: Card{TargetGroups: []TargetGroup{{
 				Type:  CardTypeRename,
-				Pairs: []MovePair{{Old: "old.go", New: "//cmd/lyx/new.go"}},
+				Pairs: []MovePair{{Old: "old.go", New: "//cmd/lym/new.go"}},
 			}}},
 			want: Card{TargetGroups: []TargetGroup{{
 				Type:  CardTypeRename,
-				Pairs: []MovePair{{Old: "internal/boardcli/old.go", New: "cmd/lyx/new.go"}},
+				Pairs: []MovePair{{Old: "internal/boardcli/old.go", New: "cmd/lym/new.go"}},
 			}}},
 		},
 		{
 			name: "only a path is root-joined, in Targets and in Uses",
 			card: Card{
-				Targets: []string{"boardcli.newListCmd", "list.go", "internal/boardcli#RowJSON", "plan:internal/boardcli#RowJSON", "//cmd/lyx/main.go"},
+				Targets: []string{"boardcli.newListCmd", "list.go", "internal/boardcli#RowJSON", "plan:internal/boardcli#RowJSON", "//cmd/lym/main.go"},
 				Uses:    []string{"boardcli.RowJSON", "helpers.go"},
 			},
 			want: Card{
-				Targets: []string{"boardcli.newListCmd", "internal/boardcli/list.go", "internal/boardcli#RowJSON", "plan:internal/boardcli#RowJSON", "cmd/lyx/main.go"},
+				Targets: []string{"boardcli.newListCmd", "internal/boardcli/list.go", "internal/boardcli#RowJSON", "plan:internal/boardcli#RowJSON", "cmd/lym/main.go"},
 				Uses:    []string{"boardcli.RowJSON", "internal/boardcli/helpers.go"},
 			},
 		},

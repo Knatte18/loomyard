@@ -8,13 +8,13 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 )
 
 // notifyRunParent sends line as creel mail to the nearest live orch above the run slug, signed as batten, and reports whether it was posted.
 // The walk starts at the run's pair when it is present here, else at the worktree the pair forks or forked from, else at the prime.
-func notifyRunParent(prime *lyxcwd.Location, slug, line string) (bool, error) {
+func notifyRunParent(prime *lymcwd.Location, slug, line string) (bool, error) {
 	site, isPair, err := runNoticeSite(prime, slug)
 	if err != nil {
 		return false, err
@@ -26,7 +26,7 @@ func notifyRunParent(prime *lyxcwd.Location, slug, line string) (bool, error) {
 }
 
 // runParentRecorded reports whether the destination notifyRunParent walks to for the run slug records an orch strand, which is what decides a run to be watched or silent.
-func runParentRecorded(prime *lyxcwd.Location, slug string) (bool, error) {
+func runParentRecorded(prime *lymcwd.Location, slug string) (bool, error) {
 	site, isPair, err := runNoticeSite(prime, slug)
 	if err != nil {
 		return false, err
@@ -53,15 +53,15 @@ func runParentRecorded(prime *lyxcwd.Location, slug string) (bool, error) {
 }
 
 // runNoticeSite is noticeSite over the hub: the run's pair is looked up under the prime's hub, and its parent is hubgeom's.
-func runNoticeSite(prime *lyxcwd.Location, slug string) (site *lyxcwd.Location, isPair bool, err error) {
+func runNoticeSite(prime *lymcwd.Location, slug string) (site *lymcwd.Location, isPair bool, err error) {
 	return noticeSite(prime, slug,
-		func() (*lyxcwd.Location, bool, error) { return presentWorktree(prime, slug) },
+		func() (*lymcwd.Location, bool, error) { return presentWorktree(prime, slug) },
 		func(slug string) (string, error) { return hubgeom.ParentOf(prime, slug) })
 }
 
 // noticeSite picks the worktree a walk for the run slug starts at: the run's pair when pair finds it present here, else the worktree the pair forks or forked from, parentOf's answer, when that worktree is present here, else the prime.
 // isPair reports that the site is the run's own pair, whose walk starts at its recorded parent.
-func noticeSite(prime *lyxcwd.Location, slug string, pair func() (*lyxcwd.Location, bool, error), parentOf func(slug string) (string, error)) (site *lyxcwd.Location, isPair bool, err error) {
+func noticeSite(prime *lymcwd.Location, slug string, pair func() (*lymcwd.Location, bool, error), parentOf func(slug string) (string, error)) (site *lymcwd.Location, isPair bool, err error) {
 	location, found, err := pair()
 	if err != nil {
 		return nil, false, err
@@ -87,7 +87,7 @@ func noticeSite(prime *lyxcwd.Location, slug string, pair func() (*lyxcwd.Locati
 }
 
 // presentWorktree resolves the hub worktree named worktree, and reports false when it is not present here.
-func presentWorktree(prime *lyxcwd.Location, worktree string) (*lyxcwd.Location, bool, error) {
+func presentWorktree(prime *lymcwd.Location, worktree string) (*lymcwd.Location, bool, error) {
 	root := fabricengine.WorktreePath(prime, worktree)
 	if _, err := os.Stat(filepath.Join(root, ".git")); err != nil {
 		if os.IsNotExist(err) {
@@ -95,7 +95,7 @@ func presentWorktree(prime *lyxcwd.Location, worktree string) (*lyxcwd.Location,
 		}
 		return nil, false, err
 	}
-	location, err := lyxcwd.ResolveWorktree(root)
+	location, err := lymcwd.ResolveWorktree(root)
 	if err != nil {
 		return nil, false, err
 	}

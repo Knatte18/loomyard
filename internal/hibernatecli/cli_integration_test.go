@@ -1,6 +1,6 @@
 //go:build tier1 && linux
 
-// cli_integration_test.go drives `lyx hibernate status`, `cancel`, `request` and `watch` through the cobra commands over a hubforge hub with one pair, and the operator index the root renders.
+// cli_integration_test.go drives `lym hibernate status`, `cancel`, `request` and `watch` through the cobra commands over a hubforge hub with one pair, and the operator index the root renders.
 // The test calls no t.Parallel: it sets the strand-name variable.
 
 package hibernatecli
@@ -18,8 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
@@ -37,7 +37,7 @@ func TestHibernateVerbs_WireTheHub(t *testing.T) {
 	t.Setenv(agentname.StrandNameEnv, "")
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{pairSlug}})
 	prime := h.PrimeWorktree()
-	hibernateDir := filepath.Join(fabricengine.HubScratchDir(h.Path), lyxdirs.HibernateDirName)
+	hibernateDir := filepath.Join(fabricengine.HubScratchDir(h.Path), lymdirs.HibernateDirName)
 	requestPath := filepath.Join(hibernateDir, requestFileName)
 
 	status, code := verb(t, h.PairCodeWorktree(pairSlug), "status")
@@ -85,7 +85,7 @@ func TestHibernateVerbs_WireTheHub(t *testing.T) {
 		t.Errorf("watch with no request wrote a request file: stat err = %v", err)
 	}
 
-	location, err := lyxcwd.Resolve(prime)
+	location, err := lymcwd.Resolve(prime)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestHibernateVerbs_WireTheHub(t *testing.T) {
 		t.Errorf("hubDeps left a wake seam unfilled: Reconcile nil %v, ExemptNetwork nil %v", deps.Reconcile == nil, deps.ExemptNetwork == nil)
 	}
 
-	root := &cobra.Command{Use: "lyx"}
+	root := &cobra.Command{Use: "lym"}
 	root.AddCommand(Command())
 	index := clihelp.RenderIndex(root, clihelp.AudienceOperator)
 	for _, line := range []string{"- `request`", "- `cancel`", "- `status`"} {

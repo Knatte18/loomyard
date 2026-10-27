@@ -37,7 +37,7 @@ func TestCheckout_RefreshesCorrespondenceIndex(t *testing.T) {
 
 	// Healthy junction so Checkout's wiring step succeeds.
 	slug := filepath.Base(l.WorktreePath())
-	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lym", "_extra"}); err != nil {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
 
@@ -51,14 +51,14 @@ func TestCheckout_RefreshesCorrespondenceIndex(t *testing.T) {
 	f := hubforge.OpenFabric(t, h)
 
 	// Record one correspondence on the original branch via a real scoped commit.
-	if err := os.WriteFile(filepath.Join(fabricengine.RecordsWorktree(l), "_lyx", "config.yaml"), []byte("index refresh probe"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(fabricengine.RecordsWorktree(l), "_lym", "config.yaml"), []byte("index refresh probe"), 0o644); err != nil {
 		t.Fatalf("write weft config: %v", err)
 	}
 	warpSHA, err := fabricengine.WarpForTest(f).CurrentSHA()
 	if err != nil {
 		t.Fatalf("warp CurrentSHA: %v", err)
 	}
-	result, err := f.Commit([]string{"_lyx"}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
+	result, err := f.Commit([]string{"_lym"}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
 	if err != nil || !result.WeftCommitted {
 		t.Fatalf("Commit = (%+v, %v); want a real weft commit", result, err)
 	}

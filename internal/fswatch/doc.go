@@ -1,6 +1,6 @@
 // doc.go carries the package godoc for fswatch: the surface, the no-coalescing rule and the fallback contract.
 
-// Package fswatch is the one file-change event source for every lyx process.
+// Package fswatch is the one file-change event source for every lym process.
 //
 // Watch opens one fsnotify watcher on a directory and returns a Watcher whose Events channel delivers one Event per create, write, rename or remove of an entry.
 // Event carries the entry's base name and the operation as a string.

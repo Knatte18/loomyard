@@ -20,7 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
@@ -334,7 +334,7 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 			if err := json.Unmarshal(data, &ws); err != nil {
 				t.Fatalf("%s is not valid JSON: %v\n%s", file, err, data)
 			}
-			if _, marked := ws["lyx.generated"]; marked != want {
+			if _, marked := ws["lym.generated"]; marked != want {
 				t.Errorf("%s carries the generated mark = %v; want %v", filepath.Base(file), marked, want)
 			}
 		}
@@ -345,7 +345,7 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		hubforge.AddPairWith(t, h, "b", beamAddOptions)
 		hubforge.ReanchorPair(t, h, "b", "sub")
-		beamLocation, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree("b"))
+		beamLocation, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("b"))
 		if err != nil {
 			t.Fatalf("resolve the beam's location: %v", err)
 		}

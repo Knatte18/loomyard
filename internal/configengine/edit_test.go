@@ -25,7 +25,7 @@ type editStep struct {
 	leave bool
 }
 
-// TestEdit pins the editing loop: a missing file is scaffolded from the template before the editor runs, invalid YAML re-opens the editor, an editor that leaves invalid YAML unchanged or fails aborts with ErrAborted and removes only a file Edit scaffolded, an empty or whitespace-only result aborts and restores the entry bytes of a pre-existing file while a comment-only one saves, and a base directory without _lyx/ is refused with the not-initialized error before any editor runs.
+// TestEdit pins the editing loop: a missing file is scaffolded from the template before the editor runs, invalid YAML re-opens the editor, an editor that leaves invalid YAML unchanged or fails aborts with ErrAborted and removes only a file Edit scaffolded, an empty or whitespace-only result aborts and restores the entry bytes of a pre-existing file while a comment-only one saves, and a base directory without _lym/ is refused with the not-initialized error before any editor runs.
 func TestEdit(t *testing.T) {
 	t.Parallel()
 	const template = "key1: value1\nkey2: value2\n"
@@ -51,7 +51,7 @@ func TestEdit(t *testing.T) {
 		categories map[string]configengine.Category
 		// localExisting is the local or machine file before the call; empty means it is absent.
 		localExisting string
-		// hubWide marks the spec hub-wide and gives the board dir its _lyx/config/, as a machine edit needs; it needs board.
+		// hubWide marks the spec hub-wide and gives the board dir its _lym/config/, as a machine edit needs; it needs board.
 		hubWide bool
 		// seedOnly marks the spec seed-only, so a hub's default layer scaffolds from the template.
 		seedOnly bool
@@ -64,7 +64,7 @@ func TestEdit(t *testing.T) {
 	}{
 		{
 			name:    "a hub worktree edit writing the selector into an absent file is refused and leaves no file",
-			state:   baseLyx,
+			state:   baseLym,
 			board:   true,
 			overlay: true,
 			steps:   []editStep{{write: "pick: x\n"}},
@@ -111,7 +111,7 @@ func TestEdit(t *testing.T) {
 		},
 		{
 			name:     "absent hub base shows the sparse header and a save leaving it keeps the header-only file",
-			state:    baseLyx,
+			state:    baseLym,
 			layer:    configengine.LayerDefault,
 			board:    true,
 			steps:    []editStep{{leave: true}},
@@ -120,7 +120,7 @@ func TestEdit(t *testing.T) {
 		},
 		{
 			name:     "absent seed-only hub base still shows the template",
-			state:    baseLyx,
+			state:    baseLym,
 			layer:    configengine.LayerDefault,
 			board:    true,
 			seedOnly: true,
@@ -130,7 +130,7 @@ func TestEdit(t *testing.T) {
 		},
 		{
 			name:       "refused machine save removes a file the call created",
-			state:      baseLyx,
+			state:      baseLym,
 			layer:      configengine.LayerMachine,
 			board:      true,
 			hubWide:    true,
@@ -140,7 +140,7 @@ func TestEdit(t *testing.T) {
 		},
 		{
 			name:          "refused machine save restores the previous bytes",
-			state:         baseLyx,
+			state:         baseLym,
 			layer:         configengine.LayerMachine,
 			board:         true,
 			hubWide:       true,
@@ -152,7 +152,7 @@ func TestEdit(t *testing.T) {
 		},
 		{
 			name:        "missing worktree file under a board is scaffolded empty and an editor that leaves it empty aborts and removes it",
-			state:       baseLyx,
+			state:       baseLym,
 			board:       true,
 			steps:       []editStep{{leave: true}},
 			wantSaw:     "",
@@ -174,7 +174,7 @@ func TestEdit(t *testing.T) {
 		},
 		{
 			name:        "a whitespace-only write over a template scaffold aborts and removes the file",
-			state:       baseLyx,
+			state:       baseLym,
 			steps:       []editStep{{write: " \n\t\n"}},
 			wantAborted: true,
 		},
@@ -186,14 +186,14 @@ func TestEdit(t *testing.T) {
 		},
 		{
 			name:     "local edit of an open key is kept",
-			state:    baseLyx,
+			state:    baseLym,
 			layer:    configengine.LayerLocal,
 			steps:    []editStep{{write: "key1: mine\n"}},
 			wantFile: ptr("key1: mine\n"),
 		},
 		{
 			name:       "refused local save removes a file the call created",
-			state:      baseLyx,
+			state:      baseLym,
 			layer:      configengine.LayerLocal,
 			categories: map[string]configengine.Category{"key2": configengine.CategoryExecutable},
 			steps:      []editStep{{write: "key2: evil\n"}},
@@ -201,7 +201,7 @@ func TestEdit(t *testing.T) {
 		},
 		{
 			name:          "refused local save restores the previous bytes",
-			state:         baseLyx,
+			state:         baseLym,
 			layer:         configengine.LayerLocal,
 			categories:    map[string]configengine.Category{"key2": configengine.CategoryExecutable},
 			localExisting: "key1: mine\n",
@@ -211,7 +211,7 @@ func TestEdit(t *testing.T) {
 		},
 		{
 			name:     "missing file is scaffolded from the template before the editor runs",
-			state:    baseLyx,
+			state:    baseLym,
 			steps:    []editStep{{leave: true}},
 			wantSaw:  template,
 			wantFile: ptr(template),
@@ -225,13 +225,13 @@ func TestEdit(t *testing.T) {
 		},
 		{
 			name:     "invalid YAML re-opens the editor until it is valid",
-			state:    baseLyx,
+			state:    baseLym,
 			steps:    []editStep{{write: invalid}, {write: "valid: true\n"}},
 			wantFile: ptr("valid: true\n"),
 		},
 		{
 			name:        "unchanged invalid YAML aborts and removes the scaffolded file",
-			state:       baseLyx,
+			state:       baseLym,
 			steps:       []editStep{{write: invalid}, {leave: true}},
 			wantAborted: true,
 		},
@@ -244,12 +244,12 @@ func TestEdit(t *testing.T) {
 		},
 		{
 			name:        "editor failure aborts, wraps the failure and removes the scaffolded file",
-			state:       baseLyx,
+			state:       baseLym,
 			steps:       []editStep{{err: editorFailure}},
 			wantAborted: true,
 		},
 		{
-			name:    "base directory without _lyx is refused before the editor runs",
+			name:    "base directory without _lym is refused before the editor runs",
 			state:   baseNone,
 			wantErr: "not initialized",
 		},

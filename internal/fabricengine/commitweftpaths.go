@@ -11,12 +11,12 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // weftCommitPathspec returns the pathspec entries for relPaths, scoped under anchorRel.
 // It is the single place the anchor join happens for CommitRecordsPaths, so no caller ever joins
-// AnchorRel or names the durable lyx directory in a pathspec itself.
+// AnchorRel or names the durable lym directory in a pathspec itself.
 func weftCommitPathspec(anchorRel string, relPaths []string) []string {
 	return ScopedPathspec(anchorRel, relPaths)
 }
@@ -48,7 +48,7 @@ func weftCommitPathspec(anchorRel string, relPaths []string) []string {
 // Neither existing weft-commit shape fits this caller: the pair-bound commit verb (Fabric.Commit)
 // resolves its routing from its own stored warp path and cannot address a pair it did not open,
 // and also fires a detached push unconditionally; commitWeftAt is a stage-all, which the Fabric
-// Git Invariant's cross-module-exclusions rule forbids for durable-lyx commits because that tree
+// Git Invariant's cross-module-exclusions rule forbids for durable-lym commits because that tree
 // is shared by every round-loop module.
 //
 // The lock is taken here rather than pushed onto callers, unlike commitWeftAt's
@@ -97,6 +97,6 @@ func commitRecordsPathsHeld(rec *Mutations, weftPath, anchorRel string, relPaths
 //
 // relPaths are anchor-relative, the same shape OriginRecordRel and LoomStatusRel already return,
 // so a caller building its commit path list never joins AnchorRel itself.
-func CommitAnchoredPaths(rec *Mutations, l *lyxcwd.Location, relPaths []string, msg string, opts SyncOptions) (sha string, committed bool, err error) {
+func CommitAnchoredPaths(rec *Mutations, l *lymcwd.Location, relPaths []string, msg string, opts SyncOptions) (sha string, committed bool, err error) {
 	return CommitRecordsPaths(rec, RecordsWorktree(l), l.AnchorRel, relPaths, msg, opts)
 }

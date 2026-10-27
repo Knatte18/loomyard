@@ -48,7 +48,7 @@ type CaptureRequest struct {
 
 // lockHeldRefusal is the refusal of a capture or a spawn that finds the capture lock held.
 func lockHeldRefusal(lockPath string) error {
-	return fmt.Errorf("drift: a capture already holds %s; way forward: wait for it to end (lyx drift status shows it), then lyx loom resume", lockPath)
+	return fmt.Errorf("drift: a capture already holds %s; way forward: wait for it to end (lym drift status shows it), then lym loom resume", lockPath)
 }
 
 // RunCapture runs the main capture under the capture lock and returns its final record.

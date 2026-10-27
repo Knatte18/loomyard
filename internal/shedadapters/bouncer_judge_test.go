@@ -277,8 +277,8 @@ func TestBouncer_JudgeCall_PatternDirectiveFailureDegrades(t *testing.T) {
 			if !strings.Contains(logBuf.String(), tt.wantLog) {
 				t.Errorf("Call() log = %q; want it to contain %q", logBuf.String(), tt.wantLog)
 			}
-			if tt.malformed && !strings.Contains(ptr.Reason, "lyx loom start") {
-				t.Errorf("Call() Reason = %q; want it to name `lyx loom start`", ptr.Reason)
+			if tt.malformed && !strings.Contains(ptr.Reason, "lym loom start") {
+				t.Errorf("Call() Reason = %q; want it to name `lym loom start`", ptr.Reason)
 			}
 			if shuttle.GotSpec.Prompt != "" {
 				t.Error("Call() spawned a judge after a failed directive read; want no spawn")

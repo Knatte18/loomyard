@@ -27,7 +27,7 @@ func TestDirective_PerRole(t *testing.T) {
 	t.Parallel()
 	stencilsDir := newTestStencilsDir(t)
 	emptyStencilsDir := t.TempDir()
-	notePath := "/anchor/_lyx/friction/some-note.md"
+	notePath := "/anchor/_lym/friction/some-note.md"
 
 	tests := []struct {
 		name    string

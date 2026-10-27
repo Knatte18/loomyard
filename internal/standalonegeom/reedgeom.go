@@ -25,7 +25,7 @@ import (
 // routine ("foo.js", "site.com", "app.git"), and reedengine's validateToldTmuxIdentity refuses a
 // session name carrying one -- so the raw basename used to kill an otherwise healthy standalone run
 // with advice to rename the operator's own repository (R4 review finding R4-10). Hub mode never hit
-// this because hub worktree names are lyx-created and slug-shaped.
+// this because hub worktree names are lym-created and slug-shaped.
 // Sanitizing costs no uniqueness here: hash8 already carries the identity, exactly as the hash half
 // of reedengine.ServerName carries it for the socket key.
 //
@@ -48,7 +48,7 @@ import (
 func ReedGeometry(target, stateDir, hash8 string) reedengine.Geometry {
 	readableName := filepath.Base(standalonestate.Normalize(target))
 	return reedengine.Geometry{
-		SocketKey:    "lyx-" + hash8,
+		SocketKey:    "lym-" + hash8,
 		SessionName:  reedengine.SanitizeSessionName(readableName) + "-" + hash8,
 		AnchorPath:   stateDir,
 		PaneCwd:      target,

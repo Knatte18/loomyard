@@ -14,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/tenderengine"
 	"github.com/spf13/cobra"
@@ -58,7 +58,7 @@ func refuseCaller(c caller, slug string) error {
 	if !c.agent || (slug != "" && slug == c.slug) {
 		return nil
 	}
-	return errors.New(`pause: an agent may pause, resume or revive only its own pair; way forward: ask your parent session, which runs "lyx tender pause", "lyx tender resume" or "lyx tender revive" for you`)
+	return errors.New(`pause: an agent may pause, resume or revive only its own pair; way forward: ask your parent session, which runs "lym tender pause", "lym tender resume" or "lym tender revive" for you`)
 }
 
 // refuseReapCaller refuses an agent's reap: only the orch and an external caller end orphaned processes.
@@ -66,10 +66,10 @@ func refuseReapCaller(c caller) error {
 	if !c.agent {
 		return nil
 	}
-	return errors.New(`reap: an agent may not end orphaned processes; way forward: ask your parent session, which runs "lyx tender reap" for you`)
+	return errors.New(`reap: an agent may not end orphaned processes; way forward: ask your parent session, which runs "lym tender reap" for you`)
 }
 
-// Command returns the cobra command for `lyx tender`: the bare group and its pause, resume, revive, status and reap verbs.
+// Command returns the cobra command for `lym tender`: the bare group and its pause, resume, revive, status and reap verbs.
 func Command() *cobra.Command {
 	tender := &cobra.Command{
 		Use:   "tender",
@@ -78,7 +78,7 @@ func Command() *cobra.Command {
 pause holds it, resume lifts the hold, revive gives a carry-on line to sessions
 stalled on an API error, status shows the live entries, the holds and what
 runs, and reap ends the run processes no run owns any more.
-"lyx p" and "lyx r" are shortcuts for the first two.`,
+"lym p" and "lym r" are shortcuts for the first two.`,
 		RunE: clihelp.GroupRunE,
 	}
 	tender.AddCommand(pauseCmd(), resumeCmd(), reviveCmd(), statusCmd(), reapCmd())
@@ -95,7 +95,7 @@ func pauseCmd() *cobra.Command {
 		Long: `pause records a pause, waits a short grace for busy agent sessions and network
 operations to finish, interrupts every covered session still in a running turn
 with Esc, and holds every path that would start agent or network work until
-"lyx tender resume".
+"lym tender resume".
 
 A second Esc goes only after the provider's settle time, and only into a pane
 still showing a running turn. A session whose turn ended with background work
@@ -107,12 +107,12 @@ orchestrator is interrupted by its own watcher at the grace end, not by pause.
 
 --grace sets the grace in seconds, 0 to 60.
 
-Lift it with "lyx tender resume", which gives each interrupted session one
+Lift it with "lym tender resume", which gives each interrupted session one
 line to carry on.
 
 Example:
-  lyx tender pause
-  lyx tender pause my-task --grace 5`,
+  lym tender pause
+  lym tender pause my-task --grace 5`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -134,11 +134,11 @@ Example:
 			if err := refuseCaller(callerOf(os.Getenv(agentname.StrandNameEnv)), slug); err != nil {
 				return fail(err)
 			}
-			cwd, err := lyxcwd.CwdFrom(ctx)
+			cwd, err := lymcwd.CwdFrom(ctx)
 			if err != nil {
 				return fail(err)
 			}
-			location, err := lyxcwd.Resolve(cwd)
+			location, err := lymcwd.Resolve(cwd)
 			if err != nil {
 				return fail(err)
 			}
@@ -169,7 +169,7 @@ func resumeCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `resume lifts the live pause entries. With no slug it lifts every entry; with a
 slug it lifts that pair's own entry. A slug covered only by a hub-wide pause is
-refused: run "lyx tender resume" to lift the hub pause. Resuming nothing is a
+refused: run "lym tender resume" to lift the hub pause. Resuming nothing is a
 no-op.
 
 Each session the pause interrupted gets one line to carry on, unless its strand
@@ -185,8 +185,8 @@ pushed. The report's "spawned" lists the spawns and "spawn_failed" the ones that
 failed; neither fails the resume.
 
 Example:
-  lyx tender resume
-  lyx tender resume my-task`,
+  lym tender resume
+  lym tender resume my-task`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -205,11 +205,11 @@ Example:
 			if err := refuseCaller(callerOf(os.Getenv(agentname.StrandNameEnv)), slug); err != nil {
 				return fail(err)
 			}
-			cwd, err := lyxcwd.CwdFrom(ctx)
+			cwd, err := lymcwd.CwdFrom(ctx)
 			if err != nil {
 				return fail(err)
 			}
-			location, err := lyxcwd.Resolve(cwd)
+			location, err := lymcwd.Resolve(cwd)
 			if err != nil {
 				return fail(err)
 			}
@@ -236,7 +236,7 @@ func reviveCmd() *cobra.Command {
 		Long: `revive types one fixed carry-on line into each session whose last turn stopped
 on an API error, the case a network outage without a machine sleep leaves
 behind. A session in any other state is skipped with the state read, and a
-session a live pause covers is left to "lyx tender resume".
+session a live pause covers is left to "lym tender resume".
 
 With no slug it covers the whole hub, the orchestrator included: the orch gets
 the line as a checked creel inject, reported with its id. With a slug it covers that pair. Every send is refused at once when
@@ -244,8 +244,8 @@ the session no longer reads stalled, or when a draft, operator activity or an
 open rewind picker holds the pane; none is retried.
 
 Example:
-  lyx tender revive
-  lyx tender revive my-task`,
+  lym tender revive
+  lym tender revive my-task`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -264,11 +264,11 @@ Example:
 			if err := refuseCaller(callerOf(os.Getenv(agentname.StrandNameEnv)), slug); err != nil {
 				return fail(err)
 			}
-			cwd, err := lyxcwd.CwdFrom(ctx)
+			cwd, err := lymcwd.CwdFrom(ctx)
 			if err != nil {
 				return fail(err)
 			}
-			location, err := lyxcwd.Resolve(cwd)
+			location, err := lymcwd.Resolve(cwd)
 			if err != nil {
 				return fail(err)
 			}
@@ -297,11 +297,11 @@ func statusCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `status prints the live pause entries, the network operations in flight and the
 parent locks held, then every live session in the hub with its state, cause and
-whether an entry covers it, and the lyx processes running a replaced binary.
+whether an entry covers it, and the lym processes running a replaced binary.
 processes lists every live process registered to a run, by owner, with its role,
 pid and age and whether it is an orphan: its owner has no pair and no live batten,
 and it works outside every registered worktree.
-It also lists the lyx processes in a deleted hub directory that no record owns.
+It also lists the lym processes in a deleted hub directory that no record owns.
 owners lists each pair of this machine with the machine that owns it, then each
 run-held board entry owned by another machine that has no pair here, so a run
 owned elsewhere is never read as stalled or landed.
@@ -310,7 +310,7 @@ record of, each with its way forward.
 It changes nothing. Any caller may run it.
 
 Example:
-  lyx tender status`,
+  lym tender status`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -322,11 +322,11 @@ Example:
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
-			cwd, err := lyxcwd.CwdFrom(ctx)
+			cwd, err := lymcwd.CwdFrom(ctx)
 			if err != nil {
 				return fail(err)
 			}
-			location, err := lyxcwd.Resolve(cwd)
+			location, err := lymcwd.Resolve(cwd)
 			if err != nil {
 				return fail(err)
 			}
@@ -354,21 +354,21 @@ func reapCmd() *cobra.Command {
 		Use:         "reap",
 		Short:       "end the run processes whose run is gone",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `reap takes one fresh reading of the processes part of "lyx tender status" and
+		Long: `reap takes one fresh reading of the processes part of "lym tender status" and
 ends exactly the orphans it lists: every process of an owner with no pair and no
-live batten, each by SIGTERM and then SIGKILL, and each lyx process in a deleted
+live batten, each by SIGTERM and then SIGKILL, and each lym process in a deleted
 directory of the hub that no record owns. A process is signalled only while its
 start time still matches the reading, so a reused pid is left alone.
 
 It never ends a process of the hub owner, of a pair that exists, of a run whose
 batten is running, or one working inside a registered worktree; the pair's own
-end verbs and "lyx batten cancel" end those. A process that survives SIGKILL is
+end verbs and "lym batten cancel" end those. A process that survives SIGKILL is
 named with its role, and reap exits non-zero: run it again once it is gone.
 
 Only the orch and an external caller may run it; an agent asks its parent session.
 
 Example:
-  lyx tender reap`,
+  lym tender reap`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -383,11 +383,11 @@ Example:
 			if err := refuseReapCaller(callerOf(os.Getenv(agentname.StrandNameEnv))); err != nil {
 				return fail(err)
 			}
-			cwd, err := lyxcwd.CwdFrom(ctx)
+			cwd, err := lymcwd.CwdFrom(ctx)
 			if err != nil {
 				return fail(err)
 			}
-			location, err := lyxcwd.Resolve(cwd)
+			location, err := lymcwd.Resolve(cwd)
 			if err != nil {
 				return fail(err)
 			}
@@ -411,7 +411,7 @@ func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value seeds cwd into the execution context, because lyxcwd.WithCwd panics on an empty directory.
+// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value seeds cwd into the execution context, because lymcwd.WithCwd panics on an empty directory.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)

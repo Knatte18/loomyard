@@ -29,7 +29,7 @@ import (
 )
 
 // commitWeftTagged advances the warp repo by one commit, writes new content
-// into the weft worktree's tracked _lyx/config.yaml, and lands it through
+// into the weft worktree's tracked _lym/config.yaml, and lands it through
 // f.CommitWeft carrying tags — the standard way this file's tests build a
 // trailer history with Snapshot: entries. Returns the new warp and weft HEAD
 // SHAs. Passing zero tags produces a plain, untagged weft commit.
@@ -38,7 +38,7 @@ func commitWeftTagged(t *testing.T, f *fabricengine.Fabric, warpPath, weftPath, 
 
 	warpSHA = fabricengine.CommitWarpForTest(t, warpPath, content)
 	fabricengine.WriteWeftConfigContentForTest(t, weftPath, content)
-	weftSHA, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lyx"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{}, tags...)
+	weftSHA, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lym"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{}, tags...)
 	if err != nil {
 		t.Fatalf("commitWeft(tags=%v) error = %v", tags, err)
 	}
@@ -48,19 +48,13 @@ func commitWeftTagged(t *testing.T, f *fabricengine.Fabric, warpPath, weftPath, 
 	return warpSHA, weftSHA
 }
 
-// commitWeftSnapshotOnlyTrailer commits content into weftPath's tracked
-// _lyx/config.yaml with a hand-crafted commit message carrying ONLY a
-// "Snapshot: <tag>" trailer and no "Warp-SHA:" trailer at all — the shape
-// snapshotWarpSHA's reader must skip rather than mistake for an empty
-// baseline. Built directly via git rather than through CommitWeft, since
-// CommitWeft only ever appends a Snapshot trailer alongside a Warp-SHA one
-// (and drops tags entirely on an unborn warp HEAD — see commitWeftLocked),
-// so there is no CommitWeft call that produces this shape on its own.
+// commitWeftSnapshotOnlyTrailer commits content into weftPath's tracked _lym/config.yaml with a hand-crafted commit message carrying ONLY a "Snapshot: <tag>" trailer and no "Warp-SHA:" trailer at all — the shape snapshotWarpSHA's reader must skip rather than mistake for an empty baseline.
+// Built directly via git rather than through CommitWeft, since CommitWeft only ever appends a Snapshot trailer alongside a Warp-SHA one (and drops tags entirely on an unborn warp HEAD — see commitWeftLocked), so there is no CommitWeft call that produces this shape on its own.
 func commitWeftSnapshotOnlyTrailer(t *testing.T, weftPath, content, tag string) string {
 	t.Helper()
 
 	msg := "weft sync\n\n" + fabricengine.SnapshotTrailerKey + ": " + tag
-	return gitkit.CommitFile(t, weftPath, filepath.Join("_lyx", "config.yaml"), content, msg)
+	return gitkit.CommitFile(t, weftPath, filepath.Join("_lym", "config.yaml"), content, msg)
 }
 
 // TestSnapshotWarpSHA_Lookup builds one weft history and reads it back, in this order:
@@ -204,16 +198,8 @@ func TestSnapshotWarpSHA_PerBranchScoping(t *testing.T) {
 	}
 }
 
-// commitWeftTaggedWithDate commits content into weftPath's tracked
-// _lyx/<file> (a caller-chosen filename, so a side-branch commit can avoid
-// touching the same path a mainline commit touches and merge without
-// conflict) at a caller-chosen GIT_COMMITTER_DATE, carrying a Warp-SHA
-// trailer for warp's current HEAD (advanced first) and one Snapshot trailer
-// per tag. It then calls f.RecordCorrespondence itself, exactly as
-// commitWeftLocked would have — building the back-dated commit directly,
-// rather than committing normally through CommitWeft and amending the date
-// afterward, means there is never an earlier, now-superseded correspondence
-// entry to clean up before the equivalence assertion below runs.
+// commitWeftTaggedWithDate commits content into weftPath's tracked _lym/<file> (a caller-chosen filename, so a side-branch commit can avoid touching the same path a mainline commit touches and merge without conflict) at a caller-chosen GIT_COMMITTER_DATE, carrying a Warp-SHA trailer for warp's current HEAD (advanced first) and one Snapshot trailer per tag.
+// It then calls f.RecordCorrespondence itself, exactly as commitWeftLocked would have — building the back-dated commit directly, rather than committing normally through CommitWeft and amending the date afterward, means there is never an earlier, now-superseded correspondence entry to clean up before the equivalence assertion below runs.
 //
 // The raw `git commit` call is a bare exec.Command, not
 // gitexec.RunGit/gitkit.MustRun: neither of those helpers accepts a
@@ -232,7 +218,7 @@ func commitWeftTaggedWithDate(t *testing.T, f *fabricengine.Fabric, warpPath, we
 
 	warpSHA = fabricengine.CommitWarpForTest(t, warpPath, content)
 
-	filePath := filepath.Join(weftPath, "_lyx", file)
+	filePath := filepath.Join(weftPath, "_lym", file)
 	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}

@@ -1,6 +1,6 @@
 //go:build tier0
 
-// strand_test.go drives the strand-mutation *Locked helpers directly against a fixture .lyx: guid
+// strand_test.go drives the strand-mutation *Locked helpers directly against a fixture .lym: guid
 // generation/uniqueness, unknown/cyclic parent rejection, the hidden-add no-launch path, the
 // launch-path decision seam (needsLaunchOnAdd/needsLaunchOnSurface — the actual real-tmux launch
 // itself is out of hermetic reach, see spawn_test.go), UpdateStrand's visible->hidden rejection,
@@ -120,7 +120,7 @@ func TestAddStrandLocked(t *testing.T) {
 		if err == nil {
 			t.Fatal("addStrandLocked = nil error, want the second overview refused")
 		}
-		for _, want := range []string{"keeper", "lyx reed remove"} {
+		for _, want := range []string{"keeper", "lym reed remove"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("error = %q, want it to contain %q", err, want)
 			}
@@ -245,13 +245,13 @@ func TestNeedsLaunchOnSurface(t *testing.T) {
 // A visible->hidden update, a mistyped anchor, an unknown guid and a move into or out of the own-window anchor or between window groups are rejected with the strand's display unchanged.
 // A persisted display the pane does not match would poison every later apply.
 // A hidden->hidden update and a focus-only change of an own-window strand are accepted and launch nothing.
-// A window-move refusal names the way forward, lyx reed remove.
+// A window-move refusal names the way forward, lym reed remove.
 func TestUpdateStrandLocked(t *testing.T) {
 	visible := render.Display{Anchor: render.AnchorOwnWindow}
 	hidden := render.Display{Anchor: render.AnchorHidden}
 	own := render.Display{Anchor: render.AnchorOwnWindow, Window: "pair", WindowSize: 2}
 	overview := render.Display{Anchor: render.AnchorOverview}
-	const moveWayForward = "way forward: lyx reed remove"
+	const moveWayForward = "way forward: lym reed remove"
 	tests := []struct {
 		name    string
 		strand  Strand
@@ -942,14 +942,9 @@ func TestAddStrand_IfAbsentWithoutName_FailsBeforeAnyTmuxContact(t *testing.T) {
 	}
 }
 
-// TestAddStrand_ColdEngine_NoLongerReturnsNoSessionMessage pins the self-heal behaviour change at the
-// engine-call level: AddStrand against a cold engine (no live session, nothing booted) no longer
-// refuses with noSessionMessage's friendly text. The returned error IS still non-nil — the fixture's
-// configured tmux/shell binaries do not exist on disk, so ensureSessionLocked's own
-// sessionSubstrateLocked probe fails with that nonexistent binary's exec error, reached before
-// anything else runs. Asserting that binary error's exact text would pin an OS-specific string, so
-// this only asserts what the self-heal change actually promises: neither the no-session phrase nor the
-// `lyx reed up` remedy noSessionMessage names appears in the error AddStrand now returns.
+// TestAddStrand_ColdEngine_NoLongerReturnsNoSessionMessage pins the self-heal behaviour change at the engine-call level: AddStrand against a cold engine (no live session, nothing booted) no longer refuses with noSessionMessage's friendly text.
+// The returned error IS still non-nil — the fixture's configured tmux/shell binaries do not exist on disk, so ensureSessionLocked's own sessionSubstrateLocked probe fails with that nonexistent binary's exec error, reached before anything else runs.
+// Asserting that binary error's exact text would pin an OS-specific string, so this only asserts what the self-heal change actually promises: neither the no-session phrase nor the `lym reed up` remedy noSessionMessage names appears in the error AddStrand now returns.
 func TestAddStrand_ColdEngine_NoLongerReturnsNoSessionMessage(t *testing.T) {
 	e := newTestEngine(t)
 
@@ -960,8 +955,8 @@ func TestAddStrand_ColdEngine_NoLongerReturnsNoSessionMessage(t *testing.T) {
 	if strings.Contains(err.Error(), "no reed session") {
 		t.Errorf("AddStrand against a cold engine error = %q, want it to no longer carry noSessionMessage's no-session phrase", err)
 	}
-	if strings.Contains(err.Error(), "lyx reed up") {
-		t.Errorf("AddStrand against a cold engine error = %q, want it to no longer name the `lyx reed up` remedy", err)
+	if strings.Contains(err.Error(), "lym reed up") {
+		t.Errorf("AddStrand against a cold engine error = %q, want it to no longer name the `lym reed up` remedy", err)
 	}
 }
 
@@ -1063,7 +1058,7 @@ func TestStrandNameLocked_ExplicitNameHeldRefuses(t *testing.T) {
 		if err == nil {
 			t.Fatalf("addStrandLocked(NameOverride=%q) = nil error, want the held-name refusal", override)
 		}
-		for _, want := range []string{held.GUID, "lyx reed remove --name driver frees it, or pass another role"} {
+		for _, want := range []string{held.GUID, "lym reed remove --name driver frees it, or pass another role"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("NameOverride=%q error = %q, want it to contain %q", override, err, want)
 			}
@@ -1094,8 +1089,8 @@ func TestAddStrand_UnformableName_RefusesBeforeAnyTmuxCommand(t *testing.T) {
 		configure func(cfg *Config)
 		wantText  string
 	}{
-		{"MissingShortname", "", "tslug", nil, "no strand name can be formed: this hub records no shortname; way forward: lyx fabric shortname <shortname> records it, then retry; a session lyx refuses the verb from reports status: FAILED and the orch runs it"},
-		{"BadSlug", "tc", "Bad_Slug", nil, "way forward: lyx fabric add <slug> creates the task under a slug that fits; a session lyx refuses the verb from reports status: FAILED and the orch runs it"},
+		{"MissingShortname", "", "tslug", nil, "no strand name can be formed: this hub records no shortname; way forward: lym fabric shortname <shortname> records it, then retry; a session lym refuses the verb from reports status: FAILED and the orch runs it"},
+		{"BadSlug", "tc", "Bad_Slug", nil, "way forward: lym fabric add <slug> creates the task under a slug that fits; a session lym refuses the verb from reports status: FAILED and the orch runs it"},
 		{"BadShortname", "T-C", "tslug", nil, `"T-C"`},
 		{"InvalidWindowSplit", "tc", "tslug", func(cfg *Config) { cfg.WindowSplit = "diagonal" }, "window_split"},
 		{"NegativeWindowShareMax", "tc", "tslug", func(cfg *Config) { cfg.WindowShareMax = -1 }, "window_share_max"},

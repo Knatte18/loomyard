@@ -12,7 +12,7 @@ import (
 
 // DefaultAwaitCap is the longest one call of a keep-cache-warm wait blocks: under the 5-minute prompt-cache lifetime,
 // so a caller that runs the wait with a Bash tool timeout above the cap (300000 ms) and re-runs it keeps its cache warm.
-// A wait verb's --cap flag defaults to it, and `lyx gate test` waits for a free slot for at most it.
+// A wait verb's --cap flag defaults to it, and `lym gate test` waits for a free slot for at most it.
 const DefaultAwaitCap = 250 * time.Second
 
 // AwaitAny stats the told absolute paths once a second until one exists or cap elapses, on the real clock.

@@ -1,8 +1,6 @@
 //go:build tier1
 
-// menu_test.go covers worktree discovery (excludes main, requires _lyx/),
-// board-facade titles, numeric selection, the zero-worktree path, and the
-// missing-board hard error.
+// menu_test.go covers worktree discovery (excludes main, requires _lym/), board-facade titles, numeric selection, the zero-worktree path, and the missing-board hard error.
 
 package ideengine
 
@@ -16,8 +14,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 func mustRunMenu(t *testing.T, dir string, args ...string) {
@@ -53,15 +51,15 @@ func newTestGitRepoWithWorktrees(t *testing.T) (string, string) {
 	mustRunMenu(t, mainWorktreePath, "git", "add", ".")
 	mustRunMenu(t, mainWorktreePath, "git", "commit", "-m", "initial")
 
-	if err := os.MkdirAll(filepath.Join(mainWorktreePath, lyxdirs.LyxDirName), 0o755); err != nil {
-		t.Fatalf("failed to create main _lyx: %v", err)
+	if err := os.MkdirAll(filepath.Join(mainWorktreePath, lymdirs.LymDirName), 0o755); err != nil {
+		t.Fatalf("failed to create main _lym: %v", err)
 	}
 
 	return container, mainWorktreePath
 }
 
-// addChildWorktree adds a worktree named name next to the main one, with a _lyx directory when withLyx is set, and removes it with its branch on cleanup.
-func addChildWorktree(t *testing.T, container, mainWorktreePath, name string, withLyx bool) {
+// addChildWorktree adds a worktree named name next to the main one, with a _lym directory when withLym is set, and removes it with its branch on cleanup.
+func addChildWorktree(t *testing.T, container, mainWorktreePath, name string, withLym bool) {
 	t.Helper()
 
 	childPath := filepath.Join(container, name)
@@ -70,9 +68,9 @@ func addChildWorktree(t *testing.T, container, mainWorktreePath, name string, wi
 		mustRunMenu(t, mainWorktreePath, "git", "worktree", "remove", "--force", childPath)
 		mustRunMenu(t, mainWorktreePath, "git", "branch", "-D", name+"-branch")
 	})
-	if withLyx {
-		if err := os.MkdirAll(filepath.Join(childPath, lyxdirs.LyxDirName), 0o755); err != nil {
-			t.Fatalf("failed to create %s _lyx: %v", name, err)
+	if withLym {
+		if err := os.MkdirAll(filepath.Join(childPath, lymdirs.LymDirName), 0o755); err != nil {
+			t.Fatalf("failed to create %s _lym: %v", name, err)
 		}
 	}
 }
@@ -103,14 +101,14 @@ design_prefix: proposal-
 	}
 }
 
-// TestMenuScenario drives Menu over one git repo: the hard error while no board config exists, then, once a board is written, worktree discovery (no _lyx, main excluded) and numeric selection.
+// TestMenuScenario drives Menu over one git repo: the hard error while no board config exists, then, once a board is written, worktree discovery (no _lym, main excluded) and numeric selection.
 // Each step adds the child worktrees it needs and removes them on cleanup; the board config written after the first step stays for the rest.
 // Serial by design: it sets BOARD_SKIP_GIT in the process environment and swaps the package-level CodeLauncher.
 func TestMenuScenario(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 
 	container, mainWorktreePath := newTestGitRepoWithWorktrees(t)
-	layout := &lyxcwd.Location{HubPath: container, WorktreeName: filepath.Base(mainWorktreePath), AnchorRel: "."}
+	layout := &lymcwd.Location{HubPath: container, WorktreeName: filepath.Base(mainWorktreePath), AnchorRel: "."}
 
 	if !t.Run("hard error on missing board", func(t *testing.T) {
 		var out bytes.Buffer
@@ -130,7 +128,7 @@ func TestMenuScenario(t *testing.T) {
 	// The steps below rely on this board, which the first step proved absent.
 	writeBoard(t, container, `{"tasks":[]}`)
 
-	if !t.Run("requires lyx dir", func(t *testing.T) {
+	if !t.Run("requires lym dir", func(t *testing.T) {
 		addChildWorktree(t, container, mainWorktreePath, "child", false)
 
 		var out bytes.Buffer
@@ -172,11 +170,11 @@ func TestMenuScenario(t *testing.T) {
 		if err := os.MkdirAll(sibling, 0o755); err != nil {
 			t.Fatalf("failed to create the records sibling: %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(sibling, lyxcwd.AnchorFileName), []byte("sub\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(sibling, lymcwd.AnchorFileName), []byte("sub\n"), 0o644); err != nil {
 			t.Fatalf("failed to write the anchor marker: %v", err)
 		}
-		if err := os.MkdirAll(filepath.Join(container, "anchored", "sub", lyxdirs.LyxDirName), 0o755); err != nil {
-			t.Fatalf("failed to create the anchored _lyx: %v", err)
+		if err := os.MkdirAll(filepath.Join(container, "anchored", "sub", lymdirs.LymDirName), 0o755); err != nil {
+			t.Fatalf("failed to create the anchored _lym: %v", err)
 		}
 
 		var out bytes.Buffer
@@ -186,7 +184,7 @@ func TestMenuScenario(t *testing.T) {
 		}
 
 		if output := out.String(); !strings.Contains(output, "1) anchored") {
-			t.Fatalf("expected the worktree whose _lyx sits at its own anchor, got: %q", output)
+			t.Fatalf("expected the worktree whose _lym sits at its own anchor, got: %q", output)
 		}
 	}) {
 		return

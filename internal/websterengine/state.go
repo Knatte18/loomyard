@@ -1,10 +1,7 @@
-// state.go implements the durable run state webster keeps at _lyx/webster/state.json: the run identity, the plan-fingerprint anchor crash/resume compares against, the current-batch cursor, Master's own strand/session identity, every batch's own persisted record (including its carried-forward digest and per-card SHA trail), and the set of fork transcripts already attributed across every batch.
+// state.go implements the durable run state webster keeps at _lym/webster/state.json: the run identity, the plan-fingerprint anchor crash/resume compares against, the current-batch cursor, Master's own strand/session identity, every batch's own persisted record (including its carried-forward digest and per-card SHA trail), and the set of fork transcripts already attributed across every batch.
 // LoadState/SaveState are state.json's only readers/writers;
-// every other websterengine file mutates the in-memory *State the caller loaded and calls SaveState
-// to persist it back.
-// Dir/ReportsDir/ScratchDir/PromptsDir are this file's own _lyx/webster and .lyx/webster
-// constructors (Cwd Resolution Invariant): each takes a told anchor root and joins its own
-// subpath onto it — no other package declares any part of these paths.
+// every other websterengine file mutates the in-memory *State the caller loaded and calls SaveState to persist it back.
+// Dir/ReportsDir/ScratchDir/PromptsDir are this file's own _lym/webster and .lym/webster constructors (Cwd Resolution Invariant): each takes a told anchor root and joins its own subpath onto it — no other package declares any part of these paths.
 //
 // webster's State is its own schema: no sentinel error or Go type here is shared with any other
 // module's state files, so errors.Is can never conflate a run in one module with a run in another
@@ -24,34 +21,32 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// websterDirName is the relative-path segment websterengine joins onto both
-// lyxdirs.LyxDirName (Dir) and lyxdirs.DotLyxDirName (ScratchDir) to form
-// webster's durable and scratch base directories, respectively. websterengine
-// is this segment's sole declarer.
+// websterDirName is the relative-path segment websterengine joins onto both lymdirs.LymDirName (Dir) and lymdirs.DotLymDirName (ScratchDir) to form webster's durable and scratch base directories, respectively.
+// websterengine is this segment's sole declarer.
 const websterDirName = "webster"
 
 // Dir returns the path to the webster's durable run state directory (state.json, outcome.yaml),
 // joined onto the told anchorRoot.
-// It lives under _lyx so it is fabric-synced.
+// It lives under _lym so it is fabric-synced.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func Dir(anchorRoot string) string {
-	return filepath.Join(anchorRoot, lyxdirs.LyxDirName, websterDirName)
+	return filepath.Join(anchorRoot, lymdirs.LymDirName, websterDirName)
 }
 
-// DirRel returns Dir's anchor-relative form, `_lyx/webster`, always forward-slashed.
+// DirRel returns Dir's anchor-relative form, `_lym/webster`, always forward-slashed.
 // It exists so a caller building a fabric commit pathspec never has to name a directory segment
 // websterengine owns.
 func DirRel() string {
-	return path.Join(lyxdirs.LyxDirName, websterDirName)
+	return path.Join(lymdirs.LymDirName, websterDirName)
 }
 
 // ReportsDir returns the path to the directory holding webster's per-batch report files, joined
 // onto the told anchorRoot.
-// It lives under _lyx so reports are fabric-synced.
+// It lives under _lym so reports are fabric-synced.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func ReportsDir(anchorRoot string) string {
 	return filepath.Join(Dir(anchorRoot), "reports")
@@ -59,15 +54,15 @@ func ReportsDir(anchorRoot string) string {
 
 // ScratchDir returns the path to the base directory for webster's never-tracked artifacts.
 // It is Dir's never-tracked sibling, holding the rendered fork prompts, every *.lock, and the plan-conflict record and last-routed conflict.
-// It sits at the mirrored subpath of the _lyx/webster content each relates to, joined onto the told anchorRoot.
+// It sits at the mirrored subpath of the _lym/webster content each relates to, joined onto the told anchorRoot.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func ScratchDir(anchorRoot string) string {
-	return filepath.Join(anchorRoot, lyxdirs.DotLyxDirName, websterDirName)
+	return filepath.Join(anchorRoot, lymdirs.DotLymDirName, websterDirName)
 }
 
 // PromptsDir returns the path to the directory holding webster's rendered fork prompts, joined
 // onto the told anchorRoot.
-// Prompts are machine-local, re-renderable artifacts, and they live under .lyx rather than being
+// Prompts are machine-local, re-renderable artifacts, and they live under .lym rather than being
 // held out of the fabric commit by an exclude pattern.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func PromptsDir(anchorRoot string) string {
@@ -83,7 +78,7 @@ const stateFileName = "state.json"
 // concurrent verb invocations (a begin-batch racing a record-batch, or two
 // recover-batch calls landing in the same instant) each load, mutate, and
 // save their own copy, and the last save silently erases the other's
-// mutation. It lives under .lyx and is never fabric-committed at all.
+// mutation. It lives under .lym and is never fabric-committed at all.
 const stateMutateLockName = "mutate.lock"
 
 // AcquireStateMutation acquires scratchDir's exclusive state-mutation lease, blocking until it is

@@ -9,7 +9,7 @@
 // An exec-level failure — git could not be run at all — is returned
 // unwrapped from Run, never as a *GitError, so errors.As(err, &gitErr)
 // means precisely "git ran and rejected this", not "something went wrong".
-// The floor error of a git below lyx's minimum is the other such result, since no git command ran to produce it.
+// The floor error of a git below lym's minimum is the other such result, since no git command ran to produce it.
 // Run's stdout is returned in every case where git actually ran, including
 // alongside a *GitError; it is empty on an exec-level failure only because
 // git never ran.
@@ -36,7 +36,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxtemp"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/toolfloor"
@@ -181,7 +181,7 @@ func probeGitVersion() (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// CheckFloor reports whether the git on PATH is at or above lyx's floor, probing once per process.
+// CheckFloor reports whether the git on PATH is at or above lym's floor, probing once per process.
 // It returns a *toolfloor.FloorError for a git below the floor, and the exec error, uncached, when git could not be run.
 // It is exported so a git spawn outside the exec core checks too.
 func CheckFloor() error {
@@ -240,7 +240,7 @@ func runAttempt(args []string, cwd, stdin string, extraEnv []string, remote bool
 	var ctx context.Context
 	var sawStall atomic.Bool
 	if remote {
-		trace, err := lyxtemp.CreateTemp("git-packet-trace-*")
+		trace, err := lymtemp.CreateTemp("git-packet-trace-*")
 		if err != nil {
 			return "", "", -1, false, fmt.Errorf("create the git packet trace file: %w", err)
 		}
@@ -305,7 +305,7 @@ func runAttempt(args []string, cwd, stdin string, extraEnv []string, remote bool
 }
 
 // noOptionalLocksEnv stops a read-only git command, such as `git status`, from taking the index lock to write back a refreshed stat cache.
-// Such a probe runs under no lyx lock, so its index lock would otherwise fail a concurrent `git add` with "index.lock: File exists".
+// Such a probe runs under no lym lock, so its index lock would otherwise fail a concurrent `git add` with "index.lock: File exists".
 const noOptionalLocksEnv = "GIT_OPTIONAL_LOCKS=0"
 
 // childEnv returns the process environment without GIT_DIR, GIT_WORK_TREE and GIT_OPTIONAL_LOCKS, followed by noOptionalLocksEnv and extra.
@@ -324,7 +324,7 @@ func childEnv(extra []string) []string {
 }
 
 // RunGit runs a git command and returns stdout, stderr, and exit code.
-// A git below lyx's floor returns the *toolfloor.FloorError with exit code -1, which is no *GitError.
+// A git below lym's floor returns the *toolfloor.FloorError with exit code -1, which is no *GitError.
 // A remote command that outlives its deadline or stalls twice is returned as a *GitError with a non-zero Timeout, though git did not exit on its own.
 func RunGit(args []string, cwd string) (stdout, stderr string, exitCode int, err error) {
 	stdout, stderr, exitCode, err = runCore(args, cwd, "", nil)
@@ -342,7 +342,7 @@ func RunGit(args []string, cwd string) (stdout, stderr string, exitCode int, err
 // this". stdout is returned in every case where git actually ran, including
 // alongside a *GitError; it is empty on an exec-level failure only because
 // git never ran.
-// A git below lyx's floor returns the *toolfloor.FloorError, which is no *GitError, since no git command ran.
+// A git below lym's floor returns the *toolfloor.FloorError, which is no *GitError, since no git command ran.
 // A remote command that outlives its deadline or stalls twice is returned as a *GitError with a non-zero Timeout, though git did not exit on its own.
 func Run(args []string, cwd string) (string, error) {
 	return RunStdin(args, cwd, "")

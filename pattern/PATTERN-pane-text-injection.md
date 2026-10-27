@@ -1,6 +1,6 @@
 # PATTERN-pane-text-injection
 
-Text lyx types into an agent pane never merges with, submits or wipes an operator's draft, and never closes a menu the operator has open.
+Text lym types into an agent pane never merges with, submits or wipes an operator's draft, and never closes a menu the operator has open.
 The bounded exception is a lone stray character in an idle box: the guard clears it once per send attempt, behind a full guard reading, and a character that survives is submitted at the head of the message.
 
 - Text reaches a pane only through reed's paste-submit: one tmux invocation that pastes the text and, when the provider's Enter submits a paste, sends the Enter in the same command list.
@@ -14,12 +14,12 @@ The bounded exception is a lone stray character in an idle box: the guard clears
   That holds only when every non-blank cell, once the caret, the side bars and a lone `%` are stripped, is drawn in the placeholder style, so a typed draft, drawn unstyled, still reads as a draft, and a restyled placeholder reads as a draft, failing closed.
   Shuttle adds the residue reading, taken only after the clear, beside the provider's box reading: a box that still holds exactly the cleared character reads as empty, on the hook reading and the pane reading alike.
 - The watchdog's `/rename` name repair has no shuttle run; it stands behind reed's own activity check and goes out as the same paste-submit.
-- An Enter of lyx's own goes only into a box holding exactly the sent text, or the provider's placeholder for exactly that text.
+- An Enter of lym's own goes only into a box holding exactly the sent text, or the provider's placeholder for exactly that text.
   A box holding anything else, the sent text beside a draft included, gets no key.
 - A send that may have left its text in the box records `{text, events offset}` in the run directory's `pending-send.json`.
   The next send to the strand reads it: the same text with a turn start past the offset went out already and types nothing; otherwise the send types as usual.
 - A send to a strand with no run record takes the pane-only readiness reading, keeps no pending-send record and never clears its unlanded text, so the next send holds on the non-empty box.
-- A second bounded clear sits beside the stray-character one: `Runner.InterruptRestoring` empties the prompt Claude restores into the box after lyx's own interrupt key.
+- A second bounded clear sits beside the stray-character one: `Runner.InterruptRestoring` empties the prompt Claude restores into the box after lym's own interrupt key.
   It fires only on text that appeared in a box read empty before the key, at most once per call and never without a passing guard reading: the pane ready, no running turn, a readable box and no active operator.
   Its keys are the provider's restored-prompt clear, no `Escape`, `C-c` or Enter, at most two per line the read showed, and the text is the stopped turn's own prompt, already in the transcript.
   A guard reading that fails sends nothing, and the text stays as a draft the next send holds on.
@@ -34,10 +34,10 @@ An interrupt key reaches an agent pane only through shuttle's two pane guards, a
 - The guarded interrupt (`Runner.Interrupt`, `Run.Interrupt`) sends the provider's interrupt sequence only after the ready-agent-pane check and a fresh capture the provider reads as a running turn.
   A pane with no running turn gets nothing and `ErrNoRunningTurn`, and a capture that fails sends nothing.
 - A caller that retries an interrupt waits at least the provider's settle time (`Runner.InterruptSettle`) after its first key before it reads again, and sends the retry through the guarded interrupt.
-  So lyx's own keys land at least the settle apart and never open the rewind picker.
+  So lym's own keys land at least the settle apart and never open the rewind picker.
 - The guarded picker close is the one exception: before every interrupt and every verified send it sends exactly one key of the interrupt sequence, only into a capture the provider reads as the rewind picker.
   It then re-captures after the settle, never selects an entry, never sends a second key, and fails the operation with `ErrRewindPickerOpen`.
-- `Runner.Inject` skips the ready-pane check, so it refuses any input list holding a key of the engine's interrupt sequence (case-insensitive, `C-[` read as `Escape`) or a `Text` with a control character, whatever its `SettleMS` and neighbours, and names `lyx shuttle interrupt`.
+- `Runner.Inject` skips the ready-pane check, so it refuses any input list holding a key of the engine's interrupt sequence (case-insensitive, `C-[` read as `Escape`) or a `Text` with a control character, whatever its `SettleMS` and neighbours, and names `lym shuttle interrupt`.
   A tmux spelling of the interrupt key beyond those still passes, bounded by Inject having no production caller.
 - The orch watcher's hub-pause interrupt is the one key the watcher still sends: it reaches the orch pane through the guarded interrupt, under the exemption the orch pane section below keeps for it.
 - `Runner.InterruptRestoring` is a second entry point: its key goes only through the guarded interrupt, and its clear is the engine's restored-prompt clear of the box, never an interrupt key.
@@ -61,7 +61,7 @@ Typing a line into a session a pause covers: shuttle's send refuses with `ErrPau
 - Tender resume claims the session into the refusing pause.
 - Tender revive's conditioned send reports the refusal as a send error.
 - The start's segment-color line is logged and dropped.
-- `lyx loom resume` and `lyx shuttle send` refuse with the pause's way forward.
+- `lym loom resume` and `lym shuttle send` refuse with the pause's way forward.
 
 ### Enforcement
 

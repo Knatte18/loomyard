@@ -36,7 +36,7 @@ func newFixProducer(t *testing.T, runDir string, runner *shedfake.BurlerHalfRunn
 var fixDone = burlerengine.FixResult{Outcome: shuttleengine.OutcomeDone}
 
 // wayForwardToReview is the way forward every refusal that needs the round reviewed again ends with.
-const wayForwardToReview = `way forward: run "lyx loom goto --to burler-review", then "lyx loom resume", in the task worktree`
+const wayForwardToReview = `way forward: run "lym loom goto --to burler-review", then "lym loom resume", in the task worktree`
 
 // TestBurlerFixProducer_Call_RefusesARoundWithNoAcceptedReview proves a round with no acceptance record, and one whose record has no review beside it, is a hard error.
 // The error names the way forward back to the review row, with nothing spawned and nothing archived.
@@ -312,7 +312,7 @@ func TestBurlerFixProducer_Call_SendsDecisionFindingsToTheParent(t *testing.T) {
 				t.Fatalf("parent lines = %q; want %d", lines, tt.wantLines)
 			}
 			for _, line := range lines {
-				for _, want := range []string{"burler-fix round 1", "D1: cache scope left open Fix: ask the parent to record the cache scope", roundReviewPath(runDir, 1), "lyx loom decision add"} {
+				for _, want := range []string{"burler-fix round 1", "D1: cache scope left open Fix: ask the parent to record the cache scope", roundReviewPath(runDir, 1), "lym loom decision add"} {
 					if !strings.Contains(line, want) {
 						t.Errorf("parent line = %q; want it to carry %q", line, want)
 					}

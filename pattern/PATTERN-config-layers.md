@@ -27,12 +27,12 @@ A key meeting no category is `CategoryNone` and the local layer may hold it.
 - The open set is `configengine.MachineKeys`, the template keys classified `CategoryMachine`.
 - The layer applies only for a hub-wide module with a `machine` key, and only when the told `Dirs` carry both `Board` and `Anchor`.
   A hub-file check loads `Dirs{Board}` and so never stacks it.
-- Its file is `<BoardDir>/.lyx/config/<module>.machine.yaml`, never tracked.
+- Its file is `<BoardDir>/.lym/config/<module>.machine.yaml`, never tracked.
 - No reconcile, `hubreconcile.Ensure` included, reads, rewrites or removes the file.
 
 ## Local files
 
-- No cleanup, `lyx-cleanup` included, deletes a local override file.
+- No cleanup, `lym-cleanup` included, deletes a local override file.
   The only removals are Seed-Child rewriting the pair's local layer to equal the task's run settings, and reconcile deleting a local file whose retired keys it pruned to nothing.
 - The git-ignored per-worktree `.env` stays an untracked route for marker-carrying denied keys; the local layer must not widen it.
 
@@ -62,4 +62,4 @@ Reconciling a hub's config after a binary change goes only through `hubreconcile
   It is logged with the layer `template` only for a standalone stack and a seed-only module, since a hub's base is sparse.
   A key a sparse upper layer inherits from a file layer below it is not logged.
 - A local file refuses keys the template lacks, besides the other rules of the local layer.
-- `Load` and `LoadOrTemplate` differ only on an absent base-layer `_lyx/` or file.
+- `Load` and `LoadOrTemplate` differ only on an absent base-layer `_lym/` or file.

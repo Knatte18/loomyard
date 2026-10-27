@@ -14,8 +14,8 @@
 // A round count of 0 turns a perch off, since its Bouncer then settles approved with no review round.
 //
 // The module is hub-wide and seed-only: the hub reconcile seeds an absent file with the template's entries and never rewrites a present one.
-// Each profile, like `defaults`, is one whole entry, and `lyx config profiles --set <name>='<json object>'` adds or replaces one whole entry;
-// renaming one is adding it under the new name and removing the old block in the editor, `lyx config profiles`.
+// Each profile, like `defaults`, is one whole entry, and `lym config profiles --set <name>='<json object>'` adds or replaces one whole entry;
+// renaming one is adding it under the new name and removing the old block in the editor, `lym config profiles`.
 // No key is open to the local layer.
 //
 // `Load` decodes the stacked file without filling it from the template, so a removed starting profile stays removed, and reads the template when no file is present.

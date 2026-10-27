@@ -3,7 +3,7 @@
 // bench_cli_test.go — integration-tier benchmarks for the board CLI commands.
 //
 // Upsert/Get/List drive boardcli.RunCLI, whose cwd-authoritative config
-// resolution calls lyxcwd.Resolve (a `git rev-parse`), so the seeded temp
+// resolution calls lymcwd.Resolve (a `git rev-parse`), so the seeded temp
 // dir must be a real git repo. That makes these benchmarks spawn git, so they
 // belong behind `//go:build integration` (Tier 2), not in the default offline
 // loop — and the git-init helper below uses exec.Command, a token the
@@ -29,7 +29,7 @@ import (
 )
 
 // seedWikiRepo seeds a board (via seedWiki) and initialises a git repo at its
-// root so lyxcwd.Resolve can find the hub — the CLI entrypoint's config
+// root so lymcwd.Resolve can find the hub — the CLI entrypoint's config
 // resolution requires a repository, which a bare temp dir is not. Kept out of
 // the untagged seedWiki so the Tier-1 concurrency test that shares seedWiki
 // never spawns git.
@@ -42,7 +42,7 @@ func seedWikiRepo(tb testing.TB, n int) string {
 	}
 	for _, args := range [][]string{
 		{"init"},
-		{"config", "user.email", "bench@lyx.test"},
+		{"config", "user.email", "bench@lym.test"},
 		{"config", "user.name", "bench"},
 	} {
 		cmd := exec.Command("git", args...)

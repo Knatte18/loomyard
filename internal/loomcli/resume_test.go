@@ -1,6 +1,6 @@
 //go:build tier0
 
-// resume_test.go pins `lyx loom resume` outcome by outcome over fakes for the driver directory, the merge probe and the driver sender, with real status, run-lock and park-marker files in a temp directory.
+// resume_test.go pins `lym loom resume` outcome by outcome over fakes for the driver directory, the merge probe and the driver sender, with real status, run-lock and park-marker files in a temp directory.
 // It also pins that the verb takes the bootstrap lock before reading anything.
 
 package loomcli
@@ -21,7 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -144,8 +144,8 @@ func putParkMarker(t *testing.T, c *loomCLI) string {
 // pendingAcceptDecision is a circling decision file for round 1 that is recorded and not yet settled.
 const pendingAcceptDecision = "---\nround: 1\ndecision: accept\ncause: circling\nsettled: false\n---\n"
 
-// TestResumeVerb reaches every outcome of `lyx loom resume` and asserts for each the envelope, the exit code, that nothing was spawned, added or removed,
-// that a resume line was typed only when a parked driver was woken, and that no message names `lyx loom start` as the retry of resume.
+// TestResumeVerb reaches every outcome of `lym loom resume` and asserts for each the envelope, the exit code, that nothing was spawned, added or removed,
+// that a resume line was typed only when a parked driver was woken, and that no message names `lym loom start` as the retry of resume.
 func TestResumeVerb(t *testing.T) {
 	t.Parallel()
 
@@ -197,46 +197,46 @@ func TestResumeVerb(t *testing.T) {
 		// the line is then attempted but never lands.
 		sendErr error
 	}{
-		{name: "no status file", wantIn: []string{`"lyx loom start"`, "task worktree"}},
+		{name: "no status file", wantIn: []string{`"lym loom start"`, "task worktree"}},
 		{name: "done is a no-op success", runState: shedengine.StateDone, directory: noDriver, wantOK: true, wantIn: []string{"done"}},
 		{name: "awaiting at a Bouncer row with a pending decision wakes the parked driver", runState: shedengine.StateAwaiting, producer: loomshed.NamePlanBouncer, bouncerRun: true, decision: pendingAcceptDecision, directory: liveDriver, marker: true, wantOK: true, wantSent: true, wantIn: []string{"woken"}},
 		{name: "awaiting at a Bouncer row with a pending decision and no park marker is refused", runState: shedengine.StateAwaiting, producer: loomshed.NamePlanBouncer, bouncerRun: true, decision: pendingAcceptDecision, directory: liveDriver, wantKind: shedrun.StartNotParkedKind, wantIn: []string{"has not parked yet"}},
-		{name: "awaiting at a Bouncer row with no decision names the circling verbs and resume", runState: shedengine.StateAwaiting, producer: loomshed.NamePlanBouncer, bouncerRun: true, directory: liveDriver, marker: true, wantIn: []string{"lyx loom circling accept <slug>", "lyx loom circling continue <slug>", `"lyx loom resume"`}},
-		{name: "awaiting at a Bouncer row with a malformed decision file names the file and its way forward", runState: shedengine.StateAwaiting, producer: loomshed.NamePlanBouncer, bouncerRun: true, decision: "accept\n", directory: liveDriver, marker: true, wantIn: []string{"round-1-circling-decision.md", "delete it", "lyx loom circling accept <slug>", `re-run "lyx loom resume"`}},
-		{name: "awaiting with a failing recipe lookup names the rebuild", runState: shedengine.StateAwaiting, producer: loomshed.NamePlanBouncer, lookupErr: errors.New("loomrecipe: parse failed"), directory: liveDriver, marker: true, wantIn: []string{"loomrecipe: parse failed", "rebuild or reinstall lyx", `re-run "lyx loom resume"`}},
+		{name: "awaiting at a Bouncer row with no decision names the circling verbs and resume", runState: shedengine.StateAwaiting, producer: loomshed.NamePlanBouncer, bouncerRun: true, directory: liveDriver, marker: true, wantIn: []string{"lym loom circling accept <slug>", "lym loom circling continue <slug>", `"lym loom resume"`}},
+		{name: "awaiting at a Bouncer row with a malformed decision file names the file and its way forward", runState: shedengine.StateAwaiting, producer: loomshed.NamePlanBouncer, bouncerRun: true, decision: "accept\n", directory: liveDriver, marker: true, wantIn: []string{"round-1-circling-decision.md", "delete it", "lym loom circling accept <slug>", `re-run "lym loom resume"`}},
+		{name: "awaiting with a failing recipe lookup names the rebuild", runState: shedengine.StateAwaiting, producer: loomshed.NamePlanBouncer, lookupErr: errors.New("loomrecipe: parse failed"), directory: liveDriver, marker: true, wantIn: []string{"loomrecipe: parse failed", "rebuild or reinstall lym", `re-run "lym loom resume"`}},
 		{name: "running with a live driver is a no-op", runState: shedengine.StateRunning, directory: liveDriver, wantOK: true, wantIn: []string{"already running"}},
 		{name: "running with the run lock held is a no-op", runState: shedengine.StateRunning, directory: noDriver, runLock: true, wantOK: true, wantIn: []string{"already running"}},
 		{name: "running with the scratch directory absent answers from the run's state", runState: shedengine.StateRunning, directory: liveDriver, noScratch: true, wantOK: true, wantIn: []string{"already running"}},
-		{name: "running with no live driver is refused", runState: shedengine.StateRunning, directory: noDriver, wantIn: []string{"no live driver", `"lyx loom start"`}},
-		{name: "halted with the run lock held is refused", runState: shedengine.StateBlocked, directory: liveDriver, runLock: true, marker: true, wantKind: shedrun.StartNotParkedKind, wantIn: []string{"post-run work", `"lyx loom resume"`}},
-		{name: "halted live driver without a marker is refused", runState: shedengine.StatePaused, directory: liveDriver, wantKind: shedrun.StartNotParkedKind, wantIn: []string{"has not parked yet", "`lyx loom resume`"}},
+		{name: "running with no live driver is refused", runState: shedengine.StateRunning, directory: noDriver, wantIn: []string{"no live driver", `"lym loom start"`}},
+		{name: "halted with the run lock held is refused", runState: shedengine.StateBlocked, directory: liveDriver, runLock: true, marker: true, wantKind: shedrun.StartNotParkedKind, wantIn: []string{"post-run work", `"lym loom resume"`}},
+		{name: "halted live driver without a marker is refused", runState: shedengine.StatePaused, directory: liveDriver, wantKind: shedrun.StartNotParkedKind, wantIn: []string{"has not parked yet", "`lym loom resume`"}},
 		{name: "halted live driver without a marker is not probed for a merge", runState: shedengine.StateFailed, directory: liveDriver, merge: mergeParked, wantKind: shedrun.StartNotParkedKind, wantIn: []string{"has not parked yet"}},
 		{name: "blocked parked driver is woken", runState: shedengine.StateBlocked, directory: liveDriver, marker: true, wantOK: true, wantSent: true, wantIn: []string{"woken"}},
-		{name: "parked driver whose pane holds a draft is refused as busy", runState: shedengine.StateBlocked, directory: liveDriver, marker: true, sendErr: fmt.Errorf("the input box holds a draft: %w", shuttleengine.ErrSessionBusy), wantKind: shedrun.StartDriverBusyKind, wantIn: []string{"draft", `"lyx loom resume" again`, "lyx batten run <slug>"}},
+		{name: "parked driver whose pane holds a draft is refused as busy", runState: shedengine.StateBlocked, directory: liveDriver, marker: true, sendErr: fmt.Errorf("the input box holds a draft: %w", shuttleengine.ErrSessionBusy), wantKind: shedrun.StartDriverBusyKind, wantIn: []string{"draft", `"lym loom resume" again`, "lym batten run <slug>"}},
 		{name: "paused parked driver is woken", runState: shedengine.StatePaused, directory: liveDriver, marker: true, wantOK: true, wantSent: true, wantIn: []string{"woken"}},
 		{name: "failed parked driver is woken", runState: shedengine.StateFailed, directory: liveDriver, marker: true, wantOK: true, wantSent: true, wantIn: []string{"woken"}},
-		{name: "parked driver over an unfinished merge is refused", runState: shedengine.StateBlocked, directory: liveDriver, marker: true, merge: mergeParked, wantKind: shedrun.StartMergeInProgressKind, wantIn: []string{`"lyx loom resume"`, "lyx fabric merge"}},
-		{name: "no live driver over an unfinished merge is refused", runState: shedengine.StateBlocked, directory: deadDriver, merge: mergeParked, wantKind: shedrun.StartMergeInProgressKind, wantIn: []string{`"lyx loom resume"`}},
+		{name: "parked driver over an unfinished merge is refused", runState: shedengine.StateBlocked, directory: liveDriver, marker: true, merge: mergeParked, wantKind: shedrun.StartMergeInProgressKind, wantIn: []string{`"lym loom resume"`, "lym fabric merge"}},
+		{name: "no live driver over an unfinished merge is refused", runState: shedengine.StateBlocked, directory: deadDriver, merge: mergeParked, wantKind: shedrun.StartMergeInProgressKind, wantIn: []string{`"lym loom resume"`}},
 		{name: "parked driver at Parent-Align over the own leftover is woken", runState: shedengine.StateBlocked, producer: loomshed.NameParentAlign, directory: liveDriver, marker: true, merge: ownLeftoverState, wantOK: true, wantSent: true, wantIn: []string{"woken"}},
-		{name: "a parked driver under a pause is refused and not woken", runState: shedengine.StateBlocked, directory: liveDriver, marker: true, covered: true, wantIn: []string{"lyx tender resume", `"lyx loom resume" again`}},
-		{name: "no live driver at Parent-Align over the own leftover reports the dead driver", runState: shedengine.StateBlocked, producer: loomshed.NameParentAlign, directory: deadDriver, merge: ownLeftoverState, wantIn: []string{"dead", "lyx batten run <slug>"}},
-		{name: "own leftover at another row keeps the merge refusal", runState: shedengine.StateBlocked, producer: loomshed.NameCodeBouncer, directory: liveDriver, marker: true, merge: ownLeftoverState, wantKind: shedrun.StartMergeInProgressKind, wantIn: []string{"lyx fabric merge"}},
-		{name: "parked merge of another source at Finalize keeps the merge refusal", runState: shedengine.StateBlocked, producer: loomshed.NameFinalize, directory: liveDriver, marker: true, merge: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Verb: "merge-in", Source: "other", Conflicts: []string{"a.go"}}, wantKind: shedrun.StartMergeInProgressKind, wantIn: []string{"lyx fabric merge"}},
-		{name: "dead driver strand names batten then resume, or start", runState: shedengine.StateBlocked, directory: deadDriver, wantIn: []string{"dead", "lyx batten run <slug>", `"lyx loom resume" again`, `"lyx loom start"`}},
-		{name: "retiring driver strand names start", runState: shedengine.StateBlocked, directory: retiringDriver, marker: true, wantIn: []string{"retiring", `"lyx loom start"`}},
-		{name: "no driver strand names start", runState: shedengine.StateBlocked, directory: noDriver, wantIn: []string{"no driver strand", `"lyx loom start"`}},
-		{name: "a held driver lock over a blocked run is refused as not parked", runState: shedengine.StateBlocked, directory: noDriver, driverLock: true, wantKind: shedrun.StartNotParkedKind, wantIn: []string{"Go driver", "settling", `"lyx loom resume" again`}},
+		{name: "a parked driver under a pause is refused and not woken", runState: shedengine.StateBlocked, directory: liveDriver, marker: true, covered: true, wantIn: []string{"lym tender resume", `"lym loom resume" again`}},
+		{name: "no live driver at Parent-Align over the own leftover reports the dead driver", runState: shedengine.StateBlocked, producer: loomshed.NameParentAlign, directory: deadDriver, merge: ownLeftoverState, wantIn: []string{"dead", "lym batten run <slug>"}},
+		{name: "own leftover at another row keeps the merge refusal", runState: shedengine.StateBlocked, producer: loomshed.NameCodeBouncer, directory: liveDriver, marker: true, merge: ownLeftoverState, wantKind: shedrun.StartMergeInProgressKind, wantIn: []string{"lym fabric merge"}},
+		{name: "parked merge of another source at Finalize keeps the merge refusal", runState: shedengine.StateBlocked, producer: loomshed.NameFinalize, directory: liveDriver, marker: true, merge: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Verb: "merge-in", Source: "other", Conflicts: []string{"a.go"}}, wantKind: shedrun.StartMergeInProgressKind, wantIn: []string{"lym fabric merge"}},
+		{name: "dead driver strand names batten then resume, or start", runState: shedengine.StateBlocked, directory: deadDriver, wantIn: []string{"dead", "lym batten run <slug>", `"lym loom resume" again`, `"lym loom start"`}},
+		{name: "retiring driver strand names start", runState: shedengine.StateBlocked, directory: retiringDriver, marker: true, wantIn: []string{"retiring", `"lym loom start"`}},
+		{name: "no driver strand names start", runState: shedengine.StateBlocked, directory: noDriver, wantIn: []string{"no driver strand", `"lym loom start"`}},
+		{name: "a held driver lock over a blocked run is refused as not parked", runState: shedengine.StateBlocked, directory: noDriver, driverLock: true, wantKind: shedrun.StartNotParkedKind, wantIn: []string{"Go driver", "settling", `"lym loom resume" again`}},
 		{name: "a held driver lock over a running run is the already-running success", runState: shedengine.StateRunning, directory: noDriver, driverLock: true, wantOK: true, wantIn: []string{"already running"}},
 		{name: "a go-seeded blocked run with no strand spawns a Go driver once", runState: shedengine.StateBlocked, directory: noDriver, seedDriver: shedrun.DriverGo, wantOK: true, wantSpawns: 1, wantIn: []string{"a Go driver was spawned"}},
-		{name: "a go-seeded run under an unfinished merge is refused with no spawn", runState: shedengine.StateBlocked, directory: noDriver, seedDriver: shedrun.DriverGo, merge: mergeParked, wantKind: shedrun.StartMergeInProgressKind, wantIn: []string{"lyx fabric merge"}},
-		{name: "an llm-seeded blocked run with no strand keeps the no-driver-strand refusal", runState: shedengine.StateBlocked, directory: noDriver, seedDriver: shedrun.DriverLLM, wantIn: []string{"no driver strand", `"lyx loom start"`}},
-		{name: "a go-seeded running run with no driver keeps the no-live-driver refusal", runState: shedengine.StateRunning, directory: noDriver, seedDriver: shedrun.DriverGo, wantIn: []string{"no live driver", `"lyx loom start"`}},
+		{name: "a go-seeded run under an unfinished merge is refused with no spawn", runState: shedengine.StateBlocked, directory: noDriver, seedDriver: shedrun.DriverGo, merge: mergeParked, wantKind: shedrun.StartMergeInProgressKind, wantIn: []string{"lym fabric merge"}},
+		{name: "an llm-seeded blocked run with no strand keeps the no-driver-strand refusal", runState: shedengine.StateBlocked, directory: noDriver, seedDriver: shedrun.DriverLLM, wantIn: []string{"no driver strand", `"lym loom start"`}},
+		{name: "a go-seeded running run with no driver keeps the no-live-driver refusal", runState: shedengine.StateRunning, directory: noDriver, seedDriver: shedrun.DriverGo, wantIn: []string{"no live driver", `"lym loom start"`}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			sender := &fakeDriverSender{repeatErr: tt.sendErr}
 			c, starter, probe := newResumeVerbReceiver(t, sender, tt.directory)
-			c.midMerge = func(*lyxcwd.Location) (fabricengine.MidMergeState, error) { return tt.merge, nil }
+			c.midMerge = func(*lymcwd.Location) (fabricengine.MidMergeState, error) { return tt.merge, nil }
 			c.recordedParentBranch = parentBranchSeam(nil)
 			spawns := 0
 			c.spawnGoDriver = func() (int, error) {
@@ -302,7 +302,7 @@ func TestResumeVerb(t *testing.T) {
 					t.Errorf("message %q lacks %q", message, want)
 				}
 			}
-			for _, startRetry := range []string{"retry `lyx loom start`", `re-run "lyx loom start"`, `run "lyx loom start" again`} {
+			for _, startRetry := range []string{"retry `lym loom start`", `re-run "lym loom start"`, `run "lym loom start" again`} {
 				if strings.Contains(message, startRetry) {
 					t.Errorf("message %q names start as the retry of resume (%s)", message, startRetry)
 				}
@@ -339,14 +339,14 @@ func TestResumeVerb(t *testing.T) {
 	}
 }
 
-// TestResumeVerb_FailedDeliveryNamesResume asserts a resume line that cannot be delivered is refused naming `lyx loom status` and a re-run of `lyx loom resume`, and leaves the marker.
+// TestResumeVerb_FailedDeliveryNamesResume asserts a resume line that cannot be delivered is refused naming `lym loom status` and a re-run of `lym loom resume`, and leaves the marker.
 func TestResumeVerb_FailedDeliveryNamesResume(t *testing.T) {
 	t.Parallel()
 
 	sender := &fakeDriverSender{repeatErr: notReady()}
 	directory := fakeDriverDirectory{found: true, row: reedengine.DirectoryRow{Name: driverStrandDisplayName, GUID: "g-drv", Live: true}}
 	c, _, _ := newResumeVerbReceiver(t, sender, directory)
-	c.midMerge = func(*lyxcwd.Location) (fabricengine.MidMergeState, error) {
+	c.midMerge = func(*lymcwd.Location) (fabricengine.MidMergeState, error) {
 		return fabricengine.MidMergeState{Kind: fabricengine.MidMergeNone}, nil
 	}
 	writeTestRunState(t, c, shedengine.StateBlocked)
@@ -357,12 +357,12 @@ func TestResumeVerb_FailedDeliveryNamesResume(t *testing.T) {
 	if env.OK || code == 0 {
 		t.Fatalf("envelope ok = %v, exit code = %d; want a refusal", env.OK, code)
 	}
-	for _, want := range []string{`"lyx loom status"`, `"lyx loom resume" again`} {
+	for _, want := range []string{`"lym loom status"`, `"lym loom resume" again`} {
 		if !strings.Contains(env.Error, want) {
 			t.Errorf("error %q lacks %q", env.Error, want)
 		}
 	}
-	if strings.Contains(env.Error, `"lyx loom start"`) {
+	if strings.Contains(env.Error, `"lym loom start"`) {
 		t.Errorf("error %q names start as the retry of resume", env.Error)
 	}
 	if _, err := os.Stat(marker); err != nil {

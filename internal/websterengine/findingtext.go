@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 const (
@@ -31,13 +31,13 @@ const (
 	noteClearedContract = "cleared: absent, or Master wrote it last"
 
 	// stepAcceptAudit is the step that accepts the pending findings.
-	stepAcceptAudit = "lyx webster accept-audit"
+	stepAcceptAudit = "lym webster accept-audit"
 	// stepRestorePlan is the step that restores the plan files the run recorded, or accepts an edit to a card no batch has begun.
-	stepRestorePlan = "lyx webster restore-plan (or lyx webster rebaseline --card NN for an edit to a card no batch has begun)"
+	stepRestorePlan = "lym webster restore-plan (or lym webster rebaseline --card NN for an edit to a card no batch has begun)"
 	// stepResetToStart is the step that moves the task branch back to the run's start commit.
-	stepResetToStart = "lyx webster reset --to start"
+	stepResetToStart = "lym webster reset --to start"
 	// stepRun is the plain step that runs, or starts, the run.
-	stepRun = "lyx webster run"
+	stepRun = "lym webster run"
 )
 
 // noteWroteLast is the note of a contract file that writer, writerFork or writerRecovery, wrote after Master's last write.
@@ -121,22 +121,22 @@ func uncheckableReason(geom Geometry, st *State, path string) (reason string, un
 	if err != nil {
 		return "", false, err
 	}
-	lyxLink := filepath.Join(geom.WorktreeRoot, lyxdirs.LyxDirName)
-	lyxReal, err := canonicalPath(lyxLink)
+	lymLink := filepath.Join(geom.WorktreeRoot, lymdirs.LymDirName)
+	lymReal, err := canonicalPath(lymLink)
 	if err != nil {
 		return "", false, err
 	}
-	dotLyx, err := canonicalPath(filepath.Join(geom.WorktreeRoot, lyxdirs.DotLyxDirName))
+	dotLym, err := canonicalPath(filepath.Join(geom.WorktreeRoot, lymdirs.DotLymDirName))
 	if err != nil {
 		return "", false, err
 	}
 	switch {
 	case !pathWithin(root, canon):
 		return reasonOutsideWorktree, true, nil
-	case pathWithin(lyxReal, canon), pathWithin(lyxLink, lexical):
-		return fmt.Sprintf("under `%s`, outside the task worktree's tracked tree", lyxdirs.LyxDirName), true, nil
-	case pathWithin(dotLyx, canon):
-		return fmt.Sprintf("under `%s`", lyxdirs.DotLyxDirName), true, nil
+	case pathWithin(lymReal, canon), pathWithin(lymLink, lexical):
+		return fmt.Sprintf("under `%s`, outside the task worktree's tracked tree", lymdirs.LymDirName), true, nil
+	case pathWithin(dotLym, canon):
+		return fmt.Sprintf("under `%s`", lymdirs.DotLymDirName), true, nil
 	default:
 		return reasonIgnored, true, nil
 	}

@@ -1,7 +1,7 @@
 //go:build tier1
 
 // weftskippush_integration_test.go covers the fabric CLI's content-sync verbs ("push", "sync") against one real hub with FABRIC_SKIP_PUSH set, so the detached push child does no network work:
-// the env-to-SyncOptions mapping at the CLI edge, and the sync pathspec still covering _lyx when the repo-wide config names only another path.
+// the env-to-SyncOptions mapping at the CLI edge, and the sync pathspec still covering _lym when the repo-wide config names only another path.
 // Package fabriccli_test, sharing the single TestMain in testmain_test.go.
 
 package fabriccli_test
@@ -17,8 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
@@ -32,7 +32,7 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 	// SpawnDetachedPush itself checks this env var before spawning.
 	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
-	weftConfigFile := filepath.Join(h.WeftBase, lyxdirs.LyxDirName, "placeholder")
+	weftConfigFile := filepath.Join(h.WeftBase, lymdirs.LymDirName, "placeholder")
 
 	if !t.Run("EnvMapToOption", func(t *testing.T) {
 		// The CLI edge maps FABRIC_SKIP_PUSH to SyncOptions on the push verb.
@@ -63,8 +63,8 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 		return
 	}
 
-	t.Run("SyncStillCommitsLyx_WhenRepoWidePathspecNamesOnlyAnotherPath", func(t *testing.T) {
-		// With the repo-wide fabric.yaml's pathspec naming only "_extra" (a single non-_lyx name), "lyx fabric sync" must still commit _lyx content, because the sync pathspec is built from fabricengine.PathspecNames — the routing set, which always contains "_lyx" structurally — never from a raw, unfiltered Config.Dirs() that would silently drop it.
+	t.Run("SyncStillCommitsLym_WhenRepoWidePathspecNamesOnlyAnotherPath", func(t *testing.T) {
+		// With the repo-wide fabric.yaml's pathspec naming only "_extra" (a single non-_lym name), "lym fabric sync" must still commit _lym content, because the sync pathspec is built from fabricengine.PathspecNames — the routing set, which always contains "_lym" structurally — never from a raw, unfiltered Config.Dirs() that would silently drop it.
 		// A miss here is silent, not loud.
 		hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _extra\n")
 
@@ -86,8 +86,8 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 		}
 
 		tracked := strings.TrimSpace(gitOutputCLI(t, h.PrimeRecords(), "log", "-1", "--name-only", "--pretty=format:"))
-		if !strings.Contains(tracked, filepath.ToSlash(filepath.Join(lyxdirs.LyxDirName, "placeholder"))) {
-			t.Errorf("HEAD commit on %s does not touch %s; want the sync-built pathspec to still cover _lyx even though the repo-wide config names only _extra\nfiles: %s", h.PrimeRecords(), lyxdirs.LyxDirName, tracked)
+		if !strings.Contains(tracked, filepath.ToSlash(filepath.Join(lymdirs.LymDirName, "placeholder"))) {
+			t.Errorf("HEAD commit on %s does not touch %s; want the sync-built pathspec to still cover _lym even though the repo-wide config names only _extra\nfiles: %s", h.PrimeRecords(), lymdirs.LymDirName, tracked)
 		}
 	})
 
@@ -97,11 +97,11 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 		if code, output := runFabric(t, h.PrimeWorktree(), "add", slug); code != 0 {
 			t.Fatalf("RunCLI(add) = %d; want 0\noutput: %s", code, output)
 		}
-		pairLyx := filepath.Join(h.PairRecordsSibling(slug), lyxdirs.LyxDirName)
-		if err := os.MkdirAll(pairLyx, 0o755); err != nil {
+		pairLym := filepath.Join(h.PairRecordsSibling(slug), lymdirs.LymDirName)
+		if err := os.MkdirAll(pairLym, 0o755); err != nil {
 			t.Fatalf("MkdirAll: %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(pairLyx, "placeholder"), []byte("modified in the pair"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(pairLym, "placeholder"), []byte("modified in the pair"), 0o644); err != nil {
 			t.Fatalf("WriteFile: %v", err)
 		}
 
@@ -130,8 +130,8 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 			{name: "SpawnFails", slug: "add-spawn-fails-pair", spawnErr: spawnErr, wantPushFail: true},
 		}
 		for _, tt := range tests {
-			var spawnedAt []*lyxcwd.Location
-			previous := fabriccli.SetPairPushForTest(func(l *lyxcwd.Location) error {
+			var spawnedAt []*lymcwd.Location
+			previous := fabriccli.SetPairPushForTest(func(l *lymcwd.Location) error {
 				spawnedAt = append(spawnedAt, l)
 				return tt.spawnErr
 			})

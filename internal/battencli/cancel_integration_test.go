@@ -1,6 +1,6 @@
 //go:build tier1
 
-// cancel_integration_test.go drives "lyx batten cancel" through RunCLIIn over hubforge hubs: a blocked run with no pair, a kept pair whose reconcile only judges, and a pair removed with its task branch.
+// cancel_integration_test.go drives "lym batten cancel" through RunCLIIn over hubforge hubs: a blocked run with no pair, a kept pair whose reconcile only judges, and a pair removed with its task branch.
 // It stays a white-box "package battencli" test, like the other integration files here.
 
 package battencli
@@ -59,7 +59,7 @@ func seedCancelRun(t *testing.T, h *hubforge.Hub, slug, producer string, rowStat
 	}
 }
 
-// runCancel runs "lyx batten cancel" with args from cwd and returns its output.
+// runCancel runs "lym batten cancel" with args from cwd and returns its output.
 func runCancel(t *testing.T, cwd string, args ...string) string {
 	t.Helper()
 	var out bytes.Buffer
@@ -188,7 +188,7 @@ func TestCancelIntegration_KeptPairJudgeOnly(t *testing.T) {
 	if got.Raw["pair_removed"] != false || got.Raw["claim_cleared"] != true || got.Raw["records_removed"] != true {
 		t.Errorf("envelope = %v; want the pair kept, the claim cleared and the records removed", got.Raw)
 	}
-	if want := `run "lyx batten cancel ` + slug + ` --remove" before rerunning it`; got.Raw["way_forward"] != want {
+	if want := `run "lym batten cancel ` + slug + ` --remove" before rerunning it`; got.Raw["way_forward"] != want {
 		t.Errorf("way_forward = %v; want %q", got.Raw["way_forward"], want)
 	}
 	if tip := strings.TrimSpace(mustRunGit(t, sibling, "rev-parse", "HEAD")); tip != oldTip {

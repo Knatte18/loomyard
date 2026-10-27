@@ -136,7 +136,7 @@ func TestFailBatch(t *testing.T) {
 			t.Fatal(err)
 		}
 		msg := bfe.Error()
-		for _, want := range []string{"lyx webster recover-batch 03", "x/one.go", "x/two.go", "way forward:"} {
+		for _, want := range []string{"lym webster recover-batch 03", "x/one.go", "x/two.go", "way forward:"} {
 			if !strings.Contains(msg, want) {
 				t.Errorf("error %q lacks %q", msg, want)
 			}

@@ -29,7 +29,7 @@ or does not name a type fails the whole invocation with a JSON error envelope an
 a non-zero exit.
 
 Example:
-  lyx quarry expand internal/planglyph#Repo`,
+  lym quarry expand internal/planglyph#Repo`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {

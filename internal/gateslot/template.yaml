@@ -1,16 +1,16 @@
 slots: 2  # how many gate builds and test runs the hub executes at once; a lowered count takes effect on the next acquire while a running holder finishes
-busy_quit_sec: 120  # seconds a Go test binary under lyx gate test may keep a CPU core at least 90 percent busy before it gets one SIGQUIT and dumps its goroutine stacks; 0 turns the watchdog off; raise it for a package that is CPU-bound but healthy
+busy_quit_sec: 120  # seconds a Go test binary under lym gate test may keep a CPU core at least 90 percent busy before it gets one SIGQUIT and dumps its goroutine stacks; 0 turns the watchdog off; raise it for a package that is CPU-bound but healthy
 
 # The hub's test tiers, keyed tier0, tier1, and so on; the template declares none.
-# A tier is written whole with one flow mapping: lyx config gate --set 'tiers.tier0={command: "go test -json {targets} {args}", all_targets: ./..., timeout_min: 60, counter: go-json}'
+# A tier is written whole with one flow mapping: lym config gate --set 'tiers.tier0={command: "go test -json {targets} {args}", all_targets: ./..., timeout_min: 60, counter: go-json}'
 # It holds command (with {targets}, {parallel} and {args} placeholders), timeout_min (at least 1) and counter (go-json or vstest), and all_targets when the command holds {targets}.
-# It may also hold about, dir (default .), env, parallel (at least 1, default 1), covers (lower tier numbers its command runs anyway), slots (a count of at least 1, or all; default 1), prebuilt_lyx and manual (true keeps a tier above tier0 out of lyx gate test --upto, so it runs only when --tier names it).
+# It may also hold about, dir (default .), env, parallel (at least 1, default 1), covers (lower tier numbers its command runs anyway), slots (a count of at least 1, or all; default 1), prebuilt_lym and manual (true keeps a tier above tier0 out of lym gate test --upto, so it runs only when --tier names it).
 # Three more keys: filter (the tier's own test-filter expression, allowed only when the command holds {filter}), shared_build (true runs the hub's build step first, once per call) and carry (false keeps a green run from being carried over an unchanged tree; default true).
 # Inside the mapping a value holding a brace, comma or bracket is a double-quoted string.
 tiers: {}
 
 # Gate key to the tiers that site runs and the scope it runs them over, written {tiers: [<n>...], scope: card|diff|all}.
-# The keys lyx reads: card and batch (scope card, the card's own packages), webster, parent-align and finalize (scope all, the whole tree), and webster-fix, darn-write, code-burler-fix and drift-verify (scope diff, the diff from the merge base).
+# The keys lym reads: card and batch (scope card, the card's own packages), webster, parent-align and finalize (scope all, the whole tree), and webster-fix, darn-write, code-burler-fix and drift-verify (scope diff, the diff from the merge base).
 # The scope card is only for the card and batch keys.
 # No tier list may be empty, and a tier a key names must be declared above when the gate runs.
 gates:
@@ -39,5 +39,5 @@ inert_paths: []
 refuse_raw: []
 
 # This machine's parallel for a tier, tier name to a count of at least 1; it beats the tier's own parallel.
-# Set it inside a hub with lyx config gate --layer machine --set tier_parallel.tier0=2, and in a standalone worktree, which has no machine layer, with plain lyx config gate.
+# Set it inside a hub with lym config gate --layer machine --set tier_parallel.tier0=2, and in a standalone worktree, which has no machine layer, with plain lym config gate.
 tier_parallel: {}

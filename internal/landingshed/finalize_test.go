@@ -187,12 +187,12 @@ func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 		{
 			"the squash alone names the reset", false, errors.New("remote rejected"), nil, shedengine.Stuck, "",
 			&repairSeams{holds: true, lacks: []string{squash}},
-			[]string{squash, `git reset --keep origin/main`, `lyx fabric remove me`},
+			[]string{squash, `git reset --keep origin/main`, `lym fabric remove me`},
 		},
 		{
 			"another commit listed names the rebase with the squash SHA", false, errors.New("remote rejected"), nil, shedengine.Stuck, "",
 			&repairSeams{holds: true, lacks: []string{squash, "other222"}},
-			[]string{"git rebase --onto " + squash + "~1 " + squash + " main", "git rebase --abort", `lyx fabric remove me`},
+			[]string{"git rebase --onto " + squash + "~1 " + squash + " main", "git rebase --abort", `lym fabric remove me`},
 		},
 		{"origin's parent lacking the work names no repair", false, errors.New("remote rejected"), nil, shedengine.Stuck, "", &repairSeams{lacks: []string{squash}}, nil},
 		{"a failed read of origin's parent names no repair", false, errors.New("remote rejected"), nil, shedengine.Stuck, "", &repairSeams{holdsErr: errors.New("fetch failed")}, nil},
@@ -305,11 +305,11 @@ func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 				t.Errorf("MergeOptions.Message = %q; want %q", got.Message, want)
 			}
 			trailer := deps.Config.EngineTrailers["claude"]
-			if hasLine := strings.HasSuffix(got.Message, "\n\n"+trailer+"\nLyx-Task: me"); hasLine == tt.nilEnginesRun {
+			if hasLine := strings.HasSuffix(got.Message, "\n\n"+trailer+"\nLym-Task: me"); hasLine == tt.nilEnginesRun {
 				t.Errorf("MergeOptions.Message = %q; engine line %q present = %v; want %v", got.Message, trailer, hasLine, !tt.nilEnginesRun)
 			}
-			if !strings.HasSuffix(got.Message, "\nLyx-Task: me") {
-				t.Errorf("MergeOptions.Message = %q; want it to end in the Lyx-Task trailer line", got.Message)
+			if !strings.HasSuffix(got.Message, "\nLym-Task: me") {
+				t.Errorf("MergeOptions.Message = %q; want it to end in the Lym-Task trailer line", got.Message)
 			}
 			if got.Squash != tt.squash {
 				t.Errorf("MergeOptions.Squash = %v; want %v (threaded from configuration)", got.Squash, tt.squash)
@@ -442,7 +442,7 @@ func TestFinalize_StuckReasons(t *testing.T) {
 	guardWith := func(reasons ...string) *fabricengine.MergeGuardError {
 		return &fabricengine.MergeGuardError{Reasons: reasons, Checkout: "/hub/parent", DirtyPaths: []string{"a b.go", "c,d.go"}}
 	}
-	const gotoResume = `lyx loom goto --to Finalize`
+	const gotoResume = `lym loom goto --to Finalize`
 	tests := []struct {
 		name      string
 		resolved  mergeresolve.Result
@@ -469,7 +469,7 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			report:   &fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryEnded, How: "done"}}},
 			wantHalt: true,
 			wantInReason: func(Deps) string {
-				return `its landing is done and its board entry is done; way forward: pause the run, then run "lyx cleanup --apply" from the prime`
+				return `its landing is done and its board entry is done; way forward: pause the run, then run "lym cleanup --apply" from the prime`
 			},
 		},
 		{
@@ -479,9 +479,9 @@ func TestFinalize_StuckReasons(t *testing.T) {
 				Entries:  []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryStopped, WayForward: "reconcile parent in the prime"}},
 			},
 			wantInReason: func(Deps) string {
-				return `branch parent is diverged against origin; way forward: reconcile parent in the prime; then run "lyx loom resume"`
+				return `branch parent is diverged against origin; way forward: reconcile parent in the prime; then run "lym loom resume"`
 			},
-			wantNotInReason: "lyx cleanup --apply",
+			wantNotInReason: "lym cleanup --apply",
 		},
 		{
 			name:         "parent opener error names the parent branch",
@@ -495,7 +495,7 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			mergeErr:   guardErr,
 			wantMerges: 1,
 			wantInOrder: []string{guardErr.Error(), "/hub/parent", `"a b.go", "c,d.go"`,
-				"commit or discard them in /hub/parent with plain git", gotoResume, "lyx loom resume"},
+				"commit or discard them in /hub/parent with plain git", gotoResume, "lym loom resume"},
 		},
 		{
 			name:            "twenty-five dirty paths list the first twenty and count the rest",
@@ -527,7 +527,7 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			mergeErr:        guardWith("merge already in progress", "worktree dirty"),
 			midMerge:        fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Verb: fabricengine.MergeVerbMerge, Source: "task-x"},
 			wantMerges:      1,
-			wantInOrder:     []string{"merge already in progress; worktree dirty", "/hub/parent", "merge of task-x", "lyx fabric merge --continue", "lyx fabric merge --abort", gotoResume, "lyx loom resume", "hard-resets the parent's code checkout", "reports status: FAILED and the orch runs it"},
+			wantInOrder:     []string{"merge already in progress; worktree dirty", "/hub/parent", "merge of task-x", "lym fabric merge --continue", "lym fabric merge --abort", gotoResume, "lym loom resume", "hard-resets the parent's code checkout", "reports status: FAILED and the orch runs it"},
 			wantNotInReason: `"a b.go"`,
 		},
 		{
@@ -536,7 +536,7 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			mergeErr:        guardWith("merge already in progress", "worktree dirty"),
 			midMergeErr:     errors.New("probe failed"),
 			wantMerges:      1,
-			wantInOrder:     []string{"/hub/parent", "lyx fabric merge --continue", "lyx fabric merge --abort", gotoResume, "lyx loom resume"},
+			wantInOrder:     []string{"/hub/parent", "lym fabric merge --continue", "lym fabric merge --abort", gotoResume, "lym loom resume"},
 			wantNotInReason: "merge of",
 		},
 		{
@@ -545,7 +545,7 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			mergeErr:        guardWith("merge already in progress", "worktree dirty"),
 			midMerge:        fabricengine.MidMergeState{Kind: fabricengine.MidMergeNone},
 			wantMerges:      1,
-			wantInOrder:     []string{"/hub/parent", gotoResume, "lyx loom resume"},
+			wantInOrder:     []string{"/hub/parent", gotoResume, "lym loom resume"},
 			wantNotInReason: "merge --continue",
 		},
 		{
@@ -554,7 +554,7 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			mergeErr:        guardWith("merge already in progress", "worktree dirty"),
 			midMerge:        fabricengine.MidMergeState{Kind: fabricengine.MidMergeForeign},
 			wantMerges:      1,
-			wantInOrder:     []string{"/hub/parent", gotoResume, "lyx loom resume"},
+			wantInOrder:     []string{"/hub/parent", gotoResume, "lym loom resume"},
 			wantNotInReason: "merge --continue",
 		},
 		{
@@ -562,14 +562,14 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			resolved:    mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
 			mergeErr:    guardWith("branch not synced to upstream", "worktree dirty"),
 			wantMerges:  1,
-			wantInOrder: []string{"branch not synced to upstream; worktree dirty", `"a b.go"`, "commit them on the parent branch or discard them", "push or reconcile the parent branch", gotoResume, "lyx loom resume"},
+			wantInOrder: []string{"branch not synced to upstream; worktree dirty", `"a b.go"`, "commit them on the parent branch or discard them", "push or reconcile the parent branch", gotoResume, "lym loom resume"},
 		},
 		{
 			name:        "detached head beside dirt names checking out the parent branch first",
 			resolved:    mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
 			mergeErr:    guardWith("checkout is not on a branch", "worktree dirty"),
 			wantMerges:  1,
-			wantInOrder: []string{`"a b.go"`, "check out the parent branch", "set them aside first", "commit them on the parent branch or discard them", gotoResume, "lyx loom resume"},
+			wantInOrder: []string{`"a b.go"`, "check out the parent branch", "set them aside first", "commit them on the parent branch or discard them", gotoResume, "lym loom resume"},
 		},
 		{
 			name:         "unrecognized merge error surfaces",
@@ -583,7 +583,7 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			resolved:   mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
 			recordsErr: errors.New("git refused"),
 			wantInReason: func(Deps) string {
-				return `the parent pair's run records could not be committed: git refused; way forward: run "lyx fabric commit" in the parent pair, then "lyx loom resume"`
+				return `the parent pair's run records could not be committed: git refused; way forward: run "lym fabric commit" in the parent pair, then "lym loom resume"`
 			},
 		},
 		{
@@ -892,9 +892,9 @@ func TestFinalize_LockFirstAndFastForward(t *testing.T) {
 		midMerge   fabricengine.MidMergeState
 		wantReason string
 	}{
-		{"a missing pair", errors.New("no such worktree"), nil, fabricengine.MidMergeState{}, `no live pair for parent branch "main": no such worktree; way forward: re-create the parent pair, then run "lyx loom resume"`},
+		{"a missing pair", errors.New("no such worktree"), nil, fabricengine.MidMergeState{}, `no live pair for parent branch "main": no such worktree; way forward: re-create the parent pair, then run "lym loom resume"`},
 		{"a dirty code checkout", nil, []string{"a.go"}, fabricengine.MidMergeState{}, DirtyParentRefusal("/hub/parent", []string{"a.go"})},
-		{"a pair mid-merge", nil, nil, fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked}, `a merge is in progress in the parent pair of "main"; way forward: finish or abort that merge in the parent pair, then run "lyx loom resume"`},
+		{"a pair mid-merge", nil, nil, fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked}, `a merge is in progress in the parent pair of "main"; way forward: finish or abort that merge in the parent pair, then run "lym loom resume"`},
 	}
 	states := []struct {
 		name        string
@@ -938,9 +938,9 @@ func TestFinalize_LockFirstAndFastForward(t *testing.T) {
 		ff         fabricengine.FastForwardResult
 		wantReason string
 	}{
-		{"a behind parent that is no longer a fast-forward", tipsOf(fabricengine.ParentBehind), fabricengine.FastForwardResult{Refusal: fabricengine.FastForwardNotFastForward}, `the upstream of "main" is no longer a fast-forward of the parent pair; way forward: reconcile "main" with its upstream in its own pair, then run "lyx loom resume"`},
-		{"a parent ahead of its upstream", tipsOf(fabricengine.ParentAhead), fabricengine.FastForwardResult{}, `the local parent branch "main" is ahead of its upstream; way forward: push or reconcile "main" in its own pair, then run "lyx loom resume"`},
-		{"a parent diverged from its upstream", tipsOf(fabricengine.ParentDiverged), fabricengine.FastForwardResult{}, `the local parent branch "main" has diverged from its upstream; way forward: push or reconcile "main" in its own pair, then run "lyx loom resume"`},
+		{"a behind parent that is no longer a fast-forward", tipsOf(fabricengine.ParentBehind), fabricengine.FastForwardResult{Refusal: fabricengine.FastForwardNotFastForward}, `the upstream of "main" is no longer a fast-forward of the parent pair; way forward: reconcile "main" with its upstream in its own pair, then run "lym loom resume"`},
+		{"a parent ahead of its upstream", tipsOf(fabricengine.ParentAhead), fabricengine.FastForwardResult{}, `the local parent branch "main" is ahead of its upstream; way forward: push or reconcile "main" in its own pair, then run "lym loom resume"`},
+		{"a parent diverged from its upstream", tipsOf(fabricengine.ParentDiverged), fabricengine.FastForwardResult{}, `the local parent branch "main" has diverged from its upstream; way forward: push or reconcile "main" in its own pair, then run "lym loom resume"`},
 	}
 	for _, move := range moves {
 		t.Run(move.name+" is Stuck before any merge", func(t *testing.T) {

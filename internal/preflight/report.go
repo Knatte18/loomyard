@@ -11,7 +11,7 @@ type CheckID string
 // Geometry is tier 1 (is there a resolvable worktree with a main worktree); worktree-clean is
 // tier 2's cleanliness check; fabric-ready/fabric-sync/junction are tier 2's fabric readiness and
 // sync checks.
-// There is deliberately no at-the-anchor check: the cwd gate in lyxcwd.Resolve already guarantees
+// There is deliberately no at-the-anchor check: the cwd gate in lymcwd.Resolve already guarantees
 // the property, so a repo anchored at a subpath is a legal geometry rather than a misinvocation.
 const (
 	// CheckGeometry fails when the cwd is not inside a git repository,

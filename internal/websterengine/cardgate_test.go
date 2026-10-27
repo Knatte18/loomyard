@@ -27,15 +27,15 @@ func gateTestConfig() gateslot.Config {
 }
 
 func gateCard(groups ...planparser.TargetGroup) planparser.Card {
-	return planparser.Card{Number: 1, Slug: "gate", SourcePath: "_lyx/plan/01-gate.md", TargetGroups: groups}
+	return planparser.Card{Number: 1, Slug: "gate", SourcePath: "_lym/plan/01-gate.md", TargetGroups: groups}
 }
 
 func TestCardGateCommand(t *testing.T) {
 	t.Parallel()
 
 	const (
-		lintComments = "lyx loom lint-comments"
-		lintPattern  = "lyx loom lint-pattern"
+		lintComments = "lym loom lint-comments"
+		lintPattern  = "lym loom lint-pattern"
 	)
 
 	t.Run("a card's gate call is followed by the two lints", func(t *testing.T) {
@@ -44,18 +44,18 @@ func TestCardGateCommand(t *testing.T) {
 		if err != nil {
 			t.Fatalf("cardGateCommand() error = %v; want nil", err)
 		}
-		want := []string{"lyx gate test --wait --gate card --card 1-gate", lintComments, lintPattern}
+		want := []string{"lym gate test --wait --gate card --card 1-gate", lintComments, lintPattern}
 		if !slices.Equal(got, want) {
 			t.Errorf("cardGateCommand() = %q; want %q", got, want)
 		}
 	})
 
-	t.Run("a dangling card list is refused naming lyx config gate", func(t *testing.T) {
+	t.Run("a dangling card list is refused naming lym config gate", func(t *testing.T) {
 		t.Parallel()
 		config := gateTestConfig()
 		config.Gates["card"] = gateslot.GateKey{Tiers: []int{7}, Scope: "card"}
-		if _, err := cardGateCommand(gateCard(), config); err == nil || !strings.Contains(err.Error(), "lyx config gate") {
-			t.Errorf("cardGateCommand() error = %v; want a refusal naming lyx config gate", err)
+		if _, err := cardGateCommand(gateCard(), config); err == nil || !strings.Contains(err.Error(), "lym config gate") {
+			t.Errorf("cardGateCommand() error = %v; want a refusal naming lym config gate", err)
 		}
 	})
 }
@@ -70,19 +70,19 @@ func numberedGateCard(number int, groups ...planparser.TargetGroup) planparser.C
 func TestRenderCardGates_OneBulletPerCardWithAStepSubBulletEach(t *testing.T) {
 	t.Parallel()
 
-	cards := []planparser.Card{gateCard(), {Number: 2, Slug: "docs", SourcePath: "_lyx/plan/02-docs.md"}}
-	got, err := renderCardGates(cards, "_lyx/plan", gateTestConfig())
+	cards := []planparser.Card{gateCard(), {Number: 2, Slug: "docs", SourcePath: "_lym/plan/02-docs.md"}}
+	got, err := renderCardGates(cards, "_lym/plan", gateTestConfig())
 	if err != nil {
 		t.Fatalf("renderCardGates() error = %v; want nil", err)
 	}
-	want := "- `_lyx/plan/01-gate.md`:\n" +
-		"  - `lyx gate test --wait --gate card --card 1-gate`\n" +
-		"  - `lyx loom lint-comments`\n" +
-		"  - `lyx loom lint-pattern`\n" +
-		"- `_lyx/plan/02-docs.md`:\n" +
-		"  - `lyx gate test --wait --gate card --card 2-docs`\n" +
-		"  - `lyx loom lint-comments`\n" +
-		"  - `lyx loom lint-pattern`"
+	want := "- `_lym/plan/01-gate.md`:\n" +
+		"  - `lym gate test --wait --gate card --card 1-gate`\n" +
+		"  - `lym loom lint-comments`\n" +
+		"  - `lym loom lint-pattern`\n" +
+		"- `_lym/plan/02-docs.md`:\n" +
+		"  - `lym gate test --wait --gate card --card 2-docs`\n" +
+		"  - `lym loom lint-comments`\n" +
+		"  - `lym loom lint-pattern`"
 	if got != want {
 		t.Errorf("renderCardGates() =\n%s\nwant\n%s", got, want)
 	}
@@ -98,18 +98,18 @@ func TestRenderBatchGate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("renderBatchGate() error = %v; want nil", err)
 		}
-		want := "- `lyx gate test --wait --gate batch --card 1-gate --card 2-gate`"
+		want := "- `lym gate test --wait --gate batch --card 1-gate --card 2-gate`"
 		if got != want {
 			t.Errorf("renderBatchGate() =\n%s\nwant\n%s", got, want)
 		}
 	})
 
-	t.Run("a dangling batch list is refused naming lyx config gate", func(t *testing.T) {
+	t.Run("a dangling batch list is refused naming lym config gate", func(t *testing.T) {
 		t.Parallel()
 		config := gateTestConfig()
 		delete(config.Gates, "batch")
-		if _, err := renderBatchGate([]planparser.Card{numberedGateCard(1)}, config); err == nil || !strings.Contains(err.Error(), "lyx config gate") {
-			t.Errorf("renderBatchGate() error = %v; want a refusal naming lyx config gate", err)
+		if _, err := renderBatchGate([]planparser.Card{numberedGateCard(1)}, config); err == nil || !strings.Contains(err.Error(), "lym config gate") {
+			t.Errorf("renderBatchGate() error = %v; want a refusal naming lym config gate", err)
 		}
 	})
 }
@@ -144,8 +144,8 @@ func TestRenameBoundary_BatchesCheckAndGateTheirOwnTree(t *testing.T) {
 	}
 
 	for i, tree := range []struct{ root, wantGate string }{
-		{firstTree, "- `lyx gate test --wait --gate batch --card 1-gate --card 2-gate`"},
-		{secondTree, "- `lyx gate test --wait --gate batch --card 3-gate`"},
+		{firstTree, "- `lym gate test --wait --gate batch --card 1-gate --card 2-gate`"},
+		{secondTree, "- `lym gate test --wait --gate batch --card 3-gate`"},
 	} {
 		findings, err := planglyph.DoneChecks(plan, batches[i].Cards, tree.root)
 		if err != nil {

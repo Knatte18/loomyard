@@ -8,7 +8,7 @@
 // genuinely empty weft remote used to leave the weft primary sitting on a branch that did not
 // exist. Nothing later filled it in — the clone-time commit lands on _board's own unsuffixed branch
 // — so every verb that forks a new pair from the primary died on
-// `fatal: invalid reference: <branch>-weft`, `lyx fabric add` included, which is the example both
+// `fatal: invalid reference: <branch>-weft`, `lym fabric add` included, which is the example both
 // the parent command and `add` document.
 //
 // Fixture helpers (makeBareRemote, makeEmptyBareRemote) are reused from clone_adopt_test.go;
@@ -22,7 +22,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // TestCloneHub_EmptyWeftRemoteLeavesPrimaryBranchBorn clones against an empty weft remote and
@@ -86,7 +86,7 @@ func TestCloneHub_NonEmptyWeftRemoteBranchUnchanged(t *testing.T) {
 	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 		WeftURL: weftRemote,
 		WarpURL: warpRemote,
-		// The weft fixture carries a commit but no .lyx-anchor, so the old-order bootstrap guard
+		// The weft fixture carries a commit but no .lym-anchor, so the old-order bootstrap guard
 		// would refuse it; this test is about the branch, not the guard.
 		ForceBootstrap: true,
 		Shortname:      "tst",
@@ -104,7 +104,7 @@ func TestCloneHub_NonEmptyWeftRemoteBranchUnchanged(t *testing.T) {
 		t.Errorf("parent of refs/heads/%s = %s; want the cloned HEAD %s — the unborn repair must not add a commit on a non-empty remote",
 			suffixed, suffixedParentSHA, clonedSHA)
 	}
-	if changed := gitOutput(t, weftPrimary, "diff", "--name-only", clonedSHA, "refs/heads/"+suffixed); changed != lyxcwd.AnchorFileName {
-		t.Errorf("files the clone changed on refs/heads/%s = %q; want only %q", suffixed, changed, lyxcwd.AnchorFileName)
+	if changed := gitOutput(t, weftPrimary, "diff", "--name-only", clonedSHA, "refs/heads/"+suffixed); changed != lymcwd.AnchorFileName {
+		t.Errorf("files the clone changed on refs/heads/%s = %q; want only %q", suffixed, changed, lymcwd.AnchorFileName)
 	}
 }

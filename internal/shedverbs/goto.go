@@ -64,7 +64,7 @@ func gotoCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 			by := spec.Caller
 			if flagBy, _ := cmd.Flags().GetString("by"); flagBy != "" {
 				if flagBy != shedengine.CallerShed {
-					clihelp.SetExit(ctx, output.Err(out, "goto --by takes only "+shedengine.CallerShed+", the label of lyx's own automatic steps; way forward: re-run goto without --by"))
+					clihelp.SetExit(ctx, output.Err(out, "goto --by takes only "+shedengine.CallerShed+", the label of lym's own automatic steps; way forward: re-run goto without --by"))
 					return nil
 				}
 				by = flagBy
@@ -100,7 +100,7 @@ func gotoCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 		},
 	}
 	cmd.Flags().String("to", "", "the producer row to move the run onto")
-	cmd.Flags().String("by", "", "the caller label lyx's own automatic steps record; accepts "+shedengine.CallerShed+" alone")
+	cmd.Flags().String("by", "", "the caller label lym's own automatic steps record; accepts "+shedengine.CallerShed+" alone")
 	_ = cmd.Flags().MarkHidden("by")
 	return cmd
 }

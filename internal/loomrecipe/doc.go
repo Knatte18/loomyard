@@ -1,8 +1,7 @@
 // Package loomrecipe owns loom's recipe-backed producer-list construction and is the drop-in
 // replacement for loomshed.New. internal/loomcli is its only production caller.
 //
-// It takes every absolute path from its caller and has no direct production import of
-// internal/lyxcwd, per the Told-Geometry Invariant.
+// It takes every absolute path from its caller and has no direct production import of internal/lymcwd, per the Told-Geometry Invariant.
 //
 // The bounce budget of every review segment (a segment holding a Bouncer row) is not declared in the loom recipe.
 // It is the segment's own budget, 0 included:

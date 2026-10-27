@@ -133,13 +133,13 @@ func ConfigSpec() configengine.Spec {
 }
 
 // LoadConfig loads and unmarshals the board module configuration strictly through the hub-wide layer stack under dirs.
-// An absent `_lyx/` under the hub's board dir and an absent board.yaml under a present one both refuse naming the file and the `lyx fabric reconcile` way forward.
+// An absent `_lym/` under the hub's board dir and an absent board.yaml under a present one both refuse naming the file and the `lym fabric reconcile` way forward.
 // Type labels that would share a handle letter, with each other or with tasks, refuse naming the label to rename.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	spec := ConfigSpec()
 	spec.Name = module
 	configFile, _ := configengine.LayerFile(dirs, spec, configengine.BaseLayer(dirs, spec))
-	notInitialized := fmt.Errorf("board config %s not initialized; run \"lyx fabric reconcile\"; a session lyx refuses the verb from reports status: FAILED and the orch runs it", configFile)
+	notInitialized := fmt.Errorf("board config %s not initialized; run \"lym fabric reconcile\"; a session lym refuses the verb from reports status: FAILED and the orch runs it", configFile)
 	if _, err := os.Stat(configFile); errors.Is(err, fs.ErrNotExist) {
 		return Config{}, notInitialized
 	}
@@ -214,7 +214,7 @@ func decodeLabels(key string, node *yaml.Node) ([]Label, error) {
 
 // OpenHub opens the board of the hub at hubPath.
 // It reads the config from the hub's own board directory and points Path at it, so no worktree link is followed,
-// and applies ApplySkipEnv so render and sync behave as they do for `lyx board`.
+// and applies ApplySkipEnv so render and sync behave as they do for `lym board`.
 // It is told only a hub path, so it loads with no anchor and therefore no local layer.
 func OpenHub(hubPath string) (*Board, error) {
 	boardDir := fabricengine.BoardDir(hubPath)

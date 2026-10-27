@@ -50,7 +50,7 @@ func TestFinalize_LockRecheckAndLanding(t *testing.T) {
 		_, found, _ := fx.deps.Lock.Store.Read("main")
 		return found
 	}
-	haltFragments := []string{"no longer names this run", "an owner pause", "`lyx batten lock release`", "`lyx loom resume` once no owner pause stands"}
+	haltFragments := []string{"no longer names this run", "an owner pause", "`lym batten lock release`", "`lym loom resume` once no owner pause stands"}
 
 	releases := []struct {
 		name    string
@@ -142,7 +142,7 @@ func TestFinalize_LockRecheckAndLanding(t *testing.T) {
 
 		outcome, ptr := fx.call(t)
 
-		requireHalt(t, outcome, ptr, "is unreadable before the landing", `"lyx batten lock release main"`)
+		requireHalt(t, outcome, ptr, "is unreadable before the landing", `"lym batten lock release main"`)
 		if len(fx.merger.calls) != 0 {
 			t.Errorf("parent-side merges = %d; want none after the halt", len(fx.merger.calls))
 		}

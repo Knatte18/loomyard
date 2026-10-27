@@ -1,4 +1,4 @@
-// peers.go implements the `peers` loom subtree: `lyx loom peers`, which lists the other in-flight runs of the hub beside the caller's own, and `lyx loom peers show`, which prints one peer's decision record or plan.
+// peers.go implements the `peers` loom subtree: `lym loom peers`, which lists the other in-flight runs of the hub beside the caller's own, and `lym loom peers show`, which prints one peer's decision record or plan.
 // An agent in one pair uses them to compare its run with the others and with the commits that landed on its parent, without forming another worktree's path itself.
 //
 // The peer set is every board task whose status is a run status, whatever its state, with the caller's own slug left out.
@@ -8,7 +8,7 @@
 //
 // The verbs read only the board, the peers' records and git history through `internal/fabricengine`, and write nothing.
 // The group carries its own PersistentPreRunE, and the loom parent's pre-run skips it, for the reason review.go gives.
-// The location resolves through lyxcwd, not internal/cliwire, since every loom verb is hub-only.
+// The location resolves through lymcwd, not internal/cliwire, since every loom verb is hub-only.
 
 package loomcli
 
@@ -26,7 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -39,13 +39,13 @@ const (
 	peersRecordDecision = "decision"
 	peersRecordPlan     = "plan"
 
-	peersWayList = `"lyx loom peers" lists the in-flight peers`
+	peersWayList = `"lym loom peers" lists the in-flight peers`
 )
 
 // peersNoBoardMessage is the refusal of both verbs in a hub with no board directory.
 const peersNoBoardMessage = "loom: peers: this hub has no board, so no run is in flight beside this one; way forward: nothing to compare, and a standalone run's review stays with its parent"
 
-// peerLine is one in-flight peer as `lyx loom peers` prints it.
+// peerLine is one in-flight peer as `lym loom peers` prints it.
 type peerLine struct {
 	Slug   string `json:"slug"`
 	Title  string `json:"title"`
@@ -112,14 +112,14 @@ func runStatusTasks(tasks []boardengine.Task) []boardengine.Task {
 func peersVerb(out io.Writer, deps peersDeps) int {
 	tasks, hasBoard, err := deps.board()
 	if err != nil {
-		return output.Err(out, fmt.Sprintf("loom: peers: read the board: %s; way forward: fix the board the message names, then re-run \"lyx loom peers\"", err))
+		return output.Err(out, fmt.Sprintf("loom: peers: read the board: %s; way forward: fix the board the message names, then re-run \"lym loom peers\"", err))
 	}
 	if !hasBoard {
 		return output.Err(out, peersNoBoardMessage)
 	}
 	caller, err := deps.caller()
 	if err != nil {
-		return output.Err(out, fmt.Sprintf("loom: peers: resolve the caller: %s; way forward: re-run \"lyx loom peers\" from a worktree of this hub", err))
+		return output.Err(out, fmt.Sprintf("loom: peers: resolve the caller: %s; way forward: re-run \"lym loom peers\" from a worktree of this hub", err))
 	}
 
 	peers := []peerLine{}
@@ -151,7 +151,7 @@ func peersVerb(out io.Writer, deps peersDeps) int {
 		fields["own_row"] = ownRow
 		commits, err := deps.parentCommits()
 		if err != nil {
-			return output.Err(out, fmt.Sprintf("loom: peers: read the parent's commits: %s; way forward: fix the pair's origin record or its parent branch, then re-run \"lyx loom peers\"", err))
+			return output.Err(out, fmt.Sprintf("loom: peers: read the parent's commits: %s; way forward: fix the pair's origin record or its parent branch, then re-run \"lym loom peers\"", err))
 		}
 		if commits == nil {
 			commits = []string{}
@@ -203,13 +203,13 @@ func peersShowVerb(out io.Writer, deps peersDeps, slug, record string) int {
 		return refuse("read the %s of %q: %s; way forward: %s", record, slug, err, peersWayList)
 	}
 	if !found {
-		return refuse("%q has no %s yet; way forward: \"lyx loom peers\" shows which records exist", slug, record)
+		return refuse("%q has no %s yet; way forward: \"lym loom peers\" shows which records exist", slug, record)
 	}
 	return output.Ok(out, map[string]any{"slug": slug, "record": record, "content": content})
 }
 
 // callerSlug returns the slug of the caller's own task pair, empty when location is the prime.
-func callerSlug(location *lyxcwd.Location) (string, error) {
+func callerSlug(location *lymcwd.Location) (string, error) {
 	prime, err := fabricengine.PrimeName(location)
 	if err != nil {
 		return "", err
@@ -221,7 +221,7 @@ func callerSlug(location *lyxcwd.Location) (string, error) {
 }
 
 // peerRecordPath returns the path of the peer's record of the given kind, assuming record is a known kind.
-func peerRecordPath(peer *lyxcwd.Location, record string) string {
+func peerRecordPath(peer *lymcwd.Location, record string) string {
 	if record == peersRecordDecision {
 		return loomengine.DiscussionDecisionRecord(peer)
 	}
@@ -243,7 +243,7 @@ func recordExists(path string) (bool, error) {
 
 // hubPeersDeps fills peersDeps for the resolved location from the hub's board, its pairs' origin records, git history and run records.
 // The loom rows come from the recipe the running binary embeds; a parse failure there is a defect of the binary, so it panics.
-func hubPeersDeps(location *lyxcwd.Location) peersDeps {
+func hubPeersDeps(location *lymcwd.Location) peersDeps {
 	loomRows, err := loomrecipe.RowNames(shedrun.RecipeLoom)
 	if err != nil {
 		panic(err)
@@ -289,7 +289,7 @@ func hubPeersDeps(location *lyxcwd.Location) peersDeps {
 			return pair.CommitLog(base, parent)
 		},
 		readRecord: func(slug, record string) (string, bool, error) {
-			peer, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(location, slug))
+			peer, err := lymcwd.ResolveWorktree(fabricengine.WorktreePath(location, slug))
 			if err != nil {
 				return "", false, err
 			}
@@ -306,7 +306,7 @@ func hubPeersDeps(location *lyxcwd.Location) peersDeps {
 }
 
 // readPeerLine fills the parent branch, changed paths and record flags of one peer's line, naming in Unreadable every part it could not read.
-func readPeerLine(location *lyxcwd.Location, slug string) peerLine {
+func readPeerLine(location *lymcwd.Location, slug string) peerLine {
 	var line peerLine
 	unreadable := func(part string, err error) {
 		line.Unreadable = append(line.Unreadable, fmt.Sprintf("%s: %s", part, err))
@@ -317,7 +317,7 @@ func readPeerLine(location *lyxcwd.Location, slug string) peerLine {
 		unreadable("pair", fmt.Errorf("no worktree at %s", filepath.ToSlash(root)))
 		return line
 	}
-	peer, err := lyxcwd.ResolveWorktree(root)
+	peer, err := lymcwd.ResolveWorktree(root)
 	if err != nil {
 		unreadable("pair", err)
 		return line
@@ -377,11 +377,11 @@ type peersState struct {
 
 // resolveDeps resolves the invoking cwd to a location and fills the verbs' deps from it.
 func (s *peersState) resolveDeps(cmd *cobra.Command) error {
-	cwd, err := lyxcwd.CwdFrom(cmd.Context())
+	cwd, err := lymcwd.CwdFrom(cmd.Context())
 	if err != nil {
 		return err
 	}
-	location, err := lyxcwd.Resolve(cwd)
+	location, err := lymcwd.Resolve(cwd)
 	if err != nil {
 		return err
 	}
@@ -418,11 +418,11 @@ own_row, this run's own position by the same rule, and lists the commits on
 this worktree's parent branch since it forked, as short SHA and subject,
 newest first. It reads and writes nothing else, and refuses in a hub with no board.
 
-Outside a lyx worktree, a bare call lists the verbs instead.
+Outside a lym worktree, a bare call lists the verbs instead.
 
 Example:
-  lyx loom peers
-  lyx loom peers show <slug> --record decision`,
+  lym loom peers
+  lym loom peers show <slug> --record decision`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -450,7 +450,7 @@ unknown record name and a record the peer does not have yet, each naming its
 way forward.
 
 Example:
-  lyx loom peers show <slug> --record plan`,
+  lym loom peers show <slug> --record plan`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {

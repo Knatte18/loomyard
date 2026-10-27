@@ -52,7 +52,7 @@ func TestRemove_FinishesPairWhoseTaskWorktreeWasRemovedByHand(t *testing.T) {
 	weftRoot := mustRecordsRepoRoot(t, l)
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 
-	rel := "_lyx/shed/" + slug + "/drive-reports/stop.md"
+	rel := "_lym/shed/" + slug + "/drive-reports/stop.md"
 	writeFile(t, filepath.Join(fabricengine.RecordsWorktreePath(l, slug), filepath.FromSlash(rel)), "stopped\n")
 	warpTip := gitkit.RevParse(t, l.WorktreePath(), slug)
 	removeByHand(t, fabricengine.WorktreePath(l, slug))

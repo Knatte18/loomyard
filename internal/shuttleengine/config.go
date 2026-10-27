@@ -138,7 +138,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	return cfg, nil
 }
 
-// MigrateConfig raises a below-floor or null poll_interval_ms in a shuttle.yaml document to the poll floor, for lyx config reconcile.
+// MigrateConfig raises a below-floor or null poll_interval_ms in a shuttle.yaml document to the poll floor, for lym config reconcile.
 // It also renames a legacy claude_deny_python to deny_python, and returns the rewritten bytes with one line per rewrite.
 // Everything else is carried through with its comments;
 // the loader never calls it.

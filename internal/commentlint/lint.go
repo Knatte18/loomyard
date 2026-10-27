@@ -21,7 +21,7 @@ type Finding struct {
 
 var (
 	generatedPattern   = regexp.MustCompile(`(?m)^// Code generated .* DO NOT EDIT\.?\s*$`)
-	directivePattern   = regexp.MustCompile(`^(go:|lyx:|testtiming:|nolint\b)`)
+	directivePattern   = regexp.MustCompile(`^(go:|lym:|testtiming:|nolint\b)`)
 	headingPattern     = regexp.MustCompile(`^#(\s|$)`)
 	listItemPattern    = regexp.MustCompile(`^([-*]\s|[0-9]{1,3}[.)]\s)`)
 	sentenceEndPattern = regexp.MustCompile("[.!?:][)\"'`]*$")

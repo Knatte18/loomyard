@@ -155,7 +155,7 @@ func (f *Fabric) MergeStageTracked() (res StageResult, err error) {
 // MergeUntrackedFiles returns the untracked, non-ignored paths in the task worktree's warp checkout, worktree-relative, so a caller never names a fabric side.
 // The weft is not read: it is no merge participant, so an untracked weft file can never enter the merge commit,
 // and listing one would only halt a merge that would have been right.
-// Junctioned `_lyx` and `.lyx` sit in `.git/info/exclude`, so they never appear.
+// Junctioned `_lym` and `.lym` sit in `.git/info/exclude`, so they never appear.
 // It returns an empty, never nil, slice when there are none.
 func (f *Fabric) MergeUntrackedFiles() ([]string, error) {
 	untracked, err := f.code.UntrackedFiles()

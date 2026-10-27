@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -27,14 +27,14 @@ func TestRegisterRunProcess(t *testing.T) {
 	roles := []struct {
 		name     string
 		role     string
-		register func(loc *lyxcwd.Location)
+		register func(loc *lymcwd.Location)
 	}{
-		{"Loop", runproc.RoleLoop, func(loc *lyxcwd.Location) { loopSpecFor(loc, loc.WorktreeName, 0, nil).OnStart() }},
-		{"Driver", runproc.RoleDriver, func(loc *lyxcwd.Location) { registerRunProcess(loc, loc.WorktreeName, runproc.RoleDriver) }},
+		{"Loop", runproc.RoleLoop, func(loc *lymcwd.Location) { loopSpecFor(loc, loc.WorktreeName, 0, nil).OnStart() }},
+		{"Driver", runproc.RoleDriver, func(loc *lymcwd.Location) { registerRunProcess(loc, loc.WorktreeName, runproc.RoleDriver) }},
 	}
 	for _, tt := range roles {
 		t.Run(tt.name, func(t *testing.T) {
-			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "slug-1", AnchorRel: "."}
+			loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "slug-1", AnchorRel: "."}
 
 			tt.register(loc)
 
@@ -48,7 +48,7 @@ func TestRegisterRunProcess(t *testing.T) {
 		})
 	}
 
-	blocked := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "slug-2", AnchorRel: "."}
+	blocked := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "slug-2", AnchorRel: "."}
 	blockedDir := fabricengine.RunProcDir(blocked.HubPath)
 	if err := os.MkdirAll(filepath.Dir(blockedDir), 0o755); err != nil {
 		t.Fatalf("MkdirAll() = %v; want nil", err)

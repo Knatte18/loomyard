@@ -43,7 +43,7 @@ type ReportArchivedError struct {
 
 // Error states why the report could not be attributed, where it was archived, and the way forward.
 func (e *ReportArchivedError) Error() string {
-	return fmt.Sprintf("webster: batch %s's report could not be attributed: %v; report archived to %s; way forward: lyx webster begin-batch %02d re-drives the batch", e.Batch, e.Cause, e.ArchivedTo, e.Number)
+	return fmt.Sprintf("webster: batch %s's report could not be attributed: %v; report archived to %s; way forward: lym webster begin-batch %02d re-drives the batch", e.Batch, e.Cause, e.ArchivedTo, e.Number)
 }
 
 // Unwrap returns ErrReportArchived and Cause, so errors.Is matches either.
@@ -73,7 +73,7 @@ type LaterTargetRemovedError struct {
 
 // Error names each removed symbol and the later card naming it, and the way forward through the batch's fork.
 func (e *LaterTargetRemovedError) Error() string {
-	return fmt.Sprintf("%s: batch %s: %s; way forward: send this message to the batch's fork, which either restores each name and commits, or lists each rename under its report's renames, and then rewrites its report with its head; then run `lyx webster record-batch %02d` again, which records the batch without handing it back a second time",
+	return fmt.Sprintf("%s: batch %s: %s; way forward: send this message to the batch's fork, which either restores each name and commits, or lists each rename under its report's renames, and then rewrites its report with its head; then run `lym webster record-batch %02d` again, which records the batch without handing it back a second time",
 		ErrLaterTargetRemoved, e.Batch, strings.Join(e.Reasons, "; "), e.Number)
 }
 
@@ -113,7 +113,7 @@ func deleteReferencedWayForward(number int, uncheckable bool) string {
 	if uncheckable {
 		return freshRestartSteps(stepRun)
 	}
-	return fmt.Sprintf("move the delete to a card after the one that still references it, run `lyx webster rebaseline --card NN` naming each card you edited, then `lyx webster recover-batch %02d`", number)
+	return fmt.Sprintf("move the delete to a card after the one that still references it, run `lym webster rebaseline --card NN` naming each card you edited, then `lym webster recover-batch %02d`", number)
 }
 
 // glyphRejectedWayForward is the way forward for a batch whose card names a target quarry rejects before resolving it.
@@ -122,7 +122,7 @@ func glyphRejectedWayForward(number int, uncheckable bool) string {
 	if uncheckable {
 		return freshRestartSteps(stepRun)
 	}
-	return fmt.Sprintf("amend the card's target to a spelling `lyx quarry resolve` answers, run `lyx webster rebaseline --card NN` naming each card you edited, then `lyx webster recover-batch %02d`", number)
+	return fmt.Sprintf("amend the card's target to a spelling `lym quarry resolve` answers, run `lym webster rebaseline --card NN` naming each card you edited, then `lym webster recover-batch %02d`", number)
 }
 
 // laterDeleteReferenceReasons returns one reason per blocking reference an unbegun card still has to a symbol the cards in own delete.
@@ -188,7 +188,7 @@ func failCardNotDone(in cardNotDoneInputs, cause error) (*BatchFailedError, erro
 	if deleteNotDone {
 		referenced, err := laterDeleteReferenceReasons(in.Plan, in.Batches, in.State, in.Cards, in.Geom)
 		if err != nil {
-			return nil, fmt.Errorf("%w; way forward: transient, re-run `lyx webster %s %d`", err, in.Verb, in.Number)
+			return nil, fmt.Errorf("%w; way forward: transient, re-run `lym webster %s %d`", err, in.Verb, in.Number)
 		}
 		if len(referenced) > 0 {
 			reasons = append(append([]string(nil), reasons...), referenced...)
@@ -276,7 +276,7 @@ func archiveUnattributable(deps RecordDeps, number int, slug string, cause error
 		return nil, err
 	}
 	if archived == "" {
-		return nil, fmt.Errorf("%w; way forward: lyx webster begin-batch %02d re-drives the batch", cause, number)
+		return nil, fmt.Errorf("%w; way forward: lym webster begin-batch %02d re-drives the batch", cause, number)
 	}
 	return &RecordResult{ArchivedReport: archived}, &ReportArchivedError{
 		Number:     number,
@@ -288,7 +288,7 @@ func archiveUnattributable(deps RecordDeps, number int, slug string, cause error
 
 // RecordBatch drives one record-batch call: the bracket-discipline check, incremental fork audit, fork-audit finding dispositions, transcript-attribution advance, report parse, and digest persistence.
 // Each audit finding is dispositioned once per run: a policy finding is recorded as a warning (after its batch's card verify commands pass, when the report is OK),
-// and a correctness finding, or a policy finding whose evidence re-run fails, fails the batch and returns a *BatchFailedError naming `lyx webster recover-batch`, alongside a RecordResult carrying the failed digest.
+// and a correctness finding, or a policy finding whose evidence re-run fails, fails the batch and returns a *BatchFailedError naming `lym webster recover-batch`, alongside a RecordResult carrying the failed digest.
 // A NEEDS_PARENT report records the batch waiting with its need and archives the report, and a call on a waiting batch refuses naming the resume step.
 // An OK report whose batch removed a symbol a later card names, with no rename reported for it, returns *LaterTargetRemovedError once per bracket, leaving the batch open for its fork.
 // The caller persists deps.State via SaveState once RecordBatch returns, whether or not it returned a *BatchFailedError.
@@ -321,7 +321,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 				return res, err
 			}
 		}
-		way := fmt.Sprintf("lyx webster recover-batch %02d", batchNumber)
+		way := fmt.Sprintf("lym webster recover-batch %02d", batchNumber)
 		if bs.Status == DigestStatusDone {
 			way = "continue with the next batch"
 		}
@@ -333,7 +333,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 
 	// Recovery batches are consumed by recover-batch, not record-batch.
 	if bs.Kind != "fork" {
-		return nil, fmt.Errorf("webster: batch %d is a %s batch, not a fork batch — its report is consumed by `lyx webster recover-batch %d`, never record-batch", batchNumber, bs.Kind, batchNumber)
+		return nil, fmt.Errorf("webster: batch %d is a %s batch, not a fork batch — its report is consumed by `lym webster recover-batch %d`, never record-batch", batchNumber, bs.Kind, batchNumber)
 	}
 
 	batch, err := findBatch(deps.Batches, batchNumber)
@@ -498,7 +498,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 
 	report, err := ParseReport(reportPath)
 	if err != nil {
-		return nil, fmt.Errorf("%w; way forward: `lyx webster recover-batch %d` archives the malformed report and re-drives the batch", err, number)
+		return nil, fmt.Errorf("%w; way forward: `lym webster recover-batch %d` archives the malformed report and re-drives the batch", err, number)
 	}
 
 	// The run record holds full SHAs only, so an abbreviated head_sha is resolved before its first use.
@@ -975,7 +975,7 @@ func postBatchChecks(in postBatchInputs) (deviations, warnings []string, err err
 	// Resolve and are unaffected. delta itself is the zero value on error, so BindHandles correctly
 	// cannot confirm any handle bound and reports bind-count-mismatch for every card that declared
 	// one — an unconfirmed Create is exactly a not-done card.
-	// The floor error of a git below lyx's minimum is no quarry degrade: it stops the batch here as any other non-quarry error does.
+	// The floor error of a git below lym's minimum is no quarry degrade: it stops the batch here as any other non-quarry error does.
 	delta, deltaErr := index.Delta(in.Geom.WorktreeRoot, in.StartSHA, in.HeadSHA)
 	if deltaErr != nil && !errors.Is(deltaErr, planindex.ErrQuarryUnavailable) {
 		return nil, nil, deltaErr

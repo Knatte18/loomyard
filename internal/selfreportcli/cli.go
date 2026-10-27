@@ -4,8 +4,8 @@
 // fabric module pattern for local-flag access inside a cobra RunE.
 
 // Package selfreportcli provides the cobra command tree for filing LoomYard bugs and enhancements
-// as GitHub issues directly from lyx.exe.
-// The module is reachable as `lyx selfreport create` and delegates the actual GitHub API call to
+// as GitHub issues directly from lym.exe.
+// The module is reachable as `lym selfreport create` and delegates the actual GitHub API call to
 // the selfreportengine domain package.
 package selfreportcli
 
@@ -30,7 +30,7 @@ var stdin io.Reader = os.Stdin
 func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "selfreport",
-		Short: "self-report a LoomYard bug or enhancement to lyx's own repo on GitHub",
+		Short: "self-report a LoomYard bug or enhancement to lym's own repo on GitHub",
 		// ArbitraryArgs lets a standalone RunCLI, where this group is the cobra root, reach GroupRunE instead of cobra's own unknown-command error.
 		Args: cobra.ArbitraryArgs,
 		RunE: clihelp.GroupRunE,
@@ -53,13 +53,13 @@ for a token when both environment variables are unset.
 
 Examples:
 
-  lyx selfreport create "Crash on empty board" -b -
+  lym selfreport create "Crash on empty board" -b -
       Create a bug issue and read the issue body from stdin; "-" means read from stdin.
 
-  lyx selfreport create "Add dark mode" --label enhancement
+  lym selfreport create "Add dark mode" --label enhancement
       Create an enhancement issue; --label replaces the default "bug" label.
 
-  lyx selfreport create "Panic on nil pointer"
+  lym selfreport create "Panic on nil pointer"
       Create a bug issue with no body; the default "bug" label is applied automatically.`,
 		Args: cobra.ExactArgs(1),
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {

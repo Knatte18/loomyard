@@ -49,7 +49,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -72,10 +72,10 @@ const (
 
 	decisionWayWriter = `way forward: Discussion-Write owns the record while it runs; message the Discussion-Write session with the decision instead, or re-run once the row has handed off`
 
-	decisionWayDarnWriter = `way forward: Darn-Write has not finished its record or is editing it after validating it; message the running Darn-Write session, and re-run "lyx loom decision add" once the committed record is unchanged`
-	decisionWayEntryLost  = `way forward: a Darn-Write write landed during the append; message the running Darn-Write session to leave the record alone, then re-run "lyx loom decision add"`
+	decisionWayDarnWriter = `way forward: Darn-Write has not finished its record or is editing it after validating it; message the running Darn-Write session, and re-run "lym loom decision add" once the committed record is unchanged`
+	decisionWayEntryLost  = `way forward: a Darn-Write write landed during the append; message the running Darn-Write session to leave the record alone, then re-run "lym loom decision add"`
 	decisionWayNoHeading  = `way forward: restore the "## Decisions" heading in the decision record, then re-run the verb`
-	decisionWayRetry      = `way forward: re-run "lyx loom decision add"; nothing is appended`
+	decisionWayRetry      = `way forward: re-run "lym loom decision add"; nothing is appended`
 	decisionWayFindings   = `way forward: the record is restored; fix the named section and re-run the verb`
 	decisionWayArbiter    = `way forward: the "arbiter" label is the run's own arbiter's; pass --by parent from the run's parent, or --by operator from the operator's own shell`
 	decisionWayPattern    = `way forward: pass --pattern-entry and --pattern-action together, and --pattern-text for adds or changes`
@@ -85,9 +85,9 @@ const (
 	decisionWayFromKeys  = `way forward: set pattern_entry and pattern_action together, and pattern_text for adds or changes, then re-run the verb`
 	decisionWayFromTwice = `way forward: give each entry of the --from file its own title and its own PATTERN entry, or record the second in a later call`
 
-	decisionWayFabricCommit    = `way forward: run "lyx fabric commit" to commit the record; a session lyx refuses the verb from reports status: FAILED and the orch runs it`
-	decisionWayAmendsPlanRetry = `way forward: the entry and the amendment record are restored and nothing landed; re-run "lyx loom decision add ... --amends-plan"`
-	decisionWayPlanUnparsed    = `way forward: run "lyx loom validate-plan" to show the plan's defect, and record the decision without --amends-plan until the plan parses`
+	decisionWayFabricCommit    = `way forward: run "lym fabric commit" to commit the record; a session lym refuses the verb from reports status: FAILED and the orch runs it`
+	decisionWayAmendsPlanRetry = `way forward: the entry and the amendment record are restored and nothing landed; re-run "lym loom decision add ... --amends-plan"`
+	decisionWayPlanUnparsed    = `way forward: run "lym loom validate-plan" to show the plan's defect, and record the decision without --amends-plan until the plan parses`
 	decisionWayAmendsNoPlan    = `way forward: record the decision without --amends-plan; Plan-Write and Plan-Review read the decision record`
 	decisionWayAmendsDarn      = `way forward: record the decision without --amends-plan`
 )
@@ -97,7 +97,7 @@ var errPlanUnparsed = errors.New("the plan does not parse")
 
 // decisionWayNoRecord is the way forward of the refusal for a run with no decision record.
 // Its last clause names the title form a board note must carry to count as a decision.
-var decisionWayNoRecord = `way forward: the record exists once Discussion-Write has written it; "lyx loom status <slug>" shows whether the run has reached that row, and "lyx loom start" begins or resumes the run; on a darn run the record exists once Darn-Write has validated it, and until then message the running Darn-Write session with the call or, with no writer live, record the call as a board note titled "` + orchengine.DecisionNoteTitle("<slug>") + ` <the call>"`
+var decisionWayNoRecord = `way forward: the record exists once Discussion-Write has written it; "lym loom status <slug>" shows whether the run has reached that row, and "lym loom start" begins or resumes the run; on a darn run the record exists once Darn-Write has validated it, and until then message the running Darn-Write session with the call or, with no writer live, record the call as a board note titled "` + orchengine.DecisionNoteTitle("<slug>") + ` <the call>"`
 
 // decisionInput is the flag values of one `decision add` call.
 // The three pattern fields are the optional PATTERN-change form and are all empty without it.
@@ -269,7 +269,7 @@ type decisionNoticeError struct {
 
 // decisionNoticeOpening opens every decision notice.
 // The parent directive stencil names it, so a spawned role tells the notice from any other message signed as the LOOM program.
-const decisionNoticeOpening = "Parent decision recorded with lyx loom decision add"
+const decisionNoticeOpening = "Parent decision recorded with lym loom decision add"
 
 // decisionNoticeLine is the notice a live agent of the run gets for the entries added in the record at recordPath.
 // A one-entry notice, and every notice with inline set, carries each entry's decision and rationale, since a role such as Merriam may not read the record;
@@ -722,13 +722,13 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
 
-	cwd, err := lyxcwd.CwdFrom(ctx)
+	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
 		output.Err(out, err.Error())
 		clihelp.Abort(ctx, 1)
 		return nil
 	}
-	location, err := lyxcwd.Resolve(cwd)
+	location, err := lymcwd.Resolve(cwd)
 	if err != nil {
 		output.Err(out, err.Error())
 		clihelp.Abort(ctx, 1)
@@ -800,7 +800,7 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 }
 
 // liveRunStrands returns the strand names of the live shuttle runs of target's worktree, read through the registered engines.
-func liveRunStrands(target *lyxcwd.Location) ([]string, error) {
+func liveRunStrands(target *lymcwd.Location) ([]string, error) {
 	configDirs := fabricengine.ConfigDirs(target)
 	cfg, err := shuttleengine.LoadConfig(configDirs, "shuttle")
 	if err != nil {
@@ -855,7 +855,7 @@ func postDecisionNotice(clients noticeClients, caller, receiver, line string) er
 }
 
 // decisionNoticeClients builds the creel clients of target's worktree that a notice posts through.
-func decisionNoticeClients(target *lyxcwd.Location) noticeClients {
+func decisionNoticeClients(target *lymcwd.Location) noticeClients {
 	return noticeClients{
 		strand: func(strandClaim string) (noticePoster, error) {
 			return creelcli.NewStrandClient(target, strandClaim)
@@ -884,8 +884,8 @@ The one other caller is the run's own arbiter strand, which passes --by arbiter.
 --by is a label that is not verified.
 
 Example:
-  lyx loom decision add <slug> --by parent --title "..." --decision "..." --rationale "..."
-  lyx loom decision add <slug> --by parent --from decisions.json`,
+  lym loom decision add <slug> --by parent --title "..." --decision "..." --rationale "..."
+  lym loom decision add <slug> --by parent --from decisions.json`,
 		RunE:              clihelp.GroupRunE,
 		PersistentPreRunE: st.preRun,
 	}
@@ -909,7 +909,7 @@ Darn-Write has validated and committed its record.
 --amends-plan marks a decision that amends the approved plan: the call also
 appends the title to the plan amendment record in the same commit. It is
 refused on a darn run and with no approved plan. Afterwards the parent runs
-"lyx loom goto --to Plan-Burler-Review" and "lyx loom resume".
+"lym loom goto --to Plan-Burler-Review" and "lym loom resume".
 
 A decision on a PATTERN entry also passes --pattern-entry <PATTERN-id>,
 --pattern-action adds|changes|removes and, for adds or changes, --pattern-text
@@ -923,8 +923,8 @@ live agent gets one notice naming the headings ("headings"). Two entries may
 not share a title or a PATTERN entry.
 
 Example:
-  lyx loom decision add <slug> --by parent --title "Keep the cache" --decision "Keep the cache per run." --rationale "A shared cache races."
-  lyx loom decision add <slug> --by parent --from decisions.json`,
+  lym loom decision add <slug> --by parent --title "Keep the cache" --decision "Keep the cache per run." --rationale "A shared cache races."
+  lym loom decision add <slug> --by parent --from decisions.json`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {

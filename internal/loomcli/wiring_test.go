@@ -1,10 +1,10 @@
 //go:build tier0
 
-// wiring_test.go drives wire directly against a hand-built *lyxcwd.Location over a temporary
+// wiring_test.go drives wire directly against a hand-built *lymcwd.Location over a temporary
 // directory seeded with the one module config load that does not tolerate absence (loomengine's own
 // strict configengine.Load): every other config load this task's wire performs
 // (reedengine.LoadConfig, shuttleengine.LoadConfig, websterengine.LoadConfig, modelspec.LoadRegistry,
-// batcher.Active) degrades to its embedded template on the same proven-present _lyx/ directory, so
+// batcher.Active) degrades to its embedded template on the same proven-present _lym/ directory, so
 // seeding loom.yaml alone is enough to drive the whole hub-only wire() without touching a real hub.
 
 package loomcli
@@ -28,7 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/seatengine"
@@ -43,13 +43,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 )
 
-// seedLoomConfigWithInteractive overwrites <anchorPath>/_lyx/config/loom.yaml with a full literal.
+// seedLoomConfigWithInteractive overwrites <anchorPath>/_lym/config/loom.yaml with a full literal.
 // It matches the embedded template's own values except discussion_interactive, which takes the caller-chosen value.
 // Every key is written explicitly, rather than string-substituting the template, so the literal pins every value instead of relying on template fills --
 // an explicit literal is what internal/loomengine/config_test.go already does.
 func seedLoomConfigWithInteractive(t *testing.T, anchorPath string, discussionInteractive bool) {
 	t.Helper()
-	configDir := filepath.Join(anchorPath, "_lyx", "config")
+	configDir := filepath.Join(anchorPath, "_lym", "config")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 	}
@@ -70,12 +70,12 @@ driver: ""
 	}
 }
 
-// seedLoomConfigWithFriction overwrites <anchorPath>/_lyx/config/loom.yaml with a full literal.
+// seedLoomConfigWithFriction overwrites <anchorPath>/_lym/config/loom.yaml with a full literal.
 // It matches the embedded template's own values except the friction key, which takes the caller-chosen value -- empty to mean Tier 2 is off.
 // Every key is written explicitly for the same pin-every-value reason seedLoomConfigWithInteractive already documents.
 func seedLoomConfigWithFriction(t *testing.T, anchorPath, friction string) {
 	t.Helper()
-	configDir := filepath.Join(anchorPath, "_lyx", "config")
+	configDir := filepath.Join(anchorPath, "_lym", "config")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 	}
@@ -101,7 +101,7 @@ func TestWire_MissingHubLandingConfigNamesWayForward(t *testing.T) {
 	t.Parallel()
 
 	loc := hubLocation(t, "pair", ".")
-	landingPath := filepath.Join(fabricengine.BoardDir(loc.HubPath), "_lyx", "config", "landing.yaml")
+	landingPath := filepath.Join(fabricengine.BoardDir(loc.HubPath), "_lym", "config", "landing.yaml")
 	if err := os.Remove(landingPath); err != nil {
 		t.Fatalf("Remove(%q) = %v; want nil", landingPath, err)
 	}
@@ -482,7 +482,7 @@ func TestWire_DefaultConfig(t *testing.T) {
 	// The fix rows' verify gate reads the call of the key its row names.
 	t.Run("the verify gate's told command is read per key", func(t *testing.T) {
 		writeHubGateConfig(t, loc.HubPath, gateConfigWithTwoTiers())
-		const want = "lyx gate test --wait --gate code-burler-fix"
+		const want = "lym gate test --wait --gate code-burler-fix"
 		if got, err := c.env.VerifyCommand("code-burler-fix"); err != nil || got != want {
 			t.Errorf("c.env.VerifyCommand(code-burler-fix) = %q, %v; want %q, nil", got, err, want)
 		}
@@ -656,19 +656,19 @@ func TestVerbUsesLightweightWiring(t *testing.T) {
 }
 
 // TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig is the regression guard for the defect:
-// "lyx loom pause" and "lyx loom status" used to run the whole of wire(), so a fault in any of eight
+// "lym loom pause" and "lym loom status" used to run the whole of wire(), so a fault in any of eight
 // module configs refused them both -- taking away the operator's read-out and the documented
 // emergency brake for a run that was still going. Extended by crucible round sonnet5-xhigh-r8's F2
 // to also prove the four c.env path fields validate-discussion/validate-plan read get filled by this
 // same no-config-load path, rather than those two verbs staying on wire()'s full stack. The location
-// fixture here has no _lyx/config directory at all, which is the strongest form of "no config is
+// fixture here has no _lym/config directory at all, which is the strongest form of "no config is
 // loaded".
 //
 //testtiming:keep pins the lightweight wiring filling the status, lock and plan-validation paths and the commit-status seam with no config loaded and no engine built; the covering test runs the wiring without asserting its fields
 func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
-	// Deliberately NOT hubLocation: this location's anchor has no _lyx/config directory at all, so
+	// Deliberately NOT hubLocation: this location's anchor has no _lym/config directory at all, so
 	// a path that loaded any module config could not possibly succeed here.
-	location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+	location := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
 	c.wireLightweight(location, location.AnchorPath())
@@ -788,7 +788,7 @@ func TestWire_FrictionDirFillsBurlerAndWebster(t *testing.T) {
 	}
 }
 
-// seedLoomConfigWithKeys overwrites <anchorPath>/_lyx/config/loom.yaml with the embedded template, each key line's value replaced by its entry in values.
+// seedLoomConfigWithKeys overwrites <anchorPath>/_lym/config/loom.yaml with the embedded template, each key line's value replaced by its entry in values.
 func seedLoomConfigWithKeys(t *testing.T, anchorPath string, values map[string]string) {
 	t.Helper()
 	var contents strings.Builder
@@ -807,7 +807,7 @@ func seedLoomConfigWithKeys(t *testing.T, anchorPath string, values map[string]s
 			t.Fatalf("key %q not present in loomengine.ConfigTemplate(); the fixture would silently test nothing", key)
 		}
 	}
-	cfgPath := filepath.Join(anchorPath, "_lyx", "config", "loom.yaml")
+	cfgPath := filepath.Join(anchorPath, "_lym", "config", "loom.yaml")
 	if err := os.WriteFile(cfgPath, []byte(contents.String()), 0o644); err != nil {
 		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
 	}
@@ -971,21 +971,21 @@ func TestWire_LanguageSkills(t *testing.T) {
 			wantGateTiers: "none",
 		},
 		{
-			name:    "an unloadable gate.yaml halts wire naming lyx config gate",
+			name:    "an unloadable gate.yaml halts wire naming lym config gate",
 			content: "skills: []\n",
 			gate:    "unloadable",
-			wantErr: "lyx config gate",
+			wantErr: "lym config gate",
 		},
 		{
 			name:    "an empty skills entry halts wire naming skills and the way forward",
 			content: "skills: [\"\"]\n",
-			wantErr: "lyx config language",
+			wantErr: "lym config language",
 			wantKey: "skills",
 		},
 		{
 			name:    "an empty rename_tools entry halts wire naming rename_tools and the way forward",
 			content: "skills:\n  - scribe:golang-comments\nrename_tools: [\"\"]\n",
-			wantErr: "lyx config language",
+			wantErr: "lym config language",
 			wantKey: "rename_tools",
 		},
 	}
@@ -1049,7 +1049,7 @@ func TestWire_LanguageSkills(t *testing.T) {
 func TestLoomRerouteCapWayForward_IsRowNeutral(t *testing.T) {
 	t.Parallel()
 
-	for _, want := range []string{`lyx loom resume`, "parent branch has settled", "--amends-plan", "lyx loom goto --to Plan-Burler-Review"} {
+	for _, want := range []string{`lym loom resume`, "parent branch has settled", "--amends-plan", "lym loom goto --to Plan-Burler-Review"} {
 		if !strings.Contains(loomRerouteCapWayForward, want) {
 			t.Errorf("loomRerouteCapWayForward = %q; want it to contain %q", loomRerouteCapWayForward, want)
 		}
@@ -1099,7 +1099,7 @@ func TestLoomRerouteCapWayForward(t *testing.T) {
 		"for a parent-branch reroute, once the parent branch has settled",
 		"for a fixer whose attempts are spent, once the failing tests are fixed on the task branch",
 		"for a fixer whose change is over the caps, once the fixer's commits are reviewed and fixed on the task branch",
-		`run "lyx loom resume"`,
+		`run "lym loom resume"`,
 	} {
 		if !strings.Contains(res.Reason, want) {
 			t.Errorf("Run() reason = %q; want it to contain %q", res.Reason, want)

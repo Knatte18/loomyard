@@ -21,17 +21,17 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
-	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 )
 
 // plantFrictionNote writes a friction note named name inside loc's Tier 2 friction directory --
 // composed through the production accessor, never a hand-built literal -- creating the directory if
 // it is absent, and returns the path it wrote.
-func plantFrictionNote(t *testing.T, loc *lyxcwd.Location, name string) string {
+func plantFrictionNote(t *testing.T, loc *lymcwd.Location, name string) string {
 	t.Helper()
 	path := filepath.Join(loomengine.LoomFrictionDir(loc), name)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -43,7 +43,7 @@ func plantFrictionNote(t *testing.T, loc *lyxcwd.Location, name string) string {
 	return path
 }
 
-// TestSmokeStepBootstrapWiring drives `lyx loom step` over one go-seeded pair, in this order:
+// TestSmokeStepBootstrapWiring drives `lym loom step` over one go-seeded pair, in this order:
 // a genuine first seed, the handoff voucher that step left, then a re-entry over the same task.
 // Each step builds on the state the one before left.
 // A last subtest drives a second go-seeded pair whose seed names a wrong parent, through the refusal and its way forward.
@@ -51,7 +51,7 @@ func plantFrictionNote(t *testing.T, loc *lyxcwd.Location, name string) string {
 // Every behavior here is the regression guard for a helper that was correct and unit-tested and still wrong in production, because nothing called it;
 // only a test through the real bootstrap tells the two states apart.
 func TestSmokeStepBootstrapWiring(t *testing.T) {
-	exe := lyxbin.Build(t)
+	exe := lymbin.Build(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 	seedGoDriverRun(t, loc)
@@ -63,12 +63,12 @@ func TestSmokeStepBootstrapWiring(t *testing.T) {
 	// ensureFrictionDirAfterSeed was written, documented, and unit-tested in start.go, and called from
 	// nowhere: neither startCmd's RunE nor seedAndCommitBootstrap reached it. Its four tests were green
 	// over an orphan. The consequence, reproduced live against a real hub in crucible round 1: notes
-	// left in .lyx/loom/friction/ by an earlier task, or by an earlier run that never reached a
+	// left in .lym/loom/friction/ by an earlier task, or by an earlier run that never reached a
 	// reflection trigger, survived a genuine first seed and were handed to the NEXT task's reflection
 	// agent as that task's own friction -- which then filed a GitHub issue about them.
 	//
 	// Both branches are asserted through the real bootstrap, because the branch is not the thing that
-	// was broken; reaching it was. `lyx loom step` is the driving verb rather than `lyx loom start`
+	// was broken; reaching it was. `lym loom step` is the driving verb rather than `lym loom start`
 	// precisely because `step` spawns no driver: `start` delegates to `run`, which calls
 	// friction.EnsureDir itself and would mask an unwired clear behind a directory that exists anyway.
 	//
@@ -95,7 +95,7 @@ func TestSmokeStepBootstrapWiring(t *testing.T) {
 	// files, matching the persisted status.
 	//
 	// Without the voucher, a completed step leaves state running with a live history and a free run
-	// lock, which is byte-identical to a mid-run driver death: the next `lyx loom run` with
+	// lock, which is byte-identical to a mid-run driver death: the next `lym loom run` with
 	// Tier 2 on then writes a spurious crash-resume note for a task in which nothing crashed.
 	//
 	// Relies on the first step's completed `step`.
@@ -157,7 +157,7 @@ func TestSmokeStepBootstrapWiring(t *testing.T) {
 		}
 		stdout, exit, err = runLoomCLINoFatal(exe, worktree, 60*time.Second, "shed", "seed", "self", "--recipe", "loom", "--driver", "go", "--param", "parent="+recorded.ParentBranch)
 		if err != nil || exit != 0 {
-			t.Fatalf("lyx shed seed after the rm = exit %d, err %v; output: %s", exit, err, stdout)
+			t.Fatalf("lym shed seed after the rm = exit %d, err %v; output: %s", exit, err, stdout)
 		}
 		stdout, exit, err = runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 60*time.Second, "loom", "step")
 		if err != nil || exit != 0 {

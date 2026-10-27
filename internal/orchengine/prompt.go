@@ -82,7 +82,7 @@ func RenderRoleFile(stencilsDir, path, index, hubRulesPath, ownRulesPath string)
 }
 
 // DecisionNoteTitle returns the title prefix a decision note for the held task slug starts with: "Decision for <slug>:".
-// It is the one declaration of the form: the orch role render and the no-record way forward of "lyx loom decision add" both call it.
+// It is the one declaration of the form: the orch role render and the no-record way forward of "lym loom decision add" both call it.
 // The colon keeps a slug from matching a longer slug that starts with it, and the match is case-sensitive.
 func DecisionNoteTitle(slug string) string {
 	return "Decision for " + slug + ":"

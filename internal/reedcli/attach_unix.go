@@ -1,6 +1,6 @@
 //go:build !windows
 
-// attach_unix.go hands the operator's terminal to tmux by replacing the lyx process with it.
+// attach_unix.go hands the operator's terminal to tmux by replacing the lym process with it.
 
 package reedcli
 
@@ -13,7 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// handOver replaces this process with tmux running args, so no lyx process outlives the attach and an attach never keeps an old binary running.
+// handOver replaces this process with tmux running args, so no lym process outlives the attach and an attach never keeps an old binary running.
 // The exec skips the root's post-run, so the log line comes first; the process's run directory is left to the next start's sweep.
 // The tmux name is resolved through PATH first, since exec itself does no lookup.
 // A failed lookup or exec returns exit code 1 and the error.

@@ -1,4 +1,4 @@
-// steprecord.go holds the record helpers behind `lyx shed step`'s own per-invocation record: an
+// steprecord.go holds the record helpers behind `lym shed step`'s own per-invocation record: an
 // in-flight file written before the producer call and the full envelope written before stdout is
 // printed, both under Spec.StepsDir, plus the last_step summary status reads back from them.
 //
@@ -25,7 +25,7 @@ const (
 )
 
 // inflightRecord is the content of a `<trace_id>.inflight.json` file.
-// It also carries the build identity of the lyx that ran the step;
+// It also carries the build identity of the lym that ran the step;
 // a record written before those fields existed decodes as an unknown identity.
 type inflightRecord struct {
 	TraceID   string    `json:"trace_id"`
@@ -36,7 +36,7 @@ type inflightRecord struct {
 
 // LastStep is the status envelope's last_step value: the most recent step record's trace id,
 // whether its envelope file exists, and that file's path once it does.
-// It also carries the build identity recorded for that step, and binary_changed: true when the running lyx is a different known build.
+// It also carries the build identity recorded for that step, and binary_changed: true when the running lym is a different known build.
 // An undecodable record reports an unknown identity and binary_changed false.
 type LastStep struct {
 	TraceID       string `json:"trace_id"`
@@ -132,7 +132,7 @@ func RunningStepPID(stepsDir string) (int, bool) {
 
 // LastStepBuildChanged reports whether the last step recorded in stepsDir ran on a known build other than against.
 // It is false when stepsDir holds no step record, and for a record that carries no build identity.
-// A caller passes the identity of the lyx on disk, so any difference counts, a rollback included.
+// A caller passes the identity of the lym on disk, so any difference counts, a rollback included.
 func LastStepBuildChanged(stepsDir string, against buildvcs.Identity) bool {
 	last := lastStepOf(stepsDir, against)
 	return last != nil && last.BinaryChanged
@@ -140,7 +140,7 @@ func LastStepBuildChanged(stepsDir string, against buildvcs.Identity) bool {
 
 // lastStepOf reads dir for the most recent in-flight record and reports it, or nil when dir is
 // empty, unreadable or holds none.
-// running is the build identity of the calling lyx, compared with the chosen record's recorded one to set binary_changed.
+// running is the build identity of the calling lym, compared with the chosen record's recorded one to set binary_changed.
 func lastStepOf(dir string, running buildvcs.Identity) *LastStep {
 	if dir == "" {
 		return nil

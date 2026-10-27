@@ -236,7 +236,7 @@ func TestScan_SkipsAndCollects(t *testing.T) {
 	}
 }
 
-// TestScan_SkipsDirectoryLink asserts a link to a directory outside the tree, like the `_lyx` junction, is skipped rather than read as a file.
+// TestScan_SkipsDirectoryLink asserts a link to a directory outside the tree, like the `_lym` junction, is skipped rather than read as a file.
 func TestScan_SkipsDirectoryLink(t *testing.T) {
 	root := t.TempDir()
 	target := t.TempDir()
@@ -246,7 +246,7 @@ func TestScan_SkipsDirectoryLink(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "a.go"), []byte("package a\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	if err := os.Symlink(target, filepath.Join(root, "_lyx")); err != nil {
+	if err := os.Symlink(target, filepath.Join(root, "_lym")); err != nil {
 		t.Skipf("symlink unavailable: %v", err)
 	}
 

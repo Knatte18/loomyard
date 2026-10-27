@@ -6,14 +6,14 @@ package standalonegeom
 import (
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
-// StencilsDir returns the standalone stencils directory for stateDir: <stateDir>/_lyx/stencils.
+// StencilsDir returns the standalone stencils directory for stateDir: <stateDir>/_lym/stencils.
 //
 // It is the sole construction site for the standalone stencils directory across every
 // standalone-capable CLI, deliberately mirroring fabricengine.StencilsDir(hub), with stateDir
-// playing the role hub plays in hub mode — which is why the result is _lyx-resident rather than a
+// playing the role hub plays in hub mode — which is why the result is _lym-resident rather than a
 // third top-level <state>/stencils.
 //
 // The returned value is carried by callers as a plain string, never as an engine geometry field:
@@ -23,5 +23,5 @@ import (
 // Like every other builder in this package, StencilsDir takes only stateDir — it never calls
 // standalonestate.Derive, never reads the environment, and never touches disk.
 func StencilsDir(stateDir string) string {
-	return filepath.Join(stateDir, lyxdirs.LyxDirName, "stencils")
+	return filepath.Join(stateDir, lymdirs.LymDirName, "stencils")
 }

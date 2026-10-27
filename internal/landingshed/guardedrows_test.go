@@ -60,7 +60,7 @@ func TestGuardedRows_PausedLockWaitHalts(t *testing.T) {
 			if err != nil || outcome != shedengine.Stuck || !ptr.Halt || ptr.Reroute {
 				t.Fatalf("Call() = %q, %+v, %v; want a halting Stuck that does not reroute", outcome, ptr, err)
 			}
-			if want := `way forward: run "lyx loom goto --to ` + row.name + `", then "lyx loom resume"`; !strings.Contains(ptr.Reason, want) {
+			if want := `way forward: run "lym loom goto --to ` + row.name + `", then "lym loom resume"`; !strings.Contains(ptr.Reason, want) {
 				t.Errorf("reason = %q; want it to contain %q", ptr.Reason, want)
 			}
 			if fx.touched() {

@@ -17,7 +17,7 @@ That is why it ships as its own `DiscussionWrite` registry entry, over an inject
 The entry runs the lead and its advisors, when the table has any, on `MultiLLMProducer`, over a table told through `Env.DiscussionTable`.
 It carries the row's gates on the lead.
 The recipe file names `DiscussionWrite`, and the built row carries that engine whatever `discussion_advisors` and `discussion_lenses` hold.
-`Plan-Write` is the second such row: its seat table is resolved from the `plan` role's own model-spec and timeout rather than from recipe strings, and building it needs a `*lyxcwd.Location` to build the plan paths, so it ships as its own `PlanWrite` entry for the same reason.
+`Plan-Write` is the second such row: its seat table is resolved from the `plan` role's own model-spec and timeout rather than from recipe strings, and building it needs a `*lymcwd.Location` to build the plan paths, so it ships as its own `PlanWrite` entry for the same reason.
 The question the discussion worked through was whether the *other* rows (the loom-specific ones, such as `Loom-Preflight`) resist this shape, and the answer was no: they don't need to be reusable to fit the pattern, they just need a name in the same registry as everything else — a bespoke, single-consumer `Engine` is exactly as valid a registry entry as a widely-shared one.
 
 ## What's in a recipe row
@@ -35,7 +35,7 @@ The question the discussion worked through was whether the *other* rows (the loo
 
 ## What's never in a recipe
 
-**Geometry** (absolute paths — `AnchorPath`, `WorktreeRoot`, `StencilsDir`, `PlanDir`, etc.) is resolved once, centrally, by whichever caller invokes the recipe-builder — `lyx loom start` for hub mode, a standalone CLI entry point for told mode (mirroring the existing `hubgeom`/`standalonegeom` dual-constructor split) — and merged with each row's `Config` when its `ProducerDef` is constructed. The recipe itself never names a geometry mode and never contains a path; it stays portable across every worktree of the product it describes. This follows directly from the existing Told-Geometry Invariant — nothing new, just extending the same discipline to the recipe layer.
+**Geometry** (absolute paths — `AnchorPath`, `WorktreeRoot`, `StencilsDir`, `PlanDir`, etc.) is resolved once, centrally, by whichever caller invokes the recipe-builder — `lym loom start` for hub mode, a standalone CLI entry point for told mode (mirroring the existing `hubgeom`/`standalonegeom` dual-constructor split) — and merged with each row's `Config` when its `ProducerDef` is constructed. The recipe itself never names a geometry mode and never contains a path; it stays portable across every worktree of the product it describes. This follows directly from the existing Told-Geometry Invariant — nothing new, just extending the same discipline to the recipe layer.
 
 **Live seams**, alongside geometry, are the other thing never in a recipe: `shedadapters.Shuttle`, `shedadapters.BurlerHalfRunner`, `shedadapters.WebsterRunner`, `shedadapters.SeatRunner` (`Env.Seats`), `websterengine.RunDeps`, `landingshed.Deps`'s closures and its `modelspec.Registry`, and the injected clock.
 None of these can be written in a file at all — a recipe row names an `Engine` and carries `Config`, and a seam is neither.
@@ -117,7 +117,7 @@ This is deliberate: `Load` stays exported and covered because it is the entry a 
 
 ## Escalation and the future watchdog
 
-No design impact here worth a dedicated mechanism: `OnStuck: ""` already halts the run and records a reason (`RunBlocked` + `Status.Reason`) — that signal is generic, and a future "watchdog" process (an LLM running outside the `lyx` loop, reacting to `lyx loom`'s own halted/blocked output) would just be another external reader of the same signal a human already reads today. No new field, no contract change.
+No design impact here worth a dedicated mechanism: `OnStuck: ""` already halts the run and records a reason (`RunBlocked` + `Status.Reason`) — that signal is generic, and a future "watchdog" process (an LLM running outside the `lym` loop, reacting to `lym loom`'s own halted/blocked output) would just be another external reader of the same signal a human already reads today. No new field, no contract change.
 
 ## Related
 

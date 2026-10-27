@@ -23,7 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 )
 
@@ -217,7 +217,7 @@ func TestPushAnchored_OtherPushErrorKind_DoesNotMatchErrPushRejected(t *testing.
 // pushPair is a hubforge pair whose two sides each carry a remote branch to push to.
 type pushPair struct {
 	hub        *hubforge.Hub
-	location   *lyxcwd.Location
+	location   *lymcwd.Location
 	warpPath   string
 	weftPath   string
 	warpBranch string
@@ -230,7 +230,7 @@ func newPushPair(t *testing.T) pushPair {
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	added := hubforge.AddPair(t, h, "pushpair")
-	loc, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree("pushpair"))
+	loc, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("pushpair"))
 	if err != nil {
 		t.Fatalf("ResolveWorktree: %v", err)
 	}
@@ -513,12 +513,12 @@ func TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		push       func(l *lyxcwd.Location, opts fabricengine.SyncOptions, lockWait time.Duration) error
+		push       func(l *lymcwd.Location, opts fabricengine.SyncOptions, lockWait time.Duration) error
 		pushesWarp bool
 	}{
 		{
 			name: "PushPairAnchored",
-			push: func(l *lyxcwd.Location, opts fabricengine.SyncOptions, lockWait time.Duration) error {
+			push: func(l *lymcwd.Location, opts fabricengine.SyncOptions, lockWait time.Duration) error {
 				_, err := fabricengine.PushPairAnchored(l, opts, lockWait)
 				return err
 			},
@@ -526,7 +526,7 @@ func TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks(t *testing.T) {
 		},
 		{
 			name: "PushAnchored",
-			push: func(l *lyxcwd.Location, opts fabricengine.SyncOptions, lockWait time.Duration) error {
+			push: func(l *lymcwd.Location, opts fabricengine.SyncOptions, lockWait time.Duration) error {
 				_, err := fabricengine.PushAnchored(l, opts, lockWait)
 				return err
 			},

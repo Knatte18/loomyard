@@ -16,14 +16,14 @@ A spawned role's opening stencil renders the edit directive through `internal/ed
 
 ## Role skills
 
-A spawned session's skills are typed: the spawner names each on the launch spec and lyx delivers it, and no stencil asks the agent to load one.
+A spawned session's skills are typed: the spawner names each on the launch spec and lym delivers it, and no stencil asks the agent to load one.
 `contracts/stencils/roleskills_test.go` enforces it.
 
 ## Spawn color
 
-A spawned session is colored by lyx, never by the agent.
+A spawned session is colored by lym, never by the agent.
 
 - The spawning module names a segment on the launch spec.
 - Reed tints the session's bar button and border.
-- lyx types the provider's color command.
+- lym types the provider's color command.
 - No stencil asks an agent to set a color.

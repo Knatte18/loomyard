@@ -163,13 +163,13 @@ func candidateList(candidates []constrainedCandidate) string {
 
 // crossAlphabetDetail reports whether r is quarry's answer for a self glyph that two alphabets both match, and renders its detail.
 // Such an answer is ambiguous with no candidates and carries the matching languages, so it is told apart by those two facts and its status is never read.
-// The detail names the languages and the way forward, which constructs no path: name the file, a `.cs` file declaring the namespace or a file of the directory, as a slashed path self glyph, or a member, as `lyx quarry glyphs` lists them.
+// The detail names the languages and the way forward, which constructs no path: name the file, a `.cs` file declaring the namespace or a file of the directory, as a slashed path self glyph, or a member, as `lym quarry glyphs` lists them.
 func crossAlphabetDetail(r quarry.ResolveResult) (string, bool) {
 	if len(r.Candidates) != 0 || len(r.Languages) == 0 {
 		return "", false
 	}
 	return fmt.Sprintf(
-		"the self glyph matches in more than one alphabet (%s); name the file, a .cs file declaring the namespace or a file of the directory, as a slashed path self glyph, or a member, as `lyx quarry glyphs` lists them",
+		"the self glyph matches in more than one alphabet (%s); name the file, a .cs file declaring the namespace or a file of the directory, as a slashed path self glyph, or a member, as `lym quarry glyphs` lists them",
 		strings.Join(r.Languages, ", "),
 	), true
 }

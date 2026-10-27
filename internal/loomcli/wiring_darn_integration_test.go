@@ -16,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // TestCommitDarnDiscussion_Real covers the darn CommitDiscussion seam's order: the snapshot is written before the commit and lands in it,
@@ -26,7 +26,7 @@ func TestCommitDarnDiscussion_Real(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	t.Setenv("BOARD_SKIP_PUSH", "1")
 
-	newPair := func(t *testing.T, slug string) (*hubforge.Hub, *lyxcwd.Location) {
+	newPair := func(t *testing.T, slug string) (*hubforge.Hub, *lymcwd.Location) {
 		t.Helper()
 		hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		boardConfig := configengine.ConfigFile(hub.BoardDir(), "board")
@@ -37,7 +37,7 @@ func TestCommitDarnDiscussion_Real(t *testing.T) {
 			t.Fatalf("write board config: %v", err)
 		}
 		hubforge.AddPair(t, hub, slug)
-		location, err := lyxcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
+		location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
 		if err != nil {
 			t.Fatalf("ResolveWorktree error = %v; want nil", err)
 		}
@@ -81,8 +81,8 @@ func TestCommitDarnDiscussion_Real(t *testing.T) {
 
 		recordsSibling := hub.PairRecordsSibling(slug)
 		before := gitkit.Git(t, recordsSibling, "rev-list", "--count", "HEAD")
-		if err := commitDarnDiscussion(location); err == nil || !strings.Contains(err.Error(), "lyx board upsert") {
-			t.Errorf("commitDarnDiscussion() = %v; want a refusal naming lyx board upsert", err)
+		if err := commitDarnDiscussion(location); err == nil || !strings.Contains(err.Error(), "lym board upsert") {
+			t.Errorf("commitDarnDiscussion() = %v; want a refusal naming lym board upsert", err)
 		}
 		if after := gitkit.Git(t, recordsSibling, "rev-list", "--count", "HEAD"); after != before {
 			t.Errorf("records commit count %s -> %s; want no commit", strings.TrimSpace(before), strings.TrimSpace(after))

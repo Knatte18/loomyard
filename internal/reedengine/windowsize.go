@@ -48,9 +48,9 @@ func (e *Engine) primeGeometry() bool {
 // It issues, in order: "status-format[0]" and "status-format[1]" with -g, because tmux's status formats are one array and a per-session index would drop the global lines for that session;
 // "status-style" with -g, like them, so the gaps between the buttons are dark grey instead of tmux's default green;
 // and "status" "2" and "status-position" "bottom" on the session.
-// When primeGeometry holds it then marks the session with the user option "@lyx_prime_session" "1", which line 2 of the bar lists first.
-// After the option pins it issues the navigation bindings (bindings.go), so a server booted by an older lyx gets them at the next attach.
-// Then, everywhere but Windows, it pins the session hook `session-window-changed` with `set-option -w -u @lyx_unseen`, which unsets the unseen mark on the window the client moved to and nothing else.
+// When primeGeometry holds it then marks the session with the user option "@lym_prime_session" "1", which line 2 of the bar lists first.
+// After the option pins it issues the navigation bindings (bindings.go), so a server booted by an older lym gets them at the next attach.
+// Then, everywhere but Windows, it pins the session hook `session-window-changed` with `set-option -w -u @lym_unseen`, which unsets the unseen mark on the window the client moved to and nothing else.
 // Last, everywhere but Windows, it unpins `window-resized` twice: `set-hook -u -w -t <target> window-resized`, the window-scoped clear, and `set-hook -u -t <target> window-resized`, the session-scoped form, so an entry an older binary pinned in either scope goes.
 // The unpin clears only that one hook on the shell window, which only reed ever pinned.
 //
@@ -60,7 +60,7 @@ func (e *Engine) primeGeometry() bool {
 // Decision windows-status-line-is-an-unbranched-accepted-degrade they are attempted on every platform,
 // and psmux may refuse some or all of them.
 //
-// It runs both at boot (lifecycle.go) and in the attach pre-flight (attach.go), so a session booted by an older lyx loses the hook at the next attach.
+// It runs both at boot (lifecycle.go) and in the attach pre-flight (attach.go), so a session booted by an older lym loses the hook at the next attach.
 // target is the strands' window, as resolved by the window seam;
 // the session-wide options ride the window's session.
 // After the option pins it issues shellOptionArgvs for shellPath, each non-fatal like them; the empty string skips both.
@@ -100,7 +100,7 @@ func (e *Engine) pinGeometryOptionsLocked(target, shellPath string) {
 
 	e.pinBindingsLocked()
 
-	// psmux lacks set-hook, so on Windows no hook is pinned and openOwnWindowLocked never sets @lyx_unseen.
+	// psmux lacks set-hook, so on Windows no hook is pinned and openOwnWindowLocked never sets @lym_unseen.
 	if runtime.GOOS == "windows" {
 		return
 	}

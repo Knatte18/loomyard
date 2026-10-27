@@ -19,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -33,7 +33,7 @@ import (
 // the key's call over the touched trees' targets when the task diff is wholly under the hub's configured trees, else the key's call alone;
 // a gate config refusal and a malformed tree key are errors naming the way forward.
 // baseCommand is the fix rows' `code-burler-fix` call, as in a loom run, and stays the base command of a tree-scoped site.
-func darnVerifySource(l *lyxcwd.Location) verifySource {
+func darnVerifySource(l *lymcwd.Location) verifySource {
 	dirs := fabricengine.ConfigDirs(l)
 	treeScope := darnTreeScope(l)
 	call := gateCallSource(dirs)
@@ -55,7 +55,7 @@ func darnVerifySource(l *lyxcwd.Location) verifySource {
 
 // pairMergeBase returns the reader of the task branch's merge base with its recorded parent branch.
 // The fabric is opened and the parent branch read on each call, so a parent that moved after bootstrap is read as it stands.
-func pairMergeBase(l *lyxcwd.Location) func() (string, error) {
+func pairMergeBase(l *lymcwd.Location) func() (string, error) {
 	return func() (string, error) {
 		parent, err := readRecordedParentBranch(l)
 		if err != nil {
@@ -74,7 +74,7 @@ func pairMergeBase(l *lyxcwd.Location) func() (string, error) {
 // Each call reads the hub-wide darn.yaml afresh, so an edit between steps is seen, and reads the diff from the pair's merge base to HEAD with a rename counted at both its paths.
 // A load error is returned with its way forward: the editor one for a malformed tree key, the hub reconcile one otherwise.
 // A scoped diff whose trees contribute no target answers an empty command, which runs nothing.
-func darnTreeScope(l *lyxcwd.Location) func(gateKey string) (string, bool, error) {
+func darnTreeScope(l *lymcwd.Location) func(gateKey string) (string, bool, error) {
 	mergeBase := taskMergeBase(l)
 	call := gateCallSource(fabricengine.ConfigDirs(l))
 	return func(gateKey string) (string, bool, error) {
@@ -142,7 +142,7 @@ func latestDarnOutcome(statusPath, statusLockPath string) (loomshed.DarnOutcome,
 
 // darnDeps assembles the Darn-Write row's seams for location and the run addressed by runID.
 // Every closure reads or writes on demand and opens nothing at build time.
-func darnDeps(l *lyxcwd.Location, runID string) loomshed.DarnDeps {
+func darnDeps(l *lymcwd.Location, runID string) loomshed.DarnDeps {
 	return loomshed.DarnDeps{
 		// Commit mirrors CommitDescription, including its discard of (sha, committed), which makes a repeat commit over an unchanged directory a no-op.
 		Commit: func() error {
@@ -181,7 +181,7 @@ func (c *loomCLI) renameRetiredRows(renames map[string]string) error {
 
 // commitDarnDiscussion writes the snapshot of location's task's board entry into the discussion directory, then commits the directory as commitDiscussion does.
 // A snapshot that cannot be written fails the commit with nothing committed.
-func commitDarnDiscussion(location *lyxcwd.Location) error {
+func commitDarnDiscussion(location *lymcwd.Location) error {
 	if err := writeBoardEntrySnapshot(location); err != nil {
 		return err
 	}
@@ -191,7 +191,7 @@ func commitDarnDiscussion(location *lyxcwd.Location) error {
 // writeBoardEntrySnapshot writes the snapshot of the board entry of location's run to the discussion directory: a darn run's task, and a pawl run's beam project.
 // The snapshot is the Code-Review perch's answer key of a darn or pawl run, kept apart from any decision record; the run's board lock keeps the entry's body and scope fixed from the point the snapshot is written.
 // A board that cannot be read, or holds no entry for the run, is refused.
-func writeBoardEntrySnapshot(location *lyxcwd.Location) error {
+func writeBoardEntrySnapshot(location *lymcwd.Location) error {
 	board, err := boardengine.OpenHub(location.HubPath)
 	if err != nil {
 		return fmt.Errorf("loom: open the board to snapshot the run's entry: %w; way forward: fix the board, then hand off again", err)
@@ -202,7 +202,7 @@ func writeBoardEntrySnapshot(location *lyxcwd.Location) error {
 		return fmt.Errorf("loom: read board entry %q to snapshot it: %w; way forward: fix the board, then hand off again", slug, err)
 	}
 	if !found {
-		return fmt.Errorf("loom: the board holds no entry %q to snapshot as the review's answer key; way forward: restore the entry with \"lyx board upsert\", then hand off again", slug)
+		return fmt.Errorf("loom: the board holds no entry %q to snapshot as the review's answer key; way forward: restore the entry with \"lym board upsert\", then hand off again", slug)
 	}
 	if err := fsx.AtomicWriteBytes(loomengine.DiscussionBoardEntry(location), darnengine.BoardEntrySnapshot(slug, task.Title, task.Brief, task.Body)); err != nil {
 		return fmt.Errorf("loom: write the board entry snapshot: %w", err)
@@ -214,7 +214,7 @@ func writeBoardEntrySnapshot(location *lyxcwd.Location) error {
 // It loads the hub-wide darn.yaml strictly, so start, run, step and resume refuse an absent or malformed file before any row builds.
 // A malformed tree_scope key is refused with the editor way forward instead of the hub reconcile one, since --set cannot remove a key the hub file holds.
 // budgets is the loom review segments' budgets, whose Code-Review entry the darn routing applies to the perch.
-func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, frictionDir string, landingCfg landingshed.Config, registry modelspec.Registry, budgets map[string]int) error {
+func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, frictionDir string, landingCfg landingshed.Config, registry modelspec.Registry, budgets map[string]int) error {
 	dirs := fabricengine.ConfigDirs(location)
 	cfg, err := darnengine.LoadConfig(dirs, "darn")
 	if err != nil {
@@ -259,7 +259,7 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 		return err
 	}
 	if !isBouncer {
-		return fmt.Errorf("loom: the embedded darn recipe's %s row is not a Bouncer with a run_subdir, so this lyx build is broken", loomshed.NameCodeBouncer)
+		return fmt.Errorf("loom: the embedded darn recipe's %s row is not a Bouncer with a run_subdir, so this lym build is broken", loomshed.NameCodeBouncer)
 	}
 	// DescribeTable opens the fabric lazily, for the reason the loom DescribeTable gives.
 	c.env.DescribeTable = func() (seatengine.Table, error) {

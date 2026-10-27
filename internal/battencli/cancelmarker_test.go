@@ -59,7 +59,7 @@ func TestCancelMarker(t *testing.T) {
 	if err != nil || !reading.Present || reading.WriterAlive {
 		t.Fatalf("readCancelMarker(writer gone) = %+v, %v; want present with the writer gone", reading, err)
 	}
-	wantGone := `way forward: run "lyx batten cancel slug" from the prime to finish it`
+	wantGone := `way forward: run "lym batten cancel slug" from the prime to finish it`
 	if got := cancelMarkerRefusal(slug, reading).Error(); !strings.HasSuffix(got, wantGone) {
 		t.Errorf("cancelMarkerRefusal(writer gone) = %q, want it to end with %q", got, wantGone)
 	}

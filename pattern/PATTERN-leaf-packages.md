@@ -4,8 +4,8 @@ Each package below imports a closed set and never a feature package; a reverse i
 
 ## `internal/gitkit`
 
-Imports only the standard library, `lyxcwd`, `weftname`, `configengine`, `lyxdirs` and `lyxtemp`, and `gofrs/flock` through `lyxtemp`.
-- `gitkit.CopyRepo` is callable from `lyxcwd` alone; everyone else takes a hub from `hubforge`.
+Imports only the standard library, `lymcwd`, `weftname`, `configengine`, `lymdirs` and `lymtemp`, and `gofrs/flock` through `lymtemp`.
+- `gitkit.CopyRepo` is callable from `lymcwd` alone; everyone else takes a hub from `hubforge`.
 - Test git plumbing lives in `gitkit`; a package-local `_test.go` helper that shells out to git is a review flag.
   This is review discipline, not a scan.
 
@@ -59,7 +59,7 @@ Imports only the standard library and `internal/logger`.
 
 ## `internal/pattern`
 
-Imports only the standard library, `lyxdirs`, `stencilstore` and `stencil`.
+Imports only the standard library, `lymdirs`, `stencilstore` and `stencil`.
 
 ## `internal/friction`
 
@@ -93,7 +93,7 @@ It spawns no process: each caller runs `journalctl` itself and wraps the clause 
 
 Imports only the standard library.
 It is the sole `.git` parser: git dir, common dir, the repository test and the walk-up to a worktree root, in-process and spawning nothing.
-It is its own package because `gitrepo`'s in-package test imports `gitkit`, which reaches `lyxcwd`, so `lyxcwd` importing `gitrepo` would close a cycle.
+It is its own package because `gitrepo`'s in-package test imports `gitkit`, which reaches `lymcwd`, so `lymcwd` importing `gitrepo` would close a cycle.
 
 ## `internal/toolfloor`
 
@@ -105,7 +105,7 @@ It holds the git and tmux version floor and the version-line parser, and spawns,
 Imports only the standard library and `internal/state`, and `gofrs/flock` through it.
 It is the one leaf every reader of a pause imports, and each reader is told its `Geometry` and derives no path of its own.
 
-## `internal/lyxtemp`
+## `internal/lymtemp`
 
 Imports only the standard library and `internal/lock`, and `gofrs/flock` through it.
 It is importable from production code, not a kit.
@@ -113,5 +113,5 @@ It is importable from production code, not a kit.
 ## `internal/fswatch`
 
 Imports only the standard library, `github.com/fsnotify/fsnotify` and `internal/logger`.
-- Every lyx process that waits on a file event goes through it, so fsnotify is imported nowhere else.
+- Every lym process that waits on a file event goes through it, so fsnotify is imported nowhere else.
 - `internal/logger` is admitted because fsnotify's error channel is drained and logged at Debug.

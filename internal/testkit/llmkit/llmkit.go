@@ -1,7 +1,7 @@
 // Package llmkit locates the LLM binary for a test and skips the test when it is absent.
 //
 // Only `llm`-tagged test files may import it.
-// It is the third kit exempt from the Testkit Invariant's `os/exec` ban, after lyxbin and tmuxkit.
+// It is the third kit exempt from the Testkit Invariant's `os/exec` ban, after lymbin and tmuxkit.
 // The exemption is bounded to `exec.LookPath`: it locates a binary and starts nothing.
 package llmkit
 

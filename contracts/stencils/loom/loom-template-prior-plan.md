@@ -19,7 +19,7 @@ Before you write anything in the plan directory:
 - Read the archived plan before writing anything.
 - Check it against the decision record and the current tree.
 - Carry forward every card that still holds by copying it into the plan directory rather than re-deriving it.
-- Re-verify every glyph you carry forward with `lyx quarry`.
+- Re-verify every glyph you carry forward with `lym quarry`.
 - Revise only what is wrong, missing or stale.
 - Never modify the archive directory.
 - Never copy `00-overview.md` from the archive; write it fresh, last, with `approved: false`.

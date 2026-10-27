@@ -31,7 +31,7 @@ type resumeRefusal struct {
 	kind    string
 }
 
-// resumeFromRunState answers `lyx loom resume` for the run's persisted state.
+// resumeFromRunState answers `lym loom resume` for the run's persisted state.
 // It must be called holding bootstrapLock, and releases it exactly once on every path out.
 func (c *loomCLI) resumeFromRunState(ctx context.Context, out io.Writer, bootstrapLock *lock.FileLock) {
 	refuse := func(r resumeRefusal) {
@@ -164,17 +164,17 @@ func (c *loomCLI) resumeFromRunState(ctx context.Context, out io.Writer, bootstr
 func (c *loomCLI) awaitingResumability(row string) (resumeRefusal, bool) {
 	subdir, isBouncer, err := c.bouncerSubdir(row)
 	if err != nil {
-		return resumeRefusal{message: "loom resume: " + err.Error() + `; the embedded loom recipe failed to parse, so this lyx build is broken; rebuild or reinstall lyx, then re-run "` + retryResume + `"`}, false
+		return resumeRefusal{message: "loom resume: " + err.Error() + `; the embedded loom recipe failed to parse, so this lym build is broken; rebuild or reinstall lym, then re-run "` + retryResume + `"`}, false
 	}
 	if !isBouncer {
-		return resumeRefusal{message: `loom resume: the run is awaiting a decision, which resume does not give; answer it through the verb the run's waiting note names, such as "lyx loom circling accept <slug>", after which a batten run watching the child resumes it, or run "lyx batten run <slug>" from the prime when no batten run watches it`}, false
+		return resumeRefusal{message: `loom resume: the run is awaiting a decision, which resume does not give; answer it through the verb the run's waiting note names, such as "lym loom circling accept <slug>", after which a batten run watching the child resumes it, or run "lym batten run <slug>" from the prime when no batten run watches it`}, false
 	}
 	pending, err := shedadapters.PendingCirclingDecision(filepath.Join(loomengine.LoomReviewsDir(c.location), subdir))
 	if err != nil {
-		return resumeRefusal{message: "loom resume: " + err.Error() + `; fix the file or directory the message names, and for a malformed decision file delete it and record the decision again with "lyx loom circling accept <slug>" or "lyx loom circling continue <slug>", then re-run "` + retryResume + `"`}, false
+		return resumeRefusal{message: "loom resume: " + err.Error() + `; fix the file or directory the message names, and for a malformed decision file delete it and record the decision again with "lym loom circling accept <slug>" or "lym loom circling continue <slug>", then re-run "` + retryResume + `"`}, false
 	}
 	if !pending {
-		return resumeRefusal{message: "loom resume: the run is awaiting at " + row + ", a review segment's Bouncer row, with no circling decision recorded; " + `run "lyx loom circling accept <slug>" or "lyx loom circling continue <slug>", then "` + retryResume + `"`}, false
+		return resumeRefusal{message: "loom resume: the run is awaiting at " + row + ", a review segment's Bouncer row, with no circling decision recorded; " + `run "lym loom circling accept <slug>" or "lym loom circling continue <slug>", then "` + retryResume + `"`}, false
 	}
 	return resumeRefusal{}, true
 }
@@ -219,7 +219,7 @@ func noLiveDriverMessage(driver reedengine.DirectoryRow, driverFound bool) strin
 	case driverFound && driver.Retiring:
 		return head + `its driver strand is retiring, so run "` + retryStart + `" in the task worktree, which removes the retiring strand and spawns a fresh driver`
 	case driverFound:
-		return head + `its driver strand is dead, so run "lyx batten run <slug>" from the prime when no batten run is watching the child, which brings the driver back, then run "` + retryResume + `" again; ` +
+		return head + `its driver strand is dead, so run "lym batten run <slug>" from the prime when no batten run is watching the child, which brings the driver back, then run "` + retryResume + `" again; ` +
 			`run "` + retryStart + `" in the task worktree when a batten run is already watching or its revive failed`
 	default:
 		return head + `reed holds no driver strand for it, so run "` + retryStart + `" in the task worktree`
@@ -237,23 +237,23 @@ its pane and removing the park marker. It never spawns an LLM driver, adds or
 attaches a strand, brings reed up or switches a tmux client. For a halted
 go-seeded run with no driver at all it spawns a Go driver, which re-steps the run.
 
-Reach for it in the task worktree after "lyx loom circling accept" or
-"lyx loom circling continue", or whenever a run halted at a hand-back should
+Reach for it in the task worktree after "lym loom circling accept" or
+"lym loom circling continue", or whenever a run halted at a hand-back should
 carry on with the driver it already has. A done run, and a running run whose
 driver is live, are a no-op success; a resumed run's envelope names the
 stop-report path.
 
-Each refusal names its way forward: "lyx loom start" when no run or no usable
+Each refusal names its way forward: "lym loom start" when no run or no usable
 driver strand exists, the circling verbs at a review segment awaiting a
 decision, the verb the run's waiting note names at any other awaiting row,
 and a retry shortly for the kind "driver_not_parked", while the driver
 finishes its post-run work or a Go driver is still settling the stop. An
 unfinished merge in the worktree is refused with the kind "merge_in_progress",
 and a run another machine owns with the kind "owned_elsewhere".
-While a pause covers this task it refuses and names "lyx tender resume".
+While a pause covers this task it refuses and names "lym tender resume".
 
 Example:
-  lyx loom resume`,
+  lym loom resume`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -262,11 +262,11 @@ Example:
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
-			if err := c.refuseCovered(`run "lyx loom resume" again`); err != nil {
+			if err := c.refuseCovered(`run "lym loom resume" again`); err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
-			if c.refuseOwnedElsewhere(ctx, out, `run "lyx loom resume" again`) {
+			if c.refuseOwnedElsewhere(ctx, out, `run "lym loom resume" again`) {
 				return nil
 			}
 

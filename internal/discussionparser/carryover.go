@@ -20,8 +20,8 @@ import (
 const openRisksHeading = "## Open risks"
 
 const (
-	carryOverOpenPrefix  = "<!-- lyx:carry-over "
-	carryOverClosePrefix = "<!-- /lyx:carry-over "
+	carryOverOpenPrefix  = "<!-- lym:carry-over "
+	carryOverClosePrefix = "<!-- /lym:carry-over "
 	carryOverMarkerEnd   = " -->"
 )
 
@@ -81,7 +81,7 @@ type CarryOver struct {
 // The new bytes are checked against the prior ones before they replace the record through a sibling temporary file.
 // A failed write or check leaves the record unchanged.
 //
-// A concurrent writer of the record, such as `lyx loom decision add`, is detected by two checks and no lock.
+// A concurrent writer of the record, such as `lym loom decision add`, is detected by two checks and no lock.
 // When the record differs from the bytes read at the start just before the rename, the write is refused and nothing is written.
 // When the record differs from the bytes written just after the rename, an error is returned and the other writer's bytes stay in place.
 // A write landing between the pre-rename check and the rename is still overwritten unseen.
@@ -393,7 +393,7 @@ func replaceFile(path string, prior, data []byte, perm os.FileMode, hooks carryO
 	}
 	if !bytes.Equal(current, prior) {
 		os.Remove(tempPath)
-		return errors.New("the decision record changed during the carry-over write, by a concurrent writer such as `lyx loom decision add`; nothing was written; run `lyx loom start` to re-run the settle once the other writer is done")
+		return errors.New("the decision record changed during the carry-over write, by a concurrent writer such as `lym loom decision add`; nothing was written; run `lym loom start` to re-run the settle once the other writer is done")
 	}
 
 	if err := os.Rename(tempPath, path); err != nil {
@@ -409,7 +409,7 @@ func replaceFile(path string, prior, data []byte, perm os.FileMode, hooks carryO
 		return err
 	}
 	if !bytes.Equal(current, data) {
-		return errors.New("the decision record changed during the carry-over write, by a concurrent writer such as `lyx loom decision add`; the other writer's bytes are in place; run `lyx loom start` to re-run the settle once the other writer is done")
+		return errors.New("the decision record changed during the carry-over write, by a concurrent writer such as `lym loom decision add`; the other writer's bytes are in place; run `lym loom start` to re-run the settle once the other writer is done")
 	}
 	return nil
 }

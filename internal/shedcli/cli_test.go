@@ -1,7 +1,7 @@
 //go:build tier0
 
 // cli_test.go covers armFromSeed's seed-driven arming: the run-id positional defaulting to "self", the pinned refusal precedence (run-id listing, unknown recipe, verb gate, the recipe's own refusal), and run's positional-argument arity.
-// It stays in tier 0 throughout: armFromSeed performs no lyxcwd.Resolve of its own (cli.go's own doc comment), so every case here drives it directly against a hand-built *lyxcwd.Location, with no real git repository behind it -- matching the repo's own convention that a real lyxcwd.Resolve spawn belongs only in an integration-tagged file (internal/lyxcwd/lyxcwd_test.go is the precedent).
+// It stays in tier 0 throughout: armFromSeed performs no lymcwd.Resolve of its own (cli.go's own doc comment), so every case here drives it directly against a hand-built *lymcwd.Location, with no real git repository behind it -- matching the repo's own convention that a real lymcwd.Resolve spawn belongs only in an integration-tagged file (internal/lymcwd/lymcwd_test.go is the precedent).
 package shedcli
 
 import (
@@ -17,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
@@ -25,11 +25,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// fixtureLocation builds a synthetic *lyxcwd.Location by hand, mirroring the field derivation
+// fixtureLocation builds a synthetic *lymcwd.Location by hand, mirroring the field derivation
 // Resolve performs, without spawning git.
-func fixtureLocation(t *testing.T) *lyxcwd.Location {
+func fixtureLocation(t *testing.T) *lymcwd.Location {
 	t.Helper()
-	return &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+	return &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 }
 
 // TestArmFromSeed_RunIDDefaultsToSelf asserts an omitted run-id positional (nil args) addresses
@@ -140,8 +140,8 @@ func TestArmFromSeed_RefusalEnvelopeKinds(t *testing.T) {
 	// The durable sink is package-level state, which is why the test stays serial.
 	logger.SetDurableSinkDir(t.TempDir())
 	t.Cleanup(func() { logger.SetDurableSinkDir("") })
-	seedRecipe := func(recipe string) func(t *testing.T, loc *lyxcwd.Location) {
-		return func(t *testing.T, loc *lyxcwd.Location) {
+	seedRecipe := func(recipe string) func(t *testing.T, loc *lymcwd.Location) {
+		return func(t *testing.T, loc *lymcwd.Location) {
 			if err := os.MkdirAll(shedrun.RunDir(loc, shedrun.SelfRunID), 0o755); err != nil {
 				t.Fatalf("MkdirAll(RunDir) = %v; want nil", err)
 			}
@@ -153,7 +153,7 @@ func TestArmFromSeed_RefusalEnvelopeKinds(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		setup func(t *testing.T, loc *lyxcwd.Location)
+		setup func(t *testing.T, loc *lymcwd.Location)
 		verb  string
 		// wantKind is the envelope's kind; empty means the envelope carries only "ok" and "error".
 		wantKind string
@@ -166,7 +166,7 @@ func TestArmFromSeed_RefusalEnvelopeKinds(t *testing.T) {
 	}{
 		{
 			name:  "missing run on step",
-			setup: func(t *testing.T, loc *lyxcwd.Location) {},
+			setup: func(t *testing.T, loc *lymcwd.Location) {},
 			verb:  "step",
 		},
 		{
@@ -179,11 +179,11 @@ func TestArmFromSeed_RefusalEnvelopeKinds(t *testing.T) {
 		},
 		{
 			name: "error naming its own way forward on step",
-			setup: func(t *testing.T, loc *lyxcwd.Location) {
+			setup: func(t *testing.T, loc *lymcwd.Location) {
 				seedRecipe("loom")(t, loc)
 				original := recipes["loom"]
 				recipes["loom"] = entry{
-					Arm: func(*lyxcwd.Location, string, string) (shedverbs.Spec, error) {
+					Arm: func(*lymcwd.Location, string, string) (shedverbs.Spec, error) {
 						return shedverbs.Spec{}, errors.New("hub config missing; way forward: run it in the hub")
 					},
 					Verbs: original.Verbs,
@@ -238,7 +238,7 @@ func TestArmFromSeed_RefusalEnvelopeKinds(t *testing.T) {
 		},
 		{
 			name:    "loop: missing run stays kind-less with no loop object",
-			setup:   func(t *testing.T, loc *lyxcwd.Location) {},
+			setup:   func(t *testing.T, loc *lymcwd.Location) {},
 			verb:    "step",
 			loopRun: &loopRun{seedStatus: true, wantState: "running"},
 		},
@@ -297,13 +297,13 @@ func TestArmFromSeed_RefusalEnvelopeKinds(t *testing.T) {
 }
 
 // TestArmFromSeed_RefusalPrecedence pins armFromSeed's refusals as a table, in the order they fire.
-// Stage 1 (lyxcwd.Resolve's own not-a-git-repository sentinel) sits above armFromSeed entirely, inside resolvePersistentPreRun, which calls lyxcwd.Resolve unconditionally before ever calling armFromSeed -- first by construction, not by a value armFromSeed itself could reorder -- and is exercised by lyxcwd's own integration-tagged suite (internal/lyxcwd/lyxcwd_test.go).
+// Stage 1 (lymcwd.Resolve's own not-a-git-repository sentinel) sits above armFromSeed entirely, inside resolvePersistentPreRun, which calls lymcwd.Resolve unconditionally before ever calling armFromSeed -- first by construction, not by a value armFromSeed itself could reorder -- and is exercised by lymcwd's own integration-tagged suite (internal/lymcwd/lymcwd_test.go).
 // The rows pin stages 2 through 4 against the identical location and verb shape, so a regression reordering any of them shows up as the wrong row's assertion failing rather than a passing test for the wrong reason.
 // Rows shrink or replace entries of the package-global recipes table, so neither the rows nor this test run in parallel.
 func TestArmFromSeed_RefusalPrecedence(t *testing.T) {
 	tests := []struct {
 		name  string
-		setup func(t *testing.T, loc *lyxcwd.Location)
+		setup func(t *testing.T, loc *lymcwd.Location)
 		verb  string
 		args  []string
 		// wants lists substrings the refusal must contain.
@@ -311,7 +311,7 @@ func TestArmFromSeed_RefusalPrecedence(t *testing.T) {
 	}{
 		{
 			name: "stage2_run-id-listing",
-			setup: func(t *testing.T, loc *lyxcwd.Location) {
+			setup: func(t *testing.T, loc *lymcwd.Location) {
 				if err := shedrun.WriteSeed(loc, "alpha", shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo}); err != nil {
 					t.Fatalf("WriteSeed(alpha) = %v; want nil", err)
 				}
@@ -321,12 +321,12 @@ func TestArmFromSeed_RefusalPrecedence(t *testing.T) {
 			},
 			verb:  "status",
 			args:  []string{"charlie"},
-			wants: []string{"no seed found", "alpha", "bravo", "charlie", "lyx shed seed charlie --recipe"},
+			wants: []string{"no seed found", "alpha", "bravo", "charlie", "lym shed seed charlie --recipe"},
 		},
 		{
 			// shedrun.ReadSeed never validates Recipe against shedrun's own vocabulary (only Driver), so a hand-edited or stale seed.json naming an unrecognised recipe is a real, reachable case.
 			name: "stage2_seed-naming-unknown-recipe",
-			setup: func(t *testing.T, loc *lyxcwd.Location) {
+			setup: func(t *testing.T, loc *lymcwd.Location) {
 				if err := os.MkdirAll(shedrun.RunDir(loc, "some-run"), 0o755); err != nil {
 					t.Fatalf("MkdirAll(RunDir) = %v; want nil", err)
 				}
@@ -342,7 +342,7 @@ func TestArmFromSeed_RefusalPrecedence(t *testing.T) {
 			// Both shipped recipes support every generic verb, so the row shrinks loom's Verbs to have an excluded verb to drive against.
 			// The shrink never reaches Arm: the verb gate refuses before armFromSeed calls it.
 			name: "stage3_verb-gate",
-			setup: func(t *testing.T, loc *lyxcwd.Location) {
+			setup: func(t *testing.T, loc *lymcwd.Location) {
 				original := recipes["loom"]
 				recipes["loom"] = entry{Arm: original.Arm, Verbs: []string{"run", "status", "pause"}}
 				t.Cleanup(func() { recipes["loom"] = original })
@@ -356,7 +356,7 @@ func TestArmFromSeed_RefusalPrecedence(t *testing.T) {
 		},
 		{
 			name: "stage4_arms-own-refusal",
-			setup: func(t *testing.T, loc *lyxcwd.Location) {
+			setup: func(t *testing.T, loc *lymcwd.Location) {
 				if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo}); err != nil {
 					t.Fatalf("WriteSeed = %v; want nil", err)
 				}

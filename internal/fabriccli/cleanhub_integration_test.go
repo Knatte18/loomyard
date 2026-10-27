@@ -28,8 +28,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
@@ -71,7 +71,7 @@ func runShortnameVerb(t *testing.T, h *hubforge.Hub, args ...string) (exit int, 
 	return exit, env
 }
 
-// removeShortnameRecord deletes .lyx-shortname from the board and commits the removal, leaving a hub with no shortname.
+// removeShortnameRecord deletes .lym-shortname from the board and commits the removal, leaving a hub with no shortname.
 func removeShortnameRecord(t *testing.T, h *hubforge.Hub) {
 	t.Helper()
 	board := h.BoardDir()
@@ -94,7 +94,7 @@ func boardGit(t *testing.T, h *hubforge.Hub, args ...string) string {
 }
 
 // TestRunCLI_CleanHubScenario runs the read-only, refusal and shortname checks over one hub.
-// Steps run serially in this order: the shortname steps that rewrite the record come after the ones that read it, and the pollution step comes last because it replaces the warp _lyx junction with a tracked directory.
+// Steps run serially in this order: the shortname steps that rewrite the record come after the ones that read it, and the pollution step comes last because it replaces the warp _lym junction with a tracked directory.
 // The scenario calls t.Parallel as a whole; no step does, because they share the one hub.
 func TestRunCLI_CleanHubScenario(t *testing.T) {
 	t.Parallel()
@@ -248,7 +248,7 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 		}},
 		{"FallbackCwdMatchesInjectedCwd", func(t *testing.T) {
 			// RunCLI's process-cwd fallback and RunCLIIn's explicit-cwd branch agree on one read-only verb: "pairs" through RunCLIIn in this process, then through RunCLI in a separate OS process whose working directory is the prime worktree via exec.Command's Dir field, never a Chdir on this test binary.
-			// The subprocess is this test binary re-exec'd and intercepted by cli_test.go's package-level init, gated by lyxFabricCLISubprocessCwdEnv.
+			// The subprocess is this test binary re-exec'd and intercepted by cli_test.go's package-level init, gated by lymFabricCLISubprocessCwdEnv.
 			injectedCode, injectedOut := runFabric(t, h.PrimeWorktree(), "pairs")
 			if injectedCode != 0 {
 				t.Fatalf("RunCLIIn(pairs) = %d; want 0\noutput: %s", injectedCode, injectedOut)
@@ -256,7 +256,7 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 
 			cmd := exec.Command(os.Args[0])
 			cmd.Dir = h.PrimeWorktree()
-			cmd.Env = append(os.Environ(), lyxFabricCLISubprocessCwdEnv+"=1")
+			cmd.Env = append(os.Environ(), lymFabricCLISubprocessCwdEnv+"=1")
 			var stderr bytes.Buffer
 			cmd.Stderr = &stderr
 			fallbackOut, runErr := cmd.Output()
@@ -377,9 +377,9 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 			// A pair created off a freshly-built hub resolves loom from the board's repo default, with no worktree file present: the end-to-end proof that the clone's seeded defaults reach a forked pair.
 			hubforge.AddPair(t, h, "pair-inherits-configs")
 
-			pairLocation, err := lyxcwd.Resolve(filepath.Join(h.PairCodeWorktree("pair-inherits-configs"), h.Anchor))
+			pairLocation, err := lymcwd.Resolve(filepath.Join(h.PairCodeWorktree("pair-inherits-configs"), h.Anchor))
 			if err != nil {
-				t.Fatalf("lyxcwd.Resolve the pair: %v", err)
+				t.Fatalf("lymcwd.Resolve the pair: %v", err)
 			}
 			loomConfigPath := configengine.ConfigFile(pairLocation.AnchorPath(), "loom")
 			if _, err := os.Stat(loomConfigPath); !os.IsNotExist(err) {
@@ -426,8 +426,8 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 			removeShortnameRecord(t, h)
 
 			exit, env := runShortnameVerb(t, h)
-			if exit == 0 || !strings.Contains(env["error"].(string), "lyx fabric shortname <shortname>") {
-				t.Fatalf("no-arg on a hub with no shortname = %d, %v; want a refusal naming `lyx fabric shortname <shortname>`", exit, env)
+			if exit == 0 || !strings.Contains(env["error"].(string), "lym fabric shortname <shortname>") {
+				t.Fatalf("no-arg on a hub with no shortname = %d, %v; want a refusal naming `lym fabric shortname <shortname>`", exit, env)
 			}
 
 			exit, env = runShortnameVerb(t, h, "zz")
@@ -461,27 +461,27 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 			}
 		}},
 		{"PairsReportsPollutionEntryWithRemedy", func(t *testing.T) {
-			// With a file tracked directly under _lyx in the warp index, "fabric pairs" still emits a pollution entry naming that path with a non-empty "remedy" key, pinning the pollution JSON shape at the CLI boundary.
-			// Last step: the warp _lyx junction becomes a tracked directory.
-			hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _lyx\n")
+			// With a file tracked directly under _lym in the warp index, "fabric pairs" still emits a pollution entry naming that path with a non-empty "remedy" key, pinning the pollution JSON shape at the CLI boundary.
+			// Last step: the warp _lym junction becomes a tracked directory.
+			hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _lym\n")
 
-			// A real hub already wires _lyx as a junction onto the weft config.
+			// A real hub already wires _lym as a junction onto the weft config.
 			// Pollution means an operator replaced that junction with a real, tracked directory, so the junction must be removed first -- writing through it would land the file on the weft side instead of polluting the warp index.
 			// The explicit "-f" on the git add is likewise needed:
-			// WireJunctionsWith seeded _lyx into the warp's .git/info/exclude, and git refuses to add an explicitly-named ignored path without it.
-			warpLyxDir := filepath.Join(h.PrimeWorktree(), lyxdirs.LyxDirName)
-			if err := fslink.Remove(warpLyxDir); err != nil {
-				t.Fatalf("remove warp _lyx junction: %v", err)
+			// WireJunctionsWith seeded _lym into the warp's .git/info/exclude, and git refuses to add an explicitly-named ignored path without it.
+			warpLymDir := filepath.Join(h.PrimeWorktree(), lymdirs.LymDirName)
+			if err := fslink.Remove(warpLymDir); err != nil {
+				t.Fatalf("remove warp _lym junction: %v", err)
 			}
-			if err := os.MkdirAll(warpLyxDir, 0o755); err != nil {
-				t.Fatalf("mkdir warp _lyx dir: %v", err)
+			if err := os.MkdirAll(warpLymDir, 0o755); err != nil {
+				t.Fatalf("mkdir warp _lym dir: %v", err)
 			}
-			trackedFile := filepath.Join(warpLyxDir, "PATTERN.md")
+			trackedFile := filepath.Join(warpLymDir, "PATTERN.md")
 			if err := os.WriteFile(trackedFile, []byte("# constraints\n"), 0o644); err != nil {
 				t.Fatalf("write tracked file: %v", err)
 			}
-			gitkit.MustRun(t, h.PrimeWorktree(), "git", "add", "-f", "--", lyxdirs.LyxDirName)
-			gitkit.MustRun(t, h.PrimeWorktree(), "git", "commit", "-m", "accidentally track _lyx")
+			gitkit.MustRun(t, h.PrimeWorktree(), "git", "add", "-f", "--", lymdirs.LymDirName)
+			gitkit.MustRun(t, h.PrimeWorktree(), "git", "commit", "-m", "accidentally track _lym")
 
 			code, output := runFabric(t, h.PrimeWorktree(), "pairs")
 			if code != 0 {

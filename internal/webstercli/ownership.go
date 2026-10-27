@@ -1,5 +1,5 @@
 // ownership.go provides ownerlessRunWarnings, the shared helper every state-mutating bracket verb
-// (begin/await/record/recover-batch) uses to append a warning when no live `lyx webster run` owns
+// (begin/await/record/recover-batch) uses to append a warning when no live `lym webster run` owns
 // the state it is about to mutate.
 // A bracket verb is Master's own call and legitimately runs only under a live run holding run.lock;
 // a Master that keeps driving verbs after its run process died (a timeout exit leaves the
@@ -17,10 +17,10 @@ import "github.com/Knatte18/loomyard/internal/websterengine"
 func ownerlessRunWarnings(scratchDir string, warnings []string) []string {
 	active, err := websterengine.RunActive(scratchDir)
 	if err != nil {
-		return append(warnings, "could not determine whether a live `lyx webster run` owns this state: "+err.Error())
+		return append(warnings, "could not determine whether a live `lym webster run` owns this state: "+err.Error())
 	}
 	if !active {
-		return append(warnings, "no live `lyx webster run` owns this state (run.lock is free) -- this verb's mutations have no run-level owner or exit backstop; resume with `lyx webster run`")
+		return append(warnings, "no live `lym webster run` owns this state (run.lock is free) -- this verb's mutations have no run-level owner or exit backstop; resume with `lym webster run`")
 	}
 	return warnings
 }

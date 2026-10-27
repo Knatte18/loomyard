@@ -1,6 +1,6 @@
 //go:build tier1
 
-// prebuild_integration_test.go pins the harness's one lyx build per tagged run.
+// prebuild_integration_test.go pins the harness's one lym build per tagged run.
 // It is Tier 2: the building rows spawn a real go build of a throwaway module, or the test binary as a stand-in go, so it needs the integration build tag.
 
 package main
@@ -14,13 +14,13 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
-	"github.com/Knatte18/loomyard/internal/lyxtemp"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 )
 
-func TestPrebuildLyx(t *testing.T) {
+func TestPrebuildLym(t *testing.T) {
 	t.Parallel()
 
-	inherited := gateslot.PrebuiltLyxEnv + "=/stale/lyx"
+	inherited := gateslot.PrebuiltLymEnv + "=/stale/lym"
 	module := func(t *testing.T, mainSource string) string {
 		root := t.TempDir()
 		if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/prebuild\n\ngo 1.22\n"), 0o644); err != nil {
@@ -29,10 +29,10 @@ func TestPrebuildLyx(t *testing.T) {
 		if mainSource == "" {
 			return root
 		}
-		if err := os.MkdirAll(filepath.Join(root, "cmd", "lyx"), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(root, "cmd", "lym"), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(root, "cmd", "lyx", "main.go"), []byte(mainSource), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(root, "cmd", "lym", "main.go"), []byte(mainSource), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		return root
@@ -52,15 +52,15 @@ func TestPrebuildLyx(t *testing.T) {
 	}{
 		{name: "an untagged run builds nothing and strips the inherited value", mainSource: "package main\n\nfunc main() {}\n"},
 		{name: "a tier0 run builds nothing and strips the inherited value", tags: "tier0", mainSource: "package main\n\nfunc main() {}\n"},
-		{name: "a tagged run without cmd/lyx builds nothing and strips the inherited value", tags: "integration"},
-		{name: "a tagged run builds cmd/lyx and exports it", tags: "integration", mainSource: "package main\n\nfunc main() {}\n", wantBuilt: true},
+		{name: "a tagged run without cmd/lym builds nothing and strips the inherited value", tags: "integration"},
+		{name: "a tagged run builds cmd/lym and exports it", tags: "integration", mainSource: "package main\n\nfunc main() {}\n", wantBuilt: true},
 		{
 			name: "a tagged run caps its build at the -p it is handed and inherits the held slot", tags: "integration", mainSource: "package main\n\nfunc main() {}\n", standInGo: true, wantBuilt: true,
 			wantBuildArgs: func(root, bin string) []string {
-				return []string{"build", "-C", root, "-p", strconv.Itoa(parallel), "-o", bin, "./cmd/lyx"}
+				return []string{"build", "-C", root, "-p", strconv.Itoa(parallel), "-o", bin, "./cmd/lym"}
 			},
 		},
-		{name: "a tagged run whose cmd/lyx does not build returns the build output", tags: "integration", mainSource: "package main\n\nfunc main() { undefinedCall() }\n", wantError: "undefinedCall"},
+		{name: "a tagged run whose cmd/lym does not build returns the build output", tags: "integration", mainSource: "package main\n\nfunc main() { undefinedCall() }\n", wantError: "undefinedCall"},
 	}
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {
@@ -76,7 +76,7 @@ func TestPrebuildLyx(t *testing.T) {
 				}
 				goBinary, base = testBinary, append(base, standInGoRecordEnv+"="+record)
 			}
-			env, cleanup, err := prebuildLyx(goBinary, row.tags, root, base, parallel)
+			env, cleanup, err := prebuildLym(goBinary, row.tags, root, base, parallel)
 			if row.wantError != "" {
 				if err == nil || !strings.Contains(err.Error(), row.wantError) {
 					t.Fatalf("err = %v; want an error holding %q", err, row.wantError)
@@ -92,24 +92,24 @@ func TestPrebuildLyx(t *testing.T) {
 			}
 			var exported []string
 			for _, entry := range env {
-				if value, ok := strings.CutPrefix(entry, gateslot.PrebuiltLyxEnv+"="); ok {
+				if value, ok := strings.CutPrefix(entry, gateslot.PrebuiltLymEnv+"="); ok {
 					exported = append(exported, value)
 				}
 			}
 			if !row.wantBuilt {
 				cleanup()
 				if len(exported) != 0 {
-					t.Errorf("env carries %s = %q; want it stripped", gateslot.PrebuiltLyxEnv, exported)
+					t.Errorf("env carries %s = %q; want it stripped", gateslot.PrebuiltLymEnv, exported)
 				}
 				return
 			}
 			if len(exported) != 1 {
-				t.Fatalf("env carries %s = %q; want the one built binary", gateslot.PrebuiltLyxEnv, exported)
+				t.Fatalf("env carries %s = %q; want the one built binary", gateslot.PrebuiltLymEnv, exported)
 			}
 			if info, err := os.Stat(exported[0]); err != nil || !info.Mode().IsRegular() {
 				t.Fatalf("the exported binary %s is not a file (err=%v)", exported[0], err)
 			}
-			runDirectory, err := lyxtemp.Dir()
+			runDirectory, err := lymtemp.Dir()
 			if err != nil {
 				t.Fatal(err)
 			}

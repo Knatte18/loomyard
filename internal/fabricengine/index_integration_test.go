@@ -22,14 +22,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
-// commitWeftWithTrailer commits content into weftPath's tracked _lyx config
+// commitWeftWithTrailer commits content into weftPath's tracked _lym config
 // file with a Warp-SHA trailer naming warpSHA — a hand-crafted stand-in for
 // what CommitWeft (a later batch) produces — returning the new weft HEAD SHA.
 func commitWeftWithTrailer(t *testing.T, weftPath, content, warpSHA string) string {
 	t.Helper()
 
 	msg := fabricengine.AppendWarpSHATrailerForTest("weft sync", warpSHA)
-	return gitkit.CommitFile(t, weftPath, filepath.Join("_lyx", "config.yaml"), content, msg)
+	return gitkit.CommitFile(t, weftPath, filepath.Join("_lym", "config.yaml"), content, msg)
 }
 
 // TestCorrespondenceIndex runs the correspondence index's git wiring over one plain warp repo and one

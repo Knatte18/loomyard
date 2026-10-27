@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Launcher for the lyx sandbox fetch: collects the agent report into this repo's .scratch/.
+# Launcher for the lym sandbox fetch: collects the agent report into this repo's .scratch/.
 # The machine-specific parent directory is hardcoded HERE (the base under which
 # sandbox Hubs are created, mirroring the win/ launcher's C:\Code) -- the Go
 # tool stays general.

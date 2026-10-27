@@ -1,5 +1,5 @@
 // commitrecords.go implements the `commit-records` loom verb: it commits and pushes the run's records from Go when the driver stops.
-// The driver writes its stop report after its last `lyx shed step`, so no transition commit can capture it,
+// The driver writes its stop report after its last `lym shed step`, so no transition commit can capture it,
 // and the Fabric Git Invariant forbids the agent committing it itself: the agent triggers this verb, and the verb commits through fabricengine.
 //
 // The cobra shell is thin over commitRecordsVerb, which takes the three fabric calls as commitStatusDeps so the disposition table is testable without git.
@@ -28,7 +28,7 @@ const commitRecordsMessage = "loom: commit run records"
 func commitRecordsVerb(out io.Writer, d commitStatusDeps) int {
 	active, err := d.MergeActive()
 	if err != nil {
-		return output.Err(out, "loom: commit-records: probe merge state: "+err.Error()+"; way forward: transient, re-run lyx loom commit-records")
+		return output.Err(out, "loom: commit-records: probe merge state: "+err.Error()+"; way forward: transient, re-run lym loom commit-records")
 	}
 	if active {
 		return output.Ok(out, map[string]any{
@@ -37,7 +37,7 @@ func commitRecordsVerb(out io.Writer, d commitStatusDeps) int {
 		})
 	}
 	if _, err := d.Commit(commitRecordsMessage); err != nil {
-		return output.Err(out, "loom: commit-records: commit failed: "+err.Error()+"; way forward: transient, re-run lyx loom commit-records")
+		return output.Err(out, "loom: commit-records: commit failed: "+err.Error()+"; way forward: transient, re-run lym loom commit-records")
 	}
 	if err := d.Push(); err != nil {
 		message := "loom: commit-records: the commit landed locally but the push failed: " + err.Error()
@@ -55,13 +55,13 @@ func commitRecordsVerb(out io.Writer, d commitStatusDeps) int {
 // any other failure, a lock expiry included, is transient.
 func pushFailureWayForward(err error) string {
 	if fabricengine.IsPushRejected(err) {
-		return "merge the remote branch into the local branch in the worktree the error names, or clear what a remote rule objects to, then run lyx fabric push or re-run lyx loom commit-records; a session lyx refuses the verb from reports status: FAILED and the orch runs it"
+		return "merge the remote branch into the local branch in the worktree the error names, or clear what a remote rule objects to, then run lym fabric push or re-run lym loom commit-records; a session lym refuses the verb from reports status: FAILED and the orch runs it"
 	}
-	return "transient, run lyx fabric push or re-run lyx loom commit-records; a session lyx refuses the verb from reports status: FAILED and the orch runs it"
+	return "transient, run lym fabric push or re-run lym loom commit-records; a session lym refuses the verb from reports status: FAILED and the orch runs it"
 }
 
 // writeParkMarker writes the driver park marker at markerPath, holding reportPath, creating its directory.
-// The marker is what `lyx loom start` reads to resume a parked driver by typing into its pane,
+// The marker is what `lym loom start` reads to resume a parked driver by typing into its pane,
 // so writing it from Go, not leaving it to the driving agent, keeps a park from silently stalling the run.
 func writeParkMarker(markerPath, reportPath string) error {
 	if err := os.MkdirAll(filepath.Dir(markerPath), 0o755); err != nil {
@@ -77,7 +77,7 @@ func writeParkMarker(markerPath, reportPath string) error {
 func commitAndPark(out io.Writer, d commitStatusDeps, markerPath, reportPath string) int {
 	code := commitRecordsVerb(out, d)
 	if err := writeParkMarker(markerPath, reportPath); err != nil {
-		code = output.Err(out, "loom: commit-records: write park marker "+markerPath+": "+err.Error()+"; way forward: transient, re-run lyx loom commit-records --park "+reportPath)
+		code = output.Err(out, "loom: commit-records: write park marker "+markerPath+": "+err.Error()+"; way forward: transient, re-run lym loom commit-records --park "+reportPath)
 	}
 	return code
 }
@@ -90,19 +90,19 @@ func (c *loomCLI) commitRecordsCmd() *cobra.Command {
 		Short:       "commit and push the run's records: status, reviews, friction notes and drive reports",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
 		Long: `commit-records commits and pushes the run's records: the status file, the review
-round record, the friction notes under _lyx/loom/friction/ and the drive reports under
-_lyx/shed/<slug>/drive-reports/. The loom driver's end-of-session command runs it after the
+round record, the friction notes under _lym/loom/friction/ and the drive reports under
+_lym/shed/<slug>/drive-reports/. The loom driver's end-of-session command runs it after the
 driver writes its stop report. It is safe to run by hand in a task worktree before
 resuming a batten run whose teardown refused uncommitted run records. A tree with nothing
 to commit succeeds without adding a commit.
 
 With --park <report>, a parking driver's command: after the commit, whatever its
 outcome, it writes the driver park marker holding the stop report's path, which
-lyx loom start needs to resume the parked session.
+lym loom start needs to resume the parked session.
 
 Example:
-  lyx loom commit-records
-  lyx loom commit-records --park _lyx/shed/<slug>/drive-reports/<report>.md`,
+  lym loom commit-records
+  lym loom commit-records --park _lym/shed/<slug>/drive-reports/<report>.md`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {

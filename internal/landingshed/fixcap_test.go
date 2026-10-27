@@ -43,7 +43,7 @@ func TestFixCap_Exceeded(t *testing.T) {
 		{"Targets", goMatcher, fabricengine.LineChange{Paths: []string{"build/Common.targets"}, Lines: 1}, "configuration file build/Common.targets"},
 		{"DirectoryBuildProps", goMatcher, fabricengine.LineChange{Paths: []string{"Directory.Build.props"}, Lines: 1}, "configuration file Directory.Build.props"},
 		{"GithubPath", goMatcher, fabricengine.LineChange{Paths: []string{".github/workflows/ci.yml"}, Lines: 1}, "configuration file .github/workflows/ci.yml"},
-		{"GateYaml", goMatcher, fabricengine.LineChange{Paths: []string{"_lyx/config/gate.yaml"}, Lines: 1}, "configuration file _lyx/config/gate.yaml"},
+		{"GateYaml", goMatcher, fabricengine.LineChange{Paths: []string{"_lym/config/gate.yaml"}, Lines: 1}, "configuration file _lym/config/gate.yaml"},
 		{"AddedTSkip", goMatcher, fabricengine.LineChange{Paths: []string{"internal/x/x.go"}, Lines: 1, AddedLines: []string{"\tt.Skip(\"flaky\")"}}, `skips a test: t.Skip("flaky")`},
 		{"AddedTSkipNow", goMatcher, fabricengine.LineChange{Paths: []string{"internal/x/x.go"}, Lines: 1, AddedLines: []string{"\tt.SkipNow()"}}, "skips a test: t.SkipNow()"},
 		{"AddedIgnoreAttribute", goMatcher, fabricengine.LineChange{Paths: []string{"src/Foo.cs"}, Lines: 1, AddedLines: []string{"[Ignore]"}}, "skips a test: [Ignore]"},

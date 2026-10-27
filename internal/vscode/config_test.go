@@ -17,9 +17,9 @@ import (
 //testtiming:keep pins the whole settings.json and the attach task's shape, which no covering test asserts
 func TestWriteVSCodeConfigCreatesFilesWhenAbsent(t *testing.T) {
 	dir := t.TempDir()
-	lyxPath := "/opt/lyx/bin/lyx"
+	lymPath := "/opt/lym/bin/lym"
 
-	if err := WriteConfig(dir, ".", "test-slug", "#2d7d46", lyxPath); err != nil {
+	if err := WriteConfig(dir, ".", "test-slug", "#2d7d46", lymPath); err != nil {
 		t.Fatalf("WriteConfig failed: %v", err)
 	}
 
@@ -44,8 +44,8 @@ func TestWriteVSCodeConfigCreatesFilesWhenAbsent(t *testing.T) {
 	if !ok {
 		t.Fatalf("files.watcherExclude not found or not a map in settings.json")
 	}
-	if excludeLyx := watcherExclude["**/_lyx/**"]; excludeLyx != true {
-		t.Fatalf("files.watcherExclude[**/_lyx/**] = %v; want true", excludeLyx)
+	if excludeLym := watcherExclude["**/_lym/**"]; excludeLym != true {
+		t.Fatalf("files.watcherExclude[**/_lym/**] = %v; want true", excludeLym)
 	}
 
 	tasks := readTasksFile(t, dir).Tasks
@@ -56,8 +56,8 @@ func TestWriteVSCodeConfigCreatesFilesWhenAbsent(t *testing.T) {
 	if task["label"] != "reed attach" {
 		t.Errorf("label = %v; want reed attach", task["label"])
 	}
-	if task["command"] != lyxPath {
-		t.Errorf("command = %v; want %q", task["command"], lyxPath)
+	if task["command"] != lymPath {
+		t.Errorf("command = %v; want %q", task["command"], lymPath)
 	}
 	args, _ := task["args"].([]any)
 	if len(args) != 2 || args[0] != "reed" || args[1] != "attach" {
@@ -100,7 +100,7 @@ func readTasksFile(t *testing.T, dir string) tasksFile {
 	return tasks
 }
 
-// TestWriteConfigFallsBackToBareName pins that an empty lyx path degrades to the bare binary name in the generated task.
+// TestWriteConfigFallsBackToBareName pins that an empty lym path degrades to the bare binary name in the generated task.
 func TestWriteConfigFallsBackToBareName(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -113,8 +113,8 @@ func TestWriteConfigFallsBackToBareName(t *testing.T) {
 	if len(tasks) != 1 {
 		t.Fatalf("got %d tasks, want exactly 1: %v", len(tasks), tasks)
 	}
-	if tasks[0]["command"] != "lyx" {
-		t.Errorf("command = %v; want lyx", tasks[0]["command"])
+	if tasks[0]["command"] != "lym" {
+		t.Errorf("command = %v; want lym", tasks[0]["command"])
 	}
 }
 
@@ -137,7 +137,7 @@ func TestWriteConfigKeepsSettingsAndOverwritesTasks(t *testing.T) {
 		t.Fatalf("failed to write original tasks.json: %v", err)
 	}
 
-	if err := WriteConfig(dir, ".", "slug", "#2d7d46", "/opt/lyx/bin/lyx"); err != nil {
+	if err := WriteConfig(dir, ".", "slug", "#2d7d46", "/opt/lym/bin/lym"); err != nil {
 		t.Fatalf("WriteConfig failed: %v", err)
 	}
 
@@ -164,7 +164,7 @@ func TestWriteConfigLeavesGitignoreAlone(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 
-	if err := WriteConfig(dir, ".", "slug", "#2d7d46", "/opt/lyx/bin/lyx"); err != nil {
+	if err := WriteConfig(dir, ".", "slug", "#2d7d46", "/opt/lym/bin/lym"); err != nil {
 		t.Fatalf("WriteConfig failed: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".gitignore")); !os.IsNotExist(err) {
@@ -175,7 +175,7 @@ func TestWriteConfigLeavesGitignoreAlone(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), existing, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := WriteConfig(dir, ".", "slug", "#2d7d46", "/opt/lyx/bin/lyx"); err != nil {
+	if err := WriteConfig(dir, ".", "slug", "#2d7d46", "/opt/lym/bin/lym"); err != nil {
 		t.Fatalf("WriteConfig failed: %v", err)
 	}
 	got, _ := os.ReadFile(filepath.Join(dir, ".gitignore"))

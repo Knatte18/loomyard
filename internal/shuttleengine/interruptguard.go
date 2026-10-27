@@ -12,7 +12,7 @@ import (
 
 // ErrNoRunningTurn marks an interrupt refused because the pane shows no running turn: there is nothing to stop.
 // A caller that only needs the turn stopped treats it as success.
-var ErrNoRunningTurn = errors.New("shuttle: the pane shows no running turn, so there is nothing to interrupt; way forward: \"lyx shuttle send <guid> <text>\" gives the agent a turn")
+var ErrNoRunningTurn = errors.New("shuttle: the pane shows no running turn, so there is nothing to interrupt; way forward: \"lym shuttle send <guid> <text>\" gives the agent a turn")
 
 // ErrRewindPickerOpen marks an operation that found the provider's rewind picker open in the pane.
 // It never wraps ErrSessionBusy, so no caller retries a picker as a busy session.
@@ -48,7 +48,7 @@ func guardedInterrupt(reed ReedOps, engine Engine, clock Clock, guid string) err
 // A caller treats the interrupt as sent: the turn was stopped, and only the box may still hold the restored text.
 var ErrInterruptClearFailed = errors.New("shuttle: the interrupt key was sent, but clearing the prompt it restored did not finish; treat the interrupt as sent")
 
-// clearRestoredPrompt empties the prompt the provider restored into guid's input box after lyx's own interrupt key, and does nothing for an engine without RestoredPromptClearer, InputBoxReader and InterruptGuard.
+// clearRestoredPrompt empties the prompt the provider restored into guid's input box after lym's own interrupt key, and does nothing for an engine without RestoredPromptClearer, InputBoxReader and InterruptGuard.
 // It waits the engine's interrupt settle on clock and reads the box.
 // A box read empty gets one more settle and one more read, and a box still empty, or one the engine cannot read, returns nil.
 // A box holding text is cleared only behind a guard reading taken from that same capture plus one operator-activity query:
@@ -128,10 +128,10 @@ func refuseInterruptKey(engine Engine, inputs []PaneInput) error {
 	}
 	for index, input := range inputs {
 		if input.Key != "" && interruptKeys[canonicalKeyName(input.Key)] {
-			return fmt.Errorf("shuttle: Inject: the inputs hold the interrupt key %q, which Inject never sends; way forward: \"lyx shuttle interrupt <guid>\" sends it behind the pane guard", input.Key)
+			return fmt.Errorf("shuttle: Inject: the inputs hold the interrupt key %q, which Inject never sends; way forward: \"lym shuttle interrupt <guid>\" sends it behind the pane guard", input.Key)
 		}
 		if control := strings.IndexFunc(input.Text, unicode.IsControl); control >= 0 {
-			return fmt.Errorf("shuttle: Inject: input %d's text holds the control character %q, which Inject never types; way forward: send a key as a Key input, and the interrupt key through \"lyx shuttle interrupt <guid>\"", index, []rune(input.Text[control:])[0])
+			return fmt.Errorf("shuttle: Inject: input %d's text holds the control character %q, which Inject never types; way forward: send a key as a Key input, and the interrupt key through \"lym shuttle interrupt <guid>\"", index, []rune(input.Text[control:])[0])
 		}
 	}
 	return nil

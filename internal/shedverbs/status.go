@@ -23,8 +23,8 @@ import (
 // ensureStatusLockDir creates the parent directory of the status file's advisory lock, the
 // ephemeral tree the status body and pause must both ensure before touching internal/state at all.
 //
-// The two paths live in different trees: the status file is durable, under `_lyx`, while its lock is
-// ephemeral, under `.lyx`. internal/lock opens a lock file with O_CREATE and never creates a parent,
+// The two paths live in different trees: the status file is durable, under `_lym`, while its lock is
+// ephemeral, under `.lym`. internal/lock opens a lock file with O_CREATE and never creates a parent,
 // which is why shedengine.preflight MkdirAlls both lock parents on every Run and Step. Nothing
 // creates the ephemeral directory before a bootstrap has run, so without this both verbs' carefully-
 // worded "no status file ... run ..." remedy messages were unreachable on the one path they exist

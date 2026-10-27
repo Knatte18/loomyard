@@ -38,7 +38,7 @@ func citationAllowKey(stencilName, token string) string {
 // citationAllowlist is the justification-carrying allowlist for tokens the bare-citation rule would
 // otherwise flag but that are not citations at all.
 // Each entry's Why is its own justification, carried as data rather than as a comment beside the entry,
-// so the justification cannot drift away from what it justifies -- the same (file, target)-keyed, owner-naming shape internal/lyxcwd's Markdown Link Integrity allowlist already uses.
+// so the justification cannot drift away from what it justifies -- the same (file, target)-keyed, owner-naming shape internal/lymcwd's Markdown Link Integrity allowlist already uses.
 //
 // A small allowlist is the design here, not a workaround.
 // Its entry names loom-template-plan's own glyph-grammar worked example -- `internal/boardcli/list.go` illustrates

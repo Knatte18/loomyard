@@ -31,8 +31,8 @@ const (
 // skipDirNames are directories no walk enters.
 var skipDirNames = map[string]bool{
 	".git":     true,
-	"_lyx":     true,
-	".lyx":     true,
+	"_lym":     true,
+	".lym":     true,
 	"_mill":    true,
 	".scratch": true,
 	".wiki":    true,
@@ -93,7 +93,7 @@ func (f *File) FileSet() *token.FileSet { return f.fset }
 // startDir is the test binary's working directory at package init, before any test changes it.
 // go test starts every test binary in its package's directory, which lies inside the module,
 // and the kit cannot read its own source location instead: under `-trimpath`, which gate runs set, `runtime.Caller` reports a module-relative path.
-// The kit imports the standard library only, so it reads the directory with os.Getwd rather than through internal/lyxcwd.
+// The kit imports the standard library only, so it reads the directory with os.Getwd rather than through internal/lymcwd.
 var startDir, startDirErr = os.Getwd()
 
 // Root returns the module root, found from the test binary's starting directory and the enclosing go.mod.

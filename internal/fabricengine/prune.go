@@ -34,7 +34,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // PruneEntry describes one stale or orphaned pair that Prune has identified.
@@ -83,7 +83,7 @@ type PruneResult struct {
 // A weft worktree carrying uncommitted tracked changes is protected unless force is true, since the
 // removal is a forced one that would discard them without a trace.
 // Per-entry removal errors and protection reasons are recorded in PruneEntry.Error.
-func (t *Topology) Prune(l *lyxcwd.Location, apply, force bool) (res PruneResult, err error) {
+func (t *Topology) Prune(l *lymcwd.Location, apply, force bool) (res PruneResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
 
@@ -190,7 +190,7 @@ func (t *Topology) Prune(l *lyxcwd.Location, apply, force bool) (res PruneResult
 // stale pair until this check tells them apart.
 //
 // An absent path is NOT unowned: there is nothing to delete, and removeStalePair still has launcher and worktree-registration debris to clear for a pair whose weft worktree is already gone.
-func applyStalePairOwnership(l *lyxcwd.Location, weftPath string, pe *PruneEntry) {
+func applyStalePairOwnership(l *lymcwd.Location, weftPath string, pe *PruneEntry) {
 	if _, statErr := os.Stat(weftPath); os.IsNotExist(statErr) {
 		return
 	}
@@ -255,7 +255,7 @@ func applyStalePairProtection(weftPath string, force bool, pe *PruneEntry) {
 //
 // Launcher teardown runs AFTER the ownership gate rather than before it, because the slug it is keyed on is derived from a directory name the orphan pass chose: tearing it down first meant a stray `<hub>/my-task-weft/` directory removed the LIVE `my-task` pair's launcher directory before anything had established the entry was fabric's at all.
 // rec is the calling verb's own recorder, threaded through every gate call this helper makes.
-func removeStalePair(rec *Mutations, l *lyxcwd.Location, slug, weftPath string, pe *PruneEntry) bool {
+func removeStalePair(rec *Mutations, l *lymcwd.Location, slug, weftPath string, pe *PruneEntry) bool {
 	weftRepoRoot, weftRepoRootErr := RecordsRepoRoot(l)
 	if weftRepoRootErr != nil {
 		pe.Error = fmt.Sprintf("resolve weft repo root: %v", weftRepoRootErr)

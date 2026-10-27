@@ -14,7 +14,7 @@ import (
 const (
 	modulePath    = "github.com/Knatte18/loomyard/"
 	testkitImport = modulePath + "internal/testkit"
-	lyxbinImport  = testkitImport + "/lyxbin"
+	lymbinImport  = testkitImport + "/lymbin"
 	tmuxkitImport = testkitImport + "/tmuxkit"
 	llmkitImport  = testkitImport + "/llmkit"
 )
@@ -25,7 +25,7 @@ var kitDeniedImports = []string{
 	modulePath + "internal/gitexec",
 	modulePath + "internal/gitkit",
 	modulePath + "internal/hubforge",
-	lyxbinImport,
+	lymbinImport,
 	tmuxkitImport,
 	llmkitImport,
 }
@@ -39,7 +39,7 @@ func isCLIImport(p string) bool {
 	return ok && !strings.Contains(rest, "/") && strings.HasSuffix(rest, "cli")
 }
 
-//lyx:guard
+//lym:guard
 func TestEnforcement_TestkitInvariant(t *testing.T) {
 	var importerFailures, cliFailures, spawnFailures []string
 
@@ -60,7 +60,7 @@ func TestEnforcement_TestkitInvariant(t *testing.T) {
 			if isCLIImport(ip) {
 				cliFailures = append(cliFailures, f.Rel+": "+ip)
 			}
-			if slices.Contains(kitDeniedImports, ip) && !(ip == "os/exec" && (kit == "lyxbin" || kit == "tmuxkit" || kit == "llmkit")) {
+			if slices.Contains(kitDeniedImports, ip) && !(ip == "os/exec" && (kit == "lymbin" || kit == "tmuxkit" || kit == "llmkit")) {
 				spawnFailures = append(spawnFailures, f.Rel+": "+ip)
 			}
 		}
@@ -78,7 +78,7 @@ func TestEnforcement_TestkitInvariant(t *testing.T) {
 	}
 }
 
-//lyx:guard
+//lym:guard
 func TestEnforcement_ScankitStdlibOnly(t *testing.T) {
 	scankit.AssertImportAllowlist(t, "internal/testkit/scankit")
 }

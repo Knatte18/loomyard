@@ -1,6 +1,6 @@
 //go:build tier1
 
-// cleanupremove_integration_test.go covers `lyx fabric cleanup`, `prune` and `remove` through the CLI against one real hub as an ordered scenario:
+// cleanupremove_integration_test.go covers `lym fabric cleanup`, `prune` and `remove` through the CLI against one real hub as an ordered scenario:
 // the envelope and exit-code contract of `--remote` (alone it is still a dry run, a remote or local failure exits non-zero, the protected/unmanaged carve-outs and the no-origin skip reason exit 0), the origin task-branch sweep, and `remove` going through the pairteardown composite.
 // An exit code is observable only through the CLI seam, which is why none of these could be covered in fabricengine-level tests.
 // The open-PR lookup is substituted through SetOpenPRHeadsForTest, so no network is involved.

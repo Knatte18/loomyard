@@ -1,6 +1,6 @@
 //go:build tier0
 
-// seam_enforcement_test.go enforces this package's told-geometry membership: production code in internal/reportengine imports only the packages whose records it reads, and never internal/lyxcwd.
+// seam_enforcement_test.go enforces this package's told-geometry membership: production code in internal/reportengine imports only the packages whose records it reads, and never internal/lymcwd.
 
 package reportengine
 
@@ -30,7 +30,7 @@ var allowedImports = []string{
 	"gopkg.in/yaml.v3",
 }
 
-// TestToldGeometryInvariant_AllowlistOnly verifies the import allowlist, which excludes internal/lyxcwd, and that no allowed path goes unused.
+// TestToldGeometryInvariant_AllowlistOnly verifies the import allowlist, which excludes internal/lymcwd, and that no allowed path goes unused.
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
 	scankit.AssertImportAllowlistNoStale(t, "internal/reportengine", allowedImports...)
 }

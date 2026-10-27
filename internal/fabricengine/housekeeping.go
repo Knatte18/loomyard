@@ -1,5 +1,5 @@
 // housekeeping.go keeps the hub's two object stores from auto-gc'ing under live steps:
-// disableStoreAutoGC turns git's automatic gc and maintenance off in both, and housekeepStores runs gc in the foreground where lyx is already doing slow work, after a pair's removal.
+// disableStoreAutoGC turns git's automatic gc and maintenance off in both, and housekeepStores runs gc in the foreground where lym is already doing slow work, after a pair's removal.
 // It removes no worktree, branch or file the destruction gate protects: gc deletes only unreachable objects older than a day and expired reflog entries past git's own default expiry.
 
 package fabricengine
@@ -11,7 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // gcAutoThreshold is git's default gc.auto: the loose-object estimate above which a foreground `gc --auto` actually packs.
@@ -25,7 +25,7 @@ type namedStore struct {
 }
 
 // hubStores returns the code store and the records store of l's hub, the working directories git resolves each store's shared config and object database from.
-func hubStores(l *lyxcwd.Location) ([]namedStore, error) {
+func hubStores(l *lymcwd.Location) ([]namedStore, error) {
 	recordsPath, err := RecordsRepoRoot(l)
 	if err != nil {
 		return nil, fmt.Errorf("resolve records repo root: %w", err)
@@ -36,7 +36,7 @@ func hubStores(l *lyxcwd.Location) ([]namedStore, error) {
 // disableStoreAutoGC sets gc.auto=0 and maintenance.auto=false in the shared config of the code store and of the records store.
 // gc.auto=0 stops git's post-command auto gc, and maintenance.auto=false stops its post-command `git maintenance run --auto`, whose repack tasks gc.auto does not govern.
 // It attempts both stores whatever one returns, and its error joins every failure.
-func disableStoreAutoGC(l *lyxcwd.Location) error {
+func disableStoreAutoGC(l *lymcwd.Location) error {
 	stores, err := hubStores(l)
 	if err != nil {
 		return err
@@ -64,7 +64,7 @@ type InFlightProbe func(slug string) ([]string, error)
 // The gc runs only when a store is above gcAutoThreshold, prunes unreachable loose objects older than gcPruneExpire, and never prunes a worktree's admin entry, which stays under the destruction gate.
 // It is best-effort and returns nothing: a failure is logged as a warning and never fails the caller.
 // A store another gc already holds is skipped silently, since git exits 0 without packing then.
-func housekeepStores(l *lyxcwd.Location, slug string, probe InFlightProbe) {
+func housekeepStores(l *lymcwd.Location, slug string, probe InFlightProbe) {
 	if err := disableStoreAutoGC(l); err != nil {
 		logger.Warn("fabricengine: disabling store auto gc failed (non-fatal)", "error", err)
 	}

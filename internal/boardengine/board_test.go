@@ -802,7 +802,7 @@ func TestPriorityRoundTrip(t *testing.T) {
 		{"a note with a priority made a task by upsert", func() error {
 			_, err := b.UpsertTask(map[string]any{"slug": "lo", "kind": "task"})
 			return err
-		}, "lyx board promote"},
+		}, "lym board promote"},
 	}
 	for _, r := range refusals {
 		if err := r.write(); err == nil || !strings.Contains(err.Error(), r.want) {

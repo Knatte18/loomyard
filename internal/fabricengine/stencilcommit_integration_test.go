@@ -27,7 +27,7 @@ func TestCommitSeededStencils_EmptyInputIsNoOp(t *testing.T) {
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	rec := fabricengine.NewMutations(filepath.Dir(hub.Path))
 
-	res, err := fabricengine.CommitSeededStencils(hub.Path, fabricengine.StencilsSubtreeRel(), fabricengine.StencilsDir(hub.Path), nil, "lyx: seed stencils", rec)
+	res, err := fabricengine.CommitSeededStencils(hub.Path, fabricengine.StencilsSubtreeRel(), fabricengine.StencilsDir(hub.Path), nil, "lym: seed stencils", rec)
 	if err != nil {
 		t.Fatalf("CommitSeededStencils(nil) error = %v", err)
 	}
@@ -87,7 +87,7 @@ func TestCommitSeededStencils_ScopedCommitExcludesUnrelatedDirt(t *testing.T) {
 	}
 
 	rec := fabricengine.NewMutations(filepath.Dir(hub.Path))
-	res, err := fabricengine.CommitSeededStencils(hub.Path, fabricengine.StencilsSubtreeRel(), stencilsDir, writtenRelPaths, "lyx: seed stencils", rec)
+	res, err := fabricengine.CommitSeededStencils(hub.Path, fabricengine.StencilsSubtreeRel(), stencilsDir, writtenRelPaths, "lym: seed stencils", rec)
 	if err != nil {
 		t.Fatalf("CommitSeededStencils() error = %v", err)
 	}
@@ -106,8 +106,8 @@ func TestCommitSeededStencils_ScopedCommitExcludesUnrelatedDirt(t *testing.T) {
 		t.Fatalf("ChangedFilesSince() = empty; want the seeded stencil paths")
 	}
 	for _, path := range changed {
-		if !strings.HasPrefix(path, "_lyx/stencils/") {
-			t.Errorf("ChangedFilesSince() includes %q; want every changed path confined to _lyx/stencils/ -- the regression guard against a stage-all commit sweeping in the unrelated dirty file", path)
+		if !strings.HasPrefix(path, "_lym/stencils/") {
+			t.Errorf("ChangedFilesSince() includes %q; want every changed path confined to _lym/stencils/ -- the regression guard against a stage-all commit sweeping in the unrelated dirty file", path)
 		}
 	}
 
@@ -170,7 +170,7 @@ func TestCommitSeededStencils_SecondSubtreeCommitsAndRecordsItsOwnDirectory(t *t
 	writtenRelPaths := []string{"format-contract.md"}
 
 	rec := fabricengine.NewMutations(filepath.Dir(hub.Path))
-	res, err := fabricengine.CommitSeededStencils(hub.Path, fabricengine.SpecsSubtreeRel(), specsDir, writtenRelPaths, "lyx: seed specs", rec)
+	res, err := fabricengine.CommitSeededStencils(hub.Path, fabricengine.SpecsSubtreeRel(), specsDir, writtenRelPaths, "lym: seed specs", rec)
 	if err != nil {
 		t.Fatalf("CommitSeededStencils() error = %v", err)
 	}
@@ -190,8 +190,8 @@ func TestCommitSeededStencils_SecondSubtreeCommitsAndRecordsItsOwnDirectory(t *t
 		if e.Target == wantTarget {
 			found = true
 		}
-		if strings.Contains(e.Target, "_lyx/stencils/") {
-			t.Errorf("recorded file_written entry %q under _lyx/stencils/; want it under SpecsDir(hub)", e.Target)
+		if strings.Contains(e.Target, "_lym/stencils/") {
+			t.Errorf("recorded file_written entry %q under _lym/stencils/; want it under SpecsDir(hub)", e.Target)
 		}
 	}
 	if !found {

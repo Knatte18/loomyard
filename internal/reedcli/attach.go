@@ -35,10 +35,10 @@ func (c *reedCLI) attachCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `attach hands the operator's own terminal over to tmux attach-session, in
 place — no new window is spawned (never wt.exe). On Unix attach replaces
-itself with tmux, so no lyx process outlives the handover; on Windows it runs
+itself with tmux, so no lym process outlives the handover; on Windows it runs
 tmux as a child with the terminal inherited. attach boots
 this worktree's session when none is up, rather than refusing. Every
-fallible step (checking that tmux is at or above lyx's minimum version, then
+fallible step (checking that tmux is at or above lym's minimum version, then
 booting the session if it is cold, then checking that the server/session is
 up) runs pre-flight and reports through the normal JSON
 envelope; once the terminal handover begins, stdio belongs to tmux and
@@ -49,7 +49,7 @@ piped stdout, no controlling terminal), the attach proceeds exactly as
 before, with no chained layout.
 
 Example:
-  lyx reed attach`,
+  lym reed attach`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -70,7 +70,7 @@ Example:
 			// worktree before anything booted, reinstating the exact bug this
 			// task removes. Status is kept rather than replaced because it also
 			// reaches loadOrInitStateLocked, which is what makes a warm attach
-			// refuse on an unreadable .lyx/reed.json and on a live foreign
+			// refuse on an unreadable .lym/reed.json and on a live foreign
 			// session — refusals EnsureSession's early return cannot produce,
 			// since it reads no state at all.
 			booted, err := c.eng.EnsureSession()

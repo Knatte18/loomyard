@@ -142,7 +142,7 @@ func busyWayForward(runID, pauseCommand string) string {
 	return fmt.Sprintf("way forward: %q halts the live driver at its next producer boundary; check the holder with %s, then retry", pauseCommand, runVerb("status", runID))
 }
 
-// pauseCommandFor returns the command a way forward names to stop the run at a producer boundary: the told command when one is set, and otherwise the shed default `lyx shed pause <run-id> --after <producer>`.
+// pauseCommandFor returns the command a way forward names to stop the run at a producer boundary: the told command when one is set, and otherwise the shed default `lym shed pause <run-id> --after <producer>`.
 // The run-id is omitted when none is told, and an unknown producer reads `<current_producer>`.
 func pauseCommandFor(told, runID, producer string) string {
 	if told != "" {
@@ -152,13 +152,13 @@ func pauseCommandFor(told, runID, producer string) string {
 		producer = "<current_producer>"
 	}
 	if runID == "" {
-		return "lyx shed pause --after " + producer
+		return "lym shed pause --after " + producer
 	}
-	return "lyx shed pause " + runID + " --after " + producer
+	return "lym shed pause " + runID + " --after " + producer
 }
 
 // missingStatusWayForward is the trailing clause Step and Goto put on a missing-status-file refusal.
-const missingStatusWayForward = "way forward: seed the run through its recipe's bootstrap verb, or \"lyx shed seed\" for a recipe without one"
+const missingStatusWayForward = "way forward: seed the run through its recipe's bootstrap verb, or \"lym shed seed\" for a recipe without one"
 
 // MissingStatusClause returns the told missing-status clause, or the generic one when none is told.
 func MissingStatusClause(told string) string {
@@ -168,20 +168,20 @@ func MissingStatusClause(told string) string {
 	return missingStatusWayForward
 }
 
-// runVerb renders a quoted `lyx shed <verb> [<run-id>]` command for a way-forward text.
+// runVerb renders a quoted `lym shed <verb> [<run-id>]` command for a way-forward text.
 func runVerb(verb, runID string) string {
 	if runID == "" {
-		return fmt.Sprintf("\"lyx shed %s\"", verb)
+		return fmt.Sprintf("\"lym shed %s\"", verb)
 	}
-	return fmt.Sprintf("\"lyx shed %s %s\"", verb, runID)
+	return fmt.Sprintf("\"lym shed %s %s\"", verb, runID)
 }
 
 // gotoCommand renders the quoted goto command a way-forward text names, addressing the run by run-id when one is told.
 func gotoCommand(runID, target string) string {
 	if runID == "" {
-		return fmt.Sprintf("\"lyx shed goto --to %s\"", target)
+		return fmt.Sprintf("\"lym shed goto --to %s\"", target)
 	}
-	return fmt.Sprintf("\"lyx shed goto %s --to %s\"", runID, target)
+	return fmt.Sprintf("\"lym shed goto %s --to %s\"", runID, target)
 }
 
 // budgetWayForward returns the trailing clause of a bounce-budget-exhausted halt, falling back to the run verb that resumes the row.
@@ -285,7 +285,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 	// Step 3b, the resume write. A run resumed from paused, blocked, failed, or awaiting reaches
 	// this point about to call a producer, while the status file still says that halt state
 	// -- and for every LLM row that is minutes, during which the file, the status strand,
-	// and "lyx loom status" all describe a run that is in fact already spawning. The stale
+	// and "lym loom status" all describe a run that is in fact already spawning. The stale
 	// error text goes with it: Activity.Wait is composed from it, so the pane would otherwise
 	// keep asserting a specific failure reason the loop is at that moment retrying past.
 	//
@@ -756,7 +756,7 @@ func effectiveMaxBounces(def ProducerDef, shedMax int) int {
 // calls s.CommitStatus with the transition's own nextCurrentProducer and string(nextState),
 // never from inside the mutate callback above: a synchronous network push made while
 // StatusLockPath is held would block every ReadJSON/ReadJSONNoMkdir reader on that path for the
-// push's duration -- "lyx loom status --watch" included, which is precisely the observability
+// push's duration -- "lym loom status --watch" included, which is precisely the observability
 // this seam exists to deliver. A nil CommitStatus is a silent no-op. A non-nil error the closure
 // returns propagates out of persist and therefore halts Run, but by then the status-file write
 // has already happened and is durable -- that ordering is load-bearing. The accepted cost is a

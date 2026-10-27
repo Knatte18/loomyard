@@ -1,5 +1,5 @@
 // windoworder.go fixes the order of a session's windows: the overview window, agent windows in start order, then the window named shell, then the hidden windows.
-// It lists the session's windows, computes where a new window goes and repairs a session booted by an older lyx.
+// It lists the session's windows, computes where a new window goes and repairs a session booted by an older lym.
 
 package reedengine
 
@@ -28,13 +28,13 @@ func overviewWindowTitle(d render.Display) string {
 }
 
 // shellCheckFailedOption is the session option that records an open episode of failures to repair the shell window.
-const shellCheckFailedOption = "@lyx_shell_check_failed"
+const shellCheckFailedOption = "@lym_shell_check_failed"
 
 // sessionWindow is one window of the session-wide window listing.
 type sessionWindow struct {
 	ID    string
 	Index int
-	// Hidden reports that the window carries @lyx_hidden.
+	// Hidden reports that the window carries @lym_hidden.
 	Hidden bool
 	// ShellCheckFailed reports that the session's shell-check episode option is set, which every window of the session reads alike.
 	ShellCheckFailed bool
@@ -42,7 +42,7 @@ type sessionWindow struct {
 }
 
 // sessionWindowFormat is the session-wide window listing format of sessionWindow: window id, index, hidden flag, shell-check episode flag, then the window name.
-const sessionWindowFormat = "#{window_id} #{window_index} #{?#{@lyx_hidden},1,0} #{?#{@lyx_shell_check_failed},1,0} #{window_name}"
+const sessionWindowFormat = "#{window_id} #{window_index} #{?#{@lym_hidden},1,0} #{?#{@lym_shell_check_failed},1,0} #{window_name}"
 
 // parseSessionWindows parses a sessionWindowFormat listing into windows in listing order, skipping a line it cannot parse.
 func parseSessionWindows(out string) []sessionWindow {
@@ -169,7 +169,7 @@ func planShellWindowFix(windows []sessionWindow, shellWindow string) (rename boo
 }
 
 // ensureShellWindowLocked brings the window holding the recorded console pane into its place: named shell, behind every non-hidden window.
-// It repairs a session that an older lyx booted, and runs wherever a window opens and on attach.
+// It repairs a session that an older lym booted, and runs wherever a window opens and on attach.
 // A check that cannot read what it needs does nothing and logs at Debug, and a failed repair never fails the caller; the next open or attach retries.
 // A failed repair logs at Warn once per failure episode, which the session option shellCheckFailedOption keeps open, and at Debug while it stays open or on Windows.
 // A repair that succeeds with the episode open logs at Info and closes it.

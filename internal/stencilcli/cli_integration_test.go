@@ -132,7 +132,7 @@ func stepListAfterFirstSync(t *testing.T, h *hubforge.Hub, worktree string) {
 		t.Fatalf("stencil sync = %d; want 0. output: %s", code, raw)
 	}
 	subjects := strings.Split(gitkit.Git(t, h.BoardDir(), "log", "--format=%s", "-2"), "\n")
-	if len(subjects) != 2 || !strings.HasPrefix(subjects[1], "lyx: sync stencils (") || !strings.HasPrefix(subjects[0], "lyx: sync specs (") {
+	if len(subjects) != 2 || !strings.HasPrefix(subjects[1], "lym: sync stencils (") || !strings.HasPrefix(subjects[0], "lym: sync specs (") {
 		t.Errorf("the board's last two commit subjects = %q; want a labelled sync of stencils then of specs", subjects)
 	}
 

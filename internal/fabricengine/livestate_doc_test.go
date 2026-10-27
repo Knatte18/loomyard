@@ -98,7 +98,7 @@
 //
 //   - (1) trackedSymlinkAtWiredPath x UnwireJunctions x "." -- R1, reconcile destroyed a tracked
 //     symlink. The live cell this harness runs for the state is UnwireJunctions, not Reconcile:
-//     Reconcile's own WireJunctions/seedLyxJunction re-point path (junction.go) uses
+//     Reconcile's own WireJunctions/seedLymJunction re-point path (junction.go) uses
 //     ownedDriftedWiredJunction, which never compares the resolved target -- drift is repointLink's own
 //     precondition for repair, not a disqualifier -- so no check exists there to neuter, and this state
 //     is (correctly) one of Reconcile's four omitted structural states. The load-bearing R1 fix instead
@@ -182,7 +182,7 @@
 //     the cell failed the same way, the offending paths additionally including the clone's own ".git"
 //     directory ("verb-prune-structural-orphan-weft/.git: removed (was dir)").
 //   - (8) the Reset column's non-hub target x CloneHub{Reset} x "." -- R4, `clone --reset` destroyed a
-//     non-hub `<derived>-LYXHUB`. Neutered clone.go's resetHub own pre-flight (the `if !looksLikeHub(hubPath)`
+//     non-hub `<derived>-LYMHUB`. Neutered clone.go's resetHub own pre-flight (the `if !looksLikeHub(hubPath)`
 //     guard, short-circuited to never fire). Ran `-run 'TestCloneHubReset/\./CloneHubReset/NonHubTarget$'`:
 //     the cell failed with "expected pre-flight refusal containing \"is not a fabric hub\"; got err =
 //     reset: remove hub at ...: refusing to reset hub: ownership check failed for ...: ... does not look

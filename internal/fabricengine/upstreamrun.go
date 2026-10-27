@@ -10,14 +10,14 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // UpstreamAnchor returns the anchor the tree of the pair's weft's fetched upstream tip records, and found false when the weft has no upstream.
 // A tip that records no marker answers the anchor its content implies, with pair's anchor standing in for a tree that holds no wired name in names.
-func UpstreamAnchor(pair *lyxcwd.Location, names []string) (anchor string, found bool, err error) {
+func UpstreamAnchor(pair *lymcwd.Location, names []string) (anchor string, found bool, err error) {
 	weftPath := RecordsWorktreePath(pair, pair.WorktreeName)
 	upstream, hasUpstream, err := upstreamSHAAt(weftPath)
 	if err != nil || !hasUpstream {
@@ -36,7 +36,7 @@ func UpstreamAnchor(pair *lyxcwd.Location, names []string) (anchor string, found
 // It is read from the directory of the pair's slug or, when the tree lacks that directory, from the legacy `self` directory.
 // A weft with no fetched upstream is read at HEAD.
 // names are the wired names the tip's anchor is derived from.
-func UpstreamRunUnfinished(pair *lyxcwd.Location, names []string) (unfinished bool, err error) {
+func UpstreamRunUnfinished(pair *lymcwd.Location, names []string) (unfinished bool, err error) {
 	weftPath := RecordsWorktreePath(pair, pair.WorktreeName)
 	tip := "HEAD"
 	if upstream, hasUpstream, err := upstreamSHAAt(weftPath); err != nil {

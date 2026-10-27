@@ -47,7 +47,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -236,7 +236,7 @@ func pollFileContentEquals(path, want string, deadline time.Time) (last string, 
 // It asserts too that Wait then drains with the done outcome:
 // the interrupted turn's own Stop is a hold, so only the redirect turn's completion ends the run.
 func TestSmokeInterruptSendContinues(t *testing.T) {
-	llmkit.Claude(t, "LYX_REED_CLAUDE")
+	llmkit.Claude(t, "LYM_REED_CLAUDE")
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	deferHubRelease(t, h.Path)
@@ -310,13 +310,13 @@ func TestSmokeInterruptSendContinues(t *testing.T) {
 func newSmokeRunner(t *testing.T) (*shuttleengine.Runner, shuttleengine.Engine, *reedengine.Engine, shuttleengine.Config) {
 	t.Helper()
 
-	cwd, err := lyxcwd.Getwd()
+	cwd, err := lymcwd.Getwd()
 	if err != nil {
-		t.Fatalf("lyxcwd.Getwd: %v", err)
+		t.Fatalf("lymcwd.Getwd: %v", err)
 	}
-	layout, err := lyxcwd.Resolve(cwd)
+	layout, err := lymcwd.Resolve(cwd)
 	if err != nil {
-		t.Fatalf("lyxcwd.Resolve: %v", err)
+		t.Fatalf("lymcwd.Resolve: %v", err)
 	}
 	shuttleCfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: layout.AnchorPath()}, "shuttle")
 	if err != nil {

@@ -13,8 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 func TestOrchInBeam(t *testing.T) {
@@ -26,17 +26,17 @@ func TestOrchInBeam(t *testing.T) {
 	if marked, err := fabricengine.MarkBeam(fabricengine.NewMutations(h.Location.HubPath), h.Location, slug); err != nil || !marked {
 		t.Fatalf("MarkBeam(%q) = (%v, %v); want (true, nil)", slug, marked, err)
 	}
-	beam, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree(slug))
+	beam, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(slug))
 	if err != nil {
 		t.Fatalf("ResolveWorktree(%q): %v", slug, err)
 	}
 
 	paths := orchPaths(beam)
 	anchor := beam.AnchorPath()
-	if want := filepath.Join(anchor, lyxdirs.DotLyxDirName, orchDirName); paths.Dir != want {
+	if want := filepath.Join(anchor, lymdirs.DotLymDirName, orchDirName); paths.Dir != want {
 		t.Errorf("orch dir of the beam = %q; want %q", paths.Dir, want)
 	}
-	if want := filepath.Join(anchor, lyxdirs.LyxDirName, orchDirName, "rules.md"); paths.OwnRulesPath != want {
+	if want := filepath.Join(anchor, lymdirs.LymDirName, orchDirName, "rules.md"); paths.OwnRulesPath != want {
 		t.Errorf("own rules path of the beam = %q; want %q", paths.OwnRulesPath, want)
 	}
 	primeAnchor := h.Location.AnchorPath()

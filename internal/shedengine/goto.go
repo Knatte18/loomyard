@@ -1,4 +1,4 @@
-// goto.go declares the status-file mutation behind `lyx shed goto`.
+// goto.go declares the status-file mutation behind `lym shed goto`.
 // It lives here, beside the other status-file writes, so the generic verb body in internal/shedverbs stays a thin caller that derives no path.
 
 package shedengine

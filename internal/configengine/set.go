@@ -1,4 +1,4 @@
-// set.go implements the non-interactive `lyx config <module> --set key=value` write path:
+// set.go implements the non-interactive `lym config <module> --set key=value` write path:
 // one layer's file is written with a single yamlengine mutation, with no editor invocation and no
 // validation loop.
 // A standalone or seed-only base scaffolds from the template like Edit does, so a fresh default-valued file is created and rolled back identically;
@@ -17,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
-// layerPath returns the file of layer under dirs and the dir whose _lyx/ must exist for it.
+// layerPath returns the file of layer under dirs and the dir whose _lym/ must exist for it.
 // A layer that does not apply under dirs is an error.
 func layerPath(dirs Dirs, spec Spec, layer Layer) (path, owner string, err error) {
 	path, applies := LayerFile(dirs, spec, layer)

@@ -1,6 +1,6 @@
 //go:build tier1
 
-// status_integration_test.go runs "lyx beam status" through RunCLIIn over a hubforge hub with one local beam.
+// status_integration_test.go runs "lym beam status" through RunCLIIn over a hubforge hub with one local beam.
 
 package beamcli_test
 
@@ -18,7 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -50,7 +50,7 @@ func TestStatus_PrintsThePrimesDobbyAndEachLocalBeams(t *testing.T) {
 		t.Fatalf("WriteFile(%s) = %v; want nil", statusFile, err)
 	}
 
-	beamLocation, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree("b"))
+	beamLocation, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("b"))
 	if err != nil {
 		t.Fatalf("ResolveWorktree(b) = %v; want nil", err)
 	}
@@ -69,7 +69,7 @@ func TestStatus_PrintsThePrimesDobbyAndEachLocalBeams(t *testing.T) {
 
 	env := envelope.Decode(t, out.String())
 	if !env.OK {
-		t.Fatalf("lyx beam status = %s; want ok", out.String())
+		t.Fatalf("lym beam status = %s; want ok", out.String())
 	}
 	var result struct {
 		Dobbies []struct {
@@ -117,10 +117,10 @@ func TestStatus_PrintsThePrimesDobbyAndEachLocalBeams(t *testing.T) {
 		got = append(got, entry{dobby.Worktree, dobby.View.Alive, header, runs, dobby.Orch.Live, dobby.Orch.WatcherLive, dobby.Orch.SessionID})
 	}
 	want := []entry{
-		{"prime", false, "dobby prime: not running; way forward: lyx beam start", []string{"run-x running Plan 0m no pass yet"}, false, false, ""},
-		{"b", false, "dobby b: not running; way forward: lyx beam start", []string{"no runs driven"}, false, true, "session-b"},
+		{"prime", false, "dobby prime: not running; way forward: lym beam start", []string{"run-x running Plan 0m no pass yet"}, false, false, ""},
+		{"b", false, "dobby b: not running; way forward: lym beam start", []string{"no runs driven"}, false, true, "session-b"},
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
-		t.Errorf("lyx beam status dobbies mismatch (-want +got):\n%s", diff)
+		t.Errorf("lym beam status dobbies mismatch (-want +got):\n%s", diff)
 	}
 }

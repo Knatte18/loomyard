@@ -8,15 +8,15 @@
 
 A refusal has a way forward when its message names one of these:
 
-1. a `lyx` verb that makes progress from the refused state;
+1. a `lym` verb that makes progress from the refused state;
 2. a transition the run takes by itself: a re-step, the next Master retry, a failure ladder rung;
-3. a plain `git` command in a checkout the message names, when the work there is the operator's and no `lyx` verb covers it.
+3. a plain `git` command in a checkout the message names, when the work there is the operator's and no `lym` verb covers it.
 
-A way forward never names a command the agents' settings deny (`PATTERN-refusal-way-forward` holds the list); when a step needs one, lyx performs it itself, as `lyx webster reset` does.
+A way forward never names a command the agents' settings deny (`PATTERN-refusal-way-forward` holds the list); when a step needs one, lym performs it itself, as `lym webster reset` does.
 
-Hand-editing a lyx-owned state file (`state.json`, `status.json`, `seed.json`, report files) never counts, and neither does a code fix plus a deploy.
+Hand-editing a lym-owned state file (`state.json`, `status.json`, `seed.json`, report files) never counts, and neither does a code fix plus a deploy.
 Waiting for a lock holder counts when the message names how to see the holder (`status`).
-A way forward that names a `lyx fabric` verb the role guard refuses from a task session, and that such a session can reach, ends with the clause `; a session lyx refuses the verb from reports status: FAILED and the orch runs it`.
+A way forward that names a `lym fabric` verb the role guard refuses from a task session, and that such a session can reach, ends with the clause `; a session lym refuses the verb from reports status: FAILED and the orch runs it`.
 The message carries it as a trailing `way forward: <verb | transition | git command>` clause.
 A message that named its way forward in its own wording before the trailing clause became the rule keeps that wording.
 
@@ -31,7 +31,7 @@ Every refusal sits in one class, and the class fixes its disposition.
 | transient | a condition that clears by itself or by a named action: lock held, merge in progress, I/O | halt without mutating state; the message names the retry |
 | wiring guard | nil deps, an invalid producer list, empty paths; unreachable from any on-disk state a run can produce | fail loud; no reaching test |
 
-A validation verb's findings envelope, such as `lyx webster validate`'s, is that verb's verdict, not a refusal, and so is a test run that ends in go's own exit code.
+A validation verb's findings envelope, such as `lym webster validate`'s, is that verb's verdict, not a refusal, and so is a test run that ends in go's own exit code.
 
 ## Reaching tests
 

@@ -1191,7 +1191,7 @@ func (w *Watcher) startClearing(st State, now time.Time) error {
 }
 
 // tickClearing injects `/clear` and waits for creel to type it, however long the orch stays busy;
-// `lyx orch status` shows the stall creel reports meanwhile.
+// `lym orch status` shows the stall creel reports meanwhile.
 // An injected or unconfirmed `/clear` moves on to resuming, and a withdrawn one returns to idle.
 func (w *Watcher) tickClearing(st State, now time.Time) error {
 	if st.Pending == nil {

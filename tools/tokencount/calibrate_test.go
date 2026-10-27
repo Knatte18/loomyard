@@ -26,7 +26,7 @@ func TestCalibrate(t *testing.T) {
 	seedProfile(t, configDir)
 
 	firstFork := time.Date(2026, 1, 2, 3, 0, 0, 0, time.UTC)
-	planDir := "_lyx/plan/"
+	planDir := "_lym/plan/"
 	history := fakeHistory{commits: map[string][]gitrepo.SubjectCommit{}, files: map[string]string{}}
 	addPlan := func(slug, sha string, committed time.Time, files map[string]string) {
 		subject := planCommitSubjectPrefix + slug

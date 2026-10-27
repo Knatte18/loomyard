@@ -10,7 +10,7 @@
 // The child logs a push rejected because a Board write advanced the branch at warn, and the next transition's spawn catches the branch up.
 //
 // On top of loomcli's own dispositions, this seam adds one more, evaluated first: an on-disk
-// no-op-transition skip. Each `lyx batten step` is a fresh process, so the skip's memory cannot live
+// no-op-transition skip. Each `lym batten step` is a fresh process, so the skip's memory cannot live
 // in a closure variable -- it would start empty every call and the skip would work for `run` mode
 // alone. It lives instead at shedrun.LastCommitMarker(location, runID), read before deciding and
 // rewritten after a successful commit.
@@ -21,7 +21,7 @@
 // Run-Shed waits on its child inside its call, so it bounces only on a state change, a pause or a failed status stat,
 // and the pair carries an uncommitted change at that path for as long as a watch goes between them.
 // That is the right trade against one identical commit per bounce,
-// and it is why an operation requiring a clean pair, such as "lyx fabric checkout", refuses hub-wide while a batten run is watching.
+// and it is why an operation requiring a clean pair, such as "lym fabric checkout", refuses hub-wide while a batten run is watching.
 package battencli
 
 import (
@@ -29,7 +29,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/statuscommit"
@@ -65,7 +65,7 @@ var spawnStatusPush = fabricengine.SpawnStatusPush
 // It is included only when present because a pathspec matching no file is a hard git error, and a
 // Shed driven without batten's own auto-seed -- which every caller outside the CLI verbs is -- has
 // no seed to commit.
-func battenRunCommitPaths(location *lyxcwd.Location, runID string) []string {
+func battenRunCommitPaths(location *lymcwd.Location, runID string) []string {
 	paths := []string{shedrun.StatusRel(location, runID)}
 	if _, err := os.Stat(shedrun.SeedFile(location, runID)); err == nil {
 		paths = append(paths, shedrun.SeedRel(location, runID))
@@ -76,7 +76,7 @@ func battenRunCommitPaths(location *lyxcwd.Location, runID string) []string {
 // battenCommitStatusDeps builds a commitStatusDeps over location and runID, filling each field from fabric:
 // MergeActive from fabricengine.MergeStateActive, Commit from fabricengine.CommitAnchoredPaths scoped to battenRunCommitPaths(location, runID), and Spawn from spawnStatusPush.
 // The spawned push runs from the prime, so it is the prime's records side only, and it waits under the pair's pause entry with runID as its gate slug.
-func battenCommitStatusDeps(location *lyxcwd.Location, runID string) commitStatusDeps {
+func battenCommitStatusDeps(location *lymcwd.Location, runID string) commitStatusDeps {
 	return commitStatusDeps{
 		MergeActive: func() (bool, error) {
 			return fabricengine.MergeStateActive(location)
@@ -98,7 +98,7 @@ func battenCommitStatusDeps(location *lyxcwd.Location, runID string) commitStatu
 // commitStatusMarker is the on-disk shape newCommitStatusSeam persists at markerPath: the last
 // (producer, state) pair the seam actually committed. It is the no-op-transition skip's memory,
 // read before deciding and rewritten after a successful commit -- never held in a closure variable,
-// so the skip survives a fresh `lyx batten step` process rebuilding the seam from scratch between
+// so the skip survives a fresh `lym batten step` process rebuilding the seam from scratch between
 // calls.
 type commitStatusMarker struct {
 	Producer string `json:"producer"`
@@ -145,7 +145,7 @@ func newCommitStatusSeam(deps commitStatusDeps, markerPath, markerLockPath strin
 // battenCommitStatusSeam builds the real CommitStatus closure wire() installs onto ShedPaths: real
 // fabric deps from battenCommitStatusDeps, and the marker path/lock pair from
 // shedrun.LastCommitMarker(location, runID) with its own ".lock" sibling.
-func battenCommitStatusSeam(location *lyxcwd.Location, runID string) func(producer, st string) error {
+func battenCommitStatusSeam(location *lymcwd.Location, runID string) func(producer, st string) error {
 	markerPath := shedrun.LastCommitMarker(location, runID)
 	return newCommitStatusSeam(battenCommitStatusDeps(location, runID), markerPath, markerPath+".lock")
 }

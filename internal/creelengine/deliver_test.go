@@ -174,7 +174,7 @@ func (e *env) tickPastTheStallFreshness(t *testing.T) {
 
 // reminderFor builds the reminder line for count unread messages listed as given; holdOwner is the owner of a hold on the receiver, empty for none.
 func reminderFor(count int, holdOwner string, listed ...string) string {
-	command := "lyx creel read"
+	command := "lym creel read"
 	if holdOwner != "" {
 		command += " --from " + holdOwner
 	}

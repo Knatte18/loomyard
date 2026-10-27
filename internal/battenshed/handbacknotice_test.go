@@ -117,7 +117,7 @@ func TestRowStopNotice(t *testing.T) {
 		if !RowStopNotice(context.Background(), newDeps(&lines), "a-slug", t.TempDir(), "Land", "pull failed:\nboom", reportPath, 5) {
 			t.Fatal("RowStopNotice() = false; want it posted")
 		}
-		want := noticePrefix + " a-slug: Land failed: pull failed: boom; report " + reportPath + "; way forward: fix the cause, then run \"lyx batten run a-slug\""
+		want := noticePrefix + " a-slug: Land failed: pull failed: boom; report " + reportPath + "; way forward: fix the cause, then run \"lym batten run a-slug\""
 		if !slices.Equal(lines, []string{want}) {
 			t.Errorf("notices = %q; want %q", lines, []string{want})
 		}

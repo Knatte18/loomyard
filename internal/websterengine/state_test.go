@@ -24,13 +24,13 @@ import (
 )
 
 // scratchSibling builds a durable dir and a DISTINCT scratch dir under one
-// shared temp base, mirroring the .lyx/_lyx mirrored-subpath split in
+// shared temp base, mirroring the .lym/_lym mirrored-subpath split in
 // production, rather than reusing one temp dir for both — the split this
 // test file exists to pin would otherwise go untested.
 func scratchSibling(t *testing.T) (websterDir, scratchDir string) {
 	t.Helper()
 	base := t.TempDir()
-	return filepath.Join(base, "_lyx", "webster"), filepath.Join(base, ".lyx", "webster")
+	return filepath.Join(base, "_lym", "webster"), filepath.Join(base, ".lym", "webster")
 }
 
 // TestState_RoundTrip pins that a populated State survives a save/load across the durable and

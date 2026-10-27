@@ -139,7 +139,7 @@ func TestParentGuard_EnsureReasonsAndErrors(t *testing.T) {
 				g.lock.PauseRequested = func() (bool, error) { return true, nil }
 				return context.Background()
 			},
-			wantReason: `halted while waiting for the parent lock on "main" held by other, as "lyx loom pause --after Publish" asked; way forward: run "lyx loom goto --to Publish", then "lyx loom resume"`,
+			wantReason: `halted while waiting for the parent lock on "main" held by other, as "lym loom pause --after Publish" asked; way forward: run "lym loom goto --to Publish", then "lym loom resume"`,
 		},
 		{
 			name: "an undecodable record returns the release-verb reason",
@@ -153,7 +153,7 @@ func TestParentGuard_EnsureReasonsAndErrors(t *testing.T) {
 				}
 				return context.Background()
 			},
-			wantReason: `way forward: run "lyx batten lock release main" from the prime, then "lyx loom resume" in the task worktree`,
+			wantReason: `way forward: run "lym batten lock release main" from the prime, then "lym loom resume" in the task worktree`,
 		},
 		{
 			name: "a cancelled context is an error",

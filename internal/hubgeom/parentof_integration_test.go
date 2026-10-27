@@ -13,7 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // TestParentOf pins that the origin record decides the parent whenever a pair has one and the local board decides only for a slug with no pair.
@@ -38,9 +38,9 @@ func TestParentOf(t *testing.T) {
 	)
 	hubforge.AddPairWith(t, h, fromPrime, fabricengine.AddOptions{SkipPush: true})
 	hubforge.AddPairWith(t, h, beamPair, fabricengine.AddOptions{SkipPush: true})
-	beamLocation, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, beamPair))
+	beamLocation, err := lymcwd.Resolve(fabricengine.WorktreePath(l, beamPair))
 	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(beam pair): %v", err)
+		t.Fatalf("lymcwd.Resolve(beam pair): %v", err)
 	}
 	if _, err := h.Topology.Add(beamLocation, fromBeam, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("Add(%q) from the beam pair: %v", fromBeam, err)

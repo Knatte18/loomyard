@@ -23,8 +23,8 @@ A `continue` runs another round whose fresh reviewers re-review the artifact, so
 
 ### Way forward
 
-Record the answer with `lyx loom decision add {{.slug}}`, then record the segment's outcome with exactly one of:
+Record the answer with `lym loom decision add {{.slug}}`, then record the segment's outcome with exactly one of:
 
 {{.decide_verbs}}
 
-Then resume the run with `lyx loom resume`.
+Then resume the run with `lym loom resume`.

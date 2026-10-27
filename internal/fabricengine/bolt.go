@@ -16,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // Bolt is a handle over a single weft:main-backed repo path with no paired warp side — the
@@ -315,7 +315,7 @@ func (b *Bolt) pullFirst(rec *Mutations) (BoltSkip, string, error) {
 
 // endedByOrigin reads which of the entries the local commits ahead of upstream change origin has ended, and the hub location the replay reads this machine's landing state through.
 // It returns no location and an empty set when none is ended, and when the hub's location cannot be resolved, since a doubt never sets aside this machine's own commits.
-func (b *Bolt) endedByOrigin(repo *gitrepo.Repo, head, upstream string, ahead []string) (*lyxcwd.Location, EndedSet, error) {
+func (b *Bolt) endedByOrigin(repo *gitrepo.Repo, head, upstream string, ahead []string) (*lymcwd.Location, EndedSet, error) {
 	slugs, created, err := localBoardEntries(repo, head, ahead)
 	if err != nil || len(slugs) == 0 {
 		return nil, nil, err
@@ -356,11 +356,11 @@ func (b *Bolt) skip(skip BoltSkip, detail string) (BoltSkip, string, error) {
 
 // dirtyDetail words the way forward for a board an uncommitted change keeps from being brought up to date.
 func (b *Bolt) dirtyDetail(cause error) string {
-	return fmt.Sprintf("an uncommitted change in the board at %s blocks bringing it up to date (%v); run `lyx board sync` to commit it, then re-run the command", b.path, cause)
+	return fmt.Sprintf("an uncommitted change in the board at %s blocks bringing it up to date (%v); run `lym board sync` to commit it, then re-run the command", b.path, cause)
 }
 
 // divergedDetail words the way forward for a board whose own commits cannot be replayed onto its moved upstream:
-// the conflicting paths, and the two ways to settle them, each followed by `lyx board sync`.
+// the conflicting paths, and the two ways to settle them, each followed by `lym board sync`.
 func (b *Bolt) divergedDetail(repo *gitrepo.Repo, conflicts, localCommits []string) string {
 	branch, err := repo.CurrentBranch()
 	if err != nil {

@@ -9,14 +9,14 @@
 // A caller's own cancel is a returned error and no record.
 // While a command runs, Verify keeps a running marker that loom status reads through ReadMarker.
 //
-// Verify takes no gate slot and applies no timeout: every command it runs is one `lyx gate test --wait` call, or such calls joined by `&&`, which take their own slots and are bounded by the gate's pre-tier ceiling and the tiers' timeouts.
+// Verify takes no gate slot and applies no timeout: every command it runs is one `lym gate test --wait` call, or such calls joined by `&&`, which take their own slots and are bounded by the gate's pre-tier ceiling and the tiers' timeouts.
 // A failed command whose log holds the gate's tier timeout line (gateslot.FindTierTimeout) is read as timed out:
 // the result is a failed one with the command's own exit code, TimedOut set and the tier and its timeout in Detail.
 // The marker is written as running from the start, and a waiting gate shows through the gate's own wait record.
 // A marker an older binary wrote in the waiting state, or without a state, stays readable.
-// The command's environment drops the strand-name variable (agentname.StrandNameEnv), so a test that drives `lyx fabric` never meets the sandboxed-role guard.
+// The command's environment drops the strand-name variable (agentname.StrandNameEnv), so a test that drives `lym fabric` never meets the sandboxed-role guard.
 // Bound: a test is code the fork writes, which could clear the variable itself.
-// A verify command never sees gateslot.PrebuiltLyxEnv: Verify strips an inherited value, so the command's own `go test` builds lyx once per test binary.
+// A verify command never sees gateslot.PrebuiltLymEnv: Verify strips an inherited value, so the command's own `go test` builds lym once per test binary.
 //
 // A site tells Verify a PauseHold, built by NewPauseHold over the pause record, and a nil hold runs exactly as above.
 // The hold is two functions and two timing seams: PastGrace reports whether a covering live entry has passed its grace end, Wait returns once no live entry covers the scope, Poll is how often Verify asks PastGrace while the command runs, and Sleep spaces Wait's record reads.

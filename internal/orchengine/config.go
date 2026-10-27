@@ -117,7 +117,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	return cfg, nil
 }
 
-// MigrateConfig raises a below-floor or null poll_interval_ms in an orch.yaml document to the poll floor, for lyx config reconcile, and returns the rewritten bytes with one line describing the rewrite.
+// MigrateConfig raises a below-floor or null poll_interval_ms in an orch.yaml document to the poll floor, for lym config reconcile, and returns the rewritten bytes with one line describing the rewrite.
 // Everything else is carried through with its comments;
 // the loader never calls it.
 // A document that does not parse returns an error marked configengine.ErrInvalid.

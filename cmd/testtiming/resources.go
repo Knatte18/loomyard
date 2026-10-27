@@ -21,8 +21,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxtemp"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -56,7 +56,7 @@ const cgroupPollInterval = 50 * time.Millisecond
 const cgroupDiscoveryWait = 2 * time.Second
 
 // leftoverMarkerEnv names the environment variable measurePackageResources sets to a value unique to one package's run, so every descendant of the child carries it.
-const leftoverMarkerEnv = "LYX_TESTTIMING_PACKAGE"
+const leftoverMarkerEnv = "LYM_TESTTIMING_PACKAGE"
 
 // cgroupRoot is where the unified cgroup hierarchy is mounted.
 const cgroupRoot = "/sys/fs/cgroup"
@@ -71,16 +71,16 @@ func runResources(tags, pkgFlag string) error {
 		return err
 	}
 
-	cwd, err := lyxcwd.Getwd()
+	cwd, err := lymcwd.Getwd()
 	if err != nil {
 		return fmt.Errorf("read the working directory: %w", err)
 	}
 	return withGateSlot(cwd, "testtiming -resources", func(slotEnv []string, parallel int) error {
-		env, cleanupLyx, err := prebuildLyx("go", tags, cwd, slotEnv, parallel)
+		env, cleanupLym, err := prebuildLym("go", tags, cwd, slotEnv, parallel)
 		if err != nil {
 			return err
 		}
-		defer cleanupLyx()
+		defer cleanupLym()
 
 		tier := "Tags: " + goTags
 		if isOfflineRun(tags) {
@@ -135,8 +135,8 @@ func withGateSlot(cwd, site string, mode func(env []string, parallel int) error)
 // takeGateSlot holds one slot of the hub's pool under site, without a wait record, and returns the lease, the pool's tier0 parallel and the release.
 // Outside a hub it holds no slot and returns a nil lease, a tier0 parallel of 0 and a release that does nothing.
 func takeGateSlot(ctx context.Context, cwd, site string) (lease *gateslot.Lease, tier0Parallel int, release func(), err error) {
-	location, err := lyxcwd.ResolveWorktree(cwd)
-	if errors.Is(err, lyxcwd.ErrNotAGitRepo) || (err == nil && !preflight.BoardLyxPresent(location)) {
+	location, err := lymcwd.ResolveWorktree(cwd)
+	if errors.Is(err, lymcwd.ErrNotAGitRepo) || (err == nil && !preflight.BoardLymPresent(location)) {
 		return nil, 0, func() {}, nil
 	}
 	if err != nil {
@@ -178,7 +178,7 @@ func measurePackageResources(tags, importPath string, env []string, parallel int
 		name, args = "systemd-run", append([]string{"--user", "--scope", "--quiet", "--", "go"}, goArgs...)
 	}
 	cmd := exec.Command(name, args...)
-	traceDir, err := lyxtemp.MkdirTemp("ttt-*")
+	traceDir, err := lymtemp.MkdirTemp("ttt-*")
 	if err != nil {
 		return resourceRow{}, fmt.Errorf("create a trace directory for %s: %w", importPath, err)
 	}

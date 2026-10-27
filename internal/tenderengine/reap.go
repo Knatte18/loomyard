@@ -106,7 +106,7 @@ func Reap(deps Deps) (ReapReport, error) {
 				names[i] += " (" + survivor.Role + ")"
 			}
 		}
-		failures = append(failures, fmt.Errorf("reap: processes survived the end: %s; way forward: run `lyx tender reap` again once they are gone", strings.Join(names, ", ")))
+		failures = append(failures, fmt.Errorf("reap: processes survived the end: %s; way forward: run `lym tender reap` again once they are gone", strings.Join(names, ", ")))
 	}
 	return report, errors.Join(failures...)
 }

@@ -53,7 +53,7 @@
 #   Default when absent or empty: <repo>[:2].upper() (e.g. "millhouse" -> "MI").
 
 repo:
-  short_name: "LYX"     # e.g. "MH" for millhouse
+  short_name: "LYM"     # e.g. "MH" for millhouse
 
 junctions:
   .wiki: <WIKI_PATH>

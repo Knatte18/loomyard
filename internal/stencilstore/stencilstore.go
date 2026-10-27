@@ -15,9 +15,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencil"
 )
 
-// stampKey is the "lyx-stencil: sha256=" marker text located inside a file's leading banner
+// stampKey is the "lym-stencil: sha256=" marker text located inside a file's leading banner
 // comment, independent of whether that banner is a single line or spans several.
-const stampKey = "lyx-stencil: sha256="
+const stampKey = "lym-stencil: sha256="
 
 // StampPrefix and StampSuffix bracket the stamp line written into a file's leading banner when that
 // banner does not yet exist: the assembled line is StampPrefix + <hash> + StampSuffix.
@@ -70,7 +70,7 @@ func isLowerHexDigit(c byte) bool {
 }
 
 // ParseStamp extracts the sha256=<hex> value from content's leading `<!-- ... -->` banner.
-// ok is false when content has no leading banner, the banner carries no "lyx-stencil:" line, or the
+// ok is false when content has no leading banner, the banner carries no "lym-stencil:" line, or the
 // value found is not exactly 64 lowercase hex characters.
 func ParseStamp(content []byte) (hash string, ok bool) {
 	banner, _, _, hasBanner := leadingBanner(content)
@@ -96,7 +96,7 @@ func ParseStamp(content []byte) (hash string, ok bool) {
 }
 
 // ApplyStamp returns content with the stamp line present in its leading banner set to hash.
-// When content already has a leading `<!-- ... -->` banner, an existing "lyx-stencil:" line is
+// When content already has a leading `<!-- ... -->` banner, an existing "lym-stencil:" line is
 // replaced in place, or the stamp line is inserted as the banner's last line when absent.
 // When content has no leading banner, a new one-line banner is prepended, followed by a blank line.
 // ApplyStamp never alters the body: BodyHash(ApplyStamp(c, h)) == BodyHash(c) always holds, because

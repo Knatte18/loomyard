@@ -30,13 +30,13 @@ const modelPinConstantName = "smokeClaudeModel"
 // fails loudly rather than passing vacuously if the recogniser stops matching. Raise it in the same
 // commit as a new smoke test, never ahead of one.
 // It is 14:
-// `lyx shuttle run` through this package's own RunCLI in smoke_run_test.go and twice in smoke_guardrail_test.go,
+// `lym shuttle run` through this package's own RunCLI in smoke_run_test.go and twice in smoke_guardrail_test.go,
 // the direct Runner.Start in smoke_interrupt_test.go and in smoke_paste_test.go, and one Spec per scenario in smoke_turns_test.go.
 const wantSpawnSiteCount = 15
 
 // spawnSiteOpeners recognises the two shapes a real-`claude` spawn takes in this package's smoke
 // suite, each paired with the bracket that closes its argument list.
-// A bare `RunCLI(` is this package's own seam (`lyx shuttle run`); a qualified one (`reedcli.RunCLI`)
+// A bare `RunCLI(` is this package's own seam (`lym shuttle run`); a qualified one (`reedcli.RunCLI`)
 // is a reed verb that spawns no provider, which is why the pattern requires the call to be
 // unqualified AND to carry a "run" verb.
 var spawnSiteOpeners = []struct {

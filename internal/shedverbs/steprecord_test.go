@@ -373,7 +373,7 @@ func TestStepRecords_NothingUnderStatusTree(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stepsDir := filepath.Join(t.TempDir(), ".lyx", "steps")
+	stepsDir := filepath.Join(t.TempDir(), ".lym", "steps")
 	spec := &Spec{StepsDir: stepsDir, BuildShed: func() (*shedengine.Shed, error) {
 		return newFakeShed(paths, []shedengine.ProducerDef{stubRow("Only")}), nil
 	}}

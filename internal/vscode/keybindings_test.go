@@ -16,13 +16,13 @@ func TestKeybindingsBlock(t *testing.T) {
 	t.Parallel()
 
 	want := strings.Join([]string{
-		`// lyx:begin`,
+		`// lym:begin`,
 		`  { "key": "alt+up", "command": "workbench.action.terminal.sendSequence", "args": { "text": "\u001b[1;3A" }, "when": "terminalFocus" },`,
 		`  { "key": "alt+down", "command": "workbench.action.terminal.sendSequence", "args": { "text": "\u001b[1;3B" }, "when": "terminalFocus" },`,
 		`  { "key": "alt+right", "command": "workbench.action.terminal.sendSequence", "args": { "text": "\u001b[1;3C" }, "when": "terminalFocus" },`,
 		`  { "key": "alt+left", "command": "workbench.action.terminal.sendSequence", "args": { "text": "\u001b[1;3D" }, "when": "terminalFocus" },`,
 		`  { "key": "ctrl+alt+a", "command": "workbench.action.tasks.runTask", "args": "reed attach" },`,
-		`// lyx:end`,
+		`// lym:end`,
 	}, "\r\n")
 	if got := keybindingsBlock("\r\n"); got != want {
 		t.Errorf("keybindingsBlock(CRLF) =\n%s\nwant\n%s", got, want)
@@ -34,8 +34,8 @@ func TestMergeKeybindings(t *testing.T) {
 
 	block := keybindingsBlock("\n")
 	crlfBlock := keybindingsBlock("\r\n")
-	// staleBlock is a block from an older lyx, holding one entry the current block does not.
-	staleBlock := "// lyx:begin\n  { \"key\": \"alt+q\" },\n// lyx:end"
+	// staleBlock is a block from an older lym, holding one entry the current block does not.
+	staleBlock := "// lym:begin\n  { \"key\": \"alt+q\" },\n// lym:end"
 
 	tests := []struct {
 		name     string
@@ -60,8 +60,8 @@ func TestMergeKeybindings(t *testing.T) {
 		},
 		{
 			name:     "a bracket, a marker and a block comment inside strings and comments are not read",
-			existing: "// [ lyx:begin\n[\n  /* ] // lyx:begin */\n  { \"key\": \"// lyx:begin ]\" }, // lyx:begin and more\n]\n",
-			want:     "// [ lyx:begin\n[\n" + block + "\n  /* ] // lyx:begin */\n  { \"key\": \"// lyx:begin ]\" }, // lyx:begin and more\n]\n",
+			existing: "// [ lym:begin\n[\n  /* ] // lym:begin */\n  { \"key\": \"// lym:begin ]\" }, // lym:begin and more\n]\n",
+			want:     "// [ lym:begin\n[\n" + block + "\n  /* ] // lym:begin */\n  { \"key\": \"// lym:begin ]\" }, // lym:begin and more\n]\n",
 		},
 		{
 			name:     "an existing block is replaced in place, markers included",
@@ -80,12 +80,12 @@ func TestMergeKeybindings(t *testing.T) {
 		},
 		{name: "no top-level array", existing: "{ \"key\": 1 }", wantErr: "no top-level array"},
 		{name: "an empty file", existing: "", wantErr: "no top-level array"},
-		{name: "a begin without an end", existing: "[\n// lyx:begin\n]", wantErr: "no lyx:end"},
-		{name: "an end without a begin", existing: "[\n// lyx:end\n]", wantErr: "no lyx:begin"},
-		{name: "a repeated begin", existing: "[\n// lyx:begin\n// lyx:begin\n// lyx:end\n]", wantErr: "repeated"},
-		{name: "an end before its begin", existing: "[\n// lyx:end\n// lyx:begin\n]", wantErr: "before"},
-		{name: "a marker outside the array", existing: "// lyx:begin\n[\n// lyx:end\n]", wantErr: "outside"},
-		{name: "a marker inside an entry", existing: "[\n  { // lyx:begin\n  }\n// lyx:end\n]", wantErr: "outside"},
+		{name: "a begin without an end", existing: "[\n// lym:begin\n]", wantErr: "no lym:end"},
+		{name: "an end without a begin", existing: "[\n// lym:end\n]", wantErr: "no lym:begin"},
+		{name: "a repeated begin", existing: "[\n// lym:begin\n// lym:begin\n// lym:end\n]", wantErr: "repeated"},
+		{name: "an end before its begin", existing: "[\n// lym:end\n// lym:begin\n]", wantErr: "before"},
+		{name: "a marker outside the array", existing: "// lym:begin\n[\n// lym:end\n]", wantErr: "outside"},
+		{name: "a marker inside an entry", existing: "[\n  { // lym:begin\n  }\n// lym:end\n]", wantErr: "outside"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -205,10 +205,10 @@ func TestSeedKeybindings(t *testing.T) {
 	t.Run("a malformed file is skipped and untouched", func(t *testing.T) {
 		t.Parallel()
 		path := filepath.Join(t.TempDir(), "keybindings.json")
-		const content = "[\n// lyx:begin\n]\n"
+		const content = "[\n// lym:begin\n]\n"
 		write(t, path, content, 0o644)
 		got := SeedKeybindings(path)
-		if got.Outcome != KeybindingsSkipped || !strings.Contains(got.Reason, "lyx:end") {
+		if got.Outcome != KeybindingsSkipped || !strings.Contains(got.Reason, "lym:end") {
 			t.Fatalf("run = %+v; want skipped naming the shape", got)
 		}
 		if read(t, path) != content {

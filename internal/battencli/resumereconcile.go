@@ -1,4 +1,4 @@
-// resumereconcile.go runs the run-scope origin reconcile that "lyx batten run" performs over an existing run record, and turns the slug's verdict into a resume or a refusal.
+// resumereconcile.go runs the run-scope origin reconcile that "lym batten run" performs over an existing run record, and turns the slug's verdict into a resume or a refusal.
 
 package battencli
 
@@ -11,7 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -28,7 +28,7 @@ const (
 // With judgeOnly the reconcile only judges: it moves no ref and tears nothing down.
 // Each entry of the report's mutation record is logged at Info, since a resume has no envelope to carry it.
 // The report is returned with the error, so a partial record is still logged.
-func reconcileRun(location *lyxcwd.Location, slug string, judgeOnly bool) (fabricengine.OriginReport, error) {
+func reconcileRun(location *lymcwd.Location, slug string, judgeOnly bool) (fabricengine.OriginReport, error) {
 	teardown, err := pairteardown.New(location)
 	if err != nil {
 		return fabricengine.OriginReport{}, err
@@ -50,7 +50,7 @@ type originOwed struct {
 
 // OriginOwed reports whether slug's origin-owed marker stands, which holds from a resume that judged its owner without origin until a pass reaches origin.
 // A continue pass is refused while it stands, and dobby schedules full passes.
-func OriginOwed(location *lyxcwd.Location, slug string) (bool, error) {
+func OriginOwed(location *lymcwd.Location, slug string) (bool, error) {
 	if _, err := os.Stat(shedrun.OriginOwedMarker(location, slug)); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return false, nil
@@ -85,7 +85,7 @@ func (c *battenCLI) reconcileResume() error {
 	}
 	report, err := c.reconcile(c.slug)
 	if err != nil {
-		return fmt.Errorf("battencli: origin reconcile of %q failed: %w; fix the cause it names, then re-run lyx batten run %s", c.slug, err, c.slug)
+		return fmt.Errorf("battencli: origin reconcile of %q failed: %w; fix the cause it names, then re-run lym batten run %s", c.slug, err, c.slug)
 	}
 	if report.Unreachable {
 		logger.Warn("battencli: origin was unreachable, resuming without judging the run against it", "slug", c.slug)
@@ -93,7 +93,7 @@ func (c *battenCLI) reconcileResume() error {
 			return err
 		}
 		if err := c.markOriginOwed(); err != nil {
-			return fmt.Errorf("battencli: could not record that %q resumed without origin: %w; fix the cause it names, then re-run lyx batten run %s", c.slug, err, c.slug)
+			return fmt.Errorf("battencli: could not record that %q resumed without origin: %w; fix the cause it names, then re-run lym batten run %s", c.slug, err, c.slug)
 		}
 		return nil
 	}
@@ -107,7 +107,7 @@ func (c *battenCLI) reconcileResume() error {
 }
 
 // resumeRefusal turns the verdict on slug's entry into the refusal a resume gets, and returns nil for an active entry or one the report does not judge.
-// An ended entry refuses naming the landing or the removal from the board, with "lyx cleanup --apply" from the prime as the way forward.
+// An ended entry refuses naming the landing or the removal from the board, with "lym cleanup --apply" from the prime as the way forward.
 // An entry owned elsewhere refuses naming its owner and the adopt of its subject, the beam or `root`, that takes it over.
 // A stopped entry refuses naming the branch that stopped it, its state and the way forward for that state, followed by the re-run of the resume.
 func resumeRefusal(slug string, report fabricengine.OriginReport) error {
@@ -118,13 +118,13 @@ func resumeRefusal(slug string, report fabricengine.OriginReport) error {
 		switch entry.State {
 		case fabricengine.EntryEnded:
 			return fmt.Errorf(
-				"battencli: origin ended %q (%s); run \"lyx cleanup --apply\" from the prime, whose hub reconcile tears its pair down, instead of resuming it",
+				"battencli: origin ended %q (%s); run \"lym cleanup --apply\" from the prime, whose hub reconcile tears its pair down, instead of resuming it",
 				slug, endedReason(entry.How),
 			)
 		case fabricengine.EntryOwnedElsewhere:
 			return ownedElsewhereFor(slug, entry.Owner, entry.AdoptSubject)
 		case fabricengine.EntryStopped:
-			return stoppedRefusal(slug, "resume", fmt.Sprintf("then re-run lyx batten run %s", slug), entry, report.Branches)
+			return stoppedRefusal(slug, "resume", fmt.Sprintf("then re-run lym batten run %s", slug), entry, report.Branches)
 		}
 	}
 	return nil

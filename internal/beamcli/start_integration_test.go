@@ -1,6 +1,6 @@
 //go:build tier1
 
-// start_integration_test.go runs "lyx beam start" through RunCLIIn over a hubforge hub, on every target it refuses before the hub is reconciled or an orch is started.
+// start_integration_test.go runs "lym beam start" through RunCLIIn over a hubforge hub, on every target it refuses before the hub is reconciled or an orch is started.
 
 package beamcli_test
 
@@ -38,13 +38,13 @@ func TestStart_RefusesBeforeTheReconcile(t *testing.T) {
 			name: "TaskPairOfABeamNamesTheBeamAndItsPath",
 			cwd:  h.PairCodeWorktree("task-in-b"),
 			args: []string{"start"},
-			want: []string{"task-in-b is a task pair", "belongs to b", h.PairCodeWorktree("b"), "lyx beam start"},
+			want: []string{"task-in-b is a task pair", "belongs to b", h.PairCodeWorktree("b"), "lym beam start"},
 		},
 		{
 			name: "TaskPairOfTheRootNamesRootAndThePrime",
 			cwd:  h.PairCodeWorktree("task-in-root"),
 			args: []string{"start"},
-			want: []string{"task-in-root is a task pair", "belongs to root", h.PrimeWorktree(), "lyx beam start"},
+			want: []string{"task-in-root is a task pair", "belongs to root", h.PrimeWorktree(), "lym beam start"},
 		},
 		{
 			name: "NamedTaskPairNamesItsBeam",
@@ -56,13 +56,13 @@ func TestStart_RefusesBeforeTheReconcile(t *testing.T) {
 			name: "UnknownSlugNamesBeamCreateInItsParent",
 			cwd:  h.PrimeWorktree(),
 			args: []string{"start", "ghost"},
-			want: []string{"ghost has no pair on this machine", "lyx beam create ghost", "parent worktree"},
+			want: []string{"ghost has no pair on this machine", "lym beam create ghost", "parent worktree"},
 		},
 		{
 			name: "UnknownSlugOnOriginNamesAdopt",
 			cwd:  h.PrimeWorktree(),
 			args: []string{"start", "remote-only"},
-			want: []string{"remote-only has no pair on this machine", "lyx adopt remote-only"},
+			want: []string{"remote-only has no pair on this machine", "lym adopt remote-only"},
 		},
 		{
 			name: "SlugWithAllNamesBothWaysForward",
@@ -84,13 +84,13 @@ func TestStart_RefusesBeforeTheReconcile(t *testing.T) {
 			exit := beamcli.RunCLIIn(tt.cwd, &out, tt.args)
 
 			if exit == 0 {
-				t.Errorf("lyx beam %v exit = 0; want non-zero", tt.args)
+				t.Errorf("lym beam %v exit = 0; want non-zero", tt.args)
 			}
 			for _, fragment := range tt.want {
 				envelope.RequireErr(t, out.String(), fragment)
 			}
 			for _, worktree := range []string{h.PrimeWorktree(), h.PairCodeWorktree("b"), h.PairCodeWorktree("task-in-b"), h.PairCodeWorktree("task-in-root")} {
-				orchDir := filepath.Join(worktree, ".lyx", "orch")
+				orchDir := filepath.Join(worktree, ".lym", "orch")
 				if _, err := os.Stat(orchDir); !os.IsNotExist(err) {
 					t.Errorf("Stat(%s) = %v; want no orch state written", orchDir, err)
 				}

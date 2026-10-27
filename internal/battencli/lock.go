@@ -1,4 +1,4 @@
-// lock.go implements the `lock` verb group of batten: `lyx batten lock list` shows the hub's parent locks, and `lyx batten lock release` frees one whose owner is alive but wedged.
+// lock.go implements the `lock` verb group of batten: `lym batten lock list` shows the hub's parent locks, and `lym batten lock release` frees one whose owner is alive but wedged.
 
 package battencli
 
@@ -11,7 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 )
@@ -32,9 +32,9 @@ A release frees the record and never stops a run: the released run takes the loc
 again at its next lock-taking row and reroutes if the parent moved meanwhile.
 
 Example:
-  lyx batten lock list
-  lyx batten lock release main
-  lyx batten lock release --all`,
+  lym batten lock list
+  lym batten lock release main
+  lym batten lock release --all`,
 		RunE: clihelp.GroupRunE,
 	}
 	list := &cobra.Command{
@@ -63,11 +63,11 @@ func inLockGroup(cmd *cobra.Command) bool {
 
 // lockStore resolves the cwd, refuses outside the hub's prime worktree and its beams and returns the store at the hub's parent lock directory.
 func lockStore(ctx context.Context) (*parentlock.Store, error) {
-	cwd, err := lyxcwd.CwdFrom(ctx)
+	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
 		return nil, err
 	}
-	location, err := lyxcwd.Resolve(cwd)
+	location, err := lymcwd.Resolve(cwd)
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +142,7 @@ func runLockRelease(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if all == (len(args) == 1) {
-		clihelp.SetExit(cmd.Context(), output.Err(out, `lyx batten lock release takes either one parent branch or --all; way forward: run "lyx batten lock release <parent-branch>" or "lyx batten lock release --all"`))
+		clihelp.SetExit(cmd.Context(), output.Err(out, `lym batten lock release takes either one parent branch or --all; way forward: run "lym batten lock release <parent-branch>" or "lym batten lock release --all"`))
 		return nil
 	}
 	store, err := openLockStore(cmd.Context())
@@ -168,7 +168,7 @@ func runLockRelease(cmd *cobra.Command, args []string) error {
 			return nil
 		}
 		if !freed {
-			clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf(`no parent lock on %q; way forward: run "lyx batten lock list" to see the held locks`, branch)))
+			clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf(`no parent lock on %q; way forward: run "lym batten lock list" to see the held locks`, branch)))
 			return nil
 		}
 		released = append(released, branch)

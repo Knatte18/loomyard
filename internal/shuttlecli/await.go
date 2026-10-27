@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/spf13/cobra"
@@ -18,7 +18,7 @@ import (
 // Command's PersistentPreRunE skips resolution for it, since the verb stats told paths and needs no hub, repository, config or engine.
 const awaitVerb = "await"
 
-// awaitCmd builds `lyx shuttle await <path>... [--cap <duration>]`.
+// awaitCmd builds `lym shuttle await <path>... [--cap <duration>]`.
 // It prints ok with ready true, the absolute path that was met and every absolute path watched as soon as one exists.
 // When --cap elapses first it prints ok with ready false, telling the caller to run the command again.
 // A relative path resolves against the seam cwd.
@@ -41,8 +41,8 @@ whoever writes it. Run the command with a Bash tool timeout above --cap
 cache stays warm between calls.
 
 Example:
-  lyx shuttle await .lyx/ready/marker
-  lyx shuttle await /abs/first.md /abs/second.md --cap 30s`,
+  lym shuttle await .lym/ready/marker
+  lym shuttle await /abs/first.md /abs/second.md --cap 30s`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -51,7 +51,7 @@ Example:
 			}
 			out := cmd.OutOrStdout()
 
-			cwd, err := lyxcwd.CwdFrom(ctx)
+			cwd, err := lymcwd.CwdFrom(ctx)
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil

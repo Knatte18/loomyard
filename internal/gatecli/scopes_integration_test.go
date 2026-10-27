@@ -1,6 +1,6 @@
 //go:build tier1
 
-// scopes_integration_test.go drives `lyx gate test` over a hubforge hub with a task pair, whose fabric origin record names the prime's branch as its parent, to reach the computed, --base and --card scope forms.
+// scopes_integration_test.go drives `lym gate test` over a hubforge hub with a task pair, whose fabric origin record names the prime's branch as its parent, to reach the computed, --base and --card scope forms.
 // It is Tier 2: it builds a real hub and spawns git, `go list` and the stand-in tier command.
 
 package gatecli
@@ -88,7 +88,7 @@ func TestGateTest_Scopes(t *testing.T) {
 		"user/user.go":       "package user\n\nimport \"example.com/scopes/lib\"\n\nfunc Two() int { return lib.One() + 1 }\n",
 		"other/other.go":     "package other\n",
 		"guardpkg/g.go":      "package guardpkg\n",
-		"guardpkg/g_test.go": "package guardpkg\n\nimport \"testing\"\n\n//lyx:guard\nfunc TestGuard(t *testing.T) {}\n",
+		"guardpkg/g_test.go": "package guardpkg\n\nimport \"testing\"\n\n//lym:guard\nfunc TestGuard(t *testing.T) {}\n",
 		"nested/go.mod":      "module example.com/scopes/nested\n\ngo 1.21\n",
 		"nested/n.go":        "package nested\n",
 		"docs/note.md":       "note\n",
@@ -123,7 +123,7 @@ func TestGateTest_Scopes(t *testing.T) {
 			}
 		})
 	}
-	// gate runs `lyx gate test args...` from cwd and returns the finished gate.
+	// gate runs `lym gate test args...` from cwd and returns the finished gate.
 	gate := func(t *testing.T, cwd string, env []string, args ...string) *runningGate {
 		t.Helper()
 		g := startGate(t, gateRun{cwd: cwd, args: append([]string{"test"}, args...), env: env})
@@ -531,12 +531,12 @@ func TestGateTest_Scopes(t *testing.T) {
 		}
 	})
 
-	t.Run("--gate with an unknown key is refused with the config's way forward naming lyx config gate", func(t *testing.T) {
-		wantRefusal(t, gate(t, pair, nil, "--gate", "nosuch"), `"nosuch"`, "lyx config gate")
+	t.Run("--gate with an unknown key is refused with the config's way forward naming lym config gate", func(t *testing.T) {
+		wantRefusal(t, gate(t, pair, nil, "--gate", "nosuch"), `"nosuch"`, "lym config gate")
 	})
 
 	t.Run("a misplaced guard marker refuses a computed call before any slot with its file and line", func(t *testing.T) {
-		edit(t, "other/o_test.go", "package other\n\n//lyx:guard\nfunc helper() {}\n")
+		edit(t, "other/o_test.go", "package other\n\n//lym:guard\nfunc helper() {}\n")
 		wantRefusal(t, gate(t, pair, nil), "other/o_test.go:3", "way forward")
 	})
 
@@ -560,7 +560,7 @@ func TestGateTest_Scopes(t *testing.T) {
 	})
 
 	// The rows from here commit to the pair's branch and run in order; the one row after them runs whole and reads no history.
-	// real runs `lyx gate test args...` from the pair with the real go command, which the green record lists packages with.
+	// real runs `lym gate test args...` from the pair with the real go command, which the green record lists packages with.
 	real := func(t *testing.T, args ...string) *runningGate {
 		t.Helper()
 		g := startGate(t, gateRun{cwd: pair, realGo: true, args: append([]string{"test"}, args...)})

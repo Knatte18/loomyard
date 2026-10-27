@@ -1,24 +1,24 @@
-# SANDBOX-CORE-SUITE -- lyx black-box agent suite
+# SANDBOX-CORE-SUITE -- lym black-box agent suite
 
 ## What this is
 
-A structured test-loop for exercising `lyx` against the real GitHub test repos (`Knatte18/lyx-test` as warp, `Knatte18/lyx-test-weft` as weft).
-Not an automated suite -- the value is a Claude session driving `lyx` by hand in a real hub, treating every break, surprise, or rough edge as a LoomYard finding to record in the report.
+A structured test-loop for exercising `lym` against the real GitHub test repos (`Knatte18/lym-test` as warp, `Knatte18/lym-test-weft` as weft).
+Not an automated suite -- the value is a Claude session driving `lym` by hand in a real hub, treating every break, surprise, or rough edge as a LoomYard finding to record in the report.
 
-This parallels how millhouse was bootstrapped: get lyx working well enough that an agent can operate it in a real repo, then use that experience to harden lyx.
+This parallels how millhouse was bootstrapped: get lym working well enough that an agent can operate it in a real repo, then use that experience to harden lym.
 
 ## Pre-conditions
 
 Before starting a session:
 
 1. **Deploy a fresh dev binary.**
-   Run `deploy-dev` to build `lyx.exe` into `.dev-bin` as current source.
-   The suite resolves `.dev-bin` itself and prepends it to the agent's PATH (the fingerprint header's `Source: dev` line confirms the dev build is under test) -- no PATH setup needed, and production `lyx` stays untouched.
+   Run `deploy-dev` to build `lym.exe` into `.dev-bin` as current source.
+   The suite resolves `.dev-bin` itself and prepends it to the agent's PATH (the fingerprint header's `Source: dev` line confirms the dev build is under test) -- no PATH setup needed, and production `lym` stays untouched.
    The deployed binary is a snapshot -- re-deploy after any source change you want to test.
 2. **Materialize the hub.**
-   Run `sandbox/build.cmd` (or `sandbox/build.cmd -reset` to start clean) to clone the warp and weft into a fresh `lyx-test-LYXHUB`.
-3. **`lyx` on PATH.**
-   Confirm `lyx --help` works from any directory.
+   Run `sandbox/build.cmd` (or `sandbox/build.cmd -reset` to start clean) to clone the warp and weft into a fresh `lym-test-LYMHUB`.
+3. **`lym` on PATH.**
+   Confirm `lym --help` works from any directory.
 
 ### PowerShell JSON-quoting
 
@@ -31,30 +31,30 @@ When driving the suite from Windows PowerShell (the assumed session shell on Win
 The working form is a single-quoted string with literal inner double quotes, e.g.
 
 ```powershell
-lyx board upsert '{"slug":"s3-demo","title":"S3 demo","labels":["enhancement"]}'
+lym board upsert '{"slug":"s3-demo","title":"S3 demo","labels":["enhancement"]}'
 ```
 
 ### Operating model
 
-lyx resolves against the current directory's own `_lyx/` and does **not** walk up to a parent.
+lym resolves against the current directory's own `_lym/` and does **not** walk up to a parent.
 The Hub's Fabric repo is initialized at its root, so the agent runs the entire session from there (cwd is fixed at the root).
-Running a lyx command from a subdirectory that has not itself been initialized correctly reports `not initialized here; run "lyx fabric reconcile"` — that is expected behaviour, **not a finding**.
-The agent must **not** scaffold nested `_lyx/` during a session, with exactly one controlled exception: **S6** deliberately clones a second, subpath-anchored hub to prove the subpath-anchoring contract, and reverses that scaffolding with `lyx fabric unwire --apply` at session end (see S6's durability note).
-Outside of S6, creating a nested `_lyx/` is out of scope for a session and not something to try "just to see what happens."
+Running a lym command from a subdirectory that has not itself been initialized correctly reports `not initialized here; run "lym fabric reconcile"` — that is expected behaviour, **not a finding**.
+The agent must **not** scaffold nested `_lym/` during a session, with exactly one controlled exception: **S6** deliberately clones a second, subpath-anchored hub to prove the subpath-anchoring contract, and reverses that scaffolding with `lym fabric unwire --apply` at session end (see S6's durability note).
+Outside of S6, creating a nested `_lym/` is out of scope for a session and not something to try "just to see what happens."
 
 ## Black-box rule
 
-**The agent under test works exclusively inside the Hub's Fabric repo (`lyx-test-LYXHUB/lyx-test`).
-It tests `lyx.exe` as a black box -- exactly as a real user with only the binary on PATH.
-It must not look for, read, or reason about the lyx source tree.
+**The agent under test works exclusively inside the Hub's Fabric repo (`lym-test-LYMHUB/lym-test`).
+It tests `lym.exe` as a black box -- exactly as a real user with only the binary on PATH.
+It must not look for, read, or reason about the lym source tree.
 No peeking at `C:\Code\loomyard\` or any other path outside the Hub.**
 
-Discovering the command surface is done via `lyx`, `lyx <module>`, and `lyx <module> <subcommand> --help` alone -- not from documentation outside the Hub.
+Discovering the command surface is done via `lym`, `lym <module>`, and `lym <module> <subcommand> --help` alone -- not from documentation outside the Hub.
 
 ## Fingerprint header
 
 The launcher prepends a "binary under test" fingerprint block to this file when it copies it into the Hub's Fabric repo.
-The fingerprint records the absolute path, file size, modification time, and a short SHA-256 of the `lyx.exe` binary at launch time.
+The fingerprint records the absolute path, file size, modification time, and a short SHA-256 of the `lym.exe` binary at launch time.
 
 The same fingerprint identifies the binary for the report's provenance: a separate fetch step (run after this session) stamps it into `meta.fingerprint` of the fetched `sandbox-report.json` so a maintainer can reproduce the exact binary that produced each finding.
 The agent does not need to transcribe the fingerprint anywhere itself.
@@ -64,8 +64,8 @@ The agent does not need to transcribe the fingerprint anywhere itself.
 For each scenario below:
 
 - Read the **Goal** -- it names the task, not the commands.
-  Discover the commands via `lyx`, `lyx <module>`, and `--help` flags (S0 ethos).
-- **Watch** what lyx does.
+  Discover the commands via `lym`, `lym <module>`, and `--help` flags (S0 ethos).
+- **Watch** what lym does.
   Note where it stalls, guesses wrong, or hits an error.
 - Record the outcome per the verdict buckets: `OK` (worked) / `WARN` (rough edge) / `FAIL` (broke).
 
@@ -74,7 +74,7 @@ For each scenario below:
 - `OK`   -- completed without friction
 - `WARN` -- completed but with confusion, awkward UX, or a non-fatal error
 - `FAIL` -- did not complete;
-  lyx broke, panicked, or gave wrong output
+  lym broke, panicked, or gave wrong output
 
 ## Capturing findings
 
@@ -107,16 +107,16 @@ Confine all free text to the `title`/`body` string fields so the JSON stays well
 
 ### S0 -- Discovery (help surface smoke test)
 
-**Goal:** "You have `lyx` on PATH and nothing else inside this repo.
+**Goal:** "You have `lym` on PATH and nothing else inside this repo.
 Find out what it can do and report the full command tree."
 
 **Covers:** help
 
-**Watch:** Does `lyx` alone list modules?
-Does `lyx <module>` list subcommands?
+**Watch:** Does `lym` alone list modules?
+Does `lym <module>` list subcommands?
 Is each description accurate and useful?
 Any command that cannot be discovered from the binary alone is a help gap.
-Also run `lyx help index` and check that it lists the operator commands one per line.
+Also run `lym help index` and check that it lists the operator commands one per line.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -127,8 +127,8 @@ Also run `lyx help index` and check that it lists the operator commands one per 
 **Goal:** "You are inside a hub that was set up from a warp and a weft.
 Figure out what the hub contains and what state it is in."
 
-**Watch:** Can you tell warp from weft from board using only `lyx` commands?
-Does any `lyx` command report hub geometry or status?
+**Watch:** Can you tell warp from weft from board using only `lym` commands?
+Does any `lym` command report hub geometry or status?
 If you have to `ls` and guess, that is a missing command surface.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
@@ -137,11 +137,11 @@ If you have to `ls` and guess, that is a missing command surface.
 
 ### S2 -- First real work in the warp
 
-**Goal:** "Create something in the warp repo (a file, a small change) and get it committed and tracked the way lyx intends."
+**Goal:** "Create something in the warp repo (a file, a small change) and get it committed and tracked the way lym intends."
 
 **Watch:** The warp is an ordinary git repo — committing warp changes with plain `git` is acceptable and **not** a finding.
-Watch lyx's actual responsibility: warp/weft coordination (junctions wired correctly, weft mirroring behaves).
-The absence of a lyx-owned warp-commit command is an intentional design choice, not a gap — do not file it as an enhancement suggestion.
+Watch lym's actual responsibility: warp/weft coordination (junctions wired correctly, weft mirroring behaves).
+The absence of a lym-owned warp-commit command is an intentional design choice, not a gap — do not file it as an enhancement suggestion.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -159,10 +159,10 @@ The absence of a lyx-owned warp-commit command is an intentional design choice, 
 
 **Durability note:** The board is durable across sessions — it starts non-empty (e.g. a `T1 "Test task from S3"` task persists from prior runs).
 Do not assume a fresh board.
-Use `lyx board list` to observe current state before adding tasks, and use `lyx board remove` to clean up any test tasks you create at session end.
+Use `lym board list` to observe current state before adding tasks, and use `lym board remove` to clean up any test tasks you create at session end.
 
-**Watch:** Board CRUD via `lyx board`.
-`lyx board labels` prints `types` and `labels`, each in `board.yaml` file order.
+**Watch:** Board CRUD via `lym board`.
+`lym board labels` prints `types` and `labels`, each in `board.yaml` file order.
 JSON output sane.
 State transitions work.
 
@@ -172,14 +172,14 @@ State transitions work.
 
 ### S4 -- Config round-trip
 
-**Goal:** "Inspect lyx's config for this hub, change a value, confirm it took."
+**Goal:** "Inspect lym's config for this hub, change a value, confirm it took."
 
 **Covers:** config
 
-**Watch:** From the worktree root, write a value with `lyx config <module> --set key=value` (non-interactive, bypasses the editor;
+**Watch:** From the worktree root, write a value with `lym config <module> --set key=value` (non-interactive, bypasses the editor;
 mutually exclusive with `--print`;
-requires a module argument), read it back with `lyx config <module> --print`, then run `lyx config reconcile`.
-Does the write/read round-trip the correct `_lyx/config/` file, and does `reconcile` report a clean (no unexpected added/removed keys) result against the value you just wrote?
+requires a module argument), read it back with `lym config <module> --print`, then run `lym config reconcile`.
+Does the write/read round-trip the correct `_lym/config/` file, and does `reconcile` report a clean (no unexpected added/removed keys) result against the value you just wrote?
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -192,10 +192,10 @@ Run a command with a bad flag.
 Run an unknown subcommand."
 
 **Watch:** Are errors legible?
-Does lyx say what to do, or just fail?
+Does lym say what to do, or just fail?
 This is where standalone usability lives or dies.
 A legible `not initialized` / "run from the initialized root"-style message is the `OK` (ergonomics-pass) outcome — not a `FAIL`.
-Do not file it as a finding. `lyx`'s error output is a JSON envelope (`{"ok":false,"error":"..."}`) on every error path by design — that is the deliberate machine-parseable contract, not a defect.
+Do not file it as a finding. `lym`'s error output is a JSON envelope (`{"ok":false,"error":"..."}`) on every error path by design — that is the deliberate machine-parseable contract, not a defect.
 "Legible" means the `error` field's message text clearly identifies the problem, not that the output reads as human prose with a hint or usage suggestion.
 This does not cover a raw subprocess/tool string leaking unwrapped into the `error` field (e.g. a bare git `fatal:` line,
 or any other tool's raw stderr) — that is still a legitimate `WARN`/`FAIL` finding.
@@ -206,20 +206,20 @@ or any other tool's raw stderr) — that is still a legitimate `WARN`/`FAIL` fin
 
 ### S6 -- Subpath-anchored clone
 
-**Goal:** "Clone a second hub from the same warp/weft repos into a scratch location, anchored at a subdirectory instead of the repo root, using `lyx fabric clone --subpath <sub> <weft-url> <warp-url>`.
+**Goal:** "Clone a second hub from the same warp/weft repos into a scratch location, anchored at a subdirectory instead of the repo root, using `lym fabric clone --subpath <sub> <weft-url> <warp-url>`.
 From inside the anchored subpath, run `config` and `board`.
-Finally, tear the pair down with `lyx fabric unwire --apply`."
+Finally, tear the pair down with `lym fabric unwire --apply`."
 
-**Durability note:** Unlike the old subfolder-init scenario, S6 cannot retrofit the already-root-anchored main sandbox hub — the lyx-anchor subpath is recorded once, at clone time, onto `weft:main`.
+**Durability note:** Unlike the old subfolder-init scenario, S6 cannot retrofit the already-root-anchored main sandbox hub — the lym-anchor subpath is recorded once, at clone time, onto `weft:main`.
 S6 instead clones a genuinely separate scratch hub from the same warp/weft URLs, so it is not bound by the Black-box rule's "operate only inside the main Hub" scope for its own duration.
-Use `--reset` on the clone so repeated sandbox sessions are idempotent. `lyx fabric unwire --apply`, run from inside the anchored subpath at session end, removes the junctions, clears the weft-side `_lyx` content, and reverts `.gitignore` there — it is not purely local: clearing weft-side `_lyx` content commits and pushes that deletion to the shared `lyx-test-weft` remote. `unwire` deliberately leaves the scratch hub's recorded anchor and repo-wide `fabric.yaml` on `weft:main` untouched (that is what lets a later `lyx fabric reconcile` re-wire it), so delete the scratch hub directory itself with a plain filesystem removal once `unwire` completes, rather than expecting `unwire` to remove it.
+Use `--reset` on the clone so repeated sandbox sessions are idempotent. `lym fabric unwire --apply`, run from inside the anchored subpath at session end, removes the junctions, clears the weft-side `_lym` content, and reverts `.gitignore` there — it is not purely local: clearing weft-side `_lym` content commits and pushes that deletion to the shared `lym-test-weft` remote. `unwire` deliberately leaves the scratch hub's recorded anchor and repo-wide `fabric.yaml` on `weft:main` untouched (that is what lets a later `lym fabric reconcile` re-wire it), so delete the scratch hub directory itself with a plain filesystem removal once `unwire` completes, rather than expecting `unwire` to remove it.
 
-**Watch:** Does `lyx fabric clone --subpath <sub>` scaffold junctions and config at `<sub>/_lyx` inside the new hub's warp worktree, not at the warp worktree root — with no follow-up activation command needed?
-Does `lyx config --print`/`--set` run from inside `<sub>` resolve against `<sub>/_lyx/config` — the actual subpath-anchoring demonstrator?
-Does `lyx board` still run cleanly from inside `<sub>` — a "still works from the anchored subpath" smoke check only;
+**Watch:** Does `lym fabric clone --subpath <sub>` scaffold junctions and config at `<sub>/_lym` inside the new hub's warp worktree, not at the warp worktree root — with no follow-up activation command needed?
+Does `lym config --print`/`--set` run from inside `<sub>` resolve against `<sub>/_lym/config` — the actual subpath-anchoring demonstrator?
+Does `lym board` still run cleanly from inside `<sub>` — a "still works from the anchored subpath" smoke check only;
 board's data lives at the hub level, so this does *not* itself prove subpath resolution the way `config` does.
-Does running a lyx command from outside the anchored subpath (e.g. the new warp worktree's root, when `<sub>` is not `.`) correctly hard-error rather than silently resolving the wrong subpath?
-Does `lyx fabric unwire --apply` cleanly remove the junctions, clear the weft `_lyx` content, and revert `.gitignore`, while leaving the recorded anchor and repo-wide config intact?
+Does running a lym command from outside the anchored subpath (e.g. the new warp worktree's root, when `<sub>` is not `.`) correctly hard-error rather than silently resolving the wrong subpath?
+Does `lym fabric unwire --apply` cleanly remove the junctions, clear the weft `_lym` content, and revert `.gitignore`, while leaving the recorded anchor and repo-wide config intact?
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -231,9 +231,9 @@ Does `lyx fabric unwire --apply` cleanly remove the junctions, clear the weft `_
 
 **Covers:** stencil
 
-**Durability note:** Like `_board` itself, the board's stencils tree is seeded on first run and persists across sessions -- it is not reseeded or rewritten by an ordinary `lyx` invocation once every registered stencil is present and untouched. Do not assume a fresh seed on this run.
+**Durability note:** Like `_board` itself, the board's stencils tree is seeded on first run and persists across sessions -- it is not reseeded or rewritten by an ordinary `lym` invocation once every registered stencil is present and untouched. Do not assume a fresh seed on this run.
 
-**Watch:** Does `lyx stencil list` name all eighteen registered stencils, each with a board-copy path and an edit state (`absent`/`untouched`/`edited`)? Does `lyx stencil validate` report a clean tree (no `error`-severity findings) against an unmodified board copy? Is the JSON output for both sane -- a well-formed envelope, no raw tool output leaking through?
+**Watch:** Does `lym stencil list` name all eighteen registered stencils, each with a board-copy path and an edit state (`absent`/`untouched`/`edited`)? Does `lym stencil validate` report a clean tree (no `error`-severity findings) against an unmodified board copy? Is the JSON output for both sane -- a well-formed envelope, no raw tool output leaking through?
 This scenario is deliberately read-only: `promote` and `sync` both mutate the operator's tree and are exercised by `internal/stencilcli`'s own integration tests, not by hand here.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
@@ -246,24 +246,24 @@ This scenario is deliberately read-only: `promote` and `sync` both mutate the op
 
 **Covers:** loom
 
-**Fixture note:** This scenario hand-writes `_lyx/shed/<slug>/seed.json` and `_lyx/shed/<slug>/status.json` (`<slug>` being the sandbox worktree's own directory name) as a fixture rather than reaching a seeded state through any shipped verb, because no shipped verb seeds one without going through `lyx loom start`'s tmux bootstrap, and `lyx loom pause` on an absent seed is specified to refuse by naming the run as unseeded.
+**Fixture note:** This scenario hand-writes `_lym/shed/<slug>/seed.json` and `_lym/shed/<slug>/status.json` (`<slug>` being the sandbox worktree's own directory name) as a fixture rather than reaching a seeded state through any shipped verb, because no shipped verb seeds one without going through `lym loom start`'s tmux bootstrap, and `lym loom pause` on an absent seed is specified to refuse by naming the run as unseeded.
 A status file with no seed beside it is now the inconsistency `internal/loomcli`'s own seed-presence refusal exists to catch, so write the seed first: `{"recipe": "loom", "driver": "go"}`.
 Write the status fixture with a realistic `current_producer`/`state`/`activity`/`history` shell and a `product` carrying a `slug` and `parent` of your choosing, following the shape in `contracts/specs/loom-status-spec.md`'s worked example.
 
 **Driver note:** This scenario deliberately never seeds or exercises `driver: llm`.
 Actually bootstrapping an `llm`-driven run spawns a live, billed provider session that runs for as long as the task takes, and a sandbox scenario can neither bound that session's length nor assert against its output — the two properties every other scenario here relies on.
 The branch itself, the conjunction predicate that decides whether a spawn is needed at all, the spec composition the driver hands to shuttle, and the driver strand count staying stable across relaunches are all covered instead, against a stubbed binary, by `internal/loomcli`'s own Tier 1 and smoke tests (`internal/loomcli/driverlaunch_test.go`, `internal/loomcli/driverspec_test.go`, `internal/loomcli/smoke_driverstrand_test.go`).
-This carries no mechanical enforcement of its own — it is a prose note, not a gate — and loom stays covered under this scenario's own `**Covers:** loom` tag above: the Sandbox Suite Coverage gate is module-keyed with no sub-module slot for one path within a covered module, so adding loom to `cmd/lyx/sandbox_coverage_test.go`'s excluded-modules list would both fail the gate's own rule that an exclusion names a registered module and silently drop loom's existing coverage. Do not reach for that list for this gap.
+This carries no mechanical enforcement of its own — it is a prose note, not a gate — and loom stays covered under this scenario's own `**Covers:** loom` tag above: the Sandbox Suite Coverage gate is module-keyed with no sub-module slot for one path within a covered module, so adding loom to `cmd/lym/sandbox_coverage_test.go`'s excluded-modules list would both fail the gate's own rule that an exclusion names a registered module and silently drop loom's existing coverage. Do not reach for that list for this gap.
 
-**Watch:** Before writing either fixture, run `lyx loom status` and `lyx loom pause` against the freshly-added, never-bootstrapped pair.
-Does each refuse by naming the seed as absent -- `loom: no seed found for run "self"; no run is seeded yet. run "lyx loom start" first to bootstrap this task` -- rather than leaking an internal lock path such as `.lyx/shed/<slug>/status.json.lock: no such file or directory`?
+**Watch:** Before writing either fixture, run `lym loom status` and `lym loom pause` against the freshly-added, never-bootstrapped pair.
+Does each refuse by naming the seed as absent -- `loom: no seed found for run "self"; no run is seeded yet. run "lym loom start" first to bootstrap this task` -- rather than leaking an internal lock path such as `.lym/shed/<slug>/status.json.lock: no such file or directory`?
 This is the supervisor skill's literal first instruction, so it is the first thing to check, not an afterthought.
 
 Then write both fixtures and continue.
-Does `lyx loom status` round-trip the fixture's own `slug`/`parent`/`current_producer`/`state`/`activity`/`history` values back out through its JSON envelope unchanged -- this also pins that envelope against the status contract?
+Does `lym loom status` round-trip the fixture's own `slug`/`parent`/`current_producer`/`state`/`activity`/`history` values back out through its JSON envelope unchanged -- this also pins that envelope against the status contract?
 Does the same envelope carry an `interrupt_policy` matching the fixture's own `current_producer` -- `handback` for `Webster`, `reinvoke` for every other row name, absent for a name that is no row at all?
-Does a bare `lyx loom pause` refuse naming both ways forward -- `lyx tender pause <slug>` to stop the run's agents now and `lyx loom pause --after <current_producer>` to halt it at the next producer boundary -- and leave the status file unchanged?
-Does `lyx loom pause --after <a row name>` record `pause_after` as that row while leaving every other field -- `current_producer`, `state`, `activity`, `history`, and `product` -- untouched?
+Does a bare `lym loom pause` refuse naming both ways forward -- `lym tender pause <slug>` to stop the run's agents now and `lym loom pause --after <current_producer>` to halt it at the next producer boundary -- and leave the status file unchanged?
+Does `lym loom pause --after <a row name>` record `pause_after` as that row while leaving every other field -- `current_producer`, `state`, `activity`, `history`, and `product` -- untouched?
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -276,13 +276,13 @@ copying a glyph out of `glyphs`' own output rather than typing one by hand."
 
 **Covers:** quarry
 
-**Watch:** Does `lyx quarry toc <a package directory>` render a well-formed JSON table-of-contents answer for that directory?
-Does `lyx quarry glyphs <that same directory>` render a flat, non-empty glyph index -- a `symbols` list with an `id` on each entry?
+**Watch:** Does `lym quarry toc <a package directory>` render a well-formed JSON table-of-contents answer for that directory?
+Does `lym quarry glyphs <that same directory>` render a flat, non-empty glyph index -- a `symbols` list with an `id` on each entry?
 Copy one entry's `id` value verbatim from that output, rather than typing a spelling by hand.
-Does `lyx quarry glyphs --text <that same directory>` print one line per symbol, each ending in the symbol's id, so that dropping lines containing `_test.go` removes exactly the test-file symbols?
-Does `lyx quarry resolve <that copied glyph>` report it `found`?
-Does `lyx quarry resolve <the copied glyph> <a made-up glyph>` print two answers in argument order, the second with `status` `not_found`, and exit non-zero without any `{"ok":false}` envelope?
-Pick a type glyph from the same index (or a directory glyph, if none of the package's exported symbols are a type) and does `lyx quarry expand <that glyph>` report its head plus its members?
+Does `lym quarry glyphs --text <that same directory>` print one line per symbol, each ending in the symbol's id, so that dropping lines containing `_test.go` removes exactly the test-file symbols?
+Does `lym quarry resolve <that copied glyph>` report it `found`?
+Does `lym quarry resolve <the copied glyph> <a made-up glyph>` print two answers in argument order, the second with `status` `not_found`, and exit non-zero without any `{"ok":false}` envelope?
+Pick a type glyph from the same index (or a directory glyph, if none of the package's exported symbols are a type) and does `lym quarry expand <that glyph>` report its head plus its members?
 Do all four commands run against the sandbox's own worktree with no repository-path flag, and does each answer read as quarry's own rendering rather than something reshaped or filtered?
 
 **Verdict:** `OK` / `WARN` / `FAIL`
@@ -291,14 +291,14 @@ Do all four commands run against the sandbox's own worktree with no repository-p
 
 ### S10 -- Slotted go test through the gate
 
-**Goal:** "Run one package's tests through `lyx gate test`, then misuse it, and confirm the exit codes and the refusal."
+**Goal:** "Run one package's tests through `lym gate test`, then misuse it, and confirm the exit codes and the refusal."
 
 **Covers:** gate
 
-**Watch:** Does `lyx gate test <one package of the sandbox's own module>` stream go's own test output and exit 0 when that package's tests pass?
-Does `lyx gate test` with no package argument print one `{"ok":false}` envelope whose `error` names the missing package and a way forward, and exit 1?
+**Watch:** Does `lym gate test <one package of the sandbox's own module>` stream go's own test output and exit 0 when that package's tests pass?
+Does `lym gate test` with no package argument print one `{"ok":false}` envelope whose `error` names the missing package and a way forward, and exit 1?
 Is the exit code of the first run go's own, and the second not go's?
-Does `lyx gate test <that package> -- -run NoSuchTest` pass the flag after `--` to go test and exit with go's code?
+Does `lym gate test <that package> -- -run NoSuchTest` pass the flag after `--` to go test and exit with go's code?
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -306,14 +306,14 @@ Does `lyx gate test <that package> -- -run NoSuchTest` pass the flag after `--` 
 
 ### S11 -- Routine cleanup as a dry run
 
-**Goal:** "Ask lyx what its routine cleanup would remove from the hub's prime, and confirm that asking removes nothing."
+**Goal:** "Ask lym what its routine cleanup would remove from the hub's prime, and confirm that asking removes nothing."
 
 **Covers:** cleanup
 
-**Watch:** Does `lyx cleanup` from the sandbox's prime print one `{"ok":true}` envelope with `"applied": false`?
+**Watch:** Does `lym cleanup` from the sandbox's prime print one `{"ok":true}` envelope with `"applied": false`?
 Does its `segments` list name every segment in order, each with what `--apply` would remove?
 Is anything on disk or on the board different afterwards, such as a run directory, a board entry or a handoff file?
-Does `lyx cleanup` run from a task worktree instead refuse, name the prime worktree and say to re-run it there?
+Does `lym cleanup` run from a task worktree instead refuse, name the prime worktree and say to re-run it there?
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -325,12 +325,12 @@ Does `lyx cleanup` run from a task worktree instead refuse, name the prime workt
 
 **Covers:** tender
 
-**Watch:** Does `lyx p` print one `{"ok":true}` envelope under `pause` that names the hub scope and reports empty lists, and does a second `lyx p` report `already_paused` and add no entry?
-Does `lyx tender status` list the one live entry and change nothing?
-While the pause stands, does `lyx board` print one line that names the pause and the `lyx tender resume` that lifts it, and then continue only after the resume?
-Does `lyx r` lift the entry, and does a second `lyx r` report nothing resumed?
-Does `lyx tender revive` with nothing stalled print an empty report and succeed?
-Does `lyx p no-such-slug` refuse and list the slugs that have a pair, and does `lyx p --grace 61` refuse and name the range 0 to 60?
+**Watch:** Does `lym p` print one `{"ok":true}` envelope under `pause` that names the hub scope and reports empty lists, and does a second `lym p` report `already_paused` and add no entry?
+Does `lym tender status` list the one live entry and change nothing?
+While the pause stands, does `lym board` print one line that names the pause and the `lym tender resume` that lifts it, and then continue only after the resume?
+Does `lym r` lift the entry, and does a second `lym r` report nothing resumed?
+Does `lym tender revive` with nothing stalled print an empty report and succeed?
+Does `lym p no-such-slug` refuse and list the slugs that have a pair, and does `lym p --grace 61` refuse and name the range 0 to 60?
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -338,17 +338,17 @@ Does `lyx p no-such-slug` refuse and list the slugs that have a pair, and does `
 
 ### S13 -- Convergence report from the prime
 
-**Goal:** "Ask lyx for the convergence report of the hub's finished runs and landings, and confirm that asking changes nothing."
+**Goal:** "Ask lym for the convergence report of the hub's finished runs and landings, and confirm that asking changes nothing."
 
 **Covers:** report
 
-**Watch:** Does `lyx report convergence` from the sandbox's prime print one `{"ok":true}` envelope holding `runs`, `weeks` and `findings`?
-Does `lyx report convergence --format markdown` print the four section headings, each opening a table or `no data`?
-Does `lyx report convergence --fresh-days 0` refuse, naming the flag?
-Does `lyx report convergence` run from a task worktree instead refuse, name the prime worktree and say to re-run it there?
-Does `lyx report timing` from the prime print one `{"ok":true}` envelope holding `runs`, `phases`, `buckets` and `sleep_note`?
-Does `lyx report timing --format markdown` print its four section headings?
-Does `lyx report timing --by month` refuse, naming the flag?
+**Watch:** Does `lym report convergence` from the sandbox's prime print one `{"ok":true}` envelope holding `runs`, `weeks` and `findings`?
+Does `lym report convergence --format markdown` print the four section headings, each opening a table or `no data`?
+Does `lym report convergence --fresh-days 0` refuse, naming the flag?
+Does `lym report convergence` run from a task worktree instead refuse, name the prime worktree and say to re-run it there?
+Does `lym report timing` from the prime print one `{"ok":true}` envelope holding `runs`, `phases`, `buckets` and `sleep_note`?
+Does `lym report timing --format markdown` print its four section headings?
+Does `lym report timing --by month` refuse, naming the flag?
 Is anything on disk or in the hub's history different afterwards?
 
 **Verdict:** `OK` / `WARN` / `FAIL`
@@ -393,5 +393,5 @@ sandbox-report.json written: <count of WARN/FAIL items>
   the coverage guard scans all of them.
 - The tmux interactive launcher will replace the direct `claude` launch in a future iteration;
   the file contract (this `SANDBOX-CORE-SUITE.md` driving the agent) is unchanged.
-- The warp repo `Knatte18/lyx-test` README uses the phrase "cwd-relpath mirroring";
-  this refers to **weft path mirroring** (how the weft worktree mirrors warp subpaths) — not to running lyx from subdirectories. "cwd-relpath" does not appear elsewhere in this scheme.
+- The warp repo `Knatte18/lym-test` README uses the phrase "cwd-relpath mirroring";
+  this refers to **weft path mirroring** (how the weft worktree mirrors warp subpaths) — not to running lym from subdirectories. "cwd-relpath" does not appear elsewhere in this scheme.

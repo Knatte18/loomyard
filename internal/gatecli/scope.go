@@ -1,4 +1,4 @@
-// scope.go computes the scope of one `lyx gate test` call: which targets each listed tier runs over, and which guard tests the guard step runs, for the computed, --base and --card forms.
+// scope.go computes the scope of one `lym gate test` call: which targets each listed tier runs over, and which guard tests the guard step runs, for the computed, --base and --card forms.
 
 package gatecli
 
@@ -21,7 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
@@ -113,7 +113,7 @@ func withGateScope(cfg gateslot.Config, request testRequest) testRequest {
 // a --card scope is the cards' packages per module, with the declared tiers whose build tag brings a file into one of them.
 // A guard scan error refuses with its file, line and way forward.
 // ctx bounds the derivation, so a stalled `go list` is killed when it ends.
-func computeScope(ctx context.Context, cfg gateslot.Config, location *lyxcwd.Location, root string, request testRequest, green *greenRun) (scope, error) {
+func computeScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Location, root string, request testRequest, green *greenRun) (scope, error) {
 	request = withGateScope(cfg, request)
 	switch {
 	case len(request.targets) > 0:
@@ -222,7 +222,7 @@ func computeScope(ctx context.Context, cfg gateslot.Config, location *lyxcwd.Loc
 // the tiers of a base group whose diff is inert-only get the empty share, and every other tier runs whole.
 // A call with no inert-only group is the whole scope, and no scope of this scoper plans a guard step.
 // A diff that cannot be read leaves its group whole, since allInertSince then reports false.
-func noneScope(ctx context.Context, cfg gateslot.Config, location *lyxcwd.Location, root string, request testRequest, form string, green *greenRun) scope {
+func noneScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Location, root string, request testRequest, form string, green *greenRun) scope {
 	groups, wholeTiers := diffBaseGroups(cfg, location, root, request, form, green)
 	shares := map[int]tierScope{}
 	inertOnly := false
@@ -270,7 +270,7 @@ type baseGroup struct {
 // A --base call gives every tier its one base.
 // Under the computed form a tier's base is the newest commit the green record holds whole-green for it that is an ancestor of HEAD, else the merge base with the parent branch, and a tier with neither runs whole.
 // A dirty worktree holds no green record, so every tier takes the merge base.
-func diffBaseGroups(cfg gateslot.Config, location *lyxcwd.Location, root string, request testRequest, form string, green *greenRun) (groups []baseGroup, wholeTiers []int) {
+func diffBaseGroups(cfg gateslot.Config, location *lymcwd.Location, root string, request testRequest, form string, green *greenRun) (groups []baseGroup, wholeTiers []int) {
 	numbers := keptTiers(cfg, request)
 
 	if form == scopeBase {
@@ -425,7 +425,7 @@ func scanGuards(sc scope, root string) (scope, error) {
 }
 
 // cardPackages returns the Go packages of the named cards per module, read from the plan at the worktree's anchor by readCards.
-func cardPackages(location *lyxcwd.Location, root string, ids []string) ([]planparser.ModulePackages, error) {
+func cardPackages(location *lymcwd.Location, root string, ids []string) ([]planparser.ModulePackages, error) {
 	plan, cards, err := readCards(location, ids)
 	if err != nil {
 		return nil, err
@@ -436,7 +436,7 @@ func cardPackages(location *lyxcwd.Location, root string, ids []string) ([]planp
 // readCards reads the plan at the worktree's anchor and returns it with the named cards, in the order of ids.
 // An id is a card's number, or its number and slug as `N-slug`, with leading zeros ignored.
 // An unknown id is refused naming the plan's ids, and a worktree with no plan is refused naming --all and explicit targets.
-func readCards(location *lyxcwd.Location, ids []string) (*planparser.Plan, []planparser.Card, error) {
+func readCards(location *lymcwd.Location, ids []string) (*planparser.Plan, []planparser.Card, error) {
 	planDir := planparser.PlanDir(location.AnchorPath())
 	if _, err := os.Stat(planparser.PlanOverview(location.AnchorPath())); errors.Is(err, fs.ErrNotExist) {
 		return nil, nil, fmt.Errorf("gate test: --card needs the plan at %s, which this worktree does not hold; way forward: run the call from the task worktree that holds the plan, or use --all or explicit targets, then re-run the same command", planDir)
@@ -520,7 +520,7 @@ func tagAddsFile(tagged build.Context, dir string) bool {
 
 // parentMergeBase returns the merge base of HEAD with the parent branch the pair's fabric origin record names.
 // A worktree with no origin record or no parent branch, such as the prime on main, reports false.
-func parentMergeBase(location *lyxcwd.Location) (string, bool, error) {
+func parentMergeBase(location *lymcwd.Location) (string, bool, error) {
 	origin, found, err := fabricengine.ReadOrigin(location)
 	if err != nil {
 		return "", false, err

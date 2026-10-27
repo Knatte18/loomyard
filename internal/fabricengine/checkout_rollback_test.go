@@ -4,8 +4,8 @@
 // when junction wiring (step 5) fails AFTER the weft branch was already switched
 // (step 4). Pre-fix, the rollback reverted only the warp, stranding the weft on
 // the new branch — a half-switched pair, the exact state Checkout promises never
-// to produce (a live review round reproduced this by making the warp _lyx a real
-// directory so seedLyxJunction refuses). Checkout now rolls back BOTH sides.
+// to produce (a live review round reproduced this by making the warp _lym a real
+// directory so seedLymJunction refuses). Checkout now rolls back BOTH sides.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -20,11 +20,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // TestCheckout_JunctionFailureRollsBackBothSides wires a healthy primary pair, then corrupts the
-// warp _lyx into a real (non-junction) directory so the junction-wiring step of Checkout fails
+// warp _lym into a real (non-junction) directory so the junction-wiring step of Checkout fails
 // after the weft has already switched.
 // It asserts Checkout errors AND leaves both the warp and the weft on their original branches —
 // never a half-switched pair.
@@ -42,7 +42,7 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 	// failure is isolated to step 5 (junction wiring).
 	// Checkout derives the slug the same way (filepath.Base of the worktree root).
 	slug := filepath.Base(l.WorktreePath())
-	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lym", "_extra"}); err != nil {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
 	gitkit.MustRun(t, l.WorktreePath(), "git", "branch", targetBranch)
@@ -51,15 +51,13 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 	originalWarpBranch := gitkit.CurrentBranch(t, l.WorktreePath())
 	originalWeftBranch := gitkit.CurrentBranch(t, fabricengine.RecordsWorktree(l))
 
-	// Corrupt the warp _lyx into a real directory: WireJunctions -> seedLyxJunction
-	// refuses a real (non-link) _lyx, so Checkout's step 5 fails after step 4 has
-	// already moved the weft.
-	warpLyx := fabricengine.WarpLyxLinkHere(l)
-	if err := os.Remove(warpLyx); err != nil {
+	// Corrupt the warp _lym into a real directory: WireJunctions -> seedLymJunction refuses a real (non-link) _lym, so Checkout's step 5 fails after step 4 has already moved the weft.
+	warpLym := fabricengine.WarpLymLinkHere(l)
+	if err := os.Remove(warpLym); err != nil {
 		t.Fatalf("remove warp junction to corrupt it: %v", err)
 	}
-	if err := os.MkdirAll(warpLyx, 0o755); err != nil {
-		t.Fatalf("create real _lyx dir: %v", err)
+	if err := os.MkdirAll(warpLym, 0o755); err != nil {
+		t.Fatalf("create real _lym dir: %v", err)
 	}
 
 	res, err := top.Checkout(l, targetBranch)
@@ -98,7 +96,7 @@ func TestCheckout_JunctionFailureDeletesForkedWeftBranch(t *testing.T) {
 	const targetBranch = "checkout-rollback-forked"
 
 	slug := filepath.Base(l.WorktreePath())
-	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lym", "_extra"}); err != nil {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
 	// Only the warp branch exists: the weft side must be forked by Checkout.
@@ -107,13 +105,13 @@ func TestCheckout_JunctionFailureDeletesForkedWeftBranch(t *testing.T) {
 	originalWarpBranch := gitkit.CurrentBranch(t, l.WorktreePath())
 	originalWeftBranch := gitkit.CurrentBranch(t, fabricengine.RecordsWorktree(l))
 
-	// Corrupt the warp _lyx into a real directory so step 5 fails after the fork.
-	warpLyx := fabricengine.WarpLyxLinkHere(l)
-	if err := os.Remove(warpLyx); err != nil {
+	// Corrupt the warp _lym into a real directory so step 5 fails after the fork.
+	warpLym := fabricengine.WarpLymLinkHere(l)
+	if err := os.Remove(warpLym); err != nil {
 		t.Fatalf("remove warp junction to corrupt it: %v", err)
 	}
-	if err := os.MkdirAll(warpLyx, 0o755); err != nil {
-		t.Fatalf("create real _lyx dir: %v", err)
+	if err := os.MkdirAll(warpLym, 0o755); err != nil {
+		t.Fatalf("create real _lym dir: %v", err)
 	}
 
 	res, err := top.Checkout(l, targetBranch)
@@ -148,19 +146,19 @@ func TestCheckout_FailureDeletesWeftBranchAdoptedFromOrigin(t *testing.T) {
 
 	cases := []struct {
 		name   string
-		inject func(t *testing.T, l *lyxcwd.Location)
+		inject func(t *testing.T, l *lymcwd.Location)
 	}{
-		{"junction wiring fails", func(t *testing.T, l *lyxcwd.Location) {
-			warpLyx := fabricengine.WarpLyxLinkHere(l)
-			if err := os.Remove(warpLyx); err != nil {
+		{"junction wiring fails", func(t *testing.T, l *lymcwd.Location) {
+			warpLym := fabricengine.WarpLymLinkHere(l)
+			if err := os.Remove(warpLym); err != nil {
 				t.Fatalf("remove warp junction to corrupt it: %v", err)
 			}
-			if err := os.MkdirAll(warpLyx, 0o755); err != nil {
-				t.Fatalf("create real _lyx dir: %v", err)
+			if err := os.MkdirAll(warpLym, 0o755); err != nil {
+				t.Fatalf("create real _lym dir: %v", err)
 			}
 		}},
 		// An untracked file at the path the origin branch tracks passes the pre-switch tracked-dirty check and makes git refuse the switch.
-		{"weft switch fails", func(t *testing.T, l *lyxcwd.Location) {
+		{"weft switch fails", func(t *testing.T, l *lymcwd.Location) {
 			path := filepath.Join(fabricengine.RecordsWorktree(l), markerRel)
 			if err := os.WriteFile(path, []byte("untracked\n"), 0o644); err != nil {
 				t.Fatalf("write untracked file: %v", err)
@@ -179,7 +177,7 @@ func TestCheckout_FailureDeletesWeftBranchAdoptedFromOrigin(t *testing.T) {
 			weftBranch := fabricengine.RecordsBranchName(targetBranch)
 
 			slug := filepath.Base(l.WorktreePath())
-			if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
+			if err := fabricengine.WireJunctions(l, slug, []string{"_lym", "_extra"}); err != nil {
 				t.Fatalf("setup WireJunctions: %v", err)
 			}
 			// Only the warp branch exists locally: the weft branch is on origin alone.
@@ -230,9 +228,9 @@ func TestCheckout_WarpSwitchFailureCarriesGitStderr(t *testing.T) {
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
-	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
+	warpLayout, err := lymcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(warp): %v", err)
+		t.Fatalf("lymcwd.Resolve(warp): %v", err)
 	}
 
 	// The prime worktree holds primeBranch, so switching the task worktree onto it must fail.

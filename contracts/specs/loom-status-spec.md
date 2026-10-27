@@ -1,33 +1,33 @@
 # Loom status spec — loom's spawn/handover status file
 
-> **Status: Contract — pinned.** This doc pins the `_lyx/shed/<slug>/status.json` schema (`self` resolves to the worktree's slug): loom's single source of truth for orchestration state, and the t=0 "seed" a spawn-time lyx command hands off to loom. Durable reference doc — kept, not deleted on landing — the loom analogue of [webster-spec.md](webster-spec.md) and `contracts/stencils/loom/loom-template-plan.md`.
+> **Status: Contract — pinned.** This doc pins the `_lym/shed/<slug>/status.json` schema (`self` resolves to the worktree's slug): loom's single source of truth for orchestration state, and the t=0 "seed" a spawn-time lym command hands off to loom. Durable reference doc — kept, not deleted on landing — the loom analogue of [webster-spec.md](webster-spec.md) and `contracts/stencils/loom/loom-template-plan.md`.
 > This doc's own "seed" — the t=0 contents of the status file described below — is a different artefact from the seeded-shed core's `seed.json` (see `internal/shedrun`'s own package documentation): one is a snapshot of the status shell, the other is a separate, write-once file recording a run's recipe, driver, and parameters.
-> Product-scoped under `loom/` (renamed 2026-08-15 from a bare `_lyx/status.json`), since `Shed` (`internal/shedengine`) is a generic engine more than one product configures — the Someday `Hardener` product needs its own status file too, and a bare path could not serve both.
+> Product-scoped under `loom/` (renamed 2026-08-15 from a bare `_lym/status.json`), since `Shed` (`internal/shedengine`) is a generic engine more than one product configures — the Someday `Hardener` product needs its own status file too, and a bare path could not serve both.
 
 ## What it is
 
-`_lyx/shed/<slug>/status.json` is `shedengine.Status` (see `internal/shedengine`'s own package documentation for the shell's field semantics — `current_producer`, `state`, `error`, `pause_requested`, `activity`, `history`) plus loom's own `product` payload: `slug`, `parent`, and `start_sha`.
-`lyx loom run` (via `Shed.Run`) rewrites the shell on every step — that loop belongs to the driver verb `lyx loom start` spawns detached, never to `lyx loom start` itself;
-its t=0 "seed" — the handoff instant a task is spawned and given to loom — is written once, by `lyx loom start`'s own first invocation, before that spawn happens (see [The seed / handover](#the-seed--handover) below).
+`_lym/shed/<slug>/status.json` is `shedengine.Status` (see `internal/shedengine`'s own package documentation for the shell's field semantics — `current_producer`, `state`, `error`, `pause_requested`, `activity`, `history`) plus loom's own `product` payload: `slug`, `parent`, and `start_sha`.
+`lym loom run` (via `Shed.Run`) rewrites the shell on every step — that loop belongs to the driver verb `lym loom start` spawns detached, never to `lym loom start` itself;
+its t=0 "seed" — the handoff instant a task is spawned and given to loom — is written once, by `lym loom start`'s own first invocation, before that spawn happens (see [The seed / handover](#the-seed--handover) below).
 
-It is durable **fabric-overlay state**: it lives under `_lyx/` (git-synced via fabric, not `.lyx/`'s ephemeral machine-local state), which is what makes resume work across machines.
-Its path resolves via `internal/shedrun.StatusFile`, joined onto `internal/lyxcwd`'s resolved coordinates — this doc describes the file, it does not construct the path.
+It is durable **fabric-overlay state**: it lives under `_lym/` (git-synced via fabric, not `.lym/`'s ephemeral machine-local state), which is what makes resume work across machines.
+Its path resolves via `internal/shedrun.StatusFile`, joined onto `internal/lymcwd`'s resolved coordinates — this doc describes the file, it does not construct the path.
 
 ## Format decision (defended)
 
-The file is **JSON via the existing `internal/state` primitive** (`WriteJSON[T]`/ `ReadJSON[T]`: locked, atomic, typed) — the same mechanism `webster` uses for its own `_lyx/webster/state.json`.
+The file is **JSON via the existing `internal/state` primitive** (`WriteJSON[T]`/ `ReadJSON[T]`: locked, atomic, typed) — the same mechanism `webster` uses for its own `_lym/webster/state.json`.
 
-`_lyx/shed/<slug>/status.json` is machine-written, machine-read orchestration state, not something a human is expected to hand-edit, and `lyx loom status --watch` pretty-prints it for humans — so the on-disk file need not be hand-readable.
+`_lym/shed/<slug>/status.json` is machine-written, machine-read orchestration state, not something a human is expected to hand-edit, and `lym loom status --watch` pretty-prints it for humans — so the on-disk file need not be hand-readable.
 Reusing `internal/state` gives locking and atomic writes for free and keeps one state primitive across modules, rather than a second one-off for loom.
 
 ## The seed / handover
 
-The **seed** is the t=0 contents of `_lyx/shed/<slug>/status.json` at the instant a task is spawned and handed to loom — not a separate file or a separate schema, just the initial snapshot of the same file loom then keeps rewriting.
+The **seed** is the t=0 contents of `_lym/shed/<slug>/status.json` at the instant a task is spawned and handed to loom — not a separate file or a separate schema, just the initial snapshot of the same file loom then keeps rewriting.
 
-It is written by **`lyx loom start`**, the session bootstrap, at its own first invocation — the mill-spawn analogue, but Go, never an agent.
-That binding is now pinned: `lyx loom start` seeds the file itself when it is absent, tolerating a re-run's already-seeded case rather than re-seeding it, and commits the seed with fabric's records before it spawns the detached driver.
+It is written by **`lym loom start`**, the session bootstrap, at its own first invocation — the mill-spawn analogue, but Go, never an agent.
+That binding is now pinned: `lym loom start` seeds the file itself when it is absent, tolerating a re-run's already-seeded case rather than re-seeding it, and commits the seed with fabric's records before it spawns the detached driver.
 An optional thin `ly-spawn` skill may wrap it later,
-but `lyx loom start` is always the writer.
+but `lym loom start` is always the writer.
 
 The file's existence *is* the handoff signal, but it is `Shed`'s own step-1 read gate that **requires the file to exist** and fails loud if it is missing — not loom's own row.
 loom's own row, `Loom-Preflight`, makes a narrower claim: that the file, once it exists, is a *coherent fresh seed* (no half-finished prior run).
@@ -67,7 +67,7 @@ Per-field notes — `product`'s three fields are the whole of loom's own half of
 - **`product.slug` / `product.parent`** — the only handoff pointers into the wider task record;
   the board owns durable title/description, not this file.
 - **`product.start_sha`** — the repo `HEAD` stamped when Webster begins, so Raddle can diff `start_sha..HEAD`. `null` until Webster starts.
-- **`pause_before` / `pause_after`** — stop conditions an outside actor records through `lyx loom pause --before|--after` or `lyx shed pause --before|--after`, the loom pause verb's only forms; both keys are absent when empty.
+- **`pause_before` / `pause_after`** — stop conditions an outside actor records through `lym loom pause --before|--after` or `lym shed pause --before|--after`, the loom pause verb's only forms; both keys are absent when empty.
   `pause_before` fires when `current_producer` equals it, before that producer is called.
   `pause_after` fires when the named producer returns a routed running outcome, pausing at the routed row, and stays recorded across a halting outcome or a producer error.
   A fired condition pauses the run with the reason `paused before <target>, as requested` or `paused after <target>, as requested` and clears both keys.
@@ -85,23 +85,23 @@ Per-field notes — `product`'s three fields are the whole of loom's own half of
   The unconditional append this depends on is the same one the fresh-start check below already relies on;
   see that check for why a `stuck` entry is appended on every `stuck` route, including a budget-exhausted block.
 - **No `schema_version`/`format` field.**
-  This file has a single writer (`Shed`, plus `lyx loom start` as the seeder and `lyx loom pause` as the pause verb, both writing through the same lock) and no version-compatibility pressure.
+  This file has a single writer (`Shed`, plus `lym loom start` as the seeder and `lym loom pause` as the pause verb, both writing through the same lock) and no version-compatibility pressure.
   A version stamp here would be a rarely-exercised guard that goes stale;
   it is deliberately omitted, to be reintroduced only if a real incompatibility ever forces it.
 
 ## The `hand_back` key
 
-`lyx loom status` carries a top-level `hand_back` key, and the loop's stop envelope carries `loop.hand_back`.
+`lym loom status` carries a top-level `hand_back` key, and the loop's stop envelope carries `loop.hand_back`.
 Both are true when the run is blocked and the recipe's told check answers true for the status's `current_producer` and `error`, and false otherwise, including when no check is told.
 For loom and darn the check is `landingshed.HandsBack`: a blocked stop at Parent-Align or Finalize whose reason opens with the landing-stop prefix, or a blocked stop at Finalize whose reason opens with the reroute-cap prefix.
 A true key marks a halt that goes to the orch, so every driver hands it back instead of routing it.
 
 ## The `waiting` key
 
-`lyx loom status` adds a `waiting` key to its envelope while the run's state is `running` and one of four waits is present.
+`lym loom status` adds a `waiting` key to its envelope while the run's state is `running` and one of four waits is present.
 The waits are read in order:
 
-1. a gate wait, read from the worktree's live gate wait records, which `lyx gate test`, the card-verify rerun and the plan gate's type load each write while they wait for a gate slot;
+1. a gate wait, read from the worktree's live gate wait records, which `lym gate test`, the card-verify rerun and the plan gate's type load each write while they wait for a gate slot;
 2. a parent lock wait, read from the run's parent lock wait record, which a landing row writes while it waits for the parent lock;
 3. a verify, read from the verify marker, running or waiting for a gate slot;
 4. a shuttle wait, read from the run's wait marker (a gate entry or the background-shell wait).
@@ -110,8 +110,8 @@ A gate wait does not hide the rest: its note is followed by the first of the oth
 Among the others, the first one with a live pid wins.
 
 The value is one line.
-A gate wait renders `<producer>: <site> waiting for a gate slot <elapsed>`, one clause per live record, oldest first and joined with `; `, then `(holders: <worktree> <site>, ...)` once, for example `Plan-Write: lyx gate test ./internal/foo waiting for a gate slot 2m (holders: /hub/other lyx gate test ./internal/bar)`.
-A running verify or shuttle wait renders `<producer>: <what> running <elapsed> (<detail>)`, for example `Code-Burler-Fix: verify running 6m (attempt 2; lyx gate test --wait --gate code-burler-fix)`.
+A gate wait renders `<producer>: <site> waiting for a gate slot <elapsed>`, one clause per live record, oldest first and joined with `; `, then `(holders: <worktree> <site>, ...)` once, for example `Plan-Write: lym gate test ./internal/foo waiting for a gate slot 2m (holders: /hub/other lym gate test ./internal/bar)`.
+A running verify or shuttle wait renders `<producer>: <what> running <elapsed> (<detail>)`, for example `Code-Burler-Fix: verify running 6m (attempt 2; lym gate test --wait --gate code-burler-fix)`.
 A verify still waiting for a gate slot renders `<producer>: verify waiting for a gate slot <elapsed> (<site>; holders: <worktree> <site>, ...)`, elapsed measured from the wait start.
 A parent lock wait renders `<producer>: waiting for the parent lock on <branch> held by <slug> <elapsed>`, elapsed measured from the record's start.
 A lock wait record whose writer is dead is ignored.
@@ -140,7 +140,7 @@ Spec for check 4, loom's own precondition layered over `Shed`'s shell (`internal
 - `shed.state` must be one of `Shed`'s six legal values and must not be `"done"`, a finished run.
 - `shed.error` is tolerated at any value, including non-empty — it is the previous halt's reason a human resumes after reading.
 - `shed.activity` is never validated — `Shed` recomposes it mechanically on every persist.
-- Every `shed.history[].outcome` must be `"done"`, `"stuck"`, `"awaiting"`, `"goto"` or `"reroute"` (the last two history-only: `goto` written by `lyx shed goto`, `reroute` by the engine on a rerouted Stuck verdict, neither returned by a producer), and every `shed.history[].at` must be RFC3339 UTC.
+- Every `shed.history[].outcome` must be `"done"`, `"stuck"`, `"awaiting"`, `"goto"` or `"reroute"` (the last two history-only: `goto` written by `lym shed goto`, `reroute` by the engine on a rerouted Stuck verdict, neither returned by a producer), and every `shed.history[].at` must be RFC3339 UTC.
 - **Fresh-start check:** a `shed.history[]` entry naming any producer other than `"Preflight"` or `"Loom-Preflight"` is a half-finished failure; entries naming either of those two are tolerated, since `Shed.Run` appends a history entry before persisting `state: "blocked"` on every `Stuck` route including the `OnStuck: ""` escalation, so a `Stuck` at either row 1 or row 2 leaves one matching entry behind and a resumable blocked run must not fail this check forever.
 - A non-null `product.start_sha`, or `shed.pause_requested: true`, is also a half-finished failure — the task has already advanced past the point the two Preflight rows are meant to gate.
 - A `product` that fails to decode as loom's own shape is a `seed-incoherent` verdict, not an infra error.
@@ -149,7 +149,7 @@ Spec for check 4, loom's own precondition layered over `Shed`'s shell (`internal
 
 ## Worked example
 
-A realistic **seed** — written by `lyx loom start`'s own first invocation, before it spawns the detached driver:
+A realistic **seed** — written by `lym loom start`'s own first invocation, before it spawns the detached driver:
 
 ```jsonc
 {
@@ -178,7 +178,7 @@ A realistic **mid-run** instance of the same file, later in the same task's life
   "activity": {"now": "Webster", "last": "Webster → stuck", "wait": "batch 3 still fails its tests after two fix rounds"},
   "history": [
     {"producer": "Preflight", "outcome": "done", "output": "", "at": "2026-07-17T10:01:30Z"},
-    {"producer": "Discussion-Write", "outcome": "done", "output": "_lyx/discussion/decision-record.md", "at": "2026-07-17T10:22:14Z"},
+    {"producer": "Discussion-Write", "outcome": "done", "output": "_lym/discussion/decision-record.md", "at": "2026-07-17T10:22:14Z"},
     {"producer": "Webster", "outcome": "stuck", "output": "", "at": "2026-07-17T11:14:02Z"}
   ],
   "product": {

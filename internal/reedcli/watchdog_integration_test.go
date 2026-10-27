@@ -28,7 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
@@ -49,7 +49,7 @@ func watchdogIntegrationTmux(t *testing.T, cfg reedengine.Config) string {
 // bootWatchdogEngine boots a real engine for worktreeRoot and returns it; the caller owns tearing the session down.
 func bootWatchdogEngine(t *testing.T, worktreeRoot string) *reedengine.Engine {
 	t.Helper()
-	location, err := lyxcwd.ResolveWorktree(worktreeRoot)
+	location, err := lymcwd.ResolveWorktree(worktreeRoot)
 	if err != nil {
 		t.Fatalf("ResolveWorktree(%s): %v", worktreeRoot, err)
 	}
@@ -251,7 +251,7 @@ func TestWatchdogDaemon(t *testing.T) {
 		// The last down runs as the verb, so the stop and the bounded wait are proven together: the lock is free as soon as the verb returns.
 		var downOut bytes.Buffer
 		if code := RunCLIIn(prime, &downOut, []string{"down"}); code != 0 {
-			t.Fatalf("lyx reed down exited %d: %s", code, downOut.String())
+			t.Fatalf("lym reed down exited %d: %s", code, downOut.String())
 		}
 		envelope.RequireOK(t, downOut.String())
 		held, acquired, err := lock.TryAcquireWriteLock(lockPath)
@@ -414,7 +414,7 @@ func TestWatchdogDaemon(t *testing.T) {
 			t.Fatalf("eng1.Down(): %v", err)
 		}
 
-		location, err := lyxcwd.ResolveWorktree(prime)
+		location, err := lymcwd.ResolveWorktree(prime)
 		if err != nil {
 			t.Fatalf("ResolveWorktree: %v", err)
 		}

@@ -26,14 +26,14 @@ func TestBodyHash(t *testing.T) {
 		},
 		{
 			name:      "IgnoresBannerChange",
-			a:         "<!-- lyx-stencil: sha256=aaaa -->\nbody unchanged\n",
-			b:         "<!-- lyx-stencil: sha256=bbbb -->\nbody unchanged\n",
+			a:         "<!-- lym-stencil: sha256=aaaa -->\nbody unchanged\n",
+			b:         "<!-- lym-stencil: sha256=bbbb -->\nbody unchanged\n",
 			wantEqual: true,
 		},
 		{
 			name:      "ReactsToBodyChange",
-			a:         "<!-- lyx-stencil: sha256=aaaa -->\nbody unchanged\n",
-			b:         "<!-- lyx-stencil: sha256=aaaa -->\nbody changed\n",
+			a:         "<!-- lym-stencil: sha256=aaaa -->\nbody unchanged\n",
+			b:         "<!-- lym-stencil: sha256=aaaa -->\nbody changed\n",
 			wantEqual: false,
 		},
 	}
@@ -60,7 +60,7 @@ func TestApplyStamp(t *testing.T) {
 	}{
 		{
 			name:     "ReplacesExistingBannerInPlace",
-			original: "<!-- lyx-stencil: sha256=" + fakeHash('a') + " -->\nbody\n",
+			original: "<!-- lym-stencil: sha256=" + fakeHash('a') + " -->\nbody\n",
 			hash:     fakeHash('b'),
 		},
 		{
@@ -106,7 +106,7 @@ func TestParseStamp(t *testing.T) {
 		},
 		{
 			name:    "MalformedHex",
-			content: "<!-- lyx-stencil: sha256=not-hex -->\nbody\n",
+			content: "<!-- lym-stencil: sha256=not-hex -->\nbody\n",
 			wantOK:  false,
 		},
 	}
@@ -214,8 +214,8 @@ func TestApplyWriter_RoundTripsThroughParseWriter(t *testing.T) {
 	hash := fakeHash('a')
 	first := Writer{Revision: "rev-one", Time: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)}
 	second := Writer{Revision: "rev-two", Time: time.Date(2026, 6, 7, 8, 9, 10, 0, time.UTC)}
-	oneLine := []byte("<!-- lyx-stencil: sha256=" + hash + " -->\n\nbody\n")
-	multiLine := []byte("<!-- note\nlyx-stencil: sha256=" + hash + "\n-->\n\nbody\n")
+	oneLine := []byte("<!-- lym-stencil: sha256=" + hash + " -->\n\nbody\n")
+	multiLine := []byte("<!-- note\nlym-stencil: sha256=" + hash + "\n-->\n\nbody\n")
 
 	tests := []struct {
 		name    string

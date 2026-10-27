@@ -220,10 +220,10 @@ func TestCountRun(t *testing.T) {
 	}
 
 	bare, err := CountRun(oneEngine("/hub/no-base", sessionOf(readOf("w.jsonl", "ly:no-base:webster",
-		bashUse("refused", "lyx webster begin-batch 1"),
+		bashUse("refused", "lym webster begin-batch 1"),
 		toolResultFor("refused", "2026-01-02T02:00:00Z", `{"ok":false,"error":"paused"}`),
 		// A begin-batch result without a timestamp does not set the base.
-		bashUse("untimed", "lyx webster begin-batch 2"),
+		bashUse("untimed", "lym webster begin-batch 2"),
 		shuttleengine.TranscriptEntry{Role: shuttleengine.EntryUser, ToolResults: []shuttleengine.ToolResult{{CallID: "untimed", Text: `{"start_sha":"untimed0"}`}}},
 	))), "/hub/no-base", "no-base", time.Time{})
 	if err != nil {
@@ -296,11 +296,11 @@ func TestCountRun(t *testing.T) {
 	bounded := oneEngine("/hub/bounded",
 		sessionOf(readOf("e-webster.jsonl", "ly:bounded:webster",
 			launch("2026-01-02T10:00:00Z", "/p/prompt.md"),
-			bashUse("old", "lyx webster begin-batch 1"),
+			bashUse("old", "lym webster begin-batch 1"),
 			toolResultFor("old", "2026-01-02T10:01:00Z", `{"batch":"01-alpha","start_sha":"old0000"}`),
 			timedAssistant("old1", "model-a", "2026-01-02T10:02:00Z", 50),
 		), readOf("agent-old.jsonl", "",
-			toolResult("2026-01-02T10:03:00Z", "- `_lyx/plan/01-alpha.md`"),
+			toolResult("2026-01-02T10:03:00Z", "- `_lym/plan/01-alpha.md`"),
 			timedAssistant("oldfork", "model-a", "2026-01-02T10:04:00Z", 7),
 		)),
 		sessionOf(readOf("n-none.jsonl", "ly:bounded:burler", assistant("none1", "model-a", 9, 0))),

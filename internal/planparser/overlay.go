@@ -1,4 +1,4 @@
-// overlay.go implements Overlay, a read path over a plan directory that answers from proposed contents first and from disk second, so a plan can be parsed, checked and canonicalized in memory without a byte written to `_lyx/plan/`.
+// overlay.go implements Overlay, a read path over a plan directory that answers from proposed contents first and from disk second, so a plan can be parsed, checked and canonicalized in memory without a byte written to `_lym/plan/`.
 // A Plan built through an Overlay carries it, and Plan.ReadFile, Plan.RewriteRefs and Plan.Reparse follow it.
 
 package planparser

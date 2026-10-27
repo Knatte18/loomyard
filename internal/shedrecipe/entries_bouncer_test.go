@@ -1195,7 +1195,7 @@ func TestBouncerEntry_CirclingReasonSlugAndBudget(t *testing.T) {
 		}
 
 		reason := callReason(t, env)
-		for _, want := range []string{"lyx loom circling accept my-task", "lyx loom circling continue my-task", "cause: budget"} {
+		for _, want := range []string{"lym loom circling accept my-task", "lym loom circling continue my-task", "cause: budget"} {
 			if !strings.Contains(reason, want) {
 				t.Errorf("Reason = %q; want it to contain %q", reason, want)
 			}
@@ -1228,7 +1228,7 @@ func TestBouncerEntry_CirclingReasonSlugAndBudget(t *testing.T) {
 		env := newTestEnv(t)
 		env.Slug = ""
 		reason := callReason(t, env)
-		if !strings.Contains(reason, "`lyx loom circling accept`") {
+		if !strings.Contains(reason, "`lym loom circling accept`") {
 			t.Errorf("Reason = %q; want the verbs without a slug argument", reason)
 		}
 		if !strings.Contains(reason, "cause: circling") {
@@ -1301,7 +1301,7 @@ func TestBouncerEntry_BlockingEscalatesAndColorSegment(t *testing.T) {
 				t.Fatalf("Call() = %q, %v; want %q, nil", outcome, err, tt.wantOutcome)
 			}
 			if tt.hardCap != 0 {
-				if !strings.Contains(ptr.Reason, "lyx loom circling accept") || strings.Contains(ptr.Reason, "lyx loom circling continue") {
+				if !strings.Contains(ptr.Reason, "lym loom circling accept") || strings.Contains(ptr.Reason, "lym loom circling continue") {
 					t.Errorf("Reason = %q; want the accept verb alone at the hard cap", ptr.Reason)
 				}
 			}

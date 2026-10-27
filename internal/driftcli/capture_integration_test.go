@@ -1,6 +1,6 @@
 //go:build tier1 && !windows
 
-// capture_integration_test.go drives the built `lyx drift` verbs in a hubforge hub pair: a detached capture that outlives its caller, its end by the owned-process end of a teardown, and the compare's refusals.
+// capture_integration_test.go drives the built `lym drift` verbs in a hubforge hub pair: a detached capture that outlives its caller, its end by the owned-process end of a teardown, and the compare's refusals.
 
 package driftcli_test
 
@@ -19,13 +19,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
-	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 )
 
 const (
@@ -57,22 +57,22 @@ verify_max_runs: 2
 	return yaml
 }
 
-// lyxRun runs `lyx drift <args>` in dir and decodes its envelope.
-func lyxRun(t *testing.T, bin, dir string, args ...string) envelope.Envelope {
+// lymRun runs `lym drift <args>` in dir and decodes its envelope.
+func lymRun(t *testing.T, bin, dir string, args ...string) envelope.Envelope {
 	t.Helper()
-	out, _, err := lyxbin.Run(bin, dir, verbWait, append([]string{"drift"}, args...)...)
+	out, _, err := lymbin.Run(bin, dir, verbWait, append([]string{"drift"}, args...)...)
 	if err != nil {
-		t.Fatalf("lyx drift %v: %v", args, err)
+		t.Fatalf("lym drift %v: %v", args, err)
 	}
 	return envelope.Decode(t, out)
 }
 
-// statusBody runs `lyx drift status` and returns its body.
+// statusBody runs `lym drift status` and returns its body.
 func statusBody(t *testing.T, bin, dir string) map[string]any {
 	t.Helper()
-	env := lyxRun(t, bin, dir, "status")
+	env := lymRun(t, bin, dir, "status")
 	if !env.OK {
-		t.Fatalf("lyx drift status: %s", env.Error)
+		t.Fatalf("lym drift status: %s", env.Error)
 	}
 	body, _ := env.Raw["status"].(map[string]any)
 	return body
@@ -109,10 +109,10 @@ func touch(t *testing.T, path string) {
 func TestCapture_OutlivesCaller(t *testing.T) {
 	t.Parallel()
 
-	bin := lyxbin.Build(t)
+	bin := lymbin.Build(t)
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{pairSlug}})
 	pair := h.PairCodeWorktree(pairSlug)
-	loc, err := lyxcwd.Resolve(pair)
+	loc, err := lymcwd.Resolve(pair)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,18 +148,18 @@ func TestCapture_OutlivesCaller(t *testing.T) {
 	writeStatus("Drift-Await", shedengine.StateBlocked)
 
 	t.Run("a capture with the marker absent records failed", func(t *testing.T) {
-		env := lyxRun(t, bin, pair, "capture")
+		env := lymRun(t, bin, pair, "capture")
 		if !env.OK {
-			t.Fatalf("lyx drift capture: %s", env.Error)
+			t.Fatalf("lym drift capture: %s", env.Error)
 		}
 		waitFor(t, "the capture record to read failed", func() bool { return captureState(statusBody(t, bin, pair)) == driftengine.CaptureFailed })
 	})
 
 	t.Run("a capture returns while it holds the lock and passes after the caller exited", func(t *testing.T) {
 		touch(t, mark)
-		env := lyxRun(t, bin, pair, "capture")
+		env := lymRun(t, bin, pair, "capture")
 		if !env.OK {
-			t.Fatalf("lyx drift capture: %s", env.Error)
+			t.Fatalf("lym drift capture: %s", env.Error)
 		}
 		body := statusBody(t, bin, pair)
 		if body["capture_held"] != true || captureState(body) != driftengine.CaptureRunning {
@@ -180,8 +180,8 @@ func TestCapture_OutlivesCaller(t *testing.T) {
 		if err := os.Remove(pidFile); err != nil && !errors.Is(err, os.ErrNotExist) {
 			t.Fatal(err)
 		}
-		if env := lyxRun(t, bin, pair, "capture"); !env.OK {
-			t.Fatalf("lyx drift capture: %s", env.Error)
+		if env := lymRun(t, bin, pair, "capture"); !env.OK {
+			t.Fatalf("lym drift capture: %s", env.Error)
 		}
 		var commandPid int
 		waitFor(t, "the capture command to write its pid", func() bool {
@@ -207,9 +207,9 @@ func TestCapture_OutlivesCaller(t *testing.T) {
 
 	t.Run("compare refuses", func(t *testing.T) {
 		writeStatus("Drift-Verify", shedengine.StateRunning)
-		env := lyxRun(t, bin, pair, "compare")
-		if env.OK || !strings.Contains(env.Error, "lyx config drift") {
-			t.Errorf("lyx drift compare with no compare declared = ok %v, %q; want a refusal naming lyx config drift", env.OK, env.Error)
+		env := lymRun(t, bin, pair, "compare")
+		if env.OK || !strings.Contains(env.Error, "lym config drift") {
+			t.Errorf("lym drift compare with no compare declared = ok %v, %q; want a refusal naming lym config drift", env.OK, env.Error)
 		}
 		if _, err := os.Stat(paths.Runs); !errors.Is(err, os.ErrNotExist) {
 			t.Errorf("a refused compare wrote the run counter: stat err = %v", err)
@@ -235,13 +235,13 @@ func TestCapture_OutlivesCaller(t *testing.T) {
 			want   string
 		}{
 			{"the agent session", shedengine.StateRunning, "write what you found to verify-report.md and end your turn"},
-			{"a caller at a halt", shedengine.StateBlocked, "lyx loom resume spawns a fresh agent with a fresh budget"},
+			{"a caller at a halt", shedengine.StateBlocked, "lym loom resume spawns a fresh agent with a fresh budget"},
 		}
 		for _, row := range rows {
 			writeStatus("Drift-Verify", row.status)
-			env := lyxRun(t, bin, pair, "compare")
+			env := lymRun(t, bin, pair, "compare")
 			if env.OK || !strings.Contains(env.Error, row.want) {
-				t.Errorf("lyx drift compare for %s = ok %v, %q; want a refusal naming %q", row.name, env.OK, env.Error, row.want)
+				t.Errorf("lym drift compare for %s = ok %v, %q; want a refusal naming %q", row.name, env.OK, env.Error, row.want)
 			}
 			after, err := os.ReadFile(paths.Runs)
 			if err != nil || string(after) != string(spent) {

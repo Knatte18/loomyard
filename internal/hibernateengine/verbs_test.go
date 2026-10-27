@@ -54,7 +54,7 @@ func requireRefusal(t *testing.T, err error, parts ...string) {
 
 func agentStrand(t *testing.T) string {
 	t.Helper()
-	strand, err := agentname.Format("lyx", "p1", "driver")
+	strand, err := agentname.Format("lym", "p1", "driver")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func agentStrand(t *testing.T) string {
 
 func orchStrand(t *testing.T) string {
 	t.Helper()
-	strand, err := agentname.Format("lyx", "", agentname.RoleOrch)
+	strand, err := agentname.Format("lym", "", agentname.RoleOrch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func orchStrand(t *testing.T) string {
 
 func beamOrchStrand(t *testing.T) string {
 	t.Helper()
-	strand, err := agentname.Format("lyx", "b", agentname.RoleOrch)
+	strand, err := agentname.Format("lym", "b", agentname.RoleOrch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +175,7 @@ func TestSubmit(t *testing.T) {
 
 			_, err := Submit(w.deps(), SubmitRequest{})
 
-			requireRefusal(t, err, "lyx hibernate cancel", "confirming", "pid 7")
+			requireRefusal(t, err, "lym hibernate cancel", "confirming", "pid 7")
 			if string(readBytes(t, w.requestPath)) != string(before) || len(w.spawned) != 0 {
 				t.Errorf("request changed or a daemon spawned (%v); want neither", w.spawned)
 			}
@@ -223,7 +223,7 @@ func TestSubmit(t *testing.T) {
 			for _, err := range errs {
 				if err != nil {
 					refusals++
-					requireRefusal(t, err, "lyx hibernate cancel")
+					requireRefusal(t, err, "lym hibernate cancel")
 				}
 			}
 			if refusals != 1 || len(w.spawned) != 1 {
@@ -350,7 +350,7 @@ func TestCancel(t *testing.T) {
 
 			_, err := Cancel(w.deps())
 
-			requireRefusal(t, err, "lyx hibernate status")
+			requireRefusal(t, err, "lym hibernate status")
 			if len(w.killed) != 0 || len(w.liveEntries()) != 1 || string(readBytes(t, w.requestPath)) != string(before) {
 				t.Errorf("killed %v, live %+v; want nothing killed, the entry live and the file as it was", w.killed, w.liveEntries())
 			}

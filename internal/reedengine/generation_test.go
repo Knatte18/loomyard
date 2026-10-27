@@ -154,7 +154,7 @@ func answerGenerations(f *fakeTmux, answersBySessionName map[string]string) {
 
 // TestAdoptPaneGenerationLocked is the regression guard for the R5 review's R5-F2 (stale bindings
 // from a previous session incarnation reported live:true and blocked resume) and R5-F5 / R5-F4
-// (a renamed worktree, or a hand-copied .lyx, silently double-launching every strand or targeting
+// (a renamed worktree, or a hand-copied .lym, silently double-launching every strand or targeting
 // another worktree's live panes).
 func TestAdoptPaneGenerationLocked(t *testing.T) {
 	const liveAnswer = "$4|900|1787043918"

@@ -1,6 +1,6 @@
 //go:build tier1 && !windows
 
-// termwindow_integration_test.go runs the window's shell line under bash, with a stub executable standing in for lyx, to pin when the window ends and when it keeps its shell.
+// termwindow_integration_test.go runs the window's shell line under bash, with a stub executable standing in for lym, to pin when the window ends and when it keeps its shell.
 
 package termwindow
 
@@ -70,7 +70,7 @@ func TestAttachLine_EndsOrKeepsTheShellByAttachStatus(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			stub := filepath.Join(root, "lyx stub")
+			stub := filepath.Join(root, "lym stub")
 			if err := os.WriteFile(stub, []byte("#!/bin/sh\n"+tt.stub(dir)+"\n"), 0o755); err != nil {
 				t.Fatal(err)
 			}

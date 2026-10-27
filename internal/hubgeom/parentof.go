@@ -8,7 +8,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // ParentOf returns the slug of the pair that is the parent of the entry slug, "" meaning the prime.
@@ -18,7 +18,7 @@ import (
 // so a member whose beam pair is absent on this machine still reads the beam as its parent.
 // Only when the slug has no origin record does the local board decide, through the nearest open beam above the entry.
 // A read error from the record, the worktree listing or the board is returned.
-func ParentOf(prime *lyxcwd.Location, slug string) (string, error) {
+func ParentOf(prime *lymcwd.Location, slug string) (string, error) {
 	origin, found, err := fabricengine.ReadOriginFor(prime, slug)
 	if err != nil {
 		return "", fmt.Errorf("hubgeom: read origin record for %q: %w", slug, err)

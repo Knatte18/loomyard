@@ -368,7 +368,7 @@ func TestWatch(t *testing.T) {
 				wantDone  bool
 			}{
 				{"orch requester", orch, true},
-				{"non-orch requester", "lyx:p1:driver", false},
+				{"non-orch requester", "lym:p1:driver", false},
 			} {
 				w := newFakeWorld(t)
 				w.requester = tc.requester
@@ -567,11 +567,11 @@ func TestWatch(t *testing.T) {
 			if err != nil || got.Phase != PhaseDone || w.reconcileCalls != 0 || len(w.exempted) != 0 || len(live) != 1 || live[0].Caller != "EXTERNAL" {
 				t.Errorf("got %+v, %v, reconciles %d, exempted %+v, live %+v; want done with nothing reconciled and the entry live", got, err, w.reconcileCalls, w.exempted, live)
 			}
-			requireNotice(t, w, "EXTERNAL", "`lyx tender resume`", "`lyx beam start` or `lyx cleanup --apply`")
+			requireNotice(t, w, "EXTERNAL", "`lym tender resume`", "`lym beam start` or `lym cleanup --apply`")
 		}},
 		{"a parked push holding a paused pair's push lock gives that pair a pause entry naming the resume and lifts the hub entry", func(t *testing.T) {
 			w := newFakeWorld(t)
-			w.reconcileResult = WakeReconcile{Runs: []WakeRun{{Slug: "p1", WayForward: "`lyx tender resume p1`", Busy: true, ParkedPush: true}}}
+			w.reconcileResult = WakeReconcile{Runs: []WakeRun{{Slug: "p1", WayForward: "`lym tender resume p1`", Busy: true, ParkedPush: true}}}
 
 			got, err := watchNow(t, w)
 
@@ -579,7 +579,7 @@ func TestWatch(t *testing.T) {
 			if err != nil || got.Phase != PhaseDone || len(live) != 1 || live[0].Scope != "p1" || live[0].Caller != PauseCaller {
 				t.Errorf("got %+v, %v, live %+v; want done with only the pair entry live", got, err, live)
 			}
-			requireNotice(t, w, "its pause was lifted.", "p1 is busy on a parked push: `lyx tender resume p1`")
+			requireNotice(t, w, "its pause was lifted.", "p1 is busy on a parked push: `lym tender resume p1`")
 		}},
 		{"a paused run whose records could not move gets a pair pause entry that outlives the request and names its way forward then the resume", func(t *testing.T) {
 			w := newFakeWorld(t)
@@ -591,7 +591,7 @@ func TestWatch(t *testing.T) {
 			if err != nil || got.Phase != PhaseDone || len(live) != 1 || live[0].Scope != "p1" || w.request().Owned == nil || w.request().Owned.Scope != pauserecord.ScopeHub {
 				t.Errorf("got %+v, %v, live %+v; want done with the pair entry live and the hub entry the owned one", got, err, live)
 			}
-			requireNotice(t, w, "resolve notes.md in the records worktree; then `lyx tender resume p1`")
+			requireNotice(t, w, "resolve notes.md in the records worktree; then `lym tender resume p1`")
 		}},
 		{"a pair stopped as gone gets a pair pause entry naming its way forward then the cleanup, never the resume", func(t *testing.T) {
 			w := newFakeWorld(t)
@@ -603,8 +603,8 @@ func TestWatch(t *testing.T) {
 			if err != nil || got.Phase != PhaseDone || len(live) != 1 || live[0].Scope != "p1" {
 				t.Errorf("got %+v, %v, live %+v; want done with the pair entry live", got, err, live)
 			}
-			requireNotice(t, w, "origin no longer has p1; then `lyx cleanup --apply`")
-			if strings.Contains(w.noticeList()[0], "`lyx tender resume p1`") {
+			requireNotice(t, w, "origin no longer has p1; then `lym cleanup --apply`")
+			if strings.Contains(w.noticeList()[0], "`lym tender resume p1`") {
 				t.Errorf("notice = %q; want no resume for a pair stopped as gone", w.noticeList()[0])
 			}
 		}},
@@ -618,7 +618,7 @@ func TestWatch(t *testing.T) {
 			if err != nil || got.Phase != PhaseDone || len(live) != 1 || live[0].Scope != pauserecord.ScopeHub || w.pauseCount() != 1 {
 				t.Errorf("got %+v, %v, live %+v, pauses %d; want done with the hub entry live and no pair paused", got, err, live, w.pauseCount())
 			}
-			requireNotice(t, w, "its pause stays live.", "resolve board.json in the board worktree; settle it, and then `lyx tender resume`")
+			requireNotice(t, w, "its pause stays live.", "resolve board.json in the board worktree; settle it, and then `lym tender resume`")
 		}},
 		{"a busy ended run gets a pair pause entry naming its landing or removal and the cleanup, and the other ended runs are listed", func(t *testing.T) {
 			w := newFakeWorld(t)
@@ -633,8 +633,8 @@ func TestWatch(t *testing.T) {
 			if err != nil || got.Phase != PhaseDone || len(live) != 1 || live[0].Scope != "p1" {
 				t.Errorf("got %+v, %v, live %+v; want done with only the busy ended pair held", got, err, live)
 			}
-			requireNotice(t, w, "p1 ended on origin by its landing or removal but is still busy: wait for the driver to end; then `lyx cleanup --apply`", "ended on origin: p2")
-			if strings.Contains(w.noticeList()[0], "`lyx tender resume p1`") {
+			requireNotice(t, w, "p1 ended on origin by its landing or removal but is still busy: wait for the driver to end; then `lym cleanup --apply`", "ended on origin: p2")
+			if strings.Contains(w.noticeList()[0], "`lym tender resume p1`") {
 				t.Errorf("notice = %q; want no resume for an ended run", w.noticeList()[0])
 			}
 		}},
@@ -647,7 +647,7 @@ func TestWatch(t *testing.T) {
 			if err != nil || got.Phase != PhaseDone || len(w.liveEntries()) != 0 {
 				t.Errorf("got %+v, %v, live %+v; want done with the entry lifted", got, err, w.liveEntries())
 			}
-			requireNotice(t, w, "its pause was lifted.", "unreachable", "`lyx cleanup --apply`")
+			requireNotice(t, w, "its pause was lifted.", "unreachable", "`lym cleanup --apply`")
 		}},
 		{"a wake with no hub entry live reconciles with nothing to exempt", func(t *testing.T) {
 			w := newFakeWorld(t)
@@ -675,7 +675,7 @@ func TestWatch(t *testing.T) {
 			if err != nil || got.Phase != PhaseDone || len(w.liveEntries()) != 0 {
 				t.Errorf("got %+v, %v, live %+v; want done with the entry lifted", got, err, w.liveEntries())
 			}
-			requireNotice(t, w, "its pause was lifted.", "origin refused", "`lyx cleanup --apply`")
+			requireNotice(t, w, "its pause was lifted.", "origin refused", "`lym cleanup --apply`")
 		}},
 		{"a status error at the wake fails the request with the owned entry lifted and no reconcile", func(t *testing.T) {
 			w := newFakeWorld(t)
@@ -703,7 +703,7 @@ func TestWatch(t *testing.T) {
 			if ended := w.endedOwnedList(); len(ended) != 0 {
 				t.Errorf("EndOwned calls = %q; want none for stopped runs", ended)
 			}
-			requireNotice(t, w, "its pause was lifted.", "fix p2; then `lyx tender resume p2`", "p1 could not be paused (tender down); hold it with `lyx tender pause p1`")
+			requireNotice(t, w, "its pause was lifted.", "fix p2; then `lym tender resume p2`", "p1 could not be paused (tender down); hold it with `lym tender pause p1`")
 		}},
 		{"a run owned elsewhere gets a pair pause entry with the owner label, lifts the daemon's entry and names the owner and the adopt", func(t *testing.T) {
 			w := newFakeWorld(t)
@@ -718,7 +718,7 @@ func TestWatch(t *testing.T) {
 			if ended := w.endedOwnedList(); !reflect.DeepEqual(ended, []string{"p1"}) {
 				t.Errorf("EndOwned calls = %q; want p1 once", ended)
 			}
-			requireNotice(t, w, "its pause was lifted.", "p1 is owned by machine laptop: `lyx adopt beam` from this machine's prime takes it over here")
+			requireNotice(t, w, "its pause was lifted.", "p1 is owned by machine laptop: `lym adopt beam` from this machine's prime takes it over here")
 		}},
 		{"an EndOwned error leaves the notice as it was", func(t *testing.T) {
 			w := newFakeWorld(t)
@@ -730,7 +730,7 @@ func TestWatch(t *testing.T) {
 			if err != nil || got.Phase != PhaseDone || len(w.liveEntries()) != 1 {
 				t.Errorf("got %+v, %v, live %+v; want done with the pair entry held", got, err, w.liveEntries())
 			}
-			requireNotice(t, w, "its pause was lifted.", "p1 is owned by machine laptop: `lyx adopt p1` from this machine's prime takes it over here")
+			requireNotice(t, w, "its pause was lifted.", "p1 is owned by machine laptop: `lym adopt p1` from this machine's prime takes it over here")
 			if strings.Contains(w.noticeList()[0], "survived") {
 				t.Errorf("notice = %q; want the EndOwned error left out", w.noticeList()[0])
 			}
@@ -748,8 +748,8 @@ func TestWatch(t *testing.T) {
 			if ended := w.endedOwnedList(); len(ended) != 0 {
 				t.Errorf("EndOwned calls = %q; want none after a failed owner pause", ended)
 			}
-			requireNotice(t, w, "p1 could not be paused (tender down); the next wake or `lyx beam start` pauses it again")
-			if strings.Contains(w.noticeList()[0], "lyx tender pause") {
+			requireNotice(t, w, "p1 could not be paused (tender down); the next wake or `lym beam start` pauses it again")
+			if strings.Contains(w.noticeList()[0], "lym tender pause") {
 				t.Errorf("notice = %q; want no tender pause for an owner pause", w.noticeList()[0])
 			}
 		}},

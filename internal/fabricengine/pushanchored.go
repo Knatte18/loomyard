@@ -12,7 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // StatusPushLockWait is the bounded push-lock wait `commit-records` passes, and the default of the wait Remove gives a push of the pair for the pair's teardown lock.
@@ -98,7 +98,7 @@ func pushRebaseFreeRetryingOnce(repo *gitrepo.Repo) error {
 // The underlying primitive is gitrepo.PushRebaseFree, never gitrepo.PushCoalesced, whose rejected-push path runs `git pull --rebase` and would rewrite this side's SHAs under a running weft.
 //
 // Returns (PushResult{}, nil) immediately, with no lock taken and nothing recorded, when opts.SkipGit or opts.SkipPush is true.
-func PushAnchored(l *lyxcwd.Location, opts SyncOptions, lockWait time.Duration) (res PushResult, err error) {
+func PushAnchored(l *lymcwd.Location, opts SyncOptions, lockWait time.Duration) (res PushResult, err error) {
 	target := RecordsWorktree(l)
 	rec := NewMutations(filepath.Dir(target))
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -160,7 +160,7 @@ func PushAnchored(l *lyxcwd.Location, opts SyncOptions, lockWait time.Duration) 
 // Every side that observably advanced is recorded in the returned PushResult.
 // Returns (PushResult{}, nil) immediately, with no lock taken, when opts.SkipGit or opts.SkipPush is true.
 // A failure to resolve whether l is the prime returns that error before the lock is taken and nothing is pushed.
-func PushPairAnchored(l *lyxcwd.Location, opts SyncOptions, lockWait time.Duration) (res PushResult, err error) {
+func PushPairAnchored(l *lymcwd.Location, opts SyncOptions, lockWait time.Duration) (res PushResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
 

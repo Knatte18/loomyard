@@ -35,7 +35,7 @@ func TestRecipeOverride(t *testing.T) {
 		{
 			name: "the darn recipe refuses a malformed tree key with the editor way forward", recipe: shedrun.RecipeDarn,
 			darnTreeScope: `tree_scope: {"./tools": ""}`,
-			wantErr:       []string{"./tools", "lyx config darn's editor", "then re-run the lyx command that refused"},
+			wantErr:       []string{"./tools", "lym config darn's editor", "then re-run the lym command that refused"},
 		},
 	}
 	for _, tt := range tests {

@@ -162,7 +162,7 @@ type Engine interface {
 	// provider outright.
 	// An implementation that cannot locate the accepting option in capture returns no inputs at
 	// all, never a blind confirmation — the startup window then expires into OutcomeDied, which is
-	// the same end state a wrong keypress reaches, without lyx itself having pressed the button.
+	// the same end state a wrong keypress reaches, without lym itself having pressed the button.
 	// It lives on the seam because which keys move and confirm a provider's gate is pane key
 	// choreography.
 	TrustDismissSequence(capture string) []PaneInput
@@ -301,7 +301,7 @@ type InputBoxClearer interface {
 	ClearInputSequence() []PaneInput
 }
 
-// RestoredPromptClearer is an optional capability beside Engine: the provider's way of emptying an input box that holds the prompt of a turn lyx's own interrupt just stopped, which the provider restored there.
+// RestoredPromptClearer is an optional capability beside Engine: the provider's way of emptying an input box that holds the prompt of a turn lym's own interrupt just stopped, which the provider restored there.
 // Such a prompt can span several box lines, so the clear is sized from the capture of the box.
 type RestoredPromptClearer interface {
 	// RestoredPromptClearSequence returns the keys that empty the input box capture shows.

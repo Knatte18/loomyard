@@ -1,6 +1,6 @@
 //go:build tier2
 
-// smoke_coldstart_test.go pins the headline scenario this task adds: `lyx reed add` and `lyx reed attach`, run against a worktree that was never brought up and carries no persisted state file at all, boot the substrate themselves rather than refusing with the friendly no-session error.
+// smoke_coldstart_test.go pins the headline scenario this task adds: `lym reed add` and `lym reed attach`, run against a worktree that was never brought up and carries no persisted state file at all, boot the substrate themselves rather than refusing with the friendly no-session error.
 // The scenario drives a real multiplexer against one forged hub, giving each step its own never-brought-up sibling worktree, using the package's existing fixture vocabulary (see smoke_test.go) rather than any new fixture machinery.
 //
 // A freshly forged worktree still refuses the status verb before anything boots, so a test that needs this worktree's socket and session name before any boot derives them from reedengine's own exported ServerName and SessionName free functions rather than from socketAndSessionIn, which drives `status` under the hood.
@@ -19,20 +19,20 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
-// runReedCLINoFatal runs the built lyx binary with args in dir and returns its combined
+// runReedCLINoFatal runs the built lym binary with args in dir and returns its combined
 // stdout+stderr, never failing the test itself: the cold-attach scenario this backs needs to inspect
 // a non-zero exit and the multiplexer's own error text on stdout/stderr, neither of which the
 // in-process RunCLIIn seam can produce, since the terminal-handover tail's stdio belongs to the real
 // OS process, not to an io.Writer this package controls.
 func runReedCLINoFatal(t *testing.T, exe, dir string, timeout time.Duration, args ...string) string {
 	t.Helper()
-	out, _, err := lyxbin.Run(exe, dir, timeout, args...)
+	out, _, err := lymbin.Run(exe, dir, timeout, args...)
 	if err != nil {
-		t.Fatalf("lyx %v: %v", args, err)
+		t.Fatalf("lym %v: %v", args, err)
 	}
 	return out
 }
@@ -42,7 +42,7 @@ func runReedCLINoFatal(t *testing.T, exe, dir string, timeout time.Duration, arg
 func TestSmokeColdStart(t *testing.T) {
 	t.Parallel()
 	tmuxPath := tmuxBinaryPath(t)
-	lyxExe := lyxbin.Build(t)
+	lymExe := lymbin.Build(t)
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	deferHubRelease(t, h.PrimeWorktree())
@@ -87,7 +87,7 @@ func TestSmokeColdStart(t *testing.T) {
 	if !t.Run("ColdAttachBootsThenFailsOnTheTerminalHandoverNotOnNoSession", func(t *testing.T) {
 		worktree := coldWorktree(t, "cold-attach")
 
-		output := runReedCLINoFatal(t, lyxExe, worktree, 30*time.Second, "reed", "attach")
+		output := runReedCLINoFatal(t, lymExe, worktree, 30*time.Second, "reed", "attach")
 
 		if strings.Contains(output, "no reed session") {
 			t.Fatalf("cold attach output = %q; want no trace of the no-session refusal -- attach must boot before it can ever reach that check", output)
@@ -167,19 +167,19 @@ func TestSmokeColdStart(t *testing.T) {
 		return
 	}
 
-	// ColdAddOnAnUnreadableStateFileBootsThenFailsWithTheResidueAccepted pins the Shared Decision that corrupt `reed.json` boots the session first and then fails with the state loader's corrupt-file diagnosis, leaving a bare session behind: on a worktree never brought up whose .lyx/reed.json holds truncated bytes, `add` exits non-zero naming the file and the teardown verb, AND a session now exists on the socket.
+	// ColdAddOnAnUnreadableStateFileBootsThenFailsWithTheResidueAccepted pins the Shared Decision that corrupt `reed.json` boots the session first and then fails with the state loader's corrupt-file diagnosis, leaving a bare session behind: on a worktree never brought up whose .lym/reed.json holds truncated bytes, `add` exits non-zero naming the file and the teardown verb, AND a session now exists on the socket.
 	// Both halves are the assertion.
 	// The residue is the deliberately accepted cost of matching `up`'s own behaviour -- a later change to that posture must fail this step loudly instead of passing silently.
 	t.Run("ColdAddOnAnUnreadableStateFileBootsThenFailsWithTheResidueAccepted", func(t *testing.T) {
 		worktree := coldWorktree(t, "cold-unreadable")
 
-		statePath := filepath.Join(worktree, ".lyx", "reed.json")
+		statePath := filepath.Join(worktree, ".lym", "reed.json")
 		if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
 			t.Fatalf("create %s: %v", filepath.Dir(statePath), err)
 		}
 		// A truncated write is the ordinary way this file becomes unreadable: a crash, a kill -9, a full
 		// disk, or a power loss partway through a save.
-		if err := os.WriteFile(statePath, []byte(`{"socket":"lyx-x","strands":[{"gu`), 0o600); err != nil {
+		if err := os.WriteFile(statePath, []byte(`{"socket":"lym-x","strands":[{"gu`), 0o600); err != nil {
 			t.Fatalf("write %s: %v", statePath, err)
 		}
 
@@ -188,7 +188,7 @@ func TestSmokeColdStart(t *testing.T) {
 			t.Fatalf("cold add with an unreadable reed.json = 0; want a failure, output: %s", out.String())
 		}
 		unreadable := envelopeError(t, out.Bytes())
-		for _, want := range []string{"unreadable", "reed.json", "lyx reed down"} {
+		for _, want := range []string{"unreadable", "reed.json", "lym reed down"} {
 			if !strings.Contains(unreadable, want) {
 				t.Errorf("cold add error = %s; want it to contain %q (the state loader's corrupt-file diagnosis, naming the file and the teardown verb)", unreadable, want)
 			}

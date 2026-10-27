@@ -43,7 +43,7 @@ worktree, <shortname>:<role> in the prime and in a standalone run. The role is
 it. --name gives an explicit role segment or full name instead; it is never
 renumbered, and an add naming one another strand holds is refused. The
 generated guid and formed name are printed on success so a later --parent or
-"lyx reed remove" can reference this strand.
+"lym reed remove" can reference this strand.
 
 --if-absent makes a repeated add idempotent: it requires --name, and matches
 that name against this worktree's persisted strands before adding anything.
@@ -61,11 +61,11 @@ exits 0 with skipped: true and an unless object holding the matched strand's
 guid and name.
 
 add runs --cmd verbatim. An agent session is not opened through add: use
-lyx shuttle open --role <role>, which launches it under its strand name and
+lym shuttle open --role <role>, which launches it under its strand name and
 session id in its engine's bypass mode.
 
 Example:
-  lyx reed add --cmd "htop" --role monitor`,
+  lym reed add --cmd "htop" --role monitor`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -122,7 +122,7 @@ Example:
 	cmd.Flags().StringVar(&cmdFlag, "cmd", "", "command to launch in the strand's pane (required)")
 	cmd.Flags().StringVar(&role, "role", "", "role segment of the strand's name, numbered -2, -3 when taken (default strand)")
 	cmd.Flags().StringVar(&name, "name", "", "explicit role segment or full name, never renumbered; refused when another strand holds it")
-	cmd.Flags().StringVar(&resumeCmd, "resume-cmd", "", `command "lyx reed resume" replays instead of --cmd`)
+	cmd.Flags().StringVar(&resumeCmd, "resume-cmd", "", `command "lym reed resume" replays instead of --cmd`)
 	cmd.Flags().StringVar(&parent, "parent", "", "parent strand's guid")
 	cmd.Flags().StringVar(&anchor, "anchor", string(render.AnchorOwnWindow), "placement: own-window|hidden")
 	cmd.Flags().BoolVar(&focus, "focus", false, "give this strand tmux input focus")

@@ -13,8 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -23,7 +23,7 @@ import (
 // It holds the weft's move lock from BeginAnchorChange until Close, and the move record names the change on disk for as long as it stands.
 // A change that has nothing to do, because the worktree already sits at the requested anchor, takes no lock and writes no record.
 type AnchorChange struct {
-	pair     lyxcwd.Location
+	pair     lymcwd.Location
 	weftPath string
 	names    []string
 	// from and to are the anchors the change moves between.
@@ -53,7 +53,7 @@ func (c *AnchorChange) From() string { return c.from }
 func (c *AnchorChange) To() string { return c.to }
 
 // locationAt returns the pair's Location at anchor.
-func (c *AnchorChange) locationAt(anchor string) *lyxcwd.Location {
+func (c *AnchorChange) locationAt(anchor string) *lymcwd.Location {
 	at := c.pair
 	at.AnchorRel = anchor
 	return &at
@@ -61,11 +61,11 @@ func (c *AnchorChange) locationAt(anchor string) *lyxcwd.Location {
 
 // rerun returns the verb that finishes this change after a stop, for a way forward.
 func (c *AnchorChange) rerun() string {
-	return fmt.Sprintf("`lyx fabric anchor %s --set %s`", c.pair.WorktreeName, c.to)
+	return fmt.Sprintf("`lym fabric anchor %s --set %s`", c.pair.WorktreeName, c.to)
 }
 
-// movesLyxDir reports whether the change relocates the weft's `.lyx` directory.
-func (c *AnchorChange) movesLyxDir() bool {
+// movesLymDir reports whether the change relocates the weft's `.lym` directory.
+func (c *AnchorChange) movesLymDir() bool {
 	return filepath.Clean(c.from) != filepath.Clean(c.to)
 }
 
@@ -77,13 +77,13 @@ func (c *AnchorChange) movesLyxDir() bool {
 // The kind of change is integrate when the weft's fetched upstream has commits its tip lacks and the two tips carry different anchors, else move when target differs from the pair's anchor, else none.
 // A change of kind none takes no lock.
 // Any other writes the move record with this process's pid and start time, keeping a standing record's other fields.
-// A standing record whose change did not land is recovered here, before the clean tree is judged: the weft's paths go back to HEAD and `.lyx` back to the old anchor.
+// A standing record whose change did not land is recovered here, before the clean tree is judged: the weft's paths go back to HEAD and `.lym` back to the old anchor.
 // The caller ends the change with Close.
-func (t *Topology) BeginAnchorChange(pair *lyxcwd.Location, target string) (*AnchorChange, error) {
+func (t *Topology) BeginAnchorChange(pair *lymcwd.Location, target string) (*AnchorChange, error) {
 	slug := pair.WorktreeName
 	weftPath := RecordsWorktreePath(pair, slug)
 	if _, err := os.Stat(weftPath); err != nil {
-		return nil, fmt.Errorf("the records worktree of %s is not readable at %s: %w; run `lyx fabric reconcile`", slug, weftPath, err)
+		return nil, fmt.Errorf("the records worktree of %s is not readable at %s: %w; run `lym fabric reconcile`", slug, weftPath, err)
 	}
 	if err := refuseEmptyOwnMarker(weftPath); err != nil {
 		return nil, err
@@ -103,7 +103,7 @@ func (t *Topology) BeginAnchorChange(pair *lyxcwd.Location, target string) (*Anc
 	if err := validateAnchorTarget(&basis, target, names); err != nil {
 		return nil, err
 	}
-	to, err := lyxcwd.ValidateAnchorRel(target)
+	to, err := lymcwd.ValidateAnchorRel(target)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +147,7 @@ func heldMoveRefusal(slug, weftPath, target string) error {
 			return errors.New(wayForward)
 		}
 	}
-	return fmt.Errorf("%s, then run `lyx fabric anchor %s --set %s`", startingMoveStop(slug), slug, target)
+	return fmt.Errorf("%s, then run `lym fabric anchor %s --set %s`", startingMoveStop(slug), slug, target)
 }
 
 // start judges a change with no record standing: it needs a committed marker and a clean tree, and settles the kind.
@@ -158,7 +158,7 @@ func (c *AnchorChange) start() error {
 		return err
 	}
 	if !found || marker == "" {
-		return fmt.Errorf("the weft of %s has no committed %s, so its anchor is not recorded; run `lyx fabric reconcile` to record it, then run the verb again", slug, lyxcwd.AnchorFileName)
+		return fmt.Errorf("the weft of %s has no committed %s, so its anchor is not recorded; run `lym fabric reconcile` to record it, then run the verb again", slug, lymcwd.AnchorFileName)
 	}
 	if err := refuseUnsettledMoveSource(c.weftPath, slug, c.from, c.names); err != nil {
 		return err
@@ -171,16 +171,16 @@ func (c *AnchorChange) start() error {
 	switch {
 	case integrate:
 		c.kind, c.upstream = MoveKindIntegrate, upstream
-	case c.movesLyxDir():
+	case c.movesLymDir():
 		c.kind = MoveKindMove
 	}
-	if c.NoOp() || !c.movesLyxDir() {
+	if c.NoOp() || !c.movesLymDir() {
 		return nil
 	}
-	if present, err := lyxDirPresent(c.weftPath, c.to); err != nil {
+	if present, err := lymDirPresent(c.weftPath, c.to); err != nil {
 		return err
 	} else if present {
-		return fmt.Errorf("the weft of %s already holds %s; move it out of the way, then run the verb again", slug, filepath.Join(c.to, lyxdirs.DotLyxDirName))
+		return fmt.Errorf("the weft of %s already holds %s; move it out of the way, then run the verb again", slug, filepath.Join(c.to, lymdirs.DotLymDirName))
 	}
 	return nil
 }
@@ -216,7 +216,7 @@ func (c *AnchorChange) upstreamCarriesAnotherAnchor() (bool, string, error) {
 func (c *AnchorChange) resume(record MoveRecord) error {
 	slug := c.pair.WorktreeName
 	if filepath.Clean(record.B) != filepath.Clean(c.to) {
-		return fmt.Errorf("a change of the anchor of %s from %s to %s was interrupted, so a change to %s is refused; run `lyx fabric anchor %s --set %s` to finish it",
+		return fmt.Errorf("a change of the anchor of %s from %s to %s was interrupted, so a change to %s is refused; run `lym fabric anchor %s --set %s` to finish it",
 			slug, record.A, record.B, c.to, slug, record.B)
 	}
 	c.from, c.to, c.kind, c.upstream = record.A, record.B, record.Kind, record.U
@@ -250,30 +250,30 @@ func (c *AnchorChange) changeLanded() (bool, error) {
 	return gitrepo.New(c.weftPath).IsAncestor(c.upstream, "HEAD")
 }
 
-// recoverUnlanded undoes what a killed change left before its commit: the weft's paths go back to HEAD and `.lyx` back under the old anchor.
-// Both `.lyx` directories standing is refused before anything is touched, since only the operator can merge them.
+// recoverUnlanded undoes what a killed change left before its commit: the weft's paths go back to HEAD and `.lym` back under the old anchor.
+// Both `.lym` directories standing is refused before anything is touched, since only the operator can merge them.
 func (c *AnchorChange) recoverUnlanded() error {
-	if !c.movesLyxDir() {
+	if !c.movesLymDir() {
 		return restoreMovePathsToHead(c.recovered, c.weftPath, c.movePathspecs())
 	}
-	oldLyx, err := lyxDirPresent(c.weftPath, c.from)
+	oldLym, err := lymDirPresent(c.weftPath, c.from)
 	if err != nil {
 		return err
 	}
-	newLyx, err := lyxDirPresent(c.weftPath, c.to)
+	newLym, err := lymDirPresent(c.weftPath, c.to)
 	if err != nil {
 		return err
 	}
-	if oldLyx && newLyx {
+	if oldLym && newLym {
 		return fmt.Errorf("the weft of %s holds both %s and %s; merge %s into %s by hand and remove it, then run %s again",
-			c.pair.WorktreeName, filepath.Join(c.weftPath, c.from, lyxdirs.DotLyxDirName), filepath.Join(c.weftPath, c.to, lyxdirs.DotLyxDirName),
-			filepath.Join(c.to, lyxdirs.DotLyxDirName), filepath.Join(c.from, lyxdirs.DotLyxDirName), c.rerun())
+			c.pair.WorktreeName, filepath.Join(c.weftPath, c.from, lymdirs.DotLymDirName), filepath.Join(c.weftPath, c.to, lymdirs.DotLymDirName),
+			filepath.Join(c.to, lymdirs.DotLymDirName), filepath.Join(c.from, lymdirs.DotLymDirName), c.rerun())
 	}
 	if err := restoreMovePathsToHead(c.recovered, c.weftPath, c.movePathspecs()); err != nil {
 		return err
 	}
-	if newLyx {
-		return c.moveLyxDir(c.recovered, c.to, c.from)
+	if newLym {
+		return c.moveLymDir(c.recovered, c.to, c.from)
 	}
 	return nil
 }
@@ -281,12 +281,12 @@ func (c *AnchorChange) recoverUnlanded() error {
 // movePathspecs returns the weft paths a move rewrites: the wired names under both anchors, and the marker.
 func (c *AnchorChange) movePathspecs() []string {
 	specs := append(anchorNamePathspecs(c.from, c.names), anchorNamePathspecs(c.to, c.names)...)
-	return append(specs, lyxcwd.AnchorFileName)
+	return append(specs, lymcwd.AnchorFileName)
 }
 
-// lyxDirPresent reports whether the weft at weftPath holds a `.lyx` directory under anchor.
-func lyxDirPresent(weftPath, anchor string) (bool, error) {
-	path := filepath.Join(weftPath, anchor, lyxdirs.DotLyxDirName)
+// lymDirPresent reports whether the weft at weftPath holds a `.lym` directory under anchor.
+func lymDirPresent(weftPath, anchor string) (bool, error) {
+	path := filepath.Join(weftPath, anchor, lymdirs.DotLymDirName)
 	if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
 		return false, nil
 	} else if err != nil {
@@ -295,9 +295,9 @@ func lyxDirPresent(weftPath, anchor string) (bool, error) {
 	return true, nil
 }
 
-// moveLyxDir renames the weft's `.lyx` directory from under the anchor src to under the anchor dst, through an os.Root at the weft.
+// moveLymDir renames the weft's `.lym` directory from under the anchor src to under the anchor dst, through an os.Root at the weft.
 // The destination anchor's directory is created first, since it may have left the tree with its last tracked file.
-func (c *AnchorChange) moveLyxDir(rec *Mutations, src, dst string) error {
+func (c *AnchorChange) moveLymDir(rec *Mutations, src, dst string) error {
 	root, err := os.OpenRoot(c.weftPath)
 	if err != nil {
 		return fmt.Errorf("open the weft root %s: %w", c.weftPath, err)
@@ -308,7 +308,7 @@ func (c *AnchorChange) moveLyxDir(rec *Mutations, src, dst string) error {
 			return fmt.Errorf("create %s in %s: %w", dst, c.weftPath, err)
 		}
 	}
-	oldPath, newPath := anchorJoin(filepath.ToSlash(src), lyxdirs.DotLyxDirName), anchorJoin(filepath.ToSlash(dst), lyxdirs.DotLyxDirName)
+	oldPath, newPath := anchorJoin(filepath.ToSlash(src), lymdirs.DotLymDirName), anchorJoin(filepath.ToSlash(dst), lymdirs.DotLymDirName)
 	if err := root.Rename(oldPath, newPath); err != nil {
 		return fmt.Errorf("move %s to %s in %s: %w", oldPath, newPath, c.weftPath, err)
 	}
@@ -350,7 +350,7 @@ func writeMoveRecordFile(weftPath string, record MoveRecord) error {
 // Apply carries the change out: it unwires the pair at the old anchor, moves or integrates the weft, then wires it, writes its launchers and regenerates the workspace files at the new anchor.
 // landed reports whether the weft's commit or branch move happened, which decides what a re-run does.
 //
-// A failure before the weft is committed or its branch moved restores the working tree, the index and `.lyx`, rewires the old anchor and removes the record, and returns landed false;
+// A failure before the weft is committed or its branch moved restores the working tree, the index and `.lym`, rewires the old anchor and removes the record, and returns landed false;
 // when that restore itself fails the record stays, landed is false, and the error names the re-run.
 // A failure after it leaves the record and returns landed true, the error naming the re-run that skips the move and finishes the wiring.
 // Apply does nothing for a change with nothing to do.
@@ -362,7 +362,7 @@ func (c *AnchorChange) Apply(rec *Mutations) (landed bool, err error) {
 	rec.Extend(c.recovered.Snapshot())
 
 	if c.landed {
-		if err := c.settleLyxDirAfterLanding(rec); err != nil {
+		if err := c.settleLymDirAfterLanding(rec); err != nil {
 			return true, c.afterLanding(err)
 		}
 	} else {
@@ -385,21 +385,21 @@ func (c *AnchorChange) afterLanding(err error) error {
 	return fmt.Errorf("%w; the weft already carries the change, so the record stands: run %s to finish it", err, c.rerun())
 }
 
-// settleLyxDirAfterLanding moves `.lyx` to the new anchor for a re-run of a change that landed, when only the old anchor still holds it.
-func (c *AnchorChange) settleLyxDirAfterLanding(rec *Mutations) error {
-	if !c.movesLyxDir() {
+// settleLymDirAfterLanding moves `.lym` to the new anchor for a re-run of a change that landed, when only the old anchor still holds it.
+func (c *AnchorChange) settleLymDirAfterLanding(rec *Mutations) error {
+	if !c.movesLymDir() {
 		return nil
 	}
-	oldLyx, err := lyxDirPresent(c.weftPath, c.from)
+	oldLym, err := lymDirPresent(c.weftPath, c.from)
 	if err != nil {
 		return err
 	}
-	newLyx, err := lyxDirPresent(c.weftPath, c.to)
+	newLym, err := lymDirPresent(c.weftPath, c.to)
 	if err != nil {
 		return err
 	}
-	if oldLyx && !newLyx {
-		return c.moveLyxDir(rec, c.from, c.to)
+	if oldLym && !newLym {
+		return c.moveLymDir(rec, c.from, c.to)
 	}
 	return nil
 }
@@ -431,7 +431,7 @@ func (c *AnchorChange) moveWeft(rec *Mutations) (committed bool, err error) {
 	return true, err
 }
 
-// integrate rebuilds the weft on its upstream tip anchored at the new anchor, then moves `.lyx` after it.
+// integrate rebuilds the weft on its upstream tip anchored at the new anchor, then moves `.lym` after it.
 // The upstream tip is written into the record before the branch moves, so a killed run's re-run can tell whether the integration landed.
 func (c *AnchorChange) integrate(rec *Mutations) (committed bool, err error) {
 	if c.upstream == "" {
@@ -457,13 +457,13 @@ func (c *AnchorChange) integrate(rec *Mutations) (committed bool, err error) {
 	if err := runAnchorFailHook(true); err != nil {
 		return true, err
 	}
-	return true, c.settleLyxDirAfterLanding(rec)
+	return true, c.settleLymDirAfterLanding(rec)
 }
 
 // unwireAtSource removes the pair's junctions, their exclude entries and the root scratch link at the old anchor.
 func (c *AnchorChange) unwireAtSource(rec *Mutations) error {
 	source, slug := c.locationAt(c.from), c.pair.WorktreeName
-	if _, err := unseedLyxJunction(rec, source, slug, c.names); err != nil {
+	if _, err := unseedLymJunction(rec, source, slug, c.names); err != nil {
 		return err
 	}
 	if _, err := unseedGitExclude(rec, source, slug, c.names, false); err != nil {
@@ -472,20 +472,20 @@ func (c *AnchorChange) unwireAtSource(rec *Mutations) error {
 	return unlinkScratchLink(rec, source, slug)
 }
 
-// rollback undoes a failure before the weft was committed: it puts the weft's paths and `.lyx` back, rewires the old anchor and removes the record.
+// rollback undoes a failure before the weft was committed: it puts the weft's paths and `.lym` back, rewires the old anchor and removes the record.
 // It returns cause.
 // Should an undoing step fail, it stops there, keeps the record and returns cause with the failure and the re-run that recovers the record.
 func (c *AnchorChange) rollback(rec *Mutations, cause error) error {
 	steps := []func() error{
 		func() error { return restoreMovePathsToHead(rec, c.weftPath, c.movePathspecs()) },
 		func() error {
-			if !c.movesLyxDir() {
+			if !c.movesLymDir() {
 				return nil
 			}
-			if newLyx, err := lyxDirPresent(c.weftPath, c.to); err != nil || !newLyx {
+			if newLym, err := lymDirPresent(c.weftPath, c.to); err != nil || !newLym {
 				return err
 			}
-			return c.moveLyxDir(rec, c.to, c.from)
+			return c.moveLymDir(rec, c.to, c.from)
 		},
 		func() error { return WireJunctionsWith(rec, c.locationAt(c.from), c.pair.WorktreeName, c.names) },
 		func() error { return RemoveMoveRecord(c.weftPath) },
@@ -529,7 +529,7 @@ func (c *AnchorChange) wireAtTarget(rec *Mutations) error {
 
 // removeMenuLauncher removes the menu launcher of l's anchor, which opens the prime at that anchor.
 // An absent launcher is no error, and the emptied launcher directories above it go too.
-func removeMenuLauncher(rec *Mutations, l *lyxcwd.Location) error {
+func removeMenuLauncher(rec *Mutations, l *lymcwd.Location) error {
 	menu := menuLauncherPath(l)
 	req := pathRequest{
 		what:      "remove the menu launcher of the old anchor",
@@ -556,7 +556,7 @@ func (c *AnchorChange) Finish(rec *Mutations) error {
 	if err := RemoveMoveRecord(c.weftPath); err != nil {
 		return err
 	}
-	pair, err := lyxcwd.NamedWorktree(c.pair.HubPath, c.pair.WorktreeName)
+	pair, err := lymcwd.NamedWorktree(c.pair.HubPath, c.pair.WorktreeName)
 	if err != nil {
 		return err
 	}

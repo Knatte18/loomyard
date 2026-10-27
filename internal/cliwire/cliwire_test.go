@@ -37,7 +37,7 @@ var websterFixture = Module{
 	TargetRecourse:   "Drive a target",
 	HubTargetSubject: "the worktree is already the target",
 	Plan: &PlanRules{
-		DefaultPlanDir: func(base string) string { return filepath.Join(base, "_lyx", "plan") },
+		DefaultPlanDir: func(base string) string { return filepath.Join(base, "_lym", "plan") },
 		MissingPlanRefusal: func(planDir, recourse string) string {
 			return fmt.Sprintf("webster: standalone plan directory %s does not exist or contains no plan files -- there is no bootstrap and no empty-plan fallback. Place an authored plan at %s, which is what `run` requires (Master's own in-pane verbs are flagless and resolve that default); --plan-dir points the bracket and read-only verbs at a plan elsewhere, but `run` refuses it", planDir, recourse)
 		},
@@ -278,7 +278,7 @@ func TestRepositoryRootOf_ReadsGitCeilingDirectoriesFromTheEnvironment(t *testin
 }
 
 // TestModule_RefuseNestedStandaloneGeometry covers the nested-geometry refusal over both fixtures, asserting both wordings verbatim -- this is what pins the per-CLI noun phrases as descriptor data.
-// It also carries R6-15's regression: the target has already been through standalonestate.Normalize with every symlink resolved, while the derived state directory had not, so a state home that reaches INSIDE the target only through a symlink used to read as disjoint -- and lyx then wrote its state tree, run locks and trace logs into the operator's own checkout, which is precisely what this guard exists to prevent.
+// It also carries R6-15's regression: the target has already been through standalonestate.Normalize with every symlink resolved, while the derived state directory had not, so a state home that reaches INSIDE the target only through a symlink used to read as disjoint -- and lym then wrote its state tree, run locks and trace logs into the operator's own checkout, which is precisely what this guard exists to prevent.
 func TestModule_RefuseNestedStandaloneGeometry(t *testing.T) {
 	t.Parallel()
 
@@ -320,7 +320,7 @@ func TestModule_RefuseNestedStandaloneGeometry(t *testing.T) {
 			})
 
 			t.Run("SeesThroughASymlinkedStateHome", func(t *testing.T) {
-				// The leaf (<stateHome>/lyx/<hash8>) is deliberately absent: a first run's own leaf does not exist yet, which is exactly when plain EvalSymlinks gives up and falls back to Clean.
+				// The leaf (<stateHome>/lym/<hash8>) is deliberately absent: a first run's own leaf does not exist yet, which is exactly when plain EvalSymlinks gives up and falls back to Clean.
 				target := standalonestate.Normalize(t.TempDir())
 				inside := filepath.Join(target, "state-home")
 				if err := os.MkdirAll(inside, 0o755); err != nil {
@@ -330,7 +330,7 @@ func TestModule_RefuseNestedStandaloneGeometry(t *testing.T) {
 				if err := os.Symlink(inside, link); err != nil {
 					t.Skipf("symlinks unavailable on this host: %v", err)
 				}
-				stateDir := filepath.Join(link, "lyx", "abcd1234")
+				stateDir := filepath.Join(link, "lym", "abcd1234")
 
 				if err := fixture.refuseNestedStandaloneGeometry(target, stateDir); err == nil {
 					t.Errorf("refuseNestedStandaloneGeometry(%q, %q) = nil; want a refusal -- the state home is nested under the target through a symlink", target, stateDir)
@@ -447,7 +447,7 @@ func TestResolveStandalone_PlanRules(t *testing.T) {
 				t.Cleanup(func() { logger.SetDurableSinkDir("") })
 				target := t.TempDir()
 				stateDir, _ := hash8AndStateDir(t, target)
-				defaultPlanDir := filepath.Join(stateDir, "_lyx", "plan")
+				defaultPlanDir := filepath.Join(stateDir, "_lym", "plan")
 				tt.seed(t, defaultPlanDir)
 
 				_, err := websterFixture.ResolveStandalone(StandaloneRequest{Cwd: target})
@@ -467,7 +467,7 @@ func TestResolveStandalone_PlanRules(t *testing.T) {
 		t.Cleanup(func() { logger.SetDurableSinkDir("") })
 		target := t.TempDir()
 		stateDir, _ := hash8AndStateDir(t, target)
-		defaultPlanDir := filepath.Join(stateDir, "_lyx", "plan")
+		defaultPlanDir := filepath.Join(stateDir, "_lym", "plan")
 		override := t.TempDir()
 		// override is deliberately never seeded: the refusal fires against the RESOLVED planDir
 		// (the override), but its recourse must still NAME the default location, which is what
@@ -509,7 +509,7 @@ func TestResolveStandalone_SinkRedirectOrdering(t *testing.T) {
 		setStandaloneStateRoot(t)
 		target := t.TempDir()
 		stateDir, _ := hash8AndStateDir(t, target)
-		seedPlanDir(t, filepath.Join(stateDir, "_lyx", "plan"))
+		seedPlanDir(t, filepath.Join(stateDir, "_lym", "plan"))
 
 		sentinelDir := t.TempDir()
 		logger.SetDurableSinkDir(sentinelDir)
@@ -597,7 +597,7 @@ func TestResolveStandalone_Stencils(t *testing.T) {
 		t.Cleanup(func() { logger.SetDurableSinkDir("") })
 		target := t.TempDir()
 		stateDir, _ := hash8AndStateDir(t, target)
-		seedPlanDir(t, filepath.Join(stateDir, "_lyx", "plan"))
+		seedPlanDir(t, filepath.Join(stateDir, "_lym", "plan"))
 
 		result, err := websterFixture.ResolveStandalone(StandaloneRequest{Cwd: target})
 		if err != nil {
@@ -622,7 +622,7 @@ func TestResolveStandalone_Stencils(t *testing.T) {
 		t.Cleanup(func() { logger.SetDurableSinkDir("") })
 		target := t.TempDir()
 		stateDir, _ := hash8AndStateDir(t, target)
-		seedPlanDir(t, filepath.Join(stateDir, "_lyx", "plan"))
+		seedPlanDir(t, filepath.Join(stateDir, "_lym", "plan"))
 
 		told := t.TempDir()
 		curatedName := "curated-marker.md"
@@ -696,16 +696,14 @@ func TestResolveStandalone_Stencils(t *testing.T) {
 		target := t.TempDir()
 		stateDir, _ := hash8AndStateDir(t, target)
 
-		// Make the derived stencils directory uncreatable: write a regular file at its own parent,
-		// <stateDir>/_lyx, so stencilstore.Reconcile's own MkdirAll fails. The plan directory is
-		// deliberately never seeded: ResolveStandalone's stencils step runs before its plan step and
-		// this case never reaches the latter.
+		// Make the derived stencils directory uncreatable: write a regular file at its own parent, <stateDir>/_lym, so stencilstore.Reconcile's own MkdirAll fails.
+		// The plan directory is deliberately never seeded: ResolveStandalone's stencils step runs before its plan step and this case never reaches the latter.
 		if err := os.MkdirAll(stateDir, 0o755); err != nil {
 			t.Fatalf("mkdir %s: %v", stateDir, err)
 		}
-		lyxDir := filepath.Join(stateDir, "_lyx")
-		if err := os.WriteFile(lyxDir, []byte("x"), 0o644); err != nil {
-			t.Fatalf("WriteFile(%s) error = %v", lyxDir, err)
+		lymDir := filepath.Join(stateDir, "_lym")
+		if err := os.WriteFile(lymDir, []byte("x"), 0o644); err != nil {
+			t.Fatalf("WriteFile(%s) error = %v", lymDir, err)
 		}
 
 		_, err := websterFixture.ResolveStandalone(StandaloneRequest{Cwd: target})

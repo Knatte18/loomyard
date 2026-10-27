@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/lyxtemp"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 )
 
 const (
@@ -351,17 +351,17 @@ func runRedundancy(tags, pkgFlag, outPath string) error {
 		}
 	}
 	return withGateSlot(layout.dir, "testtiming -redundancy", func(slotEnv []string, parallel int) error {
-		env, cleanupLyx, err := prebuildLyx("go", tags, layout.dir, slotEnv, parallel)
+		env, cleanupLym, err := prebuildLym("go", tags, layout.dir, slotEnv, parallel)
 		if err != nil {
 			return err
 		}
-		defer cleanupLyx()
+		defer cleanupLym()
 		pkgs, err := runPackageTimings(tags, patterns, env)
 		if err != nil {
 			return err
 		}
 
-		tmp, err := lyxtemp.MkdirTemp("testtiming-redundancy-")
+		tmp, err := lymtemp.MkdirTemp("testtiming-redundancy-")
 		if err != nil {
 			return err
 		}

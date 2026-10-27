@@ -1,7 +1,7 @@
 //go:build tier1
 
 // preflight_integration_test.go drives Check/CheckResolved/Wired/HubPresent end-to-end against real
-// git fixtures — a paired code+fabric worktree with a wired _lyx junction — covering every
+// git fixtures — a paired code+fabric worktree with a wired _lym junction — covering every
 // pass/fail scenario across the tier-1/tier-2 preconditions this package validates, plus the
 // predicate split. It is integration-tagged because it spawns git via hubforge fixtures (Test Tier
 // Purity Invariant).
@@ -25,8 +25,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/preflight"
 )
 
@@ -40,7 +40,7 @@ func setupFixture(t *testing.T) (*hubforge.Hub, string) {
 
 	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _extra\n")
 
-	if err := fabricengine.WireJunctions(h.Location, slug, []string{"_lyx", lyxdirs.DotLyxDirName, "_extra"}); err != nil {
+	if err := fabricengine.WireJunctions(h.Location, slug, []string{"_lym", lymdirs.DotLymDirName, "_extra"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
@@ -49,7 +49,7 @@ func setupFixture(t *testing.T) (*hubforge.Hub, string) {
 	// fixture is genuinely clean on both sides, since CheckResolved's
 	// worktree-clean check covers the paired sibling too.
 	// The commit is --allow-empty because after the clone-commit change the records prime already
-	// arrives clean, .lyx is excluded through the records repo's .git/info/exclude, and the _extra
+	// arrives clean, .lym is excluded through the records repo's .git/info/exclude, and the _extra
 	// junction target materializes as an empty directory git does not track -- so this pair becomes
 	// a no-op that must be allowed to succeed rather than deleted, because deleting it would silently
 	// drop the guarantee if a future fixture change reintroduces untracked records content.
@@ -131,7 +131,7 @@ func TestHealthyHub(t *testing.T) {
 		return
 	}
 
-	// Pins why both predicates ship: with cwd at <hub>/_board, HubPresent returns true (the hub-level lyx directory exists there) but Wired returns false (fabricengine.Ready probes the paired sibling of the current worktree, not the hub, and _board has none).
+	// Pins why both predicates ship: with cwd at <hub>/_board, HubPresent returns true (the hub-level lym directory exists there) but Wired returns false (fabricengine.Ready probes the paired sibling of the current worktree, not the hub, and _board has none).
 	if !t.Run("only HubPresent holds at the board", func(t *testing.T) {
 		board := h.BoardDir()
 
@@ -170,14 +170,14 @@ func TestHealthyHub(t *testing.T) {
 			t.Fatalf("mkdir %s: %v", sub, err)
 		}
 
-		gitkit.CommitFile(t, h.PrimeRecords(), lyxcwd.AnchorFileName, "sub\n", "test fixture: re-anchor the prime at sub")
+		gitkit.CommitFile(t, h.PrimeRecords(), lymcwd.AnchorFileName, "sub\n", "test fixture: re-anchor the prime at sub")
 
 		report, loc, err := preflight.Check(sub)
 		if err != nil {
 			t.Fatalf("Check: %v", err)
 		}
 		if loc == nil {
-			t.Fatalf("Check() *lyxcwd.Location = nil; want non-nil")
+			t.Fatalf("Check() *lymcwd.Location = nil; want non-nil")
 		}
 		for _, failure := range report.Failures {
 			if failure.Check == preflight.CheckGeometry {
@@ -200,7 +200,7 @@ func TestCheck_NotAGitRepo(t *testing.T) {
 		t.Fatalf("Check: %v", err)
 	}
 	if loc != nil {
-		t.Errorf("Check() *lyxcwd.Location = %+v; want nil", loc)
+		t.Errorf("Check() *lymcwd.Location = %+v; want nil", loc)
 	}
 	assertCheckSet(t, report, preflight.CheckGeometry)
 }
@@ -227,7 +227,7 @@ func replaceJunction(t *testing.T, codeLink string, replace func()) {
 // A fabricengine.PrimeName failure short-circuits with only a geometry failure and no other check recorded.
 // All three ways cleanliness can observe a dirty repo (an untracked-only file, a tracked-and-modified file and a staged file) classify as worktree-clean, across both sides of the pair.
 // A removed paired-sibling worktree reports fabric-ready, and a branch mismatch classifies as fabric-sync, not junction.
-// All three of Healthy's junction-drift shapes -- missing, not-a-link and points-elsewhere -- classify as junction via Healthy's typed Cause rather than a substring match, each against BOTH junctions (_lyx and a second, non-_lyx one) so the classification is proven for the second junction too.
+// All three of Healthy's junction-drift shapes -- missing, not-a-link and points-elsewhere -- classify as junction via Healthy's typed Cause rather than a substring match, each against BOTH junctions (_lym and a second, non-_lym one) so the classification is proven for the second junction too.
 // A repo-wide fabric.yaml that fails to load classifies as junction as well (the CauseConfigLoadFailed/CheckJunction equivalence pinned by healthy-typed-reason), not as a distinct CheckID of its own.
 // Independently tripped checks (a dirty code side and a branch-diverged pair) are both collected into one Report rather than the first short-circuiting the rest.
 func TestCheckResolved_Failures(t *testing.T) {
@@ -241,7 +241,7 @@ func TestCheckResolved_Failures(t *testing.T) {
 
 	rows := []row{
 		{
-			// Break `git worktree list --porcelain` at the anchor path without breaking `git rev-parse --show-toplevel`, so this exercises PrimeName's own failure path rather than lyxcwd.Resolve's -- CheckResolved(l) starts directly from an already-resolved Location and never re-resolves.
+			// Break `git worktree list --porcelain` at the anchor path without breaking `git rev-parse --show-toplevel`, so this exercises PrimeName's own failure path rather than lymcwd.Resolve's -- CheckResolved(l) starts directly from an already-resolved Location and never re-resolves.
 			name: "PrimeNameFailure",
 			corrupt: func(t *testing.T, h *hubforge.Hub, slug string) {
 				dotGit := filepath.Join(h.Location.WorktreePath(), ".git")
@@ -364,8 +364,8 @@ func TestCheckResolved_Failures(t *testing.T) {
 		linkFor func(h *hubforge.Hub, slug string) string
 	}{
 		{
-			name:    "Lyx",
-			linkFor: func(h *hubforge.Hub, slug string) string { return fabricengine.CodeLyxLink(h.Location, slug) },
+			name:    "Lym",
+			linkFor: func(h *hubforge.Hub, slug string) string { return fabricengine.CodeLymLink(h.Location, slug) },
 		},
 		{
 			name: "Extra",
@@ -403,7 +403,7 @@ func TestCheckResolved_Failures(t *testing.T) {
 }
 
 // TestCheckResolved_MissingOptionalJunctionIsAJunctionFault covers a worktree whose optional
-// junction was never wired at all: _lyx is fully healthy, but the second, non-_lyx junction is
+// junction was never wired at all: _lym is fully healthy, but the second, non-_lym junction is
 // entirely absent (simulated here by removing it from an otherwise-healthy fixture, rather than
 // corrupting it — the fixture never had it, full stop).
 // CheckResolved must classify this as CheckJunction, never CheckFabricSync, and blocks the run
@@ -415,8 +415,7 @@ func TestCheckResolved_MissingOptionalJunctionIsAJunctionFault(t *testing.T) {
 
 	h, slug := setupFixture(t)
 
-	// Simulate the missing-optional-junction state: this worktree's second,
-	// non-_lyx junction was never wired, even though _lyx is fully healthy.
+	// Simulate the missing-optional-junction state: this worktree's second, non-_lym junction was never wired, even though _lym is fully healthy.
 	extraLink := filepath.Join(fabricengine.WorktreePath(h.Location, slug), h.Location.AnchorRel, "_extra")
 	if err := fslink.Remove(extraLink); err != nil {
 		t.Fatalf("remove the optional junction to simulate a worktree missing it: %v", err)
@@ -466,7 +465,7 @@ func TestCheckResolved_MissingOptionalJunctionIsAJunctionFault(t *testing.T) {
 }
 
 // TestResolveMode pins ResolveMode's standalone and refuse rows (its hub row is a step of TestHealthyHub).
-// PlainRepoSubdirectory and RefuseWiredWorktreeSubdirectory are the pair the design's r4 review exposed: both arrive as lyxcwd.ErrCwdOutsideAnchor from lyxcwd.Resolve and must diverge -- see each row's own comment below.
+// PlainRepoSubdirectory and RefuseWiredWorktreeSubdirectory are the pair the design's r4 review exposed: both arrive as lymcwd.ErrCwdOutsideAnchor from lymcwd.Resolve and must diverge -- see each row's own comment below.
 func TestResolveMode(t *testing.T) {
 	t.Parallel()
 
@@ -505,10 +504,7 @@ func TestResolveMode(t *testing.T) {
 		}
 	})
 
-	// A plain repo's subdirectory arrives as lyxcwd.ErrCwdOutsideAnchor from lyxcwd.Resolve,
-	// exactly like a wired hub worktree's subdirectory (see the RefuseWiredWorktreeSubdirectory
-	// row below) -- ResolveMode must tell the two apart by re-probing for hub geometry, not by
-	// inspecting the error class, and this row pins the standalone side of that divergence.
+	// A plain repo's subdirectory arrives as lymcwd.ErrCwdOutsideAnchor from lymcwd.Resolve, exactly like a wired hub worktree's subdirectory (see the RefuseWiredWorktreeSubdirectory row below) -- ResolveMode must tell the two apart by re-probing for hub geometry, not by inspecting the error class, and this row pins the standalone side of that divergence.
 	t.Run("PlainRepoSubdirectory", func(t *testing.T) {
 		t.Parallel()
 
@@ -531,10 +527,7 @@ func TestResolveMode(t *testing.T) {
 		}
 	})
 
-	// A wired hub worktree's subdirectory arrives as the exact same lyxcwd.ErrCwdOutsideAnchor
-	// sentinel as a plain repo's subdirectory (see the PlainRepoSubdirectory row above) -- this is
-	// the pair the design's r4 review exposed, and the whole reason ResolveMode re-probes for hub
-	// geometry via lyxcwd.ResolveWorktree instead of trusting the error class alone.
+	// A wired hub worktree's subdirectory arrives as the exact same lymcwd.ErrCwdOutsideAnchor sentinel as a plain repo's subdirectory (see the PlainRepoSubdirectory row above) -- this is the pair the design's r4 review exposed, and the whole reason ResolveMode re-probes for hub geometry via lymcwd.ResolveWorktree instead of trusting the error class alone.
 	t.Run("RefuseWiredWorktreeSubdirectory", func(t *testing.T) {
 		t.Parallel()
 
@@ -548,14 +541,14 @@ func TestResolveMode(t *testing.T) {
 		if err == nil {
 			t.Fatalf("ResolveMode(%s) error = nil; want non-nil", sub)
 		}
-		if !errors.Is(err, lyxcwd.ErrCwdOutsideAnchor) {
+		if !errors.Is(err, lymcwd.ErrCwdOutsideAnchor) {
 			t.Errorf("ResolveMode(%s) error = %v; want wrapped ErrCwdOutsideAnchor", sub, err)
 		}
 		// The gated error, not the second probe's, is what must reach the operator: assert its
 		// message names the anchor marker file so a substitution of the second probe's error
 		// would be caught here.
-		if !strings.Contains(err.Error(), lyxcwd.AnchorFileName) {
-			t.Errorf("ResolveMode(%s) error = %v; want message naming %s", sub, err, lyxcwd.AnchorFileName)
+		if !strings.Contains(err.Error(), lymcwd.AnchorFileName) {
+			t.Errorf("ResolveMode(%s) error = %v; want message naming %s", sub, err, lymcwd.AnchorFileName)
 		}
 		if mode != preflight.Mode(0) {
 			t.Errorf("ResolveMode(%s) mode = %v; want the zero Mode value", sub, mode)
@@ -572,11 +565,11 @@ func TestResolveMode(t *testing.T) {
 		cwd := h.PrimeWorktree()
 
 		// The stale guard applies to the Bolt read only, so the prime's own marker goes.
-		anchorPath := filepath.Join(h.PrimeRecords(), lyxcwd.AnchorFileName)
+		anchorPath := filepath.Join(h.PrimeRecords(), lymcwd.AnchorFileName)
 		if err := os.Remove(anchorPath); err != nil {
 			t.Fatalf("remove %s: %v", anchorPath, err)
 		}
-		stalePath := filepath.Join(h.BoardDir(), lyxcwd.StaleAnchorFileName)
+		stalePath := filepath.Join(h.BoardDir(), lymcwd.StaleAnchorFileName)
 		if err := os.WriteFile(stalePath, []byte("."), 0o644); err != nil {
 			t.Fatalf("write %s: %v", stalePath, err)
 		}
@@ -585,7 +578,7 @@ func TestResolveMode(t *testing.T) {
 		if err == nil {
 			t.Fatalf("ResolveMode(%s) error = nil; want non-nil", cwd)
 		}
-		if !errors.Is(err, lyxcwd.ErrStaleAnchorMarker) {
+		if !errors.Is(err, lymcwd.ErrStaleAnchorMarker) {
 			t.Errorf("ResolveMode(%s) error = %v; want wrapped ErrStaleAnchorMarker", cwd, err)
 		}
 		if mode != preflight.Mode(0) {
@@ -596,18 +589,18 @@ func TestResolveMode(t *testing.T) {
 		}
 	})
 
-	// A hub whose <hub>/_board/_lyx is missing is the design's recorded residual, not a bug: at
+	// A hub whose <hub>/_board/_lym is missing is the design's recorded residual, not a bug: at
 	// that point nothing on disk distinguishes it from a plain git repo, so it degrades to
 	// standalone rather than refusing.
-	t.Run("HubMissingBoardLyx", func(t *testing.T) {
+	t.Run("HubMissingBoardLym", func(t *testing.T) {
 		t.Parallel()
 
 		h, _ := setupFixture(t)
 		cwd := h.PrimeWorktree()
 
-		boardLyx := filepath.Join(h.BoardDir(), lyxdirs.LyxDirName)
-		if err := os.RemoveAll(boardLyx); err != nil {
-			t.Fatalf("remove %s: %v", boardLyx, err)
+		boardLym := filepath.Join(h.BoardDir(), lymdirs.LymDirName)
+		if err := os.RemoveAll(boardLym); err != nil {
+			t.Fatalf("remove %s: %v", boardLym, err)
 		}
 
 		loc, mode, err := preflight.ResolveMode(cwd)

@@ -1,6 +1,6 @@
 //go:build tier0
 
-// sessiondown_test.go pins EndBeforeSessionDown, the local-state reading `lyx reed down` runs before it kills a pair's session.
+// sessiondown_test.go pins EndBeforeSessionDown, the local-state reading `lym reed down` runs before it kills a pair's session.
 
 package pairteardown
 
@@ -20,7 +20,7 @@ func TestEndBeforeSessionDown(t *testing.T) {
 
 	done := "done"
 	ended := []runproc.Ended{{PID: 11, Role: runproc.RoleDriver}}
-	awaitRefusal := errors.New("the run lock is held; run `lyx reed down` again")
+	awaitRefusal := errors.New("the run lock is held; run `lym reed down` again")
 	tests := []struct {
 		name string
 		f    fakeSubstrates
@@ -38,35 +38,35 @@ func TestEndBeforeSessionDown(t *testing.T) {
 			name:      "CoveringSlugPauseWaitsThenEnds",
 			f:         fakeSubstrates{paused: true, endedProcs: ended},
 			wantCalls: "awaitOrPass,endOwned",
-			wantAwait: awaitCall{paused: true, retry: "`lyx reed down`"},
+			wantAwait: awaitCall{paused: true, retry: "`lym reed down`"},
 			wantEnded: ended,
 		},
 		{
 			name:      "CoveringHubPauseWaitsThenEnds",
 			f:         fakeSubstrates{paused: true, hubEntry: true, endedProcs: ended},
 			wantCalls: "awaitOrPass,endOwned",
-			wantAwait: awaitCall{paused: true, hubEntry: true, retry: "`lyx reed down`"},
+			wantAwait: awaitCall{paused: true, hubEntry: true, retry: "`lym reed down`"},
 			wantEnded: ended,
 		},
 		{
 			name:      "LocalDoneEntryWaitsThenEnds",
 			f:         fakeSubstrates{claim: &done, claimFound: true, endedProcs: ended},
 			wantCalls: "readClaim,awaitOrPass,endOwned",
-			wantAwait: awaitCall{retry: "`lyx reed down`"},
+			wantAwait: awaitCall{retry: "`lym reed down`"},
 			wantEnded: ended,
 		},
 		{
 			name:      "FinalizeDoneWithNoLiveBattenWaitsThenEnds",
 			f:         fakeSubstrates{childLanded: true, endedProcs: ended},
 			wantCalls: "readClaim,landed,awaitOrPass,endOwned",
-			wantAwait: awaitCall{retry: "`lyx reed down`"},
+			wantAwait: awaitCall{retry: "`lym reed down`"},
 			wantEnded: ended,
 		},
 		{
 			name:      "NotRunningWaitsThenEnds",
 			f:         fakeSubstrates{quiets: []quietState{{quiet: true}}, endedProcs: ended},
 			wantCalls: "readClaim,landed,quiet,awaitOrPass,endOwned",
-			wantAwait: awaitCall{retry: "`lyx reed down`"},
+			wantAwait: awaitCall{retry: "`lym reed down`"},
 			wantEnded: ended,
 		},
 		{
@@ -75,7 +75,7 @@ func TestEndBeforeSessionDown(t *testing.T) {
 			wantCalls:    "readClaim,landed",
 			wantErr:      true,
 			wantErrIs:    ErrRunRunning,
-			wantContains: []string{"lyx tender pause slug", "lyx reed down"},
+			wantContains: []string{"lym tender pause slug", "lym reed down"},
 		},
 		{
 			name:         "LiveDriverStrandRefuses",
@@ -83,7 +83,7 @@ func TestEndBeforeSessionDown(t *testing.T) {
 			wantCalls:    "readClaim,landed,quiet",
 			wantErr:      true,
 			wantErrIs:    ErrRunRunning,
-			wantContains: []string{"lyx tender pause slug"},
+			wantContains: []string{"lym tender pause slug"},
 		},
 		{
 			name:      "LiveLoopRefuses",
@@ -103,7 +103,7 @@ func TestEndBeforeSessionDown(t *testing.T) {
 			name:      "RefusedRunLockWaitIsReturnedAsItIsAndEndsNothing",
 			f:         fakeSubstrates{paused: true, awaitOrPassErr: awaitRefusal},
 			wantCalls: "awaitOrPass",
-			wantAwait: awaitCall{paused: true, retry: "`lyx reed down`"},
+			wantAwait: awaitCall{paused: true, retry: "`lym reed down`"},
 			wantErr:   true,
 			wantErrIs: awaitRefusal,
 		},
@@ -111,10 +111,10 @@ func TestEndBeforeSessionDown(t *testing.T) {
 			name:         "SurvivorsAreReturnedWrappedNamingThePid",
 			f:            fakeSubstrates{paused: true, endedProcs: ended, endOwnedErr: &runproc.SurvivorsError{Survivors: []runproc.Ended{{PID: 4242, Role: runproc.RoleLoop}}}},
 			wantCalls:    "awaitOrPass,endOwned",
-			wantAwait:    awaitCall{paused: true, retry: "`lyx reed down`"},
+			wantAwait:    awaitCall{paused: true, retry: "`lym reed down`"},
 			wantEnded:    ended,
 			wantErr:      true,
-			wantContains: []string{"4242", "lyx reed down"},
+			wantContains: []string{"4242", "lym reed down"},
 		},
 	}
 	for _, tt := range tests {

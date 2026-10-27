@@ -14,15 +14,15 @@ import (
 	"testing"
 )
 
-// stubResolveLyxProd stubs resolveLyx to return the sourceProd branch.
-func stubResolveLyxProd(t *testing.T, fakeLyxPath string) func() {
+// stubResolveLymProd stubs resolveLym to return the sourceProd branch.
+func stubResolveLymProd(t *testing.T, fakeLymPath string) func() {
 	t.Helper()
 	oldDevBinPath := devBinPath
 	oldLookPath := lookPath
-	devBinPath = func() (string, error) { return filepath.Join(t.TempDir(), "lyx"), nil }
+	devBinPath = func() (string, error) { return filepath.Join(t.TempDir(), "lym"), nil }
 	lookPath = func(name string) (string, error) {
-		if name == "lyx" {
-			return fakeLyxPath, nil
+		if name == "lym" {
+			return fakeLymPath, nil
 		}
 		return "", fmt.Errorf("not found on PATH: %s", name)
 	}
@@ -32,9 +32,9 @@ func stubResolveLyxProd(t *testing.T, fakeLyxPath string) func() {
 	}
 }
 
-// TestDecideClone verifies decideClone's four outcomes: an absent Hub is cloned with the parent directory and the resolved prod lyx; an existing Hub is left alone without reset; an existing Hub is removed and then cloned with reset; and a cloneRun error is propagated unwrapped.
+// TestDecideClone verifies decideClone's four outcomes: an absent Hub is cloned with the parent directory and the resolved prod lym; an existing Hub is left alone without reset; an existing Hub is removed and then cloned with reset; and a cloneRun error is propagated unwrapped.
 func TestDecideClone(t *testing.T) {
-	const fakeLyxPath = "/fake/prod/lyx"
+	const fakeLymPath = "/fake/prod/lym"
 	tests := []struct {
 		name          string
 		hubExists     bool
@@ -58,9 +58,9 @@ func TestDecideClone(t *testing.T) {
 				}
 			}
 
-			// A run that never clones must never resolve lyx, so no resolve stub is installed for it.
+			// A run that never clones must never resolve lym, so no resolve stub is installed for it.
 			if tt.wantClone {
-				defer stubResolveLyxProd(t, fakeLyxPath)()
+				defer stubResolveLymProd(t, fakeLymPath)()
 			}
 
 			removeAllCalled := false
@@ -78,13 +78,13 @@ func TestDecideClone(t *testing.T) {
 				}
 				return os.RemoveAll(path)
 			}
-			cloneRun = func(parentDir, lyxPath string) error {
+			cloneRun = func(parentDir, lymPath string) error {
 				cloneRunCalled = true
 				if parentDir != tmpDir {
 					t.Errorf("cloneRun called with wrong parentDir: got %s, want %s", parentDir, tmpDir)
 				}
-				if lyxPath != fakeLyxPath {
-					t.Errorf("cloneRun called with wrong lyxPath: got %s, want %s", lyxPath, fakeLyxPath)
+				if lymPath != fakeLymPath {
+					t.Errorf("cloneRun called with wrong lymPath: got %s, want %s", lymPath, fakeLymPath)
 				}
 				return tt.cloneErr
 			}
@@ -140,9 +140,9 @@ func TestRun_BuildRouting(t *testing.T) {
 				}
 			}
 
-			// The no-op path must never resolve lyx at all, so no resolve stub is installed for it.
+			// The no-op path must never resolve lym at all, so no resolve stub is installed for it.
 			if tt.wantClone {
-				defer stubResolveLyxProd(t, "/fake/prod/lyx")()
+				defer stubResolveLymProd(t, "/fake/prod/lym")()
 			}
 
 			removeAllCalled := false
@@ -157,7 +157,7 @@ func TestRun_BuildRouting(t *testing.T) {
 				removeAllCalled = true
 				return os.RemoveAll(path)
 			}
-			cloneRun = func(parentDir, lyxPath string) error {
+			cloneRun = func(parentDir, lymPath string) error {
 				cloneRunCalled = true
 				return nil
 			}
@@ -192,12 +192,12 @@ func TestRun_SuiteSubcommands(t *testing.T) {
 		t.Run(tt.token, func(t *testing.T) {
 			t.Run("routes to launch", func(t *testing.T) {
 				parentDir, repoDir := makeHubRepo(t)
-				fakeLyx := makeFakeLyx(t, parentDir)
+				fakeLym := makeFakeLym(t, parentDir)
 				fakeClaude := filepath.Join(parentDir, "claude.exe")
 
 				launchAgentCalled := false
 				var gotInstruction string
-				restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
+				restore := stubSuiteSeams(t, fakeLym, fakeClaude, func(dir, claude, instruction, binDir string) int {
 					launchAgentCalled = true
 					gotInstruction = instruction
 					if dir != repoDir {
@@ -220,20 +220,20 @@ func TestRun_SuiteSubcommands(t *testing.T) {
 
 			t.Run("flags routed after the token", func(t *testing.T) {
 				parentDir, _ := makeHubRepo(t)
-				fakeLyx := makeFakeLyx(t, parentDir)
+				fakeLym := makeFakeLym(t, parentDir)
 				customClaude := filepath.Join(parentDir, "custom-claude.exe")
 				customPrompt := "Do the " + tt.token + " thing my way."
 
 				var gotClaude, gotInstruction string
-				restore := stubSuiteSeams(t, fakeLyx, "", func(dir, claude, instruction, binDir string) int {
+				restore := stubSuiteSeams(t, fakeLym, "", func(dir, claude, instruction, binDir string) int {
 					gotClaude = claude
 					gotInstruction = instruction
 					return 0
 				})
 				defer restore()
 				lookPath = func(name string) (string, error) {
-					if name == "lyx" {
-						return fakeLyx, nil
+					if name == "lym" {
+						return fakeLym, nil
 					}
 					t.Errorf("unexpected lookPath call for %q; claude override should skip PATH lookup", name)
 					return "", fmt.Errorf("not found: %s", name)
@@ -272,10 +272,10 @@ func TestRun_SuiteSubcommands(t *testing.T) {
 
 			t.Run("unknown flag exits non-zero", func(t *testing.T) {
 				parentDir, _ := makeHubRepo(t)
-				fakeLyx := makeFakeLyx(t, parentDir)
+				fakeLym := makeFakeLym(t, parentDir)
 				fakeClaude := filepath.Join(parentDir, "claude.exe")
 
-				restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
+				restore := stubSuiteSeams(t, fakeLym, fakeClaude, func(dir, claude, instruction, binDir string) int {
 					t.Errorf("launchAgent should not be called after a flag-parse failure for the %s subcommand", tt.token)
 					return 1
 				})
@@ -294,7 +294,7 @@ func TestRun_SuiteSubcommands(t *testing.T) {
 }
 
 // TestRun_FetchReportRoutesToFetch verifies that the "fetch" positional routes to runFetch: with a
-// built Hub, an on-PATH lyx, and a report, the dispatch reaches fetchReport and run returns 0.
+// built Hub, an on-PATH lym, and a report, the dispatch reaches fetchReport and run returns 0.
 func TestRun_FetchReportRoutesToFetch(t *testing.T) {
 	tmpDir := t.TempDir()
 	loomyardRoot := t.TempDir()
@@ -311,21 +311,21 @@ func TestRun_FetchReportRoutesToFetch(t *testing.T) {
 	}
 
 	// Provide a real file so binaryFingerprint can stat and hash it.
-	fakeLyx := filepath.Join(tmpDir, "lyx.exe")
-	if err := os.WriteFile(fakeLyx, []byte("fake lyx binary"), 0o755); err != nil {
-		t.Fatalf("write fake lyx: %v", err)
+	fakeLym := filepath.Join(tmpDir, "lym.exe")
+	if err := os.WriteFile(fakeLym, []byte("fake lym binary"), 0o755); err != nil {
+		t.Fatalf("write fake lym: %v", err)
 	}
-	// No dev binary in play: resolveLyx must fall through to the lookPath
+	// No dev binary in play: resolveLym must fall through to the lookPath
 	// stub below and resolve sourceProd.
 	oldDevBinPath := devBinPath
 	defer func() { devBinPath = oldDevBinPath }()
-	devBinPath = func() (string, error) { return filepath.Join(t.TempDir(), "lyx"), nil }
+	devBinPath = func() (string, error) { return filepath.Join(t.TempDir(), "lym"), nil }
 
 	oldLookPath := lookPath
 	defer func() { lookPath = oldLookPath }()
 	lookPath = func(name string) (string, error) {
-		if name == "lyx" {
-			return fakeLyx, nil
+		if name == "lym" {
+			return fakeLym, nil
 		}
 		return "", fmt.Errorf("not found: %s", name)
 	}

@@ -51,14 +51,14 @@ func newTidyHarness(t *testing.T, every int) *tidyHarness {
 	stencilkit.SeedInto(t, stencils)
 	root := t.TempDir()
 	h := &tidyHarness{t: t, shuttle: &tidyShuttleFake{}, every: every, now: time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)}
-	h.d = h.daemonOver(filepath.Join(root, StateFileName), filepath.Join(root, MarkerDirName), stencils)
+	h.d = h.daemonOver(filepath.Join(root, StateFileName), filepath.Join(root, TidyDirName), stencils)
 	return h
 }
 
 // daemonOver builds a daemon over a state path, as a restarted dobby would build one over the same record.
-func (h *tidyHarness) daemonOver(statePath, markerDir, stencils string) *daemon {
+func (h *tidyHarness) daemonOver(statePath, tidyDir, stencils string) *daemon {
 	return &daemon{
-		geom: Geometry{WorktreeName: "prime", StatePath: statePath, MarkerDir: markerDir},
+		geom: Geometry{WorktreeName: "prime", StatePath: statePath, TidyDir: tidyDir},
 		deps: Deps{
 			LoadConfig:  func() (Config, error) { return Config{BoardTidyEvery: h.every, BoardTidyTimeoutMin: 30}, nil },
 			Landings:    func() ([]string, error) { return slices.Clone(h.landed), nil },
@@ -76,7 +76,7 @@ func (h *tidyHarness) daemonOver(statePath, markerDir, stencils string) *daemon 
 
 // restart replaces the daemon with a fresh one over the same state record.
 func (h *tidyHarness) restart() {
-	h.d = h.daemonOver(h.d.geom.StatePath, h.d.geom.MarkerDir, h.d.deps.StencilsDir)
+	h.d = h.daemonOver(h.d.geom.StatePath, h.d.geom.TidyDir, h.d.deps.StencilsDir)
 }
 
 // step runs the landing count and the tidy step at the harness's clock.
@@ -127,7 +127,11 @@ func TestCountLandingsAndTidy(t *testing.T) {
 			}
 		}
 		if tidy := h.state().Tidy; tidy == nil || tidy.StrandGUID == "" || !tidy.Deadline.Equal(h.now.Add(30*time.Minute)) {
-			t.Errorf("state Tidy = %+v; want the strand, its report and a deadline 30 minutes out", tidy)
+			t.Fatalf("state Tidy = %+v; want the strand, its report and a deadline 30 minutes out", tidy)
+		}
+		wantReport := filepath.Join(h.d.geom.TidyDir, h.now.UTC().Format("20060102T150405Z")+".md")
+		if got := h.state().Tidy.ReportPath; got != wantReport {
+			t.Errorf("Tidy.ReportPath = %q; want %q", got, wantReport)
 		}
 	})
 
@@ -230,11 +234,11 @@ func TestTidyPrompt(t *testing.T) {
 	stencils := filepath.Join(t.TempDir(), "stencils")
 	stencilkit.SeedInto(t, stencils)
 
-	prompt, err := TidyPrompt(stencils, TidyPromptInput{Landed: []string{"alpha", "beta"}, ReportPath: "/hub/prime/.lyx/beam/markers/report.md", Parent: "ly:orch"})
+	prompt, err := TidyPrompt(stencils, TidyPromptInput{Landed: []string{"alpha", "beta"}, ReportPath: "/hub/prime/.lym/beam/tidy/20261026T151739Z.md", Parent: "ly:orch"})
 	if err != nil {
 		t.Fatalf("TidyPrompt() = _, %v; want nil", err)
 	}
-	for _, want := range []string{"`alpha`", "`beta`", "/hub/prime/.lyx/beam/markers/report.md", "ly:orch"} {
+	for _, want := range []string{"`alpha`", "`beta`", "/hub/prime/.lym/beam/tidy/20261026T151739Z.md", "ly:orch"} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("TidyPrompt() lacks %q", want)
 		}

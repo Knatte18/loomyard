@@ -149,7 +149,7 @@ func TestErrConflictsWithRecord_ConflictEnvelopeShape(t *testing.T) {
 		conflicts []string
 	}{
 		{name: "EmptyRecord", rec: fabricengine.Mutations{}, conflicts: []string{"conflict.txt"}},
-		{name: "NonEmptyRecord_PartialStaysFalse", rec: populatedMutations("/hub"), conflicts: []string{"_lyx/conflict.txt", "conflict.txt"}},
+		{name: "NonEmptyRecord_PartialStaysFalse", rec: populatedMutations("/hub"), conflicts: []string{"_lym/conflict.txt", "conflict.txt"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

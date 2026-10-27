@@ -10,7 +10,7 @@ Every teardown of a pair goes through `internal/pairteardown`, which ends the pa
   It then waits for the run lock, keeping the order owned processes, loop, session end, then worktree removal.
 - After the run-lock wait and before the removal, the composite copies the pair's trace and verify logs into the hub log archive, and never fails the teardown on it.
 - After a successful removal the composite settles the pair's board entry: a landed run's entry is marked done and an abandoned run's claim is cleared, never while batten's run for the slug is `running`, so every teardown route releases the claim.
-  A `running` record with no live registered batten process keeps the claim and warns with `lyx batten cancel <slug>`, since the run is gone.
+  A `running` record with no live registered batten process keeps the claim and warns with `lym batten cancel <slug>`, since the run is gone.
 - A batten cancel's phase, `EndForCancel`, ends the owned processes under the prime's and the pair's records write locks, then the pair's drift capture job, the strands, the loop, the run-lock wait and the session end, with the caller's own locks taken between the owned-process end and the capture job's termination.
   Its removal passes `Request.LeaveClaim`, which settles no claim, since the cancel clears it under its own locks.
 - `internal/pairteardown` stays inside the fabric-vocabulary entry: it names no side, and passes `fabricengine.RemoveResult` through whole.

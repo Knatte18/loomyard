@@ -311,7 +311,7 @@ func (c *Call) conclude(attempt loomengine.ArbiterAttempt) (loomengine.ArbiterEn
 		VerdictPath: loomengine.ArbiterVerdictPath(attempt.Dir),
 	}
 	if verdict.Verdict == loomengine.ArbiterVerdictResume {
-		envelope.Relaunch = fmt.Sprintf("lyx shed step %s --until-stop --arbiter-attempt %d", c.deps.RelaunchRunID, attempt.Number)
+		envelope.Relaunch = fmt.Sprintf("lym shed step %s --until-stop --arbiter-attempt %d", c.deps.RelaunchRunID, attempt.Number)
 	}
 	return c.finish(envelope)
 }

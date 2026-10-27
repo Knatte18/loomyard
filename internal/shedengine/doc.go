@@ -83,7 +83,7 @@
 // Its goto differs from Goto's in keeping pause_requested, pause_before and pause_after, so a human's pause survives the re-launch; without a Target, or when Admit reports the target already in effect, it writes the status unchanged.
 // The checks run before Admit so a refused target never lets Admit write its side effect.
 //
-// A busy refusal, and goto's refusal of a running run, name the command that halts the live driver at its next producer boundary: the told Shed.PauseWayForward, or `lyx shed pause <run-id> --after <current_producer>` when none is told.
+// A busy refusal, and goto's refusal of a running run, name the command that halts the live driver at its next producer boundary: the told Shed.PauseWayForward, or `lym shed pause <run-id> --after <current_producer>` when none is told.
 //
 // The missing-producer refusal names goto as its way forward in a trailing `way forward:` clause, listing every valid producer name.
 // Every refusal names its way forward, as contracts/specs/refusal-spec.md defines one.
@@ -114,7 +114,7 @@
 // A pause_before naming a row the skip chain reaches pauses the run before that row's gate is evaluated, or before an ungated row is called, so a setting changed during the pause decides the gate.
 // A pause_after naming a skipped row pauses the run at the row the skip routes to, with the reason "paused after <row>, as requested", and clears both conditions as a fired condition does.
 // A skipped row with an empty OnDone finishes the run done.
-// A chain longer than the producer list is a wiring fault no shipped recipe reaches: the status is written failed naming the rows of the chain, with the way forward of fixing the settings the gates read or moving the run with `lyx shed goto`, then resuming.
+// A chain longer than the producer list is a wiring fault no shipped recipe reaches: the status is written failed naming the rows of the chain, with the way forward of fixing the settings the gates read or moving the run with `lym shed goto`, then resuming.
 // An evaluation error leaves the row not entered and writes the status failed before the step returns, so a resume evaluates the gate again.
 // A resume or a halt re-calls the entered row without evaluating its gate.
 // A gate skips only its own row, and the shed goto verb is the one bypass: Goto names its target as entered, so the target runs without evaluation.
@@ -149,7 +149,7 @@
 // The first label stands: nothing sets pending_by while one is pending, so the waiter's label survives its loop children, each with its own.
 // The next write that appends a history entry hands pending_by to that entry and clears it; a write that appends none carries it through.
 // A skip write appends an entry and carries the label through, so the label of a resumed run lands on the next verdict and never on a skipped entry.
-// CallerShed is the label of lyx's own automatic steps.
+// CallerShed is the label of lym's own automatic steps.
 // The labels are for reports only: no Go decision reads by, pending_by or ResumedBy, and the refusals of goto and step do not change.
 // Shed takes the label as a plain string and imports nothing to classify it.
 //

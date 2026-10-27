@@ -12,10 +12,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// Stamp line keys: a stamp line is {"lyx_stamp":"<hook event name>","lyx_at":"<RFC 3339 UTC>"}, written by a recording hook before its payload.
+// Stamp line keys: a stamp line is {"lym_stamp":"<hook event name>","lym_at":"<RFC 3339 UTC>"}, written by a recording hook before its payload.
 const (
-	stampHookKey = "lyx_stamp"
-	stampAtKey   = "lyx_at"
+	stampHookKey = "lym_stamp"
+	stampAtKey   = "lym_at"
 )
 
 // Hook event names a payload line carries in hook_event_name.

@@ -26,16 +26,16 @@ import (
 )
 
 const (
-	warpURL = "https://github.com/Knatte18/lyx-test"
-	weftURL = "https://github.com/Knatte18/lyx-test-weft"
-	hubName = "lyx-test-LYXHUB"
+	warpURL = "https://github.com/Knatte18/lym-test"
+	weftURL = "https://github.com/Knatte18/lym-test-weft"
+	hubName = "lym-test-LYMHUB"
 	// sandboxShortname is the shortname the sandbox hub is cloned with.
 	sandboxShortname = "lyt"
 )
 
 // cloneRun is a testability seam for executing the clone command.
-var cloneRun = func(parentDir, lyxPath string) error {
-	cmd := exec.Command(lyxPath, "fabric", "clone", "--shortname", sandboxShortname, weftURL, warpURL)
+var cloneRun = func(parentDir, lymPath string) error {
+	cmd := exec.Command(lymPath, "fabric", "clone", "--shortname", sandboxShortname, weftURL, warpURL)
 	cmd.Dir = parentDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -46,7 +46,7 @@ var cloneRun = func(parentDir, lyxPath string) error {
 		}
 		// Startup error (resolved binary vanished, permission denied, etc.); add
 		// context pointing at deploy-dev as an alternative to the resolved path.
-		return fmt.Errorf("failed to start resolved lyx binary %s (deploy it, or run deploy-dev): %w", lyxPath, err)
+		return fmt.Errorf("failed to start resolved lym binary %s (deploy it, or run deploy-dev): %w", lymPath, err)
 	}
 	return nil
 }
@@ -72,14 +72,14 @@ func decideClone(hubPath string, reset bool) error {
 		return fmt.Errorf("stat hub path: %w", err)
 	}
 
-	lyxPath, _, err := resolveLyx()
+	lymPath, _, err := resolveLym()
 	if err != nil {
 		return err
 	}
 
 	// Run the clone command
 	parentDir := filepath.Dir(hubPath)
-	return cloneRun(parentDir, lyxPath)
+	return cloneRun(parentDir, lymPath)
 }
 
 // run is the testable entry point. Parses argv, resolves -parent, and

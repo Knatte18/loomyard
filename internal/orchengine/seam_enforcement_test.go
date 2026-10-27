@@ -32,8 +32,8 @@ var orchengineAllowedImports = []string{
 }
 
 const (
-	// orchengineDeniedLyxcwdImport is excluded by the Told-Geometry Invariant.
-	orchengineDeniedLyxcwdImport = "github.com/Knatte18/loomyard/internal/lyxcwd"
+	// orchengineDeniedLymcwdImport is excluded by the Told-Geometry Invariant.
+	orchengineDeniedLymcwdImport = "github.com/Knatte18/loomyard/internal/lymcwd"
 	// orchengineDeniedClaudeImport is excluded by the Shuttle Provider-Seam Invariant.
 	orchengineDeniedClaudeImport = "github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 )
@@ -43,20 +43,20 @@ const (
 func TestSeamInvariants_AllowlistOnly(t *testing.T) {
 	scankit.AssertImportAllowlistNoStale(t, "internal/orchengine", orchengineAllowedImports...)
 
-	var lyxcwdFound, claudeFound []string
+	var lymcwdFound, claudeFound []string
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal/orchengine"}, Shallow: true}, func(f *scankit.File) {
 		for _, imp := range f.AST(t, parser.ImportsOnly).Imports {
 			switch strings.Trim(imp.Path.Value, `"`) {
-			case orchengineDeniedLyxcwdImport:
-				lyxcwdFound = append(lyxcwdFound, f.Rel)
+			case orchengineDeniedLymcwdImport:
+				lymcwdFound = append(lymcwdFound, f.Rel)
 			case orchengineDeniedClaudeImport:
 				claudeFound = append(claudeFound, f.Rel)
 			}
 		}
 	})
 	scankit.RequireFloor(t, scanned, 1, "orchengine denied-import scan")
-	if len(lyxcwdFound) > 0 {
-		t.Errorf("Told-Geometry Invariant violated; %s imported directly in: %v", orchengineDeniedLyxcwdImport, lyxcwdFound)
+	if len(lymcwdFound) > 0 {
+		t.Errorf("Told-Geometry Invariant violated; %s imported directly in: %v", orchengineDeniedLymcwdImport, lymcwdFound)
 	}
 	if len(claudeFound) > 0 {
 		t.Errorf("Shuttle Provider-Seam Invariant violated; %s imported directly in: %v", orchengineDeniedClaudeImport, claudeFound)

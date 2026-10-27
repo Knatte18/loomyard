@@ -20,7 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -44,7 +44,7 @@ import (
 func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 	t.Parallel()
 
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 	geom := websterengine.Geometry{
 		WebsterDir:  "/webster",
 		StencilsDir: "/stencils",
@@ -389,7 +389,7 @@ func TestLoopLockOwner(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+			loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 			if tt.record != nil {
 				if err := shedverbs.WriteLoopPIDRecord(shedrun.LoopPIDFile(loc, shedrun.SelfRunID), *tt.record); err != nil {
 					t.Fatalf("WriteLoopPIDRecord() error = %v", err)
@@ -435,7 +435,7 @@ func TestParentLockDeps_PauseAfterTheWaitingRowEndsTheWait(t *testing.T) {
 			tt.apply(&st)
 			writeStatusFixture(t, statusPath, statusLockPath, st)
 
-			loc := &lyxcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."}
+			loc := &lymcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."}
 			got, err := parentLockDeps(loc, shedrun.SelfRunID, statusPath, statusLockPath).PauseRequested()
 			if err != nil || got != tt.want {
 				t.Errorf("PauseRequested() = %v, %v; want %v, nil", got, err, tt.want)

@@ -8,7 +8,7 @@
 // and total: claude's trust-this-folder gate is a SELECTION LIST, not a confirmation prompt, and
 // the caret does not start on the accepting option.
 // Claude 2.1.263 puts it on "No, exit", so confirming whatever is selected quits claude and every
-// agent lyx spawns in a directory claude has not previously been accepted in dies at startup —
+// agent lym spawns in a directory claude has not previously been accepted in dies at startup —
 // which is every freshly-created fabric worktree pair.
 // TrustDismissSequence therefore reads the caret out of the capture it is given rather than
 // assuming a position, and presses nothing at all when it cannot find the accepting option.
@@ -42,16 +42,16 @@
 // Every Bash command an agent runs gets `/dev/null` as its default stdin through Claude Code's `CLAUDE_ENV_FILE`:
 // Prepare writes `bash-env.sh` beside settings.json, and both the launch and the resume line lead with `CLAUDE_ENV_FILE` naming its absolute path,
 // so an interpreter left reading the tool's open stdin ends at once instead of hanging the session, and a resumed session keeps the default.
-// The file runs two statements and nothing else: `exec </dev/null`, then one that prepends the parent directory of `LYX_BIN` to `PATH`, double-quoted so a path with spaces holds.
-// The PATH statement reads `agentname.LyxBinEnv`, the key reed's pane prelude exports with the spawning binary's path, when Claude Code runs the file before each Bash command,
+// The file runs two statements and nothing else: `exec </dev/null`, then one that prepends the parent directory of `LYM_BIN` to `PATH`, double-quoted so a path with spaces holds.
+// The PATH statement reads `agentname.LymBinEnv`, the key reed's pane prelude exports with the spawning binary's path, when Claude Code runs the file before each Bash command,
 // so a resumed session follows the binary its pane's latest prelude exported, and the Bash tool shadows exactly the executables the pane shell shadows even after the operator's rc reorders `PATH`.
-// On Windows the statement first converts `LYX_BIN` with `cygpath -u`, through the scratch variable `__lyx_bin_dir` it unsets afterwards.
-// It adds no directory when `LYX_BIN` is unset or empty or, on Windows, when `cygpath` is absent.
+// On Windows the statement first converts `LYM_BIN` with `cygpath -u`, through the scratch variable `__lym_bin_dir` it unsets afterwards.
+// It adds no directory when `LYM_BIN` is unset or empty or, on Windows, when `cygpath` is absent.
 // It changes only the default stdin and `PATH` of the tool's own shell: a heredoc, pipe or redirect attached to a command still supplies that command's stdin,
 // a child `bash` the agent starts does not re-run the file, and it grants or denies nothing, so the agents' permission rules are untouched.
-// A `CLAUDE_ENV_FILE` the operator's own environment exports is overridden for lyx-spawned sessions only.
+// A `CLAUDE_ENV_FILE` the operator's own environment exports is overridden for lym-spawned sessions only.
 //
-// ColorSequence is the one place lyx's palette maps to Claude Code's `/color` names: the eight palette colors map to the same-named Claude Code colors,
+// ColorSequence is the one place lym's palette maps to Claude Code's `/color` names: the eight palette colors map to the same-named Claude Code colors,
 // and the sequence is `/color <name>` typed and submitted, with no leading Escape.
 // A color outside the palette answers no inputs.
 //
@@ -61,7 +61,7 @@
 // and a local override may set only the cache lifetimes.
 // It is told its directories and derives none.
 // NewFromConfig takes them, and Prepare, OpenLaunch and PromptCacheLifetime each load claude.yaml through them before anything else,
-// so an invalid file refuses a run start, a resume and an open with the file, the key and the way forward, `lyx config claude`.
+// so an invalid file refuses a run start, a resume and an open with the file, the key and the way forward, `lym config claude`.
 // No other method and neither constructor loads it, and an engine built by New, with zero directories, refuses those three methods.
 //
 // Both lines carry `CLAUDE_CODE_PROMPT_CACHE_TTL`, so a session writes its prompt cache at the TTL its role needs rather than at Claude Code's subscription default.
@@ -109,7 +109,7 @@
 // The asks that are not events, the ones the dialog notice reads, are the `PermissionRequest` hook and the `permission_prompt`, `elicitation_dialog` and `elicitation_url_dialog` Notifications, a fork's included; the question tool's ask is an event.
 // The session fold reads a `resume` or `clear` start as an idle-fresh session, and a `startup` start too unless a turn is running; a `compact` start moves nothing.
 // A `SessionEnd` reason of `logout`, `prompt_input_exit` or `other` ends the process; `clear`, `resume` and an unknown reason do not.
-// A recording hook writes a stamp line `{"lyx_stamp":"<hook>","lyx_at":"<RFC 3339 UTC>"}` before its payload, and the parser gives a payload the time of the nearest preceding untaken stamp naming its hook.
+// A recording hook writes a stamp line `{"lym_stamp":"<hook>","lym_at":"<RFC 3339 UTC>"}` before its payload, and the parser gives a payload the time of the nearest preceding untaken stamp naming its hook.
 // A payload with no such stamp, or whose stamp's time is empty or malformed, reads a zero time.
 // The count the parser reports as consumed stops before the trailing run of stamp lines with no payload after them, so an incremental reader sees each stamp with its payload at its next read.
 // A transcript-fallback turn end's tasks are read from the transcript at parse time, so the same line parsed again later can read fewer.
@@ -180,7 +180,7 @@
 // StrayInput is the judgment beside that rule: a box holding exactly one character that is neither a letter, a digit nor whitespace, with no running turn on screen, is a stray-character candidate and the character is returned; the lone `%` is never one.
 // IdleSession, StrayInput and RunningTurn share one running-turn reading, the "esc to interrupt" hint matched over the whole capture.
 // RewindPicker reads the rewind picker: the picker's subtitle is on screen and no input box is, so a transcript quoting the subtitle above a live box is not the picker.
-// InterruptSettle is 2 seconds, assuming Claude Code's double-Esc window is shorter, so two keys lyx sends never read as a double Esc.
+// InterruptSettle is 2 seconds, assuming Claude Code's double-Esc window is shorter, so two keys lym sends never read as a double Esc.
 //
 // Beside the clear sequence (`/clear`) and the compact sequence (`/compact`), the engine realizes skill loading, in skillload.go.
 // A spec that names skills carries the skill-load message on the launch line, so the session's first turn is the load;
@@ -203,16 +203,16 @@
 // For every such row, a command substitution inside a double-quoted string, a command after a `<` before a quote or a backslash, and any line after a heredoc operator's line are not read and pass.
 // It is a guardrail, not a barrier: its hook greps the payload, so python behind `bash -c`, `eval`, a launcher or a command substitution inside a double-quoted string passes, and a separator inside a quote the scan misreads is falsely denied.
 //
-// The raw go row keeps a session from reaching the hub's gate slots around `lyx gate test`, and every run installs it, the orch included.
+// The raw go row keeps a session from reaching the hub's gate slots around `lym gate test`, and every run installs it, the orch included.
 // It denies a Bash `go test`, `go build` or `go vet`, with or without `-C <dir>` before the subcommand, whose arguments include a pattern holding `...` or the word `all`;
 // a `go test` whose `-tags` value names `tmux` or `llm`;
 // and any command setting or reading the slot-inheritance variable, the strand-name variable or the prebuilt-binary variable, each spelled into the pattern from its constant, when it is named outside quotes or expanded inside a double-quoted string.
-// `go` must stand in command position directly before the subcommand, so `go test ./internal/x` and `lyx gate test ./...` pass.
-// The steer is the gate rule: it names `lyx gate test` run in the foreground with the Bash tool's `timeout` at the ceiling, every other check in the foreground, and no `cd` into the session's own working directory.
+// `go` must stand in command position directly before the subcommand, so `go test ./internal/x` and `lym gate test ./...` pass.
+// The steer is the gate rule: it names `lym gate test` run in the foreground with the Bash tool's `timeout` at the ceiling, every other check in the foreground, and no `cd` into the session's own working directory.
 // It is a guardrail, not a barrier: its hook sees static text only, so a run hidden behind a script, `bash -c`, a `cd` plus a relative pattern it does not cover, a shell variable or a command substitution inside a double-quoted string passes, as does any raw package-scoped `go test`,
 // and a pattern word inside a quoted argument of the go command itself, such as a `-run` filter, is falsely denied; a spelling in a commit message, a `grep` or a heredoc body is not.
 //
-// The refuse-raw row denies a Bash command starting with a prefix the hub lists in `gate.yaml`'s `refuse_raw`, so every test run in an agent session goes through `lyx gate test`.
+// The refuse-raw row denies a Bash command starting with a prefix the hub lists in `gate.yaml`'s `refuse_raw`, so every test run in an agent session goes through `lym gate test`.
 // `Prepare` loads `gate.yaml` over the engine's dirs, the hub file inside a hub and the worktree's own file outside one, and fills `shuttleengine.Config.RefuseRaw` on its copy of the config before it builds anything;
 // the settings and the notice then render `standingDeniesFor(cfg.RefuseRaw)`, the Claude denies followed by every shell guard row.
 // An absent file leaves the list empty and renders no row; any other load failure refuses the spawn with the loader's way forward before an artifact is written.

@@ -16,7 +16,7 @@ import (
 )
 
 type windowCall struct {
-	dir, title, lyxPath string
+	dir, title, lymPath string
 }
 
 func TestWindowCmd_OpensATerminalAttachedToTheToldWorktree(t *testing.T) {
@@ -43,8 +43,8 @@ func TestWindowCmd_OpensATerminalAttachedToTheToldWorktree(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			var calls []windowCall
-			c := &reedCLI{openTerminal: func(dir, title, lyxPath string) error {
-				calls = append(calls, windowCall{dir, title, lyxPath})
+			c := &reedCLI{openTerminal: func(dir, title, lymPath string) error {
+				calls = append(calls, windowCall{dir, title, lymPath})
 				return tt.openErr
 			}}
 			var out bytes.Buffer
@@ -65,8 +65,8 @@ func TestWindowCmd_OpensATerminalAttachedToTheToldWorktree(t *testing.T) {
 			if tt.wantCalls == 0 {
 				return
 			}
-			if got := calls[0]; got.dir != existing || got.title != tt.wantTitle || got.lyxPath == "" {
-				t.Errorf("launcher call = %+v; want dir %q, title %q and a non-empty lyx path", got, existing, tt.wantTitle)
+			if got := calls[0]; got.dir != existing || got.title != tt.wantTitle || got.lymPath == "" {
+				t.Errorf("launcher call = %+v; want dir %q, title %q and a non-empty lym path", got, existing, tt.wantTitle)
 			}
 			if tt.wantErr == "" && !strings.Contains(out.String(), `"title"`) {
 				t.Errorf("output = %q; want it to carry the title", out.String())

@@ -159,8 +159,8 @@ func TestRecoverBatch_DoneReportGuard(t *testing.T) {
 				if err == nil {
 					t.Fatal("RecoverBatch() with a done report = nil error; want the finished-work refusal")
 				}
-				if !strings.Contains(err.Error(), "record-batch") || !strings.Contains(err.Error(), "`lyx webster record-batch 1`") {
-					t.Errorf("error = %q; want it to name `lyx webster record-batch 1` as the consuming verb", err.Error())
+				if !strings.Contains(err.Error(), "record-batch") || !strings.Contains(err.Error(), "`lym webster record-batch 1`") {
+					t.Errorf("error = %q; want it to name `lym webster record-batch 1` as the consuming verb", err.Error())
 				}
 				// The done report must be untouched — never archived by a refusal.
 				if _, statErr := os.Stat(filepath.Join(fx.ReportsDir, "01-json-flag.yaml")); statErr != nil {
@@ -490,7 +490,7 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
 				fx.Deps.Engines = namedEngines(shuttlefake.EngineName, claudeengine.New())
 				appendClaudeHook(t, fx, "Stop", clk.now, map[string]any{"background_tasks": []any{
-					map[string]any{"id": "bgate0001", "type": "shell", "status": "completed", "command": "lyx gate test ./x"},
+					map[string]any{"id": "bgate0001", "type": "shell", "status": "completed", "command": "lym gate test ./x"},
 				}})
 				appendClaudeHook(t, fx, "UserPromptSubmit", clk.now, map[string]any{"prompt": "<task-notification>bgate0001 completed</task-notification>"})
 				return secondCall{}
@@ -503,7 +503,7 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
 				fx.Deps.Engines = namedEngines(shuttlefake.EngineName, claudeengine.New())
 				appendClaudeHook(t, fx, "Stop", clk.now, map[string]any{"background_tasks": []any{
-					map[string]any{"id": "bgate0001", "type": "shell", "status": "running", "command": "lyx gate test ./x"},
+					map[string]any{"id": "bgate0001", "type": "shell", "status": "running", "command": "lym gate test ./x"},
 				}})
 				clk.now = clk.now.Add(20 * time.Minute)
 				return secondCall{}
@@ -516,7 +516,7 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
 				fx.Deps.Engines = namedEngines(shuttlefake.EngineName, claudeengine.New())
 				transcript := filepath.Join(t.TempDir(), "session.jsonl")
-				launch := `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"lyx gate test ./x","run_in_background":true}}]}}` + "\n" +
+				launch := `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"lym gate test ./x","run_in_background":true}}]}}` + "\n" +
 					`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1"}]},"toolUseResult":{"backgroundTaskId":"bgate0001"}}` + "\n"
 				if err := os.WriteFile(transcript, []byte(launch), 0o644); err != nil {
 					t.Fatalf("write transcript: %v", err)
@@ -531,7 +531,7 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
 				fx.Deps.Engines = namedEngines(shuttlefake.EngineName, claudeengine.New())
 				appendClaudeHook(t, fx, "Stop", clk.now, map[string]any{"background_tasks": []any{
-					map[string]any{"id": "bgate0001", "type": "shell", "status": "running", "command": "lyx gate test ./x"},
+					map[string]any{"id": "bgate0001", "type": "shell", "status": "running", "command": "lym gate test ./x"},
 				}})
 				return secondCall{head: seedReportAtHead(t, fx)}
 			},
@@ -977,7 +977,7 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 		}
 		return setup, check
 	}
-	forkContractSetup, forkContractCheck := failedBatchPrompt("fork wrote the report contract file", "suspect path: _lyx/webster/state.json")
+	forkContractSetup, forkContractCheck := failedBatchPrompt("fork wrote the report contract file", "suspect path: _lym/webster/state.json")
 	fabricSetup, fabricCheck := failedBatchPrompt("fabric-reference in parent transcript", "card verify failed: go test ./x", "suspect path: internal/x/x.go")
 	doneCheckSetup, doneCheckCheck := failedBatchPrompt("Create target internal/never/there.go# does not resolve")
 	uncheckableRefusal := func(uncheckable ...string) (func(fx *recoverFixture) *websterengine.BatchState, func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error)) {
@@ -995,7 +995,7 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 			if spawned {
 				t.Error("spawned = true; want no strand")
 			}
-			for _, want := range append([]string{"1) lyx webster reset --to start; 2) lyx webster run", "batch 01"}, uncheckable...) {
+			for _, want := range append([]string{"1) lym webster reset --to start; 2) lym webster run", "batch 01"}, uncheckable...) {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("error %q lacks %q", err, want)
 				}
@@ -1010,13 +1010,13 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 		return setup, check
 	}
 	fabricRefusalSetup, fabricRefusalBase := uncheckableRefusal("fabric-reference: Bash command references the fabric")
-	pauseRefusalSetup, pauseRefusalBase := uncheckableRefusal(".lyx/webster/pause")
-	notReadOnlySetup, notReadOnlyCheck := uncheckableRefusal(readOnlyEntry("lyx fabric add x"))
+	pauseRefusalSetup, pauseRefusalBase := uncheckableRefusal(".lym/webster/pause")
+	notReadOnlySetup, notReadOnlyCheck := uncheckableRefusal(readOnlyEntry("lym fabric add x"))
 	nilClassifierSetup, nilClassifierCheck := uncheckableRefusal(readOnlyEntry("cat a"))
-	mixedSetup, mixedCheck := uncheckableRefusal(readOnlyEntry("cat a"), ".lyx/webster/pause")
+	mixedSetup, mixedCheck := uncheckableRefusal(readOnlyEntry("cat a"), ".lym/webster/pause")
 	withPathSetup, withPathCheck := uncheckableRefusal("internal/fabric/x.go")
 	// A command longer than NAME_MAX would fail link resolution if its entry were ever resolved as a path.
-	longEntry := readOnlyEntry("lyx fabric add " + strings.Repeat("x", 300))
+	longEntry := readOnlyEntry("lym fabric add " + strings.Repeat("x", 300))
 	longAloneSetup, longAloneBase := uncheckableRefusal(longEntry)
 	// The fixture sets no scratch directory, so the row gives it one and names a path under it.
 	var longBesidePathBase func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error)
@@ -1051,9 +1051,9 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 		fx.Deps.ReadOnly = fabricengine.IsReadOnlyCommand
 	}
 	// Only a refusal over pathless fabric references names the accept-audit --batch route.
-	const acceptBatchStep = `"lyx webster accept-audit --batch 1" then "lyx webster recover-batch 1"`
+	const acceptBatchStep = `"lym webster accept-audit --batch 1" then "lym webster recover-batch 1"`
 	// The route names both evidence: HEAD at the start commit, and a committed batch whose recorded commands are read-only.
-	const startRouteText = "when the worktree is clean and HEAD is the batch's start commit (\"lyx webster reset --to batch-start --batch 01\" moves it there if the batch committed)"
+	const startRouteText = "when the worktree is clean and HEAD is the batch's start commit (\"lym webster reset --to batch-start --batch 01\" moves it there if the batch committed)"
 	const committedRouteText = "or the batch's commits are kept and every recorded command is read-only"
 	fabricRefusalCheck := func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
 		fabricRefusalBase(t, fx, bs, spawned, err)
@@ -1195,7 +1195,7 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 				if !errors.Is(err, discussionparser.ErrPatternChangesInvalid) {
 					t.Fatalf("RecoverSpawnOrAttach() error = %v; want ErrPatternChangesInvalid", err)
 				}
-				for _, want := range []string{"lyx loom validate-discussion", "lyx webster recover-batch 1"} {
+				for _, want := range []string{"lym loom validate-discussion", "lym webster recover-batch 1"} {
 					if !strings.Contains(err.Error(), want) {
 						t.Errorf("error %q lacks %q", err, want)
 					}
@@ -1218,7 +1218,7 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 				if !errors.Is(err, websterengine.ErrRenameToolMissing) {
 					t.Fatalf("RecoverSpawnOrAttach() error = %v; want ErrRenameToolMissing", err)
 				}
-				if !strings.Contains(err.Error(), "lyx webster recover-batch 1") {
+				if !strings.Contains(err.Error(), "lym webster recover-batch 1") {
 					t.Errorf("error %q lacks the recover-batch way forward", err)
 				}
 				if spawned || fx.Engine.PrepareCalls != 0 {
@@ -1248,7 +1248,7 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 				if !errors.Is(err, websterengine.ErrRecoveryExhausted) {
 					t.Fatalf("RecoverSpawnOrAttach() error = %v; want ErrRecoveryExhausted", err)
 				}
-				for _, want := range []string{"lyx webster reset --to batch-start --batch 01", "lyx webster recover-batch 1", "lyx webster reset --to start"} {
+				for _, want := range []string{"lym webster reset --to batch-start --batch 01", "lym webster recover-batch 1", "lym webster reset --to start"} {
 					if !strings.Contains(err.Error(), want) {
 						t.Errorf("error %q lacks %q", err, want)
 					}
@@ -1367,7 +1367,7 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 				if spawned || fx.Engine.PrepareCalls != 0 || fx.Engine.LastPrompt != "" {
 					t.Errorf("spawned = %v, prepareCalls = %d, prompt %q; want no strand started", spawned, fx.Engine.PrepareCalls, fx.Engine.LastPrompt)
 				}
-				for _, want := range []string{"batch 01", "2-later", "internal/foo/user.go:4", "way forward: move the delete to a card after", "lyx webster rebaseline --card NN", "lyx webster recover-batch 01"} {
+				for _, want := range []string{"batch 01", "2-later", "internal/foo/user.go:4", "way forward: move the delete to a card after", "lym webster rebaseline --card NN", "lym webster recover-batch 01"} {
 					if !strings.Contains(err.Error(), want) {
 						t.Errorf("error %q lacks %q", err, want)
 					}
@@ -1431,7 +1431,7 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 		{
 			name: "a failed batch whose findings are all read-only fabric references recovers in line with warnings naming recover-batch",
 			setup: func(fx *recoverFixture) {
-				readOnlyInLine(fx, readOnlyEntry("cat x/a.md | grep needle"), readOnlyEntry("lyx fabric list"))
+				readOnlyInLine(fx, readOnlyEntry("cat x/a.md | grep needle"), readOnlyEntry("lym fabric list"))
 			},
 			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
 				requireSpawned(t, spawned, err)
@@ -1485,7 +1485,7 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 				if !errors.Is(err, websterengine.ErrAuditNotAcceptable) || spawned {
 					t.Fatalf("RecoverSpawnOrAttach() = spawned %v, err %v; want ErrAuditNotAcceptable and no strand", spawned, err)
 				}
-				if want := `re-run "lyx webster recover-batch 1"`; !strings.Contains(err.Error(), want) {
+				if want := `re-run "lym webster recover-batch 1"`; !strings.Contains(err.Error(), want) {
 					t.Errorf("error %q lacks %q", err, want)
 				}
 			},
@@ -1586,8 +1586,8 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 				requireSpawned(t, spawned, err)
 				for _, want := range []string{
 					"- rename Go symbols with `gopls rename`\n",
-					"  - `lyx gate test --wait --gate card --card 1-json-flag`\n  - `lyx loom lint-comments`",
-					"- `lyx gate test --wait --gate batch --card 1-json-flag`",
+					"  - `lym gate test --wait --gate card --card 1-json-flag`\n  - `lym loom lint-comments`",
+					"- `lym gate test --wait --gate batch --card 1-json-flag`",
 				} {
 					if !strings.Contains(fx.Engine.LastPrompt, want) {
 						t.Errorf("recovery prompt does not contain %q; got:\n%s", want, fx.Engine.LastPrompt)
@@ -1605,8 +1605,8 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 				if err == nil || spawned {
 					t.Fatalf("RecoverSpawnOrAttach() = spawned %v, error %v; want a refusal", spawned, err)
 				}
-				if !strings.Contains(err.Error(), "lyx config gate") {
-					t.Errorf("error %q does not name lyx config gate", err)
+				if !strings.Contains(err.Error(), "lym config gate") {
+					t.Errorf("error %q does not name lym config gate", err)
 				}
 				if fx.Engine.PrepareCalls != 0 {
 					t.Errorf("prepareCalls = %d; want no strand started", fx.Engine.PrepareCalls)
@@ -1858,7 +1858,7 @@ func TestRecoverSpawnOrAttach_StartFailures(t *testing.T) {
 			if !errors.Is(err, tt.wantErr) {
 				t.Errorf("RecoverSpawnOrAttach() error = %v; want it to wrap %v", err, tt.wantErr)
 			}
-			if err == nil || !strings.HasSuffix(err.Error(), "way forward: transient, re-run `lyx webster recover-batch 1`") {
+			if err == nil || !strings.HasSuffix(err.Error(), "way forward: transient, re-run `lym webster recover-batch 1`") {
 				t.Fatalf("RecoverSpawnOrAttach() error = %v; want the transient re-run way forward", err)
 			}
 			if spawned {
@@ -1927,7 +1927,7 @@ func TestRecoverSpawnOrAttach_ContractFileEvidence(t *testing.T) {
 		{
 			name:       "master wrote after the fork, beside a pathless entry",
 			master:     []shuttleengine.WriteEvent{{At: at.Add(2 * time.Minute), Succeeded: true}},
-			pathless:   readOnlyEntry("lyx fabric add " + strings.Repeat("x", 300)),
+			pathless:   readOnlyEntry("lym fabric add " + strings.Repeat("x", 300)),
 			needsFresh: true,
 			wantInErr:  []string{"the finding names no path"},
 			notInErr:   []string{"outcome.yaml (", "resolve links"},
@@ -1935,14 +1935,14 @@ func TestRecoverSpawnOrAttach_ContractFileEvidence(t *testing.T) {
 		{
 			name:      "fork wrote last",
 			master:    []shuttleengine.WriteEvent{{At: at, Succeeded: true}},
-			wantInErr: []string{"batch 01", "rm ", "lyx webster recover-batch 1", "a fork, recovery or verify-fixer session wrote last", "a fork wrote /", "after Master's last write"},
+			wantInErr: []string{"batch 01", "rm ", "lym webster recover-batch 1", "a fork, recovery or verify-fixer session wrote last", "a fork wrote /", "after Master's last write"},
 			notInErr:  []string{"--fresh", "a recovery or verify-fixer session wrote /"},
 		},
 		{
 			name:      "recovery wrote last",
 			master:    []shuttleengine.WriteEvent{{At: at, Succeeded: true}},
 			recovery:  []shuttleengine.WriteEvent{{At: at.Add(2 * time.Minute), Succeeded: true}},
-			wantInErr: []string{"batch 01", "rm ", "lyx webster recover-batch 1", "a fork, recovery or verify-fixer session wrote last", "a recovery or verify-fixer session wrote /", "after Master's last write"},
+			wantInErr: []string{"batch 01", "rm ", "lym webster recover-batch 1", "a fork, recovery or verify-fixer session wrote last", "a recovery or verify-fixer session wrote /", "after Master's last write"},
 			notInErr:  []string{"--fresh", "a fork wrote /"},
 		},
 		{
@@ -2022,7 +2022,7 @@ func TestPersistRecoveryTerminal_WayForward_NoRecordedState(t *testing.T) {
 	clk := &recoverFakeClock{now: time.Unix(0, 0)}
 
 	_, err := websterengine.PersistRecoveryTerminal(fx.Deps, fx.Deps.State, 1, &websterengine.Digest{Batch: "01-json-flag", Status: websterengine.DigestStatusDone})
-	if err == nil || !strings.Contains(err.Error(), "way forward: re-run `lyx webster recover-batch 1`") {
+	if err == nil || !strings.Contains(err.Error(), "way forward: re-run `lym webster recover-batch 1`") {
 		t.Fatalf("PersistRecoveryTerminal() error = %v; want the recover-batch re-run way forward", err)
 	}
 

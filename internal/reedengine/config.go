@@ -27,7 +27,7 @@ type Config struct {
 
 	Watchdog string `yaml:"watchdog"`
 
-	// OperatorQuietS is the seconds since an attached client's last activity on a strand's pane within which lyx types nothing into that pane.
+	// OperatorQuietS is the seconds since an attached client's last activity on a strand's pane within which lym types nothing into that pane.
 	OperatorQuietS int `yaml:"operator_quiet_s"`
 
 	// WindowShareMax is the largest declared group size whose strands share one window; a larger group gives each strand a window of its own.

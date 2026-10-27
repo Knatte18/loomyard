@@ -24,7 +24,7 @@ func TestWriteRefusalNote(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := "lyx webster begin-batch refused\n\n" +
+		want := "lym webster begin-batch refused\n\n" +
 			"Arguments: begin-batch 03\n\n" +
 			"```\nplan drifted: run rebaseline\n```\n\n" +
 			"batch: 03-x\nplan_drifted: true\n"
@@ -65,7 +65,7 @@ func TestWriteRefusalNote(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := "lyx webster status refused\n\nArguments: status\n\n```\nboom\n```\n"
+		want := "lym webster status refused\n\nArguments: status\n\n```\nboom\n```\n"
 		if string(got) != want {
 			t.Errorf("note = %q; want %q", got, want)
 		}

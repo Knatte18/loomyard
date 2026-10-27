@@ -14,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
@@ -48,7 +48,7 @@ func TestShuttleWaiting(t *testing.T) {
 	t.Parallel()
 
 	started := time.Date(2026, 10, 3, 9, 15, 0, 0, time.UTC)
-	otherHolder := gateslot.Holder{Worktree: "/hub/other", Site: "lyx gate test ./z"}
+	otherHolder := gateslot.Holder{Worktree: "/hub/other", Site: "lym gate test ./z"}
 	tests := []struct {
 		name         string
 		kind         string
@@ -66,26 +66,26 @@ func TestShuttleWaiting(t *testing.T) {
 			verifyMarker: func(t *testing.T) string { return filepath.Join(t.TempDir(), "absent.yaml") },
 			waits: []gateslot.Wait{
 				{Site: "card verify 01-x", PID: os.Getpid(), Started: started.Add(3 * time.Minute)},
-				{Site: "lyx gate test ./a", PID: os.Getpid(), Started: started},
+				{Site: "lym gate test ./a", PID: os.Getpid(), Started: started},
 			},
 			holders: []gateslot.Holder{otherHolder},
-			want: "Plan-Write: lyx gate test ./a waiting for a gate slot 6m; Plan-Write: card verify 01-x waiting for a gate slot 3m" +
-				" (holders: /hub/other lyx gate test ./z); Plan-Write: gate validate-plan running 6m",
+			want: "Plan-Write: lym gate test ./a waiting for a gate slot 6m; Plan-Write: card verify 01-x waiting for a gate slot 3m" +
+				" (holders: /hub/other lym gate test ./z); Plan-Write: gate validate-plan running 6m",
 		},
 		{
 			name:         "a wait record beside a live verify marker renders the gate wait then the verify note",
 			kind:         "gate validate-plan",
 			shuttlePID:   os.Getpid(),
 			verifyMarker: func(t *testing.T) string { return writeVerifyMarker(t, os.Getpid(), 0) },
-			waits:        []gateslot.Wait{{Site: "lyx gate test ./a", PID: os.Getpid(), Started: started}},
-			want:         "Plan-Write: lyx gate test ./a waiting for a gate slot 6m; Plan-Write: verify running 6m (go test ./...)",
+			waits:        []gateslot.Wait{{Site: "lym gate test ./a", PID: os.Getpid(), Started: started}},
+			want:         "Plan-Write: lym gate test ./a waiting for a gate slot 6m; Plan-Write: verify running 6m (go test ./...)",
 		},
 		{
 			name:         "a wait record of a dead process is not reported",
 			kind:         "gate validate-plan",
 			shuttlePID:   os.Getpid(),
 			verifyMarker: func(t *testing.T) string { return filepath.Join(t.TempDir(), "absent.yaml") },
-			waits:        []gateslot.Wait{{Site: "lyx gate test ./a", PID: 2147483646, Started: started}},
+			waits:        []gateslot.Wait{{Site: "lym gate test ./a", PID: 2147483646, Started: started}},
 			want:         "Plan-Write: gate validate-plan running 6m",
 		},
 		{
@@ -180,10 +180,10 @@ func TestVerifyWaiting(t *testing.T) {
 			name:   "waiting marker names its site and the holders",
 			marker: func(t *testing.T) string { return writeWaitingVerifyMarker(t, os.Getpid()) },
 			holders: func() ([]gateslot.Holder, error) {
-				return []gateslot.Holder{{Worktree: "/hub/a", Site: "lyx gate test ./x"}, {Worktree: "/hub/b", Site: "card verify 01-x"}}, nil
+				return []gateslot.Holder{{Worktree: "/hub/a", Site: "lym gate test ./x"}, {Worktree: "/hub/b", Site: "card verify 01-x"}}, nil
 			},
 			check: func(t *testing.T, note string) {
-				want := "Webster-Burler: verify waiting for a gate slot 6m (Publish; holders: /hub/a lyx gate test ./x, /hub/b card verify 01-x)"
+				want := "Webster-Burler: verify waiting for a gate slot 6m (Publish; holders: /hub/a lym gate test ./x, /hub/b card verify 01-x)"
 				if note != want {
 					t.Errorf("note = %q; want %q", note, want)
 				}
@@ -341,8 +341,8 @@ func TestParentLockWaiting(t *testing.T) {
 // A capture lock path the probe cannot take returns the probe's error.
 func TestAgentActivity_LiveLockWaitReadsAsActivity(t *testing.T) {
 	t.Parallel()
-	writeLockWait := func(wait parentlock.Wait) func(t *testing.T, loc *lyxcwd.Location) {
-		return func(t *testing.T, loc *lyxcwd.Location) {
+	writeLockWait := func(wait parentlock.Wait) func(t *testing.T, loc *lymcwd.Location) {
+		return func(t *testing.T, loc *lymcwd.Location) {
 			scratch := loomengine.LoomScratchDir(loc)
 			if err := os.MkdirAll(scratch, 0o755); err != nil {
 				t.Fatal(err)
@@ -352,8 +352,8 @@ func TestAgentActivity_LiveLockWaitReadsAsActivity(t *testing.T) {
 			}
 		}
 	}
-	writeVerifyMarkerState := func(pid int, state string) func(t *testing.T, loc *lyxcwd.Location) {
-		return func(t *testing.T, loc *lyxcwd.Location) {
+	writeVerifyMarkerState := func(pid int, state string) func(t *testing.T, loc *lymcwd.Location) {
+		return func(t *testing.T, loc *lymcwd.Location) {
 			path := verifytree.NewPaths(loc.WorktreePath(), verifytree.Dir(loc.AnchorPath())).Marker
 			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 				t.Fatal(err)
@@ -364,8 +364,8 @@ func TestAgentActivity_LiveLockWaitReadsAsActivity(t *testing.T) {
 			}
 		}
 	}
-	holdDriftLock := func(lockPath func(driftengine.Paths) string) func(t *testing.T, loc *lyxcwd.Location) {
-		return func(t *testing.T, loc *lyxcwd.Location) {
+	holdDriftLock := func(lockPath func(driftengine.Paths) string) func(t *testing.T, loc *lymcwd.Location) {
+		return func(t *testing.T, loc *lymcwd.Location) {
 			path := lockPath(driftengine.NewPaths(loc.AnchorPath()))
 			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 				t.Fatal(err)
@@ -380,13 +380,13 @@ func TestAgentActivity_LiveLockWaitReadsAsActivity(t *testing.T) {
 	captureLock := func(p driftengine.Paths) string { return p.CaptureLock }
 	tests := []struct {
 		name         string
-		setup        func(t *testing.T, loc *lyxcwd.Location)
+		setup        func(t *testing.T, loc *lymcwd.Location)
 		wantActivity bool
 		wantErr      bool
 	}{
 		{"held capture lock", holdDriftLock(captureLock), true, false},
 		{"held compare marker", holdDriftLock(func(p driftengine.Paths) string { return p.CompareMarker }), true, false},
-		{"capture lock file with no holder", func(t *testing.T, loc *lyxcwd.Location) {
+		{"capture lock file with no holder", func(t *testing.T, loc *lymcwd.Location) {
 			path := captureLock(driftengine.NewPaths(loc.AnchorPath()))
 			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 				t.Fatal(err)
@@ -395,7 +395,7 @@ func TestAgentActivity_LiveLockWaitReadsAsActivity(t *testing.T) {
 				t.Fatal(err)
 			}
 		}, false, false},
-		{"capture lock path occupied by a directory", func(t *testing.T, loc *lyxcwd.Location) {
+		{"capture lock path occupied by a directory", func(t *testing.T, loc *lymcwd.Location) {
 			if err := os.MkdirAll(captureLock(driftengine.NewPaths(loc.AnchorPath())), 0o755); err != nil {
 				t.Fatal(err)
 			}
@@ -409,7 +409,7 @@ func TestAgentActivity_LiveLockWaitReadsAsActivity(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "task", AnchorRel: "."}
+			loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "task", AnchorRel: "."}
 			tt.setup(t, loc)
 
 			before := time.Now()

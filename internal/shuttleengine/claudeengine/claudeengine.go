@@ -65,7 +65,7 @@ func NewFromConfig(cfg shuttleengine.Config, dirs configengine.Dirs) *Claude {
 func loadConfigOrRefuse(dirs configengine.Dirs) (Config, error) {
 	claude, err := LoadConfig(dirs)
 	if err != nil {
-		return Config{}, fmt.Errorf("claudeengine: %w; way forward: correct or remove the key in the file the error names, with lyx config claude --layer <default|worktree|local> (or --set for a value)", err)
+		return Config{}, fmt.Errorf("claudeengine: %w; way forward: correct or remove the key in the file the error names, with lym config claude --layer <default|worktree|local> (or --set for a value)", err)
 	}
 	return claude, nil
 }

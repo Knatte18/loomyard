@@ -1,8 +1,8 @@
 //go:build tier1
 
 // verify_parity_integration_test.go asserts the Gate Self-Check Parity Invariant for the verify gates:
-// `lyx webster verify`, loomshed.NewVerifyGate and websterengine.NewVerifyGate must reach the same three-way verdict over one fixture.
-// It is integration-tagged because every side spawns git and a shell, and not parallel because each fixture puts the built `lyx` first on `PATH`.
+// `lym webster verify`, loomshed.NewVerifyGate and websterengine.NewVerifyGate must reach the same three-way verdict over one fixture.
+// It is integration-tagged because every side spawns git and a shell, and not parallel because each fixture puts the built `lym` first on `PATH`.
 // Every side runs the `final` gate call over the same seeded gate.yaml.
 // The shape follows loomcli's TestGateParity_*.
 
@@ -88,8 +88,8 @@ func TestGateParity_VerifyGate(t *testing.T) {
 				}
 				return cfg.GateCall("webster")
 			}
-			if got, err := finalCall(); err != nil || got != "lyx gate test --wait --gate webster" {
-				t.Fatalf("webster verify call = (%q, %v); want (%q, nil)", got, err, "lyx gate test --wait --gate webster")
+			if got, err := finalCall(); err != nil || got != "lym gate test --wait --gate webster" {
+				t.Fatalf("webster verify call = (%q, %v); want (%q, nil)", got, err, "lym gate test --wait --gate webster")
 			}
 			burler := gateVerdict(loomshed.NewVerifyGate(geom.WorktreeRoot, geom.VerifyDir, "Webster-Burler gate", finalCall, nil, nil, nil)())
 

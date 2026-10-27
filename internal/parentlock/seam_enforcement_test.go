@@ -1,6 +1,6 @@
 //go:build tier0
 
-// seam_enforcement_test.go enforces this package's Told-Geometry Invariant membership: production code takes every absolute path from its caller and has no direct production import of internal/lyxcwd.
+// seam_enforcement_test.go enforces this package's Told-Geometry Invariant membership: production code takes every absolute path from its caller and has no direct production import of internal/lymcwd.
 // The allowlist is a membership list rather than a bare denylist, modelled on internal/loomshed's own.
 
 package parentlock
@@ -15,7 +15,7 @@ import (
 var parentlockAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/lock",
 	"github.com/Knatte18/loomyard/internal/proc",
-	"github.com/Knatte18/loomyard/internal/lyxdirs",
+	"github.com/Knatte18/loomyard/internal/lymdirs",
 	"github.com/Knatte18/loomyard/internal/logger",
 }
 

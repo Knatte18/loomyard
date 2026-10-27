@@ -8,21 +8,21 @@
 // those two it imports -- may name either side of the pair: write "the task worktree", "the pair",
 // and "the hub's prime worktree" instead.
 //
-// "lyx batten cleanup [--apply]" (cleanup.go) removes done runs' records and scratch and aged orphan scratch, as a dry run unless given --apply.
+// "lym batten cleanup [--apply]" (cleanup.go) removes done runs' records and scratch and aged orphan scratch, as a dry run unless given --apply.
 //
-// "lyx batten cancel <slug> [--remove]" (cancel.go, cancelcmd.go) ends a run for good from the prime, whatever its state.
+// "lym batten cancel <slug> [--remove]" (cancel.go, cancelcmd.go) ends a run for good from the prime, whatever its state.
 // It refuses first, with nothing ended: a hub pause, work that reached the parent, an owner on another machine, a stopped origin entry, a cancel already under way and a slug with nothing left.
 // It then takes the cancel marker, a record whose writer's liveness is a lock it holds, which every driving verb refuses on and a second cancel reads to finish an interrupted one.
 // The order is: end the registered processes, take batten's locks, stop the pair's strands and the tackler, remove the pair and its task branches with --remove, remove the records, leave the claim draft, lift the slug's own pauses, push and notify, and remove the marker last.
-// Without --remove the pair is kept and the cancel names "lyx batten cancel <slug> --remove" as the step before the slug runs again.
+// Without --remove the pair is kept and the cancel names "lym batten cancel <slug> --remove" as the step before the slug runs again.
 // An unreachable origin ends only the processes and strands, leaves the marker and posts a notice naming the cancel to run once origin answers.
 // The cancel of a beam project first runs the hub's origin reconcile and refuses while the beam has members, naming each to land or cancel first, or, once the beam's pawl run holds its entry, to cancel and move off the beam; with origin unreachable it refuses naming the reconcile's way forward.
-// A beam with no members is ended like a task, its dobby with its run, and its orch and watcher are then stopped, a failure there only a warning on the report; `lyx beam create <slug>` starts the run again.
+// A beam with no members is ended like a task, its dobby with its run, and its orch and watcher are then stopped, a failure there only a warning on the report; `lym beam create <slug>` starts the run again.
 //
-// "lyx batten overview" (overview.go) is the hidden pane verb `lyx beam start` runs in the runs strand of the prime and of each beam, whose window reed names `beam: prime` or `beam: <slug>`.
+// "lym batten overview" (overview.go) is the hidden pane verb `lym beam start` runs in the runs strand of the prime and of each beam, whose window reed names `beam: prime` or `beam: <slug>`.
 // It draws the window's dobby section, then a blank line and its orch section; each run shows once, in the dobby section.
 // The dobby section is the lines of the dobby of the worktree the pane runs in (overviewdobby.go), rendered by `DobbyLines` from the `dobbyengine.View` a `DobbyViewReader` reads:
-// a header saying whether the dobby is alive, with its `max_runs`, or not running with `lyx beam start` as the way forward;
+// a header saying whether the dobby is alive, with its `max_runs`, or not running with `lym beam start` as the way forward;
 // one line per run it drives that is not done, in slug order, with the run's cells `DobbyRunCells` reads, then the pass cell: a pass in flight while the driver lock is held, else the minutes since the last pass exited, then a full pass owed, an owner elsewhere and a failing count from the dobby's state record;
 // and one line per released task it has not started, `ready to start` or `waits on` each of open dependencies, another machine's ownership, a pause, a refused start with its text and the minutes to its retry, and `max_runs`.
 // A dobby view that does not read shows `dobby <label>: unreadable`.
@@ -39,7 +39,7 @@
 //
 // dobbyreads.go holds the reads of what a worktree's dobby drives, exported for the dobby's own wiring and for the overview: `DobbyRuns`, `DobbyLandings` and `DobbyTasks` over a `DobbyParents` cache, and `DobbyViewReader`, which builds the dobby's view from outside its process.
 //
-// "lyx batten run <slug>" is one pass: it runs the run to its next halt or yield and exits, started by its parent worktree's dobby or by hand.
+// "lym batten run <slug>" is one pass: it runs the run to its next halt or yield and exits, started by its parent worktree's dobby or by hand.
 // After the pass it makes sure the parent worktree's dobby is live.
 // `StartFirstPass` is the in-process start of a first pass for the verbs that take a run over or start a beam project's:
 // it runs the status check, the pause refusal and the owner pre-flight of a plain run, refuses a done slug, a covered one or one another machine owns before starting anything, then starts the pass detached.
@@ -47,7 +47,7 @@
 //
 // A beam project runs as a task does, with the pawl recipe's own rows past Worktree-Create.
 // The start guard lets a beam project start or resume: a fresh start with no marked pair here gets a task's dirty-source and left-parts checks, the dirty-source check only when it forks from the prime;
-// a marked beam pair, a legacy beam's or a resumed run's, passes them, and a beam project skips the draft check, since a beam's cancel leaves its entry draft and `lyx beam create` starts its run again.
+// a marked beam pair, a legacy beam's or a resumed run's, passes them, and a beam project skips the draft check, since a beam's cancel leaves its entry draft and `lym beam create` starts its run again.
 //
 // The Worktree-Create row opens by claiming the slug's board entry with "running · Worktree-Create", before the pair exists, so the board's run lock starts at the claim.
 // The claim is one Bolt commit that also records this machine as the entry's owner, and an absent or done entry is skipped.
@@ -60,8 +60,8 @@
 // A machine starts, resumes and claims only what it owns.
 // A start (no status file, or one still at Worktree-Create whose pair this machine does not hold) pulls the board, which needs origin, claims the hub's prime when none is recorded, and refuses a task another machine owns.
 // A resume refuses a task the origin reconcile or, with origin unreachable, the local board shows owned elsewhere; with origin answering it records this machine as the owner of a run-held entry with none.
-// Every such refusal names the owner and "lyx adopt <slug>" as the way forward.
-// "lyx batten status" reports the slug's effective owner as owner_machine and whether this machine holds it as owned_here.
+// Every such refusal names the owner and "lym adopt <slug>" as the way forward.
+// "lym batten status" reports the slug's effective owner as owner_machine and whether this machine holds it as owned_here.
 //
 // The Inner-Run row's state-changed notice is held while the child's arbiter is live:
 // the row reads the child's in-flight arbiter marker against the pair's reed directory.
@@ -86,7 +86,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -100,9 +100,9 @@ import (
 // battenCLI carries the fields wire (wire.go) populates; every batten verb hangs off this
 // receiver.
 type battenCLI struct {
-	// location is the resolved *lyxcwd.Location for the hub's prime worktree. wire reads it to
+	// location is the resolved *lymcwd.Location for the hub's prime worktree. wire reads it to
 	// anchor every path constructor and every seam.
-	location *lyxcwd.Location
+	location *lymcwd.Location
 	// env is the assembled shedrecipe.Env the run verb passes to battenrecipe.New.
 	env shedrecipe.Env
 	// shedPaths carries the five told values shedengine.Shed itself reads, which the run verb
@@ -144,7 +144,7 @@ type battenCLI struct {
 	// landingHeld reports whether the landing hold of the worktree parent stands, the prime never being held.
 	// Nil reads the local board's entry of parent through boardengine.RunHolds.
 	landingHeld func(parent string) (bool, error)
-	// passSpawn starts `<lyx> <args>` detached in its own process group with dir as its working directory, and returns the started process's pid.
+	// passSpawn starts `<lym> <args>` detached in its own process group with dir as its working directory, and returns the started process's pid.
 	// Nil selects spawnDetachedPass.
 	passSpawn func(dir string, args []string) (int, error)
 	// dobbyLive reports whether the dobby described by the geometry is running; nil selects dobbyengine.Live.
@@ -199,7 +199,7 @@ already in progress, it resumes
 silently from the persisted current producer -- there is no re-seed flag,
 because every operator-fixable refusal this task raises lands as blocked,
 which is the everyday resume path. A slug already done refuses on the
-envelope, naming "lyx batten cleanup --apply" and the leftover branches to
+envelope, naming "lym batten cleanup --apply" and the leftover branches to
 delete to run it again.
 
 The Go driver meets an unexpected stop with its rule table and a cold tackler
@@ -219,7 +219,7 @@ window again when no client is attached to the task worktree's reed session and
 open_window is on, through the same command.
 
 Example:
-  lyx batten run some-slug`,
+  lym batten run some-slug`,
 	},
 	Status: shedverbs.VerbText{
 		Use:      "status [<run-id>]",
@@ -243,8 +243,8 @@ its absence: prime hosts many slug-addressed batten runs, so an omitted
 run-id refuses by name rather than defaulting to "self".
 
 Example:
-  lyx batten status some-slug
-  lyx batten status some-slug --watch`,
+  lym batten status some-slug
+  lym batten status some-slug --watch`,
 	},
 	Pause: shedverbs.VerbText{
 		Use:      "pause [<run-id>]",
@@ -256,14 +256,14 @@ in the persist that records the paused state.
 
 --by <label> records a free-text caller label, such as operator or the orch's
 strand name, beside the request. The label is recorded in the paused run's
-pause_reason; shed is reserved for lyx's own automatic steps and refused.
+pause_reason; shed is reserved for lym's own automatic steps and refused.
 
 The run-id positional is required in practice, even though cobra accepts
 its absence: prime hosts many slug-addressed batten runs, so an omitted
 run-id refuses by name rather than defaulting to "self".
 
 Example:
-  lyx batten pause some-slug`,
+  lym batten pause some-slug`,
 	},
 	Step: shedverbs.VerbText{
 		Use:      "step [<run-id>]",
@@ -274,14 +274,14 @@ forward from its persisted current producer, seeding a fresh run first when
 none is persisted yet -- the single-producer primitive an external
 supervisor drives one call at a time.
 With --until-stop, step runs the step loop to the run's next stop, the entry
-"lyx batten run" drives.
+"lym batten run" drives.
 
 The run-id positional is required in practice, even though cobra accepts
 its absence: prime hosts many slug-addressed batten runs, so an omitted
 run-id refuses by name rather than defaulting to "self".
 
 Example:
-  lyx batten step some-slug`,
+  lym batten step some-slug`,
 	},
 	Goto: shedverbs.VerbText{
 		Use:      "goto [<run-id>]",
@@ -292,7 +292,7 @@ paused. It keeps the segment's spent bounce budget, and resets only what the
 target row needs to run: the error, the transient mark, a pending resume label
 and the pause conditions. It records a "goto" history entry and itself as the
 run's pause reason. A bounce-budget-exhausted halt is lifted only by
-"lyx batten run", never by goto. It refuses while a driver holds the run lock and on a done run,
+"lym batten run", never by goto. It refuses while a driver holds the run lock and on a done run,
 and never re-opens a finished run. goto moves a halted run only back, to a row at or before its current row (strictly before when the run is awaiting), and refuses a running run.
 Worktree-Teardown is reachable only once the child run is done.
 
@@ -301,7 +301,7 @@ its absence: prime hosts many slug-addressed batten runs, so an omitted
 run-id refuses by name rather than defaulting to "self".
 
 Example:
-  lyx batten goto some-slug --to Run-Shed`,
+  lym batten goto some-slug --to Run-Shed`,
 	},
 }
 
@@ -333,15 +333,15 @@ invoked from a task worktree that is not a beam, from the pair's fabric sibling,
 from _board.
 
 Example:
-  lyx batten run some-slug
-  lyx batten step some-slug
-  lyx batten status some-slug
-  lyx batten pause some-slug
-  lyx batten goto some-slug --to Run-Shed
-  lyx batten lock list
-  lyx batten cleanup --apply
-  lyx batten cancel some-slug --remove`,
-		// RunE is set so that bare "lyx batten" lists subcommands and "lyx batten bogus"
+  lym batten run some-slug
+  lym batten step some-slug
+  lym batten status some-slug
+  lym batten pause some-slug
+  lym batten goto some-slug --to Run-Shed
+  lym batten lock list
+  lym batten cleanup --apply
+  lym batten cancel some-slug --remove`,
+		// RunE is set so that bare "lym batten" lists subcommands and "lym batten bogus"
 		// emits a JSON error envelope instead of falling through to cobra's plain-text help.
 		RunE:              clihelp.GroupRunE,
 		PersistentPreRunE: c.resolvePersistentPreRun,
@@ -349,8 +349,8 @@ Example:
 
 	verbs := shedverbs.Verbs(battenVerbTexts, c.spec)
 	runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb := verbs[0], verbs[1], verbs[2], verbs[3], verbs[4]
-	// MaximumNArgs(1), not ExactArgs(1): all three surfaces -- "lyx shed", "lyx batten", "lyx loom"
-	// -- land on this one arity contract. "lyx batten run" with no argument stops being an arity
+	// MaximumNArgs(1), not ExactArgs(1): all three surfaces -- "lym shed", "lym batten", "lym loom"
+	// -- land on this one arity contract. "lym batten run" with no argument stops being an arity
 	// error and becomes a "self" address, which arm.go's refuseSelfAddress rejects by name with a
 	// better message than cobra's own count error.
 	runVerb.Args = cobra.MaximumNArgs(1)
@@ -380,10 +380,8 @@ Example:
 	return parent
 }
 
-// resolvePersistentPreRun resolves cwd via lyxcwd.CwdFrom, resolves it into a *lyxcwd.Location via
-// lyxcwd.Resolve, resolves the prime name via fabricengine.PrimeName, and applies the non-prime
-// refusal (refusal.go) before resolving anything further. It then reads the slug from the command's
-// own arguments and calls wire.
+// resolvePersistentPreRun resolves cwd via lymcwd.CwdFrom, resolves it into a *lymcwd.Location via lymcwd.Resolve, resolves the prime name via fabricengine.PrimeName, and applies the non-prime refusal (refusal.go) before resolving anything further.
+// It then reads the slug from the command's own arguments and calls wire.
 //
 // Skips resolution entirely when the batten group command itself is invoked (bare listing or
 // unknown-subcommand error path via clihelp.GroupRunE), so neither path requires a git repository to
@@ -403,7 +401,7 @@ func (c *battenCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) e
 	c.driverFlagSet = cmd.Flags().Changed("driver")
 	c.childDriverFlagSet = cmd.Flags().Changed("child-driver")
 
-	cwd, err := lyxcwd.CwdFrom(ctx)
+	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
 		output.Err(out, err.Error())
 		clihelp.Abort(ctx, 1)
@@ -412,7 +410,7 @@ func (c *battenCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) e
 
 	armed, err := c.arm(cwd, cmd.Name(), args)
 	if err != nil {
-		// arm's own lyxcwd.Resolve error is already self-describing (it IS the "not a git
+		// arm's own lymcwd.Resolve error is already self-describing (it IS the "not a git
 		// repository" sentinel), and its non-prime refusal already names both worktrees; both
 		// pass through bare rather than doubling text on top of them.
 		output.Err(out, err.Error())
@@ -427,8 +425,8 @@ func (c *battenCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) e
 	return nil
 }
 
-// startFirstPass is StartFirstPass's body: it runs the pre-checks of a plain run, starts `lyx batten run <slug>` detached with the prime's anchor as its working directory, and makes sure the parent worktree's dobby is live.
-// A slug whose status is done, undecodable or in an unrecognized state is refused before anything starts, with the same refusal a plain run gives, and so is a slug a pause covers or another machine owns, naming the owner and "lyx adopt <slug>";
+// startFirstPass is StartFirstPass's body: it runs the pre-checks of a plain run, starts `lym batten run <slug>` detached with the prime's anchor as its working directory, and makes sure the parent worktree's dobby is live.
+// A slug whose status is done, undecodable or in an unrecognized state is refused before anything starts, with the same refusal a plain run gives, and so is a slug a pause covers or another machine owns, naming the owner and "lym adopt <slug>";
 // seeding a fresh status stays inside the started pass.
 // The envelope names the started pass's pid and the parent worktree whose dobby drives the run, and never a started batten: a second batten for the slug is refused by the run's own lock inside the pass.
 // A parent dobby that cannot be started is a warning on the envelope, not a refusal, since the pass is started either way.
@@ -465,7 +463,7 @@ func (c *battenCLI) startFirstPass(cmd *cobra.Command) error {
 	}
 	pid, err := spawnPass(c.location.AnchorPath(), passArgs)
 	if err != nil {
-		clihelp.SetExit(ctx, output.Err(out, fmt.Sprintf("battencli: could not start the first pass of %q: %v; way forward: run `lyx batten run %s` in a terminal instead", c.slug, err, c.slug)))
+		clihelp.SetExit(ctx, output.Err(out, fmt.Sprintf("battencli: could not start the first pass of %q: %v; way forward: run `lym batten run %s` in a terminal instead", c.slug, err, c.slug)))
 		return nil
 	}
 
@@ -481,7 +479,7 @@ func (c *battenCLI) startFirstPass(cmd *cobra.Command) error {
 	return nil
 }
 
-// spawnDetachedPass starts `<lyx> args...` as a detached process in its own process group with dir as its working directory, and returns its pid.
+// spawnDetachedPass starts `<lym> args...` as a detached process in its own process group with dir as its working directory, and returns its pid.
 // The child's output is discarded, and the child is started but never waited for.
 // It returns an error, starting nothing, in a test binary, where forking the running binary would re-run the test suite.
 func spawnDetachedPass(dir string, args []string) (int, error) {
@@ -490,7 +488,7 @@ func spawnDetachedPass(dir string, args []string) (int, error) {
 	}
 	executable, err := os.Executable()
 	if err != nil {
-		return 0, fmt.Errorf("locate the lyx executable: %w", err)
+		return 0, fmt.Errorf("locate the lym executable: %w", err)
 	}
 	cmd := exec.Command(executable, args...)
 	cmd.Dir = dir
@@ -504,7 +502,7 @@ func spawnDetachedPass(dir string, args []string) (int, error) {
 }
 
 // parentWorktree returns the name of the worktree whose dobby drives slug's run: the beam slug's pair was forked from, or the prime's name for a run with none.
-func parentWorktree(prime *lyxcwd.Location, slug string) (string, error) {
+func parentWorktree(prime *lymcwd.Location, slug string) (string, error) {
 	parent, err := hubgeom.ParentOf(prime, slug)
 	if err != nil {
 		return "", err
@@ -517,28 +515,28 @@ func parentWorktree(prime *lyxcwd.Location, slug string) (string, error) {
 
 // ensureParentDobby makes sure the dobby of slug's parent worktree is running, so a run started by hand or in a first pass is driven on.
 // ownerElsewhere names the other machine that owns the parent worktree on the board's owners, or is empty;
-// when another machine owns it, nothing is spawned and the error names `lyx adopt <parent>`, or `lyx adopt root` for the prime, since that dobby would exit at once on its owner read and leave the run undriven.
+// when another machine owns it, nothing is spawned and the error names `lym adopt <parent>`, or `lym adopt root` for the prime, since that dobby would exit at once on its owner read and leave the run undriven.
 // landingHeld reports whether the parent beam's landing hold stands;
-// when it does, nothing is spawned and the error names `lyx batten status <parent>`.
+// when it does, nothing is spawned and the error names `lym batten status <parent>`.
 // Otherwise live reads whether the dobby runs and spawn starts it when it does not;
-// a failed geometry, read or spawn is returned naming `lyx beam start <parent>`, or `lyx beam start root` for the prime.
-func ensureParentDobby(prime *lyxcwd.Location, slug string, ownerElsewhere func(parent string) (string, error), landingHeld func(parent string) (bool, error), live func(dobbyengine.Geometry) (bool, error), spawn func(dobbyengine.Geometry) error) error {
+// a failed geometry, read or spawn is returned naming `lym beam start <parent>`, or `lym beam start root` for the prime.
+func ensureParentDobby(prime *lymcwd.Location, slug string, ownerElsewhere func(parent string) (string, error), landingHeld func(parent string) (bool, error), live func(dobbyengine.Geometry) (bool, error), spawn func(dobbyengine.Geometry) error) error {
 	parent, err := parentWorktree(prime, slug)
 	if err != nil {
-		return fmt.Errorf("battencli: resolve the parent worktree of %q: %w; way forward: fix the cause, then run `lyx batten run %s` again", slug, err, slug)
+		return fmt.Errorf("battencli: resolve the parent worktree of %q: %w; way forward: fix the cause, then run `lym batten run %s` again", slug, err, slug)
 	}
-	startWay := "run `lyx beam start " + parent + "` to start it"
+	startWay := "run `lym beam start " + parent + "` to start it"
 	if parent == prime.WorktreeName {
-		startWay = "run `lyx beam start root` to start it"
+		startWay = "run `lym beam start root` to start it"
 	}
 	owner, err := ownerElsewhere(parent)
 	if err != nil {
 		return fmt.Errorf("battencli: read the owner of the worktree %q: %w; way forward: %s", parent, err, startWay)
 	}
 	if owner != "" {
-		adopt := "lyx adopt " + parent
+		adopt := "lym adopt " + parent
 		if parent == prime.WorktreeName {
-			adopt = "lyx adopt root"
+			adopt = "lym adopt root"
 		}
 		return fmt.Errorf("battencli: machine %q owns the worktree %q whose dobby drives %q, so no dobby is started here and the run stays undriven; way forward: run `%s` from this machine's prime", owner, parent, slug, adopt)
 	}
@@ -547,7 +545,7 @@ func ensureParentDobby(prime *lyxcwd.Location, slug string, ownerElsewhere func(
 		return fmt.Errorf("battencli: read whether the landing hold of %q stands: %w; way forward: %s", parent, err, startWay)
 	}
 	if held {
-		return fmt.Errorf("battencli: the landing hold of %q stands, so no dobby is started and the run stays undriven; way forward: read the landing with `lyx batten status %s`", parent, parent)
+		return fmt.Errorf("battencli: the landing hold of %q stands, so no dobby is started and the run stays undriven; way forward: read the landing with `lym batten status %s`", parent, parent)
 	}
 	geometry, err := hubgeom.DobbyGeometry(prime, parent)
 	if err != nil {
@@ -621,12 +619,12 @@ type FirstPassOptions struct {
 	Anchor string
 }
 
-// StartFirstPass starts `lyx batten run <slug>` as a detached first pass against the hub's prime worktree at location, and returns the envelope that start prints.
-// It is the in-process start an adopting verb runs for each slug it takes over and `lyx beam create` runs for a beam's pawl run; the pass is then driven on by its parent worktree's dobby.
+// StartFirstPass starts `lym batten run <slug>` as a detached first pass against the hub's prime worktree at location, and returns the envelope that start prints.
+// It is the in-process start an adopting verb runs for each slug it takes over and `lym beam create` runs for a beam's pawl run; the pass is then driven on by its parent worktree's dobby.
 // A refusal, such as a done slug, a covered one or one another machine owns, returns an envelope whose ok is false and whose error names the way forward;
 // the error result is reserved for a failure to arm the run or to read the envelope back.
 // The run's own driver lock, inside the pass, refuses a second driver.
-func StartFirstPass(location *lyxcwd.Location, slug string, opts FirstPassOptions) (map[string]any, error) {
+func StartFirstPass(location *lymcwd.Location, slug string, opts FirstPassOptions) (map[string]any, error) {
 	c := &battenCLI{spec: &shedverbs.Spec{}, firstPassAnchor: opts.Anchor}
 	c.reconcile = func(slug string) (fabricengine.OriginReport, error) { return reconcileRun(c.location, slug, false) }
 	armed, err := c.armAt(location, slug, true, "run")
@@ -657,11 +655,8 @@ func RunCLI(out io.Writer, args []string) int {
 // delegates to clihelp.Execute exactly as RunCLI always has, while any other value seeds cwd into
 // the execution context via clihelp.ExecuteIn.
 //
-// RunCLIIn is carried rather than skipped for a concrete reason: the path-derivation tests serving
-// as the Batten Bookend Invariant's mechanical proxy and the non-prime refusal test both need an
-// injectable cwd, and neither is reachable through RunCLI alone. The branch exists because
-// lyxcwd.WithCwd panics on an empty directory, so a uniform delegation to ExecuteIn would panic on
-// every existing RunCLI call.
+// RunCLIIn is carried rather than skipped for a concrete reason: the path-derivation tests serving as the Batten Bookend Invariant's mechanical proxy and the non-prime refusal test both need an injectable cwd, and neither is reachable through RunCLI alone.
+// The branch exists because lymcwd.WithCwd panics on an empty directory, so a uniform delegation to ExecuteIn would panic on every existing RunCLI call.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)

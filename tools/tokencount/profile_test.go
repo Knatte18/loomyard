@@ -75,7 +75,7 @@ func TestBuildProfileReport(t *testing.T) {
 	})
 	history.commits[planCommitSubjectPrefix+"plain"] = []gitrepo.SubjectCommit{{SHA: "plainplan", Committed: firstFork.Add(-time.Hour)}}
 	for name, data := range planWith(map[int]string{1: "internal/a/a.go", 2: "internal/b/b.go"}) {
-		history.files["plainplan:_lyx/plan/"+name] = data
+		history.files["plainplan:_lym/plan/"+name] = data
 	}
 
 	// Two run guids: the run was restarted.

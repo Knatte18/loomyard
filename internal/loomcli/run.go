@@ -62,7 +62,7 @@ func (c *loomCLI) reflectFriction() string {
 // reflectFrictionRow is the shedrecipe.Env.ReflectFriction closure wire installs.
 // Its status is frictionengine.StatusSkipped unless Tier 2 is on, in which case it is reflectFriction();
 // it records the status on c.rowFrictionStatus and returns it.
-// It reflects under step ("lyx loom step", "lyx shed step --recipe loom") as under run, since every driven run uses step.
+// It reflects under step ("lym loom step", "lym shed step --recipe loom") as under run, since every driven run uses step.
 // The reflection agent files public issues during the step with no operator in the loop;
 // the step blocks for at most friction_timeout_min.
 func (c *loomCLI) reflectFrictionRow() string {

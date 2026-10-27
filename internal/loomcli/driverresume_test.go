@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -36,7 +36,7 @@ func (f *fakeDriverSender) SendDriver(guid, text string) error {
 func newResumeTestReceiver(t *testing.T, sender *fakeDriverSender) (*loomCLI, *int, string) {
 	t.Helper()
 	dir := t.TempDir()
-	loc := &lyxcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."}
+	loc := &lymcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."}
 	waits := 0
 	c := &loomCLI{
 		location:         loc,
@@ -75,7 +75,7 @@ func TestResumeParkedDriver(t *testing.T) {
 		wantTexts int
 		wantWaits int
 		// retry is the calling verb;
-		// empty means `lyx loom start`.
+		// empty means `lym loom start`.
 		retry string
 		// wantErr holds substrings of the refusal; empty means the resume succeeds.
 		wantErr []string
@@ -92,7 +92,7 @@ func TestResumeParkedDriver(t *testing.T) {
 			sender:    &fakeDriverSender{repeatErr: notReady()},
 			wantTexts: driverResumeSendAttempts,
 			wantWaits: driverResumeSendAttempts - 1,
-			wantErr:   []string{"lyx loom start", fmt.Sprint(driverResumeSendAttempts)},
+			wantErr:   []string{"lym loom start", fmt.Sprint(driverResumeSendAttempts)},
 		},
 		{
 			name:       "a resume-called failure names resume as the retry, never start",
@@ -100,8 +100,8 @@ func TestResumeParkedDriver(t *testing.T) {
 			retry:      retryResume,
 			wantTexts:  driverResumeSendAttempts,
 			wantWaits:  driverResumeSendAttempts - 1,
-			wantErr:    []string{`"lyx loom resume"`, `"lyx loom status"`},
-			wantNotErr: []string{"lyx loom start"},
+			wantErr:    []string{`"lym loom resume"`, `"lym loom status"`},
+			wantNotErr: []string{"lym loom start"},
 		},
 		{
 			name:      "a busy pane is not retried and a rerun types the identical line",
@@ -123,7 +123,7 @@ func TestResumeParkedDriver(t *testing.T) {
 			name:       "a pause holding the pane is refused with its way forward and not retried",
 			sender:     &fakeDriverSender{repeatErr: &shuttleengine.PausedError{Slug: "pair", Err: shuttleengine.ErrPaused}},
 			wantTexts:  1,
-			wantErr:    []string{`"lyx tender resume`, `run "lyx loom start" again`},
+			wantErr:    []string{`"lym tender resume`, `run "lym loom start" again`},
 			wantNotErr: []string{"may have resumed"},
 		},
 		{name: "another error is never retried", sender: &fakeDriverSender{repeatErr: errors.New("text never appeared")}, wantTexts: 1, wantErr: []string{"text never appeared"}},

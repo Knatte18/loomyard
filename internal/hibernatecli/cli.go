@@ -9,16 +9,16 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hibernateengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 )
 
-// Command returns the cobra command for `lyx hibernate`: the bare group and its request, cancel, status and watch verbs.
+// Command returns the cobra command for `lym hibernate`: the bare group and its request, cancel, status and watch verbs.
 func Command() *cobra.Command {
 	hibernate := &cobra.Command{
 		Use:   "hibernate",
 		Short: "queue a hibernate of the machine that runs once every session in the hub is paused",
-		Long: `hibernate asks lyx itself to hibernate the machine once every session in the hub
+		Long: `hibernate asks lym itself to hibernate the machine once every session in the hub
 is safely paused, so no LLM session runs the hibernate and none is cut mid-call.
 request records the request and spawns the daemon that carries it out, cancel
 withdraws it and status shows it. Linux only.`,
@@ -39,11 +39,11 @@ func runVerb(cmd *cobra.Command, key string, run func(hibernateengine.Deps) (any
 		clihelp.SetExit(ctx, output.Err(out, err.Error()))
 		return nil
 	}
-	cwd, err := lyxcwd.CwdFrom(ctx)
+	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
 		return fail(err)
 	}
-	location, err := lyxcwd.Resolve(cwd)
+	location, err := lymcwd.Resolve(cwd)
 	if err != nil {
 		return fail(err)
 	}
@@ -80,8 +80,8 @@ flight. The two are exclusive. Only the orch or an external caller may request;
 an agent asks its parent session.
 
 Example:
-  lyx hibernate request
-  lyx hibernate request --after my-task`,
+  lym hibernate request
+  lym hibernate request --after my-task`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runVerb(cmd, "request", func(deps hibernateengine.Deps) (any, error) {
@@ -107,7 +107,7 @@ daemon lifts its own pause on wake. Only the orch or an external caller may
 cancel.
 
 Example:
-  lyx hibernate cancel`,
+  lym hibernate cancel`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runVerb(cmd, "cancel", func(deps hibernateengine.Deps) (any, error) {
@@ -127,7 +127,7 @@ func statusCmd() *cobra.Command {
 whether its daemon runs. It changes nothing. Any caller may run it.
 
 Example:
-  lyx hibernate status`,
+  lym hibernate status`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runVerb(cmd, "status", func(deps hibernateengine.Deps) (any, error) {
@@ -144,7 +144,7 @@ func watchCmd() *cobra.Command {
 		Short:       "run the daemon of the pending hibernate request",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
 		Long: `watch carries out the pending hibernate request whose daemon is this process,
-and is what "lyx hibernate request" spawns. Run by hand with no request, or
+and is what "lym hibernate request" spawns. Run by hand with no request, or
 beside a live daemon, it returns at once and does nothing.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -160,7 +160,7 @@ func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value seeds cwd into the execution context, because lyxcwd.WithCwd panics on an empty directory.
+// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value seeds cwd into the execution context, because lymcwd.WithCwd panics on an empty directory.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)

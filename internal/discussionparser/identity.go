@@ -7,8 +7,8 @@ import (
 	"strings"
 )
 
-// IdentityText returns record without what a settle and `lyx loom decision add` write into it:
-// every `<!-- lyx:carry-over … -->` block of the `## Open risks` section, marker lines included,
+// IdentityText returns record without what a settle and `lym loom decision add` write into it:
+// every `<!-- lym:carry-over … -->` block of the `## Open risks` section, marker lines included,
 // and every `### Added after Discussion (…)` entry of the `## Decisions` section.
 // Each removal takes the blank line that separated the block from the line above it, as WriteCarryOver's removal and AppendDecision's insertion do,
 // so a record with such blocks and the same record without them give equal text.

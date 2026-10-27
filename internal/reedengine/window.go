@@ -1,4 +1,4 @@
-// window.go implements the reed op that opens a detached, named tmux window in this worktree's reed session running a `lyx` command.
+// window.go implements the reed op that opens a detached, named tmux window in this worktree's reed session running a `lym` command.
 // The op only chooses where a command runs: the window is not a strand, holds no reed state, and is never read as the strands' window.
 
 package reedengine
@@ -32,20 +32,20 @@ type WindowResult struct {
 }
 
 // temporaryWindowNamePrefix starts the name a new window holds between its creation and its rename to the requested name.
-const temporaryWindowNamePrefix = "lyx-opening-"
+const temporaryWindowNamePrefix = "lym-opening-"
 
 // temporaryWindowCounter makes each OpenWindow call's temporary window name distinct within the process.
 var temporaryWindowCounter atomic.Uint64
 
 // windowListFormat is the session-wide listing format OpenWindow finds a named window with: window id, pane id, pane dead flag, the own-window flag, then the window name.
-const windowListFormat = "#{window_id} #{pane_id} #{pane_dead} #{?#{@lyx_own},1,0} #{window_name}"
+const windowListFormat = "#{window_id} #{pane_id} #{pane_dead} #{?#{@lym_own},1,0} #{window_name}"
 
 // windowReadBackFormat is the format OpenWindow reads a new window's remain-on-exit back with: the answering window's id, then the value.
 // The id is needed because tmux answers a target window that has already closed from another scope, exiting 0 with an empty id and the global value.
 const windowReadBackFormat = "#{window_id} #{remain-on-exit}"
 
-// OpenWindow opens a detached window named name in this worktree's reed session and runs `lyx` with lyxArgs in it.
-// The window is never selected, so it takes no focus, it carries @lyx_hidden, so the status bar gives it no button, and it closes when its command exits.
+// OpenWindow opens a detached window named name in this worktree's reed session and runs `lym` with lymArgs in it.
+// The window is never selected, so it takes no focus, it carries @lym_hidden, so the status bar gives it no button, and it closes when its command exits.
 // It opens after the highest-index window, so every hidden window sits behind the shell window, which is first renamed and moved into place when the session predates the window order.
 //
 // A window of that exact name whose pane is live is returned as existing and nothing is started;
@@ -54,12 +54,12 @@ const windowReadBackFormat = "#{window_id} #{remain-on-exit}"
 // a *CapabilityError when the multiplexer lacks new-window;
 // ErrNewWindowFailed wrapping the multiplexer's error when it refuses the window;
 // and ErrWindowReadBack when the new window does not read remain-on-exit off, after killing it.
-func (e *Engine) OpenWindow(name string, lyxArgs []string) (WindowResult, error) {
-	return e.OpenWindowIn(name, "", lyxArgs)
+func (e *Engine) OpenWindow(name string, lymArgs []string) (WindowResult, error) {
+	return e.OpenWindowIn(name, "", lymArgs)
 }
 
 // OpenWindowIn is OpenWindow with a working directory: a non-empty dir is the directory the window's command starts in, and an empty one leaves the multiplexer's default.
-func (e *Engine) OpenWindowIn(name, dir string, lyxArgs []string) (WindowResult, error) {
+func (e *Engine) OpenWindowIn(name, dir string, lymArgs []string) (WindowResult, error) {
 	var result WindowResult
 	err := e.withOpLock(func() error {
 		if err := e.requireSessionLocked(); err != nil {
@@ -95,7 +95,7 @@ func (e *Engine) OpenWindowIn(name, dir string, lyxArgs []string) (WindowResult,
 			logger.Debug("reed: could not list the session's windows to place the new window", "socket", e.Socket(), "session", session, "err", err)
 		}
 
-		command := composeWindowCommand(shell.ForGOOS(), lyxArgs)
+		command := composeWindowCommand(shell.ForGOOS(), lymArgs)
 		// No other window holds the temporary name, so the chained options cannot land on a same-named window.
 		temporaryName := fmt.Sprintf("%s%d-%d", temporaryWindowNamePrefix, os.Getpid(), temporaryWindowCounter.Add(1))
 		temporaryTarget := exactSessionWindowTarget(session) + "=" + temporaryName
@@ -105,7 +105,7 @@ func (e *Engine) OpenWindowIn(name, dir string, lyxArgs []string) (WindowResult,
 		}
 		newWindowArgs = append(newWindowArgs, command,
 			";", "set-option", "-w", "-t", temporaryTarget, "remain-on-exit", "off",
-			";", "set-option", "-w", "-t", temporaryTarget, "@lyx_hidden", "1",
+			";", "set-option", "-w", "-t", temporaryTarget, "@lym_hidden", "1",
 			";", "rename-window", "-t", temporaryTarget, name)
 		out, err := e.newWindowLocked(hiddenWindowInsertArgs(windows), newWindowArgs)
 		if err != nil {

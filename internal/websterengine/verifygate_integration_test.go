@@ -3,7 +3,7 @@
 // verifygate_integration_test.go drives the verify gate's closure over a real scratch repository:
 // the clean-tree check at a done arrival, and the fixer commit check through the real fixCommitRejection.
 // It reuses the package's hermetic TestMain (testmain_test.go) and gitwrap_test.go's merge helpers.
-// The gate runs the built `lyx` over a committed gate.yaml, so every test here puts that binary first on `PATH` and is not parallel.
+// The gate runs the built `lym` over a committed gate.yaml, so every test here puts that binary first on `PATH` and is not parallel.
 
 package websterengine
 
@@ -18,9 +18,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -53,17 +53,17 @@ gates:
 }
 
 // newVerifyGateRepo builds the repo, a done outcome.yaml and a committed gate.yaml whose `final` tier writes the sentinel.
-// A `lyx gate test` run records under the worktree's .lyx directory, which the repo excludes so the tree the gate verifies stays clean.
-// It puts the `lyx` built from the tree first on `PATH`, so the calling test is not parallel.
+// A `lym gate test` run records under the worktree's .lym directory, which the repo excludes so the tree the gate verifies stays clean.
+// It puts the `lym` built from the tree first on `PATH`, so the calling test is not parallel.
 func newVerifyGateRepo(t *testing.T) verifyGateRepo {
 	t.Helper()
-	lyxbin.PutFirstOnPath(t)
+	lymbin.PutFirstOnPath(t)
 	dir := gitwrapNewScratchRepo(t)
 	exclude := filepath.Join(dir, ".git", "info", "exclude")
 	if err := os.MkdirAll(filepath.Dir(exclude), 0o755); err != nil {
 		t.Fatalf("create the exclude directory: %v", err)
 	}
-	if err := os.WriteFile(exclude, []byte(lyxdirs.DotLyxDirName+"/\n"), 0o644); err != nil {
+	if err := os.WriteFile(exclude, []byte(lymdirs.DotLymDirName+"/\n"), 0o644); err != nil {
 		t.Fatalf("write the exclude file: %v", err)
 	}
 	sentinel := filepath.Join(t.TempDir(), "verify-ran")

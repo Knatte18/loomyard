@@ -1,29 +1,29 @@
 # `internal/configengine`
 
 Loads and resolves a module's configuration from the current working directory.
-This is the one place that knows the `_lyx/` layout and enforces strict validation against a template.
+This is the one place that knows the `_lym/` layout and enforces strict validation against a template.
 
 ## Layout
 
 ```
-<cwd>/                  ← where `lyx init` was run (the current working directory)
-├── _lyx/               git-TRACKED config Hub
+<cwd>/                  ← where `lym init` was run (the current working directory)
+├── _lym/               git-TRACKED config Hub
 │   ├── config/         git-TRACKED config files (only source of live values)
 │   │   ├── loom.yaml       (must match loom module template)
 │   │   └── worktree.yaml   (must match worktree module template)
-│   ├── discussion.md    lyx task discussion (artifact)
-│   ├── plan.md         lyx task plan (artifact)
-│   └── reviews/        lyx code reviews (artifact directory)
+│   ├── discussion.md    lym task discussion (artifact)
+│   ├── plan.md         lym task plan (artifact)
+│   └── reviews/        lym code reviews (artifact directory)
 ├── .env                git-IGNORED — local env values (KEY=value)
 
-<hub>/_board/_lyx/config/
+<hub>/_board/_lym/config/
 ├── board.yaml          hub-wide: one per hub (must match board module template)
 └── fabric.yaml         hub-wide: one per hub (must match fabric module template)
 ```
 
-`configreg` marks `board` and `fabric` hub-wide (`Module.HubWide`), so their config files live once under the hub's board dir and not in each worktree's `_lyx/config/`.
+`configreg` marks `board` and `fabric` hub-wide (`Module.HubWide`), so their config files live once under the hub's board dir and not in each worktree's `_lym/config/`.
 
-`_lyx/` presence is what makes a directory "initialised" for `Load`;
+`_lym/` presence is what makes a directory "initialised" for `Load`;
 if it is absent, `Load` errors (see `FindBaseDir`'s error messages below).
 `LoadOrTemplate` resolves the caller's embedded template instead of erroring on that same absence — see "Resolution model" below.
 Resolution is **cwd-authoritative** — the cwd does **not** need to equal the git-repo root (a first-class constraint;
@@ -31,21 +31,21 @@ it caused constant trouble in millpy precisely because it was designed in and th
 
 ## Resolution model
 
-**Two policies, one shared body:** `Load(baseDir, module, template []byte)` is strict — an absent `_lyx/` directory or an absent config file is an error.
+**Two policies, one shared body:** `Load(baseDir, module, template []byte)` is strict — an absent `_lym/` directory or an absent config file is an error.
 `LoadOrTemplate(baseDir, module, template []byte)` degrades — either absence resolves `template` instead.
 Both read the on-disk config file, validate it against a template, and resolve environment variables whenever a config file is present.
 
 **Flow (the strict path, shared by both entry points whenever a config file is present):**
 
-1. Call `FindBaseDir(baseDir)` — check that `_lyx/` exists at baseDir.
-2. Read the config file at `configengine.ConfigFile(baseDir, module)` (e.g., `_lyx/config/loom.yaml`).
-   If absent, `Load` returns an error instructing the user to run `lyx config reconcile`;
+1. Call `FindBaseDir(baseDir)` — check that `_lym/` exists at baseDir.
+2. Read the config file at `configengine.ConfigFile(baseDir, module)` (e.g., `_lym/config/loom.yaml`).
+   If absent, `Load` returns an error instructing the user to run `lym config reconcile`;
    `LoadOrTemplate` instead takes the degrading path below.
 3. Fill the file's missing template keys in memory via `yamlengine.FillMissing(template, fileBytes)`.
    A shape mismatch or unparseable YAML returns an error naming the file and the key-path.
    When it filled any key, one `logger.Info` line (`configengine: filled missing keys from template`) carries the module, the file and the filled key-paths.
    The file on disk is never written;
-   `lyx config reconcile` stays the only writer of config files.
+   `lym config reconcile` stays the only writer of config files.
    Then run `yamlengine.MissingKeys(template, filled)` as a backstop: `FillMissing` never descends into lists, so a template key missing inside a list element of mappings is still reported, and returns an error naming the file and the key-paths, without a reconcile hint, since reconcile carries lists whole and cannot add the key either.
 4. Build the environment via `envsource.Build(baseDir)` (reads `.env`, overlays OS env).
 5. Resolve environment variables via `yamlengine.Resolve(filled, env)` (expands `${env:...}` markers).
@@ -70,8 +70,8 @@ only its *absence* degrades.
 - **Errors are strict on `Load`**: absent files, shape mismatches, a template key missing inside a list element, or unset required env vars cause hard errors with clear messages naming the file and the problem.
   Under `LoadOrTemplate`, the shape-mismatch, list-element and unset-required-env-var halves still hold;
   only the absent-file half is replaced by a resolved template default.
-- **Extra/stale keys are tolerated** by both entry points and cleaned up by `lyx config reconcile` (reconciliation).
-  A default- or worktree-layer file holding them is logged at Warn, once per file and key list in a process, naming the reconcile that removes them: `lyx config reconcile --layer default --apply` from the hub's prime for a file under the board dir, `lyx config reconcile --apply` for a worktree file.
+- **Extra/stale keys are tolerated** by both entry points and cleaned up by `lym config reconcile` (reconciliation).
+  A default- or worktree-layer file holding them is logged at Warn, once per file and key list in a process, naming the reconcile that removes them: `lym config reconcile --layer default --apply` from the hub's prime for a file under the board dir, `lym config reconcile --apply` for a worktree file.
 - **A key present with an empty value counts as present** and is not flagged missing.
 
 ## Environment variable grammar
@@ -88,7 +88,7 @@ Config values use POSIX-style brace-delimited env markers:
 **Interpolation:** Markers may appear inside a larger string:
 
 ```yaml
-path: ${env:LYX_EXAMPLE_PATH:-../_board}/sub
+path: ${env:LYM_EXAMPLE_PATH:-../_board}/sub
 url: https://${env:HOST:-localhost}:${env:PORT:-8080}
 ```
 
@@ -117,40 +117,40 @@ Callers never see raw YAML or unexpanded tokens.
 ## Migration from old format
 
 Existing config files in the old commented format (all lines commented out) are treated as empty by `Reconcile`.
-Running `lyx config reconcile --apply` from the code worktree reconciles all module configs against their templates, rewriting old-format files to live templates with all keys present.
-Because the code worktree's `_lyx` is a directory junction into its records sibling's `_lyx`, a single `lyx config reconcile` there reaches the worktree's own and local config files.
+Running `lym config reconcile --apply` from the code worktree reconciles all module configs against their templates, rewriting old-format files to live templates with all keys present.
+Because the code worktree's `_lym` is a directory junction into its records sibling's `_lym`, a single `lym config reconcile` there reaches the worktree's own and local config files.
 No separate command in the records sibling is needed.
-The files under the hub's board dir, the hub-wide modules' files and the per-worktree repo defaults, are reconciled by `lyx config reconcile --layer default`, applied from the hub's prime, and by the hub reconcile the first start verb after a binary change runs.
+The files under the hub's board dir, the hub-wide modules' files and the per-worktree repo defaults, are reconciled by `lym config reconcile --layer default`, applied from the hub's prime, and by the hub reconcile the first start verb after a binary change runs.
 
 ## Exported functions
 
-### `LyxDirName` (not exported here)
+### `LymDirName` (not exported here)
 
-[`internal/lyxdirs` is the sole declarer](../../PATTERN.md) of the `"_lyx"` token (`lyxdirs.LyxDirName`);
-`internal/configengine` itself uses `lyxdirs.LyxDirName` like every other caller and does not declare or export the literal.
-Every module joins its own private relative-path constant onto a `baseDir` directly (e.g. `filepath.Join(baseDir, lyxdirs.LyxDirName, "plan")`), never onto a fused `"_lyx/..."` literal — see the per-segment join rule in [PATTERN-cwd-resolution](../../pattern/PATTERN-cwd-resolution.md).
+[`internal/lymdirs` is the sole declarer](../../PATTERN.md) of the `"_lym"` token (`lymdirs.LymDirName`);
+`internal/configengine` itself uses `lymdirs.LymDirName` like every other caller and does not declare or export the literal.
+Every module joins its own private relative-path constant onto a `baseDir` directly (e.g. `filepath.Join(baseDir, lymdirs.LymDirName, "plan")`), never onto a fused `"_lym/..."` literal — see the per-segment join rule in [PATTERN-cwd-resolution](../../pattern/PATTERN-cwd-resolution.md).
 
 ### `ConfigDir(baseDir string) string`
 
-Returns `filepath.Join(baseDir, LyxDirName, "config")` — the directory where module configuration YAML files are stored.
+Returns `filepath.Join(baseDir, LymDirName, "config")` — the directory where module configuration YAML files are stored.
 
 ### `ConfigFile(baseDir, module string) string`
 
-Returns `filepath.Join(ConfigDir(baseDir), module+".yaml")` — the path to a specific module's configuration file (e.g. `_lyx/config/loom.yaml`).
+Returns `filepath.Join(ConfigDir(baseDir), module+".yaml")` — the path to a specific module's configuration file (e.g. `_lym/config/loom.yaml`).
 
 ### `StagingFile(baseDir, module string) string`
 
-Returns `filepath.Join(baseDir, DotLyxDirName, "config", module+".yaml")` — the ephemeral `.lyx` counterpart of `ConfigFile` at the mirrored subpath, where an interactive edit works on a copy that is never tracked.
+Returns `filepath.Join(baseDir, DotLymDirName, "config", module+".yaml")` — the ephemeral `.lym` counterpart of `ConfigFile` at the mirrored subpath, where an interactive edit works on a copy that is never tracked.
 
 ### `ConfigFileRel(module string) string`
 
-Returns `filepath.Join(LyxDirName, "config", module+".yaml")` — the anchor-relative form used to build records commit pathspecs, as opposed to `ConfigFile`'s base-joined absolute form.
+Returns `filepath.Join(LymDirName, "config", module+".yaml")` — the anchor-relative form used to build records commit pathspecs, as opposed to `ConfigFile`'s base-joined absolute form.
 
 ### `FindBaseDir(cwd string) (string, error)`
 
 Checks whether the given directory is an initialized Loomyard base directory.
 
-**Behavior:** Performs a strict check that `<cwd>/_lyx` exists;
+**Behavior:** Performs a strict check that `<cwd>/_lym` exists;
 it never walks up to parent directories.
 This is the cwd-authoritative model — the provided `cwd` must itself be initialized.
 
@@ -158,29 +158,29 @@ This is the cwd-authoritative model — the provided `cwd` must itself be initia
 On failure, an empty string and an error.
 
 **Error messages:**
-- If `<cwd>/_lyx` does not exist: `not initialized: _lyx/ directory not found`.
+- If `<cwd>/_lym` does not exist: `not initialized: _lym/ directory not found`.
   This error wraps the exported `ErrNotInitialized` sentinel;
   `errors.Is(err, configengine.ErrNotInitialized)` is the supported way to detect absence, not text matching.
-- If stat fails for another reason: `stat _lyx: <underlying error>`.
+- If stat fails for another reason: `stat _lym: <underlying error>`.
   This branch deliberately does not wrap `ErrNotInitialized` — a stat failure (permission, IO) is not absence.
 
-**Note on error rewrapping:** The strict callers of `Load` — `fabricengine.LoadConfig`, `loomengine.LoadConfig` and `batcher.Active` — match the substring `"not initialized"` in the error text to rewrap it into a module-level message: `not initialized here; run "lyx fabric reconcile"`.
-`boardengine.LoadConfig` instead detects absence with `errors.Is(err, configengine.ErrNotInitialized)` and an absent-file check, and names the hub's `board.yaml`: `board config <path> not initialized; run "lyx fabric reconcile"`.
+**Note on error rewrapping:** The strict callers of `Load` — `fabricengine.LoadConfig`, `loomengine.LoadConfig` and `batcher.Active` — match the substring `"not initialized"` in the error text to rewrap it into a module-level message: `not initialized here; run "lym fabric reconcile"`.
+`boardengine.LoadConfig` instead detects absence with `errors.Is(err, configengine.ErrNotInitialized)` and an absent-file check, and names the hub's `board.yaml`: `board config <path> not initialized; run "lym fabric reconcile"`.
 The `ErrNotInitialized` sentinel makes migrating the other callers onto `errors.Is` possible;
 that migration is available, not done, and the substring match remains supported for callers that still use it.
 Do not conflate:
-- Raw `FindBaseDir` error: `not initialized: _lyx/ directory not found`
-- Strict-caller rewrapped: `not initialized here; run "lyx fabric reconcile"`
+- Raw `FindBaseDir` error: `not initialized: _lym/ directory not found`
+- Strict-caller rewrapped: `not initialized here; run "lym fabric reconcile"`
 
 ### `Load(baseDir, module string, template []byte) ([]byte, error)`
 
 Loads and resolves a module's configuration from disk.
 
-**Behavior:** Implements the six-step flow described in the Resolution model section above: check `_lyx/` exists, read the config file, fill missing template keys, build environment, and resolve env vars.
+**Behavior:** Implements the six-step flow described in the Resolution model section above: check `_lym/` exists, read the config file, fill missing template keys, build environment, and resolve env vars.
 
 **Error cases:**
 
-- **Config file absent:** Returns error `config file <path> not found; run "lyx config reconcile"`.
+- **Config file absent:** Returns error `config file <path> not found; run "lym config reconcile"`.
 - **Template key missing inside a list element:** Returns error `config file <path>: missing keys: <comma-separated key-paths>`, with no reconcile hint.
 - **Shape mismatch against the template:** Returns error `config file <path>: <error naming the key-path>`.
 - **Unset required env var:** Returns error `config file <path>: unset required env var "NAME"`.
@@ -195,12 +195,12 @@ On error, nil bytes and an error message.
 ### `LoadOrTemplate(baseDir, module string, template []byte) ([]byte, error)`
 
 Same signature as `Load`.
-A provably-absent `_lyx/` directory or a provably-absent config file resolves `template` through `envsource.Build` then `yamlengine.Resolve` instead of erroring — see the "degrading path" in the Resolution model section above.
+A provably-absent `_lym/` directory or a provably-absent config file resolves `template` through `envsource.Build` then `yamlengine.Resolve` instead of erroring — see the "degrading path" in the Resolution model section above.
 The fill and `yamlengine.MissingKeys` are skipped on that path, since the bytes being resolved are the template itself.
 A config file that exists but is invalid still errors exactly as under `Load`;
 any non-absence failure — a stat error, a permission or IO read error — propagates unchanged.
 
-**Error cases:** Identical to `Load`'s, except that config-file absence and `_lyx/` absence no longer produce an error — those two cases resolve the template instead.
+**Error cases:** Identical to `Load`'s, except that config-file absence and `_lym/` absence no longer produce an error — those two cases resolve the template instead.
 A fallback-path error is keyed on the module, not on a config-file path that does not exist: `<module> config template: <underlying error>`.
 
 **Returns:** On success, the resolved YAML bytes (either the on-disk config, or the resolved template on proven absence).
@@ -209,11 +209,11 @@ On error, nil bytes and an error message.
 ### `Set(baseDir, module, template string, pairs []yamlengine.KV) ([]string, error)`
 
 Writes an explicit list of key=value pairs into a module's config file.
-This is the non-interactive counterpart to `Edit` used by the `lyx config <module> --set key=value` CLI path — no editor is invoked and there is no validation loop.
+This is the non-interactive counterpart to `Edit` used by the `lym config <module> --set key=value` CLI path — no editor is invoked and there is no validation loop.
 
 **Behavior:**
 
-1. Calls `FindBaseDir(baseDir)` to check that `_lyx/` exists, then scaffolds the config file from `template` when it is absent (the same `scaffoldIfMissing` helper `Edit` uses, so both entry points create and roll back a fresh default-valued file identically).
+1. Calls `FindBaseDir(baseDir)` to check that `_lym/` exists, then scaffolds the config file from `template` when it is absent (the same `scaffoldIfMissing` helper `Edit` uses, so both entry points create and roll back a fresh default-valued file identically).
 2. Delegates the actual mutation to `yamlengine.SetValues(template, existingBytes, pairs)`, which validates every requested pair's key against the template's leaf-key set and, when all keys are known, applies the pairs and marshals the merged result.
 3. Rejects the whole call — freshly-scaffolded file removed, existing file left untouched — when any *requested* pair's key is absent from the template's leaf-key set (existing, unchanged behavior;
    see `internal/yamlengine`'s `SetValues` documentation for the full validation and preservation mechanism).
@@ -237,7 +237,7 @@ Checks `FindBaseDir(baseDir)`, then runs `EditPath` on `ConfigFile(baseDir, modu
 
 ### `EditPath(path, template string, edit EditorFunc) error`
 
-The interactive edit of a config file at a told path, with no `_lyx/` check.
+The interactive edit of a config file at a told path, with no `_lym/` check.
 It scaffolds `path` from `template` when absent, creating its parent directory, then runs the editor and loops on a YAML parse error.
 An unchanged unparseable save returns `ErrAborted`, and every abort removes a file `EditPath` itself scaffolded.
 Validation is syntactic only.

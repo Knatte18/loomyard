@@ -1,7 +1,7 @@
-// Package driftcli builds the `lyx drift` group over internal/driftengine: `scope`, `accept`, `withdraw`, `compare`, `capture [--side]`, `defer`, `waive`, `status` and the hidden `capture-child`.
+// Package driftcli builds the `lym drift` group over internal/driftengine: `scope`, `accept`, `withdraw`, `compare`, `capture [--side]`, `defer`, `waive`, `status` and the hidden `capture-child`.
 // The engine holds every rule and is handed paths and seams; this package resolves the worktree and builds them.
 //
-// Every verb resolves its worktree with lyxcwd.Resolve and runs only inside a loom or darn run's worktree, so the module is hub-only and internal/cliwire does not serve it.
+// Every verb resolves its worktree with lymcwd.Resolve and runs only inside a loom or darn run's worktree, so the module is hub-only and internal/cliwire does not serve it.
 // `scope`, `accept`, `withdraw` and `compare` carry the role audience, since the Drift agents run them; `capture`, `defer`, `waive` and `status` carry the operator audience, and `capture-child` the internal one.
 // `capture --side` is the Drift-Verify agent's form of an operator command, which the verify stencil names directly.
 // The envelope carries a verb's result under its own name, and a refusal goes through output.Err with the engine's message, which names its way forward.

@@ -4,11 +4,11 @@
 
 package fabricengine
 
-import "github.com/Knatte18/loomyard/internal/lyxcwd"
+import "github.com/Knatte18/loomyard/internal/lymcwd"
 
 // Open returns a handle on the fabric repo for this worktree.
 // It is the only constructor any other package should call — see newPaired for the underlying stat
 // validation Open relies on.
-func Open(l *lyxcwd.Location) (*Fabric, error) {
+func Open(l *lymcwd.Location) (*Fabric, error) {
 	return newPaired(l.WorktreePath(), RecordsWorktree(l))
 }

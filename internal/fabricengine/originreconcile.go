@@ -16,7 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // originRemote is the remote every reconcile call reads.
@@ -26,7 +26,7 @@ const originRemote = "origin"
 const defaultAttemptDeadline = 20 * time.Second
 
 // cleanupRerun is the re-entry a printed stop of a dirty, gone or busy branch appends to its way forward.
-const cleanupRerun = "then re-run lyx cleanup --apply from the prime"
+const cleanupRerun = "then re-run lym cleanup --apply from the prime"
 
 // ReconcileScope names what one reconcile judges.
 // An empty Run is the hub scope: Bolt, the prime's code and records branches, and those of every local pair.
@@ -114,7 +114,7 @@ type OriginSeams struct {
 	OwnerOf             OwnerReader
 }
 
-// OwnerReader answers the owner question over one `board.json` of the hub at hubPath: the effective owner of slug, the subject `lyx adopt` takes to move it, and whether that owner is another machine.
+// OwnerReader answers the owner question over one `board.json` of the hub at hubPath: the effective owner of slug, the subject `lym adopt` takes to move it, and whether that owner is another machine.
 // An error, including this machine having no name, is returned to the reconcile asking it, so no owner is ever compared with an empty name.
 type OwnerReader func(hubPath string, boardJSON []byte, slug string) (owner, subject string, elsewhere bool, err error)
 
@@ -205,8 +205,8 @@ const (
 // Busy marks an ended entry whose driver or branch is busy, so its pair is not yet removed, and WayForward then names what lets the next run remove it.
 // An ended entry also carries How origin ended it, "done" or "removed", and Local when this machine holds a part of its pair.
 // Removed is set once the teardown removed that pair, with the Tags it kept work under and the reasons it Kept anything.
-// Error is the message of a teardown that failed for any reason but being busy, leaving the pair for a later `lyx cleanup --apply`.
-// Owner names the machine that owns an owned_elsewhere entry, and AdoptSubject the beam or `root` that `lyx adopt` takes to move it; an empty AdoptSubject reads as the slug.
+// Error is the message of a teardown that failed for any reason but being busy, leaving the pair for a later `lym cleanup --apply`.
+// Owner names the machine that owns an owned_elsewhere entry, and AdoptSubject the beam or `root` that `lym adopt` takes to move it; an empty AdoptSubject reads as the slug.
 type EntryOutcome struct {
 	Slug         string
 	State        EntryState
@@ -222,7 +222,7 @@ type EntryOutcome struct {
 	Error        string
 }
 
-// adoptSubject returns what `lyx adopt` takes to move the entry: its AdoptSubject, the slug when the owner reader left it empty.
+// adoptSubject returns what `lym adopt` takes to move the entry: its AdoptSubject, the slug when the owner reader left it empty.
 func (e EntryOutcome) adoptSubject() string {
 	if e.AdoptSubject == "" {
 		return e.Slug
@@ -272,7 +272,7 @@ func (r OriginReport) Summary() string {
 
 	for _, entry := range r.Entries {
 		if entry.State == EntryOwnedElsewhere {
-			lines = append(lines, fmt.Sprintf("owned elsewhere: %s by %s; `lyx adopt %s` takes it over", entry.Slug, entry.Owner, entry.adoptSubject()))
+			lines = append(lines, fmt.Sprintf("owned elsewhere: %s by %s; `lym adopt %s` takes it over", entry.Slug, entry.Owner, entry.adoptSubject()))
 		}
 	}
 
@@ -283,7 +283,7 @@ func (r OriginReport) Summary() string {
 		case entry.Busy:
 			lines = append(lines, fmt.Sprintf("ended, not yet removed: %s: %s", entry.Slug, entry.WayForward))
 		case entry.Error != "":
-			lines = append(lines, fmt.Sprintf("ended, not yet removed: %s: %s; a later `lyx cleanup --apply` retries the removal", entry.Slug, entry.Error))
+			lines = append(lines, fmt.Sprintf("ended, not yet removed: %s: %s; a later `lym cleanup --apply` retries the removal", entry.Slug, entry.Error))
 		default:
 			ended = append(ended, entry.Slug)
 		}
@@ -294,7 +294,7 @@ func (r OriginReport) Summary() string {
 	return strings.Join(lines, "\n")
 }
 
-// rerunsCleanup reports whether the way forward of this stop is followed by a re-run of `lyx cleanup --apply`.
+// rerunsCleanup reports whether the way forward of this stop is followed by a re-run of `lym cleanup --apply`.
 func (b BranchOutcome) rerunsCleanup() bool {
 	switch b.State {
 	case BranchDirty, BranchGone:
@@ -316,7 +316,7 @@ func (b BranchOutcome) stopWayForward() string {
 	case BranchRewound:
 		return rewoundWayForward(b.Worktree, b.Branch, b.OriginHead, b.Commits)
 	case BranchRewritten:
-		return fmt.Sprintf("`lyx fabric pull` in %s", b.Worktree)
+		return fmt.Sprintf("`lym fabric pull` in %s", b.Worktree)
 	case BranchDiverged:
 		if b.Repo == failedPushSideCode {
 			return codeDivergedWayForward(b.Worktree, b.Branch, b.Prime)
@@ -332,11 +332,11 @@ func (b BranchOutcome) stopWayForward() string {
 		return b.dirtyWayForward()
 	case BranchBusy:
 		if b.PushLockHeld && b.Slug != "" {
-			return fmt.Sprintf("`lyx tender resume %s`", b.Slug)
+			return fmt.Sprintf("`lym tender resume %s`", b.Slug)
 		}
 		return fmt.Sprintf("wait for the holder of the %s lock to end", b.BusyLock)
 	case BranchLive:
-		return "no step now: the run's own Parent-Align judges and moves its pair, and `lyx cleanup --apply` re-judges it once the run has ended"
+		return "no step now: the run's own Parent-Align judges and moves its pair, and `lym cleanup --apply` re-judges it once the run has ended"
 	case BranchAnchorStopped:
 		return b.anchorStopWayForward()
 	}
@@ -355,19 +355,19 @@ func (b BranchOutcome) anchorStopWayForward() string {
 		return fmt.Sprintf("restore the anchor marker of %s", b.Worktree)
 	}
 	if b.Slug != "" {
-		return fmt.Sprintf("run `lyx fabric anchor %s --set %s` in %s", b.Slug, b.Anchor, b.CodeWorktree)
+		return fmt.Sprintf("run `lym fabric anchor %s --set %s` in %s", b.Slug, b.Anchor, b.CodeWorktree)
 	}
-	return fmt.Sprintf("end every reed session of the hub, the orch's included, with `lyx reed down` in each, and wait until no batten run of the hub is live; then run `lyx fabric anchor --set %s` in %s; then run `lyx beam start` again", b.Anchor, b.CodeWorktree)
+	return fmt.Sprintf("end every reed session of the hub, the orch's included, with `lym reed down` in each, and wait until no batten run of the hub is live; then run `lym fabric anchor --set %s` in %s; then run `lym beam start` again", b.Anchor, b.CodeWorktree)
 }
 
 // dirtyWayForward names where each uncommitted path of a dirty branch is committed or restored.
-// A records path under the record pathspec is committed by `lyx fabric commit` in the pair's code worktree, since every fabric verb is refused in the records sibling.
+// A records path under the record pathspec is committed by `lym fabric commit` in the pair's code worktree, since every fabric verb is refused in the records sibling.
 // Any path, one outside that pathspec included, is committed or restored by git in the worktree the branch is checked out in.
 func (b BranchOutcome) dirtyWayForward() string {
 	paths := joinOrNone(b.Paths)
 	git := fmt.Sprintf("`git commit` or `git checkout -- <path>` in %s", b.Worktree)
 	if b.Repo == failedPushSideRecords {
-		return fmt.Sprintf("commit the uncommitted paths (%s) with `lyx fabric commit` in %s, or any of them with %s", paths, b.CodeWorktree, git)
+		return fmt.Sprintf("commit the uncommitted paths (%s) with `lym fabric commit` in %s, or any of them with %s", paths, b.CodeWorktree, git)
 	}
 	return fmt.Sprintf("commit or restore the uncommitted paths (%s) with %s", paths, git)
 }
@@ -588,7 +588,7 @@ type originTarget struct {
 
 // originTargets lists the branches of the scope that have an origin tracking ref, since a branch never pushed has no origin head to judge against.
 // It also returns the slug of every pair the scope covers, for classifying their entries, and the repository directories the network calls run in.
-func originTargets(l *lyxcwd.Location, scope ReconcileScope) (targets []originTarget, pairs []string, warpDir, recordsDir string, err error) {
+func originTargets(l *lymcwd.Location, scope ReconcileScope) (targets []originTarget, pairs []string, warpDir, recordsDir string, err error) {
 	warpEntries, err := List(l.AnchorPath())
 	if err != nil {
 		return nil, nil, "", "", err
@@ -679,7 +679,7 @@ func samePath(porcelain, built string) bool {
 // A transport failure that outlasts the retry bound is the report's Unreachable, with nothing judged against origin and nothing moved, and a nil error.
 // Any other failure of ls-remote, or a failed fetch after both ls-remote calls answered, is returned as the error, with nothing judged or moved.
 // seams is what the moves and the teardowns reach by injection.
-func ReconcileOrigin(l *lyxcwd.Location, scope ReconcileScope, seams OriginSeams, opts ReconcileOptions) (res OriginReport, err error) {
+func ReconcileOrigin(l *lymcwd.Location, scope ReconcileScope, seams OriginSeams, opts ReconcileOptions) (res OriginReport, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations.Extend(rec.Snapshot()) }()
 
@@ -772,7 +772,7 @@ func ReconcileOrigin(l *lyxcwd.Location, scope ReconcileScope, seams OriginSeams
 // A stop on Bolt or on the prime's records branch stops every entry, a busy one excepted.
 // A busy records branch of the run scope's own pair stops nothing, since the run's own driver holds it.
 // A stopped entry carries the way forward of the branch that stopped it.
-// owners maps the slug of each entry another machine owns to that owner, and subjects maps it to what `lyx adopt` takes to move it; such an entry reads owned_elsewhere and carries the way forward that takes it over, naming its subject, or its slug when the owner reader left none.
+// owners maps the slug of each entry another machine owns to that owner, and subjects maps it to what `lym adopt` takes to move it; such an entry reads owned_elsewhere and carries the way forward that takes it over, naming its subject, or its slug when the owner reader left none.
 func classifyEntries(scope ReconcileScope, recorded []string, branches []BranchOutcome, owners, subjects map[string]string) []EntryOutcome {
 	d3Stop := false
 	d3WayForward := ""
@@ -804,7 +804,7 @@ func classifyEntries(scope ReconcileScope, recorded []string, branches []BranchO
 		case state == EntryOwnedElsewhere:
 			entry.Owner = owner
 			entry.AdoptSubject = subjects[slug]
-			wayForward = fmt.Sprintf("`lyx adopt %s` from this machine's prime takes it over", entry.adoptSubject())
+			wayForward = fmt.Sprintf("`lym adopt %s` from this machine's prime takes it over", entry.adoptSubject())
 		case state != EntryStopped:
 			wayForward = ""
 		case wayForward == "":
@@ -820,7 +820,7 @@ func classifyEntries(scope ReconcileScope, recorded []string, branches []BranchO
 // It returns the owner and the adopt subject of each slug read as owned elsewhere, and nothing for a hub with no Bolt target, no origin head or no OwnerOf seam.
 // The tip's objects are present even for a judge-only scope, which fetches them by SHA, so a dry run reads owners too and moves nothing.
 // A seam error is returned, so no verdict is ever compared with an empty machine name.
-func readOriginOwners(l *lyxcwd.Location, seams OriginSeams, targets []originTarget, outcomes []BranchOutcome, slugs []string) (owners, subjects map[string]string, err error) {
+func readOriginOwners(l *lymcwd.Location, seams OriginSeams, targets []originTarget, outcomes []BranchOutcome, slugs []string) (owners, subjects map[string]string, err error) {
 	boltIndex := slices.IndexFunc(targets, func(target originTarget) bool { return target.side == failedPushSideBolt })
 	if seams.OwnerOf == nil || len(slugs) == 0 || boltIndex < 0 || outcomes[boltIndex].OriginHead == "" {
 		return nil, nil, nil

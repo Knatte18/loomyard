@@ -122,7 +122,7 @@ func basedRunFixture(slug string, planTargets map[int]string, forksStarted time.
 		files:   map[string]string{},
 	}
 	for name, data := range plan {
-		history.files[slug+"plan:_lyx/plan/"+name] = data
+		history.files[slug+"plan:_lym/plan/"+name] = data
 	}
 	base := fakeBase{shas: map[string]bool{"base" + slug: true}, files: map[string]string{}}
 	withBaseFiles(base.files, "base"+slug)

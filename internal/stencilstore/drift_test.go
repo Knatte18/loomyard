@@ -42,7 +42,7 @@ func TestClassifyPortBackDrift(t *testing.T) {
 			board:        ApplyStamp([]byte("operator edit\n"), BodyHash([]byte(embedded))),
 			source:       embedded,
 			wantClass:    driftHandEdited,
-			wantContains: []string{"lyx stencil promote <name>"},
+			wantContains: []string{"lym stencil promote <name>"},
 			wantPromote:  true,
 		},
 		{
@@ -96,7 +96,7 @@ func TestClassifyPortBackDrift(t *testing.T) {
 			source:       embedded,
 			ancestry:     BuildNotInHead,
 			wantClass:    driftNeither,
-			wantContains: []string{"lyx stencil sync", "dev build"},
+			wantContains: []string{"lym stencil sync", "dev build"},
 		},
 	}
 
@@ -185,7 +185,7 @@ func TestWarnPortBackDrift_EmitsOneLineListingTheDriftedStencils(t *testing.T) {
 	if buildCalls != 1 {
 		t.Errorf("build calls = %d; want 1, from the source-ahead stencil alone", buildCalls)
 	}
-	if !strings.Contains(got, "lyx stencil sync") {
+	if !strings.Contains(got, "lym stencil sync") {
 		t.Errorf("warning log = %q; want it to name the sync remedy of the neither class", got)
 	}
 	if lines := strings.Split(strings.TrimSpace(got), "\n"); len(lines) != 1 {

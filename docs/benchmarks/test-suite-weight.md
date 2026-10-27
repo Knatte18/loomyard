@@ -37,10 +37,10 @@ Resources  —  Tier 1 (offline)
 PACKAGE                                       WALL       CPU   PEAK_MEM   PROCS  LEFTOVER  GIT_FIXTURE  GIT_CODE
 ----------------------------------------  --------  --------  ---------  ------  --------  -----------  --------
 internal/reedengine                          2.19s     3.58s     195.3M     190         0            0         0
-cmd/lyx                                      1.88s     2.80s     203.0M     601         0            0         3
+cmd/lym                                      1.88s     2.80s     203.0M     601         0            0         3
 internal/websterengine                       1.83s     6.38s     198.9M     340         0            0         3
 internal/loomcli                             1.82s     4.24s     236.8M     249         0            0         2
-internal/lyxcwd                              1.49s     3.77s     195.9M     877         0            0         0
+internal/lymcwd                              1.49s     3.77s     195.9M     877         0            0         0
 internal/shuttleengine                       1.44s     3.97s     232.3M     222         0            0         0
 internal/orchcli                             1.32s     1.14s     113.0M     178         0            0         0
 internal/shedadapters                        1.14s     3.49s     192.2M     132         0            0         0
@@ -126,7 +126,7 @@ tools/sandbox                                0.22s     0.47s      79.6M     104 
 internal/standalonestate                     0.21s     0.37s      54.0M     114         0            0         0
 internal/discussionparser                    0.21s     0.40s      61.6M     167         0            0         0
 internal/verifyrun                           0.21s     0.35s      44.8M     116         0            0         0
-internal/testkit/lyxbin                      0.21s     0.32s      56.9M     102         0            0         0
+internal/testkit/lymbin                      0.21s     0.32s      56.9M     102         0            0         0
 internal/shedrun                             0.20s     0.41s      55.0M     122         0            0         0
 internal/pattern                             0.20s     0.34s      53.9M     173         0            0         0
 tools/godocreflow                            0.20s     0.34s      53.7M     256         0            0         0
@@ -167,7 +167,7 @@ internal/testkit/boardkit                    0.08s     0.26s      28.6M      41 
 internal/testkit/indexkit                    0.05s     0.00s       2.2M      31         0            0         0
 internal/planindex                           0.04s     0.00s       2.7M      31         0            0         0
 contracts/recipes                            0.04s     0.00s       2.0M      32         0            0         0
-internal/lyxdirs                             0.03s     0.01s      16.0M      17         0            0         0  rusage
+internal/lymdirs                             0.03s     0.01s      16.0M      17         0            0         0  rusage
 TOTAL                                       58.70s   125.43s              21130                      0        31
 
 CPU and PEAK_MEM: the package's systemd scope cgroup (cpu.stat usage_usec, memory.peak), last sample before the scope ended.
@@ -197,12 +197,12 @@ Resources  —  Tags: integration
 PACKAGE                                       WALL       CPU   PEAK_MEM   PROCS  LEFTOVER  GIT_FIXTURE  GIT_CODE
 ----------------------------------------  --------  --------  ---------  ------  --------  -----------  --------
 internal/fabricengine                       26.73s   150.92s     590.4M   79286         0        62560      2447
-cmd/lyx                                      9.83s    18.92s     518.0M    1399         0          114        20
+cmd/lym                                      9.83s    18.92s     518.0M    1399         0          114        20
 internal/battencli                           8.51s     8.94s     150.4M    5245         0         1326      2098
 internal/webstercli                          6.05s     8.42s     186.7M    4631         0         2326       490
 internal/loomcli                             4.85s    11.30s     410.9M    3165         0         1561       640
 internal/fabriccli                           4.54s     9.32s     117.0M    5219         0         1694      2427
-internal/testkit/lyxbin                      3.67s     5.67s     328.7M     640         0            0         0
+internal/testkit/lymbin                      3.67s     5.67s     328.7M     640         0            0         0
 internal/gitexec                             3.32s     0.55s      52.0M     207         0            0        29
 internal/websterengine                       3.13s    10.38s     208.4M    1554         0          830       429
 internal/landingshed                         2.77s     4.90s     156.3M    1486         0          451       486
@@ -220,7 +220,7 @@ internal/hubgeom                             1.22s     2.07s     113.5M     644 
 internal/gitrepo                             1.14s     4.12s     109.2M    1614         0          657       485
 internal/hubforge                            1.12s     3.09s      98.4M    1243         0          910         8
 internal/boardengine                         1.04s     2.16s     113.6M     238         0            3        62
-internal/lyxcwd                              1.02s     1.66s     191.8M     253         0           13        14
+internal/lymcwd                              1.02s     1.66s     191.8M     253         0           13        14
 internal/preflight                           0.99s     4.05s     104.7M    1633         0         1033        83
 internal/shuttleengine/claudeengine          0.83s     2.27s     140.4M     331         0            0         0
 internal/configcli                           0.82s     1.41s     102.9M     385         0           63       114
@@ -327,7 +327,7 @@ internal/testkit/boardkit                    0.08s     0.26s      28.4M      47 
 contracts/recipes                            0.05s     0.01s       2.2M      32         0            0         0
 internal/testkit/indexkit                    0.04s     0.02s       7.5M      30         0            0         0
 internal/planindex                           0.04s     0.02s       8.7M      32         0            0         0
-internal/lyxdirs                             0.02s     0.00s       0.5M      29         0            0         0
+internal/lymdirs                             0.02s     0.00s       0.5M      29         0            0         0
 TOTAL                                      128.63s   330.30s             134163                  77777     11999
 
 CPU and PEAK_MEM: the package's systemd scope cgroup (cpu.stat usage_usec, memory.peak), last sample before the scope ended.
@@ -422,10 +422,10 @@ internal/loomcli                            90.53s    22.84s     393.2M   15026 
 internal/reedcli                            47.69s    54.98s    1278.2M   20104         4         1314       401
 internal/reedengine                         37.50s    25.35s     238.6M   17811         0            0         0
 internal/pairteardown                        3.22s     3.70s     114.1M    1649         0          333       231
-cmd/lyx                                      1.87s     2.94s     188.8M     394         0            0         3
+cmd/lym                                      1.87s     2.94s     188.8M     394         0            0         3
 internal/webstercli                          1.24s     2.38s     170.3M     284         0            0         1
 internal/orchcli                             1.23s     0.88s     112.0M     118         0            0         0
-internal/lyxcwd                              0.97s     1.58s     180.5M     171         0            0         0
+internal/lymcwd                              0.97s     1.58s     180.5M     171         0            0         0
 internal/battenrecipe                        0.97s     1.18s     120.1M    1851         0            0         0
 internal/websterengine                       0.95s     2.48s     161.5M     176         0            0         3
 internal/burlercli                           0.90s     1.03s     112.4M    1701         0            0         2
@@ -498,7 +498,7 @@ internal/buildinfo                           0.20s     0.27s      44.2M     513 
 internal/standalonestate                     0.19s     0.31s      50.0M      76         0            0         0
 internal/verifytree                          0.19s     0.30s      57.1M      75         0            0         0
 internal/lock                                0.19s     0.23s      52.3M      74         0            0         0
-internal/testkit/lyxbin                      0.19s     0.28s      45.5M      78         0            0         0
+internal/testkit/lymbin                      0.19s     0.28s      45.5M      78         0            0         0
 internal/verifyrun                           0.19s     0.30s      52.5M      79         0            0         0
 internal/impactset                           0.19s     0.31s      53.5M      82         0            0         0
 internal/batcher                             0.19s     0.30s      50.3M     199         0            0         0
@@ -549,14 +549,14 @@ internal/testkit/boardkit                    0.09s     0.27s      28.5M      36 
 internal/testkit/indexkit                    0.05s     0.00s       0.5M      31         0            0         0
 internal/planindex                           0.05s     0.00s       2.5M      31         0            0         0
 contracts/recipes                            0.05s     0.02s       9.0M      31         0            0         0
-internal/lyxdirs                             0.02s     0.01s       6.1M      17         0            0         0
+internal/lymdirs                             0.02s     0.01s       6.1M      17         0            0         0
 TOTAL                                      224.35s   178.96s              81127                   3003      1466
 
 Leftover processes (pid argv):
-  internal/reedcli: 3145250 /tmp/ttr-2652009940/TestSmokeWarmPath2172589440/001/lyx reed watchdog --hub-path /tmp/ttr-2652009940/TestSmokeWarmPath2172589440/003/warp-bare-LYXHUB --tmux tmux --shell bash
-  internal/reedcli: 3146130 /tmp/ttr-2652009940/TestSmokeColdStart248267788/001/lyx reed watchdog --hub-path /tmp/ttr-2652009940/TestSmokeColdStart248267788/003/warp-bare-LYXHUB --tmux tmux --shell bash
+  internal/reedcli: 3145250 /tmp/ttr-2652009940/TestSmokeWarmPath2172589440/001/lym reed watchdog --hub-path /tmp/ttr-2652009940/TestSmokeWarmPath2172589440/003/warp-bare-LYMHUB --tmux tmux --shell bash
+  internal/reedcli: 3146130 /tmp/ttr-2652009940/TestSmokeColdStart248267788/001/lym reed watchdog --hub-path /tmp/ttr-2652009940/TestSmokeColdStart248267788/003/warp-bare-LYMHUB --tmux tmux --shell bash
   internal/reedcli: 3147087 sleep 300
-  internal/reedcli: 3152518 /tmp/ttr-2652009940/TestSmokeLifecycle1803570383/001/lyx reed watchdog --hub-path /tmp/ttr-2652009940/TestSmokeLifecycle1803570383/003/warp-bare-LYXHUB --tmux tmux --shell bash
+  internal/reedcli: 3152518 /tmp/ttr-2652009940/TestSmokeLifecycle1803570383/001/lym reed watchdog --hub-path /tmp/ttr-2652009940/TestSmokeLifecycle1803570383/003/warp-bare-LYMHUB --tmux tmux --shell bash
 
 CPU and PEAK_MEM: the package's systemd scope cgroup (cpu.stat usage_usec, memory.peak), last sample before the scope ended.
 A row marked rusage fell back to rusage because its scope could not be read.
@@ -622,11 +622,11 @@ Resources  —  Tier 1 (offline)
 
 PACKAGE                                       WALL       CPU   PEAK_MEM   PROCS  LEFTOVER  GIT_FIXTURE  GIT_CODE
 ----------------------------------------  --------  --------  ---------  ------  --------  -----------  --------
-cmd/lyx                                      4.61s    12.04s     322.7M    1161         0            0         0
+cmd/lym                                      4.61s    12.04s     322.7M    1161         0            0         0
 internal/loomcli                             2.65s     9.38s     354.5M     217         0            0         0
 internal/websterengine                       2.51s    10.23s     244.1M     243         0            0         3
 internal/shuttleengine                       1.85s     7.11s     355.6M     145         0            0         0
-internal/lyxcwd                              1.83s     5.40s     261.6M     307         0            0         0
+internal/lymcwd                              1.83s     5.40s     261.6M     307         0            0         0
 internal/shedadapters                        1.68s     4.48s     195.2M     119         0            0         0
 internal/orchengine                          1.46s     4.00s     145.6M     140         0            0         0
 internal/orchcli                             1.42s     1.85s     116.0M     120         0            0         0
@@ -709,7 +709,7 @@ internal/selfreportcli                       0.35s     0.66s      82.2M     105 
 internal/configengine                        0.34s     0.77s      71.2M     141         0            0         0
 internal/batcher                             0.33s     0.71s      57.2M     132         0            0         0
 internal/statuscommit                        0.31s     0.57s      73.2M     103         0            0         0
-internal/lyxtemp                             0.31s     0.65s      58.3M     163         0            0         0
+internal/lymtemp                             0.31s     0.65s      58.3M     163         0            0         0
 internal/shortcutcli                         0.30s     0.53s      63.5M     105         0            0         0
 internal/gateslot                            0.29s     0.54s      61.3M     116         0            0         0
 internal/yamlengine                          0.29s     0.76s      92.5M     109         0            0         0
@@ -766,7 +766,7 @@ internal/statuspane                          0.21s     0.36s      52.1M     103 
 internal/output                              0.21s     0.33s      57.7M     103         0            0         0
 internal/editdirective                       0.21s     0.34s      62.1M     103         0            0         0
 internal/shellguard                          0.21s     0.35s      60.1M     103         0            0         0
-internal/testkit/lyxbin                      0.21s     0.37s      67.3M     101         0            0         0
+internal/testkit/lymbin                      0.21s     0.37s      67.3M     101         0            0         0
 internal/segmentcolor                        0.21s     0.35s      53.6M     101         0            0         0
 internal/verifyrun                           0.21s     0.35s      62.1M     101         0            0         0
 internal/weftname                            0.21s     0.30s      55.3M     108         0            0         0
@@ -787,7 +787,7 @@ internal/testkit/indexkit                    0.06s     0.00s       0.7M      31 
 internal/patternlint                         0.05s     0.01s       7.2M      31         0            0         0
 internal/planindex                           0.05s     0.04s       9.8M      40         0            0         0
 contracts/recipes                            0.04s     0.02s       8.0M      31         0            0         0
-internal/lyxdirs                             0.03s     0.01s      17.0M      16         0            0         0  rusage
+internal/lymdirs                             0.03s     0.01s      17.0M      16         0            0         0  rusage
 TOTAL                                       83.35s   202.99s              20244                      0        27
 
 CPU and PEAK_MEM: the package's systemd scope cgroup (cpu.stat usage_usec, memory.peak), last sample before the scope ended.
@@ -819,8 +819,8 @@ PACKAGE                                       WALL       CPU   PEAK_MEM   PROCS 
 ----------------------------------------  --------  --------  ---------  ------  --------  -----------  --------
 internal/fabricengine                       22.67s   125.11s     500.7M   52859         0        37418      3432
 internal/battencli                           9.89s    11.80s     199.8M    5114         0         1407      2313
-internal/testkit/lyxbin                      7.87s     7.91s     507.2M     515         0            0        28
-cmd/lyx                                      6.57s    16.85s     803.4M     932         0          175        56
+internal/testkit/lymbin                      7.87s     7.91s     507.2M     515         0            0        28
+cmd/lym                                      6.57s    16.85s     803.4M     932         0          175        56
 internal/webstercli                          6.49s     9.51s     210.4M    3511         0         2359       429
 internal/loomcli                             4.87s    15.84s     401.6M    2963         0         1689       358
 internal/fabriccli                           4.12s    10.24s     127.9M    5309         0         1814      2217
@@ -841,7 +841,7 @@ internal/orchcli                             1.45s     2.63s     128.1M     490 
 internal/verifytree                          1.38s     0.93s      72.4M     276         0           40       101
 internal/hubgeom                             1.30s     2.36s     124.7M     613         0          293        38
 internal/gitrepo                             1.25s     5.24s     111.4M    2030         0          755       585
-internal/lyxcwd                              1.23s     2.15s     248.1M     171         0           16         0
+internal/lymcwd                              1.23s     2.15s     248.1M     171         0           16         0
 internal/shedadapters                        1.19s     1.95s     105.5M      88         0            0         0
 internal/preflight                           1.15s     4.21s     150.0M     935         0          305       145
 internal/boardengine                         1.14s     2.85s     152.1M     233         0            3        62
@@ -950,7 +950,7 @@ internal/fsx                                 0.19s     0.32s      48.6M      78 
 internal/reviewbudget                        0.18s     0.32s      54.6M      80         0            0         0
 internal/durfmt                              0.18s     0.30s      55.5M      76         0            0         0
 internal/shell                               0.18s     0.29s      48.4M      79         0            0         0
-internal/lyxtemp                             0.18s     0.31s      56.5M      82         0            0         0
+internal/lymtemp                             0.18s     0.31s      56.5M      82         0            0         0
 internal/state                               0.18s     0.30s      55.8M     109         0            0         0
 internal/standalonestate                     0.18s     0.30s      51.9M      83         0            0         0
 internal/buildinfo                           0.18s     0.31s      49.0M      75         0            0         0
@@ -982,7 +982,7 @@ internal/testkit/indexkit                    0.06s     0.04s       9.6M      31 
 internal/planindex                           0.05s     0.00s       0.5M      30         0            0         0
 internal/patternlint                         0.05s     0.01s       7.5M      31         0            0         0
 contracts/recipes                            0.05s     0.02s       9.7M      31         0            0         0
-internal/lyxdirs                             0.02s     0.00s       3.5M      17         0            0         0
+internal/lymdirs                             0.02s     0.00s       3.5M      17         0            0         0
 TOTAL                                      155.72s   392.95s             110776                  54494     13239
 
 CPU and PEAK_MEM: the package's systemd scope cgroup (cpu.stat usage_usec, memory.peak), last sample before the scope ended.
@@ -1082,7 +1082,7 @@ internal/reedcli                            37.33s    33.36s     470.3M   11346 
 internal/reedengine                         36.97s    30.62s     266.5M   11568         0            0         0
 internal/gitrepo                            16.50s    13.82s    2992.7M     204         0            0         0
 internal/pairteardown                        5.40s     6.01s     154.0M    2407         0          547       350
-cmd/lyx                                      4.38s     7.91s     323.2M     179         0            0         0
+cmd/lym                                      4.38s     7.91s     323.2M     179         0            0         0
 internal/websterengine                       2.52s    10.11s     235.8M     207         0            0         3
 internal/creelcli                            2.22s     1.98s     118.9M     527         0           92         7
 internal/shuttleengine                       1.84s     7.26s     345.6M     147         0            0         0
@@ -1090,7 +1090,7 @@ internal/shedadapters                        1.68s     4.45s     192.2M     118 
 internal/orchengine                          1.44s     3.78s     146.3M     140         0            0         0
 internal/orchcli                             1.40s     1.86s     121.3M     120         0            0         0
 internal/webstercli                          1.37s     2.62s     198.2M     214         0            0         0
-internal/lyxcwd                              1.18s     2.01s     254.0M     117         0            0         0
+internal/lymcwd                              1.18s     2.01s     254.0M     117         0            0         0
 internal/loomrecipe                          1.16s     2.46s     156.1M     118         0            0         0
 internal/githubclient                        1.10s     0.87s      92.2M     105         0            0         0
 internal/fabricengine                        1.09s     4.14s     235.8M     147         0            0         3
@@ -1186,7 +1186,7 @@ internal/verifytree                          0.25s     0.52s      58.2M     104 
 internal/modelspec                           0.25s     0.50s      63.3M     109         0            0         0
 internal/statuspane                          0.25s     0.47s      58.3M     104         0            0         0
 internal/agentname                           0.25s     0.47s      58.1M     129         0            0         0
-internal/lyxtemp                             0.24s     0.49s      53.2M     129         0            0         0
+internal/lymtemp                             0.24s     0.49s      53.2M     129         0            0         0
 internal/helpcli                             0.24s     0.44s      54.7M     101         0            0         0
 internal/languageconfig                      0.24s     0.46s      58.6M     110         0            0         0
 internal/commentlint                         0.24s     0.46s      65.5M     100         0            0         0
@@ -1223,7 +1223,7 @@ internal/testkit/envelope                    0.21s     0.36s      50.5M     101 
 internal/pauserecord                         0.21s     0.33s      56.5M     102         0            0         0
 internal/testkit/logcapture                  0.21s     0.36s      58.1M     104         0            0         0
 internal/gitexec                             0.21s     0.35s      46.3M     103         0            0         0
-internal/testkit/lyxbin                      0.21s     0.38s      66.6M     100         0            0         0
+internal/testkit/lymbin                      0.21s     0.38s      66.6M     100         0            0         0
 internal/fsx                                 0.21s     0.36s      54.6M     101         0            0         0
 internal/output                              0.21s     0.34s      55.2M     103         0            0         0
 internal/fslink                              0.20s     0.38s      57.5M     105         0            0         0
@@ -1242,7 +1242,7 @@ internal/testkit/indexkit                    0.06s     0.00s       0.5M      30 
 internal/patternlint                         0.06s     0.00s       3.0M      38         0            0         0
 internal/planindex                           0.05s     0.03s       8.8M      31         0            0         0
 contracts/recipes                            0.04s     0.01s       7.2M      36         0            0         0
-internal/lyxdirs                             0.03s     0.00s       2.5M      16         0            0         0
+internal/lymdirs                             0.03s     0.00s       2.5M      16         0            0         0
 TOTAL                                       234.14s   290.76s              51890                   2445      1190
 
 CPU and PEAK_MEM: the package's systemd scope cgroup (cpu.stat usage_usec, memory.peak), last sample before the scope ended.

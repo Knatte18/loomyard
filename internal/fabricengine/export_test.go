@@ -17,7 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
 
@@ -114,7 +114,7 @@ var MatchParentBranchForTest = matchParentBranch
 // dirty check (remove.go) refuses an untracked warp worktree before removeWarpWorktreeDir's own
 // git-refusal-triggered fallback is ever reached.
 // It passes the zero leftover seam, which is production.
-func RemoveWarpWorktreeDirForTest(rec *Mutations, l *lyxcwd.Location, target string, force bool) error {
+func RemoveWarpWorktreeDirForTest(rec *Mutations, l *lymcwd.Location, target string, force bool) error {
 	return removeWarpWorktreeDir(rec, l, target, force, leftoverSeam{})
 }
 
@@ -177,7 +177,7 @@ func WorktreeDirtyAllForTest(dir string) (dirty bool, detail string, err error) 
 // the primary weft branch or a branch checked out at some worktree.
 // It passes a throwaway NewMutations("") recorder, since this seam has no verb-level recorder of its
 // own and its callers assert nothing about the record.
-func DeleteBranchForTest(l *lyxcwd.Location, repoDir, branch, branchPrefix string, force bool) error {
+func DeleteBranchForTest(l *lymcwd.Location, repoDir, branch, branchPrefix string, force bool) error {
 	req := branchRequest{
 		what:      "test delete branch",
 		repoDir:   repoDir,
@@ -199,7 +199,7 @@ func DeleteBranchForTest(l *lyxcwd.Location, repoDir, branch, branchPrefix strin
 // augmentation — this seam is what lets a package fabricengine_test file reach the gate while still
 // building its real-hub fixture through that package's own factory function, per the hubforge
 // Fabric-Fixture Invariant.
-func CheckRemoteBranchRequestForTest(l *lyxcwd.Location, repoDir, remote, branch, branchPrefix string) error {
+func CheckRemoteBranchRequestForTest(l *lymcwd.Location, repoDir, remote, branch, branchPrefix string) error {
 	req := remoteBranchRequest{
 		what:      "test delete remote branch",
 		repoDir:   repoDir,
@@ -214,7 +214,7 @@ func CheckRemoteBranchRequestForTest(l *lyxcwd.Location, repoDir, remote, branch
 
 // DeleteArchivedWeftBranchForTest drives deleteRemoteBranch with the pair-weft ownership and archived-on-remote dirtiness kinds and a fresh recorder, returning the recorder's snapshot.
 // It serves package fabricengine_test integration tests that cannot build a remoteBranchRequest themselves.
-func DeleteArchivedWeftBranchForTest(l *lyxcwd.Location, repoDir, warpBranch, branch, archiveTag, leaseSHA string) (Mutations, error) {
+func DeleteArchivedWeftBranchForTest(l *lymcwd.Location, repoDir, warpBranch, branch, archiveTag, leaseSHA string) (Mutations, error) {
 	req := remoteBranchRequest{
 		what:      "test delete archived weft branch",
 		repoDir:   repoDir,
@@ -316,12 +316,9 @@ func newFabric(t *testing.T, warpPath, weftPath string) *Fabric {
 // stays package fabricengine.
 var SeedFabricConfigForTest = seedFabricConfig
 
-// seedFabricConfig materializes the repo-wide fabric.yaml Fabric.Commit's classify step now reads via
-// RepoWiredNames — the `weft:main` base at BoardDir(Hub) — so its resolved pathspec is what
-// Fabric.Commit's classifier needs. warpPath is a bare t.TempDir() plain-git checkout (newPlainWarpRepo
-// or a sibling unborn-warp fixture, not a real hub tree), so lyxcwd.ResolveWorktree(warpPath)'s
-// HubPath — warpPath's parent directory — stands in for the hub; _board is not itself a git
-// repository, so the file is written directly with no git add/commit step.
+// seedFabricConfig materializes the repo-wide fabric.yaml Fabric.Commit's classify step now reads via RepoWiredNames — the `weft:main` base at BoardDir(Hub) — so its resolved pathspec is what Fabric.Commit's classifier needs.
+// warpPath is a bare t.TempDir() plain-git checkout (newPlainWarpRepo or a sibling unborn-warp fixture, not a real hub tree), so lymcwd.ResolveWorktree(warpPath)'s HubPath — warpPath's parent directory — stands in for the hub;
+// _board is not itself a git repository, so the file is written directly with no git add/commit step.
 func seedFabricConfig(t *testing.T, warpPath string) {
 	t.Helper()
 
@@ -330,15 +327,12 @@ func seedFabricConfig(t *testing.T, warpPath string) {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
 	configPath := configengine.ConfigFile(boardDir, "fabric")
-	if err := os.WriteFile(configPath, []byte("branch_prefix: \"\"\npathspec: _lyx _extra\n"), 0o644); err != nil {
+	if err := os.WriteFile(configPath, []byte("branch_prefix: \"\"\npathspec: _lym _extra\n"), 0o644); err != nil {
 		t.Fatalf("write repo-wide fabric config: %v", err)
 	}
 }
 
-// WriteWarpFileForTest re-exports writeWarpFile (relocated fixture helper, formerly
-// commit_integration_test.go): commit_gating_integration_test.go, committed_lyxonly_integration_test.go,
-// commit_partial_integration_test.go and commit_lock_integration_test.go (package fabricengine, never
-// migrating) call it unqualified.
+// WriteWarpFileForTest re-exports writeWarpFile (relocated fixture helper, formerly commit_integration_test.go): commit_gating_integration_test.go, committed_lymonly_integration_test.go, commit_partial_integration_test.go and commit_lock_integration_test.go (package fabricengine, never migrating) call it unqualified.
 var WriteWarpFileForTest = writeWarpFile
 
 // writeWarpFile overwrites (without staging or committing) name inside the warp repo at warpPath —
@@ -408,10 +402,8 @@ func (r *pushRecorder) Calls() []pushCall {
 	return append([]pushCall(nil), r.calls...)
 }
 
-// SwapPushRecorderForTest re-exports swapPushRecorder (relocated fixture helper, formerly
-// commit_integration_test.go): commit_gating_integration_test.go, committed_lyxonly_integration_test.go,
-// commit_partial_integration_test.go and commit_lock_integration_test.go (package fabricengine, never
-// migrating) call it unqualified; the nine relocating files call the exported form.
+// SwapPushRecorderForTest re-exports swapPushRecorder (relocated fixture helper, formerly commit_integration_test.go): commit_gating_integration_test.go, committed_lymonly_integration_test.go, commit_partial_integration_test.go and commit_lock_integration_test.go (package fabricengine, never migrating) call it unqualified;
+// the nine relocating files call the exported form.
 var SwapPushRecorderForTest = swapPushRecorder
 
 // swapPushRecorder replaces spawnDetachedPushFn with a no-op recorder for the duration of the test,
@@ -435,21 +427,17 @@ func swapPushRecorder(t *testing.T) *pushRecorder {
 // TreeAnchorForTest re-exports treeAnchor, the rule that derives the anchor of a branch recording none, for the table that pins it.
 var TreeAnchorForTest = treeAnchor
 
-// WriteWeftConfigContentForTest re-exports writeWeftConfigContent (relocated fixture helper, formerly
-// syncweft_integration_test.go): commit_partial_integration_test.go, commit_gating_integration_test.go,
-// committed_lyxonly_integration_test.go and commit_lock_integration_test.go (package fabricengine,
-// never migrating) call it unqualified, and commit_integration_test.go/diff_integration_test.go need it
-// before syncweft_integration_test.go's own migration card lands.
+// WriteWeftConfigContentForTest re-exports writeWeftConfigContent (relocated fixture helper, formerly syncweft_integration_test.go): commit_partial_integration_test.go, commit_gating_integration_test.go, committed_lymonly_integration_test.go and commit_lock_integration_test.go (package fabricengine, never migrating) call it unqualified, and commit_integration_test.go/diff_integration_test.go need it before syncweft_integration_test.go's own migration card lands.
 var WriteWeftConfigContentForTest = writeWeftConfigContent
 
-// writeWeftConfigContent overwrites the tracked _lyx/config.yaml file newPlainWeftRepo (and a real
+// writeWeftConfigContent overwrites the tracked _lym/config.yaml file newPlainWeftRepo (and a real
 // hub's weft worktree alike) ships with, without staging or committing — the standard way a caller
 // of this helper dirties a weft worktree's pathspec-covered content before calling
 // CommitWeft/Fabric.Commit.
 func writeWeftConfigContent(t *testing.T, weftPath, content string) {
 	t.Helper()
 
-	configPath := filepath.Join(weftPath, "_lyx", "config.yaml")
+	configPath := filepath.Join(weftPath, "_lym", "config.yaml")
 	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
@@ -547,7 +535,7 @@ const HookSentinelForTest = hookSentinel
 
 // WarpLayoutForForTest re-exports warpLayoutFor (production plumbing: warplayout.go), for
 // warplayout_test.go's direct comparison of its spawn-free hub-sibling fast path against the
-// spawning lyxcwd.ResolveWorktree fallback after its package flip to fabricengine_test.
+// spawning lymcwd.ResolveWorktree fallback after its package flip to fabricengine_test.
 var WarpLayoutForForTest = warpLayoutFor
 
 // MergeStateForTest mirrors mergeState's fields (production plumbing: mergestate.go), for
@@ -684,19 +672,19 @@ func SetAddFailAfterWarpHookForTest(t testing.TB, hook func() error) {
 
 // DeleteTaskBranchAtTipForTest re-exports deleteTaskBranchAtTip for package fabricengine_test integration tests that need to hand the gated deletion a tip other than the one currently on origin, to prove the lease holds.
 // It passes a throwaway NewMutations("") recorder, since its callers assert nothing about the record.
-func DeleteTaskBranchAtTipForTest(l *lyxcwd.Location, warpBranch, parentBranch, tip string) (deleted bool, keptReason string) {
+func DeleteTaskBranchAtTipForTest(l *lymcwd.Location, warpBranch, parentBranch, tip string) (deleted bool, keptReason string) {
 	return deleteTaskBranchAtTip(NewMutations(""), l, warpBranch, parentBranch, tip)
 }
 
 // CommitPendingRecordsForTest re-exports commitPendingRecords for package fabricengine_test integration tests that drive a sibling location Remove would refuse or tear down before the commit is observable on its own.
 // It passes a throwaway NewMutations("") recorder, since its callers assert nothing about the record.
-func CommitPendingRecordsForTest(l *lyxcwd.Location, slug, warpBranch string) (committed bool, err error) {
+func CommitPendingRecordsForTest(l *lymcwd.Location, slug, warpBranch string) (committed bool, err error) {
 	return commitPendingRecords(NewMutations(""), l, slug, warpBranch, false)
 }
 
 // CleanupRemoteWarpWithHookForTest runs CleanupRemoteWarp with afterEnumerate called between enumeration and the first deletion,
 // so an integration test can move a branch tip after it was observed and prove the lease holds.
-func CleanupRemoteWarpWithHookForTest(t *Topology, l *lyxcwd.Location, apply bool, openPRHeads map[string]bool, afterEnumerate func()) (RemoteWarpCleanupResult, error) {
+func CleanupRemoteWarpWithHookForTest(t *Topology, l *lymcwd.Location, apply bool, openPRHeads map[string]bool, afterEnumerate func()) (RemoteWarpCleanupResult, error) {
 	return t.cleanupRemoteWarp(l, apply, openPRHeads, afterEnumerate)
 }
 
@@ -775,7 +763,7 @@ func AwaitWeftLockWaitForTest(t *testing.T, lockPath string) <-chan struct{} {
 }
 
 // RegenerateHubWorkspaceWithinForTest re-exports regenerateHubWorkspace with a caller-chosen lock wait, so a test shortens the production wait instead of waiting it out.
-func RegenerateHubWorkspaceWithinForTest(rec *Mutations, l *lyxcwd.Location, wait time.Duration) (string, error) {
+func RegenerateHubWorkspaceWithinForTest(rec *Mutations, l *lymcwd.Location, wait time.Duration) (string, error) {
 	return regenerateHubWorkspace(rec, l, wait)
 }
 
@@ -789,7 +777,7 @@ func SetHubWorkspaceBeforeLockHookForTest(t *testing.T, hook func()) {
 }
 
 // ReplayWeftForTest re-exports replayWeft over worktree's configured upstream as last fetched, with a throwaway recorder.
-func ReplayWeftForTest(l *lyxcwd.Location, worktree string, ended map[string]string) (ReplayOutcome, error) {
+func ReplayWeftForTest(l *lymcwd.Location, worktree string, ended map[string]string) (ReplayOutcome, error) {
 	upstream, err := gitrepo.New(worktree).UpstreamSHA()
 	if err != nil {
 		return ReplayOutcome{}, err
@@ -798,7 +786,7 @@ func ReplayWeftForTest(l *lyxcwd.Location, worktree string, ended map[string]str
 }
 
 // ReplayBoltForTest re-exports replayBolt over boardDir's configured upstream as last fetched, with a throwaway recorder.
-func ReplayBoltForTest(l *lyxcwd.Location, boardDir string, ended map[string]string) (ReplayOutcome, error) {
+func ReplayBoltForTest(l *lymcwd.Location, boardDir string, ended map[string]string) (ReplayOutcome, error) {
 	upstream, err := gitrepo.New(boardDir).UpstreamSHA()
 	if err != nil {
 		return ReplayOutcome{}, err

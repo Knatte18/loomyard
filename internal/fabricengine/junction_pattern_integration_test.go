@@ -1,14 +1,14 @@
 //go:build tier1
 
 // junction_pattern_integration_test.go covers the per-junction generalisation
-// this batch makes to seedLyxJunction, unseedLyxJunction, checkJunctionHealth,
+// this batch makes to seedLymJunction, unseedLymJunction, checkJunctionHealth,
 // and Healthy's inline junction check. From card 15 onward, WarpJunctions
-// returns two entries (_lyx and a second, non-_lyx junction), so this file's
+// returns two entries (_lym and a second, non-_lym junction), so this file's
 // cases now exercise a genuinely two-junction world: every generalisation
 // from batch 3 — health check (per-site: reconcile, status, drift),
 // per-junction refusal/repoint, unwire/remove looping, and wiring idempotency
 // (including the single-junction-to-two upgrade path) — is proven against a
-// real second, non-_lyx junction, not merely a loop of length one.
+// real second, non-_lym junction, not merely a loop of length one.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -28,15 +28,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // resetWarpJunction removes an already-wired warp-side junction named name (if any) so a test can
-// exercise seedLyxJunction's real-directory-refusal, creation, or no-op-unwire path against a
+// exercise seedLymJunction's real-directory-refusal, creation, or no-op-unwire path against a
 // genuinely unwired starting point, rather than observing the wiring hubforge.NewHub's CloneAndWire
-// already performed for _lyx.
-func resetWarpJunction(t *testing.T, l *lyxcwd.Location, slug, name string) string {
+// already performed for _lym.
+func resetWarpJunction(t *testing.T, l *lymcwd.Location, slug, name string) string {
 	t.Helper()
 
 	link := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, name)
@@ -70,11 +70,7 @@ func seedRepoWideExtraFabricConfig(t testing.TB, hub string) {
 	}
 }
 
-// TestWireJunctions_MaterialisesMissingWeftTarget is card 6's regression guard: seedLyxJunction
-// must create the weft-side target directory when it is missing (the
-// checkout/reconcile-left-dangling shape), leaving a junction that resolves immediately, and a
-// second WireJunctions call on the same worktree must succeed rather than hard-erroring — the bug
-// this card fixes.
+// TestWireJunctions_MaterialisesMissingWeftTarget is card 6's regression guard: seedLymJunction must create the weft-side target directory when it is missing (the checkout/reconcile-left-dangling shape), leaving a junction that resolves immediately, and a second WireJunctions call on the same worktree must succeed rather than hard-erroring — the bug this card fixes.
 //
 //testtiming:keep WireJunctions creating a missing weft target so the junction resolves at once and a second call succeeds; coverage of its blocks by other tests does not show an assertion of this
 func TestWireJunctions_MaterialisesMissingWeftTarget(t *testing.T) {
@@ -84,16 +80,16 @@ func TestWireJunctions_MaterialisesMissingWeftTarget(t *testing.T) {
 
 	l := h.Location
 	slug := l.WorktreeName
-	target := fabricengine.WeftLyxDirFor(l, slug)
+	target := fabricengine.WeftLymDirFor(l, slug)
 
-	// The weft-prime template pre-seeds _lyx/config/placeholder; remove the
+	// The weft-prime template pre-seeds _lym/config/placeholder; remove the
 	// whole target directory so it genuinely does not exist, matching the
 	// state a checkout/reconcile-created junction points at today.
 	if err := os.RemoveAll(target); err != nil {
 		t.Fatalf("remove weft target %s: %v", target, err)
 	}
 
-	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lym", "_extra"}); err != nil {
 		t.Fatalf("WireJunctions with missing weft target: %v", err)
 	}
 
@@ -101,7 +97,7 @@ func TestWireJunctions_MaterialisesMissingWeftTarget(t *testing.T) {
 		t.Fatalf("weft target %s not materialised: stat err=%v", target, err)
 	}
 
-	link := fabricengine.CodeLyxLink(l, slug)
+	link := fabricengine.CodeLymLink(l, slug)
 	isLink, err := fslink.IsLink(link)
 	if err != nil || !isLink {
 		t.Fatalf("junction at %s is not a link after WireJunctions: isLink=%v err=%v", link, isLink, err)
@@ -113,14 +109,14 @@ func TestWireJunctions_MaterialisesMissingWeftTarget(t *testing.T) {
 	// A second WireJunctions on the same worktree must succeed: this is the
 	// checkout/reconcile path that hard-errored before this card, because the
 	// link-exists branch could not resolve a still-missing target.
-	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lym", "_extra"}); err != nil {
 		t.Fatalf("second WireJunctions = %v; want nil (self-repair path)", err)
 	}
 }
 
 // TestWireJunctions_RefusesRealWarpDirectory is card 7's regression guard: a real, non-link
 // directory sitting at the warp junction path is still refused — fabric never moves or deletes user
-// content — and the returned error names both the offending path and the re-run-`lyx fabric
+// content — and the returned error names both the offending path and the re-run-`lym fabric
 // reconcile` remedy this card's reworded message introduces, replacing the old "migrate via the
 // hub-creator" clause that pointed at a tool that does not address this case.
 //
@@ -132,10 +128,10 @@ func TestWireJunctions_RefusesRealWarpDirectory(t *testing.T) {
 
 	l := h.Location
 	slug := l.WorktreeName
-	link := resetWarpJunction(t, l, slug, lyxdirs.LyxDirName)
+	link := resetWarpJunction(t, l, slug, lymdirs.LymDirName)
 
 	// Seed a real, non-link directory at the warp junction path — the
-	// "created _lyx by hand" mistake this card's message must guide an
+	// "created _lym by hand" mistake this card's message must guide an
 	// operator away from (and, per the batch scope, the same mistake an
 	// operator makes hand-authoring content under an optional junction name).
 	if err := os.MkdirAll(link, 0o755); err != nil {
@@ -146,7 +142,7 @@ func TestWireJunctions_RefusesRealWarpDirectory(t *testing.T) {
 		t.Fatalf("write marker file: %v", err)
 	}
 
-	err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"})
+	err := fabricengine.WireJunctions(l, slug, []string{"_lym", "_extra"})
 	if err == nil {
 		t.Fatal("WireJunctions = nil; want error refusing a real warp directory")
 	}
@@ -155,8 +151,8 @@ func TestWireJunctions_RefusesRealWarpDirectory(t *testing.T) {
 	if !strings.Contains(msg, link) {
 		t.Errorf("error %q does not name the offending path %q", msg, link)
 	}
-	if !strings.Contains(msg, "lyx fabric reconcile") {
-		t.Errorf("error %q does not name the re-run-`lyx fabric reconcile` remedy", msg)
+	if !strings.Contains(msg, "lym fabric reconcile") {
+		t.Errorf("error %q does not name the re-run-`lym fabric reconcile` remedy", msg)
 	}
 
 	// The real directory and its content must be untouched: fabric never
@@ -173,7 +169,7 @@ func TestWireJunctions_RefusesRealWarpDirectory(t *testing.T) {
 // TestUnwireJunctions_ReportsAndClearsEveryJunction is card 8's base-case regression guard: wiring
 // then unwiring reports every junction Name in UnwireResult.JunctionsRemoved and removes every
 // corresponding line from .git/info/exclude.
-// From card 15 onward WarpJunctions returns two entries (_lyx and a second, non-_lyx junction), so
+// From card 15 onward WarpJunctions returns two entries (_lym and a second, non-_lym junction), so
 // this now runs against a genuinely two-junction world — the precondition batch 5's second junction
 // depends on this machinery already handling correctly.
 //
@@ -186,38 +182,38 @@ func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 	l := h.Location
 	slug := l.WorktreeName
 
-	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lym", "_extra"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
-	for _, name := range []string{lyxdirs.LyxDirName, "_extra"} {
+	for _, name := range []string{lymdirs.LymDirName, "_extra"} {
 		pattern := fabricengine.ExcludePatternForTest(l.AnchorRel, name)
 		if lines := gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, slug)); !containsLine(lines, pattern) {
 			t.Fatalf(".git/info/exclude does not contain %q after WireJunctions: %v", pattern, lines)
 		}
 	}
 
-	result, err := fabricengine.UnwireJunctions(l, slug, []string{"_lyx", "_extra"})
+	result, err := fabricengine.UnwireJunctions(l, slug, []string{"_lym", "_extra"})
 	if err != nil {
 		t.Fatalf("UnwireJunctions: %v", err)
 	}
 
-	if want := []string{lyxdirs.LyxDirName, "_extra"}; !slices.Equal(result.JunctionsRemoved, want) {
+	if want := []string{lymdirs.LymDirName, "_extra"}; !slices.Equal(result.JunctionsRemoved, want) {
 		t.Errorf("JunctionsRemoved = %v; want %v", result.JunctionsRemoved, want)
 	}
 	if !result.ExcludeChanged {
 		t.Error("ExcludeChanged = false; want true")
 	}
 
-	lyxLink := fabricengine.CodeLyxLink(l, slug)
-	if _, statErr := os.Lstat(lyxLink); !os.IsNotExist(statErr) {
-		t.Errorf("junction %s still exists after UnwireJunctions", lyxLink)
+	lymLink := fabricengine.CodeLymLink(l, slug)
+	if _, statErr := os.Lstat(lymLink); !os.IsNotExist(statErr) {
+		t.Errorf("junction %s still exists after UnwireJunctions", lymLink)
 	}
 	extraLink := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, "_extra")
 	if _, statErr := os.Lstat(extraLink); !os.IsNotExist(statErr) {
 		t.Errorf("junction %s still exists after UnwireJunctions", extraLink)
 	}
-	if lines := gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, slug)); containsLine(lines, lyxdirs.LyxDirName) {
-		t.Errorf(".git/info/exclude still contains %q after UnwireJunctions: %v", lyxdirs.LyxDirName, lines)
+	if lines := gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, slug)); containsLine(lines, lymdirs.LymDirName) {
+		t.Errorf(".git/info/exclude still contains %q after UnwireJunctions: %v", lymdirs.LymDirName, lines)
 	}
 	if lines := gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, slug)); containsLine(lines, "_extra") {
 		t.Errorf(".git/info/exclude still contains %q after UnwireJunctions: %v", "_extra", lines)
@@ -235,14 +231,14 @@ func TestUnwireJunctions_AlreadyUnwiredIsNoOp(t *testing.T) {
 	l := h.Location
 	slug := l.WorktreeName
 
-	// hubforge.NewHub's CloneAndWire already wires _lyx; unwire it once first so this test
+	// hubforge.NewHub's CloneAndWire already wires _lym; unwire it once first so this test
 	// exercises the already-unwired no-op path against a genuinely unwired worktree, rather than
-	// UnwireJunctions's ordinary first-time removal of the pre-wired _lyx junction.
-	if _, err := fabricengine.UnwireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
+	// UnwireJunctions's ordinary first-time removal of the pre-wired _lym junction.
+	if _, err := fabricengine.UnwireJunctions(l, slug, []string{"_lym", "_extra"}); err != nil {
 		t.Fatalf("pre-unwire: %v", err)
 	}
 
-	result, err := fabricengine.UnwireJunctions(l, slug, []string{"_lyx", "_extra"})
+	result, err := fabricengine.UnwireJunctions(l, slug, []string{"_lym", "_extra"})
 	if err != nil {
 		t.Fatalf("UnwireJunctions on never-wired worktree = %v; want nil", err)
 	}
@@ -265,41 +261,34 @@ func containsLine(lines []string, name string) bool {
 	return false
 }
 
-// TestDetectWarpPollution_LyxTrackedAsRestorable is card 18's regression guard, re-pointed at the
-// _lyx-only layout batch 5 delivers: a tracked path under _lyx in the warp index must be reported as
-// pollution with an automated restore remedy (git rm --cached plus a reminder to restore the
-// junction/exclude entry) — every pollution class this scan reports now carries that remedy, since
-// there is no report-only class left.
+// TestDetectWarpPollution_LymTrackedAsRestorable is card 18's regression guard, re-pointed at the _lym-only layout batch 5 delivers: a tracked path under _lym in the warp index must be reported as pollution with an automated restore remedy (git rm --cached plus a reminder to restore the junction/exclude entry) — every pollution class this scan reports now carries that remedy, since there is no report-only class left.
 //
-//testtiming:keep a tracked _lyx path in the warp index being reported with an automated restore remedy; coverage of its blocks by other tests does not show an assertion of this
-func TestDetectWarpPollution_LyxTrackedAsRestorable(t *testing.T) {
+//testtiming:keep a tracked _lym path in the warp index being reported with an automated restore remedy; coverage of its blocks by other tests does not show an assertion of this
+func TestDetectWarpPollution_LymTrackedAsRestorable(t *testing.T) {
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 
-	// The hub's prime pair already has _lyx wired (a junction) and excluded (a
-	// .git/info/exclude entry) by hubforge.NewHub's CloneAndWire; unwire it first — which clears
-	// both the link and the exclude entry — so this test can simulate the "hand-authored _lyx
-	// content accidentally committed to warp" mistake against a genuinely trackable real directory,
-	// rather than `git add` refusing a still-gitignored path.
-	if _, err := fabricengine.UnwireJunctions(l, l.WorktreeName, []string{lyxdirs.LyxDirName}); err != nil {
-		t.Fatalf("pre-unwire _lyx: %v", err)
+	// The hub's prime pair already has _lym wired (a junction) and excluded (a .git/info/exclude entry) by hubforge.NewHub's CloneAndWire;
+	// unwire it first — which clears both the link and the exclude entry — so this test can simulate the "hand-authored _lym content accidentally committed to warp" mistake against a genuinely trackable real directory, rather than `git add` refusing a still-gitignored path.
+	if _, err := fabricengine.UnwireJunctions(l, l.WorktreeName, []string{lymdirs.LymDirName}); err != nil {
+		t.Fatalf("pre-unwire _lym: %v", err)
 	}
 
-	// Track a file under _lyx directly in the warp worktree's index — the
-	// "hand-authored _lyx content accidentally committed to warp" mistake
+	// Track a file under _lym directly in the warp worktree's index — the
+	// "hand-authored _lym content accidentally committed to warp" mistake
 	// this scan exists to catch.
-	warpLyxDir := filepath.Join(l.WorktreePath(), lyxdirs.LyxDirName)
-	if err := os.MkdirAll(warpLyxDir, 0o755); err != nil {
-		t.Fatalf("mkdir warp _lyx dir: %v", err)
+	warpLymDir := filepath.Join(l.WorktreePath(), lymdirs.LymDirName)
+	if err := os.MkdirAll(warpLymDir, 0o755); err != nil {
+		t.Fatalf("mkdir warp _lym dir: %v", err)
 	}
-	trackedFile := filepath.Join(warpLyxDir, "PATTERN.md")
+	trackedFile := filepath.Join(warpLymDir, "PATTERN.md")
 	if err := os.WriteFile(trackedFile, []byte("# constraints\n"), 0o644); err != nil {
 		t.Fatalf("write tracked file: %v", err)
 	}
-	gitkit.MustRun(t, l.WorktreePath(), "git", "add", "--", lyxdirs.LyxDirName)
-	gitkit.MustRun(t, l.WorktreePath(), "git", "commit", "-m", "accidentally track _lyx")
+	gitkit.MustRun(t, l.WorktreePath(), "git", "add", "--", lymdirs.LymDirName)
+	gitkit.MustRun(t, l.WorktreePath(), "git", "commit", "-m", "accidentally track _lym")
 
 	topology := h.Topology
 	result, err := topology.Status(l)
@@ -310,7 +299,7 @@ func TestDetectWarpPollution_LyxTrackedAsRestorable(t *testing.T) {
 		t.Fatal("Status returned no pairs")
 	}
 
-	wantPath := lyxdirs.LyxDirName + "/PATTERN.md"
+	wantPath := lymdirs.LymDirName + "/PATTERN.md"
 	var found *fabricengine.PollutionEntry
 	for i, entry := range result.Pairs[0].Pollution {
 		if entry.Path == wantPath {
@@ -416,13 +405,8 @@ func TestDetectWarpPollution_RaddleNoLongerReported(t *testing.T) {
 	}
 }
 
-// TestHealthy_JunctionDriftShapes is card 11's regression guard: each of Healthy's three
-// junction-drift shapes — missing, not-a-link, and points-elsewhere — produces reason wording
-// naming the junction, aligned with checkJunctionHealth's wording (card 10) for the same shape.
-// From card 15 onward, each drift shape is exercised against BOTH junctions (_lyx and a second,
-// non-_lyx junction), proving Healthy's WarpJunctionsHere() loop — drift.go does not share
-// checkJunctionHealth's code path, so this is not redundant with reconcile.go's or status.go's own
-// coverage — reports the correct wording for the second, non-_lyx junction too.
+// TestHealthy_JunctionDriftShapes is card 11's regression guard: each of Healthy's three junction-drift shapes — missing, not-a-link, and points-elsewhere — produces reason wording naming the junction, aligned with checkJunctionHealth's wording (card 10) for the same shape.
+// From card 15 onward, each drift shape is exercised against BOTH junctions (_lym and a second, non-_lym junction), proving Healthy's WarpJunctionsHere() loop — drift.go does not share checkJunctionHealth's code path, so this is not redundant with reconcile.go's or status.go's own coverage — reports the correct wording for the second, non-_lym junction too.
 func TestHealthy_JunctionDriftShapes(t *testing.T) {
 	shapes := []struct {
 		name       string
@@ -481,22 +465,22 @@ func TestHealthy_JunctionDriftShapes(t *testing.T) {
 	junctions := []struct {
 		name      string
 		dirName   string
-		linkFor   func(l *lyxcwd.Location) string
-		targetFor func(l *lyxcwd.Location) string
+		linkFor   func(l *lymcwd.Location) string
+		targetFor func(l *lymcwd.Location) string
 	}{
 		{
-			name:      "Lyx",
-			dirName:   lyxdirs.LyxDirName,
-			linkFor:   func(l *lyxcwd.Location) string { return fabricengine.WarpLyxLinkHere(l) },
-			targetFor: func(l *lyxcwd.Location) string { return fabricengine.WeftLyxDir(l) },
+			name:      "Lym",
+			dirName:   lymdirs.LymDirName,
+			linkFor:   func(l *lymcwd.Location) string { return fabricengine.WarpLymLinkHere(l) },
+			targetFor: func(l *lymcwd.Location) string { return fabricengine.WeftLymDir(l) },
 		},
 		{
 			name:    "Extra",
 			dirName: "_extra",
-			linkFor: func(l *lyxcwd.Location) string {
+			linkFor: func(l *lymcwd.Location) string {
 				return filepath.Join(l.WorktreePath(), l.AnchorRel, "_extra")
 			},
-			targetFor: func(l *lyxcwd.Location) string {
+			targetFor: func(l *lymcwd.Location) string {
 				return filepath.Join(fabricengine.RecordsWorktree(l), l.AnchorRel, "_extra")
 			},
 		},
@@ -512,11 +496,11 @@ func TestHealthy_JunctionDriftShapes(t *testing.T) {
 
 				l := h.Location
 				slug := l.WorktreeName
-				// Wire the full RepoWiredNames set, .lyx included: Healthy below reads
-				// RepoWiredNames(l) internally, and a .lyx junction absent on disk would report
-				// CauseJunctionMissing for .lyx before this subtest's own corruption is ever
+				// Wire the full RepoWiredNames set, .lym included: Healthy below reads
+				// RepoWiredNames(l) internally, and a .lym junction absent on disk would report
+				// CauseJunctionMissing for .lym before this subtest's own corruption is ever
 				// reached.
-				if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", ".lyx", "_extra"}); err != nil {
+				if err := fabricengine.WireJunctions(l, slug, []string{"_lym", ".lym", "_extra"}); err != nil {
 					t.Fatalf("WireJunctions: %v", err)
 				}
 
@@ -541,7 +525,7 @@ func TestHealthy_JunctionDriftShapes(t *testing.T) {
 }
 
 // TestReconcile_RepairsOptionalJunctionOnlyDrift is the reconcile.go site of card 19's per-site
-// health-check coverage: with _lyx healthy and the second, non-_lyx junction missing, Reconcile must
+// health-check coverage: with _lym healthy and the second, non-_lym junction missing, Reconcile must
 // repair (ReconcileActionJunctionRepointed) rather than report ReconcileActionAlreadyHealthy.
 // reconcile.go does not share drift.go's Healthy code path (see checkJunctionHealth), so this is
 // not redundant with TestHealthy_JunctionDriftShapes above.
@@ -557,16 +541,16 @@ func TestReconcile_RepairsOptionalJunctionOnlyDrift(t *testing.T) {
 	seedRepoWideExtraFabricConfig(t, l.HubPath)
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
-	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lym", "_extra"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
-	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
+	warpLayout, err := lymcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(warp): %v", err)
+		t.Fatalf("lymcwd.Resolve(warp): %v", err)
 	}
 
-	// _lyx stays healthy; only _extra goes missing.
+	// _lym stays healthy; only _extra goes missing.
 	extraLink := filepath.Join(warpLayout.WorktreePath(), warpLayout.AnchorRel, "_extra")
 	if err := fslink.Remove(extraLink); err != nil {
 		t.Fatalf("remove _extra junction: %v", err)
@@ -601,7 +585,7 @@ func TestReconcile_RepairsOptionalJunctionOnlyDrift(t *testing.T) {
 }
 
 // TestStatus_ReportsOptionalJunctionUnhealthy is the status.go site of card 19's per-site
-// health-check coverage: with _lyx healthy and the second, non-_lyx junction mis-pointed, Status must
+// health-check coverage: with _lym healthy and the second, non-_lym junction mis-pointed, Status must
 // report JunctionHealthy false, a JunctionReason naming that junction, and the pair not in sync.
 // status.go computes its verdict inline (see status.go's own doc comment) rather than sharing
 // drift.go's Healthy, so this is not redundant with TestHealthy_JunctionDriftShapes.
@@ -617,16 +601,16 @@ func TestStatus_ReportsOptionalJunctionUnhealthy(t *testing.T) {
 	seedRepoWideExtraFabricConfig(t, l.HubPath)
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
-	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lym", "_extra"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
-	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
+	warpLayout, err := lymcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(warp): %v", err)
+		t.Fatalf("lymcwd.Resolve(warp): %v", err)
 	}
 
-	// _lyx stays healthy; only _extra is re-pointed at an unrelated directory.
+	// _lym stays healthy; only _extra is re-pointed at an unrelated directory.
 	extraLink := filepath.Join(warpLayout.WorktreePath(), warpLayout.AnchorRel, "_extra")
 	if err := fslink.Remove(extraLink); err != nil {
 		t.Fatalf("remove _extra junction: %v", err)
@@ -666,15 +650,15 @@ func TestStatus_ReportsOptionalJunctionUnhealthy(t *testing.T) {
 	}
 }
 
-// TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth is the wiring-idempotency upgrade path: a
-// worktree with _lyx already wired and its second, non-_lyx junction not yet wired at all completes
+// TestWireJunctions_UpgradesLymOnlyWorktreeToBoth is the wiring-idempotency upgrade path: a
+// worktree with _lym already wired and its second, non-_lym junction not yet wired at all completes
 // a WireJunctions call without error and adds only the missing junction — it must not error,
-// and it must not need to touch the already-healthy _lyx junction to succeed.
+// and it must not need to touch the already-healthy _lym junction to succeed.
 // The mechanism this pins — a WireJunctions call adds only the missing optional junction and leaves
-// a healthy _lyx alone — stays live independent of any particular worktree's history.
+// a healthy _lym alone — stays live independent of any particular worktree's history.
 //
-//testtiming:keep a worktree with _lyx wired and the second junction missing gaining only the missing one; coverage of its blocks by other tests does not show an assertion of this
-func TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth(t *testing.T) {
+//testtiming:keep a worktree with _lym wired and the second junction missing gaining only the missing one; coverage of its blocks by other tests does not show an assertion of this
+func TestWireJunctions_UpgradesLymOnlyWorktreeToBoth(t *testing.T) {
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -682,9 +666,9 @@ func TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth(t *testing.T) {
 	l := h.Location
 	slug := l.WorktreeName
 
-	// Wire both junctions once, then remove _extra only — _lyx stays fully
+	// Wire both junctions once, then remove _extra only — _lym stays fully
 	// healthy, _extra becomes the only missing junction.
-	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lym", "_extra"}); err != nil {
 		t.Fatalf("WireJunctions (initial): %v", err)
 	}
 	extraLink := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, "_extra")
@@ -692,39 +676,39 @@ func TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth(t *testing.T) {
 		t.Fatalf("remove _extra junction to simulate a worktree missing it: %v", err)
 	}
 
-	lyxLink := fabricengine.CodeLyxLink(l, slug)
-	lyxResolvedBefore, err := fslink.PointsTo(lyxLink)
+	lymLink := fabricengine.CodeLymLink(l, slug)
+	lymResolvedBefore, err := fslink.PointsTo(lymLink)
 	if err != nil {
-		t.Fatalf("PointsTo(%s) before upgrade: %v", lyxLink, err)
+		t.Fatalf("PointsTo(%s) before upgrade: %v", lymLink, err)
 	}
 
 	// The upgrade call: must complete without error and wire only the missing
 	// _extra junction.
-	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lym", "_extra"}); err != nil {
 		t.Fatalf("WireJunctions (upgrade): %v", err)
 	}
 
 	if isLink, err := fslink.IsLink(extraLink); err != nil || !isLink {
 		t.Fatalf("_extra junction %s not wired by upgrade call: isLink=%v err=%v", extraLink, isLink, err)
 	}
-	lyxResolvedAfter, err := fslink.PointsTo(lyxLink)
+	lymResolvedAfter, err := fslink.PointsTo(lymLink)
 	if err != nil {
-		t.Fatalf("PointsTo(%s) after upgrade: %v", lyxLink, err)
+		t.Fatalf("PointsTo(%s) after upgrade: %v", lymLink, err)
 	}
-	if lyxResolvedBefore != lyxResolvedAfter {
-		t.Errorf("_lyx junction target changed across upgrade call: before=%s after=%s", lyxResolvedBefore, lyxResolvedAfter)
+	if lymResolvedBefore != lymResolvedAfter {
+		t.Errorf("_lym junction target changed across upgrade call: before=%s after=%s", lymResolvedBefore, lymResolvedAfter)
 	}
 
 	// Wiring twice (the already-upgraded worktree) is a no-op.
-	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lym", "_extra"}); err != nil {
 		t.Fatalf("WireJunctions (idempotent re-run): %v", err)
 	}
 }
 
 // TestSeedGitExclude_AnchorsPatternAndReplacesLegacyBareName proves the exclude entry names exactly
 // the one junction path fabric wires, not every same-named directory in the repo.
-// A gitignore pattern with no slash matches at ANY depth, so the bare "_lyx" fabric used to write
-// silently untracked a monorepo's own frontend/_lyx/ on a subpath-anchored hub; and a hub wired by
+// A gitignore pattern with no slash matches at ANY depth, so the bare "_lym" fabric used to write
+// silently untracked a monorepo's own frontend/_lym/ on a subpath-anchored hub; and a hub wired by
 // an earlier binary must converge on the narrower pattern rather than keep both.
 func TestSeedGitExclude_AnchorsPatternAndReplacesLegacyBareName(t *testing.T) {
 	t.Parallel()
@@ -736,26 +720,26 @@ func TestSeedGitExclude_AnchorsPatternAndReplacesLegacyBareName(t *testing.T) {
 
 	// Stand in for a hub wired before the narrowing: a legacy bare-name line already in the file.
 	excludePath := excludeFilePath(t, l, slug)
-	if err := os.WriteFile(excludePath, []byte(lyxdirs.LyxDirName+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(excludePath, []byte(lymdirs.LymDirName+"\n"), 0o644); err != nil {
 		t.Fatalf("seed legacy exclude line: %v", err)
 	}
 
-	if err := fabricengine.WireJunctions(l, slug, []string{lyxdirs.LyxDirName}); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{lymdirs.LymDirName}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
 	lines := gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, slug))
-	pattern := fabricengine.ExcludePatternForTest(l.AnchorRel, lyxdirs.LyxDirName)
+	pattern := fabricengine.ExcludePatternForTest(l.AnchorRel, lymdirs.LymDirName)
 	if !containsLine(lines, pattern) {
 		t.Errorf(".git/info/exclude = %v; want it to contain the anchored pattern %q", lines, pattern)
 	}
-	if containsLine(lines, lyxdirs.LyxDirName) {
+	if containsLine(lines, lymdirs.LymDirName) {
 		t.Errorf(".git/info/exclude = %v; want the legacy bare %q line replaced, not kept beside the anchored pattern",
-			lines, lyxdirs.LyxDirName)
+			lines, lymdirs.LymDirName)
 	}
 
 	// The anchored pattern must not reach a same-named directory elsewhere in the repo.
-	elsewhere := filepath.Join(l.WorktreePath(), "frontend", lyxdirs.LyxDirName)
+	elsewhere := filepath.Join(l.WorktreePath(), "frontend", lymdirs.LymDirName)
 	if err := os.MkdirAll(elsewhere, 0o755); err != nil {
 		t.Fatalf("create same-named directory elsewhere: %v", err)
 	}
@@ -770,13 +754,13 @@ func TestSeedGitExclude_AnchorsPatternAndReplacesLegacyBareName(t *testing.T) {
 		t.Fatalf("git status: err=%v exit=%d stderr=%s", err, exitCode, stderr)
 	}
 	if strings.TrimSpace(stdout) == "" {
-		t.Errorf("git sees nothing under frontend/%s; the exclude pattern reached a directory fabric never wired", lyxdirs.LyxDirName)
+		t.Errorf("git sees nothing under frontend/%s; the exclude pattern reached a directory fabric never wired", lymdirs.LymDirName)
 	}
 }
 
 // excludeFilePath resolves the repo's .git/info/exclude path for the worktree named slug, the same
 // way seedGitExclude does.
-func excludeFilePath(t *testing.T, l *lyxcwd.Location, slug string) string {
+func excludeFilePath(t *testing.T, l *lymcwd.Location, slug string) string {
 	t.Helper()
 	worktreePath := fabricengine.WorktreePath(l, slug)
 	excludePath := gitkit.Git(t, worktreePath, "rev-parse", "--git-path", "info/exclude")

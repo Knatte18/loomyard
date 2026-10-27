@@ -1,6 +1,6 @@
 //go:build tier1
 
-// clone_hubscratch_integration_test.go — CloneHub's hub-scratch materialisation at <hub>/_board/.lyx, which needs real git repositories.
+// clone_hubscratch_integration_test.go — CloneHub's hub-scratch materialisation at <hub>/_board/.lym, which needs real git repositories.
 
 package fabricengine
 
@@ -25,10 +25,7 @@ func initTinyRepo(t *testing.T, dir string) {
 	gitkit.CommitFile(t, dir, "README.md", "# "+filepath.Base(dir), "init")
 }
 
-// TestCloneHub_CreatesHubScratchDir asserts that CloneHub's hub-materialisation step creates
-// HubScratchDir(res.HubPath) (<hub>/_board/.lyx): the hub-wide ephemeral sibling of
-// <hub>/_board/_lyx, created only after the board worktree exists, a real directory rather than a
-// junction.
+// TestCloneHub_CreatesHubScratchDir asserts that CloneHub's hub-materialisation step creates HubScratchDir(res.HubPath) (<hub>/_board/.lym): the hub-wide ephemeral sibling of <hub>/_board/_lym, created only after the board worktree exists, a real directory rather than a junction.
 func TestCloneHub_CreatesHubScratchDir(t *testing.T) {
 	t.Parallel()
 
@@ -41,7 +38,7 @@ func TestCloneHub_CreatesHubScratchDir(t *testing.T) {
 	cloneParent := t.TempDir()
 	// ForceBootstrap: true — the weft fixture here is a non-bare working repo built by
 	// initTinyRepo, an ordinary seeded repo standing in for a weft, not a repo that has ever
-	// been one, so it carries no .lyx-anchor and would otherwise trip the old-order guard.
+	// been one, so it carries no .lym-anchor and would otherwise trip the old-order guard.
 	res, err := CloneHub(cloneParent, CloneOptions{
 		WeftURL:        filepath.ToSlash(weftSrc),
 		WarpURL:        filepath.ToSlash(warpSrc),

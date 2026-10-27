@@ -25,7 +25,7 @@ On success the envelope carries restored, the file names written back or
 removed, empty when nothing differed.
 
 Example:
-  lyx webster restore-plan`,
+  lym webster restore-plan`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
@@ -52,7 +52,7 @@ Example:
 				return nil
 			}
 			if st == nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, `webster: no run in progress; run "lyx webster run" first`))
+				clihelp.SetExit(cmd.Context(), output.Err(out, `webster: no run in progress; run "lym webster run" first`))
 				return nil
 			}
 

@@ -12,28 +12,28 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // warpCostNote is what a refusal tells the operator about the warp change it asks for.
 const warpCostNote = "a code commit on the checked-out warp branch, shared by every machine that checks it out"
 
 // validateAnchorTarget refuses a target anchor the pair's warp checkout cannot hold.
-// The target must pass lyxcwd.ValidateAnchorRel and be a directory the warp checkout's HEAD tracks.
-// None of its segments may be a link or a name fabric reserves: a wired name in names, `.lyx`, `.scratch` or a hub-reserved name.
+// The target must pass lymcwd.ValidateAnchorRel and be a directory the warp checkout's HEAD tracks.
+// None of its segments may be a link or a name fabric reserves: a wired name in names, `.lym`, `.scratch` or a hub-reserved name.
 // It may hold no real wired name either, since a junction cannot be wired over one.
 // A directory HEAD lacks while the warp's fetched upstream tracks it names the update of the warp checkout, and one neither tracks names the commit that brings it in, each with its cost.
 // It reads the warp checkout and changes nothing.
-func validateAnchorTarget(pair *lyxcwd.Location, target string, names []string) error {
-	anchor, err := lyxcwd.ValidateAnchorRel(target)
+func validateAnchorTarget(pair *lymcwd.Location, target string, names []string) error {
+	anchor, err := lymcwd.ValidateAnchorRel(target)
 	if err != nil {
 		return fmt.Errorf("%w; choose another directory of the warp checkout", err)
 	}
 	warp := WorktreePath(pair, pair.WorktreeName)
 
 	if anchor != "." {
-		reserved := slices.Concat(names, []string{lyxdirs.DotLyxDirName, scratchDirName}, HubReservedNames())
+		reserved := slices.Concat(names, []string{lymdirs.DotLymDirName, scratchDirName}, HubReservedNames())
 		prefix := warp
 		for _, segment := range strings.Split(filepath.ToSlash(anchor), "/") {
 			prefix = filepath.Join(prefix, segment)
@@ -99,12 +99,12 @@ func warpDirTracked(warp, rev, anchor string) (bool, error) {
 	return strings.TrimSpace(listed) != "", nil
 }
 
-// anchorNamePathspecs returns the slash paths of the wired names under anchor, never `.lyx`, which no commit holds.
+// anchorNamePathspecs returns the slash paths of the wired names under anchor, never `.lym`, which no commit holds.
 func anchorNamePathspecs(anchor string, names []string) []string {
 	anchor = filepath.ToSlash(anchor)
 	var specs []string
 	for _, name := range names {
-		if name != lyxdirs.DotLyxDirName {
+		if name != lymdirs.DotLymDirName {
 			specs = append(specs, anchorJoin(anchor, name))
 		}
 	}
@@ -112,10 +112,10 @@ func anchorNamePathspecs(anchor string, names []string) []string {
 }
 
 // refuseUnsettledMoveSource refuses a weft whose wired names under anchor, or whose marker, hold a change that is not committed.
-// An untracked path under the wired names counts, the never-tracked `.lyx` bar.
+// An untracked path under the wired names counts, the never-tracked `.lym` bar.
 // The refusal names the commit or the restore that clears the change.
 func refuseUnsettledMoveSource(weftPath, slug, anchor string, names []string) error {
-	specs := append(anchorNamePathspecs(anchor, names), lyxcwd.AnchorFileName)
+	specs := append(anchorNamePathspecs(anchor, names), lymcwd.AnchorFileName)
 	listing, err := gitexec.RunWithEnv(append([]string{"status", "--porcelain", "-z", "--untracked-files=all", "--"}, specs...), weftPath, []string{"GIT_LITERAL_PATHSPECS=1"})
 	if err != nil {
 		return fmt.Errorf("list the uncommitted changes of %s: %w", weftPath, err)
@@ -131,7 +131,7 @@ func refuseUnsettledMoveSource(weftPath, slug, anchor string, names []string) er
 		if strings.ContainsAny(record[:2], "RC") {
 			i++
 		}
-		if record[3:] == lyxcwd.AnchorFileName {
+		if record[3:] == lymcwd.AnchorFileName {
 			markerChanged = true
 			continue
 		}
@@ -139,11 +139,11 @@ func refuseUnsettledMoveSource(weftPath, slug, anchor string, names []string) er
 	}
 	switch {
 	case len(contentPaths) > 0:
-		return fmt.Errorf("the weft of %s holds uncommitted or untracked changes under %s (%s); commit them with `lyx fabric commit` or remove the files, then run the verb again",
+		return fmt.Errorf("the weft of %s holds uncommitted or untracked changes under %s (%s); commit them with `lym fabric commit` or remove the files, then run the verb again",
 			slug, anchor, strings.Join(contentPaths, ", "))
 	case markerChanged:
 		return fmt.Errorf("the weft of %s holds an uncommitted change of %s; drop it with `git -C %s restore %s`, then run the verb again",
-			slug, lyxcwd.AnchorFileName, weftPath, lyxcwd.AnchorFileName)
+			slug, lymcwd.AnchorFileName, weftPath, lymcwd.AnchorFileName)
 	}
 	return nil
 }

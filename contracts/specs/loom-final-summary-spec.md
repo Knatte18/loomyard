@@ -6,7 +6,7 @@
 ## What it is
 
 The final-summary artifact is the prose final-summary a run's last content-producing step writes: a first non-blank line `# <title>`, then free-form prose describing the change.
-Today that step is the `Describe` row of the loom and darn recipes, or the darn writer when the darn review is off, which writes `_lyx/landing/summary.md`; its body is a change description — what the change does and why, for a PR reviewer — rather than a run narrative.
+Today that step is the `Describe` row of the loom and darn recipes, or the darn writer when the darn review is off, which writes `_lym/landing/summary.md`; its body is a change description — what the change does and why, for a PR reviewer — rather than a run narrative.
 The contract names no producer — a future last-content-producing step (e.g. Tenter) can satisfy it too.
 
 ## Format and validation

@@ -40,7 +40,7 @@ var errRelativeHome = errors.New("standalonestate: home directory must be absolu
 // It exists because a relative stateDir is the one result this package must never hand back: every
 // consumer joins subdirectories onto it and passes those to os.MkdirAll, so a relative value
 // silently resolves against the process working directory -- which in standalone mode is the
-// operator's own repository, making lyx write its state tree and its trace logs inside the very
+// operator's own repository, making lym write its state tree and its trace logs inside the very
 // checkout standalonegeom.LogsDir exists to keep them out of.
 var errRelativeStateDir = errors.New("standalonestate: derived state directory is not absolute")
 
@@ -64,7 +64,7 @@ func Derive(target string) (stateDir string, hash8 string, err error) {
 }
 
 // Normalize returns the spelling of target that Derive hashes: symlinks resolved and the result
-// cleaned, the same way internal/lyxcwd/anchor.go's normalizePath does -- reimplemented rather than
+// cleaned, the same way internal/lymcwd/anchor.go's normalizePath does -- reimplemented rather than
 // imported because this package must stay stdlib-only.
 //
 // It is exported because every value that has to AGREE with Derive's identity must be spelled the
@@ -109,7 +109,7 @@ func derive(goos, localAppData, xdgStateHome, home, target string) (stateDir str
 
 	resolved := Normalize(target)
 
-	// Fold case on Windows only, matching lyxcwd's samePath rule exactly. samePath folds case
+	// Fold case on Windows only, matching lymcwd's samePath rule exactly. samePath folds case
 	// at comparison time; hashing has no comparison step, so the fold must happen to the string
 	// that is hashed instead.
 	hashInput := resolved
@@ -150,17 +150,17 @@ func stateDirFor(goos, localAppData, xdgStateHome, home, hash8 string) (string, 
 		if !filepath.IsAbs(localAppData) {
 			return "", fmt.Errorf("%w: %q", errRelativeLocalAppData, localAppData)
 		}
-		return filepath.Join(localAppData, "lyx", hash8), nil
+		return filepath.Join(localAppData, "lym", hash8), nil
 	}
 
 	// A relative XDG_STATE_HOME is IGNORED rather than refused, because the XDG Base Directory
 	// specification says exactly that: "If an implementation encounters a relative path in any of
 	// these variables it should consider the path invalid and ignore it." Ignoring it lands on the
 	// specified $HOME/.local/state fallback below, which is both what the spec asks for and the
-	// safer of the two answers -- the alternative, honoring it, is what wrote lyx state into the
+	// safer of the two answers -- the alternative, honoring it, is what wrote lym state into the
 	// operator's repository.
 	if filepath.IsAbs(xdgStateHome) {
-		return filepath.Join(xdgStateHome, "lyx", hash8), nil
+		return filepath.Join(xdgStateHome, "lym", hash8), nil
 	}
 	if home == "" {
 		return "", errMissingStateHome
@@ -168,5 +168,5 @@ func stateDirFor(goos, localAppData, xdgStateHome, home, hash8 string) (string, 
 	if !filepath.IsAbs(home) {
 		return "", fmt.Errorf("%w: %q", errRelativeHome, home)
 	}
-	return filepath.Join(home, ".local", "state", "lyx", hash8), nil
+	return filepath.Join(home, ".local", "state", "lym", hash8), nil
 }

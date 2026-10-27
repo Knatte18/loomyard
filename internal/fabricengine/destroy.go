@@ -77,7 +77,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // originRemoteName is the remote name deleteRemoteBranch always operates against.
@@ -356,7 +356,7 @@ func ownedBoardWorktree() pathOwnership {
 }
 
 // ownedMovePathspecs declares target as owned when it lies at or under one of pathspecs, each a slash path relative to the weft worktree at weftPath.
-// The pathspecs are the paths an anchor move rewrites: A/<names>, B/<names> and the root marker, never `.lyx`.
+// The pathspecs are the paths an anchor move rewrites: A/<names>, B/<names> and the root marker, never `.lym`.
 func ownedMovePathspecs(weftPath string, pathspecs []string) pathOwnership {
 	return pathOwnership{kind: pathOwnershipMovePathspecs, root: weftPath, pathspecs: pathspecs}
 }
@@ -420,7 +420,7 @@ const (
 // satisfy. The zero value is invalid and is refused by the pipeline before any check runs.
 type branchOwnership struct {
 	kind         branchOwnershipKind
-	location     *lyxcwd.Location
+	location     *lymcwd.Location
 	branchPrefix string
 	// warpBranch serves ownedPairWarpBranch and ownedPairWeftBranch;
 	// parentBranch serves ownedPairWarpBranch only.
@@ -434,7 +434,7 @@ type branchOwnership struct {
 // It consults no naming scheme, so a bare-slug warp branch under the default empty branch_prefix is as deletable as a prefixed one.
 // l serves the checked-out dirtiness probe.
 // An empty proof matches nothing.
-func ownedCreatedBranch(l *lyxcwd.Location, tok createdBranchToken) branchOwnership {
+func ownedCreatedBranch(l *lymcwd.Location, tok createdBranchToken) branchOwnership {
 	return branchOwnership{kind: branchOwnershipCreatedBranch, location: l, createdBranch: tok.branch}
 }
 
@@ -452,17 +452,17 @@ func ownedPairWarpBranch(warpBranch, parentBranch string) branchOwnership {
 // It deliberately has no checked-out test:
 // while Add builds the pair the same-named local branch is the replacement, checked out at the new weft worktree, which is exactly what ownedManagedBranch refuses.
 // An empty warpBranch matches nothing.
-func ownedPairWeftBranch(l *lyxcwd.Location, warpBranch string) branchOwnership {
+func ownedPairWeftBranch(l *lymcwd.Location, warpBranch string) branchOwnership {
 	return branchOwnership{kind: branchOwnershipPairWeft, location: l, warpBranch: warpBranch}
 }
 
 // ownedManagedBranch declares branch as owned when it is one fabric's own scheme constructs (accepted
 // by WeftWarpSlug, or carrying branchPrefix), is not l's primary weft branch, and is not checked out
-// at any worktree. It is the only ownership constructor that takes a *lyxcwd.Location, because
+// at any worktree. It is the only ownership constructor that takes a *lymcwd.Location, because
 // primaryWeftBranch(l) is the one predicate that genuinely needs it — clone's two hub-level path
 // sites have no Location in scope at all, which is exactly why every other kind does without one.
 // An empty branchPrefix means "the prefix test does not apply", never a match-everything wildcard.
-func ownedManagedBranch(l *lyxcwd.Location, branchPrefix string) branchOwnership {
+func ownedManagedBranch(l *lymcwd.Location, branchPrefix string) branchOwnership {
 	return branchOwnership{kind: branchOwnershipManaged, location: l, branchPrefix: branchPrefix}
 }
 
@@ -685,7 +685,7 @@ func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason str
 		// recorded, not a fully-resolved chain. PointsTo fully resolves — which fails outright when
 		// a later segment is gone (a stale-pair prune, where the warp side a wired junction chains
 		// through no longer exists) and silently walks past a target that is itself a further
-		// symlink (a junction wired at a warp `_lyx` that itself points at weft), comparing an
+		// symlink (a junction wired at a warp `_lym` that itself points at weft), comparing an
 		// end state a one-hop expectedTarget was never meant to match.
 		rawTarget, err := fslink.RawTarget(target)
 		if err != nil {
@@ -851,7 +851,7 @@ func resolvePairWarpBranch(warpBranch, parentBranch, branch string) (bool, strin
 // resolvePairWeftBranch implements ownedPairWeftBranch's predicate.
 // The two pure name checks run first, so a mismatched name refuses without spawning git;
 // then branch must not be l's primary weft branch, failing closed when the primary cannot be read.
-func resolvePairWeftBranch(l *lyxcwd.Location, warpBranch, branch string) (bool, string) {
+func resolvePairWeftBranch(l *lymcwd.Location, warpBranch, branch string) (bool, string) {
 	if warpBranch == "" || branch != RecordsBranchName(warpBranch) {
 		return false, fmt.Sprintf("%s is not the pair's own weft branch for %q", branch, warpBranch)
 	}
@@ -872,7 +872,7 @@ func resolvePairWeftBranch(l *lyxcwd.Location, warpBranch, branch string) (bool,
 // scheme constructs, must not be l's primary weft branch, and must not be checked out at any
 // worktree. It inherits primaryWeftBranch's fail-closed direction: an unreadable primary refuses
 // rather than proceeds, since Cleanup's deletions (and every other branch -D site) are irreversible.
-func resolveManagedBranch(l *lyxcwd.Location, branchPrefix, branch string) (bool, string) {
+func resolveManagedBranch(l *lymcwd.Location, branchPrefix, branch string) (bool, string) {
 	_, weftManaged := WeftWarpSlug(branch)
 	prefixManaged := branchPrefix != "" && strings.HasPrefix(branch, branchPrefix)
 	if !weftManaged && !prefixManaged {
@@ -1188,9 +1188,9 @@ func checkUnlandedWork(req branchRequest) error {
 // out at any worktree. git branch -D cannot delete a checked-out branch anyway, so this converts
 // git's own refusal into a named gate refusal, the same move as re-gating removeWarpWorktreeDir's
 // fallback.
-// It keeps the *lyxcwd.Location access path checkBranchDirtiness already used, rather than adding a
+// It keeps the *lymcwd.Location access path checkBranchDirtiness already used, rather than adding a
 // location field to remoteBranchRequest — the three values here are everything the probe needs.
-func checkedOutBranchDirtiness(l *lyxcwd.Location, what, branch string) error {
+func checkedOutBranchDirtiness(l *lymcwd.Location, what, branch string) error {
 	branches, err := listWeftBranches(l)
 	if err != nil {
 		return &destructiveRefusal{Check: CheckDirtiness, What: what, Target: branch, Reason: err.Error()}
@@ -1221,7 +1221,7 @@ func checkRemoteBranchRequest(req remoteBranchRequest) error {
 		return &destructiveRefusal{Check: CheckOwnership, What: req.what, Target: req.branch, Reason: fmt.Sprintf("read the local-only mark of %q: %v", req.branch, markErr)}
 	}
 	if marked {
-		return &destructiveRefusal{Check: CheckOwnership, What: req.what, Target: req.branch, Reason: "the branch is local-only, never on a remote; nothing to delete; remove the pair with `lyx fabric remove <slug>`, which runs no origin step"}
+		return &destructiveRefusal{Check: CheckOwnership, What: req.what, Target: req.branch, Reason: "the branch is local-only, never on a remote; nothing to delete; remove the pair with `lym fabric remove <slug>`, which runs no origin step"}
 	}
 
 	if ok, reason := resolveBranchOwnership(req.ownership, req.branch); !ok {
@@ -1875,7 +1875,7 @@ type dropLocalPlan struct {
 // So does a records branch whose own anchor marker is empty, and one whose anchor differs from the anchor of the origin tip it would move to, ancestry ignored: the refusal wraps ErrAnchorChange and names the commands that settle it.
 // Each move is a `reset --keep` in the branch's own worktree; nothing is fetched or pushed, and the tags stay local.
 // It appends a tag_created entry per tag and a commits_dropped entry per moved branch, with the dropped commits' SHAs as the detail, each after its effect, to rec and to the result.
-func DropLocal(rec *Mutations, l *lyxcwd.Location, slug string) (res DropLocalResult, err error) {
+func DropLocal(rec *Mutations, l *lymcwd.Location, slug string) (res DropLocalResult, err error) {
 	own := NewMutations(l.HubPath)
 	defer func() {
 		res.Mutations = own.Snapshot()
@@ -2103,7 +2103,7 @@ func resetWeftToIntegrated(rec *Mutations, weftPath, onto string) error {
 }
 
 // restoreMovePathsToHead is the executor that puts the paths an unfinished anchor move rewrote in the weft worktree at weftPath back to HEAD.
-// pathspecs are slash paths relative to weftPath: A/<names>, B/<names> and the root marker of the move, never `.lyx`.
+// pathspecs are slash paths relative to weftPath: A/<names>, B/<names> and the root marker of the move, never `.lym`.
 // It runs the pipeline against every pathspec, owning what lies under the move's pathspecs and declaring the dirtiness check not applicable.
 // The move record, or the failing step that raised it, proves the changes under them are the move's own.
 // It then resets the index to HEAD for the pathspecs, restores the tracked files from it and removes the untracked files git does not ignore.
@@ -2171,7 +2171,7 @@ func restoreMovePathsToHead(rec *Mutations, weftPath string, pathspecs []string)
 // It is the gated executor for the ResetHard primitive: there is exactly one correct check
 // declaration for "reset this Fabric's warp checkout", so this exported one-argument method
 // hardcodes it rather than exposing a request-taking API — container is the hub
-// (filepath.Dir(f.warpPath); Fabric holds no *lyxcwd.Location at all, and the parent of the warp
+// (filepath.Dir(f.warpPath); Fabric holds no *lymcwd.Location at all, and the parent of the warp
 // worktree path is the hub), target is the warp worktree itself, ownership is ownedWarpCheckout so
 // the hub's ordinary prime-worktree target still passes, dirtiness is dirtyScopeTracked to match
 // warpWorktreeDirty exactly, and force is always false — Pull exposes no force flag, and this is the

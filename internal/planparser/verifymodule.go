@@ -62,7 +62,7 @@ func checkVerifyNestedModule(plan *Plan, worktreeRoot string) []ValidationError 
 }
 
 // checkVerifyModuleWide implements verify-module-wide: a `go test`, `go build` or `go vet` in a card's Verify value must not name a module-wide package pattern (one holding `...`, or `all`), and a `go test` must not select the `tier2` or `tier3` tier.
-// An agent's settings deny such a command, so it can never run under a fork; the way forward is a `lyx gate test` call over the card's scope, run in the foreground under the gate rule in the agent's system prompt.
+// An agent's settings deny such a command, so it can never run under a fork; the way forward is a `lym gate test` call over the card's scope, run in the foreground under the gate rule in the agent's system prompt.
 // The overview's verify chain is not read.
 // Like the deny, it matches static shapes only: a command built from a variable or behind `bash -c` passes.
 func checkVerifyModuleWide(plan *Plan) []ValidationError {
@@ -74,7 +74,7 @@ func checkVerifyModuleWide(plan *Plan) []ValidationError {
 				Check: "verify-module-wide",
 				Card:  cardID(c),
 				Detail: fmt.Sprintf(
-					"card %d Verify: `%s` is module-wide or runs the tier2 or tier3 tier, which no fork may run raw; use `lyx gate test --wait --tier <n> --card <id>` over the card's own scope, run in the foreground under the gate rule in your system prompt",
+					"card %d Verify: `%s` is module-wide or runs the tier2 or tier3 tier, which no fork may run raw; use `lym gate test --wait --tier <n> --card <id>` over the card's own scope, run in the foreground under the gate rule in your system prompt",
 					c.Number, cmd,
 				),
 			})

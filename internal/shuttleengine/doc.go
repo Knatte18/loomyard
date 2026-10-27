@@ -29,12 +29,12 @@
 // Spec.Requires lists what a run requires of its engine, and a ForkSubagents spec requires fork support without listing it.
 // Start checks it right after resolving the spec's engine, and attach checks it against the engine the run's record names unless every output file is already on disk.
 // A refusal wraps ErrRequirementsUnmet and names the way forward:
-// at Start, a model alias of an engine that meets the requirements; at attach, ending the live strand with `lyx reed remove` and re-stepping the row once the run record is old enough.
+// at Start, a model alias of an engine that meets the requirements; at attach, ending the live strand with `lym reed remove` and re-stepping the row once the run record is old enough.
 // The Start refusal carries a generic way forward, naming a model alias or shuttle.yaml's engine, so a refusal no caller wraps still names one.
 // A caller that resolved the role's model from a config key passes the error through ModelKey.Wrap, which replaces the generic way forward with one naming that key.
 //
 // shuttle is told its anchor path and worktree root as plain strings, at Runner construction, and
-// derives neither — internal/lyxcwd is consequently absent from the package's production imports.
+// derives neither — internal/lymcwd is consequently absent from the package's production imports.
 // Told, however, does not mean unchecked: because the two are adjacent parameters of one type whose
 // consumers are semantically distinct, construction validates the pair and every public method
 // refuses on an unusable one, so a swapped or relative pair fails loudly instead of succeeding
@@ -53,7 +53,7 @@
 // and the Windows-to-POSIX path helper the engine layer needs for hook commands.
 // shuttle.yaml carries no provider key but the neutral python guard switch `deny_python`; the keys a provider owns live in that engine's own config module.
 // Its retired Claude keys still load from an unreconciled layer and are dropped.
-// MigrateConfig raises the module's below-floor poll_interval_ms to its floor and renames a legacy `claude_deny_python` to `deny_python` for lyx config reconcile.
+// MigrateConfig raises the module's below-floor poll_interval_ms to its floor and renames a legacy `claude_deny_python` to `deny_python` for lym config reconcile.
 // Start adds each run's engine name to `engines-run.json` at the run directory root before it registers the strand, a file the orphan sweep never removes.
 // Runner.EnginesRun returns the union of that ledger and the engines of the run records still under the root, so a caller learns which engines a worktree's sessions ran under after their directories are swept.
 // The cross-run readers ReadAgentActivity, ReadSessionStates and ReadAgentWaits read each run through the engine its run record names, the engine set's default for a record naming none, and skip a run whose engine the set does not hold.
@@ -116,11 +116,11 @@
 // A batch of several new events is classified by its last event, so only its last held turn end is notified.
 // It stays provider-invariant, per the Shuttle Provider-Seam Invariant.
 //
-// A second notice covers a permission or input dialog lyx cannot answer, in the same runs and through the same notifier, with the same skips for an interactive run and a runner with no notifier.
+// A second notice covers a permission or input dialog lym cannot answer, in the same runs and through the same notifier, with the same skips for an interactive run and a runner with no notifier.
 // An engine with SessionSignalParser and InputBoxReader reports each ask that is not also an event, and Wait folds those asks into a latch that sets on the first ask and keeps its stamp for further asks.
 // While the latch is set, each tick reads the pane.
 // An input box on screen clears the latch at any age, and a failed capture or a pane too short to draw the box changes nothing.
-// A pane with no input box, once the latch is permissionNoticeBound old, sends one line naming the strand and saying the operator answers the dialog in the pane, reached with `lyx reed attach` in the run's worktree.
+// A pane with no input box, once the latch is permissionNoticeBound old, sends one line naming the strand and saying the operator answers the dialog in the pane, reached with `lym reed attach` in the run's worktree.
 // A later turn end or turn start never clears the latch, and Spec.QuietHold and Spec.HoldDeferral neither suppress nor defer the notice.
 // RunState.DialogNotifiedOffset, the events-file offset past the latest ask folded into a notified episode, is persisted before the notifier is called and advanced by later asks of that episode,
 // and a Wait that starts reading asks from the larger of the prompt offset and it never rebuilds a latch from an ask at or below it, including after an Attach.
@@ -198,7 +198,7 @@
 //
 // Spec.PermissionMode, Spec.AllowAgentTool and Spec.ResumeSessionID are caller-owned engine vocabulary, like Spec.Effort: Spec.validate never inspects them,
 // and the engine is the sole validator and realizer.
-// Empty PermissionMode selects the engine's bypass mode in both run modes, because every session lyx launches into reed needs it.
+// Empty PermissionMode selects the engine's bypass mode in both run modes, because every session lym launches into reed needs it.
 // AllowAgentTool left false keeps shuttle's config-driven Agent deny, and an empty ResumeSessionID mints a new session.
 // A non-empty ResumeSessionID launches that existing session instead.
 // OpenSpec.PermissionMode is the same vocabulary, carried blind by Runner.Open, with empty selecting bypass there too.
@@ -235,7 +235,7 @@
 // Two of Attach's dispositions are errors rather than found == false, because neither is evidence a
 // run has ended: an absent or unreadable reed state file, and a Status() failure. Both name the run
 // directory and the strand guid in a logged warning, since the operator's only escape from either is
-// out of band, via "lyx reed status".
+// out of band, via "lym reed status".
 // A run held at a turn end keeps outcome "running", so the same probe finds it.
 // A record an older binary left at outcome "asking" is attached too when reed tracks its strand as live,
 // with or without an AskingOffset and whether or not its events grew; with a dead or untracked strand it is classified as before.
@@ -249,7 +249,7 @@
 // The removal is bounded to exactly that set,
 // so another producer's strand, a same-role strand with other outputs and a run the probe would attach to are never touched,
 // and a probe that attaches or refuses removes nothing.
-// A strand that cannot be removed comes back as an error naming `lyx reed remove <guid>`, never as a not-found answer.
+// A strand that cannot be removed comes back as an error naming `lym reed remove <guid>`, never as a not-found answer.
 // Runner.AttachIfLive is the same probe with the removal off, for a caller that waits on a live run and starts nothing after a not-found answer;
 // Runner.AttachIfLiveGated is its gated form.
 // Runner.ProbeGated is AttachGated's probe returning the reconstructed *Run unwaited, so a caller can hold two probed runs and wait on both concurrently.
@@ -260,7 +260,7 @@
 //
 // Record reading: the optional TranscriptReader and MessagePricer capabilities, with InstructionFileLister, read an engine's finished records with no run and no shuttle config.
 // TranscriptReader locates a worktree's sessions and reads each, forks included, as provider-neutral TranscriptEntry values with a per-message MessageUsage.
-// The reader keeps every provider rule and its consumer keeps every lyx-format rule.
+// The reader keeps every provider rule and its consumer keeps every lym-format rule.
 // RecordReads bundles one engine's three capabilities, nil where it lacks one, and is what internal/shuttleengines hands out.
 //
 // Segment color: Spec.Segment names the loom segment the spawning module gives its role, and Runner.start forwards it to reed, which resolves the segment's palette color on the strand it returns.
@@ -403,7 +403,7 @@
 // A gated run judges it as a plain turn end at once: Done through the gate when every output file exists, and held when one is missing.
 // An ungated run with every output file present finishes Done at that turn end, whatever is outstanding;
 // with an output file missing it keeps waiting until every such shell has been outstanding for Config.BackgroundShellWaitMin, then holds the turn end once and notifies the parent once.
-// A turn end with a fork or an awaited shell outstanding keeps waiting on every outstanding task with an output file missing, never held and never notified, bounded only by the run's own Timeout and the liveness check, and lyx reaps no shell.
+// A turn end with a fork or an awaited shell outstanding keeps waiting on every outstanding task with an output file missing, never held and never notified, bounded only by the run's own Timeout and the liveness check, and lym reaps no shell.
 // A gated run's waiting turn end on a fork or an awaited shell is never an arrival, because the output files may predate the session's background work;
 // it waits until the task's completion starts the next turn, bounded by the run deadline and the liveness check.
 // At the deadline classifyDeadlineExpiry ends the run OutcomeDone when the output files exist, finalize evaluates the gate once more over the tree as it stands, and the shell lands in Result.EndedShells with its result never read by the run.
@@ -411,7 +411,7 @@
 // the prefixes are caller data, which Spec.validate does not inspect.
 // Config.BackgroundShellWaitMin is the expiry of that ungated wait and the threshold at which a shell outstanding that long is logged once at Warn and shown in the wait marker, which shows only while non-awaited shells are outstanding at staggered first-seen times.
 // Result.EndedShells records each shell outstanding when the run ends, whatever ends it, whose result the run never read, with its label, id, signal and how long it was outstanding, and finalize logs the record at Info.
-// lyx kills no shell, since the provider reports no pid: strand removal ends the shells it can, and a shell detached from the pane's process tree survives it.
+// lym kills no shell, since the provider reports no pid: strand removal ends the shells it can, and a shell detached from the pane's process tree survives it.
 // ShellWaitBound exports the threshold.
 //
 // Wait shows its three Go-side waits, a gate entry's closure (`gate <entry name>`), the background-shell wait above (`background shells`) and a held turn end (`held`), in two places:
@@ -420,7 +420,7 @@
 // A running gate entry ranks first, then the background-shell wait, then the held wait.
 // The held wait starts at a held turn end, stamped with the run clock's time, and the next tick that reads a new event or a turn start past the held turn end clears it, so the following turn start, turn end or ask ends it.
 // A held turn end read in the same batch as a turn start past it is logged and notified, and shows no hold, since the next turn is already under way.
-// ReadWaitMarker returns the first marker with a live pid among a run-directory root's runs, which is how `lyx loom status` reads it.
+// ReadWaitMarker returns the first marker with a live pid among a run-directory root's runs, which is how `lym loom status` reads it.
 // ReadWaitMarkers returns every such marker, and WaitMarker.Held tells the held label, so batten's wait reading can skip a held wait: a held run is idle, and its quiet notice still fires.
 // Both exist only for display and status: no shuttle decision reads either,
 // and a failure to write, remove, set or clear one is logged and changes no verdict, error return, re-prompt or gate outcome.

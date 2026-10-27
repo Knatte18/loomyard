@@ -1,11 +1,7 @@
-// engine.go defines the RoundRunner-agnostic seams every caller wires through: the gate-command
-// execution seam (CommandRunner), Options, and the Engine type and its constructor.
-// Engine drives a caller-supplied RoundRunner for every round's attempt(s) and its own Shuttle seam
-// (judge.go) for the ephemeral judge calls;
+// engine.go defines the RoundRunner-agnostic seams every caller wires through: the gate-command execution seam (CommandRunner), Options, and the Engine type and its constructor.
+// Engine drives a caller-supplied RoundRunner for every round's attempt(s) and its own Shuttle seam (judge.go) for the ephemeral judge calls;
 // it never routes a round through Shuttle itself.
-// Engine is fabric-blind and geometry-blind: it never imports fabricengine, never imports lyxcwd
-// directly, and never constructs a _lyx path itself — it operates on a caller-supplied absolute
-// runDir, and GateDir (Profile) is what resolves the gate command's working directory.
+// Engine is fabric-blind and geometry-blind: it never imports fabricengine, never imports lymcwd directly, and never constructs a _lym path itself — it operates on a caller-supplied absolute runDir, and GateDir (Profile) is what resolves the gate command's working directory.
 package treadleengine
 
 import (
@@ -27,14 +23,10 @@ type CommandRunner func(argv []string, dir string, timeout time.Duration) (outpu
 type Options struct {
 	PauseRequested func() bool
 	RunCommand     CommandRunner
-	// ScratchDir is the directory this block's never-tracked artifacts —
-	// run.lock, state.json.lock, and the pause flag — are written to. An
-	// empty value defaults to runDir, for back-compat with a caller that has
-	// not yet split its scratch tree from its durable one. The engine never
-	// derives this path itself; the caller is told, never the engine (Cwd
-	// Resolution Invariant) — treadleengine stays off internal/lyxcwd and
-	// internal/lyxdirs so the caller, which knows its own
-	// .lyx-anchored geometry, is the one deriving it.
+	// ScratchDir is the directory this block's never-tracked artifacts — run.lock, state.json.lock, and the pause flag — are written to.
+	// An empty value defaults to runDir, for back-compat with a caller that has not yet split its scratch tree from its durable one.
+	// The engine never derives this path itself;
+	// the caller is told, never the engine (Cwd Resolution Invariant) — treadleengine stays off internal/lymcwd and internal/lymdirs so the caller, which knows its own .lym-anchored geometry, is the one deriving it.
 	ScratchDir string
 	// StencilsDir is the absolute stencils directory judge.go's and
 	// targeting.go's read sites pass to stencilstore.Read at call time. The

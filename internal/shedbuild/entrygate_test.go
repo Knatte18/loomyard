@@ -51,13 +51,13 @@ func TestBuild_EntryGate(t *testing.T) {
 			name:        "a bare setting holding a string is an evaluation error naming the config command and the resume command",
 			gate:        setting,
 			value:       "no",
-			wantErrSubs: []string{`row "Gated"`, setting, "holds no, not a bool", "lyx config loom --resolved", "lyx config loom --layer local --set plan_auto_accept=<bool>", "lyx loom resume"},
+			wantErrSubs: []string{`row "Gated"`, setting, "holds no, not a bool", "lym config loom --resolved", "lym config loom --layer local --set plan_auto_accept=<bool>", "lym loom resume"},
 		},
 		{
 			name:        "a bare setting holding a number is an evaluation error",
 			gate:        setting,
 			value:       1,
-			wantErrSubs: []string{setting, "holds 1, not a bool", "lyx loom resume"},
+			wantErrSubs: []string{setting, "holds 1, not a bool", "lym loom resume"},
 		},
 		{
 			name:        "a failed read is an evaluation error naming the row and the check",
@@ -80,7 +80,7 @@ func TestBuild_EntryGate(t *testing.T) {
 				},
 				SettingKnown: configreg.CheckSettingKey,
 				Segments:     map[string]shedrecipe.SegmentSettings{"Code-Review": {MaxBounces: tt.budget}},
-				Resume:       "lyx loom resume",
+				Resume:       "lym loom resume",
 			}
 			gateLine := ""
 			if tt.gate != "" {

@@ -163,7 +163,7 @@ func TestRunCLI_Run_FlagValidation(t *testing.T) {
 // smoke tests included (they do json.Unmarshal over the whole buffer), and it reported the secondary
 // problem after the primary one with nothing saying which to fix first.
 //
-// Running from a non-git temp dir makes lyxcwd.Resolve fail, which is the abort this pins. The
+// Running from a non-git temp dir makes lymcwd.Resolve fail, which is the abort this pins. The
 // original intent is untouched and still covered: TestRunCLI_Run_FlagValidation above proves a flag
 // error is reported on its own whenever the pre-run did NOT abort.
 func TestRunCLI_Run_PreRunAbort_EmitsExactlyOneEnvelope(t *testing.T) {
@@ -219,7 +219,7 @@ func parseSingleEnvelope(t *testing.T, out []byte) map[string]any {
 	return envelope
 }
 
-// TestRunCLI_PositionalArgValidation verifies that "lyx shuttle interrupt" and "lyx shuttle send" enforce their exact positional arguments (<guid>, and <guid> <text>), and "lyx shuttle state" accepts none, via cobra's Args validation, which runs before PersistentPreRunE — so this fires even against a non-git directory with no config to resolve.
+// TestRunCLI_PositionalArgValidation verifies that "lym shuttle interrupt" and "lym shuttle send" enforce their exact positional arguments (<guid>, and <guid> <text>), and "lym shuttle state" accepts none, via cobra's Args validation, which runs before PersistentPreRunE — so this fires even against a non-git directory with no config to resolve.
 // Each subtest changes the process working directory, so none runs in parallel.
 func TestRunCLI_PositionalArgValidation(t *testing.T) {
 	tests := []struct {
@@ -469,7 +469,7 @@ func TestRunCmd_MechanismFailure_EnvelopeCarriesRunIdentity(t *testing.T) {
 		AddStrandFn: func(reedengine.AddSpec) (reedengine.Strand, error) {
 			return reedengine.Strand{GUID: "strand-1"}, nil
 		},
-		StatusErr: errors.New(`no reed session; run "lyx reed up"`),
+		StatusErr: errors.New(`no reed session; run "lym reed up"`),
 	}
 	runner := newFakeClockRunner(reed, engine, anchorPath, worktreeRoot)
 
@@ -565,8 +565,8 @@ func TestSendCmd_AppendsMessageTail(t *testing.T) {
 				if ok, _ := envelope["ok"].(bool); ok {
 					t.Fatalf("envelope ok = true; want a refusal; output: %s", out.String())
 				}
-				if msg, _ := envelope["error"].(string); !strings.Contains(msg, "lyx tender resume s1") {
-					t.Errorf("refusal = %q; want it to name %q", msg, "lyx tender resume s1")
+				if msg, _ := envelope["error"].(string); !strings.Contains(msg, "lym tender resume s1") {
+					t.Errorf("refusal = %q; want it to name %q", msg, "lym tender resume s1")
 				}
 				if len(reed.SendTextCalls) != 0 {
 					t.Errorf("typed texts = %+v; want none", reed.SendTextCalls)
@@ -601,10 +601,10 @@ func TestInterruptAndSendCmd_FailWithTheGuardsMessage(t *testing.T) {
 		// alsoWant is a second substring the refusal must contain.
 		alsoWant string
 	}{
-		{"interrupt on a pane with no running turn fails naming lyx shuttle send", false, false, "lyx shuttle send", nil, "", "", ""},
+		{"interrupt on a pane with no running turn fails naming lym shuttle send", false, false, "lym shuttle send", nil, "", "", ""},
 		{"interrupt on an open picker closes it once and fails", true, false, "rewind picker was open", []string{"Escape"}, "", "", ""},
 		{"send on an open picker closes it once, fails and types nothing", true, true, "rewind picker was open", []string{"Escape"}, "", "", ""},
-		{"send into a strand another slug's pause covers is refused naming the resume and the retry", false, true, "lyx tender resume p1", nil, "p1", "ly:p1:impl", "lyx shuttle send"},
+		{"send into a strand another slug's pause covers is refused naming the resume and the retry", false, true, "lym tender resume p1", nil, "p1", "ly:p1:impl", "lym shuttle send"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

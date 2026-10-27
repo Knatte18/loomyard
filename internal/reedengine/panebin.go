@@ -1,8 +1,8 @@
-// panebin.go owns the whole pane-binary seam: composing the shell prelude that resolves `lyx` to the binary that spawned every strand pane, the one function (composePaneLaunchLine) that joins it onto a strand's launch command, and the one (composeWindowCommand) that joins it onto a detached window's `lyx` command.
+// panebin.go owns the whole pane-binary seam: composing the shell prelude that resolves `lym` to the binary that spawned every strand pane, the one function (composePaneLaunchLine) that joins it onto a strand's launch command, and the one (composeWindowCommand) that joins it onto a detached window's `lym` command.
 // The composition lives in this one file, reached from two chokepoints, launchStrandLocked in spawn.go for strand panes and OpenWindow in window.go for detached windows,
-// so the property "every pane reed creates for a `lyx` command resolves lyx to its spawning binary" holds by construction rather than by every pane-creating call site remembering to apply it.
+// so the property "every pane reed creates for a `lym` command resolves lym to its spawning binary" holds by construction rather than by every pane-creating call site remembering to apply it.
 // It also composes the session-switch command the Alt-key bindings run, from the same executablePath chokepoint.
-// The same composition exports LYX_STRAND_NAME (the strand's full name) and LYX_PARENT (the worktree's parent, when told) beside LYX_BIN.
+// The same composition exports LYM_STRAND_NAME (the strand's full name) and LYM_PARENT (the worktree's parent, when told) beside LYM_BIN.
 // The file also owns the per-strand launch script the composed line is written to,
 // so the pane types a short source statement instead of the full line.
 
@@ -26,17 +26,17 @@ import (
 var executablePath = os.Executable
 
 // paneBinPrelude returns the pure, injectable pane-binary composition for exe on sh's dialect: sh's
-// own PrependPathEntry of exe's parent directory, then sh's own ExportEnv of agentname.LyxBinEnv to exe,
+// own PrependPathEntry of exe's parent directory, then sh's own ExportEnv of agentname.LymBinEnv to exe,
 // joined by sh.Chain. The prepend is unconditional — no guard against the directory already being on
 // the pane's PATH — because every strand pane is a fresh pane with a fresh shell, so nothing
 // accumulates across relaunches or resumes, and the one nesting case (a pane whose command itself
 // spawns another strand pane) produces a duplicate PATH entry that resolves identically.
 func paneBinPrelude(sh shell.Shell, exe string) string {
-	return sh.Chain(sh.PrependPathEntry(filepath.Dir(exe)), sh.ExportEnv(agentname.LyxBinEnv, exe))
+	return sh.Chain(sh.PrependPathEntry(filepath.Dir(exe)), sh.ExportEnv(agentname.LymBinEnv, exe))
 }
 
 // nameExports returns the statements exporting the strand's full name and, when parent is non-empty, its worktree's parent, on sh's dialect.
-// An empty name exports nothing, so a strand with no formed name never sees an empty LYX_STRAND_NAME.
+// An empty name exports nothing, so a strand with no formed name never sees an empty LYM_STRAND_NAME.
 func nameExports(sh shell.Shell, name, parent string) string {
 	var parts []string
 	if name != "" {
@@ -60,34 +60,34 @@ func composePaneLaunchLine(sh shell.Shell, launchCmd, strandGUID, name, parent s
 	exe, err := executablePath()
 	if err != nil {
 		exe = ""
-		logger.Warn("reed: could not resolve this binary, launching strand pane with no lyx-bin prelude", "strand", strandGUID, "err", err)
+		logger.Warn("reed: could not resolve this binary, launching strand pane with no lym-bin prelude", "strand", strandGUID, "err", err)
 	} else {
 		prelude = paneBinPrelude(sh, exe)
 	}
 	return sh.Chain(prelude, nameExports(sh, name, parent), launchCmd), exe
 }
 
-// composeWindowCommand returns the shell line a detached reed window runs: the pane-binary prelude, then `lyx` invoked with lyxArgs, each quoted, on sh's dialect.
+// composeWindowCommand returns the shell line a detached reed window runs: the pane-binary prelude, then `lym` invoked with lymArgs, each quoted, on sh's dialect.
 // No strand name exports, since a window is not a strand.
 // An unresolvable executable path logs a named logger.Warn and drops the prelude, as composePaneLaunchLine does.
-func composeWindowCommand(sh shell.Shell, lyxArgs []string) string {
+func composeWindowCommand(sh shell.Shell, lymArgs []string) string {
 	prelude := ""
 	exe, err := executablePath()
 	if err != nil {
-		logger.Warn("reed: could not resolve this binary, opening window with no lyx-bin prelude", "err", err)
+		logger.Warn("reed: could not resolve this binary, opening window with no lym-bin prelude", "err", err)
 	} else {
 		prelude = paneBinPrelude(sh, exe)
 	}
-	words := make([]string, 0, len(lyxArgs)+1)
-	words = append(words, sh.Invoke("lyx"))
-	for _, arg := range lyxArgs {
+	words := make([]string, 0, len(lymArgs)+1)
+	words = append(words, sh.Invoke("lym"))
+	for _, arg := range lymArgs {
 		words = append(words, sh.Quote(arg))
 	}
 	return sh.Chain(prelude, strings.Join(words, " "))
 }
 
 // composeSwitchCommand returns the shell line a key binding's run-shell runs to move the client one session along: the absolute path of this binary, then `reed switch` with the told socket and tmux paths and the key-press client, on sh's dialect.
-// It reads the running process's own path via executablePath, so the binding names the `lyx` that pinned it, never the one PATH resolves.
+// It reads the running process's own path via executablePath, so the binding names the `lym` that pinned it, never the one PATH resolves.
 // Every pinned token is quoted once and then has each # doubled, because run-shell format-expands its whole command at key press;
 // #{q:client_name} is the one value left for that expansion, as its own unquoted word.
 // An unresolvable executable path logs a named logger.Warn and returns false, so the caller pins no switch binding.
@@ -112,7 +112,7 @@ func composeSwitchCommand(sh shell.Shell, next bool, socketPath, tmuxPath string
 }
 
 // composeFollowCommand returns the shell line the follow button's run-shell runs to jump back to the run: the absolute path of this binary, then `reed follow` with the told socket and tmux paths and the clicking client's session, on sh's dialect.
-// It reads the running process's own path via executablePath, so the button names the `lyx` that pinned it, never the one PATH resolves.
+// It reads the running process's own path via executablePath, so the button names the `lym` that pinned it, never the one PATH resolves.
 // Every pinned token is quoted once and then has each # doubled, because the line is format-expanded when the button is clicked;
 // #{q:session_name} is the one value left for that expansion, as its own unquoted word, so the session reaches the verb as one quoted argument.
 // An unresolvable executable path logs a named logger.Warn and returns false, so the caller pins no follow jump.

@@ -1,5 +1,5 @@
 <!-- This is the burler fixer seat stencil: the only seat of the fix half's one-seat table.
-     It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go), seeded to <hub>/_board/_lyx/stencils/burler/ and read
+     It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go), seeded to <hub>/_board/_lym/stencils/burler/ and read
      from there at call time, then filled by internal/seatengine from the seat's value map and handed to the
      fixer's shuttle run as the agent's entire visible instruction set — the fix step it names
      below is read only when the fixer reaches it.

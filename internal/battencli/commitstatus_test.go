@@ -13,18 +13,18 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // runStatusRel is the status file's relative path for runID.
-func runStatusRel(loc *lyxcwd.Location, runID string) string {
+func runStatusRel(loc *lymcwd.Location, runID string) string {
 	return shedrun.StatusRel(loc, runID)
 }
 
 // TestNewCommitStatusSeam covers the on-disk no-op-transition skip over a real temp-file marker:
 //   - a repeated (producer, state) pair commits and spawns the push exactly once, not twice, across two calls to the same seam instance;
-//   - the skip still holds when the seam is rebuilt from scratch between calls, the shape a fresh "lyx batten step" process takes -- the one case that proves the on-disk marker rather than an in-closure variable;
+//   - the skip still holds when the seam is rebuilt from scratch between calls, the shape a fresh "lym batten step" process takes -- the one case that proves the on-disk marker rather than an in-closure variable;
 //   - a changed pair commits and spawns again rather than being absorbed by the skip;
 //   - a spawn that fails to start still returns nil;
 //   - a missing or corrupt marker falls back to committing once rather than erroring, since the marker is a cache and losing it costs one redundant commit, never correctness.
@@ -103,18 +103,18 @@ func TestNewCommitStatusSeam(t *testing.T) {
 // It swaps the package's spawnStatusPush for a recorder, so it is serial: no parallel test may run while the variable is swapped.
 func TestStatusPushSpawns_TellTheirLocationAndGateSlug(t *testing.T) {
 	type spawnRequest struct {
-		location *lyxcwd.Location
+		location *lymcwd.Location
 		gateSlug string
 	}
 	var requests []spawnRequest
 	original := spawnStatusPush
-	spawnStatusPush = func(l *lyxcwd.Location, gateSlug string) (fabricengine.SpawnResult, error) {
+	spawnStatusPush = func(l *lymcwd.Location, gateSlug string) (fabricengine.SpawnResult, error) {
 		requests = append(requests, spawnRequest{l, gateSlug})
 		return fabricengine.SpawnResult{}, nil
 	}
 	t.Cleanup(func() { spawnStatusPush = original })
 
-	location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
+	location := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
 
 	if err := battenCommitStatusDeps(location, "a-slug").Spawn(); err != nil {
 		t.Fatalf("status seam Spawn() = %v; want nil", err)
@@ -138,7 +138,7 @@ func TestStatusPushSpawns_TellTheirLocationAndGateSlug(t *testing.T) {
 //testtiming:keep pins the seed-alongside-status commit paths, which the end-to-end rows never assert
 func TestBattenRunCommitPaths(t *testing.T) {
 	const runID = "some-slug"
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
+	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
 
 	got := battenRunCommitPaths(loc, runID)
 	if len(got) != 1 || got[0] != runStatusRel(loc, runID) {

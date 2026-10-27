@@ -11,11 +11,11 @@ import (
 	"testing"
 )
 
-// TestDerive_StateDir pins which base each platform row of derive joins "lyx" and hash8 onto, and which environments it refuses.
+// TestDerive_StateDir pins which base each platform row of derive joins "lym" and hash8 onto, and which environments it refuses.
 // The Windows branch consults localAppData, the leaf separator being left to path/filepath rather than a literal backslash string; the non-Windows branch consults xdgStateHome, then home, and never consults localAppData.
 //
-// It is also the regression guard for the R4 review's R4-08: derive validated target for absoluteness but never the environment-supplied base it joined onto, so a relative XDG_STATE_HOME (or LOCALAPPDATA, or home) produced a RELATIVE stateDir -- which the standalone CLIs then resolved against the process working directory, i.e. the operator's own repository, writing lyx state and trace logs inside the very checkout standalonegeom.LogsDir exists to keep them out of.
-// Reproduced live as `XDG_STATE_HOME=.relstate lyx burler run` creating <repo>/.relstate/lyx/<hash8>/.
+// It is also the regression guard for the R4 review's R4-08: derive validated target for absoluteness but never the environment-supplied base it joined onto, so a relative XDG_STATE_HOME (or LOCALAPPDATA, or home) produced a RELATIVE stateDir -- which the standalone CLIs then resolved against the process working directory, i.e. the operator's own repository, writing lym state and trace logs inside the very checkout standalonegeom.LogsDir exists to keep them out of.
+// Reproduced live as `XDG_STATE_HOME=.relstate lym burler run` creating <repo>/.relstate/lym/<hash8>/.
 // The three bases answer a relative value differently because their specifications do: a relative XDG_STATE_HOME is ignored per the XDG Base Directory specification, while a relative LOCALAPPDATA or home has no fallback left and is refused.
 // Every surviving row asserts an ABSOLUTE stateDir, which is the property that actually matters.
 func TestDerive_StateDir(t *testing.T) {
@@ -34,21 +34,21 @@ func TestDerive_StateDir(t *testing.T) {
 			name:         "windows consults localAppData",
 			goos:         "windows",
 			localAppData: "/localappdata",
-			wantStateDir: func(hash8 string) string { return filepath.Join("/localappdata", "lyx", hash8) },
+			wantStateDir: func(hash8 string) string { return filepath.Join("/localappdata", "lym", hash8) },
 		},
 		{
 			name:         "non-windows consults xdgStateHome and never localAppData",
 			goos:         "linux",
 			localAppData: "/should-be-ignored",
 			xdgStateHome: "/xdgstate",
-			wantStateDir: func(hash8 string) string { return filepath.Join("/xdgstate", "lyx", hash8) },
+			wantStateDir: func(hash8 string) string { return filepath.Join("/xdgstate", "lym", hash8) },
 		},
 		{
 			name: "non-windows falls back to home/.local/state when xdgStateHome is empty",
 			goos: "linux",
 			home: "/home/user",
 			wantStateDir: func(hash8 string) string {
-				return filepath.Join("/home/user", ".local", "state", "lyx", hash8)
+				return filepath.Join("/home/user", ".local", "state", "lym", hash8)
 			},
 		},
 		{
@@ -69,7 +69,7 @@ func TestDerive_StateDir(t *testing.T) {
 			xdgStateHome: ".relstate",
 			home:         "/home/user",
 			wantStateDir: func(hash8 string) string {
-				return filepath.Join("/home/user", ".local", "state", "lyx", hash8)
+				return filepath.Join("/home/user", ".local", "state", "lym", hash8)
 			},
 		},
 		{
@@ -78,7 +78,7 @@ func TestDerive_StateDir(t *testing.T) {
 			xdgStateHome: "./relstate/nested",
 			home:         "/home/user",
 			wantStateDir: func(hash8 string) string {
-				return filepath.Join("/home/user", ".local", "state", "lyx", hash8)
+				return filepath.Join("/home/user", ".local", "state", "lym", hash8)
 			},
 		},
 		{
@@ -105,7 +105,7 @@ func TestDerive_StateDir(t *testing.T) {
 			goos:         "linux",
 			xdgStateHome: "/xdgstate",
 			home:         "/home/user",
-			wantStateDir: func(hash8 string) string { return filepath.Join("/xdgstate", "lyx", hash8) },
+			wantStateDir: func(hash8 string) string { return filepath.Join("/xdgstate", "lym", hash8) },
 		},
 	}
 

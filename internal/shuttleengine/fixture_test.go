@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
 
@@ -37,8 +37,8 @@ type fixture struct {
 	Runner   *Runner
 	Anchor   string
 	Worktree string
-	// DotLyx is where reed's own state file lives, derived the way Attach derives it.
-	DotLyx string
+	// DotLym is where reed's own state file lives, derived the way Attach derives it.
+	DotLym string
 	// RunRoot is the run-directory root the Runner resolves.
 	RunRoot string
 	// EventsPath is the events file of the run withStrand seeded, empty otherwise.
@@ -102,7 +102,7 @@ func newFixture(t *testing.T, reed ReedOps, engine Engine, opts ...fixtureOpt) *
 	}
 	fx.Runner = NewRunner(reed, engines, fx.Anchor, fx.Worktree, s.cfg)
 	fx.Runner.SetClock(s.clk)
-	fx.DotLyx = filepath.Join(fx.Anchor, lyxdirs.DotLyxDirName)
+	fx.DotLym = filepath.Join(fx.Anchor, lymdirs.DotLymDirName)
 	fx.RunRoot = runDirRoot(s.cfg, fx.Anchor)
 	if s.guid != "" {
 		runDir := filepath.Join(fx.RunRoot, "run-1")

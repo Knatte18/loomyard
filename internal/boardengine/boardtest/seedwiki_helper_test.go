@@ -12,14 +12,14 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // benchSizes is the set of board sizes (number of tasks already in board.json) each benchmark is run against.
 // Every write re-renders the whole board, so cost is expected to grow with size — these sizes make that scaling visible.
 var benchSizes = []int{10, 100, 1000}
 
-// seedWiki writes a board.json with n independent (dependency-free) tasks into a fresh temp dir, seeded with _lyx/config/board.yaml for config, and returns the cwd path.
+// seedWiki writes a board.json with n independent (dependency-free) tasks into a fresh temp dir, seeded with _lym/config/board.yaml for config, and returns the cwd path.
 // Callers must set BOARD_SKIP_GIT=1 so the benchmark measures board logic + file I/O, not git push latency.
 // It takes a testing.TB so both benchmarks and concurrency tests can use it.
 // For direct facade tests (not CLI), construct Board from the config's Path which is resolved from board.yaml.
@@ -28,14 +28,14 @@ func seedWiki(tb testing.TB, n int) string {
 
 	dir := tb.TempDir()
 
-	// Create _lyx and _lyx/config directories with board.yaml config
-	lyxDir := filepath.Join(dir, lyxdirs.LyxDirName)
-	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
-		tb.Fatalf("mkdir _lyx: %v", err)
+	// Create _lym and _lym/config directories with board.yaml config
+	lymDir := filepath.Join(dir, lymdirs.LymDirName)
+	if err := os.MkdirAll(lymDir, 0o755); err != nil {
+		tb.Fatalf("mkdir _lym: %v", err)
 	}
 	configDir := configengine.ConfigDir(dir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		tb.Fatalf("mkdir _lyx/config: %v", err)
+		tb.Fatalf("mkdir _lym/config: %v", err)
 	}
 	configPath := configengine.ConfigFile(dir, "board")
 	if err := os.WriteFile(configPath, []byte("path: board\nreadme: Home.md\ndesign_prefix: proposal-\ntypes: [bug, enhancement]\nlabels: [undecided]\n"), 0o644); err != nil {

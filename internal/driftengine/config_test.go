@@ -2,7 +2,7 @@
 
 // config_test.go — tier 0 unit tests for driftengine.LoadConfig, Config.Step and the drift paths.
 //
-// Seeds a bare t.TempDir() with just a _lyx/config/drift.yaml file (no real hub, no git spawn).
+// Seeds a bare t.TempDir() with just a _lym/config/drift.yaml file (no real hub, no git spawn).
 
 package driftengine
 
@@ -17,10 +17,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
-// seedDriftConfig creates <baseDir>/_lyx/config/drift.yaml with the given contents.
+// seedDriftConfig creates <baseDir>/_lym/config/drift.yaml with the given contents.
 func seedDriftConfig(t *testing.T, baseDir, contents string) {
 	t.Helper()
-	configDir := filepath.Join(baseDir, "_lyx", "config")
+	configDir := filepath.Join(baseDir, "_lym", "config")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 	}
@@ -90,39 +90,39 @@ func TestLoadConfig(t *testing.T) {
 		{
 			name: "a capture without the baseline placeholder", seed: true,
 			contents: withKey(t, "capture", "capture: {command: profile, timeout_min: 30}"),
-			wantErr:  []string{"capture.command", "{baseline_dir}", "lyx config drift"},
+			wantErr:  []string{"capture.command", "{baseline_dir}", "lym config drift"},
 		},
 		{
 			name: "a compare without a command", seed: true,
 			contents: withKey(t, "compare", "compare: {timeout_min: 30}"),
-			wantErr:  []string{"compare.command", "lyx config drift"},
+			wantErr:  []string{"compare.command", "lym config drift"},
 		},
 		{
 			name: "a capture without a timeout", seed: true,
 			contents: withKey(t, "capture", "capture: {command: \"p {baseline_dir}\"}"),
-			wantErr:  []string{"capture.timeout_min", "lyx config drift"},
+			wantErr:  []string{"capture.timeout_min", "lym config drift"},
 		},
 		{
 			name: "a capture timeout below 1", seed: true,
 			contents: withKey(t, "capture", "capture: {command: \"p {baseline_dir}\", timeout_min: 0}"),
-			wantErr:  []string{"capture.timeout_min", "lyx config drift"},
+			wantErr:  []string{"capture.timeout_min", "lym config drift"},
 		},
 		{
 			name: "verify_max_runs below 1", seed: true,
 			contents: withKey(t, "verify_max_runs", "verify_max_runs: 0"),
-			wantErr:  []string{"verify_max_runs", "lyx config drift"},
+			wantErr:  []string{"verify_max_runs", "lym config drift"},
 		},
 		{
 			name: "an invalid baseline model", seed: true,
 			contents: withKey(t, "baseline_model", "baseline_model: \"sonnet[medium\""),
-			wantErr:  []string{"baseline_model", "lyx config drift"},
+			wantErr:  []string{"baseline_model", "lym config drift"},
 		},
 		{
 			name: "an invalid verify model", seed: true,
 			contents: withKey(t, "verify_model", "verify_model: \"opus[high\""),
-			wantErr:  []string{"verify_model", "lyx config drift"},
+			wantErr:  []string{"verify_model", "lym config drift"},
 		},
-		{name: "not initialized", wantErr: []string{`not initialized here; run "lyx fabric reconcile"`}},
+		{name: "not initialized", wantErr: []string{`not initialized here; run "lym fabric reconcile"`}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -186,8 +186,8 @@ func TestLoadConfig(t *testing.T) {
 		if err != nil || !reflect.DeepEqual(got, CommandStep{Command: "p {baseline_dir}", Dir: ".", TimeoutMin: 3}) {
 			t.Errorf("Step(capture) = %+v, %v; want the declared step", got, err)
 		}
-		if _, err := cfg.Step("compare"); err == nil || !strings.Contains(err.Error(), "lyx config drift --set 'compare=") {
-			t.Errorf("Step(compare) error = %v; want a refusal naming lyx config drift --set", err)
+		if _, err := cfg.Step("compare"); err == nil || !strings.Contains(err.Error(), "lym config drift --set 'compare=") {
+			t.Errorf("Step(compare) error = %v; want a refusal naming lym config drift --set", err)
 		}
 	})
 
@@ -195,8 +195,8 @@ func TestLoadConfig(t *testing.T) {
 		t.Parallel()
 		root := t.TempDir()
 		p := NewPaths(root)
-		if got := DirRel(); got != "_lyx/drift" {
-			t.Errorf("DirRel() = %q; want _lyx/drift", got)
+		if got := DirRel(); got != "_lym/drift" {
+			t.Errorf("DirRel() = %q; want _lym/drift", got)
 		}
 		durable := filepath.Join(root, filepath.FromSlash(DirRel())) + string(filepath.Separator)
 		for name, file := range map[string]string{"Scope": p.Scope, "BaselineReport": p.BaselineReport, "VerifyReport": p.VerifyReport, "LogsDir": p.LogsDir} {
@@ -204,7 +204,7 @@ func TestLoadConfig(t *testing.T) {
 				t.Errorf("NewPaths().%s = %q; want it under %q", name, file, durable)
 			}
 		}
-		ephemeral := filepath.Join(root, ".lyx", "drift") + string(filepath.Separator)
+		ephemeral := filepath.Join(root, ".lym", "drift") + string(filepath.Separator)
 		for name, file := range map[string]string{"Capture": p.Capture, "CaptureLock": p.CaptureLock, "CompareMarker": p.CompareMarker, "BaselineDir": p.BaselineDir, "SideDir": p.SideDir, "SkipFile": p.SkipFile, "Runs": p.Runs} {
 			if !strings.HasPrefix(file, ephemeral) {
 				t.Errorf("NewPaths().%s = %q; want it under %q", name, file, ephemeral)

@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 func TestPlanPaths(t *testing.T) {
@@ -18,7 +18,7 @@ func TestPlanPaths(t *testing.T) {
 
 	anchor := filepath.Join("home", "user", "repo", "sub", "dir")
 
-	wantDir := filepath.Join(anchor, lyxdirs.LyxDirName, "plan")
+	wantDir := filepath.Join(anchor, lymdirs.LymDirName, "plan")
 	if got := PlanDir(anchor); got != wantDir {
 		t.Errorf("PlanDir(%q) = %q; want %q", anchor, got, wantDir)
 	}

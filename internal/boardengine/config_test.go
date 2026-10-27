@@ -16,7 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // TestLoadConfig_ScalarKeysAndTemplateDefaults asserts LoadConfig reads the scalar keys and resolves absent types and labels keys to the template defaults.
@@ -66,22 +66,21 @@ func TestLoadConfig_ScalarKeysAndTemplateDefaults(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_NotInitialized tests that an absent _lyx/ and an absent board.yaml under a present
-// _lyx/config/ both return the board-specific not-initialized error, naming the file and the way forward.
+// TestLoadConfig_NotInitialized tests that an absent _lym/ and an absent board.yaml under a present _lym/config/ both return the board-specific not-initialized error, naming the file and the way forward.
 func TestLoadConfig_NotInitialized(t *testing.T) {
 	tests := []struct {
 		name      string
 		createDir bool
 	}{
-		{name: "absent _lyx", createDir: false},
-		{name: "absent board.yaml under present _lyx/config", createDir: true},
+		{name: "absent _lym", createDir: false},
+		{name: "absent board.yaml under present _lym/config", createDir: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
 			if tt.createDir {
 				if err := os.MkdirAll(configengine.ConfigDir(tmpDir), 0755); err != nil {
-					t.Fatalf("failed to create _lyx/config: %v", err)
+					t.Fatalf("failed to create _lym/config: %v", err)
 				}
 			}
 
@@ -97,7 +96,7 @@ func TestLoadConfig_NotInitialized(t *testing.T) {
 			if !strings.Contains(errMsg, configengine.ConfigFile(tmpDir, "board")) {
 				t.Errorf("expected error naming the board.yaml path, got: %v", err)
 			}
-			if !strings.Contains(errMsg, "lyx fabric reconcile\"; a session lyx refuses the verb from reports status: FAILED and the orch runs it") {
+			if !strings.Contains(errMsg, "lym fabric reconcile\"; a session lym refuses the verb from reports status: FAILED and the orch runs it") {
 				t.Errorf("expected error containing the reconcile way forward and the orch clause, got: %v", err)
 			}
 		})
@@ -108,11 +107,11 @@ func TestLoadConfig_NotInitialized(t *testing.T) {
 func writeBoardConfig(t *testing.T, content string) string {
 	t.Helper()
 	tmpDir := t.TempDir()
-	if err := os.Mkdir(filepath.Join(tmpDir, lyxdirs.LyxDirName), 0755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
+	if err := os.Mkdir(filepath.Join(tmpDir, lymdirs.LymDirName), 0755); err != nil {
+		t.Fatalf("failed to create _lym: %v", err)
 	}
 	if err := os.Mkdir(configengine.ConfigDir(tmpDir), 0755); err != nil {
-		t.Fatalf("failed to create _lyx/config: %v", err)
+		t.Fatalf("failed to create _lym/config: %v", err)
 	}
 	if err := os.WriteFile(configengine.ConfigFile(tmpDir, "board"), []byte(content), 0644); err != nil {
 		t.Fatalf("failed to write config: %v", err)
@@ -198,7 +197,7 @@ func TestLoadConfig_LabelsRefused(t *testing.T) {
 	t.Run("a local labels entry", func(t *testing.T) {
 		board, anchor := writeBoardConfig(t, "readme: Home.md\ndesign_prefix: proposal-\n"), writeBoardConfig(t, "")
 		if err := os.MkdirAll(configengine.ScratchDir(anchor), 0755); err != nil {
-			t.Fatalf("failed to create .lyx/config: %v", err)
+			t.Fatalf("failed to create .lym/config: %v", err)
 		}
 		localPath := configengine.LocalFile(anchor, "board")
 		if err := os.WriteFile(localPath, []byte("labels:\n  urgent: Do first\n"), 0644); err != nil {

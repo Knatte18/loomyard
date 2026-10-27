@@ -1,9 +1,7 @@
 //go:build tier0
 
-// callerset_enforcement_test.go enforces the gitkit Leaf Invariant's CopyRepo pin: internal/lyxcwd
-// is the only caller of this package's CopyRepo, since every other package takes a real hub from
-// internal/hubforge instead. This is the guard that catches a later migration leaving a hub-shaped
-// call site on the primitive repo fixture rather than migrating it onto hubforge's real-hub factory.
+// callerset_enforcement_test.go enforces the gitkit Leaf Invariant's CopyRepo pin: internal/lymcwd is the only caller of this package's CopyRepo, since every other package takes a real hub from internal/hubforge instead.
+// This is the guard that catches a later migration leaving a hub-shaped call site on the primitive repo fixture rather than migrating it onto hubforge's real-hub factory.
 
 package gitkit
 
@@ -19,12 +17,12 @@ import (
 
 // allowedCopyRepoCallerDir is the only package directory (relative to the repository root) allowed
 // to call this package's CopyRepo.
-const allowedCopyRepoCallerDir = "internal/lyxcwd"
+const allowedCopyRepoCallerDir = "internal/lymcwd"
 
 // minCopyRepoScanFiles is the vacuous-scan floor for the caller-set walk.
 const minCopyRepoScanFiles = 100
 
-// TestCopyRepoCallerSet_LyxcwdOnly verifies that no file outside internal/lyxcwd calls this
+// TestCopyRepoCallerSet_LymcwdOnly verifies that no file outside internal/lymcwd calls this
 // package's CopyRepo function.
 // It spawns no git, so it carries no build tag.
 // It parses every .go file under internal/ and cmd/ (excluding internal/gitkit/ itself, whose own
@@ -33,8 +31,8 @@ const minCopyRepoScanFiles = 100
 // The match is on the AST, never on raw text, so a doc comment mentioning the qualified call cannot
 // trip it.
 //
-//lyx:guard
-func TestCopyRepoCallerSet_LyxcwdOnly(t *testing.T) {
+//lym:guard
+func TestCopyRepoCallerSet_LymcwdOnly(t *testing.T) {
 	var failures []string
 
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal", "cmd"}, Filter: scankit.All}, func(f *scankit.File) {

@@ -1,6 +1,6 @@
 # The skill-load turn end Start consumes before the run's own turn ends.
 source:
-  transcript: ~/.claude/projects/-home-knatte-Code-loomyard-LYXHUB-loomyard/330d7c24-4dec-4289-8a23-e0aa3a7b0587.jsonl
+  transcript: ~/.claude/projects/-home-knatte-Code-loomyard-LYMHUB-loomyard/330d7c24-4dec-4289-8a23-e0aa3a7b0587.jsonl
   session_id: 330d7c24-4dec-4289-8a23-e0aa3a7b0587
   run: hub orch, run 6c8e3b9253ddaa0334c35176af6225eb, promptOffset 649
 date: 2026-10-06

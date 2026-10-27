@@ -10,42 +10,34 @@ import (
 	"errors"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// Check resolves cwd into a *lyxcwd.Location and validates the tier-1/tier-2 preconditions against
+// Check resolves cwd into a *lymcwd.Location and validates the tier-1/tier-2 preconditions against
 // it.
 //
 // Returns (Report{OK:true}, l, nil) when every precondition is met.
-// Returns (Report{OK:false, Failures}, l, nil) when one or more preconditions are unmet — a normal,
-// expected outcome, not an error.
-// Returns (Report{}, nil, err) when Check could not determine an answer at all because
-// lyxcwd.Resolve itself failed — the caller must escalate, not treat this as "not ready". When
-// Resolve succeeds but the downstream CheckResolved(l) call returns an infra error instead, Check
-// returns (Report{}, l, err) with a non-nil Location alongside the error.
+// Returns (Report{OK:false, Failures}, l, nil) when one or more preconditions are unmet — a normal, expected outcome, not an error.
+// Returns (Report{}, nil, err) when Check could not determine an answer at all because lymcwd.Resolve itself failed — the caller must escalate, not treat this as "not ready".
+// When Resolve succeeds but the downstream CheckResolved(l) call returns an infra error instead, Check returns (Report{}, l, err) with a non-nil Location alongside the error.
 //
-// The resolved *lyxcwd.Location is returned on success (both the OK and the determined-failure
-// cases) so the caller never re-resolves: lyxcwd.Resolve spawns `git rev-parse --show-toplevel`,
+// The resolved *lymcwd.Location is returned on success (both the OK and the determined-failure
+// cases) so the caller never re-resolves: lymcwd.Resolve spawns `git rev-parse --show-toplevel`,
 // and forcing an orchestrator to resolve again to reach its own tier-3 paths would double the git
 // spawns of every preflight.
-func Check(cwd string) (Report, *lyxcwd.Location, error) {
-	l, err := lyxcwd.Resolve(cwd)
+func Check(cwd string) (Report, *lymcwd.Location, error) {
+	l, err := lymcwd.Resolve(cwd)
 	if err != nil {
 		// ErrNotAGitRepo is a determined verdict (not inside a git repository at
 		// all), not an infra failure — short-circuit with a single geometry
 		// failure rather than escalating.
-		if errors.Is(err, lyxcwd.ErrNotAGitRepo) {
+		if errors.Is(err, lymcwd.ErrNotAGitRepo) {
 			return Report{
 				OK:       false,
 				Failures: []Failure{{Check: CheckGeometry, Reason: "not inside a git repository"}},
 			}, nil, nil
 		}
-		// Any other Resolve error is reachable only through lyxcwd's
-		// anchor-resolution path — e.g. ErrCwdOutsideAnchor from the cwd gate,
-		// ErrStaleAnchorMarker from a board carrying only the pre-rename
-		// marker, or an ErrInvalidAnchor-wrapping failure when a recorded
-		// anchor exists but fails validation, among other anchor-resolution
-		// failures — and is a genuine "couldn't determine" infra failure.
+		// Any other Resolve error is reachable only through lymcwd's anchor-resolution path — e.g. ErrCwdOutsideAnchor from the cwd gate, ErrStaleAnchorMarker from a board carrying only the pre-rename marker, or an ErrInvalidAnchor-wrapping failure when a recorded anchor exists but fails validation, among other anchor-resolution failures — and is a genuine "couldn't determine" infra failure.
 		return Report{}, nil, err
 	}
 
@@ -53,10 +45,8 @@ func Check(cwd string) (Report, *lyxcwd.Location, error) {
 	return report, l, err
 }
 
-// CheckResolved runs the tier-1/tier-2 checks against an already-resolved Location, letting a
-// caller that already holds one (or a test building one synthetically) skip Check's own
-// lyxcwd.Resolve call.
-func CheckResolved(l *lyxcwd.Location) (Report, error) {
+// CheckResolved runs the tier-1/tier-2 checks against an already-resolved Location, letting a caller that already holds one (or a test building one synthetically) skip Check's own lymcwd.Resolve call.
+func CheckResolved(l *lymcwd.Location) (Report, error) {
 	// Check 1b: geometry sanity. A PrimeName resolution failure (List found no
 	// main-worktree entry, or the git subprocess itself failed) is treated the
 	// same as "not a git repo" for this purpose, since there is no coherent
@@ -68,7 +58,7 @@ func CheckResolved(l *lyxcwd.Location) (Report, error) {
 			Failures: []Failure{{Check: CheckGeometry, Reason: "no main worktree resolved"}},
 		}, nil
 	}
-	// There is deliberately no at-the-anchor check here. lyxcwd.Resolve applies a strict cwd gate,
+	// There is deliberately no at-the-anchor check here. lymcwd.Resolve applies a strict cwd gate,
 	// so a successful resolve already proves cwd equals AnchorPath() exactly;
 	// a non-"." AnchorRel therefore means "this repo is subpath-anchored", never "the caller stood
 	// in a subdirectory", and rejecting it failed every subpath-anchored hub unconditionally.

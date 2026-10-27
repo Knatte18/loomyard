@@ -4,7 +4,7 @@
 // the NewGitHubClient seam, CreateIssue and the helpers every call shares.
 
 // Package selfreportengine provides the domain kernel for filing LoomYard bugs and enhancements as GitHub issues on LoomYard's own repository, via githubclient's authenticated go-github client.
-// It files to that repository whatever hub lyx runs in, and only there: an issue about another repository is filed to that repository's own issues, never through selfreport.
+// It files to that repository whatever hub lym runs in, and only there: an issue about another repository is filed to that repository's own issues, never through selfreport.
 // It exposes CreateIssue and NewGitHubClient as a swappable factory seam for testing, keeping targetRepo unexported.
 package selfreportengine
 
@@ -60,7 +60,7 @@ func CreateIssue(title string, body *string, labels []string) (url string, numbe
 
 	// Bound the whole call, including a possible 401 re-resolution and
 	// replay performed internally by githubclient's transport, so a stalled
-	// connection can never hang an autonomous lyx run indefinitely.
+	// connection can never hang an autonomous lym run indefinitely.
 	ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
 	defer cancel()
 

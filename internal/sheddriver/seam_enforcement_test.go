@@ -28,7 +28,7 @@ var sheddriverAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/segmentcolor",
 	"github.com/Knatte18/loomyard/internal/shedengine",
 	// shedrun is admitted for the driver-kind vocabulary and its validator only:
-	// every shedrun path constructor takes a *lyxcwd.Location this package can never hold.
+	// every shedrun path constructor takes a *lymcwd.Location this package can never hold.
 	"github.com/Knatte18/loomyard/internal/shedrun",
 	"github.com/Knatte18/loomyard/internal/shedverbs",
 	"github.com/Knatte18/loomyard/internal/shuttleengine",
@@ -42,7 +42,7 @@ var sheddriverAllowedImports = []string{
 // the cwd resolver, the loom engine, the loom shed and any internal CLI package.
 func sheddriverDeniedImport(importPath string) bool {
 	switch importPath {
-	case "github.com/Knatte18/loomyard/internal/lyxcwd",
+	case "github.com/Knatte18/loomyard/internal/lymcwd",
 		"github.com/Knatte18/loomyard/internal/loomengine",
 		"github.com/Knatte18/loomyard/internal/loomshed":
 		return true
@@ -64,6 +64,6 @@ func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
 	})
 	scankit.RequireFloor(t, scanned, 1, "sheddriver denied-import scan")
 	if len(deniedFound) > 0 {
-		t.Errorf("Told-Geometry Invariant violated; sheddriver must not import lyxcwd, loomengine, loomshed or an internal CLI package: %v", deniedFound)
+		t.Errorf("Told-Geometry Invariant violated; sheddriver must not import lymcwd, loomengine, loomshed or an internal CLI package: %v", deniedFound)
 	}
 }

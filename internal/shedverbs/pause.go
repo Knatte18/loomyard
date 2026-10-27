@@ -102,7 +102,7 @@ func pauseCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 			out := cmd.OutOrStdout()
 
 			if flags.by == shedengine.CallerShed {
-				clihelp.SetExit(ctx, output.Err(out, "pause --by does not take "+shedengine.CallerShed+", the label of lyx's own automatic steps; way forward: re-run pause with your own label, such as --by operator"))
+				clihelp.SetExit(ctx, output.Err(out, "pause --by does not take "+shedengine.CallerShed+", the label of lym's own automatic steps; way forward: re-run pause with your own label, such as --by operator"))
 				return nil
 			}
 

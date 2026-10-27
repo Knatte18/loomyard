@@ -8,7 +8,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -17,7 +17,7 @@ import (
 // resolvePersistentPreRun skips hub, mode and engine wiring for it, since the check reads one told file.
 const validateReviewVerb = "validate-review"
 
-// validateReviewCmd builds `lyx burler validate-review <review-file>`.
+// validateReviewCmd builds `lym burler validate-review <review-file>`.
 // It prints ok with the absolute review file when the file parses, and the parse error verbatim with exit 1 otherwise.
 // A relative path resolves against the seam cwd.
 func (c *burlerCLI) validateReviewCmd() *cobra.Command {
@@ -35,13 +35,13 @@ absolute review file when the file parses, and the parse error verbatim with
 exit 1 when it does not. It is read-only and needs no hub or git repository.
 
 Example:
-  lyx burler validate-review review.md`,
+  lym burler validate-review review.md`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
-			cwd, err := lyxcwd.CwdFrom(ctx)
+			cwd, err := lymcwd.CwdFrom(ctx)
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)

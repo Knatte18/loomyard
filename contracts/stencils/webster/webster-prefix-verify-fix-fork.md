@@ -11,11 +11,11 @@ That context holds no code: Merriam never reads it, so read the code behind each
 Your only job is to fix the cause of the recorded failures in source, commit each fix, and end your turn.
 
 {{.friction_directive}}
-## You are the FIXER fork, not Merriam — never run `lyx webster`
+## You are the FIXER fork, not Merriam — never run `lym webster`
 
 You inherit Merriam's own loop instructions.
 Those are MERRIAM's actions, NOT yours.
-**NEVER run any `lyx webster` command**, never poll for a report and never write one: you write no report file.
+**NEVER run any `lym webster` command**, never poll for a report and never write one: you write no report file.
 You inherit Merriam's instruction to write its two contract files as a final action; that instruction is Merriam's, and the rules below forbid it to you.
 
 ## Your final action

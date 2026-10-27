@@ -1,4 +1,4 @@
-// landrequest.go holds the pawl run's file records: the names of the files under the beam's `.lyx/beam/` directory, Paths, and the land request with its write, read and remove.
+// landrequest.go holds the pawl run's file records: the names of the files under the beam's `.lym/beam/` directory, Paths, and the land request with its write, read and remove.
 
 package pawlengine
 
@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	// LandRequestFileName is the file name of the land request under the beam's `.lyx/beam/` directory.
+	// LandRequestFileName is the file name of the land request under the beam's `.lym/beam/` directory.
 	LandRequestFileName = "land-request.json"
 	// DobbyStopMarkerName is the file name of the marker that says the landing stopped the beam's dobby.
 	DobbyStopMarkerName = "dobby-stop"

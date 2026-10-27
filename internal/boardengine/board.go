@@ -239,7 +239,7 @@ func (b *Board) Rerender() error {
 }
 
 // Sync backs up pending local changes to the remote (commit + push), looping until nothing is left.
-// It is what the detached `lyx board sync` process runs;
+// It is what the detached `lym board sync` process runs;
 // it can also be called directly to force a synchronous backup.
 func (b *Board) Sync() error {
 	return Sync(b.boardPath, b.skipGit, b.skipPush)

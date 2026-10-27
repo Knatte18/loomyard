@@ -182,7 +182,7 @@ func isExternalName(full string) bool {
 // checkReceiverLocked refuses a name that is no receiver: EXTERNAL always, and a name that is neither a strand nor a program that has posted or read.
 func (s *Store) checkReceiverLocked(strands []Strand, name string) error {
 	if isExternalName(name) {
-		return fmt.Errorf("creel: %s is never a receiver: it has no address; an external sender waits for its answer with `lyx creel post --wait-reply`, and a reply reaches it with `--reply`", name)
+		return fmt.Errorf("creel: %s is never a receiver: it has no address; an external sender waits for its answer with `lym creel post --wait-reply`, and a reply reaches it with `--reply`", name)
 	}
 	if _, ok := findStrand(strands, name); ok || s.state.programs[name] {
 		return nil

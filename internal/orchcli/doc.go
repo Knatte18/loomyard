@@ -4,26 +4,26 @@
 // # The orch in a beam
 //
 // Every verb runs in the hub's prime worktree and in a beam, a pair whose own origin record carries the beam mark, and is refused in every other worktree with the beam verbs that make a pair one.
-// There is one orch per worktree: a beam's orch keeps its files under that worktree's own `.lyx/orch/` and `_lyx/orch/`, its strand is `<shortname>:<slug>:orch`, and its watcher is its own.
-// `BeamUp` refuses a worktree another machine owns, naming the owner and `lyx adopt <slug>` (`lyx adopt root` for the prime), a worktree with an anchor change standing on it or on the prime, naming the change's way forward, and a beam whose board entry its landing holds, naming `lyx batten status <slug>`.
+// There is one orch per worktree: a beam's orch keeps its files under that worktree's own `.lym/orch/` and `_lym/orch/`, its strand is `<shortname>:<slug>:orch`, and its watcher is its own.
+// `BeamUp` refuses a worktree another machine owns, naming the owner and `lym adopt <slug>` (`lym adopt root` for the prime), a worktree with an anchor change standing on it or on the prime, naming the change's way forward, and a beam whose board entry its landing holds, naming `lym batten status <slug>`.
 // It judges them from the local Bolt, after the reconcile when `Prepare` ran and before it starts any dobby, window or orch, and `beamUpRefusal` is the pure judgment over the facts `readBeamFacts` reads.
 // The hub-scope origin reconcile runs from the prime whichever orch is brought up.
 // After the refusals `BeamUp` starts this worktree's dobby alone through `dobbyengine.EnsureLive`, only when it is not live, then ensures the runs strand and starts the orch and its watcher.
-// A dobby that does not start never stops the bring-up: it becomes a warning naming the cause and `lyx beam start`.
+// A dobby that does not start never stops the bring-up: it becomes a warning naming the cause and `lym beam start`.
 // `BeamDown` removes the orch strand, after which the watcher exits on its own, and ends the worktree's dobby through `runproc.EndRole`, so no other process of the beam is signalled; each part stops only when live.
 // `OrchLive` is the liveness predicate other modules call: the worktree's orch state records a strand that reed tracks and reports live.
 //
 // # The role file and the note
 //
 // The procedure below lives in the role stencil, not in the launch prompt.
-// `BeamUp` renders it to `.lyx/orch/role.md` and launches the session with a one-line pointer at it; skills (`scribe:prose`, `scribe:conversation`, `ly:board`) are loaded by shuttle before that pointer on every launch path, a resume included.
+// `BeamUp` renders it to `.lym/orch/role.md` and launches the session with a one-line pointer at it; skills (`scribe:prose`, `scribe:conversation`, `ly:board`) are loaded by shuttle before that pointer on every launch path, a resume included.
 // `BeamUp` records the orch session's id in orch's state and resumes it after a reboot, a `stop` or a dead strand, falling back to the last note, else the start stencil, when the resume fails; see the internal/orchengine package documentation's `Continuing after a reboot` section.
-// A context cycle asks the session for an orch note at the path it names, following `.lyx/orch/note-template.md`, in place of a general handoff skill.
-// `lyx orch refresh` requests a clear cycle and `lyx orch distill` a compact cycle, whatever `cycle_mode` says; both write the note first.
+// A context cycle asks the session for an orch note at the path it names, following `.lym/orch/note-template.md`, in place of a general handoff skill.
+// `lym orch refresh` requests a clear cycle and `lym orch distill` a compact cycle, whatever `cycle_mode` says; both write the note first.
 // The role file's `## Commands` section holds the operator command index.
-// Its `## Hub-wide rules` and `## This orch's rules` sections hold the hub-wide rules file on Bolt and this orch thread's own rules file under its worktree's `_lyx/orch/`, re-read at every delivery.
+// Its `## Hub-wide rules` and `## This orch's rules` sections hold the hub-wide rules file on Bolt and this orch thread's own rules file under its worktree's `_lym/orch/`, re-read at every delivery.
 // `BeamUp` renders it from the `help index` of the binary it runs as, and `resume-context` in-process from the binary it runs as, which the pane names;
-// the watcher outlives a deploy, so it runs `help index` from the `lyx` path the orch strand recorded and goes idle with a reason naming `lyx orch stop` when that path is missing or gone.
+// the watcher outlives a deploy, so it runs `help index` from the `lym` path the orch strand recorded and goes idle with a reason naming `lym orch stop` when that path is missing or gone.
 //
 // # The cycle request
 //
@@ -42,7 +42,7 @@
 //
 // `watch` tells its watcher the owner read `beamOwnerElsewhere` and the strand removal, so a beam another machine owns loses its orch strand with its dobby.
 // The read takes the prime's owner for the prime and a beam's effective owner through `hubgeom.ParentOf`, from the hub's local Bolt, and compares it with this machine's name from `machinename`.
-// The verdict is as fresh as that Bolt, and a watcher started by an older build reaches the check only once it restarts, `lyx beam status` showing the orch up meanwhile.
+// The verdict is as fresh as that Bolt, and a watcher started by an older build reaches the check only once it restarts, `lym beam status` showing the orch up meanwhile.
 //
 // # Status restarts a dead watcher
 //
@@ -50,7 +50,7 @@
 // A strand counts as live by the engine liveness predicate, which a shell-only pane past the grace fails.
 // The restart takes `start.lock` with a try-lock and restarts nothing, adding a `hint` to rerun, when a `start` or `stop` holds it.
 // Holding the lock it reads the state, the strands and the watch lock again and spawns only when the recorded strand is still tracked and live with no watcher, then logs `orch: restarted a dead watcher` with the previous watcher's recorded exit.
-// A spawn failure is the error envelope with the way forward `lyx beam start`.
+// A spawn failure is the error envelope with the way forward `lym beam start`.
 // The envelope's `watcher_restarted` is true only when this call spawned one, `watcher_live` keeps what the probe found, and `strand_elsewhere` names the placement of a pane sitting in another session of reed's server.
 // A dead strand gets no watcher from `status`: `BeamUp` relaunches strand and watcher together, and a shell-only orch reads dead, so it resumes its recorded session in one step.
 // Bound: `status` writes only this one spawn, and two calls in sequence, the second before the first one's watcher takes `watch.lock`, may spawn two watchers, of which `watch.lock` keeps one.
@@ -58,9 +58,9 @@
 //
 // # The orch rules
 //
-// `lyx orch rules --from <file>` replaces the hub-wide rules file on Bolt with the file's content, pulling Bolt first and pushing before and after the commit.
+// `lym orch rules --from <file>` replaces the hub-wide rules file on Bolt with the file's content, pulling Bolt first and pushing before and after the commit.
 // The verb commits only that one path, and an empty file clears the rules.
-// The orch thread's own rules file is committed through `lyx fabric commit`.
+// The orch thread's own rules file is committed through `lym fabric commit`.
 //
 // # The orchestrator acts and fixes
 //
@@ -69,19 +69,19 @@
 // Un-wedging includes small code fixes committed and pushed to `main` from the prime, followed by the production deploy.
 // Runs that can run in parallel do, and only a task whose packages overlap a running task is held back, through its board `depends_on`.
 // Findings go on the board, never into GitHub issues.
-// Every status report on a running run carries its `lyx reed attach` command.
+// Every status report on a running run carries its `lym reed attach` command.
 //
 // # The run loop, per task
 //
-//  1. Create the task worktree with `lyx fabric add <slug>`, then start its run from inside it with `lyx loom start`.
-//     The run's status file is `_lyx/shed/<slug>/status.json` under the worktree, and its `state` is one of running, awaiting, blocked, failed or done.
-//  2. Keep no watch loop of your own: a batten notice posted as batten's program arrives in full as its own `[creel] #<id> from <shortname>:BATTEN: …` line, one posted under a strand claim as mail announced by creel's reminder that you read, and on either you check the run with `lyx batten status <slug>`.
+//  1. Create the task worktree with `lym fabric add <slug>`, then start its run from inside it with `lym loom start`.
+//     The run's status file is `_lym/shed/<slug>/status.json` under the worktree, and its `state` is one of running, awaiting, blocked, failed or done.
+//  2. Keep no watch loop of your own: a batten notice posted as batten's program arrives in full as its own `[creel] #<id> from <shortname>:BATTEN: …` line, one posted under a strand claim as mail announced by creel's reminder that you read, and on either you check the run with `lym batten status <slug>`.
 //  3. The run's own tail merges, reviews and lands without an approval step: Parent-Align and its fixer, the Code-Review ring, Describe and a Finalize that takes the parent lock first and lands on the parent.
 //     No approval step follows; a landing halt at Parent-Align or Finalize is the orchestrator's to read.
 //  4. On blocked or failed, read `error` in the status file and rerun the failing tests to tell a flaky failure from a real one.
 //     A landing halt at Parent-Align or Finalize reaches the orchestrator as it stands, since no driver, batten or arbiter routes it to another row, and the status marks it handed back.
-//     A real regression in the task is fixed in the task worktree by a background subagent, with code commits only, no `lyx fabric`, no `_lyx` or `.lyx` edits and no push, and the run is started again.
-//     A lyx bug is fixed on `main`, deployed, and the run is started again.
+//     A real regression in the task is fixed in the task worktree by a background subagent, with code commits only, no `lym fabric`, no `_lym` or `.lym` edits and no push, and the run is started again.
+//     A lym bug is fixed on `main`, deployed, and the run is started again.
 //     Never merge the parent into a task while webster is mid-batch, because record-batch then refuses the batch; a merge-in is safe only once every batch is recorded, for example at a blocked integration verify.
 //  5. Batten's Land row lands the run: it pulls the prime, runs the hub's landing `deploy` command and prunes the board, and Worktree-Teardown then removes the pair.
 //     The orchestrator acts on a Land or teardown failure notice and on a ready-task notice, starting the tasks it names, and deploys by hand with `update-plugins.sh` on a ready notice or at its next wake after a landing while the hub's landing `deploy` key is empty.
@@ -95,7 +95,7 @@
 //
 // # Config after a binary change
 //
-// No orch verb reconciles the hub's config after a binary change; `lyx beam start` does, through `hubreconcile.Ensure`, before it calls `BeamUp`.
+// No orch verb reconciles the hub's config after a binary change; `lym beam start` does, through `hubreconcile.Ensure`, before it calls `BeamUp`.
 //
 // # The origin reconcile at bring-up
 //
@@ -113,7 +113,7 @@
 // After the reconcile, `Prepare` claims the prime for this machine through `claimPrime` in the prime and in a beam alike, writing only when the board records no prime owner.
 // A claim, a claim lost to another machine and a failure are reported under the warnings, and none refuses the bring-up.
 // Before it touches any strand, `Prepare` then pauses each owned_elsewhere entry of the report through `pauseOwned`, which `InstallOwnerPause` stores for the process; the root pre-run installs `tendercli.PauseOwnedElsewhere`, since `tendercli` imports this package and the reverse import would cycle.
-// The paused slugs with their owners are the report's `OwnerPauses`, and a failed or unwired pause is a warning naming that `lyx beam start` pauses it again.
+// The paused slugs with their owners are the report's `OwnerPauses`, and a failed or unwired pause is a warning naming that `lym beam start` pauses it again.
 // A nil `claimPrime` or `pauseOwned`, as a hand-built start harness has, is skipped.
 //
 // # Withdrawing around a fresh launch
@@ -130,7 +130,7 @@
 // # The session-start hook
 //
 // The orch run's spec is the one that installs the provider's context-after-compaction hook.
-// Its command is built through the POSIX shell dialect, which the provider runs hooks under on every OS: a change of directory to the acting orch's own anchor, the beam's in a beam, then the bare hidden verb `lyx orch resume-context`.
+// Its command is built through the POSIX shell dialect, which the provider runs hooks under on every OS: a change of directory to the acting orch's own anchor, the beam's in a beam, then the bare hidden verb `lym orch resume-context`.
 // The verb therefore runs in that worktree whatever directory the session has moved to, and its own prime-or-beam refusal bounds a failed change of directory.
 // It prints the resume pointer as the provider's additional-context JSON and nothing else, and writes the delivery mark the watcher reads.
 // A failure prints the JSON error envelope and writes no mark, so the watcher types the pointer itself.
@@ -149,6 +149,6 @@
 // Callers that act on no run's pair, hibernate's notice and fabric's push notifier, keep `NotifyPrime`.
 // `HubOrchs` lists the worktrees an orch may run in, the prime's location and each local pair whose origin record carries the beam mark, for the readers that must cover every orch of the hub.
 // A beam's `watch` tells its watcher the orch's own agent name, so the pause checks match an orch caller or network operation marker against that name, and the prime's watcher keeps matching an orch name with no slug.
-// `InstallPushNotifier` routes fabric's failed-push notice to the prime orch as mail signed `FABRIC`, for every lyx process from the root pre-run.
+// `InstallPushNotifier` routes fabric's failed-push notice to the prime orch as mail signed `FABRIC`, for every lym process from the root pre-run.
 // It resolves the hub from the working directory as the network gate does, so a detached push child starting in the board worktree is covered, and installs nothing outside a hub.
 package orchcli

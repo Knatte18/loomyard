@@ -19,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -65,7 +65,7 @@ const (
 //
 // The effective driver is read from any already-recorded seed, never taken from a flag, since this command declares no driver flag of its own.
 // It falls back to the driver_kind the loaded config resolves to (llm by default) only when no seed exists yet;
-// an operator who wants a driver on one run pre-seeds it with "lyx shed seed self --recipe loom --driver go".
+// an operator who wants a driver on one run pre-seeds it with "lym shed seed self --recipe loom --driver go".
 // Without this read-through, a run already seeded for the llm driver would be refused here, because WriteSeed rejects a disagreeing existing seed.
 func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, string, bootstrapStage, error) {
 	// Step 1: resolve the recorded parent branch, writing the provenance record only for a legacy
@@ -128,8 +128,8 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, strin
 	if seedErr != nil && !errors.Is(seedErr, loomshed.ErrSeedExists) {
 		return "", "", bootstrapStageSeed, seedErr
 	}
-	// An already-present status file must be THIS task's own: `lyx fabric add` run from a task
-	// worktree forks the whole pair, `_lyx` task state included, and the driver would otherwise
+	// An already-present status file must be THIS task's own: `lym fabric add` run from a task
+	// worktree forks the whole pair, `_lym` task state included, and the driver would otherwise
 	// silently resume the inherited task's run under the wrong slug (crucible round fable5-high-r3,
 	// F-B7).
 	if err := loomengine.VerifySeedOwnership(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, slug); err != nil {
@@ -173,7 +173,7 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, strin
 // disagreeingSeedRefusal renders the refusal for an existing seed at seedPath whose recipe, driver or params differ from the seed the bootstrap writes for the recorded parent.
 // It wraps shedrun.ErrDisagreeingSeed and ends in a way forward that clears the one file and re-seeds with the existing recipe and driver and the recorded parent, so following it cannot loop on the same refusal.
 func disagreeingSeedRefusal(seedPath string, existing shedrun.Seed, parent string) error {
-	return fmt.Errorf("%w: loom: the seed at %s records recipe %q, driver %q and params %v, which disagree with the recorded parent branch %q; way forward: rm %s, then lyx shed seed self --recipe %s --driver %s --param parent=%s",
+	return fmt.Errorf("%w: loom: the seed at %s records recipe %q, driver %q and params %v, which disagree with the recorded parent branch %q; way forward: rm %s, then lym shed seed self --recipe %s --driver %s --param parent=%s",
 		shedrun.ErrDisagreeingSeed, seedPath, existing.Recipe, existing.Driver, existing.Params, parent, seedPath, existing.Recipe, existing.Driver, parent)
 }
 
@@ -190,7 +190,7 @@ func resolveSeedDriver(existing shedrun.Seed, found bool, kind string) string {
 }
 
 // resolveSeedRecipe reads the recipe seedAndCommitBootstrap's step 1b must write: the already-recorded seed's own Recipe when one exists, shedrun.RecipeLoom otherwise.
-// It is the read, not a choice, so `lyx loom start` never writes a recipe over an existing seed;
+// It is the read, not a choice, so `lym loom start` never writes a recipe over an existing seed;
 // the recipe of a run is set only by the seeding that created the seed.
 func resolveSeedRecipe(existing shedrun.Seed, found bool) string {
 	if !found {
@@ -220,7 +220,7 @@ func loomSeedFor(recipe, parent, driver string) shedrun.Seed {
 // commits unconditionally: the status file, the seed, and the origin record. It is a pure
 // function, factored out for the same reason loomSeedFor is -- so a Tier 1 test can pin the
 // pathspec's exact shape without a real fabric behind it.
-func bootstrapCommitPaths(location *lyxcwd.Location) []string {
+func bootstrapCommitPaths(location *lymcwd.Location) []string {
 	return []string{shedrun.StatusRel(location, shedrun.SelfRunID), shedrun.SeedRel(location, shedrun.SelfRunID), fabricengine.OriginRecordRel()}
 }
 
@@ -268,7 +268,7 @@ func (c *loomCLI) ensureStatusStrand() error {
 	build, buildErr := statuspane.CurrentBuild()
 	if buildErr != nil {
 		// Without an identity nothing can be proven current, so a live strand is replaced.
-		logger.Warn("loom: could not identify the running lyx build; a live status strand will be replaced", "cause", buildErr)
+		logger.Warn("loom: could not identify the running lym build; a live status strand will be replaced", "cause", buildErr)
 	}
 	sidecarPath := statusSidecarPath(c.location)
 	strandAction, staleGUID := resolveStatusStrandAction(statusResult.Strands, statuspane.ReadSidecar(sidecarPath), build)
@@ -359,7 +359,7 @@ func (c *loomCLI) buildLoomShed() (*shedengine.Shed, error) {
 		return nil, err
 	}
 
-	// A loop's step child adopts its trace id from LYX_TRACE_ID, so this tie names the step the loop runs and the watchdog can stop that step's runs.
+	// A loop's step child adopts its trace id from LYM_TRACE_ID, so this tie names the step the loop runs and the watchdog can stop that step's runs.
 	c.runner.SetStepTie(shuttleengine.StepTie{StepsDir: shedrun.StepsDir(c.location, c.runID), TraceID: logger.TraceID()})
 	// Beam-Await wakes on a land request's file event, which only a running shed needs a watch for; wire also runs for status and pause.
 	if c.recipe == shedrun.RecipePawl {

@@ -19,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -107,12 +107,12 @@ lines in view. The loom-status strand runs it. It reads files only.`,
 			}
 			out := cmd.OutOrStdout()
 
-			cwd, err := lyxcwd.CwdFrom(cmd.Context())
+			cwd, err := lymcwd.CwdFrom(cmd.Context())
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			location, err := lyxcwd.Resolve(cwd)
+			location, err := lymcwd.Resolve(cwd)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -132,7 +132,7 @@ lines in view. The loom-status strand runs it. It reads files only.`,
 // The self run's seed is read until one read succeeds, and its recipe's rows once after that.
 // The run's arbiter attempts and the pause record's coverage of the pair are read from disk on every frame.
 // While the run is running, the state line carries the note the worktree's Waiting hook reports.
-func (c *loomCLI) checklistPoll(location *lyxcwd.Location) func() statuspane.Frame {
+func (c *loomCLI) checklistPoll(location *lymcwd.Location) func() statuspane.Frame {
 	waiting := reviewWaitingFor(location)
 	var (
 		seedRead  bool
@@ -725,7 +725,7 @@ func checklistGateLines(spans []shedengine.GateSpan, paused []pauserecord.Interv
 	return lines
 }
 
-// checklistWaitLine is the frame's last line: the full reason the run waits, as `lyx loom status` gives it.
+// checklistWaitLine is the frame's last line: the full reason the run waits, as `lym loom status` gives it.
 // A running run with a waitNote waits on it; an awaiting run has handed off to its parent; a blocked or failed run waits on its activity's wait.
 // Every other case, an unreadable status included, waits on nothing.
 func checklistWaitLine(poll statuspane.StatusPoll, waitNote string) string {

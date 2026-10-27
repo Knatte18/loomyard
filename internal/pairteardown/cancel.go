@@ -49,7 +49,7 @@ type CancelResult struct {
 // With the task worktree present the order is: the owned-process end under the prime's and the pair's records write locks, the driver-lock probe, req.AfterEnd, the drift capture job's termination, the strand stop, the loop end, the run-lock wait and the session end;
 // with it gone, only the owned-process end, req.AfterEnd, the drift capture job's termination and the session end by name run.
 // A hook that reports busy gets the owned-process end and the probe once more, then the hook again; a lock still busy then is refused.
-// Every refusal wraps ErrDriverBusy where a busy holder caused it and names `lyx batten cancel <slug>` as the way to run the phase again.
+// Every refusal wraps ErrDriverBusy where a busy holder caused it and names `lym batten cancel <slug>` as the way to run the phase again.
 func (t *Teardown) EndForCancel(ctx context.Context, req CancelRequest) (CancelResult, error) {
 	var res CancelResult
 	gone, err := t.gone(req.Slug)
@@ -93,7 +93,7 @@ func (t *Teardown) EndForCancel(ctx context.Context, req CancelRequest) (CancelR
 				return res, err
 			}
 			if busy != "" {
-				return res, fmt.Errorf("%w: %s is still held after the run's processes were ended: a batten of %s or \"lyx batten cleanup\" may hold it; see the holder with \"lyx tender status\" or \"ps\", or in Task Manager on Windows, and run \"lyx batten cancel %s\" again once it is free",
+				return res, fmt.Errorf("%w: %s is still held after the run's processes were ended: a batten of %s or \"lym batten cleanup\" may hold it; see the holder with \"lym tender status\" or \"ps\", or in Task Manager on Windows, and run \"lym batten cancel %s\" again once it is free",
 					ErrDriverBusy, busy, req.Slug, req.Slug)
 			}
 		}
@@ -135,12 +135,12 @@ func (t *Teardown) EndForCancel(ctx context.Context, req CancelRequest) (CancelR
 
 // cancelRetry names the command that runs the cancel phase again, the way forward of every refusal the phase raises.
 func cancelRetry(slug string) string {
-	return fmt.Sprintf("`lyx batten cancel %s`", slug)
+	return fmt.Sprintf("`lym batten cancel %s`", slug)
 }
 
 // cancelAgain wraps err, which names retrying the removal, with the cancel's own re-entry.
 func cancelAgain(err error, slug string) error {
-	return fmt.Errorf("%w; for this cancel, run \"lyx batten cancel %s\" again once the holder ends", err, slug)
+	return fmt.Errorf("%w; for this cancel, run \"lym batten cancel %s\" again once the holder ends", err, slug)
 }
 
 // endOwnedUnderWriteLocks ends the pair's registered processes under the records write locks and releases the locks as soon as the end returns.
@@ -165,9 +165,9 @@ func (t *Teardown) endOwnedUnderWriteLocks(slug string, res *CancelResult) error
 }
 
 // cancelSurvivorsError builds the ErrDriverBusy refusal for registered processes that survived the cancel's end.
-// It names each survivor and the way to find and end it on goos, then `lyx batten cancel <slug>` again.
+// It names each survivor and the way to find and end it on goos, then `lym batten cancel <slug>` again.
 func cancelSurvivorsError(slug string, survivors []runproc.Ended, goos string) error {
-	find := "find and end them with `lyx tender status` and `ps`"
+	find := "find and end them with `lym tender status` and `ps`"
 	if goos == "windows" {
 		find = "find and end them in Task Manager"
 	}
@@ -207,7 +207,7 @@ func (t *Teardown) holdRecordsWriteLocks(slug string) (release func() error, err
 // writeLockBusyError builds the ErrDriverBusy refusal for a records write lock still held at the bound, naming its directory and the way forward.
 // The prime's lock is shared by the hub, so its holder is often another run's or the orch's healthy commit; ending it is the last resort.
 func writeLockBusyError(slug, lockDir string) error {
-	return fmt.Errorf("%w: the records write lock in %s is held; see the holder with `lyx tender status` or `ps`, or in Task Manager on Windows, and run %s again once it lets go, ending the holder only when the same process keeps the lock across re-runs",
+	return fmt.Errorf("%w: the records write lock in %s is held; see the holder with `lym tender status` or `ps`, or in Task Manager on Windows, and run %s again once it lets go, ending the holder only when the same process keeps the lock across re-runs",
 		ErrDriverBusy, lockDir, cancelRetry(slug))
 }
 

@@ -1,6 +1,6 @@
 //go:build tier1
 
-// dotnetfixture_integration_test.go drives `lyx gate test` over a real .NET solution under the dotnet scoper, with the real `dotnet` for the shared build and the test run.
+// dotnetfixture_integration_test.go drives `lym gate test` over a real .NET solution under the dotnet scoper, with the real `dotnet` for the shared build and the test run.
 
 package gatecli
 
@@ -25,7 +25,7 @@ const dotnetPackageReferences = `    <PackageReference Include="Microsoft.NET.Te
     <PackageReference Include="NUnit3TestAdapter" Version="5.0.0" />
 `
 
-// TestGateTest_DotnetFixture runs `lyx gate test --base` over a committed two-project .NET solution after an edit to one production type, and asserts the call builds the solution once, runs only the test class that names the type and exits 0.
+// TestGateTest_DotnetFixture runs `lym gate test --base` over a committed two-project .NET solution after an edit to one production type, and asserts the call builds the solution once, runs only the test class that names the type and exits 0.
 // A call that waited on an MSBuild node or compiler server holding the build's output pipe would end by its timeout instead.
 // It skips when `dotnet` is not on PATH, has no SDK, or when the global-packages folder lacks the test packages, so a machine without .NET stays green.
 //
@@ -166,8 +166,8 @@ func writeDotnetFixture(t *testing.T, dotnet string) (repo, packages string) {
 	}
 
 	repo = plankit.Repo(t, map[string]string{
-		".gitignore":                         "bin/\nobj/\n.lyx/\n",
-		"_lyx/config/gate.yaml":              string(gateYAML),
+		".gitignore":                         "bin/\nobj/\n.lym/\n",
+		"_lym/config/gate.yaml":              string(gateYAML),
 		"Fixture.sln":                        dotnetSolution,
 		"Circles/Circles.csproj":             libraryProject,
 		"Circles/Circle.cs":                  library("Circle", "Radius"),

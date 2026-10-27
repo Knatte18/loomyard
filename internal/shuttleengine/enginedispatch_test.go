@@ -464,7 +464,7 @@ func TestRunner_EngineSetDispatch(t *testing.T) {
 			rig.start("b")
 			state, _ := rig.record()
 			rig.writeEvents(state)
-			seedPresentReedState(t, rig.fx.DotLyx)
+			seedPresentReedState(t, rig.fx.DotLym)
 			out := filepath.Join(rig.fx.Worktree, "out.md")
 			touchOutputFile(t, out)
 
@@ -483,7 +483,7 @@ func TestRunner_EngineSetDispatch(t *testing.T) {
 		rig.start("b")
 		state, runDir := rig.record()
 		rig.writeEvents(state)
-		seedPresentReedState(t, rig.fx.DotLyx)
+		seedPresentReedState(t, rig.fx.DotLym)
 		out := filepath.Join(rig.fx.Worktree, "out.md")
 		touchOutputFile(t, out)
 		fresh := NewRunner(rig.reed, rig.engines, rig.fx.Anchor, rig.fx.Worktree, rig.fx.Runner.cfg)
@@ -535,7 +535,7 @@ func TestRunner_EngineSetDispatch(t *testing.T) {
 					}
 				}
 				rig.writeEvents(state)
-				seedPresentReedState(t, rig.fx.DotLyx)
+				seedPresentReedState(t, rig.fx.DotLym)
 				out := filepath.Join(rig.fx.Worktree, "out.md")
 				touchOutputFile(t, out)
 
@@ -716,7 +716,7 @@ func TestRunner_EngineSetDispatch(t *testing.T) {
 		t.Run("Runner.Attach", func(t *testing.T) {
 			t.Parallel()
 			rig := seed(t)
-			seedPresentReedState(t, rig.fx.DotLyx)
+			seedPresentReedState(t, rig.fx.DotLym)
 			if _, _, err := rig.fx.Runner.Attach(Spec{OutputFiles: []string{filepath.Join(rig.fx.Worktree, "out.md")}, Timeout: time.Minute}); !errors.Is(err, ErrEngineNotRegistered) {
 				t.Errorf("Attach() error = %v; want ErrEngineNotRegistered", err)
 			}

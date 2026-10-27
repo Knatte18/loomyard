@@ -1,5 +1,5 @@
 // seed.go implements Seed, the production writer for loom's initial status file -- nothing else in
-// production writes _lyx/loom/status.json today.
+// production writes _lym/loom/status.json today.
 
 package loomshed
 
@@ -71,11 +71,11 @@ func Seed(statusPath, statusLockPath, slug, parent string) error {
 		// is left untouched.
 		//
 		// This defers the decode diagnosis to the spawned driver's own Shed.Run step-1 read gate.
-		// Without this mapping the malformed-JSON shape made `lyx loom start` refuse on the envelope before ever
+		// Without this mapping the malformed-JSON shape made `lym loom start` refuse on the envelope before ever
 		// spawning a driver -- the very state the Completion Signal Invariant
 		// promises a poisoned status file never presents as ("A poisoned status file must never look
 		// like it belongs to bootstrap's own gate"), reproduced live in crucible round
-		// fable5-high-r5 (F3). `lyx loom run` was already correct, since it never calls Seed.
+		// fable5-high-r5 (F3). `lym loom run` was already correct, since it never calls Seed.
 		return fmt.Errorf("%w: %q already exists but does not decode; Seed refuses to overwrite it, deferring the decode diagnosis to the driver's own preflight read", ErrSeedExists, statusPath)
 	}
 	return err

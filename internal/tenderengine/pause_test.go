@@ -265,7 +265,7 @@ type env struct {
 }
 
 // primeOrchName is the agent name the test world gives the prime's orch.
-const primeOrchName = "lyx:orch"
+const primeOrchName = "lym:orch"
 
 // beamOrch is a beam's orch in the test world: its strand guid and agent name, the pair holding its session, its watcher and its own creel journal.
 type beamOrch struct {
@@ -439,11 +439,11 @@ func recorded(slug, strand string) pauserecord.Session {
 }
 
 func TestPause(t *testing.T) {
-	orchStrand, err := agentname.Format("lyx", "", agentname.RoleOrch)
+	orchStrand, err := agentname.Format("lym", "", agentname.RoleOrch)
 	if err != nil {
 		t.Fatal(err)
 	}
-	beamOrchStrand, err := agentname.Format("lyx", "b", agentname.RoleOrch)
+	beamOrchStrand, err := agentname.Format("lym", "b", agentname.RoleOrch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -656,12 +656,12 @@ func TestPause(t *testing.T) {
 		{"a background session holds no grace, gets no Esc, is not recorded and is listed with its tasks", func(t *testing.T) {
 			p := newPair("p1", "a")
 			p.busy["g-a"] = []bool{false}
-			p.background["g-a"] = []string{"sleep 600", "lyx shed step"}
+			p.background["g-a"] = []string{"sleep 600", "lym shed step"}
 			e := newEnv(t, p)
 
 			report := e.pause("", 10*time.Second)
 
-			want := []BackgroundSession{{Strand: "a", Slug: "p1", Tasks: []string{"sleep 600", "lyx shed step"}}}
+			want := []BackgroundSession{{Strand: "a", Slug: "p1", Tasks: []string{"sleep 600", "lym shed step"}}}
 			if !reflect.DeepEqual(report.Background, want) || len(p.interrupts) != 0 || e.clock.elapsed() != 0 {
 				t.Errorf("report %+v, interrupts %v, clock %s; want the background listed, no Esc and no grace", report, p.interrupts, e.clock.elapsed())
 			}

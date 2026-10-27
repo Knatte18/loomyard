@@ -1,4 +1,4 @@
-// reset.go decides, read-only, what `lyx webster reset` may do.
+// reset.go decides, read-only, what `lym webster reset` may do.
 // PlanReset resolves the commit a reset moves the task branch to and the paths the run itself wrote, and refuses with a way forward before fabric is ever called.
 // Webster runs no mutating git: every probe here is a read, and the reset itself belongs to fabric.
 
@@ -136,10 +136,10 @@ func PlanReset(deps ResetDeps, to ResetTarget, batch int) (ResetPlan, error) {
 	}
 	if active && to != ResetToReportHead {
 		return ResetPlan{}, fmt.Errorf("%w: %q (run.lock held); %s", ErrRunBusy, geom.ScratchDir,
-			wayForwardSteps("wait for it to finish, or check `lyx webster status`"))
+			wayForwardSteps("wait for it to finish, or check `lym webster status`"))
 	}
 	if deps.State == nil {
-		return ResetPlan{}, resetRefusal(to, "the run has no state.json", wayForwardSteps("run `lyx webster run` first"))
+		return ResetPlan{}, resetRefusal(to, "the run has no state.json", wayForwardSteps("run `lym webster run` first"))
 	}
 	if err := refuseMidMerge(geom.git(), geom.WorktreeRoot); err != nil {
 		return ResetPlan{}, err
@@ -157,7 +157,7 @@ func PlanReset(deps ResetDeps, to ResetTarget, batch int) (ResetPlan, error) {
 		// A start that cannot be moved to archives without moving, so it has no recorded-target refusal.
 	case ResetToPreFix:
 		if deps.State.PreFixHead == "" {
-			return ResetPlan{}, resetRefusal(to, "the verify gate recorded no pre-fix head", wayForwardSteps("run `lyx webster run`"))
+			return ResetPlan{}, resetRefusal(to, "the verify gate recorded no pre-fix head", wayForwardSteps("run `lym webster run`"))
 		}
 	case ResetToLastBatchHead:
 		if !slices.ContainsFunc(slices.Collect(maps.Values(deps.State.Batches)), recordedTerminalHead) {
@@ -268,9 +268,9 @@ const resetToStartStep = "run `" + stepResetToStart + "`"
 // resetVerb spells the reset verb for to, with --batch when the target takes one.
 func resetVerb(to ResetTarget, batch int) string {
 	if batch > 0 {
-		return fmt.Sprintf("lyx webster reset --to %s --batch %02d", to, batch)
+		return fmt.Sprintf("lym webster reset --to %s --batch %02d", to, batch)
 	}
-	return "lyx webster reset --to " + string(to)
+	return "lym webster reset --to " + string(to)
 }
 
 // refuseBatchPairing refuses a --batch value that does not fit the target: report-head and batch-start need one, every other known target takes none.
@@ -279,11 +279,11 @@ func refuseBatchPairing(to ResetTarget, batch int) error {
 	switch to {
 	case ResetToReportHead, ResetToBatchStart:
 		if batch <= 0 {
-			return resetRefusal(to, "this target needs the batch to resolve against", wayForwardSteps(fmt.Sprintf("re-run `lyx webster reset --to %s --batch NN`", to)))
+			return resetRefusal(to, "this target needs the batch to resolve against", wayForwardSteps(fmt.Sprintf("re-run `lym webster reset --to %s --batch NN`", to)))
 		}
 	case ResetToStart, ResetToPreFix, ResetToLastBatchHead:
 		if batch != 0 {
-			return resetRefusal(to, fmt.Sprintf("--batch %d does not apply to this target", batch), wayForwardSteps(fmt.Sprintf("re-run `lyx webster reset --to %s` without --batch", to)))
+			return resetRefusal(to, fmt.Sprintf("--batch %d does not apply to this target", batch), wayForwardSteps(fmt.Sprintf("re-run `lym webster reset --to %s` without --batch", to)))
 		}
 	}
 	return nil
@@ -335,10 +335,10 @@ func refuseReportHeadBatch(deps ResetDeps, batch int) error {
 	st := deps.State
 	bs := st.Batches[batch]
 	if bs == nil {
-		return resetRefusal(to, fmt.Sprintf("batch %d is not begun", batch), wayForwardSteps("check the batch number with `lyx webster status`"))
+		return resetRefusal(to, fmt.Sprintf("batch %d is not begun", batch), wayForwardSteps("check the batch number with `lym webster status`"))
 	}
 	if bs.Terminal {
-		return resetRefusal(to, fmt.Sprintf("batch %d already reached a terminal record (%s)", batch, bs.Status), wayForwardSteps("run `lyx webster reset --to last-batch-head`"))
+		return resetRefusal(to, fmt.Sprintf("batch %d already reached a terminal record (%s)", batch, bs.Status), wayForwardSteps("run `lym webster reset --to last-batch-head`"))
 	}
 	if later := recordedBatchesAfter(st, batch, func(*BatchState) bool { return true }); len(later) > 0 {
 		return resetRefusal(to, fmt.Sprintf("batch %d was begun after batch %d, so its report head is not the run's tip", later[0], batch), wayForwardSteps(resetToStartStep))
@@ -350,7 +350,7 @@ func refuseReportHeadBatch(deps ResetDeps, batch int) error {
 		}
 		if live {
 			return resetRefusal(to, fmt.Sprintf("a recovery strand of batch %d is live", batch),
-				wayForwardSteps(fmt.Sprintf("wait for its `lyx webster recover-batch %02d` to finish, then re-run `%s`", batch, resetVerb(to, batch))))
+				wayForwardSteps(fmt.Sprintf("wait for its `lym webster recover-batch %02d` to finish, then re-run `%s`", batch, resetVerb(to, batch))))
 		}
 	}
 	return nil
@@ -363,7 +363,7 @@ func reportHeadSHA(geom Geometry, st *State, batch int) (string, error) {
 	report, err := ParseReport(filepath.Join(geom.ReportsDir, ReportFileName(batch, bs.Slug)))
 	if err != nil {
 		return "", resetRefusal(to, fmt.Sprintf("batch %d has no readable report (%v)", batch, err),
-			wayForwardSteps(fmt.Sprintf("wait for the fork's report, or run `lyx webster recover-batch %02d`", batch)))
+			wayForwardSteps(fmt.Sprintf("wait for the fork's report, or run `lym webster recover-batch %02d`", batch)))
 	}
 	git := geom.git()
 	reportPath := filepath.Join(geom.ReportsDir, ReportFileName(batch, bs.Slug))

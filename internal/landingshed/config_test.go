@@ -2,7 +2,7 @@
 
 // config_test.go — tier0 unit tests for landingshed.LoadConfig.
 //
-// Seeds a bare t.TempDir() with just a _lyx/config/landing.yaml file (no real hub, no SeedConfig,
+// Seeds a bare t.TempDir() with just a _lym/config/landing.yaml file (no real hub, no SeedConfig,
 // no git spawn), modelled on internal/loomengine's own config_test.go.
 
 package landingshed
@@ -21,10 +21,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// seedLandingConfig creates <baseDir>/_lyx/config/landing.yaml with the given contents.
+// seedLandingConfig creates <baseDir>/_lym/config/landing.yaml with the given contents.
 func seedLandingConfig(t *testing.T, baseDir, contents string) {
 	t.Helper()
-	configDir := filepath.Join(baseDir, "_lyx", "config")
+	configDir := filepath.Join(baseDir, "_lym", "config")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 	}
@@ -331,7 +331,7 @@ func TestLoadConfig_InvalidKeys(t *testing.T) {
 }
 
 // writeLocalLandingConfig writes contents as anchor's local landing override and returns its path.
-// anchor gets an empty _lyx/config/ so the layered load sees an initialised worktree.
+// anchor gets an empty _lym/config/ so the layered load sees an initialised worktree.
 func writeLocalLandingConfig(t *testing.T, anchor, contents string) string {
 	t.Helper()
 	for _, dir := range []string{configengine.ConfigDir(anchor), configengine.ScratchDir(anchor)} {
@@ -358,7 +358,7 @@ func TestLoadConfig_NotInitialized(t *testing.T) {
 	if err == nil {
 		t.Fatal("LoadConfig() = _, nil; want non-nil error for uninitialized baseDir")
 	}
-	want := `not initialized here; run "lyx fabric reconcile"; a session lyx refuses the verb from reports status: FAILED and the orch runs it`
+	want := `not initialized here; run "lym fabric reconcile"; a session lym refuses the verb from reports status: FAILED and the orch runs it`
 	if err.Error() != want {
 		t.Errorf("LoadConfig() error = %q; want %q", err.Error(), want)
 	}

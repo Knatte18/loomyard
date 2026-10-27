@@ -1,6 +1,6 @@
 # Fixture-copy benchmark report
 
-Deep analysis behind the "Speed up git-fixture tests" task: the full benchmark report recorded during the task's discussion phase (2026-07-13), ported here verbatim as the permanent record, plus a "Reproducing" section to regenerate the copy numbers with the permanent benchmark this task shipped at the time (`internal/lyxtest/bench_test.go`, since retired by the `lyxtest-real-hubs` task — see "Reproducing" below for the benchmarks that replaced it).
+Deep analysis behind the "Speed up git-fixture tests" task: the full benchmark report recorded during the task's discussion phase (2026-07-13), ported here verbatim as the permanent record, plus a "Reproducing" section to regenerate the copy numbers with the permanent benchmark this task shipped at the time (`internal/lymtest/bench_test.go`, since retired by the `lymtest-real-hubs` task — see "Reproducing" below for the benchmarks that replaced it).
 For the headline before/after wall-clock numbers, see [test-suite-timing.md](test-suite-timing.md#levers-that-moved-the-numbers);
 for how to run the suite, see [running-tests.md](running-tests.md).
 
@@ -10,10 +10,10 @@ for how to run the suite, see [running-tests.md](running-tests.md).
 
 All numbers from this machine: Intel Core Ultra 7 155U, `windows/amd64`, 14 logical CPUs, Windows 11 Enterprise, git 2.53.0.windows.2, Go 1.26.4, Cortex XDR + Defender live, **no admin**.
 
-Method: throwaway stdlib-only Go harnesses (rebuilt the exact lyxtest template recipe;
+Method: throwaway stdlib-only Go harnesses (rebuilt the exact lymtest template recipe;
 copies placed via `os.MkdirTemp("")` in `%TEMP%`, exactly where `tb.TempDir()` puts real fixtures, so the AV on-write cost measured is the one the suite pays).
 Harness source lived in `.scratch/fixbench/` (ephemeral, not committed);
-the method is recorded here and the permanent benchmark lands in `internal/lyxtest/bench_test.go` (see "Reproducing" below).
+the method is recorded here and the permanent benchmark lands in `internal/lymtest/bench_test.go` (see "Reproducing" below).
 
 ### Template shape (file count vs bytes)
 
@@ -38,7 +38,7 @@ parallel P=14 workers × 3 ops each (42 ops):
 | D objects/info/alternates | 117 ms | 125 ms | 318 ms | 366 ms | 0.94 s |
 
 All arms validated functionally (rev-parse + commit + push against the copy).
-**Conclusion: refuted.** ~117 `lyxtest.Copy*` call sites × ~0.5 s contended ≈ a few seconds of aggregate wall across a ~208 s tier.
+**Conclusion: refuted.** ~117 `lymtest.Copy*` call sites × ~0.5 s contended ≈ a few seconds of aggregate wall across a ~208 s tier.
 Hardlink saves ~5 % of that sliver, alternates ~33 % — noise either way.
 
 ### Process-spawn cost (the real floor)
@@ -87,7 +87,7 @@ Every git-heavy package benefits (boardcli 73 s, initengine 51 s, configcli 32 s
 
 ### Pre-existing red discovered
 
-`cmd/lyx` FAILed in both tiers on the branch this task started from (inherited from `main`): `TestTierPurity_UntaggedTestsSpawnNothing` flagged 4 untagged spawning test files from the freshly-merged builder module: `internal/buildercli/spawnbatch_test.go`, `internal/buildercli/validate_test.go`, `internal/builderengine/config_test.go`, `internal/builderengine/template_test.go`.
+`cmd/lym` FAILed in both tiers on the branch this task started from (inherited from `main`): `TestTierPurity_UntaggedTestsSpawnNothing` flagged 4 untagged spawning test files from the freshly-merged builder module: `internal/buildercli/spawnbatch_test.go`, `internal/buildercli/validate_test.go`, `internal/builderengine/config_test.go`, `internal/builderengine/template_test.go`.
 Unrelated to this task's core hypothesis;
 folded into scope (batch 1, `fold-in-builder-retier`) because a green suite is a precondition for recording before/after numbers.
 
@@ -101,19 +101,19 @@ No test assertion changed.
 
 The task pivoted from the original hardlink-objects hypothesis (refuted above) to a **hermetic git test environment**, implemented in two layers:
 
-- **Layer A (template config):** `lyxtest.initRepo` and `initBareRemote` set `core.fsmonitor=false`, `maintenance.auto=false`, `gc.auto=0` on every template repo at build time;
+- **Layer A (template config):** `lymtest.initRepo` and `initBareRemote` set `core.fsmonitor=false`, `maintenance.auto=false`, `gc.auto=0` on every template repo at build time;
   copies inherit this via `.git/config`, worktrees share it.
-- **Layer B (hermetic env):** `lyxtest.HermeticGitEnv()` writes one neutral global-config file per test process and points `GIT_CONFIG_GLOBAL` at it (plus `GIT_CONFIG_NOSYSTEM=1`), wired via `TestMain` into every git-spawning test package.
+- **Layer B (hermetic env):** `lymtest.HermeticGitEnv()` writes one neutral global-config file per test process and points `GIT_CONFIG_GLOBAL` at it (plus `GIT_CONFIG_NOSYSTEM=1`), wired via `TestMain` into every git-spawning test package.
   This reaches indirect git spawns too — child processes (and any binaries those children launch) inherit the env vars.
 
-Enforced by `cmd/lyx/hermeticenv_test.go` (`TestHermeticGitEnv_GitSpawningPackagesHaveTestMain`) and recorded as the **Hermetic Git Test Environment Invariant** in `PATTERN.md`.
+Enforced by `cmd/lym/hermeticenv_test.go` (`TestHermeticGitEnv_GitSpawningPackagesHaveTestMain`) and recorded as the **Hermetic Git Test Environment Invariant** in `PATTERN.md`.
 See that invariant for the full mechanics and allowlist.
 
 `copyDirRecursive` (the fixture-copy engine itself) is untouched: a plain byte-copy, no hardlink, no alternates — the measured arms above show that lever is not worth its added complexity.
 
 ## Reproducing
 
-The `internal/lyxtest/bench_test.go` copy-cost probes this task originally shipped no longer exist: the `lyxtest-real-hubs` task retired `internal/lyxtest` and replaced its hand-assembled fixtures with real cloned hubs.
+The `internal/lymtest/bench_test.go` copy-cost probes this task originally shipped no longer exist: the `lymtest-real-hubs` task retired `internal/lymtest` and replaced its hand-assembled fixtures with real cloned hubs.
 The permanent benchmarks today are `BenchmarkNewHub` and `BenchmarkNewHubParallel` in `internal/hubforge/bench_test.go` (the real-hub factory, `//go:build integration`), `BenchmarkCopyBares` alongside them (the bare-repo-copy half of the copy-the-bares, clone-the-hub model), and `BenchmarkCopyRepo` in `internal/gitkit/bench_test.go` (the below-fabric leaf's own primitive repo-copy fixture):
 
 ```sh
@@ -124,10 +124,10 @@ go test -tags integration -bench . -run '^$' ./internal/hubforge ./internal/gitk
 A full fixture now measures ~24 ms, against the old copy-only ~2.3 ms (`BenchmarkCopyPairedLocalParallel`'s figure below).
 Projected across the repo's `Copy*`/`NewHub` call sites, that predicts roughly **+2.9 s on a ~132 s Tier 2 run**.
 
-The benchmark output below (`BenchmarkCopyPaired`, `BenchmarkCopyPairedLocal`, and their `Parallel` counterparts) is kept as a **historical record, numbers and identifiers unchanged**: it measured the retired `internal/lyxtest`'s `CopyPaired`/`CopyPairedLocal` fixtures on 2026-07-13, before this task's cutover, and no number below was taken again under a new identifier.
+The benchmark output below (`BenchmarkCopyPaired`, `BenchmarkCopyPairedLocal`, and their `Parallel` counterparts) is kept as a **historical record, numbers and identifiers unchanged**: it measured the retired `internal/lymtest`'s `CopyPaired`/`CopyPairedLocal` fixtures on 2026-07-13, before this task's cutover, and no number below was taken again under a new identifier.
 
 ```sh
-go test -tags integration -bench BenchmarkCopy -run '^$' ./internal/lyxtest
+go test -tags integration -bench BenchmarkCopy -run '^$' ./internal/lymtest
 ```
 
 Fresh output from actually running that command once (`-benchtime 10x` to get a stable per-op number;
@@ -136,26 +136,26 @@ the default time-based `-benchtime` stops after 1 iteration here because the ver
 ```
 goos: windows
 goarch: amd64
-pkg: github.com/Knatte18/loomyard/internal/lyxtest
+pkg: github.com/Knatte18/loomyard/internal/lymtest
 cpu: Intel(R) Core(TM) Ultra 7 155U
 BenchmarkCopyPaired-14                 	      10	 452476860 ns/op
 BenchmarkCopyPairedLocal-14            	      10	 234929330 ns/op
 BenchmarkCopyPairedParallel-14         	      10	  56055880 ns/op
 BenchmarkCopyPairedLocalParallel-14    	      10	  61574420 ns/op
 PASS
-ok  	github.com/Knatte18/loomyard/internal/lyxtest	9.390s
+ok  	github.com/Knatte18/loomyard/internal/lymtest	9.390s
 ```
 
 Note the parallel numbers here are Go's own `ns/op` (total time divided by total operations across all `GOMAXPROCS` workers), which is a different metric from the discussion-phase harness's per-op p50/p90 latency under contention (the arms table above) — both are legitimate ways to look at the same cost, they are not directly comparable line-for-line.
 
 ## Linux benchmark (2026-07-13)
 
-The Linux counterpart to the Windows "Reproducing" numbers above, from the same permanent benchmark that existed at the time (`internal/lyxtest/bench_test.go`, `//go:build integration`, since retired — see "Reproducing" above).
+The Linux counterpart to the Windows "Reproducing" numbers above, from the same permanent benchmark that existed at the time (`internal/lymtest/bench_test.go`, `//go:build integration`, since retired — see "Reproducing" above).
 Kept as a historical record, numbers and identifiers unchanged.
 Command:
 
 ```sh
-go test -tags integration -bench BenchmarkCopy -run '^$' -benchtime 10x ./internal/lyxtest
+go test -tags integration -bench BenchmarkCopy -run '^$' -benchtime 10x ./internal/lymtest
 ```
 
 - Machine: AMD Ryzen AI 7 445 w/ Radeon 840M, Ubuntu 26.04 LTS, `linux/amd64`, 12 logical CPUs, Go 1.26.0
@@ -163,7 +163,7 @@ go test -tags integration -bench BenchmarkCopy -run '^$' -benchtime 10x ./intern
 ```
 goos: linux
 goarch: amd64
-pkg: github.com/Knatte18/loomyard/internal/lyxtest
+pkg: github.com/Knatte18/loomyard/internal/lymtest
 cpu: AMD Ryzen AI 7 445 w/ Radeon 840M
 BenchmarkCopyPaired-12                 	      10	   6060124 ns/op
 BenchmarkCopyPairedLocal-12            	      10	   2164937 ns/op

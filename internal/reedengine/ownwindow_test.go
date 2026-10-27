@@ -96,7 +96,7 @@ func TestNewAgentWindowSelected(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e, fake := newAttachTestEngine(t, goodAttachStrands())
-			fake.answerFormat("#{@lyx_follow}", tt.follow, tt.followErr)
+			fake.answerFormat("#{@lym_follow}", tt.follow, tt.followErr)
 			buf := logcapture.CaptureVerbose(t)
 
 			if got := e.newAgentWindowTakesViewerLocked(tt.display); got != tt.want {
@@ -104,7 +104,7 @@ func TestNewAgentWindowSelected(t *testing.T) {
 			}
 			reads := 0
 			for _, argv := range fake.ArgvFor("display-message") {
-				if argv[len(argv)-1] == "#{@lyx_follow}" {
+				if argv[len(argv)-1] == "#{@lym_follow}" {
 					reads++
 				}
 			}

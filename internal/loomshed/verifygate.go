@@ -24,7 +24,7 @@ const verifyLogTailBytes = 4096
 
 // NewVerifyGate returns a must-pass shuttleengine.Gate that, at each arrival, reads the told verify command, lints the comments the work added, and runs the command through verifytree.Verify over worktreeRoot, keeping its record, marker and log in verifyDir.
 // siteLabel names the call site in the running marker, and the closure's own count of its calls is the attempt.
-// command is the told verify-command source, the site's own `lyx gate test --wait --gate <key>` call, read at each arrival; it runs as it is, since the gate derives its own diff base, and a pass keeps its record entry so a later arrival on the same tree skips.
+// command is the told verify-command source, the site's own `lym gate test --wait --gate <key>` call, read at each arrival; it runs as it is, since the gate derives its own diff base, and a pass keeps its record entry so a later arrival on the same tree skips.
 // hold is the told pause hold of the worktree's scope: a non-nil hold holds the verify under a pause covering the worktree, and nil holds nothing.
 //
 // With treeScope nil the gate takes the round form.
@@ -41,7 +41,7 @@ const verifyLogTailBytes = 4096
 //
 // `StatusPassed` and `StatusSkipped` pass.
 // `StatusDirty` fails with the dirty paths.
-// `StatusFailed` fails with the exit code, the log path and the log's tail, and, after a CPU watchdog quit, the window and the `busy_quit_sec` way forward; a test file the command's guard scan rejects, such as a misplaced `//lyx:guard` marker, reaches the findings through that tail with its file and line.
+// `StatusFailed` fails with the exit code, the log path and the log's tail, and, after a CPU watchdog quit, the window and the `busy_quit_sec` way forward; a test file the command's guard scan rejects, such as a misplaced `//lym:guard` marker, reaches the findings through that tail with its file and line.
 // A headroom finding or a comment lint finding fails with its file and line or its bytes and the way forward.
 // A command, merge base or tree scope read error, a failure to read git, a lint run error or a cancelled verify is a returned error, since none is a defect the writer can fix.
 func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase func() (string, error), treeScope func() (string, bool, error), hold *verifytree.PauseHold) shuttleengine.Gate {

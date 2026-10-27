@@ -5,7 +5,7 @@
 // seed writes an existing pair's .vscode/ config and title-bar colour and launches nothing.
 // open starts VS Code on that pair's folder.
 // Both take a slug.
-// Layout resolution happens once in a PersistentPreRunE so that the no-arg "lyx ide" listing never
+// Layout resolution happens once in a PersistentPreRunE so that the no-arg "lym ide" listing never
 // requires a git repo.
 
 package idecli
@@ -19,14 +19,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/ideengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
 )
 
 // Command returns the cobra command tree for the ide module.
 func Command() *cobra.Command {
-	var l *lyxcwd.Location
+	var l *lymcwd.Location
 
 	cmd := &cobra.Command{
 		Use:   "ide",
@@ -39,14 +39,14 @@ func Command() *cobra.Command {
 
 			ctx := cmd.Context()
 
-			cwd, err := lyxcwd.CwdFrom(ctx)
+			cwd, err := lymcwd.CwdFrom(ctx)
 			if err != nil {
 				output.Err(cmd.OutOrStdout(), fmt.Sprintf("failed to get working directory: %v", err))
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
 
-			resolved, err := lyxcwd.Resolve(cwd)
+			resolved, err := lymcwd.Resolve(cwd)
 			if err != nil {
 				output.Err(cmd.OutOrStdout(), err.Error())
 				clihelp.Abort(ctx, 1)
@@ -68,7 +68,7 @@ func Command() *cobra.Command {
 			}
 
 			if len(args) < 1 {
-				clihelp.SetExit(cmd.Context(), output.Err(cmd.OutOrStdout(), "usage: lyx ide spawn <slug>"))
+				clihelp.SetExit(cmd.Context(), output.Err(cmd.OutOrStdout(), "usage: lym ide spawn <slug>"))
 				return nil
 			}
 			slug := args[0]
@@ -111,7 +111,7 @@ func Command() *cobra.Command {
 // Before calling action it refuses a slug failing the slug grammar and one whose worktree directory under the hub does not exist,
 // so the verb acts only on a directory directly under the hub.
 // The location is read through l when the verb runs, after the root's pre-run has resolved it.
-func slugVerbCommand(l **lyxcwd.Location, name, short string, action func(*lyxcwd.Location, string) error) *cobra.Command {
+func slugVerbCommand(l **lymcwd.Location, name, short string, action func(*lymcwd.Location, string) error) *cobra.Command {
 	return &cobra.Command{
 		Use:         name + " <slug>",
 		Short:       short,
@@ -122,7 +122,7 @@ func slugVerbCommand(l **lyxcwd.Location, name, short string, action func(*lyxcw
 			}
 
 			if len(args) < 1 {
-				clihelp.SetExit(cmd.Context(), output.Err(cmd.OutOrStdout(), "usage: lyx ide "+name+" <slug>"))
+				clihelp.SetExit(cmd.Context(), output.Err(cmd.OutOrStdout(), "usage: lym ide "+name+" <slug>"))
 				return nil
 			}
 			slug := args[0]
@@ -155,7 +155,7 @@ func RunCLI(out io.Writer, args []string) int {
 // RunCLIIn is RunCLI's seam-cwd-carrying sibling: an empty cwd means "read the process cwd" and
 // delegates to clihelp.Execute exactly as RunCLI always has, while any other value seeds cwd into
 // the execution context via clihelp.ExecuteIn.
-// The branch exists because lyxcwd.WithCwd panics on an empty directory, so a uniform delegation to
+// The branch exists because lymcwd.WithCwd panics on an empty directory, so a uniform delegation to
 // ExecuteIn would panic on every existing RunCLI call.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {

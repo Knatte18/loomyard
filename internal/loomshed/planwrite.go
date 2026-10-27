@@ -181,7 +181,7 @@ func ArchivedPlanWebsterDirs(planDir string) []string {
 // stalePlanRotation plans a rotation without performing it: it returns the plan directory resolved from anchorPath, the first free archive-<stamp>[-N] path under it, and the names of the plan directory's top-level ".md" files.
 // Any other entry (a directory, or a non-.md file) is not listed and stays in place.
 // It returns no names, and touches nothing on disk, when there is nothing to rotate (absent plan directory, or no top-level .md file).
-// It resolves the plan directory via planparser.PlanDir(anchorPath) -- never by naming the "_lyx" literal, which the Lyxdirs Single-Declarer Invariant forbids in production path-construction context.
+// It resolves the plan directory via planparser.PlanDir(anchorPath) -- never by naming the "_lym" literal, which the Lymdirs Single-Declarer Invariant forbids in production path-construction context.
 func stalePlanRotation(anchorPath string, now func() time.Time) (planDir, archiveDir string, staleFiles []string, err error) {
 	planDir = planparser.PlanDir(anchorPath)
 

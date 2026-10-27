@@ -130,7 +130,7 @@ func TestProjectRules_Membership(t *testing.T) {
 		{"ProjectChainWithACycle", map[string]any{"slug": "p1", "project": "p2"}, []string{`"p1"`, "project", `"p2"`, "loops back"}},
 		{"OrderNamingAnotherProjectsEntry", map[string]any{"slug": "p1", "order": []string{"m", "a"}}, []string{`"p1"`, "order", `"a"`, "no entry of this project"}},
 		{"OrderNamingAnEntryTwice", map[string]any{"slug": "p1", "order": []string{"m", "m"}}, []string{`"p1"`, "order", `"m"`, "named twice"}},
-		{"ProjectChangeOfAnEntryWithAPair", map[string]any{"slug": "paired", "project": "p2"}, []string{`"paired"`, "lyx batten cancel paired --remove"}},
+		{"ProjectChangeOfAnEntryWithAPair", map[string]any{"slug": "paired", "project": "p2"}, []string{`"paired"`, "lym batten cancel paired --remove"}},
 	}
 	for _, tt := range refused {
 		t.Run("Refused_"+tt.name, func(t *testing.T) {

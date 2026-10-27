@@ -454,7 +454,7 @@ func runChild(ctx context.Context, spec *Spec, argv []string, traceID string, id
 	return childResult{traceID: traceID, cause: cause}
 }
 
-// childEnvironment is the process environment with LYX_TRACE_ID set to traceID, so the child keeps its own trace group.
+// childEnvironment is the process environment with LYM_TRACE_ID set to traceID, so the child keeps its own trace group.
 func childEnvironment(traceID string) []string {
 	env := make([]string, 0, len(os.Environ())+1)
 	for _, entry := range os.Environ() {
@@ -488,9 +488,9 @@ func statusStopWayForward(spec *Spec, readErr error) string {
 	case readErr == nil:
 		return shedengine.MissingStatusClause(spec.MissingStatusWayForward)
 	case errors.Is(readErr, state.ErrDecode):
-		return fmt.Sprintf("way forward: re-run lyx shed step %s --until-stop with a lyx binary that decodes the status file, as after a version skew where an older loop binary cannot decode a file a newer one wrote; otherwise report the stop to the run's parent with the status file and the loop log", spec.RunID)
+		return fmt.Sprintf("way forward: re-run lym shed step %s --until-stop with a lym binary that decodes the status file, as after a version skew where an older loop binary cannot decode a file a newer one wrote; otherwise report the stop to the run's parent with the status file and the loop log", spec.RunID)
 	default:
-		return fmt.Sprintf("way forward: re-run lyx shed step %s --until-stop", spec.RunID)
+		return fmt.Sprintf("way forward: re-run lym shed step %s --until-stop", spec.RunID)
 	}
 }
 

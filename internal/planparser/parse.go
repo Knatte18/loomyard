@@ -23,7 +23,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/quarry/glyph"
 	"gopkg.in/yaml.v3"
 )
@@ -31,18 +31,18 @@ import (
 // overviewFileName is the fixed filename of a plan's overview file, per loom-plan-spec.md's on-disk layout.
 const overviewFileName = "00-overview.md"
 
-// PlanDirName is the relative-path segment planparser joins onto lyxdirs.LyxDirName to form
+// PlanDirName is the relative-path segment planparser joins onto lymdirs.LymDirName to form
 // the plan directory's worktree-relative token.
 // planparser is this segment's sole declarer, per the module-owned-constructors per-segment join
 // rule.
 const PlanDirName = "plan"
 
-// PlanDirRel returns the worktree-relative plan-directory token, `_lyx/plan`.
+// PlanDirRel returns the worktree-relative plan-directory token, `_lym/plan`.
 // Callers use this for relative plan-file pointers (e.g.
 // this file's own Card.SourcePath stamping below).
 // It uses the stdlib path package so the token is always forward-slash, never OS-dependent.
 func PlanDirRel() string {
-	return path.Join(lyxdirs.LyxDirName, PlanDirName)
+	return path.Join(lymdirs.LymDirName, PlanDirName)
 }
 
 // archiveDirPrefix is the fixed prefix ArchiveDirName builds its return value from, matching how
@@ -62,16 +62,14 @@ func ArchiveDirName(stamp, suffix string) string {
 }
 
 // PlanDir returns the absolute path to the plan directory for the worktree anchored at anchorPath.
-// The caller supplies the absolute directory lyx is anchored at, which in a lyx worktree is
-// lyxcwd.Location.AnchorPath() and never WorktreePath() — planparser is the sole declarer of this
-// path and never resolves cwd itself.
+// The caller supplies the absolute directory lym is anchored at, which in a lym worktree is lymcwd.Location.AnchorPath() and never WorktreePath() — planparser is the sole declarer of this path and never resolves cwd itself.
 func PlanDir(anchorPath string) string {
-	return filepath.Join(anchorPath, lyxdirs.LyxDirName, PlanDirName)
+	return filepath.Join(anchorPath, lymdirs.LymDirName, PlanDirName)
 }
 
 // PlanOverview returns the absolute path to the plan's overview file for the worktree anchored at
-// anchorPath. The caller supplies the absolute directory lyx is anchored at, which in a lyx worktree
-// is lyxcwd.Location.AnchorPath() and never WorktreePath() — planparser is the sole declarer of this
+// anchorPath. The caller supplies the absolute directory lym is anchored at, which in a lym worktree
+// is lymcwd.Location.AnchorPath() and never WorktreePath() — planparser is the sole declarer of this
 // path and never resolves cwd itself.
 func PlanOverview(anchorPath string) string {
 	return filepath.Join(PlanDir(anchorPath), overviewFileName)
@@ -399,7 +397,7 @@ func parseCardFile(planDir string, entry cardIndexEntry, read func(name string) 
 		Number:  entry.Number,
 		Slug:    entry.Slug,
 		Summary: entry.Summary,
-		// SourcePath is built from this package's own PlanDirRel (the `_lyx/plan` segment) joined with fileName.
+		// SourcePath is built from this package's own PlanDirRel (the `_lym/plan` segment) joined with fileName.
 		SourcePath: path.Join(PlanDirRel(), fileName),
 	}
 

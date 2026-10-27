@@ -34,8 +34,8 @@ any time, for example by an operator watching a run; Master itself waits on
 its fork's completion notification instead.
 
 Example:
-  lyx webster await-batch 3
-  lyx webster await-batch 3 --wait 8m`,
+  lym webster await-batch 3
+  lym webster await-batch 3 --wait 8m`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()

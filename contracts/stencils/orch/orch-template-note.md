@@ -3,7 +3,7 @@
      It carries no markers. -->
 # Orch note
 
-Runs, the board and anything else `lyx` can read stay out of this note: the next session reads them from `lyx`.
+Runs, the board and anything else `lym` can read stay out of this note: the next session reads them from `lym`.
 
 ## Doing now
 

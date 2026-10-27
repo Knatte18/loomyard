@@ -1,4 +1,4 @@
-// runs.go ensures the `runs` strand of the prime or a beam: the session's overview window, named `beam: <slug>`, running `lyx batten overview`, which `start` brings up before the orchestrator strand.
+// runs.go ensures the `runs` strand of the prime or a beam: the session's overview window, named `beam: <slug>`, running `lym batten overview`, which `start` brings up before the orchestrator strand.
 
 package orchcli
 
@@ -16,7 +16,7 @@ import (
 // runsStrandName is the role the runs strand is added and addressed by in the reed session of the prime or a beam.
 const runsStrandName = "runs"
 
-// runsSidecarFile is the filename, under the orch directory, of the sidecar recording the runs strand's guid and the lyx build that launched it.
+// runsSidecarFile is the filename, under the orch directory, of the sidecar recording the runs strand's guid and the lym build that launched it.
 const runsSidecarFile = "runs-strand.json"
 
 // runsWindowPrefix opens the name of the runs strand's window, which the beam's slug or runsWindowPrimeLabel completes.
@@ -48,12 +48,12 @@ func runsStrandAddSpec(cmd, title string) reedengine.AddSpec {
 func (c *orchCLI) ensureRunsStrand() {
 	build, err := c.currentBuild()
 	if err != nil {
-		logger.Warn("orch: could not identify the running lyx build; the runs strand is left as it is", "cause", err)
+		logger.Warn("orch: could not identify the running lym build; the runs strand is left as it is", "cause", err)
 		return
 	}
 	exe, err := c.executable()
 	if err != nil {
-		logger.Warn("orch: could not locate the running lyx binary; the runs strand is left as it is", "cause", err)
+		logger.Warn("orch: could not locate the running lym binary; the runs strand is left as it is", "cause", err)
 		return
 	}
 	strands, err := c.strands.Strands()

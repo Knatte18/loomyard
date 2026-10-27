@@ -235,8 +235,8 @@ func TestPasteSubmit(t *testing.T) {
 			if got := fake.StdinFor("load-buffer"); !reflect.DeepEqual(got, []string{"hello"}) {
 				t.Errorf("load-buffer stdin = %q; want the text alone", got)
 			}
-			if !strings.HasPrefix(pastes[0][2], "lyx-inject-") {
-				t.Errorf("buffer name = %q; want the lyx-inject- prefix", pastes[0][2])
+			if !strings.HasPrefix(pastes[0][2], "lym-inject-") {
+				t.Errorf("buffer name = %q; want the lym-inject- prefix", pastes[0][2])
 			}
 			if sends := fake.ArgvFor("send-keys"); len(sends) != 0 {
 				t.Errorf("separate send-keys calls = %v; want none, the Enter rides the paste invocation", sends)
@@ -300,16 +300,16 @@ func TestSetWaitMark(t *testing.T) {
 			guid:  "a",
 			label: "verify loom",
 			want: [][]string{
-				{"set-option", "-p", "-t", "%7", "@lyx_wait", "verify loom"},
-				{"set-option", "-p", "-t", "%7", "@lyx_wait_start", "1787000000"},
+				{"set-option", "-p", "-t", "%7", "@lym_wait", "verify loom"},
+				{"set-option", "-p", "-t", "%7", "@lym_wait_start", "1787000000"},
 			},
 		},
 		{
 			name: "an empty label unsets both options",
 			guid: "a",
 			want: [][]string{
-				{"set-option", "-p", "-u", "-t", "%7", "@lyx_wait"},
-				{"set-option", "-p", "-u", "-t", "%7", "@lyx_wait_start"},
+				{"set-option", "-p", "-u", "-t", "%7", "@lym_wait"},
+				{"set-option", "-p", "-u", "-t", "%7", "@lym_wait_start"},
 			},
 		},
 		{

@@ -96,8 +96,8 @@ func TestBeamLanding_ReachesWorktreeCreateSkip(t *testing.T) {
 
 	t.Run("BeamWhoseOriginRecordIsLostIsRefusedNamingReconcile", func(t *testing.T) {
 		err := hubStartGuard(h.Location, "gone").refuse("gone", "run", shedengine.Status{}, false, false)
-		if err == nil || !strings.Contains(err.Error(), "lyx fabric reconcile") || strings.Contains(err.Error(), "cancel") {
-			t.Fatalf("start guard for gone = %v; want a refusal naming `lyx fabric reconcile` and no cancel", err)
+		if err == nil || !strings.Contains(err.Error(), "lym fabric reconcile") || strings.Contains(err.Error(), "cancel") {
+			t.Fatalf("start guard for gone = %v; want a refusal naming `lym fabric reconcile` and no cancel", err)
 		}
 	})
 

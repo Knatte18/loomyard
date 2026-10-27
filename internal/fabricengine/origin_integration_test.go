@@ -21,7 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // gitShow returns the content git show'd at rev:path in dir, failing the test on any git error.
@@ -87,9 +87,9 @@ func TestAdd_OriginRecord(t *testing.T) {
 		const second = "second-pair"
 
 		hubforge.AddPairWith(t, h, first, fabricengine.AddOptions{SkipPush: true})
-		firstLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, first))
+		firstLayout, err := lymcwd.Resolve(fabricengine.WorktreePath(l, first))
 		if err != nil {
-			t.Fatalf("lyxcwd.Resolve(first pair): %v", err)
+			t.Fatalf("lymcwd.Resolve(first pair): %v", err)
 		}
 		if _, err := h.Topology.Add(firstLayout, second, fabricengine.AddOptions{SkipPush: true}); err != nil {
 			t.Fatalf("Add(%q) from the first pair: %v", second, err)
@@ -99,9 +99,9 @@ func TestAdd_OriginRecord(t *testing.T) {
 			{first, l.WorktreeName},
 			{second, first},
 		} {
-			layout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, tc.slug))
+			layout, err := lymcwd.Resolve(fabricengine.WorktreePath(l, tc.slug))
 			if err != nil {
-				t.Fatalf("lyxcwd.Resolve(%q): %v", tc.slug, err)
+				t.Fatalf("lymcwd.Resolve(%q): %v", tc.slug, err)
 			}
 			origin, ok, err := fabricengine.ReadOrigin(layout)
 			if err != nil || !ok {
@@ -182,9 +182,9 @@ func TestAdd_OriginRecord(t *testing.T) {
 
 		// Resolve a Location at the new pair's own warp worktree — the acting worktree ReadOrigin reads
 		// through, mirroring how an operator who cd's into the new pair would read it back.
-		pairLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
+		pairLayout, err := lymcwd.Resolve(fabricengine.WorktreePath(l, slug))
 		if err != nil {
-			t.Fatalf("lyxcwd.Resolve(pair warp worktree): %v", err)
+			t.Fatalf("lymcwd.Resolve(pair warp worktree): %v", err)
 		}
 		origin, ok, err := fabricengine.ReadOrigin(pairLayout)
 		if err != nil {
@@ -223,9 +223,9 @@ func TestAdd_RecordsParentBranch_SubpathAnchoredHub(t *testing.T) {
 		t.Errorf("origin record also landed at the weft worktree root %s; want it only at the anchor-relative path", rootPath)
 	}
 
-	pairLayout, err := lyxcwd.Resolve(filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel))
+	pairLayout, err := lymcwd.Resolve(filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel))
 	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(pair warp worktree): %v", err)
+		t.Fatalf("lymcwd.Resolve(pair warp worktree): %v", err)
 	}
 	origin, ok, err := fabricengine.ReadOrigin(pairLayout)
 	if err != nil {
@@ -297,9 +297,9 @@ func TestAdd_AdoptedWeftKeepsItsOriginRecord(t *testing.T) {
 		t.Fatalf("Add(%q): %v", slug, err)
 	}
 
-	pairLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
+	pairLayout, err := lymcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(pair warp worktree): %v", err)
+		t.Fatalf("lymcwd.Resolve(pair warp worktree): %v", err)
 	}
 	origin, ok, err := fabricengine.ReadOrigin(pairLayout)
 	if err != nil || !ok {

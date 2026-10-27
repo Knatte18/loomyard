@@ -16,7 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -49,7 +49,7 @@ var pairPushCounts pairPushCounter
 // Each push is also counted per worktree path, so a parallel test asserts how often its own pair was pushed without swapping the seam.
 func TestMain(m *testing.M) {
 	gitkit.HermeticGitEnv()
-	spawnPairPush = func(l *lyxcwd.Location) error {
+	spawnPairPush = func(l *lymcwd.Location) error {
 		pairPushCounts.record(l.WorktreePath())
 		_, err := fabricengine.PushPairAnchored(l, fabricengine.EnvSyncOptions(), fabricengine.LockWaitUnbounded)
 		return err

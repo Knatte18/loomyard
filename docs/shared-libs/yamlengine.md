@@ -36,7 +36,7 @@ Spaces, newlines (via `(?s)` in the regex), and all other text are preserved ver
 Markers may appear inside a larger string for composition and interpolation:
 
 ```yaml
-path: ${env:LYX_EXAMPLE_PATH:-../_board}/sub
+path: ${env:LYM_EXAMPLE_PATH:-../_board}/sub
 url: https://${env:HOST:-localhost}:${env:PORT:-8080}
 ```
 
@@ -129,7 +129,7 @@ Merges every mapping key the template holds and `existing` lacks into `existing`
 ### `SetValues(template, existing []byte, pairs []KV) (SetResult, error)`
 
 Applies an explicit list of key=value pairs to a template-shaped YAML document.
-This is the non-interactive `lyx config <module> --set key=value` write path — unlike `Reconcile`, which merges an entire existing file into a template, `SetValues` mutates only the requested leaf keys while still routing every write through the template-shaped working tree.
+This is the non-interactive `lym config <module> --set key=value` write path — unlike `Reconcile`, which merges an entire existing file into a template, `SetValues` mutates only the requested leaf keys while still routing every write through the template-shaped working tree.
 
 **Behavior:**
 

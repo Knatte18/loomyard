@@ -1,11 +1,11 @@
-// watchdog.go implements the per-hub watchdog daemon: the `lyx reed watchdog` verb, its discovery
+// watchdog.go implements the per-hub watchdog daemon: the `lym reed watchdog` verb, its discovery
 // loop, and the pure seams that make discovery and the idle-exit rule unit-testable without a live
 // tmux server.
 //
 // internal/reedcli still owns the daemon's verb, its discovery loop, and its idle-exit rule, per
 // the discussion's told-geometry-keeps-the-daemon-out-of-reedengine decision:
-// PATTERN-cwd-resolution bars internal/reedengine from importing internal/lyxcwd, and reedcli
-// already holds the *lyxcwd.Location and already imports internal/hubgeom, so it may import
+// PATTERN-cwd-resolution bars internal/reedengine from importing internal/lymcwd, and reedcli
+// already holds the *lymcwd.Location and already imports internal/hubgeom, so it may import
 // internal/fabricengine directly as hubgeom does. That decision was revisited, not dropped, for one
 // piece of the daemon alone: the detached spawn itself moved to internal/reedengine
 // (SpawnWatchdog, spawnwatchdog.go) so internal/loomcli could reach it over an already-shipped
@@ -32,7 +32,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
@@ -305,27 +305,27 @@ func planReapCycle(live []string, hubLive bool, gone map[string]bool, counters m
 	return reap, remaining
 }
 
-// resolveWatchedSession resolves a live tmux session name back to the *lyxcwd.Location of the
+// resolveWatchedSession resolves a live tmux session name back to the *lymcwd.Location of the
 // worktree it belongs to, by a direct join rather than a scan.
 //
 // The join is exact, not a candidate set, because hub-mode reedengine.SessionName(worktreeRoot) is
 // filepath.Base(worktreeRoot) verbatim, and validateToldTmuxIdentity refuses an unusable name
 // instead of sanitizing it. With hub being filepath.Dir(worktreeRoot), filepath.Join(hub,
-// sessionName) recovers the worktree root exactly. lyxcwd.ResolveWorktree is still required on top
-// of the join: hubgeom.ReedGeometry needs a resolved *lyxcwd.Location, and ResolveWorktree is also
+// sessionName) recovers the worktree root exactly. lymcwd.ResolveWorktree is still required on top
+// of the join: hubgeom.ReedGeometry needs a resolved *lymcwd.Location, and ResolveWorktree is also
 // the gate that rejects a session name that does not name a worktree at all.
-func resolveWatchedSession(hub, sessionName string) (*lyxcwd.Location, error) {
+func resolveWatchedSession(hub, sessionName string) (*lymcwd.Location, error) {
 	worktreeRoot := filepath.Join(hub, sessionName)
 	// The direct join is a git spawn inside a polling probe, so it is logged at Debug per
 	// PATTERN-spawn-observability.
 	logger.Debug("reed: watchdog resolving worktree for session", "hub", hub, "session", sessionName)
-	return lyxcwd.ResolveWorktree(worktreeRoot)
+	return lymcwd.ResolveWorktree(worktreeRoot)
 }
 
 // enterSession builds the watchedSession entry for a newly-appeared live tmux session name,
 // starting its name-repair goroutine unless the worktree's own config says watchdog: off.
 //
-// LoadConfig, not a strict load, is used deliberately: a worktree with no _lyx still resolves the
+// LoadConfig, not a strict load, is used deliberately: a worktree with no _lym still resolves the
 // embedded template, which keeps reedengine on the degrading side of the Config Strictness
 // Invariant rather than refusing a worktree the daemon should otherwise watch.
 //
@@ -354,7 +354,7 @@ func enterSession(hub, tmuxPath, sessionName string) (watchedSession, error) {
 	cfg.Tmux = tmuxPath
 	eng := reedengine.New(cfg, geom, shuttleengines.EnvScrub())
 
-	// A worktree reaches the daemon's discovery loop only after "lyx reed up" already booted it,
+	// A worktree reaches the daemon's discovery loop only after "lym reed up" already booted it,
 	// and that boot already validated cfg.Watchdog loudly (ensureServerAndSessionLocked), so the
 	// only value this needs to recognize here is the "off" spelling itself — every other value,
 	// valid or not, behaves as enabled, failing safe toward watching for a value it cannot parse.
@@ -732,7 +732,7 @@ const watchdogLockFileName = "reed-watchdog.lock"
 // watchdogDownWait is the longest the wait lasts, and watchdogDownPoll the pause between lock probes.
 const (
 	watchdogDownWait = 10 * time.Second
-	watchdogDownPoll = 100 * time.Millisecond //lyx:one-shot bounded lock poll of at most watchdogDownWait
+	watchdogDownPoll = 100 * time.Millisecond //lym:one-shot bounded lock poll of at most watchdogDownWait
 )
 
 // probeWatchdogLock reports whether the watchdog lock at lockPath is free.
@@ -797,10 +797,10 @@ up, resume and attach each attempt to spawn this daemon detached after
 their own engine op returns without error; a spawn that finds the lock
 already held exits 0 immediately. Running it directly in the foreground
 is a real diagnosis path: its diagnostics land in the hub's durable log
-directory, and the foreground run honours -v, -vv, LYX_LOG_LEVEL and
-LYX_LOG_FILE like every other verb.
+directory, and the foreground run honours -v, -vv, LYM_LOG_LEVEL and
+LYM_LOG_FILE like every other verb.
 
-The daemon retires when the lyx binary it was started from is replaced,
+The daemon retires when the lym binary it was started from is replaced,
 checked on each discovery tick, and respawns only while the hub has a session,
 so a deploy never leaves it laying out sessions with stale render code. The
 last reed down asks the daemon to stop; it exits at its next cycle once no
@@ -811,14 +811,14 @@ reed up, attach or resume spawns a successor that has it.
 A detached daemon's stderr reaches nothing, so its Debug trace reaches only
 the durable log directory. Two routes give a Debug trace of the daemon: run
 it in the foreground with -vv, whose Debug lines then go to stderr or to the
-LYX_LOG_FILE set for that run; or, while no daemon runs for the hub, run
-lyx reed up, attach or resume with LYX_LOG_LEVEL=debug set, so the daemon
+LYM_LOG_FILE set for that run; or, while no daemon runs for the hub, run
+lym reed up, attach or resume with LYM_LOG_LEVEL=debug set, so the daemon
 that verb spawns starts at Debug and writes its trace to the hub logs
 directory. A daemon already running keeps the level it started with, since a
 new spawn finds the hub lock held and exits.
 
 Example:
-  lyx reed watchdog --hub-path /abs/path/to/hub --tmux /usr/bin/tmux --shell /bin/bash`,
+  lym reed watchdog --hub-path /abs/path/to/hub --tmux /usr/bin/tmux --shell /bin/bash`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -831,7 +831,7 @@ Example:
 			}
 
 			// The durable sink is pointed FIRST, before the lock: its cwd-anchored
-			// fallback arms only inside a lyx-owned worktree and never from a hub cwd, which is
+			// fallback arms only inside a lym-owned worktree and never from a hub cwd, which is
 			// exactly where cmd.Dir pins this process when it is spawned detached — without this
 			// explicit call, every diagnostic the design leans on would go nowhere.
 			logger.SetDurableSinkDir(fabricengine.HubLogsDir(hubPath))

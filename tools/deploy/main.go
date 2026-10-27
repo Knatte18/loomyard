@@ -1,15 +1,15 @@
-// Command deploy is the only route by which lyx and the loomyard plugins are installed.
+// Command deploy is the only route by which lym and the loomyard plugins are installed.
 //
 // Production is the default and is what update-plugins.sh / update-plugins.cmd run: it puts the checked-out, committed code into production in one step.
-// It refuses a dirty working tree or a HEAD that is not pushed to origin/main, mirrors every installed loomyard plugin's git-tracked files into the Claude Code plugin cache, and builds lyx into the Go bin dir (`go env GOBIN`, else GOPATH/bin).
+// It refuses a dirty working tree or a HEAD that is not pushed to origin/main, mirrors every installed loomyard plugin's git-tracked files into the Claude Code plugin cache, and builds lym into the Go bin dir (`go env GOBIN`, else GOPATH/bin).
 // Nothing reaches production except through this step.
 // No pointer on origin records the deployed commit: each machine deploys on its own, so a shared one could not say what any one machine runs.
 //
 // -dev (deploy-dev / deploy-dev.cmd) builds the working tree as-is into <repoRoot>/.dev-bin (see
 // tools/internal/devbin) for internal tests, and touches nothing else.
 //
-//	go run ./tools/deploy        # production: plugins + lyx into the Go bin dir
-//	go run ./tools/deploy -dev   # dev: lyx into <repoRoot>/.dev-bin
+//	go run ./tools/deploy        # production: plugins + lym into the Go bin dir
+//	go run ./tools/deploy -dev   # dev: lym into <repoRoot>/.dev-bin
 //
 // Run it from anywhere — it locates the module root itself.
 package main
@@ -70,17 +70,17 @@ func run(dev bool) error {
 	dest := filepath.Join(destDir, name)
 
 	tag := gitTag(root)
-	fmt.Printf("Building lyx @ %s -> %s\n", tag, dest)
+	fmt.Printf("Building lym @ %s -> %s\n", tag, dest)
 
 	// Stamp internal/buildinfo.Channel so a dev-installed binary seeds but does not refresh an untouched stencil, and only a production-stamped binary refreshes one.
 	ldflags := "-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=production"
 	if dev {
 		ldflags = "-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev"
 	}
-	args := []string{"build", "-o", dest, "-ldflags", ldflags, "./cmd/lyx"}
+	args := []string{"build", "-o", dest, "-ldflags", ldflags, "./cmd/lym"}
 	build := exec.Command("go", args...)
 	build.Dir = root
-	// lyx links quarry's tree-sitter grammars through cgo, so pin CGO_ENABLED=1
+	// lym links quarry's tree-sitter grammars through cgo, so pin CGO_ENABLED=1
 	// explicitly: an environment that has disabled cgo must fail here at the
 	// compiler rather than produce a binary silently missing that linkage.
 	build.Env = append(os.Environ(), "CGO_ENABLED=1")
@@ -93,7 +93,7 @@ func run(dev bool) error {
 	if err != nil {
 		return fmt.Errorf("stat built binary: %w", err)
 	}
-	fmt.Printf("Deployed lyx @ %s  (%d KB)  %s\n", tag, info.Size()/1024, dest)
+	fmt.Printf("Deployed lym @ %s  (%d KB)  %s\n", tag, info.Size()/1024, dest)
 
 	if dev {
 		return nil
@@ -101,19 +101,19 @@ func run(dev bool) error {
 
 	pathDirs := filepath.SplitList(os.Getenv("PATH"))
 	if !onPath(pathDirs, destDir) {
-		fmt.Printf("  WARNING: %s is not on PATH - add it so 'lyx' resolves globally.\n", destDir)
+		fmt.Printf("  WARNING: %s is not on PATH - add it so 'lym' resolves globally.\n", destDir)
 	}
-	for _, other := range otherLyxBinaries(pathDirs, destDir, name, lyxMainPackage) {
-		fmt.Printf("  WARNING: another %s on PATH: %s - remove it; production lyx lives only in %s.\n", name, other, destDir)
+	for _, other := range otherLymBinaries(pathDirs, destDir, name, lymMainPackage) {
+		fmt.Printf("  WARNING: another %s on PATH: %s - remove it; production lym lives only in %s.\n", name, other, destDir)
 	}
 	return nil
 }
 
 func binaryName() string {
 	if runtime.GOOS == "windows" {
-		return "lyx.exe"
+		return "lym.exe"
 	}
-	return "lyx"
+	return "lym"
 }
 
 // dirtyError refuses a production deploy from a working tree with any change git reports, since
@@ -128,8 +128,8 @@ func dirtyError(porcelain string) error {
 // workBranch is where all work lands, and the only branch production deploys from.
 const workBranch = "main"
 
-// lyxMainPackage is the main package path lyx's Go build info carries, which tells a copy of lyx on PATH from a foreign program of the same name.
-const lyxMainPackage = "github.com/Knatte18/loomyard/cmd/lyx"
+// lymMainPackage is the main package path lym's Go build info carries, which tells a copy of lym on PATH from a foreign program of the same name.
+const lymMainPackage = "github.com/Knatte18/loomyard/cmd/lym"
 
 // pushedGate fetches origin and refuses a HEAD that is not on origin's workBranch, so production only ever runs pushed work.
 func pushedGate(root string) error {
@@ -287,11 +287,11 @@ func copyEntry(src, dst string) error {
 	return out.Close()
 }
 
-// otherLyxBinaries returns every file called name on PATH outside destDir whose Go build info names mainPackage, in PATH order:
+// otherLymBinaries returns every file called name on PATH outside destDir whose Go build info names mainPackage, in PATH order:
 // a copy that shadows or is shadowed by the production binary is a stale install waiting to be run by mistake.
 // A foreign program of the same name is skipped,
 // and a file reached through a linked directory is reported once, under the first PATH entry that reaches it, or not at all when it is the production binary itself.
-func otherLyxBinaries(pathDirs []string, destDir, name, mainPackage string) []string {
+func otherLymBinaries(pathDirs []string, destDir, name, mainPackage string) []string {
 	var found []string
 	seenDirs := map[string]bool{normDir(destDir): true}
 	seenFiles := map[string]bool{}

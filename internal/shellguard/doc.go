@@ -1,4 +1,4 @@
-// Package shellguard is the one neutral table of every guard lyx installs against shell commands an agent runs.
+// Package shellguard is the one neutral table of every guard lym installs against shell commands an agent runs.
 // An engine renders each row of Rows in its own tool-guard mechanism, and the no-denied-recovery scan reads the rows' Forms.
 // A row carries what the guard matches, the deny reason shown to the agent, the sentence announcing it in the session's system prompt, and the config switch it hangs on.
 //

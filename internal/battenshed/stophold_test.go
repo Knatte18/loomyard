@@ -109,7 +109,7 @@ func TestNotice_EligibleStopHold(t *testing.T) {
 			steps: []holdStep{
 				{at: minutes(5), mutate: func(s *holdScenario) { s.h.writeReport(s.since.Add(minutes(2))) }, wantSent: 1},
 			},
-			wantText: "report _lyx/stop-report.md",
+			wantText: "report _lym/stop-report.md",
 		},
 		{
 			name: "a hand-on long after the stop at a watched awaiting stop, with no park marker, waits the report wait from the hand-on",

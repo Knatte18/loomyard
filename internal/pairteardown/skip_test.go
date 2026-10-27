@@ -40,54 +40,54 @@ func TestRunLockHolderPasses(t *testing.T) {
 		{name: "PausedWithNoParentLockRecordPassesAnUnknownHolder", paused: true, wantPass: true},
 		{
 			name: "MarkerOfAnotherSlugDoesNotPass", holderKnown: true, waiting: otherSlug,
-			wantContains: []string{"pid 4242", "lyx tender pause slug", "run the removal again"},
+			wantContains: []string{"pid 4242", "lym tender pause slug", "run the removal again"},
 		},
 		{
 			name: "MarkerOfAnotherPidDoesNotPassUnpaused", holderKnown: true, waiting: otherPID,
-			wantContains: []string{"pid 4242", "lyx tender pause slug", "run the removal again once that pid ends"},
+			wantContains: []string{"pid 4242", "lym tender pause slug", "run the removal again once that pid ends"},
 		},
 		{
 			name: "UnpausedHolderWithNoMarkerNamesThePauseThenTheRetry", holderKnown: true,
-			wantContains: []string{"pid 4242", "lyx tender pause slug", "run the removal again"},
+			wantContains: []string{"pid 4242", "lym tender pause slug", "run the removal again"},
 		},
 		{
 			name: "UnpausedHolderUnderAParentLockRecordNamesNoPause", holderKnown: true, parentLocked: true,
 			wantContains:    []string{"pid 4242", "run the removal again once that pid ends"},
-			wantNotContains: []string{"lyx tender pause"},
+			wantNotContains: []string{"lym tender pause"},
 		},
 		{
 			name: "PausedHolderUnderAParentLockRecordNamesTheSlugResume", holderKnown: true, waiting: otherPID, paused: true, parentLocked: true,
-			wantContains:    []string{"pid 4242", "lyx tender resume slug", "held for another machine", "never lift that pause", "run the removal again"},
+			wantContains:    []string{"pid 4242", "lym tender resume slug", "held for another machine", "never lift that pause", "run the removal again"},
 			wantNotContains: []string{"lifts every live entry"},
 		},
 		{
 			name: "PausedUnknownHolderUnderAParentLockRecordNamesTheSlugResumeWithNoPid", paused: true, parentLocked: true,
-			wantContains:    []string{"an unknown process", "lyx tender resume slug", "never lift that pause"},
+			wantContains:    []string{"an unknown process", "lym tender resume slug", "never lift that pause"},
 			wantNotContains: []string{"pid 4242"},
 		},
 		{
 			name: "HubEntryResumeNamesNoSlugAndWhatItLifts", holderKnown: true, paused: true, hubEntry: true, parentLocked: true,
-			wantContains:    []string{"pid 4242", "lyx tender resume` with no slug", "lifts every live entry of the hub", "other pairs' pauses", "run the removal again"},
-			wantNotContains: []string{"lyx tender resume slug"},
+			wantContains:    []string{"pid 4242", "lym tender resume` with no slug", "lifts every live entry of the hub", "other pairs' pauses", "run the removal again"},
+			wantNotContains: []string{"lym tender resume slug"},
 		},
 		{
 			name: "HubEntryBesideASlugEntryResumeNamesNoSlug", paused: true, hubEntry: true, parentLocked: true,
-			wantContains:    []string{"lyx tender resume` with no slug", "lifts every live entry of the hub"},
-			wantNotContains: []string{"lyx tender resume slug"},
+			wantContains:    []string{"lym tender resume` with no slug", "lifts every live entry of the hub"},
+			wantNotContains: []string{"lym tender resume slug"},
 		},
 		{
 			name: "UnknownUnpausedHolderOnLinuxNamesTheLockAndTenderStatus", goos: "linux",
-			wantContains: []string{"an unknown process", "lyx tender pause slug", "run.lock", "lyx tender status", "run the removal again"},
+			wantContains: []string{"an unknown process", "lym tender pause slug", "run.lock", "lym tender status", "run the removal again"},
 		},
 		{
 			name: "UnknownUnpausedHolderOnWindowsNamesTaskManager", goos: "windows",
-			wantContains:    []string{"an unknown process", "lyx tender pause slug", "run.lock", "Task Manager"},
-			wantNotContains: []string{"lyx tender status"},
+			wantContains:    []string{"an unknown process", "lym tender pause slug", "run.lock", "Task Manager"},
+			wantNotContains: []string{"lym tender status"},
 		},
 		{
 			name: "UnknownUnpausedHolderUnderAParentLockRecordNamesNoPause", parentLocked: true, goos: "linux",
-			wantContains:    []string{"an unknown process", "lyx tender status"},
-			wantNotContains: []string{"lyx tender pause"},
+			wantContains:    []string{"an unknown process", "lym tender status"},
+			wantNotContains: []string{"lym tender pause"},
 		},
 	}
 	for _, tt := range tests {

@@ -200,7 +200,7 @@ func reconcileHubWide(boardDir, primeAnchor, label string, hooks walkHooks) (ski
 	bolt := fabricengine.NewBolt(boardDir)
 	var prior map[string][]byte
 	write := fabricengine.BoltWrite{
-		Message: "lyx: reconcile hub-wide config for build " + label,
+		Message: "lym: reconcile hub-wide config for build " + label,
 		Write: func() ([]string, error) {
 			var err error
 			prior, err = snapshotConfig(boardDir)
@@ -319,7 +319,7 @@ func reconcileWorktree(boardDir string, w fabricengine.CodeWorktree, revision st
 	if len(files) == 0 {
 		return false, nil
 	}
-	res, err := f.Commit(files, "lyx: reconcile config for build "+revision, nil, fabricengine.SyncOptions{})
+	res, err := f.Commit(files, "lym: reconcile config for build "+revision, nil, fabricengine.SyncOptions{})
 	if err != nil {
 		// A commit that landed before a later step failed already holds the written bytes, so a restore would dirty the tree against it.
 		if res.Committed() {

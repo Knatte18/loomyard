@@ -20,7 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // lockWaitHook is a test seam: nil in production, it is called with the weft write lock's path just before a merge verb waits to acquire it.
@@ -147,7 +147,7 @@ func (f *Fabric) mergeIn(source, warpSHA string) (res MergeResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { finalizeMergeResult(&res, rec) }()
 
-	l, err := lyxcwd.ResolveWorktree(f.warpPath)
+	l, err := lymcwd.ResolveWorktree(f.warpPath)
 	if err != nil {
 		return MergeResult{}, fmt.Errorf("fabricengine: resolve layout for %s: %w", f.warpPath, err)
 	}
@@ -344,7 +344,7 @@ func (f *Fabric) mergeIn(source, warpSHA string) (res MergeResult, err error) {
 }
 
 // Merge merges source into f's target pair's warp checkout — the pair whose worktree the caller
-// opened f on, via lyxcwd.ResolveWorktree + fabricengine.Open, never a pair Fabric resolves topology
+// opened f on, via lymcwd.ResolveWorktree + fabricengine.Open, never a pair Fabric resolves topology
 // for itself; the weft side is not a merge participant.
 // It is squash-capable (opts.Squash) and expects a conflict-free merge: a warp-side conflict
 // self-aborts the warp side back to its pre-merge SHA and returns *ErrMergeInRequired, since conflict

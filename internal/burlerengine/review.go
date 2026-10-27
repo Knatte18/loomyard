@@ -11,7 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -86,7 +86,7 @@ func (e *Engine) Review(p Profile, opts RunOpts) (ReviewResult, error) {
 
 	declared, err := discussionparser.DeclaredPatternChanges(e.geom.PatternRecordPath)
 	if err != nil {
-		return ReviewResult{}, fmt.Errorf("burler: %w re-step the review row with %q", err, "lyx loom start")
+		return ReviewResult{}, fmt.Errorf("burler: %w re-step the review row with %q", err, "lym loom start")
 	}
 	directive, err := pattern.Directive(e.geom.RepoRoot, e.stencilsDir, pattern.RoleReviewFix, declared)
 	if err != nil {
@@ -110,7 +110,7 @@ func (e *Engine) Review(p Profile, opts RunOpts) (ReviewResult, error) {
 
 // instructionDir creates and returns a fresh instruction directory named from prefix under the anchor's ephemeral burler directory.
 func (e *Engine) instructionDir(prefix string) (string, error) {
-	burlerDir := filepath.Join(e.geom.AnchorPath, lyxdirs.DotLyxDirName, "burler")
+	burlerDir := filepath.Join(e.geom.AnchorPath, lymdirs.DotLymDirName, "burler")
 	if err := os.MkdirAll(burlerDir, 0o755); err != nil {
 		logger.Warn("burler: create instruction dir failed", "burlerDir", burlerDir, "error", err)
 		return "", fmt.Errorf("burler: materialize instruction files: %w", err)
@@ -135,7 +135,7 @@ func writeInstructionFiles(files []instructionFile) error {
 
 // probeDirOf returns the directory a probe of a half names its instruction files under; a probe composes no prompt, so the directory is never created.
 func (e *Engine) probeDirOf() string {
-	return filepath.Join(e.geom.AnchorPath, lyxdirs.DotLyxDirName, "burler", "round-probe")
+	return filepath.Join(e.geom.AnchorPath, lymdirs.DotLymDirName, "burler", "round-probe")
 }
 
 // ProbeReview reports the state of the review half p describes under opts, without waiting on it:

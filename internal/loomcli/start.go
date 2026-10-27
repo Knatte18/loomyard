@@ -20,7 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -150,8 +150,8 @@ func (c *loomCLI) runHaltedAtHandBack() (shedengine.State, error) {
 
 // retryStart and retryResume are the two verbs that put a parked or dead driver back to work, as a refusal message names one for the caller's retry.
 const (
-	retryStart  = "lyx loom start"
-	retryResume = "lyx loom resume"
+	retryStart  = "lym loom start"
+	retryResume = "lym loom resume"
 )
 
 // driverNotParkedMessage is the refusal for a run halted at a hand-back whose driver has not written its park marker yet;
@@ -172,7 +172,7 @@ func ownMergeInLeftover(st fabricengine.MidMergeState, producer, parentBranch st
 }
 
 // readRecordedParentBranch returns the parent branch the pair's fabric origin record names, or an error when the record is absent.
-func readRecordedParentBranch(l *lyxcwd.Location) (string, error) {
+func readRecordedParentBranch(l *lymcwd.Location) (string, error) {
 	origin, found, err := fabricengine.ReadOrigin(l)
 	if err != nil {
 		return "", err
@@ -198,7 +198,7 @@ func (c *loomCLI) currentProducer() (string, error) {
 // parentBranchUnreadableMessage is the refusal for a parked merge-in at Parent-Align or Finalize whose pair's recorded parent branch could not be read, so the merge cannot be told apart from the row's own leftover;
 // retry is the verb the message names for the caller's retry.
 func parentBranchUnreadableMessage(err error, retry string) string {
-	return "loom: could not read the pair's recorded parent branch to tell this parked merge-in from the row's own leftover: " + err.Error() + `; with no fabric origin record, run "lyx loom start --parent <branch>" in the task worktree, which writes it, otherwise fix the file the message names and re-run "` + retry + `"`
+	return "loom: could not read the pair's recorded parent branch to tell this parked merge-in from the row's own leftover: " + err.Error() + `; with no fabric origin record, run "lym loom start --parent <branch>" in the task worktree, which writes it, otherwise fix the file the message names and re-run "` + retry + `"`
 }
 
 // refuseOverUnfinishedMerge probes the pair's merge state and reports whether the verb named retry may proceed.
@@ -228,7 +228,7 @@ func (c *loomCLI) refuseOverUnfinishedMerge(ctx context.Context, out io.Writer, 
 				return true
 			}
 		}
-		msg = `loom: a fabric merge is in progress in this worktree; resolve each listed path, mark it resolved with "lyx fabric merge-stage <path>...", then run "lyx fabric merge --continue" (or "lyx fabric merge --abort" to discard the merge), then re-run "` + retry + `"; a session lyx refuses the verb from reports status: FAILED and the orch runs it`
+		msg = `loom: a fabric merge is in progress in this worktree; resolve each listed path, mark it resolved with "lym fabric merge-stage <path>...", then run "lym fabric merge --continue" (or "lym fabric merge --abort" to discard the merge), then re-run "` + retry + `"; a session lym refuses the verb from reports status: FAILED and the orch runs it`
 	default:
 		msg = `loom: a git merge, cherry-pick or squash that fabric did not start is in progress in this worktree; conclude or abort it with git, then re-run "` + retry + `"`
 	}
@@ -262,7 +262,7 @@ func (c *loomCLI) vouchForSpawnedResume() {
 
 // runDriverSpawnAndWait performs steps 5 and 6 of the bootstrap.
 // It probes the run lock, the driver lock and the driver strand table once, and decides via mustSpawnDriver whether a spawn is needed.
-// When one is, it branches on driver into the go arm's detached `lyx loom drive` spawn and driver-lock handshake, or the llm arm's strand launch, whose StartDriver already blocks through the provider's readiness gates before returning.
+// When one is, it branches on driver into the go arm's detached `lym loom drive` spawn and driver-lock handshake, or the llm arm's strand launch, whose StartDriver already blocks through the provider's readiness gates before returning.
 //
 // Before any spawn it removes a stale park marker (shedrun.ParkMarker).
 // When no spawn is needed and the driver strand is live with the marker present, the driver is parked,
@@ -272,7 +272,7 @@ func (c *loomCLI) vouchForSpawnedResume() {
 //
 // On the spawn path only, after the stale-marker removal and right before either arm spawns, it writes the handoff voucher for the status file as it stands, when Tier 2 is on, so the driver's first entry observation does not read this deliberate resume as a crash.
 // The voucher suppresses at most one entry observation, the first, and only when its history length and state equal what start recorded;
-// it lives under `.lyx`, so it never crosses machines or survives a fabric re-wire.
+// it lives under `.lym`, so it never crosses machines or survives a fabric re-wire.
 // A voucher whose spawn then fails its readiness check stays until the next start or completed step overwrites it, and suppresses at most one later matching observation;
 // a driver that start spawned and that then dies mid-run is not noted, and its evidence stays in the driver log and trace.
 // The parked-driver resume, the live-strand no-op and every refusal write no voucher.
@@ -436,7 +436,7 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 		driverLogPath := loomengine.LoomDriverLog(c.location)
 		if dispositionForHandshake(result) == handshakeRefuse {
 			_ = bootstrapLock.Release()
-			clihelp.SetExit(ctx, output.Err(out, "loom: driver did not take its driver lock; see "+driverLogPath+" for why the driver exited; way forward: lyx loom start"))
+			clihelp.SetExit(ctx, output.Err(out, "loom: driver did not take its driver lock; see "+driverLogPath+" for why the driver exited; way forward: lym loom start"))
 			return false
 		}
 		if result == awaitRunLockChildDied {
@@ -481,7 +481,7 @@ Reach for it in a task worktree to begin the task, and again after any
 hand-back that waits on start to carry the run on.
 
 It returns once the driver is up and never attaches to the session; watch it
-with "lyx reed attach". The envelope carries the run's driver, slug, run id
+with "lym reed attach". The envelope carries the run's driver, slug, run id
 and status file.
 
 It refuses with the kind "merge_in_progress" while the worktree holds an
@@ -489,12 +489,12 @@ unfinished merge, naming the conflicted paths and the remedy, and with the
 kind "driver_not_parked" while a live loom driver over a halted run is still
 writing its stop report; retry that one a few seconds later.
 It refuses with the kind "owned_elsewhere" over a run another machine owns,
-naming the owner and "lyx adopt".
-While a pause covers this task it refuses and names "lyx tender resume".
+naming the owner and "lym adopt".
+While a pause covers this task it refuses and names "lym tender resume".
 
 Example:
-  lyx loom start
-  lyx loom start --parent main`,
+  lym loom start
+  lym loom start --parent main`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -502,11 +502,11 @@ Example:
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
-			if err := c.refuseCovered(`run "lyx loom start" again`); err != nil {
+			if err := c.refuseCovered(`run "lym loom start" again`); err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
-			if c.refuseOwnedElsewhere(ctx, out, `run "lyx loom start" again`) {
+			if c.refuseOwnedElsewhere(ctx, out, `run "lym loom start" again`) {
 				return nil
 			}
 
@@ -581,7 +581,7 @@ Example:
 
 			// Steps 5 and 6: probe the run lock and the driver strand table, decide whether a spawn
 			// is needed, and run the arm-specific launch and wait.
-			// The go arm's handshake seam is the real driver lock, which `lyx loom drive` takes first and holds for life.
+			// The go arm's handshake seam is the real driver lock, which `lym loom drive` takes first and holds for life.
 			// See runDriverSpawnAndWait's own doc comment for why it is a parameter rather than built inside that function.
 			if !c.runDriverSpawnAndWait(ctx, out, driver, bootstrapLock, c.driverLockHeld) {
 				return nil
@@ -589,7 +589,7 @@ Example:
 
 			// Step 7: release the bootstrap lock and report the success envelope.
 			// The verb never attaches or switches a tmux client;
-			// attaching is `lyx reed attach`.
+			// attaching is `lym reed attach`.
 			_ = bootstrapLock.Release()
 
 			runID := shedrun.ResolveRunID(c.location, c.runID)

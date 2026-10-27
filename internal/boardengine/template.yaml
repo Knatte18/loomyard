@@ -1,5 +1,5 @@
-readme: ${env:LYX_README:-README.md}   # readme page file name; relative to board dir
-design_prefix: ${env:LYX_DESIGN_PREFIX:-design-}   # prefix for design-doc files
+readme: ${env:LYM_README:-README.md}   # readme page file name; relative to board dir
+design_prefix: ${env:LYM_DESIGN_PREFIX:-design-}   # prefix for design-doc files
 types:   # type labels with their descriptions: a note carries exactly one, a task one or more
   bug: Something is broken or behaves wrongly
   enhancement: A new capability or an improvement to an existing one

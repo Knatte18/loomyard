@@ -11,7 +11,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
 )
 
@@ -31,8 +31,8 @@ func wantMenuLauncherName() string {
 func TestLaunchersDir(t *testing.T) {
 	t.Parallel()
 
-	hub := filepath.Join("repos", "loomyard-LYXHUB")
-	l := &lyxcwd.Location{HubPath: hub, WorktreeName: "loomyard", AnchorRel: "."}
+	hub := filepath.Join("repos", "loomyard-LYMHUB")
+	l := &lymcwd.Location{HubPath: hub, WorktreeName: "loomyard", AnchorRel: "."}
 	slug := "test-wt"
 
 	if got, want := launchersDir(l), filepath.Join(hub, "_launchers"); got != want {
@@ -52,7 +52,7 @@ func TestLaunchersDir(t *testing.T) {
 func TestMirroredLauncherMethods(t *testing.T) {
 	t.Parallel()
 
-	hub := filepath.Join("repos", "loomyard-LYXHUB")
+	hub := filepath.Join("repos", "loomyard-LYMHUB")
 	const worktreeName = "loomyard"
 
 	t.Run("LauncherDir", func(t *testing.T) {
@@ -264,7 +264,7 @@ func TestRemoveLaunchers_PreservesForeignContent(t *testing.T) {
 // The escape is deterministic here rather than raced: the removal is driven through the exact helper
 // removeLaunchers now calls, with an intermediate component that escapes the container, and the
 // out-of-container victim must survive. The routing itself is separately guarded mechanically —
-// launchers.go is no longer on cmd/lyx/destructiveguard_test.go's allowlist, so reintroducing a raw
+// launchers.go is no longer on cmd/lym/destructiveguard_test.go's allowlist, so reintroducing a raw
 // os.Remove( there fails TestNoDestructiveBypass_FabricengineProductionSource.
 //
 //testtiming:keep launcher-directory removal acting through the containment root so an escaping intermediate cannot delete an outside directory; coverage of its blocks by other tests does not show an assertion of this
@@ -349,7 +349,7 @@ func TestRemoveLaunchers_EmptyDirRemovedAndRecorded(t *testing.T) {
 // This is fabric's R8 finding L2. removeLaunchers opens with
 // refuseUncontainedPath, which returned a bare fmt.Errorf. Every best-effort call site in Remove and
 // Prune wraps it in surfaceRefusal, which by design returns nil for anything that is not a
-// *destructiveRefusal — so a containment refusal evaporated and `lyx fabric remove` reported
+// *destructiveRefusal — so a containment refusal evaporated and `lym fabric remove` reported
 // "ok":true with an exit 0 while the launcher scripts were still on disk. Reproduced live against
 // the deployed binary with a static symlink at the _launchers container, no race required.
 //

@@ -25,14 +25,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // mustRecordsRepoRoot resolves fabricengine.RecordsRepoRoot(l), failing the test on
 // any error — the shared test-package helper for the many call sites across
 // this package's tests that need the weft prime worktree path, now that it is
 // a fabricengine-owned resolution rather than a Layout method.
-func mustRecordsRepoRoot(t *testing.T, l *lyxcwd.Location) string {
+func mustRecordsRepoRoot(t *testing.T, l *lymcwd.Location) string {
 	t.Helper()
 
 	root, err := fabricengine.RecordsRepoRoot(l)
@@ -43,7 +43,7 @@ func mustRecordsRepoRoot(t *testing.T, l *lyxcwd.Location) string {
 }
 
 // refuseRecordsCommits points l's records repository at a hooks directory whose pre-commit hook refuses every commit, so Add fails at its origin-record commit, the last step that can fail after the pair is wired.
-func refuseRecordsCommits(t *testing.T, l *lyxcwd.Location) {
+func refuseRecordsCommits(t *testing.T, l *lymcwd.Location) {
 	t.Helper()
 
 	hooks := t.TempDir()
@@ -56,7 +56,7 @@ func refuseRecordsCommits(t *testing.T, l *lyxcwd.Location) {
 // plantLauncherBlocker plants a directory at the pair's ide launcher script path, so Add fails writing the launcher scripts after the pair's worktrees and weft branch exist.
 // The rollback's launcher teardown removes the planted directory and the launcher directory.
 // It returns the planted path.
-func plantLauncherBlocker(tb testing.TB, l *lyxcwd.Location, slug string) string {
+func plantLauncherBlocker(tb testing.TB, l *lymcwd.Location, slug string) string {
 	tb.Helper()
 
 	scriptName := "ide.sh"
@@ -158,7 +158,7 @@ func TestAddRollback_LiveWeftFromOrigin(t *testing.T) {
 			gitkit.MustRun(t, clone, "git", "clone", "--quiet", h.RecordsBare, ".")
 			gitkit.MustRun(t, clone, "git", "checkout", "--quiet", "-b", weftBranch)
 			// The branch records its anchor, as a live pair's does, so adopting it commits nothing of its own that the rollback would leave on top of origin's tip.
-			gitkit.CommitFile(t, clone, lyxcwd.AnchorFileName, l.AnchorRel+"\n", "record the anchor")
+			gitkit.CommitFile(t, clone, lymcwd.AnchorFileName, l.AnchorRel+"\n", "record the anchor")
 			gitkit.CommitFile(t, clone, "first.txt", "first\n", "first origin work")
 			gitkit.MustRun(t, clone, "git", "push", "--quiet", "origin", weftBranch)
 			if tc.localBehind {
@@ -253,12 +253,12 @@ func TestAddRollback_AdoptedWarpBranchLocalCopyDeleted(t *testing.T) {
 
 // TestAdd_WiresJunctionsEagerly proves a successful Add leaves the new worktree's warp junctions
 // wired immediately: card 20 folds WireJunctions into Add's step 10b (after writeLaunchers, before
-// the warp push), so no dormant state and no separate `lyx init` step is needed for the pair to be
+// the warp push), so no dormant state and no separate `lym init` step is needed for the pair to be
 // usable.
-// Asserts both the repo-wide default junctions (_lyx and _extra) resolve to their paired weft
+// Asserts both the repo-wide default junctions (_lym and _extra) resolve to their paired weft
 // directories.
 //
-//testtiming:keep a successful Add leaving the new worktree's junctions wired at once, with _lyx and _extra resolving to their weft directories; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep a successful Add leaving the new worktree's junctions wired at once, with _lym and _extra resolving to their weft directories; coverage of its blocks by other tests does not show an assertion of this
 func TestAdd_WiresJunctionsEagerly(t *testing.T) {
 	t.Parallel()
 
@@ -277,7 +277,7 @@ func TestAdd_WiresJunctionsEagerly(t *testing.T) {
 		link   string
 		target string
 	}{
-		{"_lyx", fabricengine.CodeLyxLink(l, slug), fabricengine.WeftLyxDirFor(l, slug)},
+		{"_lym", fabricengine.CodeLymLink(l, slug), fabricengine.WeftLymDirFor(l, slug)},
 		{"_extra", filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, "_extra"), filepath.Join(fabricengine.RecordsWorktreePath(l, slug), l.AnchorRel, "_extra")},
 	} {
 		isLink, err := fslink.IsLink(tc.link)
@@ -343,7 +343,7 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 		name string
 		link string
 	}{
-		{"_lyx", fabricengine.CodeLyxLink(l, slug)},
+		{"_lym", fabricengine.CodeLymLink(l, slug)},
 		{"_extra", filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, "_extra")},
 	} {
 		if _, err := os.Lstat(tc.link); !os.IsNotExist(err) {
@@ -378,7 +378,7 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 //
 // Six paths in Add used to answer every RunGit failure with "cwd is not a valid git worktree" — a
 // claim Add's own first status probe had already disproved — and the paths that did name the
-// operation reported only "(git exit %d)". A live round watched two simultaneous `lyx fabric add`
+// operation reported only "(git exit %d)". A live round watched two simultaneous `lym fabric add`
 // calls for one slug report "failed (git exit 255)" with git's actual reason discarded.
 func TestAdd_GitFailureCarriesGitsOwnReason(t *testing.T) {
 	t.Parallel()

@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -107,14 +107,14 @@ func matchParentBranch(entries []WorktreeEntry, parentBranch string) (path strin
 
 // OpenParent resolves and opens the Fabric handle paired with parentBranch, the parent-fabric
 // resolution chain: it lists l's hub worktrees, matches parentBranch against them via
-// matchParentBranch, resolves the match through lyxcwd.ResolveWorktree, and opens it via Open.
+// matchParentBranch, resolves the match through lymcwd.ResolveWorktree, and opens it via Open.
 // It performs no wiring and creates nothing — it is a pure read-and-open chain, exactly like the
 // existing Open(l).
 // It returns a plain (unwrapped) error naming parentBranch when no live entry matches, so a caller
 // can turn "no live pair" into its own Stuck classification without unwrapping anything.
 // Every other failure is wrapped with the branch (and, once matched, the resolved path) so neither
-// Open's bare *ErrMissingPath nor ResolveWorktree's bare lyxcwd.ErrNotAGitRepo ever escapes unwrapped.
-func OpenParent(l *lyxcwd.Location, parentBranch string) (*Fabric, error) {
+// Open's bare *ErrMissingPath nor ResolveWorktree's bare lymcwd.ErrNotAGitRepo ever escapes unwrapped.
+func OpenParent(l *lymcwd.Location, parentBranch string) (*Fabric, error) {
 	entries, err := List(l.AnchorPath())
 	if err != nil {
 		return nil, fmt.Errorf("fabricengine: open parent fabric for branch %q: %w", parentBranch, err)
@@ -127,7 +127,7 @@ func OpenParent(l *lyxcwd.Location, parentBranch string) (*Fabric, error) {
 
 	// The matched path is a worktree root, not an acting cwd, so ResolveWorktree is used rather
 	// than Resolve — Resolve's strict cwd gate would spuriously reject it here.
-	parentLoc, err := lyxcwd.ResolveWorktree(matchPath)
+	parentLoc, err := lymcwd.ResolveWorktree(matchPath)
 	if err != nil {
 		return nil, fmt.Errorf("fabricengine: open parent fabric for branch %q at %q: %w", parentBranch, matchPath, err)
 	}
@@ -141,10 +141,10 @@ func OpenParent(l *lyxcwd.Location, parentBranch string) (*Fabric, error) {
 
 // PrimeName resolves the base name of l's main worktree by scanning `git worktree list --porcelain`
 // for the FIRST (Main) entry.
-// It replaces lyxcwd's former per-Resolve prime scan: lyxcwd no longer performs this
+// It replaces lymcwd's former per-Resolve prime scan: lymcwd no longer performs this
 // subprocess-backed lookup at all (see the Cwd Resolution Invariant), so every caller needing the
 // prime's name now resolves it here, on demand.
-func PrimeName(l *lyxcwd.Location) (string, error) {
+func PrimeName(l *lymcwd.Location) (string, error) {
 	entries, err := List(l.AnchorPath())
 	if err != nil {
 		return "", fmt.Errorf("resolve main worktree: %w", err)
@@ -162,7 +162,7 @@ func PrimeName(l *lyxcwd.Location) (string, error) {
 
 // IsPrimeWorktree reports whether l is the hub's prime worktree: the one whose name PrimeName resolves.
 // A resolution failure is returned as PrimeName reports it.
-func IsPrimeWorktree(l *lyxcwd.Location) (bool, error) {
+func IsPrimeWorktree(l *lymcwd.Location) (bool, error) {
 	prime, err := PrimeName(l)
 	if err != nil {
 		return false, err
@@ -172,7 +172,7 @@ func IsPrimeWorktree(l *lyxcwd.Location) (bool, error) {
 
 // RecordsRepoRoot returns the path to the weft prime worktree (the git -C target for weft worktree
 // add/remove), resolved via PrimeName.
-func RecordsRepoRoot(l *lyxcwd.Location) (string, error) {
+func RecordsRepoRoot(l *lymcwd.Location) (string, error) {
 	primeName, err := PrimeName(l)
 	if err != nil {
 		return "", err

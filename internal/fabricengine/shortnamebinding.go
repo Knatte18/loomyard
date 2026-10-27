@@ -1,4 +1,4 @@
-// shortnamebinding.go owns the .lyx-shortname record: a plain single-line file at the board root holding the repo's shortname, recorded once on weft:main beside .lyx-warp.
+// shortnamebinding.go owns the .lym-shortname record: a plain single-line file at the board root holding the repo's shortname, recorded once on weft:main beside .lym-warp.
 // Like the warp binding, it is written to disk here but committed onto weft:main by the CLI layer through Bolt;
 // this file spawns no git and never calls Bolt itself.
 
@@ -14,14 +14,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// ShortnameFileName is the filename of the recorded repo shortname at the board root (<boardDir>/.lyx-shortname).
+// ShortnameFileName is the filename of the recorded repo shortname at the board root (<boardDir>/.lym-shortname).
 // It holds only the shortname, plus a trailing newline.
-const ShortnameFileName = ".lyx-shortname"
+const ShortnameFileName = ".lym-shortname"
 
-// ReadShortname reads the recorded repo shortname from <boardDir>/.lyx-shortname and reports whether a usable one was found.
+// ReadShortname reads the recorded repo shortname from <boardDir>/.lym-shortname and reports whether a usable one was found.
 // Any read error and an empty-after-trim value report not found, like readWarpBinding;
 // a value failing agentname.ValidateShortname also reports not found and logs a named warning,
-// so a damaged record reads as a hub with no shortname that `lyx fabric shortname <shortname>` or `clone --shortname` records over.
+// so a damaged record reads as a hub with no shortname that `lym fabric shortname <shortname>` or `clone --shortname` records over.
 func ReadShortname(boardDir string) (shortname string, found bool) {
 	data, err := os.ReadFile(filepath.Join(boardDir, ShortnameFileName))
 	if err != nil {
@@ -44,7 +44,7 @@ func usableShortname(raw, where string) (string, bool) {
 	return trimmed, true
 }
 
-// WriteShortname writes shortname plus a trailing newline to <boardDir>/.lyx-shortname, replacing any existing content.
+// WriteShortname writes shortname plus a trailing newline to <boardDir>/.lym-shortname, replacing any existing content.
 // The caller commits the result onto weft:main through Bolt; this function only touches the working tree.
 func WriteShortname(boardDir, shortname string) error {
 	path := filepath.Join(boardDir, ShortnameFileName)
@@ -68,13 +68,13 @@ func resolveEffectiveShortname(recorded string, found bool, supplied string, fre
 		if supplied == "" || supplied == recorded {
 			return recorded, false, "", nil
 		}
-		return "", false, "", fmt.Errorf("this repo's recorded shortname is %q, not %q; refusing to change it (`lyx fabric shortname` cannot change a recorded shortname either) — drop --shortname, or pass --shortname %s", recorded, supplied, recorded)
+		return "", false, "", fmt.Errorf("this repo's recorded shortname is %q, not %q; refusing to change it (`lym fabric shortname` cannot change a recorded shortname either) — drop --shortname, or pass --shortname %s", recorded, supplied, recorded)
 	}
 	if supplied != "" {
 		return supplied, true, "", nil
 	}
 	if freshBind {
-		return "", false, "", fmt.Errorf("a fresh clone needs the repo's shortname: pass --shortname <shortname>, 2-6 characters matching [a-z][a-z0-9]{1,5}, e.g. lyx fabric clone --shortname lx <weft-url> <warp-url>")
+		return "", false, "", fmt.Errorf("a fresh clone needs the repo's shortname: pass --shortname <shortname>, 2-6 characters matching [a-z][a-z0-9]{1,5}, e.g. lym fabric clone --shortname lx <weft-url> <warp-url>")
 	}
-	return "", false, "this weft records no repo shortname, so no strand can be named until one is set; way forward: run `lyx fabric shortname <shortname>` in the hub", nil
+	return "", false, "this weft records no repo shortname, so no strand can be named until one is set; way forward: run `lym fabric shortname <shortname>` in the hub", nil
 }

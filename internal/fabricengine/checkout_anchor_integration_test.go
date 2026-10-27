@@ -18,8 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // newCheckoutHub builds a "." hub whose prime warp tracks sub/ before any pair is added, so sub is a tracked directory in every pair's warp.
@@ -51,7 +51,7 @@ func requireCheckoutLeftAlone(t *testing.T, h *hubforge.Hub, res fabricengine.Ch
 	if got := gitkit.CurrentBranch(t, h.PrimeRecords()); got != weftBranch {
 		t.Errorf("weft branch = %q; want %q, nothing switched", got, weftBranch)
 	}
-	if _, err := os.Lstat(filepath.Join(h.PrimeWorktree(), lyxdirs.LyxDirName)); err != nil {
+	if _, err := os.Lstat(filepath.Join(h.PrimeWorktree(), lymdirs.LymDirName)); err != nil {
 		t.Errorf("the prime's junction went missing: %v", err)
 	}
 	if res.Mutated().Len() != 0 {
@@ -75,7 +75,7 @@ func TestCheckout_RefusesAnotherAnchor(t *testing.T) {
 		if !errors.Is(err, fabricengine.ErrAnchorChange) {
 			t.Fatalf("Checkout() error = %v; want it to wrap ErrAnchorChange", err)
 		}
-		for _, want := range []string{"lyx fabric anchor --set sub", "shared by every machine that checks it out", "run the checkout again"} {
+		for _, want := range []string{"lym fabric anchor --set sub", "shared by every machine that checks it out", "run the checkout again"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("Checkout() error = %q; want it to contain %q", err, want)
 			}
@@ -98,9 +98,9 @@ func TestCheckout_RefusesAnotherAnchor(t *testing.T) {
 		if !errors.Is(err, fabricengine.ErrAnchorChange) {
 			t.Fatalf("Checkout() error = %v; want it to wrap ErrAnchorChange", err)
 		}
-		update, anchorChange := strings.Index(err.Error(), "first update this warp checkout"), strings.Index(err.Error(), "lyx fabric anchor --set only-there")
+		update, anchorChange := strings.Index(err.Error(), "first update this warp checkout"), strings.Index(err.Error(), "lym fabric anchor --set only-there")
 		if update < 0 || anchorChange < 0 || update > anchorChange {
-			t.Errorf("Checkout() error = %q; want the warp update named before `lyx fabric anchor --set only-there`", err)
+			t.Errorf("Checkout() error = %q; want the warp update named before `lym fabric anchor --set only-there`", err)
 		}
 		requireCheckoutLeftAlone(t, h, res, warpBranch, weftBranch)
 	})
@@ -119,8 +119,8 @@ func TestCheckout_RefusesAnotherAnchor(t *testing.T) {
 
 		res, err := h.Topology.Checkout(h.Location, "remote-mover")
 
-		if !errors.Is(err, fabricengine.ErrAnchorChange) || !strings.Contains(err.Error(), "lyx fabric anchor --set sub") {
-			t.Fatalf("Checkout() error = %v; want an ErrAnchorChange refusal naming `lyx fabric anchor --set sub`", err)
+		if !errors.Is(err, fabricengine.ErrAnchorChange) || !strings.Contains(err.Error(), "lym fabric anchor --set sub") {
+			t.Fatalf("Checkout() error = %v; want an ErrAnchorChange refusal naming `lym fabric anchor --set sub`", err)
 		}
 		if gitkit.BranchExists(t, mustRecordsRepoRoot(t, h.Location), fabricengine.RecordsBranchName("remote-mover")) {
 			t.Errorf("a local weft branch for the refused target exists; want none")
@@ -149,12 +149,12 @@ func TestCheckout_RefusesAnotherAnchor(t *testing.T) {
 		h := newCheckoutHub(t)
 		gitkit.Git(t, h.PrimeWorktree(), "branch", "fresh")
 		warpBranch, weftBranch := gitkit.CurrentBranch(t, h.PrimeWorktree()), gitkit.CurrentBranch(t, h.PrimeRecords())
-		writeFile(t, filepath.Join(h.PrimeRecords(), lyxcwd.AnchorFileName), "\n")
+		writeFile(t, filepath.Join(h.PrimeRecords(), lymcwd.AnchorFileName), "\n")
 
 		res, err := h.Topology.Checkout(h.Location, "fresh")
 
-		if !errors.Is(err, fabricengine.ErrAnchorChange) || !strings.Contains(err.Error(), lyxcwd.AnchorFileName) {
-			t.Fatalf("Checkout() error = %v; want an ErrAnchorChange refusal naming %s", err, lyxcwd.AnchorFileName)
+		if !errors.Is(err, fabricengine.ErrAnchorChange) || !strings.Contains(err.Error(), lymcwd.AnchorFileName) {
+			t.Fatalf("Checkout() error = %v; want an ErrAnchorChange refusal naming %s", err, lymcwd.AnchorFileName)
 		}
 		requireCheckoutLeftAlone(t, h, res, warpBranch, weftBranch)
 	})
@@ -169,8 +169,8 @@ func TestCheckout_RefusesAnotherAnchor(t *testing.T) {
 
 		res, err := h.Topology.Checkout(h.Location, "fresh")
 
-		if !errors.Is(err, fabricengine.ErrAnchorChange) || !strings.Contains(err.Error(), "lyx fabric anchor") {
-			t.Fatalf("Checkout() error = %v; want an ErrAnchorChange refusal naming `lyx fabric anchor`", err)
+		if !errors.Is(err, fabricengine.ErrAnchorChange) || !strings.Contains(err.Error(), "lym fabric anchor") {
+			t.Fatalf("Checkout() error = %v; want an ErrAnchorChange refusal naming `lym fabric anchor`", err)
 		}
 		requireCheckoutLeftAlone(t, h, res, warpBranch, weftBranch)
 	})

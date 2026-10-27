@@ -15,7 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -66,7 +66,7 @@ func TestStatusCmd_EnvelopeKeySet(t *testing.T) {
 			}
 			var wantPausedSince string
 			if tt.covered {
-				c.location = &lyxcwd.Location{RepoName: "example", HubPath: filepath.Join(dir, "hub"), WorktreeName: "some-slug", AnchorRel: "."}
+				c.location = &lymcwd.Location{RepoName: "example", HubPath: filepath.Join(dir, "hub"), WorktreeName: "some-slug", AnchorRel: "."}
 				if err := os.MkdirAll(c.location.WorktreePath(), 0o755); err != nil {
 					t.Fatal(err)
 				}

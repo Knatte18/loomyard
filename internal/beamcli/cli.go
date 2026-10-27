@@ -19,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
@@ -34,7 +34,7 @@ func Command() *cobra.Command {
 beam's own branch and land back into it, and it is one unit of two parts, its dobby
 and its orch, that run on the machine owning it. The dobby drives the runs of the
 beam's tasks, and the orch is the session that works the beam with the operator.
-"lyx beam start" brings both up and "lyx beam stop" takes both down. Create, land
+"lym beam start" brings both up and "lym beam stop" takes both down. Create, land
 and status run from the hub's prime worktree and from any beam, and act on the
 prime's location.`,
 		RunE: clihelp.GroupRunE,
@@ -76,10 +76,10 @@ It starts and changes nothing; its one write is the empty orch directory its wat
 It runs from the prime and from any beam.
 
 Example:
-  lyx beam status`,
+  lym beam status`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runVerb(cmd, func(_ context.Context, _ string, prime *lyxcwd.Location) (any, error) {
+			return runVerb(cmd, func(_ context.Context, _ string, prime *lymcwd.Location) (any, error) {
 				return dobbyStatus(prime, time.Now())
 			})
 		},
@@ -88,14 +88,14 @@ Example:
 
 // dobbyStatus reads the view of the prime's dobby and orch and of the dobby and orch of every local beam at now.
 // A view that does not read is reported in its entry and joins the returned error, and the others still read.
-func dobbyStatus(prime *lyxcwd.Location, now time.Time) (statusResult, error) {
+func dobbyStatus(prime *lymcwd.Location, now time.Time) (statusResult, error) {
 	beams, err := hubgeom.DobbyStart(prime).Beams()
 	if err != nil {
-		return statusResult{}, fmt.Errorf("lyx beam status: list the local beams: %w", err)
+		return statusResult{}, fmt.Errorf("lym beam status: list the local beams: %w", err)
 	}
 	pause, err := hubgeom.PauseGeometry(prime)
 	if err != nil {
-		return statusResult{}, fmt.Errorf("lyx beam status: locate the pause record: %w", err)
+		return statusResult{}, fmt.Errorf("lym beam status: locate the pause record: %w", err)
 	}
 	cells := battencli.NewDobbyRunCells(prime, pause.RecordPath)
 	worktrees := []string{prime.WorktreeName}
@@ -128,13 +128,13 @@ func dobbyStatus(prime *lyxcwd.Location, now time.Time) (statusResult, error) {
 		result.Dobbies = append(result.Dobbies, entry)
 	}
 	if err := errors.Join(failures...); err != nil {
-		return result, fmt.Errorf("lyx beam status: %w; way forward: fix the cause each names, then run `lyx beam status` again", err)
+		return result, fmt.Errorf("lym beam status: %w; way forward: fix the cause each names, then run `lym beam status` again", err)
 	}
 	return result, nil
 }
 
 // readDobbyView reads the view of the dobby of the worktree named worktree at now.
-func readDobbyView(prime *lyxcwd.Location, worktree string, now time.Time) (dobbyengine.View, error) {
+func readDobbyView(prime *lymcwd.Location, worktree string, now time.Time) (dobbyengine.View, error) {
 	reader, err := battencli.NewDobbyViewReader(prime, worktree)
 	if err != nil {
 		return dobbyengine.View{}, err
@@ -182,16 +182,16 @@ from a fresh prompt. A dobby or orch that is live already is left alone, so the 
 idempotent. Before anything starts it reconciles the hub's config once after a binary
 change and the hub's branches against origin, claims a prime no owner is recorded for,
 and pauses the runs another machine owns. A beam another machine owns, or one whose
-landing hold stands, is refused with its way forward; "lyx adopt <beam>" takes a beam
-over, and "lyx adopt root" the prime.
+landing hold stands, is refused with its way forward; "lym adopt <beam>" takes a beam
+over, and "lym adopt root" the prime.
 
 It refuses a task pair, naming the beam it belongs to, and a slug with no pair here.
 It prints the outcome per beam and exits non-zero when any beam failed to come up.
 
 Example:
-  lyx beam start
-  lyx beam start payments
-  lyx beam start --all`,
+  lym beam start
+  lym beam start payments
+  lym beam start --all`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -214,7 +214,7 @@ Example:
 // A nil result is a refusal made before any beam was tried.
 func start(cmd *cobra.Command, slug string, all bool) (*startResult, error) {
 	if all && slug != "" {
-		return nil, fmt.Errorf("lyx beam start: a slug and --all are exclusive; way forward: drop the slug to start every owned beam, or drop --all to start %s alone", slug)
+		return nil, fmt.Errorf("lym beam start: a slug and --all are exclusive; way forward: drop the slug to start every owned beam, or drop --all to start %s alone", slug)
 	}
 	location, err := actingLocation(cmd, "start")
 	if err != nil {
@@ -227,7 +227,7 @@ func start(cmd *cobra.Command, slug string, all bool) (*startResult, error) {
 	if len(targets) > 0 {
 		if geometry, inHub := hubgeom.ReconcileGeometry(targets[0].Location); inHub {
 			if err := hubreconcile.Ensure(geometry, hubreconcile.Options{}); err != nil {
-				return nil, fmt.Errorf("lyx beam start: %w", err)
+				return nil, fmt.Errorf("lym beam start: %w", err)
 			}
 		}
 	}
@@ -236,13 +236,13 @@ func start(cmd *cobra.Command, slug string, all bool) (*startResult, error) {
 		return orchcli.BeamUp(target.Location, orchcli.BeamUpOptions{Prepare: prepare, Index: index})
 	})
 	if err != nil {
-		return &result, fmt.Errorf("lyx beam start: %w; way forward: fix the cause each names, then run `lyx beam start` again", err)
+		return &result, fmt.Errorf("lym beam start: %w; way forward: fix the cause each names, then run `lym beam start` again", err)
 	}
 	return &result, nil
 }
 
 // startTargets resolves what `beam start` brings up: every beam this machine owns with all, else the one beam slug names.
-func startTargets(location *lyxcwd.Location, slug string, all bool) ([]beamTarget, error) {
+func startTargets(location *lymcwd.Location, slug string, all bool) ([]beamTarget, error) {
 	if !all {
 		target, err := resolveBeamTarget(location, slug)
 		if err != nil {
@@ -257,11 +257,11 @@ func startTargets(location *lyxcwd.Location, slug string, all bool) ([]beamTarge
 	prime := primeOfHub.Location
 	owned, err := dobbyengine.OwnedWorktrees(hubgeom.DobbyStart(prime))
 	if err != nil {
-		return nil, fmt.Errorf("lyx beam start: %w", err)
+		return nil, fmt.Errorf("lym beam start: %w", err)
 	}
 	targets, err := ownedTargets(prime, owned)
 	if err != nil {
-		return nil, fmt.Errorf("lyx beam start: %w", err)
+		return nil, fmt.Errorf("lym beam start: %w", err)
 	}
 	return targets, nil
 }
@@ -276,14 +276,14 @@ func stopCmd() *cobra.Command {
 its own, and ends its dobby. With no slug it acts on the worktree it runs in, the prime
 or a beam; the slug "root" names the prime, and any other slug names that beam from
 anywhere in the hub. Each part stops only when it is live, so a second call stops
-nothing, and the next "lyx beam start" resumes the orch's recorded session.
+nothing, and the next "lym beam start" resumes the orch's recorded session.
 
 It refuses a task pair, naming the beam it belongs to, and a slug with no pair here.
 It prints what it stopped.
 
 Example:
-  lyx beam stop
-  lyx beam stop payments`,
+  lym beam stop
+  lym beam stop payments`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -312,20 +312,20 @@ func stop(cmd *cobra.Command, slug string) (*orchcli.BeamDownReport, error) {
 	}
 	report, err := orchcli.BeamDown(target.Location)
 	if err != nil {
-		return &report, fmt.Errorf("lyx beam stop: %w", err)
+		return &report, fmt.Errorf("lym beam stop: %w", err)
 	}
 	return &report, nil
 }
 
 // actingLocation resolves the worktree the command runs in, refusing outside a hub with the resolver's own error and where to run the verb.
-func actingLocation(cmd *cobra.Command, verb string) (*lyxcwd.Location, error) {
-	cwd, err := lyxcwd.CwdFrom(cmd.Context())
+func actingLocation(cmd *cobra.Command, verb string) (*lymcwd.Location, error) {
+	cwd, err := lymcwd.CwdFrom(cmd.Context())
 	if err != nil {
-		return nil, fmt.Errorf("lyx beam %s: %w", verb, err)
+		return nil, fmt.Errorf("lym beam %s: %w", verb, err)
 	}
-	location, err := lyxcwd.Resolve(cwd)
+	location, err := lymcwd.Resolve(cwd)
 	if err != nil {
-		return nil, fmt.Errorf("lyx beam %s: %w; way forward: run it from the hub's prime worktree or from a beam", verb, err)
+		return nil, fmt.Errorf("lym beam %s: %w; way forward: run it from the hub's prime worktree or from a beam", verb, err)
 	}
 	return location, nil
 }
@@ -346,7 +346,7 @@ func finishVerb[T any](cmd *cobra.Command, result *T, err error) error {
 	return nil
 }
 
-// dobbyCmd returns the hidden `beam dobby` verb, which `lyx beam start` launches as a detached process.
+// dobbyCmd returns the hidden `beam dobby` verb, which `lym beam start` launches as a detached process.
 func dobbyCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "dobby <worktree-root>",
@@ -354,7 +354,7 @@ func dobbyCmd() *cobra.Command {
 		Hidden:      true,
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
 		Long: `Runs the dobby of the hub's prime or of a local beam until it is signalled or another
-machine owns the beam. It is launched by "lyx beam start", never by hand.`,
+machine owns the beam. It is launched by "lym beam start", never by hand.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -379,32 +379,32 @@ func runDobby(ctx context.Context, out io.Writer, root string) int {
 		return output.Ok(out, map[string]any{"already_running": true})
 	}
 	if err := registerDobby(fabricengine.RunProcDir(prime.HubPath), geom); err != nil {
-		return output.Err(out, fmt.Sprintf("lyx beam dobby: register the dobby: %v", err))
+		return output.Err(out, fmt.Sprintf("lym beam dobby: register the dobby: %v", err))
 	}
 	deps, err := hubDobbyDeps(prime, geom, out)
 	if err != nil {
-		return output.Err(out, fmt.Sprintf("lyx beam dobby: wire the dobby over the hub: %v", err))
+		return output.Err(out, fmt.Sprintf("lym beam dobby: wire the dobby over the hub: %v", err))
 	}
 	switch err := dobbyengine.Run(ctx, geom, deps); {
 	case errors.Is(err, dobbyengine.ErrDobbyRunning):
 		return output.Ok(out, map[string]any{"already_running": true})
 	case err != nil:
-		return output.Err(out, fmt.Sprintf("lyx beam dobby: %v", err))
+		return output.Err(out, fmt.Sprintf("lym beam dobby: %v", err))
 	}
 	return output.Ok(out, map[string]any{"stopped": true})
 }
 
 // placeDobby resolves the worktree at root into the prime's location and the dobby's geometry.
-// Only the prime and a local pair whose origin record carries the beam mark are placed, as `lyx beam start` reads them; any other directory is refused naming that verb.
-func placeDobby(root string) (*lyxcwd.Location, dobbyengine.Geometry, error) {
+// Only the prime and a local pair whose origin record carries the beam mark are placed, as `lym beam start` reads them; any other directory is refused naming that verb.
+func placeDobby(root string) (*lymcwd.Location, dobbyengine.Geometry, error) {
 	refuse := func(format string, args ...any) error {
-		return fmt.Errorf("lyx beam dobby: "+format+"; way forward: run `lyx beam start`, which starts the dobby of the prime and of each beam this machine owns", args...)
+		return fmt.Errorf("lym beam dobby: "+format+"; way forward: run `lym beam start`, which starts the dobby of the prime and of each beam this machine owns", args...)
 	}
 	absolute, err := filepath.Abs(root)
 	if err != nil {
 		return nil, dobbyengine.Geometry{}, refuse("resolve %s: %v", root, err)
 	}
-	location, err := lyxcwd.ResolveWorktree(absolute)
+	location, err := lymcwd.ResolveWorktree(absolute)
 	if err != nil {
 		return nil, dobbyengine.Geometry{}, refuse("%s is not a worktree of a hub: %v", absolute, err)
 	}
@@ -424,7 +424,7 @@ func placeDobby(root string) (*lyxcwd.Location, dobbyengine.Geometry, error) {
 		if !found || !origin.Beam {
 			return nil, dobbyengine.Geometry{}, refuse("%s is neither the prime nor a beam", location.WorktreeName)
 		}
-		if prime, err = lyxcwd.ResolveWorktree(fabricengine.WorktreePath(location, primeName)); err != nil {
+		if prime, err = lymcwd.ResolveWorktree(fabricengine.WorktreePath(location, primeName)); err != nil {
 			return nil, dobbyengine.Geometry{}, refuse("resolve the prime of the hub: %v", err)
 		}
 	}
@@ -444,7 +444,7 @@ func createCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Turns the board's project entry <slug> into a beam. The entry's title, brief and
 labels are board writing, so the verb makes no entry: make the project first with
-"lyx board upsert".
+"lym board upsert".
 
 It runs from the beam's parent worktree, the prime or the parent beam of a nested
 beam, and refuses elsewhere naming that worktree's path and the same command there.
@@ -458,24 +458,24 @@ finishes a stopped create:
      starts the beam's dobby and orch
 
 A pawl run in flight is reported live and starts nothing. A first pass a covering
-pause refused leaves no run, and the same "lyx beam create <slug> [--anchor <dir>]"
+pause refused leaves no run, and the same "lym beam create <slug> [--anchor <dir>]"
 after the lift starts it. A flagged beam left by a first pass that died takes the same
 --anchor again, since its anchor reached no run record. Dobby never starts a beam
-project, so only this verb, a hand pass or "lyx adopt" starts or resumes its run.
+project, so only this verb, a hand pass or "lym adopt" starts or resumes its run.
 
 With --anchor <dir> the new pair takes <dir> of the code checkout as its anchor
 instead of its parent's; the directory must be tracked in the commit the beam forks
 from. It is recorded in the run's seed, and a pair that already exists sits at its
-own anchor, which "lyx fabric anchor" moves.
+own anchor, which "lym fabric anchor" moves.
 
-The envelope names "lyx batten status <slug>" as the way to follow the run.
+The envelope names "lym batten status <slug>" as the way to follow the run.
 
 Example:
-  lyx beam create payments
-  lyx beam create payments --anchor services/payments`,
+  lym beam create payments
+  lym beam create payments --anchor services/payments`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runVerb(cmd, func(_ context.Context, acting string, prime *lyxcwd.Location) (any, error) {
+			return runVerb(cmd, func(_ context.Context, acting string, prime *lymcwd.Location) (any, error) {
 				deps, err := hubCreateDeps(prime)
 				if err != nil {
 					return nil, err
@@ -496,10 +496,10 @@ func landCmd() *cobra.Command {
 		Short:       "ask a beam's pawl run to land the beam into its parent",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Asks the pawl run of the beam <slug> to land it: the verb writes a land request
-naming that run into the beam worktree's .lyx/beam directory, which the run's
+naming that run into the beam worktree's .lym/beam directory, which the run's
 Beam-Await row consumes. The run then writes the beam's description, merges the beam
 into its parent worktree's branch and removes the beam's pair, whose board entry is
-then done. Follow the landing with "lyx batten status <slug>".
+then done. Follow the landing with "lym batten status <slug>".
 
 It runs anywhere in the hub, a task pair and the beam itself included, and refuses,
 each naming its way forward:
@@ -511,7 +511,7 @@ each naming its way forward:
 Land or cancel the members first.
 
 Example:
-  lyx beam land payments`,
+  lym beam land payments`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -527,21 +527,21 @@ Example:
 // It resolves the hub's prime from the cwd's own worktree, so a task pair reaches the verb's own refusals.
 // A nil result is a refusal made before the request was written.
 func landFromHub(cmd *cobra.Command, slug string) (*map[string]any, error) {
-	location, err := lyxcwd.CwdFrom(cmd.Context())
+	location, err := lymcwd.CwdFrom(cmd.Context())
 	if err != nil {
-		return nil, fmt.Errorf("lyx beam land: %w", err)
+		return nil, fmt.Errorf("lym beam land: %w", err)
 	}
-	acting, err := lyxcwd.Resolve(location)
+	acting, err := lymcwd.Resolve(location)
 	if err != nil {
-		return nil, fmt.Errorf("lyx beam land: %w; way forward: run it inside a worktree of the hub", err)
+		return nil, fmt.Errorf("lym beam land: %w; way forward: run it inside a worktree of the hub", err)
 	}
 	primeName, err := fabricengine.PrimeName(acting)
 	if err != nil {
-		return nil, fmt.Errorf("lyx beam land: cannot verify the hub's prime worktree: %w", err)
+		return nil, fmt.Errorf("lym beam land: cannot verify the hub's prime worktree: %w", err)
 	}
-	prime, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(acting, primeName))
+	prime, err := lymcwd.ResolveWorktree(fabricengine.WorktreePath(acting, primeName))
 	if err != nil {
-		return nil, fmt.Errorf("lyx beam land: resolve the hub's prime worktree: %w", err)
+		return nil, fmt.Errorf("lym beam land: resolve the hub's prime worktree: %w", err)
 	}
 	result, err := land(hubLandDeps(prime), slug)
 	if err != nil {
@@ -553,7 +553,7 @@ func landFromHub(cmd *cobra.Command, slug string) (*map[string]any, error) {
 // runVerb resolves the prime from the command's cwd, runs the verb over it and prints the verb's result in the standard envelope.
 // The verb is told the name of the worktree it was run from beside the prime's location.
 // A verb's error is printed with the result it returned beside it.
-func runVerb(cmd *cobra.Command, run func(ctx context.Context, acting string, prime *lyxcwd.Location) (any, error)) error {
+func runVerb(cmd *cobra.Command, run func(ctx context.Context, acting string, prime *lymcwd.Location) (any, error)) error {
 	if clihelp.ShouldAbort(cmd.Context()) {
 		return nil
 	}
@@ -564,11 +564,11 @@ func runVerb(cmd *cobra.Command, run func(ctx context.Context, acting string, pr
 		return nil
 	}
 
-	cwd, err := lyxcwd.CwdFrom(ctx)
+	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
 		return fail(err)
 	}
-	location, err := lyxcwd.Resolve(cwd)
+	location, err := lymcwd.Resolve(cwd)
 	if err != nil {
 		return fail(err)
 	}
@@ -591,7 +591,7 @@ func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value seeds cwd into the execution context, because lyxcwd.WithCwd panics on an empty directory.
+// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value seeds cwd into the execution context, because lymcwd.WithCwd panics on an empty directory.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)

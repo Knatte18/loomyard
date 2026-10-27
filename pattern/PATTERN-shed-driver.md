@@ -7,8 +7,8 @@ That second clause is review discipline, not a scan, as the verb set's first cla
 ## Told geometry
 
 - `sheddriver` is a told-geometry engine: it takes every path from its caller and reaches recipe behaviour only through `Deps` and `TacklerDeps`.
-- It imports no `lyxcwd`, `loomengine`, `loomshed` or `internal/*cli` package, and its other imports are a closed allowlist.
-- `shedrun` is on that list for the driver-kind vocabulary and its validator only, since every `shedrun` path constructor takes a `*lyxcwd.Location` the package can never hold.
+- It imports no `lymcwd`, `loomengine`, `loomshed` or `internal/*cli` package, and its other imports are a closed allowlist.
+- `shedrun` is on that list for the driver-kind vocabulary and its validator only, since every `shedrun` path constructor takes a `*lymcwd.Location` the package can never hold.
 - Enforced by `internal/sheddriver/seam_enforcement_test.go`.
 
 ## Seams a recipe fills
@@ -34,11 +34,11 @@ A recipe's `run` verb may be `internal/sheddriver`'s body, which steps through `
 
 ### No derived paths
 
-- `shedverbs` derives no path and imports no resolver — no `lyxcwd`, no `os.Getwd`, no `git rev-parse` — and imports no `<module>cli`.
+- `shedverbs` derives no path and imports no resolver — no `lymcwd`, no `os.Getwd`, no `git rev-parse` — and imports no `<module>cli`.
   That keeps it a leaf and keeps `internal/shedcli`'s own imports acyclic.
 - `shedverbs` does import `internal/logger`, for step-boundary logging, and `logger.TraceFile` and `logger.TraceDir` are the only path sources admitted into it.
   They are not derived paths here: each returns the logger's own sink location, which `shedverbs` reports verbatim on the envelope and never joins, reads, writes or uses to locate run state.
-- Every run-state path (`StatusPath`, `ScratchDir`, `FrictionDir`, …) stays told through `Spec`, and the `lyxcwd` import stays denied.
+- Every run-state path (`StatusPath`, `ScratchDir`, `FrictionDir`, …) stays told through `Spec`, and the `lymcwd` import stays denied.
 - The detached loop and its waiter behind `step --until-stop` live in `internal/shedverbs` (`loop.go`, `loopwait.go`, `looppid.go`, `loopenvelope.go`).
   Its loop paths reach it told through `Spec.Loop`, and a child's trace files through the told `TraceFiles` and `StopFiles` closures; the loop reads and copies only the paths they tell it, while `logger.TraceFile` and `logger.TraceDir` stay reported verbatim.
 - Its non-standard-library imports are an allowlist: `buildvcs`, `clihelp`, `fswatch`, `lock`, `logger`, `output`, `proc` (the child record type, the tied start, the tree kill and the named job), `shedengine`, `state` and `cobra`.
@@ -46,7 +46,7 @@ A recipe's `run` verb may be `internal/sheddriver`'s body, which steps through `
 
 ### Recipe table
 
-The `lyx shed` recipe table lives in `internal/shedcli` alone, as one map literal reached through accessors, with every name armed by exactly one arming function and no `init()` self-registration.
+The `lym shed` recipe table lives in `internal/shedcli` alone, as one map literal reached through accessors, with every name armed by exactly one arming function and no `init()` self-registration.
 Enforced by `internal/shedcli/table_test.go`.
 
 ### Step envelope
@@ -71,7 +71,7 @@ Enforced by `internal/shedcli/table_test.go`.
 - Neither `shedverbs` nor `shedcli` is added to the told-geometry bound-packages list in `PATTERN-cwd-resolution`, which binds engines; both sit above that layer.
 - `shedverbs` keeps this section's no-resolver clause verbatim as its no-derived-paths obligation.
 - `internal/shedcli` is carved out of that clause by name, as the one site in this pair that resolves.
-  `resolvePersistentPreRun` must read a seed before it knows which recipe to arm, a seed read is a path read, and a path read needs an anchor, so `shedcli` calls `lyxcwd.Resolve` and builds seed paths from the result.
+  `resolvePersistentPreRun` must read a seed before it knows which recipe to arm, a seed read is a path read, and a path read needs an anchor, so `shedcli` calls `lymcwd.Resolve` and builds seed paths from the result.
   Its narrower obligation is that every path it touches comes from an `internal/shedrun` constructor and none is derived locally.
 
 ## The run directory
@@ -87,7 +87,7 @@ Enforced by `internal/shedcli/table_test.go`.
 - `self` is an alias only `shedrun.ResolveRunID` interprets.
   It maps to the told location's worktree slug (`l.WorktreeName`), and a run's directory is named by that slug.
 - One exception: a read-only legacy fallback in `shedrun`'s directory-segment resolution.
-  When `_lyx/shed/<slug>/` is absent and `_lyx/shed/self/` exists, both spellings join `self`, so a run started before the rename keeps working with no on-disk migration.
+  When `_lym/shed/<slug>/` is absent and `_lym/shed/self/` exists, both spellings join `self`, so a run started before the rename keeps working with no on-disk migration.
 - No other package resolves `self`, and none joins `SelfRunID` onto a path itself.
 
 ### Forked branches

@@ -1,6 +1,6 @@
-// Package impactset derives the packages a `lyx gate test` run over a computed, `--base` or round scope has to cover, from the diff between a base commit and the working tree.
+// Package impactset derives the packages a `lym gate test` run over a computed, `--base` or round scope has to cover, from the diff between a base commit and the working tree.
 //
-// DeriveTargets is the `go` scoper of `lyx gate test`.
+// DeriveTargets is the `go` scoper of `lym gate test`.
 // It is told a context, the worktree and the base and resolves no cwd.
 // Git runs through `gitexec.Run`, and `go list` is a logged spawn.
 // It diffs the base to the working tree, not to HEAD:
@@ -20,15 +20,15 @@
 //
 // Otherwise the set is the packages the diff changed, plus every package whose dependencies, test imports included, reach one of them, under the tier tags `tier0` through `tier3`.
 // A rename or deletion maps through its old path as well as its new one.
-// When the diff changes the `cmd/lyx` main package, which no test imports and so the graph cannot see, every package whose tests import `internal/testkit/lyxbin`, which builds the binary, joins the set;
+// When the diff changes the `cmd/lym` main package, which no test imports and so the graph cannot see, every package whose tests import `internal/testkit/lymbin`, which builds the binary, joins the set;
 // any other change reaches those packages through the import graph only.
 // Targets.BinaryTests lists those packages, inside the set or not.
 // A diff touching only Markdown files yields no module and no package.
 // The context bounds the derivation: it is checked before each git read, and a cancelled context kills a stalled `go list`, while a local git read already in flight runs to its end.
 //
-// Every top-level test marked `//lyx:guard` runs by name in its own package, even when that package is outside the set.
+// Every top-level test marked `//lym:guard` runs by name in its own package, even when that package is outside the set.
 // A repository-scanning test can fail on a change far from its package.
-// Guards holds, per directory, the `//lyx:guard` tests of the packages outside the set, sorted by name, so the gate's guard step runs them by name.
+// Guards holds, per directory, the `//lym:guard` tests of the packages outside the set, sorted by name, so the gate's guard step runs them by name.
 // Each GuardTest carries the tier of its file, which FileTier reads from the `//go:build` line: the N of the `tierN` tag it names, and 0 for a file naming none.
 // The guard step runs each tier's guard tests under that tier's command.
 // A marker is found by a static parse of every `_test.go` file under every tag.

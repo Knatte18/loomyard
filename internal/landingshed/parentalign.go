@@ -308,7 +308,7 @@ func (m *ParentAlign) readAttempts() (string, error) {
 	rec, err := ReadFixerAttempts(path, entry)
 	if err != nil {
 		logger.Warn("landingshed: fixer attempt record unreadable", "producer", parentAlignName, "cause", err)
-		return fmt.Sprintf("%sthe fixer attempt record of %s does not decode: %s; way forward: remove %s, which grants the entry a fresh cap, then `lyx loom resume`", LandingStopPrefix, parentAlignName, path, path), nil
+		return fmt.Sprintf("%sthe fixer attempt record of %s does not decode: %s; way forward: remove %s, which grants the entry a fresh cap, then `lym loom resume`", LandingStopPrefix, parentAlignName, path, path), nil
 	}
 	if m.before.alignedTip == "" && rec.AlignFrom == "" {
 		rec.AlignFrom = m.before.taskBase
@@ -458,7 +458,7 @@ func (m *ParentAlign) judgeFixerChange(ctx context.Context, rec FixerAttempts) (
 		return m.alignError(ctx, err)
 	}
 	m.attempts = rec
-	return m.haltStop(ctx, fmt.Sprintf("%sthe fixer's change in %s is over the caps: %s; fixer commits: %s..%s; way forward: review and fix on the task branch, then `lyx loom resume`", LandingStopPrefix, parentAlignName, reason, rec.Baseline, head))
+	return m.haltStop(ctx, fmt.Sprintf("%sthe fixer's change in %s is over the caps: %s; fixer commits: %s..%s; way forward: review and fix on the task branch, then `lym loom resume`", LandingStopPrefix, parentAlignName, reason, rec.Baseline, head))
 }
 
 // writeRecord writes the merge record: tip is the parent tip merged, mergeCommit the merge commit (empty for an up-to-date merge), alignedTip the aligned tip it records and merge the resolver's answer.

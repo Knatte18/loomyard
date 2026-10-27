@@ -2,10 +2,10 @@
 
 // seam_enforcement_test.go enforces the Treadle Runner-Seam Invariant:
 // production code in internal/treadleengine imports ONLY the standard library, internal/editdirective, internal/lock, internal/logger, internal/parentdirective, internal/segmentcolor, internal/state, internal/stencil, internal/stencilstore, internal/shuttleengine, and gopkg.in/yaml.v3;
-// it never imports internal/burlerengine, never internal/lyxcwd as a direct import, and never any internal/*cli package.
+// it never imports internal/burlerengine, never internal/lymcwd as a direct import, and never any internal/*cli package.
 // Like internal/modelspec's leaf_enforcement_test.go, this check is an ALLOWLIST: any import
 // outside the allowed set fails the test, so a future stray dependency (a round-runner's own type
-// leaking upward, a convenience lyxcwd import) is caught with no list maintenance required.
+// leaking upward, a convenience lymcwd import) is caught with no list maintenance required.
 
 package treadleengine
 

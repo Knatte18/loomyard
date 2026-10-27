@@ -25,8 +25,8 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -112,10 +112,8 @@ func EnvSyncOptions() SyncOptions {
 }
 
 // RecordsWorktree returns the path to the weft worktree paired with l's warp worktree.
-// It is the read-only accessor every non-fabric caller that needs to know the weft sibling's
-// location goes through, closing the weft-visibility leak where those callers used to reach
-// lyxcwd.Location directly for a fabric-owned path.
-func RecordsWorktree(l *lyxcwd.Location) string {
+// It is the read-only accessor every non-fabric caller that needs to know the weft sibling's location goes through, closing the weft-visibility leak where those callers used to reach lymcwd.Location directly for a fabric-owned path.
+func RecordsWorktree(l *lymcwd.Location) string {
 	return weftname.SiblingPath(l.HubPath, filepath.Base(l.WorktreePath()))
 }
 
@@ -126,23 +124,23 @@ var ErrNotAWarpWorktree = errors.New("fabricengine: not a warp worktree")
 // RequireWarpWorktree reports whether l names a legal warp worktree, returning ErrNotAWarpWorktree
 // when it does not.
 //
-// lyxcwd resolves coordinates from cwd alone and has no way to tell fabric's own checkouts apart
+// lymcwd resolves coordinates from cwd alone and has no way to tell fabric's own checkouts apart
 // from an ordinary worktree — that distinction is fabric vocabulary, which the Cwd Resolution
-// Invariant keeps out of lyxcwd entirely. So standing in a weft sibling, or inside the operator-
+// Invariant keeps out of lymcwd entirely. So standing in a weft sibling, or inside the operator-
 // convenience `_board` link fabric itself installs at every anchor, produces a Location that passes
 // the cwd gate and then drives every verb against invented geometry: a `<slug>-weft-weft` sibling
 // that cannot exist, a `_board-weft` pair, a hub whose "warp worktrees" are the weft repo's own
 // checkouts.
 // Refusing here is what keeps that from reaching a mutating verb.
-func RequireWarpWorktree(l *lyxcwd.Location) error {
+func RequireWarpWorktree(l *lymcwd.Location) error {
 	name := filepath.Base(l.WorktreePath())
 
 	if strings.HasSuffix(name, weftname.Suffix) {
-		return fmt.Errorf("%w: %s is the records sibling of a pair, not a warp worktree; run lyx from the paired warp worktree instead",
+		return fmt.Errorf("%w: %s is the records sibling of a pair, not a warp worktree; run lym from the paired warp worktree instead",
 			ErrNotAWarpWorktree, l.WorktreePath())
 	}
 	if name == BoardDirName {
-		return fmt.Errorf("%w: %s is the hub's %s checkout, not a warp worktree; run lyx from a warp worktree instead",
+		return fmt.Errorf("%w: %s is the hub's %s checkout, not a warp worktree; run lym from a warp worktree instead",
 			ErrNotAWarpWorktree, l.WorktreePath(), BoardDirName)
 	}
 	return nil
@@ -159,7 +157,7 @@ func RequireWarpWorktree(l *lyxcwd.Location) error {
 //
 // It adds no behaviour of its own: the refusal text a caller renders is RequireWarpWorktree's own,
 // which fabric is entitled to spell in its own vocabulary.
-func RequireDrivableWorktree(l *lyxcwd.Location) error {
+func RequireDrivableWorktree(l *lymcwd.Location) error {
 	return RequireWarpWorktree(l)
 }
 
@@ -174,7 +172,7 @@ func RequireDrivableWorktree(l *lyxcwd.Location) error {
 // ok is true only when every check passes; reason names the first one that did not, in fabric's own
 // vocabulary -- not for a non-owner caller to repeat verbatim in its own operator-facing text, the
 // same restraint createRefusal already applies to Add's own errors.
-func PairComplete(l *lyxcwd.Location) (ok bool, reason string, err error) {
+func PairComplete(l *lymcwd.Location) (ok bool, reason string, err error) {
 	siblingPath := RecordsWorktree(l)
 	if _, statErr := os.Stat(siblingPath); statErr != nil {
 		if os.IsNotExist(statErr) {
@@ -196,10 +194,10 @@ func PairComplete(l *lyxcwd.Location) (ok bool, reason string, err error) {
 	return true, "", nil
 }
 
-// WeftLyxDir returns the path to the _lyx directory in l's weft sibling worktree.
-// It is the junction target for lyx weft and the pathspec base for weft operations.
-func WeftLyxDir(l *lyxcwd.Location) string {
-	return filepath.Join(RecordsWorktree(l), l.AnchorRel, lyxdirs.LyxDirName)
+// WeftLymDir returns the path to the _lym directory in l's weft sibling worktree.
+// It is the junction target for lym weft and the pathspec base for weft operations.
+func WeftLymDir(l *lymcwd.Location) string {
+	return filepath.Join(RecordsWorktree(l), l.AnchorRel, lymdirs.LymDirName)
 }
 
 // OriginURL returns f's warp side's configured "origin" remote URL.
@@ -222,7 +220,7 @@ func (f *Fabric) PushBranch(opts SyncOptions) (PushResult, error) {
 // ScopedPathspec returns a slice of pathspec entries, each being the join of relPath with each
 // directory in dirs.
 // At relPath == ".", this returns dirs unchanged;
-// at relPath == "sub", ["_lyx"] becomes ["sub/_lyx"].
+// at relPath == "sub", ["_lym"] becomes ["sub/_lym"].
 func ScopedPathspec(relPath string, dirs []string) []string {
 	result := make([]string, len(dirs))
 	for i, dir := range dirs {

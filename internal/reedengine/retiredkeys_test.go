@@ -28,21 +28,21 @@ const currentKeysState = `{
 
 func loadStateFromJSON(t *testing.T, doc string) (string, *ReedState) {
 	t.Helper()
-	dotLyxDir := filepath.Join(t.TempDir(), ".lyx")
-	if err := os.MkdirAll(dotLyxDir, 0o755); err != nil {
+	dotLymDir := filepath.Join(t.TempDir(), ".lym")
+	if err := os.MkdirAll(dotLymDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dotLyxDir, reedStateFileName), []byte(doc), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dotLymDir, reedStateFileName), []byte(doc), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	got, err := LoadState(dotLyxDir)
+	got, err := LoadState(dotLymDir)
 	if err != nil {
 		t.Fatalf("LoadState: %v", err)
 	}
 	if got == nil {
 		t.Fatal("LoadState = nil, want a state")
 	}
-	return dotLyxDir, got
+	return dotLymDir, got
 }
 
 //testtiming:keep pins a reed.json still carrying the retired anchors, display keys, the size object and the strand's contentRows loading as own-window with them ignored, and a rewrite writing own-window; its covering tests run this code without asserting it

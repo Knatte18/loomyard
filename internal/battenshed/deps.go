@@ -22,7 +22,7 @@ var ErrUnknownRecipe = errors.New("battenshed: unknown recipe name")
 
 // ErrUnsupportedChildRecipe is the sentinel a SeedChildDeps.WriteSeed closure wraps when recipe is a
 // registered recipe the task worktree's bootstrap cannot run -- InnerRun spawns the one bootstrap verb
-// that exists, `lyx loom start`, which serves the loom and darn recipes. SeedChild routes it to Stuck exactly as ErrUnknownRecipe, before any seed is
+// that exists, `lym loom start`, which serves the loom and darn recipes. SeedChild routes it to Stuck exactly as ErrUnknownRecipe, before any seed is
 // written or committed, so a Board task typed with such a recipe halts at Seed-Child with the recipe
 // named rather than failing inside the child after a wrong seed has already been pushed.
 var ErrUnsupportedChildRecipe = errors.New("battenshed: recipe cannot be a task worktree's own run")
@@ -248,7 +248,7 @@ type InnerRunDeps struct {
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	// A nil TacklerInFlight resolves to reporting none in NewInnerRun.
 	TacklerInFlight func(ctx context.Context) (tackler ChildArbiter, found bool, err error)
-	// ChildBuildChanged reads the label of the lyx on disk and whether it differs from the build the child's last step recorded.
+	// ChildBuildChanged reads the label of the lym on disk and whether it differs from the build the child's last step recorded.
 	// The halted arm calls it at most once per due interval, since it reads a binary; an error is warned about and skips that check.
 	// A nil ChildBuildChanged or ChildDirtyPaths switches the binary re-step off.
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.

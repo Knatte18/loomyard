@@ -31,7 +31,7 @@ func checkTaskCreation(strandName string, loaded, after []Task) error {
 	for _, task := range after {
 		if task.Kind == KindTask && !wasTask[task.Slug] {
 			return fmt.Errorf("the run session %s cannot make %q a task: only the operator decides what becomes a task; "+
-				"way forward: file the follow-up as a note with `lyx board upsert` and \"kind\":\"note\", which the operator may promote",
+				"way forward: file the follow-up as a note with `lym board upsert` and \"kind\":\"note\", which the operator may promote",
 				strandName, task.Slug)
 		}
 	}

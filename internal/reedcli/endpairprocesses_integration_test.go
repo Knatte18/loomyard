@@ -12,7 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
 
@@ -41,7 +41,7 @@ func TestEndPairProcesses(t *testing.T) {
 	t.Run("a pair reads the pause, ends nothing registered and makes no network call", func(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		hubforge.AddPair(t, h, "pair")
-		pair, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree("pair"))
+		pair, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("pair"))
 		if err != nil {
 			t.Fatalf("ResolveWorktree: %v", err)
 		}
@@ -63,7 +63,7 @@ func TestEndPairProcesses(t *testing.T) {
 
 	t.Run("the prime ends nothing and reads no pair", func(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-		prime, err := lyxcwd.ResolveWorktree(h.PrimeWorktree())
+		prime, err := lymcwd.ResolveWorktree(h.PrimeWorktree())
 		if err != nil {
 			t.Fatalf("ResolveWorktree: %v", err)
 		}

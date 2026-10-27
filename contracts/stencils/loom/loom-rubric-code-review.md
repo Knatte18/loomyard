@@ -17,13 +17,13 @@ The measuring stick is the answer key this prompt names: the files it lists as t
 The answer key takes one of two forms, and the sections below that apply to only one of them say so:
 
 - **A plan.**
-  The decision record, `_lyx/discussion/decision-record.md`, settles what the task's change must do, and the plan, `_lyx/plan/00-overview.md` with the card files its Card Index names, is how the cards carry it out.
+  The decision record, `_lym/discussion/decision-record.md`, settles what the task's change must do, and the plan, `_lym/plan/00-overview.md` with the card files its Card Index names, is how the cards carry it out.
   The Card model the plan implements, and its format contract, are in `{{.specs_dir}}/loom/loom-plan-spec.md`; this rubric points at it and restates neither.
 - **A board entry snapshot.**
-  `_lyx/discussion/board-entry.md` is the task's board entry, written by lyx, and the decision record's `Added after Discussion` entries amend it, an entry by the parent, the operator or the arbiter winning over the snapshot where they differ.
+  `_lym/discussion/board-entry.md` is the task's board entry, written by lym, and the decision record's `Added after Discussion` entries amend it, an entry by the parent, the operator or the arbiter winning over the snapshot where they differ.
   The record's other sections are the writer's own claim, made before coding and reviewed by no one: check them against the snapshot, never use them as the measuring stick.
 
-The change description at `_lyx/landing/summary.md`, when present, is the writer's own account of the diff: read it as a claim to check against the diff, never as the measuring stick.
+The change description at `_lym/landing/summary.md`, when present, is the writer's own account of the diff: read it as a claim to check against the diff, never as the measuring stick.
 
 `Code-Review` is the LLM producer, not the mechanical one — over-flagging is a judgment failure mode a mechanical producer, which has only checks and never judgment, cannot exhibit.
 This perch sits downstream of mechanical gates, among them the verify gate that ran on this tree, so a finding re-derived from one of their subjects is duplicated work rather than coverage.
@@ -53,7 +53,7 @@ Do not flag any of the following as a finding:
 - **A missing `ImpactSummary` on any card, or an incomplete `DependsOn`/`Produces` list.**
   Both belong to `Plan-Review`, which has already passed.
 - **Anything that is not the diff.**
-  The discussion files and the plan directory under `_lyx`, and this segment's own round artifacts under `_lyx/reviews/code/`, are never the subject of a finding.
+  The discussion files and the plan directory under `_lym`, and this segment's own round artifacts under `_lym/reviews/code/`, are never the subject of a finding.
 
 ## Also flag
 
@@ -67,7 +67,7 @@ Do not flag any of the following as a finding:
 - **Comment-convention compliance.**
   Any new or changed doc comment follows the target repository's own conventions — its own constraints document if it has one, and the conventions the surrounding code already follows.
   A line width is never inferred from the surrounding code.
-  A comment's line breaks and wrapping are never a finding; the gate's `lyx loom lint-comments` alone checks them.
+  A comment's line breaks and wrapping are never a finding; the gate's `lym loom lint-comments` alone checks them.
   This rubric checks compliance with the target repository's own standard, not loomyard's.
 - **Per-card mechanical check, with a plan.**
   Confirm every one of the card's own groups' type-specific mechanical checks actually ran and passed, each against that group's own targets, not just the first label's, per the per-type table in `{{.specs_dir}}/loom/loom-plan-spec.md` — not merely that the diff compiles and its tests pass.
@@ -83,15 +83,15 @@ Do not flag any of the following as a finding:
   Read the declarations rendered into your directive, never the plan's or the record's section, so a bullet appended after the gate is checked too.
   Raise nothing when every declared entry lands, or when your directive declares none.
 - **The change description.**
-  A claim in `_lyx/landing/summary.md` that the diff does not bear out is a finding.
+  A claim in `_lym/landing/summary.md` that the diff does not bear out is a finding.
 - **An unrecorded parent correction, with a board entry snapshot.**
   A deviation from the amended board entry that the change description names as an unrecorded parent correction is never fixed by revert.
   File it as class `decision` at severity MEDIUM.
-  Its fix text tells the fixer to leave the code in place and defer the finding to the run's parent, since its only sound change, recording or refusing the correction with `lyx loom decision add`, is the parent's and lies outside the fixer's write surface.
+  Its fix text tells the fixer to leave the code in place and defer the finding to the run's parent, since its only sound change, recording or refusing the correction with `lym loom decision add`, is the parent's and lies outside the fixer's write surface.
 - **A step that edits the task's own board entry, with a board entry snapshot.**
   A step that changes this task's own board entry's body or scope is a finding, because the run's board lock refuses such a change.
   A step writing another entry, the entry's status or its `run_settings`, or changing board-module code is not flagged by this bullet.
-  Such a step goes through `lyx board` into the records repository, so the committed diff never shows it: the evidence is a claim in the change description that the run changed this task's own entry's body or scope, read as the writer's claim like the rest of that description.
+  Such a step goes through `lym board` into the records repository, so the committed diff never shows it: the evidence is a claim in the change description that the run changed this task's own entry's body or scope, read as the writer's claim like the rest of that description.
   A decision-record step asking for such a change is evidence only of the request.
   A step left out through the writer's own-entry route is no scope finding once the record carries its `Added after Discussion` entry;
   before then the omission is an unrecorded parent correction, filed under that bullet as a MEDIUM `decision` finding deferred to the parent.

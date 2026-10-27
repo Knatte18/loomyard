@@ -13,8 +13,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxtemp"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 )
 
 // ErrIntegrateConflict is wrapped by the stop of an integration whose local commit changed a path the upstream changed differently.
@@ -104,7 +104,7 @@ type integrateBuild struct {
 
 // newIntegrateBuild begins a build at the commit upstreamSHA of the weft at weftPath, whose local tip is head and which ends at the anchor target.
 func newIntegrateBuild(weftPath, upstreamSHA, head, target string, names []string) (*integrateBuild, error) {
-	dir, err := lyxtemp.MkdirTemp("integrate-index-*")
+	dir, err := lymtemp.MkdirTemp("integrate-index-*")
 	if err != nil {
 		return nil, fmt.Errorf("create the temporary index for the integration: %w", err)
 	}
@@ -147,7 +147,7 @@ func (b *integrateBuild) replay(sha, frame, fallback string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if slices.Contains(detail.Paths, lyxcwd.AnchorFileName) {
+	if slices.Contains(detail.Paths, lymcwd.AnchorFileName) {
 		return false, nil
 	}
 	parents, err := repo.CommitParents(sha)
@@ -236,7 +236,7 @@ func (b *integrateBuild) reroot(from, to string) error {
 	if err != nil {
 		return fmt.Errorf("write the marker %s: %w", to, err)
 	}
-	if err := b.set(lyxcwd.AnchorFileName, "100644", strings.TrimSpace(marker)); err != nil {
+	if err := b.set(lymcwd.AnchorFileName, "100644", strings.TrimSpace(marker)); err != nil {
 		return err
 	}
 	return b.commit(fmt.Sprintf("fabric anchor: re-root the weft from %s to %s", from, to), nil)
@@ -345,7 +345,7 @@ func anchorJoin(anchor, name string) string {
 // moveUnderAnchor returns filePath moved from under the anchor from to under the anchor to, when it lies under one of the wired names.
 // The marker and every path outside the wired names come back unmoved.
 func moveUnderAnchor(filePath, from, to string, names []string) string {
-	if from == to || filePath == lyxcwd.AnchorFileName {
+	if from == to || filePath == lymcwd.AnchorFileName {
 		return filePath
 	}
 	for _, name := range names {
@@ -380,7 +380,7 @@ func integrateConflict(weftPath, sha, head, target string, conflicts []string) e
 		"tag the local tip by hand (`git -C %s tag archive/%s/%s %s`), "+
 		"save the changes of %s and of every later local commit outside the weft, "+
 		"reset the weft branch by hand to its parent (`git -C %s reset --keep %s^`), "+
-		"re-run `lyx fabric anchor %s --set %s`, "+
+		"re-run `lym fabric anchor %s --set %s`, "+
 		"then write the saved changes back at %s and commit them; the tag keeps every dropped commit reachable until they are back",
 		ErrIntegrateConflict, sha, strings.Join(conflicts, ", "),
 		weftPath, slug, head, head,

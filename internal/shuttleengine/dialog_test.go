@@ -54,7 +54,7 @@ const (
 
 // TestWait_DialogNotice captures the process-global logger in every row, so neither it nor its rows run in parallel.
 func TestWait_DialogNotice(t *testing.T) {
-	const strandName = "lyx:slug:driver"
+	const strandName = "lym:slug:driver"
 	shell := []BackgroundTask{{Kind: BackgroundShell, ID: "sh-1", Label: "sleep 9999", Signal: SignalTranscript}}
 	// steps[k] runs after the (k+1)th sleep, so at (k+1)*dialogTick on the run clock, just before that tick's wait-loop pass.
 	tests := []struct {

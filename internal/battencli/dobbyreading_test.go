@@ -14,7 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
 
@@ -94,7 +94,7 @@ func TestDobbyTasks_ReadsDependenciesAndParentOfAReleasedTask(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(content), 0o644); err != nil {
 		t.Fatalf("write board.json: %v", err)
 	}
-	prime := &lyxcwd.Location{WorktreeName: "main"}
+	prime := &lymcwd.Location{WorktreeName: "main"}
 	parents := NewDobbyParents(prime)
 	parents.known["released"] = "beam-a"
 

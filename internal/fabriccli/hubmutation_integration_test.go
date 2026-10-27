@@ -20,7 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
@@ -40,7 +40,7 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 		{"BypassPushAdvancesBothUpstreams", func(t *testing.T) {
 			// With unpushed commits on both sides, --warp-path/--weft-path bypass push exits 0 and both bare upstreams' HEAD matches their local checkout's HEAD.
 			// Add one more commit on top of the weft side's already-pushed history, so the weft side has something genuinely unpushed to push.
-			placeholderFile := filepath.Join(h.PrimeRecords(), lyxdirs.LyxDirName, "placeholder")
+			placeholderFile := filepath.Join(h.PrimeRecords(), lymdirs.LymDirName, "placeholder")
 			if err := os.WriteFile(placeholderFile, []byte("bypass push test"), 0o644); err != nil {
 				t.Fatalf("WriteFile: %v", err)
 			}
@@ -73,7 +73,7 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			}
 		}},
 		{"PushPushesBothSidesOfATaskPair", func(t *testing.T) {
-			// With unpushed commits on both sides of a task pair, "lyx fabric push" from the pair's code worktree exits 0, both bare upstreams sit at their local checkout's HEAD, and nothing is reported as skipped.
+			// With unpushed commits on both sides of a task pair, "lym fabric push" from the pair's code worktree exits 0, both bare upstreams sit at their local checkout's HEAD, and nothing is reported as skipped.
 			// The pair is removed again so the later steps see the hub they expect.
 			const slug = "push-both-sides-pair"
 			if code, output := runFabric(t, h.PrimeWorktree(), "add", slug); code != 0 {
@@ -81,7 +81,7 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			}
 			pairWarp, pairWeft := h.PairCodeWorktree(slug), h.PairRecordsSibling(slug)
 			gitkit.CommitFile(t, pairWarp, "warp-push.txt", "warp\n", "warp push")
-			gitkit.CommitFile(t, pairWeft, filepath.Join(lyxdirs.LyxDirName, "weft-push.txt"), "weft\n", "weft push")
+			gitkit.CommitFile(t, pairWeft, filepath.Join(lymdirs.LymDirName, "weft-push.txt"), "weft\n", "weft push")
 
 			weftBranch := gitkit.CurrentBranch(t, pairWeft)
 			wantWeftSHA := gitkit.RevParse(t, pairWeft, "HEAD")
@@ -108,7 +108,7 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			}
 		}},
 		{"UnwireIsADryRunUntilApplied", func(t *testing.T) {
-			// Bare "lyx fabric unwire" in a task pair's code worktree exits 0 with "applied":false and no mutation, and "unwire --apply" then reports "applied":true.
+			// Bare "lym fabric unwire" in a task pair's code worktree exits 0 with "applied":false and no mutation, and "unwire --apply" then reports "applied":true.
 			// The pair is removed again so the later steps see the hub they expect.
 			const slug = "unwire-dry-run-pair"
 			if code, output := runFabric(t, h.PrimeWorktree(), "add", slug); code != 0 {
@@ -170,7 +170,7 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			}
 		}},
 		{"Reconcile_HealsMissingRepoWideConfig", func(t *testing.T) {
-			// reconcile self-heals the hub-wide fabric.yaml and board.yaml: on a hub that has none, it used to fail with "not initialized here; run \"lyx fabric reconcile\"" — prescribing the command that just failed — and must instead materialize the configs, commit them in _board and proceed. board.yaml is seeded from the prime's copy when it has one, else from the template with a warning.
+			// reconcile self-heals the hub-wide fabric.yaml and board.yaml: on a hub that has none, it used to fail with "not initialized here; run \"lym fabric reconcile\"" — prescribing the command that just failed — and must instead materialize the configs, commit them in _board and proceed. board.yaml is seeded from the prime's copy when it has one, else from the template with a warning.
 			// Rows run in this order on the one hub: each row deletes the configs again, which are committed by the previous row's heal.
 			const primeBoard = "types:\n  spike: A time-boxed investigation\n"
 
@@ -279,7 +279,7 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 		}},
 		{"ReconcileDoesNotFailOnAPairThatVanishedMidWalk", func(t *testing.T) {
 			// The counter-assertion to the unrepairable-pair step below; the two must be read together.
-			// Once a per-pair error drives reconcile's exit code, the verb becomes sensitive to a race it cannot avoid: `git worktree list` is read once, before the per-pair loop, so a concurrent `lyx fabric remove`/`prune` can delete a pair between the enumeration and the iteration that reaches it.
+			// Once a per-pair error drives reconcile's exit code, the verb becomes sensitive to a race it cannot avoid: `git worktree list` is read once, before the per-pair loop, so a concurrent `lym fabric remove`/`prune` can delete a pair between the enumeration and the iteration that reaches it.
 			// Without the vanished-mid-walk verdict, that ordinary teardown would fail every enclosing reconcile.
 			// Deleting the directory while leaving git's registration in place is exactly the state the race produces, and needs no actual concurrency to construct.
 			const slug = "vanished-cli"
@@ -400,12 +400,12 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			}
 		}},
 		{"PrimePushReportsItsUnpushedCodeBranchAndPushesRecords", func(t *testing.T) {
-			// With an unpushed commit on the prime's code branch, "lyx fabric push" from the prime exits 0, pushes the records side, leaves the code branch on its bare unchanged, and names the skipped branch in code_push_skipped.
+			// With an unpushed commit on the prime's code branch, "lym fabric push" from the prime exits 0, pushes the records side, leaves the code branch on its bare unchanged, and names the skipped branch in code_push_skipped.
 			warpBranch := gitkit.CurrentBranch(t, h.PrimeWorktree())
 			warpBareBefore := gitkit.RevParse(t, h.CodeBare, "refs/heads/"+warpBranch)
 
 			gitkit.CommitFile(t, h.PrimeWorktree(), "local-only.txt", "local\n", "local warp work")
-			gitkit.CommitFile(t, h.PrimeRecords(), filepath.Join(lyxdirs.LyxDirName, "weft-after-skip.txt"), "weft\n", "weft after skip")
+			gitkit.CommitFile(t, h.PrimeRecords(), filepath.Join(lymdirs.LymDirName, "weft-after-skip.txt"), "weft\n", "weft after skip")
 			weftBranch := gitkit.CurrentBranch(t, h.PrimeRecords())
 
 			code, output := runFabric(t, h.PrimeWorktree(), "push")
@@ -470,24 +470,24 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 		{"ReconcileReportsAFailedPairAsAFailure", func(t *testing.T) {
 			// The full envelope contract on the pair-failure path: exit 1, "ok":false, a non-empty "error", and — the half a bare non-zero exit would lose — the per-pair "pairs" report still present, so a caller learns WHICH pair failed.
 			// Before the fix, reconcile exited through okWithRecord, so a reconcile that failed to re-point a junction printed "ok":true and exited 0 while carrying the reason only in pairs[].error.
-			// The failing state is induced through adoption's ONE remaining hard refusal — a warp-side real .lyx holding an entry that collides with a non-directory at the weft target — because that refusal is deterministic and needs no racing.
+			// The failing state is induced through adoption's ONE remaining hard refusal — a warp-side real .lym holding an entry that collides with a non-directory at the weft target — because that refusal is deterministic and needs no racing.
 			l := h.Location
 			warpWorktree := l.WorktreePath()
-			warpDotLyx := filepath.Join(warpWorktree, l.AnchorRel, lyxdirs.DotLyxDirName)
-			weftDotLyx := filepath.Join(h.PrimeRecords(), l.AnchorRel, lyxdirs.DotLyxDirName)
+			warpDotLym := filepath.Join(warpWorktree, l.AnchorRel, lymdirs.DotLymDirName)
+			weftDotLym := filepath.Join(h.PrimeRecords(), l.AnchorRel, lymdirs.DotLymDirName)
 
 			// Tear the wired junction down to a real directory, then plant a collision adoption still
 			// refuses: the same name is a FILE on the warp side and a DIRECTORY on the weft side.
-			if err := fslink.Remove(warpDotLyx); err != nil {
-				t.Fatalf("remove wired .lyx junction: %v", err)
+			if err := fslink.Remove(warpDotLym); err != nil {
+				t.Fatalf("remove wired .lym junction: %v", err)
 			}
-			if err := os.MkdirAll(warpDotLyx, 0o755); err != nil {
-				t.Fatalf("mkdir real warp .lyx: %v", err)
+			if err := os.MkdirAll(warpDotLym, 0o755); err != nil {
+				t.Fatalf("mkdir real warp .lym: %v", err)
 			}
-			if err := os.WriteFile(filepath.Join(warpDotLyx, "logs"), []byte("a file, not a directory"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(warpDotLym, "logs"), []byte("a file, not a directory"), 0o644); err != nil {
 				t.Fatalf("seed warp-side colliding file: %v", err)
 			}
-			if err := os.MkdirAll(filepath.Join(weftDotLyx, "logs"), 0o755); err != nil {
+			if err := os.MkdirAll(filepath.Join(weftDotLym, "logs"), 0o755); err != nil {
 				t.Fatalf("mkdir weft-side colliding directory: %v", err)
 			}
 

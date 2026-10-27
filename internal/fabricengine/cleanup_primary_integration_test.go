@@ -1,9 +1,9 @@
 //go:build tier1
 
-// cleanup_primary_integration_test.go pins the carve-out that keeps `lyx fabric cleanup` from
+// cleanup_primary_integration_test.go pins the carve-out that keeps `lym fabric cleanup` from
 // deleting the repo's primary weft branch.
 // Branch-space liveness alone protected "main-weft" only while the prime warp worktree sat on the
-// repo's default branch; one `lyx fabric checkout <other>` promoted the durable weft line to a
+// repo's default branch; one `lym fabric checkout <other>` promoted the durable weft line to a
 // deletable orphan, and `--apply --force` then deleted it together with any weft commit it alone
 // carried.
 //
@@ -30,7 +30,7 @@ func TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout(t *testing.T) {
 	l := h.Location
 	primaryWeftBranch := fabricengine.RecordsBranchName("main")
 
-	// Move the prime pair off the default branch, exactly as `lyx fabric checkout` does.
+	// Move the prime pair off the default branch, exactly as `lym fabric checkout` does.
 	// The fixture's <Hub>/_board worktree stays on "main", which is what records the repo's
 	// primary warp branch.
 	gitkit.MustRun(t, l.WorktreePath(), "git", "checkout", "-b", "alt")

@@ -82,8 +82,8 @@ func TestTmuxConfPath(t *testing.T) {
 // It swaps the process-global logger output, so it does not run parallel.
 func TestTmuxConfBootGuard(t *testing.T) {
 	const path = "/home/operator/tmux.conf"
-	claimWithPath := "set-option -s @lyx_tmux_conf_claimed sourced ; source-file " + path
-	claimWithoutPath := "set-option -s @lyx_tmux_conf_claimed empty"
+	claimWithPath := "set-option -s @lym_tmux_conf_claimed sourced ; source-file " + path
+	claimWithoutPath := "set-option -s @lym_tmux_conf_claimed empty"
 	pins := []string{"set-option", "-g", "destroy-unattached", "off", ";", "set-option", "-s", "exit-unattached", "off"}
 	withPins := func(head ...string) []string { return append(append([]string{}, head...), pins...) }
 
@@ -127,8 +127,8 @@ func TestTmuxConfBootGuard(t *testing.T) {
 			path      string
 			want      []string
 		}{
-			{"CandidateWithPath", true, path, withPins("if-shell", "-F", "#{@lyx_tmux_conf_claimed}", "", claimWithPath, ";")},
-			{"CandidateWithoutPath", true, "", withPins("if-shell", "-F", "#{@lyx_tmux_conf_claimed}", "", claimWithoutPath, ";")},
+			{"CandidateWithPath", true, path, withPins("if-shell", "-F", "#{@lym_tmux_conf_claimed}", "", claimWithPath, ";")},
+			{"CandidateWithoutPath", true, "", withPins("if-shell", "-F", "#{@lym_tmux_conf_claimed}", "", claimWithoutPath, ";")},
 			{"NonCandidate", false, path, pins},
 		}
 		for _, tt := range tests {

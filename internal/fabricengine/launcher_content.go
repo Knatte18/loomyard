@@ -23,17 +23,17 @@ func launcherExt(goos string) string {
 }
 
 // launcherScript builds the content and file mode for a launcher script that
-// climbs to a target subpath and invokes lyx. On Windows, uses cmd with CRLF
+// climbs to a target subpath and invokes lym. On Windows, uses cmd with CRLF
 // and mode 0o644. On non-Windows, uses bash with LF and mode 0o755 (executable).
-func launcherScript(goos, climbRel, lyxArgs string) (content []byte, mode os.FileMode) {
+func launcherScript(goos, climbRel, lymArgs string) (content []byte, mode os.FileMode) {
 	climbFwd := filepath.ToSlash(climbRel)
 
 	if goos == "windows" {
 		climbBack := strings.ReplaceAll(climbFwd, "/", "\\")
-		text := fmt.Sprintf("@cd /d \"%%~dp0%s\" && lyx %s\r\n", climbBack, lyxArgs)
+		text := fmt.Sprintf("@cd /d \"%%~dp0%s\" && lym %s\r\n", climbBack, lymArgs)
 		return []byte(text), 0o644
 	}
 
-	text := fmt.Sprintf("#!/usr/bin/env bash\ncd \"$(dirname \"$0\")/%s\" && lyx %s\n", climbFwd, lyxArgs)
+	text := fmt.Sprintf("#!/usr/bin/env bash\ncd \"$(dirname \"$0\")/%s\" && lym %s\n", climbFwd, lymArgs)
 	return []byte(text), 0o755
 }

@@ -18,9 +18,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/lyxtemp"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -31,7 +31,7 @@ import (
 // The client NotifyPrime builds connects to it, so it spawns no daemon of its own.
 func startCreelDaemon(t *testing.T, h *hubforge.Hub, receiver string) {
 	t.Helper()
-	root, err := lyxtemp.ProcessRoot()
+	root, err := lymtemp.ProcessRoot()
 	if err != nil {
 		t.Fatalf("ProcessRoot() = %v", err)
 	}
@@ -72,7 +72,7 @@ func TestInstallPushNotifier(t *testing.T) {
 	t.Run("InstalledFromTheBoardWorktreeAFailureMailsTheOrchAsFabric", func(t *testing.T) {
 		t.Setenv(agentname.StrandNameEnv, "")
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-		root, err := lyxtemp.ProcessRoot()
+		root, err := lymtemp.ProcessRoot()
 		if err != nil {
 			t.Fatalf("ProcessRoot() = %v", err)
 		}
@@ -85,13 +85,13 @@ func TestInstallPushNotifier(t *testing.T) {
 			t.Fatalf("SaveState: %v", err)
 		}
 		reedState := &reedengine.ReedState{Strands: []reedengine.Strand{{GUID: "g1", Name: receiver}}}
-		if err := reedengine.SaveState(filepath.Join(h.Location.AnchorPath(), lyxdirs.DotLyxDirName), reedState); err != nil {
+		if err := reedengine.SaveState(filepath.Join(h.Location.AnchorPath(), lymdirs.DotLymDirName), reedState); err != nil {
 			t.Fatalf("reedengine.SaveState: %v", err)
 		}
 		startCreelDaemon(t, h, receiver)
 		t.Cleanup(fabricengine.InstallPushNotifier(func(string, string) (bool, error) { return false, nil }))
 
-		InstallPushNotifier(lyxcwd.WithCwd(context.Background(), fabricengine.BoardDir(h.Path)))
+		InstallPushNotifier(lymcwd.WithCwd(context.Background(), fabricengine.BoardDir(h.Path)))
 		failure := fabricengine.FailedPush{
 			Repo: "code", RepoPath: h.PrimeWorktree(), Branch: "main", Prime: true,
 			Class: fabricengine.PushFailureTransport, Error: "connection refused",
@@ -134,7 +134,7 @@ func TestInstallPushNotifier(t *testing.T) {
 			return true, nil
 		}))
 
-		InstallPushNotifier(lyxcwd.WithCwd(context.Background(), t.TempDir()))
+		InstallPushNotifier(lymcwd.WithCwd(context.Background(), t.TempDir()))
 		failure := fabricengine.FailedPush{Repo: "code", Branch: "main", Class: fabricengine.PushFailureTransport}
 		if err := fabricengine.RecordPushFailure(t.TempDir(), failure, time.Now()); err != nil {
 			t.Fatalf("RecordPushFailure: %v", err)

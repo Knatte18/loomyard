@@ -299,16 +299,16 @@ func (o fixerOutcome) haltReason(row string) string {
 	switch o.end {
 	case fixerEndSpent:
 		cause = fmt.Sprintf("the fixer spent every attempt of %s and the landing gate still fails; log: %s", row, o.failureLog)
-		wayForward = "fix the failure on the task branch, then `lyx loom resume`"
+		wayForward = "fix the failure on the task branch, then `lym loom resume`"
 	case fixerEndEscalate:
 		cause = fmt.Sprintf("the fixer of %s found a parent change that conflicts with a decision of the record; report: %s; conflict: %s", row, o.reportPath, singleLine(o.conflict))
-		wayForward = "add the deciding decision with `lyx loom decision add` in the task worktree, then `lyx loom resume`"
+		wayForward = "add the deciding decision with `lym loom decision add` in the task worktree, then `lym loom resume`"
 	case fixerEndTimeout, fixerEndNoReport, fixerEndDirty:
 		cause = fmt.Sprintf("the fixer session of %s ended without a usable turn (%s); session log: %s; report: %s", row, o.end, o.sessionLog, o.reportPath)
-		wayForward = "fix or clean the task branch, then `lyx loom resume`"
+		wayForward = "fix or clean the task branch, then `lym loom resume`"
 	case fixerEndPushed:
 		cause = fmt.Sprintf("the fixer session of %s pushed %s; session log: %s", row, o.pushedRef, o.sessionLog)
-		wayForward = "check the pushed commits are the task's, then `lyx loom resume`"
+		wayForward = "check the pushed commits are the task's, then `lym loom resume`"
 	default:
 		return ""
 	}

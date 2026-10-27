@@ -91,7 +91,7 @@ func TestCommitWeft_UntrackedNewFileCountsAsMatch(t *testing.T) {
 }
 
 // TestCommitWeft_IndexOnlyDeletionCountsAsMatch covers the "index-only must count" predicate
-// clause: fabricengine.Unwire's (unwire.go) `_lyx` clear-and-commit step commits a "_lyx" path that
+// clause: fabricengine.Unwire's (unwire.go) `_lym` clear-and-commit step commits a "_lym" path that
 // os.RemoveAll has just deleted from the worktree, surviving only in the index at that point.
 // A worktree-existence-only predicate would silently break that deletion commit — this test seeds a
 // tracked file, deletes it from disk only (never staged), then asserts CommitWeft still commits the
@@ -105,9 +105,9 @@ func TestCommitWeft_IndexOnlyDeletionCountsAsMatch(t *testing.T) {
 	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
-	trackedPath := filepath.Join(weftFixture.PrimeRecords(), "_lyx", "trackedfile.txt")
+	trackedPath := filepath.Join(weftFixture.PrimeRecords(), "_lym", "trackedfile.txt")
 	mustWriteFileWeft(t, trackedPath, "tracked content")
-	gitkit.MustRun(t, weftFixture.PrimeRecords(), "git", "add", "_lyx/trackedfile.txt")
+	gitkit.MustRun(t, weftFixture.PrimeRecords(), "git", "add", "_lym/trackedfile.txt")
 	gitkit.MustRun(t, weftFixture.PrimeRecords(), "git", "commit", "-q", "-m", "seed tracked file")
 
 	// Delete from disk only — the file survives in the index until something
@@ -117,7 +117,7 @@ func TestCommitWeft_IndexOnlyDeletionCountsAsMatch(t *testing.T) {
 		t.Fatalf("os.Remove(%q): %v", trackedPath, err)
 	}
 
-	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lyx"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
+	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lym"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("commitWeft() error = %v; want nil", err)
 	}
@@ -129,8 +129,8 @@ func TestCommitWeft_IndexOnlyDeletionCountsAsMatch(t *testing.T) {
 	}
 
 	tracked := strings.Join(gitkit.LsFiles(t, weftFixture.PrimeRecords()), "\n")
-	if strings.Contains(tracked, "_lyx/trackedfile.txt") {
-		t.Errorf("git ls-files = %q; want _lyx/trackedfile.txt no longer tracked after the deletion commit", tracked)
+	if strings.Contains(tracked, "_lym/trackedfile.txt") {
+		t.Errorf("git ls-files = %q; want _lym/trackedfile.txt no longer tracked after the deletion commit", tracked)
 	}
 }
 
@@ -149,10 +149,10 @@ func TestCommitWeft_ExcludeMagicPassesThroughUntouched(t *testing.T) {
 	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
-	mustWriteFileWeft(t, filepath.Join(weftFixture.PrimeRecords(), "_lyx", "durable.txt"), "durable state")
-	mustWriteFileWeft(t, filepath.Join(weftFixture.PrimeRecords(), "_lyx", "run.lock"), "machine-local lock")
+	mustWriteFileWeft(t, filepath.Join(weftFixture.PrimeRecords(), "_lym", "durable.txt"), "durable state")
+	mustWriteFileWeft(t, filepath.Join(weftFixture.PrimeRecords(), "_lym", "run.lock"), "machine-local lock")
 
-	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lyx", ":(exclude)_lyx/*.lock"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
+	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lym", ":(exclude)_lym/*.lock"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("commitWeft() error = %v; want nil", err)
 	}
@@ -164,11 +164,11 @@ func TestCommitWeft_ExcludeMagicPassesThroughUntouched(t *testing.T) {
 	}
 
 	tracked := strings.Join(gitkit.LsFiles(t, weftFixture.PrimeRecords()), "\n")
-	if !strings.Contains(tracked, "_lyx/durable.txt") {
-		t.Errorf("git ls-files = %q; want it to track _lyx/durable.txt", tracked)
+	if !strings.Contains(tracked, "_lym/durable.txt") {
+		t.Errorf("git ls-files = %q; want it to track _lym/durable.txt", tracked)
 	}
-	if strings.Contains(tracked, "_lyx/run.lock") {
-		t.Errorf("git ls-files = %q; want _lyx/run.lock excluded, never tracked", tracked)
+	if strings.Contains(tracked, "_lym/run.lock") {
+		t.Errorf("git ls-files = %q; want _lym/run.lock excluded, never tracked", tracked)
 	}
 }
 
@@ -193,9 +193,9 @@ func TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing(t *testing.T)
 	// filter mishandled the all-negative pathspec by staging everything,
 	// both would show up staged below.
 	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "dirtied but must stay unstaged")
-	mustWriteFileWeft(t, filepath.Join(weftFixture.PrimeRecords(), "_lyx", "run.lock"), "machine-local lock")
+	mustWriteFileWeft(t, filepath.Join(weftFixture.PrimeRecords(), "_lym", "run.lock"), "machine-local lock")
 
-	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"doesnotexist", ":(exclude)_lyx/*.lock"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
+	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"doesnotexist", ":(exclude)_lym/*.lock"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("commitWeft() error = %v; want nil", err)
 	}
@@ -217,8 +217,8 @@ func TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing(t *testing.T)
 
 // resolvedDefaultRoutingNames resolves the fabric config template's REAL default pathspec and runs
 // it through pathspecNames -- not a hand-written literal, and not the raw, unfiltered Config.Dirs()
-// -- so TestResolvedDefaultRoutingNames_IsLyxAlone below exercises whatever fabric's own commit
-// routing actually builds today: structuralCommittedDirs ("_lyx") alone, the template's pathspec
+// -- so TestResolvedDefaultRoutingNames_IsLymAlone below exercises whatever fabric's own commit
+// routing actually builds today: structuralCommittedDirs ("_lym") alone, the template's pathspec
 // default now being empty, catching both a future template default change and a future structural-set
 // change.
 func resolvedDefaultRoutingNames(t *testing.T) []string {
@@ -235,41 +235,29 @@ func resolvedDefaultRoutingNames(t *testing.T) []string {
 	return fabricengine.PathspecNamesForTest(cfg)
 }
 
-// TestResolvedDefaultRoutingNames_IsLyxAlone asserts the real, resolved default routing set —
-// structuralCommittedDirs ("_lyx") alone, now that template.yaml's pathspec default is empty — still
+// TestResolvedDefaultRoutingNames_IsLymAlone asserts the real, resolved default routing set —
+// structuralCommittedDirs ("_lym") alone, now that template.yaml's pathspec default is empty — still
 // guards against a future template change silently re-widening the default.
 // This is split out from the multi-entry tolerance regression below because an empty default leaves
 // resolvedDefaultRoutingNames with nothing to inject an "_extra" name through: the two properties this
 // file used to pin together (the real default's exact shape, and weftPathspecFilter's tolerance of a
 // wider pathspec with an empty optional entry) no longer share one subject.
 //
-//testtiming:keep the resolved default routing set being _lyx alone so a template change cannot silently widen it; coverage of its blocks by other tests does not show an assertion of this
-func TestResolvedDefaultRoutingNames_IsLyxAlone(t *testing.T) {
+//testtiming:keep the resolved default routing set being _lym alone so a template change cannot silently widen it; coverage of its blocks by other tests does not show an assertion of this
+func TestResolvedDefaultRoutingNames_IsLymAlone(t *testing.T) {
 	dirs := resolvedDefaultRoutingNames(t)
-	if len(dirs) != 1 || dirs[0] != "_lyx" {
-		t.Fatalf("resolvedDefaultRoutingNames() = %v; want [_lyx]", dirs)
+	if len(dirs) != 1 || dirs[0] != "_lym" {
+		t.Fatalf("resolvedDefaultRoutingNames() = %v; want [_lym]", dirs)
 	}
 }
 
-// TestCommitWeft_WidenedPathspecTolerance_LyxChangeStillCommitsWithEmptyOptionalDir proves card 13's
-// pathspec-tolerance filter still holds for a genuinely widened, multi-entry pathspec, even though the
-// real template default no longer exercises that shape on its own (see
-// TestResolvedDefaultRoutingNames_IsLyxAlone above).
-// It deliberately does NOT ride the real template default: it hand-supplies a two-name routing set
-// ("_lyx", "_extra") instead, because weftPathspecFilter remains live production behaviour for any
-// repo whose fabric.yaml pathspec actually does widen beyond "_lyx" — and an empty default is exactly
-// what would let a regression in that filter go unnoticed if this coverage were dropped along with the
-// old widened-by-default shape.
-// With NO files under "_extra" at all, a genuine "_lyx" change still commits.
-// Without weftPathspecFilter, this is exactly the silent regression the batch scope describes: `git
-// add -- _lyx _extra` fails in its entirety the moment `_extra` matches nothing, and CommitWeft's own
-// pre-existing "did not match any files" tolerance swallows that into ("", false, nil) with no error —
-// so the only way to catch it is asserting the commit actually happened, not checking for an error.
-// Covers both shapes an empty "_extra" can take — wholly absent and present-but-empty — since git
-// tracks files, not directories, and a materialised-but-empty "_extra/" is a normal, expected state
-// for any optional pathspec entry a repo has not yet populated.
-func TestCommitWeft_WidenedPathspecTolerance_LyxChangeStillCommitsWithEmptyOptionalDir(t *testing.T) {
-	dirs := []string{"_lyx", "_extra"}
+// TestCommitWeft_WidenedPathspecTolerance_LymChangeStillCommitsWithEmptyOptionalDir proves card 13's pathspec-tolerance filter still holds for a genuinely widened, multi-entry pathspec, even though the real template default no longer exercises that shape on its own (see TestResolvedDefaultRoutingNames_IsLymAlone above).
+// It deliberately does NOT ride the real template default: it hand-supplies a two-name routing set ("_lym", "_extra") instead, because weftPathspecFilter remains live production behaviour for any repo whose fabric.yaml pathspec actually does widen beyond "_lym" — and an empty default is exactly what would let a regression in that filter go unnoticed if this coverage were dropped along with the old widened-by-default shape.
+// With NO files under "_extra" at all, a genuine "_lym" change still commits.
+// Without weftPathspecFilter, this is exactly the silent regression the batch scope describes: `git add -- _lym _extra` fails in its entirety the moment `_extra` matches nothing, and CommitWeft's own pre-existing "did not match any files" tolerance swallows that into ("", false, nil) with no error — so the only way to catch it is asserting the commit actually happened, not checking for an error.
+// Covers both shapes an empty "_extra" can take — wholly absent and present-but-empty — since git tracks files, not directories, and a materialised-but-empty "_extra/" is a normal, expected state for any optional pathspec entry a repo has not yet populated.
+func TestCommitWeft_WidenedPathspecTolerance_LymChangeStillCommitsWithEmptyOptionalDir(t *testing.T) {
+	dirs := []string{"_lym", "_extra"}
 
 	t.Run("OptionalDirWhollyAbsent", func(t *testing.T) {
 		t.Parallel()
@@ -282,14 +270,14 @@ func TestCommitWeft_WidenedPathspecTolerance_LyxChangeStillCommitsWithEmptyOptio
 			t.Fatalf("precondition: _extra must not exist in this fixture; Stat err = %v", err)
 		}
 
-		fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "lyx change, _extra wholly absent")
+		fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "lym change, _extra wholly absent")
 
 		sha, committed, err := fabricengine.CommitWeftForTest(f, dirs, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 		if err != nil {
 			t.Fatalf("commitWeft() error = %v; want nil", err)
 		}
 		if !committed {
-			t.Fatalf("commitWeft() committed = false; want true (the _lyx change must still commit)")
+			t.Fatalf("commitWeft() committed = false; want true (the _lym change must still commit)")
 		}
 		if sha == "" {
 			t.Errorf("commitWeft() sha = %q; want a non-empty new HEAD SHA", sha)
@@ -309,14 +297,14 @@ func TestCommitWeft_WidenedPathspecTolerance_LyxChangeStillCommitsWithEmptyOptio
 			t.Fatalf("MkdirAll _extra: %v", err)
 		}
 
-		fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "lyx change, _extra present but empty")
+		fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "lym change, _extra present but empty")
 
 		sha, committed, err := fabricengine.CommitWeftForTest(f, dirs, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 		if err != nil {
 			t.Fatalf("commitWeft() error = %v; want nil", err)
 		}
 		if !committed {
-			t.Fatalf("commitWeft() committed = false; want true (the _lyx change must still commit)")
+			t.Fatalf("commitWeft() committed = false; want true (the _lym change must still commit)")
 		}
 		if sha == "" {
 			t.Errorf("commitWeft() sha = %q; want a non-empty new HEAD SHA", sha)

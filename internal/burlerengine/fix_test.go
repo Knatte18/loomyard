@@ -64,7 +64,7 @@ func gateOf(name string, result shuttleengine.GateResult, err error, calls *int)
 // fixInstructionFiles returns the content of the fix half's instruction files under the engine root, keyed by file name.
 func fixInstructionFiles(t *testing.T, root string) map[string]string {
 	t.Helper()
-	dirs, err := filepath.Glob(filepath.Join(root, ".lyx", "burler", "fix-*"))
+	dirs, err := filepath.Glob(filepath.Join(root, ".lym", "burler", "fix-*"))
 	if err != nil || len(dirs) != 1 {
 		t.Fatalf("fix instruction dirs = %v, %v; want exactly one", dirs, err)
 	}

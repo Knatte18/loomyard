@@ -1,5 +1,5 @@
 @echo off
-REM Launcher for the lyx SANDBOX-REED-WATCH-SUITE: runs the interactive, non-destructive
+REM Launcher for the lym SANDBOX-REED-WATCH-SUITE: runs the interactive, non-destructive
 REM reed live-observation session (live tmux required). The machine-specific parent directory
 REM is hardcoded HERE (the base under which sandbox Hubs are created) — the Go
 REM tool stays general.

@@ -42,7 +42,7 @@ func (e *BatchFailedError) Error() string {
 	if e.WayForward != "" {
 		fmt.Fprintf(&b, "; way forward: %s", e.WayForward)
 	} else {
-		fmt.Fprintf(&b, "; way forward: lyx webster recover-batch %02d", e.Number)
+		fmt.Fprintf(&b, "; way forward: lym webster recover-batch %02d", e.Number)
 	}
 	return b.String()
 }

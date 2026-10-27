@@ -191,13 +191,13 @@ func TestRecordAbandonedSession(t *testing.T) {
 	scratchDir := t.TempDir()
 	path := AbandonedSessionFile(scratchDir)
 
-	recordAbandonedSession("Worktree-Teardown", "some-slug", "lyx-some-slug", scratchDir)
+	recordAbandonedSession("Worktree-Teardown", "some-slug", "lym-some-slug", scratchDir)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read abandoned-session record: %v", err)
 	}
-	if got := strings.TrimSpace(string(data)); got != "lyx-some-slug" {
-		t.Errorf("abandoned-session record = %q; want %q", got, "lyx-some-slug")
+	if got := strings.TrimSpace(string(data)); got != "lym-some-slug" {
+		t.Errorf("abandoned-session record = %q; want %q", got, "lym-some-slug")
 	}
 
 	recordAbandonedSession("Worktree-Teardown", "some-slug", "", scratchDir)
@@ -211,7 +211,7 @@ func TestRecordAbandonedSession(t *testing.T) {
 	// The producer's own Done path writes the record.
 	producerScratchDir := t.TempDir()
 	deps := TeardownDeps{
-		Shutdown: func(ctx context.Context) (string, error) { return "lyx-abandoned", nil },
+		Shutdown: func(ctx context.Context) (string, error) { return "lym-abandoned", nil },
 		Remove:   func(ctx context.Context) error { return nil },
 	}
 	var released bool
@@ -222,8 +222,8 @@ func TestRecordAbandonedSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read abandoned-session record after a Done teardown: %v", err)
 	}
-	if got := strings.TrimSpace(string(data)); got != "lyx-abandoned" {
-		t.Errorf("abandoned-session record = %q; want %q", got, "lyx-abandoned")
+	if got := strings.TrimSpace(string(data)); got != "lym-abandoned" {
+		t.Errorf("abandoned-session record = %q; want %q", got, "lym-abandoned")
 	}
 }
 

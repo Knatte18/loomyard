@@ -1,6 +1,6 @@
 //go:build tier2
 
-// unlessname_integration_test.go drives `lyx reed add --unless-name` on a real hub and tmux server, proving a matching strand, live or dormant, makes the add a no-op that disturbs neither the strand list nor the pane geometry, and that no matching strand leaves the add as today.
+// unlessname_integration_test.go drives `lym reed add --unless-name` on a real hub and tmux server, proving a matching strand, live or dormant, makes the add a no-op that disturbs neither the strand list nor the pane geometry, and that no matching strand leaves the add as today.
 
 package reedcli
 
@@ -23,7 +23,7 @@ func unlessRun(t *testing.T, worktree string, args ...string) (int, map[string]a
 	code := RunCLIIn(worktree, &out, args)
 	var env map[string]any
 	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
-		t.Fatalf("lyx reed %v output is not valid JSON: %v; got: %q", args, err, out.String())
+		t.Fatalf("lym reed %v output is not valid JSON: %v; got: %q", args, err, out.String())
 	}
 	return code, env
 }
@@ -33,7 +33,7 @@ func unlessStatus(t *testing.T, worktree, paneOf string) (guids []string, sessio
 	t.Helper()
 	code, env := unlessRun(t, worktree, "status")
 	if code != 0 {
-		t.Fatalf("lyx reed status = %d, envelope: %v", code, env)
+		t.Fatalf("lym reed status = %d, envelope: %v", code, env)
 	}
 	session, _ = env["session"].(string)
 	strands, _ := env["strands"].([]any)

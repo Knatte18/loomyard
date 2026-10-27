@@ -32,7 +32,7 @@ type RubricNotes struct {
 // The strip is about value semantics, not about protecting Fill. stencil.Fill already strips a
 // leading banner from the template it parses, but never from a marker value -- and a rubric's
 // destination is a marker value, interpolated into the Bouncer templates' {{.rubric}}. Unstripped
-// bytes would inject the "<!-- lyx-stencil: sha256=... -->" line into the middle of the judge
+// bytes would inject the "<!-- lym-stencil: sha256=... -->" line into the middle of the judge
 // prompt.
 //
 // The strip happens before the fill, not after: Fill strips its own template internally, so

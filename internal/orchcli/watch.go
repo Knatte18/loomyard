@@ -14,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -49,7 +49,7 @@ func (c *orchCLI) orchAgentName() (string, error) {
 
 // beamOwnerElsewhere reads the owner of the worktree location on the hub's local board, the prime's owner for the prime and a beam's effective owner through hubgeom.ParentOf for a beam.
 // elsewhere is true when that owner names a machine other than this one; a worktree with no owner recorded is owned by no other machine.
-func beamOwnerElsewhere(location *lyxcwd.Location) (owner string, elsewhere bool, err error) {
+func beamOwnerElsewhere(location *lymcwd.Location) (owner string, elsewhere bool, err error) {
 	here, err := machinename.Name()
 	if err != nil {
 		return "", false, fmt.Errorf("orch: read this machine's name: %w", err)
@@ -100,7 +100,7 @@ A second watcher finding the first alive reports already_running and exits.`,
 				return nil
 			}
 			if st.Strand == "" {
-				clihelp.SetExit(cmd.Context(), output.Err(out, "orch: no orchestrator strand is recorded; nothing to watch -- run `lyx beam start` first"))
+				clihelp.SetExit(cmd.Context(), output.Err(out, "orch: no orchestrator strand is recorded; nothing to watch -- run `lym beam start` first"))
 				return nil
 			}
 

@@ -80,8 +80,8 @@ func TestRemove_TeardownLockAgainstThePairsPush(t *testing.T) {
 		if !errors.Is(err, fabricengine.ErrPairPushRunning) {
 			t.Fatalf("Remove with a shared holder = %v; want an error wrapping ErrPairPushRunning", err)
 		}
-		if !strings.Contains(err.Error(), "lyx fabric remove") {
-			t.Errorf("Remove error = %q; want it to name `lyx fabric remove`", err.Error())
+		if !strings.Contains(err.Error(), "lym fabric remove") {
+			t.Errorf("Remove error = %q; want it to name `lym fabric remove`", err.Error())
 		}
 		for _, p := range []string{h.PairCodeWorktree(slug), h.PairRecordsSibling(slug)} {
 			if _, statErr := os.Lstat(p); statErr != nil {

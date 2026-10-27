@@ -56,7 +56,7 @@
 # Webster no longer builds a kick-start pack, so a fork of a later run falls under the none arm;
 # the other arms classify forks of runs from before the pack's removal.
 # A fork of the card arm, the per-card layout, reads no pack file and has no inline pack:
-# its pack is the results of its successful `lyx loom card-pack` calls, each resolved against the tree as it stood at that call.
+# its pack is the results of its successful `lym loom card-pack` calls, each resolved against the tree as it stood at that call.
 #
 # Card pack count: for every kept fork whose worktree has a trace file, the script counts the `msg="webster: card pack"` lines
 # of those files logged between the fork's first and last transcript line, whether or not a batch resolves, and writes card-traces.tsv.
@@ -99,9 +99,9 @@ export LC_ALL=C
 
 # The run-record literals this script reads, each spelled once, here.
 # A jq filter that needs one receives it with --arg.
-STATE_PATH="_lyx/webster/state.json"
-PLAN_DIR="_lyx/plan/"
-LOGS_DIR=".lyx/logs"
+STATE_PATH="_lym/webster/state.json"
+PLAN_DIR="_lym/plan/"
+LOGS_DIR=".lym/logs"
 RECORDS_SUFFIX="-weft"
 
 # Bash builtins only until the command check has passed.

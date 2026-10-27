@@ -30,10 +30,10 @@ func newPool(t *testing.T, limits func() (gateslot.Limits, error)) *gateslot.Poo
 // TestRunner does not call t.Parallel: two subtests set the process environment through t.Setenv, which forbids it in the test and its ancestors.
 // Those subtests run first, in order, and the parallel ones resume after.
 func TestRunner(t *testing.T) {
-	t.Run("a stale prebuilt-lyx variable never reaches a line", func(t *testing.T) {
-		t.Setenv(gateslot.PrebuiltLyxEnv, "/stale/lyx")
+	t.Run("a stale prebuilt-lym variable never reaches a line", func(t *testing.T) {
+		t.Setenv(gateslot.PrebuiltLymEnv, "/stale/lym")
 		runner := Runner{Worktree: t.TempDir()}
-		cards := []planparser.Card{verifyCard(1, "a", "true"), verifyCard(2, "b", ""), verifyCard(3, "c", `test -z "$`+gateslot.PrebuiltLyxEnv+`"`)}
+		cards := []planparser.Card{verifyCard(1, "a", "true"), verifyCard(2, "b", ""), verifyCard(3, "c", `test -z "$`+gateslot.PrebuiltLymEnv+`"`)}
 		if got := runner.RunCards(cards, io.Discard, false); len(got) != 0 {
 			t.Fatalf("RunCards() = %v; want no failures", got)
 		}
@@ -42,17 +42,17 @@ func TestRunner(t *testing.T) {
 	t.Run("a gate call takes no slot and no runner timeout bounds it", func(t *testing.T) {
 		stubDir := t.TempDir()
 		stub := "#!/bin/sh\nsleep 1\nexit 0\n"
-		if err := os.WriteFile(filepath.Join(stubDir, "lyx"), []byte(stub), 0o755); err != nil {
+		if err := os.WriteFile(filepath.Join(stubDir, "lym"), []byte(stub), 0o755); err != nil {
 			t.Fatal(err)
 		}
 		t.Setenv("PATH", stubDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 		pool := newPool(t, func() (gateslot.Limits, error) { return gateslot.Limits{}, errors.New("a gate call reads no limits") })
 		runner := Runner{Worktree: t.TempDir(), Slots: pool, Timeout: 200 * time.Millisecond}
 
-		if got := runner.RunLine("lyx gate test --wait ./x", io.Discard); got != "" {
+		if got := runner.RunLine("lym gate test --wait ./x", io.Discard); got != "" {
 			t.Errorf("RunLine(gate call) = %q; want a pass", got)
 		}
-		if got := runner.RunLine("lyx gate test ./x", io.Discard); !strings.Contains(got, "could not acquire a gate slot") {
+		if got := runner.RunLine("lym gate test ./x", io.Discard); !strings.Contains(got, "could not acquire a gate slot") {
 			t.Errorf("RunLine(gate call without --wait) = %q; want it slot-held", got)
 		}
 	})

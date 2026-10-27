@@ -34,7 +34,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -135,12 +135,12 @@ func TestReconcile_MissingWeftRepoIsDiagnosedByName(t *testing.T) {
 }
 
 // seedRepoWideFabricConfig materializes the repo-wide fabric.yaml at
-// fabricengine.BoardDir(hub) — <hub>/_board/_lyx/config/fabric.yaml — the
+// fabricengine.BoardDir(hub) — <hub>/_board/_lym/config/fabric.yaml — the
 // base card 7's RepoWiredNames-migrated sites (checkJunctionHealth,
 // Healthy, Reconcile, Topology.Checkout, Topology.Remove,
 // junctionRepointedDetail) now read from. A real hub built by hubforge.NewHub
 // materializes _board via CloneAndWire, but not this repo-wide fabric.yaml, so this creates the file
-// (and its _lyx/config/) first; unlike gitkit.SeedConfig, _board is not a git repository, so the
+// (and its _lym/config/) first; unlike gitkit.SeedConfig, _board is not a git repository, so the
 // file is written directly with no git add/commit step. Shared by every
 // fabricengine_test fixture that exercises a migrated read.
 func seedRepoWideFabricConfig(t testing.TB, hub string) {
@@ -433,12 +433,10 @@ func TestCleanup_DetachedWarpHeadProtectsCheckedOutWeftBranch(t *testing.T) {
 	}
 }
 
-// TestHealthy_RealDirNotAJunction is the R10 fix: a real (non-link) directory sitting where the
-// _lyx junction belongs must be reported as "warp _lyx is not a junction" — the wording
-// checkJunctionHealth already uses for the same drift shape — not as "junction missing".
+// TestHealthy_RealDirNotAJunction is the R10 fix: a real (non-link) directory sitting where the _lym junction belongs must be reported as "warp _lym is not a junction" — the wording checkJunctionHealth already uses for the same drift shape — not as "junction missing".
 // The loom preflight will consume this reason string after cutover.
 //
-//testtiming:keep a real directory where the _lyx junction belongs reporting "warp _lyx is not a junction"; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep a real directory where the _lym junction belongs reporting "warp _lym is not a junction"; coverage of its blocks by other tests does not show an assertion of this
 func TestHealthy_RealDirNotAJunction(t *testing.T) {
 	t.Parallel()
 
@@ -446,18 +444,18 @@ func TestHealthy_RealDirNotAJunction(t *testing.T) {
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
-	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lym", "_extra"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
-	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
+	warpLayout, err := lymcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(warp): %v", err)
+		t.Fatalf("lymcwd.Resolve(warp): %v", err)
 	}
 
 	// Replace the junction with a real directory — the drift shape a
-	// pre-weft repo migration or a hand-created _lyx leaves behind.
-	warpLink := fabricengine.WarpLyxLinkHere(warpLayout)
+	// pre-weft repo migration or a hand-created _lym leaves behind.
+	warpLink := fabricengine.WarpLymLinkHere(warpLayout)
 	if err := os.Remove(warpLink); err != nil {
 		t.Fatalf("remove warp junction: %v", err)
 	}
@@ -470,10 +468,10 @@ func TestHealthy_RealDirNotAJunction(t *testing.T) {
 		t.Fatalf("fabricengine.Healthy: %v", err)
 	}
 	if ok {
-		t.Errorf("Healthy = true with a real _lyx directory; want false")
+		t.Errorf("Healthy = true with a real _lym directory; want false")
 	}
-	if reason.Cause != fabricengine.CauseNotAJunction || reason.Detail != "_lyx is not a junction" {
-		t.Errorf("Healthy reason = %+v; want {Cause: %q, Detail: %q}", reason, fabricengine.CauseNotAJunction, "_lyx is not a junction")
+	if reason.Cause != fabricengine.CauseNotAJunction || reason.Detail != "_lym is not a junction" {
+		t.Errorf("Healthy reason = %+v; want {Cause: %q, Detail: %q}", reason, fabricengine.CauseNotAJunction, "_lym is not a junction")
 	}
 }
 
@@ -491,9 +489,9 @@ func TestReconcile_RecreatedWeftIsWiredInTheSamePass(t *testing.T) {
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
-	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
+	warpLayout, err := lymcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(warp): %v", err)
+		t.Fatalf("lymcwd.Resolve(warp): %v", err)
 	}
 
 	weftRepoRoot, err := fabricengine.RecordsRepoRoot(l)
@@ -598,7 +596,7 @@ func TestCleanup_DryRunMatchesApplyVerdict(t *testing.T) {
 
 // TestCleanup_ForceIsReservedAndChangesNoVerdict pins the reserved-ness of Cleanup's force parameter
 // itself, which nothing pinned once raddleFoldedBack — force's only consumer — was deleted.
-// A reserved flag that nothing tests is a flag that quietly grows a gate again: `lyx fabric cleanup
+// A reserved flag that nothing tests is a flag that quietly grows a gate again: `lym fabric cleanup
 // --force` is still accepted on the command line and still documented as answering no gate, so the
 // property has to be asserted rather than assumed. This compares the full verdict set from a dry run
 // with force=false against one with force=true over the same fixture — an unmanaged non-suffixed
@@ -731,7 +729,7 @@ func TestReconcile_RestoresDeletedLaunchers(t *testing.T) {
 		if err := os.RemoveAll(fabricengine.LauncherDir(l, slug)); err != nil {
 			t.Fatalf("delete launcher dir: %v", err)
 		}
-		if err := fslink.Remove(filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, "_lyx")); err != nil {
+		if err := fslink.Remove(filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, "_lym")); err != nil {
 			t.Fatalf("delete warp junction: %v", err)
 		}
 

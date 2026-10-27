@@ -11,22 +11,22 @@ import (
 	"sort"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // resolvePrime returns the location of the hub's prime worktree.
-func resolvePrime(l *lyxcwd.Location) (*lyxcwd.Location, error) {
+func resolvePrime(l *lymcwd.Location) (*lymcwd.Location, error) {
 	primeName, err := PrimeName(l)
 	if err != nil {
 		return nil, err
 	}
-	return lyxcwd.ResolveWorktree(filepath.Join(l.HubPath, primeName))
+	return lymcwd.ResolveWorktree(filepath.Join(l.HubPath, primeName))
 }
 
 // recordedRuns returns the slugs of the runs this machine holds a batten run record of at the prime, in order.
 // The run scope reads only its own run.
-func recordedRuns(l *lyxcwd.Location, scope ReconcileScope) ([]string, error) {
+func recordedRuns(l *lymcwd.Location, scope ReconcileScope) ([]string, error) {
 	prime, err := resolvePrime(l)
 	if err != nil {
 		return nil, err
@@ -75,8 +75,8 @@ func onlyRuns(ended EndedSet, runs []string) EndedSet {
 
 // pairHasLocalPart reports whether this machine holds any part of slug's pair: its task worktree path, its sibling worktree path, its launchers or either local branch.
 // A branch counts when it is named by the slug alone.
-func pairHasLocalPart(l *lyxcwd.Location, slug string) (bool, error) {
-	pair, err := lyxcwd.NamedWorktree(l.HubPath, slug)
+func pairHasLocalPart(l *lymcwd.Location, slug string) (bool, error) {
+	pair, err := lymcwd.NamedWorktree(l.HubPath, slug)
 	if err != nil {
 		return false, err
 	}
@@ -93,9 +93,9 @@ func pairHasLocalPart(l *lyxcwd.Location, slug string) (bool, error) {
 // busyWayForward names what lets a removal that found its pair busy go through at the next run.
 func busyWayForward(busyOn string) string {
 	if busyOn == BusyOnDriver {
-		return "wait for the pair's driver to end, which the run's next Parent-Align or Finalize makes certain by stopping it with Halt, then re-run `lyx cleanup --apply`"
+		return "wait for the pair's driver to end, which the run's next Parent-Align or Finalize makes certain by stopping it with Halt, then re-run `lym cleanup --apply`"
 	}
-	return "wait for the holder of the pair's teardown or weft write lock to release it, then re-run `lyx cleanup --apply`"
+	return "wait for the holder of the pair's teardown or weft write lock to release it, then re-run `lym cleanup --apply`"
 }
 
 // reconcileEnded applies the removal of an ended run to each entry of ended, in slug order, and reports each one in res.Entries as ended.
@@ -105,7 +105,7 @@ func busyWayForward(busyOn string) string {
 // A judge-only scope, and the run scope's own run, whose driver is the caller, tear nothing down.
 // A nil Teardown seam tears nothing down either.
 // Each teardown's mutations are appended to res's record.
-func reconcileEnded(l *lyxcwd.Location, scope ReconcileScope, seams OriginSeams, ended EndedSet, res *OriginReport) error {
+func reconcileEnded(l *lymcwd.Location, scope ReconcileScope, seams OriginSeams, ended EndedSet, res *OriginReport) error {
 	for _, slug := range sortedSlugs(ended) {
 		entry := EntryOutcome{Slug: slug, State: EntryEnded, How: ended[slug]}
 		local, err := pairHasLocalPart(l, slug)

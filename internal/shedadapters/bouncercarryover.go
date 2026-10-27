@@ -28,7 +28,7 @@ func (b *Bouncer) writeCarryOver(round int, closing discussionparser.CarryOverCl
 		err = b.cfg.CarryOver(entry)
 	}
 	if err != nil {
-		return fmt.Errorf("shedadapters: %s (%s): carry over round %d's open findings: %w; way forward: fix the file the error names, keeping its `## Open risks` carry-over marker lines well-formed, then run `lyx loom start` to re-run the settle", b.cfg.Name, bouncerEngineLabel, round, err)
+		return fmt.Errorf("shedadapters: %s (%s): carry over round %d's open findings: %w; way forward: fix the file the error names, keeping its `## Open risks` carry-over marker lines well-formed, then run `lym loom start` to re-run the settle", b.cfg.Name, bouncerEngineLabel, round, err)
 	}
 	return nil
 }

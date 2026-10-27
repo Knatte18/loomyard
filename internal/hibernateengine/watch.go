@@ -143,7 +143,7 @@ func Watch(deps Deps) (Request, error) {
 	if detail != "" {
 		outcome += " " + detail
 	}
-	return r, deps.Notify("[lyx hibernate] The machine woke from hibernation; " + outcome)
+	return r, deps.Notify("[lym hibernate] The machine woke from hibernation; " + outcome)
 }
 
 // wakeOutcome says what became of the request's pause entry, as the tail of the wake notice.
@@ -247,7 +247,7 @@ func fail(deps Deps, r Request, kept *tenderengine.EntryRef, reason string) (Req
 			outcome = "its pause could not be lifted."
 		}
 	}
-	notifyErr := deps.Notify(fmt.Sprintf("[lyx hibernate] The hibernate request failed: %s; %s", reason, outcome))
+	notifyErr := deps.Notify(fmt.Sprintf("[lym hibernate] The hibernate request failed: %s; %s", reason, outcome))
 	return r, errors.Join(writeErr, liftErr, notifyErr)
 }
 
@@ -303,7 +303,7 @@ func triggerReading(deps Deps, r Request) (fire bool, reason string, err error) 
 		case status.State == shedengine.StateRunning:
 			return false, fmt.Sprintf("waiting for %s to finish Land, now at %s", r.Slug, status.Producer), nil
 		}
-		return false, fmt.Sprintf("the batten run of %s halted at %s (%s); run \"lyx hibernate cancel\" to withdraw the request", r.Slug, status.Producer, status.State), nil
+		return false, fmt.Sprintf("the batten run of %s halted at %s (%s); run \"lym hibernate cancel\" to withdraw the request", r.Slug, status.Producer, status.State), nil
 	case TriggerAfterAll:
 		slugs, err := deps.RunSlugs()
 		if err != nil {

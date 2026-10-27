@@ -143,26 +143,26 @@ var renumberWaysForward = []struct {
 	sentinel error
 	step     string
 }{
-	{planparser.ErrRenumberJournalExists, "run lyx loom restore-renumber, then re-run the verb"},
-	{planparser.ErrRenumberReversalFailed, "run lyx loom restore-renumber"},
-	{planparser.ErrRenumberPlanInconsistent, "run lyx loom validate-plan and fix its index-file-mismatch and card-numbering findings, then re-run the verb"},
+	{planparser.ErrRenumberJournalExists, "run lym loom restore-renumber, then re-run the verb"},
+	{planparser.ErrRenumberReversalFailed, "run lym loom restore-renumber"},
+	{planparser.ErrRenumberPlanInconsistent, "run lym loom validate-plan and fix its index-file-mismatch and card-numbering findings, then re-run the verb"},
 	{planparser.ErrRenumberPosition, "pass a position from first_card to the last card, or one past it for insert-card"},
 	{planparser.ErrRenumberOnlyCard, "insert the replacement card first, then remove"},
 	{planparser.ErrRenumberSlug, "pass lowercase letters and digits joined by single hyphens"},
 	{planparser.ErrRenumberIntent, "pass a non-empty one-line --intent"},
-	{planparser.ErrRenumberNoJournal, "nothing to restore, lyx loom insert-card or lyx loom remove-card is the verb to run"},
-	{planparser.ErrRenumberJournalInvalid, "delete the named journal file, then run lyx loom validate-plan, whose findings name any card left inconsistent"},
-	{planparser.ErrRenumberRestoreFailed, "transient, re-run lyx loom restore-renumber, the journal is kept"},
+	{planparser.ErrRenumberNoJournal, "nothing to restore, lym loom insert-card or lym loom remove-card is the verb to run"},
+	{planparser.ErrRenumberJournalInvalid, "delete the named journal file, then run lym loom validate-plan, whose findings name any card left inconsistent"},
+	{planparser.ErrRenumberRestoreFailed, "transient, re-run lym loom restore-renumber, the journal is kept"},
 	{planparser.ErrRenumberIOFailed, "transient, re-run the refused verb; nothing is mutated"},
 	{errRenumberRawIO, "transient, re-run the refused verb; nothing is mutated"},
 }
 
 // renumberRefusal words one refusal of a card verb as `loom: <verb>: <cause>; way forward: <step>`.
-// It is the one place the card verbs' refusals are worded, so planparser never names a lyx verb.
+// It is the one place the card verbs' refusals are worded, so planparser never names a lym verb.
 // An error that is none of the known refusals is a plan that does not parse, and that is the way forward its message takes.
 func renumberRefusal(verb string, err error) string {
 	cause := strings.TrimPrefix(err.Error(), "planparser: ")
-	step := "fix the file the message names so lyx loom validate-plan parses it, then re-run the verb"
+	step := "fix the file the message names so lym loom validate-plan parses it, then re-run the verb"
 
 	var bound begunBoundError
 	if errors.As(err, &bound) {
@@ -233,10 +233,10 @@ prose_mentions and never rewritten, so check each by hand.
 
 N runs from first_card to one past the last card, and must come after the last
 card webster has begun. The call is journaled, and an interrupted one is
-undone by lyx loom restore-renumber. It never commits and never approves.
+undone by lym loom restore-renumber. It never commits and never approves.
 
 Example:
-  lyx loom insert-card 3 add-retry --intent "retry a failed fetch once"`,
+  lym loom insert-card 3 add-retry --intent "retry a failed fetch once"`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -267,11 +267,11 @@ by hand.
 
 N runs from first_card to the last card, must come after the last card webster
 has begun, and cannot be the plan's only card. The call is journaled, and an
-interrupted one is undone by lyx loom restore-renumber. It never commits and
+interrupted one is undone by lym loom restore-renumber. It never commits and
 never approves.
 
 Example:
-  lyx loom remove-card 4`,
+  lym loom remove-card 4`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -297,7 +297,7 @@ included. A re-run after a failed restore completes it. It never commits and
 never approves.
 
 Example:
-  lyx loom restore-renumber`,
+  lym loom restore-renumber`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {

@@ -20,7 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -37,8 +37,8 @@ func battenCommandNamed(parent *cobra.Command, verb string) *cobra.Command {
 	return nil
 }
 
-// TestCommand_EveryVerbArity asserts each of the four verbs' own Args validator, checked independently per verb rather than by reading one shared value, accepts both zero and one positional and rejects two -- cobra.MaximumNArgs(1), the one arity contract all three surfaces ("lyx shed", "lyx batten", "lyx loom") share -- and that two positionals fail the whole command through cobra's own arity error, regardless of cwd, before PersistentPreRunE ever runs.
-// Accepting zero is what lets "lyx batten run" with no argument reach arm's own refuseSelfAddress (arm_seed_test.go) with a named message, rather than stopping at cobra's generic count error.
+// TestCommand_EveryVerbArity asserts each of the four verbs' own Args validator, checked independently per verb rather than by reading one shared value, accepts both zero and one positional and rejects two -- cobra.MaximumNArgs(1), the one arity contract all three surfaces ("lym shed", "lym batten", "lym loom") share -- and that two positionals fail the whole command through cobra's own arity error, regardless of cwd, before PersistentPreRunE ever runs.
+// Accepting zero is what lets "lym batten run" with no argument reach arm's own refuseSelfAddress (arm_seed_test.go) with a named message, rather than stopping at cobra's generic count error.
 func TestCommand_EveryVerbArity(t *testing.T) {
 	t.Parallel()
 
@@ -99,7 +99,7 @@ func TestArmSeed_DriverFlagMatrix(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
+			loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
 			c := &battenCLI{driverFlag: tt.driverFlag, childDriverFlag: tt.childDriverFlag, childDriverFlagSet: !tt.childUntyped}
 
 			err := c.armSeed(loc, "some-slug", "run")
@@ -134,7 +134,7 @@ func TestArmSeed_DriverFlagMatrix(t *testing.T) {
 	}
 }
 
-// TestRunCLI_GroupGuard_NoGitRepoNeeded asserts that a bare "lyx batten" invocation succeeds
+// TestRunCLI_GroupGuard_NoGitRepoNeeded asserts that a bare "lym batten" invocation succeeds
 // without needing a git repository, proving the PersistentPreRunE guard for cmd.Name() ==
 // "batten" fires before any cwd resolution.
 func TestRunCLI_GroupGuard_NoGitRepoNeeded(t *testing.T) {
@@ -167,9 +167,9 @@ func TestCommand_HelpCarriesNoTeardownGotoExample(t *testing.T) {
 // TestStartFirstPass covers the detached first pass over a hand-populated receiver with fake pass, dobby-liveness, dobby-spawn and parent-owner seams:
 // a done slug and a slug a pause covers return an envelope whose ok is false naming their way forward and start nothing;
 // a startable slug starts one pass with the prime's anchor as its working directory and starts its parent's dobby once when that reads not live and never when it reads live;
-// a failed dobby spawn still returns the started pass's envelope with a warning naming `lyx beam start` for the parent;
-// a parent another machine owns starts no dobby and warns naming `lyx adopt` for the parent, or `lyx adopt root` for the prime;
-// a parent beam whose landing hold stands starts no dobby and warns naming `lyx batten status`.
+// a failed dobby spawn still returns the started pass's envelope with a warning naming `lym beam start` for the parent;
+// a parent another machine owns starts no dobby and warns naming `lym adopt` for the parent, or `lym adopt root` for the prime;
+// a parent beam whose landing hold stands starts no dobby and warns naming `lym batten status`.
 func TestStartFirstPass(t *testing.T) {
 	t.Parallel()
 
@@ -242,14 +242,14 @@ func TestStartFirstPass(t *testing.T) {
 			dobbySpawnErr:  errors.New("exec failed"),
 			wantPassArgs:   []string{"batten", "run", "some-slug"},
 			wantDobbySpawn: 1,
-			wantWarning:    []string{"exec failed", "lyx beam start root"},
+			wantWarning:    []string{"exec failed", "lym beam start root"},
 			wantParent:     "hub-repo",
 		},
 		{
 			name:         "PrimeOwnedElsewhereStartsNoDobby",
 			parentOwner:  otherHost,
 			wantPassArgs: []string{"batten", "run", "some-slug"},
-			wantWarning:  []string{otherHost, "lyx adopt root"},
+			wantWarning:  []string{otherHost, "lym adopt root"},
 			wantParent:   "hub-repo",
 		},
 		{
@@ -257,7 +257,7 @@ func TestStartFirstPass(t *testing.T) {
 			beamParent:   true,
 			landingHeld:  true,
 			wantPassArgs: []string{"batten", "run", "some-slug"},
-			wantWarning:  []string{"lyx batten status " + beam},
+			wantWarning:  []string{"lym batten status " + beam},
 			wantParent:   beam,
 		},
 		{
@@ -265,18 +265,18 @@ func TestStartFirstPass(t *testing.T) {
 			beamParent:   true,
 			parentOwner:  otherHost,
 			wantPassArgs: []string{"batten", "run", "some-slug"},
-			wantWarning:  []string{otherHost, "lyx adopt " + beam},
+			wantWarning:  []string{otherHost, "lym adopt " + beam},
 			wantParent:   beam,
 		},
 		{
 			name:        "DoneSlugIsRefusedBeforeAnythingStarts",
 			status:      shedengine.StateDone,
-			wantRefusal: []string{"has already completed", "lyx batten cleanup --apply", "different slug"},
+			wantRefusal: []string{"has already completed", "lym batten cleanup --apply", "different slug"},
 		},
 		{
 			name:        "CoveredSlugIsRefusedBeforeAnythingStarts",
 			pauseCovers: true,
-			wantRefusal: []string{"lyx tender resume"},
+			wantRefusal: []string{"lym tender resume"},
 		},
 	}
 	for _, tt := range tests {

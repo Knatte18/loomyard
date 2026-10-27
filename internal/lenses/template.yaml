@@ -14,7 +14,7 @@
 #
 # lens_set: names one embedded language layer under sets/ whose lenses and fans replace or add base entries by name; "" picks none.
 # The base names no language, and its rules lenses read the repository's own rules.
-# Only the base file may hold it: the hub file in a hub, set with "lyx config lenses --layer default --set lens_set=<name>" from the hub's prime worktree.
+# Only the base file may hold it: the hub file in a hub, set with "lym config lenses --layer default --set lens_set=<name>" from the hub's prime worktree.
 # A name this file defines still beats the layer.
 #
 # lenses: maps a lens name to emphasis-steering review prose for one fork of a
@@ -102,9 +102,9 @@ lenses:
     renamed symbols, and examples that would no longer compile or run as
     written. Report anything else you notice too — emphasis, never exclusion.
   goal-scope: |
-    Own the record's fit with its board entry. Read `lyx board list` once and
-    `lyx board get` for this task, then up to four board notes titled
-    `Decision for <slug>:` for this task, newest first, by `lyx board get`;
+    Own the record's fit with its board entry. Read `lym board list` once and
+    `lym board get` for this task, then up to four board notes titled
+    `Decision for <slug>:` for this task, newest first, by `lym board get`;
     that is at most six tool calls. A board note titled `Decision for <slug>:`
     for this task, and the record's `Added after Discussion` entries, are
     parent decisions and win over the entry body. Check the record against the
@@ -142,13 +142,13 @@ lenses:
     process a cited piece leans on. Report anything else you notice too —
     emphasis, never exclusion.
   board-fit: |
-    Own the record's fit with the rest of the hub. Read `lyx board list` and
-    `lyx loom peers`, then up to four reads, nearest first, of: `lyx board get`
+    Own the record's fit with the rest of the hub. Read `lym board list` and
+    `lym loom peers`, then up to four reads, nearest first, of: `lym board get`
     for a touching entry or for a `Decision for <slug>:` note for this task,
-    `lyx loom peers show <slug> --record decision` or `--record plan` for a
+    `lym loom peers show <slug> --record decision` or `--record plan` for a
     close peer, and a read-only `git show` of a parent commit that
-    `lyx loom peers` lists; that is at most six tool calls. Name this task's
-    decision notes from the `lyx board list` titles you already hold, and spend
+    `lym loom peers` lists; that is at most six tool calls. Name this task's
+    decision notes from the `lym board list` titles you already hold, and spend
     one of your four reads on a note before raising a parent question that
     note's title touches. A board note titled `Decision for <slug>:` for this
     task, and the record's `Added after Discussion` entries, are parent
@@ -223,7 +223,7 @@ lenses:
     card that covers part of a set is one finding naming the members it
     missed. Check that each `Create` handle's package is the package clause
     of the file the Intent puts it in, an external `_test` package included,
-    and that each listed glyph is the one `lyx quarry` gives. A new type,
+    and that each listed glyph is the one `lym quarry` gives. A new type,
     function or executor that must be registered in a table or list, such as
     a guard table or a seam list, is a forced edit, and a registration no card
     lists is a finding. Apply the Plan-Review rubric's "Member glyphs on an

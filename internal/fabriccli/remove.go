@@ -1,4 +1,4 @@
-// remove.go holds the seam-driven body of `lyx fabric remove`: the run-scope origin reconcile of the slug, the verdict it gives, and the choice between the local removal of an ended or foreign run and the ordinary removal.
+// remove.go holds the seam-driven body of `lym fabric remove`: the run-scope origin reconcile of the slug, the verdict it gives, and the choice between the local removal of an ended or foreign run and the ordinary removal.
 
 package fabriccli
 
@@ -10,7 +10,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 )
 
@@ -27,7 +27,7 @@ type localReading struct {
 	done           bool
 }
 
-// remover carries the seams `lyx fabric remove` wires and its test fakes.
+// remover carries the seams `lym fabric remove` wires and its test fakes.
 // exemptAll lets every live pause entry pass this process's network gate and returns the restore.
 // gone reports whether the slug's task worktree is gone, reconcile runs the run-scope origin reconcile of the slug, local reads the local board for the slug, and teardown removes the pair.
 type remover struct {
@@ -59,7 +59,7 @@ func (r remover) run(ctx context.Context, slug string, force, remote bool) (pair
 	} else {
 		report, err = r.reconcile(slug)
 		if err != nil {
-			return pairteardown.Result{}, fmt.Errorf("origin reconcile of %q failed: %w; fix the cause it names, then run lyx fabric remove %s again", slug, err, slug)
+			return pairteardown.Result{}, fmt.Errorf("origin reconcile of %q failed: %w; fix the cause it names, then run lym fabric remove %s again", slug, err, slug)
 		}
 	}
 
@@ -67,7 +67,7 @@ func (r remover) run(ctx context.Context, slug string, force, remote bool) (pair
 	if report.Unreachable {
 		local, err = r.local(slug)
 		if err != nil {
-			return pairteardown.Result{}, fmt.Errorf("read the local board for %q: %w; fix the cause it names, then run lyx fabric remove %s again", slug, err, slug)
+			return pairteardown.Result{}, fmt.Errorf("read the local board for %q: %w; fix the cause it names, then run lym fabric remove %s again", slug, err, slug)
 		}
 	}
 
@@ -149,7 +149,7 @@ func stoppedRemoveRefusal(slug string, branches []fabricengine.BranchOutcome) er
 		if branch.State == fabricengine.BranchGone && own {
 			continue
 		}
-		return fmt.Errorf("cannot remove %q: branch %s is %s against origin; %s; then run lyx fabric remove %s again", slug, branch.Branch, branch.State, branch.WayForward, slug)
+		return fmt.Errorf("cannot remove %q: branch %s is %s against origin; %s; then run lym fabric remove %s again", slug, branch.Branch, branch.State, branch.WayForward, slug)
 	}
 	return nil
 }
@@ -166,7 +166,7 @@ func stopsRemoval(state fabricengine.BranchState) bool {
 
 // readLocalReading reads the local board for slug: whether its effective owner is another machine and whether its entry reads done.
 // An unreadable board, or an owner the board cannot resolve, is returned.
-func readLocalReading(prime *lyxcwd.Location, slug string) (localReading, error) {
+func readLocalReading(prime *lymcwd.Location, slug string) (localReading, error) {
 	options := pairteardown.HubSeamOptions(prime)
 	machine, err := options.Machine()
 	if err != nil {
@@ -197,7 +197,7 @@ func readLocalReading(prime *lyxcwd.Location, slug string) (localReading, error)
 // reconcileForRemove runs the run-scope origin reconcile of slug from the prime, with the seams pairteardown builds for a hub, and logs each entry of its mutation record.
 // A hub whose warp or weft repository has no origin remote has nothing to judge against, so it reads as an unreachable origin and the local board decides.
 // The run scope tears no pair down, so the report never shows the slug's pair already removed.
-func reconcileForRemove(prime *lyxcwd.Location, td *pairteardown.Teardown, slug string) (fabricengine.OriginReport, error) {
+func reconcileForRemove(prime *lymcwd.Location, td *pairteardown.Teardown, slug string) (fabricengine.OriginReport, error) {
 	recordsRoot, err := fabricengine.RecordsRepoRoot(prime)
 	if err != nil {
 		return fabricengine.OriginReport{}, err

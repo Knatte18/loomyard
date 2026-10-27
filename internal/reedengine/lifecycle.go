@@ -21,7 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
@@ -29,12 +29,12 @@ import (
 )
 
 // stateDir returns the path to the worktree-level ephemeral tree holding reed.json and reed.lock.
-// It is AnchorPath-anchored so it is a directory sibling of the durable, fabric-synced _lyx tree —
+// It is AnchorPath-anchored so it is a directory sibling of the durable, fabric-synced _lym tree —
 // distinct from Geometry.LogsDir, the hub-anchored directory this engine is TOLD (built by
 // fabricengine.HubLogsDir, never derived here), which stays one deterministic place per hub rather
 // than per worktree.
 func (e *Engine) stateDir() string {
-	return filepath.Join(e.geom.AnchorPath, lyxdirs.DotLyxDirName)
+	return filepath.Join(e.geom.AnchorPath, lymdirs.DotLymDirName)
 }
 
 // UpResult reports the outcome of Up.
@@ -88,8 +88,8 @@ type StrandStatus struct {
 	Retiring bool
 	// Color is the palette color the strand's segment resolves to, empty when it has none.
 	Color segmentcolor.Color
-	// LyxBin mirrors Strand.LyxBin.
-	LyxBin string
+	// LymBin mirrors Strand.LymBin.
+	LymBin string
 	// Provider mirrors Strand.Provider.
 	Provider string
 }
@@ -300,7 +300,7 @@ func (e *Engine) validateBootConfig() (debugArgs []string, mouse string, err err
 	}
 
 	// The boolean is discarded here: this is the one consumer of watchdogOption with an error channel.
-	// Its only job is to make a typo fail `lyx reed up` loudly and by name, since every other reader of the key fails safe toward "no watchdog" instead.
+	// Its only job is to make a typo fail `lym reed up` loudly and by name, since every other reader of the key fails safe toward "no watchdog" instead.
 	if _, err = watchdogOption(e.cfg.Watchdog); err != nil {
 		return nil, "", err
 	}
@@ -451,9 +451,9 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	clean, stripped := e.scrub.Apply(os.Environ())
 	// The tmux server is a long-lived singleton later invocations reattach to.
 	// A one-shot child (board/fabric spawn) belongs to a single invocation and keeps inheriting the trace ID.
-	// Filtering LYX_TRACE_ID is therefore its own explicitly-named step, not folded into the scrub.
+	// Filtering LYM_TRACE_ID is therefore its own explicitly-named step, not folded into the scrub.
 	// The scrub's stripped-keys return value is persisted verbatim into ReedState.StrippedEnv as an engine-injected-variable diagnostic.
-	// LYX_TRACE_ID is neither engine-injected nor meant to be recorded there.
+	// LYM_TRACE_ID is neither engine-injected nor meant to be recorded there.
 	clean = stripTraceID(clean)
 	clean = stripAgentNameEnv(clean)
 	spawnSession := func() error {
@@ -593,7 +593,7 @@ func (e *Engine) pinBootOptionsLocked(mouse, shellPath string) error {
 // Everywhere but Windows, `-f /dev/null` follows them, so the server reads none of the operator's `~/.tmux.conf`; a running server ignores the flag.
 // `-c` pins new-session's pane default cwd to the told pane spawn directory, even though the server process's own cwd has moved to the logs directory.
 // The configured shell is the first pane's trailing command.
-// Off Windows, three `set-option` commands chain after it in the same invocation, so the new session is pinned `destroy-unattached off`, tagged `@lyx_reed_session` and set `@lyx_follow on` before any operator config could act.
+// Off Windows, three `set-option` commands chain after it in the same invocation, so the new session is pinned `destroy-unattached off`, tagged `@lym_reed_session` and set `@lym_follow on` before any operator config could act.
 // On Windows the follow option stays unset, which reads on.
 func (e *Engine) serverSpawnArgv(goos string, debugArgs []string) []string {
 	argv := append([]string{}, debugArgs...)
@@ -644,7 +644,7 @@ func (e *Engine) writeDiscoverStop() {
 	}
 }
 
-// stripTraceID removes LYX_TRACE_ID from env before the tmux server inherits it.
+// stripTraceID removes LYM_TRACE_ID from env before the tmux server inherits it.
 // The server is a long-lived singleton reattached by unrelated invocations.
 func stripTraceID(env []string) []string {
 	out := make([]string, 0, len(env))
@@ -657,7 +657,7 @@ func stripTraceID(env []string) []string {
 	return out
 }
 
-// stripAgentNameEnv removes LYX_STRAND_NAME and LYX_PARENT from env before the tmux server inherits them.
+// stripAgentNameEnv removes LYM_STRAND_NAME and LYM_PARENT from env before the tmux server inherits them.
 // A server booted from inside a strand would otherwise hand that strand's name and parent to every pane it later creates,
 // and a pane told no parent exports none of its own, so it would escalate to the booting strand's parent.
 func stripAgentNameEnv(env []string) []string {
@@ -762,7 +762,7 @@ func (e *Engine) Up() (UpResult, error) {
 // Selvage pane is alive, and ensureServerAndSessionLocked runs its whole pre-tmux config-validation block
 // ahead of its already-up early return.
 // Otherwise it delegates to upLocked and returns that call's own booted flag verbatim, never a
-// hardcoded true: the session can come up between the two probes (a sibling `lyx reed up` in another
+// hardcoded true: the session can come up between the two probes (a sibling `lym reed up` in another
 // terminal is the realistic trigger), so a hardcoded true would make the caller's attribution log claim
 // a spawn that never happened.
 func (e *Engine) ensureSessionLocked() (bool, error) {
@@ -906,8 +906,8 @@ func (e *Engine) Resume() (ResumeResult, error) {
 // Only kill-session (not kill-server, which other worktrees share).
 // Waits for server and pane-child processes to actually release resources.
 //
-// Down is also the only lyx-only escape from the foreign-session refusal (generation.go): it loads
-// no state and so never reaches that check, which matters for an operator who can run lyx but not
+// Down is also the only lym-only escape from the foreign-session refusal (generation.go): it loads
+// no state and so never reaches that check, which matters for an operator who can run lym but not
 // raw tmux — a CI-like environment, a sandboxed agent — since the refusal's own message names only a
 // `tmux kill-session` remedy. That escape used to be silent about its cost: with a worktree renamed
 // while its session was up, `down` reported ok:true, deleted reed.json, and left the recorded session
@@ -916,7 +916,7 @@ func (e *Engine) Resume() (ResumeResult, error) {
 // reproduced live). It now names that session in the result and at Warn.
 //
 // It still does not KILL it, and must not: the recorded name is this worktree's own former session
-// after a rename, but a SIBLING worktree's live session after a hand-copied .lyx (R5-F4), and reed
+// after a rename, but a SIBLING worktree's live session after a hand-copied .lym (R5-F4), and reed
 // cannot tell those apart. Killing it would re-open R5-F4's damage under a different verb.
 // It still DELETES the state file, so `down` stays the idempotent escape it is — reporting the
 // abandonment is what keeps that from being a silent loss.
@@ -964,7 +964,7 @@ func (e *Engine) Down() (DownResult, error) {
 		// list-sessions means the socket-holder is unreachable — a zombie
 		// server cannot be hosting healthy sibling sessions, so it is torn
 		// down too rather than left squatting on the socket (the server's
-		// own cwd is the hub's _board/.lyx/logs dir, not this worktree, since the
+		// own cwd is the hub's _board/.lym/logs dir, not this worktree, since the
 		// debug-logging batch — the same sessionless-holder reasoning the
 		// pre-boot check applies regardless).
 		var serverErr error
@@ -996,7 +996,7 @@ func (e *Engine) Down() (DownResult, error) {
 		// timeout and aborted down BEFORE this reap under CPU saturation,
 		// leaking pane children that kept the worktree directory busy (the
 		// server itself no longer holds a worktree busy since the
-		// debug-logging batch — its own cwd is now the hub's _board/.lyx/logs dir,
+		// debug-logging batch — its own cwd is now the hub's _board/.lym/logs dir,
 		// not this worktree — though a lingering server process is still its
 		// own leak worth reaping). kill-session / kill-server terminate pane
 		// children asynchronously, so force-kill any that outlive the
@@ -1041,11 +1041,11 @@ func (e *Engine) Down() (DownResult, error) {
 // sessionlessSocketHolderPersists reports whether a process holds this engine's
 // socket without any session, persisting across staleSocketGrace (grace prevents
 // reaping a sibling worktree's just-spawned server).
-// A holder whose global user option @lyx_test_server answers "on" is never stale.
+// A holder whose global user option @lym_test_server answers "on" is never stale.
 // Only the test kit's tmux config sets that option, on a server it pre-starts and keeps alive with no session; reed's own boots never set it.
 // Bound: an operator config that sets the option disables the reap for its own servers.
 func (e *Engine) sessionlessSocketHolderPersists() bool {
-	if out, err := e.tmux.output("show-options", "-gqv", "@lyx_test_server"); err == nil && strings.TrimSpace(out) == "on" {
+	if out, err := e.tmux.output("show-options", "-gqv", "@lym_test_server"); err == nil && strings.TrimSpace(out) == "on" {
 		return false
 	}
 	deadline := time.Now().Add(staleSocketGrace)
@@ -1273,12 +1273,12 @@ func waitProcessExit(pid int, timeout time.Duration) error {
 // error names, rather than inventing a third.
 func noSessionMessage(strandCount int, stateReadable bool) string {
 	if !stateReadable {
-		return `no reed session, and reed's persisted state could not be read; run "lyx reed down" to clear it, or "lyx reed up" for the full diagnosis`
+		return `no reed session, and reed's persisted state could not be read; run "lym reed down" to clear it, or "lym reed up" for the full diagnosis`
 	}
 	if strandCount <= 0 {
-		return `no reed session; run "lyx reed up"`
+		return `no reed session; run "lym reed up"`
 	}
-	return fmt.Sprintf(`no reed session (%d strands persisted); run "lyx reed resume" to rebuild, or "lyx reed up" for a bare substrate`, strandCount)
+	return fmt.Sprintf(`no reed session (%d strands persisted); run "lym reed resume" to rebuild, or "lym reed up" for a bare substrate`, strandCount)
 }
 
 // requireSessionLocked returns an actionable error when this worktree's
@@ -1286,9 +1286,9 @@ func noSessionMessage(strandCount int, stateReadable bool) string {
 //
 // "Actionable" is why the foreign-session diagnosis is consulted here rather than left to the two
 // booting verbs. Both routes into refuseLiveForeignSessionLocked — a worktree renamed while its
-// session was up, a .lyx copied between worktrees of one hub — leave THIS worktree's session absent,
+// session was up, a .lym copied between worktrees of one hub — leave THIS worktree's session absent,
 // so every non-booting verb lands in this function, and the plain no-session text it used to return
-// names `lyx reed resume` and `lyx reed up` as the remedies. Both of those then refuse, for exactly
+// names `lym reed resume` and `lym reed up` as the remedies. Both of those then refuse, for exactly
 // the reason this text did not mention: the operator's whole diagnostic surface, `status` above all,
 // reported a bare "no session" and routed them into a loop, while the state file naming the orphan
 // was already loaded right here (R6 review finding R6-F1).
@@ -1317,7 +1317,7 @@ func (e *Engine) requireSessionLocked() error {
 		}
 	}
 	// An ABSENT file is readable-and-empty, not unreadable: a brand-new worktree has no reed.json
-	// and must still get the plain "run lyx reed up" text.
+	// and must still get the plain "run lym reed up" text.
 	return noSessionError{msg: noSessionMessage(strandCount, loadErr == nil)}
 }
 
@@ -1362,7 +1362,7 @@ func (e *Engine) Status() (StatusResult, error) {
 		elsewhere := e.strandsElsewhereLocked(st.Strands, windows)
 		strands := make([]StrandStatus, len(st.Strands))
 		for i, s := range st.Strands {
-			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, PanePID: alivePIDs[s.PaneID], Live: aliveIDs[s.PaneID], Present: presentIDs[s.PaneID], OwnWindow: isOwnWindow(s.Display), Elsewhere: elsewhere[s.PaneID], Retiring: s.Retiring, Color: e.withColor(s).Color, LyxBin: s.LyxBin, Provider: s.Provider}
+			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, PanePID: alivePIDs[s.PaneID], Live: aliveIDs[s.PaneID], Present: presentIDs[s.PaneID], OwnWindow: isOwnWindow(s.Display), Elsewhere: elsewhere[s.PaneID], Retiring: s.Retiring, Color: e.withColor(s).Color, LymBin: s.LymBin, Provider: s.Provider}
 		}
 
 		result = StatusResult{Session: session, Socket: e.Socket(), Strands: strands}

@@ -25,7 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -50,9 +50,9 @@ branch "wt-foo" pairs with weft branch "wt-foo` + weftname.Suffix + `"), the
 clone-time primary included.
 
 Example:
-  lyx fabric clone https://github.com/user/repo-weft
-  lyx fabric add my-task
-  lyx fabric remove my-task`,
+  lym fabric clone https://github.com/user/repo-weft
+  lym fabric add my-task
+  lym fabric remove my-task`,
 		RunE: clihelp.GroupRunE,
 	}
 
@@ -62,7 +62,7 @@ Example:
 		Use:         "clone <weft-url> [<warp-url>]",
 		Short:       "bootstrap a new hub, wiring the entire topology in one shot",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `clone creates a new hub directory, <warp-name>-LYXHUB, holding the warp
+		Long: `clone creates a new hub directory, <warp-name>-LYMHUB, holding the warp
 prime (<warp-name>), the weft prime (<warp-name>` + weftname.Suffix + `) and the _board worktree,
 and wires the junctions and configs; no follow-up step is needed.
 
@@ -74,16 +74,16 @@ it, with --shortname, the first time a weft is bound; afterwards it is read
 from the binding recorded on the weft and may be left out.
 
 --shortname is 2-6 characters matching [a-z][a-z0-9]{1,5}; a weft that
-already records one supplies it, and "lyx fabric shortname" records one later.
---subpath anchors lyx at a subdirectory of the warp repo, such as backend in a
+already records one supplies it, and "lym fabric shortname" records one later.
+--subpath anchors lym at a subdirectory of the warp repo, such as backend in a
 monorepo; a re-clone adopts the recorded subpath. --into names the directory
 the hub is created in. --force-bootstrap admits a brand-new weft remote that
-is neither empty nor lyx-anchored, such as one created with a README.
+is neither empty nor lym-anchored, such as one created with a README.
 
 Example:
-  lyx fabric clone --shortname mono --subpath backend https://github.com/user/mono-weft https://github.com/user/mono
-  lyx fabric clone https://github.com/user/repo-weft
-  lyx fabric clone --into ~/repos https://github.com/user/repo-weft`,
+  lym fabric clone --shortname mono --subpath backend https://github.com/user/mono-weft https://github.com/user/mono
+  lym fabric clone https://github.com/user/repo-weft
+  lym fabric clone --into ~/repos https://github.com/user/repo-weft`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
 			reset, _ := cloneCmd.Flags().GetBool("reset")
 			subpath, _ := cloneCmd.Flags().GetString("subpath")
@@ -100,7 +100,7 @@ Example:
 	// operator typed --subpath .". With "." as the cobra default the two were identical, so an
 	// explicit --subpath . against a hub recorded at a real subpath was silently adopted instead of
 	// refused like every other disagreeing value.
-	cloneCmd.Flags().String("subpath", "", `anchor lyx at this subdirectory of the warp repo (default ".", the repo root)`)
+	cloneCmd.Flags().String("subpath", "", `anchor lym at this subdirectory of the warp repo (default ".", the repo root)`)
 	cloneCmd.Flags().String("into", "", "directory the new hub is created in; a relative value resolves against the current working directory (default: the current working directory)")
 	cloneCmd.Flags().Bool("force-bootstrap", false, "bypass the weft-candidate guard when bootstrapping a brand-new weft remote")
 	cmd.AddCommand(cloneCmd)
@@ -115,7 +115,7 @@ Example:
 		Long: `Create a new paired warp and weft git worktree for the given slug.
 
 The new weft branch is forked from the HEAD of the worktree you run
-"lyx fabric add" from — that worktree's current checked-out branch, not main
+"lym fabric add" from — that worktree's current checked-out branch, not main
 and not prime's branch. This makes the new pair an exact continuation of
 the context you were working in. The weft branch name is always the warp
 branch's name with fabric's uniform suffix appended.
@@ -124,7 +124,7 @@ A pair whose weft branch already exists, locally or on origin, is adopted
 rather than forked.
 
 The command commits the new pair locally and returns without waiting on
-origin: a detached child pushes the code and records branches, as "lyx fabric
+origin: a detached child pushes the code and records branches, as "lym fabric
 sync" does, and the envelope's mutations record one push_spawned entry per
 side. A failed spawn is reported in push_error and leaves the branches for the
 pair's next push.
@@ -134,7 +134,7 @@ because a fork point cannot be determined in either case.
 
 With --local the pair is local-only: no origin is read or written, no launcher
 is created, no push is spawned, and both branches are marked local so
-no fabric push publishes them. A plain "lyx fabric add" over a local pair's kept
+no fabric push publishes them. A plain "lym fabric add" over a local pair's kept
 branches adopts them and clears the marks. --local refuses a slug whose branch
 already belongs to an ordinary pair.
 
@@ -149,10 +149,10 @@ elsewhere. Over the default branch the pair is a root pair with no parent.
 --local takes neither flag.
 
 Example:
-  lyx fabric add my-task
-  lyx fabric add --local my-task
-  lyx fabric add my-task --parent my-beam
-  lyx fabric add my-task --adopt-local`,
+  lym fabric add my-task
+  lym fabric add --local my-task
+  lym fabric add my-task --parent my-beam
+  lym fabric add my-task --adopt-local`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
 			local, _ := addCmd.Flags().GetBool("local")
 			parent, _ := addCmd.Flags().GetString("parent")
@@ -169,13 +169,13 @@ Example:
 	cmd.AddCommand(&cobra.Command{
 		Use:         "list",
 		Args:        cobra.NoArgs,
-		Short:       "list warp worktrees (use 'lyx fabric pairs' for full pair geometry)",
+		Short:       "list warp worktrees (use 'lym fabric pairs' for full pair geometry)",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `List all warp worktrees registered in the current hub.
 
 This command outputs warp worktree paths only. For the full warp↔weft pair
 geometry view — including weft pairing, branch drift, and junction health —
-use "lyx fabric pairs".`,
+use "lym fabric pairs".`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int { return runList(ctx, out, args) }),
 	})
 
@@ -187,9 +187,9 @@ use "lyx fabric pairs".`,
 		Short:       "destroy a dual warp+weft worktree pair",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `remove tears down a warp+weft worktree pair: both worktrees, the warp
-junctions (_lyx, .lyx), the pair's launchers, its reed
+junctions (_lym, .lym), the pair's launchers, its reed
 session and its weft branch. The local task branch is deleted too once its
-work is pushed or landed on the parent branch recorded at "lyx fabric add";
+work is pushed or landed on the parent branch recorded at "lym fabric add";
 otherwise it is kept, with the reason in code_branch_kept_reason, and the
 command still exits 0.
 
@@ -198,7 +198,7 @@ the pair's loom driver to go quiet, and refuses while the driver stays busy.
 
 It first reconciles the run against origin, the run-scope reconcile of
 <slug>. A run whose entry origin reads stopped is refused, naming the branch
-that stopped it and the way forward, then "lyx fabric remove <slug>" again;
+that stopped it and the way forward, then "lym fabric remove <slug>" again;
 the one exception is a run stopped only by a gone branch of its own, which the
 removal itself clears. A pair whose task worktree is already gone takes no
 reconcile: the local board decides, as it does when origin is unreachable.
@@ -209,7 +209,7 @@ left to do, skips the quiet wait; its registered processes are ended and each
 {pid, role} is listed in ended_processes. The removal's own network calls pass
 under any pause.
 
-<slug> names the pair, as given to "lyx fabric add".
+<slug> names the pair, as given to "lym fabric add".
 
 A pair with uncommitted changes on either side is refused; --force removes it
 anyway, and never overrides the task branch check. --remote also deletes the
@@ -217,9 +217,9 @@ weft branch on the weft remote, and the landed task branch on the warp origin:
 irreversible, and visible to every other clone.
 
 Example:
-  lyx fabric remove my-task
-  lyx fabric remove --force my-task
-  lyx fabric remove --remote my-task`,
+  lym fabric remove my-task
+  lym fabric remove --force my-task
+  lym fabric remove --remote my-task`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
 			// The --force and --remote flags are read from the cobra flag set via closure over
 			// removeCmd.
@@ -255,7 +255,7 @@ The switch is all-or-nothing: on any weft-side or junction failure the warp
 switch is rolled back so the pair is never left half-switched.
 
 Example:
-  lyx fabric checkout my-branch`,
+  lym fabric checkout my-branch`,
 		RunE: clihelp.WrapRunCtx(runCheckout),
 	})
 
@@ -268,10 +268,10 @@ Example:
 		Long: `Show every warp↔weft pair's branch, in-sync verdict, junction health, and
 warp-pollution scan.
 
-junction_healthy and junction_reason cover BOTH warp junctions (_lyx and
-.lyx): a pair is only healthy when every junction resolves to its own
+junction_healthy and junction_reason cover BOTH warp junctions (_lym and
+.lym): a pair is only healthy when every junction resolves to its own
 weft directory, and junction_reason names the first unhealthy one by name
-when it is not. The pollution scan likewise covers _lyx paths accidentally
+when it is not. The pollution scan likewise covers _lym paths accidentally
 tracked in the warp index; every match carries an automated git rm --cached
 remedy.`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int { return runPairs(ctx, out, args) }),
@@ -285,10 +285,10 @@ remedy.`,
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Reconcile walks every warp worktree and applies the minimal corrective
 action needed to restore a valid paired topology: recreate a missing weft
-worktree, re-point a broken junction, adopt a raw (non-lyx) warp worktree, or
+worktree, re-point a broken junction, adopt a raw (non-lym) warp worktree, or
 report an unmanaged branch untouched.
 
-Junction repair covers BOTH warp junctions (_lyx and .lyx): if either is
+Junction repair covers BOTH warp junctions (_lym and .lym): if either is
 missing, not a link, or points elsewhere, this re-wires every junction for
 that pair in one call — a pair with only one junction broken is repaired,
 not reported already-healthy.
@@ -331,7 +331,7 @@ By default this is a dry run: every stale or orphaned pair is reported and
 nothing is removed. With --apply, each entry's weft worktree is removed, the
 dead slug's launcher directory is torn down, and stale
 worktree registrations are pruned on both repos. Branches are never deleted
-here — orphaned weft branches are "lyx fabric cleanup"'s job.
+here — orphaned weft branches are "lym fabric cleanup"'s job.
 
 The weft worktree is removed forcefully, so an entry whose weft worktree
 still carries uncommitted tracked changes is reported "protected": true and
@@ -351,9 +351,9 @@ run would act on, so "protected": false with no "unowned" in a dry run means
 "--apply would remove this".
 
 Example:
-  lyx fabric prune
-  lyx fabric prune --apply
-  lyx fabric prune --apply --force`,
+  lym fabric prune
+  lym fabric prune --apply
+  lym fabric prune --apply --force`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
 			apply, _ := pruneCmd.Flags().GetBool("apply")
 			force, _ := pruneCmd.Flags().GetBool("force")
@@ -390,9 +390,9 @@ carries no work the default branch lacks. Without --apply, --remote reports
 what it would delete. --force answers no cleanup gate.
 
 Example:
-  lyx fabric cleanup
-  lyx fabric cleanup --apply
-  lyx fabric cleanup --apply --remote`,
+  lym fabric cleanup
+  lym fabric cleanup --apply
+  lym fabric cleanup --apply --remote`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
 			apply, _ := cleanupCmd.Flags().GetBool("apply")
 			force, _ := cleanupCmd.Flags().GetBool("force")
@@ -413,20 +413,20 @@ Example:
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Without --apply, unwire only reports what it would remove and changes
 nothing. With --apply it is a full per-warp-worktree deactivation: it removes
-every warp junction present (_lyx, .lyx) and their warp .git/info/exclude
+every warp junction present (_lym, .lym) and their warp .git/info/exclude
 entries. It leaves every weft-side directory intact — weft-side content is
 never deleted by unwire.
 
-This is distinct from "lyx fabric reconcile", which converges wiring toward
+This is distinct from "lym fabric reconcile", which converges wiring toward
 the repo-wide pathspec (adding or re-pointing junctions as needed); unwire
 always tears wiring down. It leaves the repo-wide weft:main records intact
-(the .lyx-warp binding and fabric.yaml) and every worktree's .lyx-anchor
-marker at its weft root, so a later "lyx fabric reconcile" can re-wire this
+(the .lym-warp binding and fabric.yaml) and every worktree's .lym-anchor
+marker at its weft root, so a later "lym fabric reconcile" can re-wire this
 worktree.
 
 Example:
-  lyx fabric unwire
-  lyx fabric unwire --apply`,
+  lym fabric unwire
+  lym fabric unwire --apply`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
 			apply, _ := unwireCmd.Flags().GetBool("apply")
 			return runUnwire(ctx, out, apply)
@@ -450,8 +450,8 @@ Recording the shortname a hub already has is a no-op. A different shortname is r
 changing it would orphan every agent name already in use.
 
 Example:
-  lyx fabric shortname
-  lyx fabric shortname ly`,
+  lym fabric shortname
+  lym fabric shortname ly`,
 		RunE: clihelp.WrapRunCtx(runShortname),
 	})
 
@@ -474,7 +474,7 @@ func RunCLI(out io.Writer, args []string) int {
 // RunCLIIn is RunCLI's seam-cwd-carrying sibling: an empty cwd means "read the process cwd" and
 // delegates to clihelp.Execute exactly as RunCLI always has, while any other value seeds cwd into
 // the execution context via clihelp.ExecuteIn.
-// The branch exists because lyxcwd.WithCwd panics on an empty directory, so a uniform delegation to
+// The branch exists because lymcwd.WithCwd panics on an empty directory, so a uniform delegation to
 // ExecuteIn would panic on every existing RunCLI call.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
@@ -487,24 +487,21 @@ func RunCLIIn(cwd string, out io.Writer, args []string) int {
 // cwd otherwise — into the acting Location, refusing any cwd that resolves onto something other
 // than a warp worktree.
 //
-// Every topology verb goes through it rather than calling lyxcwd.Resolve directly, because
-// lyxcwd cannot make that distinction itself (see fabricengine.RequireWarpWorktree): a cwd inside a
-// weft sibling, or inside the hub's own `_board` worktree, otherwise resolves cleanly and drives the
-// verb against geometry that does not exist.
+// Every topology verb goes through it rather than calling lymcwd.Resolve directly, because lymcwd cannot make that distinction itself (see fabricengine.RequireWarpWorktree): a cwd inside a weft sibling, or inside the hub's own `_board` worktree, otherwise resolves cleanly and drives the verb against geometry that does not exist.
 // It returns cwd alongside the Location for the verbs that pass cwd straight to a git invocation.
-func resolveWarpLocation(ctx context.Context) (cwd string, l *lyxcwd.Location, err error) {
-	cwd, err = lyxcwd.CwdFrom(ctx)
+func resolveWarpLocation(ctx context.Context) (cwd string, l *lymcwd.Location, err error) {
+	cwd, err = lymcwd.CwdFrom(ctx)
 	if err != nil {
 		return "", nil, err
 	}
 
-	l, err = lyxcwd.Resolve(cwd)
+	l, err = lymcwd.Resolve(cwd)
 	if err != nil {
 		// On a gate failure the generic error can actively misdirect: from a weft sibling's
 		// NON-anchored directory it names the weft's own anchored directory as the place to stand,
 		// where RequireWarpWorktree then refuses anyway.
 		// Classify the worktree ungated and prefer the specific weft/board refusal when it applies.
-		if worktreeLocation, worktreeErr := lyxcwd.ResolveWorktree(cwd); worktreeErr == nil {
+		if worktreeLocation, worktreeErr := lymcwd.ResolveWorktree(cwd); worktreeErr == nil {
 			if refusal := fabricengine.RequireWarpWorktree(worktreeLocation); refusal != nil {
 				return "", nil, refusal
 			}
@@ -543,7 +540,7 @@ func runAdd(ctx context.Context, out io.Writer, args []string, local bool, opts 
 	top := fabricengine.NewTopology(cfg)
 
 	if len(args) < 1 {
-		return output.Err(out, "usage: lyx fabric add <slug>")
+		return output.Err(out, "usage: lym fabric add <slug>")
 	}
 
 	// args[0] is the slug; cobra has already consumed "add" from the argument list.
@@ -586,7 +583,7 @@ func runAdd(ctx context.Context, out io.Writer, args []string, local bool, opts 
 	if len(r.LocalMarkCleared) > 0 {
 		fields["local_mark_cleared"] = r.LocalMarkCleared
 	}
-	pairLocation, err := lyxcwd.ResolveWorktree(codeWorktree)
+	pairLocation, err := lymcwd.ResolveWorktree(codeWorktree)
 	if err == nil {
 		err = spawnPairPush(pairLocation)
 	}
@@ -646,14 +643,14 @@ func runCheckout(ctx context.Context, out io.Writer, args []string) int {
 			// failure, which keeps its own diagnostic below.
 			var gitErr *gitexec.GitError
 			if errors.As(runErr, &gitErr) {
-				return output.Err(out, "usage: lyx fabric checkout <branch>")
+				return output.Err(out, "usage: lym fabric checkout <branch>")
 			}
 			return output.Err(out, runErr.Error())
 		}
 		branch = strings.TrimSpace(branchOut)
 		if branch == "" {
 			// Detached HEAD — cannot resolve a branch to re-checkout.
-			return output.Err(out, "usage: lyx fabric checkout <branch>")
+			return output.Err(out, "usage: lym fabric checkout <branch>")
 		}
 	}
 
@@ -725,13 +722,13 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 	rec := fabricengine.NewMutations(l.HubPath)
 
 	// Reconcile is the repair verb, so a missing hub-wide config is healed here rather than reported:
-	// without this, the "run \"lyx fabric reconcile\"" remedy of a strict config loader was circular when reconcile itself emitted it.
+	// without this, the "run \"lym fabric reconcile\"" remedy of a strict config loader was circular when reconcile itself emitted it.
 	// ReconcileHubWideAt seeds absent hub files sparse, prunes keys the template lacks and never rewrites a recorded pathspec; it strips no present base file.
 	// A PrimeName failure means no prime is resolvable, not an error: the seed falls back to the template.
 	boardDir := fabricengine.BoardDir(l.HubPath)
 	primeBaseDir := ""
 	if primeName, primeErr := fabricengine.PrimeName(l); primeErr == nil {
-		primeLoc, err := lyxcwd.NamedWorktree(l.HubPath, primeName)
+		primeLoc, err := lymcwd.NamedWorktree(l.HubPath, primeName)
 		if err != nil {
 			return output.Err(out, fmt.Sprintf("read the anchor of the prime %q: %v", primeName, err))
 		}
@@ -916,9 +913,9 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 }
 
 // reconcileFailureWayForward words the way forward of a board commit or push failure in boardDir.
-// A rejected board push is a failed-push record, which `lyx fabric status` prints with its way forward.
+// A rejected board push is a failed-push record, which `lym fabric status` prints with its way forward.
 func reconcileFailureWayForward(boardDir string) string {
-	return fmt.Sprintf("re-run \"lyx fabric reconcile\" once the remote is reachable, or for a rejected push follow the way forward of the failed-push record `lyx fabric status` prints, then run `lyx board sync` for the board at %s", boardDir)
+	return fmt.Sprintf("re-run \"lym fabric reconcile\" once the remote is reachable, or for a rejected push follow the way forward of the failed-push record `lym fabric status` prints, then run `lym board sync` for the board at %s", boardDir)
 }
 
 // reconcileFailureLine returns the way-forward clause that follows a failure's detail, led by its separator.
@@ -1097,7 +1094,7 @@ func runCleanupWithFlags(ctx context.Context, out io.Writer, apply, force, remot
 // sweepRemoteTaskBranches runs the origin task-branch sweep with the open pull request set fetched from GitHub.
 // When the set cannot be established it skips the sweep entirely and names the cause in SkippedReason, failing toward keeping every task branch;
 // the returned entries are then an empty array, never nil.
-func sweepRemoteTaskBranches(ctx context.Context, top *fabricengine.Topology, l *lyxcwd.Location, apply bool) (fabricengine.RemoteWarpCleanupResult, error) {
+func sweepRemoteTaskBranches(ctx context.Context, top *fabricengine.Topology, l *lymcwd.Location, apply bool) (fabricengine.RemoteWarpCleanupResult, error) {
 	skipped := func(reason string) fabricengine.RemoteWarpCleanupResult {
 		return fabricengine.RemoteWarpCleanupResult{
 			Entries:       []fabricengine.RemoteWarpBranchEntry{},
@@ -1131,7 +1128,7 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force,
 
 	// args[0] is the slug; cobra has already consumed "remove" from the argument list.
 	if len(args) < 1 {
-		return output.Err(out, "usage: lyx fabric remove [--force] [--remote] <slug>")
+		return output.Err(out, "usage: lym fabric remove [--force] [--remote] <slug>")
 	}
 	slug := args[0]
 
@@ -1220,7 +1217,7 @@ func removeFields(r fabricengine.RemoveResult, session pairteardown.SessionResul
 	return fields
 }
 
-// addOptionsFromEnv returns the AddOptions for a CLI-driven `lyx fabric add`: the named parent and the adopt-local choice, with the origin probes always on.
+// addOptionsFromEnv returns the AddOptions for a CLI-driven `lym fabric add`: the named parent and the adopt-local choice, with the origin probes always on.
 // The new pair's detached push is gated by FABRIC_SKIP_GIT and FABRIC_SKIP_PUSH alone, as every detached push is.
 func addOptionsFromEnv(parent string, adoptLocal bool) fabricengine.AddOptions {
 	return fabricengine.AddOptions{Parent: parent, AdoptLocal: adoptLocal}

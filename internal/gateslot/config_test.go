@@ -50,7 +50,7 @@ func hubWith(mutate func(*Config)) Config {
 }
 
 // fixIt is the way forward every key refusal of a load carries.
-const fixIt = `; fix it with "lyx config gate" from the prime` + roleClause
+const fixIt = `; fix it with "lym config gate" from the prime` + roleClause
 
 // baseKeys is a hub file holding the slot keys alone, so a row states only the keys it tests.
 const baseKeys = "slots: 2\n"
@@ -72,7 +72,7 @@ const tier0Flow = `tiers:
 func seedGateConfig(t *testing.T, contents string) string {
 	t.Helper()
 	baseDir := t.TempDir()
-	configDir := filepath.Join(baseDir, "_lyx", "config")
+	configDir := filepath.Join(baseDir, "_lym", "config")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestLoadConfig(t *testing.T) {
 		wantErr  string
 	}{
 		{"template loads to its defaults", ConfigTemplate(), hubWith(func(*Config) {}), ""},
-		{"zero slots", "slots: 0\n", Config{}, `gate config key "slots": 0; want at least 1; fix it with "lyx config gate" from the prime` + roleClause},
+		{"zero slots", "slots: 0\n", Config{}, `gate config key "slots": 0; want at least 1; fix it with "lym config gate" from the prime` + roleClause},
 		{"a retired go_parallel still loads, whatever its value", "slots: 2\ngo_parallel: 0\n", hubWith(func(*Config) {}), ""},
 		{"a retired cli_wait_sec still loads", "slots: 3\ncli_wait_sec: 180\n", hubWith(func(c *Config) { c.Slots = 3 }), ""},
 		{"a retired guard_tier still loads", "slots: 3\nguard_tier: 1\n", hubWith(func(c *Config) { c.Slots = 3 }), ""},
@@ -108,11 +108,11 @@ func TestLoadConfig(t *testing.T) {
 		{
 			"a tier with slots all, covers and every key loads", baseKeys + `tiers:
   tier0: {command: "go test", timeout_min: 5, counter: vstest}
-  tier1: {about: integration, command: "go test -tags integration {targets}", all_targets: ./..., dir: sub, env: {GOFLAGS: "-p={parallel}"}, parallel: 3, timeout_min: 30, counter: go-json, covers: [0], slots: all, prebuilt_lyx: true}
+  tier1: {about: integration, command: "go test -tags integration {targets}", all_targets: ./..., dir: sub, env: {GOFLAGS: "-p={parallel}"}, parallel: 3, timeout_min: 30, counter: go-json, covers: [0], slots: all, prebuilt_lym: true}
 `,
 			hubWith(func(c *Config) {
 				c.Tiers["tier0"] = Tier{Command: "go test", Dir: ".", Parallel: 1, TimeoutMin: 5, Counter: "vstest", Slots: 1}
-				c.Tiers["tier1"] = Tier{About: "integration", Command: "go test -tags integration {targets}", Dir: "sub", Env: map[string]string{"GOFLAGS": "-p={parallel}"}, AllTargets: "./...", Parallel: 3, TimeoutMin: 30, Counter: "go-json", Covers: []int{0}, Slots: 0, PrebuiltLyx: true}
+				c.Tiers["tier1"] = Tier{About: "integration", Command: "go test -tags integration {targets}", Dir: "sub", Env: map[string]string{"GOFLAGS": "-p={parallel}"}, AllTargets: "./...", Parallel: 3, TimeoutMin: 30, Counter: "go-json", Covers: []int{0}, Slots: 0, PrebuiltLym: true}
 			}), "",
 		},
 		{
@@ -125,7 +125,7 @@ func TestLoadConfig(t *testing.T) {
 		},
 		{"scope card on a key but card and batch", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: card}\n", Config{}, `gate config key "gates.parent-align": scope card is only for the card and batch keys` + fixIt},
 		{"an unknown scope", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: some}\n", Config{}, `gate config key "gates.parent-align": scope "some"; want card, diff or all` + fixIt},
-		{"a key in the retired list shape", baseKeys + "gates:\n  card: [0]\n", Config{}, `gate config key "gates.card": the retired list shape; fix it with "lyx fabric reconcile" (or "lyx config reconcile --layer default --apply") from the prime, which migrates it` + roleClause},
+		{"a key in the retired list shape", baseKeys + "gates:\n  card: [0]\n", Config{}, `gate config key "gates.card": the retired list shape; fix it with "lym fabric reconcile" (or "lym config reconcile --layer default --apply") from the prime, which migrates it` + roleClause},
 		{
 			"a manual tier above tier0 loads", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest}, tier3: {command: y, timeout_min: 5, counter: vstest, manual: true}}`,
 			hubWith(func(c *Config) {
@@ -169,8 +169,8 @@ inert_paths: ["*.md", "docs/*"]
 		{"covers a negative tier", baseKeys + `tiers: {tier1: {command: x, timeout_min: 5, counter: vstest, covers: [-1]}}`, Config{}, `gate config key "tiers.tier1.covers": -1; want tier numbers lower than 1` + fixIt},
 		{"refuse_raw entry with a shell character", baseKeys + `refuse_raw: ["go;test"]`, Config{}, `gate config key "refuse_raw": "go;test"; want one or more words of letters, digits, '.', '_' and '-' separated by single spaces` + fixIt},
 		{"absent busy_quit_sec takes the template value", "slots: 2\n", hubWith(func(*Config) {}), ""},
-		{"negative busy_quit_sec", "slots: 2\nbusy_quit_sec: -1\n", Config{}, `gate config key "busy_quit_sec": -1; want at least 0; fix it with "lyx config gate" from the prime` + roleClause},
-		{"absent file names the one way forward", "", Config{}, `gate config absent; run "lyx fabric reconcile"; a session lyx refuses the verb from reports status: FAILED and the orch runs it`},
+		{"negative busy_quit_sec", "slots: 2\nbusy_quit_sec: -1\n", Config{}, `gate config key "busy_quit_sec": -1; want at least 0; fix it with "lym config gate" from the prime` + roleClause},
+		{"absent file names the one way forward", "", Config{}, `gate config absent; run "lym fabric reconcile"; a session lym refuses the verb from reports status: FAILED and the orch runs it`},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -234,8 +234,8 @@ inert_paths: ["*.md", "docs/*"]
 		wantAbsent  bool
 		// local is the anchor's local override file contents; "" leaves it absent.
 		local string
-		// anchorWithoutLyx tells an anchor with no _lyx/, so the load never stacks the local file.
-		anchorWithoutLyx bool
+		// anchorWithoutLym tells an anchor with no _lym/, so the load never stacks the local file.
+		anchorWithoutLym bool
 		// wantLocalClause requires the failure to name the local file for removal, ahead of the role clause.
 		wantLocalClause bool
 	}{
@@ -244,7 +244,7 @@ inert_paths: ["*.md", "docs/*"]
 			wantInvalid: true, wantLocalClause: true,
 		},
 		{
-			name: "a local file under an anchor with no _lyx is left out of the way forward", hub: hubTier0, machine: machineBadParallel, local: "slots: 9\n", anchorWithoutLyx: true,
+			name: "a local file under an anchor with no _lym is left out of the way forward", hub: hubTier0, machine: machineBadParallel, local: "slots: 9\n", anchorWithoutLym: true,
 			wantContains: func(hub, machine string) []string { return []string{badParallelKey} },
 			wantMissing:  func(hub, machine string) []string { return []string{"remove", "takes no gate key"} },
 		},
@@ -291,7 +291,7 @@ inert_paths: ["*.md", "docs/*"]
 			name: "a machine busy_quit_sec is refused as a cross-pair key", hub: "slots: 2\n", machine: "busy_quit_sec: 9\n",
 			wantInvalid: true,
 			wantErr: func(hub, machine string) string {
-				return "machine config file " + machine + `: key "busy_quit_sec" is cross-pair and cannot be set in a machine override; way forward: remove it from the machine override and set it in the hub file through "lyx config gate" from the prime` + twoFileWayForward(hub, machine)
+				return "machine config file " + machine + `: key "busy_quit_sec" is cross-pair and cannot be set in a machine override; way forward: remove it from the machine override and set it in the hub file through "lym config gate" from the prime` + twoFileWayForward(hub, machine)
 			},
 		},
 		{
@@ -314,7 +314,7 @@ inert_paths: ["*.md", "docs/*"]
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			board, anchor := seedGateConfig(t, tc.hub), seedGateConfig(t, "")
-			if tc.anchorWithoutLyx {
+			if tc.anchorWithoutLym {
 				anchor = t.TempDir()
 			}
 			machinePath := configengine.MachineFile(board, "gate")
@@ -387,9 +387,9 @@ inert_paths: ["*.md", "docs/*"]
 // twoFileWayForward is the way forward of a failure with a machine file in the stack.
 func twoFileWayForward(hub, machine string) string {
 	return "; the hub file " + hub + ", the machine file " + machine + " or the file the error names holds the value: " +
-		`fix the hub file with "lyx config gate" from the prime, and the machine file with "lyx config gate --layer machine" from the prime, ` +
+		`fix the hub file with "lym config gate" from the prime, and the machine file with "lym config gate --layer machine" from the prime, ` +
 		"or, when that refuses a key the machine file holds, by removing " + machine + "; " +
-		`"lyx config gate --resolved" names the layer holding each value` + roleClause
+		`"lym config gate --resolved" names the layer holding each value` + roleClause
 }
 
 func TestTemplateConfigAndLimits(t *testing.T) {
@@ -432,19 +432,19 @@ func TestLoadConfig_StandaloneAbsentNamesTheWorktreeWrite(t *testing.T) {
 	if !errors.Is(err, ErrConfigAbsent) {
 		t.Fatalf("LoadConfig() error = %v; want ErrConfigAbsent", err)
 	}
-	for _, want := range []string{`run "lyx config gate"`, "_lyx directory", "creating"} {
+	for _, want := range []string{`run "lym config gate"`, "_lym directory", "creating"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("LoadConfig() error = %q; want it to contain %q", err, want)
 		}
 	}
-	if strings.Contains(err.Error(), "lyx fabric reconcile") {
-		t.Errorf("LoadConfig() error = %q; want it without lyx fabric reconcile, which only a hub has", err)
+	if strings.Contains(err.Error(), "lym fabric reconcile") {
+		t.Errorf("LoadConfig() error = %q; want it without lym fabric reconcile, which only a hub has", err)
 	}
 }
 
 // The logger's output is process-global, so this test does not run in parallel.
 func TestLoadConfig_DropsTierParallelOfUndeclaredTier(t *testing.T) {
-	const machineStep = `lyx config gate --layer machine`
+	const machineStep = `lym config gate --layer machine`
 	tests := []struct {
 		name string
 		// machine is the machine file's contents; "" loads a standalone worktree whose own file holds the entry.
@@ -453,7 +453,7 @@ func TestLoadConfig_DropsTierParallelOfUndeclaredTier(t *testing.T) {
 		wantMachineStep bool
 	}{
 		{"hub with a machine layer names both steps", "tier_parallel:\n  tier7: 2\n", true},
-		{"standalone worktree names plain lyx config gate alone", "", false},
+		{"standalone worktree names plain lym config gate alone", "", false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -481,8 +481,8 @@ func TestLoadConfig_DropsTierParallelOfUndeclaredTier(t *testing.T) {
 				t.Errorf("LoadConfig() TierParallel = %v; want the undeclared tier's entry dropped", cfg.TierParallel)
 			}
 			warning := logs.String()
-			if !strings.Contains(warning, "tier7") || !strings.Contains(warning, "lyx config gate") {
-				t.Errorf("warning = %q; want it to name tier7 and plain lyx config gate", warning)
+			if !strings.Contains(warning, "tier7") || !strings.Contains(warning, "lym config gate") {
+				t.Errorf("warning = %q; want it to name tier7 and plain lym config gate", warning)
 			}
 			if got := strings.Contains(warning, machineStep); got != tc.wantMachineStep {
 				t.Errorf("warning = %q; names %q = %v, want %v", warning, machineStep, got, tc.wantMachineStep)
@@ -651,7 +651,7 @@ func TestConfig_TierUse(t *testing.T) {
 			{"a gate the config holds no list for", twoTier, "nope", nil, `gates holds no key "nope"`},
 			{"a list naming an undeclared tier", twoTier, "dangling", nil, "gates.dangling lists tier2, which the hub does not declare"},
 			{"an empty list for any gate", twoTier, "empty", nil, "gates.empty is empty, and every gate verifies at least one tier"},
-			{"an empty list for a gate lyx reads", Config{Tiers: twoTier.Tiers, Gates: map[string]GateKey{"webster-fix": {Scope: "diff"}}}, "webster-fix", nil, "gates.webster-fix is empty, and every gate verifies at least one tier"},
+			{"an empty list for a gate lym reads", Config{Tiers: twoTier.Tiers, Gates: map[string]GateKey{"webster-fix": {Scope: "diff"}}}, "webster-fix", nil, "gates.webster-fix is empty, and every gate verifies at least one tier"},
 			{"a hub with no tier0", Config{Tiers: map[string]Tier{"tier1": {}}, Gates: twoTier.Gates}, "batch", nil, "the hub declares no tier0"},
 		}
 		for _, tt := range tests {
@@ -659,7 +659,7 @@ func TestConfig_TierUse(t *testing.T) {
 				t.Parallel()
 				got, err := tt.cfg.TierList(tt.gate)
 				if tt.wantErr != "" {
-					if err == nil || !strings.Contains(err.Error(), tt.wantErr) || !strings.HasSuffix(err.Error(), `; fix it with "lyx config gate" from the prime`+roleClause) {
+					if err == nil || !strings.Contains(err.Error(), tt.wantErr) || !strings.HasSuffix(err.Error(), `; fix it with "lym config gate" from the prime`+roleClause) {
 						t.Fatalf("TierList(%q) error = %v; want it to contain %q and end with the role clause", tt.gate, err, tt.wantErr)
 					}
 					return
@@ -680,7 +680,7 @@ func TestConfig_TierUse(t *testing.T) {
 			t.Errorf("Tier(1) = (%+v, %v); want the declared tier", got, err)
 		}
 		_, err := twoTier.Tier(5)
-		if err == nil || !strings.Contains(err.Error(), "tier5") || !strings.HasSuffix(err.Error(), `; fix it with "lyx config gate" from the prime`+roleClause) {
+		if err == nil || !strings.Contains(err.Error(), "tier5") || !strings.HasSuffix(err.Error(), `; fix it with "lym config gate" from the prime`+roleClause) {
 			t.Errorf("Tier(5) error = %v; want a refusal naming tier5 and ending with the role clause", err)
 		}
 	})
@@ -692,9 +692,9 @@ func TestConfig_TierUse(t *testing.T) {
 			cards []string
 			want  string
 		}{
-			{"batch", []string{"01", "02"}, "lyx gate test --wait --gate batch --card 01 --card 02"},
-			{"card", []string{"03"}, "lyx gate test --wait --gate card --card 03"},
-			{"webster", nil, "lyx gate test --wait --gate webster"},
+			{"batch", []string{"01", "02"}, "lym gate test --wait --gate batch --card 01 --card 02"},
+			{"card", []string{"03"}, "lym gate test --wait --gate card --card 03"},
+			{"webster", nil, "lym gate test --wait --gate webster"},
 		}
 		for _, tt := range tests {
 			got, err := twoTier.GateCall(tt.gate, tt.cards...)

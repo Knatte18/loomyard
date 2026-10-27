@@ -4,8 +4,8 @@
 // internal/fabriccli's dependency set, so a fabric import in this package would stop those
 // TestMain files compiling.
 //
-// CopyRepo is pinned to internal/lyxcwd alone, enforced by
-// internal/gitkit/callerset_enforcement_test.go (TestCopyRepoCallerSet_LyxcwdOnly) — every other
+// CopyRepo is pinned to internal/lymcwd alone, enforced by
+// internal/gitkit/callerset_enforcement_test.go (TestCopyRepoCallerSet_LymcwdOnly) — every other
 // package takes a real hub from internal/hubforge instead.
 // Every other export is unpinned;
 // any package may call it.
@@ -14,18 +14,9 @@
 // and query.go builds the rev, branch, ancestry, ls-files and exclude queries and the commit helpers on it.
 // Every new spawn stays in gitkit.go, the file the spawn-observability guard allowlists, because this package cannot import internal/logger.
 //
-// Leaf Invariant: internal/gitkit production code imports only stdlib, internal/lyxcwd,
-// internal/weftname, internal/configengine, internal/lyxdirs, and internal/lyxtemp, with internal/configreg and every
-// feature package
-// (boardengine/boardcli, fabricengine/fabriccli, ideengine/idecli, selfreportengine/selfreportcli)
-// excluded by construction —
-// feature packages' own tests import gitkit, so a reverse import would
-// close a test-build cycle.
-// This is enforced by internal/gitkit/leaf_enforcement_test.go (TestLeafInvariant_AllowlistOnly)
-// and recorded in PATTERN-leaf-packages.
-// Tests that need real configuration seed it via SeedConfig, which takes a configreg-free
-// map[string]string (module name to YAML content), converting configreg.Modules() or a feature's
-// ConfigTemplate() at the test site instead of inside gitkit.
+// Leaf Invariant: internal/gitkit production code imports only stdlib, internal/lymcwd, internal/weftname, internal/configengine, internal/lymdirs, and internal/lymtemp, with internal/configreg and every feature package (boardengine/boardcli, fabricengine/fabriccli, ideengine/idecli, selfreportengine/selfreportcli) excluded by construction — feature packages' own tests import gitkit, so a reverse import would close a test-build cycle.
+// This is enforced by internal/gitkit/leaf_enforcement_test.go (TestLeafInvariant_AllowlistOnly) and recorded in PATTERN-leaf-packages.
+// Tests that need real configuration seed it via SeedConfig, which takes a configreg-free map[string]string (module name to YAML content), converting configreg.Modules() or a feature's ConfigTemplate() at the test site instead of inside gitkit.
 //
 // Fixture marker: git spawned to build a fixture is told apart from git the code under test runs by the environment variable FixtureGitEnv, value "1".
 // The spawn helpers in gitkit.go set it on the child's environment, and hubforge sets it process-wide for the duration of a hub build.
@@ -41,7 +32,7 @@
 // which also covers git spawned by raw `git init`/`git clone` inside tests and by any child process
 // the test binary launches.
 // The neutral config also sets gc.autoDetach=false, so any gc that still runs is foreground and waited for.
-// The neutral config file lives in the process run directory of internal/lyxtemp, so it goes with that directory when tmuxkit.Main removes it after the run.
-// The variables reach every `lyx` child a test runs through lyxbin.Run, which inherits the process environment, and reed's clean environment already passes them through.
+// The neutral config file lives in the process run directory of internal/lymtemp, so it goes with that directory when tmuxkit.Main removes it after the run.
+// The variables reach every `lym` child a test runs through lymbin.Run, which inherits the process environment, and reed's clean environment already passes them through.
 // See PATTERN-test-isolation for the machine-enforced half of this contract.
 package gitkit

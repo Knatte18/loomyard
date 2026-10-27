@@ -19,7 +19,7 @@
             {
               "ID": "late",
               "Kind": "shell",
-              "Command": "lyx webster begin-batch 2",
+              "Command": "lym webster begin-batch 2",
               "Path": ""
             }
           ],
@@ -157,7 +157,7 @@
             {
               "ID": "refused",
               "Kind": "shell",
-              "Command": "lyx webster begin-batch 1",
+              "Command": "lym webster begin-batch 1",
               "Path": ""
             }
           ],
@@ -233,7 +233,7 @@
             {
               "ID": "early",
               "Kind": "shell",
-              "Command": "lyx webster begin-batch 1",
+              "Command": "lym webster begin-batch 1",
               "Path": ""
             }
           ],
@@ -362,7 +362,7 @@
             "ToolResults": [
               {
                 "CallID": "t",
-                "Text": "1\t# Webster fork\n58\t- `_lyx/plan/01-alpha.md`\n59\t- `_lyx/plan/02-beta.md`\n60\t- `_lyx/plan/00-overview.md`\n70\t- `_lyx/plan/03-gamma.md`: go test ./...\n"
+                "Text": "1\t# Webster fork\n58\t- `_lym/plan/01-alpha.md`\n59\t- `_lym/plan/02-beta.md`\n60\t- `_lym/plan/00-overview.md`\n70\t- `_lym/plan/03-gamma.md`: go test ./...\n"
               }
             ],
             "PromptPath": ""
@@ -399,7 +399,7 @@
             "ToolResults": [
               {
                 "CallID": "t",
-                "Text": "- `_lyx/plan/04-delta.md`"
+                "Text": "- `_lym/plan/04-delta.md`"
               }
             ],
             "PromptPath": ""

@@ -1,6 +1,6 @@
 //go:build tier0
 
-// config_test.go verifies batcher.yaml's template parses and Active resolves the configured profile, including its two degrading-absence cases (absent _lyx/, absent batcher.yaml) and its load-error paths, seeded via plain os.MkdirAll/os.WriteFile against a t.TempDir() rather than gitkit's config fixture-copy helpers: configengine.LoadOrTemplate only requires a filesystem _lyx/config/<module>.yaml, no git repository, so this test stays in tier 0 and spawn-free.
+// config_test.go verifies batcher.yaml's template parses and Active resolves the configured profile, including its two degrading-absence cases (absent _lym/, absent batcher.yaml) and its load-error paths, seeded via plain os.MkdirAll/os.WriteFile against a t.TempDir() rather than gitkit's config fixture-copy helpers: configengine.LoadOrTemplate only requires a filesystem _lym/config/<module>.yaml, no git repository, so this test stays in tier 0 and spawn-free.
 // Tier-1 (pure logic, no git, no TestMain), per the go-test-tiers-and-hermetic-git Shared Decision.
 
 package batcher_test
@@ -28,17 +28,14 @@ func assertRetiredKey(t *testing.T, err error, want bool) {
 		if !errors.Is(err, configengine.ErrInvalid) {
 			t.Errorf("retired-key error %q is not marked configengine.ErrInvalid", err.Error())
 		}
-		if !strings.Contains(err.Error(), `way forward: run "lyx config reconcile --apply"`) {
+		if !strings.Contains(err.Error(), `way forward: run "lym config reconcile --apply"`) {
 			t.Errorf("retired-key error %q lacks the reconcile way forward", err.Error())
 		}
 	}
 }
 
-// seedConfig writes content to <baseDir>/_lyx/config/<module>.yaml,
-// creating the config directory (and its _lyx parent) as needed. It is a
-// plain-filesystem stand-in for gitkit's own git-spawning config-seeding
-// helper, deliberately avoiding that helper's git spawn since
-// configengine.LoadOrTemplate never needs a repository.
+// seedConfig writes content to <baseDir>/_lym/config/<module>.yaml, creating the config directory (and its _lym parent) as needed.
+// It is a plain-filesystem stand-in for gitkit's own git-spawning config-seeding helper, deliberately avoiding that helper's git spawn since configengine.LoadOrTemplate never needs a repository.
 func seedConfig(t *testing.T, baseDir, module, content string) {
 	t.Helper()
 
@@ -53,7 +50,7 @@ func seedConfig(t *testing.T, baseDir, module, content string) {
 }
 
 // TestActive asserts Active resolves the configured profile from batcher.yaml:
-// the template verbatim (which must itself parse as plain YAML) builds a cost batcher named after its cautious profile, an empty active: resolves identity both on the template's profiles and without a profiles: block, an identity active: resolves identity without a profiles: block, an absent batcher.yaml or an absent _lyx/ degrades to the embedded template's cautious batchifier rather than erroring, and every load error names batcher.yaml.
+// the template verbatim (which must itself parse as plain YAML) builds a cost batcher named after its cautious profile, an empty active: resolves identity both on the template's profiles and without a profiles: block, an identity active: resolves identity without a profiles: block, an absent batcher.yaml or an absent _lym/ degrades to the embedded template's cautious batchifier rather than erroring, and every load error names batcher.yaml.
 // A layer's profiles add to the template's by name, each merging key by key, so the error rows tune a profile the template lacks.
 func TestActive(t *testing.T) {
 	t.Parallel()
@@ -63,7 +60,7 @@ func TestActive(t *testing.T) {
 	}
 	tests := []struct {
 		name string
-		// seed prepares baseDir; a nil seed leaves it bare, with no _lyx/ at all.
+		// seed prepares baseDir; a nil seed leaves it bare, with no _lym/ at all.
 		seed        func(t *testing.T, baseDir string)
 		wantName    string
 		wantErrWith []string
@@ -105,14 +102,14 @@ func TestActive(t *testing.T) {
 		{
 			name: "absentConfigResolvesTemplate",
 			seed: func(t *testing.T, baseDir string) {
-				if err := os.MkdirAll(filepath.Join(baseDir, "_lyx"), 0o755); err != nil {
-					t.Fatalf("mkdir _lyx: %v", err)
+				if err := os.MkdirAll(filepath.Join(baseDir, "_lym"), 0o755); err != nil {
+					t.Fatalf("mkdir _lym: %v", err)
 				}
 			},
 			wantName: "cautious",
 		},
 		{
-			name:     "absentLyxDirResolvesTemplate",
+			name:     "absentLymDirResolvesTemplate",
 			wantName: "cautious",
 		},
 		{
@@ -250,7 +247,7 @@ func TestActive(t *testing.T) {
 			name:                   "retiredKeyInRepoDefaultNamesDefaultFileAndFabricReconcile",
 			repoDefault:            strings.Replace(template, "    budget: ", "    alone_above: 1200000\n    budget: ", 1),
 			worktreeFile:           "profiles:\n  mine:\n    batchifier: identity\n",
-			wantErrWith:            []string{"alone_above", `way forward: run "lyx fabric reconcile"`, "the orch runs it"},
+			wantErrWith:            []string{"alone_above", `way forward: run "lym fabric reconcile"`, "the orch runs it"},
 			wantDefaultFileInError: true,
 		},
 	}

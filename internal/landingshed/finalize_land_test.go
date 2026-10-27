@@ -34,27 +34,27 @@ func TestFinalize_LandCheck(t *testing.T) {
 			name:         "a member with a pair names the cancel in the parent worktree, then the board move",
 			blockers:     []LandBlocker{{Slug: "m1", HasPair: true}},
 			wantOutcome:  shedengine.Stuck,
-			wantInReason: []string{"m1", "`lyx batten cancel m1 --remove`, run in the parent worktree base", "then move its `project` off the beam with `lyx board upsert`", "`draft` member"},
+			wantInReason: []string{"m1", "`lym batten cancel m1 --remove`, run in the parent worktree base", "then move its `project` off the beam with `lym board upsert`", "`draft` member"},
 		},
 		{
 			name:         "a member in flight with no pair here names the cancel on the machine holding its pair, then the board move",
 			blockers:     []LandBlocker{{Slug: "m2", Running: true}},
 			wantOutcome:  shedengine.Stuck,
-			wantInReason: []string{"m2", "run in flight", "`lyx batten cancel m2 --remove` on the machine holding its pair", "`lyx batten status m2`", "then move its `project` off the beam with `lyx board upsert`"},
+			wantInReason: []string{"m2", "run in flight", "`lym batten cancel m2 --remove` on the machine holding its pair", "`lym batten status m2`", "then move its `project` off the beam with `lym board upsert`"},
 		},
 		{
 			name:            "a member with no run status names the board move alone",
 			blockers:        []LandBlocker{{Slug: "m3"}},
 			wantOutcome:     shedengine.Stuck,
-			wantInReason:    []string{"m3", "no run status", "move its `project` off the beam with `lyx board upsert`"},
+			wantInReason:    []string{"m3", "no run status", "move its `project` off the beam with `lym board upsert`"},
 			wantNotInReason: []string{"batten cancel"},
 		},
 		{
 			name:            "a forked pair names its cancel in the parent worktree",
 			blockers:        []LandBlocker{{Slug: "c1", Pair: true}},
 			wantOutcome:     shedengine.Stuck,
-			wantInReason:    []string{"the pair c1", "`lyx batten cancel c1 --remove`, run in the parent worktree base"},
-			wantNotInReason: []string{"lyx board upsert"},
+			wantInReason:    []string{"the pair c1", "`lym batten cancel c1 --remove`, run in the parent worktree base"},
+			wantNotInReason: []string{"lym board upsert"},
 		},
 		{
 			name:         "every blocker is named",
@@ -101,12 +101,12 @@ func TestFinalize_LandCheck(t *testing.T) {
 			if !strings.HasPrefix(reason, LandHaltPrefix) {
 				t.Errorf("reason = %q; want it to start with %q", reason, LandHaltPrefix)
 			}
-			for _, want := range append(tt.wantInReason, "`lyx loom resume` in the beam's worktree beam-x") {
+			for _, want := range append(tt.wantInReason, "`lym loom resume` in the beam's worktree beam-x") {
 				if !strings.Contains(reason, want) {
 					t.Errorf("reason = %q; want it to carry %q", reason, want)
 				}
 			}
-			for _, unwanted := range append(tt.wantNotInReason, "lyx batten run") {
+			for _, unwanted := range append(tt.wantNotInReason, "lym batten run") {
 				if strings.Contains(reason, unwanted) {
 					t.Errorf("reason = %q; want it to omit %q", reason, unwanted)
 				}

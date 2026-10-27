@@ -1,7 +1,7 @@
 //go:build tier1
 
 // hubscratch_integration_test.go pins card 2's ordering guarantee at CloneHub's own boundary: the
-// board worktree's weft-common-gitdir excludes carry a `.lyx/` entry the instant CloneHub returns,
+// board worktree's weft-common-gitdir excludes carry a `.lym/` entry the instant CloneHub returns,
 // and the board's stage-all commit path never picks up anything planted inside the hub scratch tree
 // in between.
 //
@@ -23,7 +23,7 @@ import (
 
 // TestCloneHub_SeedsBoardArtifactExcludesBeforeReturning asserts that at the instant
 // fabricengine.CloneHub returns, the weft common gitdir's info/exclude file reached from
-// res.BoardDir already carries the `.lyx/` entry.
+// res.BoardDir already carries the `.lym/` entry.
 //
 // This calls CloneHub directly, never fabriccli.CloneAndWire, whose later WireJunctionsWith seeding
 // would mask the omission this test exists to catch.
@@ -41,7 +41,7 @@ func TestCloneHub_SeedsBoardArtifactExcludesBeforeReturning(t *testing.T) {
 
 	cloneParent := t.TempDir()
 	// ForceBootstrap: true — weftBare is an ordinary seeded bare remote standing in for a weft, not
-	// a repo that has ever been one, so it carries no .lyx-anchor.
+	// a repo that has ever been one, so it carries no .lym-anchor.
 	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 		WeftURL:        filepath.ToSlash(weftBare),
 		WarpURL:        filepath.ToSlash(warpBare),
@@ -55,8 +55,8 @@ func TestCloneHub_SeedsBoardArtifactExcludesBeforeReturning(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(res.HubPath) })
 
 	lines := gitkit.ExcludeLines(t, res.BoardDir)
-	if !containsLine(lines, ".lyx/") {
-		t.Fatalf("weft common gitdir info/exclude reached from %s = %v; want it to already contain %q at the instant CloneHub returns", res.BoardDir, lines, ".lyx/")
+	if !containsLine(lines, ".lym/") {
+		t.Fatalf("weft common gitdir info/exclude reached from %s = %v; want it to already contain %q at the instant CloneHub returns", res.BoardDir, lines, ".lym/")
 	}
 }
 

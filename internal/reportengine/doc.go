@@ -1,11 +1,11 @@
-// Package reportengine computes the read-only report behind `lyx report convergence`: per finished run and per ISO week, what woke the orch, what stopped and repaired runs, and how the parent branch's landings fared.
-// Every figure comes from records lyx already writes, each read from git objects through a tolerant parse in the package that owns its format.
+// Package reportengine computes the read-only report behind `lym report convergence`: per finished run and per ISO week, what woke the orch, what stopped and repaired runs, and how the parent branch's landings fared.
+// Every figure comes from records lym already writes, each read from git objects through a tolerant parse in the package that owns its format.
 // A record a run lacks is reported absent, never as zero.
 // ComputeTiming is the second compute entry, over the same snapshot: where each run's time went, per phase and per day or week.
 //
 // # Told geometry
 //
-// The package never imports internal/lyxcwd and derives no path of its own.
+// The package never imports internal/lymcwd and derives no path of its own.
 // Geometry carries the absolute checkout paths of the code, records and board repositories and their three branch names, and the engine writes nothing, takes no lock and makes no commit.
 // It names no fabric side and no run-record directory: record paths come from shedrun and the record packages, and the archive tag namespace and task-commit trailer come through fabricengine's neutral exports.
 //

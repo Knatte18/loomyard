@@ -50,7 +50,7 @@ func batchSlugFor(batches []batcher.Batch, batchNumber int) string {
 // Naming the session tells two consecutive refusals over different strands apart.
 func recoveryNotDoneMessage(batchName string, batchNumber int, status, session string, retry bool) string {
 	if retry {
-		return fmt.Sprintf("webster: batch %s recovery (session %s) ended %s; way forward: run `lyx webster recover-batch %d` once more", batchName, session, status, batchNumber)
+		return fmt.Sprintf("webster: batch %s recovery (session %s) ended %s; way forward: run `lym webster recover-batch %d` once more", batchName, session, status, batchNumber)
 	}
 	return fmt.Sprintf("webster: batch %s recovery (session %s) ended %s and the batch has no recovery left; way forward: end the run stuck, naming batch %s", batchName, session, status, batchName)
 }
@@ -112,7 +112,7 @@ the batch's counted recovery spawns, and "recovery_retry", true when the
 recovery is dead and earns another: none counted yet, or it committed
 work of its own. A stuck or dead digest exits non-zero with the same fields
 and "recovery_session", the strand's session, its message naming the way
-forward: "lyx webster recover-batch NN" once more when recovery_retry is
+forward: "lym webster recover-batch NN" once more when recovery_retry is
 true, else ending the run stuck. A NEEDS_PARENT report leaves the batch
 waiting, exiting 0 with its "need"; the next call resumes it uncounted.
 A call that would spawn a third counted recovery refuses with
@@ -120,7 +120,7 @@ A call that would spawn a third counted recovery refuses with
 the batch terminal failed, saved and committed, and exits non-zero with
 {"batch_failed": true, "batch": "NN-<slug>", "warnings": [...]};
 "card_amended": true marks a card amended after the recovery spawned.
-The error names "lyx webster recover-batch NN", which re-runs the batch,
+The error names "lym webster recover-batch NN", which re-runs the batch,
 unless a later card still references a symbol the batch deletes: a call that
 finds that before spawning refuses with {"batch_failed": true} and the plan
 edit as its way forward. If --wait elapses first it returns
@@ -131,8 +131,8 @@ that spawns fabric-commits state.json at once, so the strand survives a crash.
 Under a pause that covers the pair it refuses first, claiming Master into it.
 
 Example:
-  lyx webster recover-batch 3
-  lyx webster recover-batch 3 --wait 8m`,
+  lym webster recover-batch 3
+  lym webster recover-batch 3 --wait 8m`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
@@ -175,7 +175,7 @@ Example:
 				return nil
 			}
 			if st == nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, `webster: no run in progress; run "lyx webster run" first`))
+				clihelp.SetExit(cmd.Context(), output.Err(out, `webster: no run in progress; run "lym webster run" first`))
 				return nil
 			}
 
@@ -191,16 +191,10 @@ Example:
 				waitBudget = websterengine.RecoveryWaitBudget(c.cfg)
 			}
 
-			// Standalone mode boots its own reed session here, idempotently, because nothing else
-			// can: `lyx reed up` is hub-only, so the advice reed's own "no reed session" error gives
-			// cannot reach standalone geometry at all. recover-batch is not a read-only verb — it
-			// spawns a cold recovery strand through reed.AddStrand, which now self-heals a cold
-			// worktree on its own rather than requiring a live session — so this call is no longer
-			// the only thing standing between a standalone spawn and a dead end. It stays as a
-			// deliberate early, explicit boot: after a run ends its session is gone, and this keeps
-			// `lyx webster recover-batch N` failing with its own envelope-reportable error rather
-			// than whatever AddStrand's own self-heal would surface. Nil in hub mode, where the
-			// session is the operator's or loom's own to manage.
+			// Standalone mode boots its own reed session here, idempotently, because nothing else can: `lym reed up` is hub-only, so the advice reed's own "no reed session" error gives cannot reach standalone geometry at all.
+			// recover-batch is not a read-only verb — it spawns a cold recovery strand through reed.AddStrand, which now self-heals a cold worktree on its own rather than requiring a live session — so this call is no longer the only thing standing between a standalone spawn and a dead end.
+			// It stays as a deliberate early, explicit boot: after a run ends its session is gone, and this keeps `lym webster recover-batch N` failing with its own envelope-reportable error rather than whatever AddStrand's own self-heal would surface.
+			// Nil in hub mode, where the session is the operator's or loom's own to manage.
 			//
 			// It runs HERE rather than at the top of this RunE so a call that refuses on a bad batch
 			// number, an unparseable plan, or an absent run boots no substrate at all — an ordering
@@ -210,7 +204,7 @@ Example:
 			// performs, so bringing the session up under it adds no new hold.
 			if c.reedUp != nil {
 				if err := c.reedUp(); err != nil {
-					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: bring up the standalone reed session: %v; way forward: transient, re-run `lyx webster recover-batch %02d`", err, batchNumber)))
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: bring up the standalone reed session: %v; way forward: transient, re-run `lym webster recover-batch %02d`", err, batchNumber)))
 					return nil
 				}
 			}
@@ -299,7 +293,7 @@ Example:
 				}()
 				fresh, err := websterengine.LoadState(c.geom.WebsterDir, c.geom.ScratchDir)
 				if err == nil && fresh == nil {
-					err = fmt.Errorf("webster: state.json disappeared during the recovery wait for batch %s; way forward: re-run `lyx webster recover-batch %02d`", batchName, batchNumber)
+					err = fmt.Errorf("webster: state.json disappeared during the recovery wait for batch %s; way forward: re-run `lym webster recover-batch %02d`", batchName, batchNumber)
 				}
 				var fingerprintBefore string
 				var postWarnings []string

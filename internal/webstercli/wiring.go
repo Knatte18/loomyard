@@ -3,7 +3,7 @@
 // the whole engine stack construction for whichever mode wins.
 // The mode decision lives HERE, inside the extracted function, rather than upstream in
 // resolvePersistentPreRun, precisely so a test can drive it with a told preflight.Mode and stay
-// tier 1 -- driving the real pre-run would reach lyxcwd.Resolve and its git spawn.
+// tier 1 -- driving the real pre-run would reach lymcwd.Resolve and its git spawn.
 
 package webstercli
 
@@ -20,7 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/planglyph"
@@ -57,7 +57,7 @@ var wireModule = cliwire.Module{
 	},
 }
 
-// wire computes hub-or-standalone mode from loc/mode -- the *lyxcwd.Location and preflight.Mode a
+// wire computes hub-or-standalone mode from loc/mode -- the *lymcwd.Location and preflight.Mode a
 // preflight.ResolveMode(cwd) call already told it -- and builds the whole engine stack onto c: module
 // configs, the model registry, resolved roles, the reed/claude engines, the shuttleengine.Runner and
 // its three adapted seams, the told websterengine.Geometry, the injected RefMatcher, and the lazy
@@ -81,7 +81,7 @@ var wireModule = cliwire.Module{
 // against) or, worse, relocate a live hub's state into the standalone state directory. HubPresent asks
 // the honest question instead: does a hub-level directory exist for this write to target.
 //
-// cwd is the already-resolved cwd resolvePersistentPreRun read via lyxcwd.CwdFrom -- wire needs it
+// cwd is the already-resolved cwd resolvePersistentPreRun read via lymcwd.CwdFrom -- wire needs it
 // as standalone's --target-dir default and as the base every relative flag value is made absolute
 // against, never to resolve or re-resolve anything itself.
 // stencilsDirFlag, planDirFlag, and targetDirFlag are the three persistent flags' raw, as-parsed
@@ -98,7 +98,7 @@ var wireModule = cliwire.Module{
 // wire performs no cwd resolution and spawns no process -- every path it touches is either supplied by
 // the caller (loc, cwd) or a plain filesystem read (config loads, the standalone stencil seed) -- so a
 // test can drive it directly and stay inside the Test Tier Purity Invariant.
-func (c *websterCLI) wire(loc *lyxcwd.Location, mode preflight.Mode, cwd, stencilsDirFlag, planDirFlag, targetDirFlag string) error {
+func (c *websterCLI) wire(loc *lymcwd.Location, mode preflight.Mode, cwd, stencilsDirFlag, planDirFlag, targetDirFlag string) error {
 	stencilsDir := cliwire.ResolveToldDir(cwd, stencilsDirFlag)
 	planDir := cliwire.ResolveToldDir(cwd, planDirFlag)
 
@@ -114,19 +114,13 @@ func (c *websterCLI) wire(loc *lyxcwd.Location, mode preflight.Mode, cwd, stenci
 //
 // stencilsDir and planDir arrive already absolute (or empty), made so by wire -- this function never
 // sees a raw flag value and must never start honouring one.
-func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetDirFlag string) error {
+func (c *websterCLI) wireHub(loc *lymcwd.Location, stencilsDir, planDir, targetDirFlag string) error {
 	if err := wireModule.RefuseTargetDirInHubMode(targetDirFlag); err != nil {
 		return err
 	}
 
-	// The friction directory is resolved tolerantly, here rather than deferred to loomcli: this is
-	// what makes the per-batch implementer fork and the cold recovery strand actually receive the
-	// directive under `lyx loom start`, since Master drives the batch loop by running
-	// `lyx webster begin-batch <NN>` and `lyx webster recover-batch <NN>` as separate processes, so
-	// their prompts are composed here and not in internal/loomcli/wiring.go -- see the
-	// webstercli-resolves-the-friction-directory-in-hub-mode Shared Decision. A load error, or an
-	// empty Friction key, both leave it "": a `lyx webster` verb must never fail because an unrelated
-	// module's config could not be read, and the whole value is optional bookkeeping.
+	// The friction directory is resolved tolerantly, here rather than deferred to loomcli: this is what makes the per-batch implementer fork and the cold recovery strand actually receive the directive under `lym loom start`, since Master drives the batch loop by running `lym webster begin-batch <NN>` and `lym webster recover-batch <NN>` as separate processes, so their prompts are composed here and not in internal/loomcli/wiring.go -- see the webstercli-resolves-the-friction-directory-in-hub-mode Shared Decision.
+	// A load error, or an empty Friction key, both leave it "": a `lym webster` verb must never fail because an unrelated module's config could not be read, and the whole value is optional bookkeeping.
 	c.frictionDir = ""
 	if loomCfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(loc), "loom"); err != nil {
 		logger.Warn("webstercli: could not load loom config; Tier 2 friction notes are disabled for this invocation", "error", err)
@@ -253,7 +247,7 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 }
 
 // gateTiersValue reads the gate config through read once and returns its rendered tier and gate-list lines.
-// An absent gate.yaml renders `none`; any other load error is returned as is, since it already names `lyx config gate`.
+// An absent gate.yaml renders `none`; any other load error is returned as is, since it already names `lym config gate`.
 func gateTiersValue(read func() (gateslot.Config, error)) (string, error) {
 	cfg, err := read()
 	if errors.Is(err, gateslot.ErrConfigAbsent) {
@@ -338,13 +332,10 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	pauseGeom := standalonegeom.PauseGeometry(res.StateDir)
 	runner.SetPause(pauseGeom)
 
-	// Standalone's reed session lives on its own derived geometry, which no CLI verb can reach —
-	// `lyx reed up` is hub-only — so the verbs that need one boot it in-process through this seam
-	// (see the field's own doc comment).
-	// Assigned here, executed by the verbs that spawn an agent themselves, run, recover-batch, fix-verify and fix-plan:
-	// wiring runs for EVERY verb, and validate, status and await-batch must boot no tmux server at all.
+	// Standalone's reed session lives on its own derived geometry, which no CLI verb can reach — `lym reed up` is hub-only — so the verbs that need one boot it in-process through this seam (see the field's own doc comment).
+	// Assigned here, executed by the verbs that spawn an agent themselves, run, recover-batch, fix-verify and fix-plan: wiring runs for EVERY verb, and validate, status and await-batch must boot no tmux server at all.
 	//
-	// Standalone reed is never booted by `lyx reed up` — that verb is hub-only — it is booted
+	// Standalone reed is never booted by `lym reed up` — that verb is hub-only — it is booted
 	// in-process by a long-lived supervising run that exists for exactly the session's working
 	// lifetime, and that supervising process is precisely what hub mode lacks and why hub mode needs
 	// a detached daemon at all — so reusing it here is the smaller mechanism, not a special case.
@@ -389,7 +380,7 @@ func (r configLoadRefusal) Unwrap() error { return r.cause }
 
 // configLoadError wraps the error of loading the named config file (such as "batcher.yaml") as a configLoadRefusal that names the file and the way forward.
 // A content failure (configengine.ErrInvalid) is invalid and names the fix, or the reconcile run when the cause is a retired batcher key;
-// a languageconfig.ErrUnusable cause is invalid and ends in its own way forward, since the hub-wide language.yaml never lives under a worktree's _lyx/config;
+// a languageconfig.ErrUnusable cause is invalid and ends in its own way forward, since the hub-wide language.yaml never lives under a worktree's _lym/config;
 // any other cause is a file that exists but cannot be read, which is transient.
 // Both wiring prologues return it before any verb's body runs, so a config that does not load leaves the recorded partition and state untouched.
 func configLoadError(file string, cause error) error {
@@ -400,7 +391,7 @@ func configLoadError(file string, cause error) error {
 		// The retired-key cause already ends in the reconcile way forward.
 		return configLoadRefusal{message: fmt.Sprintf("webster: %s did not load: %v, then re-run the verb", file, cause), invalid: true, cause: cause}
 	case errors.Is(cause, configengine.ErrInvalid):
-		return configLoadRefusal{message: fmt.Sprintf("webster: %s did not load: %v; way forward: fix %s under _lyx/config, then re-run the verb", file, cause, file), invalid: true, cause: cause}
+		return configLoadRefusal{message: fmt.Sprintf("webster: %s did not load: %v; way forward: fix %s under _lym/config, then re-run the verb", file, cause, file), invalid: true, cause: cause}
 	default:
 		return configLoadRefusal{message: fmt.Sprintf("webster: %s could not be read: %v; way forward: transient, re-run the verb", file, cause), cause: cause}
 	}

@@ -34,7 +34,7 @@ value; a value that matches no running run prints an empty list, since a
 finished run is not an error.
 
 Example:
-  lyx shuttle state --strand hub:task:driver`,
+  lym shuttle state --strand hub:task:driver`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {

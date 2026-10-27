@@ -2,7 +2,7 @@
 // the active check, why the overview is inlined while background files stay pointers, why the roles differ,
 // and the stencil read path Directive uses to produce that directive text.
 
-// Package pattern answers one question for every code-touching lyx agent —
+// Package pattern answers one question for every code-touching lym agent —
 // is PATTERN active in this worktree, and what should the agent be told? —
 // and returns the role-appropriate directive text, read from a stencil
 // file and carrying the PATTERN overview, to inject into that agent's prompt.

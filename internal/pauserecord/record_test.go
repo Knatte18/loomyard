@@ -365,13 +365,13 @@ func TestCoveredError(t *testing.T) {
 			"hub entry",
 			Entry{Scope: ScopeHub, PausedAt: pausedAt},
 			"a",
-			`pause: a hub-wide pause has held this run since 2026-01-10T12:00:00Z; way forward: run "lyx tender resume", then retry`,
+			`pause: a hub-wide pause has held this run since 2026-01-10T12:00:00Z; way forward: run "lym tender resume", then retry`,
 		},
 		{
 			"slug entry",
 			Entry{Scope: "a", PausedAt: pausedAt},
 			"a",
-			`pause: the pause of a has held this run since 2026-01-10T12:00:00Z; way forward: run "lyx tender resume a", then retry`,
+			`pause: the pause of a has held this run since 2026-01-10T12:00:00Z; way forward: run "lym tender resume a", then retry`,
 		},
 	}
 	for _, tt := range tests {

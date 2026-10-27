@@ -15,12 +15,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/lyxtemp"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 )
 
 // FixtureGitEnv is the name of the environment variable that marks a git process as fixture setup rather than code under test.
 // A marked child carries the value "1".
-const FixtureGitEnv = "LYX_FIXTURE_GIT"
+const FixtureGitEnv = "LYM_FIXTURE_GIT"
 
 // fixtureGitEnviron returns the process environment with the fixture marker appended.
 func fixtureGitEnviron() []string {
@@ -88,7 +88,7 @@ func gitExit(dir string, args ...string) (stdout string, code int, err error) {
 	return "", -1, runErr
 }
 
-// SeedConfig seeds real configuration into a git repository: creates _lyx/config, writes each
+// SeedConfig seeds real configuration into a git repository: creates _lym/config, writes each
 // module's YAML file, and commits them.
 // The map parameter maps module names to YAML content.
 // This preserves the leaf invariant by avoiding configreg imports.
@@ -183,7 +183,7 @@ var (
 // populated with a README and initial commit (called once per test binary; panics on failure).
 func buildRepoTemplate() (hub, bare string) {
 	repoTemplateOnce.Do(func() {
-		tmpDir, err := lyxtemp.MkdirTemp("gitkit-repo-*")
+		tmpDir, err := lymtemp.MkdirTemp("gitkit-repo-*")
 		if err != nil {
 			panic(err)
 		}
@@ -216,9 +216,9 @@ func buildRepoTemplate() (hub, bare string) {
 
 // RepoFixture represents an isolated copy of the repo template: a plain git repo with a bare
 // origin, never a hub.
-// It is the primitive repo fixture and is callable from internal/lyxcwd alone —
+// It is the primitive repo fixture and is callable from internal/lymcwd alone —
 // every other package takes a real hub from internal/hubforge instead;
-// see TestCopyRepoCallerSet_LyxcwdOnly.
+// see TestCopyRepoCallerSet_LymcwdOnly.
 type RepoFixture struct {
 	Repo string
 	Bare string
@@ -344,7 +344,7 @@ func copyDirRecursive(src string, dest string) error {
 // never a hub.
 // The copy is placed in tb.TempDir();
 // its origin URL is rewritten to point to the copied bare repository.
-// It is the primitive repo fixture and is callable from internal/lyxcwd alone;
+// It is the primitive repo fixture and is callable from internal/lymcwd alone;
 // every other package takes a real hub from internal/hubforge instead.
 func CopyRepo(tb testing.TB) RepoFixture {
 	tb.Helper()

@@ -157,8 +157,8 @@ func TestWorktreeCreate_ForksFromTheBeam(t *testing.T) {
 	t.Run("BeamProjectWhoseParentBeamHasNoPairHereIsRefusedNamingItsCreate", func(t *testing.T) {
 		c := wireForHub(t, h, "orphan", nil)
 		err := c.env.CreateWorktree(context.Background())
-		if err == nil || !strings.Contains(err.Error(), "lyx beam create far") {
-			t.Fatalf("CreateWorktree(orphan) = %v; want a refusal naming `lyx beam create far`", err)
+		if err == nil || !strings.Contains(err.Error(), "lym beam create far") {
+			t.Fatalf("CreateWorktree(orphan) = %v; want a refusal naming `lym beam create far`", err)
 		}
 	})
 
@@ -168,7 +168,7 @@ func TestWorktreeCreate_ForksFromTheBeam(t *testing.T) {
 		if err == nil {
 			t.Fatalf("CreateWorktree(%s) = nil; want the member-hold refusal", member)
 		}
-		for _, want := range []string{"lyx batten cancel " + member, "lyx batten run " + member, "lyx batten status b", "lyx board upsert"} {
+		for _, want := range []string{"lym batten cancel " + member, "lym batten run " + member, "lym batten status b", "lym board upsert"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("CreateWorktree(%s) = %q; want it to carry %q", member, err.Error(), want)
 			}

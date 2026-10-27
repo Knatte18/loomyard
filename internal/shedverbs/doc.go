@@ -1,6 +1,6 @@
 // Package shedverbs implements the generic cobra verb bodies -- run, step, status, pause, and goto -- shared by every module that arms a *shedengine.Shed onto a CLI subtree.
 // goto only reads its Spec and calls shedengine.Goto, which owns the status-file mutation.
-// It owns those verb bodies and nothing else: it derives no path of its own, imports no resolver, and never calls os.Getwd or internal/lyxcwd -- every path this package touches reaches it told, through a Spec the arming module fills.
+// It owns those verb bodies and nothing else: it derives no path of its own, imports no resolver, and never calls os.Getwd or internal/lymcwd -- every path this package touches reaches it told, through a Spec the arming module fills.
 // It also imports no <module>cli package, which is what keeps a consuming
 // module's own imports acyclic: internal/shedcli (or any other CLI module wiring shedverbs.Verbs
 // onto its own subtree) can safely import shedverbs, but shedverbs never imports back.
@@ -11,10 +11,10 @@
 // --before <producer> and --after <producer> record a stop condition the engine fires at that producer, and --clear removes both; none of the three touches the bare request, and --clear refuses beside the other two.
 // --by <label> stores a free-text caller label beside the request it accompanies: pause_requested_by for a bare pause, pause_before_by with --before and pause_after_by with --after, each replaced with its condition and --clear dropping both condition labels.
 // The label gates nothing, and the engine records it in the paused run's pause_reason;
-// --by shed is refused before any write, since shed is the label of lyx's own automatic steps.
+// --by shed is refused before any write, since shed is the label of lym's own automatic steps.
 // status's generic core is eleven keys, and pause_reason is the status file's value; the human view prints it as a "why" line for a paused run with a non-empty reason.
 // Spec.GotoGuard is the recipe's told check of a goto target, which every goto passes on; nil admits every target.
-// Spec.HandBack is the recipe's told check of a blocked stop that goes to the orch, which keeps the package recipe-generic: the loop's stop envelope and lyx shed status report its answer as hand_back.
+// Spec.HandBack is the recipe's told check of a blocked stop that goes to the orch, which keeps the package recipe-generic: the loop's stop envelope and lym shed status report its answer as hand_back.
 //
 // step prints a short envelope by default.
 // Before printing, it writes the full envelope to its per-invocation record under Spec.StepsDir, and the short envelope names that record's path as "envelope_path".
@@ -36,21 +36,21 @@
 // error is a step that ended in an error, and interrupted a child that ended without an envelope; both write the status file failed while it still reads running.
 // interrupted is also the stop on the status read at an iteration's top, with the cause status-missing for an absent file and status-unreadable: <error> for an unreadable one.
 // A decode error stops at once, since the file stays undecodable to this binary; any other read error gets one re-read through the same re-step the transient errors share, and stops when that fails or the re-step is already used.
-// No child runs at such a stop, the trace file is the loop log, and the error names the status file and the loop log and ends with a way forward split by cause: the recipe's own reseed for an absent file, a lyx binary that decodes the file for a decode error, and a re-run of the step for a read error.
+// No child runs at such a stop, the trace file is the loop log, and the error names the status file and the loop log and ends with a way forward split by cause: the recipe's own reseed for an absent file, a lym binary that decodes the file for a decode error, and a re-run of the step for a read error.
 // The status file is left as found, since writing it failed would destroy the evidence.
 // busy is another holder of the run, or of the run lock at the failed write, which writes nothing.
 // A transient error gets one immediate re-step, reported as restep.
 //
 // RunUntilStop and RunGoto are the exported entries an in-process driver calls: the same bodies the step --until-stop and goto verbs run after their flags are parsed.
 // The goto and step bodies record Spec.Caller, the caller label, on the history; RunGoto and RunUntilStop take the label as an explicit argument.
-// The goto verb's hidden --by flag admits shed alone, the label of lyx's own automatic steps; any other value is refused before the status file is read.
+// The goto verb's hidden --by flag admits shed alone, the label of lym's own automatic steps; any other value is refused before the status file is read.
 // The package reads no environment and imports nothing to classify a caller; the arming module fills Spec.Caller.
-// LastStepBuildChanged reads whether the last step ran on a known build other than the one passed, which an in-process driver judges against the lyx on disk.
+// LastStepBuildChanged reads whether the last step ran on a known build other than the one passed, which an in-process driver judges against the lym on disk.
 //
 // The final envelope is the stop step's short envelope plus a loop object whose keys are closed:
 // steps, first_producer, stop, detail, status_moved, hand_back, restep (only when a re-step ran), current_producer, history_length, state, interrupt_policy, trace_copy and stderr_path.
 // hand_back is true when the stop is blocked and Spec.HandBack, the recipe's told check, answers true for the status's current producer and error, so a driver hands the halt to the orch; nil marks nothing.
-// lyx shed status reports the same hand_back key at its top level, over the status file.
+// lym shed status reports the same hand_back key at its top level, over the status file.
 // detail is the stop's error or reason and the WARN and ERROR lines and last lines of the stop step's trace, capped by lines and bytes.
 // trace_copy is a copy of the stop step's trace files, which outlives a sweep of the trace directory.
 // A refusal of the --until-stop invocation's own arming goes through ReportLoopArmError, which prints the bootstrap error with a loop object that stopped with no step run.
@@ -121,7 +121,7 @@
 //
 // A failure stop is visible before its waiter returns:
 // when an --until-stop loop stops on a failure and no other holder has the run lock, the status file no longer reads running by the time the waiting invocation returns.
-// That covers a dead loop, a child that ended in an error and an arming refusal, so `lyx loom resume` never answers "already running" for such a run, and no failure waits for the quiet notice.
+// That covers a dead loop, a child that ended in an error and an arming refusal, so `lym loom resume` never answers "already running" for such a run, and no failure waits for the quiet notice.
 // A busy stop, an absent or unreadable status file, the Go driver and a bare step are outside it, as the stops above describe.
 // TestLoop_FailureStopLeavesStatusFailedUnlessBusy, TestUntilStop_DeadLoopStopsLoopExited and TestLoopIntegration_ArmingRefusalStopsAsBootstrap pin it.
 package shedverbs

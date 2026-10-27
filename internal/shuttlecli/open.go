@@ -31,7 +31,7 @@ func (c *shuttleCLI) openCmd() *cobra.Command {
 		Long: `open starts one interactive LLM session in a detached window of its own and
 returns at once. --role is required and names the strand; a second open of the
 same role is numbered by reed.
-The session takes no turn and writes no run record, so lyx shuttle state never
+The session takes no turn and writes no run record, so lym shuttle state never
 lists it. Its window closes when the session exits. It is refused under a pause.
 
 --model chooses the engine, model and effort as a model spec, in one of two forms:
@@ -50,7 +50,7 @@ The session opens in its engine's bypass mode, without permission dialogs.
 is created.
 
 Example:
-  lyx shuttle open --role explore --model opus[high]`,
+  lym shuttle open --role explore --model opus[high]`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil

@@ -27,8 +27,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxtemp"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/proc"
@@ -64,7 +64,7 @@ type clientSeam struct {
 
 var seam = clientSeam{clock: realClock{}, spawn: spawnDaemon}
 
-// Command returns the cobra command for `lyx creel`: the bare group, its operator verbs and the hidden daemon.
+// Command returns the cobra command for `lym creel`: the bare group, its operator verbs and the hidden daemon.
 func Command() *cobra.Command {
 	creel := &cobra.Command{
 		Use:   "creel",
@@ -159,7 +159,7 @@ func runVerb(cmd *cobra.Command, timeout time.Duration, body func(client *creele
 	}
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
-	cwd, err := lyxcwd.CwdFrom(ctx)
+	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
 		return refuse(cmd, err)
 	}
@@ -168,11 +168,11 @@ func runVerb(cmd *cobra.Command, timeout time.Duration, body func(client *creele
 		return refuse(cmd, err)
 	}
 	if mode != preflight.ModeHub {
-		return refuse(cmd, errors.New("creel needs a hub, and this directory is not in one; way forward: run the verb from a worktree of a lyx hub"))
+		return refuse(cmd, errors.New("creel needs a hub, and this directory is not in one; way forward: run the verb from a worktree of a lym hub"))
 	}
-	root, err := lyxtemp.ProcessRoot()
+	root, err := lymtemp.ProcessRoot()
 	if err != nil {
-		return refuse(cmd, fmt.Errorf("open the lyxtemp root: %w", err))
+		return refuse(cmd, fmt.Errorf("open the lymtemp root: %w", err))
 	}
 	geometry, err := hubgeom.CreelGeometry(location.HubPath, root.Path())
 	if err != nil {
@@ -296,7 +296,7 @@ func postCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `post leaves the text as a message for the receiver strand and prints its id.
 A message from an agent strand is announced to the receiver by a one-line
-reminder typed when it is idle, and read with "lyx creel read". Mail from
+reminder typed when it is idle, and read with "lym creel read". Mail from
 EXTERNAL or a program is carried in full in the typed line and needs no read,
 unless it is longer than the line cap, when it is announced and read like an
 agent's.
@@ -306,8 +306,8 @@ receiver is given. With --wait-reply the call waits for the reply, up to
 --timeout, and exits 5 if the message returns undelivered.
 
 Example:
-  lyx creel post ly:impl "the schema changed, rebase before you go on"
-  lyx creel post --reply 12 "done"`,
+  lym creel post ly:impl "the schema changed, rebase before you go on"
+  lym creel post --reply 12 "done"`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			replying := cmd.Flags().Changed("reply")
@@ -373,7 +373,7 @@ may inject, interrupt and hold on any strand, and any other strand on its own
 strand only.
 
 --interrupt stops the receiver's running turn first. A receiver a pause covers
-is claimed into the pause and interrupted, so "lyx tender resume" gives it its
+is claimed into the pause and interrupted, so "lym tender resume" gives it its
 resume line, and the inject is held until the resume; an unreadable pause
 record and another sender's hold still refuse it. --ttl sets how long the
 inject waits for an idle receiver before it expires. With --wait the call
@@ -381,7 +381,7 @@ waits for the outcome, up to --timeout: exit 0 when injected, 2 when typed
 but unconfirmed, 3 when expired.
 
 Example:
-  lyx creel inject ly:impl "stop and run the tests" --interrupt --wait`,
+  lym creel inject ly:impl "stop and run the tests" --interrupt --wait`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runVerb(cmd, timeout, func(client *creelengine.Client, _ io.Writer) (result, error) {
@@ -434,11 +434,11 @@ nothing. EXTERNAL callers, programs and orch strands may inject, interrupt and
 hold on any strand, and any other strand on its own strand only.
 
 A receiver a pause covers is claimed into that pause and then interrupted, so
-"lyx tender resume" gives it its resume line. An unreadable pause record and
+"lym tender resume" gives it its resume line. An unreadable pause record and
 another sender's hold refuse the interrupt.
 
 Example:
-  lyx creel interrupt ly:impl`,
+  lym creel interrupt ly:impl`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runVerb(cmd, 0, func(client *creelengine.Client, _ io.Writer) (result, error) {
@@ -467,12 +467,12 @@ and gets a reminder; the message keeps its original sender and records who
 passed it on.
 
 Example:
-  lyx creel forward 12 ly:reviewer`,
+  lym creel forward 12 ly:reviewer`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.ParseInt(args[0], 10, 64)
 			if err != nil {
-				return refuse(cmd, fmt.Errorf("forward: %q is not a message id; way forward: pass the number \"lyx creel inbox\" or \"lyx creel read\" shows", args[0]))
+				return refuse(cmd, fmt.Errorf("forward: %q is not a message id; way forward: pass the number \"lym creel inbox\" or \"lym creel read\" shows", args[0]))
 			}
 			return runVerb(cmd, 0, func(client *creelengine.Client, _ io.Writer) (result, error) {
 				if _, err := client.Call(creelengine.Request{Verb: creelengine.VerbForward, ID: id, Receiver: args[1]}, 0, nil); err != nil {
@@ -510,7 +510,7 @@ func writeMessagesText(out io.Writer, messages []creelengine.Message, now time.T
 		if now.Sub(message.Posted) > readAgeShown {
 			header += ", posted " + message.Posted.UTC().Format(time.RFC3339)
 		}
-		header += fmt.Sprintf(" — reply with: lyx creel post --reply %d <text>", message.ID)
+		header += fmt.Sprintf(" — reply with: lym creel post --reply %d <text>", message.ID)
 		text.WriteString(header + "\n" + strings.TrimSuffix(message.Body, "\n") + "\n")
 	}
 	_, err := io.WriteString(out, text.String())
@@ -542,8 +542,8 @@ mail, up to --timeout, before it reads, and --envelope prints the messages as
 one JSON envelope line with every field, for programs.
 
 Example:
-  lyx creel read
-  lyx creel read --from ly:orch --wait`,
+  lym creel read
+  lym creel read --from ly:orch --wait`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runVerb(cmd, timeout, func(client *creelengine.Client, out io.Writer) (result, error) {
@@ -595,7 +595,7 @@ func inboxCmd() *cobra.Command {
 without marking anything read.
 
 Example:
-  lyx creel inbox`,
+  lym creel inbox`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runVerb(cmd, 0, func(client *creelengine.Client, _ io.Writer) (result, error) {
@@ -634,8 +634,8 @@ and --since to events after a time: an RFC 3339 timestamp, or a duration
 such as 2h meaning that long ago.
 
 Example:
-  lyx creel log --id 12
-  lyx creel log --since 1h`,
+  lym creel log --id 12
+  lym creel log --since 1h`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var sinceTime time.Time
@@ -709,12 +709,12 @@ func holdCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `hold keeps the receiver's deliveries to the caller's: only the caller's injects
 pass and only its mail is reminded, until the hold lapses after --for or
-"lyx creel release". Holding again renews it; another sender's hold on a held
+"lym creel release". Holding again renews it; another sender's hold on a held
 receiver is refused. EXTERNAL callers, programs and orch strands may inject,
 interrupt and hold on any strand, and any other strand on its own strand only.
 
 Example:
-  lyx creel hold ly:impl --for 10m`,
+  lym creel hold ly:impl --for 10m`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runVerb(cmd, 0, func(client *creelengine.Client, _ io.Writer) (result, error) {
@@ -745,7 +745,7 @@ callers, programs and orch strands may inject, interrupt and hold on any
 strand, and any other strand on its own strand only.
 
 Example:
-  lyx creel release ly:impl`,
+  lym creel release ly:impl`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runVerb(cmd, 0, func(client *creelengine.Client, _ io.Writer) (result, error) {
@@ -840,9 +840,9 @@ func runDaemon(ctx context.Context, hubPath string, stderr io.Writer) error {
 
 // serveDaemon resolves the hub's geometry and runs the engine's daemon over it.
 func serveDaemon(ctx context.Context, hubPath string) error {
-	root, err := lyxtemp.ProcessRoot()
+	root, err := lymtemp.ProcessRoot()
 	if err != nil {
-		return fmt.Errorf("open the lyxtemp root: %w", err)
+		return fmt.Errorf("open the lymtemp root: %w", err)
 	}
 	geometry, err := hubgeom.CreelGeometry(hubPath, root.Path())
 	if err != nil {
@@ -866,7 +866,7 @@ func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value seeds cwd into the execution context, because lyxcwd.WithCwd panics on an empty directory.
+// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value seeds cwd into the execution context, because lymcwd.WithCwd panics on an empty directory.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)

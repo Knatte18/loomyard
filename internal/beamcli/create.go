@@ -1,4 +1,4 @@
-// create.go is the "lyx beam create" sequence: it judges the named board entry, then claims the root, records the owner and the beam flag, and starts the beam's pawl run as a detached first pass, each step skipped when its result is already there.
+// create.go is the "lym beam create" sequence: it judges the named board entry, then claims the root, records the owner and the beam flag, and starts the beam's pawl run as a detached first pass, each step skipped when its result is already there.
 
 package beamcli
 
@@ -55,11 +55,11 @@ func create(deps createDeps, slug, anchor string) (createResult, error) {
 	}
 	here, err := deps.Machine()
 	if err != nil {
-		return result, fmt.Errorf("lyx beam create: read this machine's name: %w", err)
+		return result, fmt.Errorf("lym beam create: read this machine's name: %w", err)
 	}
 	owners, err := deps.ReadOwners()
 	if err != nil {
-		return result, fmt.Errorf("lyx beam create: read the board's owners: %w", err)
+		return result, fmt.Errorf("lym beam create: read the board's owners: %w", err)
 	}
 	if err := judgeCreateEntry(deps, owners, here, slug); err != nil {
 		return result, err
@@ -72,7 +72,7 @@ func create(deps createDeps, slug, anchor string) (createResult, error) {
 func refuseCreateHere(deps createDeps, acting, slug string) error {
 	parent, err := deps.ParentBeam(slug)
 	if err != nil {
-		return fmt.Errorf("lyx beam create: read the beam %s belongs to: %w; way forward: fix the cause it names, then run `lyx beam create %s` again", slug, err, slug)
+		return fmt.Errorf("lym beam create: read the beam %s belongs to: %w; way forward: fix the cause it names, then run `lym beam create %s` again", slug, err, slug)
 	}
 	want := deps.PrimeName
 	if parent != "" {
@@ -84,15 +84,15 @@ func refuseCreateHere(deps createDeps, acting, slug string) error {
 	if parent != "" && !deps.PairPresent(parent) {
 		onOrigin, err := deps.BranchOnOrigin(parent)
 		if err != nil {
-			return fmt.Errorf("lyx beam create: read whether the branch of the parent beam %s is on origin: %w; way forward: fix the cause it names, then run `lyx beam create %s` again", parent, err, slug)
+			return fmt.Errorf("lym beam create: read whether the branch of the parent beam %s is on origin: %w; way forward: fix the cause it names, then run `lym beam create %s` again", parent, err, slug)
 		}
-		command := "lyx beam create " + parent
+		command := "lym beam create " + parent
 		if onOrigin {
-			command = "lyx adopt " + parent
+			command = "lym adopt " + parent
 		}
-		return fmt.Errorf("lyx beam create: %s belongs to the beam %s, whose pair is not on this machine; way forward: run `%s`, then run `lyx beam create %s` in %s", slug, parent, command, slug, deps.WorktreePath(parent))
+		return fmt.Errorf("lym beam create: %s belongs to the beam %s, whose pair is not on this machine; way forward: run `%s`, then run `lym beam create %s` in %s", slug, parent, command, slug, deps.WorktreePath(parent))
 	}
-	return fmt.Errorf("lyx beam create: %s is created from its parent's worktree, %s, and not from %s; way forward: run `lyx beam create %s` in %s", slug, deps.WorktreePath(want), acting, slug, deps.WorktreePath(want))
+	return fmt.Errorf("lym beam create: %s is created from its parent's worktree, %s, and not from %s; way forward: run `lym beam create %s` in %s", slug, deps.WorktreePath(want), acting, slug, deps.WorktreePath(want))
 }
 
 // judgeCreateEntry refuses the entry slug unless it is an open project, whose beam is not another machine's and whose parent is not owned by another machine.
@@ -100,14 +100,14 @@ func judgeCreateEntry(deps createDeps, owners boardengine.Owners, here, slug str
 	entry, held := owners.Entries[slug]
 	switch {
 	case !held || (!entry.IsTask && !entry.IsProject):
-		return fmt.Errorf("lyx beam create: %q is not a project entry, as an absent entry or a note is not; way forward: make one with `lyx board upsert` as a project under a slug of its own, then run `lyx beam create` on that slug", slug)
+		return fmt.Errorf("lym beam create: %q is not a project entry, as an absent entry or a note is not; way forward: make one with `lym board upsert` as a project under a slug of its own, then run `lym beam create` on that slug", slug)
 	case entry.IsTask:
-		return fmt.Errorf("lyx beam create: %q is a task, and a beam is made from a project entry; way forward: make a project entry with `lyx board upsert` under a slug of its own, then run `lyx beam create <that slug>`", slug)
+		return fmt.Errorf("lym beam create: %q is a task, and a beam is made from a project entry; way forward: make a project entry with `lym board upsert` under a slug of its own, then run `lym beam create <that slug>`", slug)
 	case entry.Done:
-		return fmt.Errorf("lyx beam create: the project %q is done and already landed; way forward: make a new project entry with `lyx board upsert` under a slug of its own, then run `lyx beam create` on it", slug)
+		return fmt.Errorf("lym beam create: the project %q is done and already landed; way forward: make a new project entry with `lym board upsert` under a slug of its own, then run `lym beam create` on it", slug)
 	}
 	if entry.Beam && boardengine.OwnedElsewhere(entry.Owner, here) {
-		return fmt.Errorf("lyx beam create: the beam %s is owned by machine %s; way forward: run `lyx beam create %s` on %s, or run `lyx adopt %s` here to take the beam over and then `lyx beam create %s`", slug, entry.Owner, slug, entry.Owner, slug, slug)
+		return fmt.Errorf("lym beam create: the beam %s is owned by machine %s; way forward: run `lym beam create %s` on %s, or run `lym adopt %s` here to take the beam over and then `lym beam create %s`", slug, entry.Owner, slug, entry.Owner, slug, slug)
 	}
 	return judgeParentOwner(deps, owners, here, slug)
 }
@@ -116,19 +116,19 @@ func judgeCreateEntry(deps createDeps, owners boardengine.Owners, here, slug str
 func judgeParentOwner(deps createDeps, owners boardengine.Owners, here, slug string) error {
 	parent, err := deps.ParentOf(slug)
 	if err != nil {
-		return fmt.Errorf("lyx beam create: read the parent of %s: %w", slug, err)
+		return fmt.Errorf("lym beam create: read the parent of %s: %w", slug, err)
 	}
 	owner, subject := owners.Prime, boardengine.RootSubject
 	if parent != "" {
 		if owner, err = owners.Effective(parent, deps.ParentOf); err != nil {
-			return fmt.Errorf("lyx beam create: read the owner of %s: %w", parent, err)
+			return fmt.Errorf("lym beam create: read the owner of %s: %w", parent, err)
 		}
 		if subject, err = owners.AdoptSubject(parent, deps.ParentOf); err != nil {
-			return fmt.Errorf("lyx beam create: read what adopting %s takes: %w", parent, err)
+			return fmt.Errorf("lym beam create: read what adopting %s takes: %w", parent, err)
 		}
 	}
 	if boardengine.OwnedElsewhere(owner, here) {
-		return fmt.Errorf("lyx beam create: the parent of %s is owned by machine %s, which owns whatever is made under it; way forward: run `lyx adopt %s` here to take it over, then `lyx beam create %s`", slug, owner, subject, slug)
+		return fmt.Errorf("lym beam create: the parent of %s is owned by machine %s, which owns whatever is made under it; way forward: run `lym adopt %s` here to take it over, then `lym beam create %s`", slug, owner, subject, slug)
 	}
 	return nil
 }
@@ -138,16 +138,16 @@ func judgeParentOwner(deps createDeps, owners boardengine.Owners, here, slug str
 // The owner step records this machine as the beam's owner with the beam flag and the pawl recipe in one write.
 // The run is the last step, so a beam's pair is made by the run's own Worktree-Create and marked by its Beam-Up.
 func createSteps(deps createDeps, owners boardengine.Owners, here, slug, anchor string, result *createResult) error {
-	rerun := "run `lyx beam create " + slug + "` again"
+	rerun := "run `lym beam create " + slug + "` again"
 
 	if owners.Prime == "" {
 		write, err := deps.SetOwners(boardengine.OwnerRequest{Machine: here, Prime: true})
 		if err != nil {
-			return fmt.Errorf("lyx beam create: record this machine as the hub's prime owner: %w; way forward: fix the cause it names, then %s", err, rerun)
+			return fmt.Errorf("lym beam create: record this machine as the hub's prime owner: %w; way forward: fix the cause it names, then %s", err, rerun)
 		}
 		if _, lost := write.Lost[boardengine.OwnerWritePrime]; lost {
 			if owners, err = deps.ReadOwners(); err != nil {
-				return fmt.Errorf("lyx beam create: read the board's owners: %w", err)
+				return fmt.Errorf("lym beam create: read the board's owners: %w", err)
 			}
 			if err := judgeParentOwner(deps, owners, here, slug); err != nil {
 				return err
@@ -161,31 +161,31 @@ func createSteps(deps createDeps, owners boardengine.Owners, here, slug, anchor 
 	if !entry.Beam || entry.Owner != here {
 		write, err := deps.SetOwners(boardengine.OwnerRequest{Machine: here, Slugs: []string{slug}, Beam: true, ParentOf: deps.ParentOf})
 		if err != nil {
-			return fmt.Errorf("lyx beam create: record this machine as the owner of %s with the beam flag: %w; way forward: fix the cause it names, then %s", slug, err, rerun)
+			return fmt.Errorf("lym beam create: record this machine as the owner of %s with the beam flag: %w; way forward: fix the cause it names, then %s", slug, err, rerun)
 		}
 		if owner, lost := write.Lost[slug]; lost {
-			return fmt.Errorf("lyx beam create: another machine recorded %s as the owner of %s while this write was in flight; way forward: run `lyx adopt %s` to take the beam over, then `lyx beam create %s`", owner, slug, slug, slug)
+			return fmt.Errorf("lym beam create: another machine recorded %s as the owner of %s while this write was in flight; way forward: run `lym adopt %s` to take the beam over, then `lym beam create %s`", owner, slug, slug, slug)
 		}
 		result.OwnerRecorded = true
 	}
 
 	state, found, err := deps.RunStatus(slug)
 	if err != nil {
-		return fmt.Errorf("lyx beam create: read the pawl run of %s: %w; way forward: fix the cause it names, then %s", slug, err, rerun)
+		return fmt.Errorf("lym beam create: read the pawl run of %s: %w; way forward: fix the cause it names, then %s", slug, err, rerun)
 	}
 	if found && state != shedengine.StateDone {
 		result.RunLive = true
 	} else {
 		envelope, err := deps.StartRun(slug, anchor)
 		if err != nil {
-			return fmt.Errorf("lyx beam create: start the pawl run of %s: %w; way forward: fix the cause it names, then %s", slug, err, rerun)
+			return fmt.Errorf("lym beam create: start the pawl run of %s: %w; way forward: fix the cause it names, then %s", slug, err, rerun)
 		}
 		result.FirstPass = envelope
 		if ok, _ := envelope["ok"].(bool); !ok {
-			return fmt.Errorf("lyx beam create: the first pass of %s did not start: %v; way forward: fix the cause it names, then %s", slug, envelope["error"], rerun)
+			return fmt.Errorf("lym beam create: the first pass of %s did not start: %v; way forward: fix the cause it names, then %s", slug, envelope["error"], rerun)
 		}
 		result.RunStarted = true
 	}
-	result.WayForward = fmt.Sprintf("run `lyx batten status %s` to follow the run", slug)
+	result.WayForward = fmt.Sprintf("run `lym batten status %s` to follow the run", slug)
 	return nil
 }

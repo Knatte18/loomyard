@@ -101,7 +101,7 @@ func (p *beamDescribeProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 			parts[i] = finding.Error()
 		}
 		// The landing's claim holds the entry under the run lock, so the entry is fixed only after the landing is ended.
-		return fail("validate the description", fmt.Errorf("%s; way forward: run \"lyx batten cancel %s\" to end the landing, fix the title or brief with \"lyx board upsert\", then run \"lyx beam land %s\" again", strings.Join(parts, "; "), p.deps.Slug, p.deps.Slug))
+		return fail("validate the description", fmt.Errorf("%s; way forward: run \"lym batten cancel %s\" to end the landing, fix the title or brief with \"lym board upsert\", then run \"lym beam land %s\" again", strings.Join(parts, "; "), p.deps.Slug, p.deps.Slug))
 	}
 	if err := p.deps.Commit(); err != nil {
 		return fail("commit the description", err)

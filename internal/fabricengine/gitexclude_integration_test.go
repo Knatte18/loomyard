@@ -1,12 +1,8 @@
 //go:build tier1
 
-// gitexclude_integration_test.go pins the serialisation and atomicity of `.git/info/exclude`
-// mutation.
-// The file lives in the repo's COMMON gitdir, so every worktree of a hub shares it and two `lyx
-// fabric` verbs running side by side mutate the same bytes.
-// Before mutateGitExclude existed, each caller did its own read-modify-write with os.WriteFile,
-// whose truncate-then-write let a concurrent reader observe an EMPTY file and write that emptiness
-// back — destroying the operator's own exclude patterns as well as fabric's junction exclusions.
+// gitexclude_integration_test.go pins the serialisation and atomicity of `.git/info/exclude` mutation.
+// The file lives in the repo's COMMON gitdir, so every worktree of a hub shares it and two `lym fabric` verbs running side by side mutate the same bytes.
+// Before mutateGitExclude existed, each caller did its own read-modify-write with os.WriteFile, whose truncate-then-write let a concurrent reader observe an EMPTY file and write that emptiness back — destroying the operator's own exclude patterns as well as fabric's junction exclusions.
 // It is integration-tagged because resolving the exclude path spawns real git.
 
 package fabricengine
@@ -95,7 +91,7 @@ func TestMutateGitExclude_ReportsWhetherContentChanged(t *testing.T) {
 
 	repoDir := newGitRepoForExcludeTest(t)
 
-	_, changed, err := mutateGitExclude(repoDir, appendPatternOnce("/_lyx"))
+	_, changed, err := mutateGitExclude(repoDir, appendPatternOnce("/_lym"))
 	if err != nil {
 		t.Fatalf("first mutateGitExclude = %v; want nil", err)
 	}
@@ -103,7 +99,7 @@ func TestMutateGitExclude_ReportsWhetherContentChanged(t *testing.T) {
 		t.Error("first mutateGitExclude reported changed=false; want true")
 	}
 
-	_, changed, err = mutateGitExclude(repoDir, appendPatternOnce("/_lyx"))
+	_, changed, err = mutateGitExclude(repoDir, appendPatternOnce("/_lym"))
 	if err != nil {
 		t.Fatalf("second mutateGitExclude = %v; want nil", err)
 	}

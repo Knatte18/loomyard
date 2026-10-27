@@ -154,7 +154,7 @@ func (s *Store) Read(sender Sender, from string) (*Reading, error) {
 	return reading, nil
 }
 
-var errExternalHoldsNothing = errors.New("creel: an EXTERNAL caller holds no mail; wait for an answer with `lyx creel post --wait-reply`")
+var errExternalHoldsNothing = errors.New("creel: an EXTERNAL caller holds no mail; wait for an answer with `lym creel post --wait-reply`")
 
 // Ack marks the reserved messages read and journals each; a message that left the holder meanwhile stays as it is.
 func (r *Reading) Ack() error {
@@ -458,7 +458,7 @@ func (s *Store) strandTarget(receiver string) (Strand, error) {
 // A privileged sender (EXTERNAL, a program, an orch strand) may act on any strand, an orch strand included, and any other sender on its own.
 func (s *Store) checkMayAct(sender Sender, receiver, action string) error {
 	if !sender.privileged() && sender.Name != receiver {
-		return fmt.Errorf("creel: %s may not %s another strand's pane; send it mail with `lyx creel post`", sender.Name, action)
+		return fmt.Errorf("creel: %s may not %s another strand's pane; send it mail with `lym creel post`", sender.Name, action)
 	}
 	return nil
 }
@@ -507,7 +507,7 @@ func (s *Store) interruptTarget(sender Sender, target Strand) (bool, error) {
 			if liveErr != nil {
 				return false, unreadablePauseRefusal(target.Name, liveErr)
 			}
-			return false, fmt.Errorf("creel: the pause covering %s was lifted before the interrupt, so nothing was interrupted; way forward: run \"lyx creel interrupt %s\" again", target.Name, target.Name)
+			return false, fmt.Errorf("creel: the pause covering %s was lifted before the interrupt, so nothing was interrupted; way forward: run \"lym creel interrupt %s\" again", target.Name, target.Name)
 		}
 	}
 	err = s.delivery.Interrupt(target)
@@ -558,10 +558,10 @@ func (s *Store) Hold(sender Sender, receiver string, duration time.Duration) (Ho
 		return HoldResult{}, err
 	}
 	if !sender.privileged() && sender.Name != target.Name {
-		return HoldResult{}, fmt.Errorf("creel: %s may not hold another strand; send it mail with `lyx creel post`", sender.Name)
+		return HoldResult{}, fmt.Errorf("creel: %s may not hold another strand; send it mail with `lym creel post`", sender.Name)
 	}
 	if isOrchName(target.Name) && sender.Kind != KindProgram {
-		return HoldResult{}, fmt.Errorf("creel: only a program may hold an orch strand, and %s is not one; send %s mail with `lyx creel post`, or cycle the orch with `lyx orch distill` or `lyx orch refresh`", sender.Name, target.Name)
+		return HoldResult{}, fmt.Errorf("creel: only a program may hold an orch strand, and %s is not one; send %s mail with `lym creel post`, or cycle the orch with `lym orch distill` or `lym orch refresh`", sender.Name, target.Name)
 	}
 	var result HoldResult
 	err = s.do(func() error {

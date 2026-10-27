@@ -25,7 +25,7 @@ import (
 
 // TestBattenPreRun_ContinuePass runs the pre-run under --continue-pass over a hand-populated receiver and a temp dobby state, with a pause covering the slug:
 // a continue pass of a running Run-Shed run the state names runs no reconcile, no reopening and no pause refusal;
-// a run at Land, a run blocked at Run-Shed, a run with no status, a run the state does not name, a run with a full pass owed and a run with an origin-owed marker each refuse naming `lyx batten run <slug>`, with the continue-refused exit code.
+// a run at Land, a run blocked at Run-Shed, a run with no status, a run the state does not name, a run with a full pass owed and a run with an origin-owed marker each refuse naming `lym batten run <slug>`, with the continue-refused exit code.
 func TestBattenPreRun_ContinuePass(t *testing.T) {
 	t.Parallel()
 
@@ -135,7 +135,7 @@ func TestBattenPreRun_ContinuePass(t *testing.T) {
 			if !errors.As(err, &refusal) {
 				t.Fatalf("battenPreRun() = %v; want a continue refusal", err)
 			}
-			for _, want := range []string{tt.wantRefusal, "lyx batten run " + slug} {
+			for _, want := range []string{tt.wantRefusal, "lym batten run " + slug} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("battenPreRun() error = %q; want it to carry %q", err.Error(), want)
 				}

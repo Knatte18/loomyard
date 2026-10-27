@@ -2,7 +2,7 @@
 
 // smoke_drivingsurface_test.go pins the live-substrate properties behind a run's driving surface.
 // On the start side, an llm-seeded start keeps exactly one status strand.
-// On the step side, "lyx loom step" and "lyx shed step" bring reed up and never add, replace or remove a status strand, whatever driver the run was seeded with.
+// On the step side, "lym loom step" and "lym shed step" bring reed up and never add, replace or remove a status strand, whatever driver the run was seeded with.
 // A start re-arms the session's follow state and selects the run's relevant window, and a resume leaves a follow-off session off.
 // ensureStatusStrand's branches are pinned at Tier 1 through resolveStatusStrandAction;
 // what only a real tmux server can show is that a step leaves reed's strand table without a status strand, and leaves a pre-existing one alone.
@@ -19,31 +19,31 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 )
 
 // verbSmokeTimeout bounds one step or `start --no-attach` invocation.
 // The providerless shuttle config makes a step's producer launch and a start's llm driver launch fail within seconds.
 const verbSmokeTimeout = 60 * time.Second
 
-// readFollow returns the session option @lyx_follow of eng's session, empty when unset.
+// readFollow returns the session option @lym_follow of eng's session, empty when unset.
 // It reads through the tmux binary on the engine's socket, so the helper sees what a viewer's session shows.
 func readFollow(t *testing.T, eng *reedengine.Engine) string {
 	t.Helper()
-	out, err := exec.Command(tmuxBinaryPath(t), "-L", eng.Socket(), "display-message", "-p", "-t", "="+eng.SessionName()+":", "#{@lyx_follow}").Output()
+	out, err := exec.Command(tmuxBinaryPath(t), "-L", eng.Socket(), "display-message", "-p", "-t", "="+eng.SessionName()+":", "#{@lym_follow}").Output()
 	if err != nil {
-		t.Fatalf("read @lyx_follow: %v", err)
+		t.Fatalf("read @lym_follow: %v", err)
 	}
 	return strings.TrimSpace(string(out))
 }
 
-// setFollow sets the session option @lyx_follow of eng's session to value.
+// setFollow sets the session option @lym_follow of eng's session to value.
 func setFollow(t *testing.T, eng *reedengine.Engine, value string) {
 	t.Helper()
-	if out, err := exec.Command(tmuxBinaryPath(t), "-L", eng.Socket(), "set-option", "-t", "="+eng.SessionName()+":", "@lyx_follow", value).CombinedOutput(); err != nil {
-		t.Fatalf("set @lyx_follow %s: %v; output: %s", value, err, out)
+	if out, err := exec.Command(tmuxBinaryPath(t), "-L", eng.Socket(), "set-option", "-t", "="+eng.SessionName()+":", "@lym_follow", value).CombinedOutput(); err != nil {
+		t.Fatalf("set @lym_follow %s: %v; output: %s", value, err, out)
 	}
 }
 
@@ -78,13 +78,13 @@ func statusStrandPane(t *testing.T, eng *reedengine.Engine) string {
 // The step that adds a status strand builds on the reed session the step before it brought up, and the strand it adds stays for the steps after it.
 func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 	tmuxBinaryPath(t)
-	exe := lyxbin.Build(t)
+	exe := lymbin.Build(t)
 
-	requireNoStatusStrandAfter := func(t *testing.T, loc *lyxcwd.Location, worktree, verb string, args ...string) {
+	requireNoStatusStrandAfter := func(t *testing.T, loc *lymcwd.Location, worktree, verb string, args ...string) {
 		t.Helper()
 		out, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, verbSmokeTimeout, args...)
 		if err != nil {
-			t.Fatalf("lyx %s: %v; output: %s", verb, err, out)
+			t.Fatalf("lym %s: %v; output: %s", verb, err, out)
 		}
 
 		eng := probeReedEngine(t, loc)
@@ -121,7 +121,7 @@ func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 
 			out, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, verbSmokeTimeout, "loom", "step")
 			if err != nil {
-				t.Fatalf("lyx loom step: %v; output: %s", err, out)
+				t.Fatalf("lym loom step: %v; output: %s", err, out)
 			}
 
 			status, err := eng.Status()
@@ -148,14 +148,14 @@ func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 
 			out, exit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, verbSmokeTimeout, "loom", "resume")
 			if err != nil || exit != 0 {
-				t.Fatalf("lyx loom resume: exit %d, err %v; output: %s", exit, err, out)
+				t.Fatalf("lym loom resume: exit %d, err %v; output: %s", exit, err, out)
 			}
 			if !strings.Contains(out, "a Go driver was spawned") {
-				t.Fatalf("lyx loom resume output = %s; want the Go driver spawn, which proves the wake path rather than an early refusal", out)
+				t.Fatalf("lym loom resume output = %s; want the Go driver spawn, which proves the wake path rather than an early refusal", out)
 			}
 
 			if got := readFollow(t, eng); got != "off" {
-				t.Errorf("@lyx_follow after the resume = %q; want off", got)
+				t.Errorf("@lym_follow after the resume = %q; want off", got)
 			}
 			if got := windowID(t, eng, current); got != before {
 				t.Errorf("current window after the resume = %s; want %s left as it was", got, before)
@@ -194,14 +194,14 @@ func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 
 			out, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, verbSmokeTimeout, "loom", "start", "--no-attach")
 			if err != nil {
-				t.Fatalf("lyx loom start --no-attach: %v; output: %s", err, out)
+				t.Fatalf("lym loom start --no-attach: %v; output: %s", err, out)
 			}
 
 			if count := statusStrandCount(t, eng, statusStrandDisplayName); count != 1 {
 				t.Errorf("status strands after an llm-seeded start = %d; want 1; output: %s", count, out)
 			}
 			if got := readFollow(t, eng); got != "on" {
-				t.Errorf("@lyx_follow after the start = %q; want on; output: %s", got, out)
+				t.Errorf("@lym_follow after the start = %q; want on; output: %s", got, out)
 			}
 			// The providerless driver launch leaves no live agent, so the relevant window is the overview holding the status strand.
 			if got, want := windowID(t, eng, "="+eng.SessionName()+":"), windowID(t, eng, statusStrandPane(t, eng)); got != want {

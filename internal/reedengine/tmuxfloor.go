@@ -89,7 +89,7 @@ func probeTmuxVersion(tmuxPath string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// CheckTmuxFloor reports whether the tmux at tmuxPath is at or above lyx's floor, probing once per resolved path per process.
+// CheckTmuxFloor reports whether the tmux at tmuxPath is at or above lym's floor, probing once per resolved path per process.
 // It returns a *toolfloor.FloorError for a tmux below the floor, and the wrapped exec error, uncached, when tmux could not be run.
 // It admits without probing on Windows, whose psmux has its own version shape and the capability probe's own floor.
 // It is exported so a tmux spawn outside the runner checks too.

@@ -1,5 +1,5 @@
 <!-- This is the burler reviewer seat stencil: the only seat of the review half's one-seat table.
-     It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go), seeded to <hub>/_board/_lyx/stencils/burler/ and read
+     It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go), seeded to <hub>/_board/_lym/stencils/burler/ and read
      from there at call time, then filled by internal/seatengine from the seat's value map and handed to the
      reviewer's shuttle run as the agent's entire visible instruction set — the two instruction
      files it names below are read one at a time, only when the review reaches that step, never

@@ -90,7 +90,7 @@ type Deps struct {
 	EndProcess func(pid int, startTime string) ([]runproc.Ended, error)
 	// HubPath is the hub directory.
 	HubPath string
-	// Executable is the running lyx's own executable path, empty when it is unknown.
+	// Executable is the running lym's own executable path, empty when it is unknown.
 	Executable string
 	// NetOps lists the network operations in flight.
 	NetOps func() ([]pauserecord.NetOp, error)

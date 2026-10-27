@@ -117,7 +117,7 @@ func TestMarkBeam(t *testing.T) {
 		if err == nil || marked {
 			t.Fatalf("MarkBeam(%q) = (%v, %v); want a refusal", slug, marked, err)
 		}
-		for _, want := range []string{slug, "lyx fabric reconcile"} {
+		for _, want := range []string{slug, "lym fabric reconcile"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("MarkBeam(%q) error = %v; want it to contain %q", slug, err, want)
 			}

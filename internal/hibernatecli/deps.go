@@ -13,8 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hibernateengine"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -36,18 +36,18 @@ const (
 )
 
 // hibernateDir is the hub's board-level directory holding the request, its lock and the daemon's log.
-func hibernateDir(location *lyxcwd.Location) string {
-	return filepath.Join(fabricengine.HubScratchDir(location.HubPath), lyxdirs.HibernateDirName)
+func hibernateDir(location *lymcwd.Location) string {
+	return filepath.Join(fabricengine.HubScratchDir(location.HubPath), lymdirs.HibernateDirName)
 }
 
 // hubDeps fills the engine's Deps for the hub location belongs to.
 // Tender's seams build their wiring at each call, so each reading sees the hub's current pairs, and `status` builds none.
-func hubDeps(location *lyxcwd.Location) (hibernateengine.Deps, error) {
+func hubDeps(location *lymcwd.Location) (hibernateengine.Deps, error) {
 	primeName, err := fabricengine.PrimeName(location)
 	if err != nil {
 		return hibernateengine.Deps{}, err
 	}
-	prime, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(location, primeName))
+	prime, err := lymcwd.ResolveWorktree(fabricengine.WorktreePath(location, primeName))
 	if err != nil {
 		return hibernateengine.Deps{}, err
 	}
@@ -119,7 +119,7 @@ func hubDeps(location *lyxcwd.Location) (hibernateengine.Deps, error) {
 }
 
 // readRunStatus reads the batten status of the run slug in the prime, and reports not found when the run has no status file.
-func readRunStatus(prime *lyxcwd.Location, slug string) (hibernateengine.RunStatus, bool, error) {
+func readRunStatus(prime *lymcwd.Location, slug string) (hibernateengine.RunStatus, bool, error) {
 	statusPath := shedrun.StatusFile(prime, slug)
 	if _, err := os.Stat(statusPath); os.IsNotExist(err) {
 		return hibernateengine.RunStatus{}, false, nil

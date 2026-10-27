@@ -17,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
@@ -26,7 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 )
 
-// RemoveQuietWait is the quiet-wait bound `lyx fabric remove` passes.
+// RemoveQuietWait is the quiet-wait bound `lym fabric remove` passes.
 // It is a constant rather than config: the wait never kills a working driver on the operator path, and an unbounded wait would hang the hub's land step.
 const RemoveQuietWait = 2 * time.Minute
 
@@ -98,7 +98,7 @@ type quietState struct {
 // Teardown runs the pair-teardown sequence.
 // Each substrate sits behind an unexported function field so the untagged tests drive the sequence with fakes.
 type Teardown struct {
-	prime    *lyxcwd.Location
+	prime    *lymcwd.Location
 	interval time.Duration
 	// goos is the operating system the way forward of a held driver lock is worded for.
 	goos string
@@ -161,7 +161,7 @@ type Teardown struct {
 }
 
 // New wires the production substrates from the hub's prime location.
-func New(prime *lyxcwd.Location) (*Teardown, error) {
+func New(prime *lymcwd.Location) (*Teardown, error) {
 	if prime == nil {
 		return nil, errors.New("pairteardown: New needs the hub's prime location")
 	}
@@ -342,7 +342,7 @@ func survivorsBusyError(slug string, survivors []runproc.Ended) error {
 // driverLockBusyError builds the ErrDriverBusy refusal for a driver lock held after the owned processes were ended.
 // retry names the step the operator retries once the holder is gone.
 func (t *Teardown) driverLockBusyError(slug, retry string) error {
-	pair, err := lyxcwd.NamedWorktree(t.prime.HubPath, slug)
+	pair, err := lymcwd.NamedWorktree(t.prime.HubPath, slug)
 	if err != nil {
 		return fmt.Errorf("locate the driver lock of pair %q: %w", slug, err)
 	}
@@ -350,12 +350,12 @@ func (t *Teardown) driverLockBusyError(slug, retry string) error {
 	var wayForward string
 	switch {
 	case t.goos != "windows":
-		wayForward = "find the holder in the replaced-binary part of `lyx tender status` or with `ps`, end it, then retry " + retry
+		wayForward = "find the holder in the replaced-binary part of `lym tender status` or with `ps`, end it, then retry " + retry
 	default:
 		if pid, found := t.driverPID(slug); found {
 			wayForward = fmt.Sprintf("end the driver with `taskkill /PID %d /T /F`, then retry %s", pid, retry)
 		} else {
-			wayForward = fmt.Sprintf("end the `lyx loom drive` process of the pair in Task Manager, the one holding %s, then retry %s", lockPath, retry)
+			wayForward = fmt.Sprintf("end the `lym loom drive` process of the pair in Task Manager, the one holding %s, then retry %s", lockPath, retry)
 		}
 	}
 	return fmt.Errorf("%w: the driver lock %s of pair %q is held by a process the owner record does not reach; %s", ErrDriverBusy, lockPath, slug, wayForward)
@@ -504,10 +504,10 @@ func (t *Teardown) busyError(slug string, st quietState) error {
 	if err != nil {
 		return fmt.Errorf("locate the anchor of pair %q: %w", slug, err)
 	}
-	attach := fmt.Sprintf("lyx reed attach, run from %s", anchor)
-	wayForward := fmt.Sprintf("retry once the driver has written its report, or pause the run with `lyx tender pause %s` and run the removal again, which the pause lets through", slug)
+	attach := fmt.Sprintf("lym reed attach, run from %s", anchor)
+	wayForward := fmt.Sprintf("retry once the driver has written its report, or pause the run with `lym tender pause %s` and run the removal again, which the pause lets through", slug)
 	if st.loop {
-		wayForward = fmt.Sprintf("pause the run with `lyx shed pause %s --after <current_producer>`, or retry once the loop stops; %s", slug, wayForward)
+		wayForward = fmt.Sprintf("pause the run with `lym shed pause %s --after <current_producer>`, or retry once the loop stops; %s", slug, wayForward)
 	}
 	return fmt.Errorf("%w: %s in pair %q%s; attach with %s; %s", ErrDriverBusy, blocker, slug, t.ownedProcessesText(slug), attach, wayForward)
 }
@@ -530,7 +530,7 @@ func (t *Teardown) ownedProcessesText(slug string) string {
 
 // taskAnchor returns the task worktree's anchor path, at the task's own anchor.
 func (t *Teardown) taskAnchor(slug string) (string, error) {
-	pair, err := lyxcwd.NamedWorktree(t.prime.HubPath, slug)
+	pair, err := lymcwd.NamedWorktree(t.prime.HubPath, slug)
 	if err != nil {
 		return "", err
 	}
@@ -680,12 +680,12 @@ func (t *Teardown) TaskWorktreeGone(slug string) (bool, error) {
 }
 
 // taskLocation resolves the present task worktree's own location.
-func (t *Teardown) taskLocation(slug string) (*lyxcwd.Location, error) {
-	return lyxcwd.ResolveWorktree(fabricengine.WorktreePath(t.prime, slug))
+func (t *Teardown) taskLocation(slug string) (*lymcwd.Location, error) {
+	return lymcwd.ResolveWorktree(fabricengine.WorktreePath(t.prime, slug))
 }
 
 // reedEngine builds the reed engine for the present task worktree.
-func (t *Teardown) reedEngine(task *lyxcwd.Location) (*reedengine.Engine, error) {
+func (t *Teardown) reedEngine(task *lymcwd.Location) (*reedengine.Engine, error) {
 	cfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(task), "reed")
 	if err != nil {
 		return nil, err

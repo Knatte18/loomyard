@@ -242,14 +242,14 @@ func (e *Engine) classifyRecordedSessionLocked(recorded PaneGeneration) (recorde
 // Two ordinary routes reach it, and both are silently destructive without this guard:
 //
 //   - The worktree directory was renamed (R5 review finding R5-F5). SessionName derives from the
-//     worktree basename while .lyx travels with the directory, so `resume` boots a SECOND session
+//     worktree basename while .lym travels with the directory, so `resume` boots a SECOND session
 //     and relaunches every strand into it — reproduced live: after `mv svc-orig svc-moved`,
-//     `lyx reed resume` reported ok:true/resumed:1 and the strand's process was running twice, and
-//     the orphaned svc-orig session survived a `lyx reed down` because no worktree of that name
+//     `lym reed resume` reported ok:true/resumed:1 and the strand's process was running twice, and
+//     the orphaned svc-orig session survived a `lym reed down` because no worktree of that name
 //     exists for any engine to derive it from again.
-//   - A .lyx directory was hand-copied between worktrees of one hub (R5 review finding R5-F4).
+//   - A .lym directory was hand-copied between worktrees of one hub (R5 review finding R5-F4).
 //     The socket is per hub and pane ids are server-global, so the copied ids address the SOURCE
-//     worktree's live panes — reproduced live: a `lyx reed remove` in svc-alpha killed svc-beta's
+//     worktree's live panes — reproduced live: a `lym reed remove` in svc-alpha killed svc-beta's
 //     strand pane and its process, reporting ok:true.
 //
 // The identity comparison is what keeps this from firing on a legitimate namesake: a new worktree
@@ -288,7 +288,7 @@ func (e *Engine) refuseLiveForeignSessionLocked(recorded PaneGeneration) error {
 
 	return fmt.Errorf(
 		"this worktree's reed state was recorded against tmux session %q, which is STILL RUNNING on socket %q and is not this worktree's session (%q) — "+
-			"either the worktree directory was renamed while its session was up, or a .lyx directory was copied here from another worktree. "+
+			"either the worktree directory was renamed while its session was up, or a .lym directory was copied here from another worktree. "+
 			"Continuing would launch a second copy of every strand and leave %q running unreachably. "+
 			"Tear the old session down with \"%s -L %s kill-session -t '=%s'\" (or attach to it first to rescue its work), then re-run this command",
 		recorded.SessionName, e.Socket(), e.SessionName(), recorded.SessionName, e.TmuxPath(), e.Socket(), recorded.SessionName)

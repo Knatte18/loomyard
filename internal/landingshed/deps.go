@@ -112,7 +112,7 @@ type Deps struct {
 	// Slug is the run's slug, which Finalize's owner halts and repair note name in the adopt commands they give.
 	// Told by the caller.
 	Slug string
-	// AdoptSubject returns what `lyx adopt` takes to move the run, the beam or `root`, which Finalize's owner halts name for the run.
+	// AdoptSubject returns what `lym adopt` takes to move the run, the beam or `root`, which Finalize's owner halts name for the run.
 	// A returned error, and an empty answer, read as the run's Slug.
 	//
 	// Nil means "the run's slug", following CommitStatus's nil-is-absent convention.

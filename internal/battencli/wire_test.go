@@ -4,7 +4,7 @@
 // wiring for a slug whose worktree does not exist must succeed, and none of the four seams that
 // resolve the managed task worktree's own Location -- the status-path resolver, the spawn
 // directory, and both teardown halves -- may be invoked here, since each of the three that actually
-// resolves that Location reaches the resolver (lyxcwd.ResolveWorktree), which spawns git; this
+// resolves that Location reaches the resolver (lymcwd.ResolveWorktree), which spawns git; this
 // suite stays untagged and Tier 1, so it proves laziness structurally rather than by invoking a
 // seam and observing it run.
 
@@ -28,7 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -41,7 +41,7 @@ func TestWire_BuildsLazilyForANonexistentTaskWorktree(t *testing.T) {
 	t.Parallel()
 
 	c := &battenCLI{}
-	location := &lyxcwd.Location{
+	location := &lymcwd.Location{
 		RepoName:     "example",
 		HubPath:      t.TempDir(),
 		WorktreeName: "hub-repo",
@@ -396,7 +396,7 @@ func TestWire_ChildDriverDelegatesToChildDriverOf(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := &battenCLI{}
-			location := &lyxcwd.Location{
+			location := &lymcwd.Location{
 				RepoName:     "example",
 				HubPath:      t.TempDir(),
 				WorktreeName: "hub-repo",
@@ -431,7 +431,7 @@ func TestWire_ChildDriverDelegatesToChildDriverOf(t *testing.T) {
 // is an os.Stat, never the resolver, so this file stays Tier 1.
 func TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree(t *testing.T) {
 	c := &battenCLI{}
-	location := &lyxcwd.Location{
+	location := &lymcwd.Location{
 		RepoName:     "example",
 		HubPath:      t.TempDir(),
 		WorktreeName: "hub-repo",
@@ -675,7 +675,7 @@ func TestChildSpawnError(t *testing.T) {
 func TestTaskWorktree_AbsentPairIsAnAnswerAndANamedRefusal(t *testing.T) {
 	t.Parallel()
 
-	prime := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
+	prime := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
 
 	present, err := taskWorktreePresent(prime, "never-created")
 	if err != nil {
@@ -694,8 +694,8 @@ func TestTaskWorktree_AbsentPairIsAnAnswerAndANamedRefusal(t *testing.T) {
 			t.Errorf("taskWorktreeLocation(...) = %q; want it to contain %q", err.Error(), want)
 		}
 	}
-	if strings.Contains(err.Error(), "lyx fabric checkout") {
-		t.Errorf("taskWorktreeLocation(...) = %q; want it to never suggest \"lyx fabric checkout\" -- run from prime, that command mutates prime's own branch rather than restoring the missing task worktree", err.Error())
+	if strings.Contains(err.Error(), "lym fabric checkout") {
+		t.Errorf("taskWorktreeLocation(...) = %q; want it to never suggest \"lym fabric checkout\" -- run from prime, that command mutates prime's own branch rather than restoring the missing task worktree", err.Error())
 	}
 	if strings.Contains(err.Error(), "so a resumed run reaches a fresh create") {
 		t.Errorf("taskWorktreeLocation(...) = %q; want it to never promise that deleting branches alone rewinds the run -- the resumed run re-enters its persisted row, not Worktree-Create", err.Error())
@@ -705,15 +705,15 @@ func TestTaskWorktree_AbsentPairIsAnAnswerAndANamedRefusal(t *testing.T) {
 	}
 }
 
-// TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout asserts the create closure maps a dirty source, a task branch left locally and one left on origin to a precondition error naming their way forward -- the cancel verb for a leftover branch, never "lyx fabric checkout", which from prime switches prime itself -- while every other create error, a remote leftover on another branch included, passes through unchanged.
+// TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout asserts the create closure maps a dirty source, a task branch left locally and one left on origin to a precondition error naming their way forward -- the cancel verb for a leftover branch, never "lym fabric checkout", which from prime switches prime itself -- while every other create error, a remote leftover on another branch included, passes through unchanged.
 func TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout(t *testing.T) {
-	const taskBranch = "lyx-some-slug"
+	const taskBranch = "lym-some-slug"
 	leftover := &fabricengine.ErrBranchExists{Branch: taskBranch}
 	dirty := &fabricengine.ErrSourceDirty{Paths: []string{"a.go", "dir/b.go"}}
 	remoteOnTask := &fabricengine.ErrRemoteLeftover{Slug: "some-slug", Branch: taskBranch, RemoteTip: "0123456789abcdef"}
 	remoteOnRecords := &fabricengine.ErrRemoteLeftover{Slug: "some-slug", Branch: taskBranch + "-records", RemoteTip: "0123456789abcdef"}
 	other := errors.New("some other create failure")
-	leftoverWayForward := []string{"lyx batten cancel some-slug --remove", `then "lyx batten run some-slug"`}
+	leftoverWayForward := []string{"lym batten cancel some-slug --remove", `then "lym batten run some-slug"`}
 
 	tests := []struct {
 		name        string
@@ -723,7 +723,7 @@ func TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout(t *testing.T) {
 	}{
 		{"LeftoverBranch", leftover, append([]string{"task branch " + taskBranch + " is left from an earlier pair of this slug"}, leftoverWayForward...), false},
 		{"WrappedLeftoverBranch", fmt.Errorf("create: %w", leftover), leftoverWayForward, false},
-		{"BareSourceDirty", dirty, []string{"uncommitted tracked changes: a.go, dir/b.go", "commit or revert", `"lyx batten run some-slug" again`}, false},
+		{"BareSourceDirty", dirty, []string{"uncommitted tracked changes: a.go, dir/b.go", "commit or revert", `"lym batten run some-slug" again`}, false},
 		{"WrappedSourceDirty", fmt.Errorf("create: %w", dirty), []string{"a.go, dir/b.go", "commit or revert"}, false},
 		{"RemoteLeftoverOnTheTaskBranch", remoteOnTask, append([]string{"task branch " + taskBranch + " is left on origin"}, leftoverWayForward...), false},
 		{"RemoteLeftoverOnAnotherBranch", remoteOnRecords, nil, true},
@@ -751,8 +751,8 @@ func TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout(t *testing.T) {
 					t.Errorf("createRefusal(...) = %q; want it to contain %q", got.Error(), want)
 				}
 			}
-			if strings.Contains(got.Error(), "lyx fabric checkout") || strings.Contains(got.Error(), "git stash") {
-				t.Errorf("createRefusal(...) = %q; want it to never name \"lyx fabric checkout\" or \"git stash\"", got.Error())
+			if strings.Contains(got.Error(), "lym fabric checkout") || strings.Contains(got.Error(), "git stash") {
+				t.Errorf("createRefusal(...) = %q; want it to never name \"lym fabric checkout\" or \"git stash\"", got.Error())
 			}
 		})
 	}
@@ -769,7 +769,7 @@ func TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce(t *testing.T)
 	if !errors.Is(got, fabricengine.ErrPairSiblingDirty) {
 		t.Errorf("teardownRefusal(sibling dirty) = %v; want it to still wrap ErrPairSiblingDirty", got)
 	}
-	for _, want := range []string{"some-slug", "sibling worktree under the hub", "outside the run record paths", "commit or remove that content by hand", "lyx batten run some-slug"} {
+	for _, want := range []string{"some-slug", "sibling worktree under the hub", "outside the run record paths", "commit or remove that content by hand", "lym batten run some-slug"} {
 		if !strings.Contains(got.Error(), want) {
 			t.Errorf("teardownRefusal(sibling dirty) = %q; want it to contain %q", got.Error(), want)
 		}
@@ -783,7 +783,7 @@ func TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce(t *testing.T)
 	if !errors.Is(got, fabricengine.ErrArchiveFailed) {
 		t.Errorf("teardownRefusal(archive failed) = %v; want it to still wrap ErrArchiveFailed", got)
 	}
-	for _, want := range []string{"left in place", "push refused", "fix the failure named here", "lyx batten run some-slug"} {
+	for _, want := range []string{"left in place", "push refused", "fix the failure named here", "lym batten run some-slug"} {
 		if !strings.Contains(got.Error(), want) {
 			t.Errorf("teardownRefusal(archive failed) = %q; want it to contain %q", got.Error(), want)
 		}
@@ -797,7 +797,7 @@ func TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce(t *testing.T)
 	if !errors.Is(got, fabricengine.ErrPairPushRunning) {
 		t.Errorf("teardownRefusal(push running) = %v; want it to still wrap ErrPairPushRunning", got)
 	}
-	for _, want := range []string{"left in place", "a push of it is still running", "lyx batten run some-slug"} {
+	for _, want := range []string{"left in place", "a push of it is still running", "lym batten run some-slug"} {
 		if !strings.Contains(got.Error(), want) {
 			t.Errorf("teardownRefusal(push running) = %q; want it to contain %q", got.Error(), want)
 		}
@@ -859,8 +859,8 @@ func TestFinishRemoval(t *testing.T) {
 					t.Errorf("finishRemoval(%s) = %q; want it to contain %q", tt.name, err.Error(), want)
 				}
 			}
-			if strings.Contains(err.Error(), "lyx fabric prune") {
-				t.Errorf("finishRemoval(%s) = %q; want it to never name lyx fabric prune", tt.name, err.Error())
+			if strings.Contains(err.Error(), "lym fabric prune") {
+				t.Errorf("finishRemoval(%s) = %q; want it to never name lym fabric prune", tt.name, err.Error())
 			}
 		})
 	}

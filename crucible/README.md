@@ -127,7 +127,7 @@ Adjust package paths per module.
 # 1. Static + hermetic — must be green throughout
 go build ./...
 go vet ./internal/<module>engine/... ./internal/<module>cli/...
-go test -count=5 ./internal/<module>engine/... ./internal/<module>cli/... ./cmd/lyx/...
+go test -count=5 ./internal/<module>engine/... ./internal/<module>cli/... ./cmd/lym/...
 
 # 2. Live serial smoke (real substrate: `-tags tier2` for a tmux/pty module, `-tags tier3` for an LLM-driving one)
 # For an LLM-driving module, use -tags tier3 and replace -run Smoke with the ONE exact test name you mean to run.
@@ -165,7 +165,7 @@ the round agent exercises the real substrate by calling the module's own CLI **d
 **Do not have the round agent invoke a `sandbox-<module>-suite.cmd` launcher.** `tools/sandbox/`'s launcher machinery (`SANDBOX-<MODULE>-SUITE.md` + `suite.go`/`main.go`/the `.cmd` wrapper) exists to hand a scenario doc to a SEPARATE, context-free interactive `claude` session — a naive black-box tester with no source knowledge, useful for a *human operator* dogfooding the CLI (see [sandbox-howto.md](../sandbox-howto.md)), but meaningless for a round agent to spawn on top of itself: the round agent already has full source knowledge and its own tool calls,
 and the spawned session has no attached console of its own to inherit in this context anyway.
 Builder's `opus-r1` round (2026-07) made exactly this mistake — it read "launch the suite" as "invoke the launcher", judged that operator-assisted/cost-bearing, and as a result skipped ALL live driving for an entire round, silently substituting pure code-tracing.
-The fix: the round agent runs the real CLI commands itself (`lyx <module> <verb>`, foreground, waiting for each to return).
+The fix: the round agent runs the real CLI commands itself (`lym <module> <verb>`, foreground, waiting for each to return).
 This spawns real substrate underneath when the module rides reed/shuttle (real tmux panes, real interactive `claude` sessions) — that is expected and required, not something to avoid.
 None of it needs an attached TTY of its own: a tmux pane is a real pty regardless of whether anyone is watching it.
 
@@ -180,15 +180,15 @@ Reusable rules that bit us and are worth carrying to any module's live driving:
   Re-run `deploy-dev.cmd` (`deploy-dev` on POSIX) after **every** source change or you validate a stale binary and draw a false PASS/FAIL.
   When in doubt, re-deploy.
 - **Spawned agent panes run the binary that spawned them.**
-  Reed prepends the spawning binary's directory to every strand pane's `PATH` and exports `LYX_BIN` to its absolute path,
-  so an agent pane's bare `lyx …` resolves to the same build driving the round — no PATH setup needed.
+  Reed prepends the spawning binary's directory to every strand pane's `PATH` and exports `LYM_BIN` to its absolute path,
+  so an agent pane's bare `lym …` resolves to the same build driving the round — no PATH setup needed.
   For a round agent, the deploy-first footgun above is about the binary the round is *started* from;
   the panes underneath it inherit that choice rather than falling back to the operator's production install.
   This closes a real failure: crucible round `fable-high-r2` of batten ran the dev binary in batten and loom while the Discussion/Plan/Webster agents inside the child worktree ran a newer `PATH`-resolved build,
   which reconciled and committed a rewrite of the child's reed and loom config that the dev binary could then no longer load — and nothing reported the mismatch.
 - **Cost/time is not a reason to skip live driving.**
   A real substrate session (a real implementer/agent doing real work) takes real wall-clock minutes, not seconds — that is a budget fact, not grounds to fall back to code-tracing.
-  Reserve "cannot verify headlessly" strictly for a genuine environment gap or an actual human-eyeball need (e.g. a visual `lyx reed attach` confirmation) — never a blanket cost/turn-budget excuse.
+  Reserve "cannot verify headlessly" strictly for a genuine environment gap or an actual human-eyeball need (e.g. a visual `lym reed attach` confirmation) — never a blanket cost/turn-budget excuse.
 - **The high-yield focus list is a floor, not a ceiling.**
   The round agent is expected to hand-roll many more adversarial scenarios (crash/rebirth, cross-worktree scope, dead-but-present state, mid-op-failure orphans, rapid churn) beyond what that list names.
 - **Teardown discipline.**

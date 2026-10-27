@@ -62,10 +62,10 @@ func TestGeometry_Paths(t *testing.T) {
 	t.Parallel()
 
 	geom := Geometry{BoardDir: filepath.Join("hub", "_board")}
-	if got, want := geom.StampPath(), filepath.Join("hub", "_board", ".lyx", "config", "build-stamp.json"); got != want {
+	if got, want := geom.StampPath(), filepath.Join("hub", "_board", ".lym", "config", "build-stamp.json"); got != want {
 		t.Errorf("StampPath = %q, want %q", got, want)
 	}
-	if got, want := geom.LockPath(), filepath.Join("hub", "_board", ".lyx", "config", "reconcile.lock"); got != want {
+	if got, want := geom.LockPath(), filepath.Join("hub", "_board", ".lym", "config", "reconcile.lock"); got != want {
 		t.Errorf("LockPath = %q, want %q", got, want)
 	}
 }

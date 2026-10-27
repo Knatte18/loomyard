@@ -144,7 +144,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	resolved, err := configengine.Load(dirs, spec)
 	if err != nil {
 		if strings.Contains(err.Error(), "not initialized") {
-			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"; a session lyx refuses the verb from reports status: FAILED and the orch runs it")
+			return Config{}, fmt.Errorf("not initialized here; run \"lym fabric reconcile\"; a session lym refuses the verb from reports status: FAILED and the orch runs it")
 		}
 		return Config{}, err
 	}
@@ -175,7 +175,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		{"finalize_fix_max_lines", cfg.FinalizeFixMaxLines},
 	} {
 		if positive.value < 1 {
-			return Config{}, fmt.Errorf("landing config key %q: %d is below 1; way forward: lyx config landing --set %s=<n> from the prime", positive.key, positive.value, positive.key)
+			return Config{}, fmt.Errorf("landing config key %q: %d is below 1; way forward: lym config landing --set %s=<n> from the prime", positive.key, positive.value, positive.key)
 		}
 	}
 	engines := modelspec.EngineNames()
@@ -194,7 +194,7 @@ var retiredKeyRenames = []yamlengine.KeyRename{
 	{From: "merge_fix_attempts", To: "parent_align_fix_attempts"},
 }
 
-// MigrateConfig rewrites a landing.yaml document for lyx config reconcile and returns the rewritten bytes with one line per rewrite.
+// MigrateConfig rewrites a landing.yaml document for lym config reconcile and returns the rewritten bytes with one line per rewrite.
 // It moves a retired co_authored_by value into engine_trailers as the claude entry `Co-Authored-By: <value>`;
 // a document already holding engine_trailers keeps it and drops co_authored_by,
 // and an empty or non-scalar co_authored_by is dropped without an entry, as empty means off.

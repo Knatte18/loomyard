@@ -22,4 +22,4 @@ Read the per-module review prompt named in your brief (`_mill/<module>-review-pr
 
 This file exists solely to select a reasoning-effort tier via `subagent_type` at spawn time.
 It carries no `model:` key (orchestrator's per-call `model:` override stays independent) and no `tools:` key (inherits the full default tool set, same as `general-purpose` gets today) — effort is the only thing this profile changes.
-This mechanism is a **V0 stopgap**: once Hardener (crucible's V1, a Go engine) drives the loop inside a Fabric-initialized environment, effort comes from lyx's own `modelspec` instead and this file becomes obsolete.
+This mechanism is a **V0 stopgap**: once Hardener (crucible's V1, a Go engine) drives the loop inside a Fabric-initialized environment, effort comes from lym's own `modelspec` instead and this file becomes obsolete.

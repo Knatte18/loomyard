@@ -49,8 +49,8 @@ func TestRecordBatch_NoBeginRecord(t *testing.T) {
 		if !errors.Is(err, websterengine.ErrReportArchived) || !errors.Is(err, websterengine.ErrNoBeginRecord) {
 			t.Fatalf("RecordBatch() error = %v; want ErrReportArchived wrapping ErrNoBeginRecord", err)
 		}
-		if !strings.Contains(err.Error(), "lyx webster begin-batch 01") {
-			t.Errorf("RecordBatch() error = %q; want it to name `lyx webster begin-batch 01`", err.Error())
+		if !strings.Contains(err.Error(), "lym webster begin-batch 01") {
+			t.Errorf("RecordBatch() error = %q; want it to name `lym webster begin-batch 01`", err.Error())
 		}
 		if fx.Audit.callCount != 0 {
 			t.Errorf("Engine was reached (%d calls) with no begin record; want zero", fx.Audit.callCount)
@@ -72,8 +72,8 @@ func TestRecordBatch_NoBeginRecord(t *testing.T) {
 		if !errors.Is(err, websterengine.ErrNoBeginRecord) {
 			t.Fatalf("RecordBatch() error = %v; want errors.Is(err, ErrNoBeginRecord)", err)
 		}
-		if !strings.Contains(err.Error(), "lyx webster begin-batch 01") {
-			t.Errorf("RecordBatch() error = %q; want it to name `lyx webster begin-batch 01`", err.Error())
+		if !strings.Contains(err.Error(), "lym webster begin-batch 01") {
+			t.Errorf("RecordBatch() error = %q; want it to name `lym webster begin-batch 01`", err.Error())
 		}
 	})
 
@@ -101,7 +101,7 @@ func TestRecordBatch_NoBeginRecord(t *testing.T) {
 		fx.Deps.State.Batches[1].Status = websterengine.DigestStatusFailed
 
 		_, err := websterengine.RecordBatch(fx.Deps, 1)
-		if err == nil || !strings.Contains(err.Error(), "lyx webster recover-batch 01") {
+		if err == nil || !strings.Contains(err.Error(), "lym webster recover-batch 01") {
 			t.Fatalf("RecordBatch() error = %v; want a refusal naming recover-batch", err)
 		}
 	})
@@ -134,8 +134,8 @@ func TestRecordBatch_ZeroNewTranscriptsArchivesReport(t *testing.T) {
 	if !errors.Is(err, websterengine.ErrReportArchived) || !errors.Is(err, websterengine.ErrNoForkTranscripts) {
 		t.Fatalf("RecordBatch() error = %v; want ErrReportArchived wrapping ErrNoForkTranscripts", err)
 	}
-	if !strings.Contains(err.Error(), "lyx webster begin-batch 01") {
-		t.Errorf("RecordBatch() error = %q; want it to name `lyx webster begin-batch 01`", err.Error())
+	if !strings.Contains(err.Error(), "lym webster begin-batch 01") {
+		t.Errorf("RecordBatch() error = %q; want it to name `lym webster begin-batch 01`", err.Error())
 	}
 	// A cross-machine resume reproduces this error with no forgery, so the message keeps that diagnosis.
 	if !strings.Contains(err.Error(), "machine-local") {
@@ -734,7 +734,7 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 				rfx.Deps.State.Batches[1] = &failed
 				clk := &recoverFakeClock{now: time.Unix(0, 0)}
 				// A fabric reference has no path recovery could check, so recover-batch names the reset-to-start route instead of spawning.
-				if _, spawned, err := websterengine.RecoverSpawnOrAttach(rfx.Deps, 1, clk); !errors.Is(err, websterengine.ErrRecoveryNeedsFresh) || spawned || !strings.Contains(err.Error(), "1) lyx webster reset --to start; 2) lyx webster run") {
+				if _, spawned, err := websterengine.RecoverSpawnOrAttach(rfx.Deps, 1, clk); !errors.Is(err, websterengine.ErrRecoveryNeedsFresh) || spawned || !strings.Contains(err.Error(), "1) lym webster reset --to start; 2) lym webster run") {
 					t.Fatalf("RecoverSpawnOrAttach() = spawned %v, err %v; want ErrRecoveryNeedsFresh naming the reset-to-start route", spawned, err)
 				}
 			},
@@ -756,7 +756,7 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 		},
 		{
 			name:   "a mutating fabric reference still fails the batch under a read-only classifier",
-			audits: forkWithCommand("lyx fabric add FABRICREF"),
+			audits: forkWithCommand("lym fabric add FABRICREF"),
 			prepare: func(t *testing.T, fx *recordFixture) {
 				fx.Deps.RefMatcher = fabricMatcher{}
 				fx.Deps.ReadOnly = fabricengine.IsReadOnlyCommand
@@ -1417,7 +1417,7 @@ func TestRecordBatch_NeedsParentWaits(t *testing.T) {
 	if err == nil {
 		t.Fatal("RecordBatch() on a waiting batch error = nil; want the waiting refusal")
 	}
-	for _, want := range []string{"waits on its parent (" + need + ")", "way forward: once the parent has taken the step, `lyx webster begin-batch 1`"} {
+	for _, want := range []string{"waits on its parent (" + need + ")", "way forward: once the parent has taken the step, `lym webster begin-batch 1`"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("RecordBatch() on a waiting batch error = %q; want it to contain %q", err.Error(), want)
 		}
@@ -1436,12 +1436,12 @@ func TestRecordBatch_MalformedReportYAMLErrors(t *testing.T) {
 	if err == nil {
 		t.Fatal("RecordBatch() error = nil; want a hard error for an unrecognized status value")
 	}
-	if !strings.Contains(err.Error(), "way forward: `lyx webster recover-batch 1` archives the malformed report") {
+	if !strings.Contains(err.Error(), "way forward: `lym webster recover-batch 1` archives the malformed report") {
 		t.Errorf("RecordBatch() error = %q; want the recover-batch way forward", err.Error())
 	}
 }
 
-// TestRecordBatch_WayForward_UnknownBatch proves a batch number outside the plan names `lyx webster status`,
+// TestRecordBatch_WayForward_UnknownBatch proves a batch number outside the plan names `lym webster status`,
 // and that naming a batch the run does have then reaches the ordinary begin-record refusal instead.
 func TestRecordBatch_WayForward_UnknownBatch(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
@@ -1450,7 +1450,7 @@ func TestRecordBatch_WayForward_UnknownBatch(t *testing.T) {
 	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
 
 	_, err := websterengine.RecordBatch(fx.Deps, 99)
-	if err == nil || !strings.Contains(err.Error(), "way forward: `lyx webster status` lists the run's batches") {
+	if err == nil || !strings.Contains(err.Error(), "way forward: `lym webster status` lists the run's batches") {
 		t.Fatalf("RecordBatch(99) error = %v; want the status way forward", err)
 	}
 
@@ -1473,7 +1473,7 @@ func TestRecordBatch_MissingSessionTranscriptArchivesReport(t *testing.T) {
 	if !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("RecordBatch() error = %v; want errors.Is(err, fs.ErrNotExist) preserved through the wrap", err)
 	}
-	for _, needle := range []string{"machine-local", "lyx webster begin-batch 01", "session-1"} {
+	for _, needle := range []string{"machine-local", "lym webster begin-batch 01", "session-1"} {
 		if !strings.Contains(err.Error(), needle) {
 			t.Errorf("RecordBatch() error = %q; want it to contain %q", err.Error(), needle)
 		}
@@ -1563,7 +1563,7 @@ func TestRecordBatch_DoneChecksBlockOnUnresolvedCreate(t *testing.T) {
 		if !errors.Is(err, websterengine.ErrBatchFailed) {
 			t.Fatalf("RecordBatch() error = %v; want errors.Is(err, ErrBatchFailed)", err)
 		}
-		for _, want := range []string{"glyph-rejected", "way forward: amend the card's target", "lyx webster rebaseline --card NN", "lyx webster recover-batch 01"} {
+		for _, want := range []string{"glyph-rejected", "way forward: amend the card's target", "lym webster rebaseline --card NN", "lym webster recover-batch 01"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("RecordBatch() error = %q; want it to contain %q", err.Error(), want)
 			}
@@ -1585,7 +1585,7 @@ func TestRecordBatch_DoneChecksBlockOnUnresolvedCreate(t *testing.T) {
 		if !errors.Is(err, websterengine.ErrBatchFailed) {
 			t.Fatalf("RecordBatch() error = %v; want errors.Is(err, ErrBatchFailed)", err)
 		}
-		if !strings.Contains(err.Error(), "way forward: 1) lyx webster reset --to start; 2) lyx webster run") {
+		if !strings.Contains(err.Error(), "way forward: 1) lym webster reset --to start; 2) lym webster run") {
 			t.Errorf("RecordBatch() error = %q; want it to contain the fresh-restart steps", err.Error())
 		}
 		if strings.Contains(err.Error(), "recover-batch") {
@@ -1639,7 +1639,7 @@ func TestRecordBatch_DeleteNotDoneNamesLaterCard(t *testing.T) {
 			name:      "a later card still references the target",
 			target:    deleteGone,
 			user:      userCallsGone,
-			wantIn:    []string{"delete-not-done", "2-later", "internal/foo/user.go:4", "way forward: move the delete to a card after", "lyx webster rebaseline --card NN", "lyx webster recover-batch 01"},
+			wantIn:    []string{"delete-not-done", "2-later", "internal/foo/user.go:4", "way forward: move the delete to a card after", "lym webster rebaseline --card NN", "lym webster recover-batch 01"},
 			wantNotIn: []string{"reset --to start"},
 		},
 		{
@@ -1647,21 +1647,21 @@ func TestRecordBatch_DeleteNotDoneNamesLaterCard(t *testing.T) {
 			target:      deleteGone,
 			user:        userCallsGone,
 			uncheckable: []string{"fabric-reference: Bash command references the fabric"},
-			wantIn:      []string{"2-later", "internal/foo/user.go:4", "way forward: 1) lyx webster reset --to start; 2) lyx webster run"},
+			wantIn:      []string{"2-later", "internal/foo/user.go:4", "way forward: 1) lym webster reset --to start; 2) lym webster run"},
 			wantNotIn:   []string{"rebaseline"},
 		},
 		{
 			name:      "no later reference keeps recover-batch",
 			target:    deleteGone,
 			user:      userCallsNothing,
-			wantIn:    []string{"delete-not-done", "way forward: lyx webster recover-batch 01"},
+			wantIn:    []string{"delete-not-done", "way forward: lym webster recover-batch 01"},
 			wantNotIn: []string{"2-later", "rebaseline"},
 		},
 		{
 			name:      "a later card's call matched by method name alone keeps recover-batch",
 			target:    deleteThingGone,
 			user:      userCallsThingGone,
-			wantIn:    []string{"delete-not-done", "way forward: lyx webster recover-batch 01"},
+			wantIn:    []string{"delete-not-done", "way forward: lym webster recover-batch 01"},
 			wantNotIn: []string{"2-later", "rebaseline"},
 		},
 	}
@@ -1899,7 +1899,7 @@ func TestRecordBatch_ParentMovedHead(t *testing.T) {
 	t.Parallel()
 
 	resetWayForward := func(fx *recordFixture) string {
-		return "way forward: 1) lyx webster reset --to report-head --batch 01"
+		return "way forward: 1) lym webster reset --to report-head --batch 01"
 	}
 	cases := []struct {
 		name string
@@ -2157,7 +2157,7 @@ func TestRecordBatch_MergeInProgressRefusedThenSucceeds(t *testing.T) {
 	if err == nil {
 		t.Fatal("RecordBatch() after a hand-resolved merge: error = nil; want a refusal")
 	}
-	for _, want := range []string{"do not merge cleanly", "way forward: 1) lyx webster reset --to report-head --batch 01"} {
+	for _, want := range []string{"do not merge cleanly", "way forward: 1) lym webster reset --to report-head --batch 01"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q missing %q", err.Error(), want)
 		}

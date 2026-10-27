@@ -91,14 +91,14 @@ func TestWatchdogTemplateDefault_BothGOOS(t *testing.T) {
 			if err != nil {
 				t.Fatalf("read %s: %v", path, err)
 			}
-			if !strings.Contains(string(raw), "watchdog: ${env:LYX_REED_WATCHDOG:-on}") {
+			if !strings.Contains(string(raw), "watchdog: ${env:LYM_REED_WATCHDOG:-on}") {
 				t.Errorf("%s does not declare the expected watchdog default line", path)
 			}
 		})
 	}
 
 	// The accessor this build actually ships must carry the same line.
-	if !strings.Contains(ConfigTemplate(), "watchdog: ${env:LYX_REED_WATCHDOG:-on}") {
+	if !strings.Contains(ConfigTemplate(), "watchdog: ${env:LYM_REED_WATCHDOG:-on}") {
 		t.Errorf("ConfigTemplate() does not declare the expected watchdog default line")
 	}
 }

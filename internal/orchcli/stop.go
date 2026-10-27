@@ -9,7 +9,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
@@ -32,7 +32,7 @@ type BeamDownReport struct {
 // BeamDown takes the worktree at location down: it removes the orch strand, after which the watcher exits on its own, and ends the worktree's dobby when it is live.
 // Each part stops only when live, so a second call stops nothing.
 // It refuses a worktree that is neither the prime nor a beam.
-func BeamDown(location *lyxcwd.Location) (BeamDownReport, error) {
+func BeamDown(location *lymcwd.Location) (BeamDownReport, error) {
 	c := &orchCLI{}
 	if err := wireCLI(c, location); err != nil {
 		return BeamDownReport{}, err
@@ -78,7 +78,7 @@ func (c *orchCLI) stopOrch() (removed bool, strand string, err error) {
 		return false, "", err
 	}
 	if !acquired {
-		return false, "", fmt.Errorf("orch: start.lock (%s) is still held by a running `lyx beam start`; way forward: rerun `lyx orch stop` once it ends", c.paths.StartLockPath)
+		return false, "", fmt.Errorf("orch: start.lock (%s) is still held by a running `lym beam start`; way forward: rerun `lym orch stop` once it ends", c.paths.StartLockPath)
 	}
 	defer func() { _ = startLock.Release() }()
 

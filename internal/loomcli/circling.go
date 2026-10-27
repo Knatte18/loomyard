@@ -1,11 +1,11 @@
 // circling.go implements the `circling` loom subtree: the two verbs through which the operator settles a review segment's escalation.
 // `accept` ends the review loop on the current round and lets the run proceed; `continue` runs another round.
-// Each records a decision file in the Bouncer's run directory and nothing else: neither resumes the run, so the operator runs `lyx loom resume` afterwards.
+// Each records a decision file in the Bouncer's run directory and nothing else: neither resumes the run, so the operator runs `lym loom resume` afterwards.
 //
 // The group carries its own PersistentPreRunE, and the loom parent's pre-run skips it, for the reason review.go gives.
 // It resolves the target worktree through the same resolver the review group uses.
 //
-// The verbs check no caller identity, like `lyx loom review`:
+// The verbs check no caller identity, like `lym loom review`:
 // any shell addressing the run can record a decision, an agent's tmux session in the task worktree included.
 // That is bounded by which stencils name the verbs, the Bouncer escalation brief and the arbiter stencil only;
 // and by the refusal preconditions — the verbs refuse unless the run awaits at a Bouncer row with a pending escalation, the round carries an escalation the Bouncer wrote (a circling, hard-cap, budget or decision escalation), one decision per round, and only while the run awaits at that Bouncer row.
@@ -26,7 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reviewbudget"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -38,14 +38,14 @@ import (
 
 const (
 	circlingGroup        = "circling"
-	circlingWayNoRun     = `way forward: "lyx loom start" in the task worktree begins the run; an escalation exists only once a review segment's Bouncer has escalated a round`
-	circlingWayNotAtHalt = `way forward: "lyx loom status <slug>" shows where the run is; the verbs apply only while the run is awaiting at a review segment's Bouncer row after an escalation`
-	circlingWayNot       = `way forward: "lyx loom status <slug>" shows the run's state; the verbs apply only to a round the Bouncer escalated (a circling, hard-cap, budget or decision escalation), and a plain CONTINUE round below the budget needs no decision`
-	circlingWayHardCap   = `way forward: fix the file or key the message names, then re-run "lyx loom circling continue %s" in place of any "lyx loom resume" it names`
-	circlingWayMalformed = `way forward: fix or delete the named escalation file, then run "lyx loom start", which re-escalates the round, and re-run the verb`
-	circlingWayDecided   = `way forward: the decision for this round is recorded and stays; run "lyx loom resume" in the task worktree to resume the run`
+	circlingWayNoRun     = `way forward: "lym loom start" in the task worktree begins the run; an escalation exists only once a review segment's Bouncer has escalated a round`
+	circlingWayNotAtHalt = `way forward: "lym loom status <slug>" shows where the run is; the verbs apply only while the run is awaiting at a review segment's Bouncer row after an escalation`
+	circlingWayNot       = `way forward: "lym loom status <slug>" shows the run's state; the verbs apply only to a round the Bouncer escalated (a circling, hard-cap, budget or decision escalation), and a plain CONTINUE round below the budget needs no decision`
+	circlingWayHardCap   = `way forward: fix the file or key the message names, then re-run "lym loom circling continue %s" in place of any "lym loom resume" it names`
+	circlingWayMalformed = `way forward: fix or delete the named escalation file, then run "lym loom start", which re-escalates the round, and re-run the verb`
+	circlingWayDecided   = `way forward: the decision for this round is recorded and stays; run "lym loom resume" in the task worktree to resume the run`
 	circlingWayRetry     = `way forward: re-run the verb; if the failure persists, fix the file or directory the message names`
-	circlingWayRecipe    = `way forward: the embedded loom recipe failed to parse, so this lyx build is broken; rebuild or reinstall lyx, then re-run the verb`
+	circlingWayRecipe    = `way forward: the embedded loom recipe failed to parse, so this lym build is broken; rebuild or reinstall lym, then re-run the verb`
 )
 
 // circlingDeps is every side effect circlingVerb performs, injected so tests supply fakes.
@@ -105,7 +105,7 @@ func circlingVerb(out io.Writer, slug string, deps circlingDeps, decision shedad
 			}
 			// A round with no open escalation, or a malformed one, falls through to record, whose refusal names the right way forward.
 			if pending {
-				return refuse("round %d at %s is at or past its perch's hard cap %d, so no review round runs past it; way forward: run `lyx loom circling accept %s`, or raise the hard cap: %s, then run `lyx loom circling continue %s`", latest, st.CurrentProducer, hardCap, slug, raise, slug)
+				return refuse("round %d at %s is at or past its perch's hard cap %d, so no review round runs past it; way forward: run `lym loom circling accept %s`, or raise the hard cap: %s, then run `lym loom circling continue %s`", latest, st.CurrentProducer, hardCap, slug, raise, slug)
 			}
 		}
 	}
@@ -126,7 +126,7 @@ func circlingVerb(out io.Writer, slug string, deps circlingDeps, decision shedad
 		"decision": verb,
 		"round":    round,
 		"cause":    string(cause),
-		"resume":   "lyx loom resume",
+		"resume":   "lym loom resume",
 	})
 }
 
@@ -144,13 +144,13 @@ func (s *circlingState) preRun(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
 
-	cwd, err := lyxcwd.CwdFrom(ctx)
+	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
 		output.Err(out, err.Error())
 		clihelp.Abort(ctx, 1)
 		return nil
 	}
-	location, err := lyxcwd.Resolve(cwd)
+	location, err := lymcwd.Resolve(cwd)
 	if err != nil {
 		output.Err(out, err.Error())
 		clihelp.Abort(ctx, 1)
@@ -192,11 +192,11 @@ func (s *circlingState) preRun(cmd *cobra.Command, args []string) error {
 
 // perchHardCap returns the resolved hard cap of the Bouncer row's perch and the way forward that raises it, by the layer its value comes from.
 // Every perch's cap is in loom.yaml, a darn run's Code-Review perch's included, and a load failure of that file is returned as is.
-func perchHardCap(location *lyxcwd.Location, row string) (int, string, error) {
+func perchHardCap(location *lymcwd.Location, row string) (int, string, error) {
 	dirs := fabricengine.ConfigDirs(location)
 	perch, ok := loomPerches[row]
 	if !ok {
-		return 0, "", fmt.Errorf("loom: %s is a Bouncer row with no hard-cap source, so this lyx build is broken", row)
+		return 0, "", fmt.Errorf("loom: %s is a Bouncer row with no hard-cap source, so this lym build is broken", row)
 	}
 	cfg, err := loomengine.LoadConfig(dirs, "loom")
 	if err != nil {
@@ -243,13 +243,13 @@ review finding only the run's parent can settle is open (a decision escalation).
 Each verb takes an optional slug naming the task worktree. A task worktree
 addresses itself; from the prime the slug is required. A verb records the
 decision for the escalated round, with the escalation's cause, and nothing
-else: run "lyx loom resume" in the task worktree afterwards to resume the run.
+else: run "lym loom resume" in the task worktree afterwards to resume the run.
 The verbs check no caller identity; a second decision for the same round is
 refused.
 
 Example:
-  lyx loom circling accept <slug>
-  lyx loom circling continue <slug>`,
+  lym loom circling accept <slug>
+  lym loom circling continue <slug>`,
 		RunE:              clihelp.GroupRunE,
 		PersistentPreRunE: st.preRun,
 	}
@@ -275,20 +275,20 @@ Example:
 whether a circling, hard-cap, budget or decision escalation. On resume the Bouncer
 settles the segment as approved and the run proceeds to the next row. The
 perch's hard cap never refuses it. It resumes nothing itself: run
-"lyx loom resume" in the task worktree.
+"lym loom resume" in the task worktree.
 
 Example:
-  lyx loom circling accept <slug>`)
+  lym loom circling accept <slug>`)
 
 	cont := verb(shedadapters.CirclingContinue, "run another review round after an escalation", `continue records the operator's decision to keep reviewing after the Bouncer
 escalated a round, whether a circling, hard-cap, budget or decision escalation. On
 resume the Bouncer sends the segment back for another round. It runs one more
 round only below the perch's hard cap and is refused at or past it, where
 "accept" or raising the hard cap is the way forward. It resumes nothing
-itself: run "lyx loom resume" in the task worktree.
+itself: run "lym loom resume" in the task worktree.
 
 Example:
-  lyx loom circling continue <slug>`)
+  lym loom circling continue <slug>`)
 
 	group.AddCommand(accept, cont)
 	return group

@@ -1,10 +1,8 @@
 //go:build tier1
 
-// status_pollution_integration_test.go pins the anchor scoping of Topology.Status's warp-pollution
-// scan.
-// The scan used a bare "_lyx" pathspec at the warp worktree ROOT, so a subpath-anchored hub whose
-// index genuinely tracked <anchor>/_lyx/... was reported clean — a false negative in the one verb
-// (`lyx fabric pairs`) that advertises the check.
+// status_pollution_integration_test.go pins the anchor scoping of Topology.Status's warp-pollution scan.
+// The scan used a bare "_lym" pathspec at the warp worktree ROOT, so a subpath-anchored hub whose index genuinely tracked <anchor>/_lym/...
+// was reported clean — a false negative in the one verb (`lym fabric pairs`) that advertises the check.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -18,14 +16,14 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
-// TestStatus_DetectsWarpPollutionUnderSubpathAnchor tracks a file at <anchor>/_lyx/ in the warp
+// TestStatus_DetectsWarpPollutionUnderSubpathAnchor tracks a file at <anchor>/_lym/ in the warp
 // index of a subpath-anchored hub and asserts Status reports it with a git rm --cached remedy.
 //
-//testtiming:keep Status reporting a tracked <anchor>/_lyx file under a subpath anchor with a git rm --cached remedy; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep Status reporting a tracked <anchor>/_lym file under a subpath anchor with a git rm --cached remedy; coverage of its blocks by other tests does not show an assertion of this
 func TestStatus_DetectsWarpPollutionUnderSubpathAnchor(t *testing.T) {
 	t.Parallel()
 
@@ -41,17 +39,17 @@ func TestStatus_DetectsWarpPollutionUnderSubpathAnchor(t *testing.T) {
 	}
 	seedAnchorMarker(t, h, anchor)
 
-	anchoredLayout, err := lyxcwd.Resolve(subDir)
+	anchoredLayout, err := lymcwd.Resolve(subDir)
 	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(%s): %v", subDir, err)
+		t.Fatalf("lymcwd.Resolve(%s): %v", subDir, err)
 	}
 	if anchoredLayout.AnchorRel != anchor {
 		t.Fatalf("AnchorRel = %q; want %q", anchoredLayout.AnchorRel, anchor)
 	}
 
 	// Pollute the warp index at the anchored durable path, the shape an operator produces by
-	// committing _lyx content before fabric wired the junction.
-	pollutedRel := filepath.ToSlash(filepath.Join(anchor, lyxdirs.LyxDirName, "legacy.md"))
+	// committing _lym content before fabric wired the junction.
+	pollutedRel := filepath.ToSlash(filepath.Join(anchor, lymdirs.LymDirName, "legacy.md"))
 	pollutedAbs := filepath.Join(l.WorktreePath(), filepath.FromSlash(pollutedRel))
 	if err := os.MkdirAll(filepath.Dir(pollutedAbs), 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", filepath.Dir(pollutedAbs), err)

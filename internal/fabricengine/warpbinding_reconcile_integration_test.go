@@ -26,7 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // clonedHubFixture bundles the pieces newClonedHubFixture builds: the resolved clone geometry, the
@@ -34,7 +34,7 @@ import (
 // to author expected binding content and to sever/restore the warp side's origin.
 type clonedHubFixture struct {
 	Result      fabricengine.CloneResult
-	Layout      *lyxcwd.Location
+	Layout      *lymcwd.Location
 	Topology    *fabricengine.Topology
 	CodeBare    string
 	RecordsBare string
@@ -43,7 +43,7 @@ type clonedHubFixture struct {
 // newClonedHubFixture builds a genuinely remote-backed hub via fabricengine.CloneHub against two bare
 // fixtures, seeds the repo-wide fabric config, and resolves a ready-to-use Topology and Location.
 // ForceBootstrap is set because the bare weft fixture is an ordinary seeded remote standing in for a
-// weft, not a repo that has ever been one, so it carries no .lyx-anchor of its own.
+// weft, not a repo that has ever been one, so it carries no .lym-anchor of its own.
 //
 // The fixture leaves the board worktree CLEAN: CloneHub writes the anchor marker (and this helper's
 // own seedRepoWideFabricConfig writes the repo-wide config) but neither is committed — CloneHub never
@@ -73,9 +73,9 @@ func newClonedHubFixture(t *testing.T) clonedHubFixture {
 
 	seedRepoWideFabricConfig(t, res.HubPath)
 
-	l, err := lyxcwd.Resolve(res.PrimeCwd)
+	l, err := lymcwd.Resolve(res.PrimeCwd)
 	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(%s): %v", res.PrimeCwd, err)
+		t.Fatalf("lymcwd.Resolve(%s): %v", res.PrimeCwd, err)
 	}
 
 	cfg, err := fabricengine.LoadConfig(configengine.Dirs{Board: fabricengine.BoardDir(res.HubPath)})

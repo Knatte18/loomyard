@@ -29,7 +29,7 @@ but every answer is still printed.
 The {"ok":false,...} envelope appears only when quarry could not answer at all.
 
 Example:
-  lyx quarry resolve internal/planglyph#Validate internal/planglyph#Repo`,
+  lym quarry resolve internal/planglyph#Validate internal/planglyph#Repo`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {

@@ -19,25 +19,21 @@
 // escalated: there is no coherent worktree to check, but that is itself a determined verdict, not
 // an infra failure.
 //
-// Check's non-lyxcwd.ErrNotAGitRepo branch is NOT reachable through a git-subprocess spawn failure
-// — that case is folded into ErrNotAGitRepo already. It is reachable only through lyxcwd's
-// anchor-resolution path: ErrCwdOutsideAnchor from the cwd gate, ErrStaleAnchorMarker from a board
-// carrying only the pre-rename marker, and an ErrInvalidAnchor-wrapping failure when a recorded
-// anchor exists but fails validation are examples of routes into that branch, not a closed set of
-// them.
+// Check's non-lymcwd.ErrNotAGitRepo branch is NOT reachable through a git-subprocess spawn failure — that case is folded into ErrNotAGitRepo already.
+// It is reachable only through lymcwd's anchor-resolution path: ErrCwdOutsideAnchor from the cwd gate, ErrStaleAnchorMarker from a board carrying only the pre-rename marker, and an ErrInvalidAnchor-wrapping failure when a recorded anchor exists but fails validation are examples of routes into that branch, not a closed set of them.
 //
 // A composing orchestrator reads this doc rather than duplicating the contract in its own package
 // doc: the shared types and checks live here, so the shared contract does too.
 //
 // Told-geometry tier: preflight is the tier-2 layer, and it legitimately resolves geometry rather
-// than being told it — it imports internal/lyxcwd in production and calls lyxcwd.Resolve through
+// than being told it — it imports internal/lymcwd in production and calls lymcwd.Resolve through
 // ResolveMode, which is exactly its job as the precondition layer above the engines.
 // See PATTERN-cwd-resolution.
 //
 // # Why there are three functions
 //
 // HubPresent asks "does the hub-level directory this write targets exist", and it remains the
-// stencil seed gate for cmd/lyx: cmd/lyx's never-block-a-command contract is genuinely different
+// stencil seed gate for cmd/lym: cmd/lym's never-block-a-command contract is genuinely different
 // from a CLI choosing how to wire itself, so the seed gate keeps its own dedicated predicate
 // rather than sharing ResolveMode's.
 // Wired asks a different, narrower question — "is fabric wired for this particular worktree" —
@@ -47,11 +43,7 @@
 // a hub exists for this location, standalone mode when one does not, and refuse when Resolve
 // could not answer at all.
 //
-// ResolveMode exists because HubPresent alone collapses two very different negatives — "there is
-// no hub here" and "Resolve could not answer" — into the same false return, and
-// lyxcwd.Resolve returns ErrCwdOutsideAnchor from any ordinary subdirectory of a healthy wired
-// worktree, so a HubPresent-only trigger would silently start a standalone session there and
-// relocate a live hub's state into the per-OS state directory.
+// ResolveMode exists because HubPresent alone collapses two very different negatives — "there is no hub here" and "Resolve could not answer" — into the same false return, and lymcwd.Resolve returns ErrCwdOutsideAnchor from any ordinary subdirectory of a healthy wired worktree, so a HubPresent-only trigger would silently start a standalone session there and relocate a live hub's state into the per-OS state directory.
 //
 // Wired is a considered override of an earlier design for this package, not a doc catching up to
 // code: fabricengine.Ready, which Wired calls, probes the paired sibling of the current
@@ -62,7 +54,7 @@
 // strictly worse than the misclassification it would be trying to avoid. Keying on HubPresent's
 // board-level stat instead (as both HubPresent and ResolveMode do) means a genuinely damaged hub
 // still gets hub mode and fails loudly at the point of use, while a plain downloaded git
-// repository still lands in standalone because it has no board-level lyx directory beside it —
+// repository still lands in standalone because it has no board-level lym directory beside it —
 // which was the hazard the predicate split was built for.
 //
 // Gating the stencil seed on Wired instead would be wrong for the same reason: fabricengine.Ready

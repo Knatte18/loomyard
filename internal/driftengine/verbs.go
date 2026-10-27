@@ -1,4 +1,4 @@
-// verbs.go — the rules of the `lyx drift` verbs: what each admits from the run's status, and the scope record each writes.
+// verbs.go — the rules of the `lym drift` verbs: what each admits from the run's status, and the scope record each writes.
 //
 // Every function takes the run's status as a VerbStatus the caller read, so the rules run on a fake.
 // A refusal opens "drift <verb> refused:" or "drift:" and names its way forward; a refused verb writes nothing.
@@ -44,11 +44,11 @@ func (s VerbStatus) AtDecisionHalt() bool {
 
 // wrongRow builds the refusal of a verb run at a row it does not admit.
 func wrongRow(verb, row string, st VerbStatus) error {
-	return fmt.Errorf("drift %s refused: the run is at %s (%s), and the verb runs only at %s; way forward: lyx loom status shows where the run is", verb, orNone(st.Status.CurrentProducer), st.Status.State, row)
+	return fmt.Errorf("drift %s refused: the run is at %s (%s), and the verb runs only at %s; way forward: lym loom status shows where the run is", verb, orNone(st.Status.CurrentProducer), st.Status.State, row)
 }
 
 // errNoScope is the refusal of a verb that needs a recorded scope.
-var errNoScope = errors.New("drift: no scope is recorded yet; way forward: lyx loom status shows the row the run is at")
+var errNoScope = errors.New("drift: no scope is recorded yet; way forward: lym loom status shows the row the run is at")
 
 // RecordScope records the task's regression scope, the baseline agent's one write of it.
 // It is admitted only at Drift-Baseline, once, for scope off, partial or full, with skip given only under partial and required there.
@@ -74,7 +74,7 @@ func RecordScope(p Paths, st VerbStatus, scope string, skip []string) error {
 
 // Accept records one drifted test as intended, on behalf of the Drift-Verify agent session or of a caller at a halt.
 // It is admitted only at Drift-Verify, from a running status with the agent-session mark open or a blocked status;
-// a running status with the mark closed is the row's own work, and any other state is an error or a transient stop that only lyx loom resume settles.
+// a running status with the mark closed is the row's own work, and any other state is an error or a transient stop that only lym loom resume settles.
 // A withdrawn test is accepted again only by a caller at a decision halt, and under scope full so is every test a caller accepts.
 func Accept(p Paths, st VerbStatus, test, reason string) error {
 	if st.Status.CurrentProducer != verifyRow {
@@ -86,9 +86,9 @@ func Accept(p Paths, st VerbStatus, test, reason string) error {
 		by = AcceptedByAgent
 	case st.Status.State == shedengine.StateBlocked:
 	case st.Status.State == shedengine.StateRunning:
-		return errors.New("drift accept refused: the row is running its own compare and checks; way forward: wait for the row's halt (lyx loom status shows it), then accept there under the parent's ruling")
+		return errors.New("drift accept refused: the row is running its own compare and checks; way forward: wait for the row's halt (lym loom status shows it), then accept there under the parent's ruling")
 	default:
-		return fmt.Errorf("drift accept refused: the run is %s at %s, and no acceptance settles that; way forward: lyx loom resume", st.Status.State, verifyRow)
+		return fmt.Errorf("drift accept refused: the run is %s at %s, and no acceptance settles that; way forward: lym loom resume", st.Status.State, verifyRow)
 	}
 	decisionHalt := st.AtDecisionHalt()
 
@@ -101,7 +101,7 @@ func Accept(p Paths, st VerbStatus, test, reason string) error {
 		case withdrawn && by == AcceptedByAgent:
 			return cur, fmt.Errorf("drift accept refused: the run's parent withdrew %s; way forward: fix its drift or report it in verify-report.md; only the parent re-accepts it at a decision halt", test)
 		case by == AcceptedByCaller && !decisionHalt && (withdrawn || cur.Scope == ScopeFull):
-			return cur, fmt.Errorf("drift accept refused: %s needs the parent's ruling; way forward: re-accept it at a decision halt, which lyx loom status shows", test)
+			return cur, fmt.Errorf("drift accept refused: %s needs the parent's ruling; way forward: re-accept it at a decision halt, which lym loom status shows", test)
 		}
 
 		acceptance := Acceptance{Test: test, Reason: reason, By: by, At: stamp(time.Now())}
@@ -130,7 +130,7 @@ func Withdraw(p Paths, st VerbStatus, test string) error {
 		}
 		accepted := slices.IndexFunc(cur.Accepted, func(a Acceptance) bool { return a.Test == test })
 		if accepted < 0 {
-			return cur, fmt.Errorf("drift withdraw refused: %s is not accepted; way forward: lyx drift status lists the accepted tests", test)
+			return cur, fmt.Errorf("drift withdraw refused: %s is not accepted; way forward: lym drift status lists the accepted tests", test)
 		}
 		cur.Accepted = slices.Delete(slices.Clone(cur.Accepted), accepted, accepted+1)
 		cur.Withdrawn = append(slices.DeleteFunc(slices.Clone(cur.Withdrawn), func(existing string) bool { return existing == test }), test)
@@ -144,10 +144,10 @@ func Defer(p Paths, st VerbStatus) error {
 	atAwaitHalt := st.Status.CurrentProducer == captureRowAwait && st.Status.State == shedengine.StateBlocked
 	atCaptureHalt := st.Status.CurrentProducer == captureRowBaseline && st.Status.State == shedengine.StateBlocked && strings.HasPrefix(st.Status.Error, CaptureHaltPrefix)
 	if !atAwaitHalt && !atCaptureHalt {
-		return fmt.Errorf("drift defer refused: the run is at %s (%s), and defer settles only a %s halt or a %s capture halt; way forward: lyx loom status shows the halt's own ways forward", orNone(st.Status.CurrentProducer), st.Status.State, captureRowAwait, captureRowBaseline)
+		return fmt.Errorf("drift defer refused: the run is at %s (%s), and defer settles only a %s halt or a %s capture halt; way forward: lym loom status shows the halt's own ways forward", orNone(st.Status.CurrentProducer), st.Status.State, captureRowAwait, captureRowBaseline)
 	}
 	if st.CaptureHeld {
-		return errors.New("drift defer refused: a capture is running; way forward: lyx loom resume, whose row waits on the running capture")
+		return errors.New("drift defer refused: a capture is running; way forward: lym loom resume, whose row waits on the running capture")
 	}
 	return UpdateScope(p, func(cur ScopeRecord, found bool) (ScopeRecord, error) {
 		if !found {
@@ -162,7 +162,7 @@ func Defer(p Paths, st VerbStatus) error {
 // It is admitted only while blocked at Drift-Verify with no counted capture, which is the halt that names no baseline.
 func Waive(p Paths, st VerbStatus, reason string) error {
 	if st.Status.CurrentProducer != verifyRow || st.Status.State != shedengine.StateBlocked {
-		return fmt.Errorf("drift waive refused: the run is at %s (%s), and a waiver is admitted only at a blocked %s; way forward: lyx loom status shows where the run is", orNone(st.Status.CurrentProducer), st.Status.State, verifyRow)
+		return fmt.Errorf("drift waive refused: the run is at %s (%s), and a waiver is admitted only at a blocked %s; way forward: lym loom status shows where the run is", orNone(st.Status.CurrentProducer), st.Status.State, verifyRow)
 	}
 	capture, captureFound, err := ReadCapture(p)
 	if err != nil {
@@ -173,7 +173,7 @@ func Waive(p Paths, st VerbStatus, reason string) error {
 			return cur, errNoScope
 		}
 		if CountedCapture(cur, capture, captureFound, st.AwaitRow) {
-			return cur, fmt.Errorf("drift waive refused: a counted capture exists, so this %s halt is no missing baseline; way forward: lyx loom resume, or the halt's own ways forward in lyx loom status", verifyRow)
+			return cur, fmt.Errorf("drift waive refused: a counted capture exists, so this %s halt is no missing baseline; way forward: lym loom resume, or the halt's own ways forward in lym loom status", verifyRow)
 		}
 		cur.WaivedReason, cur.WaivedAt = reason, stamp(time.Now())
 		return cur, nil
@@ -186,7 +186,7 @@ func RunCount(p Paths) (int, error) {
 	return rec.Count, err
 }
 
-// CheckVerifyRow checks the row `lyx drift <verb>` runs at: Drift-Verify, running or blocked.
+// CheckVerifyRow checks the row `lym drift <verb>` runs at: Drift-Verify, running or blocked.
 // verb is the command as the caller typed it, and each refusal names it.
 func CheckVerifyRow(st VerbStatus, verb string) error {
 	if st.Status.CurrentProducer != verifyRow {

@@ -16,13 +16,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
-// addEnvProbeStrand adds a role strand whose command writes $LYX_STRAND_NAME and $LYX_PARENT to a file and returns the strand with the file's path.
+// addEnvProbeStrand adds a role strand whose command writes $LYM_STRAND_NAME and $LYM_PARENT to a file and returns the strand with the file's path.
 func addEnvProbeStrand(t *testing.T, e *Engine, role string) (Strand, string) {
 	t.Helper()
-	withInjectedExecutablePath(t, func() (string, error) { return filepath.Join(t.TempDir(), "lyx"), nil })
+	withInjectedExecutablePath(t, func() (string, error) { return filepath.Join(t.TempDir(), "lym"), nil })
 
 	probe := filepath.Join(t.TempDir(), "env.txt")
-	cmd := "printf '%s\\n%s\\n' \"$LYX_STRAND_NAME\" \"$LYX_PARENT\" > " + shell.Posix().Quote(probe)
+	cmd := "printf '%s\\n%s\\n' \"$LYM_STRAND_NAME\" \"$LYM_PARENT\" > " + shell.Posix().Quote(probe)
 	strand, err := e.AddStrand(AddSpec{Role: role, Cmd: cmd, Display: render.Display{Anchor: render.AnchorOwnWindow}})
 	if err != nil {
 		t.Fatalf("AddStrand: %v", err)
@@ -82,10 +82,10 @@ func TestNaming(t *testing.T) {
 		})
 		lines := strings.Split(strings.TrimRight(readOrEmpty(probe), "\n"), "\n")
 		if lines[0] != want {
-			t.Errorf("LYX_STRAND_NAME in pane = %q, want %q", lines[0], want)
+			t.Errorf("LYM_STRAND_NAME in pane = %q, want %q", lines[0], want)
 		}
 		if lines[1] != "tc:tslug:orch" {
-			t.Errorf("LYX_PARENT in pane = %q, want %q", lines[1], "tc:tslug:orch")
+			t.Errorf("LYM_PARENT in pane = %q, want %q", lines[1], "tc:tslug:orch")
 		}
 	})
 

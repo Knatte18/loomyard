@@ -63,7 +63,7 @@ func TestClean_ReasonWording(t *testing.T) {
 		if ok {
 			t.Fatalf("Clean = true; want false (state-side dirty)")
 		}
-		wantPrefix := "uncommitted state changes under `_lyx`: "
+		wantPrefix := "uncommitted state changes under `_lym`: "
 		if len(reason) < len(wantPrefix) || reason[:len(wantPrefix)] != wantPrefix {
 			t.Errorf("Clean reason = %q; want prefix %q", reason, wantPrefix)
 		}
@@ -80,7 +80,7 @@ func TestClean_ReasonWording(t *testing.T) {
 			t.Fatalf("Clean = true; want false (both sides dirty)")
 		}
 		wantCodePrefix := "uncommitted code changes: "
-		wantStateFragment := "; uncommitted state changes under `_lyx`: "
+		wantStateFragment := "; uncommitted state changes under `_lym`: "
 		if len(reason) < len(wantCodePrefix) || reason[:len(wantCodePrefix)] != wantCodePrefix {
 			t.Errorf("Clean reason = %q; want prefix %q", reason, wantCodePrefix)
 		}

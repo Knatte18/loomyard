@@ -78,7 +78,7 @@ func engineWithInvalidConfig(t testing.TB) *Claude {
 }
 
 // invalidConfigWant names what a refusal over engineWithInvalidConfig holds: the file, the key and the way forward.
-var invalidConfigWant = []string{"claude.local.yaml", "binary", "lyx config claude", "--layer"}
+var invalidConfigWant = []string{"claude.local.yaml", "binary", "lym config claude", "--layer"}
 
 // promptCacheTTLAssignment returns the substring the pane shell's dialect renders for the TTL assignment of value.
 func promptCacheTTLAssignment(value string) string {
@@ -143,7 +143,7 @@ func TestPrepare_RejectedBeforeArtifacts(t *testing.T) {
 				}
 			}
 			if tt.wantTTLAdvice {
-				for _, want := range []string{"5m", "1h", "claude.yaml", "lyx config claude"} {
+				for _, want := range []string{"5m", "1h", "claude.yaml", "lym config claude"} {
 					if !strings.Contains(err.Error(), want) {
 						t.Errorf("Prepare() error = %q; want it to name %q", err, want)
 					}

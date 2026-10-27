@@ -2,7 +2,7 @@
 // accumulates into and every mutating result type embeds: the Kind enum, the flat Mutation entry,
 // the Mutations accumulator, and the MutationRecord carrier a result type embeds to expose it.
 // This is the single declarer of the Kind enum — a new member lands in the same commit as its
-// recording site and its cmd/lyx/destructiveguard_test.go guard entry, and no other file in the
+// recording site and its cmd/lym/destructiveguard_test.go guard entry, and no other file in the
 // tree declares a kind string literal.
 
 package fabricengine
@@ -16,9 +16,7 @@ import (
 )
 
 // Kind names the fixed, closed vocabulary of mutation kinds a Mutation entry can carry.
-// Its string values are part of fabric's public JSON contract, so an existing constant's spelling
-// must never change, and a new member lands in the same commit as its recording site and its
-// cmd/lyx/destructiveguard_test.go guard entry — no other file declares a kind string literal.
+// Its string values are part of fabric's public JSON contract, so an existing constant's spelling must never change, and a new member lands in the same commit as its recording site and its cmd/lym/destructiveguard_test.go guard entry — no other file declares a kind string literal.
 type Kind string
 
 // The fixed set of mutation kinds fabric records.

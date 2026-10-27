@@ -4,7 +4,7 @@
 //
 // It is a separate file from watchdog_integration_test.go, rather than more cases appended to it, so the reap's own fixture and helpers stay together rather than growing that file's unrelated discovery/idle-exit/re-entry fixture shape.
 //
-// Every step drives runWatchdogLoop directly, in-process, against a hub built through hubforge (per the hubforge Fabric-Fixture Invariant) with compressed timings from compressedReapTiming, and never spawns a `lyx reed watchdog` process of any kind: PATTERN-spawn-observability bars re-execing the test binary, which is exactly what a live daemon spawn would do under `go test` (see watchdog_integration_test.go's file-level comment), and suppressWatchdogSpawn exists to prevent it.
+// Every step drives runWatchdogLoop directly, in-process, against a hub built through hubforge (per the hubforge Fabric-Fixture Invariant) with compressed timings from compressedReapTiming, and never spawns a `lym reed watchdog` process of any kind: PATTERN-spawn-observability bars re-execing the test binary, which is exactly what a live daemon spawn would do under `go test` (see watchdog_integration_test.go's file-level comment), and suppressWatchdogSpawn exists to prevent it.
 package reedcli
 
 import (
@@ -423,7 +423,7 @@ func readPIDFile(t *testing.T, path string) int {
 	return pid
 }
 
-// renameWorktreeAway renames worktreeRoot's directory aside so lyxcwd resolution and
+// renameWorktreeAway renames worktreeRoot's directory aside so lymcwd resolution and
 // worktreeRootGone both see it as gone at its original path, and returns a restore func that moves
 // it back to the exact same path — leaving its git worktree admin data untouched throughout, unlike
 // the shared orphanWorktree helper's irreversible rm -rf.

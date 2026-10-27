@@ -98,26 +98,26 @@ func TestAddLocal(t *testing.T) {
 			{
 				"LocalWarpBranch",
 				func(t *testing.T, h *hubforge.Hub) { gitkit.MustRun(t, h.PrimeWorktree(), "git", "branch", slug) },
-				[]string{"lyx fabric checkout " + slug, "git branch -D " + slug},
+				[]string{"lym fabric checkout " + slug, "git branch -D " + slug},
 			},
 			{
 				"LocalWeftBranch",
 				func(t *testing.T, h *hubforge.Hub) { gitkit.MustRun(t, h.PrimeRecords(), "git", "branch", weftBranch) },
-				[]string{"lyx fabric add " + slug},
+				[]string{"lym fabric add " + slug},
 			},
 			{
 				"OriginWarpRef",
 				func(t *testing.T, h *hubforge.Hub) {
 					gitkit.MustRun(t, h.PrimeWorktree(), "git", "update-ref", "refs/remotes/origin/"+slug, "HEAD")
 				},
-				[]string{"lyx fabric add " + slug},
+				[]string{"lym fabric add " + slug},
 			},
 			{
 				"OriginWeftRef",
 				func(t *testing.T, h *hubforge.Hub) {
 					gitkit.MustRun(t, h.PrimeRecords(), "git", "update-ref", "refs/remotes/origin/"+weftBranch, "HEAD")
 				},
-				[]string{"lyx fabric add " + slug},
+				[]string{"lym fabric add " + slug},
 			},
 		}
 		for _, tt := range tests {

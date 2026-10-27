@@ -182,10 +182,10 @@ func TestSeatTables(t *testing.T) {
 			t.Fatalf("BaselineTable() for a board entry = _, %v; want nil error", err)
 		}
 		entryPrompt := seatPrompt(t, entry.StencilsDir, entry.WorktreeRoot, entry.Slug, entryTable)
-		if !strings.Contains(entryPrompt, `lyx board get '{"slug":"fix-the-thing"}'`) {
+		if !strings.Contains(entryPrompt, `lym board get '{"slug":"fix-the-thing"}'`) {
 			t.Errorf("board-entry prompt lacks the board reading")
 		}
-		if strings.Contains(entryPrompt, "the decision record at `"+entry.DecisionRecordPath+"`, in which") || strings.Contains(prompt, "lyx board get") {
+		if strings.Contains(entryPrompt, "the decision record at `"+entry.DecisionRecordPath+"`, in which") || strings.Contains(prompt, "lym board get") {
 			t.Errorf("the two subjects render alike; want the decision-record and board-entry readings distinct")
 		}
 	})

@@ -16,8 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
@@ -29,14 +29,14 @@ func portalsAnchorDir(h *hubforge.Hub) string {
 	return filepath.Join(h.Path, "_portals", h.Location.AnchorRel)
 }
 
-// plantPortalLink plants the link a retired fabric verb created for name: <hub>/_portals/<AnchorRel>/<name> pointing at <hub>/<name>/<AnchorRel>/_lyx, which need not exist.
+// plantPortalLink plants the link a retired fabric verb created for name: <hub>/_portals/<AnchorRel>/<name> pointing at <hub>/<name>/<AnchorRel>/_lym, which need not exist.
 func plantPortalLink(t *testing.T, h *hubforge.Hub, name string) string {
 	t.Helper()
 	link := filepath.Join(portalsAnchorDir(h), name)
 	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
 		t.Fatalf("create the _portals anchor dir: %v", err)
 	}
-	if err := fslink.CreateDirLink(link, filepath.Join(h.Path, name, h.Location.AnchorRel, lyxdirs.LyxDirName)); err != nil {
+	if err := fslink.CreateDirLink(link, filepath.Join(h.Path, name, h.Location.AnchorRel, lymdirs.LymDirName)); err != nil {
 		t.Fatalf("plant the portal link %s: %v", name, err)
 	}
 	return link
@@ -61,7 +61,7 @@ func plantRetiredWorkspaceFile(t *testing.T, h *hubforge.Hub) string {
 }
 
 // reconcileAt runs Reconcile at l on h and fails the test on an error.
-func reconcileAt(t *testing.T, h *hubforge.Hub, l *lyxcwd.Location) fabricengine.ReconcileResult {
+func reconcileAt(t *testing.T, h *hubforge.Hub, l *lymcwd.Location) fabricengine.ReconcileResult {
 	t.Helper()
 	result, err := h.Topology.Reconcile(l)
 	if err != nil {
@@ -144,7 +144,7 @@ func TestReconcile_SweepsRetiredHubArtifacts(t *testing.T) {
 							hubforge.ReanchorPair(t, h, "live", "sub")
 						}
 						if from != "prime" {
-							pairLocation, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree("live"))
+							pairLocation, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("live"))
 							if err != nil {
 								t.Fatalf("resolve the pair's location: %v", err)
 							}
@@ -271,7 +271,7 @@ func TestReconcile_SweepsRetiredHubArtifacts(t *testing.T) {
 					if err := os.MkdirAll(filepath.Dir(ghost), 0o755); err != nil {
 						t.Fatalf("create the outside anchor dir: %v", err)
 					}
-					if err := fslink.CreateDirLink(ghost, filepath.Join(h.Path, "ghost", h.Location.AnchorRel, lyxdirs.LyxDirName)); err != nil {
+					if err := fslink.CreateDirLink(ghost, filepath.Join(h.Path, "ghost", h.Location.AnchorRel, lymdirs.LymDirName)); err != nil {
 						t.Fatalf("plant the fabric-shaped link outside the hub: %v", err)
 					}
 					if err := fslink.CreateDirLink(filepath.Join(h.Path, "_portals"), outside); err != nil {
@@ -324,8 +324,8 @@ func TestReconcile_SweepsRetiredHubArtifacts(t *testing.T) {
 				}
 
 				link := plantPortalLink(t, h, "live")
-				if !regenerationWarns() || !strings.Contains(logs.String(), "lyx fabric reconcile") {
-					t.Errorf("a fabric-shaped link did not warn naming lyx fabric reconcile: %q", logs.String())
+				if !regenerationWarns() || !strings.Contains(logs.String(), "lym fabric reconcile") {
+					t.Errorf("a fabric-shaped link did not warn naming lym fabric reconcile: %q", logs.String())
 				}
 				if err := os.Remove(link); err != nil {
 					t.Fatalf("remove the link: %v", err)

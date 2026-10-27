@@ -1,7 +1,7 @@
 //go:build tier1
 
 // loop_arming_integration_test.go runs the loop's arming refusal over a real hub.
-// It drives a lyx built by internal/testkit/lyxbin over a loom-seeded run in a real hub, from the external test package because internal/hubforge reaches back into this package.
+// It drives a lym built by internal/testkit/lymbin over a loom-seeded run in a real hub, from the external test package because internal/hubforge reaches back into this package.
 
 package shedverbs_test
 
@@ -20,21 +20,21 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/state"
-	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 	"github.com/spf13/cobra"
 )
 
 // loomRunFixture is a real hub with one pair whose loom run is seeded and reads running, and whose hub-wide landing config is gone.
 type loomRunFixture struct {
 	t        *testing.T
-	loc      *lyxcwd.Location
+	loc      *lymcwd.Location
 	worktree string
-	lyx      string
+	lym      string
 }
 
 func newLoomRunFixture(t *testing.T) *loomRunFixture {
@@ -42,9 +42,9 @@ func newLoomRunFixture(t *testing.T) *loomRunFixture {
 	h := hubforge.NewHub(t, ".")
 	hubforge.AddPair(t, h, "loop-task")
 	worktree := h.PairCodeWorktree("loop-task")
-	loc, err := lyxcwd.Resolve(worktree)
+	loc, err := lymcwd.Resolve(worktree)
 	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(%s): %v", worktree, err)
+		t.Fatalf("lymcwd.Resolve(%s): %v", worktree, err)
 	}
 	recorded, found, err := fabricengine.ReadOrigin(loc)
 	if err != nil || !found {
@@ -58,7 +58,7 @@ func newLoomRunFixture(t *testing.T) *loomRunFixture {
 	if err := os.Remove(landing); err != nil && !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("remove the hub landing config: %v", err)
 	}
-	f := &loomRunFixture{t: t, loc: loc, worktree: worktree, lyx: lyxbin.Build(t)}
+	f := &loomRunFixture{t: t, loc: loc, worktree: worktree, lym: lymbin.Build(t)}
 	f.resetRunning()
 	return f
 }
@@ -85,10 +85,10 @@ func (f *loomRunFixture) status() shedengine.Status {
 	return st
 }
 
-// runLyx runs the built binary in the pair's worktree and decodes the last line it printed as the envelope.
-func (f *loomRunFixture) runLyx(args ...string) (map[string]any, int) {
+// runLym runs the built binary in the pair's worktree and decodes the last line it printed as the envelope.
+func (f *loomRunFixture) runLym(args ...string) (map[string]any, int) {
 	f.t.Helper()
-	cmd := exec.Command(f.lyx, args...)
+	cmd := exec.Command(f.lym, args...)
 	cmd.Dir = f.worktree
 	out, err := cmd.Output()
 	code := 0
@@ -96,17 +96,17 @@ func (f *loomRunFixture) runLyx(args ...string) (map[string]any, int) {
 	if errors.As(err, &exitErr) {
 		code = exitErr.ExitCode()
 	} else if err != nil {
-		f.t.Fatalf("lyx %v: %v", args, err)
+		f.t.Fatalf("lym %v: %v", args, err)
 	}
 	lines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
 	var env map[string]any
 	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &env); err != nil {
-		f.t.Fatalf("decode the envelope of lyx %v from %q: %v", args, out, err)
+		f.t.Fatalf("decode the envelope of lym %v from %q: %v", args, out, err)
 	}
 	return env, code
 }
 
-// childLoopSpec arms a loop whose children are real `lyx shed step` processes over the fixture's run.
+// childLoopSpec arms a loop whose children are real `lym shed step` processes over the fixture's run.
 func (f *loomRunFixture) childLoopSpec() *shedverbs.Spec {
 	loc, run := f.loc, shedrun.SelfRunID
 	return &shedverbs.Spec{
@@ -126,7 +126,7 @@ func (f *loomRunFixture) childLoopSpec() *shedverbs.Spec {
 				return shedrun.StepTraceCopy(loc, run, traceID), shedrun.StepStderr(loc, run, traceID)
 			},
 			TraceFiles: func(traceID string) ([]string, error) { return logger.TraceFilesFor(logger.TraceDir(), traceID) },
-			Executable: f.lyx,
+			Executable: f.lym,
 		},
 	}
 }
@@ -142,7 +142,7 @@ func TestLoopIntegration_ArmingRefusalStopsAsBootstrap(t *testing.T) {
 			name: "a child step refuses while arming",
 			run: func() (map[string]any, int) {
 				t.Chdir(f.worktree)
-				root := &cobra.Command{Use: "lyx"}
+				root := &cobra.Command{Use: "lym"}
 				shed := &cobra.Command{Use: "shed"}
 				shed.AddCommand(shedverbs.StepCmdForTest(f.childLoopSpec()))
 				root.AddCommand(shed)
@@ -159,12 +159,12 @@ func TestLoopIntegration_ArmingRefusalStopsAsBootstrap(t *testing.T) {
 		{
 			name: "the driver's own invocation of shed step",
 			run: func() (map[string]any, int) {
-				return f.runLyx("shed", "step", shedrun.SelfRunID, "--"+shedverbs.UntilStopFlag)
+				return f.runLym("shed", "step", shedrun.SelfRunID, "--"+shedverbs.UntilStopFlag)
 			},
 		},
 		{
 			name: "the loom surface",
-			run:  func() (map[string]any, int) { return f.runLyx("loom", "step", "--"+shedverbs.UntilStopFlag) },
+			run:  func() (map[string]any, int) { return f.runLym("loom", "step", "--"+shedverbs.UntilStopFlag) },
 		},
 	}
 	for _, tt := range tests {
@@ -178,7 +178,7 @@ func TestLoopIntegration_ArmingRefusalStopsAsBootstrap(t *testing.T) {
 			if code != 1 || env["kind"] != shedverbs.KindBootstrap || loop["stop"] != string(shedverbs.LoopStopError) {
 				t.Errorf("exit/kind/stop = %d/%v/%v; want 1/%s/%s", code, env["kind"], loop["stop"], shedverbs.KindBootstrap, shedverbs.LoopStopError)
 			}
-			if !strings.Contains(env["error"].(string), "lyx config reconcile --apply") {
+			if !strings.Contains(env["error"].(string), "lym config reconcile --apply") {
 				t.Errorf("error = %q; want the hub-config way forward", env["error"])
 			}
 			if st := f.status(); st.State != shedengine.StateFailed {
@@ -199,7 +199,7 @@ func TestLoopIntegration_ArmingRefusalStopsAsBootstrap(t *testing.T) {
 			t.Errorf("child id %q, loop id %q, trace file %q; want a trace file named by the child's own id", childID, logger.TraceID(), traceFile)
 		}
 		data, err := os.ReadFile(traceFile)
-		if err != nil || !strings.Contains(string(data), "lyx config reconcile --apply") {
+		if err != nil || !strings.Contains(string(data), "lym config reconcile --apply") {
 			t.Errorf("trace file %q = %q, %v; want it holding the refusal", traceFile, data, err)
 		}
 	})

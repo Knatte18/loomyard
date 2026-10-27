@@ -18,8 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // gitOut returns the trimmed stdout of git args in dir, failing the test on any git error.
@@ -120,28 +120,28 @@ func TestAdd_FromParentPair(t *testing.T) {
 			parent func(t *testing.T) string
 			want   []string
 		}{
-			{"UnknownParent", func(t *testing.T) string { return "no-such-pair" }, []string{"no-such-pair", "lyx fabric pairs"}},
+			{"UnknownParent", func(t *testing.T) string { return "no-such-pair" }, []string{"no-such-pair", "lym fabric pairs"}},
 			{"PrimeName", func(t *testing.T) string { return l.WorktreeName }, []string{l.WorktreeName, "drop --parent"}},
 			{"DetachedParent", func(t *testing.T) string {
 				gitOut(t, fabricengine.WorktreePath(l, "detached"), "checkout", "--detach")
 				return "detached"
-			}, []string{"detached", "lyx fabric checkout ", "detached HEAD"}},
+			}, []string{"detached", "lym fabric checkout ", "detached HEAD"}},
 			{"SwitchedParent", func(t *testing.T) string {
 				gitOut(t, fabricengine.WorktreePath(l, "switched"), "checkout", "-b", "elsewhere")
 				return "switched"
-			}, []string{"switched", "\"elsewhere\"", "lyx fabric checkout "}},
+			}, []string{"switched", "\"elsewhere\"", "lym fabric checkout "}},
 			{"EmptyForkPointMarker", func(t *testing.T) string {
-				marker := filepath.Join(beamWeftPath, lyxcwd.AnchorFileName)
+				marker := filepath.Join(beamWeftPath, lymcwd.AnchorFileName)
 				if err := os.WriteFile(marker, []byte("  \n"), 0o644); err != nil {
 					t.Fatalf("truncate %s: %v", marker, err)
 				}
-				t.Cleanup(func() { gitOut(t, beamWeftPath, "restore", lyxcwd.AnchorFileName) })
+				t.Cleanup(func() { gitOut(t, beamWeftPath, "restore", lymcwd.AnchorFileName) })
 				return "beam"
-			}, []string{lyxcwd.AnchorFileName, "git -C"}},
+			}, []string{lymcwd.AnchorFileName, "git -C"}},
 			{"MoveRecordOnForkPoint_LockFree", func(t *testing.T) string {
 				writeMoveRecord(t, beamWeftPath, fabricengine.MoveRecord{A: ".", B: "x", Kind: fabricengine.MoveKindMove, PID: 4242})
 				return "beam"
-			}, []string{"interrupted", "lyx fabric anchor beam --set x"}},
+			}, []string{"interrupted", "lym fabric anchor beam --set x"}},
 			{"MoveRecordOnForkPoint_LockHeld", func(t *testing.T) string {
 				writeMoveRecord(t, beamWeftPath, fabricengine.MoveRecord{A: ".", B: "x", Kind: fabricengine.MoveKindMove, PID: 4242})
 				holdMoveLock(t, beamWeftPath)
@@ -179,7 +179,7 @@ func TestAdd_FromParentPair(t *testing.T) {
 		const anchor = "x"
 		hubforge.ReanchorPair(t, h, "beam", anchor)
 		gitOut(t, beamPath, "checkout", "--", tracked)
-		beamLocation, err := lyxcwd.ResolveWorktree(beamPath)
+		beamLocation, err := lymcwd.ResolveWorktree(beamPath)
 		if err != nil {
 			t.Fatalf("ResolveWorktree(%s): %v", beamPath, err)
 		}
@@ -208,22 +208,22 @@ func TestAdd_FromParentPair(t *testing.T) {
 				}
 
 				weftPath := fabricengine.RecordsWorktreePath(l, slug)
-				marker, err := os.ReadFile(filepath.Join(weftPath, lyxcwd.AnchorFileName))
+				marker, err := os.ReadFile(filepath.Join(weftPath, lymcwd.AnchorFileName))
 				if err != nil {
 					t.Fatalf("read the pair's marker: %v", err)
 				}
 				if got := strings.TrimSpace(string(marker)); got != anchor {
-					t.Errorf("%s in the pair's records worktree = %q; want %q", lyxcwd.AnchorFileName, got, anchor)
+					t.Errorf("%s in the pair's records worktree = %q; want %q", lymcwd.AnchorFileName, got, anchor)
 				}
 
 				pairPath := fabricengine.WorktreePath(l, slug)
-				for _, name := range []string{lyxdirs.LyxDirName, lyxdirs.DotLyxDirName} {
+				for _, name := range []string{lymdirs.LymDirName, lymdirs.DotLymDirName} {
 					link := filepath.Join(pairPath, anchor, name)
 					if isLink, err := fslink.IsLink(link); err != nil || !isLink {
 						t.Errorf("%s: IsLink = (%v, %v); want a junction at the fork point's anchor", link, isLink, err)
 					}
 				}
-				wantScratch := filepath.Join(weftPath, anchor, lyxdirs.DotLyxDirName, "scratch")
+				wantScratch := filepath.Join(weftPath, anchor, lymdirs.DotLymDirName, "scratch")
 				if got, err := fslink.PointsTo(filepath.Join(pairPath, ".scratch")); err != nil || filepath.Clean(got) != wantScratch {
 					t.Errorf("scratch link of %s = (%q, %v); want it to point at %s", slug, got, err, wantScratch)
 				}

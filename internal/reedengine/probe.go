@@ -139,9 +139,9 @@ func (e *Engine) probeCapabilityLocked() error {
 	return probeCapability(probe.output)
 }
 
-// newProbeSocketKey returns a fresh `-L` key for one capability probe: `lyx-p` and seven random hex digits.
+// newProbeSocketKey returns a fresh `-L` key for one capability probe: `lym-p` and seven random hex digits.
 // Its 12 bytes are no more than any hub socket key reed forms, so the probe's socket path fits wherever the hub's passed the path-length check.
 // Two concurrent probes drawing the same key share one transient server, which only costs the isolation.
 func newProbeSocketKey() string {
-	return fmt.Sprintf("lyx-p%07x", rand.Uint32()>>4)
+	return fmt.Sprintf("lym-p%07x", rand.Uint32()>>4)
 }

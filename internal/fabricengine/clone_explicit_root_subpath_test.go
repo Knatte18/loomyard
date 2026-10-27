@@ -18,7 +18,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // TestCloneHub_ExplicitRootSubpathRefusesRecordedSubpath asserts an explicit "." is refused against
@@ -30,7 +30,7 @@ func TestCloneHub_ExplicitRootSubpathRefusesRecordedSubpath(t *testing.T) {
 
 	warpBare := makeBareRemoteWithSubdir(t, fixtures, "explicit-root-warp", "backend")
 	weftBare := makeBareRemote(t, fixtures, "explicit-root-weft")
-	commitFileOnBranch(t, fixtures, weftBare, "main", lyxcwd.AnchorFileName, "backend\n")
+	commitFileOnBranch(t, fixtures, weftBare, "main", lymcwd.AnchorFileName, "backend\n")
 
 	cloneParent := t.TempDir()
 

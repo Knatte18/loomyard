@@ -3,9 +3,9 @@
 // (state.json, a batch report, outcome.yaml) through the fabric repo via
 // fabricengine.Fabric.Commit.
 // Machine-local runtime artifacts (run.lock, mutate.lock, treadle's round-loop pause flag, webster's rendered fork prompts) are never staged in the first place:
-// they live under .lyx and so never reach the pathspec this helper stages against.
+// they live under .lym and so never reach the pathspec this helper stages against.
 // This helper passes only a positive pathspec, with no ":(exclude)" magic of its own.
-// fabricSync takes its fabric handle through a lazy opener, never a *lyxcwd.Location, and its
+// fabricSync takes its fabric handle through a lazy opener, never a *lymcwd.Location, and its
 // pathspec scope through a told anchor-relative path: fabricengine.Fabric exposes no anchor-relative
 // path of its own, so the scope must be told separately from the handle. A nil opener means standalone
 // mode, which has no fabric repo by construction -- fabricSync reports (false, nil) without touching
@@ -16,10 +16,10 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
-// fabricSync stages and commits changes under anchorRel's _lyx pathspec through the fabric repo
+// fabricSync stages and commits changes under anchorRel's _lym pathspec through the fabric repo
 // obtained by calling open, or reports (false, nil) without touching git when open is nil (standalone
 // mode).
 func fabricSync(open func() (*fabricengine.Fabric, error), anchorRel, label string) (bool, error) {
@@ -29,7 +29,7 @@ func fabricSync(open func() (*fabricengine.Fabric, error), anchorRel, label stri
 		return false, nil
 	}
 
-	files := fabricengine.ScopedPathspec(anchorRel, []string{lyxdirs.LyxDirName})
+	files := fabricengine.ScopedPathspec(anchorRel, []string{lymdirs.LymDirName})
 
 	var committed bool
 	if !opts.SkipGit {

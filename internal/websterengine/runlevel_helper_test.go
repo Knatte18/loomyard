@@ -181,7 +181,7 @@ func newRunFixtureOver(t *testing.T, numCards int, worktree string, git webstere
 		websterengine.RoleRecovery: {Model: "recovery-model", Effort: "high"},
 	}
 
-	// The fixture's WorktreeRoot is a bare scratch git repo with no _lyx/ tree, and Run needs no config tree, so the identity batcher is injected directly.
+	// The fixture's WorktreeRoot is a bare scratch git repo with no _lym/ tree, and Run needs no config tree, so the identity batcher is injected directly.
 	activeBatcher := batcher.Identity()
 
 	deps := websterengine.RunDeps{

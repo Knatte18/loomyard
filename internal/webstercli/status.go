@@ -1,10 +1,6 @@
-// status.go implements the `status` webster verb: an instant, side-effect-free snapshot of
-// _lyx/webster/state.json, a human- and loom-facing navigation refresher.
+// status.go implements the `status` webster verb: an instant, side-effect-free snapshot of _lym/webster/state.json, a human- and loom-facing navigation refresher.
 // It never spawns an agent, never fabric-commits, and never mutates state.json;
-// webster's own record-batch/recover-batch persist
-// BatchState.Status/Terminal/Digest directly onto state.json the moment the batch reaches a
-// terminal classification, so status here is a plain read of the persisted record and needs no
-// separate reports-dir scan -- a pure snapshot, never a mutation.
+// webster's own record-batch/recover-batch persist BatchState.Status/Terminal/Digest directly onto state.json the moment the batch reaches a terminal classification, so status here is a plain read of the persisted record and needs no separate reports-dir scan -- a pure snapshot, never a mutation.
 package webstercli
 
 import (
@@ -22,7 +18,7 @@ func (c *websterCLI) statusCmd() *cobra.Command {
 		Use:         "status",
 		Short:       "print an instant snapshot of the run's persisted state.json",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `status reads _lyx/webster/state.json and reports the run's identity, the
+		Long: `status reads _lym/webster/state.json and reports the run's identity, the
 in-flight batch cursor, the plan fingerprint, every batch's own persisted
 record (number, slug, kind, status, terminal, whether a digest is
 persisted, its counted recoveries and whether a dead recovery earns one
@@ -35,7 +31,7 @@ A run that has never started (no state.json yet) prints
 {"initialized": false} instead.
 
 Example:
-  lyx webster status`,
+  lym webster status`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
 
@@ -66,7 +62,7 @@ Example:
 				bs := st.Batches[n]
 				if bs == nil {
 					// A state.json carrying an explicit null for a batch key parses to a
-					// present-but-nil entry. Reporting the key with no detail keeps `lyx webster
+					// present-but-nil entry. Reporting the key with no detail keeps `lym webster
 					// status` — the verb an operator reaches for when a run looks wrong — answering
 					// at all, where dereferencing it panicked the one diagnostic they had left.
 					batches = append(batches, map[string]any{"number": n, "malformed": true})

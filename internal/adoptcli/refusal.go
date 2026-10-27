@@ -24,7 +24,7 @@ func refuseStandingMove(deps adoptDeps, slugs []string) error {
 		}
 		parent, err := deps.ParentOf(slug)
 		if err != nil {
-			return fmt.Errorf("lyx adopt: read the parent of %s, so nothing ran: %w; %s", slug, err, reentry)
+			return fmt.Errorf("lym adopt: read the parent of %s, so nothing ran: %w; %s", slug, err, reentry)
 		}
 		subjects = append(subjects, parent)
 	}
@@ -36,10 +36,10 @@ func refuseStandingMove(deps adoptDeps, slugs []string) error {
 		checked[subject] = true
 		wayForward, standing, err := deps.MoveInProgress(subject)
 		if err != nil {
-			return fmt.Errorf("lyx adopt: read whether an anchor change stands in %q, so nothing ran: %w; %s", subject, err, reentry)
+			return fmt.Errorf("lym adopt: read whether an anchor change stands in %q, so nothing ran: %w; %s", subject, err, reentry)
 		}
 		if standing {
-			return fmt.Errorf("lyx adopt: an anchor change stands, so nothing ran: %s; %s", wayForward, reentry)
+			return fmt.Errorf("lym adopt: an anchor change stands, so nothing ran: %s; %s", wayForward, reentry)
 		}
 	}
 	return nil

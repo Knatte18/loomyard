@@ -73,7 +73,7 @@ func (p Profiles) Names() []string {
 func (p Profiles) Lookup(name string) (Profile, error) {
 	profile, ok := p.ByName[name]
 	if !ok {
-		return nil, fmt.Errorf("unknown run profile %q (known: %s); way forward: name a known profile in the task's profile field, or add it with \"lyx config profiles --set %s='<json object>'\" from the hub's prime worktree", name, strings.Join(p.Names(), ", "), name)
+		return nil, fmt.Errorf("unknown run profile %q (known: %s); way forward: name a known profile in the task's profile field, or add it with \"lym config profiles --set %s='<json object>'\" from the hub's prime worktree", name, strings.Join(p.Names(), ", "), name)
 	}
 	return profile, nil
 }
@@ -87,7 +87,7 @@ func (p Profiles) Settings(name, recipe string) (map[string]any, error) {
 	}
 	settings, ok := profile[recipe]
 	if !ok {
-		return nil, fmt.Errorf("run profile %q holds no %s block (it covers: %s); way forward: name a profile that covers %s in the task's profile field, or add a %s block to %q with \"lyx config profiles\" from the hub's prime worktree", name, recipe, strings.Join(slices.Sorted(maps.Keys(profile)), ", "), recipe, recipe, name)
+		return nil, fmt.Errorf("run profile %q holds no %s block (it covers: %s); way forward: name a profile that covers %s in the task's profile field, or add a %s block to %q with \"lym config profiles\" from the hub's prime worktree", name, recipe, strings.Join(slices.Sorted(maps.Keys(profile)), ", "), recipe, recipe, name)
 	}
 	return settings, nil
 }
@@ -134,14 +134,14 @@ func decode(document []byte, source string) (Profiles, error) {
 		}
 		profile, err := decodeProfile(name, value)
 		if err != nil {
-			return Profiles{}, configengine.MarkInvalid(fmt.Errorf("runprofile: %s: %w; way forward: give each profile one block per recipe, recipe name to module name to keys, with \"lyx config profiles\"", source, err))
+			return Profiles{}, configengine.MarkInvalid(fmt.Errorf("runprofile: %s: %w; way forward: give each profile one block per recipe, recipe name to module name to keys, with \"lym config profiles\"", source, err))
 		}
 		profiles.ByName[name] = profile
 	}
 	if value, ok := raw[DefaultsEntry]; ok {
 		defaults, err := decodeDefaults(value, profiles)
 		if err != nil {
-			return Profiles{}, configengine.MarkInvalid(fmt.Errorf("runprofile: %s: %w; way forward: map each recipe to a profile that covers it under %s with \"lyx config profiles\"", source, err, DefaultsEntry))
+			return Profiles{}, configengine.MarkInvalid(fmt.Errorf("runprofile: %s: %w; way forward: map each recipe to a profile that covers it under %s with \"lym config profiles\"", source, err, DefaultsEntry))
 		}
 		profiles.Defaults = defaults
 	}

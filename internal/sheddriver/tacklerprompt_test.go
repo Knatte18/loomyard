@@ -27,14 +27,14 @@ func TestTacklerPrompt(t *testing.T) {
 		Recipe:        "loom: a phased task run (discussion, plan, webster's coded batches, reviews, landing)",
 		GotoRows:      "`Plan-Bouncer`",
 		Worktree:      "/hub/wt",
-		EnvelopePath:  "/hub/wt/.lyx/envelope.json",
-		ReportPath:    "/hub/wt/.lyx/report.md",
-		TraceCopy:     "/hub/wt/.lyx/steps/t1.trace.log",
-		StderrPath:    "/hub/wt/.lyx/steps/t1.stderr.log",
-		TraceDir:      "/hub/wt/.lyx/traces",
-		DriverLog:     "/hub/wt/.lyx/driver.log",
-		VerdictPath:   "/hub/wt/_lyx/shed/operator-surface/tackler/attempt-1/verdict.yaml",
-		CaseBriefPath: "/hub/wt/_lyx/shed/operator-surface/tackler/attempt-1/case-brief.md",
+		EnvelopePath:  "/hub/wt/.lym/envelope.json",
+		ReportPath:    "/hub/wt/.lym/report.md",
+		TraceCopy:     "/hub/wt/.lym/steps/t1.trace.log",
+		StderrPath:    "/hub/wt/.lym/steps/t1.stderr.log",
+		TraceDir:      "/hub/wt/.lym/traces",
+		DriverLog:     "/hub/wt/.lym/driver.log",
+		VerdictPath:   "/hub/wt/_lym/shed/operator-surface/tackler/attempt-1/verdict.yaml",
+		CaseBriefPath: "/hub/wt/_lym/shed/operator-surface/tackler/attempt-1/case-brief.md",
 	}
 	noReport := in
 	noReport.ReportPath = ""
@@ -131,8 +131,8 @@ func TestTacklerSpec(t *testing.T) {
 	t.Parallel()
 
 	const prompt = "settle the stop"
-	const verdictPath = "/hub/wt/_lyx/shed/run/tackler/attempt-1/verdict.yaml"
-	const caseBriefPath = "/hub/wt/_lyx/shed/run/tackler/attempt-1/case-brief.md"
+	const verdictPath = "/hub/wt/_lym/shed/run/tackler/attempt-1/verdict.yaml"
+	const caseBriefPath = "/hub/wt/_lym/shed/run/tackler/attempt-1/case-brief.md"
 	settings := TacklerSettings{ModelChoice: shuttleengine.ModelChoice{Engine: "b", Model: "claude-resolved-model-id", Effort: "low", Version: "v9"}, Timeout: 10 * time.Minute, MaxSpawns: 4}
 
 	got := tacklerSpec(prompt, verdictPath, caseBriefPath, settings)

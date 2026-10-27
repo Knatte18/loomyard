@@ -294,7 +294,7 @@ func TestBouncer_SeedSideHarvest_SurvivesALateFailure(t *testing.T) {
 // returning Stuck without waiting abandons it while the segment's round producer starts reading that
 // very file.
 //
-// Reproduced live in crucible round 1: `lyx loom step` SIGKILLed mid-Discussion-Bouncer seed with
+// Reproduced live in crucible round 1: `lym loom step` SIGKILLed mid-Discussion-Bouncer seed with
 // exactly one agent alive, then re-invoked. It correctly did not double-spawn -- and left the
 // paid-for agent running behind it. That reproduction contradicted what the pre-rewrite driver
 // instructions told operators; the rewritten driver stencil makes no such claim.
@@ -393,7 +393,7 @@ func TestBouncer_ReBounceDegradesOnAnUndeterminableProbe(t *testing.T) {
 
 // TestBouncer_MarkerCompleteness_BothTemplates also pins that no stamp banner of the rubric leaks into either filled prompt.
 func TestBouncer_MarkerCompleteness_BothTemplates(t *testing.T) {
-	rubric := "<!-- lyx-stencil: sha256=deadbeef -->\n# Rubric\n\nBe thorough.\n"
+	rubric := "<!-- lym-stencil: sha256=deadbeef -->\n# Rubric\n\nBe thorough.\n"
 	strippedRubric := stencil.StripLeadingComment(rubric)
 
 	t.Run("Seed", func(t *testing.T) {
@@ -419,7 +419,7 @@ func TestBouncer_MarkerCompleteness_BothTemplates(t *testing.T) {
 				t.Errorf("filled seed prompt does not contain value for marker %q (%q)", marker, values[marker])
 			}
 		}
-		if strings.Contains(string(prompt), "<!-- lyx-stencil:") {
+		if strings.Contains(string(prompt), "<!-- lym-stencil:") {
 			t.Error("filled seed prompt contains a leaked stamp banner")
 		}
 	})
@@ -459,7 +459,7 @@ func TestBouncer_MarkerCompleteness_BothTemplates(t *testing.T) {
 		if !strings.Contains(string(prompt), "(none)") {
 			t.Error("filled first-round judge prompt does not render the previous_ledger literal \"(none)\"")
 		}
-		if strings.Contains(string(prompt), "<!-- lyx-stencil:") {
+		if strings.Contains(string(prompt), "<!-- lym-stencil:") {
 			t.Error("filled judge prompt contains a leaked stamp banner")
 		}
 	})

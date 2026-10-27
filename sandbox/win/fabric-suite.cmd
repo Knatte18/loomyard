@@ -1,5 +1,5 @@
 @echo off
-REM Launcher for the lyx SANDBOX-FABRIC-SUITE: runs the interactive fabric
+REM Launcher for the lym SANDBOX-FABRIC-SUITE: runs the interactive fabric
 REM black-box agent session against the same shared Hub the other suites use
 REM (run sandbox/build.cmd first if it does not exist yet).
 REM The machine-specific parent directory is hardcoded HERE (the base under which

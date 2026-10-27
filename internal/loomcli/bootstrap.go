@@ -40,10 +40,10 @@ const driverStrandDisplayName = loomengine.LoomDriverStrandName
 // state AND whether a live driver strand already exists.
 //
 // The conjunction is required on BOTH paths, not one signal per path, because each signal is blind
-// to exactly the driver kind the other sees. An operator may run `lyx loom run` by hand against an
+// to exactly the driver kind the other sees. An operator may run `lym loom run` by hand against an
 // `llm`-seeded run: that spawns no driver strand at all, so a bootstrap consulting the strand table
 // alone would find none and launch a Claude driver alongside the live Go one. And a live loom driver
-// session between two `lyx shed step` invocations holds no run lock -- it takes the lock only inside
+// session between two `lym shed step` invocations holds no run lock -- it takes the lock only inside
 // each step and releases it between them -- so a bootstrap consulting the lock alone would spawn a
 // second driver into a worktree that already has one.
 //
@@ -56,7 +56,7 @@ func mustSpawnDriver(runLockHeld, driverLockHeld, driverStrandLive bool) bool {
 	return !runLockHeld && !driverLockHeld && !driverStrandLive
 }
 
-// startEnvelopeFields builds the success envelope `lyx loom start` prints: the run's driver, slug, resolved run id and status file.
+// startEnvelopeFields builds the success envelope `lym loom start` prints: the run's driver, slug, resolved run id and status file.
 // It is a pure function so a Tier 1 test can pin the key set.
 func startEnvelopeFields(driver, slug, runID, statusFile string) map[string]any {
 	return map[string]any{
@@ -85,7 +85,7 @@ const (
 )
 
 // awaitRunLock polls at most attempts times for the just-spawned driver to take the lock lockHeld reads.
-// The go arm's handshake waits for the driver lock, which `lyx loom drive` takes first and holds for life, and the post-run work is that verb's.
+// The go arm's handshake waits for the driver lock, which `lym loom drive` takes first and holds for life, and the post-run work is that verb's.
 //
 // Each iteration consults the three seams in a fixed order — lockHeld, then alive, then halted —
 // and only then calls wait and loops again.
@@ -134,7 +134,7 @@ const (
 )
 
 // dispositionForHandshake maps an awaitRunLockResult onto what the bootstrap should do next.
-// The handshake is the go arm's wait for the spawned `lyx loom drive` to take its driver lock, and the post-run bookkeeping the arms below name is that verb's.
+// The handshake is the go arm's wait for the spawned `lym loom drive` to take its driver lock, and the post-run bookkeeping the arms below name is that verb's.
 //
 // awaitRunLockChildDied proceeds, and that is the whole point of this function existing rather than
 // the verb testing `result != awaitRunLockReady` inline. A child that is already gone before the
@@ -202,7 +202,7 @@ const (
 // tracking a strand whose pane is gone -- which is exactly the state any reed server restart leaves
 // behind: a reboot, a crash, a "tmux kill-server", or reed's own zombie-boot force-reap all leave
 // "loom-status" in reed.json with a cleared pane binding. A presence-only check then reported
-// "already there" on every subsequent `lyx loom start` in that worktree, so the status strand was
+// "already there" on every subsequent `lym loom start` in that worktree, so the status strand was
 // never re-added and the operator permanently lost the one-line read-out step 2 of the bootstrap
 // exists to give them.
 //
@@ -211,7 +211,7 @@ const (
 //
 // A live strand is kept only when the recorded sidecar names its GUID and equals the current build
 // identity; a missing, unreadable or otherwise-mismatched sidecar means the strand may run a
-// different lyx build, so it is replaced.
+// different lym build, so it is replaced.
 func resolveStatusStrandAction(strands []reedengine.StrandStatus, sidecar *statuspane.Sidecar, current statuspane.BuildIdentity) (statusStrandAction, string) {
 	strand, found := findStatusStrand(strands, statusStrandDisplayName)
 	switch {

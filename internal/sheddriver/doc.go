@@ -1,6 +1,6 @@
 // Package sheddriver is the shed layer's Go driver and its tackler.
 // It steps a run to each stop, decides the stop by a closed rule table, asks a cold tackler agent about a stop no rule settles, and hands back to the run's parent everything it cannot settle.
-// Loom and darn mount it through `lyx loom drive`, and batten's `lyx batten run` runs it in-process over its own run.
+// Loom and darn mount it through `lym loom drive`, and batten's `lym batten run` runs it in-process over its own run.
 //
 // # Told geometry
 //

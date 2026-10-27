@@ -16,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -153,7 +153,7 @@ func (j *pushJob) push() error {
 // isPrimeWorktree reports whether the worktree at the job's path is the hub's prime.
 // A worktree whose prime cannot be resolved reads as the prime, since the task-branch checks only ever hold a push back.
 func (j *pushJob) isPrimeWorktree() bool {
-	l, err := lyxcwd.ResolveWorktree(j.path)
+	l, err := lymcwd.ResolveWorktree(j.path)
 	if err != nil {
 		logger.Warn("fabricengine: prime worktree not resolved, the push is judged as the prime's", "path", j.path, "error", err)
 		return true
@@ -532,7 +532,7 @@ func retryWeftPush(rec *Mutations, hubPath, weftPath string) (deferred bool, err
 		if err != nil {
 			return false, err
 		}
-		l, err := lyxcwd.ResolveWorktree(filepath.Join(filepath.Dir(weftPath), slug))
+		l, err := lymcwd.ResolveWorktree(filepath.Join(filepath.Dir(weftPath), slug))
 		if err != nil {
 			return false, err
 		}

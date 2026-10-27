@@ -25,7 +25,7 @@ file path, with "" and "." both meaning the repository root -- and emits quarry'
 own JSON rendering unchanged.
 
 Example:
-  lyx quarry toc internal/planglyph`,
+  lym quarry toc internal/planglyph`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {

@@ -19,7 +19,7 @@ func TestIdentityOf(t *testing.T) {
 	t.Run("changes with size and mtime", func(t *testing.T) {
 		t.Parallel()
 
-		path := filepath.Join(t.TempDir(), "lyx")
+		path := filepath.Join(t.TempDir(), "lym")
 		if err := os.WriteFile(path, []byte("one"), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -92,7 +92,7 @@ func TestSidecar_RoundTrip(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "nested", testSidecarFile)
-	build := BuildIdentity{Path: "/bin/lyx", Size: 5, ModTime: 9}
+	build := BuildIdentity{Path: "/bin/lym", Size: 5, ModTime: 9}
 	if got := ReadSidecar(path); got != nil {
 		t.Fatalf("missing sidecar read = %+v; want nil", got)
 	}

@@ -29,7 +29,7 @@ func newSpawnFixture(t *testing.T, onSpawn func(f *spawnFixture, spec childSpawn
 	f := &spawnFixture{}
 	root := t.TempDir()
 	f.req = SpawnRequest{
-		Executable:       "lyx",
+		Executable:       "lym",
 		WorktreeRoot:     root,
 		Paths:            NewPaths(root),
 		RunProcDir:       t.TempDir(),
@@ -93,7 +93,7 @@ func TestStartCapture(t *testing.T) {
 		if got.err != nil || got.pid != os.Getpid() {
 			t.Fatalf("StartCapture() = %d, %v; want %d, nil", got.pid, got.err, os.Getpid())
 		}
-		if want := []string{"lyx", "drift", "capture-child"}; len(f.spawns) != 1 || strings.Join(f.spawns[0].argv, " ") != strings.Join(want, " ") || !f.spawns[0].breakaway {
+		if want := []string{"lym", "drift", "capture-child"}; len(f.spawns) != 1 || strings.Join(f.spawns[0].argv, " ") != strings.Join(want, " ") || !f.spawns[0].breakaway {
 			t.Errorf("spawns = %+v; want one breakaway start of %v", f.spawns, want)
 		}
 		records, err := runproc.List(f.req.RunProcDir, f.req.Owner)
@@ -108,10 +108,10 @@ func TestStartCapture(t *testing.T) {
 		exits    bool
 		want     []string
 	}{
-		{"a child that exits without its record, no fallback", false, true, []string{"ended before it recorded its start", "capture-child-", "lyx loom resume, whose entry captures again"}},
-		{"a child that exits without its record, with fallback", true, true, []string{"ended before it recorded its start", "capture-child-", "lyx drift capture again", "lyx drift defer followed by lyx loom resume"}},
-		{"a child that stalls past the record bound, no fallback", false, false, []string{"did not record its start within", "lyx loom resume, whose entry captures again"}},
-		{"a child that stalls past the record bound, with fallback", true, false, []string{"did not record its start within", "lyx drift capture again"}},
+		{"a child that exits without its record, no fallback", false, true, []string{"ended before it recorded its start", "capture-child-", "lym loom resume, whose entry captures again"}},
+		{"a child that exits without its record, with fallback", true, true, []string{"ended before it recorded its start", "capture-child-", "lym drift capture again", "lym drift defer followed by lym loom resume"}},
+		{"a child that stalls past the record bound, no fallback", false, false, []string{"did not record its start within", "lym loom resume, whose entry captures again"}},
+		{"a child that stalls past the record bound, with fallback", true, false, []string{"did not record its start within", "lym drift capture again"}},
 	}
 	for _, tt := range failures {
 		t.Run(tt.name, func(t *testing.T) {

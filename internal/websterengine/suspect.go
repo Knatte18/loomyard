@@ -18,7 +18,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // evidenceBases are the two commits the suspect-path evidence is checked against, picked by git ancestry rather than batch number.
@@ -126,7 +126,7 @@ func missingCommitsClause(missing []string) string {
 
 // planPathClause is the way forward for plan paths that differ from the plan the run recorded, ending in the verb to re-run as next.
 func planPathClause(next string) string {
-	return fmt.Sprintf("restore them with \"lyx webster restore-plan\", or accept an edit to a card no batch has begun with \"lyx webster rebaseline --card NN\"; then re-run %s", next)
+	return fmt.Sprintf("restore them with \"lym webster restore-plan\", or accept an edit to a card no batch has begun with \"lym webster rebaseline --card NN\"; then re-run %s", next)
 }
 
 // splitPlanPaths sorts paths into those under geom.PlanDir and the rest, each in input order.
@@ -169,7 +169,7 @@ func planFileName(geom Geometry, p string) (string, error) {
 
 // checkSuspectPaths sorts each of paths into differing or unverifiable, both returned sorted.
 // A plan file differs when its hash is not the one st.PlanFileHashes recorded, and is unverifiable when no hashes were recorded.
-// A tracked-or-new file in the task worktree outside its _lyx, geom.ScratchDir and git-ignored paths differs when it changed against base, and is unverifiable when base is empty or not in the repository.
+// A tracked-or-new file in the task worktree outside its _lym, geom.ScratchDir and git-ignored paths differs when it changed against base, and is unverifiable when base is empty or not in the repository.
 // Any other path is unverifiable.
 // The error is a git probe's or a read's failure other than not-exist;
 // the check changes nothing.
@@ -186,7 +186,7 @@ func checkSuspectPaths(geom Geometry, st *State, base string, paths []string) (d
 	if err != nil {
 		return nil, nil, err
 	}
-	lyx, err := canonicalPath(filepath.Join(geom.WorktreeRoot, lyxdirs.LyxDirName))
+	lym, err := canonicalPath(filepath.Join(geom.WorktreeRoot, lymdirs.LymDirName))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -212,7 +212,7 @@ func checkSuspectPaths(geom Geometry, st *State, base string, paths []string) (d
 				differing = append(differing, p)
 			}
 		case !pathWithin(worktree, canon),
-			pathWithin(lyx, canon), pathWithin(filepath.Join(geom.WorktreeRoot, lyxdirs.LyxDirName), lexical),
+			pathWithin(lym, canon), pathWithin(filepath.Join(geom.WorktreeRoot, lymdirs.LymDirName), lexical),
 			pathWithin(scratch, canon):
 			unverifiable = append(unverifiable, p)
 		default:
@@ -262,7 +262,7 @@ func planFileDiffers(st *State, planDir, canon string) (differs, ok bool, err er
 }
 
 // trackedRel returns the slash-separated path of p relative to worktree when p lies in the task worktree's tracked tree:
-// inside the worktree, outside its _lyx and not git-ignored.
+// inside the worktree, outside its _lym and not git-ignored.
 // ok is false for every other path, which has no blob to compare.
 func trackedRel(git Git, worktree, p string) (rel string, ok bool, err error) {
 	root, err := canonicalPath(worktree)
@@ -274,12 +274,12 @@ func trackedRel(git Git, worktree, p string) (rel string, ok bool, err error) {
 	if err != nil {
 		return "", false, err
 	}
-	lyxLink := filepath.Join(worktree, lyxdirs.LyxDirName)
-	lyxReal, err := canonicalPath(lyxLink)
+	lymLink := filepath.Join(worktree, lymdirs.LymDirName)
+	lymReal, err := canonicalPath(lymLink)
 	if err != nil {
 		return "", false, err
 	}
-	if !pathWithin(root, canon) || pathWithin(lyxReal, canon) || pathWithin(lyxLink, lexical) {
+	if !pathWithin(root, canon) || pathWithin(lymReal, canon) || pathWithin(lymLink, lexical) {
 		return "", false, nil
 	}
 	ignored, err := git.IgnoredPath(worktree, canon)
@@ -359,7 +359,7 @@ func checkRecoveredSuspects(geom Geometry, st *State, bs *BatchState, number int
 	isPlan := map[string]bool{}
 	for _, p := range planDiff {
 		isPlan[p] = true
-		reasons = append(reasons, fmt.Sprintf("suspect path %s still differs from the plan as the run recorded it; way forward: %s", p, planPathClause(fmt.Sprintf("\"lyx webster recover-batch %02d\"", number))))
+		reasons = append(reasons, fmt.Sprintf("suspect path %s still differs from the plan as the run recorded it; way forward: %s", p, planPathClause(fmt.Sprintf("\"lym webster recover-batch %02d\"", number))))
 	}
 	for _, p := range headDiff {
 		if !isPlan[p] {

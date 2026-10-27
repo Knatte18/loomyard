@@ -90,7 +90,7 @@ func DarnRouting(budgets map[string]int) (shedengine.Routing, error) {
 // checkVerifyAttempts refuses a verify attempt budget below 1.
 func checkVerifyAttempts(attempts int) error {
 	if attempts < 1 {
-		return fmt.Errorf("loomrecipe: verify_attempts = %d; want at least 1; way forward: run \"lyx config darn --set verify_attempts=<n>\" from the prime, then \"lyx loom resume\"", attempts)
+		return fmt.Errorf("loomrecipe: verify_attempts = %d; want at least 1; way forward: run \"lym config darn --set verify_attempts=<n>\" from the prime, then \"lym loom resume\"", attempts)
 	}
 
 	return nil

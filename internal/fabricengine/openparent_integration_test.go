@@ -19,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // TestOpenParent_HappyPath asserts OpenParent, called from a task pair, resolves and opens the
@@ -31,7 +31,7 @@ func TestOpenParent_HappyPath(t *testing.T) {
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	res := hubforge.AddPair(t, h, "task1")
 
-	taskLoc, err := lyxcwd.ResolveWorktree(res.Path)
+	taskLoc, err := lymcwd.ResolveWorktree(res.Path)
 	if err != nil {
 		t.Fatalf("ResolveWorktree(%q): %v", res.Path, err)
 	}
@@ -88,7 +88,7 @@ func TestOpenParent_ParentSiblingMissing(t *testing.T) {
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	res := hubforge.AddPair(t, h, "task1")
-	taskLoc, err := lyxcwd.ResolveWorktree(res.Path)
+	taskLoc, err := lymcwd.ResolveWorktree(res.Path)
 	if err != nil {
 		t.Fatalf("ResolveWorktree(%q): %v", res.Path, err)
 	}
@@ -138,10 +138,7 @@ func TestOpenParent_PrunableParentDirRemoved(t *testing.T) {
 	}
 }
 
-// TestOpenParent_ResolveFailureNamesBranchAndPath asserts that a step-3 lyxcwd.ResolveWorktree
-// failure — the matched path existed at List time but is gone by ResolveWorktree time — surfaces
-// through OpenParent's wrap naming both the branch and the resolved path, never git's own bare "not a
-// git repository" text unqualified.
+// TestOpenParent_ResolveFailureNamesBranchAndPath asserts that a step-3 lymcwd.ResolveWorktree failure — the matched path existed at List time but is gone by ResolveWorktree time — surfaces through OpenParent's wrap naming both the branch and the resolved path, never git's own bare "not a git repository" text unqualified.
 //
 // The path is locked before its directory is removed: `git worktree lock` suppresses git's own
 // "prunable" porcelain line even once the directory is gone, which is the deterministic way to
@@ -171,7 +168,7 @@ func TestOpenParent_ResolveFailureNamesBranchAndPath(t *testing.T) {
 
 // TestCodeWorktrees_ListOpenAndPairComplete pins the path-based reads a told-geometry caller walks a hub with, on a root-anchored and a subpath-anchored hub:
 // the listing from either pair names the prime first and both pairs with their anchors, a pair whose directory is deleted by hand drops out and reads as missing,
-// and a pair whose warp `_lyx` junction is removed is listed but not complete.
+// and a pair whose warp `_lym` junction is removed is listed but not complete.
 // It also pins that pair completeness, `Healthy` and `Status` stay blind to the root `.scratch` entry, whether a real directory or absent.
 func TestCodeWorktrees_ListOpenAndPairComplete(t *testing.T) {
 	t.Parallel()
@@ -228,9 +225,9 @@ func TestCodeWorktrees_ListOpenAndPairComplete(t *testing.T) {
 
 			// Pair completeness, Healthy and Status read only the wired junction set.
 			// The root .scratch entry, a link, a real directory or absent, never changes their verdict.
-			keptLayout, err := lyxcwd.Resolve(anchorOf(kept.Path))
+			keptLayout, err := lymcwd.Resolve(anchorOf(kept.Path))
 			if err != nil {
-				t.Fatalf("lyxcwd.Resolve(kept) error = %v", err)
+				t.Fatalf("lymcwd.Resolve(kept) error = %v", err)
 			}
 			assertScratchBlind := func(shape string) {
 				t.Helper()
@@ -263,11 +260,11 @@ func TestCodeWorktrees_ListOpenAndPairComplete(t *testing.T) {
 			}
 			assertScratchBlind("no root .scratch")
 
-			if err := os.Remove(fabricengine.CodeLyxLink(h.Location, "kept")); err != nil {
-				t.Fatalf("remove warp _lyx junction: %v", err)
+			if err := os.Remove(fabricengine.CodeLymLink(h.Location, "kept")); err != nil {
+				t.Fatalf("remove warp _lym junction: %v", err)
 			}
 			if ok, _, err := fabricengine.PairCompleteAt(kept.Path); err != nil || ok {
-				t.Errorf("PairCompleteAt(kept) without its _lyx junction = %v, %v; want not complete", ok, err)
+				t.Errorf("PairCompleteAt(kept) without its _lym junction = %v, %v; want not complete", ok, err)
 			}
 			if _, _, err := fabricengine.PairCompleteAt(gone.Path); !errors.As(err, &missing) || missing.Path != gone.Path {
 				t.Errorf("PairCompleteAt(gone) error = %v; want *ErrMissingPath naming %q", err, gone.Path)

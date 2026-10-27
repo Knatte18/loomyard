@@ -10,7 +10,7 @@
 //
 // The literal "self" is an alias for the worktree's own slug: ResolveRunID maps it to the told
 // location's WorktreeName, and a run's directory is named by that slug.
-// When _lyx/shed/<slug>/ is absent and _lyx/shed/self/ exists, both spellings join the legacy "self"
+// When _lym/shed/<slug>/ is absent and _lym/shed/self/ exists, both spellings join the legacy "self"
 // directory, so a run started before the rename keeps working with no on-disk migration.
 //
 // WriteSeed stamps `started_at`, the RFC 3339 UTC time the run was seeded, when the seed has none and keeps a given one;
@@ -32,7 +32,7 @@
 // DriverLock is the ephemeral Go-driver lock under ScratchDir, distinct from the run lock and the status lock.
 // TacklerDir is the durable directory of a run's tackler attempts, TacklerRel its anchor-relative form and TacklerAttemptDir one attempt's directory (attempt-<N>, 1-based).
 // TacklerMarker is the ephemeral in-flight marker under ScratchDir.
-// CancelMarker is the ephemeral marker `lyx batten cancel` writes, and CancelMarkerLock the lock whose holder is its live writer.
+// CancelMarker is the ephemeral marker `lym batten cancel` writes, and CancelMarkerLock the lock whose holder is its live writer.
 // Both sit directly under ScratchRoot beside the per-slug scratch directories, never inside RunDir or ScratchDir, so a slug's records removal leaves them.
 // Batten's verbs read the marker.
 // SettleRecords is the Go driver's settle-record file under a run's directory, beside its drive reports.
@@ -50,6 +50,6 @@
 // TreeRunFileRels names a run's seed.json and status.json as slash-separated paths relative to a git tree, with no alias and no legacy fallback.
 // ParseSeed decodes seed bytes a caller read elsewhere, as ReadSeed does.
 //
-// Every constructor that returns an absolute path joins onto a told *lyxcwd.Location's AnchorPath(), per the Cwd Resolution Invariant;
+// Every constructor that returns an absolute path joins onto a told *lymcwd.Location's AnchorPath(), per the Cwd Resolution Invariant;
 // the *Rel constructors and TreeRunFileRels return relative paths, and no constructor resolves a cwd or spawns git.
 package shedrun

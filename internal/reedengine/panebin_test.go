@@ -25,7 +25,7 @@ import (
 
 // TestPaneBinPrelude_ComposesPrependThenExport drives paneBinPrelude directly, once per dialect.
 //
-//testtiming:keep pins the prelude's own shape per dialect: one line, the PATH prepend of the executable's directory before the LYX_BIN export of the full path, joined by "; "; its covering tests run this code without asserting it
+//testtiming:keep pins the prelude's own shape per dialect: one line, the PATH prepend of the executable's directory before the LYM_BIN export of the full path, joined by "; "; its covering tests run this code without asserting it
 func TestPaneBinPrelude_ComposesPrependThenExport(t *testing.T) {
 	dialects := []struct {
 		name string
@@ -34,7 +34,7 @@ func TestPaneBinPrelude_ComposesPrependThenExport(t *testing.T) {
 		{"posix", shell.Posix()},
 		{"pwsh", shell.Pwsh()},
 	}
-	const exe = "/opt/lyx/bin/lyx"
+	const exe = "/opt/lym/bin/lym"
 	dir := filepath.Dir(exe)
 
 	for _, d := range dialects {
@@ -55,14 +55,14 @@ func TestPaneBinPrelude_ComposesPrependThenExport(t *testing.T) {
 			}
 			// The directory is a prefix of exe, so the first occurrence of dir inside got may be
 			// the one inside the export statement rather than the prepend. Locate the export
-			// statement itself via agentname.LyxBinEnv, which is unique to it, and compare positions
+			// statement itself via agentname.LymBinEnv, which is unique to it, and compare positions
 			// against that.
-			exportStmtIdx := strings.Index(got, agentname.LyxBinEnv)
+			exportStmtIdx := strings.Index(got, agentname.LymBinEnv)
 			if exportStmtIdx < 0 {
-				t.Fatalf("paneBinPrelude(%s, %q) = %q, want it to carry the %s export", d.name, exe, got, agentname.LyxBinEnv)
+				t.Fatalf("paneBinPrelude(%s, %q) = %q, want it to carry the %s export", d.name, exe, got, agentname.LymBinEnv)
 			}
 			if prependIdx >= exportStmtIdx {
-				t.Errorf("paneBinPrelude(%s, %q) = %q, want the PATH prepend to appear before the %s export", d.name, exe, got, agentname.LyxBinEnv)
+				t.Errorf("paneBinPrelude(%s, %q) = %q, want the PATH prepend to appear before the %s export", d.name, exe, got, agentname.LymBinEnv)
 			}
 
 			wantJoiner := "; "
@@ -70,7 +70,7 @@ func TestPaneBinPrelude_ComposesPrependThenExport(t *testing.T) {
 				t.Errorf("paneBinPrelude(%s, %q) = %q, want the two statements joined by %q", d.name, exe, got, wantJoiner)
 			}
 			wantPrepend := d.sh.PrependPathEntry(dir)
-			wantExport := d.sh.ExportEnv(agentname.LyxBinEnv, exe)
+			wantExport := d.sh.ExportEnv(agentname.LymBinEnv, exe)
 			want := wantPrepend + wantJoiner + wantExport
 			if got != want {
 				t.Errorf("paneBinPrelude(%s, %q) = %q, want %q", d.name, exe, got, want)
@@ -87,7 +87,7 @@ func TestPaneBinPrelude_ComposesPrependThenExport(t *testing.T) {
 //testtiming:keep pins the composed pane launch line per dialect: prelude, name and parent exports then the command on one line, the prelude alone for an empty command, and only the prelude dropped with a warning naming the strand when the executable cannot be resolved; its covering tests run this code without asserting it
 func TestComposePaneLaunchLine(t *testing.T) {
 	const (
-		exe       = "/opt/lyx/bin/lyx"
+		exe       = "/opt/lym/bin/lym"
 		launchCmd = "claude --continue"
 		name      = "tst:wt:driver"
 		parent    = "tst:wt:orch"
@@ -111,7 +111,7 @@ func TestComposePaneLaunchLine(t *testing.T) {
 			want: func(sh shell.Shell) string { return sh.Chain(paneBinPrelude(sh, exe), launchCmd) },
 		},
 		{
-			// The shape a strand added with no command produces (for example `lyx reed add` without `--cmd`).
+			// The shape a strand added with no command produces (for example `lym reed add` without `--cmd`).
 			name: "EmptyCmdEmitsThePreludeAlone",
 			want: func(sh shell.Shell) string { return paneBinPrelude(sh, exe) },
 		},
@@ -180,8 +180,8 @@ func TestComposePaneLaunchLine(t *testing.T) {
 					t.Errorf("composePaneLaunchLine(...) = %q, want no trailing separator", got)
 				}
 				if tt.executable != nil {
-					if strings.Contains(got, agentname.LyxBinEnv) {
-						t.Errorf("composePaneLaunchLine(...) = %q, want no %s prelude", got, agentname.LyxBinEnv)
+					if strings.Contains(got, agentname.LymBinEnv) {
+						t.Errorf("composePaneLaunchLine(...) = %q, want no %s prelude", got, agentname.LymBinEnv)
 					}
 					if !strings.Contains(buf.String(), guid) {
 						t.Errorf("captured log output = %q, want it to name the strand %q", buf.String(), guid)
@@ -274,7 +274,7 @@ func TestStageLaunchScript_WriteFailureDegrades(t *testing.T) {
 // TestComposeSwitchCommand pins the switch command a key binding runs and the follow command the follow button runs: the pinned tokens are quoted once and have every # doubled, #{q:client_name} or #{q:session_name} stays an unquoted word, and an unresolvable executable pins nothing.
 func TestComposeSwitchCommand(t *testing.T) {
 	const (
-		exe        = "/opt/it's#here/lyx"
+		exe        = "/opt/it's#here/lym"
 		socketPath = "/tmp/tmux-1000/it's#socket"
 		tmuxPath   = "/usr/local/it's#bin/tmux"
 	)

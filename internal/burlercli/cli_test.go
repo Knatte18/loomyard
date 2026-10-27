@@ -20,7 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// TestRunCLI_GroupGuard_OutsideGitRepo asserts the PersistentPreRunE guard: bare "lyx burler" works
+// TestRunCLI_GroupGuard_OutsideGitRepo asserts the PersistentPreRunE guard: bare "lym burler" works
 // outside a git repository, mirroring shuttlecli's guard rationale (neither the bare listing nor
 // the unknown-subcommand path should require layout/config resolution).
 func TestRunCLI_GroupGuard_OutsideGitRepo(t *testing.T) {
@@ -290,7 +290,7 @@ func TestResultEnvelope_ForkCountNilGuard(t *testing.T) {
 			FixerReportPath: "/state/dir/fixer-report.md",
 			Fix:             burlerengine.Half{StartError: "never came up"},
 		}
-		env := resultEnvelope(review, fix, "standalone", "/state/dir", "/state/dir/_lyx/stencils")
+		env := resultEnvelope(review, fix, "standalone", "/state/dir", "/state/dir/_lym/stencils")
 		if got := env["outcome"]; got != "timeout" {
 			t.Errorf(`resultEnvelope() outcome = %v; want the fix half's "timeout"`, got)
 		}
@@ -319,8 +319,8 @@ func TestResultEnvelope_ForkCountNilGuard(t *testing.T) {
 		if got := env["stateDir"]; got != "/state/dir" {
 			t.Errorf(`resultEnvelope() stateDir = %v; want "/state/dir"`, got)
 		}
-		if got := env["stencilsDir"]; got != "/state/dir/_lyx/stencils" {
-			t.Errorf(`resultEnvelope() stencilsDir = %v; want "/state/dir/_lyx/stencils"`, got)
+		if got := env["stencilsDir"]; got != "/state/dir/_lym/stencils" {
+			t.Errorf(`resultEnvelope() stencilsDir = %v; want "/state/dir/_lym/stencils"`, got)
 		}
 	})
 
