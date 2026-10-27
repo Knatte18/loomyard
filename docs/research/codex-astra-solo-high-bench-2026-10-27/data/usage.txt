@@ -1,0 +1,1 @@
+P4 gpt-6-astra-high-r1 rc=0 wall=487 in=2055376 cached=1921152 fresh=134224 out=11192 reason=5615 verdict=BLOCKING n=3 weekly_used_percent=8.0 five_hour=none

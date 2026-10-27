@@ -1,0 +1,4 @@
+input	setting	finding	own_severity	label	claude_finding	claude_severity	note
+P4	astra-high	F1	BLOCKING	unique-real			card 3 reads BOARD_SKIP_GIT and BOARD_SKIP_PUSH owner writes as recorded without a push; same defect as medium solo Astra F1, which the decision record leaves arguable as to test-only variables
+P4	astra-high	F2	MEDIUM	shared	F9	LOW	public APIs bundled into consumer cards; names ParentSlug, ParentHoldsTaskWork, PauseOwnedElsewhere, LocalOnlyCommits, ClientAttached, ResumeInWindow, DropLocal and CloneSecond; Astra rates it MEDIUM, the fan LOW
+P4	astra-high	F3	MEDIUM	unique-real			card 3 puts each slug whose recorded owner is not Machine in Lost after the push, yet gives an absent or done entry no owner; card 8 refuses any slug in Lost and expects an absent entry to pass; ParseOwners and Effective read an absent slug as owned by no one, so the card text disagrees with itself
