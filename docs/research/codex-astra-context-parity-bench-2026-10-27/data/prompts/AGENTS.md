@@ -1,0 +1,73 @@
+# CLAUDE.md — Loomyard (lyx)
+
+This repository develops LoomYard and is itself developed by LoomYard: its tasks run through its own pipeline, with their board and run records in [loomyard-weft](https://github.com/Knatte18/loomyard-weft).
+
+## PATTERN.md is authoritative
+
+Read `PATTERN.md`, and the `pattern/` background files that touch a change, before writing or reviewing code.
+Its invariants are enforced partly by `go test` and partly by review.
+Agents lyx spawns get the `PATTERN.md` overview inlined in their prompt.
+A new cross-cutting invariant goes into PATTERN in the same commit as the code.
+
+## Build: cgo
+
+`lyx` links tree-sitter grammars through cgo, so a build needs `CGO_ENABLED=1` (the default when a C compiler is on `PATH`) and a C compiler.
+
+## Production: only `update-plugins.sh`, only when the operator runs it
+
+`update-plugins.sh` (`.cmd` on Windows) is the only route to production: from a clean, pushed `main`, it deploys the plugins and builds `lyx` into the Go bin dir.
+Never run it unasked, never install `lyx` elsewhere.
+Batten's Land row runs the hub's `deploy` command after every landing, including one the alignment agent's approve at PR-Gate makes with no orch turn.
+`alignment_pr_approve: false` in the hub's `loom.yaml` withdraws that approve's landing.
+For internal tests, `./deploy-dev` builds into `.dev-bin` instead.
+There is no versioning: plugins stay at `1.0.0`.
+
+## Notes go in git, not file-memory
+
+Task worktrees are torn down on merge, and the file-based `memory/` store goes with them.
+Put durable notes in this file, `_lyx/raddle/` or code comments.
+`_lyx/raddle/` reaches the parent by being regenerated against the parent's HEAD at landing, never through a merge.
+A rule or workaround only the orch needs goes in the orch rules, never in `CLAUDE.md`:
+the hub-wide file on Bolt, `_board/_lyx/orch/rules.md`, written through `lyx orch rules`, when every orch of the hub needs it,
+and the orch thread's own `_lyx/orch/rules.md`, committed with `lyx fabric commit`, when only that thread does.
+
+## Worktrees
+
+- Push to `main` only from the worktree checked out on `main`; never from a task pair (`<hub>/<slug>`).
+- Push to `main` only after `lyx gate test --upto 2` is green on `main`, where no parent makes the scope whole, run as its own Bash call as the gate rule in the session's system prompt says, the same run the verify gates make;
+  code under `tools/` follows PATTERN and its scans like everything else.
+  A commit that changes only text no build or test reads, such as `docs/` and this file, is pushed without the test run.
+- Work only in your own worktree: never edit, commit or push in another, and never create one, unless the user says so for that case.
+  If work belongs elsewhere, say so and ask.
+
+## Agents run in interactive tmux, never `claude -p`
+
+Headless use is moving off subscription coverage onto API billing, so every agent lyx spawns runs as an interactive tmux session, driven through reed.
+
+## Docs land in the same commit
+
+A task that adds a module, changes observable CLI behavior or adds cross-cutting infrastructure updates, in the same commit: the module doc in the package's `doc.go`, `docs/overview.md` if the module table or execution stack changes, and `PATTERN.md` for a new invariant.
+An unbuilt design lives in its board entry's body, and a built design lives in its package's `doc.go`.
+The task that builds a design writes it into the package's `doc.go` and never changes its own board entry's body or scope:
+the landing marks the entry done and the board prune removes it, so no pointer is left behind.
+No decision, card or step of a run changes the running task's own board entry's body or scope, because the run's board lock refuses such a change.
+
+## Markdown: semantic line breaks
+
+One sentence per line, never fixed-column wrapping, in every `.md` file; see `scribe:prose`.
+Table cells and blockquotes stay on one line.
+
+## Terminology
+
+These are conversational shorthands; never rename code, files or docs to them unless told to.
+
+- **Merriam**: webster's orchestrating session, named `Master` in `internal/websterengine`;
+  its strand is named `<shortname>:<slug>:webster`.
+- **perch**: a `Bouncer` row in a `Shed` producer list whose `OnStuck` points at a `Burler`-round row, whose own `OnStuck` points back (see `internal/shedadapters` and `contracts/recipes/loom-recipe.yaml`).
+  Each review segment wires its own pair; there is no perch type.
+- **board**: the task tracker, read and written only through `lyx board`; **Bolt** is the nickname of the records repository's `main` branch, the board's git home, never the tracker.
+
+## Filesystem links
+
+All links go through `internal/fslink` (`CreateDirLink`): directory junctions on Windows, symlinks elsewhere.
+Never rely on Windows file symlinks.

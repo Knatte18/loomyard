@@ -1,0 +1,14 @@
+# One line per rollout of the run: start, end, parent, commands, first request, total tokens
+id=01a17d49-4231-72d1-bf5c-cf49e0dc3f8f forked_from=- start=2026-10-27T12:15:16.158Z end=2026-10-27T12:31:35.067Z commands=30 first_request={"input_tokens":16211,"cached_input_tokens":12160} total={"input_tokens":5851819,"cached_input_tokens":5639296,"cache_write_input_tokens":0,"output_tokens":17869,"reasoning_output_tokens":8025,"total_tokens":5869688}
+id=01a17d4b-4e99-73a2-8a4c-504fbb4d181d forked_from=01a17d49-4231-72d1-bf5c-cf49e0dc3f8f start=2026-10-27T12:17:29.757Z end=2026-10-27T12:20:15.728Z commands=6 first_request={"input_tokens":155290,"cached_input_tokens":152576} total={"input_tokens":1266399,"cached_input_tokens":1218304,"cache_write_input_tokens":0,"output_tokens":3414,"reasoning_output_tokens":1359,"total_tokens":1269813}
+id=01a17d4b-7763-7503-b2c1-5d810a10fb76 forked_from=01a17d49-4231-72d1-bf5c-cf49e0dc3f8f start=2026-10-27T12:17:40.198Z end=2026-10-27T12:22:50.466Z commands=6 first_request={"input_tokens":155683,"cached_input_tokens":152960} total={"input_tokens":1235247,"cached_input_tokens":1197312,"cache_write_input_tokens":0,"output_tokens":5837,"reasoning_output_tokens":4037,"total_tokens":1241084}
+id=01a17d4b-9767-70d2-a27a-4339d5ded384 forked_from=01a17d49-4231-72d1-bf5c-cf49e0dc3f8f start=2026-10-27T12:17:48.395Z end=2026-10-27T12:22:26.403Z commands=6 first_request={"input_tokens":156034,"cached_input_tokens":153344} total={"input_tokens":1185703,"cached_input_tokens":1160064,"cache_write_input_tokens":0,"output_tokens":5522,"reasoning_output_tokens":2954,"total_tokens":1191225}
+
+# spawn_agent calls in the handler's rollout (message bodies are encrypted in the rollout)
+2026-10-27T12:17:29.743Z spawn_agent task_name=affected_set fork_turns=all
+2026-10-27T12:17:40.187Z spawn_agent task_name=guard_reach fork_turns=all
+2026-10-27T12:17:48.380Z spawn_agent task_name=way_forward fork_turns=all
+
+# AGENTS.md instructions message in the handler's rollout (ordinal, role, first 120 characters)
+# AGENTS.md instructions for /home/knatte/Code/loomyard-LYMHUB/codex-astra-context-parity-bench/.scratch/bench/runs/P4/f
+ordinal=7 role=user characters=4962

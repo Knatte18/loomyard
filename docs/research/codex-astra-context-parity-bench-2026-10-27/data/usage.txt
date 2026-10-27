@@ -1,0 +1,6 @@
+P4 handler rc=0 wall=980 in=5851819 cached=5639296 fresh=212523 out=17869 reason=8025 weekly_used_percent=17.0 commands=30
+P4 fork-affected-set start=12:17:29 end=12:20:15 wall=166 in=1266399 cached=1218304 fresh=48095 out=3414 reason=1359 weekly_used_percent=12.0 commands=6
+P4 fork-guard-reach start=12:17:40 end=12:22:50 wall=310 in=1235247 cached=1197312 fresh=37935 out=5837 reason=4037 weekly_used_percent=15.0 commands=6
+P4 fork-way-forward start=12:17:48 end=12:22:26 wall=278 in=1185703 cached=1160064 fresh=25639 out=5522 reason=2954 weekly_used_percent=14.0 commands=6
+P4 handler verdict=BLOCKING n=8 (3 handler, 5 from forks)
+P4 weekly window at the handler's first request: 9.0, after: 17.0 (the sibling bench codex-astra-tuned-prompt-bench ran on the same account over part of this time)
