@@ -1,15 +1,16 @@
 // capabilities.go implements Claude's optional engine capabilities.
-// They are requirement support, project instruction files and resume-context rendering.
+// They are requirement support, project instruction files, resume-context rendering and tool-boundary context rendering.
 
 package claudeengine
 
 import "github.com/Knatte18/loomyard/internal/shuttleengine"
 
 var (
-	_ shuttleengine.RequirementSupporter  = (*Claude)(nil)
-	_ shuttleengine.ForkAuditor           = (*Claude)(nil)
-	_ shuttleengine.ResumeContextRenderer = (*Claude)(nil)
-	_ shuttleengine.InstructionFileLister = (*Claude)(nil)
+	_ shuttleengine.RequirementSupporter        = (*Claude)(nil)
+	_ shuttleengine.ForkAuditor                 = (*Claude)(nil)
+	_ shuttleengine.ResumeContextRenderer       = (*Claude)(nil)
+	_ shuttleengine.ToolBoundaryContextRenderer = (*Claude)(nil)
+	_ shuttleengine.InstructionFileLister       = (*Claude)(nil)
 )
 
 // Supports reports whether Claude Code meets req; it meets each requirement the seam names.
@@ -29,4 +30,9 @@ func (c *Claude) InstructionFiles() []string {
 // ResumeContext renders text as Claude Code's session-start hook output.
 func (c *Claude) ResumeContext(text string) ([]byte, error) {
 	return SessionStartContext(text)
+}
+
+// ToolBoundaryContext renders text as Claude Code's PostToolUse hook output.
+func (c *Claude) ToolBoundaryContext(text string) ([]byte, error) {
+	return hookContext(hookEventPostToolUse, text)
 }

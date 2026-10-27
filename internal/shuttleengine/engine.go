@@ -213,6 +213,13 @@ type ResumeContextRenderer interface {
 	ResumeContext(text string) ([]byte, error)
 }
 
+// ToolBoundaryContextRenderer is an optional capability beside Engine: the provider's rendering of text as the output of the hook it runs after each tool call, which adds the text to the session's context.
+// An engine without it has no tool-boundary hook to render for.
+type ToolBoundaryContextRenderer interface {
+	// ToolBoundaryContext renders text as the provider's after-tool-call hook output.
+	ToolBoundaryContext(text string) ([]byte, error)
+}
+
 // InstructionFileLister is an optional capability beside Engine: the names of the files the provider loads as project instructions.
 // An engine without it has no project instruction files.
 type InstructionFileLister interface {

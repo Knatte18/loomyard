@@ -73,14 +73,15 @@ func Command() *cobra.Command {
 strand; a message from an agent strand is announced by a one-line reminder
 typed when the receiver is idle and handed over by read, while mail from
 EXTERNAL or a program is carried in full in the typed line when it fits the
-line cap. inject types a line into an idle strand at once, interrupt
-stops a running turn, forward passes a message on, hold keeps a receiver to
-one sender for a while, and inbox and log show the pool. The daemon starts
-by itself on the first verb.`,
+line cap. A working Claude strand also gets its mail in full at its next tool
+call, through a hook that runs the hidden hook-read verb. inject types a line
+into an idle strand at once, interrupt stops a running turn, forward passes a
+message on, hold keeps a receiver to one sender for a while, and inbox and log
+show the pool. The daemon starts by itself on the first verb.`,
 		RunE: clihelp.GroupRunE,
 	}
 	creel.AddCommand(
-		postCmd(), injectCmd(), interruptCmd(), forwardCmd(), readCmd(), inboxCmd(), logCmd(), holdCmd(), releaseCmd(), daemonCmd(),
+		postCmd(), injectCmd(), interruptCmd(), forwardCmd(), readCmd(), inboxCmd(), logCmd(), holdCmd(), releaseCmd(), daemonCmd(), hookReadCmd(),
 	)
 	// Creel reads no stencils, and the seed pass's log lines would mix into the stderr its verbs use for refusals and stall progress.
 	// The long-lived daemon must also never commit seed writes into the hub.
@@ -159,27 +160,10 @@ func runVerb(cmd *cobra.Command, timeout time.Duration, body func(client *creele
 	}
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
-	cwd, err := lymcwd.CwdFrom(ctx)
+	client, err := hubClient(ctx)
 	if err != nil {
 		return refuse(cmd, err)
 	}
-	location, mode, err := preflight.ResolveMode(cwd)
-	if err != nil {
-		return refuse(cmd, err)
-	}
-	if mode != preflight.ModeHub {
-		return refuse(cmd, errors.New("creel needs a hub, and this directory is not in one; way forward: run the verb from a worktree of a lym hub"))
-	}
-	root, err := lymtemp.ProcessRoot()
-	if err != nil {
-		return refuse(cmd, fmt.Errorf("open the lymtemp root: %w", err))
-	}
-	geometry, err := hubgeom.CreelGeometry(location.HubPath, root.Path())
-	if err != nil {
-		return refuse(cmd, err)
-	}
-	hubPath := location.HubPath
-	client := creelengine.NewClient(geometry, claimFor(cwd), func() (creelengine.Spawn, error) { return seam.spawn(hubPath, geometry.DaemonLogPath) }, seam.clock)
 	res, err := body(client, out)
 	if errors.Is(err, creelengine.ErrWaitTimeout) {
 		writeRefusal(cmd, "", "no outcome arrived before the timeout of "+timeout.String(), res.fields, ExitWaitTimeout)
@@ -204,6 +188,32 @@ func runVerb(cmd *cobra.Command, timeout time.Duration, body func(client *creele
 		fmt.Fprintln(cmd.ErrOrStderr(), line)
 	}
 	return nil
+}
+
+// hubClient resolves the hub from the cwd ctx carries and builds a client of its daemon, claiming the caller's strand.
+// A standalone directory is refused: creel needs a hub.
+func hubClient(ctx context.Context) (*creelengine.Client, error) {
+	cwd, err := lymcwd.CwdFrom(ctx)
+	if err != nil {
+		return nil, err
+	}
+	location, mode, err := preflight.ResolveMode(cwd)
+	if err != nil {
+		return nil, err
+	}
+	if mode != preflight.ModeHub {
+		return nil, errors.New("creel needs a hub, and this directory is not in one; way forward: run the verb from a worktree of a lym hub")
+	}
+	root, err := lymtemp.ProcessRoot()
+	if err != nil {
+		return nil, fmt.Errorf("open the lymtemp root: %w", err)
+	}
+	geometry, err := hubgeom.CreelGeometry(location.HubPath, root.Path())
+	if err != nil {
+		return nil, err
+	}
+	hubPath := location.HubPath
+	return creelengine.NewClient(geometry, claimFor(cwd), func() (creelengine.Spawn, error) { return seam.spawn(hubPath, geometry.DaemonLogPath) }, seam.clock), nil
 }
 
 // claimFor states who the caller says it is: its strand name, and the envelope an EXTERNAL caller is shown with.

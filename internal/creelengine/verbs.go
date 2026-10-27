@@ -154,6 +154,57 @@ func (s *Store) Read(sender Sender, from string) (*Reading, error) {
 	return reading, nil
 }
 
+// boundaryClaimBudget bounds the bytes of message lines, with the newlines joining them, one tool-boundary claim hands out, so one boundary adds a bounded amount to the session's context.
+const boundaryClaimBudget = 8 << 10
+
+// ClaimAtBoundary hands a strand's tool-boundary hook the strand's unread mail no read has reserved, oldest first and agent mail included, reserved until Ack or Release like a read's.
+// Under a hold it hands out only the hold owner's mail, and while a pause covers the strand it hands out nothing.
+// It stops before the message whose MessageLine, and the newline joining it to the line before, would take the lines past boundaryClaimBudget, but always hands out the first, and what it leaves stays unread for the next boundary.
+// Only a strand sender may claim; any other sender is refused with the read verb as the way forward.
+func (s *Store) ClaimAtBoundary(sender Sender) (*Reading, error) {
+	if sender.Kind != KindStrand {
+		return nil, fmt.Errorf("creel: only a strand's tool-boundary hook claims mail, and %s is no strand; read with `lym creel read`", sender.Name)
+	}
+	reading := &Reading{store: s, holder: sender.Name}
+	strand, err := s.strandTarget(sender.Name)
+	if err != nil {
+		return nil, err
+	}
+	paused, err := s.delivery.Paused(strand)
+	if err != nil {
+		return nil, fmt.Errorf("creel: could not read the pause record for %s: %w", sender.Name, err)
+	}
+	if paused {
+		return reading, nil
+	}
+	err = s.do(func() error {
+		hold := s.liveHoldLocked(sender.Name)
+		used := 0
+		for _, msg := range s.unreadLocked(sender.Name, "") {
+			if hold != nil && msg.From != hold.Owner {
+				continue
+			}
+			size := len(MessageLine(*msg))
+			if len(reading.ids) > 0 {
+				// The newline the hook joins this line to the one before with counts against the budget too.
+				size++
+				if used+size > boundaryClaimBudget {
+					break
+				}
+			}
+			used += size
+			s.reserved[msg.ID] = sender.Name
+			reading.ids = append(reading.ids, msg.ID)
+			reading.Messages = append(reading.Messages, *msg)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return reading, nil
+}
+
 var errExternalHoldsNothing = errors.New("creel: an EXTERNAL caller holds no mail; wait for an answer with `lym creel post --wait-reply`")
 
 // Ack marks the reserved messages read and journals each; a message that left the holder meanwhile stays as it is.

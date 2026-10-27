@@ -142,6 +142,8 @@ type journalWriter struct {
 	pool  *pool
 	day   string
 	file  *os.File
+	// appended counts the records append folded into the pool, so a caller tells whether a change of its own reached the pool.
+	appended uint64
 }
 
 // openJournal prepares the writer over the pool folded from dir.
@@ -227,6 +229,7 @@ func (w *journalWriter) append(rec record) error {
 		return err
 	}
 	w.pool.apply(rec, w.day)
+	w.appended++
 	return nil
 }
 

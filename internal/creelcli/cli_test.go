@@ -36,6 +36,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/creelfake"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
@@ -585,6 +586,37 @@ func TestCreelCLI(t *testing.T) {
 		}
 		if again := runCreel(r.cwd, "read"); again.code != 0 || again.raw != "nothing unread\n" {
 			t.Errorf("creel read after the acknowledged ones = (%d, %q); want exit 0 printing nothing unread", again.code, again.raw)
+		}
+	})
+
+	t.Run("as a strand hook-read prints its mail as the engine's tool-boundary context, nothing when none is left, and refuses to stderr", func(t *testing.T) {
+		r := newRig(t)
+		alpha := r.name("alpha:driver")
+		t.Setenv(agentname.StrandNameEnv, alpha)
+		strand := creelfake.LiveStrand(alpha)
+		strand.PanePID = os.Getpid()
+		r.delivery.SetStrands(strand)
+		r.startDaemon(t)
+
+		for _, body := range []string{"first\nline", "second"} {
+			if post := runCreel(r.cwd, "post", alpha, body); post.code != 0 {
+				t.Fatalf("creel post = (%d, %q); want exit 0", post.code, post.raw)
+			}
+		}
+		wantContext, err := claudeengine.New().ToolBoundaryContext(fmt.Sprintf("[creel] #1 from %[1]s: first line\n[creel] #2 from %[1]s: second", alpha))
+		if err != nil {
+			t.Fatalf("ToolBoundaryContext: %v", err)
+		}
+		var stderr bytes.Buffer
+		if got := runCreelSplit(r.cwd, &stderr, "hook-read", "claude"); got.code != 0 || got.raw != string(wantContext)+"\n" || stderr.Len() != 0 {
+			t.Fatalf("creel hook-read claude = (%d, %q, stderr %q); want exit 0 with %s", got.code, got.raw, stderr.String(), wantContext)
+		}
+		if again := runCreelSplit(r.cwd, &stderr, "hook-read", "claude"); again.code != 0 || again.raw != "" {
+			t.Errorf("creel hook-read after the claimed mail = (%d, %q); want exit 0 printing nothing", again.code, again.raw)
+		}
+		unknown := runCreelSplit(r.cwd, &stderr, "hook-read", "nope")
+		if unknown.code != 1 || unknown.raw != "" || !strings.HasPrefix(stderr.String(), "creel: ") || !strings.Contains(stderr.String(), `"nope"`) {
+			t.Errorf("creel hook-read nope = (%d, %q, stderr %q); want exit 1, no stdout and the refusal on stderr", unknown.code, unknown.raw, stderr.String())
 		}
 	})
 

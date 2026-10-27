@@ -28,6 +28,8 @@ const (
 	VerbRelease    = "release"
 	// VerbWithdraw removes a program's own queued injects and unread mail to one receiver; only the Go client sends it.
 	VerbWithdraw = "withdraw"
+	// VerbClaim hands a strand's tool-boundary hook its unread mail, acknowledged on the same connection as a read is.
+	VerbClaim = "claim"
 )
 
 // CodeStrandClaimOutsidePane is the Response.Code of the refusal of a strand claim that names a listed strand from a process in no strand pane.

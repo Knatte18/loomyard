@@ -30,5 +30,6 @@ func CreelGeometry(hubPath, tempRoot string) (creelengine.Geometry, error) {
 		LockPath:      filepath.Join(stateDir, "daemon.lock"),
 		SocketPath:    filepath.Join(tempRoot, creelengine.SocketName(shortname, hubPath)),
 		DaemonLogPath: filepath.Join(stateDir, "daemon.log"),
+		FlagDir:       filepath.Join(stateDir, lymdirs.CreelFlagDirName),
 	}, nil
 }

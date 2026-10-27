@@ -15,10 +15,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -28,7 +30,7 @@ func recordingHookCommands(t *testing.T, eventsPath string) map[string]string {
 	t.Helper()
 	commands := map[string]string{}
 	for _, interactive := range []bool{false, true} {
-		data, err := buildSettings(eventsPath, interactive, shuttleengine.Config{}, Config{}, false, false, "")
+		data, err := buildSettings(eventsPath, interactive, shuttleengine.Config{}, Config{}, false, false, "", "")
 		if err != nil {
 			t.Fatalf("buildSettings() error: %v", err)
 		}
@@ -256,6 +258,53 @@ func TestShellGuardDenies_RenderedCommandsGrepThePayload(t *testing.T) {
 			}
 			if stdout != want || exitCode != 0 {
 				t.Errorf("%q hook on %q: stdout = %q, exit = %d; want %q and exit 0", tt.row, tt.command, stdout, exitCode, want)
+			}
+		})
+	}
+}
+
+// TestCreelMailHook_RunsLymOnlyWhenTheStrandsFlagStands runs the creel mail hook under sh with a stub `lym` on PATH that prints its directory and arguments.
+// The hook forms the flag's file name as agentname.FileName does, runs `lym creel hook-read claude` from the session's project directory only while that flag stands, and otherwise exits 0 having printed nothing.
+func TestCreelMailHook_RunsLymOnlyWhenTheStrandsFlagStands(t *testing.T) {
+	t.Parallel()
+
+	const name = "ly:creel-hook:driver-2"
+	root := t.TempDir()
+	flagDir, binDir, projectDir := filepath.Join(root, "flags"), filepath.Join(root, "bin"), filepath.Join(root, "project")
+	for _, dir := range []string{flagDir, binDir, projectDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(binDir, "lym"), []byte("#!/bin/sh\necho \"$(pwd -P) $*\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(flagDir, agentname.FileName(name)), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	resolvedProjectDir, err := filepath.EvalSymlinks(projectDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := creelMailHookCommand(shQuote(flagDir))
+	baseEnv := []string{"PATH=" + binDir + ":/usr/bin:/bin", "CLAUDE_PROJECT_DIR=" + projectDir}
+
+	tests := []struct {
+		name string
+		env  []string
+		want string
+	}{
+		{"FlagStands", []string{agentname.StrandNameEnv + "=" + name}, resolvedProjectDir + " creel hook-read claude\n"},
+		{"AnotherStrandsFlag", []string{agentname.StrandNameEnv + "=ly:creel-hook:driver"}, ""},
+		{"EmptyName", []string{agentname.StrandNameEnv + "="}, ""},
+		{"UnsetName", nil, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			stdout, exitCode := runHookCommand(t, command, `{"hook_event_name":"PostToolUse"}`, append(slices.Clone(baseEnv), tt.env...))
+			if stdout != tt.want || exitCode != 0 {
+				t.Errorf("hook stdout = %q, exit = %d; want %q and exit 0", stdout, exitCode, tt.want)
 			}
 		})
 	}

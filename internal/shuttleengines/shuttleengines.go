@@ -247,3 +247,14 @@ type instructionsAdapter struct {
 func (a instructionsAdapter) InstructionFiles() []string {
 	return a.instructions.InstructionFiles()
 }
+
+// ToolBoundaryRenderer returns the registered engine named name as its tool-boundary context renderer, and false when no engine of that name is registered or the engine renders none.
+// The engine is built with a zero shuttle config and no config directories, as RecordReaders builds them, since rendering reads no config.
+func ToolBoundaryRenderer(name string) (shuttleengine.ToolBoundaryContextRenderer, bool) {
+	registered, ok := registry[name]
+	if !ok {
+		return nil, false
+	}
+	renderer, ok := registered.constructor(shuttleengine.Config{}, configengine.Dirs{}).(shuttleengine.ToolBoundaryContextRenderer)
+	return renderer, ok
+}

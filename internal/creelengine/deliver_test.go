@@ -479,6 +479,87 @@ func TestScheduler_Reminders(t *testing.T) {
 				t.Errorf("Log(#%d) events = %v; want posted, reminded and one read", notice, got)
 			}
 		}},
+		{"NoticeBeingTypedIsNotClaimedAtABoundary", func(t *testing.T, e *env) {
+			notice := e.post(t, program(batten), beta, "typing")
+			claimed := make(chan []creelengine.Message, 1)
+			e.del.SetSendFunc(func(string, string) error {
+				reading, err := e.store.ClaimAtBoundary(strand(beta))
+				if err != nil {
+					t.Errorf("ClaimAtBoundary during the send: %v", err)
+					claimed <- nil
+					return nil
+				}
+				claimed <- reading.Messages
+				return nil
+			})
+			e.start(t)
+			e.probeWaits(1)
+			if got := <-claimed; len(got) != 0 {
+				t.Errorf("a claim during the send handed out %v; want nothing", got)
+			}
+			if got := eventsOf(e.store.Log(creelengine.LogFilter{ID: notice})); !slices.Equal(got, []string{"posted", "read"}) {
+				t.Errorf("Log(#%d) events = %v; want posted and one read", notice, got)
+			}
+		}},
+		{"BusySendReleasesTheNoticeToAClaimAndAnswersTheHoldersWait", func(t *testing.T, e *env) {
+			notice := e.post(t, program(batten), beta, "busy")
+			waiting := make(chan *creelengine.Waiter, 1)
+			e.del.SetSendFunc(func(string, string) error {
+				// Registered while the pane path holds the notice, so the wait is not answered until the busy send releases it.
+				waiter, err := e.store.WaitMail(strand(beta))
+				if err != nil {
+					t.Errorf("WaitMail during the send: %v", err)
+				}
+				select {
+				case waiting <- waiter:
+				default:
+				}
+				return creelengine.ErrBusy
+			})
+			e.start(t)
+			e.probeWaits(1)
+			waiter := <-waiting
+			if outcome := awaitOutcome(t, waiter); outcome.Kind != creelengine.OutcomeMail {
+				t.Errorf("the holder's wait was answered %+v; want mail once the busy send released the notice", outcome)
+			}
+			reading, err := e.store.ClaimAtBoundary(strand(beta))
+			if err != nil {
+				t.Fatalf("ClaimAtBoundary: %v", err)
+			}
+			if len(reading.Messages) != 1 || reading.Messages[0].ID != notice {
+				t.Errorf("a claim after the busy send handed out %v; want the notice #%d", reading.Messages, notice)
+			}
+		}},
+		{"NoticeClaimedBeforeTheSendIsNeverTyped", func(t *testing.T, e *env) {
+			notice := e.post(t, program(batten), beta, "claimed first")
+			claimed := make(chan *creelengine.Reading, 1)
+			var once sync.Once
+			// The claim lands between the probe's idle check and its reservation of the notice.
+			e.del.SetIdleHook(func(string) {
+				once.Do(func() {
+					reading, err := e.store.ClaimAtBoundary(strand(beta))
+					if err != nil {
+						t.Errorf("ClaimAtBoundary during the idle check: %v", err)
+					}
+					claimed <- reading
+				})
+			})
+			e.start(t)
+			e.probeWaits(1)
+			reading := <-claimed
+			if reading == nil || len(reading.Messages) != 1 || reading.Messages[0].ID != notice {
+				t.Fatalf("the claim handed out %+v; want the notice #%d", reading, notice)
+			}
+			if got := e.typed(beta); len(got) != 0 {
+				t.Errorf("typed %q after a claim took the notice first; want nothing", got)
+			}
+			if err := reading.Ack(); err != nil {
+				t.Fatalf("Ack: %v", err)
+			}
+			if got := eventsOf(e.store.Log(creelengine.LogFilter{ID: notice})); !slices.Equal(got, []string{"posted", "read"}) {
+				t.Errorf("Log(#%d) events = %v; want posted and the claim's one read", notice, got)
+			}
+		}},
 		{"BusyNoticeStaysUnreadAndANotLandedOneIsRead", func(t *testing.T, e *env) {
 			busy := e.post(t, program(batten), beta, "busy")
 			e.del.SetSendError(creelengine.ErrBusy)

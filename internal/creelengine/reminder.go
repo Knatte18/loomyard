@@ -29,8 +29,9 @@ func isNotice(msg *Message) bool {
 	return agentname.IsProgram(msg.From) && len(msg.Body) <= maxNoticeBytes
 }
 
-// composeNotice renders the line that carries a notice: its id, so the receiver can reply without a read, its sender and its body, with every run of control characters and line breaks turned into one space.
-func composeNotice(msg Message) string {
+// MessageLine renders the one line that carries a message in full, as a notice typed into an idle pane or as mail handed over at a tool boundary:
+// its id, so the receiver can reply without a read, its sender and its body, with every run of control characters and line breaks turned into one space.
+func MessageLine(msg Message) string {
 	body := strings.Join(strings.FieldsFunc(msg.Body, unicode.IsControl), " ")
 	return fmt.Sprintf("[creel] #%d from %s: %s", msg.ID, msg.From, strings.TrimSpace(body))
 }

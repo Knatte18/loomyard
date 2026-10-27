@@ -843,3 +843,126 @@ func TestStore_InjectAndHold(t *testing.T) {
 		})
 	}
 }
+
+func TestStore_ClaimAtBoundary(t *testing.T) {
+	t.Parallel()
+	// claimLines claims as the strand and returns the claimed messages' lines, leaving the reading unacknowledged.
+	claimLines := func(t *testing.T, e *env, as string) (*creelengine.Reading, []string) {
+		t.Helper()
+		reading, err := e.store.ClaimAtBoundary(strand(as))
+		if err != nil {
+			t.Fatalf("ClaimAtBoundary(%s): %v", as, err)
+		}
+		var lines []string
+		for _, msg := range reading.Messages {
+			lines = append(lines, creelengine.MessageLine(msg))
+		}
+		return reading, lines
+	}
+	tests := []struct {
+		name string
+		run  func(t *testing.T, e *env)
+	}{
+		{"HandsOutAgentAndProgramMailOldestFirstAndAckMarksItRead", func(t *testing.T, e *env) {
+			e.post(t, strand(alpha), beta, "from a strand\nsecond line")
+			e.post(t, program(batten), beta, "from a program")
+			reading, lines := claimLines(t, e, beta)
+			want := []string{"[creel] #1 from " + alpha + ": from a strand second line", "[creel] #2 from " + batten + ": from a program"}
+			if !slices.Equal(lines, want) {
+				t.Errorf("claimed %q; want %q", lines, want)
+			}
+			if _, again := claimLines(t, e, beta); len(again) != 0 {
+				t.Errorf("a second claim before the ack handed out %q; want nothing", again)
+			}
+			if err := reading.Ack(); err != nil {
+				t.Fatalf("Ack: %v", err)
+			}
+			if got := eventsOf(e.store.Log(creelengine.LogFilter{To: beta})); !slices.Equal(got, []string{"posted", "posted", "read", "read"}) {
+				t.Errorf("Log(to beta) events = %v; want two posts and two reads", got)
+			}
+		}},
+		{"ReleasedClaimLeavesTheMailUnread", func(t *testing.T, e *env) {
+			e.post(t, strand(alpha), beta, "kept")
+			reading, _ := claimLines(t, e, beta)
+			reading.Release()
+			wantBodies(t, e.readBodies(t, strand(beta), ""), "kept")
+		}},
+		{"StopsAtTheBudgetButHandsOutAtLeastOne", func(t *testing.T, e *env) {
+			big := strings.Repeat("x", 5000)
+			e.post(t, strand(alpha), beta, big)
+			e.post(t, strand(alpha), beta, big)
+			e.post(t, strand(alpha), beta, strings.Repeat("y", 10000))
+			first, lines := claimLines(t, e, beta)
+			if len(lines) != 1 || !strings.HasPrefix(lines[0], "[creel] #1 ") {
+				t.Fatalf("first claim handed out %d lines; want only #1, since #2 takes it past the budget", len(lines))
+			}
+			_ = first.Ack()
+			second, lines := claimLines(t, e, beta)
+			if len(lines) != 1 || !strings.HasPrefix(lines[0], "[creel] #2 ") {
+				t.Fatalf("second claim handed out %d lines; want only #2", len(lines))
+			}
+			_ = second.Ack()
+			if _, lines := claimLines(t, e, beta); len(lines) != 1 || !strings.HasPrefix(lines[0], "[creel] #3 ") {
+				t.Errorf("third claim handed out %d lines; want #3 whole though it is over the budget", len(lines))
+			}
+		}},
+		{"BudgetCountsTheNewlinesJoiningTheLines", func(t *testing.T, e *env) {
+			const budget = 8 << 10
+			firstBody := strings.Repeat("x", 4000)
+			prefixes := len(creelengine.MessageLine(creelengine.Message{ID: 1, From: alpha})) + len(creelengine.MessageLine(creelengine.Message{ID: 2, From: alpha}))
+			// The two lines fit the budget exactly without the newline between them, and one byte short of it with the newline.
+			e.post(t, strand(alpha), beta, firstBody)
+			e.post(t, strand(alpha), beta, strings.Repeat("y", budget-prefixes-len(firstBody)))
+			first, lines := claimLines(t, e, beta)
+			if len(lines) != 1 {
+				t.Fatalf("claim of two lines that fit the budget only without their newline handed out %d lines; want only #1", len(lines))
+			}
+			_ = first.Ack()
+			second, lines := claimLines(t, e, beta)
+			if len(lines) != 1 || !strings.HasPrefix(lines[0], "[creel] #2 ") {
+				t.Fatalf("second claim handed out %d lines; want only #2", len(lines))
+			}
+			_ = second.Ack()
+
+			// One byte shorter, the lines and their newline fit the budget exactly, so both go out together.
+			e.post(t, strand(alpha), beta, firstBody)
+			e.post(t, strand(alpha), beta, strings.Repeat("y", budget-prefixes-len(firstBody)-1))
+			if _, lines := claimLines(t, e, beta); len(lines) != 2 {
+				t.Errorf("claim of two lines that fit the budget with their newline handed out %d lines; want both", len(lines))
+			}
+		}},
+		{"UnderAHoldOnlyTheOwnersMail", func(t *testing.T, e *env) {
+			e.post(t, strand(alpha), beta, "muted")
+			e.post(t, program(batten), beta, "owner's")
+			if _, err := e.store.Hold(program(batten), beta, time.Minute); err != nil {
+				t.Fatalf("Hold: %v", err)
+			}
+			if _, lines := claimLines(t, e, beta); !slices.Equal(lines, []string{"[creel] #2 from " + batten + ": owner's"}) {
+				t.Errorf("claimed %q under the hold; want only the owner's mail", lines)
+			}
+		}},
+		{"UnderAPauseNothing", func(t *testing.T, e *env) {
+			e.post(t, strand(alpha), beta, "paused")
+			e.del.SetPaused(beta, true)
+			if _, lines := claimLines(t, e, beta); len(lines) != 0 {
+				t.Errorf("claimed %q under a pause; want nothing", lines)
+			}
+		}},
+		{"UnreadablePauseRefuses", func(t *testing.T, e *env) {
+			e.post(t, strand(alpha), beta, "unknown pause")
+			e.del.SetPausedError(errors.New("pause record torn"))
+			_, err := e.store.ClaimAtBoundary(strand(beta))
+			wantErr(t, err, "pause record", "pause record torn")
+		}},
+		{"NonStrandSenderRefusedNamingRead", func(t *testing.T, e *env) {
+			_, err := e.store.ClaimAtBoundary(program(batten))
+			wantErr(t, err, "no strand", "lym creel read")
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			tt.run(t, newEnv(t))
+		})
+	}
+}

@@ -56,6 +56,7 @@ type Delivery struct {
 	strandsErr, idleErr, pausedErr, sendErr, commandErr, interruptErr error
 	sendFn                                                            func(strand, text string) error
 	interruptFn                                                       func(strand string) error
+	idleHook                                                          func(strand string)
 
 	claimLive map[string]func() (bool, error)
 
@@ -179,11 +180,24 @@ func (d *Delivery) Strands() ([]creelengine.Strand, error) {
 	return append([]creelengine.Strand(nil), d.strands...), nil
 }
 
+// SetIdleHook makes Idle call fn with the strand's name, without the fake's lock held, just before it answers; nil removes it.
+func (d *Delivery) SetIdleHook(fn func(strand string)) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.idleHook = fn
+}
+
 // Idle implements creelengine.Delivery.
 func (d *Delivery) Idle(strand creelengine.Strand) (creelengine.Idleness, error) {
 	d.mu.Lock()
-	defer d.mu.Unlock()
 	d.idleCalls[strand.Name]++
+	hook := d.idleHook
+	d.mu.Unlock()
+	if hook != nil {
+		hook(strand.Name)
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	if d.idleErr != nil {
 		return creelengine.Idleness{}, d.idleErr
 	}

@@ -308,8 +308,8 @@ github.com/Knatte18/loomyard/
 ├── internal/tenderengine/        the pause, resume, revive and status sequences over seams: the entry, the grace, the Esc, the resume line and the revive line
 ├── internal/hibernatecli/        the `lym hibernate` commands (`request`, `cancel`, `status` and the hidden `watch`), their hub wiring and the daemon and `systemctl` spawns
 ├── internal/hibernateengine/     the hibernate request file and the submit, cancel, status and daemon sequences over seams
-├── internal/creelcli/            the `lym creel` commands (`post`, `inject`, `interrupt`, `forward`, `read`, `inbox`, `log`, `hold`, `release` and the hidden `daemon`), their hub wiring and the delivery adapter over reed and shuttle
-├── internal/creelengine/         the per-hub message daemon: the journal-folded pool of mail and queued injects, sender identity, reminders, injects, holds, the removed-holder sweep and the socket protocol, over a delivery seam
+├── internal/creelcli/            the `lym creel` commands (`post`, `inject`, `interrupt`, `forward`, `read`, `inbox`, `log`, `hold`, `release` and the hidden `daemon` and `hook-read`), their hub wiring and the delivery adapter over reed and shuttle
+├── internal/creelengine/         the per-hub message daemon: the journal-folded pool of mail and queued injects, sender identity, reminders, the per-strand mail flags and tool-boundary claim, injects, holds, the removed-holder sweep and the socket protocol, over a delivery seam
 ├── internal/output/              shared JSON output
 ├── internal/modelspec/           model-spec parser + models.yaml registry leaf
 ├── internal/runprofile/          the hub's named run profiles in profiles.yaml: template, layered-load spec, loader and lookup
@@ -469,7 +469,8 @@ User-facing modules each get one `lym <module>` namespace:
   Only the orch or an external caller may request or cancel; an agent asks its parent session.
   Bounds: the daemon waits a fixed window for the pause to confirm and for the wake, and fails the request, leaving its reason in the file, when either runs out.
   ✅ Implemented. See the `internal/hibernateengine` and `internal/hibernatecli` package documentation.
-- **creel** — the per-hub message daemon, the one way to reach an agent: mail from an agent strand, announced by a reminder typed at the receiver's idle and pulled with `lym creel read`, while mail from any other sender is carried in full in the line creel types when it fits the line cap, and lines injected into its pane (`internal/creelcli` + `internal/creelengine`; `lym creel post`, `inject`, `interrupt`, `forward`, `read`, `inbox`, `log`, `hold` and `release`, from any worktree of the hub, and the hidden `lym creel daemon`).
+- **creel** — the per-hub message daemon, the one way to reach an agent: mail from an agent strand, announced by a reminder typed at the receiver's idle and pulled with `lym creel read`, while mail from any other sender is carried in full in the line creel types when it fits the line cap, and lines injected into its pane (`internal/creelcli` + `internal/creelengine`; `lym creel post`, `inject`, `interrupt`, `forward`, `read`, `inbox`, `log`, `hold` and `release`, from any worktree of the hub, and the hidden `lym creel daemon` and `lym creel hook-read`).
+  A Claude strand in a hub also gets its mail, agent mail included, in full at its next tool call: a `PostToolUse` hook tests the strand's flag file, which creel keeps while the strand holds unread mail, and only then runs `lym creel hook-read`; each message is delivered once, by that hook or by the idle pane path.
   The first verb of a hub starts its daemon, which folds its pool from an append-only journal, names a sender from the connecting process's ancestry, and delivers through shuttle only into a pane that reads idle.
   Notices and the orch's typed lines go through creel: batten, loom, burler, webster and hibernate post their notices as mail to the orch strand, signed as their own program.
   ✅ Implemented. See the `internal/creelengine` and `internal/creelcli` package documentation.

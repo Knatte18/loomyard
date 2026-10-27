@@ -123,6 +123,12 @@
 // No recording hook prints to standard output, so the `PermissionRequest` recording answers no request and leaves Claude's own dialog to decide it.
 // The one exception is the second command of the `compact` `SessionStart` entry, which Spec.ContextAfterCompaction sets: it runs after the recording command and verbatim, and its output joins the session's context after every compaction.
 // SessionStartContext renders the additional-context JSON such a command prints.
+//
+// An engine told a hub board directory also installs one PostToolUse hook with no matcher, creel's mail hook, and an engine told none, a standalone run, installs no PostToolUse key.
+// Its command is plain POSIX `sh`: it forms the strand's flag name from `$LYM_STRAND_NAME` by parameter expansion alone, turning every `:` into `.` as agentname.FileName does, and exits 0 at once unless that flag stands in CreelFlagDir of the board directory, so a tool call with no mail starts no process.
+// When the flag stands it changes to `$CLAUDE_PROJECT_DIR` and runs `lym creel hook-read claude`, whose standard output, ToolBoundaryContext's PostToolUse additional-context JSON, adds the strand's mail to the session's context after the tool call.
+// On Windows the flag directory takes the same git-bash POSIX conversion as the events path.
+//
 // Prepare declares the launch as recording session starts, so startup waits for the `startup` line beside the ready pane.
 // Two accepted races follow from the append order.
 // Hooks that fire at once can interleave their stamps ahead of both payloads, which the pairing by hook name absorbs;

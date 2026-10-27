@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymtemp"
@@ -323,6 +324,30 @@ func TestDaemon_Protocol(t *testing.T) {
 			}
 			if again := mustCall(t, c, creelengine.Request{Verb: creelengine.VerbRead}); len(again.Messages) != 0 {
 				t.Errorf("a read after the acked one = %d messages; want none", len(again.Messages))
+			}
+		}},
+		{"ClaimHandsOutTheStrandsMailAndItsFlagFollowsTheMail", true, func(t *testing.T, r *rig) {
+			r.geom.FlagDir = filepath.Join(r.geom.StateDir, "flags")
+			flag := filepath.Join(r.geom.FlagDir, agentname.FileName(alpha))
+			r.start()
+			c := r.client(strandClaim(alpha), nil, creelfake.NewClock(epoch))
+			mustCall(t, c, creelengine.Request{Verb: creelengine.VerbPost, Receiver: alpha, Text: "at the boundary"})
+			if _, err := os.Stat(flag); err != nil {
+				t.Fatalf("alpha's flag after the post: %v; want it standing", err)
+			}
+			var handed []creelengine.Message
+			_, err := c.Call(creelengine.Request{Verb: creelengine.VerbClaim}, 0, func(resp creelengine.Response) error {
+				handed = resp.Messages
+				return nil
+			})
+			if err != nil || len(handed) != 1 || handed[0].Body != "at the boundary" {
+				t.Fatalf("claim handed out %+v, %v; want the one message", handed, err)
+			}
+			if _, err := os.Stat(flag); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("alpha's flag after the acked claim: %v; want it gone", err)
+			}
+			if again := mustCall(t, c, creelengine.Request{Verb: creelengine.VerbClaim}); len(again.Messages) != 0 {
+				t.Errorf("a claim after the acked one = %d messages; want none", len(again.Messages))
 			}
 		}},
 		{"ReadHandsOutEveryUnreadMessageFromEverySender", false, func(t *testing.T, r *rig) {
@@ -946,6 +971,26 @@ func TestDaemon_Lifecycle(t *testing.T) {
 			want := []creelfake.Send{{Strand: orch, Text: "[creel] 1 unread: #1 from " + alpha + " — run lym creel read"}}
 			if got := r.del.Sends(); !slices.Equal(got, want) {
 				t.Errorf("typed %v; want the reminder of the stage 1 mail %v", got, want)
+			}
+		}},
+		{"StartReconcilesAStaleFlagAndAMissingOne", func(t *testing.T, r *rig) {
+			r.geom.FlagDir = filepath.Join(r.geom.StateDir, "flags")
+			staleFlag := filepath.Join(r.geom.FlagDir, agentname.FileName(alpha))
+			missingFlag := filepath.Join(r.geom.FlagDir, agentname.FileName(beta))
+			if err := os.MkdirAll(r.geom.FlagDir, 0o755); err != nil {
+				t.Fatalf("create the flag directory: %v", err)
+			}
+			if err := os.WriteFile(staleFlag, nil, 0o644); err != nil {
+				t.Fatalf("write the stale flag: %v", err)
+			}
+			r.writeJournal("2026-10-01",
+				`{"event":"posted","at":"2026-10-01T11:00:00Z","id":1,"from":"`+alpha+`","to":"`+beta+`","kind":"mail","body":"unread"}`)
+			r.start()
+			if _, err := os.Stat(missingFlag); err != nil {
+				t.Errorf("beta's flag after the start: %v; want it standing for the unread mail", err)
+			}
+			if _, err := os.Stat(staleFlag); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("alpha's flag after the start: %v; want the stale one removed", err)
 			}
 		}},
 		{"SendingWithoutAnOutcomeIsUnconfirmedAndNeverTypedAgain", func(t *testing.T, r *rig) {
