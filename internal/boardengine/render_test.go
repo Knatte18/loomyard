@@ -273,17 +273,15 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"Concrete and claimable; only a task can run.\n" +
 				"\n" +
-				"### Ready (1)\n" +
+				"### Ready (0)\n" +
 				"\n" +
 				"Waits on nothing open; can start now.\n" +
 				"\n" +
-				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
-				"| --- | --- | --- | --- | --- | --- | --- |\n" +
-				"| T1 | `draft` **Base work**<br>• The foundation.<br>• `loom: review_hard_max_bounces 3`<br>• `loom: review_max_bounces 2` | `base` | loom |  | 5w<br>3d |  |\n" +
+				"_None._\n" +
 				"\n" +
 				"### Layer A (1)\n" +
 				"\n" +
-				"Waits only on Running or Ready entries.\n" +
+				"Waits only on Running, Ready or Draft entries.\n" +
 				"\n" +
 				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
@@ -296,6 +294,14 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
 				"| T3 | **Alone work**<br>• `profile: docs`<br>• `darn: review_max_bounces 1` | `alone` | darn |  |  |  |\n" +
+				"\n" +
+				"### Draft (1)\n" +
+				"\n" +
+				"Not released; nothing starts it until its status is cleared.\n" +
+				"\n" +
+				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- | --- |\n" +
+				"| T1 | `draft` **Base work**<br>• The foundation.<br>• `loom: review_hard_max_bounces 3`<br>• `loom: review_max_bounces 2` | `base` | loom |  | 5w<br>3d |  |\n" +
 				"\n" +
 				"## Notes (4)\n" +
 				"\n" +
@@ -400,7 +406,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"### Layer A (1)\n" +
 				"\n" +
-				"Waits only on Running or Ready entries.\n" +
+				"Waits only on Running, Ready or Draft entries.\n" +
 				"\n" +
 				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
@@ -429,7 +435,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				{ID: 6, Handle: "T3", Slug: "third", Title: "Third step", Kind: boardengine.KindTask, Project: "ship", DependsOn: []string{"second"}},
 				{ID: 7, Handle: "E1", Slug: "thought", Title: "A thought", Kind: boardengine.KindNote, Project: "ship"},
 				{ID: 8, Handle: "T4", Slug: "shipped", Title: "Shipped step", Kind: boardengine.KindTask, Project: "ship", Status: stringPtr("done")},
-				{ID: 9, Handle: "T5", Slug: "chore", Title: "Chore", Kind: boardengine.KindTask, Project: "tidy"},
+				{ID: 9, Handle: "T5", Slug: "chore", Title: "Chore", Kind: boardengine.KindTask, Project: "tidy", Status: stringPtr(boardengine.StatusDraft)},
 			},
 			primeOwner: "neve",
 			want: "# Board\n" +
@@ -468,7 +474,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"| # | Member | Kind | Standing |\n" +
 				"| --- | --- | --- | --- |\n" +
-				"| T5 | **Chore** | Task | Ready |\n" +
+				"| T5 | **Chore** | Task | Draft |\n" +
 				"\n" +
 				"## Tasks (4)\n" +
 				"\n" +
@@ -482,22 +488,29 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
 				"| T2 | **Second step** | `second` | loom | Webster | box |  |  |\n" +
 				"\n" +
-				"### Ready (2)\n" +
+				"### Ready (1)\n" +
 				"\n" +
 				"Waits on nothing open; can start now.\n" +
 				"\n" +
 				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
 				"| T1 | **First step** | `first` | loom |  |  |  |\n" +
-				"| T5 | **Chore** | `chore` | loom |  |  |  |\n" +
 				"\n" +
 				"### Layer A (1)\n" +
 				"\n" +
-				"Waits only on Running or Ready entries.\n" +
+				"Waits only on Running, Ready or Draft entries.\n" +
 				"\n" +
 				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
 				"| T3 | **Third step** | `third` | loom | `second` |  |  |\n" +
+				"\n" +
+				"### Draft (1)\n" +
+				"\n" +
+				"Not released; nothing starts it until its status is cleared.\n" +
+				"\n" +
+				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- | --- |\n" +
+				"| T5 | `draft` **Chore** | `chore` | loom |  |  |  |\n" +
 				"\n" +
 				"## Notes (1)\n" +
 				"\n" +

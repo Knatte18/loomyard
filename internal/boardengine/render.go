@@ -1,7 +1,7 @@
 // render.go — turns the entry list into the wiki's output files.
 //
 // Render is a pure function: entries in, a map of filename → content out (a single README.md built by renderReadme, plus design-*.md for any entry with a body).
-// The README reads like a roadmap: Tasks split into Running, Ready, dependency layers and Independent, Notes with one subsection per type label, then Done.
+// The README reads like a roadmap: Tasks split into Running, Ready, dependency layers, Independent and Draft, Notes with one subsection per type label, then Done.
 // Each subsection holds one markdown table in RenderOrder's order, each row opening with the entry's handle, and a Notes table adds the priority as H or L after it;
 // the README opens with the time it was rendered and the machine that owns the hub's prime;
 // the rows show the bold title with the brief, the run profile and each run setting as a bullet under it, the linked slug, the entry's age above its time since its last revision as of that time, and the labels that are not type labels;
@@ -235,7 +235,7 @@ func readmeOwners(ordered []TaskWithLayer, primeOwner string) func(slug string) 
 	}
 }
 
-// renderReadme builds the README: a title, the render time and prime owner, an intro, Projects when one is open, Tasks split into Running, Ready, dependency layers and Independent, Notes split by type label, then Done when any entry is done.
+// renderReadme builds the README: a title, the render time and prime owner, an intro, Projects when one is open, Tasks split into Running, Ready, dependency layers, Independent and Draft, Notes split by type label, then Done when any entry is done.
 func renderReadme(ordered []TaskWithLayer, primeOwner, designPrefix string, types []string, now time.Time) string {
 	lines := []string{
 		"# Board",
@@ -314,7 +314,7 @@ func renderReadme(ordered []TaskWithLayer, primeOwner, designPrefix string, type
 	} else {
 		lines = append(lines, emptySectionLine, "")
 	}
-	// RenderOrder sorts tasks by layer, so each dependency layer and Independent is a contiguous run.
+	// RenderOrder sorts tasks by layer, so each dependency layer, Independent and Draft is a contiguous run.
 	for start := 0; start < len(tasks); {
 		end := start
 		for end < len(tasks) && tasks[end].Layer == tasks[start].Layer {
@@ -439,7 +439,7 @@ func projectMembers(ordered []TaskWithLayer, project Task) []TaskWithLayer {
 	return members
 }
 
-// standingCell is where a project member stands: Done once finished, the run's place while a run holds it, Ready, Note, or the name of its dependency layer.
+// standingCell is where a project member stands: Done once finished, the run's place while a run holds it, Ready, Note, Project, Draft, or the name of its dependency layer.
 func standingCell(member TaskWithLayer, finished bool) string {
 	switch {
 	case finished:
@@ -468,9 +468,11 @@ func primeOwnerText(primeOwner string) string {
 func layerSection(layer string) readmeSection {
 	switch layer {
 	case "A":
-		return readmeSection{"Layer A", "Waits only on Running or Ready entries."}
+		return readmeSection{"Layer A", "Waits only on Running, Ready or Draft entries."}
 	case isolatedLayer:
 		return readmeSection{"Independent", "Depends on nothing and nothing depends on it, by design."}
+	case draftLayer:
+		return readmeSection{"Draft", "Not released; nothing starts it until its status is cleared."}
 	default:
 		return readmeSection{"Layer " + layer, "Starts when every entry it names under After is done."}
 	}
@@ -518,7 +520,7 @@ func ageCell(t Task, now time.Time) string {
 // entryCell is the bold title, led by a `draft` code span for a draft task, with the brief as one bullet under it when there is one, then a code-span bullet naming the run profile when there is one and one per run setting.
 func entryCell(t Task) string {
 	cell := "**" + cellText(t.Title) + "**"
-	if t.Status != nil && *t.Status == StatusDraft {
+	if isDraft(t) {
 		cell = codeSpan(StatusDraft) + " " + cell
 	}
 	if t.Brief != "" {
