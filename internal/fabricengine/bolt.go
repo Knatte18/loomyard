@@ -33,6 +33,7 @@ func NewBolt(repoPath string) *Bolt {
 
 // Commit stages and commits every change in the Bolt's repo under message, with no warp trailer and
 // no correspondence recording.
+// It first seeds the repo's git excludes for the weft's never-tracked artifacts, so machine-local scratch under a .lym directory is never staged, whichever command seeded the repo before.
 func (b *Bolt) Commit(message string, opts SyncOptions) (sha string, committed bool, err error) {
 	return commitWeftAt(b.path, message, opts)
 }

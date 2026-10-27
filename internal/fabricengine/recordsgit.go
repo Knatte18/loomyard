@@ -368,9 +368,13 @@ func (f *Fabric) PullWeft(opts SyncOptions) error {
 // weft:main checkout, with no warp branch or Warp-SHA trailer. Returns
 // ("", false, nil) when opts.SkipGit is true. Does not acquire the weft write
 // lock; the caller is responsible for synchronization.
+// It seeds the weft artifact excludes before staging, so the stage-all never sweeps up machine-local scratch even in a repo no other verb has seeded.
 func commitWeftAt(weftPath, message string, opts SyncOptions) (sha string, committed bool, err error) {
 	if opts.SkipGit {
 		return "", false, nil
+	}
+	if err := seedWeftArtifactExcludes(weftPath); err != nil {
+		return "", false, err
 	}
 	return gitrepo.New(weftPath).StageAllAndCommit(message)
 }

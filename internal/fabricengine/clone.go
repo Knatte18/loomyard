@@ -328,14 +328,11 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 	// The hub-wide never-tracked tree is <hub>/_board/.lym, the mirrored ephemeral sibling of <hub>/_board/_lym.
 	// It is created here, rather than at old step 4, because _board does not exist until ensureBoardWorktree above has run.
 	//
-	// The excludes are seeded first because the exposure is the board's stage-all commit, not
-	// untracked dirt: internal/fabriccli/clone.go runs CloneHub then NewBolt(res.BoardDir).Commit(...)
-	// and only afterwards WireJunctionsWith, which is what seeds .lym/ into the weft common gitdir —
-	// so without this call, anything written into _board/.lym before that commit lands on weft:main.
+	// The excludes are seeded first so _board/.lym never shows as untracked dirt in the board worktree from the hub's birth on;
+	// the board's stage-all commit seeds them again before staging.
 	//
-	// The seed failure is fatal, routed through teardownHub like every other step-7 failure, rather
-	// than best-effort: Bolt.Commit's commitWeftAt → gitrepo.StageAllAndCommit path seeds nothing, so
-	// the board's excludes are not self-healing the way reconcile.go's best-effort call assumes.
+	// The seed failure is fatal, routed through teardownHub like every other step-7 failure:
+	// a hub whose weft common gitdir cannot take an exclude cannot keep its scratch untracked.
 	if err := seedWeftArtifactExcludes(boardDir); err != nil {
 		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, fmt.Errorf("seed weft artifact excludes in board worktree: %w", err))
 	}

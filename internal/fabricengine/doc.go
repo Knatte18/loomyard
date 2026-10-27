@@ -130,6 +130,7 @@
 // pathspec.
 // The one exception is the package-level `commitWeftAt` function (not a `Fabric` method), which
 // wraps board's wildcard-stage commit on its behalf — see `commitWeftAt`'s own doc comment.
+// It seeds the weft artifact excludes before every stage, so a file under `_board/.lym`, such as a stray trace log, never reaches Bolt.
 //
 // The default weft-staging pathspec (template.yaml's `pathspec:` key) is empty, so no optional
 // directory is staged by default; `_lym` itself arrives from `structuralCommittedDirs`, not from

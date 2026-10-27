@@ -19,13 +19,14 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // newBoltBareRemote creates a bare git repository at <dir>/bolt-remote.git
@@ -58,7 +59,8 @@ func newBoltRepo(t *testing.T, dir, name, bareRemote string) string {
 }
 
 // TestBolt_DirtyRepo_CommitsAndPushes asserts that Commit followed by Push lands a real commit and
-// advances the bare origin to that same SHA.
+// advances the bare origin to that same SHA,
+// and that the commit leaves machine-local scratch under .lym untracked in a repo nothing seeded excludes for.
 func TestBolt_DirtyRepo_CommitsAndPushes(t *testing.T) {
 	t.Parallel()
 
@@ -66,6 +68,13 @@ func TestBolt_DirtyRepo_CommitsAndPushes(t *testing.T) {
 	bareRemote := newBoltBareRemote(t, container)
 	repoPath := newBoltRepo(t, container, "bolt", bareRemote)
 	if err := os.WriteFile(filepath.Join(repoPath, "bolt-note.md"), []byte("a note"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	logsDir := filepath.Join(repoPath, lymdirs.DotLymDirName, "logs")
+	if err := os.MkdirAll(logsDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(logsDir, "trace.log"), []byte("a trace"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
@@ -80,6 +89,9 @@ func TestBolt_DirtyRepo_CommitsAndPushes(t *testing.T) {
 	}
 	if sha == "" {
 		t.Fatalf("Commit() sha = %q; want a non-empty new HEAD SHA", sha)
+	}
+	if got, want := gitkit.LsFiles(t, repoPath), []string{"bolt-note.md"}; !slices.Equal(got, want) {
+		t.Errorf("git ls-files after Commit() = %q; want %q", got, want)
 	}
 
 	if err := b.Push(SyncOptions{}); err != nil {
@@ -116,15 +128,6 @@ func TestBolt_CleanRepo_CommitAndPushAreNoOps(t *testing.T) {
 	if err := b.Push(SyncOptions{}); err != nil {
 		t.Fatalf("Push() (seed) error = %v; want nil", err)
 	}
-	// PushCoalesced leaves its own untracked .gitrepo-push.lock at the repo
-	// root once it has run; a real board/clone checkout never has this test's
-	// bare "no .gitignore at all" shape, but a plain unseeded fixture does, so
-	// clear it here rather than have Bolt's own wildcard-stage commit sweep it
-	// up and falsely report the next call as a real commit.
-	if err := os.Remove(filepath.Join(repoPath, gitrepo.PushLockFileName)); err != nil && !os.IsNotExist(err) {
-		t.Fatalf("remove push lock artifact: %v", err)
-	}
-
 	sha, committed, err := b.Commit("bolt sync", SyncOptions{})
 	if err != nil {
 		t.Fatalf("Commit() error = %v; want nil", err)

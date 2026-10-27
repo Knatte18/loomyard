@@ -1,14 +1,10 @@
 //go:build tier1
 
-// commitweftat_test.go — integration coverage for commitWeftAt, the
-// package-level, warp-untethered commit primitive: a real commit on a dirty
-// worktree, a no-op on a clean one, and the SkipGit early return. Package
-// fabricengine (internal), reusing index_integration_test.go's
-// newPlainWarpRepo(t) as a generic plain-git-repo fixture — it is not
-// warp-specific despite its name, just `git init -b main` plus one commit,
-// which is exactly the weft:main-shaped fixture these tests need. Relies on
-// testmain_test.go's package-wide TestMain for HermeticGitEnv(); no new
-// TestMain is added here.
+// commitweftat_test.go — integration coverage for commitWeftAt, the package-level, warp-untethered commit primitive:
+// a real commit on a dirty worktree, a no-op on a clean one, a seed-failure abort before staging, and the SkipGit early return.
+// Package fabricengine (internal), reusing index_integration_test.go's newPlainWarpRepo(t) as a generic plain-git-repo fixture.
+// It is not warp-specific despite its name, just `git init -b main` plus one commit, which is exactly the weft:main-shaped fixture these tests need.
+// Relies on testmain_test.go's package-wide TestMain for HermeticGitEnv(); no new TestMain is added here.
 
 package fabricengine
 
@@ -97,6 +93,48 @@ func TestCommitWeftAt_NoopOnCleanWorktree(t *testing.T) {
 	}
 	if sha != "" {
 		t.Errorf("commitWeftAt() second call sha = %q; want empty", sha)
+	}
+}
+
+// TestCommitWeftAt_SeedFailureFailsBeforeStaging asserts that a failure to seed the weft artifact excludes fails the commit before anything is staged:
+// a non-nil error, committed=false, an empty sha, and the dirty file left untracked.
+// The seed read is made to fail by replacing the repo's info/exclude file with a directory.
+//
+//testtiming:keep commitWeftAt failing before staging when the exclude seed fails; coverage of its blocks by other tests does not show an assertion of this
+func TestCommitWeftAt_SeedFailureFailsBeforeStaging(t *testing.T) {
+	t.Parallel()
+
+	dir := newPlainWarpRepo(t)
+	excludePath := filepath.Join(dir, ".git", "info", "exclude")
+	if err := os.RemoveAll(excludePath); err != nil {
+		t.Fatalf("RemoveAll(%s): %v", excludePath, err)
+	}
+	if err := os.MkdirAll(excludePath, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s): %v", excludePath, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "board-note.md"), []byte("a board note"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	sha, committed, err := commitWeftAt(dir, "board sync", SyncOptions{})
+	if err == nil || !strings.Contains(err.Error(), "seed weft artifact excludes") {
+		t.Fatalf("commitWeftAt() error = %v; want a seed weft artifact excludes failure", err)
+	}
+	if committed {
+		t.Errorf("commitWeftAt() committed = true; want false")
+	}
+	if sha != "" {
+		t.Errorf("commitWeftAt() sha = %q; want empty", sha)
+	}
+	// git itself rejects a directory as the exclude file, so restore a plain file before reading the status.
+	if err := os.RemoveAll(excludePath); err != nil {
+		t.Fatalf("RemoveAll(%s): %v", excludePath, err)
+	}
+	if err := os.WriteFile(excludePath, nil, 0o644); err != nil {
+		t.Fatalf("WriteFile(%s): %v", excludePath, err)
+	}
+	if status := gitStatusPorcelain(t, dir); status != "?? board-note.md\n" {
+		t.Errorf("git status --porcelain = %q; want only board-note.md, still untracked", status)
 	}
 }
 
