@@ -428,7 +428,7 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 				}
 				return
 			}
-			st, found, err := state.ReadJSONNoMkdir[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+			st, found, err := state.ReadJSON[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 			if err != nil || !found {
 				t.Fatalf("read persisted status: found=%v err=%v", found, err)
 			}
@@ -632,7 +632,7 @@ func TestStatusAndPause_ReadADurableStatusWhoseLockDirIsAbsent(t *testing.T) {
 			if len(envelope) != 2 || envelope["ok"] != true || envelope["status_file"] != c.shedPaths.StatusPath {
 				t.Errorf("pause() envelope = %v; want exactly ok and status_file=%q", envelope, c.shedPaths.StatusPath)
 			}
-			st, found, err := state.ReadJSONNoMkdir[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+			st, found, err := state.ReadJSON[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 			if err != nil || !found {
 				t.Fatalf("read persisted status: found=%v err=%v", found, err)
 			}

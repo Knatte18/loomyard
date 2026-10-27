@@ -366,7 +366,7 @@ func hubTopology(location *lymcwd.Location) (*fabricengine.Topology, error) {
 // readBattenStatus reads batten's status file for slug under its lock, creating nothing.
 // found is false when the file, or the run directory around it, is absent.
 func readBattenStatus(location *lymcwd.Location, slug string) (shedengine.Status, bool, error) {
-	status, found, err := state.ReadJSONNoMkdir[shedengine.Status](StatusFile(location, slug), shedrun.StatusLock(location, slug))
+	status, found, err := state.ReadJSON[shedengine.Status](StatusFile(location, slug), shedrun.StatusLock(location, slug))
 	if errors.Is(err, fs.ErrNotExist) {
 		return shedengine.Status{}, false, nil
 	}

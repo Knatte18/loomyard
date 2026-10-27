@@ -25,6 +25,8 @@ type Topology struct {
 	inFlight InFlightProbe
 	// teardownWait bounds how long Remove waits for a push of the pair to let go of the pair's teardown lock.
 	teardownWait time.Duration
+	// beforeWire runs in Add once the weft worktree exists and before the junctions are wired; nil in production.
+	beforeWire func()
 }
 
 // SetInFlightProbe sets the probe Remove's store housekeeping consults before it runs gc.

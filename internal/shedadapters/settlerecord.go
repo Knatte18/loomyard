@@ -118,7 +118,7 @@ func readRecord[T any](path string) (T, bool, error) {
 		}
 		return zero, false, fmt.Errorf("shedadapters: stat record %s: %w", path, err)
 	}
-	record, found, err := state.ReadJSONNoMkdir[T](path, path+".lock")
+	record, found, err := state.ReadJSON[T](path, path+".lock")
 	if err != nil {
 		return record, false, fmt.Errorf("shedadapters: read record %s: %w", path, err)
 	}

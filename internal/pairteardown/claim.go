@@ -147,7 +147,7 @@ func (t *Teardown) battenRunState(slug string) (seeded bool, state string, err e
 
 // readStatus reads the shed status file at path under its lock; found is false when the file is absent, which includes a run directory that was never created.
 func readStatus(path, lockPath string) (shedengine.Status, bool, error) {
-	status, found, err := state.ReadJSONNoMkdir[shedengine.Status](path, lockPath)
+	status, found, err := state.ReadJSON[shedengine.Status](path, lockPath)
 	if errors.Is(err, fs.ErrNotExist) {
 		return shedengine.Status{}, false, nil
 	}

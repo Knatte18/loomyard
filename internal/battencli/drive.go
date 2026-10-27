@@ -176,7 +176,7 @@ func battenRunEnvelope(exit sheddriver.Exit, st shedengine.Status, found bool, a
 
 // readRunStatus reads batten's own status file.
 func (c *battenCLI) readRunStatus() (shedengine.Status, bool, error) {
-	return state.ReadJSONNoMkdir[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+	return state.ReadJSON[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 }
 
 // reportSuffix returns four lowercase hex characters, the random part of a drive-reports file name.

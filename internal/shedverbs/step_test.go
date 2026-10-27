@@ -318,7 +318,7 @@ func TestStepCmd_BusyTreatment(t *testing.T) {
 	if env["error"] != spec.StepBusyMessage {
 		t.Errorf("error = %v; want %q", env["error"], spec.StepBusyMessage)
 	}
-	st, _, err := state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+	st, _, err := state.ReadJSON[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
 	if err != nil || st.PendingBy != "" {
 		t.Errorf("PendingBy, err = %q, %v; want empty after the busy refusal", st.PendingBy, err)
 	}
@@ -915,7 +915,7 @@ func TestStepCmd_SuccessEnvelopeCarriesIdentityAndProgress(t *testing.T) {
 			if env, code := execEnvelope(t, stepCmd(stepTexts(), spec), nil); code != 0 {
 				t.Fatalf("exit code = %d; want 0 (%v)", code, env)
 			}
-			st, _, err := state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+			st, _, err := state.ReadJSON[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
 			if err != nil {
 				t.Fatalf("re-read status: %v", err)
 			}

@@ -128,7 +128,7 @@ func readRunStatus(prime *lymcwd.Location, slug string) (hibernateengine.RunStat
 	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
 		return hibernateengine.RunStatus{}, false, err
 	}
-	status, found, err := state.ReadJSONNoMkdir[shedengine.Status](statusPath, lockPath)
+	status, found, err := state.ReadJSON[shedengine.Status](statusPath, lockPath)
 	if err != nil || !found {
 		return hibernateengine.RunStatus{}, false, err
 	}

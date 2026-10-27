@@ -33,7 +33,7 @@
 //
 // # Unknown keys
 //
-// No read refuses a field its type does not declare: ReadJSON, ReadJSONNoMkdir and UpdateJSON's own read all decode with a plain unmarshal.
+// No read refuses a field its type does not declare: ReadJSON and UpdateJSON's own read both decode with a plain unmarshal.
 // Every write keeps, in the file it replaces, each key the record's Go type does not declare, so a record a newer binary wrote loses nothing when an older one rewrites it.
 // WriteJSON and UpdateJSON do this under the write lock they already hold, by reading the file they replace and merging it into the new encoding.
 // A kept key lands after the declared ones, in the old file's order, with its raw value, so its exact digits survive.
@@ -44,4 +44,9 @@
 // An absent file, or one that does not parse, adds nothing.
 //
 // The bound: only keys already in the file being replaced pass through, and each write costs one extra read of that file under the held lock.
+//
+// # Reads create nothing
+//
+// Only writes create directories: WriteJSON, WriteFile and UpdateJSON make the record's directory before they lock, and ReadJSON makes none,
+// so a reader polling a tree another process is still building never leaves a directory that process then refuses.
 package state

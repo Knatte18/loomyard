@@ -1747,6 +1747,19 @@ func stagedWorktreeContained(root *os.Root, rel string) bool {
 	return info.Mode()&os.ModeSymlink == 0 && info.IsDir()
 }
 
+// worktreeStagingPrefix opens the name of the staging directory a new worktree is created in before it moves to its final path.
+const worktreeStagingPrefix = ".fabric-wt-staging-"
+
+// InWorktreeStaging reports whether path lies under a worktree staging directory, where a worktree being created sits before it moves to its final path.
+func InWorktreeStaging(path string) bool {
+	for _, part := range strings.Split(filepath.ToSlash(path), "/") {
+		if strings.HasPrefix(part, worktreeStagingPrefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // mkWorktreeStagingDir creates a fresh, collision-free staging parent directory directly under root and
 // returns its base name. The name is unpredictable (crypto/rand) so a different-UID planter with hub
 // write access cannot pre-plant a symlink at it, the mode is 0700 so such a planter can neither list nor
@@ -1758,7 +1771,7 @@ func mkWorktreeStagingDir(root *os.Root) (string, error) {
 		if _, err := rand.Read(buf[:]); err != nil {
 			return "", fmt.Errorf("generate worktree staging name: %w", err)
 		}
-		name := ".fabric-wt-staging-" + hex.EncodeToString(buf[:])
+		name := worktreeStagingPrefix + hex.EncodeToString(buf[:])
 		err := root.Mkdir(name, 0o700)
 		if err == nil {
 			return name, nil
@@ -2314,4 +2327,3 @@ func (f *Fabric) resetMergeSides(rec *Mutations, warpSHA string) error {
 	}
 	return resetHardTo(rec, warpReq, f.code, warpSHA)
 }
-

@@ -66,7 +66,7 @@ func TestPreDriveCheck(t *testing.T) {
 		if err != nil || kind != "" {
 			t.Fatalf("battenPreStep() = (%q, %v); want (\"\", nil)", kind, err)
 		}
-		status, found, err := state.ReadJSONNoMkdir[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+		status, found, err := state.ReadJSON[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 		if err != nil || !found || status.CurrentProducer != battenrecipe.NameWorktreeCreate || status.State != shedengine.StateRunning {
 			t.Errorf("status after battenPreStep = (%+v, found %v, err %v); want a running Worktree-Create", status, found, err)
 		}

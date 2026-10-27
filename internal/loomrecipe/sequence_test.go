@@ -156,9 +156,9 @@ func TestSequence_FullRunBlocksAtMergeIn(t *testing.T) {
 		t.Errorf("parent-review verdict stat error = %v; want no verdict written", err)
 	}
 
-	got, found, err := state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+	got, found, err := state.ReadJSON[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
 	if err != nil {
-		t.Fatalf("ReadJSONNoMkdir() error = %v; want nil", err)
+		t.Fatalf("ReadJSON() error = %v; want nil", err)
 	}
 	if !found {
 		t.Fatalf("status file not found after Run()")

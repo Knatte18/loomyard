@@ -185,7 +185,7 @@ type Spec struct {
 	Hooks Hooks
 	// StatusLabel is the --watch line's literal prefix -- "loom" for the loom recipe.
 	StatusLabel string
-	// DecodeErrPrefix is the told prefix for this spec's own state.ReadJSONNoMkdir failure on the
+	// DecodeErrPrefix is the told prefix for this spec's own state.ReadJSON failure on the
 	// status file -- "loom:" for loom and "lifecyclecli:" for lifecycle. It also seeds
 	// ensureStatusLockDir's own error text, reproducing loomcli's existing wording for loom's spec
 	// rather than inventing a second prefix field for one string.
@@ -206,10 +206,9 @@ type Spec struct {
 	// PauseAbsentMessage is the error text pause reports when its status file does not exist --
 	// there is nothing running to pause.
 	PauseAbsentMessage string
-	// EnsureStatusLockDir tells status and pause whether to MkdirAll the status lock's ephemeral
-	// parent directory before reading or writing through it. It travels as a told boolean rather
-	// than an unconditional generic step because lifecycle's status is read-only, and creating its
-	// per-slug directory as a side effect of reading it would be a new, unasked-for write.
+	// EnsureStatusLockDir tells pause and goto whether to MkdirAll the status lock's ephemeral
+	// parent directory before writing through it.
+	// status never creates it: a read whose lock directory is absent reads without the lock.
 	EnsureStatusLockDir bool
 	// Loop is the told arming of step's --until-stop mode; its zero value means the recipe arms no loop.
 	Loop LoopSpec

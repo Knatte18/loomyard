@@ -213,7 +213,7 @@ func TestStatusCmd_DecodeErrorPrefixIsTold(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(paths.StatusLockPath), 0o755); err != nil {
 		t.Fatalf("mkdir status lock parent: %v", err)
 	}
-	// Malformed JSON: state.ReadJSONNoMkdir fails to decode.
+	// Malformed JSON: state.ReadJSON fails to decode.
 	if err := os.WriteFile(paths.StatusPath, []byte("not json"), 0o644); err != nil {
 		t.Fatalf("write malformed status file: %v", err)
 	}
@@ -234,10 +234,8 @@ func TestStatusCmd_DecodeErrorPrefixIsTold(t *testing.T) {
 	}
 }
 
-// TestStatusCmd_EnsureStatusLockDir_True covers the told boolean's true arm: over a status-lock
-// path whose parent directory does not yet exist, the parent is created and the read goes on to
-// produce the told absent-file disposition.
-func TestStatusCmd_EnsureStatusLockDir_True(t *testing.T) {
+// TestStatusCmd_AbsentLockDirReadsWithoutCreatingIt covers a status-lock path whose parent directory does not yet exist: the read reaches the told absent-file disposition and leaves the parent absent, even with EnsureStatusLockDir set, since status is a read.
+func TestStatusCmd_AbsentLockDirReadsWithoutCreatingIt(t *testing.T) {
 	paths := newTestPaths(t)
 	// The status lock's parent directory does not exist yet: nest it one level below the
 	// already-created temp dir so this test actually exercises a missing parent, rather than the
@@ -259,35 +257,8 @@ func TestStatusCmd_EnsureStatusLockDir_True(t *testing.T) {
 	if env["found"] != false {
 		t.Errorf("found = %v; want false", env["found"])
 	}
-	if _, err := os.Stat(filepath.Dir(paths.StatusLockPath)); err != nil {
-		t.Errorf("status lock parent directory was not created: %v", err)
-	}
-}
-
-// TestStatusCmd_EnsureStatusLockDir_False covers the told boolean's false arm: over the same kind
-// of never-created parent, the parent stays absent and the read fails in lock acquisition instead
-// of ever reaching found.
-func TestStatusCmd_EnsureStatusLockDir_False(t *testing.T) {
-	paths := newTestPaths(t)
-	// The status lock's parent directory does not exist yet: nest it one level below the
-	// already-created temp dir so this test actually exercises a missing parent, rather than the
-	// temp dir itself (which t.TempDir() already created).
-	paths.StatusLockPath = filepath.Join(filepath.Dir(paths.StatusLockPath), "ephemeral", "status.lock")
-
-	spec := &Spec{
-		StatusPath:          paths.StatusPath,
-		StatusLockPath:      paths.StatusLockPath,
-		DecodeErrPrefix:     "battencli:",
-		EnsureStatusLockDir: false,
-		AbsentStatus:        AbsentDisposition{Refuse: false},
-	}
-
-	env, code := execEnvelope(t, statusCmd(statusTexts(), spec), nil)
-	if code != 1 {
-		t.Fatalf("exit code = %d; want 1 (lock acquisition must fail before found is ever produced): %v", code, env)
-	}
-	if _, err := os.Stat(filepath.Dir(paths.StatusLockPath)); err == nil {
-		t.Error("status lock parent directory was created despite EnsureStatusLockDir being false")
+	if _, err := os.Stat(filepath.Dir(paths.StatusLockPath)); !os.IsNotExist(err) {
+		t.Errorf("Stat(status lock parent) error = %v; want the read to leave it absent", err)
 	}
 }
 
@@ -444,7 +415,7 @@ func seededStatusSpec(t *testing.T, hooks Hooks) *Spec {
 		t.Fatalf("mkdir status lock parent: %v", err)
 	}
 	seedStatus(t, paths, "Only")
-	st, _, err := state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+	st, _, err := state.ReadJSON[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
 	if err != nil {
 		t.Fatalf("read seeded status: %v", err)
 	}
@@ -647,7 +618,7 @@ func TestRenderStatusLine_ProducerReasonReachesWait(t *testing.T) {
 	if _, err := shed.Step(context.Background()); err != nil {
 		t.Fatalf("Step(...) = _, %v; want nil error", err)
 	}
-	st, found, err := state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+	st, found, err := state.ReadJSON[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
 	if err != nil || !found {
 		t.Fatalf("read status: found=%v err=%v", found, err)
 	}
@@ -692,7 +663,7 @@ func TestStatusCmd_WaitingNote_RunningOnly(t *testing.T) {
 
 	t.Run("not running skips the hook", func(t *testing.T) {
 		spec := seededStatusSpec(t, Hooks{Waiting: hook})
-		st, _, err := state.ReadJSONNoMkdir[shedengine.Status](spec.StatusPath, spec.StatusLockPath)
+		st, _, err := state.ReadJSON[shedengine.Status](spec.StatusPath, spec.StatusLockPath)
 		if err != nil {
 			t.Fatalf("read status: %v", err)
 		}

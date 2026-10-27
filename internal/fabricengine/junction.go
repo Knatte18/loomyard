@@ -40,6 +40,12 @@ func WarpLymLinkHere(l *lymcwd.Location) string {
 	return filepath.Join(l.WorktreePath(), l.AnchorRel, lymdirs.LymDirName)
 }
 
+// LymJunctionWiredHere reports whether the current warp worktree's _lym is a link, as wiring leaves it.
+// A pair still being created has no link there yet, so a reader that goes through the path before then reads nothing and must create nothing there.
+func LymJunctionWiredHere(l *lymcwd.Location) (bool, error) {
+	return fslink.IsLink(WarpLymLinkHere(l))
+}
+
 // WarpJunction represents a directory junction in the warp worktree that links to a weft directory.
 type WarpJunction struct {
 	Name   string // Name is the directory name (e.g., "_lym")

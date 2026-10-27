@@ -1,4 +1,4 @@
-// add.go implements the transactional Add: it creates the warp worktree and launchers, wires junctions, and records and commits the pair's parent-branch and parent-worktree provenance, pushing nothing.
+// add.go implements the transactional Add: it creates the warp and weft worktrees, wires junctions, writes launchers, and records and commits the pair's parent-branch and parent-worktree provenance, pushing nothing.
 // It performs a best-effort full rollback on any post-creation failure, so a partial worktree PAIR is never left behind.
 // The rollback also deletes the warp branch this Add created, under any branch_prefix, and never touches origin — see rollbackAdd.
 // Whether the pair is live, which branches origin lends it and whether a leftover remote branch from a removed pair is replaceable are all decided at pre-flight, before the first mutation (see remoteleftover.go).
@@ -540,6 +540,26 @@ func (t *Topology) add(l *lymcwd.Location, slug string, opts AddOptions, local b
 		}
 	}
 
+	if t.beforeWire != nil {
+		t.beforeWire()
+	}
+
+	// (10b) Wire the new worktree's warp junctions as soon as the weft worktree exists, ahead of the local marks and the launchers,
+	// so a hub reader polling the half-built pair meets a warp worktree without its junction for as short a time as possible.
+	// The wired name-set comes from the repo-wide BoardDir base (not any per-pair weft base or acting-worktree config):
+	// every worktree must converge to the same repo-wide pathspec, matching Checkout's re-point call.
+	// The weft worktree already exists from step 8, so junction targets resolve.
+	// On failure, roll back the whole pair via the existing post-step-7 path.
+	names, err := RepoWiredNames(l)
+	if err != nil {
+		_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
+		return AddResult{}, fmt.Errorf("wire junctions: load fabric config: %w", err)
+	}
+	if err := WireJunctionsWith(rec, pairAt, slug, names); err != nil {
+		_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
+		return AddResult{}, fmt.Errorf("wire junctions: %w", err)
+	}
+
 	// Both worktrees exist: a local pair marks its two branches before the origin record's commit, so no push can carry that commit out.
 	if local {
 		if err := gitrepo.New(l.WorktreePath()).MarkBranchLocal(warpBranch); err != nil {
@@ -558,22 +578,6 @@ func (t *Topology) add(l *lymcwd.Location, slug string, opts AddOptions, local b
 			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 			return AddResult{}, err
 		}
-	}
-
-	// (10b) Wire the new worktree's warp junctions eagerly, sourcing the wired
-	// name-set from the repo-wide BoardDir base (not any per-pair weft base or
-	// acting-worktree config) — every worktree must converge to the same
-	// repo-wide pathspec, matching Checkout's re-point call. The weft worktree
-	// already exists from step 8, so junction targets resolve. On failure, roll
-	// back the whole pair via the existing post-step-7 path.
-	names, err := RepoWiredNames(l)
-	if err != nil {
-		_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
-		return AddResult{}, fmt.Errorf("wire junctions: load fabric config: %w", err)
-	}
-	if err := WireJunctionsWith(rec, pairAt, slug, names); err != nil {
-		_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
-		return AddResult{}, fmt.Errorf("wire junctions: %w", err)
 	}
 
 	// (10c) Record and commit the pair's provenance now that the pair is fully wired;

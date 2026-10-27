@@ -96,7 +96,7 @@ func (l *loopRun) arrange(t *testing.T) shedverbs.ArmStop {
 // assertStatus checks the status file's state after the refusal was reported.
 func (l *loopRun) assertStatus(t *testing.T, stop shedverbs.ArmStop) {
 	t.Helper()
-	st, found, err := state.ReadJSONNoMkdir[shedengine.Status](stop.StatusPath, stop.StatusLockPath)
+	st, found, err := state.ReadJSON[shedengine.Status](stop.StatusPath, stop.StatusLockPath)
 	if err != nil {
 		t.Fatalf("read status = %v; want nil", err)
 	}

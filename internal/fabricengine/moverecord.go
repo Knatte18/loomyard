@@ -62,7 +62,7 @@ func ReadMoveRecord(weftPath string) (record MoveRecord, found bool, err error) 
 	if _, statErr := os.Stat(path); os.IsNotExist(statErr) {
 		return MoveRecord{}, false, nil
 	}
-	record, found, err = state.ReadJSONNoMkdir[MoveRecord](path, moveRecordStateLockPath(weftPath))
+	record, found, err = state.ReadJSON[MoveRecord](path, moveRecordStateLockPath(weftPath))
 	if err != nil {
 		return MoveRecord{}, false, fmt.Errorf("fabricengine: read the move record in %s: %w", weftPath, err)
 	}

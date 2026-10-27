@@ -46,7 +46,7 @@ func TestPauseCmd_SetsPauseRequested(t *testing.T) {
 		t.Errorf("status_file = %v; want %q", env["status_file"], paths.StatusPath)
 	}
 
-	st, found, err := state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+	st, found, err := state.ReadJSON[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
 	if err != nil || !found {
 		t.Fatalf("re-read status: found=%v err=%v", found, err)
 	}
@@ -61,7 +61,7 @@ func TestPauseCmd_SetsPauseRequested(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code with --by = %d; want 0", code)
 	}
-	st, _, err = state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+	st, _, err = state.ReadJSON[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
 	if err != nil {
 		t.Fatalf("re-read status after --by: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestPauseCmd_SetsPauseRequested(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code with a repeat bare pause = %d; want 0", code)
 	}
-	st, _, err = state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+	st, _, err = state.ReadJSON[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
 	if err != nil {
 		t.Fatalf("re-read status after a repeat bare pause: %v", err)
 	}
@@ -267,7 +267,7 @@ func TestPauseCmd_Conditions(t *testing.T) {
 				}
 			}
 
-			got, found, err := state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+			got, found, err := state.ReadJSON[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
 			if err != nil || !found {
 				t.Fatalf("re-read status: found=%v err=%v", found, err)
 			}

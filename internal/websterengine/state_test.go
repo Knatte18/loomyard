@@ -175,6 +175,9 @@ func TestLoadState_UnusualFiles(t *testing.T) {
 			}
 
 			got, err := websterengine.LoadState(websterDir, scratchDir)
+			if _, statErr := os.Stat(scratchDir); !os.IsNotExist(statErr) {
+				t.Errorf("Stat(%q) error = %v after LoadState; want a read to create no scratch directory", scratchDir, statErr)
+			}
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("LoadState error = nil; want error")

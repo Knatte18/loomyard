@@ -174,7 +174,7 @@ func finalizeKeepsLock(statusPath, statusLockPath, verifyDir string) func() bool
 	markerPath := verifytree.NewPaths("", verifyDir).Marker
 	var failures logger.Episode
 	return func() bool {
-		status, found, err := state.ReadJSONNoMkdir[shedengine.Status](statusPath, statusLockPath)
+		status, found, err := state.ReadJSON[shedengine.Status](statusPath, statusLockPath)
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			failures.Fail("loomcli: could not read the run's status for the parent lock's idle rule; keeping the lock", "cause", err)
 			return true

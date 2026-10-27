@@ -846,3 +846,9 @@ func HoldHubPauseForTest(t *testing.T, slug string) {
 		Sleep:    func(context.Context, time.Duration) error { return errors.New("the test's pause is never lifted") },
 	}))
 }
+
+// SetBeforeWireForTest makes t's Add call hook once the new pair's weft worktree exists and before its junctions are wired.
+// It sets the hook on the one Topology, so parallel tests inject per instance.
+func SetBeforeWireForTest(t *Topology, hook func()) {
+	t.beforeWire = hook
+}
