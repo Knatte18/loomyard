@@ -9,25 +9,22 @@ import (
 	"testing"
 )
 
-// TestCountedCapture covers a found and an absent capture, each state, awaited_at set or not, and a loom (await row) and a darn recipe.
+// TestCountedCapture covers a found and an absent capture, each state, and awaited_at set or not.
 func TestCountedCapture(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		state    string
-		found    bool
-		awaited  bool
-		awaitRow bool
-		want     bool
+		name    string
+		state   string
+		found   bool
+		awaited bool
+		want    bool
 	}{
-		{"absent", CapturePassed, false, true, true, false},
-		{"running", CaptureRunning, true, true, true, false},
-		{"failed", CaptureFailed, true, true, true, false},
-		{"passed and awaited under an await row", CapturePassed, true, true, true, true},
-		{"passed but not awaited under an await row", CapturePassed, true, false, true, false},
-		{"passed and not awaited without an await row", CapturePassed, true, false, false, true},
-		{"failed without an await row", CaptureFailed, true, false, false, false},
+		{"absent", CapturePassed, false, true, false},
+		{"running", CaptureRunning, true, true, false},
+		{"failed", CaptureFailed, true, true, false},
+		{"passed and awaited", CapturePassed, true, true, true},
+		{"passed but not awaited", CapturePassed, true, false, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -36,7 +33,7 @@ func TestCountedCapture(t *testing.T) {
 			if tt.awaited {
 				scope.AwaitedAt = "2026-01-01T00:00:00Z"
 			}
-			got := CountedCapture(scope, CaptureRecord{State: tt.state}, tt.found, tt.awaitRow)
+			got := CountedCapture(scope, CaptureRecord{State: tt.state}, tt.found)
 			if got != tt.want {
 				t.Errorf("CountedCapture() = %v; want %v", got, tt.want)
 			}

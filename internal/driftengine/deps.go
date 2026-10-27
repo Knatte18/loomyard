@@ -25,8 +25,6 @@ type Deps struct {
 	Config func() (Config, error)
 	// Status reads the run's status.
 	Status func() (shedengine.Status, error)
-	// AwaitRow is true for the loom recipe, which has a Drift-Await row.
-	AwaitRow bool
 	// Head, BranchPoint and DirtyPaths read the code checkout's HEAD, its branch point and its tracked dirty paths.
 	Head        func() (string, error)
 	BranchPoint func() (string, error)
@@ -56,8 +54,6 @@ type Deps struct {
 type Row struct {
 	// Subject is SubjectDecisionRecord or SubjectBoardEntry.
 	Subject string
-	// WaitCapture makes Drift-Baseline run the capture in its own process and wait for it, which darn's `capture: wait` asks for.
-	WaitCapture bool
 }
 
 // commitOnExit commits relPaths through commit after a producer pass and returns the pass's result.

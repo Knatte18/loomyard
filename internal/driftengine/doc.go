@@ -13,7 +13,7 @@
 // Every record is JSON written through `internal/state`, so an unknown key survives a rewrite.
 // The scope record (`scope.json`) holds the recorded scope (`off`, `partial` or `full`) and its skipped tests, when the baseline was awaited or deferred, a waiver, the accepted and withdrawn tests, the unruled tests the last decision halt named and the time of the last gate halt.
 // The capture record (`capture.json`) holds the state of the latest main capture (`running`, `passed` or `failed`) with its pid, HEAD, times, exit code, reason and log.
-// CountedCapture decides whether a capture counts as the baseline: a passed record, and under a recipe with an await row also an `awaited_at` in the scope record.
+// CountedCapture decides whether a capture counts as the baseline: a passed record with an `awaited_at` in the scope record.
 // The run counter (`runs.json`) holds how many compare or side-capture runs the current Drift-Verify agent session took, the commit its attempt started at and whether the agent-session mark is open.
 // TakeRun refuses once the budget is spent, ResetRuns starts a fresh attempt with the whole budget, and CloseAgentSession closes the mark while keeping the count and the attempt's head.
 // A verb reads the mark with AgentSessionOpen to tell the agent session from the row's own mechanical work.
@@ -41,7 +41,7 @@
 //
 // # Verbs
 //
-// The `lym drift` verbs' rules are functions over a VerbStatus: the run status's row, state and error, whether the recipe has a Drift-Await row, whether the capture lock is held and whether the agent-session mark is open.
+// The `lym drift` verbs' rules are functions over a VerbStatus: the run status's row, state and error, whether the capture lock is held and whether the agent-session mark is open.
 // The agent session is a running status at Drift-Verify with the mark open; a caller at a halt is a blocked status, and a decision halt is one whose error opens with shedadapters.DecisionHaltPrefix.
 // A verb run at a row it does not admit refuses naming that row and `lym loom status`, and a refused verb writes nothing.
 // RecordScope writes the scope record once, at Drift-Baseline, and refuses a skip list outside scope partial and a partial scope without one.
@@ -64,12 +64,12 @@
 // # Drift-Baseline
 //
 // Deps holds the seams the three Drift producers share, and a producer fails loudly naming the field when a seam it reads is nil.
-// Row holds a row's portable config: the subject its agent reads the task from and WaitCapture, darn's `capture: wait`.
+// Row holds a row's portable config: the subject its agent reads the task from.
 // DriftBaseline has the baseline agent record the scope and write baseline.md when either is missing, the agent spawned with a note that the scope is already recorded when it is, and a Done agent with no scope record is a Stuck.
-// Scope off, a set awaited_at and a passed capture take no capture; a capture holding the lock is waited on under WaitCapture, by awaitCaptureEnd from one second doubling to thirty, and left running otherwise.
+// Scope off, a set awaited_at and a passed capture take no capture; a capture holding the lock is left running.
 // Otherwise it captures again: an undeclared capture command is a Stuck naming `lym config drift`, and a refusal of the capture's precondition is a Stuck whose reason opens with CaptureHaltPrefix and names `lym drift defer` with `lym loom resume`, and on a dirty tree restoring or stashing the listed paths.
-// Without WaitCapture the capture is the detached child, and the pass returns Done once the child's record exists, so the plan is written meanwhile;
-// with WaitCapture, and when Windows refuses the detached start breakaway, the capture runs in the step's own process, so its command dies with the step.
+// The capture is the detached child: the pass returns Done once the child's record exists, and the recipe's Drift-Await row waits for the capture to end;
+// when Windows refuses the detached start breakaway, the capture runs in the step's own process, so its command dies with the step.
 // A failed capture is a Stuck opening with CaptureHaltPrefix and naming the log, `lym drift capture` with `lym loom resume`, and `lym drift defer` with `lym loom resume`; the row carries no on_stuck, so each Stuck halts the run.
 // Every pass commits through Deps.Commit on its way out: the scope record and baseline.md while a detached capture may still write its logs, and all of the durable drift directory once a capture has ended in this process.
 //

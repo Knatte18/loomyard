@@ -26,7 +26,7 @@ func TestDriftRows_EntryGate(t *testing.T) {
 		rows  []string
 	}{
 		{"loom", New, []string{loomshed.NameDriftBaseline, loomshed.NameDriftAwait, loomshed.NameDriftVerify}},
-		{"darn", NewDarn, []string{loomshed.NameDriftBaseline, loomshed.NameDriftVerify}},
+		{"darn", NewDarn, []string{loomshed.NameDriftBaseline, loomshed.NameDriftAwait, loomshed.NameDriftVerify}},
 	}
 	for _, recipe := range recipes {
 		t.Run(recipe.name, func(t *testing.T) {

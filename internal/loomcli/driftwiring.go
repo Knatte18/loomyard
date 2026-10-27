@@ -49,9 +49,9 @@ type driftTables struct {
 }
 
 // driftDeps builds the seams the Drift rows read over location's worktree.
-// statusPath and statusLockPath locate the run status; awaitRow is true for the recipe that has a Drift-Await row.
+// statusPath and statusLockPath locate the run status.
 // The seat runner, clock and gate findings file are left unset, since the registry entries fill them from the recipe's environment.
-func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, awaitRow bool, tables driftTables) driftengine.Deps {
+func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tables driftTables) driftengine.Deps {
 	paths := driftengine.NewPaths(location.AnchorPath())
 	pool, waitDir := hubgeom.GateSlots(location), gateslot.WaitDir(location.AnchorPath())
 	config := func() (driftengine.Config, error) {
@@ -111,7 +111,6 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, awa
 		WorktreeRoot: location.WorktreePath(),
 		Config:       config,
 		Status:       status,
-		AwaitRow:     awaitRow,
 		Head:         head,
 		BranchPoint:  branchPoint,
 		DirtyPaths:   dirtyPaths,

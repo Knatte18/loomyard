@@ -24,8 +24,6 @@ const verifyRow = "Drift-Verify"
 type VerbStatus struct {
 	// Status is the run's status file.
 	Status shedengine.Status
-	// AwaitRow is true when the run's recipe has a Drift-Await row.
-	AwaitRow bool
 	// CaptureHeld is true when the capture lock is held.
 	CaptureHeld bool
 	// AgentSession is true when the agent-session mark reads open.
@@ -172,7 +170,7 @@ func Waive(p Paths, st VerbStatus, reason string) error {
 		if !found {
 			return cur, errNoScope
 		}
-		if CountedCapture(cur, capture, captureFound, st.AwaitRow) {
+		if CountedCapture(cur, capture, captureFound) {
 			return cur, fmt.Errorf("drift waive refused: a counted capture exists, so this %s halt is no missing baseline; way forward: lym loom resume, or the halt's own ways forward in lym loom status", verifyRow)
 		}
 		cur.WaivedReason, cur.WaivedAt = reason, stamp(time.Now())

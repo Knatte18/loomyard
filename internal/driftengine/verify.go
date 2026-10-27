@@ -161,7 +161,7 @@ func (p *DriftVerify) pass(ctx context.Context) (shedengine.Outcome, shedengine.
 	if err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
-	if !CountedCapture(scope, capture, captureFound, d.AwaitRow) {
+	if !CountedCapture(scope, capture, captureFound) {
 		return p.halt(true, generalHaltOpening, "no baseline capture counts, so there is nothing to compare against; way forward: lym drift waive --reason <text> followed by lym loom resume")
 	}
 

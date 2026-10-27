@@ -49,7 +49,7 @@ func (w *worktree) config() (driftengine.Config, error) {
 	return driftengine.LoadConfig(fabricengine.ConfigDirs(w.location))
 }
 
-// verbStatus reads the run status under its lock, the recipe from the run's seed, the capture lock and the agent-session mark.
+// verbStatus reads the run status under its lock, the capture lock and the agent-session mark.
 func (w *worktree) verbStatus() (driftengine.VerbStatus, error) {
 	status, found, err := state.ReadJSON[shedengine.Status](shedrun.StatusFile(w.location, shedrun.SelfRunID), shedrun.StatusLock(w.location, shedrun.SelfRunID))
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -57,13 +57,6 @@ func (w *worktree) verbStatus() (driftengine.VerbStatus, error) {
 	}
 	if !found {
 		return driftengine.VerbStatus{}, errors.New("drift: this worktree has no run status; way forward: lym drift verbs run inside a loom or darn run's worktree")
-	}
-	seed, seedFound, err := shedrun.ReadSeed(w.location, shedrun.SelfRunID)
-	if err != nil {
-		return driftengine.VerbStatus{}, err
-	}
-	if !seedFound {
-		return driftengine.VerbStatus{}, errors.New("drift: this worktree's run has no seed; way forward: lym drift verbs run inside a loom or darn run's worktree")
 	}
 	captureHeld, err := driftengine.ProbeLock(w.paths.CaptureLock)
 	if err != nil {
@@ -75,7 +68,6 @@ func (w *worktree) verbStatus() (driftengine.VerbStatus, error) {
 	}
 	return driftengine.VerbStatus{
 		Status:       status,
-		AwaitRow:     seed.Recipe == shedrun.RecipeLoom,
 		CaptureHeld:  captureHeld,
 		AgentSession: agentSession,
 	}, nil
