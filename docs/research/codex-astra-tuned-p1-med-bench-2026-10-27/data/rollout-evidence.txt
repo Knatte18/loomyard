@@ -1,0 +1,19 @@
+# One line per rollout: id, parent, start, end, commands, first model request, last total
+id=01a17d61-5022-7130-88b2-27bb9e817d30 forked_from=- start=2026-10-27T12:41:32.343Z end=2026-10-27T12:48:24.316Z commands=18 first_request={"input_tokens":16316,"cached_input_tokens":12160} total={"input_tokens":3023322,"cached_input_tokens":2873216,"output_tokens":9635,"reasoning_output_tokens":2067}
+id=01a17d62-6fb7-73e1-9e0b-bc35a19b826e forked_from=01a17d61-5022-7130-88b2-27bb9e817d30 start=2026-10-27T12:42:45.566Z end=2026-10-27T12:44:51.626Z commands_including_inherited=15 first_request={"input_tokens":107766,"cached_input_tokens":104960} total={"input_tokens":896036,"cached_input_tokens":854272,"output_tokens":2639,"reasoning_output_tokens":909}
+id=01a17d62-8fc7-7e30-95ab-7a56cecfb376 forked_from=01a17d61-5022-7130-88b2-27bb9e817d30 start=2026-10-27T12:42:53.775Z end=2026-10-27T12:44:49.390Z commands_including_inherited=15 first_request={"input_tokens":108251,"cached_input_tokens":105472} total={"input_tokens":875039,"cached_input_tokens":836864,"output_tokens":2455,"reasoning_output_tokens":563}
+id=01a17d62-b511-75e0-9cd4-f632d65e3134 forked_from=01a17d61-5022-7130-88b2-27bb9e817d30 start=2026-10-27T12:43:03.321Z end=2026-10-27T12:45:14.259Z commands_including_inherited=15 first_request={"input_tokens":108694,"cached_input_tokens":105856} total={"input_tokens":866508,"cached_input_tokens":833792,"output_tokens":2849,"reasoning_output_tokens":852}
+
+# spawn_agent calls in the handler's rollout (message bodies are encrypted)
+2026-10-27T12:42:45.551Z	{"task_name":"affected_set","fork_turns":"all"}
+2026-10-27T12:42:53.760Z	{"task_name":"guard_reach","fork_turns":"all"}
+2026-10-27T12:43:03.304Z	{"task_name":"way_forward","fork_turns":"all"}
+
+# AGENTS.md load notices (project instructions in the first model input), per rollout
+01a17d61-5022 1
+01a17d62-6fb7 1
+01a17d62-8fc7 1
+01a17d62-b511 1
+
+# handler reads of pattern/ background files before the first spawn (12:42:06)
+cat PATTERN.md; cat pattern/PATTERN-{test-tiers,test-speed,test-economy,fabric-git,tolerant-records,recipe-setting-lookup,verified-tree,gate-slot,cliwire-sole-wiring,cli-cobra,durable-vs-ephemeral-state,hub-wide-config,failure-stop-visible,sole-parsers,refusal-way-forward,documentation-lifecycle}.md
