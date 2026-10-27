@@ -1,0 +1,7 @@
+P4 handler rc=0 wall=492 in=3324825 cached=3174016 fresh=150809 out=9616 reason=3161 weekly_used_percent_end=27.0 (first token_count of the call: 18.0)
+P4 fork-affected-set start=12:43:57 end=12:46:08 wall=131 in=988731 cached=958208 fresh=30523 out=2444 reason=651 weekly_used_percent=24.0 commands=6
+P4 fork-guard-reach start=12:44:08 end=12:47:04 wall=176 in=1016809 cached=982144 fresh=34665 out=3143 reason=1362 weekly_used_percent=24.0 commands=6
+P4 fork-way-forward start=12:44:17 end=12:46:54 wall=157 in=695036 cached=675200 fresh=19836 out=2755 reason=1361 weekly_used_percent=25.0 commands=4
+P4 total fresh=235833 out=17958
+P4 handler verdict=BLOCKING n=6 (3 handler, 3 from forks)
+P4 weekly window (10080 minutes): 18.0 at the call's first request, 27.0 at its end; sibling benches may have drawn on the same account over the same hour
