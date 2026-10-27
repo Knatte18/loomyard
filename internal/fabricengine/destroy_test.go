@@ -1253,3 +1253,27 @@ func TestDirtyPathsOutside(t *testing.T) {
 		})
 	}
 }
+
+func TestInWorktreeStaging(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{"NestedUnderStagingDirectory", "/hub/" + worktreeStagingPrefix + "a1b2c3/feature", true},
+		{"StagingDirectoryItself", "/hub/" + worktreeStagingPrefix + "a1b2c3", true},
+		{"PrefixOnlyName", "/hub/" + strings.TrimSuffix(worktreeStagingPrefix, "-") + "/feature", false},
+		{"PrefixInsideAName", "/hub/not" + worktreeStagingPrefix + "x/feature", false},
+		{"UnrelatedPath", "/hub/feature", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := InWorktreeStaging(tt.path); got != tt.want {
+				t.Errorf("InWorktreeStaging(%q) = %v; want %v", tt.path, got, tt.want)
+			}
+		})
+	}
+}

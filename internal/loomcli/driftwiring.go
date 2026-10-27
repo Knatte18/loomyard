@@ -58,7 +58,7 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, awa
 		return driftengine.LoadConfig(fabricengine.ConfigDirs(location))
 	}
 	status := func() (shedengine.Status, error) {
-		st, found, err := state.ReadJSONNoMkdir[shedengine.Status](statusPath, statusLockPath)
+		st, found, err := state.ReadJSON[shedengine.Status](statusPath, statusLockPath)
 		if err != nil {
 			return shedengine.Status{}, err
 		}

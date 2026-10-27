@@ -87,7 +87,7 @@ func readCancelMarker(location *lymcwd.Location, slug string) (cancelMarkerReadi
 	if !present {
 		return reading, nil
 	}
-	marker, _, err := state.ReadJSONNoMkdir[cancelMarker](markerPath, cancelMarkerStateLock(markerPath))
+	marker, _, err := state.ReadJSON[cancelMarker](markerPath, cancelMarkerStateLock(markerPath))
 	if err != nil && !errors.Is(err, state.ErrDecode) {
 		return cancelMarkerReading{}, err
 	}

@@ -252,7 +252,7 @@ func TestArmAt_RenamesRetiredDarnRows(t *testing.T) {
 			if _, err := c.armAt(loc, "status", nil); err != nil {
 				t.Fatalf("armAt(status) = %v; want nil", err)
 			}
-			got, _, err := state.ReadJSONNoMkdir[shedengine.Status](statusPath, statusLock)
+			got, _, err := state.ReadJSON[shedengine.Status](statusPath, statusLock)
 			if err != nil {
 				t.Fatalf("read status = %v; want nil", err)
 			}
@@ -300,7 +300,7 @@ func TestRenameRetiredRows(t *testing.T) {
 				t.Fatalf("renameRetiredRows() = %v; want nil", err)
 			}
 
-			got, _, err := state.ReadJSONNoMkdir[shedengine.Status](statusPath, statusLock)
+			got, _, err := state.ReadJSON[shedengine.Status](statusPath, statusLock)
 			if err != nil {
 				t.Fatalf("read status = %v; want nil", err)
 			}

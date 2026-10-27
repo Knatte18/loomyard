@@ -69,7 +69,7 @@ func (s *Shed) enter(st Status, def ProducerDef) (ProducerDef, *StepResult, erro
 		// validate has already rejected an OnDone naming no producer in the list.
 		def, _ = findProducer(s.Producers, def.OnDone)
 		var found bool
-		st, found, err = state.ReadJSONNoMkdir[Status](s.StatusPath, s.StatusLockPath)
+		st, found, err = state.ReadJSON[Status](s.StatusPath, s.StatusLockPath)
 		if err != nil {
 			return def, nil, fmt.Errorf("shedengine: read status file %q: %w", s.StatusPath, err)
 		}

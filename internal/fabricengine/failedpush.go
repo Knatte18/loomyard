@@ -153,7 +153,7 @@ func ListFailedPushes(hubPath string) ([]FailedPush, error) {
 			continue
 		}
 		path := filepath.Join(dir, entry.Name())
-		record, found, err := state.ReadJSONNoMkdir[FailedPush](path, failedPushLockPath(path))
+		record, found, err := state.ReadJSON[FailedPush](path, failedPushLockPath(path))
 		if err != nil {
 			return nil, fmt.Errorf("read failed-push record %s: %w", entry.Name(), err)
 		}

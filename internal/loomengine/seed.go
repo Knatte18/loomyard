@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -31,7 +30,7 @@ import (
 // escalate, not treat this as "not ready". See internal/preflight/doc.go's "report-not-error
 // contract" section for the same three-case shape stated in full.
 //
-// The step-1 pre-emption rule, stated once and generally: every verdict shedengine.Run's step-1 read gate already hard-errors or short-circuits on is unreachable when CheckSeed is driven as a producer row, because step 1 reads the same told path through the same state.ReadJSONNoMkdir[shedengine.Status] decoder before any producer is looked up.
+// The step-1 pre-emption rule, stated once and generally: every verdict shedengine.Run's step-1 read gate already hard-errors or short-circuits on is unreachable when CheckSeed is driven as a producer row, because step 1 reads the same told path through the same state.ReadJSON[shedengine.Status] decoder before any producer is looked up.
 // Four of the verdicts below are covered by that rule, and are kept anyway:
 //
 //   - CheckSeedMissing: step 1's !found hard-errors, "status file %q does not exist; Shed never
@@ -62,17 +61,7 @@ func CheckSeed(statusPath, statusLockPath, expectedProducer string, toleratedPro
 			report.AddFailure(CheckSeedUnreadable, err.Error())
 		}
 	} else {
-		// state.ReadJSONNoMkdir does not create missing parent directories (see its own doc
-		// comment), and neither does internal/lock's AcquireReadLock/AcquireWriteLock --
-		// gofrs/flock opens the lock file with O_CREATE but never creates parents, the same
-		// gap internal/reedengine/lock.go already works around with its own
-		// MkdirAll-before-lock. Without this MkdirAll, CheckSeed would escalate a
-		// missing-parent worktree to a hard infra error instead of honouring its
-		// report-not-error contract.
-		if err := os.MkdirAll(filepath.Dir(statusLockPath), 0o755); err != nil {
-			return Report{}, err
-		}
-		shed, found, rerr := state.ReadJSONNoMkdir[shedengine.Status](statusPath, statusLockPath)
+		shed, found, rerr := state.ReadJSON[shedengine.Status](statusPath, statusLockPath)
 		switch {
 		case rerr != nil:
 			// A decode failure (malformed JSON) is a determined
@@ -84,7 +73,7 @@ func CheckSeed(statusPath, statusLockPath, expectedProducer string, toleratedPro
 				return Report{}, rerr
 			}
 		case !found:
-			// The stat above just succeeded, so ReadJSONNoMkdir returning not-found (its
+			// The stat above just succeeded, so ReadJSON returning not-found (its
 			// (zero,false,nil) not-exist path) means the file vanished between the two
 			// calls -- a TOCTOU race, not a determined verdict. Synthesize a non-nil
 			// error so this never masquerades as Report{}, nil.
@@ -123,7 +112,7 @@ func CheckSeed(statusPath, statusLockPath, expectedProducer string, toleratedPro
 //
 // A missing file, an empty recorded slug, a product that does not decode, and a decode failure on the outer shed envelope itself (malformed JSON) all pass: each is some other check's business — the caller's own missing-file handling, and, for the coherence cases (an empty slug and the like), CheckSeed's own rules.
 // A decode failure specifically is diagnosed one layer earlier than CheckSeed.
-// The spawned driver's Shed.Run step-1 read gate does the same ReadJSONNoMkdir read at the top of its loop and errors on it BEFORE any producer — the Loom-Preflight row that calls CheckSeed included — is ever looked up, so CheckSeed-as-producer never even runs on a decode failure (see CheckSeed's own doc comment on that step-1 pre-emption).
+// The spawned driver's Shed.Run step-1 read gate does the same ReadJSON read at the top of its loop and errors on it BEFORE any producer — the Loom-Preflight row that calls CheckSeed included — is ever looked up, so CheckSeed-as-producer never even runs on a decode failure (see CheckSeed's own doc comment on that step-1 pre-emption).
 // Either way this function answers ownership alone.
 // Escalating a decode failure here stopped the bootstrap before it ever spawned a driver or reached its success envelope, for a condition the driver's own run loop already surfaces in its own log —
 // reproduced live via a poisoned status file that made both "lym loom start" and "lym loom run" refuse on the envelope instead of letting the spawned driver's own step-1 gate report the decode failure.
@@ -131,10 +120,7 @@ func CheckSeed(statusPath, statusLockPath, expectedProducer string, toleratedPro
 // own error, never converted into a verdict: CheckSeed draws this exact same line (see its own
 // rerr-handling), and this function draws it the same way for the same reason.
 func VerifySeedOwnership(statusPath, statusLockPath, wantSlug string) error {
-	if err := os.MkdirAll(filepath.Dir(statusLockPath), 0o755); err != nil {
-		return err
-	}
-	shed, found, err := state.ReadJSONNoMkdir[shedengine.Status](statusPath, statusLockPath)
+	shed, found, err := state.ReadJSON[shedengine.Status](statusPath, statusLockPath)
 	if err != nil {
 		if errors.Is(err, state.ErrDecode) {
 			return nil

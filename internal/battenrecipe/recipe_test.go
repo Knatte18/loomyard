@@ -239,7 +239,7 @@ func TestNew_PauseDuringLandReentersTheRowThroughGotoThenRun(t *testing.T) {
 		return nil, false, err
 	}
 	env.Land.PauseRequested = func() (bool, error) {
-		status, _, err := state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+		status, _, err := state.ReadJSON[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
 		return status.PauseRequested, err
 	}
 	env.Land.Sleep = func(context.Context, time.Duration) {}
@@ -259,7 +259,7 @@ func TestNew_PauseDuringLandReentersTheRowThroughGotoThenRun(t *testing.T) {
 	if step.Producer != NameLand || step.Outcome != shedengine.Stuck || step.State != shedengine.StateBlocked || step.Next != NameLand {
 		t.Fatalf("first Step() = %+v; want Land Stuck, halting blocked at Land", step)
 	}
-	blocked, _, _ := state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+	blocked, _, _ := state.ReadJSON[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
 	if !blocked.PauseRequested {
 		t.Error("pause_requested after the blocked halt = false; want it still set")
 	}
@@ -273,7 +273,7 @@ func TestNew_PauseDuringLandReentersTheRowThroughGotoThenRun(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Goto() error = %v, want nil", err)
 	}
-	paused, _, _ := state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+	paused, _, _ := state.ReadJSON[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
 	if paused.State != shedengine.StatePaused || paused.CurrentProducer != NameLand || paused.PauseRequested {
 		t.Fatalf("status after Goto = %+v; want paused at Land with the flag cleared", paused)
 	}

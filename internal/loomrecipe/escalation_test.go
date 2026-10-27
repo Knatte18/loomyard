@@ -42,7 +42,7 @@ func newEscalationShed(t *testing.T) (*shedengine.Shed, string, *shedfake.Burler
 	discussion.HardMaxBounces = budgetEscalationBudget + 1
 	env.Segments["Discussion-Review"] = discussion
 	env.SegmentBounces = func(row string) (int, int, bool, error) {
-		st, found, err := state.ReadJSONNoMkdir[shedengine.Status](env.StatusPath, env.StatusLockPath)
+		st, found, err := state.ReadJSON[shedengine.Status](env.StatusPath, env.StatusLockPath)
 		if err != nil || !found {
 			return 0, 0, false, err
 		}
@@ -61,7 +61,7 @@ func newEscalationShed(t *testing.T) (*shedengine.Shed, string, *shedfake.Burler
 	shed.Producers[0].Producer = fakeAlwaysDoneProducer{}
 
 	readStatus := func() shedengine.Status {
-		st, found, err := state.ReadJSONNoMkdir[shedengine.Status](env.StatusPath, env.StatusLockPath)
+		st, found, err := state.ReadJSON[shedengine.Status](env.StatusPath, env.StatusLockPath)
 		if err != nil || !found {
 			t.Fatalf("read status file: found=%v err=%v", found, err)
 		}
@@ -106,7 +106,7 @@ func TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe(t *te
 		return envkit.TemplateSetting(module, key)
 	}
 	env.SegmentBounces = func(row string) (int, int, bool, error) {
-		st, found, err := state.ReadJSONNoMkdir[shedengine.Status](env.StatusPath, env.StatusLockPath)
+		st, found, err := state.ReadJSON[shedengine.Status](env.StatusPath, env.StatusLockPath)
 		if err != nil || !found {
 			return 0, 0, false, err
 		}
@@ -143,7 +143,7 @@ func TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe(t *te
 	if !strings.Contains(result.Reason, "(cause: hard-cap)") || !strings.Contains(result.Reason, "brief at ") {
 		t.Errorf("Run() reason = %q; want the hard-cap cause and the rendered brief's path", result.Reason)
 	}
-	if st, _, err := state.ReadJSONNoMkdir[shedengine.Status](env.StatusPath, env.StatusLockPath); err != nil || st.ParentNotice == "" {
+	if st, _, err := state.ReadJSON[shedengine.Status](env.StatusPath, env.StatusLockPath); err != nil || st.ParentNotice == "" {
 		t.Errorf("status ParentNotice = %q, %v; want the Bouncer's one-line notice", st.ParentNotice, err)
 	}
 
@@ -290,7 +290,7 @@ func TestEscalation_PerchBudgetOneWithAutoAccept(t *testing.T) {
 				return dispatch(spec)
 			}
 			env.SegmentBounces = func(row string) (int, int, bool, error) {
-				st, found, err := state.ReadJSONNoMkdir[shedengine.Status](env.StatusPath, env.StatusLockPath)
+				st, found, err := state.ReadJSON[shedengine.Status](env.StatusPath, env.StatusLockPath)
 				if err != nil || !found {
 					return 0, 0, false, err
 				}

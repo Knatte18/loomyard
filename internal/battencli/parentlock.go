@@ -59,7 +59,7 @@ func childParentLock(slug string, locateTask func() (*lymcwd.Location, error), b
 // landingInFlight reports whether the task pair's run is at Finalize and running, or a verify marker of the pair is live, which holds the run's parent lock.
 // A status directory that does not exist yet reads as no status; any other failed read of the status file or the marker returns its error.
 func landingInFlight(taskLocation *lymcwd.Location) (bool, error) {
-	status, found, err := state.ReadJSONNoMkdir[shedengine.Status](shedrun.StatusFile(taskLocation, shedrun.SelfRunID), shedrun.StatusLock(taskLocation, shedrun.SelfRunID))
+	status, found, err := state.ReadJSON[shedengine.Status](shedrun.StatusFile(taskLocation, shedrun.SelfRunID), shedrun.StatusLock(taskLocation, shedrun.SelfRunID))
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return false, err
 	}

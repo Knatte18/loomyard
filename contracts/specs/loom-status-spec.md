@@ -126,7 +126,7 @@ It is display only: no Go decision reads it.
 
 ## Parse discipline
 
-Fail-loud parsing: the `internal/state` read (`state.ReadJSONNoMkdir`) rejects malformed JSON and accepts unknown fields, and a rewrite keeps them.
+Fail-loud parsing: the `internal/state` read (`state.ReadJSON`) rejects malformed JSON and accepts unknown fields, and a rewrite keeps them.
 An unparseable or malformed status file is a hard error;
 loom never guesses a status.
 `product` is decoded separately, after the shell decode succeeds — see [Validation checklist](#validation-checklist) below for how a `product` that fails to decode as loom's own shape is classified.

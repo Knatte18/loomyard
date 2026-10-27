@@ -125,7 +125,7 @@ func TestGoDriverSeams_LabelShed(t *testing.T) {
 	}}
 	read := func() shedengine.Status {
 		t.Helper()
-		st, _, err := state.ReadJSONNoMkdir[shedengine.Status](statusPath, statusLockPath)
+		st, _, err := state.ReadJSON[shedengine.Status](statusPath, statusLockPath)
 		if err != nil {
 			t.Fatalf("read status: %v", err)
 		}

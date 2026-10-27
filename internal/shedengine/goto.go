@@ -82,7 +82,7 @@ func Goto(req GotoRequest) (Status, error) {
 	}
 	defer runLock.Release()
 
-	st, found, err := state.ReadJSONNoMkdir[Status](req.StatusPath, req.StatusLockPath)
+	st, found, err := state.ReadJSON[Status](req.StatusPath, req.StatusLockPath)
 	if err != nil {
 		return Status{}, fmt.Errorf("shedengine: read status file %q: %w", req.StatusPath, err)
 	}
@@ -272,7 +272,7 @@ func RecordResumer(statusPath, statusLockPath, by string) error {
 	if by == "" {
 		return nil
 	}
-	cur, found, err := state.ReadJSONNoMkdir[Status](statusPath, statusLockPath)
+	cur, found, err := state.ReadJSON[Status](statusPath, statusLockPath)
 	if err != nil {
 		return fmt.Errorf("shedengine: read status file %q: %w", statusPath, err)
 	}

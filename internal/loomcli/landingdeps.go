@@ -253,7 +253,7 @@ func landingDeps(
 		},
 		IsTestFile: fixerTestFileMatcher(recipe, fixerPlanDir(l, recipe)),
 		RowEntry: func(row string) (int, error) {
-			status, _, err := state.ReadJSONNoMkdir[shedengine.Status](shedrun.StatusFile(l, shedrun.SelfRunID), shedrun.StatusLock(l, shedrun.SelfRunID))
+			status, _, err := state.ReadJSON[shedengine.Status](shedrun.StatusFile(l, shedrun.SelfRunID), shedrun.StatusLock(l, shedrun.SelfRunID))
 			if err != nil {
 				return 0, err
 			}
@@ -398,7 +398,7 @@ func parentLockDeps(l *lymcwd.Location, runID, statusPath, statusLockPath string
 		Owner:    loopLockOwner(l, runID),
 		WaitPath: parentlock.WaitRecordPath(loomengine.LoomScratchDir(l)),
 		PauseRequested: func() (bool, error) {
-			status, found, err := state.ReadJSONNoMkdir[shedengine.Status](statusPath, statusLockPath)
+			status, found, err := state.ReadJSON[shedengine.Status](statusPath, statusLockPath)
 			if err != nil || !found {
 				return false, err
 			}

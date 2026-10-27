@@ -157,7 +157,7 @@ func TestBattenDriverDeps(t *testing.T) {
 	}
 	readStatus := func() shedengine.Status {
 		t.Helper()
-		st, _, err := state.ReadJSONNoMkdir[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+		st, _, err := state.ReadJSON[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 		if err != nil {
 			t.Fatalf("read status: %v", err)
 		}

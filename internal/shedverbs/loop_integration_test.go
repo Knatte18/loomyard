@@ -189,7 +189,7 @@ func TestLoopIntegration_ChildTreeDiesWithLoop(t *testing.T) {
 		t.Errorf("second waiter loop.detail = %q; want the in-flight step with its trace and the killed step tree", detail)
 	}
 	waitUntil(t, 30*time.Second, "the dead loop's step tree to be killed", func() bool { return processEnded(grandchild) })
-	if st, found, err := state.ReadJSONNoMkdir[shedengine.Status](spec.StatusPath, spec.StatusLockPath); err != nil || !found || st.State != shedengine.StateFailed {
+	if st, found, err := state.ReadJSON[shedengine.Status](spec.StatusPath, spec.StatusLockPath); err != nil || !found || st.State != shedengine.StateFailed {
 		t.Errorf("status = %+v, %v, %v; want failed", st, found, err)
 	}
 }

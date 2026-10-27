@@ -51,7 +51,7 @@ func (w *worktree) config() (driftengine.Config, error) {
 
 // verbStatus reads the run status under its lock, the recipe from the run's seed, the capture lock and the agent-session mark.
 func (w *worktree) verbStatus() (driftengine.VerbStatus, error) {
-	status, found, err := state.ReadJSONNoMkdir[shedengine.Status](shedrun.StatusFile(w.location, shedrun.SelfRunID), shedrun.StatusLock(w.location, shedrun.SelfRunID))
+	status, found, err := state.ReadJSON[shedengine.Status](shedrun.StatusFile(w.location, shedrun.SelfRunID), shedrun.StatusLock(w.location, shedrun.SelfRunID))
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return driftengine.VerbStatus{}, err
 	}

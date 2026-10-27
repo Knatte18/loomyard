@@ -297,7 +297,7 @@ func EndOwnedElsewhere(location *lymcwd.Location, slug string) ([]runproc.Ended,
 			if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
 				return shedengine.Status{}, false, err
 			}
-			return state.ReadJSONNoMkdir[shedengine.Status](statusPath, lockPath)
+			return state.ReadJSON[shedengine.Status](statusPath, lockPath)
 		},
 		restepped: func(status shedengine.Status) (bool, error) {
 			task, err := locateTask()
@@ -607,7 +607,7 @@ func (p shuttlePair) Running() (string, bool, error) {
 	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
 		return "", false, err
 	}
-	status, found, err := state.ReadJSONNoMkdir[shedengine.Status](statusPath, lockPath)
+	status, found, err := state.ReadJSON[shedengine.Status](statusPath, lockPath)
 	if err != nil || !found {
 		return "", false, err
 	}

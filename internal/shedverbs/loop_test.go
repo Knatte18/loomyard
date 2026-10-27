@@ -155,7 +155,7 @@ func (fx *loopFixture) setStatus(current string, st shedengine.State, history in
 
 func (fx *loopFixture) readStatus() shedengine.Status {
 	fx.t.Helper()
-	st, found, err := state.ReadJSONNoMkdir[shedengine.Status](fx.paths.StatusPath, fx.paths.StatusLockPath)
+	st, found, err := state.ReadJSON[shedengine.Status](fx.paths.StatusPath, fx.paths.StatusLockPath)
 	if err != nil || !found {
 		fx.t.Fatalf("read status = %v, found %v; want the file", err, found)
 	}

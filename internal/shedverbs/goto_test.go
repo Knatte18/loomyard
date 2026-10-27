@@ -80,7 +80,7 @@ func TestGotoCmd_MovesBlockedRunOntoRow(t *testing.T) {
 		t.Errorf("envelope run_id/status_file = %v/%v", env["run_id"], env["status_file"])
 	}
 
-	st, found, err := state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+	st, found, err := state.ReadJSON[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
 	if err != nil || !found {
 		t.Fatalf("re-read status: found=%v err=%v", found, err)
 	}
@@ -103,7 +103,7 @@ func TestGotoCmd_MovesBlockedRunOntoRow(t *testing.T) {
 		if env, code := execEnvelope(t, gotoCmd(gotoTexts(), spec), []string{"--to", "A", "--by", "shed"}); code != 0 {
 			t.Fatalf("exit code = %d; want 0 (env %v)", code, env)
 		}
-		st, _, err := state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+		st, _, err := state.ReadJSON[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
 		if err != nil || len(st.History) != 1 || st.History[0].By != "shed" {
 			t.Errorf("History, err = %+v, %v; want one goto entry labelled shed", st.History, err)
 		}

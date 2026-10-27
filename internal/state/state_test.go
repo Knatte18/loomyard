@@ -83,38 +83,6 @@ func TestWriteJSON_RoundTripOverwriteAndLayout(t *testing.T) {
 	}
 }
 
-// TestMissingFile reads a never-written path and verifies found=false, err=nil, and that the parent dir and lock file now exist.
-//
-//testtiming:keep pins the parent directory and lock file ReadJSON creates for a missing path, which the UpdateJSON tests never assert
-func TestMissingFile(t *testing.T) {
-	t.Parallel()
-
-	tmpDir := t.TempDir()
-	path := filepath.Join(tmpDir, "subdir", "missing.json")
-	lockPath := path + ".lock"
-
-	got, found, err := state.ReadJSON[sample](path, lockPath)
-	if err != nil {
-		t.Fatalf("ReadJSON() on missing file error: %v", err)
-	}
-	if found {
-		t.Fatal("ReadJSON() found = true; want false")
-	}
-	if got != (sample{}) {
-		t.Errorf("ReadJSON() = %+v; want zero value", got)
-	}
-
-	// Verify parent dir and lock file exist.
-	parentDir := filepath.Dir(path)
-	if _, err := os.Stat(parentDir); err != nil {
-		t.Errorf("parent directory does not exist: %v", err)
-	}
-
-	if _, err := os.Stat(lockPath); err != nil {
-		t.Errorf("lock file does not exist at %s: %v", lockPath, err)
-	}
-}
-
 // TestCorruptFile writes invalid JSON and verifies ReadJSON returns a non-nil error, and that UpdateJSON aborts the same way without running mutate or touching the file.
 //
 //testtiming:keep named by internal/loomcli's smoke test as the lenient read's decode-failure pin
@@ -135,10 +103,7 @@ func TestCorruptFile(t *testing.T) {
 	if err == nil {
 		t.Fatal("ReadJSON() on corrupt file error = nil; want non-nil")
 	}
-	// The lenient read path now wraps ErrDecode too, matching ReadJSONNoMkdir, so a caller can tell a
-	// decode failure apart from a read or lock failure with errors.Is (loomshed.Seed relies on this
-	// to refuse rather than escalate a present-but-undecodable status file — crucible round
-	// fable5-high-r5, F3).
+	// loomshed.Seed relies on ErrDecode to refuse, rather than escalate, a present-but-undecodable status file.
 	if !errors.Is(err, state.ErrDecode) {
 		t.Errorf("ReadJSON() on corrupt file error = %v; want errors.Is(err, ErrDecode)", err)
 	}

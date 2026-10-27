@@ -156,7 +156,7 @@ func (l lister) list(dir, owner string) ([]Record, error) {
 			continue
 		}
 		path := filepath.Join(ownerDir, entry.Name())
-		record, found, err := state.ReadJSONNoMkdir[Record](path, path+".lock")
+		record, found, err := state.ReadJSON[Record](path, path+".lock")
 		if err != nil || !found {
 			continue
 		}

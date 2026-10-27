@@ -297,7 +297,7 @@ func (c *battenCLI) refuseAtStart(verb string) error {
 	if err := os.MkdirAll(filepath.Dir(statusLockPath), 0o755); err != nil {
 		return err
 	}
-	status, found, err := state.ReadJSONNoMkdir[shedengine.Status](statusPath, statusLockPath)
+	status, found, err := state.ReadJSON[shedengine.Status](statusPath, statusLockPath)
 	if err != nil {
 		return fmt.Errorf("battencli: read status file %s: %w", statusPath, err)
 	}

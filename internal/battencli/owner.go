@@ -253,7 +253,7 @@ func (c *battenCLI) ownerPreflight(found bool, status shedengine.Status) error {
 
 // preflightRunOwner reads the run's status file and runs ownerPreflight over it.
 func (c *battenCLI) preflightRunOwner() error {
-	status, found, err := state.ReadJSONNoMkdir[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+	status, found, err := state.ReadJSON[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 	if err != nil {
 		return errors.New("battencli: decode status file " + c.shedPaths.StatusPath + ": " + err.Error())
 	}

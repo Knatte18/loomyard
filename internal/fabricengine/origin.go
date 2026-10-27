@@ -102,11 +102,9 @@ func originLockPath(weftPath string) (string, error) {
 // ReadOrigin reads the origin record for l's worktree pair.
 // A false second return means no record exists for this worktree — the legacy-worktree case — and
 // is not an error.
+// It creates no directory and seeds no exclude, so a hub reader polling a pair still being built leaves nothing behind in it.
 func ReadOrigin(l *lymcwd.Location) (Origin, bool, error) {
-	lockPath, err := originLockPath(RecordsWorktree(l))
-	if err != nil {
-		return Origin{}, false, err
-	}
+	lockPath := filepath.Join(RecordsLockDirPath(RecordsWorktree(l)), originRecordLockFileName)
 	return state.ReadJSON[Origin](OriginRecordPath(l), lockPath)
 }
 

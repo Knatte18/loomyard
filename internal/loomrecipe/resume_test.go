@@ -189,9 +189,9 @@ func TestResume_PauseStopsAtBoundaryAndClearsFlag(t *testing.T) {
 		t.Errorf("first Run() History = %+v; want empty -- pause is checked before the halted producer is ever called", result1.History)
 	}
 
-	got, found, err := state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
+	got, found, err := state.ReadJSON[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
 	if err != nil {
-		t.Fatalf("ReadJSONNoMkdir() error = %v; want nil", err)
+		t.Fatalf("ReadJSON() error = %v; want nil", err)
 	}
 	if !found {
 		t.Fatalf("status file not found after pause")

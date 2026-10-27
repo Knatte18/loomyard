@@ -53,7 +53,7 @@ func hubCreateDeps(prime *lymcwd.Location) (createDeps, error) {
 			return boardengine.SetOwners(boardDir, req)
 		},
 		RunStatus: func(slug string) (shedengine.State, bool, error) {
-			status, found, err := state.ReadJSONNoMkdir[shedengine.Status](battencli.StatusFile(prime, slug), shedrun.StatusLock(prime, slug))
+			status, found, err := state.ReadJSON[shedengine.Status](battencli.StatusFile(prime, slug), shedrun.StatusLock(prime, slug))
 			if errors.Is(err, fs.ErrNotExist) {
 				return "", false, nil
 			}
@@ -96,7 +96,7 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 			if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
 				return shedengine.Status{}, false, err
 			}
-			return state.ReadJSONNoMkdir[shedengine.Status](statusPath, lockPath)
+			return state.ReadJSON[shedengine.Status](statusPath, lockPath)
 		},
 		RunID: func(slug string) (string, error) {
 			beam, err := beamOf(slug)
