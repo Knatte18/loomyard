@@ -98,6 +98,7 @@ func TidySpec(prompt, reportPath string, model shuttleengine.ModelChoice, timeou
 // countLandings reads the landings the batten history of every run of this worktree holds and records each one not yet counted in the state record.
 // The first read of a record baselines: every landing already there is marked seen and none is counted, so run records left from before the dobby, or a record rewritten fresh, trigger no tidy.
 // While a board-tidy agent is in flight nothing is counted, so the record's slugs since the last tidy are exactly the agent's.
+// A baselined record not yet marked machine-only has its landed-since-tidy list emptied once, ahead of the count, since it may hold other machines' landings.
 func (d *daemon) countLandings(now time.Time) error {
 	if d.deps.Landings == nil {
 		return nil
@@ -115,10 +116,15 @@ func (d *daemon) countLandings(now time.Time) error {
 				s.CountedLandings[slug] = true
 			}
 			s.LandingsBaselined = true
+			s.LandingsMachineOnly = true
 			return nil
 		}
 		if s.Tidy != nil {
 			return nil
+		}
+		if !s.LandingsMachineOnly {
+			s.LandedSinceTidy = nil
+			s.LandingsMachineOnly = true
 		}
 		fresh := slices.DeleteFunc(slices.Clone(landed), func(slug string) bool { return s.CountedLandings[slug] })
 		sort.Strings(fresh)
@@ -185,6 +191,7 @@ func (d *daemon) spawnTidy(now time.Time, cfg Config, landed []string) error {
 		return err
 	}
 	logger.Info("dobbyengine: the board-tidy agent started", "worktree", d.geom.WorktreeName, "landings", len(landed), "report", reportPath)
+	d.logLine(now, fmt.Sprintf("board tidy started over %d landings: %s", len(landed), reportPath))
 	return nil
 }
 
@@ -198,6 +205,7 @@ func (d *daemon) settleTidy(ctx context.Context, now time.Time, current State) (
 		if err := d.deps.Notice(ctx, line); err != nil {
 			return false, fmt.Errorf("post the board-tidy report: %w", err)
 		}
+		d.logLine(now, "board tidy report "+tidy.ReportPath)
 		d.stopTidyStrand(tidy.StrandGUID)
 		return false, UpdateState(d.geom.StatePath, func(s *State) error {
 			s.Tidy, s.LandedSinceTidy = nil, nil
@@ -212,6 +220,7 @@ func (d *daemon) settleTidy(ctx context.Context, now time.Time, current State) (
 	if err := d.deps.Notice(ctx, line); err != nil {
 		return false, fmt.Errorf("post the board-tidy timeout: %w", err)
 	}
+	d.logLine(now, "board tidy timed out: "+strings.Join(current.LandedSinceTidy, ", "))
 	return false, UpdateState(d.geom.StatePath, func(s *State) error {
 		s.Tidy = nil
 		return nil

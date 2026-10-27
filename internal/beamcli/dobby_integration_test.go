@@ -49,6 +49,13 @@ func TestDobbyCmd_RefusesAPathItCannotPlace(t *testing.T) {
 			if _, err := os.Stat(filepath.Join(tt.root, ".lym", "beam", dobbyengine.LockFileName)); !os.IsNotExist(err) {
 				t.Errorf("Stat(dobby lock) = %v; want it absent", err)
 			}
+			// A refusal appends to the log only where a beam directory exists, and creates neither.
+			if _, err := os.Stat(filepath.Join(tt.root, ".lym", "beam")); !os.IsNotExist(err) {
+				t.Errorf("Stat(.lym/beam) = %v; want it absent", err)
+			}
+			if _, err := os.Stat(filepath.Join(tt.root, ".lym", "beam", dobbyengine.LogFileName)); !os.IsNotExist(err) {
+				t.Errorf("Stat(dobby.log) = %v; want it absent", err)
+			}
 		})
 	}
 }

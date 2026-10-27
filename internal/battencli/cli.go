@@ -174,6 +174,8 @@ type battenCLI struct {
 	preDrive func() error
 	// clientAttached reports whether any client is attached to the task worktree's reed session; wire fills it, and nil reads as no reopening, which only a hand-populated receiver has.
 	clientAttached func() (bool, error)
+	// machineName reads this machine's name, which specFor's BuildShed tells the shed it builds; nil selects machinename.Name, which only a hand-populated receiver leaves nil.
+	machineName func() (string, error)
 }
 
 // battenVerbTexts carries batten's four shedverbs-driven verbs' Use/Short/Long text.

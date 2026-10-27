@@ -759,3 +759,81 @@ func TestStep_PauseAfterCondition(t *testing.T) {
 		})
 	}
 }
+
+func TestStep_StampsTheToldMachine(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		machine string
+		rows    func() []ProducerDef
+		// wantMachines is the Machine of each history entry after one step, in order.
+		wantMachines []string
+		// wantNoKey is true when the raw status file must hold no "machine" key.
+		wantNoKey bool
+	}{
+		{
+			name:    "ProducerCallEntry",
+			machine: "neve",
+			rows: func() []ProducerDef {
+				return []ProducerDef{{Name: "A", Producer: fixedOutcomeProducer(Done, "")}}
+			},
+			wantMachines: []string{"neve"},
+		},
+		{
+			name: "UntoldShedStampsNothing",
+			rows: func() []ProducerDef {
+				return []ProducerDef{{Name: "A", Producer: fixedOutcomeProducer(Done, "")}}
+			},
+			wantMachines: []string{""},
+			wantNoKey:    true,
+		},
+		{
+			name:    "SkippedEntry",
+			machine: "neve",
+			rows: func() []ProducerDef {
+				off := &fakeGate{holds: false, reason: "off"}
+				return []ProducerDef{{Name: "A", Producer: fixedOutcomeProducer(Done, ""), EntryGate: off.evaluate}}
+			},
+			wantMachines: []string{"neve"},
+		},
+		{
+			name:    "RerouteEntry",
+			machine: "neve",
+			rows: func() []ProducerDef {
+				return []ProducerDef{
+					{Name: "A", Producer: scriptedRerouteProducer([]rerouteOutcome{callReroute}), OnReroute: "B"},
+					{Name: "B", Producer: fixedOutcomeProducer(Done, "")},
+				}
+			},
+			wantMachines: []string{"neve"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			shed, statusPath, _, statusLockPath := newTestShed(t)
+			shed.Machine = tt.machine
+			shed.Producers = tt.rows()
+			seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
+
+			if _, err := shed.Step(context.Background()); err != nil {
+				t.Fatalf("Step() = %v", err)
+			}
+
+			var got []string
+			for _, entry := range readStatus(t, statusPath, statusLockPath).History {
+				got = append(got, entry.Machine)
+			}
+			if !reflect.DeepEqual(got, tt.wantMachines) {
+				t.Errorf("history machines = %q; want %q", got, tt.wantMachines)
+			}
+			raw, err := os.ReadFile(statusPath)
+			if err != nil {
+				t.Fatalf("os.ReadFile(%q) = %v", statusPath, err)
+			}
+			if tt.wantNoKey && strings.Contains(string(raw), `"machine"`) {
+				t.Errorf("status file = %s; want no machine key", raw)
+			}
+		})
+	}
+}

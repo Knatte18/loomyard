@@ -6,6 +6,8 @@
 package gatecli
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -506,11 +508,14 @@ func TestGateTest_Scopes(t *testing.T) {
 	})
 
 	t.Run("--gate with scope all runs every tier whole, ignoring --card ids", func(t *testing.T) {
-		edit(t, "lib/lib.go", "package lib\n\nfunc One() int { return 4 }\n")
-		g := gate(t, pair, nil, "--gate", "finalize", "--card", "1")
-		wantArgs(t, g, []string{"./..."})
-		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "all" || run.GateKey != "finalize" {
-			t.Errorf("tier0 run record = %+v; want the all scope form and gate key finalize", run)
+		for i, key := range []string{"finalize", "adopt"} {
+			// Each key's run is over a tree of its own, so the previous green run is not carried over it.
+			edit(t, "lib/lib.go", fmt.Sprintf("package lib\n\nfunc One() int { return %d }\n", 4+10*i))
+			g := gate(t, pair, nil, "--gate", key, "--card", "1")
+			wantArgs(t, g, []string{"./..."})
+			if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "all" || run.GateKey != key {
+				t.Errorf("tier0 run record = %+v; want the all scope form and gate key %s", run, key)
+			}
 		}
 	})
 
@@ -826,6 +831,106 @@ func TestGateTest_Scopes(t *testing.T) {
 		wantArgs(t, g, []string{"./..."})
 		if !strings.Contains(g.stdout.String(), "tier0 is covered by tier1") {
 			t.Errorf("stdout = %q; want tier0 named as covered", g.stdout.String())
+		}
+	})
+
+	t.Run("RunGate tells its observer each tier it starts and ends, a carried tier ends with no start and a blocked tier ends with its blocked record", func(t *testing.T) {
+		defer writeScoper(t, "go")
+		t.Cleanup(func() { gitkit.Git(t, pair, "reset", "-q", "--hard", "HEAD") })
+		recordPath := filepath.Join(t.TempDir(), "standin.json")
+		standInEnv := map[string]string{helperEnv: helperRoleStandIn, helperRecordEnv: recordPath}
+		// writeGate declares the finalize key over gateTiers, tier1 exiting tier1Exit and, with sharedBuild, tier0 opting into a build that exits buildExit; neither tier covers the other.
+		writeGate := func(t *testing.T, gateTiers []int, tier1Exit string, sharedBuild bool, buildExit string) {
+			t.Helper()
+			config := scopesConfigWith(t, "go", func(cfg map[string]any) {
+				cfg["gates"] = map[string]any{"finalize": map[string]any{"tiers": gateTiers, "scope": "all"}}
+				tiers := cfg["tiers"].(map[string]any)
+				delete(tiers["tier1"].(map[string]any), "covers")
+				for name, exit := range map[string]string{"tier0": "0", "tier1": tier1Exit} {
+					tier := tiers[name].(map[string]any)
+					env := map[string]string{helperExitEnv: exit}
+					if existing, ok := tier["env"].(map[string]string); ok {
+						for key, value := range existing {
+							env[key] = value
+						}
+					}
+					for key, value := range standInEnv {
+						env[key] = value
+					}
+					tier["env"] = env
+				}
+				if sharedBuild {
+					cfg["build"] = map[string]any{
+						"command": "'" + os.Args[0] + "' sharedbuild", "timeout_min": 1,
+						"env": map[string]string{helperEnv: helperRoleStandIn, helperRecordEnv: recordPath, helperBuildExitEnv: buildExit},
+					}
+					tiers["tier0"].(map[string]any)["shared_build"] = true
+				}
+			})
+			if err := os.WriteFile(configPath, config, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		dirty := func(t *testing.T, content string) {
+			t.Helper()
+			if err := os.WriteFile(filepath.Join(pair, "docs", "note.md"), []byte(content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		// runGate calls RunGate over the pair with finalize and returns its exit code and the observer's calls in order.
+		runGate := func(t *testing.T) (int, []string, []gateslot.RunRecord) {
+			t.Helper()
+			var calls []string
+			var ended []gateslot.RunRecord
+			observer := TierObserver{
+				Started: func(tier int) { calls = append(calls, fmt.Sprintf("start tier%d", tier)) },
+				Ended: func(record gateslot.RunRecord) {
+					calls = append(calls, fmt.Sprintf("end tier%d", record.Tier))
+					ended = append(ended, record)
+				},
+			}
+			var out, stderr bytes.Buffer
+			code := RunGate(context.Background(), pair, "finalize", &out, &stderr, observer)
+			requireFree(t)
+			return code, calls, ended
+		}
+
+		writeGate(t, []int{0, 1}, "3", false, "")
+		dirty(t, "an observed note\n")
+		code, calls, ended := runGate(t)
+		if want := []string{"start tier0", "end tier0", "start tier1", "end tier1"}; !slices.Equal(calls, want) {
+			t.Errorf("observer calls = %q; want %q", calls, want)
+		}
+		if len(ended) != 2 || ended[0].ExitCode != 0 || ended[1].ExitCode != 3 || ended[1].Outcome != "failed" {
+			t.Errorf("ended records = %+v; want tier0's exit 0 and tier1's failed exit 3", ended)
+		}
+		if cli := gate(t, pair, nil, "--wait", "--gate", "finalize"); code != 3 || cli.exit != code {
+			t.Errorf("RunGate exit code = %d, CLI exit code = %d; want both 3, the first failing tier's", code, cli.exit)
+		}
+
+		writeGate(t, []int{0, 1}, "0", false, "")
+		gitkit.CommitFile(t, pair, "docs/note.md", "a committed observed note\n", "commit the observed note")
+		if code, _, _ := runGate(t); code != 0 {
+			t.Fatalf("RunGate exit code over a clean tree = %d; want 0, which records both tiers green", code)
+		}
+		code, calls, ended = runGate(t)
+		if want := []string{"end tier0", "end tier1"}; code != 0 || !slices.Equal(calls, want) {
+			t.Errorf("second RunGate = exit %d, observer calls %q; want exit 0 and %q, every tier carried with no start", code, calls, want)
+		}
+		for _, record := range ended {
+			if !record.Carried {
+				t.Errorf("ended record %+v; want it carried", record)
+			}
+		}
+
+		writeGate(t, []int{0}, "0", true, "1")
+		dirty(t, "a note under a failing build\n")
+		code, calls, ended = runGate(t)
+		if want := []string{"start tier0", "end tier0"}; code != 1 || !slices.Equal(calls, want) {
+			t.Errorf("RunGate over a failing build = exit %d, observer calls %q; want exit 1 and %q", code, calls, want)
+		}
+		if len(ended) != 1 || ended[0].Outcome != "failed" || ended[0].ExitCode != 1 || ended[0].BlockedBy == "" {
+			t.Errorf("ended records = %+v; want tier0's blocked record, failed with the build's exit 1", ended)
 		}
 	})
 }

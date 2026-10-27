@@ -1,4 +1,4 @@
-// adopt.go is the takeover sequence of "lym adopt": it validates the request, reconciles the hub against origin, then per adopted beam project and per run under it or under root drops or keeps local commits, adds the missing pair, records this machine as owner of the projects, lifts the owner pauses, resumes the runs, runs the beam steps of each adopted beam and starts the test suite.
+// adopt.go is the takeover sequence of "lym adopt": it validates the request, reconciles the hub against origin, then per adopted beam project and per run under it or under root drops or keeps local commits, adds the missing pair, records this machine as owner of the projects, lifts the owner pauses, resumes the runs, runs the beam steps of each adopted beam and starts the adopt check.
 
 package adoptcli
 
@@ -87,13 +87,15 @@ func beamStepsOf(report orchcli.BeamUpReport) *beamStepsOutcome {
 	}
 }
 
-// suiteStart names the detached test suite an adopt started: its pid and the log its output goes to.
+// suiteStart names the detached adopt check an adopt started or found running: its pid, the log of its gate and the record of its progress.
 type suiteStart struct {
 	PID int    `json:"pid"`
 	Log string `json:"log"`
+	// Record is the path of the check's progress record.
+	Record string `json:"record"`
 }
 
-// outcome is the verb's envelope: the reconcile's report, the mutation record of every step, whether that record is non-empty, the prime's owner write, each entry's slugOutcome, the beam steps of the prime and the warning of a prime start that failed, and the test suite started or the warning of a start that failed.
+// outcome is the verb's envelope: the reconcile's report, the mutation record of every step, whether that record is non-empty, the prime's owner write, each entry's slugOutcome, the beam steps of the prime and the warning of a prime start that failed, and the adopt check started or the warning of a start that failed.
 type outcome struct {
 	Reconcile        fabricengine.OriginReport
 	Mutations        []fabricengine.Mutation
@@ -117,7 +119,7 @@ type outcome struct {
 // It runs after the resumes for each adopted beam whose owner write stood and, when root was adopted, for the prime.
 // LandingHeld reports whether the pawl run of the beam slug holds the beam's landing hold, which keeps its beam steps from running; nil reads as no hold.
 // PrimeName is the prime worktree's directory name.
-// StartSuite starts the hub's finalize gate in the prime as a detached process and returns at once, so a break this machine brings to the landed code shows at adopt time; it runs last, once per call that recorded an owner.
+// StartSuite starts the adopt check in the prime as a detached process, or finds the one already running, and returns at once, so a break this machine brings to the landed code shows at adopt time; it runs last, once per call that recorded an owner.
 // HubPath roots the mutation record.
 type adoptDeps struct {
 	Machine        func() (string, error)
@@ -324,7 +326,7 @@ func adopt(deps adoptDeps, req request) (outcome, error) {
 	if len(adopted) > 0 || result.PrimeRecorded {
 		suite, err := deps.StartSuite()
 		if err != nil {
-			result.SuiteWarning = fmt.Sprintf("the test suite was not started (%v); way forward: run `lym gate test --gate finalize` in the prime", err)
+			result.SuiteWarning = fmt.Sprintf("the adopt check was not started (%v); way forward: run lym fabric reconcile in the prime, then lym gate test --gate adopt there", err)
 		} else {
 			result.Suite = &suite
 		}

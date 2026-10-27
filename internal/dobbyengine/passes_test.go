@@ -7,6 +7,7 @@ package dobbyengine
 import (
 	"context"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -201,33 +202,88 @@ func (h *passHarness) stateRecord() State {
 	return record
 }
 
-func TestLog_OneLinePerStartAndPass(t *testing.T) {
-	t.Parallel()
-	owed := runningRun("o")
-	owed.OriginOwed = true
-	h := newPassHarness(t, runningRun("r"), runningRun("c"), owed)
-	h.fake.maxRuns = 4
+// recordLog makes the harness's daemon record each log line it writes without its timestamp, and returns the recording.
+func (h *passHarness) recordLog() *[]string {
 	var lines []string
-	h.d.deps.Log = func(line string) { lines = append(lines, line) }
-	h.fake.tasks = []TaskView{readyTask("a")}
-	if err := UpdateState(h.d.geom.StatePath, func(s *State) error {
-		s.Runs = map[string]RunState{"r": {FullPassOwed: true}, "o": {FullPassOwed: true}}
-		return nil
-	}); err != nil {
-		t.Fatalf("UpdateState() = %v; want nil", err)
+	h.d.geom.LogPath = "/beam/dobby.log"
+	h.d.deps.Log = func(path, line string, rotate bool) {
+		if path != "/beam/dobby.log" || !rotate {
+			h.t.Errorf("Log(%q, _, %v); want the log path with rotate set", path, rotate)
+		}
+		_, text, _ := strings.Cut(line, " ")
+		lines = append(lines, text)
 	}
+	return &lines
+}
 
-	h.tick(true)
+func TestLog_ChangesOnly(t *testing.T) {
+	t.Parallel()
 
-	want := []string{
-		"2026-10-25T12:00:10Z pass r full",
-		"2026-10-25T12:00:10Z pass c continue",
-		"2026-10-25T12:00:10Z pass o full-no-reopen",
-		"2026-10-25T12:00:10Z start a",
-	}
-	if strings.Join(lines, "\n") != strings.Join(want, "\n") {
-		t.Errorf("log lines = %q; want %q", lines, want)
-	}
+	t.Run("a tick that spawns passes and starts a task logs the start and no pass line", func(t *testing.T) {
+		t.Parallel()
+		h := newPassHarness(t, runningRun("r"), runningRun("c"))
+		lines := h.recordLog()
+		h.fake.tasks = []TaskView{readyTask("a")}
+		h.d.owesAll = true
+
+		h.tick(true)
+
+		if len(h.fake.spawned) != 3 {
+			t.Fatalf("passes spawned = %d; want the two runs' passes and the task's first pass", len(h.fake.spawned))
+		}
+		want := []string{"run r: running", "run c: running", "start a"}
+		if !slices.Equal(*lines, want) {
+			t.Errorf("log lines = %q; want %q", *lines, want)
+		}
+	})
+
+	t.Run("a run's state change logs once with its producer and an unchanged tick logs nothing", func(t *testing.T) {
+		t.Parallel()
+		h := newPassHarness(t, runningRun("task"))
+		lines := h.recordLog()
+		h.tick(false)
+		h.tick(false)
+		if want := []string{"run task: running"}; !slices.Equal(*lines, want) {
+			t.Fatalf("log lines after two unchanged ticks = %q; want %q", *lines, want)
+		}
+
+		h.fake.runs[0].State, h.fake.runs[0].Producer = "blocked", "Plan"
+		h.tick(false)
+		h.tick(false)
+		if want := []string{"run task: running", "run task: running -> blocked at Plan"}; !slices.Equal(*lines, want) {
+			t.Errorf("log lines after the change = %q; want %q", *lines, want)
+		}
+	})
+
+	t.Run("a run no longer listed is forgotten and logs as first seen when it returns", func(t *testing.T) {
+		t.Parallel()
+		h := newPassHarness(t, runningRun("task"))
+		lines := h.recordLog()
+		h.tick(false)
+		listed := h.fake.runs
+		h.fake.runs = nil
+		h.tick(false)
+		h.fake.runs = listed
+		h.tick(false)
+		if want := []string{"run task: running", "run task: running"}; !slices.Equal(*lines, want) {
+			t.Errorf("log lines = %q; want %q", *lines, want)
+		}
+	})
+
+	t.Run("a failing episode logs once and the exit 0 after it logs the recovery", func(t *testing.T) {
+		t.Parallel()
+		h := newPassHarness(t, runningRun("task"))
+		lines := h.recordLog()
+		failing := PassExit{Code: 1, Error: "pre-run refused\nsecond line"}
+		h.fake.exits = []PassExit{failing, failing, failing}
+		for range 5 {
+			h.tick(true)
+		}
+		want := []string{"run task: running", "pass task failing: pre-run refused second line", "pass task succeeds again"}
+		if !slices.Equal(*lines, want) {
+			t.Errorf("log lines = %q; want %q", *lines, want)
+		}
+	})
 }
 
 func runningRun(slug string) RunView {

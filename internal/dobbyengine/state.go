@@ -17,6 +17,9 @@ type State struct {
 	// PID and StartTime identify the dobby process that last recorded itself.
 	PID       int    `json:"pid"`
 	StartTime string `json:"start_time"`
+	// StartTicks is the process start time `proc.StartTime` reads for PID, which an exec keeps and a fresh process with a reused pid does not.
+	// A record written before it existed decodes as empty.
+	StartTicks string `json:"start_ticks,omitempty"`
 	// Sleeps are the sleep intervals dobby saw, for the idle clocks of the runs it drives.
 	Sleeps []pauserecord.Interval `json:"sleeps,omitempty"`
 	// Runs is the per-run record, keyed by slug.
@@ -29,6 +32,9 @@ type State struct {
 	LandingsBaselined bool `json:"landings_baselined,omitempty"`
 	// LandedSinceTidy holds the slugs landed since the last board tidy.
 	LandedSinceTidy []string `json:"landed_since_tidy,omitempty"`
+	// LandingsMachineOnly reports whether LandedSinceTidy holds only this machine's landings.
+	// A record written before the landing count read machines decodes as false, and the count empties its list once.
+	LandingsMachineOnly bool `json:"landings_machine_only,omitempty"`
 	// Tidy is the board-tidy agent in flight, nil when none is.
 	Tidy *TidyState `json:"tidy,omitempty"`
 	// LandNotice is the "can land" notice sent in the episode now standing, nil when none was sent or the beam can no longer land.

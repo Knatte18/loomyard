@@ -161,7 +161,7 @@ func HubScratchDir(hub string) string {
 	return filepath.Join(BoardDir(hub), lymdirs.DotLymDirName)
 }
 
-// AdoptScratchDir returns the directory that holds the log of the test suite an adopt starts:
+// AdoptScratchDir returns the directory that holds the adopt check's record, output and lock beside the log of the test suite an adopt starts:
 // <hub>/_board/.lym/adopt.
 func AdoptScratchDir(hub string) string {
 	return filepath.Join(HubScratchDir(hub), lymdirs.AdoptDirName)

@@ -69,15 +69,30 @@ func newWatcher(path string, stat func(string) (identity, error), exec func(path
 // Check re-stats the recorded path and replaces the process with it when the binary there differs from the one the process started from on two consecutive checks.
 // A process whose exec succeeds does not return.
 func (w *Watcher) Check() {
+	w.CheckWith(nil, nil)
+}
+
+// CheckWith re-stats the recorded path and replaces the process with it when the binary there differs from the one the process started from on two consecutive checks, telling its caller around the exec.
+// A process whose exec succeeds does not return.
+// beforeExec runs right before the exec, once the two-sighting rule and the failed-identity rule have passed.
+// failed runs with the exec's error after an exec failed, once that identity is marked failed; a failed identity is never exec'd again, so it runs at most once per identity.
+// A nil callback is skipped.
+func (w *Watcher) CheckWith(beforeExec func(), failed func(error)) {
 	current, changed := w.changedTwice()
 	if !changed || (w.hasFailed && w.failed == current) {
 		return
 	}
 	logger.Info("selfexec: the binary changed on disk; the process replaces itself", "path", w.path)
+	if beforeExec != nil {
+		beforeExec()
+	}
 	if err := w.exec(w.path, os.Args, os.Environ()); err != nil {
 		logger.Warn("selfexec: could not re-exec onto the changed binary; the process keeps running", "path", w.path, "err", err)
 		w.failed = current
 		w.hasFailed = true
+		if failed != nil {
+			failed(err)
+		}
 	}
 }
 

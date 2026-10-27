@@ -67,22 +67,53 @@
 // A nil `LandingHeld` reads no hold, and a failed read is the slug's warning naming `lym beam start <slug>`.
 // A failed `BeamUp` is the slug's own warning naming `lym beam start <slug>`, `prime_beam_warning` naming `lym beam start root` for the prime, and the other worktrees go on; what each step did is the slug's `beam_steps` and the envelope's `prime_beam_steps`.
 //
-// # Step 6: the test suite
+// # Step 6: the adopt check
 //
 // Machines differ in OS and toolchain, so code landed on one can break on another.
-// After the beam steps, a call that recorded this machine as the owner of an entry or of the prime starts `lym gate test --gate finalize --wait` once, detached, in the prime, the spawn logged through `logger`.
-// One call is one adoption session: adopting the prime and two beams together starts one suite, and a tier the gate's green record holds green for the prime's tree is carried and runs nothing.
-// The suite's output goes to `suite.log` under `fabricengine.AdoptScratchDir` in the hub's board-level `.lym` directory, truncated at each start, and the envelope's `suite` names its pid and that log.
-// A red suite only reports there, since the owner write and the resumes have already taken effect.
-// A spawn that fails is the envelope's `suite_warning`, naming `lym gate test --gate finalize` in the prime, and changes no slug's outcome.
-// Bound: two separate adopt calls each start a suite, which the gate slots serialize.
+// After the beam steps, a call that recorded this machine as the owner of an entry or of the prime starts the hidden `lym adopt check` once, detached, in the prime, the spawn logged through `logger`; `ensureCheck` spawns nothing when `check.json` reads `running` and `checkAlive` finds its process still alive.
+// The check's stdout and stderr go to `check.out`, created for append and never `suite.log`, so the gate's output alone reaches `suite.log`, a losing check's envelope goes to `check.out` and a panic of the check is on disk.
+// One call is one adoption session: adopting the prime and two beams together starts one check, and a tier the gate's green record holds green for the prime's tree is carried and runs nothing.
+// `checkAlive` reads a pid that is alive and whose start ticks equal the record's as alive, a pid with other ticks, as after a reboot that reused it, as dead, and a record without ticks, or a platform where the start time is unreadable, as alive on the pid alone.
+// The envelope's `suite` names the check's pid, `suite.log` and `check.json`.
+// A red check only reports, since the owner write and the resumes have already taken effect.
+// A spawn that fails is the envelope's `suite_warning`, naming `lym fabric reconcile` in the prime and then `lym gate test --gate adopt` there, since no reconcile of the hub's config ran and `lym gate test` runs none, and it changes no slug's outcome.
+// Bound: between a spawn and the child's lock, `lym beam status` can show the previous record and a second `lym adopt` can spawn a check that loses the lock and exits, so either envelope's pid can name the check that lost, both naming the same log and record.
 //
 // A child halted at Finalize's owner halt, read as a blocked child status whose error opens with `landingshed.OwnerHaltPrefix`, is resumed with `lym loom resume` spawned in its task worktree, the spawn logged through `logger`.
 // That holds when `root`, or the beam above it, is adopted while this machine owns the child's run; a child halted for any other reason stays halted.
 //
+// # The check verb
+//
+// The hidden `lym adopt check`, audience internal and taking no arguments, runs the hub's `adopt` gate in-process in the prime through `gatecli.RunGate` and reports each tier and its end to the nearest live orch of the prime.
+// It resolves the prime from the working directory as the adopt does, so it runs from anywhere in the hub, and prints an ok envelope with the record's `state`, or `already_running: true` when another check holds the lock.
+// `adopt` itself takes arbitrary arguments, so a standalone `RunCLI` still reaches `adopt <subject>`; a beam named `check` cannot be named to `lym adopt` and is adopted through `--all`.
+//
+// Its files sit under `fabricengine.AdoptScratchDir` beside `suite.log` and are named only here:
+// `check.json`, the progress record, written through `internal/state` under its own state lock;
+// `check.lock`, the verb's own lock;
+// and `check.out`, which the spawn of the check points its stdout and stderr at.
+// `CheckRecord` holds the check's pid and start ticks, its start, the gate key, each `CheckTier` as it ended, the tier in flight, its state (`running`, `green` or `failed`), its end time, the first failed tier and an error, and an unknown key reads.
+// `ReadCheck` stats the record first and reports false, taking no lock and creating no directory, when it is absent; a record that does not decode reads as absent with one Warn, so a damaged file never blocks the next check.
+//
+// `runCheck` takes `check.lock` with a non-blocking acquire and returns at once, having written and posted nothing, when it is held.
+// Holding it, it truncates `suite.log`, writes a running record and reconciles the hub through `hubreconcile.Ensure`, so a hub whose build stamp is stale seeds `adopt` from its tuned `finalize` before the gate reads it.
+// A failing reconcile ends the check failed with the way forward and runs no tier, so no check goes green on the template's tiers.
+// The gate's `suite.log` is its log; its observer rewrites the record as each tier starts and ends and posts `adopt check: tier<N> <green|failed>, passed <p> failed <f> skipped <s>, <wall>s`.
+// A green gate ends the record green and posts the tiers and `suite.log`; any other exit ends it failed, with the first failed tier, or with the gate's exit code as the error when no tier ended, and posts the failure, `suite.log` and the rerun `lym gate test --gate adopt` in the prime.
+// A tier that refuses after it started returns without ending, so the end clears the tier in flight.
+// A post that fails is logged and changes nothing.
+//
+// Bound: the gate slots do not serialize two checks, the lock does, so one check at a time writes the record, the log and the posts.
+//
+// # The check view
+//
+// `ReadCheckView` reads `check.json` under `fabricengine.AdoptScratchDir` through `ReadCheck`, which on an absent record reports false having created no directory or lock file, and returns nil then; `lym beam status` shows its result as the `adopt_check` section.
+// `checkView` builds the `CheckView` from the record: a running record shows the tier in flight and the tiers done, a green or failed record its end time, a failed one also its failing tier, and every view's lines name `suite.log`.
+// A running record whose pid is not alive, or is alive with start ticks other than the record's, as after a reboot that reused the pid, shows `ended without a verdict`, naming `suite.log`, `check.out` and `lym gate test --gate adopt` in the prime, and that the record clears at the next `lym adopt` with an owner write, which starts a fresh check, since the rerun writes no record.
+//
 // # The envelope
 //
-// It carries `reconcile`, `mutations` and `partial`, `prime_beam_steps` and `prime_beam_warning` for the prime's beam steps, `suite` or `suite_warning` for the test suite, and per slug what happened: a stop with its branches, pair added, owner recorded, pause lifted or standing, run resumed, none or owned elsewhere by `owned_by`, the `beam_steps` run, the error, and a warning when this machine does not own the slug's parent, since that run halts at Finalize here; the warning names `lym adopt <project of the parent>`, `lym adopt root` for the prime.
+// It carries `reconcile`, `mutations` and `partial`, `prime_beam_steps` and `prime_beam_warning` for the prime's beam steps, `suite` or `suite_warning` for the adopt check, and per slug what happened: a stop with its branches, pair added, owner recorded, pause lifted or standing, run resumed, none or owned elsewhere by `owned_by`, the `beam_steps` run, the error, and a warning when this machine does not own the slug's parent, since that run halts at Finalize here; the warning names `lym adopt <project of the parent>`, `lym adopt root` for the prime.
 //
 // # The bounds
 //

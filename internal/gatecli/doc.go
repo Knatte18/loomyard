@@ -288,6 +288,7 @@
 //	  webster: {tiers: [0, 1], scope: all}
 //	  parent-align: {tiers: [0, 1], scope: all}
 //	  finalize: {tiers: [0, 1], scope: all}
+//	  adopt: {tiers: [0, 1], scope: all}
 //	  webster-fix: {tiers: [0, 1], scope: diff}
 //	  darn-write: {tiers: [0, 1], scope: diff}
 //	  code-burler-fix: {tiers: [0, 1], scope: diff}
@@ -311,6 +312,15 @@
 // A card with no `**Verify:**` line passes with a message saying so.
 // The line's output passes through to the terminal and the verb exits with the line's own code; a line that timed out or did not start exits 1.
 // Inside a hub a line that is not a `--wait` gate call takes one slot of the hub's pool; outside every hub it runs unslotted.
+//
+// # In-process run
+//
+// `RunGate(ctx, dir, gate, out, stderr, observer)` runs the gate key `gate` in `dir` through the same `runTest` as `lym gate test --wait --gate <gate>`, with the CLI's defaults and `dir` seeded as the context's working directory.
+// The caller names only the key and the directory, never targets or tiers, and gets the call's exit code, the envelope on `out` and the summary lines on `stderr`.
+// A `TierObserver` hears each tier of the run: `Started` with the tier's number once its slots are held, or at once for a run that takes none, and `Ended` with the tier's run record when the tier reports.
+// A tier carried as already green ends with no start, and a tier blocked by a failed build ends with its blocked record, started only for the tier whose slots ran the build.
+// A guard or vet run reports through the same calls with its record's own flags, and a refusal after a start ends with no end.
+// A nil func is skipped, and every CLI call passes the zero observer.
 //
 // # Exit codes
 //

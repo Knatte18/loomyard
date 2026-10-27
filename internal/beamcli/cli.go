@@ -13,12 +13,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/adoptcli"
 	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -43,9 +45,10 @@ prime's location.`,
 	return beam
 }
 
-// statusResult is the envelope of `beam status`: one entry per local beam, the prime's first.
+// statusResult is the envelope of `beam status`: one entry per local beam, the prime's first, and the adopt check when the hub holds a record of one.
 type statusResult struct {
-	Dobbies []statusEntry `json:"dobbies"`
+	Dobbies    []statusEntry       `json:"dobbies"`
+	AdoptCheck *adoptcli.CheckView `json:"adopt_check,omitempty"`
 }
 
 // statusEntry is one beam's view in `beam status`: the dobby's structured view and the lines a beam's window draws for it, and the orch's view, or why either did not read.
@@ -71,6 +74,8 @@ started with what the task waits on -- open dependencies, another machine's
 ownership, a pause, a refused start and its retry, or max_runs. Each entry
 carries the structured view and its rendered lines, and the beam's orch: whether its
 strand is live, whether its watcher is live and the session id it recorded.
+The adopt_check section shows the check a lym adopt started: its state, the tier in flight, the
+tiers done and the paths of its log and output, and is absent when the hub holds no record of one.
 It starts and changes nothing; its one write is the empty orch directory its watcher probe creates.
 
 It runs from the prime and from any beam.
@@ -127,6 +132,11 @@ func dobbyStatus(prime *lymcwd.Location, now time.Time) (statusResult, error) {
 		}
 		result.Dobbies = append(result.Dobbies, entry)
 	}
+	check, err := adoptcli.ReadCheckView(prime.HubPath)
+	if err != nil {
+		failures = append(failures, fmt.Errorf("adopt check: %w", err))
+	}
+	result.AdoptCheck = check
 	if err := errors.Join(failures...); err != nil {
 		return result, fmt.Errorf("lym beam status: %w; way forward: fix the cause each names, then run `lym beam status` again", err)
 	}
@@ -369,21 +379,44 @@ machine owns the beam. It is launched by "lym beam start", never by hand.`,
 }
 
 // runDobby places the worktree at root, registers this process as its dobby and runs it until ctx ends, and prints the outcome.
-// A worktree dobby cannot be placed is refused before anything is registered or locked, and a dobby that is live already ends the call at once.
+// A worktree dobby cannot be placed is refused before anything is registered or locked, and the registration waits for the lock, so a dobby that finds another one holding it ends the call with nothing registered.
 func runDobby(ctx context.Context, out io.Writer, root string) int {
-	prime, geom, err := placeDobby(root)
+	return runDobbyWith(ctx, out, root, hubDobbyDeps, orchcli.NotifyFromScoped)
+}
+
+// runDobbyWith is runDobby over the seams that wire the dobby over the hub and post a notice to the nearest live orch.
+// Each exit it takes before dobbyengine.Run leaves a line in the dobby's log, and one after a re-exec also a notice.
+// Where selfexec execs, it moves the process's standard output and error onto the beam's `dobby.out`, and rotates that file once it holds the lock.
+func runDobbyWith(
+	ctx context.Context, out io.Writer, root string,
+	wire func(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengine.Deps, error),
+	notify func(from *lymcwd.Location, slug, program, line string) (bool, error),
+) int {
+	location, prime, geom, err := placeDobby(root)
 	if err != nil {
+		if location != nil {
+			traceRefusedStart(location, err, notify)
+		}
 		return output.Err(out, err.Error())
 	}
-	if live, err := dobbyengine.Live(geom); err == nil && live {
-		return output.Ok(out, map[string]any{"already_running": true})
+	if selfexecs() {
+		if err := reopenStdio(geom.OutPath); err != nil {
+			logger.Warn("beamcli: the dobby's output was not moved onto its output file", "path", geom.OutPath, "error", err)
+		}
 	}
-	if err := registerDobby(fabricengine.RunProcDir(prime.HubPath), geom); err != nil {
-		return output.Err(out, fmt.Sprintf("lym beam dobby: register the dobby: %v", err))
-	}
-	deps, err := hubDobbyDeps(prime, geom, out)
+	deps, err := wire(prime, geom)
 	if err != nil {
+		traceFailedWiring(geom, err, notify)
 		return output.Err(out, fmt.Sprintf("lym beam dobby: wire the dobby over the hub: %v", err))
+	}
+	deps.Locked = func() error {
+		if err := registerDobby(fabricengine.RunProcDir(prime.HubPath), geom); err != nil {
+			return fmt.Errorf("register the dobby: %w", err)
+		}
+		if selfexecs() {
+			rotateOutput(geom.OutPath)
+		}
+		return nil
 	}
 	switch err := dobbyengine.Run(ctx, geom, deps); {
 	case errors.Is(err, dobbyengine.ErrDobbyRunning):
@@ -394,45 +427,46 @@ func runDobby(ctx context.Context, out io.Writer, root string) int {
 	return output.Ok(out, map[string]any{"stopped": true})
 }
 
-// placeDobby resolves the worktree at root into the prime's location and the dobby's geometry.
+// placeDobby resolves the worktree at root into its own location, the prime's location and the dobby's geometry.
 // Only the prime and a local pair whose origin record carries the beam mark are placed, as `lym beam start` reads them; any other directory is refused naming that verb.
-func placeDobby(root string) (*lymcwd.Location, dobbyengine.Geometry, error) {
+// A refusal made once the worktree resolved still returns its location, which is nil for a refusal before that.
+func placeDobby(root string) (*lymcwd.Location, *lymcwd.Location, dobbyengine.Geometry, error) {
 	refuse := func(format string, args ...any) error {
 		return fmt.Errorf("lym beam dobby: "+format+"; way forward: run `lym beam start`, which starts the dobby of the prime and of each beam this machine owns", args...)
 	}
 	absolute, err := filepath.Abs(root)
 	if err != nil {
-		return nil, dobbyengine.Geometry{}, refuse("resolve %s: %v", root, err)
+		return nil, nil, dobbyengine.Geometry{}, refuse("resolve %s: %v", root, err)
 	}
 	location, err := lymcwd.ResolveWorktree(absolute)
 	if err != nil {
-		return nil, dobbyengine.Geometry{}, refuse("%s is not a worktree of a hub: %v", absolute, err)
+		return nil, nil, dobbyengine.Geometry{}, refuse("%s is not a worktree of a hub: %v", absolute, err)
 	}
 	if err := fabricengine.RequireDrivableWorktree(location); err != nil {
-		return nil, dobbyengine.Geometry{}, refuse("%s is not a worktree a dobby drives: %v", absolute, err)
+		return location, nil, dobbyengine.Geometry{}, refuse("%s is not a worktree a dobby drives: %v", absolute, err)
 	}
 	primeName, err := fabricengine.PrimeName(location)
 	if err != nil {
-		return nil, dobbyengine.Geometry{}, refuse("cannot tell the prime of the hub of %s: %v", absolute, err)
+		return location, nil, dobbyengine.Geometry{}, refuse("cannot tell the prime of the hub of %s: %v", absolute, err)
 	}
 	prime := location
 	if location.WorktreeName != primeName {
 		origin, found, err := fabricengine.ReadOrigin(location)
 		if err != nil {
-			return nil, dobbyengine.Geometry{}, refuse("cannot read the origin record of %s: %v", location.WorktreeName, err)
+			return location, nil, dobbyengine.Geometry{}, refuse("cannot read the origin record of %s: %v", location.WorktreeName, err)
 		}
 		if !found || !origin.Beam {
-			return nil, dobbyengine.Geometry{}, refuse("%s is neither the prime nor a beam", location.WorktreeName)
+			return location, nil, dobbyengine.Geometry{}, refuse("%s is neither the prime nor a beam", location.WorktreeName)
 		}
 		if prime, err = lymcwd.ResolveWorktree(fabricengine.WorktreePath(location, primeName)); err != nil {
-			return nil, dobbyengine.Geometry{}, refuse("resolve the prime of the hub: %v", err)
+			return location, nil, dobbyengine.Geometry{}, refuse("resolve the prime of the hub: %v", err)
 		}
 	}
 	geom, err := hubgeom.DobbyGeometry(prime, location.WorktreeName)
 	if err != nil {
-		return nil, dobbyengine.Geometry{}, refuse("%v", err)
+		return location, nil, dobbyengine.Geometry{}, refuse("%v", err)
 	}
-	return prime, geom, nil
+	return location, prime, geom, nil
 }
 
 // createCmd returns the `beam create` verb.

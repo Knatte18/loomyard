@@ -27,7 +27,7 @@ const FailedPushDirName = "failed-push"
 // RunProcDirName is the directory under the hub's board-level DotLymDirName that holds the owner record of the processes a run starts.
 const RunProcDirName = "runproc"
 
-// AdoptDirName is the directory under the hub's board-level DotLymDirName that holds the log of the test suite an adopt starts.
+// AdoptDirName is the directory under the hub's board-level DotLymDirName that holds the adopt check's record, output and lock beside the log of the test suite an adopt starts.
 const AdoptDirName = "adopt"
 
 // BeamDirName is the directory under a worktree's DotLymDirName that holds dobby's lock, state record and markers.

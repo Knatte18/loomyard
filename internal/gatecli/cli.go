@@ -178,6 +178,8 @@ type testRequest struct {
 	busyQuit time.Duration
 	// watching is whether the CPU watchdog applies to this run.
 	watching bool
+	// observer hears each tier start and end; its zero value observes nothing.
+	observer TierObserver
 }
 
 // absoluteDir returns the directory a request runs in: dir made absolute against the seam cwd, or the seam cwd itself when dir is empty.

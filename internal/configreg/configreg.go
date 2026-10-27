@@ -68,6 +68,9 @@ type Module struct {
 	// Migrate, when non-nil, rewrites a present config file's bytes before reconcile compares them to the template.
 	// It returns the rewritten bytes and one human-readable line per rewrite, and changes only the keys its module declares retired, rewrites a key's retired meaning into its replacement, or raises a key to its module's floor.
 	Migrate func(existing []byte) ([]byte, []string, error)
+	// MigrateHubBase, when non-nil, runs only over the module's hub base file: after Migrate on a present file, and over the prime or legacy seed on an absent one.
+	// It adds what only that file may gain, returns the rewritten bytes and one human-readable line per addition, and, like Migrate, leaves the registry fingerprint unchanged.
+	MigrateHubBase func(existing []byte) ([]byte, []string, error)
 	// CheckValues, when non-nil, checks the values of a local-layer document after its keys pass configengine.ValidateLocal.
 	// It checks only the keys its module names, and returns an error marked configengine.ErrInvalid that names the key.
 	CheckValues func(document []byte) error
@@ -125,7 +128,7 @@ func Modules() []Module {
 		{Name: "darn", Template: darnengine.ConfigTemplate, OpenMaps: darnengine.ConfigOpenMaps(), HubWide: true, Migrate: darnengine.MigrateConfig, CheckValues: darnengine.ValidateLocalValues, CheckLoad: checkLoadNamed(darnengine.LoadConfig, "darn"), Spec: darnengine.ConfigSpec},
 		{Name: "drift", Template: driftengine.ConfigTemplate, OpenMaps: driftengine.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoad(driftengine.LoadConfig), Spec: driftengine.ConfigSpec},
 		{Name: "fabric", Template: fabricengine.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(fabricengine.LoadConfig), Spec: fabricengine.ConfigSpec},
-		{Name: "gate", Template: gateslot.ConfigTemplate, OpenMaps: gateslot.ConfigOpenMaps(), PerNameMaps: gateslot.ConfigPerNameMaps(), HubWide: true, Migrate: gateslot.MigrateConfig, CheckLoad: checkLoad(gateslot.LoadConfig), Spec: gateslot.ConfigSpec},
+		{Name: "gate", Template: gateslot.ConfigTemplate, OpenMaps: gateslot.ConfigOpenMaps(), PerNameMaps: gateslot.ConfigPerNameMaps(), HubWide: true, Migrate: gateslot.MigrateConfig, MigrateHubBase: gateslot.SeedAdoptGate, CheckLoad: checkLoad(gateslot.LoadConfig), Spec: gateslot.ConfigSpec},
 		{Name: "landing", Template: landingshed.ConfigTemplate, OpenMaps: landingshed.ConfigOpenMaps(), HubWide: true, SeedsFromPrime: true, Migrate: landingshed.MigrateConfig, CheckLoad: checkLoadNamed(landingshed.LoadConfig, "landing"), Spec: landingshed.ConfigSpec},
 		{Name: "language", Template: languageconfig.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(languageconfig.Load), Spec: languageconfig.ConfigSpec},
 		{Name: "lenses", Template: lenses.ConfigTemplate, PerNameMaps: lenses.ConfigPerNameMaps(), CheckLoad: lenses.CheckLoad, Spec: lenses.ConfigSpec},

@@ -6,6 +6,7 @@ package battencli
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -164,4 +165,45 @@ func TestPreDriveCheck(t *testing.T) {
 			t.Errorf("status after the refusal = %q (err %v); want it unchanged from %q", after, err, before)
 		}
 	})
+}
+
+func TestBuildShed_TellsTheMachine(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		machineName func() (string, error)
+		wantMachine string
+		wantErrText []string
+	}{
+		{"TellsTheName", func() (string, error) { return "neve", nil }, "neve", nil},
+		{"RefusesAnUnknownName", func() (string, error) { return "", errors.New("hostname unreadable") }, "", []string{"hostname unreadable", "give the machine a hostname"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			c := newPreDriveReceiver(t)
+			writeBattenSeed(t, c)
+			c.machineName = tt.machineName
+
+			shed, err := c.specFor("run").BuildShed()
+
+			if tt.wantErrText != nil {
+				if shed != nil {
+					t.Errorf("BuildShed() shed = %+v; want nil", shed)
+				}
+				for _, text := range tt.wantErrText {
+					if err == nil || !strings.Contains(err.Error(), text) {
+						t.Errorf("BuildShed() error = %v; want it to contain %q", err, text)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("BuildShed() = %v", err)
+			}
+			if shed.Machine != tt.wantMachine {
+				t.Errorf("BuildShed() Machine = %q; want %q", shed.Machine, tt.wantMachine)
+			}
+		})
+	}
 }

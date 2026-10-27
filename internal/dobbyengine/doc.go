@@ -17,23 +17,49 @@
 //     A worktree with an anchor change standing on its own records worktree or the prime's is refused with the change's way forward and starts nothing, through StartDeps.MoveInProgress, and a nil one reads as no change standing.
 //   - Config is beam.yaml, loaded strictly because dobby only ever runs inside a hub.
 //   - Run is the daemon loop, with every seam it reads in Deps.
+//   - `dobby.log` holds the dobby's own lines only, each appended by AppendLog through its own open, which creates no directory, so a removed worktree gets nothing back.
+//     Only the holder of the file's dobby lock passes `rotate`: a write that would take the file past 1 MiB first renames it to `dobby.log.1`, replacing an older one.
+//     SpawnDetached points the child's raw standard output and error at `dobby.out`, which the holder of the lock rotates the same way.
+//     The one rotation a process without the lock makes is on Windows, where RotatePastBound renames `dobby.out` before a spawn only when Live reads the lock free.
+//     Bound: `dobby.out` is rotated at the start of the lock holder, so between starts it grows by what the dobby's standard error alone writes.
 //   - BuildView is the View of one dobby a reader outside its process sees, built from what it is told: its liveness, its state record, beam.yaml, its runs and the board.
 //
 // The loop:
 //
-//   - It waits lock.ProbeGrace for the lock at Geometry.LockPath, and returns ErrDobbyRunning when another dobby still holds it.
-//   - It reads its beam's owner at start and on each probe tick, and exits with a logged reason when another machine owns it.
-//   - A state record holding the process's own pid is a re-exec and owes no new full pass; any other pid, or no record, is a start.
+//   - The lock at Geometry.LockPath is the one decision whether this process is the dobby.
+//     ReadsAsReexec reads the state record first: a record holding the process's own pid and its start ticks, or no start ticks, is a re-exec.
+//     A re-exec waits Deps.ReexecLockWait (ten seconds) for the lock, the process it replaced releasing it as it execs; any other start waits lock.ProbeGrace.
+//     A fresh dobby that reused the pid of a record without ticks, after a reboot, reads as a re-exec.
+//   - A lock that stays held returns ErrDobbyRunning and logs `dobby: start refused: another dobby holds the lock` without rotating.
+//     A refused re-exec whose record still holds the pid posts a notice naming `lym beam start`, and a refused fresh start posts none.
+//   - Holding the lock, Run calls Deps.Locked, which the CLI fills with the run-process registration, then records the start and logs `start fresh pid` or `start re-exec pid`.
+//   - A record read error before the lock, or an error out of Run after it other than ErrDobbyRunning, logs `dobby: stopped on error` with its way forward, rotating only while the lock is held, and an error after a re-exec posts a notice.
+//   - It reads its beam's owner at start and on each probe tick, and exits with a logged reason, `stop: another machine owns this beam`, naming `lym adopt root` or `lym adopt <slug>`, when another machine owns it; a cancelled context logs `stop: the context ended`.
+//   - A record with the process's own pid and start ticks owes no new full pass; a record with the pid and no ticks gains the ticks and owes one; any other start rewrites the pid, the start time and the ticks and owes one.
 //     A start, a machine sleep the sleep watch sees, and a tick that finds the record without a pid each owe every run a full pass until a tick succeeds.
 //   - It wakes on a watch event and on its timer, coalescing events to at most one tick a second.
 //     The timer starts at the probe interval and doubles to a minute while no run is in flight, and returns to the probe interval on an event or while a run is in flight.
 //     Where the watch does not open, as on WSL or through a junction, the timer alone drives the loop at the probe cadence, and no wake is shorter than a second.
+//   - A beam dobby ends when its worktree is gone, tested as the absence of the worktree's `.git` and never of its root, since every state write recreates the record's directory.
+//     The loop tests it at the top of every iteration and again after each tick, before the binary check; the prime's dobby never takes the exit.
+//     The exit appends `stop: the worktree of beam <slug> is gone` to Geometry.PrimeLogPath without rotating, and stops the tidy agent the last tick with the worktree present read in the state record through Deps.PrimeTidyShuttle, logging the stop or its failure with `lym reed remove <guid>` the same way.
+//     It writes nothing at the removed worktree's path.
+//     Bound: a tick in flight when the worktree is removed can leave an empty `.lym/beam` stub holding the `state.json` and lock file its state access wrote, and the rest of that tick runs over the fresh empty State it read there; a tidy that tick spawned is not stopped, and one it settled is stopped again, which removes a strand only while reed still tracks it and logs a failed stop when reed's status probe fails.
 //   - Between ticks it calls the binary check, which re-execs onto a changed lym binary.
+//     The check logs `re-exec onto the changed lym binary` right before the exec; an exec that fails logs `re-exec failed` and posts a notice naming `lym beam stop` and `lym beam start`, once per binary identity, and the dobby keeps running.
 //   - A tick's failure is logged once per episode and the loop goes on; a cancelled context ends it after the tick in flight.
 //   - While any path of Geometry.MoveRecords exists, an anchor change stands on the dobby's own records worktree or the prime's, and a tick spawns no pass, starts no task and runs no board-tidy step, the tidy agent being a strand whose state sits at the anchor.
 //     The state record's upkeep and the landing count go on, a full pass the dobby owes stays owed, and the first tick of the episode logs it once.
 //     An empty list, as a hand-built Geometry leaves it, gates nothing.
-//   - Each task start and each pass spawned writes one line through the Log seam: the time, `start <slug>` or `pass <slug> <kind>`, the kind being `continue`, `full` or `full-no-reopen`.
+//   - The log records changes only, each one line through the Log seam stamped with its time, and a heartbeat.
+//     A task start logs `start <slug>`; a pass spawn logs nothing.
+//     A run's batten state or producer changing logs `run <slug>: <old> -> <new>`, the state alone for running and done and with ` at <producer>` for any other, and a run first seen logs its state once; the memory is in process only, so a re-exec logs no change it did not see.
+//     The first failing pass of an episode logs `pass <slug> failing: <error>` and the exit 0 that ends it `pass <slug> succeeds again`.
+//     A tick failing, and the beam's owner being unreadable, log their first line of an episode and the line that ends it.
+//     A board-tidy agent starting, posting its report and timing out each log one line.
+//   - A heartbeat, `heartbeat: <slug> <state> <producer>; …` per run still driven or `heartbeat: no runs`, is written right after the start line, which also records the logged states, and by the first tick at least ten minutes after the last one, whatever that tick did.
+//     A run listing that fails writes `heartbeat: runs unreadable: <error>` in its place.
+//     It rides the loop's ticks with no wait or wake of its own, so a dead dobby shows in its log within ten minutes plus the longest gap between ticks.
 //
 // The passes:
 //
@@ -83,9 +109,10 @@
 //
 // The board tidy:
 //
-//   - Each tick reads the batten history of every run whose parent worktree is this dobby's, whatever the run's state, and records each Land Done as counted in the state record, so a landing a hand pass or a pass a dead dobby left made is counted and a restart counts none twice.
+//   - Each tick reads the batten history of every run whose parent worktree is this dobby's, whatever the run's state, and records each Land Done that names this machine as counted in the state record, so a landing a hand pass or a pass a dead dobby left made is counted and a restart counts none twice.
 //     A record read for the first time, or rewritten fresh over one that did not decode, counts every landing already there as seen, so run records left from before the dobby trigger no tidy.
 //     While a tidy agent is in flight nothing is counted, so the record's slugs since the last tidy are exactly the agent's.
+//     A record written before the count read machines has its landed-since-tidy list emptied once, the first count after the deploy that is not held by a tidy in flight, which also drops this machine's own landings counted before the deploy and not yet tidied.
 //   - At every `board_tidy_every` landings, 0 meaning never, dobby spawns the board-tidy agent unless one is in flight: a fresh shuttle run in a window of the worktree's reed session, role BoardTidyRole, its prompt TidyPrompt over the landed slugs and a parent directive naming the nearest live orch, its one output the report `.lym/beam/tidy/<UTC timestamp>.md`.
 //     The agent in flight is kept in the state record, so a restart or a re-exec spawns no second.
 //   - Once the report exists dobby posts its path to the nearest live orch and ends the agent through shuttle's stop verb.

@@ -48,7 +48,7 @@ func (s *Shed) enter(st Status, def ProducerDef) (ProducerDef, *StepResult, erro
 		}
 
 		chain = append(chain, def.Name)
-		nextHistory := appendOrFold(st.History, HistoryEntry{Producer: def.Name, Outcome: OutcomeSkipped, At: nowRFC3339(), Reason: gateReason})
+		nextHistory := appendOrFold(st.History, HistoryEntry{Producer: def.Name, Outcome: OutcomeSkipped, At: nowRFC3339(), Reason: gateReason, Machine: s.Machine})
 		if def.OnDone == "" {
 			if err := s.persistRouted(def.Name, StateDone, nextHistory, false, "", ""); err != nil {
 				return def, nil, err

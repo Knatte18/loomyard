@@ -199,3 +199,31 @@ func TestCommand_RunsFromABeam(t *testing.T) {
 	envelope.RequireErr(t, run(h.PairCodeWorktree("b")), "is not on the board")
 	envelope.RequireErr(t, run(h.PairCodeWorktree("p")), `"`+primeName+`"`)
 }
+
+func TestCheckCmd_FromABeamExitsZeroWhileOneRuns(t *testing.T) {
+	t.Parallel()
+	boardkit.InstallReplay(t)
+
+	h := hubforge.NewHub(t, ".")
+	hubforge.AddPairWith(t, h, "b", fabricengine.AddOptions{Beam: true})
+	scratch := fabricengine.AdoptScratchDir(h.Path)
+	if err := os.MkdirAll(scratch, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	held, err := lock.AcquireWriteLock(filepath.Join(scratch, "check.lock"))
+	if err != nil {
+		t.Fatalf("hold the check lock: %v", err)
+	}
+	t.Cleanup(func() { _ = held.Release() })
+
+	var out bytes.Buffer
+	exit := adoptcli.RunCLIIn(h.PairCodeWorktree("b"), &out, []string{"check"})
+
+	got := envelope.RequireOK(t, out.String())
+	if exit != 0 || got.Raw["already_running"] != true {
+		t.Errorf("lym adopt check from a beam = exit %d, envelope %+v; want exit 0 and already_running true", exit, got)
+	}
+	if _, err := os.Stat(filepath.Join(scratch, "check.json")); !os.IsNotExist(err) {
+		t.Errorf("Stat(check.json) error = %v; want no record written", err)
+	}
+}

@@ -51,7 +51,7 @@ func TestStatus_JSONRoundTrip(t *testing.T) {
 			Wait: "",
 		},
 		History: []HistoryEntry{
-			{Producer: "Preflight", Outcome: Done, Output: "", At: "2026-08-15T09:00:00Z", By: "driver"},
+			{Producer: "Preflight", Outcome: Done, Output: "", At: "2026-08-15T09:00:00Z", By: "driver", Machine: "neve"},
 			{Producer: "Plan-Write", Outcome: Stuck, Output: "_lym/plan.md", At: "2026-08-15T09:05:00Z", GateSpans: []GateSpan{
 				{Gate: "plan-parse", Kind: GateSpanKindGate, Start: "2026-08-15T09:04:00.25Z", End: "2026-08-15T09:04:01.5Z"},
 				{Gate: "plan-parse", Kind: GateSpanKindRework, Start: "2026-08-15T09:04:02Z", End: "2026-08-15T09:04:30Z"},
@@ -121,7 +121,7 @@ func TestStatus_JSONRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("json.Marshal(legacy) = %v", err)
 	}
-	if legacy.PendingBy != "" || legacy.History[0].By != "" || strings.Contains(string(reencoded), `"by"`) || strings.Contains(string(reencoded), "pending_by") {
+	if legacy.PendingBy != "" || legacy.History[0].By != "" || legacy.History[0].Machine != "" || strings.Contains(string(reencoded), `"machine"`) || strings.Contains(string(reencoded), `"by"`) || strings.Contains(string(reencoded), "pending_by") {
 		t.Errorf("record without caller labels = %+v re-encoded as %s; want empty values and no by or pending_by key", legacy, reencoded)
 	}
 	// The same record has no entered row and no skip reason, which read as empty and are not written back.

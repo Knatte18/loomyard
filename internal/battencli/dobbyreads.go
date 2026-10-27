@@ -209,8 +209,9 @@ func lockHeld(path string) (bool, error) {
 	return false, held.Release()
 }
 
-// DobbyLandings lists the slugs of the runs of geom's parent worktree whose batten history holds a Land that finished.
-func DobbyLandings(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *DobbyParents) ([]string, error) {
+// DobbyLandings lists the slugs of the runs of geom's parent worktree whose batten history holds a Land that finished on machine.
+// An entry with no machine, written before the history stamped one, and an entry naming another machine are never counted.
+func DobbyLandings(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *DobbyParents, machine string) ([]string, error) {
 	runs, err := dobbyParentRuns(prime, geom, parents)
 	if err != nil {
 		return nil, err
@@ -218,7 +219,7 @@ func DobbyLandings(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *D
 	var landed []string
 	for _, run := range runs {
 		if slices.ContainsFunc(run.status.History, func(entry shedengine.HistoryEntry) bool {
-			return entry.Producer == battenrecipe.NameLand && entry.Outcome == shedengine.Done
+			return entry.Producer == battenrecipe.NameLand && entry.Outcome == shedengine.Done && entry.Machine == machine
 		}) {
 			landed = append(landed, run.slug)
 		}

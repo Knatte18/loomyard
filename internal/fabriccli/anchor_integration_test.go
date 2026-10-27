@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
@@ -27,6 +28,9 @@ func newAnchorCLIHub(t *testing.T) *hubforge.Hub {
 	t.Helper()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	// The verb points the process-wide trace sink into the hub it moves, so the sink is reset before the hub's directories are removed:
+	// a parallel test's record would otherwise recreate a logs directory inside them while they go.
+	t.Cleanup(func() { logger.SetDurableSinkDir("") })
 	gitkit.CommitFile(t, h.PrimeWorktree(), "sub/.keep", "", "track sub")
 	if _, err := fabricengine.CoalescePushBothAt(h.PrimeWorktree(), h.PrimeRecords(), fabricengine.SyncOptions{}); err != nil {
 		t.Fatalf("push the prime: %v", err)

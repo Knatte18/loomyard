@@ -29,6 +29,7 @@ var templateDefaults = Config{
 		"webster":         {Tiers: []int{0}, Scope: "all"},
 		"parent-align":    {Tiers: []int{0}, Scope: "all"},
 		"finalize":        {Tiers: []int{0}, Scope: "all"},
+		"adopt":           {Tiers: []int{0}, Scope: "all"},
 		"webster-fix":     {Tiers: []int{0}, Scope: "diff"},
 		"darn-write":      {Tiers: []int{0}, Scope: "diff"},
 		"code-burler-fix": {Tiers: []int{0}, Scope: "diff"},
@@ -584,6 +585,10 @@ func TestMigrateConfig(t *testing.T) {
 		},
 		{"a guard_tier alone is pruned", "scoper: go\nguard_tier: 0\n", "scoper: go\n", []string{"guard_tier: retired, removed"}, false},
 		{"a document without publish unchanged", withoutPublish, withoutPublish, nil, false},
+		{
+			"a tuned finalize with no adopt gains none, since only the hub base seed adds it",
+			"gates:\n  finalize: {tiers: [0, 1], scope: all}\n", "gates:\n  finalize: {tiers: [0, 1], scope: all}\n", nil, false,
+		},
 		{"an empty document unchanged", "", "", nil, false},
 		{"an unparseable document", "gates: [", "", nil, true},
 		{"a root that is not a mapping", "- card\n", "", nil, true},
@@ -610,6 +615,68 @@ func TestMigrateConfig(t *testing.T) {
 			again, againLines, err := MigrateConfig(got)
 			if err != nil || string(again) != string(got) || len(againLines) != 0 {
 				t.Errorf("second MigrateConfig = (%q, %v, %v); want the document unchanged with no lines", again, againLines, err)
+			}
+		})
+	}
+}
+
+func TestSeedAdoptGate(t *testing.T) {
+	t.Parallel()
+
+	const seededLine = "gates.adopt: added with the value of gates.finalize"
+	tests := []struct {
+		name      string
+		input     string
+		want      string
+		wantLines []string
+		wantErr   bool
+	}{
+		{
+			"a tuned finalize with no adopt gains adopt with its value right after it",
+			"gates:\n  card: {tiers: [0], scope: card}\n  finalize: {tiers: [0, 1], scope: all}\n  drift-verify: {tiers: [0], scope: diff}\n",
+			"gates:\n  card: {tiers: [0], scope: card}\n  finalize: {tiers: [0, 1], scope: all}\n  adopt: {tiers: [0, 1], scope: all}\n  drift-verify: {tiers: [0], scope: diff}\n",
+			[]string{seededLine}, false,
+		},
+		{
+			"a finalize in block style is copied as a flow mapping",
+			"gates:\n  finalize:\n    tiers: [0, 1]\n    scope: all\n",
+			"gates:\n  finalize:\n    tiers: [0, 1]\n    scope: all\n  adopt: {tiers: [0, 1], scope: all}\n",
+			[]string{seededLine}, false,
+		},
+		{
+			"a file holding both keys keeps its adopt",
+			"gates:\n  finalize: {tiers: [0, 1], scope: all}\n  adopt: {tiers: [0], scope: all}\n",
+			"gates:\n  finalize: {tiers: [0, 1], scope: all}\n  adopt: {tiers: [0], scope: all}\n",
+			nil, false,
+		},
+		{"a file with no finalize gains nothing", "gates:\n  card: {tiers: [0], scope: card}\n", "gates:\n  card: {tiers: [0], scope: card}\n", nil, false},
+		{"a document with no gates gains nothing", "scoper: go\n", "scoper: go\n", nil, false},
+		{"an empty document unchanged", "", "", nil, false},
+		{"an unparseable document", "gates: [", "", nil, true},
+		{"a root that is not a mapping", "- card\n", "", nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, lines, err := SeedAdoptGate([]byte(tt.input))
+			if tt.wantErr {
+				if !errors.Is(err, configengine.ErrInvalid) {
+					t.Fatalf("SeedAdoptGate(%q) error = %v; want one marked configengine.ErrInvalid", tt.input, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("SeedAdoptGate(%q) error = %v; want none", tt.input, err)
+			}
+			if string(got) != tt.want {
+				t.Errorf("SeedAdoptGate(%q) = %q; want %q", tt.input, got, tt.want)
+			}
+			if diff := cmp.Diff(tt.wantLines, lines); diff != "" {
+				t.Errorf("SeedAdoptGate(%q) lines mismatch (-want +got):\n%s", tt.input, diff)
+			}
+			again, againLines, err := SeedAdoptGate(got)
+			if err != nil || string(again) != string(got) || len(againLines) != 0 {
+				t.Errorf("second SeedAdoptGate = (%q, %v, %v); want the document unchanged with no lines", again, againLines, err)
 			}
 		})
 	}

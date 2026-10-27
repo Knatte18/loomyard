@@ -439,6 +439,9 @@ func (e *execution) runWithSlots(run tierRun, empty bool, body func(env []string
 		defer releaseSlot(lease, e.request.root)
 		env = lease.InheritEnv(env)
 	}
+	if e.request.observer.Started != nil {
+		e.request.observer.Started(run.number)
+	}
 	return e.report(run, body(env), waitStart)
 }
 
@@ -459,6 +462,9 @@ func (e *execution) report(run tierRun, result tierResult, waitStart time.Time) 
 		printLine(e.request.stderr, result.trimpathNote)
 	}
 	printLine(e.request.stderr, gateslot.TierSummaryLine(record, logPath))
+	if e.request.observer.Ended != nil {
+		e.request.observer.Ended(record)
+	}
 	return runEnd{code: record.ExitCode, halt: e.ctx.Err() != nil, ran: true}
 }
 

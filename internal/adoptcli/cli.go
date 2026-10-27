@@ -16,19 +16,20 @@ import (
 func Command() *cobra.Command {
 	var req request
 	cmd := &cobra.Command{
-		Use:         "adopt [<subject>...]",
-		Short:       "take over beam projects, or root, and the runs under them from another machine",
+		Use:   "adopt [<subject>...]",
+		Short: "take over beam projects, or root, and the runs under them from another machine",
+		// ArbitraryArgs lets a standalone RunCLI, where this command is the cobra root, reach RunE with a subject instead of cobra's own unknown-command error beside the check subcommand.
+		Args:        cobra.ArbitraryArgs,
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Records this machine as the owner of each subject named, a beam or the word root, and
 carries on the runs under it here. A beam is a project entry whose beam flag is set: it
-moves with its pair and the runs whose parent is its worktree, and a beam nested in it
-keeps its own owner. root moves the prime and the runs whose parent is the prime. A task
+moves with its pair and the runs whose parent is its worktree; a nested beam keeps its owner. root moves the prime and the runs whose parent is the prime. A task
 is never named: it moves with its beam or with root. --all names root and every open
 beam. It runs from the prime and from any beam.
 
 Steps, in order:
   1. a moving origin reconcile; a stop on Bolt or the prime's records branch, an
-     unreachable origin or a reconcile error refuses the verb and runs nothing
+     unreachable origin or a reconcile error refuses the verb
   2. a beam or run whose pair holds local commits origin lacks, or is live, stops with its
      branches and both ways forward; --keep-local records the owner over them, --drop-local
      archives each local tip as archive/<slug>/<tip> and moves the branches to origin's
@@ -37,15 +38,16 @@ Steps, in order:
   4. one owner write for every beam not stopped, and for the prime with root
   5. each owner pause of an adopted beam and of a moved run is lifted
   6. each moved run not done that this machine now owns is resumed as a detached first
-     pass, a beam's pawl run only when this machine also owns its parent; a child halted
-     at Finalize's owner check is resumed
+     pass, a beam's pawl run only when this machine owns its parent; a child halted at
+     Finalize's owner check is resumed
   7. the beam steps of the prime with root and of each adopted beam, as "lym beam start"
      runs them: its dobby and orch; a beam whose landing holds it gets none
-  8. the finalize gate starts detached in the prime; red only reports
+  8. the adopt check starts detached in the prime and reports each tier to the orch; it shows
+     in lym beam status, and red only reports
 
-The envelope carries reconcile, mutations and partial, per slug what happened and its
-beam_steps, prime_beam_steps, and suite or suite_warning. A slug's error never stops
-the others.
+The envelope carries reconcile, mutations, partial, per slug what happened and its
+beam_steps, prime_beam_steps, and suite (pid, log, record) or suite_warning.
+A slug's error never stops the others.
 
 Example:
   lym adopt payments
@@ -114,6 +116,7 @@ Example:
 	cmd.Flags().BoolVar(&req.All, "all", false, "adopt root and every open beam project")
 	cmd.Flags().BoolVar(&req.KeepLocal, "keep-local", false, "record the owner over local commits origin lacks and over a live pair")
 	cmd.Flags().BoolVar(&req.DropLocal, "drop-local", false, "keep each local tip origin lacks under an archive tag and move the branches to origin's")
+	cmd.AddCommand(checkCmd())
 	return cmd
 }
 

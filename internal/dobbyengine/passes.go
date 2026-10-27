@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -63,19 +64,6 @@ const (
 	// passFullNoReopen is a full pass that leaves the origin reconcile owed.
 	passFullNoReopen
 )
-
-// String names the kind as dobby's log line does.
-func (k passKind) String() string {
-	switch k {
-	case passContinue:
-		return "continue"
-	case passFull:
-		return "full"
-	case passFullNoReopen:
-		return "full-no-reopen"
-	}
-	return "none"
-}
 
 // passTrigger is what woke the planner for one run.
 type passTrigger struct {
@@ -149,6 +137,7 @@ func (d *daemon) drivePasses(ctx context.Context, now time.Time) error {
 	if err != nil {
 		return fmt.Errorf("list the runs: %w", err)
 	}
+	d.logRunChanges(now, runs)
 	runs = slices.DeleteFunc(runs, func(run RunView) bool {
 		_, inFlight := d.flights[run.Slug]
 		return run.State == runStateDone && !inFlight
@@ -194,6 +183,92 @@ func (d *daemon) drivePasses(ctx context.Context, now time.Time) error {
 		}
 	}
 	return nil
+}
+
+// runLabel is the state a run's log lines name: batten's state, with the producer for a state other than running and done.
+func runLabel(run RunView) string {
+	if run.State == runStateRunning || run.State == runStateDone {
+		return run.State
+	}
+	return run.State + " at " + run.Producer
+}
+
+// logRunChanges logs each listed run whose label differs from the one last logged, and forgets the runs no longer listed.
+// A run first seen logs its label alone.
+// The memory is in process only, so a re-exec logs no change it did not see:
+// the call after a start heartbeat that could not read the runs records the labels without logging.
+func (d *daemon) logRunChanges(now time.Time, runs []RunView) {
+	if d.primeOwed {
+		d.primeOwed = false
+		d.primeLoggedRuns(runs)
+		return
+	}
+	if d.loggedRuns == nil {
+		d.loggedRuns = map[string]string{}
+	}
+	listed := make(map[string]bool, len(runs))
+	for _, run := range runs {
+		listed[run.Slug] = true
+		label := runLabel(run)
+		old, known := d.loggedRuns[run.Slug]
+		switch {
+		case !known:
+			d.logLine(now, "run "+run.Slug+": "+label)
+		case old != label:
+			d.logLine(now, "run "+run.Slug+": "+old+" -> "+label)
+		}
+		d.loggedRuns[run.Slug] = label
+	}
+	for slug := range d.loggedRuns {
+		if !listed[slug] {
+			delete(d.loggedRuns, slug)
+		}
+	}
+}
+
+// primeLoggedRuns records every listed run's label as logged, without logging a line.
+func (d *daemon) primeLoggedRuns(runs []RunView) {
+	d.loggedRuns = make(map[string]string, len(runs))
+	for _, run := range runs {
+		d.loggedRuns[run.Slug] = runLabel(run)
+	}
+}
+
+// heartbeat logs one line naming every run still driven with its state and producer, or that there are none, and records now as the last heartbeat.
+// It reads the runs from Deps.Runs when runs is nil, and a failed read is logged in the line's place.
+// The first heartbeat that reads the runs also records every listed run's label as logged, so a re-exec logs no change for a run that did not change.
+func (d *daemon) heartbeat(now time.Time, runs []RunView) {
+	d.lastHeartbeat = now
+	if runs == nil {
+		listed, err := d.deps.Runs()
+		if err != nil {
+			d.logLine(now, "heartbeat: runs unreadable: "+oneLine(err.Error()))
+			d.primeOwed = d.loggedRuns == nil
+			return
+		}
+		runs = listed
+	}
+	if d.loggedRuns == nil {
+		d.primeOwed = false
+		d.primeLoggedRuns(runs)
+	}
+	var items []string
+	for _, run := range runs {
+		if _, inFlight := d.flights[run.Slug]; run.State == runStateDone && !inFlight {
+			continue
+		}
+		items = append(items, run.Slug+" "+run.State+" "+run.Producer)
+	}
+	if len(items) == 0 {
+		d.logLine(now, "heartbeat: no runs")
+		return
+	}
+	d.logLine(now, "heartbeat: "+strings.Join(items, "; "))
+}
+
+// oneLine folds text onto a single line, so a multi-line error stays one log line.
+func oneLine(text string) string {
+	return strings.Join(strings.Fields(text), " ")
 }
 
 // recordOwed owes every listed run a full pass while the dobby owes all, and drops the records of runs no longer listed.
@@ -248,14 +323,13 @@ func (d *daemon) spawn(slug string, kind passKind, now time.Time) {
 		d.passExited(slug, full, 1, err.Error(), now)
 		return
 	}
-	d.logLine(now, "pass "+slug+" "+kind.String())
 	d.flights[slug] = flight{exit: exit, full: full}
 }
 
 // logLine writes one line to the dobby's log, stamped with at.
 func (d *daemon) logLine(at time.Time, text string) {
 	if d.deps.Log != nil {
-		d.deps.Log(at.UTC().Format(time.RFC3339) + " " + text)
+		d.deps.Log(d.geom.LogPath, at.UTC().Format(time.RFC3339)+" "+text, true)
 	}
 }
 
@@ -288,12 +362,13 @@ func (d *daemon) passExited(slug string, full bool, code int, errText string, at
 	if code == 0 && full {
 		originOwed = d.originOwed(slug)
 	}
-	noticeDue := false
+	noticeDue, failingStarted, succeedsAgain := false, false, false
 	err := UpdateState(d.geom.StatePath, func(s *State) error {
 		rs := s.Runs[slug]
 		rs.LastPassExit = at
 		switch code {
 		case 0:
+			succeedsAgain = rs.FailingPassCount > 0
 			rs.FailingPassError, rs.FailingPassCount, rs.Noticed = "", 0, nil
 			if full && !originOwed {
 				rs.FullPassOwed = false
@@ -310,6 +385,7 @@ func (d *daemon) passExited(slug string, full bool, code int, errText string, at
 			} else {
 				rs.FailingPassError, rs.FailingPassCount = errText, 1
 			}
+			failingStarted = rs.FailingPassCount == 1
 			noticeDue = rs.FailingPassCount >= failingPassNoticeAfter && !slices.Contains(rs.Noticed, errText)
 		}
 		if s.Runs == nil {
@@ -321,6 +397,12 @@ func (d *daemon) passExited(slug string, full bool, code int, errText string, at
 	if err != nil {
 		logger.Warn("dobbyengine: the pass exit could not be recorded", "slug", slug, "error", err)
 		return
+	}
+	if failingStarted {
+		d.logLine(at, "pass "+slug+" failing: "+oneLine(errText))
+	}
+	if succeedsAgain {
+		d.logLine(at, "pass "+slug+" succeeds again")
 	}
 	if noticeDue {
 		d.noticeFailingPass(slug, errText)

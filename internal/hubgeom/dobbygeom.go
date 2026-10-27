@@ -18,7 +18,7 @@ import (
 )
 
 // DobbyGeometry tells dobbyengine its paths for the worktree named worktree, the prime's name or a beam's slug.
-// The lock, state and log paths and the tidy directory lie under that worktree's `.lym/beam/` directory at the worktree's own anchor, and the batten runs directory under the prime.
+// The lock, state, log and output paths and the tidy directory lie under that worktree's `.lym/beam/` directory at the worktree's own anchor, and the batten runs directory under the prime.
 // The slug is empty for the prime.
 // MoveRecords holds the anchor-move record paths of the worktree's own records worktree and of the prime's, the prime's once when the worktree is the prime.
 // A worktree with no directory in the hub is an error naming it, and so is a lym executable that cannot be located or an anchor that cannot be read.
@@ -32,19 +32,19 @@ func DobbyGeometry(prime *lymcwd.Location, worktree string) (dobbyengine.Geometr
 		return dobbyengine.Geometry{}, fmt.Errorf("hubgeom: locate the lym executable: %w", err)
 	}
 	slug := worktree
-	anchorRel := prime.AnchorRel
 	moveRecords := []string{fabricengine.MoveRecordPath(fabricengine.RecordsWorktreePath(prime, prime.WorktreeName))}
+	own := prime
 	if worktree == prime.WorktreeName {
 		slug = ""
 	} else {
-		own, err := lymcwd.NamedWorktree(prime.HubPath, worktree)
+		var err error
+		own, err = lymcwd.NamedWorktree(prime.HubPath, worktree)
 		if err != nil {
 			return dobbyengine.Geometry{}, fmt.Errorf("hubgeom: read the anchor of the worktree %q: %w", worktree, err)
 		}
-		anchorRel = own.AnchorRel
 		moveRecords = append([]string{fabricengine.MoveRecordPath(fabricengine.RecordsWorktreePath(own, worktree))}, moveRecords...)
 	}
-	beamDir := filepath.Join(root, anchorRel, lymdirs.DotLymDirName, lymdirs.BeamDirName)
+	beamDir := DobbyBeamDir(own)
 	return dobbyengine.Geometry{
 		HubRoot:       prime.HubPath,
 		BoardDir:      fabricengine.BoardDir(prime.HubPath),
@@ -55,11 +55,18 @@ func DobbyGeometry(prime *lymcwd.Location, worktree string) (dobbyengine.Geometr
 		LockPath:      filepath.Join(beamDir, dobbyengine.LockFileName),
 		StatePath:     filepath.Join(beamDir, dobbyengine.StateFileName),
 		LogPath:       filepath.Join(beamDir, dobbyengine.LogFileName),
+		OutPath:       filepath.Join(beamDir, dobbyengine.OutFileName),
+		PrimeLogPath:  filepath.Join(DobbyBeamDir(prime), dobbyengine.LogFileName),
 		TidyDir:       filepath.Join(beamDir, dobbyengine.TidyDirName),
 		PrimeRunsDir:  shedrun.RunsRoot(prime),
 		LymExecutable: executable,
 		MoveRecords:   moveRecords,
 	}, nil
+}
+
+// DobbyBeamDir returns the `.lym/beam/` directory of the worktree at worktree, at the worktree's own anchor, where the dobby keeps its lock, state, log and output files.
+func DobbyBeamDir(worktree *lymcwd.Location) string {
+	return filepath.Join(worktree.HubPath, worktree.WorktreeName, worktree.AnchorRel, lymdirs.DotLymDirName, lymdirs.BeamDirName)
 }
 
 // PawlPaths tells the pawl producers the land request, dobby-stop marker and await marker paths of the beam whose pair is at beam.

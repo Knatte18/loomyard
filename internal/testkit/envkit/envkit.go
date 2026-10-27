@@ -227,6 +227,7 @@ var fixedGateLists = map[string][]int{
 	"webster":         {0, 1},
 	"parent-align":    {0, 1},
 	"finalize":        {0, 1},
+	"adopt":           {0, 1},
 	"webster-fix":     {0, 1},
 	"darn-write":      {0, 1},
 	"code-burler-fix": {0, 1},
