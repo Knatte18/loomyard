@@ -10,6 +10,11 @@ func IsEmptyStatus(status *string) bool {
 	return status == nil || *status == ""
 }
 
+// isDraft reports whether t carries the draft status, so it is not released.
+func isDraft(t Task) bool {
+	return t.Status != nil && *t.Status == StatusDraft
+}
+
 // migrateDraftStatus marks every open task of the store whose status is empty draft, once per board: only while the store's draft_status key is absent.
 // It sets the key and reports whether it marked any task; the write it rides on saves both together.
 func migrateDraftStatus(store *Store) bool {

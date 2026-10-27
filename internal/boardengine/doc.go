@@ -166,20 +166,21 @@
 // An open project is in none of the Tasks layers: ComputeLayers puts it in its own Project layer, a run-held one in Running and a done one in the done layer, and RenderOrder places open projects by handle between open tasks and open notes, and a done project between done tasks and done notes.
 // Projects lists each open project as an H3 of its handle and title, its brief, `beam` or `grouping`, and for a beam its effective owner, its recorded owner_machine else its parent's, resolved through ParentBeam over the rendered entries with the prime owner as the root's; the Running table's Owner column shows a task's effective owner the same way.
 // A table of its members follows: the entries whose project names it, in the order of its order key, then the members that key leaves out by handle.
-// A member table row gives the handle, the bold title, the kind and where the member stands: its Running place, Ready, its layer, Note or Done.
+// A member table row gives the handle, the bold title, the kind and where the member stands: its Running place, Ready, its layer, Draft, Note or Done.
 // A member keeps its row in the Tasks, Notes and Done sections, and no project is a row of Tasks or Notes; a done project is a row of Done.
 // Every section heading ends in the number of entries listed under it in parentheses, such as `## Tasks (10)` or `### Ready (0)`, never the highest handle number, since handles have gaps.
-// Tasks splits into Running, Ready, the dependency layers A, B and on, and Independent for an isolated task.
+// Tasks splits into Running, Ready, the dependency layers A, B and on, Independent for an isolated task, and Draft for an unreleased one.
 // A task a run holds, by RunHolds as the run lock decides it, goes under Running and in no layer; Running is omitted when no task runs.
-// A draft task keeps its Ready or layer section and its After column, and its title cell opens with a `draft` code span before the bold title.
-// Ready holds the open tasks with no open dependency, and is always written, as `_None._` when empty.
+// An open draft task a run does not hold goes under Draft, whatever its dependencies or isolation, since nothing starts it until it is released;
+// Draft follows Independent and is omitted when no task is draft, and a draft title cell opens with a `draft` code span before the bold title.
+// Ready holds the open, released tasks with no open dependency, and is always written, as `_None._` when empty.
 // A dependency on a done task does not count, and one on a running task does, so a task waiting on a run is not Ready.
-// Layer A holds the tasks that wait only on Running or Ready entries, Layer B those that wait on something in Layer A, and so on; ComputeLayers names each task's subsection, and the same name is the layer field of `lym board list`.
+// Layer A holds the tasks that wait only on Running, Ready or Draft entries, Layer B those that wait on something in Layer A, and so on; ComputeLayers names each task's subsection, and the same name is the layer field of `lym board list`.
 // Each subsection, Done included, is one markdown table in RenderOrder's order: a task subsection and a Notes type subsection by handle, and Done its tasks before its notes, each by handle, so `lym board list` and `find` follow the same order.
 // A row opens with the entry's handle, and a Notes row adds the P column after it, H for a high priority, L for a low one and blank for normal.
 // The row then holds the bold title, with the brief as a `• ` bullet under it in the same cell, then a `• ` bullet `profile: <name>` when the task names a run profile, and then one `• ` bullet per run setting, a code span such as `loom: code_max_bounces 1` with a nested key as its dotted path, sorted, so the settings stack in height and add no column, the slug linked to its design doc when the entry has a body, the one `Age<br>Revised` cell, the entry's age above the time since its last revision, blank for an unknown date, and the labels that are not type labels.
-// The Running, Ready and layer tables add a Recipe column after the slug, the recipe the task runs, `loom` when its recipe field is empty; the Notes and Done tables have none.
-// Running adds an At column, the run status without the state when the state is `running`, and an Owner column, the entry's recorded owner machine, blank when none is recorded, and Ready and the layers add an After column, the open entries named in depends_on.
+// The Running, Ready, layer and Draft tables add a Recipe column after the slug, the recipe the task runs, `loom` when its recipe field is empty; the Notes and Done tables have none.
+// Running adds an At column, the run status without the state when the state is `running`, and an Owner column, the entry's recorded owner machine, blank when none is recorded, and Ready, the layers and Draft add an After column, the open entries named in depends_on.
 // A pipe in a cell is escaped and a line break becomes a space, so an entry is always one row.
 //
 // # Intake

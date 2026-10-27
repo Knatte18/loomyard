@@ -67,6 +67,17 @@ func TestComputeLayers(t *testing.T) {
 			want: map[string]string{"open": "Project", "held": "Running", "finished": "__done__", "task": "Ready", "awaiting": "Project"},
 		},
 		{
+			name: "a draft task is Draft whatever its dependencies or isolation, and weighs as a ready one",
+			tasks: []boardengine.Task{
+				{ID: 1, Slug: "free", Title: "Free", Status: stringPtr(boardengine.StatusDraft)},
+				{ID: 2, Slug: "base", Title: "Base"},
+				{ID: 3, Slug: "waiting", Title: "Waiting", DependsOn: []string{"base"}, Status: stringPtr(boardengine.StatusDraft)},
+				{ID: 4, Slug: "alone", Title: "Alone", Isolated: true, Status: stringPtr(boardengine.StatusDraft)},
+				{ID: 5, Slug: "after", Title: "After", DependsOn: []string{"free"}},
+			},
+			want: map[string]string{"free": "Draft", "base": "Ready", "waiting": "Draft", "alone": "Draft", "after": "A"},
+		},
+		{
 			name: "isolated task",
 			tasks: []boardengine.Task{
 				{ID: 1, Slug: "a", Title: "Task A", Isolated: true},
@@ -154,13 +165,14 @@ func TestRenderOrder(t *testing.T) {
 				{ID: 4, Slug: "a1", Title: "Ready Task", DependsOn: []string{}},
 				{ID: 5, Slug: "b1", Title: "Layer A Task", DependsOn: []string{"a1"}},
 				{ID: 6, Slug: "r1", Title: "Running Task", Status: stringPtr(boardengine.RunStatus("running", "Webster"))},
+				{ID: 7, Slug: "d1", Title: "Draft Task", Status: stringPtr(boardengine.StatusDraft)},
 			},
 			check: func(t *testing.T, result []boardengine.TaskWithLayer) {
-				if len(result) != 5 {
-					t.Fatalf("RenderOrder() got %d tasks, want 5", len(result))
+				if len(result) != 6 {
+					t.Fatalf("RenderOrder() got %d tasks, want 6", len(result))
 				}
-				wantOrder := []string{"r1", "a1", "b1", "z1", "done1"}
-				wantLayers := []string{"Running", "Ready", "A", "Z", "__done__"}
+				wantOrder := []string{"r1", "a1", "b1", "z1", "d1", "done1"}
+				wantLayers := []string{"Running", "Ready", "A", "Z", "Draft", "__done__"}
 				for i, slug := range wantOrder {
 					if result[i].Slug != slug {
 						t.Errorf("RenderOrder() position %d got slug %q, want %q", i, result[i].Slug, slug)
