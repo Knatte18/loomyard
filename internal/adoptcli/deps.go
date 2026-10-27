@@ -1,4 +1,4 @@
-// deps.go fills adoptDeps over a real hub: the origin reconcile with the live-pair reading adopt needs, the pair add, the owner write, the pause lift, the run resume, the child resume, the beam steps, the landing-hold read and the test suite start.
+// deps.go fills adoptDeps over a real hub: the origin reconcile with the live-pair reading adopt needs, the pair add, the owner write, the pause lift, the run resume, the child resume, the beam steps, the landing-hold read and the adopt check start.
 
 package adoptcli
 
@@ -147,7 +147,10 @@ func hubDepsAs(prime *lymcwd.Location, machine func() (string, error)) (adoptDep
 		},
 		PrimeName: prime.WorktreeName,
 		StartSuite: func() (suiteStart, error) {
-			return startSuite(prime.AnchorPath(), filepath.Join(fabricengine.AdoptScratchDir(prime.HubPath), suiteLogName))
+			dir := fabricengine.AdoptScratchDir(prime.HubPath)
+			return ensureCheck(dir, checkAlive, func() (int, error) {
+				return startSuite(prime.AnchorPath(), filepath.Join(dir, checkOutName))
+			})
 		},
 		HubPath: prime.HubPath,
 	}, nil
@@ -186,44 +189,77 @@ func readStatus(path string) (shedengine.Status, bool, error) {
 	return status, true, nil
 }
 
-// suiteLogName is the file the adopt's test suite writes its output to.
+// suiteLogName is the file the adopt check writes its output to.
 const suiteLogName = "suite.log"
 
-// suiteArgs is the lym command line of the adopt's test suite: the hub's finalize gate, waiting for gate slots.
-var suiteArgs = []string{"gate", "test", "--gate", "finalize", "--wait"}
+// suiteArgs is the lym command line of the adopt check: the hidden check, which runs the hub's adopt gate.
+var suiteArgs = []string{"adopt", "check"}
 
-// startSuite starts the adopt's test suite detached in dir, with its output in the log at logPath, truncated first, and returns its pid and the log.
-// The suite is started and never waited for, so the adopt returns while it runs.
-// It starts nothing and returns an error in a test binary, where forking the running binary would re-run the test suite.
-func startSuite(dir, logPath string) (suiteStart, error) {
+// startSuite starts the adopt check detached in dir, with its stdout and stderr appended to the file at outPath, and returns its pid.
+// The check is started and never waited for, so the adopt returns while it runs; the file holds a losing check's envelope and a panic, and the gate's own output goes to the suite log the check truncates.
+// It starts nothing and returns an error in a test binary, where forking the running binary would re-run the test binary.
+func startSuite(dir, outPath string) (int, error) {
 	if testing.Testing() {
-		return suiteStart{}, errors.New("the test suite is not started under go test")
+		return 0, errors.New("the adopt check is not started under go test")
 	}
 	executable, err := os.Executable()
 	if err != nil {
-		return suiteStart{}, fmt.Errorf("locate the lym executable: %w", err)
+		return 0, fmt.Errorf("locate the lym executable: %w", err)
 	}
-	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
-		return suiteStart{}, fmt.Errorf("create the suite log directory: %w", err)
+	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
+		return 0, fmt.Errorf("create the adopt check directory: %w", err)
 	}
-	logFile, err := os.Create(logPath)
+	outFile, err := os.OpenFile(outPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
-		return suiteStart{}, fmt.Errorf("open the suite log: %w", err)
+		return 0, fmt.Errorf("open the adopt check output: %w", err)
 	}
-	defer logFile.Close()
+	defer outFile.Close()
 
 	command := exec.Command(executable, suiteArgs...)
 	command.Dir = dir
-	command.Stdout = logFile
-	command.Stderr = logFile
+	command.Stdout = outFile
+	command.Stderr = outFile
 	proc.Detach(command)
 	if err := command.Start(); err != nil {
-		logger.Warn("adoptcli: the test suite did not start", "exe", executable, "args", suiteArgs, "dir", dir, "error", err)
-		return suiteStart{}, err
+		logger.Warn("adoptcli: the adopt check did not start", "exe", executable, "args", suiteArgs, "dir", dir, "error", err)
+		return 0, err
 	}
 	pid := command.Process.Pid
-	logger.Info("adoptcli: spawned the test suite", "exe", executable, "args", suiteArgs, "dir", dir, "pid", pid, "log", logPath)
-	return suiteStart{PID: pid, Log: logPath}, nil
+	logger.Info("adoptcli: spawned the adopt check", "exe", executable, "args", suiteArgs, "dir", dir, "pid", pid, "out", outPath)
+	return pid, nil
+}
+
+// checkAlive reports whether the process that wrote record is still running: its pid is alive and, when both sides can read it, the live process started when the record says.
+// A record without start ticks, or a platform that cannot read a start time, reads alive on the pid alone; a reused pid after a reboot reads dead.
+func checkAlive(record CheckRecord) bool {
+	if !proc.IsAlive(record.PID) {
+		return false
+	}
+	if record.StartTicks == "" {
+		return true
+	}
+	ticks, readable := proc.StartTime(record.PID)
+	return !readable || ticks == record.StartTicks
+}
+
+// ensureCheck returns the adopt check of the scratch directory dir: the running one when check.json reads running and alive passes, else a new one started by spawn.
+// The returned suiteStart names the check's pid and the paths of its log and record.
+func ensureCheck(dir string, alive func(CheckRecord) bool, spawn func() (int, error)) (suiteStart, error) {
+	start := suiteStart{Log: filepath.Join(dir, suiteLogName), Record: filepath.Join(dir, checkRecordName)}
+	record, found, err := ReadCheck(start.Record)
+	if err != nil {
+		return suiteStart{}, err
+	}
+	if found && record.State == checkRunning && alive(record) {
+		start.PID = record.PID
+		return start, nil
+	}
+	pid, err := spawn()
+	if err != nil {
+		return suiteStart{}, err
+	}
+	start.PID = pid
+	return start, nil
 }
 
 // resumeChild runs "lym loom resume" in the task worktree at pairPath and waits for it.

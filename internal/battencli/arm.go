@@ -45,6 +45,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -485,6 +486,15 @@ func (c *battenCLI) specFor(verb string) shedverbs.Spec {
 				return nil, err
 			}
 			shed.LockedCheck = c.preDrive
+			machineName := c.machineName
+			if machineName == nil {
+				machineName = machinename.Name
+			}
+			name, err := machineName()
+			if err != nil {
+				return nil, fmt.Errorf("battencli: this machine's name is unknown, so the run cannot record which machine it ran on: %w; way forward: give the machine a hostname, then re-run lym batten run %s", err, c.slug)
+			}
+			shed.Machine = name
 			return shed, nil
 		}
 	}

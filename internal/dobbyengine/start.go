@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"testing"
 
@@ -17,8 +18,10 @@ import (
 )
 
 const (
-	// LogFileName is the dobby log file in the worktree's `.lym/beam/` directory, which a spawned dobby appends its output to.
+	// LogFileName is the dobby log file in the worktree's `.lym/beam/` directory, which holds the dobby's own lines only.
 	LogFileName = "dobby.log"
+	// OutFileName is the file in the worktree's `.lym/beam/` directory that a spawned dobby's raw standard output and error go to.
+	OutFileName = "dobby.out"
 	// PrimeLabel is the worktree label a StartReport gives the prime's dobby.
 	PrimeLabel = "prime"
 	// OutcomeStarted is the outcome of a dobby EnsureLive spawned.
@@ -255,31 +258,60 @@ func Live(geom Geometry) (bool, error) {
 }
 
 // SpawnDetached starts `<lym> beam dobby <worktree root>` for geom as a detached process with the hub root as its working directory.
-// The child's output is appended to the file at geom.LogPath, and the child is started but never waited for.
+// The child's output is appended to the file at geom.OutPath, and the child is started but never waited for.
 // It returns ErrSpawnUnderTest, starting nothing, in a test binary.
 func SpawnDetached(geom Geometry) error {
 	if testing.Testing() {
 		return ErrSpawnUnderTest
 	}
-	if err := os.MkdirAll(filepath.Dir(geom.LogPath), 0o755); err != nil {
+	return spawnDetached(geom, (*exec.Cmd).Start)
+}
+
+// spawnDetached rotates the raw-output file where the platform needs it, opens geom.OutPath for append, builds the dobby command with stdout and stderr on that file and starts it through start.
+func spawnDetached(geom Geometry, start func(cmd *exec.Cmd) error) error {
+	rotateOutBeforeSpawn(geom, runtime.GOOS)
+	if err := os.MkdirAll(filepath.Dir(geom.OutPath), 0o755); err != nil {
 		return err
 	}
-	logFile, err := os.OpenFile(geom.LogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	outFile, err := os.OpenFile(geom.OutPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
 	}
-	defer logFile.Close()
+	defer outFile.Close()
 
 	args := []string{"beam", "dobby", geom.WorktreeRoot}
 	cmd := exec.Command(geom.LymExecutable, args...)
 	cmd.Dir = geom.HubRoot
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
+	cmd.Stdout = outFile
+	cmd.Stderr = outFile
 	proc.Detach(cmd)
-	if err := cmd.Start(); err != nil {
+	if err := start(cmd); err != nil {
 		logger.Warn("dobbyengine: spawn dobby failed", "exe", geom.LymExecutable, "args", args, "dir", geom.HubRoot, "error", err)
 		return err
 	}
-	logger.Info("dobbyengine: spawned dobby", "exe", geom.LymExecutable, "args", args, "dir", geom.HubRoot, "pid", cmd.Process.Pid, "log", geom.LogPath)
+	pid := 0
+	if cmd.Process != nil {
+		pid = cmd.Process.Pid
+	}
+	logger.Info("dobbyengine: spawned dobby", "exe", geom.LymExecutable, "args", args, "dir", geom.HubRoot, "pid", pid, "out", geom.OutPath)
 	return nil
+}
+
+// rotateOutBeforeSpawn rotates the raw-output file past its bound on windows alone, where a running dobby holds the file open and cannot rotate it itself, and only when the dobby's lock reads free.
+// This is the one rotation a process without the dobby lock makes; a failed rename, as when a refused process still holds the file, is logged and leaves the file for the next spawn.
+func rotateOutBeforeSpawn(geom Geometry, goos string) {
+	if goos != "windows" {
+		return
+	}
+	live, err := Live(geom)
+	if err != nil {
+		logger.Warn("dobbyengine: could not read the dobby lock before rotating its output file", "path", geom.OutPath, "error", err)
+		return
+	}
+	if live {
+		return
+	}
+	if _, err := RotatePastBound(geom.OutPath); err != nil {
+		logger.Warn("dobbyengine: could not rotate the dobby output file", "path", geom.OutPath, "error", err)
+	}
 }

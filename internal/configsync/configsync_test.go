@@ -5,6 +5,7 @@
 package configsync
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -1276,6 +1277,87 @@ func sortedCopy(keys []string) []string {
 
 // ptr returns a pointer to v, for a table field where nil means "unchecked".
 func ptr[T any](v T) *T { return &v }
+
+// gateKeyFile is one gate key of a gate.yaml as the seeding test reads it back.
+type gateKeyFile struct {
+	Tiers []int  `yaml:"tiers"`
+	Scope string `yaml:"scope"`
+}
+
+// TestReconcileHubWideAt_SeedsAdoptFromATunedFinalize pins that a hub gate.yaml gains the adopt gate with a copy of its tuned finalize: when the file is present and holds a finalize a retired list just became, and when the file is absent and seeded from a prime copy tuning finalize, so the seeding pass leaves it complete.
+func TestReconcileHubWideAt_SeedsAdoptFromATunedFinalize(t *testing.T) {
+	t.Parallel()
+	const seededLine = "gates.adopt: added with the value of gates.finalize"
+	wantGate := gateKeyFile{[]int{0, 1}, "all"}
+
+	readGates := func(t *testing.T, boardDir string) map[string]gateKeyFile {
+		t.Helper()
+		data, err := os.ReadFile(configengine.ConfigFile(boardDir, "gate"))
+		if err != nil {
+			t.Fatalf("read gate.yaml: %v", err)
+		}
+		var file struct {
+			Gates map[string]gateKeyFile `yaml:"gates"`
+		}
+		if err := yaml.Unmarshal(data, &file); err != nil {
+			t.Fatalf("parse gate.yaml %q: %v", data, err)
+		}
+		return file.Gates
+	}
+	requireBoth := func(t *testing.T, boardDir string) {
+		t.Helper()
+		gates := readGates(t, boardDir)
+		for _, key := range []string{"finalize", "adopt"} {
+			// A sparse seed drops a scope equal to the template's, which the load then supplies.
+			got := gates[key]
+			if !slices.Equal(got.Tiers, wantGate.Tiers) || (got.Scope != wantGate.Scope && got.Scope != "") {
+				t.Errorf("gates.%s = %+v; want tiers %v and scope %q or the template's", key, got, wantGate.Tiers, wantGate.Scope)
+			}
+		}
+	}
+
+	t.Run("a present file holding a retired landing list gains adopt beside the finalize it became, once", func(t *testing.T) {
+		t.Parallel()
+		boardDir := t.TempDir()
+		writeModuleFile(t, boardDir, "gate", "gates:\n  landing: [0, 1]\n")
+
+		first, err := ReconcileHubWideAt(boardDir, "", HubWideOptions{Apply: true})
+		if err != nil {
+			t.Fatalf("ReconcileHubWideAt() = %v; want nil", err)
+		}
+		requireBoth(t, boardDir)
+		if gate := findResult(first, "gate"); gate == nil || !slices.Contains(gate.Migrated, seededLine) {
+			t.Errorf("gate result = %+v; want Migrated to hold %q", gate, seededLine)
+		}
+
+		before, err := os.ReadFile(configengine.ConfigFile(boardDir, "gate"))
+		if err != nil {
+			t.Fatalf("read gate.yaml: %v", err)
+		}
+		second, err := ReconcileHubWideAt(boardDir, "", HubWideOptions{Apply: true})
+		if err != nil {
+			t.Fatalf("second ReconcileHubWideAt() = %v; want nil", err)
+		}
+		after, err := os.ReadFile(configengine.ConfigFile(boardDir, "gate"))
+		if err != nil {
+			t.Fatalf("read gate.yaml: %v", err)
+		}
+		if gate := findResult(second, "gate"); gate == nil || len(gate.Migrated) != 0 || !bytes.Equal(before, after) {
+			t.Errorf("second pass gate result, file changed = %+v, %v; want no Migrated line and an identical file", gate, !bytes.Equal(before, after))
+		}
+	})
+
+	t.Run("an absent file seeded from a prime copy tuning finalize holds adopt after that one reconcile", func(t *testing.T) {
+		t.Parallel()
+		boardDir, primeBaseDir := t.TempDir(), t.TempDir()
+		writeModuleFile(t, primeBaseDir, "gate", "gates:\n  finalize: {tiers: [0, 1], scope: all}\n")
+
+		if _, err := ReconcileHubWideAt(boardDir, primeBaseDir, HubWideOptions{Apply: true}); err != nil {
+			t.Fatalf("ReconcileHubWideAt() = %v; want nil", err)
+		}
+		requireBoth(t, boardDir)
+	})
+}
 
 // TestReconcileAll_HubWideCopy pins how ReconcileAll treats a hub-wide module ("board"): it never
 // reconciles or writes it under the worktree, and a leftover per-worktree copy is kept, reported

@@ -345,6 +345,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 			BudgetExempt:    outcome == Stuck && (output.BudgetExempt || output.Halt || def.OnStuck == ""),
 			RoutedTo:        routedTo,
 			GenerationStart: outcome == Stuck && output.GenerationStart,
+			Machine:         s.Machine,
 		})
 	}
 

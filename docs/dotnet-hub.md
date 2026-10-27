@@ -96,6 +96,7 @@ gates:
   drift-verify: {tiers: [0], scope: diff}
   parent-align: {tiers: [0], scope: all}
   finalize: {tiers: [0], scope: all}
+  adopt: {tiers: [0], scope: all}
 ```
 
 A landing key may list more tiers than the card keys, such as one that runs the slow category.

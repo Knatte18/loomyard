@@ -393,6 +393,12 @@ const (
 	retiredMergeInGateKey = "merge-in"
 )
 
+// The gate keys the adopt seed reads and writes.
+const (
+	finalizeGateKey = "finalize"
+	adoptGateKey    = "adopt"
+)
+
 // retiredGateLists maps each retired gate list to the keys it becomes.
 var retiredGateLists = map[string][]gateTarget{
 	"landing": {{parentAlignGateKey, scopeAll}, {"finalize", scopeAll}, {"darn-write", scopeDiff}, {"code-burler-fix", scopeDiff}},
@@ -435,16 +441,84 @@ func MigrateConfig(existing []byte) ([]byte, []string, error) {
 		return existing, nil, nil
 	}
 
+	encoded, err := encodeGateDocument(&document, "migrate gate config")
+	if err != nil {
+		return nil, nil, err
+	}
+	return encoded, lines, nil
+}
+
+// encodeGateDocument encodes a parsed gate document with two-space indentation, and returns an error marked configengine.ErrInvalid that opens with what.
+func encodeGateDocument(document *yaml.Node, what string) ([]byte, error) {
 	var out bytes.Buffer
 	encoder := yaml.NewEncoder(&out)
 	encoder.SetIndent(2)
-	if err := encoder.Encode(&document); err != nil {
-		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate gate config: encode yaml: %w", err))
+	if err := encoder.Encode(document); err != nil {
+		return nil, configengine.MarkInvalid(fmt.Errorf("%s: encode yaml: %w", what, err))
 	}
 	if err := encoder.Close(); err != nil {
-		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate gate config: encode yaml: %w", err))
+		return nil, configengine.MarkInvalid(fmt.Errorf("%s: encode yaml: %w", what, err))
 	}
-	return out.Bytes(), lines, nil
+	return out.Bytes(), nil
+}
+
+// SeedAdoptGate adds the adopt gate to a hub's base gate document when the document tunes finalize, and returns the line that says so.
+// The new gates.adopt carries a copy of gates.finalize's value, so the adopt check runs the tiers the hub tuned for its landing.
+// A document with no gates.finalize, or already holding gates.adopt, is returned unchanged with no line, so a second pass changes nothing.
+// A hub that tunes finalize cannot pin adopt to the template's own value:
+// the reconcile drops a template-equal entry, and the next pass seeds adopt again from finalize.
+// It runs over the hub base file alone: a local-layer file, a seed and a run-settings gate object are never seeded.
+// A document that does not parse, or whose root is not a mapping, returns an error marked configengine.ErrInvalid.
+func SeedAdoptGate(existing []byte) ([]byte, []string, error) {
+	var document yaml.Node
+	if err := yaml.Unmarshal(existing, &document); err != nil {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("seed adopt gate: unmarshal yaml: %w", err))
+	}
+	if document.Kind != yaml.DocumentNode || len(document.Content) == 0 {
+		return existing, nil, nil
+	}
+	root := document.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("seed adopt gate: yaml root is not a mapping"))
+	}
+	gates := mappingValue(root, "gates")
+	if gates == nil || gates.Kind != yaml.MappingNode {
+		return existing, nil, nil
+	}
+	lines := seedAdoptGate(gates)
+	if len(lines) == 0 {
+		return existing, nil, nil
+	}
+	encoded, err := encodeGateDocument(&document, "seed adopt gate")
+	if err != nil {
+		return nil, nil, err
+	}
+	return encoded, lines, nil
+}
+
+// seedAdoptGate writes adopt into the gates mapping right after finalize, as a flow mapping holding a copy of finalize's value, and returns the line that says so.
+// A mapping without a finalize mapping, or already holding adopt, is left as it is.
+func seedAdoptGate(gates *yaml.Node) []string {
+	at := mappingKeyIndex(gates, finalizeGateKey)
+	if at < 0 || gates.Content[at+1].Kind != yaml.MappingNode || mappingKeyIndex(gates, adoptGateKey) >= 0 {
+		return nil
+	}
+	value := cloneGateNode(gates.Content[at+1])
+	value.Style = yaml.FlowStyle
+	name := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: adoptGateKey}
+	gates.Content = slices.Insert(gates.Content, at+2, name, value)
+	return []string{fmt.Sprintf("gates.%s: added with the value of gates.%s", adoptGateKey, finalizeGateKey)}
+}
+
+// cloneGateNode returns a deep copy of node without its comments.
+func cloneGateNode(node *yaml.Node) *yaml.Node {
+	clone := *node
+	clone.HeadComment, clone.LineComment, clone.FootComment = "", "", ""
+	clone.Content = make([]*yaml.Node, len(node.Content))
+	for i, child := range node.Content {
+		clone.Content[i] = cloneGateNode(child)
+	}
+	return &clone
 }
 
 // migrateGateLists rewrites every list-shaped entry of the gates mapping into the keyed shape and returns one line per rewrite.

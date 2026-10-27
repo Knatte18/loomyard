@@ -6,8 +6,10 @@ package beamcli
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -124,4 +126,25 @@ func TestDobbyRuns_PairAtItsOwnAnchor(t *testing.T) {
 			t.Errorf("dobbyWatchDirs() = %v; want the pair with the invalid marker left out", dirs)
 		}
 	})
+}
+
+func TestDobbyLandings_CountsOnlyThisMachine(t *testing.T) {
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	prime := h.Location
+	const landDone = `{"history":[{"producer":"Land","outcome":"done","output":"","at":"2026-10-27T10:00:00Z"%s}]}`
+	for slug, machine := range map[string]string{"here": `,"machine":"m1"`, "elsewhere": `,"machine":"m2"`, "unstamped": ""} {
+		seedBattenRun(t, prime, slug)
+		status := fmt.Sprintf(landDone, machine)
+		if err := os.WriteFile(shedrun.StatusFile(prime, slug), []byte(status), 0o644); err != nil {
+			t.Fatalf("write the status of %s: %v", slug, err)
+		}
+	}
+
+	got, err := battencli.DobbyLandings(prime, dobbyengine.Geometry{}, battencli.NewDobbyParents(prime), "m1")
+
+	if err != nil || !reflect.DeepEqual(got, []string{"here"}) {
+		t.Errorf("DobbyLandings(m1) = %v, %v; want [here], nil", got, err)
+	}
 }

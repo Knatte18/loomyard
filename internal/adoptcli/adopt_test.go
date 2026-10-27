@@ -1,6 +1,6 @@
 //go:build tier0
 
-// adopt_test.go drives the takeover sequence over fake deps: the refusals before anything runs, the reconcile stops, the per-entry stops and their two ways forward, the pair add, the owner write, the pause lift, the run resume, the halted-child resume, the beam steps and the test suite start.
+// adopt_test.go drives the takeover sequence over fake deps: the refusals before anything runs, the reconcile stops, the per-entry stops and their two ways forward, the pair add, the owner write, the pause lift, the run resume, the halted-child resume, the beam steps and the adopt check start.
 
 package adoptcli
 
@@ -673,7 +673,7 @@ func TestAdopt(t *testing.T) {
 			}
 		}},
 		{name: "FailedSuiteStartIsTheWarningNamingTheGate", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.suiteErr = errors.New("exec failed") }, check: func(t *testing.T, w *world, got outcome) {
-			want := "the test suite was not started (exec failed); way forward: run `lym gate test --gate finalize` in the prime"
+			want := "the adopt check was not started (exec failed); way forward: run lym fabric reconcile in the prime, then lym gate test --gate adopt there"
 			if got.SuiteWarning != want || got.Suite != nil {
 				t.Errorf("suite = %+v, warning = %q; want no suite and %q", got.Suite, got.SuiteWarning, want)
 			}

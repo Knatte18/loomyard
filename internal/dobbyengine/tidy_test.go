@@ -22,6 +22,8 @@ import (
 type tidyShuttleFake struct {
 	started []shuttleengine.Spec
 	stopped []string
+	// stopErr is what StopStrand returns after recording the guid.
+	stopErr error
 }
 
 func (f *tidyShuttleFake) Start(spec shuttleengine.Spec) (string, error) {
@@ -31,7 +33,7 @@ func (f *tidyShuttleFake) Start(spec shuttleengine.Spec) (string, error) {
 
 func (f *tidyShuttleFake) StopStrand(guid string) error {
 	f.stopped = append(f.stopped, guid)
-	return nil
+	return f.stopErr
 }
 
 // tidyHarness drives a daemon's landing count and tidy step over fakes.
@@ -40,9 +42,11 @@ type tidyHarness struct {
 	d       *daemon
 	shuttle *tidyShuttleFake
 	notices []string
-	landed  []string
-	every   int
-	now     time.Time
+	// logged holds the dobby log lines written, without their timestamps.
+	logged []string
+	landed []string
+	every  int
+	now    time.Time
 }
 
 func newTidyHarness(t *testing.T, every int) *tidyHarness {
@@ -66,6 +70,10 @@ func (h *tidyHarness) daemonOver(statePath, tidyDir, stencils string) *daemon {
 			TidyModel:   shuttleengine.ModelChoice{Engine: "b", Model: "sonnet"},
 			StencilsDir: stencils,
 			NearestOrch: func() (string, error) { return "ly:orch", nil },
+			Log: func(_, line string, _ bool) {
+				_, text, _ := strings.Cut(line, " ")
+				h.logged = append(h.logged, text)
+			},
 			Notice: func(_ context.Context, line string) error {
 				h.notices = append(h.notices, line)
 				return nil
@@ -108,6 +116,24 @@ func (h *tidyHarness) writeReport() {
 	}
 }
 
+// seedUnflagged writes a baselined record as an older binary left it: no machine flag, the given tidy in flight and landed since the last tidy.
+func (h *tidyHarness) seedUnflagged(tidy *TidyState, landed []string) {
+	h.t.Helper()
+	err := UpdateState(h.d.geom.StatePath, func(s *State) error {
+		s.LandingsBaselined = true
+		s.CountedLandings = map[string]bool{}
+		for _, slug := range landed {
+			s.CountedLandings[slug] = true
+		}
+		s.LandedSinceTidy = slices.Clone(landed)
+		s.Tidy = tidy
+		return nil
+	})
+	if err != nil {
+		h.t.Fatalf("UpdateState() = %v; want nil", err)
+	}
+}
+
 func TestCountLandingsAndTidy(t *testing.T) {
 	t.Parallel()
 	five := []string{"a", "b", "c", "d", "e"}
@@ -132,6 +158,9 @@ func TestCountLandingsAndTidy(t *testing.T) {
 		wantReport := filepath.Join(h.d.geom.TidyDir, h.now.UTC().Format("20060102T150405Z")+".md")
 		if got := h.state().Tidy.ReportPath; got != wantReport {
 			t.Errorf("Tidy.ReportPath = %q; want %q", got, wantReport)
+		}
+		if want := "board tidy started over 5 landings: " + wantReport; !slices.Equal(h.logged, []string{want}) {
+			t.Errorf("log lines = %q; want the one %q", h.logged, want)
 		}
 	})
 
@@ -191,6 +220,9 @@ func TestCountLandingsAndTidy(t *testing.T) {
 		if !slices.Equal(h.notices, []string{want}) {
 			t.Errorf("notices = %q; want the one %q", h.notices, want)
 		}
+		if !slices.Contains(h.logged, "board tidy report "+reportPath) {
+			t.Errorf("log lines = %q; want the report line", h.logged)
+		}
 		if !slices.Equal(h.shuttle.stopped, []string{"strand-1"}) {
 			t.Errorf("strands stopped = %v; want [strand-1]", h.shuttle.stopped)
 		}
@@ -211,6 +243,9 @@ func TestCountLandingsAndTidy(t *testing.T) {
 		if !slices.Equal(h.notices, []string{want}) {
 			t.Fatalf("notices = %q; want the one %q", h.notices, want)
 		}
+		if !slices.Contains(h.logged, "board tidy timed out: a, b, c, d, e, f") {
+			t.Errorf("log lines = %q; want the timeout line", h.logged)
+		}
 		if !slices.Equal(h.shuttle.stopped, []string{"strand-1"}) {
 			t.Errorf("strands stopped = %v; want [strand-1]", h.shuttle.stopped)
 		}
@@ -225,6 +260,57 @@ func TestCountLandingsAndTidy(t *testing.T) {
 			if !strings.Contains(h.shuttle.started[1].Prompt, "`"+slug+"`") {
 				t.Errorf("second prompt does not name %q", slug)
 			}
+		}
+	})
+
+	t.Run("a record without the machine flag has its list emptied once", func(t *testing.T) {
+		t.Parallel()
+		h := newTidyHarness(t, 1)
+		h.seedUnflagged(nil, []string{"other"})
+		h.step()
+		if got := h.state(); len(got.LandedSinceTidy) != 0 || !got.LandingsMachineOnly || len(h.shuttle.started) != 0 {
+			t.Fatalf("state, agents started = %+v, %d; want an empty list, the flag set and no agent", got, len(h.shuttle.started))
+		}
+		h.landed = []string{"mine"}
+		h.step()
+		if got := h.state().LandedSinceTidy; !slices.Equal(got, []string{"mine"}) {
+			t.Fatalf("LandedSinceTidy = %v; want [mine]", got)
+		}
+		h.step()
+		if got := h.state().LandedSinceTidy; !slices.Equal(got, []string{"mine"}) {
+			t.Errorf("LandedSinceTidy = %v after a step with no new landing; want it as it was", got)
+		}
+	})
+
+	t.Run("a tidy in flight settles its own slugs before the list is emptied", func(t *testing.T) {
+		t.Parallel()
+		h := newTidyHarness(t, 5)
+		reportPath := filepath.Join(h.d.geom.TidyDir, "report.md")
+		if err := os.MkdirAll(h.d.geom.TidyDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		h.seedUnflagged(&TidyState{StrandGUID: "strand-0", ReportPath: reportPath, Deadline: h.now.Add(time.Hour)}, []string{"other"})
+		h.step()
+		if got := h.state(); !slices.Equal(got.LandedSinceTidy, []string{"other"}) || got.LandingsMachineOnly {
+			t.Fatalf("state = %+v; want the list kept and the flag unset while the tidy is in flight", got)
+		}
+		h.writeReport()
+		h.step()
+		if got := h.state(); got.Tidy != nil || len(got.LandedSinceTidy) != 0 || got.LandingsMachineOnly {
+			t.Fatalf("state = %+v; want the tidy settled, the list cleared and the flag still unset", got)
+		}
+		h.step()
+		if got := h.state(); len(got.LandedSinceTidy) != 0 || !got.LandingsMachineOnly {
+			t.Errorf("state = %+v; want nothing new emptied and the flag set", got)
+		}
+	})
+
+	t.Run("a record read for the first time is baselined and flagged", func(t *testing.T) {
+		t.Parallel()
+		h := newTidyHarness(t, 5)
+		h.step()
+		if got := h.state(); !got.LandingsBaselined || !got.LandingsMachineOnly {
+			t.Errorf("state = %+v; want baselined and flagged", got)
 		}
 	})
 }

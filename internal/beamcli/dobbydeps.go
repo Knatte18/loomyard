@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -65,9 +64,9 @@ func registerDobby(runProcDir string, geom dobbyengine.Geometry) error {
 	return runproc.Register(runProcDir, owner, runproc.SelfRecord(runproc.RoleDobby))
 }
 
-// hubDobbyDeps fills every seam of dobbyengine.Run over the hub of prime, for the dobby of geom, with its log lines written to logOut.
+// hubDobbyDeps fills every seam of dobbyengine.Run over the hub of prime, for the dobby of geom, with its log lines appended to the file the dobby tells.
 // The dobby's own working directory is the hub root, so every path comes from prime and geom, and only the pass spawn starts its process in the prime's anchor.
-func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry, logOut io.Writer) (dobbyengine.Deps, error) {
+func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengine.Deps, error) {
 	worktree, err := lymcwd.ResolveWorktree(geom.WorktreeRoot)
 	if err != nil {
 		return dobbyengine.Deps{}, err
@@ -99,7 +98,7 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry, logOut io.W
 			return openDobbyWatch(dobbyWatchDirs(prime, pause.RecordPath, boardDir))
 		},
 		Machine:       machinename.Name,
-		CheckBinary:   selfexec.New().Check,
+		CheckBinary:   selfexec.New().CheckWith,
 		ProbeInterval: probe,
 		Owner: func() (string, error) {
 			read, err := owners()
@@ -151,8 +150,14 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry, logOut io.W
 			coverage, err := pauserecord.ReadCoverage(pause.RecordPath, slug, time.Now())
 			return coverage.Covered, err
 		},
-		Landings:    func() ([]string, error) { return battencli.DobbyLandings(prime, geom, parents) },
-		Log:         func(line string) { _, _ = fmt.Fprintln(logOut, line) },
+		Landings: machineLandings(machinename.Name, func(machine string) ([]string, error) {
+			return battencli.DobbyLandings(prime, geom, parents, machine)
+		}),
+		Log: func(path, line string, rotate bool) {
+			if err := dobbyengine.AppendLog(path, line, rotate); err != nil {
+				logger.Debug("beamcli: a dobby log line was not written", "path", path, "error", err)
+			}
+		},
 		StencilsDir: fabricengine.StencilsDir(prime.HubPath),
 		NearestOrch: func() (string, error) {
 			parent, err := hubgeom.NearestLiveOrch(worktree, orchcli.OrchLive)
@@ -160,6 +165,8 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry, logOut io.W
 		},
 	}
 	if geom.Slug != "" {
+		// The removed worktree's config is gone by the time this stops a strand, so the runner is built over the prime.
+		deps.PrimeTidyShuttle = &runnerTidyShuttle{worktree: prime}
 		deps.CanLand = func() (dobbyengine.LandReading, error) { return beamLandReading(prime, geom.Slug) }
 	}
 	if choice, err := resolveTidyModel(dirs); err != nil {
@@ -423,4 +430,16 @@ func (s *runnerTidyShuttle) StopStrand(guid string) error {
 		return s.err
 	}
 	return s.runner.StopStrand(guid)
+}
+
+// machineLandings returns a Landings seam that reads this machine's name on each call and passes it to read.
+// A name that cannot be read fails the call, so no landing is told apart from another machine's by a missing name.
+func machineLandings(machine func() (string, error), read func(machine string) ([]string, error)) func() ([]string, error) {
+	return func() ([]string, error) {
+		name, err := machine()
+		if err != nil {
+			return nil, fmt.Errorf("this machine's name is unknown, so its landings cannot be told apart: %w; way forward: give the machine a hostname", err)
+		}
+		return read(name)
+	}
 }

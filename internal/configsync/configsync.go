@@ -831,6 +831,7 @@ func primeConfig(primeBaseDir, module string) []byte {
 //
 // A seed-only module is reconciled as a full file: a present one is never rewritten, and an absent one is seeded whole.
 // Every other module's file is a sparse base over the template: a present file runs the module's Migrate hook and is pruned of keys the template lacks, and nothing is ever added.
+// A module's MigrateHubBase hook runs right after Migrate on a present hub file, and over the bytes of a prime or legacy seed on an absent one, so a hub file seeded in a pass holds what the hook adds at once, since the build stamp gates the next reconcile; no other reconcile path runs it.
 // Its per-name entries equal to the template's are dropped on every pass.
 // An absent file of a module with open maps, or one marked SeedsFromPrime, is seeded from the prime's copy when that copy exists and parses;
 // any other hub-wide module never reads the prime, since its per-worktree copy was never in effect.
@@ -937,6 +938,11 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]R
 			default:
 				mergedBytes = []byte(configengine.SparseBaseHeader)
 			}
+			if reconcileErr == nil && m.MigrateHubBase != nil && (seed == SeedPrime || seed == SeedLegacy) {
+				var seeded []string
+				mergedBytes, seeded, reconcileErr = m.MigrateHubBase(mergedBytes)
+				migrated = append(migrated, seeded...)
+			}
 		default:
 			mergedBytes = existing
 			if m.Migrate != nil {
@@ -944,6 +950,14 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]R
 				if err != nil {
 					return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("migrate %s: %w", m.Name, err)}
 				}
+			}
+			if m.MigrateHubBase != nil {
+				var seeded []string
+				mergedBytes, seeded, err = m.MigrateHubBase(mergedBytes)
+				if err != nil {
+					return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("seed the hub base of %s: %w", m.Name, err)}
+				}
+				migrated = append(migrated, seeded...)
 			}
 			var template []byte
 			template, reconcileErr = effectiveTemplateOf(m, mergedBytes, true, cfgPath)

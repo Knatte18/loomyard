@@ -16,6 +16,7 @@
 // Under go test the exec seam returns an error instead of exec'ing, so a test binary is never replaced.
 // On Windows there is no exec: the identity stat fails, every Check reads as unchanged and the process keeps running.
 //
+// CheckWith is Check with two callbacks: beforeExec runs right before the exec, once the two-sighting rule and the failed-identity rule have passed, and failed runs with the exec's error after a failed exec, once that identity is marked failed, so at most once per identity.
 // Callers are long-lived processes, the pane processes and the orch watcher daemon; each calls Check from its own poll and the package adds no wake of its own (PATTERN-daemon-wakeups).
 //
 // Leaf rule: production code imports the standard library and internal/logger only, enforced by leaf_enforcement_test.go.

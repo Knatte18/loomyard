@@ -1,11 +1,13 @@
 //go:build tier0
 
-// dobby_test.go pins the pieces of dobby's hub wiring that need no hub: the run-process registration of the dobby and the error text read from what a pass printed.
+// dobby_test.go pins the pieces of dobby's hub wiring that need no hub: the run-process registration of the dobby, the error text read from what a pass printed and the machine-named landings seam.
 
 package beamcli
 
 import (
 	"errors"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
@@ -65,4 +67,47 @@ func TestPassErrorText(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMachineLandings(t *testing.T) {
+	t.Parallel()
+
+	t.Run("PassesTheNameToTheRead", func(t *testing.T) {
+		t.Parallel()
+		var readFor string
+		landings := machineLandings(
+			func() (string, error) { return "m1", nil },
+			func(machine string) ([]string, error) {
+				readFor = machine
+				return []string{"a", "b"}, nil
+			},
+		)
+
+		got, err := landings()
+
+		if err != nil || !reflect.DeepEqual(got, []string{"a", "b"}) || readFor != "m1" {
+			t.Errorf("landings() = %v, %v with read for %q; want [a b], nil for m1", got, err, readFor)
+		}
+	})
+
+	t.Run("FailingNameReadNamesTheWayForwardAndReadsNothing", func(t *testing.T) {
+		t.Parallel()
+		var read bool
+		landings := machineLandings(
+			func() (string, error) { return "", errors.New("hostname unreadable") },
+			func(string) ([]string, error) {
+				read = true
+				return nil, nil
+			},
+		)
+
+		_, err := landings()
+
+		if err == nil || !strings.Contains(err.Error(), "hostname unreadable") || !strings.Contains(err.Error(), "give the machine a hostname") {
+			t.Errorf("landings() error = %v; want one naming the read's error and giving the machine a hostname", err)
+		}
+		if read {
+			t.Error("landings() called read; want it never called after a failed name read")
+		}
+	})
 }

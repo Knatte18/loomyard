@@ -88,24 +88,37 @@
 // `status` prints, once, the dobby section a beam's window draws, for the prime and for each local beam `hubgeom.DobbyStart` lists, the prime's first.
 // Each entry carries the worktree's label, the structured `dobbyengine.View` that `battencli.DobbyViewReader` reads, and the lines `battencli.DobbyLines` renders from it with each run's cells from `battencli.DobbyRunCells`.
 // It also carries the beam's orch, `orchView`: whether the orch strand is live (`orchcli.OrchLive`), whether its watcher is live (`orchengine.WatcherLive` over `orchcli.PrimePaths`) and the session id its state records.
+// The envelope also carries `adopt_check`, the `adoptcli.CheckView` that `adoptcli.ReadCheckView` reads from the hub's adopt scratch directory: the adopt check's state, the tier in flight, the tiers done and the paths of its log and output, absent when the hub holds no record of one, and a read error joins the returned error like a dobby's.
 // A view that does not read carries its error in its entry, the others still read, and the verb fails naming each.
 // It starts and changes nothing; its one write is the empty orch directory the watcher probe creates.
 //
 // # dobby
 //
 // `dobby <worktree root>` is hidden and internal: `dobbyengine.SpawnDetached` launches it, with the hub root as its working directory.
-// It resolves the prime, registers this process through `registerDobby`, which writes `runproc.SelfRecord(runproc.RoleDobby)` under the beam's slug, or `runproc.HubOwner` for the prime, so the pair teardown of a landed beam ends that beam's dobby, and runs `dobbyengine.Run` over `hubDobbyDeps` under a SIGINT/SIGTERM context.
-// It prints `already_running` when the lock is held.
+// It resolves the prime and runs `dobbyengine.Run` over `hubDobbyDeps` under a SIGINT/SIGTERM context.
+// `registerDobby` runs only once `Run` holds the lock, through `Deps.Locked`: it writes `runproc.SelfRecord(runproc.RoleDobby)` under the beam's slug, or `runproc.HubOwner` for the prime, so the pair teardown of a landed beam ends that beam's dobby.
+// It prints `already_running` when the lock stays held past the lock wait, with nothing registered.
+//
+// Each exit it takes before `Run` leaves a trace, through `runDobbyWith`, which takes the wiring and the notice as seams:
+//   - A refusal of a worktree that resolved appends `start refused: <error>` to that worktree's `dobby.log`, where its `.lym/beam` directory exists, since no append creates one; a refusal before the worktree resolved keeps only its envelope.
+//   - A wiring failure appends `start failed: wire the dobby over the hub: <error>` to the beam's `dobby.log`.
+//   - Either of them in a process that reads as a re-exec of the dobby there, by `dobbyengine.ReadsAsReexec` over the state record, also posts a notice naming the cause and `lym beam start`; the wiring failure posts none when the worktree no longer resolves.
+//
+// Where `selfexec` execs, off Windows and outside a test binary, the process moves its standard output and error onto `dobby.out` through `reopenStdio` before anything else writes, so a dobby whose descriptors an older binary pointed at `dobby.log` leaves that file to its own lines.
+// The holder of the dobby lock also rotates `dobby.out` once it holds the lock, and moves its output onto the fresh file; a process that loses the lock renames nothing.
 //
 // A path that is neither the prime nor a local pair whose origin record carries the beam mark, read as `hubgeom.DobbyStart` reads it, is refused naming `lym beam start`, before anything is registered or locked.
 // `hubgeom.DobbyGeometry` alone places any worktree with a directory, a task pair's included, so a hand invocation can do no more than `lym beam start` does: a second invocation exits on the held lock, and one on a worktree another machine owns exits on the loop's owner read.
+//
+// A beam's dobby also gets `Deps.PrimeTidyShuttle`, a `runnerTidyShuttle` over the prime's location, with which it stops its board-tidy agent when its worktree is gone; the removed worktree's own config no longer exists, and the prime's dobby is given none.
+// `hubDobbyDeps` still runs before the dobby holds its lock, so a fresh dobby is unregistered from its spawn until it does, at most the wiring time plus `lock.ProbeGrace`, and a beam dobby spawned inside a teardown of its own beam escapes that teardown; the worktree-gone exit ends it.
 //
 // Bound: `runproc.End` of the beam's own slug, from a cancel or an owner pause of the beam's landing run, also ends its dobby; by then `BeamLandRefusal` has left the beam no members, so it drives nothing, and `lym beam start` brings it back if the beam stays.
 //
 // # The dobby's seams
 //
 // `hubDobbyDeps` fills every seam of the engine from told paths, the dobby's working directory being the hub root and never a worktree:
-//   - the local batten status files of the prime and the board's tasks through `battencli.DobbyRuns`, `battencli.DobbyLandings` and `battencli.DobbyTasks`, which a beam's window reads too, and each run's parent through `hubgeom.ParentOf`;
+//   - the local batten status files of the prime and the board's tasks through `battencli.DobbyRuns`, `battencli.DobbyLandings`, which reads the landings of this machine's name only, and `battencli.DobbyTasks`, which a beam's window reads too, and each run's parent through `hubgeom.ParentOf`;
 //   - `battencli.DobbyRuns` also marks each run `NoSlot` through the run's board entry, so a pawl run without its landing hold takes no slot under `max_runs`;
 //   - the "can land" reading of a beam's dobby, `CanLand`, through `beamLandReading`: `battencli.ReadBeamLandBlockers` says whether nothing works under the beam, and the parent through `hubgeom.ParentOf` with `Owners.Effective` and `Owners.AdoptSubject` says which other machine owns it and what `lym adopt` takes; the prime's dobby is given none;
 //   - the board and the owners through `boardengine`, and the pause record through `pauserecord`;
@@ -114,6 +127,6 @@
 //   - the owner pause and the parent lock release through `tendercli` and `battencli`;
 //   - the notice through `orchcli.NotifyFromScoped`, signed `ly:DOBBY` for the prime and `ly:<slug>:DOBBY` for a beam;
 //   - `beam.yaml` through `dobbyengine.LoadConfig`, and the binary check through `internal/selfexec`;
-//   - the log line onto the process's standard output, which `dobbyengine.SpawnDetached` points at `dobby.log` in the worktree's `.lym/beam/` directory;
+//   - each log line appended to `dobby.log` in the worktree's `.lym/beam/` directory by its own open, through `dobbyengine.AppendLog`, while the process's raw standard output and error, which `dobbyengine.SpawnDetached` points at `dobby.out` there, go to that other file;
 //   - the board-tidy agent's shuttle runner from the worktree's own reed geometry, its model `sonnet[medium]` resolved through the model registry, and the stencils directory.
 package beamcli

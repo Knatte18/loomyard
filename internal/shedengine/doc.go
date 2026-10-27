@@ -56,6 +56,7 @@
 // so the count reads 1 once the producer's generation has started, whatever the previous generation spent.
 // A history entry records its call's gate count in gate_attempts and its gate spans in gate_spans, both taken from the OutputPointer and omitted when the call recorded none.
 // A GateSpan is a plain struct of the gate entry's name, a kind (gate, held or rework) and RFC 3339 start and end times with fractional seconds, so this package imports nothing for it.
+// A told Shed.Machine is stamped as machine on each entry the shed appends; batten tells it and loom and darn do not.
 // A fold of consecutive identical exempt Stucks appends the folded call's spans to the surviving entry's own, and the spans take no part in deciding whether two entries fold.
 // See this package's own routing and bounce-budget documentation for the full design and its
 // rationale; this package documentation states the contract, not the argument for it.

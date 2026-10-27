@@ -6,6 +6,8 @@ package dobbyengine
 
 import (
 	"errors"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -346,4 +348,50 @@ func TestLive(t *testing.T) {
 			t.Errorf("Live() = (%v, %v); want (true, nil)", live, err)
 		}
 	})
+}
+
+func TestSpawnDetached_SendsOutputToOutPath(t *testing.T) {
+	t.Parallel()
+	beamDir := filepath.Join(t.TempDir(), ".lym", "beam")
+	if err := os.MkdirAll(beamDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	geom := Geometry{
+		HubRoot:       "/hub",
+		WorktreeRoot:  "/hub/prime",
+		LymExecutable: "/bin/lym",
+		LockPath:      filepath.Join(beamDir, LockFileName),
+		LogPath:       filepath.Join(beamDir, LogFileName),
+		OutPath:       filepath.Join(beamDir, OutFileName),
+	}
+	writeFile(t, geom.LogPath, "own line\n")
+
+	var captured *exec.Cmd
+	err := spawnDetached(geom, func(cmd *exec.Cmd) error {
+		captured = cmd
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("spawnDetached() = %v; want nil", err)
+	}
+	if _, err := os.Stat(geom.OutPath); err != nil {
+		t.Errorf("stat of OutPath = %v; want it created", err)
+	}
+	for name, stream := range map[string]any{"stdout": captured.Stdout, "stderr": captured.Stderr} {
+		if file, ok := stream.(*os.File); !ok || file.Name() != geom.OutPath {
+			t.Errorf("command %s = %v; want the file opened at OutPath", name, stream)
+		}
+	}
+	if want := []string{"/bin/lym", "beam", "dobby", "/hub/prime"}; !slices.Equal(captured.Args, want) || captured.Dir != "/hub" {
+		t.Errorf("command = %v in %q; want %v in /hub", captured.Args, captured.Dir, want)
+	}
+	if got := readFile(t, geom.LogPath); got != "own line\n" {
+		t.Errorf("dobby.log = %q; want it untouched", got)
+	}
+
+	failure := errors.New("no such binary")
+	if err := spawnDetached(geom, func(*exec.Cmd) error { return failure }); !errors.Is(err, failure) {
+		t.Errorf("spawnDetached() with a failing start = %v; want %v", err, failure)
+	}
 }

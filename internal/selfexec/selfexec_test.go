@@ -78,12 +78,14 @@ func TestWatcher_Check(t *testing.T) {
 			}
 			w := newWatcher("/bin/self", stat, exec)
 			var answers []bool
+			var beforeCalls int
+			var failedErrs []error
 			for range tt.steps[1:] {
 				if tt.replaced {
 					answers = append(answers, w.Replaced())
 					continue
 				}
-				w.Check()
+				w.CheckWith(func() { beforeCalls++ }, func(err error) { failedErrs = append(failedErrs, err) })
 			}
 			if !reflect.DeepEqual(answers, tt.wantAnswers) {
 				t.Fatalf("Replaced answers = %v, want %v", answers, tt.wantAnswers)
@@ -97,6 +99,17 @@ func TestWatcher_Check(t *testing.T) {
 			for _, call := range calls {
 				if call.path != "/bin/self" || !reflect.DeepEqual(call.argv, os.Args) || !reflect.DeepEqual(call.env, os.Environ()) {
 					t.Errorf("exec call = %+v, want the recorded path, os.Args and os.Environ()", call)
+				}
+			}
+			if beforeCalls != tt.wantExec {
+				t.Errorf("beforeExec calls = %d, want %d", beforeCalls, tt.wantExec)
+			}
+			if len(failedErrs) != tt.wantWarn {
+				t.Errorf("failed calls = %d, want %d", len(failedErrs), tt.wantWarn)
+			}
+			for _, err := range failedErrs {
+				if !errors.Is(err, tt.execErr) {
+					t.Errorf("failed error = %v, want the exec's error %v", err, tt.execErr)
 				}
 			}
 			if got := strings.Count(buf.String(), "could not re-exec"); got != tt.wantWarn {

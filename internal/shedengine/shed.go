@@ -74,6 +74,9 @@ type Shed struct {
 	// It is told;
 	// nil means no check.
 	LockedCheck func() error
+	// Machine is the name of the machine driving this run, stamped on every history entry the shed appends.
+	// It is told and never read by this package; the empty string stamps nothing.
+	Machine string
 }
 
 // RunOutcome is the whole run's terminal classification.

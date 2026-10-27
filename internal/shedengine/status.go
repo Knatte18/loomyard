@@ -118,6 +118,9 @@ type HistoryEntry struct {
 	// Reason is the entry gate's text on a skipped entry, empty on every other entry.
 	// A status file written before the field existed decodes as empty.
 	Reason string `json:"reason,omitempty"`
+	// Machine is the name of the machine whose shed appended this entry, empty on an entry written by a shed told none and on a goto or resume entry.
+	// A status file written before the field existed decodes as empty.
+	Machine string `json:"machine,omitempty"`
 }
 
 // Status is the whole status file.

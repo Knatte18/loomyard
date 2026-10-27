@@ -5,6 +5,8 @@ package dobbyengine
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -13,7 +15,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/state"
 )
 
 const (
@@ -21,6 +25,8 @@ const (
 	wakeFloor = time.Second
 	// idleCeiling is the longest the timer waits while no run is in flight.
 	idleCeiling = time.Minute
+	// heartbeatInterval is the gap after which the next tick writes a heartbeat line, so a dead dobby shows in its log.
+	heartbeatInterval = 10 * time.Minute
 )
 
 // ErrDobbyRunning is returned by Run when another dobby holds this worktree's lock.
@@ -54,7 +60,17 @@ type Deps struct {
 	// Owner returns the machine that owns this dobby's beam, the prime owner for the prime; empty means no other machine owns it.
 	Owner func() (string, error)
 	// CheckBinary re-execs onto a changed lym binary and returns when the binary is unchanged.
-	CheckBinary func()
+	// It calls beforeExec right before an exec and failed with the error of an exec that failed.
+	CheckBinary func(beforeExec func(), failed func(error))
+	// StartTicks returns this process's start time as `proc.StartTime` reads it, empty when unreadable; nil reads it for the process's own pid.
+	StartTicks func() string
+	// PrimeTidyShuttle stops the board-tidy agent of a beam dobby whose worktree is gone, over the prime's location; nil stops nothing.
+	PrimeTidyShuttle TidyShuttle
+	// ReexecLockWait is how long a re-exec waits for the dobby lock; zero means ten seconds.
+	ReexecLockWait time.Duration
+	// Locked runs once the lock is held, before the state record is written; nil does nothing.
+	// An error from it ends the dobby.
+	Locked func() error
 	// ProbeInterval is batten's `notice_probe_s`; a value below one second is floored to it with one Warn.
 	ProbeInterval time.Duration
 	// Tick is an extra per-tick hook that runs after the scheduling steps: it reports whether anything it drives is in flight for the loop's backoff.
@@ -87,7 +103,7 @@ type Deps struct {
 	StatusExists func(slug string) (bool, error)
 	// PauseCovers reports whether a live pause entry covers the hub or slug.
 	PauseCovers func(slug string) (bool, error)
-	// Landings returns the slugs of the runs whose parent worktree is this dobby's own and whose batten history holds a Land Done, whatever the run's state.
+	// Landings returns the slugs of the runs whose parent worktree is this dobby's own and whose batten history holds a Land Done naming this machine, whatever the run's state.
 	// A nil Landings, or a nil TidyShuttle, leaves the board tidy off.
 	Landings func() ([]string, error)
 	// TidyShuttle starts and stops the board-tidy agent.
@@ -101,44 +117,118 @@ type Deps struct {
 	// CanLand reads whether the beam of this dobby can land, and who owns its parent.
 	// A nil CanLand posts no "can land" notice; the prime's dobby posts none whatever it returns.
 	CanLand func() (LandReading, error)
-	// Log writes one line to the dobby's log: one for each task start and each pass spawned.
+	// Log writes one line to the dobby's log file at path; rotate is set for the dobby's own lines while it holds its lock.
 	// A nil Log logs nothing.
-	Log func(line string)
+	Log func(path, line string, rotate bool)
+}
+
+// reexecLockWait is how long a re-exec waits for the dobby lock, which the process it replaced releases as it execs.
+const reexecLockWait = 10 * time.Second
+
+// stoppedWayForward ends the log line and the notice of a dobby that stopped on an error.
+const stoppedWayForward = "; way forward: fix the cause, then run lym beam start"
+
+// ReadsAsReexec reports whether the state record at statePath names this process as the dobby that last recorded itself: it holds pid, and holds startTicks or no start ticks.
+// A directory that does not exist, or a record that is absent, reads as false, and nothing is created.
+// A record without start ticks was written before they existed, so the first re-exec onto a binary that writes them reads as true.
+// A fresh dobby that reused such a record's pid after a reboot reads as a re-exec as well.
+func ReadsAsReexec(statePath string, pid int, startTicks string) (bool, error) {
+	if _, err := os.Stat(filepath.Dir(statePath)); errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	record, found, err := ReadState(statePath)
+	if err != nil {
+		return false, err
+	}
+	return found && record.PID == pid && (record.StartTicks == "" || record.StartTicks == startTicks), nil
 }
 
 // Run drives one dobby for geom until ctx ends or another machine owns the beam.
-// It waits lock.ProbeGrace for geom.LockPath and returns ErrDobbyRunning when another dobby still holds it.
+// A start that reads as a re-exec of this process waits Deps.ReexecLockWait for geom.LockPath, any other start lock.ProbeGrace, and Run returns ErrDobbyRunning when another dobby still holds it.
 // It reads the beam's owner at start and on every probe tick, and returns nil, logging why, when another machine owns it.
-// A state record holding this process's pid is a re-exec, which owes no new full pass; any other pid, or no record, is a start.
+// A start that does not read as a re-exec owes every run a full pass; a re-exec owes none.
 // A tick that fails is logged once per episode and the loop goes on; a cancelled context ends it after the tick in flight.
+// Every way the dobby ends leaves a line in the log, and an error after a re-exec posts a notice.
 func Run(ctx context.Context, geom Geometry, deps Deps) error {
-	if err := os.MkdirAll(filepath.Dir(geom.LockPath), 0o755); err != nil {
-		return err
-	}
-	held, acquired, err := lock.AcquireWriteLockWithin(geom.LockPath, lock.ProbeGrace)
-	if err != nil {
-		return err
-	}
-	if !acquired {
-		return ErrDobbyRunning
-	}
-	defer func() { _ = held.Release() }()
-
 	d := &daemon{
 		geom: geom, deps: deps, probe: deps.ProbeInterval,
 		flights: map[string]flight{}, childSeen: map[string]time.Time{}, wasCovered: map[string]bool{}, liftPending: map[string]bool{},
 	}
+	defer d.releaseLock()
 	if d.probe < wakeFloor {
 		logger.Warn("dobbyengine: the probe interval is below the floor and is floored", "key", "notice_probe_s", "floor", wakeFloor, "configured", d.probe)
 		d.probe = wakeFloor
 	}
+	d.startTicks = deps.ownStartTicks()
+	reexec, err := ReadsAsReexec(geom.StatePath, os.Getpid(), d.startTicks)
+	if err != nil {
+		d.logOwn(deps.Now(), "dobby: stopped on error: "+err.Error()+stoppedWayForward)
+		return err
+	}
+	err = d.run(ctx, reexec)
+	if err != nil && !errors.Is(err, ErrDobbyRunning) {
+		d.logOwn(deps.Now(), "dobby: stopped on error: "+err.Error()+stoppedWayForward)
+		if reexec {
+			d.post(ctx, fmt.Sprintf("%s: the dobby stopped on an error after a re-exec: %v%s", geom.WorktreeName, err, stoppedWayForward))
+		}
+	}
+	return err
+}
+
+// ownStartTicks returns this process's start ticks through StartTicks, or from the process table when it is nil.
+func (deps Deps) ownStartTicks() string {
+	if deps.StartTicks != nil {
+		return deps.StartTicks()
+	}
+	ticks, _ := proc.StartTime(os.Getpid())
+	return ticks
+}
+
+// run takes the lock, records the start and drives the loop; reexec tells whether the start reads as a re-exec.
+func (d *daemon) run(ctx context.Context, reexec bool) error {
+	wait := lock.ProbeGrace
+	if reexec {
+		wait = d.deps.ReexecLockWait
+		if wait == 0 {
+			wait = reexecLockWait
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(d.geom.LockPath), 0o755); err != nil {
+		return err
+	}
+	held, acquired, err := lock.AcquireWriteLockWithin(d.geom.LockPath, wait)
+	if err != nil {
+		return err
+	}
+	if !acquired {
+		d.logOwn(d.deps.Now(), "dobby: start refused: another dobby holds the lock")
+		if reexec {
+			d.postRefusedReexec(ctx)
+		}
+		return ErrDobbyRunning
+	}
+	d.held = held
+
+	if d.deps.Locked != nil {
+		if err := d.deps.Locked(); err != nil {
+			return err
+		}
+	}
 	if err := d.recordStart(); err != nil {
 		return err
 	}
+	if reexec {
+		d.logOwn(d.deps.Now(), fmt.Sprintf("start re-exec pid %d", os.Getpid()))
+	} else {
+		d.logOwn(d.deps.Now(), fmt.Sprintf("start fresh pid %d", os.Getpid()))
+	}
+	d.heartbeat(d.deps.Now(), nil)
 
 	var events <-chan struct{}
-	if deps.Watch != nil {
-		watched, closeWatch, err := deps.Watch()
+	if d.deps.Watch != nil {
+		watched, closeWatch, err := d.deps.Watch()
 		if err != nil {
 			logger.Warn("dobbyengine: the file watch did not open; the timer alone drives the loop", "error", err)
 		} else {
@@ -155,6 +245,22 @@ type daemon struct {
 	deps Deps
 	// probe is the floored probe interval.
 	probe time.Duration
+	// startTicks is this process's start time, written beside every pid the dobby records.
+	startTicks string
+	// held is the dobby lock once taken, nil before.
+	held *lock.FileLock
+	// keptTidy is the tidy agent in flight the state record last showed, which a beam dobby whose worktree is gone stops.
+	keptTidy  *TidyState
+	stateRead logger.Episode
+	// loggedRuns holds the label last logged for each listed run, by slug, in memory only.
+	loggedRuns map[string]string
+	// primeOwed reports that a heartbeat could not read the runs before the labels were recorded, so the next run listing records them without logging a change.
+	primeOwed bool
+	// lastHeartbeat is when the last heartbeat line was written.
+	lastHeartbeat time.Time
+	// tickFailLogged and ownerUnreadable report whether the standing failure episode of the ticks or the owner read has logged its line.
+	tickFailLogged  bool
+	ownerUnreadable bool
 
 	sleepWatch pauserecord.SleepWatch
 	owesAll    bool
@@ -186,21 +292,123 @@ type daemon struct {
 	runs []RunView
 }
 
-// recordStart reads the state record and decides whether this run of the loop is a start or a re-exec, recording the pid and start time on a start.
+// releaseLock releases the dobby lock when it is held.
+func (d *daemon) releaseLock() {
+	if d.held != nil {
+		_ = d.held.Release()
+		d.held = nil
+	}
+}
+
+// logOwn writes one line to the dobby's log, stamped with at, rotating the file only while this dobby holds its lock.
+func (d *daemon) logOwn(at time.Time, text string) {
+	if d.deps.Log != nil {
+		d.deps.Log(d.geom.LogPath, at.UTC().Format(time.RFC3339)+" "+text, d.held != nil)
+	}
+}
+
+// post sends one line through the Notice seam; a failed post is logged at Warn.
+func (d *daemon) post(ctx context.Context, line string) {
+	if d.deps.Notice == nil {
+		return
+	}
+	if err := d.deps.Notice(ctx, line); err != nil {
+		logger.Warn("dobbyengine: a dobby notice was not posted", "worktree", d.geom.WorktreeName, "error", err)
+	}
+}
+
+// postRefusedReexec posts the notice for a re-exec that could not take its lock, unless the state record no longer holds this pid, which means another dobby runs.
+func (d *daemon) postRefusedReexec(ctx context.Context) {
+	record, found, err := ReadState(d.geom.StatePath)
+	if err != nil {
+		logger.Warn("dobbyengine: the state record is unreadable after a refused re-exec; no notice is posted", "worktree", d.geom.WorktreeName, "error", err)
+		return
+	}
+	if found && record.PID == os.Getpid() {
+		d.post(ctx, d.geom.WorktreeName+": the dobby could not take its lock after a re-exec; way forward: run lym beam status, and once it shows the dobby not alive, run lym beam start")
+	}
+}
+
+// recordStart reads the state record under the held lock and records this process as the dobby.
+// A record with this pid and these start ticks owes nothing; one with this pid and no ticks owes a full pass and gains the ticks; any other start owes a full pass and rewrites the pid, the start time and the ticks.
 func (d *daemon) recordStart() error {
 	record, found, err := ReadState(d.geom.StatePath)
 	if err != nil {
 		return err
 	}
-	if found && record.PID == os.Getpid() {
+	d.keptTidy = record.Tidy
+	own := found && record.PID == os.Getpid()
+	if own && record.StartTicks == d.startTicks {
 		return nil
 	}
 	d.owesAll = true
+	if own && record.StartTicks == "" {
+		return UpdateState(d.geom.StatePath, func(s *State) error {
+			s.StartTicks = d.startTicks
+			return nil
+		})
+	}
 	now := d.deps.Now()
 	return UpdateState(d.geom.StatePath, func(s *State) error {
-		s.PID, s.StartTime = os.Getpid(), now.UTC().Format(time.RFC3339)
+		s.PID, s.StartTime, s.StartTicks = os.Getpid(), now.UTC().Format(time.RFC3339), d.startTicks
 		return nil
 	})
+}
+
+// worktreeGone reports whether this is a beam dobby whose worktree's git link no longer exists, which a teardown of the beam removes with its worktree.
+// The worktree's root is no mark, because every state write recreates the record's directory; the dobby's own writes never recreate the git link.
+// The prime's dobby never reads as gone.
+func (d *daemon) worktreeGone() bool {
+	if d.geom.Slug == "" {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(d.geom.WorktreeRoot, ".git"))
+	return errors.Is(err, fs.ErrNotExist)
+}
+
+// readKeptTidy reads the state record's tidy in flight without creating a directory; the prime's dobby, which never takes the exit, reads nothing.
+// A record that does not decode reads as absent with one Warn.
+func (d *daemon) readKeptTidy() (*TidyState, error) {
+	if d.geom.Slug == "" {
+		return d.keptTidy, nil
+	}
+	record, _, err := state.ReadJSON[State](d.geom.StatePath, lockPath(d.geom.StatePath))
+	if errors.Is(err, state.ErrDecode) {
+		logger.Warn("dobbyengine: the state record does not decode and reads as absent", "path", d.geom.StatePath, "error", err)
+		return nil, nil
+	}
+	return record.Tidy, err
+}
+
+// rememberKeptTidy keeps the tidy a read found, so a dobby whose worktree vanishes can stop the agent the last tick saw.
+// A failed read is logged once per episode and keeps the earlier one.
+func (d *daemon) rememberKeptTidy(kept *TidyState, readErr error) {
+	if readErr != nil {
+		d.stateRead.Fail("dobbyengine: the state record is unreadable; the dobby goes on", "worktree", d.geom.WorktreeName, "error", readErr)
+		return
+	}
+	d.stateRead.Recover("dobbyengine: the state record reads again", "worktree", d.geom.WorktreeName)
+	d.keptTidy = kept
+}
+
+// exitWorktreeGone leaves the prime's dobby log the reason a beam dobby ends and stops the tidy agent the dobby last saw in flight.
+// It touches nothing at the removed worktree's path.
+func (d *daemon) exitWorktreeGone() {
+	logPrime := func(text string) {
+		if d.deps.Log != nil {
+			d.deps.Log(d.geom.PrimeLogPath, d.deps.Now().UTC().Format(time.RFC3339)+" "+text, false)
+		}
+	}
+	logPrime(fmt.Sprintf("stop: the worktree of beam %s is gone", d.geom.Slug))
+	if d.keptTidy == nil || d.deps.PrimeTidyShuttle == nil {
+		return
+	}
+	guid := d.keptTidy.StrandGUID
+	if err := d.deps.PrimeTidyShuttle.StopStrand(guid); err != nil {
+		logPrime(fmt.Sprintf("the board-tidy agent %s of beam %s did not stop: %v; way forward: lym reed remove %s", guid, d.geom.Slug, err, guid))
+		return
+	}
+	logPrime(fmt.Sprintf("stopped the board-tidy agent %s of beam %s", guid, d.geom.Slug))
 }
 
 // loop ticks and waits until ctx ends or another machine owns the beam.
@@ -208,27 +416,60 @@ func (d *daemon) loop(ctx context.Context, events <-chan struct{}) error {
 	var wait time.Duration
 	event := true
 	for ctx.Err() == nil {
+		if d.worktreeGone() {
+			d.exitWorktreeGone()
+			return nil
+		}
 		now := d.deps.Now()
 		d.probeDue = d.lastProbe.IsZero() || now.Sub(d.lastProbe) >= d.probe
 		if d.probeDue {
 			d.lastProbe = now
 			if elsewhere, owner := d.beamOwnedElsewhere(); elsewhere {
 				logger.Info("dobbyengine: another machine owns this beam; the dobby exits", "worktree", d.geom.WorktreeName, "owner", owner)
+				subject := d.geom.Slug
+				if subject == "" {
+					subject = "root"
+				}
+				d.logOwn(now, fmt.Sprintf("stop: another machine owns this beam (%s); lym adopt %s takes it over here", owner, subject))
 				return nil
 			}
 		}
 
 		if err := d.tick(ctx, now); err != nil {
 			d.failures.Fail("dobbyengine: a tick failed; the loop goes on", "worktree", d.geom.WorktreeName, "error", err)
+			if !d.tickFailLogged {
+				d.tickFailLogged = true
+				d.logLine(now, "tick failing: "+oneLine(err.Error()))
+			}
 		} else {
 			d.failures.Recover("dobbyengine: ticks succeed again", "worktree", d.geom.WorktreeName)
+			if d.tickFailLogged {
+				d.tickFailLogged = false
+				d.logLine(now, "ticks succeed again")
+			}
 		}
 		d.lastTick = now
+		if now.Sub(d.lastHeartbeat) >= heartbeatInterval {
+			d.heartbeat(now, nil)
+		}
 		if ctx.Err() != nil {
-			return nil
+			break
 		}
 
-		d.deps.CheckBinary()
+		kept, readErr := d.readKeptTidy()
+		if d.worktreeGone() {
+			d.exitWorktreeGone()
+			return nil
+		}
+		d.rememberKeptTidy(kept, readErr)
+
+		d.deps.CheckBinary(
+			func() { d.logOwn(d.deps.Now(), "re-exec onto the changed lym binary") },
+			func(err error) {
+				d.logOwn(d.deps.Now(), fmt.Sprintf("re-exec failed: %v; the dobby keeps running", err))
+				d.post(ctx, fmt.Sprintf("%s: the dobby could not re-exec onto the changed lym binary: %v; it keeps running on the old binary; way forward: fix the binary, then run lym beam stop and lym beam start", d.geom.WorktreeName, err))
+			},
+		)
 
 		wait = nextWait(wait, d.inFlight, event)
 		if wait == 0 {
@@ -237,6 +478,7 @@ func (d *daemon) loop(ctx context.Context, events <-chan struct{}) error {
 		wait = max(wait, d.probe, wakeFloor)
 		event = d.sleep(ctx, wait, events)
 	}
+	d.logOwn(d.deps.Now(), "stop: the context ended")
 	return nil
 }
 
@@ -248,10 +490,18 @@ func (d *daemon) beamOwnedElsewhere() (bool, string) {
 		var owner string
 		if owner, err = d.deps.Owner(); err == nil {
 			d.ownerRead.Recover("dobbyengine: the beam's owner reads again", "worktree", d.geom.WorktreeName)
+			if d.ownerUnreadable {
+				d.ownerUnreadable = false
+				d.logLine(d.deps.Now(), "owner reads again")
+			}
 			return owner != "" && owner != machine, owner
 		}
 	}
 	d.ownerRead.Fail("dobbyengine: the beam's owner is unreadable; the dobby goes on", "worktree", d.geom.WorktreeName, "error", err)
+	if !d.ownerUnreadable {
+		d.ownerUnreadable = true
+		d.logLine(d.deps.Now(), "owner unreadable: "+oneLine(err.Error()))
+	}
 	return false, ""
 }
 
@@ -274,7 +524,7 @@ func (d *daemon) tick(ctx context.Context, now time.Time) error {
 	seen := d.sleepWatch.Sleeps()
 	err := UpdateState(d.geom.StatePath, func(s *State) error {
 		if s.PID == 0 {
-			s.PID, s.StartTime = os.Getpid(), now.UTC().Format(time.RFC3339)
+			s.PID, s.StartTime, s.StartTicks = os.Getpid(), now.UTC().Format(time.RFC3339), d.startTicks
 			d.owesAll = true
 		}
 		for _, sleep := range seen {

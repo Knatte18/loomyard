@@ -41,6 +41,10 @@ type Geometry struct {
 	StatePath string
 	// LogPath is the daemon's log file under the worktree's `.lym/beam/` directory.
 	LogPath string
+	// OutPath is the file under the worktree's `.lym/beam/` directory that the detached dobby's raw standard output and error go to.
+	OutPath string
+	// PrimeLogPath is the prime's dobby log file, which a beam dobby's worktree-gone line is written to.
+	PrimeLogPath string
 	// TidyDir is the directory of the board-tidy reports under the worktree's `.lym/beam/` directory, each named by its UTC timestamp.
 	TidyDir string
 	// PrimeRunsDir is the prime's batten runs directory.

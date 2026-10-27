@@ -87,6 +87,9 @@ func (e *execution) reportBlocked(run tierRun) runEnd {
 	line := fmt.Sprintf("gate test: %s did not run, since the build failed; see %s", tierName(run.number), e.buildFailure)
 	e.writeRecord(record, []byte(line+"\n"), tierName(run.number))
 	printLine(e.request.stderr, line)
+	if e.request.observer.Ended != nil {
+		e.request.observer.Ended(record)
+	}
 	return runEnd{code: e.buildExit, halt: e.ctx.Err() != nil, ran: true, blocked: true}
 }
 

@@ -435,7 +435,7 @@ User-facing modules each get one `lym <module>` namespace:
   ✅ Implemented. See the `internal/cleanupcli` package documentation.
 - **adopt** — the takeover of beam projects, or of root, and of the runs under them from another machine of the operator, as one verb (`internal/adoptcli`; `lym adopt <beam>...`, `lym adopt root` and `lym adopt --all`, with `--keep-local` and `--drop-local`, from the prime and from any beam).
   It reconciles the hub against origin, stops a beam or a run under it whose pair holds local commits origin lacks or is live, adds the missing pairs, records this machine as the owner of the beams and of the prime in one pushed owner write, lifts the owner pauses and resumes each moved run as a detached first pass, driven on by its parent's dobby.
-  A call that recorded an owner then starts the hub's `finalize` gate once, detached, in the prime, so a break this machine brings to the landed code shows at adopt time.
+  A call that recorded an owner then starts the adopt check once, detached, in the prime, which runs the hub's `adopt` gate, reports each tier to the orch and shows in `lym beam status`, so a break this machine brings to the landed code shows at adopt time.
   It calls each owning module's function in-process and has no engine package of its own.
   ✅ Implemented. See the `internal/adoptcli` package documentation.
 - **beam** — the making, landing, starting and stopping of a beam, a long-lived pair that groups board work, and dobby, the daemon every beam and the prime run (`internal/beamcli` + `internal/dobbyengine`; `lym beam create <slug>`, `lym beam land <slug>`, which writes the land request the beam's pawl run consumes at Beam-Await, `lym beam start [slug] [--all]`, `lym beam stop [slug]` and `lym beam status`, from the prime and from any beam, and the hidden `lym beam dobby`).
@@ -443,9 +443,9 @@ User-facing modules each get one `lym <module>` namespace:
   Land starts a short batten run over the `beam` recipe, after a refusal that stops it while members or forked pairs remain under the beam.
   Start brings up a beam's dobby and orch, the one the acting worktree is or the one a slug names, or with `--all` the prime and every beam this machine owns, each part only when it is not live.
   Stop takes a beam's orch and dobby down.
-  Status prints, once, the dobby section a beam's window draws, for the prime and for each local beam: alive or not, the runs it drives with their state, stage, time in stage and last pass, and each released task it has not started with what the task waits on, and the beam's orch: strand live, watcher live and the recorded session.
+  Status prints, once, the dobby section a beam's window draws, for the prime and for each local beam: alive or not, the runs it drives with their state, stage, time in stage and last pass, and each released task it has not started with what the task waits on, and the beam's orch: strand live, watcher live and the recorded session, then an adopt check section, shown only when the hub holds a record of one: its state, the tier in flight, the tiers done and the paths of its log and output.
   Dobby starts the beam's released tasks from an empty status, drives their batten runs in short passes, notices the nearest live orch and spawns the board-tidy agent every few landings.
-  It writes one line to its `dobby.log` for each task it starts and each pass it gives a run.
+  It logs to its `dobby.log` the changes it sees, such as a task start, a run changing state and a failing pass episode, plus a heartbeat line every ten minutes.
   The verbs call each owning module's function in-process, and `internal/dobbyengine` holds the daemon.
   ✅ Implemented. See the `internal/beamcli` package documentation.
 - **report** — the read-only convergence and timing reports (`internal/reportcli` + `internal/reportengine`; `lym report convergence [--since <date>] [--fresh-days <n>] [--format json|markdown]` and `lym report timing [--since <date>] [--by day|week] [--format json|markdown]`, prime only).

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
@@ -57,7 +58,7 @@ func standMove(t *testing.T, prime *lymcwd.Location, worktree string) string {
 	return record
 }
 
-// TestDobbyGeometry asserts the lock, state and log paths and the tidy directory lie under the named worktree's `.lym/beam/` directory at its own anchor, the slug is empty for the prime, the batten runs directory lies under the prime, and a worktree with no directory is an error naming it.
+// TestDobbyGeometry asserts the lock, state, log and output paths and the tidy directory lie under the named worktree's `.lym/beam/` directory at its own anchor, the slug is empty for the prime, the batten runs directory lies under the prime, and a worktree with no directory is an error naming it.
 // It also asserts PawlPaths puts the pawl run's three files in that same `.lym/beam/` directory at the beam's own anchor, a beam anchored under a sub-directory included.
 // It also asserts the move records that stop a dobby: the prime's alone for the prime and the beam's own and then the prime's for a beam, and that DobbyStart reads a standing record the same way.
 func TestDobbyGeometry(t *testing.T) {
@@ -91,10 +92,16 @@ func TestDobbyGeometry(t *testing.T) {
 			if got.WorktreeRoot != root || got.WorktreeName != tt.worktree || got.Slug != tt.wantSlug {
 				t.Errorf("DobbyGeometry(%q) worktree = %q, %q, slug %q; want %q, %q, slug %q", tt.worktree, got.WorktreeRoot, got.WorktreeName, got.Slug, root, tt.worktree, tt.wantSlug)
 			}
-			for name, path := range map[string]string{"LockPath": got.LockPath, "StatePath": got.StatePath, "LogPath": got.LogPath, "TidyDir": got.TidyDir} {
+			for name, path := range map[string]string{"LockPath": got.LockPath, "StatePath": got.StatePath, "LogPath": got.LogPath, "OutPath": got.OutPath, "TidyDir": got.TidyDir} {
 				if filepath.Dir(path) != beamDir {
 					t.Errorf("DobbyGeometry(%q).%s = %q; want it directly under %q", tt.worktree, name, path, beamDir)
 				}
+			}
+			if want := filepath.Join(beamDir, dobbyengine.OutFileName); got.OutPath != want || filepath.Dir(got.OutPath) != filepath.Dir(got.LogPath) {
+				t.Errorf("DobbyGeometry(%q).OutPath = %q; want %q beside LogPath", tt.worktree, got.OutPath, want)
+			}
+			if want := filepath.Join(hub, prime.WorktreeName, prime.AnchorRel, lymdirs.DotLymDirName, lymdirs.BeamDirName, dobbyengine.LogFileName); got.PrimeLogPath != want {
+				t.Errorf("DobbyGeometry(%q).PrimeLogPath = %q; want the prime's dobby.log %q", tt.worktree, got.PrimeLogPath, want)
 			}
 			if tt.wantSlug != "" {
 				beam, err := lymcwd.NamedWorktree(hub, tt.worktree)
