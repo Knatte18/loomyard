@@ -1,0 +1,7 @@
+P1 handler rc=0 wall=414 in=3023322 cached=2873216 fresh=150106 out=9635 reason=2067 weekly_used_percent_end=27.0 (first token_count of the call: 18.0) commands=18 (17 reads, 1 apply_patch writing the review)
+P1 fork-affected-set start=12:42:45 end=12:44:51 wall=126 in=896036 cached=854272 fresh=41764 out=2639 reason=909 weekly_used_percent=21.0 commands=6
+P1 fork-guard-reach start=12:42:53 end=12:44:49 wall=116 in=875039 cached=836864 fresh=38175 out=2455 reason=563 weekly_used_percent=21.0 commands=6
+P1 fork-way-forward start=12:43:03 end=12:45:14 wall=131 in=866508 cached=833792 fresh=32716 out=2849 reason=852 weekly_used_percent=22.0 commands=6
+P1 handler verdict=BLOCKING n=9 (3 handler, 6 from forks)
+P1 weekly window: 18.0 at the call's first request, 27.0 at its end; no 5-hour window was reported (secondary null); sibling benches codex-astra-tuned-p1-high-bench and codex-astra-tuned-p4-med-bench may have drawn on the same account over the same minutes
+P1 totals: fresh_input=262761 output=17578 wall=414
