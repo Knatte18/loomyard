@@ -1,0 +1,6 @@
+P4 handler rc=0 wall=737 in=5587480 cached=5374080 fresh=213400 out=17134 reason=6429 weekly_used_percent=8.0
+P4 fork-affected-set start=11:13:03 end=11:15:59 wall=176 in=1126577 cached=1093632 fresh=32945 out=3563 reason=1434 weekly_used_percent=6.0 commands=6
+P4 fork-guard-reach start=11:13:10 end=11:17:03 wall=233 in=1103230 cached=1080576 fresh=22654 out=4871 reason=2168 weekly_used_percent=7.0 commands=6
+P4 fork-way-forward start=11:13:18 end=11:17:50 wall=272 in=972200 cached=942080 fresh=30120 out=5555 reason=3115 weekly_used_percent=7.0 commands=5
+P4 handler verdict=BLOCKING n=9 (3 handler, 6 from forks)
+P4 weekly window before the run: 3.0 (after the probe of the multi-agent feature), after: 8.0
