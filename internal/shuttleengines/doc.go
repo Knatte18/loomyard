@@ -18,5 +18,6 @@
 // RecordReaders returns each registered engine's offline read capabilities keyed by engine name, built with a zero shuttle config and no config directories as SessionNamers builds its engines.
 // A capability is set only when the engine implements it, and each set one is its own adapter, one per capability rather than one per engine:
 // a reader of finished session records gets reading alone, and no type assertion on a value in the set recovers an engine that can start, open, send to or stop a run.
+// ToolBoundaryRenderer returns one registered engine's tool-boundary context renderer by name, built the same way, for the creel verb a strand's tool-boundary hook runs.
 // The package is told its Config and never imports internal/lymcwd.
 package shuttleengines

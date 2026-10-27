@@ -260,3 +260,17 @@ func TestStandaloneShortname(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestFileName(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct{ full, want string }{
+		{"ly:orch", "ly.orch"},
+		{"ly:agent-naming:driver-2", "ly.agent-naming.driver-2"},
+	}
+	for _, tt := range tests {
+		if got := FileName(tt.full); got != tt.want {
+			t.Errorf("FileName(%q) = %q; want %q", tt.full, got, tt.want)
+		}
+	}
+}

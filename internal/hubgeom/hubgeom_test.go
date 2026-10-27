@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 )
 
 // TestReedGeometry pins every ReedGeometry field against a fixture whose hub, worktree root and anchor path are distinct directories.
@@ -271,7 +272,7 @@ func TestReconcileGeometry(t *testing.T) {
 	}
 }
 
-// TestCreelGeometry pins every creel geometry field, that one hub gives one socket path, that two hubs of one shortname get different ones,
+// TestCreelGeometry pins every creel geometry field, that its flag directory is the one a Claude strand's mail hook tests, that one hub gives one socket path, that two hubs of one shortname get different ones,
 // and that a hub with no shortname record is refused naming it.
 func TestCreelGeometry(t *testing.T) {
 	t.Parallel()
@@ -301,9 +302,14 @@ func TestCreelGeometry(t *testing.T) {
 		LockPath:      filepath.Join(stateDir, "daemon.lock"),
 		SocketPath:    filepath.Join(tempRoot, creelengine.SocketName("abc", hub)),
 		DaemonLogPath: filepath.Join(stateDir, "daemon.log"),
+		FlagDir:       filepath.Join(stateDir, lymdirs.CreelFlagDirName),
 	}
 	if got != want {
 		t.Errorf("CreelGeometry(%q) = %+v; want %+v", hub, got, want)
+	}
+	// A Claude strand's mail hook tests flags in the directory its engine derives from the board directory alone.
+	if hookDir := claudeengine.CreelFlagDir(fabricengine.BoardDir(hub)); got.FlagDir != hookDir {
+		t.Errorf("CreelGeometry(%q).FlagDir = %q; want the Claude hook's %q", hub, got.FlagDir, hookDir)
 	}
 
 	again, err := CreelGeometry(hub, tempRoot)

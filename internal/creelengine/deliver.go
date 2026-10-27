@@ -294,22 +294,25 @@ func (w *worker) typeInject(strand Strand, inject QueuedInject) bool {
 }
 
 // typeNotice types the notice's line once the receiver is idle, and journals the notice read once the line was typed, landed or not.
-// A busy send leaves it unread for the next probe.
+// It reserves the notice before the send, so a tool-boundary claim never hands out the line being typed, and types nothing when a claim took it first.
+// A busy send releases it unread for the next probe.
 func (w *worker) typeNotice(strand Strand, notice Message) bool {
-	if !w.idle(strand) {
+	store := w.scheduler.store
+	if !w.idle(strand) || !store.reserveNotice(w.receiver, notice.ID) {
 		return false
 	}
-	err := w.scheduler.delivery.Send(strand, composeNotice(notice))
+	err := w.scheduler.delivery.Send(strand, MessageLine(notice))
 	switch {
 	case err == nil, errors.Is(err, ErrNotLanded):
 		w.report("send", nil)
-		w.report("journal", w.scheduler.store.markNoticeRead(w.receiver, notice.ID))
-		w.report("journal", w.scheduler.store.noteStall(w.receiver, ""))
+		w.report("journal", store.markNoticeRead(w.receiver, notice.ID))
+		w.report("journal", store.noteStall(w.receiver, ""))
 		return true
 	default:
 		if !errors.Is(err, ErrBusy) {
 			w.report("send", err)
 		}
+		store.releaseNotice(w.receiver, notice.ID)
 		return false
 	}
 }
@@ -586,14 +589,44 @@ func (s *Store) tellStallLocked(receiver string, stall Stall, note stallNote) {
 	}
 }
 
-// markNoticeRead journals the notice id read by receiver, the pane it was typed into.
-// A notice that left the receiver, was read or is reserved by a read meanwhile is left to that.
-// A reserved notice whose read is released rather than acknowledged is unread and unreserved again, so its line is typed a second time;
-// the journal still holds one read.
-func (s *Store) markNoticeRead(receiver string, id int64) error {
-	return s.do(func() error {
+// paneReserver is the reservation holder of a notice the pane path is typing; no agent name equals it, so no read or claim of a holder releases it.
+const paneReserver = "\x00pane"
+
+// reserveNotice reserves the notice id held by receiver for the pane path, and reports false when it left the receiver, was read or is reserved meanwhile.
+func (s *Store) reserveNotice(receiver string, id int64) bool {
+	reserved := false
+	_ = s.do(func() error {
 		msg := s.state.messages[id]
 		if msg == nil || msg.Holder != receiver || msg.Status != StatusUnread || s.reserved[id] != "" {
+			return nil
+		}
+		s.reserved[id] = paneReserver
+		reserved = true
+		return nil
+	})
+	return reserved
+}
+
+// releaseNotice drops the pane path's reservation of the notice id after a send that typed nothing, and answers a wait for receiver's mail, since the notice is back.
+func (s *Store) releaseNotice(receiver string, id int64) {
+	_ = s.do(func() error {
+		if s.reserved[id] == paneReserver {
+			delete(s.reserved, id)
+			s.answerLocked(waitKey{kind: waitHolder, holder: receiver}, Outcome{Kind: OutcomeMail})
+		}
+		return nil
+	})
+}
+
+// markNoticeRead drops the pane path's reservation of the notice id and journals it read by receiver, the pane it was typed into.
+// A notice that left the receiver meanwhile is left to that.
+func (s *Store) markNoticeRead(receiver string, id int64) error {
+	return s.do(func() error {
+		if s.reserved[id] == paneReserver {
+			delete(s.reserved, id)
+		}
+		msg := s.state.messages[id]
+		if msg == nil || msg.Holder != receiver || msg.Status != StatusUnread {
 			return nil
 		}
 		return s.writer.append(record{Event: eventRead, ID: id, By: receiver})

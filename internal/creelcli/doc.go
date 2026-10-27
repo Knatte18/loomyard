@@ -1,4 +1,4 @@
-// Package creelcli builds the `lym creel` group over internal/creelengine: `post`, `inject`, `interrupt`, `forward`, `read`, `inbox`, `log`, `hold`, `release` and the hidden `daemon`.
+// Package creelcli builds the `lym creel` group over internal/creelengine: `post`, `inject`, `interrupt`, `forward`, `read`, `inbox`, `log`, `hold`, `release` and the hidden `daemon` and `hook-read`.
 // The design, the protocol and the delivery rules are documented in internal/creelengine; this package wires them to the hub, its worktrees and their agent panes.
 //
 // Every operator verb resolves the mode from its cwd and refuses a standalone directory, since creel needs a hub.
@@ -19,6 +19,9 @@
 // For post and inject the line names what they already stored, and for a forward, hold, release or interrupt it says the verb took effect.
 // The refusal fallback line opens with that statement too for a post or inject that stored before it refused.
 // `inbox` prints the caller's unread counts as `inbox.senders`, a list of `{from, unread}`, and no other key.
+// `hook-read <engine>` is what a strand's tool-boundary hook runs: it claims the caller's mail through the daemon's claim verb and prints it as the named engine's tool-boundary context, one MessageLine per message, which shuttleengines.ToolBoundaryRenderer renders.
+// It prints nothing when nothing was claimed, acknowledges the mail only once its output was written, and bounds its call by 10 seconds, since the provider holds the session at the boundary meanwhile.
+// A refusal, an unknown engine included, goes to stderr as one `creel: ` line with exit 1 and leaves stdout empty, because the provider parses the hook's stdout as its JSON.
 // GoClient is the one Go-side caller of creel, so no other module builds a creel request by hand.
 // NewProgramClient signs as `<shortname>:<PROGRAM>` and claims no strand, whatever `$LYM_STRAND_NAME` holds, and NewStrandClient claims a strand and no program; the daemon's identity rules still decide who the caller is.
 // Both refuse a location outside a hub with the way forward, start the daemon through the spawn seam when none answers, and connect on the first call.

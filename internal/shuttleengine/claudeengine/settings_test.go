@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -53,7 +54,7 @@ func TestBuildSettings_PromptSuggestionOff(t *testing.T) {
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, Config{}, tt.fork, false, "")
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, Config{}, tt.fork, false, "", "")
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -94,7 +95,7 @@ func TestBuildSettings_RecordingHooks(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			data, err := buildSettings(tt.eventsPath, false, shuttleengine.Config{}, Config{}, false, false, "")
+			data, err := buildSettings(tt.eventsPath, false, shuttleengine.Config{}, Config{}, false, false, "", "")
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -161,7 +162,7 @@ func TestBuildSettings_SessionStartHook(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			data, err := buildSettings("/c/run/events.jsonl", false, shuttleengine.Config{}, Config{}, false, false, tt.command)
+			data, err := buildSettings("/c/run/events.jsonl", false, shuttleengine.Config{}, Config{}, false, false, tt.command, "")
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -190,16 +191,59 @@ func TestBuildSettings_SessionStartHook(t *testing.T) {
 	}
 }
 
-// TestSessionStartContext pins the exact additional-context JSON a session-start hook prints, with the text escaped.
-func TestSessionStartContext(t *testing.T) {
+// TestHookContext pins the exact additional-context JSON the session-start and tool-boundary hooks print, with the text escaped.
+func TestHookContext(t *testing.T) {
 	t.Parallel()
-	got, err := SessionStartContext(`read "role.md"`)
-	if err != nil {
-		t.Fatalf("SessionStartContext() error: %v", err)
+	tests := []struct {
+		name   string
+		render func(string) ([]byte, error)
+		want   string
+	}{
+		{"SessionStart", SessionStartContext, `{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"read \"role.md\""}}`},
+		{"ToolBoundary", New().ToolBoundaryContext, `{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"read \"role.md\""}}`},
 	}
-	const want = `{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"read \"role.md\""}}`
-	if string(got) != want {
-		t.Errorf("SessionStartContext() = %s; want %s", got, want)
+	for _, tt := range tests {
+		got, err := tt.render(`read "role.md"`)
+		if err != nil {
+			t.Fatalf("%s context error: %v", tt.name, err)
+		}
+		if string(got) != tt.want {
+			t.Errorf("%s context = %s; want %s", tt.name, got, tt.want)
+		}
+	}
+}
+
+// TestBuildSettings_CreelMailHook pins the PostToolUse creel mail hook: one entry with no matcher testing the flag directory it is told, and no PostToolUse key when told none.
+func TestBuildSettings_CreelMailHook(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		flagDir string
+		want    []string
+	}{
+		{"InAHub", `/c/hub's/_board/.lym/creel/flags`, []string{creelMailHookCommand(`'/c/hub'\''s/_board/.lym/creel/flags'`)}},
+		{"Standalone", "", nil},
+	}
+	for _, tt := range tests {
+		data, err := buildSettings("/c/run/events.jsonl", false, shuttleengine.Config{}, Config{}, false, false, "", tt.flagDir)
+		if err != nil {
+			t.Fatalf("buildSettings(%s) error: %v", tt.name, err)
+		}
+		var got []string
+		for _, raw := range hooksFor(parseSettings(t, data), "PostToolUse") {
+			entry, _ := raw.(map[string]any)
+			if _, hasMatcher := entry["matcher"]; hasMatcher {
+				t.Errorf("%s: PostToolUse entry carries a matcher: %v", tt.name, entry)
+			}
+			hooks, _ := entry["hooks"].([]any)
+			for _, hook := range hooks {
+				command, _ := hook.(map[string]any)["command"].(string)
+				got = append(got, command)
+			}
+		}
+		if !reflect.DeepEqual(got, tt.want) {
+			t.Errorf("%s: PostToolUse commands = %q; want %q", tt.name, got, tt.want)
+		}
 	}
 }
 
@@ -233,7 +277,7 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := shuttleengine.Config{DenyPython: tt.pythonDeny}
 			claude := Config{DenyAgentTool: tt.agentDeny, DenyAskUserQuestion: tt.askUserDeny}
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, cfg, claude, tt.fork, false, "")
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, cfg, claude, tt.fork, false, "", "")
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -433,7 +477,7 @@ func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, tt.claude, tt.fork, tt.allowAgent, "")
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, tt.claude, tt.fork, tt.allowAgent, "", "")
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -572,6 +616,58 @@ func TestPrepare_PromptLaunchLimit(t *testing.T) {
 			t.Errorf("ReadDir(%s) = %v entries, err=%v; want no artifacts written after a rejected Prepare", base, len(entries), readErr)
 		}
 	})
+}
+
+// TestPrepare_CreelMailHookFollowsTheBoardDirectory pins that Prepare derives the creel flag directory from the hub's board directory, and that an engine in no hub writes no PostToolUse hook.
+func TestPrepare_CreelMailHookFollowsTheBoardDirectory(t *testing.T) {
+	t.Parallel()
+	boardDir := t.TempDir()
+	flagDir := CreelFlagDir(boardDir)
+	if runtime.GOOS == "windows" {
+		posixFlagDir, err := shuttleengine.PosixPath(flagDir)
+		if err != nil {
+			t.Fatalf("PosixPath(%q) error: %v", flagDir, err)
+		}
+		flagDir = posixFlagDir
+	}
+	tests := []struct {
+		name  string
+		board string
+		want  []string
+	}{
+		{"InAHub", boardDir, []string{creelMailHookCommand(shQuote(flagDir))}},
+		{"Standalone", "", nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			engine := engineWith(t, templateConfig(t))
+			engine.dirs.Board = tt.board
+			runDir := t.TempDir()
+			if _, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "do the thing"}, shuttleengine.Config{}); err != nil {
+				t.Fatalf("Prepare() error: %v", err)
+			}
+			settingsBytes, err := os.ReadFile(filepath.Join(runDir, "settings.json"))
+			if err != nil {
+				t.Fatalf("read settings.json: %v", err)
+			}
+			var got []string
+			for _, raw := range hooksFor(parseSettings(t, settingsBytes), "PostToolUse") {
+				entry, _ := raw.(map[string]any)
+				if _, hasMatcher := entry["matcher"]; hasMatcher {
+					t.Errorf("PostToolUse entry carries a matcher: %v", entry)
+				}
+				hooks, _ := entry["hooks"].([]any)
+				for _, hook := range hooks {
+					command, _ := hook.(map[string]any)["command"].(string)
+					got = append(got, command)
+				}
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("PostToolUse commands = %q; want %q", got, tt.want)
+			}
+		})
+	}
 }
 
 // TestPrepare_WritesArtifactsAndReturnsConsistentLaunch pins the artifacts Prepare leaves on disk and that the launch and resume lines agree with them.
@@ -722,7 +818,7 @@ func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
 					for _, fork := range []bool{false, true} {
 						cfg := shuttleengine.Config{DenyPython: pythonDeny, RefuseRaw: sampleRefuseRaw}
 						claude := Config{DenyAgentTool: agentDeny, DenyAskUserQuestion: askUserDeny}
-						data, err := buildSettings("/c/run/events.jsonl", interactive, cfg, claude, fork, false, "")
+						data, err := buildSettings("/c/run/events.jsonl", interactive, cfg, claude, fork, false, "", "")
 						if err != nil {
 							t.Fatalf("buildSettings() error: %v", err)
 						}
@@ -825,7 +921,7 @@ func TestBuildSettings_MatchesGolden(t *testing.T) {
 			t.Errorf("golden lacks %q", label)
 			continue
 		}
-		settings, err := buildSettings("/c/run/events.jsonl", interactive, cfg, claude, fork, allowAgent, "")
+		settings, err := buildSettings("/c/run/events.jsonl", interactive, cfg, claude, fork, allowAgent, "", "")
 		if err != nil {
 			t.Fatalf("buildSettings(%s): %v", label, err)
 		}

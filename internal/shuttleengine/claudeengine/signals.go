@@ -27,6 +27,7 @@ const (
 	hookEventNotification     = "Notification"
 	hookEventSessionEnd       = "SessionEnd"
 	hookEventSessionStart     = "SessionStart"
+	hookEventPostToolUse      = "PostToolUse"
 
 	hookEventPermissionRequest = "PermissionRequest"
 )

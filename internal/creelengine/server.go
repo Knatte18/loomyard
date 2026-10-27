@@ -78,6 +78,9 @@ func Run(ctx context.Context, opts Options) error {
 		return err
 	}
 	defer func() { _ = store.Close() }()
+	if err := store.ReconcileFlags(); err != nil {
+		logger.Warn("creel daemon: could not reconcile the strands' mail flags", "error", err)
+	}
 	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: geom.SocketPath, Net: "unix"})
 	if err != nil {
 		return fmt.Errorf("creel: listen on %s: %w", geom.SocketPath, err)
@@ -298,6 +301,12 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 		ok.ID = id
 	case VerbRead:
 		return d.read(conn, reader, sender, req)
+	case VerbClaim:
+		reading, err := store.ClaimAtBoundary(sender)
+		if err != nil {
+			return err
+		}
+		return d.handOut(conn, reader, sender, reading)
 	case VerbInbox:
 		inbox, err := store.Inbox(sender)
 		if err != nil {
@@ -436,6 +445,11 @@ func (d *daemon) read(conn *net.UnixConn, reader *bufio.Reader, sender Sender, r
 			return nil
 		}
 	}
+	return d.handOut(conn, reader, sender, reading)
+}
+
+// handOut answers the messages of reading, and journals them read only once the client acknowledges them on the same connection; any other answer, or none in time, releases them.
+func (d *daemon) handOut(conn *net.UnixConn, reader *bufio.Reader, sender Sender, reading *Reading) error {
 	resp := Response{OK: true, Sender: sender.Name, Messages: reading.Messages, AckRequired: len(reading.ids) > 0}
 	if err := d.write(conn, resp); err != nil {
 		reading.Release()

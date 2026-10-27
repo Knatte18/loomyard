@@ -46,6 +46,8 @@ type Store struct {
 	stalls map[string]stallNote
 	// paneLocks maps a receiver to the mutex that serialises an interrupt of its pane with its deliveries.
 	paneLocks map[string]*sync.Mutex
+	// flags holds the file names of the flags the flag directory holds, as this store last set or found them.
+	flags map[string]bool
 }
 
 // paneLock returns the one mutex of receiver's pane.
@@ -100,7 +102,7 @@ func OpenStore(geom Geometry, delivery Delivery, clock Clock) (*Store, error) {
 	return &Store{
 		geom: geom, delivery: delivery, clock: clock, state: state, writer: writer,
 		reserved: map[int64]string{}, waiters: map[waitKey][]*Waiter{}, agedWritten: map[int64]int64{},
-		stalls: map[string]stallNote{}, paneLocks: map[string]*sync.Mutex{},
+		stalls: map[string]stallNote{}, paneLocks: map[string]*sync.Mutex{}, flags: map[string]bool{},
 	}, nil
 }
 
@@ -131,9 +133,14 @@ func (s *Store) SetWakeHook(hook func(receiver string)) {
 }
 
 // do runs fn under the mutex, then calls the wake hook for every receiver fn signalled once the mutex is free.
+// When fn journaled a record, the strands' mail flags follow the pool before the mutex is freed, whether or not fn failed after it.
 func (s *Store) do(fn func() error) error {
 	s.mu.Lock()
+	appended := s.writer.appended
 	err := fn()
+	if s.writer.appended != appended {
+		s.syncFlagsLocked()
+	}
 	wakes, hook := s.wakes, s.wakeHook
 	s.wakes = nil
 	s.mu.Unlock()

@@ -20,8 +20,11 @@ package claudeengine
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shellguard"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -63,7 +66,8 @@ type hookEntry struct {
 }
 
 // settingsHooks is the "hooks" object of a Claude Code settings.json document.
-// Every event but PreToolUse is a recording hook installed for every session.
+// Every event but PreToolUse and PostToolUse is a recording hook installed for every session.
+// PostToolUse carries the creel mail hook, and is omitted for a session in no hub.
 // PreToolUse is omitted when an autonomous run has every deny off; interactive runs always carry at least the AskUserQuestion marker.
 type settingsHooks struct {
 	Stop              []hookEntry `json:"Stop"`
@@ -74,6 +78,7 @@ type settingsHooks struct {
 	SessionEnd        []hookEntry `json:"SessionEnd"`
 	SessionStart      []hookEntry `json:"SessionStart"`
 	PermissionRequest []hookEntry `json:"PermissionRequest"`
+	PostToolUse       []hookEntry `json:"PostToolUse,omitempty"`
 }
 
 // compactionMatcher is the SessionStart matcher for a session restarting after a compaction.
@@ -84,17 +89,39 @@ const nonCompactionMatcher = "startup|resume|clear"
 
 // SessionStartContext renders the additional-context JSON a SessionStart hook prints to add text to the session's context.
 func SessionStartContext(text string) ([]byte, error) {
+	return hookContext(hookEventSessionStart, text)
+}
+
+// hookContext renders the additional-context JSON a hook of the named event prints to add text to the session's context.
+func hookContext(hookEventName, text string) ([]byte, error) {
 	type specificOutput struct {
 		HookEventName     string `json:"hookEventName"`
 		AdditionalContext string `json:"additionalContext"`
 	}
 	data, err := json.Marshal(struct {
 		HookSpecificOutput specificOutput `json:"hookSpecificOutput"`
-	}{specificOutput{HookEventName: hookEventSessionStart, AdditionalContext: text}})
+	}{specificOutput{HookEventName: hookEventName, AdditionalContext: text}})
 	if err != nil {
-		return nil, fmt.Errorf("marshal session start context: %w", err)
+		return nil, fmt.Errorf("marshal %s context: %w", hookEventName, err)
 	}
 	return data, nil
+}
+
+// creelMailCommand is the command the PostToolUse hook runs when the strand's mail flag stands: creel's claim verb, told this engine's registry name so it renders the claimed mail as this engine's hook output.
+const creelMailCommand = "lym creel hook-read claude"
+
+// CreelFlagDir returns the directory creel keeps its per-strand mail flags in, for the hub whose board directory is boardDir.
+func CreelFlagDir(boardDir string) string {
+	return filepath.Join(boardDir, lymdirs.DotLymDirName, lymdirs.CreelDirName, lymdirs.CreelFlagDirName)
+}
+
+// creelMailHookCommand returns the PostToolUse hook command that hands the strand its creel mail at each tool boundary.
+// It forms the flag's file name from the strand's name by shell parameter expansion alone, turning every ":" into ".", and exits 0 at once unless that flag stands in the directory at quotedFlagDir, so a tool call with no mail starts no process.
+// An empty or unset strand name names no regular file and exits the same way.
+// When the flag stands it changes to the session's project directory, so a session that moved out of the hub still reaches it, and runs creelMailCommand, whose output is the hook's.
+func creelMailHookCommand(quotedFlagDir string) string {
+	formName := `n="${` + agentname.StrandNameEnv + `:-}"; f=; while :; do case "$n" in *:*) f="$f${n%%:*}."; n="${n#*:}";; *) break;; esac; done`
+	return formName + `; [ -f ` + quotedFlagDir + `/"$f$n" ] || exit 0; cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null; ` + creelMailCommand
 }
 
 // settingsDoc is the Claude Code settings.json document Prepare writes.
@@ -271,7 +298,8 @@ func recordingCommand(hookEventName, quotedEventsPath string) string {
 // A non-empty contextAfterCompaction splits the SessionStart hook in two: one entry records every source but compaction, and the compaction entry records the event and then runs that command verbatim, so its standard output reaches the session's context.
 // Empty gives a single recording entry with no matcher.
 // The recordings print nothing and exit 0, so the PermissionRequest recording answers no request and the SessionStart recording adds nothing to the session's context.
-func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, allowAgentTool bool, contextAfterCompaction string) ([]byte, error) {
+// A non-empty creelFlagDirPosix, a git-bash POSIX path like eventsPathPosix, adds the PostToolUse creel mail hook testing the strand's flag in that directory; empty adds none.
+func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, allowAgentTool bool, contextAfterCompaction, creelFlagDirPosix string) ([]byte, error) {
 	quotedEventsPath := shQuote(eventsPathPosix)
 	recordingHook := func(hookEventName string, alwaysSucceeds bool) []hookEntry {
 		command := recordingCommand(hookEventName, quotedEventsPath)
@@ -317,6 +345,9 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 			Matcher: "AskUserQuestion",
 			Hooks:   recordingHook(hookEventPreToolUse, false)[0].Hooks,
 		})
+	}
+	if creelFlagDirPosix != "" {
+		doc.Hooks.PostToolUse = []hookEntry{{Hooks: []hookCommand{{Type: "command", Command: creelMailHookCommand(shQuote(creelFlagDirPosix))}}}}
 	}
 
 	data, err := json.Marshal(doc)

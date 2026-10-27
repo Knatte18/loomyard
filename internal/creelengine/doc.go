@@ -1,4 +1,4 @@
-// Package creelengine is the engine of creel, the per-hub message daemon: a pool of mail and queued injects that agents post to and read from, delivered into agent panes when they are idle.
+// Package creelengine is the engine of creel, the per-hub message daemon: a pool of mail and queued injects that agents post to and read from, delivered into agent panes when they are idle, and mail also at a working strand's next tool boundary through its provider's hook.
 // The engine is told its Geometry and a delivery seam and derives no path of its own.
 // `internal/creelcli` wires it to the hub and carries the `lym creel` verbs.
 //
@@ -77,8 +77,9 @@
 // A notice is a message from any sender but an agent strand, a program or EXTERNAL, whose body is at most 4 KiB.
 // It is carried in full in its own line, typed when the receiver is idle, `[creel] #<id> from <sender>: <body>`, with every run of line breaks and other control characters turned into one space.
 // The line opens with the id, so a sender that takes replies is answered with `lym creel post --reply <id>` and no read; creel does not know which senders answer.
-// It is journaled read once the line was typed, landed or not; a busy send leaves it unread for the next probe, and a crash between the typing and the read record types it once more.
-// Mail from an agent strand is never carried, so an agent's text cannot pose as an instruction in another agent's pane.
+// The delivery reserves it before the line is typed, so no tool-boundary claim hands it out meanwhile, and types nothing when a claim reserved it first.
+// It is journaled read once the line was typed, landed or not; a busy send releases it unread for the next probe, and a crash between the typing and the read record types it once more.
+// Mail from an agent strand is never typed into a pane, so an agent's text cannot pose as an instruction in another agent's pane.
 //
 // Every other unread message, an agent strand's or one over the cap, is reminded by one line, typed when the receiver is idle: `[creel] N unread: #id from <sender>, … — run lym creel read`.
 // A reminder lists at most five messages and counts the rest, and carries no text a sender wrote, so it cannot pose as an instruction; under a hold it reads `lym creel read --from <owner>`.
@@ -97,6 +98,22 @@
 //
 // forward moves an unread message the caller holds to another receiver: the holder changes, the sender stays, and the caller joins the message's path, so the new receiver replies to the sender and the message records the whole way it took.
 // A message that is read, not the caller's, or addressed back to the caller is refused.
+//
+// # Tool-boundary delivery
+//
+// While a strand holds unread mail, the daemon keeps an empty flag file for it in Geometry.FlagDir, named by agentname.FileName of the strand's name; a program gets none.
+// The store sets and clears the flags after every change it journals, so a flag goes when the strand's last unread message is read, forwarded, withdrawn or returned, and the daemon reconciles the directory to the pool when it starts.
+// A flag is derived state and never journaled; a failed write is logged and tried again at the next change.
+//
+// A provider hook that runs after each tool call tests the strand's flag and, only while it stands, runs the claim verb.
+// ClaimAtBoundary hands the strand its unread mail no read has reserved, oldest first and agent mail included, as a read does: reserved until the client acknowledges it on the same connection, and journaled read only then.
+// Under a hold it hands out only the owner's mail, and while a pause covers the strand nothing.
+// One claim stops before the message whose line would take its lines, with the newlines joining them, past an 8 KiB budget, though it always hands out the first, and what it leaves stays unread with its flag standing.
+// Each message is one MessageLine, the line a notice is typed as.
+// Bound: an agent strand's text reaches the session in full here, where the pane path only reminds it; the line opens with the sender creel stamps, and only mail the strand already holds is handed over.
+//
+// Each message is delivered once, by whichever path reserves it first: the claim during a turn, or the pane path, which reserves a notice before it types it.
+// A turn that ends with no tool call is reached by the pane path.
 //
 // # Inject and interrupt
 //
@@ -189,7 +206,7 @@
 // The Scheduler runs one worker per receiver with a queued inject or unread mail, and at most one delivery is in flight per receiver.
 // A worker probes from a one-second base and doubles the wait to eight seconds after every probe that delivers nothing; a wake from the store or a probe that delivers returns it to the base, and the worker ends when nothing is pending.
 // While the receiver is live and unpaused, the wait is capped at its soonest queued inject's remaining TTL, never below one second, so an inject expires when its TTL runs out and not at the next backed-off probe.
-// A probe finds the strand, skips a dormant or paused one, and types the first queued inject, or under a hold the owner's; with none due it types the oldest notice no read holds reserved, under a hold the owner's, and with none of those the reminder.
+// A probe finds the strand, skips a dormant or paused one, and types the first queued inject, or under a hold the owner's; with none due it types the oldest notice no read or claim holds reserved, under a hold the owner's, and with none of those the reminder.
 // Each delivery asks the seam whether the strand is idle first, and every wait goes through the Clock, so a test never waits out an interval.
 // Every idle answer feeds the stall journal: a new non-empty reason is journaled, a repeat only stamps when it was read, and a reading with no reason, a probe error or a typed line clears it with no record.
 // The inject TTL keeps running while a strand is stalled, live and unpaused.

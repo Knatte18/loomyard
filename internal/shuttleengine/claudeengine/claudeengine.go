@@ -193,7 +193,19 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		}
 	}
 
-	settingsJSON, err := buildSettings(eventsPathForHook, spec.Interactive, cfg, claude, spec.ForkSubagents, spec.AllowAgentTool, spec.ContextAfterCompaction)
+	// A session in a hub gets creel's mail hook; the flag directory takes the same POSIX conversion as the events path.
+	creelFlagDirForHook := ""
+	if c.dirs.Board != "" {
+		creelFlagDirForHook = CreelFlagDir(c.dirs.Board)
+		if runtime.GOOS == "windows" {
+			creelFlagDirForHook, err = shuttleengine.PosixPath(creelFlagDirForHook)
+			if err != nil {
+				return shuttleengine.Launch{}, fmt.Errorf("convert creel flag directory to posix: %w", err)
+			}
+		}
+	}
+
+	settingsJSON, err := buildSettings(eventsPathForHook, spec.Interactive, cfg, claude, spec.ForkSubagents, spec.AllowAgentTool, spec.ContextAfterCompaction, creelFlagDirForHook)
 	if err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("build settings: %w", err)
 	}

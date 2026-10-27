@@ -332,3 +332,21 @@ func TestRecordReaders(t *testing.T) {
 		t.Errorf("readsOf(reading engine).Instructions = %v; want nil", reading.Instructions)
 	}
 }
+
+// TestToolBoundaryRenderer pins that the claude entry renders tool-boundary context as the engine does and that an unknown name renders none.
+func TestToolBoundaryRenderer(t *testing.T) {
+	t.Parallel()
+
+	renderer, ok := ToolBoundaryRenderer("claude")
+	if !ok {
+		t.Fatal("ToolBoundaryRenderer(claude) found none")
+	}
+	got, err := renderer.ToolBoundaryContext("mail")
+	want, wantErr := claudeengine.New().ToolBoundaryContext("mail")
+	if err != nil || wantErr != nil || string(got) != string(want) {
+		t.Errorf("ToolBoundaryContext = %s, %v; want the engine's %s", got, err, want)
+	}
+	if _, ok := ToolBoundaryRenderer("nope"); ok {
+		t.Error("ToolBoundaryRenderer(nope) found one; want none")
+	}
+}

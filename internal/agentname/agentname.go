@@ -13,6 +13,7 @@
 // Reed forms a strand's full name once, in AddStrand under its state lock, and stores it in the strand record, which is the only key delivery and lookup resolve through.
 // Pane titles and Claude session names are display mirrors.
 // A full name never names a tmux session or socket, since tmux rewrites ':' and '.' there.
+// A per-strand file, such as creel's mail flag, is named by FileName.
 //
 // The module that spawns an agent owns its role name as a constant declared in that module, never as an inline literal in the spawn spec.
 // There is no shared list of roles, and the role set stays open.
@@ -317,4 +318,13 @@ func StandaloneShortname(hash8 string) string {
 		hash8 = hash8[:5]
 	}
 	return "s" + hash8
+}
+
+// fileNameSep replaces sep in a name's file name; no name segment holds it, so the mapping is one to one.
+const fileNameSep = "."
+
+// FileName returns the file name a per-strand file of full takes: full with every ":" turned into ".".
+// A full name is not a valid file name on Windows, where ":" is reserved.
+func FileName(full string) string {
+	return strings.ReplaceAll(full, sep, fileNameSep)
 }

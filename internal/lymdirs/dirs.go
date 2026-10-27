@@ -32,3 +32,6 @@ const AdoptDirName = "adopt"
 
 // BeamDirName is the directory under a worktree's DotLymDirName that holds dobby's lock, state record and markers.
 const BeamDirName = "beam"
+
+// CreelFlagDirName is the directory under CreelDirName that holds one flag file per strand holding unread mail.
+const CreelFlagDirName = "flags"
