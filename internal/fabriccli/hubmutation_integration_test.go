@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
@@ -53,8 +54,10 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			wantWarpSHA := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD")
 
 			// A real forked push child cannot itself be observed from a test binary (it would re-exec the test binary), so the synchronous bypass handler it runs is the deterministic proof that a supplied path is pushed.
+			// It runs from the hub's board worktree, where the real child starts, because the bypass branch points the process-wide trace sink at the hub it resolves from cwd.
+			t.Cleanup(func() { logger.SetDurableSinkDir("") })
 			var out bytes.Buffer
-			exitCode := fabriccli.RunCLI(&out, []string{
+			exitCode := fabriccli.RunCLIIn(h.BoardDir(), &out, []string{
 				"--warp-path", h.PrimeWorktree(),
 				"--weft-path", h.PrimeRecords(),
 				"push",
@@ -64,6 +67,9 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			}
 
 			envelope.RequireOK(t, out.String())
+			if got, want := logger.TraceDir(), fabricengine.HubLogsDir(h.Path); got != want {
+				t.Errorf("trace sink after bypass push = %q; want the test hub's %q", got, want)
+			}
 
 			if gotWeftSHA := gitkit.RevParse(t, h.RecordsBare, "refs/heads/"+weftBranch); gotWeftSHA != wantWeftSHA {
 				t.Errorf("weft bare %s = %s; want %s (the unpushed commit was not pushed)", weftBranch, gotWeftSHA, wantWeftSHA)
