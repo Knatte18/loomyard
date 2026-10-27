@@ -1,0 +1,6 @@
+P4 handler rc=0 wall=950 in=5312070 cached=5026176 fresh=285894 out=19142 reason=6483 weekly_used_percent_end=18.0 (first token_count of the call: 9.0)
+P4 fork-affected-set start=12:18:59 end=12:22:10 wall=191 in=1512703 cached=1391488 fresh=121215 out=4225 reason=1874 weekly_used_percent=14.0 commands=6
+P4 fork-guard-reach start=12:19:08 end=12:23:37 wall=269 in=1248828 cached=1141632 fresh=107196 out=5523 reason=3289 weekly_used_percent=15.0 commands=5
+P4 fork-way-forward start=12:19:17 end=12:23:01 wall=224 in=1507812 cached=1390848 fresh=116964 out=4748 reason=2647 weekly_used_percent=15.0 commands=6
+P4 handler verdict=BLOCKING n=10 (3 handler, 7 from forks)
+P4 weekly window: 9.0 at the call's first request, 18.0 at its end; the sibling bench codex-astra-context-parity-bench drew on the same account over the same hours
