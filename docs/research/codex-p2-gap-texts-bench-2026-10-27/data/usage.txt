@@ -1,0 +1,8 @@
+med1 handler wall=597 in=2950861 cached=2795904 fresh=154957 out=12336 reason=4304 commands=19 weekly_first=62.0 weekly_last=65.0
+med1 fork-affected-set wall=144 in=938785 cached=898432 fresh=40353 out=2454 reason=708 commands=6 weekly_first=63.0 weekly_last=63.0
+med1 fork-guard-reach wall=265 in=1343744 cached=1307136 fresh=36608 out=4847 reason=2214 commands=9 weekly_first=63.0 weekly_last=64.0
+med1 fork-way-forward wall=139 in=935488 cached=904064 fresh=31424 out=2138 reason=817 commands=6 weekly_first=63.0 weekly_last=64.0
+med2 handler wall=374 in=2392157 cached=2267520 fresh=124637 out=7632 reason=2210 commands=17 weekly_first=65.0 weekly_last=67.0
+med2 fork-affected-set wall=122 in=876847 cached=838528 fresh=38319 out=2429 reason=526 commands=5 weekly_first=65.0 weekly_last=66.0
+med2 fork-guard-reach wall=151 in=1015444 cached=976384 fresh=39060 out=2726 reason=894 commands=7 weekly_first=66.0 weekly_last=67.0
+med2 fork-way-forward wall=105 in=893074 cached=858112 fresh=34962 out=1925 reason=496 commands=6 weekly_first=66.0 weekly_last=67.0

@@ -1,0 +1,13 @@
+19,20c19
+< that recurs unguarded, are findings. Your list: per guard, reachable or
+< not.
+---
+> that recurs unguarded, are findings. Find the recurrences by a search for the callers of
+25c24
+< are findings. Your list: per refusal, the next step, progresses or not.
+---
+> are findings. For each way forward, read the code of the command it names as it runs fro
+34c33
+< > You are one fork reviewer of this round, and you own one lens; the other forks own the
+---
+> > You are one fork reviewer of this round, and you own one lens; the other forks own the

@@ -1,0 +1,2 @@
+28a29
+> - for each guard, refusal or seam a card adds: the callers of the guarded function, the order in which the root constructs its commands and runs its pre-run, and the definition of every environment switch that turns the guarded step off;

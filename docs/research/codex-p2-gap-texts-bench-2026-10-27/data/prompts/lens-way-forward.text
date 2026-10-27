@@ -1,0 +1,5 @@
+Own the failure and recovery ends. For each refusal, stop, reset or
+recovery step a card adds, find the next step it names and check whether
+that step can succeed from the state the refusal leaves. A refusal that
+names no next step, and a next step that cannot succeed from that state,
+are findings. For each way forward, read the code of the command it names as it runs from the state the refusal leaves, including how it resolves a layer or scope and which gates or holds it waits behind. Read the whole text the operator sees, including any text the card appends to or takes from an existing error, and check that no sentence in it names a competing next step. Your list: per refusal, the final text, the next step, and the first precondition that fails or none.

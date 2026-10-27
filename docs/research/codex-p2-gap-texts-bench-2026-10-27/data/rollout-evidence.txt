@@ -1,0 +1,20 @@
+== med1
+id=-8b56-7cd3-9b8c-81f875035624 forked_from=- start=2026-10-27T14:24:28.531Z end=2026-10-27T14:34:26.413Z commands_total=19 inherited=0 own_commands=19 first_request="last_token_usage":{"input_tokens":16496,"cached_input_tokens":12160,"cache_write_input_tokens":0,"output_tokens":74,"reasoning_output_tokens":0,"total_tokens":1657
+id=-c489-7fa2-a62d-3aec3fb3fcc9 forked_from=01a17dbf-8b56-7cd3-9b8c-81f875035624 start=2026-10-27T14:25:47.665Z end=2026-10-27T14:28:11.830Z commands_total=17 inherited=11 own_commands=6 first_request="last_token_usage":{"input_tokens":115978,"cached_input_tokens":113024,"cache_write_input_tokens":0,"output_tokens":111,"reasonin
+id=-fc85-7c02-9ebf-36c80728ffac forked_from=01a17dbf-8b56-7cd3-9b8c-81f875035624 start=2026-10-27T14:26:01.996Z end=2026-10-27T14:30:27.096Z commands_total=20 inherited=11 own_commands=9 first_request="last_token_usage":{"input_tokens":116958,"cached_input_tokens":113792,"cache_write_input_tokens":0,"output_tokens":343,"reasonin
+id=-34e1-7410-b3f5-276c682514e0 forked_from=01a17dbf-8b56-7cd3-9b8c-81f875035624 start=2026-10-27T14:26:16.424Z end=2026-10-27T14:28:35.587Z commands_total=17 inherited=11 own_commands=6 first_request="last_token_usage":{"input_tokens":117584,"cached_input_tokens":114560,"cache_write_input_tokens":0,"output_tokens":117,"reasonin
+== med2
+id=-0505-7543-8df6-5e2c52442cb0 forked_from=- start=2026-10-27T14:34:48.982Z end=2026-10-27T14:41:03.713Z commands_total=17 inherited=0 own_commands=17 first_request="last_token_usage":{"input_tokens":16496,"cached_input_tokens":12160,"cache_write_input_tokens":0,"output_tokens":73,"reasoning_output_tokens":0,"total_tokens":1656
+id=-2483-7911-b74c-59ff407b4ab4 forked_from=01a17dc9-0505-7543-8df6-5e2c52442cb0 start=2026-10-27T14:36:02.058Z end=2026-10-27T14:38:04.282Z commands_total=15 inherited=10 own_commands=5 first_request="last_token_usage":{"input_tokens":106565,"cached_input_tokens":103552,"cache_write_input_tokens":0,"output_tokens":123,"reasonin
+id=-5ed9-7793-8e9f-68526a4af2ce forked_from=01a17dc9-0505-7543-8df6-5e2c52442cb0 start=2026-10-27T14:36:16.992Z end=2026-10-27T14:38:48.042Z commands_total=17 inherited=10 own_commands=7 first_request="last_token_usage":{"input_tokens":107545,"cached_input_tokens":104448,"cache_write_input_tokens":0,"output_tokens":154,"reasonin
+id=-981d-7030-b901-708eb8f4a633 forked_from=01a17dc9-0505-7543-8df6-5e2c52442cb0 start=2026-10-27T14:36:31.653Z end=2026-10-27T14:38:17.538Z commands_total=16 inherited=10 own_commands=6 first_request="last_token_usage":{"input_tokens":108171,"cached_input_tokens":105088,"cache_write_input_tokens":0,"output_tokens":110,"reasonin
+== med1
+handler 2026-10-27T15-24-28 agents_md_loads=1 spawn_agent_calls=4 fork_turns_all=3
+fork 2026-10-27T15-25-47 agents_md_loads=1 spawn_agent_calls=2 fork_turns_all=1
+fork 2026-10-27T15-26-01 agents_md_loads=1 spawn_agent_calls=3 fork_turns_all=2
+fork 2026-10-27T15-26-16 agents_md_loads=1 spawn_agent_calls=4 fork_turns_all=3
+== med2
+handler 2026-10-27T15-34-48 agents_md_loads=1 spawn_agent_calls=4 fork_turns_all=3
+fork 2026-10-27T15-36-02 agents_md_loads=1 spawn_agent_calls=2 fork_turns_all=1
+fork 2026-10-27T15-36-16 agents_md_loads=1 spawn_agent_calls=3 fork_turns_all=2
+fork 2026-10-27T15-36-31 agents_md_loads=1 spawn_agent_calls=4 fork_turns_all=3
