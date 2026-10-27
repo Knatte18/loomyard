@@ -1,0 +1,16 @@
+# One line per call: wall seconds, tokens and the weekly used_percent of the rollout's first and last token_count. The sibling benches drew on the same account over the same minutes.
+P2 high handler wall=673 in=5485396 cached=5267072 fresh=218324 out=14714 reason=5850 commands=27 weekly_first=29.0 weekly_last=54.0
+P2 high fork-affected-set wall=240 in=1762254 cached=1732352 fresh=29902 out=4283 reason=2292 commands=7 weekly_first=41.0 weekly_last=50.0
+P2 high fork-guard-reach wall=253 in=1502582 cached=1486336 fresh=16246 out=4878 reason=2643 commands=6 weekly_first=42.0 weekly_last=50.0
+P2 high fork-way-forward wall=131 in=871969 cached=846080 fresh=25889 out=2347 reason=1391 commands=3 weekly_first=43.0 weekly_last=48.0
+P2 med1 handler wall=255 in=2366485 cached=2246656 fresh=119829 out=7301 reason=1567 commands=17 weekly_first=29.0 weekly_last=47.0
+P2 med1 fork-affected-set wall=95 in=691058 cached=659840 fresh=31218 out=2321 reason=814 commands=5 weekly_first=32.0 weekly_last=38.0
+P2 med1 fork-guard-reach wall=87 in=559690 cached=534016 fresh=25674 out=2209 reason=605 commands=4 weekly_first=33.0 weekly_last=36.0
+P2 med1 fork-way-forward wall=53 in=321516 cached=306048 fresh=15468 out=1187 reason=480 commands=2 weekly_first=34.0 weekly_last=36.0
+P2 med2 handler wall=370 in=2991427 cached=2855936 fresh=135491 out=9986 reason=2988 commands=19 weekly_first=29.0 weekly_last=51.0
+P2 med2 fork-affected-set wall=127 in=1003853 cached=967168 fresh=36685 out=3023 reason=1048 commands=7 weekly_first=33.0 weekly_last=41.0
+P2 med2 fork-guard-reach wall=156 in=1191475 cached=1153408 fresh=38067 out=3901 reason=1460 commands=6 weekly_first=34.0 weekly_last=42.0
+P2 med2 fork-way-forward wall=72 in=616739 cached=590208 fresh=26531 out=1772 reason=688 commands=4 weekly_first=35.0 weekly_last=39.0
+P2 high verdict=BLOCKING n=5 (1 handler, 4 from forks; F2 affected-set, F1 F4 F5 guard-reach, F3 both)
+P2 med1 verdict=BLOCKING n=4 (1 handler, 3 from forks)
+P2 med2 verdict=BLOCKING n=6 (1 handler, 5 from forks)

@@ -1,0 +1,16 @@
+input	setting	finding	own_severity	label	claude_finding	claude_severity	note
+P2	high-handler	F1	BLOCKING	unique-real			fork guard-reach: card 10 tests the operator case only through renameCSharpDecl returning false, and no test reaches renameDeclSource's rename-old-unresolved or its way forward; holds on card 10 lines 35 to 43 and PATTERN-refusal-way-forward
+P2	high-handler	F2	MEDIUM	unique-real			fork affected-set: the new status and Unit readers of cards 6, 8, 11 and 12 are not in allowedStatusConsumers, which TestStatusEnforcement_NoOutOfAllowlistConsumer scans; holds on status_enforcement_test.go lines 64 to 99 and 135
+P2	high-handler	F3	MEDIUM	shared	F1	BLOCKING	handler and fork guard-reach: the declaredNameIndex fallback picks IProvider in card 9's own draft row; the fan rates it BLOCKING, Astra MEDIUM
+P2	high-handler	F4	MEDIUM	unique-real			fork guard-reach: the malformed Create row of card 3 also yields glyph-rejected, since the handle body resolves through createHandleResults and the default arm of createFindings; the fan's F5 and F6 are different defects on the same card
+P2	high-handler	F5	MEDIUM	shared	F3	BLOCKING	fork guard-reach: Glyphchain.Sharp# is a file scope under go (hasFileExtension), so card 4's go row reports the finding it claims absent; same fix as the fan's, Astra rates it MEDIUM
+P2	med1-handler	F1	BLOCKING	unique-real			fork guard-reach: same defect as high F1
+P2	med1-handler	F2	BLOCKING	unique-real			handler: card 14 collects the package docs and the PATTERN text after the implementing cards, against CLAUDE.md's same-commit rule; arguable, since a plan may order its docs card last
+P2	med1-handler	F3	MEDIUM	shared	F1	BLOCKING	fork guard-reach: same defect as high F3
+P2	med1-handler	F4	MEDIUM	unique-real			fork affected-set: same defect as high F2
+P2	med2-handler	F1	BLOCKING	unique-real			fork guard-reach: same defect as high F1
+P2	med2-handler	F2	MEDIUM	shared	F1	BLOCKING	fork guard-reach: same defect as high F3
+P2	med2-handler	F3	MEDIUM	unique-real			fork guard-reach: collectGlyphTargets collects Uses beside Targets, so card 6's resolve half reads a .cs symbol from a Uses ref as a changed C# target; holds on planglyph.go lines 430 to 455 and card 6 line 31
+P2	med2-handler	F4	MEDIUM	unique-real			fork affected-set: same defect as high F2
+P2	med2-handler	F5	MEDIUM	unique-real			fork affected-set: card 10 has renameDeclSource call ParseRef, which needs the plan, yet renameDeclSource takes no plan and card 10 names neither the parameter nor the caller change; holds on handle.go lines 98 and 220
+P2	med2-handler	F6	MEDIUM	shared	F2	BLOCKING	handler: quarry's checkMintedContainer matches the canonical qualifier against the head verbatim, so card 9's spaced IPair<string, int> head answers invalid_container; the fan's F2, Astra rates it MEDIUM
