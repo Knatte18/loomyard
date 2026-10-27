@@ -1,0 +1,33 @@
+# run high: id, parent, start, end, wall_s, commands (own), first request, last total, weekly used_percent first/last
+id=01a17d89-c131-7a83-b971-448cd9b7ad7e kind=handler forked_from=- start=2026-10-27T13:25:42.746Z end=2026-10-27T13:38:24.213Z wall=762 commands_own=32 commands_total=32 first_request={"input_tokens":16380,"cached_input_tokens":12160} total={"input_tokens":6008243,"cached_input_tokens":5790720,"output_tokens":16869,"reasoning_output_tokens":6557} fresh=217523 weekly_first=28.0 weekly_last=54.0 agents_md_blocks=1
+id=01a17d8b-7d49-7621-aecc-1b4bc6caba77 kind=fork forked_from=01a17d89-c131-7a83-b971-448cd9b7ad7e start=2026-10-27T13:27:36.016Z end=2026-10-27T13:31:42.809Z wall=246 commands_own=10 commands_total=27 first_request={"input_tokens":157912,"cached_input_tokens":155008} total={"input_tokens":1989983,"cached_input_tokens":1942784,"output_tokens":5370,"reasoning_output_tokens":2055} fresh=47199 weekly_first=34.0 weekly_last=47.0 agents_md_blocks=1
+id=01a17d8b-adc6-7e91-bd24-ae35e8d311b0 kind=fork forked_from=01a17d89-c131-7a83-b971-448cd9b7ad7e start=2026-10-27T13:27:48.430Z end=2026-10-27T13:32:14.759Z wall=266 commands_own=8 commands_total=25 first_request={"input_tokens":158521,"cached_input_tokens":155648} total={"input_tokens":1642328,"cached_input_tokens":1598592,"output_tokens":5412,"reasoning_output_tokens":3017} fresh=43736 weekly_first=36.0 weekly_last=48.0 agents_md_blocks=1
+id=01a17d8b-d294-7941-8d75-5e9a714cde7d kind=fork forked_from=01a17d89-c131-7a83-b971-448cd9b7ad7e start=2026-10-27T13:27:57.852Z end=2026-10-27T13:30:26.202Z wall=149 commands_own=7 commands_total=24 first_request={"input_tokens":159093,"cached_input_tokens":156160} total={"input_tokens":1446756,"cached_input_tokens":1403392,"output_tokens":3304,"reasoning_output_tokens":1128} fresh=43364 weekly_first=36.0 weekly_last=44.0 agents_md_blocks=1
+# spawn_agent calls in the handler
+2026-10-27T13:27:35.999Z	{"task_name":"affected_set","fork_turns":"all"}
+2026-10-27T13:27:48.407Z	{"task_name":"guard_reach","fork_turns":"all"}
+2026-10-27T13:27:57.829Z	{"task_name":"way_forward","fork_turns":"all"}
+# handler exec calls before the first spawn: 17
+
+# run med1: id, parent, start, end, wall_s, commands (own), first request, last total, weekly used_percent first/last
+id=01a17d89-c131-7303-8508-6b7da5b1b3bb kind=handler forked_from=- start=2026-10-27T13:25:42.912Z end=2026-10-27T13:32:23.668Z wall=401 commands_own=19 commands_total=19 first_request={"input_tokens":16409,"cached_input_tokens":12160} total={"input_tokens":2591366,"cached_input_tokens":2468736,"output_tokens":8975,"reasoning_output_tokens":2012} fresh=122630 weekly_first=28.0 weekly_last=51.0 agents_md_blocks=1
+id=01a17d8a-96f6-76f3-9865-ca644518607d kind=fork forked_from=01a17d89-c131-7303-8508-6b7da5b1b3bb start=2026-10-27T13:26:37.058Z end=2026-10-27T13:29:02.677Z wall=145 commands_own=8 commands_total=16 first_request={"input_tokens":92716,"cached_input_tokens":89728} total={"input_tokens":995450,"cached_input_tokens":959232,"output_tokens":2945,"reasoning_output_tokens":711} fresh=36218 weekly_first=30.0 weekly_last=38.0 agents_md_blocks=1
+id=01a17d8a-c921-7f70-a124-81e1310ed964 kind=fork forked_from=01a17d89-c131-7303-8508-6b7da5b1b3bb start=2026-10-27T13:26:49.897Z end=2026-10-27T13:29:27.855Z wall=158 commands_own=12 commands_total=20 first_request={"input_tokens":93320,"cached_input_tokens":90368} total={"input_tokens":1515849,"cached_input_tokens":1468672,"output_tokens":3195,"reasoning_output_tokens":646} fresh=47177 weekly_first=31.0 weekly_last=39.0 agents_md_blocks=1
+id=01a17d8a-f659-7860-9baf-fbea65b57a08 kind=fork forked_from=01a17d89-c131-7303-8508-6b7da5b1b3bb start=2026-10-27T13:27:01.474Z end=2026-10-27T13:29:07.161Z wall=126 commands_own=7 commands_total=15 first_request={"input_tokens":93887,"cached_input_tokens":91008} total={"input_tokens":880295,"cached_input_tokens":848256,"output_tokens":2474,"reasoning_output_tokens":473} fresh=32039 weekly_first=32.0 weekly_last=37.0 agents_md_blocks=1
+# spawn_agent calls in the handler
+2026-10-27T13:26:37.039Z	{"task_name":"affected_set","fork_turns":"all"}
+2026-10-27T13:26:49.882Z	{"task_name":"guard_reach","fork_turns":"all"}
+2026-10-27T13:27:01.459Z	{"task_name":"way_forward","fork_turns":"all"}
+# handler exec calls before the first spawn: 8
+
+# run med2: id, parent, start, end, wall_s, commands (own), first request, last total, weekly used_percent first/last
+id=01a17d89-c131-79c2-a78a-6b5ab5ecf1b5 kind=handler forked_from=- start=2026-10-27T13:25:42.736Z end=2026-10-27T13:37:39.058Z wall=717 commands_own=29 commands_total=29 first_request={"input_tokens":16409,"cached_input_tokens":12160} total={"input_tokens":5010748,"cached_input_tokens":4841472,"output_tokens":13981,"reasoning_output_tokens":4270} fresh=169276 weekly_first=28.0 weekly_last=54.0 agents_md_blocks=1
+id=01a17d8b-29a1-70d3-a391-99943c3b50b7 kind=fork forked_from=01a17d89-c131-79c2-a78a-6b5ab5ecf1b5 start=2026-10-27T13:27:14.605Z end=2026-10-27T13:31:12.601Z wall=238 commands_own=10 commands_total=22 first_request={"input_tokens":128345,"cached_input_tokens":125440} total={"input_tokens":1686586,"cached_input_tokens":1638784,"output_tokens":4309,"reasoning_output_tokens":1439} fresh=47802 weekly_first=33.0 weekly_last=46.0 agents_md_blocks=1
+id=01a17d8b-5cdd-7122-979d-813535479094 kind=fork forked_from=01a17d89-c131-79c2-a78a-6b5ab5ecf1b5 start=2026-10-27T13:27:27.717Z end=2026-10-27T13:32:01.856Z wall=274 commands_own=9 commands_total=21 first_request={"input_tokens":128954,"cached_input_tokens":126080} total={"input_tokens":1527112,"cached_input_tokens":1480192,"output_tokens":4873,"reasoning_output_tokens":1801} fresh=46920 weekly_first=34.0 weekly_last=44.0 agents_md_blocks=1
+id=01a17d8b-8b5b-7992-add0-9b30dfc0236c kind=fork forked_from=01a17d89-c131-79c2-a78a-6b5ab5ecf1b5 start=2026-10-27T13:27:39.619Z end=2026-10-27T13:30:09.930Z wall=150 commands_own=10 commands_total=22 first_request={"input_tokens":129526,"cached_input_tokens":126592} total={"input_tokens":1665946,"cached_input_tokens":1624704,"output_tokens":3079,"reasoning_output_tokens":487} fresh=41242 weekly_first=35.0 weekly_last=43.0 agents_md_blocks=1
+# spawn_agent calls in the handler
+2026-10-27T13:27:14.585Z	{"task_name":"affected_set","fork_turns":"all"}
+2026-10-27T13:27:27.696Z	{"task_name":"guard_reach","fork_turns":"all"}
+2026-10-27T13:27:39.601Z	{"task_name":"way_forward","fork_turns":"all"}
+# handler exec calls before the first spawn: 12
+

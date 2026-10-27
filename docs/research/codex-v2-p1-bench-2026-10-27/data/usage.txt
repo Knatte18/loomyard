@@ -1,0 +1,16 @@
+P1 high handler wall=763 fresh=217523 out=16869 reason=6557 commands=32 weekly_used_percent first=28.0 last=54.0
+P1 high fork-affected-set wall=246 fresh=47199 out=5370 reason=2055 commands=10
+P1 high fork-guard-reach wall=266 fresh=43736 out=5412 reason=3017 commands=8
+P1 high fork-way-forward wall=149 fresh=43364 out=3304 reason=1128 commands=7
+P1 high total fresh=351822 verdict=BLOCKING n=8
+P1 med1 handler wall=402 fresh=122630 out=8975 reason=2012 commands=19 weekly_used_percent first=28.0 last=51.0
+P1 med1 fork-affected-set wall=145 fresh=36218 out=2945 reason=711 commands=8
+P1 med1 fork-guard-reach wall=158 fresh=47177 out=3195 reason=646 commands=12
+P1 med1 fork-way-forward wall=126 fresh=32039 out=2474 reason=473 commands=7
+P1 med1 total fresh=238064 verdict=BLOCKING n=7
+P1 med2 handler wall=717 fresh=169276 out=13981 reason=4270 commands=29 weekly_used_percent first=28.0 last=54.0
+P1 med2 fork-affected-set wall=238 fresh=47802 out=4309 reason=1439 commands=10
+P1 med2 fork-guard-reach wall=274 fresh=46920 out=4873 reason=1801 commands=9
+P1 med2 fork-way-forward wall=150 fresh=41242 out=3079 reason=487 commands=10
+P1 med2 total fresh=305240 verdict=BLOCKING n=10
+P1 weekly window: all three runs read 28.0 at their first request; the siblings codex-v2-p2-bench and codex-v2-p4-bench drew on the same account over the same minutes
