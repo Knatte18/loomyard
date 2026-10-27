@@ -1,8 +1,8 @@
 //go:build tier1 || tier2
 
 // smoke_helpers_test.go holds the fixtures and subprocess helpers shared by the integration-tier and tmux-tier smoke files:
-// a real wired hub with one pair, the runner of the built cmd/lyx binary, the run seeds, and the bad-reed-config fixture.
-// It spawns git and runs lyx, so it carries the disjunction of its two users' tags.
+// a real wired hub with one pair, the runner of the built cmd/lym binary, the run seeds, and the bad-reed-config fixture.
+// It spawns git and runs lym, so it carries the disjunction of its two users' tags.
 
 package loomcli
 
@@ -23,12 +23,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
-	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -38,7 +38,7 @@ import (
 // case (h)'s concurrent invocations need, since t.Fatalf from a non-test goroutine is unsafe. Callers
 // on the test's own goroutine that want fail-fast behaviour check the returned err themselves.
 func runLoomCLINoFatal(exe, dir string, timeout time.Duration, args ...string) (stdout string, exitCode int, err error) {
-	return lyxbin.Run(exe, dir, timeout, args...)
+	return lymbin.Run(exe, dir, timeout, args...)
 }
 
 // skipBoardPush keeps a verb's detached board sync from pushing,
@@ -53,7 +53,7 @@ var skipWalkPush = append([]string{"FABRIC_SKIP_PUSH=1"}, skipBoardPush...)
 // runLoomCLIWithEnvNoFatal is runLoomCLINoFatal with extraEnv appended to the inherited environment of the subprocess alone,
 // so a parallel test can set a variable such as FABRIC_SKIP_PUSH for one invocation without t.Setenv.
 func runLoomCLIWithEnvNoFatal(exe, dir string, extraEnv []string, timeout time.Duration, args ...string) (stdout string, exitCode int, err error) {
-	return lyxbin.RunWithEnv(exe, dir, extraEnv, timeout, args...)
+	return lymbin.RunWithEnv(exe, dir, extraEnv, timeout, args...)
 }
 
 // newWiredPairFixture builds a real fabric hub, seeds every module's config template into it, and
@@ -61,7 +61,7 @@ func runLoomCLIWithEnvNoFatal(exe, dir string, extraEnv []string, timeout time.D
 // against it. AddPair already writes and commits the pair's origin record (see the plan's
 // origin-record-records-both-its-write-and-its-commit decision), so a caller never needs a --parent
 // flag on its own first "loom start" call.
-func newWiredPairFixture(t *testing.T) (h *hubforge.Hub, loc *lyxcwd.Location, worktree, slug string) {
+func newWiredPairFixture(t *testing.T) (h *hubforge.Hub, loc *lymcwd.Location, worktree, slug string) {
 	t.Helper()
 
 	h = hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -78,9 +78,9 @@ func newWiredPairFixture(t *testing.T) (h *hubforge.Hub, loc *lyxcwd.Location, w
 	worktree = h.PairCodeWorktree(slug)
 
 	var err error
-	loc, err = lyxcwd.Resolve(worktree)
+	loc, err = lymcwd.Resolve(worktree)
 	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(%s): %v", worktree, err)
+		t.Fatalf("lymcwd.Resolve(%s): %v", worktree, err)
 	}
 	return h, loc, worktree, slug
 }
@@ -108,12 +108,12 @@ func providerlessShuttleConfig() string {
 }
 
 // providerlessBinary is a provider path that cannot exist, which keeps a fixture from starting a real session.
-const providerlessBinary = "/nonexistent/lyx-smoke-has-no-provider"
+const providerlessBinary = "/nonexistent/lym-smoke-has-no-provider"
 
 // claudeConfigWithBinary returns claude.yaml's shipped template with its binary: value pointed at binary, so a fixture seeding it launches that executable rather than the real claude on PATH.
 // It panics when the template no longer holds the line it rewrites, so drift fails loudly.
 func claudeConfigWithBinary(binary string) string {
-	const binaryValue = "binary: ${env:LYX_SHUTTLE_CLAUDE:-}"
+	const binaryValue = "binary: ${env:LYM_SHUTTLE_CLAUDE:-}"
 	template := claudeengine.ConfigTemplate()
 	if !strings.Contains(template, binaryValue) {
 		panic("claude config template drift: " + binaryValue + " not found")
@@ -136,7 +136,7 @@ func fastDeadlineLoomConfig() string {
 }
 
 // smokeStatusRel is the status file's relative path for the self run.
-func smokeStatusRel(loc *lyxcwd.Location) string {
+func smokeStatusRel(loc *lymcwd.Location) string {
 	return shedrun.StatusRel(loc, shedrun.SelfRunID)
 }
 
@@ -167,8 +167,8 @@ func recordsHeadChangedFiles(t *testing.T, dir string) []string {
 // checks ever run: several of this file's fixtures drive one of those four verbs directly against a
 // pair whose STATUS FILE is deliberately still absent (to exercise the status-file-absent path
 // itself), which now also needs the run's own seed.json present first -- exactly the state a seed
-// written via "lyx shed seed" before any bootstrap has ever run would leave.
-func seedGoDriverRun(t *testing.T, loc *lyxcwd.Location) {
+// written via "lym shed seed" before any bootstrap has ever run would leave.
+func seedGoDriverRun(t *testing.T, loc *lymcwd.Location) {
 	t.Helper()
 	recorded, found, err := fabricengine.ReadOrigin(loc)
 	if err != nil || !found {
@@ -193,9 +193,9 @@ func seedGoDriverRun(t *testing.T, loc *lyxcwd.Location) {
 }
 
 // seedAndCommitStatus seeds loc's status file directly through the production Seed function and
-// commits it records-side -- the same seed-then-commit shape "lyx loom start" itself performs, used here
+// commits it records-side -- the same seed-then-commit shape "lym loom start" itself performs, used here
 // so a standalone-driver test does not need a live tmux server just to get a valid seeded pair.
-func seedAndCommitStatus(t *testing.T, loc *lyxcwd.Location, slug string) {
+func seedAndCommitStatus(t *testing.T, loc *lymcwd.Location, slug string) {
 	t.Helper()
 	if err := loomshed.Seed(shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID), slug, "main"); err != nil {
 		t.Fatalf("loomshed.Seed: %v", err)
@@ -216,7 +216,7 @@ func seedAndCommitStatus(t *testing.T, loc *lyxcwd.Location, slug string) {
 // existing seed outright rather than silently accepting the later write: recorded.ParentBranch is
 // read from the origin record newWiredPairFixture-style callers already committed via
 // hubforge.AddPair, so this seed's own params.parent matches what the bootstrap itself would compute.
-func seedLLMDriver(t *testing.T, loc *lyxcwd.Location) {
+func seedLLMDriver(t *testing.T, loc *lymcwd.Location) {
 	t.Helper()
 	recorded, found, err := fabricengine.ReadOrigin(loc)
 	if err != nil || !found {
@@ -234,7 +234,7 @@ func seedLLMDriver(t *testing.T, loc *lyxcwd.Location) {
 
 // newBadReedUpFixture builds a hub whose reed config carries an invalid mouse value, so reed Up fails.
 // It seeds the pair with seed and returns the resolved location and the worktree path.
-func newBadReedUpFixture(t *testing.T, seed func(*testing.T, *lyxcwd.Location)) (*lyxcwd.Location, string) {
+func newBadReedUpFixture(t *testing.T, seed func(*testing.T, *lymcwd.Location)) (*lymcwd.Location, string) {
 	t.Helper()
 	reedCfg := reedengine.ConfigTemplate()
 	var lines []string
@@ -261,9 +261,9 @@ func newBadReedUpFixture(t *testing.T, seed func(*testing.T, *lyxcwd.Location)) 
 	const slug = "loom-smoke-task"
 	hubforge.AddPair(t, h, slug)
 	worktree := h.PairCodeWorktree(slug)
-	loc, err := lyxcwd.Resolve(worktree)
+	loc, err := lymcwd.Resolve(worktree)
 	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(%s): %v", worktree, err)
+		t.Fatalf("lymcwd.Resolve(%s): %v", worktree, err)
 	}
 	seed(t, loc)
 	return loc, worktree
@@ -292,12 +292,12 @@ func waitForFixtureProcessesToExit(t *testing.T) {
 }
 
 // hubStampPath returns the hub's build stamp file.
-func hubStampPath(loc *lyxcwd.Location) string {
+func hubStampPath(loc *lymcwd.Location) string {
 	return hubreconcile.Geometry{BoardDir: fabricengine.BoardDir(loc.HubPath)}.StampPath()
 }
 
 // commitRetiredBatcherKey commits a batcher.yaml carrying a retired key into loc's records worktree, the state a hub reconcile after a binary change removes.
-func commitRetiredBatcherKey(t *testing.T, loc *lyxcwd.Location) {
+func commitRetiredBatcherKey(t *testing.T, loc *lymcwd.Location) {
 	t.Helper()
 	batcher, _ := configreg.Lookup("batcher")
 	retired := strings.Replace(batcher.Template(), "orientation: 31400", "master_base: 52000", 1)
@@ -329,7 +329,7 @@ func findWatchdogPIDs(hubPath string) []int {
 }
 
 // findDriverPIDs returns the pids of every live process whose current working directory is worktree and whose argv contains an adjacent "loom" followed by "drive" pair.
-// It finds the detached "lyx loom drive" process a bootstrap spawned, since it runs in the worktree and its own argv is fixed.
+// It finds the detached "lym loom drive" process a bootstrap spawned, since it runs in the worktree and its own argv is fixed.
 // A lone "drive" argv element is not a sufficient discriminator, so the adjacent "loom" is required.
 // Linux only; returns nil on any other GOOS.
 // A process whose parent also matches is dropped: between fork and exec the driver's own child, such as a git call, still carries the driver's argv and cwd, and is not a second driver.

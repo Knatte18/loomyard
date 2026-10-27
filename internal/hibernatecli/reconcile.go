@@ -8,7 +8,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hibernateengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 )
 
@@ -37,7 +37,7 @@ func stopsEntries(state fabricengine.BranchState) bool {
 }
 
 // wakeReconcile runs the hub-scope origin reconcile from the prime, moving branches, and returns the engine's view of its report.
-func wakeReconcile(location *lyxcwd.Location) (hibernateengine.WakeReconcile, error) {
+func wakeReconcile(location *lymcwd.Location) (hibernateengine.WakeReconcile, error) {
 	teardown, err := pairteardown.New(location)
 	if err != nil {
 		return hibernateengine.WakeReconcile{}, err

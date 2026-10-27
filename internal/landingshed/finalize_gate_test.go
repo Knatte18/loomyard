@@ -172,7 +172,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 	small := fabricengine.LineChange{Lines: 3, Paths: []string{"a/a.go"}}
 
 	t.Run("a darn Finalize gates through the command its verify source answers", func(t *testing.T) {
-		const treeScoped = "lyx gate test --wait --tier 0 --tree-scoped"
+		const treeScoped = "lym gate test --wait --tier 0 --tree-scoped"
 		fx := newFinalizeGateFixture(t)
 		fx.fz.gate.command = func(string) (string, error) { return treeScoped, nil }
 
@@ -243,7 +243,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 
 		outcome, ptr := fx.call(t)
 
-		requireHalt(t, outcome, ptr, path, "way forward: remove "+path, "`lyx loom resume`")
+		requireHalt(t, outcome, ptr, path, "way forward: remove "+path, "`lym loom resume`")
 		if fx.gate.fake.verifyCalls != 0 || len(fx.merger.calls) != 0 {
 			t.Errorf("verify calls = %d, parent-side merges = %d; want none over an undecodable record", fx.gate.fake.verifyCalls, len(fx.merger.calls))
 		}
@@ -336,7 +336,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 
 		outcome, ptr := fx.call(t)
 
-		requireHalt(t, outcome, ptr, "the test file a/a_test.go", "fixer commits: t2..f1", "way forward: review and fix on the task branch", "`lyx loom resume`")
+		requireHalt(t, outcome, ptr, "the test file a/a_test.go", "fixer commits: t2..f1", "way forward: review and fix on the task branch", "`lym loom resume`")
 		if rec, _ := fx.attempts(t); rec.Spent != 1 || rec.Halt != fixerHaltOverCap {
 			t.Errorf("attempt record = %+v; want 1 of the 2 attempts spent and the halt noted as %q", rec, fixerHaltOverCap)
 		}
@@ -380,7 +380,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 		fx.seats.turns = []func(){fx.turn(t, escalateReport, "h6")}
 		outcome, ptr = fx.call(t)
 
-		requireHalt(t, outcome, ptr, fx.reportPath(), "decision D3", "`lyx loom decision add`")
+		requireHalt(t, outcome, ptr, fx.reportPath(), "decision D3", "`lym loom decision add`")
 		if got := fx.seats.tables[1].Gate[0].Attempts; got != 1 {
 			t.Errorf("gate attempts = %d; want the 1 turn the entry has left", got)
 		}

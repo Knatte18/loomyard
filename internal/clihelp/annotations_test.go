@@ -1,8 +1,6 @@
 //go:build tier0
 
-// annotations_test.go asserts the exact literal values of this package's cobra-annotation constants,
-// so a rename cannot silently decouple a producer command (e.g. reed switch) from the consumer gate
-// (cmd/lyx's skipStencilSeed).
+// annotations_test.go asserts the exact literal values of this package's cobra-annotation constants, so a rename cannot silently decouple a producer command (e.g. reed switch) from the consumer gate (cmd/lym's skipStencilSeed).
 
 package clihelp
 
@@ -19,14 +17,14 @@ func TestAnnotationLiterals(t *testing.T) {
 		got  string
 		want string
 	}{
-		{"SkipStencilSeedAnnotation", SkipStencilSeedAnnotation, "lyx.skip-stencil-seed"},
+		{"SkipStencilSeedAnnotation", SkipStencilSeedAnnotation, "lym.skip-stencil-seed"},
 		{"AnnotationEnabled", AnnotationEnabled, "true"},
-		{"AudienceAnnotation", AudienceAnnotation, "lyx.audience"},
+		{"AudienceAnnotation", AudienceAnnotation, "lym.audience"},
 		{"AudienceOperator", AudienceOperator, "operator"},
 		{"AudienceRole", AudienceRole, "role"},
 		{"AudienceInternal", AudienceInternal, "internal"},
-		{"IndexNoteAnnotation", IndexNoteAnnotation, "lyx.index-note"},
-		{"IndexNoteAudienceAnnotation", IndexNoteAudienceAnnotation, "lyx.index-note-audience"},
+		{"IndexNoteAnnotation", IndexNoteAnnotation, "lym.index-note"},
+		{"IndexNoteAudienceAnnotation", IndexNoteAudienceAnnotation, "lym.index-note-audience"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

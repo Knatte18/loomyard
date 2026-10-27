@@ -89,7 +89,7 @@ func TestDetectCrashResume(t *testing.T) {
 			want: false,
 		},
 		{
-			// A completed `lyx loom step` leaves exactly the crash signature -- state running, no
+			// A completed `lym loom step` leaves exactly the crash signature -- state running, no
 			// lock held, live history -- so the voucher is the one thing separating an
 			// operator's step-to-driver handoff from a mid-run driver death.
 			name: "RunningWithHistory_Vouched_None",
@@ -139,7 +139,7 @@ func TestClassifyHalt(t *testing.T) {
 		{
 			name:     "BlockedBudgetExhaustedWithWayForward",
 			state:    shedengine.StateBlocked,
-			reason:   shedengine.ReasonBounceBudgetExhausted + ` for Plan-Write; way forward: run "lyx loom resume" in the task worktree: the resume grants the row one more budget`,
+			reason:   shedengine.ReasonBounceBudgetExhausted + ` for Plan-Write; way forward: run "lym loom resume" in the task worktree: the resume grants the row one more budget`,
 			wantKind: AnomalyBudgetExhausted,
 			wantOK:   true,
 		},

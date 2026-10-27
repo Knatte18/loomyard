@@ -2,7 +2,7 @@
 
 // verify_integration_test.go drives the `verify` verb against a real scratch repo and real shell processes, so it carries the integration tag.
 // The plan, the verify directory and the webster directories all lie outside the repo, so a verify run never dirties the tree it checks.
-// The verb runs the rendered `final` gate call through the `lyx` built from the tree, which each fixture puts first on `PATH`, so every test here is not parallel.
+// The verb runs the rendered `final` gate call through the `lym` built from the tree, which each fixture puts first on `PATH`, so every test here is not parallel.
 
 package webstercli
 
@@ -19,10 +19,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
-	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -62,11 +62,11 @@ func verifyGateConfig(t *testing.T, command string, finalTier int) []byte {
 }
 
 // newVerifyFixture builds a fixture whose committed gate.yaml has tier0 run command as a shell stand-in, and whose told GateConfig reads that file.
-// The repo excludes its .lyx directory, where a standalone `lyx gate test` writes its run record, so the tree stays clean for the verify.
-// It puts the `lyx` built from the tree first on `PATH`, so the calling test is not parallel.
+// The repo excludes its .lym directory, where a standalone `lym gate test` writes its run record, so the tree stays clean for the verify.
+// It puts the `lym` built from the tree first on `PATH`, so the calling test is not parallel.
 func newVerifyFixture(t *testing.T, command string) *verifyFixture {
 	t.Helper()
-	lyxbin.PutFirstOnPath(t)
+	lymbin.PutFirstOnPath(t)
 
 	worktree := t.TempDir()
 	gitkit.Git(t, worktree, "init", "-b", "main")
@@ -76,7 +76,7 @@ func newVerifyFixture(t *testing.T, command string) *verifyFixture {
 	if err := os.MkdirAll(filepath.Dir(exclude), 0o755); err != nil {
 		t.Fatalf("create the exclude directory: %v", err)
 	}
-	if err := os.WriteFile(exclude, []byte(lyxdirs.DotLyxDirName+"/\n"), 0o644); err != nil {
+	if err := os.WriteFile(exclude, []byte(lymdirs.DotLymDirName+"/\n"), 0o644); err != nil {
 		t.Fatalf("write the exclude file: %v", err)
 	}
 	configRel, err := filepath.Rel(worktree, configengine.ConfigFile(worktree, "gate"))
@@ -185,7 +185,7 @@ func TestVerifyVerb_DirtyTreeExitsOneNamingPaths(t *testing.T) {
 	}
 }
 
-// TestVerifyVerb_GateConfigRefusalIsTheError pins that a gate.yaml the verb cannot load, or a `final` list naming an undeclared tier, is the verb's error naming `lyx config gate`, never a pass.
+// TestVerifyVerb_GateConfigRefusalIsTheError pins that a gate.yaml the verb cannot load, or a `final` list naming an undeclared tier, is the verb's error naming `lym config gate`, never a pass.
 func TestVerifyVerb_GateConfigRefusalIsTheError(t *testing.T) {
 	tests := []struct {
 		name string
@@ -210,8 +210,8 @@ func TestVerifyVerb_GateConfigRefusalIsTheError(t *testing.T) {
 
 			code, env := fx.run(t)
 
-			if code != 1 || env.OK || !strings.Contains(env.Error, "lyx config gate") {
-				t.Errorf("verify over %s = %d, envelope %+v; want 1 and an error naming lyx config gate", tt.name, code, env)
+			if code != 1 || env.OK || !strings.Contains(env.Error, "lym config gate") {
+				t.Errorf("verify over %s = %d, envelope %+v; want 1 and an error naming lym config gate", tt.name, code, env)
 			}
 		})
 	}

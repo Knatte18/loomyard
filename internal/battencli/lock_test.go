@@ -99,7 +99,7 @@ func TestLockVerbs(t *testing.T) {
 		}
 
 		code, out = runLockVerb("release", "develop")
-		envelope.RequireErr(t, out, `no parent lock on "develop"; way forward: run "lyx batten lock list" to see the held locks`)
+		envelope.RequireErr(t, out, `no parent lock on "develop"; way forward: run "lym batten lock list" to see the held locks`)
 		if code != 1 {
 			t.Errorf("release of an unknown branch = exit %d; want 1", code)
 		}
@@ -125,7 +125,7 @@ func TestLockVerbs(t *testing.T) {
 	t.Run("ReleaseRefusesABranchBesideAllAndNeitherForm", func(t *testing.T) {
 		for _, args := range [][]string{{"release", "main", "--all"}, {"release"}} {
 			code, out := runLockVerb(args...)
-			envelope.RequireErr(t, out, `way forward: run "lyx batten lock release <parent-branch>" or "lyx batten lock release --all"`)
+			envelope.RequireErr(t, out, `way forward: run "lym batten lock release <parent-branch>" or "lym batten lock release --all"`)
 			if code != 1 {
 				t.Errorf("%v = exit %d; want 1", args, code)
 			}

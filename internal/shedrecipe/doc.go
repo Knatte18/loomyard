@@ -6,7 +6,7 @@
 //
 // This package holds PATTERN-cwd-resolution in its precise form: an
 // engine is handed the absolute paths it operates on and derives none of its own, so it runs
-// identically inside a lyx hub and in a bare directory that is not a git repository.
+// identically inside a lym hub and in a bare directory that is not a git repository.
 // Every root this package touches is told, none is derived, and the package's only path
 // construction is joining a told root with a recipe-relative value.
 //

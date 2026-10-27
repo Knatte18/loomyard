@@ -18,14 +18,14 @@ import (
 //
 //testtiming:keep pins LoadState answering (nil, nil) for an absent file and returning every field SaveState wrote, strand records included; its covering tests run this code without asserting it
 func TestSaveState_ThenLoadState_RoundTrips(t *testing.T) {
-	dotLyxDir := filepath.Join(t.TempDir(), ".lyx")
-	absent, err := LoadState(dotLyxDir)
+	dotLymDir := filepath.Join(t.TempDir(), ".lym")
+	absent, err := LoadState(dotLymDir)
 	if err != nil || absent != nil {
 		t.Fatalf("LoadState(absent) = (%+v, %v), want (nil, nil)", absent, err)
 	}
 
 	want := &ReedState{
-		Socket:      "lyx-loomyard-LYXHUB-abcd1234",
+		Socket:      "lym-loomyard-LYMHUB-abcd1234",
 		Session:     "internal-reed",
 		StrippedEnv: []string{"CLAUDECODE", "CLAUDE_CODE_SESSION_ID"},
 		Strands: []Strand{
@@ -37,7 +37,7 @@ func TestSaveState_ThenLoadState_RoundTrips(t *testing.T) {
 				ResumeCmd: "claude --resume abc",
 				SessionID: "abc",
 				Provider:  "claude",
-				LyxBin:    "/opt/lyx/bin/lyx",
+				LymBin:    "/opt/lym/bin/lym",
 				PaneID:    "%1",
 				Display: render.Display{
 					Anchor: render.AnchorOwnWindow,
@@ -57,11 +57,11 @@ func TestSaveState_ThenLoadState_RoundTrips(t *testing.T) {
 		},
 	}
 
-	if err := SaveState(dotLyxDir, want); err != nil {
+	if err := SaveState(dotLymDir, want); err != nil {
 		t.Fatalf("SaveState: %v", err)
 	}
 
-	got, err := LoadState(dotLyxDir)
+	got, err := LoadState(dotLymDir)
 	if err != nil {
 		t.Fatalf("LoadState: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestLoadState_UnreadableFileIsActionable(t *testing.T) {
 		name    string
 		content string
 	}{
-		{name: "truncated mid-object", content: `{"socket":"lyx-x","session":"svc","stra`},
+		{name: "truncated mid-object", content: `{"socket":"lym-x","session":"svc","stra`},
 		{name: "empty file", content: ""},
 		{name: "garbage bytes", content: "\x00\x00\x00\x00"},
 		{name: "a bare null document", content: "null"},
@@ -118,7 +118,7 @@ func TestLoadState_UnreadableFileIsActionable(t *testing.T) {
 			if err == nil {
 				t.Fatalf("LoadState() = (%+v, nil); want an error — a state file reed cannot read must never decode to a plausible empty state", st)
 			}
-			for _, want := range []string{path, "lyx reed down"} {
+			for _, want := range []string{path, "lym reed down"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("LoadState() error = %v; want it to contain %q so the operator can act on it", err, want)
 				}

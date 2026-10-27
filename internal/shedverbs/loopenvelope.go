@@ -89,7 +89,7 @@ func loopEnvelope(step map[string]any, loop loopObject) map[string]any {
 // The envelope and the status file's error both name that way forward.
 func interruptedError(runID, producer, cause string) (string, string) {
 	message := fmt.Sprintf("shedverbs: step %s interrupted (%s)", producer, cause)
-	wayForward := fmt.Sprintf("read loop.trace_copy and loop.stderr_path, apply the interrupted rule under loop.interrupt_policy, then re-run lyx shed step %s --until-stop", runID)
+	wayForward := fmt.Sprintf("read loop.trace_copy and loop.stderr_path, apply the interrupted rule under loop.interrupt_policy, then re-run lym shed step %s --until-stop", runID)
 	return message, wayForward
 }
 

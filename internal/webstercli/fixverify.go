@@ -74,8 +74,8 @@ the strand survives a crash. Under a pause that covers the pair it refuses
 first, claiming Master into it.
 
 Example:
-  lyx webster fix-verify
-  lyx webster fix-verify --wait 8m`,
+  lym webster fix-verify
+  lym webster fix-verify --wait 8m`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
@@ -107,7 +107,7 @@ Example:
 				return nil
 			}
 			if st == nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, `webster: no run in progress; run "lyx webster run" first`))
+				clihelp.SetExit(cmd.Context(), output.Err(out, `webster: no run in progress; run "lym webster run" first`))
 				return nil
 			}
 
@@ -119,7 +119,7 @@ Example:
 			// Standalone mode boots its own reed session here, as recover-batch does, since nothing else can reach standalone geometry.
 			if c.reedUp != nil {
 				if err := c.reedUp(); err != nil {
-					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: bring up the standalone reed session: %v; way forward: transient, re-run `lyx webster fix-verify`", err)))
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: bring up the standalone reed session: %v; way forward: transient, re-run `lym webster fix-verify`", err)))
 					return nil
 				}
 			}

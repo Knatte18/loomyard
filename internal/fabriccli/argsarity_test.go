@@ -18,8 +18,8 @@ import (
 //
 // This is fabric's R8 finding L3. Only `diff` set an Args validator; every other command left Args
 // nil, which cobra defaults to ArbitraryArgs for a leaf command, so extra positional arguments were
-// accepted and silently dropped. Observed live: `lyx fabric unwire bogus-typo` performed the full
-// unwire and exited 0, and `lyx fabric commit <some-file>` committed the whole configured pathspec
+// accepted and silently dropped. Observed live: `lym fabric unwire bogus-typo` performed the full
+// unwire and exited 0, and `lym fabric commit <some-file>` committed the whole configured pathspec
 // while ignoring the named file, reporting success either way. The usage strings advertise an arity
 // the binary did not enforce.
 //
@@ -30,7 +30,7 @@ func TestCommand_EveryVerbRejectsExtraPositionalArgs(t *testing.T) {
 	t.Parallel()
 
 	// tooMany is one more argument than each verb legitimately takes, so a verb with a correct
-	// validator refuses it. Keyed by command name; every subcommand of `lyx fabric` must appear,
+	// validator refuses it. Keyed by command name; every subcommand of `lym fabric` must appear,
 	// which is what stops a newly added verb from quietly inheriting ArbitraryArgs.
 	tooMany := map[string][]string{
 		"add":       {"a", "b"},

@@ -23,7 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // ErrPairSiblingDirty is the sentinel Remove's no-force refusal wraps when the pair's other worktree carries uncommitted changes outside the record pathspec.
@@ -126,7 +126,7 @@ type RemoveResult struct {
 // If force is false, both worktrees must be clean;
 // if force is true, uncommitted changes are forcefully removed.
 // It validates slug through the same validator Add uses (slug.go), so hub geometry — `_board`,
-// `_portals`, `_launchers`, `_lyx`, `.lyx`, and every weft sibling — can never be handed to a
+// `_portals`, `_launchers`, `_lym`, `.lym`, and every weft sibling — can never be handed to a
 // teardown verb as if it were a pair.
 // It refuses the hub's prime worktree outright too: the prime is the warp repository itself, not a
 // pair this verb can tear down, and git's own refusal to remove a main working tree is not a
@@ -160,7 +160,7 @@ type RemoveResult struct {
 // It holds the lock past its last step, and a failure after taking it that leaves a worktree of the pair in place respawns the pair's push once the lock is released.
 // After a successful teardown, and before it returns, Remove disables auto gc in both hub stores and runs a best-effort foreground `git gc --auto` in each;
 // a failure there is logged and never fails the Remove, and a refused or failed Remove runs none of it.
-func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (res RemoveResult, err error) {
+func (t *Topology) Remove(l *lymcwd.Location, slug string, force, remote bool) (res RemoveResult, err error) {
 	return t.removePair(l, slug, force, remote, false)
 }
 
@@ -170,12 +170,12 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 // It commits the sibling's pending records, then puts a local set-aside/<slug>/<sha> tag on the weft tip, reported in SetAsideTag, in place of Remove's pushed archive tag.
 // It runs no ls-remote, respawns no push after a failure, skips the store housekeeping and regenerates the hub workspace file by one attempt at its lock, reporting WorkspaceSkipped when the lock is held.
 // The commits the pushed archive tag would have carried are kept under the local tag, and the removal's branch deletions keep their gates.
-func (t *Topology) RemoveLocal(l *lyxcwd.Location, slug string, force bool) (res RemoveResult, err error) {
+func (t *Topology) RemoveLocal(l *lymcwd.Location, slug string, force bool) (res RemoveResult, err error) {
 	return t.removePair(l, slug, force, false, true)
 }
 
 // removePair is Remove's body, with localMode switching off every origin step and every wait on another writer; see RemoveLocal for the mode's contract.
-func (t *Topology) removePair(l *lyxcwd.Location, slug string, force, remote, localMode bool) (res RemoveResult, err error) {
+func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, localMode bool) (res RemoveResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
 
@@ -193,7 +193,7 @@ func (t *Topology) removePair(l *lyxcwd.Location, slug string, force, remote, lo
 		return RemoveResult{}, err
 	}
 	// Read before the teardown deletes the records worktree that holds the pair's own marker.
-	pairLoc, err := lyxcwd.NamedWorktree(l.HubPath, slug)
+	pairLoc, err := lymcwd.NamedWorktree(l.HubPath, slug)
 	if err != nil {
 		return RemoveResult{}, fmt.Errorf("read the anchor of %q: %w", slug, err)
 	}
@@ -361,7 +361,7 @@ func (t *Topology) removePair(l *lyxcwd.Location, slug string, force, remote, lo
 		}
 	}
 
-	// Both worktrees are gone: reclaim the stores' unreferenced objects while lyx is already doing slow work.
+	// Both worktrees are gone: reclaim the stores' unreferenced objects while lym is already doing slow work.
 	// A refused or failed Remove returned above and runs no housekeeping, and a local removal runs none either.
 	if !localMode {
 		if housekeepHook != nil {
@@ -403,7 +403,7 @@ var housekeepHook func(slug string)
 
 // setAsideWeftTip puts a local set-aside tag on the tip of the pair's weft branch and returns its name.
 // A pair with no local weft branch has nothing to keep and returns an empty name.
-func setAsideWeftTip(rec *Mutations, l *lyxcwd.Location, slug, weftBranch string, hasBranch bool) (string, error) {
+func setAsideWeftTip(rec *Mutations, l *lymcwd.Location, slug, weftBranch string, hasBranch bool) (string, error) {
 	if !hasBranch {
 		return "", nil
 	}
@@ -421,19 +421,19 @@ func setAsideWeftTip(rec *Mutations, l *lyxcwd.Location, slug, weftBranch string
 
 // regenerateHubWorkspaceNow regenerates the hub workspace file with one attempt at its lock and reports whether the lock was held.
 // A held lock leaves the file stale for the next regenerating verb, with a warning naming the repair; any other failure is logged the same way and reports false.
-func regenerateHubWorkspaceNow(rec *Mutations, l *lyxcwd.Location) (skipped bool) {
+func regenerateHubWorkspaceNow(rec *Mutations, l *lymcwd.Location) (skipped bool) {
 	_, err := regenerateHubWorkspace(rec, l, 0)
 	if err == nil {
 		return false
 	}
-	logger.Warn(`fabricengine: hub workspace regeneration skipped; run "lyx fabric reconcile" once the cause is fixed`, "verb", "remove", "error", err)
+	logger.Warn(`fabricengine: hub workspace regeneration skipped; run "lym fabric reconcile" once the cause is fixed`, "verb", "remove", "error", err)
 	return errors.Is(err, errHubWorkspaceLockHeld)
 }
 
 // removeLocalWeft tears down a local pair's sibling without touching origin: its worktree goes through removeGitWorktree with dirtyRecordsDisposable, so uncommitted records are discarded, then its local branch is deleted and stale worktree registrations are pruned.
 // It returns the steps that changed state, in the order they ran, ending with RemoveStepRecordsDropped when the branch carried records away.
 // A worktree that survives a failed removal is an error; a missing worktree or branch is nothing to do.
-func removeLocalWeft(rec *Mutations, l *lyxcwd.Location, slug, branch, branchPrefix string) (steps []string, err error) {
+func removeLocalWeft(rec *Mutations, l *lymcwd.Location, slug, branch, branchPrefix string) (steps []string, err error) {
 	weftRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		return nil, fmt.Errorf("resolve weft repo root: %w", err)
@@ -483,7 +483,7 @@ func removeLocalWeft(rec *Mutations, l *lyxcwd.Location, slug, branch, branchPre
 // removeSibling tears down whatever of the pair's sibling remains: its worktree and local branch through removeWeftWorktree, or, when only origin holds the branch, its copy there.
 // Without remote an origin-only copy stays, and the returned teardown says so.
 // It returns the steps that changed state, in the order they ran.
-func (t *Topology) removeSibling(rec *Mutations, l *lyxcwd.Location, slug, weftBranch string, pair pairState, force, remote bool) (weftTeardownResult, []string, error) {
+func (t *Topology) removeSibling(rec *Mutations, l *lymcwd.Location, slug, weftBranch string, pair pairState, force, remote bool) (weftTeardownResult, []string, error) {
 	var steps []string
 
 	if !pair.siblingWorktree && !pair.siblingBranch {
@@ -561,7 +561,7 @@ type pairState struct {
 }
 
 // inspectPair reads pairState for slug.
-func (t *Topology) inspectPair(l *lyxcwd.Location, slug string) (pairState, error) {
+func (t *Topology) inspectPair(l *lymcwd.Location, slug string) (pairState, error) {
 	var s pairState
 	target := WorktreePath(l, slug)
 	if pathPresent(target) {
@@ -572,7 +572,7 @@ func (t *Topology) inspectPair(l *lyxcwd.Location, slug string) (pairState, erro
 		}
 	}
 	s.siblingWorktree = pathPresent(RecordsWorktreePath(l, slug))
-	pairLoc, err := lyxcwd.NamedWorktree(l.HubPath, slug)
+	pairLoc, err := lymcwd.NamedWorktree(l.HubPath, slug)
 	if err != nil {
 		return pairState{}, fmt.Errorf("read the anchor of %q: %w", slug, err)
 	}
@@ -615,7 +615,7 @@ func (t *Topology) inspectPair(l *lyxcwd.Location, slug string) (pairState, erro
 // refuseWhenNothingRemains returns an error wrapping ErrPairNotFound when no part of the pair is left locally and neither of its branches is on origin.
 // Origin is asked only after every local part is found gone, and only for a repository that has an origin, so a pair with any local remnant never costs a network call.
 // A stray path at the pair's location is named in the error and left alone.
-func (t *Topology) refuseWhenNothingRemains(l *lyxcwd.Location, slug string, s pairState) error {
+func (t *Topology) refuseWhenNothingRemains(l *lymcwd.Location, slug string, s pairState) error {
 	if s.taskWorktree || s.siblingWorktree || s.taskBranch || s.siblingBranch || s.launchers {
 		return nil
 	}
@@ -661,7 +661,7 @@ func pathPresent(path string) bool {
 // An already-absent branch is neither: there is nothing to delete and nothing to explain.
 // Every refusal and failure is a kept reason rather than an error, because both worktrees are already
 // gone by the time it runs.
-func deleteWarpBranch(rec *Mutations, l *lyxcwd.Location, warpBranch, parentBranch string) (deleted bool, keptReason string) {
+func deleteWarpBranch(rec *Mutations, l *lymcwd.Location, warpBranch, parentBranch string) (deleted bool, keptReason string) {
 	repoDir := l.WorktreePath()
 	exists, err := gitrepo.New(repoDir).BranchExists(warpBranch)
 	if err != nil {
@@ -693,7 +693,7 @@ func deleteWarpBranch(rec *Mutations, l *lyxcwd.Location, warpBranch, parentBran
 // It observes the tip (ls-remote), fetches it so its objects are local, then deletes through deleteTaskBranchAtTip, leased to the observed tip.
 // An absent remote branch, or a warp repo with no origin, is neither deleted nor a reason.
 // Every refusal and failure is a kept reason rather than an error, as in deleteWarpBranch.
-func deleteTaskBranchOnOrigin(rec *Mutations, l *lyxcwd.Location, warpBranch, parentBranch string) (deleted bool, keptReason string) {
+func deleteTaskBranchOnOrigin(rec *Mutations, l *lymcwd.Location, warpBranch, parentBranch string) (deleted bool, keptReason string) {
 	repoDir := l.WorktreePath()
 	if _, err := gitrepo.New(repoDir).RemoteURL(originRemoteName); err != nil {
 		return false, ""
@@ -712,7 +712,7 @@ func deleteTaskBranchOnOrigin(rec *Mutations, l *lyxcwd.Location, warpBranch, pa
 }
 
 // deleteTaskBranchAtTip is deleteTaskBranchOnOrigin's gated deletion, leased to tip: a remote tip that moved since tip was observed fails the lease and nothing is deleted.
-func deleteTaskBranchAtTip(rec *Mutations, l *lyxcwd.Location, warpBranch, parentBranch, tip string) (deleted bool, keptReason string) {
+func deleteTaskBranchAtTip(rec *Mutations, l *lymcwd.Location, warpBranch, parentBranch, tip string) (deleted bool, keptReason string) {
 	deleted, err := deleteRemoteBranch(rec, remoteBranchRequest{
 		what:      "delete task branch on remote",
 		repoDir:   l.WorktreePath(),
@@ -737,7 +737,7 @@ func deleteTaskBranchAtTip(rec *Mutations, l *lyxcwd.Location, warpBranch, paren
 // A gone task worktree skips only the checks that need it: task-side dirtiness and the task side of the merge probe.
 // It mutates nothing, takes no lock and pushes nothing, and Remove calls it first, so the two can never drift.
 // Its name carries no fabric side, because callers outside the owner set call it.
-func (t *Topology) RemoveRefusal(l *lyxcwd.Location, slug string, force bool) error {
+func (t *Topology) RemoveRefusal(l *lymcwd.Location, slug string, force bool) error {
 	warpBranch := t.cfg.BranchPrefix + slug
 
 	if err := validateWorktreeSlug(slug, t.cfg.Dirs()); err != nil {
@@ -797,7 +797,7 @@ func (t *Topology) RemoveRefusal(l *lyxcwd.Location, slug string, force bool) er
 	if err != nil {
 		return fmt.Errorf("load the record pathspec: %w", err)
 	}
-	pairLoc, err := lyxcwd.NamedWorktree(l.HubPath, slug)
+	pairLoc, err := lymcwd.NamedWorktree(l.HubPath, slug)
 	if err != nil {
 		return fmt.Errorf("read the anchor of %q: %w", slug, err)
 	}
@@ -805,16 +805,16 @@ func (t *Topology) RemoveRefusal(l *lyxcwd.Location, slug string, force bool) er
 }
 
 // commitPendingRecords commits the pair's sibling worktree's uncommitted changes inside the record pathspec, so the archive tag that follows covers them.
-// It stages exactly the scoped pathspec `lyx fabric sync` uses, through CommitRecordsPaths, with the fixed DefaultCommitMessage plus a Warp-SHA trailer naming the task worktree's HEAD, and pushes nothing.
+// It stages exactly the scoped pathspec `lym fabric sync` uses, through CommitRecordsPaths, with the fixed DefaultCommitMessage plus a Warp-SHA trailer naming the task worktree's HEAD, and pushes nothing.
 // An absent sibling or an empty pathspec commits nothing; KindCommitCreated is recorded only when a commit landed, and committed reports it.
 // The trailer names the task worktree's HEAD while it is present, else the local task branch's tip, else the last Warp-SHA trailer recorded on the sibling branch; with none of those the commit carries no trailer.
 // With try set the weft write lock is taken by one attempt and a held lock returns an error wrapping ErrPairBusy with nothing committed; otherwise the commit waits for the lock.
-func commitPendingRecords(rec *Mutations, l *lyxcwd.Location, slug, warpBranch string, try bool) (committed bool, err error) {
+func commitPendingRecords(rec *Mutations, l *lymcwd.Location, slug, warpBranch string, try bool) (committed bool, err error) {
 	weftTarget := RecordsWorktreePath(l, slug)
 	if _, statErr := os.Stat(weftTarget); os.IsNotExist(statErr) {
 		return false, nil
 	}
-	pairLoc, err := lyxcwd.NamedWorktree(l.HubPath, slug)
+	pairLoc, err := lymcwd.NamedWorktree(l.HubPath, slug)
 	if err != nil {
 		return false, fmt.Errorf("read the anchor of %q: %w", slug, err)
 	}
@@ -876,7 +876,7 @@ func commitRecordsPathsTry(rec *Mutations, weftPath, anchorRel string, relPaths 
 
 // recordTrailerSHA picks the Warp-SHA a record commit names: the task worktree's HEAD while that worktree is a present directory, else the local task branch's tip, else the last Warp-SHA trailer on the sibling branch at weftTarget.
 // It returns an empty SHA when none of the three exists.
-func recordTrailerSHA(l *lyxcwd.Location, slug, warpBranch, weftTarget string) (string, error) {
+func recordTrailerSHA(l *lymcwd.Location, slug, warpBranch, weftTarget string) (string, error) {
 	if _, err := os.Stat(WorktreePath(l, slug)); err == nil && isRegisteredLinkedWorktree(l, WorktreePath(l, slug)) {
 		sha, err := gitrepo.New(WorktreePath(l, slug)).CurrentSHA()
 		if err != nil {
@@ -963,7 +963,7 @@ func refuseDirtyWeftWorktree(weftTarget, anchorRel string, recordNames []string)
 // A prime-name resolution failure is not fatal here: it means the hub geometry is already broken,
 // and removeWarpWorktreeDir's own registered-worktree rule still refuses to delete anything git
 // declined to remove.
-func refusePrimeSlug(l *lyxcwd.Location, slug string) error {
+func refusePrimeSlug(l *lymcwd.Location, slug string) error {
 	primeName, err := PrimeName(l)
 	if err != nil {
 		return nil
@@ -981,19 +981,16 @@ func refusePrimeSlug(l *lyxcwd.Location, slug string) error {
 // this repo.
 //
 // The narrow fallback is the whole point of this helper.
-// `git worktree remove` refuses a main working tree, a path that is not a worktree of this repo at
-// all, and a worktree carrying state it will not discard;
-// treating every one of those refusals as licence to delete the directory turned an ordinary typo
-// (`lyx fabric remove <prime>`, `lyx fabric remove _board`) into the loss of a whole git clone.
-// A registered linked worktree is fabric's own pair member and nothing else, so deleting it after a
-// git refusal is recoverable bookkeeping rather than data loss.
+// `git worktree remove` refuses a main working tree, a path that is not a worktree of this repo at all, and a worktree carrying state it will not discard;
+// treating every one of those refusals as licence to delete the directory turned an ordinary typo (`lym fabric remove <prime>`, `lym fabric remove _board`) into the loss of a whole git clone.
+// A registered linked worktree is fabric's own pair member and nothing else, so deleting it after a git refusal is recoverable bookkeeping rather than data loss.
 //
 // The fallback is itself gated because it fires on ANY nonzero exit from `git worktree remove`, and
 // `git worktree remove` without `--force` refuses on untracked files — an ungated fallback would
 // therefore delete exactly the untracked files git had just declined to discard.
 //
 // When git exits nonzero having deleted the registration and the directory is still on disk, the directory is finished through removeWorktreeLeftover, with leftover as its seam.
-func removeWarpWorktreeDir(rec *Mutations, l *lyxcwd.Location, target string, force bool, leftover leftoverSeam) error {
+func removeWarpWorktreeDir(rec *Mutations, l *lymcwd.Location, target string, force bool, leftover leftoverSeam) error {
 	req := pathRequest{
 		what:      "remove warp worktree",
 		container: l.HubPath,
@@ -1079,7 +1076,7 @@ func removeWarpWorktreeDir(rec *Mutations, l *lyxcwd.Location, target string, fo
 // worktree OTHER than the main one.
 // A failure to enumerate answers false, the conservative direction: an unenumerable repo is exactly
 // where a blind directory removal is least defensible.
-func isRegisteredLinkedWorktree(l *lyxcwd.Location, target string) bool {
+func isRegisteredLinkedWorktree(l *lymcwd.Location, target string) bool {
 	return isRegisteredLinkedWorktreeIn(l.WorktreePath(), target)
 }
 

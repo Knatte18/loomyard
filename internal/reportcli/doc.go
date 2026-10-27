@@ -1,9 +1,9 @@
-// Package reportcli is the report module: `lyx report convergence [--since <date>] [--fresh-days <n>] [--format json|markdown]`, the read-only convergence report, and `lyx report timing [--since <date>] [--by day|week] [--format json|markdown]`, the read-only timing report.
+// Package reportcli is the report module: `lym report convergence [--since <date>] [--fresh-days <n>] [--format json|markdown]`, the read-only convergence report, and `lym report timing [--since <date>] [--by day|week] [--format json|markdown]`, the read-only timing report.
 // Each verb validates its flags, resolves the prime's geometry and hands it to internal/reportengine, which does the reading; the engine's package documentation describes every figure.
 //
 // # The verbs
 //
-// Both run from the hub's prime worktree only: after resolving the cwd they apply fabric's drivable-worktree check and then refuse any worktree that is not the prime, naming `lyx report <verb>` and the prime and saying to re-run it there.
+// Both run from the hub's prime worktree only: after resolving the cwd they apply fabric's drivable-worktree check and then refuse any worktree that is not the prime, naming `lym report <verb>` and the prime and saying to re-run it there.
 // The flags are checked before any cwd resolution or read, and each refusal is a JSON error with exit 1 naming the flag, the value given and the form accepted.
 //
 // `convergence` takes:
@@ -28,7 +28,7 @@
 //
 // `timing` runs `journalctl` once per invocation for the systemd-sleep entries, when it is on PATH, logging the spawn and its end at Info, and hands the sleeps it parses to the engine, which leaves them out of every interval.
 // A journal with no sleep leaves nothing out, and `sleep_note` says why.
-// A journalctl that is absent or fails, a journal the user may not read (journalctl exits 0 with empty output and a permission hint on standard error), or output that does not parse, leaves the machine's sleep unknown, so the verb reads the hub's pause record instead and hands the engine every hub-scope entry's interval, a live one running to now, since a hub pause holds every run and `lyx hibernate` pauses the hub before the machine sleeps.
+// A journalctl that is absent or fails, a journal the user may not read (journalctl exits 0 with empty output and a permission hint on standard error), or output that does not parse, leaves the machine's sleep unknown, so the verb reads the hub's pause record instead and hands the engine every hub-scope entry's interval, a live one running to now, since a hub pause holds every run and `lym hibernate` pauses the hub before the machine sleeps.
 // Pair-scope entries are left out, as the engine's sleep is machine-wide.
 // Its `sleep_note` then names why the journal was not read, says whether pauses stood in, and says the figures may include sleep.
 // Bound: the stand-in covers only the hub pauses the record still keeps, within `pauserecord.Retention`, so a sleep taken with no hub pause, or before that, counts as run time.

@@ -282,7 +282,7 @@ func normalizeTask(t *Task) error {
 			t.Slug, t.Priority, PriorityHigh, PriorityNormal, PriorityLow, PriorityNormal)
 	}
 	if t.Kind == KindTask && t.Priority != "" {
-		return fmt.Errorf("task %q has priority %q, and only a note carries a priority: set %q to clear it, or make a note a task with \"lyx board promote\", which clears it",
+		return fmt.Errorf("task %q has priority %q, and only a note carries a priority: set %q to clear it, or make a note a task with \"lym board promote\", which clears it",
 			t.Slug, t.Priority, PriorityNormal)
 	}
 	if t.Kind == KindProject {

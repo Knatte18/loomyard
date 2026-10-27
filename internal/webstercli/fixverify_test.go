@@ -105,7 +105,7 @@ func TestFixVerifyCmd(t *testing.T) {
 		fx := newVerbsFixture(t)
 		var out strings.Builder
 		exitCode := clihelp.Execute(fx.CLI.fixVerifyCmd(), &out, nil)
-		if exitCode != 1 || !strings.Contains(out.String(), `run \"lyx webster run\" first`) {
+		if exitCode != 1 || !strings.Contains(out.String(), `run \"lym webster run\" first`) {
 			t.Errorf("fix-verify = %d, output %s; want exit 1 naming the run-first way forward", exitCode, out.String())
 		}
 		if len(fx.Reed.AddedSpecs) != 0 {

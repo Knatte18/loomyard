@@ -18,7 +18,7 @@ import (
 )
 
 // skippedDirs are the directory names scanTree never enters.
-var skippedDirs = []string{"bin", "obj", ".scratch", ".git", "_lyx", ".lyx"}
+var skippedDirs = []string{"bin", "obj", ".scratch", ".git", "_lym", ".lym"}
 
 // DeriveDiff derives the Scope of the diff between base and the working tree in worktree, for the tier whose directory is dir, relative to the worktree.
 // inert reports whether a worktree-relative path is inert; an inert path is dropped before anything else is read.

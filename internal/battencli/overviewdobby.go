@@ -1,4 +1,4 @@
-// overviewdobby.go renders the View of a worktree's dobby as the lines a beam's window draws above its orchs and `lyx beam status` prints.
+// overviewdobby.go renders the View of a worktree's dobby as the lines a beam's window draws above its orchs and `lym beam status` prints.
 
 package battencli
 
@@ -28,7 +28,7 @@ const (
 func DobbyLines(label string, view dobbyengine.View, runCells map[string]RunCells, now time.Time) []string {
 	header := fmt.Sprintf("dobby %s: alive, max_runs %d", label, view.MaxRuns)
 	if !view.Alive {
-		header = fmt.Sprintf("dobby %s: not running; way forward: lyx beam start", label)
+		header = fmt.Sprintf("dobby %s: not running; way forward: lym beam start", label)
 	}
 
 	slugWidth := 0

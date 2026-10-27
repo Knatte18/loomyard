@@ -46,14 +46,14 @@ var ErrRetiredKey = errors.New("retired key")
 
 // retiredKeyError builds the refusal for a profile still carrying the retired key, naming the layer file that carries it.
 // It wraps ErrRetiredKey, is marked configengine.ErrInvalid, and ends in the way forward that layer calls for:
-// lyx config reconcile --apply for a worktree or local file, and for the repo default, which only the hub-wide reconcile rewrites, lyx fabric reconcile run by the orch.
+// lym config reconcile --apply for a worktree or local file, and for the repo default, which only the hub-wide reconcile rewrites, lym fabric reconcile run by the orch.
 func retiredKeyError(file string, layer configengine.Layer, profileName, key string) error {
 	if file == "" {
 		file = moduleName + ".yaml"
 	}
-	wayForward := `run "lyx config reconcile --apply"`
+	wayForward := `run "lym config reconcile --apply"`
 	if layer == configengine.LayerDefault {
-		wayForward = `run "lyx fabric reconcile"; a session lyx refuses the verb from reports status: FAILED and the orch runs it`
+		wayForward = `run "lym fabric reconcile"; a session lym refuses the verb from reports status: FAILED and the orch runs it`
 	}
 	return configengine.MarkInvalid(fmt.Errorf("%s profile %q carries %s, which no longer exists (%w); way forward: %s", file, profileName, key, ErrRetiredKey, wayForward))
 }
@@ -176,7 +176,7 @@ func unmarshalConfig(data []byte) (config, error) {
 // Everything else, inside and outside profiles:, is carried through yaml node editing with its comments.
 // A document with no retired key, or an empty one, comes back unchanged with no rewrites.
 // A document that does not parse returns an error marked configengine.ErrInvalid.
-// The loader never calls it; the migration runs only from lyx config reconcile.
+// The loader never calls it; the migration runs only from lym config reconcile.
 func MigrateConfig(existing []byte) ([]byte, []string, error) {
 	if _, err := unmarshalConfig(existing); err != nil {
 		return nil, nil, err

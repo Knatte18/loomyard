@@ -19,7 +19,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // socketUnsafeChars matches the characters ServerName must never
@@ -51,7 +51,7 @@ func TestServerName(t *testing.T) {
 }
 
 func serverNameIsDeterministic(t *testing.T) {
-	hub := filepath.Join(t.TempDir(), "loomyard-LYXHUB")
+	hub := filepath.Join(t.TempDir(), "loomyard-LYMHUB")
 	got1 := ServerName(hub)
 	got2 := ServerName(hub)
 	if got1 != got2 {
@@ -60,7 +60,7 @@ func serverNameIsDeterministic(t *testing.T) {
 }
 
 func serverNameSocketSafe(t *testing.T) {
-	hub := filepath.Join(t.TempDir(), "loomyard-LYXHUB")
+	hub := filepath.Join(t.TempDir(), "loomyard-LYMHUB")
 	got := ServerName(hub)
 	if socketUnsafeChars.MatchString(got) {
 		t.Errorf("ServerName(%q) = %q contains a socket-unsafe character", hub, got)
@@ -80,7 +80,7 @@ func serverNameSocketSafeForAHubAtTheFilesystemRoot(t *testing.T) {
 	if socketUnsafeChars.MatchString(got) {
 		t.Errorf("ServerName(%q) = %q contains a socket-unsafe character; tmux cannot open a socket for it", root, got)
 	}
-	if got == ServerName(filepath.Join(root, "elsewhere-LYXHUB")) {
+	if got == ServerName(filepath.Join(root, "elsewhere-LYMHUB")) {
 		t.Errorf("ServerName(%q) collided with a distinct hub; substitution must not touch the identity half", root)
 	}
 }
@@ -93,7 +93,7 @@ func serverNameSocketSafeForAHubAtTheFilesystemRoot(t *testing.T) {
 // Two distinct long-named hubs are asserted apart alongside the bound, since truncation must not
 // change hub identity any more than the separator substitution above does.
 func serverNameBoundedForALongHubBasename(t *testing.T) {
-	longBase := strings.Repeat("h", 200) + "-LYXHUB"
+	longBase := strings.Repeat("h", 200) + "-LYMHUB"
 	parent := t.TempDir()
 
 	got := ServerName(filepath.Join(parent, longBase))
@@ -102,9 +102,9 @@ func serverNameBoundedForALongHubBasename(t *testing.T) {
 	// longer TMUX_TMPDIR.
 	// maxSocketSafeBaseBytes caps the readable half regardless of the suffix's
 	// length, and this basename is already far past the cap before the suffix
-	// is even considered, so the four extra bytes the -HUB -> -LYXHUB rename
+	// is even considered, so the four extra bytes the -HUB -> -LYMHUB rename
 	// adds change nothing about this bound.
-	const wantAtMost = maxSocketSafeBaseBytes + len("lyx-") + len("-") + 8
+	const wantAtMost = maxSocketSafeBaseBytes + len("lym-") + len("-") + 8
 	if len(got) > wantAtMost {
 		t.Errorf("ServerName(<200-char hub basename>) = %q (%d bytes); want at most %d — tmux cannot open a socket for an over-long key", got, len(got), wantAtMost)
 	}
@@ -145,7 +145,7 @@ func TestTruncateAtRuneBoundary(t *testing.T) {
 }
 
 func serverNameDistinctForDistinctHubsSharingBasename(t *testing.T) {
-	base := "loomyard-LYXHUB"
+	base := "loomyard-LYMHUB"
 	hubA := filepath.Join(t.TempDir(), "a", base)
 	hubB := filepath.Join(t.TempDir(), "b", base)
 
@@ -157,9 +157,9 @@ func serverNameDistinctForDistinctHubsSharingBasename(t *testing.T) {
 }
 
 func serverNameHasHubBasenameAndPrefix(t *testing.T) {
-	hub := filepath.Join(t.TempDir(), "loomyard-LYXHUB")
+	hub := filepath.Join(t.TempDir(), "loomyard-LYMHUB")
 	got := ServerName(hub)
-	want := "lyx-loomyard-LYXHUB-"
+	want := "lym-loomyard-LYMHUB-"
 	if len(got) < len(want) || got[:len(want)] != want {
 		t.Errorf("ServerName(%q) = %q, want prefix %q", hub, got, want)
 	}
@@ -229,7 +229,7 @@ func TestValidateToldTmuxIdentity_SessionName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			geom := Geometry{
-				SocketKey:    "lyx-somehub-deadbeef",
+				SocketKey:    "lym-somehub-deadbeef",
 				SessionName:  tt.sessionName,
 				WorktreeRoot: filepath.Join("hub", tt.sessionName),
 			}
@@ -245,7 +245,7 @@ func TestValidateToldTmuxIdentity_SessionName(t *testing.T) {
 // its session name from a RAW filepath.Base(target), so pointing standalone mode at a plain checkout
 // named "my.repo" — routine for "foo.js", "site.com", "app.git" — died at the
 // validateToldTmuxIdentity pre-flight telling the operator to rename their own repository. Hub mode
-// never reached it, because hub worktree names are lyx-created and slug-shaped.
+// never reached it, because hub worktree names are lym-created and slug-shaped.
 // The exact substitution is pinned per row rather than only "it validates", so a sanitizer that
 // mangles a name it should have passed through fails here too.
 func TestSanitizeSessionName(t *testing.T) {
@@ -279,7 +279,7 @@ func TestSanitizeSessionName(t *testing.T) {
 			// any character class validateToldTmuxIdentity learns to refuse must already be one SanitizeSessionName substitutes.
 			// A "-<hash8>" suffix is appended exactly as standalonegeom.ReedGeometry appends it, so the assertion is made against the string reed is actually told.
 			geom := Geometry{
-				SocketKey:    "lyx-deadbeef",
+				SocketKey:    "lym-deadbeef",
 				SessionName:  got + "-deadbeef",
 				WorktreeRoot: filepath.Join("targets", tt.input),
 				HubPath:      "state",
@@ -297,17 +297,17 @@ func TestSanitizeSessionName(t *testing.T) {
 // The hub-mode teller cannot reach these cases (ServerName substitutes separators out at the
 // derivation), which is exactly why they need their own coverage here.
 // Neither of the first two cases below is length-sensitive, so both accept unchanged across the
-// -HUB -> -LYXHUB rename.
+// -HUB -> -LYMHUB rename.
 func TestValidateToldTmuxIdentity_SocketKey(t *testing.T) {
 	tests := []struct {
 		name      string
 		socketKey string
 		wantErr   bool
 	}{
-		{"derived hub-mode key", "lyx-loomyard-LYXHUB-deadbeef", false},
-		{"dots are fine in a socket key", "lyx-svc.v2-LYXHUB-deadbeef", false},
-		{"posix separator", "lyx-/-deadbeef", true},
-		{"windows separator", `lyx-\-deadbeef`, true},
+		{"derived hub-mode key", "lym-loomyard-LYMHUB-deadbeef", false},
+		{"dots are fine in a socket key", "lym-svc.v2-LYMHUB-deadbeef", false},
+		{"posix separator", "lym-/-deadbeef", true},
+		{"windows separator", `lym-\-deadbeef`, true},
 		{"empty", "", true},
 	}
 	for _, tt := range tests {
@@ -349,7 +349,7 @@ func TestValidateToldAnchorPath(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			geom := Geometry{
-				SocketKey:    "lyx-somehub-deadbeef",
+				SocketKey:    "lym-somehub-deadbeef",
 				SessionName:  "some-worktree",
 				AnchorPath:   tt.anchorPath,
 				WorktreeRoot: filepath.Join("hub", "some-worktree"),
@@ -470,13 +470,13 @@ func TestValidateToldWorktreeRootLive_UnreadableParentIsNotTheSentinel(t *testin
 }
 
 // TestWithOpLock_RefusesAnUnusableAnchorPathBeforeCreatingState asserts the anchor refusal lands at
-// the same op boundary the identity refusal does — before the .lyx directory is created, which is
+// the same op boundary the identity refusal does — before the .lym directory is created, which is
 // the very act that would otherwise litter the caller's own working directory with reed state.
 //
 // The empty told anchor is what makes this assertion possible AND what makes it fragile: stateDir()
-// then joins onto "", so the subject path is a bare ".lyx" relative to the TEST PROCESS's working
+// then joins onto "", so the subject path is a bare ".lym" relative to the TEST PROCESS's working
 // directory, i.e. this package's own source directory. Any earlier run of a binary predating
-// validateToldAnchorPath — precisely the bug this guards — leaves .lyx/reed.lock sitting there
+// validateToldAnchorPath — precisely the bug this guards — leaves .lym/reed.lock sitting there
 // permanently, and the guard is then red forever in that checkout, with a message that reads as a
 // live production regression rather than as stale scratch. That is not hypothetical: it was the
 // state of this branch when the R5 review began (R5 review finding R5-F7).
@@ -488,9 +488,9 @@ func TestWithOpLock_RefusesAnUnusableAnchorPathBeforeCreatingState(t *testing.T)
 	e.geom.AnchorPath = ""
 
 	cwdRelativeStateDir := e.stateDir()
-	if cwdRelativeStateDir != lyxdirs.DotLyxDirName {
+	if cwdRelativeStateDir != lymdirs.DotLymDirName {
 		t.Fatalf("stateDir() with an empty anchor = %q; want the bare %q this test's cleanup is written for",
-			cwdRelativeStateDir, lyxdirs.DotLyxDirName)
+			cwdRelativeStateDir, lymdirs.DotLymDirName)
 	}
 	removeCwdRelativeStateDir := func() {
 		if err := os.RemoveAll(cwdRelativeStateDir); err != nil {
@@ -525,7 +525,7 @@ func TestWithOpLock_RefusesAnUnusableAnchorPathBeforeCreatingState(t *testing.T)
 // withTryOpLock as its own row so a regression that fixes only one of the two lock helpers fails;
 // the vanished-path message mentions --target-dir while the not-a-directory message carries no rename remedy, since nothing was renamed.
 // A worktree root that exists with a different anchor path not created yet (the standalone first-run shape, which fails if a later change re-gates the predicate on AnchorPath),
-// and the hub first-run shape, succeed and create the anchor's .lyx directory.
+// and the hub first-run shape, succeed and create the anchor's .lym directory.
 func TestWithOpLock_ToldGeometry(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -609,7 +609,7 @@ func TestWithOpLock_ToldGeometry(t *testing.T) {
 			setup: func(t *testing.T, e *Engine) []string {
 				e.geom.AnchorPath = e.geom.WorktreeRoot
 				if fileExists(e.stateDir()) {
-					t.Fatalf("fixture assumption violated: .lyx %q must not exist yet", e.stateDir())
+					t.Fatalf("fixture assumption violated: .lym %q must not exist yet", e.stateDir())
 				}
 				return nil
 			},
@@ -641,7 +641,7 @@ func TestWithOpLock_ToldGeometry(t *testing.T) {
 					t.Errorf("withOpLock did not run the operation body")
 				}
 				if !fileExists(e.stateDir()) {
-					t.Errorf("withOpLock did not create the anchor's .lyx directory %q", e.stateDir())
+					t.Errorf("withOpLock did not create the anchor's .lym directory %q", e.stateDir())
 				}
 				return
 			}

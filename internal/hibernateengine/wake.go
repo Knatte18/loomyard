@@ -16,7 +16,7 @@ import (
 // WayForward is the one line that repairs the stop, or for an ended entry what lets its removal go through.
 // Busy marks an entry whose pair a driver or a lock still holds, ParkedPush a busy pair whose records push lock a parked push holds, and Gone a stop whose branch origin no longer has.
 // Owner names the other machine that owns the entry's run, and is empty for a run owned here.
-// AdoptSubject is the beam or `root` that `lyx adopt` takes to move an owned-elsewhere run, and empty reads as the slug.
+// AdoptSubject is the beam or `root` that `lym adopt` takes to move an owned-elsewhere run, and empty reads as the slug.
 type WakeRun struct {
 	Slug         string
 	Ended        bool
@@ -56,7 +56,7 @@ func reconcileAtWake(deps Deps, r Request) (lift bool, notice string, err error)
 			continue
 		}
 		if r.Owned == nil || entry.Caller != r.Owned.Caller || !entry.PausedAt.Equal(r.Owned.PausedAt) {
-			return true, fmt.Sprintf("the hub pause of %s stands, so the origin reconcile was skipped; lift it with `lyx tender resume`, and then `lyx beam start` or `lyx cleanup --apply` runs the reconcile.", entry.Caller), nil
+			return true, fmt.Sprintf("the hub pause of %s stands, so the origin reconcile was skipped; lift it with `lym tender resume`, and then `lym beam start` or `lym cleanup --apply` runs the reconcile.", entry.Caller), nil
 		}
 		exempt = r.Owned
 	}
@@ -67,11 +67,11 @@ func reconcileAtWake(deps Deps, r Request) (lift bool, notice string, err error)
 	}
 	switch {
 	case reconcileErr != nil:
-		return true, fmt.Sprintf("the origin reconcile failed (%v), so nothing further moved; run `lyx cleanup --apply` to reconcile.", reconcileErr), nil
+		return true, fmt.Sprintf("the origin reconcile failed (%v), so nothing further moved; run `lym cleanup --apply` to reconcile.", reconcileErr), nil
 	case wake.Unreachable:
-		return true, "origin was unreachable through the retry bound, so nothing was reconciled; run `lyx cleanup --apply` to reconcile once the network is back.", nil
+		return true, "origin was unreachable through the retry bound, so nothing was reconciled; run `lym cleanup --apply` to reconcile once the network is back.", nil
 	case wake.Stop != "":
-		return false, fmt.Sprintf("the origin reconcile stopped: %s; settle it, and then `lyx tender resume` lifts the hub pause.", wake.Stop), nil
+		return false, fmt.Sprintf("the origin reconcile stopped: %s; settle it, and then `lym tender resume` lifts the hub pause.", wake.Stop), nil
 	}
 	return true, holdRuns(deps, wake.Runs), nil
 }
@@ -100,9 +100,9 @@ func holdRuns(deps Deps, runs []WakeRun) string {
 		}
 		if _, err := deps.Pause(request); err != nil {
 			if run.Owner != "" {
-				unheld = append(unheld, fmt.Sprintf("%s could not be paused (%v); the next wake or `lyx beam start` pauses it again", run.Slug, err))
+				unheld = append(unheld, fmt.Sprintf("%s could not be paused (%v); the next wake or `lym beam start` pauses it again", run.Slug, err))
 			} else {
-				unheld = append(unheld, fmt.Sprintf("%s could not be paused (%v); hold it with `lyx tender pause %s`", run.Slug, err, run.Slug))
+				unheld = append(unheld, fmt.Sprintf("%s could not be paused (%v); hold it with `lym tender pause %s`", run.Slug, err, run.Slug))
 			}
 		} else if run.Owner != "" && deps.EndOwned != nil {
 			if err := deps.EndOwned(run.Slug); err != nil {
@@ -120,20 +120,20 @@ func holdRuns(deps Deps, runs []WakeRun) string {
 // runStep names what an operator does for one held run.
 // A parked push is cleared by the resume alone; a pair stopped as gone, which no resume can carry on, and an ended one are cleared by the cleanup.
 func runStep(run WakeRun) string {
-	resume := fmt.Sprintf("`lyx tender resume %s`", run.Slug)
+	resume := fmt.Sprintf("`lym tender resume %s`", run.Slug)
 	switch {
 	case run.Owner != "":
 		subject := run.AdoptSubject
 		if subject == "" {
 			subject = run.Slug
 		}
-		return fmt.Sprintf("%s is owned by machine %s: `lyx adopt %s` from this machine's prime takes it over here", run.Slug, run.Owner, subject)
+		return fmt.Sprintf("%s is owned by machine %s: `lym adopt %s` from this machine's prime takes it over here", run.Slug, run.Owner, subject)
 	case run.Ended:
-		return fmt.Sprintf("%s ended on origin by its landing or removal but is still busy: %s; then `lyx cleanup --apply`", run.Slug, run.WayForward)
+		return fmt.Sprintf("%s ended on origin by its landing or removal but is still busy: %s; then `lym cleanup --apply`", run.Slug, run.WayForward)
 	case run.ParkedPush:
 		return fmt.Sprintf("%s is busy on a parked push: %s", run.Slug, resume)
 	case run.Gone:
-		return fmt.Sprintf("%s stopped: %s; then `lyx cleanup --apply`", run.Slug, run.WayForward)
+		return fmt.Sprintf("%s stopped: %s; then `lym cleanup --apply`", run.Slug, run.WayForward)
 	}
 	return fmt.Sprintf("%s stopped: %s; then %s", run.Slug, run.WayForward, resume)
 }

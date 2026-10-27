@@ -1,6 +1,6 @@
 //go:build tier0
 
-// cli_test.go covers the parts of `lyx gate test` that spawn nothing: the refusals that precede hub resolution and the slot wait its help text names.
+// cli_test.go covers the parts of `lym gate test` that spawn nothing: the refusals that precede hub resolution and the slot wait its help text names.
 
 package gatecli
 

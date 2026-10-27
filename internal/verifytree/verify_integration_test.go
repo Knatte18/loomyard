@@ -395,15 +395,15 @@ func TestVerify_Scenario(t *testing.T) {
 	})
 }
 
-// TestVerify_DropsStrandName proves a verify command never sees the strand name or an inherited prebuilt-lyx path.
+// TestVerify_DropsStrandName proves a verify command never sees the strand name or an inherited prebuilt-lym path.
 // It sets both variables with t.Setenv, which is process-global state, so it is not parallel.
 func TestVerify_DropsStrandName(t *testing.T) {
 	t.Setenv(agentname.StrandNameEnv, "verify-test-strand")
-	t.Setenv(gateslot.PrebuiltLyxEnv, "/stale/lyx")
+	t.Setenv(gateslot.PrebuiltLymEnv, "/stale/lym")
 
 	p := newScratch(t)
 	seen := filepath.Join(t.TempDir(), "env")
-	command := "printf '%s|%s' \"$" + agentname.StrandNameEnv + "\" \"$" + gateslot.PrebuiltLyxEnv + "\" > " + seen
+	command := "printf '%s|%s' \"$" + agentname.StrandNameEnv + "\" \"$" + gateslot.PrebuiltLymEnv + "\" > " + seen
 	res, err := Verify(context.Background(), p, Site{Label: "webster verify"}, command)
 	if err != nil || res.Status != StatusPassed {
 		t.Fatalf("Verify = (%+v, %v); want a pass", res, err)
@@ -413,7 +413,7 @@ func TestVerify_DropsStrandName(t *testing.T) {
 		t.Fatal(err)
 	}
 	if string(data) != "|" {
-		t.Errorf("command saw %s and %s as %q; want both dropped", agentname.StrandNameEnv, gateslot.PrebuiltLyxEnv, data)
+		t.Errorf("command saw %s and %s as %q; want both dropped", agentname.StrandNameEnv, gateslot.PrebuiltLymEnv, data)
 	}
 }
 

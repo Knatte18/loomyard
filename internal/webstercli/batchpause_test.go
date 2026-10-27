@@ -49,10 +49,10 @@ func TestBatchVerbs_RefuseUnderAPause(t *testing.T) {
 		}
 	}
 	refusedGoingOn := func(verb string) []string {
-		return []string{"a hub-wide pause holds this pair, so " + verb + " starts no new batch; way forward: end your turn now; a running batch finishes, and once the resume line arrives run \"lyx webster " + verb + " 1\" again"}
+		return []string{"a hub-wide pause holds this pair, so " + verb + " starts no new batch; way forward: end your turn now; a running batch finishes, and once the resume line arrives run \"lym webster " + verb + " 1\" again"}
 	}
 	refusedNoLine := func(verb string) []string {
-		return []string{"a hub-wide pause holds this pair, so " + verb + " starts no new batch, and no resume line will come; way forward: end your turn now, then run \"lyx webster " + verb + " 1\" again once \"lyx tender status\" shows no pause"}
+		return []string{"a hub-wide pause holds this pair, so " + verb + " starts no new batch, and no resume line will come; way forward: end your turn now, then run \"lym webster " + verb + " 1\" again once \"lym tender status\" shows no pause"}
 	}
 
 	tests := []struct {
@@ -71,11 +71,11 @@ func TestBatchVerbs_RefuseUnderAPause(t *testing.T) {
 		{name: "recover-batch claims Master and refuses", verb: "recover-batch", masterStrand: okStrand, wantExit: 1, wantText: refusedGoingOn("recover-batch"), wantSessions: claimedMaster, stateKept: true},
 		{
 			name: "fix-verify claims Master and refuses", verb: "fix-verify", masterStrand: okStrand, wantExit: 1, wantSessions: claimedMaster, stateKept: true,
-			wantText: []string{"a hub-wide pause holds this pair, so fix-verify spawns no cold fixer; way forward: end your turn now; once the resume line arrives run \"lyx webster fix-verify\" again"},
+			wantText: []string{"a hub-wide pause holds this pair, so fix-verify spawns no cold fixer; way forward: end your turn now; once the resume line arrives run \"lym webster fix-verify\" again"},
 		},
 		{
 			name: "fix-plan claims Master and refuses", verb: "fix-plan", masterStrand: okStrand, wantExit: 1, wantSessions: claimedMaster, stateKept: true,
-			wantText: []string{"a hub-wide pause holds this pair, so fix-plan spawns no plan fixer; way forward: end your turn now; once the resume line arrives run \"lyx webster fix-plan\" again"},
+			wantText: []string{"a hub-wide pause holds this pair, so fix-plan spawns no plan fixer; way forward: end your turn now; once the resume line arrives run \"lym webster fix-plan\" again"},
 		},
 		{name: "begin-batch refuses without a claim when Master's strand is unknown", verb: "begin-batch", masterStrand: failingStrand, wantExit: 1, wantText: refusedNoLine("begin-batch"), wantWarn: "Master could not be claimed", stateKept: true},
 		{name: "recover-batch refuses without a claim when Master's strand is unknown", verb: "recover-batch", masterStrand: failingStrand, wantExit: 1, wantText: refusedNoLine("recover-batch"), wantWarn: "Master could not be claimed", stateKept: true},
@@ -166,8 +166,8 @@ func TestBatchVerbs_RefuseUnderAPause(t *testing.T) {
 					t.Errorf("output missing %q; got %q", want, body)
 				}
 			}
-			if strings.Contains(body, "lyx tender resume") {
-				t.Errorf("output %q names `lyx tender resume`, which would lift the operator's pause", body)
+			if strings.Contains(body, "lym tender resume") {
+				t.Errorf("output %q names `lym tender resume`, which would lift the operator's pause", body)
 			}
 			if tt.wantRecord != "" {
 				if got, err := os.ReadFile(recordPath); err != nil || string(got) != tt.wantRecord {

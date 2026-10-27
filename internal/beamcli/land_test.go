@@ -72,7 +72,7 @@ func (w *landWorld) deps() landDeps {
 		},
 		WriteRequest: func(slug string, req pawlengine.LandRequest) (string, error) {
 			w.requests = append(w.requests, req)
-			return "/hub/" + slug + "/.lyx/beam/land-request.json", nil
+			return "/hub/" + slug + "/.lym/beam/land-request.json", nil
 		},
 		Now: func() time.Time { return landNow },
 	}
@@ -90,10 +90,10 @@ func TestLand(t *testing.T) {
 		// wantRefusalRead says the work-remaining refusal was applied.
 		wantRefusalRead bool
 	}{
-		{name: "AbsentEntryRefused", slug: "ghost", wantErr: []string{"not a beam", "lyx board list"}},
+		{name: "AbsentEntryRefused", slug: "ghost", wantErr: []string{"not a beam", "lym board list"}},
 		{name: "NoteRefused", slug: "note1", wantErr: []string{"not a beam"}},
-		{name: "TaskRefusedNamingItsOwnLanding", slug: "task1", wantErr: []string{"lyx batten run task1", "lyx board upsert", "lyx beam create <that slug>"}},
-		{name: "GroupingProjectRefusedNamingCreate", slug: "group", wantErr: []string{"grouping project", "lyx beam create group"}},
+		{name: "TaskRefusedNamingItsOwnLanding", slug: "task1", wantErr: []string{"lym batten run task1", "lym board upsert", "lym beam create <that slug>"}},
+		{name: "GroupingProjectRefusedNamingCreate", slug: "group", wantErr: []string{"grouping project", "lym beam create group"}},
 		{name: "DoneBeamRefused", slug: "landed", wantErr: []string{"already landed"}},
 		{
 			name: "BeamWithNoPairHereRefusedNamingCreateAndAdopt",
@@ -101,7 +101,7 @@ func TestLand(t *testing.T) {
 			setup: func(w *landWorld) {
 				w.pairs["b"] = false
 			},
-			wantErr: []string{"no pair on this machine", "lyx beam create b", "lyx adopt b"},
+			wantErr: []string{"no pair on this machine", "lym beam create b", "lym adopt b"},
 		},
 		{
 			name: "PairWithNoOriginRecordRefusedNamingReconcile",
@@ -109,7 +109,7 @@ func TestLand(t *testing.T) {
 			setup: func(w *landWorld) {
 				delete(w.origins, "b")
 			},
-			wantErr: []string{"lyx fabric reconcile"},
+			wantErr: []string{"lym fabric reconcile"},
 		},
 		{
 			name: "UnmarkedPairRefusedNamingCreate",
@@ -117,7 +117,7 @@ func TestLand(t *testing.T) {
 			setup: func(w *landWorld) {
 				w.origins["b"] = fabricengine.Origin{}
 			},
-			wantErr: []string{"beam mark", "lyx beam create b"},
+			wantErr: []string{"beam mark", "lym beam create b"},
 		},
 		{
 			name: "BeamWithNoPawlRunRefusedNamingCreate",
@@ -125,7 +125,7 @@ func TestLand(t *testing.T) {
 			setup: func(w *landWorld) {
 				delete(w.children, "b")
 			},
-			wantErr: []string{"no pawl run", "lyx beam create b"},
+			wantErr: []string{"no pawl run", "lym beam create b"},
 		},
 		{
 			name: "RunAwayFromBeamAwaitRefusedNamingStatus",
@@ -133,7 +133,7 @@ func TestLand(t *testing.T) {
 			setup: func(w *landWorld) {
 				w.children["b"] = shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Parent-Align"}
 			},
-			wantErr: []string{"Parent-Align", pawlengine.NameBeamAwait, "lyx batten status b"},
+			wantErr: []string{"Parent-Align", pawlengine.NameBeamAwait, "lym batten status b"},
 		},
 		{
 			name: "PausedRunAtBeamAwaitRefusedNamingStatus",
@@ -141,7 +141,7 @@ func TestLand(t *testing.T) {
 			setup: func(w *landWorld) {
 				w.children["b"] = shedengine.Status{State: shedengine.StatePaused, CurrentProducer: pawlengine.NameBeamAwait}
 			},
-			wantErr: []string{"lyx batten status b"},
+			wantErr: []string{"lym batten status b"},
 		},
 		{
 			name: "BeamOwnedElsewhereRefusedNamingAdopt",
@@ -149,7 +149,7 @@ func TestLand(t *testing.T) {
 			setup: func(w *landWorld) {
 				w.owners.Entries["b"] = boardengine.OwnerEntry{IsProject: true, Beam: true, Owner: there}
 			},
-			wantErr: []string{"owned by machine there", "lyx adopt b"},
+			wantErr: []string{"owned by machine there", "lym adopt b"},
 		},
 		{
 			name: "ParentOwnedElsewhereRefusedNamingRootAdopt",
@@ -158,7 +158,7 @@ func TestLand(t *testing.T) {
 				w.owners.Prime = there
 				w.owners.Entries["b"] = boardengine.OwnerEntry{IsProject: true, Beam: true}
 			},
-			wantErr: []string{"parent of b is owned by machine there", "lyx adopt root"},
+			wantErr: []string{"parent of b is owned by machine there", "lym adopt root"},
 		},
 		{
 			name: "NestedBeamsParentOwnedElsewhereRefusedNamingItsBeam",
@@ -171,7 +171,7 @@ func TestLand(t *testing.T) {
 				w.origins["inner"] = fabricengine.Origin{Beam: true}
 				w.children["inner"] = shedengine.Status{State: shedengine.StateRunning, CurrentProducer: pawlengine.NameBeamAwait}
 			},
-			wantErr: []string{"parent of inner is owned by machine there", "lyx adopt outer"},
+			wantErr: []string{"parent of inner is owned by machine there", "lym adopt outer"},
 		},
 		{
 			name: "WorkRemainingRefusalPassesThroughAndWritesNothing",
@@ -203,8 +203,8 @@ func TestLand(t *testing.T) {
 						t.Errorf("land(%q) error = %q; want it to name %q", tt.slug, err.Error(), want)
 					}
 				}
-				if strings.Contains(err.Error(), "lyx beam promote") {
-					t.Errorf("land(%q) error = %q; want no lyx beam promote", tt.slug, err.Error())
+				if strings.Contains(err.Error(), "lym beam promote") {
+					t.Errorf("land(%q) error = %q; want no lym beam promote", tt.slug, err.Error())
 				}
 				if len(w.requests) != 0 {
 					t.Errorf("land(%q) wrote %d requests on a refusal; want none", tt.slug, len(w.requests))
@@ -213,8 +213,8 @@ func TestLand(t *testing.T) {
 				if err != nil {
 					t.Fatalf("land(%q) = %v; want the request written", tt.slug, err)
 				}
-				if got["request"] != "/hub/b/.lyx/beam/land-request.json" || got["run_id"] != w.runID || !strings.Contains(got["way_forward"].(string), "lyx batten status b") {
-					t.Errorf("land(%q) = %v; want the request's path, the run id and `lyx batten status b`", tt.slug, got)
+				if got["request"] != "/hub/b/.lym/beam/land-request.json" || got["run_id"] != w.runID || !strings.Contains(got["way_forward"].(string), "lym batten status b") {
+					t.Errorf("land(%q) = %v; want the request's path, the run id and `lym batten status b`", tt.slug, got)
 				}
 				want := []pawlengine.LandRequest{{RunID: w.runID, RequestedAt: landNow}}
 				if len(w.requests) != 1 || w.requests[0] != want[0] {

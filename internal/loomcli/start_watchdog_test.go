@@ -15,7 +15,7 @@ package loomcli
 import (
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 )
@@ -28,7 +28,7 @@ func TestStartCmd_ReachesSpawnWatchdogWithHubAndTmuxPath(t *testing.T) {
 	c := newLoomCLI()
 	// A fictional location and a pure-constructed engine, per this file's own doc comment: both are
 	// value composition (reedengine.New performs no I/O), never a live tmux server.
-	c.location = &lyxcwd.Location{HubPath: "/fictional/hub", WorktreeName: "fictional-worktree"}
+	c.location = &lymcwd.Location{HubPath: "/fictional/hub", WorktreeName: "fictional-worktree"}
 	c.reed = reedengine.New(reedengine.Config{Tmux: "/fictional/tmux"}, reedengine.Geometry{}, shuttleengines.EnvScrub())
 
 	var calls int

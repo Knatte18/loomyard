@@ -26,7 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 )
 
@@ -46,7 +46,7 @@ func buildReconcileFixture(t *testing.T, fixturesDir string, n int) (f *fabricen
 	for i := 0; i < n; i++ {
 		warpSHA := fabricengine.CommitWarpForTest(t, warpPath, fmt.Sprintf("warp change %d", i))
 		fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), fmt.Sprintf("weft change %d", i))
-		weftSHA, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lyx"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
+		weftSHA, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lym"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 		if err != nil {
 			t.Fatalf("commitWeft() round %d error = %v", i, err)
 		}
@@ -578,10 +578,10 @@ func commitWeftSide(t *testing.T, dir, rel, content, marker, message string) str
 	switch marker {
 	case "":
 	case removeMarker:
-		gitkit.Git(t, dir, "rm", "--quiet", lyxcwd.AnchorFileName)
+		gitkit.Git(t, dir, "rm", "--quiet", lymcwd.AnchorFileName)
 		gitkit.Git(t, dir, "commit", "--quiet", "-m", message+": drop the marker")
 	default:
-		gitkit.CommitFile(t, dir, lyxcwd.AnchorFileName, marker+"\n", message+": set the marker")
+		gitkit.CommitFile(t, dir, lymcwd.AnchorFileName, marker+"\n", message+": set the marker")
 	}
 	return gitkit.RevParse(t, dir, "HEAD")
 }
@@ -673,7 +673,7 @@ func TestPull_WeftDivergedWarpAdvancesCleanly(t *testing.T) {
 		if result.WeftPulled {
 			t.Errorf("Pull() WeftPulled = true; want false beside a weft stop")
 		}
-		pushVerb := "`lyx fabric push` in " + fx.warpPath
+		pushVerb := "`lym fabric push` in " + fx.warpPath
 		wantLine := fabricengine.RecordsConflictWayForwardForTest(fx.weftPath, fx.weftBranch, []string{"status.json"}, []string{fx.localSHA}, pushVerb)
 		if !strings.Contains(err.Error(), wantLine) {
 			t.Errorf("Pull() error = %q; want it to carry the way forward %q", err.Error(), wantLine)
@@ -751,7 +751,7 @@ func TestPull_WeftDivergedWarpAdvancesCleanly(t *testing.T) {
 				if !errors.As(err, &stop) || !errors.Is(err, fabricengine.ErrAnchorChange) {
 					t.Fatalf("Pull() error = %v (%T); want a *fabricengine.WeftStopError wrapping ErrAnchorChange", err, err)
 				}
-				for _, want := range []string{"lyx fabric anchor", "--set " + tt.wantSet} {
+				for _, want := range []string{"lym fabric anchor", "--set " + tt.wantSet} {
 					if !strings.Contains(err.Error(), want) {
 						t.Errorf("Pull() error = %q; want it to name %q", err.Error(), want)
 					}
@@ -802,7 +802,7 @@ func TestPull_WeftDivergedWarpAdvancesCleanly(t *testing.T) {
 		t.Parallel()
 		fx := newDivergedWeftFixture(t, "from-clone-b.txt", "b", "", "local-only.txt", "local weft change", "")
 		warpHeadWas := fabricengine.CurrentSHAForTest(t, fx.warpPath)
-		if err := os.WriteFile(filepath.Join(fx.weftPath, lyxcwd.AnchorFileName), []byte("\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(fx.weftPath, lymcwd.AnchorFileName), []byte("\n"), 0o644); err != nil {
 			t.Fatalf("truncate the marker: %v", err)
 		}
 
@@ -812,8 +812,8 @@ func TestPull_WeftDivergedWarpAdvancesCleanly(t *testing.T) {
 		if !errors.As(err, &stop) || !errors.Is(err, fabricengine.ErrAnchorChange) {
 			t.Fatalf("Pull() error = %v (%T); want a *fabricengine.WeftStopError wrapping ErrAnchorChange", err, err)
 		}
-		if !strings.Contains(err.Error(), lyxcwd.AnchorFileName) {
-			t.Errorf("Pull() error = %q; want it to name %s", err.Error(), lyxcwd.AnchorFileName)
+		if !strings.Contains(err.Error(), lymcwd.AnchorFileName) {
+			t.Errorf("Pull() error = %q; want it to name %s", err.Error(), lymcwd.AnchorFileName)
 		}
 		if result.WarpAdvanced {
 			t.Errorf("Pull() WarpAdvanced = true; want warp left alone")
@@ -835,8 +835,8 @@ func TestPull_WeftDivergedWarpAdvancesCleanly(t *testing.T) {
 		if !errors.As(err, &stop) || !errors.Is(err, fabricengine.ErrAnchorChange) {
 			t.Fatalf("Pull() error = %v (%T); want a *fabricengine.WeftStopError wrapping ErrAnchorChange", err, err)
 		}
-		if !strings.Contains(stop.WayForward, "lyx fabric anchor") || !strings.Contains(stop.WayForward, "--set x") {
-			t.Errorf("WeftStopError way forward = %q; want the move record's `lyx fabric anchor` re-run", stop.WayForward)
+		if !strings.Contains(stop.WayForward, "lym fabric anchor") || !strings.Contains(stop.WayForward, "--set x") {
+			t.Errorf("WeftStopError way forward = %q; want the move record's `lym fabric anchor` re-run", stop.WayForward)
 		}
 		if result.WarpAdvanced || result.WeftPulled {
 			t.Errorf("Pull() WarpAdvanced=%v WeftPulled=%v; want neither side moved", result.WarpAdvanced, result.WeftPulled)
@@ -934,7 +934,7 @@ func TestPull_ReflogJudgesUnpushedAndRewinds(t *testing.T) {
 				gitkit.Git(t, pairCode, "fetch")
 			}
 
-			loc, err := lyxcwd.ResolveWorktree(pairCode)
+			loc, err := lymcwd.ResolveWorktree(pairCode)
 			if err != nil {
 				t.Fatalf("ResolveWorktree(%s): %v", pairCode, err)
 			}

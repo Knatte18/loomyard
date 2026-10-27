@@ -23,9 +23,9 @@ type Targets struct {
 	Base string
 	// Modules are the impacted packages per module; empty with Whole, and empty when only Markdown files changed.
 	Modules []ModuleTargets
-	// Guards maps the directory of each package outside the set to its `//lyx:guard` tests, sorted by name, each with its file's tier.
+	// Guards maps the directory of each package outside the set to its `//lym:guard` tests, sorted by name, each with its file's tier.
 	Guards map[string][]GuardTest
-	// BinaryTests are the sorted worktree-relative directories of every package whose tests import `internal/testkit/lyxbin`, inside the set or not; empty with Whole.
+	// BinaryTests are the sorted worktree-relative directories of every package whose tests import `internal/testkit/lymbin`, inside the set or not; empty with Whole.
 	BinaryTests []string
 }
 

@@ -18,25 +18,25 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 const sinkMaxBytes = 8 * 1024 * 1024
 
 // LogsDir returns the path to the worktree-level directory where this package's durable trace sink
 // writes one file per process.
-// It is AnchorPath-anchored so it is a directory sibling of the durable, fabric-synced _lyx tree —
+// It is AnchorPath-anchored so it is a directory sibling of the durable, fabric-synced _lym tree —
 // the old WorktreePath-anchored name is gone because it would assert an anchor this function no
 // longer uses.
-// It lives under the ephemeral .lyx directory, never the durable, fabric-synced _lyx.
-func LogsDir(l *lyxcwd.Location) string {
+// It lives under the ephemeral .lym directory, never the durable, fabric-synced _lym.
+func LogsDir(l *lymcwd.Location) string {
 	return LogsDirAt(l.AnchorPath())
 }
 
 // LogsDirAt returns the trace-file directory under anchorPath, for a caller that holds an anchor and no Location.
 func LogsDirAt(anchorPath string) string {
-	return filepath.Join(anchorPath, lyxdirs.DotLyxDirName, "logs")
+	return filepath.Join(anchorPath, lymdirs.DotLymDirName, "logs")
 }
 
 type sinkHeader struct {
@@ -163,27 +163,27 @@ func armDurableSinkLocked() bool {
 	return true
 }
 
-// resolveSinkDirLocked resolves the directory the durable sink writes to, plus the worktree root to record in the header and the lyx anchor path the resolution used,
+// resolveSinkDirLocked resolves the directory the durable sink writes to, plus the worktree root to record in the header and the lym anchor path the resolution used,
 // and reports whether a directory could be resolved.
 // Callers hold sinkMu.
 // An override returns an empty worktreeRoot and anchorPath;
-// otherwise the cwd-anchored resolution applies, gated off under `go test` unless LYX_TRACE is "1".
+// otherwise the cwd-anchored resolution applies, gated off under `go test` unless LYM_TRACE is "1".
 func resolveSinkDirLocked() (dir, worktreeRoot, anchorPath string, ok bool) {
 	if sinkDirOverride != "" {
 		return sinkDirOverride, "", "", true
 	}
-	if testing.Testing() && os.Getenv("LYX_TRACE") != "1" {
+	if testing.Testing() && os.Getenv("LYM_TRACE") != "1" {
 		return "", "", "", false
 	}
-	cwd, err := lyxcwd.Getwd()
+	cwd, err := lymcwd.Getwd()
 	if err != nil {
 		return "", "", "", false
 	}
-	layout, err := lyxcwd.Resolve(cwd)
+	layout, err := lymcwd.Resolve(cwd)
 	if err != nil {
 		return "", "", "", false
 	}
-	if !isLyxWorktree(layout) {
+	if !isLymWorktree(layout) {
 		return "", "", "", false
 	}
 	return LogsDir(layout), layout.WorktreePath(), layout.AnchorPath(), true
@@ -197,7 +197,7 @@ type SinkArmState struct {
 	Redirected bool
 	// Dir is the sink directory; empty until the sink arms.
 	Dir string
-	// AnchorPath is the lyx worktree anchor the cwd-anchored resolution used; empty when redirected.
+	// AnchorPath is the lym worktree anchor the cwd-anchored resolution used; empty when redirected.
 	AnchorPath string
 }
 
@@ -240,25 +240,18 @@ func TraceDir() string {
 	return dir
 }
 
-// isLyxWorktree reports whether layout names a worktree lyx actually owns, by the presence of the
-// durable _lyx tree at its anchor.
+// isLymWorktree reports whether layout names a worktree lym actually owns, by the presence of the
+// durable _lym tree at its anchor.
 //
-// It gates the cwd-anchored fallback above because lyxcwd.Resolve succeeds for ANY plain git
-// repository standing at its root — resolveCore defaults AnchorRel to "." when no hub records one, so
-// no hub is required — and the fallback then creates <repo>/.lyx/logs/trace-*.log inside a checkout
-// lyx does not own. cmd/lyx's exit hook, through logger.NotifyExit(code), force-arms the sink on EVERY non-zero exit, so
-// every refusal reached that fallback: a standalone webster or burler invocation refused before
-// wireStandalone's own redirect could point the sink at the derived state directory, and an unknown
-// subcommand that never reached wiring at all. Standalone mode's whole premise is that nothing lyx
-// writes lands in the repository it drives, and this was the one path that did (crucible round
-// opus-medium-r6, R6-6).
+// It gates the cwd-anchored fallback above because lymcwd.Resolve succeeds for ANY plain git repository standing at its root — resolveCore defaults AnchorRel to "."
+// when no hub records one, so no hub is required — and the fallback then creates <repo>/.lym/logs/trace-*.log inside a checkout lym does not own.
+// cmd/lym's exit hook, through logger.NotifyExit(code), force-arms the sink on EVERY non-zero exit, so every refusal reached that fallback: a standalone webster or burler invocation refused before wireStandalone's own redirect could point the sink at the derived state directory, and an unknown subcommand that never reached wiring at all.
+// Standalone mode's whole premise is that nothing lym writes lands in the repository it drives, and this was the one path that did (crucible round opus-medium-r6, R6-6).
 //
-// The residual, stated rather than papered over: a command run inside a git worktree that is not yet
-// lyx-wired now writes no trace file at all. That is the intended trade — it is precisely the case
-// where writing one would be the defect — and it does not reach fabric's own bring-up verbs, which
-// run from the hub, where lyxcwd.Resolve already fails and the fallback was never armed.
-func isLyxWorktree(layout *lyxcwd.Location) bool {
-	_, err := os.Stat(filepath.Join(layout.AnchorPath(), lyxdirs.LyxDirName))
+// The residual, stated rather than papered over: a command run inside a git worktree that is not yet lym-wired now writes no trace file at all.
+// That is the intended trade — it is precisely the case where writing one would be the defect — and it does not reach fabric's own bring-up verbs, which run from the hub, where lymcwd.Resolve already fails and the fallback was never armed.
+func isLymWorktree(layout *lymcwd.Location) bool {
+	_, err := os.Stat(filepath.Join(layout.AnchorPath(), lymdirs.LymDirName))
 	return err == nil
 }
 

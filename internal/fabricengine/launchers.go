@@ -2,8 +2,8 @@
 // launcher.
 // Launchers are cross-platform: a .cmd script on Windows, an executable .sh script everywhere else,
 // both built from the pure content builder in launcher_content.go.
-// The checkout launcher file (fabric-checkout<ext>) invokes "lyx fabric checkout", and the run
-// launcher file (run<ext>) invokes "lyx loom start".
+// The checkout launcher file (fabric-checkout<ext>) invokes "lym fabric checkout", and the run
+// launcher file (run<ext>) invokes "lym loom start".
 
 package fabricengine
 
@@ -13,17 +13,15 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// launchersDirName is the directory name for the hub-level launchers
-// container (i.e. <hub>/_launchers). Declared here rather than in
-// internal/lyxcwd: the launcher surface is fabric's own illusion-maintenance
-// plumbing, not a resolution primitive lyxcwd needs to expose.
+// launchersDirName is the directory name for the hub-level launchers container (i.e. <hub>/_launchers).
+// Declared here rather than in internal/lymcwd: the launcher surface is fabric's own illusion-maintenance plumbing, not a resolution primitive lymcwd needs to expose.
 const launchersDirName = "_launchers"
 
 // launchersDir returns the path to the _launchers directory in the hub.
-func launchersDir(l *lyxcwd.Location) string {
+func launchersDir(l *lymcwd.Location) string {
 	return filepath.Join(l.HubPath, launchersDirName)
 }
 
@@ -31,14 +29,14 @@ func launchersDir(l *lyxcwd.Location) string {
 // It is mirrored into the repo subpath structure, including AnchorRel segments.
 // Exported because its live test caller (reconcile_stale_registration_test.go) sits in the external
 // package fabricengine_test, where an unexported identifier does not compile.
-func LauncherDir(l *lyxcwd.Location, slug string) string {
+func LauncherDir(l *lymcwd.Location, slug string) string {
 	return filepath.Join(l.HubPath, launchersDirName, l.AnchorRel, slug)
 }
 
 // menuLauncherPath returns the path to the per-subpath menu launcher script.
 // It is mirrored into the repo subpath structure. The extension is
 // GOOS-selected: ".cmd" on Windows, ".sh" elsewhere.
-func menuLauncherPath(l *lyxcwd.Location) string {
+func menuLauncherPath(l *lymcwd.Location) string {
 	return filepath.Join(l.HubPath, launchersDirName, l.AnchorRel, menuLauncherName())
 }
 
@@ -55,7 +53,7 @@ func menuLauncherName() string {
 // The error is propagated rather than collapsed into an empty string: both paths are absolute and
 // hub-rooted so filepath.Rel cannot fail today, but an empty result would be written into a launcher
 // script that then spawns in the wrong directory, which is worse than a failed write.
-func launcherSpawnRel(l *lyxcwd.Location, slug string) (string, error) {
+func launcherSpawnRel(l *lymcwd.Location, slug string) (string, error) {
 	launcherDir := LauncherDir(l, slug)
 	target := filepath.Join(filepath.Join(l.HubPath, slug), l.AnchorRel)
 	rel, err := filepath.Rel(launcherDir, target)
@@ -69,7 +67,7 @@ func launcherSpawnRel(l *lyxcwd.Location, slug string) (string, error) {
 // to the primeName worktree's subpath for menu spawning. primeName is the
 // main worktree's base name, sourced by the caller via the package-local
 // PrimeName(l).
-func menuLauncherRel(l *lyxcwd.Location, primeName string) (string, error) {
+func menuLauncherRel(l *lymcwd.Location, primeName string) (string, error) {
 	menuDir := filepath.Dir(menuLauncherPath(l))
 	target := filepath.Join(l.HubPath, primeName, l.AnchorRel)
 	rel, err := filepath.Rel(menuDir, target)
@@ -106,7 +104,7 @@ func menuLauncherRel(l *lyxcwd.Location, primeName string) (string, error) {
 //   - The menu launcher: never-clobber (writeLaunchers returns early when it already exists, and
 //     removeLaunchers deliberately leaves it in place), so it is recorded only on the branch that
 //     actually reaches its root.WriteFile.
-func writeLaunchers(rec *Mutations, l *lyxcwd.Location, slug string) error {
+func writeLaunchers(rec *Mutations, l *lymcwd.Location, slug string) error {
 	ext := launcherExt(runtime.GOOS)
 
 	root, err := os.OpenRoot(l.HubPath)
@@ -254,7 +252,7 @@ func writeLauncherScriptIfChanged(rec *Mutations, root *os.Root, hubPath, path s
 // (non-recursive, so a non-empty directory is still refused by the OS) and therefore records
 // KindPathRemoved with detail "single" itself, at its own success site, using the same
 // record-only-on-observed-effect rule the gate executors follow.
-func removeLaunchers(rec *Mutations, l *lyxcwd.Location, slug string) error {
+func removeLaunchers(rec *Mutations, l *lymcwd.Location, slug string) error {
 	launcherDir := LauncherDir(l, slug)
 	if err := refuseUncontainedPath(launchersDir(l), launcherDir, "launcher dir"); err != nil {
 		return err

@@ -56,7 +56,7 @@ func TestBeginBatch_Refusals(t *testing.T) {
 				fx.Deps.Batches[0].Cards[0].Pairs = []planparser.MovePair{{Old: "sub#Foo", New: "plan:sub#Bar"}}
 			},
 			wantIs:   websterengine.ErrRenameToolMissing,
-			wantText: []string{"sub#Foo", "1-json-flag", `way forward: set rename_tools with "lyx config language"`, "lyx webster begin-batch 1"},
+			wantText: []string{"sub#Foo", "1-json-flag", `way forward: set rename_tools with "lym config language"`, "lym webster begin-batch 1"},
 			check: func(t *testing.T, fx *beginFixture) {
 				if len(fx.Deps.State.Batches) != 0 {
 					t.Errorf("state batches = %v; want none recorded", fx.Deps.State.Batches)
@@ -84,7 +84,7 @@ func TestBeginBatch_Refusals(t *testing.T) {
 				fx.Deps.State.PlanFingerprint = "0000000000000000000000000000000000000000000000000000000000000000"
 			},
 			wantIs:   websterengine.ErrFingerprintMismatch,
-			wantText: []string{"1) lyx webster reset --to start; 2) lyx webster run"},
+			wantText: []string{"1) lym webster reset --to start; 2) lym webster run"},
 		},
 		{
 			name: "an overview change confined to its Card Index names rebaseline with the added card",
@@ -96,7 +96,7 @@ func TestBeginBatch_Refusals(t *testing.T) {
 				writePlanFile(t, fx, "03-third.md", "# Card 3 — third\n\n**Intent:** new.\n")
 			},
 			wantIs:      websterengine.ErrFingerprintMismatch,
-			wantText:    []string{"lyx webster rebaseline --card 03"},
+			wantText:    []string{"lym webster rebaseline --card 03"},
 			wantNotText: []string{"never rebaselined", "outside its Card Index"},
 		},
 		{
@@ -137,7 +137,7 @@ func TestBeginBatch_Refusals(t *testing.T) {
 					1: {Slug: "json-flag", Kind: "fork"},
 				}
 			},
-			wantText:    []string{"begun and not terminal", "way forward: `lyx webster record-batch 1`, after fixing whatever its last refusal named"},
+			wantText:    []string{"begun and not terminal", "way forward: `lym webster record-batch 1`, after fixing whatever its last refusal named"},
 			wantNotText: []string{"recover-batch"},
 			check: func(t *testing.T, fx *beginFixture) {
 				reportPath := filepath.Join(fx.Deps.Geom.ReportsDir, websterengine.ReportFileName(1, "json-flag"))
@@ -154,7 +154,7 @@ func TestBeginBatch_Refusals(t *testing.T) {
 					1: {Slug: "json-flag", Kind: "recovery"},
 				}
 			},
-			wantText:    []string{"begun and not terminal", "way forward: `lyx webster recover-batch 1`"},
+			wantText:    []string{"begun and not terminal", "way forward: `lym webster recover-batch 1`"},
 			wantNotText: []string{"record-batch"},
 		},
 		{
@@ -165,7 +165,7 @@ func TestBeginBatch_Refusals(t *testing.T) {
 					1: {Slug: "json-flag", Kind: "fork", Terminal: true, Status: "stuck"},
 				}
 			},
-			wantText:    []string{"terminal with status stuck", "way forward: `lyx webster recover-batch 1`"},
+			wantText:    []string{"terminal with status stuck", "way forward: `lym webster recover-batch 1`"},
 			wantNotText: []string{"record-batch"},
 		},
 		{
@@ -176,7 +176,7 @@ func TestBeginBatch_Refusals(t *testing.T) {
 					1: {Slug: "json-flag", Kind: "fork", Terminal: true, Status: "failed"},
 				}
 			},
-			wantText:    []string{"terminal with status failed", "way forward: `lyx webster recover-batch 1`"},
+			wantText:    []string{"terminal with status failed", "way forward: `lym webster recover-batch 1`"},
 			wantNotText: []string{"record-batch"},
 		},
 		{
@@ -198,7 +198,7 @@ func TestBeginBatch_Refusals(t *testing.T) {
 					1: {Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead"},
 				}
 			},
-			wantText:    []string{"terminal with status dead", "way forward: `lyx webster recover-batch 1`, once more, since the batch earns another recovery"},
+			wantText:    []string{"terminal with status dead", "way forward: `lym webster recover-batch 1`, once more, since the batch earns another recovery"},
 			wantNotText: []string{"exhausted", "record-batch"},
 		},
 		{
@@ -221,7 +221,7 @@ func TestBeginBatch_Refusals(t *testing.T) {
 				}
 			},
 			wantIs:      websterengine.ErrRecoveryExhausted,
-			wantText:    []string{"exhausted", "end the run stuck naming the batch", "lyx webster reset --to batch-start --batch 01"},
+			wantText:    []string{"exhausted", "end the run stuck naming the batch", "lym webster reset --to batch-start --batch 01"},
 			wantNotText: []string{"record-batch"},
 		},
 		{
@@ -232,7 +232,7 @@ func TestBeginBatch_Refusals(t *testing.T) {
 					1: {Slug: "json-flag", Kind: "fork", Terminal: true, Status: "failed", Recoveries: 2, AmendedCards: []websterengine.AmendedCard{{Card: "01-json-flag"}}},
 				}
 			},
-			wantText:    []string{"terminal with status failed", "way forward: `lyx webster recover-batch 1`"},
+			wantText:    []string{"terminal with status failed", "way forward: `lym webster recover-batch 1`"},
 			wantNotText: []string{"exhausted", "record-batch"},
 		},
 		{
@@ -244,7 +244,7 @@ func TestBeginBatch_Refusals(t *testing.T) {
 				}
 			},
 			wantIs:      websterengine.ErrRecoveryExhausted,
-			wantText:    []string{"exhausted", "end the run stuck naming the batch", "lyx webster reset --to batch-start --batch 01"},
+			wantText:    []string{"exhausted", "end the run stuck naming the batch", "lym webster reset --to batch-start --batch 01"},
 			wantNotText: []string{"record-batch"},
 		},
 		{
@@ -257,7 +257,7 @@ func TestBeginBatch_Refusals(t *testing.T) {
 					1: {Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", Recoveries: 1, RecoveryStartSHA: start},
 				}
 			},
-			wantText:    []string{"terminal with status dead", "way forward: `lyx webster recover-batch 1`, once more"},
+			wantText:    []string{"terminal with status dead", "way forward: `lym webster recover-batch 1`, once more"},
 			wantNotText: []string{"exhausted", "record-batch"},
 		},
 		{
@@ -404,8 +404,8 @@ func TestBeginBatch_PromptFile(t *testing.T) {
 			name:   "each card carries its gate call and the two lints, and the batch carries the batch gate call",
 			number: 1,
 			want: []string{
-				"  - `lyx gate test --wait --gate card --card 1-json-flag`\n  - `lyx loom lint-comments`\n  - `lyx loom lint-pattern`",
-				"- `lyx gate test --wait --gate batch --card 1-json-flag`",
+				"  - `lym gate test --wait --gate card --card 1-json-flag`\n  - `lym loom lint-comments`\n  - `lym loom lint-pattern`",
+				"- `lym gate test --wait --gate batch --card 1-json-flag`",
 			},
 			wantNot: []string{"{{.", "## verify:", "-run '^("},
 		},
@@ -451,8 +451,8 @@ func TestBeginBatch_PromptFile(t *testing.T) {
 		fx := newBeginFixture(t)
 		fx.Deps.Gate.Gates["batch"] = gateslot.GateKey{Tiers: []int{7}, Scope: "card"}
 		_, err := websterengine.BeginBatch(fx.Deps, 1)
-		if err == nil || !strings.Contains(err.Error(), "lyx config gate") {
-			t.Fatalf("BeginBatch() error = %v; want a refusal naming lyx config gate", err)
+		if err == nil || !strings.Contains(err.Error(), "lym config gate") {
+			t.Fatalf("BeginBatch() error = %v; want a refusal naming lym config gate", err)
 		}
 		if entries, readErr := os.ReadDir(fx.PromptDir); readErr != nil || len(entries) != 0 {
 			t.Errorf("prompts dir = %v, %v; want it empty", entries, readErr)
@@ -727,8 +727,8 @@ func TestBeginBatch_ReResolvesPlanAtDispatch(t *testing.T) {
 		if !strings.Contains(strings.Join(conflict.Findings, "\n"), "bare-symbol-target") {
 			t.Errorf("Findings = %v; want the bare-symbol-target finding", conflict.Findings)
 		}
-		if !strings.Contains(err.Error(), "lyx webster rebaseline --card NN") {
-			t.Errorf("error %q; want it to name `lyx webster rebaseline --card NN`", err.Error())
+		if !strings.Contains(err.Error(), "lym webster rebaseline --card NN") {
+			t.Errorf("error %q; want it to name `lym webster rebaseline --card NN`", err.Error())
 		}
 		entries, readErr := os.ReadDir(fx.PromptDir)
 		if readErr != nil {
@@ -987,13 +987,13 @@ func TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget(t *testing
 	}
 }
 
-// TestBeginBatch_WayForward_UnknownBatch proves a batch number outside the plan names `lyx webster status`,
+// TestBeginBatch_WayForward_UnknownBatch proves a batch number outside the plan names `lym webster status`,
 // and that naming one of the run's batches then begins it.
 func TestBeginBatch_WayForward_UnknownBatch(t *testing.T) {
 	fx := newBeginFixture(t)
 
 	_, err := websterengine.BeginBatch(fx.Deps, 99)
-	if err == nil || !strings.Contains(err.Error(), "way forward: `lyx webster status` lists the run's batches") {
+	if err == nil || !strings.Contains(err.Error(), "way forward: `lym webster status` lists the run's batches") {
 		t.Fatalf("BeginBatch(99) error = %v; want the status way forward", err)
 	}
 

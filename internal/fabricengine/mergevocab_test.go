@@ -1,12 +1,7 @@
 //go:build tier0
 
-// mergevocab_test.go is the explicit side-free vocabulary assertion the enforcement walk
-// (internal/lyxcwd's TestEnforcement_FabricVocabulary) cannot provide for the merge surface:
-// internal/fabricengine sits inside that walk's owner set, so a warp/weft leak into MergeResult,
-// MergeOptions, or any named merge error would pass the enforcement walk silently. This file pins
-// the three things the vocabulary decision requires stay side-free on the public merge surface: the
-// two public result/options types, every named merge error's rendered message, and the closed
-// guard-reason set itself.
+// mergevocab_test.go is the explicit side-free vocabulary assertion the enforcement walk (internal/lymcwd's TestEnforcement_FabricVocabulary) cannot provide for the merge surface: internal/fabricengine sits inside that walk's owner set, so a warp/weft leak into MergeResult, MergeOptions, or any named merge error would pass the enforcement walk silently.
+// This file pins the three things the vocabulary decision requires stay side-free on the public merge surface: the two public result/options types, every named merge error's rendered message, and the closed guard-reason set itself.
 //
 // package fabricengine (in-package), not fabricengine_test, since the closed guard-reason constants
 // (mergeReason*) are unexported.
@@ -62,7 +57,7 @@ type mergeReasonConstDecl struct {
 // mergeReasonConstsFromSource parses every non-test .go file in this package's own directory and
 // returns every package-level constant whose name carries the mergeReason prefix, name to
 // declaration — the closed set as the source actually declares it, read with go/ast so no
-// hand-maintained list can drift from it (the cmd/lyx/registration_test.go precedent applied to a
+// hand-maintained list can drift from it (the cmd/lym/registration_test.go precedent applied to a
 // const block).
 //
 // The scan is package-wide rather than a hardcoded filename on purpose. Scoping it to
@@ -160,7 +155,7 @@ func TestMergeVocabulary_GuardReasonSetMatchesConstBlock(t *testing.T) {
 	}
 }
 
-// mergeVocabHostPhrases mirrors internal/lyxcwd/enforcement_test.go's hostPhrases list: the
+// mergeVocabHostPhrases mirrors internal/lymcwd/enforcement_test.go's hostPhrases list: the
 // fabric-sense "host X" phrases the vocabulary decision polices, checked case-insensitively in both
 // spaced and hyphenated form. A bare "host" is never policed on its own -- see
 // mergeVocabContainsHostPhrase.
@@ -178,9 +173,7 @@ func mergeVocabContainsBareToken(s string) bool {
 	return strings.Contains(lower, "weft") || strings.Contains(lower, "warp")
 }
 
-// mergeVocabContainsHostPhrase reports whether s contains a fabric-sense "host" phrase,
-// case-insensitively, in either spaced or hyphenated form, mirroring
-// internal/lyxcwd/enforcement_test.go's fabricSenseHostPhrase.
+// mergeVocabContainsHostPhrase reports whether s contains a fabric-sense "host" phrase, case-insensitively, in either spaced or hyphenated form, mirroring internal/lymcwd/enforcement_test.go's fabricSenseHostPhrase.
 func mergeVocabContainsHostPhrase(s string) bool {
 	lower := strings.ToLower(s)
 	for _, phrase := range mergeVocabHostPhrases {

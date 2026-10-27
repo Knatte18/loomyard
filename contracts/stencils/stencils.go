@@ -437,8 +437,7 @@ type registryEntry struct {
 	def  *[]byte
 }
 
-// entries is the ordered name-to-default registry: the order stencils are listed here is the order
-// `lyx stencil list` prints them in.
+// entries is the ordered name-to-default registry: the order stencils are listed here is the order `lym stencil list` prints them in.
 var entries = []registryEntry{
 	{"landing-template-conflict", &LandingTemplateConflict},
 	{"landing-template-describe", &LandingTemplateDescribe},
@@ -604,7 +603,7 @@ func (registry) Default(name string) ([]byte, bool) {
 }
 
 // Registry returns the stencilstore.Registry backed by this package's embedded defaults.
-// `cmd/lyx`'s root pre-run and internal/stencilcli are its consumers; no engine imports this
+// `cmd/lym`'s root pre-run and internal/stencilcli are its consumers; no engine imports this
 // package -- an engine reads a stencil at call time via stencilstore.Read, which needs no registry.
 func Registry() stencilstore.Registry {
 	return registry{}

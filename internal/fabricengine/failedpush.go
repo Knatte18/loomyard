@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -80,7 +80,7 @@ func InstallPushNotifier(n PushNotifier) (restore func()) {
 }
 
 func failedPushDir(hubPath string) string {
-	return filepath.Join(HubScratchDir(hubPath), lyxdirs.FailedPushDirName)
+	return filepath.Join(HubScratchDir(hubPath), lymdirs.FailedPushDirName)
 }
 
 // failedPushPath returns the record file for a repository side and branch.
@@ -201,13 +201,13 @@ func FailedPushFields(hubPath string) ([]map[string]any, error) {
 func pushStep(f FailedPush) string {
 	switch {
 	case f.Repo == failedPushSideBolt:
-		return "`lyx board sync` from the prime worktree"
+		return "`lym board sync` from the prime worktree"
 	case f.Repo == failedPushSideCode && f.Prime:
 		return fmt.Sprintf("`git push` in %s", f.RepoPath)
 	case f.Repo == failedPushSideRecords:
-		return fmt.Sprintf("`lyx fabric push` in %s", f.CodeWorktree)
+		return fmt.Sprintf("`lym fabric push` in %s", f.CodeWorktree)
 	default:
-		return fmt.Sprintf("`lyx fabric push` in %s", f.RepoPath)
+		return fmt.Sprintf("`lym fabric push` in %s", f.RepoPath)
 	}
 }
 
@@ -231,8 +231,8 @@ func FailedPushWayForward(f FailedPush) string {
 			pairWorktree = f.CodeWorktree
 		}
 		return fmt.Sprintf("origin no longer has branch %s, and its board entry is neither done nor removed on origin, since an ended entry writes no record; "+
-			"decide whether the run ends: `lyx fabric remove` of the pair at %s, run from the prime, removes the pair and clears this record; "+
-			"once origin's board shows the entry done or removed, `lyx cleanup --apply` tears it down instead",
+			"decide whether the run ends: `lym fabric remove` of the pair at %s, run from the prime, removes the pair and clears this record; "+
+			"once origin's board shows the entry done or removed, `lym cleanup --apply` tears it down instead",
 			f.Branch, pairWorktree)
 	default:
 		return fmt.Sprintf("run %s to retry the push", pushStep(f))
@@ -251,7 +251,7 @@ func recordsConflictWayForward(worktree, branch string, paths, commits []string,
 // codeDivergedWayForward names the merge that settles a code branch origin moved past.
 // A prime's branch is pushed by a plain git push in the prime, since the pair push leaves the prime's code branch unpushed.
 func codeDivergedWayForward(worktree, branch string, prime bool) string {
-	push := fmt.Sprintf("`lyx fabric push` in %s", worktree)
+	push := fmt.Sprintf("`lym fabric push` in %s", worktree)
 	if prime {
 		push = fmt.Sprintf("`git push` in %s", worktree)
 	}
@@ -262,7 +262,7 @@ func codeDivergedWayForward(worktree, branch string, prime bool) string {
 // rewoundWayForward names the two ways to settle a task branch origin rewound to originHead, dropping the commits in dropped.
 func rewoundWayForward(worktree, branch, originHead string, dropped []string) string {
 	return fmt.Sprintf("origin rewound %s to %s, dropping %s; "+
-		"to accept the rewind, run `git reset --keep %s` in %s, which drops the local commits past origin's head, then `lyx fabric push` there; "+
+		"to accept the rewind, run `git reset --keep %s` in %s, which drops the local commits past origin's head, then `lym fabric push` there; "+
 		"to restore the dropped commits, run `git push origin %s` in %s, a plain fast-forward",
 		branch, originHead, joinOrNone(dropped), originHead, worktree, branch, worktree)
 }

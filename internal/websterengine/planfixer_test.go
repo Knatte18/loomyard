@@ -65,7 +65,7 @@ func TestFixPlanSpawnOrAttach(t *testing.T) {
 		}{
 			{
 				name:     "no plan-conflict record",
-				wantText: []string{"no plan-conflict record names a finding", "way forward: run `lyx webster fix-plan` only right after begin-batch refuses with plan_conflict"},
+				wantText: []string{"no plan-conflict record names a finding", "way forward: run `lym webster fix-plan` only right after begin-batch refuses with plan_conflict"},
 			},
 			{
 				name:     "an earlier fixer was given the same findings",
@@ -102,7 +102,7 @@ func TestFixPlanSpawnOrAttach(t *testing.T) {
 				name:     "HEAD cannot be read",
 				findings: testConflictFindings,
 				arrange:  func(fx *recoverFixture, _ *websterengine.FixPlanDeps) { fx.Git.headErr = errors.New("head boom") },
-				wantText: []string{"head boom", "way forward: transient, re-run `lyx webster fix-plan`"},
+				wantText: []string{"head boom", "way forward: transient, re-run `lym webster fix-plan`"},
 			},
 			{
 				name:     "the worktree status cannot be read",
@@ -110,13 +110,13 @@ func TestFixPlanSpawnOrAttach(t *testing.T) {
 				arrange: func(fx *recoverFixture, _ *websterengine.FixPlanDeps) {
 					fx.Git.dirtyPathsErr = errors.New("status boom")
 				},
-				wantText: []string{"status boom", "way forward: transient, re-run `lyx webster fix-plan`"},
+				wantText: []string{"status boom", "way forward: transient, re-run `lym webster fix-plan`"},
 			},
 			{
 				name:      "the strand cannot be started",
 				findings:  testConflictFindings,
 				arrange:   func(fx *recoverFixture, _ *websterengine.FixPlanDeps) { fx.Reed.AddErr = errors.New("add boom") },
-				wantText:  []string{"add boom", "way forward: transient, re-run `lyx webster fix-plan`"},
+				wantText:  []string{"add boom", "way forward: transient, re-run `lym webster fix-plan`"},
 				wantAdded: 1,
 			},
 			{
@@ -125,7 +125,7 @@ func TestFixPlanSpawnOrAttach(t *testing.T) {
 				arrange: func(_ *recoverFixture, deps *websterengine.FixPlanDeps) {
 					deps.ShuttleCfg.RunDir = filepath.Join(deps.Geom.ScratchDir, "elsewhere")
 				},
-				wantText:  []string{"resolve spawned plan fixer run", "way forward: transient, re-run `lyx webster fix-plan`"},
+				wantText:  []string{"resolve spawned plan fixer run", "way forward: transient, re-run `lym webster fix-plan`"},
 				wantAdded: 1,
 			},
 		}

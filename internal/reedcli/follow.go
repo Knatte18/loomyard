@@ -41,7 +41,7 @@ on success: the status bar's follow button calls it through tmux's
 run-shell.
 
 Example:
-  lyx reed follow --socket /tmp/tmux-1000/default --session my-worktree --tmux /usr/bin/tmux`,
+  lym reed follow --socket /tmp/tmux-1000/default --session my-worktree --tmux /usr/bin/tmux`,
 		Annotations: map[string]string{
 			clihelp.AudienceAnnotation:        clihelp.AudienceRole,
 			clihelp.SkipStencilSeedAnnotation: clihelp.AnnotationEnabled,

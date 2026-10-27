@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/battencli"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
@@ -59,8 +59,8 @@ func TestPrimeSegments(t *testing.T) {
 	hub := t.TempDir()
 	location := locationkit.Location(hub, "prime", "")
 	beam := locationkit.Location(hub, "b", "")
-	segments := segmentsOver(location, func(*lyxcwd.Location) ([]*lyxcwd.Location, error) {
-		return []*lyxcwd.Location{location, beam}, nil
+	segments := segmentsOver(location, func(*lymcwd.Location) ([]*lymcwd.Location, error) {
+		return []*lymcwd.Location{location, beam}, nil
 	})
 
 	var names []string

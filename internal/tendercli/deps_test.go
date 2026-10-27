@@ -17,7 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/creelengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -92,7 +92,7 @@ func TestShuttlePairReadings(t *testing.T) {
 				t.Fatal(err)
 			}
 			pair := shuttlePair{
-				location: &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "p1"},
+				location: &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "p1"},
 				cfg:      shuttleengine.Config{RunDir: runDir},
 				engines:  shuttlefake.EngineSet(&signalEngine{Engine: &shuttlefake.Engine{}, signals: tt.signals}),
 			}
@@ -296,7 +296,7 @@ func TestOwnedElsewhereEnder(t *testing.T) {
 				t.Errorf("run() = %v; want it to match *runproc.SurvivorsError", err)
 			}
 			if tt.endErr != nil {
-				for _, step := range []string{"`lyx fabric remove task`", "`lyx tender reap`"} {
+				for _, step := range []string{"`lym fabric remove task`", "`lym tender reap`"} {
 					if !strings.Contains(err.Error(), step) {
 						t.Errorf("run() = %q; want it to name %s", err, step)
 					}

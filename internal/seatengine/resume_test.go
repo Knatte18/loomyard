@@ -114,7 +114,7 @@ func TestEngine_Probe_ChairNotLiveStopsTheLiveAdvisorsAndLeavesAFreshStart(t *te
 	// A strand of the earlier step still holding the chair's name is a start error of the fresh run that follows.
 	shuttle.strandNames = map[string]string{role(""): "ly:task:multi-2"}
 	_, err = engine.Run(table)
-	if err == nil || !strings.Contains(err.Error(), `lyx reed remove --name ly:task:multi"`) {
+	if err == nil || !strings.Contains(err.Error(), `lym reed remove --name ly:task:multi"`) {
 		t.Errorf("Run() after the probe = %v, want a start error naming the holder", err)
 	}
 }
@@ -148,7 +148,7 @@ func TestEngine_ProbeAndResume_Refusals(t *testing.T) {
 			},
 			act:     func(e *Engine, _ *fakeShuttle, table Table) error { _, err := e.Probe(table); return err },
 			wantIs:  ErrSeatNotStopped,
-			wantMsg: `lyx reed remove guid-multi-advisor-1"`,
+			wantMsg: `lym reed remove guid-multi-advisor-1"`,
 		},
 	}
 	for _, tt := range tests {

@@ -11,7 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -42,7 +42,7 @@ type startGuard struct {
 }
 
 // hubStartGuard builds the startGuard over the hub of location: the cancel marker, the prime's tracked dirty paths, the slug's pair parts and its beam, all local reads with no network call.
-func hubStartGuard(location *lyxcwd.Location, slug string) startGuard {
+func hubStartGuard(location *lymcwd.Location, slug string) startGuard {
 	return startGuard{
 		Marker:      func() (cancelMarkerReading, error) { return readCancelMarker(location, slug) },
 		SourceDirty: func() ([]string, error) { return fabricengine.SourceDirtyPaths(location) },
@@ -109,12 +109,12 @@ func hubStartGuard(location *lyxcwd.Location, slug string) startGuard {
 // A run or step of a task whose pair carries the beam mark refuses, with or without a status file, since only a stopped promote leaves one.
 // A run or step with no status file, or one whose status is at Worktree-Create while the task worktree is absent, refuses on tracked dirty paths of the source worktree, unless the task forks from a beam, whose pair forks from the beam's last commit and not from the source worktree.
 // A run or step of a project entry is judged by refuseProject, which refuses a grouping project, passes a marked beam pair over the dirty-source and left-pair checks and a resume past Worktree-Create over all of them, and leaves a beam project with no marked pair here to the checks of a task.
-// A run or step with no status file of a task whose board status is draft refuses, naming the release that makes it startable; a beam project skips that check, since a beam's cancel leaves its entry draft and `lyx beam create` starts its run again from there.
+// A run or step with no status file of a task whose board status is draft refuses, naming the release that makes it startable; a beam project skips that check, since a beam's cancel leaves its entry draft and `lym beam create` starts its run again from there.
 // A run or step with no status file refuses when a task worktree, records worktree or local records branch is left from an earlier run.
 // A probe error refuses naming the probe and the verb's re-run.
 // found and status describe the run's status file, and taskWorktreePresent whether the task worktree is there, which only a status at Worktree-Create reads.
 func (g startGuard) refuse(slug, verb string, status shedengine.Status, found, taskWorktreePresent bool) error {
-	rerun := fmt.Sprintf(`"lyx batten %s %s"`, verb, slug)
+	rerun := fmt.Sprintf(`"lym batten %s %s"`, verb, slug)
 
 	if (verb == "run" || verb == "step" || verb == "goto") && g.Marker != nil {
 		reading, err := g.Marker()
@@ -135,7 +135,7 @@ func (g startGuard) refuse(slug, verb string, status shedengine.Status, found, t
 			return probeRefusal("the pair's origin record", slug, rerun, err)
 		}
 		if promoted {
-			return fmt.Errorf("the pair of %s carries the beam mark, so an interrupted promote of an older build left it and a run would restart the ended run inside a beam; way forward: run \"lyx batten cancel %s --remove\" from the prime, then the release and the run again", slug, slug)
+			return fmt.Errorf("the pair of %s carries the beam mark, so an interrupted promote of an older build left it and a run would restart the ended run inside a beam; way forward: run \"lym batten cancel %s --remove\" from the prime, then the release and the run again", slug, slug)
 		}
 	}
 
@@ -155,7 +155,7 @@ func (g startGuard) refuse(slug, verb string, status shedengine.Status, found, t
 			return probeRefusal("the board entry's status", slug, rerun, err)
 		}
 		if draft {
-			return fmt.Errorf("%s is a draft task, which no run starts; way forward: run `%s` to release it, then `lyx batten %s %s`", slug, releaseCommandText(slug), verb, slug)
+			return fmt.Errorf("%s is a draft task, which no run starts; way forward: run `%s` to release it, then `lym batten %s %s`", slug, releaseCommandText(slug), verb, slug)
 		}
 	}
 
@@ -182,7 +182,7 @@ func (g startGuard) refuse(slug, verb string, status shedengine.Status, found, t
 			return probeRefusal("the pair's parts", slug, rerun, err)
 		}
 		if left := leftPartNames(parts); len(left) > 0 {
-			return fmt.Errorf("%s left a pair from an earlier run (%s); run \"lyx batten cancel %s --remove\" from the prime, which removes it, then %s and %s",
+			return fmt.Errorf("%s left a pair from an earlier run (%s); run \"lym batten cancel %s --remove\" from the prime, which removes it, then %s and %s",
 				slug, strings.Join(left, ", "), slug, releaseCommand(slug), rerun)
 		}
 	}
@@ -203,7 +203,7 @@ func (g startGuard) refuseProject(slug, rerun string, status shedengine.Status, 
 		return false, false, nil
 	}
 	if !beamFlag {
-		return false, true, fmt.Errorf("%s is a grouping project, and only a beam project runs; way forward: run \"lyx beam create %s\" to make it a beam, then %s", slug, slug, rerun)
+		return false, true, fmt.Errorf("%s is a grouping project, and only a beam project runs; way forward: run \"lym beam create %s\" to make it a beam, then %s", slug, slug, rerun)
 	}
 	if found && status.CurrentProducer != battenrecipe.NameWorktreeCreate {
 		return true, true, nil
@@ -224,7 +224,7 @@ func (g startGuard) refuseProject(slug, rerun string, status shedengine.Status, 
 		return true, true, probeRefusal("the beam pair's origin record", slug, rerun, err)
 	}
 	if !readable {
-		return true, true, fmt.Errorf("the pair of the beam %s has no readable origin record; way forward: run \"lyx fabric reconcile\" to restore its records worktree, then %s", slug, rerun)
+		return true, true, fmt.Errorf("the pair of the beam %s has no readable origin record; way forward: run \"lym fabric reconcile\" to restore its records worktree, then %s", slug, rerun)
 	}
 	return true, marked, nil
 }
@@ -256,7 +256,7 @@ func leftPartNames(parts fabricengine.PairParts) []string {
 
 // releaseCommandText words the command that releases the draft task slug, with the slug filled in so a way forward naming it runs as typed.
 func releaseCommandText(slug string) string {
-	return fmt.Sprintf(`lyx board set-status '{"slug":"%s","status":null}'`, slug)
+	return fmt.Sprintf(`lym board set-status '{"slug":"%s","status":null}'`, slug)
 }
 
 // releaseCommand quotes releaseCommandText for a way forward that names it between double quotes.

@@ -14,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -23,7 +23,7 @@ import (
 )
 
 // hubCreateDeps fills createDeps over the hub the prime belongs to.
-func hubCreateDeps(prime *lyxcwd.Location) (createDeps, error) {
+func hubCreateDeps(prime *lymcwd.Location) (createDeps, error) {
 	config, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(prime))
 	if err != nil {
 		return createDeps{}, err
@@ -67,9 +67,9 @@ func hubCreateDeps(prime *lyxcwd.Location) (createDeps, error) {
 }
 
 // hubLandDeps fills landDeps over the hub the prime belongs to.
-func hubLandDeps(prime *lyxcwd.Location) landDeps {
-	beamOf := func(slug string) (*lyxcwd.Location, error) {
-		return lyxcwd.ResolveWorktree(fabricengine.WorktreePath(prime, slug))
+func hubLandDeps(prime *lymcwd.Location) landDeps {
+	beamOf := func(slug string) (*lymcwd.Location, error) {
+		return lymcwd.ResolveWorktree(fabricengine.WorktreePath(prime, slug))
 	}
 	return landDeps{
 		Machine: machinename.Name,
@@ -126,7 +126,7 @@ func hubLandDeps(prime *lyxcwd.Location) landDeps {
 }
 
 // pairWorktreePresent reports whether this machine holds the worktree of slug's pair.
-func pairWorktreePresent(prime *lyxcwd.Location, slug string) bool {
+func pairWorktreePresent(prime *lymcwd.Location, slug string) bool {
 	info, err := os.Stat(fabricengine.WorktreePath(prime, slug))
 	return err == nil && info.IsDir()
 }

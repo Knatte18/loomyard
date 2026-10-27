@@ -71,8 +71,8 @@ func TestBindingArgvs_BindsTheFiveAltKeysAndTheStatusClickInTheRootTableOnly(t *
 			got[argv[2]] = argv
 		}
 		want := map[string][]string{
-			"M-Up":   {"bind-key", "-n", "M-Up", "set-option", "@lyx_follow", "off", `\;`, "previous-window", `\;`, "if-shell", "-F", "-t", ":", "#{@lyx_hidden}", selectStrandsWindowCommand},
-			"M-Down": {"bind-key", "-n", "M-Down", "set-option", "@lyx_follow", "off", `\;`, "next-window", `\;`, "if-shell", "-F", "-t", ":", "#{@lyx_hidden}", "select-window -t :^"},
+			"M-Up":   {"bind-key", "-n", "M-Up", "set-option", "@lym_follow", "off", `\;`, "previous-window", `\;`, "if-shell", "-F", "-t", ":", "#{@lym_hidden}", selectStrandsWindowCommand},
+			"M-Down": {"bind-key", "-n", "M-Down", "set-option", "@lym_follow", "off", `\;`, "next-window", `\;`, "if-shell", "-F", "-t", ":", "#{@lym_hidden}", "select-window -t :^"},
 		}
 		for key, wantArgv := range want {
 			if !slices.Equal(got[key], wantArgv) {
@@ -105,11 +105,11 @@ func TestBindingArgvs_BindsTheFiveAltKeysAndTheStatusClickInTheRootTableOnly(t *
 
 		click := clickArgv(t, bindingArgvs(prev, next, true))
 		for _, rangeType := range []string{"shell", "window"} {
-			if got := clickBranchCommand(t, click, rangeType); !strings.HasPrefix(got, "set-option @lyx_follow off ; ") {
+			if got := clickBranchCommand(t, click, rangeType); !strings.HasPrefix(got, "set-option @lym_follow off ; ") {
 				t.Errorf("%s click command = %q, want it to start with the follow-off write", rangeType, got)
 			}
 		}
-		if got := clickBranchCommand(t, click, "session"); strings.Contains(got, "@lyx_follow") {
+		if got := clickBranchCommand(t, click, "session"); strings.Contains(got, "@lym_follow") {
 			t.Errorf("session click command = %q, want it to leave the follow state alone", got)
 		}
 	})
@@ -118,13 +118,13 @@ func TestBindingArgvs_BindsTheFiveAltKeysAndTheStatusClickInTheRootTableOnly(t *
 		t.Parallel()
 
 		withJump := clickBranchCommand(t, clickArgv(t, bindingArgvs(prev, next, true)), "follow")
-		wantWithJump := `if-shell -F '#{==:#{@lyx_follow},off}' 'set-option @lyx_follow on ; run-shell -b "#{E:@lyx_follow_command}"' 'set-option @lyx_follow off'`
+		wantWithJump := `if-shell -F '#{==:#{@lym_follow},off}' 'set-option @lym_follow on ; run-shell -b "#{E:@lym_follow_command}"' 'set-option @lym_follow off'`
 		if withJump != wantWithJump {
 			t.Errorf("follow click command with the jump pinned = %q, want %q", withJump, wantWithJump)
 		}
 
 		withoutJump := clickBranchCommand(t, clickArgv(t, bindingArgvs(prev, next, false)), "follow")
-		wantWithoutJump := `if-shell -F '#{==:#{@lyx_follow},off}' 'set-option @lyx_follow on' 'set-option @lyx_follow off'`
+		wantWithoutJump := `if-shell -F '#{==:#{@lym_follow},off}' 'set-option @lym_follow on' 'set-option @lym_follow off'`
 		if withoutJump != wantWithoutJump {
 			t.Errorf("follow click command without the jump = %q, want %q", withoutJump, wantWithoutJump)
 		}

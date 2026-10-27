@@ -14,7 +14,7 @@ import (
 )
 
 // TestCLI_OrchRunnerReadsNoPause pins that no production file of the package tells a runner a pause geometry,
-// so the runner the orch command wires reads every target uncovered and `lyx beam start` types its start lines under a pause entry.
+// so the runner the orch command wires reads every target uncovered and `lym beam start` types its start lines under a pause entry.
 // The wired runner is built inside the command's pre-run and is unreachable from a test, so the pin is a scan for the call that would give it a geometry.
 func TestCLI_OrchRunnerReadsNoPause(t *testing.T) {
 	t.Parallel()

@@ -299,8 +299,7 @@ func TestWriteCachedToken_UnwritableDirDegradesToInProcessResolution(t *testing.
 		t.Fatalf("seed blocking file: %v", err)
 	}
 
-	// LOCALAPPDATA now points at a regular file, so cacheDir's "lyx"
-	// subdirectory can never be created underneath it.
+	// LOCALAPPDATA now points at a regular file, so cacheDir's "lym" subdirectory can never be created underneath it.
 	setCacheDir(t, blockingFile)
 	t.Setenv("GH_TOKEN", "")
 	t.Setenv("GITHUB_TOKEN", "")
@@ -570,8 +569,8 @@ func TestAuthRT_WaitsWhileAPauseCoversTheProcess(t *testing.T) {
 		t.Fatalf("server hits after the first wake = %d; want 0 while the pause covers the process", len(captured))
 	}
 	mu.Lock()
-	if len(lines) != 1 || !strings.Contains(lines[0], `"lyx tender resume"`) {
-		t.Fatalf("gate lines = %q; want exactly one naming lyx tender resume", lines)
+	if len(lines) != 1 || !strings.Contains(lines[0], `"lym tender resume"`) {
+		t.Fatalf("gate lines = %q; want exactly one naming lym tender resume", lines)
 	}
 	mu.Unlock()
 

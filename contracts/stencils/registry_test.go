@@ -1,10 +1,7 @@
 //go:build tier0
 
-// registry_test.go pins the hand-maintained registry in stencils.go against the on-disk *.md tree:
-// every family subfolder's stencil file must have a matching entries row, and every entries row must
-// have a matching file, in both directions.
-// Without this test a hand-maintained registry could silently omit a file -- invisible to
-// `lyx stencil list`, never seeded, never validated.
+// registry_test.go pins the hand-maintained registry in stencils.go against the on-disk *.md tree: every family subfolder's stencil file must have a matching entries row, and every entries row must have a matching file, in both directions.
+// Without this test a hand-maintained registry could silently omit a file -- invisible to `lym stencil list`, never seeded, never validated.
 
 package stencils
 

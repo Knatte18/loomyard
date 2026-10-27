@@ -6,14 +6,14 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // CodeWorktree names one code worktree of a hub.
 type CodeWorktree struct {
 	// Path is the worktree root, cleaned the way WorktreePath builds a pair's path.
 	Path string
-	// Anchor is the worktree's anchor dir, where its _lyx/config lives.
+	// Anchor is the worktree's anchor dir, where its _lym/config lives.
 	Anchor string
 	// Main is true for the hub's main worktree, the prime.
 	Main bool
@@ -36,7 +36,7 @@ func CodeWorktrees(worktreePath string) ([]CodeWorktree, error) {
 		if requireDir(path) != nil {
 			continue
 		}
-		l, err := lyxcwd.ResolveWorktree(path)
+		l, err := lymcwd.ResolveWorktree(path)
 		if err != nil {
 			return nil, fmt.Errorf("fabricengine: resolve code worktree %s: %w", path, err)
 		}
@@ -51,7 +51,7 @@ func OpenCodeWorktree(path string) (*Fabric, error) {
 	if err := requireDir(path); err != nil {
 		return nil, err
 	}
-	l, err := lyxcwd.ResolveWorktree(path)
+	l, err := lymcwd.ResolveWorktree(path)
 	if err != nil {
 		return nil, fmt.Errorf("fabricengine: resolve code worktree %s: %w", path, err)
 	}
@@ -65,7 +65,7 @@ func PairCompleteAt(path string) (ok bool, reason string, err error) {
 	if err := requireDir(path); err != nil {
 		return false, "", err
 	}
-	l, err := lyxcwd.ResolveWorktree(path)
+	l, err := lymcwd.ResolveWorktree(path)
 	if err != nil {
 		return false, "", fmt.Errorf("fabricengine: resolve code worktree %s: %w", path, err)
 	}

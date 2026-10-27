@@ -6,7 +6,7 @@
 // internal/reedcli's attach pre-flight now boots the session (EnsureSession) before this builder ever
 // runs, so AttachArgv's own requireSessionLocked call below ordinarily finds a session already up —
 // but this builder does no booting of its own: it returns no error by contract, and it stays read-only
-// with respect to .lyx/reed.json.
+// with respect to .lym/reed.json.
 
 package reedengine
 
@@ -64,7 +64,7 @@ func (e *Engine) AttachArgv(cols, rows int) []string {
 			return err
 		}
 
-		// A session booted by an older lyx gets its shell window named and placed at the next attach.
+		// A session booted by an older lym gets its shell window named and placed at the next attach.
 		// This runs before every step that can fail, and also when no client size is known.
 		e.ensureShellWindowLocked(st)
 
@@ -79,7 +79,7 @@ func (e *Engine) AttachArgv(cols, rows int) []string {
 			return err
 		}
 
-		// Strands and sessions spawned by an older lyx get their display options at the next attach.
+		// Strands and sessions spawned by an older lym get their display options at the next attach.
 		e.markStrandWindowLocked(windowTarget)
 		if windowPanes, err := e.tmux.listPanes(windowTarget); err != nil {
 			logger.Warn("reed: could not list the strand window's panes to re-assert strand options", "window", windowTarget, "err", err)

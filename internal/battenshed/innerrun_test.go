@@ -78,14 +78,14 @@ func (f producerFunc) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 	return f(ctx)
 }
 
-// freshPerCall returns a producer whose every Call is the one Call of a producer newProducer builds anew, so only the memory record in the scratch directory carries state from one Call to the next, as it does between two runs of `lyx batten run`.
+// freshPerCall returns a producer whose every Call is the one Call of a producer newProducer builds anew, so only the memory record in the scratch directory carries state from one Call to the next, as it does between two runs of `lym batten run`.
 func freshPerCall(newProducer func() shedengine.ShedProducer) shedengine.ShedProducer {
 	return producerFunc(func(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 		return newProducer().Call(ctx)
 	})
 }
 
-// passDriver is a producer whose Call runs successive passes of the Run-Shed row, the way `lyx batten run` does.
+// passDriver is a producer whose Call runs successive passes of the Run-Shed row, the way `lym batten run` does.
 // Each pass is one Call of a producer newProducer builds fresh over the same scratch directory, so only the memory record carries state from a pass to the next.
 // An interval passes on the clock between two passes.
 // Its Call returns the first pass that ends with something other than Yield.

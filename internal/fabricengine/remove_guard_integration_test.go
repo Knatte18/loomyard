@@ -1,6 +1,6 @@
 //go:build tier1
 
-// remove_guard_integration_test.go pins the two guards that keep `lyx fabric remove` from deleting a
+// remove_guard_integration_test.go pins the two guards that keep `lym fabric remove` from deleting a
 // directory git itself declined to remove.
 // Before them, `git worktree remove` refusing a main working tree (or any path that is not a linked
 // worktree of the repo) fell through to an unconditional os.RemoveAll, so removing the prime slug
@@ -49,13 +49,9 @@ func TestRemove_RefusesPrimeWorktreeAndLeavesItIntact(t *testing.T) {
 	}
 }
 
-// TestRemove_RefusesForeignWorktreeWithoutDeletingIt drives the other half of the same data-loss
-// path: a hub directory that is a clean git worktree of the WEFT repo, not of warp.
-// `git worktree remove` run against the warp repo refuses it ("not a working tree"), which is the
-// exact shape `<hub>/_board` has — and the old fallback deleted the directory anyway, taking
-// .lyx-anchor, .lyx-warp and the repo-wide fabric.yaml with it while reporting success.
-// The slug is deliberately NOT a reserved name, so this test exercises removeWarpWorktreeDir's
-// registered-linked-worktree rule rather than the slug guard in front of it.
+// TestRemove_RefusesForeignWorktreeWithoutDeletingIt drives the other half of the same data-loss path: a hub directory that is a clean git worktree of the WEFT repo, not of warp.
+// `git worktree remove` run against the warp repo refuses it ("not a working tree"), which is the exact shape `<hub>/_board` has — and the old fallback deleted the directory anyway, taking .lym-anchor, .lym-warp and the repo-wide fabric.yaml with it while reporting success.
+// The slug is deliberately NOT a reserved name, so this test exercises removeWarpWorktreeDir's registered-linked-worktree rule rather than the slug guard in front of it.
 func TestRemove_RefusesForeignWorktreeWithoutDeletingIt(t *testing.T) {
 	t.Parallel()
 

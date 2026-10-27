@@ -1,4 +1,4 @@
-// start.go is the "lyx beam start" sequence over a list of resolved beams: it brings each one up through a seam and gathers one entry per beam, a failure in one never stopping the others.
+// start.go is the "lym beam start" sequence over a list of resolved beams: it brings each one up through a seam and gathers one entry per beam, a failure in one never stopping the others.
 
 package beamcli
 
@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 )
 
@@ -45,14 +45,14 @@ func startBeams(targets []beamTarget, up func(target beamTarget, prepare bool) (
 }
 
 // ownedTargets lists the targets `--all` starts: the prime and each local beam this machine owns, the prime first when it is owned.
-func ownedTargets(prime *lyxcwd.Location, owned []string) ([]beamTarget, error) {
+func ownedTargets(prime *lymcwd.Location, owned []string) ([]beamTarget, error) {
 	targets := make([]beamTarget, 0, len(owned))
 	for _, name := range owned {
 		if name == prime.WorktreeName {
 			targets = append(targets, primeTarget(prime))
 			continue
 		}
-		pair, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(prime, name))
+		pair, err := lymcwd.ResolveWorktree(fabricengine.WorktreePath(prime, name))
 		if err != nil {
 			return nil, fmt.Errorf("resolve the worktree of %s: %w", name, err)
 		}

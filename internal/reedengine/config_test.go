@@ -16,20 +16,20 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
-// seedLyxConfig creates the minimal on-disk config structure for LoadConfig.
-func seedLyxConfig(t *testing.T, tmpDir, module, content string) {
+// seedLymConfig creates the minimal on-disk config structure for LoadConfig.
+func seedLymConfig(t *testing.T, tmpDir, module, content string) {
 	t.Helper()
-	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
-	if err := os.Mkdir(lyxDir, 0o755); err != nil {
-		t.Fatalf("mkdir _lyx: %v", err)
+	lymDir := filepath.Join(tmpDir, lymdirs.LymDirName)
+	if err := os.Mkdir(lymDir, 0o755); err != nil {
+		t.Fatalf("mkdir _lym: %v", err)
 	}
 	configDir := configengine.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0o755); err != nil {
-		t.Fatalf("mkdir _lyx/config: %v", err)
+		t.Fatalf("mkdir _lym/config: %v", err)
 	}
 	configFile := configengine.ConfigFile(tmpDir, module)
 	if err := os.WriteFile(configFile, []byte(content), 0o644); err != nil {
@@ -40,7 +40,7 @@ func seedLyxConfig(t *testing.T, tmpDir, module, content string) {
 //testtiming:keep pins every shipped template default through a seeded reed.yaml: tmux and shell per GOOS, width, height, debug_log off, mouse on, window_share_max 2 and window_split width; its covering tests run this code without asserting it
 func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	tmpDir := t.TempDir()
-	seedLyxConfig(t, tmpDir, "reed", reedengine.ConfigTemplate())
+	seedLymConfig(t, tmpDir, "reed", reedengine.ConfigTemplate())
 
 	cfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "reed")
 	if err != nil {
@@ -82,7 +82,7 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	if cfg.Mouse != "on" {
 		t.Errorf("Mouse = %q, want %q", cfg.Mouse, "on")
 	}
-	// The package runs under tmuxkit.Main, which unsets LYX_REED_TMUX_CONF, so an operator's own value cannot reach this.
+	// The package runs under tmuxkit.Main, which unsets LYM_REED_TMUX_CONF, so an operator's own value cannot reach this.
 	if cfg.TmuxConf != "" {
 		t.Errorf("TmuxConf = %q, want empty", cfg.TmuxConf)
 	}
@@ -92,8 +92,8 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 
 	t.Run("RepoDefaultResolvesBeneathSparseWorktreeFile", func(t *testing.T) {
 		board, anchor := t.TempDir(), t.TempDir()
-		seedLyxConfig(t, board, "reed", strings.Replace(reedengine.ConfigTemplate(), "width: 220", "width: 300", 1))
-		seedLyxConfig(t, anchor, "reed", "height: 40\n")
+		seedLymConfig(t, board, "reed", strings.Replace(reedengine.ConfigTemplate(), "width: 220", "width: 300", 1))
+		seedLymConfig(t, anchor, "reed", "height: 40\n")
 
 		cfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "reed")
 		if err != nil {
@@ -160,7 +160,7 @@ func TestLoadConfig_MissingSegmentColorsTakeTemplateDefaults(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
-			seedLyxConfig(t, tmpDir, "reed", tt.content)
+			seedLymConfig(t, tmpDir, "reed", tt.content)
 
 			cfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "reed")
 			if err != nil {
@@ -175,9 +175,9 @@ func TestLoadConfig_MissingSegmentColorsTakeTemplateDefaults(t *testing.T) {
 
 func TestLoadConfig_EnvOverride(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("LYX_REED_TMUX", `D:\tools\tmux.exe`)
-	t.Setenv("LYX_REED_TMUX_CONF", "/home/operator/tmux.conf")
-	seedLyxConfig(t, tmpDir, "reed", reedengine.ConfigTemplate())
+	t.Setenv("LYM_REED_TMUX", `D:\tools\tmux.exe`)
+	t.Setenv("LYM_REED_TMUX_CONF", "/home/operator/tmux.conf")
+	seedLymConfig(t, tmpDir, "reed", reedengine.ConfigTemplate())
 
 	cfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "reed")
 	if err != nil {
@@ -199,7 +199,7 @@ func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
 	// either way: this module reads back its seeded value, and the
 	// never-seeded "reed" module reads back the template default instead.
 	seeded := strings.Replace(reedengine.ConfigTemplate(), "width: 220", "width: 300", 1)
-	seedLyxConfig(t, tmpDir, "otherreed", seeded)
+	seedLymConfig(t, tmpDir, "otherreed", seeded)
 
 	cfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: tmpDir}, "otherreed")
 	if err != nil {
@@ -222,7 +222,7 @@ func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
 
 func TestLoadConfig_UninitializedFallsBackToTemplate(t *testing.T) {
 	tmpDir := t.TempDir()
-	// Do NOT create _lyx/ -- LoadConfig must degrade to the embedded
+	// Do NOT create _lym/ -- LoadConfig must degrade to the embedded
 	// template. Only assert GOOS-invariant keys: Tmux/Shell differ between
 	// template_posix.yaml and template_windows.yaml.
 
@@ -257,7 +257,7 @@ func TestLoadConfig_UnknownKeysFromAnOlderConfigAreIgnored(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
 			dirs := configengine.Dirs{Anchor: tmpDir}
-			seedLyxConfig(t, tmpDir, "reed", reedengine.ConfigTemplate()+tt.extra)
+			seedLymConfig(t, tmpDir, "reed", reedengine.ConfigTemplate()+tt.extra)
 
 			cfg, err := reedengine.LoadConfig(dirs, "reed")
 			if err != nil {

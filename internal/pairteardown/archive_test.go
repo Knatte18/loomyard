@@ -17,7 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
@@ -79,7 +79,7 @@ func countArchiveLogLines(log, level, text string) int {
 // pairWithLogs returns a Teardown over a temp hub whose pair slug holds a trace log, a verify log and a verify file that is no log.
 func pairWithLogs(t *testing.T, slug string) (td *Teardown, traceLog string) {
 	t.Helper()
-	td = &Teardown{prime: &lyxcwd.Location{HubPath: t.TempDir(), AnchorRel: "."}}
+	td = &Teardown{prime: &lymcwd.Location{HubPath: t.TempDir(), AnchorRel: "."}}
 	anchor, err := td.taskAnchor(slug)
 	if err != nil {
 		t.Fatalf("taskAnchor(%q) = %v; want nil", slug, err)

@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // CommitResult reports what Fabric.Commit did on each side: landed SHA and whether a commit was
@@ -79,7 +79,7 @@ var spawnDetachedPushFn = SpawnDetachedPush
 //
 // Before taking any lock or committing anything, Commit hard-errors if classification's
 // never-committed bucket is non-empty, naming the first offending path: a caller passing a path
-// under structuralNeverCommittedDirs (e.g. `.lyx/...`) is a bug and must be told, not silently
+// under structuralNeverCommittedDirs (e.g. `.lym/...`) is a bug and must be told, not silently
 // filtered or committed.
 // This is an error rather than a filter for the same reason classifyPaths' own header comment
 // gives: dropping the path would hide the caller's bug, and committing it would violate the
@@ -120,7 +120,7 @@ func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts 
 	// "cannot do a partial commit during a merge".
 	// The two refusals carry DIFFERENT typed errors on purpose: fabric has no merge of its own in
 	// progress in the foreign case (MergeInProgress reports false there), so *ErrMergeInProgress's
-	// "run \"lyx fabric merge --continue\" or \"lyx fabric merge --abort\" first" would misdirect the
+	// "run \"lym fabric merge --continue\" or \"lym fabric merge --abort\" first" would misdirect the
 	// operator into two more refusals —
 	// *ErrForeignMergeState says what actually clears the state (plain git), the same answer every
 	// merge verb gives it.
@@ -139,7 +139,7 @@ func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts 
 		return CommitResult{}, &ErrForeignMergeState{}
 	}
 
-	l, err := lyxcwd.ResolveWorktree(f.warpPath)
+	l, err := lymcwd.ResolveWorktree(f.warpPath)
 	if err != nil {
 		return CommitResult{}, fmt.Errorf("fabricengine: resolve layout for %s: %w", f.warpPath, err)
 	}
@@ -157,7 +157,7 @@ func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts 
 
 	warpFiles, weftFiles, neverCommittedFiles := classifyPaths(l.AnchorRel, routingNames, structuralNeverCommittedDirs, files)
 	if len(neverCommittedFiles) > 0 {
-		return CommitResult{}, fmt.Errorf("fabricengine: refusing to commit %q: paths under %s are never committed", neverCommittedFiles[0], lyxdirs.DotLyxDirName)
+		return CommitResult{}, fmt.Errorf("fabricengine: refusing to commit %q: paths under %s are never committed", neverCommittedFiles[0], lymdirs.DotLymDirName)
 	}
 	weftSide := (len(weftFiles) > 0 || len(snapshotTags) > 0) && !opts.SkipGit
 

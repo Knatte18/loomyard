@@ -22,14 +22,14 @@
 //	go run ./cmd/testtiming -resources [-pkg ./internal/x,./internal/y] [-tags t | -full]
 //
 // It runs the selected packages one at a time, each as its own `go test -json -count=1` child over one package, inside the one gate slot the run holds when the working directory is in a hub, and under the CPU count otherwise.
-// Every mode, the timing table and -redundancy included, holds one slot for its whole run in a hub, its `lyx` prebuild inheriting it, and sets its go commands' GOFLAGS through gateslot.HolderEnv.
-// It measures outside `lyx gate test`, since its modes measure what a tier run hides.
+// Every mode, the timing table and -redundancy included, holds one slot for its whole run in a hub, its `lym` prebuild inheriting it, and sets its go commands' GOFLAGS through gateslot.HolderEnv.
+// It measures outside `lym gate test`, since its modes measure what a tier run hides.
 // -pkg takes comma-separated package patterns and defaults to every package; -tags and -full pick the tier as in the timing mode, tier0 when neither is given.
 // The columns are PACKAGE, WALL (child start to exit), CPU, PEAK_MEM, PROCS and LEFTOVER, plus a FAIL mark.
 // CPU and PEAK_MEM come from the child's cgroup when `systemd-run --user --scope` works, read from cpu.stat's usage_usec and memory.peak while the scope lives, and from the child's rusage otherwise, where PEAK_MEM is the largest single process's max RSS and the row carries a rusage mark.
 // PROCS is the delta of the `processes` line of /proc/stat across the child, so it is system-wide and blank where /proc/stat is unreadable.
 // LEFTOVER counts the processes still carrying the package's marker, an environment variable every descendant of the child inherits, after the child exited; a trailing list names each as `pid argv`.
-// GIT_FIXTURE and GIT_CODE count the git processes the package ran, split on the fixture marker `LYX_FIXTURE_GIT`: git that gitkit's spawn helpers or a hub build started carries it, and all other git is code under test.
+// GIT_FIXTURE and GIT_CODE count the git processes the package ran, split on the fixture marker `LYM_FIXTURE_GIT`: git that gitkit's spawn helpers or a hub build started carries it, and all other git is code under test.
 // The census reads git's trace2 event files, one per git process, from a trace directory the child's environment points at, and a second table after the first lists the processes by subcommand with total, fixture and code counts.
 // The split is exact for a serial package and approximate where a hub build overlaps other tests of the same package, so a before-to-after comparison reads the total.
 // The table ends with the one-minute load average at start and at end, so a report reads "quiet machine" as a precondition.
@@ -47,14 +47,14 @@
 // The header and every unmeasured section stay byte-identical, and a run whose tags differ from the report's header refuses and writes nothing.
 // A package that fails to list or build keeps its old section, and the run exits 1 after writing the others.
 // For each package it runs every top-level test alone under one coverage binary and writes, per package, the tests whose covered blocks other tests already cover, the removable set among them, and the tests whose coverage cannot be judged (skipped, covering nothing, or possibly running this module's code in another process).
-// The static scan in spawnscan.go decides the last: a test is excluded as out of process when, directly or through a followed same-package or testkit call, it references the lyxbin kit, os.Executable, os.Args[0] or exec.Command("go", ...), or when it sits in a tmux-tier file.
+// The static scan in spawnscan.go decides the last: a test is excluded as out of process when, directly or through a followed same-package or testkit call, it references the lymbin kit, os.Executable, os.Args[0] or exec.Command("go", ...), or when it sits in a tmux-tier file.
 // A test in a file with no tier tag is always judged, and a tier-tagged test with a call the scan cannot resolve is excluded as an unclassifiable call.
 // The scan does not see a hook, alias or helper that a test installs so that git runs module code.
 // Reading each candidate before deleting it is the backstop.
 // A test the prune keeps carries `//testtiming:keep <reason>` on the line directly above its `func Test…` line.
-// A test that also carries `//lyx:guard` stacks the two as contiguous directive lines above the `func Test…` line, in either order; the keep may sit above `//lyx:` lines but never above another keep.
+// A test that also carries `//lym:guard` stacks the two as contiguous directive lines above the `func Test…` line, in either order; the keep may sit above `//lym:` lines but never above another keep.
 // The report lists it under "Kept" with the reason and leaves it out of the candidates table, while it stays in the covering pool and the removable computation.
-// A directive with an empty reason, or not directly above a top-level test (past any `//lyx:` lines), aborts the run before anything is measured or written.
+// A directive with an empty reason, or not directly above a top-level test (past any `//lym:` lines), aborts the run before anything is measured or written.
 // It exits 1 after writing the report if any package reported an error.
 package main
 
@@ -71,8 +71,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxtemp"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 )
 
 // testEvent is one line of `go test -json` output (decoded fields only).
@@ -115,7 +115,7 @@ func main() {
 	err := modeConflict(*redundancy, *resources)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "testtiming:", err)
-		lyxtemp.Remove()
+		lymtemp.Remove()
 		os.Exit(1)
 	}
 	if *resources {
@@ -134,7 +134,7 @@ func main() {
 			err = run(tags, *top)
 		}
 	}
-	if removeErr := lyxtemp.Remove(); removeErr != nil {
+	if removeErr := lymtemp.Remove(); removeErr != nil {
 		fmt.Fprintln(os.Stderr, "testtiming:", removeErr)
 	}
 	if err != nil {
@@ -189,12 +189,12 @@ func run(tags string, top int) error {
 	args = append(args, "./...", "-json", "-count=1")
 	cmdline += " ./... -count=1"
 
-	root, err := lyxcwd.Getwd()
+	root, err := lymcwd.Getwd()
 	if err != nil {
 		return fmt.Errorf("read the working directory: %w", err)
 	}
 	return withGateSlot(root, "testtiming", func(slotEnv []string, parallel int) error {
-		env, cleanup, err := prebuildLyx("go", tags, root, slotEnv, parallel)
+		env, cleanup, err := prebuildLym("go", tags, root, slotEnv, parallel)
 		if err != nil {
 			return err
 		}

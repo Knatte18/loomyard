@@ -1,24 +1,8 @@
 //go:build tier0
 
-// runlevel_test.go exercises Run end to end (Tier 1 — see
-// docs/benchmarks/running-tests.md): a temp directory over a fakeGit backs
-// WorktreeRoot and a real on-disk plan directory backs PlanDir (so
-// ParsePlan/Validate/the batchifier/fingerprint all run for real, against
-// the real identity batchifier — newRunFixture injects it into
-// RunDeps.Batcher directly, since Run itself does no config I/O and needs no
-// _lyx/ tree on WorktreeRoot), while the Master spawn itself is a local,
-// fully-scripted fake (MasterStarter/
-// MasterHandle) whose Wait method can carry an onWait
-// side effect that writes outcome.yaml/summary.md the instant before it
-// returns — modeling the real ordering (Master writes its two contract
-// files DURING the run Wait blocks on). FindRun's cross-process resolution
-// is satisfied by hand-seeding a run.json under the fixture's own shuttle
-// run-dir root, mirroring what a real *shuttleengine.Runner.Start would
-// have produced. Its helpers are package-local (the
-// internal and external test packages deliberately do not share a
-// test-helper package, mirroring recoverbatch_test.go/recordbatch_test.go's
-// own precedent), except for the shared seedPlanDir/mustFingerprint/writeWorktreeFile
-// helpers already defined in beginbatch_test.go and gitfake_test.go.
+// runlevel_test.go exercises Run end to end (Tier 1 — see docs/benchmarks/running-tests.md): a temp directory over a fakeGit backs WorktreeRoot and a real on-disk plan directory backs PlanDir (so ParsePlan/Validate/the batchifier/fingerprint all run for real, against the real identity batchifier — newRunFixture injects it into RunDeps.Batcher directly, since Run itself does no config I/O and needs no _lym/ tree on WorktreeRoot), while the Master spawn itself is a local, fully-scripted fake (MasterStarter/ MasterHandle) whose Wait method can carry an onWait side effect that writes outcome.yaml/summary.md the instant before it returns — modeling the real ordering (Master writes its two contract files DURING the run Wait blocks on).
+// FindRun's cross-process resolution is satisfied by hand-seeding a run.json under the fixture's own shuttle run-dir root, mirroring what a real *shuttleengine.Runner.Start would have produced.
+// Its helpers are package-local (the internal and external test packages deliberately do not share a test-helper package, mirroring recoverbatch_test.go/recordbatch_test.go's own precedent), except for the shared seedPlanDir/mustFingerprint/writeWorktreeFile helpers already defined in beginbatch_test.go and gitfake_test.go.
 
 package websterengine_test
 
@@ -215,7 +199,7 @@ type runRefusalCase struct {
 }
 
 // deadEndRefusalCase returns a row over a run whose batch 1 is recorded as bs, a dead end, refused with ErrBatchDeadEnd and the text want.
-// Its way forward does what `lyx webster reset --to batch-start` does to the record, clearing the recovery count and start, after which the run reaches Master.
+// Its way forward does what `lym webster reset --to batch-start` does to the record, clearing the recovery count and start, after which the run reaches Master.
 func deadEndRefusalCase(name string, bs *websterengine.BatchState, want string) runRefusalCase {
 	return runRefusalCase{
 		name:  name,
@@ -232,7 +216,7 @@ func deadEndRefusalCase(name string, bs *websterengine.BatchState, want string) 
 		},
 		errIs:       websterengine.ErrBatchDeadEnd,
 		msgContains: []string{want, "so a Master would only end the run stuck on it"},
-		wayForward:  []string{"1) lyx webster reset --to batch-start --batch 01; 2) lyx webster run", "or 1) lyx webster reset --to start; 2) lyx webster run"},
+		wayForward:  []string{"1) lym webster reset --to batch-start --batch 01; 2) lym webster run", "or 1) lym webster reset --to start; 2) lym webster run"},
 	}
 }
 
@@ -326,8 +310,8 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				return nil
 			},
 			errIs:       shuttleengine.ErrRequirementsUnmet,
-			msgContains: []string{`engine "fake"`, "master", "lyx config webster"},
-			wayForward:  []string{"set master in webster.yaml", "lyx config webster"},
+			msgContains: []string{`engine "fake"`, "master", "lym config webster"},
+			wayForward:  []string{"set master in webster.yaml", "lym config webster"},
 			check: func(t *testing.T, fx *runFixture, err error) {
 				if strings.Contains(err.Error(), "transient") {
 					t.Errorf("Run() error = %q; want no transient clause on a requirements refusal", err)
@@ -381,7 +365,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				return func() { held.Release() }
 			},
 			errIs:      websterengine.ErrRunBusy,
-			wayForward: []string{"lyx webster status"},
+			wayForward: []string{"lym webster status"},
 			// The live run's record survives a Run refused as busy.
 			check: func(t *testing.T, fx *runFixture, _ error) {
 				if _, err := os.Stat(websterengine.ConflictRecordPath(fx.Deps.Geom.ScratchDir)); err != nil {
@@ -410,7 +394,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				fx.Deps.Batcher = emptyBatcher{}
 				return func() { fx.Deps.Batcher = realBatcher }
 			},
-			wayForward: []string{"fix the plan's cards", "lyx webster rebaseline --card", "lyx webster run"},
+			wayForward: []string{"fix the plan's cards", "lym webster rebaseline --card", "lym webster run"},
 		},
 		{
 			name:  "the batchifier fails",
@@ -433,7 +417,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				}
 				return nil
 			},
-			msgContains: []string{"CLAUDE.md", "way forward: transient, lyx webster run"},
+			msgContains: []string{"CLAUDE.md", "way forward: transient, lym webster run"},
 			check:       requireNoRecordedState,
 		},
 		{
@@ -444,7 +428,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				return nil
 			},
 			errIs:      websterengine.ErrBatchOrder,
-			wayForward: []string{"lyx webster rebaseline --card NN", "lyx webster run --fresh"},
+			wayForward: []string{"lym webster rebaseline --card NN", "lym webster run --fresh"},
 			check:      requireNoRecordedState,
 		},
 		{
@@ -460,7 +444,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				return nil
 			},
 			errIs:      websterengine.ErrBatchOrder,
-			wayForward: []string{"lyx webster rebaseline --card NN", "lyx webster run --fresh"},
+			wayForward: []string{"lym webster rebaseline --card NN", "lym webster run --fresh"},
 			check: func(t *testing.T, fx *runFixture, err error) {
 				st := loadRunState(t, fx)
 				if st.PlanFingerprint != "stale-fingerprint" {
@@ -497,7 +481,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				}
 			},
 			msgContains: []string{"glyph-not-found"},
-			wayForward:  []string{"fix the named cards", "lyx webster rebaseline --card", "lyx webster run"},
+			wayForward:  []string{"fix the named cards", "lym webster rebaseline --card", "lym webster run"},
 		},
 		{
 			name:  "quarry is unavailable",
@@ -508,7 +492,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				return func() { fx.Deps.Geom.WorktreeRoot = worktree }
 			},
 			msgContains: []string{"quarry"},
-			wayForward:  []string{"transient", "lyx webster run", "quarry"},
+			wayForward:  []string{"transient", "lym webster run", "quarry"},
 		},
 		{
 			name:  "the plan is not approved",
@@ -529,7 +513,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				}
 			},
 			msgContains: []string{"not approved"},
-			wayForward:  []string{"approve the plan", "lyx webster run"},
+			wayForward:  []string{"approve the plan", "lym webster run"},
 		},
 		{
 			name:  "a stale fingerprint without --fresh",
@@ -542,7 +526,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				return nil
 			},
 			errIs:      websterengine.ErrFingerprintMismatch,
-			wayForward: []string{"lyx webster rebaseline", "2) lyx webster run"},
+			wayForward: []string{"lym webster rebaseline", "2) lym webster run"},
 		},
 		deadEndRefusalCase("a dead recovery that earns no retry", &websterengine.BatchState{Slug: "batch1", Kind: "recovery", Terminal: true, Status: websterengine.DigestStatusDead, Recoveries: 1},
 			"batch 01-batch1 is dead and its recovery earns no retry"),
@@ -556,7 +540,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				return nil
 			},
 			msgContains: []string{"unknown commit"},
-			wayForward:  []string{"re-run", "lyx webster reset --to batch-start --batch 01"},
+			wayForward:  []string{"re-run", "lym webster reset --to batch-start --batch 01"},
 			check: func(t *testing.T, fx *runFixture, err error) {
 				if errors.Is(err, websterengine.ErrBatchDeadEnd) {
 					t.Errorf("Run() error = %v; want no ErrBatchDeadEnd for a failed git read", err)
@@ -572,7 +556,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				return nil
 			},
 			errIs:      websterengine.ErrFingerprintMismatch,
-			wayForward: []string{"lyx webster rebaseline --card 02", "2) lyx webster run"},
+			wayForward: []string{"lym webster rebaseline --card 02", "2) lym webster run"},
 		},
 		{
 			name:  "an edited overview outside its Card Index names the follow-up card landing",
@@ -590,7 +574,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				return nil
 			},
 			errIs:      websterengine.ErrFingerprintMismatch,
-			wayForward: []string{"changed outside its Card Index", "add a follow-up card after the last begun batch", "1) lyx webster reset --to start; 2) lyx webster run"},
+			wayForward: []string{"changed outside its Card Index", "add a follow-up card after the last begun batch", "1) lym webster reset --to start; 2) lym webster run"},
 		},
 		{
 			// The validation error is forced by pointing WorktreeRoot at a path with no repository,
@@ -636,7 +620,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				return nil
 			},
 			errIs:      discussionparser.ErrPatternChangesInvalid,
-			wayForward: []string{"lyx loom validate-discussion", "lyx webster run"},
+			wayForward: []string{"lym loom validate-discussion", "lym webster run"},
 		},
 		{
 			name:  "a decision record that cannot be read",
@@ -645,7 +629,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				fx.Deps.Geom.DecisionRecordPath = fx.Worktree
 				return nil
 			},
-			wayForward: []string{"transient", "lyx webster run"},
+			wayForward: []string{"transient", "lym webster run"},
 		},
 		{
 			name:  "the provider does not come up",
@@ -655,7 +639,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				return func() {}
 			},
 			reachesStarter: true,
-			wayForward:     []string{"transient", "lyx webster run"},
+			wayForward:     []string{"transient", "lym webster run"},
 		},
 	}
 
@@ -784,7 +768,7 @@ func TestRun_AutoRebaseline(t *testing.T) {
 	}
 	requireNoManualVerb := func(t *testing.T, err error) {
 		t.Helper()
-		for _, manual := range []string{"lyx webster run", "lyx webster rebaseline"} {
+		for _, manual := range []string{"lym webster run", "lym webster rebaseline"} {
 			if strings.Contains(err.Error(), manual) {
 				t.Errorf("Run() error = %q; want it to name neither manual verb, found %q", err, manual)
 			}
@@ -868,7 +852,7 @@ func TestRun_AutoRebaseline(t *testing.T) {
 						t.Fatalf("edit overview: %v", err)
 					}
 				},
-				want: []string{"batch 1 recorded [01-batch1]", "[01-renamed]", "or 1) lyx webster reset --to start; 2) " + reStep},
+				want: []string{"batch 1 recorded [01-batch1]", "[01-renamed]", "or 1) lym webster reset --to start; 2) " + reStep},
 			},
 			{
 				name:  "a failed batch with uncheckable findings",
@@ -878,7 +862,7 @@ func TestRun_AutoRebaseline(t *testing.T) {
 					bs.Uncheckable = []string{"fabric-reference: cat FABRICREF/webster/state.json"}
 				},
 				edit: func(t *testing.T, fx *runFixture) { addCardUses(t, fx.PlanDir, 1, "base.txt") },
-				want: []string{"cannot check", "or 1) lyx webster reset --to start; 2) " + reStep},
+				want: []string{"cannot check", "or 1) lym webster reset --to start; 2) " + reStep},
 			},
 			{
 				name:  "an overview change outside its Card Index",
@@ -1594,7 +1578,7 @@ func TestRun_MasterSpawn(t *testing.T) {
 			cards: 1,
 			check: func(t *testing.T, fx *runFixture) {
 				got := fx.Starter.startCalls[0].AwaitedShellPrefixes
-				if want := []string{"lyx webster recover-batch", "lyx webster fix-verify", "lyx webster fix-plan"}; !slices.Equal(got, want) {
+				if want := []string{"lym webster recover-batch", "lym webster fix-verify", "lym webster fix-plan"}; !slices.Equal(got, want) {
 					t.Errorf("Spec.AwaitedShellPrefixes = %q; want %q", got, want)
 				}
 			},
@@ -1818,7 +1802,7 @@ func TestRun_MasterEndedEarly(t *testing.T) {
 
 			_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
 			tt.check(t, err, session, runDir)
-			requireWayForward(t, err, "lyx webster run", "re-step the Webster row", "resumes from state.json")
+			requireWayForward(t, err, "lym webster run", "re-step the Webster row", "resumes from state.json")
 
 			runToDone(t, fx, strand, session, forkReports(1), 1)
 		})
@@ -1998,7 +1982,7 @@ func TestRun_DoneOutcome(t *testing.T) {
 			},
 		},
 		{
-			// state.json is under _lyx, which nothing the run recorded can check, so the way
+			// state.json is under _lym, which nothing the run recorded can check, so the way
 			// forward is the --fresh route and never a git restore.
 			name:    "a fork writing state.json leaves a pending fork-state-write finding",
 			cards:   1,
@@ -2019,7 +2003,7 @@ func TestRun_DoneOutcome(t *testing.T) {
 					t.Errorf("PendingAuditFindings = %+v; want one fork-state-write finding", st.PendingAuditFindings)
 				}
 				_, way, _ := strings.Cut(result.StuckReason, "way forward:")
-				if !strings.Contains(way, "1) lyx webster reset --to start; 2) lyx webster run") || strings.Contains(way, "accept-audit") {
+				if !strings.Contains(way, "1) lym webster reset --to start; 2) lym webster run") || strings.Contains(way, "accept-audit") {
 					t.Errorf("StuckReason = %q; want the reset-to-start route without accept-audit", result.StuckReason)
 				}
 			},
@@ -2186,9 +2170,9 @@ func expiredShellRun(t *testing.T, fx *runFixture, shells []shuttleengine.EndedS
 
 // The parts of the sentence the friction note and the warning share for `endedSleepShell`.
 const (
-	shellSentenceHead    = "background shell `sleep 9999` (reported by the transcript signal) was still running, outstanding for 1m30s, when the run ended; the run never read the shell's result, and lyx did not stop the shell; "
+	shellSentenceHead    = "background shell `sleep 9999` (reported by the transcript signal) was still running, outstanding for 1m30s, when the run ended; the run never read the shell's result, and lym did not stop the shell; "
 	shellStrandRemoved   = "shuttle removes Master's strand when the run finishes, which ends the session and the shell with it where the shell is in the pane's process tree; "
-	shellStrandReclaimed = "Master's strand stays alive until the next `lyx webster run` reclaims it at entry, which ends the session and the shell with it where the shell is in the pane's process tree; "
+	shellStrandReclaimed = "Master's strand stays alive until the next `lym webster run` reclaims it at entry, which ends the session and the shell with it where the shell is in the pane's process tree; "
 )
 
 // TestRun_ExpiredShells asserts an ended shell states the run's outcome in its friction note and, on every outcome that returns a RunResult, in its warning; that only a done outcome lands in summary.md; and that an empty list adds no warning, summary section or friction note.
@@ -2348,8 +2332,8 @@ func TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck(t *testing.T) {
 		t.Errorf("StuckReason = %q; want it to name %s and the git way forward", result.StuckReason, tracked)
 	}
 
-	if !strings.Contains(result.StuckReason, "lyx webster accept-audit") {
-		t.Errorf("StuckReason = %q; want it to name lyx webster accept-audit", result.StuckReason)
+	if !strings.Contains(result.StuckReason, "lym webster accept-audit") {
+		t.Errorf("StuckReason = %q; want it to name lym webster accept-audit", result.StuckReason)
 	}
 	st := loadRunState(t, fx)
 	if len(st.PendingAuditFindings) != 1 || len(st.PendingAuditFindings[0].Paths) != 1 || st.PendingAuditFindings[0].Paths[0] != tracked {
@@ -2362,8 +2346,8 @@ func TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck(t *testing.T) {
 	if !errors.Is(err, websterengine.ErrPendingAuditFindings) {
 		t.Fatalf("second Run() error = %v; want ErrPendingAuditFindings", err)
 	}
-	if !strings.Contains(err.Error(), tracked) || !strings.Contains(err.Error(), "lyx webster accept-audit") {
-		t.Errorf("second Run() error = %q; want it to name %s and lyx webster accept-audit", err, tracked)
+	if !strings.Contains(err.Error(), tracked) || !strings.Contains(err.Error(), "lym webster accept-audit") {
+		t.Errorf("second Run() error = %q; want it to name %s and lym webster accept-audit", err, tracked)
 	}
 	if got := fx.Starter.callCount(); got != before {
 		t.Errorf("Starter calls = %d after the refused Run; want %d", got, before)
@@ -2681,7 +2665,7 @@ func TestRun_RunExitRefusals(t *testing.T) {
 				}
 				return
 			}
-			requireWayForward(t, err, "lyx webster run", tt.want)
+			requireWayForward(t, err, "lym webster run", tt.want)
 			for _, want := range tt.msgContains {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("Run() error = %q; want it to contain %q", err, want)
@@ -2863,7 +2847,7 @@ func TestRun_FreshOverPendingFindings(t *testing.T) {
 		if !strings.Contains(err.Error(), "is not the run's start commit "+start) {
 			t.Errorf("Run() error = %q; want it to name the start commit %s", err, start)
 		}
-		requireWayForward(t, err, "1) lyx webster reset --to start", "2) lyx webster run")
+		requireWayForward(t, err, "1) lym webster reset --to start", "2) lym webster run")
 	})
 
 	t.Run("drops the finding once the branch is reset to the start commit", func(t *testing.T) {
@@ -2924,7 +2908,7 @@ func TestRun_FreshOverPendingFindings(t *testing.T) {
 
 		_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
 		requireFreshRefusal(t, fx, err, "")
-		requireWayForward(t, err, "rm "+contract, "lyx webster run --fresh")
+		requireWayForward(t, err, "rm "+contract, "lym webster run --fresh")
 
 		if err := os.Remove(contract); err != nil {
 			t.Fatalf("remove contract file: %v", err)
@@ -3036,7 +3020,7 @@ func TestRun_FreshOverPendingFindings(t *testing.T) {
 
 		_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
 		requireFreshRefusal(t, fx, err, "")
-		requireWayForward(t, err, "1) lyx webster reset --to start", "2) lyx webster run")
+		requireWayForward(t, err, "1) lym webster reset --to start", "2) lym webster run")
 		if strings.Contains(err.Error(), "merge-base --octopus") {
 			t.Errorf("Run() error = %q; want the reset verb, not a git merge-base command", err)
 		}

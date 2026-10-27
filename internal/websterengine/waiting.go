@@ -29,9 +29,9 @@ func recordWaiting(bs *BatchState, digest *Digest, reportsDir string, number int
 // begin-batch for a fork batch, recover-batch for a recovery batch.
 func resumeStep(bs *BatchState, number int) string {
 	if bs.Kind == "recovery" {
-		return fmt.Sprintf("lyx webster recover-batch %d", number)
+		return fmt.Sprintf("lym webster recover-batch %d", number)
 	}
-	return fmt.Sprintf("lyx webster begin-batch %d", number)
+	return fmt.Sprintf("lym webster begin-batch %d", number)
 }
 
 // waitingProgressLine renders waiting batch number's progress line: its need and the verb that resumes it.

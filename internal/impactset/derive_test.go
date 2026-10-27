@@ -11,7 +11,7 @@ import (
 
 // testGraph is a small module.
 // Package b imports a, c imports b, d is unrelated, and tmuxonly reaches a only through a test import.
-// The command package cmd/lyx imports b, and e builds the binary in its tests and reaches nothing else, so it joins only for a change to cmd/lyx itself.
+// The command package cmd/lym imports b, and e builds the binary in its tests and reaches nothing else, so it joins only for a change to cmd/lym itself.
 func testGraph() moduleGraph {
 	const m = "m/"
 	return newModuleGraph([]pkg{
@@ -20,9 +20,9 @@ func testGraph() moduleGraph {
 		{ImportPath: m + "internal/c", Dir: "internal/c", Imports: []string{m + "internal/b"}},
 		{ImportPath: m + "internal/d", Dir: "internal/d"},
 		{ImportPath: m + "internal/tmuxonly", Dir: "internal/tmuxonly", TestImports: []string{m + "internal/a"}},
-		{ImportPath: m + "cmd/lyx", Dir: "cmd/lyx", Imports: []string{m + "internal/b"}},
-		{ImportPath: m + "internal/testkit/lyxbin", Dir: "internal/testkit/lyxbin"},
-		{ImportPath: m + "internal/e", Dir: "internal/e", TestImports: []string{m + "internal/testkit/lyxbin"}},
+		{ImportPath: m + "cmd/lym", Dir: "cmd/lym", Imports: []string{m + "internal/b"}},
+		{ImportPath: m + "internal/testkit/lymbin", Dir: "internal/testkit/lymbin"},
+		{ImportPath: m + "internal/e", Dir: "internal/e", TestImports: []string{m + "internal/testkit/lymbin"}},
 	})
 }
 

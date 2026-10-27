@@ -5,7 +5,7 @@
 // Every recording hook writes a stamp line with the hook-side time before its payload, which ParseEvents skips.
 // The document also carries the PreToolUse guardrails that keep a run's work visible in its own pane —
 // denying the in-process Agent tool (or, in a fork-mode run, letting fork subagents through it while still denying every other subagent type; a run with Spec.AllowAgentTool set installs no Agent deny at all),
-// refusing `lyx webster` verbs from inside a fork in a fork-mode run (the fork-context deadlock guard),
+// refusing `lym webster` verbs from inside a fork in a fork-mode run (the fork-context deadlock guard),
 // denying AskUserQuestion in autonomous runs (where there is no operator present to answer it),
 // and recording — never denying — a live AskUserQuestion call in interactive runs so the run loop holds it like any turn end without output.
 // The Bash tool's default stdin is set by the env file Prepare writes (see command.go), not by a hook.
@@ -36,8 +36,8 @@ const steerAgentNonForkDeny = "only fork subagents may be spawned here; other ag
 const steerAskUserQuestionDeny = "you cannot open an interactive dialog here. If you are blocked or need operator input, state the question as your final message and end your turn WITHOUT writing the result file. The run then waits for the answer, which arrives as your next turn."
 
 // steerWebsterForkDeny guards against fork-context deadlock: a fork inherits Master's await-batch loop and polling it would livelock the run.
-// It refuses `lyx webster` commands inside forks (detected by top-level agent_id in the payload). Must contain no single/double quote or backslash (checked at init).
-const steerWebsterForkDeny = "lyx webster verbs belong to the Master session, never a fork. You are an implementer fork: do your batch work and write your report, and do NOT run any lyx webster command (not await-batch, not anything) — polling for the report you must write only deadlocks the run. This call is refused."
+// It refuses `lym webster` commands inside forks (detected by top-level agent_id in the payload). Must contain no single/double quote or backslash (checked at init).
+const steerWebsterForkDeny = "lym webster verbs belong to the Master session, never a fork. You are an implementer fork: do your batch work and write your report, and do NOT run any lym webster command (not await-batch, not anything) — polling for the report you must write only deadlocks the run. This call is refused."
 
 // noticeAgentDeny announces the Agent deny in a non-fork run;
 // it must hold for every session that receives it.
@@ -130,7 +130,7 @@ type denyInputs struct {
 	allowAgentTool bool
 }
 
-// standingDeny is one PreToolUse deny lyx installs, with the system-prompt sentence announcing it.
+// standingDeny is one PreToolUse deny lym installs, with the system-prompt sentence announcing it.
 // buildSettings and buildDenyNotice both iterate standingDeniesFor, so the hooks and their announcement cannot drift.
 type standingDeny struct {
 	// matcher is the tool name the PreToolUse entry matches.
@@ -168,10 +168,10 @@ func claudeDenies() []standingDeny {
 			installed: func(in denyInputs) bool { return in.claude.DenyAgentTool && !in.allowAgentTool && !in.forkSubagents },
 		},
 		{
-			// Fork-context webster-verb guard: deny `lyx webster` inside forks (detected by top-level agent_id in payload).
+			// Fork-context webster-verb guard: deny `lym webster` inside forks (detected by top-level agent_id in payload).
 			// Ending with `; true` guarantees exit 0 so non-webster or non-fork calls are allowed.
 			matcher:   "Bash",
-			command:   "in=$(cat); { printf '%s' \"$in\" | grep -q '\"agent_id\"'; } && { printf '%s' \"$in\" | grep -Eq 'lyx[[:space:]]+webster'; } && echo '" + denyJSON(steerWebsterForkDeny) + "'; true",
+			command:   "in=$(cat); { printf '%s' \"$in\" | grep -q '\"agent_id\"'; } && { printf '%s' \"$in\" | grep -Eq 'lym[[:space:]]+webster'; } && echo '" + denyJSON(steerWebsterForkDeny) + "'; true",
 			steer:     steerWebsterForkDeny,
 			installed: func(in denyInputs) bool { return in.forkSubagents },
 		},
@@ -185,7 +185,7 @@ func claudeDenies() []standingDeny {
 	}
 }
 
-// standingDeniesFor lists lyx's denies in the order their PreToolUse entries appear:
+// standingDeniesFor lists lym's denies in the order their PreToolUse entries appear:
 // the Claude denies, then every shell guard row, the refuse-raw row among them when refuseRaw is non-empty.
 // An interactive run's AskUserQuestion hook only records, never denies, so it stays outside the list.
 func standingDeniesFor(refuseRaw []string) []standingDeny {

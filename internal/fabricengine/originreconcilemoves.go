@@ -18,7 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -35,7 +35,7 @@ const (
 // tryPrimeLock takes the hub's prime lock by one try-acquire, never waiting.
 // held reports whether this call now holds it; a lock another holder has returns held false with no error.
 // The caller calls release once the prime's branches are moved.
-func tryPrimeLock(l *lyxcwd.Location) (release func(), held bool, err error) {
+func tryPrimeLock(l *lymcwd.Location) (release func(), held bool, err error) {
 	path := shedrun.PrimeRunLock(l)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, false, fmt.Errorf("fabricengine: create the prime lock directory: %w", err)
@@ -166,7 +166,7 @@ func ffWorktree(rec *Mutations, worktree, originHead string) (state BranchState,
 // A replay that stops on a conflict returns BranchDiverged naming the conflicting paths and the local commits, and one an uncommitted change blocks returns BranchDirty;
 // a branch the locks found already level or ahead is returned as that, unmoved.
 // A moved branch returns BranchLevel, or BranchAhead when replayed commits sit on origin's head, with Moved set.
-func reconcileRecordsBranch(rec *Mutations, l *lyxcwd.Location, worktree, originHead string, ended EndedSet, bolt bool) (BranchOutcome, error) {
+func reconcileRecordsBranch(rec *Mutations, l *lymcwd.Location, worktree, originHead string, ended EndedSet, bolt bool) (BranchOutcome, error) {
 	var outcome BranchOutcome
 	release, busy, pushHeld, err := tryRecordsLocks(worktree, bolt)
 	if err != nil {
@@ -247,7 +247,7 @@ func reconcileRecordsBranch(rec *Mutations, l *lyxcwd.Location, worktree, origin
 // originMover moves the branches one reconcile judged, in the order its work is done, and reports each move on the outcome it was judged as.
 type originMover struct {
 	rec      *Mutations
-	l        *lyxcwd.Location
+	l        *lymcwd.Location
 	scope    ReconcileScope
 	seams    OriginSeams
 	ended    EndedSet
@@ -426,7 +426,7 @@ func (m *originMover) move(i int, busy string) error {
 	location := m.l
 	if target.slug != "" && target.slug != m.scope.Run {
 		var err error
-		if location, err = lyxcwd.ResolveWorktree(target.codeWorktree); err != nil {
+		if location, err = lymcwd.ResolveWorktree(target.codeWorktree); err != nil {
 			return err
 		}
 	}
@@ -452,7 +452,7 @@ func (m *originMover) weftAnchorStopped(target originTarget, originHead string) 
 	if emptyMarkerStop(target.worktree) != nil {
 		return true, "", nil
 	}
-	own, err := lyxcwd.NamedWorktree(m.l.HubPath, filepath.Base(target.codeWorktree))
+	own, err := lymcwd.NamedWorktree(m.l.HubPath, filepath.Base(target.codeWorktree))
 	if err != nil {
 		return false, "", err
 	}
@@ -482,7 +482,7 @@ func (m *originMover) pairLive(slug string) (bool, error) {
 }
 
 // recordedPairs returns the slugs of pairs that have a batten run record at the prime.
-func recordedPairs(l *lyxcwd.Location, pairs []string) ([]string, error) {
+func recordedPairs(l *lymcwd.Location, pairs []string) ([]string, error) {
 	if len(pairs) == 0 {
 		return nil, nil
 	}
@@ -507,7 +507,7 @@ func recordedPairs(l *lyxcwd.Location, pairs []string) ([]string, error) {
 // The candidates are the pairs with a batten run record and the runs a local commit origin lacks touches, on Bolt or on a weft needing a replay.
 // A run this machine's own landing has reached is dropped from the set, so no replay sets aside what this machine is landing.
 // A hub with no Bolt branch to read, or one origin no longer has, has an empty set.
-func readOriginEnded(l *lyxcwd.Location, targets []originTarget, outcomes []BranchOutcome, runs []string) (EndedSet, error) {
+func readOriginEnded(l *lymcwd.Location, targets []originTarget, outcomes []BranchOutcome, runs []string) (EndedSet, error) {
 	boltIndex := slices.IndexFunc(targets, func(target originTarget) bool { return target.side == failedPushSideBolt })
 	if boltIndex < 0 || outcomes[boltIndex].OriginHead == "" {
 		return nil, nil

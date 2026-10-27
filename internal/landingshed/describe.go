@@ -19,12 +19,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
-// NewDescriptionGate returns the Describe row's gate closure: a shuttleengine.Gate that runs
-// summaryparser.ValidateDescription over descriptionPath, the same function
-// `lyx loom validate-description` calls (Gate Self-Check Parity Invariant).
-// A returned error passes through with the zero GateResult; no findings is a pass; findings are a
-// failed result whose Findings joins each Finding's Error() with "; ", preceded by a logger.Warn
-// because that line is the only durable record of why a description was refused.
+// NewDescriptionGate returns the Describe row's gate closure: a shuttleengine.Gate that runs summaryparser.ValidateDescription over descriptionPath, the same function `lym loom validate-description` calls (Gate Self-Check Parity Invariant).
+// A returned error passes through with the zero GateResult;
+// no findings is a pass;
+// findings are a failed result whose Findings joins each Finding's Error() with ";
+// ", preceded by a logger.Warn because that line is the only durable record of why a description was refused.
 func NewDescriptionGate(descriptionPath string) shuttleengine.Gate {
 	return func() (shuttleengine.GateResult, error) {
 		findings, err := summaryparser.ValidateDescription(descriptionPath)
@@ -73,7 +72,7 @@ type DescribeInputs struct {
 	ParentBranch string
 	// MergeBase is the commit the task's diff is taken from: the merge base of the task branch with the parent tip the task last merged.
 	MergeBase string
-	// Slug is the task's slug, the key for `lyx board get`.
+	// Slug is the task's slug, the key for `lym board get`.
 	Slug string
 }
 
@@ -106,7 +105,7 @@ type DarnDescribeInputs struct {
 	ParentBranch string
 	// MergeBase is the commit the task's diff is taken from: the merge base of the task branch with the parent tip the task last merged.
 	MergeBase string
-	// Slug is the task's slug, the key for `lyx board get`.
+	// Slug is the task's slug, the key for `lym board get`.
 	Slug string
 }
 

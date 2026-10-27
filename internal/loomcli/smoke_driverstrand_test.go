@@ -11,8 +11,8 @@
 // It also pins, in the same session, that an llm-seeded start leaves exactly one status strand beside its driver strand,
 // and that a start re-arms the session's follow state and selects the live driver strand's window while a resume does not.
 //
-// Like this package's other smoke tests it drives the real built cmd/lyx binary as a subprocess,
-// never RunCLI in-process (see smoke_test.go's own header): "lyx loom start" spawns its llm driver
+// Like this package's other smoke tests it drives the real built cmd/lym binary as a subprocess,
+// never RunCLI in-process (see smoke_test.go's own header): "lym loom start" spawns its llm driver
 // through a real shuttle run against a real tmux pane, and only a genuine subprocess boundary keeps
 // this test's own binary out of that pane's launch line.
 //
@@ -52,11 +52,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
-	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -164,7 +164,7 @@ func waitDriverStrandDead(t *testing.T, eng *reedengine.Engine, timeout time.Dur
 // so it pins that an llm-seeded start leaves exactly one status strand beside its driver strand.
 func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
-	exe := lyxbin.Build(t)
+	exe := lymbin.Build(t)
 
 	stubPath := writeStubDriverScript(t)
 
@@ -180,9 +180,9 @@ func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 	hubforge.AddPair(t, h, slug)
 	worktree := h.PairCodeWorktree(slug)
 
-	loc, err := lyxcwd.Resolve(worktree)
+	loc, err := lymcwd.Resolve(worktree)
 	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(%s): %v", worktree, err)
+		t.Fatalf("lymcwd.Resolve(%s): %v", worktree, err)
 	}
 	registerBootstrapTeardown(t, loc, worktree)
 	seedLLMDriver(t, loc)
@@ -230,7 +230,7 @@ func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 		t.Fatalf("driver strand after the second bootstrap = (found=%v live=%v); want it still live and untouched by the second bootstrap's own no-op", found, found && strand.Live)
 	}
 	if got := readFollow(t, eng); got != "on" {
-		t.Errorf("@lyx_follow after the second bootstrap = %q; want on", got)
+		t.Errorf("@lym_follow after the second bootstrap = %q; want on", got)
 	}
 	if got, want := windowID(t, eng, "="+eng.SessionName()+":"), windowID(t, eng, strand.PaneID); got != want {
 		t.Errorf("current window after the second bootstrap = %s; want the live driver strand's window %s, the newest live agent", got, want)

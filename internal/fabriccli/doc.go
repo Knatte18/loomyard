@@ -1,4 +1,4 @@
-// Package fabriccli is the `lyx fabric` command: the one git-coordination module over a hub's code side (warp) and records side (weft), driving `internal/fabricengine` (see docs/overview.md).
+// Package fabriccli is the `lym fabric` command: the one git-coordination module over a hub's code side (warp) and records side (weft), driving `internal/fabricengine` (see docs/overview.md).
 //
 // The topology verbs resolve their own layout per invocation.
 // The content-sync and merge verbs share one pre-run that resolves the pair's `fabricengine.Fabric` handle, or, for the detached push child, takes the injected hidden `--warp-path` and `--weft-path` flags instead.
@@ -6,7 +6,7 @@
 //
 // # Clone
 //
-// `lyx fabric clone` wires the whole hub in one command, with no follow-up activation step.
+// `lym fabric clone` wires the whole hub in one command, with no follow-up activation step.
 // Warp junctions are excluded through the warp's `.git/info/exclude`, never a committed `.gitignore`.
 //
 // The warp binding is a single-line record at the board root holding the warp URL only (`fabricengine.WarpBindingFileName`), committed onto weft:main the first time a warp URL is supplied for an unbound weft.
@@ -15,10 +15,10 @@
 // The shortname is recorded the same way (`fabricengine.ShortnameFileName`): a recorded shortname is adopted, a differing `--shortname` is refused, and a bound weft with no record clones with a warning.
 //
 // `--reset` tears down only a real fabric hub, one holding a `_board` entry or a weft sibling.
-// The hub name is derived rather than typed, so a directory that merely carries a `<name>-LYXHUB` name is reported and left alone.
+// The hub name is derived rather than typed, so a directory that merely carries a `<name>-LYMHUB` name is reported and left alone.
 // `--subpath` must stay inside the warp repo: an absolute path, or one escaping through `..`, is refused before anything is cloned, and a value that disagrees with the subpath recorded in the main-weft marker, or in the Bolt marker when main-weft carries none, is refused on a re-clone.
-// A fresh bind commits the `.lyx-anchor` marker at the root of the prime's weft branch and writes none on the board.
-// `--force-bootstrap` bypasses the weft-candidate guard in exactly one case, a brand-new weft remote that is neither empty nor lyx-anchored;
+// A fresh bind commits the `.lym-anchor` marker at the root of the prime's weft branch and writes none on the board.
+// `--force-bootstrap` bypasses the weft-candidate guard in exactly one case, a brand-new weft remote that is neither empty nor lym-anchored;
 // it is ignored in the one-argument form and whenever a binding is recorded.
 //
 // The weft prime is checked out at once on its suffixed branch, adopted as a tracking branch when the weft remote carries it and created at the cloned HEAD otherwise;
@@ -27,17 +27,17 @@
 //
 // # Add
 //
-// `lyx fabric add --local` creates a local-only pair: no origin is read or written, no launcher is created, no push is spawned, and both branches carry gitrepo's local mark, so no fabric push publishes them.
-// Its envelope carries `local: true`, and `lyx fabric push` from the pair adds `local_skipped`, naming the branches it left unpublished.
+// `lym fabric add --local` creates a local-only pair: no origin is read or written, no launcher is created, no push is spawned, and both branches carry gitrepo's local mark, so no fabric push publishes them.
+// Its envelope carries `local: true`, and `lym fabric push` from the pair adds `local_skipped`, naming the branches it left unpublished.
 // A `--local` add over a slug whose branch belongs to an ordinary pair is a pre-mutation refusal naming the way forward.
 // A plain `add` over a local pair's kept branches adopts them and clears the marks, listing the cleared branches in `local_mark_cleared`, so the pair becomes ordinary.
-// `lyx fabric add --parent <slug>` forks the pair from that live pair of the hub (`AddOptions.Parent`), and `--adopt-local` makes it over an unmarked local branch that already exists (`AddOptions.AdoptLocal`).
+// `lym fabric add --parent <slug>` forks the pair from that live pair of the hub (`AddOptions.Parent`), and `--adopt-local` makes it over an unmarked local branch that already exists (`AddOptions.AdoptLocal`).
 // `--adopt-local` is the only route that sets `AdoptLocal`, so no unattended run adopts a stale local branch under a reused slug.
 // `--local` with either flag is refused before any mutation, naming the flag to drop.
 //
 // # Remove
 //
-// `lyx fabric remove` ends the pair's reed session before removing a worktree, so no strand outlives it;
+// `lym fabric remove` ends the pair's reed session before removing a worktree, so no strand outlives it;
 // `abandoned_session` names a foreign session reed did not kill.
 // Pending run records in the weft worktree are committed before the archive tag is pushed, so only changes outside the record paths need `--force`.
 // `ended_processes` lists the `{pid, role}` of each registered process the session end ended, and is empty when none.
@@ -84,18 +84,18 @@
 //
 // # Anchor
 //
-// `lyx fabric anchor [<slug>] [--set <dir>]` prints the anchor of the named worktree, the acting one when none is named, or with `--set` moves it (anchor.go).
-// `<slug>` names the prime by its worktree name or a pair present on this machine, else the verb refuses naming `lyx fabric pairs`.
+// `lym fabric anchor [<slug>] [--set <dir>]` prints the anchor of the named worktree, the acting one when none is named, or with `--set` moves it (anchor.go).
+// `<slug>` names the prime by its worktree name or a pair present on this machine, else the verb refuses naming `lym fabric pairs`.
 // The engine's `AnchorChange` does the move; this verb is the layer above it that holds the session, run and dobby steps, as `pairteardown` sits above removal.
 // Each seam it reads or acts through is one field of `anchorDeps`, filled over the hub by `hubAnchorDeps`.
 //
 // A move is refused, before the engine is asked, naming its way forward, in this order:
 //
 //   - The board names another machine as the worktree's effective owner and the target differs from the anchor the weft's fetched upstream tip records, or that tip does not exist.
-//     The refusal names `lyx adopt` here, the `--set` run on the owner machine, and, when the tip's marker differs from the checked-out anchor, the `--set` to that marker, which this refusal lets through.
+//     The refusal names `lym adopt` here, the `--set` run on the owner machine, and, when the tip's marker differs from the checked-out anchor, the `--set` to that marker, which this refusal lets through.
 //     A worktree whose weft has a standing move record is exempt, so a re-run recovering a killed move always runs.
 //   - The worktree's reed state holds a session or a strand, its run driver lock is held, a registered batten run of it is live, or its run status names an unfinished run.
-//     For a worktree another machine owns the status is read at the weft's fetched upstream tip, since the weft pull that would refresh the checked-out copy stops at the marker change, and an unfinished one names `lyx batten cancel <slug>` on the owner machine, `lyx fabric pull` and the `--set`.
+//     For a worktree another machine owns the status is read at the weft's fetched upstream tip, since the weft pull that would refresh the checked-out copy stops at the marker change, and an unfinished one names `lym batten cancel <slug>` on the owner machine, `lym fabric pull` and the `--set`.
 //     A pair's batten status in the prime counts too.
 //   - On Windows, where ending a process signals nothing, a live dobby the move would end, named by pid.
 //   - For the prime, any reed state of the hub holding a session or a strand, any live batten run, any held gate slot and a live hibernate daemon.
@@ -109,17 +109,17 @@
 // with the record gone the dobbies it ended start again and the error is returned;
 // with it standing nothing starts and the error names the re-run of the same `--set`, which recovers the record.
 // A `Finish` error after it removed the record fails nothing: the envelope reports it as `push_error` and the dobby start goes on.
-// The dobbies the move ends then start through `EnsureLive`, named one by one, the prime's move naming the prime and every local beam and a beam's move that beam alone, so a beam this machine does not own or whose landing hold stands is refused there; a move that fails restarts only the dobbies it ended, and a start that fails is `dobby_start_error` with the way forward `lyx beam start`, the verb exiting 0.
-// The verb holds no lock against a session, a hand pass or a hidden `lyx beam dobby` started meanwhile, and its help says so.
+// The dobbies the move ends then start through `EnsureLive`, named one by one, the prime's move naming the prime and every local beam and a beam's move that beam alone, so a beam this machine does not own or whose landing hold stands is refused there; a move that fails restarts only the dobbies it ended, and a start that fails is `dobby_start_error` with the way forward `lym beam start`, the verb exiting 0.
+// The verb holds no lock against a session, a hand pass or a hidden `lym beam dobby` started meanwhile, and its help says so.
 //
 // # Merge
 //
 // Conflicts are a result of `merge-in`, not a failure to run again differently: the pair stays mid-merge until every conflict is resolved, staged and concluded, or until the merge is aborted.
-// `merge-stage` is a required step because `merge --continue` gates on the git index, not on file content, and for a path reached through a wired junction, such as `_lyx/`, `git add` cannot stage it at all.
+// `merge-stage` is a required step because `merge --continue` gates on the git index, not on file content, and for a path reached through a wired junction, such as `_lym/`, `git add` cannot stage it at all.
 // A `--continue` refused because some conflicts remain lists them in an `unresolved` array, a key separate from `conflicts`, so a script keeps telling a conflict result from a hard failure by the `conflicts` key alone.
 // `merge-in` and `merge` continue and abort the same way, but only `merge-in` resolves conflicts in its own worktree;
 // `merge` self-aborts on a conflict with a `fabricengine.ErrMergeInRequired` naming the source branch.
 //
-// The Webster warning on `merge-in` exists because `lyx webster record-batch` tolerates a clean parent merge commit after a fork's commit, but refuses a fast-forward past it and a merge whose conflicts were resolved by hand.
+// The Webster warning on `merge-in` exists because `lym webster record-batch` tolerates a clean parent merge commit after a fork's commit, but refuses a fast-forward past it and a merge whose conflicts were resolved by hand.
 // An already-up-to-date `merge-in` and a hard failure carry no `warnings` key.
 package fabriccli

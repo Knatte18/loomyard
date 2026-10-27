@@ -1,5 +1,5 @@
 <!-- This is the burler review-file format, the one format both halves of a round point at.
-     It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go), seeded to <hub>/_board/_lyx/stencils/burler/ and read
+     It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go), seeded to <hub>/_board/_lym/stencils/burler/ and read
      from there at call time by composeReviewPrompt and composeFixPrompt (prompt.go), which render it unchanged into each half's instruction directory.
      The reviewer step names its path as the format it writes; the fixer seat names its path as the format it reads.
      It is marker-free on purpose: it states the format and carries no path of either half. -->

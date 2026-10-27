@@ -22,7 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -72,7 +72,7 @@ func newLoomBurler(t *testing.T) *shedfake.BurlerHalfRunner {
 }
 
 // parentReviewRoundRel is the anchor-relative path of the open parent-review request buildSequenceFixture lays out.
-const parentReviewRoundRel = "_lyx/reviews/parent-review/round-1/request.json"
+const parentReviewRoundRel = "_lym/reviews/parent-review/round-1/request.json"
 
 // openParentReviewRequest is the request an older binary left for an open round: state open and no verdict beside it.
 const openParentReviewRequest = `{"slug":"fixture-slug","round":1,"state":"open"}` + "\n"
@@ -158,11 +158,10 @@ func writePlanFixture(planDir string, approved bool) error {
 	return nil
 }
 
-// seedPlanFixture writes a syntactically complete, one-card plan-format plan under
-// <anchorPath>/_lyx/plan/, approved or not per approved, via writePlanFixture.
+// seedPlanFixture writes a syntactically complete, one-card plan-format plan under <anchorPath>/_lym/plan/, approved or not per approved, via writePlanFixture.
 func seedPlanFixture(t *testing.T, anchorPath string, approved bool) {
 	t.Helper()
-	if err := writePlanFixture(filepath.Join(anchorPath, lyxdirs.LyxDirName, "plan"), approved); err != nil {
+	if err := writePlanFixture(filepath.Join(anchorPath, lymdirs.LymDirName, "plan"), approved); err != nil {
 		t.Fatalf("write plan fixture: %v", err)
 	}
 }
@@ -369,10 +368,10 @@ func countRole(shuttle *shedfake.Shuttle, role string) int {
 	return count
 }
 
-// writeBatcherConfig writes content as <anchorPath>/_lyx/config/batcher.yaml.
+// writeBatcherConfig writes content as <anchorPath>/_lym/config/batcher.yaml.
 func writeBatcherConfig(t *testing.T, anchorPath, content string) {
 	t.Helper()
-	configDir := filepath.Join(anchorPath, lyxdirs.LyxDirName, "config")
+	configDir := filepath.Join(anchorPath, lymdirs.LymDirName, "config")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir config dir: %v", err)
 	}
@@ -420,7 +419,7 @@ func writeBatcherConfig(t *testing.T, anchorPath, content string) {
 // shedadapters.archiveStaleOutputs renames the fixture's own pre-written files away on every Call, so without the fake rewriting them the clean sequence run would find both files absent.
 //
 // Row 6 (Plan-Write) sits behind loomshed's rotate-and-commit decorator.
-// Its planDir is the same _lyx/plan expression seedPlanFixture already builds, and env.PlanTable returns a table with role prefix "plan" and the single overview path as its output.
+// Its planDir is the same _lym/plan expression seedPlanFixture already builds, and env.PlanTable returns a table with role prefix "plan" and the single overview path as its output.
 // The seat runner's "plan"-role branch rewrites the whole plan directory (see newLoomShuttle's own doc comment for why) rather than only the overview,
 // so Plan-Write's own gate still finds a complete, unapproved, zero-findings plan after the decorator's rotation archived the seeded one away -- the real Plan-Write producer can never write it approved, and neither does this fake.
 //
@@ -474,8 +473,8 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 		t.Fatalf("mkdir cwd: %v", err)
 	}
 
-	planDir := filepath.Join(dir, lyxdirs.LyxDirName, "plan")
-	descriptionPath := filepath.Join(dir, lyxdirs.LyxDirName, "landing", "summary.md")
+	planDir := filepath.Join(dir, lymdirs.LymDirName, "plan")
+	descriptionPath := filepath.Join(dir, lymdirs.LymDirName, "landing", "summary.md")
 
 	runRoot := filepath.Join(dir, "reviews")
 	if err := os.MkdirAll(runRoot, 0o755); err != nil {

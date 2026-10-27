@@ -29,7 +29,7 @@ v1 reports only the current worktree's session — enumerating stray servers
 across the hub is deferred.
 
 Example:
-  lyx reed status`,
+  lym reed status`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil

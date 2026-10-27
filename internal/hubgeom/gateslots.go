@@ -8,12 +8,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // GateSlots returns the gate-slot pool of l's hub: its slot directory is the board dir's, and its limits are read strictly from the board dir's gate.yaml and this machine's override at every acquire.
 // A gate config that cannot be loaded surfaces at acquire as an error naming each file in the stack.
-func GateSlots(l *lyxcwd.Location) *gateslot.Pool {
+func GateSlots(l *lymcwd.Location) *gateslot.Pool {
 	boardDir := fabricengine.BoardDir(l.HubPath)
 	return &gateslot.Pool{
 		Dir: gateslot.Dir(boardDir),

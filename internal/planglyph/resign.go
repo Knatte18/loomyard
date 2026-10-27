@@ -322,7 +322,7 @@ func RebindResigns(plan *planparser.Plan, cards []planparser.Card, worktreeRoot 
 				Check: "resign-not-done",
 				Card:  n.card,
 				Detail: fmt.Sprintf(
-					"re-sign arrow %q -> %q mints %q, which answered %q in the tree; make the edit match the arrow's head, or correct the head to the signature the card wrote and run `lyx webster rebaseline --card %s` naming that card",
+					"re-sign arrow %q -> %q mints %q, which answered %q in the tree; make the edit match the arrow's head, or correct the head to the signature the card wrote and run `lym webster rebaseline --card %s` naming that card",
 					n.target.String(), n.head, n.id, string(answer.Status), number),
 				Severity: SeverityBlocking,
 				Ref:      n.target.String(),

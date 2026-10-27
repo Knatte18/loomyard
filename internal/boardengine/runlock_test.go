@@ -221,7 +221,7 @@ func TestRunLock(t *testing.T) {
 				if !errors.As(err, &beamErr) {
 					t.Fatalf("err = %v, want a *BeamRunLockedError", err)
 				}
-				for _, want := range []string{`"locked"`, status, "lyx batten cancel locked"} {
+				for _, want := range []string{`"locked"`, status, "lym batten cancel locked"} {
 					if !strings.Contains(err.Error(), want) {
 						t.Errorf("message %q lacks %q", err.Error(), want)
 					}
@@ -231,13 +231,13 @@ func TestRunLock(t *testing.T) {
 				}
 				return
 			}
-			for _, want := range []string{`"locked"`, status, "lyx batten status locked", "prime worktree", `"kind":"note"`, "lyx batten cancel locked"} {
+			for _, want := range []string{`"locked"`, status, "lym batten status locked", "prime worktree", `"kind":"note"`, "lym batten cancel locked"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("message %q lacks %q", err.Error(), want)
 				}
 			}
-			if strings.Contains(err.Error(), "lyx board set-status") {
-				t.Errorf("message %q names lyx board set-status; want the cancel as the way to abandon a run", err.Error())
+			if strings.Contains(err.Error(), "lym board set-status") {
+				t.Errorf("message %q names lym board set-status; want the cancel as the way to abandon a run", err.Error())
 			}
 			if string(after) != string(before) {
 				t.Error("board.json changed on a refused write")
@@ -339,8 +339,8 @@ func TestRunLock_BeamKindAndBeamChange(t *testing.T) {
 			t.Parallel()
 			err := boardengine.CheckRunLocks([]boardengine.Task{before}, []boardengine.Task{tt.after})
 			var beamErr *boardengine.BeamRunLockedError
-			if !errors.As(err, &beamErr) || !errors.Is(err, boardengine.ErrRunLocked) || !strings.Contains(err.Error(), "lyx batten cancel locked") {
-				t.Errorf("CheckRunLocks error = %v; want a *BeamRunLockedError matching ErrRunLocked and naming lyx batten cancel locked", err)
+			if !errors.As(err, &beamErr) || !errors.Is(err, boardengine.ErrRunLocked) || !strings.Contains(err.Error(), "lym batten cancel locked") {
+				t.Errorf("CheckRunLocks error = %v; want a *BeamRunLockedError matching ErrRunLocked and naming lym batten cancel locked", err)
 			}
 		})
 	}

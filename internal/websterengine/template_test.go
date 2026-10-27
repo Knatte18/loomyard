@@ -35,22 +35,22 @@ func newTestStencilsDir(t *testing.T) string {
 }
 
 // testCardGates is the placeholder per-card gate list passed as RenderForkPrompt's and RenderRecoveryPrompt's cardGates parameter.
-const testCardGates = "- `_lyx/plan/01-gate.md`:\n  - `lyx gate test --wait --tier 0 --card 1-gate`"
+const testCardGates = "- `_lym/plan/01-gate.md`:\n  - `lym gate test --wait --tier 0 --card 1-gate`"
 
 // testBatchGate is the placeholder batch gate passed as RenderForkPrompt's and RenderRecoveryPrompt's batchGate parameter.
-const testBatchGate = "- `lyx gate test --wait --tier 0 --tier 1 --card 1-gate`"
+const testBatchGate = "- `lym gate test --wait --tier 0 --tier 1 --card 1-gate`"
 
 // testFixGate is the placeholder gate call passed as RenderVerifyFixPrompt's fixGate parameter.
-const testFixGate = "lyx gate test --wait --tier 0"
+const testFixGate = "lym gate test --wait --tier 0"
 
 // testOutcomePath and testSummaryPath are the placeholder contract-file paths passed as RenderForkPrompt's and RenderVerifyFixPrompt's outcomePath and summaryPath parameters.
 const (
-	testOutcomePath = "/lyx/webster/outcome.yaml"
-	testSummaryPath = "/lyx/webster/summary.md"
+	testOutcomePath = "/lym/webster/outcome.yaml"
+	testSummaryPath = "/lym/webster/summary.md"
 )
 
 // testVerifyFixPromptPath is the placeholder fixer-prompt path passed as RenderMasterPrompt's verifyFixPromptPath parameter.
-const testVerifyFixPromptPath = "/lyx/webster/prompts/verify-fix.md"
+const testVerifyFixPromptPath = "/lym/webster/prompts/verify-fix.md"
 
 // newTestSpecsDir returns a real, non-empty directory to pass as RenderForkPrompt's/
 // RenderRecoveryPrompt's specsDir parameter, alongside newTestStencilsDir. A real directory rather
@@ -240,14 +240,14 @@ func masterTemplateMarkerValues() map[string]string {
 		"batch_index":            "01 — json-flag — add the --json flag",
 		"progress":               "none",
 		"remaining":              "01-a",
-		"outcome_path":           "/lyx/webster/outcome.yaml",
-		"summary_path":           "/lyx/webster/summary.md",
-		"verify_fix_prompt_path": "/lyx/webster/prompts/verify-fix.md",
-		"plan_dir":               "_lyx/plan",
+		"outcome_path":           "/lym/webster/outcome.yaml",
+		"summary_path":           "/lym/webster/summary.md",
+		"verify_fix_prompt_path": "/lym/webster/prompts/verify-fix.md",
+		"plan_dir":               "_lym/plan",
 		"self_fix_cap":           "2",
 		"parent_decisions":       "none",
 		"pattern_directive":      "## Constraints — do this before you fork anything\n\n- Read the overview.",
-		"friction_directive":     "## Friction note — optional, only if something went wrong\n\nWrite it to /lyx/webster/friction/webster-master.md.",
+		"friction_directive":     "## Friction note — optional, only if something went wrong\n\nWrite it to /lym/webster/friction/webster-master.md.",
 		"parent_directive":       "## Your parent\n\nNo parent is recorded for this run.",
 		"edit_directive":         "## Editing files\n\nChange files only with Edit or Write.",
 	}
@@ -262,14 +262,14 @@ func masterTemplateMarkerValues() map[string]string {
 // friction_directive, the fork template's own one optional marker.
 func forkTemplateMarkerValues() map[string]string {
 	return map[string]string{
-		"card_pointers":      "- `_lyx/plan/02-list-tests.md`",
+		"card_pointers":      "- `_lym/plan/02-list-tests.md`",
 		"card_gates":         testCardGates,
 		"batch_gate":         testBatchGate,
 		"report_path":        "/webster/reports/02-list-tests.yaml",
 		"self_fix_cap":       "2",
 		"worktree_root":      "/worktree",
 		"prev_digest":        "01-json-flag: done head_sha=abc123",
-		"specs_dir":          "/hub/repo/_board/_lyx/specs",
+		"specs_dir":          "/hub/repo/_board/_lym/specs",
 		"gate_tiers":         "- tier1: unit tests of `x`",
 		"rename_tools":       "- rename `y` through the language server",
 		"outcome_path":       testOutcomePath,
@@ -325,13 +325,13 @@ func assertCardPointerIsRelative(t *testing.T, got, sourcePath string) {
 // renderFork renders the fork prompt for batch with the shared placeholder paths; root is both the
 // anchor root and the prompt worktree root, and the plan directory is derived under it.
 func renderFork(batch batcher.Batch, root, stencilsDir, specsDir, prevDigest string, selfFixCap int, notePath string) (string, error) {
-	prompt, err := websterengine.RenderForkPrompt(batch, testCardGates, testBatchGate, prevDigest, "/reports/01-alpha.yaml", filepath.Join(root, "_lyx", "plan"), root, stencilsDir, specsDir, "none", nil, testOutcomePath, testSummaryPath, selfFixCap, notePath)
+	prompt, err := websterengine.RenderForkPrompt(batch, testCardGates, testBatchGate, prevDigest, "/reports/01-alpha.yaml", filepath.Join(root, "_lym", "plan"), root, stencilsDir, specsDir, "none", nil, testOutcomePath, testSummaryPath, selfFixCap, notePath)
 	return string(prompt), err
 }
 
 // renderForkWithLists renders the fork prompt for batch as renderFork does, with the given gate tiers and rename tools.
 func renderForkWithLists(batch batcher.Batch, root, stencilsDir, specsDir, gateTiers string, renameTools []string) (string, error) {
-	prompt, err := websterengine.RenderForkPrompt(batch, testCardGates, testBatchGate, "", "/reports/01-alpha.yaml", filepath.Join(root, "_lyx", "plan"), root, stencilsDir, specsDir, gateTiers, renameTools, testOutcomePath, testSummaryPath, 2, "")
+	prompt, err := websterengine.RenderForkPrompt(batch, testCardGates, testBatchGate, "", "/reports/01-alpha.yaml", filepath.Join(root, "_lym", "plan"), root, stencilsDir, specsDir, gateTiers, renameTools, testOutcomePath, testSummaryPath, 2, "")
 	return string(prompt), err
 }
 
@@ -352,7 +352,7 @@ func renderRecovery(batch batcher.Batch, repoRoot, anchorRoot, stencilsDir, spec
 
 // renderRecoveryWithUncommitted is renderRecovery with the caller-rendered uncommitted-paths block, the hub's verify tiers and the declared PATTERN changes.
 func renderRecoveryWithUncommitted(batch batcher.Batch, repoRoot, anchorRoot, stencilsDir, specsDir, failureDigest, uncommittedPaths, notePath, parent, gateTiers string, renameTools, patternChanges []string) (string, error) {
-	got, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, testBatchGate, "", failureDigest, uncommittedPaths, "/reports/01-alpha.yaml", repoRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, specsDir, gateTiers, renameTools, patternChanges, 2, notePath, parent)
+	got, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, testBatchGate, "", failureDigest, uncommittedPaths, "/reports/01-alpha.yaml", repoRoot, filepath.Join(anchorRoot, "_lym", "plan"), anchorRoot, stencilsDir, specsDir, gateTiers, renameTools, patternChanges, 2, notePath, parent)
 	return string(got), err
 }
 
@@ -363,22 +363,22 @@ func renderMaster(batches []batcher.Batch, anchorRoot, repoRoot, stencilsDir, no
 
 // renderMasterWithDecisions is renderMaster with the parent's added decisions.
 func renderMasterWithDecisions(batches []batcher.Batch, anchorRoot, repoRoot, stencilsDir, notePath, parent string, patternChanges, parentDecisions []string) (string, error) {
-	got, err := websterengine.RenderMasterPrompt(batches, nil, testOutcomePath, testSummaryPath, testVerifyFixPromptPath, filepath.Join(anchorRoot, "_lyx", "plan"), 2, anchorRoot, repoRoot, stencilsDir, patternChanges, parentDecisions, notePath, parent)
+	got, err := websterengine.RenderMasterPrompt(batches, nil, testOutcomePath, testSummaryPath, testVerifyFixPromptPath, filepath.Join(anchorRoot, "_lym", "plan"), 2, anchorRoot, repoRoot, stencilsDir, patternChanges, parentDecisions, notePath, parent)
 	return string(got), err
 }
 
 // renderVerifyFix renders the fixer prompt for reportPath with the shared placeholder paths and testFixGate.
 func renderVerifyFix(reportPath, anchorRoot, stencilsDir, notePath string) (string, error) {
-	got, err := websterengine.RenderVerifyFixPrompt(reportPath, anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), stencilsDir, testOutcomePath, testSummaryPath, notePath, testFixGate)
+	got, err := websterengine.RenderVerifyFixPrompt(reportPath, anchorRoot, filepath.Join(anchorRoot, "_lym", "plan"), stencilsDir, testOutcomePath, testSummaryPath, notePath, testFixGate)
 	return string(got), err
 }
 
 // testReplyPath is the placeholder reply path passed as RenderVerifyFixColdPrompt's replyPath parameter.
-const testReplyPath = "/lyx/webster/verify-fix-reply.md"
+const testReplyPath = "/lym/webster/verify-fix-reply.md"
 
 // renderVerifyFixCold renders the cold fixer prompt for reportPath with the shared placeholder paths, testReplyPath and testFixGate.
 func renderVerifyFixCold(reportPath, repoRoot, anchorRoot, stencilsDir, notePath, parent string, patternChanges []string) (string, error) {
-	got, err := websterengine.RenderVerifyFixColdPrompt(reportPath, testReplyPath, anchorRoot, repoRoot, filepath.Join(anchorRoot, "_lyx", "plan"), stencilsDir, testOutcomePath, testSummaryPath, notePath, testFixGate, patternChanges, parent)
+	got, err := websterengine.RenderVerifyFixColdPrompt(reportPath, testReplyPath, anchorRoot, repoRoot, filepath.Join(anchorRoot, "_lym", "plan"), stencilsDir, testOutcomePath, testSummaryPath, notePath, testFixGate, patternChanges, parent)
 	return string(got), err
 }
 
@@ -540,9 +540,9 @@ func TestTemplates_Composition(t *testing.T) {
 			if !bytes.Contains(composed, body) {
 				t.Errorf("%s() does not contain ImplementerBodyTemplate()'s bytes", name)
 			}
-			// Every asset carries a real `lyx-stencil:` banner stamp, so a leak here means the
+			// Every asset carries a real `lym-stencil:` banner stamp, so a leak here means the
 			// composition stopped stripping the second asset's banner.
-			requireNotContains(t, string(composed), "lyx-stencil:")
+			requireNotContains(t, string(composed), "lym-stencil:")
 			requireNotContains(t, string(composed), "<!--")
 		}
 	})
@@ -806,8 +806,8 @@ func TestRenderPrompts(t *testing.T) {
 				inOrder: []string{
 					"## The FRESH-READ rule\n\nNo code reaches you from Master",
 					"1. Read the card file.\n   It is your whole instruction for that card.",
-					"   Locate them with one `lyx quarry resolve <glyph>...` call",
-					"`lyx loom lint-pattern` and `lyx quarry resolve` are always allowed",
+					"   Locate them with one `lym quarry resolve <glyph>...` call",
+					"`lym loom lint-pattern` and `lym quarry resolve` are always allowed",
 					"does not make it `FAILED`.\n",
 				}}
 		}},
@@ -819,7 +819,7 @@ func TestRenderPrompts(t *testing.T) {
 				inOrder: []string{
 					"## The FRESH-READ rule\n\nNo code reaches you from Master",
 					"1. Read the card file.",
-					"   Locate them with one `lyx quarry resolve <glyph>...` call",
+					"   Locate them with one `lym quarry resolve <glyph>...` call",
 				}}
 		}},
 		{"master never fills worktree_root", func(t *testing.T) promptCheck {
@@ -898,11 +898,11 @@ func TestRenderPrompts(t *testing.T) {
 			return promptCheck{err: err, wantErr: true}
 		}},
 		{"fixer prompt names the gate report and the contract files", func(t *testing.T) promptCheck {
-			const reportPath = "/lyx/webster/reports/verify-gate.yaml"
+			const reportPath = "/lym/webster/reports/verify-gate.yaml"
 			root, stencilsDir := testLayout(t)
 			text, err := renderVerifyFix(reportPath, root, stencilsDir, "")
 			return promptCheck{text: text, err: err,
-				contains:    []string{reportPath, testOutcomePath, testSummaryPath, "_lyx/plan", "run `" + testFixGate + "` as a foreground Bash call"},
+				contains:    []string{reportPath, testOutcomePath, testSummaryPath, "_lym/plan", "run `" + testFixGate + "` as a foreground Bash call"},
 				notContains: []string{"{{", testReplyPath}}
 		}},
 		{"fixer prompt refuses an empty report path", func(t *testing.T) promptCheck {
@@ -911,11 +911,11 @@ func TestRenderPrompts(t *testing.T) {
 			return promptCheck{err: err, wantErr: true}
 		}},
 		{"cold fixer prompt names the gate report, the reply file and the contract files", func(t *testing.T) promptCheck {
-			const reportPath = "/lyx/webster/reports/verify-gate.yaml"
+			const reportPath = "/lym/webster/reports/verify-gate.yaml"
 			root, stencilsDir := testLayout(t)
 			text, err := renderVerifyFixCold(reportPath, root, root, stencilsDir, "", "", nil)
 			return promptCheck{text: text, err: err,
-				contains:    []string{reportPath, testReplyPath, testOutcomePath, testSummaryPath, "_lyx/plan", testFixGate},
+				contains:    []string{reportPath, testReplyPath, testOutcomePath, testSummaryPath, "_lym/plan", testFixGate},
 				notContains: []string{"{{", "## Constraints"}}
 		}},
 		{"cold fixer prompt carries a declared PATTERN change when PATTERN is active", func(t *testing.T) promptCheck {
@@ -925,7 +925,7 @@ func TestRenderPrompts(t *testing.T) {
 		}},
 		{"cold fixer prompt refuses an empty reply path", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
-			_, err := websterengine.RenderVerifyFixColdPrompt("/reports/verify-gate.yaml", "", root, root, filepath.Join(root, "_lyx", "plan"), stencilsDir, testOutcomePath, testSummaryPath, "", testFixGate, nil, "")
+			_, err := websterengine.RenderVerifyFixColdPrompt("/reports/verify-gate.yaml", "", root, root, filepath.Join(root, "_lym", "plan"), stencilsDir, testOutcomePath, testSummaryPath, "", testFixGate, nil, "")
 			return promptCheck{err: err, wantErr: true}
 		}},
 	}
@@ -969,7 +969,7 @@ func TestRenderPrompts_FrictionDirective(t *testing.T) {
 			return renderVerifyFixCold("/reports/verify-gate.yaml", anchorRoot, anchorRoot, stencilsDir, notePath, "", nil)
 		}},
 		{"plan-fix", "webster-template-plan-fix", "webster-plan-fix.md", func(anchorRoot, stencilsDir, notePath string) (string, error) {
-			got, err := websterengine.RenderPlanFixPrompt("/lyx/webster/plan-conflict.md", testReplyPath, anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), stencilsDir, filepath.Join(anchorRoot, "specs"), notePath, "")
+			got, err := websterengine.RenderPlanFixPrompt("/lym/webster/plan-conflict.md", testReplyPath, anchorRoot, filepath.Join(anchorRoot, "_lym", "plan"), stencilsDir, filepath.Join(anchorRoot, "specs"), notePath, "")
 			return string(got), err
 		}},
 	}
@@ -980,7 +980,7 @@ func TestRenderPrompts_FrictionDirective(t *testing.T) {
 			t.Run("enabled: a non-empty note path appears in the composed prompt verbatim", func(t *testing.T) {
 				t.Parallel()
 				anchorRoot, stencilsDir := frictionActiveLayout(t)
-				notePath := filepath.Join(anchorRoot, "_lyx", "friction", tc.noteFile)
+				notePath := filepath.Join(anchorRoot, "_lym", "friction", tc.noteFile)
 				text, err := tc.render(anchorRoot, stencilsDir, notePath)
 				promptCheck{text: text, err: err, contains: []string{notePath}}.verify(t)
 			})
@@ -999,7 +999,7 @@ func TestRenderPrompts_FrictionDirective(t *testing.T) {
 				t.Parallel()
 				anchorRoot, stencilsDir := frictionActiveLayout(t)
 				stripFrictionMarker(t, stencilsDir, tc.stencil)
-				notePath := filepath.Join(anchorRoot, "_lyx", "friction", tc.noteFile)
+				notePath := filepath.Join(anchorRoot, "_lym", "friction", tc.noteFile)
 				_, err := tc.render(anchorRoot, stencilsDir, notePath)
 				promptCheck{err: err}.verify(t)
 			})
@@ -1108,8 +1108,8 @@ func TestRenderBatchLists(t *testing.T) {
 		{"progress lists a waiting batch with its need and the verb that resumes it", websterengine.RenderProgress(inOrder, &websterengine.State{Batches: map[int]*websterengine.BatchState{
 			1: {Slug: "seam-extensions", Terminal: true, Status: "done"},
 			2: {Slug: "webster-foundation", Kind: "fork", Status: websterengine.DigestStatusWaiting, Digest: &websterengine.Digest{Status: websterengine.DigestStatusWaiting, Need: "set the tier commands"}},
-			3: {Slug: "webster-audit-policy", Kind: "recovery", Status: websterengine.DigestStatusWaiting, Digest: &websterengine.Digest{Status: websterengine.DigestStatusWaiting, Need: "run lyx fabric reconcile"}},
-		}}), "01-seam-extensions: done\n02-webster-foundation: waiting (need: set the tier commands; resume: lyx webster begin-batch 2)\n03-webster-audit-policy: waiting (need: run lyx fabric reconcile; resume: lyx webster recover-batch 3)"},
+			3: {Slug: "webster-audit-policy", Kind: "recovery", Status: websterengine.DigestStatusWaiting, Digest: &websterengine.Digest{Status: websterengine.DigestStatusWaiting, Need: "run lym fabric reconcile"}},
+		}}), "01-seam-extensions: done\n02-webster-foundation: waiting (need: set the tier commands; resume: lym webster begin-batch 2)\n03-webster-audit-policy: waiting (need: run lym fabric reconcile; resume: lym webster recover-batch 3)"},
 		// A state.json carrying an explicit null for a batch key parses to a present-but-nil entry.
 		{"progress skips a nil batch record", websterengine.RenderProgress(inOrder, &websterengine.State{Batches: map[int]*websterengine.BatchState{
 			1: nil,

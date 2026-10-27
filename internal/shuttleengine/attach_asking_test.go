@@ -59,7 +59,7 @@ func TestDispositionCandidate_AskingReentry(t *testing.T) {
 // It asserts the run's final outcome and which held turn ends reach the parent.
 func TestAttach_LegacyAskingAndHeldRuns(t *testing.T) {
 	t.Parallel()
-	const strandName = "lyx:slug:driver"
+	const strandName = "lym:slug:driver"
 	shell := []BackgroundTask{{Kind: BackgroundShell, ID: "sh-1", Label: "sleep 9999"}}
 	tests := []struct {
 		name           string
@@ -117,7 +117,7 @@ func TestAttach_LegacyAskingAndHeldRuns(t *testing.T) {
 			}
 			fx := newFixture(t, &fakeReed{StatusQueue: []reedengine.StatusResult{status}}, &waitingEngine{outstanding: tt.outstanding},
 				withConfig(fastConfig), withSeparateRunDir(), withClock(clk))
-			seedPresentReedState(t, fx.DotLyx)
+			seedPresentReedState(t, fx.DotLym)
 
 			outputFile := filepath.Join(fx.RunRoot, "out.md")
 			if tt.outputsExist {

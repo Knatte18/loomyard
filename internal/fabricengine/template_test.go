@@ -19,7 +19,7 @@ import (
 // TestConfigTemplate covers the generated template, resolved against an empty environment:
 // it is valid YAML carrying both the branch_prefix and pathspec keys;
 // branch_prefix resolves to an empty string;
-// pathspec resolves to an empty set, regardless of environment: _lyx and .lyx are structural and
+// pathspec resolves to an empty set, regardless of environment: _lym and .lym are structural and
 // injected in code by internal/fabricengine, and are never read from the pathspec key at all, so an
 // empty default leaves pathspec free to name only genuinely optional per-repo directories the
 // operator adds explicitly — the resolved value is whitespace-split (mirroring Config.Dirs, the

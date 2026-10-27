@@ -18,7 +18,7 @@ import (
 var installReplayOnce sync.Once
 
 // InstallReplay installs boardengine.FabricReplay as fabricengine's board replay, once per process.
-// A test binary never runs the lyx root pre-run that installs it, so a test that reaches a Bolt replay or the ended-set rule calls this first.
+// A test binary never runs the lym root pre-run that installs it, so a test that reaches a Bolt replay or the ended-set rule calls this first.
 // The install is never restored, so parallel tests share the one install of the same value.
 func InstallReplay(tb testing.TB) {
 	tb.Helper()

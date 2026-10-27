@@ -1,6 +1,6 @@
 //go:build tier1
 
-// startguard_integration_test.go drives armAt and "lyx batten run" over a hubforge hub to pin that the pre-run guard refuses before any write: no seed, no status file, no board pull or claim and no window.
+// startguard_integration_test.go drives armAt and "lym batten run" over a hubforge hub to pin that the pre-run guard refuses before any write: no seed, no status file, no board pull or claim and no window.
 
 package battencli
 
@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
@@ -64,7 +64,7 @@ func TestArmAt_StartGuardRefusesBeforeAnyWrite(t *testing.T) {
 	})
 
 	t.Run("RunOfTheBeamFromInsideItRefusesBeforeAnyWrite", func(t *testing.T) {
-		beam, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree("own-beam"))
+		beam, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("own-beam"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -116,7 +116,7 @@ func TestArmAt_StartGuardRefusesBeforeAnyWrite(t *testing.T) {
 }
 
 // assertNoRunWritten fails the test when slug has a seed or a status file under location.
-func assertNoRunWritten(t *testing.T, location *lyxcwd.Location, slug string) {
+func assertNoRunWritten(t *testing.T, location *lymcwd.Location, slug string) {
 	t.Helper()
 	if _, found, err := shedrun.ReadSeed(location, slug); err != nil || found {
 		t.Errorf("ReadSeed(%q) = (found %v, err %v); want no seed", slug, found, err)

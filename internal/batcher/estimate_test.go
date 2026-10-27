@@ -66,7 +66,7 @@ func TestPeakContext(t *testing.T) {
 			"internal/b/b.go":   50,
 			"internal/s/s.go":   10,
 			"internal/big/b.go": 1000,
-			"_lyx/plan/01-x.md": 40,
+			"_lym/plan/01-x.md": 40,
 		},
 		testFiles: map[string][]string{
 			"internal/a": {"internal/a/a_test.go", "internal/a/b_test.go"},
@@ -76,7 +76,7 @@ func TestPeakContext(t *testing.T) {
 	const startup = 12
 
 	withText := editCard(1, []string{"internal/s/s.go"})
-	withText.SourcePath = "_lyx/plan/01-x.md"
+	withText.SourcePath = "_lym/plan/01-x.md"
 
 	tests := []struct {
 		name  string

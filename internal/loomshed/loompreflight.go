@@ -55,7 +55,7 @@ var _ shedengine.ShedProducer = (*loomPreflightProducer)(nil)
 // This wires the production import of internal/loomengine that the Told-Geometry guard test in
 // seam_enforcement_test.go already allowlists -- that import does not compromise this package's
 // Told-Geometry position, since the invariant's membership predicate is about a direct production
-// import of internal/lyxcwd and transitive is explicitly fine.
+// import of internal/lymcwd and transitive is explicitly fine.
 func NewLoomPreflight(name, statusPath, statusLockPath string, dirs configengine.Dirs) shedengine.ShedProducer {
 	return &loomPreflightProducer{name: name, statusPath: statusPath, statusLockPath: statusLockPath, dirs: dirs}
 }
@@ -104,7 +104,7 @@ func (p *loomPreflightProducer) Call(ctx context.Context) (shedengine.Outcome, s
 		reason := "seed is not a coherent fresh start: " + failures
 		for _, f := range report.Failures {
 			if f.Check == loomengine.CheckHalfFinished {
-				reason += fmt.Sprintf("; way forward: seed a new run, or \"lyx loom goto --to %s\" accepts this run as a deliberate re-entry", NameLoomPreflight)
+				reason += fmt.Sprintf("; way forward: seed a new run, or \"lym loom goto --to %s\" accepts this run as a deliberate re-entry", NameLoomPreflight)
 				break
 			}
 		}
@@ -114,7 +114,7 @@ func (p *loomPreflightProducer) Call(ctx context.Context) (shedengine.Outcome, s
 	return p.checkBatcher(ctx)
 }
 
-// retiredKeyWayForward completes the way forward a retired-key error already ends with, running either lyx config reconcile --apply, which migrates a worktree or local file, or lyx fabric reconcile for the repo default.
+// retiredKeyWayForward completes the way forward a retired-key error already ends with, running either lym config reconcile --apply, which migrates a worktree or local file, or lym fabric reconcile for the repo default.
 const retiredKeyWayForward = ", then re-step"
 
 // checkBatcher loads batcher.yaml through the layer stack under p.dirs with batcher.Active, as the Webster row does.

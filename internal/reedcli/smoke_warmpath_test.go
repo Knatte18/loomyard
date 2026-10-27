@@ -19,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -61,7 +61,7 @@ func writeReedConfigWithOverride(t *testing.T, worktree, key, value string) {
 func TestSmokeWarmPath(t *testing.T) {
 	t.Parallel()
 	tmuxPath := tmuxBinaryPath(t)
-	lyxExe := lyxbin.Build(t)
+	lymExe := lymbin.Build(t)
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	worktree := h.PrimeWorktree()
@@ -80,7 +80,7 @@ func TestSmokeWarmPath(t *testing.T) {
 	guid := addStrandIn(t, worktree, smokeReapLaunchCmd(), "--name", "warm-strand")
 
 	session := reedengine.SessionName(worktree)
-	statePath := filepath.Join(worktree, ".lyx", "reed.json")
+	statePath := filepath.Join(worktree, ".lym", "reed.json")
 
 	// WarmAddIsUnchanged pins the control case: warm add against a live session still yields exactly one session, one header pane, one live strand.
 	if !t.Run("WarmAddIsUnchanged", func(t *testing.T) {
@@ -116,7 +116,7 @@ func TestSmokeWarmPath(t *testing.T) {
 		return
 	}
 
-	// WarmAttachWritesNoState pins the third additive-only assertion: the modification time and bytes of .lyx/reed.json before a warm attach must be identical afterward.
+	// WarmAttachWritesNoState pins the third additive-only assertion: the modification time and bytes of .lym/reed.json before a warm attach must be identical afterward.
 	if !t.Run("WarmAttachWritesNoState", func(t *testing.T) {
 		before, err := os.ReadFile(statePath)
 		if err != nil {
@@ -127,7 +127,7 @@ func TestSmokeWarmPath(t *testing.T) {
 			t.Fatalf("stat %s: %v", statePath, err)
 		}
 
-		runReedCLINoFatal(t, lyxExe, worktree, 30*time.Second, "reed", "attach")
+		runReedCLINoFatal(t, lymExe, worktree, 30*time.Second, "reed", "attach")
 
 		after, err := os.ReadFile(statePath)
 		if err != nil {
@@ -170,7 +170,7 @@ func TestSmokeWarmPath(t *testing.T) {
 			t.Fatalf("no new pane found after the foreign split-window; panes=%v", listPaneLines(t, tmuxPath, socket, session))
 		}
 
-		runReedCLINoFatal(t, lyxExe, worktree, 30*time.Second, "reed", "attach")
+		runReedCLINoFatal(t, lymExe, worktree, 30*time.Second, "reed", "attach")
 
 		if !paneLiveOnSession(listPaneLines(t, tmuxPath, socket, session), foreignPaneID) {
 			t.Errorf("foreign pane %s not alive after a warm attach; want it untouched -- a warm attach must never reconcile", foreignPaneID)
@@ -179,7 +179,7 @@ func TestSmokeWarmPath(t *testing.T) {
 		return
 	}
 
-	// WarmAttachStillRefusesOnAnUnreadableStateFile pins that a warm attach still aborts on the JSON envelope with the state loader's diagnosis, exactly as it does today, when .lyx/reed.json becomes unparseable underneath a live session.
+	// WarmAttachStillRefusesOnAnUnreadableStateFile pins that a warm attach still aborts on the JSON envelope with the state loader's diagnosis, exactly as it does today, when .lym/reed.json becomes unparseable underneath a live session.
 	// This is the step that fails if the Status call is ever dropped from attach's pre-flight -- EnsureSession's own early return reads no state at all.
 	// It restores the state file afterwards, so the steps after it find the strand's state intact.
 	if !t.Run("WarmAttachStillRefusesOnAnUnreadableStateFile", func(t *testing.T) {
@@ -187,7 +187,7 @@ func TestSmokeWarmPath(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read %s: %v", statePath, err)
 		}
-		if err := os.WriteFile(statePath, []byte(`{"socket":"lyx-x","strands":[{"gu`), 0o600); err != nil {
+		if err := os.WriteFile(statePath, []byte(`{"socket":"lym-x","strands":[{"gu`), 0o600); err != nil {
 			t.Fatalf("truncate %s: %v", statePath, err)
 		}
 		t.Cleanup(func() {
@@ -201,7 +201,7 @@ func TestSmokeWarmPath(t *testing.T) {
 			t.Fatalf("warm attach with an unreadable reed.json = 0; want a failure, output: %s", attachOut.String())
 		}
 		unreadable := envelopeError(t, attachOut.Bytes())
-		for _, want := range []string{"unreadable", "reed.json", "lyx reed down"} {
+		for _, want := range []string{"unreadable", "reed.json", "lym reed down"} {
 			if !strings.Contains(unreadable, want) {
 				t.Errorf("warm attach error = %s; want it to contain %q (Status's state-loader diagnosis)", unreadable, want)
 			}
@@ -216,7 +216,7 @@ func TestSmokeWarmPath(t *testing.T) {
 	t.Run("WarmAttachSurvivesAConfigErrorButColdStillRefuses", func(t *testing.T) {
 		writeReedConfigWithOverride(t, worktree, "mouse", "sideways")
 
-		warmOutput := runReedCLINoFatal(t, lyxExe, worktree, 30*time.Second, "reed", "attach")
+		warmOutput := runReedCLINoFatal(t, lymExe, worktree, 30*time.Second, "reed", "attach")
 		if strings.Contains(warmOutput, "invalid mouse value") {
 			t.Errorf("warm attach output = %q; want it NOT to refuse with the config error -- the liveness probe must precede the boot path's validation block for an already-live session", warmOutput)
 		}

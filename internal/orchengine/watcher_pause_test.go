@@ -64,7 +64,7 @@ func (e *watchEnv) pauseRecord() pauserecord.Record {
 // orchMarker writes a network operation marker for the orch's strand beside the record.
 func (e *watchEnv) orchMarker() {
 	e.t.Helper()
-	strand, err := agentname.Format("lyx", "", agentname.RoleOrch)
+	strand, err := agentname.Format("lym", "", agentname.RoleOrch)
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func assertPauseLogs(t *testing.T, logs string, wantInfo, wantPicker int) {
 }
 
 func TestWatcher_HubPauseInterruptsAtGraceEndHoldsAndQueuesTheResumeLine(t *testing.T) {
-	orchCaller, err := agentname.Format("lyx", "", agentname.RoleOrch)
+	orchCaller, err := agentname.Format("lym", "", agentname.RoleOrch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +364,7 @@ func TestWatcher_HubPauseInterruptsAtGraceEndHoldsAndQueuesTheResumeLine(t *test
 			}
 		}},
 		{"a beam orch's watcher settles on its own strand and interrupts for another orch's pause", func(t *testing.T, e *watchEnv) {
-			beamCaller, err := agentname.Format("lyx", "b", agentname.RoleOrch)
+			beamCaller, err := agentname.Format("lym", "b", agentname.RoleOrch)
 			if err != nil {
 				t.Fatal(err)
 			}

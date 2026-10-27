@@ -14,11 +14,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/patternlint"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -152,11 +152,11 @@ gates:
 
 // roundCall spells the site's own call, the `code-burler-fix` key's, which the fix rows tell the gate as its verify command.
 func roundCall() string {
-	return "lyx gate test --wait --gate code-burler-fix"
+	return "lym gate test --wait --gate code-burler-fix"
 }
 
 // roundGateFixture is a repo holding a two-package Go module, its own gate.yaml and a verify directory outside the worktree.
-// The told verify command is roundCall, which runs the built `lyx` over the worktree's gate.yaml.
+// The told verify command is roundCall, which runs the built `lym` over the worktree's gate.yaml.
 type roundGateFixture struct {
 	worktree, verifyDir string
 	command             string
@@ -196,20 +196,20 @@ func (f roundGateFixture) diffGate(command, mergeBase func() (string, error), tr
 
 // TestVerifyGate_RoundScenario drives NewVerifyGate over a repo holding a small Go module and its gate.yaml, through the told command, the lint and the refusals.
 // The steps run in order against the commits the steps before left, and the last one dirties the worktree.
-// The told command runs the built `lyx`, so the test puts a copy of the built binary first on `PATH`; it is not parallel because `t.Setenv` sets that process-global state.
+// The told command runs the built `lym`, so the test puts a copy of the built binary first on `PATH`; it is not parallel because `t.Setenv` sets that process-global state.
 func TestVerifyGate_RoundScenario(t *testing.T) {
-	lyxbin.PutFirstOnPath(t)
+	lymbin.PutFirstOnPath(t)
 
 	f := roundGateFixture{worktree: t.TempDir(), verifyDir: t.TempDir(), command: roundCall()}
 	gitkit.Git(t, f.worktree, "init", "-b", "main")
 	gitkit.Git(t, f.worktree, "config", "user.email", "test@test.com")
 	gitkit.Git(t, f.worktree, "config", "user.name", "Test")
-	// The runs the round call records under the worktree's .lyx directory would otherwise dirty the tree the next call verifies.
+	// The runs the round call records under the worktree's .lym directory would otherwise dirty the tree the next call verifies.
 	exclude := filepath.Join(f.worktree, ".git", "info", "exclude")
 	if err := os.MkdirAll(filepath.Dir(exclude), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(exclude, []byte(lyxdirs.DotLyxDirName+"/\n"), 0o644); err != nil {
+	if err := os.WriteFile(exclude, []byte(lymdirs.DotLymDirName+"/\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	configFile := configengine.ConfigFile(f.worktree, "gate")
@@ -379,7 +379,7 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 	if !t.Run("fails with the file and line of a misplaced marker", func(t *testing.T) {
 		// The key's call carries no --base, so the guard scan of a narrowed run is out of reach until the key's diff base is read from the green record.
 		t.Skip("the key's call carries no --base, so no guard scan runs over the diff")
-		f.commitFiles(t, map[string]string{"a/a_test.go": "package a\n\nimport \"testing\"\n\n//lyx:guard\nvar misplaced = 1\n\nfunc TestA(t *testing.T) {}\n"})
+		f.commitFiles(t, map[string]string{"a/a_test.go": "package a\n\nimport \"testing\"\n\n//lym:guard\nvar misplaced = 1\n\nfunc TestA(t *testing.T) {}\n"})
 		passed, findings := f.runGate(t, nil)
 		if passed || !strings.Contains(findings, "a/a_test.go:5") || !strings.Contains(findings, "directly above") {
 			t.Errorf("gate() passed = %v, findings = %q; want a failure naming a/a_test.go:5 and the way to place the marker", passed, findings)

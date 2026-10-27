@@ -4,7 +4,7 @@
 //	go run ./tools/tokencount
 //	go run ./tools/tokencount -last 10
 //	go run ./tools/tokencount -detail bugfix-sessions bugfix-webster
-//	go run ./tools/tokencount -hub ~/Code/loomyard-LYXHUB -out .scratch/tokens.md test-suite-prune-core
+//	go run ./tools/tokencount -hub ~/Code/loomyard-LYMHUB -out .scratch/tokens.md test-suite-prune-core
 //
 // The two launchers beside this file, tokencount.sh and tokencount.cmd, are the intended
 // entry points: each runs from the repository root and writes
@@ -96,7 +96,7 @@
 // A spread is the 75th percentile of the ratios over the 25th, both interpolated linearly between the closest ranks.
 //
 // The calibration section also ends with a "Merriam fixed context" subsection, which re-measures websterengine's merriamFixedContext.
-// A Merriam session is a webster-role session, and its start context is the input + cache write + cache read of the first assistant message after the result of its read of the prompt file named by the launch line lyx types.
+// A Merriam session is a webster-role session, and its start context is the input + cache write + cache read of the first assistant message after the result of its read of the prompt file named by the launch line lym types.
 // For each run's first Merriam session by start time, the subsection gives the measured start, the line count of the texts MerriamBase counts but the plan overview (the Webster session engine's instruction files, the Master template and the rendered directive; the engine is the one that located the run's first webster-role session, and every webster-role session of a run is assumed to have run under one engine; an untracked instruction file is assumed absent), and the fixed context left once those lines are priced at context_per_line.
 // Below the table it gives the median and the 25th and 75th percentiles of the fixed figures beside the current constant.
 // A session with no measured start, a run whose texts cannot be reconstructed, and every later session of a run (a resume, a refresh or a re-launch starts with prior conversation or a compaction summary in context) are listed with their reasons.
@@ -153,7 +153,7 @@
 // "All runs" sums the table per producer over the runs that have one.
 //
 // Right after the "All runs" section, before the per-run sections, comes the "Orchestrator" section: the hub orchestrator's own session, which runs in the prime and spans many runs, charged to the counted runs.
-// An orch session is a session in the prime's project directory whose role is orch (ly:orch, lyxhub:orch), and its sub-agents, the orch's review, gate and stop forks, count as its forks;
+// An orch session is a session in the prime's project directory whose role is orch (ly:orch, lymhub:orch), and its sub-agents, the orch's review, gate and stop forks, count as its forks;
 // usage is counted once per message id across them.
 // A run's active window runs from its earliest to its latest user or assistant line over all its transcripts, and only orch messages between the earliest window start and the latest window end are counted, so the orch's older history stays out.
 // An orch sub-agent whose first user prompt names exactly one counted run slug goes wholly to that run;
@@ -173,7 +173,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 )
 
@@ -219,7 +219,7 @@ func run(args []string, stdout io.Writer, reads ReadSet) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	wd, err := lyxcwd.Getwd()
+	wd, err := lymcwd.Getwd()
 	if err != nil {
 		return err
 	}
@@ -230,7 +230,7 @@ func run(args []string, stdout io.Writer, reads ReadSet) error {
 	readable, unreadable := reads.engines()
 	slugs := fs.Args()
 	if *weft == "" {
-		loc, err := lyxcwd.Resolve(wd)
+		loc, err := lymcwd.Resolve(wd)
 		if err != nil {
 			return err
 		}

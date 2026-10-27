@@ -5,7 +5,7 @@ You hand it a task, and it can discuss the task with you before it writes a plan
 It then implements the plan batch by batch, has independent agents review every artifact, and lands the result on the parent branch itself.
 Each task runs in its own isolated git worktree pair, and many tasks can run at once.
 
-At its center is **`lyx`**, a single Go binary (LoomYard eXecutable) that owns the task board, the git topology, every phase transition, and every agent launch.
+At its center is **`lym`**, a single Go binary (LoomYard eXecutable) that owns the task board, the git topology, every phase transition, and every agent launch.
 
 **LoomYard is developed by LoomYard.**
 This repository's own tasks are discussed, planned, implemented, reviewed, and landed by its own pipeline, and that is its daily workload.
@@ -80,16 +80,16 @@ Resume, pause, and crash recovery work uniformly at producer granularity.
 The phase engine only moves one producer at a time;
 what calls it is a choice of driver.
 
-- **`lyx shed step`** — drive one producer forward and report a JSON envelope naming its outcome and the trace it wrote.
+- **`lym shed step`** — drive one producer forward and report a JSON envelope naming its outcome and the trace it wrote.
   This is the primitive every driver is built on.
-- **the loom driver** — a Claude Code session launched from the driver stencil (`contracts/stencils/shed/shed-template-driver.md`) that drives a run by repeated `lyx shed step`, reads each envelope and trace, repairs what it can, re-steps after a transient failure, and escalates what it cannot.
+- **the loom driver** — a Claude Code session launched from the driver stencil (`contracts/stencils/shed/shed-template-driver.md`) that drives a run by repeated `lym shed step`, reads each envelope and trace, repairs what it can, re-steps after a transient failure, and escalates what it cannot.
   It carries no phase knowledge: which recipe runs is a property of the run's seed alone.
-  `lyx loom start` bootstraps a task worktree and launches its driver session.
-- **`lyx batten`** — drives a task worktree's whole lifecycle from the hub's main worktree as one run of its own: create the worktree pair, seed the task's run, watch it to a terminal state, land it into the prime, tear the pair down.
-- **`lyx orch`** — hosts the hub orchestrator: one long-lived Claude session that dispatches and supervises runs.
+  `lym loom start` bootstraps a task worktree and launches its driver session.
+- **`lym batten`** — drives a task worktree's whole lifecycle from the hub's main worktree as one run of its own: create the worktree pair, seed the task's run, watch it to a terminal state, land it into the prime, tear the pair down.
+- **`lym orch`** — hosts the hub orchestrator: one long-lived Claude session that dispatches and supervises runs.
   A detached watcher reads its context usage after each turn;
   past a threshold, while idle, it has the session write a note, then clears it and resumes it from that note, or compacts it in place, so the orchestrator outlives any single context window.
-  `lyx orch refresh` requests the clear cycle and `lyx orch distill` the compact cycle; both write the note first.
+  `lym orch refresh` requests the clear cycle and `lym orch distill` the compact cycle; both write the note first.
 
 The split is the same principle again: the engine decides *what* runs next, and the LLM layers above it only decide how to recover when a step fails.
 
@@ -124,7 +124,7 @@ Your repository holds the code;
 a companion repository carries everything LoomYard generates.
 Every code worktree gets a records sibling on a matching branch, wired together on disk, so state written while working in a worktree lands in the records without a single LoomYard file in your repo's history or `.gitignore`.
 
-Together the two are the **Fabric**, and `lyx fabric` is the seam that moves both sides as one: `add`/`remove` a worktree pair, `checkout` both branches together, `pull`, `status`, `diff`, `merge`, and `reconcile` a pair that drifted back onto the recorded layout.
+Together the two are the **Fabric**, and `lym fabric` is the seam that moves both sides as one: `add`/`remove` a worktree pair, `checkout` both branches together, `pull`, `status`, `diff`, `merge`, and `reconcile` a pair that drifted back onto the recorded layout.
 Every git operation LoomYard's own code performs goes through the `fabric` engine — never raw git, and never an agent.
 An agent commits its own code and nothing else;
 the records are committed by Go, at boundaries the orchestrator controls.
@@ -148,9 +148,9 @@ pick the task up on another machine and it resumes where it stopped, and two tas
 This repository's records side is [loomyard-weft](https://github.com/Knatte18/loomyard-weft), public, so the runs that built LoomYard can be read artifact by artifact.
 
 - **The board** — the `main` branch is the task board.
-  Its [README](https://github.com/Knatte18/loomyard-weft/blob/main/README.md) is the board rendered by `lyx board`: running, ready, and blocked tasks with their dependencies, and where each run stands.
+  Its [README](https://github.com/Knatte18/loomyard-weft/blob/main/README.md) is the board rendered by `lym board`: running, ready, and blocked tasks with their dependencies, and where each run stands.
   `board.json` is the store, and each `design-<slug>.md` is the design of a task not yet built.
-- **Landed runs** — when a task lands, its records branch is deleted and an [`archive/<slug>/<tip>` tag](https://github.com/Knatte18/loomyard-weft/tags) keeps its whole run under `_lyx/`.
+- **Landed runs** — when a task lands, its records branch is deleted and an [`archive/<slug>/<tip>` tag](https://github.com/Knatte18/loomyard-weft/tags) keeps its whole run under `_lym/`.
   - `discussion/decision-record.md` — scope, decisions, and what is out of scope.
   - `plan/` — the plan's cards.
   - `reviews/` — each review segment's rounds: reviewer findings, fixer report, judge verdict, token usage.
@@ -158,7 +158,7 @@ This repository's records side is [loomyard-weft](https://github.com/Knatte18/lo
   - `loom/` — the agents' friction reflection.
   - `shed/<slug>/drive-reports/` — the driver's reports.
 
-  For example, [`archive/driver-arbiter`](https://github.com/Knatte18/loomyard-weft/tree/archive/driver-arbiter/c1dbcb49a0f5/_lyx) is the run that built the driver arbiter.
+  For example, [`archive/driver-arbiter`](https://github.com/Knatte18/loomyard-weft/tree/archive/driver-arbiter/c1dbcb49a0f5/_lym) is the run that built the driver arbiter.
 - **Runs in flight** — a records branch per running task, and the records branch of `main`, with the module configs and batten's status for each task it ran.
 
 ## Engineering discipline
@@ -168,16 +168,16 @@ This repository's records side is [loomyard-weft](https://github.com/Knatte18/lo
 - **Told, never derived.**
   Every layer from `reed` up is handed its geometry — absolute, already-resolved paths — instead of computing it, which is what lets the same producer run inside a hub or against a plain checkout (`--target-dir`) with no hub at all.
 - **Prompts are versioned contracts.**
-  Every prompt an agent reads is a stencil under [`contracts/stencils/`](contracts/stencils/), embedded as a default and read from the hub at call time, so an operator can edit a live prompt without a rebuild and `lyx stencil` shows the drift.
+  Every prompt an agent reads is a stencil under [`contracts/stencils/`](contracts/stencils/), embedded as a default and read from the hub at call time, so an operator can edit a live prompt without a rebuild and `lym stencil` shows the drift.
 - **Correctness by tool design, not by recall.**
-  A `lyx` command makes the correct path the path of least resistance and makes drift detectable, instead of relying on an agent to remember a rule.
+  A `lym` command makes the correct path the path of least resistance and makes drift detectable, instead of relying on an agent to remember a rule.
 - **Crucible.**
   Modules that drive live tmux and real agents are hardened by [crucible](crucible/README.md): serial, model-rotating review-and-fix rounds against the live substrate, each finding proved by sabotage — revert the fix, watch the regression test fail, restore.
 
 ## Modules
 
-Every user-facing module is a `lyx <module>` namespace;
-`lyx --help` lists them, and every command takes `--help` (or `--json` for structured help).
+Every user-facing module is a `lym <module>` namespace;
+`lym --help` lists them, and every command takes `--help` (or `--json` for structured help).
 Commands print a JSON envelope: `{"ok":true, ...}` or `{"ok":false,"error":"..."}`.
 
 | Module | What it does |
@@ -203,13 +203,13 @@ Commands print a JSON envelope: `{"ok":true, ...}` or `{"ok":false,"error":"..."
 ## Getting started
 
 ```bash
-go build ./cmd/lyx                                              # build the binary
-lyx fabric clone --shortname <shortname> <records-url> <code-url>  # create a hub: both repos, wiring, config, board
-lyx fabric add <slug>                                           # a task worktree pair
-cd <hub>/<slug> && lyx loom start                               # bootstrap the task; "lyx reed attach" shows its session
+go build ./cmd/lym                                              # build the binary
+lym fabric clone --shortname <shortname> <records-url> <code-url>  # create a hub: both repos, wiring, config, board
+lym fabric add <slug>                                           # a task worktree pair
+cd <hub>/<slug> && lym loom start                               # bootstrap the task; "lym reed attach" shows its session
 ```
 
-`./update-plugins.sh` (`update-plugins.cmd` on Windows) is the only route to production: from a clean tree pushed to `origin/main`, it installs the plugins and builds `lyx` into the Go bin dir.
+`./update-plugins.sh` (`update-plugins.cmd` on Windows) is the only route to production: from a clean tree pushed to `origin/main`, it installs the plugins and builds `lym` into the Go bin dir.
 `./deploy-dev` builds the working tree into `.dev-bin` for testing without touching production.
 
 The [sandbox Hub](docs/sandbox-howto.md) is a bench for running the real binary end to end against a throwaway hub, with per-module suites an agent drives and reports findings from.
@@ -217,7 +217,7 @@ The [sandbox Hub](docs/sandbox-howto.md) is a bench for running the real binary 
 ### Requirements
 
 - [Claude Code](https://claude.ai/code), logged in
-- Go (the version in `go.mod`) and a C toolchain — `lyx` links quarry's tree-sitter grammars through cgo
+- Go (the version in `go.mod`) and a C toolchain — `lym` links quarry's tree-sitter grammars through cgo
 - Git 2.42+
 - tmux (on Windows, psmux)
 - A GitHub token for `selfreport` and the board's issue intake: `GH_TOKEN`, `GITHUB_TOKEN`, or an authenticated `gh` CLI

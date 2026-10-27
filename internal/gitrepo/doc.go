@@ -21,10 +21,10 @@
 // but the package's test-enforced no-`fatal:`-leak surface forbids folding git's stderr into their messages, which is what run's raw form lets them keep working around.
 // The geometry reads — GitDir and CommonDir — are the one local read beside go-git:
 // they resolve the checkout's `.git` entry through internal/dotgit once per handle, spawning nothing.
-// The worktree root is not among them: that query belongs to internal/lyxcwd alone.
+// The worktree root is not among them: that query belongs to internal/lymcwd alone.
 // Every other CLI-bound method — StageAndCommit, StageAllAndCommit, Push, PushCoalesced, ResetHard, ResetKeep, CherryPick, CherryPickAbort, IsAncestor, CommitsNotIn, BlameLines (go-git's blame walks the whole history of the file per call and has no first-parent mode), UpdateRemoteBranchLeased, HasUnpulled, and HasUnpushed (measured and reverted from a go-git ancestry walk; see HasUnpushed's own godoc in push.go for the reversal criterion) — sits on runChecked.
 // See PATTERN-gitrepo-client-boundary for the enforced, exhaustive version of this split and the review obligation any new CLI call inside this package carries.
-// gitexec itself stays a low-level package gitrepo builds on, importing no gitrepo or feature package, regardless of which side of the boundary a gitrepo method is on — it has roughly seventy non-test call sites across gitrepo, fabricengine, fabriccli, lyxcwd, and websterengine,
+// gitexec itself stays a low-level package gitrepo builds on, importing no gitrepo or feature package, regardless of which side of the boundary a gitrepo method is on — it has roughly seventy non-test call sites across gitrepo, fabricengine, fabriccli, lymcwd, and websterengine,
 // and gitrepo remains one of its many consumers, not merged into it.
 //
 // Some outcome classification still matches git's own untranslated
@@ -251,7 +251,7 @@
 //   - go-git's hard reset deletes untracked and gitignored files. Against
 //     identical fixtures, the CLI leaves untracked and gitignored files in
 //     place; go-git's Worktree.Reset(HardReset) removes every one of them
-//     with no error. In a lyx checkout that would silently destroy .lyx/,
+//     with no error. In a lym checkout that would silently destroy .lym/,
 //     .scratch/, and build output — a data-loss path inside ResetHard, which
 //     fabric's history-recovery flow builds on. ResetHard stays CLI-bound.
 //   - Checkout and Pull are non-atomic: go-git moves HEAD before the dirty
@@ -326,7 +326,7 @@
 //     goes stale the moment git's own auto-gc heuristics change.
 //   - extensions.worktreeConfig makes go-git refuse to open a repo outright,
 //     with its own typed error (checkable via errors.Is against go-git's
-//     sentinel, see goGit's doc). Not set on this repo today and no lyx code
+//     sentinel, see goGit's doc). Not set on this repo today and no lym code
 //     path sets it, but a worktree created in a way that enables it later
 //     must surface as a clear typed error from gitrepo, never a confusing
 //     downstream nil — this is why goGit wraps rather than swallows it.

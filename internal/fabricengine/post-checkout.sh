@@ -59,7 +59,7 @@ EXPECTED_WEFT_BRANCH="${WARP_BRANCH}-weft"
 
 # Warn when they differ; exit 0 always (non-blocking).
 if [ "$EXPECTED_WEFT_BRANCH" != "$WEFT_BRANCH" ]; then
-    echo "fabric: warp/weft out of sync — run \`lyx fabric checkout <branch>\` to re-sync, or \`lyx fabric reconcile\` to inspect" >&2
+    echo "fabric: warp/weft out of sync — run \`lym fabric checkout <branch>\` to re-sync, or \`lym fabric reconcile\` to inspect" >&2
     echo "  warp: $WARP_BRANCH (expects weft: $EXPECTED_WEFT_BRANCH)" >&2
     echo "  weft: $WEFT_BRANCH" >&2
 fi

@@ -4,8 +4,8 @@
 // told preflight.Mode -- never through the real pre-run -- so no case spawns a process or resolves
 // cwd.
 //
-// The hub-mode cases below hand wire a fictional, on-disk-absent *lyxcwd.Location:
-// every module config load wire performs (shuttleengine.LoadConfig, lenses.Load, reedengine.LoadConfig) degrades to its embedded template on a proven-absent _lyx/ directory,
+// The hub-mode cases below hand wire a fictional, on-disk-absent *lymcwd.Location:
+// every module config load wire performs (shuttleengine.LoadConfig, lenses.Load, reedengine.LoadConfig) degrades to its embedded template on a proven-absent _lym/ directory,
 // so a fictional anchor path drives the whole hub branch without touching disk.
 // The one entry each hub case creates is the worktree's .git directory, which hubgeom.ReedGeometry stats to tell the prime from a task worktree.
 //
@@ -61,7 +61,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/seatengine"
@@ -72,11 +72,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
-// hubLocation returns a *lyxcwd.Location standing in for a real hub's prime.
+// hubLocation returns a *lymcwd.Location standing in for a real hub's prime.
 // Its only filesystem preparation is the worktree's .git directory -- see the file header for why wire's hub branch tolerates the rest being absent.
-func hubLocation(t *testing.T, hub, worktreeName, anchorRel string) *lyxcwd.Location {
+func hubLocation(t *testing.T, hub, worktreeName, anchorRel string) *lymcwd.Location {
 	t.Helper()
-	loc := &lyxcwd.Location{HubPath: hub, WorktreeName: worktreeName, AnchorRel: anchorRel}
+	loc := &lymcwd.Location{HubPath: hub, WorktreeName: worktreeName, AnchorRel: anchorRel}
 	if err := os.MkdirAll(filepath.Join(loc.WorktreePath(), ".git"), 0o755); err != nil {
 		t.Fatalf("MkdirAll(.git) = %v; want nil", err)
 	}
@@ -143,7 +143,7 @@ func TestWire_SelectsModeAndWiresItsFields(t *testing.T) {
 
 	writeHubLanguageFile := func(t *testing.T, hub, contents string) {
 		t.Helper()
-		configDir := filepath.Join(fabricengine.BoardDir(hub), "_lyx", "config")
+		configDir := filepath.Join(fabricengine.BoardDir(hub), "_lym", "config")
 		if err := os.MkdirAll(configDir, 0o755); err != nil {
 			t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 		}
@@ -180,7 +180,7 @@ func TestWire_SelectsModeAndWiresItsFields(t *testing.T) {
 		if err == nil {
 			t.Fatal("wire() = nil; want a refusal of the empty skills entry")
 		}
-		for _, want := range []string{"skills", "lyx config language"} {
+		for _, want := range []string{"skills", "lym config language"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("wire() error = %q; want it to contain %q", err, want)
 			}
@@ -364,7 +364,7 @@ func TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError(t *tes
 
 	// Seed a reed config under the state directory this invocation derived, with the multiplexer
 	// key pointed at a path that is never created, so no process is ever spawned. MkdirAll, not
-	// os.Mkdir: the first wire call above has already created this state directory's _lyx tree --
+	// os.Mkdir: the first wire call above has already created this state directory's _lym tree --
 	// ResolveStandalone seeds the standalone stencils and specs directories beneath it, and
 	// internal/stencilstore's reconcile creates their parents on the way -- so a single-level Mkdir
 	// would fail against an already-existing directory before the config is ever written.

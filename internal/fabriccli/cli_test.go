@@ -19,18 +19,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// lyxFabricCLISubprocessCwdEnv is the env var that gates this file's re-exec entry point below: when set, the process is not a normal `go test` run but a subprocess spawned by the cwd-fallback step of TestRunCLI_CleanHubScenario, deliberately standing in a target directory via exec.Command's Dir field so fabriccli.RunCLI's Getwd fallback can be observed for real, without any t.Chdir/os.Chdir call anywhere in this file — this file is on the cwdmutation guard's subject set in cmd/lyx/cwdmutation_test.go and carries no exemption.
-const lyxFabricCLISubprocessCwdEnv = "LYX_FABRICCLI_SUBPROCESS_CWD"
+// lymFabricCLISubprocessCwdEnv is the env var that gates this file's re-exec entry point below: when set, the process is not a normal `go test` run but a subprocess spawned by the cwd-fallback step of TestRunCLI_CleanHubScenario, deliberately standing in a target directory via exec.Command's Dir field so fabriccli.RunCLI's Getwd fallback can be observed for real, without any t.Chdir/os.Chdir call anywhere in this file — this file is on the cwdmutation guard's subject set in cmd/lym/cwdmutation_test.go and carries no exemption.
+const lymFabricCLISubprocessCwdEnv = "LYM_FABRICCLI_SUBPROCESS_CWD"
 
 // init intercepts the subprocess-mode re-exec before testing.Main ever runs, so the child process's stdout carries only fabriccli.RunCLI's own JSON output — never the "=== RUN"/"--- PASS" noise `go test` would otherwise interleave with it, which would defeat the byte-for-byte comparison that step performs against fabriccli.RunCLIIn's output.
 func init() {
-	if os.Getenv(lyxFabricCLISubprocessCwdEnv) == "" {
+	if os.Getenv(lymFabricCLISubprocessCwdEnv) == "" {
 		return
 	}
 	var out bytes.Buffer
@@ -132,13 +132,13 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 		t.Errorf("RunCLI(clone) warp_binding_recorded = %v; want true", result.Raw["warp_binding_recorded"])
 	}
 
-	// The prime warp worktree's structural junctions (_lyx and .lyx) must be
-	// wired: .lyx is structural (structuralNeverCommittedDirs) and is wired by
+	// The prime warp worktree's structural junctions (_lym and .lym) must be
+	// wired: .lym is structural (structuralNeverCommittedDirs) and is wired by
 	// every clone regardless of pathspec, so it is checked here rather than
 	// an optional config-driven name, which a genuinely empty bare weft
 	// clone (zero commits, no pre-existing weft:main fabric.yaml) never wires.
 	primeCwd := filepath.Join(hubPath, "clonecli-warp", "backend")
-	for _, name := range []string{lyxdirs.LyxDirName, lyxdirs.DotLyxDirName} {
+	for _, name := range []string{lymdirs.LymDirName, lymdirs.DotLymDirName} {
 		link := filepath.Join(primeCwd, name)
 		isLink, err := fslink.IsLink(link)
 		if err != nil {
@@ -151,14 +151,14 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 	}
 
 	// The repo-wide fabric.yaml and warp binding must be committed onto weft:main (the board worktree), not merely present on disk.
-	// The .lyx-anchor marker is tracked at the root of the prime's weft worktree and absent from the board.
+	// The .lym-anchor marker is tracked at the root of the prime's weft worktree and absent from the board.
 	// This checks tracked-ness directly (git ls-files) rather than a blanket `git status --porcelain` cleanliness assertion:
 	// CommitWeftAt/PushWeftAt bypass ensureWeftLockDir's exclude-seeding (by design — see recordsgit.go's CommitWeftAt doc comment),
 	// so gitrepo's own .gitrepo-push.lock can legitimately surface as untracked dirt on the board worktree;
 	// that is a pre-existing gap in boardengine.Sync's own identical CommitWeftAt/PushWeftAt pairing, not something this batch's clone orchestration introduces or is responsible for fixing.
 	boardDir := fabricengine.BoardDir(hubPath)
 	for _, relPath := range []string{
-		filepath.Join(lyxdirs.LyxDirName, "config", "fabric.yaml"),
+		filepath.Join(lymdirs.LymDirName, "config", "fabric.yaml"),
 		fabricengine.WarpBindingFileName,
 	} {
 		tracked := strings.TrimSpace(gitOutputCLI(t, boardDir, "ls-files", "--", filepath.ToSlash(relPath)))
@@ -167,10 +167,10 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 		}
 	}
 	primeWeft := weftname.SiblingPath(hubPath, "clonecli-warp")
-	if tracked := strings.TrimSpace(gitOutputCLI(t, primeWeft, "ls-files", "--", lyxcwd.AnchorFileName)); tracked != lyxcwd.AnchorFileName {
-		t.Errorf("prime weft tracks %q for the anchor marker; want %q", tracked, lyxcwd.AnchorFileName)
+	if tracked := strings.TrimSpace(gitOutputCLI(t, primeWeft, "ls-files", "--", lymcwd.AnchorFileName)); tracked != lymcwd.AnchorFileName {
+		t.Errorf("prime weft tracks %q for the anchor marker; want %q", tracked, lymcwd.AnchorFileName)
 	}
-	if tracked := strings.TrimSpace(gitOutputCLI(t, boardDir, "ls-files", "--", lyxcwd.AnchorFileName)); tracked != "" {
+	if tracked := strings.TrimSpace(gitOutputCLI(t, boardDir, "ls-files", "--", lymcwd.AnchorFileName)); tracked != "" {
 		t.Errorf("board tracks %q for the anchor marker; want none", tracked)
 	}
 
@@ -264,9 +264,9 @@ func TestRunCLI_CloneOfAnUnmigratedWeftLeavesTheMarkerToTheWalk(t *testing.T) {
 	if formerLoom == loomengine.ConfigTemplate() {
 		t.Fatal("the loom template holds no discussion_lenses: twill-discussion line to take its former value")
 	}
-	gitkit.CommitFile(t, seed, lyxcwd.AnchorFileName, "backend\n", "record the anchor")
-	gitkit.CommitFile(t, seed, filepath.Join(lyxdirs.LyxDirName, "config", "fabric.yaml"), fabricengine.ConfigTemplate(), "full board fabric.yaml")
-	gitkit.CommitFile(t, seed, filepath.Join("backend", lyxdirs.LyxDirName, "config", "loom.yaml"), formerLoom, "full prime loom.yaml")
+	gitkit.CommitFile(t, seed, lymcwd.AnchorFileName, "backend\n", "record the anchor")
+	gitkit.CommitFile(t, seed, filepath.Join(lymdirs.LymDirName, "config", "fabric.yaml"), fabricengine.ConfigTemplate(), "full board fabric.yaml")
+	gitkit.CommitFile(t, seed, filepath.Join("backend", lymdirs.LymDirName, "config", "loom.yaml"), formerLoom, "full prime loom.yaml")
 	gitkit.MustRun(t, seed, "git", "push", "-u", "origin", "main")
 
 	var out bytes.Buffer
@@ -284,7 +284,7 @@ func TestRunCLI_CloneOfAnUnmigratedWeftLeavesTheMarkerToTheWalk(t *testing.T) {
 	if tracked := strings.TrimSpace(gitOutputCLI(t, boardDir, "ls-files", "--", markerRel)); tracked != markerRel {
 		t.Errorf("board tracks %q for the base-sparse marker; want %q", tracked, markerRel)
 	}
-	const walkCommit = "lyx: reconcile hub-wide config for build"
+	const walkCommit = "lym: reconcile hub-wide config for build"
 	if added := strings.TrimSpace(gitOutputCLI(t, boardDir, "log", "--diff-filter=A", "--format=%s", "--", markerRel)); !strings.HasPrefix(added, walkCommit) {
 		t.Errorf("commit adding the base-sparse marker = %q; want one starting %q", added, walkCommit)
 	}
@@ -301,9 +301,9 @@ func TestRunCLI_CloneOfAnUnmigratedWeftLeavesTheMarkerToTheWalk(t *testing.T) {
 	if strings.Contains(string(primeLoom), "discussion_lenses") {
 		t.Errorf("prime loom.yaml still holds discussion_lenses after the walk; got %q", primeLoom)
 	}
-	primeLocation, err := lyxcwd.Resolve(primeCwd)
+	primeLocation, err := lymcwd.Resolve(primeCwd)
 	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(%s): %v", primeCwd, err)
+		t.Fatalf("lymcwd.Resolve(%s): %v", primeCwd, err)
 	}
 	config, err := loomengine.LoadConfig(fabricengine.ConfigDirs(primeLocation), "loom")
 	if err != nil {

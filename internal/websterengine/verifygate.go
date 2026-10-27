@@ -195,7 +195,7 @@ type verifyGateSeams struct {
 // it passes without verifying when outcome.yaml names an outcome other than done;
 // it fails with the dirty paths when the tree is not clean;
 // once a pre-fix head is recorded, it fails `Terminal` when a commit above it is neither a non-merge commit nor a clean parent merge, and otherwise records those commits in the notes;
-// it renders the hub's `webster` gate call over the whole tree from the told gate config, and returns the config's refusal, which names `lyx config gate`, as its error;
+// it renders the hub's `webster` gate call over the whole tree from the told gate config, and returns the config's refusal, which names `lym config gate`, as its error;
 // otherwise it runs that call through verifytree.Verify, told geom.VerifyHold on the first run and the rerun alike, reruns it once on a failure, and passes a flaky failure whose rerun passed.
 // A run that timed out or hung, as classifyHang reads its log and exit code, is not re-run: it fails at once.
 // A failure that survives returns findings, and the first failure of any kind records HEAD as the pre-fix head.
@@ -485,7 +485,7 @@ func readVerifyGateReport(path string) (VerifyGateReport, error) {
 // After a CPU watchdog quit the reason also names the window and the way forward for a package that is CPU-bound but healthy, then reentry.
 func verifyGateStuckReason(reportsDir string, gate *shuttleengine.GateOutcome, reentry string) string {
 	if gate.Reason != "" {
-		return "verify gate failed: " + oneLine(gate.Reason) + "; " + wayForwardSteps("lyx webster reset --to pre-fix", reentry)
+		return "verify gate failed: " + oneLine(gate.Reason) + "; " + wayForwardSteps("lym webster reset --to pre-fix", reentry)
 	}
 	report, err := readVerifyGateReport(VerifyGateReportPath(reportsDir))
 	if err != nil {

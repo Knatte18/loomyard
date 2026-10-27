@@ -49,7 +49,7 @@ func TestWalk_Filters(t *testing.T) {
 		"sub/b.go":          "package b",
 		"sub/deep/c.go":     "package c",
 		"sub/notes.md":      "x",
-		"_lyx/skip.go":      "package s",
+		"_lym/skip.go":      "package s",
 		".git/skip.go":      "package s",
 		"pkg/testdata/s.go": "package s",
 		"my_testdata/s.go":  "package s",

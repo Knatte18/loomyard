@@ -16,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -45,14 +45,14 @@ func TestBeamForkPrecondition(t *testing.T) {
 			name:           "AbsentBeamPairOffOriginNamesTheBeamCreate",
 			entryFound:     true,
 			wantUnmet:      []string{"m belongs to beam b", "pair is not on this machine"},
-			wantWayForward: []string{`"lyx beam create b"`, `"lyx batten run m"`},
+			wantWayForward: []string{`"lym beam create b"`, `"lym batten run m"`},
 		},
 		{
 			name:           "AbsentBeamPairOnOriginNamesTheAdopt",
 			entryFound:     true,
 			onOrigin:       true,
 			wantUnmet:      []string{"m belongs to beam b"},
-			wantWayForward: []string{`"lyx adopt b"`, `"lyx batten run m"`},
+			wantWayForward: []string{`"lym adopt b"`, `"lym batten run m"`},
 		},
 		{
 			name:         "OriginProbeErrorIsReturned",
@@ -66,7 +66,7 @@ func TestBeamForkPrecondition(t *testing.T) {
 			entryFound:     true,
 			pairPresent:    true,
 			wantUnmet:      []string{"m belongs to beam b", "its own landing holds", held},
-			wantWayForward: []string{`"lyx batten status b"`, `"lyx batten cancel m"`},
+			wantWayForward: []string{`"lym batten status b"`, `"lym batten cancel m"`},
 		},
 		{
 			name:        "BeamAtBeamAwaitPasses",
@@ -80,7 +80,7 @@ func TestBeamForkPrecondition(t *testing.T) {
 			entryFound:     true,
 			pairPresent:    true,
 			wantUnmet:      []string{"m belongs to beam b", "its own landing holds", aligning},
-			wantWayForward: []string{`"lyx batten status b"`, `"lyx batten cancel m"`},
+			wantWayForward: []string{`"lym batten status b"`, `"lym batten cancel m"`},
 		},
 		{
 			name:        "BeamWithItsPairAndNoRunPasses",
@@ -145,7 +145,7 @@ func TestMemberHoldRefusal(t *testing.T) {
 			t.Errorf("Unmet = %q; want it to carry %q", precondition.Unmet, want)
 		}
 	}
-	for _, want := range []string{`"lyx batten cancel m"`, "`lyx board upsert`", `"lyx batten status b"`, `"lyx batten run m"`} {
+	for _, want := range []string{`"lym batten cancel m"`, "`lym board upsert`", `"lym batten status b"`, `"lym batten run m"`} {
 		if !strings.Contains(precondition.WayForward, want) {
 			t.Errorf("WayForward = %q; want it to carry %q", precondition.WayForward, want)
 		}
@@ -169,7 +169,7 @@ func TestAnchorFromSeed(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
+			location := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
 			if tt.seed != nil {
 				if err := shedrun.WriteSeed(location, "some-slug", *tt.seed); err != nil {
 					t.Fatalf("WriteSeed: %v", err)
@@ -206,7 +206,7 @@ func TestRefuseHeldMember(t *testing.T) {
 			t.Parallel()
 
 			hub := t.TempDir()
-			location := &lyxcwd.Location{HubPath: hub, WorktreeName: "code", AnchorRel: "."}
+			location := &lymcwd.Location{HubPath: hub, WorktreeName: "code", AnchorRel: "."}
 			if err := os.MkdirAll(fabricengine.BoardDir(hub), 0o755); err != nil {
 				t.Fatal(err)
 			}

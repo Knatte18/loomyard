@@ -52,7 +52,7 @@ func TestStatus_JSONRoundTrip(t *testing.T) {
 		},
 		History: []HistoryEntry{
 			{Producer: "Preflight", Outcome: Done, Output: "", At: "2026-08-15T09:00:00Z", By: "driver"},
-			{Producer: "Plan-Write", Outcome: Stuck, Output: "_lyx/plan.md", At: "2026-08-15T09:05:00Z", GateSpans: []GateSpan{
+			{Producer: "Plan-Write", Outcome: Stuck, Output: "_lym/plan.md", At: "2026-08-15T09:05:00Z", GateSpans: []GateSpan{
 				{Gate: "plan-parse", Kind: GateSpanKindGate, Start: "2026-08-15T09:04:00.25Z", End: "2026-08-15T09:04:01.5Z"},
 				{Gate: "plan-parse", Kind: GateSpanKindRework, Start: "2026-08-15T09:04:02Z", End: "2026-08-15T09:04:30Z"},
 			}},

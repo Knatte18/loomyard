@@ -126,8 +126,8 @@ func TestStep_EntryGate(t *testing.T) {
 		seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
 
 		_, err := shed.Step(context.Background())
-		if err == nil || !strings.Contains(err.Error(), "A, B") || !strings.Contains(err.Error(), "lyx shed goto") {
-			t.Fatalf("Step error = %v; want it to name the chain A, B and lyx shed goto", err)
+		if err == nil || !strings.Contains(err.Error(), "A, B") || !strings.Contains(err.Error(), "lym shed goto") {
+			t.Fatalf("Step error = %v; want it to name the chain A, B and lym shed goto", err)
 		}
 		got := readStatus(t, statusPath, statusLockPath)
 		if got.State != StateFailed || !strings.Contains(got.Error, "A, B") || got.EnteredRow != "" {

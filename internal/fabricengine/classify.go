@@ -5,8 +5,8 @@
 // Omission is not enough and is actively worse than a dedicated third bucket: classifyPaths is a
 // strict split where everything not matching a weft prefix falls through to **warp** — the user's
 // own repo — where `git add` on an ignored path fails the whole invocation with exit 1 and stages
-// nothing, taking every legitimate `_lyx` file named in the same call down with it.
-// A `.lyx` path routed to warp by accident would hit exactly that failure mode.
+// nothing, taking every legitimate `_lym` file named in the same call down with it.
+// A `.lym` path routed to warp by accident would hit exactly that failure mode.
 // classifyPaths itself stays policy-free: the never-committed bucket is reported, and turning it
 // into an error is Commit's job, not this file's.
 // classifyPaths does no I/O and no path validation: it trusts its caller, the same posture

@@ -1,4 +1,4 @@
-// green.go keeps the per-worktree green record `lyx gate test` carries a passed tier forward with, and plans which targets of a tier the record already holds green.
+// green.go keeps the per-worktree green record `lym gate test` carries a passed tier forward with, and plans which targets of a tier the record already holds green.
 
 package gatecli
 
@@ -73,7 +73,7 @@ func tierFingerprint(tier gateslot.Tier, build gateslot.BuildStep, inert []strin
 		AllTargets  string
 		Counter     string
 		Covers      []int
-		PrebuiltLyx bool
+		PrebuiltLym bool
 		Manual      bool
 		Filter      string              `json:",omitempty"`
 		SharedBuild bool                `json:",omitempty"`
@@ -81,7 +81,7 @@ func tierFingerprint(tier gateslot.Tier, build gateslot.BuildStep, inert []strin
 		Build       *gateslot.BuildStep `json:",omitempty"`
 		Inert       []string            `json:",omitempty"`
 	}{
-		About: tier.About, Command: tier.Command, Dir: tier.Dir, Env: tier.Env, AllTargets: tier.AllTargets, Counter: tier.Counter, Covers: tier.Covers, PrebuiltLyx: tier.PrebuiltLyx, Manual: tier.Manual,
+		About: tier.About, Command: tier.Command, Dir: tier.Dir, Env: tier.Env, AllTargets: tier.AllTargets, Counter: tier.Counter, Covers: tier.Covers, PrebuiltLym: tier.PrebuiltLym, Manual: tier.Manual,
 		Filter: tier.Filter, SharedBuild: tier.SharedBuild, NoCarry: tier.NoCarry, Inert: inert,
 	}
 	if tier.SharedBuild {

@@ -115,7 +115,7 @@ adjust package paths.
 ```sh
 go build ./...
 go vet ./internal/<module>engine/... ./internal/<module>cli/...
-go test -count=5 ./internal/<module>engine/... ./internal/<module>cli/... ./cmd/lyx/...   # hermetic
+go test -count=5 ./internal/<module>engine/... ./internal/<module>cli/... ./cmd/lym/...   # hermetic
 go test -tags tier2 ./internal/<module>cli/... -run Smoke -v -count=1                      # live serial — LLM-driving module: -tags tier3 and -run <ExactTestName>, never bare Smoke
 # THE decisive amplifier — N× CONCURRENT full smoke suites (compile once, run N copies):
 # TMUX-ONLY MODULES LIKE REED ONLY — see the LLM-driving-modules note above before ever running this against burler/loom.

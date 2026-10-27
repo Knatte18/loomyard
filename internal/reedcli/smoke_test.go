@@ -42,7 +42,7 @@ const smokePwshPath = `C:\Code\tools\powershell7\pwsh.exe`
 // -tags=tmux run never hard-fails on a machine without the tool.
 func tmuxBinaryPath(t *testing.T) string {
 	t.Helper()
-	if path := os.Getenv("LYX_REED_TMUX"); path != "" {
+	if path := os.Getenv("LYM_REED_TMUX"); path != "" {
 		if _, err := os.Stat(path); err == nil {
 			return path
 		}
@@ -61,11 +61,11 @@ func tmuxBinaryPath(t *testing.T) string {
 	if path, err := exec.LookPath(altName); err == nil {
 		return path
 	}
-	t.Skipf("tmux not found in PATH or LYX_REED_TMUX; checked: %s, %s", binName, altName)
+	t.Skipf("tmux not found in PATH or LYM_REED_TMUX; checked: %s, %s", binName, altName)
 	return ""
 }
 
-// pwshBinaryPath returns the PowerShell 7 binary path (LYX_REED_PWSH override
+// pwshBinaryPath returns the PowerShell 7 binary path (LYM_REED_PWSH override
 // or the smokePwshPath default), skipping the calling test immediately when
 // it is absent. Callers must only reach this from a runtime.GOOS == "windows"
 // branch: the probes it backs (WMI process trees, PEB cwd reads via P/Invoke
@@ -76,11 +76,11 @@ func tmuxBinaryPath(t *testing.T) string {
 func pwshBinaryPath(t *testing.T) string {
 	t.Helper()
 	path := smokePwshPath
-	if override := os.Getenv("LYX_REED_PWSH"); override != "" {
+	if override := os.Getenv("LYM_REED_PWSH"); override != "" {
 		path = override
 	}
 	if _, err := os.Stat(path); err != nil {
-		t.Skipf("pwsh not found at %s (set LYX_REED_PWSH to override): %v", path, err)
+		t.Skipf("pwsh not found at %s (set LYM_REED_PWSH to override): %v", path, err)
 	}
 	return path
 }
@@ -192,33 +192,33 @@ func smokeMarkerLaunchCmd(marker string) string {
 }
 
 // harnessShellBinaryPath returns the interactive pane-shell binary the attach step of TestSmokeLifecycle boots its private harness session with:
-// pwsh on Windows (via pwshBinaryPath), bash on POSIX (LYX_REED_SHELL override or PATH lookup, skipping the test if absent).
+// pwsh on Windows (via pwshBinaryPath), bash on POSIX (LYM_REED_SHELL override or PATH lookup, skipping the test if absent).
 // This is a real, generically-available interactive shell to host the nested attach handover, not a pwsh-specific probe, so unlike pwshBinaryPath it has a meaningful POSIX branch instead of being Windows-only.
 func harnessShellBinaryPath(t *testing.T) string {
 	t.Helper()
 	if runtime.GOOS == "windows" {
 		return pwshBinaryPath(t)
 	}
-	if override := os.Getenv("LYX_REED_SHELL"); override != "" {
+	if override := os.Getenv("LYM_REED_SHELL"); override != "" {
 		return override
 	}
 	path, err := exec.LookPath("bash")
 	if err != nil {
-		t.Skipf("no bash found on PATH for the harness pane shell (set LYX_REED_SHELL to override): %v", err)
+		t.Skipf("no bash found on PATH for the harness pane shell (set LYM_REED_SHELL to override): %v", err)
 	}
 	return path
 }
 
 // smokeAttachInvokeLine returns the OS-appropriate command line the harness
 // pane types to unset TMUX_SESSION (tmux refuses to nest a client into a
-// session it is itself running inside otherwise), run lyxExe's attach
+// session it is itself running inside otherwise), run lymExe's attach
 // handover, and echo its exit code — pwsh syntax on Windows,
 // posix syntax elsewhere.
-func smokeAttachInvokeLine(lyxExe string) string {
+func smokeAttachInvokeLine(lymExe string) string {
 	if runtime.GOOS == "windows" {
-		return fmt.Sprintf(`$env:TMUX_SESSION=$null; & '%s' reed attach; Write-Host ATTACH-EXIT:$LASTEXITCODE`, lyxExe)
+		return fmt.Sprintf(`$env:TMUX_SESSION=$null; & '%s' reed attach; Write-Host ATTACH-EXIT:$LASTEXITCODE`, lymExe)
 	}
-	return fmt.Sprintf(`unset TMUX_SESSION; '%s' reed attach; echo ATTACH-EXIT:$?`, lyxExe)
+	return fmt.Sprintf(`unset TMUX_SESSION; '%s' reed attach; echo ATTACH-EXIT:$?`, lymExe)
 }
 
 // smokeInvokeLine returns the OS-appropriate command line that runs bin with
@@ -684,7 +684,7 @@ func paneEventuallyContains(t *testing.T, tmuxPath, socket, target, want string,
 // directory and seeds reed config into it.
 // It clones to filepath.Join(h.Path, name), a direct child of the hub directory, matching
 // h.PrimeWorktree()'s own parentage — not filepath.Join(h.Container, name), which is the hub
-// directory's own parent and would give lyxcwd.Resolve a different HubPath for the sibling than
+// directory's own parent and would give lymcwd.Resolve a different HubPath for the sibling than
 // for the prime worktree, breaking the shared-per-hub-socket invariant the "sibling" name promises.
 // The clone is a plain repo, not a hub, so it stays on gitkit.SeedConfig rather than
 // hubforge.SeedConfig — the third, ad-hoc "sibling" resolution of the SeedConfig triage.

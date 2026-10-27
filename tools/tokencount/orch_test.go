@@ -87,7 +87,7 @@ func TestCountOrch(t *testing.T) {
 			timedAssistant("one", model, "2026-01-02T10:30:00Z", 1_000_000),
 		),
 	))
-	fake.add(prime, time.Time{}, sessionOf(readOf("b.jsonl", "lyxhub:orch-2",
+	fake.add(prime, time.Time{}, sessionOf(readOf("b.jsonl", "lymhub:orch-2",
 		// Inside the span, between windows: no run in flight.
 		timedAssistant("none", model, "2026-01-02T12:30:00Z", 3_000_000),
 	)))

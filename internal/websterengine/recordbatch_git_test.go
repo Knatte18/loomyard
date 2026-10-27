@@ -189,7 +189,7 @@ func TestRecordBatch_PostBatchChecks(t *testing.T) {
 		if !errors.As(err, &handBack) {
 			t.Fatalf("RecordBatch() error = %v; want a *LaterTargetRemovedError", err)
 		}
-		if !strings.Contains(err.Error(), "internal/foo#WillGoAway") || !strings.Contains(err.Error(), "way forward:") || !strings.Contains(err.Error(), "lyx webster record-batch 01") {
+		if !strings.Contains(err.Error(), "internal/foo#WillGoAway") || !strings.Contains(err.Error(), "way forward:") || !strings.Contains(err.Error(), "lym webster record-batch 01") {
 			t.Errorf("RecordBatch() error = %q; want the removed symbol and the record-batch way forward", err)
 		}
 		if bs := fx.Deps.State.Batches[1]; bs.Terminal || !bs.LaterTargetsReturned {

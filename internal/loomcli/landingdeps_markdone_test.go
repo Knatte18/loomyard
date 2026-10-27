@@ -14,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -29,7 +29,7 @@ func markDoneFixtureDir(t *testing.T) (markDone func() error, board *boardengine
 	t.Setenv("BOARD_SKIP_PUSH", "1")
 
 	slug = "markdone"
-	location := &lyxcwd.Location{HubPath: boardkit.HubWithBoardConfig(t), WorktreeName: slug, AnchorRel: "."}
+	location := &lymcwd.Location{HubPath: boardkit.HubWithBoardConfig(t), WorktreeName: slug, AnchorRel: "."}
 	boardDir = fabricengine.BoardDir(location.HubPath)
 
 	deps := landingDeps(location, shedrun.RecipeLoom, websterengine.Geometry{}, "task", "main",

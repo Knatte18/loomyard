@@ -1,4 +1,4 @@
-// Package tenderengine implements the pause, resume, revive and status sequences behind `lyx tender`, over seams.
+// Package tenderengine implements the pause, resume, revive and status sequences behind `lym tender`, over seams.
 //
 // A pause records an entry in the pause record and waits a short grace for busy sessions and network operations to finish.
 // It then interrupts every covered session still in a running turn with Esc, and reports what it saw.
@@ -34,7 +34,7 @@
 // # Resume
 //
 // An empty slug resumes every live entry; a slug resumes that pair's own entry.
-// A slug that only a live hub entry covers is refused, naming `lyx tender resume`.
+// A slug that only a live hub entry covers is refused, naming `lym tender resume`.
 // Under the record lock each resumed entry moves to the resumed list, and each session it owns that another live entry still covers moves to that entry with no line.
 // After the lock, each remaining non-orch session gets `pauserecord.ResumeLine` once through the guarded send.
 // There is no busy pre-check: a recorded session gets its attempt whatever its state reads now.
@@ -88,12 +88,12 @@
 //     A prime session is covered only by a hub entry.
 //     A session busy on background work lists the kind of each outstanding task under `background`.
 //     A session whose state reading fails is listed with the state `unknown` and the error as its cause.
-//   - The processes running a replaced binary: each process whose exe is a deleted file with the running lyx's own file name and whose cwd is the hub or inside it.
+//   - The processes running a replaced binary: each process whose exe is a deleted file with the running lym's own file name and whose cwd is the hub or inside it.
 //     A platform that cannot list processes reports the part unsupported, and any other failed reading is reported in the part; the rest of the report is unaffected either way.
 //   - The processes: each live process registered in the owner record, by owner, with its role, pid and age.
 //     A record reads as an orphan when its owner is a slug that no registered worktree carries as its base name and that has no live batten record, the hub owner never being one,
 //     unless the process's working directory lies inside a registered worktree.
-//     Also listed are the lyx processes in a deleted directory of the hub, outside every registered worktree, that no record registers and whose exe is not deleted.
+//     Also listed are the lym processes in a deleted directory of the hub, outside every registered worktree, that no record registers and whose exe is not deleted.
 //     A platform that cannot list processes keeps the owned records and reports the unregistered list unsupported, and a failed record or worktree reading is reported in the part;
 //     with the worktrees unread no record reads as an orphan.
 //   - The owners: each local pair with the machine that owns it, then each run-held board entry owned by another machine that has no local pair, so the orch never reads a run owned elsewhere as stalled or landed.

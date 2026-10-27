@@ -1,4 +1,4 @@
-# models.yaml — the model-spec registry. Materialized once (lyx init / lyx
+# models.yaml — the model-spec registry. Materialized once (lym init / lym
 # config reconcile) when this file is absent; after that, this file is
 # OPERATOR-OWNED: reconcile is seed-only for models.yaml and never rewrites or
 # prunes it again, so any alias you add or default you change or remove here

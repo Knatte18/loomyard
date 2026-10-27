@@ -311,7 +311,7 @@ func assertStrandOptionsReasserted(t *testing.T, fake *fakeTmux, wantShellPins i
 		switch {
 		case containsArg(argv, "default-shell"), containsArg(argv, "default-command"):
 			shellPins++
-		case containsArg(argv, "@lyx_strands"):
+		case containsArg(argv, "@lym_strands"):
 			marked = true
 		case containsArg(argv, "@strand"):
 			labeled = true
@@ -393,17 +393,17 @@ func TestAttachArgv_SelectsTheRelevantWindow(t *testing.T) {
 			fake.answer("list-clients", tt.clients, tt.clientsErr)
 			otherClient := tt.clients != "" || tt.clientsErr != nil
 			if otherClient {
-				fake.answerFormat("#{@lyx_follow}", tt.follow, tt.followErr)
+				fake.answerFormat("#{@lym_follow}", tt.follow, tt.followErr)
 			}
 
 			got := e.AttachArgv(tt.cols, tt.rows)
 
 			followReads := 0
 			for _, call := range fake.Calls() {
-				if call[0] == "set-option" && slices.Contains(call, "@lyx_follow") {
+				if call[0] == "set-option" && slices.Contains(call, "@lym_follow") {
 					t.Errorf("attach issued %v, want it never to write the follow state", call)
 				}
-				if call[0] == "display-message" && call[len(call)-1] == "#{@lyx_follow}" {
+				if call[0] == "display-message" && call[len(call)-1] == "#{@lym_follow}" {
 					followReads++
 				}
 			}
@@ -491,7 +491,7 @@ func TestAttachArgv_MultiClientWarning(t *testing.T) {
 		fake.answerWindowPanes(panes, nil)
 		fake.answer("list-clients", "", errors.New("boom"))
 		// A failed listing counts as another client, so follow decides the selection; off drops it.
-		fake.answerFormat("#{@lyx_follow}", "off", nil)
+		fake.answerFormat("#{@lym_follow}", "off", nil)
 		buf := logcapture.CaptureVerbose(t)
 
 		got := e.AttachArgv(cols, rows)

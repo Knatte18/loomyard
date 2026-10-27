@@ -78,7 +78,7 @@ func TestOrigin_JSONRoundTrip(t *testing.T) {
 //
 //testtiming:keep OriginRecordPath and OriginRecordPathFor joining the anchor and OriginRecordRel at a root and a subpath anchor, both ending in the shared suffix; coverage of its blocks by other tests does not show an assertion of this
 func TestOriginRecordPaths(t *testing.T) {
-	hub := filepath.Join("repos", "loomyard-LYXHUB")
+	hub := filepath.Join("repos", "loomyard-LYMHUB")
 	const worktreeName = "loomyard"
 	const slug = "test-wt"
 

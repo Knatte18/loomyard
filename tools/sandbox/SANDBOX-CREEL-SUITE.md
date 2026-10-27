@@ -1,8 +1,8 @@
-# SANDBOX-CREEL-SUITE -- lyx creel black-box agent suite
+# SANDBOX-CREEL-SUITE -- lym creel black-box agent suite
 
 ## What this is
 
-A structured test-loop for exercising `lyx creel` against a **live tmux server and a logged-in claude** in the sandbox Hub's Fabric repo.
+A structured test-loop for exercising `lym creel` against a **live tmux server and a logged-in claude** in the sandbox Hub's Fabric repo.
 Like `SANDBOX-REED-SUITE.md`, the value here is partly **visual**: mail reminders and injected lines typed into a strand's pane, a message's events in the log.
 Not an automated suite -- an agent drives it, an operator watches.
 
@@ -11,47 +11,47 @@ Not an automated suite -- an agent drives it, an operator watches.
 Before starting a session:
 
 1. **Deploy a fresh dev binary.**
-   Run `deploy-dev` to build `lyx.exe` into `.dev-bin` as current source.
-   The suite resolves `.dev-bin` itself and prepends it to the agent's PATH (the fingerprint header's `Source: dev` line confirms the dev build is under test) -- no PATH setup needed, and production `lyx` stays untouched.
+   Run `deploy-dev` to build `lym.exe` into `.dev-bin` as current source.
+   The suite resolves `.dev-bin` itself and prepends it to the agent's PATH (the fingerprint header's `Source: dev` line confirms the dev build is under test) -- no PATH setup needed, and production `lym` stays untouched.
    The deployed binary is a snapshot -- re-deploy after any source change you want to test.
    Once a pane exists, run these checks inside a spawned agent pane:
-   - `command -v lyx` (`where lyx` on Windows) is not a check this suite makes: its interactive strands, the plain `--cmd claude` and `--cmd bash` strands, each start a fresh shell that re-runs the operator's rc.
+   - `command -v lym` (`where lym` on Windows) is not a check this suite makes: its interactive strands, the plain `--cmd claude` and `--cmd bash` strands, each start a fresh shell that re-runs the operator's rc.
      See `SANDBOX-REED-SUITE.md` for the pane-shell guarantee and `SANDBOX-SHUTTLE-SUITE.md` for the agent Bash tool check.
-   - `LYX_BIN` is set inside that pane and names the same binary.
+   - `LYM_BIN` is set inside that pane and names the same binary.
    - `claude` still resolves inside that pane.
      `claude` is looked up by bare name from the pane's PATH, so it is the property most exposed to any future change in how a pane's shell is started, and it is the one property no hermetic test can prove.
-   `LYX_BIN` being set is the live-substrate fact no `go test` can prove, and both remaining checks are pre-condition checks rather than assertions.
+   `LYM_BIN` being set is the live-substrate fact no `go test` can prove, and both remaining checks are pre-condition checks rather than assertions.
 2. **Materialize the hub.**
    Run `sandbox/build.cmd` (or `sandbox/build.cmd -reset` to start clean);
    the session cwd is the Hub's Fabric repo root, the same operating model as the main suite.
 3. **Live-tmux and claude requirement.** tmux (or the Windows tmux port) on PATH, PowerShell 7, which reed's strands need,
    and a logged-in `claude` on PATH, since S9 adds a `claude` strand.
    If any of these is unavailable in the session, **note that as the session outcome rather than treating it as a creel defect** -- the `**Covers:** creel` tag on S9 satisfies the sandbox coverage guard (`sandbox_coverage_test.go`) regardless of runtime availability.
-4. **Wired worktree required.** `lyx reed` requires a worktree wired by `lyx fabric clone`/`lyx fabric add`, and `lyx creel` reaches strands through reed.
+4. **Wired worktree required.** `lym reed` requires a worktree wired by `lym fabric clone`/`lym fabric add`, and `lym creel` reaches strands through reed.
 
 ## Black-box rule
 
-**The agent under test works exclusively inside the Hub's Fabric repo (`lyx-test-LYXHUB/lyx-test`).
-It tests `lyx.exe` as a black box -- exactly as a real user with only the binary on PATH.
-It must not look for, read, or reason about the lyx source tree.
+**The agent under test works exclusively inside the Hub's Fabric repo (`lym-test-LYMHUB/lym-test`).
+It tests `lym.exe` as a black box -- exactly as a real user with only the binary on PATH.
+It must not look for, read, or reason about the lym source tree.
 No peeking at `C:\Code\loomyard\` or any other path outside the Hub.**
 
-Discovering the command surface is done via `lyx creel`, `lyx creel <subcommand>`, `lyx reed`, `lyx reed <subcommand>`, and `--help` flags alone -- not from documentation outside the Hub.
+Discovering the command surface is done via `lym creel`, `lym creel <subcommand>`, `lym reed`, `lym reed <subcommand>`, and `--help` flags alone -- not from documentation outside the Hub.
 
 ### Controlled creel exceptions
 
 The creel scenarios (C1 to C13) need these non-black-box steps and nothing more:
 
-- **Listing the tmux and lyxtemp socket directories read-only** (C1), to compare the sandbox hub's sockets with the live hub's.
+- **Listing the tmux and lymtemp socket directories read-only** (C1), to compare the sandbox hub's sockets with the live hub's.
 - **Planting or editing a journal day file while the daemon is stopped** (C10), under the hub's creel state directory.
 - **Running a process detached from a strand's pane** (C12), to check that a process outside the pane is not taken for the strand.
   The disagreeing-strand-name check of C12 is operator-assisted when the agent's harness refuses a command naming the strand variable: the agent asks the operator to run it in the pane and reports what the operator saw.
-- **Pane content a scenario judges** (S9's typed reminder, C2's single reminder in the scrollback, C6's line not typed again, C7's restored prompt) is observed by the operator through `lyx reed attach` and reported back by the agent, as C12's operator-assisted check is.
+- **Pane content a scenario judges** (S9's typed reminder, C2's single reminder in the scrollback, C6's line not typed again, C7's restored prompt) is observed by the operator through `lym reed attach` and reported back by the agent, as C12's operator-assisted check is.
 
 ## Fingerprint header
 
 The launcher prepends a "binary under test" fingerprint block to this file when it copies it into the Hub's Fabric repo.
-The fingerprint records the absolute path, file size, modification time, and a short SHA-256 of the `lyx.exe` binary at launch time.
+The fingerprint records the absolute path, file size, modification time, and a short SHA-256 of the `lym.exe` binary at launch time.
 
 The same fingerprint identifies the binary for the report's provenance: a separate fetch step (run after this session) stamps it into `meta.fingerprint` of the fetched `sandbox-report.json` so a maintainer can reproduce the exact binary that produced each finding.
 The agent does not need to transcribe the fingerprint anywhere itself.
@@ -61,8 +61,8 @@ The agent does not need to transcribe the fingerprint anywhere itself.
 For each scenario below:
 
 - Read the **Goal** -- it names the task, not the commands.
-  Discover the commands via `lyx creel`, `lyx creel <subcommand>`, `lyx reed`, and `--help` flags (S0 ethos).
-- **Watch** what lyx does.
+  Discover the commands via `lym creel`, `lym creel <subcommand>`, `lym reed`, and `--help` flags (S0 ethos).
+- **Watch** what lym does.
   Note where it stalls, guesses wrong, or hits an error.
 - Record the outcome per the verdict buckets: `OK` (worked) / `WARN` (rough edge) / `FAIL` (broke).
 
@@ -71,7 +71,7 @@ For each scenario below:
 - `OK`   -- completed without friction
 - `WARN` -- completed but with confusion, awkward UX, or a non-fatal error
 - `FAIL` -- did not complete;
-  lyx broke, panicked, or gave wrong output
+  lym broke, panicked, or gave wrong output
 
 ## Capturing findings
 
@@ -108,13 +108,13 @@ Confine all free text to the `title`/`body` string fields so the JSON stays well
 
 **Goal:** "Post a message to an interactive agent that was added by hand from the terminal and from another agent, watch the terminal's message carried in full and the agent's reminded once the receiver is idle, have the receiver read the agent's message, inject a line into it, and confirm the log shows the events without any body."
 
-**Watch:** Add a strand with `lyx reed add --cmd claude` and let it reach its idle prompt, and add a shell strand with `lyx reed add --cmd bash`.
-`lyx creel post <strand name> "please say CARRIED"` from the operator's shell prints one JSON envelope with the message `id`, and the first creel verb of the hub starts its daemon by itself.
-The terminal is EXTERNAL, so at the agent's next idle moment `[creel] #<id> from <shortname>:EXTERNAL: please say CARRIED` appears typed in its pane, and the message is read with no `lyx creel read`.
-`lyx creel post <strand name> "please say READ"` run in the shell strand's pane is agent mail: at the agent's next idle moment a one-line reminder naming the shell strand appears typed in its pane, and the reminder is not repeated while the agent works.
-Asking the agent to run `lyx creel read` prints, as plain text, the message's id, its sender and the reply command on one line and its body below, and a second `lyx creel read` prints `nothing unread`.
-`lyx creel inject <strand name> "say INJECTED" --wait` types the line into the pane at idle and exits 0 with `"outcome":"injected"`.
-`lyx creel log --id <id>` lists the message's events `posted`, each `reminded` event whose unread ids hold it, and `read`, oldest first, with their times and subject, and no event has a body field.
+**Watch:** Add a strand with `lym reed add --cmd claude` and let it reach its idle prompt, and add a shell strand with `lym reed add --cmd bash`.
+`lym creel post <strand name> "please say CARRIED"` from the operator's shell prints one JSON envelope with the message `id`, and the first creel verb of the hub starts its daemon by itself.
+The terminal is EXTERNAL, so at the agent's next idle moment `[creel] #<id> from <shortname>:EXTERNAL: please say CARRIED` appears typed in its pane, and the message is read with no `lym creel read`.
+`lym creel post <strand name> "please say READ"` run in the shell strand's pane is agent mail: at the agent's next idle moment a one-line reminder naming the shell strand appears typed in its pane, and the reminder is not repeated while the agent works.
+Asking the agent to run `lym creel read` prints, as plain text, the message's id, its sender and the reply command on one line and its body below, and a second `lym creel read` prints `nothing unread`.
+`lym creel inject <strand name> "say INJECTED" --wait` types the line into the pane at idle and exits 0 with `"outcome":"injected"`.
+`lym creel log --id <id>` lists the message's events `posted`, each `reminded` event whose unread ids hold it, and `read`, oldest first, with their times and subject, and no event has a body field.
 A reminder typed into a busy turn, a line typed twice, or a body field in the log is a real failure here.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
@@ -124,7 +124,7 @@ A reminder typed into a busy turn, a line typed twice, or a body field in the lo
 **Creel scenario fixtures.**
 The creel scenarios C1 to C13 reuse the fixtures of the creel audit, which the agent sets up in the Hub as steps of its own:
 
-- Bash strands, added with `lyx reed add --cmd bash`, stand in for plain shell agents.
+- Bash strands, added with `lym reed add --cmd bash`, stand in for plain shell agents.
 - A fake idle pane that swallows input: a script that draws a ready marker and an empty input box and reads lines without echoing them.
 - A fake input box that ignores Enter, so a typed line stays in the box.
 - An orch-role copy of the idle pane, added with `--role orch`.
@@ -139,7 +139,7 @@ The agent stops the creel daemon only by replacing its binary, never by killing 
 
 **Watch:** The first verb starts the hub's daemon.
 The daemon socket name carries the sandbox hub's shortname and path hash, the sandbox reed `-L` key differs from the live hub's, and the daemon's binary is the sandbox build.
-Listing the tmux and lyxtemp socket directories read-only shows the sandbox sockets beside the live ones and none shared.
+Listing the tmux and lymtemp socket directories read-only shows the sandbox sockets beside the live ones and none shared.
 
 **Verdict:** `FAIL` if any path is shared with the live hub.
 
@@ -165,7 +165,7 @@ The reminder lands only after the turn ends and appears once in the pane's scrol
 **Goal:** "Leave a message unread while the strand keeps answering its reminders, and confirm the reminders back off and a new message is reminded at once."
 
 **Watch:** The message comes from a shell strand's pane, and the strand answers reminders without reading.
-`reminded` events in `lyx creel log` come about 5 and 10 minutes apart, and a new message is reminded at once.
+`reminded` events in `lym creel log` come about 5 and 10 minutes apart, and a new message is reminded at once.
 
 **Verdict:** `WARN` if the timing drifts by more than 30 s.
 
@@ -178,7 +178,7 @@ The reminder lands only after the turn ends and appears once in the pane's scrol
 **Goal:** "Leave interleaved mail from several senders, read it in every way the verb offers, and confirm each read returns the right set and that mail whose output could not be written stays unread."
 
 **Watch:** Interleave mail from EXTERNAL and a shell strand to a receiver kept busy, so the EXTERNAL mail is not carried before the reads, then check that plain `read` returns every sender's mail at once, that `read --from` narrows it to one sender, that `read --envelope` prints the same set as one JSON line, and `inbox`.
-`lyx creel read > /dev/full` exits 1, writes a `creel:` line to stderr and leaves the mail unread, so a following `read` still returns it.
+`lym creel read > /dev/full` exits 1, writes a `creel:` line to stderr and leaves the mail unread, so a following `read` still returns it.
 
 **Verdict:** `FAIL` on a wrong set or lost mail.
 
@@ -235,7 +235,7 @@ A box holding the operator's own text is left alone, and the inject waits.
 **Watch:** A privileged sender holds the strand, injects and mail from another sender are held back, and the owner's inject passes.
 After `release` the held inject is typed and the mail reminded.
 An `inject --wait` started after a draft was cleared under a hold prints no stall line and ends injected.
-Then `lyx tender pause` freezes the TTL and holds delivery, and `lyx tender resume` delivers.
+Then `lym tender pause` freezes the TTL and holds delivery, and `lym tender resume` delivers.
 
 **Verdict:** `FAIL` on delivery during a hold or pause, or a TTL that runs while paused.
 
@@ -262,7 +262,7 @@ The orch's own `inbox` shows plain unread counts and no `withheld` or `notice` k
 
 **Goal:** "Replace the binary under a running daemon, damage the journal in the ways a crash or an old day file would, and confirm the daemon restarts on the same pool and says why when it cannot start."
 
-**Watch:** Replacing the binary ends the daemon within 2 s, and the next verb brings the same pool (a diff of `lyx creel log` before and after).
+**Watch:** Replacing the binary ends the daemon within 2 s, and the next verb brings the same pool (a diff of `lym creel log` before and after).
 A planted 8-day-old day file is carried forward and deleted, and a torn tail is cut whether or not it ends in a newline, and a restart after the next append starts cleanly.
 A malformed middle line, planted while the daemon is stopped, gives the verb an error naming the daemon log, which quotes the start's error line with the journal file and line.
 
@@ -303,9 +303,9 @@ A disagreeing strand name inside a pane is refused; this check is operator-assis
 
 **Goal:** "Post to a Claude strand added by hand and to a strand whose window shows no input box, and confirm each receives its line or creel says why it cannot deliver."
 
-**Watch:** A plain `lyx reed add --cmd claude` strand receives the line carrying a post from the operator's shell.
-A `lyx reed add --cmd bash` strand, which reed places in a window of its own, shows no input box.
-Its stall reason, `no-input-box`, shows as a `stalled` event in `lyx creel log` and as a progress line on stderr of `lyx creel inject --wait`.
+**Watch:** A plain `lym reed add --cmd claude` strand receives the line carrying a post from the operator's shell.
+A `lym reed add --cmd bash` strand, which reed places in a window of its own, shows no input box.
+Its stall reason, `no-input-box`, shows as a `stalled` event in `lym creel log` and as a progress line on stderr of `lym creel inject --wait`.
 
 **Verdict:** `FAIL` on a silent stall.
 

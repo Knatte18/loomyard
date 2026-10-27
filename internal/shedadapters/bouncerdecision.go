@@ -100,7 +100,7 @@ func (b *Bouncer) routeDecisions(ctx context.Context, round int, verdict bouncer
 		if !escalated {
 			return "", shedengine.OutputPointer{}, nil, false
 		}
-		outcome, ptr, derr := b.degrade(ctx, fmt.Sprintf("shedadapters: bouncer circling decision for round %d is unreadable: %v; way forward: fix or delete %s, then run `lyx loom start` to resume the round", round, err, circlingDecisionPath(b.cfg.RunDir, round)), "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
+		outcome, ptr, derr := b.degrade(ctx, fmt.Sprintf("shedadapters: bouncer circling decision for round %d is unreadable: %v; way forward: fix or delete %s, then run `lym loom start` to resume the round", round, err, circlingDecisionPath(b.cfg.RunDir, round)), "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
 		return outcome, ptr, derr, true
 	}
 	if decided && (decisionCause != EscalationDecision || (decision == CirclingAccept && settled)) {
@@ -127,7 +127,7 @@ func (b *Bouncer) routeDecisions(ctx context.Context, round int, verdict bouncer
 // A round that already carries the escalation record returns the same Awaiting.
 func (b *Bouncer) escalateUndecided(round int, verdict bouncerVerdict, ledger ledgerFile, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := writeDecisionSnapshot(b.cfg.RunDir, round, b.cfg.DecisionRecordPath); err != nil {
-		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): %w; way forward: make the named path writable, then run `lyx loom start`, which re-escalates the round", b.cfg.Name, bouncerEngineLabel, err)
+		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): %w; way forward: make the named path writable, then run `lym loom start`, which re-escalates the round", b.cfg.Name, bouncerEngineLabel, err)
 	}
 	return b.escalateDecision(round, b.decisionRefusal(round, verdict, ledger, CirclingAccept), false, ptr)
 }
@@ -141,7 +141,7 @@ func (b *Bouncer) settleDecisionContinue(ctx context.Context, round int, verdict
 	}
 	if b.atHardCap(round) {
 		if err := b.retireContinue(round); err != nil {
-			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): retire the continue decision of round %d at the hard cap: %w; way forward: make the named path writable, then run `lyx loom start`, which re-escalates the round", b.cfg.Name, bouncerEngineLabel, round, err)
+			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): retire the continue decision of round %d at the hard cap: %w; way forward: make the named path writable, then run `lym loom start`, which re-escalates the round", b.cfg.Name, bouncerEngineLabel, round, err)
 		}
 		return b.escalateDecision(round, b.decisionRefusal(round, verdict, ledger, CirclingAccept), false, ptr)
 	}
@@ -163,14 +163,14 @@ func (b *Bouncer) settleDecisionAccept(ctx context.Context, round int, verdict b
 		return b.rejudge(ctx, round, verdict, refusal)
 	case !b.atHardCap(round):
 		if err := b.retireContinue(round); err != nil {
-			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): retire the accept decision of round %d held by a refusal: %w; way forward: make the named path writable, then run `lyx loom start`, which re-escalates the round", b.cfg.Name, bouncerEngineLabel, round, err)
+			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): retire the accept decision of round %d held by a refusal: %w; way forward: make the named path writable, then run `lym loom start`, which re-escalates the round", b.cfg.Name, bouncerEngineLabel, round, err)
 		}
 		return b.escalateDecision(round, refusal, true, ptr)
 	}
 	if err := archiveStaleOutputs(judgeOutputs(b.cfg.RunDir, round), b.cfg.Now); err != nil {
 		return b.degrade(ctx, "shedadapters: bouncer failed to archive a held accept's judge outputs", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
 	}
-	reason := fmt.Sprintf("%sbouncer %s: round %d's recorded accept is held by a refusal at the budget and the perch's hard cap (%s); way forward: run `lyx loom resume`, whose next Call re-judges the round under the recorded accept", DecisionHaltPrefix, b.cfg.Name, round, refusal)
+	reason := fmt.Sprintf("%sbouncer %s: round %d's recorded accept is held by a refusal at the budget and the perch's hard cap (%s); way forward: run `lym loom resume`, whose next Call re-judges the round under the recorded accept", DecisionHaltPrefix, b.cfg.Name, round, refusal)
 	return shedengine.Stuck, shedengine.OutputPointer{Reason: reason, Halt: true}, nil
 }
 
@@ -227,7 +227,7 @@ func (b *Bouncer) renderDecisionDetail(round int, refusal string, held bool) (st
 			refusalText += "\n\nAn `accept` escalates the round again while the refusal holds, since no budget is left to re-judge it; `continue` is the way forward."
 		}
 		if strings.HasPrefix(refusal, droppedKeyRefusalPrefix) {
-			refusalText += "\n\nA `continue` meets the same check, halts the segment at its budget, and `lyx loom resume` then re-judges the round."
+			refusalText += "\n\nA `continue` meets the same check, halts the segment at its budget, and `lym loom resume` then re-judges the round."
 		}
 	}
 	filled, err := stencil.Fill(template, map[string]string{
@@ -263,11 +263,11 @@ func (b *Bouncer) decideVerbs(round int) string {
 	if b.cfg.Slug != "" {
 		verbSuffix = " " + b.cfg.Slug
 	}
-	accept := fmt.Sprintf("- `lyx loom circling accept%s` to proceed", verbSuffix)
+	accept := fmt.Sprintf("- `lym loom circling accept%s` to proceed", verbSuffix)
 	if b.atHardCap(round) {
 		return accept
 	}
-	return fmt.Sprintf("- `lyx loom circling continue%s` for a round over the amended record\n%s", verbSuffix, accept)
+	return fmt.Sprintf("- `lym loom circling continue%s` for a round over the amended record\n%s", verbSuffix, accept)
 }
 
 // writeDecisionSnapshot writes round's decision snapshot, the titles of the decision record's `Added after Discussion` entries, when none exists yet.

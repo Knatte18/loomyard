@@ -1,4 +1,4 @@
-// adopt.go is the takeover sequence of "lyx adopt": it validates the request, reconciles the hub against origin, then per adopted beam project and per run under it or under root drops or keeps local commits, adds the missing pair, records this machine as owner of the projects, lifts the owner pauses, resumes the runs, runs the beam steps of each adopted beam and starts the test suite.
+// adopt.go is the takeover sequence of "lym adopt": it validates the request, reconciles the hub against origin, then per adopted beam project and per run under it or under root drops or keeps local commits, adds the missing pair, records this machine as owner of the projects, lifts the owner pauses, resumes the runs, runs the beam steps of each adopted beam and starts the test suite.
 
 package adoptcli
 
@@ -21,7 +21,7 @@ import (
 const callerLabel = "adopt"
 
 // reentry is what a refusal that adopt's own steps leave undone is followed by.
-const reentry = "then re-run lyx adopt with the same arguments"
+const reentry = "then re-run lym adopt with the same arguments"
 
 // The repository sides a branch outcome names that a stop on is shared by every pair.
 const (
@@ -152,22 +152,22 @@ func adopt(deps adoptDeps, req request) (outcome, error) {
 		req.Slugs = slices.DeleteFunc(slices.Clone(req.Slugs), func(slug string) bool { return slug == boardengine.RootSubject })
 	}
 	if req.KeepLocal && req.DropLocal {
-		return outcome{}, errors.New("lyx adopt: --keep-local and --drop-local answer the same local commits in opposite ways: pass one of them")
+		return outcome{}, errors.New("lym adopt: --keep-local and --drop-local answer the same local commits in opposite ways: pass one of them")
 	}
 	if req.All && len(req.Slugs) > 0 {
-		return outcome{}, errors.New("lyx adopt: --all takes no slug: drop the slugs, or drop --all")
+		return outcome{}, errors.New("lym adopt: --all takes no slug: drop the slugs, or drop --all")
 	}
 	if len(req.Slugs) == 0 && !req.Root && !req.All {
-		return outcome{}, errors.New("lyx adopt: name a beam project or `root`, or pass --all: `lyx board list` shows the entries")
+		return outcome{}, errors.New("lym adopt: name a beam project or `root`, or pass --all: `lym board list` shows the entries")
 	}
 
 	here, err := deps.Machine()
 	if err != nil {
-		return outcome{}, fmt.Errorf("lyx adopt: read this machine's name: %w", err)
+		return outcome{}, fmt.Errorf("lym adopt: read this machine's name: %w", err)
 	}
 	owners, err := deps.ReadOwners()
 	if err != nil {
-		return outcome{}, fmt.Errorf("lyx adopt: read the board's owners: %w", err)
+		return outcome{}, fmt.Errorf("lym adopt: read the board's owners: %w", err)
 	}
 	slugs, rootNamed, err := namedEntries(deps, owners, req)
 	if err != nil {
@@ -177,7 +177,7 @@ func adopt(deps adoptDeps, req request) (outcome, error) {
 	// The runs on this machine's own records stand in for the ones the reconcile may still bring, so a worktree they act under is checked before it.
 	localRuns, err := movedRuns(deps, owners, slugs, rootNamed)
 	if err != nil {
-		return outcome{}, fmt.Errorf("lyx adopt: read the runs under the adopted projects, so nothing ran: %w; %s", err, reentry)
+		return outcome{}, fmt.Errorf("lym adopt: read the runs under the adopted projects, so nothing ran: %w; %s", err, reentry)
 	}
 	if err := refuseStandingMove(deps, append(slices.Clone(slugs), localRuns...)); err != nil {
 		return outcome{}, err
@@ -195,19 +195,19 @@ func adopt(deps adoptDeps, req request) (outcome, error) {
 	result.Reconcile = report
 	rec.Extend(report.Mutations)
 	if err != nil {
-		return finish(), fmt.Errorf("lyx adopt: the origin reconcile failed, so nothing ran: %w; repair what the error names, %s", err, reentry)
+		return finish(), fmt.Errorf("lym adopt: the origin reconcile failed, so nothing ran: %w; repair what the error names, %s", err, reentry)
 	}
 	if report.Unreachable {
-		return finish(), fmt.Errorf("lyx adopt: origin was unreachable, so nothing was judged against it and nothing ran: %s once origin answers", reentry)
+		return finish(), fmt.Errorf("lym adopt: origin was unreachable, so nothing was judged against it and nothing ran: %s once origin answers", reentry)
 	}
 	if stops := sharedStopText(report); stops != "" {
-		return finish(), fmt.Errorf("lyx adopt: the origin reconcile stopped, so nothing ran: %s", stops)
+		return finish(), fmt.Errorf("lym adopt: the origin reconcile stopped, so nothing ran: %s", stops)
 	}
 
 	// The reconcile may have brought the run records of the other machine's runs, so the moved runs are read again.
 	moved, err := movedRuns(deps, owners, slugs, rootNamed)
 	if err != nil {
-		return finish(), fmt.Errorf("lyx adopt: read the runs under the adopted projects, so nothing ran: %w; %s", err, reentry)
+		return finish(), fmt.Errorf("lym adopt: read the runs under the adopted projects, so nothing ran: %w; %s", err, reentry)
 	}
 
 	outcomes := map[string]*slugOutcome{}
@@ -241,12 +241,12 @@ func adopt(deps adoptDeps, req request) (outcome, error) {
 	for _, slug := range acted {
 		project, err := projectOf(deps, slugs, slug)
 		if err != nil {
-			return finish(), fmt.Errorf("lyx adopt: read the parent of %s, so nothing ran: %w; %s", slug, err, reentry)
+			return finish(), fmt.Errorf("lym adopt: read the parent of %s, so nothing ran: %w; %s", slug, err, reentry)
 		}
 		projects[slug] = project
 		stopped, err := wouldStop(deps, req, report, slug)
 		if err != nil {
-			return finish(), fmt.Errorf("lyx adopt: read whether the pair of %s is live, so nothing ran: %w; %s", slug, err, reentry)
+			return finish(), fmt.Errorf("lym adopt: read whether the pair of %s is live, so nothing ran: %w; %s", slug, err, reentry)
 		}
 		if stopped {
 			stops[slug] = true
@@ -295,7 +295,7 @@ func adopt(deps adoptDeps, req request) (outcome, error) {
 				result.PrimeLost = owner
 				continue
 			}
-			outcomes[slug].Error = fmt.Sprintf("another machine recorded %s as the owner while this write was in flight, so nothing was resumed: `lyx adopt %s` takes it over again", owner, slug)
+			outcomes[slug].Error = fmt.Sprintf("another machine recorded %s as the owner while this write was in flight, so nothing was resumed: `lym adopt %s` takes it over again", owner, slug)
 		}
 	}
 
@@ -303,7 +303,7 @@ func adopt(deps adoptDeps, req request) (outcome, error) {
 		after, err := deps.ReadOwners()
 		if err != nil {
 			result.Slugs = collect(slugs, outcomes)
-			return finish(), fmt.Errorf("lyx adopt: the owners were recorded, but reading them back failed, so nothing was resumed: %w; %s", err, reentry)
+			return finish(), fmt.Errorf("lym adopt: the owners were recorded, but reading them back failed, so nothing was resumed: %w; %s", err, reentry)
 		}
 		// Resumed in slug order: the adopted beams, then the runs moved with them that no stop or error kept back.
 		resumable := slices.Clone(adopted)
@@ -324,7 +324,7 @@ func adopt(deps adoptDeps, req request) (outcome, error) {
 	if len(adopted) > 0 || result.PrimeRecorded {
 		suite, err := deps.StartSuite()
 		if err != nil {
-			result.SuiteWarning = fmt.Sprintf("the test suite was not started (%v); way forward: run `lyx gate test --gate finalize` in the prime", err)
+			result.SuiteWarning = fmt.Sprintf("the test suite was not started (%v); way forward: run `lym gate test --gate finalize` in the prime", err)
 		} else {
 			result.Suite = &suite
 		}
@@ -336,7 +336,7 @@ func adopt(deps adoptDeps, req request) (outcome, error) {
 
 // namedEntries resolves the request to the beam project slugs it adopts and whether it adopts root.
 // --all names root and every beam project that is not done.
-// It refuses a slug the board does not hold, a note, a done entry, a task, naming the beam or `root` that moves its run, and a grouping project, naming the same adopt and `lyx beam create`.
+// It refuses a slug the board does not hold, a note, a done entry, a task, naming the beam or `root` that moves its run, and a grouping project, naming the same adopt and `lym beam create`.
 func namedEntries(deps adoptDeps, owners boardengine.Owners, req request) (slugs []string, root bool, err error) {
 	if req.All {
 		for slug, entry := range owners.Entries {
@@ -351,20 +351,20 @@ func namedEntries(deps adoptDeps, owners boardengine.Owners, req request) (slugs
 		entry, held := owners.Entries[slug]
 		switch {
 		case !held:
-			return nil, false, fmt.Errorf("lyx adopt: %q is not on the board: `lyx board list` shows the entries", slug)
+			return nil, false, fmt.Errorf("lym adopt: %q is not on the board: `lym board list` shows the entries", slug)
 		case !entry.IsTask && !entry.IsProject:
-			return nil, false, fmt.Errorf("lyx adopt: %q is a note, not a task: `lyx board promote %s` makes it a task first", slug, slug)
+			return nil, false, fmt.Errorf("lym adopt: %q is a note, not a task: `lym board promote %s` makes it a task first", slug, slug)
 		case entry.Done:
-			return nil, false, fmt.Errorf("lyx adopt: %q is done and already landed, so there is nothing to adopt: `lyx tender resume %s` lets a run that landed there go on to Land under its owner pause", slug, slug)
+			return nil, false, fmt.Errorf("lym adopt: %q is done and already landed, so there is nothing to adopt: `lym tender resume %s` lets a run that landed there go on to Land under its owner pause", slug, slug)
 		case entry.IsTask || !entry.Beam:
 			subject, err := owners.AdoptSubject(slug, deps.ParentOf)
 			if err != nil {
-				return nil, false, fmt.Errorf("lyx adopt: read the parent of %s: %w", slug, err)
+				return nil, false, fmt.Errorf("lym adopt: read the parent of %s: %w", slug, err)
 			}
 			if entry.IsTask {
-				return nil, false, fmt.Errorf("lyx adopt: %q is a task, and a task is moved with its project: `lyx adopt %s` moves it", slug, subject)
+				return nil, false, fmt.Errorf("lym adopt: %q is a task, and a task is moved with its project: `lym adopt %s` moves it", slug, subject)
 			}
-			return nil, false, fmt.Errorf("lyx adopt: %q is a grouping project, not a beam, so there is no pair to take over: `lyx adopt %s` moves its tasks, and `lyx beam create %s` makes it a beam", slug, subject, slug)
+			return nil, false, fmt.Errorf("lym adopt: %q is a grouping project, not a beam, so there is no pair to take over: `lym adopt %s` moves its tasks, and `lym beam create %s` makes it a beam", slug, subject, slug)
 		}
 		if !slices.Contains(slugs, slug) {
 			slugs = append(slugs, slug)
@@ -502,7 +502,7 @@ func takeOverSlug(deps adoptDeps, req request, rec *fabricengine.Mutations, repo
 			out.Stopped = true
 			out.Branches = branches
 			out.Live = live
-			out.WayForward = fmt.Sprintf("the pair holds local state origin lacks or a live driver: `lyx adopt %s --keep-local` records the owner over it, and `lyx adopt %s --drop-local` keeps each local tip under an archive tag and moves the branches to origin's", project, project)
+			out.WayForward = fmt.Sprintf("the pair holds local state origin lacks or a live driver: `lym adopt %s --keep-local` records the owner over it, and `lym adopt %s --drop-local` keeps each local tip under an archive tag and moves the branches to origin's", project, project)
 			return false
 		}
 	}
@@ -527,7 +527,7 @@ func takeOverSlug(deps adoptDeps, req request, rec *fabricengine.Mutations, repo
 func addError(slug, project string, err error) string {
 	var exists *fabricengine.ErrBranchExists
 	if errors.As(err, &exists) {
-		return fmt.Sprintf("the leftover local branch %s may hold commits origin lacks: keep its tip first with `git tag archive/%s/<tip> %s`, then `git branch -D %s`, then re-run `lyx adopt %s`", exists.Branch, slug, exists.Branch, exists.Branch, project)
+		return fmt.Sprintf("the leftover local branch %s may hold commits origin lacks: keep its tip first with `git tag archive/%s/<tip> %s`, then `git branch -D %s`, then re-run `lym adopt %s`", exists.Branch, slug, exists.Branch, exists.Branch, project)
 	}
 	return err.Error()
 }
@@ -535,9 +535,9 @@ func addError(slug, project string, err error) string {
 // ownerWriteError words a refused owner write with its way forward and the re-run.
 func ownerWriteError(err error) error {
 	if errors.Is(err, boardengine.ErrOwnerOriginUnreachable) {
-		return fmt.Errorf("lyx adopt: the owner write needs origin and it was unreachable, so nothing was resumed: %w; %s once origin answers", err, reentry)
+		return fmt.Errorf("lym adopt: the owner write needs origin and it was unreachable, so nothing was resumed: %w; %s once origin answers", err, reentry)
 	}
-	return fmt.Errorf("lyx adopt: the owner write was refused, so nothing was resumed: %w; %s", err, reentry)
+	return fmt.Errorf("lym adopt: the owner write was refused, so nothing was resumed: %w; %s", err, reentry)
 }
 
 // resumeSlug runs steps 4 and 5 for an adopted beam or a moved run, over the owners read back after the owner write.
@@ -600,7 +600,7 @@ func resumeSlug(deps adoptDeps, here string, owners boardengine.Owners, out *slu
 
 // runBeamSteps runs the beam steps of the prime when root was adopted, then of each adopted beam, over the owners read back after the owner write.
 // A beam whose pawl run holds the landing hold gets none, and its outcome names the way to follow the landing and, when another machine owns its parent, the adopt that takes the parent over and so resumes the landing here.
-// A step that fails is the worktree's warning naming `lyx beam start`, and the other worktrees go on.
+// A step that fails is the worktree's warning naming `lym beam start`, and the other worktrees go on.
 func runBeamSteps(deps adoptDeps, here string, owners boardengine.Owners, adopted []string, result *outcome, outcomes map[string]*slugOutcome) {
 	if deps.BeamUp == nil {
 		return
@@ -609,7 +609,7 @@ func runBeamSteps(deps adoptDeps, here string, owners boardengine.Owners, adopte
 		report, err := deps.BeamUp(deps.PrimeName)
 		result.PrimeBeamSteps = beamStepsOf(report)
 		if err != nil {
-			result.PrimeBeamWarning = fmt.Sprintf("the beam steps of the prime failed (%v); way forward: fix the cause it names, then run `lyx beam start root`", err)
+			result.PrimeBeamWarning = fmt.Sprintf("the beam steps of the prime failed (%v); way forward: fix the cause it names, then run `lym beam start root`", err)
 		}
 	}
 	for _, slug := range adopted {
@@ -617,7 +617,7 @@ func runBeamSteps(deps adoptDeps, here string, owners boardengine.Owners, adopte
 		if deps.LandingHeld != nil {
 			held, err := deps.LandingHeld(slug)
 			if err != nil {
-				addWarning(out, fmt.Sprintf("whether the landing holds the beam could not be read (%v), so its beam steps did not run; way forward: fix the cause it names, then run `lyx beam start %s`", err, slug))
+				addWarning(out, fmt.Sprintf("whether the landing holds the beam could not be read (%v), so its beam steps did not run; way forward: fix the cause it names, then run `lym beam start %s`", err, slug))
 				continue
 			}
 			if held {
@@ -628,20 +628,20 @@ func runBeamSteps(deps adoptDeps, here string, owners boardengine.Owners, adopte
 		report, err := deps.BeamUp(slug)
 		out.BeamSteps = beamStepsOf(report)
 		if err != nil {
-			addWarning(out, fmt.Sprintf("the beam steps failed (%v); way forward: fix the cause it names, then run `lyx beam start %s`", err, slug))
+			addWarning(out, fmt.Sprintf("the beam steps failed (%v); way forward: fix the cause it names, then run `lym beam start %s`", err, slug))
 		}
 	}
 }
 
-// heldBeamWayForward words the outcome of an adopted beam whose pawl run holds the landing hold: the beam steps are left to the run, which `lyx batten status` follows, and a parent another machine owns is taken over by its adopt.
+// heldBeamWayForward words the outcome of an adopted beam whose pawl run holds the landing hold: the beam steps are left to the run, which `lym batten status` follows, and a parent another machine owns is taken over by its adopt.
 func heldBeamWayForward(deps adoptDeps, here string, owners boardengine.Owners, slug string) string {
-	text := fmt.Sprintf("its landing holds the beam, so its dobby and orch are not started: run `lyx batten status %s` to follow the landing", slug)
+	text := fmt.Sprintf("its landing holds the beam, so its dobby and orch are not started: run `lym batten status %s` to follow the landing", slug)
 	owner, subject, err := foreignParent(deps, here, owners, slug)
 	switch {
 	case err != nil:
 		return text + fmt.Sprintf("; the owner of its parent could not be read (%v)", err)
 	case owner != "":
-		return text + fmt.Sprintf("; machine %s owns its parent, so the landing halts at Finalize here: `lyx adopt %s` takes the parent over and resumes the landing here", owner, subject)
+		return text + fmt.Sprintf("; machine %s owns its parent, so the landing halts at Finalize here: `lym adopt %s` takes the parent over and resumes the landing here", owner, subject)
 	}
 	return text
 }
@@ -654,7 +654,7 @@ func addWarning(out *slugOutcome, text string) {
 	out.Warning += text
 }
 
-// foreignParent returns the machine that owns slug's parent and what `lyx adopt` takes to move the parent: the nearest beam project above it, `root` for the prime.
+// foreignParent returns the machine that owns slug's parent and what `lym adopt` takes to move the parent: the nearest beam project above it, `root` for the prime.
 // The owner is empty when this machine owns the parent.
 func foreignParent(deps adoptDeps, here string, owners boardengine.Owners, slug string) (owner, subject string, err error) {
 	owner, parent, err := parentOwnerOf(deps, owners, slug)
@@ -687,7 +687,7 @@ func parentOwnerOf(deps adoptDeps, owners boardengine.Owners, slug string) (owne
 }
 
 // parentWarning returns the warning for an entry whose parent another machine owns, since its run halts at Finalize here; it is empty otherwise.
-// The warning names the adopt of the parent's project, `lyx adopt root` when the parent is the prime.
+// The warning names the adopt of the parent's project, `lym adopt root` when the parent is the prime.
 func parentWarning(deps adoptDeps, here string, owners boardengine.Owners, slug string) string {
 	owner, subject, err := foreignParent(deps, here, owners, slug)
 	if err != nil {
@@ -696,7 +696,7 @@ func parentWarning(deps adoptDeps, here string, owners boardengine.Owners, slug 
 	if owner == "" {
 		return ""
 	}
-	return fmt.Sprintf("this machine does not own the parent, which %s owns, so the run halts at Finalize here: `lyx adopt %s` takes the parent over", owner, subject)
+	return fmt.Sprintf("this machine does not own the parent, which %s owns, so the run halts at Finalize here: `lym adopt %s` takes the parent over", owner, subject)
 }
 
 // liftOwnerPauses lifts each live owner-labelled pause entry of the slug's own scope, and records a pause that still covers the slug afterwards.
@@ -721,9 +721,9 @@ func liftOwnerPauses(deps adoptDeps, out *slugOutcome) error {
 	}
 	if entry, covered := record.Covering(out.Slug); covered {
 		if entry.Scope == pauserecord.ScopeHub {
-			out.PauseStanding = "a hub pause covers it: `lyx tender resume` lifts it"
+			out.PauseStanding = "a hub pause covers it: `lym tender resume` lifts it"
 		} else {
-			out.PauseStanding = fmt.Sprintf("a pause of its own scope by %s covers it: `lyx tender resume %s` lifts it", entry.Caller, out.Slug)
+			out.PauseStanding = fmt.Sprintf("a pause of its own scope by %s covers it: `lym tender resume %s` lifts it", entry.Caller, out.Slug)
 		}
 	}
 	return nil

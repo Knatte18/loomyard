@@ -26,7 +26,7 @@ func TestMergeErrors_PinnedStrings(t *testing.T) {
 		{
 			name: "ErrMergeInRequired",
 			err:  &ErrMergeInRequired{Source: "some-branch"},
-			want: `fabricengine: merge produced conflicts and was aborted; run "lyx fabric merge-in" in the source branch's own worktree first, then retry`,
+			want: `fabricengine: merge produced conflicts and was aborted; run "lym fabric merge-in" in the source branch's own worktree first, then retry`,
 		},
 		{
 			name: "ErrForeignMergeState",
@@ -41,7 +41,7 @@ func TestMergeErrors_PinnedStrings(t *testing.T) {
 		{
 			name: "ErrMergeIncomplete",
 			err:  &ErrMergeIncomplete{},
-			want: `fabricengine: merge conclude did not finish; run "lyx fabric merge --continue" again`,
+			want: `fabricengine: merge conclude did not finish; run "lym fabric merge --continue" again`,
 		},
 		{
 			name: "ErrUnmergeableState",
@@ -51,7 +51,7 @@ func TestMergeErrors_PinnedStrings(t *testing.T) {
 		{
 			name: "ErrMergeInProgress",
 			err:  &ErrMergeInProgress{},
-			want: `fabricengine: a merge is in progress; run "lyx fabric merge --continue" or "lyx fabric merge --abort" first`,
+			want: `fabricengine: a merge is in progress; run "lym fabric merge --continue" or "lym fabric merge --abort" first`,
 		},
 	}
 	for _, tt := range tests {

@@ -159,7 +159,7 @@ func parked(state shedengine.State) shedengine.Status {
 
 // writeReport makes the driver's park marker read as holding a stop report written at at.
 func (h *noticeHarness) writeReport(at time.Time) {
-	h.reportPath, h.reportAt, h.reportFound = "/wt/task/_lyx/stop-report.md", at, true
+	h.reportPath, h.reportAt, h.reportFound = "/wt/task/_lym/stop-report.md", at, true
 }
 
 // producer returns a producer whose every Call is one pass, run by a producer built anew over the harness's scratch directory.
@@ -312,7 +312,7 @@ func TestRenderNotice(t *testing.T) {
 
 	since := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	long := shedengine.Status{State: shedengine.StateFailed, CurrentProducer: "Publish", Error: "boom\nsecond\x1b[0m line " + strings.Repeat("x", 300), History: make([]shedengine.HistoryEntry, 7)}
-	awaiting := shedengine.Status{State: shedengine.StateAwaiting, CurrentProducer: "PR-Gate", Error: "the pull request awaits review: /wt/task/_lyx/review.md, beside /other/wt/task/x", History: make([]shedengine.HistoryEntry, 3)}
+	awaiting := shedengine.Status{State: shedengine.StateAwaiting, CurrentProducer: "PR-Gate", Error: "the pull request awaits review: /wt/task/_lym/review.md, beside /other/wt/task/x", History: make([]shedengine.HistoryEntry, 3)}
 	done := shedengine.Status{State: shedengine.StateDone}
 	tests := []struct {
 		name string
@@ -322,8 +322,8 @@ func TestRenderNotice(t *testing.T) {
 	}{
 		{
 			name: "AFailedChildLabelsItsReasonAnError",
-			line: noticeLine{slug: "task", condition: haltText(long), status: long, since: since, report: reportClause("/wt/task/_lyx/stop.md", true), pairDir: "/wt/task"},
-			want: []string{"task: failed at Publish;", "error: boom second", "since 2026-01-02T03:04:05Z", "history 7", "report _lyx/stop.md"},
+			line: noticeLine{slug: "task", condition: haltText(long), status: long, since: since, report: reportClause("/wt/task/_lym/stop.md", true), pairDir: "/wt/task"},
+			want: []string{"task: failed at Publish;", "error: boom second", "since 2026-01-02T03:04:05Z", "history 7", "report _lym/stop.md"},
 			deny: []string{"/wt/task"},
 		},
 		{
@@ -334,7 +334,7 @@ func TestRenderNotice(t *testing.T) {
 		{
 			name: "AnAwaitingChildIsWaitingNotAnError",
 			line: noticeLine{slug: "task", condition: haltText(awaiting), status: awaiting, since: since, pairDir: "/wt/task"},
-			want: []string{"task: awaiting at PR-Gate;", "waiting: the pull request awaits review: _lyx/review.md, beside /other/wt/task/x;"},
+			want: []string{"task: awaiting at PR-Gate;", "waiting: the pull request awaits review: _lym/review.md, beside /other/wt/task/x;"},
 			deny: []string{"error:", " /wt/task"},
 		},
 		{
@@ -491,7 +491,7 @@ func TestNotice_DeadDriverWhileRunning(t *testing.T) {
 		}
 		h.call(p)
 		h.call(p)
-		want := `blocked at Publish; driver strand could not be revived; run "lyx loom start" in the task worktree to bring a driver back`
+		want := `blocked at Publish; driver strand could not be revived; run "lym loom start" in the task worktree to bring a driver back`
 		if len(h.notified) != 2 || !strings.Contains(h.notified[0], "blocked at Publish; error: stuck") || !strings.Contains(h.notified[1], want) {
 			t.Fatalf("notified = %q; want the halt's own notice, then one driver-dead notice reading %q", h.notified, want)
 		}
@@ -932,7 +932,7 @@ func TestNotice_ParkedStopWaitsForTheStopReport(t *testing.T) {
 			name:       "AReportWrittenAfterTheStopGoesWithItsPath",
 			state:      shedengine.StateBlocked,
 			at:         func(h *noticeHarness, since time.Time) { h.writeReport(since.Add(10 * time.Second)) },
-			wantReport: "report _lyx/stop-report.md",
+			wantReport: "report _lym/stop-report.md",
 		},
 		{
 			name:       "NoReportGoesAfterThreeMinutesAsNoneYet",

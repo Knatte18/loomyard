@@ -75,7 +75,7 @@ func waitFor(condition func() bool) bool {
 // Both observations must equal Claude.PasteSubmits(), so a Claude Code release that turns the post-paste Enter into a newline fails here and names the constant to flip.
 // A text of claudeengine.PasteCollapseMinChars characters pasted with submit false shows a placeholder that OwnPastePlaceholder accepts for it, and one character shorter shows the text itself.
 func TestSmokePasteSubmitAndCollapse(t *testing.T) {
-	llmkit.Claude(t, "LYX_REED_CLAUDE")
+	llmkit.Claude(t, "LYM_REED_CLAUDE")
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	deferHubRelease(t, h.Path)

@@ -3,7 +3,7 @@
 // main_test.go covers the production deploy's pieces — the dirty-tree refusal, the marketplace
 // parse, the plugin mirror, and the stray-binary report — plus -dev's destination and a
 // source-level guard that the -ldflags -X path in run() still names a variable that actually exists
-// at internal/buildinfo, and a go.mod guard that lyxMainPackage still names lyx's main package.
+// at internal/buildinfo, and a go.mod guard that lymMainPackage still names lym's main package.
 // Tests spawn no git, go build, or go env;
 // the mirror and stray-binary tests work in t.TempDir, so goBinDir(), the pushed-to-main gate and the git-driven listing in syncPlugins are intentionally left uncovered here.
 
@@ -116,9 +116,9 @@ func TestMirrorFiles_ReplacesTargetWithExactlyTheListedFiles(t *testing.T) {
 	}
 }
 
-// TestOtherLyxBinaries_ReportsEachLyxCopyOutsideTheDestDirOnce verifies a second lyx on PATH is reported whether it sits before or after the production dir, while the production binary, a foreign program of the same name and a second PATH entry reaching an already seen file through a directory link never are.
-// The test binary stands in for lyx, recognised by its own main package path.
-func TestOtherLyxBinaries_ReportsEachLyxCopyOutsideTheDestDirOnce(t *testing.T) {
+// TestOtherLymBinaries_ReportsEachLymCopyOutsideTheDestDirOnce verifies a second lym on PATH is reported whether it sits before or after the production dir, while the production binary, a foreign program of the same name and a second PATH entry reaching an already seen file through a directory link never are.
+// The test binary stands in for lym, recognised by its own main package path.
+func TestOtherLymBinaries_ReportsEachLymCopyOutsideTheDestDirOnce(t *testing.T) {
 	t.Parallel()
 	self, err := os.Executable()
 	if err != nil {
@@ -162,15 +162,15 @@ func TestOtherLyxBinaries_ReportsEachLyxCopyOutsideTheDestDirOnce(t *testing.T) 
 		mainPackage string
 		want        []string
 	}{
-		{"LyxCopies", selfInfo.Path, []string{filepath.Join(dir("a"), name), filepath.Join(dir("c"), name)}},
-		{"OtherMainPackage", "example.com/other/cmd/lyx", nil},
+		{"LymCopies", selfInfo.Path, []string{filepath.Join(dir("a"), name), filepath.Join(dir("c"), name)}},
+		{"OtherMainPackage", "example.com/other/cmd/lym", nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := otherLyxBinaries(pathDirs, dir("go/bin"), name, tt.mainPackage)
+			got := otherLymBinaries(pathDirs, dir("go/bin"), name, tt.mainPackage)
 			if strings.Join(got, "|") != strings.Join(tt.want, "|") {
-				t.Errorf("otherLyxBinaries(%q) = %v; want %v", tt.mainPackage, got, tt.want)
+				t.Errorf("otherLymBinaries(%q) = %v; want %v", tt.mainPackage, got, tt.want)
 			}
 		})
 	}
@@ -229,9 +229,9 @@ func TestLdflagsPath_MatchesBuildinfoChannel(t *testing.T) {
 	}
 }
 
-// TestLyxMainPackage_MatchesModulePath guards lyxMainPackage against drift from go.mod's module path:
-// a stale constant matches no installed lyx, so the foreign-lyx warning would never fire with every other test green.
-func TestLyxMainPackage_MatchesModulePath(t *testing.T) {
+// TestLymMainPackage_MatchesModulePath guards lymMainPackage against drift from go.mod's module path:
+// a stale constant matches no installed lym, so the foreign-lym warning would never fire with every other test green.
+func TestLymMainPackage_MatchesModulePath(t *testing.T) {
 	t.Parallel()
 	goMod, err := os.ReadFile(filepath.Join(repoRoot(t), "go.mod"))
 	if err != nil {
@@ -247,8 +247,8 @@ func TestLyxMainPackage_MatchesModulePath(t *testing.T) {
 	if modulePath == "" {
 		t.Fatal("go.mod declares no module path")
 	}
-	if want := modulePath + "/cmd/lyx"; lyxMainPackage != want {
-		t.Errorf("lyxMainPackage = %q; want %q", lyxMainPackage, want)
+	if want := modulePath + "/cmd/lym"; lymMainPackage != want {
+		t.Errorf("lymMainPackage = %q; want %q", lymMainPackage, want)
 	}
 }
 

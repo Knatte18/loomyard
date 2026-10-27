@@ -1,12 +1,12 @@
-// Package webstercli is the `lyx webster` command: it drives a pinned plan-format plan through a long-lived Master session that forks one implementer per batch, and holds the file-contract-backed verbs Master's own prompt drives.
+// Package webstercli is the `lym webster` command: it drives a pinned plan-format plan through a long-lived Master session that forks one implementer per batch, and holds the file-contract-backed verbs Master's own prompt drives.
 //
 // # Modes
 //
-// webster runs in hub mode inside a lyx hub worktree, and in standalone mode in a plain git checkout with no hub beside it.
-// `--stencils-dir` and `--plan-dir` are read-only overrides in both modes, defaulting to the hub's own stencils and plan directories in hub mode and to the derived state directory's `_lyx/stencils` and `_lyx/plan` in standalone.
+// webster runs in hub mode inside a lym hub worktree, and in standalone mode in a plain git checkout with no hub beside it.
+// `--stencils-dir` and `--plan-dir` are read-only overrides in both modes, defaulting to the hub's own stencils and plan directories in hub mode and to the derived state directory's `_lym/stencils` and `_lym/plan` in standalone.
 // `--target-dir` is standalone-only, defaults to the current directory and is refused in hub mode, where the worktree is the target.
 // A relative value for any of the three resolves against the current directory, and the standalone target is lifted to the root of its git repository, so a subdirectory drives the same repository, state directory and reed session as the root.
-// In standalone mode run boots its own private reed session (socket `lyx-<hash8>`, state under the derived state directory) before spawning Master, since `lyx reed up` is a hub verb and cannot reach that geometry.
+// In standalone mode run boots its own private reed session (socket `lym-<hash8>`, state under the derived state directory) before spawning Master, since `lym reed up` is a hub verb and cannot reach that geometry.
 //
 // # Validate
 //
@@ -14,7 +14,7 @@
 // With a run in progress it first checks the plan against the fingerprint the run recorded;
 // a plan edited since is linted but not re-baselined, and state.json is left untouched, so an edit is never adopted unseen.
 //
-// Its scope follows the run's progress exactly as the gate `lyx webster run` applies before forking an implementer.
+// Its scope follows the run's progress exactly as the gate `lym webster run` applies before forking an implementer.
 // "whole-plan" holds while no batch is begun and checks every card, the plan-unapproved approval gate included.
 // "pending" holds once a batch is begun: the cards of every begun batch are left out of resolving, since their Create targets may exist and their Delete or Rename-old targets may be gone, and the Create and Rename-new targets of begun batches not yet terminal count as forthcoming, so a later card that Uses one is not reported missing.
 // Approval is not re-checked then, being an established fact of the run.
@@ -48,7 +48,7 @@
 // # Recover-batch
 //
 // recover-batch exits non-zero whenever the terminal record it returns for is not done: a stuck or dead digest goes out as an error envelope (`ok` false) carrying the same fields as a done one, the digest fields with recoveries, recovery_retry and warnings.
-// Its message names the way forward, `lyx webster recover-batch NN` once more when recovery_retry is true, else ending the run stuck naming the batch.
+// Its message names the way forward, `lym webster recover-batch NN` once more when recovery_retry is true, else ending the run stuck naming the batch.
 // A done digest and a running snapshot exit 0, and Master reads the digest fields, never the exit code.
 //
 // # Fix-verify

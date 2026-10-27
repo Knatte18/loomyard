@@ -23,7 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/verifyrun"
 )
 
@@ -155,9 +155,9 @@ func LatestPass(p Paths, command string) (Pass, bool) {
 }
 
 // Dir returns the verify directory under anchorRoot.
-// Every teller calls it rather than joining its own, so the Lyxdirs Single-Declarer Invariant holds.
+// Every teller calls it rather than joining its own, so the Lymdirs Single-Declarer Invariant holds.
 func Dir(anchorRoot string) string {
-	return filepath.Join(anchorRoot, lyxdirs.DotLyxDirName, dirName)
+	return filepath.Join(anchorRoot, lymdirs.DotLymDirName, dirName)
 }
 
 // NewPaths names the verify files inside dir for worktree.
@@ -291,7 +291,7 @@ func parsePorcelainZ(out string) []string {
 // Otherwise the marker is written, the command runs with its output in a fresh `verify-<n>.log` in p.Dir that the result names, the marker is removed whatever happened, and an exit 0 returns StatusPassed.
 // Once the log is written, whatever the exit, every log beyond the newest verifyLogKeep is pruned except the one the landing failure record names;
 // a prune failure is logged and leaves the result unchanged.
-// The command is one `lyx gate test --wait` call, or such calls joined by `&&`, which take their own slots and bound themselves, so Verify takes no slot and applies no timeout.
+// The command is one `lym gate test --wait` call, or such calls joined by `&&`, which take their own slots and bound themselves, so Verify takes no slot and applies no timeout.
 // The pass writes the record only when HEAD still names the tree and commit the run started on, so a commit that lands mid-run costs the next call a re-run rather than recording a tree the command did not run on.
 // The write replaces the entry of command and drops every other command's entry naming a different tree, except site.BaseCommand's.
 // A non-zero exit is StatusFailed with the exit code, and a shell that could not start is StatusFailed with exit code -1 and the cause in Detail.
@@ -377,8 +377,8 @@ func runAndRecord(ctx context.Context, p Paths, site Site, command, tree, commit
 	}
 	defer os.Remove(p.Marker)
 
-	// The verify command runs without the strand name, so a test driving `lyx fabric` never meets a role guard that reads it.
-	// It never inherits the prebuilt-lyx variable either: its own go test builds lyx once per test binary.
+	// The verify command runs without the strand name, so a test driving `lym fabric` never meets a role guard that reads it.
+	// It never inherits the prebuilt-lym variable either: its own go test builds lym once per test binary.
 	env := slices.DeleteFunc(gateslot.StripPrebuilt(os.Environ()), func(entry string) bool { return strings.HasPrefix(entry, agentname.StrandNameEnv+"=") })
 
 	logPath, err := nextLogPath(p.Dir)

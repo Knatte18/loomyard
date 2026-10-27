@@ -1,6 +1,6 @@
 //go:build tier0
 
-// pausehold_test.go pins that `lyx batten run` refuses a slug a live pause entry covers before it seeds a status file.
+// pausehold_test.go pins that `lym batten run` refuses a slug a live pause entry covers before it seeds a status file.
 
 package battencli
 
@@ -23,7 +23,7 @@ import (
 )
 
 // TestBattenRun_RefusesWhileAPauseCoversTheSlug runs the run verb's driveRun over a prime whose record holds a live entry:
-// an entry covering the slug refuses naming `lyx tender resume <slug>` with nothing seeded, the run verb exiting with the covered code, and an entry for another slug seeds as before.
+// an entry covering the slug refuses naming `lym tender resume <slug>` with nothing seeded, the run verb exiting with the covered code, and an entry for another slug seeds as before.
 func TestBattenRun_RefusesWhileAPauseCoversTheSlug(t *testing.T) {
 	t.Parallel()
 
@@ -69,8 +69,8 @@ func TestBattenRun_RefusesWhileAPauseCoversTheSlug(t *testing.T) {
 				}
 				return
 			}
-			if driveExit != dobbyengine.PassExitCovered || !strings.Contains(driveOut.String(), "lyx tender resume") {
-				t.Errorf("run exit = %d, output %q; want exit %d and a refusal naming %q", driveExit, driveOut.String(), dobbyengine.PassExitCovered, "lyx tender resume")
+			if driveExit != dobbyengine.PassExitCovered || !strings.Contains(driveOut.String(), "lym tender resume") {
+				t.Errorf("run exit = %d, output %q; want exit %d and a refusal naming %q", driveExit, driveOut.String(), dobbyengine.PassExitCovered, "lym tender resume")
 			}
 			if !os.IsNotExist(statErr) {
 				t.Errorf("status file stat = %v; want it absent, nothing seeded", statErr)
@@ -89,7 +89,7 @@ func TestBattenRun_LostWorktreeCreateClaimExitsWithTheDriversCode(t *testing.T) 
 	var out bytes.Buffer
 	exitCode := clihelp.Execute(runCommand(c), &out, []string{c.slug})
 
-	if exitCode != 0 || !strings.Contains(out.String(), `"outcome":"blocked"`) || !strings.Contains(out.String(), "lyx adopt some-beam") {
+	if exitCode != 0 || !strings.Contains(out.String(), `"outcome":"blocked"`) || !strings.Contains(out.String(), "lym adopt some-beam") {
 		t.Errorf("run exit = %d, output %q; want exit 0 and a blocked envelope carrying the refusal's way forward", exitCode, out.String())
 	}
 }

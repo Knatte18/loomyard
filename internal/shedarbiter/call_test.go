@@ -248,7 +248,7 @@ func writeVerdictFile(t *testing.T, dir, text string) {
 }
 
 const (
-	resumeVerdict = "verdict: resume\nreason: the repair is safe\nverbs:\n  - lyx loom circling accept operator-surface-task\n"
+	resumeVerdict = "verdict: resume\nreason: the repair is safe\nverbs:\n  - lym loom circling accept operator-surface-task\n"
 	handOnVerdict = "verdict: hand-on\nreason: the design is wrong\nquestion: should the parent widen the task?\n"
 )
 
@@ -307,7 +307,7 @@ func TestCall_SpawnPath(t *testing.T) {
 		{
 			name: "landing halt at Finalize refused", producer: loomshed.NameFinalize, state: shedengine.StateBlocked,
 			setup: func(f *callFixture) {
-				f.haltAtVerifyRow(loomshed.NameFinalize, landingshed.LandingStopPrefix+"the fixer escalated; way forward: resolve it, then `lyx loom resume`")
+				f.haltAtVerifyRow(loomshed.NameFinalize, landingshed.LandingStopPrefix+"the fixer escalated; way forward: resolve it, then `lym loom resume`")
 			},
 			wantRefusal: "a landing halt", wantNoSpawn: true,
 		},
@@ -379,9 +379,9 @@ func TestCall_SpawnPath(t *testing.T) {
 			name: "a refusal ends with the deps' way forward", producer: "Plan-Write", state: shedengine.StateBlocked,
 			setup: func(f *callFixture) {
 				f.settings.MaxSpawns = 0
-				f.wayForward = "way forward: read the stop with `lyx batten status`"
+				f.wayForward = "way forward: read the stop with `lym batten status`"
 			},
-			wantRefusal: "arbiter: off", wantSuffix: "way forward: read the stop with `lyx batten status`", wantNoSpawn: true,
+			wantRefusal: "arbiter: off", wantSuffix: "way forward: read the stop with `lym batten status`", wantNoSpawn: true,
 		},
 		{
 			name: "spent budget refused, counted from the attempt records on disk", producer: "Plan-Write", state: shedengine.StateBlocked,
@@ -637,8 +637,8 @@ func TestVerdictGate(t *testing.T) {
 	t.Parallel()
 
 	const title = `--title "D6 refined: card 9's scope"`
-	unquotedVerbs := "verdict: resume\nreason: the accept is recorded\nverbs:\n  - lyx loom decision add operator-surface-task " + title + "\n"
-	blockVerbs := "verdict: resume\nreason: |-\n  the accept is recorded: card 9 stands\nverbs:\n  - |-\n    lyx loom decision add operator-surface-task " + title + "\n"
+	unquotedVerbs := "verdict: resume\nreason: the accept is recorded\nverbs:\n  - lym loom decision add operator-surface-task " + title + "\n"
+	blockVerbs := "verdict: resume\nreason: |-\n  the accept is recorded: card 9 stands\nverbs:\n  - |-\n    lym loom decision add operator-surface-task " + title + "\n"
 
 	paths := []struct {
 		name  string
@@ -734,13 +734,13 @@ func TestCall_VerdictOutcomes(t *testing.T) {
 			name: "a valid resume carries its relaunch line", producer: "Plan-Write", state: shedengine.StateFailed,
 			verdict: resumeVerdict, setup: func(f *callFixture) { f.stopEnvelope = `{"kind":"producer"}` },
 			wantVerdict:  loomengine.ArbiterVerdictResume,
-			wantRelaunch: "lyx shed step " + testRun + " --until-stop --arbiter-attempt 1",
+			wantRelaunch: "lym shed step " + testRun + " --until-stop --arbiter-attempt 1",
 		},
 		{
 			name: "a resume at a blocked stop with a goto target", producer: loomshed.NameParentAlign, state: shedengine.StateBlocked,
 			verdict:     "verdict: resume\nreason: go back\ngoto: Plan-Write\n",
 			wantVerdict: loomengine.ArbiterVerdictResume, wantGoto: "Plan-Write",
-			wantRelaunch: "lyx shed step " + testRun + " --until-stop --arbiter-attempt 1",
+			wantRelaunch: "lym shed step " + testRun + " --until-stop --arbiter-attempt 1",
 		},
 		{
 			name: "a resume at an escalation with its decision recorded", producer: "Plan-Bouncer", state: shedengine.StateAwaiting,
@@ -750,7 +750,7 @@ func TestCall_VerdictOutcomes(t *testing.T) {
 				f.circlingPending = true
 			},
 			wantVerdict:  loomengine.ArbiterVerdictResume,
-			wantRelaunch: "lyx shed step " + testRun + " --until-stop --arbiter-attempt 1",
+			wantRelaunch: "lym shed step " + testRun + " --until-stop --arbiter-attempt 1",
 		},
 		{
 			name: "a hand-on carries its question", producer: "Plan-Write", state: shedengine.StateBlocked,

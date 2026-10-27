@@ -130,7 +130,7 @@ type BouncerConfig struct {
 	// Nil is the absent value and leaves every row behaving exactly as before.
 	// The seam can only approve what its caller already classified: it cannot reject, re-route, or touch the run directory.
 	Skip func() (bool, error)
-	// Slug is the task slug the escalation Awaiting Reason addresses the `lyx loom circling` verbs with, and the escalation brief names the task by.
+	// Slug is the task slug the escalation Awaiting Reason addresses the `lym loom circling` verbs with, and the escalation brief names the task by.
 	// Empty means the verbs run without a slug argument, and the brief render degrades.
 	Slug string
 	// ParentName is the told name of the session this Bouncer's spawned roles escalate to, rendered into the judge and seed prompts by parentdirective.Directive.
@@ -350,7 +350,7 @@ var _ shedengine.ShedProducer = (*Bouncer)(nil)
 // so the run directory is archived aside via archiveRunDir and recreated empty, the round is re-resolved to 0,
 // and the same call falls through into the seed branch below, since round1FocusSeeded() reads false over the freshly recreated, empty directory.
 // The clear does not fire on an undecided escalated round,
-// so a segment re-entered after a `lyx loom goto` to an earlier row halts Awaiting again on that round,
+// so a segment re-entered after a `lym loom goto` to an earlier row halts Awaiting again on that round,
 // and a `continue` then sends the rewritten artifact to a fresh review round.
 // The entry-time probe runs before both the clear and the harvest.
 //
@@ -475,7 +475,7 @@ func (b *Bouncer) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 			// between the write and the agent's own exit therefore lands here with a live seed still
 			// holding round-1-focus.md -- and handing back Stuck without waiting abandons it in its
 			// pane while the segment's round producer starts reading the very file it may still be
-			// rewriting. Reproduced live in crucible round 1: `lyx loom step` killed mid-seed, then
+			// rewriting. Reproduced live in crucible round 1: `lym loom step` killed mid-seed, then
 			// re-invoked, took this branch and left a paid-for agent running behind it.
 			// Waiting costs nothing when nothing is live (Attach reports not-found immediately) and
 			// leaves the branch acting on exactly the state it always did.
@@ -558,7 +558,7 @@ func (b *Bouncer) liveSubject() (Subject, bool, error) {
 
 // recordFailure wraps a failed record write, naming the way forward.
 func (b *Bouncer) recordFailure(what string, err error) error {
-	return fmt.Errorf("shedadapters: %s (%s): write the %s: %w; way forward: make the named path writable, then run `lyx loom start` to re-run the row", b.cfg.Name, bouncerEngineLabel, what, err)
+	return fmt.Errorf("shedadapters: %s (%s): write the %s: %w; way forward: make the named path writable, then run `lym loom start` to re-run the row", b.cfg.Name, bouncerEngineLabel, what, err)
 }
 
 // startGeneration writes generation 1's record when the run directory holds none.
@@ -1212,7 +1212,7 @@ func (b *Bouncer) unearnedCircling(round int) string {
 func (b *Bouncer) settleUnconverged(ctx context.Context, round int, verdict bouncerVerdict, spawned bool, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	decision, cause, settled, exists, err := readCirclingDecision(b.cfg.RunDir, round)
 	if err != nil {
-		return b.degrade(ctx, fmt.Sprintf("shedadapters: bouncer circling decision for round %d is unreadable: %v; way forward: fix or delete %s, then run `lyx loom start` to resume the round", round, err, circlingDecisionPath(b.cfg.RunDir, round)), "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
+		return b.degrade(ctx, fmt.Sprintf("shedadapters: bouncer circling decision for round %d is unreadable: %v; way forward: fix or delete %s, then run `lym loom start` to resume the round", round, err, circlingDecisionPath(b.cfg.RunDir, round)), "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
 	}
 	switch {
 	case !exists:
@@ -1220,7 +1220,7 @@ func (b *Bouncer) settleUnconverged(ctx context.Context, round int, verdict boun
 	case decision == CirclingContinue:
 		if b.atHardCap(round) {
 			if err := b.retireContinue(round); err != nil {
-				return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): retire the continue decision of round %d at the hard cap: %w; way forward: make the named path writable, then run `lyx loom start`, which re-escalates the round", b.cfg.Name, bouncerEngineLabel, round, err)
+				return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): retire the continue decision of round %d at the hard cap: %w; way forward: make the named path writable, then run `lym loom start`, which re-escalates the round", b.cfg.Name, bouncerEngineLabel, round, err)
 			}
 			return b.escalate(round, EscalationHardCap, ptr)
 		}
@@ -1228,7 +1228,7 @@ func (b *Bouncer) settleUnconverged(ctx context.Context, round int, verdict boun
 		ptr.BudgetExempt = cause == EscalationBudget || b.budgetReached(round)
 		return shedengine.Stuck, ptr, nil
 	case settled:
-		return b.degrade(ctx, fmt.Sprintf("shedadapters: bouncer circling accept for round %d is already settled; way forward: run `lyx loom start`, which re-enters the segment and archives the settled round", round), "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round)
+		return b.degrade(ctx, fmt.Sprintf("shedadapters: bouncer circling accept for round %d is already settled; way forward: run `lym loom start`, which re-enters the segment and archives the settled round", round), "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round)
 	}
 
 	return b.acceptRound(round, ptr)
@@ -1446,7 +1446,7 @@ func (b *Bouncer) escalate(round int, cause EscalationCause, ptr shedengine.Outp
 func (b *Bouncer) escalateWith(round int, cause EscalationCause, detail string, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	recordedCause, notice, exists, err := readEscalation(b.cfg.RunDir, round)
 	if err != nil {
-		return shedengine.Stuck, shedengine.OutputPointer{Reason: fmt.Sprintf("shedadapters: bouncer escalation record for round %d is unreadable: %v; way forward: fix or delete the file the error names, then run `lyx loom start`, which re-escalates the round", round, err)}, nil
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: fmt.Sprintf("shedadapters: bouncer escalation record for round %d is unreadable: %v; way forward: fix or delete the file the error names, then run `lym loom start`, which re-escalates the round", round, err)}, nil
 	}
 
 	briefPath := ""
@@ -1459,7 +1459,7 @@ func (b *Bouncer) escalateWith(round int, cause EscalationCause, detail string, 
 			logger.Warn("shedadapters: bouncer escalation render failed; escalating with the plain Reason", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", rerr)
 		}
 		if err := writeEscalation(b.cfg.RunDir, round, cause, brief, renderedNotice); err != nil {
-			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): %w; way forward: make the named path writable, then run `lyx loom start`, which re-escalates the round", b.cfg.Name, bouncerEngineLabel, err)
+			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): %w; way forward: make the named path writable, then run `lym loom start`, which re-escalates the round", b.cfg.Name, bouncerEngineLabel, err)
 		}
 		notice = renderedNotice
 		if rerr == nil {
@@ -1527,7 +1527,7 @@ func (b *Bouncer) renderEscalation(round int, cause EscalationCause, detail stri
 // the segment, the round and the cause, the brief path when one was rendered, the verbs that record the decision, and the resume command.
 // The circling verbs take the slug, while the resume command addresses the cwd worktree's own run.
 // At or past the hard cap, whatever the cause, the decide clause names accept alone.
-// For cause decision the decide clause opens with recording the answer through `lyx loom decision add`.
+// For cause decision the decide clause opens with recording the answer through `lym loom decision add`.
 func (b *Bouncer) escalationReason(round int, cause EscalationCause, briefPath string) string {
 	verbSuffix := ""
 	if b.cfg.Slug != "" {
@@ -1539,12 +1539,12 @@ func (b *Bouncer) escalationReason(round int, cause EscalationCause, briefPath s
 	}
 	recordAnswer := ""
 	if cause == EscalationDecision {
-		recordAnswer = fmt.Sprintf("record the answer with `lyx loom decision add%s`, then ", verbSuffix)
+		recordAnswer = fmt.Sprintf("record the answer with `lym loom decision add%s`, then ", verbSuffix)
 	}
 	if b.atHardCap(round) {
-		return reason + fmt.Sprintf("; the round is at or past the perch's hard cap, so it can only be accepted: %sdecide with `lyx loom circling accept%s`, then run `lyx loom resume` in the task worktree to resume", recordAnswer, verbSuffix)
+		return reason + fmt.Sprintf("; the round is at or past the perch's hard cap, so it can only be accepted: %sdecide with `lym loom circling accept%s`, then run `lym loom resume` in the task worktree to resume", recordAnswer, verbSuffix)
 	}
-	return reason + fmt.Sprintf("; %sdecide with `lyx loom circling accept%s` or `lyx loom circling continue%s`, then run `lyx loom resume` in the task worktree to resume", recordAnswer, verbSuffix, verbSuffix)
+	return reason + fmt.Sprintf("; %sdecide with `lym loom circling accept%s` or `lym loom circling continue%s`, then run `lym loom resume` in the task worktree to resume", recordAnswer, verbSuffix, verbSuffix)
 }
 
 // seedCall runs the Bouncer's seed pass for round 1: archive round 1's stale focus file, attempt
@@ -1756,7 +1756,7 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 	}
 	declaredChanges, err := discussionparser.DeclaredPatternChanges(b.cfg.PatternRecordPath)
 	if err != nil {
-		return b.degrade(ctx, fmt.Sprintf("shedadapters: bouncer declared PATTERN changes unreadable: %v run `lyx loom start` to re-step the row", err), "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
+		return b.degrade(ctx, fmt.Sprintf("shedadapters: bouncer declared PATTERN changes unreadable: %v run `lym loom start` to re-step the row", err), "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
 	}
 	patternDirective, err := pattern.Directive(b.cfg.WorktreeRoot, b.cfg.StencilsDir, pattern.RoleJudge, declaredChanges)
 	if err != nil {

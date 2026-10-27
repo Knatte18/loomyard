@@ -1,6 +1,6 @@
 // start.go implements the orch's bring-up, `BeamUp`: the idempotent bootstrap that starts the worktree's dobby, ensures the runs strand, leaves one live orchestrator strand and one watcher bound to it, then reports.
 // It never attaches or switches a tmux client;
-// `lyx reed attach` is the only way into the session.
+// `lym reed attach` is the only way into the session.
 
 package orchcli
 
@@ -17,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -41,7 +41,7 @@ const (
 )
 
 // stoppingWatcherHint is the report hint when the watcher is still stopping after the start's wait.
-const stoppingWatcherHint = `the watcher is stopping; run "lyx beam start" again once it has exited`
+const stoppingWatcherHint = `the watcher is stopping; run "lym beam start" again once it has exited`
 
 // BeamUpOptions tunes one BeamUp.
 type BeamUpOptions struct {
@@ -61,7 +61,7 @@ type BeamUpReport struct {
 	// Dobby is the outcome of the worktree's dobby start, empty when none was attempted, and DobbyDetail says why it was refused or failed.
 	Dobby       string `json:"dobby,omitempty"`
 	DobbyDetail string `json:"dobby_detail,omitempty"`
-	// Action is what the bring-up of `lyx beam start` did to the strand: relaunched, spawned-watcher or already-running.
+	// Action is what the bring-up of `lym beam start` did to the strand: relaunched, spawned-watcher or already-running.
 	Action string `json:"action,omitempty"`
 	// Strand is the orchestrator strand's guid.
 	Strand string `json:"strand,omitempty"`
@@ -88,7 +88,7 @@ type BeamUpReport struct {
 // BeamUp brings up the worktree at location: its dobby, its runs strand and its orch with the watcher bound to it.
 // A refusal or failure returns its error with the report gathered so far.
 // It refuses a worktree that is neither the prime nor a beam.
-func BeamUp(location *lyxcwd.Location, opts BeamUpOptions) (BeamUpReport, error) {
+func BeamUp(location *lymcwd.Location, opts BeamUpOptions) (BeamUpReport, error) {
 	c := &orchCLI{}
 	if err := wireCLI(c, location); err != nil {
 		return BeamUpReport{}, err
@@ -170,8 +170,8 @@ func fileExists(path string) bool {
 // withdrawWayForward is the way forward a start appends to a first withdraw that failed.
 // Creel's refusals for these causes carry no code, so one fixed text names them all.
 const withdrawWayForward = "way forward: repair what the error names, such as a worktree whose reed state it names as unreadable or a daemon that would not start, whose log lines it quotes; " +
-	"when creel refused the ORCHWATCH program claim from a non-orch strand's pane, run `lyx beam start` from the orch's pane or from a terminal outside every strand pane; " +
-	"when the error names a strand whose pane process is unknown, restart or remove that strand; then run `lyx beam start` again"
+	"when creel refused the ORCHWATCH program claim from a non-orch strand's pane, run `lym beam start` from the orch's pane or from a terminal outside every strand pane; " +
+	"when the error names a strand whose pane process is unknown, restart or remove that strand; then run `lym beam start` again"
 
 // orchStrandFullName returns the full name creel addresses the orch strand by: the listed strand's name, else the fixed `<shortname>:orch`.
 func orchStrandFullName(listed reedengine.StrandStatus, hasStrand bool, shortname string) string {
@@ -189,7 +189,7 @@ func (c *orchCLI) orchReceiver(listed reedengine.StrandStatus, hasStrand bool) (
 	}
 	shortname, found := fabricengine.ReadShortname(fabricengine.BoardDir(c.location.HubPath))
 	if !found {
-		return "", fmt.Errorf("orch: the hub of %s has no usable shortname record to name the orch strand; way forward: run `lyx fabric shortname <shortname>`, then run `lyx beam start` again", c.location.WorktreePath())
+		return "", fmt.Errorf("orch: the hub of %s has no usable shortname record to name the orch strand; way forward: run `lym fabric shortname <shortname>`, then run `lym beam start` again", c.location.WorktreePath())
 	}
 	return orchStrandFullName(listed, false, shortname), nil
 }
@@ -272,8 +272,8 @@ func (c *orchCLI) saveFreshLaunch(next orchengine.State, firstFailure string, cr
 	return orchengine.SaveState(c.paths, next)
 }
 
-// reconcileHub runs the hub-scope origin reconcile from the prime of the hub that location belongs to, whichever bring-up of `lyx beam start` runs it, with the teardown, live-pair and parent-lock seams pairteardown builds and zero options.
-func reconcileHub(location *lyxcwd.Location) (fabricengine.OriginReport, error) {
+// reconcileHub runs the hub-scope origin reconcile from the prime of the hub that location belongs to, whichever bring-up of `lym beam start` runs it, with the teardown, live-pair and parent-lock seams pairteardown builds and zero options.
+func reconcileHub(location *lymcwd.Location) (fabricengine.OriginReport, error) {
 	prime, err := resolvePrime(location)
 	if err != nil {
 		return fabricengine.OriginReport{}, err
@@ -287,7 +287,7 @@ func reconcileHub(location *lyxcwd.Location) (fabricengine.OriginReport, error) 
 
 // ensureDobbies starts the dobby of the worktree at location, the prime's or a beam's, when it is not live already, and returns that worktree's outcome.
 // A dobby another machine owns, a standing anchor change and a held landing are refused by the engine and reported in the outcome.
-func ensureDobbies(location *lyxcwd.Location) (dobbyengine.StartEntry, error) {
+func ensureDobbies(location *lymcwd.Location) (dobbyengine.StartEntry, error) {
 	prime, err := resolvePrime(location)
 	if err != nil {
 		return dobbyengine.StartEntry{}, err
@@ -327,11 +327,11 @@ func (c *orchCLI) pauseOwnedRuns(report fabricengine.OriginReport) ([]map[string
 			continue
 		}
 		if c.pauseOwned == nil {
-			warnings = append(warnings, fmt.Sprintf("%s is owned by machine %s and was not paused; re-run `lyx beam start`, which pauses it again", entry.Slug, entry.Owner))
+			warnings = append(warnings, fmt.Sprintf("%s is owned by machine %s and was not paused; re-run `lym beam start`, which pauses it again", entry.Slug, entry.Owner))
 			continue
 		}
 		if err := c.pauseOwned(c.location, entry.Slug); err != nil {
-			warnings = append(warnings, fmt.Sprintf("%s is owned by machine %s and could not be paused (%v); re-run `lyx beam start`, which pauses it again", entry.Slug, entry.Owner, err))
+			warnings = append(warnings, fmt.Sprintf("%s is owned by machine %s and could not be paused (%v); re-run `lym beam start`, which pauses it again", entry.Slug, entry.Owner, err))
 			continue
 		}
 		paused = append(paused, map[string]string{"slug": entry.Slug, "owner": entry.Owner})
@@ -437,7 +437,7 @@ func (c *orchCLI) beamUp(opts BeamUpOptions) (report BeamUpReport, err error) {
 		index = func() (string, error) {
 			executable, err := os.Executable()
 			if err != nil {
-				return "", fmt.Errorf("orch: locate the lyx binary to render the command index: %w", err)
+				return "", fmt.Errorf("orch: locate the lym binary to render the command index: %w", err)
 			}
 			return c.indexRunner(executable)
 		}
@@ -451,7 +451,7 @@ func (c *orchCLI) beamUp(opts BeamUpOptions) (report BeamUpReport, err error) {
 }
 
 // startDobbyStep starts this worktree's dobby and records its outcome on report.
-// A dobby that did not start only warns, naming `lyx beam start` as the way to start it again.
+// A dobby that did not start only warns, naming `lym beam start` as the way to start it again.
 func (c *orchCLI) startDobbyStep(report *BeamUpReport) {
 	if c.startDobby == nil {
 		return
@@ -465,7 +465,7 @@ func (c *orchCLI) startDobbyStep(report *BeamUpReport) {
 	case entry.Outcome != dobbyengine.OutcomeRefused && entry.Outcome != dobbyengine.OutcomeFailed:
 		return
 	}
-	report.Warnings = append(report.Warnings, fmt.Sprintf("the dobby was not started (%s); way forward: fix the cause it names, then run `lyx beam start`", cause))
+	report.Warnings = append(report.Warnings, fmt.Sprintf("the dobby was not started (%s); way forward: fix the cause it names, then run `lym beam start`", cause))
 }
 
 // startOrch leaves one live orchestrator strand and one watcher bound to it, and reports the orch's part of the bring-up.
@@ -483,7 +483,7 @@ func (c *orchCLI) startOrch(index func() (string, error), note string) (BeamUpRe
 		for i, s := range named {
 			guids[i] = s.GUID
 		}
-		return report, fmt.Errorf("orch: %d strands are named %q (%s); remove the extras with `lyx reed remove` and re-run", len(named), orchStrandName, strings.Join(guids, ", "))
+		return report, fmt.Errorf("orch: %d strands are named %q (%s); remove the extras with `lym reed remove` and re-run", len(named), orchStrandName, strings.Join(guids, ", "))
 	}
 	var strand reedengine.StrandStatus
 	hasStrand := len(named) == 1

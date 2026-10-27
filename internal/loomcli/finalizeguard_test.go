@@ -11,7 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -21,7 +21,7 @@ func TestFinalizeDirtGuard(t *testing.T) {
 
 	const settledRefusal = "the Plan-Review verdict is settled"
 	dirtyCheckout, dirtyPaths := "/hub/parent", []string{"a.go", "b c.go"}
-	wantDirt := []string{"/hub/parent", `"a.go", "b c.go"`, "lyx loom goto --to Finalize", "lyx loom resume"}
+	wantDirt := []string{"/hub/parent", `"a.go", "b c.go"`, "lym loom goto --to Finalize", "lym loom resume"}
 	errLater := errors.New("settle record unreadable")
 	errRecipe := errors.New("recipe parse failure")
 
@@ -91,7 +91,7 @@ func TestFinalizeDirtGuard(t *testing.T) {
 
 	t.Run("wiring", func(t *testing.T) {
 		t.Parallel()
-		loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+		loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 		subdir, isBouncer, err := loomrecipe.BouncerRunSubdir("Plan-Bouncer")
 		if err != nil || !isBouncer {
 			t.Fatalf("BouncerRunSubdir(Plan-Bouncer) = %q, %v, %v; want a Bouncer row", subdir, isBouncer, err)
@@ -144,20 +144,20 @@ func TestFinalizeDirtGuard(t *testing.T) {
 		t.Parallel()
 		readErrors := []struct {
 			name         string
-			parentBranch func() (func(*lyxcwd.Location) (string, error), error)
+			parentBranch func() (func(*lymcwd.Location) (string, error), error)
 		}{
-			{"recorded parent branch unreadable", func() (func(*lyxcwd.Location) (string, error), error) {
+			{"recorded parent branch unreadable", func() (func(*lymcwd.Location) (string, error), error) {
 				err := errors.New("the pair has no fabric origin record")
 				return parentBranchSeam(err), err
 			}},
-			{"parent pair not openable", func() (func(*lyxcwd.Location) (string, error), error) {
+			{"parent pair not openable", func() (func(*lymcwd.Location) (string, error), error) {
 				return parentBranchSeam(nil), nil
 			}},
 		}
 		for _, tt := range readErrors {
 			seam, wantErr := tt.parentBranch()
 			c := &loomCLI{
-				location:             &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."},
+				location:             &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."},
 				recordedParentBranch: seam,
 			}
 			c.parentCodeDirt = c.parentCodeDirtFromFabric

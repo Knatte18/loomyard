@@ -10,14 +10,14 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
-// openMarkerDirName is the directory under the anchor's ephemeral lyx directory that holds the exit markers of opened sessions.
+// openMarkerDirName is the directory under the anchor's ephemeral lym directory that holds the exit markers of opened sessions.
 // It sits beside, never inside, the run-directory root, so no run sweep or step stop reads it.
 const openMarkerDirName = "shuttle-open"
 
@@ -32,13 +32,13 @@ type OpenResult struct {
 
 // openMarkerPath returns the exit marker an opened session touches when its provider ends, under anchorPath's shuttle-open directory and named by token.
 func openMarkerPath(anchorPath, token string) string {
-	return filepath.Join(anchorPath, lyxdirs.DotLyxDirName, openMarkerDirName, token+".exited")
+	return filepath.Join(anchorPath, lymdirs.DotLymDirName, openMarkerDirName, token+".exited")
 }
 
 // Open opens a named interactive session with no prompt in its own window and returns without waiting.
 // The strand takes its name from spec.Role, numbered by reed when the role is held.
 // Its pane line runs the provider, then writes the exit marker, asks reed to remove the strand and exits the shell, so ending the session closes its window;
-// when the self-removal fails the strand stays as a dead pane until `lyx reed remove`, and a resume drops it through the marker instead of relaunching it.
+// when the self-removal fails the strand stays as a dead pane until `lym reed remove`, and a resume drops it through the marker instead of relaunching it.
 // It writes no run directory, no run record and no output file.
 // spec.Engine names the engine, empty for the set's default;
 // an unregistered name, a covered pause geometry and an engine without SessionOpener each refuse the open before anything is created.
@@ -59,7 +59,7 @@ func (r *Runner) Open(spec OpenSpec) (OpenResult, error) {
 		if err != nil {
 			logger.Warn("shuttle: opening despite an unreadable pause record", "path", r.pause.RecordPath, "cause", err)
 		} else if coverage.Covered {
-			return OpenResult{}, pauserecord.CoveredError(coverage.Entry, r.pause.Slug, "re-run lyx shuttle open")
+			return OpenResult{}, pauserecord.CoveredError(coverage.Entry, r.pause.Slug, "re-run lym shuttle open")
 		}
 	}
 	opener, ok := engine.(SessionOpener)
@@ -81,7 +81,7 @@ func (r *Runner) Open(spec OpenSpec) (OpenResult, error) {
 	}
 
 	sh := shell.ForGOOS()
-	selfRemove := sh.Invoke("lyx") + " reed remove --name " + sh.EnvRef(agentname.StrandNameEnv) + " --detach"
+	selfRemove := sh.Invoke("lym") + " reed remove --name " + sh.EnvRef(agentname.StrandNameEnv) + " --detach"
 	strand, err := r.reed.AddStrand(reedengine.AddSpec{
 		Role:      spec.Role,
 		Segment:   string(spec.Segment),

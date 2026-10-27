@@ -39,7 +39,7 @@ over from its start commit.
 
   start            the run's start commit; also removes the run's live
                    recovery strands and archives the run record, so the
-                   next "lyx webster run" starts a new run
+                   next "lym webster run" starts a new run
   pre-fix          the HEAD the verify gate started its fixes from
   report-head      the head_sha of batch --batch's report
   last-batch-head  the last batch head the run recorded
@@ -54,8 +54,8 @@ The envelope carries target, sha, mutations and partial; --to start and a
 standalone reset add uncommitted and warnings, and --to start adds moved.
 
 Example:
-  lyx webster reset --to start
-  lyx webster reset --to report-head --batch 3`,
+  lym webster reset --to start
+  lym webster reset --to report-head --batch 3`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
@@ -74,7 +74,7 @@ Example:
 				for i, known := range websterengine.ResetTargets {
 					names[i] = string(known)
 				}
-				return fail(fmt.Sprintf("webster: reset --to %q is not one of %s; way forward: re-run `lyx webster reset --to start`, or name another target, adding --batch NN for %s or %s",
+				return fail(fmt.Sprintf("webster: reset --to %q is not one of %s; way forward: re-run `lym webster reset --to start`, or name another target, adding --batch NN for %s or %s",
 					to, strings.Join(names, ", "), websterengine.ResetToReportHead, websterengine.ResetToBatchStart))
 			}
 
@@ -118,13 +118,13 @@ Example:
 			var parent string
 			if !plan.ArchiveOnly && fab != nil {
 				if parent, err = c.parentBranch(); err != nil {
-					return fail(fmt.Sprintf("webster: reset --to %s refused: the parent branch is unknown (%v); way forward: run `lyx fabric reconcile` to repair the pair, then re-run `lyx webster reset --to %s`; a session lyx refuses the verb from reports status: FAILED and the orch runs it", target, err, target))
+					return fail(fmt.Sprintf("webster: reset --to %s refused: the parent branch is unknown (%v); way forward: run `lym fabric reconcile` to repair the pair, then re-run `lym webster reset --to %s`; a session lym refuses the verb from reports status: FAILED and the orch runs it", target, err, target))
 				}
 			}
 			if target == websterengine.ResetToStart {
 				var removeErr *websterengine.RecoveryStrandRemoveError
 				if errors.As(websterengine.RemoveRecoveryStrands(c.runner, st), &removeErr) {
-					return fail(fmt.Sprintf("webster: reset --to %s refused: %v; way forward: run `lyx reed remove %s`, then re-run `lyx webster reset --to %s`", target, removeErr, removeErr.GUID, target))
+					return fail(fmt.Sprintf("webster: reset --to %s refused: %v; way forward: run `lym reed remove %s`, then re-run `lym webster reset --to %s`", target, removeErr, removeErr.GUID, target))
 				}
 			}
 			rec := fabricengine.NewMutations("")
@@ -152,7 +152,7 @@ Example:
 					}
 				}
 				if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, st); err != nil {
-					return fail(fmt.Sprintf("webster: the branch was reset to %s but state.json could not be saved: %v; way forward: re-run `lyx webster reset --to %s`", plan.SHA, err, target))
+					return fail(fmt.Sprintf("webster: the branch was reset to %s but state.json could not be saved: %v; way forward: re-run `lym webster reset --to %s`", plan.SHA, err, target))
 				}
 			}
 

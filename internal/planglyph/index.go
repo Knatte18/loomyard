@@ -87,7 +87,7 @@ func (index) LaterDeleteReferences(plan *planparser.Plan, deleting, later []plan
 }
 
 // Delta reads the range's git delta; on ErrQuarryUnavailable the returned delta is the empty one, which a caller may still bind handles against.
-// Any other error, such as the floor error of a git below lyx's minimum, is returned bare with no delta.
+// Any other error, such as the floor error of a git below lym's minimum, is returned bare with no delta.
 func (index) Delta(worktree, fromSHA, toSHA string) (planindex.Delta, error) {
 	answer, err := Delta(worktree, fromSHA, toSHA)
 	if err != nil && !errors.Is(err, ErrQuarryUnavailable) {

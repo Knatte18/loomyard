@@ -721,7 +721,7 @@ func TestParsePlan_InlineFieldValueFailsLoud(t *testing.T) {
 	}
 }
 
-// TestParsePlan_Card_SourcePath proves each parsed card's SourcePath is the bare worktree-relative `_lyx/plan/NN-<slug>.md` token, never prefixed by the (t.TempDir()) absolute Plan.Dir the fixture is parsed from.
+// TestParsePlan_Card_SourcePath proves each parsed card's SourcePath is the bare worktree-relative `_lym/plan/NN-<slug>.md` token, never prefixed by the (t.TempDir()) absolute Plan.Dir the fixture is parsed from.
 //
 //testtiming:keep pins SourcePath as the bare worktree-relative token without the absolute plan directory, which TestParsePlan_CardFields does not assert
 func TestParsePlan_Card_SourcePath(t *testing.T) {
@@ -754,10 +754,10 @@ Framing paragraph.
 		t.Fatalf("len(plan.Cards) = %d; want 2", len(plan.Cards))
 	}
 
-	if want := "_lyx/plan/01-first.md"; plan.Cards[0].SourcePath != want {
+	if want := "_lym/plan/01-first.md"; plan.Cards[0].SourcePath != want {
 		t.Errorf("plan.Cards[0].SourcePath = %q; want %q", plan.Cards[0].SourcePath, want)
 	}
-	if want := "_lyx/plan/02-second.md"; plan.Cards[1].SourcePath != want {
+	if want := "_lym/plan/02-second.md"; plan.Cards[1].SourcePath != want {
 		t.Errorf("plan.Cards[1].SourcePath = %q; want %q", plan.Cards[1].SourcePath, want)
 	}
 	for _, c := range plan.Cards {
@@ -795,7 +795,7 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 	if plan.Root != "internal/boardcli" {
 		t.Errorf("plan.Root = %q; want %q", plan.Root, "internal/boardcli")
 	}
-	wantFraming := "Add a `--json` output mode to `lyx board list`, emitting one JSON object per row via the\n" +
+	wantFraming := "Add a `--json` output mode to `lym board list`, emitting one JSON object per row via the\n" +
 		"`internal/output` envelope, with tests and help text updated, and the row mapper relocated ahead\n" +
 		"of a later extraction."
 	if plan.Framing != wantFraming {
@@ -892,11 +892,11 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 		{
 			number: 6, slug: "helppins-move", summary: "relocate the pinned help-tree fixture",
 			typ: planparser.CardTypeMove, typeLabelCount: 1,
-			targets: []string{"cmd/lyx/helppins.go#"},
+			targets: []string{"cmd/lym/helppins.go#"},
 			groups: []wantGroup{
-				{typ: planparser.CardTypeMove, refs: []string{"cmd/lyx/helppins.go#"}},
+				{typ: planparser.CardTypeMove, refs: []string{"cmd/lym/helppins.go#"}},
 			},
-			intent: "Relocate the pinned help-tree fixture to `//cmd/lyx/helptree/helppins.go` ahead of the CLI help-tree split, with no behavior change in this card.",
+			intent: "Relocate the pinned help-tree fixture to `//cmd/lym/helptree/helppins.go` ahead of the CLI help-tree split, with no behavior change in this card.",
 		},
 		{
 			number: 7, slug: "json-docs", summary: "update the package doc comment and the standalone docs page",

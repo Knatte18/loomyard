@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
@@ -31,7 +31,7 @@ func TestPendingFindingsText(t *testing.T) {
 	}{
 		{
 			name:    "board-model findings golden",
-			reentry: "lyx webster run",
+			reentry: "lym webster run",
 			fixture: func(t *testing.T, geom Geometry) (AuditEngines, []findingItem, string, string) {
 				outcome := writeContractFile(t, geom)
 				summary := summaryparser.Path(geom.WebsterDir)
@@ -49,8 +49,8 @@ func TestPendingFindingsText(t *testing.T) {
 					"1) fork-contract-write: fork wrote %q — a contract file (%s: a fork wrote it after Master's last write); "+
 					"2) fork-contract-write: fork wrote %q — a contract file (%s: cleared: absent, or Master wrote it last); "+
 					"3) parent-write: Master wrote %q — under the run state (%s: cannot be checked: under `%s`, outside the task worktree's tracked tree)",
-					outcome, outcome, summary, summary, state, state, lyxdirs.LyxDirName)
-				return engine, items, clause, "way forward: 1) lyx webster reset --to start; 2) lyx webster run"
+					outcome, outcome, summary, summary, state, state, lymdirs.LymDirName)
+				return engine, items, clause, "way forward: 1) lym webster reset --to start; 2) lym webster run"
 			},
 		},
 		{
@@ -60,27 +60,27 @@ func TestPendingFindingsText(t *testing.T) {
 				outcome := writeContractFile(t, geom)
 				engine := writesEngine(nil, []shuttleengine.WriteEvent{succeeded(outcome, time.Minute)})
 				items := []findingItem{{Class: "fork-contract-write", Detail: fmt.Sprintf("fork wrote %q", outcome), Paths: []string{outcome}}}
-				return engine, items, "", fmt.Sprintf("way forward: 1) rm %s; 2) lyx webster accept-audit; 3) re-step the loom row", outcome)
+				return engine, items, "", fmt.Sprintf("way forward: 1) rm %s; 2) lym webster accept-audit; 3) re-step the loom row", outcome)
 			},
 		},
 		{
 			name:    "a contract file Master wrote last needs no delete",
-			reentry: "lyx webster run",
+			reentry: "lym webster run",
 			fixture: func(t *testing.T, geom Geometry) (AuditEngines, []findingItem, string, string) {
 				outcome := writeContractFile(t, geom)
 				engine := writesEngine([]shuttleengine.WriteEvent{succeeded(outcome, 2*time.Minute)}, []shuttleengine.WriteEvent{succeeded(outcome, time.Minute)})
 				items := []findingItem{{Class: "fork-contract-write", Detail: fmt.Sprintf("fork wrote %q", outcome), Paths: []string{outcome}}}
-				return engine, items, "", "way forward: 1) lyx webster accept-audit; 2) lyx webster run"
+				return engine, items, "", "way forward: 1) lym webster accept-audit; 2) lym webster run"
 			},
 		},
 		{
 			name:    "a pathless finding takes the reset route and ends in the re-entry step",
 			reentry: "re-step the loom row",
 			fixture: func(t *testing.T, geom Geometry) (AuditEngines, []findingItem, string, string) {
-				items := []findingItem{{Class: "fabric-reference", Detail: "ran lyx fabric"}}
+				items := []findingItem{{Class: "fabric-reference", Detail: "ran lym fabric"}}
 				return nil, items,
-					"1 correctness finding(s): 1) fabric-reference: ran lyx fabric (the finding names no path)",
-					"way forward: 1) lyx webster reset --to start; 2) re-step the loom row"
+					"1 correctness finding(s): 1) fabric-reference: ran lym fabric (the finding names no path)",
+					"way forward: 1) lym webster reset --to start; 2) re-step the loom row"
 			},
 		},
 	}
@@ -153,10 +153,10 @@ func TestUncheckableReason(t *testing.T) {
 		{name: "plan file with a recorded plan", st: &State{PlanFileHashes: map[string]string{"01-a.md": "x"}}, path: filepath.Join(geom.PlanDir, "01-a.md")},
 		{name: "outside the worktree", st: &State{}, path: outside, wantReason: "outside the task worktree", wantUncheck: true},
 		{
-			name:        "under the lyx directory",
+			name:        "under the lym directory",
 			st:          &State{},
-			path:        filepath.Join(geom.WorktreeRoot, lyxdirs.LyxDirName, "board", "x.json"),
-			wantReason:  fmt.Sprintf("under `%s`, outside the task worktree's tracked tree", lyxdirs.LyxDirName),
+			path:        filepath.Join(geom.WorktreeRoot, lymdirs.LymDirName, "board", "x.json"),
+			wantReason:  fmt.Sprintf("under `%s`, outside the task worktree's tracked tree", lymdirs.LymDirName),
 			wantUncheck: true,
 		},
 		{name: "under webster's scratch directory", st: &State{}, path: filepath.Join(geom.ScratchDir, "pause"), wantReason: "under webster's scratch directory", wantUncheck: true},
@@ -208,7 +208,7 @@ func TestZeroBatchesErrorText(t *testing.T) {
 		step string
 		want string
 	}{
-		{"no step", "", lead + "fix the plan's cards, run `lyx webster rebaseline --card NN` naming each card you edited when state.json already records this run, then re-run `lyx webster run`"},
+		{"no step", "", lead + "fix the plan's cards, run `lym webster rebaseline --card NN` naming each card you edited when state.json already records this run, then re-run `lym webster run`"},
 		{"a step", "re-step the webster row", lead + "fix the plan's cards, then re-step the webster row"},
 	}
 	for _, tt := range tests {

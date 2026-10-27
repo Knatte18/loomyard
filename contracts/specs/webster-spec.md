@@ -11,14 +11,14 @@ Everything about *how* webster reaches those shapes — the fork mechanism, the 
 
 ## Plan input
 
-Webster consumes the pinned flat card-list plan-format via `internal/planparser`, the sole parser of `_lyx/plan/` — the format itself is pinned in `contracts/stencils/loom/loom-template-plan.md`, the Plan producer's own stencil, not a separate reference doc.
+Webster consumes the pinned flat card-list plan-format via `internal/planparser`, the sole parser of `_lym/plan/` — the format itself is pinned in `contracts/stencils/loom/loom-template-plan.md`, the Plan producer's own stencil, not a separate reference doc.
 webster groups a plan's cards into execution batches via a batcher configured through `batcher.yaml`.
 The grouping is computed once per run and recorded in `state.json`, and every verb reads the recorded partition, so a file the batches change never regroups the cards mid-run.
 
-## `_lyx/webster/` as an ownership boundary
+## `_lym/webster/` as an ownership boundary
 
-Webster owns `_lyx/webster/` and everything in it — `state.json`, the reports directory, `plan-baseline/` (the content store behind the recorded plan hashes), `outcome.yaml`, `summary.md` — resolved via `internal/websterengine`'s own `Dir`/`ReportsDir` helpers, which are the sole declarers of that path segment.
-Its never-tracked siblings — the rendered fork prompts, every `*.lock` — live at the mirrored subpath under `.lyx/webster/` via `internal/websterengine`'s `ScratchDir`/`PromptsDir` helpers, and are deliberately outside the fabric-committed pathspec.
+Webster owns `_lym/webster/` and everything in it — `state.json`, the reports directory, `plan-baseline/` (the content store behind the recorded plan hashes), `outcome.yaml`, `summary.md` — resolved via `internal/websterengine`'s own `Dir`/`ReportsDir` helpers, which are the sole declarers of that path segment.
+Its never-tracked siblings — the rendered fork prompts, every `*.lock` — live at the mirrored subpath under `.lym/webster/` via `internal/websterengine`'s `ScratchDir`/`PromptsDir` helpers, and are deliberately outside the fabric-committed pathspec.
 No other module writes into either directory.
 
 ## `outcome.yaml`
@@ -36,7 +36,7 @@ batches_done: <int>
 `batches_done` is the count of batches that reached `status: done` this run.
 The file is strictly decoded — unknown fields are rejected — and follows archive-never-refuse: a stale file is timestamp-renamed, never overwritten or refused.
 
-## The summary artifact — `_lyx/webster/summary.md`
+## The summary artifact — `_lym/webster/summary.md`
 
 webster's `summary.md` is the run record: it no longer reaches landing directly, since landing reads the change description loom's `Describe` row writes instead.
 The format and validation it shares are pinned producer-agnostically in [loom-final-summary-spec.md](loom-final-summary-spec.md); this section states only webster's own writer-side additions.
@@ -51,20 +51,20 @@ Either section reaches the PR reviewer because the `Describe` stencil carries it
 
 ## The verify gate
 
-Merriam's strand carries the hub's `webster` gate, rendered from `gate.yaml` as the one call `lyx gate test --wait --gate webster`, as one must-pass gate named `verify`, so the call runs once per attempt at HEAD after Merriam's turn ends, never inside a batch.
-A `gate.yaml` that cannot be loaded, or a `webster` key naming an undeclared tier, is the gate's error naming `lyx config gate`, never a pass.
+Merriam's strand carries the hub's `webster` gate, rendered from `gate.yaml` as the one call `lym gate test --wait --gate webster`, as one must-pass gate named `verify`, so the call runs once per attempt at HEAD after Merriam's turn ends, never inside a batch.
+A `gate.yaml` that cannot be loaded, or a `webster` key naming an undeclared tier, is the gate's error naming `lym config gate`, never a pass.
 Merriam's strand role is `webster`, so its agent name is `<shortname>:<slug>:webster`.
 A failing run is rerun once;
 a pass on the rerun passes the gate and records the failing identities as flaky.
 A run that exceeds the verify timeout is not rerun, since a hang is not flakiness: it fails the gate at once with the timeout, the log path and the log tail as findings.
 A failure that survives the rerun, or a tree that is not clean, is recorded in `verify-gate.yaml` in the reports directory and returned to Merriam as findings.
 Merriam answers each failure with one fixer, whose commits are `fix: <summary>` and are checked at the next attempt.
-The gate routes each failure to a fixer and records it as `fixer` in `verify-gate.yaml`: a fork in Merriam's session, on Merriam's model, or, for the last attempt, after a fixer that committed nothing and from then on, the cold fixer `lyx webster fix-verify` spawns as its own strand at the `recovery` role.
+The gate routes each failure to a fixer and records it as `fixer` in `verify-gate.yaml`: a fork in Merriam's session, on Merriam's model, or, for the last attempt, after a fixer that committed nothing and from then on, the cold fixer `lym webster fix-verify` spawns as its own strand at the `recovery` role.
 `verify_gate_attempts` in `webster.yaml` bounds the attempts;
 an exhausted gate ends the run `stuck`, as does a fixer commit the gate rejects.
-`verify-gate.yaml` replaces the retired post-exit `integration.yaml`: nothing runs the suite after the session ends, and a run in flight with the retired record restarts with `lyx webster run --fresh`.
+`verify-gate.yaml` replaces the retired post-exit `integration.yaml`: nothing runs the suite after the session ends, and a run in flight with the retired record restarts with `lym webster run --fresh`.
 
-`lyx webster verify` runs the same `webster` gate call through the same function, `internal/verifytree`, and boots no reed session.
+`lym webster verify` runs the same `webster` gate call through the same function, `internal/verifytree`, and boots no reed session.
 A pass records the verified tree, so a landing step or a later gate that finds the tree unchanged skips the run.
 
 ## See also

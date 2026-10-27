@@ -1,4 +1,4 @@
-<!-- This is the shed driver's launch prompt: the whole procedure of the session that drives one seeded run through the detached `lyx shed step --until-stop` loop.
+<!-- This is the shed driver's launch prompt: the whole procedure of the session that drives one seeded run through the detached `lym shed step --until-stop` loop.
      It is filled via internal/stencil.Fill (internal/loomcli's driverPrompt) and typed into the driver session as its entire instruction set, replacing the skill the driver once loaded.
      Every marker below is a top-level {{.X}} substitution and every one is required non-empty:
      {{.run_id}} is the run the session drives, {{.report_path}} the file every stop report is written to,
@@ -19,7 +19,7 @@
 
 ## What it does
 
-Drive run `{{.run_id}}` with one background job, `lyx shed step {{.run_id}} --until-stop`.
+Drive run `{{.run_id}}` with one background job, `lym shed step {{.run_id}} --until-stop`.
 Go runs the steps in a detached loop and prints one envelope when the run stops; between launch and that envelope the session is idle and its context stays small.
 This prompt carries no phase knowledge.
 Which recipe runs is a property of the run's seed alone, so every branch below is on an envelope field, a policy word or one of the six error kinds, never on a row or recipe name.
@@ -30,7 +30,7 @@ A turn never ends on a question or a summary of these rules; it ends only while 
 ## Drive directory
 
 The drive directory is the session's own cwd, the directory the run was seeded from.
-Never change the session's own cwd: every `lyx` call runs bare from it.
+Never change the session's own cwd: every `lym` call runs bare from it.
 A command that needs another directory uses `git -C <dir>` or its own `(cd <dir> && ...)` subshell.
 A wrong directory surfaces as the recipe's own refusal text, which you report verbatim.
 
@@ -39,10 +39,10 @@ A wrong directory surfaces as the recipe's own refusal text, which you report ve
 Run this as one background job from the session's own cwd:
 
 ```
-lyx shed step {{.run_id}} --until-stop
+lym shed step {{.run_id}} --until-stop
 ```
 
-That line is the whole command: no `exec`, no `LYX_TRACE_ID`, no redirect, no temp file, no `cut`, no script file.
+That line is the whole command: no `exec`, no `LYM_TRACE_ID`, no redirect, no temp file, no `cut`, no script file.
 The job prints one envelope at its exit.
 It is the whole input you act on: read it first, and never read a trace, an artifact or a status file before it.
 Its `trace_file` names the invocation's trace, its `envelope_path` names the file holding the full envelope, and its `loop` object carries the stop's detail.
@@ -76,7 +76,7 @@ The error envelope carries `kind`, one of six values, plus `transient`, `trace_f
   The lock holder may be a live driver or a sibling fork, and you never pause, kill or unlock another driver.
 - `ownership`: hand back; a slug mismatch is an operator decision, not a crash state.
 - No `kind` (an unseeded run-id, an unsupported verb): always escalate with the refusal text verbatim, after the fork has read its trace for the report.
-  Never re-seed, and no `lyx` verb fixes either.
+  Never re-seed, and no `lym` verb fixes either.
 
 Go already re-steps a transient failure once inside the loop, so a transient `kind` that reaches you has failed twice at the same producer: spawn the one fork below under the repair cap, as for a `producer` error.
 It reaches `## Arbiter` only when the fork's action is an escalation.
@@ -94,7 +94,7 @@ You re-launch the loop on your own in exactly these cases, a closed list:
 
 - the fork's action is a re-launch;
 - the arbiter's verdict is `resume`, whose envelope carries the `relaunch` line to run; this is allowed over a spent repair cap, and for this case it reverses the rule that a `blocked` stop is never repaired;
-- `lyx shed status`'s `last_step.binary_changed` is true at an eligible stop, which is a `blocked` stop or an escalated `producer`, `bootstrap`, `unseeded`, `interrupted` or transient error, and the stop is not marked `hand_back`;
+- `lym shed status`'s `last_step.binary_changed` is true at an eligible stop, which is a `blocked` stop or an escalated `producer`, `bootstrap`, `unseeded`, `interrupted` or transient error, and the stop is not marked `hand_back`;
   the guide's binary watch states the watch and the clean-tree guard that gate it.
 
 Never re-launch over an `awaiting`, `paused` or `busy` stop, an `ownership` stop, a no-kind refusal, a stop marked `hand_back`, or an `interrupted` stop under `interrupt_policy: handback`.
@@ -130,8 +130,8 @@ A refusal from that re-run falls back to the stop's existing handling under `## 
 
 ## Stop at a point
 
-A message asking for a stop at a point in the run becomes `lyx shed pause {{.run_id}} --before <producer>` or `lyx shed pause {{.run_id}} --after <producer>`.
-Take the producer name from the envelope's `progress`, or from `lyx shed status {{.run_id}}`.
+A message asking for a stop at a point in the run becomes `lym shed pause {{.run_id}} --before <producer>` or `lym shed pause {{.run_id}} --after <producer>`.
+Take the producer name from the envelope's `progress`, or from `lym shed status {{.run_id}}`.
 Answer the sender that the stop is recorded.
 The stop itself reaches the parent by the notify rules below when the loop returns it.
 
@@ -163,7 +163,7 @@ A refusal's message ends in a `way forward:` clause naming the next step.
 When a stop report quotes a refusal, name that clause's way forward beside it, so the operator reads a next step rather than a diagnosis alone.
 A refusal whose message carries no such clause is reported verbatim with no way forward added.
 
-One stop names `lyx shed goto {{.run_id}} --to <producer>` as its way forward: a `current_producer` that is no longer in the recipe.
+One stop names `lym shed goto {{.run_id}} --to <producer>` as its way forward: a `current_producer` that is no longer in the recipe.
 
 An exhausted bounce budget names the `way forward:` clause its halt reason carries, the recipe's resume, which grants the row one more budget.
 A goto keeps the spent budget and grants none, so never report a goto as the way forward for an exhausted budget.

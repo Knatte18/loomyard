@@ -29,12 +29,12 @@ import (
 // shellPath is passed unconditionally, empty or not.
 // This spawn is best-effort and nobody watches its child's stderr, so refusing here would silently cost the hub its entire watchdog daemon over one empty config value, while an empty shell costs only the descendant half of a reap on Windows.
 //
-// The child's nil stdio gives it the null device, and its environment drops LYX_LOG_FILE so the operator's log file cannot reroute the daemon's stderr half.
-// LYX_LOG_LEVEL passes on unchanged, so a spawn run at Debug verbosity starts a daemon at Debug.
+// The child's nil stdio gives it the null device, and its environment drops LYM_LOG_FILE so the operator's log file cannot reroute the daemon's stderr half.
+// LYM_LOG_LEVEL passes on unchanged, so a spawn run at Debug verbosity starts a daemon at Debug.
 //
 // A spawn failure is never fatal to the caller's own operation: up, resume and attach each already
 // succeeded at their own engine op by the time this runs, and the daemon is a convenience the
-// operator can always start by hand (running `lyx reed watchdog` in the foreground) if this
+// operator can always start by hand (running `lym reed watchdog` in the foreground) if this
 // best-effort spawn does not land.
 func SpawnWatchdog(hubPath, tmuxPath, shellPath string, suppress bool) {
 	if suppress || hubPath == "" {
@@ -71,11 +71,11 @@ func SpawnWatchdog(hubPath, tmuxPath, shellPath string, suppress bool) {
 	}
 }
 
-// spawnWatchdogEnv returns environ without any entry whose key is exactly LYX_LOG_FILE.
+// spawnWatchdogEnv returns environ without any entry whose key is exactly LYM_LOG_FILE.
 func spawnWatchdogEnv(environ []string) []string {
 	out := make([]string, 0, len(environ))
 	for _, entry := range environ {
-		if strings.SplitN(entry, "=", 2)[0] == "LYX_LOG_FILE" {
+		if strings.SplitN(entry, "=", 2)[0] == "LYM_LOG_FILE" {
 			continue
 		}
 		out = append(out, entry)

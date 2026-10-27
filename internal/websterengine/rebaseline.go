@@ -1,4 +1,4 @@
-// rebaseline.go implements Rebaseline, the engine half of `lyx webster rebaseline`:
+// rebaseline.go implements Rebaseline, the engine half of `lym webster rebaseline`:
 // it accepts a mid-run plan edit as the run's plan while every begun batch keeps its recorded card set.
 
 package websterengine
@@ -23,7 +23,7 @@ var ErrRebaselineCardSetChanged = errors.New("webster: the edited plan changes t
 
 // followUpCardLanding is the landing for a decision that reaches a card whose batch is done, or an overview outside its Card Index: a follow-up card after the last begun batch.
 // It carries no "way forward: " prefix.
-const followUpCardLanding = "add a follow-up card after the last begun batch that carries the decision, with its Card Index line in " + planOverviewFile + ", then run `lyx webster rebaseline --card NN` naming it"
+const followUpCardLanding = "add a follow-up card after the last begun batch that carries the decision, with its Card Index line in " + planOverviewFile + ", then run `lym webster rebaseline --card NN` naming it"
 
 // The three causes of an empty recorded overview frame.
 const (
@@ -105,7 +105,7 @@ func overviewIndexOnly(recorded, planDir string) (bool, error) {
 
 // overviewRefusal is the refusal for a 00-overview.md change Rebaseline cannot accept: one outside the Card Index, or any change in a run whose recorded frame is empty.
 // For an empty frame the refusal names cause and, where there is one, the baseline copy's path.
-// Its way forward names step, empty meaning `lyx webster run`.
+// Its way forward names step, empty meaning `lym webster run`.
 func overviewRefusal(recorded, cause, path, step string) error {
 	if recorded == "" {
 		where := cause
@@ -140,7 +140,7 @@ type RebaselineDeps struct {
 	Cards []int
 	// Geom locates the worktree whose history names the run's start commit.
 	Geom Geometry
-	// Step is the step every refusal names as the way to continue; empty means `lyx webster run`, as RunDeps.ReentryStep does.
+	// Step is the step every refusal names as the way to continue; empty means `lym webster run`, as RunDeps.ReentryStep does.
 	// The loom's Webster row sets its re-step text, so no refusal on that path tells an agent to run a verb by hand.
 	Step string
 }
@@ -252,7 +252,7 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 	if len(deps.State.PlanFileHashes) > 0 {
 		changedFiles, err := changedPlanFiles(deps.State, deps.Plan.Dir)
 		if err != nil {
-			return nil, fmt.Errorf("%w; way forward: %s", err, transientWayForward(deps.Step, "transient, re-run `lyx webster rebaseline`"))
+			return nil, fmt.Errorf("%w; way forward: %s", err, transientWayForward(deps.Step, "transient, re-run `lym webster rebaseline`"))
 		}
 		var unnamed []string
 		for _, name := range changedFiles {
@@ -266,7 +266,7 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 					indexOnly, overviewErr = overviewIndexOnly(recorded, deps.Plan.Dir)
 				}
 				if overviewErr != nil {
-					return nil, fmt.Errorf("%w; way forward: %s", overviewErr, transientWayForward(deps.Step, "transient, re-run `lyx webster rebaseline` with the same `--card` flags"))
+					return nil, fmt.Errorf("%w; way forward: %s", overviewErr, transientWayForward(deps.Step, "transient, re-run `lym webster rebaseline` with the same `--card` flags"))
 				}
 				if !indexOnly {
 					return nil, overviewRefusal(recorded, cause, path, deps.Step)
@@ -281,7 +281,7 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 			cardsAccepted = append(cardsAccepted, name)
 		}
 		if len(unnamed) > 0 {
-			wayForward := `re-run "lyx webster rebaseline" naming every changed card with --card NN, or restore the unnamed cards`
+			wayForward := `re-run "lym webster rebaseline" naming every changed card with --card NN, or restore the unnamed cards`
 			if deps.Step != "" {
 				wayForward = "fix the plan so every changed card is one the rebaseline can name, or restore the unnamed cards, then " + deps.Step
 			}
@@ -321,7 +321,7 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 			}
 			got, err := batchCardHashes(batcher.Batch{Cards: currentCards[n]}, deps.Plan.Dir)
 			if err != nil {
-				return nil, fmt.Errorf("%w; way forward: %s", err, transientWayForward(deps.Step, "transient, re-run `lyx webster rebaseline`"))
+				return nil, fmt.Errorf("%w; way forward: %s", err, transientWayForward(deps.Step, "transient, re-run `lym webster rebaseline`"))
 			}
 			for _, id := range recorded {
 				want, hashed := bs.CardHashes[id]

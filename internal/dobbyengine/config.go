@@ -62,7 +62,7 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 		{"board_tidy_timeout_min", cfg.BoardTidyTimeoutMin},
 	} {
 		if key.value < 0 {
-			return Config{}, configengine.MarkInvalid(fmt.Errorf("beam config key %q is %d: must not be negative; way forward: fix it with `lyx config beam --set %s=<value>`", key.name, key.value, key.name))
+			return Config{}, configengine.MarkInvalid(fmt.Errorf("beam config key %q is %d: must not be negative; way forward: fix it with `lym config beam --set %s=<value>`", key.name, key.value, key.name))
 		}
 	}
 	return cfg, nil

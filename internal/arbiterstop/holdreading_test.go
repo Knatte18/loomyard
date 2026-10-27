@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -25,7 +25,7 @@ import (
 // holdFixture is one task worktree under a temp hub, with the loom config seeded.
 type holdFixture struct {
 	t        *testing.T
-	location *lyxcwd.Location
+	location *lymcwd.Location
 	status   shedengine.Status
 	attempts int
 }
@@ -59,7 +59,7 @@ func (f *holdFixture) writeConfig(content string) {
 func (f *holdFixture) writeModuleConfig(name, content string) {
 	f.t.Helper()
 	for _, base := range []string{fabricengine.BoardDir(f.location.HubPath), f.location.AnchorPath()} {
-		dir := filepath.Join(base, "_lyx", "config")
+		dir := filepath.Join(base, "_lym", "config")
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			f.t.Fatal(err)
 		}

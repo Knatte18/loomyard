@@ -16,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
@@ -24,7 +24,7 @@ import (
 )
 
 // refusedVerbClause is the clause every way forward that names a fabric verb a sandboxed session cannot run carries.
-const refusedVerbClause = "a session lyx refuses the verb from reports status: FAILED and the orch runs it"
+const refusedVerbClause = "a session lym refuses the verb from reports status: FAILED and the orch runs it"
 
 // containsString reports whether haystack contains needle.
 func containsString(haystack []string, needle string) bool {
@@ -38,14 +38,14 @@ func containsString(haystack []string, needle string) bool {
 
 // failingInstructionFiles is a lister that fails as for a master engine the engine set does not hold.
 func failingInstructionFiles() ([]string, error) {
-	return nil, fmt.Errorf("webster: the master role's engine %q is not held by this lyx: %w; way forward: set master in webster.yaml to an alias whose engine the set holds with lyx config webster, then re-run the verb", "gone", shuttleengine.ErrEngineNotRegistered)
+	return nil, fmt.Errorf("webster: the master role's engine %q is not held by this lym: %w; way forward: set master in webster.yaml to an alias whose engine the set holds with lym config webster, then re-run the verb", "gone", shuttleengine.ErrEngineNotRegistered)
 }
 
 // seedHubGateConfig writes the hub-wide gate.yaml into hubPath's board directory: the shipped template with tier0 declared, so every gate lists it.
 // hubgeom.WebsterGeometry's GateConfig reads it there.
 func seedHubGateConfig(t *testing.T, hubPath string) {
 	t.Helper()
-	configDir := filepath.Join(fabricengine.BoardDir(hubPath), "_lyx", "config")
+	configDir := filepath.Join(fabricengine.BoardDir(hubPath), "_lym", "config")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 	}
@@ -57,7 +57,7 @@ func seedHubGateConfig(t *testing.T, hubPath string) {
 }
 
 // hubGeometryWithIndex returns the hub geometry of layout with the real code index the CLI layer wires.
-func hubGeometryWithIndex(layout *lyxcwd.Location) websterengine.Geometry {
+func hubGeometryWithIndex(layout *lymcwd.Location) websterengine.Geometry {
 	geom := hubgeom.WebsterGeometry(layout)
 	geom.Index = planglyph.NewIndex(fabricengine.NewReferenceRule())
 	return geom
@@ -148,7 +148,7 @@ func wantWayForward(t *testing.T, got, substr string) {
 // wantFabricSyncWayForward fails unless got carries a way forward that names the fabric commit and the refused-verb clause.
 func wantFabricSyncWayForward(t *testing.T, got string) {
 	t.Helper()
-	wantWayForward(t, got, "lyx fabric commit")
+	wantWayForward(t, got, "lym fabric commit")
 	wantWayForward(t, got, refusedVerbClause)
 }
 

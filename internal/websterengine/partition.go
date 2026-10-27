@@ -117,7 +117,7 @@ func mapPartition(plan *planparser.Plan, partition []PartitionBatch) ([]batcher.
 	if len(unrecorded) > 0 {
 		problems = append(problems, "plan cards "+strings.Join(unrecorded, ", ")+" are in no recorded batch")
 	}
-	return nil, fmt.Errorf("%w: %s; way forward: `lyx webster rebaseline --card NN` naming each card you edited, or restore the plan with `lyx webster restore-plan`",
+	return nil, fmt.Errorf("%w: %s; way forward: `lym webster rebaseline --card NN` naming each card you edited, or restore the plan with `lym webster restore-plan`",
 		ErrPartitionMismatch, strings.Join(problems, "; "))
 }
 

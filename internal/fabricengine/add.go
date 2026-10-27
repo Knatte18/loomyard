@@ -17,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -75,7 +75,7 @@ type AddResult struct {
 
 // ErrBranchExists is Add's refusal when the warp branch a slug would create already exists.
 // It is a typed error so a caller standing somewhere the remedy below is wrong for -- the hub's
-// prime, where "lyx fabric checkout" switches prime itself -- can recognise the refusal and word
+// prime, where "lym fabric checkout" switches prime itself -- can recognise the refusal and word
 // its own.
 // Remove deliberately leaves the warp branch behind (it may carry unmerged work), so
 // remove-then-re-add of the same slug lands here, and the message names the way forward rather
@@ -88,7 +88,7 @@ type ErrBranchExists struct {
 // Error implements the error interface, naming the three ways out for a caller inside a pair.
 func (e *ErrBranchExists) Error() string {
 	return fmt.Sprintf(
-		"branch %q already exists; switch a pair onto it with \"lyx fabric checkout %s\", or delete it first with \"git branch -D %s\" if it is a leftover from a removed pair; or make a pair over it with \"lyx fabric add <slug> --adopt-local\"",
+		"branch %q already exists; switch a pair onto it with \"lym fabric checkout %s\", or delete it first with \"git branch -D %s\" if it is a leftover from a removed pair; or make a pair over it with \"lym fabric add <slug> --adopt-local\"",
 		e.Branch, e.Branch, e.Branch,
 	)
 }
@@ -107,7 +107,7 @@ func (e *ErrSourceDirty) Error() string {
 
 // SourceDirtyPaths returns the tracked uncommitted paths of the source worktree l names, relative to it.
 // Untracked files never count, so an empty result is the condition under which Add accepts the source.
-func SourceDirtyPaths(l *lyxcwd.Location) ([]string, error) {
+func SourceDirtyPaths(l *lymcwd.Location) ([]string, error) {
 	absolute, err := trackedDirtyPaths(l.WorktreePath())
 	if err != nil {
 		return nil, err
@@ -152,17 +152,17 @@ func (e *ErrLocalAddOverOrdinary) Error() string {
 	switch e.kind {
 	case localAddUnmarkedWarp:
 		return fmt.Sprintf(
-			"cannot add a local-only pair: warp branch %q already exists unmarked; switch a pair onto it with \"lyx fabric checkout %s\", delete it first with \"git branch -D %s\" if it is a leftover from a removed pair, or use another slug",
+			"cannot add a local-only pair: warp branch %q already exists unmarked; switch a pair onto it with \"lym fabric checkout %s\", delete it first with \"git branch -D %s\" if it is a leftover from a removed pair, or use another slug",
 			e.Branch, e.Branch, e.Branch,
 		)
 	case localAddUnmarkedWeft:
 		return fmt.Sprintf(
-			"cannot add a local-only pair: weft branch %q already exists locally and is not marked local; run \"lyx fabric add %s\" to make an ordinary pair over it",
+			"cannot add a local-only pair: weft branch %q already exists locally and is not marked local; run \"lym fabric add %s\" to make an ordinary pair over it",
 			e.Branch, e.Slug,
 		)
 	default:
 		return fmt.Sprintf(
-			"cannot add a local-only pair: branch %q exists on origin; run \"lyx fabric add %s\" to make an ordinary pair over it",
+			"cannot add a local-only pair: branch %q exists on origin; run \"lym fabric add %s\" to make an ordinary pair over it",
 			e.Branch, e.Slug,
 		)
 	}
@@ -200,7 +200,7 @@ func (e *ErrLocalAddOverOrdinary) Error() string {
 // and the record is removed once the pair is wired at the anchor.
 // A failure anywhere rolls the whole pair back, the record with it.
 // An adopted weft branch that already has an origin record keeps its parent fields; with opts.Beam the record gains the beam mark in an origin commit.
-func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddResult, error) {
+func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (AddResult, error) {
 	return t.add(l, slug, opts, false)
 }
 
@@ -208,12 +208,12 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddRes
 // No origin is read or written, no launcher is created, and both branches are marked local so no push publishes them.
 // It refuses with *ErrLocalAddOverOrdinary when either branch already exists as an ordinary pair's branch, locally unmarked or as an origin remote-tracking ref;
 // a branch that carries the mark is adopted.
-func (t *Topology) AddLocal(l *lyxcwd.Location, slug string) (AddResult, error) {
+func (t *Topology) AddLocal(l *lymcwd.Location, slug string) (AddResult, error) {
 	return t.add(l, slug, AddOptions{SkipPush: true}, true)
 }
 
 // add is the body of Add and AddLocal; local selects the local-only path.
-func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local bool) (res AddResult, err error) {
+func (t *Topology) add(l *lymcwd.Location, slug string, opts AddOptions, local bool) (res AddResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
 
@@ -298,11 +298,11 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 	target := WorktreePath(l, slug)
 	if _, err := os.Stat(target); !os.IsNotExist(err) {
 		// Name the recovery path, since a directory here is not always a live pair: an empty leftover
-		// stranded by an interrupted remove/reconcile is invisible to `lyx fabric list`/`prune`
+		// stranded by an interrupted remove/reconcile is invisible to `lym fabric list`/`prune`
 		// (they enumerate only git-registered worktrees), so an operator hitting one otherwise has no
 		// clue why the slug is blocked. If it IS a live pair, a different slug is the answer.
 		return AddResult{}, fmt.Errorf(
-			"worktree directory %q already exists; if it is a live pair, use a different slug; if it is a leftover directory from an interrupted remove/reconcile (which `lyx fabric list` and `prune` cannot see, as they list only git-registered worktrees), remove the directory and retry",
+			"worktree directory %q already exists; if it is a live pair, use a different slug; if it is a leftover directory from an interrupted remove/reconcile (which `lym fabric list` and `prune` cannot see, as they list only git-registered worktrees), remove the directory and retry",
 			target)
 	}
 
@@ -322,7 +322,7 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 		if weftRepoRootErr != nil {
 			return AddResult{}, fmt.Errorf("resolve weft repo root: %w", weftRepoRootErr)
 		}
-		return AddResult{}, fmt.Errorf("no weft repo at %s; create the hub with \"lyx fabric clone\" first", weftRepoRoot)
+		return AddResult{}, fmt.Errorf("no weft repo at %s; create the hub with \"lym fabric clone\" first", weftRepoRoot)
 	}
 
 	weftTarget := RecordsWorktreePath(l, slug)
@@ -396,7 +396,7 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 
 	// A live weft branch is adopted at the anchor it records, which no flag of this add moves.
 	if opts.Anchor != "" && weftOld.live {
-		return AddResult{}, fmt.Errorf("the weft branch %q already exists, so the pair is made over it at the anchor it records and cannot take the anchor %s; run the verb without the anchor, then `lyx fabric anchor %s --set %s`",
+		return AddResult{}, fmt.Errorf("the weft branch %q already exists, so the pair is made over it at the anchor it records and cannot take the anchor %s; run the verb without the anchor, then `lym fabric anchor %s --set %s`",
 			weftBranch, opts.Anchor, slug, opts.Anchor)
 	}
 
@@ -687,7 +687,7 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 // checkLocalAddOverOrdinary returns *ErrLocalAddOverOrdinary when a branch of the slug's pair is an ordinary pair's, and nil when AddLocal may proceed.
 // The checks run warp local, weft local, then origin remote-tracking refs (read locally, no network), and the first match decides.
 // warpUnmarked and weftExists are what the caller already read: an unmarked local warp branch, and whether the weft branch exists locally.
-func checkLocalAddOverOrdinary(l *lyxcwd.Location, slug, warpBranch, weftBranch string, warpUnmarked, weftExists bool) error {
+func checkLocalAddOverOrdinary(l *lymcwd.Location, slug, warpBranch, weftBranch string, warpUnmarked, weftExists bool) error {
 	if warpUnmarked {
 		return &ErrLocalAddOverOrdinary{Slug: slug, Branch: warpBranch, kind: localAddUnmarkedWarp}
 	}
@@ -751,7 +751,7 @@ type addWarpBranch struct {
 // adopted-weft-branch path the record's commit is deliberately left in place — reverting or
 // resetting an adopted branch to undo one commit is exactly the pre-existing-history destruction
 // the !weftBranchAdopted guard above exists to prevent.
-func (t *Topology) rollbackAdd(rec *Mutations, l *lyxcwd.Location, slug, warpBranch, weftBranch, target string, weftBranchAdopted bool, warpTok createdToken, warp *addWarpBranch) error {
+func (t *Topology) rollbackAdd(rec *Mutations, l *lymcwd.Location, slug, warpBranch, weftBranch, target string, weftBranchAdopted bool, warpTok createdToken, warp *addWarpBranch) error {
 	var firstErr error
 
 	// (1) Remove the weft worktree; delete the weft branch only when this Add

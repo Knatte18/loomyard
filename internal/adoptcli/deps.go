@@ -16,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
@@ -30,12 +30,12 @@ import (
 
 // hubDeps fills adoptDeps over the hub the prime belongs to.
 // The reconcile's live-pair reading takes its pause cover from hubOnlyPaused, so a pair whose strands are alive under a slug-scope pause, an owner pause included, reads live.
-func hubDeps(prime *lyxcwd.Location) (adoptDeps, error) {
+func hubDeps(prime *lymcwd.Location) (adoptDeps, error) {
 	return hubDepsAs(prime, machinename.Name)
 }
 
 // hubDepsAs is hubDeps with the machine's name read through machine, so a test can stand two clones of one host for two machines.
-func hubDepsAs(prime *lyxcwd.Location, machine func() (string, error)) (adoptDeps, error) {
+func hubDepsAs(prime *lymcwd.Location, machine func() (string, error)) (adoptDeps, error) {
 	teardown, err := pairteardown.New(prime)
 	if err != nil {
 		return adoptDeps{}, err
@@ -99,7 +99,7 @@ func hubDepsAs(prime *lyxcwd.Location, machine func() (string, error)) (adoptDep
 			if _, err := os.Stat(pairPath); errors.Is(err, fs.ErrNotExist) {
 				return shedengine.Status{}, false, nil
 			}
-			pair, err := lyxcwd.ResolveWorktree(pairPath)
+			pair, err := lymcwd.ResolveWorktree(pairPath)
 			if err != nil {
 				return shedengine.Status{}, false, err
 			}
@@ -112,7 +112,7 @@ func hubDepsAs(prime *lyxcwd.Location, machine func() (string, error)) (adoptDep
 			if worktree == "" {
 				worktree = prime.WorktreeName
 			}
-			pair, err := lyxcwd.NamedWorktree(prime.HubPath, worktree)
+			pair, err := lymcwd.NamedWorktree(prime.HubPath, worktree)
 			if err != nil {
 				return "", false, err
 			}
@@ -122,7 +122,7 @@ func hubDepsAs(prime *lyxcwd.Location, machine func() (string, error)) (adoptDep
 			if testing.Testing() {
 				return orchcli.BeamUpReport{}, errors.New("the beam steps start a tmux session and detached processes, which a test binary must not")
 			}
-			location, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(prime, worktree))
+			location, err := lymcwd.ResolveWorktree(fabricengine.WorktreePath(prime, worktree))
 			if err != nil {
 				return orchcli.BeamUpReport{}, err
 			}
@@ -189,7 +189,7 @@ func readStatus(path string) (shedengine.Status, bool, error) {
 // suiteLogName is the file the adopt's test suite writes its output to.
 const suiteLogName = "suite.log"
 
-// suiteArgs is the lyx command line of the adopt's test suite: the hub's finalize gate, waiting for gate slots.
+// suiteArgs is the lym command line of the adopt's test suite: the hub's finalize gate, waiting for gate slots.
 var suiteArgs = []string{"gate", "test", "--gate", "finalize", "--wait"}
 
 // startSuite starts the adopt's test suite detached in dir, with its output in the log at logPath, truncated first, and returns its pid and the log.
@@ -201,7 +201,7 @@ func startSuite(dir, logPath string) (suiteStart, error) {
 	}
 	executable, err := os.Executable()
 	if err != nil {
-		return suiteStart{}, fmt.Errorf("locate the lyx executable: %w", err)
+		return suiteStart{}, fmt.Errorf("locate the lym executable: %w", err)
 	}
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
 		return suiteStart{}, fmt.Errorf("create the suite log directory: %w", err)
@@ -226,10 +226,10 @@ func startSuite(dir, logPath string) (suiteStart, error) {
 	return suiteStart{PID: pid, Log: logPath}, nil
 }
 
-// resumeChild runs "lyx loom resume" in the task worktree at pairPath and waits for it.
+// resumeChild runs "lym loom resume" in the task worktree at pairPath and waits for it.
 func resumeChild(pairPath string) error {
 	if testing.Testing() {
-		return errors.New("resuming a child spawns the lyx binary, which a test binary must not re-exec")
+		return errors.New("resuming a child spawns the lym binary, which a test binary must not re-exec")
 	}
 	executable, err := os.Executable()
 	if err != nil {
@@ -242,7 +242,7 @@ func resumeChild(pairPath string) error {
 	output, err := command.CombinedOutput()
 	logger.Info("adoptcli: child resume ended", "dir", pairPath, "error", err)
 	if err != nil {
-		return fmt.Errorf("lyx loom resume in %s: %w: %s", pairPath, err, output)
+		return fmt.Errorf("lym loom resume in %s: %w: %s", pairPath, err, output)
 	}
 	return nil
 }

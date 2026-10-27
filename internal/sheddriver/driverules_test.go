@@ -29,7 +29,7 @@ func TestDecideDrive(t *testing.T) {
 	awaitingStop := func(notice string) Stop {
 		return Stop{OK: true, State: "awaiting", LoopState: "awaiting", ParentNotice: notice}
 	}
-	budgetHaltReason := shedengine.ReasonBounceBudgetExhausted + " for Plan-Write; way forward: lyx shed resume"
+	budgetHaltReason := shedengine.ReasonBounceBudgetExhausted + " for Plan-Write; way forward: lym shed resume"
 	budgetHaltStop := Stop{OK: true, State: "blocked", LoopState: "blocked", Reason: budgetHaltReason, CurrentProducer: "Plan-Write", HistoryLength: 3}
 	preconditionHaltReason := shedengine.ReasonPreconditionUnmet + ": the source worktree has uncommitted tracked changes; way forward: commit or revert them"
 	preconditionHaltStop := Stop{OK: true, State: "blocked", LoopState: "blocked", Reason: preconditionHaltReason, CurrentProducer: "Worktree-Create", HistoryLength: 3}

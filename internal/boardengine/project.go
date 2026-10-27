@@ -40,7 +40,7 @@ func checkProjectRules(loaded, after []Task, pairExists func(slug string) bool) 
 			}
 		}
 		if existed && before.Project != task.Project && pairExists != nil && pairExists(task.Slug) {
-			return fmt.Errorf("entry %q has a pair, and a change of its project moves its pair out from under its project's beam: end the pair first with `lyx batten cancel %s --remove`, then change project", task.Slug, task.Slug)
+			return fmt.Errorf("entry %q has a pair, and a change of its project moves its pair out from under its project's beam: end the pair first with `lym batten cancel %s --remove`, then change project", task.Slug, task.Slug)
 		}
 		if (!existed || !slices.Equal(before.Order, task.Order)) && len(task.Order) > 0 {
 			if err := checkOrderField(task, afterBySlug); err != nil {
@@ -70,16 +70,16 @@ func checkBeamPayload(s *Store, fields map[string]any) error {
 		return nil
 	}
 	if !proposed {
-		return fmt.Errorf("entry %q is a beam, and the beam flag stays set for the beam's life, which ends when `lyx beam land %s` lands it and marks the project done: drop the beam key from the payload", slug, slug)
+		return fmt.Errorf("entry %q is a beam, and the beam flag stays set for the beam's life, which ends when `lym beam land %s` lands it and marks the project done: drop the beam key from the payload", slug, slug)
 	}
 	kind, _ := fields["kind"].(string)
 	if held {
 		kind = stored.Kind
 	}
 	if kind == KindProject {
-		return fmt.Errorf("entry %q cannot be made a beam by a board write: run `lyx beam create %s` to make the project a beam, and drop the beam key from the payload", slug, slug)
+		return fmt.Errorf("entry %q cannot be made a beam by a board write: run `lym beam create %s` to make the project a beam, and drop the beam key from the payload", slug, slug)
 	}
-	return fmt.Errorf("entry %q cannot be made a beam by a board write: a beam is made from a project entry: make one with `lyx board upsert` under a slug of its own, then run `lyx beam create <that slug>`, and drop the beam key from the payload", slug)
+	return fmt.Errorf("entry %q cannot be made a beam by a board write: a beam is made from a project entry: make one with `lym board upsert` under a slug of its own, then run `lym beam create <that slug>`, and drop the beam key from the payload", slug)
 }
 
 // membershipError is the refusal of an entry's project or order field at slug, naming the way forward of correcting that slug or dropping it from the field.
@@ -136,7 +136,7 @@ func dependsOnProjectError(entry, project string, entries []Task) error {
 		}
 	}
 	if len(members) == 0 {
-		return fmt.Errorf("entry %q depends on project %q, and nothing depends on a project, which has no task member yet: drop the dependency with `lyx board set-deps`", entry, project)
+		return fmt.Errorf("entry %q depends on project %q, and nothing depends on a project, which has no task member yet: drop the dependency with `lym board set-deps`", entry, project)
 	}
-	return fmt.Errorf("entry %q depends on project %q, and nothing depends on a project: depend on its members (%s) instead, or drop the dependency with `lyx board set-deps`", entry, project, strings.Join(members, ", "))
+	return fmt.Errorf("entry %q depends on project %q, and nothing depends on a project: depend on its members (%s) instead, or drop the dependency with `lym board set-deps`", entry, project, strings.Join(members, ", "))
 }

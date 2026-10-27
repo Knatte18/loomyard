@@ -60,8 +60,8 @@ func TestCommitRecordsVerb_ErrorEnvelopes(t *testing.T) {
 	rejected := fmt.Errorf("push side at /wt: %w", gitrepo.ErrPushRejected)
 	const (
 		rejectionWayForward = "way forward: merge the remote branch into the local branch in the worktree the error names"
-		refusedVerbClause   = "a session lyx refuses the verb from reports status: FAILED and the orch runs it"
-		transientWayForward = "way forward: transient, run lyx fabric push or re-run lyx loom commit-records; " + refusedVerbClause
+		refusedVerbClause   = "a session lym refuses the verb from reports status: FAILED and the orch runs it"
+		transientWayForward = "way forward: transient, run lym fabric push or re-run lym loom commit-records; " + refusedVerbClause
 		pushFailedPrefix    = "the commit landed locally but the push failed: "
 	)
 	gone := &fabricengine.PushFailedError{
@@ -96,7 +96,7 @@ func TestCommitRecordsVerb_ErrorEnvelopes(t *testing.T) {
 		{"push rewound", nil, nil, rewound, []string{pushFailedPrefix}, []string{rewoundLine}},
 		{"push auth", nil, nil, auth, []string{pushFailedPrefix}, []string{authLine}},
 		{"both sides classified", nil, nil, errors.Join(gone, auth), []string{pushFailedPrefix}, []string{goneLine, authLine}},
-		{"classified beside an unclassified failure", nil, nil, errors.Join(gone, boom), []string{pushFailedPrefix, "boom"}, []string{goneLine, "way forward: transient, run lyx fabric push or re-run lyx loom commit-records"}},
+		{"classified beside an unclassified failure", nil, nil, errors.Join(gone, boom), []string{pushFailedPrefix, "boom"}, []string{goneLine, "way forward: transient, run lym fabric push or re-run lym loom commit-records"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

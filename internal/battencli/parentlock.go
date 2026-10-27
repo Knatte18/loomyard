@@ -12,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -25,7 +25,7 @@ import (
 // childParentLock builds the parent lock seams of the task pair for slug, over the lock store under boardDir.
 // bound is landing's idle bound for the lock.
 // The task pair is located at call time, so a pair that is not there yet fails the seam and not the wiring.
-func childParentLock(slug string, locateTask func() (*lyxcwd.Location, error), boardDir string, bound time.Duration) *battenshed.ChildParentLock {
+func childParentLock(slug string, locateTask func() (*lymcwd.Location, error), boardDir string, bound time.Duration) *battenshed.ChildParentLock {
 	store := &parentlock.Store{Dir: parentlock.Dir(boardDir)}
 	return &battenshed.ChildParentLock{
 		Read: func() (parentlock.Record, bool, error) {
@@ -58,7 +58,7 @@ func childParentLock(slug string, locateTask func() (*lyxcwd.Location, error), b
 
 // landingInFlight reports whether the task pair's run is at Finalize and running, or a verify marker of the pair is live, which holds the run's parent lock.
 // A status directory that does not exist yet reads as no status; any other failed read of the status file or the marker returns its error.
-func landingInFlight(taskLocation *lyxcwd.Location) (bool, error) {
+func landingInFlight(taskLocation *lymcwd.Location) (bool, error) {
 	status, found, err := state.ReadJSONNoMkdir[shedengine.Status](shedrun.StatusFile(taskLocation, shedrun.SelfRunID), shedrun.StatusLock(taskLocation, shedrun.SelfRunID))
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return false, err
@@ -72,7 +72,7 @@ func landingInFlight(taskLocation *lyxcwd.Location) (bool, error) {
 
 // lockIdleBound returns landing's idle bound for the parent lock of the hub of prime.
 // A landing config that cannot be read logs a Warn and leaves the zero config, whose bound is the default.
-func lockIdleBound(prime *lyxcwd.Location) time.Duration {
+func lockIdleBound(prime *lymcwd.Location) time.Duration {
 	cfg, err := landingshed.LoadConfig(fabricengine.ConfigDirs(prime), "landing")
 	if err != nil {
 		logger.Warn("battencli: landing config unreadable; the parent lock's idle bound falls back to its default", "error", err)
@@ -96,7 +96,7 @@ func runLockRecord(store *parentlock.Store, slug, pairPath string) (parentlock.R
 }
 
 // readAgentStates returns the agent states of the live runs of the task pair.
-func readAgentStates(taskLocation *lyxcwd.Location) ([]parentlock.AgentState, error) {
+func readAgentStates(taskLocation *lymcwd.Location) ([]parentlock.AgentState, error) {
 	anchor := taskLocation.AnchorPath()
 	cfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "shuttle")
 	if err != nil {

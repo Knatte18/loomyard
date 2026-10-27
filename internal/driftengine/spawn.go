@@ -39,7 +39,7 @@ type spawnedChild struct {
 
 // SpawnRequest is the told input of StartCapture.
 type SpawnRequest struct {
-	// Executable is the lyx binary the child runs.
+	// Executable is the lym binary the child runs.
 	Executable string
 	// WorktreeRoot is the directory the child runs in.
 	WorktreeRoot string
@@ -137,9 +137,9 @@ func awaitRunningRecord(req SpawnRequest, child spawnedChild, childLog string) e
 
 // startFailure builds the error of a capture child that did not record its start, with its caller's way forward.
 func startFailure(req SpawnRequest, childLog, what string) error {
-	wayForward := "read " + childLog + ", then lyx loom resume, whose entry captures again"
+	wayForward := "read " + childLog + ", then lym loom resume, whose entry captures again"
 	if req.FallbackDetach {
-		wayForward = "read " + childLog + ", then, once lyx drift status shows the capture lock free, run lyx drift capture again, or lyx drift defer followed by lyx loom resume"
+		wayForward = "read " + childLog + ", then, once lym drift status shows the capture lock free, run lym drift capture again, or lym drift defer followed by lym loom resume"
 	}
 	return fmt.Errorf("drift: the capture child %s; way forward: %s", what, wayForward)
 }
@@ -178,10 +178,10 @@ func (r SpawnRequest) refusedBreakaway(err error) bool {
 	return proc.IsBreakawayRefused(err)
 }
 
-// CaptureJobName returns the Windows job-object name of a worktree's capture: "lyx-drift-capture-" followed by a hex hash of the worktree root.
+// CaptureJobName returns the Windows job-object name of a worktree's capture: "lym-drift-capture-" followed by a hex hash of the worktree root.
 func CaptureJobName(worktreeRoot string) string {
 	sum := sha256.Sum256([]byte(worktreeRoot))
-	return "lyx-drift-capture-" + hex.EncodeToString(sum[:8])
+	return "lym-drift-capture-" + hex.EncodeToString(sum[:8])
 }
 
 // ProbeLock reports whether the OS lock at path is held, by taking it without blocking and releasing it at once.

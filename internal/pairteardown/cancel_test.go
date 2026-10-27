@@ -33,7 +33,7 @@ func TestEndForCancel(t *testing.T) {
 
 	survivors := []runproc.Ended{{PID: 4242, Role: runproc.RoleLoop}}
 	const presentHead = "holdWriteLocks,endOwned,release,driverLock,afterEnd"
-	const refusalTail = "lyx batten cancel slug"
+	const refusalTail = "lym batten cancel slug"
 	tests := []struct {
 		name string
 		gone bool
@@ -91,7 +91,7 @@ func TestEndForCancel(t *testing.T) {
 			writeLockBusy:   true,
 			wantCalls:       "holdWriteLocks",
 			wantErrIs:       ErrDriverBusy,
-			wantErrContains: []string{"/hub/records/lock", "lyx tender status", "ps", "Task Manager", refusalTail},
+			wantErrContains: []string{"/hub/records/lock", "lym tender status", "ps", "Task Manager", refusalTail},
 		},
 		{
 			name:            "SurvivorsRefuseNamingEachPidAndTheWayForward",
@@ -99,7 +99,7 @@ func TestEndForCancel(t *testing.T) {
 			endOwnedErr:     &runproc.SurvivorsError{Survivors: survivors},
 			wantCalls:       "holdWriteLocks,endOwned,release",
 			wantErrIs:       ErrDriverBusy,
-			wantErrContains: []string{"4242", runproc.RoleLoop, "lyx tender status", "ps", refusalTail},
+			wantErrContains: []string{"4242", runproc.RoleLoop, "lym tender status", "ps", refusalTail},
 		},
 		{
 			name:            "OwnedEndErrorThatIsNotSurvivorsIsReturned",
@@ -129,7 +129,7 @@ func TestEndForCancel(t *testing.T) {
 			hooks:           []hookAnswer{{busy: "/hub/run.lock"}, {busy: "/hub/run.lock"}},
 			wantCalls:       presentHead + ",holdWriteLocks,endOwned,release,driverLock,afterEnd",
 			wantErrIs:       ErrDriverBusy,
-			wantErrContains: []string{"/hub/run.lock", "lyx tender status", "ps", "Task Manager", "lyx batten cancel"},
+			wantErrContains: []string{"/hub/run.lock", "lym tender status", "ps", "Task Manager", "lym batten cancel"},
 		},
 		{
 			name:            "HookErrorStopsThePhase",

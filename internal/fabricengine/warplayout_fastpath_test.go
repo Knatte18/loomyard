@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -20,9 +20,9 @@ import (
 func TestWarpLayoutFor_FastPathCarriesEveryField(t *testing.T) {
 	t.Parallel()
 
-	base := &lyxcwd.Location{
+	base := &lymcwd.Location{
 		RepoName:     "mono",
-		HubPath:      filepath.Join(t.TempDir(), "mono-LYXHUB"),
+		HubPath:      filepath.Join(t.TempDir(), "mono-LYMHUB"),
 		WorktreeName: "mono",
 		AnchorRel:    "backend",
 	}
@@ -31,7 +31,7 @@ func TestWarpLayoutFor_FastPathCarriesEveryField(t *testing.T) {
 	if err := os.MkdirAll(siblingRecords, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", siblingRecords, err)
 	}
-	if err := os.WriteFile(filepath.Join(siblingRecords, lyxcwd.AnchorFileName), []byte("frontend\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(siblingRecords, lymcwd.AnchorFileName), []byte("frontend\n"), 0o644); err != nil {
 		t.Fatalf("write the sibling's own marker: %v", err)
 	}
 
@@ -40,7 +40,7 @@ func TestWarpLayoutFor_FastPathCarriesEveryField(t *testing.T) {
 		t.Fatalf("warpLayoutFor(hub sibling) error = %v", err)
 	}
 
-	want := lyxcwd.Location{
+	want := lymcwd.Location{
 		RepoName:     "mono",
 		HubPath:      base.HubPath,
 		WorktreeName: "task1",

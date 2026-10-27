@@ -4,11 +4,11 @@
 //
 // Drives RunCLI in-process and asserts the JSON + exit-code contract for each subcommand: JSON envelope shape (ok=true/false), exit codes (0 for success, 1 for error), and each verb's distinctive field (task, tasks[], Home.md written).
 //
-// Board data dir strategy: TestCLI seeds one git repo (git init) as its cwd so that PersistentPreRunE can call lyxcwd.Resolve without error.
+// Board data dir strategy: TestCLI seeds one git repo (git init) as its cwd so that PersistentPreRunE can call lymcwd.Resolve without error.
 // The board data dir is then Hub/_board where Hub = filepath.Dir(cwd).
 // This is the production code path; no --board-path injection is used for operational tests.
 //
-// seedCwd spawns "git init" and every RunCLI call spawns "git rev-parse" via lyxcwd.Resolve, so this file is integration-tagged per the Test Tier Purity Invariant; spawn-free CLI tests live in cli_unit_test.go.
+// seedCwd spawns "git init" and every RunCLI call spawns "git rev-parse" via lymcwd.Resolve, so this file is integration-tagged per the Test Tier Purity Invariant; spawn-free CLI tests live in cli_unit_test.go.
 
 package boardcli_test
 
@@ -27,14 +27,14 @@ import (
 // defaultHubBoardConfig is the hub board.yaml every step starts from.
 const defaultHubBoardConfig = "readme: Home.md\ndesign_prefix: proposal-\n"
 
-// seedCwd creates a temp directory with the default hub board.yaml, initialises a git repo there (so lyxcwd.Resolve succeeds), changes to that directory, and returns the cwd path.
+// seedCwd creates a temp directory with the default hub board.yaml, initialises a git repo there (so lymcwd.Resolve succeeds), changes to that directory, and returns the cwd path.
 // The board data dir is Hub/_board where Hub = filepath.Dir(cwd); callers can compute it as fabricengine.BoardDir(filepath.Dir(cwd)).
 func seedCwd(t *testing.T) string {
 	t.Helper()
 
 	cwd := t.TempDir()
 
-	// Initialise a git repo so PersistentPreRunE can call lyxcwd.Resolve without error.
+	// Initialise a git repo so PersistentPreRunE can call lymcwd.Resolve without error.
 	if out, err := exec.Command("git", "-C", cwd, "init").CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
@@ -160,7 +160,7 @@ func stepSiblingWarning(t *testing.T, f *cliFixture) {
 	wantSibling := func(t *testing.T, result map[string]any) {
 		t.Helper()
 		notice, _ := result["notice"].(string)
-		for _, want := range []string{"X", "Y", "D", "board", "lyx board set-deps"} {
+		for _, want := range []string{"X", "Y", "D", "board", "lym board set-deps"} {
 			if !strings.Contains(notice, want) {
 				t.Errorf("notice = %q; want it to contain %q", notice, want)
 			}
@@ -311,7 +311,7 @@ func stepContract(t *testing.T, f *cliFixture) {
 			wantFieldExist: "ok",
 			assertFieldExists: func(t *testing.T, result map[string]any, cwd string) {
 				// The fixture initialised a git repo at cwd; Hub = filepath.Dir(cwd);
-				// lyxcwd.Resolve derives Hub from the git root, so board renders at Hub/_board.
+				// lymcwd.Resolve derives Hub from the git root, so board renders at Hub/_board.
 				homePath := filepath.Join(fabricengine.BoardDir(filepath.Dir(cwd)), "Home.md")
 				if _, err := os.Stat(homePath); err != nil {
 					t.Fatalf("Home.md not created at %q: %v", homePath, err)
@@ -1134,7 +1134,7 @@ func stepLookupContract(t *testing.T, f *cliFixture) {
 }
 
 // stepLoadsHubBoardConfig verifies the board config is the hub's board.yaml, whatever the worktree's own copy holds:
-// a hub-declared type and label are accepted and rendered, and without the hub file the verb refuses naming `lyx fabric reconcile`.
+// a hub-declared type and label are accepted and rendered, and without the hub file the verb refuses naming `lym fabric reconcile`.
 func stepLoadsHubBoardConfig(t *testing.T, f *cliFixture) {
 	tests := []struct {
 		name         string
@@ -1152,7 +1152,7 @@ func stepLoadsHubBoardConfig(t *testing.T, f *cliFixture) {
 		{
 			name:         "worktree copy alone does not satisfy the reader",
 			wantExitCode: 1,
-			wantError:    "lyx fabric reconcile",
+			wantError:    "lym fabric reconcile",
 		},
 	}
 	for _, tt := range tests {
@@ -1193,18 +1193,18 @@ func stepLoadsHubBoardConfig(t *testing.T, f *cliFixture) {
 }
 
 // stepBoardPathResolution verifies the two board data dir resolution paths in PersistentPreRunE:
-// without --board-path the CLI uses fabricengine.BoardDir(hub) derived from lyxcwd.Resolve;
+// without --board-path the CLI uses fabricengine.BoardDir(hub) derived from lymcwd.Resolve;
 // with --board-path the supplied path takes precedence.
-// The fixture's real git repo lets lyxcwd.Resolve succeed.
+// The fixture's real git repo lets lymcwd.Resolve succeed.
 func stepBoardPathResolution(t *testing.T, f *cliFixture) {
 	// The fixture's repository is the worktree and its parent is the hub:
-	// lyxcwd.Resolve(worktree) derives Hub = topDir, so fabricengine.BoardDir(Hub) = filepath.Join(topDir, "_board").
+	// lymcwd.Resolve(worktree) derives Hub = topDir, so fabricengine.BoardDir(Hub) = filepath.Join(topDir, "_board").
 	topDir := filepath.Dir(f.cwd)
 
 	expectedBoardDir := fabricengine.BoardDir(topDir)
 
 	t.Run("no_board_path_resolves_via_paths", func(t *testing.T) {
-		// PersistentPreRunE calls lyxcwd.Resolve and derives cfg.Path = fabricengine.BoardDir(topDir).
+		// PersistentPreRunE calls lymcwd.Resolve and derives cfg.Path = fabricengine.BoardDir(topDir).
 		// Upsert writes board.json inside that derived board dir.
 		exitCode, stdout := runCLI(t, "upsert", `{"slug":"path-test","title":"Path Test","labels":["bug"]}`)
 		if exitCode != 0 {
@@ -1217,7 +1217,7 @@ func stepBoardPathResolution(t *testing.T, f *cliFixture) {
 	})
 
 	t.Run("board_path_flag_overrides_resolution", func(t *testing.T) {
-		// --board-path bypasses lyxcwd.Resolve and uses the supplied path directly.
+		// --board-path bypasses lymcwd.Resolve and uses the supplied path directly.
 		// list is a read-only operation that works under --board-path (no render step),
 		// so we verify redirection by comparing task counts: absOverride is a fresh
 		// empty dir (0 tasks) while expectedBoardDir already has the "path-test" task

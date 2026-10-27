@@ -18,11 +18,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // warpBranchCommit commits a new file in the pair's warp worktree.
-func warpBranchCommit(t *testing.T, l *lyxcwd.Location, slug, name string) {
+func warpBranchCommit(t *testing.T, l *lymcwd.Location, slug, name string) {
 	t.Helper()
 	dir := fabricengine.WorktreePath(l, slug)
 	gitkit.CommitFile(t, dir, name, name, name)

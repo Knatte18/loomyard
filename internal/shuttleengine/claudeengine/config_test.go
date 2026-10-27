@@ -26,12 +26,12 @@ func writeClaudeLayer(t testing.TB, path, document string) {
 }
 
 // TestLoadConfig pins claude.yaml's resolution: the template on an absent base, a repo default under a worktree file, the local layer's admitted and refused keys, and the binary marker's environment expansion.
-// It does not run in parallel: every row clears or sets LYX_SHUTTLE_CLAUDE, which is process-global.
+// It does not run in parallel: every row clears or sets LYM_SHUTTLE_CLAUDE, which is process-global.
 func TestLoadConfig(t *testing.T) {
 	clearMarker := func(t *testing.T) {
 		t.Helper()
-		t.Setenv("LYX_SHUTTLE_CLAUDE", "")
-		os.Unsetenv("LYX_SHUTTLE_CLAUDE")
+		t.Setenv("LYM_SHUTTLE_CLAUDE", "")
+		os.Unsetenv("LYM_SHUTTLE_CLAUDE")
 	}
 
 	t.Run("an absent base resolves the template", func(t *testing.T) {
@@ -98,7 +98,7 @@ func TestLoadConfig(t *testing.T) {
 	}
 
 	t.Run("the environment marker resolves the binary", func(t *testing.T) {
-		t.Setenv("LYX_SHUTTLE_CLAUDE", "/opt/claude/bin/claude")
+		t.Setenv("LYM_SHUTTLE_CLAUDE", "/opt/claude/bin/claude")
 		cfg, err := LoadConfig(configengine.Dirs{Anchor: t.TempDir()})
 		if err != nil {
 			t.Fatalf("LoadConfig() = _, %v; want nil error", err)

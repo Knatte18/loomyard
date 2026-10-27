@@ -1,6 +1,6 @@
 //go:build tier1
 
-// smoke_prebootstrap_integration_test.go drives the built lyx binary and the production seed primitives against real hub pairs in the states before a run bootstraps, and when the reed config is bad.
+// smoke_prebootstrap_integration_test.go drives the built lym binary and the production seed primitives against real hub pairs in the states before a run bootstraps, and when the reed config is bad.
 // None of these behaviors reaches a tmux server: the refusals come before reed comes up, and the seed commit is plain git.
 
 package loomcli
@@ -21,10 +21,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/shedrun"
-	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 )
 
 // TestLoomPreBootstrapPair walks one never-bootstrapped pair through the pre-bootstrap states in this order, each step building on the one before:
@@ -32,7 +32,7 @@ import (
 func TestLoomPreBootstrapPair(t *testing.T) {
 	t.Parallel()
 
-	exe := lyxbin.Build(t)
+	exe := lymbin.Build(t)
 	hub, loc, worktree, slug := newWiredPairFixture(t)
 	recordsDir := fabricengine.RecordsWorktree(loc)
 
@@ -138,7 +138,7 @@ func TestLoomPreBootstrapPair(t *testing.T) {
 func TestLoomStatusAndPauseOnNeverBootstrappedPair(t *testing.T) {
 	t.Parallel()
 
-	exe := lyxbin.Build(t)
+	exe := lymbin.Build(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	seedGoDriverRun(t, loc)
 
@@ -183,7 +183,7 @@ func TestLoomStatusAndPauseOnNeverBootstrappedPair(t *testing.T) {
 func TestLoomResumeReconcilesTheHubConfigBeforeArming(t *testing.T) {
 	t.Parallel()
 
-	exe := lyxbin.Build(t)
+	exe := lymbin.Build(t)
 	loc, worktree := newBadReedUpFixture(t, commitRetiredBatcherKey)
 	waitForFixtureProcessesToExit(t)
 	recordsDir := fabricengine.RecordsWorktree(loc)
@@ -245,17 +245,17 @@ func TestLoomResumeReconcilesTheHubConfigBeforeArming(t *testing.T) {
 func TestLoomFailedReedUpRefuses(t *testing.T) {
 	t.Parallel()
 
-	exe := lyxbin.Build(t)
+	exe := lymbin.Build(t)
 	const verbTimeout = 60 * time.Second
 
-	requireStartRefusal := func(t *testing.T, loc *lyxcwd.Location, worktree string) {
+	requireStartRefusal := func(t *testing.T, loc *lymcwd.Location, worktree string) {
 		t.Helper()
 		out, exit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipBoardPush, verbTimeout, "loom", "start", "--no-attach")
 		if err != nil {
-			t.Fatalf("lyx loom start --no-attach: %v; output: %s", err, out)
+			t.Fatalf("lym loom start --no-attach: %v; output: %s", err, out)
 		}
 		if exit != 1 {
-			t.Fatalf("lyx loom start exit = %d; want 1; output: %s", exit, out)
+			t.Fatalf("lym loom start exit = %d; want 1; output: %s", exit, out)
 		}
 		if !strings.Contains(out, `"ok":false`) {
 			t.Errorf("start envelope is not ok:false; output: %s", out)
@@ -278,10 +278,10 @@ func TestLoomFailedReedUpRefuses(t *testing.T) {
 		t.Run("step refuses with the bootstrap kind", func(t *testing.T) {
 			out, exit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipBoardPush, verbTimeout, "loom", "step")
 			if err != nil {
-				t.Fatalf("lyx loom step: %v; output: %s", err, out)
+				t.Fatalf("lym loom step: %v; output: %s", err, out)
 			}
 			if exit != 1 {
-				t.Fatalf("lyx loom step exit = %d; want 1; output: %s", exit, out)
+				t.Fatalf("lym loom step exit = %d; want 1; output: %s", exit, out)
 			}
 			// The envelope is the last JSON line of the output.
 			var env map[string]any
@@ -310,7 +310,7 @@ func TestLoomFailedReedUpRefuses(t *testing.T) {
 	})
 
 	t.Run("wrong-parent seed", func(t *testing.T) {
-		loc, worktree := newBadReedUpFixture(t, func(t *testing.T, loc *lyxcwd.Location) {
+		loc, worktree := newBadReedUpFixture(t, func(t *testing.T, loc *lymcwd.Location) {
 			t.Helper()
 			seed := shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo, Params: map[string]string{"parent": "wrong-branch"}}
 			if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, seed); err != nil {
@@ -324,10 +324,10 @@ func TestLoomFailedReedUpRefuses(t *testing.T) {
 
 		out, exit, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipBoardPush, verbTimeout, "loom", "step")
 		if err != nil {
-			t.Fatalf("lyx loom step: %v; output: %s", err, out)
+			t.Fatalf("lym loom step: %v; output: %s", err, out)
 		}
 		if exit != 1 {
-			t.Fatalf("lyx loom step exit = %d; want 1; output: %s", exit, out)
+			t.Fatalf("lym loom step exit = %d; want 1; output: %s", exit, out)
 		}
 		var env map[string]any
 		for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
@@ -342,7 +342,7 @@ func TestLoomFailedReedUpRefuses(t *testing.T) {
 		message, _ := env["error"].(string)
 		for _, want := range []string{
 			"rm " + shedrun.SeedFile(loc, shedrun.SelfRunID),
-			"lyx shed seed self --recipe loom --driver go --param parent=" + recorded.ParentBranch,
+			"lym shed seed self --recipe loom --driver go --param parent=" + recorded.ParentBranch,
 		} {
 			if !strings.Contains(message, want) {
 				t.Errorf("step error lacks %q; got: %s", want, message)

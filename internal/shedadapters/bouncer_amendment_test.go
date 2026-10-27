@@ -169,8 +169,8 @@ func amendmentRoundsRow(name string, allowance, hardCap int, bounces func() (int
 		round := stuckRounds + 1
 		layoutBouncerRun(t, h.cfg, []bouncerJudgeFixture{{round: round, report: bouncerReport(round)}})
 		ptr := shedfake.RequireOutcome(t, h.b, shedengine.Awaiting)
-		requireReasonContains(t, ptr.Reason, "cause: hard-cap", "lyx loom circling accept")
-		if strings.Contains(ptr.Reason, "lyx loom circling continue") {
+		requireReasonContains(t, ptr.Reason, "cause: hard-cap", "lym loom circling accept")
+		if strings.Contains(ptr.Reason, "lym loom circling continue") {
 			t.Errorf("Reason = %q; want no continue verb at the hard cap", ptr.Reason)
 		}
 	}}

@@ -15,18 +15,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/vscode"
 )
 
 // Menu presents an interactive picker of active worktrees, allowing the user to open one via Spawn.
 // It discovers active worktrees from fabricengine.List, excluding the main worktree and those
-// without _lyx.
+// without _lym.
 // Titles are resolved through the board facade.
 // Returns an error on board config load or health check failure,
 // or nil on success.
-func Menu(l *lyxcwd.Location, in io.Reader, out io.Writer) error {
+func Menu(l *lymcwd.Location, in io.Reader, out io.Writer) error {
 	boardDir := fabricengine.BoardDir(l.HubPath)
 	cfg, err := boardengine.LoadConfig(fabricengine.ConfigDirs(l), "board")
 	if err != nil {
@@ -56,13 +56,13 @@ func Menu(l *lyxcwd.Location, in io.Reader, out io.Writer) error {
 
 		slug := filepath.Base(entry.Path)
 
-		own, err := lyxcwd.NamedWorktree(l.HubPath, slug)
+		own, err := lymcwd.NamedWorktree(l.HubPath, slug)
 		if err != nil {
 			logger.Warn("worktree left out of the menu: its anchor cannot be read", "slug", slug, "error", err)
 			continue
 		}
-		lyxPath := filepath.Join(entry.Path, own.AnchorRel, lyxdirs.LyxDirName)
-		stat, err := os.Stat(lyxPath)
+		lymPath := filepath.Join(entry.Path, own.AnchorRel, lymdirs.LymDirName)
+		stat, err := os.Stat(lymPath)
 		if err != nil || !stat.IsDir() {
 			continue
 		}

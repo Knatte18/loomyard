@@ -69,7 +69,7 @@ type GateSpan struct {
 	End   string `json:"end"`
 }
 
-// CallerShed is the caller label of lyx's own automatic steps: the Go driver and batten.
+// CallerShed is the caller label of lym's own automatic steps: the Go driver and batten.
 const CallerShed = "shed"
 
 // HistoryEntry is one producer call's durable record, and the element type of Result.History.

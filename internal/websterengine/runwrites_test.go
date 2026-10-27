@@ -213,7 +213,7 @@ func TestLoadRunWrites(t *testing.T) {
 				engines:   shuttleengine.NewEngineSet("a", map[string]shuttleengine.Engine{"a": fake}),
 				engine:    "gone",
 				wantIs:    shuttleengine.ErrEngineNotRegistered,
-				wantParts: []string{"sess-1", `"gone"`, `with a lyx whose engine set holds "gone"`},
+				wantParts: []string{"sess-1", `"gone"`, `with a lym whose engine set holds "gone"`},
 			},
 			{
 				name:      "EngineLessSessionOnDefaultWithoutForkAudit",

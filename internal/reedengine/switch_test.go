@@ -54,7 +54,7 @@ func TestNextSessionID(t *testing.T) {
 func TestSwitchClientVia_IssuesOnlyTheThreeCommands(t *testing.T) {
 	t.Parallel()
 	// The listing is filtered to the sessions that count as reed's everywhere but Windows, spelled out here rather than built through listSessionsArgv.
-	wantList := []string{"list-sessions", "-f", "#{||:#{!=:#{@lyx_tmux_conf_claimed},sourced},#{@lyx_reed_session}}", "-F", "#{session_id} #{session_name}"}
+	wantList := []string{"list-sessions", "-f", "#{||:#{!=:#{@lym_tmux_conf_claimed},sourced},#{@lym_reed_session}}", "-F", "#{session_id} #{session_name}"}
 	if runtime.GOOS == "windows" {
 		wantList = []string{"list-sessions", "-F", "#{session_id} #{session_name}"}
 	}

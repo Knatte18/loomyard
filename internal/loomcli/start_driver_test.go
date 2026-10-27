@@ -16,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -102,17 +102,14 @@ func (f *fakeDriverPaneProbeForArm) RemoveDriverStrand(guid string) error {
 	return f.removeErr
 }
 
-// newTestLLMArmReceiver builds a *loomCLI bare enough to drive startLLMDriverArm: a real
-// *lyxcwd.Location (a plain value, no filesystem behind it beyond t.TempDir()), a zero-value config
-// (so loomengine.ResolveDriver defers to the engine default and never touches the registry), and the
-// given fakes wired as the two driver seams.
+// newTestLLMArmReceiver builds a *loomCLI bare enough to drive startLLMDriverArm: a real *lymcwd.Location (a plain value, no filesystem behind it beyond t.TempDir()), a zero-value config (so loomengine.ResolveDriver defers to the engine default and never touches the registry), and the given fakes wired as the two driver seams.
 func newTestLLMArmReceiver(t *testing.T, starter driverStarter, probe driverPaneProbe) *loomCLI {
 	t.Helper()
 	dir := t.TempDir()
 	stencilsDir := filepath.Join(dir, "stencils")
 	stencilkit.SeedInto(t, stencilsDir)
 	return &loomCLI{
-		location:        &lyxcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."},
+		location:        &lymcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."},
 		runDeps:         websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: stencilsDir}},
 		parentName:      "hub:orch",
 		cfg:             loomengine.Config{},
@@ -160,7 +157,7 @@ func TestStartLLMDriverArm(t *testing.T) {
 		if strings.Contains(prompt, `"self"`) || strings.Contains(prompt, string(filepath.Separator)+"self"+string(filepath.Separator)) {
 			t.Errorf("prompt = %q; want no literal self run-id or report path segment", prompt)
 		}
-		if !strings.Contains(prompt, "lyx reed remove --name driver --detach") {
+		if !strings.Contains(prompt, "lym reed remove --name driver --detach") {
 			t.Errorf("prompt = %q; want the teardown command", prompt)
 		}
 	})
@@ -208,7 +205,7 @@ func TestStartLLMDriverArm(t *testing.T) {
 		if !errors.Is(err, shuttleengine.ErrRequirementsUnmet) {
 			t.Fatalf("startLLMDriverArm() error = %v; want errors.Is(err, ErrRequirementsUnmet)", err)
 		}
-		for _, want := range []string{`engine "fake"`, "driver", "lyx config loom"} {
+		for _, want := range []string{`engine "fake"`, "driver", "lym config loom"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("startLLMDriverArm() error = %q; want it to contain %q", err, want)
 			}
@@ -284,21 +281,21 @@ func newTestSpawnAndWaitReceiver(t *testing.T, starter driverStarter, probe driv
 	}
 	// Deliberately NOT shedrun.ScratchDir(loc, "self") -- the mkdir-failure case below needs that
 	// exact path free to occupy with a blocker file.
-	runLockDir := filepath.Join(worktreeDir, ".lyx", "run-lock-dir")
+	runLockDir := filepath.Join(worktreeDir, ".lym", "run-lock-dir")
 	if err := os.MkdirAll(runLockDir, 0o755); err != nil {
 		t.Fatalf("mkdir run lock dir: %v", err)
 	}
 	stencilsDir := filepath.Join(dir, "stencils")
 	stencilkit.SeedInto(t, stencilsDir)
 	c := &loomCLI{
-		location:        &lyxcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."},
+		location:        &lymcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."},
 		runDeps:         websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: stencilsDir}},
 		runID:           "self",
 		cfg:             loomengine.Config{},
 		registry:        modelspec.Registry{},
 		driverStarter:   starter,
 		driverPaneProbe: probe,
-		midMerge: func(*lyxcwd.Location) (fabricengine.MidMergeState, error) {
+		midMerge: func(*lymcwd.Location) (fabricengine.MidMergeState, error) {
 			return fabricengine.MidMergeState{Kind: fabricengine.MidMergeNone}, nil
 		},
 		shedPaths: shedbuild.ShedPaths{
@@ -355,7 +352,7 @@ func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnFailure(t *testing.T) {
 		return []reedengine.StrandStatus{{GUID: "g-retiring", Name: driverStrandDisplayName, PaneID: "%0", Live: true, Retiring: true}}, nil
 	}
 	// rerunStart is the retry clause as the JSON envelope escapes it.
-	const rerunStart = `re-run \"lyx loom start\"`
+	const rerunStart = `re-run \"lym loom start\"`
 	tests := []struct {
 		name string
 		// strands, removeErr and startErr configure the probe and starter seams; a nil strands answers no strands.
@@ -654,7 +651,7 @@ func writeTestRunState(t *testing.T, c *loomCLI, st shedengine.State) {
 // TestRunDriverSpawnAndWait_LiveDriverWithoutParkMarker asserts a live driver strand without a park marker, and without the retiring mark, or a held driver lock with no strand at all, is neither removed, replaced nor sent to:
 // over a run with no status or a running run the call is a no-op that succeeds, and over a run handed back to the driver it refuses retryably until the driver parks.
 func TestRunDriverSpawnAndWait_LiveDriverWithoutParkMarker(t *testing.T) {
-	notParked := []string{"not parked yet", "lyx loom start"}
+	notParked := []string{"not parked yet", "lym loom start"}
 	tests := []struct {
 		name string
 		// runState is the persisted run state; empty writes no status file.
@@ -674,7 +671,7 @@ func TestRunDriverSpawnAndWait_LiveDriverWithoutParkMarker(t *testing.T) {
 		{name: "blocked run refuses retryably", runState: shedengine.StateBlocked, wantKind: shedrun.StartNotParkedKind, wantIn: notParked},
 		{name: "paused run refuses retryably", runState: shedengine.StatePaused, wantKind: shedrun.StartNotParkedKind, wantIn: notParked},
 		{name: "failed run refuses retryably", runState: shedengine.StateFailed, wantKind: shedrun.StartNotParkedKind, wantIn: notParked},
-		{name: "unreadable status file names the failure and the retry", statusUnreadable: true, wantIn: []string{state.ErrRead.Error(), `re-run "lyx loom start"`}},
+		{name: "unreadable status file names the failure and the retry", statusUnreadable: true, wantIn: []string{state.ErrRead.Error(), `re-run "lym loom start"`}},
 	}
 	// Each row runs once with a live driver strand, and once with the test holding the real driver lock and no strand at all.
 	for _, liveness := range []string{"live strand", "driver lock"} {
@@ -856,7 +853,7 @@ func TestRunDriverSpawnAndWait_ResumeNeverReadyRefusesAndKeepsMarker(t *testing.
 	if starter.called {
 		t.Error("the starter was called despite a live driver")
 	}
-	if !strings.Contains(out.String(), "lyx loom start") {
+	if !strings.Contains(out.String(), "lym loom start") {
 		t.Errorf("envelope %q does not name the retry", out.String())
 	}
 	assertBootstrapLockReleased(t, lockPath)
@@ -884,7 +881,7 @@ func TestRunDriverSpawnAndWait_ResumeOnABusyPaneRefusesAsDriverBusyAndKeepsMarke
 	if env.Kind != shedrun.StartDriverBusyKind {
 		t.Errorf("kind = %q; want %q", env.Kind, shedrun.StartDriverBusyKind)
 	}
-	for _, want := range []string{"draft", `"lyx loom start" again`} {
+	for _, want := range []string{"draft", `"lym loom start" again`} {
 		if !strings.Contains(env.Error, want) {
 			t.Errorf("error %q lacks %q", env.Error, want)
 		}

@@ -16,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
-// barFixture is a session with Selvage, two strand panes (alpha in the review segment, beta in plan), a second window, a window carrying @lyx_hidden and a second session, with a client attached.
+// barFixture is a session with Selvage, two strand panes (alpha in the review segment, beta in plan), a second window, a window carrying @lym_hidden and a second session, with a client attached.
 type barFixture struct {
 	e                         *Engine
 	client                    string
@@ -48,8 +48,8 @@ func newBarFixture(t *testing.T) *barFixture {
 	if err := e.tmux.run("new-window", "-d", "-t", exactSessionWindowTarget(e.SessionName()), "-n", "hidden"); err != nil {
 		t.Fatalf("new-window hidden: %v", err)
 	}
-	if err := e.tmux.run("set-option", "-w", "-t", exactSessionWindowTarget(e.SessionName())+"=hidden", "@lyx_hidden", "1"); err != nil {
-		t.Fatalf("set-option @lyx_hidden: %v", err)
+	if err := e.tmux.run("set-option", "-w", "-t", exactSessionWindowTarget(e.SessionName())+"=hidden", "@lym_hidden", "1"); err != nil {
+		t.Fatalf("set-option @lym_hidden: %v", err)
 	}
 	if err := e.tmux.run("new-session", "-d", "-s", "a-very-long-session-name"); err != nil {
 		t.Fatalf("new-session: %v", err)
@@ -109,7 +109,7 @@ func TestBar_LineOneButtonsFollowTheWindowZoomAndWaitMarks(t *testing.T) {
 		t.Errorf("line 1 = %q, want the non-current window button unlit", line)
 	}
 	if strings.Contains(line, " hidden ") {
-		t.Errorf("line 1 = %q, want no button for the window carrying @lyx_hidden", line)
+		t.Errorf("line 1 = %q, want no button for the window carrying @lym_hidden", line)
 	}
 
 	// Zooming a strand pane leaves the shell button lit, since the button follows the active window alone.
@@ -156,7 +156,7 @@ func TestBar_LineOneButtonsFollowTheWindowZoomAndWaitMarks(t *testing.T) {
 		t.Errorf("line 1 with a new own window = %q, want it to contain the unseen button %q", line, scoutUnseen)
 	}
 	if strings.Contains(line, " hidden ") {
-		t.Errorf("line 1 with an own window = %q, want still no button for the window carrying @lyx_hidden", line)
+		t.Errorf("line 1 with an own window = %q, want still no button for the window carrying @lym_hidden", line)
 	}
 	if strings.Index(line, "range=user|shell") < strings.Index(line, scoutUnseen) || strings.Index(line, "range=user|shell") < strings.Index(line, " extra ") {
 		t.Errorf("line 1 with an own window = %q, want the shell button after every own-window button and the extra window's, the last visible window", line)
@@ -178,8 +178,8 @@ func TestBar_LineOneButtonsFollowTheWindowZoomAndWaitMarks(t *testing.T) {
 	if line = f.expand(t, "#{T:status-format[0]}"); !strings.Contains(line, scoutLit) {
 		t.Errorf("line 1 with the own window selected = %q, want it to contain the lit button %q", line, scoutLit)
 	}
-	if unseen := strings.TrimSpace(mustTmuxOutput(t, e, "display-message", "-p", "-t", scoutWindow, "#{@lyx_unseen}")); unseen != "" {
-		t.Errorf("own window @lyx_unseen = %q after it was selected, want it cleared", unseen)
+	if unseen := strings.TrimSpace(mustTmuxOutput(t, e, "display-message", "-p", "-t", scoutWindow, "#{@lym_unseen}")); unseen != "" {
+		t.Errorf("own window @lym_unseen = %q after it was selected, want it cleared", unseen)
 	}
 
 	if err := e.tmux.run("select-window", "-t", f.strandWindow); err != nil {
@@ -207,7 +207,7 @@ func TestBar_LineOneButtonsFollowTheWindowZoomAndWaitMarks(t *testing.T) {
 
 // TestBar_LineTwoListsSessionsPrimeFirst pins line 2's session buttons.
 // Each session appears once, the client's session lit with its full name and the others cut to 12 characters, with no stray comma from a second loop format.
-// The session carrying @lyx_prime_session comes ahead of the rest.
+// The session carrying @lym_prime_session comes ahead of the rest.
 // With no session marked the first loop draws nothing, and the second loop's order is session name on tmux 3.4 and session id on newer tmux, so no order is asserted.
 func TestBar_LineTwoListsSessionsPrimeFirst(t *testing.T) {
 	f := newBarFixture(t)
@@ -259,7 +259,7 @@ func TestBar_LineTwoListsSessionsPrimeFirst(t *testing.T) {
 	}
 	markPrime(t, "")
 
-	// The follow button sits after the last session button and before the time: lit while @lyx_follow is unset, unlit while it is off.
+	// The follow button sits after the last session button and before the time: lit while @lym_follow is unset, unlit while it is off.
 	for _, tt := range []struct {
 		name, follow, want string
 	}{

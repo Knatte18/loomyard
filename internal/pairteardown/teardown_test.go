@@ -17,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
@@ -96,7 +96,7 @@ type awaitCall struct {
 
 func (f *fakeSubstrates) teardown() *Teardown {
 	return &Teardown{
-		prime:        &lyxcwd.Location{HubPath: "/hub", AnchorRel: "."},
+		prime:        &lymcwd.Location{HubPath: "/hub", AnchorRel: "."},
 		interval:     time.Second,
 		goos:         "linux",
 		parentOf:     func(string) (string, error) { return f.parent, nil },
@@ -310,7 +310,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			request:         Request{Slug: "slug", QuietWait: 3 * time.Second, RefuseWhenBusy: true},
 			wantErrIs:       ErrDriverBusy,
 			owned:           []runproc.Record{{PID: 4100, Role: runproc.RoleDriver}, {PID: 4101, Role: runproc.RolePush}},
-			wantErrContains: []string{"tst:slug:driver", "lyx reed attach", "lyx tender pause slug", "4100 (driver)", "4101 (push)"},
+			wantErrContains: []string{"tst:slug:driver", "lym reed attach", "lym tender pause slug", "4100 (driver)", "4101 (push)"},
 			wantCalls:       reads + "quiet,quiet,quiet,quiet",
 			wantSleeps:      3,
 		},
@@ -511,7 +511,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			quiets:          []quietState{{loop: true}},
 			request:         Request{Slug: "slug", RefuseWhenBusy: true},
 			wantErrIs:       ErrDriverBusy,
-			wantErrContains: []string{"the loop is live", "lyx shed pause slug --after <current_producer>"},
+			wantErrContains: []string{"the loop is live", "lym shed pause slug --after <current_producer>"},
 			wantCalls:       reads + "quiet",
 		},
 		{
@@ -591,7 +591,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			driverLockHeld:  true,
 			request:         Request{Slug: "slug", RefuseWhenBusy: true},
 			wantErrIs:       ErrDriverBusy,
-			wantErrContains: []string{"lyx tender status"},
+			wantErrContains: []string{"lym tender status"},
 			wantCalls:       reads + "quiet,refusal,endOwned,driverLock",
 		},
 		{
@@ -890,8 +890,8 @@ func TestSettleBoardClaim_RunningBattenRecordWayForward(t *testing.T) {
 		want        string
 		notWant     string
 	}{
-		{"LiveRegisteredBattenKeepsThePauseWayForward", true, "lyx batten pause slug", "lyx batten cancel"},
-		{"NoLiveRegisteredBattenNamesTheCancelVerb", false, "lyx batten cancel slug", "lyx board set-status"},
+		{"LiveRegisteredBattenKeepsThePauseWayForward", true, "lym batten pause slug", "lym batten cancel"},
+		{"NoLiveRegisteredBattenNamesTheCancelVerb", false, "lym batten cancel slug", "lym board set-status"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

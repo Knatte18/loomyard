@@ -80,7 +80,7 @@ func (p *DriftBaseline) drive(ctx context.Context, commitAll *bool) (shedengine.
 	if _, statErr := os.Stat(d.Paths.BaselineReport); !found || statErr != nil {
 		note := ""
 		if found {
-			note = fmt.Sprintf("The scope is already recorded as %s; write baseline.md alone against it, and expect `lyx drift scope` to refuse a second call.", scope.Scope)
+			note = fmt.Sprintf("The scope is already recorded as %s; write baseline.md alone against it, and expect `lym drift scope` to refuse a second call.", scope.Scope)
 		}
 		tables := func() (seatengine.Table, error) { return d.BaselineTable(note) }
 		agent := shedadapters.NewMultiLLMProducerSourced(p.name, tables, d.Seats, d.Now, nil)
@@ -92,7 +92,7 @@ func (p *DriftBaseline) drive(ctx context.Context, commitAll *bool) (shedengine.
 			return "", shedengine.OutputPointer{}, err
 		}
 		if !found {
-			return shedengine.Stuck, shedengine.OutputPointer{Reason: "drift: the baseline agent recorded no scope; way forward: lyx loom resume, which spawns it again"}, nil
+			return shedengine.Stuck, shedengine.OutputPointer{Reason: "drift: the baseline agent recorded no scope; way forward: lym loom resume, which spawns it again"}, nil
 		}
 	}
 
@@ -132,7 +132,7 @@ func (p *DriftBaseline) captureAgain(ctx context.Context, commitAll *bool) (shed
 		_, err = cfg.Step(stepCapture)
 	}
 	if err != nil {
-		return shedengine.Stuck, shedengine.OutputPointer{Reason: fmt.Sprintf("%v; then lyx loom resume", err)}, nil
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: fmt.Sprintf("%v; then lym loom resume", err)}, nil
 	}
 	refusal, err := p.checkCapture()
 	if err != nil {
@@ -160,7 +160,7 @@ func (p *DriftBaseline) captureAgain(ctx context.Context, commitAll *bool) (shed
 	if record.State == CapturePassed {
 		return shedengine.Done, done, nil
 	}
-	reason := fmt.Sprintf("%sthe capture ended %s (%s), log %s; way forward: lyx drift capture followed by lyx loom resume to capture again, or lyx drift defer followed by lyx loom resume to go on with regression deferred", CaptureHaltPrefix, record.State, record.Reason, record.Log)
+	reason := fmt.Sprintf("%sthe capture ended %s (%s), log %s; way forward: lym drift capture followed by lym loom resume to capture again, or lym drift defer followed by lym loom resume to go on with regression deferred", CaptureHaltPrefix, record.State, record.Reason, record.Log)
 	return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 }
 

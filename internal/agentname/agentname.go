@@ -16,13 +16,13 @@
 //
 // The module that spawns an agent owns its role name as a constant declared in that module, never as an inline literal in the spawn spec.
 // There is no shared list of roles, and the role set stays open.
-// cmd/lyx/spawnrole_test.go is a tripwire that fails a shuttleengine.Spec or reedengine.AddSpec composite literal whose Role is a string literal.
+// cmd/lym/spawnrole_test.go is a tripwire that fails a shuttleengine.Spec or reedengine.AddSpec composite literal whose Role is a string literal.
 // A seat table's role is its prefix, declared in the spawning module, and its lead's role is the prefix alone;
 // a later seat's role suffix may come from the recipe or config, bounded by the role grammar and the table's uniqueness check.
 //
 // A run's parent is the worktree its pair was created from, recorded once in fabric's origin record.
 // Its agent name is resolved at use as the orch role's name in that worktree, and is never stored in a seed or read from the caller's environment.
-// The hub's shortname is recorded in .lyx-shortname at the board root, read and written by internal/fabricengine alone, and told to reed by internal/hubgeom;
+// The hub's shortname is recorded in .lym-shortname at the board root, read and written by internal/fabricengine alone, and told to reed by internal/hubgeom;
 // a standalone run's derived shortname is told by internal/standalonegeom.
 package agentname
 
@@ -42,12 +42,12 @@ const (
 	CallerOperator = "operator"
 
 	// StrandNameEnv is the env key reed injects with a strand's full name.
-	StrandNameEnv = "LYX_STRAND_NAME"
+	StrandNameEnv = "LYM_STRAND_NAME"
 	// ParentEnv is the env key reed injects with the full name of the session that spawned the worktree's run.
-	ParentEnv = "LYX_PARENT"
-	// LyxBinEnv is the env key reed's launch script exports with the absolute path of the spawning lyx binary, never its directory.
+	ParentEnv = "LYM_PARENT"
+	// LymBinEnv is the env key reed's launch script exports with the absolute path of the spawning lym binary, never its directory.
 	// The Claude engine's env file reads the same key.
-	LyxBinEnv = "LYX_BIN"
+	LymBinEnv = "LYM_BIN"
 
 	sep = ":"
 )

@@ -19,8 +19,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
-// enclosingGateEnv carries the pid of the `lyx gate test` that started go test, so a nested `lyx gate test` can tell the outer run's watchdog already sees its test binaries.
-const enclosingGateEnv = "LYX_GATE_TEST_PID"
+// enclosingGateEnv carries the pid of the `lym gate test` that started go test, so a nested `lym gate test` can tell the outer run's watchdog already sees its test binaries.
+const enclosingGateEnv = "LYM_GATE_TEST_PID"
 
 // defaultSamplePeriod is how often the watchdog samples the child tree.
 const defaultSamplePeriod = 5 * time.Second
@@ -144,7 +144,7 @@ func (w watchdog) quit(binary proc.ProcessCPU) {
 }
 
 // watchdogApplies decides whether the watchdog runs for a go test run, and returns the reason it logs.
-// It does not run with a window of 0, with -bench or -fuzz among flags, which keep a core busy by intent, or when enclosing names a live ancestor `lyx gate test` whose watchdog already sees this run's test binaries.
+// It does not run with a window of 0, with -bench or -fuzz among flags, which keep a core busy by intent, or when enclosing names a live ancestor `lym gate test` whose watchdog already sees this run's test binaries.
 // An empty, unparsable or non-ancestor enclosing value is ignored.
 func watchdogApplies(window time.Duration, flags []string, enclosing string, isAncestor func(pid int) bool) (bool, string) {
 	if window <= 0 {
@@ -158,7 +158,7 @@ func watchdogApplies(window time.Duration, flags []string, enclosing string, isA
 		}
 	}
 	if pid, err := strconv.Atoi(enclosing); err == nil && isAncestor(pid) {
-		return false, fmt.Sprintf("an enclosing lyx gate test (pid %d) already watches this run", pid)
+		return false, fmt.Sprintf("an enclosing lym gate test (pid %d) already watches this run", pid)
 	}
 	return true, "busy_quit_sec is set and nothing exempts this run"
 }

@@ -1,4 +1,4 @@
-// prebuild.go builds `lyx` once for a tagged `lyx gate test` run, so every package of the run shares the one binary through gateslot.PrebuiltLyxEnv, and inside a hub keeps it in the hub's content-addressed store.
+// prebuild.go builds `lym` once for a tagged `lym gate test` run, so every package of the run shares the one binary through gateslot.PrebuiltLymEnv, and inside a hub keeps it in the hub's content-addressed store.
 
 package gatecli
 
@@ -17,8 +17,8 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxtemp"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 )
 
 // prebuiltRetention is how long a stored binary stays after its last use before a later prebuild prunes it.
@@ -26,40 +26,40 @@ import (
 const prebuiltRetention = 2 * time.Hour
 
 // prebuiltNamePrefix starts every stored binary's name, followed by the leading hex digits of its SHA-256.
-const prebuiltNamePrefix = "lyx-"
+const prebuiltNamePrefix = "lym-"
 
-// buildRoot returns the directory whose `cmd/lyx` a run builds: the worktree root inside a hub, dir outside one.
-func buildRoot(location *lyxcwd.Location, dir string) string {
+// buildRoot returns the directory whose `cmd/lym` a run builds: the worktree root inside a hub, dir outside one.
+func buildRoot(location *lymcwd.Location, dir string) string {
 	if location != nil {
 		return location.WorktreePath()
 	}
 	return dir
 }
 
-// prebuildLyx builds `<root>/cmd/lyx` into a fresh directory in the process run directory with goBinary under the run's `-p` cap and `-trimpath`, and returns the binary path and a cleanup that removes what the run does not keep.
+// prebuildLym builds `<root>/cmd/lym` into a fresh directory in the process run directory with goBinary under the run's `-p` cap and `-trimpath`, and returns the binary path and a cleanup that removes what the run does not keep.
 // With storeDir non-empty the binary is published into storeDir under a name derived from its content and that path is returned, so two runs on an unchanged tree export the same path and go test's cache keys stay stable;
 // the build directory is then removed at once, and the store keeps the binary for later runs.
 // With storeDir empty the returned path is the build directory's, which the cleanup removes.
-// A root without `cmd/lyx` builds nothing and returns an empty path and a cleanup that does nothing.
+// A root without `cmd/lym` builds nothing and returns an empty path and a cleanup that does nothing.
 // A build failure returns an error carrying the build's output.
-func prebuildLyx(ctx context.Context, goBinary, root string, parallel int, storeDir string) (bin string, cleanup func(), err error) {
-	if info, statErr := os.Stat(filepath.Join(root, "cmd", "lyx")); statErr != nil || !info.IsDir() {
+func prebuildLym(ctx context.Context, goBinary, root string, parallel int, storeDir string) (bin string, cleanup func(), err error) {
+	if info, statErr := os.Stat(filepath.Join(root, "cmd", "lym")); statErr != nil || !info.IsDir() {
 		return "", func() {}, nil
 	}
-	dir, err := lyxtemp.MkdirTemp("lyx-prebuilt-")
+	dir, err := lymtemp.MkdirTemp("lym-prebuilt-")
 	if err != nil {
-		return "", nil, fmt.Errorf("create the prebuilt lyx directory: %w", err)
+		return "", nil, fmt.Errorf("create the prebuilt lym directory: %w", err)
 	}
 	cleanup = func() { os.RemoveAll(dir) }
 
-	bin = filepath.Join(dir, "lyx")
-	cmd := exec.CommandContext(ctx, goBinary, "build", "-C", root, "-p", strconv.Itoa(parallel), "-trimpath", "-o", bin, "./cmd/lyx")
-	logger.Info("gate test: spawning go build of lyx", "binary", goBinary, "args", strings.Join(cmd.Args[1:], " "))
+	bin = filepath.Join(dir, "lym")
+	cmd := exec.CommandContext(ctx, goBinary, "build", "-C", root, "-p", strconv.Itoa(parallel), "-trimpath", "-o", bin, "./cmd/lym")
+	logger.Info("gate test: spawning go build of lym", "binary", goBinary, "args", strings.Join(cmd.Args[1:], " "))
 	out, buildErr := cmd.CombinedOutput()
-	logger.Info("gate test: go build of lyx ended", "error", buildErr)
+	logger.Info("gate test: go build of lym ended", "error", buildErr)
 	if buildErr != nil {
 		cleanup()
-		return "", nil, fmt.Errorf("%s build -C %s ./cmd/lyx: %w\n%s", goBinary, root, buildErr, out)
+		return "", nil, fmt.Errorf("%s build -C %s ./cmd/lym: %w\n%s", goBinary, root, buildErr, out)
 	}
 	if storeDir == "" {
 		return bin, cleanup, nil
@@ -67,12 +67,12 @@ func prebuildLyx(ctx context.Context, goBinary, root string, parallel int, store
 	stored, err := storePrebuilt(bin, storeDir, time.Now())
 	cleanup()
 	if err != nil {
-		return "", nil, fmt.Errorf("keep the prebuilt lyx in %s: %w", storeDir, err)
+		return "", nil, fmt.Errorf("keep the prebuilt lym in %s: %w", storeDir, err)
 	}
 	return stored, func() {}, nil
 }
 
-// storePrebuilt publishes the binary at bin into storeDir under `lyx-` and the first 16 hex digits of its SHA-256, and returns the stored path.
+// storePrebuilt publishes the binary at bin into storeDir under `lym-` and the first 16 hex digits of its SHA-256, and returns the stored path.
 // A binary already stored under that name is kept and its modification time set to now, which marks its last use.
 // A new one, or an existing one a concurrent prune removes around that refresh, is copied in under a name unique to this process and renamed into place, so a concurrent run never sees half a binary.
 // It then prunes every other entry of storeDir last modified more than prebuiltRetention before now; a failed removal is logged, never returned.
@@ -176,7 +176,7 @@ func fileSHA256(path string) (string, error) {
 func pruneStore(storeDir, keep string, now time.Time) {
 	entries, err := os.ReadDir(storeDir)
 	if err != nil {
-		logger.Warn("gate test: could not list the prebuilt lyx store", "dir", storeDir, "cause", err)
+		logger.Warn("gate test: could not list the prebuilt lym store", "dir", storeDir, "cause", err)
 		return
 	}
 	for _, entry := range entries {
@@ -189,7 +189,7 @@ func pruneStore(storeDir, keep string, now time.Time) {
 		}
 		path := filepath.Join(storeDir, entry.Name())
 		if err := os.RemoveAll(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			logger.Warn("gate test: could not prune a prebuilt lyx", "path", path, "cause", err)
+			logger.Warn("gate test: could not prune a prebuilt lym", "path", path, "cause", err)
 		}
 	}
 }

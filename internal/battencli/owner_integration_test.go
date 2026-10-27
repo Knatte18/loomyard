@@ -18,7 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// TestArmAt_RunOwnedElsewhereWritesNoSeed asserts a first "lyx batten run" of a task another machine owns is refused naming the owner and "lyx adopt", with the owned-elsewhere exit code, before armSeed writes a seed.
+// TestArmAt_RunOwnedElsewhereWritesNoSeed asserts a first "lym batten run" of a task another machine owns is refused naming the owner and "lym adopt", with the owned-elsewhere exit code, before armSeed writes a seed.
 func TestArmAt_RunOwnedElsewhereWritesNoSeed(t *testing.T) {
 	t.Parallel()
 
@@ -35,7 +35,7 @@ func TestArmAt_RunOwnedElsewhereWritesNoSeed(t *testing.T) {
 	if exitCode != dobbyengine.PassExitOwnedElsewhere {
 		t.Errorf("run exit code = %d; want %d", exitCode, dobbyengine.PassExitOwnedElsewhere)
 	}
-	for _, want := range []string{"there", "`lyx adopt root`"} {
+	for _, want := range []string{"there", "`lym adopt root`"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("run output = %q; want it to carry %q", out.String(), want)
 		}

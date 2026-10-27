@@ -13,7 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // TestTreeAnchor covers each answer of the rule over a plain repository holding the listed files.
@@ -21,7 +21,7 @@ func TestTreeAnchor(t *testing.T) {
 	t.Parallel()
 
 	const fallback = "the-fallback"
-	wired := []string{"_lyx", ".lyx"}
+	wired := []string{"_lym", ".lym"}
 
 	tests := []struct {
 		name    string
@@ -29,13 +29,13 @@ func TestTreeAnchor(t *testing.T) {
 		want    string
 		wantErr bool
 	}{
-		{"CommittedMarkerWins", map[string]string{lyxcwd.AnchorFileName: "sub\n", "_lyx/config.yaml": "x"}, "sub", false},
-		{"WiredNameAtTheRoot", map[string]string{"_lyx/config.yaml": "x"}, ".", false},
-		{"TieAtOneDepthGoesToTheSmallerPath", map[string]string{"b/x/_lyx/config.yaml": "x", "a/y/_lyx/config.yaml": "x"}, filepath.FromSlash("a/y"), false},
-		{"ShallowerWiredNameWins", map[string]string{"a/b/_lyx/config.yaml": "x", "d/.lyx/state": "x"}, "d", false},
+		{"CommittedMarkerWins", map[string]string{lymcwd.AnchorFileName: "sub\n", "_lym/config.yaml": "x"}, "sub", false},
+		{"WiredNameAtTheRoot", map[string]string{"_lym/config.yaml": "x"}, ".", false},
+		{"TieAtOneDepthGoesToTheSmallerPath", map[string]string{"b/x/_lym/config.yaml": "x", "a/y/_lym/config.yaml": "x"}, filepath.FromSlash("a/y"), false},
+		{"ShallowerWiredNameWins", map[string]string{"a/b/_lym/config.yaml": "x", "d/.lym/state": "x"}, "d", false},
 		{"NoWiredNameAnswersTheFallback", map[string]string{"docs/readme": "x"}, fallback, false},
-		{"BlankCommittedMarkerCountsAsNone", map[string]string{lyxcwd.AnchorFileName: " \n", "sub/_lyx/config.yaml": "x"}, "sub", false},
-		{"UnusableCommittedMarkerIsAnError", map[string]string{lyxcwd.AnchorFileName: "../out\n"}, "", true},
+		{"BlankCommittedMarkerCountsAsNone", map[string]string{lymcwd.AnchorFileName: " \n", "sub/_lym/config.yaml": "x"}, "sub", false},
+		{"UnusableCommittedMarkerIsAnError", map[string]string{lymcwd.AnchorFileName: "../out\n"}, "", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

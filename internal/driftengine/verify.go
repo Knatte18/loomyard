@@ -162,7 +162,7 @@ func (p *DriftVerify) pass(ctx context.Context) (shedengine.Outcome, shedengine.
 		return "", shedengine.OutputPointer{}, err
 	}
 	if !CountedCapture(scope, capture, captureFound, d.AwaitRow) {
-		return p.halt(true, generalHaltOpening, "no baseline capture counts, so there is nothing to compare against; way forward: lyx drift waive --reason <text> followed by lyx loom resume")
+		return p.halt(true, generalHaltOpening, "no baseline capture counts, so there is nothing to compare against; way forward: lym drift waive --reason <text> followed by lym loom resume")
 	}
 
 	cfg, err := d.Config()
@@ -170,7 +170,7 @@ func (p *DriftVerify) pass(ctx context.Context) (shedengine.Outcome, shedengine.
 		_, err = cfg.Step(stepCompare)
 	}
 	if err != nil {
-		return p.halt(false, generalHaltOpening, fmt.Sprintf("%v; then lyx loom resume", err))
+		return p.halt(false, generalHaltOpening, fmt.Sprintf("%v; then lym loom resume", err))
 	}
 
 	if outcome, pointer, stopped, err := p.guardCommits(gateResume); stopped || err != nil {
@@ -292,7 +292,7 @@ func (p *DriftVerify) guardCommits(gateResume bool) (outcome shedengine.Outcome,
 		if err := p.markGateHalt(); err != nil {
 			return "", shedengine.OutputPointer{}, false, err
 		}
-		outcome, pointer, err = p.halt(false, dirtyHaltOpening, fmt.Sprintf("%s; way forward: commit or clean them, then lyx loom resume", strings.Join(dirty, ", ")))
+		outcome, pointer, err = p.halt(false, dirtyHaltOpening, fmt.Sprintf("%s; way forward: commit or clean them, then lym loom resume", strings.Join(dirty, ", ")))
 		return outcome, pointer, true, err
 	}
 
@@ -311,7 +311,7 @@ func (p *DriftVerify) guardCommits(gateResume bool) (outcome shedengine.Outcome,
 				return "", shedengine.OutputPointer{}, false, err
 			}
 			if !result.Passed {
-				outcome, pointer, err = p.halt(false, gateHaltOpening, fmt.Sprintf("the verify gate failed on the agent's commits; %s; way forward: fix the tests and commit, then lyx loom resume", p.keepFindings(result.Findings)))
+				outcome, pointer, err = p.halt(false, gateHaltOpening, fmt.Sprintf("the verify gate failed on the agent's commits; %s; way forward: fix the tests and commit, then lym loom resume", p.keepFindings(result.Findings)))
 				return outcome, pointer, true, err
 			}
 		}
@@ -375,7 +375,7 @@ func (p *DriftVerify) haltReason(always bool, opening, detail string) (string, e
 	if err != nil {
 		return "", err
 	}
-	return reason + fmt.Sprintf("; the agent's acceptances awaiting the parent's ruling: %s; for them: lyx loom resume to stand by them, after any lyx drift accept of your own, or lyx drift withdraw <test> followed by lyx loom resume to reject one", strings.Join(named, ", ")), nil
+	return reason + fmt.Sprintf("; the agent's acceptances awaiting the parent's ruling: %s; for them: lym loom resume to stand by them, after any lym drift accept of your own, or lym drift withdraw <test> followed by lym loom resume to reject one", strings.Join(named, ", ")), nil
 }
 
 // recordingSeats passes every call to a seat runner and keeps the result of the last run or resume.
@@ -542,18 +542,18 @@ func (p *DriftVerify) haltFrom(pointer shedengine.OutputPointer, always bool, op
 func (p *DriftVerify) stuckAfterAgent(pointer shedengine.OutputPointer, failed string, scope ScopeRecord) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	switch failed {
 	case compareGateName:
-		detail := fmt.Sprintf("%s; the agent's report is %s; way forward: lyx drift accept <test> --reason <text> followed by lyx loom resume, or fix the drift and lyx loom resume", pointer.Reason, path.Join(DirRel(), filepath.Base(p.deps.Paths.VerifyReport)))
+		detail := fmt.Sprintf("%s; the agent's report is %s; way forward: lym drift accept <test> --reason <text> followed by lym loom resume, or fix the drift and lym loom resume", pointer.Reason, path.Join(DirRel(), filepath.Base(p.deps.Paths.VerifyReport)))
 		return p.haltFrom(pointer, scope.Scope == ScopePartial && len(scope.Withdrawn) > 0, compareHaltOpening, detail)
 	case dirtyGateName:
 		if err := p.markGateHalt(); err != nil {
 			return "", shedengine.OutputPointer{}, err
 		}
-		return p.haltFrom(pointer, false, dirtyHaltOpening, pointer.Reason+"; way forward: commit or clean the tree, then lyx loom resume")
+		return p.haltFrom(pointer, false, dirtyHaltOpening, pointer.Reason+"; way forward: commit or clean the tree, then lym loom resume")
 	case "":
 		return p.haltFrom(pointer, false, generalHaltOpening, pointer.Reason)
 	}
 	if err := p.markGateHalt(); err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
-	return p.haltFrom(pointer, false, gateHaltOpening, pointer.Reason+"; way forward: fix the tests and commit, then lyx loom resume")
+	return p.haltFrom(pointer, false, gateHaltOpening, pointer.Reason+"; way forward: fix the tests and commit, then lym loom resume")
 }

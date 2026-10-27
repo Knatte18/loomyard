@@ -12,9 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// TestPlanDirDisplay proves hub geometry keeps the plan directory's byte-exact relative "_lyx/plan"
-// spelling, standalone geometry gets the absolute plan directory no relative spelling reaches from
-// the pane's cwd, and the card pointers re-root onto whichever display applies.
+// TestPlanDirDisplay proves hub geometry keeps the plan directory's byte-exact relative "_lym/plan" spelling, standalone geometry gets the absolute plan directory no relative spelling reaches from the pane's cwd, and the card pointers re-root onto whichever display applies.
 //
 //testtiming:keep pins both geometries' plan-directory display and the card pointers re-rooted onto it byte for byte; the covering begin-batch and render tests each reach one geometry
 func TestPlanDirDisplay(t *testing.T) {
@@ -24,15 +22,15 @@ func TestPlanDirDisplay(t *testing.T) {
 	// hangs off, standalone geometry's pane runs at the target repo while the plan lives in the
 	// derived state directory — outside the pane cwd by construction.
 	paneCwd := filepath.Join(string(filepath.Separator), "hub", "worktree")
-	standalone := filepath.Join(string(filepath.Separator), "state", "lyx", "abcd1234", "_lyx", "plan")
-	cards := []planparser.Card{{SourcePath: "_lyx/plan/01-alpha.md"}, {SourcePath: "_lyx/plan/02-beta.md"}}
+	standalone := filepath.Join(string(filepath.Separator), "state", "lym", "abcd1234", "_lym", "plan")
+	cards := []planparser.Card{{SourcePath: "_lym/plan/01-alpha.md"}, {SourcePath: "_lym/plan/02-beta.md"}}
 
 	tests := []struct {
 		name        string
 		planDir     string
 		wantDisplay string
 	}{
-		{name: "hub geometry renders relative", planDir: filepath.Join(paneCwd, "_lyx", "plan"), wantDisplay: "_lyx/plan"},
+		{name: "hub geometry renders relative", planDir: filepath.Join(paneCwd, "_lym", "plan"), wantDisplay: "_lym/plan"},
 		{name: "standalone geometry renders absolute", planDir: standalone, wantDisplay: standalone},
 	}
 	for _, tt := range tests {

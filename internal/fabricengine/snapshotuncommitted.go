@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 const (
@@ -41,7 +41,7 @@ type snapshotEntry struct {
 // It takes the weft write lock by one attempt and returns an error wrapping ErrPairBusy, with nothing written, when another writer holds it.
 // With nothing uncommitted it writes nothing and returns an empty tag.
 // The commit and the tag are recorded in rec, the tag only after it exists.
-func (t *Topology) SnapshotUncommitted(rec *Mutations, l *lyxcwd.Location, slug string) (tag string, paths []string, err error) {
+func (t *Topology) SnapshotUncommitted(rec *Mutations, l *lymcwd.Location, slug string) (tag string, paths []string, err error) {
 	weftWorktree := RecordsWorktreePath(l, slug)
 	hasWeftWorktree := pathPresent(weftWorktree)
 	if hasWeftWorktree {
@@ -105,7 +105,7 @@ func (t *Topology) SnapshotUncommitted(rec *Mutations, l *lyxcwd.Location, slug 
 
 // SnapshotTagged reports whether the weft repository holds a snapshot tag of slug, an annotated `set-aside/<slug>/` tag SnapshotUncommitted wrote.
 // A set-aside tag of a replay is lightweight and does not count.
-func SnapshotTagged(l *lyxcwd.Location, slug string) (bool, error) {
+func SnapshotTagged(l *lymcwd.Location, slug string) (bool, error) {
 	weftRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		return false, fmt.Errorf("resolve weft repo root: %w", err)

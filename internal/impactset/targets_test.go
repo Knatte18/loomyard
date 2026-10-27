@@ -19,11 +19,11 @@ func TestTargetsFor(t *testing.T) {
 	}
 
 	binaryTests := []string{"internal/e"}
-	graphWithoutLyxbin := moduleGraph{byImportPath: map[string]pkg{}, byDir: map[string]pkg{}}
+	graphWithoutLymbin := moduleGraph{byImportPath: map[string]pkg{}, byDir: map[string]pkg{}}
 	for importPath, p := range testGraph().byImportPath {
-		if p.Dir != lyxbinDir {
-			graphWithoutLyxbin.byImportPath[importPath] = p
-			graphWithoutLyxbin.byDir[p.Dir] = p
+		if p.Dir != lymbinDir {
+			graphWithoutLymbin.byImportPath[importPath] = p
+			graphWithoutLymbin.byDir[p.Dir] = p
 		}
 	}
 
@@ -39,29 +39,29 @@ func TestTargetsFor(t *testing.T) {
 			changed: []string{"internal/a/a.go"},
 			guards:  guards,
 			want: Targets{
-				Modules:     root("./cmd/lyx", "./internal/a", "./internal/b", "./internal/c", "./internal/tmuxonly"),
+				Modules:     root("./cmd/lym", "./internal/a", "./internal/b", "./internal/c", "./internal/tmuxonly"),
 				Guards:      map[string][]GuardTest{"internal/d": guardsD},
 				BinaryTests: binaryTests,
 			},
 		},
 		{
-			name:    "a change to a dependency of cmd/lyx leaves out a package that reaches it only through the binary",
+			name:    "a change to a dependency of cmd/lym leaves out a package that reaches it only through the binary",
 			changed: []string{"internal/b/b.go"},
-			want:    Targets{Modules: root("./cmd/lyx", "./internal/b", "./internal/c"), Guards: map[string][]GuardTest{}, BinaryTests: binaryTests},
+			want:    Targets{Modules: root("./cmd/lym", "./internal/b", "./internal/c"), Guards: map[string][]GuardTest{}, BinaryTests: binaryTests},
 		},
 		{
-			name:    "a change to the cmd/lyx main package pulls in every package that builds the binary",
-			changed: []string{"cmd/lyx/main.go"},
-			want:    Targets{Modules: root("./cmd/lyx", "./internal/e"), Guards: map[string][]GuardTest{}, BinaryTests: binaryTests},
+			name:    "a change to the cmd/lym main package pulls in every package that builds the binary",
+			changed: []string{"cmd/lym/main.go"},
+			want:    Targets{Modules: root("./cmd/lym", "./internal/e"), Guards: map[string][]GuardTest{}, BinaryTests: binaryTests},
 		},
 		{
-			name:    "a change to the cmd/lyx main package over a module without the binary builder adds nothing",
-			graph:   &graphWithoutLyxbin,
-			changed: []string{"cmd/lyx/main.go"},
-			want:    Targets{Modules: root("./cmd/lyx"), Guards: map[string][]GuardTest{}},
+			name:    "a change to the cmd/lym main package over a module without the binary builder adds nothing",
+			graph:   &graphWithoutLymbin,
+			changed: []string{"cmd/lym/main.go"},
+			want:    Targets{Modules: root("./cmd/lym"), Guards: map[string][]GuardTest{}},
 		},
 		{
-			name:    "a change outside cmd/lyx's dependencies leaves the binary-building packages out and keeps a test-less package",
+			name:    "a change outside cmd/lym's dependencies leaves the binary-building packages out and keeps a test-less package",
 			changed: []string{"internal/d/d.go"},
 			want:    Targets{Modules: root("./internal/d"), Guards: map[string][]GuardTest{}, BinaryTests: binaryTests},
 		},

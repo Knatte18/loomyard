@@ -47,7 +47,7 @@ func TestRender_ParsesAndValidates(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			root := Repo(t, map[string]string{"a.go": "package a\n", "e.go": "package e\n"})
-			dir := filepath.Join(root, "_lyx", "plan")
+			dir := filepath.Join(root, "_lym", "plan")
 			Write(t, dir, tt.plan)
 
 			plan, err := planparser.ParsePlan(dir)

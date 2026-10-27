@@ -44,7 +44,7 @@ func implementerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProd
 	build, ok := implementers[name]
 	if !ok {
 		accepted := strings.Join(slices.Sorted(maps.Keys(implementers)), ", ")
-		return nil, fmt.Errorf("shedrecipe: Implementer: row %q: setting %q (%s) holds %#v, want one of %s; way forward: run \"lyx config %s --set %s=<implementer>\" with one of %s", row.Name, ref.Text, ref, value, accepted, ref.Module, ref.Key, accepted)
+		return nil, fmt.Errorf("shedrecipe: Implementer: row %q: setting %q (%s) holds %#v, want one of %s; way forward: run \"lym config %s --set %s=<implementer>\" with one of %s", row.Name, ref.Text, ref, value, accepted, ref.Module, ref.Key, accepted)
 	}
 	rest := maps.Clone(cfg)
 	delete(rest, implementerSettingKey)

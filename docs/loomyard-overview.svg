@@ -20,7 +20,7 @@
   <rect width="1500" height="1080" fill="#fbfaf7"/>
 
   <!-- Title -->
-  <text x="40" y="44" font-size="26" font-weight="800" fill="#1a202c">Loomyard (lyx) — conceptual overview</text>
+  <text x="40" y="44" font-size="26" font-weight="800" fill="#1a202c">Loomyard (lym) — conceptual overview</text>
   <text x="40" y="68" class="hs">A board task is woven into a landed commit: batten drives its lifecycle, loom drives its phases, and each phase is inspected on its perch until clean.</text>
 
   <!-- ===== Row A: operator, orch, board ===== -->
@@ -37,7 +37,7 @@
   <text x="910" y="142" text-anchor="middle" class="s">tasks and notes on the records repo's main</text>
 
   <path class="ln" d="M270,127 L326,127"/>
-  <text x="298" y="119" text-anchor="middle" class="lb">lyx s</text>
+  <text x="298" y="119" text-anchor="middle" class="lb">lym s</text>
   <path class="ln" d="M660,127 L716,127"/>
   <text x="688" y="119" text-anchor="middle" class="lb">picks</text>
   <path class="ln" d="M495,162 L495,206"/>
@@ -193,11 +193,11 @@
   <text x="960" y="826" text-anchor="middle" class="m">_board/  = Bolt</text>
 
   <path d="M790,733 L866,733 M790,777 L866,777" stroke="#4a5568" stroke-width="1.4" stroke-dasharray="4 3"/>
-  <text x="828" y="756" text-anchor="middle" class="lb">_lyx</text>
+  <text x="828" y="756" text-anchor="middle" class="lb">_lym</text>
 
-  <text x="598" y="866" class="m">_lyx/</text>
+  <text x="598" y="866" class="m">_lym/</text>
   <text x="650" y="866" class="s">durable and synced: config, run status, plan</text>
-  <text x="598" y="888" class="m">.lyx/</text>
+  <text x="598" y="888" class="m">.lym/</text>
   <text x="650" y="888" class="s">ephemeral and machine-local: reed.json, scratch</text>
   <text x="598" y="914" class="s">Each task is one worktree; batten creates and tears it down.</text>
 
@@ -220,7 +220,7 @@
   <!-- ===== Glossary ===== -->
   <rect x="1130" y="92" width="335" height="960" rx="12" fill="#fffaf0" stroke="#dd6b20" stroke-width="1.5"/>
   <text x="1148" y="120" class="h">The weaving vocabulary</text>
-  <text x="1148" y="139" class="hs">term — in weaving — in lyx</text>
+  <text x="1148" y="139" class="hs">term — in weaving — in lym</text>
 
   <g>
     <text x="1148" y="170" class="gt">loom <tspan class="gw">the weaving frame</tspan></text>
@@ -277,7 +277,7 @@
     <text x="1148" y="969" class="gt">Merriam</text>
     <text x="1148" y="986" class="gd">webster's orchestrating Master session</text>
 
-    <text x="1148" y="1016" class="gt">lyx · loom · ly</text>
+    <text x="1148" y="1016" class="gt">lym · loom · ly</text>
     <text x="1148" y="1033" class="gd">binary · orchestrator module · skills</text>
   </g>
 </svg>

@@ -15,8 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // newAtAnchorHub builds a "." hub whose prime warp tracks y/ before any pair is added.
@@ -33,11 +33,11 @@ func requireWeftAtY(t *testing.T, h *hubforge.Hub, slug string) {
 	t.Helper()
 
 	weft := h.PairRecordsSibling(slug)
-	if marker := gitkit.Git(t, weft, "show", "HEAD:"+lyxcwd.AnchorFileName); marker != "y" {
+	if marker := gitkit.Git(t, weft, "show", "HEAD:"+lymcwd.AnchorFileName); marker != "y" {
 		t.Errorf("committed marker of %s = %q; want y", slug, marker)
 	}
 	for _, tracked := range gitkit.LsFiles(t, weft) {
-		if tracked != lyxcwd.AnchorFileName && !strings.HasPrefix(tracked, "y/") {
+		if tracked != lymcwd.AnchorFileName && !strings.HasPrefix(tracked, "y/") {
 			t.Errorf("weft of %s tracks %s; want everything but the marker under y/", slug, tracked)
 		}
 	}
@@ -62,7 +62,7 @@ func writeMoveRecordByHand(t *testing.T, h *hubforge.Hub, slug, a, b string) {
 func ensureAnchorOf(t *testing.T, h *hubforge.Hub, slug, anchor string) error {
 	t.Helper()
 
-	pair, err := lyxcwd.NamedWorktree(h.Path, slug)
+	pair, err := lymcwd.NamedWorktree(h.Path, slug)
 	if err != nil {
 		t.Fatalf("NamedWorktree(%s): %v", slug, err)
 	}
@@ -95,7 +95,7 @@ func TestAdd_AtAnchor(t *testing.T) {
 	t.Run("A fork point with no committed marker is moved from its resolved anchor and gets the marker", func(t *testing.T) {
 		t.Parallel()
 		h := newAtAnchorHub(t)
-		gitkit.Git(t, h.PrimeRecords(), "rm", "-q", "--", lyxcwd.AnchorFileName)
+		gitkit.Git(t, h.PrimeRecords(), "rm", "-q", "--", lymcwd.AnchorFileName)
 		gitkit.Git(t, h.PrimeRecords(), "commit", "-q", "-m", "drop the marker")
 
 		hubforge.AddPairWith(t, h, "beam", fabricengine.AddOptions{Anchor: "y"})
@@ -160,7 +160,7 @@ func TestEnsureAnchor(t *testing.T) {
 			h := newAtAnchorHub(t)
 			hubforge.AddPairWith(t, h, "beam", fabricengine.AddOptions{Anchor: "y"})
 			tip := gitkit.RevParse(t, h.PairRecordsSibling("beam"), "HEAD")
-			if err := os.Remove(filepath.Join(h.PairCodeWorktree("beam"), "y", lyxdirs.LyxDirName)); err != nil {
+			if err := os.Remove(filepath.Join(h.PairCodeWorktree("beam"), "y", lymdirs.LymDirName)); err != nil {
 				t.Fatalf("remove the junction: %v", err)
 			}
 
@@ -182,8 +182,8 @@ func TestEnsureAnchor(t *testing.T) {
 
 		err := ensureAnchorOf(t, h, "beam", "z")
 
-		if err == nil || !strings.Contains(err.Error(), "lyx fabric anchor beam --set z") || !strings.Contains(err.Error(), "lyx beam create beam --anchor z") {
-			t.Errorf("EnsureAnchor(z) error = %v; want it to name `lyx fabric anchor` and `lyx beam create`", err)
+		if err == nil || !strings.Contains(err.Error(), "lym fabric anchor beam --set z") || !strings.Contains(err.Error(), "lym beam create beam --anchor z") {
+			t.Errorf("EnsureAnchor(z) error = %v; want it to name `lym fabric anchor` and `lym beam create`", err)
 		}
 	})
 
@@ -196,7 +196,7 @@ func TestEnsureAnchor(t *testing.T) {
 		if err := os.MkdirAll(filepath.Join(weft, "y"), 0o755); err != nil {
 			t.Fatalf("create y in the weft: %v", err)
 		}
-		gitkit.MustRun(t, weft, "git", "mv", lyxdirs.LyxDirName, "y/"+lyxdirs.LyxDirName)
+		gitkit.MustRun(t, weft, "git", "mv", lymdirs.LymDirName, "y/"+lymdirs.LymDirName)
 
 		if err := ensureAnchorOf(t, h, "beam", "y"); err != nil {
 			t.Fatalf("EnsureAnchor(y) error = %v; want nil", err)

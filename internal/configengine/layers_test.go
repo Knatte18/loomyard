@@ -17,7 +17,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
@@ -76,12 +76,12 @@ func machineSpec() configengine.Spec {
 type geometry int
 
 const (
-	// geometryHub tells both dirs, each with its _lyx/config/.
+	// geometryHub tells both dirs, each with its _lym/config/.
 	geometryHub geometry = iota
 	// geometryStandalone tells the anchor alone.
 	geometryStandalone
-	// geometryAnchorWithoutLyx tells an initialised board dir and an anchor with no _lyx/.
-	geometryAnchorWithoutLyx
+	// geometryAnchorWithoutLym tells an initialised board dir and an anchor with no _lym/.
+	geometryAnchorWithoutLym
 	// geometryBoardOnly tells an initialised board dir and no anchor.
 	geometryBoardOnly
 )
@@ -116,7 +116,7 @@ func newLayerFixture(t *testing.T, geo geometry, files map[configengine.Layer]st
 	case geometryStandalone:
 		fx.dirs = configengine.Dirs{Anchor: fx.anchor}
 		mustMkdirAll(t, configengine.ConfigDir(fx.anchor))
-	case geometryAnchorWithoutLyx:
+	case geometryAnchorWithoutLym:
 		fx.dirs = configengine.Dirs{Anchor: fx.anchor, Board: fx.board}
 		mustMkdirAll(t, configengine.ConfigDir(fx.board))
 	case geometryBoardOnly:
@@ -253,7 +253,7 @@ func TestLoad_LayerStack(t *testing.T) {
 			geo:          geometryStandalone,
 			files:        map[configengine.Layer]string{configengine.LayerWorktree: "pick: nope\n"},
 			overlay:      true,
-			refusal:      []string{`"lyx config mod --set pick=<name>"`},
+			refusal:      []string{`"lym config mod --set pick=<name>"`},
 			refusalLacks: []string{"the orch runs it"},
 		},
 		{
@@ -278,8 +278,8 @@ func TestLoad_LayerStack(t *testing.T) {
 			want:    map[string]string{"name": "d", "port": "8"},
 		},
 		{
-			name:    "a machine value survives an anchor holding no _lyx",
-			geo:     geometryAnchorWithoutLyx,
+			name:    "a machine value survives an anchor holding no _lym",
+			geo:     geometryAnchorWithoutLym,
 			machine: true,
 			files:   map[configengine.Layer]string{configengine.LayerDefault: fullDefault, configengine.LayerMachine: "port: 8\n"},
 			want:    map[string]string{"name": "d", "port": "8"},
@@ -421,7 +421,7 @@ func TestLoad_LayerStack(t *testing.T) {
 		{
 			name:      "absent base is refused strictly and replaced by the template when degrading",
 			files:     map[configengine.Layer]string{configengine.LayerWorktree: "port: 9\n"},
-			strictErr: "lyx loom resume",
+			strictErr: "lym loom resume",
 			want:      map[string]string{"port": "9", "name": "tpl"},
 		},
 		{
@@ -463,15 +463,15 @@ func TestLoad_LayerStack(t *testing.T) {
 			want:     map[string]string{"name": "d", "port": "1", "run": "echo"},
 		},
 		{
-			name:    "hub-wide hub file loads with an anchor holding no _lyx",
-			geo:     geometryAnchorWithoutLyx,
+			name:    "hub-wide hub file loads with an anchor holding no _lym",
+			geo:     geometryAnchorWithoutLym,
 			hubWide: true,
 			files:   map[configengine.Layer]string{configengine.LayerDefault: fullDefault},
 			want:    map[string]string{"name": "d", "port": "1"},
 		},
 		{
-			name:  "repo default resolves with an anchor holding no _lyx",
-			geo:   geometryAnchorWithoutLyx,
+			name:  "repo default resolves with an anchor holding no _lym",
+			geo:   geometryAnchorWithoutLym,
 			files: map[configengine.Layer]string{configengine.LayerDefault: fullDefault},
 			want:  map[string]string{"name": "d", "port": "1"},
 		},
@@ -568,8 +568,8 @@ func TestLoad_LayerStack(t *testing.T) {
 				t.Errorf("unknown-keys warnings = %d; want %d\nlog:\n%s", n, len(tc.wantUnknown), log)
 			}
 			wayForward := map[configengine.Layer]string{
-				configengine.LayerDefault:  `lyx config reconcile --layer default --apply\" from the hub's prime worktree`,
-				configengine.LayerWorktree: `lyx config reconcile --apply\" in this worktree`,
+				configengine.LayerDefault:  `lym config reconcile --layer default --apply\" from the hub's prime worktree`,
+				configengine.LayerWorktree: `lym config reconcile --apply\" in this worktree`,
 			}
 			for layer, keys := range tc.wantUnknown {
 				for _, want := range []string{"layer=" + string(layer) + " ", "keys=" + keys + " ", wayForward[layer]} {
@@ -643,8 +643,8 @@ func TestValidateLocal(t *testing.T) {
 	}{
 		{name: "machine key", spec: machine, validator: "machine", doc: "port: 8\n"},
 		{name: "machine empty document", spec: machine, validator: "machine", doc: ""},
-		{name: "machine refuses a none key and points at the hub file and the local layer", spec: machine, validator: "machine", doc: "name: x\n", wantErr: "name", wantMore: []string{"not a machine key", removal, `"lyx config mod"`, "--layer local"}},
-		{name: "machine refuses an executable key and points at the hub file", spec: machine, validator: "machine", doc: "run: evil\n", wantErr: "run", wantMore: []string{`"lyx config mod"`}},
+		{name: "machine refuses a none key and points at the hub file and the local layer", spec: machine, validator: "machine", doc: "name: x\n", wantErr: "name", wantMore: []string{"not a machine key", removal, `"lym config mod"`, "--layer local"}},
+		{name: "machine refuses an executable key and points at the hub file", spec: machine, validator: "machine", doc: "run: evil\n", wantErr: "run", wantMore: []string{`"lym config mod"`}},
 		{name: "machine refuses a key the template lacks", spec: machine, validator: "machine", doc: "nope: 1\n", wantErr: "nope", wantMore: []string{removal}},
 		{name: "machine refuses an unclassified key", spec: machine, validator: "machine", doc: "list: [x]\n", wantErr: "list", wantMore: []string{"not classified", removal}},
 		{name: "machine refuses a mapping where the template holds a scalar", spec: machine, validator: "machine", doc: "port:\n  a: 1\n", wantErr: "port", wantMore: []string{removal}},
@@ -971,13 +971,13 @@ func TestLayerFile(t *testing.T) {
 	}{
 		{"default under the board dir", hub, spec, configengine.LayerDefault, configengine.ConfigFile("/b", layerModule), true, configengine.LayerDefault},
 		{"worktree under the anchor", hub, spec, configengine.LayerWorktree, configengine.ConfigFile("/a", layerModule), true, configengine.LayerDefault},
-		{"local under the anchor's .lyx", hub, spec, configengine.LayerLocal, filepath.Join("/a", lyxdirs.DotLyxDirName, "config", layerModule+".local.yaml"), true, configengine.LayerDefault},
+		{"local under the anchor's .lym", hub, spec, configengine.LayerLocal, filepath.Join("/a", lymdirs.DotLymDirName, "config", layerModule+".local.yaml"), true, configengine.LayerDefault},
 		{"hub-wide has no worktree file beside a board dir", hub, hubWide, configengine.LayerWorktree, "", false, configengine.LayerDefault},
 		{"standalone has no default", configengine.Dirs{Anchor: "/a"}, spec, configengine.LayerDefault, "", false, configengine.LayerWorktree},
 		{"hub-wide standalone keeps the worktree file", configengine.Dirs{Anchor: "/a"}, hubWide, configengine.LayerWorktree, configengine.ConfigFile("/a", layerModule), true, configengine.LayerWorktree},
 		{"no anchor means no local layer", configengine.Dirs{Board: "/b"}, spec, configengine.LayerLocal, "", false, configengine.LayerDefault},
 		{"template has no file", hub, spec, configengine.LayerTemplate, "", false, configengine.LayerDefault},
-		{"machine under the board dir's .lyx", hub, machine, configengine.LayerMachine, filepath.Join("/b", lyxdirs.DotLyxDirName, "config", layerModule+".machine.yaml"), true, configengine.LayerDefault},
+		{"machine under the board dir's .lym", hub, machine, configengine.LayerMachine, filepath.Join("/b", lymdirs.DotLymDirName, "config", layerModule+".machine.yaml"), true, configengine.LayerDefault},
 		{"machine does not apply to a per-worktree module", hub, spec, configengine.LayerMachine, "", false, configengine.LayerDefault},
 		{"machine does not apply to a hub-wide module with no machine key", hub, hubWide, configengine.LayerMachine, "", false, configengine.LayerDefault},
 		{"machine does not apply with the board dir alone", configengine.Dirs{Board: "/b"}, machine, configengine.LayerMachine, "", false, configengine.LayerDefault},
@@ -1054,8 +1054,8 @@ func TestProvenance(t *testing.T) {
 			want:    map[string]string{"name": "default", "port": "machine", "deep": "default", "list": "default", "labels": "default", "run": "default"},
 		},
 		{
-			name:    "a machine-held unit names the machine layer with an anchor holding no _lyx",
-			geo:     geometryAnchorWithoutLyx,
+			name:    "a machine-held unit names the machine layer with an anchor holding no _lym",
+			geo:     geometryAnchorWithoutLym,
 			machine: true,
 			files:   map[configengine.Layer]string{configengine.LayerDefault: base, configengine.LayerMachine: "port: 8\n"},
 			want:    map[string]string{"name": "default", "port": "machine", "deep": "default", "list": "default", "labels": "default", "run": "default"},

@@ -10,7 +10,7 @@
 //
 // The persisted artifacts split across two directories (the told-never-derived-scratch-dir shared
 // decision): state.json and every round artifact live in runDir, while state.json.lock, run.lock
-// (run.go), and the pause flag live in scratchDir — the block's never-tracked, .lyx-anchored tree.
+// (run.go), and the pause flag live in scratchDir — the block's never-tracked, .lym-anchored tree.
 // A caller that has not split the two passes the same directory for both, which every function
 // below treats as an ordinary, harmless case.
 

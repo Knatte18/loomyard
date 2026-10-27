@@ -1,6 +1,6 @@
 //go:build tier1
 
-// cleanup_integration_test.go drives "lyx cleanup" through RunCLIIn over a hubforge hub seeded with one leftover for every segment: the prime-only refusal, the dry run that lists them all and the apply that removes them.
+// cleanup_integration_test.go drives "lym cleanup" through RunCLIIn over a hubforge hub seeded with one leftover for every segment: the prime-only refusal, the dry run that lists them all and the apply that removes them.
 
 package cleanupcli
 
@@ -231,7 +231,7 @@ func TestCleanupVerb_RefusesOutsideThePrimeThenListsAndThenRemovesEverySeededLef
 	boltStop := reconcileBranch(t, dirty, "bolt", "main")
 	boltWayForward, _ := boltStop["WayForward"].(string)
 	if dirty.OK || code == 0 || boltStop["State"] != string(fabricengine.BranchDirty) || boltWayForward == "" ||
-		!strings.Contains(dirty.Error, boltWayForward+"; then re-run lyx cleanup --apply from the prime") {
+		!strings.Contains(dirty.Error, boltWayForward+"; then re-run lym cleanup --apply from the prime") {
 		t.Errorf("--apply over a dirty Bolt: ok=%v code=%d error=%q stop=%v; want a refusal naming the stop's way forward and the re-entry", dirty.OK, code, dirty.Error, boltStop)
 	}
 	if dirty.Raw["segments"] != nil {
@@ -250,7 +250,7 @@ func TestCleanupVerb_RefusesOutsideThePrimeThenListsAndThenRemovesEverySeededLef
 	recordsStop := reconcileBranch(t, conflict, "records", recordsBranch)
 	recordsWayForward, _ := recordsStop["WayForward"].(string)
 	if conflict.OK || code == 0 || recordsStop["State"] != string(fabricengine.BranchDiverged) || recordsWayForward == "" ||
-		!strings.Contains(conflict.Error, recordsWayForward) || !strings.Contains(recordsWayForward, "lyx fabric push") {
+		!strings.Contains(conflict.Error, recordsWayForward) || !strings.Contains(recordsWayForward, "lym fabric push") {
 		t.Errorf("--apply over a both-sides records change: ok=%v code=%d error=%q stop=%v; want a refusal naming the conflict's way forward", conflict.OK, code, conflict.Error, recordsStop)
 	}
 	if conflict.Raw["segments"] != nil || conflict.Partial == nil || !*conflict.Partial {

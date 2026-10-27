@@ -1,6 +1,6 @@
 //go:build tier0
 
-// report_test.go covers `lyx gate report`: the grouping and totals of run records, the filters, the date refusal and the tolerant record reader.
+// report_test.go covers `lym gate report`: the grouping and totals of run records, the filters, the date refusal and the tolerant record reader.
 
 package gatecli
 

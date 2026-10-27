@@ -80,7 +80,7 @@ func newLoopFixture(t *testing.T, scripts ...childScript) *loopFixture {
 			Delivered: func(loopID string) string {
 				return filepath.Join(fx.stepsDir, "loop-envelope."+loopID+".delivered.json")
 			},
-			Executable: "lyx-fake",
+			Executable: "lym-fake",
 			StopFiles: func(traceID string) (string, string) {
 				return filepath.Join(fx.stepsDir, traceID+".trace.log"), filepath.Join(fx.stepsDir, traceID+".stderr.log")
 			},
@@ -104,7 +104,7 @@ func (fx *loopFixture) run(_ context.Context, req ChildRequest) (Child, error) {
 	return fakeChild{waitErr: fx.scripts[index](fx, traceIDOf(req), req)}, nil
 }
 
-// traceIDOf is the LYX_TRACE_ID the request's environment carries.
+// traceIDOf is the LYM_TRACE_ID the request's environment carries.
 func traceIDOf(req ChildRequest) string {
 	for _, entry := range req.Env {
 		if id, found := strings.CutPrefix(entry, logger.TraceIDEnv+"="); found {
@@ -339,7 +339,7 @@ func TestLoop_RunsUntilStopAndPrintsOneEnvelope(t *testing.T) {
 					t.Errorf("child trace id %q is empty, repeated or the loop's own", id)
 				}
 				seen[id] = true
-				if !reflect.DeepEqual(req.Argv, []string{"lyx-fake"}) {
+				if !reflect.DeepEqual(req.Argv, []string{"lym-fake"}) {
 					t.Errorf("child argv = %v; want the executable alone, the loop's own flag dropped", req.Argv)
 				}
 			}
@@ -367,7 +367,7 @@ func TestLoop_InterruptedChildFillsTheErrorForm(t *testing.T) {
 		env, code := fx.execute()
 
 		id := fx.childIDs()[0]
-		wantText := "shedverbs: step A interrupted (exited: exit status 3); way forward: read loop.trace_copy and loop.stderr_path, apply the interrupted rule under loop.interrupt_policy, then re-run lyx shed step run-1 --until-stop"
+		wantText := "shedverbs: step A interrupted (exited: exit status 3); way forward: read loop.trace_copy and loop.stderr_path, apply the interrupted rule under loop.interrupt_policy, then re-run lym shed step run-1 --until-stop"
 		recordPath := filepath.Join(fx.stepsDir, id+".json")
 		if code != 1 || env["kind"] != KindInterrupted || env["error"] != wantText || env["transient"] != "" || env["run_id"] != "run-1" {
 			t.Errorf("exit/kind/error/transient/run_id = %d/%v/%v/%v/%v; want 1/%s/%q/empty/run-1", code, env["kind"], env["error"], env["transient"], env["run_id"], KindInterrupted, wantText)
@@ -450,7 +450,7 @@ func TestLoop_InterruptedChildFillsTheErrorForm(t *testing.T) {
 		env, code := fx.execute()
 
 		text := fmt.Sprint(env["error"])
-		for _, want := range []string{"(status-unreadable: ", "decode failed", "with a lyx binary that decodes the status file", "report the stop to the run's parent"} {
+		for _, want := range []string{"(status-unreadable: ", "decode failed", "with a lym binary that decodes the status file", "report the stop to the run's parent"} {
 			if !strings.Contains(text, want) {
 				t.Errorf("error %q lacks %q", text, want)
 			}
@@ -475,7 +475,7 @@ func TestLoop_InterruptedChildFillsTheErrorForm(t *testing.T) {
 		env, code := fx.execute()
 
 		text := fmt.Sprint(env["error"])
-		for _, want := range []string{"status-unreadable: read lock unavailable", "way forward: re-run lyx shed step run-1 --until-stop"} {
+		for _, want := range []string{"status-unreadable: read lock unavailable", "way forward: re-run lym shed step run-1 --until-stop"} {
 			if !strings.Contains(text, want) {
 				t.Errorf("error %q lacks %q", text, want)
 			}
@@ -1056,7 +1056,7 @@ func TestLoop_WatchdogKillsAnIdleChild(t *testing.T) {
 			if len(kills) != 1 || kills[0].TraceID != fx.childIDs()[0] || kills[0].Window != max(tt.idleTimeout, time.Minute) || kills[0].Idle.String() != tt.wantIdle || !kills[0].LastActivity.Equal(clock.start) {
 				t.Errorf("OnWatchdogKill calls = %+v; want one with the child's trace id, the window, idle %s and the clock's start as last activity", kills, tt.wantIdle)
 			}
-			wantText := "shedverbs: step A interrupted (" + wantCause + "); way forward: read loop.trace_copy and loop.stderr_path, apply the interrupted rule under loop.interrupt_policy, then re-run lyx shed step run-1 --until-stop"
+			wantText := "shedverbs: step A interrupted (" + wantCause + "); way forward: read loop.trace_copy and loop.stderr_path, apply the interrupted rule under loop.interrupt_policy, then re-run lym shed step run-1 --until-stop"
 			_, wantStderr := fx.spec.Loop.StopFiles(fx.childIDs()[0])
 			if code != 1 || env["kind"] != KindInterrupted || env["error"] != wantText {
 				t.Errorf("exit/kind/error = %d/%v/%v; want the interrupted watchdog stop %q", code, env["kind"], env["error"], wantText)

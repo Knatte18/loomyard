@@ -56,8 +56,8 @@ func driveStatusFor(t *testing.T, raw []byte) shedengine.Status {
 	return status
 }
 
-// wiredExecutable is the lyx path the settle tests resolve at wiring time; a hand-over must spawn its successor from it.
-const wiredExecutable = "/wired/bin/lyx"
+// wiredExecutable is the lym path the settle tests resolve at wiring time; a hand-over must spawn its successor from it.
+const wiredExecutable = "/wired/bin/lym"
 
 // TestGoDriver_Settle drives the loop over scripted envelopes and statuses and pins, per row, the seams it calls in order, the settle records it appends, how the run ended and what a hand-back leaves on disk.
 // The no-group rows leave one optional seam group nil and pin that the stop meets the later rows unchanged.

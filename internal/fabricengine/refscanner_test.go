@@ -2,9 +2,9 @@
 
 // refscanner_test.go covers RefScanner.Matches against the three cases websterengine's
 // audit_test.go exercises today for its own weftReferencePattern (a command containing the sibling
-// worktree path, a command containing a -weft sibling name, and a lyx fabric/weft/warp invocation),
+// worktree path, a command containing a -weft sibling name, and a lym fabric/weft/warp invocation),
 // plus a clean command that must not match, and the command-position rule: an invocation after a
-// shell separator still matches, while the same words inside a quoted search pattern do not. The *lyxcwd.Location is built synthetically, the way
+// shell separator still matches, while the same words inside a quoted search pattern do not. The *lymcwd.Location is built synthetically, the way
 // websterengine/audit_test.go's fakeLayout helper does, so no git fixture is needed.
 
 package fabricengine_test
@@ -14,17 +14,17 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// fakeLayout returns a lyxcwd.Location that resolves fabricengine.RecordsWorktree() without spawning
+// fakeLayout returns a lymcwd.Location that resolves fabricengine.RecordsWorktree() without spawning
 // git, the same shape websterengine/audit_test.go's own fakeLayout builds.
-func fakeLayout() *lyxcwd.Location {
-	return &lyxcwd.Location{HubPath: "/hub", WorktreeName: filepath.Base("/hub/master-builder")}
+func fakeLayout() *lymcwd.Location {
+	return &lymcwd.Location{HubPath: "/hub", WorktreeName: filepath.Base("/hub/master-builder")}
 }
 
 // TestRefScanner_Matches covers the behavioural contract that must not regress when the regex moves
-// packages: the sibling worktree path, a -weft sibling name, a lyx fabric/weft/warp invocation, and
+// packages: the sibling worktree path, a -weft sibling name, a lym fabric/weft/warp invocation, and
 // a clean command that must not match.
 func TestRefScanner_Matches(t *testing.T) {
 	layout := fakeLayout()
@@ -38,33 +38,33 @@ func TestRefScanner_Matches(t *testing.T) {
 	}{
 		{"command containing the sibling worktree path", "git -C " + weftWorktree + " add -A", true},
 		{"command containing a -weft sibling name", "cd /hub/master-builder-weft && git status", true},
-		{"lyx fabric invocation", "lyx fabric sync", true},
-		{"lyx weft invocation", "lyx weft sync", true},
-		{"lyx warp invocation", "lyx warp checkout feature", true},
-		{"lyx.exe weft invocation", "lyx.exe weft push", true},
+		{"lym fabric invocation", "lym fabric sync", true},
+		{"lym weft invocation", "lym weft sync", true},
+		{"lym warp invocation", "lym warp checkout feature", true},
+		{"lym.exe weft invocation", "lym.exe weft push", true},
 		{"clean command does not match", "git commit -am wip", false},
-		{"invocation after a separator", "cd /hub/master-builder && lyx fabric sync", true},
-		{"invocation in a pipeline", "echo y | lyx fabric remove x", true},
-		{"invocation in a command substitution", "out=$(lyx fabric status)", true},
-		{"invocation behind a directory prefix", "/usr/local/bin/lyx fabric push", true},
-		{"invocation behind an env assignment", "LYX_DEBUG=1 lyx fabric commit", true},
-		{"invocation behind a command wrapper", "env lyx fabric sync", true},
-		{"quoted search pattern is text", `grep -n "fabric remove\|lyx fabric.*remove" docs/overview.md`, false},
-		{"single-quoted search pattern is text", `rg 'lyx warp checkout' docs`, false},
-		{"echoed prose is text", `echo "run lyx fabric sync later"`, false},
-		{"invocation after a quoted argument", `grep -q "x" f.txt && lyx fabric sync`, true},
-		{"quoted weft path still matches", `cat "/hub/master-builder-weft/_lyx/plan.md"`, true},
-		{"quoted sibling weft path matches", `ls "/hub/other-weft/_lyx"`, true},
+		{"invocation after a separator", "cd /hub/master-builder && lym fabric sync", true},
+		{"invocation in a pipeline", "echo y | lym fabric remove x", true},
+		{"invocation in a command substitution", "out=$(lym fabric status)", true},
+		{"invocation behind a directory prefix", "/usr/local/bin/lym fabric push", true},
+		{"invocation behind an env assignment", "LYM_DEBUG=1 lym fabric commit", true},
+		{"invocation behind a command wrapper", "env lym fabric sync", true},
+		{"quoted search pattern is text", `grep -n "fabric remove\|lym fabric.*remove" docs/overview.md`, false},
+		{"single-quoted search pattern is text", `rg 'lym warp checkout' docs`, false},
+		{"echoed prose is text", `echo "run lym fabric sync later"`, false},
+		{"invocation after a quoted argument", `grep -q "x" f.txt && lym fabric sync`, true},
+		{"quoted weft path still matches", `cat "/hub/master-builder-weft/_lym/plan.md"`, true},
+		{"quoted sibling weft path matches", `ls "/hub/other-weft/_lym"`, true},
 		{"bare unquoted sibling name matches", "git -C other-weft status", true},
 		{"weft-suffixed string literal is text", `echo "archive-happy-weft"`, false},
-		{"heredoc body is content", "cat > x_test.go <<'EOF'\n\tconst branch = \"archive-happy-weft\"\n\t// lyx fabric sync\n\tp := main-weft\nEOF\ngo test ./x", false},
-		{"command after a heredoc is still checked", "cat > x.txt <<EOF\nhello\nEOF\nlyx fabric sync", true},
+		{"heredoc body is content", "cat > x_test.go <<'EOF'\n\tconst branch = \"archive-happy-weft\"\n\t// lym fabric sync\n\tp := main-weft\nEOF\ngo test ./x", false},
+		{"command after a heredoc is still checked", "cat > x.txt <<EOF\nhello\nEOF\nlym fabric sync", true},
 		{"slug merely containing the suffix is not a weft path", "cd /hub/fabric-readd-weft-push/internal/gitrepo && grep -n x y.go", false},
 		{"bare slug merely containing the suffix is text", "git -C fabric-readd-weft-push status", false},
-		{"weft twin of a suffix-containing slug matches", "cd /hub/fabric-readd-weft-push-weft/_lyx && ls", true},
+		{"weft twin of a suffix-containing slug matches", "cd /hub/fabric-readd-weft-push-weft/_lym && ls", true},
 		{"weft name ending the command matches", "ls /hub/other-weft", true},
 		{"escaped alternation in a quoted grep is text", `grep -n "weftBranch\s*[:=]\|WeftSuffix\|-weft" x_test.go`, false},
-		{"windows sibling weft path matches", `dir C:\hub\other-weft\_lyx`, true},
+		{"windows sibling weft path matches", `dir C:\hub\other-weft\_lym`, true},
 	}
 
 	for _, tt := range tests {
@@ -89,12 +89,12 @@ func TestReferenceRule_Match(t *testing.T) {
 		wantPath     string
 		wantSpelling string
 	}{
-		{"quoted separator path keeps its quotes in view", `cat "/hub/other-weft/_lyx/plan.md"`, "/other-weft", ""},
+		{"quoted separator path keeps its quotes in view", `cat "/hub/other-weft/_lym/plan.md"`, "/other-weft", ""},
 		{"bare word is read from the quote-blanked copy", "git -C other-weft status", "other-weft", ""},
-		{"spelling is read from the quote-blanked copy", `grep -q "x" f.txt && lyx fabric sync`, "", "lyx fabric"},
+		{"spelling is read from the quote-blanked copy", `grep -q "x" f.txt && lym fabric sync`, "", "lym fabric"},
 		{"only the path rule matches", "ls /hub/other-weft", "/other-weft", ""},
-		{"only the spelling rule matches", "echo y | lyx warp checkout x", "", "lyx warp"},
-		{"heredoc body returns neither", "cat > x <<EOF\n/hub/a-weft\nlyx fabric sync\nEOF", "", ""},
+		{"only the spelling rule matches", "echo y | lym warp checkout x", "", "lym warp"},
+		{"heredoc body returns neither", "cat > x <<EOF\n/hub/a-weft\nlym fabric sync\nEOF", "", ""},
 	}
 
 	for _, tt := range tests {
@@ -112,7 +112,7 @@ func TestReferenceRule_Match(t *testing.T) {
 	}
 }
 
-// TestIsReadOnlyCommand covers the allow-list of read forms (readers, lyx help, lyx fabric readers, git reads, sed prints) and the tokenised forms among them (quoted words, globs, tildes, the two stderr redirections),
+// TestIsReadOnlyCommand covers the allow-list of read forms (readers, lym help, lym fabric readers, git reads, sed prints) and the tokenised forms among them (quoted words, globs, tildes, the two stderr redirections),
 // and every way a command stops being read-only: a redirection, a substitution, backgrounding, an expanding word and any other command.
 func TestIsReadOnlyCommand(t *testing.T) {
 	t.Parallel()
@@ -139,14 +139,14 @@ func TestIsReadOnlyCommand(t *testing.T) {
 		{"output redirection", "cat x > y", false},
 		{"append redirection", "cat x >> y", false},
 		{"stderr to /dev/null is dropped", "cat x 2>/dev/null", true},
-		{"stderr to a file", "lyx fabric --help 2>x", false},
-		{"stderr to /dev/null with a space", "lyx fabric --help 2> /dev/null", false},
-		{"stdout to stderr", "lyx fabric --help 1>&2", false},
+		{"stderr to a file", "lym fabric --help 2>x", false},
+		{"stderr to /dev/null with a space", "lym fabric --help 2> /dev/null", false},
+		{"stdout to stderr", "lym fabric --help 1>&2", false},
 		{"stderr redirection opening its segment", "2>&1 cat x", false},
 		{"stderr redirection glued to a quoted word", `cat 'x'2>&1`, false},
-		{"stderr dup and /dev/null inside a compound", `sed -n 285,300p f.md | cut -c1-200; grep -n "x" -r contracts 2>/dev/null | head -5; lyx fabric --help 2>&1 | head -30`, true},
-		{"lyx help piped after a stderr dup", "lyx fabric --help 2>&1 | head -30", true},
-		{"loop over a lyx help", "for v in a b; do lyx fabric $v --help 2>&1 | head -5; done", false},
+		{"stderr dup and /dev/null inside a compound", `sed -n 285,300p f.md | cut -c1-200; grep -n "x" -r contracts 2>/dev/null | head -5; lym fabric --help 2>&1 | head -30`, true},
+		{"lym help piped after a stderr dup", "lym fabric --help 2>&1 | head -30", true},
+		{"loop over a lym help", "for v in a b; do lym fabric $v --help 2>&1 | head -5; done", false},
 		{"sed prints a line range of stdin", "cat x | sed -n 1,5p", true},
 		{"sed prints a line of a file", "sed -n 7p f.md", true},
 		{"sed prints a regex range", `sed -n '/^func X/,/^}/p' f`, true},
@@ -188,7 +188,7 @@ func TestIsReadOnlyCommand(t *testing.T) {
 		{"git remote show with a glob after --", "git remote show -n -- *", false},
 		{"git cat-file with a glob", "git cat-file -p *", false},
 		{"git config with a glob", "git config --get *", false},
-		{"lyx fabric diff with a quoted glob", "lyx fabric diff '*'", false},
+		{"lym fabric diff with a quoted glob", "lym fabric diff '*'", false},
 		{"bare command substitution", "cat $(ls)", false},
 		{"command substitution inside double quotes", `cat "$(ls)"`, false},
 		{"bare backtick", "cat `ls`", false},
@@ -209,37 +209,37 @@ func TestIsReadOnlyCommand(t *testing.T) {
 		{"variable as the command", "$X a", false},
 		{"or chain of readers", "ls a || cat b", true},
 		{"or chain into a writer", "ls a || git push", false},
-		{"reader pipe into lyx help", "cat x | lyx fabric add --help", true},
-		{"lyx help", "lyx --help", true},
-		{"lyx help with a nested command word", "lyx webster record-batch --help", true},
-		{"lyx short help", "lyx fabric -h", true},
-		{"lyx command word in capitals", "lyx Fabric --help", false},
-		{"lyx help with a flag before the last word", "lyx fabric --apply --help", false},
-		{"lyx bare json", "lyx --json", true},
-		{"lyx command words then json", "lyx fabric add --json", true},
-		{"lyx help then json", "lyx fabric --help --json", true},
-		{"lyx short help then json", "lyx webster record-batch -h --json", true},
-		{"lyx json help with a variable", "lyx fabric $v --help --json", false},
-		{"loop over a lyx json help", "for v in a b; do lyx fabric $v --help --json; done", false},
-		{"lyx json after a flag", "lyx fabric add x --apply --json", false},
-		{"lyx json before a flag", "lyx fabric add --json --apply", false},
-		{"lyx fabric list", "lyx fabric list", true},
-		{"lyx fabric pairs", "lyx fabric pairs", true},
-		{"lyx fabric status", "lyx fabric status", true},
-		{"lyx fabric shortname", "lyx fabric shortname", true},
-		{"lyx fabric prune", "lyx fabric prune", true},
-		{"lyx fabric cleanup", "lyx fabric cleanup", true},
-		{"lyx fabric diff with a revision", "lyx fabric diff 1a2b3c", true},
-		{"lyx fabric diff alone", "lyx fabric diff", false},
-		{"lyx fabric diff with a flag", "lyx fabric diff --stat", false},
-		{"lyx fabric diff with two words", "lyx fabric diff a b", false},
-		{"lyx fabric add", "lyx fabric add x", false},
-		{"lyx fabric prune apply", "lyx fabric prune --apply", false},
-		{"lyx fabric cleanup apply", "lyx fabric cleanup --apply", false},
-		{"lyx fabric shortname with a word", "lyx fabric shortname x", false},
-		{"lyx webster run", "lyx webster run", false},
-		{"bare lyx", "lyx", false},
-		{"cat of a fabric file", "cat _lyx/fabric/origin.json", true},
+		{"reader pipe into lym help", "cat x | lym fabric add --help", true},
+		{"lym help", "lym --help", true},
+		{"lym help with a nested command word", "lym webster record-batch --help", true},
+		{"lym short help", "lym fabric -h", true},
+		{"lym command word in capitals", "lym Fabric --help", false},
+		{"lym help with a flag before the last word", "lym fabric --apply --help", false},
+		{"lym bare json", "lym --json", true},
+		{"lym command words then json", "lym fabric add --json", true},
+		{"lym help then json", "lym fabric --help --json", true},
+		{"lym short help then json", "lym webster record-batch -h --json", true},
+		{"lym json help with a variable", "lym fabric $v --help --json", false},
+		{"loop over a lym json help", "for v in a b; do lym fabric $v --help --json; done", false},
+		{"lym json after a flag", "lym fabric add x --apply --json", false},
+		{"lym json before a flag", "lym fabric add --json --apply", false},
+		{"lym fabric list", "lym fabric list", true},
+		{"lym fabric pairs", "lym fabric pairs", true},
+		{"lym fabric status", "lym fabric status", true},
+		{"lym fabric shortname", "lym fabric shortname", true},
+		{"lym fabric prune", "lym fabric prune", true},
+		{"lym fabric cleanup", "lym fabric cleanup", true},
+		{"lym fabric diff with a revision", "lym fabric diff 1a2b3c", true},
+		{"lym fabric diff alone", "lym fabric diff", false},
+		{"lym fabric diff with a flag", "lym fabric diff --stat", false},
+		{"lym fabric diff with two words", "lym fabric diff a b", false},
+		{"lym fabric add", "lym fabric add x", false},
+		{"lym fabric prune apply", "lym fabric prune --apply", false},
+		{"lym fabric cleanup apply", "lym fabric cleanup --apply", false},
+		{"lym fabric shortname with a word", "lym fabric shortname x", false},
+		{"lym webster run", "lym webster run", false},
+		{"bare lym", "lym", false},
+		{"cat of a fabric file", "cat _lym/fabric/origin.json", true},
 		{"git remote get-url", "git -C x remote get-url origin", true},
 		{"git remote get-url push", "git remote get-url --push o", true},
 		{"git remote get-url without a name", "git remote get-url", false},

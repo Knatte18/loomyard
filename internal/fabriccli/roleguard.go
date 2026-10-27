@@ -1,4 +1,4 @@
-// roleguard.go refuses the mutating `lyx fabric` verbs from a sandboxed task-session role.
+// roleguard.go refuses the mutating `lym fabric` verbs from a sandboxed task-session role.
 // It classifies each subcommand as a reader a sandboxed role may run or a verb it may not.
 // It also builds the refusal text addWeftVerbs's pre-run writes.
 
@@ -51,10 +51,10 @@ func sandboxedRoleRefusal(cmd *cobra.Command, strandName string) string {
 		if cmd.Name() == "push" {
 			return ""
 		}
-		return fmt.Sprintf("lyx fabric %s refuses the path flags that only a detached push passes, from the task session %s", cmd.Name(), strandName)
+		return fmt.Sprintf("lym fabric %s refuses the path flags that only a detached push passes, from the task session %s", cmd.Name(), strandName)
 	}
 	if readerVerb(cmd) {
 		return ""
 	}
-	return fmt.Sprintf("lyx fabric %s is refused from the task session %s; build a scratch hub as a hubforge test fixture instead, and when the work itself needs this verb, stop and report status: FAILED so the run ends stuck and the orch runs it", cmd.Name(), strandName)
+	return fmt.Sprintf("lym fabric %s is refused from the task session %s; build a scratch hub as a hubforge test fixture instead, and when the work itself needs this verb, stop and report status: FAILED so the run ends stuck and the orch runs it", cmd.Name(), strandName)
 }

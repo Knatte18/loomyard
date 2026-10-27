@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // ErrUnsupported is returned when vscode launch is attempted on an unsupported platform.
@@ -40,7 +40,7 @@ var mainColor = "#2d7d46"
 // never resolved here — pulling the entire fabric engine into a colour picker would reintroduce a
 // `git worktree list` subprocess per call);
 // the prime-skip step is omitted when primeName is empty.
-func PickColor(l *lyxcwd.Location, primeName string) string {
+func PickColor(l *lymcwd.Location, primeName string) string {
 	used := make(map[string]bool)
 
 	entries, err := os.ReadDir(l.HubPath)

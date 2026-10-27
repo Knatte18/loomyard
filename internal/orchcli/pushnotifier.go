@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/preflight"
 )
 
@@ -23,15 +23,15 @@ const fabricProgram = "FABRIC"
 // Outside a hub nothing is installed.
 // The notifier posts only for that hub, and reports a failure of another hub not posted.
 func InstallPushNotifier(ctx context.Context) {
-	cwd, err := lyxcwd.CwdFrom(ctx)
+	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
 		return
 	}
-	location, err := lyxcwd.Resolve(cwd)
+	location, err := lymcwd.Resolve(cwd)
 	if err != nil {
-		location, err = lyxcwd.ResolveWorktree(cwd)
+		location, err = lymcwd.ResolveWorktree(cwd)
 	}
-	if err != nil || !preflight.BoardLyxPresent(location) {
+	if err != nil || !preflight.BoardLymPresent(location) {
 		return
 	}
 	hubPath := filepath.Clean(location.HubPath)
@@ -47,9 +47,9 @@ func InstallPushNotifier(ctx context.Context) {
 	})
 }
 
-// drivableLocation returns location when a lyx verb can run from it, and otherwise the first worktree of its hub one can run from.
+// drivableLocation returns location when a lym verb can run from it, and otherwise the first worktree of its hub one can run from.
 // The board worktree and a records sibling cannot resolve the hub's prime, since that scan reads the code repository.
-func drivableLocation(location *lyxcwd.Location) (*lyxcwd.Location, error) {
+func drivableLocation(location *lymcwd.Location) (*lymcwd.Location, error) {
 	if fabricengine.RequireDrivableWorktree(location) == nil {
 		return location, nil
 	}
@@ -61,10 +61,10 @@ func drivableLocation(location *lyxcwd.Location) (*lyxcwd.Location, error) {
 		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") || strings.HasPrefix(entry.Name(), "_") {
 			continue
 		}
-		candidate, err := lyxcwd.ResolveWorktree(filepath.Join(location.HubPath, entry.Name()))
+		candidate, err := lymcwd.ResolveWorktree(filepath.Join(location.HubPath, entry.Name()))
 		if err == nil && fabricengine.RequireDrivableWorktree(candidate) == nil {
 			return candidate, nil
 		}
 	}
-	return nil, fmt.Errorf("orch: the hub at %s has no worktree to resolve its prime from; way forward: run lyx from a worktree of the hub", location.HubPath)
+	return nil, fmt.Errorf("orch: the hub at %s has no worktree to resolve its prime from; way forward: run lym from a worktree of the hub", location.HubPath)
 }

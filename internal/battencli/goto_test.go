@@ -72,7 +72,7 @@ func TestPreGoto(t *testing.T) {
 			if err == nil {
 				t.Fatal("preGoto admitted; want refused")
 			}
-			for _, want := range []string{"lyx batten step some-slug", "lyx batten status some-slug", "way forward:"} {
+			for _, want := range []string{"lym batten step some-slug", "lym batten status some-slug", "way forward:"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("refusal %q does not contain %q", err, want)
 				}
@@ -85,7 +85,7 @@ func TestPreGoto(t *testing.T) {
 func TestPreGoto_UnresolvedWorktreeRefused(t *testing.T) {
 	own := writeGotoStatus(t, t.TempDir(), "Run-Shed", shedengine.StateBlocked)
 	err := preGoto("Worktree-Teardown", "s", own, func() (string, error) { return "", errors.New("no worktree") })
-	if err == nil || !strings.Contains(err.Error(), "lyx batten step s") {
-		t.Fatalf("preGoto = %v; want a refusal naming lyx batten step", err)
+	if err == nil || !strings.Contains(err.Error(), "lym batten step s") {
+		t.Fatalf("preGoto = %v; want a refusal naming lym batten step", err)
 	}
 }

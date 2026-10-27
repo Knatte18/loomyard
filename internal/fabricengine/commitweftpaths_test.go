@@ -27,16 +27,16 @@ func TestWeftCommitPathspec(t *testing.T) {
 		{
 			name:      "root anchor",
 			anchorRel: ".",
-			relPaths:  []string{"_lyx/fabric/origin.json"},
-			want:      []string{filepath.Join(".", "_lyx/fabric/origin.json")},
+			relPaths:  []string{"_lym/fabric/origin.json"},
+			want:      []string{filepath.Join(".", "_lym/fabric/origin.json")},
 		},
 		{
 			name:      "subpath anchor",
 			anchorRel: "backend",
-			relPaths:  []string{"_lyx/fabric/origin.json", "_lyx/other.json"},
+			relPaths:  []string{"_lym/fabric/origin.json", "_lym/other.json"},
 			want: []string{
-				filepath.Join("backend", "_lyx/fabric/origin.json"),
-				filepath.Join("backend", "_lyx/other.json"),
+				filepath.Join("backend", "_lym/fabric/origin.json"),
+				filepath.Join("backend", "_lym/other.json"),
 			},
 		},
 	}
@@ -67,7 +67,7 @@ func TestCommitRecordsPaths_SkipGit(t *testing.T) {
 	weftPath := filepath.Join(t.TempDir(), "does-not-exist")
 	rec := NewMutations("")
 
-	sha, committed, err := CommitRecordsPaths(rec, weftPath, ".", []string{"_lyx/fabric/origin.json"}, "msg", SyncOptions{SkipGit: true})
+	sha, committed, err := CommitRecordsPaths(rec, weftPath, ".", []string{"_lym/fabric/origin.json"}, "msg", SyncOptions{SkipGit: true})
 	if err != nil {
 		t.Fatalf("CommitRecordsPaths() error = %v; want nil", err)
 	}

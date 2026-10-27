@@ -5,9 +5,9 @@ root: internal/boardcli
 language: go
 ---
 
-# Plan: add --json to `lyx board list`
+# Plan: add --json to `lym board list`
 
-Add a `--json` output mode to `lyx board list`, emitting one JSON object per row via the
+Add a `--json` output mode to `lym board list`, emitting one JSON object per row via the
 `internal/output` envelope, with tests and help text updated, and the row mapper relocated ahead
 of a later extraction.
 
@@ -43,4 +43,4 @@ of a later extraction.
 
 ## verify:
 
-go test ./internal/boardcli/... ./internal/boardengine/... ./cmd/lyx/...
+go test ./internal/boardcli/... ./internal/boardengine/... ./cmd/lym/...

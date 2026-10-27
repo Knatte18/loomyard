@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Launcher for the lyx SANDBOX-CREEL-SUITE: runs the interactive creel
+# Launcher for the lym SANDBOX-CREEL-SUITE: runs the interactive creel
 # black-box agent session (live tmux and a logged-in claude required). The
 # machine-specific parent directory is hardcoded HERE (the base under which
 # sandbox Hubs are created, mirroring the win/ launcher's C:\Code) -- the Go

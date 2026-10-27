@@ -1,4 +1,4 @@
-// seed.go implements "lyx shed seed", the one command that writes a run's first seed.json, plus the
+// seed.go implements "lym shed seed", the one command that writes a run's first seed.json, plus the
 // two testable workers behind its RunE: writeSeed (the whole resolution-free body: recipe lookup,
 // driver default/validation, and the shedrun.WriteSeed call) and parseSeedParams (the --param k=v
 // parser). It is a shedcli-only command, not a shedverbs verb: shedverbs is a leaf that derives no
@@ -12,7 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/spf13/cobra"
@@ -56,15 +56,11 @@ func parseSeedParams(raw []string) (map[string]string, error) {
 }
 
 // seedHereWayForward is the trailing clause on both "refuses to write here" wraps.
-const seedHereWayForward = "way forward: run \"lyx shed seed\" from the worktree the recipe drives, which the cause names"
+const seedHereWayForward = "way forward: run \"lym shed seed\" from the worktree the recipe drives, which the cause names"
 
-// writeSeed is seed's whole resolution-free body: it validates runID, looks recipeName up through
-// this package's own table (lookup) so a seed can only ever name an armable recipe, resolves and
-// validates the driver, and calls shedrun.WriteSeed, returning the driver it recorded. It performs no lyxcwd.Resolve and no cwd read
-// of its own -- location is already resolved, told rather than derived, by whichever caller holds
-// it -- which is what lets seed_test.go drive it directly against a hand-built *lyxcwd.Location,
-// with no real git repository behind it, and stay Tier 1.
-func writeSeed(location *lyxcwd.Location, runID, recipeName, driverFlag string, params map[string]string) (string, error) {
+// writeSeed is seed's whole resolution-free body: it validates runID, looks recipeName up through this package's own table (lookup) so a seed can only ever name an armable recipe, resolves and validates the driver, and calls shedrun.WriteSeed, returning the driver it recorded.
+// It performs no lymcwd.Resolve and no cwd read of its own -- location is already resolved, told rather than derived, by whichever caller holds it -- which is what lets seed_test.go drive it directly against a hand-built *lymcwd.Location, with no real git repository behind it, and stay Tier 1.
+func writeSeed(location *lymcwd.Location, runID, recipeName, driverFlag string, params map[string]string) (string, error) {
 	// Refused first, as every other shed verb over a batten seed already refuses through
 	// battencli's ArmAt: a seed written into one of fabric's own checkouts (the Board checkout or
 	// a pair's other side) lands in a repository no run is ever driven from, where the Board's own
@@ -106,7 +102,7 @@ func writeSeed(location *lyxcwd.Location, runID, recipeName, driverFlag string, 
 	return driver, nil
 }
 
-// newSeedCommand builds "lyx shed seed <run-id> --recipe <name> [--driver <name>] [--param k=v]".
+// newSeedCommand builds "lym shed seed <run-id> --recipe <name> [--driver <name>] [--param k=v]".
 // It is exempt from resolvePersistentPreRun by that pre-run's own cmd.Name() == "seed"
 // short-circuit, for the reason that pre-run's whole sequence is predicated on a seed already
 // existing while "seed" is by definition the command invoked when one does not -- and it belongs to
@@ -121,13 +117,13 @@ func newSeedCommand() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Short:       "write the first seed for a run, naming its recipe, driver, and parameters",
 		Long: `seed writes run-id's seed.json, naming the recipe that arms every subsequent
-"lyx shed" invocation against it. It is not itself a generic verb: it
+"lym shed" invocation against it. It is not itself a generic verb: it
 belongs to no recipe's Verbs set, and it is exempt from the seed-read
-pre-run every other "lyx shed" command goes through, because that whole
+pre-run every other "lym shed" command goes through, because that whole
 sequence is predicated on a seed already existing -- "seed" is the command
 invoked when one does not.
 
---recipe is required and validated against the same table every "lyx shed"
+--recipe is required and validated against the same table every "lym shed"
 invocation arms through. --driver defaults to "llm" for a recipe that has
 a bootstrap verb and to "go" for one that does not; an explicit "llm" is
 refused for a recipe with no bootstrap verb, and "go" stays selectable for
@@ -142,9 +138,9 @@ loom's run-id is "self" and its only param is the pair's recorded parent
 branch, "parent".
 
 Example:
-  lyx shed seed some-slug --recipe batten
-  lyx shed seed self --recipe loom --param parent=main
-  lyx shed seed self --recipe loom --driver go --param parent=main`,
+  lym shed seed some-slug --recipe batten
+  lym shed seed self --recipe loom --param parent=main
+  lym shed seed self --recipe loom --driver go --param parent=main`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -161,14 +157,14 @@ Example:
 				return nil
 			}
 
-			cwd, err := lyxcwd.CwdFrom(ctx)
+			cwd, err := lymcwd.CwdFrom(ctx)
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
-			location, err := lyxcwd.Resolve(cwd)
+			location, err := lymcwd.Resolve(cwd)
 			if err != nil {
-				// lyxcwd.Resolve's error is already self-describing (it IS the "not a git
+				// lymcwd.Resolve's error is already self-describing (it IS the "not a git
 				// repository" sentinel); pass it through bare rather than doubling that same
 				// text on top of it.
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))

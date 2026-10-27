@@ -70,8 +70,8 @@ func sendKeysLiteralArg(text string) string {
 // closing, the right shape is reaping before the strand record is appended to st.Strands, not
 // persisting a partial one from inside this helper.
 //
-// The prelude that resolves this strand pane's `lyx` to the binary that spawned it is owned by panebin.go and composed here, at the one launch every strand-realizing path funnels through — see composePaneLaunchLine.
-// The same composition exports LYX_STRAND_NAME and LYX_PARENT beside LYX_BIN: the name is the strand's stored birth attribute and the parent is re-told from the geometry, so every launch and resume path sees the same values.
+// The prelude that resolves this strand pane's `lym` to the binary that spawned it is owned by panebin.go and composed here, at the one launch every strand-realizing path funnels through — see composePaneLaunchLine.
+// The same composition exports LYM_STRAND_NAME and LYM_PARENT beside LYM_BIN: the name is the strand's stored birth attribute and the parent is re-told from the geometry, so every launch and resume path sees the same values.
 // The window created below still carries no trailing shell-command argument,
 // so the pane remains tmux's own default-shell started as a login shell (pane-start-mode-is-untouched Shared Decision).
 // The prelude and launchCmd reach that shell afterward through the strand's launch script, which the send-keys line typed into the pane sources in the shell's own scope, rather than by changing how the pane's shell itself starts;
@@ -116,7 +116,7 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 	// The dialect's discard-line key goes first: input routed to the booting pane before the payload, a viewer's keystrokes or a terminal reply while a window switch lands on it, would otherwise prefix the launch line and break it.
 	sh := shell.ForGOOS()
 	composedLine, exe := composePaneLaunchLine(sh, launchCmd, s.GUID, s.Name, e.geom.ParentName)
-	s.LyxBin = exe
+	s.LymBin = exe
 	payload := stageLaunchScript(sh, e.stateDir(), s.GUID, composedLine)
 	if key := sh.DiscardLineKey(); key != "" {
 		if err := e.tmux.run("send-keys", "-t", paneID, key); err != nil {
@@ -250,12 +250,12 @@ func (e *Engine) newWindowLocked(placement []string, argv []string) (string, err
 }
 
 // openOwnWindowLocked opens a detached window for s named name and returns the id of its pane.
-// The window is created with -d, so the client's current window and active pane stay where they are; an own-window strand's window is then selected only when it takes the viewer, which is a Focus display or, unless it sets KeepViewer, a session whose follow state reads on, and carries no @lyx_unseen then.
+// The window is created with -d, so the client's current window and active pane stay where they are; an own-window strand's window is then selected only when it takes the viewer, which is a Focus display or, unless it sets KeepViewer, a session whose follow state reads on, and carries no @lym_unseen then.
 // The window it opens never changes the follow state.
 // An overview window is never selected here.
 // It is placed behind every earlier agent window and before the shell window, and a relaunch keeps the place of the window its old pane was in.
 // It carries no command, so the pane is the default login shell like every strand pane.
-// An overview strand's window is named by its display's Title, overviewWindowName when that is empty, and opens before the lowest-index window, hidden ones included, so it holds the lowest index; it carries the own marker and the overview marker but neither @strand_color nor @lyx_unseen.
+// An overview strand's window is named by its display's Title, overviewWindowName when that is empty, and opens before the lowest-index window, hidden ones included, so it holds the lowest index; it carries the own marker and the overview marker but neither @strand_color nor @lym_unseen.
 // A non-empty group is recorded on the window, which is how a group's shared window is found later.
 // A window option that fails to set is logged and never fails the open; a window missing the own marker is only never ended by reconcile.
 func (e *Engine) openOwnWindowLocked(st *ReedState, s *Strand, name, group string) (string, error) {
@@ -307,7 +307,7 @@ func (e *Engine) openOwnWindowLocked(st *ReedState, s *Strand, name, group strin
 }
 
 // markOwnWindowLocked sets the own-window options on windowID, the window of s's pane: the own marker always, and then the overview marker for an overview window.
-// Any other window gets the strand's @strand_color and, off Windows, @lyx_unseen when unseen is set; a non-empty group is recorded on the window.
+// Any other window gets the strand's @strand_color and, off Windows, @lym_unseen when unseen is set; a non-empty group is recorded on the window.
 // A window option that fails to set is logged and never fails the step; a window missing the own marker is only never ended by reconcile.
 func (e *Engine) markOwnWindowLocked(s *Strand, windowID string, overview, unseen bool, group string) {
 	setOption := func(option, value string) {
@@ -338,7 +338,7 @@ func (e *Engine) markOwnWindowLocked(s *Strand, windowID string, overview, unsee
 // The two identity fields are re-stamped on every load, not only at init: nothing in production
 // reads them back (every consumer uses the told Geometry via Socket()/SessionName()), so they exist
 // purely as an on-disk forensic diagnostic — and a diagnostic recording an identity reed no longer
-// drives (a renamed worktree carries its .lyx state along, but its session name changes with the
+// drives (a renamed worktree carries its .lym state along, but its session name changes with the
 // directory) is worse than none (R3 review finding R3-F2). The caller persists via the op's normal
 // SaveState tail, so no extra write happens here.
 func (e *Engine) loadOrInitStateLocked() (*ReedState, error) {

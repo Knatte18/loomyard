@@ -160,13 +160,13 @@ func TestRename_Refusals(t *testing.T) {
 		{"EmptyTarget", "old", "", "non-empty slug", false, nil},
 		{"TargetTooLong", "old", strings.Repeat("x", boardengine.MaxSlugLength+1), "pick a shorter target slug", false, nil},
 		{"RunHeldSource", "waiter", "fresh", `"waiter" is held by a run`, true, nil},
-		{"BeamProject", "beamer", "fresh", "lyx board upsert", false, func(t *testing.T) (*boardengine.Board, string) {
+		{"BeamProject", "beamer", "fresh", "lym board upsert", false, func(t *testing.T) (*boardengine.Board, string) {
 			var boardPath string
 			b := newProjectBoard(t, func(cfg *boardengine.Config) { boardPath = cfg.Path })
 			seedBoardJSON(t, boardPath, `{"id":0,"slug":"beamer","title":"Beamer","kind":"project","labels":["bug"],"beam":true}`)
 			return b, boardPath
 		}},
-		{"EntryWithAPair", "paired", "fresh", "lyx batten cancel paired --remove", false, func(t *testing.T) (*boardengine.Board, string) {
+		{"EntryWithAPair", "paired", "fresh", "lym batten cancel paired --remove", false, func(t *testing.T) (*boardengine.Board, string) {
 			var boardPath string
 			b := newProjectBoard(t, func(cfg *boardengine.Config) {
 				boardPath = cfg.Path

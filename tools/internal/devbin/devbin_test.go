@@ -39,7 +39,7 @@ func TestDevBinPaths_DeriveFromRepoRoot(t *testing.T) {
 		t.Errorf("Dir() = %q; want %q", dir, wantDir)
 	}
 
-	name := "lyx"
+	name := "lym"
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}

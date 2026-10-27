@@ -22,7 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 )
 
@@ -104,7 +104,7 @@ func holdWeftWriteLock(t *testing.T, weft string) *lock.FileLock {
 type pairFixture struct {
 	*recordsFixture
 	fake       *fakePushNotifier
-	location   *lyxcwd.Location
+	location   *lymcwd.Location
 	warpPath   string
 	weftPath   string
 	warpBranch string
@@ -115,7 +115,7 @@ func newPairFixture(t *testing.T, slug string) *pairFixture {
 	t.Helper()
 	f, fake := newFailureFixture(t)
 	added := hubforge.AddPair(t, f.hub, slug)
-	location, err := lyxcwd.ResolveWorktree(f.hub.PairCodeWorktree(slug))
+	location, err := lymcwd.ResolveWorktree(f.hub.PairCodeWorktree(slug))
 	if err != nil {
 		t.Fatalf("ResolveWorktree: %v", err)
 	}
@@ -267,9 +267,9 @@ func TestPushFailureClasses(t *testing.T) {
 			{
 				"OntoAnUpstreamCarryingAnotherMarker",
 				func(t *testing.T, p *pairFixture) string {
-					p.originCommit(p.weftBranch, lyxcwd.AnchorFileName, "sub\n", "other machine re-anchored")
+					p.originCommit(p.weftBranch, lymcwd.AnchorFileName, "sub\n", "other machine re-anchored")
 					gitkit.CommitFile(t, p.weftPath, "local.txt", "local\n", "local")
-					return "lyx fabric anchor"
+					return "lym fabric anchor"
 				},
 			},
 			{
@@ -277,10 +277,10 @@ func TestPushFailureClasses(t *testing.T) {
 				func(t *testing.T, p *pairFixture) string {
 					p.originCommit(p.weftBranch, "other.txt", "other\n", "other machine")
 					gitkit.CommitFile(t, p.weftPath, "local.txt", "local\n", "local")
-					if err := os.WriteFile(filepath.Join(p.weftPath, lyxcwd.AnchorFileName), []byte("\n"), 0o644); err != nil {
+					if err := os.WriteFile(filepath.Join(p.weftPath, lymcwd.AnchorFileName), []byte("\n"), 0o644); err != nil {
 						t.Fatalf("truncate the marker: %v", err)
 					}
-					return lyxcwd.AnchorFileName
+					return lymcwd.AnchorFileName
 				},
 			},
 			{
@@ -289,7 +289,7 @@ func TestPushFailureClasses(t *testing.T) {
 					p.originCommit(p.weftBranch, "other.txt", "other\n", "other machine")
 					gitkit.CommitFile(t, p.weftPath, "local.txt", "local\n", "local")
 					writeMoveRecord(t, p.weftPath, fabricengine.MoveRecord{A: ".", B: "x", Kind: fabricengine.MoveKindMove, PID: 4242})
-					return "lyx fabric anchor"
+					return "lym fabric anchor"
 				},
 			},
 		}
@@ -525,14 +525,14 @@ func TestPushFailureClasses(t *testing.T) {
 		f, _ := newFailureFixture(t)
 		weft, branch := f.primeWeft()
 		hubforge.AddPair(t, f.hub, "neve")
-		pairStatus := filepath.Join(f.hub.PairCodeWorktree("neve"), "_lyx", "shed", "neve", "status.json")
+		pairStatus := filepath.Join(f.hub.PairCodeWorktree("neve"), "_lym", "shed", "neve", "status.json")
 		if err := os.MkdirAll(filepath.Dir(pairStatus), 0o755); err != nil {
 			t.Fatalf("mkdir for %s: %v", pairStatus, err)
 		}
 		if err := os.WriteFile(pairStatus, []byte(statusJSON("Land", "Finalize")), 0o644); err != nil {
 			t.Fatalf("write %s: %v", pairStatus, err)
 		}
-		const statusRel = "_lyx/shed/neve/status.json"
+		const statusRel = "_lym/shed/neve/status.json"
 		gitkit.CommitFile(t, weft, statusRel, statusJSON("Run-Shed"), "neve prime status")
 		f.originCommit(branch, "notes/up.md", "up\n", "upstream work")
 		f.endEntryOnOrigin("neve")
@@ -735,8 +735,8 @@ func TestPushFailureClasses(t *testing.T) {
 			if want := fmt.Sprintf("then run `git push` in %s", prime); !strings.HasSuffix(err.Error(), want) {
 				t.Errorf("PushBranch() error = %q; want it to end in %q", err, want)
 			}
-			if strings.Contains(err.Error(), "lyx fabric push") {
-				t.Errorf("PushBranch() error = %q; want no `lyx fabric push`, which leaves the prime's code branch unpushed", err)
+			if strings.Contains(err.Error(), "lym fabric push") {
+				t.Errorf("PushBranch() error = %q; want no `lym fabric push`, which leaves the prime's code branch unpushed", err)
 			}
 			requireOneFailedPush(t, f.hub.Location.HubPath, "code", fabricengine.PushFailureNotFastForward)
 		})

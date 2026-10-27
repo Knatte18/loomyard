@@ -46,7 +46,7 @@ func TestOriginOwedMarker(t *testing.T) {
 			report:      fabricengine.OriginReport{Unreachable: true},
 			owner:       func() *fakeOwners { return &fakeOwners{machine: "here", owners: ownedBy("here", "", true)} },
 			markerIsDir: true,
-			wantErrors:  []string{"could not record", "resumed without origin", "re-run lyx batten run " + slug},
+			wantErrors:  []string{"could not record", "resumed without origin", "re-run lym batten run " + slug},
 			wantMarker:  true,
 		},
 		{

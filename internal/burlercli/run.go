@@ -1,4 +1,4 @@
-// run.go implements the `run` burler verb: the profile-YAML-and-flags-to-halves mapper that turns a "lyx burler run" invocation into a blocking burlerengine.Engine.Review call.
+// run.go implements the `run` burler verb: the profile-YAML-and-flags-to-halves mapper that turns a "lym burler run" invocation into a blocking burlerengine.Engine.Review call.
 // A review that reached done is followed by a burlerengine.Engine.Fix call, and both results print as a single JSON envelope.
 // It also owns decodeProfile, the strict YAML decode that maps a profile file 1:1 onto
 // burlerengine.Profile.
@@ -109,11 +109,11 @@ fixes — drives the round through the real shuttle substrate, and prints its
 result as a single JSON envelope.
 
 The round runs two sessions one after the other. A reviewer (role
-burler-review) writes the review file. Once lyx has accepted the review,
+burler-review) writes the review file. Once lym has accepted the review,
 a fixer (role burler-fix) fixes what the reviewer found. A profile naming a fixer fan runs
 the twill fixer, whose forks check its fix before the fixer-report is written.
 A review with no
-findings spawns no fixer: lyx writes the fixer report itself, and the envelope
+findings spawns no fixer: lym writes the fixer report itself, and the envelope
 reports fixSkipped true. A reviewer that did not finish runs no fixer. The
 envelope reports each half's identity under review and fix.
 
@@ -134,13 +134,13 @@ Example profile YAML:
   cluster-fan: ""  # naming a fan from lenses.yaml activates cluster review, one fork per fan entry
   fix-fan: ""  # naming a fan from lenses.yaml runs the twill fixer, whose forks check its fix
   language-skills: false  # true loads the hub's language skills after burler's own on both seats
-  review-path: _lyx/burler/review.md
-  fixer-report-path: _lyx/burler/fixer-report.md
+  review-path: _lym/burler/review.md
+  fixer-report-path: _lym/burler/fixer-report.md
   prior-reviews: []
   prior-fixer-reports: []
 
 Example invocation:
-  lyx burler run --profile profile.yaml
+  lym burler run --profile profile.yaml
 
 --review-model/--review-effort and --fix-model/--fix-effort override each
 half's provider model and reasoning effort; empty defers to the provider
@@ -196,7 +196,7 @@ the config default.`,
 			}
 
 			// Standalone mode boots its own reed session here, idempotently, because nothing else
-			// can: `lyx reed up` is hub-only, and pre-fix the round's spawn died on "no reed
+			// can: `lym reed up` is hub-only, and pre-fix the round's spawn died on "no reed
 			// session" with an impossible recourse (crucible round fable5-high-r3, F-A1). Nil in
 			// hub mode, where the session is the operator's or loom's own to manage.
 			if c.reedUp != nil {

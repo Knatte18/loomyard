@@ -2,7 +2,7 @@
 
 // config_test.go — untagged Tier-1 unit tests for loomengine.LoadConfig.
 //
-// Seeds a bare t.TempDir() with just a _lyx/config/loom.yaml file (no real hub, no SeedConfig, no
+// Seeds a bare t.TempDir() with just a _lym/config/loom.yaml file (no real hub, no SeedConfig, no
 // git spawn) since configengine.Load's env-source build tolerates a missing .env — a live fabric
 // fixture would be integration-tagged (like websterengine/config_test.go), which is out of scope
 // for this package's plain "go test ./internal/loomengine/" run.
@@ -22,17 +22,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lenses"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
 )
 
-// seedLoomConfig creates <baseDir>/_lyx/config/loom.yaml with the given contents.
+// seedLoomConfig creates <baseDir>/_lym/config/loom.yaml with the given contents.
 func seedLoomConfig(t *testing.T, baseDir, contents string) {
 	t.Helper()
-	configDir := filepath.Join(baseDir, "_lyx", "config")
+	configDir := filepath.Join(baseDir, "_lym", "config")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 	}
@@ -45,10 +45,10 @@ func seedLoomConfig(t *testing.T, baseDir, contents string) {
 // malformedLensesYAML is a lenses.yaml that fails to parse, for the fan-key rows that pin when LoadConfig reads it.
 const malformedLensesYAML = "fans: [unclosed\n"
 
-// seedLensesConfig creates <baseDir>/_lyx/config/lenses.yaml with the given contents.
+// seedLensesConfig creates <baseDir>/_lym/config/lenses.yaml with the given contents.
 func seedLensesConfig(t *testing.T, baseDir, contents string) {
 	t.Helper()
-	cfgPath := filepath.Join(baseDir, "_lyx", "config", "lenses.yaml")
+	cfgPath := filepath.Join(baseDir, "_lym", "config", "lenses.yaml")
 	if err := os.WriteFile(cfgPath, []byte(contents), 0o644); err != nil {
 		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
 	}
@@ -512,7 +512,7 @@ review_timeout_min: 240
 }
 
 // writeLocalLoomConfig writes contents as anchor's local loom override and returns its path.
-// anchor gets an empty _lyx/config/ so the layered load sees an initialised worktree.
+// anchor gets an empty _lym/config/ so the layered load sees an initialised worktree.
 func writeLocalLoomConfig(t *testing.T, anchor, contents string) string {
 	t.Helper()
 	for _, dir := range []string{configengine.ConfigDir(anchor), configengine.ScratchDir(anchor)} {
@@ -648,12 +648,12 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"negative discussion_max_bounces", "discussion_max_bounces", "-1", []string{"must not be negative", "set it to 0 for no review round, to a positive integer, or to null to take review_max_bounces"}, ""},
 		{"negative plan_max_bounces", "plan_max_bounces", "-1", []string{"must not be negative", "or to null to take review_max_bounces"}, ""},
 		{"negative code_max_bounces", "code_max_bounces", "-1", []string{"must not be negative", "or to null to take review_max_bounces"}, ""},
-		{"negative review_amend_max_bounces", "review_amend_max_bounces", "-1", []string{"must not be negative", "set it to 0 to settle every amendment with no review round", "lyx config loom --set review_amend_max_bounces=<n>", `lyx loom resume`}, ""},
-		{"zero review_hard_max_bounces", "review_hard_max_bounces", "0", []string{"must be at least 1", "lyx config loom --set review_hard_max_bounces=<n>", `lyx loom resume`}, ""},
-		{"negative discussion_hard_max_bounces", "discussion_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lyx config loom --set discussion_hard_max_bounces=<n>", `lyx loom resume`}, ""},
-		{"negative plan_hard_max_bounces", "plan_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lyx config loom --set plan_hard_max_bounces=<n>", `lyx loom resume`}, ""},
-		{"negative code_hard_max_bounces", "code_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lyx config loom --set code_hard_max_bounces=<n>", `lyx loom resume`}, ""},
-		{"review_max_bounces above the default hard cap", "review_max_bounces", "5", []string{"review_hard_max_bounces", "lyx config loom --set review_hard_max_bounces=<n>", "in the task worktree", `lyx loom resume`}, ""},
+		{"negative review_amend_max_bounces", "review_amend_max_bounces", "-1", []string{"must not be negative", "set it to 0 to settle every amendment with no review round", "lym config loom --set review_amend_max_bounces=<n>", `lym loom resume`}, ""},
+		{"zero review_hard_max_bounces", "review_hard_max_bounces", "0", []string{"must be at least 1", "lym config loom --set review_hard_max_bounces=<n>", `lym loom resume`}, ""},
+		{"negative discussion_hard_max_bounces", "discussion_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lym config loom --set discussion_hard_max_bounces=<n>", `lym loom resume`}, ""},
+		{"negative plan_hard_max_bounces", "plan_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lym config loom --set plan_hard_max_bounces=<n>", `lym loom resume`}, ""},
+		{"negative code_hard_max_bounces", "code_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lym config loom --set code_hard_max_bounces=<n>", `lym loom resume`}, ""},
+		{"review_max_bounces above the default hard cap", "review_max_bounces", "5", []string{"review_hard_max_bounces", "lym config loom --set review_hard_max_bounces=<n>", "in the task worktree", `lym loom resume`}, ""},
 		{"code_max_bounces above the default hard cap", "code_max_bounces", "5", []string{"review_hard_max_bounces", "code_max_bounces"}, ""},
 		{"negative discussion timeout", "discussion_timeout_min", "-1", []string{"must not be negative"}, ""},
 		{"negative plan timeout", "plan_timeout_min", "-1", []string{"must not be negative"}, ""},
@@ -719,7 +719,7 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
 		writeLoomConfigWithKey(t, dir, "discussion_advisors", `[{name: critic, model: "sonnet[high]"}]`)
-		modelsPath := filepath.Join(dir, "_lyx", "config", "models.yaml")
+		modelsPath := filepath.Join(dir, "_lym", "config", "models.yaml")
 		if err := os.WriteFile(modelsPath, []byte("sonnet: [unclosed\n"), 0o644); err != nil {
 			t.Fatalf("WriteFile(%q) = %v; want nil", modelsPath, err)
 		}
@@ -751,17 +751,17 @@ func TestLoadConfig_Refuses(t *testing.T) {
 			{
 				name:   "a local soft cap over the board default's hard cap",
 				local:  "review_max_bounces: 5\n",
-				wantIn: []string{"lyx config loom --layer local --set review_max_bounces=<n>", "lyx board upsert", "lyx config loom --layer default --set review_hard_max_bounces=<n>", "prime"},
+				wantIn: []string{"lym config loom --layer local --set review_max_bounces=<n>", "lym board upsert", "lym config loom --layer default --set review_hard_max_bounces=<n>", "prime"},
 			},
 			{
 				name:     "a worktree hard cap under the board default's soft cap",
 				worktree: "review_hard_max_bounces: 2\n",
-				wantIn:   []string{"lyx config loom --set review_hard_max_bounces=<n>", "in the task worktree"},
+				wantIn:   []string{"lym config loom --set review_hard_max_bounces=<n>", "in the task worktree"},
 			},
 			{
 				name:   "a local hard cap of zero",
 				local:  "review_hard_max_bounces: 0\n",
-				wantIn: []string{"must be at least 1", "lyx config loom --layer local --set review_hard_max_bounces=<n>", "lyx board upsert", `lyx loom resume`},
+				wantIn: []string{"must be at least 1", "lym config loom --layer local --set review_hard_max_bounces=<n>", "lym board upsert", `lym loom resume`},
 			},
 		}
 		for _, tt := range tests {
@@ -800,7 +800,7 @@ func TestLoadConfig_NotInitialized(t *testing.T) {
 	if err == nil {
 		t.Fatal("LoadConfig() = _, nil; want non-nil error for uninitialized baseDir")
 	}
-	want := `not initialized here; run "lyx fabric reconcile"; a session lyx refuses the verb from reports status: FAILED and the orch runs it`
+	want := `not initialized here; run "lym fabric reconcile"; a session lym refuses the verb from reports status: FAILED and the orch runs it`
 	if err.Error() != want {
 		t.Errorf("LoadConfig() error = %q; want %q", err.Error(), want)
 	}
@@ -1012,12 +1012,12 @@ func TestMigrateConfig(t *testing.T) {
 	})
 }
 
-// TestLoomDriverLogAndBootstrapLock covers LoomDriverLog and LoomBootstrapLock at both an unanchored and a subpath-anchored *lyxcwd.Location, hand-built rather than spawned.
+// TestLoomDriverLogAndBootstrapLock covers LoomDriverLog and LoomBootstrapLock at both an unanchored and a subpath-anchored *lymcwd.Location, hand-built rather than spawned.
 //
 // It also proves the two survive card 12's status/run-lock relocation onto shedrun.RunDir:
 // LoomBootstrapLock must never collide with shedrun's own StatusLock or RunLock for the same location and shedrun.SelfRunID, exactly as it never collided with loomengine's own now-deleted LoomStatusLock/LoomRunLock before the relocation -- this is what makes the overview's loomDirName-survives-the-status-relocation decision checkable rather than asserted.
 //
-// LoomScratchDir names exactly the directory the driver log and the bootstrap lock share, so the three never drift apart, and that directory is loom's own scratch tree under .lyx/loom/, distinct from the run directory's .lyx/shed/<runID>/ mirror that shedrun.ScratchDir names.
+// LoomScratchDir names exactly the directory the driver log and the bootstrap lock share, so the three never drift apart, and that directory is loom's own scratch tree under .lym/loom/, distinct from the run directory's .lym/shed/<runID>/ mirror that shedrun.ScratchDir names.
 func TestLoomDriverLogAndBootstrapLock(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -1031,18 +1031,18 @@ func TestLoomDriverLogAndBootstrapLock(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			l := &lyxcwd.Location{
-				HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
+			l := &lymcwd.Location{
+				HubPath:      filepath.Join("home", "user", "repo-LYMHUB"),
 				WorktreeName: "repo",
 				AnchorRel:    tt.anchorRel,
 			}
 
-			wantDriverLog := filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, "loom", "driver.log")
+			wantDriverLog := filepath.Join(l.AnchorPath(), lymdirs.DotLymDirName, "loom", "driver.log")
 			if got := LoomDriverLog(l); got != wantDriverLog {
 				t.Errorf("LoomDriverLog() = %q; want %q", got, wantDriverLog)
 			}
 
-			wantBootstrapLock := filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, "loom", "bootstrap.lock")
+			wantBootstrapLock := filepath.Join(l.AnchorPath(), lymdirs.DotLymDirName, "loom", "bootstrap.lock")
 			if got := LoomBootstrapLock(l); got != wantBootstrapLock {
 				t.Errorf("LoomBootstrapLock() = %q; want %q", got, wantBootstrapLock)
 			}
@@ -1074,24 +1074,24 @@ func TestLoomDriverLogAndBootstrapLock(t *testing.T) {
 // TestLandingAndApprovalAccessors pins the landing directory, its commit-pathspec form and the decision record paths for a hand-built location.
 func TestLandingAndApprovalAccessors(t *testing.T) {
 	t.Parallel()
-	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
+	l := &lymcwd.Location{
+		HubPath:      filepath.Join("home", "user", "repo-LYMHUB"),
 		WorktreeName: "repo",
 	}
 
-	if got, want := LandingDirRel(), filepath.Join("_lyx", "landing"); got != want {
+	if got, want := LandingDirRel(), filepath.Join("_lym", "landing"); got != want {
 		t.Errorf("LandingDirRel() = %q; want %q", got, want)
 	}
-	if got, want := LandingDir(l), filepath.Join(l.AnchorPath(), "_lyx", "landing"); got != want {
+	if got, want := LandingDir(l), filepath.Join(l.AnchorPath(), "_lym", "landing"); got != want {
 		t.Errorf("LandingDir() = %q; want %q", got, want)
 	}
-	if got, want := LoomReworkCoveragePath(l), filepath.Join(l.AnchorPath(), ".lyx", "loom", "rework-coverage.md"); got != want {
+	if got, want := LoomReworkCoveragePath(l), filepath.Join(l.AnchorPath(), ".lym", "loom", "rework-coverage.md"); got != want {
 		t.Errorf("LoomReworkCoveragePath() = %q; want %q", got, want)
 	}
-	if got, want := LoomReworkDirRel(), filepath.Join("_lyx", "loom", "rework"); got != want {
+	if got, want := LoomReworkDirRel(), filepath.Join("_lym", "loom", "rework"); got != want {
 		t.Errorf("LoomReworkDirRel() = %q; want %q", got, want)
 	}
-	if got, want := LoomReworkDir(l), filepath.Join(l.AnchorPath(), "_lyx", "loom", "rework"); got != want {
+	if got, want := LoomReworkDir(l), filepath.Join(l.AnchorPath(), "_lym", "loom", "rework"); got != want {
 		t.Errorf("LoomReworkDir() = %q; want %q", got, want)
 	}
 
@@ -1147,7 +1147,7 @@ func TestConfigTemplate_ImplementerDefaultsToWebsterAndAcceptsALocalValue(t *tes
 func TestPathsOutsideRunRecords(t *testing.T) {
 	t.Parallel()
 
-	l := &lyxcwd.Location{HubPath: filepath.Join("home", "user", "repo-LYXHUB"), WorktreeName: "repo", AnchorRel: "."}
+	l := &lymcwd.Location{HubPath: filepath.Join("home", "user", "repo-LYMHUB"), WorktreeName: "repo", AnchorRel: "."}
 	runID := shedrun.SelfRunID
 	runDir := shedrun.RunDir(l, runID)
 	codePath := filepath.Join(l.AnchorPath(), "internal", "x.go")

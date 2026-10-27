@@ -51,14 +51,14 @@ func TestDiff_MergesWarpAndWeftSides(t *testing.T) {
 
 	warpSHA1 := fabricengine.CommitWarpForTest(t, warpPath, "warp change 1")
 	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "weft change 1")
-	res1, err := f.Commit([]string{"_lyx"}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
+	res1, err := f.Commit([]string{"_lym"}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
 	if err != nil || !res1.WeftCommitted {
 		t.Fatalf("first Commit: %+v, err=%v", res1, err)
 	}
 
 	fabricengine.CommitWarpForTest(t, warpPath, "warp change 2")
 	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "weft change 2")
-	res2, err := f.Commit([]string{"_lyx"}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
+	res2, err := f.Commit([]string{"_lym"}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
 	if err != nil || !res2.WeftCommitted {
 		t.Fatalf("second Commit: %+v, err=%v", res2, err)
 	}
@@ -76,8 +76,8 @@ func TestDiff_MergesWarpAndWeftSides(t *testing.T) {
 		t.Errorf("Diff(%q) warp-side paths = %v; want it to contain README", warpSHA1, warpPaths)
 	}
 	weftPaths := changeEntryPaths(got.Entries, fabricengine.SideWeft)
-	if !slices.Contains(weftPaths, filepath.Join("_lyx", "config.yaml")) {
-		t.Errorf("Diff(%q) weft-side paths = %v; want it to contain _lyx/config.yaml", warpSHA1, weftPaths)
+	if !slices.Contains(weftPaths, filepath.Join("_lym", "config.yaml")) {
+		t.Errorf("Diff(%q) weft-side paths = %v; want it to contain _lym/config.yaml", warpSHA1, weftPaths)
 	}
 }
 
@@ -95,7 +95,7 @@ func TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline(t *tes
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
 	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "weft change 1")
-	res1, err := f.Commit([]string{"_lyx"}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
+	res1, err := f.Commit([]string{"_lym"}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
 	if err != nil || !res1.WeftCommitted {
 		t.Fatalf("Commit: %+v, err=%v", res1, err)
 	}
@@ -146,7 +146,7 @@ func TestDiff_NoWeftCorrespondence_BeforeFirstSync(t *testing.T) {
 	// recorded correspondence entirely.
 	fabricengine.CommitWarpForTest(t, warpPath, "warp change")
 	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "weft change")
-	res, err := f.Commit([]string{"_lyx"}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
+	res, err := f.Commit([]string{"_lym"}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
 	if err != nil || !res.WeftCommitted {
 		t.Fatalf("Commit: %+v, err=%v", res, err)
 	}
@@ -188,7 +188,7 @@ func TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts(t *testi
 	// Status is asked to filter them out.
 	fabricengine.CommitWarpForTest(t, warpPath, "warp change")
 	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "weft change")
-	if _, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lyx"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{}); err != nil || !committed {
+	if _, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lym"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{}); err != nil || !committed {
 		t.Fatalf("commitWeft() committed=%v err=%v; want committed=true, err=nil", committed, err)
 	}
 
@@ -217,7 +217,7 @@ func TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts(t *testi
 	if err != nil {
 		t.Fatalf("DirtyPaths() error = %v", err)
 	}
-	weftTrackedPath := filepath.Join(weftFixture.PrimeRecords(), "_lyx", "config.yaml")
+	weftTrackedPath := filepath.Join(weftFixture.PrimeRecords(), "_lym", "config.yaml")
 	if want := []string{warpTrackedPath, weftTrackedPath}; !slices.Equal(dirty, want) {
 		t.Errorf("DirtyPaths() = %v; want exactly the modified tracked paths %v, with the untracked %s and %s omitted", dirty, want, warpDirtyPath, pushLockPath)
 	}
@@ -252,8 +252,8 @@ func TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts(t *testi
 	if !slices.Contains(warpPaths, "uncommitted.txt") {
 		t.Errorf("Status() warp-side paths = %v; want it to contain uncommitted.txt", warpPaths)
 	}
-	if !slices.Contains(weftPaths, filepath.Join("_lyx", "config.yaml")) {
-		t.Errorf("Status() weft-side paths = %v; want it to contain _lyx/config.yaml", weftPaths)
+	if !slices.Contains(weftPaths, filepath.Join("_lym", "config.yaml")) {
+		t.Errorf("Status() weft-side paths = %v; want it to contain _lym/config.yaml", weftPaths)
 	}
 
 	// Neither the lock dir nor the push lock file (both git-excluded) may

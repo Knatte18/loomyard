@@ -126,18 +126,18 @@ func TestGoto_RunLockHeldRefusesAndLeavesFile(t *testing.T) {
 	if !errors.Is(err, ErrShedBusy) {
 		t.Fatalf("Goto(...) error = %v; want ErrShedBusy", err)
 	}
-	for _, want := range []string{`"lyx shed pause --after <current_producer>"`, "lyx shed status"} {
+	for _, want := range []string{`"lym shed pause --after <current_producer>"`, "lym shed status"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not name %q", err, want)
 		}
 	}
 	req := gotoRequest(shed, "A")
 	req.RunID = "some-slug"
-	if _, err := Goto(req); err == nil || !strings.Contains(err.Error(), `"lyx shed pause some-slug --after <current_producer>"`) || !strings.Contains(err.Error(), `"lyx shed status some-slug"`) {
+	if _, err := Goto(req); err == nil || !strings.Contains(err.Error(), `"lym shed pause some-slug --after <current_producer>"`) || !strings.Contains(err.Error(), `"lym shed status some-slug"`) {
 		t.Errorf("Goto(...) told RunID error = %v; want the pause and status verbs addressing some-slug", err)
 	}
-	req.PauseWayForward = "lyx batten pause some-slug"
-	if _, err := Goto(req); err == nil || !strings.Contains(err.Error(), `"lyx batten pause some-slug"`) || strings.Contains(err.Error(), "lyx shed pause") {
+	req.PauseWayForward = "lym batten pause some-slug"
+	if _, err := Goto(req); err == nil || !strings.Contains(err.Error(), `"lym batten pause some-slug"`) || strings.Contains(err.Error(), "lym shed pause") {
 		t.Errorf("Goto(...) told PauseWayForward error = %v; want the told command in place of the shed default", err)
 	}
 	if after := readStatus(t, shed.StatusPath, shed.StatusLockPath); !reflect.DeepEqual(before, after) {
@@ -197,7 +197,7 @@ func TestGoto_MissingStatusFileWayForward(t *testing.T) {
 		wantAbsent string
 	}{
 		{"generic seed advice", "", missingStatusWayForward, ""},
-		{"told clause replaces the seed advice", "way forward: told clause", "way forward: told clause", "lyx shed seed"},
+		{"told clause replaces the seed advice", "way forward: told clause", "way forward: told clause", "lym shed seed"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -262,7 +262,7 @@ func TestStep_UnknownCurrentProducerNamesGoto(t *testing.T) {
 	if err == nil {
 		t.Fatal("Step(...) = nil error; want a refusal")
 	}
-	for _, want := range []string{"lyx shed goto", "A, B"} {
+	for _, want := range []string{"lym shed goto", "A, B"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not contain %q", err, want)
 		}
@@ -314,8 +314,8 @@ func TestStep_BudgetHaltResumeGrantsOneBudget(t *testing.T) {
 		configure    func(*Shed)
 		wantContains string
 	}{
-		{"fallback names the run verb", func(*Shed) {}, `"lyx shed run" resumes the row`},
-		{"told run-id is addressed", func(s *Shed) { s.RunID = "some-slug" }, `"lyx shed run some-slug" resumes the row`},
+		{"fallback names the run verb", func(*Shed) {}, `"lym shed run" resumes the row`},
+		{"told run-id is addressed", func(s *Shed) { s.RunID = "some-slug" }, `"lym shed run some-slug" resumes the row`},
 		{"told clause replaces the fallback", func(s *Shed) { s.BudgetWayForward = "told resume clause" }, "way forward: told resume clause"},
 	}
 	for _, tt := range reasonTests {
@@ -478,13 +478,13 @@ func TestGoto_AwaitingRefusesFinalizeAndAdmitsEarlierRow(t *testing.T) {
 			t.Errorf("admitted list %q names %s", list, bad)
 		}
 	}
-	if !strings.Contains(msg, "lyx shed status") {
-		t.Errorf("error %q does not name lyx shed status", msg)
+	if !strings.Contains(msg, "lym shed status") {
+		t.Errorf("error %q does not name lym shed status", msg)
 	}
 	told := gotoRequest(shed, "Finalize")
 	told.RunID = "some-slug"
-	if _, err := Goto(told); err == nil || !strings.Contains(err.Error(), `"lyx shed status some-slug"`) {
-		t.Errorf("Goto(...) told RunID error = %v; want lyx shed status addressing some-slug", err)
+	if _, err := Goto(told); err == nil || !strings.Contains(err.Error(), `"lym shed status some-slug"`) {
+		t.Errorf("Goto(...) told RunID error = %v; want lym shed status addressing some-slug", err)
 	}
 
 	got, err := Goto(gotoRequest(shed, "Publish"))
@@ -499,7 +499,7 @@ func TestGoto_AwaitingRefusesFinalizeAndAdmitsEarlierRow(t *testing.T) {
 func TestGoto_RunningRunRefusedUntilPaused(t *testing.T) {
 	shed := tailShed(t, "Describe", StateRunning, nil)
 	err := assertGotoRefused(t, shed, "Webster")
-	for _, want := range []string{"lyx shed pause --after Describe", "lyx shed step"} {
+	for _, want := range []string{"lym shed pause --after Describe", "lym shed step"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not name %q", err, want)
 		}
@@ -573,7 +573,7 @@ func TestRelaunch(t *testing.T) {
 		wantAdmits    int
 		check         func(t *testing.T, got Status)
 	}{
-		{name: "run lock held", seed: seedWith(StateBlocked, "B"), holdLock: true, target: "A", wantBusy: true, wantErr: `"lyx shed pause --after <current_producer>"`},
+		{name: "run lock held", seed: seedWith(StateBlocked, "B"), holdLock: true, target: "A", wantBusy: true, wantErr: `"lym shed pause --after <current_producer>"`},
 		{name: "status file absent", target: "A", wantErr: "way forward: told clause"},
 		{name: "done run", seed: seedWith(StateDone, "B"), target: "A", wantErr: "relaunch never re-opens a finished run; way forward: seed a new run"},
 		{name: "running run", seed: seedWith(StateRunning, "B"), target: "A", wantErr: "another loop owns this run; way forward:"},

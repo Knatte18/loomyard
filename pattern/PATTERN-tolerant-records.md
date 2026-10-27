@@ -12,5 +12,5 @@ A long-lived process on an older binary then neither halts on, nor drops, a key 
 
 ## Enforcement
 
-`cmd/lyx/tolerantrecords_test.go` parses every production `.go` file and fails, naming file and line, on a call expression whose selector is `DisallowUnknownFields`.
+`cmd/lym/tolerantrecords_test.go` parses every production `.go` file and fails, naming file and line, on a call expression whose selector is `DisallowUnknownFields`.
 A comment or a string naming the method is never a finding.

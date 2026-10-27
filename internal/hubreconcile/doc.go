@@ -1,15 +1,15 @@
 // Package hubreconcile reconciles a hub's config once after a binary change, under a hub lock, and commits everything it wrote.
 // Its one entry point is Ensure; a start verb calls it, through EnsureOrWarn, before loading any module config.
 //
-// The package is told the hub's geometry and derives none (PATTERN-cwd-resolution), so it never imports internal/lyxcwd.
+// The package is told the hub's geometry and derives none (PATTERN-cwd-resolution), so it never imports internal/lymcwd.
 //
 // # Stamp, lock and key
 //
-// The build stamp is <BoardDir>/.lyx/config/build-stamp.json and the hub lock <BoardDir>/.lyx/config/reconcile.lock, both in the never-tracked mirror of the hub-wide config dir.
+// The build stamp is <BoardDir>/.lym/config/build-stamp.json and the hub lock <BoardDir>/.lym/config/reconcile.lock, both in the never-tracked mirror of the hub-wide config dir.
 // The stamp holds a build key, the hex SHA-256 of the binary's VCS revision, its modified flag and the config registry's fingerprint, with the revision and the flag in readable form for the log.
 // A stamp naming the running key makes Ensure return after one file read, one stat per per-worktree module and one for the board marker, with no lock and no git; an absent or unreadable stamp counts as stale.
 // A stamp naming the running key also counts as stale when any per-worktree module's repo default is absent under the board dir, so a default deleted after a walk is reseeded by the next start verb.
-// It counts as stale as well while the board marker `<BoardDir>/_lyx/config/base-sparse` is absent, so a board not yet stripped to sparse base files is walked, and a marker removed by hand with a board commit makes the next start verb's walk strip the base files again.
+// It counts as stale as well while the board marker `<BoardDir>/_lym/config/base-sparse` is absent, so a board not yet stripped to sparse base files is walked, and a marker removed by hand with a board commit makes the next start verb's walk strip the base files again.
 // The lock wait defaults to DefaultLockWait and is an Options field; a lock still held when it runs out returns *LockTimeoutError and touches nothing.
 // The holder's own per-worktree commits wait on each pair's write lock as a plain commit does, unbounded.
 //
@@ -19,7 +19,7 @@
 // The walk pulls the board first, reconciles the board's config and commits it on the board under a subject carrying the binary label, seeding every absent per-worktree repo default from the prime or the template, then reconciles the prime's sparse layers, then lists the hub's code worktrees again and reconciles each pair not yet walked.
 // It repeats until a listing finds no new pair, so a pair registered while the walk ran is walked before the stamp is written.
 // The board commit carries the per-worktree repo defaults beside the hub-wide files.
-// Each worktree's applied files are committed in that worktree, and the board's push goes to the detached `lyx board sync` every board write spawns, which carries the board commit and any an earlier run left unpushed.
+// Each worktree's applied files are committed in that worktree, and the board's push goes to the detached `lym board sync` every board write spawns, which carries the board commit and any an earlier run left unpushed.
 // The walk spawns it and returns at once, so no start verb waits on a push to GitHub, and the build stamp never waits on one either.
 //
 // # The base strip
@@ -37,14 +37,14 @@
 //
 // # The sparse migration
 //
-// A worktree without the sparse marker `_lyx/config/sparse` still holds today's full config files.
+// A worktree without the sparse marker `_lym/config/sparse` still holds today's full config files.
 // Once every per-worktree module's repo default exists, the walk strips each such file of the keys that equal what the layers below it resolve to, and of the keys that equal a former template value, so every key the file held resolves unchanged bar a former value, which resolves to the new template.
 // A file left empty is deleted, and the marker is written after the files; the files, deletions and marker go into the worktree's one reconcile commit.
-// The log line of a changed module lists the keys it stripped and the keys it inherited, the repo default's keys the file lacked and whose value differs from the template's, which the operator can pin with `lyx config <module> --set`.
+// The log line of a changed module lists the keys it stripped and the keys it inherited, the repo default's keys the file lacked and whose value differs from the template's, which the operator can pin with `lym config <module> --set`.
 // A worktree carrying the marker is never stripped, and a pair forked from a migrated worktree inherits the marker.
 // A pair forked before the migration, or skipped as being created or mid-merge, or left by a walk that died partway, is stripped by the next walk, since a failed or merge-interrupted walk restores the marker with the files.
 // A migrated pair may meet the landing warning for a changed tracked config file once, in the commit that strips it.
-// `lyx config reconcile` reports the strip as pending and never performs it.
+// `lym config reconcile` reports the strip as pending and never performs it.
 // Worktrees that committed before a failure keep their commits.
 // The failing worktree's, or the board's, config files are restored to their prior bytes, so a retry rewrites and commits them instead of finding them already current.
 // A worktree commit that landed before a later step of it failed, such as recording the commit's correspondence, keeps the written files, since they are already committed.
@@ -74,7 +74,7 @@
 // # Errors
 //
 // *WorktreeError names the worktree, the file and the cause of a reconcile or commit failure, and ends with the way forward:
-// `lyx config <module> --layer default` from the prime worktree for a board file, `lyx config <module>` for a worktree file, and only the file and the re-run for the board marker.
+// `lym config <module> --layer default` from the prime worktree for a board file, `lym config <module>` for a worktree file, and only the file and the re-run for the board marker.
 // *LockTimeoutError names the lock.
 // EnsureOrWarn is Ensure for the stamp-gated reads, the start verbs and the Preflight row: a failure logs one Warn naming the error and the way forward, and the caller goes on with the config as it was.
 // The failing step's files are restored and no stamp is written, so the next start verb retries; steps that committed before the failure keep their commits.
@@ -83,5 +83,5 @@
 // # Accepted gaps
 //
 // A fabric add whose fork read the prime before a walk committed it, and whose pair became enumerable only after the walk's last listing, keeps the prime's older config; Loom-Preflight's retired-key refusal backs that up.
-// Two risks are accepted: a downgrade flip-flops the stamp between two binaries, and a lyx-authored records commit in a running pair can land beside a driver's own work.
+// Two risks are accepted: a downgrade flip-flops the stamp between two binaries, and a lym-authored records commit in a running pair can land beside a driver's own work.
 package hubreconcile

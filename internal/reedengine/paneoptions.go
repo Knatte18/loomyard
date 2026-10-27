@@ -1,5 +1,5 @@
-// paneoptions.go sets the display-only tmux user options that identify strands: @strand and @strand_color on each strand pane, @lyx_strands on the strand window.
-// It also names @lyx_console, the marker of the operator console pane that the key bindings read.
+// paneoptions.go sets the display-only tmux user options that identify strands: @strand and @strand_color on each strand pane, @lym_strands on the strand window.
+// It also names @lym_console, the marker of the operator console pane that the key bindings read.
 // No Go decision reads them back; the status bar and the key bindings do.
 
 package reedengine
@@ -12,7 +12,7 @@ import (
 
 // consolePaneOption is the pane option marking the operator console pane, set to 1 by markSelvagePaneLocked.
 // The key bindings read it so the console joins the Alt+Up/Alt+Down cycle; no Go decision reads it.
-const consolePaneOption = "@lyx_console"
+const consolePaneOption = "@lym_console"
 
 // strandLabel returns the role segment of a strand name, or the full name when it does not parse.
 func strandLabel(name string) string {
@@ -52,11 +52,11 @@ func (e *Engine) reassertStrandPaneOptionsLocked(st *ReedState, live []LivePane)
 	}
 }
 
-// markStrandWindowLocked sets @lyx_strands on the strand window.
+// markStrandWindowLocked sets @lym_strands on the strand window.
 // A failure is logged and never fails the step.
 func (e *Engine) markStrandWindowLocked(windowTarget string) {
-	if err := e.tmux.run("set-option", "-w", "-t", windowTarget, "@lyx_strands", "1"); err != nil {
-		logger.Warn("reed: could not set @lyx_strands", "window", windowTarget, "err", err)
+	if err := e.tmux.run("set-option", "-w", "-t", windowTarget, "@lym_strands", "1"); err != nil {
+		logger.Warn("reed: could not set @lym_strands", "window", windowTarget, "err", err)
 	}
 }
 

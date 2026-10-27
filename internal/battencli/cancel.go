@@ -1,4 +1,4 @@
-// cancel.go holds the decisions and order of "lyx batten cancel": cancelRun judges a run against origin and the local records, ends it, and removes what the verb's flags name, over injected seams.
+// cancel.go holds the decisions and order of "lym batten cancel": cancelRun judges a run against origin and the local records, ends it, and removes what the verb's flags name, over injected seams.
 //
 // The verb and its production seams live beside the CLI; this file reaches no substrate itself, so one untagged table test drives every branch with fakes.
 
@@ -37,7 +37,7 @@ type cancelDeps struct {
 	Reconcile func() (fabricengine.OriginReport, error)
 	// PullBolt brings the hub's Bolt level with origin; an unreachable origin wraps boardengine.ErrOwnerOriginUnreachable.
 	PullBolt func() error
-	// Owner returns this machine's name, the slug's effective owner on the local Bolt, empty when none is recorded, and the subject `lyx adopt` takes to move it.
+	// Owner returns this machine's name, the slug's effective owner on the local Bolt, empty when none is recorded, and the subject `lym adopt` takes to move it.
 	Owner func() (machine, owner, subject string, err error)
 	// ReadStatus reads batten's status file for the slug.
 	ReadStatus func() (status shedengine.Status, found bool, err error)
@@ -181,9 +181,9 @@ func (h *cancelHold) end(slug string) {
 // cancelCommand words the cancel's own command for slug, with its --remove flag when remove is set.
 func cancelCommand(slug string, remove bool) string {
 	if remove {
-		return fmt.Sprintf("lyx batten cancel %s --remove", slug)
+		return fmt.Sprintf("lym batten cancel %s --remove", slug)
 	}
-	return fmt.Sprintf("lyx batten cancel %s", slug)
+	return fmt.Sprintf("lym batten cancel %s", slug)
 }
 
 // cancelRun ends the batten run of slug for good, in the order every refusal and acceptance of the verb follows.
@@ -231,7 +231,7 @@ func endRunPhase(ctx context.Context, slug string, remove bool, rerun string, de
 		return report, probeRefusal("the hub pause record", slug, rerun, err)
 	}
 	if paused {
-		return report, fmt.Errorf("a hub pause covers the prime; way forward: run \"lyx tender resume\", then %s again", rerun)
+		return report, fmt.Errorf("a hub pause covers the prime; way forward: run \"lym tender resume\", then %s again", rerun)
 	}
 	hold.restoreGate, err = deps.ExemptGate()
 	if err != nil {
@@ -258,7 +258,7 @@ func endRunPhase(ctx context.Context, slug string, remove bool, rerun string, de
 		return report, probeRefusal("whether the work reached its parent", slug, rerun, err)
 	}
 	if reached {
-		return report, fmt.Errorf("the work of %s reached its parent; way forward: run \"lyx batten run %s\" to finish the landing, then \"lyx batten cleanup --apply\"", slug, slug)
+		return report, fmt.Errorf("the work of %s reached its parent; way forward: run \"lym batten run %s\" to finish the landing, then \"lym batten cleanup --apply\"", slug, slug)
 	}
 
 	reading, err := deps.ReadMarker()
@@ -356,7 +356,7 @@ func isBeamProject(deps cancelDeps) (bool, error) {
 // refuseBeamCancel refuses the cancel of a beam project while work remains under it, before the cancel marker is taken or anything is ended.
 // It runs the hub-scope origin reconcile first, so the members are read over the Bolt origin holds; an error or an unreachable origin refuses with the reconcile's way forward.
 // While the beam's pawl run does not hold its entry the refusal is the landing refusal's, which names each member to land or cancel;
-// once it holds, a member's landing is refused, so each blocker is worded as a land halt words it: the cancel in the beam's parent worktree, then the move off the beam, and never `lyx batten run`.
+// once it holds, a member's landing is refused, so each blocker is worded as a land halt words it: the cancel in the beam's parent worktree, then the move off the beam, and never `lym batten run`.
 // A task never reaches the reconcile or the beam seams.
 func refuseBeamCancel(slug, rerun string, deps cancelDeps) error {
 	beam, err := isBeamProject(deps)
@@ -400,17 +400,17 @@ func refuseBeamCancel(slug, rerun string, deps cancelDeps) error {
 // heldBeamCancelRefusal words the refusal of a beam's cancel while its pawl run holds its entry: every blocker with the step that ends it, then the cancel's re-run.
 // A member with a pair or a run in flight is cancelled in the beam's parent worktree and then moved off the beam, since the cancel leaves a draft member, which still blocks the landing; a member with no run status is moved alone.
 func heldBeamCancelRefusal(slug, rerun string, blockers BeamLandBlockers) error {
-	moveOff := "move its `project` off the beam with `lyx board upsert`"
+	moveOff := "move its `project` off the beam with `lym board upsert`"
 	var ways []string
 	for _, member := range blockers.Members {
 		if member.HasPair || member.Running {
-			ways = append(ways, fmt.Sprintf("the open entry %s is a member of the beam: end it with `lyx batten cancel %s --remove`, run in the beam's parent worktree, then %s, since the cancel leaves a `draft` member, which still blocks the landing", member.Slug, member.Slug, moveOff))
+			ways = append(ways, fmt.Sprintf("the open entry %s is a member of the beam: end it with `lym batten cancel %s --remove`, run in the beam's parent worktree, then %s, since the cancel leaves a `draft` member, which still blocks the landing", member.Slug, member.Slug, moveOff))
 			continue
 		}
 		ways = append(ways, fmt.Sprintf("the open entry %s is a member of the beam with no run status: %s", member.Slug, moveOff))
 	}
 	for _, pair := range blockers.ChildPairs {
-		ways = append(ways, fmt.Sprintf("the pair %s was forked from the beam: end it with `lyx batten cancel %s --remove`, run in the beam's parent worktree", pair, pair))
+		ways = append(ways, fmt.Sprintf("the pair %s was forked from the beam: end it with `lym batten cancel %s --remove`, run in the beam's parent worktree", pair, pair))
 	}
 	return fmt.Errorf("battencli: the beam %s cannot be cancelled while work remains under it; way forward: %s; then run %s again", slug, strings.Join(ways, "; "), rerun)
 }
@@ -516,7 +516,7 @@ func judgeOrigin(slug, rerun string, deps cancelDeps) (endOnly bool, err error) 
 				return false, probeRefusal("the run's records", slug, rerun, err)
 			}
 			if recordsHere {
-				return false, fmt.Errorf("%s was landed by another machine; way forward: run \"lyx cleanup --apply\" from the prime, whose reconcile tears it down", slug)
+				return false, fmt.Errorf("%s was landed by another machine; way forward: run \"lym cleanup --apply\" from the prime, whose reconcile tears it down", slug)
 			}
 		}
 	}
@@ -548,7 +548,7 @@ func stoppedOnlyByAnchor(slug string, branches []fabricengine.BranchOutcome) boo
 // cancelOwnedElsewhere words the refusal of a cancel on a machine that does not own the slug.
 // The way forward names the adopt of subject, the beam or `root` that takes the slug over, the slug when subject is empty.
 func cancelOwnedElsewhere(slug, owner, subject string) error {
-	return fmt.Errorf("%s is owned by machine %s; way forward: run \"lyx adopt %s\" on this machine first, or \"lyx batten cancel %s\" on %s", slug, owner, subjectOrSlug(subject, slug), slug, owner)
+	return fmt.Errorf("%s is owned by machine %s; way forward: run \"lym adopt %s\" on this machine first, or \"lym batten cancel %s\" on %s", slug, owner, subjectOrSlug(subject, slug), slug, owner)
 }
 
 // refuseNothingLeft refuses a cancel when no record, claim, pair part, session, process or marker of the slug is left, and for a task branch left alone when remove is not set.
@@ -580,7 +580,7 @@ func refuseNothingLeft(slug string, remove, endOnly bool, rerun string, reading 
 		if parts.TaskBranch {
 			return fmt.Errorf("the task branch of %s is all that is left; way forward: run %q, which archives and deletes its task branch", slug, cancelCommand(slug, true))
 		}
-		return fmt.Errorf("nothing of %s is left to cancel; way forward: check it with \"lyx board list\"", slug)
+		return fmt.Errorf("nothing of %s is left to cancel; way forward: check it with \"lym board list\"", slug)
 	}
 	if parts.TaskBranch {
 		return nil
@@ -595,7 +595,7 @@ func refuseNothingLeft(slug string, remove, endOnly bool, rerun string, reading 
 	if onOrigin {
 		return nil
 	}
-	return fmt.Errorf("nothing of %s is left to cancel; way forward: check it with \"lyx board list\"", slug)
+	return fmt.Errorf("nothing of %s is left to cancel; way forward: check it with \"lym board list\"", slug)
 }
 
 // removePairAndBranch removes the pair, snapshotting its uncommitted paths first, then archives and deletes the task branch while one is left.
@@ -604,7 +604,7 @@ func removePairAndBranch(slug, rerun string, report *cancelReport, deps cancelDe
 	result, err := deps.RemovePair(pairteardown.Request{Slug: slug, Force: true, Snapshot: true, Remote: true, LeaveClaim: true})
 	report.SnapshotTag = result.SnapshotTag
 	if err != nil && !errors.Is(err, fabricengine.ErrPairNotFound) {
-		return fmt.Errorf("battencli: removing the pair of %s refused: %w; way forward: fix the cause it names, then run \"lyx batten cancel %s --remove\" again", slug, err, slug)
+		return fmt.Errorf("battencli: removing the pair of %s refused: %w; way forward: fix the cause it names, then run \"lym batten cancel %s --remove\" again", slug, err, slug)
 	}
 	report.PairRemoved = true
 
@@ -622,7 +622,7 @@ func removePairAndBranch(slug, rerun string, report *cancelReport, deps cancelDe
 	discard, err := deps.DiscardTaskBranch()
 	report.ArchiveTags = discard.ArchiveTags
 	if err != nil {
-		return fmt.Errorf("battencli: discarding the task branch of %s failed: %w; way forward: fix the cause it names, then run \"lyx batten cancel %s --remove\" again", slug, err, slug)
+		return fmt.Errorf("battencli: discarding the task branch of %s failed: %w; way forward: fix the cause it names, then run \"lym batten cancel %s --remove\" again", slug, err, slug)
 	}
 	return nil
 }

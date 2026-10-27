@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -74,7 +74,7 @@ func (o reedStrandOps) RemoveStrand(guid string) error {
 
 // orchCLI is the receiver every orch verb hangs off of, populated by wireCLI.
 type orchCLI struct {
-	location    *lyxcwd.Location
+	location    *lymcwd.Location
 	cfg         orchengine.Config
 	shuttleCfg  shuttleengine.Config
 	engines     shuttleengine.EngineSet
@@ -95,9 +95,9 @@ type orchCLI struct {
 	sleep         func(time.Duration)
 	// indexRunner returns the output of `<bin> help index`.
 	indexRunner func(bin string) (string, error)
-	// executable returns the path of the running lyx binary, which the runs strand's command names.
+	// executable returns the path of the running lym binary, which the runs strand's command names.
 	executable func() (string, error)
-	// currentBuild identifies the running lyx build, which tells a runs strand of this build from an older one.
+	// currentBuild identifies the running lym build, which tells a runs strand of this build from an older one.
 	currentBuild func() (statuspane.BuildIdentity, error)
 	// runsWindowTitle names the runs strand's window: `beam: prime` in the prime, `beam: <slug>` in a beam.
 	runsWindowTitle string
@@ -109,7 +109,7 @@ type orchCLI struct {
 	// claimed names this machine after a claim, lostTo the other machine when its claim won; nil skips the claim.
 	claimPrime func() (claimed, lostTo string, err error)
 	// pauseOwned pauses the pair of a run another machine owns, which a bring-up with Prepare calls for each owned_elsewhere entry of its reconcile; nil skips the pause.
-	pauseOwned func(location *lyxcwd.Location, slug string) error
+	pauseOwned func(location *lymcwd.Location, slug string) error
 	// startDobby starts this worktree's dobby when it is not live and reports its outcome; nil starts none, as in a hand-built harness.
 	// Its failure never stops the bring-up: it becomes a warning.
 	startDobby func() (dobbyengine.StartEntry, error)
@@ -133,7 +133,7 @@ func commandOf(c *orchCLI) *cobra.Command {
 strand of the hub's prime worktree or of a beam's. A detached watcher reads each
 turn's context usage and, past a threshold and while the session is idle, has the
 session write a handoff, clears it and resumes it from that handoff.
-"lyx beam start" brings the orchestrator up and "lyx beam stop" takes it down.
+"lym beam start" brings the orchestrator up and "lym beam stop" takes it down.
 Every verb runs from the hub's prime worktree or from a beam.`,
 		RunE: clihelp.GroupRunE,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -149,11 +149,11 @@ Every verb runs from the hub's prime worktree or from a beam.`,
 				return nil
 			}
 
-			cwd, err := lyxcwd.CwdFrom(ctx)
+			cwd, err := lymcwd.CwdFrom(ctx)
 			if err != nil {
 				return fail(err)
 			}
-			location, err := lyxcwd.Resolve(cwd)
+			location, err := lymcwd.Resolve(cwd)
 			if err != nil {
 				return fail(err)
 			}
@@ -170,9 +170,9 @@ Every verb runs from the hub's prime worktree or from a beam.`,
 
 // wireCLI fills c for the worktree at location: the prime-or-beam refusal, the orch, shuttle and reed config, the reed engine, the runner, the paths and every seam.
 // It refuses a worktree that is neither the hub's prime nor a beam before it reads any config.
-func wireCLI(c *orchCLI, location *lyxcwd.Location) error {
+func wireCLI(c *orchCLI, location *lymcwd.Location) error {
 	if err := fabricengine.RequireDrivableWorktree(location); err != nil {
-		return fmt.Errorf("orch: lyx orch runs from the hub's prime worktree or a beam: %w", err)
+		return fmt.Errorf("orch: lym orch runs from the hub's prime worktree or a beam: %w", err)
 	}
 	primeName, primeNameErr := fabricengine.PrimeName(location)
 	beam := false
@@ -271,7 +271,7 @@ func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value seeds cwd into the execution context, because lyxcwd.WithCwd panics on an empty directory.
+// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value seeds cwd into the execution context, because lymcwd.WithCwd panics on an empty directory.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)

@@ -4,7 +4,7 @@
 // atomically, keyed by the current worktree's slug.
 // It is idempotent, guarding against re-entry and enforcing the warp-pristine invariant by refusing
 // to wire when the warp contains a pre-existing real directory predating weft.
-// Wiring ends with the scratch step (scratchlink.go), which links the root `.scratch` into the weft-side `.lyx`.
+// Wiring ends with the scratch step (scratchlink.go), which links the root `.scratch` into the weft-side `.lym`.
 
 package fabricengine
 
@@ -16,34 +16,33 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // WorktreePath returns the path to a sibling worktree with the given slug.
-// It replaces (*lyxcwd.Location).WorktreePath(slug), which collided with the no-arg WorktreePath()
+// It replaces (*lymcwd.Location).WorktreePath(slug), which collided with the no-arg WorktreePath()
 // accessor the coming reshape introduces on the same type.
-func WorktreePath(l *lyxcwd.Location, slug string) string {
+func WorktreePath(l *lymcwd.Location, slug string) string {
 	return filepath.Join(l.HubPath, slug)
 }
 
-// CodeLyxLink returns the path to the _lyx junction link in a named slug's warp worktree.
-// It is the warp-side junction endpoint that points into the paired weft worktree via
-// WeftLyxDirFor(l, slug).
-func CodeLyxLink(l *lyxcwd.Location, slug string) string {
-	return filepath.Join(l.HubPath, slug, l.AnchorRel, lyxdirs.LyxDirName)
+// CodeLymLink returns the path to the _lym junction link in a named slug's warp worktree.
+// It is the warp-side junction endpoint that points into the paired weft worktree via WeftLymDirFor(l, slug).
+func CodeLymLink(l *lymcwd.Location, slug string) string {
+	return filepath.Join(l.HubPath, slug, l.AnchorRel, lymdirs.LymDirName)
 }
 
-// WarpLyxLinkHere returns the path to the _lyx junction link in the current warp worktree.
+// WarpLymLinkHere returns the path to the _lym junction link in the current warp worktree.
 // Derived from l.WorktreePath()+AnchorRel.
-// It serves as the warp-side junction endpoint paired with WeftLyxDir(l).
-func WarpLyxLinkHere(l *lyxcwd.Location) string {
-	return filepath.Join(l.WorktreePath(), l.AnchorRel, lyxdirs.LyxDirName)
+// It serves as the warp-side junction endpoint paired with WeftLymDir(l).
+func WarpLymLinkHere(l *lymcwd.Location) string {
+	return filepath.Join(l.WorktreePath(), l.AnchorRel, lymdirs.LymDirName)
 }
 
 // WarpJunction represents a directory junction in the warp worktree that links to a weft directory.
 type WarpJunction struct {
-	Name   string // Name is the directory name (e.g., "_lyx")
+	Name   string // Name is the directory name (e.g., "_lym")
 	Link   string // Link is the warp-side path to the junction
 	Target string // Target is the weft-side path the junction points to
 }
@@ -54,7 +53,7 @@ type WarpJunction struct {
 // WorktreePath(l, slug) and Target is computed via RecordsWorktreePath(l, slug) and AnchorRel.
 // WarpJunctions is HubPath/slug-anchored;
 // WarpJunctionsHere below is the Here-anchored counterpart.
-func WarpJunctions(l *lyxcwd.Location, slug string, names []string) []WarpJunction {
+func WarpJunctions(l *lymcwd.Location, slug string, names []string) []WarpJunction {
 	junctions := make([]WarpJunction, 0, len(names))
 	for _, name := range names {
 		junctions = append(junctions, WarpJunction{
@@ -69,9 +68,9 @@ func WarpJunctions(l *lyxcwd.Location, slug string, names []string) []WarpJuncti
 // WarpJunctionsHere returns the same WarpJunction records as WarpJunctions(l, slug, names), but
 // resolved against the current worktree rather than a named slug: Link is built from
 // l.WorktreePath() and each Target from RecordsWorktree(l).
-// This mirrors WarpLyxLinkHere(l)/CodeLyxLink(l, slug).
+// This mirrors WarpLymLinkHere(l)/CodeLymLink(l, slug).
 // It exists for health-check sites that are Here-anchored and have no slug available.
-func WarpJunctionsHere(l *lyxcwd.Location, names []string) []WarpJunction {
+func WarpJunctionsHere(l *lymcwd.Location, names []string) []WarpJunction {
 	junctions := make([]WarpJunction, 0, len(names))
 	for _, name := range names {
 		junctions = append(junctions, WarpJunction{
@@ -92,7 +91,7 @@ func WarpJunctionsHere(l *lyxcwd.Location, names []string) []WarpJunction {
 // predating weft.
 // This is the form every production caller uses; WireJunctions below is a thin nil-recorder
 // delegation kept only for the roughly fifty existing test call sites that have no recorder to pass.
-func WireJunctionsWith(rec *Mutations, l *lyxcwd.Location, slug string, names []string) error {
+func WireJunctionsWith(rec *Mutations, l *lymcwd.Location, slug string, names []string) error {
 	if err := wireJunctionSet(rec, l, slug, names); err != nil {
 		return err
 	}
@@ -107,16 +106,16 @@ func WireJunctionsWith(rec *Mutations, l *lyxcwd.Location, slug string, names []
 
 // wireJunctionSet creates the warp junctions for names, seeds the weft-side exclude and appends the junction names to the warp git-exclude.
 // It records every change into rec.
-func wireJunctionSet(rec *Mutations, l *lyxcwd.Location, slug string, names []string) error {
+func wireJunctionSet(rec *Mutations, l *lymcwd.Location, slug string, names []string) error {
 	// Create or verify warp junctions
-	if err := seedLyxJunction(rec, l, slug, names); err != nil {
+	if err := seedLymJunction(rec, l, slug, names); err != nil {
 		return err
 	}
 
-	// Seed the weft-side .lyx exclude here, not only from ensureWeftLockDir: wiring
-	// already materialises the weft-side target (seedLyxJunction's os.MkdirAll(target,
+	// Seed the weft-side .lym exclude here, not only from ensureWeftLockDir: wiring
+	// already materialises the weft-side target (seedLymJunction's os.MkdirAll(target,
 	// ...) above), so the exclude entry is guaranteed to exist before anything writes
-	// into .lyx. Seeding only from ensureWeftLockDir would leave the window between
+	// into .lym. Seeding only from ensureWeftLockDir would leave the window between
 	// wiring and the first weft-git verb open, during which scratch shows as untracked
 	// dirt and trips Remove's no-force dirty gate. ensureWeftLockDir keeps calling the
 	// same single owner as the self-healing path for machines that never re-wire — that
@@ -136,17 +135,17 @@ func wireJunctionSet(rec *Mutations, l *lyxcwd.Location, slug string, names []st
 // WireJunctions is WireJunctionsWith's nil-recorder delegation, kept only because roughly fifty
 // existing test call sites across fifteen files have no recorder to pass and assert nothing about
 // the record; every production caller uses WireJunctionsWith instead.
-func WireJunctions(l *lyxcwd.Location, slug string, names []string) error {
+func WireJunctions(l *lymcwd.Location, slug string, names []string) error {
 	return WireJunctionsWith(nil, l, slug, names)
 }
 
-// seedLyxJunction creates, verifies, or re-points the warp junctions pointing
+// seedLymJunction creates, verifies, or re-points the warp junctions pointing
 // to weft directories. Materializes each junction's weft-side target first.
 // A correct link is left alone; a dangling or wrong link is re-pointed;
 // a real directory is refused.
 // rec is the calling verb's own recorder, threaded through to repointLink for the re-point branch;
 // batch 5 gives this function's own creation sites their constructive recording.
-func seedLyxJunction(rec *Mutations, l *lyxcwd.Location, slug string, names []string) error {
+func seedLymJunction(rec *Mutations, l *lymcwd.Location, slug string, names []string) error {
 	junctions := WarpJunctions(l, slug, names)
 	container := WorktreePath(l, slug)
 	links := make([]string, len(junctions))
@@ -198,27 +197,19 @@ func seedLyxJunction(rec *Mutations, l *lyxcwd.Location, slug string, names []st
 				continue
 			}
 
-			// A real (non-link) directory predating weft; refuse to touch it for
-			// `_lyx` — it may hold user content, which fabric never deletes:
-			// "create _lyx/ in the repo and start writing" is the natural
-			// operator mistake this guard exists to catch.
-			// `.lyx` is the one exception: content under it is always lyx's own
-			// machine-local scratch, written unconditionally by several of lyx's
-			// own subsystems, so "never touch what might be the user's
-			// hand-authored content" does not apply there.
-			// Every worktree in existence today has a real `.lyx` for exactly
-			// that reason, so without this adoption branch the first
-			// `reconcile` after `.lyx` joined the wired name-set would
-			// hard-error everywhere.
-			if j.Name == lyxdirs.DotLyxDirName {
-				if err := adoptDotLyxContent(rec, link, target); err != nil {
+			// A real (non-link) directory predating weft;
+			// refuse to touch it for `_lym` — it may hold user content, which fabric never deletes: "create _lym/ in the repo and start writing" is the natural operator mistake this guard exists to catch.
+			// `.lym` is the one exception: content under it is always lym's own machine-local scratch, written unconditionally by several of lym's own subsystems, so "never touch what might be the user's hand-authored content" does not apply there.
+			// Every worktree in existence today has a real `.lym` for exactly that reason, so without this adoption branch the first `reconcile` after `.lym` joined the wired name-set would hard-error everywhere.
+			if j.Name == lymdirs.DotLymDirName {
+				if err := adoptDotLymContent(rec, link, target); err != nil {
 					return err
 				}
 				continue
 			}
 
 			return fmt.Errorf(
-				"warp repo already contains a real %s at %s; it predates weft — move its content into the paired weft worktree's own %s, or remove this directory, then re-run `lyx fabric reconcile` to create the junction",
+				"warp repo already contains a real %s at %s; it predates weft — move its content into the paired weft worktree's own %s, or remove this directory, then re-run `lym fabric reconcile` to create the junction",
 				filepath.Base(link),
 				link,
 				filepath.Base(link),
@@ -239,22 +230,16 @@ func seedLyxJunction(rec *Mutations, l *lyxcwd.Location, slug string, names []st
 	return nil
 }
 
-// adoptDotLyxContent merges every entry from the warp-side real directory at link into the weft-side
+// adoptDotLymContent merges every entry from the warp-side real directory at link into the weft-side
 // target, then removes the now-empty warp directory and creates the junction in its place.
-// It is the only path seedLyxJunction takes for `.lyx`: every worktree in existence before this
-// change holds a real `.lyx` (several of lyx's own subsystems write it unconditionally), so without
-// adoption the first `reconcile` after `.lyx` joined the wired name-set would hard-error everywhere.
+// It is the only path seedLymJunction takes for `.lym`: every worktree in existence before this
+// change holds a real `.lym` (several of lym's own subsystems write it unconditionally), so without
+// adoption the first `reconcile` after `.lym` joined the wired name-set would hard-error everywhere.
 //
-// A directory present on BOTH sides is merged, recursively, rather than refused. That is not a
-// convenience: adoption's own steady state produces the collision. `lyx fabric unwire` removes the
-// `.lyx` junction, and the very next `lyx` invocation in that worktree that logs at Info-or-above or
-// exits non-zero opens `internal/logger`'s durable sink, which is ungated outside `go test` and
-// runs `os.MkdirAll(<anchor>/.lyx/logs)` — recreating a real warp-side `.lyx/logs` on top of the
-// `logs` a previous adoption already moved into weft. Refusing that collision left `lyx fabric
-// reconcile`, the documented remedy, permanently unable to heal the pair: the same refusal every
-// time, `junction_healthy:false` forever, and (because seedLyxJunction aborts before seedGitExclude
-// re-runs) a warp worktree left untracked-dirty, which then trips the destruction gate's own
-// dirtiness checks on a pair the operator never dirtied.
+// A directory present on BOTH sides is merged, recursively, rather than refused.
+// That is not a convenience: adoption's own steady state produces the collision.
+// `lym fabric unwire` removes the `.lym` junction, and the very next `lym` invocation in that worktree that logs at Info-or-above or exits non-zero opens `internal/logger`'s durable sink, which is ungated outside `go test` and runs `os.MkdirAll(<anchor>/.lym/logs)` — recreating a real warp-side `.lym/logs` on top of the `logs` a previous adoption already moved into weft.
+// Refusing that collision left `lym fabric reconcile`, the documented remedy, permanently unable to heal the pair: the same refusal every time, `junction_healthy:false` forever, and (because seedLymJunction aborts before seedGitExclude re-runs) a warp worktree left untracked-dirty, which then trips the destruction gate's own dirtiness checks on a pair the operator never dirtied.
 //
 // A collision that is NOT a directory on both sides is still refused, and that asymmetry is the
 // whole safety argument: merging two directories composes their contents and destroys nothing,
@@ -264,18 +249,18 @@ func seedLyxJunction(rec *Mutations, l *lyxcwd.Location, slug string, names []st
 // exactly as it found them.
 //
 // A rename failure is wrapped in an actionable error naming the entry and instructing the operator to
-// stop reed and re-run `lyx fabric reconcile` — on Windows, moving a directory with an open
+// stop reed and re-run `lym fabric reconcile` — on Windows, moving a directory with an open
 // handle inside it fails, and that is the expected cause.
 // The error names whatever was already moved, so a partial move is never reported as success.
 //
-// Idempotent: a second call finds a link, not a real directory, so seedLyxJunction never reaches this
-// helper again for an already-adopted `.lyx`.
+// Idempotent: a second call finds a link, not a real directory, so seedLymJunction never reaches this
+// helper again for an already-adopted `.lym`.
 // rec is the calling verb's own recorder. It records one KindFileWritten at target with Detail
 // "adopted" once the merge completes and before the link is created — the moved tree is a
 // hub-visible addition at the destination, and one entry at the destination root covers the whole
 // moved tree under the coverage rule. It then records KindLinkCreated for the link created in the
-// now-empty source's place, mirroring seedLyxJunction's own creation sites.
-func adoptDotLyxContent(rec *Mutations, link, target string) error {
+// now-empty source's place, mirroring seedLymJunction's own creation sites.
+func adoptDotLymContent(rec *Mutations, link, target string) error {
 	if err := refuseUnmergeableAdoption(link, target, link, target); err != nil {
 		return err
 	}
@@ -304,7 +289,7 @@ func adoptDotLyxContent(rec *Mutations, link, target string) error {
 // non-destructive — a collision three levels down must not be discovered after two levels have
 // already been renamed away.
 // rootLink and rootTarget are the top-level adoption pair, carried down purely so a nested refusal
-// still names the `.lyx` directories an operator recognises rather than an interior path.
+// still names the `.lym` directories an operator recognises rather than an interior path.
 // os.Lstat, not os.Stat, decides "is a directory" on both sides: a symlink pointing at a directory
 // is a link, not a directory to merge into, and renaming one is the safe answer.
 func refuseUnmergeableAdoption(src, dst, rootLink, rootTarget string) error {
@@ -338,7 +323,7 @@ func refuseUnmergeableAdoption(src, dst, rootLink, rootTarget string) error {
 		}
 
 		return fmt.Errorf(
-			"adopt %s into %s: %s already exists at the weft target and is not a directory on both sides, so adoption cannot merge it — move or delete the warp-side copy at %s and re-run `lyx fabric reconcile`",
+			"adopt %s into %s: %s already exists at the weft target and is not a directory on both sides, so adoption cannot merge it — move or delete the warp-side copy at %s and re-run `lym fabric reconcile`",
 			rootLink, rootTarget, dstPath, srcPath,
 		)
 	}
@@ -366,7 +351,7 @@ func mergeAdoptionTree(src, dst, rootLink, rootTarget string) error {
 		if _, dstErr := os.Lstat(dstPath); os.IsNotExist(dstErr) {
 			if renameErr := os.Rename(srcPath, dstPath); renameErr != nil {
 				return fmt.Errorf(
-					"adopt %s into %s: move %s failed: %w — stop reed (an open handle inside %s is the expected cause on Windows) and re-run `lyx fabric reconcile`",
+					"adopt %s into %s: move %s failed: %w — stop reed (an open handle inside %s is the expected cause on Windows) and re-run `lym fabric reconcile`",
 					rootLink, rootTarget, srcPath, renameErr, rootLink,
 				)
 			}
@@ -411,7 +396,7 @@ type UnwireResult struct {
 //
 // The junctions are unwired before the exclude entries, mirroring WireJunctions' creation order in
 // reverse.
-// Per the "any junction inconsistency is a hard error" invariant, if unseedLyxJunction reports an
+// Per the "any junction inconsistency is a hard error" invariant, if unseedLymJunction reports an
 // error the exclude file is never touched: an unexpected junction state (a real directory, or a
 // link pointing somewhere unexpected) aborts the whole operation so a corrupted or
 // externally-modified junction is never silently worked around.
@@ -419,15 +404,15 @@ type UnwireResult struct {
 // Returns an empty UnwireResult and nil error when no junction was wired (the legitimate no-op
 // case).
 // Returns an error, with JunctionsRemoved reflecting whatever was already removed before the
-// failure, if unseedLyxJunction aborts partway through its loop, or if the exclude-file update
+// failure, if unseedLymJunction aborts partway through its loop, or if the exclude-file update
 // fails after junction removal completed.
 // A zero UnwireResult on a mid-loop failure would misreport a partial removal as untouched — with
 // two or more junctions, the first may already be gone before the second fails.
-func UnwireJunctions(l *lyxcwd.Location, slug string, names []string) (res UnwireResult, err error) {
+func UnwireJunctions(l *lymcwd.Location, slug string, names []string) (res UnwireResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
 
-	removed, err := unseedLyxJunction(rec, l, slug, names)
+	removed, err := unseedLymJunction(rec, l, slug, names)
 	if err != nil {
 		return UnwireResult{JunctionsRemoved: removed}, err
 	}
@@ -440,7 +425,7 @@ func UnwireJunctions(l *lyxcwd.Location, slug string, names []string) (res Unwir
 	return UnwireResult{JunctionsRemoved: removed, ExcludeChanged: changed}, nil
 }
 
-// unseedLyxJunction removes every warp junction in WarpJunctions(l, slug, names).
+// unseedLymJunction removes every warp junction in WarpJunctions(l, slug, names).
 // It is a thin wrapper over unseedJunctionRecords, which owns the actual
 // per-junction loop; the split exists purely so the loop's abort-and-accumulate
 // contract is directly testable against a synthetic junction slice, since
@@ -451,14 +436,11 @@ func UnwireJunctions(l *lyxcwd.Location, slug string, names []string) (res Unwir
 // already unwired; this is the legitimate no-op case, not an error. See
 // unseedJunctionRecords for the error cases.
 // rec is the calling verb's own recorder, threaded straight through to unseedJunctionRecords.
-func unseedLyxJunction(rec *Mutations, l *lyxcwd.Location, slug string, names []string) (removed []string, err error) {
+func unseedLymJunction(rec *Mutations, l *lymcwd.Location, slug string, names []string) (removed []string, err error) {
 	return unseedJunctionRecords(rec, WorktreePath(l, slug), WarpJunctions(l, slug, names))
 }
 
-// unseedJunctionRecords removes each junction in junctions in order, mirroring
-// seedLyxJunction's per-junction validation in the same order (target
-// resolution before the link-type check) so the two functions stay in lockstep
-// as the junction model evolves.
+// unseedJunctionRecords removes each junction in junctions in order, mirroring seedLymJunction's per-junction validation in the same order (target resolution before the link-type check) so the two functions stay in lockstep as the junction model evolves.
 //
 // It aborts on the first junction error rather than continuing best-effort —
 // deliberately the opposite of removeWarpJunction's rule in weftwiring.go, which
@@ -468,17 +450,11 @@ func unseedLyxJunction(rec *Mutations, l *lyxcwd.Location, slug string, names []
 // continuing past a corrupted junction would silently work around exactly the
 // state this guard exists to surface.
 //
-// Returns (nil, nil) if junctions is empty or none of its entries exist on
-// disk — none were ever wired, or all were already unwired; this is the
-// legitimate no-op case, not an error. Returns (removed, err), where removed
-// holds every junction Name successfully removed before the failing one, if
-// the weft-side target for some junction is missing or unreachable, if that
-// junction's warp path is a real directory rather than a junction, or if it
-// resolves to an unexpected target — all of these indicate corruption or
-// external modification rather than a normal unwire.
-// container is the containment boundary every junction in junctions must resolve strictly below — a
-// gated site cannot declare containment against a parent it never receives. Its one caller,
-// unseedLyxJunction, passes WorktreePath(l, slug).
+// Returns (nil, nil) if junctions is empty or none of its entries exist on disk — none were ever wired, or all were already unwired;
+// this is the legitimate no-op case, not an error.
+// Returns (removed, err), where removed holds every junction Name successfully removed before the failing one, if the weft-side target for some junction is missing or unreachable, if that junction's warp path is a real directory rather than a junction, or if it resolves to an unexpected target — all of these indicate corruption or external modification rather than a normal unwire.
+// container is the containment boundary every junction in junctions must resolve strictly below — a gated site cannot declare containment against a parent it never receives.
+// Its one caller, unseedLymJunction, passes WorktreePath(l, slug).
 // rec is the calling verb's own recorder, passed straight through to removeLink for each junction.
 func unseedJunctionRecords(rec *Mutations, container string, junctions []WarpJunction) (removed []string, err error) {
 	links := make([]string, len(junctions))
@@ -500,7 +476,7 @@ func unseedJunctionRecords(rec *Mutations, container string, junctions []WarpJun
 		}
 
 		// The link exists. Resolve the canonical weft-side target first, exactly
-		// as seedLyxJunction does, so a missing/unreachable target is reported
+		// as seedLymJunction does, so a missing/unreachable target is reported
 		// distinctly from a wrong-target junction.
 		targetResolved, errTarget := filepath.EvalSymlinks(target)
 		if errTarget != nil {
@@ -578,7 +554,7 @@ func unseedJunctionRecords(rec *Mutations, container string, junctions []WarpJun
 // taking that lock still creates the info directory and the lock file when they are absent, and waits behind a concurrent exclude writer.
 // rec is the calling verb's own recorder; it records KindFileWritten at the exclude file's own
 // resolved path via Append only when the rewrite reports changed.
-func unseedGitExclude(rec *Mutations, l *lyxcwd.Location, slug string, names []string, dryRun bool) (changed bool, err error) {
+func unseedGitExclude(rec *Mutations, l *lymcwd.Location, slug string, names []string, dryRun bool) (changed bool, err error) {
 	wouldChange := false
 	excludePath, changed, err := mutateGitExclude(WorktreePath(l, slug), func(content string) (string, error) {
 		// The sibling census runs INSIDE the lock, so the answer it gives cannot be invalidated by a
@@ -644,9 +620,9 @@ type siblingWiring struct {
 // A bare entry, which matches at every depth, is dead once no worktree wires the name at any anchor.
 //
 // A failure to enumerate worktrees, and a sibling whose anchor cannot be read, are answered conservatively, every name reported as still wired.
-// Keeping a dead exclude line costs a stale line in a file only lyx writes.
+// Keeping a dead exclude line costs a stale line in a file only lym writes.
 // Removing a live one costs untracked-junction noise in a working tree the caller never asked to touch.
-func namesWiredInSiblingWorktrees(l *lyxcwd.Location, slug string, names []string) siblingWiring {
+func namesWiredInSiblingWorktrees(l *lymcwd.Location, slug string, names []string) siblingWiring {
 	wired := siblingWiring{sameAnchor: make(map[string]bool, len(names)), anyAnchor: make(map[string]bool, len(names))}
 	markAllWired := func() {
 		for _, name := range names {
@@ -670,7 +646,7 @@ func namesWiredInSiblingWorktrees(l *lyxcwd.Location, slug string, names []strin
 		if entryPath == ownPath {
 			continue
 		}
-		sibling, err := lyxcwd.NamedWorktree(l.HubPath, filepath.Base(entryPath))
+		sibling, err := lymcwd.NamedWorktree(l.HubPath, filepath.Base(entryPath))
 		if err != nil {
 			markAllWired()
 			return wired
@@ -695,7 +671,7 @@ func namesWiredInSiblingWorktrees(l *lyxcwd.Location, slug string, names []strin
 //
 // A bare name is what fabric used to write, and gitignore treats a pattern containing no slash as
 // matching at ANY depth: on a subpath-anchored monorepo that silently untracked every same-named
-// directory elsewhere in the repo (a `frontend/_lyx/` the operator genuinely tracks, say), even
+// directory elsewhere in the repo (a `frontend/_lym/` the operator genuinely tracks, say), even
 // though fabric only ever wires one junction, at one known path.
 // The leading slash anchors the pattern to the repo root, which is where .git/info/exclude is
 // evaluated from.
@@ -718,7 +694,7 @@ func excludePatternFor(anchorRel, name string) string {
 // Idempotent: re-running when all junction patterns are already present is a no-op.
 // rec is the calling verb's own recorder; it records KindFileWritten at the exclude file's own
 // resolved path via Append only when the rewrite reports changed.
-func seedGitExclude(rec *Mutations, l *lyxcwd.Location, slug string, names []string) error {
+func seedGitExclude(rec *Mutations, l *lymcwd.Location, slug string, names []string) error {
 	excludePath, changed, err := mutateGitExclude(WorktreePath(l, slug), func(content string) (string, error) {
 		// Drop any legacy bare-name line for a junction being seeded, so the anchored pattern
 		// replaces it rather than accumulating beside it.

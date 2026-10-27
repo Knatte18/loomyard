@@ -18,8 +18,8 @@ import (
 )
 
 const (
-	keybindingsBeginMarker = "lyx:begin"
-	keybindingsEndMarker   = "lyx:end"
+	keybindingsBeginMarker = "lym:begin"
+	keybindingsEndMarker   = "lym:end"
 	keybindingsFileName    = "keybindings.json"
 
 	terminalSendSequenceCommand = "workbench.action.terminal.sendSequence"
@@ -165,7 +165,7 @@ func scanKeybindings(content []byte) (arrayOpen int, markers []keybindingsMarker
 	return arrayOpen, markers
 }
 
-// mergeKeybindings returns existing with the lyx block replaced in place, or inserted after the top-level array's opening bracket when there is none.
+// mergeKeybindings returns existing with the lym block replaced in place, or inserted after the top-level array's opening bracket when there is none.
 // A file whose markers or array do not have exactly the expected shape is an error naming the shape.
 func mergeKeybindings(existing []byte) ([]byte, error) {
 	arrayOpen, markers := scanKeybindings(existing)
@@ -180,7 +180,7 @@ func mergeKeybindings(existing []byte) ([]byte, error) {
 	var begins, ends []keybindingsMarker
 	for _, marker := range markers {
 		if !marker.directlyInArray {
-			return nil, errors.New("a lyx marker sits outside the top-level array")
+			return nil, errors.New("a lym marker sits outside the top-level array")
 		}
 		if marker.begin {
 			begins = append(begins, marker)
@@ -190,13 +190,13 @@ func mergeKeybindings(existing []byte) ([]byte, error) {
 	}
 	switch {
 	case len(begins) > 1 || len(ends) > 1:
-		return nil, errors.New("a lyx marker is repeated")
+		return nil, errors.New("a lym marker is repeated")
 	case len(begins) == 1 && len(ends) == 0:
-		return nil, errors.New("a lyx:begin marker has no lyx:end")
+		return nil, errors.New("a lym:begin marker has no lym:end")
 	case len(begins) == 0 && len(ends) == 1:
-		return nil, errors.New("a lyx:end marker has no lyx:begin")
+		return nil, errors.New("a lym:end marker has no lym:begin")
 	case len(begins) == 1 && ends[0].start < begins[0].start:
-		return nil, errors.New("the lyx:end marker comes before the lyx:begin marker")
+		return nil, errors.New("the lym:end marker comes before the lym:begin marker")
 	case len(begins) == 1:
 		var merged bytes.Buffer
 		merged.Write(existing[:begins[0].start])
@@ -217,12 +217,12 @@ func mergeKeybindings(existing []byte) ([]byte, error) {
 	return merged.Bytes(), nil
 }
 
-// SeedKeybindings makes the file at path hold the lyx block between its markers, creating the file when it is missing.
+// SeedKeybindings makes the file at path hold the lym block between its markers, creating the file when it is missing.
 // It never fails the caller: any condition that stops the write is a KeybindingsSkipped result naming the reason, and the file is then untouched.
 // A symlinked path is written at its target, and an unchanged result writes nothing.
 func SeedKeybindings(path string) KeybindingsResult {
 	return seedKeybindings(path, func() string {
-		return fmt.Sprintf(".%s.lyx-%d-%d.tmp", filepath.Base(path), os.Getpid(), time.Now().UnixNano())
+		return fmt.Sprintf(".%s.lym-%d-%d.tmp", filepath.Base(path), os.Getpid(), time.Now().UnixNano())
 	})
 }
 

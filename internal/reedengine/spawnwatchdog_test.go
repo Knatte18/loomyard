@@ -40,13 +40,13 @@ func TestSpawnWatchdogEnv_DropsLogFileOnly(t *testing.T) {
 	}{
 		{
 			name:    "DropsOnlyTheExactKey",
-			environ: []string{"PATH=/bin", "LYX_LOG_FILE=/tmp/x.log", "LYX_LOG_LEVEL=debug", "LYX_LOG_FILE_EXTRA=keep", "HOME=/home/u"},
-			want:    []string{"PATH=/bin", "LYX_LOG_LEVEL=debug", "LYX_LOG_FILE_EXTRA=keep", "HOME=/home/u"},
+			environ: []string{"PATH=/bin", "LYM_LOG_FILE=/tmp/x.log", "LYM_LOG_LEVEL=debug", "LYM_LOG_FILE_EXTRA=keep", "HOME=/home/u"},
+			want:    []string{"PATH=/bin", "LYM_LOG_LEVEL=debug", "LYM_LOG_FILE_EXTRA=keep", "HOME=/home/u"},
 		},
 		{
 			name:    "AbsentKeyReturnedAsIs",
-			environ: []string{"PATH=/bin", "LYX_LOG_LEVEL=debug"},
-			want:    []string{"PATH=/bin", "LYX_LOG_LEVEL=debug"},
+			environ: []string{"PATH=/bin", "LYM_LOG_LEVEL=debug"},
+			want:    []string{"PATH=/bin", "LYM_LOG_LEVEL=debug"},
 		},
 	}
 	for _, tt := range tests {

@@ -19,8 +19,8 @@ func TestDriftAwait(t *testing.T) {
 
 	const awaited = "2026-01-01T00:00:00Z"
 	passedAtHead := CaptureRecord{State: CapturePassed, Head: "aaa"}
-	capturePath := "lyx drift capture followed by lyx loom resume"
-	deferPath := "lyx drift defer followed by lyx loom resume"
+	capturePath := "lym drift capture followed by lym loom resume"
+	deferPath := "lym drift defer followed by lym loom resume"
 
 	tests := []struct {
 		name        string
@@ -130,7 +130,7 @@ func TestDriftAwait(t *testing.T) {
 			},
 			want:       shedengine.Stuck,
 			wantReason: []string{"moved off", deferPath},
-			wantNoWays: []string{"lyx drift capture"},
+			wantNoWays: []string{"lym drift capture"},
 		},
 		{
 			name: "after Defer the row is Done on every later entry",

@@ -290,20 +290,20 @@ func TestDriftVerify(t *testing.T) {
 			f := newVerifyFixture(t, row.scope, nil)
 			row.arrange(f)
 			outcome, pointer, err := f.call()
-			requireStuck(t, outcome, pointer, err, true, "lyx drift waive", "lyx loom resume")
+			requireStuck(t, outcome, pointer, err, true, "lym drift waive", "lym loom resume")
 			if f.compareCalls != 0 {
 				t.Errorf("%s: the compare ran %d times; want none", row.name, f.compareCalls)
 			}
 		}
 	})
 
-	t.Run("an undeclared compare is Stuck naming lyx config drift, with the prefix under full", func(t *testing.T) {
+	t.Run("an undeclared compare is Stuck naming lym config drift, with the prefix under full", func(t *testing.T) {
 		t.Parallel()
 		for _, scope := range []ScopeRecord{partial, full} {
 			f := newVerifyFixture(t, scope, nil)
 			f.deps.Config = func() (Config, error) { return Config{}, nil }
 			outcome, pointer, err := f.call()
-			requireStuck(t, outcome, pointer, err, scope.Scope == ScopeFull, "lyx config drift", "lyx loom resume")
+			requireStuck(t, outcome, pointer, err, scope.Scope == ScopeFull, "lym config drift", "lym loom resume")
 		}
 	})
 
@@ -363,7 +363,7 @@ func TestDriftVerify(t *testing.T) {
 			f := newVerifyFixture(t, row.scope, nil)
 			f.compares = []CompareResult{failingCompare, failingCompare}
 			outcome, pointer, err := f.call()
-			requireStuck(t, outcome, pointer, err, row.prefixed, "lyx drift accept", "verify-report.md", "lyx loom resume")
+			requireStuck(t, outcome, pointer, err, row.prefixed, "lym drift accept", "verify-report.md", "lym loom resume")
 		}
 	})
 
@@ -388,7 +388,7 @@ func TestDriftVerify(t *testing.T) {
 			f.seats = gateLoopSeats(t, []func(){func() { f.dirty = []string{"a.go"} }})
 			f.deps.Seats = f.seats
 			outcome, pointer, err := f.call()
-			requireStuck(t, outcome, pointer, err, scope.Scope == ScopeFull, dirtyHaltOpening, "commit or clean", "lyx loom resume", f.deps.GateFindingsFile)
+			requireStuck(t, outcome, pointer, err, scope.Scope == ScopeFull, dirtyHaltOpening, "commit or clean", "lym loom resume", f.deps.GateFindingsFile)
 			if f.scope().GateHaltAt != markedAt {
 				t.Errorf("gate_halt_at = %q; want %q", f.scope().GateHaltAt, markedAt)
 			}
@@ -406,7 +406,7 @@ func TestDriftVerify(t *testing.T) {
 				return shuttleengine.GateResult{Findings: "TestCache failed"}, nil
 			}
 			outcome, pointer, err := f.call()
-			requireStuck(t, outcome, pointer, err, scope.Scope == ScopeFull, gateHaltOpening, f.deps.GateFindingsFile, "lyx loom resume")
+			requireStuck(t, outcome, pointer, err, scope.Scope == ScopeFull, gateHaltOpening, f.deps.GateFindingsFile, "lym loom resume")
 			if f.verifyCalls != 4 {
 				t.Errorf("verify ran %d times; want the first arrival and three re-prompts", f.verifyCalls)
 			}
@@ -479,7 +479,7 @@ func TestDriftVerify(t *testing.T) {
 				return shuttleengine.GateResult{Findings: "TestCache failed"}, nil
 			}
 			outcome, pointer, err := f.call()
-			requireStuck(t, outcome, pointer, err, false, gateHaltOpening, f.deps.GateFindingsFile, "lyx loom resume")
+			requireStuck(t, outcome, pointer, err, false, gateHaltOpening, f.deps.GateFindingsFile, "lym loom resume")
 			if f.compareCalls != 0 || f.scope().GateHaltAt != markedAt {
 				t.Errorf("compares %d, gate_halt_at %q; want no compare and the seeded mark kept", f.compareCalls, f.scope().GateHaltAt)
 			}
@@ -579,13 +579,13 @@ func TestDriftVerify(t *testing.T) {
 			f.deps.AwaitRow = true
 			f.writeCapture(CaptureRecord{State: CaptureRunning})
 			outcome, pointer, err := f.call()
-			requireStuck(t, outcome, pointer, err, true, "lyx drift waive")
+			requireStuck(t, outcome, pointer, err, true, "lym drift waive")
 			if f.scope().GateHaltAt != "" {
 				t.Errorf("gate_halt_at = %q; want the stale mark cleared", f.scope().GateHaltAt)
 			}
 			f.stuckHistory(markedAt, "")
 			outcome, pointer, err = f.call()
-			requireStuck(t, outcome, pointer, err, true, "lyx drift waive")
+			requireStuck(t, outcome, pointer, err, true, "lym drift waive")
 			if f.verifyCalls != 0 {
 				t.Errorf("verify ran %d times; want none, the second entry being no resume", f.verifyCalls)
 			}
@@ -667,7 +667,7 @@ func TestDriftVerify(t *testing.T) {
 			f.seats = gateLoopSeats(t, []func(){f.agentAccept()})
 			f.deps.Seats = f.seats
 			outcome, pointer, err := f.call()
-			requireStuck(t, outcome, pointer, err, true, "t1", "lyx loom resume", "lyx drift withdraw")
+			requireStuck(t, outcome, pointer, err, true, "t1", "lym loom resume", "lym drift withdraw")
 			if scope := f.scope(); !slices.Equal(scope.HaltNamed, []string{"t1"}) || scope.HaltNamedAt != markedAt {
 				t.Fatalf("halt_named %v at %q; want t1 recorded at %q", scope.HaltNamed, scope.HaltNamedAt, markedAt)
 			}

@@ -12,7 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 )
 
@@ -103,7 +103,7 @@ type overviewThresholds struct {
 
 // loadOverviewThresholds loads the soft and hard thresholds from the orch config of location's stack.
 // A config that does not load logs a warning and returns the zero value, so a broken orch.yaml never refuses the overview.
-func loadOverviewThresholds(location *lyxcwd.Location) overviewThresholds {
+func loadOverviewThresholds(location *lymcwd.Location) overviewThresholds {
 	cfg, err := orchengine.LoadConfig(fabricengine.ConfigDirs(location), overviewOrchModule)
 	if err != nil {
 		logger.Warn("batten: loading the orch thresholds for the overview failed", "err", err)

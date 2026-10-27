@@ -156,7 +156,7 @@ func TestFmtCmd(t *testing.T) {
 		if exitCode != 1 || env.OK {
 			t.Fatalf("exit code = %d, ok = %v; want 1, false", exitCode, env.OK)
 		}
-		if want := `way forward: run "lyx loom fmt <file>..." with the Go files to format`; !strings.HasSuffix(env.Error, want) {
+		if want := `way forward: run "lym loom fmt <file>..." with the Go files to format`; !strings.HasSuffix(env.Error, want) {
 			t.Errorf("error = %q; want it to end %q", env.Error, want)
 		}
 	})
@@ -236,7 +236,7 @@ func TestFmtCmd(t *testing.T) {
 			if exitCode != 1 || env.OK {
 				t.Fatalf("exit code = %d, ok = %v; want 1, false", exitCode, env.OK)
 			}
-			wantEnd := `way forward: name only .go files inside this worktree that parse, then re-run "lyx loom fmt"`
+			wantEnd := `way forward: name only .go files inside this worktree that parse, then re-run "lym loom fmt"`
 			if !strings.HasSuffix(env.Error, wantEnd) {
 				t.Errorf("error = %q; want it to end %q", env.Error, wantEnd)
 			}
@@ -271,7 +271,7 @@ func TestFmtCmd(t *testing.T) {
 		if exitCode != 1 || env.OK {
 			t.Fatalf("exit code = %d, ok = %v; want 1, false", exitCode, env.OK)
 		}
-		wantEnd := `way forward: re-run "lyx loom fmt" with the same files once the write error is fixed; a formatted file is left untouched`
+		wantEnd := `way forward: re-run "lym loom fmt" with the same files once the write error is fixed; a formatted file is left untouched`
 		if !strings.HasSuffix(env.Error, wantEnd) {
 			t.Errorf("error = %q; want it to end %q", env.Error, wantEnd)
 		}

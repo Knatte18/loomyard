@@ -180,7 +180,7 @@ func (w *world) deps() adoptDeps {
 			if name == "" {
 				name = "main"
 			}
-			return "a change of the anchor of " + name + " was interrupted; run `lyx fabric anchor " + name + " --set " + target + "` to finish it", true, nil
+			return "a change of the anchor of " + name + " was interrupted; run `lym fabric anchor " + name + " --set " + target + "` to finish it", true, nil
 		},
 		BeamUp: func(worktree string) (orchcli.BeamUpReport, error) {
 			w.order = append(w.order, "beamup:"+worktree)
@@ -259,21 +259,21 @@ func TestAdopt(t *testing.T) {
 		wantErr string
 		check   func(*testing.T, *world, outcome)
 	}{
-		{name: "RefusesUnknownSlug", req: request{Slugs: []string{"nope"}}, wantErr: "lyx board list", check: func(t *testing.T, w *world, _ outcome) {
+		{name: "RefusesUnknownSlug", req: request{Slugs: []string{"nope"}}, wantErr: "lym board list", check: func(t *testing.T, w *world, _ outcome) {
 			if w.reconciled {
 				t.Errorf("the reconcile ran after a refusal before anything runs")
 			}
 		}},
-		{name: "StandingMoveRecordOnThePrimeRefusesNamingTheSetAndTheRerun", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.moving[""] = "sub" }, wantErr: "lyx fabric anchor main --set sub", check: func(t *testing.T, w *world, _ outcome) {
+		{name: "StandingMoveRecordOnThePrimeRefusesNamingTheSetAndTheRerun", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.moving[""] = "sub" }, wantErr: "lym fabric anchor main --set sub", check: func(t *testing.T, w *world, _ outcome) {
 			requireNothingRan(t, w)
 		}},
-		{name: "StandingMoveRecordOnANamedEntrysWorktreeRefuses", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.moving["alpha"] = "sub" }, wantErr: "lyx fabric anchor alpha --set sub", check: func(t *testing.T, w *world, _ outcome) {
+		{name: "StandingMoveRecordOnANamedEntrysWorktreeRefuses", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.moving["alpha"] = "sub" }, wantErr: "lym fabric anchor alpha --set sub", check: func(t *testing.T, w *world, _ outcome) {
 			requireNothingRan(t, w)
 		}},
 		{name: "StandingMoveRecordOnANamedEntrysParentRefuses", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) {
 			w.parents["alpha"] = "gamma"
 			w.moving["gamma"] = "sub"
-		}, wantErr: "lyx fabric anchor gamma --set sub` to finish it; then re-run lyx adopt with the same arguments", check: func(t *testing.T, w *world, _ outcome) {
+		}, wantErr: "lym fabric anchor gamma --set sub` to finish it; then re-run lym adopt with the same arguments", check: func(t *testing.T, w *world, _ outcome) {
 			requireNothingRan(t, w)
 		}},
 		{name: "StandingMoveRecordOnAnUnrelatedWorktreeDoesNotRefuse", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.moving["unrelated"] = "sub" }, check: func(t *testing.T, _ *world, got outcome) {
@@ -281,24 +281,24 @@ func TestAdopt(t *testing.T) {
 				t.Errorf("alpha = %+v, want it adopted beside a record in an unrelated worktree", slugOf(t, got, "alpha"))
 			}
 		}},
-		{name: "RefusesNote", req: request{Slugs: []string{"note1"}}, wantErr: "lyx board promote"},
-		{name: "RefusesDoneTaskNamingResume", req: request{Slugs: []string{"done1"}}, wantErr: "lyx tender resume done1"},
+		{name: "RefusesNote", req: request{Slugs: []string{"note1"}}, wantErr: "lym board promote"},
+		{name: "RefusesDoneTaskNamingResume", req: request{Slugs: []string{"done1"}}, wantErr: "lym tender resume done1"},
 		{name: "RefusesKeepWithDrop", req: request{Slugs: []string{"alpha"}, KeepLocal: true, DropLocal: true}, wantErr: "pass one of them"},
 		{name: "RefusesNoSlugWithoutRootOrAll", req: request{}, wantErr: "or pass --all"},
-		{name: "RefusesATaskNamingItsBeam", req: request{Slugs: []string{"t1"}}, setup: withBeam, wantErr: "`lyx adopt payments`", check: func(t *testing.T, w *world, _ outcome) {
+		{name: "RefusesATaskNamingItsBeam", req: request{Slugs: []string{"t1"}}, setup: withBeam, wantErr: "`lym adopt payments`", check: func(t *testing.T, w *world, _ outcome) {
 			requireNothingRan(t, w)
 		}},
-		{name: "RefusesARootTaskNamingRoot", req: request{Slugs: []string{"idle"}}, wantErr: "`lyx adopt root`", check: func(t *testing.T, w *world, _ outcome) {
+		{name: "RefusesARootTaskNamingRoot", req: request{Slugs: []string{"idle"}}, wantErr: "`lym adopt root`", check: func(t *testing.T, w *world, _ outcome) {
 			requireNothingRan(t, w)
 		}},
 		{name: "RefusesAGroupingProjectBelowRootNamingRootAndBeamCreate", req: request{Slugs: []string{"grp"}}, setup: func(w *world) {
 			w.owners.Entries["grp"] = boardengine.OwnerEntry{IsProject: true}
-		}, wantErr: "`lyx adopt root` moves its tasks, and `lyx beam create grp` makes it a beam"},
+		}, wantErr: "`lym adopt root` moves its tasks, and `lym beam create grp` makes it a beam"},
 		{name: "RefusesAGroupingProjectBelowABeamNamingTheBeamAndBeamCreate", req: request{Slugs: []string{"grp"}}, setup: func(w *world) {
 			withBeam(w)
 			w.owners.Entries["grp"] = boardengine.OwnerEntry{IsProject: true}
 			w.parents["grp"] = "payments"
-		}, wantErr: "`lyx adopt payments` moves its tasks, and `lyx beam create grp` makes it a beam"},
+		}, wantErr: "`lym adopt payments` moves its tasks, and `lym beam create grp` makes it a beam"},
 		{name: "TheRootWordNamesRoot", req: request{Slugs: []string{"root"}}, check: func(t *testing.T, w *world, got outcome) {
 			if !w.ownerReq.Prime || !got.PrimeRecorded || len(w.ownerReq.Slugs) != 0 {
 				t.Errorf("owner request = %+v, prime recorded = %v; want the prime's owner alone", w.ownerReq, got.PrimeRecorded)
@@ -309,7 +309,7 @@ func TestAdopt(t *testing.T) {
 				t.Errorf("an owner was written after an unreachable origin")
 			}
 		}},
-		{name: "ReconcileErrorRefuses", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.reconcileErr = errors.New("ls-remote broke") }, wantErr: "ls-remote broke; repair what the error names, then re-run lyx adopt"},
+		{name: "ReconcileErrorRefuses", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.reconcileErr = errors.New("ls-remote broke") }, wantErr: "ls-remote broke; repair what the error names, then re-run lym adopt"},
 		{name: "BoltStopRefuses", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) {
 			w.report.Branches = []fabricengine.BranchOutcome{{Branch: "main", Repo: "bolt", State: fabricengine.BranchDiverged, WayForward: "reset bolt"}}
 		}, wantErr: "reset bolt"},
@@ -322,13 +322,13 @@ func TestAdopt(t *testing.T) {
 		}},
 		{name: "PrimeRecordsStopRefuses", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) {
 			w.report.Branches = []fabricengine.BranchOutcome{{Branch: "records-main", Repo: "records", Prime: true, State: fabricengine.BranchDirty, WayForward: "commit the records"}}
-		}, wantErr: "commit the records; then re-run lyx adopt"},
+		}, wantErr: "commit the records; then re-run lym adopt"},
 		{name: "DivergedBranchStopsOneSlugWhileAnotherIsAdopted", req: request{Slugs: []string{"alpha", "beta"}}, setup: func(w *world) { w.stopBranch("alpha", fabricengine.BranchDiverged) }, check: func(t *testing.T, w *world, got outcome) {
 			alpha := slugOf(t, got, "alpha")
 			if !alpha.Stopped || alpha.OwnerRecorded || len(alpha.Branches) != 1 || alpha.Branches[0].State != "diverged" {
 				t.Errorf("alpha = %+v, want stopped on its diverged branch with no owner", alpha)
 			}
-			for _, way := range []string{"lyx adopt alpha --keep-local", "lyx adopt alpha --drop-local"} {
+			for _, way := range []string{"lym adopt alpha --keep-local", "lym adopt alpha --drop-local"} {
 				if !strings.Contains(alpha.WayForward, way) {
 					t.Errorf("alpha way forward %q lacks %q", alpha.WayForward, way)
 				}
@@ -398,7 +398,7 @@ func TestAdopt(t *testing.T) {
 		}, check: func(t *testing.T, _ *world, got outcome) {
 			message := slugOf(t, got, "beta").Error
 			tag, remove := strings.Index(message, "git tag archive/beta/"), strings.Index(message, "git branch -D task/beta")
-			if tag < 0 || remove < tag || !strings.Contains(message, "lyx adopt beta") || strings.Contains(message, "lyx fabric checkout") {
+			if tag < 0 || remove < tag || !strings.Contains(message, "lym adopt beta") || strings.Contains(message, "lym fabric checkout") {
 				t.Errorf("leftover refusal = %q, want the archive tag before git branch -D, the re-run and no fabric checkout", message)
 			}
 		}},
@@ -407,14 +407,14 @@ func TestAdopt(t *testing.T) {
 				t.Errorf("beta = %+v, want the pair added and the owner recorded", beta)
 			}
 		}},
-		{name: "RefusedPushResumesNothingAndNamesTheRerun", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.setErr = errors.New("board: the push was refused") }, wantErr: "then re-run lyx adopt with the same arguments", check: func(t *testing.T, w *world, _ outcome) {
+		{name: "RefusedPushResumesNothingAndNamesTheRerun", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.setErr = errors.New("board: the push was refused") }, wantErr: "then re-run lym adopt with the same arguments", check: func(t *testing.T, w *world, _ outcome) {
 			if len(w.resumed) != 0 {
 				t.Errorf("resumed %v after a refused owner write", w.resumed)
 			}
 		}},
 		{name: "LostOwnerWriteStartsNoRun", req: request{Slugs: []string{"alpha", "beta"}}, setup: func(w *world) { w.lost = map[string]string{"alpha": "third"} }, check: func(t *testing.T, w *world, got outcome) {
 			alpha := slugOf(t, got, "alpha")
-			if !strings.Contains(alpha.Error, "third") || !strings.Contains(alpha.Error, "lyx adopt alpha") || alpha.OwnerRecorded {
+			if !strings.Contains(alpha.Error, "third") || !strings.Contains(alpha.Error, "lym adopt alpha") || alpha.OwnerRecorded {
 				t.Errorf("alpha = %+v, want the new owner and the re-run named", alpha)
 			}
 			if !slices.Equal(w.resumed, []string{"beta"}) {
@@ -441,15 +441,15 @@ func TestAdopt(t *testing.T) {
 			if !alpha.PauseLifted || alpha.PauseStanding != "" {
 				t.Errorf("alpha = %+v, want its pause lifted and none standing", alpha)
 			}
-			if !beta.PauseLifted || !strings.Contains(beta.PauseStanding, "lyx tender resume beta") {
-				t.Errorf("beta = %+v, want the owner pause lifted and the unlabelled one named with lyx tender resume beta", beta)
+			if !beta.PauseLifted || !strings.Contains(beta.PauseStanding, "lym tender resume beta") {
+				t.Errorf("beta = %+v, want the owner pause lifted and the unlabelled one named with lym tender resume beta", beta)
 			}
 		}},
 		{name: "HubPauseStandingIsNamedWithBareResume", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) {
 			w.record.Live = []pauserecord.Entry{{Scope: pauserecord.ScopeHub, Caller: "operator"}}
 		}, check: func(t *testing.T, _ *world, got outcome) {
-			if standing := slugOf(t, got, "alpha").PauseStanding; !strings.Contains(standing, "`lyx tender resume`") {
-				t.Errorf("pause standing = %q, want the hub pause named with lyx tender resume", standing)
+			if standing := slugOf(t, got, "alpha").PauseStanding; !strings.Contains(standing, "`lym tender resume`") {
+				t.Errorf("pause standing = %q, want the hub pause named with lym tender resume", standing)
 			}
 		}},
 		{name: "ResumesEachRunOnceAndReportsAFailureBesideTheNext", req: request{Slugs: []string{"alpha", "beta"}}, setup: func(w *world) { w.resumeErr["alpha"] = errors.New("window failed") }, check: func(t *testing.T, w *world, got outcome) {
@@ -499,7 +499,7 @@ func TestAdopt(t *testing.T) {
 			}
 		}, check: func(t *testing.T, _ *world, got outcome) {
 			alpha := slugOf(t, got, "alpha")
-			if !strings.Contains(alpha.Warning, "third") || !strings.Contains(alpha.Warning, "Finalize") || !strings.Contains(alpha.Warning, "lyx adopt gamma") {
+			if !strings.Contains(alpha.Warning, "third") || !strings.Contains(alpha.Warning, "Finalize") || !strings.Contains(alpha.Warning, "lym adopt gamma") {
 				t.Errorf("warning = %q, want the parent's owner, Finalize and the adopt of the parent", alpha.Warning)
 			}
 			if alpha.Run != ownedElsewhereRun || alpha.OwnedBy != "third" || alpha.Error != "" {
@@ -585,12 +585,12 @@ func TestAdopt(t *testing.T) {
 			if !t1.Stopped {
 				t.Fatalf("t1 = %+v, want it stopped on its diverged branch", t1)
 			}
-			for _, way := range []string{"`lyx adopt payments --keep-local`", "`lyx adopt payments --drop-local`"} {
+			for _, way := range []string{"`lym adopt payments --keep-local`", "`lym adopt payments --drop-local`"} {
 				if !strings.Contains(t1.WayForward, way) {
 					t.Errorf("t1 way forward %q lacks %q", t1.WayForward, way)
 				}
 			}
-			if strings.Contains(t1.WayForward, "lyx adopt t1") || w.ownerReq.Machine != "" || len(w.resumed) != 0 {
+			if strings.Contains(t1.WayForward, "lym adopt t1") || w.ownerReq.Machine != "" || len(w.resumed) != 0 {
 				t.Errorf("way forward = %q, owner request = %+v, resumed = %v; want no adopt of the task and nothing written or resumed", t1.WayForward, w.ownerReq, w.resumed)
 			}
 		}},
@@ -623,8 +623,8 @@ func TestAdopt(t *testing.T) {
 		}},
 		{name: "HeldBeamHasItsOwnerWrittenNoBeamStepsAndNamesTheBattenStatus", req: request{Slugs: []string{"alpha", "beta"}}, setup: func(w *world) { w.held["alpha"] = true }, check: func(t *testing.T, w *world, got outcome) {
 			alpha := slugOf(t, got, "alpha")
-			if !alpha.OwnerRecorded || alpha.BeamSteps != nil || !strings.Contains(alpha.WayForward, "lyx batten status alpha") || strings.Contains(alpha.WayForward, "lyx adopt") {
-				t.Errorf("alpha = %+v; want its owner written, no beam steps and `lyx batten status alpha` alone", alpha)
+			if !alpha.OwnerRecorded || alpha.BeamSteps != nil || !strings.Contains(alpha.WayForward, "lym batten status alpha") || strings.Contains(alpha.WayForward, "lym adopt") {
+				t.Errorf("alpha = %+v; want its owner written, no beam steps and `lym batten status alpha` alone", alpha)
 			}
 			if !slices.Equal(w.beamUps, []string{"beta"}) {
 				t.Errorf("beam steps run for %v; want beta alone", w.beamUps)
@@ -635,7 +635,7 @@ func TestAdopt(t *testing.T) {
 			w.owners.Prime = there
 		}, check: func(t *testing.T, w *world, got outcome) {
 			alpha := slugOf(t, got, "alpha")
-			for _, want := range []string{"lyx batten status alpha", "`lyx adopt root`"} {
+			for _, want := range []string{"lym batten status alpha", "`lym adopt root`"} {
 				if !strings.Contains(alpha.WayForward, want) {
 					t.Errorf("alpha way forward = %q; want it to name %q", alpha.WayForward, want)
 				}
@@ -646,14 +646,14 @@ func TestAdopt(t *testing.T) {
 		}},
 		{name: "UnreadableLandingHoldWarnsNamingBeamStartAndRunsNoStepsForThatBeam", req: request{Slugs: []string{"alpha", "beta"}}, setup: func(w *world) { w.heldErr["alpha"] = errors.New("board unreadable") }, check: func(t *testing.T, w *world, got outcome) {
 			alpha := slugOf(t, got, "alpha")
-			if !strings.Contains(alpha.Warning, "board unreadable") || !strings.Contains(alpha.Warning, "lyx beam start alpha") || !slices.Equal(w.beamUps, []string{"beta"}) {
-				t.Errorf("alpha warning = %q, beam steps run for %v; want the cause and `lyx beam start alpha`, and beta's steps alone", alpha.Warning, w.beamUps)
+			if !strings.Contains(alpha.Warning, "board unreadable") || !strings.Contains(alpha.Warning, "lym beam start alpha") || !slices.Equal(w.beamUps, []string{"beta"}) {
+				t.Errorf("alpha warning = %q, beam steps run for %v; want the cause and `lym beam start alpha`, and beta's steps alone", alpha.Warning, w.beamUps)
 			}
 		}},
 		{name: "FailingBeamStepWarnsNamingBeamStartWhileTheOtherSlugsStepsRun", req: request{Slugs: []string{"alpha", "beta"}}, setup: func(w *world) { w.beamUpErr["alpha"] = errors.New("alpha: spawn failed") }, check: func(t *testing.T, w *world, got outcome) {
 			alpha, beta := slugOf(t, got, "alpha"), slugOf(t, got, "beta")
-			if !strings.Contains(alpha.Warning, "spawn failed") || !strings.Contains(alpha.Warning, "lyx beam start alpha") || !alpha.OwnerRecorded {
-				t.Errorf("alpha = %+v; want the cause and `lyx beam start alpha` beside an adopted alpha", alpha)
+			if !strings.Contains(alpha.Warning, "spawn failed") || !strings.Contains(alpha.Warning, "lym beam start alpha") || !alpha.OwnerRecorded {
+				t.Errorf("alpha = %+v; want the cause and `lym beam start alpha` beside an adopted alpha", alpha)
 			}
 			if beta.Warning != "" || beta.BeamSteps == nil || !slices.Equal(w.beamUps, []string{"alpha", "beta"}) {
 				t.Errorf("beta = %+v, beam steps run for %v; want beta's steps to run after alpha's failure with no warning", beta, w.beamUps)
@@ -663,8 +663,8 @@ func TestAdopt(t *testing.T) {
 			withoutAlphaAndBeta(w)
 			w.beamUpErr["prime"] = errors.New("prime: spawn failed")
 		}, check: func(t *testing.T, _ *world, got outcome) {
-			if !strings.Contains(got.PrimeBeamWarning, "spawn failed") || !strings.Contains(got.PrimeBeamWarning, "lyx beam start root") || !got.PrimeRecorded {
-				t.Errorf("prime warning = %q, recorded = %v; want the cause and `lyx beam start root` beside the recorded prime", got.PrimeBeamWarning, got.PrimeRecorded)
+			if !strings.Contains(got.PrimeBeamWarning, "spawn failed") || !strings.Contains(got.PrimeBeamWarning, "lym beam start root") || !got.PrimeRecorded {
+				t.Errorf("prime warning = %q, recorded = %v; want the cause and `lym beam start root` beside the recorded prime", got.PrimeBeamWarning, got.PrimeRecorded)
 			}
 		}},
 		{name: "CallThatRecordsNoOwnerStartsNoSuite", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.stopBranch("alpha", fabricengine.BranchDiverged) }, check: func(t *testing.T, w *world, got outcome) {
@@ -673,7 +673,7 @@ func TestAdopt(t *testing.T) {
 			}
 		}},
 		{name: "FailedSuiteStartIsTheWarningNamingTheGate", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.suiteErr = errors.New("exec failed") }, check: func(t *testing.T, w *world, got outcome) {
-			want := "the test suite was not started (exec failed); way forward: run `lyx gate test --gate finalize` in the prime"
+			want := "the test suite was not started (exec failed); way forward: run `lym gate test --gate finalize` in the prime"
 			if got.SuiteWarning != want || got.Suite != nil {
 				t.Errorf("suite = %+v, warning = %q; want no suite and %q", got.Suite, got.SuiteWarning, want)
 			}

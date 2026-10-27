@@ -19,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -236,7 +236,7 @@ func readRunStatusRows(path string) (runStatusRows, bool, error) {
 // a Finalize history row, a current producer Finalize while the local parent branch already holds the task's work, or a batten status at Land or a later row or done.
 // A current producer Finalize alone never counts, since it reads Finalize at every Finalize entry, before the merge.
 // A read failure counts as entered, logged at Warn, so a doubt never sets aside this machine's own landing.
-func finalizeEntered(l *lyxcwd.Location, slug string) bool {
+func finalizeEntered(l *lymcwd.Location, slug string) bool {
 	entered, err := finalizeEnteredRead(l, slug)
 	if err != nil {
 		logger.Warn("fabricengine: the run's Finalize state could not be read, so its landing counts as entered", "slug", slug, "error", err)
@@ -245,10 +245,10 @@ func finalizeEntered(l *lyxcwd.Location, slug string) bool {
 	return entered
 }
 
-func finalizeEnteredRead(l *lyxcwd.Location, slug string) (bool, error) {
+func finalizeEnteredRead(l *lymcwd.Location, slug string) (bool, error) {
 	pairPath := filepath.Join(l.HubPath, slug)
 	if _, err := os.Stat(pairPath); err == nil {
-		pairLocation, err := lyxcwd.ResolveWorktree(pairPath)
+		pairLocation, err := lymcwd.ResolveWorktree(pairPath)
 		if err != nil {
 			return false, err
 		}
@@ -276,7 +276,7 @@ func finalizeEnteredRead(l *lyxcwd.Location, slug string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	primeLocation, err := lyxcwd.ResolveWorktree(filepath.Join(l.HubPath, primeName))
+	primeLocation, err := lymcwd.ResolveWorktree(filepath.Join(l.HubPath, primeName))
 	if err != nil {
 		return false, err
 	}
@@ -288,7 +288,7 @@ func finalizeEnteredRead(l *lyxcwd.Location, slug string) (bool, error) {
 }
 
 // parentHoldsTaskWork reports whether the pair's local parent branch already holds the work of the pair's task branch.
-func parentHoldsTaskWork(l, pairLocation *lyxcwd.Location, slug string) (bool, error) {
+func parentHoldsTaskWork(l, pairLocation *lymcwd.Location, slug string) (bool, error) {
 	origin, found, err := ReadOriginFor(l, slug)
 	if err != nil {
 		return false, err
@@ -310,13 +310,13 @@ func parentHoldsTaskWork(l, pairLocation *lyxcwd.Location, slug string) (bool, e
 // ParentHoldsTaskWork reports whether the pair's local parent branch already holds the work of the pair's task branch.
 // That marks a Finalize already past its parent-side merge.
 // It returns an error when the pair has no origin record naming its parent branch or a branch cannot be read.
-func ParentHoldsTaskWork(l, pairLocation *lyxcwd.Location, slug string) (bool, error) {
+func ParentHoldsTaskWork(l, pairLocation *lymcwd.Location, slug string) (bool, error) {
 	return parentHoldsTaskWork(l, pairLocation, slug)
 }
 
 // withoutFinalizeEntered returns the part of ended whose slugs this machine's own landing has not reached,
 // so a replay never sets aside the commits of a run this machine landed.
-func withoutFinalizeEntered(l *lyxcwd.Location, ended EndedSet) EndedSet {
+func withoutFinalizeEntered(l *lymcwd.Location, ended EndedSet) EndedSet {
 	if len(ended) == 0 {
 		return ended
 	}
@@ -342,7 +342,7 @@ func sortedSlugs(ended EndedSet) []string {
 }
 
 // runDirectorySlug returns the slug of the ended run whose record directory holds path, a records-repository-relative slash path.
-func runDirectorySlug(l *lyxcwd.Location, ended EndedSet, path string) (string, bool) {
+func runDirectorySlug(l *lymcwd.Location, ended EndedSet, path string) (string, bool) {
 	for _, slug := range sortedSlugs(ended) {
 		dir := pathpkg.Clean(pathpkg.Join(filepath.ToSlash(l.AnchorRel), filepath.ToSlash(shedrun.RunDirRel(l, slug))))
 		if strings.HasPrefix(path, dir+"/") {
@@ -402,7 +402,7 @@ func replayStop(outcome ReplayOutcome, err error) (ReplayOutcome, error) {
 // The tags are made before the branch moves, so a stop leaves a tag on a commit still on the branch.
 // The other commits are replayed onto upstream oldest first, a commit that becomes empty being dropped, and a conflict returns ErrReplayConflict with the starting tip restored.
 // The ended set is first narrowed to the runs this machine's own landing has not reached.
-func replayWeft(rec *Mutations, l *lyxcwd.Location, worktree, upstream string, ended EndedSet) (ReplayOutcome, error) {
+func replayWeft(rec *Mutations, l *lymcwd.Location, worktree, upstream string, ended EndedSet) (ReplayOutcome, error) {
 	repo := gitrepo.New(worktree)
 	upstreamSHA, err := repo.ResolveSHA(upstream)
 	if err != nil {
@@ -449,7 +449,7 @@ func replayWeft(rec *Mutations, l *lyxcwd.Location, worktree, upstream string, e
 }
 
 // endedRunSlug returns the slug of the first ended run a commit of paths belongs to, and whether every path lies under an ended run's record directory.
-func endedRunSlug(l *lyxcwd.Location, ended EndedSet, paths []string) (string, bool) {
+func endedRunSlug(l *lymcwd.Location, ended EndedSet, paths []string) (string, bool) {
 	if len(paths) == 0 || len(ended) == 0 {
 		return "", false
 	}
@@ -673,7 +673,7 @@ func localBoardEntries(repo *gitrepo.Repo, head string, ahead []string) (slugs [
 
 // hubLocationOfBoard resolves the location of the hub prime worktree whose board checkout is boardDir.
 // The prime is the warp slug of the records repository's main worktree.
-func hubLocationOfBoard(boardDir string) (*lyxcwd.Location, error) {
+func hubLocationOfBoard(boardDir string) (*lymcwd.Location, error) {
 	entries, err := List(boardDir)
 	if err != nil {
 		return nil, err
@@ -686,7 +686,7 @@ func hubLocationOfBoard(boardDir string) (*lyxcwd.Location, error) {
 		if !ok {
 			return nil, fmt.Errorf("the main worktree %s of the records repository is no weft sibling", entry.Path)
 		}
-		return lyxcwd.ResolveWorktree(filepath.Join(filepath.Dir(boardDir), slug))
+		return lymcwd.ResolveWorktree(filepath.Join(filepath.Dir(boardDir), slug))
 	}
 	return nil, fmt.Errorf("the records repository of %s lists no main worktree", boardDir)
 }
@@ -710,7 +710,7 @@ type boardStep struct {
 // Every set-aside commit is tagged before the branch moves or as its replay reports it, and a later failure restores the starting tip;
 // a restore git refuses, as over a file the failed replay had already written, is joined into the returned error.
 // The ended set is first narrowed to the runs this machine's own landing has not reached.
-func replayBolt(rec *Mutations, l *lyxcwd.Location, boardDir, upstream string, ended EndedSet) (ReplayOutcome, error) {
+func replayBolt(rec *Mutations, l *lymcwd.Location, boardDir, upstream string, ended EndedSet) (ReplayOutcome, error) {
 	repo := gitrepo.New(boardDir)
 	upstreamSHA, err := repo.ResolveSHA(upstream)
 	if err != nil {

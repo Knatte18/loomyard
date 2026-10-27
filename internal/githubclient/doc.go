@@ -35,11 +35,11 @@
 // optimization, never a source of truth -- any unreadable, malformed, or
 // foreign-shaped cache file is treated as a miss, never a fatal error.
 //
-// The cache file lives at a machine-global location -- %LOCALAPPDATA%\lyx on
-// Windows, $XDG_CONFIG_HOME/lyx or $HOME/.config/lyx elsewhere -- outside
+// The cache file lives at a machine-global location -- %LOCALAPPDATA%\lym on
+// Windows, $XDG_CONFIG_HOME/lym or $HOME/.config/lym elsewhere -- outside
 // every repository this process might operate on. This is deliberate: a
 // per-repository cache would multiply the number of places a token sits on
-// disk with every checkout lyx touches, and would need its own gitignore
+// disk with every checkout lym touches, and would need its own gitignore
 // discipline in every one of them to avoid an accidental commit. State
 // plainly: this cache writes the operator's GitHub token to disk in
 // plaintext, in this one additional location, readable only by its owner
@@ -85,7 +85,7 @@
 //
 // Two independent timeouts bound every path through this package.
 // The `gh auth token` shell-out (token.go) is bounded at 5s via exec.CommandContext behind an injectable seam,
-// so a hung or unexpectedly prompting `gh` process can never stall an autonomous lyx run.
+// so a hung or unexpectedly prompting `gh` process can never stall an autonomous lym run.
 // Separately, the returned *github.Client's transport, authRT, applies a 30s timeout itself, from the end of the pause hold and no longer through http.Client.Timeout.
 // It is enforced through the request context, so it covers the original attempt and a 401 replay TOGETHER:
 // worst case 30s total across both HTTP round trips, not 30s per attempt.
@@ -99,7 +99,7 @@
 // code path from here to it. Every resolution step either returns quickly
 // (an environment read, a cache read, a bounded shell-out) or returns
 // ErrTokenUnresolvable as a typed error immediately -- never a prompt, never
-// an indefinite wait. lyx runs autonomously, and a process blocked forever
+// an indefinite wait. lym runs autonomously, and a process blocked forever
 // on a credential prompt is indistinguishable from a hang; this property,
 // more than any particular resolution step, is why this package exists as
 // its own leaf rather than as a thin helper inside whichever module first
@@ -107,7 +107,7 @@
 //
 // # The GitHub surface consumers need
 //
-// The set of GitHub operations lyx's consumers need is derived from the
+// The set of GitHub operations lym's consumers need is derived from the
 // sibling millhouse toolchain's actual usage, not assumed: issue list,
 // issue view, issue create, issue close (comment-then-close), PR list, PR
 // view, PR create, repo view, and an auth probe. All of these are standard

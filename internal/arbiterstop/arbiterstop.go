@@ -13,17 +13,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
 
 // HandBackWayForward is the way-forward clause every arbiter refusal ends with: today's hand-back to the run's parent.
-const HandBackWayForward = "way forward: report the stop to the run's parent in the stop report, and `lyx loom status <run-id>` shows the stop"
+const HandBackWayForward = "way forward: report the stop to the run's parent in the stop report, and `lym loom status <run-id>` shows the stop"
 
 // BattenHandBackWayForward is the way-forward clause a batten arbiter refusal ends with: the hand-back to the run's parent, which finds the stop through the batten status.
-const BattenHandBackWayForward = "way forward: report the stop to the run's parent in the stop report, and `lyx batten status <slug>` shows the stop"
+const BattenHandBackWayForward = "way forward: report the stop to the run's parent in the stop report, and `lym batten status <slug>` shows the stop"
 
 // Stop is what Go reads off the status file, the stop envelope and the review run directory to decide whether the arbiter may settle a stop.
 type Stop struct {
@@ -191,7 +191,7 @@ func EscalationEligible(producer string, readers Readers) bool {
 }
 
 // NewReaders builds the real readers of the task worktree at location.
-func NewReaders(location *lyxcwd.Location) Readers {
+func NewReaders(location *lymcwd.Location) Readers {
 	reviewsDir := loomengine.LoomReviewsDir(location)
 	return Readers{
 		PendingEscalation: func(producer string) (shedadapters.EscalationCause, string, bool, error) {

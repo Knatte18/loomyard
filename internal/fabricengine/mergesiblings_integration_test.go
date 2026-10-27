@@ -23,15 +23,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // newMergeSiblingsFixture builds a real hubforge pair — deliberately NOT the hub's prime, since
 // Topology.Remove refuses the prime slug unconditionally and this file needs Remove's own
 // merge-in-progress refusal to be reachable — plus the *fabricengine.Fabric handle open on it and its
-// own *lyxcwd.Location, for driving the Topology verbs (Checkout, Remove, Cleanup) this file also
+// own *lymcwd.Location, for driving the Topology verbs (Checkout, Remove, Cleanup) this file also
 // covers.
-func newMergeSiblingsFixture(t *testing.T) (h *hubforge.Hub, f *fabricengine.Fabric, l *lyxcwd.Location, slug string) {
+func newMergeSiblingsFixture(t *testing.T) (h *hubforge.Hub, f *fabricengine.Fabric, l *lymcwd.Location, slug string) {
 	t.Helper()
 
 	h = hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -39,9 +39,9 @@ func newMergeSiblingsFixture(t *testing.T) (h *hubforge.Hub, f *fabricengine.Fab
 	hubforge.AddPair(t, h, slug)
 
 	var err error
-	l, err = lyxcwd.ResolveWorktree(h.PairCodeWorktree(slug))
+	l, err = lymcwd.ResolveWorktree(h.PairCodeWorktree(slug))
 	if err != nil {
-		t.Fatalf("lyxcwd.ResolveWorktree(%s): %v", h.PairCodeWorktree(slug), err)
+		t.Fatalf("lymcwd.ResolveWorktree(%s): %v", h.PairCodeWorktree(slug), err)
 	}
 	f, err = fabricengine.Open(l)
 	if err != nil {
@@ -251,13 +251,7 @@ func TestMergeSiblings_Dispositions(t *testing.T) {
 	})
 }
 
-// TestMergeSiblings_CommitRefusesForeignMergeState covers Commit's foreign-git-state disposition: a
-// plain-git conflicted merge in the warp checkout, driven with no MergeIn involved and so no fabric
-// merge record, still refuses — with *ErrForeignMergeState, the same typed error every merge verb
-// gives foreign state, rather than surfacing git's own raw "cannot do a partial commit during a
-// merge" or *ErrMergeInProgress's misdirecting "run \"lyx fabric merge --continue\" or
-// \"lyx fabric merge --abort\" first" (fabric has
-// no merge of its own in progress here, and both of those verbs would refuse).
+// TestMergeSiblings_CommitRefusesForeignMergeState covers Commit's foreign-git-state disposition: a plain-git conflicted merge in the warp checkout, driven with no MergeIn involved and so no fabric merge record, still refuses — with *ErrForeignMergeState, the same typed error every merge verb gives foreign state, rather than surfacing git's own raw "cannot do a partial commit during a merge" or *ErrMergeInProgress's misdirecting "run \"lym fabric merge --continue\" or \"lym fabric merge --abort\" first" (fabric has no merge of its own in progress here, and both of those verbs would refuse).
 func TestMergeSiblings_CommitRefusesForeignMergeState(t *testing.T) {
 	t.Parallel()
 

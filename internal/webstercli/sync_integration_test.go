@@ -5,9 +5,9 @@
 // scenarios: Fabric.Commit's error-branch contract (a commit that lands but
 // fails its correspondence record must still be reported as committed=true
 // alongside the error, never swallowed into a false "no commit was made"),
-// and machine-local artifacts under ".lyx" actually staying out of every
+// and machine-local artifacts under ".lym" actually staying out of every
 // commit at every layout.AnchorRel depth simply by living outside the
-// committed "_lyx" pathspec, which only real git can decide.
+// committed "_lym" pathspec, which only real git can decide.
 
 package webstercli
 
@@ -20,12 +20,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // newPairFixture builds a hub with a code repo and its records sibling and returns the layout and the sibling's path.
-func newPairFixture(t *testing.T) (*lyxcwd.Location, string) {
+func newPairFixture(t *testing.T) (*lymcwd.Location, string) {
 	t.Helper()
 	return newPairFixtureAt(t, ".")
 }
@@ -39,16 +39,16 @@ func seedRepoWideFabricConfig(t *testing.T, hub string) {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
 	configPath := configengine.ConfigFile(boardDir, "fabric")
-	if err := os.WriteFile(configPath, []byte("branch_prefix: \"\"\npathspec: _lyx\n"), 0o644); err != nil {
+	if err := os.WriteFile(configPath, []byte("branch_prefix: \"\"\npathspec: _lym\n"), 0o644); err != nil {
 		t.Fatalf("write repo-wide fabric config: %v", err)
 	}
 }
 
-// seedFabricAnchor records relPath as the .lyx-anchor marker under hub's
-// board directory, so Fabric.Commit's own lyxcwd.ResolveWorktree call on the code path
+// seedFabricAnchor records relPath as the .lym-anchor marker under hub's
+// board directory, so Fabric.Commit's own lymcwd.ResolveWorktree call on the code path
 // resolves l.AnchorRel to relPath instead of falling back to a
 // cwd-derived "." -- Commit re-resolves geometry from the fabric's own code path
-// rather than trusting the *lyxcwd.Location fabricSync already holds, so
+// rather than trusting the *lymcwd.Location fabricSync already holds, so
 // a nested-AnchorRel fixture must record the anchor for real git to classify
 // correctly.
 func seedFabricAnchor(t *testing.T, hub, relPath string) {
@@ -58,28 +58,20 @@ func seedFabricAnchor(t *testing.T, hub, relPath string) {
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("mkdir board dir: %v", err)
 	}
-	anchorPath := filepath.Join(boardDir, lyxcwd.AnchorFileName)
+	anchorPath := filepath.Join(boardDir, lymcwd.AnchorFileName)
 	if err := os.WriteFile(anchorPath, []byte(relPath), 0o644); err != nil {
 		t.Fatalf("write %s: %v", anchorPath, err)
 	}
 }
 
-// newPairFixtureAt is newPairFixture with an explicit layout.AnchorRel: the
-// records-side _lyx is seeded at <records>/<relPath>/_lyx, mirroring the code side's own
-// repo-subpath geometry, and the returned layout's AnchorPath() points at the
-// matching code subdirectory. Alongside state.json it seeds the three machine-local
-// artifacts (an advisory *.lock file, the pause flag, and a rendered fork prompt) at the
-// mirrored subpath under ".lyx", outside the committed "_lyx" pathspec, so a caller can
-// assert on what the commit did and did not pick up. It also seeds a sibling module's
-// tree in the same shared geometry -- every module sharing one "_lyx"/".lyx" pair --
-// carrying that module's own durable state.json under "_lyx" plus its pause flag under
-// ".lyx", so a caller can assert that a webster commit keeps the sibling module's runtime
-// state out while still carrying its durable state.
-func newPairFixtureAt(t *testing.T, relPath string) (*lyxcwd.Location, string) {
+// newPairFixtureAt is newPairFixture with an explicit layout.AnchorRel: the records-side _lym is seeded at <records>/<relPath>/_lym, mirroring the code side's own repo-subpath geometry, and the returned layout's AnchorPath() points at the matching code subdirectory.
+// Alongside state.json it seeds the three machine-local artifacts (an advisory *.lock file, the pause flag, and a rendered fork prompt) at the mirrored subpath under ".lym", outside the committed "_lym" pathspec, so a caller can assert on what the commit did and did not pick up.
+// It also seeds a sibling module's tree in the same shared geometry -- every module sharing one "_lym"/".lym" pair -- carrying that module's own durable state.json under "_lym" plus its pause flag under ".lym", so a caller can assert that a webster commit keeps the sibling module's runtime state out while still carrying its durable state.
+func newPairFixtureAt(t *testing.T, relPath string) (*lymcwd.Location, string) {
 	t.Helper()
 
 	hub := t.TempDir()
-	layout := &lyxcwd.Location{
+	layout := &lymcwd.Location{
 		HubPath:      hub,
 		WorktreeName: "pair",
 		AnchorRel:    relPath,
@@ -103,18 +95,18 @@ func newPairFixtureAt(t *testing.T, relPath string) (*lyxcwd.Location, string) {
 
 	// Uncommitted changes under the webster pathspec, so the records commit has
 	// something real to commit.
-	websterDir := filepath.Join(records, relPath, lyxdirs.LyxDirName, "webster")
+	websterDir := filepath.Join(records, relPath, lymdirs.LymDirName, "webster")
 	if err := os.MkdirAll(websterDir, 0o755); err != nil {
-		t.Fatalf("mkdir records _lyx: %v", err)
+		t.Fatalf("mkdir records _lym: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(websterDir, "state.json"), []byte("{}"), 0o644); err != nil {
 		t.Fatalf("write records state.json: %v", err)
 	}
 
-	// The three machine-local artifacts, mirrored under ".lyx" -- outside the committed pathspec.
-	websterScratchDir := filepath.Join(records, relPath, lyxdirs.DotLyxDirName, "webster")
+	// The three machine-local artifacts, mirrored under ".lym" -- outside the committed pathspec.
+	websterScratchDir := filepath.Join(records, relPath, lymdirs.DotLymDirName, "webster")
 	if err := os.MkdirAll(filepath.Join(websterScratchDir, "prompts"), 0o755); err != nil {
-		t.Fatalf("mkdir records .lyx: %v", err)
+		t.Fatalf("mkdir records .lym: %v", err)
 	}
 	for name, content := range map[string]string{
 		"mutate.lock":                    "lock",
@@ -128,7 +120,7 @@ func newPairFixtureAt(t *testing.T, relPath string) (*lyxcwd.Location, string) {
 
 	// The sibling loom module's own tree, in the same shared geometry: its
 	// durable state must still ride a webster commit, its run lock must not.
-	loomDir := filepath.Join(records, relPath, lyxdirs.LyxDirName, "loom")
+	loomDir := filepath.Join(records, relPath, lymdirs.LymDirName, "loom")
 	if err := os.MkdirAll(loomDir, 0o755); err != nil {
 		t.Fatalf("mkdir records loom dir: %v", err)
 	}
@@ -136,7 +128,7 @@ func newPairFixtureAt(t *testing.T, relPath string) (*lyxcwd.Location, string) {
 		t.Fatalf("write records loom status.json: %v", err)
 	}
 
-	loomScratchDir := filepath.Join(records, relPath, lyxdirs.DotLyxDirName, "loom")
+	loomScratchDir := filepath.Join(records, relPath, lymdirs.DotLymDirName, "loom")
 	if err := os.MkdirAll(loomScratchDir, 0o755); err != nil {
 		t.Fatalf("mkdir records loom scratch dir: %v", err)
 	}
@@ -187,12 +179,12 @@ func TestFabricSync_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) 
 // TestFabricSync_CommitsAtEveryRelPathDepth proves every machine-local transient (locks, the
 // sibling loom module's run lock, webster's rendered fork prompts) stays uncommitted by REAL git
 // at every layout.AnchorRel depth, not merely absent from some in-memory pathspec shape.
-// Exclusion is now structural: every machine-local artifact lives under ".lyx" at the mirrored
-// subpath, entirely outside the committed "_lyx" pathspec fabricSync passes -- no exclude-pattern
+// Exclusion is now structural: every machine-local artifact lives under ".lym" at the mirrored
+// subpath, entirely outside the committed "_lym" pathspec fabricSync passes -- no exclude-pattern
 // machinery is involved.
 // It is also the cross-module regression guard: a webster commit must hold back the sibling loom
-// module's run lock too, since every module sharing one geometry shares one ".lyx" scratch tree
-// the same way it shares one "_lyx" durable tree.
+// module's run lock too, since every module sharing one geometry shares one ".lym" scratch tree
+// the same way it shares one "_lym" durable tree.
 // Each excluded artifact is asserted both absent from the commit AND still untracked via `git
 // ls-files` -- proving it never reached the pathspec at all, not merely an already-tracked file
 // happening to be omitted from this one commit.
@@ -226,17 +218,17 @@ func TestFabricSync_CommitsAtEveryRelPathDepth(t *testing.T) {
 
 			// git always reports commit contents with forward slashes,
 			// regardless of the OS-native separators the layout carries.
-			base := lyxdirs.LyxDirName
-			scratchBase := lyxdirs.DotLyxDirName
+			base := lymdirs.LymDirName
+			scratchBase := lymdirs.DotLymDirName
 			if tt.relPath != "." {
 				prefix := filepath.ToSlash(tt.relPath) + "/"
-				base = prefix + lyxdirs.LyxDirName
-				scratchBase = prefix + lyxdirs.DotLyxDirName
+				base = prefix + lymdirs.LymDirName
+				scratchBase = prefix + lymdirs.DotLymDirName
 			}
 			committedFiles := strings.Fields(gitkit.Git(t, records, "show", "--name-only", "--format=", "HEAD"))
 
 			// Loom's durable status.json rides a webster commit (the two
-			// modules share one _lyx); only the machine-local artifacts of
+			// modules share one _lym); only the machine-local artifacts of
 			// EITHER module are held back.
 			wantPresent := []string{
 				base + "/webster/state.json",

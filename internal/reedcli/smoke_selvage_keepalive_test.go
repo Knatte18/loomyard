@@ -28,7 +28,7 @@ import (
 // reed.json exactly as the header-pane tests once did for HeaderPaneID.
 func selvagePaneID(t *testing.T, worktree string) string {
 	t.Helper()
-	st, err := reedengine.LoadState(filepath.Join(worktree, ".lyx"))
+	st, err := reedengine.LoadState(filepath.Join(worktree, ".lym"))
 	if err != nil || st == nil || st.SelvagePaneID == "" {
 		t.Fatalf("LoadState(%s) = (%+v, %v), want a persisted SelvagePaneID", worktree, st, err)
 	}

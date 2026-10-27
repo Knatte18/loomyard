@@ -16,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 const (
@@ -88,18 +88,18 @@ func HoldRecordsWriteLock(recordsWorktreePath string, wait time.Duration) (relea
 }
 
 // seedWeftArtifactExcludes appends the weft repo's never-tracked operational artifacts — the
-// .weft/ lock directory, gitrepo's push lock file, lyxdirs.DotLyxDirName, and every module's
+// .weft/ lock directory, gitrepo's push lock file, lymdirs.DotLymDirName, and every module's
 // *.lock / *.swaplock write- and swap-lock file
 // — to the weft repo's .git/info/exclude, line-exact idempotent (the same
 // discipline as seedGitExclude). It is the sole owner of that file's
-// content: one `.lyx/` pattern now keeps every module's machine-local
+// content: one `.lym/` pattern now keeps every module's machine-local
 // scratch untracked in the weft repo, replacing the three deep wildcard
 // patterns batch 6 deleted, and no .gitignore is ever committed in weft
 // either — .git/info/exclude wins there because it needs no commit, no
 // pathspec change, and no new file in the weft root. Without this seeding,
 // every weft worktree that has ever run a weft-git verb reports fabric's own
-// artifacts (and, now, .lyx scratch) as untracked dirt forever: Remove's
-// no-force dirty gate then refuses with a "run lyx fabric sync" hint that a
+// artifacts (and, now, .lym scratch) as untracked dirt forever: Remove's
+// no-force dirty gate then refuses with a "run lym fabric sync" hint that a
 // pathspec-scoped sync can never satisfy. The exclude file lives in the
 // repo's common gitdir, so one seeding covers every linked weft worktree,
 // and — because excludes are evaluated at status time — it also heals
@@ -108,7 +108,7 @@ func HoldRecordsWriteLock(recordsWorktreePath string, wait time.Duration) (relea
 // for that limit).
 func seedWeftArtifactExcludes(weftPath string) error {
 	_, _, err := mutateGitExclude(weftPath, func(content string) (string, error) {
-		entries := []string{weftLockDirName + "/", gitrepo.PushLockFileName, lyxdirs.DotLyxDirName + "/", lockFilePattern, swapLockFilePattern}
+		entries := []string{weftLockDirName + "/", gitrepo.PushLockFileName, lymdirs.DotLymDirName + "/", lockFilePattern, swapLockFilePattern}
 		for _, entry := range entries {
 			present := false
 			for _, line := range strings.Split(content, "\n") {

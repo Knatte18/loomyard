@@ -18,7 +18,7 @@ import (
 // TestSmokeCreelClaudeStrand adds a strand running claude to a hub and drives creel into it.
 // The adapter reads the booted session idle, a posted message's carried line and an inject are typed at idle, and the agent's pane shows both.
 func TestSmokeCreelClaudeStrand(t *testing.T) {
-	claudePath := llmkit.Claude(t, "LYX_REED_CLAUDE")
+	claudePath := llmkit.Claude(t, "LYM_REED_CLAUDE")
 	// The strand name in the environment is process-global state, set by newSmokeHub.
 	smoke := newSmokeHub(t)
 	name, guid := smoke.addStrand(t, "smokeclaude", claudePath)
@@ -84,7 +84,7 @@ func TestSmokeCreelClaudeStrand(t *testing.T) {
 	awaitIdle()
 
 	if code, out := smoke.creel("post", name, "creel smoke message"); code != 0 {
-		t.Fatalf("lyx creel post = %d; output: %s", code, out)
+		t.Fatalf("lym creel post = %d; output: %s", code, out)
 	}
 	// The test process posts as EXTERNAL, whose mail is carried in its own line rather than reminded.
 	if capture, ok := smoke.awaitPane(t, guid, "[creel] #1 from "); !ok {
@@ -92,7 +92,7 @@ func TestSmokeCreelClaudeStrand(t *testing.T) {
 	}
 	code, out := smoke.creel("inject", "--wait", "--timeout", "120s", name, "creel smoke inject")
 	if code != 0 || !strings.Contains(out, `"outcome":"injected"`) {
-		t.Fatalf("lyx creel inject --wait = %d, %s; want exit 0 injected", code, out)
+		t.Fatalf("lym creel inject --wait = %d, %s; want exit 0 injected", code, out)
 	}
 	if capture, ok := smoke.awaitPane(t, guid, "creel smoke inject"); !ok {
 		t.Fatalf("the agent's pane does not show the injected line; pane:\n%s", capture)

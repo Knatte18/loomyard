@@ -16,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -28,7 +28,7 @@ func TestCodeSubject_Real(t *testing.T) {
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	const slug = "codesubject"
 	hubforge.AddPair(t, hub, slug)
-	location, err := lyxcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
+	location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
 	if err != nil {
 		t.Fatalf("ResolveWorktree error = %v; want nil", err)
 	}
@@ -82,7 +82,7 @@ func TestCodeSubject_Real(t *testing.T) {
 	}
 
 	// The prime worktree records no parent branch, so its code segments write no records.
-	prime, err := lyxcwd.ResolveWorktree(hub.PrimeWorktree())
+	prime, err := lymcwd.ResolveWorktree(hub.PrimeWorktree())
 	if err != nil {
 		t.Fatalf("ResolveWorktree(prime) error = %v; want nil", err)
 	}
@@ -107,7 +107,7 @@ func mergeUnreachedParentTip(t *testing.T, hub *hubforge.Hub, slug string) (fork
 }
 
 // writeMergeRecordNaming writes the merge record of the run at location with mergedTip as the parent tip the task merged.
-func writeMergeRecordNaming(t *testing.T, location *lyxcwd.Location, mergedTip string) {
+func writeMergeRecordNaming(t *testing.T, location *lymcwd.Location, mergedTip string) {
 	t.Helper()
 	recordPath := landingshed.MergeRecordPath(loomengine.LoomScratchDir(location))
 	if err := landingshed.WriteMergeRecord(recordPath, landingshed.MergeRecord{MergedTip: mergedTip}); err != nil {
@@ -122,7 +122,7 @@ func TestTaskMergeBase_FollowsTheMergedTip(t *testing.T) {
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	const slug = "taskmergebase"
 	hubforge.AddPair(t, hub, slug)
-	location, err := lyxcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
+	location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
 	if err != nil {
 		t.Fatalf("ResolveWorktree error = %v; want nil", err)
 	}

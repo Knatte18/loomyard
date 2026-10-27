@@ -45,7 +45,7 @@ func newIntegrationEngine(t *testing.T, mouse string) *Engine {
 		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
 	}
 	// Override the template-resolved default with the value this test case
-	// wants to exercise, rather than relying on LYX_REED_MOUSE env plumbing.
+	// wants to exercise, rather than relying on LYM_REED_MOUSE env plumbing.
 	cfg.Mouse = mouse
 
 	geom := Geometry{

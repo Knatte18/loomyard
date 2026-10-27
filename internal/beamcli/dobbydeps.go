@@ -27,7 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
@@ -67,8 +67,8 @@ func registerDobby(runProcDir string, geom dobbyengine.Geometry) error {
 
 // hubDobbyDeps fills every seam of dobbyengine.Run over the hub of prime, for the dobby of geom, with its log lines written to logOut.
 // The dobby's own working directory is the hub root, so every path comes from prime and geom, and only the pass spawn starts its process in the prime's anchor.
-func hubDobbyDeps(prime *lyxcwd.Location, geom dobbyengine.Geometry, logOut io.Writer) (dobbyengine.Deps, error) {
-	worktree, err := lyxcwd.ResolveWorktree(geom.WorktreeRoot)
+func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry, logOut io.Writer) (dobbyengine.Deps, error) {
+	worktree, err := lymcwd.ResolveWorktree(geom.WorktreeRoot)
 	if err != nil {
 		return dobbyengine.Deps{}, err
 	}
@@ -171,8 +171,8 @@ func hubDobbyDeps(prime *lyxcwd.Location, geom dobbyengine.Geometry, logOut io.W
 	return deps, nil
 }
 
-// beamLandReading reads whether the beam slug can land, which it can once nothing works under it, and, for a beam that can, which other machine owns its parent and what `lyx adopt` takes to move it.
-func beamLandReading(prime *lyxcwd.Location, slug string) (dobbyengine.LandReading, error) {
+// beamLandReading reads whether the beam slug can land, which it can once nothing works under it, and, for a beam that can, which other machine owns its parent and what `lym adopt` takes to move it.
+func beamLandReading(prime *lymcwd.Location, slug string) (dobbyengine.LandReading, error) {
 	blockers, err := battencli.ReadBeamLandBlockers(prime, slug)
 	if err != nil {
 		return dobbyengine.LandReading{}, err
@@ -253,8 +253,8 @@ func fileExists(path string) (bool, error) {
 }
 
 // pairLocation returns slug's task pair as a location at the pair's own anchor, with no git call.
-func pairLocation(prime *lyxcwd.Location, slug string) (*lyxcwd.Location, error) {
-	pair, err := lyxcwd.NamedWorktree(prime.HubPath, slug)
+func pairLocation(prime *lymcwd.Location, slug string) (*lymcwd.Location, error) {
+	pair, err := lymcwd.NamedWorktree(prime.HubPath, slug)
 	if err != nil {
 		return nil, fmt.Errorf("locate the pair %s: %w", slug, err)
 	}
@@ -262,7 +262,7 @@ func pairLocation(prime *lyxcwd.Location, slug string) (*lyxcwd.Location, error)
 }
 
 // liftOwnerPause lifts the live pause entry of slug's own scope that carries the owner caller.
-func liftOwnerPause(prime *lyxcwd.Location, recordPath, slug string) error {
+func liftOwnerPause(prime *lymcwd.Location, recordPath, slug string) error {
 	record, err := pauserecord.Read(recordPath)
 	if err != nil {
 		return err
@@ -288,7 +288,7 @@ func liftOwnerPause(prime *lyxcwd.Location, recordPath, slug string) error {
 	return nil
 }
 
-// spawnPass starts `<lyx> batten run <slug>` for geom as its own process, in the prime's anchor, and delivers its exit once.
+// spawnPass starts `<lym> batten run <slug>` for geom as its own process, in the prime's anchor, and delivers its exit once.
 // The pass registers itself in the run-process registry as the run's batten, so dobby registers nothing.
 func spawnPass(geom dobbyengine.Geometry, slug string, continuePass, noReopen bool) (<-chan dobbyengine.PassExit, error) {
 	if testing.Testing() {
@@ -302,16 +302,16 @@ func spawnPass(geom dobbyengine.Geometry, slug string, continuePass, noReopen bo
 		args = append(args, "--no-reopen")
 	}
 	output := &tailBuffer{limit: passErrorTailBytes}
-	cmd := exec.Command(geom.LyxExecutable, args...)
+	cmd := exec.Command(geom.LymExecutable, args...)
 	cmd.Dir = geom.PrimeAnchor
 	cmd.Stdout = output
 	cmd.Stderr = output
 	proc.Detach(cmd)
 	if err := cmd.Start(); err != nil {
-		logger.Warn("beamcli: spawn batten pass failed", "exe", geom.LyxExecutable, "args", args, "dir", geom.PrimeAnchor, "error", err)
+		logger.Warn("beamcli: spawn batten pass failed", "exe", geom.LymExecutable, "args", args, "dir", geom.PrimeAnchor, "error", err)
 		return nil, err
 	}
-	logger.Info("beamcli: spawned batten pass", "exe", geom.LyxExecutable, "args", args, "dir", geom.PrimeAnchor, "pid", cmd.Process.Pid)
+	logger.Info("beamcli: spawned batten pass", "exe", geom.LymExecutable, "args", args, "dir", geom.PrimeAnchor, "pid", cmd.Process.Pid)
 	exit := make(chan dobbyengine.PassExit, 1)
 	go func() {
 		waitErr := cmd.Wait()
@@ -392,7 +392,7 @@ func resolveTidyModel(dirs configengine.Dirs) (shuttleengine.ModelChoice, error)
 // runnerTidyShuttle adapts the shuttle runner over the dobby's worktree to dobbyengine.TidyShuttle.
 // The runner is built on the first start, so a config that does not load fails the tidy and never the dobby.
 type runnerTidyShuttle struct {
-	worktree *lyxcwd.Location
+	worktree *lymcwd.Location
 	once     sync.Once
 	runner   *shuttleengine.Runner
 	err      error

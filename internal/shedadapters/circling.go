@@ -1,5 +1,5 @@
 // circling.go defines the operator's recorded decision on an escalated round:
-// a small file the `lyx loom circling` verbs write and the Bouncer reads, and `lyx loom resume` checks for a pending one through PendingCirclingDecision.
+// a small file the `lym loom circling` verbs write and the Bouncer reads, and `lym loom resume` checks for a pending one through PendingCirclingDecision.
 // The writer owns the mechanical precondition (the latest round is escalated, and no decision exists for it yet);
 // the run-state half (the run is awaiting at a Bouncer row) belongs to the verbs.
 

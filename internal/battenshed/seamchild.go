@@ -150,7 +150,7 @@ func (p *seedChildProducer) writeRunSettings(ctx context.Context, recipe string)
 	documents, err := p.deps.PrepareRunSettings(settings)
 	if err != nil {
 		if errors.Is(err, ErrInvalidRunSettings) {
-			return fmt.Sprintf("%s; way forward: correct the task's profile or run_settings with `lyx board upsert`, or the profile itself with `lyx config profiles` from the hub's prime worktree, then `lyx batten run %s`", err.Error(), p.slug), nil
+			return fmt.Sprintf("%s; way forward: correct the task's profile or run_settings with `lym board upsert`, or the profile itself with `lym config profiles` from the hub's prime worktree, then `lym batten run %s`", err.Error(), p.slug), nil
 		}
 		return "", fmt.Errorf("battenshed: %s: prepare run settings: %w", p.name, err)
 	}

@@ -19,9 +19,9 @@ func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "help [<command>...]",
 		Short: "print a command's help, or the command index",
-		Long: `Prints the help of the named command; bare "lyx help" prints the root's help.
+		Long: `Prints the help of the named command; bare "lym help" prints the root's help.
 A word that names no subcommand of the command reached so far is refused.
-"lyx help index" prints the command index of this binary.`,
+"lym help index" prints the command index of this binary.`,
 		Annotations: map[string]string{
 			clihelp.AudienceAnnotation:        clihelp.AudienceOperator,
 			clihelp.SkipStencilSeedAnnotation: clihelp.AnnotationEnabled,

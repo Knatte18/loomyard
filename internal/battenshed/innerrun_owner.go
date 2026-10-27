@@ -25,7 +25,7 @@ const (
 type OwnerVerdict struct {
 	// Owner names the machine that owns the run; set when Elsewhere is true.
 	Owner string
-	// AdoptSubject is the beam or `root` that `lyx adopt` takes to move the run; set when Elsewhere is true, and empty when the verdict brought none.
+	// AdoptSubject is the beam or `root` that `lym adopt` takes to move the run; set when Elsewhere is true, and empty when the verdict brought none.
 	AdoptSubject string
 	// Elsewhere is true when another machine owns the run.
 	Elsewhere bool
@@ -56,10 +56,10 @@ func spawnOwnedElsewhere(err error) (string, bool) {
 
 // ownerHoldReason is the wait reason of a run owned by another machine.
 func (p *innerRunProducer) ownerHoldReason() string {
-	return fmt.Sprintf("held: the run is owned by machine %s; take it over with \"lyx adopt %s\"", p.ownedBy, p.adoptSubject())
+	return fmt.Sprintf("held: the run is owned by machine %s; take it over with \"lym adopt %s\"", p.ownedBy, p.adoptSubject())
 }
 
-// adoptSubject returns what `lyx adopt` takes to move the run: the subject the owner verdict brought, the slug when it brought none.
+// adoptSubject returns what `lym adopt` takes to move the run: the subject the owner verdict brought, the slug when it brought none.
 func (p *innerRunProducer) adoptSubject() string {
 	if p.ownedSubject == "" {
 		return p.slug
@@ -107,7 +107,7 @@ func (p *innerRunProducer) ownerStep(ctx context.Context, w *childWait) {
 	}
 }
 
-// ownedElsewhere records owner as the run's owner and subject as what `lyx adopt` takes to move it, and releases the parent lock record of the child's run, unless a Finalize past its parent-side merge keeps it.
+// ownedElsewhere records owner as the run's owner and subject as what `lym adopt` takes to move it, and releases the parent lock record of the child's run, unless a Finalize past its parent-side merge keeps it.
 // It then pauses the slug under the owner caller and sends one notice per episode naming the owner and the adopt command, which names the slug when subject is empty.
 // A failed pause warns once per episode and is retried at the next probe while the owner stands.
 func (p *innerRunProducer) ownedElsewhere(ctx context.Context, w *childWait, owner, subject string) {
@@ -135,7 +135,7 @@ func (p *innerRunProducer) noticeOwnedElsewhere(ctx context.Context, owner strin
 		p.episode.deliveries = map[string]*noticeDelivery{}
 	}
 	condition := "owned by machine " + owner
-	line := fmt.Sprintf("%s %s: run paused; %s; take it over with \"lyx adopt %s\"", noticePrefix, p.slug, condition, p.adoptSubject())
+	line := fmt.Sprintf("%s %s: run paused; %s; take it over with \"lym adopt %s\"", noticePrefix, p.slug, condition, p.adoptSubject())
 	if p.deliver(ctx, "owner "+owner, condition, line) {
 		p.ownerNoticed = true
 	}

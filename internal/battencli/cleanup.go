@@ -1,6 +1,6 @@
-// cleanup.go implements "lyx batten cleanup": the dry-run-by-default removal of finished runs' records and scratch from the hub's prime worktree.
+// cleanup.go implements "lym batten cleanup": the dry-run-by-default removal of finished runs' records and scratch from the hub's prime worktree.
 //
-// Cleanup is the one function the verb and "lyx cleanup" both call; every refusal and skip lives in cleanup, so neither caller can remove more than cleanup decides.
+// Cleanup is the one function the verb and "lym cleanup" both call; every refusal and skip lives in cleanup, so neither caller can remove more than cleanup decides.
 // It deletes only a done slug's records run directory and the scratch contents beside its lock files, or an aged orphan's scratch contents.
 // It never touches a pair, a branch, a lock file or another slug, and it spawns the push of the records side only.
 
@@ -21,7 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -71,7 +71,7 @@ type cleanupDeps struct {
 }
 
 // fabricCleanupDeps builds the cleanupDeps that drive the real records side of location's hub.
-func fabricCleanupDeps(location *lyxcwd.Location) cleanupDeps {
+func fabricCleanupDeps(location *lymcwd.Location) cleanupDeps {
 	return cleanupDeps{
 		Committed: func(relPath string) ([]byte, bool, error) {
 			return fabricengine.CommittedAnchoredFile(location, relPath)
@@ -92,7 +92,7 @@ func fabricCleanupDeps(location *lyxcwd.Location) cleanupDeps {
 // With apply false it changes nothing and reports exactly what apply true removes.
 // It runs from the prime worktree and from a beam, acting on the prime's location in both, and refuses elsewhere.
 // A records commit error stops the pass with that error; a push spawn error is reported on the result.
-func Cleanup(location *lyxcwd.Location, apply bool) (CleanupReport, error) {
+func Cleanup(location *lymcwd.Location, apply bool) (CleanupReport, error) {
 	prime, err := ResolveBattenPrime(location)
 	if err != nil {
 		return CleanupReport{}, err
@@ -102,7 +102,7 @@ func Cleanup(location *lyxcwd.Location, apply bool) (CleanupReport, error) {
 
 // cleanup is Cleanup over injected deps.
 // Each slug is judged under its run lock and status lock, so a run started meanwhile blocks or is skipped rather than racing the removal.
-func cleanup(location *lyxcwd.Location, apply bool, deps cleanupDeps) (CleanupReport, error) {
+func cleanup(location *lymcwd.Location, apply bool, deps cleanupDeps) (CleanupReport, error) {
 	report := CleanupReport{Applied: apply, Removed: []string{}, Emptied: []string{}, Skipped: []CleanupSkip{}}
 
 	slugs, err := cleanupSlugs(location)
@@ -130,7 +130,7 @@ func cleanup(location *lyxcwd.Location, apply bool, deps cleanupDeps) (CleanupRe
 }
 
 // cleanupSlugs returns the sorted union of the directory names under the records root and the scratch root.
-func cleanupSlugs(location *lyxcwd.Location) ([]string, error) {
+func cleanupSlugs(location *lymcwd.Location) ([]string, error) {
 	seen := map[string]bool{}
 	for _, root := range []string{shedrun.RunsRoot(location), shedrun.ScratchRoot(location)} {
 		entries, err := os.ReadDir(root)
@@ -156,7 +156,7 @@ func cleanupSlugs(location *lyxcwd.Location) ([]string, error) {
 
 // cleanupSlug judges one slug and, with apply, removes what it decided.
 // It reports whether it made a records commit; a non-nil error is a commit failure, which stops the pass.
-func cleanupSlug(location *lyxcwd.Location, slug string, apply bool, deps cleanupDeps, report *CleanupReport) (committed bool, err error) {
+func cleanupSlug(location *lymcwd.Location, slug string, apply bool, deps cleanupDeps, report *CleanupReport) (committed bool, err error) {
 	skip := func(reason string) {
 		report.Skipped = append(report.Skipped, CleanupSkip{Slug: slug, Reason: reason})
 	}
@@ -273,7 +273,7 @@ func (e scratchEmptyError) Unwrap() error { return e.error }
 // An already absent run directory still commits, so a removal whose commit failed earlier finishes on a re-run.
 // committed reports whether a records commit was made.
 // A commit failure is a removalCommitError and an emptying failure, which follows the commit, a scratchEmptyError.
-func removeRunRecords(location *lyxcwd.Location, slug, msg string, deps cleanupDeps) (committed bool, err error) {
+func removeRunRecords(location *lymcwd.Location, slug, msg string, deps cleanupDeps) (committed bool, err error) {
 	if err := os.RemoveAll(shedrun.RunDir(location, slug)); err != nil {
 		return false, fmt.Errorf("remove run directory: %w", err)
 	}
@@ -291,7 +291,7 @@ func removeRunRecords(location *lyxcwd.Location, slug, msg string, deps cleanupD
 // candidate is true for a done run; tracked is true when its directory is already gone from disk and only the records commit is outstanding.
 // A non-empty reason skips the slug.
 // With candidate and reason both clear, the slug is an orphan.
-func judgeRunDirectory(location *lyxcwd.Location, slug string, deps cleanupDeps) (candidate, tracked bool, reason string) {
+func judgeRunDirectory(location *lymcwd.Location, slug string, deps cleanupDeps) (candidate, tracked bool, reason string) {
 	_, statErr := os.Stat(shedrun.RunDir(location, slug))
 	switch {
 	case statErr == nil:
@@ -331,7 +331,7 @@ func judgeStatus(data []byte, prefix, slug string) (candidate, tracked bool, rea
 		return false, false, "decode " + prefix + "status: " + err.Error()
 	}
 	if st.State != shedengine.StateDone {
-		return false, false, fmt.Sprintf("%srun is %s; way forward: \"lyx batten cancel %s\" ends it, and a later cleanup removes it", prefix, st.State, slug)
+		return false, false, fmt.Sprintf("%srun is %s; way forward: \"lym batten cancel %s\" ends it, and a later cleanup removes it", prefix, st.State, slug)
 	}
 	return true, prefix != "", ""
 }
@@ -402,7 +402,7 @@ func emptyScratch(dir string, apply bool) error {
 	return nil
 }
 
-// cleanupCmd builds "lyx batten cleanup [--apply]", the dry-run-by-default removal of finished runs' records and scratch, run from the prime or a beam.
+// cleanupCmd builds "lym batten cleanup [--apply]", the dry-run-by-default removal of finished runs' records and scratch, run from the prime or a beam.
 func (c *battenCLI) cleanupCmd() *cobra.Command {
 	var apply bool
 	cmd := &cobra.Command{
@@ -418,11 +418,11 @@ lock is held, is skipped and reported with its reason. It never touches a pair, 
 lock file or another run.
 
 Output: {"applied", "removed", "emptied", "skipped", "push_spawned", "push_error"}.
-push_spawned says the push was started, not that origin took it; "lyx fabric status" lists a push origin refused under failed_pushes.
+push_spawned says the push was started, not that origin took it; "lym fabric status" lists a push origin refused under failed_pushes.
 
 Example:
-  lyx batten cleanup
-  lyx batten cleanup --apply`,
+  lym batten cleanup
+  lym batten cleanup --apply`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -431,12 +431,12 @@ Example:
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
-			cwd, err := lyxcwd.CwdFrom(ctx)
+			cwd, err := lymcwd.CwdFrom(ctx)
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
-			location, err := lyxcwd.Resolve(cwd)
+			location, err := lymcwd.Resolve(cwd)
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil

@@ -146,7 +146,7 @@ func (c *websterCLI) validateCmd() *cobra.Command {
 		Use:         "validate",
 		Short:       "lint the plan against the plan-format machine checks without running anything",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `validate parses the plan at _lyx/plan and runs the plan-format machine checks
+		Long: `validate parses the plan at _lym/plan and runs the plan-format machine checks
 listed in contracts/specs/loom-plan-spec.md's "Validation checks" section. A
 plan with no blocking finding prints {"valid": true, "cards": N}, carrying any
 informational findings under their own key; a blocking finding prints an
@@ -157,7 +157,7 @@ Reach for it before handing a plan to a run, or while editing one mid-run. It
 spawns nothing, though it may canonicalize a plan: handle on disk, as every
 bracket verb does. With a run in progress, a plan edited since the run
 recorded it is still linted, and validate exits non-zero naming
-"lyx webster rebaseline" and "lyx webster restore-plan".
+"lym webster rebaseline" and "lym webster restore-plan".
 
 The checked cards follow the run's progress, reported under "scope":
 "whole-plan" before any batch is begun, approval gate included, and "pending"
@@ -168,8 +168,8 @@ partition it forms for the plan, one {"cards": [card numbers], "estimate":
 peak context} per batch in run order, formed fresh as a new run would.
 
 Examples:
-  lyx webster validate
-  lyx webster validate --batches`,
+  lym webster validate
+  lym webster validate --batches`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
 
@@ -245,7 +245,7 @@ Examples:
 					msg = "webster: quarry could not answer validating plan: " + validateErr.Error()
 				}
 				if rebaseErr != nil {
-					msg = fmt.Sprintf("%s (additionally, persisting the plan-fingerprint re-baseline this call had already earned failed: %v; way forward: re-run `lyx webster validate`)", msg, rebaseErr)
+					msg = fmt.Sprintf("%s (additionally, persisting the plan-fingerprint re-baseline this call had already earned failed: %v; way forward: re-run `lym webster validate`)", msg, rebaseErr)
 				}
 				clihelp.SetExit(cmd.Context(), output.Err(out, msg))
 				return nil
@@ -255,7 +255,7 @@ Examples:
 				return nil
 			}
 			if rebaseErr != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: validate finished but persisting the plan-fingerprint re-baseline failed: %v -- state.json may now be stale; the next begin-batch/record-batch/run may refuse the plan as foreign; way forward: re-run `lyx webster validate`", rebaseErr)))
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: validate finished but persisting the plan-fingerprint re-baseline failed: %v -- state.json may now be stale; the next begin-batch/record-batch/run may refuse the plan as foreign; way forward: re-run `lym webster validate`", rebaseErr)))
 				return nil
 			}
 

@@ -66,7 +66,7 @@ func TestUp_BootValidation(t *testing.T) {
 					t.Skip("Windows keeps its current shell handling")
 				}
 			},
-			configure: func(cfg *Config) { cfg.Shell = "lyx-no-such-shell-for-this-test" },
+			configure: func(cfg *Config) { cfg.Shell = "lym-no-such-shell-for-this-test" },
 			wantErr:   "key shell",
 		},
 		{
@@ -163,8 +163,8 @@ func TestServerSpawnArgv(t *testing.T) {
 	// The chained pins of the new session: not destroyed when unattached, tagged as reed's, and following the run.
 	posixTail := []string{
 		";", "set-option", "-t", "=" + e.SessionName() + ":", "destroy-unattached", "off",
-		";", "set-option", "-t", "=" + e.SessionName() + ":", "@lyx_reed_session", "on",
-		";", "set-option", "-t", "=" + e.SessionName() + ":", "@lyx_follow", "on",
+		";", "set-option", "-t", "=" + e.SessionName() + ":", "@lym_reed_session", "on",
+		";", "set-option", "-t", "=" + e.SessionName() + ":", "@lym_follow", "on",
 	}
 	tests := []struct {
 		name      string
@@ -325,7 +325,7 @@ func TestStatus_ReportsOwnWindowStrandsFromTheSessionListing(t *testing.T) {
 	}
 }
 
-// TestServerBootEnv_ExcludesTraceID pins that LYX_TRACE_ID is stripped before the tmux server
+// TestServerBootEnv_ExcludesTraceID pins that LYM_TRACE_ID is stripped before the tmux server
 // inherits the boot env (long-lived singleton).
 func TestServerBootEnv_ExcludesTraceID(t *testing.T) {
 	t.Setenv(logger.TraceIDEnv, "somevalue")
@@ -340,25 +340,25 @@ func TestServerBootEnv_ExcludesTraceID(t *testing.T) {
 	}
 	if !sawBeforeStrip {
 		// The scrub is not expected to strip this on its own.
-		// If it is already gone here, the fixture assumption (LYX_TRACE_ID surviving the scrub) is broken and the assertion below proves nothing.
-		t.Fatalf("testScrub.Apply(os.Environ()) does not contain LYX_TRACE_ID; test fixture assumption broken")
+		// If it is already gone here, the fixture assumption (LYM_TRACE_ID surviving the scrub) is broken and the assertion below proves nothing.
+		t.Fatalf("testScrub.Apply(os.Environ()) does not contain LYM_TRACE_ID; test fixture assumption broken")
 	}
 
 	got := stripTraceID(clean)
 	for _, entry := range got {
 		if strings.HasPrefix(entry, logger.TraceIDEnv+"=") {
-			t.Errorf("stripTraceID(clean) = %v, want no LYX_TRACE_ID entry", got)
+			t.Errorf("stripTraceID(clean) = %v, want no LYM_TRACE_ID entry", got)
 		}
 	}
 }
 
-//testtiming:keep pins the pane env dropping exactly LYX_STRAND_NAME and LYX_PARENT and keeping a longer key sharing the prefix; its covering tests run this code without asserting it
+//testtiming:keep pins the pane env dropping exactly LYM_STRAND_NAME and LYM_PARENT and keeping a longer key sharing the prefix; its covering tests run this code without asserting it
 func TestStripAgentNameEnv_DropsNameAndParentOnly(t *testing.T) {
-	env := []string{"LYX_STRAND_NAME=ly:task:driver", "LYX_PARENT=ly:orch", "LYX_PARENTAL=keep", "PATH=/bin"}
+	env := []string{"LYM_STRAND_NAME=ly:task:driver", "LYM_PARENT=ly:orch", "LYM_PARENTAL=keep", "PATH=/bin"}
 
 	got := stripAgentNameEnv(env)
 
-	want := []string{"LYX_PARENTAL=keep", "PATH=/bin"}
+	want := []string{"LYM_PARENTAL=keep", "PATH=/bin"}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("stripAgentNameEnv(%v) = %v, want %v", env, got, want)
 	}
@@ -393,19 +393,19 @@ func TestNoSessionMessage_StrandCountVariants(t *testing.T) {
 			name:          "ZeroStrands_BareUpPointer",
 			strandCount:   0,
 			stateReadable: true,
-			want:          `no reed session; run "lyx reed up"`,
+			want:          `no reed session; run "lym reed up"`,
 		},
 		{
 			name:          "OneStrand_ResumePointer",
 			strandCount:   1,
 			stateReadable: true,
-			want:          `no reed session (1 strands persisted); run "lyx reed resume" to rebuild, or "lyx reed up" for a bare substrate`,
+			want:          `no reed session (1 strands persisted); run "lym reed resume" to rebuild, or "lym reed up" for a bare substrate`,
 		},
 		{
 			name:          "ThreeStrands_ResumePointer",
 			strandCount:   3,
 			stateReadable: true,
-			want:          `no reed session (3 strands persisted); run "lyx reed resume" to rebuild, or "lyx reed up" for a bare substrate`,
+			want:          `no reed session (3 strands persisted); run "lym reed resume" to rebuild, or "lym reed up" for a bare substrate`,
 		},
 		{
 			// R5 review finding R5-F8: an unreadable reed.json yields a strand count of zero, and
@@ -414,7 +414,7 @@ func TestNoSessionMessage_StrandCountVariants(t *testing.T) {
 			name:          "UnreadableState_SaysSoInsteadOfClaimingZeroStrands",
 			strandCount:   0,
 			stateReadable: false,
-			want:          `no reed session, and reed's persisted state could not be read; run "lyx reed down" to clear it, or "lyx reed up" for the full diagnosis`,
+			want:          `no reed session, and reed's persisted state could not be read; run "lym reed down" to clear it, or "lym reed up" for the full diagnosis`,
 		},
 	}
 

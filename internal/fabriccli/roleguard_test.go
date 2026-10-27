@@ -54,7 +54,7 @@ const refusalMarker = "from the task session"
 // runUnderParent mounts the fabric command under a bare parent as main.go does and runs args from an empty directory.
 func runUnderParent(t *testing.T, args ...string) (code int, out string) {
 	t.Helper()
-	root := &cobra.Command{Use: "lyx"}
+	root := &cobra.Command{Use: "lym"}
 	root.AddCommand(fabriccli.Command())
 	var buf bytes.Buffer
 	code = clihelp.ExecuteIn(root, t.TempDir(), &buf, append([]string{"fabric"}, args...))

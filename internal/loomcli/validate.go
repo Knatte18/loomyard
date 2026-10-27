@@ -55,7 +55,7 @@ entry its commit history held, and a clean run commits the decision record and
 support log.
 
 Example:
-  lyx loom validate-discussion`,
+  lym loom validate-discussion`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -83,7 +83,7 @@ Example:
 			}
 			if darn {
 				if err := c.env.CommitDiscussion(); err != nil {
-					clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate discussion: commit the discussion files: "+err.Error()+`; way forward: re-run "lyx loom validate-discussion"`))
+					clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate discussion: commit the discussion files: "+err.Error()+`; way forward: re-run "lym loom validate-discussion"`))
 					return nil
 				}
 			}
@@ -111,7 +111,7 @@ no arguments and no flags; it always checks the worktree's own description.
 It sits beside validate-discussion and validate-plan.
 
 Example:
-  lyx loom validate-description`,
+  lym loom validate-description`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -195,11 +195,11 @@ validates target-list, verify-command and card-text changes, never code.
 The four flags are mutually exclusive.
 
 Example:
-  lyx loom validate-plan
-  lyx loom validate-plan --require-approved
-  lyx loom validate-plan --rework
-  lyx loom validate-plan --lens-review
-  lyx loom validate-plan --overlay <<'EOF'
+  lym loom validate-plan
+  lym loom validate-plan --require-approved
+  lym loom validate-plan --rework
+  lym loom validate-plan --lens-review
+  lym loom validate-plan --overlay <<'EOF'
   {"01-slug.md": "<full card file text>"}
   EOF`,
 		Args: cobra.NoArgs,

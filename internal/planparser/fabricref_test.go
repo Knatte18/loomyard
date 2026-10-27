@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 )
@@ -20,11 +20,11 @@ import (
 func TestCheckCardFabricReference(t *testing.T) {
 	t.Parallel()
 
-	siblingPath := fabricengine.RecordsWorktree(&lyxcwd.Location{HubPath: "/hub", WorktreeName: "task"})
+	siblingPath := fabricengine.RecordsWorktree(&lymcwd.Location{HubPath: "/hub", WorktreeName: "task"})
 	siblingName := "/" + filepath.Base(siblingPath)
 	fabricSuffix := strings.TrimPrefix(filepath.Base(siblingPath), "task")
-	pathCommand := "cat " + siblingPath + "/_lyx/plan.md"
-	spellingCommand := "lyx fabric sync"
+	pathCommand := "cat " + siblingPath + "/_lym/plan.md"
+	spellingCommand := "lym fabric sync"
 
 	cardWith := func(intent string) plankit.Card {
 		return plankit.Card{
@@ -64,17 +64,17 @@ func TestCheckCardFabricReference(t *testing.T) {
 		want []string
 	}{
 		{"sibling path in a card Verify", cardVerify, []string{"card 1-alpha", siblingName}},
-		{"spelling in a card Verify", cardVerifySpelling, []string{"card 1-alpha", "lyx fabric"}},
+		{"spelling in a card Verify", cardVerifySpelling, []string{"card 1-alpha", "lym fabric"}},
 		{"sibling path in the overview verify section", parsed("", "alpha", pathCommand), []string{`"## verify:" section`, siblingName}},
-		{"spelling in the overview verify section", parsed("", "alpha", spellingCommand), []string{`"## verify:" section`, "lyx fabric"}},
+		{"spelling in the overview verify section", parsed("", "alpha", spellingCommand), []string{`"## verify:" section`, "lym fabric"}},
 		{"sibling path in a card fenced block", parsed("", fenced(pathCommand), ""), []string{"card 1-alpha", siblingName}},
-		{"spelling in a card fenced block", parsed("", fenced(spellingCommand), ""), []string{"card 1-alpha", "lyx fabric"}},
-		{"spelling in an overview fenced block", parsed(fenced(spellingCommand), "alpha", ""), []string{"the overview", "lyx fabric"}},
+		{"spelling in a card fenced block", parsed("", fenced(spellingCommand), ""), []string{"card 1-alpha", "lym fabric"}},
+		{"spelling in an overview fenced block", parsed(fenced(spellingCommand), "alpha", ""), []string{"the overview", "lym fabric"}},
 		{"sibling path in an inline span", parsed("", "run `"+pathCommand+"` first", ""), []string{"card 1-alpha", siblingName}},
 		{"spelling in an inline span passes", parsed("", "run `"+spellingCommand+"` first", ""), nil},
 		{"spelling in prose passes", parsed("", "run "+spellingCommand+" later", ""), nil},
-		{"exempt spelling in a fenced block fails", parsed("", fenced("lyx.exe fabric push"), ""), []string{"lyx.exe"}},
-		{"quoted search pattern in a fenced block passes", parsed("", fenced(`grep -n "lyx fabric" docs/overview.md`), ""), nil},
+		{"exempt spelling in a fenced block fails", parsed("", fenced("lym.exe fabric push"), ""), []string{"lym.exe"}},
+		{"quoted search pattern in a fenced block passes", parsed("", fenced(`grep -n "lym fabric" docs/overview.md`), ""), nil},
 		{"plan without either passes", parsed("", fenced("go test ./..."), "go build ./..."), nil},
 		{"card slug ending in the fabric suffix fails", withSlug("prime" + fabricSuffix), []string{"card 1-prime" + fabricSuffix, "rename the card"}},
 		{"card slug holding the fabric suffix mid-name passes", withSlug("prime" + fabricSuffix + "-marker"), nil},

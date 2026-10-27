@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/lyxtemp"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
@@ -182,9 +182,9 @@ func TestRun(t *testing.T) {
 	t.Run("turns optional locks off", func(t *testing.T) {
 		t.Setenv("GIT_OPTIONAL_LOCKS", "1")
 
-		got, err := gitexec.Run([]string{"-c", "alias.lyxenv=!env", "lyxenv"}, t.TempDir())
+		got, err := gitexec.Run([]string{"-c", "alias.lymenv=!env", "lymenv"}, t.TempDir())
 		if err != nil {
-			t.Fatalf("Run(lyxenv) error = %v", err)
+			t.Fatalf("Run(lymenv) error = %v", err)
 		}
 		var values []string
 		for _, line := range strings.Split(got, "\n") {
@@ -468,9 +468,9 @@ func TestRun_RemoteBounds(t *testing.T) {
 			t.Errorf("retry warnings = %d; want 1; log:\n%s", got, logs.String())
 		}
 
-		runDir, dirErr := lyxtemp.Dir()
+		runDir, dirErr := lymtemp.Dir()
 		if dirErr != nil {
-			t.Fatalf("lyxtemp.Dir() error = %v", dirErr)
+			t.Fatalf("lymtemp.Dir() error = %v", dirErr)
 		}
 		leftover, globErr := filepath.Glob(filepath.Join(runDir, "git-packet-trace-*"))
 		if globErr != nil {

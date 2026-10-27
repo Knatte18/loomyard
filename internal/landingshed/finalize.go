@@ -206,7 +206,7 @@ func NewFinalize(deps Deps) (*Finalize, error) {
 //
 // Immediately before each landing attempt it re-reads the parent lock record, so a lock something released lands nothing and is a halting Stuck.
 // The re-read and the landing are not atomic: a release between them is caught only by the parent push's rejection.
-// The landing commit carries the change description and a trailer block ending in a `Lyx-Task: <slug>` line, and Finalize opens, looks up and closes no pull request.
+// The landing commit carries the change description and a trailer block ending in a `Lym-Task: <slug>` line, and Finalize opens, looks up and closes no pull request.
 //
 // Finalize is idempotent over an already-landed parent: when the parent already contains the task's
 // changes -- an operator squash-merged the task on the remote, or an earlier Finalize landed and
@@ -278,7 +278,7 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 	// Step 1b4: open the parent pair, which this producer never creates, and sync it before any merge.
 	parentHandle, err := fz.parentOpener()
 	if err != nil {
-		return fz.stuckOrCancelled(ctx, fmt.Sprintf("no live pair for parent branch %q: %v; way forward: re-create the parent pair, then run \"lyx loom resume\"", fz.deps.ParentBranch, err), "error", err)
+		return fz.stuckOrCancelled(ctx, fmt.Sprintf("no live pair for parent branch %q: %v; way forward: re-create the parent pair, then run \"lym loom resume\"", fz.deps.ParentBranch, err), "error", err)
 	}
 	syncReason, err := fz.syncParent(ctx, parentHandle)
 	if outcome, out, err, stop := fz.gateStop(ctx, syncReason, err); stop {
@@ -356,7 +356,7 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 // A parent already holding the task's work is past its parent-side merge and is left as it is.
 func (fz *Finalize) syncParent(ctx context.Context, parent parentMerger) (string, error) {
 	branch := fz.deps.ParentBranch
-	const resume = `then run "lyx loom resume"`
+	const resume = `then run "lym loom resume"`
 
 	if fz.deps.ParentHoldsTaskWork != nil {
 		held, err := fz.deps.ParentHoldsTaskWork()
@@ -424,7 +424,7 @@ func (fz *Finalize) syncParent(ctx context.Context, parent parentMerger) (string
 const maxListedDirtyPaths = 20
 
 // gotoResumeWayForward is the closing step every dirty-parent way forward ends in.
-const gotoResumeWayForward = `"lyx loom goto --to Finalize" and "lyx loom resume" in the task worktree`
+const gotoResumeWayForward = `"lym loom goto --to Finalize" and "lym loom resume" in the task worktree`
 
 // dirtyPathList renders paths Go-quoted and joined by ", ", the first maxListedDirtyPaths of them, ending in ", and N more" when there are more.
 // Quoting keeps a path holding a space or a comma one item, and the form holds no line break.
@@ -489,7 +489,7 @@ func (fz *Finalize) dirtyParentReason(parentHandle parentMerger, guardErr *fabri
 // parkedMergeWayForward words the way forward out of a fabric merge parked in the parent pair.
 // "--abort" hard-resets the parent's code checkout, and a plain git commit or stash there would take the staged merge with it, so the operator saves a copy of their own change outside the checkout first.
 func (fz *Finalize) parkedMergeWayForward(checkout string) string {
-	return fmt.Sprintf(`the party that started that merge, or the orch or the operator when that party is gone, concludes it with "lyx fabric merge --continue" or discards it with "lyx fabric merge --abort" in the parent pair, then %s; "--abort" hard-resets the parent's code checkout to the merge's start, so the operator first saves a copy of any change of their own in %s outside it, since a plain git commit or stash there would take the staged merge with it; a session lyx refuses the verb from reports status: FAILED and the orch runs it`,
+	return fmt.Sprintf(`the party that started that merge, or the orch or the operator when that party is gone, concludes it with "lym fabric merge --continue" or discards it with "lym fabric merge --abort" in the parent pair, then %s; "--abort" hard-resets the parent's code checkout to the merge's start, so the operator first saves a copy of any change of their own in %s outside it, since a plain git commit or stash there would take the staged merge with it; a session lym refuses the verb from reports status: FAILED and the orch runs it`,
 		gotoResumeWayForward, checkout)
 }
 
@@ -594,9 +594,9 @@ func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger, n
 	return shedengine.Done, shedengine.OutputPointer{}, nil
 }
 
-// taskTrailer appends the `Lyx-Task: <slug>` line to block, the landing commit's trailer block, which is empty when the commit carries no other trailer.
+// taskTrailer appends the `Lym-Task: <slug>` line to block, the landing commit's trailer block, which is empty when the commit carries no other trailer.
 func taskTrailer(block, slug string) string {
-	line := "Lyx-Task: " + slug
+	line := "Lym-Task: " + slug
 	if block == "" {
 		return line
 	}
@@ -698,7 +698,7 @@ func (fz *Finalize) readAttempts(path string) (FixerAttempts, string, error) {
 	rec, err := ReadFixerAttempts(path, entry)
 	if err != nil {
 		logger.Warn("landingshed: fixer attempt record unreadable", "producer", finalizeName, "cause", err)
-		return FixerAttempts{}, fmt.Sprintf("%sthe fixer attempt record of %s does not decode: %s; way forward: remove %s, which grants the entry a fresh cap, then `lyx loom resume`", LandingStopPrefix, finalizeName, path, path), nil
+		return FixerAttempts{}, fmt.Sprintf("%sthe fixer attempt record of %s does not decode: %s; way forward: remove %s, which grants the entry a fresh cap, then `lym loom resume`", LandingStopPrefix, finalizeName, path, path), nil
 	}
 	return rec, "", nil
 }
@@ -793,7 +793,7 @@ func (fz *Finalize) keepFixerCommits(ctx context.Context, rec FixerAttempts, not
 	if err := WriteFixerAttempts(FixerAttemptsPath(fz.deps.ScratchDir, finalizeName), rec); err != nil {
 		return fz.errorStop(ctx, err)
 	}
-	return fz.halt(ctx, fmt.Sprintf("%s%s; fixer commits: %s; way forward: review and fix on the task branch, then `lyx loom resume`", LandingStopPrefix, cause, commits))
+	return fz.halt(ctx, fmt.Sprintf("%s%s; fixer commits: %s; way forward: review and fix on the task branch, then `lym loom resume`", LandingStopPrefix, cause, commits))
 }
 
 // halt returns a halting Stuck with reason from Call.
@@ -1041,7 +1041,7 @@ func (fz *Finalize) commitParentRecords(ctx context.Context) (shedengine.Outcome
 	if err == nil {
 		return "", shedengine.OutputPointer{}, nil, false
 	}
-	reason := fmt.Sprintf("the parent pair's run records could not be committed: %v; way forward: run \"lyx fabric commit\" in the parent pair, then \"lyx loom resume\"", err)
+	reason := fmt.Sprintf("the parent pair's run records could not be committed: %v; way forward: run \"lym fabric commit\" in the parent pair, then \"lym loom resume\"", err)
 	outcome, out, stuckErr := fz.stuckOrCancelled(ctx, reason, "error", err)
 	return outcome, out, stuckErr, true
 }

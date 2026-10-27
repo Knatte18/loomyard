@@ -95,11 +95,11 @@ func TestBouncer_Circling_NoDecisionAwaitsNamingBothVerbs(t *testing.T) {
 		{
 			name:      "a slug is named in both verbs",
 			slug:      "my-task",
-			wantReasn: []string{"round 2", "lyx loom circling accept my-task", "lyx loom circling continue my-task", "lyx loom resume"},
+			wantReasn: []string{"round 2", "lym loom circling accept my-task", "lym loom circling continue my-task", "lym loom resume"},
 		},
 		{
 			name:      "an empty slug omits the argument",
-			wantReasn: []string{"`lyx loom circling accept`", "`lyx loom circling continue`"},
+			wantReasn: []string{"`lym loom circling accept`", "`lym loom circling continue`"},
 		},
 	}
 	for _, tt := range tests {
@@ -272,7 +272,7 @@ func TestBouncer_Circling_SettledAcceptReachedInSettleDegrades(t *testing.T) {
 	if err != nil || outcome != shedengine.Stuck {
 		t.Fatalf("settle(...) = (%q, %v); want Stuck and nil", outcome, err)
 	}
-	requireReasonContains(t, ptr.Reason, "already settled", "way forward:", "lyx loom start")
+	requireReasonContains(t, ptr.Reason, "already settled", "way forward:", "lym loom start")
 	if len(seams.order) != 0 {
 		t.Errorf("seams ran %v; want none", seams.order)
 	}
@@ -286,7 +286,7 @@ func TestBouncer_Circling_MalformedDecisionReturnsStuckAndRunsNoSeam(t *testing.
 	}
 
 	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
-	requireReasonContains(t, ptr.Reason, "circling decision", "way forward:", circlingDecisionPath(cfg.RunDir, 2), "lyx loom start")
+	requireReasonContains(t, ptr.Reason, "circling decision", "way forward:", circlingDecisionPath(cfg.RunDir, 2), "lym loom start")
 	if len(seams.order) != 0 {
 		t.Errorf("seams ran %v; want none", seams.order)
 	}

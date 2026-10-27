@@ -15,7 +15,7 @@ import (
 
 // absentContractNext is the envelope's next step when accept-audit accepted on an absent contract file:
 // the run is still in flight, and only a Master that writes both files again ends it.
-const absentContractNext = "re-run `lyx webster run` (in a shed-driven run, re-step the Webster row); a fresh Master resumes from state.json and writes outcome.yaml and summary.md"
+const absentContractNext = "re-run `lym webster run` (in a shed-driven run, re-step the Webster row); a fresh Master resumes from state.json and writes outcome.yaml and summary.md"
 
 // acceptAuditCmd builds the `accept-audit` subcommand.
 func (c *websterCLI) acceptAuditCmd() *cobra.Command {
@@ -28,7 +28,7 @@ func (c *websterCLI) acceptAuditCmd() *cobra.Command {
 It checks every suspect path against the last batch head and refuses, changing
 nothing, while any differs or cannot be checked.
 It also refuses while HEAD carries a commit past the last batch head other
-than a clean parent merge; run lyx webster reset --to last-batch-head first,
+than a clean parent merge; run lym webster reset --to last-batch-head first,
 which moves HEAD back to that head.
 Restore the named paths with git first, then run it.
 A contract file (outcome.yaml or summary.md) clears when it is absent or when
@@ -43,18 +43,18 @@ On success the envelope carries accepted, one entry per accepted finding with
 its class, detail and paths.
 
 With --batch NN it instead accepts failed batch NN's uncheckable findings,
-which otherwise make recover-batch refuse toward "lyx webster reset --to start" and then "lyx webster run".
+which otherwise make recover-batch refuse toward "lym webster reset --to start" and then "lym webster run".
 It accepts only pathless fabric-reference findings, and only when the worktree
 is clean and either HEAD is the batch's start commit, or the start is an
 ancestor of HEAD, so the batch's commits are kept, and every finding's command
 is read-only: built only from cat, head, tail, ls, wc, grep, jq and cut, with
 no redirection, substitution or backgrounding. Anything else refuses, changing
 nothing. Each accepted finding is recorded on the batch as an audit warning,
-and the envelope's next names lyx webster recover-batch NN.
+and the envelope's next names lym webster recover-batch NN.
 
 Example:
-  lyx webster accept-audit
-  lyx webster accept-audit --batch 8`,
+  lym webster accept-audit
+  lym webster accept-audit --batch 8`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
@@ -81,7 +81,7 @@ Example:
 				return nil
 			}
 			if st == nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, `webster: no run in progress; run "lyx webster run" first`))
+				clihelp.SetExit(cmd.Context(), output.Err(out, `webster: no run in progress; run "lym webster run" first`))
 				return nil
 			}
 
@@ -149,6 +149,6 @@ func (c *websterCLI) acceptBatch(cmd *cobra.Command, st *websterengine.State, n 
 	clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
 		"batch":    n,
 		"accepted": accepted,
-		"next":     fmt.Sprintf("lyx webster recover-batch %d", n),
+		"next":     fmt.Sprintf("lym webster recover-batch %d", n),
 	}))
 }

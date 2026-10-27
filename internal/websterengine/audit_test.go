@@ -1,10 +1,7 @@
 //go:build tier0
 
-// audit_test.go table-drives webster's own fork-audit policy over the full violation taxonomy
-// CheckFork/CheckParent enforce, the fabricengine.RefScanner matcher (built from a fake
-// lyxcwd.Location, never a hardcoded geometry token), and SettleRetry with a recording fake Sleeper.
-// Every case here is a pure fact-in/verdict-out table, per the discussion's TDD-centre framing: no
-// git spawn, no real sleeping, no filesystem I/O.
+// audit_test.go table-drives webster's own fork-audit policy over the full violation taxonomy CheckFork/CheckParent enforce, the fabricengine.RefScanner matcher (built from a fake lymcwd.Location, never a hardcoded geometry token), and SettleRetry with a recording fake Sleeper.
+// Every case here is a pure fact-in/verdict-out table, per the discussion's TDD-centre framing: no git spawn, no real sleeping, no filesystem I/O.
 
 package websterengine
 
@@ -16,24 +13,18 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// fakeLayout returns a lyxcwd.Location that resolves fabricengine.RecordsWorktree() without spawning git.
-func fakeLayout() *lyxcwd.Location {
-	return &lyxcwd.Location{HubPath: "/hub", WorktreeName: filepath.Base("/hub/master-builder")}
+// fakeLayout returns a lymcwd.Location that resolves fabricengine.RecordsWorktree() without spawning git.
+func fakeLayout() *lymcwd.Location {
+	return &lymcwd.Location{HubPath: "/hub", WorktreeName: filepath.Base("/hub/master-builder")}
 }
 
-// TestRefScannerMatches matrixes fabricengine.NewRefScanner against every Bash command shape
-// CheckFork/CheckParent must classify: `lyx fabric` invocations (the live spelling the Fabric Git
-// Invariant bans), a command referencing the fabric worktree path directly (e.g. `git -C <fabric-worktree> add`), and a set of fabric-free commands that must never match.
-// The `lyx fabric` rows are the regression guard: the fabric cutover deleted the per-side verbs
-// and renamed every fabric-touching verb under `lyx fabric`, so a matcher that knows only the old
-// spellings bans nothing an agent can actually run today.
-// The `lyx.exe` rows are the same guard for the Windows spelling — lyx's primary platform, where an
-// agent writing the extension out would otherwise slip the whole audit — paired with a `lyx.exe
-// board` row proving the extension did not widen the match to every lyx invocation.
+// TestRefScannerMatches matrixes fabricengine.NewRefScanner against every Bash command shape CheckFork/CheckParent must classify: `lym fabric` invocations (the live spelling the Fabric Git Invariant bans), a command referencing the fabric worktree path directly (e.g. `git -C <fabric-worktree> add`), and a set of fabric-free commands that must never match.
+// The `lym fabric` rows are the regression guard: the fabric cutover deleted the per-side verbs and renamed every fabric-touching verb under `lym fabric`, so a matcher that knows only the old spellings bans nothing an agent can actually run today.
+// The `lym.exe` rows are the same guard for the Windows spelling — lym's primary platform, where an agent writing the extension out would otherwise slip the whole audit — paired with a `lym.exe board` row proving the extension did not widen the match to every lym invocation.
 func TestRefScannerMatches(t *testing.T) {
 	layout := fakeLayout()
 	fabricRef := fabricengine.NewRefScanner(layout)
@@ -44,23 +35,23 @@ func TestRefScannerMatches(t *testing.T) {
 		cmd  string
 		want bool
 	}{
-		{"lyx fabric sync", "lyx fabric sync", true},
-		{"lyx fabric commit", "lyx fabric commit", true},
-		{"lyx fabric push", "lyx fabric push", true},
-		{"lyx fabric checkout", "lyx fabric checkout feature", true},
-		{"lyx fabric with leading prose", "cd /hub/pair && lyx fabric sync", true},
-		{"lyx.exe fabric sync", "lyx.exe fabric sync", true},
-		{"absolute lyx.exe fabric push", `C:\bin\lyx.exe fabric push`, true},
+		{"lym fabric sync", "lym fabric sync", true},
+		{"lym fabric commit", "lym fabric commit", true},
+		{"lym fabric push", "lym fabric push", true},
+		{"lym fabric checkout", "lym fabric checkout feature", true},
+		{"lym fabric with leading prose", "cd /hub/pair && lym fabric sync", true},
+		{"lym.exe fabric sync", "lym.exe fabric sync", true},
+		{"absolute lym.exe fabric push", `C:\bin\lym.exe fabric push`, true},
 		{"git -C fabric-worktree add", "git -C " + fabricWorktree + " add -A", true},
 		{"cd into fabric worktree", "cd " + fabricWorktree + " && git status", true},
 		{"code-side git commit is not a fabric reference", "git commit -am wip", false},
 		{"plain read", "cat notes.txt", false},
 		{"code-side status", "git status", false},
 		{"unrelated path", "cat /hub/other-repo/README.md", false},
-		{"a fabric-named file is not a lyx fabric invocation", "cat fabric-notes.md", false},
-		{"lyx board is not a fabric reference", "lyx board list", false},
-		{"lyx.exe board is not a fabric reference either", "lyx.exe board list", false},
-		{"a docs grep for the fabric verb is not a fabric reference", `grep -n "fabric remove\|lyx fabric.*remove" docs/overview.md`, false},
+		{"a fabric-named file is not a lym fabric invocation", "cat fabric-notes.md", false},
+		{"lym board is not a fabric reference", "lym board list", false},
+		{"lym.exe board is not a fabric reference either", "lym.exe board list", false},
+		{"a docs grep for the fabric verb is not a fabric reference", `grep -n "fabric remove\|lym fabric.*remove" docs/overview.md`, false},
 	}
 
 	for _, tt := range tests {
@@ -86,7 +77,7 @@ func TestNeverMatches_AlwaysFalse(t *testing.T) {
 		name string
 		cmd  string
 	}{
-		{"a real RefScanner would match this fabric command", "lyx fabric sync"},
+		{"a real RefScanner would match this fabric command", "lym fabric sync"},
 		{"empty string", ""},
 		{"ordinary non-fabric command", "git status"},
 	}
@@ -146,10 +137,10 @@ func TestCheckFork(t *testing.T) {
 			wantClasses: nil,
 		},
 		{
-			name: "lyx fabric sync is a hard error",
+			name: "lym fabric sync is a hard error",
 			fork: shuttleengine.ForkReport{
 				TranscriptPath: "d-fabric", ReportReturned: true,
-				BashCommands: []string{"lyx fabric sync"},
+				BashCommands: []string{"lym fabric sync"},
 			},
 			wantClasses: []AuditViolationClass{ClassFabricReference},
 		},
@@ -168,7 +159,7 @@ func TestCheckFork(t *testing.T) {
 			name: "fork write to outcome.yaml is a hard error",
 			fork: shuttleengine.ForkReport{
 				TranscriptPath: "f", ReportReturned: true,
-				WritePaths: []string{"/hub/master-builder/_lyx/webster/outcome.yaml"},
+				WritePaths: []string{"/hub/master-builder/_lym/webster/outcome.yaml"},
 			},
 			wantClasses: []AuditViolationClass{ClassForkContractWrite},
 		},
@@ -176,7 +167,7 @@ func TestCheckFork(t *testing.T) {
 			name: "relative fork write to summary.md is a hard error",
 			fork: shuttleengine.ForkReport{
 				TranscriptPath: "g", ReportReturned: true,
-				WritePaths: []string{"_lyx/webster/summary.md"},
+				WritePaths: []string{"_lym/webster/summary.md"},
 			},
 			wantClasses: []AuditViolationClass{ClassForkContractWrite},
 		},
@@ -186,7 +177,7 @@ func TestCheckFork(t *testing.T) {
 			name: "a relative write resolves against the audit workdir, not the anchor root",
 			fork: shuttleengine.ForkReport{
 				TranscriptPath: "g2", ReportReturned: true,
-				WritePaths: []string{"_lyx/webster/outcome.yaml"},
+				WritePaths: []string{"_lym/webster/outcome.yaml"},
 			},
 			workdir:     "/hub/master-builder/_worktrees/fork-w1",
 			wantClasses: nil,
@@ -195,19 +186,19 @@ func TestCheckFork(t *testing.T) {
 			name: "absolute fork write under the plan directory is a plan write",
 			fork: shuttleengine.ForkReport{
 				TranscriptPath: "p1", ReportReturned: true,
-				WritePaths: []string{"/hub/master-builder/_lyx/plan/03-x.md"},
+				WritePaths: []string{"/hub/master-builder/_lym/plan/03-x.md"},
 			},
 			wantClasses: []AuditViolationClass{ClassForkPlanWrite},
-			wantPath:    "/hub/master-builder/_lyx/plan/03-x.md",
+			wantPath:    "/hub/master-builder/_lym/plan/03-x.md",
 		},
 		{
 			name: "relative fork write under the plan directory is a plan write",
 			fork: shuttleengine.ForkReport{
 				TranscriptPath: "p2", ReportReturned: true,
-				WritePaths: []string{"_lyx/plan/03-x.md"},
+				WritePaths: []string{"_lym/plan/03-x.md"},
 			},
 			wantClasses: []AuditViolationClass{ClassForkPlanWrite},
-			wantPath:    "_lyx/plan/03-x.md",
+			wantPath:    "_lym/plan/03-x.md",
 		},
 		{
 			name: "fork write through the second plan spelling is a plan write",
@@ -230,7 +221,7 @@ func TestCheckFork(t *testing.T) {
 			name: "two plan writes in one transcript are two findings",
 			fork: shuttleengine.ForkReport{
 				TranscriptPath: "p5", ReportReturned: true,
-				WritePaths: []string{"_lyx/plan/03-x.md", "_lyx/plan/04-y.md"},
+				WritePaths: []string{"_lym/plan/03-x.md", "_lym/plan/04-y.md"},
 			},
 			wantClasses: []AuditViolationClass{ClassForkPlanWrite, ClassForkPlanWrite},
 		},
@@ -238,7 +229,7 @@ func TestCheckFork(t *testing.T) {
 			name: "fork write to its own batch report stays allowed",
 			fork: shuttleengine.ForkReport{
 				TranscriptPath: "h", ReportReturned: true,
-				WritePaths: []string{"/hub/master-builder/_lyx/webster/reports/01-json-flag.yaml"},
+				WritePaths: []string{"/hub/master-builder/_lym/webster/reports/01-json-flag.yaml"},
 			},
 			wantClasses: nil,
 		},
@@ -246,16 +237,16 @@ func TestCheckFork(t *testing.T) {
 			name: "fork write to state.json is a state write",
 			fork: shuttleengine.ForkReport{
 				TranscriptPath: "s1", ReportReturned: true,
-				WritePaths: []string{"/hub/master-builder/_lyx/webster/state.json"},
+				WritePaths: []string{"/hub/master-builder/_lym/webster/state.json"},
 			},
 			wantClasses: []AuditViolationClass{ClassForkStateWrite},
-			wantPath:    "/hub/master-builder/_lyx/webster/state.json",
+			wantPath:    "/hub/master-builder/_lym/webster/state.json",
 		},
 		{
 			name: "fork write to another batch's report is a state write",
 			fork: shuttleengine.ForkReport{
 				TranscriptPath: "s2", ReportReturned: true,
-				WritePaths: []string{"/hub/master-builder/_lyx/webster/reports/02-other.yaml"},
+				WritePaths: []string{"/hub/master-builder/_lym/webster/reports/02-other.yaml"},
 			},
 			wantClasses: []AuditViolationClass{ClassForkStateWrite},
 		},
@@ -271,17 +262,17 @@ func TestCheckFork(t *testing.T) {
 			name: "fork write to outcome.yaml is only a contract write, not also a state write",
 			fork: shuttleengine.ForkReport{
 				TranscriptPath: "s4", ReportReturned: true,
-				WritePaths: []string{"/hub/master-builder/_lyx/webster/outcome.yaml"},
+				WritePaths: []string{"/hub/master-builder/_lym/webster/outcome.yaml"},
 			},
 			wantClasses: []AuditViolationClass{ClassForkContractWrite},
 		},
 	}
 
-	const outcomePath = "/hub/master-builder/_lyx/webster/outcome.yaml"
-	const summaryPath = "/hub/master-builder/_lyx/webster/summary.md"
-	const ownReport = "/hub/master-builder/_lyx/webster/reports/01-json-flag.yaml"
-	planDirs := []string{"/hub/master-builder/_lyx/plan", "/fabric/records/plan"}
-	websterDirs := []string{"/hub/master-builder/_lyx/webster", "/fabric/records/webster"}
+	const outcomePath = "/hub/master-builder/_lym/webster/outcome.yaml"
+	const summaryPath = "/hub/master-builder/_lym/webster/summary.md"
+	const ownReport = "/hub/master-builder/_lym/webster/reports/01-json-flag.yaml"
+	planDirs := []string{"/hub/master-builder/_lym/plan", "/fabric/records/plan"}
+	websterDirs := []string{"/hub/master-builder/_lym/webster", "/fabric/records/webster"}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -324,8 +315,8 @@ func TestCheckParent(t *testing.T) {
 	fabricRef := fabricengine.NewRefScanner(layout)
 	fabricWorktree := fabricengine.RecordsWorktree(layout)
 
-	const outcomePath = "/hub/master-builder/_lyx/webster/outcome.yaml"
-	const summaryPath = "/hub/master-builder/_lyx/webster/summary.md"
+	const outcomePath = "/hub/master-builder/_lym/webster/outcome.yaml"
+	const summaryPath = "/hub/master-builder/_lym/webster/summary.md"
 
 	tests := []struct {
 		name  string
@@ -360,7 +351,7 @@ func TestCheckParent(t *testing.T) {
 			// fable-r3: a fully-done run failed its exit audit on exactly this).
 			name: "relative write to outcome.yaml is allowed",
 			audit: shuttleengine.ForkAudit{
-				ParentWrites: []string{"_lyx/webster/outcome.yaml"},
+				ParentWrites: []string{"_lym/webster/outcome.yaml"},
 			},
 			wantClasses: nil,
 		},
@@ -369,7 +360,7 @@ func TestCheckParent(t *testing.T) {
 			// spelling names another file: a resolution against the anchor root instead would allow it.
 			name: "a relative write resolves against the audit workdir, not the anchor root",
 			audit: shuttleengine.ForkAudit{
-				ParentWrites: []string{"_lyx/webster/outcome.yaml"},
+				ParentWrites: []string{"_lym/webster/outcome.yaml"},
 			},
 			workdir:     "/hub/master-builder/_worktrees/fork-w1",
 			wantClasses: []AuditViolationClass{ClassParentWrite},
@@ -377,7 +368,7 @@ func TestCheckParent(t *testing.T) {
 		{
 			name: "dot-prefixed relative write to summary.md is allowed",
 			audit: shuttleengine.ForkAudit{
-				ParentWrites: []string{"./_lyx/webster/summary.md"},
+				ParentWrites: []string{"./_lym/webster/summary.md"},
 			},
 			wantClasses: nil,
 		},
@@ -398,7 +389,7 @@ func TestCheckParent(t *testing.T) {
 		{
 			name: "write to a reports-dir path is a hard error",
 			audit: shuttleengine.ForkAudit{
-				ParentWrites: []string{"/hub/master-builder/_lyx/webster/reports/03-webster-audit-policy.yaml"},
+				ParentWrites: []string{"/hub/master-builder/_lym/webster/reports/03-webster-audit-policy.yaml"},
 			},
 			wantClasses: []AuditViolationClass{ClassParentWrite},
 		},
@@ -410,9 +401,9 @@ func TestCheckParent(t *testing.T) {
 			wantClasses: []AuditViolationClass{ClassFabricReference},
 		},
 		{
-			name: "parent lyx fabric sync is a hard error",
+			name: "parent lym fabric sync is a hard error",
 			audit: shuttleengine.ForkAudit{
-				ParentBashCommands: []string{"lyx fabric sync"},
+				ParentBashCommands: []string{"lym fabric sync"},
 			},
 			wantClasses: []AuditViolationClass{ClassFabricReference},
 		},

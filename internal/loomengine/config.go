@@ -44,8 +44,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reviewbudget"
 	"github.com/Knatte18/loomyard/internal/seatengine"
@@ -58,12 +58,11 @@ import (
 // stepIdleTimeoutFloorMin is the smallest step_idle_timeout_min LoadConfig returns, in minutes.
 const stepIdleTimeoutFloorMin = 1
 
-// discussionDirName is the relative-path segment loomengine joins onto
-// lyxdirs.LyxDirName to form the discussion phase's output directory.
+// discussionDirName is the relative-path segment loomengine joins onto lymdirs.LymDirName to form the discussion phase's output directory.
 // loomengine is this segment's sole declarer.
 const discussionDirName = "discussion"
 
-// landingDirName is the relative-path segment loomengine joins onto lyxdirs.LyxDirName to form the
+// landingDirName is the relative-path segment loomengine joins onto lymdirs.LymDirName to form the
 // directory holding the landing change description.
 // loomengine is this segment's sole declarer.
 const landingDirName = "landing"
@@ -76,15 +75,13 @@ const loomReworkCoverageFileName = "rework-coverage.md"
 // loomengine is this segment's sole declarer.
 const reworkDirName = "rework"
 
-// loomDirName is the relative-path segment loomengine joins onto lyxdirs.LyxDirName or
-// lyxdirs.DotLyxDirName to scope every loom-owned path that is not part of the shed run directory
-// under its own subdirectory, distinct from the other products (e.g. Someday Hardener) that also
-// configure Shed. loom's own status file and its two locks moved onto internal/shedrun's run
-// directory; this segment now backs only the seven accessors that have no shedrun equivalent.
+// loomDirName is the relative-path segment loomengine joins onto lymdirs.LymDirName or lymdirs.DotLymDirName to scope every loom-owned path that is not part of the shed run directory under its own subdirectory, distinct from the other products (e.g. Someday Hardener) that also configure Shed.
+// loom's own status file and its two locks moved onto internal/shedrun's run directory;
+// this segment now backs only the seven accessors that have no shedrun equivalent.
 // loomengine is this segment's sole declarer.
 const loomDirName = "loom"
 
-// reviewsDirName is the relative-path segment loomengine joins onto lyxdirs.LyxDirName to form the review segments' durable run root.
+// reviewsDirName is the relative-path segment loomengine joins onto lymdirs.LymDirName to form the review segments' durable run root.
 // loomengine is this segment's sole declarer.
 const reviewsDirName = "reviews"
 
@@ -96,35 +93,31 @@ const amendmentRecordFileName = "amendment.yaml"
 // loomengine is this segment's sole declarer.
 const frictionDirName = "friction"
 
-// DiscussionDirRel returns the worktree-anchor-relative form of DiscussionDir's path: the join of
-// lyxdirs.LyxDirName and discussionDirName.
-// It exists so a caller building a fabric commit pathspec never has to name a directory segment
-// loomengine owns.
+// DiscussionDirRel returns the worktree-anchor-relative form of DiscussionDir's path: the join of lymdirs.LymDirName and discussionDirName.
+// It exists so a caller building a fabric commit pathspec never has to name a directory segment loomengine owns.
 func DiscussionDirRel() string {
-	return filepath.Join(lyxdirs.LyxDirName, discussionDirName)
+	return filepath.Join(lymdirs.LymDirName, discussionDirName)
 }
 
 // DiscussionDir returns the path to the Discussion phase's output directory for this worktree (the
 // decision-record.md/support-log.md pair).
 // It is AnchorPath-anchored.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
-func DiscussionDir(l *lyxcwd.Location) string {
+func DiscussionDir(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), DiscussionDirRel())
 }
 
-// LandingDirRel returns the worktree-anchor-relative form of LandingDir's path: the join of
-// lyxdirs.LyxDirName and landingDirName.
-// It exists so a caller building a fabric commit pathspec never has to name a directory segment
-// loomengine owns.
+// LandingDirRel returns the worktree-anchor-relative form of LandingDir's path: the join of lymdirs.LymDirName and landingDirName.
+// It exists so a caller building a fabric commit pathspec never has to name a directory segment loomengine owns.
 func LandingDirRel() string {
-	return filepath.Join(lyxdirs.LyxDirName, landingDirName)
+	return filepath.Join(lymdirs.LymDirName, landingDirName)
 }
 
 // LandingDir returns the path to the directory holding the landing change description for this
 // worktree; the description file itself is summaryparser.Path of this directory.
 // It is AnchorPath-anchored.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
-func LandingDir(l *lyxcwd.Location) string {
+func LandingDir(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), LandingDirRel())
 }
 
@@ -135,10 +128,10 @@ func DiscussionDecisionRecordRel() string {
 }
 
 // DiscussionDecisionRecord returns the path to the distilled decision record that is the Plan
-// producer's design input from `_lyx/discussion/`.
+// producer's design input from `_lym/discussion/`.
 // It shares DiscussionDir's AnchorPath anchoring.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
-func DiscussionDecisionRecord(l *lyxcwd.Location) string {
+func DiscussionDecisionRecord(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), DiscussionDecisionRecordRel())
 }
 
@@ -146,7 +139,7 @@ func DiscussionDecisionRecord(l *lyxcwd.Location) string {
 // only.
 // It shares DiscussionDir's AnchorPath anchoring.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
-func DiscussionSupportLog(l *lyxcwd.Location) string {
+func DiscussionSupportLog(l *lymcwd.Location) string {
 	return filepath.Join(DiscussionDir(l), "support-log.md")
 }
 
@@ -154,14 +147,14 @@ func DiscussionSupportLog(l *lyxcwd.Location) string {
 // The list is the plan writer's head start.
 // It shares DiscussionDir's AnchorPath anchoring.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
-func DiscussionRelevant(l *lyxcwd.Location) string {
+func DiscussionRelevant(l *lymcwd.Location) string {
 	return filepath.Join(DiscussionDir(l), "relevant.md")
 }
 
 // DiscussionBoardEntry returns the path to the darn run's snapshot of its task's board entry, the Code-Review perch's answer key on that recipe.
 // It shares DiscussionDir's AnchorPath anchoring.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
-func DiscussionBoardEntry(l *lyxcwd.Location) string {
+func DiscussionBoardEntry(l *lymcwd.Location) string {
 	return filepath.Join(DiscussionDir(l), "board-entry.md")
 }
 
@@ -169,10 +162,10 @@ func DiscussionBoardEntry(l *lyxcwd.Location) string {
 // worktree's session bootstrap.
 // It is AnchorPath-anchored, living under the ephemeral tree at the mirrored subpath of the durable
 // status file per the Durable-vs-Ephemeral State Invariant.
-// It exists as an accessor rather than an inline path because cmd/lyx's transient guard walks
+// It exists as an accessor rather than an inline path because cmd/lym's transient guard walks
 // constructors, not call sites.
-func LoomDriverLog(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, "driver.log")
+func LoomDriverLog(l *lymcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lymdirs.DotLymDirName, loomDirName, "driver.log")
 }
 
 // LoomBootstrapLock returns the path to the advisory lock file serialising the session bootstrap's
@@ -182,12 +175,12 @@ func LoomDriverLog(l *lyxcwd.Location) string {
 // It is a third lock distinct from both LoomStatusLock's per-persist status lock and LoomRunLock's
 // whole-run lock,
 // and it is released before the success envelope is printed.
-func LoomBootstrapLock(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, "bootstrap.lock")
+func LoomBootstrapLock(l *lymcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lymdirs.DotLymDirName, loomDirName, "bootstrap.lock")
 }
 
 // LoomHandoffVoucher returns the path to the machine-local handoff voucher.
-// `lyx loom step` records it after every completed step, and `lyx loom start` records it right before it spawns a driver:
+// `lym loom step` records it after every completed step, and `lym loom start` records it right before it spawns a driver:
 // the persisted history length and state as that step or spawn left them.
 // It suppresses at most one entry observation, the first, and only when its history length and state equal what was recorded.
 // A voucher whose spawn then fails its readiness check stays until the next start or completed step overwrites it, and suppresses at most one later matching observation;
@@ -197,32 +190,32 @@ func LoomBootstrapLock(l *lyxcwd.Location) string {
 // so without this voucher the next run's entry observation reads as a crash-resume for a task in which nothing crashed.
 // A step killed mid-producer never writes it, so a genuine step-crash still reports.
 // Losing the voucher -- a fresh clone, a fabric re-wire -- costs at most one spurious crash-resume note, which is why it is machine-local rather than durable.
-func LoomHandoffVoucher(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, "handoff-voucher.json")
+func LoomHandoffVoucher(l *lymcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lymdirs.DotLymDirName, loomDirName, "handoff-voucher.json")
 }
 
 // LoomHandoffVoucherLock returns the path to the advisory lock file guarding concurrent access to
 // LoomHandoffVoucher(l).
 // It is AnchorPath-anchored under the ephemeral tree, exactly as the voucher it guards.
-func LoomHandoffVoucherLock(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, "handoff-voucher.json.lock")
+func LoomHandoffVoucherLock(l *lymcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lymdirs.DotLymDirName, loomDirName, "handoff-voucher.json.lock")
 }
 
 // LoomScratchDir returns the path to loom's ephemeral scratch directory for this worktree.
 // It is AnchorPath-anchored, like LoomDriverLog and LoomBootstrapLock, and names the directory
-// those two already share: lyxdirs.DotLyxDirName joined with loomDirName.
+// those two already share: lymdirs.DotLymDirName joined with loomDirName.
 // Per the Durable-vs-Ephemeral State Invariant, this accessor is the mirrored-subpath counterpart of
 // the "loom" segment's durable side -- now the run directory shedrun owns, not a path this package
 // declares.
-func LoomScratchDir(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName)
+func LoomScratchDir(l *lymcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lymdirs.DotLymDirName, loomDirName)
 }
 
 // LoomReworkCoveragePath returns the path to the rework agent's completion file, which maps each finding to the new cards covering it.
-// It is built on LoomScratchDir rather than re-joining the .lyx literal, and is ephemeral:
+// It is built on LoomScratchDir rather than re-joining the .lym literal, and is ephemeral:
 // the file is never tracked, per the Durable-vs-Ephemeral State Invariant.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
-func LoomReworkCoveragePath(l *lyxcwd.Location) string {
+func LoomReworkCoveragePath(l *lymcwd.Location) string {
 	return filepath.Join(LoomScratchDir(l), loomReworkCoverageFileName)
 }
 
@@ -236,35 +229,35 @@ func LoomReworkDirRel() string {
 // It is durable: each round's findings, record, coverage map and prior-generation archive are tracked run content, committed with the new plan generation by the round that wrote them.
 // It is built on LoomDurableDirRel rather than re-joining the durable literal a second time.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
-func LoomReworkDir(l *lyxcwd.Location) string {
+func LoomReworkDir(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), LoomReworkDirRel())
 }
 
-// LoomReviewsDirRel returns the worktree-anchor-relative form of LoomReviewsDir's path: the join of lyxdirs.LyxDirName and reviewsDirName.
+// LoomReviewsDirRel returns the worktree-anchor-relative form of LoomReviewsDir's path: the join of lymdirs.LymDirName and reviewsDirName.
 // It exists so a caller building a fabric commit pathspec never has to name a directory segment loomengine owns.
 func LoomReviewsDirRel() string {
-	return filepath.Join(lyxdirs.LyxDirName, reviewsDirName)
+	return filepath.Join(lymdirs.LymDirName, reviewsDirName)
 }
 
 // LoomReviewsDir returns the path to the root every review segment's `run_subdir` resolves
 // against for this worktree -- the value shedrecipe.Env.RunRoot takes.
 // It is durable: everything the round producer and the Bouncer write here -- reports, verdicts, ledgers, focus files, and their timestamped archive siblings -- is tracked content committed by loom's per-transition status commit.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
-func LoomReviewsDir(l *lyxcwd.Location) string {
+func LoomReviewsDir(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), LoomReviewsDirRel())
 }
 
-// LoomDurableDirRel returns the worktree-anchor-relative form of LoomDurableDir's path: the join of lyxdirs.LyxDirName and loomDirName.
+// LoomDurableDirRel returns the worktree-anchor-relative form of LoomDurableDir's path: the join of lymdirs.LymDirName and loomDirName.
 // Everything under this directory is tracked run content committed by loom's per-transition status commit.
 func LoomDurableDirRel() string {
-	return filepath.Join(lyxdirs.LyxDirName, loomDirName)
+	return filepath.Join(lymdirs.LymDirName, loomDirName)
 }
 
 // LoomDurableDir returns loom's durable run directory for this worktree: LoomDurableDirRel joined onto l.AnchorPath().
 // It is the durable counterpart of LoomScratchDir.
 // Everything under this directory is tracked run content committed by loom's per-transition status commit.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
-func LoomDurableDir(l *lyxcwd.Location) string {
+func LoomDurableDir(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), LoomDurableDirRel())
 }
 
@@ -277,14 +270,14 @@ func LoomAmendmentRecordRel() string {
 // LoomAmendmentRecord returns the path of the plan amendment record for this worktree: LoomAmendmentRecordRel joined onto l.AnchorPath().
 // It is durable: the run's routing reads it, so it is tracked content that survives adoption on another machine.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
-func LoomAmendmentRecord(l *lyxcwd.Location) string {
+func LoomAmendmentRecord(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), LoomAmendmentRecordRel())
 }
 
 // PathsOutsideRunRecords returns the absolute paths that lie outside the run's own records directories, in their input order.
 // The records directories are the run's directory, the loom durable directory and the reviews directory: the ones the status commit stages.
 // A path under one of them is run state a hand-over leaves to the next driver; a path that only shares a directory's name as a prefix is outside it.
-func PathsOutsideRunRecords(l *lyxcwd.Location, runID string, paths []string) []string {
+func PathsOutsideRunRecords(l *lymcwd.Location, runID string, paths []string) []string {
 	records := []string{shedrun.RunDir(l, runID), LoomDurableDir(l), LoomReviewsDir(l)}
 	var outside []string
 	for _, path := range paths {
@@ -306,7 +299,7 @@ func PathsOutsideRunRecords(l *lyxcwd.Location, runID string, paths []string) []
 // The notes are run records, so they live under the durable tree and are committed with the run.
 // It is built on LoomDurableDir rather than re-joining l.AnchorPath() and the durable literal a second time.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
-func LoomFrictionDir(l *lyxcwd.Location) string {
+func LoomFrictionDir(l *lymcwd.Location) string {
 	return filepath.Join(LoomDurableDir(l), frictionDirName)
 }
 
@@ -316,7 +309,7 @@ func LoomFrictionDir(l *lyxcwd.Location) string {
 // It exists as a second accessor, rather than being derived by the caller from LoomFrictionDir,
 // so internal/frictionengine stays told rather than deriving, and the "friction" segment is still
 // named in exactly one place.
-func LoomFrictionArchivePrefix(l *lyxcwd.Location) string {
+func LoomFrictionArchivePrefix(l *lymcwd.Location) string {
 	return LoomFrictionDir(l) + "-"
 }
 
@@ -359,7 +352,7 @@ func LandingCheckpointSlug(subject string) (string, bool) {
 // Both would also have declared the same reflection-report.md as an output.
 // The lock file is not inside the friction directory, which holds only reflection inputs and outputs.
 // It sits at the mirrored ephemeral subpath of the durable friction directory, under LoomScratchDir.
-func LoomFrictionLock(l *lyxcwd.Location) string {
+func LoomFrictionLock(l *lymcwd.Location) string {
 	return filepath.Join(LoomScratchDir(l), frictionDirName+".lock")
 }
 
@@ -639,7 +632,7 @@ func fanKeys(cfg Config) []lenses.FanKey {
 	}
 }
 
-// MigrateConfig rewrites a loom.yaml document for lyx config reconcile and returns the rewritten bytes with one line per rewrite.
+// MigrateConfig rewrites a loom.yaml document for lym config reconcile and returns the rewritten bytes with one line per rewrite.
 // It raises a below-floor or null step_idle_timeout_min to its floor, replaces the retired producer keys, retires skip_merge_review and fan_review and renames the retired reviewer, fixer and fan keys.
 // The producer keys:
 // discussion_producer twill becomes discussion_lenses twill-discussion, and single, seats and any other value become an empty discussion_lenses;
@@ -1182,7 +1175,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	resolved, err := configengine.Load(dirs, spec)
 	if err != nil {
 		if strings.Contains(err.Error(), "not initialized") {
-			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"; a session lyx refuses the verb from reports status: FAILED and the orch runs it")
+			return Config{}, fmt.Errorf("not initialized here; run \"lym fabric reconcile\"; a session lym refuses the verb from reports status: FAILED and the orch runs it")
 		}
 		return Config{}, err
 	}

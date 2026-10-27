@@ -21,7 +21,7 @@ func TestDriverResumeLine(t *testing.T) {
 		{
 			name:       "names run id, report path, baseline and budget",
 			runID:      "worktree",
-			reportPath: "/hub/worktree/.lyx/shed/worktree/drive-report-20260920-120000-cafe.md",
+			reportPath: "/hub/worktree/.lym/shed/worktree/drive-report-20260920-120000-cafe.md",
 			wantInLine: []string{"baseline", "budget"},
 		},
 		{name: "short inputs", runID: "worktree", reportPath: "/hub/report.md"},

@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
@@ -60,7 +60,7 @@ func atoiOrFail(t *testing.T, s string) int {
 
 // commitReworkRound leaves what an earlier rework round left at the records HEAD.
 // That is the plan generation writePlan writes, committed, and round n's record.json carrying first and class, committed under the rework directory.
-func commitReworkRound(t *testing.T, c *loomCLI, location *lyxcwd.Location, n, first int, class string, writePlan func()) {
+func commitReworkRound(t *testing.T, c *loomCLI, location *lymcwd.Location, n, first int, class string, writePlan func()) {
 	t.Helper()
 	writePlan()
 	if err := c.env.CommitPlan(); err != nil {
@@ -78,7 +78,7 @@ func TestWire_Real_PlanReviewSkipFollowsGenerationClass(t *testing.T) {
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	const slug = "reworkskip"
 	hubforge.AddPair(t, hub, slug)
-	location, err := lyxcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
+	location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
 	if err != nil {
 		t.Fatalf("ResolveWorktree error = %v; want nil", err)
 	}

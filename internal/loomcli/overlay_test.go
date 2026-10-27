@@ -1,6 +1,6 @@
 //go:build tier0
 
-// overlay_test.go covers `lyx loom validate-plan --overlay`: that it reports what the flag-less run reports over the overlaid plan, writes no byte under the plan directory, and refuses each unusable input, name and flag combination with its cause and way forward.
+// overlay_test.go covers `lym loom validate-plan --overlay`: that it reports what the flag-less run reports over the overlaid plan, writes no byte under the plan directory, and refuses each unusable input, name and flag combination with its cause and way forward.
 // The verb is driven directly against the leaf command, as validate_test.go does, so every case is tier 1.
 
 package loomcli
@@ -191,7 +191,7 @@ func TestValidatePlanCmd_Overlay(t *testing.T) {
 			name:     "a name that is not a plan file is refused",
 			input:    `{"amendments.md":"x"}`,
 			wantExit: 1,
-			wantOut:  []string{"not a plan file", `"amendments.md"`, "way forward: name only `00-overview.md` or a card file the Card Index lists", "lyx loom insert-card"},
+			wantOut:  []string{"not a plan file", `"amendments.md"`, "way forward: name only `00-overview.md` or a card file the Card Index lists", "lym loom insert-card"},
 		},
 		{
 			name: "a Card Index card removed from disk is a missing card file",

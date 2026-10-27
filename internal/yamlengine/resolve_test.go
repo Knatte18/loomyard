@@ -66,13 +66,13 @@ func TestExpandScalar(t *testing.T) {
 		{name: "optional_default_with_quotes", scalar: "${env:FOO:-'quoted'_value}", env: map[string]string{}, want: "'quoted'_value"},
 		{
 			name:   "optional_interpolation",
-			scalar: "path_${env:LYX_PATH:-../default}/subdir",
-			env:    map[string]string{"LYX_PATH": "/custom/path"},
+			scalar: "path_${env:LYM_PATH:-../default}/subdir",
+			env:    map[string]string{"LYM_PATH": "/custom/path"},
 			want:   "path_/custom/path/subdir",
 		},
 		{
 			name:   "optional_interpolation_default",
-			scalar: "path_${env:LYX_PATH:-../default}/subdir",
+			scalar: "path_${env:LYM_PATH:-../default}/subdir",
 			env:    map[string]string{},
 			want:   "path_../default/subdir",
 		},

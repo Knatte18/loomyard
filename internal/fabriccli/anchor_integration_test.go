@@ -1,6 +1,6 @@
 //go:build tier1
 
-// anchor_integration_test.go drives `lyx fabric anchor` through RunCLIIn over hubforge hubs:
+// anchor_integration_test.go drives `lym fabric anchor` through RunCLIIn over hubforge hubs:
 // the print and the move of a pair, a child forked before its parent's move, and the integration of a prime's move on a second clone.
 // A hub's prime warp tracks sub/ and is pushed before any second clone is made, so sub is a directory git tracks in every checkout.
 // Package fabriccli_test, sharing the single TestMain in testmain_test.go.
@@ -17,8 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
@@ -68,10 +68,10 @@ func TestRunCLI_Anchor(t *testing.T) {
 			t.Errorf("anchor --set sub envelope = %v; want a change from . to sub", moved.Raw)
 		}
 		weft := h.PairRecordsSibling("mover")
-		if marker := gitkit.Git(t, weft, "show", "HEAD:"+lyxcwd.AnchorFileName); marker != "sub" {
+		if marker := gitkit.Git(t, weft, "show", "HEAD:"+lymcwd.AnchorFileName); marker != "sub" {
 			t.Errorf("committed marker = %q; want sub", marker)
 		}
-		for _, name := range []string{lyxdirs.LyxDirName, lyxdirs.DotLyxDirName} {
+		for _, name := range []string{lymdirs.LymDirName, lymdirs.DotLymDirName} {
 			if isLink, err := fslink.IsLink(filepath.Join(h.PairCodeWorktree("mover"), "sub", name)); err != nil || !isLink {
 				t.Errorf("%s at sub is no link (%v); want the pair wired there", name, err)
 			}
@@ -97,21 +97,21 @@ func TestRunCLI_Anchor(t *testing.T) {
 		hubforge.AddPairWith(t, h, "child", fabricengine.AddOptions{Parent: "parent"})
 		requireAnchorOK(t, h.PrimeWorktree(), "parent", "--set", "sub")
 
-		child, err := lyxcwd.NamedWorktree(h.Path, "child")
+		child, err := lymcwd.NamedWorktree(h.Path, "child")
 		if err != nil || child.AnchorRel != "." {
 			t.Fatalf("anchor of the child = (%v, %v); want . kept", child, err)
 		}
-		if marker := gitkit.Git(t, h.PairRecordsSibling("child"), "show", "HEAD:"+lyxcwd.AnchorFileName); marker != "." {
+		if marker := gitkit.Git(t, h.PairRecordsSibling("child"), "show", "HEAD:"+lymcwd.AnchorFileName); marker != "." {
 			t.Errorf("committed marker of the child = %q; want .", marker)
 		}
-		noteDir := filepath.Join(h.PairCodeWorktree("child"), lyxdirs.LyxDirName)
+		noteDir := filepath.Join(h.PairCodeWorktree("child"), lymdirs.LymDirName)
 		if err := os.WriteFile(filepath.Join(noteDir, "child-note.txt"), []byte("note\n"), 0o644); err != nil {
 			t.Fatalf("write the child's record: %v", err)
 		}
 		if code, output := runFabric(t, h.PairCodeWorktree("child"), "commit"); code != 0 {
 			t.Fatalf("RunCLI(commit) in the child = %d; want 0\noutput: %s", code, output)
 		}
-		if got := gitkit.Git(t, h.PairRecordsSibling("child"), "show", "HEAD:"+lyxdirs.LyxDirName+"/child-note.txt"); got != "note" {
+		if got := gitkit.Git(t, h.PairRecordsSibling("child"), "show", "HEAD:"+lymdirs.LymDirName+"/child-note.txt"); got != "note" {
 			t.Errorf("child-note.txt in the child's weft at its anchor = %q; want the record committed there", got)
 		}
 
@@ -122,10 +122,10 @@ func TestRunCLI_Anchor(t *testing.T) {
 			t.Fatalf("RunCLI(merge %s) in the parent = %d; want 0\noutput: %s", childBranch, code, output)
 		}
 
-		if marker := gitkit.Git(t, h.PairRecordsSibling("parent"), "show", "HEAD:"+lyxcwd.AnchorFileName); marker != "sub" {
+		if marker := gitkit.Git(t, h.PairRecordsSibling("parent"), "show", "HEAD:"+lymcwd.AnchorFileName); marker != "sub" {
 			t.Errorf("committed marker of the parent after the merge = %q; want sub, the weft being no merge participant", marker)
 		}
-		if parent, err := lyxcwd.NamedWorktree(h.Path, "parent"); err != nil || parent.AnchorRel != "sub" {
+		if parent, err := lymcwd.NamedWorktree(h.Path, "parent"); err != nil || parent.AnchorRel != "sub" {
 			t.Errorf("anchor of the parent after the merge = (%v, %v); want sub", parent, err)
 		}
 		if _, err := os.Stat(filepath.Join(h.PairCodeWorktree("parent"), "child-only.txt")); err != nil {
@@ -138,10 +138,10 @@ func TestRunCLI_Anchor(t *testing.T) {
 		h := newAnchorCLIHub(t)
 		second := hubforge.CloneSecond(t, h)
 		secondRecords := second.PrimeRecords()
-		gitkit.CommitFile(t, secondRecords, lyxdirs.LyxDirName+"/second.txt", "second\n", "records of the second machine")
-		kept := filepath.Join(secondRecords, lyxdirs.DotLyxDirName, "kept.txt")
+		gitkit.CommitFile(t, secondRecords, lymdirs.LymDirName+"/second.txt", "second\n", "records of the second machine")
+		kept := filepath.Join(secondRecords, lymdirs.DotLymDirName, "kept.txt")
 		if err := os.WriteFile(kept, []byte("kept\n"), 0o644); err != nil {
-			t.Fatalf("write the untracked file in the second clone's .lyx: %v", err)
+			t.Fatalf("write the untracked file in the second clone's .lym: %v", err)
 		}
 
 		requireAnchorOK(t, h.PrimeWorktree(), "--set", "sub")
@@ -155,8 +155,8 @@ func TestRunCLI_Anchor(t *testing.T) {
 			if code == 0 {
 				t.Errorf("RunCLI(%s) in the second clone = 0; want the stop at the marker change\noutput: %s", verb, output)
 			}
-			if !strings.Contains(output, "lyx fabric anchor") {
-				t.Errorf("RunCLI(%s) output = %s; want the stop to name `lyx fabric anchor`", verb, output)
+			if !strings.Contains(output, "lym fabric anchor") {
+				t.Errorf("RunCLI(%s) output = %s; want the stop to name `lym fabric anchor`", verb, output)
 			}
 		}
 		if got := gitkit.RevParse(t, secondRecords, "HEAD"); got != recordsHead {
@@ -180,7 +180,7 @@ func TestRunCLI_Anchor(t *testing.T) {
 			t.Errorf("ReconcileOrigin() branches = %+v; want the prime's records branch anchor_stopped", report.Branches)
 		}
 		if got, err := os.ReadFile(kept); err != nil || string(got) != "kept\n" {
-			t.Errorf(".lyx file after the reconcile = (%q, %v); want it unchanged", got, err)
+			t.Errorf(".lym file after the reconcile = (%q, %v); want it unchanged", got, err)
 		}
 
 		integrated := requireAnchorOK(t, second.PrimeWorktree(), "--set", "sub")
@@ -188,22 +188,22 @@ func TestRunCLI_Anchor(t *testing.T) {
 		if integrated.Raw["changed"] != true || integrated.Raw["anchor"] != "sub" {
 			t.Errorf("anchor --set sub envelope = %v; want the integration to have changed the anchor to sub", integrated.Raw)
 		}
-		if message, _ := integrated.Raw["dobby_start_error"].(string); message == "" || integrated.Raw["way_forward"] != "lyx beam start" {
-			t.Errorf("anchor --set sub envelope = %v; want the dobby start the test binary refuses reported with `lyx beam start`", integrated.Raw)
+		if message, _ := integrated.Raw["dobby_start_error"].(string); message == "" || integrated.Raw["way_forward"] != "lym beam start" {
+			t.Errorf("anchor --set sub envelope = %v; want the dobby start the test binary refuses reported with `lym beam start`", integrated.Raw)
 		}
-		if marker := gitkit.Git(t, secondRecords, "show", "HEAD:"+lyxcwd.AnchorFileName); marker != "sub" {
+		if marker := gitkit.Git(t, secondRecords, "show", "HEAD:"+lymcwd.AnchorFileName); marker != "sub" {
 			t.Errorf("committed marker after the integration = %q; want sub", marker)
 		}
-		if got := gitkit.Git(t, secondRecords, "show", "HEAD:sub/"+lyxdirs.LyxDirName+"/second.txt"); got != "second" {
-			t.Errorf("sub/_lyx/second.txt at HEAD = %q; want the second machine's commit carried to sub", got)
+		if got := gitkit.Git(t, secondRecords, "show", "HEAD:sub/"+lymdirs.LymDirName+"/second.txt"); got != "second" {
+			t.Errorf("sub/_lym/second.txt at HEAD = %q; want the second machine's commit carried to sub", got)
 		}
 		if upstream := gitkit.RevParse(t, secondRecords, "@{upstream}"); !gitkit.IsAncestor(t, secondRecords, upstream, "HEAD") {
 			t.Errorf("upstream tip %s is no ancestor of HEAD; want the commits replayed on it", upstream)
 		}
-		if got, err := os.ReadFile(filepath.Join(secondRecords, "sub", lyxdirs.DotLyxDirName, "kept.txt")); err != nil || string(got) != "kept\n" {
-			t.Errorf("sub/.lyx/kept.txt = (%q, %v); want the file moved with .lyx", got, err)
+		if got, err := os.ReadFile(filepath.Join(secondRecords, "sub", lymdirs.DotLymDirName, "kept.txt")); err != nil || string(got) != "kept\n" {
+			t.Errorf("sub/.lym/kept.txt = (%q, %v); want the file moved with .lym", got, err)
 		}
-		for _, name := range []string{lyxdirs.LyxDirName, lyxdirs.DotLyxDirName} {
+		for _, name := range []string{lymdirs.LymDirName, lymdirs.DotLymDirName} {
 			if isLink, err := fslink.IsLink(filepath.Join(second.PrimeWorktree(), "sub", name)); err != nil || !isLink {
 				t.Errorf("%s at sub is no link (%v); want the prime wired there", name, err)
 			}

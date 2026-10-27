@@ -1,4 +1,4 @@
-// Package orchengine is the engine behind `lyx orch`: the hub orchestrator hosted as an interactive shuttle run in the prime worktree's reed session, cycled before its context fills.
+// Package orchengine is the engine behind `lym orch`: the hub orchestrator hosted as an interactive shuttle run in the prime worktree's reed session, cycled before its context fills.
 //
 // The orchestrator is one long-lived Claude session that outlives any single context window.
 // A detached watcher reads each turn end's context usage from the provider transcript.
@@ -7,14 +7,14 @@
 //
 // # Verbs, and where they run
 //
-// `lyx orch` runs from the hub's prime worktree or a beam only; every verb refuses elsewhere.
+// `lym orch` runs from the hub's prime worktree or a beam only; every verb refuses elsewhere.
 //
-// The orch is brought up by `orchcli.BeamUp`, which `lyx beam start` calls, and stopped by `orchcli.BeamDown`, which `lyx beam stop` calls; no orch verb starts it.
+// The orch is brought up by `orchcli.BeamUp`, which `lym beam start` calls, and stopped by `orchcli.BeamDown`, which `lym beam stop` calls; no orch verb starts it.
 // A bring-up is idempotent.
-// It first ensures the `runs` strand, the session's overview window named `beam: prime`, or `beam: <slug>` in a beam, running `lyx batten overview`, which shows the worktree's dobby with each run it drives above the orch context lines, so on a fresh session the beam's window is the first window and the orchestrator has a window of its own; a failure there only warns.
+// It first ensures the `runs` strand, the session's overview window named `beam: prime`, or `beam: <slug>` in a beam, running `lym batten overview`, which shows the worktree's dobby with each run it drives above the orch context lines, so on a fresh session the beam's window is the first window and the orchestrator has a window of its own; a failure there only warns.
 // It leaves one live orchestrator strand and one watcher bound to it, then reports.
 // It never attaches or switches a tmux client;
-// `lyx reed attach` is the only way into the session.
+// `lym reed attach` is the only way into the session.
 //
 //   - status: reports the strand, the watcher and the persisted cycle state.
 //   - refresh: writes a clear-cycle request, which makes the watcher write a note and clear the session at its next idle moment regardless of the token count and of `cycle_mode`.
@@ -28,7 +28,7 @@
 // The verbs, the reed and shuttle wiring, and the strand-identity rules live in internal/orchcli.
 // This package holds what sits behind the seam: the config, the stencil renders, the persisted state, the start's two decisions, and the watcher.
 // It is told every path through Paths and derives none (Told-Geometry Invariant).
-// MigrateConfig raises the module's below-floor poll_interval_ms to its floor for lyx config reconcile.
+// MigrateConfig raises the module's below-floor poll_interval_ms to its floor for lym config reconcile.
 //
 // # Start prompt order
 //
@@ -54,7 +54,7 @@
 // The role file's last two sections, `## Hub-wide rules` and `## This orch's rules`, carry the files at `Paths.HubRulesPath` and `Paths.OwnRulesPath`, read at every role-file render;
 // each absent or whitespace-only file renders a placeholder line naming its path, any other read failure fails the render naming the file,
 // and a stencil without the `hub_rules` or `orch_rules` marker fails naming the stencil.
-// The file at `Paths.HubRulesPath` is written only through `lyx orch rules`, and the one at `Paths.OwnRulesPath` is committed through `lyx fabric commit`.
+// The file at `Paths.HubRulesPath` is written only through `lym orch rules`, and the one at `Paths.OwnRulesPath` is committed through `lym fabric commit`.
 // A role stencil without the `decision_note_title` marker fails the render naming the stencil, as for the other two.
 // The watcher is told an index source through NewWatcher, calls it before each of its three role-file renders, and returns to idle with the reason when the source or the render fails.
 //
@@ -66,7 +66,7 @@
 //
 // The orch run's spec carries `permission_mode: bypass`, the only accepted value.
 // LoadConfig resolves an empty value to `bypass` and returns an error for any other, `prompt` included, naming the fix `set permission_mode: bypass or remove the key`; every verb loads the config first, so each refuses before any pane is touched.
-// The spec also allows the Agent tool and forks, so the session can spawn typed subagents and forks while the fork-context `lyx webster` guard stays installed.
+// The spec also allows the Agent tool and forks, so the session can spawn typed subagents and forks while the fork-context `lym webster` guard stays installed.
 // Only the orch run sets the allowance, and it has no orch.yaml switch.
 //
 // Under `bypass`, the orch session and every subagent and fork it spawns run every tool with no permission prompt, because the orch never prompts per action.
@@ -87,7 +87,7 @@
 // On SIGINT or SIGTERM it records State.WatcherStopping before its in-flight tick finishes and before it releases the lock,
 // and the next Run clears the record.
 // `start` waits for a stopping watcher through WaitWatcherGone, at most three poll intervals, instead of reading the dying watcher as live;
-// past the bound it reports the watcher live with `watcher_stopping: true` and a hint to run `lyx beam start` again.
+// past the bound it reports the watcher live with `watcher_stopping: true` and a hint to run `lym beam start` again.
 // A healthy live watcher records no stopping,
 // so `start` never waits for it.
 // The consecutive tick-error count is capped, and the watcher exits with its reason recorded in State.WatcherExit once the cap is reached.
@@ -95,7 +95,7 @@
 // A watcher told an OwnerWatch through WatchOwner reads its beam's owner after the strand-alive check of each tick.
 // An owner other than this machine stops the orch strand through OwnerWatch.Stop, records `owned by machine <owner>` as the exit and ends the watcher as done; a failed stop is the tick's error and the next tick retries it.
 // A failed read reads as not owned elsewhere and logs once per episode.
-// The verdict is as fresh as this machine's local Bolt, and a watcher started by an older build reaches the check only once it restarts, `lyx beam status` showing the orch up meanwhile.
+// The verdict is as fresh as this machine's local Bolt, and a watcher started by an older build reaches the check only once it restarts, `lym beam status` showing the orch up meanwhile.
 //
 // The orch is colored like every other strand, and the watcher queues the color through creel, never into the pane itself:
 // the launch spec names the coordinator segment and leaves the color to the caller,
@@ -324,7 +324,7 @@
 //     and the role pointer reaches the session at its next cycle.
 //
 // The provider's session-start hook can deliver the pointer itself after a compaction:
-// the hidden `lyx orch resume-context` verb renders it from the persisted state through ResumeContext, which renders the role file first in every phase but a resuming one with a pending pointer, and then writes the delivery mark, `resume-mark`.
+// the hidden `lym orch resume-context` verb renders it from the persisted state through ResumeContext, which renders the role file first in every phase but a resuming one with a pending pointer, and then writes the delivery mark, `resume-mark`.
 // The pointer step reads the mark first.
 // A mark dated at or after State.CompactionBaseline whose text equals the pending pointer means the hook delivered it, so the step injects nothing, logs `orch: pointer delivered by the session-start hook` at Info, and ends the phase at once with no abort reason.
 // It does not wait for a turn end, since the one that revealed the boundary was read before the step, and a skip waiting for another could end in `resume timed out`.
@@ -338,19 +338,19 @@
 // State.CompactionBaseline is set to the launch time by a fresh launch, so a boundary an adopted session already carried never reloads,
 // and moves to each handled boundary, including a compaction the watcher ran, so no boundary reloads twice.
 //
-// # The .lyx/orch/ layout
+// # The .lym/orch/ layout
 //
-// Everything orch writes lives under the prime's `<anchor>/.lyx/orch/`, declared once in internal/orchcli/paths.go:
+// Everything orch writes lives under the prime's `<anchor>/.lym/orch/`, declared once in internal/orchcli/paths.go:
 //
-//   - state.json and state.json.lock: the persisted State and its lock; the state carries the orch session's id and outlives `lyx orch stop`.
+//   - state.json and state.json.lock: the persisted State and its lock; the state carries the orch session's id and outlives `lym orch stop`.
 //   - watch.lock: held for the watcher's life.
 //   - start.lock: serializes `start`.
 //   - cycle-request: the JSON marker `refresh` and `distill` write and the watcher consumes.
 //   - resume-mark: the JSON delivery mark `resume-context` writes after a successful render and the pointer step reads; removed when the reload ends.
 //   - watch.log: the detached watcher's stdout and stderr.
 //   - handoffs/: one timestamped handoff file per cycle.
-//     The one State.LastHandoff names is kept, and `lyx cleanup --apply` removes the rest.
-//   - notices/: the retired notice queue, which nothing writes now; `lyx cleanup` lists it beside the prime's retired `.lyx/notices.log` under `retired` and `--apply` removes both.
+//     The one State.LastHandoff names is kept, and `lym cleanup --apply` removes the rest.
+//   - notices/: the retired notice queue, which nothing writes now; `lym cleanup` lists it beside the prime's retired `.lym/notices.log` under `retired` and `--apply` removes both.
 //   - session-*.never: one sentinel per launch, an output file nothing ever writes.
 //     A shuttle Spec needs an output file to validate, and the watcher, not shuttle's Wait, owns the session's lifetime.
 //
@@ -383,7 +383,7 @@
 //     It is released at every return to idle.
 //     A restarted watcher in a non-idle phase takes the hold again before anything else.
 //     Bound: a watcher that dies mid-cycle leaves a hold that lapses within `cycleHoldDuration`;
-//     a live cycle keeps the orch's other mail unreminded until it returns to idle, which the phase timeouts bound everywhere but the clearing phase, where `lyx orch status` shows the stall.
+//     a live cycle keeps the orch's other mail unreminded until it returns to idle, which the phase timeouts bound everywhere but the clearing phase, where `lym orch status` shows the stall.
 //   - A failed creel call, an unreachable daemon, a refusal or the sender-resolution refusal, goes through `creelFailed`:
 //     it is logged once per change of error and recorded in State.Stuck with State.StuckByCreel set, and the tick returns no error, so a creel outage holds the cycle and never ends the watcher.
 //     A failed release at a return to idle does not keep the phase: the watcher returns to idle, and the hold it could not release lapses.
@@ -427,7 +427,7 @@
 //
 // # Binary re-exec
 //
-// A watcher told a check through `WatchBinary`, which `lyx orch watch` wires to a `selfexec` watcher, re-execs onto a replaced binary.
+// A watcher told a check through `WatchBinary`, which `lym orch watch` wires to a `selfexec` watcher, re-execs onto a replaced binary.
 // `Watcher.Run` calls the check after a tick that succeeded and returned not done, before the poll sleep, so it adds no wake of its own and runs at most once per poll.
 // It runs only at a restart-safe tick: the state, re-read from disk after the tick, is in phase idle, so no cycle step is in flight and the persisted cycle state carries over,
 // and the told pause record reads with no live hub entry, handled or not, so no in-memory pause handling is lost.
@@ -441,12 +441,12 @@
 //
 // # Continuing after a reboot
 //
-// A start resumes the session State.SessionID records, with the reload pointer, after a reboot, a `lyx orch stop` or a dead strand.
+// A start resumes the session State.SessionID records, with the reload pointer, after a reboot, a `lym orch stop` or a dead strand.
 // A start records the id of every launch and the watcher keeps it current across `/clear`, so it names the context the orchestrator last ran.
 // A resume that fails to start, its transcript gone or its process not coming up live, falls back to a fresh launch from the last completed handoff, else from the start stencil, and the report names the session it gave up.
 // With no session recorded the start launches fresh the same way.
-// A fresh orch otherwise comes only from `lyx orch refresh` on a live orch, since `lyx orch stop` keeps the recorded id.
-// `lyx orch status` shows the recorded id as `session_id`.
+// A fresh orch otherwise comes only from `lym orch refresh` on a live orch, since `lym orch stop` keeps the recorded id.
+// `lym orch status` shows the recorded id as `session_id`.
 //
 // # Residuals
 //
@@ -471,7 +471,7 @@
 //   - The idle probe passes on a live orch pane.
 //     Claude draws the session name into the input box's top rule (`──── tst:orch ─`), which the probe's rule match rejected until it accepted a labelled top rule, so the probe had never passed on a named session.
 //   - Adopting a large session starts within `startup_timeout_s` and leaves no dialog on the pane.
-//     `TestSmokeOrch_AdoptLargeSession` (opt-in through `LYX_SMOKE_ADOPT_SESSION`) adopted a copy of a hub session's transcript of 12827281 bytes on 2026-10-05, Claude Code 2.1.289.
+//     `TestSmokeOrch_AdoptLargeSession` (opt-in through `LYM_SMOKE_ADOPT_SESSION`) adopted a copy of a hub session's transcript of 12827281 bytes on 2026-10-05, Claude Code 2.1.289.
 //     Startup took 43.8s against a `startup_timeout_s` of 90, so a transcript of this size uses about half the budget.
 //   - A visible plain run in the prime shares the orch pane's window and can squeeze it too short to draw an input box, which makes the idle check fail and holds every cycle step until the pane is tall again.
 //   - The recorded session id is right only while the provider names the parent session id in a subagent's or fork's hook lines.

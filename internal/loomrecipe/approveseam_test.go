@@ -87,7 +87,7 @@ func approveSeamFixture(approveSeam string) string {
 		"    config:\n" +
 		"      run_subdir: fixture\n" +
 		"      artifact_paths:\n" +
-		"        - _lyx/fixture\n" +
+		"        - _lym/fixture\n" +
 		"      rubric_stencil: loom-rubric-plan-review\n" +
 		approveSeamLine
 }

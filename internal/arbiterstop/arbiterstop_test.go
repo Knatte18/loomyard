@@ -29,7 +29,7 @@ func TestCheck_RefusesLandingHalts(t *testing.T) {
 		// wantHandsBack is HandsBack's answer over producer and reason.
 		wantHandsBack bool
 	}{
-		{name: "landing halt at Finalize", producer: "Finalize", reason: landingshed.LandingStopPrefix + "the fixer escalated; way forward: resolve it, then `lyx loom resume`", wantErr: true, wantHandsBack: true},
+		{name: "landing halt at Finalize", producer: "Finalize", reason: landingshed.LandingStopPrefix + "the fixer escalated; way forward: resolve it, then `lym loom resume`", wantErr: true, wantHandsBack: true},
 		{name: "decision halt at Discussion-Bouncer", producer: "Discussion-Bouncer", reason: shedadapters.DecisionHaltPrefix + "bouncer Discussion-Bouncer: round 2's recorded accept is held by a refusal; way forward: x", wantErr: true, wantHandsBack: true},
 		{name: "blocked halt at Discussion-Bouncer without the prefix", producer: "Discussion-Bouncer", reason: "a plain halt"},
 		{name: "reroute-cap halt at Webster", producer: "Webster", reason: shedengine.ReasonRerouteCapReached + ": Webster rerouted to Plan-Write 3 times; way forward: x"},

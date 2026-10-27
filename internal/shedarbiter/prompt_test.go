@@ -32,17 +32,17 @@ func TestPrompt(t *testing.T) {
 
 	const battenRecipe = "This is a batten run; it has no repair verb."
 	in := PromptInput{
-		Recipe:             "This is a loom run. Its repair verbs: `lyx loom decision add <slug>`.",
+		Recipe:             "This is a loom run. Its repair verbs: `lym loom decision add <slug>`.",
 		RunID:              "operator-surface",
 		Slug:               "operator-surface-task",
 		Worktree:           "/hub/wt",
-		EnvelopePath:       "/hub/wt/.lyx/envelope.json",
-		ReportPath:         "/hub/wt/.lyx/report.md",
-		BriefPath:          "/hub/wt/.lyx/brief.md",
-		CaseBriefPath:      "/hub/wt/.lyx/tackler/attempt-1/case-brief.md",
-		DecisionRecordPath: "/hub/wt/_lyx/discussion/decision-record.md",
-		SupportLogPath:     "/hub/wt/_lyx/discussion/support-log.md",
-		VerdictPath:        "/hub/wt/.lyx/arbiter/attempt-1/verdict.yaml",
+		EnvelopePath:       "/hub/wt/.lym/envelope.json",
+		ReportPath:         "/hub/wt/.lym/report.md",
+		BriefPath:          "/hub/wt/.lym/brief.md",
+		CaseBriefPath:      "/hub/wt/.lym/tackler/attempt-1/case-brief.md",
+		DecisionRecordPath: "/hub/wt/_lym/discussion/decision-record.md",
+		SupportLogPath:     "/hub/wt/_lym/discussion/support-log.md",
+		VerdictPath:        "/hub/wt/.lym/arbiter/attempt-1/verdict.yaml",
 		AmendmentTarget:    "Plan-Burler-Review",
 	}
 	batten := in
@@ -124,7 +124,7 @@ func TestSpec(t *testing.T) {
 	t.Parallel()
 
 	const prompt = "settle the stop"
-	const verdictPath = "/hub/wt/.lyx/arbiter/attempt-1/verdict.yaml"
+	const verdictPath = "/hub/wt/.lym/arbiter/attempt-1/verdict.yaml"
 	settings := sheddriver.ArbiterSettings{ModelChoice: shuttleengine.ModelChoice{Engine: "b", Model: "claude-resolved-model-id", Effort: "high", Version: "v9"}, Timeout: 20 * time.Minute, MaxSpawns: 3}
 
 	got := Spec(prompt, verdictPath, settings)

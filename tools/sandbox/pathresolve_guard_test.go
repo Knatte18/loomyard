@@ -1,16 +1,9 @@
 //go:build tier0
 
-// pathresolve_guard_test.go enforces the Dev/Prod Binary Separation Invariant: no non-test *.go
-// file in the tools/sandbox package, other than resolve.go, may perform a bare-PATH "lyx" lookup or
-// spawn -- lookPath("lyx"), or an exec.Command/ exec.CommandContext call whose line also names
-// "lyx".
-// The exec forms are matched line-based rather than as a whole-file substring, because
-// exec.CommandContext takes its context.Context argument first, so the literal
-// exec.CommandContext("lyx" never appears in compilable Go -- a substring scan for it can never
-// match.
-// resolve.go's resolveLyx is the single allowlisted resolution site;
-// every other call site must route through it instead, so the dev/prod distinction can never
-// silently regress to a bare PATH fallback.
+// pathresolve_guard_test.go enforces the Dev/Prod Binary Separation Invariant: no non-test *.go file in the tools/sandbox package, other than resolve.go, may perform a bare-PATH "lym" lookup or spawn -- lookPath("lym"), or an exec.Command/ exec.CommandContext call whose line also names "lym".
+// The exec forms are matched line-based rather than as a whole-file substring, because exec.CommandContext takes its context.Context argument first, so the literal exec.CommandContext("lym" never appears in compilable Go -- a substring scan for it can never match.
+// resolve.go's resolveLym is the single allowlisted resolution site;
+// every other call site must route through it instead, so the dev/prod distinction can never silently regress to a bare PATH fallback.
 // The rule is stated in the command doc, doc.go.
 
 package main
@@ -23,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
-// pathResolveAllowlist is the single file permitted to contain a banned bare-PATH lyx literal.
+// pathResolveAllowlist is the single file permitted to contain a banned bare-PATH lym literal.
 var pathResolveAllowlist = []scankit.Entry{
 	{Key: "tools/sandbox/resolve.go", Why: "the sole resolution site"},
 }
@@ -31,16 +24,16 @@ var pathResolveAllowlist = []scankit.Entry{
 // pathResolveMinFiles is the vacuous-scan floor for this guard's single-directory walk.
 const pathResolveMinFiles = 3
 
-// bareLyxLookupLiteral is the one banned token matched as a whole-file substring.
-const bareLyxLookupLiteral = `lookPath("lyx")`
+// bareLymLookupLiteral is the one banned token matched as a whole-file substring.
+const bareLymLookupLiteral = `lookPath("lym")`
 
 // execSpawnTokens are the substrings identifying exec.Command or
-// exec.CommandContext calls, matched line-based with the "lyx" argument.
+// exec.CommandContext calls, matched line-based with the "lym" argument.
 var execSpawnTokens = []string{"exec.Command", "exec.CommandContext"}
 
-// TestPathResolveGuard_NoBarePathLyxOutsideResolve fails if any non-test *.go file contains a
-// banned bare-PATH lyx literal.
-func TestPathResolveGuard_NoBarePathLyxOutsideResolve(t *testing.T) {
+// TestPathResolveGuard_NoBarePathLymOutsideResolve fails if any non-test *.go file contains a
+// banned bare-PATH lym literal.
+func TestPathResolveGuard_NoBarePathLymOutsideResolve(t *testing.T) {
 	allow := scankit.NewAllowlist(pathResolveAllowlist)
 
 	var failures []string
@@ -48,9 +41,9 @@ func TestPathResolveGuard_NoBarePathLyxOutsideResolve(t *testing.T) {
 		if allow.Allowed(f.Rel) {
 			return
 		}
-		if token, bad := firstBannedLyxToken(string(f.Data)); bad {
+		if token, bad := firstBannedLymToken(string(f.Data)); bad {
 			failures = append(failures, fmt.Sprintf(
-				"%s: contains banned bare-PATH lyx literal %q -- route through resolveLyx (resolve.go) instead",
+				"%s: contains banned bare-PATH lym literal %q -- route through resolveLym (resolve.go) instead",
 				f.Rel, token,
 			))
 		}
@@ -60,33 +53,33 @@ func TestPathResolveGuard_NoBarePathLyxOutsideResolve(t *testing.T) {
 	allow.RequireNoStale(t)
 
 	if len(failures) > 0 {
-		t.Errorf("dev/prod binary separation violated: resolve lyx through resolveLyx:\n%s", strings.Join(failures, "\n"))
+		t.Errorf("dev/prod binary separation violated: resolve lym through resolveLym:\n%s", strings.Join(failures, "\n"))
 	}
 }
 
-// firstBannedLyxToken reports the first banned bare-PATH lyx token found in
+// firstBannedLymToken reports the first banned bare-PATH lym token found in
 // content, scanning line by line.
-func firstBannedLyxToken(content string) (token string, bad bool) {
+func firstBannedLymToken(content string) (token string, bad bool) {
 	for _, line := range strings.Split(content, "\n") {
-		if strings.Contains(line, bareLyxLookupLiteral) {
-			return bareLyxLookupLiteral, true
+		if strings.Contains(line, bareLymLookupLiteral) {
+			return bareLymLookupLiteral, true
 		}
-		if token, bad := lineHasBannedLyxSpawn(line); bad {
+		if token, bad := lineHasBannedLymSpawn(line); bad {
 			return token, true
 		}
 	}
 	return "", false
 }
 
-// lineHasBannedLyxSpawn reports whether line contains both exec.Command/
-// exec.CommandContext and the "lyx" argument.
-func lineHasBannedLyxSpawn(line string) (token string, bad bool) {
-	if !strings.Contains(line, `"lyx"`) {
+// lineHasBannedLymSpawn reports whether line contains both exec.Command/
+// exec.CommandContext and the "lym" argument.
+func lineHasBannedLymSpawn(line string) (token string, bad bool) {
+	if !strings.Contains(line, `"lym"`) {
 		return "", false
 	}
 	for _, spawnToken := range execSpawnTokens {
 		if strings.Contains(line, spawnToken) {
-			return spawnToken + ` ... "lyx"`, true
+			return spawnToken + ` ... "lym"`, true
 		}
 	}
 	return "", false

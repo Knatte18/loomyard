@@ -25,7 +25,7 @@ const (
 // It has no State twin; the run it ends reports RunYielded.
 const Yield Outcome = "yield"
 
-// OutcomeGoto is a history-only Outcome, written by `lyx shed goto` and never returned by a producer.
+// OutcomeGoto is a history-only Outcome, written by `lym shed goto` and never returned by a producer.
 // A producer returning it is unrecognised, as any value outside the three verdicts is.
 // A goto entry leaves every row's bounce-budget count as it was.
 // It is not named Goto because the Goto function owns that name.

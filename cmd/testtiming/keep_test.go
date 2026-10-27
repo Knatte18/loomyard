@@ -31,12 +31,12 @@ func TestScanKeeps(t *testing.T) {
 		},
 		{
 			name:    "directive above a guard marker",
-			content: "package p\n\n//testtiming:keep pins the ordering\n//lyx:guard\nfunc TestB2(t *testing.T) {}\n",
+			content: "package p\n\n//testtiming:keep pins the ordering\n//lym:guard\nfunc TestB2(t *testing.T) {}\n",
 			want:    map[string]string{"TestB2": "pins the ordering"},
 		},
 		{
 			name:    "guard marker above a directive",
-			content: "package p\n\n//lyx:guard\n//testtiming:keep pins the ordering\nfunc TestB3(t *testing.T) {}\n",
+			content: "package p\n\n//lym:guard\n//testtiming:keep pins the ordering\nfunc TestB3(t *testing.T) {}\n",
 			want:    map[string]string{"TestB3": "pins the ordering"},
 		},
 		{

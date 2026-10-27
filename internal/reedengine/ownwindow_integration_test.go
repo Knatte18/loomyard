@@ -19,12 +19,12 @@ import (
 )
 
 // TestOwnWindow_RealTmux runs its steps in order on one cold session.
-// It overrides the executable path so the detached `lyx` window of OpenWindow is a stub that sleeps for its first argument's seconds, which makes it process-global state, so it does not run in parallel.
+// It overrides the executable path so the detached `lym` window of OpenWindow is a stub that sleeps for its first argument's seconds, which makes it process-global state, so it does not run in parallel.
 func TestOwnWindow_RealTmux(t *testing.T) {
 	stubDir := t.TempDir()
-	stub := filepath.Join(stubDir, "lyx")
+	stub := filepath.Join(stubDir, "lym")
 	if err := os.WriteFile(stub, []byte("#!/bin/sh\nsleep \"$1\"\n"), 0o755); err != nil {
-		t.Fatalf("write lyx stub: %v", err)
+		t.Fatalf("write lym stub: %v", err)
 	}
 	withInjectedExecutablePath(t, func() (string, error) { return stub, nil })
 
@@ -132,15 +132,15 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 		if got := display(window, "#{window_name}"); got != "explore" {
 			t.Errorf("own window name = %q, want its role explore", got)
 		}
-		if got := display(window, "#{@lyx_own}"); got != "1" {
-			t.Errorf("own window @lyx_own = %q, want 1", got)
+		if got := display(window, "#{@lym_own}"); got != "1" {
+			t.Errorf("own window @lym_own = %q, want 1", got)
 		}
 		if got := display(window, "#{@strand_color}"); got != "colour208" {
 			t.Errorf("own window @strand_color = %q, want colour208", got)
 		}
 		if runtime.GOOS != "windows" {
-			if got := display(window, "#{@lyx_unseen}"); got != "1" {
-				t.Errorf("own window @lyx_unseen = %q, want 1", got)
+			if got := display(window, "#{@lym_unseen}"); got != "1" {
+				t.Errorf("own window @lym_unseen = %q, want 1", got)
 			}
 		}
 		status, ok := statusOf(explorer.GUID)
@@ -214,8 +214,8 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 		ownWindow := windowOfPane(t, e, explorer.PaneID)
 
 		_, err := e.UpdateStrand(explorer.GUID, hiddenDisplay)
-		if err == nil || !strings.Contains(err.Error(), "way forward: lyx reed remove") {
-			t.Fatalf("UpdateStrand = %v, want a refusal naming lyx reed remove", err)
+		if err == nil || !strings.Contains(err.Error(), "way forward: lym reed remove") {
+			t.Fatalf("UpdateStrand = %v, want a refusal naming lym reed remove", err)
 		}
 		if got := windowOfPane(t, e, explorer.PaneID); got != ownWindow {
 			t.Errorf("own-window pane is in %q after the refusal, want it still in %q", got, ownWindow)
@@ -320,8 +320,8 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 		if got := display(window, "#{window_name}"); got != "pair" {
 			t.Errorf("shared window name = %q, want the group name pair", got)
 		}
-		if got := display(window, "#{@lyx_group}"); got != "pair" {
-			t.Errorf("shared window @lyx_group = %q, want pair", got)
+		if got := display(window, "#{@lym_group}"); got != "pair" {
+			t.Errorf("shared window @lym_group = %q, want pair", got)
 		}
 
 		if err := e.tmux.run("select-window", "-t", window); err != nil {
@@ -664,8 +664,8 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 		if window == shell {
 			t.Fatalf("pane %s is still in the shell window %s, want it moved out", s.PaneID, shell)
 		}
-		if got := display(window, "#{@lyx_own}"); got != "1" {
-			t.Errorf("moved window @lyx_own = %q, want 1", got)
+		if got := display(window, "#{@lym_own}"); got != "1" {
+			t.Errorf("moved window @lym_own = %q, want 1", got)
 		}
 		windows, err := e.tmux.listSessionWindows(e.SessionName())
 		if err != nil {
@@ -791,8 +791,8 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 		if got := windowOfPane(t, e, s.PaneID); got != shell {
 			t.Errorf("sole leftover pane is in %s, want it left in the shell window %s", got, shell)
 		}
-		if got := display(shell, "#{@lyx_strands}"); got != "1" {
-			t.Errorf("shell window @lyx_strands = %q, want the marker intact", got)
+		if got := display(shell, "#{@lym_strands}"); got != "1" {
+			t.Errorf("shell window @lym_strands = %q, want the marker intact", got)
 		}
 
 		if err := e.tmux.run("select-window", "-t", windowOfPane(t, e, addOwn("viewed-sole").PaneID)); err != nil {

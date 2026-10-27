@@ -10,7 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // DiscardResult is what DiscardTaskBranch did.
@@ -28,7 +28,7 @@ type DiscardResult struct {
 // When one tip contains the other only the containing tip is archived; otherwise both are.
 // A branch present neither locally nor on origin returns a zero result and no error.
 // A lost origin lease or a refused gate is returned as an error naming the branch.
-func (t *Topology) DiscardTaskBranch(l *lyxcwd.Location, slug string) (res DiscardResult, err error) {
+func (t *Topology) DiscardTaskBranch(l *lymcwd.Location, slug string) (res DiscardResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
 

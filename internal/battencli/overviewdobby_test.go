@@ -13,7 +13,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
@@ -64,7 +64,7 @@ func TestDobbyLines(t *testing.T) {
 			view:  dobbyengine.View{MaxRuns: 3, Runs: []dobbyengine.ViewRun{{Slug: "r"}}},
 			cells: map[string]RunCells{"r": {State: "paused 4m", Stage: "6. Run-Shed", InStage: "-"}},
 			want: []string{
-				"dobby prime: not running; way forward: lyx beam start",
+				"dobby prime: not running; way forward: lym beam start",
 				"  r  paused 4m  6. Run-Shed  -  no pass yet",
 			},
 		},
@@ -128,7 +128,7 @@ func TestOverviewSource_DrawsTheDobbyAboveTheOrchs(t *testing.T) {
 
 func TestWorktreeHasDobby(t *testing.T) {
 	t.Parallel()
-	prime := &lyxcwd.Location{WorktreeName: "main"}
+	prime := &lymcwd.Location{WorktreeName: "main"}
 	beams := func() ([]dobbyengine.BeamPair, error) {
 		return []dobbyengine.BeamPair{{Slug: "beam-a"}}, nil
 	}

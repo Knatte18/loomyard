@@ -50,7 +50,7 @@ const minDeriveScanFiles = 100
 // The match is on the AST, never on raw text, so a doc comment naming the qualified call cannot trip
 // it.
 //
-//lyx:guard
+//lym:guard
 func TestDeriveCallerSet_CliwireOnly(t *testing.T) {
 	var failures []string
 

@@ -17,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/landingshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -40,7 +40,7 @@ func gateConfigWithTwoTiers() string {
 func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
 	t.Parallel()
 
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 	// The hub's board directory exists from the start, as in a real hub, so the config dirs the sources read name it before the gate.yaml does.
 	if err := os.MkdirAll(fabricengine.BoardDir(loc.HubPath), 0o755); err != nil {
 		t.Fatal(err)
@@ -61,14 +61,14 @@ func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
 
 	writeHubGateConfig(t, loc.HubPath, gateConfigWithTwoTiers())
 	for name, want := range map[string]string{
-		"VerifyCommand": "lyx gate test --wait --gate parent-align",
-		"BaseCommand":   "lyx gate test --wait --gate code-burler-fix",
+		"VerifyCommand": "lym gate test --wait --gate parent-align",
+		"BaseCommand":   "lym gate test --wait --gate code-burler-fix",
 	} {
 		if got, err := readers[name](); err != nil || got != want {
 			t.Errorf("%s = (%q, %v), want (%q, nil)", name, got, err, want)
 		}
 	}
-	if got, err := deps.VerifyCommand("finalize"); err != nil || got != "lyx gate test --wait --gate finalize" {
+	if got, err := deps.VerifyCommand("finalize"); err != nil || got != "lym gate test --wait --gate finalize" {
 		t.Errorf("VerifyCommand(finalize) = (%q, %v), want the finalize key's call", got, err)
 	}
 	if got, err := deps.GateTiers("finalize"); err != nil || !slices.Equal(got, []int{0, 1}) {
@@ -78,8 +78,8 @@ func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
 	// An edit between two calls is seen: the finalize key names a tier the hub does not declare.
 	edited := strings.NewReplacer("  finalize: {tiers: [0, 1]", "  finalize: {tiers: [0, 7]").Replace(gateConfigWithTwoTiers())
 	writeHubGateConfig(t, loc.HubPath, edited)
-	if got, err := deps.VerifyCommand("finalize"); err == nil || !strings.Contains(err.Error(), "lyx config gate") {
-		t.Errorf("VerifyCommand over a dangling finalize key = (%q, %v), want an error naming lyx config gate", got, err)
+	if got, err := deps.VerifyCommand("finalize"); err == nil || !strings.Contains(err.Error(), "lym config gate") {
+		t.Errorf("VerifyCommand over a dangling finalize key = (%q, %v), want an error naming lym config gate", got, err)
 	}
 
 	if want := verifytree.Dir(loc.AnchorPath()); deps.VerifyDir != want {

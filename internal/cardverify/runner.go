@@ -21,12 +21,12 @@ import (
 const DefaultTimeout = 10 * time.Minute
 
 // gateCallPrefix starts every line IsGateCall accepts.
-var gateCallPrefix = []string{"lyx", "gate", "test"}
+var gateCallPrefix = []string{"lym", "gate", "test"}
 
 // waitFlag is the gate flag a line must hold to run outside the runner's timeout.
 const waitFlag = "--wait"
 
-// controlOperators are the shell constructs that make a line more than one `lyx gate test` call.
+// controlOperators are the shell constructs that make a line more than one `lym gate test` call.
 var controlOperators = []string{";", "&", "|", "\n", "`", "$(", "<", ">"}
 
 // Runner runs a card's `**Verify:**` lines in a worktree.
@@ -45,7 +45,7 @@ type Runner struct {
 // A failure reads `exited <code>`, `failed to start: <err>`, `could not acquire a gate slot: <err>` or `timed out after <timeout>`.
 // A line IsGateCall accepts runs unslotted and outside the timeout, since the gate's own pre-tier ceiling and tier timeouts bound it.
 // Any other line takes one slot of the pool without a cap on the wait, and runs under the timeout counted from the moment the slot is held, with the environment gateslot.HolderEnv returns.
-// Neither sees gateslot.PrebuiltLyxEnv: a line's own go test builds lyx once per test binary.
+// Neither sees gateslot.PrebuiltLymEnv: a line's own go test builds lym once per test binary.
 func (r Runner) RunLine(line string, out io.Writer) string {
 	return r.runLine(strings.TrimSpace(line), "card verify", out)
 }
@@ -98,7 +98,7 @@ func (r Runner) RunCards(cards []planparser.Card, out io.Writer, stopAtFirst boo
 	return failures
 }
 
-// IsGateCall reports whether line is exactly one `lyx gate test` call that holds `--wait` before any `--` and no shell control operator.
+// IsGateCall reports whether line is exactly one `lym gate test` call that holds `--wait` before any `--` and no shell control operator.
 // Such a line blocks for its slots itself, so a runner leaves it unslotted and unbounded.
 func IsGateCall(line string) bool {
 	for _, operator := range controlOperators {

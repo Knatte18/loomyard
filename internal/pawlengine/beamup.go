@@ -40,7 +40,7 @@ func NewBeamUp(name string, deps Deps) (*BeamUp, error) {
 
 // Call marks the pair a beam, spawns its push, regenerates the hub workspace, removes a land request and the await marker a run before left, and runs the beam steps in order.
 // Every step is idempotent, so a resumed row runs them all again.
-// A failing step is a halting Stuck naming its cause and `lyx loom resume`; a cancelled context is an error.
+// A failing step is a halting Stuck naming its cause and `lym loom resume`; a cancelled context is an error.
 func (p *BeamUp) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -57,7 +57,7 @@ func (p *BeamUp) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outpu
 			if cerr := cancelErr(ctx, p.name); cerr != nil {
 				return "", shedengine.OutputPointer{}, cerr
 			}
-			reason := fmt.Sprintf("%s: %s: %v; way forward: fix the cause, then run \"lyx loom resume\" in the beam's worktree", p.name, step.Name, err)
+			reason := fmt.Sprintf("%s: %s: %v; way forward: fix the cause, then run \"lym loom resume\" in the beam's worktree", p.name, step.Name, err)
 			logger.Warn("pawlengine: producer stuck", "producer", p.name, "reason", reason)
 			return shedengine.Stuck, shedengine.OutputPointer{Reason: reason, Halt: true}, nil
 		}

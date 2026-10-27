@@ -1,6 +1,6 @@
 //go:build tier0
 
-// pausehold_test.go pins that `lyx loom start` refuses a covered run before it seeds anything, and holds the fixture that covers a receiver's run for the resume test too.
+// pausehold_test.go pins that `lym loom start` refuses a covered run before it seeds anything, and holds the fixture that covers a receiver's run for the resume test too.
 
 package loomcli
 
@@ -52,7 +52,7 @@ func coverRunBy(t *testing.T, c *loomCLI, scope, caller string) string {
 }
 
 // TestStartCmd_RefusesWhileAPauseCoversTheRun drives startCmd over a receiver whose hub holds a live pause entry:
-// the refusal names `lyx tender resume` and nothing is seeded, and once the entry is lifted the same call no longer refuses on the pause.
+// the refusal names `lym tender resume` and nothing is seeded, and once the entry is lifted the same call no longer refuses on the pause.
 func TestStartCmd_RefusesWhileAPauseCoversTheRun(t *testing.T) {
 	t.Parallel()
 
@@ -74,8 +74,8 @@ func TestStartCmd_RefusesWhileAPauseCoversTheRun(t *testing.T) {
 	}
 
 	refusal := start()
-	if !strings.Contains(refusal, "lyx tender resume") {
-		t.Errorf("start under a pause answered %q; want it to name %q", refusal, "lyx tender resume")
+	if !strings.Contains(refusal, "lym tender resume") {
+		t.Errorf("start under a pause answered %q; want it to name %q", refusal, "lym tender resume")
 	}
 	if _, found, err := shedrun.ReadSeed(c.location, seedSlug(c.location.WorktreeName)); err != nil || found {
 		t.Errorf("ReadSeed after the refusal = (found=%v, err=%v); want (false, nil), nothing seeded", found, err)
@@ -87,7 +87,7 @@ func TestStartCmd_RefusesWhileAPauseCoversTheRun(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("pauserecord.Update: %v", err)
 	}
-	if lifted := start(); strings.Contains(lifted, "lyx tender resume") {
+	if lifted := start(); strings.Contains(lifted, "lym tender resume") {
 		t.Errorf("start after the pause was lifted answered %q; want no pause refusal", lifted)
 	}
 }

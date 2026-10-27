@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // TestGate_CheckOrdering proves the pipeline stops at the first failing check, by submitting a
@@ -559,7 +559,7 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 	t.Run("BranchZeroDirtiness", func(t *testing.T) {
 		// A hand-built Location is fine here — the zero-value dirtiness declaration refuses before
 		// resolveManagedBranch ever runs, so primaryWeftBranch (which spawns git) is never reached.
-		l := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime"}
+		l := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime"}
 		req := branchRequest{
 			what:      "test",
 			repoDir:   t.TempDir(),
@@ -634,7 +634,7 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 		// A hand-built Location is fine here, for the same reason BranchZeroDirtiness's is: the
 		// zero-value dirtiness declaration refuses before resolveManagedBranch ever runs, so
 		// primaryWeftBranch (which spawns git) is never reached.
-		l := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime"}
+		l := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime"}
 		req := remoteBranchRequest{
 			what:      "test",
 			repoDir:   t.TempDir(),
@@ -651,7 +651,7 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 		// match) is refused by resolveManagedBranch's naming predicate before it spawns git at all —
 		// safe with a hand-built Location for the same reason the naming-predicate case is safe
 		// elsewhere in this file: the predicate short-circuits ahead of the first spawn.
-		l := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime"}
+		l := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime"}
 		req := remoteBranchRequest{
 			what:      "test",
 			repoDir:   t.TempDir(),
@@ -680,7 +680,7 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 	})
 
 	t.Run("RemoteBranchPairWeftZeroDirtiness", func(t *testing.T) {
-		l := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime"}
+		l := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime"}
 		req := remoteBranchRequest{
 			what:      "test",
 			repoDir:   t.TempDir(),
@@ -692,7 +692,7 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 	})
 
 	t.Run("RemoteBranchPairWeftOtherBranchRefused", func(t *testing.T) {
-		l := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime"}
+		l := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime"}
 		req := remoteBranchRequest{
 			what:      "test",
 			repoDir:   t.TempDir(),
@@ -720,7 +720,7 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 	// A hand-built Location is safe: every case refuses before any git spawn.
 
 	t.Run("CreatedBranchOtherNameRefused", func(t *testing.T) {
-		l := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime"}
+		l := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime"}
 		req := branchRequest{
 			what:      "test",
 			repoDir:   t.TempDir(),
@@ -732,7 +732,7 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 	})
 
 	t.Run("CreatedBranchEmptyProofRefused", func(t *testing.T) {
-		l := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime"}
+		l := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime"}
 		req := branchRequest{
 			what:      "test",
 			repoDir:   t.TempDir(),

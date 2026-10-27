@@ -41,7 +41,7 @@ func (m preMerge) clear(producer, parentBranch string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("landingshed: %s: probe merge state: %w", producer, err)
 	}
-	const mergeWayForward = `conclude it with "lyx fabric merge --continue" or discard it with "lyx fabric merge --abort", then resume; a session lyx refuses the verb from reports status: FAILED and the orch runs it`
+	const mergeWayForward = `conclude it with "lym fabric merge --continue" or discard it with "lym fabric merge --abort", then resume; a session lym refuses the verb from reports status: FAILED and the orch runs it`
 	switch state.Kind {
 	case fabricengine.MidMergeNone:
 		return "", nil
@@ -59,7 +59,7 @@ func (m preMerge) clear(producer, parentBranch string) (string, error) {
 			if guid == "" {
 				return "", fmt.Errorf("landingshed: %s: stop the conflict session: %w", producer, err)
 			}
-			return fmt.Sprintf("a conflict session of this run (strand %s) is still live and could not be stopped: %v; way forward: run \"lyx reed remove %s\", then \"lyx loom resume\"", guid, err, guid), nil
+			return fmt.Sprintf("a conflict session of this run (strand %s) is still live and could not be stopped: %v; way forward: run \"lym reed remove %s\", then \"lym loom resume\"", guid, err, guid), nil
 		}
 	}
 	if m.abortMerge != nil {

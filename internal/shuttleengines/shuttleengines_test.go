@@ -14,7 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -33,8 +33,8 @@ func (forksWithoutAuditEngine) Supports(req shuttleengine.Requirement) bool {
 // writeLocalLayer writes content as module's local layer file under anchor.
 func writeLocalLayer(t *testing.T, anchor, module, content string) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Join(anchor, lyxdirs.LyxDirName), 0o755); err != nil {
-		t.Fatalf("mkdir _lyx: %v", err)
+	if err := os.MkdirAll(filepath.Join(anchor, lymdirs.LymDirName), 0o755); err != nil {
+		t.Fatalf("mkdir _lym: %v", err)
 	}
 	localFile := configengine.LocalFile(anchor, module)
 	if err := os.MkdirAll(filepath.Dir(localFile), 0o755); err != nil {
@@ -213,14 +213,14 @@ func TestEnvScrub_MatchesTmuxkitServerEnviron(t *testing.T) {
 
 	environ := []string{
 		"HOME=/home/x", "CLAUDECODE=1", "CLAUDE_CODE_ENTRYPOINT=cli", "CLAUDE_CODEX=keep",
-		logger.TraceIDEnv + "=abc", "LYX_STRAND_NAME=ab:orch", "LYX_PARENT=ab:driver", "LYX_OTHER=keep", "PATH=/bin",
+		logger.TraceIDEnv + "=abc", "LYM_STRAND_NAME=ab:orch", "LYM_PARENT=ab:driver", "LYM_OTHER=keep", "PATH=/bin",
 	}
 
 	clean, _ := EnvScrub().Apply(environ)
 	var want []string
 	for _, entry := range clean {
 		switch strings.SplitN(entry, "=", 2)[0] {
-		case logger.TraceIDEnv, "LYX_STRAND_NAME", "LYX_PARENT":
+		case logger.TraceIDEnv, "LYM_STRAND_NAME", "LYM_PARENT":
 		default:
 			want = append(want, entry)
 		}

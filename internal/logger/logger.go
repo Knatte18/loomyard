@@ -1,11 +1,11 @@
-// logger.go provides a thin log/slog wrapper for lyx: a package-level level threshold, an
+// logger.go provides a thin log/slog wrapper for lym: a package-level level threshold, an
 // injectable io.Writer stderr sink (defaulting to DefaultOutput), and Debug/Info/Warn helpers that fan
 // every call out to that stderr sink and, independently, to the durable trace-file sink (sink.go)
 // via the composite dualHandler defined below.
 // Callers never see slog directly;
 // they call SetVerbosity to raise the stderr threshold and Debug/Info/Warn to emit.
 
-// Package logger is a minimal log/slog wrapper shared across lyx's internal
+// Package logger is a minimal log/slog wrapper shared across lym's internal
 // packages, extended with a process-wide trace identity, explicit-parent
 // diagnostic spans, and a durable per-process trace-file sink. It keeps
 // stdout free of log noise (reed and other commands write their JSON
@@ -24,12 +24,12 @@
 // Every process has exactly one trace identity: a 16-lowercase-hex-character
 // ID, minted or adopted once and stamped as trace=<id> on every emitted log
 // line regardless of level. TraceID() (trace.go) is the lazy accessor any
-// code path can call before cmd/lyx's root hook has run; it resolves on
+// code path can call before cmd/lym's root hook has run; it resolves on
 // first use via a fixed precedence -- a value already set by
-// MintOrAdoptAndExport, then an inherited LYX_TRACE_ID (see below), then a
+// MintOrAdoptAndExport, then an inherited LYM_TRACE_ID (see below), then a
 // fresh mint. MintOrAdoptAndExport is the root hook's own explicit call: it
 // resolves the same value and additionally exports it into the process
-// environment as LYX_TRACE_ID so every spawned child inherits it at any
+// environment as LYM_TRACE_ID so every spawned child inherits it at any
 // spawn site that does not override cmd.Env, giving a whole process tree the
 // same trace ID.
 //
@@ -45,43 +45,35 @@
 //
 // # The durable sink and its retention
 //
-// Alongside the stderr sink above, every Info+ record also lands in a
-// second, durable sink (sink.go), and so does every Debug record when the process verbosity is Debug:
-// one plain-text trace file per process,
-// under the current worktree's own LogsDir(l) (sink.go)
-// (<AnchorPath>/.lyx/logs/), this package's own declaration of that path. The file opens lazily on whichever of two triggers fires
-// first: (a) the first log record the durable half admits, or (b) the
-// process exiting with a non-zero code, via NotifyExit -- so a run that logs
-// nothing the durable half admits but still fails leaves a reconstructable trace file
-// behind. The file's first line is a header record naming the command,
-// argv, trace ID, PID, and worktree root. Each file is capped at 8 MiB;
-// once a write would cross the cap, a single truncation-marker line is
-// written and further writes to that file become silent no-ops rather than
-// growing it further.
+// Alongside the stderr sink above, every Info+ record also lands in a second, durable sink (sink.go), and so does every Debug record when the process verbosity is Debug: one plain-text trace file per process, under the current worktree's own LogsDir(l) (sink.go) (<AnchorPath>/.lym/logs/), this package's own declaration of that path.
+// The file opens lazily on whichever of two triggers fires first: (a) the first log record the durable half admits, or (b) the process exiting with a non-zero code, via NotifyExit -- so a run that logs nothing the durable half admits but still fails leaves a reconstructable trace file behind.
+// The file's first line is a header record naming the command, argv, trace ID, PID, and worktree root.
+// Each file is capped at 8 MiB;
+// once a write would cross the cap, a single truncation-marker line is written and further writes to that file become silent no-ops rather than growing it further.
 //
 // A background-free sweep (retention.go's Sweep) keeps the logs directory bounded.
 // A process sweeps its sink directory once at exit, only when its sink armed in the current generation,
-// through cmd/lyx's exit hook; arming alone never deletes a file.
-// The bounds come from _lyx/config/logger.yaml, with the compiled-in defaults below for a redirected sink or an unusable file.
+// through cmd/lym's exit hook; arming alone never deletes a file.
+// The bounds come from _lym/config/logger.yaml, with the compiled-in defaults below for a redirected sink or an unusable file.
 // Files are grouped by trace ID,
 // and a group's activity time is the newest mtime among its files, so a long-running step that keeps writing stays recent however long ago its file was named.
 // Groups with no activity for 14 days are deleted whole, then only the 200 most recently active of what remains are kept.
 // A group holding a file whose PID belongs to a currently-running process (including the sweeping process itself) is never deleted and never counts toward the 200-trace bound, regardless of age.
 //
-// # Activation outside the lyx CLI
+// # Activation outside the lym CLI
 //
-// SetVerbosity is wired to the lyx CLI's -v/-vv flag in cmd/lyx/main.go, but
+// SetVerbosity is wired to the lym CLI's -v/-vv flag in cmd/lym/main.go, but
 // nothing reaches that flag parsing when this package is used from a `go
-// test` binary or any other entry point that never runs cmd/lyx/main — which
+// test` binary or any other entry point that never runs cmd/lym/main — which
 // is exactly the case for the smoke/cluster tests that drive real reed/
 // shuttle/burler substrate. For those callers, init reads two environment
 // variables so verbosity and the output sink can be set from OUTSIDE the
 // process, with no code change and no dependency on CLI flag plumbing:
 //
-//   - LYX_LOG_LEVEL: "debug", "info", or "warn" (case-insensitive). Sets the
+//   - LYM_LOG_LEVEL: "debug", "info", or "warn" (case-insensitive). Sets the
 //     initial threshold exactly like SetVerbosity(2)/(1)/(0) would. Unset or
 //     unrecognised leaves the default Warn threshold untouched.
-//   - LYX_LOG_FILE: a file path. If set, log output is appended to that file
+//   - LYM_LOG_FILE: a file path. If set, log output is appended to that file
 //     instead of DefaultOutput (created if absent). This exists because a live
 //     substrate test's own stdout/stderr redirection is often already
 //     spoken for by the test runner, and because a stderr-only sink is easy
@@ -97,30 +89,30 @@
 // the shell).
 //
 // Two further environment variables govern trace identity and the durable
-// sink specifically, independent of LYX_LOG_LEVEL/LYX_LOG_FILE above:
+// sink specifically, independent of LYM_LOG_LEVEL/LYM_LOG_FILE above:
 //
-//   - LYX_TRACE_ID: an inherited trace identity. When set to a
+//   - LYM_TRACE_ID: an inherited trace identity. When set to a
 //     non-whitespace-only value, both TraceID()'s lazy resolution and
 //     MintOrAdoptAndExport adopt it instead of minting a fresh one, so a
 //     child process continues its parent's trace rather than starting a new
-//     one. cmd/lyx's root hook is what exports this variable for children in
+//     one. cmd/lym's root hook is what exports this variable for children in
 //     the first place (see "Trace identity and spans" above); nothing else
 //     in this package ever calls os.Setenv.
-//   - LYX_TRACE=1: the test-entry-activation gate for the durable sink only.
+//   - LYM_TRACE=1: the test-entry-activation gate for the durable sink only.
 //     Under `go test` (testing.Testing() true), the durable sink stays
-//     closed for the whole process unless LYX_TRACE=1 is explicitly set,
+//     closed for the whole process unless LYM_TRACE=1 is explicitly set,
 //     regardless of how many records the durable half admits or how the process
 //     exits -- this is what keeps ordinary `go test` runs from littering a
-//     worktree's .lyx/logs with test-process trace files. It has no effect
+//     worktree's .lym/logs with test-process trace files. It has no effect
 //     on trace-ID resolution itself: TraceID() and the trace=/span= fields
 //     stamped on stderr output are computed the same way whether or not
-//     LYX_TRACE is set.
+//     LYM_TRACE is set.
 //
-// Note that a record reaching both LYX_LOG_FILE (if set) and the
+// Note that a record reaching both LYM_LOG_FILE (if set) and the
 // durable trace file is correct behavior, not a bug to "fix" by suppressing
 // one or the other: the two are different artifacts with different
 // lifetimes and different audiences (an operator-chosen, unmanaged,
-// whole-verbosity file vs. a lyx-managed, retention-swept one),
+// whole-verbosity file vs. a lym-managed, retention-swept one),
 // and neither should suppress the other.
 //
 // # Level policy
@@ -368,12 +360,12 @@ func init() {
 	configureFromEnv()
 }
 
-// configureFromEnv applies LYX_LOG_LEVEL and LYX_LOG_FILE, if set, on top of
+// configureFromEnv applies LYM_LOG_LEVEL and LYM_LOG_FILE, if set, on top of
 // the just-initialised Warn/stderr defaults. Split out from init as its own
 // function purely for test seams. See the package doc for the two
 // variables' exact semantics.
 func configureFromEnv() {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("LYX_LOG_LEVEL"))) {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("LYM_LOG_LEVEL"))) {
 	case "debug":
 		levelVar.Set(slog.LevelDebug)
 	case "info":
@@ -382,10 +374,10 @@ func configureFromEnv() {
 		// Warn is already the default set above; "" means unset.
 	}
 
-	if path := strings.TrimSpace(os.Getenv("LYX_LOG_FILE")); path != "" {
+	if path := strings.TrimSpace(os.Getenv("LYM_LOG_FILE")); path != "" {
 		f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "logger: LYX_LOG_FILE=%q: %v (falling back to stderr)\n", path, err)
+			fmt.Fprintf(os.Stderr, "logger: LYM_LOG_FILE=%q: %v (falling back to stderr)\n", path, err)
 			return
 		}
 		SetOutput(f)
@@ -394,7 +386,7 @@ func configureFromEnv() {
 
 // Debug logs msg at debug level with the given key/value args, stamping a trace key with
 // TraceID()'s current value (batch 2) on every line as every level does.
-// Debug reaches the stderr half and the durable sink only at Debug verbosity, set by SetVerbosity(2) or higher or LYX_LOG_LEVEL=debug.
+// Debug reaches the stderr half and the durable sink only at Debug verbosity, set by SetVerbosity(2) or higher or LYM_LOG_LEVEL=debug.
 // At lower verbosity it is a no-op.
 // Calling TraceID() here is also what triggers the trace-ID's own first resolution if nothing has
 // resolved it yet.
@@ -425,7 +417,7 @@ func Error(msg string, args ...any) {
 
 // SetVerbosity maps a -v repeat count to a log level: count<=0 keeps the default Warn threshold
 // (silent normal run), count==1 lowers it to Info, and count>=2 lowers it to Debug.
-// cmd/lyx/main.go calls this once at startup when the root -v/--verbose flag is given.
+// cmd/lym/main.go calls this once at startup when the root -v/--verbose flag is given.
 func SetVerbosity(count int) {
 	switch {
 	case count <= 0:
@@ -443,12 +435,12 @@ func SetVerbosity(count int) {
 // dual-handler-fan-out decision -- redirecting stderr must never silently detach the durable sink.
 // It is a seam both tests (withCapturedOutput in logger_test.go, so tests can assert on captured
 // output without writing to the real os.Stderr) and production code use: configureFromEnv already
-// calls SetOutput for LYX_LOG_FILE, independent of anything this package's trace/sink work adds.
-// LYX_LOG_FILE redirects only the stderr half to an operator-chosen, unmanaged, whole-verbosity
+// calls SetOutput for LYM_LOG_FILE, independent of anything this package's trace/sink work adds.
+// LYM_LOG_FILE redirects only the stderr half to an operator-chosen, unmanaged, whole-verbosity
 // file;
-// the durable sink independently opens its own lyx-managed, retention-swept trace file
+// the durable sink independently opens its own lym-managed, retention-swept trace file
 // under this package's own LogsDir(l).
-// A record both halves admit therefore lands in both files when LYX_LOG_FILE is set -- that duplication is
+// A record both halves admit therefore lands in both files when LYM_LOG_FILE is set -- that duplication is
 // intended, not a bug to reconcile: the two are different artifacts with different lifetimes, and
 // neither should suppress the other.
 //

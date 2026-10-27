@@ -22,11 +22,11 @@ func TestIsArbiterStrand(t *testing.T) {
 		name string
 		want bool
 	}{
-		{"lyx:slug:arbiter", true},
-		{"lyx:slug:arbiter-2", true},
-		{"lyx:arbiter", true},
-		{"lyx:slug:driver", false},
-		{"lyx:slug:arbiter-x", false},
+		{"lym:slug:arbiter", true},
+		{"lym:slug:arbiter-2", true},
+		{"lym:arbiter", true},
+		{"lym:slug:driver", false},
+		{"lym:slug:arbiter-x", false},
 		{"arbiter", false},
 		{"", false},
 	}
@@ -195,8 +195,8 @@ func TestReadArbiterVerdict(t *testing.T) {
 		{name: "resume", content: "verdict: resume\nreason: the stop is a flake\n", want: ArbiterVerdict{Verdict: "resume", Reason: "the stop is a flake"}},
 		{
 			name:    "resume with a goto and verbs",
-			content: "verdict: resume\nreason: bounce back\nverbs:\n  - lyx loom decision add\ngoto: Plan-Write\n",
-			want:    ArbiterVerdict{Verdict: "resume", Reason: "bounce back", Verbs: []string{"lyx loom decision add"}, Goto: "Plan-Write"},
+			content: "verdict: resume\nreason: bounce back\nverbs:\n  - lym loom decision add\ngoto: Plan-Write\n",
+			want:    ArbiterVerdict{Verdict: "resume", Reason: "bounce back", Verbs: []string{"lym loom decision add"}, Goto: "Plan-Write"},
 		},
 		{name: "hand-on", content: "verdict: hand-on\nreason: a design call\nquestion: which scope?\n", want: ArbiterVerdict{Verdict: "hand-on", Reason: "a design call", Question: "which scope?"}},
 		{name: "unparseable", content: "verdict: [", wantErr: "parse arbiter verdict"},
@@ -237,7 +237,7 @@ func TestReadArbiterVerdict(t *testing.T) {
 // TestArbiterJSONRecords pins the envelope and marker round trip, absence as found false, and an unparseable file as an error.
 func TestArbiterJSONRecords(t *testing.T) {
 	t.Parallel()
-	envelope := ArbiterEnvelope{Verdict: "resume", Reason: "r", Goto: "B", Verbs: []string{"v"}, Attempt: 2, AttemptDir: "/d", VerdictPath: "/d/verdict.yaml", Relaunch: "lyx loom ..."}
+	envelope := ArbiterEnvelope{Verdict: "resume", Reason: "r", Goto: "B", Verbs: []string{"v"}, Attempt: 2, AttemptDir: "/d", VerdictPath: "/d/verdict.yaml", Relaunch: "lym loom ..."}
 	marker := ArbiterMarker{Attempt: 2, StrandGUID: "guid", Deadline: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)}
 	tests := []struct {
 		name  string

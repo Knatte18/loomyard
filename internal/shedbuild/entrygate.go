@@ -174,7 +174,7 @@ func (c entryCheck) evaluate(row Row, env shedrecipe.Env) (holds bool, reason st
 	default:
 		enabled, isBool := value.(bool)
 		if !isBool {
-			return false, "", fmt.Errorf("shedbuild: row %q: entry_gate check %q: setting %s holds %v, not a bool; way forward: run `lyx config %s --resolved` in the task worktree to see the layer holding the value, then fix it there: with `lyx config %s` from the prime for a hub or default layer, or with `lyx config %s --layer local --set %s=<bool>` in the task worktree for a value the local layer holds; then %s", row.Name, c.text, c.operand(), value, c.module, c.module, c.module, c.key, env.Resume)
+			return false, "", fmt.Errorf("shedbuild: row %q: entry_gate check %q: setting %s holds %v, not a bool; way forward: run `lym config %s --resolved` in the task worktree to see the layer holding the value, then fix it there: with `lym config %s` from the prime for a hub or default layer, or with `lym config %s --layer local --set %s=<bool>` in the task worktree for a value the local layer holds; then %s", row.Name, c.text, c.operand(), value, c.module, c.module, c.module, c.key, env.Resume)
 		}
 		holds = enabled
 		reason = fmt.Sprintf("%s = %v", c.operand(), value)

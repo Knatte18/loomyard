@@ -46,7 +46,7 @@ func TestLoad_ResolvesSkills(t *testing.T) {
 			wantRenameTools: []string{},
 		},
 		{
-			name:            "board dir without _lyx",
+			name:            "board dir without _lym",
 			want:            []string{},
 			wantRenameTools: []string{},
 		},
@@ -192,7 +192,7 @@ func TestLoad_InvalidFailsNamingKey(t *testing.T) {
 			if !tt.wantUnusable {
 				return
 			}
-			if !strings.Contains(err.Error(), `lyx config language`) {
+			if !strings.Contains(err.Error(), `lym config language`) {
 				t.Errorf("error %q lacks the way forward", err)
 			}
 			if tt.key != "" && !strings.Contains(err.Error(), tt.key) {

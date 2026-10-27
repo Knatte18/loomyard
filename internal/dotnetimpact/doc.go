@@ -1,4 +1,4 @@
-// Package dotnetimpact derives the test projects and test classes a `lyx gate test` run over a C# tier has to cover, for the `dotnet` scoper.
+// Package dotnetimpact derives the test projects and test classes a `lym gate test` run over a C# tier has to cover, for the `dotnet` scoper.
 // It is told absolute paths and resolves no cwd.
 //
 // It reads C# source itself, with no compiler or language server.
@@ -25,7 +25,7 @@
 // DeriveDiff and DeriveCards are the entry points.
 // Both are told the worktree, the tier's `dir` relative to it and a predicate over worktree-relative paths that says which are inert, and neither resolves a cwd.
 // Git runs through `gitexec.Run` only, and the package spawns nothing else.
-// scanTree reads every `.cs` file and lists every `.csproj` under the `dir`, skipping `bin`, `obj`, `.scratch`, `.git`, `_lyx` and `.lyx` directories.
+// scanTree reads every `.cs` file and lists every `.csproj` under the `dir`, skipping `bin`, `obj`, `.scratch`, `.git`, `_lym` and `.lym` directories.
 //
 // DeriveDiff diffs a base to the working tree, untracked files included, and drops the inert paths first.
 // A diff left with no path, empty or inert-only, is the empty scope, read before the scan.

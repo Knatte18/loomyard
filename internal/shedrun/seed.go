@@ -15,8 +15,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // ErrDisagreeingSeed is the sentinel WriteSeed wraps its own refusal in when an existing seed at
@@ -101,7 +101,7 @@ func ValidateRecipe(name string) error {
 // It validates runID first, reads SeedFile(l, runID) with no lock -- the seed is write-once and never mutated mid-run.
 // It accepts an unknown key, which WriteSeed never rewrites away.
 // It defaults an absent or empty Driver to DriverGo, and validates the decoded Driver and every Params key being non-empty.
-func ReadSeed(l *lyxcwd.Location, runID string) (Seed, bool, error) {
+func ReadSeed(l *lymcwd.Location, runID string) (Seed, bool, error) {
 	if err := ValidateRunID(ResolveRunID(l, runID)); err != nil {
 		return Seed{}, false, err
 	}
@@ -166,7 +166,7 @@ func decodeSeed(data []byte) (Seed, error) {
 // Agreement means recipe, driver and params only, so a re-written agreeing seed keeps its original StartedAt.
 // An agreeing seed is left byte for byte, unknown keys included.
 // A seed with no StartedAt is stamped with the current time before it is encoded; a given one is kept.
-func WriteSeed(l *lyxcwd.Location, runID string, seed Seed) error {
+func WriteSeed(l *lymcwd.Location, runID string, seed Seed) error {
 	if err := ValidateRunID(ResolveRunID(l, runID)); err != nil {
 		return err
 	}
@@ -207,7 +207,7 @@ func WriteSeed(l *lyxcwd.Location, runID string, seed Seed) error {
 		if existingSeed.Recipe == seed.Recipe && existingSeed.Driver == seed.Driver && paramsEqual(existingSeed.Params, seed.Params) {
 			return nil
 		}
-		return fmt.Errorf("%w: run %q is already seeded with %+v; refusing to overwrite with %+v; way forward: keep the existing seed and drive it (\"lyx shed status %s\" shows it), or address a different run-id", ErrDisagreeingSeed, runID, existingSeed, seed, runID)
+		return fmt.Errorf("%w: run %q is already seeded with %+v; refusing to overwrite with %+v; way forward: keep the existing seed and drive it (\"lym shed status %s\" shows it), or address a different run-id", ErrDisagreeingSeed, runID, existingSeed, seed, runID)
 	}
 
 	if err := os.WriteFile(path, encoded, 0o644); err != nil {
@@ -231,11 +231,9 @@ func paramsEqual(a, b map[string]string) bool {
 }
 
 // List returns every run-id under l that has a readable seed.json, sorted.
-// It enumerates directories directly under filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName,
-// shedDirName), keeps only those holding a readable seed.json, and returns an empty slice with no
-// error when that parent directory does not exist at all.
-func List(l *lyxcwd.Location) ([]string, error) {
-	parent := filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName, shedDirName)
+// It enumerates directories directly under filepath.Join(l.AnchorPath(), lymdirs.LymDirName, shedDirName), keeps only those holding a readable seed.json, and returns an empty slice with no error when that parent directory does not exist at all.
+func List(l *lymcwd.Location) ([]string, error) {
+	parent := filepath.Join(l.AnchorPath(), lymdirs.LymDirName, shedDirName)
 
 	entries, err := os.ReadDir(parent)
 	if err != nil {

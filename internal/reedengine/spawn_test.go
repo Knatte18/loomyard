@@ -133,7 +133,7 @@ func TestLaunchStrandLocked_SkipsTheRedundantReEnumerationWhenNothingIsReaped(t 
 
 // TestLoadOrInitStateLocked pins the R3 review's R3-F2 contract: an absent file initializes a fresh state from the engine's identity,
 // while strand data loads verbatim from an existing persisted file and the Socket/Session identity diagnostic is re-stamped
-// from the engine's told geometry on every load — a renamed worktree carries its .lyx state along,
+// from the engine's told geometry on every load — a renamed worktree carries its .lym state along,
 // but its session name changes with the directory, and a diagnostic recording an identity reed no longer drives is worse than none.
 // A binding clear is made in memory and never saved, so repeated loads of one file clear again: the first logs at Warn and the repeats at Debug.
 // It captures the process-global logger at Debug, so it stays serial.
@@ -302,7 +302,7 @@ func TestValidateSplitCreatedNewPane(t *testing.T) {
 // PaneID names a pane another owner already claims is cleared and reported not-live; without it, that
 // pane IS alive, so status reports live:true against someone else's pane — exactly the false-healthy
 // symptom the R5 review reproduced live ("status reported the strand live:true against the header
-// pane running `lyx reed header --blocking`", the pre-Selvage keepalive this batch removes).
+// pane running `lym reed header --blocking`", the pre-Selvage keepalive this batch removes).
 //
 // The recorded generation deliberately MATCHES the one the probe answers, so the pane-generation
 // guard adopts rather than clears and the only thing that can clear a binding here is the repair
@@ -350,7 +350,7 @@ func TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims(t *testing.T) {
 			st := &ReedState{SelvagePaneID: selvagePane, PaneGeneration: liveGeneration}
 			names := []string{"first", "second"}
 			for i, paneID := range tt.strandPaneIDs {
-				st.Strands = append(st.Strands, Strand{GUID: names[i], Name: names[i], PaneID: paneID, LyxBin: "/opt/lyx/bin/lyx-" + names[i]})
+				st.Strands = append(st.Strands, Strand{GUID: names[i], Name: names[i], PaneID: paneID, LymBin: "/opt/lym/bin/lym-" + names[i]})
 			}
 			if err := SaveState(e.stateDir(), st); err != nil {
 				t.Fatalf("SaveState: %v", err)
@@ -365,8 +365,8 @@ func TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims(t *testing.T) {
 			}
 			for i, want := range tt.wantLive {
 				got := result.Strands[i]
-				if wantBin := "/opt/lyx/bin/lyx-" + got.Name; got.LyxBin != wantBin {
-					t.Errorf("Status strand %q LyxBin = %q; want the recorded %q", got.GUID, got.LyxBin, wantBin)
+				if wantBin := "/opt/lym/bin/lym-" + got.Name; got.LymBin != wantBin {
+					t.Errorf("Status strand %q LymBin = %q; want the recorded %q", got.GUID, got.LymBin, wantBin)
 				}
 				if got.Live != want {
 					t.Errorf("Status strand %q live = %v on pane %q; want %v — a pane has exactly one owner, and a binding naming a pane another owner claims must be cleared at load",
@@ -436,7 +436,7 @@ func breakSaveState(t *testing.T, e *Engine) {
 //
 //testtiming:keep pins what a launch types and writes: any discard-line key, the source statement then a separate Enter, and a launch script holding the prelude joined onto the command, regenerated on relaunch, the bare command when the executable is unresolvable and the prelude alone for an empty command; its covering tests run this code without asserting it
 func TestLaunchStrandLocked_LaunchScript(t *testing.T) {
-	const exe = "/opt/lyx/bin/lyx"
+	const exe = "/opt/lym/bin/lym"
 	tests := []struct {
 		name       string
 		executable error
@@ -526,8 +526,8 @@ func TestLaunchStrandLocked_LaunchScript(t *testing.T) {
 			if tt.executable != nil {
 				wantBin = ""
 			}
-			if s.LyxBin != wantBin {
-				t.Errorf("strand LyxBin = %q, want %q", s.LyxBin, wantBin)
+			if s.LymBin != wantBin {
+				t.Errorf("strand LymBin = %q, want %q", s.LymBin, wantBin)
 			}
 		})
 	}
@@ -539,7 +539,7 @@ func TestLaunchStrandLocked_LaunchScript(t *testing.T) {
 //testtiming:keep pins the degrade path: when the launch script cannot be written the send-keys payload is the full composed line and the warning names the strand guid; its covering tests run this code without asserting it
 func TestLaunchStrandLocked_WriteFailureSendsTheFullLine(t *testing.T) {
 	e := newTestEngine(t)
-	withInjectedExecutablePath(t, func() (string, error) { return "/opt/lyx/bin/lyx", nil })
+	withInjectedExecutablePath(t, func() (string, error) { return "/opt/lym/bin/lym", nil })
 	fake := launchFake(t, e, nil)
 	if err := os.MkdirAll(e.stateDir(), 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
@@ -615,7 +615,7 @@ func TestLaunchScriptDoesNotSurviveAFailedLaunch(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newTestEngine(t)
-			withInjectedExecutablePath(t, func() (string, error) { return "/opt/lyx/bin/lyx", nil })
+			withInjectedExecutablePath(t, func() (string, error) { return "/opt/lym/bin/lym", nil })
 			tt.setup(t, e)
 
 			if err := tt.run(e); err == nil {
@@ -698,7 +698,7 @@ func TestLaunchStrandLocked_SplitWindowAndPaneTitleCalls(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newTestEngine(t)
-			withInjectedExecutablePath(t, func() (string, error) { return "/opt/lyx/bin/lyx", nil })
+			withInjectedExecutablePath(t, func() (string, error) { return "/opt/lym/bin/lym", nil })
 			fake := launchFake(t, e, nil)
 			e.tmux.floorLine = tt.floorLine
 			if tt.failAllowSetTitle {

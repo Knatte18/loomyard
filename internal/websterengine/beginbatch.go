@@ -40,13 +40,13 @@ const planOverviewFile = "00-overview.md"
 // The reset route it names ends in reentry.
 func fingerprintMismatchWayForward(st *State, planDir, websterDir, reentry string) string {
 	fresh := freshRestartSteps(reentry)
-	const restore = `or restore the plan the run recorded with "lyx webster restore-plan", `
+	const restore = `or restore the plan the run recorded with "lym webster restore-plan", `
 	if len(st.PlanFileHashes) == 0 {
-		return "way forward: if the edit keeps every begun batch's cards, run `lyx webster rebaseline` to accept it, " + restore + "otherwise " + fresh
+		return "way forward: if the edit keeps every begun batch's cards, run `lym webster rebaseline` to accept it, " + restore + "otherwise " + fresh
 	}
 	changed, err := changedPlanFiles(st, planDir)
 	if err != nil {
-		return "way forward: if the edit keeps every begun batch's cards, run `lyx webster rebaseline --card NN` naming each card you edited, " + restore + "otherwise " + fresh
+		return "way forward: if the edit keeps every begun batch's cards, run `lym webster rebaseline --card NN` naming each card you edited, " + restore + "otherwise " + fresh
 	}
 	var flags []string
 	indexChanged := false
@@ -58,13 +58,13 @@ func fingerprintMismatchWayForward(st *State, planDir, websterDir, reentry strin
 				indexOnly, err = overviewIndexOnly(recorded, planDir)
 			}
 			if err != nil {
-				return "way forward: if the edit keeps every begun batch's cards, run `lyx webster rebaseline --card NN` naming each card you edited, " + restore + "otherwise " + fresh
+				return "way forward: if the edit keeps every begun batch's cards, run `lym webster rebaseline --card NN` naming each card you edited, " + restore + "otherwise " + fresh
 			}
 			if !indexOnly {
 				if recorded == "" {
-					return "way forward: " + planOverviewFile + " changed and is never rebaselined; restore it with \"lyx webster restore-plan\", or " + fresh
+					return "way forward: " + planOverviewFile + " changed and is never rebaselined; restore it with \"lym webster restore-plan\", or " + fresh
 				}
-				return "way forward: " + planOverviewFile + " changed outside its Card Index; restore it with \"lyx webster restore-plan\", or " + followUpCardLanding + ", or " + fresh
+				return "way forward: " + planOverviewFile + " changed outside its Card Index; restore it with \"lym webster restore-plan\", or " + followUpCardLanding + ", or " + fresh
 			}
 			indexChanged = true
 			continue
@@ -73,11 +73,11 @@ func fingerprintMismatchWayForward(st *State, planDir, websterDir, reentry strin
 	}
 	if len(flags) == 0 {
 		if indexChanged {
-			return "way forward: only the Card Index of " + planOverviewFile + " changed; run `lyx webster rebaseline` to accept it, " + restore + "otherwise " + fresh
+			return "way forward: only the Card Index of " + planOverviewFile + " changed; run `lym webster rebaseline` to accept it, " + restore + "otherwise " + fresh
 		}
-		return "way forward: run `lyx webster rebaseline --card NN` naming each card you edited, " + restore + "otherwise " + fresh
+		return "way forward: run `lym webster rebaseline --card NN` naming each card you edited, " + restore + "otherwise " + fresh
 	}
-	return "way forward: run `lyx webster rebaseline " + strings.Join(flags, " ") + "` to accept the edit, " + restore + "otherwise " + fresh
+	return "way forward: run `lym webster rebaseline " + strings.Join(flags, " ") + "` to accept the edit, " + restore + "otherwise " + fresh
 }
 
 // cardNumberOf returns the digits before the first "-" of a card file name, or the whole name when it has none.
@@ -110,7 +110,7 @@ type PlanConflictError struct {
 
 // Error renders the refusal with its class and cause, the findings and the way forward.
 func (e *PlanConflictError) Error() string {
-	return fmt.Sprintf("%s (plan_conflict: %s): %s; way forward: edit the plan so the named cards match the tree, run \"lyx webster rebaseline --card NN\" naming each card you edited, then begin-batch %02d again", ErrPlanConflict.Error(), e.Cause, strings.Join(e.Findings, "; "), e.Batch)
+	return fmt.Sprintf("%s (plan_conflict: %s): %s; way forward: edit the plan so the named cards match the tree, run \"lym webster rebaseline --card NN\" naming each card you edited, then begin-batch %02d again", ErrPlanConflict.Error(), e.Cause, strings.Join(e.Findings, "; "), e.Batch)
 }
 
 // Unwrap returns ErrPlanConflict, so errors.Is identifies the refusal.
@@ -193,7 +193,7 @@ func completedCards(batches []batcher.Batch, st *State, exclude int) []planparse
 	return done
 }
 
-// DispatchScope computes the one dispatch scoping begin-batch, run entry and `lyx webster validate` share.
+// DispatchScope computes the one dispatch scoping begin-batch, run entry and `lym webster validate` share.
 // begun is every card of a batch begin-batch recorded, terminal or not, in batches' own order.
 // forthcoming is the cards of every begun batch whose record is not terminal.
 // A terminal batch's cards are never forthcoming: its done-checks proved its targets present.
@@ -331,7 +331,7 @@ func findBatch(batches []batcher.Batch, number int) (batcher.Batch, error) {
 			return b, nil
 		}
 	}
-	return batcher.Batch{}, fmt.Errorf("webster: batch %d not found in the plan's execution batches; way forward: `lyx webster status` lists the run's batches, name one of those", number)
+	return batcher.Batch{}, fmt.Errorf("webster: batch %d not found in the plan's execution batches; way forward: `lym webster status` lists the run's batches, name one of those", number)
 }
 
 // ErrRenameToolMissing is the sentinel a refusal unwraps to when a batch holds a symbol Rename pair and the hub lists no rename tool.
@@ -350,7 +350,7 @@ func renameToolRefusal(plan *planparser.Plan, batch batcher.Batch, renameTools [
 		if len(pairs) == 0 {
 			continue
 		}
-		return fmt.Errorf("%w: batch %02d-%s, symbol pair %s -> %s on card %s; way forward: set rename_tools with \"lyx config language\" from the prime, or recast the card, then re-run `lyx webster %s %d`", ErrRenameToolMissing, number, slug, pairs[0].Old, pairs[0].New, card.ID(), verb, number)
+		return fmt.Errorf("%w: batch %02d-%s, symbol pair %s -> %s on card %s; way forward: set rename_tools with \"lym config language\" from the prime, or recast the card, then re-run `lym webster %s %d`", ErrRenameToolMissing, number, slug, pairs[0].Old, pairs[0].New, card.ID(), verb, number)
 	}
 	return nil
 }
@@ -408,24 +408,24 @@ func predecessorDigestLine(batches []batcher.Batch, st *State, batchNumber int) 
 func existingReportRemedy(number int, recorded *BatchState, retry bool) (string, bool) {
 	if !recorded.Terminal {
 		if recorded.Kind == "recovery" {
-			return fmt.Sprintf("`lyx webster recover-batch %d`", number), false
+			return fmt.Sprintf("`lym webster recover-batch %d`", number), false
 		}
-		return fmt.Sprintf("`lyx webster record-batch %d`, after fixing whatever its last refusal named", number), false
+		return fmt.Sprintf("`lym webster record-batch %d`, after fixing whatever its last refusal named", number), false
 	}
 	if recorded.Status == DigestStatusDone {
 		return "the batch is finished, so begin the next batch", false
 	}
 	if recorded.Recoveries >= maxRecoveries && !rendersNewAmendment(recorded) {
 		return fmt.Sprintf("the batch's recoveries are exhausted, so end the run stuck naming the batch; for the operator, %s; or %s",
-			strings.TrimPrefix(wayForwardSteps(resetVerb(ResetToBatchStart, number), fmt.Sprintf("lyx webster recover-batch %d", number)), "way forward: "), freshRestartSteps(stepRun)), true
+			strings.TrimPrefix(wayForwardSteps(resetVerb(ResetToBatchStart, number), fmt.Sprintf("lym webster recover-batch %d", number)), "way forward: "), freshRestartSteps(stepRun)), true
 	}
 	if recorded.Status == DigestStatusDead {
 		if retry {
-			return fmt.Sprintf("`lyx webster recover-batch %d`, once more, since the batch earns another recovery", number), false
+			return fmt.Sprintf("`lym webster recover-batch %d`, once more, since the batch earns another recovery", number), false
 		}
 		return fmt.Sprintf("the recovery of batch %d is dead and earns no retry, so end the run stuck naming the batch", number), false
 	}
-	return fmt.Sprintf("`lyx webster recover-batch %d`", number), false
+	return fmt.Sprintf("`lym webster recover-batch %d`", number), false
 }
 
 // BeginBatch drives one begin-batch call to completion, immediately before Master forks batchNumber's implementer: the fingerprint gate, start-SHA capture, the previous batch's persisted digest rendered into the fork prompt, and the prompt file write itself.
@@ -459,7 +459,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 
 	// Re-resolve the plan against the current tree before the fork prompt is written, never from a cache.
 	// deps.Geom.WorktreeRoot is the same root BeginBatch already reads for its head-SHA capture
-	// below, so this adds no path derivation and no internal/lyxcwd import. An infrastructure error
+	// below, so this adds no path derivation and no internal/lymcwd import. An infrastructure error
 	// (errors.Is(err, planindex.ErrQuarryUnavailable)) blocks exactly like a blocking finding does:
 	// dispatching a fork on a re-resolve that failed is strictly worse than not dispatching.
 	// Scoped to the cards still to be built: a card already built contradicts the tree by design, and
@@ -511,7 +511,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 
 	cardHashes, err := batchCardHashes(batch, deps.Plan.Dir)
 	if err != nil {
-		return nil, fmt.Errorf("%w; way forward: transient, re-run `lyx webster begin-batch %d`", err, batchNumber)
+		return nil, fmt.Errorf("%w; way forward: transient, re-run `lym webster begin-batch %d`", err, batchNumber)
 	}
 
 	// The gate calls render before the first mutation, so a gate list the config lacks refuses with no prompt written and no state recorded.

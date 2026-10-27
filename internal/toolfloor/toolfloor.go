@@ -10,11 +10,11 @@ import (
 )
 
 const (
-	// GitFloor is the oldest git lyx runs on.
+	// GitFloor is the oldest git lym runs on.
 	GitFloor = "2.43.0"
-	// TmuxFloor is the oldest tmux lyx runs on.
+	// TmuxFloor is the oldest tmux lym runs on.
 	TmuxFloor = "3.4"
-	// TmuxAllowSetTitle is the tmux release that added the `allow-set-title` pane option, which lyx uses where it exists.
+	// TmuxAllowSetTitle is the tmux release that added the `allow-set-title` pane option, which lym uses where it exists.
 	TmuxAllowSetTitle = "3.5"
 )
 
@@ -23,20 +23,20 @@ var (
 	tmuxVersionLine = regexp.MustCompile(`^tmux (\d+\.\d+)[a-z]?$`)
 )
 
-// FloorError reports a tool whose version is below lyx's floor.
+// FloorError reports a tool whose version is below lym's floor.
 // It is its own type so no caller reads it as an answer git gave.
 type FloorError struct {
 	// Tool is the tool's name, "git" or "tmux".
 	Tool string
 	// Found is the dotted version the tool reported.
 	Found string
-	// Floor is the oldest version lyx runs on.
+	// Floor is the oldest version lym runs on.
 	Floor string
 }
 
 // Error names the tool, the version found, the floor and the way forward.
 func (e *FloorError) Error() string {
-	return fmt.Sprintf("%s %s is below lyx's minimum %s: install %s %s or newer", e.Tool, e.Found, e.Floor, e.Tool, e.Floor)
+	return fmt.Sprintf("%s %s is below lym's minimum %s: install %s %s or newer", e.Tool, e.Found, e.Floor, e.Tool, e.Floor)
 }
 
 // CheckGit checks the output of `git --version` against GitFloor.

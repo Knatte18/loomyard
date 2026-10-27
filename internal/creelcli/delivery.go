@@ -18,8 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -45,7 +45,7 @@ type worktreeOps interface {
 type hubDelivery struct {
 	hubPath string
 	// wire builds the worktreeOps of a resolved worktree; a test replaces it with a stub.
-	wire func(location *lyxcwd.Location) (worktreeOps, error)
+	wire func(location *lymcwd.Location) (worktreeOps, error)
 	// skippedMu guards skipped, since the delivery workers list the strands concurrently.
 	skippedMu sync.Mutex
 	// skipped holds the worktree paths Strands has logged a skip for, until the path resolves again or the listing no longer holds it.
@@ -56,7 +56,7 @@ type hubDelivery struct {
 func newHubDelivery(hubPath string, enginesFor func(shuttleengine.Config, configengine.Dirs) (shuttleengine.EngineSet, error)) *hubDelivery {
 	return &hubDelivery{
 		hubPath: hubPath,
-		wire: func(location *lyxcwd.Location) (worktreeOps, error) {
+		wire: func(location *lymcwd.Location) (worktreeOps, error) {
 			return wireShuttle(location, enginesFor)
 		},
 	}
@@ -69,7 +69,7 @@ type shuttleOps struct {
 }
 
 // wireShuttle builds the worktree's reed and shuttle config, its reed geometry, and the reed engine and runner over them.
-func wireShuttle(location *lyxcwd.Location, enginesFor func(shuttleengine.Config, configengine.Dirs) (shuttleengine.EngineSet, error)) (shuttleOps, error) {
+func wireShuttle(location *lymcwd.Location, enginesFor func(shuttleengine.Config, configengine.Dirs) (shuttleengine.EngineSet, error)) (shuttleOps, error) {
 	configDirs := fabricengine.ConfigDirs(location)
 	reedCfg, err := reedengine.LoadConfig(configDirs, "reed")
 	if err != nil {
@@ -262,14 +262,14 @@ func (d *hubDelivery) primeWorktree() string {
 
 // worktreeStrands reads the strands persisted in one worktree and their liveness from its reed status.
 func (d *hubDelivery) worktreeStrands(entry fabricengine.WorktreeEntry) ([]creelengine.Strand, error) {
-	location, err := lyxcwd.ResolveWorktree(entry.Path)
-	if errors.Is(err, lyxcwd.ErrNotAGitRepo) {
+	location, err := lymcwd.ResolveWorktree(entry.Path)
+	if errors.Is(err, lymcwd.ErrNotAGitRepo) {
 		return nil, fmt.Errorf("%w: resolve worktree %s: %w", errWorktreeGone, entry.Path, err)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("creel: resolve worktree %s: %w", entry.Path, err)
 	}
-	reedState, err := reedengine.LoadState(filepath.Join(location.AnchorPath(), lyxdirs.DotLyxDirName))
+	reedState, err := reedengine.LoadState(filepath.Join(location.AnchorPath(), lymdirs.DotLymDirName))
 	if err != nil {
 		return nil, worktreeStepError(entry.Path, "read the reed state of", err)
 	}
@@ -312,7 +312,7 @@ func (d *hubDelivery) worktreeStrands(entry fabricengine.WorktreeEntry) ([]creel
 
 // opsFor resolves the strand's worktree and wires it.
 func (d *hubDelivery) opsFor(strand creelengine.Strand) (worktreeOps, error) {
-	location, err := lyxcwd.ResolveWorktree(strand.Worktree)
+	location, err := lymcwd.ResolveWorktree(strand.Worktree)
 	if err != nil {
 		return nil, fmt.Errorf("creel: resolve worktree %s: %w", strand.Worktree, err)
 	}
@@ -350,7 +350,7 @@ func (d *hubDelivery) Idle(strand creelengine.Strand) (creelengine.Idleness, err
 // Paused reports whether a pause covers the strand.
 // A prime strand is covered by a hub entry only, a pair strand by a hub entry or its own.
 func (d *hubDelivery) Paused(strand creelengine.Strand) (bool, error) {
-	location, err := lyxcwd.ResolveWorktree(strand.Worktree)
+	location, err := lymcwd.ResolveWorktree(strand.Worktree)
 	if err != nil {
 		return false, fmt.Errorf("creel: resolve worktree %s: %w", strand.Worktree, err)
 	}
@@ -370,7 +370,7 @@ func (d *hubDelivery) Paused(strand creelengine.Strand) (bool, error) {
 // any other strand is recorded by name, guid and slug.
 // The claim's StillLive re-reads the record and reports whether the owning entry is still live.
 func (d *hubDelivery) ClaimPause(strand creelengine.Strand) (creelengine.PauseClaim, error) {
-	location, err := lyxcwd.ResolveWorktree(strand.Worktree)
+	location, err := lymcwd.ResolveWorktree(strand.Worktree)
 	if err != nil {
 		return creelengine.PauseClaim{}, fmt.Errorf("creel: resolve worktree %s: %w", strand.Worktree, err)
 	}

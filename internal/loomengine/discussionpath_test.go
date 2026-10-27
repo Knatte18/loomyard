@@ -1,7 +1,7 @@
 //go:build tier0
 
 // discussionpath_test.go tests the AnchorPath-anchored DiscussionDir/
-// DiscussionDecisionRecord/DiscussionSupportLog accessors on a hand-built lyxcwd.Location — pure
+// DiscussionDecisionRecord/DiscussionSupportLog accessors on a hand-built lymcwd.Location — pure
 // path arithmetic, no spawning, untagged (Tier 1).
 
 package loomengine
@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // TestDiscussionPaths pins the discussion directory, the decision record, the support log and the advisor notes at the anchor, and that DiscussionDirRel is the relative form DiscussionDir composes from.
@@ -30,18 +30,18 @@ func TestDiscussionPaths(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			l := &lyxcwd.Location{
-				HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
+			l := &lymcwd.Location{
+				HubPath:      filepath.Join("home", "user", "repo-LYMHUB"),
 				WorktreeName: "repo",
 				AnchorRel:    tt.anchorRel,
 			}
 
-			wantDir := filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName, "discussion")
+			wantDir := filepath.Join(l.AnchorPath(), lymdirs.LymDirName, "discussion")
 			if got := DiscussionDir(l); got != wantDir {
 				t.Errorf("DiscussionDir() = %q; want %q", got, wantDir)
 			}
 			if tt.anchorRel == "." {
-				if want := filepath.Join(l.WorktreePath(), lyxdirs.LyxDirName, "discussion"); DiscussionDir(l) != want {
+				if want := filepath.Join(l.WorktreePath(), lymdirs.LymDirName, "discussion"); DiscussionDir(l) != want {
 					t.Errorf("DiscussionDir() = %q; want the worktree-rooted %q for an unanchored location", DiscussionDir(l), want)
 				}
 			}

@@ -12,16 +12,16 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// writeBatcherConfig writes content as <anchorPath>/_lyx/config/batcher.yaml.
+// writeBatcherConfig writes content as <anchorPath>/_lym/config/batcher.yaml.
 func writeBatcherConfig(t *testing.T, anchorPath, content string) {
 	t.Helper()
-	configDir := filepath.Join(anchorPath, lyxdirs.LyxDirName, "config")
+	configDir := filepath.Join(anchorPath, lymdirs.LymDirName, "config")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir config dir: %v", err)
 	}

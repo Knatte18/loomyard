@@ -1,9 +1,9 @@
 // server.go computes the per-hub tmux server identity: the server name (also reused as the -L
 // socket name) and the per-worktree session name.
-// Both construction rules live here, in the tmux domain, rather than in lyxcwd, because each is a
+// Both construction rules live here, in the tmux domain, rather than in lymcwd, because each is a
 // tmux-specific derivation (a socket key and a session name, neither of them a filesystem path)
 // over a plain hub or worktree path string its caller already resolved.
-// Neither function sees a *lyxcwd.Location: hubgeom.ReedGeometry calls them to fill
+// Neither function sees a *lymcwd.Location: hubgeom.ReedGeometry calls them to fill
 // Geometry.SocketKey/SessionName, and this package only ever reads those told fields back.
 // It also carries validateToldTmuxIdentity, the pre-flight that refuses a told tmux identity the
 // multiplexer could not spend verbatim — the one check that keeps "New validates nothing" from
@@ -36,7 +36,7 @@ import (
 // stat blip or a caller bug cannot strand a healthy session in the watch loop's dormant cadence.
 var errWorktreeRootGone = errors.New("told worktree root is gone")
 
-// ServerName returns the deterministic tmux server name for the hub: "lyx-<basename>-<hash>", where
+// ServerName returns the deterministic tmux server name for the hub: "lym-<basename>-<hash>", where
 // hash ensures distinct hubs are distinct.
 // The basename half is purely for human readability — uniqueness rests entirely on the hash of the
 // cleaned absolute hub path — so any path separator it carries is substituted rather than passed
@@ -57,19 +57,15 @@ func ServerName(hubPath string) string {
 	base := truncateAtRuneBoundary(socketSafeBase(filepath.Base(abs)), maxSocketSafeBaseBytes)
 	sum := sha256.Sum256([]byte(abs))
 	shortHash := hex.EncodeToString(sum[:])[:8]
-	return "lyx-" + base + "-" + shortHash
+	return "lym-" + base + "-" + shortHash
 }
 
 // maxSocketSafeBaseBytes caps the human-readable half of a ServerName key, in BYTES — the unit the
 // kernel's limit is expressed in, so the resulting bound holds for a multi-byte hub name too.
 //
-// A tmux -L key names a socket file inside the per-user socket directory, and that whole path must
-// fit sockaddr_un.sun_path (108 bytes). Measured live on tmux 3.6 with the default
-// "/tmp/tmux-<uid>/" directory: a 92-byte key works and a 93-byte one fails with
-// "error creating <path> (File name too long)" on EVERY invocation, which makes the hub unusable —
-// `lyx reed up` cannot boot it at all (R4 review finding R4-F2).
-// A ServerName key is len(base)+13 bytes, so this cap holds every key at or under 61 bytes, leaving
-// headroom for a socket directory considerably longer than the default (TMUX_TMPDIR).
+// A tmux -L key names a socket file inside the per-user socket directory, and that whole path must fit sockaddr_un.sun_path (108 bytes).
+// Measured live on tmux 3.6 with the default "/tmp/tmux-<uid>/" directory: a 92-byte key works and a 93-byte one fails with "error creating <path> (File name too long)" on EVERY invocation, which makes the hub unusable — `lym reed up` cannot boot it at all (R4 review finding R4-F2).
+// A ServerName key is len(base)+13 bytes, so this cap holds every key at or under 61 bytes, leaving headroom for a socket directory considerably longer than the default (TMUX_TMPDIR).
 const maxSocketSafeBaseBytes = 48
 
 // truncateAtRuneBoundary returns s cut to at most maxBytes bytes, never splitting a UTF-8 rune.
@@ -279,7 +275,7 @@ func validateToldTmuxIdentity(geom Geometry) error {
 //
 // AnchorPath is the base stateDir joins onto and the -c every pane is spawned with, so an empty or
 // relative value does not fail — it succeeds against the WRONG tree. stateDir would resolve
-// reed.json/reed.lock under the lyx process's own working directory instead of the worktree, and
+// reed.json/reed.lock under the lym process's own working directory instead of the worktree, and
 // tmux answers an empty -c by falling back to the invoking client's cwd, which is exactly the
 // failure launchStrandLocked's explicit -c exists to prevent: every strand command running somewhere
 // other than the anchor while reed reports success (R4 review finding R4-F3).

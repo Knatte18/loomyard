@@ -76,7 +76,7 @@ func prepareRunSettings(b *boardengine.Board, fields map[string]any, strandName 
 	}
 	producer, running := boardengine.RunStatusProducer(stored.Status)
 	if running && producer != battenrecipe.NameWorktreeCreate && producer != battenrecipe.NameSeedChild {
-		return fmt.Sprintf("the run_settings or profile change of %q applies to the next run's Seed-Child; the running pair takes it through `lyx config <module> --layer local --set` in the pair", slug), nil
+		return fmt.Sprintf("the run_settings or profile change of %q applies to the next run's Seed-Child; the running pair takes it through `lym config <module> --layer local --set` in the pair", slug), nil
 	}
 	return "", nil
 }

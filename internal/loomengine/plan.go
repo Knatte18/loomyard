@@ -1,10 +1,10 @@
 // plan.go implements PlanTable, the Plan-Write row's seat-table builder.
 // Like the Discussion producer (discussion.go), the Plan producer is not a Go module — it is a
 // prompt/profile fed to the seat engine, one lead seat producing one artifact.
-// The decision record, `_lyx/discussion/decision-record.md` (see layout.DiscussionDecisionRecord), is its design input;
-// `_lyx/discussion/relevant.md` is its head start on the code when present, never scope.
-// It reads nothing else from `_lyx/discussion/`, never the support log, and never reads the board.
-// Its output is a plan-format flat-card plan written into `_lyx/plan/`: one `NN-<card-slug>.md`
+// The decision record, `_lym/discussion/decision-record.md` (see layout.DiscussionDecisionRecord), is its design input;
+// `_lym/discussion/relevant.md` is its head start on the code when present, never scope.
+// It reads nothing else from `_lym/discussion/`, never the support log, and never reads the board.
+// Its output is a plan-format flat-card plan written into `_lym/plan/`: one `NN-<card-slug>.md`
 // per card plus `00-overview.md`, written LAST as the run's done-sentinel (see
 // contracts/specs/loom-plan-spec.md).
 // The producer always writes `approved: false` in `00-overview.md`'s frontmatter — it has no review
@@ -15,7 +15,7 @@
 // The directive's lenses come from the lenses.yaml fan plan_lenses names.
 // The lead explores, spawns one fork, fork0, to write the plan, reads the finished plan in full and self-checks it, then spawns the lens forks and judges their findings as a critical fixer.
 // The forks hold the exploration and the plan but not fork0's reasoning, and the lead records the lens review in the plan directory's lens-review.md.
-// The writer runs `lyx loom validate-plan --lens-review` as its final self-check, and the row's gate requires a recorded lens-review.md for a run whose lead was authorized to fork.
+// The writer runs `lym loom validate-plan --lens-review` as its final self-check, and the row's gate requires a recorded lens-review.md for a run whose lead was authorized to fork.
 // The lead sets ForkSubagents, so the writer may spawn subagents of type fork.
 // While claude.yaml's deny_agent_tool is true, the Agent hook admits fork subagents only and refuses every other subagent type; with it false no Agent hook is installed.
 // Forks run on the writer's model, read-only and without the Agent tool by the stencil's boilerplate.
@@ -23,8 +23,8 @@
 // With plan_lenses empty the prompt keeps its bytes and ForkSubagents stays false.
 //
 // PlanTable is a pure builder: it does not stat the decision record,
-// does not stat or create `_lyx/plan/`, and does not spawn anything.
-// Rotating a stale `_lyx/plan/` before a re-run is owned by `loomshed.NewPlanDirRotator`, run as the Plan-Write producer's fresh-spawn preparation;
+// does not stat or create `_lym/plan/`, and does not spawn anything.
+// Rotating a stale `_lym/plan/` before a re-run is owned by `loomshed.NewPlanDirRotator`, run as the Plan-Write producer's fresh-spawn preparation;
 // verifying the input exists stays outside PlanTable.
 
 package loomengine
@@ -37,7 +37,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -63,7 +63,7 @@ const planStencil = "loom-template-plan"
 // gateTiers is the hub's rendered tier and gate-list lines, or "none" when no tier is declared; it fills the prompt's gate_tiers marker verbatim.
 // The table carries no gate; the producer entry sets it.
 // A PATTERN directive that cannot be rendered fails the table; a friction directive that cannot be rendered is left empty, the failure logged.
-func PlanTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry, gateTiers string) (seatengine.Table, error) {
+func PlanTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry, gateTiers string) (seatengine.Table, error) {
 	choice, err := resolveModelChoice(cfg.Plan, reg)
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("loom: PlanTable: plan role model-spec: %w", err)
@@ -71,7 +71,7 @@ func PlanTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, spe
 
 	declaredChanges, err := discussionparser.DeclaredPatternChanges(DiscussionDecisionRecord(layout))
 	if err != nil {
-		return seatengine.Table{}, fmt.Errorf("loom: PlanTable: %w re-step the row with %q", err, "lyx loom start")
+		return seatengine.Table{}, fmt.Errorf("loom: PlanTable: %w re-step the row with %q", err, "lym loom start")
 	}
 	patternDirective, err := pattern.Directive(layout.WorktreePath(), stencilsDir, pattern.RoleImplementer, declaredChanges)
 	if err != nil {

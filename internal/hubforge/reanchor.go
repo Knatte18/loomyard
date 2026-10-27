@@ -10,7 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // ReanchorPair moves the worktree called slug, the prime included, from its current anchor to anchor, fataling on error.
@@ -23,7 +23,7 @@ func ReanchorPair(tb testing.TB, h *Hub, slug, anchor string) {
 
 	defer markFixtureBuild()()
 
-	oldLoc, err := lyxcwd.NamedWorktree(h.Path, slug)
+	oldLoc, err := lymcwd.NamedWorktree(h.Path, slug)
 	if err != nil {
 		tb.Fatalf("ReanchorPair(%s): read the current anchor: %v", slug, err)
 	}
@@ -49,11 +49,11 @@ func ReanchorPair(tb testing.TB, h *Hub, slug, anchor string) {
 		}
 		gitkit.MustRun(tb, weft, "git", "mv", from, filepath.ToSlash(filepath.Join(anchor, name)))
 	}
-	marker := filepath.Join(weft, lyxcwd.AnchorFileName)
+	marker := filepath.Join(weft, lymcwd.AnchorFileName)
 	if err := os.WriteFile(marker, []byte(anchor+"\n"), 0o644); err != nil {
 		tb.Fatalf("ReanchorPair(%s): write the marker: %v", slug, err)
 	}
-	gitkit.MustRun(tb, weft, "git", "add", "--", lyxcwd.AnchorFileName)
+	gitkit.MustRun(tb, weft, "git", "add", "--", lymcwd.AnchorFileName)
 	gitkit.MustRun(tb, weft, "git", "commit", "--allow-empty", "-m", "hubforge: move "+slug+" to anchor "+anchor)
 
 	code := fabricengine.WorktreePath(oldLoc, slug)
@@ -69,7 +69,7 @@ func ReanchorPair(tb testing.TB, h *Hub, slug, anchor string) {
 		gitkit.MustRun(tb, code, "git", "commit", "-m", "hubforge: track anchor "+anchor)
 	}
 
-	newLoc, err := lyxcwd.NamedWorktree(h.Path, slug)
+	newLoc, err := lymcwd.NamedWorktree(h.Path, slug)
 	if err != nil {
 		tb.Fatalf("ReanchorPair(%s): read the new anchor: %v", slug, err)
 	}

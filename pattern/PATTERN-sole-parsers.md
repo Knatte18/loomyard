@@ -4,7 +4,7 @@ Each on-disk format has one parser; consumers read only its model.
 
 ## Plan format (`internal/planparser`)
 
-`internal/planparser` is the sole production parser and writer of the on-disk plan format (`_lyx/plan/`).
+`internal/planparser` is the sole production parser and writer of the on-disk plan format (`_lym/plan/`).
 
 - Consumers read only from the `planparser.Plan` model.
 - `SetApproved` (approval), `RewriteRefs` (ref substitution across the plan), `AppendAmendment` (the append-only amendment log), `InsertCard` and `RemoveCard` (one card added or dropped, the cards after it renumbered under a journal) and `RestoreRenumber` (the journal's only reader, which undoes an interrupted renumber) are the write paths, and no others.
@@ -24,7 +24,7 @@ Each on-disk format has one parser; consumers read only its model.
 
 ## Discussion format (`internal/discussionparser`)
 
-`internal/discussionparser` is the sole reader of `_lyx/discussion/`'s on-disk format.
+`internal/discussionparser` is the sole reader of `_lym/discussion/`'s on-disk format.
 It imports the standard library only.
 
 ## Summary format (`internal/summaryparser`)

@@ -1,5 +1,5 @@
 <!-- This is the loom Plan producer's autonomous prompt. It is shipped as an embedded default in the
-     top-level stencils package (stencils/stencils.go), seeded to <hub>/_board/_lyx/stencils/loom/
+     top-level stencils package (stencils/stencils.go), seeded to <hub>/_board/_lym/stencils/loom/
      and read from there at call time by internal/seatengine, which fills it from the lead's value map that loomengine.PlanTable builds (plan.go),
      then hands it to shuttle as the plan agent's entire instruction set.
      gate_tiers is a required marker filled by loomengine.PlanTable from the hub's gate.yaml; a hub declaring no tier renders it as none.
@@ -29,7 +29,7 @@ Then read `{{.relevant_path}}` if it exists.
 It lists the files and members the Discussion read and found relevant, as a head start for Step 2: it never adds scope, and `{{.specs_dir}}/loom/loom-discussion-spec.md` defines its format.
 A missing list is not an error; explore as Step 2 says.
 
-An entry between `<!-- lyx:carry-over … -->` marker lines in `## Open risks` lists review findings the closing round's fixer fixed or disputed, unseen by a fresh reviewer; the entry's fixer report says which.
+An entry between `<!-- lym:carry-over … -->` marker lines in `## Open risks` lists review findings the closing round's fixer fixed or disputed, unseen by a fresh reviewer; the entry's fixer report says which.
 Check each one against the code while you explore, and never plan an entry as scope.
 
 A scope addition that arrives after the Discussion is a design call the parent records.
@@ -38,7 +38,7 @@ Never write such an addition into the plan as an operator addition.
 With no parent recorded, stop and report the addition instead of planning on it.
 
 The same route covers a drop of a decided step that changes this task's own board entry's body or scope.
-Ask your parent to record the drop with `lyx loom decision add` as an `Added after Discussion` entry, and plan without the step only once the record carries that entry.
+Ask your parent to record the drop with `lym loom decision add` as an `Added after Discussion` entry, and plan without the step only once the record carries that entry.
 With no parent recorded, stop and report the step instead of planning on or without it.
 The route admits a drop of an own-entry step only: no other decided step is dropped through it.
 
@@ -50,23 +50,23 @@ A follow-up a card files goes on the board as a note, never as a task, and no ca
 
 Before planning, start from the code the relevant list names, then read the other relevant parts of the codebase: check recent commits, and follow existing patterns and any PATTERN entries in this prompt rather than inventing new ones.
 
-### Look up glyphs with `lyx quarry` — never spell one from memory
+### Look up glyphs with `lym quarry` — never spell one from memory
 
-`lyx quarry` is your only source of glyph spellings,
+`lym quarry` is your only source of glyph spellings,
 and it answers against the current worktree only — it takes no repository-path flag, so a spelling it gives you is always from the tree the plan validator resolves against.
 
-- `lyx quarry glyphs <dir>` is the flat index: every symbol under `<dir>`'s whole tree, depth-first, each with its own glyph spelling.
+- `lym quarry glyphs <dir>` is the flat index: every symbol under `<dir>`'s whole tree, depth-first, each with its own glyph spelling.
   This is what you read a card's target spellings out of.
-  `lyx quarry glyphs --text <dir>` gives the same index as one symbol per line, the form to use before any line filter such as `grep`.
+  `lym quarry glyphs --text <dir>` gives the same index as one symbol per line, the form to use before any line filter such as `grep`.
   The glyph to copy from a `--text` line is its last field, the id — never the whole line.
-- `lyx quarry resolve <glyph>...` checks that a spelling names something real — pass it one or more glyphs, positionally, in one call.
+- `lym quarry resolve <glyph>...` checks that a spelling names something real — pass it one or more glyphs, positionally, in one call.
   It answers each glyph separately, and exits non-zero when any glyph is not found, ambiguous, or rejected by the grammar, but still prints every glyph's answer.
   Read each answer's `status` (or `error`, for a grammar-rejected spelling) rather than treating the non-zero exit as a tool failure.
-- `lyx quarry toc <path>` and `lyx quarry expand <glyph>` are the structure and detail queries: `toc` for a directory's shape, and `expand` for a type's own head plus every member whose owner chain begins with it.
+- `lym quarry toc <path>` and `lym quarry expand <glyph>` are the structure and detail queries: `toc` for a directory's shape, and `expand` for a type's own head plus every member whose owner chain begins with it.
 
 **You never spell a glyph — you copy a line verbatim out of a quarry answer.**
 This is the hard rule behind the glyph spelling rules Step 3 spells out below: a bare package-qualified symbol (`pkg.Symbol`) is a hard finding precisely because it is the one spelling that cannot have come verbatim from a quarry answer.
-The verbs above are the whole of what `lyx quarry` offers you — there is no further verb to ask for.
+The verbs above are the whole of what `lym quarry` offers you — there is no further verb to ask for.
 {{.twill_directive}}
 ## Step 3 — Write the plan into `{{.plan_dir}}`
 
@@ -105,7 +105,7 @@ A card that removes an entry names the entry's ID in backticks, so the gate cred
 
 `00-overview.md` + one `NN-<card-slug>.md` per card. `NN` is zero-padded and equals the card's flat heading number `N`;
 cards run `1..M` with no gaps.
-Insert or remove a card only with `lyx loom insert-card` or `lyx loom remove-card`, which renumber the later cards and whose `--help` says what they do, never by renaming, rewriting under a new name or deleting a card file by hand.
+Insert or remove a card only with `lym loom insert-card` or `lym loom remove-card`, which renumber the later cards and whose `--help` says what they do, never by renaming, rewriting under a new name or deleting a card file by hand.
 
 ### `00-overview.md`
 
@@ -130,7 +130,7 @@ Otherwise leave it at `"go"` unless the task is explicitly non-Go.
 
 ### Declaring a symbol that does not exist yet: `plan:` handles
 
-`lyx quarry` can only answer with glyphs for symbols that already exist — it never invents one. When a card creates a brand-new symbol or file, `quarry` has nothing to look up, so you invent a draft placeholder spelling instead: a `plan:` handle, `plan:<unit>#<member>`, where `<unit>` is the new symbol's own repository-relative PACKAGE DIRECTORY — never the `.go` file it will live in (`plan:internal/boardcli#RowJSON`, not `plan:internal/boardcli/rowjson.go#RowJSON`; a file-unit member spelling can never resolve, and the validator refuses it as `handle-malformed`).
+`lym quarry` can only answer with glyphs for symbols that already exist — it never invents one. When a card creates a brand-new symbol or file, `quarry` has nothing to look up, so you invent a draft placeholder spelling instead: a `plan:` handle, `plan:<unit>#<member>`, where `<unit>` is the new symbol's own repository-relative PACKAGE DIRECTORY — never the `.go` file it will live in (`plan:internal/boardcli#RowJSON`, not `plan:internal/boardcli/rowjson.go#RowJSON`; a file-unit member spelling can never resolve, and the validator refuses it as `handle-malformed`).
 
 Write it on the `**Create:**` sub-bullet using the two-field declaration grammar, reusing the same `` `x` -> `y` `` arrow shape a `**Rename:**` pair uses:
 
@@ -149,7 +149,7 @@ The left-hand token is the handle you just invented; the right-hand token is the
 - One symbol per bullet: `const A, B = 1, 2`, two funcs in one bullet, or an interface written out with its methods each declare more than one and are rejected.
 - The receiver belongs to a method's head: `func (c *Cache) Get(k string) (Row, bool)`.
 
-On a `**Rename:**` pair renaming an existing symbol, the grammar is asymmetric: the `Old` side is always a real glyph (looked up via `lyx quarry`, exactly like any other target), and the `New` side is always a `plan:` handle you invent for the renamed name — never a glyph, since the symbol under its new name does not exist until the rename lands. A file-rename pair (old and new both plain file paths) is unaffected by this rule.
+On a `**Rename:**` pair renaming an existing symbol, the grammar is asymmetric: the `Old` side is always a real glyph (looked up via `lym quarry`, exactly like any other target), and the `New` side is always a `plan:` handle you invent for the renamed name — never a glyph, since the symbol under its new name does not exist until the rename lands. A file-rename pair (old and new both plain file paths) is unaffected by this rule.
 
 A card that renames a symbol also renames the tests named after it, `Test<Name>` and `Test<Name>_<case>` (`Test<Type>_<Method>` for a method), as `**Rename:**` pairs on the same card, since the implementer renames them with the symbol and a later card naming the old test would no longer match the tree.
 The plan gate refuses a renamed symbol whose same-named test a card still lists under `**Edit:**` with no pair of its own (`rename-leaves-test`).
@@ -212,11 +212,11 @@ A field with no content is omitted entirely — never write a `none` sentinel on
 An entry appearing in both a card's own target list and its own `Uses:` is a contradiction: is it being changed, or only read?
 That is the `card-field-overlap` finding — see `{{.specs_dir}}/loom/loom-plan-spec.md`'s own Card fields section for the full grammar and the complete validation-check set.
 
-The gates run the hub's tier lists over scopes lyx computes, so the plan carries no plan-level verify section and asks for none.
+The gates run the hub's tier lists over scopes lym computes, so the plan carries no plan-level verify section and asks for none.
 The hub's tiers and gate lists follow:
 {{.gate_tiers}}
 A card's `**Verify:**` is the optional escape hatch for what no gate expresses, written only for what the gates cannot catch on their own.
-A `**Verify:**` line that tests is one `lyx gate test --wait` call with a tier list and a scope form, never a raw test command or a target list.
+A `**Verify:**` line that tests is one `lym gate test --wait` call with a tier list and a scope form, never a raw test command or a target list.
 See `{{.specs_dir}}/loom/loom-plan-spec.md`'s verify model section for the gates and scope forms themselves — this file does not restate them.
 
 ### `## Rename mechanic` — reproduce verbatim when any card is type `Rename`
@@ -284,7 +284,7 @@ Write `{{.overview_path}}` only after every `NN-<card-slug>.md` card file alread
 Before ending your turn, run the mechanical gate standalone against what you just wrote:
 
 ```bash
-lyx loom validate-plan
+lym loom validate-plan
 ```
 
 The verb takes no arguments.

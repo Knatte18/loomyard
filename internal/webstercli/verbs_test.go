@@ -26,7 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -90,7 +90,7 @@ var _ websterengine.MasterStarter = (*verbsFakeMasterStarter)(nil)
 // verbsFixture is a fully-wired *websterCLI (bypassing Command()'s
 // PersistentPreRunE) over a real scratch git repo and a real
 // *shuttleengine.Runner wired over local fakes, plus a single-batch plan
-// fixture seeded under the fixture's own _lyx/plan.
+// fixture seeded under the fixture's own _lym/plan.
 type verbsFixture struct {
 	CLI      *websterCLI
 	Reed     *shuttlefake.Reed
@@ -105,7 +105,7 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 	worktree := newScratchRepo(t)
 	gitkit.CommitFile(t, worktree, "base.txt", "base", "base commit")
 
-	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktree), WorktreeName: filepath.Base(worktree), AnchorRel: "backend"}
+	layout := &lymcwd.Location{HubPath: filepath.Dir(worktree), WorktreeName: filepath.Base(worktree), AnchorRel: "backend"}
 	seedValidPlanDir(t, planparser.PlanDir(layout.AnchorPath()))
 	seedHubStencils(t, layout.HubPath)
 	seedHubGateConfig(t, layout.HubPath)
@@ -174,10 +174,8 @@ func TestPersistentPreRun_OpenFabricWiredButUninvoked(t *testing.T) {
 	gitkit.Git(t, worktree, "config", "user.name", "Test User")
 	gitkit.Git(t, worktree, "config", "user.email", "test@example.com")
 	gitkit.CommitFile(t, worktree, "base.txt", "base", "base commit")
-	// A hub-level board directory -- with no records sibling anywhere near it -- is what selects hub
-	// mode here without wiring a real, fully-paired fabric hub: preflight.HubPresent only stats
-	// <hub>/_board/_lyx.
-	if err := os.MkdirAll(filepath.Join(fabricengine.BoardDir(container), "_lyx"), 0o755); err != nil {
+	// A hub-level board directory -- with no records sibling anywhere near it -- is what selects hub mode here without wiring a real, fully-paired fabric hub: preflight.HubPresent only stats <hub>/_board/_lym.
+	if err := os.MkdirAll(filepath.Join(fabricengine.BoardDir(container), "_lym"), 0o755); err != nil {
 		t.Fatalf("mkdir hub board dir: %v", err)
 	}
 
@@ -199,10 +197,7 @@ func TestPersistentPreRun_OpenFabricWiredButUninvoked(t *testing.T) {
 	}
 }
 
-// initState writes a minimal state.json (fingerprint-matched to fx's own
-// on-disk plan) for fx's webster dir, standing in for the state "lyx
-// webster run" would have already created before Master ever calls
-// begin-batch/record-batch/recover-batch.
+// initState writes a minimal state.json (fingerprint-matched to fx's own on-disk plan) for fx's webster dir, standing in for the state "lym webster run" would have already created before Master ever calls begin-batch/record-batch/recover-batch.
 func (fx *verbsFixture) initState(t *testing.T) *websterengine.State {
 	t.Helper()
 	return seedRunState(t, fx.CLI)
@@ -395,7 +390,7 @@ func TestBeginBatchCmd_PlanConflict(t *testing.T) {
 			shapePlan:  conflictPlan,
 			wantExit:   1,
 			wantCause:  "plan_defect",
-			wantText:   []string{"create-already-exists", "bare-symbol-target", "lyx webster rebaseline --card NN"},
+			wantText:   []string{"create-already-exists", "bare-symbol-target", "lym webster rebaseline --card NN"},
 			wantRecord: []string{"# Plan conflict at begin-batch 01", "cause: plan_defect", "- create-already-exists", "- bare-symbol-target"},
 		},
 		{
@@ -405,7 +400,7 @@ func TestBeginBatchCmd_PlanConflict(t *testing.T) {
 			blocked:   blockRecord,
 			wantExit:  1,
 			wantCause: "plan_defect",
-			wantText:  []string{"create-already-exists", "lyx webster rebaseline --card NN"},
+			wantText:  []string{"create-already-exists", "lym webster rebaseline --card NN"},
 		},
 		{
 			name:     "an invalid batch number leaves no record",
@@ -623,7 +618,7 @@ func TestRecordBatchCmd_Envelope(t *testing.T) {
 		{
 			name:          "ReadOnlyFabricReferenceEnvelope",
 			writeReport:   true,
-			bashCommand:   "lyx fabric list",
+			bashCommand:   "lym fabric list",
 			wantSubstrs:   []string{`"batch":"01-only"`, `"status":"done"`, `audit warning (fabric-reference)`},
 			wantTerminal:  true,
 			wantDigestSet: true,
@@ -745,7 +740,7 @@ func TestRecordBatchCmd_FailedBatchEnvelope(t *testing.T) {
 		t.Fatalf("record-batch 1 = 0; want non-zero, output: %s", out.String())
 	}
 	got := out.String()
-	for _, want := range []string{`"batch_failed":true`, `"card_amended":true`, `"batch":"01-only"`, `lyx webster recover-batch`} {
+	for _, want := range []string{`"batch_failed":true`, `"card_amended":true`, `"batch":"01-only"`, `lym webster recover-batch`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("output missing %q; got %q", want, got)
 		}
@@ -795,7 +790,7 @@ func TestRecordBatchCmd_DeleteReferencedByLaterCard(t *testing.T) {
 	if err := websterengine.WriteReport(filepath.Join(fx.CLI.geom.ReportsDir, websterengine.ReportFileName(1, "first")), report); err != nil {
 		t.Fatalf("write batch report: %v", err)
 	}
-	wantInOutput := []string{`"batch_failed":true`, "2-second", "sub/user.go:4", "way forward: move the delete to a card after", "lyx webster rebaseline --card NN"}
+	wantInOutput := []string{`"batch_failed":true`, "2-second", "sub/user.go:4", "way forward: move the delete to a card after", "lym webster rebaseline --card NN"}
 
 	var out strings.Builder
 	if code := clihelp.Execute(fx.CLI.recordBatchCmd(), &out, []string{"1"}); code == 0 {
@@ -893,7 +888,7 @@ func TestRecordBatchCmd_ReportArchivedEnvelope(t *testing.T) {
 		t.Fatalf("record-batch 1 = 0; want non-zero, output: %s", out.String())
 	}
 	got := out.String()
-	for _, want := range []string{`"report_archived":true`, `"batch":"01-only"`, `lyx webster begin-batch`} {
+	for _, want := range []string{`"report_archived":true`, `"batch":"01-only"`, `lym webster begin-batch`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("output missing %q; got %q", want, got)
 		}
@@ -923,7 +918,7 @@ func TestRecoverBatchCmd_NeedsFreshEnvelope(t *testing.T) {
 		t.Fatalf("recover-batch 1 = 0; want non-zero, output: %s", out.String())
 	}
 	got := out.String()
-	for _, want := range []string{`"needs_fresh":true`, `1) lyx webster reset --to start; 2) lyx webster run`} {
+	for _, want := range []string{`"needs_fresh":true`, `1) lym webster reset --to start; 2) lym webster run`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("output missing %q; got %q", want, got)
 		}
@@ -937,7 +932,7 @@ func TestRecoverBatchCmd_NeedsFreshEnvelope(t *testing.T) {
 	}
 
 	// Read-only fabric references recover in line, so a batch that recorded no start commit refuses with the evidence text and its own flag.
-	loaded.Batches[1].Uncheckable = []string{`fabric-reference: ran a fabric-referencing command ("lyx fabric list") that can rewrite run state`}
+	loaded.Batches[1].Uncheckable = []string{`fabric-reference: ran a fabric-referencing command ("lym fabric list") that can rewrite run state`}
 	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, loaded); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
 	}
@@ -978,7 +973,7 @@ func TestRenameToolMissingEnvelope(t *testing.T) {
 			if code := clihelp.Execute(cmd, &out, args); code == 0 {
 				t.Fatalf("%s 1 = 0; want non-zero, output: %s", verb, out.String())
 			}
-			for _, want := range []string{`"rename_tool_missing":true`, "lyx webster " + verb + " 1"} {
+			for _, want := range []string{`"rename_tool_missing":true`, "lym webster " + verb + " 1"} {
 				if !strings.Contains(out.String(), want) {
 					t.Errorf("output missing %q; got %q", want, out.String())
 				}
@@ -1038,7 +1033,7 @@ func TestRebaselineCmd_EditedCardOfFailedBatchThenRecover(t *testing.T) {
 	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &out, []string{"1", "--wait", "1ns"}); code != 0 {
 		t.Fatalf("recover-batch 1 = %d; want 0, output: %s", code, out.String())
 	}
-	if want := "  - `lyx gate test --wait --gate card --card 1-only`\n"; !strings.Contains(prompt, want) {
+	if want := "  - `lym gate test --wait --gate card --card 1-only`\n"; !strings.Contains(prompt, want) {
 		t.Errorf("recovery prompt lacks the edited card's gate call %q; got %q", want, prompt)
 	}
 
@@ -1174,7 +1169,7 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &outDead, []string{"1", "--wait", "1ns"}); code == 0 {
 		t.Fatalf("recover-batch 1 over a dead recovery = 0; want non-zero, output: %s", outDead.String())
 	}
-	for _, want := range []string{`"ok":false`, `"status":"dead"`, `"recovery_retry":true`, `"recoveries":1`, "lyx webster recover-batch 1"} {
+	for _, want := range []string{`"ok":false`, `"status":"dead"`, `"recovery_retry":true`, `"recoveries":1`, "lym webster recover-batch 1"} {
 		if !strings.Contains(outDead.String(), want) {
 			t.Errorf("dead recovery output missing %q; got %q", want, outDead.String())
 		}
@@ -1384,8 +1379,8 @@ func TestRunCmd_DiedMasterNotesExpiredShellOutcome(t *testing.T) {
 		"`sleep 9999`",
 		"outstanding for 1m30s",
 		"the run never read the shell's result",
-		"lyx did not stop the shell",
-		"the next `lyx webster run` reclaims it at entry",
+		"lym did not stop the shell",
+		"the next `lym webster run` reclaims it at entry",
 		"the run's final outcome: error (",
 	} {
 		if !strings.Contains(string(note), want) {
@@ -1445,7 +1440,7 @@ func TestPersistentPreRunE_BatcherSelection(t *testing.T) {
 			t.Errorf("output missing ok:false; got %q", got)
 		}
 		// The message is JSON-encoded (its literal quotes become \"), so match the substrings separately rather than the raw Go-quoted form.
-		for _, want := range []string{"batcher.yaml did not load", "bogus", "way forward: fix batcher.yaml under _lyx/config"} {
+		for _, want := range []string{"batcher.yaml did not load", "bogus", "way forward: fix batcher.yaml under _lym/config"} {
 			if !strings.Contains(got, want) {
 				t.Errorf("output missing %q; got %q", want, got)
 			}
@@ -1522,7 +1517,7 @@ func TestPersistentPreRunE_BatcherSelection(t *testing.T) {
 					seedPersistentPreRunConfig(t, h, strings.Replace(batcher.ConfigTemplate(), "fork_messages: 4", "fork_messages: -1", 1))
 				},
 				wantConfig:   true,
-				wantContains: []string{"batcher.yaml did not load", "fork_messages", "way forward: fix batcher.yaml under _lyx/config, then re-run the verb"},
+				wantContains: []string{"batcher.yaml did not load", "fork_messages", "way forward: fix batcher.yaml under _lym/config, then re-run the verb"},
 			},
 			{
 				name: "a batcher profile carrying master_base",
@@ -1530,7 +1525,7 @@ func TestPersistentPreRunE_BatcherSelection(t *testing.T) {
 					seedPersistentPreRunConfig(t, h, strings.Replace(batcher.ConfigTemplate(), "orientation: 31400", "master_base: 52000", 1))
 				},
 				wantConfig:   true,
-				wantContains: []string{"batcher.yaml did not load", "master_base", `way forward: run \"lyx config reconcile --apply\", then re-run the verb`},
+				wantContains: []string{"batcher.yaml did not load", "master_base", `way forward: run \"lym config reconcile --apply\", then re-run the verb`},
 			},
 			{
 				name: "an unreadable batcher.yaml",
@@ -1548,7 +1543,7 @@ func TestPersistentPreRunE_BatcherSelection(t *testing.T) {
 					hubforge.SeedConfig(t, h, map[string]string{"webster": badRole})
 				},
 				wantConfig:   true,
-				wantContains: []string{"webster.yaml did not load", "recovery", "way forward: fix webster.yaml under _lyx/config, then re-run the verb"},
+				wantContains: []string{"webster.yaml did not load", "recovery", "way forward: fix webster.yaml under _lym/config, then re-run the verb"},
 			},
 			{
 				name: "an unreadable webster.yaml",
@@ -1635,7 +1630,7 @@ func unmakeConfigUnreadable(t *testing.T, h *hubforge.Hub, module string) {
 
 // TestPersistentPreRunE_PlanDirAnchoredAtSubpath is the one case that covers wiring.go's production
 // plan-dir resolution -- geom := hubgeom.WebsterGeometry(loc) inside wireHub, whose geom.PlanDir feeds
-// c.geom.PlanDir -- at a nested anchor. Neither newVerbsFixture's AnchorRel flip nor cmd/lyx's anchoring-table guard rows
+// c.geom.PlanDir -- at a nested anchor. Neither newVerbsFixture's AnchorRel flip nor cmd/lym's anchoring-table guard rows
 // carry that proof: both build their expectations from layout.AnchorPath() themselves, so a
 // production call site that regressed to layout.WorktreePath() would stay self-consistent and pass
 // at either of those. This test drives the real PersistentPreRunE through RunCLIIn and asserts on
@@ -1646,7 +1641,7 @@ func TestPersistentPreRunE_PlanDirAnchoredAtSubpath(t *testing.T) {
 
 	seedValidPlanDir(t, planparser.PlanDir(h.Location.AnchorPath()))
 
-	// lyxcwd.Resolve gates cwd against the anchored directory exactly, so at a "backend" hub the
+	// lymcwd.Resolve gates cwd against the anchored directory exactly, so at a "backend" hub the
 	// anchor directory -- not h.PrimeWorktree(), the unanchored worktree root -- is what RunCLIIn
 	// must be given.
 	var out strings.Builder
@@ -1665,7 +1660,7 @@ func TestPersistentPreRunE_PlanDirAnchoredAtSubpath(t *testing.T) {
 }
 
 // TestFabricSyncWayForward_NextSyncCommitsSavedState takes the fabric-sync refusals' way forward against a real hub.
-// Each refusal leaves its state saved under `_lyx` with nothing committed, and the next bracket verb's own sync is this same fabricSync call over the scoped `_lyx` pathspec,
+// Each refusal leaves its state saved under `_lym` with nothing committed, and the next bracket verb's own sync is this same fabricSync call over the scoped `_lym` pathspec,
 // so a sync after the failed one commits the state that the failure left behind.
 // The per-verb tests below reach each refusal through a failing opener, which needs no hub.
 func TestFabricSyncWayForward_NextSyncCommitsSavedState(t *testing.T) {
@@ -1686,12 +1681,12 @@ func TestFabricSyncWayForward_NextSyncCommitsSavedState(t *testing.T) {
 	if err != nil || !committed {
 		t.Fatalf("fabricSync after the failure = %v, %v; want the saved state committed", committed, err)
 	}
-	names, err := gitexec.Run([]string{"log", "-1", "--name-only", "--format="}, filepath.Join(h.PrimeWorktree(), h.Location.AnchorRel, "_lyx"))
+	names, err := gitexec.Run([]string{"log", "-1", "--name-only", "--format="}, filepath.Join(h.PrimeWorktree(), h.Location.AnchorRel, "_lym"))
 	if err != nil {
-		t.Fatalf("git log in the _lyx repository: %v", err)
+		t.Fatalf("git log in the _lym repository: %v", err)
 	}
 	if !strings.Contains(names, "webster/state.json") {
-		t.Errorf("the _lyx repository HEAD commits %q; want it to carry the saved webster/state.json", names)
+		t.Errorf("the _lym repository HEAD commits %q; want it to carry the saved webster/state.json", names)
 	}
 }
 
@@ -1764,7 +1759,7 @@ func TestRecoverBatchCmd_FabricSyncAndReedBootWayForward(t *testing.T) {
 		t.Fatalf("recover-batch 1 with a failing reed boot = 0; want non-zero, output: %s", out.String())
 	}
 	// The named command must be one the verb parses: a bare batch number, never NN-<slug>.
-	wantWayForward(t, out.String(), "re-run `lyx webster recover-batch 01`")
+	wantWayForward(t, out.String(), "re-run `lym webster recover-batch 01`")
 
 	fx.CLI.reedUp = nil
 	fx.CLI.openFabric = failingFabricOpen

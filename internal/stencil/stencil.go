@@ -229,7 +229,7 @@ func StripLeadingComment(text string) string {
 
 // TopLevelMarkers parses template and returns the deduplicated, sorted names of every top-level
 // {{.X}} marker it declares.
-// It is the marker-set accessor `lyx stencil validate` uses to compare two templates,
+// It is the marker-set accessor `lym stencil validate` uses to compare two templates,
 // not a validity check: a marker is listed here regardless of whether any value would fill it.
 func TopLevelMarkers(template []byte) ([]string, error) {
 	stripped := stripLeadingComment(string(template))

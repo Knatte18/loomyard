@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
@@ -862,7 +862,7 @@ func TestRunner_Start_SaveRunStateFailure(t *testing.T) {
 // rather than on the stdlib log package, whose output the trace file never sees and which carries no
 // trace correlation id. R1-F10 migrated finalize's two sites and left five siblings behind in these
 // same two files; a behavioural test can only ever pin the sites it happens to exercise, so the
-// no-reintroduction half is a source scan, following the guard-test idiom cmd/lyx already uses.
+// no-reintroduction half is a source scan, following the guard-test idiom cmd/lym already uses.
 //
 // The scan reads this package's own production sources by name from the test's own working
 // directory — no process is spawned and no scan root has to be resolved, so the Test Tier Purity
@@ -909,13 +909,13 @@ func TestShuttleengine_LiveSubstrateLoggingGoesThroughLogger(t *testing.T) {
 // (R3-F2), so every run dir past the age guard was deleted — including one whose agent is still
 // working. That state is not exotic: it is exactly what reed's own corrupt-state error recommends
 // ("delete <path> by hand to keep the session (its panes and their processes keep running,
-// untracked)") and what a `git clean -xdf` of .lyx leaves behind. The sweep then removes the live
+// untracked)") and what a `git clean -xdf` of .lym leaves behind. The sweep then removes the live
 // run's events.jsonl and run.json, after which interrupt/send answer "is not a shuttle strand" for a
 // running agent.
 func TestRunner_Start_SweepSkipsEntirelyWithoutReedState(t *testing.T) {
 	tests := []struct {
 		name string
-		// reedJSON is the corrupt reed.json to seed; empty leaves .lyx without one — the
+		// reedJSON is the corrupt reed.json to seed; empty leaves .lym without one — the
 		// hand-deleted / git-cleaned shape.
 		reedJSON string
 	}{
@@ -934,11 +934,11 @@ func TestRunner_Start_SweepSkipsEntirelyWithoutReedState(t *testing.T) {
 			anchorPath := filepath.Join(worktree, "sub", "dir")
 			cfg := defaultConfig
 
-			if err := os.MkdirAll(filepath.Join(anchorPath, lyxdirs.DotLyxDirName), 0o755); err != nil {
-				t.Fatalf("mkdir .lyx: %v", err)
+			if err := os.MkdirAll(filepath.Join(anchorPath, lymdirs.DotLymDirName), 0o755); err != nil {
+				t.Fatalf("mkdir .lym: %v", err)
 			}
 			if tt.reedJSON != "" {
-				if err := os.WriteFile(filepath.Join(anchorPath, lyxdirs.DotLyxDirName, "reed.json"), []byte(tt.reedJSON), 0o644); err != nil {
+				if err := os.WriteFile(filepath.Join(anchorPath, lymdirs.DotLymDirName, "reed.json"), []byte(tt.reedJSON), 0o644); err != nil {
 					t.Fatalf("seed corrupt reed.json: %v", err)
 				}
 			}
@@ -1019,12 +1019,12 @@ func TestRun_Interrupt_PlaysEscape(t *testing.T) {
 		wantRunning bool
 	}{
 		{name: "recordless strand showing a running turn gets one Escape", script: []StartupState{StartupReady}, viaRunner: true, recordless: true, captures: []string{"RUNNING"}, wantKeys: 1},
-		{name: "recordless strand showing no running turn gets no key", script: []StartupState{StartupReady}, viaRunner: true, recordless: true, captures: []string{"idle"}, wantErr: ErrNoRunningTurn, wantMsg: "lyx shuttle send"},
+		{name: "recordless strand showing no running turn gets no key", script: []StartupState{StartupReady}, viaRunner: true, recordless: true, captures: []string{"idle"}, wantErr: ErrNoRunningTurn, wantMsg: "lym shuttle send"},
 		{name: "ready pane showing a running turn", script: []StartupState{StartupReady}, captures: []string{"RUNNING"}, wantKeys: 1, wantRunning: true},
 		{name: "ready probe retries a transient boot", script: []StartupState{StartupPending, StartupReady}, captures: []string{"RUNNING"}, wantKeys: 1, wantRunning: true},
 		{name: "runner interrupt into a running turn", script: []StartupState{StartupReady}, viaRunner: true, captures: []string{"RUNNING"}, wantKeys: 1, wantRunning: true},
-		{name: "a pane showing no running turn gets no key", script: []StartupState{StartupReady}, captures: []string{"idle"}, wantErr: ErrNoRunningTurn, wantMsg: "lyx shuttle send"},
-		{name: "a pane showing no running turn gets no key from the runner", script: []StartupState{StartupReady}, viaRunner: true, captures: []string{"idle"}, wantErr: ErrNoRunningTurn, wantMsg: "lyx shuttle send"},
+		{name: "a pane showing no running turn gets no key", script: []StartupState{StartupReady}, captures: []string{"idle"}, wantErr: ErrNoRunningTurn, wantMsg: "lym shuttle send"},
+		{name: "a pane showing no running turn gets no key from the runner", script: []StartupState{StartupReady}, viaRunner: true, captures: []string{"idle"}, wantErr: ErrNoRunningTurn, wantMsg: "lym shuttle send"},
 		{name: "a failed guard capture sends no key", script: []StartupState{StartupReady}, captures: []string{"RUNNING"}, captureErrs: []error{nil, boom}, wantErr: boom},
 		{name: "a failed guard capture sends no key from the runner", script: []StartupState{StartupReady}, viaRunner: true, captures: []string{"RUNNING"}, captureErrs: []error{nil, boom}, wantErr: boom},
 	}

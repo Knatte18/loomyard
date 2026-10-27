@@ -1,5 +1,5 @@
 @echo off
-REM Launcher for the lyx SANDBOX-WEBSTER-SUITE: runs the interactive webster
+REM Launcher for the lym SANDBOX-WEBSTER-SUITE: runs the interactive webster
 REM black-box agent session (live tmux and a logged-in claude required). The
 REM machine-specific parent directory is hardcoded HERE (the base under which
 REM sandbox Hubs are created) — the Go tool stays general.

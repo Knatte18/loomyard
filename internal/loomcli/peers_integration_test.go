@@ -21,7 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
@@ -60,9 +60,9 @@ func TestHubPeersDeps_OverRealHub(t *testing.T) {
 	firstOnParent := gitkit.CommitFile(t, h.PrimeWorktree(), "parent-one.txt", "1", "parent: one")
 	secondOnParent := gitkit.CommitFile(t, h.PrimeWorktree(), "parent-two.txt", "2", "parent: two")
 
-	peerLocation, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree("peer"))
+	peerLocation, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("peer"))
 	if err != nil {
-		t.Fatalf("lyxcwd.ResolveWorktree(peer) error = %v; want nil", err)
+		t.Fatalf("lymcwd.ResolveWorktree(peer) error = %v; want nil", err)
 	}
 	recordPath := loomengine.DiscussionDecisionRecord(peerLocation)
 	if err := os.MkdirAll(filepath.Dir(recordPath), 0o755); err != nil {
@@ -75,9 +75,9 @@ func TestHubPeersDeps_OverRealHub(t *testing.T) {
 		t.Fatalf("remove the origin record of no-origin: %v", err)
 	}
 
-	callerLocation, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree("caller"))
+	callerLocation, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("caller"))
 	if err != nil {
-		t.Fatalf("lyxcwd.ResolveWorktree(caller) error = %v; want nil", err)
+		t.Fatalf("lymcwd.ResolveWorktree(caller) error = %v; want nil", err)
 	}
 	deps := hubPeersDeps(callerLocation)
 

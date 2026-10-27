@@ -24,16 +24,16 @@ import (
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// newDiffCmd builds the diff subcommand. loc resolves the *lyxcwd.Location the parent's
+// newDiffCmd builds the diff subcommand. loc resolves the *lymcwd.Location the parent's
 // PersistentPreRunE stored, the same closure-over-a-shared-variable pattern Command() uses for list,
 // validate, and sync.
-func newDiffCmd(loc func() *lyxcwd.Location) *cobra.Command {
+func newDiffCmd(loc func() *lymcwd.Location) *cobra.Command {
 	var all bool
 	var exitCode bool
 
@@ -55,7 +55,7 @@ func newDiffCmd(loc func() *lyxcwd.Location) *cobra.Command {
 			}
 
 			if len(args) != 1 {
-				clihelp.SetExit(cmd.Context(), output.Err(out, "usage: lyx stencil diff <name> (or lyx stencil diff --all)"))
+				clihelp.SetExit(cmd.Context(), output.Err(out, "usage: lym stencil diff <name> (or lym stencil diff --all)"))
 				return nil
 			}
 			runDiffOne(cmd, out, l, args[0], exitCode)
@@ -73,7 +73,7 @@ func newDiffCmd(loc func() *lyxcwd.Location) *cobra.Command {
 // recovered from board history by stamp hash. found=false is reported explicitly in the envelope
 // rather than as an empty diff, and the response falls back to shipped-default-versus-on-disk so the
 // operator still sees something actionable.
-func runDiffOne(cmd *cobra.Command, out io.Writer, l *lyxcwd.Location, name string, exitCode bool) {
+func runDiffOne(cmd *cobra.Command, out io.Writer, l *lymcwd.Location, name string, exitCode bool) {
 	registry := stencils.Registry()
 	shipped, known := registry.Default(name)
 	if !known {
@@ -136,7 +136,7 @@ func runDiffOne(cmd *cobra.Command, out io.Writer, l *lyxcwd.Location, name stri
 // worktree contracts/stencils/ source body against its live board copy body, both normalised via
 // stencilstore.NormalizeLF and stencil.StripLeadingComment. A registry entry whose board copy or
 // source file cannot be read is skipped, mirroring stencilstore's own drift-warning behaviour.
-func runDiffAll(cmd *cobra.Command, out io.Writer, l *lyxcwd.Location, exitCode bool) {
+func runDiffAll(cmd *cobra.Command, out io.Writer, l *lymcwd.Location, exitCode bool) {
 	sourceDir := resolveSourceDir(l)
 	if sourceDir == "" {
 		clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf(

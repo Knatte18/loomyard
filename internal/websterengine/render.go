@@ -19,12 +19,12 @@
 // handed to stencil.Fill/FillOptional, since internal/stencil has no {{template}} include mechanism
 // of its own (see stencil.go's own doc comment).
 // Stripping every asset's banner, not just the joined result's first one, matters once a seeded
-// stencil carries a `lyx-stencil:` stamp: stencil.Fill strips only one leading banner from the
+// stencil carries a `lym-stencil:` stamp: stencil.Fill strips only one leading banner from the
 // joined text, so an unstripped second asset's banner would otherwise reach the LLM verbatim as if
 // it were instruction text.
 // The two verify-gate fixer prompts are composed the same way, from webster-body-verify-fix plus webster-prefix-verify-fix-fork for the in-session fixer fork or webster-prefix-verify-fix-cold for the cold fixer strand.
 // Card content reaches both prompts as a worktree-relative card-file pointer
-// (planparser.Card.SourcePath, `_lyx/plan/NN-<slug>.md`) rendered verbatim by renderCardPointers,
+// (planparser.Card.SourcePath, `_lym/plan/NN-<slug>.md`) rendered verbatim by renderCardPointers,
 // never as inlined What/file-op fields — the implementer reads its own card file in its own turn
 // instead of trusting a Go-rendered paraphrase of it.
 //
@@ -76,7 +76,7 @@ func ImplementerBodyTemplate(stencilsDir string) ([]byte, error) {
 // joinTemplateAssets concatenates prefix and body's raw template bytes separated by a blank line,
 // after stripping each asset's own leading banner comment via stencil.StripLeadingComment.
 // Stripping both, not relying on stencil.Fill to strip only the joined result's first banner, is
-// load-bearing: once a seeded stencil carries a `lyx-stencil:` stamp in its banner, Fill would
+// load-bearing: once a seeded stencil carries a `lym-stencil:` stamp in its banner, Fill would
 // otherwise deliver the second asset's stamp into the composed prompt as if it were instruction
 // text.
 func joinTemplateAssets(prefix, body []byte) []byte {
@@ -134,7 +134,7 @@ const noPrecedingBatchDigest = "none (first batch)"
 
 // renderCardPointers renders one `- <planDirDisplay>/<card file name>` bullet per card in declared
 // order: each card's SourcePath contributes its file name, re-rooted onto the told plan-directory
-// display. Under hub geometry the display is "_lyx/plan" and the bullets render byte-identically
+// display. Under hub geometry the display is "_lym/plan" and the bullets render byte-identically
 // to the old verbatim-SourcePath form; under standalone geometry the display is the derived state
 // directory's absolute plan dir — the only spelling a fork running at the target repo can actually
 // read (crucible round fable5-high-r3, F-A4).
@@ -457,16 +457,8 @@ func RenderPlanFixPrompt(recordPath, replyPath, worktreeRoot, planDir, stencilsD
 	return prompt, nil
 }
 
-// masterPlanDirDisplay returns the plan-directory spelling the rendered prompts carry: planDir
-// relative to paneCwd when it sits inside it — hub geometry, whose pane runs at the anchor the
-// plan's `_lyx/plan` junction hangs off, so the byte-exact "_lyx/plan" keeps the prompt's own
-// never-reference-_lyx-by-another-path rule self-consistent — and the absolute planDir otherwise,
-// which is standalone geometry, whose plan lives in the derived state directory and is reachable
-// from the pane's cwd by no relative spelling at all.
-// The base is the PANE's cwd (Geometry.WorktreeRoot, where every session actually runs), never
-// AnchorRoot: standalone's AnchorRoot IS the state directory containing the plan, so an
-// anchor-based split rendered the unreachable relative spelling for exactly the mode this function
-// exists to fix (proven live in round fable5-high-r3's second E2E attempt).
+// masterPlanDirDisplay returns the plan-directory spelling the rendered prompts carry: planDir relative to paneCwd when it sits inside it — hub geometry, whose pane runs at the anchor the plan's `_lym/plan` junction hangs off, so the byte-exact "_lym/plan" keeps the prompt's own never-reference-_lym-by-another-path rule self-consistent — and the absolute planDir otherwise, which is standalone geometry, whose plan lives in the derived state directory and is reachable from the pane's cwd by no relative spelling at all.
+// The base is the PANE's cwd (Geometry.WorktreeRoot, where every session actually runs), never AnchorRoot: standalone's AnchorRoot IS the state directory containing the plan, so an anchor-based split rendered the unreachable relative spelling for exactly the mode this function exists to fix (proven live in round fable5-high-r3's second E2E attempt).
 func masterPlanDirDisplay(paneCwd, planDir string) string {
 	if rel, err := filepath.Rel(paneCwd, planDir); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return filepath.ToSlash(rel)
@@ -474,12 +466,12 @@ func masterPlanDirDisplay(paneCwd, planDir string) string {
 	return planDir
 }
 
-// RenderMasterPrompt fills webster-template-master for one `lyx webster run` invocation, read from
+// RenderMasterPrompt fills webster-template-master for one `lym webster run` invocation, read from
 // the caller-supplied stencilsDir.
 // batches is the execution order, the batchifier's own order — nothing in this function reorders it.
 // It fills no {{.worktree_root}} key at all — repoRoot, the repository's worktree root holding PATTERN.md, feeds pattern.Directive alone, and
 // worktreeRoot (the pane's own cwd) feeds only masterPlanDirDisplay's relative-spelling decision.
-// planDir is the told plan directory (Geometry.PlanDir), rendered so a standalone Master — whose plan lives in the derived state directory, not at the pane's own `_lyx/plan` — can actually find what the prompt tells it to read (found live in crucible round fable5-high-r3, F-A4).
+// planDir is the told plan directory (Geometry.PlanDir), rendered so a standalone Master — whose plan lives in the derived state directory, not at the pane's own `_lym/plan` — can actually find what the prompt tells it to read (found live in crucible round fable5-high-r3, F-A4).
 // verifyFixPromptPath is the Go-rendered verify-gate fixer fork prompt file Merriam forwards to its one fixer fork.
 // pattern_directive is injected via pattern.RoleOrchestrator if PATTERN is active (Master never
 // edits code, only forks).

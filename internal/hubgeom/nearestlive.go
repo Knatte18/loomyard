@@ -12,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // NearestLiveOrch returns the orch to notify for a run acting from the worktree from names.
@@ -23,7 +23,7 @@ import (
 // A cycle in the records ends it there too.
 // A hub with no recorded shortname yields no parent and a warning, since no name can be formed.
 // A read error, and an error from live, are returned.
-func NearestLiveOrch(from *lyxcwd.Location, live func(worktree *lyxcwd.Location) (bool, error)) (Parent, error) {
+func NearestLiveOrch(from *lymcwd.Location, live func(worktree *lymcwd.Location) (bool, error)) (Parent, error) {
 	shortname, found := fabricengine.ReadShortname(fabricengine.BoardDir(from.HubPath))
 	if !found {
 		logger.Warn("hubgeom: hub has no recorded shortname; the notice gets no orch", "worktree", from.WorktreeName)
@@ -40,7 +40,7 @@ func NearestLiveOrch(from *lyxcwd.Location, live func(worktree *lyxcwd.Location)
 	worktree, err := nearestLive(start,
 		func(worktree string) (string, bool, error) { return recordedParentWorktree(from, worktree) },
 		func(worktree string) (bool, error) {
-			location, err := lyxcwd.ResolveWorktree(filepath.Join(from.HubPath, worktree))
+			location, err := lymcwd.ResolveWorktree(filepath.Join(from.HubPath, worktree))
 			if err != nil {
 				return false, fmt.Errorf("hubgeom: resolve worktree %q: %w", worktree, err)
 			}
@@ -58,7 +58,7 @@ func NearestLiveOrch(from *lyxcwd.Location, live func(worktree *lyxcwd.Location)
 
 // recordedParentWorktree reads the parent worktree of the worktree named worktree from its origin record, "" meaning the prime.
 // It reports false when the worktree has no record, the record names no parent worktree or the parent worktree is gone.
-func recordedParentWorktree(from *lyxcwd.Location, worktree string) (string, bool, error) {
+func recordedParentWorktree(from *lymcwd.Location, worktree string) (string, bool, error) {
 	origin, found, err := fabricengine.ReadOriginFor(from, worktree)
 	if err != nil {
 		return "", false, fmt.Errorf("hubgeom: read origin record for %q: %w", worktree, err)

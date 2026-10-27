@@ -4,7 +4,7 @@ Starting, resuming or landing a run, bar the rest of a Finalize already past its
 
 - A start, a resume, a claim and a landing proceed only when the entry does not read as owned by another machine.
 - The rest of a Finalize already past its parent-side merge finishes on either machine, so a landing in flight is never stranded.
-- An owner is recorded for a beam project as `owner_machine` and for the root as `prime_owner`; both are written only by `boardengine`'s owner setter, which takes a project another machine owns only when `lyx adopt` asks for it.
+- An owner is recorded for a beam project as `owner_machine` and for the root as `prime_owner`; both are written only by `boardengine`'s owner setter, which takes a project another machine owns only when `lym adopt` asks for it.
   A task and a grouping project record none, and a load drops the key an older machine recorded on one.
 - Every other entry reads the owner of its parent, and a beam project with no owner recorded does too; the root of a hub with no prime owner recorded reads as owned by no other machine.
   A run status on an entry does not change whose owner it reads.
@@ -21,7 +21,7 @@ Acting on a run or a hub after an absence starts with `fabricengine`'s origin re
 
 ## Passes
 
-A run is driven in passes, one `lyx batten run` each, and a pass is either full or a continue pass.
+A run is driven in passes, one `lym batten run` each, and a pass is either full or a continue pass.
 
 - A continue pass is the one dobby schedules into a run it already drives, and it is not a resume: it needs no origin verdict, so it skips the resume's origin reconcile, the Open-Window re-run and the pre-run pause refusal.
 - The first pass of a run after a dobby start or a machine wake, every pass while a full pass is owed, and every hand pass is a resume and gets the origin reconcile, which every full pass keeps first.

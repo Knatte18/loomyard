@@ -25,7 +25,7 @@ const patternChangesMismatchCheck = "pattern-changes-mismatch"
 // verifyRawCommandCheck names the finding planContextFindings appends for a card Verify command the hub's refuse_raw list names.
 const verifyRawCommandCheck = "verify-raw-command"
 
-// verifyGateNoWaitCheck names the finding planContextFindings appends for a `lyx gate test` call in a card Verify line without `--wait`.
+// verifyGateNoWaitCheck names the finding planContextFindings appends for a `lym gate test` call in a card Verify line without `--wait`.
 const verifyGateNoWaitCheck = "verify-gate-no-wait"
 
 // planVerifyRetiredCheck names the informational finding planContextFindings appends for an overview carrying a `## verify:` section.
@@ -60,7 +60,7 @@ func planContextFindings(plan *planparser.Plan, cards []planparser.Card, worktre
 				findings = append(findings, planindex.Finding{
 					Check:    renameToolMissingCheck,
 					Card:     card.ID(),
-					Detail:   fmt.Sprintf("the symbol rename %s -> %s needs the hub's structure-aware rename tool, and language.yaml lists none; way forward: set rename_tools with \"lyx config language\" from the prime, or recast the card", pair.Old, pair.New),
+					Detail:   fmt.Sprintf("the symbol rename %s -> %s needs the hub's structure-aware rename tool, and language.yaml lists none; way forward: set rename_tools with \"lym config language\" from the prime, or recast the card", pair.Old, pair.New),
 					Severity: planindex.SeverityBlocking,
 				})
 			}
@@ -91,7 +91,7 @@ func planContextFindings(plan *planparser.Plan, cards []planparser.Card, worktre
 // verifyLauncherWords are the command prefixes the verify checks read past to find the command they launch.
 var verifyLauncherWords = []string{"env", "exec", "xargs", "sudo", "time"}
 
-// verifyLineFindings returns, per card, a verify-raw-command finding for each command of its Verify line that opens with an entry of refuseRaw, then a verify-gate-no-wait finding for each `lyx gate test` call without `--wait`.
+// verifyLineFindings returns, per card, a verify-raw-command finding for each command of its Verify line that opens with an entry of refuseRaw, then a verify-gate-no-wait finding for each `lym gate test` call without `--wait`.
 // A command is read in command position: past a leading environment assignment and launcher word.
 func verifyLineFindings(cards []planparser.Card, refuseRaw []string) []planindex.Finding {
 	var findings []planindex.Finding
@@ -104,7 +104,7 @@ func verifyLineFindings(cards []planparser.Card, refuseRaw []string) []planindex
 					findings = append(findings, planindex.Finding{
 						Check:    verifyRawCommandCheck,
 						Card:     card.ID(),
-						Detail:   fmt.Sprintf("card %d Verify: `%s` runs a command the hub's gate.yaml refuse_raw lists, and Go re-runs this line outside any agent hook; way forward: replace it with a `lyx gate test --wait` call naming a tier list and a scope form, such as `lyx gate test --wait --tier 1 --card <card id>`", card.Number, command),
+						Detail:   fmt.Sprintf("card %d Verify: `%s` runs a command the hub's gate.yaml refuse_raw lists, and Go re-runs this line outside any agent hook; way forward: replace it with a `lym gate test --wait` call naming a tier list and a scope form, such as `lym gate test --wait --tier 1 --card <card id>`", card.Number, command),
 						Severity: planindex.SeverityBlocking,
 					})
 					break
@@ -113,7 +113,7 @@ func verifyLineFindings(cards []planparser.Card, refuseRaw []string) []planindex
 		}
 		for _, command := range commands {
 			fields := commandFields(command)
-			if hasFieldPrefix(fields, []string{"lyx", "gate", "test"}) && !slices.Contains(fields, "--wait") {
+			if hasFieldPrefix(fields, []string{"lym", "gate", "test"}) && !slices.Contains(fields, "--wait") {
 				findings = append(findings, planindex.Finding{
 					Check:    verifyGateNoWaitCheck,
 					Card:     card.ID(),
@@ -163,7 +163,7 @@ func patternChangeMismatches(plan *planparser.Plan, recordPath string) ([]planin
 	}
 	recorded, recordFindings := discussionparser.ParsePatternChanges(data)
 	if len(recordFindings) > 0 {
-		return nil, fmt.Errorf("decision record %s: %s: %s; fix the section and confirm it with \"lyx loom validate-discussion\"", recordPath, "## PATTERN changes", formatDiscussionFindings(recordFindings))
+		return nil, fmt.Errorf("decision record %s: %s: %s; fix the section and confirm it with \"lym loom validate-discussion\"", recordPath, "## PATTERN changes", formatDiscussionFindings(recordFindings))
 	}
 
 	type entry struct{ id, action, text string }

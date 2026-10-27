@@ -1,6 +1,6 @@
 //go:build tier1
 
-// rundir_integration_test.go pins that a test binary running under tmuxkit.Main keeps all its temp files in a run directory of the lyx temp root and leaves nothing behind, after a passing and after a failing run.
+// rundir_integration_test.go pins that a test binary running under tmuxkit.Main keeps all its temp files in a run directory of the lym temp root and leaves nothing behind, after a passing and after a failing run.
 // The test re-executes the gitkit test binary as its own helper.
 
 package gitkit
@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lyxtemp"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 )
 
 const (
@@ -37,11 +37,11 @@ func TestRunDirectory_HoldsEveryTempFileAndIsGoneAfterTheRun(t *testing.T) {
 		return
 	}
 
-	parentRun, err := lyxtemp.Dir()
+	parentRun, err := lymtemp.Dir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	root, err := lyxtemp.ProcessRoot()
+	root, err := lymtemp.ProcessRoot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func runDirectoryOf(t *testing.T, root, path string) string {
 	t.Helper()
 	rel, err := filepath.Rel(root, path)
 	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
-		t.Fatalf("path %s is outside the lyx temp root %s", path, root)
+		t.Fatalf("path %s is outside the lym temp root %s", path, root)
 	}
 	first, _, _ := strings.Cut(rel, string(filepath.Separator))
 	return filepath.Join(root, first)

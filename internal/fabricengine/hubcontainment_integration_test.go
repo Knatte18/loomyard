@@ -19,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // TestHubContainment_CloneWiresNoBoardJunction drives fabricengine.CloneHub and asserts the resolved
@@ -34,7 +34,7 @@ func TestHubContainment_CloneWiresNoBoardJunction(t *testing.T) {
 
 	cloneParent := t.TempDir()
 	// ForceBootstrap: true — weftBare is an ordinary seeded bare remote standing in for a weft, not a
-	// repo that has ever been one, so it carries no .lyx-anchor.
+	// repo that has ever been one, so it carries no .lym-anchor.
 	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 		WeftURL:        filepath.ToSlash(weftBare),
 		WarpURL:        filepath.ToSlash(warpBare),
@@ -52,9 +52,9 @@ func TestHubContainment_CloneWiresNoBoardJunction(t *testing.T) {
 		t.Errorf("board link %s exists after CloneHub; want absent (stat err: %v)", boardLink, statErr)
 	}
 
-	l, err := lyxcwd.Resolve(res.PrimeCwd)
+	l, err := lymcwd.Resolve(res.PrimeCwd)
 	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(PrimeCwd): %v", err)
+		t.Fatalf("lymcwd.Resolve(PrimeCwd): %v", err)
 	}
 	slug := filepath.Base(l.WorktreePath())
 	boardPattern := fabricengine.ExcludePatternForTest(l.AnchorRel, fabricengine.BoardDirName)

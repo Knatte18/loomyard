@@ -28,12 +28,12 @@ func TestValidateWorktreeSlug(t *testing.T) {
 		{"forward slash", "sub/dir", nil, "single path component"},
 		{"backslash", `sub\dir`, nil, "single path component"},
 		{"weft suffix", "zed-weft", nil, "reserved for weft worktrees"},
-		{"board", "_board", nil, "reserved for lyx hub geometry"},
-		{"portals", "_portals", nil, "reserved for lyx hub geometry"},
-		{"launchers", "_launchers", nil, "reserved for lyx hub geometry"},
-		{"durable structural dir", "_lyx", nil, "reserved for lyx hub geometry"},
-		{"transient structural dir", ".lyx", nil, "reserved for lyx hub geometry"},
-		{"configured junction name", "_extra", []string{"_extra"}, "reserved for lyx hub geometry"},
+		{"board", "_board", nil, "reserved for lym hub geometry"},
+		{"portals", "_portals", nil, "reserved for lym hub geometry"},
+		{"launchers", "_launchers", nil, "reserved for lym hub geometry"},
+		{"durable structural dir", "_lym", nil, "reserved for lym hub geometry"},
+		{"transient structural dir", ".lym", nil, "reserved for lym hub geometry"},
+		{"configured junction name", "_extra", []string{"_extra"}, "reserved for lym hub geometry"},
 		// "." and ".." carry no separator and name no reserved directory, so every other rule here
 		// waves them through — and filepath.Join then resolves ".." out of the launcher directory and
 		// onto the hub itself, where Remove's os.RemoveAll deletes the whole hub.

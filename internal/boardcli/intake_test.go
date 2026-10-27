@@ -502,7 +502,7 @@ func TestIntakeImport_RefusedBeforeAnyWrite(t *testing.T) {
 		{"unknown key", fakeIssue{number: 14, state: "open"}, `{"issue":14,"slug":"x","slugg":"y"}`, "unknown field"},
 		{"pull request", fakeIssue{number: 15, state: "open", pullRequest: true}, `{"issue":15,"slug":"x"}`, "pull request"},
 		{"comment fetch fails", fakeIssue{number: 18, state: "open", labels: []string{"bug"}, failThread: true}, `{"issue":18,"slug":"x"}`, "issue comment list failed"},
-		{"into a run-held entry", fakeIssue{number: 17, state: "open"}, `{"issue":17,"into":"held"}`, "lyx batten status held"},
+		{"into a run-held entry", fakeIssue{number: 17, state: "open"}, `{"issue":17,"into":"held"}`, "lym batten status held"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

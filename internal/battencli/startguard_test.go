@@ -11,7 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -71,7 +71,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 			marker:     markerGone,
 			found:      true,
 			producer:   battenrecipe.NameRunShed,
-			wantErrors: []string{"a cancel of some-slug was interrupted", `way forward: run "lyx batten cancel some-slug"`},
+			wantErrors: []string{"a cancel of some-slug was interrupted", `way forward: run "lym batten cancel some-slug"`},
 		},
 		{
 			name:     "MarkerPassesTheVerbsThatDoNotDrive",
@@ -86,7 +86,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 			name:       "DirtyStartRefusesNamingEachPathAndTheRerun",
 			verbs:      []string{"run", "step"},
 			dirty:      []string{"a.txt", "dir/b.txt"},
-			wantErrors: []string{"a.txt, dir/b.txt", "commit or revert", `run "lyx batten {verb} some-slug" again`},
+			wantErrors: []string{"a.txt, dir/b.txt", "commit or revert", `run "lym batten {verb} some-slug" again`},
 		},
 		{
 			// A released task reads a nil status, so the Draft seam reads false.
@@ -109,7 +109,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 			name:       "BeamProbeErrorRefusesNamingTheProbeAndTheRerun",
 			verbs:      []string{"run", "step"},
 			beamErr:    errors.New("board unreadable"),
-			wantErrors: []string{"the task's beam", "board unreadable", `run "lyx batten {verb} some-slug" again`},
+			wantErrors: []string{"the task's beam", "board unreadable", `run "lym batten {verb} some-slug" again`},
 		},
 		{
 			name:       "LeftPartsStillRefuseABeamMembersStart",
@@ -150,13 +150,13 @@ func TestStartGuard_Refuse(t *testing.T) {
 			name:       "LeftTaskWorktreeRefusesAStart",
 			verbs:      []string{"run", "step"},
 			parts:      fabricengine.PairParts{TaskWorktree: true},
-			wantErrors: []string{"some-slug left a pair from an earlier run (task worktree)", `run "lyx batten cancel some-slug --remove" from the prime`, `then "lyx board set-status '{"slug":"some-slug","status":null}'" and "lyx batten {verb} some-slug"`},
+			wantErrors: []string{"some-slug left a pair from an earlier run (task worktree)", `run "lym batten cancel some-slug --remove" from the prime`, `then "lym board set-status '{"slug":"some-slug","status":null}'" and "lym batten {verb} some-slug"`},
 		},
 		{
 			name:      "DraftTaskRefusesAFreshStartNamingTheRelease",
 			verbs:     []string{"run", "step"},
 			draft:     true,
-			wantExact: "some-slug is a draft task, which no run starts; way forward: run `lyx board set-status '{\"slug\":\"some-slug\",\"status\":null}'` to release it, then `lyx batten {verb} some-slug`",
+			wantExact: "some-slug is a draft task, which no run starts; way forward: run `lym board set-status '{\"slug\":\"some-slug\",\"status\":null}'` to release it, then `lym batten {verb} some-slug`",
 		},
 		{
 			name:     "DraftTaskWithARunStatusFileResumes",
@@ -169,19 +169,19 @@ func TestStartGuard_Refuse(t *testing.T) {
 			name:       "DraftProbeErrorRefusesNamingTheProbeAndTheRerun",
 			verbs:      []string{"run", "step"},
 			draftErr:   errors.New("board unreadable"),
-			wantErrors: []string{"the board entry's status", "board unreadable", `run "lyx batten {verb} some-slug" again`},
+			wantErrors: []string{"the board entry's status", "board unreadable", `run "lym batten {verb} some-slug" again`},
 		},
 		{
 			name:       "LeftRecordsWorktreeRefusesAStart",
 			verbs:      []string{"run", "step"},
 			parts:      fabricengine.PairParts{RecordsWorktree: true},
-			wantErrors: []string{"(records worktree)", "lyx batten cancel some-slug --remove"},
+			wantErrors: []string{"(records worktree)", "lym batten cancel some-slug --remove"},
 		},
 		{
 			name:       "LeftRecordsBranchRefusesAStart",
 			verbs:      []string{"run", "step"},
 			parts:      fabricengine.PairParts{RecordsBranch: true},
-			wantErrors: []string{"(records branch)", "lyx batten cancel some-slug --remove"},
+			wantErrors: []string{"(records branch)", "lym batten cancel some-slug --remove"},
 		},
 		{
 			name:  "LeftTaskBranchAlonePasses",
@@ -199,25 +199,25 @@ func TestStartGuard_Refuse(t *testing.T) {
 			name:       "MarkerProbeErrorRefusesNamingTheProbeAndTheRerun",
 			verbs:      []string{"run", "step", "goto"},
 			markerErr:  errors.New("marker unreadable"),
-			wantErrors: []string{"the cancel marker", "marker unreadable", `run "lyx batten {verb} some-slug" again`},
+			wantErrors: []string{"the cancel marker", "marker unreadable", `run "lym batten {verb} some-slug" again`},
 		},
 		{
 			name:       "DirtyProbeErrorRefusesNamingTheProbeAndTheRerun",
 			verbs:      []string{"run", "step"},
 			dirtyErr:   errors.New("git status failed"),
-			wantErrors: []string{"the source worktree's tracked changes", "git status failed", `run "lyx batten {verb} some-slug" again`},
+			wantErrors: []string{"the source worktree's tracked changes", "git status failed", `run "lym batten {verb} some-slug" again`},
 		},
 		{
 			name:       "PartsProbeErrorRefusesNamingTheProbeAndTheRerun",
 			verbs:      []string{"run", "step"},
 			partsErr:   errors.New("worktree list failed"),
-			wantErrors: []string{"the pair's parts", "worktree list failed", `run "lyx batten {verb} some-slug" again`},
+			wantErrors: []string{"the pair's parts", "worktree list failed", `run "lym batten {verb} some-slug" again`},
 		},
 		{
 			name:       "MarkedPairTaskRefusesNamingThePromoteWithNoStatusFile",
 			verbs:      []string{"run", "step"},
 			promoted:   true,
-			wantErrors: []string{"carries the beam mark", `run "lyx batten cancel some-slug --remove" from the prime`},
+			wantErrors: []string{"carries the beam mark", `run "lym batten cancel some-slug --remove" from the prime`},
 		},
 		{
 			name:       "MarkedPairTaskRefusesNamingThePromoteWithAStatusFileFound",
@@ -225,7 +225,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 			promoted:   true,
 			found:      true,
 			producer:   battenrecipe.NameRunShed,
-			wantErrors: []string{"carries the beam mark", `run "lyx batten cancel some-slug --remove" from the prime`},
+			wantErrors: []string{"carries the beam mark", `run "lym batten cancel some-slug --remove" from the prime`},
 		},
 		{
 			name:     "MarkedPairPassesTheVerbsThatDoNotStartARun",
@@ -236,13 +236,13 @@ func TestStartGuard_Refuse(t *testing.T) {
 			name:        "PromotedProbeErrorRefusesNamingTheProbeAndTheRerun",
 			verbs:       []string{"run", "step"},
 			promotedErr: errors.New("origin record unreadable"),
-			wantErrors:  []string{"the pair's origin record", "origin record unreadable", `run "lyx batten {verb} some-slug" again`},
+			wantErrors:  []string{"the pair's origin record", "origin record unreadable", `run "lym batten {verb} some-slug" again`},
 		},
 		{
 			name:       "GroupingProjectRefusedNamingTheCreate",
 			verbs:      []string{"run", "step"},
 			project:    true,
-			wantErrors: []string{"grouping project", `run "lyx beam create some-slug"`},
+			wantErrors: []string{"grouping project", `run "lym beam create some-slug"`},
 		},
 		{
 			name:    "FreshBeamProjectWithNoPairPassesOverACleanPrime",
@@ -296,7 +296,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 			beam:       true,
 			unreadable: true,
 			parts:      fabricengine.PairParts{TaskWorktree: true},
-			wantErrors: []string{"no readable origin record", `"lyx fabric reconcile"`},
+			wantErrors: []string{"no readable origin record", `"lym fabric reconcile"`},
 		},
 		{
 			name:    "MarkedBeamPairPassesTheDirtAndLeftPairChecks",
@@ -320,7 +320,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 			name:       "ProjectProbeErrorRefusesNamingTheProbeAndTheRerun",
 			verbs:      []string{"run", "step"},
 			projectErr: errors.New("board unreadable"),
-			wantErrors: []string{"the board entry", "board unreadable", `run "lyx batten {verb} some-slug" again`},
+			wantErrors: []string{"the board entry", "board unreadable", `run "lym batten {verb} some-slug" again`},
 		},
 		{
 			name:    "NilSeamsCheckNothing",
@@ -399,7 +399,7 @@ func TestArmSeed_CancelMarkerRefusesTheWrite(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
+			location := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
 			c := &battenCLI{slug: slug, guard: startGuard{Marker: func() (cancelMarkerReading, error) { return tt.marker, nil }}}
 
 			err := c.armSeed(location, slug, "run")

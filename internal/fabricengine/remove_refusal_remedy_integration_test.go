@@ -18,7 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // TestRemove_DirtyRefusalLeavesPairIntact builds a real pair, dirties its warp worktree, and asserts the no-force refusal tears nothing down, records nothing, and pushes no archive tag.
@@ -51,7 +51,7 @@ func TestRemove_DirtyRefusalLeavesPairIntact(t *testing.T) {
 	if !strings.Contains(msg, "uncommitted changes") {
 		t.Errorf("refusal must still say why it refused; got:\n%s", msg)
 	}
-	if strings.Contains(msg, "lyx fabric reconcile") {
+	if strings.Contains(msg, "lym fabric reconcile") {
 		t.Errorf("refusal names the retired reconcile remedy; nothing was torn down:\n%s", msg)
 	}
 	if n := res.Mutated().Len(); n != 0 {
@@ -98,7 +98,7 @@ func TestRemove_WarpStatusProbeFailurePushesNoTag(t *testing.T) {
 }
 
 // assertPairIntact fails unless the pair's launchers, both worktrees and both branches exist.
-func assertPairIntact(t *testing.T, l *lyxcwd.Location, slug string) {
+func assertPairIntact(t *testing.T, l *lymcwd.Location, slug string) {
 	t.Helper()
 
 	for _, p := range []string{

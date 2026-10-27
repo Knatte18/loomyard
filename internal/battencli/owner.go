@@ -14,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -38,7 +38,7 @@ type ownerSeams struct {
 
 // hubOwnerSeams builds the owner seams over the Bolt of the hub location sits in.
 // A hub with no board directory has no owners, so it gets the zero seams.
-func hubOwnerSeams(location *lyxcwd.Location) ownerSeams {
+func hubOwnerSeams(location *lymcwd.Location) ownerSeams {
 	boardDir := fabricengine.BoardDir(location.HubPath)
 	if _, err := os.Stat(boardDir); errors.Is(err, fs.ErrNotExist) {
 		return ownerSeams{}
@@ -86,7 +86,7 @@ type OwnedElsewhereError struct {
 	Slug string
 	// Owner is the machine that owns it.
 	Owner string
-	// Subject is the beam or `root` that `lyx adopt` takes to move it.
+	// Subject is the beam or `root` that `lym adopt` takes to move it.
 	Subject string
 	// text replaces the standard refusal text when set.
 	text string
@@ -98,12 +98,12 @@ func (e *OwnedElsewhereError) Error() string {
 		return e.text
 	}
 	return fmt.Sprintf(
-		"battencli: %q is owned by machine %q, so this machine does not start, resume or land it; way forward: run `lyx adopt %s` from this machine's prime, which takes it over and resumes its run, or records the owner when no run exists here, after which `lyx batten run %s` starts it",
+		"battencli: %q is owned by machine %q, so this machine does not start, resume or land it; way forward: run `lym adopt %s` from this machine's prime, which takes it over and resumes its run, or records the owner when no run exists here, after which `lym batten run %s` starts it",
 		e.Slug, e.Owner, e.Subject, e.Slug,
 	)
 }
 
-// ownedElsewhereFor is the one refusal for a run another machine owns, naming the subject `lyx adopt` takes to move it, the slug when subject is empty.
+// ownedElsewhereFor is the one refusal for a run another machine owns, naming the subject `lym adopt` takes to move it, the slug when subject is empty.
 func ownedElsewhereFor(slug, owner, subject string) error {
 	return &OwnedElsewhereError{Slug: slug, Owner: owner, Subject: subjectOrSlug(subject, slug)}
 }
@@ -123,7 +123,7 @@ func (c *battenCLI) thisMachine() (string, error) {
 		err = errors.New("the hostname is empty")
 	}
 	if err != nil {
-		return "", fmt.Errorf("battencli: this machine's name is unknown, so ownership cannot be judged: %w; fix the hostname, then re-run lyx batten run %s", err, c.slug)
+		return "", fmt.Errorf("battencli: this machine's name is unknown, so ownership cannot be judged: %w; fix the hostname, then re-run lym batten run %s", err, c.slug)
 	}
 	return machine, nil
 }
@@ -170,7 +170,7 @@ func (c *battenCLI) refuseStartOwnedElsewhere() error {
 // startRefusal words the refusal of a start whose pull or prime claim failed with err.
 func (c *battenCLI) startRefusal(err error) error {
 	if errors.Is(err, boardengine.ErrOwnerOriginUnreachable) {
-		return fmt.Errorf("battencli: a start records this machine as the task's owner, which needs origin (%w); re-run `lyx batten run %s` once origin answers", err, c.slug)
+		return fmt.Errorf("battencli: a start records this machine as the task's owner, which needs origin (%w); re-run `lym batten run %s` once origin answers", err, c.slug)
 	}
 	return fmt.Errorf("battencli: cannot start %q: %w", c.slug, err)
 }
@@ -290,7 +290,7 @@ func (c *battenCLI) refuseResumeUnreachable() error {
 			Slug:    c.slug,
 			Owner:   owner,
 			Subject: subject,
-			text:    fmt.Sprintf("battencli: the local board shows %q owned by %q; re-run `lyx batten run %s` once origin answers, or run `lyx adopt %s` from this machine's prime to take it over", c.slug, owner, c.slug, subject),
+			text:    fmt.Sprintf("battencli: the local board shows %q owned by %q; re-run `lym batten run %s` once origin answers, or run `lym adopt %s` from this machine's prime to take it over", c.slug, owner, c.slug, subject),
 		}
 	}
 	return nil

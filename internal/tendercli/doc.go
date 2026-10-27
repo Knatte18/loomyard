@@ -1,8 +1,8 @@
-// Package tendercli builds the `lyx tender` group with `lyx tender pause [<slug>]`, `lyx tender resume [<slug>]`, `lyx tender revive [<slug>]`, `lyx tender status` and `lyx tender reap` over internal/tenderengine, and installs the network gate every lyx process in a hub runs under.
-// `lyx p` and `lyx r` are shortcuts for the first two, so the operator spelling stays short.
+// Package tendercli builds the `lym tender` group with `lym tender pause [<slug>]`, `lym tender resume [<slug>]`, `lym tender revive [<slug>]`, `lym tender status` and `lym tender reap` over internal/tenderengine, and installs the network gate every lym process in a hub runs under.
+// `lym p` and `lym r` are shortcuts for the first two, so the operator spelling stays short.
 //
-// Every verb runs from any worktree of the hub and resolves it with lyxcwd.Resolve.
-// The hub's fixed dependency set bars cliwire from serving them, since it admits neither lyxcwd nor fabricengine.
+// Every verb runs from any worktree of the hub and resolves it with lymcwd.Resolve.
+// The hub's fixed dependency set bars cliwire from serving them, since it admits neither lymcwd nor fabricengine.
 //
 // # Callers
 //
@@ -28,10 +28,10 @@
 // # Owned elsewhere
 //
 // `PauseOwnedElsewhere` pauses a run another machine owns, and `EndOwnedElsewhere` then ends the run's owned processes on this machine, so a driver chain parked under the owner pause never outlives an adoption.
-// The pause stands whatever the end does: a failed end or a survivor is logged at Warn, naming `lyx fabric remove <slug>`, or `lyx reed down` in the pair while it exists, and `lyx tender reap` once it is gone.
+// The pause stands whatever the end does: a failed end or a survivor is logged at Warn, naming `lym fabric remove <slug>`, or `lym reed down` in the pair while it exists, and `lym tender reap` once it is gone.
 // A run whose Finalize is past its parent-side merge keeps its processes, since it finishes its landing on either machine; its pair's removal ends them.
 // A task worktree with no status file, or none at all, is ended by slug, since no Finalize can be running there.
-// The end spares the calling process and its ancestors, so inside `lyx batten run` batten survives its own probe's end, keeping its owner hold and probe, and the pair's removal ends it.
+// The end spares the calling process and its ancestors, so inside `lym batten run` batten survives its own probe's end, keeping its owner hold and probe, and the pair's removal ends it.
 // The hibernate wake fills its own end seam with `EndOwnedElsewhere`.
 //
 // # Revive
@@ -44,7 +44,7 @@
 //
 // InstallNetworkGate installs the process gate that holds network git and GitHub calls while a pause covers the process.
 // It resolves the working directory and installs nothing outside a hub.
-// A git worktree whose parent holds no board-level `_lyx`, such as an agent worktree nested in the prime, is outside one.
+// A git worktree whose parent holds no board-level `_lym`, such as an agent worktree nested in the prime, is outside one.
 // A detached push child is told its pause slug by its hidden flag, empty included, and starts in the hub's board worktree, so a non-nil pause slug resolves the working directory as a worktree root and replaces the slug the directory would give.
 // A `DetachedChild` carries the hidden flags a detached child was spawned with.
 // A `Deferrable` child that is not `ParentLocked` installs a deferring gate, which exits the child under a pause instead of parking it; a `ParentLocked` child's gate lets its own slug's owner entry pass.

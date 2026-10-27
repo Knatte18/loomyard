@@ -12,12 +12,8 @@ import (
 // already-absolute standalone target directory, given the stateDir the caller already derived via
 // standalonestate.Derive(target).
 //
-// WorktreeRoot and AnchorPath deliberately diverge: WorktreeRoot is target because
-// burlerengine's (*Profile).validate resolves Target.Paths, Fasit.Paths, ReviewPath,
-// FixerReportPath and both prior-report lists against it, so it must be the directory the operator
-// asked burler to review; AnchorPath is stateDir because it is the base burler's .lyx/burler
-// instruction directory joins onto, and pointing it at target is exactly what would push a hidden
-// .lyx tree into the reviewed folder.
+// WorktreeRoot and AnchorPath deliberately diverge: WorktreeRoot is target because burlerengine's (*Profile).validate resolves Target.Paths, Fasit.Paths, ReviewPath, FixerReportPath and both prior-report lists against it, so it must be the directory the operator asked burler to review;
+// AnchorPath is stateDir because it is the base burler's .lym/burler instruction directory joins onto, and pointing it at target is exactly what would push a hidden .lym tree into the reviewed folder.
 //
 // Shortname is derived from the session's hash8 and Slug stays empty, matching ReedGeometry, so the agent names burler forms match the names reed gives the strands.
 func BurlerGeometry(target, stateDir, hash8 string) burlerengine.Geometry {

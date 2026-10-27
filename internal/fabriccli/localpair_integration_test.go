@@ -55,7 +55,7 @@ func TestRunCLI_LocalPairScenario(t *testing.T) {
 	}
 
 	if !t.Run("SyncSpawnsNothingForALocalPair", func(t *testing.T) {
-		syncNote := filepath.Join(h.PairCodeWorktree(localSlug), "_lyx", "sync-note.txt")
+		syncNote := filepath.Join(h.PairCodeWorktree(localSlug), "_lym", "sync-note.txt")
 		if err := os.WriteFile(syncNote, []byte("a local record to sync\n"), 0o644); err != nil {
 			t.Fatalf("WriteFile: %v", err)
 		}
@@ -83,7 +83,7 @@ func TestRunCLI_LocalPairScenario(t *testing.T) {
 		if code == 0 {
 			t.Fatalf("add --local over an ordinary pair's branch exit = 0; want a refusal\noutput: %s", output)
 		}
-		envelope.RequireErr(t, output, "lyx fabric checkout")
+		envelope.RequireErr(t, output, "lym fabric checkout")
 		envelope.RequireErr(t, output, "git branch -D")
 	})
 }

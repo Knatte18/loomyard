@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -63,7 +63,7 @@ const (
 	// ClassNestedAgent means a fork's own transcript attempted an Agent tool call — forks cannot nest,
 	// even when Claude Code denied the attempt.
 	ClassNestedAgent AuditViolationClass = "nested-agent"
-	// ClassFabricReference means a Bash command (fork or parent) invoked lyx fabric (or an older,
+	// ClassFabricReference means a Bash command (fork or parent) invoked lym fabric (or an older,
 	// pre-cutover single-word spelling of the same subcommand),
 	// or referenced the fabric worktree path — agents never touch the fabric repo directly.
 	ClassFabricReference AuditViolationClass = "fabric-reference"
@@ -244,7 +244,7 @@ func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir str
 }
 
 // planDirSpellings returns geom.PlanDir and its link-resolved form, deduplicated,
-// so a write spelled through the `_lyx` link and one spelled through its target both match.
+// so a write spelled through the `_lym` link and one spelled through its target both match.
 // The error is canonicalPath's.
 func planDirSpellings(geom Geometry) ([]string, error) {
 	return dirSpellings(geom.PlanDir)
@@ -288,7 +288,7 @@ func resolveWritePath(workdir, path string) string {
 // workdir/contract-path arguments are always POSIX-style, regardless of the workdir's platform
 // (they come from the pane's own working-directory convention, not a raw
 // OS path) — so on Windows, stdlib filepath.IsAbs alone reports false for a
-// path like "/hub/master-builder/_lyx/webster/outcome.yaml" (Windows requires
+// path like "/hub/master-builder/_lym/webster/outcome.yaml" (Windows requires
 // a drive letter or UNC prefix to consider a path absolute), and
 // resolveWritePath would incorrectly join an already-absolute path against
 // workdir a second time, producing a path that can never match the caller's
@@ -376,16 +376,16 @@ func fabricReferenceCommand(entry string) (string, bool) {
 
 // ClassifyViolation assigns v its D4 severity, checking the correctness rule first.
 // A fork-contract-write, a fork-plan-write and a fork-state-write are correctness.
-// A parent-write is correctness when its path lies under the run's state, reports or plan directory, or the run's `_lyx` directory (the parent of geom.WebsterDir).
-// It is correctness under the run's `.lyx` state directory too (the parent of geom.ScratchDir), since webster's locks, another module's lock or pause flag, and a reed launch script all decide what a run does and are git-ignored.
-// A write within another worktree of the task repository, or within that worktree's `_lyx`, is correctness;
+// A parent-write is correctness when its path lies under the run's state, reports or plan directory, or the run's `_lym` directory (the parent of geom.WebsterDir).
+// It is correctness under the run's `.lym` state directory too (the parent of geom.ScratchDir), since webster's locks, another module's lock or pause flag, and a reed launch script all decide what a run does and are git-ignored.
+// A write within another worktree of the task repository, or within that worktree's `_lym`, is correctness;
 // the innermost worktree holding the write decides, so a worktree enclosing this one never claims a write inside it.
 // A write inside this worktree is correctness when git does not ignore it, and every other parent-write is policy.
 // A fabric-reference is policy when readOnly accepts its command, and correctness otherwise:
 // an agent never touches the fabric repo for a write, and a command that reaches it can rewrite run state that a re-run of the cards' verify commands cannot detect.
 // A nil readOnly accepts nothing, and the classifier sees static shape only, so a command behind `bash -c`, a variable or a substitution stays correctness.
 // Every other class is policy.
-// Prefix tests compare link-resolved paths, so a write spelled through a link to the run's `_lyx` still classes as correctness.
+// Prefix tests compare link-resolved paths, so a write spelled through a link to the run's `_lym` still classes as correctness.
 // The error return is only the git probe's or the link resolution's failure.
 func ClassifyViolation(v AuditViolation, geom Geometry, readOnly func(cmd string) bool) (AuditSeverity, error) {
 	switch v.Class {
@@ -429,11 +429,11 @@ func ClassifyViolation(v AuditViolation, geom Geometry, readOnly func(cmd string
 		if pathWithin(other, worktree) && pathWithin(worktree, written) {
 			continue
 		}
-		lyx, err := canonicalPath(filepath.Join(other, lyxdirs.LyxDirName))
+		lym, err := canonicalPath(filepath.Join(other, lymdirs.LymDirName))
 		if err != nil {
 			return "", err
 		}
-		if pathWithin(other, written) || pathWithin(lyx, written) {
+		if pathWithin(other, written) || pathWithin(lym, written) {
 			return AuditSeverityCorrectness, nil
 		}
 	}

@@ -22,7 +22,7 @@ const retiredVerifyTiersKey = "verify_tiers"
 const renameToolsKey = "rename_tools"
 
 // wayForward is the clause every content failure ends with.
-const wayForward = `; way forward: fix it with "lyx config language" from the prime`
+const wayForward = `; way forward: fix it with "lym config language" from the prime`
 
 // ErrUnusable marks a content failure of language.yaml whose error already carries its own way forward.
 var ErrUnusable = errors.New("language config unusable")

@@ -43,12 +43,12 @@ func ConfigSpec() configengine.Spec {
 }
 
 // LoadConfig loads and unmarshals fabric configuration strictly through the hub-wide layer stack under dirs, returning an error if not
-// initialized (no _lyx/ directory).
+// initialized (no _lym/ directory).
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.Load(dirs, ConfigSpec())
 	if err != nil {
 		if strings.Contains(err.Error(), "not initialized") {
-			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"; a session lyx refuses the verb from reports status: FAILED and the orch runs it")
+			return Config{}, fmt.Errorf("not initialized here; run \"lym fabric reconcile\"; a session lym refuses the verb from reports status: FAILED and the orch runs it")
 		}
 		return Config{}, err
 	}

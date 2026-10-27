@@ -378,7 +378,7 @@ func TestPush(t *testing.T) {
 			if marked, err := repoA.BranchMarkedLocal("never-marked"); err != nil || marked {
 				t.Errorf("BranchMarkedLocal(never-marked) = %v, %v; want false, nil", marked, err)
 			}
-			gitkit.MustRun(t, cloneAPath, "git", "config", "branch.set-false.lyxlocal", "false")
+			gitkit.MustRun(t, cloneAPath, "git", "config", "branch.set-false.lymlocal", "false")
 			if marked, err := repoA.BranchMarkedLocal("set-false"); err != nil || marked {
 				t.Errorf("BranchMarkedLocal(set-false) = %v, %v; want false, nil", marked, err)
 			}

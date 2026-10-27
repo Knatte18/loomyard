@@ -148,7 +148,7 @@ func TestRecordingHooks_AppendStampThenPayload(t *testing.T) {
 				t.Fatalf("events file = %d bytes; want a stamp line then the %d-byte payload and a newline", len(file), payloadSize)
 			}
 			var stamp map[string]string
-			if err := json.Unmarshal([]byte(stampLine), &stamp); err != nil || stamp["lyx_stamp"] != tt.stamped {
+			if err := json.Unmarshal([]byte(stampLine), &stamp); err != nil || stamp["lym_stamp"] != tt.stamped {
 				t.Fatalf("stamp line = %q (err %v); want it to name %q", stampLine, err, tt.stamped)
 			}
 

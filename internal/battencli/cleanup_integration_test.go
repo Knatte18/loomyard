@@ -1,6 +1,6 @@
 //go:build tier1
 
-// cleanup_integration_test.go drives "lyx batten cleanup" through RunCLIIn over a hubforge hub: the prime-only refusal, the dry run and the applied removal with its records commit; the push is spawned, and the test binary's spawn forks nothing.
+// cleanup_integration_test.go drives "lym batten cleanup" through RunCLIIn over a hubforge hub: the prime-only refusal, the dry run and the applied removal with its records commit; the push is spawned, and the test binary's spawn forks nothing.
 // It stays a white-box "package battencli" test, like the other integration files here.
 
 package battencli

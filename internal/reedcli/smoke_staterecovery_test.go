@@ -1,6 +1,6 @@
 //go:build tier2
 
-// smoke_staterecovery_test.go drives the R5 review's state-loss/corruption recovery findings at the CLI seam a real operator uses, against a real tmux server, as the one TestSmokeStateRecovery scenario: a reed.json that outlives the session incarnation it was written for (R5-F2), a worktree renamed while its session is up (R5-F5), and a .lyx directory copied between two worktrees of one hub (R5-F4).
+// smoke_staterecovery_test.go drives the R5 review's state-loss/corruption recovery findings at the CLI seam a real operator uses, against a real tmux server, as the one TestSmokeStateRecovery scenario: a reed.json that outlives the session incarnation it was written for (R5-F2), a worktree renamed while its session is up (R5-F5), and a .lym directory copied between two worktrees of one hub (R5-F4).
 // All three are ordinary operator/environment events — a backup restore, a `mv`, a `cp -r` — not adversarial misuse, which is why they belong in the live suite rather than only in hermetic unit tests.
 // Each also has a hermetic counterpart pinning the specific decision it rests on (generation_test.go, strand_test.go); these pin the OUTCOME an operator would actually see.
 
@@ -96,7 +96,7 @@ func assertDiagnosticVerbsRefuseAndDepositNothing(t *testing.T, tmuxPath, cwd, s
 		}
 		// The pre-fix text named resume as the remedy, and resume refuses for exactly the reason
 		// the message omitted. Naming it here would send the operator back into that loop.
-		if strings.Contains(reported, `run "lyx reed resume"`) {
+		if strings.Contains(reported, `run "lym reed resume"`) {
 			t.Errorf("%v error = %s; want it NOT to point at resume, which refuses while %q is still running", verb, reported, originalSession)
 		}
 
@@ -120,7 +120,7 @@ func TestSmokeStateRecovery(t *testing.T) {
 	prime := h.PrimeWorktree()
 	deferHubRelease(t, prime)
 	tmuxkit.KillOnCleanup(t, tmuxPath, reedengine.ServerName(h.Path))
-	primeStatePath := filepath.Join(prime, ".lyx", "reed.json")
+	primeStatePath := filepath.Join(prime, ".lym", "reed.json")
 
 	// downPrime registers a best-effort teardown of the prime worktree's session for the calling step.
 	downPrime := func(t *testing.T) {
@@ -138,7 +138,7 @@ func TestSmokeStateRecovery(t *testing.T) {
 	// The branch cannot be reached through the hermetic execHook seam, which is why this lives here: it needs TmuxCmd.hasSession to answer (false, nil), and that requires a real *exec.ExitError with code 1, which os.ProcessState offers no way to construct.
 	// A real tmux supplies it for free — has-session against a socket with no server exits 1 — so this step boots no session and costs one tmux invocation per assertion.
 	//
-	// Both branches are asserted, so pinning either constant fails: an unreadable file must not be reported as an empty worktree (which sends the operator to `up`, where it fails again with the corrupt-file error), and an ABSENT file must still get the plain "run lyx reed up" text, since a brand-new worktree is readable-and-empty rather than unreadable.
+	// Both branches are asserted, so pinning either constant fails: an unreadable file must not be reported as an empty worktree (which sends the operator to `up`, where it fails again with the corrupt-file error), and an ABSENT file must still get the plain "run lym reed up" text, since a brand-new worktree is readable-and-empty rather than unreadable.
 	// It leaves the prime worktree without a state file, as it found it.
 	if !t.Run("NoSessionMessageDistinguishesAnUnreadableStateFromAnEmptyOne", func(t *testing.T) {
 		if err := os.MkdirAll(filepath.Dir(primeStatePath), 0o755); err != nil {
@@ -146,7 +146,7 @@ func TestSmokeStateRecovery(t *testing.T) {
 		}
 		// A truncated write is the ordinary way this file becomes unreadable: a crash, a kill -9, a full
 		// disk, or a power loss partway through a save.
-		if err := os.WriteFile(primeStatePath, []byte(`{"socket":"lyx-x","strands":[{"gu`), 0o600); err != nil {
+		if err := os.WriteFile(primeStatePath, []byte(`{"socket":"lym-x","strands":[{"gu`), 0o600); err != nil {
 			t.Fatalf("write %s: %v", primeStatePath, err)
 		}
 
@@ -158,7 +158,7 @@ func TestSmokeStateRecovery(t *testing.T) {
 		if !strings.Contains(unreadable, "could not be read") {
 			t.Errorf("status error with an unreadable reed.json = %s; want it to say reed could not read the state, not that the worktree is empty", unreadable)
 		}
-		if strings.Contains(unreadable, `no reed session; run "lyx reed up"`) {
+		if strings.Contains(unreadable, `no reed session; run "lym reed up"`) {
 			t.Errorf("status error with an unreadable reed.json = %s; want it NOT to claim nothing is persisted — reed cannot tell, and `up` fails again with the corrupt-file error", unreadable)
 		}
 
@@ -171,7 +171,7 @@ func TestSmokeStateRecovery(t *testing.T) {
 			t.Fatalf("status with no reed.json = 0; want a failure, output: %s", out.String())
 		}
 		absent := envelopeError(t, out.Bytes())
-		if !strings.Contains(absent, `no reed session; run "lyx reed up"`) {
+		if !strings.Contains(absent, `no reed session; run "lym reed up"`) {
 			t.Errorf("status error with no reed.json at all = %s; want the plain up text — an ABSENT file is readable-and-empty, not unreadable", absent)
 		}
 		if strings.Contains(absent, "could not be read") {
@@ -181,7 +181,7 @@ func TestSmokeStateRecovery(t *testing.T) {
 		return
 	}
 
-	// UpgradeFromAPreRenameStateFileHealsInOneOp pins the no-migration-for-the-renamed-state-field Shared Decision's claim that an operator upgrading from a pre-rename lyx sees one stale pane for less than one op.
+	// UpgradeFromAPreRenameStateFileHealsInOneOp pins the no-migration-for-the-renamed-state-field Shared Decision's claim that an operator upgrading from a pre-rename lym sees one stale pane for less than one op.
 	//
 	// A pre-rename reed.json carried the old "headerPaneId" key rather than today's "selvagePaneId":
 	// that key is deliberately not read (no compatibility shim, no dual-read, no migration step in loadOrInitStateLocked), so on the first `up` after the upgrade SelvagePaneID reads empty, ensureSelvagePaneLocked splits a fresh Selvage at the bottom, and the session's own reconcile — authorized by that freshly alive Selvage — reaps the old header-shaped pane as untracked in the SAME op, never a follow-up verb.
@@ -217,7 +217,7 @@ func TestSmokeStateRecovery(t *testing.T) {
 
 		mustRunReed(t, prime, "up")
 
-		st, err := reedengine.LoadState(filepath.Join(prime, ".lyx"))
+		st, err := reedengine.LoadState(filepath.Join(prime, ".lym"))
 		if err != nil || st == nil || st.SelvagePaneID == "" {
 			t.Fatalf("LoadState after the healing up = (%+v, %v); want a freshly persisted SelvagePaneID", st, err)
 		}
@@ -242,7 +242,7 @@ func TestSmokeStateRecovery(t *testing.T) {
 	// StaleStateFileIsNotMistakenForLiveStrands is the end-to-end regression guard for the R5 review's R5-F2, driven at the CLI seam.
 	//
 	// Reproduced live before the fix: tmux pane ids are server-global and restart at %0 on every server rebirth, so a reed.json restored over a LATER session incarnation — a backup tool, a resurrected untracked copy, or simply a file older than the session now running — names panes that exist and belong to something else.
-	// `lyx reed status` then reported the strand live:true against the new session's bare initial shell (no such process anywhere on the box), and `lyx reed resume` answered resumed:0, refusing to rebuild it: the recovery verb itself entrenched the false-healthy report.
+	// `lym reed status` then reported the strand live:true against the new session's bare initial shell (no such process anywhere on the box), and `lym reed resume` answered resumed:0, refusing to rebuild it: the recovery verb itself entrenched the false-healthy report.
 	//
 	// The load-bearing assertions are that status reports live:false AND that resume actually rebuilds the strand.
 	// Asserting only the first would pass for a fix that merely stopped trusting the binding without restoring the strand.
@@ -290,10 +290,10 @@ func TestSmokeStateRecovery(t *testing.T) {
 
 	// RenamedWorktreeRefusesRatherThanDoubleLaunching is the end-to-end regression guard for the R5 review's R5-F5, driven at the CLI seam.
 	//
-	// Reproduced live before the fix: the tmux session name derives from the worktree basename while .lyx travels with the directory, so renaming a worktree whose session is up made `lyx reed resume` boot a SECOND session and relaunch every strand into it — the strand's process ran twice, and the orphaned original session survived `lyx reed down` in the renamed worktree, addressable by no reed verb ever again because no worktree of that name exists to derive it from.
+	// Reproduced live before the fix: the tmux session name derives from the worktree basename while .lym travels with the directory, so renaming a worktree whose session is up made `lym reed resume` boot a SECOND session and relaunch every strand into it — the strand's process ran twice, and the orphaned original session survived `lym reed down` in the renamed worktree, addressable by no reed verb ever again because no worktree of that name exists to derive it from.
 	//
 	// The sibling is a plain clone rather than a linked git worktree precisely so it can be renamed:
-	// moving a linked worktree breaks its gitdir link and lyxcwd.Resolve would fail for an unrelated reason, masking the behaviour under test.
+	// moving a linked worktree breaks its gitdir link and lymcwd.Resolve would fail for an unrelated reason, masking the behaviour under test.
 	if !t.Run("RenamedWorktreeRefusesRatherThanDoubleLaunching", func(t *testing.T) {
 		original := materializeSibling(t, h, "before-rename")
 		renamed := filepath.Join(h.Path, "after-rename")
@@ -347,8 +347,8 @@ func TestSmokeStateRecovery(t *testing.T) {
 
 	// DiagnosticVerbsNameTheOrphanSessionRatherThanPointingAtResume is the end-to-end regression guard for the R6 review's R6-F1, driven at the CLI seam, extended by this task's tagged-tests batch to also pin that the refusal survives self-heal and leaves no residue.
 	//
-	// Reproduced live before the R6-F1 fix: both ordinary routes into the foreign-session refusal — a worktree renamed while its session was up, a .lyx copied between worktrees of one hub — leave THIS worktree's session absent, so every non-booting verb lands in requireSessionLocked.
-	// That returned `no reed session (1 strands persisted); run "lyx reed resume" to rebuild, or "lyx reed up" for a bare substrate`, and both commands it named then refused with the orphan-session error.
+	// Reproduced live before the R6-F1 fix: both ordinary routes into the foreign-session refusal — a worktree renamed while its session was up, a .lym copied between worktrees of one hub — leave THIS worktree's session absent, so every non-booting verb lands in requireSessionLocked.
+	// That returned `no reed session (1 strands persisted); run "lym reed resume" to rebuild, or "lym reed up" for a bare substrate`, and both commands it named then refused with the orphan-session error.
 	// The operator's whole diagnostic surface reported a bare "no session", never named the still-running session, and routed them into a loop.
 	//
 	// The stronger property this task adds: status still reaches the diagnosis directly through requireSessionLocked, but attach and add now reach it via their own self-healing boot path (EnsureSession/AddStrand's ensureSessionLocked) — refuseRecordedForeignSessionBeforeBootLocked consults the identical diagnosis ahead of anything that creates substrate, so all three verbs still refuse with the same message, and — the property that matters most now that two of them reach a boot path first — the refusal must still deposit nothing on the hub socket under this worktree's own session name.
@@ -381,7 +381,7 @@ func TestSmokeStateRecovery(t *testing.T) {
 			assertDiagnosticVerbsRefuseAndDepositNothing(t, tmuxPath, renamed, socket, originalSession)
 		})
 
-		t.Run(".lyx copied between worktrees of one hub while the original session was up", func(t *testing.T) {
+		t.Run(".lym copied between worktrees of one hub while the original session was up", func(t *testing.T) {
 			original := materializeSibling(t, h, "diag-copy-source")
 			copied := materializeSibling(t, h, "diag-copy-target")
 
@@ -398,13 +398,13 @@ func TestSmokeStateRecovery(t *testing.T) {
 			})
 			addStrandIn(t, original, smokeReapLaunchCmd(), "--name", "copy-source-strand")
 
-			// The hand-copy the R5 review drove: an operator moving a .lyx directory between worktrees of
+			// The hand-copy the R5 review drove: an operator moving a .lym directory between worktrees of
 			// one hub, while the original session is still live.
-			originalState, err := os.ReadFile(filepath.Join(original, ".lyx", "reed.json"))
+			originalState, err := os.ReadFile(filepath.Join(original, ".lym", "reed.json"))
 			if err != nil {
 				t.Fatalf("read original state: %v", err)
 			}
-			copiedStatePath := filepath.Join(copied, ".lyx", "reed.json")
+			copiedStatePath := filepath.Join(copied, ".lym", "reed.json")
 			if err := os.MkdirAll(filepath.Dir(copiedStatePath), 0o755); err != nil {
 				t.Fatalf("mkdir %s: %v", filepath.Dir(copiedStatePath), err)
 			}
@@ -420,10 +420,10 @@ func TestSmokeStateRecovery(t *testing.T) {
 
 	// DownReportsTheSessionItAbandons is the end-to-end regression guard for the R6 review's R6-F3, driven at the CLI seam.
 	//
-	// Reproduced live before the fix: down loads no state and so never reaches the foreign-session refusal, which makes it the only lyx-only escape from that refusal — and the one a tmux-less operator is therefore steered toward.
+	// Reproduced live before the fix: down loads no state and so never reaches the foreign-session refusal, which makes it the only lym-only escape from that refusal — and the one a tmux-less operator is therefore steered toward.
 	// In a renamed worktree it reported {"ok":true,...}, deleted reed.json, and left the recorded session and its strand process running on the shared per-hub socket, addressable by no reed verb ever again and named by nothing left on disk.
 	//
-	// The assertions are that down still SUCCEEDS (it is the escape, and it is idempotent), that the abandoned session is named in the envelope, and that down did not kill it — the recorded name is a sibling worktree's live session in the hand-copied-.lyx case, so killing it would re-open R5-F4.
+	// The assertions are that down still SUCCEEDS (it is the escape, and it is idempotent), that the abandoned session is named in the envelope, and that down did not kill it — the recorded name is a sibling worktree's live session in the hand-copied-.lym case, so killing it would re-open R5-F4.
 	if !t.Run("DownReportsTheSessionItAbandons", func(t *testing.T) {
 		original := materializeSibling(t, h, "abandon-before-rename")
 		renamed := filepath.Join(h.Path, "abandon-after-rename")
@@ -445,7 +445,7 @@ func TestSmokeStateRecovery(t *testing.T) {
 
 		var out bytes.Buffer
 		if code := RunCLIIn(renamed, &out, []string{"down"}); code != 0 {
-			t.Fatalf("down in the renamed worktree = %d; want 0 — down is the only lyx-only escape from the refusal, output: %s", code, out.String())
+			t.Fatalf("down in the renamed worktree = %d; want 0 — down is the only lym-only escape from the refusal, output: %s", code, out.String())
 		}
 		var downResult map[string]any
 		if err := json.Unmarshal(out.Bytes(), &downResult); err != nil {
@@ -455,7 +455,7 @@ func TestSmokeStateRecovery(t *testing.T) {
 			t.Errorf("down abandonedSession = %q; want %q — deleting reed.json removes the only record naming that still-running session", got, originalSession)
 		}
 
-		// Reporting it must not become killing it: after a hand-copied .lyx the recorded name is a
+		// Reporting it must not become killing it: after a hand-copied .lym the recorded name is a
 		// SIBLING worktree's live session, and reed cannot tell that case from this one.
 		if names := sessionNamesOnSocket(t, tmuxPath, socket); !slices.Contains(names, originalSession) {
 			t.Errorf("sessions on socket %s = %v; want %s still among them — down must report the abandoned session, never kill it", socket, names, originalSession)
@@ -467,7 +467,7 @@ func TestSmokeStateRecovery(t *testing.T) {
 	// RemoveNeverKillsASiblingWorktreesPane is the end-to-end regression guard for the R5 review's R5-F4, driven at the CLI seam.
 	//
 	// Reproduced live before the fix: the tmux socket is per HUB and tmux pane ids are server-global, so a reed.json carrying another worktree's pane ids addresses that worktree's LIVE panes.
-	// RemoveStrand spent its recorded pane ids as kill-pane targets with no membership check, so `lyx reed remove` in one worktree destroyed a sibling worktree's strand pane and its running process — reporting ok:true, with the sibling left showing only that its strand had died.
+	// RemoveStrand spent its recorded pane ids as kill-pane targets with no membership check, so `lym reed remove` in one worktree destroyed a sibling worktree's strand pane and its running process — reporting ok:true, with the sibling left showing only that its strand had died.
 	t.Run("RemoveNeverKillsASiblingWorktreesPane", func(t *testing.T) {
 		victim := materializeSibling(t, h, "victim")
 
@@ -486,9 +486,9 @@ func TestSmokeStateRecovery(t *testing.T) {
 
 		mustRunReed(t, prime, "up")
 
-		// The hand-copy the R5 review drove: an operator moving a .lyx directory between worktrees of
+		// The hand-copy the R5 review drove: an operator moving a .lym directory between worktrees of
 		// one hub. The copied table's pane ids are the VICTIM's live panes.
-		victimState, err := os.ReadFile(filepath.Join(victim, ".lyx", "reed.json"))
+		victimState, err := os.ReadFile(filepath.Join(victim, ".lym", "reed.json"))
 		if err != nil {
 			t.Fatalf("read victim state: %v", err)
 		}

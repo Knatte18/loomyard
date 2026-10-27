@@ -24,8 +24,8 @@ import (
 )
 
 // fabricSyncWayForward is the trailing clause of every refusal raised because the fabric sync failed.
-// The state is already saved locally, and fabricSync only commits the scoped _lyx pathspec and never pushes.
-const fabricSyncWayForward = "way forward: the state is saved locally; `lyx fabric commit` commits it, or the next bracket verb's own sync carries it; a session lyx refuses the verb from reports status: FAILED and the orch runs it"
+// The state is already saved locally, and fabricSync only commits the scoped _lym pathspec and never pushes.
+const fabricSyncWayForward = "way forward: the state is saved locally; `lym fabric commit` commits it, or the next bracket verb's own sync carries it; a session lym refuses the verb from reports status: FAILED and the orch runs it"
 
 // rebaselineWayForward is the trailing clause of every refusal raised because persisting the plan-fingerprint re-baseline failed.
 const rebaselineWayForward = "way forward: re-run the same verb; the re-baseline is recomputed from the plan on disk"
@@ -89,7 +89,7 @@ begun, "tree_moved" when one is.
 Under a pause that covers the pair it refuses first, claiming Master into it.
 
 Example:
-  lyx webster begin-batch 3`,
+  lym webster begin-batch 3`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
@@ -141,7 +141,7 @@ Example:
 				return nil
 			}
 			if st == nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, `webster: no run in progress; run "lyx webster run" first`))
+				clihelp.SetExit(cmd.Context(), output.Err(out, `webster: no run in progress; run "lym webster run" first`))
 				return nil
 			}
 
@@ -215,7 +215,7 @@ Example:
 			_ = mutateLock.Release()
 			mutateHeld = false
 
-			// The sync commits the scoped _lyx pathspec, which holds the reports directory,
+			// The sync commits the scoped _lym pathspec, which holds the reports directory,
 			// so an archived report's rename is committed with the state.
 			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("begin-batch %s", result.BatchName)); syncErr != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s begun but the fabric sync failed: %v; %s", result.BatchName, syncErr, fabricSyncWayForward)))

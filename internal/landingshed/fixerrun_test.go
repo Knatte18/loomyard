@@ -175,7 +175,7 @@ func TestFixerRun_Outcomes(t *testing.T) {
 				fx.seats.turns = []func(){func() { fx.writeReport(t, escalateReport) }}
 			},
 			wantEnd: fixerEndEscalate, wantSpent: 0, wantTurns: 1,
-			wantReason: []string{LandingStopPrefix, "decision D3", "`lyx loom decision add`", "`lyx loom resume`"},
+			wantReason: []string{LandingStopPrefix, "decision D3", "`lym loom decision add`", "`lym loom resume`"},
 		},
 		{
 			name: "a failing gate re-prompts, and the last turn's failure is spent",
@@ -185,7 +185,7 @@ func TestFixerRun_Outcomes(t *testing.T) {
 				fx.seats.turns = []func(){report, report}
 			},
 			wantEnd: fixerEndSpent, wantSpent: fixerTestCap, wantTurns: 2,
-			wantReason: []string{LandingStopPrefix, "verify-", "`lyx loom resume`"},
+			wantReason: []string{LandingStopPrefix, "verify-", "`lym loom resume`"},
 		},
 		{
 			name:  "a resumed record with one turn left runs exactly one turn",
@@ -202,7 +202,7 @@ func TestFixerRun_Outcomes(t *testing.T) {
 				fx.seats.sessionTimeout = true
 			},
 			wantEnd: fixerEndTimeout, wantSpent: 1,
-			wantReason: []string{LandingStopPrefix, fakeFixerRunDir, "`lyx loom resume`"},
+			wantReason: []string{LandingStopPrefix, fakeFixerRunDir, "`lym loom resume`"},
 		},
 		{
 			name: "a later turn that hangs after a failing gate is the timeout end, not fixed",
@@ -213,7 +213,7 @@ func TestFixerRun_Outcomes(t *testing.T) {
 				fx.seats.hangOutcome = shuttleengine.OutcomeTimeout
 			},
 			wantEnd: fixerEndTimeout, wantSpent: fixerTestCap, wantTurns: 2,
-			wantReason: []string{LandingStopPrefix, fakeFixerRunDir, "`lyx loom resume`"},
+			wantReason: []string{LandingStopPrefix, fakeFixerRunDir, "`lym loom resume`"},
 		},
 		{
 			name: "a later turn that dies after a failing gate is the no-report end, not fixed",
@@ -224,7 +224,7 @@ func TestFixerRun_Outcomes(t *testing.T) {
 				fx.seats.hangOutcome = shuttleengine.OutcomeDone
 			},
 			wantEnd: fixerEndNoReport, wantSpent: fixerTestCap, wantTurns: 2,
-			wantReason: []string{LandingStopPrefix, fakeFixerRunDir, "`lyx loom resume`"},
+			wantReason: []string{LandingStopPrefix, fakeFixerRunDir, "`lym loom resume`"},
 		},
 		{
 			name: "a turn that returns past fixer_timeout_min is the timeout end",
@@ -242,7 +242,7 @@ func TestFixerRun_Outcomes(t *testing.T) {
 				fx.writeReport(t, fixedReport)
 			},
 			wantEnd: fixerEndNoReport, wantSpent: 1, wantTurns: 1,
-			wantReason: []string{LandingStopPrefix, fakeFixerRunDir, "`lyx loom resume`"},
+			wantReason: []string{LandingStopPrefix, fakeFixerRunDir, "`lym loom resume`"},
 		},
 		{
 			name: "an unparseable report is the no-report end",
@@ -258,7 +258,7 @@ func TestFixerRun_Outcomes(t *testing.T) {
 				fx.seats.turns = []func(){func() { fx.writeReport(t, fixedReport) }}
 			},
 			wantEnd: fixerEndDirty, wantSpent: 1, wantTurns: 1,
-			wantReason: []string{LandingStopPrefix, "`lyx loom resume`"},
+			wantReason: []string{LandingStopPrefix, "`lym loom resume`"},
 		},
 		{
 			name: "a remote tip that moved during the session is the pushed end",
@@ -269,7 +269,7 @@ func TestFixerRun_Outcomes(t *testing.T) {
 				}}
 			},
 			wantEnd: fixerEndPushed, wantSpent: 1, wantTurns: 1,
-			wantReason: []string{LandingStopPrefix, "origin/task-branch at remote-2", "check the pushed commits are the task's", "`lyx loom resume`"},
+			wantReason: []string{LandingStopPrefix, "origin/task-branch at remote-2", "check the pushed commits are the task's", "`lym loom resume`"},
 		},
 	}
 	for _, tt := range tests {

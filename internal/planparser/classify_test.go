@@ -30,7 +30,7 @@ func TestClassifyRef(t *testing.T) {
 		},
 		{
 			name: "worktree-root escape contains a slash",
-			raw:  "//cmd/lyx/main.go",
+			raw:  "//cmd/lym/main.go",
 			want: refKindPath,
 		},
 		{

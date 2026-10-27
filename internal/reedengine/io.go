@@ -27,8 +27,8 @@ import (
 
 // The pane user options a wait mark is stored in.
 const (
-	waitOption      = "@lyx_wait"
-	waitStartOption = "@lyx_wait_start"
+	waitOption      = "@lym_wait"
+	waitStartOption = "@lym_wait_start"
 )
 
 // resolveLivePaneID looks up guid in st.Strands and returns its bound pane
@@ -58,7 +58,7 @@ func resolveLivePaneID(st *ReedState, guid string) (string, error) {
 // and tmux pane ids are server-global — so a pane id a stale or copied reed.json carries is very
 // often a VALID, addressable id belonging to a sibling worktree's live session, and send-keys /
 // capture-pane against it succeed. R5 review finding R5-F4 reproduced the destructive twin of this
-// at the remove path (a `lyx reed remove` in one worktree killed a sibling's strand pane and its
+// at the remove path (a `lym reed remove` in one worktree killed a sibling's strand pane and its
 // process, reporting ok:true); the transport ops are the same exposure with a quieter symptom —
 // one agent's input typed into another agent's pane.
 //
@@ -79,7 +79,7 @@ func (e *Engine) resolvePaneInThisSessionLocked(st *ReedState, guid string) (str
 	}
 	if !liveIDSet(presentPanes(st.Strands, live, windows))[paneID] {
 		return "", fmt.Errorf(
-			"strand %q is bound to pane %s, which is not a pane of this worktree's session %q — reed state is stale (pane ids are shared across every worktree on this hub's tmux server); run \"lyx reed resume\" to rebind it",
+			"strand %q is bound to pane %s, which is not a pane of this worktree's session %q — reed state is stale (pane ids are shared across every worktree on this hub's tmux server); run \"lym reed resume\" to rebind it",
 			guid, paneID, e.SessionName())
 	}
 	return paneID, nil
@@ -168,13 +168,13 @@ func pasteSubmitArgv(paneID, buffer string, submit bool) []string {
 	return argv
 }
 
-// injectBufferName returns a fresh tmux buffer name, "lyx-inject-" plus 8 lowercase hex characters.
+// injectBufferName returns a fresh tmux buffer name, "lym-inject-" plus 8 lowercase hex characters.
 func injectBufferName() (string, error) {
 	var raw [4]byte
 	if _, err := rand.Read(raw[:]); err != nil {
 		return "", fmt.Errorf("name paste buffer: %w", err)
 	}
-	return "lyx-inject-" + hex.EncodeToString(raw[:]), nil
+	return "lym-inject-" + hex.EncodeToString(raw[:]), nil
 }
 
 // OperatorActive reports whether an attached client has been active on guid's live pane within the configured quiet window, and that window.
@@ -269,7 +269,7 @@ func (e *Engine) SendKey(guid, key string) error {
 }
 
 // SetWaitMark sets guid's pane wait mark to label, started at start, or clears it when label is empty.
-// The mark is two pane user options, @lyx_wait (the label) and @lyx_wait_start (epoch seconds),
+// The mark is two pane user options, @lym_wait (the label) and @lym_wait_start (epoch seconds),
 // which the status bar renders on the strand's button and which die with the pane.
 // It is display only: nothing is persisted,
 // and a failure is returned for the caller to log.

@@ -1,4 +1,4 @@
-// drive.go runs "lyx batten run" through the shed driver's body: the run verb's pre-run and driver lock, the seams batten fills the driver with, and the envelope the verb prints from how the driver ended.
+// drive.go runs "lym batten run" through the shed driver's body: the run verb's pre-run and driver lock, the seams batten fills the driver with, and the envelope the verb prints from how the driver ended.
 
 package battencli
 
@@ -26,7 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -57,13 +57,13 @@ const battenArbiterRecipe = "batten: a task worktree's whole lifecycle run from 
 // battenDriveRefusal is the refusal of a second batten driver for a run one already drives, before its way-forward clause.
 const battenDriveRefusal = "battencli: a batten driver already drives this run"
 
-// battenDriveLock names the driver lock "lyx batten run" holds for its life, the files it removes once it holds it, and what it says when another driver holds the lock.
-func battenDriveLock(location *lyxcwd.Location, slug string) sheddriver.DriveLock {
+// battenDriveLock names the driver lock "lym batten run" holds for its life, the files it removes once it holds it, and what it says when another driver holds the lock.
+func battenDriveLock(location *lymcwd.Location, slug string) sheddriver.DriveLock {
 	return sheddriver.DriveLock{
 		Path:        shedrun.DriverLock(location, slug),
 		Stale:       []string{shedrun.ParkMarker(location, slug), shedrun.ResumeReport(location, slug)},
-		Refusal:     battenDriveRefusal + fmt.Sprintf("; way forward: `lyx batten status %s` shows the run, and the live batten driver settles it", slug),
-		RetryClause: fmt.Sprintf("re-run lyx batten run %s", slug),
+		Refusal:     battenDriveRefusal + fmt.Sprintf("; way forward: `lym batten status %s` shows the run, and the live batten driver settles it", slug),
+		RetryClause: fmt.Sprintf("re-run lym batten run %s", slug),
 	}
 }
 
@@ -514,7 +514,7 @@ func (c *battenCLI) haltedRowGuard() shedengine.GotoGuard {
 		if target == status.CurrentProducer {
 			return "", nil
 		}
-		return fmt.Sprintf("goto target %s is not the halted row %s; batten's arbiter resumes only the halted row; way forward: the run's parent runs lyx batten goto %s --to %s", target, status.CurrentProducer, c.slug, target), nil
+		return fmt.Sprintf("goto target %s is not the halted row %s; batten's arbiter resumes only the halted row; way forward: the run's parent runs lym batten goto %s --to %s", target, status.CurrentProducer, c.slug, target), nil
 	}
 }
 

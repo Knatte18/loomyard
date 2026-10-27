@@ -27,7 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
@@ -48,17 +48,17 @@ func setupPreflightWrapperFixture(t *testing.T) *hubforge.Hub {
 	// internal/preflight's own setupFixture.
 	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _extra\n")
 
-	if err := fabricengine.WireJunctions(h.Location, slug, []string{"_lyx", lyxdirs.DotLyxDirName, "_extra"}); err != nil {
+	if err := fabricengine.WireJunctions(h.Location, slug, []string{"_lym", lymdirs.DotLymDirName, "_extra"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
-	// The wired junctions materialize through the _lyx junction into the paired-sibling worktree's
+	// The wired junctions materialize through the _lym junction into the paired-sibling worktree's
 	// own git repo, where they start out untracked. Commit them so a freshly-built fixture is
 	// genuinely clean on both sides -- fabricengine.WireJunctions leaves untracked entries behind
 	// that the cleanliness check would otherwise report, mirroring internal/preflight's own
 	// setupFixture, which performs this same add-and-commit with no seed step at all.
 	// The commit is --allow-empty because after the clone-commit change the records prime already
-	// arrives clean, .lyx is excluded through the records repo's .git/info/exclude, and the _extra
+	// arrives clean, .lym is excluded through the records repo's .git/info/exclude, and the _extra
 	// junction target materializes as an empty directory git does not track -- so this pair becomes
 	// a no-op that must be allowed to succeed rather than deleted, because deleting it would silently
 	// drop the guarantee if a future fixture change reintroduces untracked records content.
@@ -73,7 +73,7 @@ func setupPreflightWrapperFixture(t *testing.T) *hubforge.Hub {
 // The steps share one hub, so the test is parallel as a whole and no step is.
 // The last step relies on being last: it dirties the worktree the earlier steps need clean.
 //
-// The cancelled step is Tier 2, not Tier 1, because preflight.Check reaches lyxcwd.Resolve's git spawn unconditionally, so every path that calls Check at all is Tier 2 regardless of what it returns -- the producer holds no injectable seam between entryErr and the Check call that would let it run without a real fixture.
+// The cancelled step is Tier 2, not Tier 1, because preflight.Check reaches lymcwd.Resolve's git spawn unconditionally, so every path that calls Check at all is Tier 2 regardless of what it returns -- the producer holds no injectable seam between entryErr and the Check call that would let it run without a real fixture.
 func TestPreflight_Scenario(t *testing.T) {
 	t.Parallel()
 

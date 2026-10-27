@@ -132,7 +132,7 @@ func Reconcile(template, existing []byte, perNameMaps []string, openMaps ...stri
 // A template list is a DEFAULT, not a minimum length. collectLeafPaths models each sequence element
 // as its own indexed leaf path (`key[0]`, `key[1]`, ...), which is right for the reconcile merge but
 // wrong here: it made a config that shortened a list -- including to the empty list -- fail to load
-// with "missing keys: key[0]", and told the operator to run "lyx config reconcile", which re-adds
+// with "missing keys: key[0]", and told the operator to run "lym config reconcile", which re-adds
 // the template's own element and undoes the edit. An emptied list is the only general way to express
 // "none of these", and for landing.yaml's deploy_branches it is the whole no-deploy mode batten's Land row reads; it was unreachable through this loader.
 // A sequence-element path is therefore satisfied by the presence of its owning KEY in existing,

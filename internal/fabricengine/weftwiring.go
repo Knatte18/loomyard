@@ -11,7 +11,7 @@
 // appears in this file's Go source (see branchname.go for the single derivation point).
 //
 // Weft branch model: each weft branch forks from its parent's weft branch (non-orphan, shared
-// merge-base), preserving history for future _lyx/raddle/ squash-merge-back. _lyx is isolated by
+// merge-base), preserving history for future _lym/raddle/ squash-merge-back. _lym is isolated by
 // pathspec (never merges back), not by orphan topology.
 // A detached or unborn warp HEAD aborts the spawn before any creation, ensuring no partial state.
 //
@@ -28,20 +28,20 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 // RecordsWorktreePath returns the path to a sibling weft worktree with the given slug.
-func RecordsWorktreePath(l *lyxcwd.Location, slug string) string {
+func RecordsWorktreePath(l *lymcwd.Location, slug string) string {
 	return weftname.SiblingPath(l.HubPath, slug)
 }
 
-// WeftLyxDirFor returns the path to the _lyx directory within a named slug's weft worktree.
-// It is the junction target paired by spawn seeds and pairs with CodeLyxLink(slug).
-func WeftLyxDirFor(l *lyxcwd.Location, slug string) string {
-	return filepath.Join(RecordsWorktreePath(l, slug), l.AnchorRel, lyxdirs.LyxDirName)
+// WeftLymDirFor returns the path to the _lym directory within a named slug's weft worktree.
+// It is the junction target paired by spawn seeds and pairs with CodeLymLink(slug).
+func WeftLymDirFor(l *lymcwd.Location, slug string) string {
+	return filepath.Join(RecordsWorktreePath(l, slug), l.AnchorRel, lymdirs.LymDirName)
 }
 
 // WeftWarpSlug parses a weft sibling directory name and returns the warp slug it corresponds to.
@@ -61,7 +61,7 @@ func WeftWarpSlug(name string) (slug string, ok bool) {
 // repository. An unresolvable weft repo root (PrimeName failure) reports
 // false, same as an absent directory — either way, there is no weft repo to
 // find.
-func weftRepoExists(l *lyxcwd.Location) bool {
+func weftRepoExists(l *lymcwd.Location) bool {
 	weftRepoRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		return false
@@ -79,7 +79,7 @@ func weftRepoExists(l *lyxcwd.Location) bool {
 // weftBranchExists reports whether the weft branch exists in the weft repo.
 // An unresolvable weft repo root reports false, same as a branch that is
 // genuinely absent.
-func weftBranchExists(l *lyxcwd.Location, branch string) bool {
+func weftBranchExists(l *lymcwd.Location, branch string) bool {
 	weftRepoRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		return false
@@ -98,7 +98,7 @@ func weftBranchExists(l *lyxcwd.Location, branch string) bool {
 // This site does NOT route through the destruction gate: createGitWorktree in destroy.go is the
 // gate's minter for the warp side, and the Fabric Destruction Chokepoint Invariant governs
 // destruction, not creation, so this hand-written record is by design, not an oversight.
-func createWeftWorktree(rec *Mutations, l *lyxcwd.Location, slug, branch, startPoint string) error {
+func createWeftWorktree(rec *Mutations, l *lymcwd.Location, slug, branch, startPoint string) error {
 	weftPath := RecordsWorktreePath(l, slug)
 	weftRepoRoot, err := RecordsRepoRoot(l)
 	if err != nil {
@@ -124,7 +124,7 @@ func createWeftWorktree(rec *Mutations, l *lyxcwd.Location, slug, branch, startP
 // removeWarpJunction removes every warp junction for slug via the gate's removeLink executor.
 // Returns nil if all are absent (idempotent).
 // rec is the calling verb's own recorder, threaded straight through to removeJunctionRecords.
-func removeWarpJunction(rec *Mutations, l *lyxcwd.Location, slug string, names []string) error {
+func removeWarpJunction(rec *Mutations, l *lymcwd.Location, slug string, names []string) error {
 	return removeJunctionRecords(rec, WorktreePath(l, slug), WarpJunctions(l, slug, names))
 }
 
@@ -182,7 +182,7 @@ type weftTeardownResult struct {
 // function has no config in scope of its own.
 // rec is the calling verb's own recorder, threaded through to removeGitWorktree, deleteBranch, and
 // deleteRemoteBranch below.
-func removeWeftWorktree(rec *Mutations, l *lyxcwd.Location, slug, branch string, force, alsoDeleteBranch, remote bool, branchPrefix string) (weftTeardownResult, error) {
+func removeWeftWorktree(rec *Mutations, l *lymcwd.Location, slug, branch string, force, alsoDeleteBranch, remote bool, branchPrefix string) (weftTeardownResult, error) {
 	weftPath := RecordsWorktreePath(l, slug)
 	weftRoot, err := RecordsRepoRoot(l)
 	if err != nil {

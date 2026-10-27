@@ -1,6 +1,6 @@
 // Package creelengine is the engine of creel, the per-hub message daemon: a pool of mail and queued injects that agents post to and read from, delivered into agent panes when they are idle.
 // The engine is told its Geometry and a delivery seam and derives no path of its own.
-// `internal/creelcli` wires it to the hub and carries the `lyx creel` verbs.
+// `internal/creelcli` wires it to the hub and carries the `lym creel` verbs.
 //
 // # Layering
 //
@@ -9,17 +9,17 @@
 // Delivery lists the hub's strands, asks whether a strand is idle, asks whether a pause covers it, claims a covered strand into its pause for the interrupt, types one line into its pane, runs one command of a closed set in its session and sends the guarded interrupt.
 // Its idle answer carries a stall reason when a not-idle pane waits on something the operator can act on, a pane too short for the input box, a draft in it or a pane showing no input box, and the engine journals each change of that reason as a `stalled` record.
 // `internal/creelcli` implements it over the hub's worktrees, reed's persisted state and status, the pause record, and a shuttle runner built per worktree at each call.
-// Shuttle's idle check, verified send and guarded interrupt work on a strand with no run record, such as a session added by hand with `lyx reed add`.
+// Shuttle's idle check, verified send and guarded interrupt work on a strand with no run record, such as a session added by hand with `lym reed add`.
 // Send fails with ErrBusy when the pane guard held the write and nothing was typed, and with ErrNotLanded when the text was typed but its landing was not confirmed.
 // Interrupt fails with ErrNoRunningTurn when no turn runs and sends nothing.
 // An error from Strands or Paused types nothing for that probe, so an unreadable strand is never mistaken for an absent one.
 //
 // # Daemon
 //
-// One daemon serves a hub, and any verb that finds none down starts it detached with `lyx creel daemon --hub-path <hub>`.
+// One daemon serves a hub, and any verb that finds none down starts it detached with `lym creel daemon --hub-path <hub>`.
 // Run takes a single-instance lock on Geometry.LockPath and returns ErrDaemonRunning when another daemon holds it.
 // It removes a socket file no listener answers, listens on Geometry.SocketPath, and serves one request per connection.
-// The socket sits in the user's lyxtemp root and is named creel-<shortname>-<h>.sock, where <h> is the first eight hex digits of the hub path's hash, so two hubs sharing a shortname never meet.
+// The socket sits in the user's lymtemp root and is named creel-<shortname>-<h>.sock, where <h> is the first eight hex digits of the hub path's hash, so two hubs sharing a shortname never meet.
 // A client that finds no daemon starts one and connects up to ConnectAttempts times, waiting from one second and doubling to eight.
 // The client also stops waiting when the daemon it started exits other than by a lost start race: it connects once more at once and, if that fails, gives up.
 // An exit by a lost start race keeps the backoff, since the winner may not answer yet.
@@ -40,11 +40,11 @@
 //
 // A sender is a strand, a program with an upper-case name such as ly:BATTEN, or EXTERNAL.
 // On Linux the daemon reads the connecting process from SO_PEERCRED and walks its ancestry; a process inside a live strand's pane process tree is that strand, whatever its environment says.
-// A $LYX_STRAND_NAME that names another strand is refused, and a claim never raises a pane's privilege: a program name is accepted from an orch strand's pane only.
+// A $LYM_STRAND_NAME that names another strand is refused, and a claim never raises a pane's privilege: a program name is accepted from an orch strand's pane only.
 // A process in no known pane is EXTERNAL, shown with the envelope its client claimed: its terminal, its parent process and its directory.
 // A process in no known pane is refused when a live strand's pane process is unknown, since it could be that strand.
 // Off Linux identity is the environment alone: the strand name when it names a strand of this hub, else the program claim, else EXTERNAL.
-// Bound: any process of the operator's user that runs a verb outside a strand pane posts as EXTERNAL or, through the Go client only, as a program; the CLI has no program flag, and the 0700 lyxtemp root is the boundary.
+// Bound: any process of the operator's user that runs a verb outside a strand pane posts as EXTERNAL or, through the Go client only, as a program; the CLI has no program flag, and the 0700 lymtemp root is the boundary.
 //
 // # Receivers
 //
@@ -76,12 +76,12 @@
 //
 // A notice is a message from any sender but an agent strand, a program or EXTERNAL, whose body is at most 4 KiB.
 // It is carried in full in its own line, typed when the receiver is idle, `[creel] #<id> from <sender>: <body>`, with every run of line breaks and other control characters turned into one space.
-// The line opens with the id, so a sender that takes replies is answered with `lyx creel post --reply <id>` and no read; creel does not know which senders answer.
+// The line opens with the id, so a sender that takes replies is answered with `lym creel post --reply <id>` and no read; creel does not know which senders answer.
 // It is journaled read once the line was typed, landed or not; a busy send leaves it unread for the next probe, and a crash between the typing and the read record types it once more.
 // Mail from an agent strand is never carried, so an agent's text cannot pose as an instruction in another agent's pane.
 //
-// Every other unread message, an agent strand's or one over the cap, is reminded by one line, typed when the receiver is idle: `[creel] N unread: #id from <sender>, … — run lyx creel read`.
-// A reminder lists at most five messages and counts the rest, and carries no text a sender wrote, so it cannot pose as an instruction; under a hold it reads `lyx creel read --from <owner>`.
+// Every other unread message, an agent strand's or one over the cap, is reminded by one line, typed when the receiver is idle: `[creel] N unread: #id from <sender>, … — run lym creel read`.
+// A reminder lists at most five messages and counts the rest, and carries no text a sender wrote, so it cannot pose as an instruction; under a hold it reads `lym creel read --from <owner>`.
 // An orch strand is reminded like any other strand.
 // A new unread set is reminded at once, and an unchanged set after a backoff that starts at five minutes and doubles to an hour.
 //
@@ -138,11 +138,11 @@
 // interrupt sends the guarded interrupt at once, bypassing the queue, and reports whether it stopped a running turn.
 // The interrupt clears a prompt the provider restored, and a clear that fails after the key was sent still counts as sent.
 // No delivery reaches the receiver while the interrupt runs, its settles and its clear included, and the receiver's worker probes afresh once it ends.
-// A strand a pause covers is claimed into that pause and then interrupted, so `lyx tender resume` gives it its resume line.
+// A strand a pause covers is claimed into that pause and then interrupted, so `lym tender resume` gives it its resume line.
 // An unreadable pause record, a pause lifted before the key and another sender's hold refuse it.
 //
 // EXTERNAL senders, programs and orch strands may inject, interrupt and hold on any strand, an orch strand included; any other strand may do so on its own strand only.
-// A hold on an orch strand is the exception: only a program may hold one, and any other sender is refused with the way forward, mail with `lyx creel post` or a cycle with `lyx orch distill` or `lyx orch refresh`.
+// A hold on an orch strand is the exception: only a program may hold one, and any other sender is refused with the way forward, mail with `lym creel post` or a cycle with `lym orch distill` or `lym orch refresh`.
 //
 // # Holds
 //
@@ -199,7 +199,7 @@
 // `PATTERN-pane-text-injection` is scoped to the orch session: typing into it from Go is only creel's, through its `Delivery` seam; the orch watcher keeps only a hub pause's guarded interrupt, reed's `/rename` repair keeps its own guard, and other modules post or inject through creel.
 // Stage 3 widens it to every agent's pane.
 //
-// Stage 3, the task `creel-agents`: the parent-review gate posts to the parent itself, drivers' stop reports post instead of duplicating batten's notices, and `lyx shuttle send` and `lyx shuttle interrupt` move behind creel.
+// Stage 3, the task `creel-agents`: the parent-review gate posts to the parent itself, drivers' stop reports post instead of duplicating batten's notices, and `lym shuttle send` and `lym shuttle interrupt` move behind creel.
 //
 // Later and not planned: sending across hubs, which the socket name's hub hash already leaves room for, and an MCP layer over the verbs.
 package creelengine

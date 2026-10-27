@@ -11,7 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 )
@@ -30,7 +30,7 @@ func noticeHub(t *testing.T) *hubforge.Hub {
 }
 
 // recordOrchStrand records a strand in the orch state of location, with no reed session behind it, so the orch reads recorded but never live.
-func recordOrchStrand(t *testing.T, location *lyxcwd.Location) {
+func recordOrchStrand(t *testing.T, location *lymcwd.Location) {
 	t.Helper()
 	if err := orchengine.SaveState(orchcli.PrimePaths(location), orchengine.State{Strand: "guid-" + location.WorktreeName, Phase: orchengine.PhaseIdle}); err != nil {
 		t.Fatalf("record the orch strand of %q: %v", location.WorktreeName, err)
@@ -50,18 +50,18 @@ func TestNoticeSite(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		pair       func() (*lyxcwd.Location, bool, error)
+		pair       func() (*lymcwd.Location, bool, error)
 		parent     string
 		parentErr  error
 		wantSite   string
 		wantIsPair bool
 		wantErr    error
 	}{
-		{"PresentPairIsTheSite", func() (*lyxcwd.Location, bool, error) { return pair, true, nil }, "", nil, "p", true, nil},
-		{"AbsentPairOfAPresentBeamStartsAtTheBeam", func() (*lyxcwd.Location, bool, error) { return nil, false, nil }, "b", nil, "b", false, nil},
-		{"AbsentPairWhoseBeamIsAbsentHereStartsAtThePrime", func() (*lyxcwd.Location, bool, error) { return nil, false, nil }, "gone-beam", nil, primeName, false, nil},
-		{"TaskOfThePrimeStartsAtThePrime", func() (*lyxcwd.Location, bool, error) { return nil, false, nil }, "", nil, primeName, false, nil},
-		{"ResolverErrorIsReturned", func() (*lyxcwd.Location, bool, error) { return nil, false, nil }, "", resolverErr, "", false, resolverErr},
+		{"PresentPairIsTheSite", func() (*lymcwd.Location, bool, error) { return pair, true, nil }, "", nil, "p", true, nil},
+		{"AbsentPairOfAPresentBeamStartsAtTheBeam", func() (*lymcwd.Location, bool, error) { return nil, false, nil }, "b", nil, "b", false, nil},
+		{"AbsentPairWhoseBeamIsAbsentHereStartsAtThePrime", func() (*lymcwd.Location, bool, error) { return nil, false, nil }, "gone-beam", nil, primeName, false, nil},
+		{"TaskOfThePrimeStartsAtThePrime", func() (*lymcwd.Location, bool, error) { return nil, false, nil }, "", nil, primeName, false, nil},
+		{"ResolverErrorIsReturned", func() (*lymcwd.Location, bool, error) { return nil, false, nil }, "", resolverErr, "", false, resolverErr},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

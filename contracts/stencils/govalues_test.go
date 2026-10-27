@@ -31,7 +31,7 @@ func yamlKey(t *testing.T, field string) string {
 
 // TestStencils_NameGoValues asserts each stencil names the value Go declares for it, so renaming either side without the other fails.
 //
-//lyx:guard
+//lym:guard
 func TestStencils_NameGoValues(t *testing.T) {
 	t.Parallel()
 
@@ -67,11 +67,11 @@ func TestStencils_NameGoValues(t *testing.T) {
 
 // TestTwillStencils_HostNeutral asserts no twill stencil names a host-specific value, so another host can render it with its own values.
 //
-//lyx:guard
+//lym:guard
 func TestTwillStencils_HostNeutral(t *testing.T) {
 	t.Parallel()
 
-	banned := []string{"decision record", "support log", "decision-record.md", "support-log.md", "_lyx/discussion", "Step 5", "Step 6", "validate-discussion", "## Interview", "Discussion", "validate-plan", "00-overview.md", "lens-review.md", "Card Index"}
+	banned := []string{"decision record", "support log", "decision-record.md", "support-log.md", "_lym/discussion", "Step 5", "Step 6", "validate-discussion", "## Interview", "Discussion", "validate-plan", "00-overview.md", "lens-review.md", "Card Index"}
 	var twill []string
 	for _, name := range Registry().Names() {
 		if strings.HasPrefix(name, "twill-") {
@@ -95,7 +95,7 @@ func TestTwillStencils_HostNeutral(t *testing.T) {
 // TestHubGenericStencils_NameNoGoTiers asserts the plan, Plan-Review and implementer prompts spell no Go verify-tier command,
 // so a hub declaring no tier gets none; a hub with tiers gets them through the gate_tiers marker.
 //
-//lyx:guard
+//lym:guard
 func TestHubGenericStencils_NameNoGoTiers(t *testing.T) {
 	t.Parallel()
 

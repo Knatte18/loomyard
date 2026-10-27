@@ -2,7 +2,7 @@
 
 // envfile_integration_test.go runs the env file content under `bash` in Claude Code's prelude shape.
 // It pins that the content closes the shell's default stdin without touching a stdin a command supplies itself,
-// and that it re-prepends LYX_BIN's directory to PATH.
+// and that it re-prepends LYM_BIN's directory to PATH.
 
 package claudeengine
 
@@ -33,7 +33,7 @@ func writeExecutable(t *testing.T, path, content string) {
 }
 
 // TestEnvFile_DefaultStdinIsDevNull runs each command as `bash -c '<env file content>eval <command>'` with the shell's stdin an open pipe nothing ever writes to or closes.
-// It pins the default stdin and the PATH re-prepend: an operator rc that left a decoy `lyx` first on PATH is overridden by LYX_BIN's directory.
+// It pins the default stdin and the PATH re-prepend: an operator rc that left a decoy `lym` first on PATH is overridden by LYM_BIN's directory.
 func TestEnvFile_DefaultStdinIsDevNull(t *testing.T) {
 	t.Parallel()
 
@@ -41,10 +41,10 @@ func TestEnvFile_DefaultStdinIsDevNull(t *testing.T) {
 	decoyDir := filepath.Join(root, "decoy")
 	realDir := filepath.Join(root, "real dir")
 	stubDir := filepath.Join(root, "stub")
-	decoyLyx := filepath.Join(decoyDir, "lyx")
-	realLyx := filepath.Join(realDir, "lyx")
-	writeExecutable(t, decoyLyx, "#!/bin/sh\nexit 0\n")
-	writeExecutable(t, realLyx, "#!/bin/sh\nexit 0\n")
+	decoyLym := filepath.Join(decoyDir, "lym")
+	realLym := filepath.Join(realDir, "lym")
+	writeExecutable(t, decoyLym, "#!/bin/sh\nexit 0\n")
+	writeExecutable(t, realLym, "#!/bin/sh\nexit 0\n")
 	writeExecutable(t, filepath.Join(stubDir, "cygpath"), "#!/bin/sh\nfor arg; do last=$arg; done\nprintf %s \"$last\"\n")
 
 	hostPath := os.Getenv("PATH")
@@ -53,14 +53,14 @@ func TestEnvFile_DefaultStdinIsDevNull(t *testing.T) {
 
 	var baseEnv []string
 	for _, entry := range os.Environ() {
-		if strings.HasPrefix(entry, "PATH=") || strings.HasPrefix(entry, agentname.LyxBinEnv+"=") {
+		if strings.HasPrefix(entry, "PATH=") || strings.HasPrefix(entry, agentname.LymBinEnv+"=") {
 			continue
 		}
 		baseEnv = append(baseEnv, entry)
 	}
 
-	lyxBinSet := agentname.LyxBinEnv + "=" + realLyx
-	lyxBinEmpty := agentname.LyxBinEnv + "="
+	lymBinSet := agentname.LymBinEnv + "=" + realLym
+	lymBinEmpty := agentname.LymBinEnv + "="
 	tests := []struct {
 		name          string
 		goos          string
@@ -73,12 +73,12 @@ func TestEnvFile_DefaultStdinIsDevNull(t *testing.T) {
 		{"bare_cat_ends_at_once", "linux", "cat", hostPath, nil, "", false},
 		{"heredoc_still_feeds_cat", "linux", "cat <<'EOF'\nheredoc body\nEOF", hostPath, nil, "heredoc body\n", false},
 		{"pipe_still_feeds_cat", "linux", "printf data | bash -c 'cat'", hostPath, nil, "data", false},
-		{"posix_lyx_bin_directory_shadows_decoy", "linux", "command -v lyx", decoyPath, []string{lyxBinSet}, realLyx + "\n", true},
-		{"posix_lyx_bin_unset_leaves_path", "linux", `printf %s "$PATH"`, decoyPath, nil, decoyPath, true},
-		{"posix_lyx_bin_empty_leaves_path", "linux", `printf %s "$PATH"`, decoyPath, []string{lyxBinEmpty}, decoyPath, true},
-		{"windows_without_cygpath_leaves_path", "windows", `printf %s "$PATH"`, decoyPath, []string{lyxBinSet}, decoyPath, true},
-		{"windows_lyx_bin_unset_leaves_path", "windows", `printf %s "$PATH"`, stubPath, nil, stubPath, true},
-		{"windows_converts_and_unsets_scratch_variable", "windows", `command -v lyx; printf %s "${__lyx_bin_dir-unset}"`, stubPath, []string{lyxBinSet}, realLyx + "\nunset", true},
+		{"posix_lym_bin_directory_shadows_decoy", "linux", "command -v lym", decoyPath, []string{lymBinSet}, realLym + "\n", true},
+		{"posix_lym_bin_unset_leaves_path", "linux", `printf %s "$PATH"`, decoyPath, nil, decoyPath, true},
+		{"posix_lym_bin_empty_leaves_path", "linux", `printf %s "$PATH"`, decoyPath, []string{lymBinEmpty}, decoyPath, true},
+		{"windows_without_cygpath_leaves_path", "windows", `printf %s "$PATH"`, decoyPath, []string{lymBinSet}, decoyPath, true},
+		{"windows_lym_bin_unset_leaves_path", "windows", `printf %s "$PATH"`, stubPath, nil, stubPath, true},
+		{"windows_converts_and_unsets_scratch_variable", "windows", `command -v lym; printf %s "${__lym_bin_dir-unset}"`, stubPath, []string{lymBinSet}, realLym + "\nunset", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

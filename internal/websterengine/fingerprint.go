@@ -189,7 +189,7 @@ func Fingerprint(planDir string) (string, error) {
 // it cannot tell that apart from webster's own sanctioned rewrites — handle canonicalization at
 // begin-batch, handle binding and exact-tier drift repair at record-batch — unless the run
 // re-baselines after making them.
-// Without this, the first batch that bound a handle or repaired drift made every later begin-batch fail ErrFingerprintMismatch, whose advised recourse (the reset route, then a plain `lyx webster run`) restarts the same plan into the same wall.
+// Without this, the first batch that bound a handle or repaired drift made every later begin-batch fail ErrFingerprintMismatch, whose advised recourse (the reset route, then a plain `lym webster run`) restarts the same plan into the same wall.
 //
 // Re-baselining costs nothing the guard was actually providing: a foreign edit landing between this
 // call and the next begin-batch is still caught, which is the whole window the guard covers.

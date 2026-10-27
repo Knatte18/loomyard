@@ -1,4 +1,4 @@
-// anchormarker.go writes, commits, reads from git and retires the `.lyx-anchor` markers: a worktree's own marker at the root of its weft branch, and the legacy hub-wide marker on the board.
+// anchormarker.go writes, commits, reads from git and retires the `.lym-anchor` markers: a worktree's own marker at the root of its weft branch, and the legacy hub-wide marker on the board.
 // It is the one marker writer outside the anchor move: clone's fresh bind, reconcile's migration and an adopted branch all record their marker through it.
 // It also refuses a marker left empty and derives the anchor of a branch that records none.
 
@@ -16,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // boltAnchorRemoved is the verdict retireBoltAnchorMarker reports once the hub-wide marker is gone.
@@ -31,19 +31,19 @@ const boltAnchorKeptPrefix = "kept: "
 // Otherwise it is writing the anchor (or "." for the repo root) into the file and committing it there; the verb is then re-run.
 // It touches nothing.
 func refuseEmptyOwnMarker(weftPath string) error {
-	markerPath := filepath.Join(weftPath, lyxcwd.AnchorFileName)
+	markerPath := filepath.Join(weftPath, lymcwd.AnchorFileName)
 	data, err := os.ReadFile(markerPath)
 	if err != nil || strings.TrimSpace(string(data)) != "" {
 		return nil
 	}
 
-	committed, showErr := gitexec.Run([]string{"show", "HEAD:" + lyxcwd.AnchorFileName}, weftPath)
+	committed, showErr := gitexec.Run([]string{"show", "HEAD:" + lymcwd.AnchorFileName}, weftPath)
 	if showErr == nil && strings.TrimSpace(committed) != "" {
 		return fmt.Errorf("%s at %s is empty, so its anchor is unreadable; run `git -C %s restore %s` to bring back the committed anchor, then re-run this verb",
-			lyxcwd.AnchorFileName, markerPath, weftPath, lyxcwd.AnchorFileName)
+			lymcwd.AnchorFileName, markerPath, weftPath, lymcwd.AnchorFileName)
 	}
 	return fmt.Errorf("%s at %s is empty, so its anchor is unreadable; write the anchor (or \".\" for the repo root) into it and commit it there with `git -C %s`, then re-run this verb",
-		lyxcwd.AnchorFileName, markerPath, weftPath)
+		lymcwd.AnchorFileName, markerPath, weftPath)
 }
 
 // commitAnchorMarker writes anchor plus a newline into the marker file at the root of the weft worktree at weftPath.
@@ -68,14 +68,14 @@ func commitAnchorMarker(rec *Mutations, weftPath, anchor, subject string) (strin
 	}
 	defer func() { _ = root.Close() }()
 
-	if err := root.WriteFile(lyxcwd.AnchorFileName, []byte(anchor+"\n"), 0o644); err != nil {
-		return "", fmt.Errorf("fabricengine: write %s in %s: %w", lyxcwd.AnchorFileName, weftPath, err)
+	if err := root.WriteFile(lymcwd.AnchorFileName, []byte(anchor+"\n"), 0o644); err != nil {
+		return "", fmt.Errorf("fabricengine: write %s in %s: %w", lymcwd.AnchorFileName, weftPath, err)
 	}
-	rec.Append(KindFileWritten, filepath.Join(weftPath, lyxcwd.AnchorFileName), "")
+	rec.Append(KindFileWritten, filepath.Join(weftPath, lymcwd.AnchorFileName), "")
 
-	sha, committed, err := gitrepo.New(weftPath).StageAndCommit(subject, []string{lyxcwd.AnchorFileName})
+	sha, committed, err := gitrepo.New(weftPath).StageAndCommit(subject, []string{lymcwd.AnchorFileName})
 	if err != nil {
-		return "", fmt.Errorf("fabricengine: commit %s in %s: %w", lyxcwd.AnchorFileName, weftPath, err)
+		return "", fmt.Errorf("fabricengine: commit %s in %s: %w", lymcwd.AnchorFileName, weftPath, err)
 	}
 	if committed {
 		rec.Append(KindCommitCreated, weftPath, sha)
@@ -87,9 +87,9 @@ func commitAnchorMarker(rec *Mutations, weftPath, anchor, subject string) (strin
 // An absent file reports found false.
 // A file that is blank after trimming reports found true with an empty marker, so each caller decides what a blank record means.
 func committedMarker(repoDir, rev string) (marker string, found bool, err error) {
-	data, err := showFile(repoDir, rev, lyxcwd.AnchorFileName)
+	data, err := showFile(repoDir, rev, lymcwd.AnchorFileName)
 	if err != nil {
-		return "", false, fmt.Errorf("read the committed %s at %s in %s: %w", lyxcwd.AnchorFileName, rev, repoDir, err)
+		return "", false, fmt.Errorf("read the committed %s at %s in %s: %w", lymcwd.AnchorFileName, rev, repoDir, err)
 	}
 	if data == nil {
 		return "", false, nil
@@ -108,9 +108,9 @@ func treeAnchor(repoDir, rev string, names []string, fallback string) (string, e
 		return "", err
 	}
 	if found && marker != "" {
-		anchor, err := lyxcwd.ValidateAnchorRel(marker)
+		anchor, err := lymcwd.ValidateAnchorRel(marker)
 		if err != nil {
-			return "", fmt.Errorf("the committed %s at %s in %s is unusable: %w", lyxcwd.AnchorFileName, rev, repoDir, err)
+			return "", fmt.Errorf("the committed %s at %s in %s is unusable: %w", lymcwd.AnchorFileName, rev, repoDir, err)
 		}
 		return anchor, nil
 	}
@@ -145,13 +145,13 @@ func treeAnchor(repoDir, rev string, names []string, fallback string) (string, e
 // recordAdoptedWeftAnchor gives the adopted weft branch checked out at weftPath the marker it lacks, and returns the Location of the pair slug at its own anchor.
 // A branch whose committed marker is absent or blank gets the anchor derived from its tip's tree committed on it, with names as the wired names;
 // a branch that carries a marker keeps it.
-func recordAdoptedWeftAnchor(rec *Mutations, hubPath, slug, weftPath string, names []string) (*lyxcwd.Location, error) {
+func recordAdoptedWeftAnchor(rec *Mutations, hubPath, slug, weftPath string, names []string) (*lymcwd.Location, error) {
 	marker, _, err := committedMarker(weftPath, "HEAD")
 	if err != nil {
 		return nil, err
 	}
 	if marker == "" {
-		current, err := lyxcwd.NamedWorktree(hubPath, slug)
+		current, err := lymcwd.NamedWorktree(hubPath, slug)
 		if err != nil {
 			return nil, err
 		}
@@ -163,7 +163,7 @@ func recordAdoptedWeftAnchor(rec *Mutations, hubPath, slug, weftPath string, nam
 			return nil, err
 		}
 	}
-	return lyxcwd.NamedWorktree(hubPath, slug)
+	return lymcwd.NamedWorktree(hubPath, slug)
 }
 
 // retireBoltAnchorMarker removes the hub-wide marker from the board, and a leftover pre-rename marker beside it, once every worktree's own marker stands in for it.
@@ -171,12 +171,12 @@ func recordAdoptedWeftAnchor(rec *Mutations, hubPath, slug, weftPath string, nam
 // It reports "" for a hub with no board marker, "removed" once the marker is gone, and "kept: <reason>" while it stays:
 // a weft the census finds without a committed marker, or a board write that was skipped.
 // A board commit that landed but could not be pushed is reported "removed" with the push failure after it.
-func retireBoltAnchorMarker(rec *Mutations, l *lyxcwd.Location) (string, error) {
+func retireBoltAnchorMarker(rec *Mutations, l *lymcwd.Location) (string, error) {
 	boardDir := BoardDir(l.HubPath)
-	if _, err := os.Stat(filepath.Join(boardDir, lyxcwd.AnchorFileName)); errors.Is(err, fs.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(boardDir, lymcwd.AnchorFileName)); errors.Is(err, fs.ErrNotExist) {
 		return "", nil
 	} else if err != nil {
-		return "", fmt.Errorf("fabricengine: read the board's %s: %w", lyxcwd.AnchorFileName, err)
+		return "", fmt.Errorf("fabricengine: read the board's %s: %w", lymcwd.AnchorFileName, err)
 	}
 
 	keeper, err := boltAnchorKeeper(l)
@@ -213,7 +213,7 @@ func removeBoltAnchorMarkers(boardDir string) ([]string, error) {
 	defer func() { _ = root.Close() }()
 
 	var removed []string
-	for _, name := range []string{lyxcwd.AnchorFileName, lyxcwd.StaleAnchorFileName} {
+	for _, name := range []string{lymcwd.AnchorFileName, lymcwd.StaleAnchorFileName} {
 		if err := root.Remove(name); err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
 				continue
@@ -231,7 +231,7 @@ func removeBoltAnchorMarkers(boardDir string) ([]string, error) {
 // A branch whose ref is not among the fetched ones keeps the marker.
 // A weft branch with no warp sibling on origin is an orphan and is not counted.
 // It reads local refs only and makes no network call.
-func boltAnchorKeeper(l *lyxcwd.Location) (string, error) {
+func boltAnchorKeeper(l *lymcwd.Location) (string, error) {
 	entries, err := List(l.WorktreePath())
 	if err != nil {
 		return "", fmt.Errorf("list worktrees: %w", err)
@@ -251,7 +251,7 @@ func boltAnchorKeeper(l *lyxcwd.Location) (string, error) {
 			return "", err
 		}
 		if marker == "" {
-			return fmt.Sprintf("the weft at %s carries no committed %s", weftPath, lyxcwd.AnchorFileName), nil
+			return fmt.Sprintf("the weft at %s carries no committed %s", weftPath, lymcwd.AnchorFileName), nil
 		}
 	}
 
@@ -290,7 +290,7 @@ func boltAnchorKeeper(l *lyxcwd.Location) (string, error) {
 			return "", err
 		}
 		if marker == "" {
-			return fmt.Sprintf("the fetched %s/%s carries no committed %s", originRemoteName, branch, lyxcwd.AnchorFileName), nil
+			return fmt.Sprintf("the fetched %s/%s carries no committed %s", originRemoteName, branch, lymcwd.AnchorFileName), nil
 		}
 	}
 	return "", nil

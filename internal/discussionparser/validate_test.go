@@ -109,7 +109,7 @@ func TestValidate_PatternChangeOverCap(t *testing.T) {
 	}{
 		{"AddsOverCap", "- `PATTERN-a` — adds: " + textFor("x", 1), []string{"`PATTERN-a` adds", over, fmt.Sprintf("%d cap", patternEntryTextCap), "background file"}},
 		{"ChangesOverCap", "- `PATTERN-a` — changes: " + textFor("x", 1), []string{"`PATTERN-a` changes", over}},
-		{"AppendedOverCap", "- `PATTERN-a` — changes: " + textFor("x", 1) + appended, []string{over, "`lyx loom decision add`"}},
+		{"AppendedOverCap", "- `PATTERN-a` — changes: " + textFor("x", 1) + appended, []string{over, "`lym loom decision add`"}},
 		{"MultiByteOverCap", "- `PATTERN-a` — adds: " + textFor("é", 1), []string{over}},
 		{"OverCapBeforeTail", "- `PATTERN-a` — adds: " + textFor("x", 1) + tail, []string{over}},
 		{"AtCap", "- `PATTERN-a` — adds: " + textFor("x", 0), nil},
@@ -220,7 +220,7 @@ func TestDeclaredPatternChanges(t *testing.T) {
 		if got != nil {
 			t.Errorf("DeclaredPatternChanges() = %q; want nil alongside the error", got)
 		}
-		for _, want := range []string{path, patternChangesHeading, "lyx loom validate-discussion"} {
+		for _, want := range []string{path, patternChangesHeading, "lym loom validate-discussion"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("error %q; want it to contain %q", err, want)
 			}
@@ -271,8 +271,8 @@ func TestValidate_CleanRecords(t *testing.T) {
 		{name: "headings out of order are not validated", content: outOfOrder.String()},
 		{name: "extra unexpected heading", content: allSectionsContent() + "## Some Extra Heading\n\nextra body.\n"},
 		{name: "PATTERN changes section of every action", content: allSectionsContent() + patternChangesSection(
-			"- `PATTERN-cwd-resolution` — adds: Resolve a cwd only in `internal/lyxcwd`.",
-			"- `PATTERN-old-hub-rule` — changes: `-LYXHUB` is the sole suffix.",
+			"- `PATTERN-cwd-resolution` — adds: Resolve a cwd only in `internal/lymcwd`.",
+			"- `PATTERN-old-hub-rule` — changes: `-LYMHUB` is the sole suffix.",
 			"- `PATTERN-old-rule` — removes",
 			"- `PATTERN-late-rule` — changes: Reworded. — added after Discussion (parent, 2026-10-16)",
 			"- `PATTERN-late-gone` — removes — added after Discussion (arbiter, 2026-10-16)",

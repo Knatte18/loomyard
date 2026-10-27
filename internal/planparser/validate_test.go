@@ -118,7 +118,7 @@ func TestValidate_GoldenFixture_ZeroFindings(t *testing.T) {
 		"internal/output/envelope.go",        // card 2's Uses
 		"internal/boardengine/legacyrows.go", // card 4's target
 		"internal/boardengine/rows.go",       // card 5's Rename pair pre-rename (Old) side
-		"cmd/lyx/helppins.go",                // card 6's target
+		"cmd/lym/helppins.go",                // card 6's target
 		"internal/boardcli/doc.go",           // card 7's first target
 		"docs/boardcli-json.md",              // card 7's second target
 		// Deliberately absent: internal/output/emit.go (card 3's own Custom target — exempt),
@@ -1800,7 +1800,7 @@ func TestValidate_VerifyNestedModule(t *testing.T) {
 	}
 }
 
-// TestValidate_VerifyPackageMissing covers verify-package-missing: a relative package argument of a go test, build or vet or a lyx gate test command in a card's Verify: value must name a directory on disk or one the plan creates by then; the overview's verify chain is never read.
+// TestValidate_VerifyPackageMissing covers verify-package-missing: a relative package argument of a go test, build or vet or a lym gate test command in a card's Verify: value must name a directory on disk or one the plan creates by then; the overview's verify chain is never read.
 // The test sits in the external package for its card helpers, so it is named by its file rather than a handle.
 func TestValidate_VerifyPackageMissing(t *testing.T) {
 	t.Parallel()
@@ -1834,18 +1834,18 @@ func TestValidate_VerifyPackageMissing(t *testing.T) {
 		want       []finding
 		wantDetail string
 	}{
-		{name: "language csharp is not read", cards: []planparser.Card{withVerify(1, "lyx gate test --wait --tier 0 ./nowhere")}, language: "csharp"},
-		{name: "language go reads the same command", cards: []planparser.Card{withVerify(1, "lyx gate test --wait --tier 0 ./nowhere")}, want: []finding{{"1-a", "./nowhere"}}},
-		{name: "external test package names its package as the replacement", cards: []planparser.Card{withVerify(1, "lyx gate test ./internal/x_test")}, want: []finding{{"1-a", "./internal/x_test"}}, wantDetail: "pass ./internal/x"},
+		{name: "language csharp is not read", cards: []planparser.Card{withVerify(1, "lym gate test --wait --tier 0 ./nowhere")}, language: "csharp"},
+		{name: "language go reads the same command", cards: []planparser.Card{withVerify(1, "lym gate test --wait --tier 0 ./nowhere")}, want: []finding{{"1-a", "./nowhere"}}},
+		{name: "external test package names its package as the replacement", cards: []planparser.Card{withVerify(1, "lym gate test ./internal/x_test")}, want: []finding{{"1-a", "./internal/x_test"}}, wantDetail: "pass ./internal/x"},
 		{name: "overview chain is not read", overview: "go test ./nope\ngo test ../outside"},
 		{name: "go build", cards: []planparser.Card{withVerify(1, "go build ./nope")}, want: []finding{{"1-a", "./nope"}}},
 		{name: "go vet", cards: []planparser.Card{withVerify(1, "go vet ./nope")}, want: []finding{{"1-a", "./nope"}}},
 		{name: "go -C resolves against the module", cards: []planparser.Card{withVerify(1, "go -C m test ./absent")}, want: []finding{{"1-a", "./absent"}}},
-		{name: "gate test -C", cards: []planparser.Card{withVerify(1, "lyx gate test -C m ./absent")}, want: []finding{{"1-a", "./absent"}}},
-		{name: "gate test -C=", cards: []planparser.Card{withVerify(1, "lyx gate test -C=m ./absent")}, want: []finding{{"1-a", "./absent"}}},
-		{name: "gate test --dir", cards: []planparser.Card{withVerify(1, "lyx gate test --dir m ./absent")}, want: []finding{{"1-a", "./absent"}}},
-		{name: "gate test --dir=", cards: []planparser.Card{withVerify(1, "lyx gate test --dir=m ./absent")}, want: []finding{{"1-a", "./absent"}}},
-		{name: "gate test skips the --tags value", cards: []planparser.Card{withVerify(1, "lyx gate test --tags integration ./nope")}, want: []finding{{"1-a", "./nope"}}},
+		{name: "gate test -C", cards: []planparser.Card{withVerify(1, "lym gate test -C m ./absent")}, want: []finding{{"1-a", "./absent"}}},
+		{name: "gate test -C=", cards: []planparser.Card{withVerify(1, "lym gate test -C=m ./absent")}, want: []finding{{"1-a", "./absent"}}},
+		{name: "gate test --dir", cards: []planparser.Card{withVerify(1, "lym gate test --dir m ./absent")}, want: []finding{{"1-a", "./absent"}}},
+		{name: "gate test --dir=", cards: []planparser.Card{withVerify(1, "lym gate test --dir=m ./absent")}, want: []finding{{"1-a", "./absent"}}},
+		{name: "gate test skips the --tags value", cards: []planparser.Card{withVerify(1, "lym gate test --tags integration ./nope")}, want: []finding{{"1-a", "./nope"}}},
 		{
 			name:  "a directory only a later card creates",
 			cards: []planparser.Card{withVerify(1, "go test ./internal/new"), creates(2, planparser.CardTypeCreate, "", "internal/new/n.go#")},
@@ -1863,14 +1863,14 @@ func TestValidate_VerifyPackageMissing(t *testing.T) {
 		{name: "an ancestor of a created directory counts", cards: []planparser.Card{creates(1, planparser.CardTypeCreate, "go test ./newroot", "newroot/sub/s.go#")}},
 		{name: "module-wide pattern, import path and go file pass", cards: []planparser.Card{withVerify(1, "go test ./... example.com/x ./internal/absent/a_test.go")}},
 		{name: "go -C into the module", cards: []planparser.Card{withVerify(1, "go -C m test ./pkg")}},
-		{name: "gate test -C into the module", cards: []planparser.Card{withVerify(1, "lyx gate test -C m ./pkg")}},
-		{name: "gate test reading stops at --", cards: []planparser.Card{withVerify(1, "lyx gate test ./internal/x -- ./nope")}},
+		{name: "gate test -C into the module", cards: []planparser.Card{withVerify(1, "lym gate test -C m ./pkg")}},
+		{name: "gate test reading stops at --", cards: []planparser.Card{withVerify(1, "lym gate test ./internal/x -- ./nope")}},
 		{name: "go run is not read", cards: []planparser.Card{withVerify(1, "go run ./nope")}},
 		{name: "unplaceable cd ends the scan", cards: []planparser.Card{withVerify(1, "cd $DIR && go test ./nope")}},
 		{name: "cd in a pipeline stage ends the scan", cards: []planparser.Card{withVerify(1, "true | cd internal && go test ./nope")}},
 		{name: "cd after double pipe ends the scan", cards: []planparser.Card{withVerify(1, "false || cd internal && go test ./nope")}},
 		{name: "unplaceable go -C ends the scan", cards: []planparser.Card{withVerify(1, "go -C .. test ./x && go test ./nope")}},
-		{name: "unplaceable gate test -C ends the scan", cards: []planparser.Card{withVerify(1, "lyx gate test -C .. ./x && go test ./nope")}},
+		{name: "unplaceable gate test -C ends the scan", cards: []planparser.Card{withVerify(1, "lym gate test -C .. ./x && go test ./nope")}},
 		{
 			name:  "a Move on an earlier card skips the Verify",
 			cards: []planparser.Card{creates(1, planparser.CardTypeMove, "", "internal/old/o.go#Old"), withVerify(2, "go test ./nope")},
@@ -2063,7 +2063,7 @@ func TestValidate_VerifyModuleWide(t *testing.T) {
 			for _, f := range planparser.ValidateFormat(plan, t.TempDir()) {
 				if f.Check == "verify-module-wide" {
 					got = append(got, f.Card)
-					if !strings.Contains(f.Detail, "`lyx gate test --wait --tier <n> --card <id>`") || !strings.Contains(f.Detail, "run in the foreground under the gate rule in your system prompt") || strings.Contains(f.Detail, "background") {
+					if !strings.Contains(f.Detail, "`lym gate test --wait --tier <n> --card <id>`") || !strings.Contains(f.Detail, "run in the foreground under the gate rule in your system prompt") || strings.Contains(f.Detail, "background") {
 						t.Errorf("verify-module-wide detail = %q; want the --card gate call run in the foreground under the gate rule and no background", f.Detail)
 					}
 				}

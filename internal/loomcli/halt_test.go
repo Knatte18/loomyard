@@ -1,7 +1,7 @@
 //go:build tier0
 
 // halt_test.go covers loom's halt friction: the halt note, loomAfterStep under step and loomPostRun under run.
-// Every test is untagged Tier 1: the reflection agent is a shedfake.Shuttle, which also stands in for its `lyx selfreport create` filing, so nothing spawns an agent or files an issue.
+// Every test is untagged Tier 1: the reflection agent is a shedfake.Shuttle, which also stands in for its `lym selfreport create` filing, so nothing spawns an agent or files an issue.
 
 package loomcli
 

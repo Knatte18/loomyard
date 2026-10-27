@@ -9,7 +9,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
@@ -17,7 +17,7 @@ import (
 
 // spawnCandidate is one worktree of the hub with what its place in spawn order is decided by.
 type spawnCandidate struct {
-	location *lyxcwd.Location
+	location *lymcwd.Location
 	// prime marks the hub's prime, which spawns before every pair.
 	prime bool
 	// started is the pair's run start time; meaningful only when dated.
@@ -52,7 +52,7 @@ func sortSpawnOrder(candidates []spawnCandidate) []spawnCandidate {
 
 // runStartTime reads the start time of l's run from the started_at stamp of the run's seed.
 // A pair whose seed is absent, unreadable, without the stamp or with one that does not parse has none.
-func runStartTime(l *lyxcwd.Location) (time.Time, bool) {
+func runStartTime(l *lymcwd.Location) (time.Time, bool) {
 	seed, found, err := shedrun.ReadSeed(l, shedrun.SelfRunID)
 	if err != nil || !found {
 		return time.Time{}, false
@@ -66,7 +66,7 @@ func runStartTime(l *lyxcwd.Location) (time.Time, bool) {
 
 // spawnOrder returns the function reed calls, only when a revival is due, to list the hub's worktrees in spawn order.
 // Prunable worktrees and worktrees that do not resolve are skipped, the latter with a warning.
-func spawnOrder(l *lyxcwd.Location) func() ([]reedengine.ReviveEntry, error) {
+func spawnOrder(l *lymcwd.Location) func() ([]reedengine.ReviveEntry, error) {
 	return func() ([]reedengine.ReviveEntry, error) {
 		worktrees, err := fabricengine.List(l.WorktreePath())
 		if err != nil {
@@ -77,7 +77,7 @@ func spawnOrder(l *lyxcwd.Location) func() ([]reedengine.ReviveEntry, error) {
 			if worktree.Prunable {
 				continue
 			}
-			location, err := lyxcwd.ResolveWorktree(worktree.Path)
+			location, err := lymcwd.ResolveWorktree(worktree.Path)
 			if err != nil {
 				logger.Warn("hubgeom: skipping a worktree that does not resolve in the spawn order", "worktree", worktree.Path, "err", err)
 				continue
@@ -99,7 +99,7 @@ func spawnOrder(l *lyxcwd.Location) func() ([]reedengine.ReviveEntry, error) {
 }
 
 // reviveWorktree builds the reed engine of l's worktree from its own reed.yaml and geometry and revives its recorded session.
-func reviveWorktree(l *lyxcwd.Location) (bool, error) {
+func reviveWorktree(l *lymcwd.Location) (bool, error) {
 	cfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(l), "reed")
 	if err != nil {
 		return false, err

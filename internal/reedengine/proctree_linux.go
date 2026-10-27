@@ -2,7 +2,7 @@
 // Each enumerates the numeric entries under /proc, reads the per-pid file it needs
 // (/proc/<pid>/stat or /proc/<pid>/cmdline), and delegates the actual decision to the pure helpers
 // in proctree.go (parseStat, descendantClosure, matchSocketCmdlines).
-// Linux is the platform lyx runs on, so this file is exercised for real rather than merely
+// Linux is the platform lym runs on, so this file is exercised for real rather than merely
 // compile-checked.
 
 package reedengine

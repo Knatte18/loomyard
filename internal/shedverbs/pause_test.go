@@ -111,7 +111,7 @@ func TestPauseCmd_AbsentFile(t *testing.T) {
 		message             string
 		ensureStatusLockDir bool
 	}{
-		{name: "LoomWording", message: "loom: no status file at /x; there is nothing running to pause -- run \"lyx loom start\" first to bootstrap this task"},
+		{name: "LoomWording", message: "loom: no status file at /x; there is nothing running to pause -- run \"lym loom start\" first to bootstrap this task"},
 		{name: "BattenWording", message: "battencli: no status file at /x; nothing is running for this slug"},
 		{name: "EnsureStatusLockDirCreatesTheParent", message: "loom: nothing running to pause", ensureStatusLockDir: true},
 	}
@@ -154,7 +154,7 @@ func TestPauseCmd_Conditions(t *testing.T) {
 		wantContradiction = "shedverbs: pause --clear cannot be combined with --before or --after; way forward: run pause --clear alone, then pause --before or --after"
 		wantUnknown       = "shedverbs: pause target Nope names no producer; way forward: re-run pause with --before or --after naming one of: One, Two"
 		wantBareRefusal   = "bare pause refused"
-		wantShedRefusal   = "pause --by does not take shed, the label of lyx's own automatic steps; way forward: re-run pause with your own label, such as --by operator"
+		wantShedRefusal   = "pause --by does not take shed, the label of lym's own automatic steps; way forward: re-run pause with your own label, such as --by operator"
 		pausedReason      = "pause requested by operator"
 	)
 	tests := []struct {

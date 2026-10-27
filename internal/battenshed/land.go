@@ -69,7 +69,7 @@ type LandDeps struct {
 	PruneBoard func() error
 	// LandLock is the hub-level lock one landing holds for its whole body, with the same non-blocking acquire shape as the prime lock.
 	LandLock PrimeLock
-	// PauseRequested reports a pending `lyx batten pause`; nil reads as never paused.
+	// PauseRequested reports a pending `lym batten pause`; nil reads as never paused.
 	PauseRequested func() (bool, error)
 	// Sleep is the pause between two polls; a test replaces it to keep the waits out of real time.
 	// A nil Sleep resolves to waitOrCancel.
@@ -147,7 +147,7 @@ const PauseHonouredPrefix = "pause honoured"
 // pausedReason is the reason of a Stuck that honours a pause request seen while waiting for what.
 // Shed's blocked persist leaves the pause flag set, so the way forward clears it with a goto before the run re-enters the row.
 func (p *landProducer) pausedReason(what string) string {
-	return fmt.Sprintf("%s: a pause was requested while waiting for %s; batten stays blocked at %s, so run \"lyx batten goto %s --to %s\" and then \"lyx batten run %s\"",
+	return fmt.Sprintf("%s: a pause was requested while waiting for %s; batten stays blocked at %s, so run \"lym batten goto %s --to %s\" and then \"lym batten run %s\"",
 		PauseHonouredPrefix, what, p.name, p.slug, p.name, p.slug)
 }
 
@@ -257,7 +257,7 @@ func (p *landProducer) pullAndDeploy(ctx context.Context, parent string) (reason
 	if err := os.MkdirAll(p.scratchDir, 0o755); err != nil {
 		return "deploy failed: " + err.Error(), recordsStop, nil
 	}
-	wayForward := fmt.Sprintf("log: %s; way forward: fix the cause, then run \"lyx batten run %s\" from the prime", logPath, p.slug)
+	wayForward := fmt.Sprintf("log: %s; way forward: fix the cause, then run \"lym batten run %s\" from the prime", logPath, p.slug)
 	result, err := p.deps.RunDeploy(ctx, settings.Deploy, logPath, deployTimeout)
 	switch {
 	case err != nil:
@@ -326,7 +326,7 @@ func (p *landProducer) waitCleanPrime(ctx context.Context) (stuckReason string, 
 			return "", false, nil
 		}
 		if !p.deps.Now().Before(deadline) {
-			return fmt.Sprintf("prime check failed: the prime still has uncommitted tracked paths after %s: %s; way forward: commit or discard them, then run \"lyx batten run %s\" from the prime", primeDirtyWaitBound, strings.Join(dirty, ", "), p.slug), false, nil
+			return fmt.Sprintf("prime check failed: the prime still has uncommitted tracked paths after %s: %s; way forward: commit or discard them, then run \"lym batten run %s\" from the prime", primeDirtyWaitBound, strings.Join(dirty, ", "), p.slug), false, nil
 		}
 		pauseRequested, pauseErr := p.deps.PauseRequested()
 		if cerr := cancelErr(ctx, p.name); cerr != nil {

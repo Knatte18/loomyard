@@ -3,7 +3,7 @@
 // the whole engine stack construction for whichever mode wins.
 // The mode decision lives HERE, inside the extracted function, rather than upstream in
 // resolvePersistentPreRun, precisely so a test can drive it with a told preflight.Mode and stay
-// tier 1 -- driving the real pre-run would reach lyxcwd.Resolve and its git spawn.
+// tier 1 -- driving the real pre-run would reach lymcwd.Resolve and its git spawn.
 
 package burlercli
 
@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/lenses"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -44,7 +44,7 @@ var wireModule = cliwire.Module{
 	HubTargetSubject: "the anchor path is already the target",
 }
 
-// wire computes hub-or-standalone mode from loc/mode -- the *lyxcwd.Location and preflight.Mode a
+// wire computes hub-or-standalone mode from loc/mode -- the *lymcwd.Location and preflight.Mode a
 // preflight.ResolveMode(cwd) call already told it -- and builds the whole engine stack onto c: the
 // module configs, the reed/claude engines, the shuttleengine.Runner, and the told burlerengine.Engine.
 //
@@ -59,7 +59,7 @@ var wireModule = cliwire.Module{
 // resolvePersistentPreRun, because a refusal is a resolution verdict rather than a wiring choice --
 // which is why mode carries only two reachable values here.
 //
-// cwd is the already-resolved cwd resolvePersistentPreRun read via lyxcwd.CwdFrom -- wire needs it
+// cwd is the already-resolved cwd resolvePersistentPreRun read via lymcwd.CwdFrom -- wire needs it
 // as standalone's --target-dir default and as the base every relative flag value is made absolute
 // against, never to resolve or re-resolve anything itself.
 // stencilsDirFlag and targetDirFlag are the two persistent flags' raw, as-parsed values (empty
@@ -77,7 +77,7 @@ var wireModule = cliwire.Module{
 // wire performs no cwd resolution and spawns no process -- every path it touches is either supplied
 // by the caller (loc, cwd) or a plain filesystem read (config loads, the standalone stencil seed) --
 // so a test can drive it directly and stay inside the Test Tier Purity Invariant.
-func (c *burlerCLI) wire(loc *lyxcwd.Location, mode preflight.Mode, cwd, stencilsDirFlag, targetDirFlag string) error {
+func (c *burlerCLI) wire(loc *lymcwd.Location, mode preflight.Mode, cwd, stencilsDirFlag, targetDirFlag string) error {
 	stencilsDir := cliwire.ResolveToldDir(cwd, stencilsDirFlag)
 
 	if mode == preflight.ModeHub {
@@ -92,7 +92,7 @@ func (c *burlerCLI) wire(loc *lyxcwd.Location, mode preflight.Mode, cwd, stencil
 //
 // stencilsDirOverride arrives already absolute (or empty), made so by wire -- this function never
 // sees a raw flag value and must never start honouring one.
-func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDirFlag string) error {
+func (c *burlerCLI) wireHub(loc *lymcwd.Location, stencilsDirOverride, targetDirFlag string) error {
 	if err := wireModule.RefuseTargetDirInHubMode(targetDirFlag); err != nil {
 		return err
 	}
@@ -154,7 +154,7 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDir
 		return err
 	})
 
-	// A `lyx burler` run is not a loom run and has no friction directory in either mode.
+	// A `lym burler` run is not a loom run and has no friction directory in either mode.
 	burlerGeom, err := hubgeom.BurlerGeometry(loc)
 	if err != nil {
 		return err
@@ -215,12 +215,10 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirOverride, targetDirFlag strin
 	runner := shuttleengine.NewDetachedRunner(reedEngine, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, reedGeom.PaneCwd, shuttleCfg)
 	runner.SetPause(standalonegeom.PauseGeometry(res.StateDir))
 
-	// Standalone's reed session lives on its own derived geometry, which no CLI verb can reach —
-	// `lyx reed up` is hub-only — so the run verb boots it in-process through this seam (see the
-	// field's own doc comment). Assigned here, executed only by run, so wiring itself never boots
-	// a tmux server.
+	// Standalone's reed session lives on its own derived geometry, which no CLI verb can reach — `lym reed up` is hub-only — so the run verb boots it in-process through this seam (see the field's own doc comment).
+	// Assigned here, executed only by run, so wiring itself never boots a tmux server.
 	//
-	// Standalone reed is never booted by `lyx reed up` — that verb is hub-only — it is booted
+	// Standalone reed is never booted by `lym reed up` — that verb is hub-only — it is booted
 	// in-process by a long-lived supervising run that exists for exactly the session's working
 	// lifetime, and that supervising process is precisely what hub mode lacks and why hub mode needs
 	// a detached daemon at all — so reusing it here is the smaller mechanism, not a special case.
@@ -230,7 +228,7 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirOverride, targetDirFlag strin
 		return err
 	}
 
-	// A `lyx burler` run is not a loom run and has no friction directory in either mode.
+	// A `lym burler` run is not a loom run and has no friction directory in either mode.
 	c.engine = burlerengine.New(seatengine.RunnerShuttle(runner), standalonegeom.BurlerGeometry(res.Target, res.StateDir, res.Hash8), lensesCfg, res.StencilsDir, "", c.languageSkills)
 	c.mode = "standalone"
 	c.stateDir = res.StateDir

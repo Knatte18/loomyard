@@ -17,7 +17,7 @@ const DefaultLockWait = 2 * time.Minute
 
 // Geometry is the told geometry of one hub: the paths the walk works on.
 type Geometry struct {
-	// BoardDir is the hub's board dir, where the hub-wide config lives at _lyx/config/ and the stamp and lock live at .lyx/config/.
+	// BoardDir is the hub's board dir, where the hub-wide config lives at _lym/config/ and the stamp and lock live at .lym/config/.
 	BoardDir string
 	// WorktreePath is the caller's code worktree root, from which the walk lists the hub's code worktrees.
 	WorktreePath string
@@ -52,7 +52,7 @@ func Ensure(geom Geometry, opts Options) error {
 }
 
 // reconcileWayForward is the way forward a failed reconcile's warning names.
-const reconcileWayForward = "fix the cause the error names, then run a start verb to retry the reconcile: `lyx loom resume` in the task worktree, or `lyx batten run` or `lyx beam start` from the prime"
+const reconcileWayForward = "fix the cause the error names, then run a start verb to retry the reconcile: `lym loom resume` in the task worktree, or `lym batten run` or `lym beam start` from the prime"
 
 // EnsureOrWarn is Ensure for a caller that reads a hub's config and goes on when the reconcile fails.
 // A failure logs one warning naming the error and the way forward and returns nothing, leaving the stamp stale so the next start verb retries the walk.
@@ -62,7 +62,7 @@ func EnsureOrWarn(geom Geometry, opts Options) {
 	}
 }
 
-// LockTimeoutError reports that another lyx command held the hub lock for the whole wait.
+// LockTimeoutError reports that another lym command held the hub lock for the whole wait.
 type LockTimeoutError struct {
 	// Path is the hub lock file.
 	Path string
@@ -72,7 +72,7 @@ type LockTimeoutError struct {
 
 // Error names the lock and ends with the way forward.
 func (e *LockTimeoutError) Error() string {
-	return fmt.Sprintf("hubreconcile: another lyx command holds the hub's reconcile lock %s (waited %s); re-run this command once it finishes", e.Path, e.Wait)
+	return fmt.Sprintf("hubreconcile: another lym command holds the hub's reconcile lock %s (waited %s); re-run this command once it finishes", e.Path, e.Wait)
 }
 
 // WorktreeError reports a reconcile or commit failure in one worktree.
@@ -98,9 +98,9 @@ func (e *WorktreeError) Error() string {
 	case e.Module == "":
 		return fmt.Sprintf("hubreconcile: reconcile config in %s: %s: %v; fix %s, then re-run this command", e.Worktree, e.File, e.Err, e.File)
 	case e.Board:
-		return fmt.Sprintf("hubreconcile: reconcile config in %s: %s: %v; fix %s (or run \"lyx config %s --layer default\" from the hub's prime worktree), then re-run this command", e.Worktree, e.File, e.Err, e.File, e.Module)
+		return fmt.Sprintf("hubreconcile: reconcile config in %s: %s: %v; fix %s (or run \"lym config %s --layer default\" from the hub's prime worktree), then re-run this command", e.Worktree, e.File, e.Err, e.File, e.Module)
 	}
-	return fmt.Sprintf("hubreconcile: reconcile config in %s: %s: %v; fix %s (or run \"lyx config %s\" on it), then re-run this command", e.Worktree, e.File, e.Err, e.File, e.Module)
+	return fmt.Sprintf("hubreconcile: reconcile config in %s: %s: %v; fix %s (or run \"lym config %s\" on it), then re-run this command", e.Worktree, e.File, e.Err, e.File, e.Module)
 }
 
 // Unwrap returns the underlying failure.

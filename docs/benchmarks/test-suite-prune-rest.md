@@ -35,7 +35,7 @@ Wall and serial are in seconds.
 
 | Package | Tests | Wall | Serial | Coverage |
 |---|---|---|---|---|
-| `cmd/lyx` | 87 | 20.03 | 19.93 | 74.7% (56/75) |
+| `cmd/lym` | 87 | 20.03 | 19.93 | 74.7% (56/75) |
 | `cmd/testtiming` | 7 | 0.01 | 0.00 | 47.6% (273/574) |
 | `contracts/specs` | 4 | 0.01 | 0.00 | 100.0% (9/9) |
 | `contracts/stencils` | 22 | 0.06 | 0.05 | 88.9% (8/9) |
@@ -79,7 +79,7 @@ Wall and serial are in seconds.
 | `internal/loomengine` | 95 | 0.18 | 0.06 | 88.1% (258/293) |
 | `internal/loomrecipe` | 48 | 0.34 | 0.31 | 88.9% (56/63) |
 | `internal/loomshed` | 72 | 0.18 | 0.14 | 89.6% (450/502) |
-| `internal/lyxcwd` | 34 | 1.93 | 2.28 | 88.8% (71/80) |
+| `internal/lymcwd` | 34 | 1.93 | 2.28 | 88.8% (71/80) |
 | `internal/mergeresolve` | 22 | 0.07 | 0.02 | 78.4% (109/139) |
 | `internal/modelspec` | 15 | 0.01 | 0.00 | 97.1% (135/139) |
 | `internal/orchcli` | 31 | 1.29 | 1.24 | 57.4% (217/378) |
@@ -142,7 +142,7 @@ The coverage delta is in percentage points of the package's own statements.
 
 | Package | Tests | Δ | Wall | Δ | Serial | Δ | Coverage | Δ |
 |---|---|---|---|---|---|---|---|---|
-| `cmd/lyx` | 64 | -23 | 14.58 | -5.45 | 14.53 | -5.40 | 74.7% (56/75) | +0.0 pp |
+| `cmd/lym` | 64 | -23 | 14.58 | -5.45 | 14.53 | -5.40 | 74.7% (56/75) | +0.0 pp |
 | `cmd/testtiming` | 7 | +0 | 0.01 | +0.00 | 0.00 | +0.00 | 47.6% (273/574) | +0.0 pp |
 | `contracts/specs` | 3 | -1 | 0.01 | +0.00 | 0.00 | +0.00 | 100.0% (9/9) | +0.0 pp |
 | `contracts/stencils` | 14 | -8 | 0.04 | -0.02 | 0.09 | +0.04 | 88.9% (8/9) | +0.0 pp |
@@ -186,7 +186,7 @@ The coverage delta is in percentage points of the package's own statements.
 | `internal/loomengine` | 39 | -56 | 0.16 | -0.02 | 0.14 | +0.08 | 88.1% (258/293) | +0.0 pp |
 | `internal/loomrecipe` | 44 | -4 | 0.41 | +0.07 | 0.40 | +0.09 | 88.9% (56/63) | +0.0 pp |
 | `internal/loomshed` | 66 | -6 | 0.18 | +0.00 | 0.13 | -0.01 | 89.6% (450/502) | +0.0 pp |
-| `internal/lyxcwd` | 23 | -11 | 2.03 | +0.10 | 2.01 | -0.27 | 88.8% (71/80) | +0.0 pp |
+| `internal/lymcwd` | 23 | -11 | 2.03 | +0.10 | 2.01 | -0.27 | 88.8% (71/80) | +0.0 pp |
 | `internal/mergeresolve` | 17 | -5 | 0.07 | +0.00 | 0.36 | +0.34 | 78.4% (109/139) | +0.0 pp |
 | `internal/modelspec` | 11 | -4 | 0.01 | +0.00 | 0.00 | +0.00 | 97.1% (135/139) | +0.0 pp |
 | `internal/orchcli` | 17 | -14 | 0.82 | -0.47 | 0.58 | -0.66 | 57.4% (217/378) | +0.0 pp |
@@ -261,7 +261,7 @@ Thirteen packages show a wall delta above zero, each by 0.10 s or less.
 Two have a scenario merge behind the rise, which runs steps serially that used to run in parallel:
 
 - `internal/gitkit`: `TestCopiedRepoScenario` replaces nine `CopyRepo` builds with two.
-- `internal/lyxcwd`: `TestResolve_AnchorScenario` replaces nine checkout copies with one.
+- `internal/lymcwd`: `TestResolve_AnchorScenario` replaces nine checkout copies with one.
 
 The other rises have no scenario merge in their package: `internal/buildinfo`, `internal/configsync`, `internal/loomrecipe`, `internal/orchengine`, `internal/parentreview`, `internal/selfreportcli`, `internal/selfreportengine`, `internal/standalonegeom`, `internal/treadleengine`, `internal/weftname` and `tools/internal/devbin`.
 Their tests were folded into tables or deleted, and the rises sit within the spread between the three timing runs, which started at load averages of 5.91 to 8.41.

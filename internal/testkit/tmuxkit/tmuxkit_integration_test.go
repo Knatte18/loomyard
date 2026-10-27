@@ -16,7 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxtemp"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
@@ -45,7 +45,7 @@ func TestSocket_KillsServerAtCleanup(t *testing.T) {
 	}{
 		{"minted by Socket", func(t *testing.T) string { return Socket(t, tmux) }},
 		{"chosen by the test", func(t *testing.T) string {
-			key := "lyxchosen-" + strconv.Itoa(os.Getpid())
+			key := "lymchosen-" + strconv.Itoa(os.Getpid())
 			KillOnCleanup(t, tmux, key)
 			return key
 		}},
@@ -105,7 +105,7 @@ func TestSweep_KillsServersAndPaneTreesUnderItsDirectoryOnly(t *testing.T) {
 		t.Skip("the pane child is found through /proc")
 	}
 
-	dir, err := lyxtemp.MkdirTemp(dirPrefix)
+	dir, err := lymtemp.MkdirTemp(dirPrefix)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +250,7 @@ func TestAfterRun_LeftoverProcesses(t *testing.T) {
 		t.Skip("the leftover scan reads /proc")
 	}
 
-	dir, err := lyxtemp.MkdirTemp(dirPrefix)
+	dir, err := lymtemp.MkdirTemp(dirPrefix)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,9 +300,9 @@ func TestAfterRun_LeftoverProcesses(t *testing.T) {
 		argv []string
 		want bool
 	}{
-		{[]string{"lyx", "reed", "watchdog", "--hub", "/x"}, true},
+		{[]string{"lym", "reed", "watchdog", "--hub", "/x"}, true},
 		{[]string{"sh", "-c", "sleep 60", "x", "reed", "watchdog"}, true},
-		{[]string{"lyx", "reed", "up"}, false},
+		{[]string{"lym", "reed", "up"}, false},
 		{[]string{"watchdog", "reed"}, false},
 		{[]string{"reed"}, false},
 		{nil, false},

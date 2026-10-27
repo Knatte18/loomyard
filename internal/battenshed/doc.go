@@ -5,7 +5,7 @@
 // It also declares batten's config module, batten.yaml (config.go).
 //
 // Told-geometry tier: this package takes every absolute path it operates on from its caller and
-// has no direct production import of internal/lyxcwd, per PATTERN-cwd-resolution.
+// has no direct production import of internal/lymcwd, per PATTERN-cwd-resolution.
 // Its seam_enforcement_test.go enforces that membership mechanically.
 //
 // This package describes one repository throughout. It is not in the Fabric Vocabulary
@@ -58,17 +58,17 @@
 // Bound: the report wait delays a notice by at most three minutes, the relay wait by at most ten minutes after the report, and an arbiter hold by at most the arbiter's deadline plus the report wait; none loses it, and there is one notice per episode.
 // A driver that is alive but parked -- a provider waiting on an interactive prompt its launcher never answered -- or that stops of its own accord with the run still non-terminal is told apart from a working one only by the quiet window, or by an API-error notice when the stall is one; an operator attaches to the child's session to tell the cases apart.
 //
-// A batten run is one pass after another: "lyx batten run <slug>" runs one pass and exits, started by the run's parent worktree's dobby or by hand in a terminal, and a hand pass makes sure that dobby is live once it is over.
-// `lyx adopt` and `lyx beam land` start a run's first pass detached, and a second batten for the slug is refused by the run's own driver lock inside the pass, in batten's own log.
-// "lyx batten run" steps the lifecycle through the Go driver, so an unexpected stop meets the driver's rule table and a cold tackler before the orch, and the driver lock refuses a second run for the slug.
+// A batten run is one pass after another: "lym batten run <slug>" runs one pass and exits, started by the run's parent worktree's dobby or by hand in a terminal, and a hand pass makes sure that dobby is live once it is over.
+// `lym adopt` and `lym beam land` start a run's first pass detached, and a second batten for the slug is refused by the run's own driver lock inside the pass, in batten's own log.
+// "lym batten run" steps the lifecycle through the Go driver, so an unexpected stop meets the driver's rule table and a cold tackler before the orch, and the driver lock refuses a second run for the slug.
 //
 // A beam project's run starts at the Worktree-Create row too: the row claims the entry, skips a complete pair, and otherwise makes the pair from the beam above the project, unmarked and at the anchor the run's seed records, since the pawl run's own Beam-Up marks it.
 // A member's Worktree-Create reads its beam's hold again once its pair is made, and when it finds the pair already complete: a beam whose run holds its entry removes the member's pair and refuses naming the member's cancel and the board move off the beam, or its run once the beam is back at Beam-Await.
 // The refused member keeps its claim, so it stays an open member that stops the beam's landing.
 //
-// A resume, "lyx batten run" over an existing status file, first runs the origin reconcile of the slug's run scope.
-// An entry origin ended refuses, naming the landing or the removal and "lyx cleanup --apply" from the prime; a stopped entry refuses, naming the branch, its state and the way forward for it, then the re-run;
-// an entry another machine owns refuses, naming the owner and "lyx adopt <subject>", the beam or `root` that takes it over; an active entry resumes, and so does an unreachable origin, with a Warn.
+// A resume, "lym batten run" over an existing status file, first runs the origin reconcile of the slug's run scope.
+// An entry origin ended refuses, naming the landing or the removal and "lym cleanup --apply" from the prime; a stopped entry refuses, naming the branch, its state and the way forward for it, then the re-run;
+// an entry another machine owns refuses, naming the owner and "lym adopt <subject>", the beam or `root` that takes it over; an active entry resumes, and so does an unreachable origin, with a Warn.
 // With origin answering, the resume first records this machine as the hub's prime owner when none is recorded, and as the owner of a run-held entry that has none; a failed write refuses, naming the re-run once origin answers or the push's own way forward.
 // With origin unreachable the resume reads the local board instead, refuses a task it shows owned elsewhere, and writes no owner.
 // A reconcile error refuses, with fixing its cause and then the re-run as the way forward.
@@ -79,8 +79,8 @@
 // Each runs its command only when its entry gate's batten.yaml setting is on, open_window, seed_ide and open_ide in turn, of which only open_ide is off by default, and is Done either way, a failed command only warning; a row whose setting is off is skipped.
 // The settings are read from the pair's own config stack when the row is entered, after Seed-Child has written the task's run settings into the pair's local layer, so a task's run_settings sets them per task.
 // The commands are the open_window_command, seed_ide_command and open_ide_command keys, read from the template and the board default layer only, so a task's run settings and a worktree's own batten.yaml cannot change them;
-// `lyx config batten --layer default --set <key>=<value>` from the prime changes one, and a different value in another layer is ignored with a warning.
-// A command may hold the placeholders {lyx}, {slug} and {task_dir}.
+// `lym config batten --layer default --set <key>=<value>` from the prime changes one, and a different value in another layer is ignored with a warning.
+// A command may hold the placeholders {lym}, {slug} and {task_dir}.
 // A run resumed past Open-Window runs that command again when batten.open_window is on and no client is attached to the pair's reed session, so a window closed or left on another machine opens afresh; a resume with a client attached opens none.
 //
 // The InnerRun row checks its child once per Call and never waits inside one: a Call is one pass, which the scheduling dobby runs again and again.
@@ -96,7 +96,7 @@
 // The memory record (innerrun_memory.go) is a tolerant JSON record under the row's scratch directory, written through internal/state, and carries what one pass knows for the next:
 // the notice episode and each delivery's attempts, the owner trigger, the failure episodes, the binary re-step's interval, the parent lock's idle readings, the resume retry, the last probe and the wait reason with the keys it was logged under.
 // A Call loads it first and saves it on every return; a missing or undecodable record reads as empty, the latter with one Warn, and a failed write warns and changes no verdict.
-// Bound: a running child is checked without a time limit, bounded by "lyx batten pause" (honoured at the next pass), cancellation and the notices;
+// Bound: a running child is checked without a time limit, bounded by "lym batten pause" (honoured at the next pass), cancellation and the notices;
 // a file that ends a wait between passes, such as a stop report or a strand's end, is seen at the next pass, up to one notice_probe_s later, and none is lost;
 // a running child whose driver is dead and whose status file does not change yields on every pass, the driver-dead notice being the only signal.
 //
@@ -104,7 +104,7 @@
 // it reads the task's profile and settings fresh on every Call and lays the settings key by key over one block from the hub's `profiles.yaml` (see `internal/runprofile`): the block, for the recipe the row resolved, of the task's run profile, or of the recipe's default profile when the task names none.
 // It then writes the local file of each module they name, then removes the local file of every other registered module with one Warn per removed file, so the layer is exactly the task's run settings over its profile's block.
 // The profile is read only here, so a later change of the profile does not reach a run already seeded.
-// An unknown profile, a profile holding no block for the recipe, or a key that no longer validates (a key a later binary retired or closed to the local layer, or one written to `board.json` or `profiles.yaml` by hand), stands the row Stuck, naming the profile or the module and the key, and the way forward, correcting the task's `profile` or `run_settings` with `lyx board upsert` or the profile with `lyx config profiles`, and then `lyx batten run <slug>`; an unreadable board is Stuck as for the type, and any other prepare, write or remove failure is a hard error.
+// An unknown profile, a profile holding no block for the recipe, or a key that no longer validates (a key a later binary retired or closed to the local layer, or one written to `board.json` or `profiles.yaml` by hand), stands the row Stuck, naming the profile or the module and the key, and the way forward, correcting the task's `profile` or `run_settings` with `lym board upsert` or the profile with `lym config profiles`, and then `lym batten run <slug>`; an unreadable board is Stuck as for the type, and any other prepare, write or remove failure is a hard error.
 // A resume redoes the whole write from the current board entry, and no other row writes these files.
 // Bound: a local file written while the row stood Stuck is discarded by the resume, so a hand edit to the pair's local layer before the resume is lost.
 // Batten writes no seed field for run settings.
@@ -127,22 +127,22 @@
 // The driver lock is a liveness signal of its own: a Go driver holds it for life while the run lock is free between steps, so a running go child whose driver lock is held has a driver at work and sends no driver-dead notice, and one with neither lock and no strand is noticed as driver-dead.
 //
 // A child that halts (blocked, paused or failed) is a budget-exempt wait, not a failure of the Run-Shed row:
-// batten never spawns or resumes a halted child, bar the binary re-step below, logs one Info line per halt episode, and keeps yielding with the child's state, error, current producer and the resume command ("lyx loom resume" in the task worktree) as its reason.
+// batten never spawns or resumes a halted child, bar the binary re-step below, logs one Info line per halt episode, and keeps yielding with the child's state, error, current producer and the resume command ("lym loom resume" in the task worktree) as its reason.
 // A stuck verdict takes its log level from its cause: a failed producer step logs `producer stuck` at Warn, and an ordinary wait or move logs it at Info.
 // A wait on the child logs at Info once per state of the child, so a reason that only counts up, such as the driver-exit grace, logs once while the reason file always holds the newest text.
 // A halted or awaiting child whose reed state holds a dead driver strand has its pair's strands revived through reed resume, once per halt episode, which the revived marker's presence records;
 // the run stays halted and nothing is resumed,
-// so the operator's "lyx loom resume" wakes the revived driver.
+// so the operator's "lym loom resume" wakes the revived driver.
 // A retiring strand is not revived and a child with no driver strand has none to revive;
-// a revive that fails, and a child with no driver strand, make the reason also name "lyx loom start" in the task worktree.
-// The wait has no time limit and spends no bounce budget; "lyx batten pause" stops it at the next pass, and the row reads the child as running again once the operator resumes it.
+// a revive that fails, and a child with no driver strand, make the reason also name "lym loom start" in the task worktree.
+// The wait has no time limit and spends no bounce budget; "lym batten pause" stops it at the next pass, and the row reads the child as running again once the operator resumes it.
 //
 // A run halted at Parent-Align or Finalize gets one state-changed notice like every other halt, and no goto: the recipe's own rows fix or hand back those failures.
 //
-// A halted go child is also re-stepped once per halt and per lyx build (innerrun_binaryrestep.go), so a fix deployed after a Go driver handed back lands without a parent turn.
+// A halted go child is also re-stepped once per halt and per lym build (innerrun_binaryrestep.go), so a fix deployed after a Go driver handed back lands without a parent turn.
 // The child is re-stepped, through the same Spawn seam as every bootstrap, only when it is blocked or failed, its reed state holds no driver strand, neither its run lock nor its driver lock is held;
-// the lyx on disk must differ from the build the child's last step recorded, and the task pair must have no uncommitted or untracked path outside the run's records.
-// A blocked halt that `InnerRunDeps.HandBack` marks as a landing halt is skipped and writes no marker, so only the orch's `lyx loom resume` lifts it; every other halt keeps the re-step, so a fix deployed in a new build can still clear it.
+// the lym on disk must differ from the build the child's last step recorded, and the task pair must have no uncommitted or untracked path outside the run's records.
+// A blocked halt that `InnerRunDeps.HandBack` marks as a landing halt is skipped and writes no marker, so only the orch's `lym loom resume` lifts it; every other halt keeps the re-step, so a fix deployed in a new build can still clear it.
 // The `<row>-binary-restep` marker holds the halt's stop key and the build label, and is written only after the spawn returns success, so the re-step happens once per halt and build and survives a batten restart.
 // A spawn refused as not parked or as a busy pane, and a dirty tree, write no marker and are tried again at the next due check; the spawns are capped at five per halt and build.
 // Reading the build and the dirty paths costs a process, so the check runs once per interval, kept in the memory record:
@@ -160,7 +160,7 @@
 // A machine wake does not make it due here: it reaches the verdict through the full pass the scheduling dobby owes.
 // It runs after the pass's status read and before any end that read gave, so a due check and a state change seen together still run it; a failed stat or a vanished status file runs none and leaves it due for the next Call.
 // An unreachable verdict and a check error keep it due and hold nothing.
-// A verdict of another machine records that owner, releases the parent lock record naming the child's run, pauses the slug under the owner caller through deps.PauseOwned, and sends one notice per episode naming the owner and "lyx adopt <subject>", the `OwnerVerdict.AdoptSubject`, the slug when a spawn refusal brought none.
+// A verdict of another machine records that owner, releases the parent lock record naming the child's run, pauses the slug under the owner caller through deps.PauseOwned, and sends one notice per episode naming the owner and "lym adopt <subject>", the `OwnerVerdict.AdoptSubject`, the slug when a spawn refusal brought none.
 // A failed pause warns once per episode and is retried at the next probe while the owner stands.
 // A Finalize already past its parent-side merge keeps its record and finishes its landing: a Finalize running, or failed on a transient cause with no re-step recorded for that stop, while deps.ParentHoldsTaskWork reads true.
 // A failed read of either seam keeps the record until the next check, and any other state at Finalize, blocked included, releases it.
@@ -171,7 +171,7 @@
 // Every spawn on an existing run reads a ChildOwnedElsewhereError as that verdict: the respawn of an unconfirmed running child returns a budget-exempt Stuck naming the owner, and the awaiting resume, and the binary re-step pause, write no marker and keep waiting.
 // While an owner stands every spawn waits, and the spawn hold re-runs the owner check once per probe until it reads the run as owned here, so a failed owner pause never makes the wait spawn and re-reconcile in a loop.
 // Bound: the child can act until the full pass the dobby owes after a wake runs the check, and for as long as origin stays unreachable.
-// A Finalize past its parent-side merge finishes its landing here, and once it is done its batten waits under the owner pause until "lyx tender resume <slug>" lifts it, then goes on to Land.
+// A Finalize past its parent-side merge finishes its landing here, and once it is done its batten waits under the owner pause until "lym tender resume <slug>" lifts it, then goes on to Land.
 //
 // Its counterpart is equally by design: a driver that finishes NORMALLY leaves its strand and its
 // run directory behind. Nothing here tears either down as part of a clean finish -- only the
@@ -199,14 +199,14 @@
 // The two locks differ in what they hold: the land lock serialises whole landings, the prime lock only the pull.
 // A failed step is Stuck naming it, and posts no notice of its own.
 // A pause seen during the land-lock or dirty-prime wait halts the row blocked with no notice, rather than paused, since the row has no on_stuck route to yield through;
-// shed's blocked persist leaves the pause flag set, so the way back is `lyx batten goto <slug> --to Land`, which clears it, then `lyx batten run <slug>`.
+// shed's blocked persist leaves the pause flag set, so the way back is `lym batten goto <slug> --to Land`, which clears it, then `lym batten run <slug>`.
 //
 // The failure notice of a row after Run-Shed waits for the driver's hand-back, so the orch is told only what the rule table, the tackler and the arbiter did not settle (rownotice.go):
 // RowStopNotice sends one line naming the row, the reason cut to one line, the stop report and the way forward, for a Land or Worktree-Teardown stop the driver gave back.
 // The Land row also sends its records-stop line through its row notifier, on success.
 // A hand-back notice goes once per stop, a stop being told apart by the length of batten's own status history;
 // the row's `<row>-row-notice` marker keeps the length of the last hand-back noticed, so a restarted driver never repeats a posted notice.
-// A notice is tried at most three times, thirty seconds apart, and dropped with a Warn after that, leaving the failed row halted and visible in `lyx batten status`.
+// A notice is tried at most three times, thirty seconds apart, and dropped with a Warn after that, leaving the failed row halted and visible in `lym batten status`.
 // Every marker that must last one batten run is named by a suffix in runMarkerSuffixes, and batten clears them all through ClearRunMarkers where it seeds a fresh status.
 //
 // It declares its own unexported entryErr/cancelErr helpers (ctx.go) and its own reportStuck

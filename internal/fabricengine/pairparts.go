@@ -4,7 +4,7 @@ package fabricengine
 
 import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // PairParts reports which parts of a pair are present, read locally with no network call.
@@ -27,7 +27,7 @@ func (p PairParts) Any() bool {
 }
 
 // PairParts reads which parts of slug's pair are present locally, by the same reading Remove makes of what is left.
-func (t *Topology) PairParts(l *lyxcwd.Location, slug string) (PairParts, error) {
+func (t *Topology) PairParts(l *lymcwd.Location, slug string) (PairParts, error) {
 	state, err := t.inspectPair(l, slug)
 	if err != nil {
 		return PairParts{}, err
@@ -43,7 +43,7 @@ func (t *Topology) PairParts(l *lyxcwd.Location, slug string) (PairParts, error)
 
 // TaskBranchOnOrigin reports whether slug's task branch exists on the task repository's origin.
 // A repository with no origin remote reads false, and a failed lookup on a configured origin is returned.
-func (t *Topology) TaskBranchOnOrigin(l *lyxcwd.Location, slug string) (bool, error) {
+func (t *Topology) TaskBranchOnOrigin(l *lymcwd.Location, slug string) (bool, error) {
 	if _, err := gitrepo.New(l.WorktreePath()).RemoteURL(originRemoteName); err != nil {
 		return false, nil
 	}

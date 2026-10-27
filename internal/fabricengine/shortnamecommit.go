@@ -12,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 )
 
-// CommitShortname writes shortname to the hub's .lyx-shortname record and commits that file alone onto weft:main, under the board write lock.
+// CommitShortname writes shortname to the hub's .lym-shortname record and commits that file alone onto weft:main, under the board write lock.
 // It never pushes; the caller pushes through Bolt.Push.
 // rec accumulates the file write and, when a commit was made, the commit.
 func CommitShortname(hub, shortname, message string, rec *Mutations) (sha string, committed bool, err error) {

@@ -1,6 +1,6 @@
-<!-- This is the fixer's instruction: fix every finding, the write-surface/git discipline for the fix, the fixer-report, and the never-push/never-touch-`_lyx` rule.
+<!-- This is the fixer's instruction: fix every finding, the write-surface/git discipline for the fix, the fixer-report, and the never-push/never-touch-`_lym` rule.
      It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go),
-     seeded to <hub>/_board/_lyx/stencils/burler/ and read from there at call time by composeFixPrompt
+     seeded to <hub>/_board/_lym/stencils/burler/ and read from there at call time by composeFixPrompt
      (prompt.go) via internal/stencil, then read by the fixer only when the fixer stencil
      (burler-template-fixer.md) directs it here.
      The friction_directive marker is optional and renders as nothing when the round has no note.
@@ -54,9 +54,9 @@ Include what you changed, a `Disputed` section (empty if you disputed nothing) a
 The review at `{{.review_path}}` is the reviewer's file: you never write it.
 The round is not done until `{{.fixer_report_path}}` exists on disk — a skipped fixer-report leaves the round looking unfinished.
 
-## Never push, never touch `_lyx`
+## Never push, never touch `_lym`
 
 You must never push,
-and you must never run any git command against a `_lyx` path — those are owned by the loop that spawned you, not by this round.
+and you must never run any git command against a `_lym` path — those are owned by the loop that spawned you, not by this round.
 If your fix-scope rules above name commit-per-fix on the repo, stay inside the working tree;
-nothing here ever authorizes an `_lyx` commit.
+nothing here ever authorizes an `_lym` commit.

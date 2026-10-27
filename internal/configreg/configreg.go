@@ -60,7 +60,7 @@ type Module struct {
 	SeedOnly bool
 	// HubWide marks a module that describes a hub-level fact.
 	// Its one file lives at configengine.ConfigFile(<BoardDir>, name)
-	// and is never read or written in a worktree's _lyx/config/.
+	// and is never read or written in a worktree's _lym/config/.
 	HubWide bool
 	// SeedsFromPrime marks a hub-wide module whose per-worktree copy was in effect before it moved hub-wide.
 	// A hub's first reconcile seeds an absent hub file from the prime's copy, like a module with open maps; the seed is sparse.

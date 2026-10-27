@@ -22,9 +22,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/lyxtemp"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
@@ -96,9 +96,9 @@ func TestNewHub(t *testing.T) {
 					}
 
 					primeCwd := filepath.Join(h.PrimeWorktree(), h.Anchor)
-					l, err := lyxcwd.Resolve(primeCwd)
+					l, err := lymcwd.Resolve(primeCwd)
 					if err != nil {
-						t.Fatalf("lyxcwd.Resolve(%s): %v", primeCwd, err)
+						t.Fatalf("lymcwd.Resolve(%s): %v", primeCwd, err)
 					}
 					if l.AnchorRel != anchor {
 						t.Errorf("resolved AnchorRel = %q; want %q", l.AnchorRel, anchor)
@@ -170,7 +170,7 @@ func TestNewHub(t *testing.T) {
 					}
 				}},
 				{"SeedConfigVisibleFromWarpSide", func(t *testing.T) {
-					// An override seeded with SeedConfig reads back through the warp-side _lyx junction.
+					// An override seeded with SeedConfig reads back through the warp-side _lym junction.
 					const module = "loom"
 					const override = "hubforge-seeded-override: true\n"
 					SeedConfig(t, h, map[string]string{module: override})
@@ -260,7 +260,7 @@ func TestNewHub(t *testing.T) {
 	}
 }
 
-// assertRealHub runs the real-hub assertions against h: every path is sourced through fabricengine's own name accessors — BoardDir, WiredNames — and lyxdirs/lyxcwd's own exported names, never a hardcoded string, because a hardcoded string is precisely the invented shape this whole task removes.
+// assertRealHub runs the real-hub assertions against h: every path is sourced through fabricengine's own name accessors — BoardDir, WiredNames — and lymdirs/lymcwd's own exported names, never a hardcoded string, because a hardcoded string is precisely the invented shape this whole task removes.
 func assertRealHub(t *testing.T, h *Hub) {
 	t.Helper()
 
@@ -272,9 +272,9 @@ func assertRealHub(t *testing.T, h *Hub) {
 		t.Errorf("_board at %s: want a real directory, got mode %v", h.BoardDir(), boardInfo.Mode())
 	}
 
-	anchorMarker := filepath.Join(h.PrimeRecords(), lyxcwd.AnchorFileName)
+	anchorMarker := filepath.Join(h.PrimeRecords(), lymcwd.AnchorFileName)
 	if _, err := os.Stat(anchorMarker); err != nil {
-		t.Errorf("%s marker missing at %s: %v", lyxcwd.AnchorFileName, anchorMarker, err)
+		t.Errorf("%s marker missing at %s: %v", lymcwd.AnchorFileName, anchorMarker, err)
 	}
 
 	// The hub's scratch directory lives under _board, not at hub level, and its path is sourced from
@@ -282,13 +282,13 @@ func assertRealHub(t *testing.T, h *Hub) {
 	// assertion cannot drift from the geometry it is checking.
 	hubScratch := fabricengine.HubScratchDir(h.Path)
 	if _, err := os.Stat(hubScratch); err != nil {
-		t.Errorf("hub scratch %s missing at %s: %v", lyxdirs.DotLyxDirName, hubScratch, err)
+		t.Errorf("hub scratch %s missing at %s: %v", lymdirs.DotLymDirName, hubScratch, err)
 	}
 	isLink, err := fslink.IsLink(hubScratch)
 	if err != nil {
 		t.Errorf("fslink.IsLink(%s): %v", hubScratch, err)
 	} else if isLink {
-		t.Errorf("hub scratch %s at %s: want a real directory, got a link", lyxdirs.DotLyxDirName, hubScratch)
+		t.Errorf("hub scratch %s at %s: want a real directory, got a link", lymdirs.DotLymDirName, hubScratch)
 	}
 
 	names, err := fabricengine.WiredNames(configengine.Dirs{Board: h.BoardDir()})
@@ -371,7 +371,7 @@ func TestNewHub_Concurrent(t *testing.T) {
 func TestNewHub_TeardownRemovesJunctionsKeepsTargets(t *testing.T) {
 	t.Parallel()
 
-	container, err := lyxtemp.MkdirTemp("hubforge-teardown-keeps-targets-*")
+	container, err := lymtemp.MkdirTemp("hubforge-teardown-keeps-targets-*")
 	if err != nil {
 		t.Fatalf("MkdirTemp: %v", err)
 	}
@@ -399,9 +399,9 @@ func TestNewHub_TeardownRemovesJunctionsKeepsTargets(t *testing.T) {
 		}
 		registerTeardown(t, res.HubPath)
 
-		loc, err := lyxcwd.Resolve(res.PrimeCwd)
+		loc, err := lymcwd.Resolve(res.PrimeCwd)
 		if err != nil {
-			t.Fatalf("lyxcwd.Resolve(%s): %v", res.PrimeCwd, err)
+			t.Fatalf("lymcwd.Resolve(%s): %v", res.PrimeCwd, err)
 		}
 		h := &Hub{
 			Path:        res.HubPath,

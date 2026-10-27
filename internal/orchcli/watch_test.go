@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
@@ -51,7 +51,7 @@ func TestRunnerSession_StrandAlive(t *testing.T) {
 func TestWatcherIndexSource(t *testing.T) {
 	t.Parallel()
 
-	recorded := filepath.Join(t.TempDir(), "lyx")
+	recorded := filepath.Join(t.TempDir(), "lym")
 	if err := os.WriteFile(recorded, []byte("binary"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -62,11 +62,11 @@ func TestWatcherIndexSource(t *testing.T) {
 		wantRunBin string
 		wantErr    string
 	}{
-		{"runs the recorded binary", []reedengine.StrandStatus{{GUID: "g1", Name: "ly:orch", LyxBin: recorded}}, recorded, ""},
-		{"ignores a task strand's binary", []reedengine.StrandStatus{{GUID: "g0", Name: "ly:task:driver", LyxBin: "/elsewhere/lyx"}, {GUID: "g1", Name: "ly:orch", LyxBin: recorded}}, recorded, ""},
-		{"refuses without an orch strand", []reedengine.StrandStatus{{GUID: "g0", Name: "ly:task:driver", LyxBin: recorded}}, "", "lyx orch stop"},
-		{"refuses a strand recorded before the field existed", []reedengine.StrandStatus{{GUID: "g1", Name: "ly:orch"}}, "", "lyx orch stop"},
-		{"refuses a recorded path that is gone", []reedengine.StrandStatus{{GUID: "g1", Name: "ly:orch", LyxBin: filepath.Join(t.TempDir(), "gone")}}, "", "lyx orch stop"},
+		{"runs the recorded binary", []reedengine.StrandStatus{{GUID: "g1", Name: "ly:orch", LymBin: recorded}}, recorded, ""},
+		{"ignores a task strand's binary", []reedengine.StrandStatus{{GUID: "g0", Name: "ly:task:driver", LymBin: "/elsewhere/lym"}, {GUID: "g1", Name: "ly:orch", LymBin: recorded}}, recorded, ""},
+		{"refuses without an orch strand", []reedengine.StrandStatus{{GUID: "g0", Name: "ly:task:driver", LymBin: recorded}}, "", "lym orch stop"},
+		{"refuses a strand recorded before the field existed", []reedengine.StrandStatus{{GUID: "g1", Name: "ly:orch"}}, "", "lym orch stop"},
+		{"refuses a recorded path that is gone", []reedengine.StrandStatus{{GUID: "g1", Name: "ly:orch", LymBin: filepath.Join(t.TempDir(), "gone")}}, "", "lym orch stop"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -80,8 +80,8 @@ func TestWatcherIndexSource(t *testing.T) {
 			}
 			got, err := c.watcherIndexSource()()
 			if tc.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tc.wantErr) || !strings.Contains(err.Error(), "lyx beam start") {
-					t.Fatalf("source() = %q, %v; want an error naming %q and `lyx beam start`", got, err, tc.wantErr)
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) || !strings.Contains(err.Error(), "lym beam start") {
+					t.Fatalf("source() = %q, %v; want an error naming %q and `lym beam start`", got, err, tc.wantErr)
 				}
 			} else if err != nil || got != fakeRunnerIndex {
 				t.Fatalf("source() = %q, %v; want the runner's output", got, err)
@@ -114,7 +114,7 @@ func TestWatch(t *testing.T) {
 
 			c := newTestCLI(t, &fakeStrands{})
 			// The watch verb tells the watcher the prime's pause record, which needs a prime worktree to tell.
-			c.location = &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime", AnchorRel: "."}
+			c.location = &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime", AnchorRel: "."}
 			if err := os.MkdirAll(filepath.Join(c.location.WorktreePath(), ".git"), 0o755); err != nil {
 				t.Fatal(err)
 			}

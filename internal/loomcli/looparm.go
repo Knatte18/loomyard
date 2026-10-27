@@ -14,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -33,7 +33,7 @@ import (
 // The step children run the same binary from the same cwd as the loop, so they share its trace directory and the loop lists a child's trace files there.
 // idle is the watchdog window, zero disarming it, and activity is the reading of the run's agent activity.
 // The watchdog reads the pause record of loc's hub for loc's slug, and reads the run uncovered when the geometry or the record cannot be read.
-func loopSpecFor(loc *lyxcwd.Location, runID string, idle time.Duration, activity func() (time.Time, bool, error)) shedverbs.LoopSpec {
+func loopSpecFor(loc *lymcwd.Location, runID string, idle time.Duration, activity func() (time.Time, bool, error)) shedverbs.LoopSpec {
 	executable, err := os.Executable()
 	if err != nil {
 		logger.Warn("loom: could not resolve the running binary, so the loop has no executable", "error", err.Error())
@@ -65,7 +65,7 @@ func loopSpecFor(loc *lyxcwd.Location, runID string, idle time.Duration, activit
 
 // registerRunProcess registers the calling process in the hub's owner record under owner with the given role.
 // A failure is logged at Warn and never fails the role, since the record only lets a teardown find the process.
-func registerRunProcess(loc *lyxcwd.Location, owner, role string) {
+func registerRunProcess(loc *lymcwd.Location, owner, role string) {
 	if err := runproc.Register(fabricengine.RunProcDir(loc.HubPath), owner, runproc.SelfRecord(role)); err != nil {
 		logger.Warn("loom: could not register the run process", "owner", owner, "role", role, "error", err.Error())
 	}
@@ -127,7 +127,7 @@ func (c *loomCLI) stopStepRuns(tie shuttleengine.StepTie) (shuttleengine.StepSto
 // A verify held by a pause does no work and reads as none, and a drift lock a dead process left reads free.
 // All of them are read from their marker, lock or record files.
 // The boolean is false when nothing is live.
-func agentActivityFor(loc *lyxcwd.Location, cfg shuttleengine.Config) func() (time.Time, bool, error) {
+func agentActivityFor(loc *lymcwd.Location, cfg shuttleengine.Config) func() (time.Time, bool, error) {
 	return func() (time.Time, bool, error) {
 		anchor := loc.AnchorPath()
 		verifyMarker, verifyLive, err := verifytree.ReadMarker(verifytree.NewPaths(loc.WorktreePath(), verifytree.Dir(anchor)).Marker)

@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 func spawnCandidateNamed(name string, prime bool, started time.Time, dated bool) spawnCandidate {
-	return spawnCandidate{location: &lyxcwd.Location{WorktreeName: name}, prime: prime, started: started, dated: dated}
+	return spawnCandidate{location: &lymcwd.Location{WorktreeName: name}, prime: prime, started: started, dated: dated}
 }
 
 // TestSortSpawnOrder pins the ordering rule: the prime first whatever its time, dated pairs ascending, undated pairs after them by name, ties by name.
@@ -84,7 +84,7 @@ func TestRunStartTime(t *testing.T) {
 	t.Parallel()
 
 	hub := t.TempDir()
-	location := &lyxcwd.Location{HubPath: hub, WorktreeName: "pair", AnchorRel: "."}
+	location := &lymcwd.Location{HubPath: hub, WorktreeName: "pair", AnchorRel: "."}
 
 	if _, ok := runStartTime(location); ok {
 		t.Error("runStartTime() with no seed file = ok, want none")
@@ -132,7 +132,7 @@ func TestRunStartTime(t *testing.T) {
 	}
 
 	// A seed written without a stamp is dated by WriteSeed.
-	unstamped := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+	unstamped := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 	if err := shedrun.WriteSeed(unstamped, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo}); err != nil {
 		t.Fatalf("WriteSeed unstamped: %v", err)
 	}

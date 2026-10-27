@@ -100,7 +100,7 @@ func TestResolveEffectiveWarpURL(t *testing.T) {
 			wantWrite:    false,
 			wantErr:      true,
 			wantErrIs:    ErrNoWarpBinding,
-			wantErrParts: []string{"lyx fabric clone <weft-url> <warp-url>"},
+			wantErrParts: []string{"lym fabric clone <weft-url> <warp-url>"},
 		},
 		{
 			name:     "absent_and_supplied_writes",

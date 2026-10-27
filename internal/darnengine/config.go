@@ -126,7 +126,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	resolved, err := configengine.Load(dirs, spec)
 	if err != nil {
 		if strings.Contains(err.Error(), "not initialized") {
-			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"")
+			return Config{}, fmt.Errorf("not initialized here; run \"lym fabric reconcile\"")
 		}
 		return Config{}, err
 	}
@@ -179,7 +179,7 @@ func normalizeTreeScope(cfg Config) (map[string]string, error) {
 	return trees, nil
 }
 
-// MigrateConfig carries a darn.yaml document off the retired tree_scope_verify key, for lyx config reconcile.
+// MigrateConfig carries a darn.yaml document off the retired tree_scope_verify key, for lym config reconcile.
 // It fires only while the document still holds the key.
 // A key held empty empties tree_scope and is pruned, so an off hub stays off; a key held set is pruned and tree_scope kept.
 // A document without the key is returned unchanged, so trees the operator adds later are never touched, and so a second pass changes nothing.
@@ -249,7 +249,7 @@ func WithEditorWayForward(err error) error {
 	if !errors.Is(err, ErrTreeScopeKey) {
 		return err
 	}
-	return fmt.Errorf("%w; fix the named tree_scope key in lyx config darn's editor from the prime, then re-run the lyx command that refused", err)
+	return fmt.Errorf("%w; fix the named tree_scope key in lym config darn's editor from the prime, then re-run the lym command that refused", err)
 }
 
 // TreeScopedTargets classifies a diff against cfg's trees and returns the touched trees' targets and whether the diff is tree-scoped.

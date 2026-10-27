@@ -21,10 +21,10 @@ const (
 	runLogDirName = "runs"
 	runLogMaxAge  = 14 * 24 * time.Hour
 
-	tierTimeoutPrefix = "lyx gate test: tier timeout: "
+	tierTimeoutPrefix = "lym gate test: tier timeout: "
 	tierTimeoutMid    = " exceeded timeout_min "
 
-	buildTimeoutPrefix = "lyx gate test: build timeout: "
+	buildTimeoutPrefix = "lym gate test: build timeout: "
 	buildTierName      = "build"
 )
 
@@ -170,14 +170,14 @@ func pruneRunLog(dir string, now time.Time) {
 // TierTimeoutLine renders the line the gate prints to stderr and into the log when tier outlives timeout.
 // It names the tier, the timeout and the way forward.
 func TierTimeoutLine(tier string, timeout time.Duration) string {
-	return fmt.Sprintf("%s%s%s%s; find the hang in this log; when the tier is slow but healthy, rewrite the tier whole from the prime with \"lyx config gate --set 'tiers.%s={...}'\", carrying every key of the tier and the raised timeout_min, since a dotted key under the tier writes an entry the loader refuses; a session that is not the prime reports status: FAILED and the orch runs it",
+	return fmt.Sprintf("%s%s%s%s; find the hang in this log; when the tier is slow but healthy, rewrite the tier whole from the prime with \"lym config gate --set 'tiers.%s={...}'\", carrying every key of the tier and the raised timeout_min, since a dotted key under the tier writes an entry the loader refuses; a session that is not the prime reports status: FAILED and the orch runs it",
 		tierTimeoutPrefix, tier, tierTimeoutMid, timeout, tier)
 }
 
 // BuildTimeoutLine renders the line the gate prints to stderr and into the log when the build step outlives timeout.
 // It names the timeout and the way forward.
 func BuildTimeoutLine(timeout time.Duration) string {
-	return fmt.Sprintf("%s%s%s%s; find the hang in this log; when the build is slow but healthy, rewrite the build whole from the prime with \"lyx config gate --set 'build={...}'\", carrying every key of the build and the raised timeout_min, since a dotted key under the build writes an entry the loader refuses; a session that is not the prime reports status: FAILED and the orch runs it",
+	return fmt.Sprintf("%s%s%s%s; find the hang in this log; when the build is slow but healthy, rewrite the build whole from the prime with \"lym config gate --set 'build={...}'\", carrying every key of the build and the raised timeout_min, since a dotted key under the build writes an entry the loader refuses; a session that is not the prime reports status: FAILED and the orch runs it",
 		buildTimeoutPrefix, buildTierName, tierTimeoutMid, timeout)
 }
 

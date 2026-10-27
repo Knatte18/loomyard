@@ -27,7 +27,7 @@ func TestReap(t *testing.T) {
 		return runproc.Record{PID: pid, Role: role, StartTime: fmt.Sprintf("s%d", pid)}
 	}
 	survived := &runproc.SurvivorsError{Survivors: []runproc.Ended{{PID: 10, Role: runproc.RoleLoop}}}
-	stray := proc.Process{PID: 50, StartTime: "s50", Exe: "/bin/lyx", Cwd: "/hub/gone (deleted)"}
+	stray := proc.Process{PID: 50, StartTime: "s50", Exe: "/bin/lym", Cwd: "/hub/gone (deleted)"}
 
 	tests := []struct {
 		name         string
@@ -80,7 +80,7 @@ func TestReap(t *testing.T) {
 			wantOwners:   []string{"gone", "later"},
 			wantEnded:    []ReapedProcess{{PID: 20, Role: runproc.RoleDriver}},
 			wantSurvived: []ReapedProcess{{PID: 10, Role: runproc.RoleLoop}},
-			wantErr:      []string{"10 (loop)", "run `lyx tender reap` again once they are gone"},
+			wantErr:      []string{"10 (loop)", "run `lym tender reap` again once they are gone"},
 		},
 		{
 			name:         "NonSurvivorErrorIsReturnedAfterTheRemainingOrphansAreEnded",
@@ -99,7 +99,7 @@ func TestReap(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			e := newEnv(t)
-			e.runProcs, e.worktrees, e.processes, e.hubPath, e.executable = tt.runProcs, tt.worktrees, tt.processes, "/hub", "/bin/lyx"
+			e.runProcs, e.worktrees, e.processes, e.hubPath, e.executable = tt.runProcs, tt.worktrees, tt.processes, "/hub", "/bin/lym"
 			deps := e.deps()
 			var ownerCalls, pidCalls []string
 			deps.EndOwner = func(owner string) ([]runproc.Ended, error) {

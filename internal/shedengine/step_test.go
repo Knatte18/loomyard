@@ -437,18 +437,18 @@ func TestStep_ErrShedBusy(t *testing.T) {
 	if !errors.Is(err, ErrShedBusy) {
 		t.Fatalf("Step(...) error = %v; want errors.Is(err, ErrShedBusy)", err)
 	}
-	if !strings.Contains(err.Error(), "way forward:") || !strings.Contains(err.Error(), `"lyx shed pause --after <current_producer>"`) || !strings.Contains(err.Error(), "lyx shed status") {
-		t.Errorf("Step(...) error = %q; want a way forward naming lyx shed pause --after <current_producer> and lyx shed status", err.Error())
+	if !strings.Contains(err.Error(), "way forward:") || !strings.Contains(err.Error(), `"lym shed pause --after <current_producer>"`) || !strings.Contains(err.Error(), "lym shed status") {
+		t.Errorf("Step(...) error = %q; want a way forward naming lym shed pause --after <current_producer> and lym shed status", err.Error())
 	}
-	if _, err := shed.Run(context.Background()); !errors.Is(err, ErrShedBusy) || !strings.Contains(err.Error(), "way forward: \"lyx shed pause --after <current_producer>\"") {
+	if _, err := shed.Run(context.Background()); !errors.Is(err, ErrShedBusy) || !strings.Contains(err.Error(), "way forward: \"lym shed pause --after <current_producer>\"") {
 		t.Errorf("Run(...) error = %v; want ErrShedBusy carrying the same way forward", err)
 	}
 	shed.RunID = "some-slug"
-	if _, err := shed.Step(context.Background()); err == nil || !strings.Contains(err.Error(), `"lyx shed pause some-slug --after <current_producer>"`) || !strings.Contains(err.Error(), `"lyx shed status some-slug"`) {
+	if _, err := shed.Step(context.Background()); err == nil || !strings.Contains(err.Error(), `"lym shed pause some-slug --after <current_producer>"`) || !strings.Contains(err.Error(), `"lym shed status some-slug"`) {
 		t.Errorf("Step(...) on a Shed told RunID error = %v; want the pause and status verbs addressing some-slug", err)
 	}
-	shed.PauseWayForward = "lyx batten pause some-slug"
-	if _, err := shed.Step(context.Background()); err == nil || !strings.Contains(err.Error(), `"lyx batten pause some-slug"`) || strings.Contains(err.Error(), "lyx shed pause") {
+	shed.PauseWayForward = "lym batten pause some-slug"
+	if _, err := shed.Step(context.Background()); err == nil || !strings.Contains(err.Error(), `"lym batten pause some-slug"`) || strings.Contains(err.Error(), "lym shed pause") {
 		t.Errorf("Step(...) on a Shed told PauseWayForward error = %v; want the told command in place of the shed default", err)
 	}
 	shed.RunID, shed.PauseWayForward = "", ""
@@ -470,8 +470,8 @@ func TestStep_MissingStatusFileNamesSeeding(t *testing.T) {
 	if err == nil {
 		t.Fatal("Step(...) with no status file = nil; want a refusal")
 	}
-	if !strings.Contains(err.Error(), "way forward:") || !strings.Contains(err.Error(), "lyx shed seed") {
-		t.Errorf("Step(...) error = %q; want a way forward naming the bootstrap verb and lyx shed seed", err.Error())
+	if !strings.Contains(err.Error(), "way forward:") || !strings.Contains(err.Error(), "lym shed seed") {
+		t.Errorf("Step(...) error = %q; want a way forward naming the bootstrap verb and lym shed seed", err.Error())
 	}
 
 	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
@@ -606,7 +606,7 @@ func TestStep_BudgetArmIgnoresProducerReason(t *testing.T) {
 
 // TestStep_ToldRunIDNamesGotoWithRunID pins that the missing-producer refusal addresses the told run-id in its goto way forward.
 func TestStep_ToldRunIDNamesGotoWithRunID(t *testing.T) {
-	const want = "lyx shed goto some-slug --to"
+	const want = "lym shed goto some-slug --to"
 
 	shed, _, _ := gotoShed(t)
 	shed.RunID = "some-slug"
@@ -629,8 +629,8 @@ func TestStep_ToldMissingStatusWayForward(t *testing.T) {
 	if err == nil {
 		t.Fatal("Step(...) with no status file = nil; want a refusal")
 	}
-	if !strings.Contains(err.Error(), "way forward: told clause") || strings.Contains(err.Error(), "lyx shed seed") {
-		t.Errorf("Step(...) error = %q; want the told clause and not lyx shed seed", err.Error())
+	if !strings.Contains(err.Error(), "way forward: told clause") || strings.Contains(err.Error(), "lym shed seed") {
+		t.Errorf("Step(...) error = %q; want the told clause and not lym shed seed", err.Error())
 	}
 }
 

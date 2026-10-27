@@ -13,7 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -38,7 +38,7 @@ type SeamOptions struct {
 // HubPaused reads the hub's pause record at each call, and PrimeParentLockFree lists the parent lock store once for the prime's branch.
 // Machine reads the machine's name, and ParentOf resolves an entry's parent slug through hubgeom.ParentOf over the prime's location.
 // WakeHeld and LiftWakeHold are left nil, which read as no wake hold, for the call site that knows one to fill.
-func HubSeamOptions(prime *lyxcwd.Location) SeamOptions {
+func HubSeamOptions(prime *lymcwd.Location) SeamOptions {
 	return SeamOptions{
 		Machine: machinename.Name,
 		ParentOf: func(slug string) (string, error) {
@@ -76,7 +76,7 @@ func HubSeamOptions(prime *lyxcwd.Location) SeamOptions {
 	}
 }
 
-// OwnerReader builds the owner question the origin reconcile asks over one `board.json`: the effective owner of a slug, the subject `lyx adopt` takes to move it, and whether that owner is another machine.
+// OwnerReader builds the owner question the origin reconcile asks over one `board.json`: the effective owner of a slug, the subject `lym adopt` takes to move it, and whether that owner is another machine.
 // A machine error, an empty hostname included, a parentOf error and undecodable board bytes are returned, so no owner is ever compared with an empty name.
 // parentOf names the slug of a pair's parent in the hub at hubPath, or "" for the prime.
 func OwnerReader(machine func() (string, error), parentOf func(hubPath, slug string) (string, error)) fabricengine.OwnerReader {

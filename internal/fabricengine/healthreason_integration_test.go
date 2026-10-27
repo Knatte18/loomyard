@@ -30,7 +30,7 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 		l := h.Location
 		slug := filepath.Base(h.PrimeWorktree())
 
-		if err := fabricengine.WireJunctions(l, slug, []string{"_lyx"}); err != nil {
+		if err := fabricengine.WireJunctions(l, slug, []string{"_lym"}); err != nil {
 			t.Fatalf("WireJunctions: %v", err)
 		}
 		gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-b", "off-branch")
@@ -55,7 +55,7 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 		l := h.Location
 		slug := filepath.Base(h.PrimeWorktree())
 
-		if err := fabricengine.WireJunctions(l, slug, []string{"_lyx"}); err != nil {
+		if err := fabricengine.WireJunctions(l, slug, []string{"_lym"}); err != nil {
 			t.Fatalf("WireJunctions: %v", err)
 		}
 		configPath := configengine.ConfigFile(fabricengine.BoardDir(l.HubPath), "fabric")
@@ -86,10 +86,10 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 		l := h.Location
 		slug := filepath.Base(h.PrimeWorktree())
 
-		if err := fabricengine.WireJunctions(l, slug, []string{"_lyx"}); err != nil {
+		if err := fabricengine.WireJunctions(l, slug, []string{"_lym"}); err != nil {
 			t.Fatalf("WireJunctions: %v", err)
 		}
-		link := fabricengine.WarpLyxLinkHere(l)
+		link := fabricengine.WarpLymLinkHere(l)
 		if err := fslink.Remove(link); err != nil {
 			t.Fatalf("remove junction: %v", err)
 		}
@@ -101,7 +101,7 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 		if ok {
 			t.Fatalf("Healthy = true; want false (junction missing)")
 		}
-		wantDetail := "_lyx junction missing"
+		wantDetail := "_lym junction missing"
 		if reason.Cause != fabricengine.CauseJunctionMissing || reason.Detail != wantDetail {
 			t.Errorf("Healthy reason = %+v; want {Cause: %q, Detail: %q}", reason, fabricengine.CauseJunctionMissing, wantDetail)
 		}
@@ -114,10 +114,10 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 		l := h.Location
 		slug := filepath.Base(h.PrimeWorktree())
 
-		if err := fabricengine.WireJunctions(l, slug, []string{"_lyx"}); err != nil {
+		if err := fabricengine.WireJunctions(l, slug, []string{"_lym"}); err != nil {
 			t.Fatalf("WireJunctions: %v", err)
 		}
-		link := fabricengine.WarpLyxLinkHere(l)
+		link := fabricengine.WarpLymLinkHere(l)
 		if err := fslink.Remove(link); err != nil {
 			t.Fatalf("remove junction: %v", err)
 		}
@@ -132,7 +132,7 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 		if ok {
 			t.Fatalf("Healthy = true; want false (not a junction)")
 		}
-		wantDetail := "_lyx is not a junction"
+		wantDetail := "_lym is not a junction"
 		if reason.Cause != fabricengine.CauseNotAJunction || reason.Detail != wantDetail {
 			t.Errorf("Healthy reason = %+v; want {Cause: %q, Detail: %q}", reason, fabricengine.CauseNotAJunction, wantDetail)
 		}
@@ -145,14 +145,14 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 		l := h.Location
 		slug := filepath.Base(h.PrimeWorktree())
 
-		if err := fabricengine.WireJunctions(l, slug, []string{"_lyx"}); err != nil {
+		if err := fabricengine.WireJunctions(l, slug, []string{"_lym"}); err != nil {
 			t.Fatalf("WireJunctions: %v", err)
 		}
-		link := fabricengine.WarpLyxLinkHere(l)
+		link := fabricengine.WarpLymLinkHere(l)
 		if err := fslink.Remove(link); err != nil {
 			t.Fatalf("remove junction: %v", err)
 		}
-		wrongTarget := filepath.Join(filepath.Dir(fabricengine.WeftLyxDir(l)), "not-the-weft-target")
+		wrongTarget := filepath.Join(filepath.Dir(fabricengine.WeftLymDir(l)), "not-the-weft-target")
 		if err := os.MkdirAll(wrongTarget, 0o755); err != nil {
 			t.Fatalf("mkdir wrong target: %v", err)
 		}
@@ -167,7 +167,7 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 		if ok {
 			t.Fatalf("Healthy = true; want false (junction points elsewhere)")
 		}
-		wantDetail := "_lyx junction points elsewhere"
+		wantDetail := "_lym junction points elsewhere"
 		if reason.Cause != fabricengine.CauseJunctionPointsElsewhere || reason.Detail != wantDetail {
 			t.Errorf("Healthy reason = %+v; want {Cause: %q, Detail: %q}", reason, fabricengine.CauseJunctionPointsElsewhere, wantDetail)
 		}

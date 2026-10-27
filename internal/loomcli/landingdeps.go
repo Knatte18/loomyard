@@ -24,7 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -53,7 +53,7 @@ import (
 // satisfies that interface, per the existing compile-time assertion at
 // internal/mergeresolve/deps.go:46.
 func landingDeps(
-	l *lyxcwd.Location,
+	l *lymcwd.Location,
 	recipe string,
 	geom websterengine.Geometry,
 	taskBranch, parentBranch string,
@@ -120,7 +120,7 @@ func landingDeps(
 		// and the same discard of the (sha, committed) pair in favour of the error alone, which is
 		// what makes a second call over an already-committed, already-clean path a no-op rather
 		// than a failure. The pathspec is shedrun.StatusRel(l, shedrun.SelfRunID), never a hand-built
-		// join naming the _lyx literal, which the Lyxdirs Single-Declarer Invariant forbids.
+		// join naming the _lym literal, which the Lymdirs Single-Declarer Invariant forbids.
 		CommitStatus: func() error {
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), l, []string{shedrun.StatusRel(l, shedrun.SelfRunID)}, fmt.Sprintf("loom: status checkpoint for %s", seedSlug(l.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
@@ -277,7 +277,7 @@ func landingDeps(
 
 // codeReviewOff returns the seam Parent-Align reads: whether the Code-Perch's effective review budget is 0.
 // A darn run has no Parent-Align, and its seam reads false; a pawl run has one, and reads the perch's budget as a loom run does.
-func codeReviewOff(l *lyxcwd.Location, recipe string) func() (bool, error) {
+func codeReviewOff(l *lymcwd.Location, recipe string) func() (bool, error) {
 	if recipe == shedrun.RecipeDarn {
 		return func() (bool, error) { return false, nil }
 	}
@@ -286,7 +286,7 @@ func codeReviewOff(l *lyxcwd.Location, recipe string) func() (bool, error) {
 
 // rerouteReviewed returns the seam that reports whether a review follows Finalize's reroute: whether the Code-Perch's effective budget is above 0.
 // A loom Finalize reroutes through Parent-Align to the Code-Perch, and a darn Finalize to Code-Bouncer, which settles approved at once on a budget of 0.
-func rerouteReviewed(l *lyxcwd.Location) func() (bool, error) {
+func rerouteReviewed(l *lymcwd.Location) func() (bool, error) {
 	budgetZero := codeBudgetZero(l)
 	return func() (bool, error) {
 		zero, err := budgetZero()
@@ -295,7 +295,7 @@ func rerouteReviewed(l *lyxcwd.Location) func() (bool, error) {
 }
 
 // codeBudgetZero returns the seam that reports whether the Code-Perch's effective review budget is 0, read from loom.yaml at call time.
-func codeBudgetZero(l *lyxcwd.Location) func() (bool, error) {
+func codeBudgetZero(l *lymcwd.Location) func() (bool, error) {
 	return func() (bool, error) {
 		cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(l), "loom")
 		if err != nil {
@@ -306,7 +306,7 @@ func codeBudgetZero(l *lyxcwd.Location) func() (bool, error) {
 }
 
 // fixerPlanDir returns the plan directory the merge fixer reads: the run's plan directory on a loom run, and "" on a darn or pawl run, which has none.
-func fixerPlanDir(l *lyxcwd.Location, recipe string) string {
+func fixerPlanDir(l *lymcwd.Location, recipe string) string {
 	if recipe == shedrun.RecipeDarn || recipe == shedrun.RecipePawl {
 		return ""
 	}
@@ -342,7 +342,7 @@ func rowEntry(history []shedengine.HistoryEntry, row string) int {
 
 // parentTipsReader returns the parent-tip reader the landing and the darn rows share:
 // it opens the task pair's fabric at call time and reads parentBranch's tips, fetching the remotes first when fetch is true.
-func parentTipsReader(l *lyxcwd.Location, parentBranch string) func(fetch bool) (fabricengine.ParentTips, error) {
+func parentTipsReader(l *lymcwd.Location, parentBranch string) func(fetch bool) (fabricengine.ParentTips, error) {
 	return func(fetch bool) (fabricengine.ParentTips, error) {
 		f, err := fabricengine.Open(l)
 		if err != nil {
@@ -369,7 +369,7 @@ func mergeableTips(tips fabricengine.ParentTips, pushSkipped bool) []string {
 
 // pauseCovered returns the parent lock store's Covered seam: whether the hub's pause record covers a slug now.
 // A geometry or record that cannot be read covers nothing, so a corrupt file never freezes the lock queue.
-func pauseCovered(l *lyxcwd.Location) func(slug string) bool {
+func pauseCovered(l *lymcwd.Location) func(slug string) bool {
 	return func(slug string) bool {
 		geometry, err := hubgeom.PauseGeometry(l)
 		if err != nil {
@@ -389,7 +389,7 @@ func pauseCovered(l *lyxcwd.Location) func(slug string) bool {
 // The store sits in the hub-level ephemeral tree, reached by path and never junctioned into a pair;
 // the wait record lives in the run's scratch directory, and the wait ends when the run status file's pause_after, read under its status lock, names the run's current producer: the lock-taking row waiting in the queue.
 // The store reads the pause record to tell which slug a pause covers; an unreadable record covers nothing and logs one Warn.
-func parentLockDeps(l *lyxcwd.Location, runID, statusPath, statusLockPath string) landingshed.ParentLockDeps {
+func parentLockDeps(l *lymcwd.Location, runID, statusPath, statusLockPath string) landingshed.ParentLockDeps {
 	return landingshed.ParentLockDeps{
 		Store: &parentlock.Store{
 			Dir:     parentlock.Dir(fabricengine.BoardDir(l.HubPath)),
@@ -437,7 +437,7 @@ func holdsParentLock(store *parentlock.Store, slug string) func() bool {
 // The process is the run's detached loop when its pid record names a live loop, so the lock follows the loop across its step children;
 // otherwise it is the calling step process, so a step run outside a loop holds the lock only while it lives.
 // The teardown's mark in the pid file names no loop.
-func loopLockOwner(l *lyxcwd.Location, runID string) func() (parentlock.Owner, error) {
+func loopLockOwner(l *lymcwd.Location, runID string) func() (parentlock.Owner, error) {
 	return func() (parentlock.Owner, error) {
 		process := proc.SelfRecord()
 		rec, found, err := shedverbs.ReadLoopPIDRecord(shedrun.LoopPIDFile(l, runID))
@@ -469,7 +469,7 @@ type verifySource struct {
 // Each reader loads the hub's gate config over the pair's config dirs each time it is called, never at construction:
 // landingDeps runs at bootstrap, so a gate.yaml edit between two steps must take effect.
 // A config or gate-key refusal is returned with its own way forward, not mapped to an empty command.
-func planVerifySource(l *lyxcwd.Location) verifySource {
+func planVerifySource(l *lymcwd.Location) verifySource {
 	dirs := fabricengine.ConfigDirs(l)
 	call := gateCallSource(dirs)
 	return verifySource{
@@ -483,7 +483,7 @@ func planVerifySource(l *lyxcwd.Location) verifySource {
 // The parent pair is resolved at call time, so a parent that came or went after bootstrap is read as it stands.
 // A pair with no parent, and a parent whose run-records directory holds no file, commit nothing: git refuses a pathspec that matches nothing.
 // slug names the landing run in the commit message.
-func parentRecordsCommitter(l *lyxcwd.Location, slug string) func() error {
+func parentRecordsCommitter(l *lymcwd.Location, slug string) func() error {
 	return func() error {
 		parent, err := hubgeom.ResolveParent(l)
 		if err != nil {
@@ -492,7 +492,7 @@ func parentRecordsCommitter(l *lyxcwd.Location, slug string) func() error {
 		if parent.Worktree == "" {
 			return nil
 		}
-		parentLocation, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(l, parent.Worktree))
+		parentLocation, err := lymcwd.ResolveWorktree(fabricengine.WorktreePath(l, parent.Worktree))
 		if err != nil {
 			return fmt.Errorf("locate the parent pair %q: %w", parent.Worktree, err)
 		}
@@ -507,7 +507,7 @@ func parentRecordsCommitter(l *lyxcwd.Location, slug string) func() error {
 
 // runReconciler returns the seam the landing rows judge the run against origin through, the run-scope origin reconcile of slug.
 // The prime is resolved at call time, and the seams come from pairteardown over it with the hub's options.
-func runReconciler(l *lyxcwd.Location, slug string) func() (fabricengine.OriginReport, error) {
+func runReconciler(l *lymcwd.Location, slug string) func() (fabricengine.OriginReport, error) {
 	return func() (fabricengine.OriginReport, error) {
 		prime, err := primeOfHub(l)
 		if err != nil {
@@ -526,7 +526,7 @@ func runReconciler(l *lyxcwd.Location, slug string) func() (fabricengine.OriginR
 // The parent's slug is resolved from the pair's origin record, and its owner is read from the local board the run's reconcile left:
 // the prime owner for the prime, and the parent pair's effective owner otherwise.
 // A parent no other machine owns reads as owned here.
-func parentOwner(l *lyxcwd.Location, slug string) func() (landingshed.ParentOwnership, error) {
+func parentOwner(l *lymcwd.Location, slug string) func() (landingshed.ParentOwnership, error) {
 	return func() (landingshed.ParentOwnership, error) {
 		here, err := machinename.Name()
 		if err != nil {

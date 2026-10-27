@@ -11,7 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/loomcli"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
 
@@ -19,26 +19,23 @@ import (
 // and the set of the generic shedverbs verbs that recipe actually supports.
 type entry struct {
 	// Arm is the recipe's exported Location-taking resolution entry point -- loomcli.ArmAt or
-	// battencli.ArmAt -- called with the already-resolved *lyxcwd.Location, the invoked verb name,
-	// and the already-resolved run-id. It performs no lyxcwd.Resolve of its own: resolvePersistentPreRun
+	// battencli.ArmAt -- called with the already-resolved *lymcwd.Location, the invoked verb name,
+	// and the already-resolved run-id. It performs no lymcwd.Resolve of its own: resolvePersistentPreRun
 	// resolves cwd exactly once, ahead of the seed read that decides which recipe this entry belongs
 	// to, and hands the same Location on to Arm here.
-	Arm func(location *lyxcwd.Location, verb string, runID string) (shedverbs.Spec, error)
+	Arm func(location *lymcwd.Location, verb string, runID string) (shedverbs.Spec, error)
 	// Verbs names the shedverbs verbs this recipe supports.
 	// It is this table's sole authority on which verb/recipe pairs exist: the generic verbs are registered once for every recipe,
 	// but a recipe need not support every one of them.
 	Verbs []string
-	// BootstrapVerb answers "may a run seeded for this recipe be driven by an LLM": it is populated
-	// from the owning module's own exported constant (loomcli.BootstrapVerb, battencli.BootstrapVerb),
-	// never a literal, so this field cannot drift from the module that declares the fact. The
-	// "lyx shed seed --driver llm" validator consults it by emptiness rather than by comparing the
-	// recipe name against the literal "loom".
+	// BootstrapVerb answers "may a run seeded for this recipe be driven by an LLM": it is populated from the owning module's own exported constant (loomcli.BootstrapVerb, battencli.BootstrapVerb), never a literal, so this field cannot drift from the module that declares the fact.
+	// The "lym shed seed --driver llm" validator consults it by emptiness rather than by comparing the recipe name against the literal "loom".
 	BootstrapVerb string
 	// RefuseSeedAt is the recipe's own answer to "may a seed for me be written in this worktree",
-	// consulted by "lyx shed seed" after fabric's drivable-worktree check; nil means any drivable
+	// consulted by "lym shed seed" after fabric's drivable-worktree check; nil means any drivable
 	// worktree. It is populated from the owning module's own exported guard, never re-derived
 	// here, so a seed can only ever be written where that recipe's verbs would drive it.
-	RefuseSeedAt func(location *lyxcwd.Location) error
+	RefuseSeedAt func(location *lymcwd.Location) error
 }
 
 // recipes is the single place every named recipe is declared, mapping each recipe name to the

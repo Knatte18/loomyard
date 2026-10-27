@@ -28,7 +28,7 @@ func TestSiblingPaths(t *testing.T) {
 		wantBare    string
 	}{
 		{"simple", "/h", "feat", filepath.Join("/h", "feat-weft"), filepath.Join("/h", "feat-weft-bare")},
-		{"nested_container", "/repos/loomyard-LYXHUB", "main", filepath.Join("/repos/loomyard-LYXHUB", "main-weft"), filepath.Join("/repos/loomyard-LYXHUB", "main-weft-bare")},
+		{"nested_container", "/repos/loomyard-LYMHUB", "main", filepath.Join("/repos/loomyard-LYMHUB", "main-weft"), filepath.Join("/repos/loomyard-LYMHUB", "main-weft-bare")},
 		{"multi_segment_base", "/h", "my-feature", filepath.Join("/h", "my-feature-weft"), filepath.Join("/h", "my-feature-weft-bare")},
 		{"hub_base", "/tmp/x", "hub", filepath.Join("/tmp/x", "hub-weft"), filepath.Join("/tmp/x", "hub-weft-bare")},
 	}

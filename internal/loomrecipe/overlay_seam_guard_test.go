@@ -1,7 +1,7 @@
 //go:build tier0
 
 // overlay_seam_guard_test.go enforces the Fabric Git Invariant at the recipe-shape level:
-// every BurlerFix row whose target paths reach into the overlay tree (the durable _lyx directory) must run fix-scope: overlay,
+// every BurlerFix row whose target paths reach into the overlay tree (the durable _lym directory) must run fix-scope: overlay,
 // and its partner Bouncer row must carry a commit_seam key matching the overlay subdirectory those target paths share.
 // Otherwise an approved overlay-round fix has no committer, and the round's own writes stay uncommitted in the records working tree.
 //
@@ -16,16 +16,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/contracts/recipes"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 )
 
-// assertOverlayBurlerCommitSeams walks every shedbuild.Row in r whose Engine is "BurlerFix" and,
-// for each row that declares at least one overlay target path (a path whose first segment equals
-// lyxdirs.LyxDirName), asserts both halves of the Fabric Git Invariant's overlay-seam rule: the
-// row's profile.fix-scope must be "overlay", and the row's partner Bouncer row (same Segment) must
-// carry a commit_seam config value equal to the single overlay subdirectory the row's overlay target
-// paths share.
+// assertOverlayBurlerCommitSeams walks every shedbuild.Row in r whose Engine is "BurlerFix" and, for each row that declares at least one overlay target path (a path whose first segment equals lymdirs.LymDirName), asserts both halves of the Fabric Git Invariant's overlay-seam rule: the row's profile.fix-scope must be "overlay", and the row's partner Bouncer row (same Segment) must carry a commit_seam config value equal to the single overlay subdirectory the row's overlay target paths share.
 //
 // A row declaring no profile, no target, or no target paths at all is outside the rule and is
 // skipped silently -- that absence is the structural exemption, not an allowlist entry. A row whose
@@ -90,7 +85,7 @@ func assertOverlayBurlerCommitSeams(t testing.TB, r shedbuild.Recipe) {
 		var isOverlay bool
 		for _, p := range paths {
 			segments := strings.SplitN(p, "/", 3)
-			if len(segments) < 2 || segments[0] != lyxdirs.LyxDirName {
+			if len(segments) < 2 || segments[0] != lymdirs.LymDirName {
 				continue
 			}
 			isOverlay = true
@@ -302,7 +297,7 @@ func overlaySeamFixture(fixScope, commitSeam string) string {
 		"      profile:\n" +
 		"        target:\n" +
 		"          paths:\n" +
-		"            - _lyx/discussion/decision-record.md\n" +
+		"            - _lym/discussion/decision-record.md\n" +
 		"        fix-scope: " + fixScope + "\n"
 }
 
@@ -320,7 +315,7 @@ func overlaySeamFixtureNoBouncer() string {
 		"      profile:\n" +
 		"        target:\n" +
 		"          paths:\n" +
-		"            - _lyx/discussion/decision-record.md\n" +
+		"            - _lym/discussion/decision-record.md\n" +
 		"        fix-scope: overlay\n"
 }
 
@@ -345,8 +340,8 @@ func overlaySeamFixtureStraddling() string {
 		"      profile:\n" +
 		"        target:\n" +
 		"          paths:\n" +
-		"            - _lyx/discussion/decision-record.md\n" +
-		"            - _lyx/plan/00-overview.md\n" +
+		"            - _lym/discussion/decision-record.md\n" +
+		"            - _lym/plan/00-overview.md\n" +
 		"        fix-scope: overlay\n"
 }
 

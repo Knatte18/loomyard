@@ -193,8 +193,8 @@ func createFindings(plan *planparser.Plan, worktreeRoot string, index map[string
 					// the same reason -- but the DETAIL was rendered by unreadableStatusDetail, whose
 					// non-rejection branch reads "answered the unrecognized resolve status", and
 					// ambiguous is a status quarry documents and Status.Known() admits. The message
-					// therefore told an operator that quarry had returned something lyx could not
-					// read, when lyx reads it perfectly and is refusing the plan because a
+					// therefore told an operator that quarry had returned something lym could not
+					// read, when lym reads it perfectly and is refusing the plan because a
 					// declaration already occupies that name -- sending them at quarry instead of at
 					// their own card, with no mention of the remedy or the colliding candidates
 					// (crucible round opus5-high-r1, F3). Ambiguous now has its own arm above,

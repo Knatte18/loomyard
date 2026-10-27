@@ -1,6 +1,6 @@
 //go:build tier2 && !windows
 
-// naming_integration_test.go drives the reed verbs on a real hub to prove a strand's full name and parent reach its process, survive a server kill and `resume`, address the right strand on `remove`, and that `lyx reed list` shows strands of the prime and of a task worktree in one listing from the prime and flags a hand-retitled pane as drift.
+// naming_integration_test.go drives the reed verbs on a real hub to prove a strand's full name and parent reach its process, survive a server kill and `resume`, address the right strand on `remove`, and that `lym reed list` shows strands of the prime and of a task worktree in one listing from the prime and flags a hand-retitled pane as drift.
 
 package reedcli
 
@@ -26,16 +26,16 @@ func runVerb(t *testing.T, worktree string, args ...string) map[string]any {
 	t.Helper()
 	var out bytes.Buffer
 	if code := RunCLIIn(worktree, &out, args); code != 0 {
-		t.Fatalf("lyx reed %v = %d, output: %s", args, code, out.String())
+		t.Fatalf("lym reed %v = %d, output: %s", args, code, out.String())
 	}
 	var env map[string]any
 	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
-		t.Fatalf("lyx reed %v output is not valid JSON: %v; got: %q", args, err, out.String())
+		t.Fatalf("lym reed %v output is not valid JSON: %v; got: %q", args, err, out.String())
 	}
 	return env
 }
 
-// statusNames returns every strand name `lyx reed status` lists in worktree.
+// statusNames returns every strand name `lym reed status` lists in worktree.
 func statusNames(t *testing.T, worktree string) []string {
 	t.Helper()
 	env := runVerb(t, worktree, "status")
@@ -49,9 +49,9 @@ func statusNames(t *testing.T, worktree string) []string {
 	return names
 }
 
-// envProbeCmd returns a --cmd that records "$LYX_STRAND_NAME|$LYX_PARENT" into file, then stays alive.
+// envProbeCmd returns a --cmd that records "$LYM_STRAND_NAME|$LYM_PARENT" into file, then stays alive.
 func envProbeCmd(file string) string {
-	return "printf '%s|%s' \"$LYX_STRAND_NAME\" \"$LYX_PARENT\" > '" + file + "'; sleep 300"
+	return "printf '%s|%s' \"$LYM_STRAND_NAME\" \"$LYM_PARENT\" > '" + file + "'; sleep 300"
 }
 
 // waitForProbe polls file until it holds content and returns it.
@@ -68,7 +68,7 @@ func waitForProbe(t *testing.T, file string) string {
 	return ""
 }
 
-// listRows returns `lyx reed list` run in worktree, keyed by strand name.
+// listRows returns `lym reed list` run in worktree, keyed by strand name.
 func listRows(t *testing.T, worktree string) map[string]map[string]any {
 	t.Helper()
 	env := runVerb(t, worktree, "list")
@@ -118,7 +118,7 @@ func TestStrandNamingAndList(t *testing.T) {
 			t.Errorf("prime strand name = %q, want %q", name, primeName)
 		}
 		if got := waitForProbe(t, probe); got != primeName+"|" {
-			t.Errorf("prime strand env = %q, want %q (no LYX_PARENT)", got, primeName+"|")
+			t.Errorf("prime strand env = %q, want %q (no LYM_PARENT)", got, primeName+"|")
 		}
 	}) {
 		return
@@ -244,8 +244,8 @@ func TestStrandNamingAndList(t *testing.T) {
 		childGUID, _ := runVerb(t, worktree, "add", "--role", "plain-child", "--parent", parentGUID, "--cmd", "sleep 300")["guid"].(string)
 		for _, guid := range []string{parentGUID, childGUID} {
 			paneID := paneIDForStrandIn(t, worktree, guid)
-			if own := tmuxOut("display-message", "-p", "-t", paneID, "#{@lyx_own}"); own != "1" {
-				t.Errorf("strand %s window @lyx_own = %q, want 1", guid, own)
+			if own := tmuxOut("display-message", "-p", "-t", paneID, "#{@lym_own}"); own != "1" {
+				t.Errorf("strand %s window @lym_own = %q, want 1", guid, own)
 			}
 		}
 		if shellPanes := strings.Fields(tmuxOut("list-panes", "-t", selvage, "-F", "#{pane_id}")); !slices.Equal(shellPanes, []string{selvage}) {

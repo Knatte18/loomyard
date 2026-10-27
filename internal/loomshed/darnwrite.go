@@ -12,7 +12,7 @@ import (
 )
 
 // darnResumeWayForward is appended to the Reason of a Darn-Write session whose gate failed.
-const darnResumeWayForward = "way forward: run \"lyx loom resume\" in the task worktree, which re-spawns Darn-Write with a fresh verify budget"
+const darnResumeWayForward = "way forward: run \"lym loom resume\" in the task worktree, which re-spawns Darn-Write with a fresh verify budget"
 
 // DarnTold carries the token text the producer decides for one darn writer spawn, empty when it has nothing to tell.
 type DarnTold struct {

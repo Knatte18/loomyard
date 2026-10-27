@@ -69,7 +69,7 @@ func (h *respawnHarness) pass() {
 // It asserts a rewrite of the status file starts the count again.
 func TestInnerRun_RespawnCapStopsWithoutProgress(t *testing.T) {
 	t.Parallel()
-	capNotice := `driver strand is dead; respawned ` + strconv.Itoa(respawnCap) + ` times without progress; run "lyx loom start" in the task worktree to bring a driver back`
+	capNotice := `driver strand is dead; respawned ` + strconv.Itoa(respawnCap) + ` times without progress; run "lym loom start" in the task worktree to bring a driver back`
 
 	t.Run("TheCapStopsTheRespawnAndSendsOneNotice", func(t *testing.T) {
 		t.Parallel()

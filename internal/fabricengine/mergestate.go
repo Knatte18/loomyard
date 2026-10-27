@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -184,17 +184,9 @@ func (f *Fabric) mergeRecordExists() (bool, error) {
 	return st != nil, nil
 }
 
-// mergeBlocksMutation reports whether a fabric merge-state record exists for the pair at warpPath
-// and weftPath — the single check every sibling mutating verb (card 13) uses to decide whether its
-// own write would corrupt or be corrupted by a live merge.
-// It constructs the pair's state probe from the explicit paths via newPaired internally, rather than
-// requiring an already-open *Fabric, since Topology verbs (Checkout, Remove) act on a *lyxcwd.Location
-// and never open a Fabric handle of their own.
-// A pair newPaired cannot even open (missing warp or weft directory) or whose weft gitdir cannot be
-// resolved (e.g. a half-torn-down pair) reports false rather than blocking: no recorded merge can
-// exist without a readable weft gitdir, and refusing here would make an already half-broken pair
-// impossible to finish tearing down, or would shadow a caller's own, more specific "this path does
-// not exist" refusal behind an unrelated ErrMissingPath.
+// mergeBlocksMutation reports whether a fabric merge-state record exists for the pair at warpPath and weftPath — the single check every sibling mutating verb (card 13) uses to decide whether its own write would corrupt or be corrupted by a live merge.
+// It constructs the pair's state probe from the explicit paths via newPaired internally, rather than requiring an already-open *Fabric, since Topology verbs (Checkout, Remove) act on a *lymcwd.Location and never open a Fabric handle of their own.
+// A pair newPaired cannot even open (missing warp or weft directory) or whose weft gitdir cannot be resolved (e.g. a half-torn-down pair) reports false rather than blocking: no recorded merge can exist without a readable weft gitdir, and refusing here would make an already half-broken pair impossible to finish tearing down, or would shadow a caller's own, more specific "this path does not exist" refusal behind an unrelated ErrMissingPath.
 func mergeBlocksMutation(warpPath, weftPath string) (bool, error) {
 	f, err := newPaired(warpPath, weftPath)
 	if err != nil {
@@ -223,7 +215,7 @@ func mergeBlocksMutation(warpPath, weftPath string) (bool, error) {
 // A hub whose weft repo root cannot be resolved reports false rather than blocking, matching
 // mergeBlocksMutation's own already-half-broken-pair rule: refusing there would make a broken hub
 // impossible to finish tearing down.
-func mergeSourceInFlight(l *lyxcwd.Location, warpBranch string) (bool, error) {
+func mergeSourceInFlight(l *lymcwd.Location, warpBranch string) (bool, error) {
 	weftRepoRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		return false, nil

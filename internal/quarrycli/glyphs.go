@@ -33,8 +33,8 @@ so the filter drops symbols rather than single JSON fields.
 The glyph to copy from a line is its last field, the id.
 
 Examples:
-  lyx quarry glyphs internal/planglyph
-  lyx quarry glyphs --text internal/planglyph | grep -v _test.go`,
+  lym quarry glyphs internal/planglyph
+  lym quarry glyphs --text internal/planglyph | grep -v _test.go`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {

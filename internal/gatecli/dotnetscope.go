@@ -8,7 +8,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/dotnetimpact"
 	"github.com/Knatte18/loomyard/internal/gateslot"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
@@ -25,7 +25,7 @@ type dirGroup struct {
 // A narrowed share is one moduleTargets per selected project, and the empty scope an empty share.
 // The scope plans no guard step and no vet step.
 // A cancelled ctx is returned as the derivation's error.
-func dotnetScope(ctx context.Context, cfg gateslot.Config, location *lyxcwd.Location, root string, request testRequest, form string, seeds []planparser.CSharpSeed, green *greenRun) (scope, error) {
+func dotnetScope(ctx context.Context, cfg gateslot.Config, location *lymcwd.Location, root string, request testRequest, form string, seeds []planparser.CSharpSeed, green *greenRun) (scope, error) {
 	shares := map[int]tierScope{}
 	if form == scopeCard {
 		for _, group := range groupByDir(cfg, keptTiers(cfg, request)) {

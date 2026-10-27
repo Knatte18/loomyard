@@ -1,13 +1,13 @@
 //go:build tier2
 
-// smoke_starttail_test.go covers the two live-substrate properties of `lyx loom start`'s tail against a real wired hub and a real tmux session:
+// smoke_starttail_test.go covers the two live-substrate properties of `lym loom start`'s tail against a real wired hub and a real tmux session:
 // that the verb never attaches or switches a tmux client, and that the strand set it leaves -- on the unseeded fixture, which resolveSeedDriver seeds llm, exactly one status strand and no loom-operator strand -- is unchanged by that.
 // It also pins the watchdog spawn's gate position -- that it fires on every start, the one thing start_watchdog_test.go's Tier 1 file cannot reach through the real RunE (see its own doc comment) because reed Up needs a live tmux server.
 //
-// It reuses this package's existing smoke fixtures throughout: lyxbin.Build, newWiredPairFixture,
+// It reuses this package's existing smoke fixtures throughout: lymbin.Build, newWiredPairFixture,
 // registerBootstrapTeardown, probeReedEngine, statusStrandCount, and tmuxBinaryPath, rather than
-// building a second rig. Like its siblings it drives the real built cmd/lyx binary as a subprocess,
-// never RunCLI in-process, per this package's smoke suite doc comment: `lyx loom start` spawns its
+// building a second rig. Like its siblings it drives the real built cmd/lym binary as a subprocess,
+// never RunCLI in-process, per this package's smoke suite doc comment: `lym loom start` spawns its
 // detached driver via os.Executable(), which an in-process call would resolve to the test binary.
 
 package loomcli
@@ -19,9 +19,9 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -35,7 +35,7 @@ func reedAttachedClients(t *testing.T, tmuxPath string, eng *reedengine.Engine) 
 	return strings.Fields(string(out))
 }
 
-// TestSmokeStart_NeverAttachesAndAddsNoOperatorStrand pins that `lyx loom start` exits 0 with an ok envelope and attaches no client, with or without --no-attach and with or without $TMUX naming reed's own server,
+// TestSmokeStart_NeverAttachesAndAddsNoOperatorStrand pins that `lym loom start` exits 0 with an ok envelope and attaches no client, with or without --no-attach and with or without $TMUX naming reed's own server,
 // and that it leaves no strand named "loom-operator" and exactly one status strand:
 // the fixture is unseeded, so resolveSeedDriver seeds it llm,
 // and an llm-driven start ensures the status strand.
@@ -44,7 +44,7 @@ func reedAttachedClients(t *testing.T, tmuxPath string, eng *reedengine.Engine) 
 // so a start that still attached would exit non-zero.
 func TestSmokeStart_NeverAttachesAndAddsNoOperatorStrand(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
-	exe := lyxbin.Build(t)
+	exe := lymbin.Build(t)
 
 	// A stub provider lets the llm-driven start's driver launch reach readiness,
 	// so the verb reaches its success envelope.
@@ -60,9 +60,9 @@ func TestSmokeStart_NeverAttachesAndAddsNoOperatorStrand(t *testing.T) {
 	const slug = "loom-smoke-start-task"
 	hubforge.AddPair(t, h, slug)
 	worktree := h.PairCodeWorktree(slug)
-	loc, err := lyxcwd.Resolve(worktree)
+	loc, err := lymcwd.Resolve(worktree)
 	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(%s): %v", worktree, err)
+		t.Fatalf("lymcwd.Resolve(%s): %v", worktree, err)
 	}
 	registerBootstrapTeardown(t, loc, worktree)
 
@@ -102,11 +102,11 @@ func TestSmokeStart_NeverAttachesAndAddsNoOperatorStrand(t *testing.T) {
 	}
 }
 
-// TestSmokeWatchdog_NoAttachStillSpawnsTheDaemon pins that a `lyx loom start --no-attach` bootstrap leaves a live per-hub watchdog daemon for the fixture hub, found by the same argv-signature scan the smoke teardown uses.
+// TestSmokeWatchdog_NoAttachStillSpawnsTheDaemon pins that a `lym loom start --no-attach` bootstrap leaves a live per-hub watchdog daemon for the fixture hub, found by the same argv-signature scan the smoke teardown uses.
 // This is what proves the watchdog spawn fires on every start, not only on an attaching one -- the single thing a later edit is most likely to get wrong -- which is the one property start_watchdog_test.go structurally cannot reach (see its own doc comment).
 func TestSmokeWatchdog_NoAttachStillSpawnsTheDaemon(t *testing.T) {
 	tmuxBinaryPath(t)
-	exe := lyxbin.Build(t)
+	exe := lymbin.Build(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 

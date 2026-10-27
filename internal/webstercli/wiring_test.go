@@ -2,13 +2,10 @@
 
 // wiring_test.go pins wire's mode truth table at tier 0: every case drives c.wire directly with a
 // told preflight.Mode -- never through the real pre-run -- so no case spawns a process or resolves
-// cwd. websterCLI itself carries no *lyxcwd.Location field (see cli.go's struct): that is a
+// cwd. websterCLI itself carries no *lymcwd.Location field (see cli.go's struct): that is a
 // compile-time property of this package, not something a test can additionally assert at runtime.
 //
-// The hub-mode cases below hand wire fictional, on-disk-absent *lyxcwd.Location values: every module
-// config load wire performs (shuttleengine.LoadConfig, reedengine.LoadConfig, websterengine.LoadConfig,
-// batcher.Active, modelspec.LoadRegistry) degrades to its embedded template on a proven-absent _lyx/
-// directory, so a fictional anchor path drives the whole hub branch without touching disk.
+// The hub-mode cases below hand wire fictional, on-disk-absent *lymcwd.Location values: every module config load wire performs (shuttleengine.LoadConfig, reedengine.LoadConfig, websterengine.LoadConfig, batcher.Active, modelspec.LoadRegistry) degrades to its embedded template on a proven-absent _lym/ directory, so a fictional anchor path drives the whole hub branch without touching disk.
 // The one entry each hub case creates is the worktree's .git directory, which hubgeom.ReedGeometry stats to tell the prime from a task worktree.
 //
 // The standalone-mode cases reach standalonestate.Derive through internal/cliwire's own
@@ -43,29 +40,29 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// hubLocation returns a *lyxcwd.Location standing in for a real hub's prime.
+// hubLocation returns a *lymcwd.Location standing in for a real hub's prime.
 // Its only filesystem preparation is the worktree's .git directory -- see the file header for why wire's hub branch tolerates the rest being absent.
-func hubLocation(t *testing.T, hub, worktreeName, anchorRel string) *lyxcwd.Location {
+func hubLocation(t *testing.T, hub, worktreeName, anchorRel string) *lymcwd.Location {
 	t.Helper()
-	loc := &lyxcwd.Location{HubPath: hub, WorktreeName: worktreeName, AnchorRel: anchorRel}
+	loc := &lymcwd.Location{HubPath: hub, WorktreeName: worktreeName, AnchorRel: anchorRel}
 	if err := os.MkdirAll(filepath.Join(loc.WorktreePath(), ".git"), 0o755); err != nil {
 		t.Fatalf("MkdirAll(.git) = %v; want nil", err)
 	}
 	return loc
 }
 
-// seedLoomConfigWithFriction writes <anchorPath>/_lyx/config/loom.yaml with a full literal.
+// seedLoomConfigWithFriction writes <anchorPath>/_lym/config/loom.yaml with a full literal.
 // Its friction key is the caller-chosen value -- empty to mean Tier 2 is off.
 // Every key is written explicitly so the literal pins every value rather than relying on template fills.
 func seedLoomConfigWithFriction(t *testing.T, anchorPath, friction string) {
 	t.Helper()
-	configDir := filepath.Join(anchorPath, "_lyx", "config")
+	configDir := filepath.Join(anchorPath, "_lym", "config")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 	}
@@ -136,7 +133,7 @@ func TestWire_ModeHubSelectsHubMode(t *testing.T) {
 				t.Error("refMatcher = nil; want a non-nil matcher in hub mode")
 			}
 			if c.runDeps().InstructionFiles == nil {
-				t.Error("runDeps().InstructionFiles = nil; want Master's instruction file lister supplied for `lyx webster run`")
+				t.Error("runDeps().InstructionFiles = nil; want Master's instruction file lister supplied for `lym webster run`")
 			}
 			if c.geom.PlanDir == "" {
 				t.Error("geom.PlanDir is empty; want the hub default")
@@ -189,7 +186,7 @@ func hash8For(t *testing.T, target string) string {
 }
 
 // TestWire_StandaloneMode wires one standalone CLI over a plain target and checks everything the mode promises at once:
-// the two-roots split (the worktree root, also the fork-audit workdir and the {{.worktree_root}} prompt token, is the target while every _lyx/.lyx path and module config base resolves under the derived state directory), the nil-or-eager seams (a non-nil RefMatcher that never matches, no fabric opener, an armed in-process reed bring-up, an empty friction directory), the default plan directory with its run-refusal mark clear, and a runner whose public entry points return their ordinary verdict instead of a told-path refusal.
+// the two-roots split (the worktree root, also the fork-audit workdir and the {{.worktree_root}} prompt token, is the target while every _lym/.lym path and module config base resolves under the derived state directory), the nil-or-eager seams (a non-nil RefMatcher that never matches, no fabric opener, an armed in-process reed bring-up, an empty friction directory), the default plan directory with its run-refusal mark clear, and a runner whose public entry points return their ordinary verdict instead of a told-path refusal.
 // It sets XDG_STATE_HOME and LOCALAPPDATA, so it is not parallel.
 func TestWire_StandaloneMode(t *testing.T) {
 	target := t.TempDir()
@@ -197,11 +194,11 @@ func TestWire_StandaloneMode(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", stateHome)
 	t.Setenv("LOCALAPPDATA", t.TempDir())
 	t.Cleanup(func() { logger.SetDurableSinkDir("") })
-	stateDir := filepath.Join(stateHome, "lyx", hash8For(t, target))
-	defaultPlanDir := filepath.Join(stateDir, "_lyx", "plan")
+	stateDir := filepath.Join(stateHome, "lym", hash8For(t, target))
+	defaultPlanDir := filepath.Join(stateDir, "_lym", "plan")
 	seedStandalonePlanDir(t, defaultPlanDir)
 	// A worktree language.yaml that standalone wiring must never read.
-	targetConfigDir := filepath.Join(target, "_lyx", "config")
+	targetConfigDir := filepath.Join(target, "_lym", "config")
 	if err := os.MkdirAll(targetConfigDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", targetConfigDir, err)
 	}
@@ -252,10 +249,10 @@ func TestWire_StandaloneMode(t *testing.T) {
 		t.Errorf("refMatcher = %T; want websterengine.NeverMatches in standalone", c.refMatcher)
 	}
 	if c.runDeps().ReadOnly == nil {
-		t.Error("runDeps().ReadOnly = nil; want the read-only classifier supplied for `lyx webster run`")
+		t.Error("runDeps().ReadOnly = nil; want the read-only classifier supplied for `lym webster run`")
 	}
 	if c.runDeps().InstructionFiles == nil {
-		t.Error("runDeps().InstructionFiles = nil; want Master's instruction file lister supplied for `lyx webster run`")
+		t.Error("runDeps().InstructionFiles = nil; want Master's instruction file lister supplied for `lym webster run`")
 	}
 	if c.openFabric != nil {
 		t.Error("openFabric != nil; want nil in standalone -- there is no fabric repo to reach")
@@ -307,7 +304,7 @@ func TestWire_PlanDirResolution(t *testing.T) {
 			t.Errorf("geom.PlanDir = %q; want the override %q", c.geom.PlanDir, override)
 		}
 		// R6-8: Master's in-pane verbs are flagless in hub mode too, so a moved plan directory must
-		// be recorded here exactly as it is in standalone -- otherwise `lyx webster run --plan-dir`
+		// be recorded here exactly as it is in standalone -- otherwise `lym webster run --plan-dir`
 		// spawns a Master told to read one directory whose own begin-batch re-wires against another.
 		if !c.planDirOverridden {
 			t.Error("planDirOverridden = false; want true -- hub mode's Master types its verbs flagless too, so run must refuse a moved plan")
@@ -327,7 +324,7 @@ func TestWire_PlanDirResolution(t *testing.T) {
 		t.Setenv("XDG_STATE_HOME", stateHome)
 		t.Setenv("LOCALAPPDATA", t.TempDir())
 		t.Cleanup(func() { logger.SetDurableSinkDir("") })
-		defaultPlanDir := filepath.Join(stateHome, "lyx", hash8For(t, target), "_lyx", "plan")
+		defaultPlanDir := filepath.Join(stateHome, "lym", hash8For(t, target), "_lym", "plan")
 
 		c := &websterCLI{}
 		err := c.wire(nil, preflight.ModeStandalone, target, "", "", "")
@@ -430,7 +427,7 @@ func TestWire_RelativeFlagDirsResolveAgainstCwd(t *testing.T) {
 		t.Cleanup(func() { logger.SetDurableSinkDir("") })
 
 		hash8 := hash8For(t, target)
-		defaultPlanDir := filepath.Join(stateHome, "lyx", hash8, "_lyx", "plan")
+		defaultPlanDir := filepath.Join(stateHome, "lym", hash8, "_lym", "plan")
 		seedStandalonePlanDir(t, defaultPlanDir)
 
 		// cwd is the state home itself, so the default plan directory has a short relative spelling
@@ -547,8 +544,8 @@ func TestWireStandalone_SubdirectoryOfRepositoryWiresLikeItsRoot(t *testing.T) {
 	t.Cleanup(func() { logger.SetDurableSinkDir("") })
 
 	normalizedRoot := standalonestate.Normalize(repoRoot)
-	rootStateDir := filepath.Join(stateHome, "lyx", hash8For(t, normalizedRoot))
-	seedStandalonePlanDir(t, filepath.Join(rootStateDir, "_lyx", "plan"))
+	rootStateDir := filepath.Join(stateHome, "lym", hash8For(t, normalizedRoot))
+	seedStandalonePlanDir(t, filepath.Join(rootStateDir, "_lym", "plan"))
 
 	c := &websterCLI{}
 	if err := c.wire(nil, preflight.ModeStandalone, subDir, "", "", ""); err != nil {
@@ -557,7 +554,7 @@ func TestWireStandalone_SubdirectoryOfRepositoryWiresLikeItsRoot(t *testing.T) {
 	if c.geom.WorktreeRoot != normalizedRoot {
 		t.Errorf("geom.WorktreeRoot = %q; want the repository root %q", c.geom.WorktreeRoot, normalizedRoot)
 	}
-	if want := filepath.Join(rootStateDir, "_lyx", "plan"); c.geom.PlanDir != want {
+	if want := filepath.Join(rootStateDir, "_lym", "plan"); c.geom.PlanDir != want {
 		t.Errorf("geom.PlanDir = %q; want the root's own default plan directory %q", c.geom.PlanDir, want)
 	}
 }
@@ -588,7 +585,7 @@ func TestWireModule_DescriptorIsVerbatim(t *testing.T) {
 		t.Fatal("wireModule.Plan = nil; want a non-nil PlanRules -- webster parses a plan")
 	}
 	base := filepath.Join(t.TempDir(), "anchor")
-	wantPlanDefault := filepath.Join(base, "_lyx", "plan")
+	wantPlanDefault := filepath.Join(base, "_lym", "plan")
 	if got := wireModule.Plan.DefaultPlanDir(base); got != wantPlanDefault {
 		t.Errorf("wireModule.Plan.DefaultPlanDir(%q) = %q; want %q", base, got, wantPlanDefault)
 	}
@@ -650,7 +647,7 @@ func TestWireModule_DescriptorIsVerbatim(t *testing.T) {
 // TestWireHub_FrictionDirResolution covers wireHub's tolerant friction-directory resolution: a
 // non-empty friction directory when loom's config enables Tier 2, "" when the friction key is
 // present but empty, and "" without an error when loom.yaml is absent -- the tolerance this CLI's
-// whole resolution depends on, since a `lyx webster` verb must never fail because an unrelated
+// whole resolution depends on, since a `lym webster` verb must never fail because an unrelated
 // module's config could not be read.
 func TestWireHub_FrictionDirResolution(t *testing.T) {
 	t.Run("FrictionEnabled", func(t *testing.T) {
@@ -685,9 +682,7 @@ func TestWireHub_FrictionDirResolution(t *testing.T) {
 	})
 
 	t.Run("LoomConfigAbsent_ResolvesEmptyWithoutError", func(t *testing.T) {
-		// Deliberately never seed loom.yaml: this fictional hub location's anchor has no _lyx/config
-		// directory at all, so loomengine.LoadConfig fails with its own "not initialized" error --
-		// which must never propagate out of wire.
+		// Deliberately never seed loom.yaml: this fictional hub location's anchor has no _lym/config directory at all, so loomengine.LoadConfig fails with its own "not initialized" error -- which must never propagate out of wire.
 		hub := t.TempDir()
 		loc := hubLocation(t, hub, "pair", ".")
 
@@ -727,7 +722,7 @@ func TestWireHub_LanguageSkills(t *testing.T) {
 			wantRefusal:  true,
 		},
 		{
-			name:            "UnloadableGateYamlRefusesNamingLyxConfigGate",
+			name:            "UnloadableGateYamlRefusesNamingLymConfigGate",
 			fileContents:    "skills: []\n",
 			wantGateRefusal: true,
 		},
@@ -742,7 +737,7 @@ func TestWireHub_LanguageSkills(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			hub := t.TempDir()
 			loc := hubLocation(t, hub, "pair", ".")
-			configDir := filepath.Join(fabricengine.BoardDir(hub), "_lyx", "config")
+			configDir := filepath.Join(fabricengine.BoardDir(hub), "_lym", "config")
 			if err := os.MkdirAll(configDir, 0o755); err != nil {
 				t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 			}
@@ -762,8 +757,8 @@ func TestWireHub_LanguageSkills(t *testing.T) {
 			err := c.wire(loc, preflight.ModeHub, "", "", "", "")
 
 			if tt.wantGateRefusal {
-				if err == nil || !strings.Contains(err.Error(), "lyx config gate") {
-					t.Fatalf("wire() = %v; want a refusal naming lyx config gate", err)
+				if err == nil || !strings.Contains(err.Error(), "lym config gate") {
+					t.Fatalf("wire() = %v; want a refusal naming lym config gate", err)
 				}
 				return
 			}
@@ -784,13 +779,13 @@ func TestWireHub_LanguageSkills(t *testing.T) {
 				if !refusal.invalid {
 					t.Error("refusal.invalid = false; want true, so the refusal carries config_invalid")
 				}
-				for _, want := range []string{"language.yaml", "skills", "lyx config language"} {
+				for _, want := range []string{"language.yaml", "skills", "lym config language"} {
 					if !strings.Contains(refusal.message, want) {
 						t.Errorf("refusal message = %q; want it to contain %q", refusal.message, want)
 					}
 				}
-				if strings.Contains(refusal.message, "under _lyx/config") {
-					t.Errorf("refusal message = %q; want no worktree _lyx/config clause for a hub-wide file", refusal.message)
+				if strings.Contains(refusal.message, "under _lym/config") {
+					t.Errorf("refusal message = %q; want no worktree _lym/config clause for a hub-wide file", refusal.message)
 				}
 				return
 			}

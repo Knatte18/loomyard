@@ -1,27 +1,27 @@
 // Package loomshed owns loom's own producer constructors, its durable row names, its status seeder, and its own cancellation helpers.
 // Loom's ordered producer list itself moved to contracts/recipes/loom-recipe.yaml; internal/loomrecipe is what assembles a *shedengine.Shed from it.
-// It takes told absolute paths and has no direct production import of internal/lyxcwd -- see PATTERN-cwd-resolution.
+// It takes told absolute paths and has no direct production import of internal/lymcwd -- see PATTERN-cwd-resolution.
 //
 // The stops its gate rows halt on each name a way forward, as contracts/specs/refusal-spec.md defines one.
-// Loom-Preflight's half-finished-run stop names `lyx loom goto` as that way forward.
+// Loom-Preflight's half-finished-run stop names `lym loom goto` as that way forward.
 //
 // Loom-Preflight also loads `batcher.yaml` through the layer stack under the told `configengine.Dirs` after a passing seed check, as the Webster row does when it partitions the plan, so a stale file in any layer stops the run before any LLM row.
-// A retired key names the way forward its layer file calls for, `lyx config reconcile --apply` for a worktree or local file and `lyx fabric reconcile` for the repo default, which a session lyx refuses the verb from reports status: FAILED and the orch runs;
+// A retired key names the way forward its layer file calls for, `lym config reconcile --apply` for a worktree or local file and `lym fabric reconcile` for the repo default, which a session lym refuses the verb from reports status: FAILED and the orch runs;
 // any other load fault names the fix-and-re-step one.
 // The check reads and never writes, and validates no other module's config.
 //
 // Its plan gates resolve plan refs through a told planindex.Index, so the package links no tree-sitter grammar.
-// The plan gate and `lyx loom validate-plan` share ValidatePlan, which reads webster's run record under the anchor and tells the index the cards of every batch it holds done.
-// A twill Plan-Write run's gate and `lyx loom validate-plan --lens-review` share ValidatePlanLensReview, which adds the presence check on `lens-review.md`.
+// The plan gate and `lym loom validate-plan` share ValidatePlan, which reads webster's run record under the anchor and tells the index the cards of every batch it holds done.
+// A twill Plan-Write run's gate and `lym loom validate-plan --lens-review` share ValidatePlanLensReview, which adds the presence check on `lens-review.md`.
 // Those cards are history, not targets: a run moved back to the plan review after Webster executed batches has their work in the tree, so their tree-dependent checks are skipped.
 // Every other card, and every card of a plan with no run record, is checked against the tree.
 // A done card is also frozen: ValidatePlan appends a blocking `done-card-edited` finding for each one whose file no longer hashes to what its batch recorded at begin, naming the follow-up card as the way forward.
 // A plan with no run record or no recorded hashes reports nothing, and an unreadable card file is a returned error.
 //
 // Every plan gate, and every `validate-plan` mode, also takes a PlanContext and appends blocking checks outside planparser.
-// `rename-tool-missing` is one finding per symbol `Rename` pair of a card not recorded done when the context's rename tools are empty, with `lyx config language` as the way forward.
+// `rename-tool-missing` is one finding per symbol `Rename` pair of a card not recorded done when the context's rename tools are empty, with `lym config language` as the way forward.
 // `pattern-changes-mismatch` is one finding per `## PATTERN changes` bullet that the overview and the context's decision record do not both declare.
-// An absent record adds nothing, and a malformed record section is a returned error naming `lyx loom validate-discussion`.
+// An absent record adds nothing, and a malformed record section is a returned error naming `lym loom validate-discussion`.
 // The zero PlanContext runs neither of those two.
 //
 // Four PATTERN checks follow them, in this order, each reading `PATTERN.md` in the worktree and the overview PlanContext.PatternBase returns for the task branch's merge base, or for HEAD with no parent recorded.
@@ -37,15 +37,15 @@
 // The blocking path is unchanged: the findings go to the writer and the log line in full.
 //
 // The verify gate (NewVerifyGate) is told its verify command by the recipe's wiring and reads it at each arrival; it never parses the plan itself.
-// The command is the row's own `lyx gate test --wait --gate <key>` call, the `code-burler-fix` key at Code-Burler-Fix, the `darn-write` key at Darn-Write and the `drift-verify` key at Drift-Verify, so each fix row and writer runs its own key and shares no pass with Webster's end gate.
+// The command is the row's own `lym gate test --wait --gate <key>` call, the `code-burler-fix` key at Code-Burler-Fix, the `darn-write` key at Darn-Write and the `drift-verify` key at Drift-Verify, so each fix row and writer runs its own key and shares no pass with Webster's end gate.
 // Told a tree scope reader, it takes the darn form; otherwise it takes the round form.
 // The form is a told reader, never inferred from the merge base reader's presence.
 // Told a merge base, the round form first runs the headroom lint from it to HEAD, before the comment lint and any test; told none, it skips that lint.
 // The round form lints the comments added since the told command's latest recorded pass when that commit is an ancestor of HEAD, else since the merge base, so a first round lints rather than skips; with neither base it runs no lint.
 // It then runs the told command as it is through verifytree.Verify: the gate derives its own diff base, narrowing, fallback to whole and guard step.
 // Webster's gate, Publish and Finalize keep the full verify on the tree that lands.
-// A failed run's findings carry the exit code, the log path and the log's tail, and when the whole log holds the CPU watchdog's line that `lyx gate test` prints after it quits a busy test binary, a paragraph naming the window.
-// A watchdog quit of a healthy package has no code fix: the way forward is raising `busy_quit_sec` through `lyx config gate` from the prime, then re-stepping the row.
+// A failed run's findings carry the exit code, the log path and the log's tail, and when the whole log holds the CPU watchdog's line that `lym gate test` prints after it quits a busy test binary, a paragraph naming the window.
+// A watchdog quit of a healthy package has no code fix: the way forward is raising `busy_quit_sec` through `lym config gate` from the prime, then re-stepping the row.
 // The gate runs no flake rerun.
 // The told command runs the tiers its key lists and nothing else, so `tmux` and `llm` tiers run only if the hub lists them in that key.
 // Publish reruns both verifies in full regardless, and stays the guard.
@@ -64,7 +64,7 @@
 // A run holding webster's run lock refuses the archive before any plan file moves, and ArchivedPlanWebsterDirs lists the subdirectories a rotation writes the record into.
 // The Plan-Review and Code-Review run directories stay out of that rotation.
 //
-// `_lyx/plan/`'s top-level files hold exactly one plan generation.
+// `_lym/plan/`'s top-level files hold exactly one plan generation.
 // A retired generation lives only under the rework round that retired it (`round-<N>/prior-generation/`), or in the Plan-Write rotation's archive above.
 // Only PR-Rework archives a generation into a round, and this package declares the round layout once, building every path from the existing accessors and telling webster its archive destination.
 // Webster's run record and the Plan-Review and Code-Review run directories are generation-scoped: they move into the round with the plan, so the next generation starts with none.

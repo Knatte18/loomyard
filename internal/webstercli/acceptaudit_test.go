@@ -90,7 +90,7 @@ func TestAcceptAuditCmd_BatchClearsFabricReference(t *testing.T) {
 	if code := clihelp.Execute(fx.CLI.acceptAuditCmd(), &out, []string{"--batch", "2"}); code != 0 {
 		t.Fatalf("accept-audit --batch 2 = %d; want 0, output: %s", code, out.String())
 	}
-	for _, want := range []string{"ls ../x-records", "lyx webster recover-batch 2"} {
+	for _, want := range []string{"ls ../x-records", "lym webster recover-batch 2"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output missing %q; got %q", want, out.String())
 		}
@@ -123,7 +123,7 @@ func TestAcceptAuditCmd_BatchClearsFabricReference(t *testing.T) {
 	if code := clihelp.Execute(fx.CLI.acceptAuditCmd(), &out, []string{"--batch", "3"}); code != 0 {
 		t.Fatalf("accept-audit --batch 3 over a committed read-only batch = %d; want 0, output: %s", code, out.String())
 	}
-	if !strings.Contains(out.String(), "lyx webster recover-batch 3") {
+	if !strings.Contains(out.String(), "lym webster recover-batch 3") {
 		t.Errorf("output missing the recover-batch next step; got %q", out.String())
 	}
 
@@ -147,7 +147,7 @@ func TestAcceptAuditCmd_BatchClearsFabricReference(t *testing.T) {
 	if code := clihelp.Execute(fx.CLI.acceptAuditCmd(), &out, []string{"--batch", "4"}); code == 0 {
 		t.Fatalf("accept-audit --batch 4 over a dirty tree = 0; want a refusal, output: %s", out.String())
 	}
-	if want := `re-run \"lyx webster accept-audit --batch 4\"`; !strings.Contains(out.String(), want) {
+	if want := `re-run \"lym webster accept-audit --batch 4\"`; !strings.Contains(out.String(), want) {
 		t.Errorf("output missing %q; got %q", want, out.String())
 	}
 }
@@ -190,7 +190,7 @@ func TestAcceptAuditCmd_Refusals(t *testing.T) {
 				}
 				gitkit.Git(t, fx.Worktree, "commit", "-am", "restore content")
 			},
-			wantIn: []string{"1) lyx webster reset --to last-batch-head"},
+			wantIn: []string{"1) lym webster reset --to last-batch-head"},
 		},
 	}
 	for _, tc := range cases {
@@ -224,7 +224,7 @@ func TestAcceptAuditCmd_Refusals(t *testing.T) {
 	}
 }
 
-// TestAcceptAuditCmd_FabricSyncFailureNamesWayForward proves a fabric sync failure still leaves the acceptance saved and names the sentinel and `lyx fabric commit`.
+// TestAcceptAuditCmd_FabricSyncFailureNamesWayForward proves a fabric sync failure still leaves the acceptance saved and names the sentinel and `lym fabric commit`.
 func TestAcceptAuditCmd_FabricSyncFailureNamesWayForward(t *testing.T) {
 	t.Setenv("FABRIC_SKIP_GIT", "")
 	fx := newVerbsFixture(t)
@@ -236,7 +236,7 @@ func TestAcceptAuditCmd_FabricSyncFailureNamesWayForward(t *testing.T) {
 	if code := clihelp.Execute(fx.CLI.acceptAuditCmd(), &out, []string{}); code == 0 {
 		t.Fatalf("accept-audit = 0; want non-zero, output: %s", out.String())
 	}
-	for _, want := range []string{"audit findings accepted but the fabric sync failed", syncErr.Error(), "lyx fabric commit", refusedVerbClause} {
+	for _, want := range []string{"audit findings accepted but the fabric sync failed", syncErr.Error(), "lym fabric commit", refusedVerbClause} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output missing %q; got %q", want, out.String())
 		}

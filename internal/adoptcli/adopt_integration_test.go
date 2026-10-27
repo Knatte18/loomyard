@@ -20,7 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -35,7 +35,7 @@ const (
 )
 
 // holdOwnerPause records a live owner pause of the slug's own scope in the hub's pause record.
-func holdOwnerPause(t *testing.T, location *lyxcwd.Location) {
+func holdOwnerPause(t *testing.T, location *lymcwd.Location) {
 	t.Helper()
 	geometry, err := hubgeom.PauseGeometry(location)
 	if err != nil {
@@ -122,7 +122,7 @@ func TestAdoptIntegration_SecondCloneTakesOver(t *testing.T) {
 	gitkit.MustRun(t, pair, "git", "add", "local.txt")
 	gitkit.MustRun(t, pair, "git", "commit", "-m", "local work origin lacks")
 	holdOwnerPause(t, first.Location)
-	task, err := lyxcwd.ResolveWorktree(pair)
+	task, err := lymcwd.ResolveWorktree(pair)
 	if err != nil {
 		t.Fatalf("resolve the first clone's pair: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestAdoptIntegration_SecondCloneTakesOver(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the first clone's adopt back: %v", err)
 	}
-	if stopped := slugOutcomeOf(t, got, taskSlug); !stopped.Stopped || !stopped.Live || !strings.Contains(stopped.WayForward, "`lyx adopt root --keep-local`") || got.PrimeRecorded {
+	if stopped := slugOutcomeOf(t, got, taskSlug); !stopped.Stopped || !stopped.Live || !strings.Contains(stopped.WayForward, "`lym adopt root --keep-local`") || got.PrimeRecorded {
 		t.Errorf("adopt back = %+v, prime recorded = %v, want a stop on the live pair naming both ways forward under root and the prime left", stopped, got.PrimeRecorded)
 	}
 

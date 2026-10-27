@@ -2,10 +2,10 @@
 
 // config_test.go verifies webster.yaml's template parses, defaults resolve through LoadConfig,
 // overrides round-trip, a malformed role model-spec fails loud naming the offending key, and an
-// absent _lyx/ degrades to the embedded template,
+// absent _lym/ degrades to the embedded template,
 // seeded via plain os.MkdirAll/os.WriteFile against a
 // t.TempDir() rather than gitkit's config fixture-copy helpers: configengine.LoadOrTemplate
-// only requires a filesystem _lyx/config/<module>.yaml, no git repository, so this test stays
+// only requires a filesystem _lym/config/<module>.yaml, no git repository, so this test stays
 // untagged and spawn-free (Test Tier Purity Invariant).
 
 package websterengine_test
@@ -21,10 +21,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// seedConfig writes module's content to <baseDir>/_lyx/config/<module>.yaml,
-// creating the config directory (and its _lyx parent) as needed. It is a
-// plain-filesystem stand-in for gitkit's config seeding, deliberately avoiding
-// that helper's git spawn since configengine.Load never needs a repository.
+// seedConfig writes module's content to <baseDir>/_lym/config/<module>.yaml, creating the config directory (and its _lym parent) as needed.
+// It is a plain-filesystem stand-in for gitkit's config seeding, deliberately avoiding that helper's git spawn since configengine.Load never needs a repository.
 func seedConfig(t *testing.T, baseDir, module, content string) {
 	t.Helper()
 
@@ -75,7 +73,7 @@ func containsKey(text, key string) bool {
 // the template seeded verbatim loads its defaults, overrides round-trip, a file still carrying the retired poll_wait_s key keeps loading (the
 // unmarshal ignores an unknown key), a hand-written file missing numeric knobs loads them at the
 // template defaults rather than Go's zero value (RecoveryTimeoutMin at 0 would classify every
-// recovery batch dead/timeout on the first poll), an uninitialized _lyx/ degrades to the embedded
+// recovery batch dead/timeout on the first poll), an uninitialized _lym/ degrades to the embedded
 // template, a malformed role model-spec fails loud naming the offending key, and webster's own
 // positive-integer check still refuses a knob the file sets to zero, which the template fill never touches.
 // Both refusals are marked configengine.ErrInvalid.
@@ -100,7 +98,7 @@ func TestLoadConfig(t *testing.T) {
 	}
 	tests := []struct {
 		name string
-		// body is the webster.yaml content; uninitialized skips seeding any _lyx/ at all.
+		// body is the webster.yaml content; uninitialized skips seeding any _lym/ at all.
 		body          string
 		uninitialized bool
 		want          websterengine.Config
@@ -144,7 +142,7 @@ func TestLoadConfig(t *testing.T) {
 			want: templateDefaults,
 		},
 		{
-			// Do NOT create _lyx/ — LoadConfig must degrade to the embedded template.
+			// Do NOT create _lym/ — LoadConfig must degrade to the embedded template.
 			name:          "an uninitialized hub falls back to the template",
 			uninitialized: true,
 			want:          templateDefaults,

@@ -10,7 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // ConfigChanges is the set of per-worktree config files a task changed on its weft branch away from both its fork point and its parent's current copy.
@@ -40,7 +40,7 @@ type ConfigFileContents struct {
 // For each reported file it also reads the bytes at the fork point, the task tip and the parent tip, so the caller can compare the files key by key.
 // A failure is wrapped naming both branches compared.
 // It writes nothing.
-func ReadConfigChanges(l *lyxcwd.Location, taskBranch, parentBranch string, configRels []string) (ConfigChanges, error) {
+func ReadConfigChanges(l *lymcwd.Location, taskBranch, parentBranch string, configRels []string) (ConfigChanges, error) {
 	if len(configRels) == 0 {
 		return ConfigChanges{}, nil
 	}

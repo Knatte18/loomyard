@@ -1,28 +1,28 @@
 // arm.go implements loomcli's two exported resolution entry points -- Arm, which resolves cwd
-// itself, and ArmAt, which takes an already-resolved *lyxcwd.Location and a resolved run-id and
-// performs no lyxcwd.Resolve of its own -- plus the three-function split behind them: the
+// itself, and ArmAt, which takes an already-resolved *lymcwd.Location and a resolved run-id and
+// performs no lymcwd.Resolve of its own -- plus the three-function split behind them: the
 // unexported worker arm resolves cwd and delegates to armAt, armAt records the run-id, applies the
 // seed-presence refusal, and wires the whole engine stack exactly as resolvePersistentPreRun
 // (cli.go) always has, and the resolution-free specFor fills a Spec from an already-wired receiver.
 // Arm stays the single cwd-resolution entry point for loom's own subtree -- that rule survives
-// unchanged there -- but it no longer describes the "lyx shed" path, which enters through ArmAt
+// unchanged there -- but it no longer describes the "lym shed" path, which enters through ArmAt
 // with the Location and run-id already in hand. See the overview's
 // exported-Arm-is-the-single-resolution-entry-point and spec-fill-is-separable-from-resolution
 // Shared Decisions.
 //
 // Arm carries no command-name guard of its own: the existing cmd.Name() == "loom" short-circuit
 // stays in resolvePersistentPreRun, where it lets a bare group listing run without a git
-// repository -- a bare "lyx shed" listing is shedcli's own equivalent guard, not this module's.
+// repository -- a bare "lym shed" listing is shedcli's own equivalent guard, not this module's.
 //
 // arm's --parent disposition differs by entry point, and that difference is real rather than an
-// oversight: "lyx shed step --recipe loom" registers no --parent flag of its own, so c.parentFlag
-// is the empty string there -- exactly the value "lyx loom step" passes when the operator omits
+// oversight: "lym shed step --recipe loom" registers no --parent flag of its own, so c.parentFlag
+// is the empty string there -- exactly the value "lym loom step" passes when the operator omits
 // the flag, so the two paths agree and the provenance record is simply never written from the
 // shed path.
 //
 // arm also resolves the run-id every one of loom's four generic verbs addresses -- args[0] when
 // present, shedrun.SelfRunID otherwise -- and, for those four verbs alone, refuses when no seed
-// exists at that run-id. Loom's hand-written verbs -- start, validate-discussion, validate-plan and validate-description -- are not generic verbs and never reach this check; "lyx loom
+// exists at that run-id. Loom's hand-written verbs -- start, validate-discussion, validate-plan and validate-description -- are not generic verbs and never reach this check; "lym loom
 // start" is the one site that writes a seed, per the batch's loom's-run-and-step-do-not-auto-seed
 // decision.
 // See genericShedVerb's own doc comment for the exact four-verb set.
@@ -48,7 +48,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -79,15 +79,12 @@ func genericShedVerb(verb string) bool {
 //
 // For the four generic verbs alone (genericShedVerb), it also refuses when no seed exists at that
 // run-id: ReadSeed answers found == false purely from seed.json's own absence, so a status file
-// present with no seed beside it takes the same refusal. "lyx loom start" is not a generic verb and
+// present with no seed beside it takes the same refusal. "lym loom start" is not a generic verb and
 // never reaches this refusal -- it is the one site that writes a seed, per the batch's
 // loom's-run-and-step-do-not-auto-seed decision.
 //
-// It performs no I/O beyond shedrun.ReadSeed and shedrun.List, both pure filesystem reads under
-// location's own AnchorPath -- no git spawn -- so a test can drive it directly against a hand-built
-// *lyxcwd.Location with no real git repository behind it, which is what lets arm_seed_test.go stay
-// Tier 1 despite arm itself needing lyxcwd.Resolve's real git spawn.
-func (c *loomCLI) resolveRunID(location *lyxcwd.Location, verb string, args []string) error {
+// It performs no I/O beyond shedrun.ReadSeed and shedrun.List, both pure filesystem reads under location's own AnchorPath -- no git spawn -- so a test can drive it directly against a hand-built *lymcwd.Location with no real git repository behind it, which is what lets arm_seed_test.go stay Tier 1 despite arm itself needing lymcwd.Resolve's real git spawn.
+func (c *loomCLI) resolveRunID(location *lymcwd.Location, verb string, args []string) error {
 	runID := shedrun.SelfRunID
 	// insert-card's and remove-card's first positional is a card position, and fmt's arguments are the Go files to format; none is a run-id.
 	if len(args) > 0 && verb != "insert-card" && verb != "remove-card" && verb != "fmt" {
@@ -112,9 +109,9 @@ func (c *loomCLI) resolveRunID(location *lyxcwd.Location, verb string, args []st
 		return err
 	}
 	// A driverless seed gives status, pause and goto nothing to act on, and the bootstrap's seed-agreement check reads and writes only the self seed, so only run and step on self name that route.
-	remedy := `run "lyx loom start" first to bootstrap this task`
+	remedy := `run "lym loom start" first to bootstrap this task`
 	if (verb == "run" || verb == "step") && runID == shedrun.SelfRunID {
-		remedy = `run "lyx loom start" first to bootstrap this task, or seed it without a driver with "lyx shed seed self --recipe loom --driver go --param parent=<parent-branch>" (<parent-branch> is the pair's recorded parent branch) and then run "lyx loom step"`
+		remedy = `run "lym loom start" first to bootstrap this task, or seed it without a driver with "lym shed seed self --recipe loom --driver go --param parent=<parent-branch>" (<parent-branch> is the pair's recorded parent branch) and then run "lym loom step"`
 	}
 	// Rendered through shedrun.MissingSeedMessage, the shared renderer batch 1 card 3 declares, so
 	// this refusal words identically to battencli's own.
@@ -125,7 +122,7 @@ func (c *loomCLI) resolveRunID(location *lyxcwd.Location, verb string, args []st
 // resolveRecipe records on c the recipe the addressed run's seed names, shedrun.RecipeLoom when the run has no seed yet.
 // It runs once, right after resolveRunID, so every verb, the lightweight ones included, reads the same recipe.
 // Only the seed's recipe is read here; the driver choice stays with the verb that selects the driving surface.
-func (c *loomCLI) resolveRecipe(location *lyxcwd.Location) error {
+func (c *loomCLI) resolveRecipe(location *lymcwd.Location) error {
 	seed, found, err := shedrun.ReadSeed(location, c.runID)
 	if err != nil {
 		return err
@@ -135,14 +132,14 @@ func (c *loomCLI) resolveRecipe(location *lyxcwd.Location) error {
 	return nil
 }
 
-// arm resolves cwd into a *lyxcwd.Location and delegates to armAt with the raw positional args,
+// arm resolves cwd into a *lymcwd.Location and delegates to armAt with the raw positional args,
 // which resolveRunID resolves into a run-id exactly as it always has. It is loom's own subtree
-// entry point: every "lyx loom <verb>" invocation reaches Arm, never ArmAt directly, so its own
+// entry point: every "lym loom <verb>" invocation reaches Arm, never ArmAt directly, so its own
 // resolvePersistentPreRun keeps resolving cwd exactly once per invocation as it always has.
 func (c *loomCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, error) {
-	location, err := lyxcwd.Resolve(cwd)
+	location, err := lymcwd.Resolve(cwd)
 	if err != nil {
-		// lyxcwd.Resolve's error is already self-describing (it IS the "not a git repository"
+		// lymcwd.Resolve's error is already self-describing (it IS the "not a git repository"
 		// sentinel); pass it through bare rather than doubling that same text on top of it.
 		return shedverbs.Spec{}, err
 	}
@@ -163,19 +160,19 @@ func (c *loomCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, e
 // armAt resolves and records the addressed run-id via resolveRunID, refuses when one of the four
 // generic verbs addresses a run-id with no seed, wires the receiver's whole engine stack -- through
 // wireLightweight when verb is one of the lightweight verbs, through the full wire otherwise -- and
-// returns the filled Spec. It performs no lyxcwd.Resolve of its own: location is already resolved,
+// returns the filled Spec. It performs no lymcwd.Resolve of its own: location is already resolved,
 // told rather than derived, by whichever caller holds it.
 //
 // It is the single worker both arm (loom's own subtree, which resolves cwd first) and the exported
 // ArmAt wrapper delegate to, so the *loomCLI whose fields the returned hooks close over is always
-// the same value the caller holds: the pre-run's own c on the "lyx loom" path, the wrapper's
-// freshly-constructed one on the "lyx shed" path.
+// the same value the caller holds: the pre-run's own c on the "lym loom" path, the wrapper's
+// freshly-constructed one on the "lym shed" path.
 //
 // The seed-presence refusal runs before either wiring call -- before wireLightweight or wire have
 // touched the filesystem at all -- so a refusing run/step writes nothing to disk. cwd is derived as
 // location.AnchorPath() for wireLightweight/wire's own cwd parameter, since cwd is provably equal to
-// AnchorPath() after a successful resolve (see lyxcwd.Location's own doc comment).
-func (c *loomCLI) armAt(location *lyxcwd.Location, verb string, args []string) (shedverbs.Spec, error) {
+// AnchorPath() after a successful resolve (see lymcwd.Location's own doc comment).
+func (c *loomCLI) armAt(location *lymcwd.Location, verb string, args []string) (shedverbs.Spec, error) {
 	c.caller = agentname.CallerLabel(os.Getenv(agentname.StrandNameEnv))
 	if err := c.resolveRunID(location, verb, args); err != nil {
 		return shedverbs.Spec{}, err
@@ -305,9 +302,9 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 		StepBusyKind:    shedverbs.KindBusy,
 		AbsentStatus: shedverbs.AbsentDisposition{
 			Refuse:        true,
-			RefuseMessage: "loom: no status file at " + c.shedPaths.StatusPath + "; run \"lyx loom start\" first to bootstrap this task",
+			RefuseMessage: "loom: no status file at " + c.shedPaths.StatusPath + "; run \"lym loom start\" first to bootstrap this task",
 		},
-		PauseAbsentMessage: "loom: no status file at " + c.shedPaths.StatusPath + "; there is nothing running to pause -- run \"lyx loom start\" first to bootstrap this task",
+		PauseAbsentMessage: "loom: no status file at " + c.shedPaths.StatusPath + "; there is nothing running to pause -- run \"lym loom start\" first to bootstrap this task",
 		// The landing halts and the decision halt go to the orch on loom and darn runs alike, so both tell the one predicate.
 		HandBack: arbiterstop.HandsBack,
 		Hooks: shedverbs.Hooks{
@@ -375,15 +372,15 @@ func Arm(cwd string, verb string, args []string) (shedverbs.Spec, error) {
 	return c.arm(cwd, verb, args)
 }
 
-// ArmAt is loomcli's Location-taking resolution entry point, for internal/shedcli's "lyx shed"
+// ArmAt is loomcli's Location-taking resolution entry point, for internal/shedcli's "lym shed"
 // table: it constructs a fresh receiver via newLoomCLI and returns c.armAt(location, verb,
-// []string{runID}), performing no lyxcwd.Resolve of its own. It exists because shedcli's own
+// []string{runID}), performing no lymcwd.Resolve of its own. It exists because shedcli's own
 // pre-run must read a seed before it knows which recipe to arm, a seed read is a path read, a path
 // read needs an anchor, and resolving one twice per invocation to preserve Arm's own single
 // signature would cost a second "git rev-parse" on every call. Wrapping runID as a one-element
 // slice reuses resolveRunID's own args[0]-or-default logic unchanged; since runID is already
 // resolved and non-empty by the time ArmAt is called, args[0] is always what resolveRunID records.
-func ArmAt(location *lyxcwd.Location, verb string, runID string) (shedverbs.Spec, error) {
+func ArmAt(location *lymcwd.Location, verb string, runID string) (shedverbs.Spec, error) {
 	c := newLoomCLI()
 	return c.armAt(location, verb, []string{runID})
 }
@@ -392,13 +389,13 @@ func ArmAt(location *lyxcwd.Location, verb string, runID string) (shedverbs.Spec
 // today's order, each step's error becoming a returned error the generic body reports on the
 // error envelope exactly as run's own inline handling did.
 func (c *loomCLI) loomPreRun(ctx context.Context) error {
-	// The status-file existence refusal, naming "lyx loom start" and "lyx loom step" as the remedies.
+	// The status-file existence refusal, naming "lym loom start" and "lym loom step" as the remedies.
 	// The shared bootstrap of those two verbs seeds the status file, because it owns the commit-before-precondition ordering that seeding needs.
 	if _, err := os.Stat(c.shedPaths.StatusPath); err != nil {
-		return errors.New("loom: no status file at " + c.shedPaths.StatusPath + "; run \"lyx loom start\", or \"lyx loom step\" after a driverless seed, first to seed the status file")
+		return errors.New("loom: no status file at " + c.shedPaths.StatusPath + "; run \"lym loom start\", or \"lym loom step\" after a driverless seed, first to seed the status file")
 	}
-	// The status file must be THIS task's own, for the same reason "lyx loom start" checks: a
-	// worktree forked from a task worktree inherits the old task's `_lyx` state, and the phase
+	// The status file must be THIS task's own, for the same reason "lym loom start" checks: a
+	// worktree forked from a task worktree inherits the old task's `_lym` state, and the phase
 	// machine would silently resume the inherited run under the wrong slug (crucible round
 	// fable5-high-r3, F-B7).
 	if err := loomengine.VerifySeedOwnership(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, seedSlug(c.location.WorktreeName)); err != nil {
@@ -411,7 +408,7 @@ func (c *loomCLI) loomPreRun(ctx context.Context) error {
 
 	// Ensure the reed substrate before the first producer call: the rows beneath run spawn
 	// agents into reed panes, so without a live session the run gets several producers deep and
-	// then hard-errors. Up is idempotent and is what "lyx loom start" already calls at its own
+	// then hard-errors. Up is idempotent and is what "lym loom start" already calls at its own
 	// step 4.
 	if _, err := c.reed.Up(); err != nil {
 		return err
@@ -556,13 +553,13 @@ func (c *loomCLI) loomPostStep(res shedengine.StepResult) {
 	recordHandoffVoucher(loomengine.LoomHandoffVoucher(c.location), loomengine.LoomHandoffVoucherLock(c.location), len(res.History), res.State)
 }
 
-// pauseAfterCommand returns the `lyx loom pause --after` command halting this run at the end of currentProducer, naming the run-id when it is not the worktree's own.
+// pauseAfterCommand returns the `lym loom pause --after` command halting this run at the end of currentProducer, naming the run-id when it is not the worktree's own.
 // An empty currentProducer is filled with the placeholder "<current_producer>".
 func (c *loomCLI) pauseAfterCommand(currentProducer string) string {
 	if currentProducer == "" {
 		currentProducer = "<current_producer>"
 	}
-	command := "lyx loom pause --after " + currentProducer
+	command := "lym loom pause --after " + currentProducer
 	if c.location != nil {
 		if runID := shedrun.ResolveRunID(c.location, c.runID); runID != shedrun.SelfRunID {
 			command += " " + runID
@@ -577,7 +574,7 @@ func (c *loomCLI) loomBarePause(st shedengine.Status) error {
 	if c.location != nil {
 		slug = c.location.WorktreeName
 	}
-	return errors.New("loom: a bare pause no longer stops a loom run; way forward: run \"lyx tender pause " + slug + "\" to stop its agents now, or \"" + c.pauseAfterCommand(st.CurrentProducer) + "\" to halt it at its next producer boundary")
+	return errors.New("loom: a bare pause no longer stops a loom run; way forward: run \"lym tender pause " + slug + "\" to stop its agents now, or \"" + c.pauseAfterCommand(st.CurrentProducer) + "\" to halt it at its next producer boundary")
 }
 
 // loomStatusExtras implements the StatusExtras hook for loom's spec: loom's own three status keys

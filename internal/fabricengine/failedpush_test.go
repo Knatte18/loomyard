@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 func composedPushLine(f fabricengine.FailedPush) string {
@@ -175,7 +175,7 @@ func TestFailedPushRecord(t *testing.T) {
 		if err := fabricengine.RecordPushFailure(hub, failure, base); err != nil {
 			t.Fatalf("RecordPushFailure: %v", err)
 		}
-		dir := filepath.Join(fabricengine.HubScratchDir(hub), lyxdirs.FailedPushDirName)
+		dir := filepath.Join(fabricengine.HubScratchDir(hub), lymdirs.FailedPushDirName)
 		matches, _ := filepath.Glob(filepath.Join(dir, "*.json"))
 		if len(matches) != 1 {
 			t.Fatalf("record files = %v; want one", matches)
@@ -210,77 +210,77 @@ func TestFailedPushRecord(t *testing.T) {
 		{
 			"CodeDeferred",
 			fabricengine.FailedPush{Repo: "code", RepoPath: "/hub/task", Branch: "task", Class: fabricengine.PushFailureDeferred},
-			"run `lyx fabric push` in /hub/task to retry the push",
+			"run `lym fabric push` in /hub/task to retry the push",
 		},
 		{
 			"RecordsDeferred",
 			fabricengine.FailedPush{Repo: "records", RepoPath: "/hub/task-weft", CodeWorktree: "/hub/task", Branch: "task-weft", Class: fabricengine.PushFailureDeferred},
-			"run `lyx fabric push` in /hub/task to retry the push",
+			"run `lym fabric push` in /hub/task to retry the push",
 		},
 		{
 			"BoltDeferred",
 			fabricengine.FailedPush{Repo: "bolt", RepoPath: "/hub/_board", Branch: "main", Class: fabricengine.PushFailureDeferred},
-			"run `lyx board sync` from the prime worktree to retry the push",
+			"run `lym board sync` from the prime worktree to retry the push",
 		},
 		{
 			"CodeTransport",
 			fabricengine.FailedPush{Repo: "code", RepoPath: "/hub/task", Branch: "task", Class: fabricengine.PushFailureTransport},
-			"run `lyx fabric push` in /hub/task to retry the push",
+			"run `lym fabric push` in /hub/task to retry the push",
 		},
 		{
 			"RecordsTransport",
 			fabricengine.FailedPush{Repo: "records", RepoPath: "/hub/task-weft", CodeWorktree: "/hub/task", Branch: "task-weft", Class: fabricengine.PushFailureTransport},
-			"run `lyx fabric push` in /hub/task to retry the push",
+			"run `lym fabric push` in /hub/task to retry the push",
 		},
 		{
 			"PrimeRecordsTransportPushesInThePrimeWorktree",
 			fabricengine.FailedPush{Repo: "records", RepoPath: "/hub/main-weft", CodeWorktree: "/hub/main", Branch: "main-weft", Class: fabricengine.PushFailureTransport},
-			"run `lyx fabric push` in /hub/main to retry the push",
+			"run `lym fabric push` in /hub/main to retry the push",
 		},
 		{
 			"BoltTransport",
 			fabricengine.FailedPush{Repo: "bolt", RepoPath: "/hub/_board", Branch: "main", Class: fabricengine.PushFailureTransport},
-			"run `lyx board sync` from the prime worktree to retry the push",
+			"run `lym board sync` from the prime worktree to retry the push",
 		},
 		{
 			"CodeAuth",
 			fabricengine.FailedPush{Repo: "code", RepoPath: "/hub/task", Branch: "task", Class: fabricengine.PushFailureAuth},
-			"fix this machine's permission to push task on origin, then run `lyx fabric push` in /hub/task",
+			"fix this machine's permission to push task on origin, then run `lym fabric push` in /hub/task",
 		},
 		{
 			"RecordsAuth",
 			fabricengine.FailedPush{Repo: "records", RepoPath: "/hub/task-weft", CodeWorktree: "/hub/task", Branch: "task-weft", Class: fabricengine.PushFailureAuth},
-			"fix this machine's permission to push task-weft on origin, then run `lyx fabric push` in /hub/task",
+			"fix this machine's permission to push task-weft on origin, then run `lym fabric push` in /hub/task",
 		},
 		{
 			"BoltAuth",
 			fabricengine.FailedPush{Repo: "bolt", RepoPath: "/hub/_board", Branch: "main", Class: fabricengine.PushFailureAuth},
-			"fix this machine's permission to push main on origin, then run `lyx board sync` from the prime worktree",
+			"fix this machine's permission to push main on origin, then run `lym board sync` from the prime worktree",
 		},
 		{
 			"CodeNotFastForward",
 			fabricengine.FailedPush{Repo: "code", RepoPath: "/hub/task", Branch: "task", Class: fabricengine.PushFailureNotFastForward},
-			"origin/task holds commits this branch lacks; run `git merge origin/task` in /hub/task, settle any conflict and commit, then run `lyx fabric push` in /hub/task",
+			"origin/task holds commits this branch lacks; run `git merge origin/task` in /hub/task, settle any conflict and commit, then run `lym fabric push` in /hub/task",
 		},
 		{
 			"RecordsNotFastForward",
 			fabricengine.FailedPush{
 				Repo: "records", RepoPath: "/hub/task-weft", CodeWorktree: "/hub/task", Branch: "task-weft", Class: fabricengine.PushFailureNotFastForward,
-				Paths: []string{"_lyx/a.md"}, Commits: []string{"abc123"},
+				Paths: []string{"_lym/a.md"}, Commits: []string{"abc123"},
 			},
-			"another machine wrote the same paths on origin/task-weft (paths: _lyx/a.md; local commits: abc123); " +
+			"another machine wrote the same paths on origin/task-weft (paths: _lym/a.md; local commits: abc123); " +
 				"to keep origin's side, run `git reset --keep origin/task-weft` in /hub/task-weft, which drops the local commits; " +
-				"to keep this machine's, run `git merge origin/task-weft` in /hub/task-weft, settle the named paths and commit, then run `lyx fabric push` in /hub/task, whose push is then a fast-forward and meets no replay",
+				"to keep this machine's, run `git merge origin/task-weft` in /hub/task-weft, settle the named paths and commit, then run `lym fabric push` in /hub/task, whose push is then a fast-forward and meets no replay",
 		},
 		{
 			"PrimeRecordsNotFastForwardPushesInThePrimeWorktree",
 			fabricengine.FailedPush{
 				Repo: "records", RepoPath: "/hub/main-weft", CodeWorktree: "/hub/main", Branch: "main-weft", Class: fabricengine.PushFailureNotFastForward,
-				Paths: []string{"_lyx/a.md"}, Commits: []string{"abc123"},
+				Paths: []string{"_lym/a.md"}, Commits: []string{"abc123"},
 			},
-			"another machine wrote the same paths on origin/main-weft (paths: _lyx/a.md; local commits: abc123); " +
+			"another machine wrote the same paths on origin/main-weft (paths: _lym/a.md; local commits: abc123); " +
 				"to keep origin's side, run `git reset --keep origin/main-weft` in /hub/main-weft, which drops the local commits; " +
-				"to keep this machine's, run `git merge origin/main-weft` in /hub/main-weft, settle the named paths and commit, then run `lyx fabric push` in /hub/main, whose push is then a fast-forward and meets no replay",
+				"to keep this machine's, run `git merge origin/main-weft` in /hub/main-weft, settle the named paths and commit, then run `lym fabric push` in /hub/main, whose push is then a fast-forward and meets no replay",
 		},
 		{
 			"BoltNotFastForward",
@@ -290,21 +290,21 @@ func TestFailedPushRecord(t *testing.T) {
 			},
 			"another machine wrote the same paths on origin/main (paths: board.json; local commits: def456); " +
 				"to keep origin's side, run `git reset --keep origin/main` in /hub/_board, which drops the local commits; " +
-				"to keep this machine's, run `git merge origin/main` in /hub/_board, settle the named paths and commit, then run `lyx board sync` from the prime worktree, whose push is then a fast-forward and meets no replay",
+				"to keep this machine's, run `git merge origin/main` in /hub/_board, settle the named paths and commit, then run `lym board sync` from the prime worktree, whose push is then a fast-forward and meets no replay",
 		},
 		{
 			"CodeGone",
 			fabricengine.FailedPush{Repo: "code", RepoPath: "/hub/task", Branch: "task", Class: fabricengine.PushFailureGone},
 			"origin no longer has branch task, and its board entry is neither done nor removed on origin, since an ended entry writes no record; " +
-				"decide whether the run ends: `lyx fabric remove` of the pair at /hub/task, run from the prime, removes the pair and clears this record; " +
-				"once origin's board shows the entry done or removed, `lyx cleanup --apply` tears it down instead",
+				"decide whether the run ends: `lym fabric remove` of the pair at /hub/task, run from the prime, removes the pair and clears this record; " +
+				"once origin's board shows the entry done or removed, `lym cleanup --apply` tears it down instead",
 		},
 		{
 			"RecordsGoneNamesTheCodeWorktree",
 			fabricengine.FailedPush{Repo: "records", RepoPath: "/hub/task-weft", CodeWorktree: "/hub/task", Branch: "task-weft", Class: fabricengine.PushFailureGone},
 			"origin no longer has branch task-weft, and its board entry is neither done nor removed on origin, since an ended entry writes no record; " +
-				"decide whether the run ends: `lyx fabric remove` of the pair at /hub/task, run from the prime, removes the pair and clears this record; " +
-				"once origin's board shows the entry done or removed, `lyx cleanup --apply` tears it down instead",
+				"decide whether the run ends: `lym fabric remove` of the pair at /hub/task, run from the prime, removes the pair and clears this record; " +
+				"once origin's board shows the entry done or removed, `lym cleanup --apply` tears it down instead",
 		},
 		{
 			"PrimeCodeTransportNamesGitPush",
@@ -328,8 +328,8 @@ func TestFailedPushRecord(t *testing.T) {
 			if got != tt.want {
 				t.Errorf("FailedPushWayForward(%s) =\n%s\nwant\n%s", tt.name, got, tt.want)
 			}
-			if tt.failure.Prime && strings.Contains(got, "lyx fabric push") {
-				t.Errorf("FailedPushWayForward(%s) = %q; a prime record never names `lyx fabric push`", tt.name, got)
+			if tt.failure.Prime && strings.Contains(got, "lym fabric push") {
+				t.Errorf("FailedPushWayForward(%s) = %q; a prime record never names `lym fabric push`", tt.name, got)
 			}
 		})
 	}

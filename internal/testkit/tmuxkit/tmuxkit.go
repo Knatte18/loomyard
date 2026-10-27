@@ -5,12 +5,12 @@
 // KillOnCleanup does the same for a key the test did not mint.
 // PackageServer hands one shared server, which Main's sweep kills, to every test of the package that names its own sessions, kills no server and asserts nothing about the whole session set.
 // Socket, KillOnCleanup and PackageServer each first start a hermetic server on the key from the kit's own tmux config, so no server a test uses reads `~/.tmux.conf`, starts login-shell panes or exits when it has no session.
-// The config marks its servers with the user option `@lyx_test_server`, which reed's stale-holder probe reads to leave such a server alone.
+// The config marks its servers with the user option `@lym_test_server`, which reed's stale-holder probe reads to leave such a server alone.
 // A server reed starts itself reads no `~/.tmux.conf` either and pins the same two shell options per session, so the kit's server differs from reed's own only by the two extra lines, `exit-empty off` and the marker.
-// Main also unsets `LYX_REED_TMUX_CONF`, so every reed.yaml a tagged test renders from the template resolves `tmux_conf` to empty and no operator tmux config reaches a server a test starts.
+// Main also unsets `LYM_REED_TMUX_CONF`, so every reed.yaml a tagged test renders from the template resolves `tmux_conf` to empty and no operator tmux config reaches a server a test starts.
 // Reed starts a server itself only after a test's own `down` or `kill-server` on its key, or when a test registers its key after reed's boot.
 //
-// Main runs in the process run directory of `internal/lyxtemp` and points `TMPDIR` at it, so every temp file a test creates lands there.
+// Main runs in the process run directory of `internal/lymtemp` and points `TMPDIR` at it, so every temp file a test creates lands there.
 // It also sets `GIT_CEILING_DIRECTORIES` to the directory, so no repository discovery from a temp fixture climbs above it.
 // After the run it sweeps the servers, killing every process their panes' sessions still hold, scans `/proc` on Linux for any process whose cwd, executable or argv references the directory, kills it and fails the package, then removes the directory on every platform, Windows included.
 // A removal that fails is reported without changing the exit code, and a binary killed before it removes its directory leaves it for the next start's sweep.
@@ -21,7 +21,7 @@
 // Pids, ProcArgv, ProcCwd, ProcExe, ProcPPID, ProcState, ProcComm and IsWatchdog are the read-only `/proc` probes behind that scan, exported for tests that look for processes themselves.
 // BindStaleSocket leaves a socket file that refuses every stream connection, for tests of the code that removes dead sockets.
 //
-// It is the second kit exempt from the Testkit Invariant's `os/exec` ban, after lyxbin.
+// It is the second kit exempt from the Testkit Invariant's `os/exec` ban, after lymbin.
 // The exemption is bounded to running the `tmux` binary against sockets under the kit's own directory or its own fixture keys, to starting servers under the kit's own config, and to the `/proc` scan and the kill of a leftover it finds.
 // A test binary killed by a panic or timeout skips Main's sweep and leaves its servers;
 // Socket's cleanup still covers ordinary test failures.
@@ -45,7 +45,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
-	"github.com/Knatte18/loomyard/internal/lyxtemp"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
@@ -56,7 +56,7 @@ const (
 	// maxKeyBytes is the longest `-L` key reed forms (`reedengine.ServerName`).
 	maxKeyBytes = 61
 
-	dirPrefix = "lyx"
+	dirPrefix = "lym"
 
 	// deadSocketWait bounds how long removeDeadSocket waits for a killed server to stop accepting connections.
 	deadSocketWait = 2 * time.Second
@@ -74,7 +74,7 @@ const (
 // A package calls it as `os.Exit(tmuxkit.Main(m))` after its own setup.
 // On Windows (psmux) the tests run unchanged, apart from the temp variables pointing at the run directory.
 func Main(m *testing.M) int {
-	dir, err := lyxtemp.Dir()
+	dir, err := lymtemp.Dir()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "tmuxkit: %v\n", err)
 		return 1
@@ -82,19 +82,19 @@ func Main(m *testing.M) int {
 
 	if runtime.GOOS == "windows" {
 		setTempEnv(dir)
-		return afterRun(os.Stderr, dir, m.Run(), leftoverGrace, func() {}, lyxtemp.Remove)
+		return afterRun(os.Stderr, dir, m.Run(), leftoverGrace, func() {}, lymtemp.Remove)
 	}
 
 	if err := checkSocketPath(dir, os.Getuid()); err != nil {
 		fmt.Fprintf(os.Stderr, "tmuxkit: %v\n", err)
-		_ = lyxtemp.Remove()
+		_ = lymtemp.Remove()
 		return 1
 	}
 	setEnv(dir)
 
 	code := m.Run()
 
-	return afterRun(os.Stderr, dir, code, leftoverGrace, func() { sweep(dir, os.Getuid()) }, lyxtemp.Remove)
+	return afterRun(os.Stderr, dir, code, leftoverGrace, func() { sweep(dir, os.Getuid()) }, lymtemp.Remove)
 }
 
 // afterRun finishes a package's run: it checks the sockets under dir, sweeps the servers, then, on Linux, kills every process still referencing dir and fails the run for each that is not a reed watchdog daemon, and finally calls remove to delete dir.
@@ -153,10 +153,10 @@ func checkSockets(dir string, allowed bool) []string {
 	return findings
 }
 
-// isReedProbeKey reports whether key has the form reed gives its capability probe's private socket: `lyx-p` and seven hex digits.
+// isReedProbeKey reports whether key has the form reed gives its capability probe's private socket: `lym-p` and seven hex digits.
 // A test that kills a reed process mid-probe leaves that server for the sweep, so such a key is no test's leak.
 func isReedProbeKey(key string) bool {
-	digits, ok := strings.CutPrefix(key, "lyx-p")
+	digits, ok := strings.CutPrefix(key, "lym-p")
 	if !ok || len(digits) != 7 {
 		return false
 	}
@@ -268,7 +268,7 @@ func Socket(t *testing.T, tmux string) string {
 	if _, err := rand.Read(b[:]); err != nil {
 		t.Fatalf("tmuxkit: random socket key: %v", err)
 	}
-	key := "lyxtest-" + hex.EncodeToString(b[:])
+	key := "lymtest-" + hex.EncodeToString(b[:])
 	KillOnCleanup(t, tmux, key)
 	return key
 }
@@ -284,7 +284,7 @@ func PackageServer(t *testing.T, tmux string) string {
 		if _, err := rand.Read(b[:]); err != nil {
 			t.Fatalf("tmuxkit: random socket key: %v", err)
 		}
-		key := "lyxpkg-" + hex.EncodeToString(b[:])
+		key := "lympkg-" + hex.EncodeToString(b[:])
 		registerKey(key)
 		if err := startServer(tmux, key); err != nil {
 			t.Fatalf("tmuxkit: %v", err)
@@ -313,10 +313,10 @@ func KillOnCleanup(t *testing.T, tmux, key string) {
 
 const (
 	// configFileName is the kit's tmux config, written once per test binary into the socket directory Main owns.
-	configFileName = "lyx-test-tmux.conf"
+	configFileName = "lym-test-tmux.conf"
 
 	// testServerOption is the tmux user option the kit's config sets to "on", which reed's stale-holder probe reads to tell a pre-started test server from a stale one.
-	testServerOption = "@lyx_test_server"
+	testServerOption = "@lym_test_server"
 )
 
 var (
@@ -399,7 +399,7 @@ func ServerEnviron(environ []string) []string {
 		key, _, _ := strings.Cut(entry, "=")
 		switch {
 		case key == "CLAUDECODE", strings.HasPrefix(key, "CLAUDE_CODE_"):
-		case key == "LYX_TRACE_ID", key == agentname.StrandNameEnv, key == agentname.ParentEnv:
+		case key == "LYM_TRACE_ID", key == agentname.StrandNameEnv, key == agentname.ParentEnv:
 		default:
 			clean = append(clean, entry)
 		}
@@ -471,7 +471,7 @@ func setEnv(dir string) {
 	setTempEnv(dir)
 	os.Unsetenv("TMUX")
 	os.Unsetenv("TMUX_PANE")
-	os.Unsetenv("LYX_REED_TMUX_CONF")
+	os.Unsetenv("LYM_REED_TMUX_CONF")
 }
 
 // listSockets returns the socket files under dir's per-user socket directory, and nothing outside it.

@@ -101,7 +101,7 @@ func (c *loomCLI) fmtCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `fmt rewrites each named .go file in place to its go/format form, in-process,
 with no gofmt binary. It is the sanctioned way to fix the formatting
-cmd/lyx/gofmt_test.go fails. A relative path resolves against the current
+cmd/lym/gofmt_test.go fails. A relative path resolves against the current
 directory. Every file is checked and formatted before any is written: one
 path that does not exist, lies outside this worktree, is not a .go file or
 does not parse refuses the whole call and writes nothing. The envelope's
@@ -109,8 +109,8 @@ does not parse refuses the whole call and writes nothing. The envelope's
 untouched and unreported.
 
 Example:
-  lyx loom fmt internal/x/y.go
-  lyx loom fmt a.go b.go`,
+  lym loom fmt internal/x/y.go
+  lym loom fmt a.go b.go`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -119,13 +119,13 @@ Example:
 			out := cmd.OutOrStdout()
 
 			if len(args) == 0 {
-				clihelp.SetExit(cmd.Context(), output.Err(out, `loom fmt: name at least one .go file; way forward: run "lyx loom fmt <file>..." with the Go files to format`))
+				clihelp.SetExit(cmd.Context(), output.Err(out, `loom fmt: name at least one .go file; way forward: run "lym loom fmt <file>..." with the Go files to format`))
 				return nil
 			}
 
 			rewrites, refused := planGoFormat(c.env.WorktreeRoot, c.cwd, args)
 			if len(refused) > 0 {
-				clihelp.SetExit(cmd.Context(), output.ErrFields(out, `loom fmt: refused a named file; way forward: name only .go files inside this worktree that parse, then re-run "lyx loom fmt"`, map[string]any{
+				clihelp.SetExit(cmd.Context(), output.ErrFields(out, `loom fmt: refused a named file; way forward: name only .go files inside this worktree that parse, then re-run "lym loom fmt"`, map[string]any{
 					"refused": refused,
 				}))
 				return nil
@@ -137,7 +137,7 @@ Example:
 					continue
 				}
 				if err := os.WriteFile(rewrite.resolved, rewrite.formatted, 0o644); err != nil {
-					clihelp.SetExit(cmd.Context(), output.ErrFields(out, `loom fmt: write failed; way forward: re-run "lyx loom fmt" with the same files once the write error is fixed; a formatted file is left untouched`, map[string]any{
+					clihelp.SetExit(cmd.Context(), output.ErrFields(out, `loom fmt: write failed; way forward: re-run "lym loom fmt" with the same files once the write error is fixed; a formatted file is left untouched`, map[string]any{
 						"written": changed,
 						"failed":  fmt.Sprintf("%s: %v", rewrite.named, err),
 					}))

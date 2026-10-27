@@ -1,6 +1,6 @@
 // doc.go documents internal/planglyph, the sole owner of every quarry.Repo call (Open, Resolve, EncloseAt, DeltaGit) and of the package-level quarry.Name, and of the resolve-backed validation pass layered on top of internal/planparser's pure checks.
 //
-// planglyph derives no path of its own and never imports internal/lyxcwd: its two entry points,
+// planglyph derives no path of its own and never imports internal/lymcwd: its two entry points,
 // ValidateFormat and Validate, take worktreeRoot exactly as planparser.Validate(plan, worktreeRoot)
 // does, per the told-geometry-for-planglyph Shared Decision — quarry.Open needs an absolute root,
 // which is exactly why the root is told rather than derived.
@@ -44,7 +44,7 @@
 //     the detail of an unpartitioned one names each candidate's file and build constraint.
 //     Build-constraint partitioning reads `.go` candidate sets only: a candidate set holding any other file is never partitioned, and such a file is described as carrying no constraint, so a name such as `Foo_windows.cs` is never read as one.
 //     A self glyph that two alphabets both match is an ambiguous answer with no candidates and a non-empty list of languages, and its detail names those languages and the way forward in place of an empty candidate list:
-//     name the file as a slashed path self glyph, or a member as `lyx quarry glyphs` lists them.
+//     name the file as a slashed path self glyph, or a member as `lym quarry glyphs` lists them.
 //     The passes that raise glyph-rejected are resolve.go, create.go, deleteorder.go and donecheck.go — one per fail-closed status policy in the package;
 //     each is named at its own bullet, and the double report one anomalous target can produce across two of them is accepted by design.
 //   - create-already-exists (blocking), create-new-unit (informational) — the Create inversion

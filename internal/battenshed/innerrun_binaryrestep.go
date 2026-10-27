@@ -1,5 +1,5 @@
 // innerrun_binaryrestep.go implements the halted arm's binary re-step:
-// after a Go driver hands back and exits, a deploy of a new lyx re-steps the halted child once, through its bootstrap, so a fix lands without a parent turn.
+// after a Go driver hands back and exits, a deploy of a new lym re-steps the halted child once, through its bootstrap, so a fix lands without a parent turn.
 
 package battenshed
 

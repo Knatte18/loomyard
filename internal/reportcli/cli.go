@@ -13,7 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reportengine"
 	"github.com/spf13/cobra"
@@ -37,7 +37,7 @@ func Command() *cobra.Command {
 	report := &cobra.Command{
 		Use:   "report",
 		Short: "read-only reports over the hub's records and history",
-		Long: `report holds the read-only reports lyx computes from the records it already
+		Long: `report holds the read-only reports lym computes from the records it already
 writes: convergence, which asks whether the orch's work converges, and timing,
 which asks where run time went. Every verb runs from the hub's prime worktree
 only and changes nothing.`,
@@ -49,18 +49,18 @@ only and changes nothing.`,
 }
 
 // resolvePrime resolves the cwd the context carries to the hub's prime worktree for the verb named verb.
-// Each refusal names `lyx report <verb>`: a cwd that is no worktree, a worktree that is not drivable, and a worktree that is not the prime.
-func resolvePrime(ctx context.Context, verb string) (*lyxcwd.Location, error) {
-	cwd, err := lyxcwd.CwdFrom(ctx)
+// Each refusal names `lym report <verb>`: a cwd that is no worktree, a worktree that is not drivable, and a worktree that is not the prime.
+func resolvePrime(ctx context.Context, verb string) (*lymcwd.Location, error) {
+	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
 		return nil, err
 	}
-	location, err := lyxcwd.Resolve(cwd)
+	location, err := lymcwd.Resolve(cwd)
 	if err != nil {
 		return nil, err
 	}
 	if err := fabricengine.RequireDrivableWorktree(location); err != nil {
-		return nil, fmt.Errorf("report: lyx report %s runs from the hub's prime worktree only: %w", verb, err)
+		return nil, fmt.Errorf("report: lym report %s runs from the hub's prime worktree only: %w", verb, err)
 	}
 	primeName, primeNameErr := fabricengine.PrimeName(location)
 	if err := refuseNonPrime(verb, location.WorktreeName, primeName, primeNameErr); err != nil {
@@ -92,7 +92,7 @@ segment fall. A record a run lacks is reported absent, never as zero.
 It runs from the hub's prime worktree only, reads git history and writes nothing.
 
 Example:
-  lyx report convergence --format markdown`,
+  lym report convergence --format markdown`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -175,7 +175,7 @@ func parseOptions(since string, freshDays int, format string, now time.Time) (re
 }
 
 // primeGeometry resolves the checkouts and branches the report reads from the prime worktree's location.
-func primeGeometry(location *lyxcwd.Location) (reportengine.Geometry, error) {
+func primeGeometry(location *lymcwd.Location) (reportengine.Geometry, error) {
 	codeRepo := location.WorktreePath()
 	parentBranch, err := gitrepo.New(codeRepo).CurrentBranch()
 	if err != nil {
@@ -205,7 +205,7 @@ func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
 
-// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value seeds cwd into the execution context, because lyxcwd.WithCwd panics on an empty directory.
+// RunCLIIn is RunCLI's cwd-carrying sibling: an empty cwd reads the process cwd, any other value seeds cwd into the execution context, because lymcwd.WithCwd panics on an empty directory.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return clihelp.Execute(Command(), out, args)

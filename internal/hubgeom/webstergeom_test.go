@@ -20,7 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -42,12 +42,12 @@ func TestWebsterGeometry(t *testing.T) {
 			t.Parallel()
 
 			root := t.TempDir()
-			hub := filepath.Join(root, "some-hub-LYXHUB")
+			hub := filepath.Join(root, "some-hub-LYMHUB")
 			worktreeName := "some-worktree"
 			worktreeRoot := filepath.Join(hub, worktreeName)
 			anchorPath := filepath.Join(worktreeRoot, tt.anchorRel)
 
-			l := &lyxcwd.Location{
+			l := &lymcwd.Location{
 				RepoName:     "distinct-repo-name",
 				HubPath:      hub,
 				WorktreeName: worktreeName,
@@ -111,8 +111,8 @@ func TestWebsterGeometry(t *testing.T) {
 			}
 			gateConfig := configengine.ConfigFile(boardDir, "gate")
 			// No board directory exists yet, so fabricengine.ConfigDirs tells no board and the standalone way forward applies.
-			if _, err := got.GateSlots.Limits(); err == nil || !strings.Contains(err.Error(), gateConfig) || !strings.Contains(err.Error(), `run "lyx config gate"`) || !strings.Contains(err.Error(), "_lyx directory") {
-				t.Errorf("GateSlots.Limits() before gate.yaml exists = %v; want an error naming %q, lyx config gate and the _lyx directory", err, gateConfig)
+			if _, err := got.GateSlots.Limits(); err == nil || !strings.Contains(err.Error(), gateConfig) || !strings.Contains(err.Error(), `run "lym config gate"`) || !strings.Contains(err.Error(), "_lym directory") {
+				t.Errorf("GateSlots.Limits() before gate.yaml exists = %v; want an error naming %q, lym config gate and the _lym directory", err, gateConfig)
 			}
 			if err := os.MkdirAll(filepath.Dir(gateConfig), 0o755); err != nil {
 				t.Fatal(err)
@@ -120,8 +120,8 @@ func TestWebsterGeometry(t *testing.T) {
 			if err := os.WriteFile(gateConfig, []byte("slots: 0\n"), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := got.GateSlots.Limits(); err == nil || !strings.Contains(err.Error(), gateConfig) || !strings.Contains(err.Error(), `fix it with "lyx config gate" from the prime`) {
-				t.Errorf("GateSlots.Limits() over slots: 0 = %v; want an error naming %q and lyx config gate", err, gateConfig)
+			if _, err := got.GateSlots.Limits(); err == nil || !strings.Contains(err.Error(), gateConfig) || !strings.Contains(err.Error(), `fix it with "lym config gate" from the prime`) {
+				t.Errorf("GateSlots.Limits() over slots: 0 = %v; want an error naming %q and lym config gate", err, gateConfig)
 			}
 			if err := os.WriteFile(gateConfig, []byte("slots: 3\nbusy_quit_sec: 9\ntiers: {tier0: {command: x, timeout_min: 5, counter: vstest, parallel: 5}}\n"), 0o644); err != nil {
 				t.Fatal(err)
@@ -131,7 +131,7 @@ func TestWebsterGeometry(t *testing.T) {
 				t.Errorf("GateSlots.Limits() = (%+v, %v); want the board dir's gate.yaml as %+v", limits, err, wantLimits)
 			}
 
-			// The fixture anchor has no _lyx/, so this also pins that the machine layer loads from such an anchor.
+			// The fixture anchor has no _lym/, so this also pins that the machine layer loads from such an anchor.
 			machineConfig := configengine.MachineFile(boardDir, "gate")
 			if err := os.MkdirAll(filepath.Dir(machineConfig), 0o755); err != nil {
 				t.Fatal(err)

@@ -1,7 +1,7 @@
 //go:build tier1
 
 // shortnamebinding_clone_integration_test.go proves CloneHub's repo-shortname rule end to end against real local bare-repo fixtures:
-// a fresh bind needs --shortname, the record lands on weft:main beside .lyx-warp, a later clone derives it, a disagreeing shortname is refused,
+// a fresh bind needs --shortname, the record lands on weft:main beside .lym-warp, a later clone derives it, a disagreeing shortname is refused,
 // and a bound weft without a record either takes a shortname or warns.
 // The fixture helpers are reused from clone_adopt_test.go and warpbinding_clone_integration_test.go.
 
@@ -104,7 +104,7 @@ func TestCloneHub_ShortnameRecordLifecycle(t *testing.T) {
 }
 
 // TestCloneHub_BoundWeftWithoutRecord asserts a weft bound before shortnames existed takes a supplied shortname and records it,
-// and succeeds with a warning naming `lyx fabric shortname` when none is supplied.
+// and succeeds with a warning naming `lym fabric shortname` when none is supplied.
 func TestCloneHub_BoundWeftWithoutRecord(t *testing.T) {
 	t.Parallel()
 
@@ -137,8 +137,8 @@ func TestCloneHub_BoundWeftWithoutRecord(t *testing.T) {
 		if res.Shortname != "" || res.ShortnameRecorded {
 			t.Errorf("Shortname = %q, ShortnameRecorded = %v; want empty, false", res.Shortname, res.ShortnameRecorded)
 		}
-		if !strings.Contains(res.Warning, "lyx fabric shortname") {
-			t.Errorf("Warning = %q; want it to name `lyx fabric shortname`", res.Warning)
+		if !strings.Contains(res.Warning, "lym fabric shortname") {
+			t.Errorf("Warning = %q; want it to name `lym fabric shortname`", res.Warning)
 		}
 	})
 }

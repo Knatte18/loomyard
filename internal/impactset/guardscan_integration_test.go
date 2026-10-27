@@ -22,7 +22,7 @@ func TestModuleGuardTests_OverAModule(t *testing.T) {
 	moduleDir := t.TempDir()
 	writeRepoFile(t, moduleDir, "go.mod", "module example.com/m\n\ngo 1.26\n")
 	writeRepoFile(t, moduleDir, "g/g.go", "package g\n")
-	writeRepoFile(t, moduleDir, "g/g_test.go", "package g\n\nimport \"testing\"\n\n//lyx:guard\nfunc TestGuard(t *testing.T) {}\n")
+	writeRepoFile(t, moduleDir, "g/g_test.go", "package g\n\nimport \"testing\"\n\n//lym:guard\nfunc TestGuard(t *testing.T) {}\n")
 	writeRepoFile(t, moduleDir, "p/p.go", "package p\n")
 	writeRepoFile(t, moduleDir, "p/p_test.go", "package p\n\nimport \"testing\"\n\nfunc TestPlain(t *testing.T) {}\n")
 

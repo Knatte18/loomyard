@@ -1,5 +1,5 @@
-// Package shedcli builds the "lyx shed" subtree: a named-recipe arming table plus the three CLI
-// seams (Command, RunCLI, RunCLIIn) that register it under the lyx root.
+// Package shedcli builds the "lym shed" subtree: a named-recipe arming table plus the three CLI
+// seams (Command, RunCLI, RunCLIIn) that register it under the lym root.
 //
 // This package is a separate package from internal/shedverbs because one package cannot hold both
 // halves — the arming functions this package's table calls are built over the loomCLI and
@@ -11,7 +11,7 @@
 // The table this package declares (table.go) is a different table from internal/shedrecipe's own registry, and the two must never be merged:
 // this package's table maps the three recipe names ("loom", "batten", "darn") to arming functions, while internal/shedrecipe's registry maps engine names to shedengine.ShedProducer constructors.
 // The two tables answer different questions for different callers.
-// This one is read by shedcli's own pre-run to decide which module arms a given "lyx shed" invocation.
+// This one is read by shedcli's own pre-run to decide which module arms a given "lym shed" invocation.
 // The other is read by every recipe's own row list to decide which producer constructor backs a given row.
 // Collapsing them would conflate a recipe name with an engine name, which are drawn from disjoint vocabularies today and have no reason to start colliding.
 //

@@ -1,6 +1,6 @@
 //go:build tier1
 
-// failedpushstatus_integration_test.go covers `lyx fabric status` printing the hub's outstanding failed-push records over a hubforge hub.
+// failedpushstatus_integration_test.go covers `lym fabric status` printing the hub's outstanding failed-push records over a hubforge hub.
 // Package fabriccli_test, sharing the single TestMain in testmain_test.go.
 
 package fabriccli_test
@@ -54,7 +54,7 @@ func TestStatus_PrintsOutstandingFailedPushes(t *testing.T) {
 			t.Errorf("failed_pushes row %s = %v; want %v", key, row[key], want)
 		}
 	}
-	if wayForward, _ := row["way_forward"].(string); !strings.Contains(wayForward, "permission to push feature/x") || !strings.Contains(wayForward, "lyx fabric push") {
+	if wayForward, _ := row["way_forward"].(string); !strings.Contains(wayForward, "permission to push feature/x") || !strings.Contains(wayForward, "lym fabric push") {
 		t.Errorf("failed_pushes way_forward = %q; want the auth way forward naming the branch and the push step", wayForward)
 	}
 }

@@ -3,11 +3,11 @@
 # a block has the shape of a board task's run_settings: module name to that module's config keys.
 # A task names a profile in its board entry's profile field, or takes its recipe's entry under defaults when it names none;
 # batten's Seed-Child writes the block of the recipe the task runs into the pair's local config, with the task's own run_settings layered on top.
-# Each perch's hard cap is its rounds plus one, so `lyx loom circling continue` can grant one more round.
+# Each perch's hard cap is its rounds plus one, so `lym loom circling continue` can grant one more round.
 #
 # Seeded once when this file is absent; after that it is operator-owned and no reconcile rewrites it.
-# Add or replace a profile, or the defaults, with: lyx config profiles --set <name>='<json object>'
-# Remove one by deleting its block in the editor: lyx config profiles
+# Add or replace a profile, or the defaults, with: lym config profiles --set <name>='<json object>'
+# Remove one by deleting its block in the editor: lym config profiles
 
 defaults:
   loom: solid

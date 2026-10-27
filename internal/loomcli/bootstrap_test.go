@@ -24,14 +24,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
-// TestMustSpawnDriver's two mixed rows are the finding the predicate was widened for: a table
-// covering only the two pure rows (both false, both true) passes against the narrow
-// single-argument version that read the run lock alone. LockHeld_NoStrand_NoSpawn is the hand-started
-// "lyx loom run" case: an operator ran the go driver by hand against an llm-seeded run, so the lock
-// is held but no driver strand exists -- the bootstrap must still not spawn a second driver.
-// LockFree_LiveStrand_NoSpawn is the driver-between-steps case: the driver session takes the run
-// lock only inside each "lyx shed step" and releases it between steps, so the lock reads free while
-// the driver strand is live -- the bootstrap must not mistake that gap for "no driver running".
+// TestMustSpawnDriver's two mixed rows are the finding the predicate was widened for: a table covering only the two pure rows (both false, both true) passes against the narrow single-argument version that read the run lock alone.
+// LockHeld_NoStrand_NoSpawn is the hand-started "lym loom run" case: an operator ran the go driver by hand against an llm-seeded run, so the lock is held but no driver strand exists -- the bootstrap must still not spawn a second driver.
+// LockFree_LiveStrand_NoSpawn is the driver-between-steps case: the driver session takes the run lock only inside each "lym shed step" and releases it between steps, so the lock reads free while the driver strand is live -- the bootstrap must not mistake that gap for "no driver running".
 //
 //testtiming:keep pins the spawn predicate over the run lock, the driver lock and the live driver strand, including the mixed rows a lock-only predicate fails; its covering tests run the predicate without asserting its table
 func TestMustSpawnDriver(t *testing.T) {
@@ -136,7 +131,7 @@ func TestResolveDriverStrandAction(t *testing.T) {
 	}
 }
 
-// TestStartEnvelopeFields_PinsSuccessEnvelope pins the exact key set `lyx loom start` prints on success:
+// TestStartEnvelopeFields_PinsSuccessEnvelope pins the exact key set `lym loom start` prints on success:
 // the driver, slug, run id and status file, with no key describing an attach.
 func TestStartEnvelopeFields_PinsSuccessEnvelope(t *testing.T) {
 	t.Parallel()
@@ -182,8 +177,8 @@ func TestAwaitRunLock(t *testing.T) {
 		// The order is load-bearing: a child that took the lock and is about to exit must still be
 		// reported ready, so lockHeld reporting true must win even when alive would report false.
 		{name: "ready before the alive check, child about to exit", lockHeldOnCall: 1, deadline: 10, want: awaitRunLockReady},
-		// The regression guard for the defect Tier 2 introduced in `lyx loom start`'s handshake.
-		// shedengine.Run releases the run lock on return, and `lyx loom run` then spends up to
+		// The regression guard for the defect Tier 2 introduced in `lym loom start`'s handshake.
+		// shedengine.Run releases the run lock on return, and `lym loom run` then spends up to
 		// friction_timeout_min -- thirty minutes in the shipped template -- running the friction
 		// reflection agent, against a handshake budget of thirty seconds. Before the halted seam existed,
 		// that combination (lock free, child alive, machine finished) fell through to awaitRunLockDeadline,
@@ -276,8 +271,8 @@ func TestStatusStrandCmd(t *testing.T) {
 		exe  string
 		want string
 	}{
-		{"Posix", shell.Posix(), "/usr/local/bin/lyx", `/usr/local/bin/lyx loom checklist`},
-		{"Pwsh", shell.Pwsh(), `C:\lyx.exe`, ""},
+		{"Posix", shell.Posix(), "/usr/local/bin/lym", `/usr/local/bin/lym loom checklist`},
+		{"Pwsh", shell.Pwsh(), `C:\lym.exe`, ""},
 	}
 
 	for _, tt := range tests {
@@ -342,11 +337,11 @@ func TestDispositionForHandshake(t *testing.T) {
 // TestResolveStatusStrandAction is the regression guard for a status pane that never came back.
 // The DeadEntry row is the defect: the bootstrap used to decide by presence alone, and reed keeps
 // tracking a strand whose pane is gone, so after any reed server restart -- a reboot, a crash, a
-// kill-server, or reed's own zombie-boot force-reap -- every subsequent "lyx loom start" in that
+// kill-server, or reed's own zombie-boot force-reap -- every subsequent "lym loom start" in that
 // worktree saw the stale "loom-status" entry, reported "already there", and left the operator with
 // no status read-out at all.
 func TestResolveStatusStrandAction(t *testing.T) {
-	cur := statuspane.BuildIdentity{Path: "/bin/lyx", Size: 10, ModTime: 100}
+	cur := statuspane.BuildIdentity{Path: "/bin/lym", Size: 10, ModTime: 100}
 	matching := &statuspane.Sidecar{GUID: "g0", Build: cur}
 	tests := []struct {
 		name     string
@@ -399,7 +394,7 @@ func TestResolveStatusStrandAction(t *testing.T) {
 		{
 			name:     "LiveStrandDifferentBuildReplaces",
 			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: statusStrandDisplayName, PaneID: "%0", Live: true}},
-			sidecar:  &statuspane.Sidecar{GUID: "g0", Build: statuspane.BuildIdentity{Path: "/bin/lyx", Size: 11, ModTime: 100}},
+			sidecar:  &statuspane.Sidecar{GUID: "g0", Build: statuspane.BuildIdentity{Path: "/bin/lym", Size: 11, ModTime: 100}},
 			want:     statusStrandReplace,
 			wantGUID: "g0",
 		},
@@ -594,7 +589,7 @@ var driverFieldReadCarveOuts = []scankit.Entry{
 // fails this test and forces a human to confirm the new site really belongs to a recipe's bootstrap
 // verb rather than a producer, a generic verb, or an engine gating behaviour on the recorded value.
 //
-//lyx:guard
+//lym:guard
 func TestDriverChoiceSingleSiteInvariant_OnlyLoomcliReadsTheSeedDriverField(t *testing.T) {
 	found, scanned := scanRepoForDriverFieldReads(t)
 	scankit.RequireFloor(t, scanned, driverScanMinFiles, "driver-field-read scan")

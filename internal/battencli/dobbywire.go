@@ -4,14 +4,14 @@ package battencli
 
 import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // ReleaseRunParentLock releases the parent lock record that names the run of slug's task pair, as the run's own owner pause does.
 // A pair absent on this machine, a run with no record and a Finalize past its parent-side merge, which keeps the record, release nothing.
-func ReleaseRunParentLock(prime *lyxcwd.Location, slug string) error {
+func ReleaseRunParentLock(prime *lymcwd.Location, slug string) error {
 	present, err := taskWorktreePresent(prime, slug)
 	if err != nil || !present {
 		return err
@@ -34,6 +34,6 @@ func ReleaseRunParentLock(prime *lyxcwd.Location, slug string) error {
 }
 
 // ShuttleRunner builds a shuttle runner over the reed geometry of the worktree location names, so a strand it starts opens a window in that worktree's session.
-func ShuttleRunner(location *lyxcwd.Location) (*shuttleengine.Runner, error) {
+func ShuttleRunner(location *lymcwd.Location) (*shuttleengine.Runner, error) {
 	return primeShuttleRunner(location)
 }

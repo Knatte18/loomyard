@@ -64,8 +64,8 @@ type BoardReplay interface {
 }
 
 // ErrBoardReplayMissing is returned by a read of the board replay seam while none is installed.
-// It is a wiring guard: the lyx root pre-run installs boardengine.FabricReplay through InstallBoardReplay, and a test binary calls boardkit.InstallReplay.
-var ErrBoardReplayMissing = errors.New("fabricengine: no board replay installed: the lyx root pre-run installs one through InstallBoardReplay, and a test binary through boardkit.InstallReplay")
+// It is a wiring guard: the lym root pre-run installs boardengine.FabricReplay through InstallBoardReplay, and a test binary calls boardkit.InstallReplay.
+var ErrBoardReplayMissing = errors.New("fabricengine: no board replay installed: the lym root pre-run installs one through InstallBoardReplay, and a test binary through boardkit.InstallReplay")
 
 var installedBoardReplay atomic.Pointer[BoardReplay]
 

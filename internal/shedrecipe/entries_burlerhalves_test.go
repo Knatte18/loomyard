@@ -220,7 +220,7 @@ func TestBurlerReviewEntry_RubricStencil(t *testing.T) {
 
 	t.Run("StripsLeadingStampBanner", func(t *testing.T) {
 		env := newTestEnv(t)
-		writeStencil(t, env.StencilsDir, "round-rubric", "<!-- lyx-stencil: sha256=aaaa -->\nBLOCKING: a round bug.\n")
+		writeStencil(t, env.StencilsDir, "round-rubric", "<!-- lym-stencil: sha256=aaaa -->\nBLOCKING: a round bug.\n")
 
 		profile, _ := captureReview(t, "review-row", stencilCfg, env)
 		if profile.Rubric != "BLOCKING: a round bug.\n" {

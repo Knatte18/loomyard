@@ -70,7 +70,7 @@ func statusFields(st orchengine.State, cfg orchengine.Config, strand reedengine.
 var errStartLockHeld = errors.New("orch: start.lock is held")
 
 // startLockHeldHint is the envelope hint for a live strand with no watcher whose restart was skipped for a held start.lock.
-const startLockHeldHint = "a `lyx beam start` or `lyx orch stop` is running; rerun `lyx orch status` once it ends, or run `lyx beam start`"
+const startLockHeldHint = "a `lym beam start` or `lym orch stop` is running; rerun `lym orch status` once it ends, or run `lym beam start`"
 
 // restartWatcher spawns a watcher for the recorded orch strand under start.lock and answers whether it did.
 // It restarts nothing and answers errStartLockHeld when another process holds the lock.
@@ -148,17 +148,17 @@ persisted cycle phase (idle, handoff-requested, clearing, resuming or compacting
 and last deferral (last_deferral, RFC 3339 UTC, null when none).
 stuck names the stall reason creel last reported for the watcher's pending inject,
 or the creel failure holding the cycle.
-session_id is the orch session's recorded provider id, which "lyx beam start"
+session_id is the orch session's recorded provider id, which "lym beam start"
 resumes; it is empty when none is recorded.
 cycle_request is null while no cycle request is pending, else an object with the
 request's mode, requested_at (RFC 3339 UTC, null for a marker that does not parse)
 and held_by_pause, true while a hub pause holds the watcher's cycle machine, so
-the request waits for the resume. "lyx orch withdraw" removes a pending request.
+the request waits for the resume. "lym orch withdraw" removes a pending request.
 A live strand whose watcher is dead gets a new watcher from status, spawned under
 start.lock so it never races a start or a stop; watcher_restarted is true only
 when this call spawned one, and watcher_live keeps what the probe found. While a
 start or stop holds the lock nothing is restarted and a hint says to rerun
-status. A dead strand gets no watcher: "lyx beam start" relaunches strand and
+status. A dead strand gets no watcher: "lym beam start" relaunches strand and
 watcher together. strand_elsewhere names the session:window of the strand's pane
 when it sits in another session of reed's server, empty otherwise.`,
 		Args: cobra.NoArgs,
@@ -198,7 +198,7 @@ when it sits in another session of reed's server, empty otherwise.`,
 					restarted, err, hint = false, nil, startLockHeldHint
 				}
 				if err != nil {
-					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("orch: the watcher is dead and could not be restarted: %v; way forward: run `lyx beam start`, which spawns a watcher for a live strand", err)))
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("orch: the watcher is dead and could not be restarted: %v; way forward: run `lym beam start`, which spawns a watcher for a live strand", err)))
 					return nil
 				}
 			}

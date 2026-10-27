@@ -26,7 +26,7 @@ const OwnerCaller = "owner"
 const Retention = 7 * 24 * time.Hour
 
 // ResumeLine is the one line a session interrupted by a pause is given when the pause ends.
-const ResumeLine = "[lyx] A pause interrupted your last turn and is now over. Carry on where you stopped: rerun the tool call or fork the pause cut. If nothing was cut, end your turn."
+const ResumeLine = "[lym] A pause interrupted your last turn and is now over. Carry on where you stopped: rerun the tool call or fork the pause cut. If nothing was cut, end your turn."
 
 // Geometry is the told pair every reader of the record is handed.
 type Geometry struct {
@@ -262,9 +262,9 @@ func Excluded(intervals []Interval, from, to time.Time) time.Duration {
 
 // CoveredError renders the refusal an entry point returns when entry covers its run, naming the resume that lifts the hold and the retry to make after it.
 func CoveredError(e Entry, slug, retry string) error {
-	pause, resume := "a hub-wide pause", `"lyx tender resume"`
+	pause, resume := "a hub-wide pause", `"lym tender resume"`
 	if e.Scope != ScopeHub {
-		pause, resume = fmt.Sprintf("the pause of %s", slug), fmt.Sprintf(`"lyx tender resume %s"`, slug)
+		pause, resume = fmt.Sprintf("the pause of %s", slug), fmt.Sprintf(`"lym tender resume %s"`, slug)
 	}
 	return fmt.Errorf("pause: %s has held this run since %s; way forward: run %s, then %s",
 		pause, e.PausedAt.Format(time.RFC3339), resume, retry)

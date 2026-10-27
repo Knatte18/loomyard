@@ -19,7 +19,7 @@ Board size (number of tasks already in `tasks.json`) is swept over 10 / 100 / 10
 
 ## What the suites mean
 
-- **Hot path** — what a `lyx board` command actually waits for: file I/O for a write, JSON load for a read, plus configuration loading (os.Getwd() + config resolution from defaults + the module's `_lyx/config/<module>.yaml`).
+- **Hot path** — what a `lym board` command actually waits for: file I/O for a write, JSON load for a read, plus configuration loading (os.Getwd() + config resolution from defaults + the module's `_lym/config/<module>.yaml`).
   This is the stable signal for catching logic/allocation regressions.
 - **Background sync** — the git commit + push the detached pusher does.
   It never blocks a command, so its seconds-scale cost is latency the user does not feel.
@@ -53,7 +53,7 @@ at a fraction of a millisecond for realistic board sizes it is a small part of a
 
 **Note:** The CLI-driven benchmarks (`Upsert`/`Get`/`List`) were re-architected when the module moved to the cwd-authoritative configuration model.
 Previously they used `--wiki-path` to inject a board directory;
-with the new `LoadConfig` resolver, the CLI-path benchmarks now run in a temp cwd seeded with `_lyx/config/board.yaml` and include the `os.Getwd()` + configuration-load cost (defaults + the module's `_lyx/config/board.yaml` + environment expansion).
+with the new `LoadConfig` resolver, the CLI-path benchmarks now run in a temp cwd seeded with `_lym/config/board.yaml` and include the `os.Getwd()` + configuration-load cost (defaults + the module's `_lym/config/board.yaml` + environment expansion).
 The historical numbers below show the pre-config baseline for comparison.
 
 \* `GetDuringUpsert` reads (seed n=100) while a writer upserts continuously in the background.
@@ -163,8 +163,8 @@ This is also before the cwd-authoritative configuration model, so no config-load
 
 ## Process startup context
 
-Every `lyx` invocation is a fresh process.
-Measured startup on this machine (50× a no-op `lyx`, by launcher):
+Every `lym` invocation is a fresh process.
+Measured startup on this machine (50× a no-op `lym`, by launcher):
 
 | Launcher            | ms / process |
 |---------------------|--------------|

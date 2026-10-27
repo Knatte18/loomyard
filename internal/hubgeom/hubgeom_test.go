@@ -18,8 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
@@ -46,12 +46,12 @@ func TestReedGeometry(t *testing.T) {
 			t.Parallel()
 
 			root := t.TempDir()
-			hub := filepath.Join(root, "some-hub-LYXHUB")
+			hub := filepath.Join(root, "some-hub-LYMHUB")
 			worktreeName := "some-worktree"
 			worktreeRoot := filepath.Join(hub, worktreeName)
 			anchorPath := filepath.Join(worktreeRoot, tt.anchorRel)
 
-			l := &lyxcwd.Location{
+			l := &lymcwd.Location{
 				RepoName:     "distinct-repo-name",
 				HubPath:      hub,
 				WorktreeName: worktreeName,
@@ -107,7 +107,7 @@ func TestReedGeometry(t *testing.T) {
 			if got.PauseRecordPath != pause.RecordPath {
 				t.Errorf("ReedGeometry(l).PauseRecordPath = %q; want %q (the pause geometry's record path)", got.PauseRecordPath, pause.RecordPath)
 			}
-			if want := filepath.Join(fabricengine.HubScratchDir(hub), lyxdirs.PauseDirName, pauserecord.RecordFileName); pause.RecordPath != want {
+			if want := filepath.Join(fabricengine.HubScratchDir(hub), lymdirs.PauseDirName, pauserecord.RecordFileName); pause.RecordPath != want {
 				t.Errorf("pauseGeometry(l).RecordPath = %q; want %q", pause.RecordPath, want)
 			}
 			if pause.Slug != tt.wantSlug {
@@ -124,13 +124,13 @@ func TestBurlerGeometry(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	hub := filepath.Join(root, "some-hub-LYXHUB")
+	hub := filepath.Join(root, "some-hub-LYMHUB")
 	worktreeName := "some-worktree"
 	worktreeRoot := filepath.Join(hub, worktreeName)
 	anchorRel := filepath.Join("sub", "dir")
 	anchorPath := filepath.Join(worktreeRoot, anchorRel)
 
-	l := &lyxcwd.Location{
+	l := &lymcwd.Location{
 		RepoName:     "distinct-repo-name",
 		HubPath:      hub,
 		WorktreeName: worktreeName,
@@ -233,27 +233,27 @@ func TestIsPrimeWorktree(t *testing.T) {
 	}
 }
 
-// TestReconcileGeometry verifies a hub with a board-level lyx dir yields exactly the board dir and worktree root, and a layout without one yields the zero value and false.
+// TestReconcileGeometry verifies a hub with a board-level lym dir yields exactly the board dir and worktree root, and a layout without one yields the zero value and false.
 func TestReconcileGeometry(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name         string
-		boardLyxDir  bool
+		boardLymDir  bool
 		wantGeometry bool
 	}{
-		{"hub with a board lyx dir", true, true},
-		{"layout without a board lyx dir", false, false},
+		{"hub with a board lym dir", true, true},
+		{"layout without a board lym dir", false, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			hub := filepath.Join(t.TempDir(), "some-hub-LYXHUB")
-			l := &lyxcwd.Location{HubPath: hub, WorktreeName: "some-worktree", AnchorRel: "."}
+			hub := filepath.Join(t.TempDir(), "some-hub-LYMHUB")
+			l := &lymcwd.Location{HubPath: hub, WorktreeName: "some-worktree", AnchorRel: "."}
 			mkdir(t, l.WorktreePath())
-			if tt.boardLyxDir {
-				mkdir(t, filepath.Join(fabricengine.BoardDir(hub), lyxdirs.LyxDirName))
+			if tt.boardLymDir {
+				mkdir(t, filepath.Join(fabricengine.BoardDir(hub), lymdirs.LymDirName))
 			} else {
 				mkdir(t, fabricengine.BoardDir(hub))
 			}
@@ -287,12 +287,12 @@ func TestCreelGeometry(t *testing.T) {
 	}
 	tempRoot := filepath.Join(t.TempDir(), "root")
 
-	hub := newHub(t, "a-LYXHUB", "abc")
+	hub := newHub(t, "a-LYMHUB", "abc")
 	got, err := CreelGeometry(hub, tempRoot)
 	if err != nil {
 		t.Fatalf("CreelGeometry(%q) = %v", hub, err)
 	}
-	stateDir := filepath.Join(fabricengine.HubScratchDir(hub), lyxdirs.CreelDirName)
+	stateDir := filepath.Join(fabricengine.HubScratchDir(hub), lymdirs.CreelDirName)
 	want := creelengine.Geometry{
 		HubPath:       hub,
 		Shortname:     "abc",
@@ -311,7 +311,7 @@ func TestCreelGeometry(t *testing.T) {
 		t.Errorf("CreelGeometry(%q) again = (%q, %v); want socket %q", hub, again.SocketPath, err, got.SocketPath)
 	}
 
-	other := newHub(t, "b-LYXHUB", "abc")
+	other := newHub(t, "b-LYMHUB", "abc")
 	otherGeometry, err := CreelGeometry(other, tempRoot)
 	if err != nil {
 		t.Fatalf("CreelGeometry(%q) = %v", other, err)
@@ -320,7 +320,7 @@ func TestCreelGeometry(t *testing.T) {
 		t.Errorf("two hubs of one shortname share socket path %q", got.SocketPath)
 	}
 
-	bare := newHub(t, "c-LYXHUB", "")
+	bare := newHub(t, "c-LYMHUB", "")
 	_, err = CreelGeometry(bare, tempRoot)
 	if err == nil || !strings.Contains(err.Error(), fabricengine.ShortnameFileName) || !strings.Contains(err.Error(), bare) {
 		t.Errorf("CreelGeometry(no shortname) error = %v; want one naming %s and the hub", err, fabricengine.ShortnameFileName)

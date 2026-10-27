@@ -155,7 +155,7 @@ type Spec struct {
 	// The empty string falls back to shedengine's generic clause.
 	MissingStatusWayForward string
 	// PauseWayForward is the told command goto's refusals name to stop the run at a boundary, passed to goto.
-	// The empty string falls back to shedengine's `lyx shed pause` default.
+	// The empty string falls back to shedengine's `lym shed pause` default.
 	PauseWayForward string
 	// Routing is the told projection of the recipe's producer graph that the envelopes' progress key
 	// is derived from. The zero value (no producers) means no progress is known, and progress is

@@ -32,7 +32,7 @@ func TestLoad_ResolvesBounds(t *testing.T) {
 	const day = 24 * time.Hour
 	tests := []struct {
 		name string
-		// seed writes the config file into the anchor; nil leaves the anchor without a _lyx directory.
+		// seed writes the config file into the anchor; nil leaves the anchor without a _lym directory.
 		seed func(t *testing.T, anchor string)
 		want logger.RetentionBounds
 	}{
@@ -56,7 +56,7 @@ func TestLoad_ResolvesBounds(t *testing.T) {
 			want: logger.RetentionBounds{Count: 200, MaxAge: 106751 * day},
 		},
 		{
-			name: "absent _lyx",
+			name: "absent _lym",
 			want: logger.DefaultRetentionBounds(),
 		},
 		{
@@ -158,7 +158,7 @@ func TestLoad_InvalidValueErrorsNamingKey(t *testing.T) {
 func TestConfigPath(t *testing.T) {
 	t.Parallel()
 	anchor := t.TempDir()
-	want := filepath.Join(anchor, "_lyx", "config", "logger.yaml")
+	want := filepath.Join(anchor, "_lym", "config", "logger.yaml")
 	if got := loggerconfig.ConfigPath(anchor); got != want {
 		t.Errorf("ConfigPath = %q, want %q", got, want)
 	}

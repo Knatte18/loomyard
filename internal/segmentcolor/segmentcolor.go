@@ -27,7 +27,7 @@ func Segments() []Segment {
 	return []Segment{Coordinator, Discussion, Plan, Webster, Review, Describe, Landing, Darn, Merge}
 }
 
-// Color is one entry of lyx's palette.
+// Color is one entry of lym's palette.
 type Color string
 
 const (

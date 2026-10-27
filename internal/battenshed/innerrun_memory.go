@@ -68,7 +68,7 @@ type innerRunMemory struct {
 	// PauseWarned and CoverageWarned are the pause-flag and pause-record read errors last warned about.
 	PauseWarned    string `json:"pause_warned"`
 	CoverageWarned string `json:"coverage_warned"`
-	// StartFallback is the revive's mark that the halted reason also names `lyx loom start`.
+	// StartFallback is the revive's mark that the halted reason also names `lym loom start`.
 	StartFallback bool `json:"start_fallback"`
 	// Respawns is how many times the running child was respawned with no write to its status file between, and RespawnStatusTime the status file's modification time after the last respawn.
 	Respawns          int       `json:"respawns"`

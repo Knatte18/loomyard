@@ -4,7 +4,7 @@
 // own non-test source may never reintroduce a `git add -f` branch or the deleted hasPathspecMagic
 // helper that used to decide when to take it.
 // It is deliberately untagged (no //go:build constraint) and does a pure substring scan — no git
-// spawn — so it stays a Tier 1 test, modeled on cmd/lyx/rawgitmutation_test.go's token-ban
+// spawn — so it stays a Tier 1 test, modeled on cmd/lym/rawgitmutation_test.go's token-ban
 // structure.
 
 package gitrepo

@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // CommittedAnchoredFile returns relPath's contents as committed at HEAD, unaffected by any uncommitted edit to the working-tree copy.
@@ -20,7 +20,7 @@ import (
 // found is false with a nil error when the path is absent at HEAD or HEAD is unborn;
 // every other failure is an error.
 // It is read-only, so the Fabric Git Invariant exempts it from the commit seam.
-func CommittedAnchoredFile(l *lyxcwd.Location, relPath string) (data []byte, found bool, err error) {
+func CommittedAnchoredFile(l *lymcwd.Location, relPath string) (data []byte, found bool, err error) {
 	repo := gitrepo.New(RecordsWorktree(l))
 	sha, err := repo.CurrentSHA()
 	if err != nil {
@@ -49,7 +49,7 @@ func CommittedAnchoredFile(l *lyxcwd.Location, relPath string) (data []byte, fou
 // A path with no history, or an unborn HEAD, returns an empty slice and a nil error;
 // every other failure is an error naming the path.
 // It is read-only, so the Fabric Git Invariant exempts it from the commit seam.
-func CommittedAnchoredFileHistory(l *lyxcwd.Location, relPath string) ([][]byte, error) {
+func CommittedAnchoredFileHistory(l *lymcwd.Location, relPath string) ([][]byte, error) {
 	repo := gitrepo.New(RecordsWorktree(l))
 	scoped := filepath.ToSlash(ScopedPathspec(l.AnchorRel, []string{relPath})[0])
 

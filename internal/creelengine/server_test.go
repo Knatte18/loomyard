@@ -23,7 +23,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxtemp"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/testkit/creelfake"
 )
@@ -48,9 +48,9 @@ type rig struct {
 // With asStrand the test process is the pane process of alpha, so its calls resolve to that strand; otherwise no strand's pane holds it and its calls are EXTERNAL.
 func newRig(t *testing.T, asStrand bool) *rig {
 	t.Helper()
-	dir, err := lyxtemp.MkdirTemp("c")
+	dir, err := lymtemp.MkdirTemp("c")
 	if err != nil {
-		t.Fatalf("lyxtemp.MkdirTemp: %v", err)
+		t.Fatalf("lymtemp.MkdirTemp: %v", err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	state := filepath.Join(dir, "state")
@@ -943,7 +943,7 @@ func TestDaemon_Lifecycle(t *testing.T) {
 				`{"event":"withheld","at":"2026-10-01T11:00:00Z","id":1,"to":"`+orch+`","notice":"creel-notices"}`)
 			r.start()
 			r.clock.AwaitWaitsWhere(1, isProbeWait)
-			want := []creelfake.Send{{Strand: orch, Text: "[creel] 1 unread: #1 from " + alpha + " — run lyx creel read"}}
+			want := []creelfake.Send{{Strand: orch, Text: "[creel] 1 unread: #1 from " + alpha + " — run lym creel read"}}
 			if got := r.del.Sends(); !slices.Equal(got, want) {
 				t.Errorf("typed %v; want the reminder of the stage 1 mail %v", got, want)
 			}

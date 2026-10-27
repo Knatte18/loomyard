@@ -23,16 +23,16 @@
 // Otherwise an unreachable origin halts, the run's owner is the owner of its owned_elsewhere entry, and the parent's owner comes from Deps.ParentOwner, read from the local board the reconcile left.
 // A run whose pair has no batten run record reads as owned here, since the reconcile judges only recorded pairs, but its parent's owner is still read.
 // A parent or run owned by another machine, an unreachable origin and a failed read of either seam each stop with Halt and a reason behind OwnerHaltPrefix, so the loom halt note is written;
-// the reason names the owners and the `lyx adopt` commands that move them.
+// the reason names the owners and the `lym adopt` commands that move them.
 // Parent-Align proceeds on an owned_elsewhere verdict, since the owner check belongs to the landing.
 // A nil seam reads as not past the merge and as the parent owned here, so a Finalize built with no owner seams lands as before.
 //
 // The land check follows the owner checks under the same lock, and a Finalize built with Deps.LandBlockers, a pawl run's, runs it: it reads the open members and the local pairs forked from the beam, and a read error or any blocker halts behind LandHaltPrefix.
 // It is a backstop for an open member the run's earlier re-check missed, such as one a stale board on another machine added.
 // Each way forward is Finalize's own and never the land-it wording of the beam's landing refusal, which the standing landing hold refuses:
-// a forked pair, and a member with a pair or a run in flight, name `lyx batten cancel <slug> --remove` run in Deps.ParentWorktree, or on the machine holding the pair when the run is in flight and its pair is not here, which `lyx batten status <slug>` there shows;
-// a member then names moving its `project` off the beam with `lyx board upsert`, since the cancel leaves it a `draft` member, which still blocks the landing, and a member with no run status names that move alone;
-// every halt ends in `lyx loom resume` in the beam's worktree.
+// a forked pair, and a member with a pair or a run in flight, name `lym batten cancel <slug> --remove` run in Deps.ParentWorktree, or on the machine holding the pair when the run is in flight and its pair is not here, which `lym batten status <slug>` there shows;
+// a member then names moving its `project` off the beam with `lym board upsert`, since the cancel leaves it a `draft` member, which still blocks the landing, and a member with no run status names that move alone;
+// every halt ends in `lym loom resume` in the beam's worktree.
 // A Finalize already past its parent-side merge, an empty list and a nil seam land as before.
 // Bound: a member that lands into the beam between this check and the parent-side merge is not caught here, and the Worktree-Create hold read keeps any member from forking once the landing hold stands.
 // A parent that already holds the task's work, after a GitHub merge or an earlier landing, lands through the already-landed path.
@@ -62,9 +62,9 @@
 // After a merge-in-required error from the parent-side merge Finalize retries once, which covers a parent moved by run records alone;
 // the retry merges and judges the parent again under the same lock, so a code-side commit that arrives between the first merge and the parent-side merge reroutes there and never lands.
 // A dirty parent is Stuck naming the parent's code checkout and its tracked dirty paths, capped at 20, with the way forward per reason.
-// The run records Finalize commits at its parent-records step never count as that dirt, since the guard reads the code checkout alone, whose `_lyx` link is excluded from its index.
+// The run records Finalize commits at its parent-records step never count as that dirt, since the guard reads the code checkout alone, whose `_lym` link is excluded from its index.
 // A parent push that fails for a reason other than a transient one carries a repair note when origin's parent already holds the task's work, which an adopter-first landing leaves:
-// it names the task's squash by the parent head's SHA, a `git reset --keep` to origin's parent when the squash is the only commit origin lacks or a `git rebase --onto` dropping it when another is listed, and then `lyx fabric remove` of the run, leaving the owner pause standing.
+// it names the task's squash by the parent head's SHA, a `git reset --keep` to origin's parent when the squash is the only commit origin lacks or a `git rebase --onto` dropping it when another is listed, and then `lym fabric remove` of the run, leaving the owner pause standing.
 // An origin parent lacking the work, or a failed read, adds no note.
 //
 // Parent-Align and Finalize clear the merge-in their own earlier attempt left parked before the clean-tree check that precedes each merge of the parent, Finalize's retry pass included.
@@ -79,8 +79,8 @@
 // It commits the status file and runs the run-scope origin reconcile through the told Deps.Reconcile, then picks the parent tip to merge.
 // Parent-Align takes no parent lock across the merge and writes nothing in the parent pair: the fast-forward of the local parent branch and the parent-pair refusals belong to Finalize, under its lock.
 // The reconcile judges and never moves the parent.
-// A run origin ended is a Stuck with Halt naming the landing or the board removal, with `lyx cleanup --apply` from the prime as the way forward;
-// a run its branches stop is a Stuck naming the branch, its state and its way forward, then `lyx loom resume` in the task worktree;
+// A run origin ended is a Stuck with Halt naming the landing or the board removal, with `lym cleanup --apply` from the prime as the way forward;
+// a run its branches stop is a Stuck naming the branch, its state and its way forward, then `lym loom resume` in the task worktree;
 // an unreachable origin logs a Warn and proceeds, so the row fails on its own remote steps, and a reconcile error is an error.
 // With an upstream and no push skip it fetches and merges the parent's upstream tip, read from the fetching tips read and never the local tip, so a landing another run made locally and has not pushed is never merged in.
 // Under the told push skip, or with no upstream, it takes the parent lock through the shared guard only for the read of the local tip and releases it before the merge, which then runs unlocked.
@@ -90,7 +90,7 @@
 // A dirty tree at any of them is Stuck naming the paths, so nothing uncommitted is merged over or reviewed;
 // a verify that dirties the tree is a non-hermetic test and halts rather than ships.
 // The row's gate key is the told Deps.GateKey, which each row's registry entry sets from its optional `gate_key` config key, else its row name in lower case.
-// The told call, that key's `lyx gate test` call rendered from the hub's gate config at each run, runs through internal/verifytree, unless its verified-tree record already names the tree and the command.
+// The told call, that key's `lym gate test` call rendered from the hub's gate config at each run, runs through internal/verifytree, unless its verified-tree record already names the tree and the command.
 // The merge fixer a row spawns judges each turn through that row's gate, so it runs the same key.
 // Its base command is the told Deps.BaseCommand, the fix rows' `code-burler-fix` call, so a landing pass keeps the entry the Code-Burler-Fix lint base reads.
 // A refusal of the gate config or of the key is the producer's returned error, carrying the refusal's way forward.
@@ -122,25 +122,25 @@
 // The recipe's owner tells it to shedverbs as Spec.HandBack, which marks the loop's stop envelope and the status as hand_back; the drivers read the predicate or that mark.
 //
 // A darn run whose diff lies wholly under its configured non-production trees runs only the tree-scoped command at Parent-Align and Finalize, the hub's whole statement of what such a diff needs.
-// landing.yaml's retired `publish_verify` key loads and is dropped, and `lyx config reconcile` prunes it.
+// landing.yaml's retired `publish_verify` key loads and is dropped, and `lym config reconcile` prunes it.
 //
 // Landing.yaml's `deploy` is read only by batten's Land row, from the board dir like the rest of landing config and never from a pair.
 // It runs in the prime only for a parent branch in `deploy_branches` when the row runs.
-// An empty value runs nothing, and `lyx config` refuses a write to it from a pair, as for every hub-wide key, as a guard against a mistaken write rather than a determined agent.
-// Landing config is hub-wide: Parent-Align and Finalize read it from the board dir, never from a task worktree's `_lyx/config/`, and `lyx config` refuses a write to it from a pair, so a task cannot weaken the key, or set `deploy_branches` or `squash`, through its own tree.
-// A landing change is an operator or hub-orch `lyx config landing` run from the prime, committed in `_board` and effective for every pair at once.
+// An empty value runs nothing, and `lym config` refuses a write to it from a pair, as for every hub-wide key, as a guard against a mistaken write rather than a determined agent.
+// Landing config is hub-wide: Parent-Align and Finalize read it from the board dir, never from a task worktree's `_lym/config/`, and `lym config` refuses a write to it from a pair, so a task cannot weaken the key, or set `deploy_branches` or `squash`, through its own tree.
+// A landing change is an operator or hub-orch `lym config landing` run from the prime, committed in `_board` and effective for every pair at once.
 //
 // Parent-Align and Finalize persist their verify failure.
 // When a row's gate call fails with a non-zero exit, Parent-Align or Finalize writes the verifytree landing failure record with the row's gate key as its kind, the failing tier, the failing tests the told Deps.FailingTests parses from the log, HEAD, the write time in whole-second UTC, and the merge-in commit.
-// The tier is the first failing tier or build the log's `lyx gate test` summary lines name; when that is a build line the record's `build` field is true, its tier is the first tier the build blocked, and it lists no tests, since the gate failed before any test ran.
+// The tier is the first failing tier or build the log's `lym gate test` summary lines name; when that is a build line the record's `build` field is true, its tier is the first tier the build blocked, and it lists no tests, since the gate failed before any test ran.
 // A log without a failing line, such as a refusal before the first tier, takes the highest tier of the row's key, read through the told Deps.GateTiers.
 // The merge-in commit is HEAD after a merge-in that was not already up to date and empty otherwise; Finalize takes it from its own merge.
 // A dirty tree, a timeout and a shell that could not start write no record, and a write failure is logged and never changes the Stuck verdict.
 // When Deps.TraceFailure is set and both the log and HEAD are non-empty, the record also carries the trace the seam returns: `cards`, `later_range` and `untraced`, the plan cards and commit ranges the failing locations trace to.
 // A nil seam, as for a darn run with no plan, writes none of them, and a trace error is logged at Warn and leaves the record without them, never changing the Stuck verdict or the record's other fields.
 // The Stuck reason of a failed verify ends by asking to fix forward on the task branch, then resume.
-// When the failed verify's log holds the CPU watchdog's line that `lyx gate test` prints after it quits a busy test binary, the reason names the window and says the goroutine stacks are in the log, before that clause.
-// A watchdog quit of a healthy package has no code fix: the way forward is raising `busy_quit_sec` through `lyx config gate` from the prime, then resuming.
+// When the failed verify's log holds the CPU watchdog's line that `lym gate test` prints after it quits a busy test binary, the reason names the window and says the goroutine stacks are in the log, before that clause.
+// A watchdog quit of a healthy package has no code fix: the way forward is raising `busy_quit_sec` through `lym config gate` from the prime, then resuming.
 // An unreadable log or one without the line leaves the reason unchanged, and the checks run no flake rerun.
 // Parent-Align and Finalize remove the record once their landing call passes.
 //
@@ -154,16 +154,16 @@
 // After each merge of the parent and before the parent-side merge, Finalize commits the parent pair's own run records through the told Deps.CommitParentRecords, so a sibling run's uncommitted status record does not trip the merge guard;
 // a clean subtree is a no-op, an absent seam skips the step, and a commit failure is Stuck naming the parent pair and its run records, with nothing merged.
 // The landing commit carries the change description, then a blank line and the trailer block.
-// The block is landing.yaml's trailer_text, then the engine_trailers text of each engine the task's sessions ran under, in engine-name order, each copied verbatim with no prefix, and then a `Lyx-Task: <slug>` line naming the task.
+// The block is landing.yaml's trailer_text, then the engine_trailers text of each engine the task's sessions ran under, in engine-name order, each copied verbatim with no prefix, and then a `Lym-Task: <slug>` line naming the task.
 // Finalize reads those engines through the told Deps.EnginesRun before any parent-side mutation, and a read failure is an error with nothing merged.
 // An empty trailer_text adds no fixed line, and an engine left out of engine_trailers or mapped to empty text adds no engine line, so the block is the task line alone.
-// lyx config reconcile moves a retired co_authored_by value into engine_trailers as the claude entry `Co-Authored-By: <value>`, and drops an empty one without an entry.
+// lym config reconcile moves a retired co_authored_by value into engine_trailers as the claude entry `Co-Authored-By: <value>`, and drops an empty one without an entry.
 // Before the merge of the parent, Finalize reads the per-worktree config files the task changed away from both its fork point and the parent's current tip, so a parent-side change never reads as a task edit, and, at Done, queues one notice about them naming the base, task tip and parent tip for the hub's orchestrator;
 // it never carries those files to the parent,
 // and a read failure or a failed notice never stops the landing.
 // Immediately before each landing attempt, the retry's included, Finalize re-reads the parent lock record through the guard's store.
-// A record that names this run passes; one that no longer names it means something released it: an owner pause, another machine's ownership or an operator's `lyx batten lock release`.
-// Finalize then lands nothing, takes no lock and is Stuck with Halt naming the release and its three causes, with `lyx loom resume` once no owner pause stands and the run is this machine's as the way forward.
+// A record that names this run passes; one that no longer names it means something released it: an owner pause, another machine's ownership or an operator's `lym batten lock release`.
+// Finalize then lands nothing, takes no lock and is Stuck with Halt naming the release and its three causes, with `lym loom resume` once no owner pause stands and the run is this machine's as the way forward.
 // An unreadable record is a Stuck with Halt too, as at the acquire, and both halts open with LandingStopPrefix, so only the orch's resume lifts them.
 // The resume re-runs Finalize from its first step under a lock taken afresh, so a resume made before the cause clears lands nothing.
 // The re-read and the landing are not atomic: a release between them is caught only by the parent push's rejection.
@@ -190,14 +190,12 @@
 // DescribeTable builds a loom run's session, which reads the decision record and the webster run records;
 // DarnDescribeTable builds a darn run's from its own stencil, `landing-template-describe-darn`, which reads the board entry, the decision record beside it, the diff and the review perch's run directory, under the same describe keys, role and skills.
 // NewBeamDescribe is the beam recipe's Describe row and starts no agent: it writes the description from the beam's board entry and the subjects of the commits the beam adds, validates it with the check the Describe gate runs, and commits it.
-// A finding is an error naming the finding and the way out, which is to end the landing with `lyx batten cancel <slug>`, fix the entry with `lyx board upsert` and run `lyx beam land <slug>` again, since the landing's claim holds the entry under the run lock.
+// A finding is an error naming the finding and the way out, which is to end the landing with `lym batten cancel <slug>`, fix the entry with `lym board upsert` and run `lym beam land <slug>` again, since the landing's claim holds the entry under the run lock.
 //
-// It takes told absolute paths and has no direct production import of internal/lyxcwd, per the
+// It takes told absolute paths and has no direct production import of internal/lymcwd, per the
 // Told-Geometry Invariant: every path this package operates on is handed to it by its caller, and it
 // derives none of its own.
 //
-// This package describes one repository throughout. It is not in the Fabric Vocabulary Invariant's
-// owner set, so none of its identifiers, string literals, or comments may name either fabric-internal
-// side, and that ban is machine-enforced by an AST walk over every identifier
-// (internal/lyxcwd's TestEnforcement_FabricVocabulary).
+// This package describes one repository throughout.
+// It is not in the Fabric Vocabulary Invariant's owner set, so none of its identifiers, string literals, or comments may name either fabric-internal side, and that ban is machine-enforced by an AST walk over every identifier (internal/lymcwd's TestEnforcement_FabricVocabulary).
 package landingshed

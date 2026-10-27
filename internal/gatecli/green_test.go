@@ -43,7 +43,7 @@ func TestGreenRecord(t *testing.T) {
 			t.Error("tierFingerprint changed with parallel, timeout_min and slots; want them ignored")
 		}
 		// wantBase was captured from tierFingerprint(greenTier()) before the filter, shared_build, carry, build and inert keys existed.
-		const wantBase = "b1f910c02f09e5ca9ba567a4a9d2825cf8d7087192f356c99b48b5d6f5d78744"
+		const wantBase = "a3839b7915cd21ad432412c4d7cb98e94605df7f6d1beb7f17c0515b7a6dd1af"
 		if got := tierFingerprint(base, noBuild, nil); got != wantBase {
 			t.Errorf("tierFingerprint(greenTier(), BuildStep{}, nil) = %s; want %s", got, wantBase)
 		}

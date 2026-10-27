@@ -5,7 +5,7 @@
 // The exit state is carried as a context value (never a package-level variable) so that concurrent
 // test invocations each track their own exit code without races.
 
-// Package clihelp provides the shared cobra infrastructure used by cmd/lyx and every module's
+// Package clihelp provides the shared cobra infrastructure used by cmd/lym and every module's
 // RunCLI seam.
 // It holds per-invocation exit state, a seam adapter that wires a cobra command tree into an
 // io.Writer-based call contract, a RunE wrapper that bridges legacy handler functions into cobra's
@@ -25,12 +25,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 )
 
 // init disables cobra's Windows mousetrap check, a startup cost that
-// dominated the test suite. lyx is orchestration-only and never launched by
+// dominated the test suite. lym is orchestration-only and never launched by
 // double-click, so the message is dead weight. See
 // docs/benchmarks/test-suite-timing.md for measurements.
 func init() {
@@ -54,7 +54,7 @@ type exitState struct {
 
 // Code returns the recorded exit code, which is 0 if SetExit was never called with a non-zero
 // value.
-// It is the public read accessor for the unexported code field so that cmd/lyx/main.go can read the
+// It is the public read accessor for the unexported code field so that cmd/lym/main.go can read the
 // exit code after ExecuteContext returns without importing the unexported field directly.
 func (es *exitState) Code() int {
 	return es.code
@@ -145,7 +145,7 @@ func WrapRun(fn func(out io.Writer, args []string) int) func(*cobra.Command, []s
 // sites resolve no cwd and have no use for a context argument;
 // WrapRun stays the registration shape for those (every internal/boardcli and
 // internal/selfreportcli site, and most of internal/fabriccli's), while WrapRunCtx is for a handler
-// that needs to read an injected cwd via lyxcwd.CwdFrom(ctx).
+// that needs to read an injected cwd via lymcwd.CwdFrom(ctx).
 // Short-circuit, exit-code recording, and the double-print-suppressing nil return all mirror WrapRun
 // exactly.
 func WrapRunCtx(fn func(ctx context.Context, out io.Writer, args []string) int) func(*cobra.Command, []string) error {
@@ -191,12 +191,12 @@ func RunRootCtx(ctx context.Context, cmd *cobra.Command, out io.Writer) int {
 // returns 1. On nil error it returns the exit code recorded via SetExit.
 // Callers must configure cmd's output writers and args before calling RunRoot;
 // this function only supplies the context, the silence flags, and the error-wrapping policy.
-// Both Execute and cmd/lyx use RunRoot so the wrapping logic has exactly one implementation.
+// Both Execute and cmd/lym use RunRoot so the wrapping logic has exactly one implementation.
 func RunRoot(cmd *cobra.Command, out io.Writer) int {
 	return RunRootCtx(context.Background(), cmd, out)
 }
 
-// Execute is the RunCLI seam used by every module and by cmd/lyx.
+// Execute is the RunCLI seam used by every module and by cmd/lym.
 // It wires cmd to write both stdout and stderr into out (so in-process tests capture all output
 // from a single buffer), sets args, and delegates to RunRoot for context seeding, silence flags,
 // execution, and JSON error wrapping.
@@ -212,8 +212,8 @@ func Execute(cmd *cobra.Command, out io.Writer, args []string) int {
 }
 
 // ExecuteIn is Execute's context-carrying sibling: it wires cmd exactly as Execute does, then seeds
-// cwd into the execution context via lyxcwd.WithCwd before delegating to RunRootCtx, so command
-// bodies that call lyxcwd.CwdFrom(cmd.Context()) observe cwd instead of the process working
+// cwd into the execution context via lymcwd.WithCwd before delegating to RunRootCtx, so command
+// bodies that call lymcwd.CwdFrom(cmd.Context()) observe cwd instead of the process working
 // directory.
 // cwd must be an absolute, non-empty path — ExecuteIn never receives an empty cwd and performs no
 // empty-string tolerance of its own; WithCwd panics on both an empty and a relative cwd.
@@ -225,10 +225,10 @@ func ExecuteIn(cmd *cobra.Command, cwd string, out io.Writer, args []string) int
 
 	cmd.SetArgs(args)
 
-	return RunRootCtx(lyxcwd.WithCwd(context.Background(), cwd), cmd, out)
+	return RunRootCtx(lymcwd.WithCwd(context.Background(), cwd), cmd, out)
 }
 
-// GroupRunE is the RunE for parent module group commands (e.g. "lyx fabric", "lyx board").
+// GroupRunE is the RunE for parent module group commands (e.g. "lym fabric", "lym board").
 // When args is non-empty it returns an error naming the unknown subcommand;
 // when args is empty it delegates to the command's built-in help output.
 // Wire this as cmd.RunE = clihelp.GroupRunE on each group command so that bare invocations print

@@ -11,7 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // archiveTagSHALen is how many leading hex digits of the tip SHA the archive tag name carries.
@@ -55,7 +55,7 @@ var ErrArchiveFailed = errors.New("archiving the pair's records before teardown 
 // A push the remote refuses with a bare "(failed)" or a remote "cannot lock ref" is retried on archiveTagPushDelays before it fails.
 // Every returned error wraps ErrArchiveFailed.
 // KindTagPushed is recorded on rec only after the push observably succeeded.
-func archiveWeftTip(rec *Mutations, l *lyxcwd.Location, slug, weftBranch string) (tag string, skippedReason string, err error) {
+func archiveWeftTip(rec *Mutations, l *lymcwd.Location, slug, weftBranch string) (tag string, skippedReason string, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: %w", ErrArchiveFailed, err)

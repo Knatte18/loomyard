@@ -12,8 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
@@ -38,7 +38,7 @@ func TestNotifyPrime_QueuesInThePrimeOnly(t *testing.T) {
 
 			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 			hubforge.AddPair(t, h, "notify-task")
-			task, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree("notify-task"))
+			task, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("notify-task"))
 			if err != nil {
 				t.Fatalf("ResolveWorktree task: %v", err)
 			}
@@ -49,7 +49,7 @@ func TestNotifyPrime_QueuesInThePrimeOnly(t *testing.T) {
 			}
 			if tt.reedStrand != "" {
 				reedState := &reedengine.ReedState{Strands: []reedengine.Strand{{GUID: tt.reedStrand, Name: "tst:orch-held"}}}
-				if err := reedengine.SaveState(filepath.Join(h.Location.AnchorPath(), lyxdirs.DotLyxDirName), reedState); err != nil {
+				if err := reedengine.SaveState(filepath.Join(h.Location.AnchorPath(), lymdirs.DotLymDirName), reedState); err != nil {
 					t.Fatalf("reedengine.SaveState: %v", err)
 				}
 			}
@@ -76,16 +76,16 @@ func TestParentOrchStrand(t *testing.T) {
 	hubforge.AddPairWith(t, h, "b", fabricengine.AddOptions{SkipPush: true, Beam: true})
 	hubforge.AddPairWith(t, h, "m", fabricengine.AddOptions{SkipPush: true, Parent: "b"})
 	hubforge.AddPairWith(t, h, "p", fabricengine.AddOptions{SkipPush: true})
-	locate := func(slug string) *lyxcwd.Location {
+	locate := func(slug string) *lymcwd.Location {
 		t.Helper()
-		location, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree(slug))
+		location, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(slug))
 		if err != nil {
 			t.Fatalf("ResolveWorktree(%q): %v", slug, err)
 		}
 		return location
 	}
 	beam, member, forkedFromPrime := locate("b"), locate("m"), locate("p")
-	seed := func(location *lyxcwd.Location, guid string) {
+	seed := func(location *lymcwd.Location, guid string) {
 		t.Helper()
 		if err := orchengine.SaveState(orchPaths(location), orchengine.State{Phase: orchengine.PhaseIdle, Strand: guid}); err != nil {
 			t.Fatalf("SaveState(%s): %v", location.WorktreeName, err)
@@ -93,8 +93,8 @@ func TestParentOrchStrand(t *testing.T) {
 	}
 	seed(h.Location, "prime-guid")
 	seed(beam, "beam-guid")
-	beamLive := func(live bool) func(*lyxcwd.Location) (bool, error) {
-		return func(worktree *lyxcwd.Location) (bool, error) { return live && worktree.WorktreeName == "b", nil }
+	beamLive := func(live bool) func(*lymcwd.Location) (bool, error) {
+		return func(worktree *lymcwd.Location) (bool, error) { return live && worktree.WorktreeName == "b", nil }
 	}
 	beamOrch := hubforge.TestShortname + ":b:orch"
 	primeOrch := hubforge.TestShortname + ":orch"

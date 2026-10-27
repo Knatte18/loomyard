@@ -17,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -55,9 +55,7 @@ agent's output files (the file contract) and a classified outcome
 (done/died/timeout) come out. The provider itself is swappable behind
 an engine seam (Claude Code today) so the run loop and CLI never depend on
 provider specifics.`,
-		// RunE is set so that bare "lyx shuttle" lists subcommands and "lyx
-		// shuttle bogus" emits a JSON error envelope instead of falling
-		// through to cobra's plain-text help.
+		// RunE is set so that bare "lym shuttle" lists subcommands and "lym shuttle bogus" emits a JSON error envelope instead of falling through to cobra's plain-text help.
 		RunE: clihelp.GroupRunE,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			// Guard: when the shuttle group command itself is invoked (bare
@@ -71,16 +69,16 @@ provider specifics.`,
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
-			cwd, err := lyxcwd.CwdFrom(ctx)
+			cwd, err := lymcwd.CwdFrom(ctx)
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
 
-			layout, err := lyxcwd.Resolve(cwd)
+			layout, err := lymcwd.Resolve(cwd)
 			if err != nil {
-				// lyxcwd.Resolve's error is already self-describing (it
+				// lymcwd.Resolve's error is already self-describing (it
 				// IS the "not a git repository" sentinel); pass it through
 				// bare rather than doubling that same text on top of it.
 				output.Err(out, err.Error())
@@ -147,7 +145,7 @@ func RunCLI(out io.Writer, args []string) int {
 // RunCLIIn is RunCLI's seam-cwd-carrying sibling: an empty cwd means "read the process cwd" and
 // delegates to clihelp.Execute exactly as RunCLI always has, while any other value seeds cwd into
 // the execution context via clihelp.ExecuteIn.
-// The branch exists because lyxcwd.WithCwd panics on an empty directory, so a uniform delegation to
+// The branch exists because lymcwd.WithCwd panics on an empty directory, so a uniform delegation to
 // ExecuteIn would panic on every existing RunCLI call.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {

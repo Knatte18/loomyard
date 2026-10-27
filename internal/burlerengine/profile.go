@@ -30,7 +30,7 @@ type FixScope string
 
 // The two legal FixScope values.
 const (
-	FixScopeOverlay FixScope = "overlay" // lyx state, no git
+	FixScopeOverlay FixScope = "overlay" // lym state, no git
 	FixScopeSource  FixScope = "source"  // the repo, with git commits
 )
 

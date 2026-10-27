@@ -13,7 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
@@ -28,7 +28,7 @@ func TestHubSeamOptions(t *testing.T) {
 	}
 	gitkit.MustRun(t, primeRoot, "git", "init")
 	gitkit.CommitFile(t, primeRoot, "README.md", "prime\n", "first commit")
-	prime, err := lyxcwd.ResolveWorktree(primeRoot)
+	prime, err := lymcwd.ResolveWorktree(primeRoot)
 	if err != nil {
 		t.Fatalf("ResolveWorktree: %v", err)
 	}

@@ -6,10 +6,10 @@ package standalonegeom
 import (
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
-// SpecsDir returns the standalone deployed-specs directory for stateDir: <stateDir>/_lyx/specs.
+// SpecsDir returns the standalone deployed-specs directory for stateDir: <stateDir>/_lym/specs.
 //
 // It is the sole construction site for the standalone deployed-specs directory across every
 // standalone-capable CLI, deliberately mirroring fabricengine.SpecsDir(hub), with stateDir playing
@@ -21,5 +21,5 @@ import (
 // Unlike StencilsDir, this directory has no CLI flag that can override it, so this function's
 // result is the only spelling standalone mode ever uses.
 func SpecsDir(stateDir string) string {
-	return filepath.Join(stateDir, lyxdirs.LyxDirName, "specs")
+	return filepath.Join(stateDir, lymdirs.LymDirName, "specs")
 }

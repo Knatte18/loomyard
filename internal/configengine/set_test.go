@@ -43,10 +43,10 @@ func TestSet(t *testing.T) {
 		categories map[string]configengine.Category
 		// localExisting is the local or machine file before the call; empty means it is absent.
 		localExisting string
-		// hubWide marks the spec hub-wide and gives the board dir its _lyx/config/, as a machine write needs; it needs board.
+		// hubWide marks the spec hub-wide and gives the board dir its _lym/config/, as a machine write needs; it needs board.
 		hubWide bool
-		// boardWithoutLyx leaves the board dir with no _lyx/ beside the anchor's, which hubWide would otherwise create.
-		boardWithoutLyx bool
+		// boardWithoutLym leaves the board dir with no _lym/ beside the anchor's, which hubWide would otherwise create.
+		boardWithoutLym bool
 		// boardOnly tells the call the board dir alone, with no anchor.
 		boardOnly bool
 		// jsonEntries marks the spec JSONEntries.
@@ -66,7 +66,7 @@ func TestSet(t *testing.T) {
 	}{
 		{
 			name:      "an overlay base scaffold holds no per-name entry and takes the selector",
-			state:     baseLyx,
+			state:     baseLym,
 			overlay:   true,
 			pairs:     []yamlengine.KV{{Key: "pick", Value: "x"}},
 			contains:  []string{`pick: "x"`},
@@ -74,7 +74,7 @@ func TestSet(t *testing.T) {
 		},
 		{
 			name:      "a write of the selector with a lens the picked layer holds leaves that lens out",
-			state:     baseLyx,
+			state:     baseLym,
 			overlay:   true,
 			pairs:     []yamlengine.KV{{Key: "pick", Value: "x"}, {Key: "lenses.a", Value: "X"}},
 			contains:  []string{`pick: "x"`},
@@ -91,14 +91,14 @@ func TestSet(t *testing.T) {
 		},
 		{
 			name:    "an unknown selector value is refused and removes the scaffold",
-			state:   baseLyx,
+			state:   baseLym,
 			overlay: true,
 			pairs:   []yamlengine.KV{{Key: "pick", Value: "nope"}},
 			wantErr: "names no shipped layer",
 		},
 		{
 			name:     "a hub worktree write of the selector into an absent file is refused without the line to delete",
-			state:    baseLyx,
+			state:    baseLym,
 			board:    true,
 			overlay:  true,
 			pairs:    []yamlengine.KV{{Key: "pick", Value: "x"}},
@@ -116,7 +116,7 @@ func TestSet(t *testing.T) {
 		},
 		{
 			name:        "a hub worktree write of the selector with the default file's value saves",
-			state:       baseLyx,
+			state:       baseLym,
 			board:       true,
 			overlay:     true,
 			defaultFile: "pick: x\n",
@@ -125,7 +125,7 @@ func TestSet(t *testing.T) {
 		},
 		{
 			name:        "a hub worktree write under a default file holding an unknown selector value is refused and leaves no file",
-			state:       baseLyx,
+			state:       baseLym,
 			board:       true,
 			overlay:     true,
 			defaultFile: "pick: nope\n",
@@ -134,7 +134,7 @@ func TestSet(t *testing.T) {
 		},
 		{
 			name:      "hub default layer write into an absent file writes exactly the key set",
-			state:     baseLyx,
+			state:     baseLym,
 			template:  "key1: value1\nkey2: value2\n",
 			pairs:     []yamlengine.KV{{Key: "key1", Value: "set1"}},
 			layer:     configengine.LayerDefault,
@@ -143,7 +143,7 @@ func TestSet(t *testing.T) {
 		},
 		{
 			name:          "hub default layer write into a present sparse file keeps its own units and adds no template key",
-			state:         baseLyx,
+			state:         baseLym,
 			template:      "key1: value1\nkey2: value2\nkey3: value3\n",
 			pairs:         []yamlengine.KV{{Key: "key1", Value: "set1"}},
 			layer:         configengine.LayerDefault,
@@ -153,7 +153,7 @@ func TestSet(t *testing.T) {
 		},
 		{
 			name:      "seed-only hub default write into an absent file still scaffolds the template",
-			state:     baseLyx,
+			state:     baseLym,
 			template:  "key1: value1\nkey2: value2\n",
 			pairs:     []yamlengine.KV{{Key: "key1", Value: "set1"}},
 			layer:     configengine.LayerDefault,
@@ -163,7 +163,7 @@ func TestSet(t *testing.T) {
 		},
 		{
 			name:     "missing file is scaffolded then set",
-			state:    baseLyx,
+			state:    baseLym,
 			template: "key1: value1\nkey2: value2\n",
 			pairs:    []yamlengine.KV{{Key: "key1", Value: "set1"}},
 			contains: []string{"key1: set1", "key2: value2"},
@@ -205,7 +205,7 @@ func TestSet(t *testing.T) {
 		},
 		{
 			name:        "per-name map gains a name the template lacks on a sparse layer",
-			state:       baseLyx,
+			state:       baseLym,
 			template:    "name: x\nlenses:\n  a: A\n",
 			pairs:       []yamlengine.KV{{Key: "lenses.new", Value: "a new lens"}},
 			perNameMaps: []string{"lenses"},
@@ -214,7 +214,7 @@ func TestSet(t *testing.T) {
 		},
 		{
 			name:     "unknown key removes the scaffolded file",
-			state:    baseLyx,
+			state:    baseLym,
 			template: "key1: value1\n",
 			pairs:    []yamlengine.KV{{Key: "bogus", Value: "x"}},
 			wantErr:  "bogus",
@@ -247,7 +247,7 @@ func TestSet(t *testing.T) {
 		},
 		{
 			name:      "worktree file under a board is sparse and holds only the key set",
-			state:     baseLyx,
+			state:     baseLym,
 			template:  "key1: value1\nkey2: value2\n",
 			pairs:     []yamlengine.KV{{Key: "key1", Value: "set1"}},
 			board:     true,
@@ -264,7 +264,7 @@ func TestSet(t *testing.T) {
 		},
 		{
 			name:       "local write of an open key creates the local file",
-			state:      baseLyx,
+			state:      baseLym,
 			template:   "name: x\nrun: y\n",
 			pairs:      []yamlengine.KV{{Key: "name", Value: "z"}},
 			layer:      configengine.LayerLocal,
@@ -273,7 +273,7 @@ func TestSet(t *testing.T) {
 		},
 		{
 			name:       "refused local write creates no file",
-			state:      baseLyx,
+			state:      baseLym,
 			template:   "name: x\nrun: y\n",
 			pairs:      []yamlengine.KV{{Key: "run", Value: "evil"}},
 			layer:      configengine.LayerLocal,
@@ -282,7 +282,7 @@ func TestSet(t *testing.T) {
 		},
 		{
 			name:          "refused local write leaves the previous local file byte for byte",
-			state:         baseLyx,
+			state:         baseLym,
 			template:      "name: x\nrun: y\n",
 			pairs:         []yamlengine.KV{{Key: "run", Value: "evil"}},
 			layer:         configengine.LayerLocal,
@@ -292,7 +292,7 @@ func TestSet(t *testing.T) {
 		},
 		{
 			name:       "machine write of the machine key creates the file holding only that key",
-			state:      baseLyx,
+			state:      baseLym,
 			template:   "name: x\nport: 1\n",
 			pairs:      []yamlengine.KV{{Key: "port", Value: "8"}},
 			layer:      configengine.LayerMachine,
@@ -303,7 +303,7 @@ func TestSet(t *testing.T) {
 		},
 		{
 			name:       "machine write of a non-machine key is refused and leaves no file",
-			state:      baseLyx,
+			state:      baseLym,
 			template:   "name: x\nport: 1\n",
 			pairs:      []yamlengine.KV{{Key: "name", Value: "z"}},
 			layer:      configengine.LayerMachine,
@@ -314,7 +314,7 @@ func TestSet(t *testing.T) {
 		},
 		{
 			name:       "machine write under the board dir alone does not apply and leaves no file",
-			state:      baseLyx,
+			state:      baseLym,
 			template:   "name: x\nport: 1\n",
 			pairs:      []yamlengine.KV{{Key: "port", Value: "8"}},
 			layer:      configengine.LayerMachine,
@@ -325,20 +325,20 @@ func TestSet(t *testing.T) {
 			wantErr:    "does not apply here",
 		},
 		{
-			name:            "machine write beside a board dir with no _lyx is refused and leaves no file, though the anchor has one",
-			state:           baseLyx,
+			name:            "machine write beside a board dir with no _lym is refused and leaves no file, though the anchor has one",
+			state:           baseLym,
 			template:        "name: x\nport: 1\n",
 			pairs:           []yamlengine.KV{{Key: "port", Value: "8"}},
 			layer:           configengine.LayerMachine,
 			board:           true,
 			hubWide:         true,
-			boardWithoutLyx: true,
+			boardWithoutLym: true,
 			categories:      map[string]configengine.Category{"port": configengine.CategoryMachine},
 			wantErr:         "directory not found",
 		},
 		{
 			name:        "machine entry of a non-machine key in a JSON-entries spec is refused and leaves no file",
-			state:       baseLyx,
+			state:       baseLym,
 			template:    "name: x\nport: 1\n",
 			pairs:       []yamlengine.KV{{Key: "name", Value: `{"a": 1}`}},
 			layer:       configengine.LayerMachine,
@@ -358,7 +358,7 @@ func TestSet(t *testing.T) {
 			if tt.board {
 				dirs.Board = t.TempDir()
 			}
-			if (tt.hubWide || tt.layer == configengine.LayerDefault) && !tt.boardWithoutLyx {
+			if (tt.hubWide || tt.layer == configengine.LayerDefault) && !tt.boardWithoutLym {
 				mustMkdirAll(t, configengine.ConfigDir(dirs.Board))
 			}
 			if tt.defaultFile != "" {
@@ -375,7 +375,7 @@ func TestSet(t *testing.T) {
 			if layer == "" {
 				layer = configengine.LayerWorktree
 			}
-			previous, scaffolded := tt.existing, tt.state == baseLyx
+			previous, scaffolded := tt.existing, tt.state == baseLym
 			if layer == configengine.LayerLocal || layer == configengine.LayerMachine || layer == configengine.LayerDefault {
 				path = configengine.LocalFile(baseDir, "testmod")
 				if layer == configengine.LayerMachine {

@@ -12,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/seatengine"
@@ -35,7 +35,7 @@ var discussionAdvisorSkills = []string{"scribe:prose"}
 // The file name carries an "advisor-" prefix, so no advisor name takes the path of a lead output.
 // It shares DiscussionDir's AnchorPath anchoring.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
-func DiscussionAdvisorNotes(l *lyxcwd.Location, name string) string {
+func DiscussionAdvisorNotes(l *lymcwd.Location, name string) string {
 	return filepath.Join(DiscussionDir(l), "advisor-"+name+".md")
 }
 
@@ -68,7 +68,7 @@ func resolveModelChoice(raw string, reg modelspec.Registry) (shuttleengine.Model
 // A lead with no advisors decides each question itself, as its prompt says.
 // The PATTERN directive renders the PATTERN changes the decision record declares; a malformed section fails the table, naming the way forward.
 // A PATTERN directive or Tier 2 friction directive that cannot be rendered is left empty, the friction failure logged, and never fails the table.
-func DiscussionTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry, slug string) (seatengine.Table, error) {
+func DiscussionTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry, slug string) (seatengine.Table, error) {
 	if slug == "" {
 		return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: slug must not be empty")
 	}
@@ -80,7 +80,7 @@ func DiscussionTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDi
 
 	declaredChanges, err := discussionparser.DeclaredPatternChanges(DiscussionDecisionRecord(layout))
 	if err != nil {
-		return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: %w re-step the row with %q", err, "lyx loom start")
+		return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: %w re-step the row with %q", err, "lym loom start")
 	}
 	patternDirective, err := pattern.Directive(layout.WorktreePath(), stencilsDir, pattern.RoleDesigner, declaredChanges)
 	if err != nil {

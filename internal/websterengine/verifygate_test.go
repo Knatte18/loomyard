@@ -130,9 +130,9 @@ func TestVerifyGate_PassesWithoutVerifying(t *testing.T) {
 		// commandErr makes the verifyCommand seam fail with a gate-config refusal, which the gate returns as its error.
 		commandErr error
 	}{
-		{name: "a stuck outcome", fake: gateFake{outcome: outcomeStuck, command: "lyx gate test --wait --tier 0 --all", dirty: []string{"x.go"}}},
-		{name: "a gate-config refusal", fake: gateFake{outcome: outcomeDone}, commandErr: errors.New("gate config: gates holds no list for \"final\"; fix it with \"lyx config gate\" from the prime")},
-		{name: "an unreadable outcome", fake: gateFake{command: "lyx gate test --wait --tier 0 --all", results: []verifytree.Result{failedResult()}}, outcomeErr: errors.New("no outcome.yaml")},
+		{name: "a stuck outcome", fake: gateFake{outcome: outcomeStuck, command: "lym gate test --wait --tier 0 --all", dirty: []string{"x.go"}}},
+		{name: "a gate-config refusal", fake: gateFake{outcome: outcomeDone}, commandErr: errors.New("gate config: gates holds no list for \"final\"; fix it with \"lym config gate\" from the prime")},
+		{name: "an unreadable outcome", fake: gateFake{command: "lym gate test --wait --tier 0 --all", results: []verifytree.Result{failedResult()}}, outcomeErr: errors.New("no outcome.yaml")},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -150,7 +150,7 @@ func TestVerifyGate_PassesWithoutVerifying(t *testing.T) {
 
 			res, err := gate()
 			if tt.commandErr != nil {
-				if err == nil || !errors.Is(err, tt.commandErr) || !strings.Contains(err.Error(), "lyx config gate") || res.Passed {
+				if err == nil || !errors.Is(err, tt.commandErr) || !strings.Contains(err.Error(), "lym config gate") || res.Passed {
 					t.Fatalf("gate() = %+v, %v; want the gate-config refusal as the error", res, err)
 				}
 			} else if err != nil || !res.Passed {
@@ -567,8 +567,8 @@ func TestVerifyGate_RejectedFixCommitFailsTerminal(t *testing.T) {
 func TestVerifyGateStuckReason_TerminalRejectionEndsInResetToPreFix(t *testing.T) {
 	gate := &shuttleengine.GateOutcome{Reason: "Commit mergeabc is rejected.\nIt is not on the parent branch."}
 	for _, tc := range []struct{ reentry, want string }{
-		{"lyx webster run", "way forward: 1) lyx webster reset --to pre-fix; 2) lyx webster run"},
-		{"re-step the Webster row", "way forward: 1) lyx webster reset --to pre-fix; 2) re-step the Webster row"},
+		{"lym webster run", "way forward: 1) lym webster reset --to pre-fix; 2) lym webster run"},
+		{"re-step the Webster row", "way forward: 1) lym webster reset --to pre-fix; 2) re-step the Webster row"},
 	} {
 		got := verifyGateStuckReason(t.TempDir(), gate, tc.reentry)
 		if !strings.HasSuffix(got, tc.want) || strings.Contains(got, "\n") {
@@ -580,7 +580,7 @@ func TestVerifyGateStuckReason_TerminalRejectionEndsInResetToPreFix(t *testing.T
 func TestVerifyGateStuckReason_HungReportNamesTheHang(t *testing.T) {
 	t.Parallel()
 
-	const log = "/wt/.lyx/verify/verify.log"
+	const log = "/wt/.lym/verify/verify.log"
 	tests := []struct {
 		name   string
 		report VerifyGateReport
@@ -600,7 +600,7 @@ func TestVerifyGateStuckReason_HungReportNamesTheHang(t *testing.T) {
 			name:   "a watchdog report names the window, the way forward and the re-entry",
 			report: VerifyGateReport{Attempt: 2, Cap: 2, Hang: "CPU watchdog SIGQUIT", HangStacks: true, WatchdogWindow: "2m0s", LogPath: log},
 			want: "verify gate failed after 2 attempt(s) of 2: the verify command hung (CPU watchdog SIGQUIT) and was not re-run; its goroutine stacks are in " + log +
-				"; the gate test's CPU watchdog quit a test binary busy for 2m0s: if that package is CPU-bound but healthy, " + gateslot.BusyQuitWayForward + ", then lyx webster run",
+				"; the gate test's CPU watchdog quit a test binary busy for 2m0s: if that package is CPU-bound but healthy, " + gateslot.BusyQuitWayForward + ", then lym webster run",
 		},
 		{
 			name:   "an exit-code report names the code and holds no stacks",
@@ -617,7 +617,7 @@ func TestVerifyGateStuckReason_HungReportNamesTheHang(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			got := verifyGateStuckReason(reportsDir, &shuttleengine.GateOutcome{}, "lyx webster run")
+			got := verifyGateStuckReason(reportsDir, &shuttleengine.GateOutcome{}, "lym webster run")
 
 			if got != tt.want {
 				t.Errorf("verifyGateStuckReason() = %q; want %q", got, tt.want)

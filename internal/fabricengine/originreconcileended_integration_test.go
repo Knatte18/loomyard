@@ -74,7 +74,7 @@ func originBoard(t *testing.T, hub *originHub, branch string, entries ...boarden
 // writePairStatus gives the pair slug its own run status, with the current producer and the history rows named.
 func writePairStatus(t *testing.T, hub *originHub, slug, producer string, history ...string) {
 	t.Helper()
-	path := filepath.Join(hub.PairCodeWorktree(slug), "_lyx", "shed", slug, "status.json")
+	path := filepath.Join(hub.PairCodeWorktree(slug), "_lym", "shed", slug, "status.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("mkdir for %s: %v", path, err)
 	}
@@ -218,8 +218,8 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 			name, busyOn string
 			want         []string
 		}{
-			{"driver", fabricengine.BusyOnDriver, []string{"driver to end", "lyx cleanup --apply"}},
-			{"lock", fabricengine.BusyOnLock, []string{"lock", "lyx cleanup --apply"}},
+			{"driver", fabricengine.BusyOnDriver, []string{"driver to end", "lym cleanup --apply"}},
+			{"lock", fabricengine.BusyOnLock, []string{"lock", "lym cleanup --apply"}},
 		} {
 			t.Run(row.name, func(t *testing.T) {
 				hub, _ := endedHub(t, "task")
@@ -263,7 +263,7 @@ func TestReconcileOrigin_Ended(t *testing.T) {
 		if two := requireEntry(t, report, "two", fabricengine.EntryEnded); !two.Removed {
 			t.Errorf("entry two = %+v; want it removed", two)
 		}
-		if summary := report.Summary(); !strings.Contains(summary, "boom") || !strings.Contains(summary, "`lyx cleanup --apply` retries the removal") {
+		if summary := report.Summary(); !strings.Contains(summary, "boom") || !strings.Contains(summary, "`lym cleanup --apply` retries the removal") {
 			t.Errorf("Summary = %q; want the error and the retry named", summary)
 		}
 	})

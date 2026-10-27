@@ -20,7 +20,7 @@ func readsOnlyCat(cmd string) bool { return strings.HasPrefix(cmd, "cat ") }
 
 func TestClassifyViolation(t *testing.T) {
 	root := gitwrapNewScratchRepo(t)
-	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("ignored.log\n_lyx/\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("ignored.log\n_lym/\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	gitkit.CommitFile(t, root, "tracked.txt", "x", "add tracked")
@@ -30,36 +30,36 @@ func TestClassifyViolation(t *testing.T) {
 	geom := Geometry{
 		AnchorRoot:   root,
 		WorktreeRoot: root,
-		WebsterDir:   filepath.Join(root, "_lyx", "webster"),
-		ReportsDir:   filepath.Join(root, "_lyx", "webster", "reports"),
-		PlanDir:      filepath.Join(root, "_lyx", "plan"),
-		ScratchDir:   filepath.Join(root, ".lyx", "scratch"),
+		WebsterDir:   filepath.Join(root, "_lym", "webster"),
+		ReportsDir:   filepath.Join(root, "_lym", "webster", "reports"),
+		PlanDir:      filepath.Join(root, "_lym", "plan"),
+		ScratchDir:   filepath.Join(root, ".lym", "scratch"),
 	}
 	outside := t.TempDir()
 
-	// A second fixture whose _lyx is a link to a sibling directory, written through the link's target.
+	// A second fixture whose _lym is a link to a sibling directory, written through the link's target.
 	linkRoot := gitwrapNewScratchRepo(t)
-	lyxTarget := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(lyxTarget, "webster"), 0o755); err != nil {
+	lymTarget := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(lymTarget, "webster"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := fslink.CreateDirLink(filepath.Join(linkRoot, "_lyx"), lyxTarget); err != nil {
+	if err := fslink.CreateDirLink(filepath.Join(linkRoot, "_lym"), lymTarget); err != nil {
 		t.Fatal(err)
 	}
 	linkGeom := Geometry{
 		AnchorRoot:   linkRoot,
 		WorktreeRoot: linkRoot,
-		WebsterDir:   filepath.Join(linkRoot, "_lyx", "webster"),
-		ReportsDir:   filepath.Join(linkRoot, "_lyx", "webster", "reports"),
-		PlanDir:      filepath.Join(linkRoot, "_lyx", "plan"),
-		ScratchDir:   filepath.Join(linkRoot, ".lyx", "scratch"),
+		WebsterDir:   filepath.Join(linkRoot, "_lym", "webster"),
+		ReportsDir:   filepath.Join(linkRoot, "_lym", "webster", "reports"),
+		PlanDir:      filepath.Join(linkRoot, "_lym", "plan"),
+		ScratchDir:   filepath.Join(linkRoot, ".lym", "scratch"),
 	}
 
-	// A second worktree of root, with a _lyx link pointing to a temp directory.
+	// A second worktree of root, with a _lym link pointing to a temp directory.
 	second := filepath.Join(t.TempDir(), "second")
 	gitkit.Git(t, root, "worktree", "add", second)
-	secondLyx := t.TempDir()
-	if err := fslink.CreateDirLink(filepath.Join(second, "_lyx"), secondLyx); err != nil {
+	secondLym := t.TempDir()
+	if err := fslink.CreateDirLink(filepath.Join(second, "_lym"), secondLym); err != nil {
 		t.Fatal(err)
 	}
 
@@ -69,10 +69,10 @@ func TestClassifyViolation(t *testing.T) {
 	nestedGeom := Geometry{
 		AnchorRoot:   nested,
 		WorktreeRoot: nested,
-		WebsterDir:   filepath.Join(nested, "_lyx", "webster"),
-		ReportsDir:   filepath.Join(nested, "_lyx", "webster", "reports"),
-		PlanDir:      filepath.Join(nested, "_lyx", "plan"),
-		ScratchDir:   filepath.Join(nested, ".lyx", "scratch"),
+		WebsterDir:   filepath.Join(nested, "_lym", "webster"),
+		ReportsDir:   filepath.Join(nested, "_lym", "webster", "reports"),
+		PlanDir:      filepath.Join(nested, "_lym", "plan"),
+		ScratchDir:   filepath.Join(nested, ".lym", "scratch"),
 	}
 	if err := os.WriteFile(filepath.Join(nested, "ignored.log"), []byte("i"), 0o644); err != nil {
 		t.Fatal(err)
@@ -96,28 +96,28 @@ func TestClassifyViolation(t *testing.T) {
 		{"fork-state-write", AuditViolation{Class: ClassForkStateWrite, Path: "x"}, geom, AuditSeverityCorrectness},
 		{"fabric-reference", AuditViolation{Class: ClassFabricReference}, geom, AuditSeverityCorrectness},
 		{"fabric-reference the classifier accepts", AuditViolation{Class: ClassFabricReference, Command: "cat <dir>/webster/state.json"}, geom, AuditSeverityPolicy},
-		{"fabric-reference the classifier rejects", AuditViolation{Class: ClassFabricReference, Command: "lyx fabric add x"}, geom, AuditSeverityCorrectness},
+		{"fabric-reference the classifier rejects", AuditViolation{Class: ClassFabricReference, Command: "lym fabric add x"}, geom, AuditSeverityCorrectness},
 		{"named-spawn", AuditViolation{Class: ClassNamedSpawn}, geom, AuditSeverityPolicy},
 		{"nested-agent", AuditViolation{Class: ClassNestedAgent}, geom, AuditSeverityPolicy},
 		{"tracked file", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(root, "tracked.txt")}, geom, AuditSeverityCorrectness},
 		{"untracked non-ignored", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(root, "untracked.txt")}, geom, AuditSeverityCorrectness},
 		{"relative untracked", AuditViolation{Class: ClassParentWrite, Path: "untracked.txt"}, geom, AuditSeverityCorrectness},
-		{"ignored outside _lyx", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(root, "ignored.log")}, geom, AuditSeverityPolicy},
-		{"state.json", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(root, "_lyx", "webster", "state.json")}, geom, AuditSeverityCorrectness},
-		{"report", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(root, "_lyx", "webster", "reports", "01-a.yaml")}, geom, AuditSeverityCorrectness},
-		{"plan file", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(root, "_lyx", "plan", "00-overview.md")}, geom, AuditSeverityCorrectness},
+		{"ignored outside _lym", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(root, "ignored.log")}, geom, AuditSeverityPolicy},
+		{"state.json", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(root, "_lym", "webster", "state.json")}, geom, AuditSeverityCorrectness},
+		{"report", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(root, "_lym", "webster", "reports", "01-a.yaml")}, geom, AuditSeverityCorrectness},
+		{"plan file", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(root, "_lym", "plan", "00-overview.md")}, geom, AuditSeverityCorrectness},
 		{"outside worktree", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(outside, "f.txt")}, geom, AuditSeverityPolicy},
 		{"pause flag", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(geom.ScratchDir, "pause")}, geom, AuditSeverityCorrectness},
 		{"lock file", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(geom.ScratchDir, "mutate.lock")}, geom, AuditSeverityCorrectness},
-		{"reed launch script", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(root, ".lyx", "reed", "launch", "guid.sh")}, geom, AuditSeverityCorrectness},
-		{"other module lock", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(root, ".lyx", "shed", "run.lock")}, geom, AuditSeverityCorrectness},
+		{"reed launch script", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(root, ".lym", "reed", "launch", "guid.sh")}, geom, AuditSeverityCorrectness},
+		{"other module lock", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(root, ".lym", "shed", "run.lock")}, geom, AuditSeverityCorrectness},
 		{"ignored build artifact outside state dirs", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(root, "ignored.log")}, geom, AuditSeverityPolicy},
 		{"other worktree tracked file", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(second, "tracked.txt")}, geom, AuditSeverityCorrectness},
-		{"other worktree _lyx link", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(secondLyx, "x.md")}, geom, AuditSeverityCorrectness},
+		{"other worktree _lym link", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(secondLym, "x.md")}, geom, AuditSeverityCorrectness},
 		{"nested worktree tracked file", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(nested, "tracked.txt")}, geom, AuditSeverityCorrectness},
 		{"inside nested worktree, ignored", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(nested, "ignored.log")}, nestedGeom, AuditSeverityPolicy},
 		{"inside nested worktree, tracked", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(nested, "tracked.txt")}, nestedGeom, AuditSeverityCorrectness},
-		{"through link target", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(lyxTarget, "webster", "state.json")}, linkGeom, AuditSeverityCorrectness},
+		{"through link target", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(lymTarget, "webster", "state.json")}, linkGeom, AuditSeverityCorrectness},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

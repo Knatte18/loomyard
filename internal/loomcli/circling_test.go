@@ -14,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
@@ -95,7 +95,7 @@ func TestCirclingVerb_Records(t *testing.T) {
 				t.Fatalf("exit = %d, out %s; want 0", code, out.String())
 			}
 			data := envelope.RequireOK(t, out.String()).Raw
-			if data["slug"] != "task-a" || data["decision"] != string(tt.decision) || data["round"] != tt.wantRound || data["cause"] != tt.wantCause || data["resume"] != "lyx loom resume" {
+			if data["slug"] != "task-a" || data["decision"] != string(tt.decision) || data["round"] != tt.wantRound || data["cause"] != tt.wantCause || data["resume"] != "lym loom resume" {
 				t.Fatalf("envelope = %v; want slug, decision, round %v, cause %s and the resume hint", data, tt.wantRound, tt.wantCause)
 			}
 			if want := "plan:" + string(tt.decision); len(f.records) != 1 || f.records[0] != want {
@@ -106,8 +106,8 @@ func TestCirclingVerb_Records(t *testing.T) {
 }
 
 func TestCirclingVerb_Refusals(t *testing.T) {
-	const loomRaise = `run "lyx config loom --set review_hard_max_bounces=<n>" in the task worktree`
-	const localRaise = `run "lyx config loom --layer local --set review_hard_max_bounces=<n>" in the task worktree, and correct the task's run_settings with "lyx board upsert" too, so a later Seed-Child writes the same value`
+	const loomRaise = `run "lym config loom --set review_hard_max_bounces=<n>" in the task worktree`
+	const localRaise = `run "lym config loom --layer local --set review_hard_max_bounces=<n>" in the task worktree, and correct the task's run_settings with "lym board upsert" too, so a later Seed-Child writes the same value`
 	atPlanBouncer := awaitingAt(loomshed.NamePlanBouncer)
 	tests := []struct {
 		name string
@@ -118,17 +118,17 @@ func TestCirclingVerb_Refusals(t *testing.T) {
 	}{
 		{"no status file", "", circlingFake{}, []string{"no status file"}},
 		{"status read failure", "", circlingFake{statusErr: errors.New("boom")}, []string{"re-run the verb"}},
-		{"bouncer lookup failure", "", circlingFake{status: atPlanBouncer, found: true, subdirErr: errors.New("recipe broken")}, []string{"rebuild or reinstall lyx"}},
+		{"bouncer lookup failure", "", circlingFake{status: atPlanBouncer, found: true, subdirErr: errors.New("recipe broken")}, []string{"rebuild or reinstall lym"}},
 		{"record I/O failure", "", circlingFake{status: atPlanBouncer, found: true, recordErr: errors.New("write circling decision: disk full")}, []string{"re-run the verb"}},
 		{"running run", "", circlingFake{status: shedengine.Status{State: shedengine.StateRunning, CurrentProducer: loomshed.NamePlanBouncer}, found: true}, []string{"not awaiting"}},
 		{"awaiting at Finalize", "", circlingFake{status: awaitingAt(loomshed.NameFinalize), found: true}, []string{"not a review segment's Bouncer row"}},
 		{"latest round not escalated", "", circlingFake{status: awaitingAt(loomshed.NameCodeBouncer), found: true, recordErr: shedadapters.ErrNotEscalated}, []string{"is not escalated"}},
 		{"malformed escalation record", "", circlingFake{status: atPlanBouncer, found: true, recordErr: fmt.Errorf("%w: round-2-escalation.md: bad cause", shedadapters.ErrEscalationMalformed)}, []string{"fix or delete the named escalation file"}},
-		{"second decision", "", circlingFake{status: awaitingAt(loomshed.NameDiscussionBouncer), found: true, recordErr: shedadapters.ErrCirclingDecided}, []string{`already recorded for the escalated round at Discussion-Bouncer; way forward: the decision for this round is recorded and stays; run "lyx loom resume"`}},
+		{"second decision", "", circlingFake{status: awaitingAt(loomshed.NameDiscussionBouncer), found: true, recordErr: shedadapters.ErrCirclingDecided}, []string{`already recorded for the escalated round at Discussion-Bouncer; way forward: the decision for this round is recorded and stays; run "lym loom resume"`}},
 		{
 			"continue at the hard cap", shedadapters.CirclingContinue,
 			circlingFake{status: atPlanBouncer, found: true, latest: 4, hardCap: 4, pending: true, raise: loomRaise},
-			[]string{"at or past its perch's hard cap 4", "lyx loom circling accept task-a", loomRaise, "lyx loom circling continue task-a"},
+			[]string{"at or past its perch's hard cap 4", "lym loom circling accept task-a", loomRaise, "lym loom circling continue task-a"},
 		},
 		{
 			"continue at the hard cap on a round that is not escalated", shedadapters.CirclingContinue,
@@ -148,7 +148,7 @@ func TestCirclingVerb_Refusals(t *testing.T) {
 		{
 			"hard cap unresolved", shedadapters.CirclingContinue,
 			circlingFake{status: atPlanBouncer, found: true, hardCapErr: errors.New("loom config key \"review_hard_max_bounces\": must be at least 1")},
-			[]string{"fix the file or key the message names", "lyx loom circling continue task-a", "in place of any"},
+			[]string{"fix the file or key the message names", "lym loom circling continue task-a", "in place of any"},
 		},
 		{
 			"latest round unreadable", shedadapters.CirclingContinue,
@@ -189,7 +189,7 @@ func TestPerchHardCap(t *testing.T) {
 	tests := []struct {
 		name      string
 		row       string
-		seed      func(t *testing.T, loc *lyxcwd.Location)
+		seed      func(t *testing.T, loc *lymcwd.Location)
 		wantHard  int
 		wantRaise []string
 		// wantErr, when set, lists what the refusal of the cap's read names.
@@ -198,16 +198,16 @@ func TestPerchHardCap(t *testing.T) {
 		{
 			name: "a worktree plan cap",
 			row:  loomshed.NamePlanBouncer,
-			seed: func(t *testing.T, loc *lyxcwd.Location) {
+			seed: func(t *testing.T, loc *lymcwd.Location) {
 				seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"plan_hard_max_bounces": "6"})
 			},
 			wantHard:  6,
-			wantRaise: []string{"lyx config loom --set plan_hard_max_bounces=<n>"},
+			wantRaise: []string{"lym config loom --set plan_hard_max_bounces=<n>"},
 		},
 		{
 			name: "a local run-wide cap",
 			row:  loomshed.NameDiscussionBouncer,
-			seed: func(t *testing.T, loc *lyxcwd.Location) {
+			seed: func(t *testing.T, loc *lymcwd.Location) {
 				localPath := configengine.LocalFile(loc.AnchorPath(), "loom")
 				if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
 					t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(localPath), err)
@@ -217,16 +217,16 @@ func TestPerchHardCap(t *testing.T) {
 				}
 			},
 			wantHard:  5,
-			wantRaise: []string{"lyx config loom --layer local --set review_hard_max_bounces=<n>", "lyx board upsert"},
+			wantRaise: []string{"lym config loom --layer local --set review_hard_max_bounces=<n>", "lym board upsert"},
 		},
 		{
 			name: "a code cap, the darn recipe's perch's too",
 			row:  loomshed.NameCodeBouncer,
-			seed: func(t *testing.T, loc *lyxcwd.Location) {
+			seed: func(t *testing.T, loc *lymcwd.Location) {
 				seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"code_hard_max_bounces": "7"})
 			},
 			wantHard:  7,
-			wantRaise: []string{"lyx config loom --set code_hard_max_bounces=<n>"},
+			wantRaise: []string{"lym config loom --set code_hard_max_bounces=<n>"},
 		},
 	}
 	for _, tt := range tests {

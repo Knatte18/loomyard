@@ -1,7 +1,7 @@
 //go:build tier3
 
 // smoke_live_test.go extends the orch smoke suite to what the live-ready task changed: the bypass permission mode with the Agent tool and the idle probe, the soft cycle trigger and the compact cycle.
-// Every test follows TestSmokeOrch_OneFullCycle's shape: it builds cmd/lyx and drives it as a subprocess, skips without tmux or `claude`, and stops orch and takes reed down in cleanup.
+// Every test follows TestSmokeOrch_OneFullCycle's shape: it builds cmd/lym and drives it as a subprocess, skips without tmux or `claude`, and stops orch and takes reed down in cleanup.
 // A test's own plain shuttle runs go through an in-process shuttleengine.Runner, since the CLI exposes neither the permission mode nor a run handle.
 
 package orchcli
@@ -27,12 +27,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
-	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
-// liveFixture is one hub with its seeded configs, a built lyx binary, and in-process reed and shuttle handles onto the prime.
+// liveFixture is one hub with its seeded configs, a built lym binary, and in-process reed and shuttle handles onto the prime.
 type liveFixture struct {
 	exe        string
 	hub        *hubforge.Hub
@@ -63,21 +63,21 @@ poll_interval_ms: 500
 // requireLiveSubstrate skips the test without tmux or a claude binary.
 func requireLiveSubstrate(t *testing.T) {
 	t.Helper()
-	if os.Getenv("LYX_LOOM_TMUX") == "" {
+	if os.Getenv("LYM_LOOM_TMUX") == "" {
 		if _, err := exec.LookPath("tmux"); err != nil {
-			t.Skip("tmux not found on PATH; set LYX_LOOM_TMUX to override")
+			t.Skip("tmux not found on PATH; set LYM_LOOM_TMUX to override")
 		}
 	}
-	llmkit.Claude(t, "LYX_SHUTTLE_CLAUDE")
+	llmkit.Claude(t, "LYM_SHUTTLE_CLAUDE")
 }
 
-// newLiveFixture builds cmd/lyx, a hub seeded with orchCfg plus extraCfg, and the in-process handles.
+// newLiveFixture builds cmd/lym, a hub seeded with orchCfg plus extraCfg, and the in-process handles.
 // Cleanup stops orch unless the test did, then takes reed down.
 func newLiveFixture(t *testing.T, orchCfg string, extraCfg map[string]string) *liveFixture {
 	t.Helper()
 	requireLiveSubstrate(t)
 
-	exe := lyxbin.Build(t)
+	exe := lymbin.Build(t)
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	cfgs := map[string]string{

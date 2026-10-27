@@ -1,14 +1,14 @@
 // Package driftengine owns regression around a task: the hub-wide `drift` config module, the drift paths, and the records and runs the Drift rows read and write.
-// Regression is no test tier: it records a profile of the suite's behavior on the task's branch point and compares the task's code against it, and `lyx gate test` never runs it.
+// Regression is no test tier: it records a profile of the suite's behavior on the task's branch point and compares the task's code against it, and `lym gate test` never runs it.
 //
 // `drift.yaml` is a hub-wide config module with these keys: `enabled`, which switches the Drift rows on through their entry gate; `capture` and `compare`, each a command step written whole as `{command, dir, env, timeout_min}`; `baseline_model` and `verify_model`, the model-specs of the two agents; and `verify_max_runs`, the run budget of one Drift-Verify agent session.
 // A declared command holds the placeholder `{baseline_dir}`, the directory the capture writes its profile files to and the compare reads them from, and may hold `{skip_file}`, a file naming one skipped test per line.
-// `capture` and `compare` are executable keys, so only the template and the hub's board default layer set them, with `lyx config drift --set 'capture={command: ..., timeout_min: N}'`.
+// `capture` and `compare` are executable keys, so only the template and the hub's board default layer set them, with `lym config drift --set 'capture={command: ..., timeout_min: N}'`.
 // LoadConfig loads the file strictly and refuses a declared step without `{baseline_dir}` or with a `timeout_min` below 1, a `verify_max_runs` below 1 and a model-spec that fails its grammar, each naming the key.
 // Config.Step returns a declared step and refuses an undeclared one, so every row and verb that runs a command goes through it.
 //
 // Paths is the one declarer of every drift path.
-// The durable directory `_lyx/drift/` holds the scope record, the two agents' reports and the logs of every run; the ephemeral directory `.lyx/drift/` holds the capture record, the capture lock, the compare marker, the baseline and side-capture directories, the skip file and the run counter.
+// The durable directory `_lym/drift/` holds the scope record, the two agents' reports and the logs of every run; the ephemeral directory `.lym/drift/` holds the capture record, the capture lock, the compare marker, the baseline and side-capture directories, the skip file and the run counter.
 //
 // Every record is JSON written through `internal/state`, so an unknown key survives a rewrite.
 // The scope record (`scope.json`) holds the recorded scope (`off`, `partial` or `full`) and its skipped tests, when the baseline was awaited or deferred, a waiver, the accepted and withdrawn tests, the unruled tests the last decision halt named and the time of the last gate halt.
@@ -41,16 +41,16 @@
 //
 // # Verbs
 //
-// The `lyx drift` verbs' rules are functions over a VerbStatus: the run status's row, state and error, whether the recipe has a Drift-Await row, whether the capture lock is held and whether the agent-session mark is open.
+// The `lym drift` verbs' rules are functions over a VerbStatus: the run status's row, state and error, whether the recipe has a Drift-Await row, whether the capture lock is held and whether the agent-session mark is open.
 // The agent session is a running status at Drift-Verify with the mark open; a caller at a halt is a blocked status, and a decision halt is one whose error opens with shedadapters.DecisionHaltPrefix.
-// A verb run at a row it does not admit refuses naming that row and `lyx loom status`, and a refused verb writes nothing.
+// A verb run at a row it does not admit refuses naming that row and `lym loom status`, and a refused verb writes nothing.
 // RecordScope writes the scope record once, at Drift-Baseline, and refuses a skip list outside scope partial and a partial scope without one.
-// Accept admits the agent session and a caller at a halt; a running status with the mark closed is the row's own work and refuses, and any other state refuses naming `lyx loom resume`.
+// Accept admits the agent session and a caller at a halt; a running status with the mark closed is the row's own work and refuses, and any other state refuses naming `lym loom resume`.
 // Under scope full the agent's acceptances are unruled and a caller's are ruled; a withdrawn test, and under scope full any test, is accepted by a caller only at a decision halt, and never by the agent session.
 // Withdraw moves an accepted test to the withdrawn list, and RunCount reads the agent session's run count.
 // Defer sets awaited_at with deferred while blocked at Drift-Await or at a Drift-Baseline capture halt, and refuses while the capture lock is held.
 // Waive records a waiver at a blocked Drift-Verify only when no counted capture exists.
-// CheckVerifyRow is the row check `lyx drift compare` and `lyx drift capture --side` run first, before they take a run of the agent session's budget.
+// CheckVerifyRow is the row check `lym drift compare` and `lym drift capture --side` run first, before they take a run of the agent session's budget.
 //
 // # Agents
 //
@@ -67,10 +67,10 @@
 // Row holds a row's portable config: the subject its agent reads the task from and WaitCapture, darn's `capture: wait`.
 // DriftBaseline has the baseline agent record the scope and write baseline.md when either is missing, the agent spawned with a note that the scope is already recorded when it is, and a Done agent with no scope record is a Stuck.
 // Scope off, a set awaited_at and a passed capture take no capture; a capture holding the lock is waited on under WaitCapture, by awaitCaptureEnd from one second doubling to thirty, and left running otherwise.
-// Otherwise it captures again: an undeclared capture command is a Stuck naming `lyx config drift`, and a refusal of the capture's precondition is a Stuck whose reason opens with CaptureHaltPrefix and names `lyx drift defer` with `lyx loom resume`, and on a dirty tree restoring or stashing the listed paths.
+// Otherwise it captures again: an undeclared capture command is a Stuck naming `lym config drift`, and a refusal of the capture's precondition is a Stuck whose reason opens with CaptureHaltPrefix and names `lym drift defer` with `lym loom resume`, and on a dirty tree restoring or stashing the listed paths.
 // Without WaitCapture the capture is the detached child, and the pass returns Done once the child's record exists, so the plan is written meanwhile;
 // with WaitCapture, and when Windows refuses the detached start breakaway, the capture runs in the step's own process, so its command dies with the step.
-// A failed capture is a Stuck opening with CaptureHaltPrefix and naming the log, `lyx drift capture` with `lyx loom resume`, and `lyx drift defer` with `lyx loom resume`; the row carries no on_stuck, so each Stuck halts the run.
+// A failed capture is a Stuck opening with CaptureHaltPrefix and naming the log, `lym drift capture` with `lym loom resume`, and `lym drift defer` with `lym loom resume`; the row carries no on_stuck, so each Stuck halts the run.
 // Every pass commits through Deps.Commit on its way out: the scope record and baseline.md while a detached capture may still write its logs, and all of the durable drift directory once a capture has ended in this process.
 //
 // # Drift-Await
@@ -80,10 +80,10 @@
 // A capture holding the lock is waited on by awaitCaptureEnd with no bound of its own, and the capture record is read only after the lock reads free, so a capture that just ended is read as ended.
 // A passed capture taken at HEAD is Done after the row writes awaited_at into the scope record, which makes the capture the counted one.
 // A missing record, a failed one, and a running one whose lock is free are Stuck, naming the log when there is one, as is a passed record taken at another commit than HEAD.
-// While HEAD is the branch point a Stuck names `lyx drift capture` followed by `lyx loom resume`, which captures again and re-enters the row, and `lyx drift defer` followed by `lyx loom resume`;
-// once HEAD moved it names only `lyx drift defer` followed by `lyx loom resume`, since no capture may run on changed code.
+// While HEAD is the branch point a Stuck names `lym drift capture` followed by `lym loom resume`, which captures again and re-enters the row, and `lym drift defer` followed by `lym loom resume`;
+// once HEAD moved it names only `lym drift defer` followed by `lym loom resume`, since no capture may run on changed code.
 // No Stuck of the row carries the decision halt prefix, so the arbiter may settle one with the way forward it names.
-// An adopting machine has no `.lyx/drift/`, so before awaited_at the row halts on the missing record and `lyx drift capture` captures there.
+// An adopting machine has no `.lym/drift/`, so before awaited_at the row halts on the missing record and `lym drift capture` captures there.
 //
 // # Drift-Verify
 //
@@ -91,15 +91,15 @@
 // It commits all of the durable drift directory on every way out, and runs these steps in order:
 // no scope record, scope off and a waived scope are Done with no compare;
 // an open agent-session mark means an interrupted entry may have left a live agent, which a probe of the agent's table decides, and a live chair goes straight to the agent step to be resumed while a closed mark or an empty probe closes the mark;
-// under scope full the acceptances the parent stood by are ruled, an unruled acceptance is a decision halt, and a missing counted capture is a decision halt under every scope that names `lyx drift waive`;
-// an undeclared compare is a Stuck naming `lyx config drift`;
+// under scope full the acceptances the parent stood by are ruled, an unruled acceptance is a decision halt, and a missing counted capture is a decision halt under every scope that names `lym drift waive`;
+// an undeclared compare is a Stuck naming `lym config drift`;
 // a dirty tracked tree is a Stuck, and a resume from a gate halt runs the told verify entry once over the agent's commits;
 // then the compare runs, and a pass is Done.
 // A failing compare resets the run counter at the current HEAD and spawns one agent whose table gates, in order, on a clean tree, on the verify entry, which runs only once the session committed code, and on a final compare that ends the session when drift remains.
 // The agent's end closes the mark; a Done under scope full is checked again for unruled acceptances.
 //
 // A Stuck opens with shedadapters.DecisionHaltPrefix, so the stop chain hands it to the parent, under scope full, for the missing counted capture, and under scope partial for a failing final compare while a test is withdrawn.
-// Under scope full a decision halt names the unruled acceptances and the parent's ways forward for them, `lyx loom resume` to stand by them or `lyx drift withdraw <test>` to reject one, and records the names and the time in the scope record; the parent's resume then rules them.
+// Under scope full a decision halt names the unruled acceptances and the parent's ways forward for them, `lym loom resume` to stand by them or `lym drift withdraw <test>` to reject one, and records the names and the time in the scope record; the parent's resume then rules them.
 // The entry that follows a halt it recorded recognizes it from the run's history: the last entry is a Stuck of this row whose latest time is at or after the recorded time, compared at second precision.
 // gate_halt_at is written by each dirty-tree and test-gate halt, only when unset, and survives the halts before the compare, so a resume that halts at one of them runs the verify gate once more; an entry that is no resume from it clears the mark first.
 // The row carries no on_stuck, the agent is no perch, and no review follows its fixes.

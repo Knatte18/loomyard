@@ -25,7 +25,7 @@ const (
 // TestRegistration_MatchesDeclarers fails when a package under internal/ declares a package-level ConfigTemplate that Modules() does not reference,
 // or when Modules() references a ConfigTemplate no package declares.
 //
-//lyx:guard
+//lym:guard
 func TestRegistration_MatchesDeclarers(t *testing.T) {
 	declared := map[string]bool{}
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal"}}, func(f *scankit.File) {

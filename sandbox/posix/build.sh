@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Launcher for the lyx sandbox Hub builder: clones (or with -reset re-clones) the Hub.
+# Launcher for the lym sandbox Hub builder: clones (or with -reset re-clones) the Hub.
 # The machine-specific parent directory is hardcoded HERE (the base under which
 # sandbox Hubs are created, mirroring the win/ launcher's C:\Code) -- the Go
 # tool stays general.

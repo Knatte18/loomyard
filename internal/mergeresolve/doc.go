@@ -32,12 +32,10 @@
 //
 // The conflict session loads `scribe:prose` and `scribe:code-quality`, then the told `Deps.LanguageSkills`, before its prompt, and its stencil carries the parent directive that internal/parentdirective renders from the told Deps.ParentName.
 //
-// It takes told absolute paths and has no direct production import of internal/lyxcwd, per the
+// It takes told absolute paths and has no direct production import of internal/lymcwd, per the
 // Told-Geometry Invariant: every path this package operates on is handed to it by its caller, and it
 // derives none of its own.
 //
-// This package describes one repository throughout. It is not in the Fabric Vocabulary Invariant's
-// owner set, so none of its identifiers, string literals, or comments may name either fabric-internal
-// side, and that ban is machine-enforced by an AST walk over every identifier
-// (internal/lyxcwd's TestEnforcement_FabricVocabulary).
+// This package describes one repository throughout.
+// It is not in the Fabric Vocabulary Invariant's owner set, so none of its identifiers, string literals, or comments may name either fabric-internal side, and that ban is machine-enforced by an AST walk over every identifier (internal/lymcwd's TestEnforcement_FabricVocabulary).
 package mergeresolve

@@ -1,4 +1,4 @@
-// cancelcmd.go builds "lyx batten cancel <slug> [--remove]" and wires cancelRun's seams over the hub's prime worktree.
+// cancelcmd.go builds "lym batten cancel <slug> [--remove]" and wires cancelRun's seams over the hub's prime worktree.
 //
 // The decisions and their order are cancelRun's, in cancel.go; this file only reads and writes the hub's substrates on its behalf.
 
@@ -22,7 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -42,7 +42,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// cancelCmd builds "lyx batten cancel <slug> [--remove]", the end of a run for good, run from the prime or a beam.
+// cancelCmd builds "lym batten cancel <slug> [--remove]", the end of a run for good, run from the prime or a beam.
 func (c *battenCLI) cancelCmd() *cobra.Command {
 	var remove bool
 	cmd := &cobra.Command{
@@ -53,22 +53,22 @@ func (c *battenCLI) cancelCmd() *cobra.Command {
 It ends the run's registered processes and strands, stops the tackler strand its marker names,
 clears the board claim, removes the run's records and scratch and commits that removal on the
 records side, lifts the slug's own pause entries and spawns the push of the records.
-The pair is kept by default, and "lyx batten cancel <slug> --remove" must run before the slug runs again.
+The pair is kept by default, and "lym batten cancel <slug> --remove" must run before the slug runs again.
 --remove removes the pair, keeps its uncommitted paths under a local snapshot tag, and archives
 and deletes its task branch locally and on origin, each deleted tip held by an archive tag on origin.
 
 It refuses, before it ends or removes anything, while a hub pause covers the prime, when the run's
-work already reached its parent (finish the landing with "lyx batten run" instead), when another
+work already reached its parent (finish the landing with "lym batten run" instead), when another
 machine owns the slug, when origin stopped the entry, when another cancel of the slug is under way,
 and when nothing of the slug is left to cancel.
 It skips every wait a teardown makes for a working driver.
 With origin unreachable it only ends the run's processes and strands, leaves its marker, and posts a
-notice; "lyx batten cancel" run again finishes an interrupted cancel.
+notice; "lym batten cancel" run again finishes an interrupted cancel.
 
 The cancel of a beam first runs the hub's origin reconcile and refuses while members remain,
 naming each to land or cancel first; with origin unreachable it refuses naming the re-run.
 A beam with no members ends the pawl run's processes and the beam's dobby, then stops the
-beam's orch and watcher; "lyx beam create <slug>" starts the run again.
+beam's orch and watcher; "lym beam create <slug>" starts the run again.
 
 Output: {"slug", "state", "row", "ended", "strands_stopped", "tackler_stopped", "pair_removed",
 "snapshot_tag", "archive_tags", "records_removed", "claim_cleared", "lifted", "push_spawned",
@@ -76,8 +76,8 @@ Output: {"slug", "state", "row", "ended", "strands_stopped", "tackler_stopped", 
 push_spawned says the push was started, not that origin took it.
 
 Example:
-  lyx batten cancel some-slug
-  lyx batten cancel some-slug --remove`,
+  lym batten cancel some-slug
+  lym batten cancel some-slug --remove`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -97,11 +97,11 @@ Example:
 			if err := shedrun.ValidateRunID(slug); err != nil {
 				return fail(err)
 			}
-			cwd, err := lyxcwd.CwdFrom(ctx)
+			cwd, err := lymcwd.CwdFrom(ctx)
 			if err != nil {
 				return fail(err)
 			}
-			location, err := lyxcwd.Resolve(cwd)
+			location, err := lymcwd.Resolve(cwd)
 			if err != nil {
 				return fail(err)
 			}
@@ -158,7 +158,7 @@ func cancelEnvelope(report cancelReport) map[string]any {
 }
 
 // hubCancelDeps wires each of cancelRun's seams over the hub of the prime location for slug.
-func hubCancelDeps(location *lyxcwd.Location, slug string) (cancelDeps, error) {
+func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 	teardown, err := pairteardown.New(location)
 	if err != nil {
 		return cancelDeps{}, err
@@ -344,7 +344,7 @@ func hubCancelDeps(location *lyxcwd.Location, slug string) (cancelDeps, error) {
 			if err != nil || !present {
 				return err
 			}
-			beamLocation, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(location, slug))
+			beamLocation, err := lymcwd.ResolveWorktree(fabricengine.WorktreePath(location, slug))
 			if err != nil {
 				return err
 			}
@@ -355,7 +355,7 @@ func hubCancelDeps(location *lyxcwd.Location, slug string) (cancelDeps, error) {
 }
 
 // hubTopology builds the fabric topology of the hub location sits in from its config.
-func hubTopology(location *lyxcwd.Location) (*fabricengine.Topology, error) {
+func hubTopology(location *lymcwd.Location) (*fabricengine.Topology, error) {
 	cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(location))
 	if err != nil {
 		return nil, err
@@ -365,7 +365,7 @@ func hubTopology(location *lyxcwd.Location) (*fabricengine.Topology, error) {
 
 // readBattenStatus reads batten's status file for slug under its lock, creating nothing.
 // found is false when the file, or the run directory around it, is absent.
-func readBattenStatus(location *lyxcwd.Location, slug string) (shedengine.Status, bool, error) {
+func readBattenStatus(location *lymcwd.Location, slug string) (shedengine.Status, bool, error) {
 	status, found, err := state.ReadJSONNoMkdir[shedengine.Status](StatusFile(location, slug), shedrun.StatusLock(location, slug))
 	if errors.Is(err, fs.ErrNotExist) {
 		return shedengine.Status{}, false, nil
@@ -374,7 +374,7 @@ func readBattenStatus(location *lyxcwd.Location, slug string) (shedengine.Status
 }
 
 // childRestepped returns the reader of the task worktree's settle records for a re-step of the stop a status names.
-func childRestepped(location *lyxcwd.Location, slug string) func(shedengine.Status) (bool, error) {
+func childRestepped(location *lymcwd.Location, slug string) func(shedengine.Status) (bool, error) {
 	return func(status shedengine.Status) (bool, error) {
 		task, err := taskWorktreeLocation(location, slug)
 		if err != nil {
@@ -389,7 +389,7 @@ func childRestepped(location *lyxcwd.Location, slug string) func(shedengine.Stat
 }
 
 // childParentHolds returns the reader of whether the parent branch already holds the task worktree's work.
-func childParentHolds(location *lyxcwd.Location, slug string) func() (bool, error) {
+func childParentHolds(location *lymcwd.Location, slug string) func() (bool, error) {
 	return func() (bool, error) {
 		task, err := taskWorktreeLocation(location, slug)
 		if err != nil {
@@ -400,7 +400,7 @@ func childParentHolds(location *lyxcwd.Location, slug string) func() (bool, erro
 }
 
 // pairSessionLive reports whether the pair's reed session of slug is live on the hub's tmux server; a hub with no server has none.
-func pairSessionLive(location *lyxcwd.Location, slug string) (bool, error) {
+func pairSessionLive(location *lymcwd.Location, slug string) (bool, error) {
 	cfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(location), "reed")
 	if err != nil {
 		return false, err
@@ -416,7 +416,7 @@ func pairSessionLive(location *lyxcwd.Location, slug string) (bool, error) {
 }
 
 // primeShuttleRunner builds the shuttle runner over the prime's reed geometry, which stops a strand by guid.
-func primeShuttleRunner(location *lyxcwd.Location) (*shuttleengine.Runner, error) {
+func primeShuttleRunner(location *lymcwd.Location) (*shuttleengine.Runner, error) {
 	dirs := fabricengine.ConfigDirs(location)
 	reedConfig, err := reedengine.LoadConfig(dirs, "reed")
 	if err != nil {
@@ -462,7 +462,7 @@ func slugPauseRefs(record pauserecord.Record, slug string) []tenderengine.EntryR
 
 // liftSlugPauses lifts the live pause entries of slug's own scope in the record at recordPath and returns their scopes.
 // The first failed lift ends the loop with its error, keeping the scopes lifted before it.
-func liftSlugPauses(location *lyxcwd.Location, slug, recordPath string) ([]string, error) {
+func liftSlugPauses(location *lymcwd.Location, slug, recordPath string) ([]string, error) {
 	record, err := pauserecord.Read(recordPath)
 	if err != nil {
 		return nil, err

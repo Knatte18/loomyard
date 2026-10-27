@@ -76,8 +76,8 @@ func TestVerbsRegenerateHubWorkspace(t *testing.T) {
 		if recordedFileWrite(&m, h.Path, path) {
 			t.Errorf("Add recorded a file_written for the workspace file despite the failed regeneration: %+v", m.Entries())
 		}
-		if got := logs.String(); !strings.Contains(got, "lyx fabric reconcile") {
-			t.Errorf("log = %q; want a warning naming lyx fabric reconcile", got)
+		if got := logs.String(); !strings.Contains(got, "lym fabric reconcile") {
+			t.Errorf("log = %q; want a warning naming lym fabric reconcile", got)
 		}
 
 		if err := os.Remove(settings); err != nil {
@@ -178,16 +178,16 @@ func TestVerbsRegenerateHubWorkspace(t *testing.T) {
 		// A junction-wiring failure after both sides switched rolls back, and the file still lists the original branch.
 		removeWorkspaceFile(t, h)
 		slug := filepath.Base(l.WorktreePath())
-		if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
+		if err := fabricengine.WireJunctions(l, slug, []string{"_lym", "_extra"}); err != nil {
 			t.Fatalf("setup WireJunctions: %v", err)
 		}
 		gitkit.MustRun(t, l.WorktreePath(), "git", "branch", original+"-rollback")
-		warpLyx := fabricengine.WarpLyxLinkHere(l)
-		if err := os.Remove(warpLyx); err != nil {
+		warpLym := fabricengine.WarpLymLinkHere(l)
+		if err := os.Remove(warpLym); err != nil {
 			t.Fatalf("remove warp junction to corrupt it: %v", err)
 		}
-		if err := os.MkdirAll(warpLyx, 0o755); err != nil {
-			t.Fatalf("create real _lyx dir: %v", err)
+		if err := os.MkdirAll(warpLym, 0o755); err != nil {
+			t.Fatalf("create real _lym dir: %v", err)
 		}
 		if _, err := h.Topology.Checkout(l, original+"-rollback"); err == nil {
 			t.Fatal("Checkout error = nil; want a junction-wiring failure")

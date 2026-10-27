@@ -243,7 +243,7 @@ func offside(raw string) bool {
 // migration, no production file in internal/planparser or internal/planglyph outside those two
 // exempt files may name classifyRef, the refKind type, or one of its declared constants.
 //
-//lyx:guard
+//lym:guard
 func TestRefKindScan_RealTreeClean(t *testing.T) {
 	t.Parallel()
 
@@ -276,7 +276,7 @@ func TestRefKindScan_RealTreeClean(t *testing.T) {
 // internal/planglyph/handle.go is scanned like any other planglyph file -- it is NOT exempt, despite
 // sharing a basename with the exempt planparser file.
 //
-//lyx:guard
+//lym:guard
 func TestPlanOpScan_RealTreeClean(t *testing.T) {
 	t.Parallel()
 

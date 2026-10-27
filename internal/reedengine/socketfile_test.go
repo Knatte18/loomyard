@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lyxtemp"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -108,7 +108,7 @@ func TestRemoveSocketFileOnceGone(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			dir, err := lyxtemp.MkdirTemp("rg")
+			dir, err := lymtemp.MkdirTemp("rg")
 			if err != nil {
 				t.Fatalf("MkdirTemp: %v", err)
 			}
@@ -170,7 +170,7 @@ func TestRemoveStaleSocket(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			dir, err := lyxtemp.MkdirTemp("rs")
+			dir, err := lymtemp.MkdirTemp("rs")
 			if err != nil {
 				t.Fatalf("MkdirTemp: %v", err)
 			}

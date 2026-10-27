@@ -20,7 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -169,13 +169,13 @@ func padRight(s string, width int) string {
 // It reads the seeds, the status files and the pause record without their locks, and writes nothing.
 // It is not safe for concurrent use.
 type DobbyRunCells struct {
-	prime *lyxcwd.Location
+	prime *lymcwd.Location
 	// pauseRecord is the path of the hub's pause record.
 	pauseRecord string
 	// childStatus returns the path of the status file of the task worktree slug names; a test replaces it.
 	childStatus func(slug string) (string, error)
 	// childPair returns the task worktree location of slug; a test replaces it.
-	childPair func(slug string) (*lyxcwd.Location, error)
+	childPair func(slug string) (*lymcwd.Location, error)
 
 	battenCaches map[string]*statuspane.StatusCache
 	childCaches  map[string]*statuspane.StatusCache
@@ -183,21 +183,21 @@ type DobbyRunCells struct {
 	seeds map[string]shedrun.Seed
 	// pairs holds the resolved task worktree location by slug, for as long as its directory exists and the run stays in Run-Shed;
 	// the pair's anchor can move between two runs, so a later Run-Shed spell resolves it again.
-	pairs map[string]*lyxcwd.Location
+	pairs map[string]*lymcwd.Location
 	// childRecipes holds the recipe a child's seed names by slug; a seed is write-once, so a decoded one is never read again while the run stays in Run-Shed.
 	// The entry goes with the pair's, since a later run in the pair has a seed of its own.
 	childRecipes map[string]string
 }
 
 // NewDobbyRunCells returns the reader of the runs of prime, with the pause coverage read from the record at pauseRecord.
-func NewDobbyRunCells(prime *lyxcwd.Location, pauseRecord string) *DobbyRunCells {
+func NewDobbyRunCells(prime *lymcwd.Location, pauseRecord string) *DobbyRunCells {
 	r := &DobbyRunCells{
 		prime:        prime,
 		pauseRecord:  pauseRecord,
 		battenCaches: map[string]*statuspane.StatusCache{},
 		childCaches:  map[string]*statuspane.StatusCache{},
 		seeds:        map[string]shedrun.Seed{},
-		pairs:        map[string]*lyxcwd.Location{},
+		pairs:        map[string]*lymcwd.Location{},
 		childRecipes: map[string]string{},
 	}
 	r.childPair = r.resolveChildPair
@@ -225,10 +225,10 @@ func (r *DobbyRunCells) Of(runs []dobbyengine.ViewRun, now time.Time) map[string
 }
 
 // resolveChildPair resolves the task worktree of slug once per Run-Shed spell while its directory exists.
-func (r *DobbyRunCells) resolveChildPair(slug string) (*lyxcwd.Location, error) {
+func (r *DobbyRunCells) resolveChildPair(slug string) (*lymcwd.Location, error) {
 	pair, ok := r.pairs[slug]
 	if !ok {
-		resolved, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(r.prime, slug))
+		resolved, err := lymcwd.ResolveWorktree(fabricengine.WorktreePath(r.prime, slug))
 		if err != nil {
 			return nil, err
 		}
@@ -338,7 +338,7 @@ type overviewSource struct {
 }
 
 // newOverviewSource returns the source of the window of worktree, in the hub of prime, drawing the orchs against thresholds and reading the time from now.
-func newOverviewSource(prime, worktree *lyxcwd.Location, thresholds overviewThresholds, now func() time.Time) *overviewSource {
+func newOverviewSource(prime, worktree *lymcwd.Location, thresholds overviewThresholds, now func() time.Time) *overviewSource {
 	label := worktree.WorktreeName
 	if label == prime.WorktreeName {
 		label = ""
@@ -358,7 +358,7 @@ func newOverviewSource(prime, worktree *lyxcwd.Location, thresholds overviewThre
 
 // windowOrchPaths returns the orch paths of the orchs the window of the worktree named worktree shows, in the hub of prime, with the slug of each beam's worktree as its label and an empty label for the prime.
 // parentOf answers the worktree a beam was forked from, "" for the prime.
-func windowOrchPaths(prime *lyxcwd.Location, worktree string, parentOf func(slug string) (string, error)) ([]orchengine.Paths, []string, error) {
+func windowOrchPaths(prime *lymcwd.Location, worktree string, parentOf func(slug string) (string, error)) ([]orchengine.Paths, []string, error) {
 	locations, err := orchcli.HubOrchs(prime)
 	if err != nil {
 		return nil, nil, err
@@ -378,11 +378,11 @@ func windowOrchPaths(prime *lyxcwd.Location, worktree string, parentOf func(slug
 // orchsAtOrBelow keeps, in order, the orch locations the window of the worktree named worktree shows.
 // The prime's window, the prime being named primeName, shows every one; a beam's window shows the beam's own and each beam whose parent chain, read through parentOf, reaches the beam.
 // A location whose parent chain does not read is left out.
-func orchsAtOrBelow(primeName, worktree string, locations []*lyxcwd.Location, parentOf func(slug string) (string, error)) []*lyxcwd.Location {
+func orchsAtOrBelow(primeName, worktree string, locations []*lymcwd.Location, parentOf func(slug string) (string, error)) []*lymcwd.Location {
 	if worktree == primeName {
 		return locations
 	}
-	var shown []*lyxcwd.Location
+	var shown []*lymcwd.Location
 	for _, location := range locations {
 		below, err := atOrBelow(location.WorktreeName, worktree, primeName, parentOf)
 		if err != nil {
@@ -462,7 +462,7 @@ func (s *overviewSource) frame() statuspane.Frame {
 
 // worktreeHasDobby reports whether the worktree named worktree runs a dobby: the prime, or a beam among those beams lists.
 // A task pair has none.
-func worktreeHasDobby(prime *lyxcwd.Location, worktree string, beams func() ([]dobbyengine.BeamPair, error)) (bool, error) {
+func worktreeHasDobby(prime *lymcwd.Location, worktree string, beams func() ([]dobbyengine.BeamPair, error)) (bool, error) {
 	if worktree == prime.WorktreeName {
 		return true, nil
 	}
@@ -499,12 +499,12 @@ probes locks for an instant, and runs from the prime and from any beam.`,
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
-			cwd, err := lyxcwd.CwdFrom(ctx)
+			cwd, err := lymcwd.CwdFrom(ctx)
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
-			acting, err := lyxcwd.Resolve(cwd)
+			acting, err := lymcwd.Resolve(cwd)
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil

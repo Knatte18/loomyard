@@ -1,6 +1,6 @@
 // spawn.go — detached board sync process launching.
 //
-// spawnSync launches `lyx board sync` as a detached, windowless process.
+// spawnSync launches `lym board sync` as a detached, windowless process.
 // It has its own process group (so the parent's Ctrl-C does not reach it) and survives the parent's
 // exit.
 
@@ -21,7 +21,7 @@ import (
 // DeferrableSyncFlag is the hidden flag that marks a detached board sync as one whose network gate defers under a pause instead of waiting, and holds it under the hub scope.
 const DeferrableSyncFlag = "deferrable"
 
-// SpawnSync starts the detached `lyx board sync` of the board at boardPath, the same sync every board write spawns.
+// SpawnSync starts the detached `lym board sync` of the board at boardPath, the same sync every board write spawns.
 // In a test binary it returns nil without spawning, since forking the running binary would re-run the suite.
 func SpawnSync(boardPath string) error {
 	if testing.Testing() {
@@ -33,7 +33,7 @@ func SpawnSync(boardPath string) error {
 // syncExecutable names the binary spawnSync launches; a test points it at a harmless one.
 var syncExecutable = os.Executable
 
-// spawnSync launches `lyx board sync --deferrable` as a detached, windowless process in the board directory and registers it under the hub owner.
+// spawnSync launches `lym board sync --deferrable` as a detached, windowless process in the board directory and registers it under the hub owner.
 // The board directory as working directory holds the child's gate under the hub scope, and the flag makes it exit under a pause instead of waiting.
 // A registration failure is logged and never fails the spawn, since the sync is already running.
 func spawnSync(boardPath string) error {

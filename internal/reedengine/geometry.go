@@ -5,13 +5,10 @@
 
 package reedengine
 
-// Geometry is the set of paths and identity strings reed is told, once, at construction, and never
-// derives itself.
-// reedengine.New validates no field of a Geometry, and no method recomputes any of them from the
-// others — populating every field with a usable absolute path (or, for SocketKey, a socket-safe key)
-// is entirely the caller's obligation.
-// hubgeom.ReedGeometry is the hub-mode answer that builds a Geometry from a resolved
-// *lyxcwd.Location; reedengine.ServerName(hubPath) is SocketKey's derivation.
+// Geometry is the set of paths and identity strings reed is told, once, at construction, and never derives itself.
+// reedengine.New validates no field of a Geometry, and no method recomputes any of them from the others — populating every field with a usable absolute path (or, for SocketKey, a socket-safe key) is entirely the caller's obligation.
+// hubgeom.ReedGeometry is the hub-mode answer that builds a Geometry from a resolved *lymcwd.Location;
+// reedengine.ServerName(hubPath) is SocketKey's derivation.
 // Neither is imported here — this file states the contract, not the implementation.
 type Geometry struct {
 	// SocketKey is the tmux -L socket name; it is what Engine.Socket returns.

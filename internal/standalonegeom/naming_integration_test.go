@@ -1,6 +1,6 @@
 //go:build tier2 && !windows
 
-// naming_integration_test.go carries the standalone acceptance criterion at the engine `lyx webster run --target-dir` and `lyx burler run --target-dir` build,
+// naming_integration_test.go carries the standalone acceptance criterion at the engine `lym webster run --target-dir` and `lym burler run --target-dir` build,
 // since a CLI-level run would spawn live Claude producers.
 // On a plain checkout with no recorded shortname it builds the reed engine from standalonestate.Derive and ReedGeometry, as the standalone wiring does.
 
@@ -46,13 +46,13 @@ func TestNaming_StandaloneStrandIsShortnameAndRoleWithNoParent(t *testing.T) {
 	}
 
 	e := reedengine.New(cfg, standalonegeom.ReedGeometry(target, stateDir, hash8), shuttleengines.EnvScrub())
-	tmuxkit.KillOnCleanup(t, cfg.Tmux, "lyx-"+hash8)
+	tmuxkit.KillOnCleanup(t, cfg.Tmux, "lym-"+hash8)
 	t.Cleanup(func() {
 		_, _ = e.Down()
 	})
 
 	probe := filepath.Join(t.TempDir(), "env.txt")
-	cmd := "printf '%s|%s' \"$LYX_STRAND_NAME\" \"$LYX_PARENT\" > '" + probe + "'; sleep 300"
+	cmd := "printf '%s|%s' \"$LYM_STRAND_NAME\" \"$LYM_PARENT\" > '" + probe + "'; sleep 300"
 	strand, err := e.AddStrand(reedengine.AddSpec{Role: "worker", Cmd: cmd, Display: render.Display{Anchor: render.AnchorOwnWindow}})
 	if err != nil {
 		t.Fatalf("AddStrand: %v", err)
@@ -63,7 +63,7 @@ func TestNaming_StandaloneStrandIsShortnameAndRoleWithNoParent(t *testing.T) {
 		t.Errorf("strand name = %q, want %q", strand.Name, want)
 	}
 
-	out, err := exec.Command(cfg.Tmux, "-L", "lyx-"+hash8, "display-message", "-p", "-t", strand.PaneID, "#{pane_title}").Output()
+	out, err := exec.Command(cfg.Tmux, "-L", "lym-"+hash8, "display-message", "-p", "-t", strand.PaneID, "#{pane_title}").Output()
 	if err != nil {
 		t.Fatalf("display-message: %v", err)
 	}
@@ -81,6 +81,6 @@ func TestNaming_StandaloneStrandIsShortnameAndRoleWithNoParent(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	if got != want+"|" {
-		t.Errorf("process env = %q, want %q (LYX_PARENT unset)", got, want+"|")
+		t.Errorf("process env = %q, want %q (LYM_PARENT unset)", got, want+"|")
 	}
 }

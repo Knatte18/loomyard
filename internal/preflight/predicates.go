@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // Mode discriminates the three-way verdict ResolveMode returns: hub mode, standalone mode, or
@@ -22,15 +22,13 @@ import (
 type Mode int
 
 const (
-	// ModeHub is the verdict for a cwd whose resolved hub has a board-level lyx directory.
+	// ModeHub is the verdict for a cwd whose resolved hub has a board-level lym directory.
 	ModeHub Mode = iota + 1
-	// ModeStandalone is the verdict for a cwd with no reachable hub geometry: not a git
-	// repository, a plain git repo (root or subdirectory), or a hub damaged precisely at
-	// <hub>/_board/_lyx.
+	// ModeStandalone is the verdict for a cwd with no reachable hub geometry: not a git repository, a plain git repo (root or subdirectory), or a hub damaged precisely at <hub>/_board/_lym.
 	ModeStandalone
 )
 
-// Wired reports whether fabric is wired for this worktree: lyxcwd.Resolve(cwd) succeeds and
+// Wired reports whether fabric is wired for this worktree: lymcwd.Resolve(cwd) succeeds and
 // fabricengine.Ready(l) reports true.
 // This is the per-worktree fabric-readiness question a composing orchestrator asks; it is
 // explicitly not the mode trigger a standalone-capable CLI's pre-run consults to choose hub mode
@@ -40,12 +38,10 @@ const (
 // <hub>/_board, false in an unpaired sibling, and false in a worktree whose pair was removed —
 // all three of which are real, healthy hub situations that HubPresent still answers true for.
 //
-// It returns (nil, false) on any error rather than surfacing one, because it is consumed by a CLI
-// pre-run that must never block a command; it never spawns a process beyond the one
-// lyxcwd.Resolve already performs — no fabricengine.Clean, no fabricengine.Healthy, no
-// fabricengine.PrimeName, since both predicates in this file run before every single lyx command.
-func Wired(cwd string) (*lyxcwd.Location, bool) {
-	l, err := lyxcwd.Resolve(cwd)
+// It returns (nil, false) on any error rather than surfacing one, because it is consumed by a CLI pre-run that must never block a command;
+// it never spawns a process beyond the one lymcwd.Resolve already performs — no fabricengine.Clean, no fabricengine.Healthy, no fabricengine.PrimeName, since both predicates in this file run before every single lym command.
+func Wired(cwd string) (*lymcwd.Location, bool) {
+	l, err := lymcwd.Resolve(cwd)
 	if err != nil {
 		return nil, false
 	}
@@ -56,11 +52,8 @@ func Wired(cwd string) (*lyxcwd.Location, bool) {
 	return l, true
 }
 
-// HubPresent reports whether the hub this write targets actually exists: lyxcwd.Resolve(cwd)
-// succeeds and a single os.Stat of the hub's board-level lyx directory succeeds.
-// This is both the stencil seed gate and the mode-selection trigger a standalone-capable CLI's
-// pre-run consults: hub mode when a hub exists for this location, standalone mode when one does
-// not.
+// HubPresent reports whether the hub this write targets actually exists: lymcwd.Resolve(cwd) succeeds and a single os.Stat of the hub's board-level lym directory succeeds.
+// This is both the stencil seed gate and the mode-selection trigger a standalone-capable CLI's pre-run consults: hub mode when a hub exists for this location, standalone mode when one does not.
 //
 // HubPresent asks a hub-level question, not a per-worktree one, so a hub-level directory can exist
 // while this particular worktree is not Wired — that resolved-but-not-wired case still answers hub
@@ -68,32 +61,31 @@ func Wired(cwd string) (*lyxcwd.Location, bool) {
 // this is the correct trigger and Wired is not.
 //
 // It returns (nil, false) on any error rather than surfacing one, for the same never-block-a-command
-// reason Wired documents, and it never spawns a process beyond the one lyxcwd.Resolve already
+// reason Wired documents, and it never spawns a process beyond the one lymcwd.Resolve already
 // performs.
-func HubPresent(cwd string) (*lyxcwd.Location, bool) {
-	l, err := lyxcwd.Resolve(cwd)
+func HubPresent(cwd string) (*lymcwd.Location, bool) {
+	l, err := lymcwd.Resolve(cwd)
 	if err != nil {
 		return nil, false
 	}
-	if !BoardLyxPresent(l) {
+	if !BoardLymPresent(l) {
 		return nil, false
 	}
 	return l, true
 }
 
-// BoardLyxPresent reports whether l's hub carries a board-level lyx directory
-// (<hub>/_board/_lyx). It is the single implementation of that stat, shared by HubPresent and
-// ResolveMode, so the two never drift into two copies of the same check.
-func BoardLyxPresent(l *lyxcwd.Location) bool {
-	_, err := os.Stat(filepath.Join(fabricengine.BoardDir(l.HubPath), lyxdirs.LyxDirName))
+// BoardLymPresent reports whether l's hub carries a board-level lym directory (<hub>/_board/_lym).
+// It is the single implementation of that stat, shared by HubPresent and ResolveMode, so the two never drift into two copies of the same check.
+func BoardLymPresent(l *lymcwd.Location) bool {
+	_, err := os.Stat(filepath.Join(fabricengine.BoardDir(l.HubPath), lymdirs.LymDirName))
 	return err == nil
 }
 
 // ResolveMode is the single mode trigger every standalone-capable CLI's pre-run consults: it
 // decides hub mode, standalone mode, or refuse for cwd.
 //
-// The discriminator is whether lyx geometry exists at this location, never the error class alone
-// — lyxcwd.Resolve's ErrCwdOutsideAnchor fires both from an ordinary subdirectory of a plain git
+// The discriminator is whether lym geometry exists at this location, never the error class alone
+// — lymcwd.Resolve's ErrCwdOutsideAnchor fires both from an ordinary subdirectory of a plain git
 // repo and from a subdirectory of a wired hub worktree, and this function tells the two apart by
 // re-probing for hub geometry rather than by inspecting the error.
 //
@@ -101,27 +93,27 @@ func BoardLyxPresent(l *lyxcwd.Location) bool {
 // zero Mode value appears only alongside that non-nil error.
 //
 // The extra git rev-parse this function pays for is charged only on the ErrCwdOutsideAnchor path
-// — the hub path and the not-a-repository path each pay for exactly the one lyxcwd.Resolve call
+// — the hub path and the not-a-repository path each pay for exactly the one lymcwd.Resolve call
 // they already needed.
 //
 // The one residual class this function cannot separate from a plain repo is a hub damaged
-// precisely at <hub>/_board/_lyx: at that point nothing distinguishes it from a plain repo, so it
+// precisely at <hub>/_board/_lym: at that point nothing distinguishes it from a plain repo, so it
 // degrades to standalone.
-func ResolveMode(cwd string) (*lyxcwd.Location, Mode, error) {
-	l, err := lyxcwd.Resolve(cwd)
+func ResolveMode(cwd string) (*lymcwd.Location, Mode, error) {
+	l, err := lymcwd.Resolve(cwd)
 	if err == nil {
-		if BoardLyxPresent(l) {
+		if BoardLymPresent(l) {
 			return l, ModeHub, nil
 		}
 		return nil, ModeStandalone, nil
 	}
 
-	if errors.Is(err, lyxcwd.ErrNotAGitRepo) {
+	if errors.Is(err, lymcwd.ErrNotAGitRepo) {
 		return nil, ModeStandalone, nil
 	}
 
-	if errors.Is(err, lyxcwd.ErrCwdOutsideAnchor) {
-		if wl, wErr := lyxcwd.ResolveWorktree(cwd); wErr == nil && BoardLyxPresent(wl) {
+	if errors.Is(err, lymcwd.ErrCwdOutsideAnchor) {
+		if wl, wErr := lymcwd.ResolveWorktree(cwd); wErr == nil && BoardLymPresent(wl) {
 			// A wired hub worktree's subdirectory: return the original gated error,
 			// never the second probe's, so the operator sees the message naming both
 			// the anchored directory and the marker file.

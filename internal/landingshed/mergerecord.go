@@ -1,6 +1,6 @@
 // mergerecord.go — the merge record Parent-Align writes.
 //
-// The record lives in the run's told scratch directory, so it stays under `.lyx` and is never committed.
+// The record lives in the run's told scratch directory, so it stays under `.lym` and is never committed.
 // This package derives no path of its own beyond the fixed file name joined onto that directory.
 
 package landingshed

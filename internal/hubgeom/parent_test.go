@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -112,10 +112,10 @@ func TestResolveParent_LegacySeedParentIsIgnored(t *testing.T) {
 }
 
 // hubWithOrigin builds a hub with shortname "tst" and an origin record holding record for the task worktree "child-task", and returns that worktree's location.
-func hubWithOrigin(t *testing.T, record string) *lyxcwd.Location {
+func hubWithOrigin(t *testing.T, record string) *lymcwd.Location {
 	t.Helper()
-	hub := filepath.Join(t.TempDir(), "some-hub-LYXHUB")
-	l := &lyxcwd.Location{HubPath: hub, WorktreeName: "child-task", AnchorRel: "."}
+	hub := filepath.Join(t.TempDir(), "some-hub-LYMHUB")
+	l := &lymcwd.Location{HubPath: hub, WorktreeName: "child-task", AnchorRel: "."}
 
 	boardDir := fabricengine.BoardDir(hub)
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {

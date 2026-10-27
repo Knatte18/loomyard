@@ -1,20 +1,20 @@
-// Package configengine loads, resolves and writes a module's YAML configuration under a base directory's `_lyx/config/`.
+// Package configengine loads, resolves and writes a module's YAML configuration under a base directory's `_lym/config/`.
 //
 // [Load] is strict: an absent base layer is an error.
-// [LoadOrTemplate] degrades to the caller's embedded template on proven absence of the base layer's `_lyx/` or file, and is otherwise identical.
+// [LoadOrTemplate] degrades to the caller's embedded template on proven absence of the base layer's `_lym/` or file, and is otherwise identical.
 // `PATTERN-config-layers` decides which of the two a caller adopts.
 //
 // Both resolve a layer stack, fill, in memory, the template keys the merged stack lacks and log each fill with the layer `template`, except under a hub's sparse base, whose fill is not logged;
 // neither writes a file.
 // A key missing inside a list element is the one gap fill cannot close, and is an error.
 // The result is resolved through envsource's markers once, after the merge.
-// A default- or worktree-layer file holding units the template lacks, open-map entries and retired keys aside, still loads, and is logged at Warn naming the file, the keys and the `lyx config reconcile` that removes them;
+// A default- or worktree-layer file holding units the template lacks, open-map entries and retired keys aside, still loads, and is logged at Warn naming the file, the keys and the `lym config reconcile` that removes them;
 // the warning is logged once per file and key list in a process.
 // A loader whose module lists entries that may match nothing, such as `lenses`' `remove`, reports the unmatched ones through [WarnSkippedEntries]:
 // one Warn naming the highest layer file holding the key, once per file, key and entry list in a process.
 //
 // A present file whose content fails to parse, lacks a key inside a list element or fails to resolve returns an error marked [ErrInvalid];
-// an absent base file or `_lyx/`, an unreadable file and a base directory failure stay unmarked.
+// an absent base file or `_lym/`, an unreadable file and a base directory failure stay unmarked.
 // A caller marks its own unmarshal and validation failures with [MarkInvalid], which leaves the error text unchanged.
 //
 // [Set] writes dotted key=value pairs into a module's file with no editor and no validation loop, scaffolding a standalone or seed-only base from the template when absent and writing a hub's base sparse.
@@ -34,15 +34,15 @@
 // A per-worktree module stacks, lowest first:
 //
 //   - the embedded template, [LayerTemplate], which has no file;
-//   - the repo default, `<Board>/_lyx/config/<module>.yaml`, [LayerDefault];
-//   - the worktree's own tracked file, `<Anchor>/_lyx/config/<module>.yaml`, [LayerWorktree];
-//   - the untracked local override, `<Anchor>/.lyx/config/<module>.local.yaml`, [LayerLocal].
+//   - the repo default, `<Board>/_lym/config/<module>.yaml`, [LayerDefault];
+//   - the worktree's own tracked file, `<Anchor>/_lym/config/<module>.yaml`, [LayerWorktree];
+//   - the untracked local override, `<Anchor>/.lym/config/<module>.local.yaml`, [LayerLocal].
 //
-// A hub-wide module stacks the template, the hub file `<Board>/_lyx/config/<module>.yaml` and the local file.
-// A hub-wide module with a [CategoryMachine] key also stacks, between the hub file and the local file, the untracked machine override `<Board>/.lyx/config/<module>.machine.yaml`, [LayerMachine]:
+// A hub-wide module stacks the template, the hub file `<Board>/_lym/config/<module>.yaml` and the local file.
+// A hub-wide module with a [CategoryMachine] key also stacks, between the hub file and the local file, the untracked machine override `<Board>/.lym/config/<module>.machine.yaml`, [LayerMachine]:
 // the stack is then template, hub file, machine, local, so a local value wins over a machine one.
 // The machine layer applies only when `Dirs` carries both `Anchor` and `Board`, so a load that tells `Board` alone, as a hub-file check does, stacks none, and a standalone load never reads one.
-// It applies whether or not the anchor has a `_lyx/`.
+// It applies whether or not the anchor has a `_lym/`.
 // No reconcile reads, rewrites or removes the machine file.
 // With `Board` empty every module stacks the template, the worktree file and the local file; with `Anchor` empty there is no worktree or local layer.
 // [LayerFile] returns a layer's file and whether it applies, [LocalFile] the local one and [MachineFile] the machine one, neither ever the editor staging copy's path.
@@ -53,7 +53,7 @@
 // Every layer above the base is sparse.
 // Strictness applies to the base layer: [Load] errors on an absent base file with the way forward for its kind, [LoadOrTemplate] takes the template as the base and still stacks the upper layers present.
 // An absent upper file adds nothing, and so does an empty or comment-only local file.
-// A worktree with no `_lyx/` beside a told `Board` has no worktree or local layer; the board dir's base is not uninitialised for it.
+// A worktree with no `_lym/` beside a told `Board` has no worktree or local layer; the board dir's base is not uninitialised for it.
 //
 // [Layers] is the one reader of layer files, checking a machine file with [ValidateMachine] and a local one with [ValidateLocal], and [StackLayers] the one place layers are merged:
 // the present files merge unexpanded in stack order under the spec's open maps, a list, scalar or open map from a higher layer replacing the lower one whole.
@@ -62,7 +62,7 @@
 //
 // [Provenance] returns the resolved document of [Load], with strictness and refusals unchanged, each unit's line comment naming the highest layer whose file holds it, or `template` when none does;
 // a unit no file holds that the picked overlay document holds is labelled `template:<value>`.
-// It is what `lyx config <module> --resolved` prints.
+// It is what `lym config <module> --resolved` prints.
 //
 // # The local rule
 //
@@ -103,7 +103,7 @@
 // An absent selector or an empty value picks none, and a spec with no overlay is unchanged.
 // [EffectiveTemplate] composes it from a base document and [TemplateUnder] reads the base layer's file and does the same, so a caller judging a file above the base composes nothing itself.
 // Every judging path uses the effective template: the load's unknown-key warning, template fill and missing-key check, [BelowLayer], and [Provenance].
-// A value no document names, or a non-scalar value, is an [ErrInvalid] error naming the shipped values and the `lyx config` command that sets the selector in the base.
+// A value no document names, or a non-scalar value, is an [ErrInvalid] error naming the shipped values and the `lym config` command that sets the selector in the base.
 // Only the base layer picks: in a hub a worktree file holding the selector with a value other than the default file's is refused when read, naming the line to delete and the `--layer default` write from the prime worktree.
 // A worktree value equal to the base's changes no selection and loads.
 //

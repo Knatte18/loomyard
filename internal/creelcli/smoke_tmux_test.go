@@ -92,7 +92,7 @@ func TestSmokeCreelFakeProviderPane(t *testing.T) {
 
 	code, posted := smoke.creel("post", name, "hello from creel")
 	if code != 0 {
-		t.Fatalf("lyx creel post = %d; output: %s", code, posted)
+		t.Fatalf("lym creel post = %d; output: %s", code, posted)
 	}
 	// The test process posts as EXTERNAL, whose mail is carried in its own line rather than reminded.
 	if capture, ok := smoke.awaitPane(t, guid, "[creel] #1 from "); !ok {
@@ -102,7 +102,7 @@ func TestSmokeCreelFakeProviderPane(t *testing.T) {
 	const injected = "creel-injected-line"
 	code, out := smoke.creel("inject", "--wait", "--timeout", "60s", name, injected)
 	if code != 0 || !strings.Contains(out, `"outcome":"injected"`) {
-		t.Fatalf("lyx creel inject --wait = %d, %s; want exit 0 injected", code, out)
+		t.Fatalf("lym creel inject --wait = %d, %s; want exit 0 injected", code, out)
 	}
 	if capture, ok := smoke.awaitPane(t, guid, "GOT: "+injected); !ok {
 		t.Fatalf("the injected line was not echoed by the fake provider; pane:\n%s", capture)
@@ -110,6 +110,6 @@ func TestSmokeCreelFakeProviderPane(t *testing.T) {
 
 	code, logged := smoke.creel("log")
 	if code != 0 || !strings.Contains(logged, `"event":"posted"`) {
-		t.Errorf("lyx creel log = %d, %s; want exit 0 with the posted event", code, logged)
+		t.Errorf("lym creel log = %d, %s; want exit 0 with the posted event", code, logged)
 	}
 }

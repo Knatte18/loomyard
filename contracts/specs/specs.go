@@ -50,10 +50,8 @@ type registryEntry struct {
 	def  *[]byte
 }
 
-// entries is the ordered name-to-default registry: the order specs are listed here is the order
-// `lyx stencil list` prints them in.
-// A registered name starts with its owning product's name because stencilstore.RelPath derives the
-// family directory from the substring up to the first "-".
+// entries is the ordered name-to-default registry: the order specs are listed here is the order `lym stencil list` prints them in.
+// A registered name starts with its owning product's name because stencilstore.RelPath derives the family directory from the substring up to the first "-".
 var entries = []registryEntry{
 	{"loom-plan-spec", &LoomPlanSpec},
 	{"loom-final-summary-spec", &LoomFinalSummarySpec},

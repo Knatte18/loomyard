@@ -18,7 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -47,7 +47,7 @@ func restartSession(t *testing.T, worktree string) {
 func TestSmokeLifecycle(t *testing.T) {
 	t.Parallel()
 	tmuxPath := tmuxBinaryPath(t)
-	lyxExe := lyxbin.Build(t)
+	lymExe := lymbin.Build(t)
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	prime := h.PrimeWorktree()
@@ -57,7 +57,7 @@ func TestSmokeLifecycle(t *testing.T) {
 		var buf bytes.Buffer
 		RunCLIIn(prime, &buf, []string{"down"})
 	})
-	stateDir := filepath.Join(prime, ".lyx")
+	stateDir := filepath.Join(prime, ".lym")
 
 	// UpAddStatusDown boots the substrate, adds a strand, checks status, and tears down.
 	if !t.Run("UpAddStatusDown", func(t *testing.T) {
@@ -231,8 +231,8 @@ func TestSmokeLifecycle(t *testing.T) {
 
 	// UpSurvivesAScrubbedStateFileWhileTheSessionIsUp is the end-to-end regression guard for the R4 review's R4-F4 and the M22 regression, driven at the CLI seam a real operator uses.
 	//
-	// Reproduced live before the R4-F4 fix: with the session up and a strand added, deleting .lyx/reed.json — a never-tracked machine-local tree the Durable-vs-Ephemeral State Invariant makes disposable, and exactly what `git clean -xdf` in the worktree removes — permanently wedged the worktree.
-	// `lyx reed up` and `lyx reed resume` both failed, on every subsequent invocation, with `split Selvage pane: exit status 1: no space for new pane`, because the physically bottom-most pane was now an UNTRACKED short Selvage pane that tmux cannot split, while `lyx reed status` kept reporting the session healthy and nothing named the one escape (`down`, then `up`).
+	// Reproduced live before the R4-F4 fix: with the session up and a strand added, deleting .lym/reed.json — a never-tracked machine-local tree the Durable-vs-Ephemeral State Invariant makes disposable, and exactly what `git clean -xdf` in the worktree removes — permanently wedged the worktree.
+	// `lym reed up` and `lym reed resume` both failed, on every subsequent invocation, with `split Selvage pane: exit status 1: no space for new pane`, because the physically bottom-most pane was now an UNTRACKED short Selvage pane that tmux cannot split, while `lym reed status` kept reporting the session healthy and nothing named the one escape (`down`, then `up`).
 	// The Selvage split is now a full-width `-f` split that takes its rows from the whole window, so a short bottom pane cannot refuse it.
 	//
 	// The recovering `up` must exit 0, and the M22 regression is that the scrubbed state converges on that `up` itself, not one verb later.
@@ -365,7 +365,7 @@ func TestSmokeLifecycle(t *testing.T) {
 	}
 
 	// StrandPaneSpawnsAtToldAnchorNotProcessCwd is the regression guard for the pane-cwd defect this round's R1 review found: launchStrandLocked's pane creation carried no -c, so tmux resolved the new pane's cwd from the invoking CLIENT rather than from the anchor reed was told.
-	// Verified live (tmux 3.6) that a client-issued pane creation lands in the calling process's cwd — neither the target pane's cwd nor the session's — so a strand's command ran wherever lyx happened to stand.
+	// Verified live (tmux 3.6) that a client-issued pane creation lands in the calling process's cwd — neither the target pane's cwd nor the session's — so a strand's command ran wherever lym happened to stand.
 	// Under a process that stands in the anchor that is accidentally right; under the RunCLIIn seam, which seeds the cwd into the execution context WITHOUT moving the process, it is not, and every strand pane came up in the wrong tree while reed reported success.
 	//
 	// Both strands here open a window of their own, the first with Selvage alone in the session and the second beside the first strand's window; both are exercised for the -c regression identically.
@@ -398,14 +398,14 @@ func TestSmokeLifecycle(t *testing.T) {
 		return
 	}
 
-	// RemoveByNameDetachedFromInsideStrand runs `lyx reed remove --name <n> --detach` from inside the strand it removes.
+	// RemoveByNameDetachedFromInsideStrand runs `lym reed remove --name <n> --detach` from inside the strand it removes.
 	// The detached child must outlive the pane it kills, wait for the invoking process to exit, then remove the strand: reed.json stops listing it and the remaining pane is laid out at full height.
 	if !t.Run("RemoveByNameDetachedFromInsideStrand", func(t *testing.T) {
 		restartSession(t, prime)
 
 		keeper := addStrandIn(t, prime, smokeReapLaunchCmd(), "--name", "keeper")
 		selfName := "selfrm"
-		self := addStrandIn(t, prime, smokeInvokeLine(lyxExe, "reed", "remove", "--name", selfName, "--detach"), "--name", selfName)
+		self := addStrandIn(t, prime, smokeInvokeLine(lymExe, "reed", "remove", "--name", selfName, "--detach"), "--name", selfName)
 		socket, session := socketAndSessionIn(t, prime)
 
 		var statusOut []byte
@@ -455,7 +455,7 @@ func TestSmokeLifecycle(t *testing.T) {
 		return
 	}
 
-	// AttachRendersInsideHarnessPane drives the interactive terminal handover of `lyx reed attach` inside a private harness tmux server whose pane starts in the worktree, so the attach command it runs resolves that worktree.
+	// AttachRendersInsideHarnessPane drives the interactive terminal handover of `lym reed attach` inside a private harness tmux server whose pane starts in the worktree, so the attach command it runs resolves that worktree.
 	t.Run("AttachRendersInsideHarnessPane", func(t *testing.T) {
 		shellPath := harnessShellBinaryPath(t)
 		restartSession(t, prime)
@@ -479,17 +479,17 @@ func TestSmokeLifecycle(t *testing.T) {
 		}
 
 		harnessPane := harnessOnlyPaneID(t, tmuxPath, harness, "h")
-		sendKeysLine(t, tmuxPath, harness, harnessPane, smokeAttachInvokeLine(lyxExe))
+		sendKeysLine(t, tmuxPath, harness, harnessPane, smokeAttachInvokeLine(lymExe))
 		pollPaneContains(t, tmuxPath, harness, harnessPane, "ATTACH-MARKER-ALPHA", 20*time.Second)
 
-		// On Unix the attach replaces the lyx process with tmux, so the pane's foreground command is tmux and no lyx parent is left waiting.
+		// On Unix the attach replaces the lym process with tmux, so the pane's foreground command is tmux and no lym parent is left waiting.
 		if runtime.GOOS != "windows" {
 			command, err := exec.Command(tmuxPath, "-L", harness, "display-message", "-p", "-t", harnessPane, "#{pane_current_command}").Output()
 			if err != nil {
 				t.Fatalf("read the harness pane's current command: %v", err)
 			}
 			if got := strings.TrimSpace(string(command)); !strings.HasPrefix(got, "tmux") {
-				t.Errorf("harness pane's current command = %q; want tmux, the attach having replaced the lyx process", got)
+				t.Errorf("harness pane's current command = %q; want tmux, the attach having replaced the lym process", got)
 			}
 		}
 
@@ -594,7 +594,7 @@ func pollProcessGone(t *testing.T, pid int, timeout time.Duration) {
 // TestSmokeUpRefusesAWorktreeNameTmuxWouldRewrite is the end-to-end regression guard for the R2 review's BLOCKING finding and the R4 review's R4-F1, driven at the CLI seam a real operator uses.
 //
 // Reproduced live before the R2 fix, in a hub with a sibling worktree named "svc.v2":
-// `lyx reed up` hung for the full 20s bootAttemptTimeout, failed with `tmux server is up but session "svc.v2" did not materialize within 20s` (a message naming neither cause nor remedy), and left a session named "svc_v2" running on the SHARED per-hub server — which `lyx reed status` could not see, `lyx reed down` could not kill (it targets the exact "=svc.v2"), and which then kept the shared server alive so no sibling worktree's `down` could tidy it either.
+// `lym reed up` hung for the full 20s bootAttemptTimeout, failed with `tmux server is up but session "svc.v2" did not materialize within 20s` (a message naming neither cause nor remedy), and left a session named "svc_v2" running on the SHARED per-hub server — which `lym reed status` could not see, `lym reed down` could not kill (it targets the exact "=svc.v2"), and which then kept the shared server alive so no sibling worktree's `down` could tidy it either.
 // R4 reproduced the identical shape for the backslash class ("bs\slash" creating "bs\\slash", verified live on tmux 3.6), which the R2/R3 pre-flight let straight through — hence one row per rewrite class here rather than a single case standing in for all of them.
 //
 // The load-bearing assertion is the LAST one: no session under the rewritten name may exist on the hub's socket after the refusal.

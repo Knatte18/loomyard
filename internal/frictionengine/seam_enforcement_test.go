@@ -2,10 +2,10 @@
 
 // seam_enforcement_test.go enforces this package's Told-Geometry Invariant membership: production
 // code in internal/frictionengine takes every absolute path it operates on from its caller and has
-// no direct production import of internal/lyxcwd. Modelled directly on
+// no direct production import of internal/lymcwd. Modelled directly on
 // internal/mergeresolve/seam_enforcement_test.go.
 //
-// The allowlist below is deliberately a membership list rather than a bare internal/lyxcwd denylist:
+// The allowlist below is deliberately a membership list rather than a bare internal/lymcwd denylist:
 // it catches the excluded import and anything else that would drag geometry resolution in, with no
 // list maintenance beyond a genuine new dependency, and a transitive reach through an allowed entry
 // is explicitly fine.

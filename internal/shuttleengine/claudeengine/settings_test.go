@@ -71,7 +71,7 @@ func TestBuildSettings_PromptSuggestionOff(t *testing.T) {
 
 // stampPrintf is the stamp line command a recording hook runs for hookEventName before its payload, written out by hand so the test pins the line shape.
 func stampPrintf(hookEventName, quotedEventsPath string) string {
-	return `printf '{"lyx_stamp":"` + hookEventName + `","lyx_at":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ` + quotedEventsPath
+	return `printf '{"lym_stamp":"` + hookEventName + `","lym_at":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ` + quotedEventsPath
 }
 
 // TestBuildSettings_RecordingHooks pins the recording hooks every document carries: one command entry per event with no tool matcher, each appending a stamp line and then the payload to the events path in its POSIX form.
@@ -142,7 +142,7 @@ func TestBuildSettings_SessionStartHook(t *testing.T) {
 	t.Parallel()
 
 	const quoted = `'/c/run/events.jsonl'`
-	const command = "lyx orch resume-context"
+	const command = "lym orch resume-context"
 	recording := stampPrintf("SessionStart", quoted) + "; cat >> " + quoted + " && printf '\\n' >> " + quoted + "; true"
 	tests := []struct {
 		name         string
@@ -284,7 +284,7 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 				stopHooks, _ := stopEntry["hooks"].([]any)
 				stopCmd, _ := stopHooks[0].(map[string]any)
 				stopCommand, _ := stopCmd["command"].(string)
-				wantCommand := strings.Replace(stopCommand, `"lyx_stamp":"Stop"`, `"lyx_stamp":"PreToolUse"`, 1)
+				wantCommand := strings.Replace(stopCommand, `"lym_stamp":"Stop"`, `"lym_stamp":"PreToolUse"`, 1)
 				if command != wantCommand {
 					t.Errorf("interactive AskUserQuestion command = %q; want it to equal the Stop hook command with a PreToolUse stamp %q", command, wantCommand)
 				}
@@ -403,7 +403,7 @@ const (
 // fork mode off leaves the blanket deny;
 // the deny configured off, or the per-run allowance, emits no Agent entry and drops its notice sentence while the AskUserQuestion deny and its sentence stay.
 // Beside the always-installed raw go, computed-rm and sleep denies, the fork-loop-deadlock guard is the only Bash entry any document carries, so no run mode installs a Bash stdin rewrite:
-// a fork-mode run emits a PreToolUse(Bash) hook that greps the payload for a fork-context agent_id AND a `lyx webster` command before denying (with steerWebsterForkDeny), and always exits 0 via the trailing `; true`.
+// a fork-mode run emits a PreToolUse(Bash) hook that greps the payload for a fork-context agent_id AND a `lym webster` command before denying (with steerWebsterForkDeny), and always exits 0 via the trailing `; true`.
 // The guard is independent of DenyAgentTool and of the allowance, and absent entirely when fork mode is off (no Master, so no fork could reach the loop).
 //
 //testtiming:keep pins the Agent and Bash PreToolUse entries for every deny, fork and allowance combination, which its covering test does not assert
@@ -488,8 +488,8 @@ func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
 					t.Fatalf("Bash PreToolUse entries = %q; want exactly the webster fork guard (data: %s)", bashCommands, data)
 				}
 				command := bashCommands[0]
-				// The two AND-ed detection predicates: fork context (agent_id) and a lyx webster command.
-				for _, want := range []string{`"agent_id"`, `lyx[[:space:]]+webster`, steerWebsterForkDeny} {
+				// The two AND-ed detection predicates: fork context (agent_id) and a lym webster command.
+				for _, want := range []string{`"agent_id"`, `lym[[:space:]]+webster`, steerWebsterForkDeny} {
 					if !strings.Contains(command, want) {
 						t.Errorf("Bash guard command = %q; want it to contain %q", command, want)
 					}
@@ -746,7 +746,7 @@ func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
 						if strings.ContainsAny(notice, noticeTextForbiddenChars) {
 							t.Errorf("notice contains a forbidden character: %q", notice)
 						}
-						if strings.Contains(notice, "lyx"+" webster") {
+						if strings.Contains(notice, "lym"+" webster") {
 							t.Errorf("notice mentions the webster verbs: %q", notice)
 						}
 					}
@@ -779,7 +779,7 @@ func TestBuildDenyNotice_SentenceContent(t *testing.T) {
 		t.Errorf("non-fork notice = %q; want the Agent tool named unavailable", nonFork)
 	}
 	for _, want := range []string{
-		"Gate rule: run lyx gate test in the foreground with the Bash tool timeout set to 3600000, never in the background",
+		"Gate rule: run lym gate test in the foreground with the Bash tool timeout set to 3600000, never in the background",
 		"never cd into the directory you already work in",
 	} {
 		if !strings.Contains(nonFork, want) {

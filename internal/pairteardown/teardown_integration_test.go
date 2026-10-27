@@ -24,7 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -146,7 +146,7 @@ func boardStatus(t *testing.T, board *boardengine.Board, slug string) *string {
 }
 
 // writeStatus writes a shed status file and the directory its lock sits in.
-func writeStatus(t *testing.T, l *lyxcwd.Location, runID string, status shedengine.Status) {
+func writeStatus(t *testing.T, l *lymcwd.Location, runID string, status shedengine.Status) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(shedrun.StatusLock(l, runID)), 0o755); err != nil {
 		t.Fatalf("create the status lock directory: %v", err)
@@ -280,7 +280,7 @@ func TestRun_TeardownScenario(t *testing.T) {
 			p.td.SetIntervalForTest(50 * time.Millisecond)
 
 			sibling := p.h.PairRecordsSibling(p.slug)
-			rel := "_lyx/shed/" + p.slug + "/drive-reports/stop.md"
+			rel := "_lym/shed/" + p.slug + "/drive-reports/stop.md"
 			writeFile(t, filepath.Join(sibling, filepath.FromSlash(rel)), "stopped\n")
 			gitkit.MustRun(t, sibling, "git", "add", rel)
 			gitkit.MustRun(t, sibling, "git", "commit", "-m", "stop report")
@@ -323,7 +323,7 @@ func TestRun_TeardownScenario(t *testing.T) {
 				t.Skipf("flock not found, so no stand-in loop can hold the loop lock: %v", err)
 			}
 			p := addLivePair(t, h, cfg.Tmux, "pt-loop")
-			task, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(p.h.Location, p.slug))
+			task, err := lymcwd.ResolveWorktree(fabricengine.WorktreePath(p.h.Location, p.slug))
 			if err != nil {
 				t.Fatalf("ResolveWorktree: %v", err)
 			}
@@ -395,7 +395,7 @@ func TestRun_TeardownScenario(t *testing.T) {
 		{"BoardEntryIsMarkedDoneWhenTheChildHistoryHoldsAFinalizeDone", func(t *testing.T) {
 			p := addLivePair(t, h, cfg.Tmux, "pt-claim-done")
 			board := holdBoardEntry(t, h, p.slug)
-			task, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(p.h.Location, p.slug))
+			task, err := lymcwd.ResolveWorktree(fabricengine.WorktreePath(p.h.Location, p.slug))
 			if err != nil {
 				t.Fatalf("ResolveWorktree: %v", err)
 			}
@@ -426,7 +426,7 @@ func TestRun_TeardownScenario(t *testing.T) {
 		{"BusyRefusalsNameThePairsOwnAnchor", func(t *testing.T) {
 			p := addLivePair(t, h, cfg.Tmux, "pt-anchor")
 			hubforge.ReanchorPair(t, h, p.slug, "sub")
-			task, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(h.Location, p.slug))
+			task, err := lymcwd.ResolveWorktree(fabricengine.WorktreePath(h.Location, p.slug))
 			if err != nil {
 				t.Fatalf("ResolveWorktree: %v", err)
 			}
@@ -442,8 +442,8 @@ func TestRun_TeardownScenario(t *testing.T) {
 			pairAnchor := filepath.Join(fabricengine.WorktreePath(h.Location, p.slug), "sub")
 
 			_, err = p.td.Run(context.Background(), pairteardown.Request{Slug: p.slug, RefuseWhenBusy: true})
-			if !errors.Is(err, pairteardown.ErrDriverBusy) || !strings.Contains(err.Error(), "lyx reed attach, run from "+pairAnchor) {
-				t.Errorf("Run error = %v; want ErrDriverBusy naming `lyx reed attach, run from %s`", err, pairAnchor)
+			if !errors.Is(err, pairteardown.ErrDriverBusy) || !strings.Contains(err.Error(), "lym reed attach, run from "+pairAnchor) {
+				t.Errorf("Run error = %v; want ErrDriverBusy naming `lym reed attach, run from %s`", err, pairAnchor)
 			}
 
 			_, err = p.td.Run(context.Background(), pairteardown.Request{Slug: p.slug, RefuseWhenBusy: true, Verdict: fabricengine.EntryEnded})

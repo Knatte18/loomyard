@@ -15,14 +15,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 )
 
 // subjectLocation returns a location whose anchor is a fresh temporary directory.
-func subjectLocation(t *testing.T) *lyxcwd.Location {
+func subjectLocation(t *testing.T) *lymcwd.Location {
 	t.Helper()
 	anchor := filepath.Join(t.TempDir(), "pair")
 	if err := os.MkdirAll(anchor, 0o755); err != nil {
@@ -43,7 +43,7 @@ func writeSubjectFile(t *testing.T, path, body string) {
 }
 
 // documentSubjectOf reads the document subject of paths and returns its hash, failing the test on an error or a not-found answer.
-func documentSubjectOf(t *testing.T, location *lyxcwd.Location, paths ...string) string {
+func documentSubjectOf(t *testing.T, location *lymcwd.Location, paths ...string) string {
 	t.Helper()
 	subject, found, err := documentSubject(location, paths)
 	if err != nil || !found || subject.Kind != shedadapters.SubjectDocument {
@@ -73,7 +73,7 @@ func TestDocumentSubject(t *testing.T) {
 		if after := documentSubjectOf(t, location, record); after != before {
 			t.Errorf("subject after a carry-over block = %+v; want the unchanged %+v", after, before)
 		}
-		if got, _ := os.ReadFile(record); !strings.Contains(string(got), "lyx:carry-over") {
+		if got, _ := os.ReadFile(record); !strings.Contains(string(got), "lym:carry-over") {
 			t.Fatalf("decision record holds no carry-over block after WriteCarryOver:\n%s", got)
 		}
 		writeSubjectFile(t, record, "# Record, edited\n")
@@ -119,7 +119,7 @@ func TestDocumentSubject(t *testing.T) {
 	t.Run("an absent path gives a subject and creating it changes the subject", func(t *testing.T) {
 		t.Parallel()
 		location := subjectLocation(t)
-		path := filepath.Join(location.AnchorPath(), "_lyx", "discussion", "support-log.md")
+		path := filepath.Join(location.AnchorPath(), "_lym", "discussion", "support-log.md")
 		absent := documentSubjectOf(t, location, path)
 		writeSubjectFile(t, path, "log\n")
 		if created := documentSubjectOf(t, location, path); created == absent {

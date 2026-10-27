@@ -16,10 +16,10 @@ import (
 // TestOpenWindow drives every outcome of OpenWindow.
 // The injected executable path makes it process-global, so it does not run in parallel.
 func TestOpenWindow(t *testing.T) {
-	withInjectedExecutablePath(t, func() (string, error) { return "/opt/lyx/bin/lyx", nil })
+	withInjectedExecutablePath(t, func() (string, error) { return "/opt/lym/bin/lym", nil })
 	const name = "batten:slug"
 	sh := shell.ForGOOS()
-	wantCommand := sh.Chain(paneBinPrelude(sh, "/opt/lyx/bin/lyx"), sh.Invoke("lyx")+" "+sh.Quote("batten")+" "+sh.Quote("run")+" "+sh.Quote("my slug"))
+	wantCommand := sh.Chain(paneBinPrelude(sh, "/opt/lym/bin/lym"), sh.Invoke("lym")+" "+sh.Quote("batten")+" "+sh.Quote("run")+" "+sh.Quote("my slug"))
 	args := []string{"batten", "run", "my slug"}
 
 	tests := []struct {
@@ -191,7 +191,7 @@ func TestOpenWindow(t *testing.T) {
 			}
 			wantArgv = append(wantArgv, wantCommand,
 				";", "set-option", "-w", "-t", temporaryTarget, "remain-on-exit", "off",
-				";", "set-option", "-w", "-t", temporaryTarget, "@lyx_hidden", "1",
+				";", "set-option", "-w", "-t", temporaryTarget, "@lym_hidden", "1",
 				";", "rename-window", "-t", temporaryTarget, name)
 			if !slices.Equal(newCalls[0], wantArgv) {
 				t.Errorf("new-window argv = %v, want %v", newCalls[0], wantArgv)

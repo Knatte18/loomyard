@@ -1,4 +1,4 @@
-// buildidentity.go decides whether the running lyx build differs from the one a step's record names.
+// buildidentity.go decides whether the running lym build differs from the one a step's record names.
 
 package shedverbs
 

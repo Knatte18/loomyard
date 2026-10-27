@@ -38,7 +38,7 @@ func TestPlanReset_HeldRunLockIsTransientBusy(t *testing.T) {
 	if !errors.Is(err, websterengine.ErrRunBusy) {
 		t.Fatalf("PlanReset error = %v, want ErrRunBusy", err)
 	}
-	if !strings.Contains(err.Error(), "wait for it to finish, or check `lyx webster status`") {
+	if !strings.Contains(err.Error(), "wait for it to finish, or check `lym webster status`") {
 		t.Errorf("error = %v, want the wait way forward", err)
 	}
 
@@ -56,7 +56,7 @@ func TestPlanReset_NoStateNamesRun(t *testing.T) {
 	if err == nil {
 		t.Fatal("PlanReset error = nil, want the no-state refusal")
 	}
-	if !strings.Contains(err.Error(), "way forward: run `lyx webster run` first") {
+	if !strings.Contains(err.Error(), "way forward: run `lym webster run` first") {
 		t.Errorf("error = %v, want the run-first way forward", err)
 	}
 }
@@ -134,25 +134,25 @@ func TestPlanReset_Resolution(t *testing.T) {
 		want  []string
 	}{
 		{"unknown target", "bogus", 0, nil, []string{`"bogus" is not one of start, pre-fix, report-head, last-batch-head, batch-start`}},
-		{"report-head needs a batch", websterengine.ResetToReportHead, 0, nil, []string{"needs the batch", "re-run `lyx webster reset --to report-head --batch NN`"}},
-		{"batch-start needs a batch", websterengine.ResetToBatchStart, 0, nil, []string{"needs the batch", "re-run `lyx webster reset --to batch-start --batch NN`"}},
-		{"start refuses a batch", websterengine.ResetToStart, 2, nil, []string{"--batch 2 does not apply", "re-run `lyx webster reset --to start` without --batch"}},
-		{"last-batch-head refuses a batch", websterengine.ResetToLastBatchHead, 2, nil, []string{"--batch 2 does not apply", "re-run `lyx webster reset --to last-batch-head` without --batch"}},
-		{"report-head of a batch not begun", websterengine.ResetToReportHead, 3, nil, []string{"batch 3 is not begun", "`lyx webster status`"}},
-		{"report-head of a terminal batch", websterengine.ResetToReportHead, 1, nil, []string{"batch 1 already reached a terminal record (done)", "run `lyx webster reset --to last-batch-head`"}},
+		{"report-head needs a batch", websterengine.ResetToReportHead, 0, nil, []string{"needs the batch", "re-run `lym webster reset --to report-head --batch NN`"}},
+		{"batch-start needs a batch", websterengine.ResetToBatchStart, 0, nil, []string{"needs the batch", "re-run `lym webster reset --to batch-start --batch NN`"}},
+		{"start refuses a batch", websterengine.ResetToStart, 2, nil, []string{"--batch 2 does not apply", "re-run `lym webster reset --to start` without --batch"}},
+		{"last-batch-head refuses a batch", websterengine.ResetToLastBatchHead, 2, nil, []string{"--batch 2 does not apply", "re-run `lym webster reset --to last-batch-head` without --batch"}},
+		{"report-head of a batch not begun", websterengine.ResetToReportHead, 3, nil, []string{"batch 3 is not begun", "`lym webster status`"}},
+		{"report-head of a terminal batch", websterengine.ResetToReportHead, 1, nil, []string{"batch 1 already reached a terminal record (done)", "run `lym webster reset --to last-batch-head`"}},
 		{"report-head with a later begun batch", websterengine.ResetToReportHead, 2, func(fx *resolutionFixture) {
 			fx.state.Batches[3] = &websterengine.BatchState{Slug: "three", Kind: "fork", StartSHA: fx.batch2Head}
-		}, []string{"batch 3 was begun after batch 2", "run `lyx webster reset --to start`"}},
+		}, []string{"batch 3 was begun after batch 2", "run `lym webster reset --to start`"}},
 		{"report-head with a live recovery strand", websterengine.ResetToReportHead, 2, func(fx *resolutionFixture) {
 			fx.state.Batches[2].Kind, fx.state.Batches[2].StrandGUID = "recovery", "strand-2"
 			fx.reed.Strands = []reedengine.StrandStatus{{GUID: "strand-2", Live: true}}
-		}, []string{"a recovery strand of batch 2 is live", "wait for its `lyx webster recover-batch 02` to finish", "re-run `lyx webster reset --to report-head --batch 02`"}},
+		}, []string{"a recovery strand of batch 2 is live", "wait for its `lym webster recover-batch 02` to finish", "re-run `lym webster reset --to report-head --batch 02`"}},
 		{"report-head with no report", websterengine.ResetToReportHead, 2, func(fx *resolutionFixture) {
 			fx.state.Batches[2].Slug = "renamed"
-		}, []string{"batch 2 has no readable report", "wait for the fork's report, or run `lyx webster recover-batch 02`"}},
+		}, []string{"batch 2 has no readable report", "wait for the fork's report, or run `lym webster recover-batch 02`"}},
 		{"report-head not descending from the start", websterengine.ResetToReportHead, 2, func(fx *resolutionFixture) {
 			fx.writeReport(2, "two", fx.root)
-		}, []string{"does not descend from batch 2's start %batch1Head", "run `lyx webster reset --to start`"}},
+		}, []string{"does not descend from batch 2's start %batch1Head", "run `lym webster reset --to start`"}},
 		{"report-head missing from the repository", websterengine.ResetToReportHead, 2, func(fx *resolutionFixture) {
 			fx.writeReport(2, "two", strings.Repeat("ab", 20))
 		}, []string{strings.Repeat("ab", 20), "not in this repository"}},
@@ -168,13 +168,13 @@ func TestPlanReset_Resolution(t *testing.T) {
 		}, []string{"main", "not in this repository"}},
 		{"last-batch-head with no recorded head", websterengine.ResetToLastBatchHead, 0, func(fx *resolutionFixture) {
 			fx.state.Batches[1].Digest = nil
-		}, []string{"no batch recorded a head commit", "run `lyx webster reset --to start`"}},
+		}, []string{"no batch recorded a head commit", "run `lym webster reset --to start`"}},
 		{"last-batch-head of diverging heads", websterengine.ResetToLastBatchHead, 0, func(fx *resolutionFixture) {
 			_, unrelatedTip := fx.git.merge("")
 			fx.state.Batches[2].Terminal, fx.state.Batches[2].Digest = true, &websterengine.Digest{HeadSHA: unrelatedTip}
-		}, []string{"share no single latest commit", "run `lyx webster reset --to start`"}},
-		{"batch-start of a batch with no start", websterengine.ResetToBatchStart, 3, nil, []string{"batch 3 recorded no start commit", "run `lyx webster reset --to start`"}},
-		{"batch-start with a later recorded start", websterengine.ResetToBatchStart, 1, nil, []string{"batch 1 is not the run's last begun batch", "commits of batch 2", "run `lyx webster reset --to start`"}},
+		}, []string{"share no single latest commit", "run `lym webster reset --to start`"}},
+		{"batch-start of a batch with no start", websterengine.ResetToBatchStart, 3, nil, []string{"batch 3 recorded no start commit", "run `lym webster reset --to start`"}},
+		{"batch-start with a later recorded start", websterengine.ResetToBatchStart, 1, nil, []string{"batch 1 is not the run's last begun batch", "commits of batch 2", "run `lym webster reset --to start`"}},
 		// A pair's reset reads the dirty tracked paths with real git here; standalone leaves them to git's keep form, so the plan comes back without that read.
 		{"standalone skips the foreign-dirty-path refusal", websterengine.ResetToStart, 0, func(fx *resolutionFixture) {
 			fx.standalone = true

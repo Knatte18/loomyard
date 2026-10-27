@@ -1,11 +1,8 @@
 //go:build tier0
 
 // fabric_test.go — unit tests for the Fabric handle, sync options, and ScopedPathspec.
-// No git spawn: newPaired only stat-checks paths, and Open needs nothing beyond a hand-built
-// *lyxcwd.Location for that same stat-only contract to hold.
-// The missing-path contract (warp checked first, *ErrMissingPath naming the absent side) is
-// restated here through Open(l), the constructor the contract now belongs to, using a hand-built
-// Location rather than a real git fixture.
+// No git spawn: newPaired only stat-checks paths, and Open needs nothing beyond a hand-built *lymcwd.Location for that same stat-only contract to hold.
+// The missing-path contract (warp checked first, *ErrMissingPath naming the absent side) is restated here through Open(l), the constructor the contract now belongs to, using a hand-built Location rather than a real git fixture.
 //
 // TestNew_HappyPath below is this package's only remaining NewPairedFromPathsForTest consumer: an
 // untagged unit test of the newPaired constructor itself, spawning no git and having nothing to do
@@ -21,7 +18,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -49,7 +46,7 @@ func TestOpen(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			l := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+			l := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
 			if tt.mkWarp {
 				if err := os.Mkdir(l.WorktreePath(), 0755); err != nil {
 					t.Fatalf("mkdir warp worktree: %v", err)
@@ -167,9 +164,9 @@ func TestScopedPathspec(t *testing.T) {
 		dirs    []string
 		want    []string
 	}{
-		{"root", ".", []string{"_lyx"}, []string{"_lyx"}},
-		{"nested", "sub", []string{"_lyx"}, []string{filepath.Join("sub", "_lyx")}},
-		{"nested_multiple_dirs", "sub", []string{"_lyx", "_extra"}, []string{filepath.Join("sub", "_lyx"), filepath.Join("sub", "_extra")}},
+		{"root", ".", []string{"_lym"}, []string{"_lym"}},
+		{"nested", "sub", []string{"_lym"}, []string{filepath.Join("sub", "_lym")}},
+		{"nested_multiple_dirs", "sub", []string{"_lym", "_extra"}, []string{filepath.Join("sub", "_lym"), filepath.Join("sub", "_extra")}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -187,7 +184,7 @@ func TestScopedPathspec(t *testing.T) {
 }
 
 // TestRequireWarpWorktree covers the guard that keeps a cwd inside one of fabric's own checkouts
-// from driving a verb against invented geometry. lyxcwd resolves such a cwd cleanly — it has no
+// from driving a verb against invented geometry. lymcwd resolves such a cwd cleanly — it has no
 // notion of a weft sibling or the board checkout — so the refusal has to happen here.
 // No git spawn: the guard is pure name math over a hand-built Location.
 func TestRequireWarpWorktree(t *testing.T) {
@@ -206,7 +203,7 @@ func TestRequireWarpWorktree(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := &lyxcwd.Location{HubPath: filepath.Join("/hub", "myrepo-LYXHUB"), WorktreeName: tt.worktreeName, AnchorRel: "."}
+			l := &lymcwd.Location{HubPath: filepath.Join("/hub", "myrepo-LYMHUB"), WorktreeName: tt.worktreeName, AnchorRel: "."}
 			err := fabricengine.RequireWarpWorktree(l)
 			if tt.wantErr {
 				if err == nil {

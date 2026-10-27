@@ -20,7 +20,7 @@ func TestFollowSessionVia(t *testing.T) {
 		return []string{"list-panes", "-s", "-t", "=" + session, "-F", followTargetFormat}
 	}
 	setOn := func(session string) []string {
-		return []string{"set-option", "-t", "=" + session + ":", "@lyx_follow", "on"}
+		return []string{"set-option", "-t", "=" + session + ":", "@lym_follow", "on"}
 	}
 	selectWindow := func(window string) []string { return []string{"select-window", "-t", window} }
 	tests := []struct {

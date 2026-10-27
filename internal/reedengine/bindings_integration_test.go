@@ -48,7 +48,7 @@ func newBindingsFixture(t *testing.T) *bindingsFixture {
 		t.Fatalf("mkdir recorder dir: %v", err)
 	}
 	recordPath := filepath.Join(t.TempDir(), "recorded-args")
-	scriptPath := filepath.Join(scriptDir, "lyx-recorder")
+	scriptPath := filepath.Join(scriptDir, "lym-recorder")
 	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + recordPath + "\n"
 	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("write recorder script: %v", err)
@@ -127,7 +127,7 @@ func (f *bindingsFixture) currentWindow(t *testing.T) string {
 // settle gives tmux time to process a key that should have changed nothing.
 func settle() { time.Sleep(doubleClickGap) }
 
-// setFollow writes @lyx_follow on the session named session.
+// setFollow writes @lym_follow on the session named session.
 func (f *bindingsFixture) setFollow(t *testing.T, session, value string) {
 	t.Helper()
 	if err := f.e.tmux.run("set-option", "-t", "="+session+":", followSessionOption, value); err != nil {
@@ -135,13 +135,13 @@ func (f *bindingsFixture) setFollow(t *testing.T, session, value string) {
 	}
 }
 
-// follow returns @lyx_follow of the session named session, empty when unset.
+// follow returns @lym_follow of the session named session, empty when unset.
 func (f *bindingsFixture) follow(t *testing.T, session string) string {
 	t.Helper()
 	return f.display(t, "="+session+":", "#{"+followSessionOption+"}")
 }
 
-// assertFollow fails unless @lyx_follow of the fixture's own session reads want.
+// assertFollow fails unless @lym_follow of the fixture's own session reads want.
 func (f *bindingsFixture) assertFollow(t *testing.T, want string) {
 	t.Helper()
 	if got := f.follow(t, f.e.SessionName()); got != want {
@@ -149,7 +149,7 @@ func (f *bindingsFixture) assertFollow(t *testing.T, want string) {
 	}
 }
 
-// awaitRecord waits for the recorder lyx to write its eight arguments of a follow jump and returns them.
+// awaitRecord waits for the recorder lym to write its eight arguments of a follow jump and returns them.
 func (f *bindingsFixture) awaitRecord(t *testing.T) []string {
 	t.Helper()
 	var args []string
@@ -169,7 +169,7 @@ func (f *bindingsFixture) removeRecord(t *testing.T) {
 	}
 }
 
-// wantFollowRecord returns the arguments the recorder lyx writes for a follow jump of session on the told socket, with the tmux path checked apart.
+// wantFollowRecord returns the arguments the recorder lym writes for a follow jump of session on the told socket, with the tmux path checked apart.
 func wantFollowRecord(socketPath, session string) []string {
 	return []string{"reed", "follow", "--socket", socketPath, "--session", session, "--tmux"}
 }
@@ -201,7 +201,7 @@ func TestBindings_AltUpDownStepWindowsInIndexOrderPastHiddenOnes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddStrand(overview): %v", err)
 	}
-	// The recorder lyx exits at once, which would close an OpenWindow window, so each hidden window is a plain detached one marked by hand.
+	// The recorder lym exits at once, which would close an OpenWindow window, so each hidden window is a plain detached one marked by hand.
 	for _, name := range []string{"hidden-one", "hidden-two"} {
 		windows, err := f.e.tmux.listSessionWindows(f.e.SessionName())
 		if err != nil {
@@ -209,7 +209,7 @@ func TestBindings_AltUpDownStepWindowsInIndexOrderPastHiddenOnes(t *testing.T) {
 		}
 		last, _ := highestWindow(windows, false)
 		id := strings.TrimSpace(mustTmuxOutput(t, f.e, "new-window", "-d", "-a", "-t", last.ID, "-n", name, "-P", "-F", "#{window_id}"))
-		if err := f.e.tmux.run("set-option", "-w", "-t", id, "@lyx_hidden", "1"); err != nil {
+		if err := f.e.tmux.run("set-option", "-w", "-t", id, "@lym_hidden", "1"); err != nil {
 			t.Fatalf("mark %s hidden: %v", name, err)
 		}
 	}
@@ -281,12 +281,12 @@ func TestBindings_StatusBarClicksSelectAndZoomByRangeType(t *testing.T) {
 	})
 	f.assertFollow(t, "off")
 
-	// With @lyx_strands unset on every window, the shell click's command leaves the current window where it is.
+	// With @lym_strands unset on every window, the shell click's command leaves the current window where it is.
 	if err := f.e.tmux.run("select-window", "-t", f.otherWindow); err != nil {
 		t.Fatalf("select-window extra: %v", err)
 	}
-	if err := f.e.tmux.run("set-option", "-w", "-u", "-t", f.strandWindow, "@lyx_strands"); err != nil {
-		t.Fatalf("unset @lyx_strands: %v", err)
+	if err := f.e.tmux.run("set-option", "-w", "-u", "-t", f.strandWindow, "@lym_strands"); err != nil {
+		t.Fatalf("unset @lym_strands: %v", err)
 	}
 	if err := f.e.tmux.run("if-shell", "-F", "1", shellClickCommand); err != nil {
 		t.Fatalf("run the shell click command: %v", err)

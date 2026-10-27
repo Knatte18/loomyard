@@ -609,8 +609,8 @@ func TestAttach_GateThreading(t *testing.T) {
 			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
 			engine := &fakeEngine{}
 			fx := newFixture(t, reed, engine, withConfig(fastConfig), withSeparateRunDir())
-			runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
-			seedPresentReedState(t, dotLyxDir)
+			runner, dotLymDir, runRoot := fx.Runner, fx.DotLym, fx.RunRoot
+			seedPresentReedState(t, dotLymDir)
 
 			outputFile := filepath.Join(runRoot, "out.md")
 			runDir := seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{

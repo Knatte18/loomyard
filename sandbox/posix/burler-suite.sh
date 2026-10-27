@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Launcher for the lyx SANDBOX-BURLER-SUITE: runs the interactive burler
+# Launcher for the lym SANDBOX-BURLER-SUITE: runs the interactive burler
 # black-box agent session (live tmux and a logged-in claude required). The
 # machine-specific parent directory is hardcoded HERE (the base under which
 # sandbox Hubs are created, mirroring the win/ launcher's C:\Code) -- the Go

@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // writeHubWorkspace writes content to the workspace file at path, directly in the hub dir, in place and reports whether it wrote.
@@ -18,7 +18,7 @@ import (
 // A read error other than not-exist is returned rather than overwriting bytes it could not compare.
 // Every read and write goes through an os.Root at the hub, so a symlink planted at the workspace path that escapes the hub is refused.
 // It creates no directory and records no Mutations: the caller records the write.
-func writeHubWorkspace(l *lyxcwd.Location, path string, content []byte) (bool, error) {
+func writeHubWorkspace(l *lymcwd.Location, path string, content []byte) (bool, error) {
 	root, err := os.OpenRoot(l.HubPath)
 	if err != nil {
 		return false, fmt.Errorf("open hub root %s: %w", l.HubPath, err)
@@ -45,7 +45,7 @@ func writeHubWorkspace(l *lyxcwd.Location, path string, content []byte) (bool, e
 // removeStaleBeamWorkspaces removes each <hub>/<RepoName>-*.code-workspace file that carries beamWorkspaceMark and whose slug is not in live.
 // A file without the mark, one that does not parse as JSON, and a directory are left alone, so an operator's own file of such a name stays.
 // Every read and removal goes through an os.Root at the hub; a removal is recorded in rec.
-func removeStaleBeamWorkspaces(rec *Mutations, l *lyxcwd.Location, live map[string]bool) error {
+func removeStaleBeamWorkspaces(rec *Mutations, l *lymcwd.Location, live map[string]bool) error {
 	root, err := os.OpenRoot(l.HubPath)
 	if err != nil {
 		return fmt.Errorf("open hub root %s: %w", l.HubPath, err)

@@ -27,7 +27,7 @@ Your job is to interview about the design, then write three files that become th
 Before anything else, read this task's board entry:
 
 ```bash
-lyx board get '{"slug":"{{.slug}}"}'
+lym board get '{"slug":"{{.slug}}"}'
 ```
 
 This prints a JSON envelope shaped `{"task": {...}}`.
@@ -37,15 +37,15 @@ Do not invent scope for a task that does not exist.
 Then list the rest of the board and read every entry that touches this task:
 
 ```bash
-lyx board list
-lyx board get '{"slug":"<other-slug>"}'
+lym board list
+lym board get '{"slug":"<other-slug>"}'
 ```
 
 Treat planned work on other entries as design context.
 The design must fit it without duplicating or contradicting it.
 
 A board note titled `Decision for {{.slug}}:` for this task is a parent decision, which wins over the entry body.
-Read each such note `lyx board list` shows.
+Read each such note `lym board list` shows.
 
 ## Step 2 — Explore before asking
 
@@ -84,7 +84,7 @@ Challenge the problem itself, not just the proposed solution — "is this the ri
 Never propose an MVP phase or an "add this later" deferral — that is not this task's call to make.
 Apply YAGNI: do not design for a hypothetical requirement nobody asked for.
 **Leave this task's own board entry alone.**
-No decision asks the run to change this task's own board entry's body or scope, through `lyx board` or otherwise, because the run's board lock refuses such a change.
+No decision asks the run to change this task's own board entry's body or scope, through `lym board` or otherwise, because the run's board lock refuses such a change.
 The landing's status write, a `run_settings` write, a decision to file or change another board entry and a change to the board module's code are outside this rule.
 A follow-up a decision files goes on the board as a note, never as a task, and no decision promotes a note: only the operator decides what becomes a task, and the board refuses a run's agent that creates or promotes one.
 
@@ -100,7 +100,7 @@ In interactive mode put it to the operator in the pane like any other question.
 ## Step 5 — Write the three output files
 
 Once the design is settled, write ALL THREE of the following files.
-Create the `_lyx/discussion/` directory first if it does not already exist.
+Create the `_lym/discussion/` directory first if it does not already exist.
 
 Write `{{.decision_record_path}}`, `{{.support_log_path}}` and `{{.relevant_path}}` in the format `{{.specs_dir}}/loom/loom-discussion-spec.md` defines.
 That spec is authoritative, and this prompt restates none of it.
@@ -110,7 +110,7 @@ That spec is authoritative, and this prompt restates none of it.
 Before ending your turn, run the mechanical gate standalone against what you just wrote:
 
 ```bash
-lyx loom validate-discussion
+lym loom validate-discussion
 ```
 
 The verb takes no arguments.
@@ -132,11 +132,11 @@ You are a **design** agent. The only files you create or modify in this session 
 
 Everything else in the worktree is read-only to you. In particular, never write, move, delete, or reconcile any of:
 
-- **`_lyx/config/`** — this is the driver's own configuration, read fresh on every invocation.
+- **`_lym/config/`** — this is the driver's own configuration, read fresh on every invocation.
   Editing it changes how the run that spawned you behaves, and how the next one does.
-  `lyx config reconcile --apply` counts as editing it.
-- **`_lyx/shed/<slug>/`** (and the legacy `_lyx/shed/self/`) — the phase machine's status file. The driver owns it; a write from here corrupts orchestration state.
-- **`_lyx/plan/`** — a later phase's artifact, not yours.
+  `lym config reconcile --apply` counts as editing it.
+- **`_lym/shed/<slug>/`** (and the legacy `_lym/shed/self/`) — the phase machine's status file. The driver owns it; a write from here corrupts orchestration state.
+- **`_lym/plan/`** — a later phase's artifact, not yours.
 - **repository source files**, and **git history**: no `git add`, `git commit`, `git checkout`, `git restore`, or any other mutating git command.
   Committing your two files is the loop owner's job, not yours.
 

@@ -69,7 +69,7 @@ func (s subjectFields) reading() (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("the board entry for task `%s`, read with `lyx board get '%s'`, where the `Added after Discussion` entries of the decision record at `%s` amend the entry and win over its body", s.Slug, slug, s.DecisionRecordPath), nil
+		return fmt.Sprintf("the board entry for task `%s`, read with `lym board get '%s'`, where the `Added after Discussion` entries of the decision record at `%s` amend the entry and win over its body", s.Slug, slug, s.DecisionRecordPath), nil
 	}
 	return "", fmt.Errorf("Subject %q is neither %s nor %s", s.Subject, SubjectDecisionRecord, SubjectBoardEntry)
 }

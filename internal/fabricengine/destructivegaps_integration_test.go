@@ -33,7 +33,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // escapeFabricConfigYAML returns a repo-wide fabric.yaml override whose pathspec names exactly
@@ -78,16 +78,9 @@ func TestUnwireJunctions_RefusesLinkOutsideItsWorktree(t *testing.T) {
 	}
 }
 
-// TestAddRollback_RefusesJunctionRemovalOutsideItsWorktree covers gap one's second reach point:
-// Add's own rollback removes the junctions it wired through the same gate, and must refuse the same
-// shape.
-// A pathspec entry of "../gap1-rollback-escape" makes seedLyxJunction materialise its weft-side
-// target AND its warp-side link at the identical hub-level path — the worktree and its weft sibling
-// are both direct children of the hub, so one "../" cancels either segment to the same place —
-// so wiring that junction fails with "already contains a real directory" before a symlink is ever
-// created there. That failure is what triggers Add's rollback, and the directory
-// seedLyxJunction's os.MkdirAll left behind along the way is what the rollback must refuse to
-// remove.
+// TestAddRollback_RefusesJunctionRemovalOutsideItsWorktree covers gap one's second reach point: Add's own rollback removes the junctions it wired through the same gate, and must refuse the same shape.
+// A pathspec entry of "../gap1-rollback-escape" makes seedLymJunction materialise its weft-side target AND its warp-side link at the identical hub-level path — the worktree and its weft sibling are both direct children of the hub, so one "../" cancels either segment to the same place — so wiring that junction fails with "already contains a real directory" before a symlink is ever created there.
+// That failure is what triggers Add's rollback, and the directory seedLymJunction's os.MkdirAll left behind along the way is what the rollback must refuse to remove.
 func TestAddRollback_RefusesJunctionRemovalOutsideItsWorktree(t *testing.T) {
 	t.Parallel()
 
@@ -718,7 +711,7 @@ func TestWorktreeDirty_BothScopesAcrossFourStates(t *testing.T) {
 // The force=true half is what proves the property card 34 exists to pin: force reaches only
 // Cleanup's own folded-back-raddle gate, never the branch-ownership kind itself — a
 // force-satisfies-ownership reading is how the slice's original defect would return behind a flag.
-func assertBranchGateRefusesBothForceModes(t *testing.T, l *lyxcwd.Location, weftRoot, branch, wantSubstring string) {
+func assertBranchGateRefusesBothForceModes(t *testing.T, l *lymcwd.Location, weftRoot, branch, wantSubstring string) {
 	t.Helper()
 	for _, force := range []bool{false, true} {
 		err := fabricengine.DeleteBranchForTest(l, weftRoot, branch, "", force)
@@ -797,7 +790,7 @@ func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 
 // TestReconcile_ReportsAPairThatVanishedMidWalkAsSuch is R2's regression for a misleading verdict under
 // a race reconcile cannot avoid: `git worktree list` is read once, before the per-pair loop, so a
-// concurrent `lyx fabric remove`/`prune` can delete a pair's directory between the enumeration and
+// concurrent `lym fabric remove`/`prune` can delete a pair's directory between the enumeration and
 // the iteration that reaches it.
 //
 // That used to surface as ReconcileActionUnmanagedReported — a verdict meaning "this pair is not

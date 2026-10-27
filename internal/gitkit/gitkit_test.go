@@ -305,10 +305,10 @@ func TestSeedConfig(t *testing.T) {
 		t.Fatalf("git ls-files: %v; output: %s", err, output)
 	}
 	lsOutput := string(output)
-	if !strings.Contains(lsOutput, "_lyx/config/module1.yaml") {
+	if !strings.Contains(lsOutput, "_lym/config/module1.yaml") {
 		t.Errorf("module1.yaml not in git ls-files: %s", lsOutput)
 	}
-	if !strings.Contains(lsOutput, "_lyx/config/module2.yaml") {
+	if !strings.Contains(lsOutput, "_lym/config/module2.yaml") {
 		t.Errorf("module2.yaml not in git ls-files: %s", lsOutput)
 	}
 

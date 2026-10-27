@@ -18,8 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // migrationShape is the hub every scenario starts from: the "." anchor and one pair.
@@ -29,7 +29,7 @@ var migrationShape = hubforge.Shape{Anchor: ".", Pairs: []string{hubforge.Templa
 func dropCommittedMarker(t *testing.T, weft string) {
 	t.Helper()
 
-	gitkit.Git(t, weft, "rm", "--quiet", lyxcwd.AnchorFileName)
+	gitkit.Git(t, weft, "rm", "--quiet", lymcwd.AnchorFileName)
 	gitkit.Git(t, weft, "commit", "--quiet", "-m", "drop the marker")
 }
 
@@ -37,7 +37,7 @@ func dropCommittedMarker(t *testing.T, weft string) {
 func committedMarkerAt(t *testing.T, dir, rev string) string {
 	t.Helper()
 
-	return gitkit.Git(t, dir, "show", rev+":"+lyxcwd.AnchorFileName)
+	return gitkit.Git(t, dir, "show", rev+":"+lymcwd.AnchorFileName)
 }
 
 // seedBoardMarkers commits the legacy hub-wide marker and a leftover pre-rename marker beside it on the board, and pushes them.
@@ -47,8 +47,8 @@ func seedBoardMarkers(t *testing.T, h *hubforge.Hub) {
 
 	gitkit.Git(t, h.PrimeRecords(), "push", "--quiet", "origin", "HEAD")
 	board := h.BoardDir()
-	gitkit.CommitFile(t, board, lyxcwd.AnchorFileName, ".\n", "legacy hub-wide marker")
-	gitkit.CommitFile(t, board, lyxcwd.StaleAnchorFileName, ".\n", "leftover pre-rename marker")
+	gitkit.CommitFile(t, board, lymcwd.AnchorFileName, ".\n", "legacy hub-wide marker")
+	gitkit.CommitFile(t, board, lymcwd.StaleAnchorFileName, ".\n", "leftover pre-rename marker")
 	gitkit.Git(t, board, "push", "--quiet", "origin", "HEAD")
 }
 
@@ -115,12 +115,12 @@ func TestReconcile_MigratesMarkerlessWefts(t *testing.T) {
 		}
 
 		for slug, anchor := range map[string]string{prime: "sub", pair: "."} {
-			wired := filepath.Join(fabricengine.WorktreePath(h.Location, slug), anchor, lyxdirs.LyxDirName)
+			wired := filepath.Join(fabricengine.WorktreePath(h.Location, slug), anchor, lymdirs.LymDirName)
 			if _, err := os.Lstat(wired); err != nil {
 				t.Errorf("junction %s of %s is missing: %v", wired, slug, err)
 			}
 		}
-		if _, err := os.Lstat(filepath.Join(h.PrimeWorktree(), lyxdirs.LyxDirName)); err == nil {
+		if _, err := os.Lstat(filepath.Join(h.PrimeWorktree(), lymdirs.LymDirName)); err == nil {
 			t.Error("the prime was wired at the warp root; want its junctions at the anchor read back from the migrated marker")
 		}
 	})
@@ -139,10 +139,10 @@ func TestReconcile_MigratesMarkerlessWefts(t *testing.T) {
 		if got := committedMarkerAt(t, pairWeft, "HEAD"); got != "." {
 			t.Errorf("committed marker after unwire = %q; want %q", got, ".")
 		}
-		if data, err := os.ReadFile(filepath.Join(pairWeft, lyxcwd.AnchorFileName)); err != nil || strings.TrimSpace(string(data)) != "." {
+		if data, err := os.ReadFile(filepath.Join(pairWeft, lymcwd.AnchorFileName)); err != nil || strings.TrimSpace(string(data)) != "." {
 			t.Errorf("marker file after unwire = %q, %v; want %q in place", data, err, ".")
 		}
-		if dirt := gitkit.Git(t, pairWeft, "status", "--porcelain", "--", lyxcwd.AnchorFileName); dirt != "" {
+		if dirt := gitkit.Git(t, pairWeft, "status", "--porcelain", "--", lymcwd.AnchorFileName); dirt != "" {
 			t.Errorf("marker status after unwire = %q; want clean", dirt)
 		}
 	})
@@ -166,7 +166,7 @@ func TestReconcile_MigratesMarkerlessWefts(t *testing.T) {
 		if len(removed) != 2 {
 			t.Errorf("files in the removal commit = %v; want both markers", removed)
 		}
-		for _, name := range []string{lyxcwd.AnchorFileName, lyxcwd.StaleAnchorFileName} {
+		for _, name := range []string{lymcwd.AnchorFileName, lymcwd.StaleAnchorFileName} {
 			if _, err := os.Lstat(filepath.Join(board, name)); err == nil {
 				t.Errorf("board still holds %s", name)
 			}
@@ -212,7 +212,7 @@ func TestReconcile_MigratesMarkerlessWefts(t *testing.T) {
 				"CommittedMarkerBlank",
 				func(t *testing.T, h *hubforge.Hub) string {
 					weft := h.PairRecordsSibling(pair)
-					gitkit.CommitFile(t, weft, lyxcwd.AnchorFileName, "\n", "blank the marker")
+					gitkit.CommitFile(t, weft, lymcwd.AnchorFileName, "\n", "blank the marker")
 					return weft
 				},
 			},
@@ -231,7 +231,7 @@ func TestReconcile_MigratesMarkerlessWefts(t *testing.T) {
 				if !strings.HasPrefix(res.BoltAnchor, "kept: ") || !strings.Contains(res.BoltAnchor, want) {
 					t.Errorf("BoltAnchor = %q; want a kept verdict naming %q", res.BoltAnchor, want)
 				}
-				if _, err := os.Lstat(filepath.Join(h.BoardDir(), lyxcwd.AnchorFileName)); err != nil {
+				if _, err := os.Lstat(filepath.Join(h.BoardDir(), lymcwd.AnchorFileName)); err != nil {
 					t.Errorf("board marker went missing: %v", err)
 				}
 			})
@@ -313,12 +313,12 @@ func TestReconcile_MigratesMarkerlessWefts(t *testing.T) {
 			// rewrite plants the pushed branch's state on a clone of the weft bare.
 			rewrite func(clone string)
 		}{
-			{"Markerless", func(clone string) { mustGit(clone, "rm", "--quiet", lyxcwd.AnchorFileName) }},
+			{"Markerless", func(clone string) { mustGit(clone, "rm", "--quiet", lymcwd.AnchorFileName) }},
 			{"BlankMarker", func(clone string) {
-				if err := os.WriteFile(filepath.Join(clone, lyxcwd.AnchorFileName), []byte("\n"), 0o644); err != nil {
+				if err := os.WriteFile(filepath.Join(clone, lymcwd.AnchorFileName), []byte("\n"), 0o644); err != nil {
 					panic(err)
 				}
-				mustGit(clone, "add", "--", lyxcwd.AnchorFileName)
+				mustGit(clone, "add", "--", lymcwd.AnchorFileName)
 			}},
 		}
 		for _, tt := range tests {
@@ -347,14 +347,14 @@ func TestReconcile_MigratesMarkerlessWefts(t *testing.T) {
 				if got := gitkit.Git(t, weft, "log", "-1", "--format=%s"); got != "fabric add: record anchor ." {
 					t.Errorf("last commit subject = %q; want the recorded anchor", got)
 				}
-				adopted, err := lyxcwd.NamedWorktree(h.Path, slug)
+				adopted, err := lymcwd.NamedWorktree(h.Path, slug)
 				if err != nil {
 					t.Fatalf("NamedWorktree(%s): %v", slug, err)
 				}
 				if adopted.AnchorRel != "." {
 					t.Errorf("adopted pair AnchorRel = %q; want %q", adopted.AnchorRel, ".")
 				}
-				if _, err := os.Lstat(filepath.Join(fabricengine.WorktreePath(h.Location, slug), lyxdirs.LyxDirName)); err != nil {
+				if _, err := os.Lstat(filepath.Join(fabricengine.WorktreePath(h.Location, slug), lymdirs.LymDirName)); err != nil {
 					t.Errorf("adopted pair is not wired at its own anchor: %v", err)
 				}
 			})

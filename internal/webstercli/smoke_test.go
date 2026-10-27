@@ -3,7 +3,7 @@
 // smoke_test.go walks the live-only webster behaviors the hermetic tests can
 // never exercise, against the REAL substrate (a real logged-in `claude`): the
 // fork-context guard that deterministically closes the fork-loop deadlock
-// (round opus-r2's R2-a — a fork's `lyx webster` call is refused while
+// (round opus-r2's R2-a — a fork's `lym webster` call is refused while
 // Master's own passes), a real Agent-tool fork's transcript audit (round
 // fable-r1's F2 — exactly one transcript, and the parent's own spawn replay is
 // NOT miscounted as a nested-Agent violation), and the await-batch poll loop
@@ -99,8 +99,8 @@ func TestSmoke_ForkGuardHookDeniesForkPayload(t *testing.T) {
 	}
 	command := bashGuardCommand(t, realForkSettingsPath(t))
 
-	const forkWebster = `{"agent_id":"a055698cb6ea49469","agent_type":"fork","tool_name":"Bash","tool_input":{"command":"lyx webster await-batch 1"}}`
-	const parentWebster = `{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"lyx webster await-batch 1"}}`
+	const forkWebster = `{"agent_id":"a055698cb6ea49469","agent_type":"fork","tool_name":"Bash","tool_input":{"command":"lym webster await-batch 1"}}`
+	const parentWebster = `{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"lym webster await-batch 1"}}`
 	const forkNonWebster = `{"agent_id":"a055698cb6ea49469","agent_type":"fork","tool_name":"Bash","tool_input":{"command":"git commit -m done"}}`
 
 	tests := []struct {
@@ -187,9 +187,9 @@ func TestSmoke_ForkContextGuardDeniesLiveFork(t *testing.T) {
 	prompt := "Spawn exactly one Agent-tool subagent with subagent_type set to \"fork\" and NO name. " +
 		"Instruct the fork to run these two Bash commands: " +
 		"first `touch " + forkControl + "`, " +
-		"then `lyx webster await-batch 1 ; touch " + forkWebster + "`. " +
+		"then `lym webster await-batch 1 ; touch " + forkWebster + "`. " +
 		"After the fork returns, you (the parent) run one Bash command: " +
-		"`lyx webster await-batch 1 ; touch " + parentWebster + "`. Then stop."
+		"`lym webster await-batch 1 ; touch " + parentWebster + "`. Then stop."
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
@@ -200,10 +200,10 @@ func TestSmoke_ForkContextGuardDeniesLiveFork(t *testing.T) {
 		t.Fatal("fork control sentinel never appeared — the fork did not run its non-webster command, so the guard result is inconclusive")
 	}
 	if !pollExists(parentWebster, deadline) {
-		t.Error("parent webster sentinel never appeared — Master's OWN lyx webster call was blocked; the guard must let the parent through")
+		t.Error("parent webster sentinel never appeared — Master's OWN lym webster call was blocked; the guard must let the parent through")
 	}
 	if _, err := os.Stat(forkWebster); err == nil {
-		t.Error("fork webster sentinel present — a fork's lyx webster call was NOT denied; the fork-context guard failed")
+		t.Error("fork webster sentinel present — a fork's lym webster call was NOT denied; the fork-context guard failed")
 	}
 }
 

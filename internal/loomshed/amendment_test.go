@@ -78,7 +78,7 @@ func TestAmendmentRecord(t *testing.T) {
 		if err == nil {
 			t.Fatal("ReadAmendment(undecodable) = nil; want an error")
 		}
-		for _, want := range []string{path, "rewrite the file as a valid record", "remove it when no amendment is pending", "lyx fabric commit", "re-run the refused step"} {
+		for _, want := range []string{path, "rewrite the file as a valid record", "remove it when no amendment is pending", "lym fabric commit", "re-run the refused step"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("ReadAmendment(undecodable) error = %q; want it to contain %q", err.Error(), want)
 			}

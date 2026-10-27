@@ -1,4 +1,4 @@
-// cli.go assembles the cobra command tree for the gate module, the flags of `lyx gate test` and the refusal for a failed guard scan.
+// cli.go assembles the cobra command tree for the gate module, the flags of `lym gate test` and the refusal for a failed guard scan.
 
 package gatecli
 
@@ -18,11 +18,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// SlotBusyExit is the exit code `lyx gate test` returns when no slot frees within the keep-cache-warm cap.
+// SlotBusyExit is the exit code `lym gate test` returns when no slot frees within the keep-cache-warm cap.
 // It is EX_TEMPFAIL and no failure: the caller runs the same command again, and can tell a busy hub from a failing test run.
 const SlotBusyExit = 75
 
-// defaultGoBinary is the go command `lyx gate test` builds `lyx` with.
+// defaultGoBinary is the go command `lym gate test` builds `lym` with.
 const defaultGoBinary = "go"
 
 // defaultPreTierCeiling bounds the work before a call's first tier.
@@ -33,7 +33,7 @@ func Command() *cobra.Command {
 	return newCommand(defaultGoBinary, defaultSamplePeriod, shuttleengine.DefaultAwaitCap, defaultPreTierCeiling, time.Minute)
 }
 
-// newCommand builds the gate command tree over goBinary, the go command a prebuilding tier builds `lyx` with, samplePeriod, how often the CPU watchdog samples a tier's process tree, slotWait, the longest the test verb waits for a free slot without --wait, preTierCeiling, the bound on the work before the first tier, and timeoutUnit, the length of one `timeout_min` minute.
+// newCommand builds the gate command tree over goBinary, the go command a prebuilding tier builds `lym` with, samplePeriod, how often the CPU watchdog samples a tier's process tree, slotWait, the longest the test verb waits for a free slot without --wait, preTierCeiling, the bound on the work before the first tier, and timeoutUnit, the length of one `timeout_min` minute.
 func newCommand(goBinary string, samplePeriod, slotWait, preTierCeiling, timeoutUnit time.Duration) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "gate",
@@ -68,18 +68,18 @@ Each tier prints a summary line to stderr and writes its record and log under th
 The exit code is the first failing run's own, or 0.
 Without --gate the scope is the explicit <targets>, --all, --card <id>, --base <rev>, or the diff from the merge base with the pair's parent branch.
 Arguments after "--" fill each tier's {args}.
---guards, and a narrower scope under the go scoper, also run the //lyx:guard tests outside the scope.
+--guards, and a narrower scope under the go scoper, also run the //lym:guard tests outside the scope.
 -C names the run directory, with explicit targets only.
 
 Examples:
 
-  lyx gate test --wait ./internal/foo
-  lyx gate test --tier 0 --tier 1 --all
-  lyx gate test --wait --gate finalize
-  lyx gate test --wait --gate card --card 3
-  lyx gate test --upto 2
-  lyx gate test --base main
-  lyx gate test ./... -- -run TestSomething -count=1`, slotWait, SlotBusyExit),
+  lym gate test --wait ./internal/foo
+  lym gate test --tier 0 --tier 1 --all
+  lym gate test --wait --gate finalize
+  lym gate test --wait --gate card --card 3
+  lym gate test --upto 2
+  lym gate test --base main
+  lym gate test ./... -- -run TestSomething -count=1`, slotWait, SlotBusyExit),
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -105,7 +105,7 @@ Examples:
 	testCmd.Flags().StringArrayVar(&cards, "card", nil, "plan card id whose packages are the scope; repeatable")
 	testCmd.Flags().StringVar(&base, "base", "", "revision whose diff to the working tree is the scope")
 	testCmd.Flags().BoolVar(&all, "all", false, "run every tier over its all_targets")
-	testCmd.Flags().BoolVar(&guards, "guards", false, "after the listed tiers, run every //lyx:guard test of the module under the tier its file belongs to")
+	testCmd.Flags().BoolVar(&guards, "guards", false, "after the listed tiers, run every //lym:guard test of the module under the tier its file belongs to")
 	testCmd.Flags().BoolVar(&wait, "wait", false, "block until the tiers' slots free instead of answering slot_free false after the keep-cache-warm cap")
 	cmd.AddCommand(testCmd)
 	cmd.AddCommand(statusCmd())
@@ -121,7 +121,7 @@ func RunCLI(out io.Writer, args []string) int {
 }
 
 // RunCLIIn is RunCLI with cwd as the working directory the verb resolves against instead of the process's.
-// An empty cwd delegates to RunCLI, since lyxcwd.WithCwd panics on an empty directory.
+// An empty cwd delegates to RunCLI, since lymcwd.WithCwd panics on an empty directory.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
 		return RunCLI(out, args)
@@ -129,9 +129,9 @@ func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }
 
-// testRequest is one `lyx gate test` invocation after flag parsing.
+// testRequest is one `lym gate test` invocation after flag parsing.
 type testRequest struct {
-	// goBinary is the go command a prebuilding tier builds `lyx` with.
+	// goBinary is the go command a prebuilding tier builds `lym` with.
 	goBinary string
 	// samplePeriod is how often the CPU watchdog samples a tier's process tree.
 	samplePeriod time.Duration
@@ -172,7 +172,7 @@ type testRequest struct {
 
 	// root is the worktree root the tiers' dirs and a prebuild are relative to.
 	root string
-	// prebuiltStore is the hub's store of prebuilt `lyx` binaries; empty outside a hub.
+	// prebuiltStore is the hub's store of prebuilt `lym` binaries; empty outside a hub.
 	prebuiltStore string
 	// busyQuit is the CPU watchdog's busy window; 0 turns it off.
 	busyQuit time.Duration
@@ -209,9 +209,9 @@ func guardScanRefusal(moduleDir string, err error) string {
 	}
 	switch scanErr.Kind {
 	case impactset.GuardMisplaced:
-		return fmt.Sprintf("gate test: the guard step found a //lyx:guard marker at %s that is not directly above a top-level func Test line; way forward: move the marker directly above its func Test line, then re-run the same command", location)
+		return fmt.Sprintf("gate test: the guard step found a //lym:guard marker at %s that is not directly above a top-level func Test line; way forward: move the marker directly above its func Test line, then re-run the same command", location)
 	case impactset.GuardWrongTier:
-		return fmt.Sprintf("gate test: the guard step found a //lyx:guard marker at %s in a tier2 or tier3 file; way forward: move the marked test into a tier0 or tier1 file, then re-run the same command", location)
+		return fmt.Sprintf("gate test: the guard step found a //lym:guard marker at %s in a tier2 or tier3 file; way forward: move the marked test into a tier0 or tier1 file, then re-run the same command", location)
 	default:
 		return fmt.Sprintf("gate test: the guard step cannot parse %s: %v; way forward: make the file readable or fix it until it parses, then re-run the same command", location, err)
 	}

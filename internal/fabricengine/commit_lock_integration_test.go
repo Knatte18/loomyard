@@ -131,7 +131,7 @@ func TestCommitLock_ContendsAcrossSides(t *testing.T) {
 		swapPushRecorder(t)
 		writeWeftConfigContent(t, weftPath, "weft-only under external lock")
 
-		assertCommitBlocksOnHeldLock(t, f, []string{"_lyx/config.yaml"}, "weft-only under external lock")
+		assertCommitBlocksOnHeldLock(t, f, []string{"_lym/config.yaml"}, "weft-only under external lock")
 	})
 
 	t.Run("TwoSided", func(t *testing.T) {
@@ -140,7 +140,7 @@ func TestCommitLock_ContendsAcrossSides(t *testing.T) {
 		writeWarpFile(t, warpPath, "README", "two-sided under external lock")
 		writeWeftConfigContent(t, weftPath, "two-sided under external lock weft")
 
-		assertCommitBlocksOnHeldLock(t, f, []string{"README", "_lyx/config.yaml"}, "two-sided under external lock")
+		assertCommitBlocksOnHeldLock(t, f, []string{"README", "_lym/config.yaml"}, "two-sided under external lock")
 	})
 }
 
@@ -219,7 +219,7 @@ func TestCommitLock_ReleasedBeforePush(t *testing.T) {
 	writeWarpFile(t, warpPath, "README", "release before push")
 	writeWeftConfigContent(t, weftPath, "release before push weft")
 
-	if _, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "release before push commit", nil, SyncOptions{}); err != nil {
+	if _, err := f.Commit([]string{"README", "_lym/config.yaml"}, "release before push commit", nil, SyncOptions{}); err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
 
@@ -250,7 +250,7 @@ func TestCommitLock_PushFiresOnPartialFailure(t *testing.T) {
 	}
 	t.Cleanup(func() { os.Remove(indexLockPath) })
 
-	result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "partial failure commit", nil, SyncOptions{})
+	result, err := f.Commit([]string{"README", "_lym/config.yaml"}, "partial failure commit", nil, SyncOptions{})
 	if err == nil {
 		t.Fatal("Commit() error = nil; want an error (the weft commit should fail)")
 	}

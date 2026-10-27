@@ -34,10 +34,10 @@ const (
 	LayerDefault Layer = "default"
 	// LayerWorktree is the worktree's own tracked file under its anchor.
 	LayerWorktree Layer = "worktree"
-	// LayerMachine is the untracked machine override file under the board dir's .lyx, between the worktree and local layers.
+	// LayerMachine is the untracked machine override file under the board dir's .lym, between the worktree and local layers.
 	// It applies only to a hub-wide module with a machine key, and only when both Anchor and Board are told.
 	LayerMachine Layer = "machine"
-	// LayerLocal is the untracked local override file under the anchor's .lyx.
+	// LayerLocal is the untracked local override file under the anchor's .lym.
 	LayerLocal Layer = "local"
 )
 
@@ -88,13 +88,13 @@ type Spec struct {
 }
 
 // LocalFile returns the path of a module's local override file under anchor:
-// the ephemeral .lyx counterpart of the config directory, never the editor staging copy's path.
+// the ephemeral .lym counterpart of the config directory, never the editor staging copy's path.
 func LocalFile(anchor, module string) string {
 	return filepath.Join(ScratchDir(anchor), module+".local.yaml")
 }
 
 // MachineFile returns the path of a module's machine override file under board:
-// the never-tracked .lyx counterpart of the hub file, never the editor staging copy's path.
+// the never-tracked .lym counterpart of the hub file, never the editor staging copy's path.
 func MachineFile(board, module string) string {
 	return filepath.Join(ScratchDir(board), module+".machine.yaml")
 }
@@ -344,9 +344,9 @@ func ValidateMachine(spec Spec, doc []byte) error {
 		case !covered:
 			return MarkInvalid(fmt.Errorf("key %q is not classified for a machine override%s", path, machineRemoval))
 		case category == CategoryNone:
-			return MarkInvalid(fmt.Errorf("key %q is not a machine key; way forward: remove it from the machine override and set it in the hub file through \"lyx config %s\" from the prime, or in the local override through \"lyx config %s --layer local\"", path, spec.Name, spec.Name))
+			return MarkInvalid(fmt.Errorf("key %q is not a machine key; way forward: remove it from the machine override and set it in the hub file through \"lym config %s\" from the prime, or in the local override through \"lym config %s --layer local\"", path, spec.Name, spec.Name))
 		case category != CategoryMachine:
-			return MarkInvalid(fmt.Errorf("key %q is %s and cannot be set in a machine override; way forward: remove it from the machine override and set it in the hub file through \"lyx config %s\" from the prime", path, category, spec.Name))
+			return MarkInvalid(fmt.Errorf("key %q is %s and cannot be set in a machine override; way forward: remove it from the machine override and set it in the hub file through \"lym config %s\" from the prime", path, category, spec.Name))
 		}
 	}
 	return nil
@@ -428,7 +428,7 @@ func Layers(dirs Dirs, spec Spec) ([]LayerDoc, error) {
 }
 
 // readLayers is Layers' body.
-// With anchorLayers false the worktree and local layers are skipped, as for an anchor with no _lyx/ beside a told board dir;
+// With anchorLayers false the worktree and local layers are skipped, as for an anchor with no _lym/ beside a told board dir;
 // the machine layer is judged on dirs alone.
 func readLayers(dirs Dirs, spec Spec, anchorLayers bool) ([]LayerDoc, error) {
 	var docs []LayerDoc

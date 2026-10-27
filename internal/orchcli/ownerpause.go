@@ -10,25 +10,25 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 )
 
 var (
 	ownerPauseMu sync.Mutex
-	ownerPause   func(location *lyxcwd.Location, slug string) error
+	ownerPause   func(location *lymcwd.Location, slug string) error
 )
 
 // InstallOwnerPause stores the process's pause of a run owned by another machine, which a bring-up calls for each such entry of its reconcile.
 // The root pre-run installs it, since the pause lives in a package that imports this one.
-func InstallOwnerPause(pause func(location *lyxcwd.Location, slug string) error) {
+func InstallOwnerPause(pause func(location *lymcwd.Location, slug string) error) {
 	ownerPauseMu.Lock()
 	defer ownerPauseMu.Unlock()
 	ownerPause = pause
 }
 
 // installedOwnerPause returns the pause InstallOwnerPause stored, nil when none was.
-func installedOwnerPause() func(location *lyxcwd.Location, slug string) error {
+func installedOwnerPause() func(location *lymcwd.Location, slug string) error {
 	ownerPauseMu.Lock()
 	defer ownerPauseMu.Unlock()
 	return ownerPause
@@ -37,7 +37,7 @@ func installedOwnerPause() func(location *lyxcwd.Location, slug string) error {
 // readBeamFacts reads what the bring-up's refusals judge for the worktree at location, from the local Bolt and the move records.
 // The owner of a beam is the one hubgeom.ParentOf's chain gives its entry, read from the prime the beam belongs to, and the prime's owner is the board's prime owner.
 // A standing anchor change reads as the dobby start reads it, on the worktree or on the prime, and only a beam's entry is held by a run.
-func readBeamFacts(location *lyxcwd.Location, beam bool) (beamFacts, error) {
+func readBeamFacts(location *lymcwd.Location, beam bool) (beamFacts, error) {
 	prime, err := resolvePrime(location)
 	if err != nil {
 		return beamFacts{}, err
@@ -86,7 +86,7 @@ func readBeamFacts(location *lyxcwd.Location, beam bool) (beamFacts, error) {
 
 // claimPrimeFor records this machine as the owner of the hub's prime, writing only when the hub's board records no prime owner.
 // claimed is this machine's name after a claim that stands, lostTo the other machine's name when a competing claim won, and both are empty when the board already records a prime owner.
-func claimPrimeFor(location *lyxcwd.Location) (claimed, lostTo string, err error) {
+func claimPrimeFor(location *lymcwd.Location) (claimed, lostTo string, err error) {
 	boardDir := fabricengine.BoardDir(location.HubPath)
 	owners, err := boardengine.ReadOwners(boardDir)
 	if err != nil {

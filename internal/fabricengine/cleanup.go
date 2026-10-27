@@ -31,7 +31,7 @@
 // detached HEAD, which branch-space liveness cannot see. Liveness-in-branch-space is
 // the one point where fabric must diverge from warp's original logic. warp compared the weft branch's stripped slug against warp worktree
 // *directory* base names; that comparison is wrong for the primary pair, whose warp
-// worktree directory is the repo name (e.g. "lyx-fabric-test") while its branch is
+// worktree directory is the repo name (e.g. "lym-fabric-test") while its branch is
 // "main". Under warp the mistake is harmless because warp's primary weft branch is the
 // unsuffixed "main" (WeftWarpSlug rejects it → protected as unmanaged). Under fabric's
 // uniform suffix scheme the primary weft branch is "main-weft", which WeftWarpSlug
@@ -50,7 +50,7 @@
 //
 // The PRIMARY WEFT branch ("main-weft") does need an explicit carve-out, and gets one via
 // primaryWeftBranch. Branch-space liveness protects it only while the prime warp worktree happens to
-// sit on the repo's default branch, which `lyx fabric checkout` exists to change; one checkout onto
+// sit on the repo's default branch, which `lym fabric checkout` exists to change; one checkout onto
 // any other branch promoted the durable weft line to a deletable orphan, and
 // `cleanup --apply --force` then deleted it along with any unpushed weft commit it alone carried.
 
@@ -63,7 +63,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // CleanupBranchEntry describes the fate of one orphaned weft branch under Cleanup.
@@ -79,10 +79,8 @@ type CleanupBranchEntry struct {
 	// predating fabric's uniform naming scheme), or because the branch is
 	// currently checked out at a worktree (git branch -D could never delete it).
 	Protected bool `json:"protected,omitempty"`
-	// Error is non-empty when apply is true and branch deletion failed. A non-empty Error makes
-	// `lyx fabric cleanup --apply` exit non-zero, because it names a genuine failure of the local
-	// `git branch -D` rather than a designed refusal — Protected and unmanaged entries set no Error
-	// at all.
+	// Error is non-empty when apply is true and branch deletion failed.
+	// A non-empty Error makes `lym fabric cleanup --apply` exit non-zero, because it names a genuine failure of the local `git branch -D` rather than a designed refusal — Protected and unmanaged entries set no Error at all.
 	Error string `json:"error,omitempty"`
 	// RemoteDeleted reports whether this branch's copy on the remote was observably removed. It is
 	// true only when the remote deletion was attempted and actually removed a ref.
@@ -125,7 +123,7 @@ type CleanupResult struct {
 // makes Cleanup return a non-nil error — it is recorded on the entry and the sweep continues.
 // Under apply, each orphan branch's tip is archived (archiveWeftTip) before the branch is deleted, whatever remote says; an archive failure fills the entry's Error and keeps the branch, local and remote, without aborting the sweep.
 // An orphan carrying the local-only mark is reported with Local set, dry run included; under apply it is neither archived nor deleted on origin, and goes locally as a disposable records branch.
-func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force, remote bool) (res CleanupResult, err error) {
+func (t *Topology) Cleanup(l *lymcwd.Location, apply, force, remote bool) (res CleanupResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
 
@@ -273,12 +271,12 @@ func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force, remote bool) (res C
 // hub's durable record of which warp branch is primary.
 // Branch-space liveness cannot answer this on its own, and the difference is a data-loss bug rather
 // than a nicety: liveness asks whether some warp worktree is CURRENTLY checked out on the paired
-// warp branch, so a single `lyx fabric checkout <other>` on the prime pair makes `main` not-live and
-// promotes `main-weft` — the durable `_lyx` line, unpushed commits included — to a deletable orphan.
+// warp branch, so a single `lym fabric checkout <other>` on the prime pair makes `main` not-live and
+// promotes `main-weft` — the durable `_lym` line, unpushed commits included — to a deletable orphan.
 //
 // A hub whose board branch cannot be read is refused rather than swept: Cleanup's deletions are
 // irreversible, so an unreadable primary is the one direction that must fail closed.
-func primaryWeftBranch(l *lyxcwd.Location) (string, error) {
+func primaryWeftBranch(l *lymcwd.Location) (string, error) {
 	boardDir := BoardDir(l.HubPath)
 	boardBranch, err := readBranch(boardDir)
 	if err != nil {
@@ -302,7 +300,7 @@ type weftBranchCheckout struct {
 }
 
 // listWeftBranches returns every branch in the weft repo with its checked-out worktree path if any.
-func listWeftBranches(l *lyxcwd.Location) ([]weftBranchCheckout, error) {
+func listWeftBranches(l *lymcwd.Location) ([]weftBranchCheckout, error) {
 	weftRepoRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		return nil, fmt.Errorf("resolve weft repo root: %w", err)
@@ -340,7 +338,7 @@ func listWeftBranches(l *lyxcwd.Location) ([]weftBranchCheckout, error) {
 // by no gate in this verb, and may not answer the gate's own primary-weft carve-out or checked-out
 // check either way.
 // rec is the calling verb's own recorder, passed straight through to deleteBranch.
-func deleteWeftBranch(rec *Mutations, l *lyxcwd.Location, branch, branchPrefix string, entry *CleanupBranchEntry) bool {
+func deleteWeftBranch(rec *Mutations, l *lymcwd.Location, branch, branchPrefix string, entry *CleanupBranchEntry) bool {
 	weftRepoRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		entry.Error = fmt.Sprintf("resolve weft repo root: %v", err)
@@ -367,7 +365,7 @@ func deleteWeftBranch(rec *Mutations, l *lyxcwd.Location, branch, branchPrefix s
 // from local state, so a branch it refuses to delete locally must never lose its remote copy either.
 // A remote failure never aborts the sweep. It distinguishes a gate refusal from an operational
 // failure so entry.RemoteError always names the layer that actually said no.
-func deleteWeftBranchOnRemote(rec *Mutations, l *lyxcwd.Location, branch, branchPrefix, weftRepoRoot string, entry *CleanupBranchEntry) {
+func deleteWeftBranchOnRemote(rec *Mutations, l *lymcwd.Location, branch, branchPrefix, weftRepoRoot string, entry *CleanupBranchEntry) {
 	req := remoteBranchRequest{
 		what:      "delete weft branch on remote",
 		repoDir:   weftRepoRoot,

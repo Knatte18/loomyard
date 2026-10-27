@@ -27,7 +27,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planindex"
@@ -239,7 +239,7 @@ func TestNewDiscussionGate(t *testing.T) {
 		{name: "a record whose history holds no added entry passes and commits once", record: validDecisionRecord, history: [][]byte{[]byte(validDecisionRecord)}, wantPassed: true, wantCommits: 1, wantHistoryOn: true},
 		{name: "a record that keeps its added entry passes and commits once", record: validDecisionRecord + addedEntry, history: [][]byte{[]byte(validDecisionRecord + addedEntry)}, wantPassed: true, wantCommits: 1, wantHistoryOn: true},
 		{name: "a dropped added entry fails naming its heading and commits nothing", record: validDecisionRecord, history: [][]byte{[]byte(validDecisionRecord + addedEntry)}, wantFindings: addedHeading, wantHistoryOn: true},
-		// A `lyx fabric commit` of the overwrite leaves the dropping copy as the newest version, so the check must read the whole history.
+		// A `lym fabric commit` of the overwrite leaves the dropping copy as the newest version, so the check must read the whole history.
 		{name: "a dropped entry fails when the newest version is the dropping copy", record: validDecisionRecord, history: [][]byte{[]byte(validDecisionRecord), []byte(validDecisionRecord + addedEntry)}, wantFindings: addedHeading, wantHistoryOn: true},
 		{name: "a record missing a section never reads the history", record: strings.Replace(validDecisionRecord, "## Goal\n\nGoal text.\n\n", "", 1), history: [][]byte{[]byte(validDecisionRecord + addedEntry)}, wantFindings: "discussion-section-missing"},
 		{name: "a history error comes back as the gate's error", record: validDecisionRecord, historyErr: historyError, wantErr: historyError, wantHistoryOn: true},
@@ -656,9 +656,9 @@ func TestNewPlanGate(t *testing.T) {
 	)
 	smallOverview := "# PATTERN\n\n- `PATTERN-other` — o.\n"
 	const (
-		headroomWayForward     = "lyx loom decision add"
+		headroomWayForward     = "lym loom decision add"
 		removesWayForward      = "drop the fenced line"
-		unprescribedWayForward = "lyx loom insert-card"
+		unprescribedWayForward = "lym loom insert-card"
 	)
 
 	for _, tt := range []struct {
@@ -719,9 +719,9 @@ func TestNewPlanGate(t *testing.T) {
 		{name: "RawTestWithNoRefuseListPasses", recordSection: "absent", verify: "go test ./internal/x"},
 		{name: "RawTestInAnArgumentPasses", recordSection: "absent", verify: "echo go test", refuseRaw: []string{"go test"}},
 		{name: "RawTestOfADoneCardIsNotReported", recordSection: "absent", doneCard: true, verify: "go test ./internal/x", refuseRaw: []string{"go test"}},
-		{name: "GateCallWithNoWaitIsRefused", recordSection: "absent", verify: "lyx gate test ./internal/x", refuseRaw: []string{"go test"}, wantNoWait: 1},
-		{name: "GateCallWithWaitPasses", recordSection: "absent", verify: "lyx gate test --wait --tier 0 --card 3", refuseRaw: []string{"go test"}},
-		{name: "GateCallWithNoWaitOfADoneCardIsNotReported", recordSection: "absent", doneCard: true, verify: "lyx gate test ./internal/x"},
+		{name: "GateCallWithNoWaitIsRefused", recordSection: "absent", verify: "lym gate test ./internal/x", refuseRaw: []string{"go test"}, wantNoWait: 1},
+		{name: "GateCallWithWaitPasses", recordSection: "absent", verify: "lym gate test --wait --tier 0 --card 3", refuseRaw: []string{"go test"}},
+		{name: "GateCallWithNoWaitOfADoneCardIsNotReported", recordSection: "absent", doneCard: true, verify: "lym gate test ./internal/x"},
 		{name: "OverviewVerifySectionIsInformational", recordSection: "absent", overview: "go build ./...", refuseRaw: []string{"go test"}, wantRetired: 1},
 		{name: "SymbolPairWithNoRenameToolIsFlagged", renamePair: symbolPair, recordSection: "absent", wantRename: 1},
 		{name: "SymbolPairWithARenameToolPasses", renamePair: symbolPair, recordSection: "absent", tools: []string{"gopls rename"}},
@@ -834,8 +834,8 @@ func TestNewPlanGate(t *testing.T) {
 		}
 
 		findings, err := ValidatePlan(plan, anchorPath, t.TempDir(), planglyph.NewIndex(fabricengine.NewReferenceRule()), pc)
-		if err == nil || !strings.Contains(err.Error(), "lyx loom validate-discussion") || findings != nil {
-			t.Errorf("ValidatePlan() = %v, %v; want a returned error naming lyx loom validate-discussion and no findings", findings, err)
+		if err == nil || !strings.Contains(err.Error(), "lym loom validate-discussion") || findings != nil {
+			t.Errorf("ValidatePlan() = %v, %v; want a returned error naming lym loom validate-discussion and no findings", findings, err)
 		}
 	})
 
@@ -859,7 +859,7 @@ func TestNewPlanGate(t *testing.T) {
 // per-card-read-fault fixtures below build on top of.
 func writeOverviewOnlyPlanDir(t *testing.T, anchorPath, overview string) (planDir string) {
 	t.Helper()
-	planDir = filepath.Join(anchorPath, lyxdirs.LyxDirName, "plan")
+	planDir = filepath.Join(anchorPath, lymdirs.LymDirName, "plan")
 	if err := os.MkdirAll(planDir, 0o755); err != nil {
 		t.Fatalf("mkdir plan dir: %v", err)
 	}
@@ -928,7 +928,7 @@ func TestNewPlanGate_ParsePlanSplit(t *testing.T) {
 	t.Run("AbsentOverviewIsFindings", func(t *testing.T) {
 		anchorPath := t.TempDir()
 		worktreeRoot := t.TempDir()
-		// No _lyx/plan/00-overview.md at all: ParsePlan's os.IsNotExist branch returns a plain
+		// No _lym/plan/00-overview.md at all: ParsePlan's os.IsNotExist branch returns a plain
 		// fmt.Errorf, never wrapping the underlying *fs.PathError with %w -- so it is findings, the same
 		// disposition discussionparser.Validate already gives a missing file.
 
@@ -948,7 +948,7 @@ func TestNewPlanGate_ParsePlanSplit(t *testing.T) {
 	t.Run("OverviewReadFaultIsAReturnedError", func(t *testing.T) {
 		anchorPath := t.TempDir()
 		worktreeRoot := t.TempDir()
-		planDir := filepath.Join(anchorPath, lyxdirs.LyxDirName, "plan")
+		planDir := filepath.Join(anchorPath, lymdirs.LymDirName, "plan")
 		if err := os.MkdirAll(planDir, 0o755); err != nil {
 			t.Fatalf("mkdir plan dir: %v", err)
 		}

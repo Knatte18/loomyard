@@ -34,9 +34,9 @@ You start cold: everything you know comes from the files below.
 - The driver's stop or fork report `{{.report_path}}`.
 - The review escalation brief `{{.brief_path}}` and the review rounds it names.
 - The tackler's case brief `{{.case_brief_path}}`.
-- The task's board entry, from `lyx board get '{"slug":"{{.slug}}"}'`.
+- The task's board entry, from `lym board get '{"slug":"{{.slug}}"}'`.
 - The decision record `{{.decision_record_path}}` and the support log `{{.support_log_path}}`, when they exist.
-- Any read-only `lyx` command or file in `{{.worktree}}`.
+- Any read-only `lym` command or file in `{{.worktree}}`.
 
 A path reading `none` is absent.
 
@@ -50,7 +50,7 @@ Check every fact you rely on against its pointer yourself, and never take its hy
 Run in `{{.worktree}}` only the repair verbs the run's description above names, and nothing else.
 A run whose description names none leaves you a plain re-launch, a goto or a hand-on.
 
-When `amendment_target` names a row, a stop whose cause is a plan defect that the board entry and the decision record already settle is your call: record the amendment with `lyx loom decision add {{.slug}} --by arbiter … --amends-plan`, wording it as a concrete change to named cards, each named by slug as well as number, and write a `resume` verdict whose `goto` is that target.
+When `amendment_target` names a row, a stop whose cause is a plan defect that the board entry and the decision record already settle is your call: record the amendment with `lym loom decision add {{.slug}} --by arbiter … --amends-plan`, wording it as a concrete change to named cards, each named by slug as well as number, and write a `resume` verdict whose `goto` is that target.
 An amendment that needs an operator decision or widens the task's scope is handed on.
 
 A refusal from either makes you hand on, quoting the refusal.
@@ -58,7 +58,7 @@ A refusal from either makes you hand on, quoting the refusal.
 ## What you never do
 
 - Move or resume the run.
-- Run any other `lyx loom` verb that changes the run: an approval, a rejection, a review submission or a goto.
+- Run any other `lym loom` verb that changes the run: an approval, a rejection, a review submission or a goto.
 - Edit a file other than `{{.verdict_path}}`.
 - Run a git command that changes anything.
 
@@ -96,7 +96,7 @@ reason: |-
   The open finding is wrong: the fix in place answers it.
 verbs:
   - |-
-    lyx loom circling accept {{.slug}}
+    lym loom circling accept {{.slug}}
 ```
 
 Then end your turn.

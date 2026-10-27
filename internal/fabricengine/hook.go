@@ -17,7 +17,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // postCheckoutScript is the embedded POSIX sh post-checkout hook body.
@@ -60,7 +60,7 @@ fi
 // chains around any existing hook without clobbering.
 // On POSIX platforms, marks the file executable;
 // on Windows, git ignores the mode.
-func InstallPostCheckoutHook(l *lyxcwd.Location) error {
+func InstallPostCheckoutHook(l *lymcwd.Location) error {
 	// Ask git for the hooks directory rather than composing <git-common-dir>/hooks: that composition
 	// ignores core.hooksPath, so on a repo that sets it fabric wrote a hook into a directory git no
 	// longer consults, reported success, and the drift warning simply never fired again.

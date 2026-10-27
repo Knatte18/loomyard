@@ -1,7 +1,7 @@
 //go:build tier0
 
-// logger_test.go verifies how records route to stderr and the durable sink by level and verbosity, the LYX_LOG_LEVEL and LYX_LOG_FILE environment seams, and the SetOutput test seam.
-// Only TestDefaultOutput_DiscardsUnderGoTest calls t.Parallel; every other test mutates process-global logger state (verbosity, the output writer, the durable sink, LYX_* environment variables) that the tests share.
+// logger_test.go verifies how records route to stderr and the durable sink by level and verbosity, the LYM_LOG_LEVEL and LYM_LOG_FILE environment seams, and the SetOutput test seam.
+// Only TestDefaultOutput_DiscardsUnderGoTest calls t.Parallel; every other test mutates process-global logger state (verbosity, the output writer, the durable sink, LYM_* environment variables) that the tests share.
 
 package logger
 
@@ -126,17 +126,17 @@ func TestConfigureFromEnv_LogLevel(t *testing.T) {
 			SetVerbosity(0)
 			t.Cleanup(func() { SetVerbosity(0) })
 			if tt.level == "" {
-				t.Setenv("LYX_LOG_LEVEL", "")
-				os.Unsetenv("LYX_LOG_LEVEL")
+				t.Setenv("LYM_LOG_LEVEL", "")
+				os.Unsetenv("LYM_LOG_LEVEL")
 			} else {
-				t.Setenv("LYX_LOG_LEVEL", tt.level)
+				t.Setenv("LYM_LOG_LEVEL", tt.level)
 			}
 
 			configureFromEnv()
-			Info("info via LYX_LOG_LEVEL")
+			Info("info via LYM_LOG_LEVEL")
 
-			if got := strings.Contains(buf.String(), "info via LYX_LOG_LEVEL"); got != tt.wantInfo {
-				t.Errorf("Info emitted = %v with LYX_LOG_LEVEL=%q (output %q); want %v", got, tt.level, buf.String(), tt.wantInfo)
+			if got := strings.Contains(buf.String(), "info via LYM_LOG_LEVEL"); got != tt.wantInfo {
+				t.Errorf("Info emitted = %v with LYM_LOG_LEVEL=%q (output %q); want %v", got, tt.level, buf.String(), tt.wantInfo)
 			}
 		})
 	}
@@ -150,16 +150,16 @@ func TestConfigureFromEnv_LogFileRedirectsOutput(t *testing.T) {
 	})
 
 	path := t.TempDir() + "/reed-trace.log"
-	t.Setenv("LYX_LOG_FILE", path)
+	t.Setenv("LYM_LOG_FILE", path)
 
 	configureFromEnv()
-	Warn("warn routed to LYX_LOG_FILE")
+	Warn("warn routed to LYM_LOG_FILE")
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("read LYX_LOG_FILE: %v", err)
+		t.Fatalf("read LYM_LOG_FILE: %v", err)
 	}
-	if !strings.Contains(string(data), "warn routed to LYX_LOG_FILE") {
+	if !strings.Contains(string(data), "warn routed to LYM_LOG_FILE") {
 		t.Errorf("file content = %q; want it to contain the Warn message", string(data))
 	}
 }
@@ -170,13 +170,13 @@ func TestConfigureFromEnv_UnopenableLogFileFallsBackToStderr(t *testing.T) {
 	t.Cleanup(func() { SetVerbosity(0) })
 
 	// A path under a directory that does not exist can never be opened.
-	t.Setenv("LYX_LOG_FILE", t.TempDir()+"/no-such-dir/reed-trace.log")
+	t.Setenv("LYM_LOG_FILE", t.TempDir()+"/no-such-dir/reed-trace.log")
 
 	configureFromEnv()
 	Warn("still goes to the captured sink")
 
 	if !strings.Contains(buf.String(), "still goes to the captured sink") {
-		t.Errorf("output = %q; want the pre-existing sink to keep receiving log lines when LYX_LOG_FILE cannot be opened", buf.String())
+		t.Errorf("output = %q; want the pre-existing sink to keep receiving log lines when LYM_LOG_FILE cannot be opened", buf.String())
 	}
 }
 

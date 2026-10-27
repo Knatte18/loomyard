@@ -87,7 +87,7 @@ func TestRecordScope(t *testing.T) {
 		{name: "off", row: "Drift-Baseline", scope: ScopeOff},
 		{name: "full", row: "Drift-Baseline", scope: ScopeFull},
 		{name: "partial with skips", row: "Drift-Baseline", scope: ScopePartial, skip: []string{"a", "b"}, wantSkip: []string{"a", "b"}},
-		{name: "wrong row", row: "Drift-Await", scope: ScopeFull, wantErr: []string{"Drift-Baseline", "lyx loom status"}},
+		{name: "wrong row", row: "Drift-Await", scope: ScopeFull, wantErr: []string{"Drift-Baseline", "lym loom status"}},
 		{name: "already recorded", row: "Drift-Baseline", before: recorded, scope: ScopeOff, wantErr: []string{"already recorded as full", "write baseline.md alone and end your turn"}},
 		{name: "skip with full", row: "Drift-Baseline", scope: ScopeFull, skip: []string{"a"}, wantErr: []string{"--skip", "partial"}},
 		{name: "partial without skip", row: "Drift-Baseline", scope: ScopePartial, wantErr: []string{"partial", "--skip <test>"}},
@@ -140,9 +140,9 @@ func TestAcceptWithdraw(t *testing.T) {
 			{name: "agent refused a withdrawn test", st: statusAt("Drift-Verify", shedengine.StateRunning, "", true), before: withdrawn(ScopePartial), wantErr: []string{"the run's parent withdrew t1", "only the parent re-accepts it at a decision halt"}},
 			{name: "caller outside a decision halt refused a withdrawn test", st: statusAt("Drift-Verify", shedengine.StateBlocked, "stuck", false), before: withdrawn(ScopePartial), wantErr: []string{"parent's ruling", "decision halt"}},
 			{name: "caller outside a decision halt refused under full", st: statusAt("Drift-Verify", shedengine.StateBlocked, "stuck", false), before: scoped(ScopeFull), wantErr: []string{"parent's ruling", "decision halt"}},
-			{name: "running with the mark closed", st: statusAt("Drift-Verify", shedengine.StateRunning, "", false), before: scoped(ScopePartial), wantErr: []string{"wait for the row's halt", "lyx loom status", "parent's ruling"}},
-			{name: "failed status", st: statusAt("Drift-Verify", shedengine.StateFailed, "boom", false), before: scoped(ScopePartial), wantErr: []string{"lyx loom resume"}},
-			{name: "wrong row", st: statusAt("Drift-Await", shedengine.StateBlocked, "", false), before: scoped(ScopePartial), wantErr: []string{"Drift-Verify", "lyx loom status"}},
+			{name: "running with the mark closed", st: statusAt("Drift-Verify", shedengine.StateRunning, "", false), before: scoped(ScopePartial), wantErr: []string{"wait for the row's halt", "lym loom status", "parent's ruling"}},
+			{name: "failed status", st: statusAt("Drift-Verify", shedengine.StateFailed, "boom", false), before: scoped(ScopePartial), wantErr: []string{"lym loom resume"}},
+			{name: "wrong row", st: statusAt("Drift-Await", shedengine.StateBlocked, "", false), before: scoped(ScopePartial), wantErr: []string{"Drift-Verify", "lym loom status"}},
 			{name: "no scope record", st: statusAt("Drift-Verify", shedengine.StateRunning, "", true), wantErr: []string{"no scope is recorded"}},
 		}
 		for _, tt := range tests {
@@ -201,8 +201,8 @@ func TestAcceptWithdraw(t *testing.T) {
 			st      VerbStatus
 			wantErr []string
 		}{
-			{"a test not accepted", running, []string{"t9 is not accepted", "lyx drift status"}},
-			{"wrong row", statusAt("Webster", shedengine.StateRunning, "", false), []string{"Drift-Verify", "lyx loom status"}},
+			{"a test not accepted", running, []string{"t9 is not accepted", "lym drift status"}},
+			{"wrong row", statusAt("Webster", shedengine.StateRunning, "", false), []string{"Drift-Verify", "lym loom status"}},
 		}
 		for _, tt := range refusals {
 			t.Run(tt.name, func(t *testing.T) {
@@ -259,10 +259,10 @@ func TestDeferWaive(t *testing.T) {
 		}{
 			{name: "blocked at Drift-Await", st: statusAt("Drift-Await", shedengine.StateBlocked, "", false)},
 			{name: "blocked at a Drift-Baseline capture halt", st: statusAt("Drift-Baseline", shedengine.StateBlocked, CaptureHaltPrefix+"exit 1", false)},
-			{name: "blocked at another Drift-Baseline halt", st: statusAt("Drift-Baseline", shedengine.StateBlocked, "something else", false), wantErr: []string{"lyx loom status", "capture halt"}},
-			{name: "running at Drift-Await", st: statusAt("Drift-Await", shedengine.StateRunning, "", false), wantErr: []string{"lyx loom status"}},
+			{name: "blocked at another Drift-Baseline halt", st: statusAt("Drift-Baseline", shedengine.StateBlocked, "something else", false), wantErr: []string{"lym loom status", "capture halt"}},
+			{name: "running at Drift-Await", st: statusAt("Drift-Await", shedengine.StateRunning, "", false), wantErr: []string{"lym loom status"}},
 			{name: "wrong row", st: statusAt("Drift-Verify", shedengine.StateBlocked, "", false), wantErr: []string{"Drift-Await", "Drift-Baseline"}},
-			{name: "capture lock held", st: VerbStatus{Status: shedengine.Status{CurrentProducer: "Drift-Await", State: shedengine.StateBlocked}, CaptureHeld: true}, wantErr: []string{"lyx loom resume", "running capture"}},
+			{name: "capture lock held", st: VerbStatus{Status: shedengine.Status{CurrentProducer: "Drift-Await", State: shedengine.StateBlocked}, CaptureHeld: true}, wantErr: []string{"lym loom resume", "running capture"}},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -296,8 +296,8 @@ func TestDeferWaive(t *testing.T) {
 			{name: "no capture", st: blocked},
 			{name: "a failed capture", st: blocked, capture: &CaptureRecord{State: CaptureFailed}},
 			{name: "a passed capture not awaited", st: blocked, capture: &CaptureRecord{State: CapturePassed}},
-			{name: "a counted capture", st: blocked, capture: &CaptureRecord{State: CapturePassed}, wantErr: []string{"counted capture", "lyx loom resume"}},
-			{name: "running", st: statusAt("Drift-Verify", shedengine.StateRunning, "", true), wantErr: []string{"blocked Drift-Verify", "lyx loom status"}},
+			{name: "a counted capture", st: blocked, capture: &CaptureRecord{State: CapturePassed}, wantErr: []string{"counted capture", "lym loom resume"}},
+			{name: "running", st: statusAt("Drift-Verify", shedengine.StateRunning, "", true), wantErr: []string{"blocked Drift-Verify", "lym loom status"}},
 			{name: "wrong row", st: statusAt("Drift-Await", shedengine.StateBlocked, "", false), wantErr: []string{"blocked Drift-Verify"}},
 		}
 		for _, tt := range tests {

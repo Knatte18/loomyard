@@ -322,7 +322,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"## Done (1)\n" +
 				"\n" +
-				"Finished, awaiting `lyx board prune --apply`.\n" +
+				"Finished, awaiting `lym board prune --apply`.\n" +
 				"\n" +
 				"| # | Entry | Slug | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- |\n" +
@@ -511,7 +511,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"## Done (2)\n" +
 				"\n" +
-				"Finished, awaiting `lyx board prune --apply`.\n" +
+				"Finished, awaiting `lym board prune --apply`.\n" +
 				"\n" +
 				"| # | Entry | Slug | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- |\n" +

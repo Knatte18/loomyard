@@ -8,13 +8,13 @@
 // A terminal resize ends the wait at once where the platform signals one, through the channel NotifyResize returns, so the next poll redraws for the new size; a resize is an event and never a timer, so the idle wake rate is unchanged.
 // TerminalSize reads the terminal's own size, so a size change is seen even when the frame text is the same.
 //
-// Each poll calls Pane.Check before reading the frame; by default it is a selfexec.Watcher's Check, so a pane re-execs onto a replaced lyx binary on its own wait and adds no wake.
+// Each poll calls Pane.Check before reading the frame; by default it is a selfexec.Watcher's Check, so a pane re-execs onto a replaced lym binary on its own wait and adds no wake.
 // The re-exec keeps the pane, its strand binding and its TMUX_PANE, since only the process image is replaced.
 //
 // StatusCache.Poll reads a shed run's status file without the run's status lock, which internal/state's atomic write makes safe, and decodes it only when its modification time changed.
 // A first failure to read keeps the last good status and a second reports it unreadable.
 //
-// BuildIdentity names a lyx build by its executable's symlink-resolved path, size and modification time, and a Sidecar records which strand a bootstrap launched from which build.
+// BuildIdentity names a lym build by its executable's symlink-resolved path, size and modification time, and a Sidecar records which strand a bootstrap launched from which build.
 // StrandCurrent is the one keep test: a live strand is current only when the sidecar names its guid and records the running build, so a bootstrap replaces a status strand launched by an older build.
 //
 // The panes' time formats come from internal/durfmt: minutes for every time still growing, so a pane's text changes at most once a minute and its poll backs off between changes, and seconds for a closed span, which never changes again and so costs no redraw.

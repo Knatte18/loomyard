@@ -87,7 +87,7 @@
 //     The rule reads only files in the run directory, so a harvest and a replay settle alike.
 //     The Bouncer renders the bouncer-template-escalation brief and the bouncer-template-parent-notice line,
 //     writes them with the Go-owned cause frontmatter as round-<N>-escalation.md and round-<N>-parent-notice.md,
-//     and returns Awaiting with the ledger path, a Reason naming the segment, round, cause, brief and the `lyx loom circling` verbs with the `lyx loom resume` resume,
+//     and returns Awaiting with the ledger path, a Reason naming the segment, round, cause, brief and the `lym loom circling` verbs with the `lym loom resume` resume,
 //     and the notice as OutputPointer.ParentNotice, which Shed carries as parent_notice.
 //     A failed render warns and degrades to the plain Reason with no notice, the record frontmatter still written.
 //     A re-call over an existing record rewrites nothing and returns the same Awaiting.
@@ -109,7 +109,7 @@
 //     A recorded continue passes nothing, so only the dropped-key check applies; a refusal re-judges the round, a continue at the hard cap is moved aside and the round escalates again, and below it the next round starts.
 //     A recorded accept faces the judgment refusal with the round's decision-class findings and ledger entries left out of its BLOCKING checks:
 //     an admitted accept passes the round, a refused one is re-judged while budget is left, is moved aside and escalated again at the budget below the hard cap,
-//     and at the budget at or past it archives the judge outputs and halts the run with a Reason opening with DecisionHaltPrefix, so `lyx loom resume` re-judges the round under the recorded accept.
+//     and at the budget at or past it archives the judge outputs and halts the run with a Reason opening with DecisionHaltPrefix, so `lym loom resume` re-judges the round under the recorded accept.
 //     Drift-Verify opens the Reason of its decision halts with the same prefix, and arbiterstop hands every halt that opens with it to the parent, ahead of the tackler and the arbiter.
 //     An accept's carry-over holds every decision-class finding of the review at any severity, with the titles recorded since the snapshot, and every other BLOCKING finding of the review the ledger does not carry, so a finding the judge closed still reaches `## Open risks`.
 //     Auto-accept: a Bouncer told BouncerConfig.AutoAccept settles a spent budget as an accept instead of running the soft-cap rule.
@@ -169,15 +169,12 @@
 //
 // # Told, never derived
 //
-// Every constructor receives already-resolved absolute paths and already-constructed engines (or a
-// factory over them); no adapter calls lyxcwd, os.Getwd, or git, and no adapter writes the literals
-// _lyx or .lyx.
-// Each New... constructor also takes a name string, used only as a log field and in error text --
-// never compared, parsed, or used for control flow -- because Call(ctx) carries no identity of its
-// own, and two instances of the same adapter type in one producer list is the expected shape.
-// MultiLLMProducer additionally takes an injected clock, a nil now defaulting to the real
-// time.Now; the injected clock resolves only the archive filename's same-second collision suffix,
-// never Shed's own history[].at field.
+// Every constructor receives already-resolved absolute paths and already-constructed engines (or a factory over them);
+// no adapter calls lymcwd, os.Getwd, or git, and no adapter writes the literals _lym or .lym.
+// Each New...
+// constructor also takes a name string, used only as a log field and in error text -- never compared, parsed, or used for control flow -- because Call(ctx) carries no identity of its own, and two instances of the same adapter type in one producer list is the expected shape.
+// MultiLLMProducer additionally takes an injected clock, a nil now defaulting to the real time.Now;
+// the injected clock resolves only the archive filename's same-second collision suffix, never Shed's own history[].at field.
 // BurlerReviewProducer and BurlerFixProducer are told an absolute run directory and an already-constructed half runner, and take the same injected clock, resolving only the archive filename's same-second collision suffix the same way.
 // MultiLLMProducer is told a seatengine.Table and an already-constructed SeatRunner.
 // NewMultiLLMProducerSourced is told a TableSource instead of a table: the source builds the table once per Call, so stencils and directives are read at call time.
@@ -310,7 +307,7 @@
 // A half that is done or gone is nothing live, so nothing is removed and it falls through to attempt 1.
 // A fall-through spawn archives the half's outputs first, so a half is never spawned a second time beside a live one.
 // A probe error and a resume error wrapping burlerengine.ErrHalfNotStopped are returned without archiving and without spawning, since a half that may still be live may be writing the round's files.
-// A failed stop wraps burlerengine.ErrHalfNotStopped and ends with the way forward, run "lyx reed remove <guid>" and re-step the row.
+// A failed stop wraps burlerengine.ErrHalfNotStopped and ends with the way forward, run "lym reed remove <guid>" and re-step the row.
 //
 // The Bouncer's third probe covers the two modes that spawn nothing at all, and it exists because
 // its own judgment record is narrower than the judge spawn that produces it: a recorded judgment is
@@ -379,10 +376,10 @@
 // Call follows this order:
 //
 //  1. A nil ExecutableSetting is an error naming its way forward, before anything is read or run.
-//  2. The command is read through ExecutableSetting, which the owner builds over the template and the board default layer only; an unreadable or non-string command is an error naming the key and the `lyx config <module> --layer default --set <key>=<value>` correction.
+//  2. The command is read through ExecutableSetting, which the owner builds over the template and the board default layer only; an unreadable or non-string command is an error naming the key and the `lym config <module> --layer default --set <key>=<value>` correction.
 //     When Setting answers a different non-empty command for the key, the row warns that value is ignored.
 //  3. An empty command is Done with no process.
-//  4. The placeholders {lyx}, {slug} and {task_dir} are replaced, each value quoted by verifyrun.QuoteArg for the shell the command runs under;
+//  4. The placeholders {lym}, {slug} and {task_dir} are replaced, each value quoted by verifyrun.QuoteArg for the shell the command runs under;
 //     any other brace text, ${HOME} included, passes through literally, and TaskDir is called only when {task_dir} appears.
 //     A value cmd cannot quote, one holding a percent sign, makes the row Done with no process and a warning naming the placeholder and its way forward.
 //  5. The command runs once through Run, in Dir with the row's log path and timeout.

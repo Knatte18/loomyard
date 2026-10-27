@@ -215,9 +215,9 @@ func TestBouncer_DecisionEscalation(t *testing.T) {
 					if want := ledgerPath(cfg.RunDir, 2); ptr.Path != want {
 						t.Errorf("Call() pointer = %q; want %q", ptr.Path, want)
 					}
-					requireReasonContains(t, ptr.Reason, "round 2", "cause: decision", "lyx loom decision add my-task", "lyx loom circling accept my-task", "lyx loom circling continue my-task", "lyx loom resume")
+					requireReasonContains(t, ptr.Reason, "round 2", "cause: decision", "lym loom decision add my-task", "lym loom circling accept my-task", "lym loom circling continue my-task", "lym loom resume")
 					brief := requireDecisionEscalation(t, cfg)
-					for _, want := range []string{"D1", "lyx loom decision add my-task", "lyx loom circling continue my-task", "lyx loom resume"} {
+					for _, want := range []string{"D1", "lym loom decision add my-task", "lym loom circling continue my-task", "lym loom resume"} {
 						if !strings.Contains(brief, want) {
 							t.Errorf("escalation brief = %q; want it to contain %q", brief, want)
 						}
@@ -435,7 +435,7 @@ func TestBouncer_DecisionEscalation(t *testing.T) {
 			{
 				name:      "a BLOCKING design finding",
 				review:    decisionReviewContent(lowDecision, blockingDesign),
-				wantBrief: []string{`review finding "F1" is BLOCKING`, "escalates the round again while the refusal holds", "lyx loom circling continue my-task"},
+				wantBrief: []string{`review finding "F1" is BLOCKING`, "escalates the round again while the refusal holds", "lym loom circling continue my-task"},
 			},
 			{
 				name:       "a dropped ledger key",
@@ -463,7 +463,7 @@ func TestBouncer_DecisionEscalation(t *testing.T) {
 				writeAddedDecisions(t, cfg, "Earlier answer", "Later answer")
 				recordDecision(t, cfg, CirclingAccept)
 				ptr := shedfake.RequireOutcome(t, b, shedengine.Awaiting)
-				requireReasonContains(t, ptr.Reason, "cause: decision", "lyx loom decision add my-task")
+				requireReasonContains(t, ptr.Reason, "cause: decision", "lym loom decision add my-task")
 				brief := requireDecisionEscalation(t, cfg)
 				for _, want := range tt.wantBrief {
 					if !strings.Contains(brief, want) {
@@ -510,7 +510,7 @@ func TestBouncer_DecisionEscalation(t *testing.T) {
 		if !ptr.Halt || !strings.HasPrefix(ptr.Reason, DecisionHaltPrefix) {
 			t.Fatalf("pointer = %+v; want a Halt whose Reason opens with %q", ptr, DecisionHaltPrefix)
 		}
-		requireReasonContains(t, ptr.Reason, "gate", "round 2", `review finding "F1" is BLOCKING`, "lyx loom resume")
+		requireReasonContains(t, ptr.Reason, "gate", "round 2", `review finding "F1" is BLOCKING`, "lym loom resume")
 		if got := requireDecisionEscalation(t, cfg); got != brief {
 			t.Errorf("escalation brief changed across the halt:\n%q\nwant\n%q", got, brief)
 		}
@@ -547,12 +547,12 @@ func TestBouncer_DecisionEscalation(t *testing.T) {
 			t.Parallel()
 			b, cfg, _ := decisionBouncerFor(t, "CONVERGED", decisionReviewContent(lowDecision), bouncerLedgerContent(2), func(c *BouncerConfig) { c.HardCap = 2 })
 			ptr := shedfake.RequireOutcome(t, b, shedengine.Awaiting)
-			requireReasonContains(t, ptr.Reason, "lyx loom decision add my-task", "lyx loom circling accept my-task")
+			requireReasonContains(t, ptr.Reason, "lym loom decision add my-task", "lym loom circling accept my-task")
 			brief := requireDecisionEscalation(t, cfg)
-			if strings.Contains(ptr.Reason, "lyx loom circling continue") || strings.Contains(brief, "lyx loom circling continue") {
+			if strings.Contains(ptr.Reason, "lym loom circling continue") || strings.Contains(brief, "lym loom circling continue") {
 				t.Errorf("Reason = %q, brief = %q; want the accept verb alone", ptr.Reason, brief)
 			}
-			if !strings.Contains(brief, "lyx loom circling accept my-task") {
+			if !strings.Contains(brief, "lym loom circling accept my-task") {
 				t.Errorf("escalation brief = %q; want the accept verb", brief)
 			}
 		})
@@ -575,8 +575,8 @@ func TestBouncer_DecisionEscalation(t *testing.T) {
 			}
 			writeAddedDecisions(t, cfg, "Earlier answer", "Later answer")
 			ptr := shedfake.RequireOutcome(t, b, shedengine.Awaiting)
-			requireReasonContains(t, ptr.Reason, "cause: decision", "lyx loom circling accept my-task")
-			if strings.Contains(ptr.Reason, "lyx loom circling continue") {
+			requireReasonContains(t, ptr.Reason, "cause: decision", "lym loom circling accept my-task")
+			if strings.Contains(ptr.Reason, "lym loom circling continue") {
 				t.Errorf("Reason = %q; want the accept verb alone at the lowered cap", ptr.Reason)
 			}
 			requireDecisionEscalation(t, cfg)

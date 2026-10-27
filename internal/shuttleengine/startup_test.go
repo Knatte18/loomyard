@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
@@ -1261,8 +1261,8 @@ func TestStartup_FailedStartThenAttach_RespawnEligible(t *testing.T) {
 	// Reed no longer tracks the strand (it was just removed); rescript Status() to reflect that for
 	// Attach's own liveness read, and seed a present reed state file for the first gate.
 	reed.StatusQueue = []reedengine.StatusResult{{Strands: nil}}
-	dotLyxDir := filepath.Join(anchorPath, lyxdirs.DotLyxDirName)
-	seedPresentReedState(t, dotLyxDir)
+	dotLymDir := filepath.Join(anchorPath, lymdirs.DotLymDirName)
+	seedPresentReedState(t, dotLymDir)
 
 	result, found, err := runner.Attach(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute})
 	if err != nil {

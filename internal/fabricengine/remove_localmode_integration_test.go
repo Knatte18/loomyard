@@ -20,7 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // newLocalModePair returns a hub with one added pair named slug.
@@ -50,7 +50,7 @@ func holdLockForTest(t *testing.T, path string) {
 func openPairFabric(t *testing.T, h *hubforge.Hub, slug string) *fabricengine.Fabric {
 	t.Helper()
 
-	location, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree(slug))
+	location, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(slug))
 	if err != nil {
 		t.Fatalf("ResolveWorktree(%s): %v", h.PairCodeWorktree(slug), err)
 	}
@@ -81,14 +81,14 @@ func requirePairIntact(t *testing.T, h *hubforge.Hub, slug string) {
 
 func TestRemoveLocal(t *testing.T) {
 	const slug = "localmode"
-	const statusRel = "_lyx/shed/" + slug + "/status.json"
-	const reportRel = "_lyx/shed/" + slug + "/drive-reports/stop.md"
+	const statusRel = "_lym/shed/" + slug + "/status.json"
+	const reportRel = "_lym/shed/" + slug + "/drive-reports/stop.md"
 
 	t.Run("CommitsRecordsAndTagsTheWeftTipWithNothingPushed", func(t *testing.T) {
 		h := newLocalModePair(t, slug)
 		weft := h.PairRecordsSibling(slug)
 		writeFile(t, filepath.Join(weft, filepath.FromSlash(statusRel)), "{}\n")
-		if _, committed, err := fabricengine.CommitRecordsPaths(fabricengine.NewMutations(""), weft, h.Location.AnchorRel, []string{"_lyx"}, "local-only record", fabricengine.SyncOptions{}); err != nil || !committed {
+		if _, committed, err := fabricengine.CommitRecordsPaths(fabricengine.NewMutations(""), weft, h.Location.AnchorRel, []string{"_lym"}, "local-only record", fabricengine.SyncOptions{}); err != nil || !committed {
 			t.Fatalf("commit the local-only record: committed = %v, err = %v", committed, err)
 		}
 		writeFile(t, filepath.Join(weft, filepath.FromSlash(reportRel)), "stopped\n")
@@ -269,7 +269,7 @@ func TestSnapshotUncommitted(t *testing.T) {
 		}
 		writeFile(t, filepath.Join(code, "dirty.txt"), "task\n")
 		writeFile(t, filepath.Join(weft, "outside.txt"), "records\n")
-		writeFile(t, filepath.Join(weft, "_lyx", "shed", slug, "drive-reports", "stop.md"), "inside the pathspec\n")
+		writeFile(t, filepath.Join(weft, "_lym", "shed", slug, "drive-reports", "stop.md"), "inside the pathspec\n")
 		scratchRoot, _ := scratchPaths(h.Location, slug)
 		writeFile(t, filepath.Join(scratchRoot, "note.txt"), "scratch\n")
 		codeStatus, weftStatus := gitkit.GitStatusPorcelain(t, code), gitkit.GitStatusPorcelain(t, weft)

@@ -226,7 +226,7 @@ func TestCanonicalizeHandles_ReportsWhetherItRewrote(t *testing.T) {
 //
 // R6-12: it must ALSO not be reported as a quarry outage. The failure comes from parsing and writing
 // the plan, so wrapping it in ErrQuarryUnavailable made every caller print "quarry could not answer"
-// for a read-only _lyx/plan and sent the operator at the wrong subsystem. Both callers' non-quarry
+// for a read-only _lym/plan and sent the operator at the wrong subsystem. Both callers' non-quarry
 // branch already fails the gate with an accurate, plan-named message.
 func TestValidate_UnparseablePlanDirectoryIsAnInfrastructureError(t *testing.T) {
 	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})

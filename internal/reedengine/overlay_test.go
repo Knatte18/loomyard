@@ -47,13 +47,13 @@ func TestListSessions(t *testing.T) {
 		},
 		{
 			name:         "absent socket",
-			hookErr:      errors.New("error connecting to /tmp/tmux-1000/lyx-hub (No such file or directory)"),
+			hookErr:      errors.New("error connecting to /tmp/tmux-1000/lym-hub (No such file or directory)"),
 			wantErr:      true,
 			wantNoServer: true,
 		},
 		{
 			name:    "unrelated tmux failure",
-			hookErr: errors.New("error connecting to /tmp/tmux-1000/lyx-hub (Permission denied)"),
+			hookErr: errors.New("error connecting to /tmp/tmux-1000/lym-hub (Permission denied)"),
 			wantErr: true,
 		},
 		{
@@ -78,7 +78,7 @@ func TestListSessions(t *testing.T) {
 			if captured := fake.CapturedFor("list-sessions"); !captured[0] {
 				t.Fatalf("list-sessions called with capture=false, want true (list-sessions always captures)")
 			}
-			wantArgv := []string{"list-sessions", "-f", "#{||:#{!=:#{@lyx_tmux_conf_claimed},sourced},#{@lyx_reed_session}}", "-F", "#{session_name}"}
+			wantArgv := []string{"list-sessions", "-f", "#{||:#{!=:#{@lym_tmux_conf_claimed},sourced},#{@lym_reed_session}}", "-F", "#{session_name}"}
 			if runtime.GOOS == "windows" {
 				wantArgv = []string{"list-sessions", "-F", "#{session_name}"}
 			}
@@ -114,7 +114,7 @@ func TestListSessions(t *testing.T) {
 		goos string
 		want []string
 	}{
-		{"argv on linux filters to reed sessions", "linux", []string{"list-sessions", "-f", "#{||:#{!=:#{@lyx_tmux_conf_claimed},sourced},#{@lyx_reed_session}}", "-F", "#{session_name}"}},
+		{"argv on linux filters to reed sessions", "linux", []string{"list-sessions", "-f", "#{||:#{!=:#{@lym_tmux_conf_claimed},sourced},#{@lym_reed_session}}", "-F", "#{session_name}"}},
 		{"argv on windows lists every session", "windows", []string{"list-sessions", "-F", "#{session_name}"}},
 	}
 	for _, tt := range argvRows {

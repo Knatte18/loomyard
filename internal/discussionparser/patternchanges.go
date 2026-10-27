@@ -32,12 +32,12 @@ const (
 // patternBulletHead matches the start of a bullet: the backticked entry ID and the em dash, capturing the ID and the rest of the line.
 var patternBulletHead = regexp.MustCompile("^- `(PATTERN-[a-z0-9-]+)` — (.+)$")
 
-// patternBulletSuffix matches the suffix `lyx loom decision add` appends to a bullet, capturing the author and the day.
+// patternBulletSuffix matches the suffix `lym loom decision add` appends to a bullet, capturing the author and the day.
 var patternBulletSuffix = regexp.MustCompile(` — added after Discussion \(([^,()]+), ([0-9]{4}-[0-9]{2}-[0-9]{2})\)$`)
 
 // PatternChange is one entry of the decision record's `## PATTERN changes` section:
 // a PATTERN entry the task adds, changes or removes.
-// By and Date are set only on a bullet `lyx loom decision add` appended after the Discussion.
+// By and Date are set only on a bullet `lym loom decision add` appended after the Discussion.
 type PatternChange struct {
 	// ID is the entry ID with its `PATTERN-` prefix and no backticks.
 	ID string
@@ -162,7 +162,7 @@ func patternRuleText(text string) string {
 }
 
 // patternOverCapFindings returns one pattern-change-over-cap finding per `adds` or `changes` change in changes whose rule text runs past patternEntryTextCap runes, in order.
-// A bullet `lyx loom decision add` appended is measured like any other, since the entry text it prescribes is the same.
+// A bullet `lym loom decision add` appended is measured like any other, since the entry text it prescribes is the same.
 // A finding's Path is left empty for the caller to set.
 func patternOverCapFindings(changes []PatternChange) []Finding {
 	var findings []Finding
@@ -176,7 +176,7 @@ func patternOverCapFindings(changes []PatternChange) []Finding {
 		}
 		wayForward := "shorten the text or move its detail to the entry's background file"
 		if c.By != "" {
-			wayForward = "the bullet was appended after the Discussion, so ask the parent to re-record the entry with a shorter `--pattern-text` through `lyx loom decision add`, which replaces the bullet"
+			wayForward = "the bullet was appended after the Discussion, so ask the parent to re-record the entry with a shorter `--pattern-text` through `lym loom decision add`, which replaces the bullet"
 		}
 		findings = append(findings, Finding{
 			Check:  checkPatternChangeOverCap,
@@ -321,7 +321,7 @@ func DeclaredPatternChanges(recordPath string) ([]string, error) {
 		for i, f := range findings {
 			details[i] = f.Detail
 		}
-		return nil, fmt.Errorf("%w: %s, section %s: %s; way forward: the operator fixes and commits the `%s` section of the decision record (the orch never edits the record and escalates this refusal to the operator), confirms it with `lyx loom validate-discussion`, then",
+		return nil, fmt.Errorf("%w: %s, section %s: %s; way forward: the operator fixes and commits the `%s` section of the decision record (the orch never edits the record and escalates this refusal to the operator), confirms it with `lym loom validate-discussion`, then",
 			ErrPatternChangesInvalid, recordPath, patternChangesHeading, strings.Join(details, "; "), patternChangesHeading)
 	}
 	var bullets []string

@@ -284,7 +284,7 @@ func TestPlanWriteEntry_GateConfig(t *testing.T) {
 		}
 
 		// Drive the constructed gate rather than comparing func values, which Go cannot compare.
-		// newTestEnv's AnchorPath is a real, empty directory carrying no _lyx/plan/00-overview.md,
+		// newTestEnv's AnchorPath is a real, empty directory carrying no _lym/plan/00-overview.md,
 		// so the plan validator reports the overview not found -- a finding text no discussion-gate
 		// failure could ever produce, which is what proves the plan closure and not the discussion
 		// one was resolved.

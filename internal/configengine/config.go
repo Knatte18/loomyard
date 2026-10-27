@@ -16,19 +16,19 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/envsource"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
-// configDirName is the subdirectory name within lyxdirs.LyxDirName that holds
+// configDirName is the subdirectory name within lymdirs.LymDirName that holds
 // configuration files.
 const configDirName = "config"
 
 // boardDirWayForwardClause ends every refusal that names a verb writing under the board dir.
-// A session lyx refuses that verb from cannot run it itself.
-const boardDirWayForwardClause = "; a session lyx refuses the verb from reports status: FAILED and the orch runs it"
+// A session lym refuses that verb from cannot run it itself.
+const boardDirWayForwardClause = "; a session lym refuses the verb from reports status: FAILED and the orch runs it"
 
-// ErrNotInitialized marks a provably-absent _lyx/ directory: FindBaseDir wraps it into the error it
+// ErrNotInitialized marks a provably-absent _lym/ directory: FindBaseDir wraps it into the error it
 // returns when os.Stat confirms the directory does not exist.
 // Callers wanting to distinguish absence from a stat failure should use errors.Is(err,
 // ErrNotInitialized) rather than matching error text.
@@ -57,30 +57,30 @@ func MarkInvalid(err error) error {
 	return invalidError{err: err}
 }
 
-// FindBaseDir checks if <cwd>/_lyx exists, performing a strict check without walking up to parent
+// FindBaseDir checks if <cwd>/_lym exists, performing a strict check without walking up to parent
 // directories.
 // Returns cwd on success or an error on failure.
-// An absent _lyx/ yields an error satisfying errors.Is(err, ErrNotInitialized);
+// An absent _lym/ yields an error satisfying errors.Is(err, ErrNotInitialized);
 // a stat failure (permission, IO) does not.
 func FindBaseDir(cwd string) (string, error) {
-	lyxDir := filepath.Join(cwd, lyxdirs.LyxDirName)
-	_, err := os.Stat(lyxDir)
+	lymDir := filepath.Join(cwd, lymdirs.LymDirName)
+	_, err := os.Stat(lymDir)
 	if os.IsNotExist(err) {
-		return "", fmt.Errorf("%w: %s/ directory not found", ErrNotInitialized, lyxdirs.LyxDirName)
+		return "", fmt.Errorf("%w: %s/ directory not found", ErrNotInitialized, lymdirs.LymDirName)
 	} else if err != nil {
-		return "", fmt.Errorf("stat %s: %w", lyxdirs.LyxDirName, err)
+		return "", fmt.Errorf("stat %s: %w", lymdirs.LymDirName, err)
 	}
 	return cwd, nil
 }
 
 // ConfigDir returns the path to the config directory within a baseDir.
 func ConfigDir(baseDir string) string {
-	return filepath.Join(baseDir, lyxdirs.LyxDirName, configDirName)
+	return filepath.Join(baseDir, lymdirs.LymDirName, configDirName)
 }
 
-// ScratchDir returns the never-tracked mirror of ConfigDir under the .lyx counterpart, for files a caller keeps beside the config that must never be committed.
+// ScratchDir returns the never-tracked mirror of ConfigDir under the .lym counterpart, for files a caller keeps beside the config that must never be committed.
 func ScratchDir(baseDir string) string {
-	return filepath.Join(baseDir, lyxdirs.DotLyxDirName, configDirName)
+	return filepath.Join(baseDir, lymdirs.DotLymDirName, configDirName)
 }
 
 // ConfigFile returns the path to a module-specific configuration YAML file within a baseDir.
@@ -89,7 +89,7 @@ func ConfigFile(baseDir, module string) string {
 }
 
 // StagingFile returns the path of a module's staging copy for an interactive edit:
-// the ephemeral .lyx counterpart of ConfigFile, at the mirrored subpath, so a staged edit is never tracked.
+// the ephemeral .lym counterpart of ConfigFile, at the mirrored subpath, so a staged edit is never tracked.
 func StagingFile(baseDir, module string) string {
 	return filepath.Join(ScratchDir(baseDir), module+".yaml")
 }
@@ -100,7 +100,7 @@ func StagingFile(baseDir, module string) string {
 // It is deliberately not derivable from ConfigFile by cancelling a base path: the two accessors join
 // their shared segments independently, so ConfigFileRel has no baseDir parameter to cancel out.
 func ConfigFileRel(module string) string {
-	return filepath.Join(lyxdirs.LyxDirName, configDirName, module+".yaml")
+	return filepath.Join(lymdirs.LymDirName, configDirName, module+".yaml")
 }
 
 // sparseMarkerName is the marker file's name; it has no .yaml suffix, so no module reader takes it for a module file.
@@ -113,12 +113,12 @@ func SparseMarker(baseDir string) string {
 
 // SparseMarkerRel returns the sparse marker's path relative to a worktree's anchor, the shape ConfigFileRel returns.
 func SparseMarkerRel() string {
-	return filepath.Join(lyxdirs.LyxDirName, configDirName, sparseMarkerName)
+	return filepath.Join(lymdirs.LymDirName, configDirName, sparseMarkerName)
 }
 
 // SparseBaseHeader is the whole content of a hub's base file holding no tuned unit:
-// one comment line saying the file holds the hub's tuned values over lyx's template.
-const SparseBaseHeader = "# This file holds the hub's tuned values over lyx's template.\n"
+// one comment line saying the file holds the hub's tuned values over lym's template.
+const SparseBaseHeader = "# This file holds the hub's tuned values over lym's template.\n"
 
 // baseSparseMarkerName is the board marker file's name; it has no .yaml suffix, so no module reader takes it for a module file.
 const baseSparseMarkerName = "base-sparse"
@@ -130,7 +130,7 @@ func BaseSparseMarker(boardDir string) string {
 
 // BaseSparseMarkerRel returns the base-sparse marker's path relative to the board dir, the shape ConfigFileRel returns.
 func BaseSparseMarkerRel() string {
-	return filepath.Join(lyxdirs.LyxDirName, configDirName, baseSparseMarkerName)
+	return filepath.Join(lymdirs.LymDirName, configDirName, baseSparseMarkerName)
 }
 
 // sparseBase reports whether the base layer under dirs is sparse over the template:
@@ -147,7 +147,7 @@ func Load(dirs Dirs, spec Spec) ([]byte, error) {
 	return load(dirs, spec, false)
 }
 
-// LoadOrTemplate behaves identically to Load except that a provably-absent base-layer _lyx/ directory or base-layer file resolves the spec's template as the base instead of erroring, still stacking the upper layers present.
+// LoadOrTemplate behaves identically to Load except that a provably-absent base-layer _lym/ directory or base-layer file resolves the spec's template as the base instead of erroring, still stacking the upper layers present.
 // A config file that exists but is invalid still errors.
 // Any non-absence failure (permission, IO, a stat error) propagates unchanged, exactly as it does on the Load path.
 func LoadOrTemplate(dirs Dirs, spec Spec) ([]byte, error) {
@@ -158,10 +158,10 @@ func LoadOrTemplate(dirs Dirs, spec Spec) ([]byte, error) {
 // fallbackOnAbsent selects the policy: false is Load's strict behaviour, true is LoadOrTemplate's
 // degrading behaviour.
 // It consults fallbackOnAbsent at exactly two points, and at each one only on proven absence:
-// an absent base-layer _lyx/ directory (errors.Is(err, ErrNotInitialized)) or an absent base-layer file.
+// an absent base-layer _lym/ directory (errors.Is(err, ErrNotInitialized)) or an absent base-layer file.
 // A permission or IO failure at either point always propagates unchanged regardless of fallbackOnAbsent.
 // The layers merge unexpanded, the template keys the merge lacks are filled in memory and logged under both policies unless the base is sparse, and the merged document is expanded once.
-// lyx config reconcile stays the only writer of config files.
+// lym config reconcile stays the only writer of config files.
 func load(dirs Dirs, spec Spec, fallbackOnAbsent bool) ([]byte, error) {
 	baseDir := dirs.Board
 	if baseDir == "" {
@@ -176,10 +176,10 @@ func load(dirs Dirs, spec Spec, fallbackOnAbsent bool) ([]byte, error) {
 		if !fallbackOnAbsent || !errors.Is(err, ErrNotInitialized) {
 			return nil, err
 		}
-		degradeReason = "absent _lyx/ directory"
+		degradeReason = "absent _lym/ directory"
 	}
 
-	// A worktree without _lyx/ beside a told board dir has no worktree or local layer; the board dir's base is not uninitialised for it.
+	// A worktree without _lym/ beside a told board dir has no worktree or local layer; the board dir's base is not uninitialised for it.
 	// The machine layer is judged on the told dirs, so it survives.
 	anchorLayers := true
 	if dirs.Board != "" && dirs.Anchor != "" {
@@ -283,9 +283,9 @@ func warnUnknownKeys(layers []LayerDoc, spec Spec) error {
 		var wayForward string
 		switch layer.Layer {
 		case LayerDefault:
-			wayForward = `run "lyx config reconcile --layer default --apply" from the hub's prime worktree`
+			wayForward = `run "lym config reconcile --layer default --apply" from the hub's prime worktree`
 		case LayerWorktree:
-			wayForward = `run "lyx config reconcile --apply" in this worktree`
+			wayForward = `run "lym config reconcile --apply" in this worktree`
 		default:
 			continue
 		}
@@ -348,28 +348,23 @@ func expansionDir(dirs Dirs, spec Spec) string {
 }
 
 // missingBaseError names the absent base-layer file and the way forward for its kind:
-// a worktree base is written by lyx config reconcile, a hub file by lyx fabric reconcile,
-// and a per-worktree repo default by the hub reconcile a run start performs or by "lyx config reconcile --layer default --apply" from the prime.
+// a worktree base is written by lym config reconcile, a hub file by lym fabric reconcile,
+// and a per-worktree repo default by the hub reconcile a run start performs or by "lym config reconcile --layer default --apply" from the prime.
 func missingBaseError(dirs Dirs, spec Spec) error {
 	path, _ := LayerFile(dirs, spec, BaseLayer(dirs, spec))
 	switch {
 	case dirs.Board == "":
-		return fmt.Errorf("config file %s not found; run \"lyx config reconcile\"", path)
+		return fmt.Errorf("config file %s not found; run \"lym config reconcile\"", path)
 	case spec.HubWide:
-		return fmt.Errorf("config file %s not found; run \"lyx fabric reconcile\"%s", path, boardDirWayForwardClause)
+		return fmt.Errorf("config file %s not found; run \"lym fabric reconcile\"%s", path, boardDirWayForwardClause)
 	default:
-		return fmt.Errorf("config file %s not found; re-run the verb that starts the run, as \"lyx loom resume\"; its hub reconcile seeds the default from the prime, as does \"lyx config reconcile --layer default --apply\" from the prime%s", path, boardDirWayForwardClause)
+		return fmt.Errorf("config file %s not found; re-run the verb that starts the run, as \"lym loom resume\"; its hub reconcile seeds the default from the prime, as does \"lym config reconcile --layer default --apply\" from the prime%s", path, boardDirWayForwardClause)
 	}
 }
 
-// fallbackToTemplate is load's tail when no layer file is present, reached only on proven absence of either the
-// _lyx/ directory or the module's base config file.
-// It skips yamlengine.MissingKeys entirely -- a template compared against itself is vacuously
-// satisfied -- and resolves the template through the same env-marker pair the on-disk path uses,
-// envsource.Build then yamlengine.Resolve, so a template default and an on-disk value expand by
-// identical rules.
-// reason names which of the two absence conditions fired, so the two cases are distinguishable in
-// the durable trace.
+// fallbackToTemplate is load's tail when no layer file is present, reached only on proven absence of either the _lym/ directory or the module's base config file.
+// It skips yamlengine.MissingKeys entirely -- a template compared against itself is vacuously satisfied -- and resolves the template through the same env-marker pair the on-disk path uses, envsource.Build then yamlengine.Resolve, so a template default and an on-disk value expand by identical rules.
+// reason names which of the two absence conditions fired, so the two cases are distinguishable in the durable trace.
 func fallbackToTemplate(dirs Dirs, spec Spec, reason string) ([]byte, error) {
 	logger.Info("configengine: degrading to embedded template", "module", spec.Name, "reason", reason)
 

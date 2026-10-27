@@ -413,7 +413,7 @@ func TestPlanTierRuns(t *testing.T) {
 		// scope defaults to the scope of the request's explicit targets, or --all.
 		scope scope
 		want  string
-		// exact is the whole refusal, for one that names no `lyx config gate` way forward.
+		// exact is the whole refusal, for one that names no `lym config gate` way forward.
 		exact string
 	}{
 		{
@@ -500,7 +500,7 @@ func TestPlanTierRuns(t *testing.T) {
 				}
 				return
 			}
-			for _, want := range []string{tc.want, "lyx config gate", "status: FAILED"} {
+			for _, want := range []string{tc.want, "lym config gate", "status: FAILED"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("planTierRuns() error = %q; want it to hold %q", err, want)
 				}
@@ -586,7 +586,7 @@ func TestRenderTierCommand(t *testing.T) {
 func TestFilterArgument(t *testing.T) {
 	t.Parallel()
 	refusal := "gate test: the filter of tier3 cannot be quoted for the shell: " + verifyrun.ErrPercentUnderCmd.Error() +
-		"; way forward: fix the tier's filter with \"lyx config gate\" from the prime" + roleClause
+		"; way forward: fix the tier's filter with \"lym config gate\" from the prime" + roleClause
 	tests := []struct {
 		name    string
 		goos    string

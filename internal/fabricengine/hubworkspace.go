@@ -12,7 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/vscode"
 )
 
@@ -30,16 +30,16 @@ const hubWorkspaceLockFileName = "hub-workspace.lock"
 var hubWorkspaceBeforeLockHook func()
 
 // HubWorkspacePath returns <hub>/<RepoName>.code-workspace, the one VS Code workspace file of the hub.
-func HubWorkspacePath(l *lyxcwd.Location) string {
+func HubWorkspacePath(l *lymcwd.Location) string {
 	return filepath.Join(l.HubPath, l.RepoName+hubWorkspaceExt)
 }
 
 // beamWorkspaceMark is the top-level key a generated beam workspace file carries, set to true and written first.
 // VS Code ignores unknown keys, and the mark is what lets a regeneration tell its own beam file from an operator's file of the same name.
-const beamWorkspaceMark = "lyx.generated"
+const beamWorkspaceMark = "lym.generated"
 
 // BeamWorkspacePath returns <hub>/<RepoName>-<beam>.code-workspace, the workspace file of the beam pair named beam, beside the hub's own.
-func BeamWorkspacePath(l *lyxcwd.Location, beam string) string {
+func BeamWorkspacePath(l *lymcwd.Location, beam string) string {
 	return filepath.Join(l.HubPath, l.RepoName+"-"+beam+hubWorkspaceExt)
 }
 
@@ -55,32 +55,32 @@ func HubWorkspaceLockPath(hubPath string) string {
 // Each file is rewritten only when its bytes change; a write or removal is recorded in rec.
 // The regeneration runs under the hub workspace lock, so two callers never interleave their listing and write.
 // A prime that cannot be resolved, unreadable prime settings, a lock that stays held for the wait, or a failed write returns an error and writes nothing.
-func RegenerateHubWorkspace(rec *Mutations, l *lyxcwd.Location) (string, error) {
+func RegenerateHubWorkspace(rec *Mutations, l *lymcwd.Location) (string, error) {
 	return regenerateHubWorkspace(rec, l, hubWorkspaceLockWait)
 }
 
 // regenerateAfterVerb regenerates the hub workspace file at the end of a fabric verb that changed the hub's worktrees.
 // A failure is logged at Warn, naming the verb and the repair, and is never returned:
 // a stale file is rewritten by the next regenerating verb or prime spawn, so it never fails or rolls back the verb.
-func regenerateAfterVerb(rec *Mutations, l *lyxcwd.Location, verb string) {
+func regenerateAfterVerb(rec *Mutations, l *lymcwd.Location, verb string) {
 	if _, err := RegenerateHubWorkspace(rec, l); err != nil {
-		logger.Warn(`fabricengine: hub workspace regeneration failed; run "lyx fabric reconcile" once the cause is fixed`, "verb", verb, "error", err)
+		logger.Warn(`fabricengine: hub workspace regeneration failed; run "lym fabric reconcile" once the cause is fixed`, "verb", verb, "error", err)
 	}
 }
 
 // regenerateHubWorkspace is RegenerateHubWorkspace with the lock wait as a parameter.
 // A hub without a board takes no lock and lists no Bolt folder.
-func regenerateHubWorkspace(rec *Mutations, l *lyxcwd.Location, lockWait time.Duration) (string, error) {
+func regenerateHubWorkspace(rec *Mutations, l *lymcwd.Location, lockWait time.Duration) (string, error) {
 	prime, err := PrimeName(l)
 	if err != nil {
 		return "", err
 	}
-	primeLoc, err := lyxcwd.NamedWorktree(l.HubPath, prime)
+	primeLoc, err := lymcwd.NamedWorktree(l.HubPath, prime)
 	if err != nil {
 		return "", fmt.Errorf("read the prime's anchor: %w", err)
 	}
 	if retiredHubArtifactsPresent(primeLoc) {
-		logger.Warn(`fabricengine: the hub still holds retired portal links or the old _launchers workspace file; run "lyx fabric reconcile" to remove them`)
+		logger.Warn(`fabricengine: the hub still holds retired portal links or the old _launchers workspace file; run "lym fabric reconcile" to remove them`)
 	}
 	settings, err := vscode.ReadSettings(filepath.Join(WorktreePath(l, prime), primeLoc.AnchorRel))
 	if err != nil {
@@ -224,12 +224,12 @@ type workspacePair struct {
 // A pair's parent is the ParentWorktree of its origin record; the prime when that is empty, names the prime or names no listed pair, and when the record is absent or cannot be read, the latter with a debug log.
 // A folder whose directory does not exist is left out, and a stat error other than not-exist is returned.
 // A pair that fails to resolve, or whose worktree is not a direct child of the hub, is skipped with a debug log, so one half-made pair never drops the others.
-func hubWorkspaceFolders(l *lyxcwd.Location, primeName string) (workspaceLayout, error) {
+func hubWorkspaceFolders(l *lymcwd.Location, primeName string) (workspaceLayout, error) {
 	var layout workspaceLayout
 	var primeFolder, boltFolder *vscode.WorkspaceFolder
 
 	primeRoot := WorktreePath(l, primeName)
-	primeLoc, err := lyxcwd.NamedWorktree(l.HubPath, primeName)
+	primeLoc, err := lymcwd.NamedWorktree(l.HubPath, primeName)
 	if err != nil {
 		return workspaceLayout{}, fmt.Errorf("read the prime's anchor: %w", err)
 	}
@@ -282,7 +282,7 @@ func hubWorkspaceFolders(l *lyxcwd.Location, primeName string) (workspaceLayout,
 			logger.Debug("fabricengine: a warp worktree outside the hub is left out of the hub workspace", "path", worktree)
 			continue
 		}
-		pairLocation, err := lyxcwd.ResolveWorktree(worktree)
+		pairLocation, err := lymcwd.ResolveWorktree(worktree)
 		if err != nil {
 			logger.Debug("fabricengine: a warp worktree that does not resolve is left out of the hub workspace", "path", worktree, "error", err)
 			continue

@@ -201,7 +201,7 @@ const checkAddedDecisionDropped = "added-decision-dropped"
 // The ID alone is the key, because AppendDecision replaces the bullet it finds for an ID with one carrying the new call's author and date.
 //
 // A record whose added-decision heading does not parse is one finding carrying the parse error, because the writer can fix it.
-// A version whose heading does not parse contributes no entries: only `lyx loom decision add` writes these headings, and a garbled historical copy must not block the run.
+// A version whose heading does not parse contributes no entries: only `lym loom decision add` writes these headings, and a garbled historical copy must not block the run.
 // A version whose PATTERN changes section does not parse contributes no bullets, and a record whose own section does not parse yields no bullet finding, since Validate reports it.
 // It reads nothing from disk.
 func CheckAddedDecisionsKept(record []byte, versions [][]byte) []Finding {

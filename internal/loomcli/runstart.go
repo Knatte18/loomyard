@@ -11,7 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/githubclient"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/google/go-github/v75/github"
 )
@@ -57,7 +57,7 @@ const seedRunStartWarning = "loom: the run's seed carries no usable start stamp,
 // A missing seed, an empty stamp and an unparseable stamp each return the zero time and a nil error after one warning.
 // The zero time filters nothing, so the pull-request lookup stays unbounded.
 // A seed that exists but cannot be read or decoded returns an error, so the caller fails rather than silently dropping the bound.
-func seedRunStart(l *lyxcwd.Location) (time.Time, error) {
+func seedRunStart(l *lymcwd.Location) (time.Time, error) {
 	seed, found, err := shedrun.ReadSeed(l, shedrun.SelfRunID)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("loom: read the run's start from its seed %s: %w", shedrun.SeedFile(l, shedrun.SelfRunID), err)

@@ -125,7 +125,7 @@ func readProcLink(pid int, name string) (string, bool) {
 	return target, true
 }
 
-// IsWatchdog reports whether argv is a `lyx reed watchdog` daemon: an adjacent `reed`, `watchdog` pair.
+// IsWatchdog reports whether argv is a `lym reed watchdog` daemon: an adjacent `reed`, `watchdog` pair.
 // The daemon detaches into its own session and idles out on its own production schedule, so it outlives the test that spawned it.
 func IsWatchdog(argv []string) bool {
 	for i := 0; i+1 < len(argv); i++ {

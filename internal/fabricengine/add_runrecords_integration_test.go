@@ -19,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -30,7 +30,7 @@ var runRecordFiles = []string{
 }
 
 // commitRunRecords writes runRecordFiles under l's anchor in the weft worktree at weftDir and commits them there.
-func commitRunRecords(t *testing.T, l *lyxcwd.Location, weftDir string) {
+func commitRunRecords(t *testing.T, l *lymcwd.Location, weftDir string) {
 	t.Helper()
 
 	for _, rel := range runRecordFiles {
@@ -47,7 +47,7 @@ func commitRunRecords(t *testing.T, l *lyxcwd.Location, weftDir string) {
 }
 
 // trackedUnderRoot returns what branch tracks under l's run-records root, read in the repo at dir.
-func trackedUnderRoot(t *testing.T, l *lyxcwd.Location, dir, branch string) string {
+func trackedUnderRoot(t *testing.T, l *lymcwd.Location, dir, branch string) string {
 	t.Helper()
 
 	root := filepath.ToSlash(filepath.Join(l.AnchorRel, shedrun.RunsRootRel()))
@@ -163,9 +163,9 @@ func TestAdd_RunRecords(t *testing.T) {
 			t.Fatalf("setup: parent pair's weft branch tracks no run records")
 		}
 
-		parentL, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, parentSlug))
+		parentL, err := lymcwd.Resolve(fabricengine.WorktreePath(l, parentSlug))
 		if err != nil {
-			t.Fatalf("lyxcwd.Resolve(parent pair): %v", err)
+			t.Fatalf("lymcwd.Resolve(parent pair): %v", err)
 		}
 		if _, err := h.Topology.Add(parentL, childSlug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 			t.Fatalf("Add(%q) from the task pair: %v", childSlug, err)
@@ -234,7 +234,7 @@ func TestAdd_DropsParentRunRecords_SubpathAnchor(t *testing.T) {
 
 		hubforge.AddPairWith(t, h, parentSlug, fabricengine.AddOptions{SkipPush: true})
 		hubforge.ReanchorPair(t, h, parentSlug, parentAnchor)
-		parentL, err := lyxcwd.NamedWorktree(h.Path, parentSlug)
+		parentL, err := lymcwd.NamedWorktree(h.Path, parentSlug)
 		if err != nil {
 			t.Fatalf("NamedWorktree(%q): %v", parentSlug, err)
 		}

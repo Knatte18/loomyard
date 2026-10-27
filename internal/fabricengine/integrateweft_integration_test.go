@@ -17,7 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // integrateFixture is a records repository named like a pair's weft, with a bare origin and a second clone standing for the other machine.
@@ -54,7 +54,7 @@ func (f *integrateFixture) upstreamReanchors(from, to string) string {
 		f.t.Fatalf("create the parent of %s: %v", to, err)
 	}
 	gitkit.Git(f.t, f.other, "mv", from, to)
-	if err := os.WriteFile(filepath.Join(f.other, lyxcwd.AnchorFileName), []byte(to+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(f.other, lymcwd.AnchorFileName), []byte(to+"\n"), 0o644); err != nil {
 		f.t.Fatalf("write the marker on the other machine: %v", err)
 	}
 	gitkit.Git(f.t, f.other, "add", "-A")
@@ -83,14 +83,14 @@ func (f *integrateFixture) files(rev string) []string {
 
 func TestIntegrateWeft(t *testing.T) {
 	t.Parallel()
-	names := []string{"_lyx"}
-	base := map[string]string{lyxcwd.AnchorFileName: "a\n", "a/_lyx/base.txt": "base\n"}
+	names := []string{"_lym"}
+	base := map[string]string{lymcwd.AnchorFileName: "a\n", "a/_lym/base.txt": "base\n"}
 
 	// reanchored builds a weft with two local commits at a, whose upstream moved the content to b.
 	reanchored := func(t *testing.T) (f *integrateFixture, localOne, localTwo, upstream string) {
 		f = newIntegrateFixture(t, base)
-		localOne = gitkit.CommitFile(t, f.weft, "a/_lyx/one.txt", "one\n", "local one")
-		localTwo = gitkit.CommitFile(t, f.weft, "a/_lyx/two.txt", "two\n", "local two")
+		localOne = gitkit.CommitFile(t, f.weft, "a/_lym/one.txt", "one\n", "local one")
+		localTwo = gitkit.CommitFile(t, f.weft, "a/_lym/two.txt", "two\n", "local two")
 		upstream = f.upstreamReanchors("a", "b")
 		return f, localOne, localTwo, upstream
 	}
@@ -113,14 +113,14 @@ func TestIntegrateWeft(t *testing.T) {
 		if parent := gitkit.RevParse(t, f.weft, "HEAD~2"); parent != upstream {
 			t.Errorf("weft HEAD~2 = %s; want the upstream tip %s under the two replayed commits", parent, upstream)
 		}
-		want := []string{lyxcwd.AnchorFileName, "b/_lyx/base.txt", "b/_lyx/one.txt", "b/_lyx/two.txt"}
+		want := []string{lymcwd.AnchorFileName, "b/_lym/base.txt", "b/_lym/one.txt", "b/_lym/two.txt"}
 		if files := f.files("HEAD"); !slices.Equal(files, want) {
 			t.Errorf("tracked paths = %v; want %v", files, want)
 		}
-		if marker := gitkit.Git(t, f.weft, "show", "HEAD:"+lyxcwd.AnchorFileName); marker != "b" {
+		if marker := gitkit.Git(t, f.weft, "show", "HEAD:"+lymcwd.AnchorFileName); marker != "b" {
 			t.Errorf("marker = %q; want b", marker)
 		}
-		if _, err := os.Stat(filepath.Join(f.weft, "b", "_lyx", "one.txt")); err != nil {
+		if _, err := os.Stat(filepath.Join(f.weft, "b", "_lym", "one.txt")); err != nil {
 			t.Errorf("the working tree lacks the replayed file: %v", err)
 		}
 		if message := gitkit.Git(t, f.weft, "log", "-1", "--format=%s", "HEAD"); message != "local two" {
@@ -137,11 +137,11 @@ func TestIntegrateWeft(t *testing.T) {
 			t.Fatalf("IntegrateWeft() error = %v; want nil", err)
 		}
 
-		want := []string{lyxcwd.AnchorFileName, "c/_lyx/base.txt", "c/_lyx/one.txt", "c/_lyx/two.txt"}
+		want := []string{lymcwd.AnchorFileName, "c/_lym/base.txt", "c/_lym/one.txt", "c/_lym/two.txt"}
 		if files := f.files(got.Tip); !slices.Equal(files, want) {
 			t.Errorf("tracked paths = %v; want %v", files, want)
 		}
-		if marker := gitkit.Git(t, f.weft, "show", got.Tip+":"+lyxcwd.AnchorFileName); marker != "c" {
+		if marker := gitkit.Git(t, f.weft, "show", got.Tip+":"+lymcwd.AnchorFileName); marker != "c" {
 			t.Errorf("marker = %q; want c", marker)
 		}
 	})
@@ -149,8 +149,8 @@ func TestIntegrateWeft(t *testing.T) {
 	t.Run("A local commit that changed the marker is skipped", func(t *testing.T) {
 		t.Parallel()
 		f := newIntegrateFixture(t, base)
-		localOne := gitkit.CommitFile(t, f.weft, "a/_lyx/one.txt", "one\n", "local one")
-		localMarker := gitkit.CommitFile(t, f.weft, lyxcwd.AnchorFileName, "z\n", "local re-anchor")
+		localOne := gitkit.CommitFile(t, f.weft, "a/_lym/one.txt", "one\n", "local one")
+		localMarker := gitkit.CommitFile(t, f.weft, lymcwd.AnchorFileName, "z\n", "local re-anchor")
 		upstream := f.upstreamReanchors("a", "b")
 
 		got, err := fabricengine.IntegrateWeftForTest(f.weft, upstream, "b", names, "a")
@@ -161,7 +161,7 @@ func TestIntegrateWeft(t *testing.T) {
 		if !slices.Equal(got.Skipped, []string{localMarker}) || !slices.Equal(got.Replayed, []string{localOne}) {
 			t.Errorf("IntegrateWeft() replayed %v, skipped %v; want [%s] and [%s]", got.Replayed, got.Skipped, localOne, localMarker)
 		}
-		if marker := gitkit.Git(t, f.weft, "show", got.Tip+":"+lyxcwd.AnchorFileName); marker != "b" {
+		if marker := gitkit.Git(t, f.weft, "show", got.Tip+":"+lymcwd.AnchorFileName); marker != "b" {
 			t.Errorf("marker = %q; want the upstream's b", marker)
 		}
 	})
@@ -169,16 +169,16 @@ func TestIntegrateWeft(t *testing.T) {
 	t.Run("A markerless local parent re-roots from the fallback anchor", func(t *testing.T) {
 		t.Parallel()
 		f := newIntegrateFixture(t, map[string]string{"README.md": "readme\n"})
-		gitkit.CommitFile(t, f.weft, "a/_lyx/local.txt", "local\n", "local at the fallback anchor")
-		f.upstreamCommits(lyxcwd.AnchorFileName, "b\n")
-		upstream := f.upstreamCommits("b/_lyx/other.txt", "other\n")
+		gitkit.CommitFile(t, f.weft, "a/_lym/local.txt", "local\n", "local at the fallback anchor")
+		f.upstreamCommits(lymcwd.AnchorFileName, "b\n")
+		upstream := f.upstreamCommits("b/_lym/other.txt", "other\n")
 
 		got, err := fabricengine.IntegrateWeftForTest(f.weft, upstream, "b", names, "a")
 		if err != nil {
 			t.Fatalf("IntegrateWeft() error = %v; want nil", err)
 		}
 
-		want := []string{lyxcwd.AnchorFileName, "README.md", "b/_lyx/local.txt", "b/_lyx/other.txt"}
+		want := []string{lymcwd.AnchorFileName, "README.md", "b/_lym/local.txt", "b/_lym/other.txt"}
 		slices.Sort(want)
 		if files := f.files(got.Tip); !slices.Equal(files, want) {
 			t.Errorf("tracked paths = %v; want %v", files, want)
@@ -188,18 +188,18 @@ func TestIntegrateWeft(t *testing.T) {
 	t.Run("A conflicting local commit stops the integration with the weft unchanged", func(t *testing.T) {
 		t.Parallel()
 		f := newIntegrateFixture(t, base)
-		conflicting := gitkit.CommitFile(t, f.weft, "a/_lyx/base.txt", "local\n", "local edit")
-		gitkit.CommitFile(t, f.weft, "a/_lyx/later.txt", "later\n", "local later")
+		conflicting := gitkit.CommitFile(t, f.weft, "a/_lym/base.txt", "local\n", "local edit")
+		gitkit.CommitFile(t, f.weft, "a/_lym/later.txt", "later\n", "local later")
 		head := gitkit.RevParse(t, f.weft, "HEAD")
 		f.upstreamReanchors("a", "b")
-		upstream := f.upstreamCommits("b/_lyx/base.txt", "upstream\n")
+		upstream := f.upstreamCommits("b/_lym/base.txt", "upstream\n")
 
 		_, err := fabricengine.IntegrateWeftForTest(f.weft, upstream, "b", names, "a")
 
 		if !errors.Is(err, fabricengine.ErrIntegrateConflict) {
 			t.Fatalf("IntegrateWeft() error = %v; want it to wrap ErrIntegrateConflict", err)
 		}
-		for _, want := range []string{conflicting, "a/_lyx/base.txt", "archive/task/" + head, "reset --keep " + conflicting + "^", "lyx fabric anchor task --set b"} {
+		for _, want := range []string{conflicting, "a/_lym/base.txt", "archive/task/" + head, "reset --keep " + conflicting + "^", "lym fabric anchor task --set b"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("IntegrateWeft() error = %q; want it to contain %q", err, want)
 			}
@@ -216,7 +216,7 @@ func TestIntegrateWeft(t *testing.T) {
 		t.Parallel()
 		f, _, _, upstream := reanchored(t)
 		head := gitkit.RevParse(t, f.weft, "HEAD")
-		dirty := filepath.Join(f.weft, "a", "_lyx", "one.txt")
+		dirty := filepath.Join(f.weft, "a", "_lym", "one.txt")
 		if err := os.WriteFile(dirty, []byte("uncommitted\n"), 0o644); err != nil {
 			t.Fatalf("dirty %s: %v", dirty, err)
 		}

@@ -18,7 +18,7 @@
 # Code-Bouncer, Code-Burler-Review and Code-Burler-Fix are the Code-Review perch, the same perch the darn
 # and loom recipes run, with the same row names, segment, run_subdir, role_prefix, rubric, fan and
 # auto-accept settings and loom.yaml code_* keys; only its answer key differs: the beam project entry's
-# board snapshot, _lyx/discussion/board-entry.md, and nothing else. Its ring is the shared-segment one:
+# board snapshot, _lym/discussion/board-entry.md, and nothing else. Its ring is the shared-segment one:
 # the Bouncer's on_stuck names the review row, the review row's on_stuck names the fix row, the fix row's
 # on_stuck names the Bouncer, and each Burler row's on_done names the same row as its on_stuck, since
 # neither ever returns Done. The segment's rows declare no max_bounces: their budget is loom.yaml's
@@ -73,7 +73,7 @@ producers:
       # names the answer key instead: the project entry's board snapshot. The rubric names the diff as
       # the subject.
       artifact_paths:
-        - _lyx/discussion/board-entry.md
+        - _lym/discussion/board-entry.md
       rubric_stencil: loom-rubric-code-review
       # No commit_seam: Code-Burler-Fix runs fix-scope: source and commits each fix itself.
 
@@ -100,7 +100,7 @@ producers:
             section and derive the range exactly as written there.
         fasit:
           paths:
-            - _lyx/discussion/board-entry.md
+            - _lym/discussion/board-entry.md
           instructions: >
             The board entry snapshot named above is the beam's scope. The diff's job is to make the
             change the entry asks for.

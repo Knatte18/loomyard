@@ -2,7 +2,7 @@
 // It holds no code — its only job is documenting the package's role and contract in one place a
 // reader finds first.
 
-// Package reedengine is the domain kernel for lyx's tmux window manager: the
+// Package reedengine is the domain kernel for lym's tmux window manager: the
 // tmux subprocess overlay, strand bookkeeping, persisted state, config, and
 // (in the operations layer) the lifecycle verbs that compose them. It is the
 // "dumb carrier" for its caller's strand data — reedengine stores every field
@@ -16,11 +16,11 @@
 // render never imports reedengine, so the import graph stays acyclic (reedcli -> reedengine -> render).
 //
 // reedengine is told its geometry as a Geometry value (geometry.go) and
-// derives none of it. internal/lyxcwd is consequently absent from this
+// derives none of it. internal/lymcwd is consequently absent from this
 // package's DIRECT production imports; hubgeom.ReedGeometry is the hub-mode
-// teller that builds a Geometry from a resolved *lyxcwd.Location for every
+// teller that builds a Geometry from a resolved *lymcwd.Location for every
 // hub-mode caller. Stated honestly, that is a direct-import fact and not a
-// transitive one: internal/lyxcwd is still in `go list -deps
+// transitive one: internal/lymcwd is still in `go list -deps
 // ./internal/reedengine`, reached through internal/logger, so what the
 // absence buys is that reed never RESOLVES its own coordinates — not
 // isolation from the package that does.
@@ -31,7 +31,7 @@
 // internal/fabricengine became a direct production import when
 // spawnwatchdog.go landed (SpawnWatchdog calls fabricengine.HubScratchDir).
 // That does not relax the Told-Geometry Invariant: the invariant bars a
-// direct internal/lyxcwd import and requires an engine be handed the
+// direct internal/lymcwd import and requires an engine be handed the
 // absolute paths it operates on, and the one fabricengine call here takes
 // hubPath as a parameter and derives nothing from it — the seam is told its
 // geometry exactly as the rest of this package is.
@@ -47,7 +47,7 @@
 // and the remover no-ops on a guid that is already gone.
 // EndSessionByName sits beside ReapSession as the engine-less session end for a pair whose worktree is gone, and kills the server when it ends the last session.
 //
-// Engine.SetWaitMark marks a strand's pane as waiting: it sets the pane user options @lyx_wait (the label) and @lyx_wait_start (epoch seconds), or unsets both on an empty label.
+// Engine.SetWaitMark marks a strand's pane as waiting: it sets the pane user options @lym_wait (the label) and @lym_wait_start (epoch seconds), or unsets both on an empty label.
 // The mark is display only,
 // so reed stores nothing for it and the options die with the pane;
 // the status bar renders it on the strand's own button, as " ⏳<label> <elapsed>m" appended to the strand's name with tmux computing the elapsed minutes at each refresh,
@@ -58,49 +58,49 @@
 //
 // Segment colors are read from reed.yaml's segment_colors block, resolved only through Engine.segmentColor, and refused only at boot.
 //
-// SwitchClient (switch.go) is the engine-less function behind `lyx reed switch`: it addresses a told server by socket path and issues list-sessions, display-message and switch-client on it, and nothing else.
+// SwitchClient (switch.go) is the engine-less function behind `lym reed switch`: it addresses a told server by socket path and issues list-sessions, display-message and switch-client on it, and nothing else.
 // It is the only reed code that issues switch-client.
 //
-// FollowSession (follow.go) is the engine-less function behind `lyx reed follow`: it addresses a told session of a told server by socket path and issues list-panes, set-option @lyx_follow on and, when a window is relevant, select-window, and nothing else.
-// It reads no working directory, config or state, so it picks the window from tmux facts alone: the highest-index window carrying @lyx_own and not @lyx_overview that holds a pane that is not dead, else the window carrying @lyx_overview, else none.
-// openOwnWindowLocked sets the window option @lyx_overview beside @lyx_own on an overview window, so that rule can tell the overview from an agent window; an overview window opened by an older lyx carries no marker and counts as an agent window, which it can win only when no other agent is live, the same outcome as the overview fallback.
+// FollowSession (follow.go) is the engine-less function behind `lym reed follow`: it addresses a told session of a told server by socket path and issues list-panes, set-option @lym_follow on and, when a window is relevant, select-window, and nothing else.
+// It reads no working directory, config or state, so it picks the window from tmux facts alone: the highest-index window carrying @lym_own and not @lym_overview that holds a pane that is not dead, else the window carrying @lym_overview, else none.
+// openOwnWindowLocked sets the window option @lym_overview beside @lym_own on an overview window, so that rule can tell the overview from an agent window; an overview window opened by an older lym carries no marker and counts as an agent window, which it can win only when no other agent is live, the same outcome as the overview fallback.
 // A failed listing, which is how an unknown session answers, returns an error before any write, a failed option write returns before any select, and a failed select returns an error naming the window.
 //
 // Every strand pane carries the user options @strand (the role segment of its name, or the full name when it does not parse) and @strand_color (the tmux color of its segment, unset when it has none),
-// and the strand window carries @lyx_strands.
-// Launch sets the pane options and boot marks the strand window; every attach pre-flight marks the window and re-asserts both pane options on every strand bound to a live pane, so a session or strand spawned by an older lyx gets them at its next attach.
-// The Selvage pane carries the user option @lyx_console (consolePaneOption), set when it is split and re-asserted by every attach pre-flight.
+// and the strand window carries @lym_strands.
+// Launch sets the pane options and boot marks the strand window; every attach pre-flight marks the window and re-asserts both pane options on every strand bound to a live pane, so a session or strand spawned by an older lym gets them at its next attach.
+// The Selvage pane carries the user option @lym_console (consolePaneOption), set when it is split and re-asserted by every attach pre-flight.
 // The options are display only: the status bar and the key bindings read them, no Go decision does, and Selvage never gets @strand or @strand_color.
-// The session option @lyx_follow is the one decision-bearing session option reed reads; @strand, @strand_color, @lyx_unseen and the wait marks stay display only.
+// The session option @lym_follow is the one decision-bearing session option reed reads; @strand, @strand_color, @lym_unseen and the wait marks stay display only.
 // A strand's Segment is an opaque field its spawner names through AddSpec.Segment; reed reads it only to look up the segment's color, which the strand an add or replace returns and Status carry as Color.
-// An own window gets a status-bar button on line 1 in its segment's color, read from the window options @lyx_own and @strand_color, labelled with the window name and carrying its panes' wait marks.
-// The button is lit while the window is current, and otherwise that color on dark grey, underscored while the window carries @lyx_unseen.
-// Outside Windows, the geometry pins also pin the session hook `session-window-changed` with `set-option -w -u @lyx_unseen`, so selecting the window clears the mark; boot and every attach pre-flight run the pin.
+// An own window gets a status-bar button on line 1 in its segment's color, read from the window options @lym_own and @strand_color, labelled with the window name and carrying its panes' wait marks.
+// The button is lit while the window is current, and otherwise that color on dark grey, underscored while the window carries @lym_unseen.
+// Outside Windows, the geometry pins also pin the session hook `session-window-changed` with `set-option -w -u @lym_unseen`, so selecting the window clears the mark; boot and every attach pre-flight run the pin.
 // On Windows no hook is pinned and the mark is never set.
 // The shell button is a range=user|shell button labelled shell, lit while the shell window is active; line 1 follows window index order, so the overview's button is first, the agents' follow in start order and the shell button comes last.
 // An overview window's button is an own-window button with no @strand_color, which renders as the plain window-button style.
-// A window carrying @lyx_hidden still gets no button, and no Go decision reads @strand_color or @lyx_unseen.
-// Line 2 lists the sessions, then the follow button, a range=user|follow button labelled follow that sits left of the time, lit green while the current session's @lyx_follow is not off and unlit while it is.
+// A window carrying @lym_hidden still gets no button, and no Go decision reads @strand_color or @lym_unseen.
+// Line 2 lists the sessions, then the follow button, a range=user|follow button labelled follow that sits left of the time, lit green while the current session's @lym_follow is not off and unlit while it is.
 //
 // The navigation bindings (bindings.go) are root-table bindings on the hub's reed server, issued by pinBindingsLocked at the end of the geometry pins, so boot and every attach pre-flight pin them.
-// The pin stamps the server-global option @lyx_bindings_build with the pinning build's VCS commit time and revision label, and unsets it for a binary with no VCS stamp.
-// Every op under the blocking op lock reads the stamp before its step and re-pins the bindings when it is absent, unparseable or names another build whose commit time is not after the running one's, so a deployed lyx reaches a running server at its first reed op.
-// Bound: an older build never re-pins over a newer one's stamp, so a long-lived process of an older lyx cannot restore stale bindings, and an unstamped binary never re-pins; two builds of one commit time, such as a dirty build and its commit's clean one, can re-pin over each other.
+// The pin stamps the server-global option @lym_bindings_build with the pinning build's VCS commit time and revision label, and unsets it for a binary with no VCS stamp.
+// Every op under the blocking op lock reads the stamp before its step and re-pins the bindings when it is absent, unparseable or names another build whose commit time is not after the running one's, so a deployed lym reaches a running server at its first reed op.
+// Bound: an older build never re-pins over a newer one's stamp, so a long-lived process of an older lym cannot restore stale bindings, and an unstamped binary never re-pins; two builds of one commit time, such as a dirty build and its commit's clean one, can re-pin over each other.
 // The name-repair loop never re-pins, and the global status-bar options refresh only at boot and attach.
 // The pin starts with `unbind-key -n M-z`, which removes the Alt+z an older build bound, since a `bind-key` re-pin never removes a binding; reed binds no zoom key.
-// Alt+Up and Alt+Down step to the previous or next window in index order, in every window and wrapping with tmux's own window wrap: a step that lands on a window carrying @lyx_hidden goes on, forward to the session's first window, the overview, and back to the strands' window, the shell, which is one conditional step since hidden windows sit after the shell (on psmux, where the order is best-effort, a step may land on a hidden window);
-// Alt+Left and Alt+Right run `lyx reed switch --prev|--next` in the background through run-shell, naming the absolute path of the `lyx` that pinned them (panebin.go's composeSwitchCommand), never PATH's;
+// Alt+Up and Alt+Down step to the previous or next window in index order, in every window and wrapping with tmux's own window wrap: a step that lands on a window carrying @lym_hidden goes on, forward to the session's first window, the overview, and back to the strands' window, the shell, which is one conditional step since hidden windows sit after the shell (on psmux, where the order is best-effort, a step may land on a hidden window);
+// Alt+Left and Alt+Right run `lym reed switch --prev|--next` in the background through run-shell, naming the absolute path of the `lym` that pinned them (panebin.go's composeSwitchCommand), never PATH's;
 // and a left click on the status bar dispatches on its range: the shell button selects the strands' window, a window button selects that window, a session button switches the client to that session, and the follow button toggles the follow state.
 // The status bar draws no button for a strand pane, so a click selects no pane.
-// The follow state is written off by the bindings that change window by hand: Alt+Up and Alt+Down start with `set-option @lyx_follow off`, so the write lands also when the step wraps onto the current window, and the shell and window clicks start with the same write, also for a click on the current window.
+// The follow state is written off by the bindings that change window by hand: Alt+Up and Alt+Down start with `set-option @lym_follow off`, so the write lands also when the step wraps onto the current window, and the shell and window clicks start with the same write, also for a click on the current window.
 // Each write is untargeted, so it hits the session of the client that pressed the key or clicked; Alt+Left, Alt+Right and the session click leave the follow state alone.
-// The follow button writes off when the state is on and changes no window; from off it writes on and, when the jump line is pinned, runs `lyx reed follow` in the background through run-shell, so the viewer jumps back to the run.
-// The jump line (panebin.go's composeFollowCommand) names the absolute path of the `lyx` that pinned it and the clicking client's session as `#{q:session_name}`, and rides the server-global option @lyx_follow_command, which the click runs through `#{E:...}`, keeping the line out of tmux's nested command-string quoting.
+// The follow button writes off when the state is on and changes no window; from off it writes on and, when the jump line is pinned, runs `lym reed follow` in the background through run-shell, so the viewer jumps back to the run.
+// The jump line (panebin.go's composeFollowCommand) names the absolute path of the `lym` that pinned it and the clicking client's session as `#{q:session_name}`, and rides the server-global option @lym_follow_command, which the click runs through `#{E:...}`, keeping the line out of tmux's nested command-string quoting.
 // pinBindingsLocked sets that option when the line resolves and unsets it otherwise, so a click from off then only writes follow on and the next agent window takes the viewer.
 // A psmux without bind-key or run-shell pins none of these, never writes off, and its sessions always follow.
-// Bound: the bindings only ever write off, and the follow button on, to the clicking client's session, and the button runs one `lyx` verb whose effect FollowSession bounds; a window change outside these bindings leaves follow on.
+// Bound: the bindings only ever write off, and the follow button on, to the clicking client's session, and the button runs one `lym` verb whose effect FollowSession bounds; a window change outside these bindings leaves follow on.
 // Bound: these four keys and the left status click are taken from every pane on the server, so a program in a pane, Claude Code included, never receives them; no other key or mouse binding is changed, and tmux's right-click menus keep their defaults.
-// The shell branch finds the strands' window through the @lyx_strands marker, expanded at click time to a tmux-issued window id (`@<n>`), never a config value or free text.
+// The shell branch finds the strands' window through the @lym_strands marker, expanded at click time to a tmux-issued window id (`@<n>`), never a config value or free text.
 // Every binding is non-fatal: a failed `bind-key` is logged and the rest are still issued, and an unresolvable executable, socket path or tmux path logs a named warning and leaves only Alt+Left and Alt+Right unbound.
 // The capability probe checks bind-key, run-shell, if-shell and switch-client as optional verbs after the required set: a missing one logs one warning naming it and never fails the probe, so a psmux without them still boots.
 //
@@ -135,7 +135,7 @@
 // operator's configured shell, `bash` on POSIX and `pwsh` on Windows by
 // default — as its own trailing shell-command argument, the same way
 // new-session already launches the session's first pane: Selvage is an
-// ordinary, typeable interactive shell, never a re-exec of lyx and never
+// ordinary, typeable interactive shell, never a re-exec of lym and never
 // sent a command of reed's own choosing.
 // A strand pane keeps its split with no trailing command and starts the shell from the session's own pins:
 // the boot and the attach pre-flight set `default-shell` and an equal non-empty `default-command` to the resolved shell on the session, never globally, because one server serves every worktree of the hub.
@@ -153,7 +153,7 @@
 // from ReedState.Strands, from strand accounting, and from every strand-only
 // code path, by construction rather than by a runtime check. And Selvage is
 // never written to, cleared, or sent keys by reed — it is a real, usable
-// terminal an operator can run lyx/reed commands in, and reed's own writes
+// terminal an operator can run lym/reed commands in, and reed's own writes
 // stop at booting its shell; the ED2/ED3 screen-clear payload the header
 // pane once needed to display identity text has no counterpart here, since
 // Selvage never displays anything of reed's choosing. selvagepane.go is now
@@ -163,33 +163,26 @@
 //
 // The placement rule: every placed strand gets a window of its own, a group window or the overview, and the shell window holds Selvage alone, which fills it after boot, a heal and the move below.
 // The anchors are own-window, overview and hidden (internal/reedengine/render); a hidden strand never owns a pane.
-// `lyx reed add` with no `--anchor` places the strand own-window.
+// `lym reed add` with no `--anchor` places the strand own-window.
 // The retired anchors `below-parent` and `top` read as own-window when reed.json is decoded, and a write refuses them before any tmux call, naming the way forward.
 // Reed arranges no panes in the shell window: it computes no layout, pins no pane height and keeps no resize hook.
 // The only layout reed issues is the even layout of a group window, in the window_split direction.
 //
 // The move rule: the head of every reconcile (listReconcilePanesLocked, reached from launch, resume and the shared apply tail) lists the shell window's panes and breaks any pane a strand is bound to out into a window of its own.
-// That upgrades a session an older lyx left with strands split under a parent.
+// That upgrades a session an older lym left with strands split under a parent.
 // The recorded Selvage pane and an unbound pane never move, and with the Selvage pane absent the last bound pane stays, because breaking out a window's only pane would take the window with it.
-// The shell window is found by the Selvage pane first, else by the @lyx_strands marker, and with neither the current window is listed and nothing moves.
+// The shell window is found by the Selvage pane first, else by the @lym_strands marker, and with neither the current window is listed and nothing moves.
 //
-// Every strand pane reed creates resolves `lyx` to the binary that spawned it, because launchStrandLocked prepends that binary's directory to the pane's PATH and exports LYX_BIN to its absolute path as shell statements.
-// A fresh shell a strand's command starts re-runs its rc and can reorder PATH, so LYX_BIN names the spawning binary there,
-// and a shuttle engine re-asserts LYX_BIN's directory in its agent's tool shell.
-// The composed line, prelude and launch command together, is written to the strand's launch script,
-// and the typed send-keys line sources it in the pane shell's own scope, so the prelude still runs after the pane shell's profile.
+// Every strand pane reed creates resolves `lym` to the binary that spawned it, because launchStrandLocked prepends that binary's directory to the pane's PATH and exports LYM_BIN to its absolute path as shell statements.
+// A fresh shell a strand's command starts re-runs its rc and can reorder PATH, so LYM_BIN names the spawning binary there, and a shuttle engine re-asserts LYM_BIN's directory in its agent's tool shell.
+// The composed line, prelude and launch command together, is written to the strand's launch script, and the typed send-keys line sources it in the pane shell's own scope, so the prelude still runs after the pane shell's profile.
 // The shell dialect's discard-line key (`C-u` on POSIX, none on PowerShell) is sent ahead of that line, so input that reached the booting pane first, such as a viewer's keystrokes or a terminal reply after a window switch, never prefixes it.
-// The strand records that absolute path as `Strand.LyxBin` at every launch and relaunch, and reed's status reports it.
-// The composition lives in panebin.go and is reached from the one chokepoint, so the property holds
-// by construction for every present and future AddStrand caller including Resume's replay. The
-// mechanism is a typed shell statement rather than `split-window -e` or `set-environment`, so it
-// prepends onto the pane's live PATH instead of replacing it with a value computed from the lyx
-// process's own environment, it survives the pane shell's profile (which has already run by the time
-// anything is typed), and it needs no multiplexer capability. Selvage's pane and the new-session
-// first pane are out of scope.
-// The detached `lyx` window OpenWindow opens composes its command in panebin.go with the same prelude,
-// and every key binding that runs `lyx` names the pinning binary's absolute path from the same executablePath seam, each `#` doubled for run-shell's format expansion.
-// The detached `lyx loom run` and watchdog daemon spawns are outside the rule, since both are spawned from the executable path and never resolve `lyx` from PATH.
+// The strand records that absolute path as `Strand.LymBin` at every launch and relaunch, and reed's status reports it.
+// The composition lives in panebin.go and is reached from the one chokepoint, so the property holds by construction for every present and future AddStrand caller including Resume's replay.
+// The mechanism is a typed shell statement rather than `split-window -e` or `set-environment`, so it prepends onto the pane's live PATH instead of replacing it with a value computed from the lym process's own environment, it survives the pane shell's profile (which has already run by the time anything is typed), and it needs no multiplexer capability.
+// Selvage's pane and the new-session first pane are out of scope.
+// The detached `lym` window OpenWindow opens composes its command in panebin.go with the same prelude, and every key binding that runs `lym` names the pinning binary's absolute path from the same executablePath seam, each `#` doubled for run-shell's format expansion.
+// The detached `lym loom run` and watchdog daemon spawns are outside the rule, since both are spawned from the executable path and never resolve `lym` from PATH.
 // Every shell token is emitted through internal/shell, in the shell.ForGOOS() dialect the launch command uses.
 // A failed launch-script write degrades to typing the composed line, and an unresolvable executable to a pane with no prelude and no such binding, each with a named logger.Warn, never a failed launch.
 // panebin_enforcement_test.go fails on a split-window or new-window pane-creation site outside the chokepoint and its named allowlist.
@@ -200,7 +193,7 @@
 // A live holder, a holder inside the launch grace, and a numbered form (`fix-2` for a role add of `fix`) keep the name, and the ordinary numbering or refusal applies.
 // Reclaim kills the removed holder's pane only when this session lists it, so a pane placed in another session is never killed; the removal reaches reed.json with the add's own save, so a launch failure after it leaves the old record and only its dead pane gone.
 // Bound: a holder misread as dead under the liveness predicate's residual cases is killed with its engine; creel addresses receivers by strand name, so mail queued for the dead holder goes to the new strand of that name.
-// A role-less add takes the default role `strand`, and an empty told shortname refuses before anything boots, naming `lyx fabric shortname <shortname>`.
+// A role-less add takes the default role `strand`, and an empty told shortname refuses before anything boots, naming `lym fabric shortname <shortname>`.
 // The name is a birth attribute and the only lookup key: it is stored in the strand record and every by-name lookup resolves through it, matching the full name, its role segment, or a legacy exact name.
 // An add can also name a strand whose presence in this worktree's state skips it (AddStrandUnless), matched by the same rule as an explicit name;
 // a live, dormant or hidden match all skip,
@@ -213,22 +206,22 @@
 // A live strand, a strand with no list and a strand with a path missing are untouched or relaunched as before.
 //
 // The name is mirrored outward, never read back as truth.
-// launchStrandLocked exports it to the strand's process as LYX_STRAND_NAME, with LYX_PARENT when a parent is told, ahead of the launch command.
+// launchStrandLocked exports it to the strand's process as LYM_STRAND_NAME, with LYM_PARENT when a parent is told, ahead of the launch command.
 // It also sets the pane title to the full name after `set-option -p allow-set-title off`, so the program in the pane cannot overwrite it.
 // On tmux below 3.5 the option is missing and the program can overwrite the title.
 // The tmux floor probe's version line decides it: a parsed release below 3.5 skips the `set-option`, noted once per tmux path per process at Info.
 // On an unrecognised version line the `set-option` runs, and a failure Warns and the launch goes on.
 // A provider session name is the other mirror, passed by the launch line as `--name`.
 // The daemon's file-event waits (watchloop.go) go through a FileWatchOpener, whose production value OpenFileWatch wraps internal/fswatch.
-// PasteSubmit is the pane-write transport op: one tmux invocation fills a fresh named buffer (`lyx-inject-` plus 8 hex characters) with the text, pastes it as a bracketed paste, deletes the buffer, and, when asked, sends Enter behind it.
+// PasteSubmit is the pane-write transport op: one tmux invocation fills a fresh named buffer (`lym-inject-` plus 8 hex characters) with the text, pastes it as a bracketed paste, deletes the buffer, and, when asked, sends Enter behind it.
 // The buffer is loaded with `load-buffer -` from the tmux client's standard input in the same invocation.
 // The paste and the Enter reach the pane in one command list, so nothing the operator types lands between them, and the operator's automatic paste-buffer stack is never touched.
 // A text of any length pastes whole, since tmux's command size limit applies to the command list and not to a buffer read from standard input.
 // A failed invocation stops before the paste's own delete, so a best-effort `delete-buffer` of its own removes the buffer.
 // OperatorActive is the operator-activity query: it lists the session's attached clients with their active pane and last-activity epoch second, and answers whether any client is on the strand's pane with activity within the quiet window, plus that window.
-// The window is the reed.yaml key `operator_quiet_s` (seconds, default 5; a zero or negative value takes the default, as does a materialized reed.yaml lacking the key until `lyx config reconcile` writes it).
+// The window is the reed.yaml key `operator_quiet_s` (seconds, default 5; a zero or negative value takes the default, as does a materialized reed.yaml lacking the key until `lym config reconcile` writes it).
 // No attached client, or clients on other panes only, answer not active, and a failed listing is returned as the error for the caller to decide on.
-// The hub watchdog daemon retires and respawns itself when the `lyx` binary it started from is replaced (reedcli's watchdog verb owns the check and calls SpawnWatchdog for the successor), and a daemon started before that check existed is ended once by hand after the deploy.
+// The hub watchdog daemon retires and respawns itself when the `lym` binary it started from is replaced (reedcli's watchdog verb owns the check and calls SpawnWatchdog for the successor), and a daemon started before that check existed is ended once by hand after the deploy.
 // The hub watchdog daemon runs a name-repair tick (namerepair.go), gated by the reed.yaml key `watchdog`, and runs no resize self-heal.
 // The tick resets a drifted pane title itself and repairs a drifted provider session name through the SessionNamer seam, which the provider package implements and `internal/shuttleengines` fills.
 // A strand carries an opaque provider tag its spawner sets (Strand.Provider, JSON `provider`, omitted when empty); reed stores it and never interprets it.
@@ -247,7 +240,7 @@
 // The daemon's discovery loop wakes on it; standalone mode tells no path and touches nothing.
 // When `Down` ends the server, because no session is left or the session listing errored, it writes DiscoverStopMarker into the file, atomically, before kill-server, to ask the daemon to stop;
 // a cold boot's touch truncates the file back to an ordinary discover, so a racing `up` wins, and `DownResult.EndedServer` reports the teardown.
-// `lyx reed list` reports the hub-wide directory of names across worktrees, with each row's live state.
+// `lym reed list` reports the hub-wide directory of names across worktrees, with each row's live state.
 //
 // # Multiplexer contract surface
 //
@@ -259,10 +252,10 @@
 // tmux swap, since the same test runs unmodified against whichever binary
 // LoadConfig resolves.
 //
-// Tmux floor: every tmux command reed runs, and the lifecycle server spawn, first checks that the tmux binary is at or above lyx's floor (`toolfloor.TmuxFloor`), off Windows only.
+// Tmux floor: every tmux command reed runs, and the lifecycle server spawn, first checks that the tmux binary is at or above lym's floor (`toolfloor.TmuxFloor`), off Windows only.
 // The check runs `<tmux> -V` once per resolved tmux path per process and caches the parsed answer, so a below-floor tmux makes every command return the `*toolfloor.FloorError` naming the tool, the version found and the floor.
 // A probe that could not run is returned wrapped and not cached, so the next command probes again; an unparseable version line is logged once with Warn and admitted.
-// `CheckTmuxFloor` exposes the same check to a tmux spawn outside the runner, such as `lyx reed attach`'s handover.
+// `CheckTmuxFloor` exposes the same check to a tmux spawn outside the runner, such as `lym reed attach`'s handover.
 // A command carrying a test hook never reads or fills the process cache.
 // Bound: a long-lived process, the watchdog daemon included, keeps its cached answer after a tmux upgrade during its life.
 // The capability probe's own native floor stays beneath this one, and on Windows psmux keeps that floor alone.
@@ -272,19 +265,19 @@
 // the probe needs it because `list-commands` starts a transient server on the probe's private socket, and a config that creates a session would keep that server alive.
 // A running server ignores the flag, and every other engine call keeps its argv.
 // The skip covers the operator's whole `~/.tmux.conf` on reed's per-hub servers only, every option, key binding and hook in it, and leaves the operator's own servers alone.
-// It takes effect at a hub server's next start, so a server an older lyx started keeps the operator's config until it exits.
-// The hermetic default stands unless the `reed.yaml` key `tmux_conf` (variable `LYX_REED_TMUX_CONF`) names a tmux config file; empty, it sources nothing.
+// It takes effect at a hub server's next start, so a server an older lym started keeps the operator's config until it exits.
+// The hermetic default stands unless the `reed.yaml` key `tmux_conf` (variable `LYM_REED_TMUX_CONF`) names a tmux config file; empty, it sources nothing.
 // A non-empty value is refused on a POSIX boot unless it names an absolute path to an existing regular file free of whitespace and the characters `* ? [ \ ' " ; # { } $`, the error naming the key, the variable and the path.
 // The file is sourced once per server start, by the boot that started the server.
 // Every POSIX boot reads the server's identity (`#{pid} #{start_time}`) before its spawn and again once its session is up, and the boot is the candidate for the source when the two differ.
-// A candidate claims the server with the server option `@lyx_tmux_conf_claimed` in an `if-shell` check that waits on nothing, so exactly one of two concurrent candidates sources; the winner sets the option to `sourced`, or to `empty` when no file is named.
+// A candidate claims the server with the server option `@lym_tmux_conf_claimed` in an `if-shell` check that waits on nothing, so exactly one of two concurrent candidates sources; the winner sets the option to `sourced`, or to `empty` when no file is named.
 // The claim and the source run before reed's own option pins, so reed's values win over the file's.
-// What the file cannot pass is the session and server lifetime: the spawn pins the new session `destroy-unattached off` and tags it `@lyx_reed_session`, and the guard ends by pinning `destroy-unattached` globally and `exit-unattached` on the server `off`.
+// What the file cannot pass is the session and server lifetime: the spawn pins the new session `destroy-unattached off` and tags it `@lym_reed_session`, and the guard ends by pinning `destroy-unattached` globally and `exit-unattached` on the server `off`.
 // The guard invocation's exit status is only a warning, written to the booting command's stderr and logged with the path and tmux's own message, because one status carries the claim, the source and both pins.
 // The decisions are separate read-back round trips: the boot fails when its session is gone, naming the key, the variable, the path and the command to remove from the file (an untargeted `set destroy-unattached on`, a `kill-session`), or when either pin does not read `off`.
 // Nothing re-sources the file into a running server, so a changed value takes effect at the server's next start, and a starter whose boot ends between spawn and guard leaves the server unclaimed and file-less until then.
 // Only sessions that count as reed's are seen by reed.
-// On a server whose claim is `sourced`, a session counts when it carries `@lyx_reed_session`; on any other server, every session counts, so Windows and servers started before the claim existed behave as before.
+// On a server whose claim is `sourced`, a session counts when it carries `@lym_reed_session`; on any other server, every session counts, so Windows and servers started before the claim existed behave as before.
 // Every session read applies the rule: `list-sessions -f` through listSessionsArgv in Go (the watchdog's discovery, the pair teardown, the last-session check that ends the server, the session-less holder and zombie checks, the recorded-session classification and the next/previous session switch), and the same condition in the status bar's session row.
 // Teardown therefore ends the server, and any session the file created with it, when no reed session remains, and so does a boot refused because the file ended its session.
 // The bound: such a session is hidden from reed and lives until the server ends.
@@ -319,13 +312,13 @@
 // Strand window: the strands live in one window of the session, and every op that enumerates, lays out or measures them addresses that window by its id ("@<n>"), never by the session's current window.
 // A second window in the session is therefore never read as the strands' window.
 // The one seam, windowtarget.go's TmuxCmd.strandWindowTarget, lists the session's own panes across all its windows (`list-panes -s -t '=<session>' -F "#{pane_id} #{window_id}"`).
-// It resolves the window of the recorded Selvage pane (alive, or a dead corpse), else of any present recorded strand pane left in the shell window by an older lyx, else the current-window target "=<session>:", which only the seam keeps.
+// It resolves the window of the recorded Selvage pane (alive, or a dead corpse), else of any present recorded strand pane left in the shell window by an older lym, else the current-window target "=<session>:", which only the seam keeps.
 // A session reap (Down, and the engine-less ReapSession) ends every window, so it lists the panes of all of them (`list-panes -s`) and reads no reed state.
 // A recorded pane id counts as present only when that session-scoped listing carries it, since pane ids are server-wide and a stale id can name another session's pane.
 // With a present Selvage or strand pane a batten window, current or not, is never read as the strands' window and its pane is never reaped as untracked.
 // A session's first up has neither, so it falls back to the current window, and the Selvage pane created there defines the strand window from then on.
 // An own-window strand lives outside the strands' window: its pane is never read as that window, and its liveness is read through the session-wide listing (ownwindow.go's windowPane) instead.
-// Reconcile ends only a window carrying @lyx_own with no pane bound to a strand; a window without the marker is never ended.
+// Reconcile ends only a window carrying @lym_own with no pane bound to a strand; a window without the marker is never ended.
 // Pane placement: an own-window strand's bound pane that the session listing lacks is looked up once across the whole server (`list-panes -a`, strandsElsewhereLocked); the lookup runs only when such a pane exists.
 // Found in another session, the strand reads dead, StrandStatus.Elsewhere names the placement as session:window, and reconcile keeps its binding instead of clearing it; nothing in another session is ever killed, since the kill sets read the session's own panes alone.
 // The binding ends when the pane leaves the server, which a later lookup finds nowhere, or when a removal drops it.
@@ -339,28 +332,28 @@
 // the overview window opens `-b -t <lowest-index window>`, hidden windows included; a hidden window opens `-a -t <highest-index window>`; with nothing to place against the plain form `-t '=<session>:'` is used.
 // A placed new-window the multiplexer refuses on Windows (psmux) logs at Debug and is retried once in the plain form, so the order is best-effort there and nothing fails.
 // The shell window is the window of the recorded console pane (Selvage), named shell with automatic-rename off, which is how a fresh boot names its one window.
-// A session booted by an older lyx is brought into that order by ensureShellWindowLocked, which runs wherever a window opens, once the boot marks the strands' window and at the head of every attach pre-flight, also when no client size is known:
-// it renames the shell window when its name is wrong and moves it behind the last non-hidden window, and only that window; a strand pane an older lyx left in the shell window is broken out by the reconcile head's move rule.
+// A session booted by an older lym is brought into that order by ensureShellWindowLocked, which runs wherever a window opens, once the boot marks the strands' window and at the head of every attach pre-flight, also when no client size is known:
+// it renames the shell window when its name is wrong and moves it behind the last non-hidden window, and only that window; a strand pane an older lym left in the shell window is broken out by the reconcile head's move rule.
 // It does nothing, logged at Debug, when no console pane is recorded or the window listing does not carry its window, and a check never fails its caller.
-// A failed rename or move warns once per failure episode, which the session option @lyx_shell_check_failed keeps open, logs at Debug while the episode stays open and always on Windows, and an Info line closes the episode when a later check succeeds.
+// A failed rename or move warns once per failure episode, which the session option @lym_shell_check_failed keeps open, logs at Debug while the episode stays open and always on Windows, and an Info line closes the episode when a later check succeeds.
 //
-// Detached windows: OpenWindow (window.go) opens a detached, named window in the worktree's reed session running a `lyx` command, for a caller that wants a long-running command to live in the session without a status-bar button.
-// One multiplexer invocation runs `new-window -d -a -t <highest-index window> -P -F '#{window_id}' -n <temporary> <command>`, or in the plain form `new-window -d -t '=<session>:' -P -F '#{window_id}' -n <temporary> <command>` when no window is listed, chained with `set-option -w -t '=<session>:=<temporary>' remain-on-exit off`, `set-option -w -t '=<session>:=<temporary>' @lyx_hidden 1` and a final `rename-window -t '=<session>:=<temporary>' <name>`.
+// Detached windows: OpenWindow (window.go) opens a detached, named window in the worktree's reed session running a `lym` command, for a caller that wants a long-running command to live in the session without a status-bar button.
+// One multiplexer invocation runs `new-window -d -a -t <highest-index window> -P -F '#{window_id}' -n <temporary> <command>`, or in the plain form `new-window -d -t '=<session>:' -P -F '#{window_id}' -n <temporary> <command>` when no window is listed, chained with `set-option -w -t '=<session>:=<temporary>' remain-on-exit off`, `set-option -w -t '=<session>:=<temporary>' @lym_hidden 1` and a final `rename-window -t '=<session>:=<temporary>' <name>`.
 // The window is detached and never selected, so it takes no focus.
 // OpenWindowIn is OpenWindow with a working directory: a non-empty directory adds `-c <dir>` before the command, and OpenWindow passes an empty one.
 // The options are chained by exact name because one chained after a detached new-window without a target lands on the current window, which can be any window since attach and the focus rules select agent and overview windows, and whose remain-on-exit must stay on.
 // The name is a per-call temporary one no other window holds and the rename comes last, because an own window may share the requested name and the options would otherwise land on it.
-// The status bar skips a window carrying @lyx_hidden, and window placement and the shell check read the flag to find the last non-hidden window; no focus rule reads it.
+// The status bar skips a window carrying @lym_hidden, and window placement and the shell check read the flag to find the last non-hidden window; no focus rule reads it.
 // The op reads remain-on-exit back from the new window by the printed id, and a window that does not read off is killed by that id with ErrWindowReadBack.
 // The read-back also asks for the answering window's id, because tmux answers a window that has already closed, as one whose command exited at once has, with exit 0, an empty id and the global value;
 // a failed read or a reply from any other window counts as the window being gone, never as a mismatch.
 // A window of the same name whose pane is live is returned as existing and nothing is started; one whose pane is dead is killed and replaced.
-// A window carrying @lyx_own is skipped by that lookup, so OpenWindow never adopts, kills or replaces an own window of the same name.
-// The command line is composed in panebin.go from the pane-binary prelude, so `lyx` resolves to the spawning binary.
+// A window carrying @lym_own is skipped by that lookup, so OpenWindow never adopts, kills or replaces an own window of the same name.
+// The command line is composed in panebin.go from the pane-binary prelude, so `lym` resolves to the spawning binary.
 // Bound: the op only chooses where a command runs; the window lives as long as the reed session, and the session's other windows keep remain-on-exit on.
 //
 // Own windows: an own-window strand gets a detached window named by its role, opened through the launch chokepoint (spawn.go's openOwnWindowLocked) by `new-window -d`, and the window is then selected only under the focus rule below.
-// The window carries @lyx_own, @strand_color and @lyx_unseen, each set by window id; the last is left unset on Windows, and an overview window carries neither @strand_color nor @lyx_unseen, nor does a new agent window the focus rule selects.
+// The window carries @lym_own, @strand_color and @lym_unseen, each set by window id; the last is left unset on Windows, and an overview window carries neither @strand_color nor @lym_unseen, nor does a new agent window the focus rule selects.
 // Its pane runs the launch tail every strand pane runs.
 // Its dead pane stays until the strand is removed or relaunched; a relaunch kills the old pane once the new one exists, so a shared window never keeps a dead pane beside the relaunched one.
 // Resume reopens the strand detached.
@@ -375,14 +368,14 @@
 // An invalid window_split or window_share_max never refuses a removal: the layout is skipped and the key is reported in Removed.ConfigWarning.
 //
 // Focus rules: an agent window is a window holding a pane bound to an own-window strand; the overview, the shell and hidden windows are not agent windows.
-// The follow state is the session option @lyx_follow (followSessionOption): boot sets it on off Windows, and it is off only while it reads off, so an unset option, as on Windows or in a session booted by an older lyx, reads on.
+// The follow state is the session option @lym_follow (followSessionOption): boot sets it on off Windows, and it is off only while it reads off, so an unset option, as on Windows or in a session booted by an older lym, reads on.
 // followingLocked reads it, and a failed read counts as off for that one decision and is logged at Warn, so a broken read never moves a viewer.
 // It is the one decision-bearing session option reed reads.
-// An automatic window switch happens only at three points, each deciding from reed state, window ids, strand roles, pane liveness and the follow state alone, never from @lyx_unseen, @lyx_hidden or a wait mark.
+// An automatic window switch happens only at three points, each deciding from reed state, window ids, strand roles, pane liveness and the follow state alone, never from @lym_unseen, @lym_hidden or a wait mark.
 // relevantWindow is the target of two of them: among the listed windows not about to end, the highest-index agent window holding a pane that is not dead, else the overview strand's window, else none.
 // Attach (attachWindowSelectionLocked, resolved by AttachArgv right after the shell check) appends `; select-window -t <relevant window>` to every argv it returns, and appends nothing when a listing fails or no window is relevant.
 // Beside another attached client, or when the client listing fails, it appends the selection only while follow reads on, reading the follow state only then and never writing it, so with follow on an attach moves every client of the session to the relevant window, including one on a window it reached outside reed's bindings, and a failed follow read counts as off.
-// A new agent window is selected by openOwnWindowLocked, for an own-window strand and never the overview, when newAgentWindowSelected holds: always for a Focus strand, never for one whose display sets only KeepViewer, otherwise exactly when the follow state reads on; it then carries no @lyx_unseen.
+// A new agent window is selected by openOwnWindowLocked, for an own-window strand and never the overview, when newAgentWindowSelected holds: always for a Focus strand, never for one whose display sets only KeepViewer, otherwise exactly when the follow state reads on; it then carries no @lym_unseen.
 // With follow on, a new agent window takes the viewer wherever it is, the shell included; with follow off, it leaves the viewer where it is.
 // Opening a window never changes the follow state.
 // FollowRun is the one engine operation that turns follow on, beside the engine-less FollowSession: under the operation lock it sets the option on and selects the relevant window, the newest live agent window, else the overview, else nothing, for whichever client views the session.
@@ -395,9 +388,9 @@
 // Overview anchor: the overview anchor places one strand per session, alone in a window of its own that opens at the lowest index and never joins a group.
 // The window takes the display's Title as its name, overview when the display carries none; the orch's runs strand names it after its beam.
 // Everything that reads a window of its own, reconcile, presentPanes, the strands' window resolver and the relaunch's old-pane kill, treats an overview pane as an own-window one (isOwnWindow); only the placement, the name, the unseen mark, the one-per-session refusal and the focus rules ask isOverview.
-// The window carries @lyx_own like an own window and sets neither @lyx_unseen nor @strand_color, so its button takes the plain window-button style.
+// The window carries @lym_own like an own window and sets neither @lym_unseen nor @strand_color, so its button takes the plain window-button style.
 // An overview display takes no window group, and UpdateStrand refuses a move between the overview and own-window anchors.
-// AddStrand refuses a second overview strand while another strand, live or dormant, holds the anchor, naming that strand and lyx reed remove.
+// AddStrand refuses a second overview strand while another strand, live or dormant, holds the anchor, naming that strand and lym reed remove.
 // ReplaceStrand removes the old strand before its add, so replacing the overview strand itself is never refused; replacing another strand with an overview strand is refused only while a third strand holds the anchor.
 // A replacement overview strand that ends the window the operator is viewing selects its own new window once the launch succeeded; a replacement whose old strand shared a window that stays open ends no window and switches nothing.
 //
@@ -564,7 +557,7 @@
 //     BETWEEN boots (R5 review findings R5-F2/R5-F5). The one disagreement
 //     that is refused rather than cleared is a recorded session still RUNNING
 //     on this socket under a name that is not this worktree's — a renamed
-//     worktree or a copied .lyx — because carrying on there launches a second
+//     worktree or a copied .lym — because carrying on there launches a second
 //     copy of every strand and leaves the first unreachable.
 //   - display-message does NOT exit 1 for an absent session (generation.go):
 //     unlike has-session and list-panes, which exit 1 for a `-t` target that
@@ -614,7 +607,7 @@
 //     configured mouse value (default "on") on a fresh boot, right
 //     alongside remain-on-exit. Like remain-on-exit and debug_log, this is
 //     applied only on the boot that spawns the session, so toggling mouse in
-//     config or LYX_REED_MOUSE on an already-running hub has no effect until
+//     config or LYM_REED_MOUSE on an already-running hub has no effect until
 //     the reed server restarts -- and an already-materialized reed.yaml keeps
 //     whatever value it holds, since reconcile is key-based and never rewrites
 //     a value.
@@ -681,10 +674,10 @@
 //     attach-session is first in the chain, so a failing select-window still leaves the operator attached.
 //   - The geometry option pins (windowsize.go): pinGeometryOptionsLocked pins the two-line status bar, whose format strings bar.go declares: "status-format[0]" (the window and shell buttons) and "status-format[1]" (the session buttons and the time), both with -g since tmux's status formats are one array; "status-style" (-g) with the dark grey statusBarStyle, so the gaps between the buttons are not tmux's default green; "status" "2" and "status-position" "bottom" on the session; and "window-size" "latest" (-w) on the strand window.
 //     The window-targeted pin is targeted at the strand window (-t <strand window>, per the Strand window and Session targeting grammar above), both at boot and again in AttachArgv's pre-flight.
-//     The bar reads strands only through the @strand and @strand_color pane options and the @lyx_strands window option, never through the current window.
-//     Line 2 is two single-format `#{S:}` loops, since tmux 3.4's loop takes one format: the first draws the session carrying the session user option @lyx_prime_session, and the second every other reed session, in the loop's own order, which is session name on tmux 3.4 and session id on newer tmux.
-//     The prime's session is the hub geometry with an empty name slug, marked with `set-option -t <strand window> @lyx_prime_session 1` after the status pins, at boot and in the attach pre-flight, non-fatal like them; a pair's session and a standalone session are never marked, and no Go decision reads the mark.
-//     Bound: a prime session already up when this binary arrived draws in the second loop until a `lyx reed attach` to it reaches the geometry pins, and an attach whose pre-flight degrades to the bare argv leaves it unmarked.
+//     The bar reads strands only through the @strand and @strand_color pane options and the @lym_strands window option, never through the current window.
+//     Line 2 is two single-format `#{S:}` loops, since tmux 3.4's loop takes one format: the first draws the session carrying the session user option @lym_prime_session, and the second every other reed session, in the loop's own order, which is session name on tmux 3.4 and session id on newer tmux.
+//     The prime's session is the hub geometry with an empty name slug, marked with `set-option -t <strand window> @lym_prime_session 1` after the status pins, at boot and in the attach pre-flight, non-fatal like them; a pair's session and a standalone session are never marked, and no Go decision reads the mark.
+//     Bound: a prime session already up when this binary arrived draws in the second loop until a `lym reed attach` to it reaches the geometry pins, and an attach whose pre-flight degrades to the bare argv leaves it unmarked.
 //     The same function clears the `window-resized` hook an older binary pinned on the shell window, with `set-hook -u` in the window scope and the session scope, everywhere but Windows, so boot and attach both clear it.
 //     Unlike the remain-on-exit/mouse pins beside
 //     them, every pin here is NON-FATAL: those two are correctness dependencies,

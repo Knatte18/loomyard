@@ -1,7 +1,7 @@
 //go:build tier2
 
 // windoworder_integration_test.go proves the window order against a real tmux.
-// The session's windows hold the overview first, the agents in start order, then the window named shell, then the hidden windows; a relaunch keeps its window's place, and a session booted by an older lyx is brought into that order.
+// The session's windows hold the overview first, the agents in start order, then the window named shell, then the hidden windows; a relaunch keeps its window's place, and a session booted by an older lym is brought into that order.
 // One cold session serves every step.
 
 package reedengine
@@ -18,12 +18,12 @@ import (
 )
 
 // TestWindowOrder_RealTmux runs its steps in order on one cold session.
-// It overrides the executable path so the detached `lyx` window of OpenWindow is a stub that sleeps for its first argument's seconds, which makes it process-global state, so it does not run in parallel.
+// It overrides the executable path so the detached `lym` window of OpenWindow is a stub that sleeps for its first argument's seconds, which makes it process-global state, so it does not run in parallel.
 func TestWindowOrder_RealTmux(t *testing.T) {
 	stubDir := t.TempDir()
-	stub := filepath.Join(stubDir, "lyx")
+	stub := filepath.Join(stubDir, "lym")
 	if err := os.WriteFile(stub, []byte("#!/bin/sh\nsleep \"$1\"\n"), 0o755); err != nil {
-		t.Fatalf("write lyx stub: %v", err)
+		t.Fatalf("write lym stub: %v", err)
 	}
 	withInjectedExecutablePath(t, func() (string, error) { return stub, nil })
 
@@ -229,7 +229,7 @@ func TestWindowOrder_RealTmux(t *testing.T) {
 		if got := agentNames(); !slices.Equal(got, agents) {
 			t.Errorf("agent windows = %v, want %v unchanged and in start order", got, agents)
 		}
-		marks, err := e.tmux.output("display-message", "-p", "-t", windowOfPane(t, e, overview.PaneID), "[#{@lyx_own}][#{@lyx_unseen}][#{@strand_color}][#{@lyx_overview}]")
+		marks, err := e.tmux.output("display-message", "-p", "-t", windowOfPane(t, e, overview.PaneID), "[#{@lym_own}][#{@lym_unseen}][#{@strand_color}][#{@lym_overview}]")
 		if err != nil {
 			t.Fatalf("read the overview window marks: %v", err)
 		}
@@ -240,12 +240,12 @@ func TestWindowOrder_RealTmux(t *testing.T) {
 			if w.Name == overviewWindowName || w.Name == shellWindowName || w.Hidden {
 				continue
 			}
-			agentMark, err := e.tmux.output("display-message", "-p", "-t", w.ID, "#{@lyx_overview}")
+			agentMark, err := e.tmux.output("display-message", "-p", "-t", w.ID, "#{@lym_overview}")
 			if err != nil {
 				t.Fatalf("read the overview marker of window %s: %v", w.Name, err)
 			}
 			if got := strings.TrimSpace(agentMark); got != "" {
-				t.Errorf("agent window %s @lyx_overview = %q, want it unset", w.Name, got)
+				t.Errorf("agent window %s @lym_overview = %q, want it unset", w.Name, got)
 			}
 		}
 	})
@@ -314,9 +314,9 @@ func TestWindowOrder_RealTmux(t *testing.T) {
 
 	unseen := func(window string) string {
 		t.Helper()
-		out, err := e.tmux.output("display-message", "-p", "-t", window, "#{@lyx_unseen}")
+		out, err := e.tmux.output("display-message", "-p", "-t", window, "#{@lym_unseen}")
 		if err != nil {
-			t.Fatalf("read @lyx_unseen of %s: %v", window, err)
+			t.Fatalf("read @lym_unseen of %s: %v", window, err)
 		}
 		return strings.TrimSpace(out)
 	}
@@ -340,7 +340,7 @@ func TestWindowOrder_RealTmux(t *testing.T) {
 			t.Errorf("current window = %s, want the new agent window %s selected from the shell", got, fromShellWindow)
 		}
 		if got := unseen(fromShellWindow); got != "" {
-			t.Errorf("selected agent window @lyx_unseen = %q, want it unset", got)
+			t.Errorf("selected agent window @lym_unseen = %q, want it unset", got)
 		}
 
 		addFocused("on-newer", false)
@@ -351,7 +351,7 @@ func TestWindowOrder_RealTmux(t *testing.T) {
 			t.Errorf("current window = %s, want the new agent window %s selected from an older live agent window", got, fromOlderWindow)
 		}
 		if got := unseen(fromOlderWindow); got != "" {
-			t.Errorf("selected agent window @lyx_unseen = %q, want it unset", got)
+			t.Errorf("selected agent window @lym_unseen = %q, want it unset", got)
 		}
 		assertFollow("on")
 	})
@@ -371,7 +371,7 @@ func TestWindowOrder_RealTmux(t *testing.T) {
 				t.Errorf("current window = %s, want the viewer kept on %s (%s)", got, name, viewer)
 			}
 			if got := unseen(windowOfPane(t, e, added.PaneID)); got != "1" {
-				t.Errorf("unselected agent window @lyx_unseen = %q, want 1", got)
+				t.Errorf("unselected agent window @lym_unseen = %q, want 1", got)
 			}
 			assertFollow("off")
 		}
@@ -401,7 +401,7 @@ func TestWindowOrder_RealTmux(t *testing.T) {
 			t.Errorf("current window = %s, want the viewer kept on the shell window %s", got, shellWindow)
 		}
 		if got := unseen(windowOfPane(t, e, kept.PaneID)); got != "1" {
-			t.Errorf("unselected agent window @lyx_unseen = %q, want 1", got)
+			t.Errorf("unselected agent window @lym_unseen = %q, want 1", got)
 		}
 		assertFollow("on")
 	})

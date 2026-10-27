@@ -21,7 +21,7 @@ import (
 // a valid config with all template keys parses both fields and Dirs();
 // an empty branch_prefix stays the empty string;
 // an environment variable in branch_prefix is resolved;
-// and a missing _lyx/ returns the fabric-specific not-initialized error, naming the reconcile verb
+// and a missing _lym/ returns the fabric-specific not-initialized error, naming the reconcile verb
 // that fixes it.
 //
 //testtiming:keep LoadConfig parsing both fields and Dirs(), keeping an empty prefix, resolving env references and naming the reconcile verb when uninitialized; coverage of its blocks by other tests does not show an assertion of this
@@ -37,29 +37,29 @@ func TestLoadConfig(t *testing.T) {
 	}{
 		{
 			name:         "happy_path",
-			content:      "branch_prefix: hanf/\npathspec: _lyx _extra\n",
+			content:      "branch_prefix: hanf/\npathspec: _lym _extra\n",
 			wantBranch:   "hanf/",
-			wantPathspec: "_lyx _extra",
-			wantDirs:     []string{"_lyx", "_extra"},
+			wantPathspec: "_lym _extra",
+			wantDirs:     []string{"_lym", "_extra"},
 		},
 		{
 			name:         "empty_branch_prefix",
-			content:      "branch_prefix: \"\"\npathspec: _lyx\n",
+			content:      "branch_prefix: \"\"\npathspec: _lym\n",
 			wantBranch:   "",
-			wantPathspec: "_lyx",
-			wantDirs:     []string{"_lyx"},
+			wantPathspec: "_lym",
+			wantDirs:     []string{"_lym"},
 		},
 		{
 			name:         "env_resolution",
 			env:          map[string]string{"TEST_FABRIC_BRANCH_PREFIX": "feature/"},
-			content:      "branch_prefix: ${env:TEST_FABRIC_BRANCH_PREFIX}\npathspec: _lyx\n",
+			content:      "branch_prefix: ${env:TEST_FABRIC_BRANCH_PREFIX}\npathspec: _lym\n",
 			wantBranch:   "feature/",
-			wantPathspec: "_lyx",
-			wantDirs:     []string{"_lyx"},
+			wantPathspec: "_lym",
+			wantDirs:     []string{"_lym"},
 		},
 		{
 			name:           "not_initialized",
-			wantErrContain: []string{"not initialized", "lyx fabric reconcile", "a session lyx refuses the verb from reports status: FAILED and the orch runs it"},
+			wantErrContain: []string{"not initialized", "lym fabric reconcile", "a session lym refuses the verb from reports status: FAILED and the orch runs it"},
 		},
 	}
 	for _, tt := range tests {
@@ -71,7 +71,7 @@ func TestLoadConfig(t *testing.T) {
 
 			if tt.content != "" {
 				if err := os.MkdirAll(configengine.ConfigDir(tmpDir), 0755); err != nil {
-					t.Fatalf("failed to create _lyx/config: %v", err)
+					t.Fatalf("failed to create _lym/config: %v", err)
 				}
 				if err := os.WriteFile(configengine.ConfigFile(tmpDir, "fabric"), []byte(tt.content), 0644); err != nil {
 					t.Fatalf("failed to write config: %v", err)

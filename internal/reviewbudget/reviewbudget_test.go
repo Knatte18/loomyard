@@ -45,11 +45,11 @@ func TestCheckResolved(t *testing.T) {
 	plan := []string{"plan"}
 
 	const (
-		resumeTail    = `then run "lyx loom resume"`
-		localRoute    = `run "lyx config loom --layer local --set %s=<n>" in the task worktree, and correct the task's run_settings with "lyx board upsert" too`
-		worktreeRoute = `run "lyx config loom --set %s=<n>" in the task worktree`
-		defaultRoute  = `run "lyx config loom --layer default --set %s=<n>" from the hub's prime worktree`
-		hubRoute      = `run "lyx config darn --set %s=<n>" from the prime`
+		resumeTail    = `then run "lym loom resume"`
+		localRoute    = `run "lym config loom --layer local --set %s=<n>" in the task worktree, and correct the task's run_settings with "lym board upsert" too`
+		worktreeRoute = `run "lym config loom --set %s=<n>" in the task worktree`
+		defaultRoute  = `run "lym config loom --layer default --set %s=<n>" from the hub's prime worktree`
+		hubRoute      = `run "lym config darn --set %s=<n>" from the prime`
 	)
 	route := func(format, key string) string { return strings.Replace(format, "%s", key, 1) }
 
@@ -172,7 +172,7 @@ func TestCheckResolved(t *testing.T) {
 			wantParts: []string{
 				`darn config key "review_hard_max_bounces": resolved hard cap 3 is below "review_max_bounces"'s resolved soft cap 5`,
 				"raise the hard cap: " + route(hubRoute, RunHardKey),
-				"or lower the soft cap: " + route("run \"lyx config darn --layer local --set %s=<n>\" in the task worktree", RunSoftKey),
+				"or lower the soft cap: " + route("run \"lym config darn --layer local --set %s=<n>\" in the task worktree", RunSoftKey),
 			},
 		},
 	}
@@ -215,7 +215,7 @@ func TestCheckLocal(t *testing.T) {
 	t.Parallel()
 
 	perches := []string{"plan", "merge"}
-	const upsert = `correct the task's run_settings with "lyx board upsert"`
+	const upsert = `correct the task's run_settings with "lym board upsert"`
 	tests := []struct {
 		name    string
 		set     map[string]any

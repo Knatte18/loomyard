@@ -14,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
@@ -36,9 +36,9 @@ func beamHub(t *testing.T) (h *hubforge.Hub, primeName string) {
 }
 
 // resolvePair resolves the code worktree of slug in h.
-func resolvePair(t *testing.T, h *hubforge.Hub, slug string) *lyxcwd.Location {
+func resolvePair(t *testing.T, h *hubforge.Hub, slug string) *lymcwd.Location {
 	t.Helper()
-	location, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree(slug))
+	location, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(slug))
 	if err != nil {
 		t.Fatalf("resolve the worktree of %q: %v", slug, err)
 	}
@@ -50,14 +50,14 @@ func TestResolveBattenPrime(t *testing.T) {
 
 	boardkit.InstallReplay(t)
 	h, primeName := beamHub(t)
-	recordsSibling, err := lyxcwd.Resolve(h.PrimeRecords())
+	recordsSibling, err := lymcwd.Resolve(h.PrimeRecords())
 	if err != nil {
 		t.Fatalf("resolve the prime's records sibling: %v", err)
 	}
 
 	tests := []struct {
 		name     string
-		location *lyxcwd.Location
+		location *lymcwd.Location
 		// wantErr is empty for an admitted worktree, else every substring the refusal names.
 		wantErr []string
 	}{

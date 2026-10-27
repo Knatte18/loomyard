@@ -36,7 +36,7 @@ type Shed struct {
 	// repeated constant, and so a filling caller in another package never has to import this
 	// engine's enum type. It is called outside internal/state's write lock, never inside the
 	// mutate callback: a synchronous network push inside that lock would block every status
-	// reader -- "lyx loom status --watch" included -- for the push's duration.
+	// reader -- "lym loom status --watch" included -- for the push's duration.
 	CommitStatus func(producer, state string) error
 	// Transient is the caller-supplied classifier the producer boundary uses to translate a lower-level failure into the transient mark.
 	// It is told, like CommitStatus, so this package never imports the packages whose failures it classifies.
@@ -54,7 +54,7 @@ type Shed struct {
 	MissingStatusWayForward string
 	// PauseWayForward is the command a busy refusal names to stop the run at a producer boundary.
 	// It is told;
-	// the empty string falls back to `lyx shed pause <run-id> --after <current_producer>`.
+	// the empty string falls back to `lym shed pause <run-id> --after <current_producer>`.
 	PauseWayForward string
 	// RerouteCapWayForward is the trailing "way forward:" clause of a reroute-cap halt.
 	// It is told;

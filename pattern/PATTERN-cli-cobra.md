@@ -1,6 +1,6 @@
 # PATTERN-cli-cobra
 
-Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/main.go`.
+Every lym CLI module is a cobra subtree assembled under one root in `cmd/lym/main.go`.
 
 - Each module exposes `Command() *cobra.Command` and `RunCLI(out io.Writer, args []string) int`.
   Every module but `internal/selfreportcli` also carries `RunCLIIn(cwd, out, args) int`.
@@ -10,17 +10,17 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
   `clihelp.Invocable` decides: a command with subcommands is invocable only when it is runnable and its `Use` carries a token after its name, or it has a visible local flag.
   Any other group carries no audience, prints help on a bare call and refuses a mistyped subcommand, so behavior meant for the group name belongs on a leaf such as `show`.
 - `Use` is the command name, then `<arg>`, `[<arg>]`, `<arg>...`, `[<arg>...]`, `--flag <value>` for a flag cobra marks required, or a brace-balanced `{...}` payload span.
-  `Short` is one lower-case line with no final period, and `Long` stays under the byte cap in `cmd/lyx/clitree_test.go`.
-- One walk of `newRoot()` in `cmd/lyx/clitree_test.go` enforces the audience, `Use`, `Short` and `Long` form, bare-group listing and unknown-subcommand refusal for every command.
-  `cmd/lyx/registration_test.go` is the oracle that every `Command()` package is mounted.
+  `Short` is one lower-case line with no final period, and `Long` stays under the byte cap in `cmd/lym/clitree_test.go`.
+- One walk of `newRoot()` in `cmd/lym/clitree_test.go` enforces the audience, `Use`, `Short` and `Long` form, bare-group listing and unknown-subcommand refusal for every command.
+  `cmd/lym/registration_test.go` is the oracle that every `Command()` package is mounted.
   Per-CLI copies are no longer an obligation.
 - Errors are JSON via `internal/output`, one object per line, and every `RunE` checks `clihelp.ShouldAbort` first.
-- The global `--json` flag, declared by `clihelp.InstallJSONHelp`, prints a command's help as JSON and never runs the command, so an agent can walk the tree with `lyx <path> --json`.
-  A command whose own local `--json` flag means something else, such as `lyx shed status --json`, shadows the global one and runs.
+- The global `--json` flag, declared by `clihelp.InstallJSONHelp`, prints a command's help as JSON and never runs the command, so an agent can walk the tree with `lym <path> --json`.
+  A command whose own local `--json` flag means something else, such as `lym shed status --json`, shadows the global one and runs.
 
 ## Interactive-handoff exception
 
-Narrow and per-command: `reedengine` `attach` and `watchdog`, `lyx loom status --watch`, `lyx shed status --watch`, `lyx batten status --watch`, and the `status` verbs' terminal rendering.
+Narrow and per-command: `reedengine` `attach` and `watchdog`, `lym loom status --watch`, `lym shed status --watch`, `lym batten status --watch`, and the `status` verbs' terminal rendering.
 
 ## Package naming
 
@@ -32,6 +32,6 @@ Deviations:
 - `shedcli` uses `internal/shedverbs`, `internal/loomcli` and `internal/battencli`, with no engine package of its own.
 - `tendercli` uses `tenderengine`, and mounts one root command, `tender`.
 - `shortcutcli` mounts one root command per shortcut from its embedded file, with no `Command()` or `RunCLI`; a shortcut is an alias stretched to a sequence of argvs, so the module guards skip its group.
-- `cleanupcli` calls the cleanup functions of `battencli`, `boardengine`, `orchengine`, `logger` and `lyxtemp`, with no engine package of its own.
+- `cleanupcli` calls the cleanup functions of `battencli`, `boardengine`, `orchengine`, `logger` and `lymtemp`, with no engine package of its own.
 - `adoptcli` calls the takeover functions of `fabricengine`, `pairteardown`, `boardengine`, `tenderengine`, `tendercli`, `battencli` and `landingshed`, with no engine package of its own.
 - `beamcli` calls the functions of `fabricengine`, `boardengine`, `hubgeom` and `battencli`, with no engine package of its own.

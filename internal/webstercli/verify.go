@@ -25,7 +25,7 @@ func (c *websterCLI) verifyCmd() *cobra.Command {
 		Use:         "verify",
 		Short:       "run the hub's webster gate over the worktree, the way the webster verify gate does",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `verify renders the hub's "webster" gate from gate.yaml as one "lyx gate test"
+		Long: `verify renders the hub's "webster" gate from gate.yaml as one "lym gate test"
 call over the whole tree and runs it through the same function the webster
 verify gate, Webster-Burler-Fix's verify gate and Publish and Finalize call.
 It is the self-check of the webster verify gate.
@@ -35,13 +35,13 @@ names the same command exits 0 without running. A dirty tree is refused with
 its paths under "findings", and a failing command with its exit code, log path
 and failing identities under "findings"; both exit non-zero. A gate.yaml that
 cannot be loaded, or a "webster" key naming an undeclared tier, is refused
-naming "lyx config gate".
+naming "lym config gate".
 
 A pause covering the worktree holds the run until the resume: the verify waits
 before its command, and stops a running command at the pause's grace end.
 
 Example:
-  lyx webster verify`,
+  lym webster verify`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -92,6 +92,6 @@ func (c *websterCLI) runVerify(cmd *cobra.Command) int {
 		findings["failures"] = failures
 	}
 	return output.ErrFields(out,
-		fmt.Sprintf("webster: verify: the verify command failed with exit code %d; way forward: fix the failures named under findings, commit, and re-run `lyx webster verify`", res.ExitCode),
+		fmt.Sprintf("webster: verify: the verify command failed with exit code %d; way forward: fix the failures named under findings, commit, and re-run `lym webster verify`", res.ExitCode),
 		map[string]any{"findings": findings})
 }

@@ -153,7 +153,7 @@ func failOnSleep(t *testing.T) func(time.Duration) {
 func TestSetOwners(t *testing.T) {
 	// Not parallel: the SkipGit row sets the environment, which a parallel ancestor forbids; the rows that can run in parallel say so themselves.
 
-	// A test binary never runs the lyx root pre-run that installs the board replay a rejected push is retried through.
+	// A test binary never runs the lym root pre-run that installs the board replay a rejected push is retried through.
 	fabricengine.InstallBoardReplay(FabricReplay{})
 
 	outcomes := []struct {
@@ -350,7 +350,7 @@ func TestSetOwners(t *testing.T) {
 				return nil
 			},
 			machine:    "neve",
-			wantSubstr: "lyx board sync",
+			wantSubstr: "lym board sync",
 		},
 	}
 	for _, tt := range refusals {
@@ -499,8 +499,8 @@ func TestSetOwners(t *testing.T) {
 				t.Errorf("SetOwners() waited %v; want one wait of %v", waits, time.Second)
 			}
 			if !tt.releaseOnSleep {
-				if err == nil || !strings.Contains(err.Error(), "lyx board sync") {
-					t.Fatalf("SetOwners() error = %v; want a refusal naming `lyx board sync`", err)
+				if err == nil || !strings.Contains(err.Error(), "lym board sync") {
+					t.Fatalf("SetOwners() error = %v; want a refusal naming `lym board sync`", err)
 				}
 				return
 			}

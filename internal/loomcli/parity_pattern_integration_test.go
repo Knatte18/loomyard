@@ -44,7 +44,7 @@ func TestGateParity_PatternHeadroom(t *testing.T) {
 			firstCommit := gitkit.CommitFile(t, worktreeRoot, "PATTERN.md", patternOverviewOfSize(pattern.HeadroomBytes-100, shortEntry), "overview under the line")
 			gitkit.CommitFile(t, worktreeRoot, "PATTERN.md", patternOverviewOfSize(pattern.HeadroomBytes-60, shortEntry), "overview grown, still under the line")
 
-			plankit.Write(t, filepath.Join(anchorPath, "_lyx", "plan"), plankit.Plan{
+			plankit.Write(t, filepath.Join(anchorPath, "_lym", "plan"), plankit.Plan{
 				Approved: true,
 				Language: "none",
 				Cards: []plankit.Card{{

@@ -16,7 +16,7 @@ import (
 // Env.Shuttle is never read: the lead runs through Env.Seats.
 //
 // The table arrives as a shedadapters.TableSource closure evaluated once per Call, so the lead's stencil is read at call time.
-// It is a closure rather than recipe Config because building the table needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly; internal/loomcli's wire() supplies it.
+// It is a closure rather than recipe Config because building the table needs a *lymcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly; internal/loomcli's wire() supplies it.
 // The resolved gate is stamped onto each table the source returns, so the row's "gates" key guards the lead whatever table the source builds.
 //
 // AnchorPath is validated here and threaded through because loomshed.NewPlanDirRotator resolves the
@@ -55,7 +55,7 @@ func planWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduc
 		return nil, err
 	}
 	// The rotation is handed to the producer as its fresh-spawn preparation, never run as a step
-	// ahead of it: it must not touch _lyx/plan until the producer's own seat probe has proved no
+	// ahead of it: it must not touch _lym/plan until the producer's own seat probe has proved no
 	// live plan agent is writing there. See loomshed.NewPlanDirRotator.
 	rotate := loomshed.NewPlanDirRotator(env.AnchorPath, env.StencilsDir, env.Rework.ArchiveWebster, env.Now)
 	tables := func() (seatengine.Table, error) {

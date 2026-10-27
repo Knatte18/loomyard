@@ -15,7 +15,7 @@ import (
 )
 
 // tmuxConfEnv is the environment variable the `tmux_conf` template line reads.
-const tmuxConfEnv = "LYX_REED_TMUX_CONF"
+const tmuxConfEnv = "LYM_REED_TMUX_CONF"
 
 // tmuxConfForbiddenChars are the non-whitespace characters a tmux config path may not hold:
 // source-file treats its argument as a glob, and the boot nests the path in a command string tmux parses a second time.
@@ -53,10 +53,10 @@ func tmuxConfPath(raw, home string) (string, error) {
 }
 
 // tmuxConfClaimedOption is the server option the boot that wins the claim sets: `sourced` when it sourced a file, `empty` when it had none.
-const tmuxConfClaimedOption = "@lyx_tmux_conf_claimed"
+const tmuxConfClaimedOption = "@lym_tmux_conf_claimed"
 
 // reedSessionOption is the session option every reed session carries from its creation, which the session filter reads.
-const reedSessionOption = "@lyx_reed_session"
+const reedSessionOption = "@lym_reed_session"
 
 // serverIdentityLocked returns the answer of the server's `#{pid} #{start_time}`, which names one server incarnation.
 // It returns the empty string when the round trip fails or prints nothing, as for a socket with no server.

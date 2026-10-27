@@ -17,7 +17,7 @@ import (
 	"testing"
 )
 
-// TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGateAndLeavesTargetUntouched drives "run" from a temporary directory that is not a git repository at all -- lyxcwd.Resolve fails there, so preflight.ResolveMode folds it into standalone mode rather than refusing outright.
+// TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGateAndLeavesTargetUntouched drives "run" from a temporary directory that is not a git repository at all -- lymcwd.Resolve fails there, so preflight.ResolveMode folds it into standalone mode rather than refusing outright.
 // It redirects the standalone state directory to a temporary one via XDG_STATE_HOME/LOCALAPPDATA before calling RunCLIIn, since without that redirect the real Derive would resolve into the operator's actual home directory.
 // The redirect is why this test is not marked t.Parallel():
 // t.Setenv panics under a parallel test.

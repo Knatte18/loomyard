@@ -41,21 +41,21 @@ func wayForward(report preflight.Report) string {
 	for _, f := range report.Failures {
 		switch f.Check {
 		case preflight.CheckWorktreeClean:
-			add("commit or stash the code changes with git, and commit the _lyx changes with `lyx fabric commit`, then re-step")
+			add("commit or stash the code changes with git, and commit the _lym changes with `lym fabric commit`, then re-step")
 		case preflight.CheckFabricSync:
-			add("`lyx fabric checkout` re-checks out the current branch and re-syncs the _lyx side, then re-step")
+			add("`lym fabric checkout` re-checks out the current branch and re-syncs the _lym side, then re-step")
 		case preflight.CheckFabricReady, preflight.CheckJunction:
 			// An unreadable fabric.yaml is a config decode error reconcile cannot repair.
 			if strings.Contains(f.Reason, "cannot load fabric.yaml") {
 				continue
 			}
-			add("`lyx fabric reconcile` recreates a missing _lyx worktree and re-points broken junctions, then re-step")
+			add("`lym fabric reconcile` recreates a missing _lym worktree and re-points broken junctions, then re-step")
 		}
 	}
 	if len(steps) == 0 {
 		return ""
 	}
-	return "; way forward: " + strings.Join(steps, "; ") + "; a session lyx refuses the verb from reports status: FAILED and the orch runs it"
+	return "; way forward: " + strings.Join(steps, "; ") + "; a session lym refuses the verb from reports status: FAILED and the orch runs it"
 }
 
 // preflightProducer is the general Preflight producer: it wraps preflight.Check, mapping its
@@ -101,7 +101,7 @@ func (p *preflightProducer) reconcileHub() {
 // shedengine.Stuck with an empty Path and the failures on Reason, and a non-nil error to a returned
 // error. That mapping is the whole producer -- Check reports a determined verdict rather than
 // erroring on anything short of an infra failure, so its OK false is a verdict to route and its
-// error is an undetermined failure to escalate. The resolved *lyxcwd.Location Check also returns is
+// error is an undetermined failure to escalate. The resolved *lymcwd.Location Check also returns is
 // discarded: this package never touches the resolved location.
 func (p *preflightProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {

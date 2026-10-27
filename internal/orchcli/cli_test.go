@@ -157,8 +157,8 @@ func TestRefuseNonPrime(t *testing.T) {
 	err := refuseNonPrime("task", "main", nil, false)
 	if err == nil || !strings.Contains(err.Error(), "runs from the hub's prime worktree or a beam") ||
 		!strings.Contains(err.Error(), `"task"`) || !strings.Contains(err.Error(), `"main"`) ||
-		!strings.Contains(err.Error(), "lyx beam create") || strings.Contains(err.Error(), "lyx beam promote") {
-		t.Errorf("non-prime refusal = %v; want the prime-or-beam wording naming both worktrees and lyx beam create alone", err)
+		!strings.Contains(err.Error(), "lym beam create") || strings.Contains(err.Error(), "lym beam promote") {
+		t.Errorf("non-prime refusal = %v; want the prime-or-beam wording naming both worktrees and lym beam create alone", err)
 	}
 	err = refuseNonPrime("main", "", errors.New("boom"), false)
 	if err == nil || !strings.Contains(err.Error(), "boom") {
@@ -169,7 +169,7 @@ func TestRefuseNonPrime(t *testing.T) {
 func TestBeamUpRefusal(t *testing.T) {
 	t.Parallel()
 
-	const move = "a change of the anchor of b from a to c was interrupted; run `lyx fabric anchor b --set c` to finish it"
+	const move = "a change of the anchor of b from a to c was interrupted; run `lym fabric anchor b --set c` to finish it"
 	tests := []struct {
 		name  string
 		slug  string
@@ -181,10 +181,10 @@ func TestBeamUpRefusal(t *testing.T) {
 		{"No owner, no move and no hold passes", "b", "", "", false, nil},
 		{"This machine's own beam passes", "b", "desktop", "", false, nil},
 		{"The prime of no other machine passes", "", "", "", false, nil},
-		{"Another machine's beam names the owner and the takeover", "b", "laptop", "", false, []string{`"laptop"`, "lyx adopt b", "lyx beam start"}},
-		{"The prime another machine owns names the root takeover", "", "laptop", "", false, []string{`"laptop"`, "lyx adopt root"}},
+		{"Another machine's beam names the owner and the takeover", "b", "laptop", "", false, []string{`"laptop"`, "lym adopt b", "lym beam start"}},
+		{"The prime another machine owns names the root takeover", "", "laptop", "", false, []string{`"laptop"`, "lym adopt root"}},
 		{"A standing anchor change names its way forward", "b", "", move, false, []string{move}},
-		{"A beam its landing holds names the landing", "b", "", "", true, []string{"landing", "lyx batten status b"}},
+		{"A beam its landing holds names the landing", "b", "", "", true, []string{"landing", "lym batten status b"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -629,7 +629,7 @@ func TestStop(t *testing.T) {
 
 		code, env := runVerb(t, c.stopCmd())
 		msg, _ := env["error"].(string)
-		if code == 0 || !strings.Contains(msg, "start.lock") || !strings.Contains(msg, "lyx orch stop") {
+		if code == 0 || !strings.Contains(msg, "start.lock") || !strings.Contains(msg, "lym orch stop") {
 			t.Errorf("stop = exit %d, %v; want a refusal naming start.lock and the way forward", code, env)
 		}
 		if len(fake.removed) != 0 {
@@ -664,7 +664,7 @@ func TestStatus_RestartsADeadWatcher(t *testing.T) {
 		{name: "AStrandThatIsNotLiveSpawnsNothing", strands: []reedengine.StrandStatus{{GUID: "g1", Name: "orch", Live: false}}, state: &recorded},
 		{name: "NoRecordedStrandSpawnsNothing", strands: liveOrch},
 		{name: "AStrandRemovedBeforeTheLockSpawnsNothing", strands: liveOrch, after: []reedengine.StrandStatus{}, state: &recorded},
-		{name: "AFailingSpawnIsTheErrorEnvelopeNamingStart", strands: liveOrch, state: &recorded, spawnErr: errors.New("no binary"), wantSpawns: 1, wantError: "lyx beam start"},
+		{name: "AFailingSpawnIsTheErrorEnvelopeNamingStart", strands: liveOrch, state: &recorded, spawnErr: errors.New("no binary"), wantSpawns: 1, wantError: "lym beam start"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -810,7 +810,7 @@ func TestResumeContext_PrintsHookJSONPerPhaseAndFailsWithoutMark(t *testing.T) {
 			}
 
 			// The verb renders the operator index of its root, so it runs under a root that has an operator command.
-			root := &cobra.Command{Use: "lyx"}
+			root := &cobra.Command{Use: "lym"}
 			root.AddCommand(c.resumeContextCmd(), &cobra.Command{
 				Use:         "probe",
 				Short:       "an operator command for the index",

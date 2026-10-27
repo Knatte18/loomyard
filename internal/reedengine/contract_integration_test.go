@@ -27,7 +27,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
@@ -35,13 +35,13 @@ import (
 // seedReedConfig writes the minimal on-disk config structure for LoadConfig.
 func seedReedConfig(t *testing.T, tmpDir string) {
 	t.Helper()
-	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
-	if err := os.Mkdir(lyxDir, 0o755); err != nil {
-		t.Fatalf("mkdir _lyx: %v", err)
+	lymDir := filepath.Join(tmpDir, lymdirs.LymDirName)
+	if err := os.Mkdir(lymDir, 0o755); err != nil {
+		t.Fatalf("mkdir _lym: %v", err)
 	}
 	configDir := configengine.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0o755); err != nil {
-		t.Fatalf("mkdir _lyx/config: %v", err)
+		t.Fatalf("mkdir _lym/config: %v", err)
 	}
 	configFile := configengine.ConfigFile(tmpDir, "reed")
 	if err := os.WriteFile(configFile, []byte(ConfigTemplate()), 0o644); err != nil {

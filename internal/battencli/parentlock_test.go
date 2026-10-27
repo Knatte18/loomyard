@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -27,7 +27,7 @@ func TestChildParentLock(t *testing.T) {
 	t.Run("ReadFindsTheRecordOfTheChildsRunAndReleaseFreesIt", func(t *testing.T) {
 		t.Parallel()
 		boardDir := t.TempDir()
-		taskLocation := &lyxcwd.Location{RepoName: "example", HubPath: t.TempDir(), WorktreeName: "a-slug", AnchorRel: "."}
+		taskLocation := &lymcwd.Location{RepoName: "example", HubPath: t.TempDir(), WorktreeName: "a-slug", AnchorRel: "."}
 		store := &parentlock.Store{Dir: parentlock.Dir(boardDir)}
 		other := parentlock.Owner{Slug: "other-slug", Pair: "/hub/other-slug", RunID: "run-2", PID: 7, StartTime: "other-start"}
 		sameSlugOtherPair := parentlock.Owner{Slug: "a-slug", Pair: "/elsewhere/a-slug", RunID: "run-3", PID: 8, StartTime: "elsewhere-start"}
@@ -38,7 +38,7 @@ func TestChildParentLock(t *testing.T) {
 			}
 		}
 
-		lock := childParentLock("a-slug", func() (*lyxcwd.Location, error) { return taskLocation, nil }, boardDir, 0)
+		lock := childParentLock("a-slug", func() (*lymcwd.Location, error) { return taskLocation, nil }, boardDir, 0)
 		record, found, err := lock.Read()
 		if err != nil || !found || record.Branch != "release" || record.Owner != child {
 			t.Fatalf("Read() = %+v, %v, %v; want the child's record on release", record, found, err)
@@ -67,7 +67,7 @@ func TestChildParentLock(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				taskLocation := &lyxcwd.Location{RepoName: "example", HubPath: t.TempDir(), WorktreeName: "a-slug", AnchorRel: "."}
+				taskLocation := &lymcwd.Location{RepoName: "example", HubPath: t.TempDir(), WorktreeName: "a-slug", AnchorRel: "."}
 				if tt.producer != "" {
 					for _, path := range []string{shedrun.StatusFile(taskLocation, shedrun.SelfRunID), shedrun.StatusLock(taskLocation, shedrun.SelfRunID)} {
 						if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -93,7 +93,7 @@ func TestChildParentLock(t *testing.T) {
 					}
 				}
 
-				lock := childParentLock("a-slug", func() (*lyxcwd.Location, error) { return taskLocation, nil }, t.TempDir(), 0)
+				lock := childParentLock("a-slug", func() (*lymcwd.Location, error) { return taskLocation, nil }, t.TempDir(), 0)
 				keeps, err := lock.KeepsLock()
 
 				if err != nil || keeps != tt.want {

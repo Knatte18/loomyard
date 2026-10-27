@@ -19,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/lensreport"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -32,13 +32,13 @@ const (
 	discussionTableSlug = "add-json-flag"
 
 	// discussionTableSpecsDir is the specs directory the table tests tell DiscussionTable.
-	discussionTableSpecsDir = "/hub/_lyx/specs"
+	discussionTableSpecsDir = "/hub/_lym/specs"
 )
 
 // discussionTableLayout returns an anchored location under a temp hub whose worktree directory exists.
-func discussionTableLayout(t *testing.T) *lyxcwd.Location {
+func discussionTableLayout(t *testing.T) *lymcwd.Location {
 	t.Helper()
-	layout := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "repo", AnchorRel: "backend"}
+	layout := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "repo", AnchorRel: "backend"}
 	if err := os.MkdirAll(layout.AnchorPath(), 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", layout.AnchorPath(), err)
 	}
@@ -46,7 +46,7 @@ func discussionTableLayout(t *testing.T) *lyxcwd.Location {
 }
 
 // discussionTableGeometry returns the seat geometry for layout, naming a parent.
-func discussionTableGeometry(layout *lyxcwd.Location, stencilsDir string) seatengine.Geometry {
+func discussionTableGeometry(layout *lymcwd.Location, stencilsDir string) seatengine.Geometry {
 	return seatengine.Geometry{
 		WorktreeRoot: layout.WorktreePath(),
 		AnchorPath:   layout.AnchorPath(),
@@ -58,7 +58,7 @@ func discussionTableGeometry(layout *lyxcwd.Location, stencilsDir string) seaten
 }
 
 // discussionTableDirs returns the config geometry the twill fan's lenses.yaml is read through for layout.
-func discussionTableDirs(layout *lyxcwd.Location) configengine.Dirs {
+func discussionTableDirs(layout *lymcwd.Location) configengine.Dirs {
 	return configengine.Dirs{Anchor: layout.AnchorPath()}
 }
 
@@ -394,7 +394,7 @@ func TestDiscussionTable(t *testing.T) {
 		const templateFanName = "twill-discussion"
 		lensesConfig, err := lenses.Load(configengine.Dirs{Anchor: t.TempDir()})
 		if err != nil {
-			t.Fatalf("lenses.Load(dir without _lyx) = _, %v; want nil error", err)
+			t.Fatalf("lenses.Load(dir without _lym) = _, %v; want nil error", err)
 		}
 		templateFan, err := lenses.ResolveFan(lensesConfig, templateFanName)
 		if err != nil {
@@ -464,7 +464,7 @@ func TestDiscussionTable(t *testing.T) {
 
 				for _, want := range []string{
 					stencilstore.Path(stencilsDir, "loom-rubric-discussion-review"),
-					"`lyx loom validate-discussion` per `Step 6`",
+					"`lym loom validate-discussion` per `Step 6`",
 					"per `Step 5`",
 					"`" + DiscussionDecisionRecord(layout) + "`",
 					"`" + DiscussionSupportLog(layout) + "`",
@@ -513,7 +513,7 @@ func TestDiscussionTable_Refuses(t *testing.T) {
 	}{
 		{name: "empty slug", slug: "", wantErrHold: []string{"slug must not be empty"}},
 		{name: "missing stencils directory", slug: discussionTableSlug, missingDir: true, wantErrHold: []string{"pattern-directive-designer"}},
-		{name: "malformed PATTERN changes section", slug: discussionTableSlug, malformedRecord: true, wantErrHold: []string{"lyx loom validate-discussion", "lyx loom start"}},
+		{name: "malformed PATTERN changes section", slug: discussionTableSlug, malformedRecord: true, wantErrHold: []string{"lym loom validate-discussion", "lym loom start"}},
 		{name: "unparsable chair model", slug: discussionTableSlug, mutate: func(c *Config) { c.Discussion = "opus[effort" }, wantErrHold: []string{"discussion role model-spec"}},
 		{name: "advisor the registry does not define", slug: discussionTableSlug, mutate: func(c *Config) {
 			c.DiscussionAdvisors = DiscussionAdvisorList{{Name: "critic", Model: "sonnet[low]"}, {Name: "skeptic", Model: "ghost"}}

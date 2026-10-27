@@ -1,6 +1,6 @@
 // Package reedcli is the reed CLI, the cobra layer over the tmux window manager whose domain lives in `internal/reedengine`'s package doc.
 //
-// The per-hub watchdog daemon (`lyx reed watchdog`) runs a discovery loop over the hub's tmux socket.
+// The per-hub watchdog daemon (`lym reed watchdog`) runs a discovery loop over the hub's tmux socket.
 // Its cadence starts at five seconds, doubles up to sixty across cycles that find the session set unchanged, and returns to five seconds when the set changes.
 // The loop also wakes on the hub-level discover signal, a file that a cold session boot touches: a consumed signal runs a cycle at once, but never sooner than five seconds after the previous cycle, so a process touching the file in a loop costs one cycle per five seconds.
 // When the signal file cannot be watched, as when the inotify instance table is full, the loop logs that once, keeps its backed-off cadence and reads the file itself on each timer wake, so a stop request still lands, at that cadence.
@@ -12,16 +12,16 @@
 // In a task pair, `down` first ends the pair's registered processes through `pairteardown.Teardown.EndBeforeSessionDown`, then kills the session as before, and its envelope carries `ended_processes`, the `{pid, role}` of each process ended, empty when none.
 // The pre-step reads local state only and makes no network call, so it never waits at the network gate and runs no origin reconcile.
 // It proceeds when a pause covers the pair, its board entry reads done, it finished its Finalize with no registered batten alive, or the run is not running, and then waits for the run lock before it ends the processes.
-// A run that is running and unpaused is refused with the way forward `lyx tender pause <slug>` then `lyx reed down` again, as the envelope's error with the session left live;
+// A run that is running and unpaused is refused with the way forward `lym tender pause <slug>` then `lym reed down` again, as the envelope's error with the session left live;
 // a refusal of the run-lock wait or survivors of the end are the envelope's error the same way.
 // The prime is no pair: its `down` ends no registered process and runs as before.
 //
 // `add` places the strand in a window of its own, or its group's, and its `--anchor` takes `own-window` (the default) or `hidden`; any other value is refused.
 //
-// `attach` execs tmux over the lyx process on Unix, so no lyx process outlives the handover, and keeps a child process on Windows.
+// `attach` execs tmux over the lym process on Unix, so no lym process outlives the handover, and keeps a child process on Windows.
 // Nothing runs after it in the process, so a shortcut that runs `reed attach` runs it as its last argv.
 //
-// `window <worktree-dir> [--title <title>]` opens one desktop terminal window through `internal/termwindow` whose shell runs `lyx reed attach` in that directory, and returns once the launcher process has started.
+// `window <worktree-dir> [--title <title>]` opens one desktop terminal window through `internal/termwindow` whose shell runs `lym reed attach` in that directory, and returns once the launcher process has started.
 // It reads no location, config or engine; a directory that does not exist is refused before any launcher runs, and a machine with no launcher reports why on the envelope.
 //
 // `follow` turns follow on for a session told by `--socket`, `--session` and `--tmux`, and selects the session's relevant window from tmux facts alone.
@@ -30,12 +30,12 @@
 //
 // Each watched session's engine drives the daemon's told tmux binary, whatever that worktree's config names.
 //
-// On each cycle the daemon stats the `lyx` binary it started from, and when that file has been replaced or rewritten it retires: it ends its watched sessions, releases the hub lock, spawns a successor detached only when that cycle's listing found a session, and exits 0.
+// On each cycle the daemon stats the `lym` binary it started from, and when that file has been replaced or rewritten it retires: it ends its watched sessions, releases the hub lock, spawns a successor detached only when that cycle's listing found a session, and exits 0.
 // So a deploy never leaves an old daemon repairing names with stale code.
 // A failed stat counts as unchanged, so a binary missing mid-build retires nothing, and a deploy that rewrites the file in several steps can chain retirements, one per observed change.
 // A daemon started before this check existed carries none and is ended once by hand after the deploy; the next `reed up`, `attach` or `resume` spawns a successor that has it.
 // A spawn that loses the lock race exits 0 and logs at Debug, so at the default verbosity it writes no trace file.
 //
 // The daemon logs to the durable sink in the hub logs directory, and Debug lines reach it at Debug verbosity.
-// A Debug trace comes from running `lyx reed watchdog -vv` in the foreground, or from `lyx reed up`, `attach` or `resume` run with `LYX_LOG_LEVEL=debug` while no daemon runs for the hub.
+// A Debug trace comes from running `lym reed watchdog -vv` in the foreground, or from `lym reed up`, `attach` or `resume` run with `LYM_LOG_LEVEL=debug` while no daemon runs for the hub.
 package reedcli

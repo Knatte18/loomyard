@@ -13,7 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
 
@@ -108,7 +108,7 @@ func DetachedPush(hubPath string, req PushSpawn) (PushResult, error) {
 // With try set it makes one attempt instead and returns an error wrapping ErrPairBusy when the lock is held.
 // It returns the release function, or an error wrapping ErrPairPushRunning when the wait runs out.
 // A lock file this call brings into being is recorded in rec, whether or not the lock was won, since the file outlives the call.
-func (t *Topology) lockPairTeardown(rec *Mutations, l *lyxcwd.Location, slug string, try bool) (release func(), err error) {
+func (t *Topology) lockPairTeardown(rec *Mutations, l *lymcwd.Location, slug string, try bool) (release func(), err error) {
 	lockPath := TeardownLockPath(l.HubPath, slug)
 	existed := pathPresent(lockPath)
 	if err := ensureTeardownLockDir(l.HubPath, slug); err != nil {
@@ -131,7 +131,7 @@ func (t *Topology) lockPairTeardown(rec *Mutations, l *lyxcwd.Location, slug str
 		return nil, fmt.Errorf("the teardown lock of the pair %q is held by a push or another removal: %w", slug, ErrPairBusy)
 	}
 	if !acquired {
-		return nil, fmt.Errorf("a push of the pair %q is still running or waiting under a pause; re-run `lyx fabric remove %s` once the push finishes or the pause is resumed, or end the stuck push child, whose pid `lyx tender status` lists under the pair's owner: %w", slug, slug, ErrPairPushRunning)
+		return nil, fmt.Errorf("a push of the pair %q is still running or waiting under a pause; re-run `lym fabric remove %s` once the push finishes or the pause is resumed, or end the stuck push child, whose pid `lym tender status` lists under the pair's owner: %w", slug, slug, ErrPairPushRunning)
 	}
 	return func() { _ = held.Release() }, nil
 }
@@ -139,13 +139,13 @@ func (t *Topology) lockPairTeardown(rec *Mutations, l *lyxcwd.Location, slug str
 // respawnPairPush spawns the push of the pair's worktrees that survive a failed Remove, so a child that exited on the held teardown lock loses nothing.
 // l is the location Remove ran from, the prime, so the pair's own location is built from it.
 // A local pair's records are never pushed, and a failed spawn is logged: the pair's next push carries its commits.
-func respawnPairPush(l *lyxcwd.Location, slug string, local bool) {
+func respawnPairPush(l *lymcwd.Location, slug string, local bool) {
 	taskWorktree := WorktreePath(l, slug)
 	recordsWorktree := RecordsWorktreePath(l, slug)
 
 	switch {
 	case pathPresent(taskWorktree):
-		pairLocation, err := lyxcwd.ResolveWorktree(taskWorktree)
+		pairLocation, err := lymcwd.ResolveWorktree(taskWorktree)
 		if err != nil {
 			logger.Warn("fabricengine: could not respawn the pair's push after a failed remove", "slug", slug, "error", err)
 			return

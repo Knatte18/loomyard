@@ -21,7 +21,7 @@ func reworkTestEnv(t *testing.T) Env {
 	env.Rework = loomshed.PRReworkDeps{
 		PlanDir:        filepath.Join(dir, "plan"),
 		ReworkDir:      filepath.Join(dir, "rework"),
-		ReworkDirRel:   "_lyx/loom/rework",
+		ReworkDirRel:   "_lym/loom/rework",
 		ReviewsDir:     filepath.Join(dir, "reviews"),
 		ReadCommitted:  func(string) ([]byte, bool, error) { return nil, false, nil },
 		ArchiveWebster: func(string) error { return nil },

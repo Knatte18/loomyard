@@ -7,7 +7,7 @@
 // board.lock) and, unless skipPush is set, a push through the same Bolt value.
 // A single top-level push lock still serializes pushers across processes;
 // concurrent sync processes block, then exit quickly once there is nothing to do.
-// The write path launches `lyx board sync` detached (see spawn.go) so it never waits.
+// The write path launches `lym board sync` detached (see spawn.go) so it never waits.
 package boardengine
 
 import (

@@ -62,7 +62,7 @@ import (
 const smokePwshPath = `C:\Code\tools\powershell7\pwsh.exe`
 
 // seedHubStencils populates hub's real fabricengine.StencilsDir(hub) with every shipped stencil,
-// through the same stencilstore.Reconcile pass cmd/lyx's root pre-run runs, and returns that
+// through the same stencilstore.Reconcile pass cmd/lym's root pre-run runs, and returns that
 // directory for the caller to pass as judgeInputs.StencilsDir. hubforge.NewHub builds a fabric, not
 // a seeded board, and treadle reads its judge templates from disk at call time via
 // stencilstore.Read — so an unseeded fixture hub degrades the judge to its fail-safe default, which
@@ -218,7 +218,7 @@ func deferHubRelease(t *testing.T, hub string) {
 // TestSmokeJudgeCirclingToyFixture drives one real per-round circling-check progress judge call
 // against a real claude, proving the machinery works.
 func TestSmokeJudgeCirclingToyFixture(t *testing.T) {
-	llmkit.Claude(t, "LYX_REED_CLAUDE")
+	llmkit.Claude(t, "LYM_REED_CLAUDE")
 
 	// shuttleengine.ConfigTemplate() and reedengine.ConfigTemplate() are each module's own plain
 	// registered config: fabriccli.CloneAndWire already reconciled default config for every

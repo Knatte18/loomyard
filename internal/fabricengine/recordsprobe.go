@@ -19,14 +19,12 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // warpProbeDirPrefix is the os.MkdirTemp prefix for the probe's throwaway clone directory.
-// This is a MkdirTemp prefix, not a _lyx/.lyx path token, so it does not fall under the Lyxdirs
-// Single-Declarer Invariant, and TestEnforcement_GeometryLiterals (exact-equality matching) does not
-// trip on it.
-const warpProbeDirPrefix = ".lyx-clone-probe-"
+// This is a MkdirTemp prefix, not a _lym/.lym path token, so it does not fall under the Lymdirs Single-Declarer Invariant, and TestEnforcement_GeometryLiterals (exact-equality matching) does not trip on it.
+const warpProbeDirPrefix = ".lym-clone-probe-"
 
 // warpProbeResult carries what probeWeftBinding learned from the throwaway clone of the weft
 // candidate, before any hub directory exists.
@@ -37,18 +35,18 @@ type warpProbeResult struct {
 	// Found is true only when WarpBindingFileName is present in the probe's HEAD commit.
 	Found bool
 	// WeftLooksLikeWeft is true when the candidate has an unborn HEAD (a genuinely empty weft remote).
-	// It is also true when its HEAD commit or main-weft branch carries lyxcwd.AnchorFileName at the root, or its HEAD commit carries the stale pre-rename marker there.
+	// It is also true when its HEAD commit or main-weft branch carries lymcwd.AnchorFileName at the root, or its HEAD commit carries the stale pre-rename marker there.
 	WeftLooksLikeWeft bool
 	// RecordedShortname is the repo shortname read from the probe's HEAD commit, valid only when ShortnameFound is true;
 	// a blank or grammar-failing value reports ShortnameFound false, like ReadShortname.
 	RecordedShortname string
 	// ShortnameFound is true only when ShortnameFileName is present at the probe's HEAD with a usable value.
 	ShortnameFound bool
-	// AnchorFound is true when lyxcwd.AnchorFileName is present at the probe's HEAD or at the root of its main-weft branch.
+	// AnchorFound is true when lymcwd.AnchorFileName is present at the probe's HEAD or at the root of its main-weft branch.
 	AnchorFound bool
 }
 
-// freshBind reports whether the probed weft is one lyx has never touched:
+// freshBind reports whether the probed weft is one lym has never touched:
 // neither the warp binding nor the anchor marker is present, which an unborn or empty weft is.
 func (p warpProbeResult) freshBind() bool { return !p.Found && !p.AnchorFound }
 
@@ -104,12 +102,12 @@ func probeWeftBinding(cwd, weftURL string) (warpProbeResult, error) {
 		recordedShortname, shortnameFound = usableShortname(stdout, weftURL)
 	}
 
-	anchorPresent, err := probeTreeHasPath(weftURL, probeDir, lyxcwd.AnchorFileName)
+	anchorPresent, err := probeTreeHasPath(weftURL, probeDir, lymcwd.AnchorFileName)
 	if err != nil {
 		return warpProbeResult{}, err
 	}
 	if !anchorPresent {
-		anchorPresent, err = probeMainWeftHasPath(weftURL, probeDir, lyxcwd.AnchorFileName)
+		anchorPresent, err = probeMainWeftHasPath(weftURL, probeDir, lymcwd.AnchorFileName)
 		if err != nil {
 			return warpProbeResult{}, err
 		}

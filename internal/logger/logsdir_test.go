@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // TestLogsDir_AnchorsAtAnchorPath pins that LogsDir is rooted at the Location's AnchorPath: for an unanchored Location that equals the worktree path, and for a subpath-anchored one it differs.
@@ -31,13 +31,13 @@ func TestLogsDir_AnchorsAtAnchorPath(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			l := &lyxcwd.Location{
-				HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
+			l := &lymcwd.Location{
+				HubPath:      filepath.Join("home", "user", "repo-LYMHUB"),
 				WorktreeName: "repo",
 				AnchorRel:    tt.anchorRel,
 			}
 
-			want := filepath.Join(l.AnchorPath(), ".lyx", "logs")
+			want := filepath.Join(l.AnchorPath(), ".lym", "logs")
 			got := logger.LogsDir(l)
 			if got != want {
 				t.Errorf("LogsDir(l) = %q; want %q", got, want)
@@ -45,7 +45,7 @@ func TestLogsDir_AnchorsAtAnchorPath(t *testing.T) {
 			if atAnchor := logger.LogsDirAt(l.AnchorPath()); got != atAnchor {
 				t.Errorf("LogsDir(l) = %q; want LogsDirAt(l.AnchorPath()) = %q", got, atAnchor)
 			}
-			worktreeBased := filepath.Join(l.WorktreePath(), ".lyx", "logs")
+			worktreeBased := filepath.Join(l.WorktreePath(), ".lym", "logs")
 			if (got == worktreeBased) != tt.sameAsWorktreePath {
 				t.Errorf("LogsDir(l) = %q equals the WorktreePath-based path %q: %v; want %v", got, worktreeBased, got == worktreeBased, tt.sameAsWorktreePath)
 			}

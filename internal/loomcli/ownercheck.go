@@ -1,4 +1,4 @@
-// ownercheck.go judges who owns a run before `lyx loom start` or `lyx loom resume` drives it, and refuses a run another machine owns.
+// ownercheck.go judges who owns a run before `lym loom start` or `lym loom resume` drives it, and refuses a run another machine owns.
 
 package loomcli
 
@@ -12,14 +12,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // ownerVerdict is who owns a run: Owner is the owning machine and Elsewhere reports whether that machine is another than this one.
-// AdoptSubject is the beam or `root` that `lyx adopt` takes to move the run, and empty when the run is owned here.
+// AdoptSubject is the beam or `root` that `lym adopt` takes to move the run, and empty when the run is owned here.
 type ownerVerdict struct {
 	Owner        string
 	AdoptSubject string
@@ -27,12 +27,12 @@ type ownerVerdict struct {
 }
 
 // primeOfHub resolves the prime worktree of the hub l sits in.
-func primeOfHub(l *lyxcwd.Location) (*lyxcwd.Location, error) {
+func primeOfHub(l *lymcwd.Location) (*lymcwd.Location, error) {
 	primeName, err := fabricengine.PrimeName(l)
 	if err != nil {
 		return nil, fmt.Errorf("resolve the hub's prime: %w", err)
 	}
-	prime, err := lyxcwd.ResolveWorktree(filepath.Join(l.HubPath, primeName))
+	prime, err := lymcwd.ResolveWorktree(filepath.Join(l.HubPath, primeName))
 	if err != nil {
 		return nil, fmt.Errorf("locate the hub's prime %q: %w", primeName, err)
 	}
@@ -44,7 +44,7 @@ func primeOfHub(l *lyxcwd.Location) (*lyxcwd.Location, error) {
 // With origin unreachable it reads the local board's effective owner instead.
 // It writes no owner.
 // A reconcile or read error is returned.
-func runOwnerVerdict(l *lyxcwd.Location, slug string, machine func() (string, error)) (ownerVerdict, error) {
+func runOwnerVerdict(l *lymcwd.Location, slug string, machine func() (string, error)) (ownerVerdict, error) {
 	prime, err := primeOfHub(l)
 	if err != nil {
 		return ownerVerdict{}, err
@@ -71,7 +71,7 @@ func runOwnerVerdict(l *lyxcwd.Location, slug string, machine func() (string, er
 }
 
 // localOwnerVerdict judges the owner of slug from the hub's local board, for a reconcile that could not reach origin.
-func localOwnerVerdict(l *lyxcwd.Location, slug string, machine func() (string, error), parentOf func(slug string) (string, error)) (ownerVerdict, error) {
+func localOwnerVerdict(l *lymcwd.Location, slug string, machine func() (string, error), parentOf func(slug string) (string, error)) (ownerVerdict, error) {
 	here, err := machine()
 	if err != nil {
 		return ownerVerdict{}, err
@@ -115,7 +115,7 @@ func (c *loomCLI) refuseOwnedElsewhere(ctx context.Context, out io.Writer, retry
 	if subject == "" {
 		subject = slug
 	}
-	message := fmt.Sprintf("loom: this run is owned by machine %q, so this machine does not resume it; way forward: run `lyx adopt %s` from this machine's prime", verdict.Owner, subject)
+	message := fmt.Sprintf("loom: this run is owned by machine %q, so this machine does not resume it; way forward: run `lym adopt %s` from this machine's prime", verdict.Owner, subject)
 	clihelp.SetExit(ctx, output.ErrFields(out, message, map[string]any{"kind": shedrun.StartOwnedElsewhereKind, "owner": verdict.Owner}))
 	return true
 }

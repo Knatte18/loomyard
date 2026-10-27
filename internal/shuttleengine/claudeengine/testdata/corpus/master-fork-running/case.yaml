@@ -1,6 +1,6 @@
 # A Webster Master whose turn ends wait on the batch fork it launched.
 source:
-  transcript: ~/.claude/projects/-home-knatte-Code-loomyard-LYXHUB-test-tiers/39aea993-b483-4287-a488-e26c7cdbd727.jsonl
+  transcript: ~/.claude/projects/-home-knatte-Code-loomyard-LYMHUB-test-tiers/39aea993-b483-4287-a488-e26c7cdbd727.jsonl
   session_id: 39aea993-b483-4287-a488-e26c7cdbd727
   run: test-tiers Webster Master, run 76332bc6fd4e8a6a66a988ba22955a34
 date: 2026-10-07

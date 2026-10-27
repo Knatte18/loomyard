@@ -88,8 +88,8 @@ func TestRunner_Inject_RefusesAnyInterruptKey(t *testing.T) {
 			runner := newFixture(t, reed, &fakeEngine{}, withStrand("strand-1")).Runner
 
 			err := runner.Inject("strand-1", tt.inputs)
-			if err == nil || !strings.Contains(err.Error(), "lyx shuttle interrupt") {
-				t.Fatalf("Inject() error = %v; want a refusal naming \"lyx shuttle interrupt\"", err)
+			if err == nil || !strings.Contains(err.Error(), "lym shuttle interrupt") {
+				t.Fatalf("Inject() error = %v; want a refusal naming \"lym shuttle interrupt\"", err)
 			}
 			if !strings.Contains(err.Error(), tt.wantIn) {
 				t.Errorf("Inject() error = %v; want it to contain %q", err, tt.wantIn)

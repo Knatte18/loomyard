@@ -527,8 +527,8 @@ func TestLeaseEnv(t *testing.T) {
 		{"tier0 parallel above 0 adds -p and -trimpath", []string{"A=1"}, nil, 3, []string{"A=1", "GOFLAGS=-p=3 -trimpath"}},
 		{"tier0 parallel 0 adds -trimpath alone", []string{"A=1"}, nil, 0, []string{"A=1", "GOFLAGS=-trimpath"}},
 		{"existing GOFLAGS is kept ahead of the added flags", []string{"GOFLAGS=-count=1", "A=1"}, nil, 2, []string{"A=1", "GOFLAGS=-count=1 -p=2 -trimpath"}},
-		{"a lease sets the inheritance variable over an older one", []string{"LYX_GATE_SLOT=old", "A=1"}, lease, 0, []string{"A=1", "GOFLAGS=-trimpath", "LYX_GATE_SLOT=" + slotPath}},
-		{"no lease leaves an inherited slot variable alone", []string{"LYX_GATE_SLOT=old", "A=1"}, nil, 0, []string{"LYX_GATE_SLOT=old", "A=1", "GOFLAGS=-trimpath"}},
+		{"a lease sets the inheritance variable over an older one", []string{"LYM_GATE_SLOT=old", "A=1"}, lease, 0, []string{"A=1", "GOFLAGS=-trimpath", "LYM_GATE_SLOT=" + slotPath}},
+		{"no lease leaves an inherited slot variable alone", []string{"LYM_GATE_SLOT=old", "A=1"}, nil, 0, []string{"LYM_GATE_SLOT=old", "A=1", "GOFLAGS=-trimpath"}},
 	}
 	for _, tc := range holderTests {
 		t.Run("HolderEnv "+tc.name, func(t *testing.T) {
@@ -543,8 +543,8 @@ func TestLeaseEnv(t *testing.T) {
 	}
 
 	t.Run("InheritEnv sets only the inheritance variable", func(t *testing.T) {
-		base := []string{"GOFLAGS=-count=1", "LYX_GATE_SLOT=old", "A=1"}
-		want := []string{"GOFLAGS=-count=1", "A=1", "LYX_GATE_SLOT=" + slotPath}
+		base := []string{"GOFLAGS=-count=1", "LYM_GATE_SLOT=old", "A=1"}
+		want := []string{"GOFLAGS=-count=1", "A=1", "LYM_GATE_SLOT=" + slotPath}
 		if got := lease.InheritEnv(slices.Clone(base)); !slices.Equal(got, want) {
 			t.Errorf("InheritEnv(%v) = %v; want %v", base, got, want)
 		}
@@ -559,7 +559,7 @@ func TestReadWaits_ReturnsLiveWaitersOnly(t *testing.T) {
 		t.Fatalf("ReadWaits(missing dir) = (%v, %v); want none", waits, err)
 	}
 
-	live := Wait{Site: "lyx gate test", PID: os.Getpid(), Started: time.Now().UTC().Truncate(time.Second)}
+	live := Wait{Site: "lym gate test", PID: os.Getpid(), Started: time.Now().UTC().Truncate(time.Second)}
 	path, err := WriteWait(dir, live)
 	if err != nil {
 		t.Fatal(err)

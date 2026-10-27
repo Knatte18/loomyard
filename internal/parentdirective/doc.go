@@ -6,7 +6,7 @@
 //
 // Directive picks one of three texts by its arguments.
 // A non-empty parent name renders the parent variant: it names the parent, says a message from that name is the operator's delegate within the role's limits, and keeps the role's own judgment and every limit and deny in force.
-// It also admits the decision notice `lyx loom decision add` posts, a `[creel]` line from the hub's `LOOM` program opening with a fixed phrase, as a message from the parent;
+// It also admits the decision notice `lym loom decision add` posts, a `[creel]` line from the hub's `LOOM` program opening with a fixed phrase, as a message from the parent;
 // creel accepts a program claim only from an orch pane or a process in no pane, so no task agent can sign one, and every other session's message stays untrusted.
 // A non-interactive role also gets the operator-ban line; an interactive role, whose interview questions go to the operator, does not, so only the ban line differs.
 // An empty parent name renders the no-parent variant: a blocked role writes its report and stops.

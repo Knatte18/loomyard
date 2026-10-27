@@ -11,7 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // RemoteWarpBranchEntry describes the fate of one branch on the warp origin under CleanupRemoteWarp.
@@ -48,12 +48,12 @@ type RemoteWarpCleanupResult struct {
 // A nil openPRHeads means the caller could not establish the open pull request set: every deletion is then refused and entries are returned only.
 // Callers that can establish it pass a non-nil map, empty when no pull request is open.
 // There is no force parameter, so nothing answers a kept branch.
-func (t *Topology) CleanupRemoteWarp(l *lyxcwd.Location, apply bool, openPRHeads map[string]bool) (RemoteWarpCleanupResult, error) {
+func (t *Topology) CleanupRemoteWarp(l *lymcwd.Location, apply bool, openPRHeads map[string]bool) (RemoteWarpCleanupResult, error) {
 	return t.cleanupRemoteWarp(l, apply, openPRHeads, nil)
 }
 
 // cleanupRemoteWarp is CleanupRemoteWarp with afterEnumerate, a hook run once the tips are observed and before any deletion, so a test can move a tip in between.
-func (t *Topology) cleanupRemoteWarp(l *lyxcwd.Location, apply bool, openPRHeads map[string]bool, afterEnumerate func()) (res RemoteWarpCleanupResult, err error) {
+func (t *Topology) cleanupRemoteWarp(l *lymcwd.Location, apply bool, openPRHeads map[string]bool, afterEnumerate func()) (res RemoteWarpCleanupResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
 	res.Entries = []RemoteWarpBranchEntry{}

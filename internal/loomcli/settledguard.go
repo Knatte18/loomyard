@@ -58,7 +58,7 @@ func settledSegmentGuard(producers []shedengine.ProducerDef, reviewsDir string, 
 		}
 
 		writer := segmentWriter(producers, segment, bouncer)
-		return fmt.Sprintf("the %s verdict is settled; way forward: \"lyx loom goto --to %s\" re-settles it at no review cost, then \"lyx loom resume\" in the task worktree runs it, or \"lyx loom goto --to %s\" re-runs the writer, and a changed subject then starts a new generation", segment, bouncer, writer), nil
+		return fmt.Sprintf("the %s verdict is settled; way forward: \"lym loom goto --to %s\" re-settles it at no review cost, then \"lym loom resume\" in the task worktree runs it, or \"lym loom goto --to %s\" re-runs the writer, and a changed subject then starts a new generation", segment, bouncer, writer), nil
 	}
 }
 

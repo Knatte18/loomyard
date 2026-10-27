@@ -17,8 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 )
 
-//testtiming:keep pins the lock file living under the anchor path's .lyx, not the worktree root's, for a subpath-anchored fixture, and a second acquisition succeeding after release; its covering tests run this code without asserting it
-func TestWithOpLock_PathIsUnderDotLyx(t *testing.T) {
+//testtiming:keep pins the lock file living under the anchor path's .lym, not the worktree root's, for a subpath-anchored fixture, and a second acquisition succeeding after release; its covering tests run this code without asserting it
+func TestWithOpLock_PathIsUnderDotLym(t *testing.T) {
 	// The anchor path is a real subpath of the worktree root here so
 	// stateDir's AnchorPath anchoring (as opposed to WorktreeRoot) is
 	// actually observable.
@@ -57,11 +57,11 @@ func TestWithOpLock_PathIsUnderDotLyx(t *testing.T) {
 		t.Fatalf("withOpLock: %v", err)
 	}
 
-	dotLyx := filepath.Join(e.geom.AnchorPath, ".lyx")
-	if filepath.Dir(sawPath) != dotLyx {
-		t.Errorf("lock path = %q, want under %q (per-worktree, not shared across worktrees)", sawPath, dotLyx)
+	dotLym := filepath.Join(e.geom.AnchorPath, ".lym")
+	if filepath.Dir(sawPath) != dotLym {
+		t.Errorf("lock path = %q, want under %q (per-worktree, not shared across worktrees)", sawPath, dotLym)
 	}
-	if filepath.Dir(sawPath) == filepath.Join(e.geom.WorktreeRoot, ".lyx") {
+	if filepath.Dir(sawPath) == filepath.Join(e.geom.WorktreeRoot, ".lym") {
 		t.Errorf("lock path = %q, want it to differ from the WorktreeRoot-based path for a subpath-anchored fixture", sawPath)
 	}
 	// No stale lock remains from the released acquisition: a second one on the same path succeeds immediately rather than blocking or erroring.
@@ -163,10 +163,10 @@ func TestEngine_SocketAndSessionName(t *testing.T) {
 // TestWithOpLock_ReportsALockFileRemovedMidOperation is the regression guard for the R5 review's
 // R5-F6.
 //
-// A flock is held on an inode, not on a name, so deleting .lyx while an op holds reed.lock unlinks
+// A flock is held on an inode, not on a name, so deleting .lym while an op holds reed.lock unlinks
 // that inode without disturbing the lock — and the next op's MkdirAll + O_CREATE mints a fresh one
-// whose lock is granted immediately. Measured live: a second `lyx reed status` blocked 11027ms with
-// the lock genuinely held, and was granted in 107ms once .lyx was deleted mid-hold, so two reed
+// whose lock is granted immediately. Measured live: a second `lym reed status` blocked 11027ms with
+// the lock genuinely held, and was granted in 107ms once .lym was deleted mid-hold, so two reed
 // processes then drove the same session and the same reed.json concurrently.
 // Reed cannot make the second op wait (an unlinked inode is unreachable by name), so what it must
 // not do is return success over state it did not actually have exclusive access to.
@@ -176,7 +176,7 @@ func TestWithOpLock_ReportsALockFileRemovedMidOperation(t *testing.T) {
 	ran := false
 	err := e.withOpLock(func() error {
 		ran = true
-		// Exactly what `rm -rf .lyx` / `git clean -xdf` does to a held lock.
+		// Exactly what `rm -rf .lym` / `git clean -xdf` does to a held lock.
 		return os.RemoveAll(e.stateDir())
 	})
 	if !ran {
@@ -193,7 +193,7 @@ func TestWithOpLock_ReportsALockFileRemovedMidOperation(t *testing.T) {
 }
 
 // TestWithOpLock_ReportsBothFailuresWhenTheOperationAlsoFailed pins that the lock-compromise report
-// never swallows the operation's own error: an operator debugging a removed .lyx still needs to know
+// never swallows the operation's own error: an operator debugging a removed .lym still needs to know
 // what the operation itself hit.
 func TestWithOpLock_ReportsBothFailuresWhenTheOperationAlsoFailed(t *testing.T) {
 	e := newTestEngine(t)

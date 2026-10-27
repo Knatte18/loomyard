@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/google/go-github/v75/github"
 )
@@ -43,7 +43,7 @@ func TestSeedRunStart(t *testing.T) {
 			logger.SetDurableSinkDir(t.TempDir())
 			t.Cleanup(func() { logger.SetDurableSinkDir("") })
 
-			l := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+			l := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 			if err := os.MkdirAll(shedrun.RunDir(l, shedrun.SelfRunID), 0o755); err != nil {
 				t.Fatalf("create run directory: %v", err)
 			}

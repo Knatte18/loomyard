@@ -1,12 +1,6 @@
-// set.go implements value-preserving single/multi-key YAML mutation for the non-interactive `lyx
-// config <module> --set key=value` path.
-// Unlike Reconcile (which merges an entire existing file into a template), SetValues applies a
-// small, explicit list of key=value pairs while still routing every write through the
-// template-shaped working tree so partial/stale existing files never hide a valid key behind a
-// missing node.
-// It also grafts any existing top-level key absent from the template onto the working tree whole,
-// at root-key granularity, so a hand-edited or template-outgrown key is carried through into the
-// merged output instead of silently vanishing.
+// set.go implements value-preserving single/multi-key YAML mutation for the non-interactive `lym config <module> --set key=value` path.
+// Unlike Reconcile (which merges an entire existing file into a template), SetValues applies a small, explicit list of key=value pairs while still routing every write through the template-shaped working tree so partial/stale existing files never hide a valid key behind a missing node.
+// It also grafts any existing top-level key absent from the template onto the working tree whole, at root-key granularity, so a hand-edited or template-outgrown key is carried through into the merged output instead of silently vanishing.
 
 package yamlengine
 

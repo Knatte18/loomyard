@@ -103,7 +103,7 @@ func TestArchiveRunAfterReset(t *testing.T) {
 				}
 				return fx
 			},
-			wantRefusal: []string{"reset --to start would drop pending audit findings", "1) rm ", "2) lyx webster reset --to start"},
+			wantRefusal: []string{"reset --to start would drop pending audit findings", "1) rm ", "2) lym webster reset --to start"},
 		},
 		{
 			name: "a plan path differing from the recorded plan",
@@ -112,7 +112,7 @@ func TestArchiveRunAfterReset(t *testing.T) {
 				fx.state.PendingAuditFindings[0].Paths = []string{filepath.Join(fx.geom.PlanDir, "01-new.md")}
 				return fx
 			},
-			wantRefusal: []string{"plan file(s) differ from the plan the run recorded", "lyx webster restore-plan", "lyx webster rebaseline --card NN", `"lyx webster reset --to start"`},
+			wantRefusal: []string{"plan file(s) differ from the plan the run recorded", "lym webster restore-plan", "lym webster rebaseline --card NN", `"lym webster reset --to start"`},
 		},
 		{
 			name: "a suspect path differing from HEAD",
@@ -123,7 +123,7 @@ func TestArchiveRunAfterReset(t *testing.T) {
 				fx.git.differing[suspect] = true
 				return fx
 			},
-			wantRefusal: []string{"suspect paths still differ from HEAD", "1) git checkout ", "-- " + "%suspect", "2) lyx webster reset --to start"},
+			wantRefusal: []string{"suspect paths still differ from HEAD", "1) git checkout ", "-- " + "%suspect", "2) lym webster reset --to start"},
 		},
 		{
 			name: "a branch rewritten under the run",

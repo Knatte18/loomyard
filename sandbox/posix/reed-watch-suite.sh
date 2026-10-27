@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Launcher for the lyx SANDBOX-REED-WATCH-SUITE: runs the interactive, non-destructive
+# Launcher for the lym SANDBOX-REED-WATCH-SUITE: runs the interactive, non-destructive
 # reed live-observation session (live tmux required). The machine-specific parent directory
 # is hardcoded HERE (the base under which sandbox Hubs are created, mirroring
 # the win/ launcher's C:\Code) -- the Go tool stays general.

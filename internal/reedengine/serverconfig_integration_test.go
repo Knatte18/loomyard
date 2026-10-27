@@ -115,7 +115,7 @@ func TestBoot_ReadsNoOperatorConfigAndStartsNonLoginPanes(t *testing.T) {
 
 	t.Run("KitConfigSharesReedsShellPins", func(t *testing.T) {
 		const shell = "/bin/sh"
-		kitOnly := map[string]bool{"exit-empty": true, "@lyx_test_server": true}
+		kitOnly := map[string]bool{"exit-empty": true, "@lym_test_server": true}
 		var kitShellOptions []string
 		for _, line := range strings.Split(strings.TrimSpace(tmuxkit.ConfigText(shell)), "\n") {
 			fields := strings.Fields(line)
@@ -162,7 +162,7 @@ func TestProbeCapability_LeavesTheHubSocketAndNoProbeSocketBehind(t *testing.T) 
 		t.Fatalf("read socket dir: %v", err)
 	}
 	for _, entry := range entries {
-		if strings.HasPrefix(entry.Name(), "lyx-p") {
+		if strings.HasPrefix(entry.Name(), "lym-p") {
 			t.Errorf("socket dir holds %q after the probe, want no probe socket left", entry.Name())
 		}
 	}

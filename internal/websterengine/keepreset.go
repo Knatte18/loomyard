@@ -25,7 +25,7 @@ func KeepResetRefusal(plan ResetPlan, cause error, overwritten []string) error {
 	if len(steps) == 0 {
 		steps = append(steps, "commit or restore the uncommitted paths git names")
 	}
-	verb := "lyx webster reset --to " + string(plan.Target)
+	verb := "lym webster reset --to " + string(plan.Target)
 	if plan.Target == ResetToReportHead || plan.Target == ResetToBatchStart {
 		verb += " --batch NN"
 	}

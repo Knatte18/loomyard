@@ -92,7 +92,7 @@ type TranscriptEntry struct {
 type TranscriptRead struct {
 	// ID is the transcript's stable name.
 	ID string
-	// Name is the latest strand name lyx set on the session, empty when none.
+	// Name is the latest strand name lym set on the session, empty when none.
 	Name string
 	// Started is the time of the record's first timestamped line of any kind, zero when none.
 	Started time.Time

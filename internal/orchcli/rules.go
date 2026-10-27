@@ -12,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fsx"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -57,7 +57,7 @@ and unpushed; unpushed true means the commit is made and the next run pushes it.
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
-			cwd, err := lyxcwd.CwdFrom(cmd.Context())
+			cwd, err := lymcwd.CwdFrom(cmd.Context())
 			if err != nil {
 				clihelp.Abort(cmd.Context(), output.Err(cmd.OutOrStdout(), err.Error()))
 				return nil
@@ -82,7 +82,7 @@ and unpushed; unpushed true means the commit is made and the next run pushes it.
 // Every envelope after the draft is read carries path, committed and unpushed.
 func writeHubRules(out io.Writer, cwd, from, rulesPath string, bolt rulesBolt) int {
 	if from == "" {
-		return output.Err(out, "lyx orch rules needs --from <file>")
+		return output.Err(out, "lym orch rules needs --from <file>")
 	}
 	draft := from
 	if !filepath.IsAbs(draft) {
@@ -96,7 +96,7 @@ func writeHubRules(out io.Writer, cwd, from, rulesPath string, bolt rulesBolt) i
 	refuse := func(msg string, committed, unpushed bool) int {
 		return output.ErrFields(out, msg, map[string]any{"path": rulesPath, "committed": committed, "unpushed": unpushed})
 	}
-	rerun := fmt.Sprintf("lyx orch rules --from %s", from)
+	rerun := fmt.Sprintf("lym orch rules --from %s", from)
 	// A *PushFailedError's text already ends in its class's way forward, so only the re-run follows it.
 	var failedPush *fabricengine.PushFailedError
 

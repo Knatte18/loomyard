@@ -49,10 +49,10 @@ At cause `budget`, decide nothing: report back to your parent session which inpu
 
 When a recorded operator decision answers the question:
 
-1. Record the operator decision you applied, citing where it is recorded, with `lyx loom decision add {{.slug}} --by parent --title … --decision … --rationale …`, run in `{{.worktree}}`, when the decision record exists; never record with `--by operator`.
+1. Record the operator decision you applied, citing where it is recorded, with `lym loom decision add {{.slug}} --by parent --title … --decision … --rationale …`, run in `{{.worktree}}`, when the decision record exists; never record with `--by operator`.
    Without a decision record, name the applied decision and its source in your report back to your parent session instead.
 2. {{.decide_options}}
-3. Resume the run with `lyx loom resume` in `{{.worktree}}`.
+3. Resume the run with `lym loom resume` in `{{.worktree}}`.
 
 Otherwise record nothing and report back to your parent session, which asks the operator.
 The run stays `awaiting`.

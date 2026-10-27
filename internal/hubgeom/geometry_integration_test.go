@@ -1,7 +1,7 @@
 //go:build tier1
 
 // geometry_integration_test.go drives ReedGeometry and WebsterGeometry against one real hub from hubforge:
-// the prime's reed geometry carries the hub's shortname with no slug or parent, a task worktree carries its slug and the parent its origin record names, or none when the origin names none, and a hub with no .lyx-shortname yields an empty shortname and no error.
+// the prime's reed geometry carries the hub's shortname with no slug or parent, a task worktree carries its slug and the parent its origin record names, or none when the origin names none, and a hub with no .lym-shortname yields an empty shortname and no error.
 
 package hubgeom_test
 
@@ -17,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // TestGeometryOverRealHub builds one hub and runs each geometry case as a step over it, in the order below.
@@ -47,7 +47,7 @@ func TestGeometryOverRealHub(t *testing.T) {
 		const slug = "webster-parent-task"
 		hubforge.AddPair(t, h, slug)
 
-		l, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree(slug))
+		l, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(slug))
 		if err != nil {
 			t.Fatalf("ResolveWorktree: %v", err)
 		}
@@ -75,7 +75,7 @@ func TestGeometryOverRealHub(t *testing.T) {
 		const slug = "naming-task"
 		hubforge.AddPair(t, h, slug)
 
-		l, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree(slug))
+		l, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(slug))
 		if err != nil {
 			t.Fatalf("ResolveWorktree: %v", err)
 		}
@@ -149,13 +149,13 @@ func TestGeometryOverRealHub(t *testing.T) {
 			t.Fatalf("delete lock directory: %v", err)
 		}
 
-		l, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree(slug))
+		l, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(slug))
 		if err != nil {
 			t.Fatalf("ResolveWorktree: %v", err)
 		}
 		_, err = hubgeom.ResolveParent(l)
-		if err == nil || !strings.Contains(err.Error(), filepath.Base(lockDir)) || !strings.Contains(err.Error(), "lyx fabric reconcile` to restore it; a session lyx refuses the verb from reports status: FAILED and the orch runs it") {
-			t.Fatalf("ResolveParent without the lock directory = %v; want an error naming the lock directory and `lyx fabric reconcile`", err)
+		if err == nil || !strings.Contains(err.Error(), filepath.Base(lockDir)) || !strings.Contains(err.Error(), "lym fabric reconcile` to restore it; a session lym refuses the verb from reports status: FAILED and the orch runs it") {
+			t.Fatalf("ResolveParent without the lock directory = %v; want an error naming the lock directory and `lym fabric reconcile`", err)
 		}
 
 		pair := reconcilePairFor(t, h, slug)
@@ -216,7 +216,7 @@ func requireLockDirAndOrchParent(t *testing.T, h *hubforge.Hub, slug string) {
 	if info, err := os.Stat(fabricengine.RecordsLockDirPath(h.PairRecordsSibling(slug))); err != nil || !info.IsDir() {
 		t.Errorf("lock directory missing in %s: %v", h.PairRecordsSibling(slug), err)
 	}
-	l, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree(slug))
+	l, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(slug))
 	if err != nil {
 		t.Fatalf("ResolveWorktree: %v", err)
 	}

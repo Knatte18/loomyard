@@ -62,7 +62,7 @@ func TestFixVerifySpawnOrAttach(t *testing.T) {
 		fx, deps := newFixVerifyFixture(t, false)
 		st := &websterengine.State{}
 		_, spawned, err := websterengine.FixVerifySpawnOrAttach(deps, st, &recoverFakeClock{now: time.Unix(0, 0)})
-		if err == nil || !strings.Contains(err.Error(), "way forward: run `lyx webster fix-verify` only when") {
+		if err == nil || !strings.Contains(err.Error(), "way forward: run `lym webster fix-verify` only when") {
 			t.Fatalf("FixVerifySpawnOrAttach() error = %v; want the no-report refusal with its way forward", err)
 		}
 		if spawned || len(fx.Reed.AddedSpecs) != 0 || len(st.VerifyFixers) != 0 {
@@ -99,7 +99,7 @@ func TestFixVerifySpawnOrAttach(t *testing.T) {
 						Gates: map[string]gateslot.GateKey{"card": {Tiers: []int{0}, Scope: "card"}},
 					}
 				},
-				wantText: []string{`gates holds no key "webster-fix"`, `fix it with "lyx config gate"`},
+				wantText: []string{`gates holds no key "webster-fix"`, `fix it with "lym config gate"`},
 			},
 		}
 		for _, tt := range tests {
@@ -130,7 +130,7 @@ func TestFixVerifySpawnOrAttach(t *testing.T) {
 		deps.ShuttleCfg.RunDir = t.TempDir()
 		st := &websterengine.State{}
 		_, spawned, err := websterengine.FixVerifySpawnOrAttach(deps, st, &recoverFakeClock{now: time.Unix(0, 0)})
-		if err == nil || !strings.Contains(err.Error(), "way forward: transient, re-run `lyx webster fix-verify`") {
+		if err == nil || !strings.Contains(err.Error(), "way forward: transient, re-run `lym webster fix-verify`") {
 			t.Fatalf("FixVerifySpawnOrAttach() error = %v; want the resolve refusal with its way forward", err)
 		}
 		if spawned || len(st.VerifyFixers) != 0 {
@@ -165,7 +165,7 @@ func TestFixVerifySpawnOrAttach(t *testing.T) {
 		if !slices.Contains(spec.Skills, "scribe:prose") {
 			t.Errorf("spec skills = %v; want the role skills", spec.Skills)
 		}
-		for _, want := range []string{websterengine.VerifyGateReportPath(fx.ReportsDir), replyPath, "lyx gate test --wait --gate webster-fix"} {
+		for _, want := range []string{websterengine.VerifyGateReportPath(fx.ReportsDir), replyPath, "lym gate test --wait --gate webster-fix"} {
 			if !strings.Contains(fx.Engine.LastPrompt, want) {
 				t.Errorf("prompt lacks %q", want)
 			}

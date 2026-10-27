@@ -320,13 +320,13 @@ func logRefreshNotices(notices []refreshNotice, running string) {
 		stencils := strings.Join(listed, ", ")
 		switch kind {
 		case noticeNotOlder:
-			logger.Info("stencilstore: board copies were written by a build that is not older than this binary; left untouched -- run \"lyx stencil sync\" to override", "stencils", stencils, "running", running)
+			logger.Info("stencilstore: board copies were written by a build that is not older than this binary; left untouched -- run \"lym stencil sync\" to override", "stencils", stencils, "running", running)
 		case noticeDevBuild:
-			logger.Warn("stencilstore: dev build does not refresh untouched stencils; producers will read the OLDER on-disk copies -- run \"lyx stencil sync\" to force-refresh them", "stencils", stencils)
+			logger.Warn("stencilstore: dev build does not refresh untouched stencils; producers will read the OLDER on-disk copies -- run \"lym stencil sync\" to force-refresh them", "stencils", stencils)
 		case noticeUnstampedBuild:
-			logger.Warn("stencilstore: unstamped build does not refresh untouched stencils; producers will read the OLDER on-disk copies -- run \"lyx stencil sync\", or deploy with update-plugins.sh", "stencils", stencils)
+			logger.Warn("stencilstore: unstamped build does not refresh untouched stencils; producers will read the OLDER on-disk copies -- run \"lym stencil sync\", or deploy with update-plugins.sh", "stencils", stencils)
 		case noticeEditedBehind:
-			logger.Warn("stencilstore: edited stencils have fallen behind a newer shipped default; see lyx stencil diff", "stencils", stencils)
+			logger.Warn("stencilstore: edited stencils have fallen behind a newer shipped default; see lym stencil diff", "stencils", stencils)
 		}
 	}
 }
@@ -415,13 +415,13 @@ func classifyPortBackDrift(boardContent, sourceContent, embedded []byte, build f
 	case handEdited && sourceAhead:
 		return driftBoth, driftMessagePrefix + "both sides changed and promote would overwrite the source's changes -- reconcile by hand"
 	case handEdited:
-		return driftHandEdited, driftMessagePrefix + "it was hand-edited -- run \"lyx stencil promote <name>\" to port it back"
+		return driftHandEdited, driftMessagePrefix + "it was hand-edited -- run \"lym stencil promote <name>\" to port it back"
 	case sourceAhead && build != nil && build() == BuildNotInHead:
 		return driftBehind, driftMessagePrefix + "this worktree is behind the build that deployed the board copy -- syncing this worktree with main resolves it"
 	case sourceAhead:
 		return driftSourceAhead, driftMessagePrefix + "the board copy is untouched and a binary older than the source deployed it -- run a production deploy (update-plugins.sh)"
 	default:
-		return driftNeither, driftMessagePrefix + "the board copy is untouched but older than this binary's embedded bytes (a dev build never refreshes one) -- run \"lyx stencil sync\""
+		return driftNeither, driftMessagePrefix + "the board copy is untouched but older than this binary's embedded bytes (a dev build never refreshes one) -- run \"lym stencil sync\""
 	}
 }
 
@@ -475,7 +475,7 @@ func warnPortBackDrift(baseDir string, registry Registry, source Source) {
 }
 
 // ForceRefresh performs the refresh row even on a stencil a ModeDev or ModeUnstamped pass would leave untouched, whatever the recorded writer's ordering.
-// It is the entry point `lyx stencil sync` calls, which is why an explicit sync refreshes even from
+// It is the entry point `lym stencil sync` calls, which is why an explicit sync refreshes even from
 // a -dev-stamped binary.
 // mode only decides whether the running binary is recorded as the writer: ModeProduction records it, any other mode leaves no recorded revision.
 func ForceRefresh(baseDir string, registry Registry, mode Mode, source Source) ([]string, error) {

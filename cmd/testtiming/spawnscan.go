@@ -191,7 +191,7 @@ type spawnScanner struct {
 
 // scanSpawns returns the verdict of every Test, Example and Fuzz function declared in pkgDir's _test.go files.
 // A test in a file without a tier tag is always judged, because an untagged test spawns nothing;
-// a test in a tmux-tier file is always out of process, because reed panes run lyx.
+// a test in a tmux-tier file is always out of process, because reed panes run lym.
 func scanSpawns(module, kitRoot, pkgDir string) (map[string]spawnVerdict, error) {
 	src, err := loadPkgSource(pkgDir, true)
 	if err != nil {
@@ -362,7 +362,7 @@ func collectLocals(decl *ast.FuncDecl) (locals, types map[string]bool) {
 }
 
 // spawnRef reports whether importPath.name may run this module's code in another process:
-// the lyxbin kit, os.Executable, or a testkit function that reaches one of those.
+// the lymbin kit, os.Executable, or a testkit function that reaches one of those.
 func (s *spawnScanner) spawnRef(importPath, name string) bool {
 	if importPath == "os" {
 		return name == "Executable"
@@ -371,7 +371,7 @@ func (s *spawnScanner) spawnRef(importPath, name string) bool {
 	if !ok {
 		return false
 	}
-	if rel == "internal/testkit/lyxbin" {
+	if rel == "internal/testkit/lymbin" {
 		return true
 	}
 	if kit, ok := strings.CutPrefix(rel, "internal/testkit/"); ok && !strings.Contains(kit, "/") {

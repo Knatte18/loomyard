@@ -9,14 +9,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // beamForkParent returns the beam slug's pair forks from over the local board, "" meaning the prime.
 // A beam goes through beamForkPrecondition first, which stops the create with a precondition when the beam cannot take the member.
-func beamForkParent(prime *lyxcwd.Location, slug string, branchOnOrigin func(beam string) (bool, error)) (string, error) {
+func beamForkParent(prime *lymcwd.Location, slug string, branchOnOrigin func(beam string) (bool, error)) (string, error) {
 	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(prime.HubPath))
 	if err != nil {
 		return "", err
@@ -53,19 +53,19 @@ func beamForkPrecondition(slug, beam string, beamEntry boardengine.Task, beamFou
 		if err != nil {
 			return err
 		}
-		command := "lyx beam create " + beam
+		command := "lym beam create " + beam
 		if onOrigin {
-			command = "lyx adopt " + beam
+			command = "lym adopt " + beam
 		}
 		return &battenshed.PreconditionError{
 			Unmet:      fmt.Sprintf("%s belongs to beam %s, whose pair is not on this machine", slug, beam),
-			WayForward: fmt.Sprintf("run %q, then %q", command, "lyx batten run "+slug),
+			WayForward: fmt.Sprintf("run %q, then %q", command, "lym batten run "+slug),
 		}
 	}
 	if beamFound && boardengine.RunHolds(beamEntry) {
 		return &battenshed.PreconditionError{
 			Unmet:      fmt.Sprintf("%s belongs to beam %s, which its own landing holds (%s)", slug, beam, *beamEntry.Status),
-			WayForward: fmt.Sprintf("read the landing with %q; it stops on this open member, so run %q to end this member's run and let the landing go on", "lyx batten status "+beam, "lyx batten cancel "+slug),
+			WayForward: fmt.Sprintf("read the landing with %q; it stops on this open member, so run %q to end this member's run and let the landing go on", "lym batten status "+beam, "lym batten cancel "+slug),
 		}
 	}
 	return nil
@@ -78,14 +78,14 @@ func beamForkPrecondition(slug, beam string, beamEntry boardengine.Task, beamFou
 func memberHoldRefusal(slug, beam, status string) error {
 	return &battenshed.PreconditionError{
 		Unmet: fmt.Sprintf("%s belongs to beam %s, which its own landing holds (%s), so the pair of %s was removed", slug, beam, status, slug),
-		WayForward: fmt.Sprintf("run %q in the beam's parent worktree to end %s and release its claim, then move its project off the beam with `lyx board upsert`, since a draft member still blocks the landing, after which the beam's next land request lands it; or, once %q shows the beam's run back at Beam-Await, run %q, which resumes the halted member",
-			"lyx batten cancel "+slug, slug, "lyx batten status "+beam, "lyx batten run "+slug),
+		WayForward: fmt.Sprintf("run %q in the beam's parent worktree to end %s and release its claim, then move its project off the beam with `lym board upsert`, since a draft member still blocks the landing, after which the beam's next land request lands it; or, once %q shows the beam's run back at Beam-Await, run %q, which resumes the halted member",
+			"lym batten cancel "+slug, slug, "lym batten status "+beam, "lym batten run "+slug),
 	}
 }
 
 // readBeamHold reads beam's board entry over the hub of prime: its status, and whether its run holds the entry.
 // A beam with no entry reads as not held.
-func readBeamHold(prime *lyxcwd.Location, beam string) (status string, held bool, err error) {
+func readBeamHold(prime *lymcwd.Location, beam string) (status string, held bool, err error) {
 	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(prime.HubPath))
 	if err != nil {
 		return "", false, err
@@ -106,7 +106,7 @@ func readBeamHold(prime *lyxcwd.Location, beam string) (status string, held bool
 // The beam's accept may write its hold between the fork precondition's read and the pair's making, and a member that crashed after the pair was made is judged here when it is resumed; either way this read or the beam's own re-check sees the other.
 // The member keeps its claim, so the removal settles none.
 // A slug outside a beam is never refused.
-func (c *battenCLI) refuseHeldMember(ctx context.Context, prime *lyxcwd.Location, slug string) error {
+func (c *battenCLI) refuseHeldMember(ctx context.Context, prime *lymcwd.Location, slug string) error {
 	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(prime.HubPath))
 	if err != nil {
 		return err
@@ -138,7 +138,7 @@ func (c *battenCLI) refuseHeldMember(ctx context.Context, prime *lyxcwd.Location
 }
 
 // anchorFromSeed reads the anchor the first pass of slug recorded in the run's seed, empty when it recorded none.
-func anchorFromSeed(prime *lyxcwd.Location, slug string) (string, error) {
+func anchorFromSeed(prime *lymcwd.Location, slug string) (string, error) {
 	seed, found, err := shedrun.ReadSeed(prime, slug)
 	if err != nil || !found {
 		return "", err

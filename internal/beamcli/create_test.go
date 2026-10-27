@@ -127,7 +127,7 @@ func TestCreate(t *testing.T) {
 			name:    "CreateFromAnotherWorktreeRefusedNamingTheParentsPath",
 			slug:    "group",
 			setup:   func(w *createWorld) { w.acting = "elsewhere" },
-			wantErr: []string{"/hub/prime", "lyx beam create group"},
+			wantErr: []string{"/hub/prime", "lym beam create group"},
 		},
 		{
 			name: "NestedBeamFromThePrimeRefusedNamingTheParentBeamsPath",
@@ -136,7 +136,7 @@ func TestCreate(t *testing.T) {
 				w.beams["group"] = "outer"
 				w.pairs["outer"] = true
 			},
-			wantErr: []string{"/hub/outer", "lyx beam create group"},
+			wantErr: []string{"/hub/outer", "lym beam create group"},
 		},
 		{
 			name: "NestedBeamWhoseParentBeamHasNoPairHereNamesItsCreate",
@@ -144,7 +144,7 @@ func TestCreate(t *testing.T) {
 			setup: func(w *createWorld) {
 				w.beams["group"] = "outer"
 			},
-			wantErr: []string{"outer", "lyx beam create outer", "lyx beam create group"},
+			wantErr: []string{"outer", "lym beam create outer", "lym beam create group"},
 		},
 		{
 			name: "NestedBeamWhoseParentBeamHasNoPairHereNamesItsAdoptWhenOnOrigin",
@@ -153,18 +153,18 @@ func TestCreate(t *testing.T) {
 				w.beams["group"] = "outer"
 				w.onOrigin["outer"] = true
 			},
-			wantErr: []string{"outer", "lyx adopt outer", "lyx beam create group"},
+			wantErr: []string{"outer", "lym adopt outer", "lym beam create group"},
 		},
-		{name: "AbsentEntryRefused", slug: "ghost", wantErr: []string{"lyx board upsert", "project"}},
-		{name: "NoteRefused", slug: "note1", wantErr: []string{"lyx board upsert", "project"}},
-		{name: "TaskRefused", slug: "task1", wantErr: []string{"is a task", "lyx board upsert", "lyx beam create <that slug>"}},
+		{name: "AbsentEntryRefused", slug: "ghost", wantErr: []string{"lym board upsert", "project"}},
+		{name: "NoteRefused", slug: "note1", wantErr: []string{"lym board upsert", "project"}},
+		{name: "TaskRefused", slug: "task1", wantErr: []string{"is a task", "lym board upsert", "lym beam create <that slug>"}},
 		{name: "DoneProjectRefused", slug: "old", wantErr: []string{"done", "new project entry"}},
-		{name: "BeamOwnedElsewhereRefused", slug: "theirs", wantErr: []string{there, "lyx beam create theirs", "lyx adopt theirs"}},
+		{name: "BeamOwnedElsewhereRefused", slug: "theirs", wantErr: []string{there, "lym beam create theirs", "lym adopt theirs"}},
 		{
 			name:    "RootOwnedElsewhereRefusedNamingAdoptRoot",
 			slug:    "group",
 			setup:   func(w *createWorld) { w.owners.Prime = there },
-			wantErr: []string{there, "lyx adopt root"},
+			wantErr: []string{there, "lym adopt root"},
 		},
 		{
 			name: "ParentBeamOwnedElsewhereRefusedNamingItsAdopt",
@@ -176,7 +176,7 @@ func TestCreate(t *testing.T) {
 				w.pairs["outer"] = true
 				w.owners.Entries["outer"] = boardengine.OwnerEntry{IsProject: true, Beam: true, Owner: there}
 			},
-			wantErr: []string{there, "lyx adopt outer"},
+			wantErr: []string{there, "lym adopt outer"},
 		},
 		{
 			name:      "FreshCreateClaimsTheRootRecordsTheOwnerAndStartsTheRunWithItsAnchor",
@@ -222,7 +222,7 @@ func TestCreate(t *testing.T) {
 				w.owners.Prime = ""
 				w.primeWinner = there
 			},
-			wantErr:   []string{there, "lyx adopt root"},
+			wantErr:   []string{there, "lym adopt root"},
 			wantCalls: []string{"root"},
 		},
 		{
@@ -231,7 +231,7 @@ func TestCreate(t *testing.T) {
 			setup: func(w *createWorld) {
 				w.lost = map[string]string{"group": there}
 			},
-			wantErr:   []string{there, "lyx adopt group"},
+			wantErr:   []string{there, "lym adopt group"},
 			wantCalls: []string{"owner"},
 		},
 		{
@@ -251,8 +251,8 @@ func TestCreate(t *testing.T) {
 				w.runs["group"] = shedengine.StateRunning
 			},
 			check: func(t *testing.T, got createResult) {
-				if !got.RunLive || got.RunStarted || !strings.Contains(got.WayForward, "lyx batten status group") {
-					t.Errorf("create envelope = %+v; want the run live, none started and `lyx batten status group` named", got)
+				if !got.RunLive || got.RunStarted || !strings.Contains(got.WayForward, "lym batten status group") {
+					t.Errorf("create envelope = %+v; want the run live, none started and `lym batten status group` named", got)
 				}
 			},
 		},
@@ -266,8 +266,8 @@ func TestCreate(t *testing.T) {
 			wantCalls:   []string{"start"},
 			wantAnchors: []string{"y"},
 			check: func(t *testing.T, got createResult) {
-				if got.OwnerRecorded || !got.RunStarted || !strings.Contains(got.WayForward, "lyx batten status group") {
-					t.Errorf("create envelope = %+v; want no owner write, the run started and `lyx batten status group` named", got)
+				if got.OwnerRecorded || !got.RunStarted || !strings.Contains(got.WayForward, "lym batten status group") {
+					t.Errorf("create envelope = %+v; want no owner write, the run started and `lym batten status group` named", got)
 				}
 			},
 		},
@@ -277,7 +277,7 @@ func TestCreate(t *testing.T) {
 			setup: func(w *createWorld) {
 				w.envelope = map[string]any{"ok": false, "error": "a hub pause covers the prime"}
 			},
-			wantErr:     []string{"a hub pause covers the prime", "lyx beam create group"},
+			wantErr:     []string{"a hub pause covers the prime", "lym beam create group"},
 			wantCalls:   []string{"owner", "start"},
 			wantAnchors: []string{""},
 		},
@@ -301,8 +301,8 @@ func TestCreate(t *testing.T) {
 						t.Errorf("create(%q) error = %q; want it to name %q", tt.slug, err.Error(), want)
 					}
 				}
-				if strings.Contains(err.Error(), "lyx beam promote") {
-					t.Errorf("create(%q) error = %q; want no lyx beam promote", tt.slug, err.Error())
+				if strings.Contains(err.Error(), "lym beam promote") {
+					t.Errorf("create(%q) error = %q; want no lym beam promote", tt.slug, err.Error())
 				}
 				if got.RunStarted {
 					t.Errorf("create(%q) envelope = %+v; want no run started by a refused create", tt.slug, got)
@@ -362,8 +362,8 @@ func TestCreate_StepFailureNamesTheRerun(t *testing.T) {
 
 			got, err := create(deps, "group", "")
 
-			if err == nil || !strings.Contains(err.Error(), tt.want) || !strings.Contains(err.Error(), "lyx beam create group") {
-				t.Fatalf("create = %v; want the failure %q and a re-run of `lyx beam create group`", err, tt.want)
+			if err == nil || !strings.Contains(err.Error(), tt.want) || !strings.Contains(err.Error(), "lym beam create group") {
+				t.Fatalf("create = %v; want the failure %q and a re-run of `lym beam create group`", err, tt.want)
 			}
 			if got.OwnerRecorded != tt.wantOwner || got.RunStarted {
 				t.Errorf("result = %+v; want the owner recorded = %v and no run started", got, tt.wantOwner)

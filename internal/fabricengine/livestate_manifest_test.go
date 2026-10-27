@@ -24,11 +24,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 )
 
-// gitDirName is the base name a manifest walk treats specially: every ".git" entry, file or directory,
-// gets the narrow allowlisted treatment gitDirRule describes, rather than the ordinary walk rules.
-// It is not a fabric geometry token, so it is spelled here directly rather than routed through an
-// accessor — the geometry-through-accessors rule governs `_board`, `-weft`, `_portals`, `_launchers`,
-// `_lyx` and `.lyx`, not git's own directory name.
+// gitDirName is the base name a manifest walk treats specially: every ".git" entry, file or directory, gets the narrow allowlisted treatment gitDirRule describes, rather than the ordinary walk rules.
+// It is not a fabric geometry token, so it is spelled here directly rather than routed through an accessor — the geometry-through-accessors rule governs `_board`, `-weft`, `_portals`, `_launchers`, `_lym` and `.lym`, not git's own directory name.
 const gitDirName = ".git"
 
 // Kind enumerates the closed set of filesystem entry shapes a Manifest records: a regular file, a
@@ -92,8 +89,8 @@ type Manifest map[string]Entry
 // through fslink.IsLink, never a raw os.Lstat mode-bit check, because that is the only test that
 // answers the question uniformly for a POSIX symlink and a Windows junction alike.
 // This rule is load-bearing, not an optimisation.
-// Fabric's wired junctions carry absolute targets that point back inside the same hub — warp/_lyx to
-// the hub's weft-side _lyx, warp/.lyx likewise — so a walk that descended through a junction would
+// Fabric's wired junctions carry absolute targets that point back inside the same hub — warp/_lym to
+// the hub's weft-side _lym, warp/.lym likewise — so a walk that descended through a junction would
 // record the weft sibling's contents twice: once under its own path, and again under every warp
 // junction chaining into it.
 // Every legitimate weft-side change would then surface as an unpermitted mutation under a warp key,
@@ -282,7 +279,7 @@ type Change struct {
 // Matching is on path segments, not on raw string prefix, so a root of "_portals/x" never permits
 // "_portalsfoo/y".
 // Comparison of a path segment against a root segment folds case on Windows only, via this file's own
-// segmentsEqual — lyxcwd.samePath does exactly this but is unexported, so this file carries its own
+// segmentsEqual — lymcwd.samePath does exactly this but is unexported, so this file carries its own
 // equivalent rather than reaching for it.
 //
 // The returned slice is sorted by Path, so a caller's failure output is stable across runs.
@@ -369,7 +366,7 @@ func pathAtOrBelowRoot(path, root string) bool {
 }
 
 // segmentsEqual reports whether two path segments name the same thing: byte-exact everywhere except
-// Windows, where the comparison folds case — the same posture lyxcwd.samePath takes for a full path,
+// Windows, where the comparison folds case — the same posture lymcwd.samePath takes for a full path,
 // carried here at segment granularity because that unexported function is not reachable from this
 // package.
 func segmentsEqual(a, b string) bool {

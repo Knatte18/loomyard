@@ -74,7 +74,7 @@ func startupGateCallers(t *testing.T, base string) ([]string, int) {
 // It also verifies that each scan finds a violation when one exists and lets a file inside the package through.
 //
 //testtiming:keep scans every production file's imports for a concrete engine package outside its own directory and the registry, and its calls for AcceptStartupGate outside this package, which no other test reads
-//lyx:guard
+//lym:guard
 func TestProviderSeamImportRule(t *testing.T) {
 	t.Parallel()
 

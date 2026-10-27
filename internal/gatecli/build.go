@@ -1,4 +1,4 @@
-// build.go runs the hub's shared build step once per `lyx gate test` call inside the slots of the first tier that opts into it, and reports the tiers a failed build blocks.
+// build.go runs the hub's shared build step once per `lym gate test` call inside the slots of the first tier that opts into it, and reports the tiers a failed build blocks.
 
 package gatecli
 

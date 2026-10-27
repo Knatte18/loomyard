@@ -143,7 +143,7 @@ func TestWriteHubRules(t *testing.T) {
 		{
 			name: "FirstPushRebaseConflict", draft: str("new"), from: "draft.md", prior: str("old"),
 			fake:     fakeRulesBolt{pushErrs: []error{rebaseFailed}},
-			wantExit: 1, wantFields: true, wantUnpushed: true, wantErr: []string{conflictWayForward, "then re-run lyx orch rules --from draft.md"},
+			wantExit: 1, wantFields: true, wantUnpushed: true, wantErr: []string{conflictWayForward, "then re-run lym orch rules --from draft.md"},
 			wantFile: str("old"), wantCalls: []string{"push"},
 		},
 		{
@@ -154,8 +154,8 @@ func TestWriteHubRules(t *testing.T) {
 		},
 		{
 			name: "PullSkip", draft: str("new"), from: "draft.md", prior: str("old"),
-			fake:     fakeRulesBolt{skip: fabricengine.BoltSkipDirty, skipDetail: "run lyx board sync first"},
-			wantExit: 1, wantFields: true, wantErr: []string{"run lyx board sync first"},
+			fake:     fakeRulesBolt{skip: fabricengine.BoltSkipDirty, skipDetail: "run lym board sync first"},
+			wantExit: 1, wantFields: true, wantErr: []string{"run lym board sync first"},
 			wantFile: str("old"), wantCalls: []string{"push", "pull"},
 		},
 		{
@@ -166,7 +166,7 @@ func TestWriteHubRules(t *testing.T) {
 		{
 			name: "FailedCommitKeepsNewContent", draft: str("new"), from: "draft.md", prior: str("old"),
 			fake:     fakeRulesBolt{commitErr: errors.New("commit failed")},
-			wantExit: 1, wantFields: true, wantErr: []string{"commit failed", "lyx orch rules --from draft.md"},
+			wantExit: 1, wantFields: true, wantErr: []string{"commit failed", "lym orch rules --from draft.md"},
 			wantFile: str("new"), wantCalls: []string{"push", "pull"},
 		},
 		{
@@ -178,7 +178,7 @@ func TestWriteHubRules(t *testing.T) {
 		{
 			name: "LastPushRebaseConflict", draft: str("new"), from: "draft.md", prior: str("old"),
 			fake:     fakeRulesBolt{pushErrs: []error{nil, rebaseFailed}},
-			wantExit: 1, wantFields: true, wantCommitted: true, wantUnpushed: true, wantErr: []string{conflictWayForward, "then re-run lyx orch rules --from draft.md"},
+			wantExit: 1, wantFields: true, wantCommitted: true, wantUnpushed: true, wantErr: []string{conflictWayForward, "then re-run lym orch rules --from draft.md"},
 			wantFile: str("new"), wantCalls: []string{"push", "pull", "push"}, wantFakePending: 1,
 		},
 		{

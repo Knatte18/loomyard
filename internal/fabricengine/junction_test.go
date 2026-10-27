@@ -1,10 +1,7 @@
 //go:build tier0
 
-// junction_test.go unit-tests unseedJunctionRecords directly against synthetic WarpJunction slices
-// — no build tag, since it touches only plain directories and fslink, never git.
-// It exists because WarpJunctions(l, slug) still returns exactly one entry in this batch (a second
-// entry is batch 5's job), so the abort-and-accumulate contract this card gives unseedLyxJunction
-// cannot be driven through the exported (l, slug) surface with more than one junction;
+// junction_test.go unit-tests unseedJunctionRecords directly against synthetic WarpJunction slices — no build tag, since it touches only plain directories and fslink, never git.
+// It exists because WarpJunctions(l, slug) still returns exactly one entry in this batch (a second entry is batch 5's job), so the abort-and-accumulate contract this card gives unseedLymJunction cannot be driven through the exported (l, slug) surface with more than one junction;
 // this file drives the extracted loop directly instead.
 
 package fabricengine
@@ -16,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // wireTestJunction creates a real link at link pointing to target (creating
@@ -34,16 +31,13 @@ func wireTestJunction(t *testing.T, link, target string) {
 	}
 }
 
-// TestWorktreePath verifies that WorktreePath(l, slug) joins HubPath and slug — moved here from
-// lyxcwd's own unit test now that fabricengine is the sole owner of this path shape (the method it
-// replaced, (*lyxcwd.Location).WorktreePath(slug), collided with the no-arg accessor the coming
-// reshape introduces on the same type).
+// TestWorktreePath verifies that WorktreePath(l, slug) joins HubPath and slug — moved here from lymcwd's own unit test now that fabricengine is the sole owner of this path shape (the method it replaced, (*lymcwd.Location).WorktreePath(slug), collided with the no-arg accessor the coming reshape introduces on the same type).
 //
 //testtiming:keep WorktreePath joining the hub path and slug; coverage of its blocks by other tests does not show an assertion of this
 func TestWorktreePath(t *testing.T) {
 	t.Parallel()
 
-	l := &lyxcwd.Location{HubPath: filepath.Join("home", "user", "project-LYXHUB")}
+	l := &lymcwd.Location{HubPath: filepath.Join("home", "user", "project-LYMHUB")}
 	slug := "test-wt"
 
 	got := WorktreePath(l, slug)
@@ -161,9 +155,9 @@ func TestExcludePatternFor_AnchorsToRepoRoot(t *testing.T) {
 		junction  string
 		want      string
 	}{
-		{"RootAnchor", ".", "_lyx", "/_lyx"},
-		{"SubpathAnchor", "backend", "_lyx", "/backend/_lyx"},
-		{"SubpathAnchorDotLyx", "backend", ".lyx", "/backend/.lyx"},
+		{"RootAnchor", ".", "_lym", "/_lym"},
+		{"SubpathAnchor", "backend", "_lym", "/backend/_lym"},
+		{"SubpathAnchorDotLym", "backend", ".lym", "/backend/.lym"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

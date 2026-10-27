@@ -12,8 +12,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // anchorFailHook, nil in production, stands in for a failure of the move's commit or of the integration's branch move.
@@ -36,10 +36,10 @@ func runAnchorFailHook(afterCommit bool) error {
 }
 
 // moveWeftContent moves the tracked content of each wired name in names from under the anchor from to under the anchor to in the weft worktree at weftPath.
-// It renames from/.lyx to to/.lyx when it exists, and then writes the marker to last through an os.Root at weftPath.
+// It renames from/.lym to to/.lym when it exists, and then writes the marker to last through an os.Root at weftPath.
 // All of it is committed in one weft commit spanning from/<names>, to/<names> and the root marker.
 // The caller holds the weft write lock.
-// A name that is not tracked under from is left alone, and a path already standing where a name or `.lyx` would land is refused before anything moves.
+// A name that is not tracked under from is left alone, and a path already standing where a name or `.lym` would land is refused before anything moves.
 // A failure before the commit returns committed false and leaves the staged and moved paths for the caller to restore;
 // a failure after it, from reading the commit or from the hook, returns committed true beside the error.
 func moveWeftContent(rec *Mutations, weftPath, from, to string, names []string) (bool, error) {
@@ -52,7 +52,7 @@ func moveWeftContent(rec *Mutations, weftPath, from, to string, names []string) 
 	fromSlash, toSlash := filepath.ToSlash(from), filepath.ToSlash(to)
 	var moved []string
 	for _, name := range names {
-		if name == lyxdirs.DotLyxDirName {
+		if name == lymdirs.DotLymDirName {
 			continue
 		}
 		tracked, err := PathTracked(weftPath, anchorJoin(fromSlash, name))
@@ -67,15 +67,15 @@ func moveWeftContent(rec *Mutations, weftPath, from, to string, names []string) 
 		}
 		moved = append(moved, name)
 	}
-	lyxFrom, lyxTo := anchorJoin(fromSlash, lyxdirs.DotLyxDirName), anchorJoin(toSlash, lyxdirs.DotLyxDirName)
-	lyxPresent := true
-	if _, err := root.Lstat(lyxFrom); errors.Is(err, fs.ErrNotExist) {
-		lyxPresent = false
+	lymFrom, lymTo := anchorJoin(fromSlash, lymdirs.DotLymDirName), anchorJoin(toSlash, lymdirs.DotLymDirName)
+	lymPresent := true
+	if _, err := root.Lstat(lymFrom); errors.Is(err, fs.ErrNotExist) {
+		lymPresent = false
 	} else if err != nil {
-		return false, fmt.Errorf("fabricengine: inspect %s in %s: %w", lyxFrom, weftPath, err)
+		return false, fmt.Errorf("fabricengine: inspect %s in %s: %w", lymFrom, weftPath, err)
 	}
-	if lyxPresent {
-		if err := requireAbsent(root, lyxTo); err != nil {
+	if lymPresent {
+		if err := requireAbsent(root, lymTo); err != nil {
 			return false, err
 		}
 	}
@@ -85,7 +85,7 @@ func moveWeftContent(rec *Mutations, weftPath, from, to string, names []string) 
 			return false, fmt.Errorf("fabricengine: create %s in %s: %w", toSlash, weftPath, err)
 		}
 	}
-	specs := []string{lyxcwd.AnchorFileName}
+	specs := []string{lymcwd.AnchorFileName}
 	for _, name := range moved {
 		src, dst := anchorJoin(fromSlash, name), anchorJoin(toSlash, name)
 		if _, err := gitexec.Run([]string{"mv", "--", src, dst}, weftPath); err != nil {
@@ -94,16 +94,16 @@ func moveWeftContent(rec *Mutations, weftPath, from, to string, names []string) 
 		rec.Append(KindPathRenamed, filepath.Join(weftPath, filepath.FromSlash(dst)), renamedFrom(weftPath, src))
 		specs = append(specs, src, dst)
 	}
-	if lyxPresent {
-		if err := root.Rename(lyxFrom, lyxTo); err != nil {
-			return false, fmt.Errorf("fabricengine: move %s to %s in %s: %w", lyxFrom, lyxTo, weftPath, err)
+	if lymPresent {
+		if err := root.Rename(lymFrom, lymTo); err != nil {
+			return false, fmt.Errorf("fabricengine: move %s to %s in %s: %w", lymFrom, lymTo, weftPath, err)
 		}
-		rec.Append(KindPathRenamed, filepath.Join(weftPath, filepath.FromSlash(lyxTo)), renamedFrom(weftPath, lyxFrom))
+		rec.Append(KindPathRenamed, filepath.Join(weftPath, filepath.FromSlash(lymTo)), renamedFrom(weftPath, lymFrom))
 	}
-	if err := root.WriteFile(lyxcwd.AnchorFileName, []byte(to+"\n"), 0o644); err != nil {
-		return false, fmt.Errorf("fabricengine: write %s in %s: %w", lyxcwd.AnchorFileName, weftPath, err)
+	if err := root.WriteFile(lymcwd.AnchorFileName, []byte(to+"\n"), 0o644); err != nil {
+		return false, fmt.Errorf("fabricengine: write %s in %s: %w", lymcwd.AnchorFileName, weftPath, err)
 	}
-	rec.Append(KindFileWritten, filepath.Join(weftPath, lyxcwd.AnchorFileName), "")
+	rec.Append(KindFileWritten, filepath.Join(weftPath, lymcwd.AnchorFileName), "")
 
 	if err := runAnchorFailHook(false); err != nil {
 		return false, err

@@ -1,5 +1,5 @@
 // interruptpolicy.go declares the exported table mapping each of loom's durable row names
-// to the operator-facing action an external supervisor should take when it finds `lyx loom step`
+// to the operator-facing action an external supervisor should take when it finds `lym loom step`
 // interrupted mid-row, and the accessor that reads it.
 // The two policy words themselves are shedverbs.InterruptPolicyReinvoke and shedverbs.InterruptPolicyHandback.
 

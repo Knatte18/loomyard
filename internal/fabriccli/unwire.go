@@ -1,5 +1,5 @@
 // unwire.go implements the fabriccli handler for the fabric unwire subcommand: a per-warp-worktree
-// full deactivation of fabric wiring, the teardown successor to the deleted `lyx init --undo`.
+// full deactivation of fabric wiring, the teardown successor to the deleted `lym init --undo`.
 // Without `--apply` (apply false) the verb only reports what it would remove.
 
 package fabriccli
@@ -15,7 +15,7 @@ import (
 // runUnwire executes the fabric unwire subcommand.
 // With apply it removes every on-disk fabric junction for this worktree;
 // without it, the default, it is a dry run that reports what would be removed and changes nothing.
-// Weft-side content, including _lyx and .lyx, is never touched.
+// Weft-side content, including _lym and .lym, is never touched.
 func runUnwire(ctx context.Context, out io.Writer, apply bool) int {
 	// Nothing has been mutated yet at cwd/location resolution: a bare output.Err carries no record.
 	cwd, _, err := resolveWarpLocation(ctx)

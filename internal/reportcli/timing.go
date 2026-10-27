@@ -14,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reportengine"
@@ -48,7 +48,7 @@ recorded pauses stand in for machine sleep, and the sleep note says the
 figures may include sleep.
 
 Example:
-  lyx report timing --by week --format markdown`,
+  lym report timing --by week --format markdown`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -137,7 +137,7 @@ func parseTimingOptions(since, by, format string, now time.Time) (reportengine.T
 
 // livePairs returns the slugs whose pair is live: the base names of the hub's code worktrees other than the main one.
 // The engine reads a pair records branch whose slug is not among them as abandoned.
-func livePairs(location *lyxcwd.Location) ([]string, error) {
+func livePairs(location *lymcwd.Location) ([]string, error) {
 	worktrees, err := fabricengine.CodeWorktrees(location.WorktreePath())
 	if err != nil {
 		return nil, fmt.Errorf("report: list the hub's code worktrees: %w", err)

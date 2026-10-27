@@ -74,23 +74,23 @@ not an error; Master re-forks once and calls record-batch again.
 A NEEDS_PARENT report records the batch waiting on its parent: the envelope
 carries "status": "waiting" and the report's "need", the report is archived,
 and no recovery is spent. A call on a waiting batch refuses, naming
-"lyx webster begin-batch NN", which resumes it once the parent has acted.
+"lym webster begin-batch NN", which resumes it once the parent has acted.
 A batch rejected on its merits exits non-zero with {"batch_failed": true,
 "batch": "NN-<slug>", "warnings": [...]} after its terminal failed state
 and archived report are saved and committed; the error names
-"lyx webster recover-batch NN". The envelope also carries "card_amended": true
+"lym webster recover-batch NN". The envelope also carries "card_amended": true
 when a card of the batch was amended after its attempt began, which forces the
 batch failed whatever its report says. A report that cannot be attributed to a
 fork of this bracket is archived and committed, and the call exits non-zero
 with {"report_archived": true, "batch": "NN-<slug>"}; the error names
-"lyx webster begin-batch NN", which re-drives the batch.
+"lym webster begin-batch NN", which re-drives the batch.
 A batch that removed a symbol a later card names, with no rename
 reported, is handed back to its fork once: it stays open and the call
 exits non-zero with {"later_target_removed": true, "batch": "NN-<slug>"};
 the next record-batch records it.
 
 Example:
-  lyx webster record-batch 3`,
+  lym webster record-batch 3`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
@@ -128,7 +128,7 @@ Example:
 				return nil
 			}
 			if st == nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, `webster: no run in progress; run "lyx webster run" first`))
+				clihelp.SetExit(cmd.Context(), output.Err(out, `webster: no run in progress; run "lym webster run" first`))
 				return nil
 			}
 
@@ -185,7 +185,7 @@ Example:
 				_ = mutateLock.Release()
 				mutateHeld = false
 				if saveErr != nil {
-					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("%s; additionally, persisting the hand-back failed: %v; re-run `lyx webster record-batch %02d`", err.Error(), saveErr, batchNumber)))
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("%s; additionally, persisting the hand-back failed: %v; re-run `lym webster record-batch %02d`", err.Error(), saveErr, batchNumber)))
 					return nil
 				}
 				msg := err.Error()

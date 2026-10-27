@@ -1,15 +1,7 @@
 //go:build tier2
 
-// smoke_test.go is the tagged smoke suite for the session bootstrap: the one thing nothing else in
-// this package can catch, because it needs a real tmux server, a real detached driver process, and
-// real advisory-lock interaction, not a hermetic fixture. It follows internal/reedcli's own smoke
-// suite conventions (see its smoke_test.go/smoke_lifecycle_test.go) -- a real wired hub via
-// hubforge.NewHub, a real tmux binary resolved from PATH or an override env var, skipping outright
-// when the multiplexer is absent -- adapted for loom's own shape: every verb here goes through the
-// REAL BUILT cmd/lyx binary as a genuine subprocess, never RunCLI in-process, because
-// "lyx loom start" spawns its detached driver via os.Executable(), which resolves to whatever binary
-// is currently running -- an in-process RunCLI call would resolve that to the test binary itself, not
-// a binary "loom drive" knows how to dispatch.
+// smoke_test.go is the tagged smoke suite for the session bootstrap: the one thing nothing else in this package can catch, because it needs a real tmux server, a real detached driver process, and real advisory-lock interaction, not a hermetic fixture.
+// It follows internal/reedcli's own smoke suite conventions (see its smoke_test.go/smoke_lifecycle_test.go) -- a real wired hub via hubforge.NewHub, a real tmux binary resolved from PATH or an override env var, skipping outright when the multiplexer is absent -- adapted for loom's own shape: every verb here goes through the REAL BUILT cmd/lym binary as a genuine subprocess, never RunCLI in-process, because "lym loom start" spawns its detached driver via os.Executable(), which resolves to whatever binary is currently running -- an in-process RunCLI call would resolve that to the test binary itself, not a binary "loom drive" knows how to dispatch.
 //
 // This suite is the regression home for the two bugs this task's own design rounds found before any
 // code existed: the cleanliness-ordering blocker (loom's own seed dirtying the records worktree and failing
@@ -41,14 +33,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/state"
-	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -57,14 +49,14 @@ import (
 // tool -- mirroring internal/reedcli's own tmuxBinaryPath.
 func tmuxBinaryPath(t *testing.T) string {
 	t.Helper()
-	if path := os.Getenv("LYX_LOOM_TMUX"); path != "" {
+	if path := os.Getenv("LYM_LOOM_TMUX"); path != "" {
 		if _, err := os.Stat(path); err == nil {
 			return path
 		}
 	}
 	path, err := exec.LookPath("tmux")
 	if err != nil {
-		t.Skip("tmux not found on PATH; set LYX_LOOM_TMUX to override")
+		t.Skip("tmux not found on PATH; set LYM_LOOM_TMUX to override")
 	}
 	return path
 }
@@ -76,9 +68,9 @@ func tmuxBinaryPath(t *testing.T) string {
 //
 // The watchdog reap is unconditional inventory, not a branch: out of process the smoke tier builds
 // and runs a real binary, so testing.Testing() is false there and the spawn genuinely fires against
-// this fixture's own hub, which this test then tears down. LYX_REED_WATCHDOG does not suppress it
+// this fixture's own hub, which this test then tears down. LYM_REED_WATCHDOG does not suppress it
 // either -- that key reaches the worktree-level watch goroutine, never the process start.
-func registerBootstrapTeardown(t *testing.T, loc *lyxcwd.Location, worktree string) {
+func registerBootstrapTeardown(t *testing.T, loc *lymcwd.Location, worktree string) {
 	t.Helper()
 	reedGeom, err := hubgeom.ReedGeometry(loc)
 	if err != nil {
@@ -135,7 +127,7 @@ func findStepPIDs(worktree string) []int {
 
 // probeReedEngine builds a standalone *reedengine.Engine against loc, independent of any loomCLI
 // receiver, so a test can query reed's own Status()/Down() without going through the loom CLI seam.
-func probeReedEngine(t *testing.T, loc *lyxcwd.Location) *reedengine.Engine {
+func probeReedEngine(t *testing.T, loc *lymcwd.Location) *reedengine.Engine {
 	t.Helper()
 	reedCfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: loc.AnchorPath()}, "reed")
 	if err != nil {
@@ -150,7 +142,7 @@ func probeReedEngine(t *testing.T, loc *lyxcwd.Location) *reedengine.Engine {
 
 // waitRunLockFree polls until loc's run lock and driver lock are both observably free, or fails the test after timeout.
 // A lock is released by a driver that has run to completion on its own, or by one this test already killed.
-func waitRunLockFree(t *testing.T, loc *lyxcwd.Location, timeout time.Duration) {
+func waitRunLockFree(t *testing.T, loc *lymcwd.Location, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for {
@@ -168,7 +160,7 @@ func waitRunLockFree(t *testing.T, loc *lyxcwd.Location, timeout time.Duration) 
 
 // waitRecordsIndexLockGone polls until the records worktree's git index.lock is absent, or fails the test after timeout.
 // A killed driver can leave a git child it started holding the lock for a moment after the driver's own locks are free.
-func waitRecordsIndexLockGone(t *testing.T, loc *lyxcwd.Location, timeout time.Duration) {
+func waitRecordsIndexLockGone(t *testing.T, loc *lymcwd.Location, timeout time.Duration) {
 	t.Helper()
 	recordsDir := fabricengine.RecordsWorktree(loc)
 	out, err := exec.Command("git", "-C", recordsDir, "rev-parse", "--git-path", "index.lock").Output()
@@ -227,7 +219,7 @@ func lockFree(t *testing.T, path string) bool {
 // The poll interval is deliberately short relative to the window it is catching: with the fixture's
 // startup_timeout_s of 2, Discussion-Write is the current producer for roughly two seconds before
 // its providerless launch is classified, which a 25ms poll cannot miss.
-func waitForCurrentProducer(t *testing.T, loc *lyxcwd.Location, want string, timeout time.Duration) {
+func waitForCurrentProducer(t *testing.T, loc *lymcwd.Location, want string, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	var last string
@@ -248,7 +240,7 @@ func waitForCurrentProducer(t *testing.T, loc *lyxcwd.Location, want string, tim
 
 // readDriverLogContaining polls loc's driver log until its lowercased content contains want or a 20s deadline passes, and returns the last content read.
 // The bootstrap can return while the driver is still between taking the run lock and writing its failure, so a single read can see an empty log.
-func readDriverLogContaining(loc *lyxcwd.Location, want string) []byte {
+func readDriverLogContaining(loc *lymcwd.Location, want string) []byte {
 	logPath := loomengine.LoomDriverLog(loc)
 	deadline := time.Now().Add(20 * time.Second)
 	for {
@@ -264,7 +256,7 @@ func readDriverLogContaining(loc *lyxcwd.Location, want string) []byte {
 // This is the whole rig behind the driver-failure regression cases.
 // The file still decodes, so loomshed.Seed's UpdateJSON takes its found branch and ordinary re-entrant seeding stays unaffected.
 // Shed.Run's own read gate refuses the unrecognised state BEFORE the loop ever calls a producer or performs a persist -- an environment condition the production code already honours, not a change to it.
-func poisonStatusFile(t *testing.T, loc *lyxcwd.Location) {
+func poisonStatusFile(t *testing.T, loc *lymcwd.Location) {
 	t.Helper()
 	statusPath := shedrun.StatusFile(loc, shedrun.SelfRunID)
 
@@ -293,9 +285,9 @@ func poisonStatusFile(t *testing.T, loc *lyxcwd.Location) {
 
 // poisonStatusFileMalformed overwrites loc's already-seeded status file with genuinely malformed JSON (not merely an unrecognised state) and commits it records-side.
 // It is the second poison shape the crash-recovery design promises never looks like bootstrap's own gate.
-// Unlike the unrecognised-state shape poisonStatusFile writes, malformed JSON does not decode at all, so before crucible round fable5-high-r5's F3 fix it made loomshed.Seed (and therefore `lyx loom start`) refuse on the envelope before ever spawning a driver.
+// Unlike the unrecognised-state shape poisonStatusFile writes, malformed JSON does not decode at all, so before crucible round fable5-high-r5's F3 fix it made loomshed.Seed (and therefore `lym loom start`) refuse on the envelope before ever spawning a driver.
 // loomshed.Seed now maps a decode failure to ErrSeedExists, so both poison shapes reach the same "a driver that died is a run that finished" bootstrap path.
-func poisonStatusFileMalformed(t *testing.T, loc *lyxcwd.Location) {
+func poisonStatusFileMalformed(t *testing.T, loc *lymcwd.Location) {
 	t.Helper()
 	statusPath := shedrun.StatusFile(loc, shedrun.SelfRunID)
 	if err := os.WriteFile(statusPath, []byte(`{ "current_producer": "Discussion-Write", "state": "run`), 0o644); err != nil {
@@ -341,7 +333,7 @@ func countStrands(t *testing.T, eng *reedengine.Engine, accept func(strandName s
 // The second step builds on the status file the first leaves behind.
 func TestSmokeRunStandalone(t *testing.T) {
 	tmuxBinaryPath(t)
-	exe := lyxbin.Build(t)
+	exe := lymbin.Build(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	// "loom run" calls reed.Up() before the phase machine runs, so the second step brings a real tmux
 	// server up even though it never reaches a producer.
@@ -480,12 +472,12 @@ func recordsPathspecStatus(t *testing.T, dir, relPath string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// TestSmokeBootstrapLifecycle drives "lyx loom start" over one wired, go-seeded pair, in this order, each step building on the state the one before left:
+// TestSmokeBootstrapLifecycle drives "lym loom start" over one wired, go-seeded pair, in this order, each step building on the state the one before left:
 // two concurrent first bootstraps, the strand, driver and status file they leave, a second bootstrap, a crash-healed origin record, then the two rigged died-driver bootstraps.
 // The steps that rig a died driver kill any surviving driver first and clear the driver log, so each asserts on its own driver's log.
 func TestSmokeBootstrapLifecycle(t *testing.T) {
 	tmuxBinaryPath(t)
-	exe := lyxbin.Build(t)
+	exe := lymbin.Build(t)
 	_, loc, worktree, slug := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 	seedGoDriverRun(t, loc)
@@ -519,7 +511,7 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 	// The spawn handshake -- two bootstrap invocations started concurrently produce exactly one
 	// driver process and no already-running refusal in the driver log. This is a named regression
 	// guard: the pre-fix defect was the run lock being taken by the child long after the spawn call
-	// returned, which raced two concurrent "lyx loom start" invocations into each believing it must spawn
+	// returned, which raced two concurrent "lym loom start" invocations into each believing it must spawn
 	// its own driver.
 	t.Run("concurrent first bootstraps yield one driver", func(t *testing.T) {
 		// A background sampler polls the live driver-pid count for the whole duration both "loom start"
@@ -742,12 +734,12 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 		}
 	})
 
-	// `lyx loom start` against a MALFORMED-JSON status file proceeds to the success envelope exactly as the unrecognised-state shape does, rather than refusing on the envelope at the Seed step.
+	// `lym loom start` against a MALFORMED-JSON status file proceeds to the success envelope exactly as the unrecognised-state shape does, rather than refusing on the envelope at the Seed step.
 	// This is a regression guard for a crucible finding, and the composed CLI-verb half its unit tests (loomshed.TestSeed_RefusesUndecodableFileAsExists, state.TestCorruptFile) cannot see:
-	// only the real `lyx loom start` binary exercises the whole Seed -> VerifySeedOwnership -> commit -> spawn -> handshake chain against a poisoned records-committed status file.
+	// only the real `lym loom start` binary exercises the whole Seed -> VerifySeedOwnership -> commit -> spawn -> handshake chain against a poisoned records-committed status file.
 	//
 	// Before the fix, loomshed.Seed returned the raw decode error (not ErrSeedExists) for malformed
-	// JSON, so step 2 of `lyx loom start` refused on the envelope before ever spawning a driver — the very
+	// JSON, so step 2 of `lym loom start` refused on the envelope before ever spawning a driver — the very
 	// "poisoned status file looks like bootstrap's own gate" state the crash-recovery design forbids.
 	// After it, Seed maps the decode failure to ErrSeedExists, the bootstrap tolerates it, and the
 	// spawned driver's own Shed.Run step-1 read gate diagnoses the decode failure in the driver log,

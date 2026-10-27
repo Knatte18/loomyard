@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // fakeSyncTracker is a wrapper for a fake syncFunc that records whether it was called.
@@ -40,9 +40,9 @@ func makeNeverCalledEditor(t *testing.T) configengine.EditorFunc {
 	}
 }
 
-// makeLayoutAt returns a minimal *lyxcwd.Location with WorktreeRoot at baseDir and RelPath ".".
-func makeLayoutAt(baseDir string) *lyxcwd.Location {
-	return &lyxcwd.Location{HubPath: filepath.Dir(baseDir), WorktreeName: filepath.Base(baseDir), AnchorRel: "."}
+// makeLayoutAt returns a minimal *lymcwd.Location with WorktreeRoot at baseDir and RelPath ".".
+func makeLayoutAt(baseDir string) *lymcwd.Location {
+	return &lymcwd.Location{HubPath: filepath.Dir(baseDir), WorktreeName: filepath.Base(baseDir), AnchorRel: "."}
 }
 
 // seedModuleConfig writes YAML content to the config file for the named module under baseDir.

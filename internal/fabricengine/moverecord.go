@@ -80,7 +80,7 @@ func RemoveMoveRecord(weftPath string) error {
 // MoveInProgress reports whether the weft worktree at weftPath, the weft of the worktree slug, carries a move record.
 // With none it reports not standing.
 // With one it returns the way forward: a held move lock names the change in progress and its process, to wait for before re-running,
-// and a free lock names the interrupted change and the `lyx fabric anchor` run that recovers it.
+// and a free lock names the interrupted change and the `lym fabric anchor` run that recovers it.
 // A held lock beside a record whose process is not the live holder is a new run still starting, and is named as that.
 func MoveInProgress(slug, weftPath string) (wayForward string, standing bool, err error) {
 	record, found, err := ReadMoveRecord(weftPath)
@@ -91,7 +91,7 @@ func MoveInProgress(slug, weftPath string) (wayForward string, standing bool, er
 	if err != nil {
 		return "", false, fmt.Errorf("fabricengine: probe the move lock in %s: %w", weftPath, err)
 	}
-	rerun := fmt.Sprintf("`lyx fabric anchor %s --set %s`", slug, record.B)
+	rerun := fmt.Sprintf("`lym fabric anchor %s --set %s`", slug, record.B)
 	if !acquired {
 		if !recordNamesLiveHolder(record) {
 			return startingMoveStop(slug) + ", then run the verb again", true, nil

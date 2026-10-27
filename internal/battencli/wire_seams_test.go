@@ -17,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
@@ -122,7 +122,7 @@ var intentionallyNil = map[string]string{
 func TestWire_EverySeamFilled(t *testing.T) {
 	t.Parallel()
 
-	location := &lyxcwd.Location{
+	location := &lymcwd.Location{
 		RepoName:     "example",
 		HubPath:      t.TempDir(),
 		WorktreeName: "hub-repo",
@@ -153,9 +153,9 @@ func TestWire_EverySeamFilled(t *testing.T) {
 }
 
 // wiredPrime wires a battenCLI over a prime location rooted in a temp hub with no task worktree.
-func wiredPrime(t *testing.T) (*battenCLI, *lyxcwd.Location) {
+func wiredPrime(t *testing.T) (*battenCLI, *lymcwd.Location) {
 	t.Helper()
-	location := &lyxcwd.Location{
+	location := &lymcwd.Location{
 		RepoName:     "example",
 		HubPath:      t.TempDir(),
 		WorktreeName: "hub-repo",
@@ -306,8 +306,8 @@ func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 		wantState, wantCause = "idle-stalled", "no-output"
 	}
 
-	taskLocation := &lyxcwd.Location{RepoName: "example", HubPath: t.TempDir(), WorktreeName: "task", AnchorRel: "."}
-	runsRoot := filepath.Join(taskLocation.AnchorPath(), ".lyx", "shuttle")
+	taskLocation := &lymcwd.Location{RepoName: "example", HubPath: t.TempDir(), WorktreeName: "task", AnchorRel: "."}
+	runsRoot := filepath.Join(taskLocation.AnchorPath(), ".lym", "shuttle")
 	writeRun := func(name string, pid int, strand string) string {
 		dir := filepath.Join(runsRoot, name)
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -324,7 +324,7 @@ func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 	liveDir := writeRun("live", livePID, "hub:task:impl")
 	activeAt := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
 	eventsPath := filepath.Join(liveDir, "events")
-	stampedStop := fmt.Sprintf(`{"lyx_stamp":"Stop","lyx_at":%q}`+"\n"+`{"hook_event_name":"Stop","session_id":"sess-1"}`+"\n", activeAt.Format(time.RFC3339))
+	stampedStop := fmt.Sprintf(`{"lym_stamp":"Stop","lym_at":%q}`+"\n"+`{"hook_event_name":"Stop","session_id":"sess-1"}`+"\n", activeAt.Format(time.RFC3339))
 	if err := os.WriteFile(eventsPath, []byte(stampedStop), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -479,7 +479,7 @@ func TestWire_CreateWorktreeClaimsTheBoardEntry(t *testing.T) {
 			set: func(boardengine.OwnerRequest) (boardengine.OwnerWrite, error) {
 				return boardengine.OwnerWrite{Lost: map[string]string{slug: "there"}}, nil
 			},
-			wantErr: []string{`"there"`, "`lyx adopt root`"},
+			wantErr: []string{`"there"`, "`lym adopt root`"},
 		},
 		{
 			name: "EntryOwnedElsewhereInABeamNamesTheBeam",
@@ -487,7 +487,7 @@ func TestWire_CreateWorktreeClaimsTheBoardEntry(t *testing.T) {
 			set: func(boardengine.OwnerRequest) (boardengine.OwnerWrite, error) {
 				return boardengine.OwnerWrite{Lost: map[string]string{slug: "there"}}, nil
 			},
-			wantErr: []string{`"there"`, "`lyx adopt some-beam`"},
+			wantErr: []string{`"there"`, "`lym adopt some-beam`"},
 		},
 		{
 			name: "AbsentEntryPassesTheClaimWithNothingWritten",
@@ -515,7 +515,7 @@ func TestWire_CreateWorktreeClaimsTheBoardEntry(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			hub := seededHub(t)
-			location := &lyxcwd.Location{RepoName: "example", HubPath: hub, WorktreeName: "hub-repo", AnchorRel: "."}
+			location := &lymcwd.Location{RepoName: "example", HubPath: hub, WorktreeName: "hub-repo", AnchorRel: "."}
 			c := &battenCLI{}
 			if err := c.wire(location, slug); err != nil {
 				t.Fatalf("wire() error = %v; want nil", err)

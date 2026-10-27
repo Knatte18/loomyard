@@ -1,6 +1,6 @@
 //go:build tier0
 
-// stencilsdir_test.go covers StencilsDir's derivation from BoardDir and lyxdirs.LyxDirName.
+// stencilsdir_test.go covers StencilsDir's derivation from BoardDir and lymdirs.LymDirName.
 
 package fabricengine
 
@@ -10,11 +10,11 @@ import (
 	"testing"
 )
 
-//testtiming:keep StencilsDir deriving _board/_lyx/stencils and being a child of BoardDir; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep StencilsDir deriving _board/_lym/stencils and being a child of BoardDir; coverage of its blocks by other tests does not show an assertion of this
 func TestStencilsDir(t *testing.T) {
 	hub := "/h"
 	got := StencilsDir(hub)
-	want := filepath.Join(hub, "_board", "_lyx", "stencils")
+	want := filepath.Join(hub, "_board", "_lym", "stencils")
 	if got != want {
 		t.Errorf("StencilsDir(%q) = %q; want %q", hub, got, want)
 	}

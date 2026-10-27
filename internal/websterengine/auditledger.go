@@ -90,7 +90,7 @@ func recordFailedFinding(st *State, id string) {
 var ErrAuditNotAcceptable = errors.New("webster: pending audit findings cannot be accepted")
 
 // acceptAuditHeadRefusal words AcceptPendingAudit's HEAD refusal, which records no batch and is cleared by re-running accept-audit.
-var acceptAuditHeadRefusal = headRefusal{resetStep: "lyx webster reset --to last-batch-head", rerun: `re-run "lyx webster accept-audit"`, redoMerge: "once accept-audit accepts the findings"}
+var acceptAuditHeadRefusal = headRefusal{resetStep: "lym webster reset --to last-batch-head", rerun: `re-run "lym webster accept-audit"`, redoMerge: "once accept-audit accepts the findings"}
 
 // AcceptPendingAudit clears st.PendingAuditFindings and returns what it cleared, once every finding's suspect paths are back at the last recorded batch head.
 // The evidence rule: checkSuspectPaths runs over every pending path with the last batch head as base, picked by git ancestry (runEvidenceBases),
@@ -156,14 +156,14 @@ func AcceptPendingAudit(engines AuditEngines, st *State, geom Geometry, parentBr
 	}
 	var parts []string
 	if len(contracts.Uncleared) > 0 {
-		parts = append(parts, contractDeleteClause(contracts.Uncleared, "lyx webster accept-audit"))
+		parts = append(parts, contractDeleteClause(contracts.Uncleared, "lym webster accept-audit"))
 	}
 	planDiffering, gitDiffering, err := splitPlanPaths(geom, differing)
 	if err != nil {
 		return nil, false, err
 	}
 	if len(planDiffering) > 0 {
-		parts = append(parts, fmt.Sprintf("plan file(s) differ from the plan the run recorded: %s; way forward: %s", strings.Join(planDiffering, ", "), planPathClause("\"lyx webster accept-audit\"")))
+		parts = append(parts, fmt.Sprintf("plan file(s) differ from the plan the run recorded: %s; way forward: %s", strings.Join(planDiffering, ", "), planPathClause("\"lym webster accept-audit\"")))
 	}
 	if len(gitDiffering) > 0 {
 		parts = append(parts, fmt.Sprintf("differs from the last batch head; %s", wayForwardSteps(restoreStep(head, gitDiffering), stepAcceptAudit)))
@@ -189,7 +189,7 @@ func AcceptPendingAudit(engines AuditEngines, st *State, geom Geometry, parentBr
 }
 
 // AcceptBatchFabricReference clears the Uncheckable entries of failed batch n when every one is a pathless fabric-reference finding and the batch's evidence holds,
-// so `lyx webster recover-batch n` can proceed instead of refusing toward the reset-to-start route.
+// so `lym webster recover-batch n` can proceed instead of refusing toward the reset-to-start route.
 // verb names the caller that accepts, `accept-audit --batch` or `recover-batch`, in the re-run the evidence refusals name and in each recorded warning's detail.
 // The evidence rule: the batch's recorded start commit is set and the worktree is clean apart from the run's own state, and one of two routes holds.
 // Either HEAD is that start, or the start is an ancestor of HEAD and every entry records a command that readOnly accepts.
@@ -224,7 +224,7 @@ func AcceptBatchFabricReference(st *State, geom Geometry, n int, readOnly func(c
 			return nil, err
 		}
 		if !reachable {
-			return nil, fmt.Errorf("%w: HEAD %s is not batch %02d's start commit %s, nor does it descend from it; %s", ErrAuditNotAcceptable, head, n, bs.StartSHA, wayForwardSteps(stepResetToStart, "lyx webster run"))
+			return nil, fmt.Errorf("%w: HEAD %s is not batch %02d's start commit %s, nor does it descend from it; %s", ErrAuditNotAcceptable, head, n, bs.StartSHA, wayForwardSteps(stepResetToStart, "lym webster run"))
 		}
 	}
 	dirty, err := UncommittedPaths(geom)
@@ -232,13 +232,13 @@ func AcceptBatchFabricReference(st *State, geom Geometry, n int, readOnly func(c
 		return nil, err
 	}
 	if len(dirty) > 0 {
-		return nil, fmt.Errorf("%w: the worktree has uncommitted or untracked changes: %s; way forward: restore or remove them with git, then re-run \"lyx webster %s %d\"", ErrAuditNotAcceptable, strings.Join(dirty, ", "), verb, n)
+		return nil, fmt.Errorf("%w: the worktree has uncommitted or untracked changes: %s; way forward: restore or remove them with git, then re-run \"lym webster %s %d\"", ErrAuditNotAcceptable, strings.Join(dirty, ", "), verb, n)
 	}
 	basis := "HEAD was the batch's start commit and the tree clean"
 	if !atStart {
 		for _, entry := range bs.Uncheckable {
 			if cmd, ok := fabricReferenceCommand(entry); !ok || !readOnly(cmd) {
-				return nil, fmt.Errorf("%w: batch %02d's commits are kept only when every fabric reference is a read-only command, and this one is not: %s; %s", ErrAuditNotAcceptable, n, entry, wayForwardSteps(resetVerb(ResetToBatchStart, n), fmt.Sprintf("re-run \"lyx webster %s %d\"", verb, n)))
+				return nil, fmt.Errorf("%w: batch %02d's commits are kept only when every fabric reference is a read-only command, and this one is not: %s; %s", ErrAuditNotAcceptable, n, entry, wayForwardSteps(resetVerb(ResetToBatchStart, n), fmt.Sprintf("re-run \"lym webster %s %d\"", verb, n)))
 			}
 		}
 		basis = "the batch's commits were kept as the command is read-only and the tree clean"

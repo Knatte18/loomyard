@@ -244,7 +244,7 @@ const focusMarkerName = "focus_directive"
 // warnIfFocusMarkerAbsent logs a Warn when a round computed a focus directive but the explore stencil carries no marker to render it into.
 // focusBlock is the rendered output of focusDirectiveBlock, not the focus path:
 // an empty block means the round has no directive, so there is nothing to lose and nothing to warn about.
-// Otherwise, when template does not contain the marker literal, it logs the stencil and marker and points the operator at "lyx stencil diff" and "lyx stencil sync".
+// Otherwise, when template does not contain the marker literal, it logs the stencil and marker and points the operator at "lym stencil diff" and "lym stencil sync".
 // It never errors, and the round proceeds without the focus text.
 func warnIfFocusMarkerAbsent(template []byte, stencilName, focusBlock string) {
 	if focusBlock == "" {
@@ -254,7 +254,7 @@ func warnIfFocusMarkerAbsent(template []byte, stencilName, focusBlock string) {
 	if bytes.Contains(template, []byte(literal)) {
 		return
 	}
-	logger.Warn("burler: stencil is missing the focus directive marker; a computed directive will render as nothing -- see \"lyx stencil diff\" and \"lyx stencil sync\"", "stencil", stencilName, "marker", literal)
+	logger.Warn("burler: stencil is missing the focus directive marker; a computed directive will render as nothing -- see \"lym stencil diff\" and \"lym stencil sync\"", "stencil", stencilName, "marker", literal)
 }
 
 // formatFileSet renders a FileSet as the template expects: one

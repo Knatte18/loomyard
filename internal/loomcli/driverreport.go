@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -27,8 +27,8 @@ import (
 // batch 7's instantly-exiting stub pane produces.
 //
 // The directory is durable, so the reports can be committed and survive teardown.
-// It is composed through shedrun.DriveReportsDir and never by spelling "_lyx" or "shed" in this package: the Lyxdirs Single-Declarer Invariant and the Shed Run-Directory Invariant both make that a shedrun obligation.
-func driverReportPath(l *lyxcwd.Location, runID string, now func() time.Time, rand func() string) string {
+// It is composed through shedrun.DriveReportsDir and never by spelling "_lym" or "shed" in this package: the Lymdirs Single-Declarer Invariant and the Shed Run-Directory Invariant both make that a shedrun obligation.
+func driverReportPath(l *lymcwd.Location, runID string, now func() time.Time, rand func() string) string {
 	return filepath.Join(shedrun.DriveReportsDir(l, runID), sheddriver.ReportFileName(now(), rand()))
 }
 

@@ -1,4 +1,4 @@
-# Idle CPU of `lyx reed watchdog`, before and after the daemon-wakeups task
+# Idle CPU of `lym reed watchdog`, before and after the daemon-wakeups task
 
 Measured 2026-10-10 on a Ryzen AI 7 445 (12 threads), Linux 7.0.0-31, tmux 3.6.
 One run per binary, ten minutes each, so every number is a single sample.
@@ -7,7 +7,7 @@ One run per binary, ten minutes each, so every number is a single sample.
 
 | Figure | Binary | Commit |
 |---|---|---|
-| Before | `go build ./cmd/lyx` over `git archive main` | `7648e8b27`, `main`'s tip before the task landed |
+| Before | `go build ./cmd/lym` over `git archive main` | `7648e8b27`, `main`'s tip before the task landed |
 | After | `./deploy-dev` build of the task branch | `03d101522`, the branch at card 13 |
 
 ## Procedure
@@ -18,10 +18,10 @@ Every command below ran with `TMUX_TMPDIR` pointing at a short scratch directory
 1. Build a scratch hub from local bare repositories in a temporary directory.
    This run built it through the `hubforge` fixture, which drives `fabriccli.CloneAndWire` over copied bare repos, and held it open for the run.
    Add three worktrees to it.
-2. In each of the three worktrees, run `lyx reed up`, and leave the sessions idle with no strands.
-3. End the daemon that `reed up` spawned for the scratch hub: `pgrep -f "lyx reed watchdog --hub-path <scratch hub>"`, then `kill` that pid.
+2. In each of the three worktrees, run `lym reed up`, and leave the sessions idle with no strands.
+3. End the daemon that `reed up` spawned for the scratch hub: `pgrep -f "lym reed watchdog --hub-path <scratch hub>"`, then `kill` that pid.
    The match carries the scratch hub's path, so no daemon of another hub is matched.
-4. Start the daemon in the foreground, in the background of the shell, with `LYX_LOG_LEVEL=debug`: `lyx reed watchdog --hub-path <scratch hub> --tmux tmux --shell bash`.
+4. Start the daemon in the foreground, in the background of the shell, with `LYM_LOG_LEVEL=debug`: `lym reed watchdog --hub-path <scratch hub> --tmux tmux --shell bash`.
 5. Three seconds later read fields 14 to 17 of `/proc/<pid>/stat` (`utime`, `stime`, `cutime`, `cstime`, in clock ticks of 1/100 s).
    Read them again after 600 seconds, then `kill` the pid.
 6. Repeat steps 4 and 5 with the other binary.
@@ -50,8 +50,8 @@ The task's spawn reduction is real on the discovery loop; its effect on idle CPU
 
 ## Deviations from the card's procedure
 
-- The scratch hub was built from local bare repositories through `hubforge`, not cloned with `lyx fabric clone --into`, so that no verb ran against the operator's hub or its remotes.
-- The durable log holds Info and above only, and the Debug spawn lines never appear in it; a run at `LYX_LOG_LEVEL=debug` with `LYX_LOG_FILE` wrote five warning lines and no tmux lines, so the spawn counts come from the shim instead.
+- The scratch hub was built from local bare repositories through `hubforge`, not cloned with `lym fabric clone --into`, so that no verb ran against the operator's hub or its remotes.
+- The durable log holds Info and above only, and the Debug spawn lines never appear in it; a run at `LYM_LOG_LEVEL=debug` with `LYM_LOG_FILE` wrote five warning lines and no tmux lines, so the spawn counts come from the shim instead.
 
 ## After the hygiene task
 
@@ -97,6 +97,6 @@ The name-repair pass as the remainder is not separable in these counts.
 ## Deviations from the card's procedure, after hygiene
 
 - The scratch hub was held open by a throwaway test over `hubforge.NewHub`, with three worktrees added through `AddPair`, and removed afterwards; it was not committed.
-- At `LYX_LOG_LEVEL=debug` the foreground daemon wrote no Debug lines to stderr and none to the durable log, because the CLI's root hook calls `SetVerbosity` with the `-v` count, which resets the level the variable set; the shim run at `LYX_LOG_LEVEL=debug` produced the same counts as the `-vv` run, and the log cross-check comes from the `-vv` run.
-  The root hook has since stopped calling `SetVerbosity` when no `-v` is given, so `LYX_LOG_LEVEL=debug` now stands.
-- The CPU figures come from the `LYX_LOG_LEVEL=debug` run.
+- At `LYM_LOG_LEVEL=debug` the foreground daemon wrote no Debug lines to stderr and none to the durable log, because the CLI's root hook calls `SetVerbosity` with the `-v` count, which resets the level the variable set; the shim run at `LYM_LOG_LEVEL=debug` produced the same counts as the `-vv` run, and the log cross-check comes from the `-vv` run.
+  The root hook has since stopped calling `SetVerbosity` when no `-v` is given, so `LYM_LOG_LEVEL=debug` now stands.
+- The CPU figures come from the `LYM_LOG_LEVEL=debug` run.

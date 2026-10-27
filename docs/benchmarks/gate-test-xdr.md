@@ -6,7 +6,7 @@ It sits beside the cross-environment overview in [test-suite-timing.md](test-sui
 Cortex XDR holds every executable whose hash it has not seen for 8-10 s before it runs, and passes a known hash at once.
 Without `-trimpath` the checkout's directory is part of Go's build and test cache keys and is written into the binaries,
 so every new task worktree starts with an empty test cache and links test binaries XDR has never seen.
-The change measured here puts `-trimpath` into the GOFLAGS of every slotted gate run (`gateslot.GoFlags`) and into the tagged run's prebuild of `lyx`.
+The change measured here puts `-trimpath` into the GOFLAGS of every slotted gate run (`gateslot.GoFlags`) and into the tagged run's prebuild of `lym`.
 A second change, measured in [Re-run on an unchanged tree](#re-run-on-an-unchanged-tree), runs verify as the `integration` tier alone and keeps the test cache keys stable from one run to the next.
 
 ## Machine
@@ -27,8 +27,8 @@ gate_config: {slots: 3, go_parallel: 4, busy_quit_sec: 120}
 
 ## Method
 
-Each tier ran through the installed production `lyx`, from the prime worktree on `main`, under `/usr/bin/time -v`.
-Wall is the elapsed time; CPU is user plus system time of `lyx` and its whole child tree, `go test` and the test binaries included.
+Each tier ran through the installed production `lym`, from the prime worktree on `main`, under `/usr/bin/time -v`.
+Wall is the elapsed time; CPU is user plus system time of `lym` and its whole child tree, `go test` and the test binaries included.
 Each row is one run, and the rows ran one after another in the order listed.
 The machine was quiet apart from the orch session, the creel daemon, a browser and an editor; the 1-minute load average was 2.93 before the first run.
 
@@ -46,43 +46,43 @@ date: 2026-10-20
 
 | Tier | Run | Wall | User | Sys | CPU (user+sys) | Packages run | Packages cached | Packages at 7 s or more |
 |---|---|---|---|---|---|---|---|---|
-| 1 (untagged) | `lyx gate test ./... -- -count=1` | 304.6 s | 151.9 s | 52.3 s | 204.2 s | 162 | 0 | 67 |
-| 1 (untagged) | `lyx gate test ./...`, first cacheable | 147.5 s | 85.5 s | 46.4 s | 131.9 s | 162 | 0 | 26 |
-| 1 (untagged) | `lyx gate test ./...`, cached | 98.6 s | 73.1 s | 45.6 s | 118.8 s | 65 | 97 | 11 |
-| 2 (`integration`) | `lyx gate test --tags integration ./... -- -count=1` | 401.9 s | 321.7 s | 365.9 s | 687.6 s | 162 | 0 | 76 |
-| 2 (`integration`) | `lyx gate test --tags integration ./...`, first cacheable | 382.8 s | 277.4 s | 376.8 s | 654.2 s | 162, one failed | 0 | 63 |
-| 2 (`integration`) | `lyx gate test --tags integration ./...`, cached | 179.5 s | 219.4 s | 267.2 s | 486.6 s | 85 | 77 | 24 |
+| 1 (untagged) | `lym gate test ./... -- -count=1` | 304.6 s | 151.9 s | 52.3 s | 204.2 s | 162 | 0 | 67 |
+| 1 (untagged) | `lym gate test ./...`, first cacheable | 147.5 s | 85.5 s | 46.4 s | 131.9 s | 162 | 0 | 26 |
+| 1 (untagged) | `lym gate test ./...`, cached | 98.6 s | 73.1 s | 45.6 s | 118.8 s | 65 | 97 | 11 |
+| 2 (`integration`) | `lym gate test --tags integration ./... -- -count=1` | 401.9 s | 321.7 s | 365.9 s | 687.6 s | 162 | 0 | 76 |
+| 2 (`integration`) | `lym gate test --tags integration ./...`, first cacheable | 382.8 s | 277.4 s | 376.8 s | 654.2 s | 162, one failed | 0 | 63 |
+| 2 (`integration`) | `lym gate test --tags integration ./...`, cached | 179.5 s | 219.4 s | 267.2 s | 486.6 s | 85 | 77 | 24 |
 
 "Packages at 7 s or more" counts the `ok` lines whose elapsed time reached 7 s, the shape an XDR hold leaves on a package whose tests run in well under a second elsewhere, such as `internal/testkit/scankit` at 10.16 s in the first cacheable integration run.
 
-The first cacheable integration run failed one test, `TestRun_KillsTheGroupOnTimeout` in `internal/testkit/lyxbin`: its sleeper never recorded its pids inside the test's 5 s timeout.
+The first cacheable integration run failed one test, `TestRun_KillsTheGroupOnTimeout` in `internal/testkit/lymbin`: its sleeper never recorded its pids inside the test's 5 s timeout.
 That fits a hold on the freshly started sleeper; the uncached and cached integration runs passed.
 
-Against the Ryzen AI 7 445 on bare-metal Linux with no endpoint security in [test-suite-weight.md](test-suite-weight.md#comparison), whose After totals are 83.35 s wall and 202.99 s CPU for tier 1 and 155.72 s wall and 392.95 s CPU for tier 2, the method differs: that report runs packages serially through `go run ./cmd/testtiming -resources` and sums them, while this one clocks one parallel `lyx gate test` per tier.
+Against the Ryzen AI 7 445 on bare-metal Linux with no endpoint security in [test-suite-weight.md](test-suite-weight.md#comparison), whose After totals are 83.35 s wall and 202.99 s CPU for tier 1 and 155.72 s wall and 392.95 s CPU for tier 2, the method differs: that report runs packages serially through `go run ./cmd/testtiming -resources` and sums them, while this one clocks one parallel `lym gate test` per tier.
 Compare the two on order of magnitude only.
 
 ## After (`-p` cap and `-trimpath`)
 
 ```yaml
-commit: 2d384150, the installed lyx
+commit: 2d384150, the installed lym
 date: 2026-10-20
 ```
 
-The installed `lyx` was built from the commit that added `-trimpath`, and the same method ran without the `-count=1` rows.
+The installed `lym` was built from the commit that added `-trimpath`, and the same method ran without the `-count=1` rows.
 Each tier ran twice from the prime: the first run refills the cache under the new keys, the second shows the cached cost.
 The 1-minute load average was 2.89 before the first run.
 
 | Tier | Run | Checkout | Wall | User | Sys | CPU (user+sys) | Packages run | Packages cached | Packages at 7 s or more |
 |---|---|---|---|---|---|---|---|---|---|
-| 1 (untagged) | `lyx gate test ./...`, first | prime | 20.6 s | 59.5 s | 34.9 s | 94.4 s | 72 | 90 | 0 |
-| 1 (untagged) | `lyx gate test ./...`, cached | prime | 20.3 s | 56.8 s | 34.0 s | 90.8 s | 65 | 97 | 0 |
-| 1 (untagged) | `lyx gate test -C .scratch/xcopy ./...` | copy | 24.2 s | 67.6 s | 41.1 s | 108.7 s | 99 | 63 | 0 |
-| 2 (`integration`) | `lyx gate test --tags integration ./...`, first | prime | 113.2 s | 218.5 s | 249.4 s | 467.9 s | 93, one failed | 69 | 3 |
-| 2 (`integration`) | `lyx gate test --tags integration ./...`, cached | prime | 112.0 s | 205.7 s | 245.6 s | 451.3 s | 86 | 76 | 3 |
+| 1 (untagged) | `lym gate test ./...`, first | prime | 20.6 s | 59.5 s | 34.9 s | 94.4 s | 72 | 90 | 0 |
+| 1 (untagged) | `lym gate test ./...`, cached | prime | 20.3 s | 56.8 s | 34.0 s | 90.8 s | 65 | 97 | 0 |
+| 1 (untagged) | `lym gate test -C .scratch/xcopy ./...` | copy | 24.2 s | 67.6 s | 41.1 s | 108.7 s | 99 | 63 | 0 |
+| 2 (`integration`) | `lym gate test --tags integration ./...`, first | prime | 113.2 s | 218.5 s | 249.4 s | 467.9 s | 93, one failed | 69 | 3 |
+| 2 (`integration`) | `lym gate test --tags integration ./...`, cached | prime | 112.0 s | 205.7 s | 245.6 s | 451.3 s | 86 | 76 | 3 |
 
 The first unit run found 90 packages cached already: the verification runs before the commit had passed `-trimpath` on the go test command line, which gives the same cache keys.
 
-The first integration run failed `TestBuildWithLDFlags_ReachTheBuild` in `internal/testkit/lyxbin`, a fault of the change rather than of the machine.
+The first integration run failed `TestBuildWithLDFlags_ReachTheBuild` in `internal/testkit/lymbin`, a fault of the change rather than of the machine.
 GOFLAGS now carries `-trimpath` into the kit's nested `go build`, and a `-trimpath` build omits its `-ldflags` setting from the build info the test read.
 The test now checks the effect of `-s -w` instead, a binary smaller than the unstripped build, and the second integration run ran with that fix and passed.
 
@@ -111,8 +111,8 @@ What fell with the wall time is the packages at 7 s or more, from 11 to 0 in tie
 ## Re-run on an unchanged tree
 
 ```yaml
-before: 1552ceb4, the installed lyx, verify "lyx gate test ./... && lyx gate test --tags integration ./..."
-after: c2fad0ad, a .dev-bin build of the branch, verify "lyx gate test --tags integration ./..."
+before: 1552ceb4, the installed lym, verify "lym gate test ./... && lym gate test --tags integration ./..."
+after: c2fad0ad, a .dev-bin build of the branch, verify "lym gate test --tags integration ./..."
 date: 2026-10-20
 ```
 
@@ -121,16 +121,16 @@ The `integration` tag compiles every untagged test too, and no test file is excl
 `GODEBUG=gocachetest=1` showed why a re-run on an unchanged tree ran so many packages again: the input ID Go computes from what a test read changed on every run.
 Three inputs changed:
 
-- `LYX_TRACE_ID`, which every `lyx` process mints and exports, so each gate run gave go test a new value, read by every package that logs.
-  `lyx gate test` now drops it from go test's environment.
-- The prebuilt `lyx` path of a tagged run, a fresh directory per run, read by every package that runs `lyx` through `internal/testkit/lyxbin`.
+- `LYM_TRACE_ID`, which every `lym` process mints and exports, so each gate run gave go test a new value, read by every package that logs.
+  `lym gate test` now drops it from go test's environment.
+- The prebuilt `lym` path of a tagged run, a fresh directory per run, read by every package that runs `lym` through `internal/testkit/lymbin`.
   Inside a hub the binary now goes to a store in the gate-slot directory under a name derived from its content.
 - The directory `internal/shedbuild`, where one test wrote and removed a fixture, so every source scan that lists `internal/` saw a changed directory.
   The test now names one of the package's own files.
 
-The before rows ran one after the other from this task's worktree with the installed `lyx`, each tier once, over a test cache other worktrees' `-trimpath` runs had filled.
-The after rows ran from the same worktree with the branch's `lyx`: a first run that refilled the cache after the change, and the re-run that a verify after a failure or a second gate makes.
-Times are `/usr/bin/time -v` of the whole `lyx` tree, as in the rows above.
+The before rows ran one after the other from this task's worktree with the installed `lym`, each tier once, over a test cache other worktrees' `-trimpath` runs had filled.
+The after rows ran from the same worktree with the branch's `lym`: a first run that refilled the cache after the change, and the re-run that a verify after a failure or a second gate makes.
+Times are `/usr/bin/time -v` of the whole `lym` tree, as in the rows above.
 
 | Run | Wall | User | Sys | CPU (user+sys) | Packages run | Packages cached | Packages at 7 s or more |
 |---|---|---|---|---|---|---|---|
@@ -152,14 +152,14 @@ A fresh worktree still misses for every test that opens a file of the tree, sinc
 ## `go_parallel` sweep
 
 ```yaml
-commit: 905bc88d, the installed lyx
+commit: 905bc88d, the installed lym
 date: 2026-10-20
 new_binaries: a fresh, empty GOCACHE directory under .scratch/gp-sweep/ per run, plus -ldflags=-B=0x<random 8 bytes> per run
 includes: compile time of the whole module and the standard library, since every run started with an empty build cache
 ```
 
-Each run was `/usr/bin/time -v lyx gate test --tags integration ./... -- -count=1 -ldflags=-B=0x<id>` from the prime, with `GOCACHE` set to the run's own empty directory, which `lyx gate test` passes through to go test.
-`go_parallel` changed between runs through `lyx config gate --layer default --set go_parallel=<n>`, and was set back to 4 afterwards.
+Each run was `/usr/bin/time -v lym gate test --tags integration ./... -- -count=1 -ldflags=-B=0x<id>` from the prime, with `GOCACHE` set to the run's own empty directory, which `lym gate test` passes through to go test.
+`go_parallel` changed between runs through `lym config gate --layer default --set go_parallel=<n>`, and was set back to 4 afterwards.
 The local layer refuses the key, since every gate key is cross-pair, and gate has no worktree layer, so the hub default, committed and pushed in `_board`, is the only layer a gate run reads, and the change reached Neve's hub too for the length of the sweep.
 No batten run was live before any run, and each run started once the 1-minute load average had fallen below 4.
 

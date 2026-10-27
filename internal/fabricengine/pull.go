@@ -24,7 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -262,7 +262,7 @@ func (f *Fabric) warpUpstreamSHA() (string, error) {
 // A replay that stops on a conflict, or an uncommitted change that blocks the move, never stalls the warp side.
 // The warp fetch/reconcile runs regardless, and Pull then returns a *WeftStopError naming the weft branch, the paths and the way forward, beside the warp result.
 // A weft whose own anchor marker is empty, and one whose origin tip carries commits and another anchor marker, stop the pull before either side moves:
-// Pull returns a *WeftStopError wrapping ErrAnchorChange, naming `lyx fabric anchor` as the way forward, and warp is not touched.
+// Pull returns a *WeftStopError wrapping ErrAnchorChange, naming `lym fabric anchor` as the way forward, and warp is not touched.
 // A weft whose origin cannot be reached is warned past and leaves PullResult.WeftPulled false.
 // A weft infrastructure failure that is neither a stop nor an unreachable origin, such as an unreadable hub location, a failed weft write lock or a replay that failed for another reason, returns at once, before the warp arm runs:
 // warp is reset against the weft's correspondence, which such a failure leaves unknown.
@@ -426,7 +426,7 @@ func (f *Fabric) settleUnmovedWeft(rec *Mutations, result *PullResult, pullErr e
 		return &WeftStopError{
 			Branch:     branch,
 			Paths:      outcome.Conflicts,
-			WayForward: recordsConflictWayForward(f.weftPath, branch, outcome.Conflicts, ahead, fmt.Sprintf("`lyx fabric push` in %s", f.warpPath)),
+			WayForward: recordsConflictWayForward(f.weftPath, branch, outcome.Conflicts, ahead, fmt.Sprintf("`lym fabric push` in %s", f.warpPath)),
 			Err:        err,
 		}, nil
 	case errors.Is(err, ErrReplayDirty):
@@ -440,12 +440,12 @@ func (f *Fabric) settleUnmovedWeft(rec *Mutations, result *PullResult, pullErr e
 	}
 }
 
-// weftDirtyStop builds the weft stop for uncommitted tracked changes on paths, which `lyx fabric commit` settles.
+// weftDirtyStop builds the weft stop for uncommitted tracked changes on paths, which `lym fabric commit` settles.
 func (f *Fabric) weftDirtyStop(branch string, paths []string, cause error) *WeftStopError {
 	return &WeftStopError{
 		Branch: branch,
 		Paths:  paths,
-		WayForward: fmt.Sprintf("commit the uncommitted paths in %s (%s) with `lyx fabric commit` in %s, then re-run `lyx fabric pull`",
+		WayForward: fmt.Sprintf("commit the uncommitted paths in %s (%s) with `lym fabric commit` in %s, then re-run `lym fabric pull`",
 			f.weftPath, joinOrNone(paths), f.warpPath),
 		Err: cause,
 	}
@@ -470,13 +470,13 @@ func (f *Fabric) weftDirtyPaths() ([]string, error) {
 
 // hubLocation resolves the location of the warp worktree paired with f's weft, from the weft sibling's own name.
 // It never reads f.warpPath, which a caller may hold outside the hub.
-func (f *Fabric) hubLocation() (*lyxcwd.Location, error) {
+func (f *Fabric) hubLocation() (*lymcwd.Location, error) {
 	name := filepath.Base(f.weftPath)
 	slug, ok := WeftWarpSlug(name)
 	if !ok {
 		return nil, fmt.Errorf("fabricengine: %s is no weft sibling worktree", f.weftPath)
 	}
-	return lyxcwd.ResolveWorktree(filepath.Join(filepath.Dir(f.weftPath), slug))
+	return lymcwd.ResolveWorktree(filepath.Join(filepath.Dir(f.weftPath), slug))
 }
 
 // lockWeftForReplay takes the weft write lock and then the absorbing push lock, and returns the release of both.
@@ -502,7 +502,7 @@ func (f *Fabric) lockWeftForReplay() (release func(), err error) {
 
 // weftEndedByOrigin reads which of the runs the local weft commits ahead touch origin has ended, from the board's origin tip as last fetched.
 // It returns an empty set for a hub with no board or a board with no upstream, and reads no network.
-func (f *Fabric) weftEndedByOrigin(l *lyxcwd.Location, ahead []string) (EndedSet, error) {
+func (f *Fabric) weftEndedByOrigin(l *lymcwd.Location, ahead []string) (EndedSet, error) {
 	boardDir := filepath.Join(l.HubPath, BoardDirName)
 	if _, err := os.Stat(boardDir); err != nil {
 		return nil, nil
@@ -559,7 +559,7 @@ func (f *Fabric) weftEndedByOrigin(l *lyxcwd.Location, ahead []string) (EndedSet
 }
 
 // weftRunSlug returns the slug of the run whose record directory holds path, a records-repository-relative slash path.
-func weftRunSlug(l *lyxcwd.Location, path string) (string, bool) {
+func weftRunSlug(l *lymcwd.Location, path string) (string, bool) {
 	root := pathpkg.Join(filepath.ToSlash(l.AnchorRel), filepath.ToSlash(shedrun.RunsRootRel())) + "/"
 	rest, found := strings.CutPrefix(path, strings.TrimPrefix(root, "./"))
 	if !found {

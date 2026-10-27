@@ -1,5 +1,5 @@
 // waitmark.go declares the wait marker and pane mark shuttle keeps while its Go side waits on a gate entry, on background shells or on a held turn end,
-// and ReadWaitMarker and ReadWaitMarkers, the readers `lyx loom status` and batten use.
+// and ReadWaitMarker and ReadWaitMarkers, the readers `lym loom status` and batten use.
 // Both are display and status only: no shuttle decision reads them,
 // and a failure to write, remove, set or clear either is logged and changes nothing else.
 
@@ -31,7 +31,7 @@ const (
 // so the marker tests stay tier 1.
 var isAlive = proc.IsAlive
 
-// WaitMarker is the file `lyx loom status` reads to see what a shuttle run waits on:
+// WaitMarker is the file `lym loom status` reads to see what a shuttle run waits on:
 // the wait's label (`gate <entry name>`, `background shells` or `held`), when it started, and the pid of the process running Wait.
 // Batten's wait reading ignores a held marker, since a held run is idle at its turn end rather than working.
 type WaitMarker struct {

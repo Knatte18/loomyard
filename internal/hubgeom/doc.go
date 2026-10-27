@@ -1,19 +1,15 @@
-// Package hubgeom is the hub-mode adapter that tells engines their geometry: it converts a resolved
-// *lyxcwd.Location into the geometry struct each engine holds, so no engine derives its own
-// coordinates from a Location itself.
-// The engines it serves never import it — reedengine.Geometry knows nothing of hubgeom, and neither
-// will burlerengine's or websterengine's own geometry types — so the told direction
-// stays one-way: hubgeom depends on the engines, never the reverse.
+// Package hubgeom is the hub-mode adapter that tells engines their geometry: it converts a resolved *lymcwd.Location into the geometry struct each engine holds, so no engine derives its own coordinates from a Location itself.
+// The engines it serves never import it — reedengine.Geometry knows nothing of hubgeom, and neither will burlerengine's or websterengine's own geometry types — so the told direction stays one-way: hubgeom depends on the engines, never the reverse.
 //
 // hubgeom's contract today is ReedGeometry, BurlerGeometry, and WebsterGeometry,
 // converting a Location into a reedengine.Geometry, a burlerengine.Geometry, and a
 // websterengine.Geometry respectively.
-// ReconcileGeometry converts a Location into the hubreconcile.Geometry the start verbs and the Preflight row hand to hubreconcile.EnsureOrWarn, and reports false for a repository with no hub-level board lyx dir, which never reconciles.
+// ReconcileGeometry converts a Location into the hubreconcile.Geometry the start verbs and the Preflight row hand to hubreconcile.EnsureOrWarn, and reports false for a repository with no hub-level board lym dir, which never reconciles.
 // GateSlots is the one constructor of a hub's gate-slot pool, over the board dir's slot directory, with its limits read from the board dir's gate.yaml and this machine's override at each acquire;
 // WebsterGeometry hands that pool to webster.
 // Later waves add their own siblings here rather than spawning per-engine packages or re-deriving the
 // construction inline at each call site.
-// PauseGeometry converts a Location into the pauserecord.Geometry every reader of a pause is told: the record under the board-level `.lyx` and the pair's slug, empty for the prime.
+// PauseGeometry converts a Location into the pauserecord.Geometry every reader of a pause is told: the record under the board-level `.lym` and the pair's slug, empty for the prime.
 //
 // ReedGeometry tells reed the hub-level discover signal file in DiscoverSignalPath, beside LogsDir: reedengine.DiscoverSignalFileName under fabricengine.HubScratchDir.
 //
@@ -29,7 +25,7 @@
 // BurlerGeometry and WebsterGeometry read the parent through ResolveParent too, as the name their spawned roles' parent directive renders.
 // BurlerGeometry also tells the shortname and slug as ReedGeometry does, from the same prime test, so the agent names burler forms match the names reed gives the strands.
 // ResolveParent reads the pair's origin record alone; an origin that names no parent worktree, or no origin record, yields no parent.
-// An origin record whose sibling worktree lacks its lock directory is an error naming `lyx fabric reconcile`, never a silent "no parent".
+// An origin record whose sibling worktree lacks its lock directory is an error naming `lym fabric reconcile`, never a silent "no parent".
 // A missing or unreadable .git entry is the one error of ReedGeometry and of BurlerGeometry, and an unresolvable parent leaves ParentName empty with a warning in all three.
 // hubgeom is still the only reader — no engine resolves a parent, per the Told-Geometry Invariant.
 //
@@ -40,7 +36,7 @@
 // So a member whose beam pair is absent on this machine still reads the beam as its parent, and the beam's owner as its own.
 // ResolveParent keeps answering the parent pair's orch name for a reader that needs the pair itself:
 // the parent names the driver's prompts carry.
-// The `lyx loom decision add --by parent` guard admits the destination of notices instead, so the orch that receives them can record the call.
+// The `lym loom decision add --by parent` guard admits the destination of notices instead, so the orch that receives them can record the call.
 //
 // NearestLiveOrch is the destination of a notice to an orch.
 // It tries the worktree it is told, then walks upward through the origin records' parent worktrees.

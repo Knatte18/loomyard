@@ -1,4 +1,4 @@
-// openprheads.go is the open pull request lookup `lyx fabric cleanup --remote` hands to fabricengine.Topology.CleanupRemoteWarp, which keeps every branch an open pull request still names.
+// openprheads.go is the open pull request lookup `lym fabric cleanup --remote` hands to fabricengine.Topology.CleanupRemoteWarp, which keeps every branch an open pull request still names.
 // It lives here rather than in fabricengine because the engine imports no GitHub client.
 
 package fabriccli

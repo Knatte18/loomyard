@@ -191,8 +191,8 @@ func TestRefuseNonPrime(t *testing.T) {
 		wantInMessage []string
 	}{
 		{name: "the prime's own name passes", verb: "timing", worktree: "main", prime: "main"},
-		{name: "another name is refused naming the convergence verb and the prime", verb: "convergence", worktree: "task", prime: "main", wantErr: true, wantInMessage: []string{`"task"`, `"main"`, "lyx report convergence", "prime worktree only"}},
-		{name: "another name is refused naming the timing verb", verb: "timing", worktree: "task", prime: "main", wantErr: true, wantInMessage: []string{"lyx report timing", "prime worktree only"}},
+		{name: "another name is refused naming the convergence verb and the prime", verb: "convergence", worktree: "task", prime: "main", wantErr: true, wantInMessage: []string{`"task"`, `"main"`, "lym report convergence", "prime worktree only"}},
+		{name: "another name is refused naming the timing verb", verb: "timing", worktree: "task", prime: "main", wantErr: true, wantInMessage: []string{"lym report timing", "prime worktree only"}},
 		{name: "an unresolvable prime name is refused wrapping its cause", verb: "timing", worktree: "main", primeNameErr: errors.New("boom"), wantErr: true, wantInMessage: []string{"boom"}},
 	}
 	for _, tt := range tests {

@@ -117,8 +117,8 @@ func TestBattenDriverDeps(t *testing.T) {
 	if want := []string{shedrun.ParkMarker(c.location, c.slug), shedrun.ResumeReport(c.location, c.slug)}; !slices.Equal(driveLock.Stale, want) {
 		t.Errorf("drive lock Stale = %v; want %v", driveLock.Stale, want)
 	}
-	if !strings.Contains(driveLock.Refusal, battenDriveRefusal) || !strings.Contains(driveLock.Refusal, "lyx batten status "+c.slug) {
-		t.Errorf("drive lock Refusal = %q; want it to carry %q and name `lyx batten status %s`", driveLock.Refusal, battenDriveRefusal, c.slug)
+	if !strings.Contains(driveLock.Refusal, battenDriveRefusal) || !strings.Contains(driveLock.Refusal, "lym batten status "+c.slug) {
+		t.Errorf("drive lock Refusal = %q; want it to carry %q and name `lym batten status %s`", driveLock.Refusal, battenDriveRefusal, c.slug)
 	}
 
 	sent, err := deps.HandBack.Notify(sheddriver.Stop{State: "paused", CurrentProducer: "Run-Shed", HistoryLength: 2}, "the run is paused")
@@ -168,7 +168,7 @@ func TestBattenDriverDeps(t *testing.T) {
 		t.Fatalf("seed status at Land: %v", err)
 	}
 	guard := c.haltedRowGuard()
-	wantRefusal := "goto target " + battenrecipe.NameSeedChild + " is not the halted row " + battenrecipe.NameLand + "; batten's arbiter resumes only the halted row; way forward: the run's parent runs lyx batten goto " + c.slug + " --to " + battenrecipe.NameSeedChild
+	wantRefusal := "goto target " + battenrecipe.NameSeedChild + " is not the halted row " + battenrecipe.NameLand + "; batten's arbiter resumes only the halted row; way forward: the run's parent runs lym batten goto " + c.slug + " --to " + battenrecipe.NameSeedChild
 	if refused, err := guard(battenrecipe.NameSeedChild); refused != wantRefusal || err != nil {
 		t.Errorf("GotoGuard(%s) = %q, %v; want %q", battenrecipe.NameSeedChild, refused, err, wantRefusal)
 	}
@@ -226,13 +226,13 @@ func TestBattenHandBackNotice(t *testing.T) {
 			name:     "AFailedLandStopPostsTheRowStopLine",
 			stop:     sheddriver.Stop{State: "blocked", CurrentProducer: battenrecipe.NameLand, HistoryLength: 3, Reason: "pull failed: boom"},
 			wantSent: true,
-			wantLine: "Land failed: pull failed: boom; report /reports/stop.md; way forward: fix the cause, then run \"lyx batten run a-slug\"",
+			wantLine: "Land failed: pull failed: boom; report /reports/stop.md; way forward: fix the cause, then run \"lym batten run a-slug\"",
 		},
 		{
 			name:     "AFailedTeardownStopPostsTheRowStopLine",
 			stop:     sheddriver.Stop{State: "blocked", CurrentProducer: battenrecipe.NameWorktreeTeardown, HistoryLength: 4, Reason: "session shutdown failed: boom"},
 			wantSent: true,
-			wantLine: "Worktree-Teardown failed: session shutdown failed: boom; report /reports/stop.md; way forward: fix the cause, then run \"lyx batten run a-slug\"",
+			wantLine: "Worktree-Teardown failed: session shutdown failed: boom; report /reports/stop.md; way forward: fix the cause, then run \"lym batten run a-slug\"",
 		},
 		{
 			name: "APauseHonouredLandStopPostsNothing",

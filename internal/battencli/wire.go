@@ -38,7 +38,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -164,12 +164,12 @@ func runLockHeld(lockPath string) (bool, error) {
 	return !free, nil
 }
 
-// taskWorktreeLocation resolves the managed task worktree's own *lyxcwd.Location, for slug, from
-// the prime *lyxcwd.Location. It is the shared body every lazily-resolved seam below calls, so a
+// taskWorktreeLocation resolves the managed task worktree's own *lymcwd.Location, for slug, from
+// the prime *lymcwd.Location. It is the shared body every lazily-resolved seam below calls, so a
 // caller reading this file only once still sees every "resolved lazily" claim in one place.
 //
 // It joins the task worktree's root via fabricengine.WorktreePath -- the topology package's own
-// sibling-path helper -- and resolves that root through lyxcwd.ResolveWorktree, which applies no
+// sibling-path helper -- and resolves that root through lymcwd.ResolveWorktree, which applies no
 // cwd gate: the caller here holds a worktree root, not an acting cwd, so the gate would spuriously
 // fire.
 //
@@ -177,27 +177,27 @@ func runLockHeld(lockPath string) (bool, error) {
 // repository": batten's status is durable, so a run resumed on another machine reaches every row
 // past Worktree-Create with no pair here.
 // Recreating it is not attempted, since fabric's Add refuses a pre-existing branch by design -- and
-// the refusal below names no fabric command as a substitute: "lyx fabric checkout" switches the
+// the refusal below names no fabric command as a substitute: "lym fabric checkout" switches the
 // CALLER's own worktree onto the named branch, so run from prime, as every batten verb must be, it
 // would mutate prime itself rather than restore anything.
 // Deleting the pair's branches alone rewinds nothing: the resumed run re-enters its persisted row,
 // not Worktree-Create, so the abandon path names batten's own run directory as well, and both
 // branch copies, since the ones on the remote make a fresh create's push refuse.
-func taskWorktreeLocation(prime *lyxcwd.Location, slug string) (*lyxcwd.Location, error) {
+func taskWorktreeLocation(prime *lymcwd.Location, slug string) (*lymcwd.Location, error) {
 	worktreePath, err := presentTaskWorktreePath(prime, slug)
 	if err != nil {
 		return nil, err
 	}
-	return lyxcwd.ResolveWorktree(worktreePath)
+	return lymcwd.ResolveWorktree(worktreePath)
 }
 
 // presentTaskWorktreePath returns the task worktree's root for slug, refusing an absent one by name (see taskWorktreeLocation).
-func presentTaskWorktreePath(prime *lyxcwd.Location, slug string) (string, error) {
+func presentTaskWorktreePath(prime *lymcwd.Location, slug string) (string, error) {
 	worktreePath := fabricengine.WorktreePath(prime, slug)
 	if _, err := os.Stat(worktreePath); err != nil {
 		if os.IsNotExist(err) {
 			return "", fmt.Errorf(
-				"battencli: the task worktree for %q is not present at %s; this run's durable status says it was already created, so it is either on another machine or was removed by hand -- batten does not recreate a pair from its branch, and no \"lyx fabric\" command currently does either (creating one refuses when its branch already exists). Resolve it by hand, one of two ways: restore the worktree pair yourself from its branches, outside lyx's own automation, which keeps the task's work, then resume this run; or abandon this run by deleting its run directory %s (a change on the pair's fabric sibling) and the pair's branches, local and remote, after which \"lyx batten run %s\" starts over from a fresh create -- discarding any of the task's work not already merged",
+				"battencli: the task worktree for %q is not present at %s; this run's durable status says it was already created, so it is either on another machine or was removed by hand -- batten does not recreate a pair from its branch, and no \"lym fabric\" command currently does either (creating one refuses when its branch already exists). Resolve it by hand, one of two ways: restore the worktree pair yourself from its branches, outside lym's own automation, which keeps the task's work, then resume this run; or abandon this run by deleting its run directory %s (a change on the pair's fabric sibling) and the pair's branches, local and remote, after which \"lym batten run %s\" starts over from a fresh create -- discarding any of the task's work not already merged",
 				slug, worktreePath, shedrun.RunDir(prime, slug), slug,
 			)
 		}
@@ -209,9 +209,9 @@ func presentTaskWorktreePath(prime *lyxcwd.Location, slug string) (string, error
 // taskWorktreeLocator returns a taskWorktreeLocation for slug that spawns git only until a resolution succeeds.
 // Run-Shed's wait reads the task worktree's files every poll check, and resolving the location runs git;
 // a present pair's location never changes, so the first success is kept, while every call still stats the pair and refuses an absent one by name.
-func taskWorktreeLocator(prime *lyxcwd.Location, slug string) func() (*lyxcwd.Location, error) {
-	var resolved *lyxcwd.Location
-	return func() (*lyxcwd.Location, error) {
+func taskWorktreeLocator(prime *lymcwd.Location, slug string) func() (*lymcwd.Location, error) {
+	var resolved *lymcwd.Location
+	return func() (*lymcwd.Location, error) {
 		if resolved == nil {
 			taskLocation, err := taskWorktreeLocation(prime, slug)
 			if err != nil {
@@ -241,7 +241,7 @@ func taskWorktreeLocator(prime *lyxcwd.Location, slug string) func() (*lyxcwd.Lo
 // still reaches Topology.Add or Topology.Remove and every real failure keeps its Stuck disposition.
 // A stat error that is not "absent", and a path that is there but does not resolve as a worktree,
 // are both returned: neither is an answer to the question asked.
-func taskWorktreePresent(prime *lyxcwd.Location, slug string) (bool, error) {
+func taskWorktreePresent(prime *lymcwd.Location, slug string) (bool, error) {
 	worktreePath := fabricengine.WorktreePath(prime, slug)
 	if _, err := os.Stat(worktreePath); err != nil {
 		if os.IsNotExist(err) {
@@ -249,7 +249,7 @@ func taskWorktreePresent(prime *lyxcwd.Location, slug string) (bool, error) {
 		}
 		return false, err
 	}
-	if _, err := lyxcwd.ResolveWorktree(worktreePath); err != nil {
+	if _, err := lymcwd.ResolveWorktree(worktreePath); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -270,12 +270,12 @@ func taskWorktreePresent(prime *lyxcwd.Location, slug string) (bool, error) {
 // still reaches Topology.Add. incompleteReason is non-empty only when the worktree exists but is not
 // yet a complete pair, worded for this package's own refusal text rather than repeating
 // PairComplete's fabric-vocabulary reason verbatim.
-func taskWorktreeComplete(prime *lyxcwd.Location, slug string) (present, complete bool, incompleteReason string, err error) {
+func taskWorktreeComplete(prime *lymcwd.Location, slug string) (present, complete bool, incompleteReason string, err error) {
 	present, err = taskWorktreePresent(prime, slug)
 	if err != nil || !present {
 		return present, false, "", err
 	}
-	taskLocation, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(prime, slug))
+	taskLocation, err := lymcwd.ResolveWorktree(fabricengine.WorktreePath(prime, slug))
 	if err != nil {
 		return present, false, "", err
 	}
@@ -290,17 +290,17 @@ func taskWorktreeComplete(prime *lyxcwd.Location, slug string) (present, complet
 }
 
 // incompletePairRemedy names the manual cleanup for a pair taskWorktreeComplete found incomplete.
-// "lyx fabric remove --force" run from prime removes whatever part of the pair Add got to -- the task worktree, its sibling, their junctions, launcher entries, and the sibling's branch -- in one command, which no pair of plain git commands can do from here: the sibling is a worktree of another repository.
+// "lym fabric remove --force" run from prime removes whatever part of the pair Add got to -- the task worktree, its sibling, their junctions, launcher entries, and the sibling's branch -- in one command, which no pair of plain git commands can do from here: the sibling is a worktree of another repository.
 // Remove also deletes the task branch when its work is already on another ref -- always so for a create interrupted before any work -- and keeps it otherwise, so the branch deletion is named as conditional on the branch surviving the removal: an unconditional "git branch -D" fails on the branch Remove already deleted.
 // The task branch is named with fabric's branch prefix, since Add refuses a leftover one.
 func incompletePairRemedy(slug, branch string) string {
-	return fmt.Sprintf("remove it by hand from here (\"lyx fabric remove --force %s\"), then, only if its branch %s is still present afterwards, delete that branch too (\"git branch -D %s\")", slug, branch, branch)
+	return fmt.Sprintf("remove it by hand from here (\"lym fabric remove --force %s\"), then, only if its branch %s is still present afterwards, delete that branch too (\"git branch -D %s\")", slug, branch, branch)
 }
 
 // reconcileTaskPair reconciles and commits the config of the task pair for slug, whatever the hub's build stamp says.
 // The pair forked the prime's records branch, which an earlier walk may have skipped as mid-merge or another holder's walk may not have committed yet.
 // A repository outside a hub has nothing to reconcile.
-func reconcileTaskPair(prime *lyxcwd.Location, slug string) error {
+func reconcileTaskPair(prime *lymcwd.Location, slug string) error {
 	geometry, inHub := hubgeom.ReconcileGeometry(prime)
 	if !inHub {
 		return nil
@@ -311,16 +311,16 @@ func reconcileTaskPair(prime *lyxcwd.Location, slug string) error {
 // createRefusal maps the create refusals no tackler can settle to a *battenshed.PreconditionError, and passes every other create error through verbatim.
 // A tracked-dirty source worktree is settled by committing or reverting in it.
 // A task branch left from an earlier pair of the slug, locally or on origin, is settled by the cancel verb, which archives and deletes it.
-// fabric words that leftover refusal for a caller inside a pair ("lyx fabric checkout"), which from prime would switch prime's own pair onto the task's branches, so its text is replaced.
+// fabric words that leftover refusal for a caller inside a pair ("lym fabric checkout"), which from prime would switch prime's own pair onto the task's branches, so its text is replaced.
 // A remote leftover on any other branch, the records side included, passes through.
 func createRefusal(err error, slug, taskBranch string) error {
-	leftoverWayForward := fmt.Sprintf(`run "lyx batten cancel %s --remove" from the prime, which archives and deletes it, then "lyx batten run %s"`, slug, slug)
+	leftoverWayForward := fmt.Sprintf(`run "lym batten cancel %s --remove" from the prime, which archives and deletes it, then "lym batten run %s"`, slug, slug)
 
 	var sourceDirty *fabricengine.ErrSourceDirty
 	if errors.As(err, &sourceDirty) {
 		return &battenshed.PreconditionError{
 			Unmet:      "the source worktree has uncommitted tracked changes: " + strings.Join(sourceDirty.Paths, ", "),
-			WayForward: fmt.Sprintf(`commit or revert them in the source worktree, then run "lyx batten run %s" again`, slug),
+			WayForward: fmt.Sprintf(`commit or revert them in the source worktree, then run "lym batten run %s" again`, slug),
 			Err:        err,
 		}
 	}
@@ -379,16 +379,16 @@ func teardownRequest(slug string) pairteardown.Request {
 // That failure is most often an unreachable remote, but not always, so the remedy points at the wrapped cause rather than naming one.
 func teardownRefusal(err error, slug string) error {
 	if errors.Is(err, fabricengine.ErrArchiveFailed) {
-		return fmt.Errorf("the pair for %q was left in place because archiving its run records to the remote failed: %w; fix the failure named here (most often an unreachable remote), then resume this run with \"lyx batten run %s\"", slug, err, slug)
+		return fmt.Errorf("the pair for %q was left in place because archiving its run records to the remote failed: %w; fix the failure named here (most often an unreachable remote), then resume this run with \"lym batten run %s\"", slug, err, slug)
 	}
 	if errors.Is(err, fabricengine.ErrPairPushRunning) {
-		return fmt.Errorf("the pair for %q was left in place because a push of it is still running; once it finishes, resume this run with \"lyx batten run %s\": %w", slug, slug, err)
+		return fmt.Errorf("the pair for %q was left in place because a push of it is still running; once it finishes, resume this run with \"lym batten run %s\": %w", slug, slug, err)
 	}
 	if !errors.Is(err, fabricengine.ErrPairSiblingDirty) {
 		return err
 	}
 	return siblingDirtyRefusal{
-		msg: fmt.Sprintf("the pair for %q was left in place because its sibling worktree under the hub holds content outside the run record paths, which the teardown cannot commit; inspect that sibling worktree, commit or remove that content by hand, then resume this run with \"lyx batten run %s\"", slug, slug),
+		msg: fmt.Sprintf("the pair for %q was left in place because its sibling worktree under the hub holds content outside the run record paths, which the teardown cannot commit; inspect that sibling worktree, commit or remove that content by hand, then resume this run with \"lym batten run %s\"", slug, slug),
 		err: err,
 	}
 }
@@ -503,7 +503,7 @@ func boardRecipe(task boardengine.Task) string {
 }
 
 // childRecipeSupported reports whether recipe is one a task worktree's bootstrap verb can run as the child's own run:
-// the three recipes `lyx loom start` serves.
+// the three recipes `lym loom start` serves.
 func childRecipeSupported(recipe string) bool {
 	return recipe == shedrun.RecipeLoom || recipe == shedrun.RecipeDarn || recipe == shedrun.RecipePawl
 }
@@ -521,7 +521,7 @@ func unsupportedChildRecipeRefusal(recipe string) error {
 // child seeded without a param its own bootstrap writes makes that bootstrap refuse.
 // Params are per-recipe: loom, darn and beam declare one each, params.parent, taken from the pair's recorded origin, which for a beam is the beam's parent branch.
 // An absent or empty recorded parent yields no param, leaving the bootstrap's own "pass --parent once" refusal as the one an operator sees.
-func childSeedParams(recipe string, childLocation *lyxcwd.Location) (map[string]string, error) {
+func childSeedParams(recipe string, childLocation *lymcwd.Location) (map[string]string, error) {
 	if !childRecipeSupported(recipe) {
 		return nil, nil
 	}
@@ -544,12 +544,12 @@ func childSeedFor(recipe, driver string, params map[string]string) shedrun.Seed 
 // noticesReachDriversParent reports whether this batten's notices have a destination that is also the task worktree driver's parent, and that destination records an orch strand.
 // The task worktree's driver messages the nearest live orch from the pair's recorded parent, and batten's notices take the walk from the same pair, so the two destinations agree whenever the pair is present;
 // a driver and batten under a live beam orch both reach it.
-func noticesReachDriversParent(prime, taskLocation *lyxcwd.Location) (bool, error) {
+func noticesReachDriversParent(prime, taskLocation *lymcwd.Location) (bool, error) {
 	return runParentRecorded(prime, taskLocation.WorktreeName)
 }
 
 // battenHistoryLen returns the length of batten's own status history for slug, 0 when the status file is absent.
-func battenHistoryLen(location *lyxcwd.Location, slug string) (int, error) {
+func battenHistoryLen(location *lymcwd.Location, slug string) (int, error) {
 	status, found, err := state.ReadJSONNoMkdir[shedengine.Status](StatusFile(location, slug), StatusLock(location, slug))
 	if err != nil || !found {
 		return 0, err
@@ -558,7 +558,7 @@ func battenHistoryLen(location *lyxcwd.Location, slug string) (int, error) {
 }
 
 // rowNotices returns the notice seams of the rows after Run-Shed: notices go to the nearest live orch above the run, as Run-Shed's do, and an episode is told apart by batten's own history length.
-func rowNotices(location *lyxcwd.Location, slug string) battenshed.RowNoticeDeps {
+func rowNotices(location *lymcwd.Location, slug string) battenshed.RowNoticeDeps {
 	return battenshed.RowNoticeDeps{
 		Notify: func(ctx context.Context, line string) (bool, error) {
 			return notifyRunParent(location, slug, line)
@@ -570,7 +570,7 @@ func rowNotices(location *lyxcwd.Location, slug string) battenshed.RowNoticeDeps
 
 // readStopReport reads the driver park marker of the task worktree's run, whose content is the path of the stop report the driver parked on, and the time the marker was written.
 // An absent marker reports found == false.
-func readStopReport(taskLocation *lyxcwd.Location) (path string, at time.Time, found bool, err error) {
+func readStopReport(taskLocation *lymcwd.Location) (path string, at time.Time, found bool, err error) {
 	marker := shedrun.ParkMarker(taskLocation, shedrun.SelfRunID)
 	info, err := os.Stat(marker)
 	if os.IsNotExist(err) {
@@ -591,7 +591,7 @@ func readStopReport(taskLocation *lyxcwd.Location) (path string, at time.Time, f
 // A held run is idle at its turn end, so it does not suppress the quiet notice, and neither does a verify held by a pause.
 // A lock wait record whose writer is dead is ignored.
 // The waits are read from their marker and record files, never from the pane options that display them.
-func readAgentActivity(taskLocation *lyxcwd.Location) (runs []battenshed.AgentActivity, waitLive bool, err error) {
+func readAgentActivity(taskLocation *lymcwd.Location) (runs []battenshed.AgentActivity, waitLive bool, err error) {
 	anchor := taskLocation.AnchorPath()
 	cfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "shuttle")
 	if err != nil {
@@ -647,7 +647,7 @@ func readAgentActivity(taskLocation *lyxcwd.Location) (runs []battenshed.AgentAc
 
 // childAtBeamAwait reports whether the child's own status file reads running at the pawl recipe's Beam-Await row, which waits on its beam's members with no agent running.
 // An unreadable child status reads as no such wait, as an absent one does.
-func childAtBeamAwait(taskLocation *lyxcwd.Location) bool {
+func childAtBeamAwait(taskLocation *lymcwd.Location) bool {
 	statusPath := shedrun.StatusFile(taskLocation, shedrun.SelfRunID)
 	if _, err := os.Stat(statusPath); err != nil {
 		return false
@@ -683,7 +683,7 @@ func readSessionStatesByStrand(cfg shuttleengine.Config, anchor string, engines 
 // markBattenWatched writes the batten-watched marker of the task worktree's run while noticesReachDriversParent holds, and removes it otherwise.
 // The marker holds this process's pid and names the batten scratch directory and the Run-Shed row's name, so a Go driver can tell whether this batten has died.
 // It reports whether the marker is held.
-func markBattenWatched(prime, taskLocation *lyxcwd.Location, scratchDir, producer string, pid int) (bool, error) {
+func markBattenWatched(prime, taskLocation *lymcwd.Location, scratchDir, producer string, pid int) (bool, error) {
 	watched, err := noticesReachDriversParent(prime, taskLocation)
 	if err != nil {
 		return false, err
@@ -695,7 +695,7 @@ func markBattenWatched(prime, taskLocation *lyxcwd.Location, scratchDir, produce
 // A dead dobby, a missing record and a worktree absent here read as this process's pid and no sleeps,
 // so a hand pass with no live dobby marks itself and leaves the child's driver to notice for itself.
 // Any other read error is returned.
-func dobbyReading(prime *lyxcwd.Location, slug string) (pid int, sleeps []pauserecord.Interval, err error) {
+func dobbyReading(prime *lymcwd.Location, slug string) (pid int, sleeps []pauserecord.Interval, err error) {
 	parent, err := hubgeom.ParentOf(prime, slug)
 	if err != nil {
 		return 0, nil, err
@@ -767,8 +767,8 @@ func readTacklerAsArbiterMarker(path string) (loomengine.ArbiterMarker, bool, er
 }
 
 // dirtyPathsOutsideRunRecords lists the task pair's uncommitted or untracked paths outside the run's own records directories.
-// Both sides join onto the task worktree, since the records side reaches it through the `_lyx` junction.
-func dirtyPathsOutsideRunRecords(taskLocation *lyxcwd.Location) ([]string, error) {
+// Both sides join onto the task worktree, since the records side reaches it through the `_lym` junction.
+func dirtyPathsOutsideRunRecords(taskLocation *lymcwd.Location) ([]string, error) {
 	fab, err := fabricengine.Open(taskLocation)
 	if err != nil {
 		return nil, err
@@ -787,9 +787,9 @@ func dirtyPathsOutsideRunRecords(taskLocation *lyxcwd.Location) ([]string, error
 // commandDeps returns the Env.Command facts and runner of the Open-Window, Seed-IDE and Open-IDE rows.
 // The commands run in the prime, and {task_dir} is the task worktree's anchor path, located when a command holds it.
 // Each command's output goes to a command-<row>.log under the run's scratch directory.
-func (c *battenCLI) commandDeps(location *lyxcwd.Location, slug, executable string, locateTask func() (*lyxcwd.Location, error)) shedadapters.CommandDeps {
+func (c *battenCLI) commandDeps(location *lymcwd.Location, slug, executable string, locateTask func() (*lymcwd.Location, error)) shedadapters.CommandDeps {
 	return shedadapters.CommandDeps{
-		Lyx:  executable,
+		Lym:  executable,
 		Slug: slug,
 		TaskDir: func() (string, error) {
 			taskLocation, err := locateTask()
@@ -803,13 +803,13 @@ func (c *battenCLI) commandDeps(location *lyxcwd.Location, slug, executable stri
 			return filepath.Join(shedrun.ScratchDir(location, slug), "command-"+row+".log")
 		},
 		Run:   runRowCommand,
-		Rerun: fmt.Sprintf("lyx batten run %s", slug),
+		Rerun: fmt.Sprintf("lym batten run %s", slug),
 	}
 }
 
 // wire builds and stores the shedrecipe.Env and shedbuild.ShedPaths the run and status verbs
 // need, over the resolved prime location and slug.
-func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
+func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 	// Batten runs in the prime on behalf of one pair, so its network git and GitHub calls wait under that pair's pause entry.
 	pauserecord.SetGateSlug(slug)
 	primeRunLockPath := PrimeRunLock(location)
@@ -840,10 +840,10 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 	// Every seam below that reads the task worktree locates it through this one locator, so git runs only until the first resolution succeeds.
 	locateTask := taskWorktreeLocator(location, slug)
 
-	// The on-disk lyx path is resolved once, here: after a deploy replaces the file under this running batten, os.Executable reads a path that no longer names it.
+	// The on-disk lym path is resolved once, here: after a deploy replaces the file under this running batten, os.Executable reads a path that no longer names it.
 	executable, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("batten: resolve the lyx executable: %w", err)
+		return fmt.Errorf("batten: resolve the lym executable: %w", err)
 	}
 
 	// One closure keeps the marker for both rows that ask: Seed-Child once the seed is committed, and Run-Shed through the whole watch.
@@ -1066,7 +1066,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			HandBack: func(status shedengine.Status) bool {
 				return status.State == shedengine.StateBlocked && arbiterstop.HandsBack(status.CurrentProducer, status.Error)
 			},
-			// PauseRequested reads batten's own status file, the one `lyx batten pause` writes, so the in-call wait notices a pause within one check.
+			// PauseRequested reads batten's own status file, the one `lym batten pause` writes, so the in-call wait notices a pause within one check.
 			PauseRequested: pauseRequested(location, slug),
 			// Pause reads the hub's pause record at the prime's geometry, for the slug this run drives.
 			Pause: func() (pauserecord.Coverage, error) {
@@ -1232,7 +1232,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				}
 				return runLockHeld(shedrun.DriverLock(taskLocation, shedrun.SelfRunID))
 			},
-			// ChildBuildChanged reads the lyx on disk, which a deploy replaces under this running batten, and compares it with the build the child's last step recorded.
+			// ChildBuildChanged reads the lym on disk, which a deploy replaces under this running batten, and compares it with the build the child's last step recorded.
 			ChildBuildChanged: func() (string, bool, error) {
 				taskLocation, err := locateTask()
 				if err != nil {
@@ -1447,7 +1447,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 	env.ExecutableSetting = configreg.SettingLookup(configengine.Dirs{Board: fabricengine.ConfigDirs(location).Board})
 	// A recipe row's entry gate checks its setting operands at build, which needs no task worktree, and names the resume command in its evaluation errors.
 	env.SettingKnown = configreg.CheckSettingKey
-	env.Resume = fmt.Sprintf("lyx batten run %s", slug)
+	env.Resume = fmt.Sprintf("lym batten run %s", slug)
 	env.Command = c.commandDeps(location, slug, executable, locateTask)
 
 	c.beam = hubLandingSeams(location, slug)
@@ -1478,9 +1478,9 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 		CommitStatus: battenCommitStatusSeam(location, slug),
 
 		RunID:                   slug,
-		MissingStatusWayForward: fmt.Sprintf("way forward: \"lyx batten run %s\" creates the lifecycle's status file", slug),
-		PauseWayForward:         fmt.Sprintf("lyx batten pause %s", slug),
-		BudgetWayForward:        fmt.Sprintf("run \"lyx batten run %s\": the resume grants the row one more budget", slug),
+		MissingStatusWayForward: fmt.Sprintf("way forward: \"lym batten run %s\" creates the lifecycle's status file", slug),
+		PauseWayForward:         fmt.Sprintf("lym batten pause %s", slug),
+		BudgetWayForward:        fmt.Sprintf("run \"lym batten run %s\": the resume grants the row one more budget", slug),
 	}
 	return nil
 }

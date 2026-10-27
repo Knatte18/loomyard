@@ -1,6 +1,6 @@
 //go:build tier1
 
-// convergence_integration_test.go drives `lyx report convergence` through RunCLIIn over a hubforge hub: the prime-only refusals, the empty report before any tag, and the report of one finished run seeded the way a landing leaves it.
+// convergence_integration_test.go drives `lym report convergence` through RunCLIIn over a hubforge hub: the prime-only refusals, the empty report before any tag, and the report of one finished run seeded the way a landing leaves it.
 
 package reportcli
 
@@ -22,7 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reportengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -120,7 +120,7 @@ func TestReportVerbs_RefuseOutsideThePrimeThenReportTheSeededRun(t *testing.T) {
 	gitkit.Git(t, pairCode, "commit", "-m", "fix: repair the thing")
 	taskCommit := gitkit.Git(t, pairCode, "rev-parse", "HEAD")
 
-	pairLocation, err := lyxcwd.Resolve(pairCode)
+	pairLocation, err := lymcwd.Resolve(pairCode)
 	if err != nil {
 		t.Fatalf("resolve the pair: %v", err)
 	}
@@ -204,10 +204,10 @@ func TestReportVerbs_RefuseOutsideThePrimeThenReportTheSeededRun(t *testing.T) {
 		t.Errorf("timing from the pair's worktree: exit %d, output %s; want a refusal with exit 1", code, out)
 	}
 	envelope.RequireErr(t, out, primeName)
-	envelope.RequireErr(t, out, "lyx report timing")
+	envelope.RequireErr(t, out, "lym report timing")
 
 	// A resumed hub pause stands in for sleep when the machine's journal cannot be read here.
-	primeLocation, err := lyxcwd.Resolve(h.PrimeWorktree())
+	primeLocation, err := lymcwd.Resolve(h.PrimeWorktree())
 	if err != nil {
 		t.Fatalf("resolve the prime: %v", err)
 	}

@@ -86,7 +86,7 @@ const (
 func (s Stall) Reason() string {
 	switch s {
 	case StallTooShort:
-		return "the pane is too short to show the input box; way forward: give the strand's pane more rows, as `lyx reed attach` from a taller terminal does"
+		return "the pane is too short to show the input box; way forward: give the strand's pane more rows, as `lym reed attach` from a taller terminal does"
 	case StallDraft:
 		return "the input box holds a draft; the delivery waits until it is sent or cleared"
 	case StallNoInputBox:

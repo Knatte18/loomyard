@@ -20,9 +20,9 @@ import (
 // It stays serial: logcapture.Capture redirects the process-wide logger, which each row's Warn assertions read.
 func TestCommandProducer(t *testing.T) {
 	const (
-		rerun      = "lyx batten run slug-one"
+		rerun      = "lym batten run slug-one"
 		logPath    = "/hub/logs/Open-Window.log"
-		setCommand = "lyx config batten --layer default --set open_command="
+		setCommand = "lym config batten --layer default --set open_command="
 	)
 	quote := func(goos, value string) string {
 		quoted, err := verifyrun.QuoteArg(goos, value)
@@ -67,11 +67,11 @@ func TestCommandProducer(t *testing.T) {
 		{name: "nil executable lookup", noLookup: true, command: "x", wantErr: []string{"executable-key lookup", "way forward", rerun}},
 		{
 			name:        "placeholder values reach sh as quoted literals",
-			command:     "open {lyx} {slug} {task_dir}",
+			command:     "open {lym} {slug} {task_dir}",
 			taskDir:     awkward,
 			goos:        "linux",
 			wantRuns:    1,
-			wantCommand: "open " + quote("linux", "/bin/lyx") + " " + quote("linux", "slug-one") + " " + quote("linux", awkward),
+			wantCommand: "open " + quote("linux", "/bin/lym") + " " + quote("linux", "slug-one") + " " + quote("linux", awkward),
 		},
 		{
 			name:     "a percent in task dir under cmd runs nothing and warns",
@@ -81,7 +81,7 @@ func TestCommandProducer(t *testing.T) {
 			wantWarn: []string{"{task_dir}", "hub"},
 		},
 		{name: "other brace text and shell variables pass through", command: "echo ${HOME} {other}", wantRuns: 1, wantCommand: "echo ${HOME} {other}"},
-		{name: "a different ordinary-stack command is ignored with a warning", command: "echo template", otherCommand: "echo local", wantRuns: 1, wantCommand: "echo template", wantWarn: []string{"ignores", "lyx config batten --layer default --set"}},
+		{name: "a different ordinary-stack command is ignored with a warning", command: "echo template", otherCommand: "echo local", wantRuns: 1, wantCommand: "echo template", wantWarn: []string{"ignores", "lym config batten --layer default --set"}},
 		{name: "a failing ordinary-stack read runs the template command quietly", command: "echo template", otherErr: errors.New("boom"), wantRuns: 1, wantCommand: "echo template"},
 		{name: "cancelled context errors", cancelled: true, command: "x", wantErr: []string{"cancelled"}},
 	}
@@ -119,7 +119,7 @@ func TestCommandProducer(t *testing.T) {
 			deps := CommandDeps{
 				Setting:           setting,
 				ExecutableSetting: executable,
-				Lyx:               "/bin/lyx",
+				Lym:               "/bin/lym",
 				Slug:              "slug-one",
 				TaskDir:           func() (string, error) { return tt.taskDir, tt.taskDirErr },
 				Dir:               "/hub/prime",

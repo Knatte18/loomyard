@@ -37,9 +37,9 @@ func newRecordedCommandTestEnv(t *testing.T) (Env, *time.Duration) {
 	var gotTimeout time.Duration
 	env.Setting = fakeSetting(commandTestSettings())
 	env.Command.Dir = dir
-	env.Command.Lyx = "lyx"
+	env.Command.Lym = "lym"
 	env.Command.Slug = "task"
-	env.Command.Rerun = "lyx batten run task"
+	env.Command.Rerun = "lym batten run task"
 	env.Command.LogPath = func(row string) string { return filepath.Join(dir, row+".log") }
 	env.Command.Run = func(_ context.Context, _, _, _ string, timeout time.Duration) (shedadapters.CommandResult, error) {
 		gotTimeout = timeout

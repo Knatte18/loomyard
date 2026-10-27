@@ -92,5 +92,5 @@ func errConflictsWithRecord(w io.Writer, rec fabricengine.Mutations, conflicts [
 	if len(warnings) > 0 {
 		fields["warnings"] = warnings
 	}
-	return output.ErrFields(w, `merge produced conflicts; resolve each listed path, mark it resolved with "lyx fabric merge-stage <path>...", then run "lyx fabric merge --continue"`, fields)
+	return output.ErrFields(w, `merge produced conflicts; resolve each listed path, mark it resolved with "lym fabric merge-stage <path>...", then run "lym fabric merge --continue"`, fields)
 }

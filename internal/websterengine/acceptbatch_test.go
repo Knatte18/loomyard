@@ -54,13 +54,13 @@ func acceptBatchFixture(t *testing.T) (*websterengine.State, websterengine.Geome
 		Uncheckable: []string{fabricEntry},
 	}}}
 	root := t.TempDir()
-	return st, websterengine.Geometry{WorktreeRoot: root, WebsterDir: filepath.Join(root, "_lyx", "webster"), Git: g}, g
+	return st, websterengine.Geometry{WorktreeRoot: root, WebsterDir: filepath.Join(root, "_lym", "webster"), Git: g}, g
 }
 
 func TestAcceptBatchFabricReference_ToleratesTheRunsOwnState(t *testing.T) {
 	t.Parallel()
 	st, geom, g := acceptBatchFixture(t)
-	g.dirtyPaths = []string{"_lyx/", "_lyx/webster/state.json"}
+	g.dirtyPaths = []string{"_lym/", "_lym/webster/state.json"}
 
 	if _, err := websterengine.AcceptBatchFabricReference(st, geom, 8, fabricengine.IsReadOnlyCommand, acceptAuditVerb); err != nil {
 		t.Fatalf("AcceptBatchFabricReference() error = %v; want nil over the run's own untracked state", err)
@@ -155,7 +155,7 @@ func TestAcceptBatchFabricReference_Refusals(t *testing.T) {
 		{name: "unrecorded batch", batch: 3, want: "batch 03 is not a failed batch"},
 		{name: "done batch", batch: 8, mutate: func(st *websterengine.State, _ *fakeGit) { st.Batches[8].Status = websterengine.DigestStatusDone }, want: "is not a failed batch"},
 		{name: "other uncheckable entry", batch: 8, mutate: func(st *websterengine.State, _ *fakeGit) {
-			st.Batches[8].Uncheckable = append(st.Batches[8].Uncheckable, ".lyx/webster/pause")
+			st.Batches[8].Uncheckable = append(st.Batches[8].Uncheckable, ".lym/webster/pause")
 		}, want: "not a pathless fabric reference"},
 		{name: "no start commit", batch: 8, mutate: func(st *websterengine.State, _ *fakeGit) { st.Batches[8].StartSHA = "" }, want: "recorded no start commit"},
 		{name: "HEAD moved past the start on a command that is not a reader", batch: 8, mutate: func(_ *websterengine.State, g *fakeGit) { g.commit() }, want: "reset --to batch-start --batch 08"},
@@ -169,15 +169,15 @@ func TestAcceptBatchFabricReference_Refusals(t *testing.T) {
 			g.commit()
 			g.parents["unrelated"] = nil
 			st.Batches[8].StartSHA = "unrelated"
-		}, want: "1) lyx webster reset --to start; 2) lyx webster run"},
+		}, want: "1) lym webster reset --to start; 2) lym webster run"},
 		{name: "committed batch on a dirty worktree", batch: 8, mutate: func(st *websterengine.State, g *fakeGit) {
 			committedWith(readOnlyEntry("cat a"))(st, g)
 			g.dirtyPaths = []string{"internal/x/x.go"}
 		}, want: "untracked changes: internal/x/x.go;"},
-		{name: "dirty worktree", batch: 8, mutate: func(_ *websterengine.State, g *fakeGit) { g.dirtyPaths = []string{"_lyx/", "internal/x/x.go"} }, want: "untracked changes: internal/x/x.go;"},
-		{name: "dirty worktree names the accept-audit re-run", batch: 8, mutate: func(_ *websterengine.State, g *fakeGit) { g.dirtyPaths = []string{"internal/x/x.go"} }, want: `re-run "lyx webster accept-audit --batch 8"`},
-		{name: "dirty worktree names the recover-batch re-run", batch: 8, verb: "recover-batch", mutate: func(_ *websterengine.State, g *fakeGit) { g.dirtyPaths = []string{"internal/x/x.go"} }, want: `re-run "lyx webster recover-batch 8"`},
-		{name: "committed batch with a redirection names the recover-batch re-run", batch: 8, verb: "recover-batch", mutate: committedWith(readOnlyEntry("cat a > b")), want: `re-run "lyx webster recover-batch 8"`},
+		{name: "dirty worktree", batch: 8, mutate: func(_ *websterengine.State, g *fakeGit) { g.dirtyPaths = []string{"_lym/", "internal/x/x.go"} }, want: "untracked changes: internal/x/x.go;"},
+		{name: "dirty worktree names the accept-audit re-run", batch: 8, mutate: func(_ *websterengine.State, g *fakeGit) { g.dirtyPaths = []string{"internal/x/x.go"} }, want: `re-run "lym webster accept-audit --batch 8"`},
+		{name: "dirty worktree names the recover-batch re-run", batch: 8, verb: "recover-batch", mutate: func(_ *websterengine.State, g *fakeGit) { g.dirtyPaths = []string{"internal/x/x.go"} }, want: `re-run "lym webster recover-batch 8"`},
+		{name: "committed batch with a redirection names the recover-batch re-run", batch: 8, verb: "recover-batch", mutate: committedWith(readOnlyEntry("cat a > b")), want: `re-run "lym webster recover-batch 8"`},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {

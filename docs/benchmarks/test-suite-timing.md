@@ -38,7 +38,7 @@ Method throughout: median of 3 warm runs per tier, `go build ./...` first.
 | Ryzen AI 7 445, Linux (bare metal) | none | 1.03 s | 4.97 s | 2026-07-13 |
 | Ryzen AI 7 445, Linux (bare metal, after test-seam fixes) | none | 3.86 s | 6.48 s | 2026-08-01 |
 
-The work laptop OSL-1046, an Intel Core Ultra 7 366H on bare-metal Ubuntu 24.04 with Cortex XDR, is measured through `lyx gate test` instead, before and after the gate's `-trimpath`, in [gate-test-xdr.md](gate-test-xdr.md).
+The work laptop OSL-1046, an Intel Core Ultra 7 366H on bare-metal Ubuntu 24.04 with Cortex XDR, is measured through `lym gate test` instead, before and after the gate's `-trimpath`, in [gate-test-xdr.md](gate-test-xdr.md).
 
 ## What the spread shows
 
@@ -70,7 +70,7 @@ Each of these was measured, and each is the reason a row above differs from the 
 | **Hermetic git test environment** (`gitkit.HermeticGitEnv()` via `TestMain`) | Tier 2 ~208 s → ~128 s | The operator's global gitconfig carried `core.fsmonitor=true`, causing hundreds of `fsmonitor--daemon` + auto-`maintenance` spawns per run (308 in one package alone, 60 % of its git process-seconds). Full trail in [fixture-copy.md](fixture-copy.md). |
 | **cobra's Windows mousetrap check disabled** (`cobra.MousetrapHelpText = ""` in `internal/clihelp`) | Tier 1 ~29 s → ~9.95 s on Windows | Every `Execute()` called `mousetrap.StartedByExplorer()` — a `CreateToolhelp32Snapshot` walk of the whole OS process table. A CPU profile showed 99 % of `internal/clihelp`'s samples inside that syscall, and every `*cli` package paid it per test. |
 | **Real-time-wait tests given seams** (`ghAuthTokenTimeout` const → var; `--wait 1ns` on `await-batch`) | Tier 1 6.23 → 3.86 s, Tier 2 33.4 → 6.48 s on Linux | Two tests blocked on production timeouts (5 s and ~30 s) to prove those timeouts are honoured. Overriding the timeout proves the same thing in milliseconds. |
-| **Two-tier split, machine-enforced** (`//go:build integration` + `cmd/lyx/tierpurity_test.go`) | The single ~82 s loop became ~3.5 s / ~42 s | Tier 1 spawns no `git init` / `git worktree add` / fixture-tree copies repo-wide. Not "zero processes" — untagged tests reaching `hubgeometry.Resolve` on error paths still spawn one cheap, expected-to-fail `git rev-parse`, which the guard deliberately permits. |
+| **Two-tier split, machine-enforced** (`//go:build integration` + `cmd/lym/tierpurity_test.go`) | The single ~82 s loop became ~3.5 s / ~42 s | Tier 1 spawns no `git init` / `git worktree add` / fixture-tree copies repo-wide. Not "zero processes" — untagged tests reaching `hubgeometry.Resolve` on error paths still spawn one cheap, expected-to-fail `git rev-parse`, which the guard deliberately permits. |
 
 **Attribution noise.** Per-package elapsed is inflated by CPU contention — `go test` runs ~60 packages in parallel, and the sum of package times typically runs 3–6× the wall-clock.
 Trust the wall-clock;
@@ -116,7 +116,7 @@ Machine is the Intel 155U on native Windows unless noted — the only environmen
 
 The 2026-08-13 row's near-zero payoff is a property of this machine, not of `t.Parallel()` itself: this same table's [All environments](#all-environments) section already records Tier 2 at 4.97 s on bare-metal Linux against 131.7 s on the Cortex-XDR Windows laptop, and it is the slower, I/O-bound environments — where `go test`'s cross-package concurrency is already saturated by AV/NTFS overhead — that stand to gain the most from a package's own tests running in parallel rather than serially within it.
 
-The 2026-07-13 mousetrap block corrected two earlier causal claims: `cmd/lyx`'s guard tests cost ~0.25 s combined in isolation (not the AST-walk cost earlier blocks attributed to them), and 44 of a since-retired module's 45 tests summed to under 1 s (its earlier 12–19 s was contention attribution plus the one lingering-child test).
+The 2026-07-13 mousetrap block corrected two earlier causal claims: `cmd/lym`'s guard tests cost ~0.25 s combined in isolation (not the AST-walk cost earlier blocks attributed to them), and 44 of a since-retired module's 45 tests summed to under 1 s (its earlier 12–19 s was contention attribution plus the one lingering-child test).
 Both were parallel-contention artifacts, which is the standing hazard when reading per-package numbers.
 
 ## test-suite-measure: before and after the speed fixes
@@ -154,18 +154,18 @@ The integration run's twenty slowest top-level tests (run 4):
 | `TestWatchdogIntegration_ExitsAfterIdleCyclesAndReleasesLock` | `internal/reedcli` | 17.41 s |
 | `TestWatchdogReap_DescendantClosureConfirmedExited` | `internal/reedcli` | 15.86 s |
 | `TestRun_Cancellation` | `internal/verifyrun` | 10.31 s |
-| `TestEnforcement_FabricVocabulary` | `internal/lyxcwd` | 9.09 s |
+| `TestEnforcement_FabricVocabulary` | `internal/lymcwd` | 9.09 s |
 | `TestWatchdogIntegration_ResizeAppliesOnlyToThatWorktree` | `internal/reedcli` | 5.53 s |
 | `TestVerify_CancelledRunLeavesNoRecord` | `internal/verifytree` | 5.02 s |
-| `TestCrossCompileLinux` | `cmd/lyx` | 2.81 s |
+| `TestCrossCompileLinux` | `cmd/lym` | 2.81 s |
 | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver` | `internal/loomcli` | 2.78 s |
 | `TestBattenIntegration_RunShedPausedChild_WaitsThenTearsDownOnceDone` | `internal/battencli` | 2.72 s |
-| `TestBuildInto_UnwritableDirReturnsError` | `internal/testkit/lyxbin` | 2.39 s |
-| `TestExitSweep_QuietZeroExitNeitherArmsNorSweeps` | `cmd/lyx` | 2.35 s |
-| `TestExitSweep_InvalidConfigWarnsAndKeepsExitCode` | `cmd/lyx` | 2.32 s |
-| `TestExitSweep_ConfiguredCountKeepsNewestSeededTraces` | `cmd/lyx` | 2.28 s |
-| `TestRootHookWritesTraceFileOnNonZeroExit` | `cmd/lyx` | 2.27 s |
-| `TestBuild_ProducesExecutableBinary` | `internal/testkit/lyxbin` | 2.20 s |
+| `TestBuildInto_UnwritableDirReturnsError` | `internal/testkit/lymbin` | 2.39 s |
+| `TestExitSweep_QuietZeroExitNeitherArmsNorSweeps` | `cmd/lym` | 2.35 s |
+| `TestExitSweep_InvalidConfigWarnsAndKeepsExitCode` | `cmd/lym` | 2.32 s |
+| `TestExitSweep_ConfiguredCountKeepsNewestSeededTraces` | `cmd/lym` | 2.28 s |
+| `TestRootHookWritesTraceFileOnNonZeroExit` | `cmd/lym` | 2.27 s |
+| `TestBuild_ProducesExecutableBinary` | `internal/testkit/lymbin` | 2.20 s |
 | `TestVerbCases_CleanState` | `internal/fabricengine` | 2.10 s |
 | `TestWatchdogSelfHeal_SurvivesInducedTmuxFailure` | `internal/reedengine` | 2.07 s |
 | `TestConcurrentReadsDuringUpserts` | `internal/boardengine/boardtest` | 1.76 s |
@@ -201,21 +201,21 @@ The integration run's twenty slowest top-level tests (run 4):
 | `TestWatchdogIntegration_ExitsAfterIdleCyclesAndReleasesLock` | `internal/reedcli` | 3.02 s |
 | `TestBattenIntegration_RunShedPausedChild_WaitsThenTearsDownOnceDone` | `internal/battencli` | 2.97 s |
 | `TestMergeVerbs_ForeignMergeState_EverySideAndShapeRefuses` | `internal/fabricengine` | 2.93 s |
-| `TestExitSweep_QuietZeroExitNeitherArmsNorSweeps` | `cmd/lyx` | 2.91 s |
+| `TestExitSweep_QuietZeroExitNeitherArmsNorSweeps` | `cmd/lym` | 2.91 s |
 | `TestMidMerge_ForeignState_EverySideAndShape` | `internal/fabricengine` | 2.88 s |
 | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver` | `internal/loomcli` | 2.83 s |
-| `TestExitSweep_InvalidConfigWarnsAndKeepsExitCode` | `cmd/lyx` | 2.79 s |
-| `TestCrossCompileLinux` | `cmd/lyx` | 2.79 s |
-| `TestBuild_ProducesExecutableBinary` | `internal/testkit/lyxbin` | 2.78 s |
+| `TestExitSweep_InvalidConfigWarnsAndKeepsExitCode` | `cmd/lym` | 2.79 s |
+| `TestCrossCompileLinux` | `cmd/lym` | 2.79 s |
+| `TestBuild_ProducesExecutableBinary` | `internal/testkit/lymbin` | 2.78 s |
 | `TestWatchdogReap_DescendantClosureConfirmedExited` | `internal/reedcli` | 2.68 s |
 | `TestWatchdogIntegration_ResizeAppliesOnlyToThatWorktree` | `internal/reedcli` | 2.43 s |
 | `TestMerge_NoUpstreamSidePassesVacuously` | `internal/fabricengine` | 2.42 s |
 | `TestVerbCases_CleanState` | `internal/fabricengine` | 2.42 s |
 | `TestConcurrentReadsDuringUpserts` | `internal/boardengine/boardtest` | 2.37 s |
 | `TestMerge_MessagePrecedence` | `internal/fabricengine` | 2.37 s |
-| `TestExitSweep_ConfiguredCountKeepsNewestSeededTraces` | `cmd/lyx` | 2.34 s |
+| `TestExitSweep_ConfiguredCountKeepsNewestSeededTraces` | `cmd/lym` | 2.34 s |
 | `TestMerge_DirtyTargetHalts` | `internal/fabricengine` | 2.23 s |
-| `TestRootHookWritesTraceFileOnNonZeroExit` | `cmd/lyx` | 2.19 s |
+| `TestRootHookWritesTraceFileOnNonZeroExit` | `cmd/lym` | 2.19 s |
 | `TestWatchdogSelfHeal_SurvivesInducedTmuxFailure` | `internal/reedengine` | 2.11 s |
 | `TestWatchdogReap_LoopStaysLiveDuringReap` | `internal/reedcli` | 1.90 s |
 
@@ -300,18 +300,18 @@ The integration run's twenty slowest top-level tests (run 4):
 | `TestRunCLI_AdoptRemoteWeftScenario` | `internal/fabriccli` | 4.73 s |
 | `TestLoomFailedReedUpRefuses` | `internal/loomcli` | 4.51 s |
 | `TestLoomPreBootstrapPair` | `internal/loomcli` | 4.27 s |
-| `TestCrossCompileLinux` | `cmd/lyx` | 3.78 s |
+| `TestCrossCompileLinux` | `cmd/lym` | 3.78 s |
 | `TestLoomStatusAndPauseOnNeverBootstrappedPair` | `internal/loomcli` | 3.73 s |
 | `TestResetCmd` | `internal/webstercli` | 3.60 s |
 | `TestRunCLI_CleanupRemoveScenario` | `internal/fabriccli` | 3.54 s |
-| `TestExitSweep_ConfiguredCountKeepsNewestSeededTraces` | `cmd/lyx` | 3.30 s |
-| `TestRootHookWritesTraceFileOnNonZeroExit` | `cmd/lyx` | 3.24 s |
-| `TestBuild_ProducesExecutableBinary` | `internal/testkit/lyxbin` | 3.04 s |
-| `TestExitSweep_InvalidConfigWarnsAndKeepsExitCode` | `cmd/lyx` | 2.99 s |
+| `TestExitSweep_ConfiguredCountKeepsNewestSeededTraces` | `cmd/lym` | 3.30 s |
+| `TestRootHookWritesTraceFileOnNonZeroExit` | `cmd/lym` | 3.24 s |
+| `TestBuild_ProducesExecutableBinary` | `internal/testkit/lymbin` | 3.04 s |
+| `TestExitSweep_InvalidConfigWarnsAndKeepsExitCode` | `cmd/lym` | 2.99 s |
 | `TestFinalize_OverRealHub` | `internal/landingshed` | 2.86 s |
 | `TestSpawnScenario` | `internal/ideengine` | 2.73 s |
 | `TestRunCLI_HubMutationScenario` | `internal/fabriccli` | 2.56 s |
-| `TestEnforcement_FabricVocabulary` | `internal/lyxcwd` | 2.43 s |
+| `TestEnforcement_FabricVocabulary` | `internal/lymcwd` | 2.43 s |
 | `TestVerbCases_CleanState` | `internal/fabricengine` | 2.32 s |
 | `TestSync` | `internal/boardengine/boardtest` | 2.16 s |
 | `TestConcurrentReadsDuringUpserts` | `internal/boardengine/boardtest` | 2.14 s |
@@ -335,7 +335,7 @@ Test binaries linking `github.com/tree-sitter/go-tree-sitter`, counted by `go li
 | Before (this plan's measurement on the before tree) | 44 |
 | After | 8 |
 
-The eight after-state binaries are the CLI packages that call the index (`cmd/lyx`, `loomcli`, `shedcli`, `webstercli`, `quarrycli`), `planglyph`, and the test binaries of `websterengine` and `loomshed`, whose tests drive the real index.
+The eight after-state binaries are the CLI packages that call the index (`cmd/lym`, `loomcli`, `shedcli`, `webstercli`, `quarrycli`), `planglyph`, and the test binaries of `websterengine` and `loomshed`, whose tests drive the real index.
 
 Forced-relink `go test -c` per package, three runs each after one warm build, relinking through a changed `-ldflags` value:
 

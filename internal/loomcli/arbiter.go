@@ -1,4 +1,4 @@
-// arbiter.go implements the body of `lyx loom arbiter`.
+// arbiter.go implements the body of `lym loom arbiter`.
 // At a stop the run's driver cannot settle, it hands the stop to the shed-layer arbiter call and prints the validated verdict.
 // The verb works over injected seams, so every branch is testable with a fake shuttle and clock; the wiring that adapts the real ones sits beside it.
 
@@ -23,7 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// arbiterVerb runs `lyx loom arbiter` over deps and prints its envelope to out, returning the exit code.
+// arbiterVerb runs `lym loom arbiter` over deps and prints its envelope to out, returning the exit code.
 // It spawns at most Settings.MaxSpawns agents per run, counted from the attempt records on disk so no restart resets the count, and moves no run itself.
 // A re-run for the stop an attempt already arbitrated spawns nothing: it returns that attempt's verdict, or waits on its live arbiter.
 func arbiterVerb(out io.Writer, deps shedarbiter.Deps, in shedarbiter.Input) int {
@@ -79,7 +79,7 @@ verdict, or waits on the arbiter still running. Each refusal names its way
 forward, the hand-back to the run's parent.
 
 Example:
-  lyx loom arbiter <run-id> --envelope <stop-envelope> --report <stop-report>`,
+  lym loom arbiter <run-id> --envelope <stop-envelope> --report <stop-report>`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {

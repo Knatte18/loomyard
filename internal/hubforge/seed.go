@@ -23,7 +23,7 @@ import (
 // the three ad-hoc call sites this migration replaces silently wrong, each guessing a base from the
 // path shape in front of it.
 //
-// Seeding the warp side is impossible and this function does not offer it: <worktree>/_lyx is a weft
+// Seeding the warp side is impossible and this function does not offer it: <worktree>/_lym is a weft
 // junction excluded from the warp's index via .git/info/exclude, so `git add .` there stages nothing
 // and the commit errors.
 //

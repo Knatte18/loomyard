@@ -29,7 +29,7 @@ const (
 	// the run lock held by a live driver or another `step` invocation,
 	// or a check the spec runs before the drive, under the run lock or in its seeding, refusing because the run is held elsewhere or no longer seeded.
 	KindBusy = "busy"
-	// KindUnseeded means the status file specifically -- not seed.json, which "lyx shed seed"
+	// KindUnseeded means the status file specifically -- not seed.json, which "lym shed seed"
 	// writes and this vocabulary never reports on -- could not be seeded: the bootstrap's status
 	// sub-step failed for a reason other than the file already existing.
 	KindUnseeded = "unseeded"

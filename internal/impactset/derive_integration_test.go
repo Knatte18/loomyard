@@ -75,7 +75,7 @@ func TestDerive_OverARepository(t *testing.T) {
 	writeRepoFile(t, dir, "b/b.go", "package b\n\nimport _ \"example.com/m/a\"\n")
 	writeRepoFile(t, dir, "c/c.go", "package c\n")
 	writeRepoFile(t, dir, "g/g.go", "package g\n")
-	writeRepoFile(t, dir, "g/g_test.go", "package g\n\nimport \"testing\"\n\n//lyx:guard\nfunc TestGuard(t *testing.T) {}\n")
+	writeRepoFile(t, dir, "g/g_test.go", "package g\n\nimport \"testing\"\n\n//lym:guard\nfunc TestGuard(t *testing.T) {}\n")
 	base := commitAll(t, dir, "base")
 
 	t.Run("an empty base falls back", func(t *testing.T) {
@@ -204,7 +204,7 @@ func TestDerive_OverARepository(t *testing.T) {
 	})
 
 	t.Run("a misplaced guard marker returns the scan error", func(t *testing.T) {
-		writeRepoFile(t, dir, "g/h_test.go", "package g\n\n//lyx:guard\nvar misplaced = 1\n")
+		writeRepoFile(t, dir, "g/h_test.go", "package g\n\n//lym:guard\nvar misplaced = 1\n")
 		defer remove(t, "g/h_test.go")
 		if _, err := DeriveTargets(context.Background(), dir, head); !IsGuardScanError(err) {
 			t.Errorf("DeriveTargets() error = %v; want a *GuardScanError", err)

@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // HealthCause names the specific condition a failed Healthy check found, letting a caller like
@@ -50,7 +50,7 @@ type HealthReason struct {
 // Returns (true, HealthReason{}, nil) if in sync;
 // (false, reason, nil) if out of sync;
 // (false, HealthReason{}, err) if a system error occurs.
-func Healthy(l *lyxcwd.Location) (ok bool, reason HealthReason, err error) {
+func Healthy(l *lymcwd.Location) (ok bool, reason HealthReason, err error) {
 	// Both branch reads go through readBranch (reconcile.go) rather than a bare
 	// rev-parse --abbrev-ref HEAD, so an UNBORN branch — the weft primary's ordinary state
 	// immediately after a clone against an empty remote — is answered rather than reported as an

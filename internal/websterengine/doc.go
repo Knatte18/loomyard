@@ -3,14 +3,14 @@
 // session reads the plan's overview and the repo's rules once, never the code, then forks one implementer
 // per execution batch in-session (Claude Code's Agent tool, subagent_type "fork"), each fork reading the code its cards need itself, sequentially — one fork at a time, one worktree — in an order sequence.go derives from the cards' own declared dependencies, not the plan's declared order.
 // websterengine holds no loop itself —
-// the loop is the Master session driving fat `lyx webster` verbs (internal/webstercli);
+// the loop is the Master session driving fat `lym webster` verbs (internal/webstercli);
 // this package provides only those verbs' logic plus the distillation behind them.
 //
 // # Plan consumption: one parser, one batcher registry
 //
 // webster consumes the pinned flat card-list plan format (see
 // contracts/specs/loom-plan-spec.md) through internal/planparser, the SOLE
-// parser of the on-disk `_lyx/plan/` tree — no code in this package or
+// parser of the on-disk `_lym/plan/` tree — no code in this package or
 // anywhere else re-derives that grammar. Neither RenderForkPrompt nor
 // RenderRecoveryPrompt takes a *planparser.Plan at all any more — per the
 // fork-context-hygiene Shared Decision, both render a card's content from its
@@ -73,13 +73,13 @@
 // It is informational like `deviations`, and the prior-batch line and the resume trail carry it to the next fork and a resumed Master.
 // A fork returns FAILED on a failed card gate, card `**Verify:**` or batch gate, never on deviation alone and never on a slot-busy exit.
 // Plan-predicted file impact is frequently incomplete, so treating deviation as failure would make the system impractically brittle.
-// Within one fork's batch, each card lands as its own commit (BatchState.CardSHAs records the ordered per-card SHA trail — one element under the identity batcher, more once a grouping batchifier ships), and a card that declares a `**Verify:**` line has `lyx gate card-verify` run for it, which must pass before the next card.
+// Within one fork's batch, each card lands as its own commit (BatchState.CardSHAs records the ordered per-card SHA trail — one element under the identity batcher, more once a grouping batchifier ships), and a card that declares a `**Verify:**` line has `lym gate card-verify` run for it, which must pass before the next card.
 // After the last card the fork runs the batch gate once;
 // Go never runs it, and Webster's plan-level `webster` gate catches a fork that skips it.
-// The fork runs every card gate step, `lyx gate card-verify` call and the batch gate in the foreground under the gate rule in its system prompt and never backgrounds a call, so its only turn end is its final report.
-// A card's own gate, which begin-batch and recover-batch render into the fork's prompt, is the hub's `card` gate call, `lyx gate test --wait --gate card --card <card id>` from `gateslot.Config.GateCall`, then `lyx loom lint-comments`, the comment line-break lint, then `lyx loom lint-pattern`, the PATTERN headroom lint, one step per line.
+// The fork runs every card gate step, `lym gate card-verify` call and the batch gate in the foreground under the gate rule in its system prompt and never backgrounds a call, so its only turn end is its final report.
+// A card's own gate, which begin-batch and recover-batch render into the fork's prompt, is the hub's `card` gate call, `lym gate test --wait --gate card --card <card id>` from `gateslot.Config.GateCall`, then `lym loom lint-comments`, the comment line-break lint, then `lym loom lint-pattern`, the PATTERN headroom lint, one step per line.
 // The gate call computes the card's packages and runs the guard step itself, so Go renders no package list and scans for no guard test.
-// The batch gate is the hub's `batch` gate call, `lyx gate test --wait --gate batch`, over every card of the batch, `--card <card id>` once per card.
+// The batch gate is the hub's `batch` gate call, `lym gate test --wait --gate batch`, over every card of the batch, `--card <card id>` once per card.
 // Both calls are rendered from `BeginDeps.Gate` and `RecoverDeps.Gate`, which `webstercli` loads from the hub's `gate.yaml`;
 // a hub whose `card` or `batch` list the config cannot give refuses begin-batch and recover-batch with the config's way forward before they mutate anything.
 // The implementer body tells a fork to fix a guard step failure on a file outside the card's list under the card's commit, moving a pin only when the pin itself must move.
@@ -149,7 +149,7 @@
 // # one dispatch scope for begin-batch, run entry and validate
 //
 // A plan describes intended change, so re-resolving a card whose work may already have landed reports the plan working as designed as a defect.
-// begin-batch, run entry and `lyx webster validate` therefore all take their scope from DispatchScope:
+// begin-batch, run entry and `lym webster validate` therefore all take their scope from DispatchScope:
 // begun is every card of a batch begin-batch recorded, terminal or not, and those cards are not resolved;
 // forthcoming is the cards of every begun batch whose record is not terminal.
 // A forthcoming card's Create targets and Rename New sides are excluded from the status check, so a later card that Uses one passes while the fork has landed nothing yet.
@@ -202,7 +202,7 @@
 // `rebaseline` accepts an operator's edit, so it never moves a begun card's hash, except for a card the operator names with --card whose batch is in flight or terminal failed, dead or stuck.
 //
 // A foreign edit an operator means to keep has its own way forward:
-// `lyx webster rebaseline --card NN` (Rebaseline) accepts the on-disk plan as the new baseline without dropping any batch record, provided the edited plan's batch of each recorded number still holds exactly the cards that record names.
+// `lym webster rebaseline --card NN` (Rebaseline) accepts the on-disk plan as the new baseline without dropping any batch record, provided the edited plan's batch of each recorded number still holds exactly the cards that record names.
 // With a recorded partition, Rebaseline keeps every batch up to the last begun one as recorded, profile and estimate included, and refuses a plan whose first cards are not exactly those batches' recorded cards.
 // It batches every plan card after the kept prefix with the then-active batchifier, asserts the order over kept batches and tail together, and only then replaces State.Partition;
 // cards added, removed or reordered after the last begun batch are accepted and regrouped.
@@ -237,10 +237,10 @@
 // Rebaseline logs the cause once at Info, with the copy's path where there is one, and the no-frame refusal names both.
 // Every refusal and transient of Rebaseline is keyed on RebaselineDeps.Step: empty keeps the manual verbs, and a set step, the loom's Webster row re-step, replaces them, so no text on that path tells an agent to run a verb by hand.
 // A done batch's card and a changed frame refuse with the follow-up card landing as their way forward:
-// add a follow-up card after the last begun batch that carries the decision, with its Card Index line, then `lyx webster rebaseline --card NN` naming it.
+// add a follow-up card after the last begun batch that carries the decision, with its Card Index line, then `lym webster rebaseline --card NN` naming it.
 // The fingerprint refusals in begin-batch and run name the landing too, and for an index-only change name rebaseline with the added cards' flags.
 // An operator decision taken mid-Webster reaches the plan in this order:
-// `lyx loom decision add` for the record, the card edit (or a follow-up card with its index line), then `lyx webster rebaseline --card NN`.
+// `lym loom decision add` for the record, the card edit (or a follow-up card with its index line), then `lym webster rebaseline --card NN`.
 // The verb's notice reaches Master with the decision's text inline, since Master reads no decision record;
 // Master hands it on through the forks it spawns afterwards, whose implementer and verify-fix bodies let a parent decision win over a card, and with no batch left it tells its parent the decision reaches the code only through a gate fixer or a plan amendment.
 // The notice reaches only a Master already running, so Run also renders every `Added after Discussion` entry of the decision record, verbatim, into the master prompt's `parent_decisions` marker (`none` without one):
@@ -254,7 +254,7 @@
 // A refusal there mutates nothing;
 // validate still lints but skips its restamp.
 // Every plan-hash restamp and run initialisation also stores the hashed content under `<WebsterDir>/plan-baseline/`, one file per content named by its SHA-256, so the fabric sync carries it with state.json.
-// `lyx webster restore-plan` (RestorePlan) writes every plan file that differs from the recorded plan back from that store and removes a plan file the run never recorded;
+// `lym webster restore-plan` (RestorePlan) writes every plan file that differs from the recorded plan back from that store and removes a plan file the run never recorded;
 // it never touches state.json, and refuses with ErrPlanBaselineMissing, changing nothing, when a copy is missing.
 // Each batch record carries the card set it was begun with (BatchState.Cards) so that check has something to compare against.
 // It also carries each card file's content hash (BatchState.CardHashes), so a begun card whose body changed while its file name stayed is refused too, not only a changed id;
@@ -264,35 +264,35 @@
 //
 // The fork and parent audits classify each finding (ClassifyViolation) as correctness or policy.
 // A correctness finding means the delta or the run's own state may be wrong.
-// It is a fork writing one of Master's two contract files, anything under the plan directory, or anything under webster's run directory but its own report (fork-state-write), or a parent write under the run's `_lyx` directory, into the worktree's tracked (not git-ignored) content, under the run's `.lyx` state directory (webster's locks, another module's lock or pause flag, a reed launch script), or into another worktree of the task repository.
+// It is a fork writing one of Master's two contract files, anything under the plan directory, or anything under webster's run directory but its own report (fork-state-write), or a parent write under the run's `_lym` directory, into the worktree's tracked (not git-ignored) content, under the run's `.lym` state directory (webster's locks, another module's lock or pause flag, a reed launch script), or into another worktree of the task repository.
 // A fabric reference is correctness too unless its command is read-only, since an agent never touches the fabric repo for a write and the command can rewrite run state the cards' verify commands cannot detect;
 // the read-only classifier is injected (RecordDeps, RunDeps and RecoverDeps carry it as ReadOnly) and sees static shape only, so a command behind `bash -c`, a variable or a substitution stays correctness, and a nil classifier accepts nothing.
-// The classifier splits a `lyx`, `git` or `sed` segment into shell words, so a quoted word is its dequoted text, and a quoted writing flag is still rejected.
+// The classifier splits a `lym`, `git` or `sed` segment into shell words, so a quoted word is its dequoted text, and a quoted writing flag is still rejected.
 // An unquoted glob character is rejected, except after the `--` of `git log`, `show`, `diff` and `status`, where every word is a pathspec.
 // A leading tilde is text, so a home path is admitted.
 // The stderr redirections `2>&1` and `2>/dev/null` are dropped before the redirection scan, and every other redirection still fails it.
 // `sed` with the quiet flag (`-n`, `--quiet` or `--silent`), then print commands joined by `;` that each take a line-number or `/RE/` address or a range of two, then file words, is a read.
-// A trailing `--json` is a help form of a `lyx` segment, since the global flag raises help before the command runs.
+// A trailing `--json` is a help form of a `lym` segment, since the global flag raises help before the command runs.
 // A policy finding breaks a steering rule without touching correctness, such as a named spawn, a nested agent call or a read-only fabric reference.
 // Each finding carries a stable identity (its Key, prefixed by the session id for a parent finding),
 // and state.json's ledger dispositions it once per run, so the whole-session parent audit repeating earlier findings on every record-batch never re-judges them.
 // A policy finding is recorded as a warning on the batch once the evidence holds:
 // an OK report on a batch that carries policy findings first has its cards' verify commands re-run in-process (rerunCardVerifies), and a failing re-run makes those findings correctness for the batch and fails it.
-// A rerun command never sees gateslot.PrebuiltLyxEnv, slotted or not, so its own `go test` builds lyx once per test binary.
+// A rerun command never sees gateslot.PrebuiltLymEnv, slotted or not, so its own `go test` builds lym once per test binary.
 // A correctness finding fails the batch on its merits instead of wedging it:
-// the batch goes terminal with digest status failed and its reasons, the report is archived, and record-batch returns *BatchFailedError naming `lyx webster recover-batch`.
+// the batch goes terminal with digest status failed and its reasons, the report is archived, and record-batch returns *BatchFailedError naming `lym webster recover-batch`.
 // recover-batch proceeds from a failed batch and hands its strand the failure digest,
 // except a batch failed on a correctness finding the recovery check cannot verify (a finding with no path, or a path outside the tracked tree and the plan directory), which its record lists as Uncheckable:
 // recover-batch refuses it with ErrRecoveryNeedsFresh before spawning anything,
-// and the way forward is `lyx webster reset --to start`, which archives the run record, and then `lyx webster run`.
+// and the way forward is `lym webster reset --to start`, which archives the run record, and then `lym webster run`.
 // `run --fresh` drops such a batch under the same HEAD and path rules as a pending finding.
 // A pathless entry is recognised by its class prefix and never resolved as a path.
-// One narrow exception keeps the batches before it (AcceptBatchFabricReference, `lyx webster accept-audit --batch NN`):
+// One narrow exception keeps the batches before it (AcceptBatchFabricReference, `lym webster accept-audit --batch NN`):
 // when every Uncheckable entry is a pathless fabric reference, the batch recorded a start commit and the worktree is clean apart from the run's own state,
 // the explicit call clears the entries and records each as a batch audit warning, and recover-batch then proceeds;
 // the refusal names that route only for such a record.
 // It has two routes.
-// Either HEAD is that start, so the batch changed nothing (a batch that committed qualifies after `lyx webster reset --to batch-start --batch NN`),
+// Either HEAD is that start, so the batch changed nothing (a batch that committed qualifies after `lym webster reset --to batch-start --batch NN`),
 // or the start is an ancestor of HEAD and every entry's recorded command is read-only (`fabricengine.IsReadOnlyCommand`), so the batch's commits are kept.
 // An entry that is not read-only, or records no command, refuses the whole call with the reset-to-start and fresh-run steps.
 // The evidence shows the start still lies in HEAD's history and nothing uncommitted;
@@ -310,7 +310,7 @@
 // A batch's own bracket transcripts, the ones record-batch attributed to it since its begin-batch, count toward attribution when one of their writes is the batch's report,
 // and every one of them is re-audited in full on each call, so a fork stopped and resumed across a no-report call is attributed on the next.
 // begin-batch and recover-batch open an empty bracket list, so a transcript of an earlier bracket never counts.
-// A report that cannot be attributed to a begun batch, or to any counted fork transcript, is archived and returned as *ReportArchivedError naming `lyx webster begin-batch`, which re-drives the batch.
+// A report that cannot be attributed to a begun batch, or to any counted fork transcript, is archived and returned as *ReportArchivedError naming `lym webster begin-batch`, which re-drives the batch.
 // The post-batch done-checks fail the batch the same way when a card's own declared work is missing, while drift that concerns only a later card is recorded as a warning rather than blocking this batch.
 // One kind of later-card drift is first handed back to the fork, while the fork still holds the batch's context.
 // It is a symbol the delta deleted that a later card targets or uses, with no exact rename, no rename in the report, and no Delete target or Rename old side on the batch's own cards declaring it (planindex.Delta.RemovedTargets).
@@ -327,24 +327,24 @@
 // PersistRecoveryTerminal fails a recovered batch the same way, and recover-batch runs the same check before spawning:
 // while a blocking reference fires it refuses with ErrRecoveryDeleteReferenced, which the CLI maps to the `batch_failed` flag.
 // At run exit the audit cross-check drops dispositioned findings, records the rest of the policy findings as run-level warnings, appended to summary.md under "Audit warnings", and demotes Master's outcome done to stuck for an undispositioned correctness finding.
-// A correctness finding stays pending in state.json until `lyx webster accept-audit` clears it, and run entry refuses with ErrPendingAuditFindings meanwhile.
+// A correctness finding stays pending in state.json until `lym webster accept-audit` clears it, and run entry refuses with ErrPendingAuditFindings meanwhile.
 // accept-audit needs evidence: it checks every suspect path against the last batch head (a plan file against the run's recorded plan hashes) and refuses with ErrAuditNotAcceptable while any path differs, cannot be checked, or a finding names no path;
 // the evidence covers HEAD too, so it also refuses while HEAD carries a commit past the last batch head other than a clean parent merge, and checks the paths against that reconciled HEAD;
-// the last two clear only through `lyx webster reset --to start` and then `lyx webster run`.
+// the last two clear only through `lym webster reset --to start` and then `lym webster run`.
 // The run-exit stuck reason and the pending-findings refusal name each finding once (findingsClause), an uncheckable path carrying its reason (uncheckableReason),
-// and end in one ordered list: the restores, then `lyx webster accept-audit`, then exactly one re-entry step, RunDeps.ReentryStep (`lyx webster run` when empty);
+// and end in one ordered list: the restores, then `lym webster accept-audit`, then exactly one re-entry step, RunDeps.ReentryStep (`lym webster run` when empty);
 // the reset route ends in that same re-entry step, since the reset archives the run record and a plain run starts over.
 // A suspect path that is one of the run's two contract files, outcome.yaml or summary.md, is the exception, since it lies outside the tracked tree and has no blob to compare:
 // contractFileStatus clears it on evidence, when the file is absent or the latest successful Master write to it (from RunWrites) is later than every fork write and every recovery or verify-fixer write to it;
 // an uncleared path is one a fork, recovery or verify-fixer session wrote last, and the refusal names which.
 // A Master write whose result failed is not evidence, and an acknowledgement never clears it.
-// Every other path under `_lyx`, `.lyx` or the scratch directory stays uncheckable.
+// Every other path under `_lym`, `.lym` or the scratch directory stays uncheckable.
 // Four sites consult it before checkSuspectPaths: AcceptPendingAudit, RecoverSpawnOrAttach, the way forward of a pending finding (pendingPathsWayForward) and `run --fresh`.
-// A cleared contract path is resolved, so at run exit `lyx webster accept-audit` clears the finding directly;
+// A cleared contract path is resolved, so at run exit `lym webster accept-audit` clears the finding directly;
 // an uncleared one refuses with `rm <path>` as the first step, then the verb to re-run.
 // Absence clears the finding only: accept-audit on an absent file adds a `next` step to its envelope, since the run still needs a Master that writes both files.
 // `run --fresh` drops pending findings, with one warning per finding, even on an unchanged plan, and refuses with ErrPendingAuditFindings, archiving nothing, while a pending suspect path outside the plan still differs from the run's start commit or HEAD is not the start commit.
-// It also refuses while a pending plan path differs from the plan the run recorded and `lyx webster restore-plan` can undo that (the recorded copy is stored, or the file was never recorded);
+// It also refuses while a pending plan path differs from the plan the run recorded and `lym webster restore-plan` can undo that (the recorded copy is stored, or the file was never recorded);
 // a differing plan path whose recorded copy is missing is dropped with the archived state,
 // and its warning says so.
 // Every way forward for a differing plan path names restore-plan or `rebaseline --card`, never a git checkout.
@@ -376,7 +376,7 @@
 // starts driving that loop itself — calling the bracket verbs or waiting for
 // the report it is meant to write — livelocks the run. A fork-context PreToolUse(Bash)
 // hook in the claudeengine seam (buildSettings, gated on the same
-// fork-authorized spec that enables forks) refuses any `lyx webster` command
+// fork-authorized spec that enables forks) refuses any `lym webster` command
 // when it fires inside a fork (the hook payload carries a top-level agent_id,
 // present only for a subagent, never a top-level Master call — the fork's
 // transcript_path is NOT distinguishable, so agent_id is the load-bearing
@@ -413,7 +413,7 @@
 // Every terminal digest (done, stuck or dead) stops the recovery strand through shuttle's stop verb, even when the call then refuses on a merge in progress or a report head mismatch;
 // only a done digest also removes the run dir, which stuck and dead keep for diagnosis.
 // Every reclaim of a leftover strand (entry-time, begin-batch's prior recovery strand, recover-batch's prior strand and reset) goes through that verb, which records the stop on the strand's run before it removes a live strand, so a stop that cannot be recorded fails the reclaim.
-// `lyx webster reset --to start` likewise stops every recovery strand the state records before it resets,
+// `lym webster reset --to start` likewise stops every recovery strand the state records before it resets,
 // so no recovery agent keeps writing into the tree the reset moves;
 // `--to pre-fix` removes none.
 // Merriam runs the call as a backgrounded Bash command, ends its turn and acts on the completion notification.
@@ -460,7 +460,7 @@
 //
 // # A batch waiting on its parent
 //
-// A step only the run's parent can take, such as a hub setting in `gate.yaml`, a mutating `lyx fabric` verb lyx refuses from a strand or a board write, is no card failure: no fix and no recovery strand can take it.
+// A step only the run's parent can take, such as a hub setting in `gate.yaml`, a mutating `lym fabric` verb lym refuses from a strand or a board write, is no card failure: no fix and no recovery strand can take it.
 // The implementer body tells a fork or recovery strand that meets one to stop and report `status: NEEDS_PARENT` with a one-line `need` naming the step.
 // record-batch, and recover-batch through PersistRecoveryTerminal, record such a report as a waiting batch (waiting.go):
 // `Terminal` stays false, `Status` is `waiting`, the digest carries the need, the report is archived, and neither the post-batch pass nor the suspect check runs.
@@ -484,29 +484,14 @@
 //
 // # engine/cli split: webster is fabric-blind
 //
-// websterengine is _lyx- and fabric-blind: every function here takes an
-// already-resolved directory string, and websterengine itself declares its own
-// `_lyx/webster` and `.lyx/webster` subpaths through the four told accessors in
-// state.go (Dir/ReportsDir/ScratchDir/PromptsDir) — the anchor root they are joined
-// onto is always supplied by the caller, per the Cwd Resolution Invariant.
-// This claim is now literally true, not aspirational: no production file in this package imports
-// internal/fabricengine, and the two seams that used to reach it are engine-declared interfaces the
-// caller supplies instead — RefMatcher for the fork-audit's fabric-reference violation class.
-// internal/lyxcwd is likewise absent from this package's production imports: every path this package
-// consumes arrives already resolved, through a Geometry value (geometry.go), never through a
-// *lyxcwd.Location.
-// internal/hubgeom's WebsterGeometry and internal/standalonegeom are the two tellers that build a
-// Geometry — one from a resolved hub *lyxcwd.Location, the other from a standalone state tree — and
-// the dependency direction between them and this package is one-way: they import websterengine to
-// build the struct it declares, and websterengine never imports either back.
-// See geometry.go for what each of Geometry's fields means; this section does not restate them.
-// Every fabric commit of a webster artifact (state.json, a batch report,
-// outcome.yaml, summary.md) happens in internal/webstercli, never here, at
-// the same deterministic boundary points: begin-batch, record-batch,
-// recover-batch (spawn and terminal), and run's exit backstop. Neither
-// Master nor its forks ever touch fabric or git for webster's own
-// bookkeeping — the Fabric Git Invariant's ban is on agents driving fabric git,
-// not on the Go verbs the agent happens to invoke.
+// websterengine is _lym- and fabric-blind: every function here takes an already-resolved directory string, and websterengine itself declares its own `_lym/webster` and `.lym/webster` subpaths through the four told accessors in state.go (Dir/ReportsDir/ScratchDir/PromptsDir) — the anchor root they are joined onto is always supplied by the caller, per the Cwd Resolution Invariant.
+// This claim is now literally true, not aspirational: no production file in this package imports internal/fabricengine, and the two seams that used to reach it are engine-declared interfaces the caller supplies instead — RefMatcher for the fork-audit's fabric-reference violation class.
+// internal/lymcwd is likewise absent from this package's production imports: every path this package consumes arrives already resolved, through a Geometry value (geometry.go), never through a *lymcwd.Location.
+// internal/hubgeom's WebsterGeometry and internal/standalonegeom are the two tellers that build a Geometry — one from a resolved hub *lymcwd.Location, the other from a standalone state tree — and the dependency direction between them and this package is one-way: they import websterengine to build the struct it declares, and websterengine never imports either back.
+// See geometry.go for what each of Geometry's fields means;
+// this section does not restate them.
+// Every fabric commit of a webster artifact (state.json, a batch report, outcome.yaml, summary.md) happens in internal/webstercli, never here, at the same deterministic boundary points: begin-batch, record-batch, recover-batch (spawn and terminal), and run's exit backstop.
+// Neither Master nor its forks ever touch fabric or git for webster's own bookkeeping — the Fabric Git Invariant's ban is on agents driving fabric git, not on the Go verbs the agent happens to invoke.
 //
 // # crash/resume: fresh Master re-drives the first unreported batch
 //
@@ -514,7 +499,7 @@
 // in-flight implementer for a normal batch the way a fresh-strand-per-batch
 // loop can leave one behind — only Master's own strand and a possible
 // recovery strand ever need reclaiming. Resuming after a crash is exactly
-// re-running `lyx webster run`: entry-time reclaim stops any live recorded
+// re-running `lym webster run`: entry-time reclaim stops any live recorded
 // strand, then a fresh Master (never a provider resume) is spawned,
 // hydrated from the on-disk register — the reports directory plus
 // state.json rendered into the run's progress context — and re-drives the
@@ -524,7 +509,7 @@
 // One crash window needs a distinct resume move: a crash landing between a fork's report and record-batch leaves the re-driven batch with a report already on disk, which begin-batch refuses to overwrite when state.json records the batch — the resumed Master consumes it with record-batch instead (its fork audit keys on the bracket-opening session recorded in the batch state, never the current Master session, so the crashed session's fork transcript — still on disk — is found and policy-checked exactly as a late record would have), or with recover-batch's attach path for a recovery batch (found live in round fable-r3, where auditing the current session instead wedged that resume across all three verbs).
 // This crash window resumes on the SAME machine only: fork transcripts live under the machine-local ~/.claude projects directory, while state.json and the reports are fabric-synced —
 // a different machine sees the report with no transcript behind it, which record-batch treats exactly as it treats a forged report:
-// it archives the report and returns a *ReportArchivedError naming `lyx webster begin-batch`, which re-drives the batch.
+// it archives the report and returns a *ReportArchivedError naming `lym webster begin-batch`, which re-drives the batch.
 // A report with no begin-batch record is archived by begin-batch itself, which proceeds and returns the archive path as BeginResult.ArchivedReport;
 // only a batch with no record is archived this way, and a recorded batch's report is never archived by begin-batch.
 //
@@ -533,13 +518,13 @@
 // It names every changed card file's number as Rebaseline's cards, so it accepts exactly what the operator's `--card` flags accept: a follow-up card after the last begun batch, an unbegun card's edit, and an in-flight card as an amendment recorded unrendered for the next recovery to render;
 // a done card's edit, a begun batch's card-set change, a failed batch with uncheckable findings and an overview change outside its Card Index are refused.
 // An accepted rebaseline is saved before the batch loop starts, so a crash after it re-enters on a matching fingerprint, and the fabric receives it with the run's next sync.
-// Every error of the auto path wraps ErrAutoRebaseline, and its refusals name RunDeps.ReentryStep through Rebaseline's step-keyed texts, never `lyx webster rebaseline`; the shed adapter maps them to Stuck.
+// Every error of the auto path wraps ErrAutoRebaseline, and its refusals name RunDeps.ReentryStep through Rebaseline's step-keyed texts, never `lym webster rebaseline`; the shed adapter maps them to Stuck.
 // The accepted rebaseline's warning is logged once at Warn, leads RunResult.Warnings, opens a stuck outcome's reason and every error Run returns afterwards, and the plan refusals that follow it (validation, zero batches, quarry) wrap ErrAutoRebaseline too.
 // `--fresh` beside the option keeps its archive path and runs no rebaseline, and a run without the option keeps ErrFingerprintMismatch.
 //
 // # The plan-conflict record
 //
-// begin-batch leaves two never-tracked files in the scratch directory (`.lyx/webster/`), never under `_lyx`, so no sync carries them:
+// begin-batch leaves two never-tracked files in the scratch directory (`.lym/webster/`), never under `_lym`, so no sync carries them:
 // the conflict record `plan-conflict.md`, naming the batch, the cause and each blocking finding, and the last-routed conflict `plan-conflict-routed.md`, holding the findings of the conflict last routed to plan review.
 // Their paths are ConflictRecordPath and RoutedConflictPath, and ConflictRecordRel is the record's anchor-relative path for recipe text.
 // The record is bounded to one Webster call:
@@ -558,18 +543,18 @@
 // A gate failure reaches Merriam as a `Gate findings recorded at …` message naming the verify-gate report (VerifyGateReportPath).
 // The gate routes each failure to one of two fixers and records it as the report's `fixer`, FixerFork or FixerCold (see The verify gate below).
 // For a fork failure, Merriam spawns one fixer fork in the background with the prompt Run rendered at entry (RenderVerifyFixPrompt, into the prompts dir as verify-fix.md), ends its turn, and on the fork's notification rewrites its outcome and summary files, which re-arrives at the gate.
-// The gate's re-prompt line and its findings both open with the way forward to the routed fixer, naming the fixer-fork step and the prompt file's path, or the backgrounded `lyx webster fix-verify` call, so the rule stands where Merriam reads the failure.
+// The gate's re-prompt line and its findings both open with the way forward to the routed fixer, naming the fixer-fork step and the prompt file's path, or the backgrounded `lym webster fix-verify` call, so the rule stands where Merriam reads the failure.
 // The waiting turn end in between is no arrival.
 // Both fixers' prompts share one body, webster-body-verify-fix, behind a prefix of their own.
-// The fixer fixes the cause in source, never deletes, skips or weakens a test, never touches the plan directory or `_lyx`, commits each fix as `fix: <summary>` and does not run the plan-level verify; before it reports it runs the hub's `webster-fix` gate call, `lyx gate test --wait --gate webster-fix`, which Run renders from the told Geometry.GateConfig into the prompt's `fix_gate` marker.
+// The fixer fixes the cause in source, never deletes, skips or weakens a test, never touches the plan directory or `_lym`, commits each fix as `fix: <summary>` and does not run the plan-level verify; before it reports it runs the hub's `webster-fix` gate call, `lym gate test --wait --gate webster-fix`, which Run renders from the told Geometry.GateConfig into the prompt's `fix_gate` marker.
 // Its commits skip record-batch's done-checks, drift detection and glyph scope guard.
 // They are bounded by the gate's commit check, the run-exit fork audit, the gate's own verify and the Code-Review perch after Parent-Align, which reviews the committed range.
-// The plan directory and `_lyx` sit outside every code commit, so the run-exit fork audit is what catches a fixer write there:
+// The plan directory and `_lym` sit outside every code commit, so the run-exit fork audit is what catches a fixer write there:
 // forkOwnReport maps a fork transcript outside every batch bracket to the verify-gate report, and CheckFork audits the fixer fork as it audits a batch fork.
 //
 // # The cold verify-gate fixer
 //
-// For a cold failure, Merriam runs `lyx webster fix-verify` as a backgrounded Bash command, which Master's spawn declares an awaited shell prefix beside recover-batch, ends its turn, and on its completion notification, whatever its exit, rewrites its outcome and summary files as after a fork.
+// For a cold failure, Merriam runs `lym webster fix-verify` as a backgrounded Bash command, which Master's spawn declares an awaited shell prefix beside recover-batch, ends its turn, and on its completion notification, whatever its exit, rewrites its outcome and summary files as after a fork.
 // FixVerifySpawnOrAttach spawns the cold fixer as its own strand, role `verify-fixer`, at RoleRecovery's model choice, with RenderVerifyFixColdPrompt's prompt: the shared body behind a cold prefix carrying the parent, edit, PATTERN and friction directives and its own orientation steps.
 // It refuses, spawning nothing, with no verify-gate report on disk, a recovery role whose engine cannot audit forks, or a gate config with no `webster-fix` key.
 // The fixer's final action is its reply file in the scratch dir (VerifyFixReplyPath), the strand's shuttle output file; a stale one is removed at spawn.
@@ -587,10 +572,10 @@
 // # The plan fixer
 //
 // A `plan_conflict` refusal of begin-batch goes to a cold plan fixer before Master ends stuck:
-// Merriam runs `lyx webster fix-plan` backgrounded, ends its turn, and on the verb's completion calls begin-batch again for the same batch on verdict `fixed`, and otherwise writes `outcome: stuck` quoting the begin-batch refusal, so a loom run still reroutes to plan review through the conflict record, which nothing but the next begin-batch removes.
+// Merriam runs `lym webster fix-plan` backgrounded, ends its turn, and on the verb's completion calls begin-batch again for the same batch on verdict `fixed`, and otherwise writes `outcome: stuck` quoting the begin-batch refusal, so a loom run still reroutes to plan review through the conflict record, which nothing but the next begin-batch removes.
 // A `plan_drifted` refusal gets no fixer.
 // FixPlanSpawnOrAttach reads the conflict record (ReadConflictRecord) and spawns the fixer as its own strand, role `plan-fixer`, at RoleMaster's model choice with recovery_timeout_min as its timeout, with RenderPlanFixPrompt's prompt carrying the parent, edit and friction directives.
-// The fixer edits only the target names, paths and glyphs the findings name in the cards they name, runs `lyx webster rebaseline --card NN` for them, runs `lyx webster restore-plan` when rebaseline refuses or a finding would change what a card does, and writes its reply (PlanFixReplyPath), whose first line is `verdict: fixed` or `verdict: plan_writer`.
+// The fixer edits only the target names, paths and glyphs the findings name in the cards they name, runs `lym webster rebaseline --card NN` for them, runs `lym webster restore-plan` when rebaseline refuses or a finding would change what a card does, and writes its reply (PlanFixReplyPath), whose first line is `verdict: fixed` or `verdict: plan_writer`.
 // Each spawn appends a PlanFixerState, holding the conflict's batch and findings and the worktree's HEAD and uncommitted paths, to State.PlanFixers, which the verb saves and fabric-commits at once;
 // a call that finds the last record not terminal attaches to it.
 // FixPlanAwait waits as FixVerifyAwait does and reads the verdict from the reply, a reply without a known one reading `plan_writer`.
@@ -611,8 +596,8 @@
 // Once a pre-fix head is recorded, every commit from it to HEAD on the first-parent chain must be a non-merge commit or a clean parent merge (fixCommitRejection, in gitwrap.go);
 // any other fails the gate `Terminal`, which ends the run at once with the commit and the reason.
 // The non-merge commits in that range, with the `Pattern-Departure:` trailers their messages declare, are recorded in the gate's notes at each evaluation, and Run appends them after the wait as a `## Verify gate fix commits` section of summary.md (AppendVerifyGateFixCommits): one bullet per `fix:` commit, then one per departure.
-// Otherwise the closure renders `lyx gate test --wait --gate webster` for the `webster` gate key from the told Geometry.GateConfig, read at each arrival, and verifytree.Verify runs that call under the site label `webster gate`, told Geometry.VerifyHold so a pause covering the run holds the first run and the rerun until the resume; a pass records the tree, keyed by the rendered call.
-// A config that cannot be loaded, or a `webster` key the config refuses, is the gate's returned error naming `lyx config gate`, never a pass.
+// Otherwise the closure renders `lym gate test --wait --gate webster` for the `webster` gate key from the told Geometry.GateConfig, read at each arrival, and verifytree.Verify runs that call under the site label `webster gate`, told Geometry.VerifyHold so a pause covering the run holds the first run and the rerun until the resume; a pass records the tree, keyed by the rendered call.
+// A config that cannot be loaded, or a `webster` key the config refuses, is the gate's returned error naming `lym config gate`, never a pass.
 // A failure is parsed from the log and rerun once: a rerun pass passes the gate, and the identities that failed once are flaky, which Run reports after the wait as a warning, a summary.md section and a friction note (VerifyGateNotes.Apply).
 // A failure that survives the rerun returns findings.
 // Each failure goes to a fixer: the cold fixer for the failure that reaches the attempt budget, for one whose previous fixer added no commit above the pre-fix head, and for every failure after one that went cold; the fixer fork otherwise.
@@ -621,7 +606,7 @@
 // A run that outlives the verify timeout is never rerun, since a hang is not flakiness: it fails the gate at once,
 // and the report names the timeout, the log path and the log tail, and says the step was not re-run.
 // A failed run that hung is not re-run either: classifyHang reads the log and exit code, and the first failure and the rerun's failure are both checked.
-// The markers are checked in this order: the CPU watchdog line of `lyx gate test`, go test's `panic: test timed out after`, the runtime's `SIGQUIT: quit` dump header and a log line starting `signal: `.
+// The markers are checked in this order: the CPU watchdog line of `lym gate test`, go test's `panic: test timed out after`, the runtime's `SIGQUIT: quit` dump header and a log line starting `signal: `.
 // Without a marker, an exit code of 128 or above, or -1 with no `Detail`, which `verifyrun` returns for a shell killed by a signal, is a hang.
 // A shell that could not start and an ordinary non-zero exit below 128 are no hang.
 // Bound: the markers are matched as text anywhere in the log, so a test that prints one, or a test binary the OOM killer ends, also reads as a hang, and any exit code of 128 or above reads as one whatever caused it.
@@ -652,12 +637,12 @@
 // a deadline still ends it done through shuttle's satisfied file contract with the gate run once at finalize, and the shell's result is then never read.
 // `background_shell_wait_min` sets when a long-running shell is logged and shown in the wait marker, and expires an ungated wait on non-awaited shells into a held turn end.
 // Every shell outstanding when the run ends comes back on shuttle's `Result.EndedShells`, whatever ends the run.
-// lyx does not stop such a shell.
+// lym does not stop such a shell.
 // What ends the shell follows the run's final outcome.
 // When Master's turn ends shuttle-done (a webster done, Master's own stuck, the verify gate's demotion, or a mapping error after that end), shuttle removes Master's strand as the run finishes, and the session and the shell end with it.
-// When the run returns a died or timeout error, Master's strand stays alive until the next `lyx webster run` reclaims it at entry.
+// When the run returns a died or timeout error, Master's strand stays alive until the next `lym webster run` reclaims it at entry.
 // Run writes one best-effort `webster-background-shell` friction note once the outcome is known, on every outcome.
-// For each shell the note states its label, signal and time outstanding, that the run never read its result, that lyx did not stop the shell, what ends it and the run's final outcome.
+// For each shell the note states its label, signal and time outstanding, that the run never read its result, that lym did not stop the shell, what ends it and the run's final outcome.
 // Each shell is also a `RunResult.Warnings` entry with the same wording on every outcome that returns a `RunResult` (done and stuck), after the verify-gate demotion, so the warning and the note cannot drift;
 // an error outcome returns no `RunResult`, so the note alone carries it.
 // Every `RunResult` also carries `RunResult.Gate`, Merriam's shuttle gate outcome passed through with the verify gate's entry among its entries, the verify-gate demotion to stuck included.
@@ -674,7 +659,7 @@
 // `report-head` (ResetToReportHead) takes `--batch NN` and is the `head_sha` of batch NN's report, an abbreviated one resolved to the commit it names as record-batch does.
 // It is accepted only for a begun, non-terminal batch whose report parses and whose head descends from or equals the batch's start, with no later batch begun and no live recovery strand of the batch in reed.
 // It is the one target allowed while the run lock is held, because Master runs it inside its run between a fork's report and record-batch.
-// Its bound is that those checks rule out every writer lyx can see; a Master that spawned an in-session fork out of order stays unseen.
+// Its bound is that those checks rule out every writer lym can see; a Master that spawned an in-session fork out of order stays unseen.
 // `--batch` is required for `report-head` and `batch-start` and refused for the other three, before any git read.
 // The refusals run in order: the `--batch` pairing, run lock held (transient, except for `report-head`), no state, a merge in progress, a checked-out branch that is not the task branch,
 // no recorded target, a recorded commit missing from the repository, a target that is not an ancestor of HEAD, and a dirty tracked path outside the run's own writes.
@@ -687,7 +672,7 @@
 //
 // # The reset verb
 //
-// `lyx webster reset --to start|pre-fix|report-head|last-batch-head|batch-start [--batch NN]` (internal/webstercli) performs the reset PlanReset planned, so no recovery needs the denied `git reset --hard`.
+// `lym webster reset --to start|pre-fix|report-head|last-batch-head|batch-start [--batch NN]` (internal/webstercli) performs the reset PlanReset planned, so no recovery needs the denied `git reset --hard`.
 // Under the state-mutation lease it plans with the pair's branch read through the fabric handle,
 // resets the pair's code checkout through fabricengine's pair-checkout reset with the plan's SHA, the parent branch from the origin record and the own paths,
 // clears State.PreFixHead, saves, and fabric-syncs state.json.
@@ -748,7 +733,7 @@
 // parser, report schema, or digest contract — planparser and this
 // package's own Report/Digest types are the only ones in play. What
 // webster DOES reuse is the provider-invariant orchestration substrate
-// every `lyx` module built on top of shuttle shares (internal/reedengine,
+// every `lym` module built on top of shuttle shares (internal/reedengine,
 // internal/shuttleengine and its claudeengine, internal/gitrepo) plus a
 // small set of webster-LOCAL mechanism helpers with no cross-module
 // import: its own plan-fingerprint hash (fingerprint.go), git-query helpers built on gitrepo

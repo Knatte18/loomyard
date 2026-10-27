@@ -398,7 +398,7 @@ func runLinkedWorktreeParityChecks(t *testing.T, dir string, fx *linkedParityFix
 
 }
 
-// TestLinkedWorktree_Parity drives the linked-worktree fixture through every read-side parity case this package covers: goGit's reads of state living in the common dir, then the parity checks directly, and again reached only through a junction (internal/fslink.CreateDirLink), since that indirection is how lyx addresses these directories in production.
+// TestLinkedWorktree_Parity drives the linked-worktree fixture through every read-side parity case this package covers: goGit's reads of state living in the common dir, then the parity checks directly, and again reached only through a junction (internal/fslink.CreateDirLink), since that indirection is how lym addresses these directories in production.
 // The CurrentBranch detached-HEAD case runs after them because it mutates the worktree's checked-out ref state, and the worktree-remove case runs last because it deletes the worktree.
 // The standalone `git init` fixtures used elsewhere in this package cannot substitute for any of this: the linked worktree is the only topology production runs in.
 // The steps run serially in that order and share the fixture's worktree.

@@ -41,13 +41,13 @@ func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
 	}
 	plan := planWith(map[int]string{1: "internal/a/a.go"})
 	for name, data := range plan {
-		write("_lyx/plan/"+name, data)
+		write("_lym/plan/"+name, data)
 	}
 	gitkit.Git(t, dir, "add", ".")
 	gitkit.Git(t, dir, "commit", "-m", planCommitSubjectPrefix+"alpha")
 
 	// A real run's base tree carries no plan, so the base commit drops it as the in-memory base does.
-	gitkit.Git(t, dir, "rm", "-r", "-q", "_lyx/plan")
+	gitkit.Git(t, dir, "rm", "-r", "-q", "_lym/plan")
 	write("internal/a/a.go", lines(100))
 	// The base tree also holds the files a run's Merriam base is computed from.
 	write("INSTRUCTIONS.md", lines(instructionLines))
@@ -100,7 +100,7 @@ func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
 	}
 	memHistory := fakeHistory{commits: map[string][]gitrepo.SubjectCommit{subject: planCommits}, files: map[string]string{}}
 	for name, data := range plan {
-		memHistory.files[planCommits[0].SHA+":_lyx/plan/"+name] = data
+		memHistory.files[planCommits[0].SHA+":_lym/plan/"+name] = data
 	}
 	memBase := fakeBase{
 		shas:  map[string]bool{baseSHA: true},
@@ -152,11 +152,11 @@ func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
 	forkStart := started.UTC().Format(time.RFC3339Nano)
 	reads := oneEngine(filepath.Join(hub, "alpha"), sessionOf(
 		readOf("w.jsonl", "ly:alpha:webster",
-			bashUse("begin", "lyx "+"webster begin-batch 1"),
+			bashUse("begin", "lym "+"webster begin-batch 1"),
 			toolResultFor("begin", forkStart, `{"batch":"01-c1","start_sha":"`+baseSHA+`"}`),
 		),
 		readOf("agent-1.jsonl", "",
-			toolResult(forkStart, "- `_lyx/plan/01-c1.md`"),
+			toolResult(forkStart, "- `_lym/plan/01-c1.md`"),
 			assistant("m0", "model-a", 1, 9),
 			assistant("m1", "model-a", 1, 219),
 		),

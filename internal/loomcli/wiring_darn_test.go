@@ -20,7 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -30,7 +30,7 @@ import (
 )
 
 // wantDarnLandingCall is the landing call gateConfigWithTwoTiers renders for the `finalize` key.
-const wantDarnLandingCall = "lyx gate test --wait --gate finalize"
+const wantDarnLandingCall = "lym gate test --wait --gate finalize"
 
 func TestWire_DarnRecipe(t *testing.T) {
 	t.Parallel()
@@ -188,7 +188,7 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if err == nil {
 			t.Fatal("wire() of a darn seed with a malformed tree key = nil; want a refusal")
 		}
-		for _, want := range []string{"./tools", "lyx config darn's editor", "then re-run the lyx command that refused"} {
+		for _, want := range []string{"./tools", "lym config darn's editor", "then re-run the lym command that refused"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("wire() error = %q; want it to contain %q", err.Error(), want)
 			}
@@ -360,7 +360,7 @@ func TestWriteBoardEntrySnapshot(t *testing.T) {
 	t.Setenv("BOARD_SKIP_PUSH", "1")
 
 	t.Run("the task's entry is written", func(t *testing.T) {
-		location := &lyxcwd.Location{HubPath: boardkit.HubWithBoardConfig(t), WorktreeName: "one-perch", AnchorRel: "."}
+		location := &lymcwd.Location{HubPath: boardkit.HubWithBoardConfig(t), WorktreeName: "one-perch", AnchorRel: "."}
 		board, err := boardengine.OpenHub(location.HubPath)
 		if err != nil {
 			t.Fatalf("OpenHub() error = %v; want nil", err)
@@ -382,7 +382,7 @@ func TestWriteBoardEntrySnapshot(t *testing.T) {
 	})
 
 	t.Run("a pawl run's beam project entry is written", func(t *testing.T) {
-		location := &lyxcwd.Location{HubPath: boardkit.HubWithBoardConfig(t), WorktreeName: "a-beam", AnchorRel: "."}
+		location := &lymcwd.Location{HubPath: boardkit.HubWithBoardConfig(t), WorktreeName: "a-beam", AnchorRel: "."}
 		// A board write cannot make a beam, so the entry is written to the board file directly.
 		board := `{"version":1,"entries":[{"id":0,"slug":"a-beam","title":"A beam","kind":"project","labels":["bug"],"beam":true,"brief":"Land the members.","body":"## Idea\n\nOne beam."}]}`
 		if err := os.WriteFile(filepath.Join(fabricengine.BoardDir(location.HubPath), "board.json"), []byte(board), 0o644); err != nil {
@@ -402,10 +402,10 @@ func TestWriteBoardEntrySnapshot(t *testing.T) {
 	})
 
 	t.Run("an entry the board lacks is refused with the way forward", func(t *testing.T) {
-		location := &lyxcwd.Location{HubPath: boardkit.HubWithBoardConfig(t), WorktreeName: "no-entry", AnchorRel: "."}
+		location := &lymcwd.Location{HubPath: boardkit.HubWithBoardConfig(t), WorktreeName: "no-entry", AnchorRel: "."}
 		err := writeBoardEntrySnapshot(location)
-		if err == nil || !strings.Contains(err.Error(), `"no-entry"`) || !strings.Contains(err.Error(), "lyx board upsert") {
-			t.Errorf("writeBoardEntrySnapshot() = %v; want a refusal naming the slug and lyx board upsert", err)
+		if err == nil || !strings.Contains(err.Error(), `"no-entry"`) || !strings.Contains(err.Error(), "lym board upsert") {
+			t.Errorf("writeBoardEntrySnapshot() = %v; want a refusal naming the slug and lym board upsert", err)
 		}
 		if _, statErr := os.Stat(loomengine.DiscussionBoardEntry(location)); !os.IsNotExist(statErr) {
 			t.Errorf("snapshot stat = %v; want no file written", statErr)

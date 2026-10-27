@@ -114,7 +114,7 @@ func TestEngine_Review_TableShape(t *testing.T) {
 			_, _ = e.Review(p, opts)
 
 			if tt.declaredBullet != "" || tt.clusterFan != "" {
-				instructions, err := filepath.Glob(filepath.Join(root, ".lyx", "burler", "review-*", "*"))
+				instructions, err := filepath.Glob(filepath.Join(root, ".lym", "burler", "review-*", "*"))
 				if err != nil || len(instructions) == 0 {
 					t.Fatalf("Glob(review instruction files) = %v, %v; want the composed files", instructions, err)
 				}
@@ -210,7 +210,7 @@ func TestEngine_Review_Outcomes(t *testing.T) {
 		wantStrand string
 		wantStates []shuttleengine.SessionState
 	}{
-		{name: "a malformed PATTERN changes section refuses before any seat", malformedRecord: true, wantErrText: "lyx loom validate-discussion", wantNilGate: true},
+		{name: "a malformed PATTERN changes section refuses before any seat", malformedRecord: true, wantErrText: "lym loom validate-discussion", wantNilGate: true},
 		{name: "an accepted blocking review", script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Engine: "claude"}, writes: blockingReview}, wantOutcome: shuttleengine.OutcomeDone, wantVerdict: VerdictBlocking, wantFindings: 1, wantEngine: "claude"},
 		{name: "an accepted approved review", script: halfScript{result: done, writes: approvedReview}, wantOutcome: shuttleengine.OutcomeDone, wantVerdict: VerdictApproved},
 		{name: "a review missing a finding's fix is refused by the strict parse", script: halfScript{result: done, writes: noFixReview}, wantOutcome: shuttleengine.OutcomeDone, wantErrText: "missing a non-empty fix"},

@@ -1,6 +1,6 @@
 //go:build tier0
 
-// ownercheck_test.go pins the owner refusal of `lyx loom start` and `lyx loom resume` over a fake owner verdict.
+// ownercheck_test.go pins the owner refusal of `lym loom start` and `lym loom resume` over a fake owner verdict.
 
 package loomcli
 
@@ -17,7 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -25,7 +25,7 @@ import (
 )
 
 // TestStartAndResume_RefuseARunOwnedElsewhere drives both verbs over a receiver with a fake ownerOf:
-// an owner elsewhere refuses with the kind owned_elsewhere, the owner and `lyx adopt`, before the bootstrap lock is taken;
+// an owner elsewhere refuses with the kind owned_elsewhere, the owner and `lym adopt`, before the bootstrap lock is taken;
 // a verdict error refuses naming its cause and the re-run; a run owned here goes on; and an absent status file never calls the seam.
 func TestStartAndResume_RefuseARunOwnedElsewhere(t *testing.T) {
 	t.Parallel()
@@ -49,7 +49,7 @@ func TestStartAndResume_RefuseARunOwnedElsewhere(t *testing.T) {
 			verdict:      ownerVerdict{Owner: "there", AdoptSubject: "beam", Elsewhere: true},
 			wantCalls:    1,
 			wantKind:     shedrun.StartOwnedElsewhereKind,
-			wantMessage:  []string{`"there"`, "lyx adopt beam"},
+			wantMessage:  []string{`"there"`, "lym adopt beam"},
 		},
 		{
 			name:         "AdoptSubjectRootNamesRoot",
@@ -57,7 +57,7 @@ func TestStartAndResume_RefuseARunOwnedElsewhere(t *testing.T) {
 			verdict:      ownerVerdict{Owner: "there", AdoptSubject: "root", Elsewhere: true},
 			wantCalls:    1,
 			wantKind:     shedrun.StartOwnedElsewhereKind,
-			wantMessage:  []string{`"there"`, "lyx adopt root"},
+			wantMessage:  []string{`"there"`, "lym adopt root"},
 		},
 		{
 			name:         "NoAdoptSubjectNamesTheSlug",
@@ -65,21 +65,21 @@ func TestStartAndResume_RefuseARunOwnedElsewhere(t *testing.T) {
 			verdict:      ownerVerdict{Owner: "there", Elsewhere: true},
 			wantCalls:    1,
 			wantKind:     shedrun.StartOwnedElsewhereKind,
-			wantMessage:  []string{`"there"`, "lyx adopt pair"},
+			wantMessage:  []string{`"there"`, "lym adopt pair"},
 		},
 		{
 			name:         "OwnerPauseRefusesWithTheResumeWayBeforeTheOwnerVerdict",
 			statusExists: true,
 			verdict:      ownerVerdict{Owner: "there", Elsewhere: true},
 			ownerPause:   true,
-			wantMessage:  []string{"pause:", `"lyx tender resume`},
+			wantMessage:  []string{"pause:", `"lym tender resume`},
 		},
 		{
 			name:         "VerdictErrorRefusesNamingTheRerun",
 			statusExists: true,
 			verdictErr:   errors.New("origin reconcile exploded"),
 			wantCalls:    1,
-			wantMessage:  []string{"origin reconcile exploded", `run "lyx loom %s" again`},
+			wantMessage:  []string{"origin reconcile exploded", `run "lym loom %s" again`},
 		},
 		{
 			name:         "OwnedHereGoesOn",
@@ -101,7 +101,7 @@ func TestStartAndResume_RefuseARunOwnedElsewhere(t *testing.T) {
 
 				c, _ := newTestSpawnAndWaitReceiver(t, &fakeDriverStarter{}, &fakeDriverPaneProbeFull{strandsFn: noStrands})
 				calls := 0
-				c.ownerOf = func(*lyxcwd.Location, string) (ownerVerdict, error) {
+				c.ownerOf = func(*lymcwd.Location, string) (ownerVerdict, error) {
 					calls++
 					return tt.verdict, tt.verdictErr
 				}

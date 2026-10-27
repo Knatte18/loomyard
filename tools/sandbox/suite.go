@@ -1,6 +1,6 @@
 // suite.go implements the "sandbox suite", "sandbox reed-suite", "sandbox reed-watch-suite",
 // "sandbox shuttle-suite", "sandbox creel-suite", "sandbox burler-suite", and "sandbox webster-suite"
-// subcommands: copies one of the embedded suite templates (main, reed, reed-watch, shuttle, creel, burler, or webster) into the Hub warp repo, stamps a lyx binary fingerprint, registers the file as a git exclude entry, and launches an interactive Claude session to execute it.
+// subcommands: copies one of the embedded suite templates (main, reed, reed-watch, shuttle, creel, burler, or webster) into the Hub warp repo, stamps a lym binary fingerprint, registers the file as a git exclude entry, and launches an interactive Claude session to execute it.
 // The suites share every mechanic (fingerprinting, git-exclude, stale-report cleanup, agent launch, post-session reed teardown) via the suiteSpec parameterization of runSuite.
 // Only the file name, embedded doc body, default instruction, and reed-teardown flag differ.
 // reedWatchSuite is the one spec that sets reedTeardown false, deliberately (see its own comment).
@@ -22,9 +22,9 @@ import (
 
 // Suite-specific constants.
 const (
-	// repoDirName is the subdirectory under the Hub (lyx-test-LYXHUB) that holds
+	// repoDirName is the subdirectory under the Hub (lym-test-LYMHUB) that holds
 	// the repo clone. The Hub layout is <parent>/<hubName>/<repoDirName>.
-	repoDirName = "lyx-test"
+	repoDirName = "lym-test"
 )
 
 //go:embed SANDBOX-CORE-SUITE.md
@@ -68,16 +68,13 @@ type suiteSpec struct {
 	// instruction is the literal prompt string handed to the claude binary as
 	// its sole argument when no -prompt override is supplied.
 	instruction string
-	// reedTeardown marks suites whose scenarios boot a live tmux substrate
-	// (lyx reed up). For those, runSuite runs `lyx reed down` in the warp repo
-	// after the agent session ends, whatever the agent did: an orphaned tmux
-	// server holds open handles inside the Hub and blocks the next
-	// sandbox/build.cmd -reset.
+	// reedTeardown marks suites whose scenarios boot a live tmux substrate (lym reed up).
+	// For those, runSuite runs `lym reed down` in the warp repo after the agent session ends, whatever the agent did: an orphaned tmux server holds open handles inside the Hub and blocks the next sandbox/build.cmd -reset.
 	reedTeardown bool
 }
 
 // mainSuite is the original SANDBOX-CORE-SUITE spec: the general black-box scheme
-// exercising the lyx CLI end-to-end.
+// exercising the lym CLI end-to-end.
 var mainSuite = suiteSpec{
 	fileName:    "SANDBOX-CORE-SUITE.md",
 	doc:         sandboxSuiteMD,
@@ -107,7 +104,7 @@ var reedWatchSuite = suiteSpec{
 }
 
 // shuttleSuite is the SANDBOX-SHUTTLE-SUITE spec: the dedicated scheme
-// exercising the lyx shuttle black-box agent scenarios.
+// exercising the lym shuttle black-box agent scenarios.
 var shuttleSuite = suiteSpec{
 	fileName:     "SANDBOX-SHUTTLE-SUITE.md",
 	doc:          shuttleSandboxSuiteMD,
@@ -116,7 +113,7 @@ var shuttleSuite = suiteSpec{
 }
 
 // creelSuite is the SANDBOX-CREEL-SUITE spec: the dedicated scheme
-// exercising the lyx creel black-box agent scenarios.
+// exercising the lym creel black-box agent scenarios.
 // It sets reedTeardown because its scenarios add reed strands, whose tmux server would otherwise block the next build -reset.
 var creelSuite = suiteSpec{
 	fileName:     "SANDBOX-CREEL-SUITE.md",
@@ -126,7 +123,7 @@ var creelSuite = suiteSpec{
 }
 
 // burlerSuite is the SANDBOX-BURLER-SUITE spec: the dedicated scheme
-// exercising the lyx burler round-worker black-box agent scenarios.
+// exercising the lym burler round-worker black-box agent scenarios.
 var burlerSuite = suiteSpec{
 	fileName:     "SANDBOX-BURLER-SUITE.md",
 	doc:          burlerSandboxSuiteMD,
@@ -134,7 +131,7 @@ var burlerSuite = suiteSpec{
 	reedTeardown: true,
 }
 
-// websterSuite is the SANDBOX-WEBSTER-SUITE spec: the dedicated scheme exercising the lyx webster fork-loop black-box agent scenarios.
+// websterSuite is the SANDBOX-WEBSTER-SUITE spec: the dedicated scheme exercising the lym webster fork-loop black-box agent scenarios.
 var websterSuite = suiteSpec{
 	fileName:     "SANDBOX-WEBSTER-SUITE.md",
 	doc:          websterSandboxSuiteMD,
@@ -215,13 +212,12 @@ var launchAgent = func(warpRepoDir, claudePath, instruction, binDir string) int 
 	return 0
 }
 
-// reedDown is a testability seam that tears down the reed substrate by running
-// `lyx reed down` inside warpRepoDir.
-var reedDown = func(warpRepoDir, lyxPath string) error {
-	cmd := exec.Command(lyxPath, "reed", "down")
+// reedDown is a testability seam that tears down the reed substrate by running `lym reed down` inside warpRepoDir.
+var reedDown = func(warpRepoDir, lymPath string) error {
+	cmd := exec.Command(lymPath, "reed", "down")
 	cmd.Dir = warpRepoDir
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("lyx reed down: %w (output: %s)", err, strings.TrimSpace(string(out)))
+		return fmt.Errorf("lym reed down: %w (output: %s)", err, strings.TrimSpace(string(out)))
 	}
 	return nil
 }
@@ -236,7 +232,7 @@ type binaryInfo struct {
 	ModTime time.Time
 	// SHA256 is the first 12 hex characters of the binary's SHA-256 digest.
 	SHA256 string
-	// Source records which binary resolveLyx picked (sourceDev or sourceProd).
+	// Source records which binary resolveLym picked (sourceDev or sourceProd).
 	Source string
 }
 
@@ -329,10 +325,8 @@ func ensureGitExclude(repoDir, entry string) error {
 	return nil
 }
 
-// runSuite executes a sandbox suite: fingerprints the deployed lyx binary,
-// writes a fresh suite file, registers it in .git/info/exclude, and starts
-// an interactive Claude session. For specs flagged reedTeardown, it runs
-// `lyx reed down` after the session ends.
+// runSuite executes a sandbox suite: fingerprints the deployed lym binary, writes a fresh suite file, registers it in .git/info/exclude, and starts an interactive Claude session.
+// For specs flagged reedTeardown, it runs `lym reed down` after the session ends.
 func runSuite(parentDir, claudeOverride, promptOverride string, spec suiteSpec) error {
 	warpRepoDir := filepath.Join(parentDir, hubName, repoDirName)
 
@@ -342,14 +336,14 @@ func runSuite(parentDir, claudeOverride, promptOverride string, spec suiteSpec) 
 		return fmt.Errorf("stat warp repo %s: %w", warpRepoDir, err)
 	}
 
-	lyxPath, source, err := resolveLyx()
+	lymPath, source, err := resolveLym()
 	if err != nil {
 		return err
 	}
 
-	info, err := binaryFingerprint(lyxPath, source)
+	info, err := binaryFingerprint(lymPath, source)
 	if err != nil {
-		return fmt.Errorf("fingerprint lyx binary: %w", err)
+		return fmt.Errorf("fingerprint lym binary: %w", err)
 	}
 
 	suitePath := filepath.Join(warpRepoDir, spec.fileName)
@@ -385,7 +379,7 @@ func runSuite(parentDir, claudeOverride, promptOverride string, spec suiteSpec) 
 
 	binDir := ""
 	if source == sourceDev {
-		binDir = filepath.Dir(lyxPath)
+		binDir = filepath.Dir(lymPath)
 	}
 
 	code := launchAgent(warpRepoDir, claudePath, instruction, binDir)
@@ -394,10 +388,10 @@ func runSuite(parentDir, claudeOverride, promptOverride string, spec suiteSpec) 
 		code)
 
 	if spec.reedTeardown {
-		if err := reedDown(warpRepoDir, lyxPath); err != nil {
+		if err := reedDown(warpRepoDir, lymPath); err != nil {
 			fmt.Fprintf(os.Stderr, "sandbox: reed teardown: %v\n", err)
 		} else {
-			fmt.Fprintln(os.Stderr, "sandbox: reed substrate torn down (lyx reed down).")
+			fmt.Fprintln(os.Stderr, "sandbox: reed substrate torn down (lym reed down).")
 		}
 	}
 	return nil

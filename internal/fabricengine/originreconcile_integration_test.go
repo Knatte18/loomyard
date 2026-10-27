@@ -20,13 +20,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 )
 
 // The text a stopped dirty, gone or busy branch's line is followed by in a printed summary.
-const cleanupRerunLine = "then re-run lyx cleanup --apply from the prime"
+const cleanupRerunLine = "then re-run lym cleanup --apply from the prime"
 
 // callLog records the arguments of every remote call a reconcile makes.
 type callLog struct {
@@ -247,8 +247,8 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 			if !strings.Contains(report.Summary(), want) {
 				t.Errorf("%s Summary() = %q; want it to carry %q", row.name, report.Summary(), want)
 			}
-			if row.prime && (!strings.Contains(want, "`git push` in "+row.worktree) || strings.Contains(want, "lyx fabric push")) {
-				t.Errorf("the prime's line = %q; want `git push` in the prime and no `lyx fabric push`", want)
+			if row.prime && (!strings.Contains(want, "`git push` in "+row.worktree) || strings.Contains(want, "lym fabric push")) {
+				t.Errorf("the prime's line = %q; want `git push` in the prime and no `lym fabric push`", want)
 			}
 		}
 	})
@@ -263,7 +263,7 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 				rewound := newRewoundBranch(t, withLocal)
 				switch fetchedBy {
 				case "Fabric.Pull":
-					loc, err := lyxcwd.ResolveWorktree(rewound.worktree)
+					loc, err := lymcwd.ResolveWorktree(rewound.worktree)
 					if err != nil {
 						t.Fatalf("ResolveWorktree(%s): %v", rewound.worktree, err)
 					}
@@ -346,7 +346,7 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 			report := reconcile(t, hub, fabricengine.ReconcileScope{}, fabricengine.ReconcileOptions{})
 
 			outcome := requireState(t, report, "code", row.branch, fabricengine.BranchRewritten)
-			if want := "`lyx fabric pull` in " + row.worktree; outcome.WayForward != want {
+			if want := "`lym fabric pull` in " + row.worktree; outcome.WayForward != want {
 				t.Errorf("%s WayForward = %q; want exactly %q", row.name, outcome.WayForward, want)
 			}
 		}

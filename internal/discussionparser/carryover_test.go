@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	openMarker  = "<!-- lyx:carry-over Plan-Review -->"
-	closeMarker = "<!-- /lyx:carry-over Plan-Review -->"
+	openMarker  = "<!-- lym:carry-over Plan-Review -->"
+	closeMarker = "<!-- /lym:carry-over Plan-Review -->"
 )
 
 // recordWithOpenRisks returns a decision record whose `## Open risks` section holds body, the text after the heading line, and whose other sections hold the default body.
@@ -174,7 +174,7 @@ func TestWriteCarryOver_RefusesWithoutWriting(t *testing.T) {
 	t.Parallel()
 
 	pair := func(segment string) string {
-		return "<!-- lyx:carry-over " + segment + " -->\n- x\n<!-- /lyx:carry-over " + segment + " -->\n"
+		return "<!-- lym:carry-over " + segment + " -->\n- x\n<!-- /lym:carry-over " + segment + " -->\n"
 	}
 	entry := carryOverEntry("Plan-Review", "cache-key")
 	badSegmentEntry := func(segment string) CarryOver { return carryOverEntry(segment, "k") }
@@ -188,8 +188,8 @@ func TestWriteCarryOver_RefusesWithoutWriting(t *testing.T) {
 		{"opening line with no closing one", recordWithOpenRisks("\n" + openMarker + "\n- x\n\n"), entry, nil},
 		{"closing line with no opening one", recordWithOpenRisks("\n" + closeMarker + "\n\n"), entry, nil},
 		{"two pairs for one segment", recordWithOpenRisks("\n" + pair("Plan-Review") + "\n" + pair("Plan-Review") + "\n"), entry, nil},
-		{"closing line naming another segment", recordWithOpenRisks("\n" + openMarker + "\n<!-- /lyx:carry-over Describe -->\n\n"), entry, nil},
-		{"pair opened inside another", recordWithOpenRisks("\n" + openMarker + "\n<!-- lyx:carry-over Describe -->\n" + closeMarker + "\n\n"), entry, nil},
+		{"closing line naming another segment", recordWithOpenRisks("\n" + openMarker + "\n<!-- /lym:carry-over Describe -->\n\n"), entry, nil},
+		{"pair opened inside another", recordWithOpenRisks("\n" + openMarker + "\n<!-- lym:carry-over Describe -->\n" + closeMarker + "\n\n"), entry, nil},
 		{"no Open risks heading", sectionsWithout(openRisksHeading), entry, ErrNoOpenRisksHeading},
 		{"empty segment", recordWithOpenRisks("\n"), badSegmentEntry(""), nil},
 		{"segment with a space", recordWithOpenRisks("\n"), badSegmentEntry("Plan Review"), nil},
@@ -257,7 +257,7 @@ func TestWriteCarryOver_DetectsConcurrentWriter(t *testing.T) {
 			if err == nil {
 				t.Fatal("writeCarryOver succeeded, want an error naming the concurrent writer")
 			}
-			for _, want := range []string{"decision record changed", "concurrent writer", tt.wantInError, "lyx loom start"} {
+			for _, want := range []string{"decision record changed", "concurrent writer", tt.wantInError, "lym loom start"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("error %q does not contain %q", err, want)
 				}

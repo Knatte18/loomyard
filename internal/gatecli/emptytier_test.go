@@ -116,7 +116,7 @@ func TestEmptyTierFailure(t *testing.T) {
 				}
 				return
 			}
-			for _, want := range []string{"tier1", "example.com/m/p", "lyx config gate"} {
+			for _, want := range []string{"tier1", "example.com/m/p", "lym config gate"} {
 				if !strings.Contains(got, want) {
 					t.Errorf("emptyTierFailure() = %q; want it to name %q", got, want)
 				}

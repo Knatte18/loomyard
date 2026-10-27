@@ -29,18 +29,18 @@ func TestWakeReconcileFromReport(t *testing.T) {
 		{
 			"A stopped branch's way forward reaches its entry's run exactly",
 			fabricengine.OriginReport{
-				Branches: []fabricengine.BranchOutcome{{Branch: "p1", Repo: "records", Slug: "p1", State: fabricengine.BranchDiverged, WayForward: "resolve a.txt, then `lyx fabric push`"}},
-				Entries:  []fabricengine.EntryOutcome{{Slug: "p1", State: fabricengine.EntryStopped, WayForward: "resolve a.txt, then `lyx fabric push`"}},
+				Branches: []fabricengine.BranchOutcome{{Branch: "p1", Repo: "records", Slug: "p1", State: fabricengine.BranchDiverged, WayForward: "resolve a.txt, then `lym fabric push`"}},
+				Entries:  []fabricengine.EntryOutcome{{Slug: "p1", State: fabricengine.EntryStopped, WayForward: "resolve a.txt, then `lym fabric push`"}},
 			},
-			hibernateengine.WakeReconcile{Runs: []hibernateengine.WakeRun{{Slug: "p1", WayForward: "resolve a.txt, then `lyx fabric push`"}}},
+			hibernateengine.WakeReconcile{Runs: []hibernateengine.WakeRun{{Slug: "p1", WayForward: "resolve a.txt, then `lym fabric push`"}}},
 		},
 		{
 			"A busy records branch's push lock becomes the run's parked-push flag",
 			fabricengine.OriginReport{
-				Branches: []fabricengine.BranchOutcome{{Branch: "p1", Repo: "records", Slug: "p1", State: fabricengine.BranchBusy, PushLockHeld: true, WayForward: "`lyx tender resume p1`"}},
-				Entries:  []fabricengine.EntryOutcome{{Slug: "p1", State: fabricengine.EntryStopped, WayForward: "`lyx tender resume p1`"}},
+				Branches: []fabricengine.BranchOutcome{{Branch: "p1", Repo: "records", Slug: "p1", State: fabricengine.BranchBusy, PushLockHeld: true, WayForward: "`lym tender resume p1`"}},
+				Entries:  []fabricengine.EntryOutcome{{Slug: "p1", State: fabricengine.EntryStopped, WayForward: "`lym tender resume p1`"}},
 			},
-			hibernateengine.WakeReconcile{Runs: []hibernateengine.WakeRun{{Slug: "p1", WayForward: "`lyx tender resume p1`", Busy: true, ParkedPush: true}}},
+			hibernateengine.WakeReconcile{Runs: []hibernateengine.WakeRun{{Slug: "p1", WayForward: "`lym tender resume p1`", Busy: true, ParkedPush: true}}},
 		},
 		{
 			"A busy branch holding another lock is busy without a parked push",
@@ -91,9 +91,9 @@ func TestWakeReconcileFromReport(t *testing.T) {
 		{
 			"An owned_elsewhere entry is a run with its owner and adopt subject",
 			fabricengine.OriginReport{
-				Entries: []fabricengine.EntryOutcome{{Slug: "p1", State: fabricengine.EntryOwnedElsewhere, Local: true, Owner: "laptop", AdoptSubject: "beam", WayForward: "`lyx adopt beam` takes it over"}},
+				Entries: []fabricengine.EntryOutcome{{Slug: "p1", State: fabricengine.EntryOwnedElsewhere, Local: true, Owner: "laptop", AdoptSubject: "beam", WayForward: "`lym adopt beam` takes it over"}},
 			},
-			hibernateengine.WakeReconcile{Runs: []hibernateengine.WakeRun{{Slug: "p1", WayForward: "`lyx adopt beam` takes it over", Owner: "laptop", AdoptSubject: "beam"}}},
+			hibernateengine.WakeReconcile{Runs: []hibernateengine.WakeRun{{Slug: "p1", WayForward: "`lym adopt beam` takes it over", Owner: "laptop", AdoptSubject: "beam"}}},
 		},
 		{
 			"An unreachable report is carried over",

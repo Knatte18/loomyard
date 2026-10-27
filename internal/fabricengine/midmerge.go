@@ -1,11 +1,11 @@
-// midmerge.go holds MidMerge, the read-only, vocabulary-neutral probe `lyx loom start` consults to learn whether a pair carries an unfinished merge before putting a driver to work on it.
+// midmerge.go holds MidMerge, the read-only, vocabulary-neutral probe `lym loom start` consults to learn whether a pair carries an unfinished merge before putting a driver to work on it.
 
 package fabricengine
 
 import (
 	"fmt"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // MidMergeKind classifies the merge state MidMerge finds on a pair.
@@ -29,7 +29,7 @@ const (
 )
 
 // MidMergeState is MidMerge's answer.
-// Conflicts lists the still-conflicted paths in the pair's one-repo form, the same form a fabric merge verb's conflicts use, so every listed path is accepted by `lyx fabric merge-stage`;
+// Conflicts lists the still-conflicted paths in the pair's one-repo form, the same form a fabric merge verb's conflicts use, so every listed path is accepted by `lym fabric merge-stage`;
 // it is empty-never-nil.
 // Verb, Source, SourceSHA and StartSHA are filled only when Kind is MidMergeParked, and are empty otherwise:
 // the parked record's verb (`merge-in` or `merge`), its caller-supplied source branch,
@@ -54,7 +54,7 @@ type MidMergeState struct {
 // This is deliberately unlike mergeBlocksMutation, which swallows an unopenable pair to false.
 //
 // A fabric record wins over foreign-looking git state, since a parked fabric merge leaves MERGE_HEAD and unmerged entries of its own.
-func MidMerge(l *lyxcwd.Location) (MidMergeState, error) {
+func MidMerge(l *lymcwd.Location) (MidMergeState, error) {
 	f, err := Open(l)
 	if err != nil {
 		return MidMergeState{}, fmt.Errorf("fabricengine: mid-merge probe: open pair: %w", err)
@@ -98,7 +98,7 @@ func MidMerge(l *lyxcwd.Location) (MidMergeState, error) {
 // MidMerge reports the parked or foreign merge state of f's own pair, as the package function of the same name does for a location.
 // It resolves the location from f's code checkout, so the answer is about this pair and never about the worktree the caller runs in.
 func (f *Fabric) MidMerge() (MidMergeState, error) {
-	l, err := lyxcwd.ResolveWorktree(f.warpPath)
+	l, err := lymcwd.ResolveWorktree(f.warpPath)
 	if err != nil {
 		return MidMergeState{}, fmt.Errorf("fabricengine: mid-merge probe: resolve layout for %s: %w", f.warpPath, err)
 	}

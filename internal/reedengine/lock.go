@@ -18,15 +18,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// reedLockFileName is the reed operation lock's file name inside the ephemeral
-// .lyx directory under the told Geometry.AnchorPath (see stateDir). It is
-// deliberately distinct from reed.json's own
-// lock file (reed.json.lock, owned by internal/state): reed.lock guards the
-// whole engine-op cycle (read -> mutate -> persist -> render -> apply),
-// while reed.json.lock guards only the JSON file swap inside that cycle.
-// Lock ordering is strictly outer(reed.lock) -> inner(reed.json.lock); an
-// engine op only ever reaches reed.json.lock indirectly, through
-// LoadState/SaveState, while it is already holding reed.lock.
+// reedLockFileName is the reed operation lock's file name inside the ephemeral .lym directory under the told Geometry.AnchorPath (see stateDir).
+// It is deliberately distinct from reed.json's own lock file (reed.json.lock, owned by internal/state): reed.lock guards the whole engine-op cycle (read -> mutate -> persist -> render -> apply), while reed.json.lock guards only the JSON file swap inside that cycle.
+// Lock ordering is strictly outer(reed.lock) -> inner(reed.json.lock);
+// an engine op only ever reaches reed.json.lock indirectly, through LoadState/SaveState, while it is already holding reed.lock.
 const reedLockFileName = "reed.lock"
 
 // Engine is the domain kernel's public handle: a resolved Config, the Geometry it was told, and the
@@ -129,16 +124,16 @@ func (e *Engine) withOpLock(fn func() error) error {
 		return err
 	}
 
-	dotLyx := e.stateDir()
+	dotLym := e.stateDir()
 	// gofrs/flock opens the lock file with O_CREATE but never creates
 	// missing parent directories, so a brand-new worktree's first reed
-	// operation (before .lyx exists at all) must create it here first,
+	// operation (before .lym exists at all) must create it here first,
 	// matching internal/state's own MkdirAll-before-lock pattern.
-	if err := os.MkdirAll(dotLyx, 0o755); err != nil {
-		return fmt.Errorf("create %s: %w", dotLyx, err)
+	if err := os.MkdirAll(dotLym, 0o755); err != nil {
+		return fmt.Errorf("create %s: %w", dotLym, err)
 	}
 
-	lockPath := filepath.Join(dotLyx, reedLockFileName)
+	lockPath := filepath.Join(dotLym, reedLockFileName)
 	l, err := lock.AcquireWriteLock(lockPath)
 	if err != nil {
 		return fmt.Errorf("acquire reed op lock: %w", err)
@@ -174,7 +169,7 @@ func (e *Engine) withOpLock(fn func() error) error {
 // A lock held by someone else is a DEFERRAL, not a failure: it is reported as (false, nil) with no
 // error, and fn is never called. The watcher needs this rather than withOpLock because
 // lock.AcquireWriteLock blocks with no timeout — this repo's own R5 measurement (opLockCompromisedError
-// above) records a second `lyx reed status` blocking for 11027ms behind a held lock, a state the
+// above) records a second `lym reed status` blocking for 11027ms behind a held lock, a state the
 // watcher's per-event retry contract cannot describe. Deferring is correct on the merits too, not just
 // convenient: whatever holds the lock is another reed op, and every reed op ends by re-applying the
 // layout itself, so the watcher's own re-apply would be redundant even if it could wait for its turn.
@@ -196,12 +191,12 @@ func (e *Engine) withTryOpLock(fn func() error) (acquired bool, err error) {
 		return false, err
 	}
 
-	dotLyx := e.stateDir()
-	if err := os.MkdirAll(dotLyx, 0o755); err != nil {
-		return false, fmt.Errorf("create %s: %w", dotLyx, err)
+	dotLym := e.stateDir()
+	if err := os.MkdirAll(dotLym, 0o755); err != nil {
+		return false, fmt.Errorf("create %s: %w", dotLym, err)
 	}
 
-	lockPath := filepath.Join(dotLyx, reedLockFileName)
+	lockPath := filepath.Join(dotLym, reedLockFileName)
 	l, locked, err := lock.TryAcquireWriteLock(lockPath)
 	if err != nil {
 		return false, fmt.Errorf("try acquire reed op lock: %w", err)
@@ -234,13 +229,13 @@ func (e *Engine) withTryOpLock(fn func() error) (acquired bool, err error) {
 // file at lockPath — meaning the exclusion the lock was supposed to provide did not hold for the
 // duration of the operation.
 //
-// A flock is held on an INODE, not on a name. Deleting .lyx while an op holds reed.lock — an
+// A flock is held on an INODE, not on a name. Deleting .lym while an op holds reed.lock — an
 // ordinary `rm -rf`, or the `git clean -xdf` the Durable-vs-Ephemeral State Invariant makes a
 // sanctioned operator action — unlinks that inode without disturbing the lock, and the next op's
 // os.MkdirAll + O_CREATE then mints a FRESH inode whose lock is granted immediately. Two reed ops
 // then drive the same tmux session and the same reed.json concurrently, last writer wins.
-// Measured live (R5 review finding R5-F6): with reed.lock held, a second `lyx reed status` blocked
-// for 11027ms as designed; with .lyx deleted mid-hold it was granted in 107ms.
+// Measured live (R5 review finding R5-F6): with reed.lock held, a second `lym reed status` blocked
+// for 11027ms as designed; with .lym deleted mid-hold it was granted in 107ms.
 //
 // This DETECTS that, it does not prevent it, and the distinction is deliberate rather than a
 // shortcut: once the inode is unlinked it is unreachable by name, so no name-based lock can make the
@@ -256,7 +251,7 @@ func opLockCompromisedError(lockPath string, heldLockFile os.FileInfo) error {
 	}
 	return fmt.Errorf(
 		"reed's operation lock %s was removed or replaced while this operation was running, so it did not exclude other reed processes — "+
-			"something deleted the .lyx directory (an rm, or a `git clean -xdf` in the worktree) mid-operation. "+
-			"Reed state and the tmux session may now disagree; run \"lyx reed status\" to inspect, or \"lyx reed down\" and \"lyx reed resume\" to rebuild",
+			"something deleted the .lym directory (an rm, or a `git clean -xdf` in the worktree) mid-operation. "+
+			"Reed state and the tmux session may now disagree; run \"lym reed status\" to inspect, or \"lym reed down\" and \"lym reed resume\" to rebuild",
 		lockPath)
 }

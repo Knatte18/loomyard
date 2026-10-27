@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
@@ -76,7 +76,7 @@ func (s *cleanupStubs) deps() cleanupDeps {
 }
 
 // buildCleanupFixture lays fixture out under location and registers its committed state with stubs.
-func buildCleanupFixture(t *testing.T, location *lyxcwd.Location, stubs *cleanupStubs, fixture cleanupFixture) {
+func buildCleanupFixture(t *testing.T, location *lymcwd.Location, stubs *cleanupStubs, fixture cleanupFixture) {
 	t.Helper()
 	slug := fixture.slug
 
@@ -114,13 +114,13 @@ func buildCleanupFixture(t *testing.T, location *lyxcwd.Location, stubs *cleanup
 	}
 }
 
-func newCleanupLocation(t *testing.T) *lyxcwd.Location {
+func newCleanupLocation(t *testing.T) *lymcwd.Location {
 	t.Helper()
 	return locationkit.Location(t.TempDir(), "prime", "")
 }
 
 // treeListing returns every path under the prime worktree, in walk order.
-func treeListing(t *testing.T, location *lyxcwd.Location) []string {
+func treeListing(t *testing.T, location *lymcwd.Location) []string {
 	t.Helper()
 	var listing []string
 	err := filepath.WalkDir(location.WorktreePath(), func(path string, _ fs.DirEntry, walkErr error) error {
@@ -182,11 +182,11 @@ func TestCleanup(t *testing.T) {
 				{slug: "r5", runState: "failed", scratchAge: time.Hour},
 			},
 			wantSkipped: map[string]string{
-				"r1": `run is running; way forward: "lyx batten cancel r1" ends it`,
-				"r2": `run is paused; way forward: "lyx batten cancel r2" ends it`,
-				"r3": `run is blocked; way forward: "lyx batten cancel r3" ends it`,
-				"r4": `run is awaiting; way forward: "lyx batten cancel r4" ends it`,
-				"r5": `run is failed; way forward: "lyx batten cancel r5" ends it`,
+				"r1": `run is running; way forward: "lym batten cancel r1" ends it`,
+				"r2": `run is paused; way forward: "lym batten cancel r2" ends it`,
+				"r3": `run is blocked; way forward: "lym batten cancel r3" ends it`,
+				"r4": `run is awaiting; way forward: "lym batten cancel r4" ends it`,
+				"r5": `run is failed; way forward: "lym batten cancel r5" ends it`,
 			},
 		},
 		{
@@ -215,7 +215,7 @@ func TestCleanup(t *testing.T) {
 		{
 			name:        "tracked-but-deleted run that is not done is skipped and keeps its scratch",
 			fixtures:    []cleanupFixture{{slug: "half", committedStatus: "running", scratchAge: 48 * time.Hour}},
-			wantSkipped: map[string]string{"half": `committed run is running; way forward: "lyx batten cancel half" ends it, and a later cleanup removes it`},
+			wantSkipped: map[string]string{"half": `committed run is running; way forward: "lym batten cancel half" ends it, and a later cleanup removes it`},
 		},
 		{
 			name:        "deleted run with a committed seed but no committed status is skipped and keeps its aged scratch",

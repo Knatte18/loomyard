@@ -24,14 +24,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // realSeamFixture builds a hub, adds one pair, seeds a status file at loom's own status path, and
 // returns the seam wired to that pair through loomCommitStatusDeps — the same call wire() makes —
 // plus the pair's records sibling path for direct git inspection.
-func realSeamFixture(t *testing.T) (seam func(producer, state string) error, location *lyxcwd.Location, recordsSibling string) {
+func realSeamFixture(t *testing.T) (seam func(producer, state string) error, location *lymcwd.Location, recordsSibling string) {
 	t.Helper()
 
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -39,7 +39,7 @@ func realSeamFixture(t *testing.T) (seam func(producer, state string) error, loc
 	hubforge.AddPair(t, hub, slug)
 	codeWorktree := hub.PairCodeWorktree(slug)
 
-	location, err := lyxcwd.ResolveWorktree(codeWorktree)
+	location, err := lymcwd.ResolveWorktree(codeWorktree)
 	if err != nil {
 		t.Fatalf("ResolveWorktree(%s) error = %v; want nil", codeWorktree, err)
 	}
@@ -49,14 +49,14 @@ func realSeamFixture(t *testing.T) (seam func(producer, state string) error, loc
 }
 
 // realSeamStatusRel is the status file's relative path for the self run.
-func realSeamStatusRel(location *lyxcwd.Location) string {
+func realSeamStatusRel(location *lymcwd.Location) string {
 	return shedrun.StatusRel(location, shedrun.SelfRunID)
 }
 
 // writeStatusFile writes content at loom's own status path for location, creating the directory the
 // first call needs. It goes through shedrun's own accessor rather than a hand-built join so the test
 // commits exactly the path the seam's own pathspec names.
-func writeStatusFile(t *testing.T, location *lyxcwd.Location, content string) {
+func writeStatusFile(t *testing.T, location *lymcwd.Location, content string) {
 	t.Helper()
 	path := shedrun.StatusFile(location, shedrun.SelfRunID)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -109,13 +109,13 @@ func TestCommitStatusSeam_Real(t *testing.T) {
 	seam, location, recordsSibling := realSeamFixture(t)
 
 	type spawnRequest struct {
-		location *lyxcwd.Location
+		location *lymcwd.Location
 		gateSlug string
 	}
 	var spawns []spawnRequest
 	var spawnErr error
 	originalSpawn := spawnStatusPush
-	spawnStatusPush = func(l *lyxcwd.Location, gateSlug string) (fabricengine.SpawnResult, error) {
+	spawnStatusPush = func(l *lymcwd.Location, gateSlug string) (fabricengine.SpawnResult, error) {
 		spawns = append(spawns, spawnRequest{l, gateSlug})
 		return fabricengine.SpawnResult{}, spawnErr
 	}
@@ -433,7 +433,7 @@ func TestCommitStatusSeam_Real(t *testing.T) {
 }
 
 // commitInTaskWorktree commits a new file named name in the task worktree with plain git, as an agent's raw commit would.
-func commitInTaskWorktree(t *testing.T, location *lyxcwd.Location, name string) {
+func commitInTaskWorktree(t *testing.T, location *lymcwd.Location, name string) {
 	t.Helper()
 	taskWorktree := location.WorktreePath()
 	writeRecordFile(t, filepath.Join(taskWorktree, name), name+"\n")
@@ -452,7 +452,7 @@ func remoteBranchTip(t *testing.T, repo string) string {
 }
 
 // writeReviewsDirFile writes content at rel under the reviews directory, creating its directories.
-func writeReviewsDirFile(t *testing.T, location *lyxcwd.Location, rel, content string) {
+func writeReviewsDirFile(t *testing.T, location *lymcwd.Location, rel, content string) {
 	t.Helper()
 	path := filepath.Join(loomengine.LoomReviewsDir(location), rel)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

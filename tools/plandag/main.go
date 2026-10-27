@@ -1,7 +1,7 @@
 // Command plandag reads a plan directory and draws its cards as a dependency graph, showing which cards the plan could run in parallel.
 //
 //	go run ./tools/plandag <plan-dir>
-//	go run ./tools/plandag -out .scratch/dag ../some-pair/_lyx/plan
+//	go run ./tools/plandag -out .scratch/dag ../some-pair/_lym/plan
 //
 // The two launchers beside this file, plandag.sh and plandag.cmd, are the intended entry points.
 // Each takes the plan directory, makes it absolute and runs from the repository root, writing into .scratch/plandag with fixed file names overwritten per run.

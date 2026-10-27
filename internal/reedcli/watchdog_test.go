@@ -643,7 +643,7 @@ func TestExeReplaced(t *testing.T) {
 		{
 			name: "the same unchanged file",
 			outcome: func(t *testing.T, dir string) (os.FileInfo, os.FileInfo, error) {
-				path := filepath.Join(dir, "lyx")
+				path := filepath.Join(dir, "lym")
 				if err := os.WriteFile(path, []byte("a"), 0o755); err != nil {
 					t.Fatalf("write: %v", err)
 				}
@@ -654,7 +654,7 @@ func TestExeReplaced(t *testing.T) {
 		{
 			name: "a stat error",
 			outcome: func(t *testing.T, dir string) (os.FileInfo, os.FileInfo, error) {
-				path := filepath.Join(dir, "lyx")
+				path := filepath.Join(dir, "lym")
 				if err := os.WriteFile(path, []byte("a"), 0o755); err != nil {
 					t.Fatalf("write: %v", err)
 				}
@@ -665,7 +665,7 @@ func TestExeReplaced(t *testing.T) {
 		{
 			name: "a nil baseline",
 			outcome: func(t *testing.T, dir string) (os.FileInfo, os.FileInfo, error) {
-				path := filepath.Join(dir, "lyx")
+				path := filepath.Join(dir, "lym")
 				if err := os.WriteFile(path, []byte("a"), 0o755); err != nil {
 					t.Fatalf("write: %v", err)
 				}
@@ -689,7 +689,7 @@ func TestExeReplaced(t *testing.T) {
 		{
 			name: "the same file with its modification time moved",
 			outcome: func(t *testing.T, dir string) (os.FileInfo, os.FileInfo, error) {
-				path := filepath.Join(dir, "lyx")
+				path := filepath.Join(dir, "lym")
 				if err := os.WriteFile(path, []byte("a"), 0o755); err != nil {
 					t.Fatalf("write: %v", err)
 				}

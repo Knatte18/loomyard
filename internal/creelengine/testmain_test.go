@@ -1,4 +1,4 @@
-// testmain_test.go runs the package's tests under tmuxkit.Main, so every temp file and socket lives in the lyxtemp run directory.
+// testmain_test.go runs the package's tests under tmuxkit.Main, so every temp file and socket lives in the lymtemp run directory.
 
 package creelengine
 

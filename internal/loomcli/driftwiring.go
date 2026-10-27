@@ -14,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -51,7 +51,7 @@ type driftTables struct {
 // driftDeps builds the seams the Drift rows read over location's worktree.
 // statusPath and statusLockPath locate the run status; awaitRow is true for the recipe that has a Drift-Await row.
 // The seat runner, clock and gate findings file are left unset, since the registry entries fill them from the recipe's environment.
-func driftDeps(location *lyxcwd.Location, statusPath, statusLockPath string, awaitRow bool, tables driftTables) driftengine.Deps {
+func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, awaitRow bool, tables driftTables) driftengine.Deps {
 	paths := driftengine.NewPaths(location.AnchorPath())
 	pool, waitDir := hubgeom.GateSlots(location), gateslot.WaitDir(location.AnchorPath())
 	config := func() (driftengine.Config, error) {
@@ -63,7 +63,7 @@ func driftDeps(location *lyxcwd.Location, statusPath, statusLockPath string, awa
 			return shedengine.Status{}, err
 		}
 		if !found {
-			return shedengine.Status{}, errors.New("drift: this worktree has no run status; way forward: lyx loom resume")
+			return shedengine.Status{}, errors.New("drift: this worktree has no run status; way forward: lym loom resume")
 		}
 		return st, nil
 	}

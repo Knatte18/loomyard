@@ -15,7 +15,7 @@
 // Invariant, which keeps that package stdlib-only. internal/clihelp is the wrong altitude: it is
 // generic cobra plumbing shared by every CLI module, not logic specific to the two
 // standalone-capable ones. internal/preflight is the nearest neighbour a plan writer would ask
-// about first, since it already owns ResolveMode -- but preflight imports internal/lyxcwd and
+// about first, since it already owns ResolveMode -- but preflight imports internal/lymcwd and
 // internal/fabricengine, and cliwire may import neither.
 //
 // Per-CLI variance is carried as data on a Module descriptor each CLI declares in its own package,
@@ -25,7 +25,7 @@
 //
 // cliwire's production dependency set is fixed: the standard library plus internal/standalonestate, internal/standalonegeom, internal/logger, internal/stencilstore, internal/buildinfo, internal/buildvcs, contracts/stencils and contracts/specs.
 // Two exclusions are deliberate.
-// internal/lyxcwd is barred by the Told-Geometry Invariant and is never needed here, since cwd arrives from the caller rather than being resolved.
+// internal/lymcwd is barred by the Told-Geometry Invariant and is never needed here, since cwd arrives from the caller rather than being resolved.
 // internal/planparser is kept out so that webster's own plan-directory layout does not end up
 // living inside a module burler shares; webster supplies its layout as a function value instead.
 //

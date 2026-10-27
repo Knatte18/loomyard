@@ -77,7 +77,7 @@ func (f *fakeStart) baseDeps() StartDeps {
 				return "", false, err
 			}
 			if f.moving[worktree] {
-				return "run `lyx fabric anchor " + worktree + " --set sub`", true, nil
+				return "run `lym fabric anchor " + worktree + " --set sub`", true, nil
 			}
 			return "", false, nil
 		},
@@ -125,7 +125,7 @@ func TestEnsureLive(t *testing.T) {
 			wantEntries: []StartEntry{{Worktree: PrimeLabel, Outcome: OutcomeFailed}, {Worktree: "b1", Outcome: OutcomeStarted}},
 			wantClaims:  []string{"here"},
 			wantSpawned: []string{"b1"},
-			wantDetails: []string{"origin unreachable", "lyx beam start"},
+			wantDetails: []string{"origin unreachable", "lym beam start"},
 		},
 		{
 			name:        "ASecondCallReportsEveryDobbyLiveAndSpawnsNothing",
@@ -139,7 +139,7 @@ func TestEnsureLive(t *testing.T) {
 			fake:        fakeStart{primeOwner: "there", beams: []BeamPair{{Slug: "b1", Owner: "here"}}},
 			wantEntries: []StartEntry{{Worktree: PrimeLabel, Outcome: OutcomeRefused}, {Worktree: "b1", Outcome: OutcomeStarted}},
 			wantSpawned: []string{"b1"},
-			wantDetails: []string{"owned by there; lyx adopt root takes it over here"},
+			wantDetails: []string{"owned by there; lym adopt root takes it over here"},
 		},
 		{
 			name:        "ALostPrimeClaimReadsTheOtherMachinesClaim",
@@ -153,7 +153,7 @@ func TestEnsureLive(t *testing.T) {
 			fake:           fakeStart{primeOwner: "here", beams: []BeamPair{{Slug: "b1", Owner: "there"}, {Slug: "b2", Owner: "here"}}},
 			wantEntries:    []StartEntry{{Worktree: PrimeLabel, Outcome: OutcomeStarted}, {Worktree: "b1", Outcome: OutcomeRefused}, {Worktree: "b2", Outcome: OutcomeStarted}},
 			wantSpawned:    []string{"hub-prime", "b2"},
-			wantBeamDetail: "owned by there; lyx adopt b1",
+			wantBeamDetail: "owned by there; lym adopt b1",
 		},
 		{
 			name:        "ABeamNotNamedIsNotStarted",
@@ -174,7 +174,7 @@ func TestEnsureLive(t *testing.T) {
 			fake:           fakeStart{primeOwner: "here", beams: []BeamPair{{Slug: "b1"}, {Slug: "b2"}}, held: map[string]bool{"b1": true}},
 			wantEntries:    []StartEntry{{Worktree: PrimeLabel, Outcome: OutcomeStarted}, {Worktree: "b1", Outcome: OutcomeRefused}, {Worktree: "b2", Outcome: OutcomeStarted}},
 			wantSpawned:    []string{"hub-prime", "b2"},
-			wantBeamDetail: "lyx batten status b1",
+			wantBeamDetail: "lym batten status b1",
 		},
 		{
 			name:        "AFailedLandingHoldReadIsThatWorktreesFailureAndTheOthersStart",
@@ -201,14 +201,14 @@ func TestEnsureLive(t *testing.T) {
 			fake:           fakeStart{primeOwner: "here", beams: []BeamPair{{Slug: "b1"}, {Slug: "b2"}}, moving: map[string]bool{"b1": true}},
 			wantEntries:    []StartEntry{{Worktree: PrimeLabel, Outcome: OutcomeStarted}, {Worktree: "b1", Outcome: OutcomeRefused}, {Worktree: "b2", Outcome: OutcomeStarted}},
 			wantSpawned:    []string{"hub-prime", "b2"},
-			wantBeamDetail: "lyx fabric anchor b1 --set sub",
+			wantBeamDetail: "lym fabric anchor b1 --set sub",
 		},
 		{
 			name:        "APrimeWithAnAnchorChangeStandingIsRefusedAndTheBeamsStart",
 			fake:        fakeStart{primeOwner: "here", beams: []BeamPair{{Slug: "b1"}}, moving: map[string]bool{"hub-prime": true}},
 			wantEntries: []StartEntry{{Worktree: PrimeLabel, Outcome: OutcomeRefused}, {Worktree: "b1", Outcome: OutcomeStarted}},
 			wantSpawned: []string{"b1"},
-			wantDetails: []string{"lyx fabric anchor hub-prime --set sub"},
+			wantDetails: []string{"lym fabric anchor hub-prime --set sub"},
 		},
 		{
 			name:        "AFailedReadOfWhetherAChangeStandsReportsTheWorktreeFailed",
@@ -304,11 +304,11 @@ func TestOwnedWorktrees(t *testing.T) {
 	}
 }
 
-// TestLive asserts a dobby reads live exactly while its lock is held, and a worktree with no marker directory reads not live.
+// TestLive asserts a dobby reads live exactly while its lock is held, and a worktree with no beam directory reads not live.
 func TestLive(t *testing.T) {
 	t.Parallel()
 
-	t.Run("NoMarkerDirectoryReadsNotLive", func(t *testing.T) {
+	t.Run("NoBeamDirectoryReadsNotLive", func(t *testing.T) {
 		t.Parallel()
 
 		geom := Geometry{LockPath: filepath.Join(t.TempDir(), "beam", "dobby.lock")}

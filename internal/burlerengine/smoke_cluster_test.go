@@ -103,7 +103,7 @@ func writeClusterSmokeFixture(t *testing.T, hub string) string {
 // lenses.Load and lenses.ResolveFan already have their own unit coverage.
 func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, *hubforge.Hub) {
 	t.Helper()
-	llmkit.Claude(t, "LYX_REED_CLAUDE")
+	llmkit.Claude(t, "LYM_REED_CLAUDE")
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	deferHubRelease(t, h.Path)

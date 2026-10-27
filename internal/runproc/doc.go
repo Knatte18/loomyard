@@ -1,6 +1,6 @@
 // Package runproc owns the owner record of a run's processes and the one sequence that ends them.
 //
-// Every detached or long-lived process lyx starts for a run registers a Record under its owner: the run's slug, or HubOwner for the hub's own processes.
+// Every detached or long-lived process lym starts for a run registers a Record under its owner: the run's slug, or HubOwner for the hub's own processes.
 // A record holds the pid, the process group when the process leads it, the start time, the role (`RoleDriver`, `RoleLoop`, `RoleBatten`, `RolePush`, `RoleSync`, `RoleDobby` or `RoleCapture`), the command line and the registration time.
 // Register writes `<dir>/<owner>/<pid>-<start time>.json` through `internal/state`, so a key the record does not declare survives a rewrite by an older binary.
 // The package is told its directory and derives no path.
@@ -21,7 +21,7 @@
 // It returns each process it ended and, for processes that survive SIGKILL, a SurvivorsError that names them.
 // EndSparing is End with named roles left alone, the processes below them included; its one caller is the session end that is not a teardown, which spares `RoleDobby`.
 // EndRole is End for one role: it ends only the live records of that role under the owner, and the processes below them, with End's signals, grace, kill bound and passes, and leaves every other record and the processes below it alone.
-// EndProcess runs the same sequence on one unregistered pid, for the orphans `lyx tender reap` ends.
+// EndProcess runs the same sequence on one unregistered pid, for the orphans `lym tender reap` ends.
 //
 // On Windows no start time can be read and no group can be signalled, so End, EndSparing, EndRole and EndProcess signal nothing.
 //

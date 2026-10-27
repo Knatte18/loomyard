@@ -10,8 +10,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxtemp"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 )
 
 // goCallTimeout bounds every request a GoClient makes, so a caller under a lock waits at most this long per call.
@@ -25,16 +25,16 @@ type GoClient struct {
 }
 
 // NewProgramClient returns a client that signs as the program named program, an upper-case name such as BATTEN, under the hub's shortname.
-// Its claim carries no strand name, whatever $LYX_STRAND_NAME holds, so it never claims a strand.
+// Its claim carries no strand name, whatever $LYM_STRAND_NAME holds, so it never claims a strand.
 // It refuses a location outside a hub, and a program name that is not well formed.
-func NewProgramClient(location *lyxcwd.Location, program string) (*GoClient, error) {
+func NewProgramClient(location *lymcwd.Location, program string) (*GoClient, error) {
 	return newGoClient(location, programClaim("", program))
 }
 
 // NewScopedProgramClient returns a client that signs as the program named program for the beam slug, as "<shortname>:<slug>:<NAME>".
 // An empty slug signs like NewProgramClient.
 // Its claim carries no strand name, and it refuses a location outside a hub, a malformed slug and a program name that is not well formed.
-func NewScopedProgramClient(location *lyxcwd.Location, slug, program string) (*GoClient, error) {
+func NewScopedProgramClient(location *lymcwd.Location, slug, program string) (*GoClient, error) {
 	return newGoClient(location, programClaim(slug, program))
 }
 
@@ -52,20 +52,20 @@ func programClaim(slug, program string) func(shortname string) (creelengine.Clai
 // NewStrandClient returns a client that claims the strand named strandName and no program.
 // The daemon accepts the claim only from a process in that strand's pane.
 // It refuses a location outside a hub.
-func NewStrandClient(location *lyxcwd.Location, strandName string) (*GoClient, error) {
+func NewStrandClient(location *lymcwd.Location, strandName string) (*GoClient, error) {
 	return newGoClient(location, func(string) (creelengine.Claim, error) {
 		return creelengine.Claim{StrandName: strandName}, nil
 	})
 }
 
 // newGoClient resolves the creel geometry of the location's hub and builds a client signing with the claim that claim returns for the hub's shortname.
-func newGoClient(location *lyxcwd.Location, claim func(shortname string) (creelengine.Claim, error)) (*GoClient, error) {
+func newGoClient(location *lymcwd.Location, claim func(shortname string) (creelengine.Claim, error)) (*GoClient, error) {
 	if location == nil || location.HubPath == "" {
-		return nil, errors.New("creel: a client needs a hub, and this location is not in one; way forward: call it from a worktree of a lyx hub")
+		return nil, errors.New("creel: a client needs a hub, and this location is not in one; way forward: call it from a worktree of a lym hub")
 	}
-	root, err := lyxtemp.ProcessRoot()
+	root, err := lymtemp.ProcessRoot()
 	if err != nil {
-		return nil, fmt.Errorf("creel: open the lyxtemp root: %w", err)
+		return nil, fmt.Errorf("creel: open the lymtemp root: %w", err)
 	}
 	geometry, err := hubgeom.CreelGeometry(location.HubPath, root.Path())
 	if err != nil {

@@ -1,9 +1,9 @@
 // cli.go exposes the cobra command tree for the stencil module: list, validate, diff, sync, and
 // promote.
 // Geometry is resolved once in the parent's PersistentPreRunE, following the pattern
-// internal/idecli/cli.go establishes, so a bare "lyx stencil" listing never requires a git repo.
+// internal/idecli/cli.go establishes, so a bare "lym stencil" listing never requires a git repo.
 // list, validate, and sync are declared here; diff.go and promote.go each add their own subcommand
-// via a closure-returning accessor over the same resolved *lyxcwd.Location.
+// via a closure-returning accessor over the same resolved *lymcwd.Location.
 //
 // stencilcli is a named deviation from the CLI/Cobra Invariant's package-naming rule: its kernel is
 // internal/stencilstore, not stencilengine. See PATTERN-cli-cobra.
@@ -24,14 +24,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
 // Command returns the cobra command tree for the stencil module.
 func Command() *cobra.Command {
-	var l *lyxcwd.Location
+	var l *lymcwd.Location
 
 	cmd := &cobra.Command{
 		Use:   "stencil",
@@ -40,12 +40,12 @@ func Command() *cobra.Command {
 prompt files every producer reads from disk at call time.
 
 Examples:
-  lyx stencil list
-  lyx stencil validate
-  lyx stencil diff loom-template-plan
-  lyx stencil diff --all --exit-code
-  lyx stencil sync
-  lyx stencil promote loom-template-plan`,
+  lym stencil list
+  lym stencil validate
+  lym stencil diff loom-template-plan
+  lym stencil diff --all --exit-code
+  lym stencil sync
+  lym stencil promote loom-template-plan`,
 		RunE: clihelp.GroupRunE,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			if cmd.Name() == "stencil" {
@@ -54,14 +54,14 @@ Examples:
 
 			ctx := cmd.Context()
 
-			cwd, err := lyxcwd.CwdFrom(ctx)
+			cwd, err := lymcwd.CwdFrom(ctx)
 			if err != nil {
 				output.Err(cmd.OutOrStdout(), fmt.Sprintf("failed to get working directory: %v", err))
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
 
-			resolved, err := lyxcwd.Resolve(cwd)
+			resolved, err := lymcwd.Resolve(cwd)
 			if err != nil {
 				output.Err(cmd.OutOrStdout(), err.Error())
 				clihelp.Abort(ctx, 1)
@@ -207,7 +207,7 @@ Examples:
 		},
 	}
 
-	loc := func() *lyxcwd.Location { return l }
+	loc := func() *lymcwd.Location { return l }
 
 	cmd.AddCommand(listCmd, validateCmd, syncCmd, newDiffCmd(loc), newPromoteCmd(loc))
 	return cmd
@@ -221,7 +221,7 @@ func RunCLI(out io.Writer, args []string) int {
 // RunCLIIn is RunCLI's seam-cwd-carrying sibling: an empty cwd means "read the process cwd" and
 // delegates to clihelp.Execute exactly as RunCLI always has, while any other value seeds cwd into
 // the execution context via clihelp.ExecuteIn.
-// The branch exists because lyxcwd.WithCwd panics on an empty directory, so a uniform delegation to
+// The branch exists because lymcwd.WithCwd panics on an empty directory, so a uniform delegation to
 // ExecuteIn would panic on every existing RunCLI call.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
@@ -278,7 +278,7 @@ func listRegistryEntries(baseDir string, registry stencilstore.Registry, kind st
 	return list
 }
 
-// classifyLabel maps a stencilstore.State to the three-value vocabulary lyx stencil list reports.
+// classifyLabel maps a stencilstore.State to the three-value vocabulary lym stencil list reports.
 // StateReconciled is folded into "untouched" alongside StateUntouched, since both describe a board
 // copy that already matches what a future refresh would write -- StateReconciled differs only in
 // carrying a stamp for the wrong (superseded) default, which reconciliation corrects invisibly on
@@ -294,12 +294,9 @@ func classifyLabel(state stencilstore.State) string {
 	}
 }
 
-// resolveSourceDir computes the worktree-relative contracts/stencils/ source tree path the same way
-// cmd/lyx/stencilseed.go does: filepath.Join(l.WorktreePath(), "contracts", "stencils") when it exists,
-// and the empty string otherwise. The empty string is what keeps the port-back drift warning
-// silent in a consumer repo, whose worktree carries no such tree, rather than firing on every run
-// forever.
-func resolveSourceDir(l *lyxcwd.Location) string {
+// resolveSourceDir computes the worktree-relative contracts/stencils/ source tree path the same way cmd/lym/stencilseed.go does: filepath.Join(l.WorktreePath(), "contracts", "stencils") when it exists, and the empty string otherwise.
+// The empty string is what keeps the port-back drift warning silent in a consumer repo, whose worktree carries no such tree, rather than firing on every run forever.
+func resolveSourceDir(l *lymcwd.Location) string {
 	sourceDir := filepath.Join(l.WorktreePath(), "contracts", "stencils")
 	if _, err := os.Stat(sourceDir); err != nil {
 		return ""

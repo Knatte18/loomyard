@@ -15,7 +15,7 @@ type Geometry struct {
 	HubPath string
 	// Shortname is the hub's agent-name shortname.
 	Shortname string
-	// StateDir is the hub's creel state directory, <hub>/_board/.lyx/creel.
+	// StateDir is the hub's creel state directory, <hub>/_board/.lym/creel.
 	StateDir string
 	// JournalDir holds the journal files, one per UTC day.
 	JournalDir string

@@ -170,9 +170,9 @@ func TestPruneEmptyAncestors(t *testing.T) {
 }
 
 // TestRefuseUncontainedPath pins the containment assertion the launcher teardown helpers
-// share, including the ".."-derived paths that made `lyx fabric remove ..` delete an entire hub.
+// share, including the ".."-derived paths that made `lym fabric remove ..` delete an entire hub.
 //
-//testtiming:keep the containment assertion shared by the launcher teardown helpers refusing ".."-derived paths that once let `lyx fabric remove ..` delete a hub; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep the containment assertion shared by the launcher teardown helpers refusing ".."-derived paths that once let `lym fabric remove ..` delete a hub; coverage of its blocks by other tests does not show an assertion of this
 func TestRefuseUncontainedPath(t *testing.T) {
 	t.Parallel()
 

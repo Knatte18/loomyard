@@ -1,7 +1,7 @@
 // Package dotgit reads a directory's `.git` entry in-process: the git dir, the common dir, whether they form a usable repository, and the worktree root above a path.
 // It is the one `.git` parser and imports the standard library alone.
 //
-// It is its own package because `gitrepo`'s in-package test imports `gitkit`, which reaches `lyxcwd` through `configengine` and `logger`; `lyxcwd` importing `gitrepo` would close a cycle in that test.
+// It is its own package because `gitrepo`'s in-package test imports `gitkit`, which reaches `lymcwd` through `configengine` and `logger`; `lymcwd` importing `gitrepo` would close a cycle in that test.
 //
 // A `.git` directory is the git dir.
 // A `.git` file is a gitfile whose `gitdir:` line names it, relative to the directory when not absolute.

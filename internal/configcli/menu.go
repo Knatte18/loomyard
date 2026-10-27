@@ -1,6 +1,6 @@
 // menu.go — interactive config module picker.
 //
-// Implements the numbered picker behind `lyx config menu`.
+// Implements the numbered picker behind `lym config menu`.
 
 package configcli
 

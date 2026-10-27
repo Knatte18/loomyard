@@ -1,6 +1,6 @@
 //go:build tier0
 
-// resolve_test.go contains unit tests for resolveLyx (dev/prod binary resolution) and prependPath
+// resolve_test.go contains unit tests for resolveLym (dev/prod binary resolution) and prependPath
 // (child-process PATH construction).
 // All tests are Tier-1 pure: the devBinPath and lookPath seams are stubbed,
 // and only os.Stat/os.WriteFile on t.TempDir() paths touch the filesystem.
@@ -15,11 +15,11 @@ import (
 	"testing"
 )
 
-// TestResolveLyx_DevBinaryExists verifies that resolveLyx returns the dev-binary path and sourceDev
+// TestResolveLym_DevBinaryExists verifies that resolveLym returns the dev-binary path and sourceDev
 // when devBinPath resolves to an existing file.
-func TestResolveLyx_DevBinaryExists(t *testing.T) {
-	devPath := filepath.Join(t.TempDir(), "lyx")
-	if err := os.WriteFile(devPath, []byte("fake dev lyx"), 0o755); err != nil {
+func TestResolveLym_DevBinaryExists(t *testing.T) {
+	devPath := filepath.Join(t.TempDir(), "lym")
+	if err := os.WriteFile(devPath, []byte("fake dev lym"), 0o755); err != nil {
 		t.Fatalf("write fake dev binary: %v", err)
 	}
 
@@ -27,23 +27,23 @@ func TestResolveLyx_DevBinaryExists(t *testing.T) {
 	defer func() { devBinPath = oldDevBinPath }()
 	devBinPath = func() (string, error) { return devPath, nil }
 
-	path, source, err := resolveLyx()
+	path, source, err := resolveLym()
 	if err != nil {
-		t.Fatalf("resolveLyx() error = %v; want nil", err)
+		t.Fatalf("resolveLym() error = %v; want nil", err)
 	}
 	if source != sourceDev {
-		t.Errorf("resolveLyx() source = %q; want %q", source, sourceDev)
+		t.Errorf("resolveLym() source = %q; want %q", source, sourceDev)
 	}
 	if path != devPath {
-		t.Errorf("resolveLyx() path = %q; want %q", path, devPath)
+		t.Errorf("resolveLym() path = %q; want %q", path, devPath)
 	}
 }
 
-// TestResolveLyx_DevBinaryMissingFallsBackToProd verifies that resolveLyx falls back to lookPath
+// TestResolveLym_DevBinaryMissingFallsBackToProd verifies that resolveLym falls back to lookPath
 // and returns sourceProd when the dev binary is absent.
-func TestResolveLyx_DevBinaryMissingFallsBackToProd(t *testing.T) {
-	missingDevPath := filepath.Join(t.TempDir(), "lyx")
-	const fakeProdPath = "/fake/prod/lyx"
+func TestResolveLym_DevBinaryMissingFallsBackToProd(t *testing.T) {
+	missingDevPath := filepath.Join(t.TempDir(), "lym")
+	const fakeProdPath = "/fake/prod/lym"
 
 	oldDevBinPath := devBinPath
 	defer func() { devBinPath = oldDevBinPath }()
@@ -53,23 +53,23 @@ func TestResolveLyx_DevBinaryMissingFallsBackToProd(t *testing.T) {
 	defer func() { lookPath = oldLookPath }()
 	lookPath = func(name string) (string, error) { return fakeProdPath, nil }
 
-	path, source, err := resolveLyx()
+	path, source, err := resolveLym()
 	if err != nil {
-		t.Fatalf("resolveLyx() error = %v; want nil", err)
+		t.Fatalf("resolveLym() error = %v; want nil", err)
 	}
 	if source != sourceProd {
-		t.Errorf("resolveLyx() source = %q; want %q", source, sourceProd)
+		t.Errorf("resolveLym() source = %q; want %q", source, sourceProd)
 	}
 	if path != fakeProdPath {
-		t.Errorf("resolveLyx() path = %q; want %q", path, fakeProdPath)
+		t.Errorf("resolveLym() path = %q; want %q", path, fakeProdPath)
 	}
 }
 
-// TestResolveLyx_DevBinaryMissingAndLookPathFails verifies that resolveLyx propagates a lookPath
+// TestResolveLym_DevBinaryMissingAndLookPathFails verifies that resolveLym propagates a lookPath
 // error when both the dev binary is absent and PATH lookup fails.
-func TestResolveLyx_DevBinaryMissingAndLookPathFails(t *testing.T) {
-	missingDevPath := filepath.Join(t.TempDir(), "lyx")
-	wantErr := errors.New("exec: \"lyx\": executable file not found in $PATH")
+func TestResolveLym_DevBinaryMissingAndLookPathFails(t *testing.T) {
+	missingDevPath := filepath.Join(t.TempDir(), "lym")
+	wantErr := errors.New("exec: \"lym\": executable file not found in $PATH")
 
 	oldDevBinPath := devBinPath
 	defer func() { devBinPath = oldDevBinPath }()
@@ -79,12 +79,12 @@ func TestResolveLyx_DevBinaryMissingAndLookPathFails(t *testing.T) {
 	defer func() { lookPath = oldLookPath }()
 	lookPath = func(name string) (string, error) { return "", wantErr }
 
-	_, _, err := resolveLyx()
+	_, _, err := resolveLym()
 	if err == nil {
-		t.Fatal("resolveLyx() error = nil; want non-nil")
+		t.Fatal("resolveLym() error = nil; want non-nil")
 	}
 	if !errors.Is(err, wantErr) {
-		t.Errorf("resolveLyx() error = %v; want wrapping %v", err, wantErr)
+		t.Errorf("resolveLym() error = %v; want wrapping %v", err, wantErr)
 	}
 }
 

@@ -21,8 +21,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxtemp"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 )
 
 // bareTemplateOnce guards buildBareTemplate so the warp/weft bare pair is built exactly once per test
@@ -66,7 +66,7 @@ func markFixtureBuild() func() {
 	}
 }
 
-// TestShortname is the repo shortname every hub NewHub builds is cloned with, recorded as .lyx-shortname, so every hub fixture has a shortname.
+// TestShortname is the repo shortname every hub NewHub builds is cloned with, recorded as .lym-shortname, so every hub fixture has a shortname.
 const TestShortname = "tst"
 
 // buildBareTemplate builds, once per test binary, the pushed-to warp bare and the genuinely empty
@@ -94,7 +94,7 @@ func buildBareTemplate() (warpBare, weftBare string) {
 	defer markFixtureBuild()()
 
 	bareTemplateOnce.Do(func() {
-		tmpDir, err := lyxtemp.MkdirTemp("hubforge-bare-*")
+		tmpDir, err := lymtemp.MkdirTemp("hubforge-bare-*")
 		if err != nil {
 			panic(err)
 		}
@@ -179,13 +179,13 @@ func copyBares(tb testing.TB) (warpBare, weftBare string) {
 // of the bare template and driven through fabriccli.CloneAndWire, ready for a verb under test to run
 // against.
 type Hub struct {
-	// Path is the hub root, the <name>-LYXHUB container directory.
+	// Path is the hub root, the <name>-LYMHUB container directory.
 	Path string
 	// Anchor is the resolved AnchorRel value, "." or "backend".
 	Anchor string
-	// Location is this hub's *lyxcwd.Location, obtained from lyxcwd.Resolve — never constructed by
+	// Location is this hub's *lymcwd.Location, obtained from lymcwd.Resolve — never constructed by
 	// hand, per the Cwd Resolution Invariant.
-	Location *lyxcwd.Location
+	Location *lymcwd.Location
 	// Topology is the fabricengine.Topology handle every pair-creating verb call goes through.
 	Topology *fabricengine.Topology
 	// CodeBare is this hub's own copy of the warp bare remote.
@@ -242,7 +242,7 @@ func (h *Hub) PairRecordsSibling(slug string) string {
 // PairLauncherDir returns the path to slug's mirrored launcher directory, at slug's own anchor.
 // It panics when slug's recorded anchor is unusable, which no fixture produces.
 func (h *Hub) PairLauncherDir(slug string) string {
-	pair, err := lyxcwd.NamedWorktree(h.Path, slug)
+	pair, err := lymcwd.NamedWorktree(h.Path, slug)
 	if err != nil {
 		panic(fmt.Sprintf("hubforge: read the anchor of %q: %v", slug, err))
 	}
@@ -327,9 +327,9 @@ func cloneHub(tb testing.TB, anchor, warpBare, weftBare, container string) (*Hub
 		tb.Fatalf("NewHub: push the clone's board commit: %v", err)
 	}
 
-	loc, err := lyxcwd.Resolve(res.PrimeCwd)
+	loc, err := lymcwd.Resolve(res.PrimeCwd)
 	if err != nil {
-		tb.Fatalf("NewHub: lyxcwd.Resolve(%s): %v", res.PrimeCwd, err)
+		tb.Fatalf("NewHub: lymcwd.Resolve(%s): %v", res.PrimeCwd, err)
 	}
 
 	forgetCloneCorrespondence(tb, res.WeftBase, loc)
@@ -350,7 +350,7 @@ func cloneHub(tb testing.TB, anchor, warpBare, weftBare, container string) (*Hub
 // forgetCloneCorrespondence drops the Warp-SHA trailer the clone's walk put on the weft prime's reconcile commit, and the correspondence entry that came with it.
 // A fresh fixture hub starts with no warp-to-weft correspondence, so a scenario that records its own sees only those.
 // The commit is local to the prime's branch, so rewording it leaves no remote diverged.
-func forgetCloneCorrespondence(tb testing.TB, weftBase string, loc *lyxcwd.Location) {
+func forgetCloneCorrespondence(tb testing.TB, weftBase string, loc *lymcwd.Location) {
 	tb.Helper()
 
 	message := gitkit.Git(tb, weftBase, "log", "-1", "--format=%B")
@@ -412,7 +412,7 @@ func registerTeardown(tb testing.TB, hubPath string) {
 			// SkipDir from a non-directory callback means "stop visiting siblings in this
 			// directory", not "don't descend into this entry". That would leave every sibling
 			// junction wired: abandoning <hub>/<slug2> onward after removing
-			// <slug1>, and leaving _lyx and _board behind after removing <worktree>/.lyx.
+			// <slug1>, and leaving _lym and _board behind after removing <worktree>/.lym.
 			// This is the single most reversible mistake in this file, so it is spelled out
 			// here rather than left to be rediscovered.
 			return nil
@@ -452,7 +452,7 @@ func AddPairWith(tb testing.TB, h *Hub, slug string, opts fabricengine.AddOption
 func OpenFabric(tb testing.TB, h *Hub) *fabricengine.Fabric {
 	tb.Helper()
 
-	loc, err := lyxcwd.ResolveWorktree(h.PrimeWorktree())
+	loc, err := lymcwd.ResolveWorktree(h.PrimeWorktree())
 	if err != nil {
 		tb.Fatalf("OpenFabric: ResolveWorktree(%s): %v", h.PrimeWorktree(), err)
 	}

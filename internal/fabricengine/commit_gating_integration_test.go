@@ -43,7 +43,7 @@ func TestCommit_SkipGit_TwoSided(t *testing.T) {
 		t.Fatalf("weft lock dir %q already exists before Commit(); fixture assumption violated", lockDirPath)
 	}
 
-	result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "skip-git commit", nil, SyncOptions{SkipGit: true})
+	result, err := f.Commit([]string{"README", "_lym/config.yaml"}, "skip-git commit", nil, SyncOptions{SkipGit: true})
 	if err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
@@ -99,7 +99,7 @@ func TestCommit_TwoSided_NormalOpts_ControlCase(t *testing.T) {
 	writeWarpFile(t, warpPath, "README", "warp change")
 	writeWeftConfigContent(t, weftPath, "weft change")
 
-	result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "control commit", nil, SyncOptions{})
+	result, err := f.Commit([]string{"README", "_lym/config.yaml"}, "control commit", nil, SyncOptions{})
 	if err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}

@@ -10,7 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 //testtiming:keep a clean pair reporting no mid-merge state; coverage of its blocks by other tests does not show an assertion of this
@@ -112,7 +112,7 @@ func TestMidMerge_ForeignState_EverySideAndShape(t *testing.T) {
 			branch, conflictPath := "other", "plain-conflict.txt"
 			if tt.onWeft {
 				dir = h.PrimeRecords()
-				branch, conflictPath = "other-weft", "_lyx/plain-conflict.txt"
+				branch, conflictPath = "other-weft", "_lym/plain-conflict.txt"
 			}
 
 			setupConflictingDivergence(t, dir, branch, conflictPath)
@@ -151,7 +151,7 @@ func TestMidMerge_ForeignState_EverySideAndShape(t *testing.T) {
 func TestMidMerge_UnopenablePair_Errors(t *testing.T) {
 	t.Parallel()
 
-	l := &lyxcwd.Location{RepoName: "ghost", HubPath: t.TempDir(), WorktreeName: "ghost", AnchorRel: "."}
+	l := &lymcwd.Location{RepoName: "ghost", HubPath: t.TempDir(), WorktreeName: "ghost", AnchorRel: "."}
 
 	if _, err := fabricengine.MidMerge(l); err == nil {
 		t.Fatalf("MidMerge() over an unopenable pair error = nil; want an error, never MidMergeNone")
@@ -159,7 +159,7 @@ func TestMidMerge_UnopenablePair_Errors(t *testing.T) {
 }
 
 // assertMergeBlocked checks that the pair at l reports MergeBlocked as want.
-func assertMergeBlocked(t *testing.T, l *lyxcwd.Location, want bool) {
+func assertMergeBlocked(t *testing.T, l *lymcwd.Location, want bool) {
 	t.Helper()
 	f, err := fabricengine.Open(l)
 	if err != nil {

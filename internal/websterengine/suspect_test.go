@@ -44,8 +44,8 @@ func newSuspectFixture(t *testing.T) *suspectFixture {
 	geom := Geometry{
 		WorktreeRoot: root,
 		PlanDir:      planDir,
-		WebsterDir:   filepath.Join(root, "_lyx", "webster"),
-		ScratchDir:   filepath.Join(root, ".lyx", "webster"),
+		WebsterDir:   filepath.Join(root, "_lym", "webster"),
+		ScratchDir:   filepath.Join(root, ".lym", "webster"),
 	}
 	st := &State{Batches: map[int]*BatchState{
 		1: {Slug: "one", StartSHA: start, Terminal: true, Status: DigestStatusDone, Digest: &Digest{HeadSHA: head}},
@@ -86,9 +86,9 @@ func TestCheckSuspectPaths(t *testing.T) {
 	})
 	t.Run("ignored and run-state paths are unverifiable", func(t *testing.T) {
 		scratchFile := filepath.Join(fx.geom.ScratchDir, "x.lock")
-		d, u := check(t, fx.head, "ignored.log", "_lyx/webster/state.json", scratchFile, "/elsewhere/file")
+		d, u := check(t, fx.head, "ignored.log", "_lym/webster/state.json", scratchFile, "/elsewhere/file")
 		expect(t, d)
-		expect(t, u, "/elsewhere/file", scratchFile, "_lyx/webster/state.json", "ignored.log")
+		expect(t, u, "/elsewhere/file", scratchFile, "_lym/webster/state.json", "ignored.log")
 	})
 	t.Run("plan file hash", func(t *testing.T) {
 		card := filepath.Join(fx.geom.PlanDir, "01-card.md")
@@ -288,7 +288,7 @@ func TestAcceptPendingAudit_RefusesCommitPastHead(t *testing.T) {
 	if !errors.Is(err, ErrAuditNotAcceptable) {
 		t.Fatalf("AcceptPendingAudit() error = %v; want ErrAuditNotAcceptable", err)
 	}
-	for _, want := range []string{fx.head, "way forward: 1) lyx webster reset --to last-batch-head", `2) re-run "lyx webster accept-audit"`} {
+	for _, want := range []string{fx.head, "way forward: 1) lym webster reset --to last-batch-head", `2) re-run "lym webster accept-audit"`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error = %q; want it to contain %q", err, want)
 		}
@@ -323,7 +323,7 @@ func TestAcceptPendingAudit_RefusesUnverifiablePath(t *testing.T) {
 	if !errors.Is(err, ErrAuditNotAcceptable) {
 		t.Fatalf("AcceptPendingAudit() error = %v; want ErrAuditNotAcceptable", err)
 	}
-	for _, want := range []string{"ignored.log cannot be checked: ignored by git", "1) lyx webster reset --to start; 2) lyx webster run"} {
+	for _, want := range []string{"ignored.log cannot be checked: ignored by git", "1) lym webster reset --to start; 2) lym webster run"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error = %q; want it to contain %q", err, want)
 		}

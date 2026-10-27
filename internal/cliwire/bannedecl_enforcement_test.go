@@ -71,7 +71,7 @@ var bannedWiringDeclarations = map[string]bool{
 // _test.go files are skipped: the invariant is about production wiring, and a test helper is not a
 // second copy of it.
 //
-//lyx:guard
+//lym:guard
 func TestBannedDeclarations_CliPackagesCallIntoCliwire(t *testing.T) {
 	var failures []string
 

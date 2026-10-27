@@ -17,14 +17,14 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // selfStatusRel is the status file's relative path for the self run.
-func selfStatusRel(location *lyxcwd.Location) string {
+func selfStatusRel(location *lymcwd.Location) string {
 	return shedrun.StatusRel(location, shedrun.SelfRunID)
 }
 
@@ -147,7 +147,7 @@ func TestStatusCommitPathspec(t *testing.T) {
 	}
 	tests := []struct {
 		name        string
-		setup       func(t *testing.T, loc *lyxcwd.Location)
+		setup       func(t *testing.T, loc *lymcwd.Location)
 		wantReviews bool
 		wantLoom    bool
 		wantDrive   bool
@@ -156,7 +156,7 @@ func TestStatusCommitPathspec(t *testing.T) {
 	}{
 		{
 			name: "arbiter directory holding only an empty attempt directory",
-			setup: func(t *testing.T, loc *lyxcwd.Location) {
+			setup: func(t *testing.T, loc *lymcwd.Location) {
 				if err := os.MkdirAll(shedrun.ArbiterAttemptDir(loc, shedrun.SelfRunID, 1), 0o755); err != nil {
 					t.Fatal(err)
 				}
@@ -164,14 +164,14 @@ func TestStatusCommitPathspec(t *testing.T) {
 		},
 		{
 			name: "arbiter attempt file",
-			setup: func(t *testing.T, loc *lyxcwd.Location) {
+			setup: func(t *testing.T, loc *lymcwd.Location) {
 				writeFile(t, filepath.Join(shedrun.ArbiterAttemptDir(loc, shedrun.SelfRunID, 1), "attempt.json"), "{}\n")
 			},
 			wantArbiter: true,
 		},
 		{
 			name: "tackler directory holding only an empty attempt directory",
-			setup: func(t *testing.T, loc *lyxcwd.Location) {
+			setup: func(t *testing.T, loc *lymcwd.Location) {
 				if err := os.MkdirAll(shedrun.TacklerAttemptDir(loc, shedrun.SelfRunID, 1), 0o755); err != nil {
 					t.Fatal(err)
 				}
@@ -179,15 +179,15 @@ func TestStatusCommitPathspec(t *testing.T) {
 		},
 		{
 			name: "tackler attempt file",
-			setup: func(t *testing.T, loc *lyxcwd.Location) {
+			setup: func(t *testing.T, loc *lymcwd.Location) {
 				writeFile(t, filepath.Join(shedrun.TacklerAttemptDir(loc, shedrun.SelfRunID, 1), "attempt.json"), "{}\n")
 			},
 			wantTackler: true,
 		},
-		{name: "nothing on disk", setup: func(t *testing.T, loc *lyxcwd.Location) {}},
+		{name: "nothing on disk", setup: func(t *testing.T, loc *lymcwd.Location) {}},
 		{
 			name: "only empty segment directories",
-			setup: func(t *testing.T, loc *lyxcwd.Location) {
+			setup: func(t *testing.T, loc *lymcwd.Location) {
 				if err := os.MkdirAll(filepath.Join(loomengine.LoomReviewsDir(loc), "plan"), 0o755); err != nil {
 					t.Fatal(err)
 				}
@@ -195,20 +195,20 @@ func TestStatusCommitPathspec(t *testing.T) {
 		},
 		{
 			name: "file in a segment directory",
-			setup: func(t *testing.T, loc *lyxcwd.Location) {
+			setup: func(t *testing.T, loc *lymcwd.Location) {
 				writeFile(t, filepath.Join(loomengine.LoomReviewsDir(loc), "plan", "round-1-review.md"), "x\n")
 			},
 			wantReviews: true,
 		},
 		{
 			name: "regular file at the reviews path",
-			setup: func(t *testing.T, loc *lyxcwd.Location) {
+			setup: func(t *testing.T, loc *lymcwd.Location) {
 				writeFile(t, loomengine.LoomReviewsDir(loc), "x\n")
 			},
 		},
 		{
 			name: "empty directories",
-			setup: func(t *testing.T, loc *lyxcwd.Location) {
+			setup: func(t *testing.T, loc *lymcwd.Location) {
 				for _, d := range []string{loomengine.LoomDurableDir(loc), shedrun.DriveReportsDir(loc, shedrun.SelfRunID)} {
 					if err := os.MkdirAll(d, 0o755); err != nil {
 						t.Fatal(err)
@@ -218,7 +218,7 @@ func TestStatusCommitPathspec(t *testing.T) {
 		},
 		{
 			name: "only empty subdirectories",
-			setup: func(t *testing.T, loc *lyxcwd.Location) {
+			setup: func(t *testing.T, loc *lymcwd.Location) {
 				for _, d := range []string{loomengine.LoomFrictionDir(loc), filepath.Join(shedrun.DriveReportsDir(loc, shedrun.SelfRunID), "sub")} {
 					if err := os.MkdirAll(d, 0o755); err != nil {
 						t.Fatal(err)
@@ -228,28 +228,28 @@ func TestStatusCommitPathspec(t *testing.T) {
 		},
 		{
 			name: "friction note",
-			setup: func(t *testing.T, loc *lyxcwd.Location) {
+			setup: func(t *testing.T, loc *lymcwd.Location) {
 				writeFile(t, filepath.Join(loomengine.LoomFrictionDir(loc), "note.md"), "x\n")
 			},
 			wantLoom: true,
 		},
 		{
 			name: "only an archive sibling",
-			setup: func(t *testing.T, loc *lyxcwd.Location) {
+			setup: func(t *testing.T, loc *lymcwd.Location) {
 				writeFile(t, filepath.Join(loomengine.LoomDurableDir(loc), "friction-20260101T000000", "note.md"), "x\n")
 			},
 			wantLoom: true,
 		},
 		{
 			name: "drive report",
-			setup: func(t *testing.T, loc *lyxcwd.Location) {
+			setup: func(t *testing.T, loc *lymcwd.Location) {
 				writeFile(t, filepath.Join(shedrun.DriveReportsDir(loc, shedrun.SelfRunID), "report.md"), "x\n")
 			},
 			wantDrive: true,
 		},
 		{
 			name: "friction note and drive report",
-			setup: func(t *testing.T, loc *lyxcwd.Location) {
+			setup: func(t *testing.T, loc *lymcwd.Location) {
 				writeFile(t, filepath.Join(loomengine.LoomFrictionDir(loc), "note.md"), "x\n")
 				writeFile(t, filepath.Join(shedrun.DriveReportsDir(loc, shedrun.SelfRunID), "report.md"), "x\n")
 			},
@@ -267,7 +267,7 @@ func TestStatusCommitPathspec(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+			location := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 			tt.setup(t, location)
 			want := []string{selfStatusRel(location)}
 			if tt.wantReviews {
@@ -294,8 +294,8 @@ func TestStatusCommitPathspec(t *testing.T) {
 }
 
 // reworkRoundSetup returns a setup that writes a rework round record, a review file and a drive report.
-func reworkRoundSetup(writeFile func(t *testing.T, path, content string), record string) func(t *testing.T, loc *lyxcwd.Location) {
-	return func(t *testing.T, loc *lyxcwd.Location) {
+func reworkRoundSetup(writeFile func(t *testing.T, path, content string), record string) func(t *testing.T, loc *lymcwd.Location) {
+	return func(t *testing.T, loc *lymcwd.Location) {
 		writeFile(t, filepath.Join(loomengine.LoomReworkDir(loc), "round-1", "record.json"), record)
 		writeFile(t, filepath.Join(loomengine.LoomReviewsDir(loc), "plan", "round-1-review.md"), "x\n")
 		writeFile(t, filepath.Join(shedrun.DriveReportsDir(loc, shedrun.SelfRunID), "report.md"), "x\n")
@@ -375,7 +375,7 @@ func TestPlanCommitPathspec(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+			location := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 			tt.setup(t, location.AnchorPath())
 			want := []string{planparser.PlanDirRel()}
 			if tt.wantWebster {

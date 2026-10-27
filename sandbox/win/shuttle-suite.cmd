@@ -1,5 +1,5 @@
 @echo off
-REM Launcher for the lyx SANDBOX-SHUTTLE-SUITE: runs the interactive shuttle
+REM Launcher for the lym SANDBOX-SHUTTLE-SUITE: runs the interactive shuttle
 REM black-box agent session (live tmux and a logged-in claude required). The
 REM machine-specific parent directory is hardcoded HERE (the base under which
 REM sandbox Hubs are created) — the Go tool stays general.

@@ -147,17 +147,17 @@ func TestShell_ExportEnv(t *testing.T) {
 		value string
 		want  string
 	}{
-		{"pwsh/plain", Pwsh(), `C:\bin\lyx.exe`, `$env:LYX_BIN = 'C:\bin\lyx.exe'`},
-		{"pwsh/space_and_path_separator", Pwsh(), `C:\my bin;more`, `$env:LYX_BIN = 'C:\my bin;more'`},
-		{"pwsh/quote", Pwsh(), "it's", "$env:LYX_BIN = 'it''s'"},
-		{"posix/plain", Posix(), "/usr/local/bin/lyx", "export LYX_BIN='/usr/local/bin/lyx'"},
-		{"posix/space_and_path_separator", Posix(), "/usr/local/my bin:more", "export LYX_BIN='/usr/local/my bin:more'"},
-		{"posix/quote", Posix(), "it's", `export LYX_BIN='it'\''s'`},
+		{"pwsh/plain", Pwsh(), `C:\bin\lym.exe`, `$env:LYM_BIN = 'C:\bin\lym.exe'`},
+		{"pwsh/space_and_path_separator", Pwsh(), `C:\my bin;more`, `$env:LYM_BIN = 'C:\my bin;more'`},
+		{"pwsh/quote", Pwsh(), "it's", "$env:LYM_BIN = 'it''s'"},
+		{"posix/plain", Posix(), "/usr/local/bin/lym", "export LYM_BIN='/usr/local/bin/lym'"},
+		{"posix/space_and_path_separator", Posix(), "/usr/local/my bin:more", "export LYM_BIN='/usr/local/my bin:more'"},
+		{"posix/quote", Posix(), "it's", `export LYM_BIN='it'\''s'`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := tt.sh.ExportEnv("LYX_BIN", tt.value); got != tt.want {
+			if got := tt.sh.ExportEnv("LYM_BIN", tt.value); got != tt.want {
 				t.Errorf("%s ExportEnv(%q) = %q; want %q", tt.name, tt.value, got, tt.want)
 			}
 		})
@@ -249,10 +249,10 @@ func TestShell_EnvRef(t *testing.T) {
 		in   string
 		want string
 	}{
-		{"pwsh/strand_name", Pwsh(), "LYX_STRAND_NAME", `"$env:LYX_STRAND_NAME"`},
-		{"pwsh/parent", Pwsh(), "LYX_PARENT", `"$env:LYX_PARENT"`},
-		{"posix/strand_name", Posix(), "LYX_STRAND_NAME", `"${LYX_STRAND_NAME}"`},
-		{"posix/parent", Posix(), "LYX_PARENT", `"${LYX_PARENT}"`},
+		{"pwsh/strand_name", Pwsh(), "LYM_STRAND_NAME", `"$env:LYM_STRAND_NAME"`},
+		{"pwsh/parent", Pwsh(), "LYM_PARENT", `"$env:LYM_PARENT"`},
+		{"posix/strand_name", Posix(), "LYM_STRAND_NAME", `"${LYM_STRAND_NAME}"`},
+		{"posix/parent", Posix(), "LYM_PARENT", `"${LYM_PARENT}"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

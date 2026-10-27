@@ -8,13 +8,13 @@ import (
 	"io/fs"
 	"os"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // Ready reports whether fabric is usable in this worktree.
 // It returns (false, nil) when fabric has not been set up here, (true, nil) when it has, and
 // (false, err) when the check itself could not be completed (e.g. a permissions fault).
-func Ready(l *lyxcwd.Location) (bool, error) {
+func Ready(l *lymcwd.Location) (bool, error) {
 	_, err := os.Stat(RecordsWorktree(l))
 	if err == nil {
 		return true, nil

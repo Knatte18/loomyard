@@ -23,8 +23,8 @@ resume, and the envelope adds held_by_pause true with a note. A request the
 watcher has not started within the handoff timeout is abandoned; once it
 starts, the session gets the full handoff timeout for the note from when it
 reads the note request. Neither timeout counts time a hub pause held the
-request. "lyx orch withdraw" removes a
-pending request, and "lyx orch status" shows it as cycle_request.`,
+request. "lym orch withdraw" removes a
+pending request, and "lym orch status" shows it as cycle_request.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.requestCmd(cmd, orchengine.CycleCompact)

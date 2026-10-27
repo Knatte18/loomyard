@@ -12,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -23,7 +23,7 @@ import (
 // An awaiting stop that Check refuses stays eligible when its escalation reader reports nothing pending and an attempt at the stop's key has no applied mark:
 // the arbiter records a circling decision before a resume, which makes the escalation non-pending while the verb's attempt still stands.
 // A stop that is not eligible returns at once; any read error is returned.
-func HoldReading(location *lyxcwd.Location, status shedengine.Status) (battenshed.ChildArbiterStop, error) {
+func HoldReading(location *lymcwd.Location, status shedengine.Status) (battenshed.ChildArbiterStop, error) {
 	readers := NewReaders(location)
 	key := sheddriver.StopKeyOf(status)
 	arbiterDir := shedrun.ArbiterDir(location, shedrun.SelfRunID)

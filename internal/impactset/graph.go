@@ -9,10 +9,10 @@ import (
 )
 
 const (
-	// lyxbinDir is the module-relative directory of the package whose import marks a test that builds the `lyx` binary.
-	lyxbinDir = "internal/testkit/lyxbin"
-	// commandDir is the module-relative directory of the `lyx` command.
-	commandDir = "cmd/lyx"
+	// lymbinDir is the module-relative directory of the package whose import marks a test that builds the `lym` binary.
+	lymbinDir = "internal/testkit/lymbin"
+	// commandDir is the module-relative directory of the `lym` command.
+	commandDir = "cmd/lym"
 )
 
 // goListFormat is the `go list -f` template parseGoList reads.
@@ -106,7 +106,7 @@ func (g moduleGraph) reaches(p pkg, changed map[string]bool) bool {
 }
 
 // impactedSet returns the import paths of the changed packages and every package that reaches one of them.
-// When the changed packages include the `cmd/lyx` main package itself, which no test imports, it also returns every package whose tests import the binary builder.
+// When the changed packages include the `cmd/lym` main package itself, which no test imports, it also returns every package whose tests import the binary builder.
 func (g moduleGraph) impactedSet(changed map[string]bool) map[string]bool {
 	set := map[string]bool{}
 	for _, p := range g.byImportPath {
@@ -123,14 +123,14 @@ func (g moduleGraph) impactedSet(changed map[string]bool) map[string]bool {
 // addBinaryBuildingTests adds every package whose test files import the binary builder to set.
 // It returns the sorted module-relative directories of those packages, empty when the module has no binary builder package.
 func (g moduleGraph) addBinaryBuildingTests(set map[string]bool) []string {
-	lyxbin, ok := g.byDir[lyxbinDir]
+	lymbin, ok := g.byDir[lymbinDir]
 	if !ok {
 		return nil
 	}
 	var dirs []string
 	for _, p := range g.byImportPath {
 		for _, imported := range p.TestImports {
-			if imported == lyxbin.ImportPath {
+			if imported == lymbin.ImportPath {
 				set[p.ImportPath] = true
 				dirs = append(dirs, p.Dir)
 				break

@@ -62,7 +62,7 @@ func TestStatusCmd_AbsentFile_Refuse(t *testing.T) {
 		StatusPath:      paths.StatusPath,
 		StatusLockPath:  paths.StatusLockPath,
 		DecodeErrPrefix: "loom:",
-		AbsentStatus:    AbsentDisposition{Refuse: true, RefuseMessage: "loom: no status file; run \"lyx loom start\" first"},
+		AbsentStatus:    AbsentDisposition{Refuse: true, RefuseMessage: "loom: no status file; run \"lym loom start\" first"},
 	}
 
 	env, code := execEnvelope(t, statusCmd(statusTexts(), spec), nil)

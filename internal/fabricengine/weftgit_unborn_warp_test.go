@@ -1,7 +1,7 @@
 //go:build tier1
 
 // weftgit_unborn_warp_test.go — integration coverage for the O4 fix: a warp
-// repo with zero commits (a fresh `git init` -> `lyx init` -> `lyx config`
+// repo with zero commits (a fresh `git init` -> `lym init` -> `lym config`
 // first-run path, before the operator's first warp commit) must not fail
 // every weft commit just because CommitWeft now reads warp HEAD for the
 // Warp-SHA trailer. Package fabricengine_test, reusing
@@ -52,7 +52,7 @@ func TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord(t *testing.T) {
 
 	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "weft change, unborn warp")
 
-	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lyx"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
+	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lym"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("commitWeft() against an unborn warp HEAD error = %v; want nil", err)
 	}
@@ -84,7 +84,7 @@ func TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord(t *testing.T) {
 	warpSHA := fabricengine.CommitWarpForTest(t, warpPath, "warp's first commit")
 	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "weft change, warp now born")
 
-	sha2, committed2, err := fabricengine.CommitWeftForTest(f, []string{"_lyx"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
+	sha2, committed2, err := fabricengine.CommitWeftForTest(f, []string{"_lym"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("commitWeft() after warp's first commit error = %v; want nil", err)
 	}

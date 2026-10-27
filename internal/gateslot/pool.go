@@ -18,21 +18,21 @@ import (
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // InheritEnv names the environment variable that carries the lock path of the slot a gate run holds, so a nested gate run inside it does not acquire a second slot.
-const InheritEnv = "LYX_GATE_SLOT"
+const InheritEnv = "LYM_GATE_SLOT"
 
-// PrebuiltLyxEnv names the environment variable that carries the path of the `lyx` binary a gate run built once for every package of a tagged run, so a test binary runs it instead of building its own.
-const PrebuiltLyxEnv = "LYX_PREBUILT_LYX"
+// PrebuiltLymEnv names the environment variable that carries the path of the `lym` binary a gate run built once for every package of a tagged run, so a test binary runs it instead of building its own.
+const PrebuiltLymEnv = "LYM_PREBUILT_LYM"
 
-// StripPrebuilt returns env without PrebuiltLyxEnv.
+// StripPrebuilt returns env without PrebuiltLymEnv.
 // A command that is not given a fresh build from the same tree must not inherit a stale one.
 func StripPrebuilt(env []string) []string {
 	stripped := make([]string, 0, len(env))
 	for _, entry := range env {
-		if key, _, _ := strings.Cut(entry, "="); key != PrebuiltLyxEnv {
+		if key, _, _ := strings.Cut(entry, "="); key != PrebuiltLymEnv {
 			stripped = append(stripped, entry)
 		}
 	}
@@ -60,7 +60,7 @@ type Limits struct {
 	Slots int
 	// Tier0Parallel is `tier0`'s effective parallel, this machine's override included, that a non-tier slot holder's go commands run under; 0 when the hub declares no `tier0`.
 	Tier0Parallel int
-	// BusyQuit is the continuous CPU-busy window after which `lyx gate test` quits a Go test binary; 0 means the watchdog is off.
+	// BusyQuit is the continuous CPU-busy window after which `lym gate test` quits a Go test binary; 0 means the watchdog is off.
 	BusyQuit time.Duration
 }
 
@@ -104,10 +104,10 @@ type heldSlot struct {
 
 // Dir returns the hub-wide slot directory under boardDir.
 func Dir(boardDir string) string {
-	return filepath.Join(boardDir, lyxdirs.DotLyxDirName, gateDirName)
+	return filepath.Join(boardDir, lymdirs.DotLymDirName, gateDirName)
 }
 
-// PrebuiltDir returns the hub's store of prebuilt `lyx` binaries, a directory inside the pool's slot directory.
+// PrebuiltDir returns the hub's store of prebuilt `lym` binaries, a directory inside the pool's slot directory.
 // A tagged gate run keeps its build there under a name derived from the binary's content, so an unchanged tree hands every run the same path.
 func (p *Pool) PrebuiltDir() string {
 	return filepath.Join(p.Dir, prebuiltDirName)

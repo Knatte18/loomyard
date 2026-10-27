@@ -11,7 +11,7 @@ import (
 )
 
 // ownedElsewhere handles the owned-elsewhere exit of a pass of slug, which has a status file.
-// It keeps the run's full pass owed, records it owned elsewhere, pauses it under the owner, releases the parent lock record naming the run's child, and posts one notice naming `lyx adopt` per owner episode.
+// It keeps the run's full pass owed, records it owned elsewhere, pauses it under the owner, releases the parent lock record naming the run's child, and posts one notice naming `lym adopt` per owner episode.
 // A failed owner pause warns once per episode and is recorded as failed; it is never retried blind, since the marker gives the run a full pass on each probe tick while no pause covers it.
 // It posts no failing-pass notice.
 func (d *daemon) ownedElsewhere(ctx context.Context, slug string, _ time.Time) {
@@ -70,7 +70,7 @@ func (d *daemon) noticeOwnedElsewhere(ctx context.Context, slug string) bool {
 			subject = found
 		}
 	}
-	line := fmt.Sprintf("%s: owned by %s, so it is paused here; way forward: run lyx adopt %s on this machine to take it over, or on the owner's machine to continue it there", slug, owner, subject)
+	line := fmt.Sprintf("%s: owned by %s, so it is paused here; way forward: run lym adopt %s on this machine to take it over, or on the owner's machine to continue it there", slug, owner, subject)
 	if err := d.deps.Notice(ctx, line); err != nil {
 		logger.Warn("dobbyengine: the owned-elsewhere notice did not go out", "slug", slug, "error", err)
 		return false

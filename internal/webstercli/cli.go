@@ -1,18 +1,8 @@
-// cli.go builds the cobra command tree for the webster module and the RunCLI seam that wires it
-// into the standard io.Writer-based call contract.
-// The parent "webster" command carries a PersistentPreRunE that resolves cwd, runs one
-// preflight.ResolveMode probe, and delegates to c.wire (wiring.go), which selects hub or standalone
-// mode and builds the whole engine stack for whichever mode wins, storing the resolved ingredients
-// on websterCLI exactly once per invocation.
-// A non-nil ResolveMode error means refuse: it aborts the pre-run right there, before c.wire is ever
-// called, rather than selecting a mode -- refusal is a resolution verdict, not a wiring choice.
-// The module holds no *lyxcwd.Location: every path it touches -- every _lyx/plan and _lyx/webster
-// path included -- arrives as a websterengine.Geometry, told by hubgeom.WebsterGeometry(loc) in hub
-// mode or internal/standalonegeom.WebsterGeometry(target, stateDir) in standalone, never re-derived
-// from a stored Location.
-// Fabric is reached only through the lazy c.openFabric closure, which is nil in standalone mode --
-// standalone has no fabric repo by construction, and the closure is never called during wiring in
-// either mode.
+// cli.go builds the cobra command tree for the webster module and the RunCLI seam that wires it into the standard io.Writer-based call contract.
+// The parent "webster" command carries a PersistentPreRunE that resolves cwd, runs one preflight.ResolveMode probe, and delegates to c.wire (wiring.go), which selects hub or standalone mode and builds the whole engine stack for whichever mode wins, storing the resolved ingredients on websterCLI exactly once per invocation.
+// A non-nil ResolveMode error means refuse: it aborts the pre-run right there, before c.wire is ever called, rather than selecting a mode -- refusal is a resolution verdict, not a wiring choice.
+// The module holds no *lymcwd.Location: every path it touches -- every _lym/plan and _lym/webster path included -- arrives as a websterengine.Geometry, told by hubgeom.WebsterGeometry(loc) in hub mode or internal/standalonegeom.WebsterGeometry(target, stateDir) in standalone, never re-derived from a stored Location.
+// Fabric is reached only through the lazy c.openFabric closure, which is nil in standalone mode -- standalone has no fabric repo by construction, and the closure is never called during wiring in either mode.
 //
 // websterCLI stores TWO adapted views of the one constructed Runner: starter (websterengine.Starter, webster's own local copy of the spawn seam, consumed by the cold-strand spawns of recover-batch, fix-verify and fix-plan) and masterStarter (websterengine.MasterStarter, behind the runnerMasterStarter adapter, consumed by run's Master spawn) -- because the two verbs each need a distinct narrow seam onto the same underlying *shuttleengine.Runner, neither of which the other exposes.
 
@@ -27,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -54,8 +44,8 @@ type websterCLI struct {
 	// reedUp brings the standalone reed session up, idempotently. It is set by
 	// wireStandalone alone — run calls it immediately before spawning Master and recover-batch
 	// immediately before spawning its cold recovery strand, because standalone mode has no other way
-	// to a live session: `lyx reed up` is hub-only (its pre-run requires lyxcwd.Resolve), so the
-	// session on standalone's own geometry (socket "lyx-<hash8>", state under the derived state
+	// to a live session: `lym reed up` is hub-only (its pre-run requires lymcwd.Resolve), so the
+	// session on standalone's own geometry (socket "lym-<hash8>", state under the derived state
 	// directory) can only be booted in-process, mirroring what internal/loomcli's run/drive verbs
 	// already do for hub mode. It stays nil in hub mode, where bringing reed up remains the
 	// operator's (or loom's) own act.
@@ -66,18 +56,11 @@ type websterCLI struct {
 	// so a session they could reach exists by construction whenever they are legitimately called.
 	reedUp func() error
 
-	// planDirOverridden reports whether --plan-dir moved the plan off the mode's own default
-	// (<stateDir>/_lyx/plan in standalone, the hub anchor's _lyx/plan in hub mode). Set by BOTH
-	// wiring paths, read by the run verb alone, which refuses to spawn Master over a moved plan:
-	// Master's in-pane verb invocations are flagless and resolve the default, so they could never see
-	// the override.
-	// It is set in hub mode too, and that is not symmetry for its own sake. contracts/stencils/webster
-	// /webster-template-master.md drives `lyx webster begin-batch <NN>` flagless in BOTH modes -- only
-	// {{.plan_dir}} is templated -- so a hub `lyx webster run --plan-dir /elsewhere` spawned a Master
-	// told to read /elsewhere while its own in-pane begin-batch re-wired against the hub default and
-	// refused against a plan it could not see. That is the same F-A3 failure the standalone branch was
-	// hardened against in crucible round fable5-high-r3, left live on the hub path until round
-	// opus-medium-r6 (R6-8).
+	// planDirOverridden reports whether --plan-dir moved the plan off the mode's own default (<stateDir>/_lym/plan in standalone, the hub anchor's _lym/plan in hub mode).
+	// Set by BOTH wiring paths, read by the run verb alone, which refuses to spawn Master over a moved plan: Master's in-pane verb invocations are flagless and resolve the default, so they could never see the override.
+	// It is set in hub mode too, and that is not symmetry for its own sake.
+	// contracts/stencils/webster /webster-template-master.md drives `lym webster begin-batch <NN>` flagless in BOTH modes -- only {{.plan_dir}} is templated -- so a hub `lym webster run --plan-dir /elsewhere` spawned a Master told to read /elsewhere while its own in-pane begin-batch re-wired against the hub default and refused against a plan it could not see.
+	// That is the same F-A3 failure the standalone branch was hardened against in crucible round fable5-high-r3, left live on the hub path until round opus-medium-r6 (R6-8).
 	// planDirDefault carries that default path for the refusal's own recourse text.
 	planDirOverridden bool
 	planDirDefault    string
@@ -131,7 +114,7 @@ type websterCLI struct {
 	// config in wireHub, and the empty string in standalone -- a standalone webster run is not a loom
 	// run and has no friction directory. It is the reason this CLI imports internal/loomengine at
 	// all: contracts/stencils/webster/webster-template-master.md drives the batch loop by shelling
-	// out to `lyx webster begin-batch`/`lyx webster recover-batch` as separate processes, so the
+	// out to `lym webster begin-batch`/`lym webster recover-batch` as separate processes, so the
 	// per-batch implementer fork's and recovery strand's prompts are composed here, not in
 	// internal/loomcli.
 	frictionDir string
@@ -191,7 +174,7 @@ func (c *websterCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) 
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
 
-	cwd, err := lyxcwd.CwdFrom(ctx)
+	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
 		output.Err(out, err.Error())
 		clihelp.Abort(ctx, 1)
@@ -252,28 +235,26 @@ to a cold recovery strand with recover-batch, a verify-gate failure the gate
 escalates goes to a cold fixer strand with fix-verify, and a begin-batch plan
 conflict goes to a cold plan fixer strand with fix-plan.
 
-Reach for "lyx webster run" to build an approved plan, "lyx webster validate"
-to lint one first, and "lyx webster status" to see where a run stands.
+Reach for "lym webster run" to build an approved plan, "lym webster validate"
+to lint one first, and "lym webster status" to see where a run stands.
 
-webster runs in hub mode inside a lyx hub worktree, and in standalone mode in
+webster runs in hub mode inside a lym hub worktree, and in standalone mode in
 any other git checkout. --stencils-dir and --plan-dir override where it reads
 the stencils and the plan, in both modes; --target-dir names the repository
 to drive, in standalone mode only. In standalone mode run boots its own
 private reed session before spawning Master.
 
-Example (standalone, outside any lyx hub):
-  lyx webster run --target-dir /path/to/repo`,
-		// RunE is set so that bare "lyx webster" lists subcommands and "lyx
-		// webster bogus" emits a JSON error envelope instead of falling
-		// through to cobra's plain-text help.
+Example (standalone, outside any lym hub):
+  lym webster run --target-dir /path/to/repo`,
+		// RunE is set so that bare "lym webster" lists subcommands and "lym webster bogus" emits a JSON error envelope instead of falling through to cobra's plain-text help.
 		RunE:              clihelp.GroupRunE,
 		PersistentPreRunE: c.resolvePersistentPreRun,
 	}
 
 	parent.PersistentFlags().StringVar(&c.stencilsDirFlag, "stencils-dir", "",
-		"override the stencils directory read at call time (read-only in both modes; hub default: the hub's own stencils dir; standalone default: the derived state directory's _lyx/stencils)")
+		"override the stencils directory read at call time (read-only in both modes; hub default: the hub's own stencils dir; standalone default: the derived state directory's _lym/stencils)")
 	parent.PersistentFlags().StringVar(&c.planDirFlag, "plan-dir", "",
-		"override the plan directory parsed at call time (read-only in both modes; hub default: the anchor's _lyx/plan; standalone default: the derived state directory's _lyx/plan)")
+		"override the plan directory parsed at call time (read-only in both modes; hub default: the anchor's _lym/plan; standalone default: the derived state directory's _lym/plan)")
 	parent.PersistentFlags().StringVar(&c.targetDirFlag, "target-dir", "",
 		"standalone-only: the git repository webster drives Master and its forks against; defaults to the current directory, and either way is lifted to the containing repository's root; refused in hub mode, where the worktree is already the target")
 
@@ -391,7 +372,7 @@ func RunCLI(out io.Writer, args []string) int {
 // RunCLIIn is RunCLI's seam-cwd-carrying sibling: an empty cwd means "read the process cwd" and
 // delegates to clihelp.Execute exactly as RunCLI always has, while any other value seeds cwd into
 // the execution context via clihelp.ExecuteIn.
-// The branch exists because lyxcwd.WithCwd panics on an empty directory, so a uniform delegation to
+// The branch exists because lymcwd.WithCwd panics on an empty directory, so a uniform delegation to
 // ExecuteIn would panic on every existing RunCLI call.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {

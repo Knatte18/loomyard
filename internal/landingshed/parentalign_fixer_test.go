@@ -493,7 +493,7 @@ func TestMergeIn_Fixer(t *testing.T) {
 
 		outcome, ptr := fx.call(t)
 
-		requireHalt(t, outcome, ptr, path, "way forward: remove "+path, "`lyx loom resume`")
+		requireHalt(t, outcome, ptr, path, "way forward: remove "+path, "`lym loom resume`")
 		if strings.Contains(strings.Join(fx.events, ","), "merge main") {
 			t.Errorf("a merge ran over an undecodable attempt record: %v", fx.events)
 		}
@@ -554,7 +554,7 @@ func TestMergeIn_Fixer(t *testing.T) {
 
 		outcome, ptr := fx.call(t)
 
-		requireHalt(t, outcome, ptr, path, "way forward: remove "+path, "`lyx loom resume`")
+		requireHalt(t, outcome, ptr, path, "way forward: remove "+path, "`lym loom resume`")
 	})
 
 	t.Run("a Done removes the retired row name's attempt record on the success path and after the align path", func(t *testing.T) {

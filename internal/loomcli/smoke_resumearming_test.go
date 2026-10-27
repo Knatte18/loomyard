@@ -14,7 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 )
 
 // TestLoomResumeReconcilesThenRefusesWithoutLiveDriver asserts `loom resume` on a hub whose build has no stamp reconciles the hub config and then gets past the reed config load.
@@ -22,7 +22,7 @@ import (
 // Resume brings no reed session up, so reed reports no session on the registered hub key.
 func TestLoomResumeReconcilesThenRefusesWithoutLiveDriver(t *testing.T) {
 	tmuxBinaryPath(t)
-	exe := lyxbin.Build(t)
+	exe := lymbin.Build(t)
 	_, loc, worktree, slug := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 	seedGoDriverRun(t, loc)
@@ -37,8 +37,8 @@ func TestLoomResumeReconcilesThenRefusesWithoutLiveDriver(t *testing.T) {
 	if _, err := os.Stat(hubStampPath(loc)); err != nil {
 		t.Errorf("hub build stamp after loom resume: %v; want it written", err)
 	}
-	if exit != 1 || !strings.Contains(out, "no live driver") || !strings.Contains(out, "lyx loom start") {
-		t.Errorf("loom resume exit = %d, output %s; want the no-live-driver refusal naming lyx loom start", exit, out)
+	if exit != 1 || !strings.Contains(out, "no live driver") || !strings.Contains(out, "lym loom start") {
+		t.Errorf("loom resume exit = %d, output %s; want the no-live-driver refusal naming lym loom start", exit, out)
 	}
 	reedGeom, err := hubgeom.ReedGeometry(loc)
 	if err != nil {

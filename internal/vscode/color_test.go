@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // TestPickColor tests the palette picker for color selection.
@@ -114,7 +114,7 @@ func TestPickColor(t *testing.T) {
 
 			tt.setupFunc(tmpDir, mainPath)
 
-			layout := &lyxcwd.Location{HubPath: tmpDir, AnchorRel: tt.RelPath}
+			layout := &lymcwd.Location{HubPath: tmpDir, AnchorRel: tt.RelPath}
 
 			color := PickColor(layout, filepath.Base(mainPath))
 

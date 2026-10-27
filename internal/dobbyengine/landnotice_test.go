@@ -42,8 +42,8 @@ func TestLandNotice(t *testing.T) {
 		h, _ := newLandHarness(t, passing)
 		h.tick(false)
 		h.tick(false)
-		if got := h.fake.notices; len(got) != 1 || !strings.Contains(got[0], "lyx beam land b") {
-			t.Errorf("notices = %q; want the one notice naming `lyx beam land b`", got)
+		if got := h.fake.notices; len(got) != 1 || !strings.Contains(got[0], "lym beam land b") {
+			t.Errorf("notices = %q; want the one notice naming `lym beam land b`", got)
 		}
 	})
 
@@ -52,8 +52,8 @@ func TestLandNotice(t *testing.T) {
 		h, _ := newLandHarness(t, landStep{reading: LandReading{Passes: true, ParentOwner: "m2", ParentSubject: "outer"}})
 		h.tick(false)
 		got := h.fake.notices
-		if len(got) != 1 || !strings.Contains(got[0], "m2") || !strings.Contains(got[0], "lyx adopt outer") || strings.Contains(got[0], "lyx beam land") {
-			t.Errorf("notices = %q; want one naming machine m2 and `lyx adopt outer` instead of the land command", got)
+		if len(got) != 1 || !strings.Contains(got[0], "m2") || !strings.Contains(got[0], "lym adopt outer") || strings.Contains(got[0], "lym beam land") {
+			t.Errorf("notices = %q; want one naming machine m2 and `lym adopt outer` instead of the land command", got)
 		}
 	})
 

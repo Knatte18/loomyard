@@ -31,7 +31,7 @@ var shedarbiterAllowedImports = []string{
 
 // shedarbiterDeniedImport reports whether importPath is one of the imports the package never makes: the cwd resolver and any internal CLI package.
 func shedarbiterDeniedImport(importPath string) bool {
-	if importPath == "github.com/Knatte18/loomyard/internal/lyxcwd" {
+	if importPath == "github.com/Knatte18/loomyard/internal/lymcwd" {
 		return true
 	}
 	return strings.HasPrefix(importPath, "github.com/Knatte18/loomyard/internal/") && strings.HasSuffix(path.Base(importPath), "cli")
@@ -51,6 +51,6 @@ func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
 	})
 	scankit.RequireFloor(t, scanned, 1, "shedarbiter denied-import scan")
 	if len(deniedFound) > 0 {
-		t.Errorf("Told-Geometry Invariant violated; shedarbiter must not import lyxcwd or an internal CLI package: %v", deniedFound)
+		t.Errorf("Told-Geometry Invariant violated; shedarbiter must not import lymcwd or an internal CLI package: %v", deniedFound)
 	}
 }

@@ -47,7 +47,7 @@ Read the stop envelope to see which one you hold.
 3. The child traces under `{{.trace_dir}}`, only when those leave the cause open.
 
 The shed driver's log is `{{.driver_log}}`.
-You may also run any read-only `lyx` command or read any file in `{{.worktree}}`.
+You may also run any read-only `lym` command or read any file in `{{.worktree}}`.
 A path reading `none` is absent.
 
 ## What you may change
@@ -57,7 +57,7 @@ Write `{{.verdict_path}}` and, on an `escalate`, `{{.case_brief_path}}`, and not
 ## What you never do
 
 - Edit a file other than those two.
-- Run a `lyx` verb that changes the run.
+- Run a `lym` verb that changes the run.
 - Run a git command that changes anything.
 
 ## The verdict

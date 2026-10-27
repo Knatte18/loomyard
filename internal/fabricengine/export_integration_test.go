@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // NewPlainWarpRepoForTest re-exports newPlainWarpRepo (relocated fixture helper, formerly
@@ -33,10 +33,8 @@ func newPlainWarpRepo(t *testing.T) string {
 	return dir
 }
 
-// NewCommitFixtureForTest re-exports newCommitFixture (relocated fixture helper, formerly
-// commit_integration_test.go): commit_gating_integration_test.go, committed_lyxonly_integration_test.go,
-// commit_partial_integration_test.go and commit_lock_integration_test.go (package fabricengine, never
-// migrating) call it unqualified; the nine relocating files call the exported form.
+// NewCommitFixtureForTest re-exports newCommitFixture (relocated fixture helper, formerly commit_integration_test.go): commit_gating_integration_test.go, committed_lymonly_integration_test.go, commit_partial_integration_test.go and commit_lock_integration_test.go (package fabricengine, never migrating) call it unqualified;
+// the nine relocating files call the exported form.
 var NewCommitFixtureForTest = newCommitFixture
 
 // newCommitFixture builds a fresh warp/weft pair with the fabric config seeded, returning the Fabric
@@ -52,7 +50,7 @@ func newCommitFixture(t *testing.T) (f *Fabric, warpPath, weftPath string) {
 }
 
 // newPlainWeftRepo creates a minimal, isolated git repo at t.TempDir() on branch main with a single
-// tracked _lyx/config.yaml file and one commit — the weft-side sibling of newPlainWarpRepo, replacing
+// tracked _lym/config.yaml file and one commit — the weft-side sibling of newPlainWarpRepo, replacing
 // gitkit's own retired weft-only template for newCommitFixture's four in-package callers, which
 // cannot import the hubforge package.
 func newPlainWeftRepo(t *testing.T) string {
@@ -62,7 +60,7 @@ func newPlainWeftRepo(t *testing.T) string {
 	gitkit.Git(t, dir, "init", "-q", "-b", "main")
 	gitkit.Git(t, dir, "config", "user.email", "test@test.com")
 	gitkit.Git(t, dir, "config", "user.name", "Test")
-	gitkit.CommitFile(t, dir, filepath.Join(lyxdirs.LyxDirName, "config.yaml"), "test", "init")
+	gitkit.CommitFile(t, dir, filepath.Join(lymdirs.LymDirName, "config.yaml"), "test", "init")
 	return dir
 }
 

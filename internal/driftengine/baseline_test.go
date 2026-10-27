@@ -62,7 +62,7 @@ func newBaselineFixture(t *testing.T) *baselineFixture {
 		if err := os.WriteFile(f.paths.BaselineReport, []byte("expected drift"), 0o644); err != nil {
 			return seatengine.Result{}, err
 		}
-		// The real agent's second `lyx drift scope` is refused and it goes on, so the fake records only the first.
+		// The real agent's second `lym drift scope` is refused and it goes on, so the fake records only the first.
 		if _, recorded, err := ReadScope(f.paths); err != nil {
 			return seatengine.Result{}, err
 		} else if f.agentScope != "" && !recorded {
@@ -164,7 +164,7 @@ func TestDriftBaseline(t *testing.T) {
 
 	scopeAndReport := []string{path.Join(DirRel(), "scope.json"), path.Join(DirRel(), "baseline.md")}
 	whole := []string{DirRel()}
-	haltWays := []string{CaptureHaltPrefix, "lyx drift capture", "lyx drift defer", "lyx loom resume"}
+	haltWays := []string{CaptureHaltPrefix, "lym drift capture", "lym drift defer", "lym loom resume"}
 
 	tests := []struct {
 		name       string
@@ -322,7 +322,7 @@ func TestDriftBaseline(t *testing.T) {
 			name:       "a moved HEAD is Stuck naming defer",
 			setup:      func(f *baselineFixture) { f.head = "bbb" },
 			want:       shedengine.Stuck,
-			wantReason: []string{CaptureHaltPrefix, "lyx drift defer", "lyx loom resume"},
+			wantReason: []string{CaptureHaltPrefix, "lym drift defer", "lym loom resume"},
 			wantAgents: 1,
 			wantCommit: scopeAndReport,
 		},
@@ -330,7 +330,7 @@ func TestDriftBaseline(t *testing.T) {
 			name:       "a dirty tree on the branch point names restoring or stashing, resume and defer",
 			setup:      func(f *baselineFixture) { f.dirty = []string{"a.go", "b.go"} },
 			want:       shedengine.Stuck,
-			wantReason: []string{CaptureHaltPrefix, "a.go, b.go", "restore those paths to HEAD or stash them", "lyx loom resume", "lyx drift defer"},
+			wantReason: []string{CaptureHaltPrefix, "a.go, b.go", "restore those paths to HEAD or stash them", "lym loom resume", "lym drift defer"},
 			wantAgents: 1,
 			wantCommit: scopeAndReport,
 		},
@@ -365,10 +365,10 @@ func TestDriftBaseline(t *testing.T) {
 			wantCommit: scopeAndReport,
 		},
 		{
-			name:       "an undeclared capture names lyx config drift",
+			name:       "an undeclared capture names lym config drift",
 			setup:      func(f *baselineFixture) { f.declared = false },
 			want:       shedengine.Stuck,
-			wantReason: []string{"lyx config drift", "lyx loom resume"},
+			wantReason: []string{"lym config drift", "lym loom resume"},
 			wantAgents: 1,
 			wantCommit: scopeAndReport,
 		},
@@ -376,7 +376,7 @@ func TestDriftBaseline(t *testing.T) {
 			name:       "an agent that records no scope is Stuck",
 			setup:      func(f *baselineFixture) { f.agentScope = "" },
 			want:       shedengine.Stuck,
-			wantReason: []string{"recorded no scope", "lyx loom resume"},
+			wantReason: []string{"recorded no scope", "lym loom resume"},
 			wantAgents: 1,
 			wantCommit: scopeAndReport,
 		},

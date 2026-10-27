@@ -12,18 +12,18 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // dobbyHub lays out a hub of the prime "some-repo" and the beams "a-beam" and "other-beam" in a temp directory, with no git.
 // The hub holds no board marker, so a beam's own anchor comes only from the marker in its records sibling.
-func dobbyHub(t *testing.T) (hub string, prime *lyxcwd.Location) {
+func dobbyHub(t *testing.T) (hub string, prime *lymcwd.Location) {
 	t.Helper()
 
-	hub = filepath.Join(t.TempDir(), "some-hub-LYXHUB")
-	prime = &lyxcwd.Location{RepoName: "some-repo", HubPath: hub, WorktreeName: "some-repo", AnchorRel: "sub"}
+	hub = filepath.Join(t.TempDir(), "some-hub-LYMHUB")
+	prime = &lymcwd.Location{RepoName: "some-repo", HubPath: hub, WorktreeName: "some-repo", AnchorRel: "sub"}
 	for name, marker := range map[string]string{"some-repo": "", "a-beam": "sub", "other-beam": "other"} {
 		if err := os.MkdirAll(filepath.Join(hub, name), 0o755); err != nil {
 			t.Fatal(err)
@@ -35,7 +35,7 @@ func dobbyHub(t *testing.T) (hub string, prime *lyxcwd.Location) {
 		if err := os.MkdirAll(sibling, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(sibling, lyxcwd.AnchorFileName), []byte(marker+"\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(sibling, lymcwd.AnchorFileName), []byte(marker+"\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -43,7 +43,7 @@ func dobbyHub(t *testing.T) (hub string, prime *lyxcwd.Location) {
 }
 
 // standMove writes a move record on the records worktree of the worktree named worktree and returns its path.
-func standMove(t *testing.T, prime *lyxcwd.Location, worktree string) string {
+func standMove(t *testing.T, prime *lymcwd.Location, worktree string) string {
 	t.Helper()
 
 	records := fabricengine.RecordsWorktreePath(prime, worktree)
@@ -57,8 +57,8 @@ func standMove(t *testing.T, prime *lyxcwd.Location, worktree string) string {
 	return record
 }
 
-// TestDobbyGeometry asserts the lock, state and marker paths lie under the named worktree's `.lyx/beam/` directory at its own anchor, the slug is empty for the prime, the batten runs directory lies under the prime, and a worktree with no directory is an error naming it.
-// It also asserts PawlPaths puts the pawl run's three files in that same `.lyx/beam/` directory at the beam's own anchor, a beam anchored under a sub-directory included.
+// TestDobbyGeometry asserts the lock, state and log paths and the tidy directory lie under the named worktree's `.lym/beam/` directory at its own anchor, the slug is empty for the prime, the batten runs directory lies under the prime, and a worktree with no directory is an error naming it.
+// It also asserts PawlPaths puts the pawl run's three files in that same `.lym/beam/` directory at the beam's own anchor, a beam anchored under a sub-directory included.
 // It also asserts the move records that stop a dobby: the prime's alone for the prime and the beam's own and then the prime's for a beam, and that DobbyStart reads a standing record the same way.
 func TestDobbyGeometry(t *testing.T) {
 	t.Parallel()
@@ -84,20 +84,20 @@ func TestDobbyGeometry(t *testing.T) {
 			}
 
 			root := filepath.Join(hub, tt.worktree)
-			beamDir := filepath.Join(root, tt.wantAnchor, lyxdirs.DotLyxDirName, lyxdirs.BeamDirName)
+			beamDir := filepath.Join(root, tt.wantAnchor, lymdirs.DotLymDirName, lymdirs.BeamDirName)
 			if got.HubRoot != hub || got.BoardDir != fabricengine.BoardDir(hub) || got.PrimeAnchor != prime.AnchorPath() {
 				t.Errorf("DobbyGeometry(%q) hub paths = %q, %q, %q; want %q, %q, %q", tt.worktree, got.HubRoot, got.BoardDir, got.PrimeAnchor, hub, fabricengine.BoardDir(hub), prime.AnchorPath())
 			}
 			if got.WorktreeRoot != root || got.WorktreeName != tt.worktree || got.Slug != tt.wantSlug {
 				t.Errorf("DobbyGeometry(%q) worktree = %q, %q, slug %q; want %q, %q, slug %q", tt.worktree, got.WorktreeRoot, got.WorktreeName, got.Slug, root, tt.worktree, tt.wantSlug)
 			}
-			for name, path := range map[string]string{"LockPath": got.LockPath, "StatePath": got.StatePath, "MarkerDir": got.MarkerDir} {
+			for name, path := range map[string]string{"LockPath": got.LockPath, "StatePath": got.StatePath, "LogPath": got.LogPath, "TidyDir": got.TidyDir} {
 				if filepath.Dir(path) != beamDir {
 					t.Errorf("DobbyGeometry(%q).%s = %q; want it directly under %q", tt.worktree, name, path, beamDir)
 				}
 			}
 			if tt.wantSlug != "" {
-				beam, err := lyxcwd.NamedWorktree(hub, tt.worktree)
+				beam, err := lymcwd.NamedWorktree(hub, tt.worktree)
 				if err != nil {
 					t.Fatalf("NamedWorktree(%q) = %v; want nil", tt.worktree, err)
 				}
@@ -111,8 +111,8 @@ func TestDobbyGeometry(t *testing.T) {
 			if want := shedrun.RunsRoot(prime); got.PrimeRunsDir != want {
 				t.Errorf("DobbyGeometry(%q).PrimeRunsDir = %q; want %q, under the prime", tt.worktree, got.PrimeRunsDir, want)
 			}
-			if got.LyxExecutable == "" || !filepath.IsAbs(got.LyxExecutable) {
-				t.Errorf("DobbyGeometry(%q).LyxExecutable = %q; want an absolute path", tt.worktree, got.LyxExecutable)
+			if got.LymExecutable == "" || !filepath.IsAbs(got.LymExecutable) {
+				t.Errorf("DobbyGeometry(%q).LymExecutable = %q; want an absolute path", tt.worktree, got.LymExecutable)
 			}
 			wantRecords := []string{fabricengine.MoveRecordPath(fabricengine.RecordsWorktreePath(prime, prime.WorktreeName))}
 			if tt.worktree != prime.WorktreeName {
@@ -147,7 +147,7 @@ func TestDobbyGeometry(t *testing.T) {
 		primeRecord := standMove(t, prime, "some-repo")
 		for _, worktree := range []string{"some-repo", "a-beam", "other-beam"} {
 			wayForward, stands := standing(worktree)
-			if !stands || !strings.Contains(wayForward, "lyx fabric anchor some-repo --set sub") {
+			if !stands || !strings.Contains(wayForward, "lym fabric anchor some-repo --set sub") {
 				t.Errorf("MoveInProgress(%q) = (%q, %v) with the prime's record; want it standing, naming the prime's re-run", worktree, wayForward, stands)
 			}
 		}

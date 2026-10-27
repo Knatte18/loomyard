@@ -26,7 +26,7 @@ func beamUpDeps(w *world, stepErr error) pawlengine.Deps {
 	return deps
 }
 
-// TestBeamUp asserts a fresh pair runs every step in order and clears what an earlier run left, and that a failing step halts the row naming its cause and `lyx loom resume`.
+// TestBeamUp asserts a fresh pair runs every step in order and clears what an earlier run left, and that a failing step halts the row naming its cause and `lym loom resume`.
 func TestBeamUp(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -46,28 +46,28 @@ func TestBeamUp(t *testing.T) {
 			tweak:      func(w *world) { w.markErr = errors.New("origin refused") },
 			wantStuck:  true,
 			wantEvents: []string{"mark"},
-			wantReason: []string{"origin refused", "lyx loom resume"},
+			wantReason: []string{"origin refused", "lym loom resume"},
 		},
 		{
 			name:       "FailingPushSpawnHaltsBeforeTheWorkspace",
 			tweak:      func(w *world) { w.pushErr = errors.New("no spawn") },
 			wantStuck:  true,
 			wantEvents: []string{"mark", "push"},
-			wantReason: []string{"no spawn", "lyx loom resume"},
+			wantReason: []string{"no spawn", "lym loom resume"},
 		},
 		{
 			name:       "FailingWorkspaceHalts",
 			tweak:      func(w *world) { w.workspaceErr = errors.New("workspace unwritable") },
 			wantStuck:  true,
 			wantEvents: []string{"mark", "push", "workspace"},
-			wantReason: []string{"workspace unwritable", "lyx loom resume"},
+			wantReason: []string{"workspace unwritable", "lym loom resume"},
 		},
 		{
 			name:       "FailingStepHaltsBeforeTheNextStep",
 			stepErr:    errors.New("dobby will not start"),
 			wantStuck:  true,
 			wantEvents: []string{"mark", "push", "workspace", "step:dobby"},
-			wantReason: []string{"start the dobby", "dobby will not start", "lyx loom resume"},
+			wantReason: []string{"start the dobby", "dobby will not start", "lym loom resume"},
 		},
 	}
 	for _, tt := range tests {

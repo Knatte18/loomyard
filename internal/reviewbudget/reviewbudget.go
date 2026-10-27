@@ -87,14 +87,14 @@ func Route(dirs configengine.Dirs, spec configengine.Spec, key string) (string, 
 	}
 	switch stack.Origins[key].Layer {
 	case configengine.LayerLocal:
-		return fmt.Sprintf(`run "lyx config %s --layer local --set %s=<n>" in the task worktree, and correct the task's run_settings with "lyx board upsert" too, so a later Seed-Child writes the same value`, spec.Name, key), nil
+		return fmt.Sprintf(`run "lym config %s --layer local --set %s=<n>" in the task worktree, and correct the task's run_settings with "lym board upsert" too, so a later Seed-Child writes the same value`, spec.Name, key), nil
 	case configengine.LayerWorktree:
-		return fmt.Sprintf(`run "lyx config %s --set %s=<n>" in the task worktree`, spec.Name, key), nil
+		return fmt.Sprintf(`run "lym config %s --set %s=<n>" in the task worktree`, spec.Name, key), nil
 	default:
 		if spec.HubWide {
-			return fmt.Sprintf(`run "lyx config %s --set %s=<n>" from the prime`, spec.Name, key), nil
+			return fmt.Sprintf(`run "lym config %s --set %s=<n>" from the prime`, spec.Name, key), nil
 		}
-		return fmt.Sprintf(`run "lyx config %s --layer default --set %s=<n>" from the hub's prime worktree, where the operator or the hub orch runs it`, spec.Name, key), nil
+		return fmt.Sprintf(`run "lym config %s --layer default --set %s=<n>" from the hub's prime worktree, where the operator or the hub orch runs it`, spec.Name, key), nil
 	}
 }
 
@@ -106,7 +106,7 @@ func CheckResolved(dirs configengine.Dirs, spec configengine.Spec, values Values
 		if err != nil {
 			return err
 		}
-		return fmt.Errorf("%s config key %q: %s; way forward: %s, then run \"lyx loom resume\"", spec.Name, key, detail, route)
+		return fmt.Errorf("%s config key %q: %s; way forward: %s, then run \"lym loom resume\"", spec.Name, key, detail, route)
 	}
 
 	if values.RunSoft < 0 {
@@ -147,7 +147,7 @@ func CheckResolved(dirs configengine.Dirs, spec configengine.Spec, values Values
 		if err != nil {
 			return err
 		}
-		return fmt.Errorf("%s config key %q: resolved hard cap %d is below %q's resolved soft cap %d; way forward: raise the hard cap: %s, or lower the soft cap: %s, then run \"lyx loom resume\"", spec.Name, caps.HardKey, caps.Hard, caps.SoftKey, caps.Soft, hardRoute, softRoute)
+		return fmt.Errorf("%s config key %q: resolved hard cap %d is below %q's resolved soft cap %d; way forward: raise the hard cap: %s, or lower the soft cap: %s, then run \"lym loom resume\"", spec.Name, caps.HardKey, caps.Hard, caps.SoftKey, caps.Soft, hardRoute, softRoute)
 	}
 	return nil
 }
@@ -179,7 +179,7 @@ func CheckLocal(set map[string]any, perches []string) error {
 			return configengine.MarkInvalid(fmt.Errorf("key %q: must be an integer", b.key))
 		}
 		if number < b.min {
-			return configengine.MarkInvalid(fmt.Errorf("key %q: must be at least %d, got %d; correct the task's run_settings with \"lyx board upsert\"", b.key, b.min, number))
+			return configengine.MarkInvalid(fmt.Errorf("key %q: must be at least %d, got %d; correct the task's run_settings with \"lym board upsert\"", b.key, b.min, number))
 		}
 	}
 	return nil

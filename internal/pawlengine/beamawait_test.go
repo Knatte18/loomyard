@@ -93,7 +93,7 @@ func TestBeamAwait(t *testing.T) {
 				cancelAfter(w, 1)
 			},
 			wantCancelled: true, wantEvents: refused,
-			wantNotices: [][]string{{"member a is open", "lyx beam land my-beam"}},
+			wantNotices: [][]string{{"member a is open", "lym beam land my-beam"}},
 			wantFiles:   map[string]bool{"request": false, "stop": false, "await": true},
 			wantSleeps:  seconds(1),
 		},
@@ -106,7 +106,7 @@ func TestBeamAwait(t *testing.T) {
 				cancelAfter(w, 1)
 			},
 			wantCancelled: true, wantEvents: refused,
-			wantNotices: [][]string{{"member a is open", "dobby will not start", "lyx beam start my-beam"}},
+			wantNotices: [][]string{{"member a is open", "dobby will not start", "lym beam start my-beam"}},
 			wantFiles:   map[string]bool{"request": false, "stop": true},
 		},
 		{
@@ -154,7 +154,7 @@ func TestBeamAwait(t *testing.T) {
 				cancelAfter(w, 1)
 			},
 			wantCancelled: true, wantEvents: []string{beamAwait},
-			wantNotices: [][]string{{"interrupted", "lyx beam start my-beam", "lyx beam land my-beam"}},
+			wantNotices: [][]string{{"interrupted", "lym beam start my-beam", "lym beam land my-beam"}},
 			wantFiles:   map[string]bool{"stop": false, "await": true},
 		},
 		{
@@ -175,7 +175,7 @@ func TestBeamAwait(t *testing.T) {
 				cancelAfter(w, 1)
 			},
 			wantCancelled: true, wantEvents: []string{beamAwait}, wantDobbyReads: 1,
-			wantNotices: [][]string{{"dobby is down", "lyx beam start my-beam"}},
+			wantNotices: [][]string{{"dobby is down", "lym beam start my-beam"}},
 			wantFiles:   map[string]bool{"record": true},
 		},
 		{
@@ -254,7 +254,7 @@ func TestBeamAwait(t *testing.T) {
 				parentAlign, stopped, "recheck", beamAwait, "start",
 			},
 			wantSleeps:  seconds(1, 1),
-			wantNotices: [][]string{{"member a is open", "lyx beam land my-beam"}},
+			wantNotices: [][]string{{"member a is open", "lym beam land my-beam"}},
 			wantFiles:   map[string]bool{"request": false, "stop": false},
 		},
 		{
@@ -265,7 +265,7 @@ func TestBeamAwait(t *testing.T) {
 				cancelAfter(w, 1)
 			},
 			wantCancelled: true, wantEvents: refused,
-			wantNotices: [][]string{{"board unreadable", "lyx beam land my-beam"}},
+			wantNotices: [][]string{{"board unreadable", "lym beam land my-beam"}},
 			wantFiles:   map[string]bool{"request": false, "stop": false},
 		},
 		{
@@ -276,7 +276,7 @@ func TestBeamAwait(t *testing.T) {
 				cancelAfter(w, 1)
 			},
 			wantCancelled: true, wantEvents: []string{beamAwait, parentAlign, stopped, beamAwait, "start"},
-			wantNotices: [][]string{{"no such process", "lyx beam land my-beam"}},
+			wantNotices: [][]string{{"no such process", "lym beam land my-beam"}},
 			wantFiles:   map[string]bool{"request": false, "stop": false},
 		},
 		{
@@ -287,7 +287,7 @@ func TestBeamAwait(t *testing.T) {
 				cancelAfter(w, 1)
 			},
 			wantCancelled: true, wantEvents: []string{beamAwait, parentAlign, stopped, "recheck", "snapshot", beamAwait, "start"},
-			wantNotices: [][]string{{"disk full", "lyx beam land my-beam"}},
+			wantNotices: [][]string{{"disk full", "lym beam land my-beam"}},
 			wantFiles:   map[string]bool{"request": false, "stop": false},
 		},
 		{

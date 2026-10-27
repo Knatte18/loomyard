@@ -1,4 +1,4 @@
-// gates.go implements this package's gate closures: NewDiscussionGate, NewDarnDiscussionGate, NewPlanGate and NewLensReviewPlanGate, and the ValidateReworkPlan check `lyx loom validate-plan --rework` runs.
+// gates.go implements this package's gate closures: NewDiscussionGate, NewDarnDiscussionGate, NewPlanGate and NewLensReviewPlanGate, and the ValidateReworkPlan check `lym loom validate-plan --rework` runs.
 // Each gate is the gate half of the Gate Self-Check Parity Invariant:
 // each calls the identical package function its CLI self-check verb does (ValidateLoomDiscussion, ValidateDarnDiscussion, ValidatePlan and ValidatePlanLensReview, respectively),
 // so the operator's own self-check verb and the automated gate can never disagree about what "valid" means.
@@ -33,7 +33,7 @@ func formatDiscussionFindings(findings []discussionparser.Finding) string {
 }
 
 // formatPlanFindings renders findings as a single semicolon-separated list, each entry carrying
-// its own Check[/Card]: Detail rendering plus its Severity, so the log line and "lyx loom
+// its own Check[/Card]: Detail rendering plus its Severity, so the log line and "lym loom
 // validate-plan"'s envelope describe a violation identically and an informational
 // create-new-unit is distinguishable from a blocking glyph-not-found in the one place this record
 // exists.
@@ -89,8 +89,7 @@ func hasBlockingFinding(findings []planindex.Finding) bool {
 // calls ValidateLoomDiscussion(decisionRecordPath, supportLogPath, relevantPath) once.
 // It maps the result onto the gate contract.
 //
-// The three paths are told rather than derived, because loomengine's own accessors for them take a
-// *lyxcwd.Location this package may not import.
+// The three paths are told rather than derived, because loomengine's own accessors for them take a *lymcwd.Location this package may not import.
 // A relevantPath nobody wrote passes, since the relevant list is optional.
 //
 // A non-nil error from ValidateLoomDiscussion is returned verbatim alongside the zero shuttleengine.GateResult: a

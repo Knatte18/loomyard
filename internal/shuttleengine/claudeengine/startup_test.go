@@ -138,7 +138,7 @@ func TestStartup_Classification(t *testing.T) {
 			// The bypass-permissions acceptance modal, captured live from a
 			// tmux pane (claude 2.1.263). It is the SECOND one-time gate, raised
 			// after the trust gate clears, on every --dangerously-skip-permissions
-			// launch — which is every launch lyx makes. It carries the "❯" ready
+			// launch — which is every launch lym makes. It carries the "❯" ready
 			// caret exactly as the trust gate does, so classifying it Ready set
 			// *started and let a run park on a dialog for the whole master
 			// timeout (crucible round opus-medium-r5, R5-7).
@@ -232,7 +232,7 @@ func TestInterruptSequence(t *testing.T) {
 // live pane during crucible round opus-medium-r5: the caret sits on the REFUSING option, which is
 // what made the previous fixed single-Enter dismissal quit claude instead of trusting the folder.
 const realTrustGateCapture = ` Accessing workspace:
- /home/hanf/Code/r5sandbox/lyx-test-HUB/r5-crash
+ /home/hanf/Code/r5sandbox/lym-test-HUB/r5-crash
 
  Quick safety check: Is this a project you created or one you trust? (Like your own code, a
  well-known open source project, or work from your team). If not, take a moment to review what's

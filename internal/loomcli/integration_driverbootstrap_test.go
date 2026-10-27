@@ -34,7 +34,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -125,9 +125,9 @@ func TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver(t *testing.
 	worktree := h.PairCodeWorktree(slug)
 	tmuxkit.KillOnCleanup(t, tmuxBinaryPath(t), reedengine.ServerName(h.Path))
 
-	loc, err := lyxcwd.Resolve(worktree)
+	loc, err := lymcwd.Resolve(worktree)
 	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(%s): %v", worktree, err)
+		t.Fatalf("lymcwd.Resolve(%s): %v", worktree, err)
 	}
 
 	// Seed the fixture worktree's own run with the llm driver directly, per shedrun's own

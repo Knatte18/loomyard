@@ -1,8 +1,8 @@
-# SANDBOX-SHUTTLE-SUITE -- lyx shuttle black-box agent suite
+# SANDBOX-SHUTTLE-SUITE -- lym shuttle black-box agent suite
 
 ## What this is
 
-A structured test-loop for exercising `lyx shuttle` against a **live tmux server and a logged-in claude** in the sandbox Hub's Fabric repo.
+A structured test-loop for exercising `lym shuttle` against a **live tmux server and a logged-in claude** in the sandbox Hub's Fabric repo.
 Like `SANDBOX-REED-SUITE.md`, the value here is partly **visual**: a strand's pane doing real agent work, an outcome coming back.
 Not an automated suite -- an agent drives it, an operator watches.
 
@@ -11,12 +11,12 @@ Not an automated suite -- an agent drives it, an operator watches.
 Before starting a session:
 
 1. **Deploy a fresh dev binary.**
-   Run `deploy-dev` to build `lyx.exe` into `.dev-bin` as current source.
-   The suite resolves `.dev-bin` itself and prepends it to the agent's PATH (the fingerprint header's `Source: dev` line confirms the dev build is under test) -- no PATH setup needed, and production `lyx` stays untouched.
+   Run `deploy-dev` to build `lym.exe` into `.dev-bin` as current source.
+   The suite resolves `.dev-bin` itself and prepends it to the agent's PATH (the fingerprint header's `Source: dev` line confirms the dev build is under test) -- no PATH setup needed, and production `lym` stays untouched.
    The deployed binary is a snapshot -- re-deploy after any source change you want to test.
    Once a pane exists, run these checks inside a spawned agent pane:
-   - `command -v lyx` (`where lyx` on Windows) run from the spawned agent's Bash tool names the spawning binary (`LYX_BIN`), not the production install, even on a machine whose shell rc prepends another directory holding a `lyx`.
-   - `LYX_BIN` is set inside that pane and names the same binary.
+   - `command -v lym` (`where lym` on Windows) run from the spawned agent's Bash tool names the spawning binary (`LYM_BIN`), not the production install, even on a machine whose shell rc prepends another directory holding a `lym`.
+   - `LYM_BIN` is set inside that pane and names the same binary.
    - `claude` still resolves inside that pane.
      `claude` is looked up by bare name from the pane's PATH, so it is the property most exposed to any future change in how a pane's shell is started, and it is the one property no hermetic test can prove.
    The first two are also live-substrate facts no `go test` can prove, which is why all three are pre-condition checks rather than assertions.
@@ -26,28 +26,28 @@ Before starting a session:
 3. **Live-tmux and claude requirement.** tmux (or the Windows tmux port) on PATH, PowerShell 7,
    and a logged-in `claude` on PATH.
    If any of these is unavailable in the session, **note that as the session outcome rather than treating it as a shuttle defect** -- the `**Covers:** shuttle` tag on S1 satisfies the sandbox coverage guard (`sandbox_coverage_test.go`) regardless of runtime availability.
-4. **Wired worktree required.** `lyx shuttle` requires a worktree wired by `lyx fabric clone`/`lyx fabric add` -- which materializes `_lyx/config/shuttle.yaml` and `reed.yaml` eagerly -- exactly like `lyx reed` does.
+4. **Wired worktree required.** `lym shuttle` requires a worktree wired by `lym fabric clone`/`lym fabric add` -- which materializes `_lym/config/shuttle.yaml` and `reed.yaml` eagerly -- exactly like `lym reed` does.
 
 ## Black-box rule
 
-**The agent under test works exclusively inside the Hub's Fabric repo (`lyx-test-LYXHUB/lyx-test`).
-It tests `lyx.exe` as a black box -- exactly as a real user with only the binary on PATH.
-It must not look for, read, or reason about the lyx source tree.
+**The agent under test works exclusively inside the Hub's Fabric repo (`lym-test-LYMHUB/lym-test`).
+It tests `lym.exe` as a black box -- exactly as a real user with only the binary on PATH.
+It must not look for, read, or reason about the lym source tree.
 No peeking at `C:\Code\loomyard\` or any other path outside the Hub.**
 
-Discovering the command surface is done via `lyx shuttle`, `lyx shuttle <subcommand>`, and `lyx shuttle <subcommand> --help` alone -- not from documentation outside the Hub.
+Discovering the command surface is done via `lym shuttle`, `lym shuttle <subcommand>`, and `lym shuttle <subcommand> --help` alone -- not from documentation outside the Hub.
 
 ### Controlled tmux exceptions
 
 One sanctioned deviation from the pure black-box rule, mirroring the reed suite's own controlled-exception note:
 
-- **Direct `tmux -L <socket> list-panes`/`ls`** is allowed only to confirm a strand's pane exists (or was cleaned up), where `<socket>` is read from the shuttle run's strand guid cross-referenced against `lyx reed status` output.
+- **Direct `tmux -L <socket> list-panes`/`ls`** is allowed only to confirm a strand's pane exists (or was cleaned up), where `<socket>` is read from the shuttle run's strand guid cross-referenced against `lym reed status` output.
 - **Scenario S2's operator attach** is operator-assisted -- see S2 below.
 
 ## Fingerprint header
 
 The launcher prepends a "binary under test" fingerprint block to this file when it copies it into the Hub's Fabric repo.
-The fingerprint records the absolute path, file size, modification time, and a short SHA-256 of the `lyx.exe` binary at launch time.
+The fingerprint records the absolute path, file size, modification time, and a short SHA-256 of the `lym.exe` binary at launch time.
 
 The same fingerprint identifies the binary for the report's provenance: a separate fetch step (run after this session) stamps it into `meta.fingerprint` of the fetched `sandbox-report.json` so a maintainer can reproduce the exact binary that produced each finding.
 The agent does not need to transcribe the fingerprint anywhere itself.
@@ -57,8 +57,8 @@ The agent does not need to transcribe the fingerprint anywhere itself.
 For each scenario below:
 
 - Read the **Goal** -- it names the task, not the commands.
-  Discover the commands via `lyx shuttle`, `lyx shuttle <subcommand>`, and `--help` flags (S0 ethos).
-- **Watch** what lyx does.
+  Discover the commands via `lym shuttle`, `lym shuttle <subcommand>`, and `--help` flags (S0 ethos).
+- **Watch** what lym does.
   Note where it stalls, guesses wrong, or hits an error.
 - Record the outcome per the verdict buckets: `OK` (worked) / `WARN` (rough edge) / `FAIL` (broke).
 
@@ -67,7 +67,7 @@ For each scenario below:
 - `OK`   -- completed without friction
 - `WARN` -- completed but with confusion, awkward UX, or a non-fatal error
 - `FAIL` -- did not complete;
-  lyx broke, panicked, or gave wrong output
+  lym broke, panicked, or gave wrong output
 
 ## Capturing findings
 
@@ -104,11 +104,11 @@ Confine all free text to the `title`/`body` string fields so the JSON stays well
 
 **Goal:** "Ask a shuttle agent to write a specific file, and confirm the run reports `done` once it does."
 
-**Watch:** `lyx shuttle run --prompt "write the single line OK into result.md and nothing else" --output-file result.md` starts a strand (visible as a pane, confirmable via `lyx reed status` or `tmux -L <socket> list-panes`);
+**Watch:** `lym shuttle run --prompt "write the single line OK into result.md and nothing else" --output-file result.md` starts a strand (visible as a pane, confirmable via `lym reed status` or `tmux -L <socket> list-panes`);
 the command blocks until the agent finishes;
 the printed JSON envelope reports `"outcome":"done"` with a `sessionId` and `guid`;
 `result.md` exists with the expected content;
-and afterward the strand's pane and run directory are cleaned up (no leftover pane, `lyx reed status` no longer lists the guid).
+and afterward the strand's pane and run directory are cleaned up (no leftover pane, `lym reed status` no longer lists the guid).
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -118,12 +118,12 @@ and afterward the strand's pane and run directory are cleaned up (no leftover pa
 
 **Covers:** shuttle
 
-**Goal:** "Give a shuttle agent a task it cannot complete without a decision only the operator can make, and confirm the run keeps waiting at the agent's question, then let the operator answer it directly in the pane or by `lyx shuttle send`, and confirm the run ends `done`."
+**Goal:** "Give a shuttle agent a task it cannot complete without a decision only the operator can make, and confirm the run keeps waiting at the agent's question, then let the operator answer it directly in the pane or by `lym shuttle send`, and confirm the run ends `done`."
 
-**Watch:** `lyx shuttle run --prompt "before writing decision.md, stop and ask me which of two options you should pick — do not guess" --output-file decision.md --interactive` does not return when the agent ends its turn with its question: the run is held;
-the strand and its pane are still alive (`lyx reed status` still lists the guid;
+**Watch:** `lym shuttle run --prompt "before writing decision.md, stop and ask me which of two options you should pick — do not guess" --output-file decision.md --interactive` does not return when the agent ends its turn with its question: the run is held;
+the strand and its pane are still alive (`lym reed status` still lists the guid;
 `decision.md` does not exist yet).
-The agent then instructs the operator to attach (`lyx reed attach` in a second terminal, per the reed suite's M7/M14 pattern), answer the question in the pane or by `lyx shuttle send <guid> "<answer>"`, and confirm the agent continues, eventually writes `decision.md`, and the original `lyx shuttle run` returns `"outcome":"done"`.
+The agent then instructs the operator to attach (`lym reed attach` in a second terminal, per the reed suite's M7/M14 pattern), answer the question in the pane or by `lym shuttle send <guid> "<answer>"`, and confirm the agent continues, eventually writes `decision.md`, and the original `lym shuttle run` returns `"outcome":"done"`.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -135,9 +135,9 @@ The agent then instructs the operator to attach (`lyx reed attach` in a second t
 
 **Goal:** "Start a long-running shuttle agent from one terminal, then from a second terminal interrupt its current turn and send it a one-line update, and confirm the agent continues from the new instruction."
 
-**Watch:** Start a long-running run in one terminal, e.g. `lyx shuttle run --prompt "count slowly to a very large number out loud, one number per line, before writing done.md" --output-file done.md`.
-From a second terminal, note the `guid` (via `lyx reed status`) and run `lyx shuttle interrupt <guid>` -- the agent's current turn stops without killing its pane or session (`lyx reed status` still shows it `live: true`).
-Then run `lyx shuttle send <guid> "stop counting and write done.md right away"` -- a single-line update only.
+**Watch:** Start a long-running run in one terminal, e.g. `lym shuttle run --prompt "count slowly to a very large number out loud, one number per line, before writing done.md" --output-file done.md`.
+From a second terminal, note the `guid` (via `lym reed status`) and run `lym shuttle interrupt <guid>` -- the agent's current turn stops without killing its pane or session (`lym reed status` still shows it `live: true`).
+Then run `lym shuttle send <guid> "stop counting and write done.md right away"` -- a single-line update only.
 The deterministic property to verify is that `done.md` eventually appears with the redirected content: the first terminal's envelope reports `"outcome":"done"`, because the interrupted turn's own Stop is a hold and only the redirect turn's completion ends the run.
 Any other outcome (or a missing/wrong `done.md`) is a real failure here.
 Sending multiline text must be rejected outright (a "must be a single line" error), not silently truncated or mis-submitted.
@@ -150,13 +150,13 @@ Sending multiline text must be rejected outright (a "must be a single line" erro
 
 **Covers:** shuttle
 
-**Goal:** "Make a `lyx shuttle run` invocation fail for TWO independent reasons at the same time, and confirm it still answers with exactly one JSON object naming the one to fix first."
+**Goal:** "Make a `lym shuttle run` invocation fail for TWO independent reasons at the same time, and confirm it still answers with exactly one JSON object naming the one to fix first."
 
-**Watch:** From a directory that is NOT a git repository (e.g. a fresh `mkdir` under the system temp dir), run `lyx shuttle run --output-file out.md` -- geometry resolution fails AND no `--prompt`/`--prompt-file` was given, so both the pre-flight and the flag check have something to say.
+**Watch:** From a directory that is NOT a git repository (e.g. a fresh `mkdir` under the system temp dir), run `lym shuttle run --output-file out.md` -- geometry resolution fails AND no `--prompt`/`--prompt-file` was given, so both the pre-flight and the flag check have something to say.
 The command must print **exactly one** JSON object, and it must be the pre-flight one (`"error":"not a git repository"`), because that is the problem the operator has to fix before the flag error can even be evaluated.
 Two objects on one invocation is a FAIL, not a cosmetic issue: a caller that reads the output with a single-object JSON parse gets a parse error instead of the real cause.
 Repeat with `--prompt a --prompt-file b --output-file out.md` (mutually exclusive flags) for the same result.
-Then, from inside a real lyx worktree, run `lyx shuttle run --output-file out.md` and confirm the flag error IS reported on its own there -- suppressing it only when the pre-flight already failed is the point, suppressing it always would be a different bug.
+Then, from inside a real lym worktree, run `lym shuttle run --output-file out.md` and confirm the flag error IS reported on its own there -- suppressing it only when the pre-flight already failed is the point, suppressing it always would be a different bug.
 This scenario starts no agent and costs no provider tokens.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
@@ -170,20 +170,20 @@ This scenario starts no agent and costs no provider tokens.
 **Goal:** "Take reed's strand table away from underneath a live shuttle run, and confirm shuttle says it does not know rather than declaring the agent dead -- and that it does not delete the live run's directory."
 
 **Watch:** Start a run that stays inside ONE turn for several minutes, e.g.
-`lyx shuttle run --prompt "run python3 -c 'import time; time.sleep(100); print(1)' in the foreground three times in a single reply, then write done.md" --output-file done.md --model haiku`.
-Wait until `lyx reed status` shows the strand `live: true` and the pane visibly shows the agent working (a running tool call with a rising elapsed counter -- do not proceed while it is still booting).
-Then, from a second terminal, delete reed's state file: `rm <worktree>/.lyx/reed.json`.
+`lym shuttle run --prompt "run python3 -c 'import time; time.sleep(100); print(1)' in the foreground three times in a single reply, then write done.md" --output-file done.md --model haiku`.
+Wait until `lym reed status` shows the strand `live: true` and the pane visibly shows the agent working (a running tool call with a rising elapsed counter -- do not proceed while it is still booting).
+Then, from a second terminal, delete reed's state file: `rm <worktree>/.lym/reed.json`.
 This is not vandalism -- it is verbatim the second remedy reed's own corrupt-state error recommends ("delete it by hand to keep the session"), and it is what a `git clean -xdf` in the worktree does.
 
 Three things must hold, and each was a real defect before:
 
-1. The blocked `lyx shuttle run` must return `"ok":false` with an error saying reed no longer tracks the strand and that the agent may still be working -- **never** `"ok":true` with `"outcome":"died"`. A `died` envelope here is a FAIL: it tells an unattended caller to respawn, which puts a second agent on the worktree while the first keeps running unreachably.
+1. The blocked `lym shuttle run` must return `"ok":false` with an error saying reed no longer tracks the strand and that the agent may still be working -- **never** `"ok":true` with `"outcome":"died"`. A `died` envelope here is a FAIL: it tells an unattended caller to respawn, which puts a second agent on the worktree while the first keeps running unreachably.
 2. The envelope must still carry `guid`, `sessionId` and `runDir`, so the operator can reach the pane that is still running.
 3. Confirm the agent really is still alive afterward (`tmux -L <socket> capture-pane` on its pane shows the same turn still progressing) -- the whole point of the verdict in (1).
 
-Then, with `reed.json` still absent, start a SECOND run in the same worktree with a deliberately cheap prompt (e.g. `--model haiku --prompt "write ok" --output-file second.md`): `add strand` now self-heals rather than refusing, so this second run boots a fresh session and spawns a real second agent -- **this step now costs real tokens**, unlike the no-session refusal it used to hit. Confirm the FIRST run's directory under `<worktree>/.lyx/shuttle/` is **still there** once the second run has started. A missing run directory is a FAIL: it holds the `events.jsonl` the live agent's Stop hook is still appending to, and the `run.json` without which `lyx shuttle interrupt/send <guid>` can no longer find the running agent at all.
+Then, with `reed.json` still absent, start a SECOND run in the same worktree with a deliberately cheap prompt (e.g. `--model haiku --prompt "write ok" --output-file second.md`): `add strand` now self-heals rather than refusing, so this second run boots a fresh session and spawns a real second agent -- **this step now costs real tokens**, unlike the no-session refusal it used to hit. Confirm the FIRST run's directory under `<worktree>/.lym/shuttle/` is **still there** once the second run has started. A missing run directory is a FAIL: it holds the `events.jsonl` the live agent's Stop hook is still appending to, and the `run.json` without which `lym shuttle interrupt/send <guid>` can no longer find the running agent at all.
 
-Restore with `lyx reed up` (which writes a fresh `reed.json`) and `lyx reed down` to tear the session down.
+Restore with `lym reed up` (which writes a fresh `reed.json`) and `lym reed down` to tear the session down.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -195,10 +195,10 @@ Restore with `lyx reed up` (which writes a fresh `reed.json`) and `lyx reed down
 
 **Goal:** "Send one instruction twice into a busy agent pane, with the first copy scrolled to the very top of the viewport, and confirm the second send is delivered exactly once and reported as delivered."
 
-**Watch:** Start a run with `--keep-pane` and a trivial prompt (e.g. `lyx shuttle run --prompt "write READY into ready.txt" --output-file ready.txt --keep-pane --model haiku`), which leaves one live, idle agent pane to drive.
-Note the `guid` from `lyx reed status`.
+**Watch:** Start a run with `--keep-pane` and a trivial prompt (e.g. `lym shuttle run --prompt "write READY into ready.txt" --output-file ready.txt --keep-pane --model haiku`), which leaves one live, idle agent pane to drive.
+Note the `guid` from `lym reed status`.
 
-Send an instruction whose ANSWER is long enough to fill the pane, e.g. `lyx shuttle send <guid> "reply with the numbers 1 to 38 one per line and nothing else"`.
+Send an instruction whose ANSWER is long enough to fill the pane, e.g. `lym shuttle send <guid> "reply with the numbers 1 to 38 one per line and nothing else"`.
 Wait for the reply to finish, then look at the pane (`tmux -L <socket> capture-pane -p -t <paneId>`): the line echoing your instruction must have been pushed to within a line or two of the TOP of the viewport, still visible.
 That is the setup -- if it scrolled off entirely, send it once more and re-check.
 
@@ -209,7 +209,7 @@ Two things must hold:
 2. The pane must show the instruction accepted exactly ONCE more, not twice. A second, duplicate copy of your instruction (and a second answer to it) is the same FAIL seen from the other side: the delivery check gave up and re-typed a message the agent had already received.
 
 Both halves failed before this was fixed, because the earlier copy scrolling off as the new one arrived left the occurrence COUNT unchanged, which is indistinguishable from nothing arriving unless position is taken into account.
-Tear down with `lyx reed remove <guid>` and `lyx reed down`.
+Tear down with `lym reed remove <guid>` and `lym reed down`.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -224,17 +224,17 @@ Tear down with `lyx reed remove <guid>` and `lyx reed down`.
 **Watch:** This is S5's sibling: there reed forgets the strand, here reed keeps the strand but forgets its PANE.
 Start the same kind of run that stays inside ONE turn for several minutes (see S5) and wait until the pane visibly shows the agent working.
 
-Then make the persisted pane generation stale, which is the state reed's own doc describes as "a reed.json older than the session now running" -- reachable in the wild from a restored backup or a copied `.lyx`.
-In `<anchor>/.lyx/reed.json`, change the `paneGeneration.created` value to any older number, writing the file atomically (write a temp file beside it and rename it over the original, so reed never reads a half-written file).
+Then make the persisted pane generation stale, which is the state reed's own doc describes as "a reed.json older than the session now running" -- reachable in the wild from a restored backup or a copied `.lym`.
+In `<anchor>/.lym/reed.json`, change the `paneGeneration.created` value to any older number, writing the file atomically (write a temp file beside it and rename it over the original, so reed never reads a half-written file).
 
-Reed then logs `persisted pane bindings were minted against a different tmux session incarnation, clearing them`, and `lyx reed status` reports the strand with an empty `paneId` and `live: false` -- while `tmux list-panes` still shows its pane alive with the agent inside it.
+Reed then logs `persisted pane bindings were minted against a different tmux session incarnation, clearing them`, and `lym reed status` reports the strand with an empty `paneId` and `live: false` -- while `tmux list-panes` still shows its pane alive with the agent inside it.
 
 Two things must hold:
 
-1. The blocked `lyx shuttle run` must return `"ok":false` saying reed holds no pane binding for the strand and that the agent may still be working -- **never** `"ok":true` with `"outcome":"died"`. A `died` envelope here is the same FAIL as S5's, for the same reason: it tells an unattended caller to respawn onto a worktree whose agent is still running.
-2. `lyx shuttle interrupt <guid>` must refuse, and its message must NOT claim the run reached a terminal outcome or that its pane died -- neither is true here.
+1. The blocked `lym shuttle run` must return `"ok":false` saying reed holds no pane binding for the strand and that the agent may still be working -- **never** `"ok":true` with `"outcome":"died"`. A `died` envelope here is the same FAIL as S5's, for the same reason: it tells an unattended caller to respawn onto a worktree whose agent is still running.
+2. `lym shuttle interrupt <guid>` must refuse, and its message must NOT claim the run reached a terminal outcome or that its pane died -- neither is true here.
 
-Restore the original `created` value to make the binding usable again (`lyx reed status` will show the strand `live: true` on its pane once more, which also proves the agent was alive throughout), then `lyx reed remove <guid>` and `lyx reed down`.
+Restore the original `created` value to make the binding usable again (`lym reed status` will show the strand `live: true` on its pane once more, which also proves the agent was alive throughout), then `lym reed remove <guid>` and `lym reed down`.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -244,14 +244,14 @@ Restore the original `created` value to make the binding usable again (`lyx reed
 
 **Covers:** shuttle
 
-**Goal:** "Start an interactive shuttle agent, read what `lyx shuttle state` says its session is doing while it works and after it asks its question, narrow the list to the one run, and confirm every printed state matches what the pane shows."
+**Goal:** "Start an interactive shuttle agent, read what `lym shuttle state` says its session is doing while it works and after it asks its question, narrow the list to the one run, and confirm every printed state matches what the pane shows."
 
-**Watch:** Start the S2 run (`lyx shuttle run --prompt "before writing decision.md, stop and ask me which of two options you should pick — do not guess" --output-file decision.md --interactive`).
-From a second terminal, `lyx shuttle state` prints one JSON envelope whose `runs` lists the run with its `strand`, `guid`, `state`, `cause`, `detail`, `outstanding`, `since` and `history`.
+**Watch:** Start the S2 run (`lym shuttle run --prompt "before writing decision.md, stop and ask me which of two options you should pick — do not guess" --output-file decision.md --interactive`).
+From a second terminal, `lym shuttle state` prints one JSON envelope whose `runs` lists the run with its `strand`, `guid`, `state`, `cause`, `detail`, `outstanding`, `since` and `history`.
 While the pane shows the agent working, the run reads `busy` with cause `turn`.
 After the agent ends its turn with its question, the run reads `asking` with cause `awaiting-input`, because the run is interactive and `decision.md` does not exist yet, and `since` is the time the turn ended.
-`lyx shuttle state --strand <strand name or guid>` lists only that run, and `--strand no-such-strand` prints an empty `runs` list with `"ok":true`.
-Reading the state changes nothing: the pane, the run and `lyx reed status` are the same before and after.
+`lym shuttle state --strand <strand name or guid>` lists only that run, and `--strand no-such-strand` prints an empty `runs` list with `"ok":true`.
+Reading the state changes nothing: the pane, the run and `lym reed status` are the same before and after.
 A state the pane contradicts (for instance `idle-done` while the agent still works) is a real failure here.
 The state model is in shadow mode, so a mismatch is a finding about the reading, never a reason the run itself misbehaved.
 

@@ -2,7 +2,7 @@
 
 // config_test.go — tier 0 unit tests for darnengine.LoadConfig, darnengine.TreeScopedTargets and darnengine.MigrateConfig.
 //
-// Seeds a bare t.TempDir() with just a _lyx/config/darn.yaml file (no real hub, no SeedConfig, no git spawn).
+// Seeds a bare t.TempDir() with just a _lym/config/darn.yaml file (no real hub, no SeedConfig, no git spawn).
 
 package darnengine
 
@@ -20,10 +20,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 )
 
-// seedDarnConfig creates <baseDir>/_lyx/config/darn.yaml with the given contents.
+// seedDarnConfig creates <baseDir>/_lym/config/darn.yaml with the given contents.
 func seedDarnConfig(t *testing.T, baseDir, contents string) {
 	t.Helper()
-	configDir := filepath.Join(baseDir, "_lyx", "config")
+	configDir := filepath.Join(baseDir, "_lym", "config")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
 	}
@@ -76,7 +76,7 @@ func TestLoadConfig(t *testing.T) {
 		},
 		{
 			name: "a retired tree_scope_verify key still loads", seed: true,
-			contents: withTreeScope("\n  tools: ./tools/...") + "tree_scope_verify: \"lyx gate test --wait --tier 1 {targets}\"\n",
+			contents: withTreeScope("\n  tools: ./tools/...") + "tree_scope_verify: \"lym gate test --wait --tier 1 {targets}\"\n",
 			want:     templateConfig(func(c *Config) { c.TreeScope = map[string]string{"tools": "./tools/..."} }),
 		},
 		{
@@ -93,7 +93,7 @@ func TestLoadConfig(t *testing.T) {
 			contents: strings.Replace(ConfigTemplate(), "writer: opus[medium]", "writer: \"opus[medium\"", 1),
 			wantErr:  []string{"writer"},
 		},
-		{name: "not initialized", wantErr: []string{`not initialized here; run "lyx fabric reconcile"`}},
+		{name: "not initialized", wantErr: []string{`not initialized here; run "lym fabric reconcile"`}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -228,7 +228,7 @@ func TestLoadConfig(t *testing.T) {
 }
 
 // writeLocalDarnConfig writes contents as anchor's local darn override and returns its path.
-// anchor gets an empty _lyx/config/ so the layered load sees an initialised worktree.
+// anchor gets an empty _lym/config/ so the layered load sees an initialised worktree.
 func writeLocalDarnConfig(t *testing.T, anchor, contents string) string {
 	t.Helper()
 	for _, dir := range []string{configengine.ConfigDir(anchor), configengine.ScratchDir(anchor)} {
@@ -296,7 +296,7 @@ func TestMigrateConfig(t *testing.T) {
 		wantLines int
 	}{
 		{name: "held empty empties tree_scope and prunes the key", existing: withVerify(treesText, ""), wantTrees: map[string]string{}, wantLines: 1},
-		{name: "held set prunes the key and keeps tree_scope", existing: withVerify(treesText, "lyx gate test --wait --tier 1 {targets}"), wantTrees: map[string]string{"tools": "./tools/..."}, wantLines: 1},
+		{name: "held set prunes the key and keeps tree_scope", existing: withVerify(treesText, "lym gate test --wait --tier 1 {targets}"), wantTrees: map[string]string{"tools": "./tools/..."}, wantLines: 1},
 		{name: "absent changes nothing and keeps the trees the hub holds", existing: withTreeScope(treesText), wantTrees: map[string]string{"tools": "./tools/..."}},
 	}
 	for _, tt := range tests {

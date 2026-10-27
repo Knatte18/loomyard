@@ -56,24 +56,24 @@ func (fz *Finalize) landHalt(ctx context.Context, reason string) (shedengine.Out
 
 // landRerun is the way forward of a land check that could not be judged: the run's re-entry from the beam's worktree once the cause is gone.
 func landRerun(beam string) string {
-	return fmt.Sprintf("run `lyx loom resume` in the beam's worktree %s", beam)
+	return fmt.Sprintf("run `lym loom resume` in the beam's worktree %s", beam)
 }
 
 // landHaltReason words the reason of a land halt for the beam, whose parent worktree is parentWorktree.
 // A forked pair and a member with a pair or a run in flight are cancelled, in the parent worktree or on the machine holding the pair of a run in flight with no pair here, and a member is then moved off the beam, since the cancel leaves it a draft member, which still blocks the landing.
 // A member with no run status is moved alone.
-// It never names the landing of a member with `lyx batten run`, which the landing hold refuses.
+// It never names the landing of a member with `lym batten run`, which the landing hold refuses.
 func landHaltReason(beam, parentWorktree string, blockers []LandBlocker) string {
-	moveOff := "move its `project` off the beam with `lyx board upsert`"
+	moveOff := "move its `project` off the beam with `lym board upsert`"
 	var ways []string
 	for _, blocker := range blockers {
 		switch {
 		case blocker.Pair:
-			ways = append(ways, fmt.Sprintf("the pair %s was forked from the beam: end it with `lyx batten cancel %s --remove`, run in the parent worktree %s", blocker.Slug, blocker.Slug, parentWorktree))
+			ways = append(ways, fmt.Sprintf("the pair %s was forked from the beam: end it with `lym batten cancel %s --remove`, run in the parent worktree %s", blocker.Slug, blocker.Slug, parentWorktree))
 		case blocker.HasPair:
-			ways = append(ways, fmt.Sprintf("the open entry %s is a member of the beam: end it with `lyx batten cancel %s --remove`, run in the parent worktree %s, then %s, since the cancel leaves a `draft` member, which still blocks the landing", blocker.Slug, blocker.Slug, parentWorktree, moveOff))
+			ways = append(ways, fmt.Sprintf("the open entry %s is a member of the beam: end it with `lym batten cancel %s --remove`, run in the parent worktree %s, then %s, since the cancel leaves a `draft` member, which still blocks the landing", blocker.Slug, blocker.Slug, parentWorktree, moveOff))
 		case blocker.Running:
-			ways = append(ways, fmt.Sprintf("the open entry %s is a member of the beam with a run in flight and no pair on this machine: end it with `lyx batten cancel %s --remove` on the machine holding its pair, which `lyx batten status %s` there shows, then %s, since the cancel leaves a `draft` member, which still blocks the landing", blocker.Slug, blocker.Slug, blocker.Slug, moveOff))
+			ways = append(ways, fmt.Sprintf("the open entry %s is a member of the beam with a run in flight and no pair on this machine: end it with `lym batten cancel %s --remove` on the machine holding its pair, which `lym batten status %s` there shows, then %s, since the cancel leaves a `draft` member, which still blocks the landing", blocker.Slug, blocker.Slug, blocker.Slug, moveOff))
 		default:
 			ways = append(ways, fmt.Sprintf("the open entry %s is a member of the beam with no run status: %s", blocker.Slug, moveOff))
 		}

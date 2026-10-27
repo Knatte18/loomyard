@@ -22,8 +22,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -177,7 +177,7 @@ func (c *stepClock) Sleep(d time.Duration) { c.now = c.now.Add(d) }
 // newStubbedDelivery returns the delivery of hub with its wiring answered by stubs keyed by worktree path.
 func newStubbedDelivery(hub *hubforge.Hub, stubs map[string]*stubOps) *hubDelivery {
 	delivery := newHubDelivery(hub.Path, nil)
-	delivery.wire = func(location *lyxcwd.Location) (worktreeOps, error) {
+	delivery.wire = func(location *lymcwd.Location) (worktreeOps, error) {
 		stub, ok := stubs[location.WorktreePath()]
 		if !ok {
 			return nil, fmt.Errorf("no stub for %s", location.WorktreePath())
@@ -196,7 +196,7 @@ func newStubbedDelivery(hub *hubforge.Hub, stubs map[string]*stubOps) *hubDelive
 // seedReedState persists the strands (name to guid) in the reed state of the worktree at path.
 func seedReedState(t *testing.T, path string, strands map[string]string) {
 	t.Helper()
-	location, err := lyxcwd.ResolveWorktree(path)
+	location, err := lymcwd.ResolveWorktree(path)
 	if err != nil {
 		t.Fatalf("ResolveWorktree(%q) = %v", path, err)
 	}
@@ -204,19 +204,19 @@ func seedReedState(t *testing.T, path string, strands map[string]string) {
 	for name, guid := range strands {
 		reedState.Strands = append(reedState.Strands, reedengine.Strand{Name: name, GUID: guid})
 	}
-	dotLyx := filepath.Join(location.AnchorPath(), lyxdirs.DotLyxDirName)
-	if err := os.MkdirAll(dotLyx, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v", dotLyx, err)
+	dotLym := filepath.Join(location.AnchorPath(), lymdirs.DotLymDirName)
+	if err := os.MkdirAll(dotLym, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v", dotLym, err)
 	}
-	if err := reedengine.SaveState(dotLyx, reedState); err != nil {
-		t.Fatalf("SaveState(%q) = %v", dotLyx, err)
+	if err := reedengine.SaveState(dotLym, reedState); err != nil {
+		t.Fatalf("SaveState(%q) = %v", dotLym, err)
 	}
 }
 
 // pauseRecordPath is where the hub's pause record lives, told through the worktree at path.
 func pauseRecordPath(t *testing.T, path string) string {
 	t.Helper()
-	location, err := lyxcwd.ResolveWorktree(path)
+	location, err := lymcwd.ResolveWorktree(path)
 	if err != nil {
 		t.Fatalf("ResolveWorktree(%q) = %v", path, err)
 	}
@@ -286,7 +286,7 @@ func TestHubDelivery(t *testing.T) {
 		t.Parallel()
 		hub, prime, pair := newHub(t)
 		seedReedState(t, pair, map[string]string{"ly:pair:impl": "guid-impl"})
-		corrupt := filepath.Join(pair, lyxdirs.DotLyxDirName, "reed.json")
+		corrupt := filepath.Join(pair, lymdirs.DotLymDirName, "reed.json")
 		if err := os.WriteFile(corrupt, []byte("{not json"), 0o644); err != nil {
 			t.Fatalf("WriteFile(%q) = %v", corrupt, err)
 		}
@@ -301,7 +301,7 @@ func TestHubDelivery(t *testing.T) {
 	t.Run("wireShuttle tells the runner the hub's pause record with an empty slug", func(t *testing.T) {
 		t.Parallel()
 		_, _, pair := newHub(t)
-		location, err := lyxcwd.ResolveWorktree(pair)
+		location, err := lymcwd.ResolveWorktree(pair)
 		if err != nil {
 			t.Fatalf("ResolveWorktree(%q) = %v", pair, err)
 		}
@@ -741,14 +741,14 @@ func TestHubDelivery_SkipsAWorktreeThatNoLongerResolves(t *testing.T) {
 
 	t.Run("AnUnusableRecordedAnchorFailsTheCall", func(t *testing.T) {
 		hub, prime, pair := newHub(t)
-		anchorFile := filepath.Join(hub.PrimeRecords(), lyxcwd.AnchorFileName)
+		anchorFile := filepath.Join(hub.PrimeRecords(), lymcwd.AnchorFileName)
 		if err := os.WriteFile(anchorFile, []byte("../escape\n"), 0o644); err != nil {
 			t.Fatalf("WriteFile(%q) = %v", anchorFile, err)
 		}
 		delivery := newStubbedDelivery(hub, map[string]*stubOps{prime: {}, pair: {}})
 
 		_, err := delivery.Strands()
-		if !errors.Is(err, lyxcwd.ErrInvalidAnchor) || errors.Is(err, errWorktreeGone) {
+		if !errors.Is(err, lymcwd.ErrInvalidAnchor) || errors.Is(err, errWorktreeGone) {
 			t.Errorf("Strands() with an unusable anchor = %v; want a failure wrapping ErrInvalidAnchor and not a skip", err)
 		}
 	})

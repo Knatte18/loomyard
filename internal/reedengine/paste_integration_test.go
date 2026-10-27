@@ -1,7 +1,7 @@
 //go:build tier2
 
 // paste_integration_test.go drives PasteSubmit against a real tmux pane running cat:
-// the text and the Enter arrive, a long line pastes whole, no lyx-inject buffer outlives the paste, and the operator's own paste buffer stays on top of the default stack.
+// the text and the Enter arrive, a long line pastes whole, no lym-inject buffer outlives the paste, and the operator's own paste buffer stays on top of the default stack.
 
 package reedengine
 
@@ -101,8 +101,8 @@ func TestPasteSubmit_DeliversTextAndLeavesTheBufferStackAlone(t *testing.T) {
 	}
 
 	buffers := mustTmuxOutput(t, e, "list-buffers", "-F", "#{buffer_name}")
-	if strings.Contains(buffers, "lyx-inject-") {
-		t.Errorf("list-buffers = %q, want no lyx-inject- buffer left behind", buffers)
+	if strings.Contains(buffers, "lym-inject-") {
+		t.Errorf("list-buffers = %q, want no lym-inject- buffer left behind", buffers)
 	}
 	top := strings.TrimSpace(mustTmuxOutput(t, e, "show-buffer"))
 	if top != "operator-buffer" {

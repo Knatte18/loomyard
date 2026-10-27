@@ -17,7 +17,7 @@ import (
 )
 
 // TestRunCLI_Watchdog_RefusesBadHubPath verifies that watchdog refuses both an absent and a relative --hub-path on the envelope, before it ever blocks.
-// The non-git row also verifies that "watchdog" takes the PersistentPreRunE's early return: invoked from a directory that is not a git repository, it must not fail with lyxcwd.Resolve's not-a-git-repository error — the verb must run with no git repository present at all.
+// The non-git row also verifies that "watchdog" takes the PersistentPreRunE's early return: invoked from a directory that is not a git repository, it must not fail with lymcwd.Resolve's not-a-git-repository error — the verb must run with no git repository present at all.
 // Its own RunE then reports the missing --hub-path flag on the envelope instead, which is the observable proof that PersistentPreRunE returned nil (skipping c.eng population) rather than aborting into the git-repo error.
 func TestRunCLI_Watchdog_RefusesBadHubPath(t *testing.T) {
 	tests := []struct {
@@ -45,7 +45,7 @@ func TestRunCLI_Watchdog_RefusesBadHubPath(t *testing.T) {
 			}
 			errMsg := envelope.Decode(t, out.String()).Error
 			if errMsg == "not a git repository" {
-				t.Errorf("RunCLI(%v) error = %q; want the --hub-path validation error, not lyxcwd.Resolve's not-a-git-repository error", tt.args, errMsg)
+				t.Errorf("RunCLI(%v) error = %q; want the --hub-path validation error, not lymcwd.Resolve's not-a-git-repository error", tt.args, errMsg)
 			}
 			if !strings.Contains(errMsg, "--hub-path") {
 				t.Errorf("RunCLI(%v) error = %q; want it to name --hub-path", tt.args, errMsg)
@@ -72,7 +72,7 @@ func TestRunCLI_NotAGitRepo(t *testing.T) {
 }
 
 // TestRunCLI_Switch_RefusesBadFlagsAndNeedsNoRepository verifies that switch refuses a missing or doubled direction and a missing --client, and follow refuses a missing --socket, --session or --tmux, with a JSON error and a non-zero exit.
-// It runs from a directory that is not a git repository, so a refusal naming the flag, not lyxcwd.Resolve's not-a-git-repository error, proves the verb skips the root pre-run's resolution.
+// It runs from a directory that is not a git repository, so a refusal naming the flag, not lymcwd.Resolve's not-a-git-repository error, proves the verb skips the root pre-run's resolution.
 func TestRunCLI_Switch_RefusesBadFlagsAndNeedsNoRepository(t *testing.T) {
 	tests := []struct {
 		name    string

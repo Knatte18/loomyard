@@ -1,4 +1,4 @@
-// driverresumeline.go composes the one line `lyx loom start` types into a parked loom driver session to resume it.
+// driverresumeline.go composes the one line `lym loom start` types into a parked loom driver session to resume it.
 // It lives beside driverprompt.go, which composes the launch prompt the session parks under.
 
 package loomcli

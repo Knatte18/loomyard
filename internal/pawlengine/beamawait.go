@@ -187,7 +187,7 @@ func (r *awaitRun) enter() bool {
 		if err := removeFile(r.deps.Paths.DobbyStopMarker); err != nil {
 			logger.Warn("pawlengine: the dobby-stop marker of an interrupted landing could not be removed", "producer", r.name, "error", err)
 		}
-		r.notify(fmt.Sprintf("the beam's landing was interrupted: its hold is lifted and its dobby may be down; run `lyx beam start %s` to bring it back, then `lyx beam land %s` to land again", r.deps.Slug, r.deps.Slug))
+		r.notify(fmt.Sprintf("the beam's landing was interrupted: its hold is lifted and its dobby may be down; run `lym beam start %s` to bring it back, then `lym beam land %s` to land again", r.deps.Slug, r.deps.Slug))
 	}
 	if !marked {
 		if err := writeMarker(r.deps.Paths.AwaitMarker, r.deps.Now()); err != nil {
@@ -224,7 +224,7 @@ func (r *awaitRun) noticeDownDobby() {
 	if recorded {
 		return
 	}
-	if !r.notify(fmt.Sprintf("the beam's dobby is down; run `lyx beam start %s` to start it, then `lyx beam land %s` to land", r.deps.Slug, r.deps.Slug)) {
+	if !r.notify(fmt.Sprintf("the beam's dobby is down; run `lym beam start %s` to start it, then `lym beam land %s` to land", r.deps.Slug, r.deps.Slug)) {
 		return
 	}
 	if err := recordDownNotice(r.deps.Paths.AwaitMarker, r.deps.Now()); err != nil {
@@ -289,7 +289,7 @@ func (r *awaitRun) landChecks() []string {
 
 // refuse answers a failed re-check: it lifts the landing hold by writing the status naming this row, restarts the dobby while the dobby-stop marker stands, removes the request and posts the blockers.
 // A failed status write keeps the request and the marker, restarts nothing and posts nothing, so the hold is never left standing behind a dropped request, and the wait returns to the floor so the retry is soon.
-// A failed restart leaves the marker standing and adds `lyx beam start` to the posted notice.
+// A failed restart leaves the marker standing and adds `lym beam start` to the posted notice.
 func (r *awaitRun) refuse(blockers []string) awaitWake {
 	if err := r.deps.SetStatus(NameBeamAwait); err != nil {
 		logger.Warn("pawlengine: the landing hold could not be lifted, so the request and the marker are kept for the next wake", "producer", r.name, "error", err)
@@ -315,16 +315,16 @@ func (r *awaitRun) refuse(blockers []string) awaitWake {
 		logger.Warn("pawlengine: the answered land request could not be removed", "producer", r.name, "error", err)
 	}
 
-	line := fmt.Sprintf("the beam cannot land yet: %s; fix them, then run `lyx beam land %s` to ask again", strings.Join(blockers, "; "), r.deps.Slug)
+	line := fmt.Sprintf("the beam cannot land yet: %s; fix them, then run `lym beam land %s` to ask again", strings.Join(blockers, "; "), r.deps.Slug)
 	if restartErr != nil {
-		line = fmt.Sprintf("%s; the beam's dobby could not be restarted (%v), so run `lyx beam start %s`", line, restartErr, r.deps.Slug)
+		line = fmt.Sprintf("%s; the beam's dobby could not be restarted (%v), so run `lym beam start %s`", line, restartErr, r.deps.Slug)
 	}
 	r.notify(line)
 	return awaitWake{acted: true}
 }
 
 // notify posts line to the beam's orch and reports whether the post succeeded.
-// A failure is logged with the line and changes nothing else, since the request is already answered; with no live orch strand it reaches only the log and `lyx batten status`.
+// A failure is logged with the line and changes nothing else, since the request is already answered; with no live orch strand it reaches only the log and `lym batten status`.
 func (r *awaitRun) notify(line string) bool {
 	if err := r.deps.Notify(line); err != nil {
 		logger.Warn("pawlengine: the notice to the beam's orch failed", "producer", r.name, "error", err, "notice", line)

@@ -120,15 +120,15 @@ func TestEngine_Run_StartFailureEndingTheRunStopsEveryStartedSeat(t *testing.T) 
 	}{
 		{name: "the provider never came up", shuttle: func(f *fakeShuttle) { f.startErrs = map[string]error{chairRole: shuttleengine.ErrNotStarted} }, wantIs: shuttleengine.ErrNotStarted},
 		{name: "another start error", shuttle: func(f *fakeShuttle) { f.startErrs = map[string]error{chairRole: errors.New("no pane")} }, wantText: "no pane"},
-		{name: "a held strand name", shuttle: func(f *fakeShuttle) { f.strandNames = map[string]string{chairRole: "ly:task:multi-2"} }, wantText: `lyx reed remove --name ly:task:multi"`, chairStop: 1},
+		{name: "a held strand name", shuttle: func(f *fakeShuttle) { f.strandNames = map[string]string{chairRole: "ly:task:multi-2"} }, wantText: `lym reed remove --name ly:task:multi"`, chairStop: 1},
 		{name: "a held strand name and a failed stop", shuttle: func(f *fakeShuttle) {
 			f.strandNames = map[string]string{chairRole: "ly:task:multi-2"}
 			f.stopErrs = map[string]error{chairRole: errors.New("pane gone")}
-		}, wantIs: ErrSeatNotStopped, wantText: `lyx reed remove guid-multi"`, chairStop: 1},
+		}, wantIs: ErrSeatNotStopped, wantText: `lym reed remove guid-multi"`, chairStop: 1},
 		{name: "an advisor's held strand name and a failed stop", shuttle: func(f *fakeShuttle) {
 			f.strandNames = map[string]string{lastAdvisorRole: "ly:task:multi-advisor-2-2"}
 			f.stopErrs = map[string]error{lastAdvisorRole: errors.New("pane gone")}
-		}, wantIs: ErrSeatNotStopped, wantText: `lyx reed remove guid-multi-advisor-2"`, chairStop: 1, advisorsStarted: true},
+		}, wantIs: ErrSeatNotStopped, wantText: `lym reed remove guid-multi-advisor-2"`, chairStop: 1, advisorsStarted: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -222,7 +222,7 @@ func TestEngine_Run_AdvisorStartFailureIsRecordedAndNamedToTheChair(t *testing.T
 		wantStopped int
 	}{
 		{name: "a start error", shuttle: func(f *fakeShuttle) { f.startErrs = map[string]error{advisorRole: errors.New("no pane")} }, wantError: "no pane"},
-		{name: "a held strand name", shuttle: func(f *fakeShuttle) { f.strandNames = map[string]string{advisorRole: "ly:task:multi-advisor-1-2"} }, wantError: `lyx reed remove --name ly:task:multi-advisor-1"`, wantStopped: 1},
+		{name: "a held strand name", shuttle: func(f *fakeShuttle) { f.strandNames = map[string]string{advisorRole: "ly:task:multi-advisor-1-2"} }, wantError: `lym reed remove --name ly:task:multi-advisor-1"`, wantStopped: 1},
 		{name: "an unmet requirement names the advisor's model key", shuttle: func(*fakeShuttle) {}, unmetKey: true, wantError: `engine "fake"`},
 	}
 	for _, tt := range tests {
@@ -469,7 +469,7 @@ func TestEngine_Run_FailedStopReturnsTheWayForwardUnretried(t *testing.T) {
 	shuttle.handle(role("")).release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil)
 	end := await(t, ended)
 
-	if !errors.Is(end.err, ErrSeatNotStopped) || !strings.Contains(end.err.Error(), `lyx reed remove guid-multi-advisor-1"`) {
+	if !errors.Is(end.err, ErrSeatNotStopped) || !strings.Contains(end.err.Error(), `lym reed remove guid-multi-advisor-1"`) {
 		t.Errorf("Run() error = %v, want ErrSeatNotStopped naming the strand to remove", end.err)
 	}
 	if stops := shuttle.handle(role(advisorName(1))).stopCount(); stops != 1 {

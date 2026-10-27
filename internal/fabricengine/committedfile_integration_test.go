@@ -28,7 +28,7 @@ func TestCommittedAnchoredFile(t *testing.T) {
 
 	// A path absent at HEAD reports found == false.
 	t.Run("NeverCommitted", func(t *testing.T) {
-		data, found, err := fabricengine.CommittedAnchoredFile(l, "_lyx/never-committed.txt")
+		data, found, err := fabricengine.CommittedAnchoredFile(l, "_lym/never-committed.txt")
 		if err != nil {
 			t.Fatalf("CommittedAnchoredFile error = %v", err)
 		}
@@ -39,7 +39,7 @@ func TestCommittedAnchoredFile(t *testing.T) {
 
 	// Commits an anchored file, edits the working-tree copy, and asserts the committed bytes come back.
 	t.Run("ReturnsCommittedBytes", func(t *testing.T) {
-		const rel = "_lyx/committedfile-probe.txt"
+		const rel = "_lym/committedfile-probe.txt"
 		onDisk := filepath.Join(fabricengine.RecordsWorktree(l), l.AnchorRel, rel)
 
 		if err := os.WriteFile(onDisk, []byte("committed"), 0o644); err != nil {
@@ -64,7 +64,7 @@ func TestCommittedAnchoredFile(t *testing.T) {
 
 	// A never-committed path has an empty history; two committed versions come back newest first, without the edited working copy.
 	t.Run("HistoryHoldsCommittedVersions", func(t *testing.T) {
-		const rel = "_lyx/committedfile-history-probe.txt"
+		const rel = "_lym/committedfile-history-probe.txt"
 		onDisk := filepath.Join(fabricengine.RecordsWorktree(l), l.AnchorRel, rel)
 
 		empty, err := fabricengine.CommittedAnchoredFileHistory(l, rel)

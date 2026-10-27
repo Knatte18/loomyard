@@ -39,8 +39,8 @@ a sentence; the envelope lists each as file:line: text. It takes no
 arguments.
 
 Example:
-  lyx loom lint-comments
-  lyx loom lint-comments --base 1a2b3c4`,
+  lym loom lint-comments
+  lym loom lint-comments --base 1a2b3c4`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {

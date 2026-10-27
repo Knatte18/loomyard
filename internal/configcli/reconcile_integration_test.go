@@ -15,10 +15,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// runReconcileCLI runs `lyx config reconcile <args>` from dir and returns the exit code and the decoded envelope.
+// runReconcileCLI runs `lym config reconcile <args>` from dir and returns the exit code and the decoded envelope.
 func runReconcileCLI(t *testing.T, dir string, args ...string) (int, map[string]any) {
 	t.Helper()
 	var out bytes.Buffer
@@ -46,7 +46,7 @@ func reconcileModule(t *testing.T, result map[string]any, module string) map[str
 	return nil
 }
 
-// TestConfigReconcileInGitRepo runs `lyx config reconcile` over one git repository: a dry run reports without writing, a --set-planted orphan key is reported by reconcile instead of being lost, and --apply prunes the sparse worktree layer without creating an absent file and retires a per-worktree hub-wide copy the hub file subsumes.
+// TestConfigReconcileInGitRepo runs `lym config reconcile` over one git repository: a dry run reports without writing, a --set-planted orphan key is reported by reconcile instead of being lost, and --apply prunes the sparse worktree layer without creating an absent file and retires a per-worktree hub-wide copy the hub file subsumes.
 // Its steps run in this order in one repository.
 // The scenario runs in one repository so it spawns git once.
 func TestConfigReconcileInGitRepo(t *testing.T) {
@@ -166,7 +166,7 @@ func TestConfigReconcileInGitRepo(t *testing.T) {
 		const subsumedBoard = "labels:\n  area-x: Area X\n"
 		boardPath := configengine.ConfigFile(tmpDir, "board")
 		seedModuleConfig(t, tmpDir, "board", subsumedBoard)
-		location, err := lyxcwd.Resolve(tmpDir)
+		location, err := lymcwd.Resolve(tmpDir)
 		if err != nil {
 			t.Fatalf("resolve: %v", err)
 		}

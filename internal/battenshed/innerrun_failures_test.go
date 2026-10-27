@@ -193,7 +193,7 @@ func TestInnerRun_ReadFailuresLogOncePerEpisode(t *testing.T) {
 				deps.DriverAlive = func(context.Context) (bool, error) { return true, nil }
 				deps.MarkWatched = func(context.Context) (bool, error) { return true, nil }
 				deps.StopReport = func() (string, time.Time, bool, error) {
-					return "/wt/task/_lyx/stop-report.md", time.Date(2026, 1, 1, 6, 0, 0, 0, time.UTC), true, nil
+					return "/wt/task/_lym/stop-report.md", time.Date(2026, 1, 1, 6, 0, 0, 0, time.UTC), true, nil
 				}
 				deps.ReadDecision = func() (ChildDecision, bool, error) { return ChildDecision{}, false, fail() }
 			},

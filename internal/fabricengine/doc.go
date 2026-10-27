@@ -1,4 +1,4 @@
-// Package fabricengine is lyx's sole warp↔weft git-coordination module, built on two
+// Package fabricengine is lym's sole warp↔weft git-coordination module, built on two
 // `internal/gitrepo.Repo` instances covering warp↔weft topology and commit/push/pull into the
 // paired weft repo.
 // fabric is the only module that knows both repos exist: the `Fabric` handle holds unexported `code *gitrepo.Repo` and `records *gitrepo.Repo` fields for anything repo-specific and uncoordinated, reachable only from inside this package, and adds a small set of genuinely cross-repo operations (`Commit`, `Pull`, `Diff`, `Status`) on top of what gitrepo deliberately doesn't know about.
@@ -29,12 +29,12 @@
 // A failed upstream probe or an unreachable origin is warned and leaves `PullResult.WeftPulled` false.
 // A replay that stops on a conflict or an uncommitted change is returned as a `*WeftStopError` after the warp arm has run, beside the warp result.
 // The stop names the weft branch, the paths and the way forward.
-// For a conflict that is the two ways to settle it, each followed by `lyx fabric push`, so a re-run `lyx fabric pull` replays nothing.
-// For an uncommitted change it is committing the named paths with `lyx fabric commit` and re-running the pull.
+// For a conflict that is the two ways to settle it, each followed by `lym fabric push`, so a re-run `lym fabric pull` replays nothing.
+// For an uncommitted change it is committing the named paths with `lym fabric commit` and re-running the pull.
 // A weft never crosses a change of its anchor marker on the pull and push paths (anchorstop.go).
 // `weftAnchorStop` is the one comparison: it reads `treeAnchor` of the weft tip, of the upstream tip and of their merge base, and stops when the upstream has commits the tip lacks and the two tips' anchors differ.
 // A tip that already contains the upstream never stops, so a re-anchor not yet pushed goes through, and a markerless tip compares by the anchor its content implies.
-// Its `wantAnchor` is the upstream's anchor when only the upstream moved the marker and the tip's otherwise, and names the `lyx fabric anchor <slug> --set <anchor>` way forward.
+// Its `wantAnchor` is the upstream's anchor when only the upstream moved the marker and the tip's otherwise, and names the `lym fabric anchor <slug> --set <anchor>` way forward.
 // A weft whose own marker is empty stops the same way, and its way forward is restoring the marker.
 // `Pull` returns the stop as a `*WeftStopError` wrapping `ErrAnchorChange` before the warp arm runs, so neither side moves.
 // `FastForwardPair` skips the weft pull with a warning that names the way forward, and goes on with the code side.
@@ -42,7 +42,7 @@
 // `Checkout` and `DropLocal` refuse before they switch, tag or move anything, with an error wrapping `ErrAnchorChange`.
 // `Checkout` refuses an empty own marker, then reads the tip of the target weft branch from the local branch or from origin, fetching an origin tip into its remote-tracking ref only, and refuses when that tip's anchor differs from the worktree's own.
 // A target with no weft branch is forked and inherits the marker, so it is never refused.
-// The refusal names `lyx fabric anchor --set <anchor>` with its cost, a marker commit on the branch being left that every machine checking it out shares, and when the current warp checkout does not track the anchor directory it names the code commit that brings it in first.
+// The refusal names `lym fabric anchor --set <anchor>` with its cost, a marker commit on the branch being left that every machine checking it out shares, and when the current warp checkout does not track the anchor directory it names the code commit that brings it in first.
 // `DropLocal` refuses an empty own marker of the records branch, then compares its anchor with the origin tip it would reset to through `weftAnchorStop` with `reset` set, so a local re-anchor not yet pushed differs from origin's tip as well.
 // `Pull` never returns success with `WeftPulled` false for a moved origin.
 // The call's result is `PullResult`, which reports what each side did and, after a reconcile, the re-anchor baseline —
@@ -77,7 +77,7 @@
 // A weft records branch that is not Bolt and needs a move, hub-wide or run-scoped, first refuses an empty own marker and then runs `weftAnchorStop` on its tip and origin's head, falling back to the `NamedWorktree` anchor of its pair or the prime.
 // Either stop leaves the weft unmoved and reports anchor_stopped, with `BranchOutcome.Anchor` the anchor the way forward sets, empty for an empty marker, and the reconcile goes on with the other branches and returns no error.
 // The pair's code branch still moves, since it changes no marker.
-// The way forward of a pair is `lyx fabric anchor <slug> --set <anchor>` in its code worktree; the prime's first names ending every reed session of the hub and waiting out every live batten run, then the `--set`, then `lyx beam start`.
+// The way forward of a pair is `lym fabric anchor <slug> --set <anchor>` in its code worktree; the prime's first names ending every reed session of the hub and waiting out every live batten run, then the `--set`, then `lym beam start`.
 // An anchor_stopped branch stops its entry, and one on the prime's records branch stops every entry.
 // `classifyEntry` turns the verdicts on an entry's branches into active, ended, owned_elsewhere or stopped, in that precedence.
 //
@@ -85,7 +85,7 @@
 // A judge-only scope reads owners too, since the tip's objects are fetched by SHA, and moves nothing.
 // A hub with no Bolt target or no origin head asks nothing, and a nil `OwnerOf` reads every entry as owned here.
 // A seam error, an empty machine name included, is the reconcile's error, so no verdict is compared with an empty name.
-// An owned_elsewhere entry carries its `Owner`, its `AdoptSubject` (the beam or `root` that `lyx adopt` takes to move it, which the `OwnerReader` answers beside the owner) and a way forward naming `lyx adopt <subject>`, the slug when the reader left the subject empty, and the report's `Summary` has a line for it.
+// An owned_elsewhere entry carries its `Owner`, its `AdoptSubject` (the beam or `root` that `lym adopt` takes to move it, which the `OwnerReader` answers beside the owner) and a way forward naming `lym adopt <subject>`, the slug when the reader left the subject empty, and the report's `Summary` has a line for it.
 // An ended entry stays ended whoever owns it, and an owned_elsewhere entry's pair is never handed to the teardown seam.
 // The move is fast-forward only for such an entry: its code and records fast-forwards move, but a records branch both sides moved stays needs_replay and is not replayed, so no commit made after the handover lands on the new owner's tip.
 // The rule holds in the reconcile only; the weft push retry still replays a rejected push.
@@ -93,7 +93,7 @@
 // Every scope reads the ended set from origin's fetched Bolt tip and its history before any replay, and drops each run this machine's own landing has reached.
 // `reconcileEnded` then applies the removal to each of those runs that has a batten run record here: an entry with a local part of its pair, its worktree paths, launchers or branches, goes to `OriginSeams.Teardown` as an `EndedTeardown` naming the slug and whether `SnapshotTagged` finds the snapshot tag an earlier force-case run left.
 // An ended entry with no local part is reported with no teardown and no network call, and the report's `Summary` leaves it out.
-// A teardown reporting busy leaves the pair, and its entry is ended with the busy flag and a way forward naming the wait, `BusyOnDriver` or `BusyOnLock`, then a re-run of `lyx cleanup --apply`; any other teardown error is on the entry and stops no other.
+// A teardown reporting busy leaves the pair, and its entry is ended with the busy flag and a way forward naming the wait, `BusyOnDriver` or `BusyOnLock`, then a re-run of `lym cleanup --apply`; any other teardown error is on the entry and stops no other.
 // The teardowns' mutations join the report's record, a removed pair's branches leave the report, and no move touches the branches of a pair the step judged.
 // The run scope reports its own run ended like any other and calls no teardown, since its driver is the caller; a judge-only scope reports the teardowns it would run and runs none.
 //
@@ -132,8 +132,8 @@
 // wraps board's wildcard-stage commit on its behalf — see `commitWeftAt`'s own doc comment.
 //
 // The default weft-staging pathspec (template.yaml's `pathspec:` key) is empty, so no optional
-// directory is staged by default; `_lyx` itself arrives from `structuralCommittedDirs`, not from
-// `pathspec`, so any tracked `_lyx` content is committed without needing its own pathspec entry.
+// directory is staged by default; `_lym` itself arrives from `structuralCommittedDirs`, not from
+// `pathspec`, so any tracked `_lym` content is committed without needing its own pathspec entry.
 //
 // The narrow-pathspec asymmetry below inverts, rather than disappears, once `pathspec` went empty:
 // `configsync.ReconcileAll` -> `yamlengine.Reconcile` never rewrites a `pathspec:` key already
@@ -148,7 +148,7 @@
 // rather than migrated, so no upgrade path is documented here because none exists.
 //
 // This is a deliberate asymmetry with the junction side (see fabricengine's own junction wiring): a
-// junction self-heals on the next `lyx fabric clone`/`add`/reconcile and reports loudly until it
+// junction self-heals on the next `lym fabric clone`/`add`/reconcile and reports loudly until it
 // does, because `WireJunctions` owns junction state outright, whereas `pathspec` is an
 // operator-editable config value that `configsync` must never silently overwrite.
 //
@@ -158,7 +158,7 @@
 // `structuralCommittedDirs` ∪ `structuralNeverCommittedDirs` ∪ the pair's `pathspec` filtered against
 // `HubReservedNames()` — the three hub-structural tokens (`_board`, the retired `_portals` and `_launchers`) that
 // can never be a per-worktree junction.
-// The two structural sets (`_lyx`, `.lyx`) are injected in code and never read from `pathspec` at
+// The two structural sets (`_lym`, `.lym`) are injected in code and never read from `pathspec` at
 // all; only the third piece — empty today — comes from config.
 // A future weft-backed *optional* module is therefore wired with no `fabric` code change at all:
 // append its directory name to `template.yaml`'s `pathspec:` default,
@@ -169,48 +169,31 @@
 // A structural directory has no such asymmetry to worry about: it is never sourced from `pathspec`,
 // so it cannot be left behind by a worktree's stale config.
 //
-// This batch (`.lyx` joining the wired name-set) establishes three operator-facing facts worth
-// recording plainly.
-// First, downgrade is unsupported — a pre-fix binary's `applyStaleRemoval` removes on-disk junctions
-// absent from *its own* `RepoWiredNames`, so running an older `lyx fabric reconcile` after this
-// change unwires `.lyx` and strands scratch inside the weft worktree; this is a one-way upgrade,
-// never made downgrade-safe.
-// Second, upgrade is signalled through health, not a dedicated migration step: an existing worktree
-// reports the `.lyx` junction missing (`Healthy` false, `CauseJunctionMissing`) until `lyx fabric
-// reconcile` runs — which both wires the junction and, via `seedLyxJunction`'s `.lyx`-only adoption
-// branch, moves any pre-existing real `.lyx` content into the weft target rather than hard-erroring.
+// This batch (`.lym` joining the wired name-set) establishes three operator-facing facts worth recording plainly.
+// First, downgrade is unsupported — a pre-fix binary's `applyStaleRemoval` removes on-disk junctions absent from *its own* `RepoWiredNames`, so running an older `lym fabric reconcile` after this change unwires `.lym` and strands scratch inside the weft worktree;
+// this is a one-way upgrade, never made downgrade-safe.
+// Second, upgrade is signalled through health, not a dedicated migration step: an existing worktree reports the `.lym` junction missing (`Healthy` false, `CauseJunctionMissing`) until `lym fabric reconcile` runs — which both wires the junction and, via `seedLymJunction`'s `.lym`-only adoption branch, moves any pre-existing real `.lym` content into the weft target rather than hard-erroring.
 // That is the documented remedy, not a bug to route around.
-// Adoption MERGES a directory present on both sides, recursively, rather than refusing it, and that
-// is load-bearing rather than lenient: `lyx fabric unwire` removes the `.lyx` junction, and the very
-// next `lyx` invocation in that worktree that logs at Info-or-above or exits non-zero opens
-// `internal/logger`'s durable sink — which is ungated outside `go test`, and whose
-// `os.MkdirAll(<anchor>/.lyx/logs)` therefore recreates a REAL warp-side `.lyx/logs` on top of the
-// `logs` an earlier adoption already moved into weft.
-// Refusing that collision left `reconcile`, the documented remedy, permanently unable to heal the
-// pair, and — because `seedLyxJunction` aborts before `seedGitExclude` re-runs — left the warp
-// worktree untracked-dirty, which then fed false input to the destruction gate's own dirtiness
-// checks. A collision that is not a directory on BOTH sides is still refused, because resolving it
-// would mean choosing a winner between two files, which fabric never does on the operator's behalf.
-// Third, the unwire output envelope changed: `UnwireVerbResult.WeftContent`'s value set is now
-// `"preserved"` | `"not_present"` (never `"cleared"`), and the `gitignore` key is gone from the CLI
-// envelope entirely — no code path removes a leftover committed `.gitignore` `.lyx/` block left by a
-// pre-fix binary; the manual remedy is deleting the `.lyx/` line from the repo's lyx-managed
-// `.gitignore` block by hand.
+// Adoption MERGES a directory present on both sides, recursively, rather than refusing it, and that is load-bearing rather than lenient: `lym fabric unwire` removes the `.lym` junction, and the very next `lym` invocation in that worktree that logs at Info-or-above or exits non-zero opens `internal/logger`'s durable sink — which is ungated outside `go test`, and whose `os.MkdirAll(<anchor>/.lym/logs)` therefore recreates a REAL warp-side `.lym/logs` on top of the `logs` an earlier adoption already moved into weft.
+// Refusing that collision left `reconcile`, the documented remedy, permanently unable to heal the pair, and — because `seedLymJunction` aborts before `seedGitExclude` re-runs — left the warp worktree untracked-dirty, which then fed false input to the destruction gate's own dirtiness checks.
+// A collision that is not a directory on BOTH sides is still refused, because resolving it would mean choosing a winner between two files, which fabric never does on the operator's behalf.
+// Third, the unwire output envelope changed: `UnwireVerbResult.WeftContent`'s value set is now `"preserved"` | `"not_present"` (never `"cleared"`), and the `gitignore` key is gone from the CLI envelope entirely — no code path removes a leftover committed `.gitignore` `.lym/` block left by a pre-fix binary;
+// the manual remedy is deleting the `.lym/` line from the repo's lym-managed `.gitignore` block by hand.
 //
 // The junction side of that asymmetry has a concrete blast radius worth naming rather than leaving
 // an operator to meet as a surprise: every worktree wired before a new name is added to
-// `WarpJunctions` lacks that junction, full stop, until `lyx fabric reconcile` re-runs against it —
+// `WarpJunctions` lacks that junction, full stop, until `lym fabric reconcile` re-runs against it —
 // `_pattern`'s own now-superseded rollout was one such case, and any future optional-module addition
 // would hit the same gap.
-// Until re-run, `lyx fabric status` reports that pair not in sync, with `JunctionReason` naming the
+// Until re-run, `lym fabric status` reports that pair not in sync, with `JunctionReason` naming the
 // missing junction;
-// `lyx fabric reconcile` reports `ReconcileActionJunctionRepointed` rather than
+// `lym fabric reconcile` reports `ReconcileActionJunctionRepointed` rather than
 // `ReconcileActionAlreadyHealthy` for it — and repairs it, so reconcile *is* the remedy, not merely
 // a report;
 // and `internal/preflight`'s `CheckResolved` — wired into `internal/preflightshed` — fails
 // `CheckJunction` and blocks the run.
-// The remedy is one `lyx fabric reconcile` (idempotent: wires the missing junction and materialises
-// the weft-side directory) — never `lyx init`, which is gone;
+// The remedy is one `lym fabric reconcile` (idempotent: wires the missing junction and materialises
+// the weft-side directory) — never `lym init`, which is gone;
 // reconcile clears every one of those three symptoms in a single call.
 // This is not suppressed because it should not be: the junction genuinely is missing,
 // and a health check that lied about a missing junction is the exact fault the junction-health
@@ -246,7 +229,7 @@
 // `SpawnStatusPush(l, gateSlug)` is the one entry point for a status push, building its request from the location alone so no caller names a records path or pushes the prime's code branch.
 // In the prime the request holds the records side, `PauseSlug` the caller's gate slug and no `TeardownSlug`;
 // in a task pair it holds both sides with `PauseSlug` and `TeardownSlug` both the pair's own slug.
-// The child starts in the hub's `_board` worktree, outside both of the pair's worktrees, and resolves its hub from there through `lyxcwd.ResolveWorktree`.
+// The child starts in the hub's `_board` worktree, outside both of the pair's worktrees, and resolves its hub from there through `lymcwd.ResolveWorktree`.
 // It reads the local-only mark of each side's branch first: a marked side is left out and named in `SpawnResult.LocalSkipped`, and with no side left, or with the records side left out, nothing is spawned.
 // `SpawnDetachedPush` returns `ErrSpawnUnderTest` in a test binary, so no test forks a real push child.
 //
@@ -275,7 +258,7 @@
 //
 // Every weft worktree fabric creates gets its `.weft/` lock directory at birth, whichever way it is created or adopted.
 // `Reconcile` restores a missing one on a pair whose weft worktree exists, without changing the pair's action,
-// and `ReadOriginFor` refuses a record whose weft worktree lacks it, naming `lyx fabric reconcile`, instead of answering "no record".
+// and `ReadOriginFor` refuses a record whose weft worktree lacks it, naming `lym fabric reconcile`, instead of answering "no record".
 //
 // The combined write lock `Fabric.Commit` takes — `.weft/weft.write.lock`, the same lock
 // `commitWeft` already used weft-side — is now acquired for ANY committing call, warp-only included
@@ -285,7 +268,7 @@
 // commit-lock-scoped-to-commit-only Shared Decision): the network push is a separate concern
 // running under its own absorbing push lock in the detached child, not this commit-side lock.
 //
-// `Fabric.Diff` (now wired onto the `lyx fabric diff <since-warp-sha>` CLI verb) answers "what
+// `Fabric.Diff` (now wired onto the `lym fabric diff <since-warp-sha>` CLI verb) answers "what
 // changed since this warp SHA, on both sides" by bridging `sinceWarpSHA` to the
 // nearest-at-or-before weft SHA the correspondence index resolves it to, via the same
 // `resolveRevertTarget` resolver diff.go's `weftAnchorForWarpSHA` calls;
@@ -298,9 +281,9 @@
 //
 // fabric now exposes two distinct status-shaped surfaces, deliberately not variations of one
 // another: `Topology.Status` reports paired warp↔weft topology (branch pairing, junction health),
-// reachable via `lyx fabric pairs`;
+// reachable via `lym fabric pairs`;
 // and the unified `Fabric.Status` merges each side's currently-uncommitted worktree changes into
-// one side-labelled view, reachable via `lyx fabric status`.
+// one side-labelled view, reachable via `lym fabric status`.
 //
 // A known asymmetry in `Fabric.Status` is worth recording rather than leaving as a surprise: it may
 // surface gitrepo's `.gitrepo-push.lock` operational artifact (`PushCoalesced`'s single-pusher lock
@@ -462,15 +445,15 @@
 // needed for a snapshot baseline to reach another clone.
 //
 // Slice 5 (the `fabric-clone-subpath` task) landed clone-does-everything, a subpath-in-weft anchor,
-// and the dissolution of `lyx init`, replacing the earlier two-step "clone, then `lyx init`" flow
+// and the dissolution of `lym init`, replacing the earlier two-step "clone, then `lym init`" flow
 // with a single command that leaves a worktree fully wired. `CloneHub` (clone.go) drives warp+weft
-// clone, `_board` worktree materialization, and lyx-anchor resolution in one call;
+// clone, `_board` worktree materialization, and lym-anchor resolution in one call;
 // the CLI layer (`internal/fabriccli`) then records the repo-wide `fabric.yaml` onto
-// `weft:main`, creates every warp junction (`_lyx`, `.lyx`), and runs
+// `weft:main`, creates every warp junction (`_lym`, `.lym`), and runs
 // `configsync.ReconcileAll` — so a fresh clone or `worktree add` leaves every junction wired and
 // every config materialized without a second command. Every junction is excluded through the warp's
 // own `.git/info/exclude`, never a committed `.gitignore` in the user's repo, and the entry written
-// there is the junction's own anchored path (`/backend/_lyx`, or `/_lyx` at a root anchor) rather
+// there is the junction's own anchored path (`/backend/_lym`, or `/_lym` at a root anchor) rather
 // than a bare name, since a slash-free gitignore pattern matches at every depth and would untrack
 // same-named directories fabric never wired.
 // git resolves `info/exclude` to the repo's COMMON gitdir, so the file is shared by every worktree
@@ -479,33 +462,28 @@
 // repo-wide flock across read, rewrite and write and replaces the file by same-directory rename, so
 // a concurrent reader sees either the whole old file or the whole new one.
 //
-// The lyx-anchor subpath (e.g. `backend` or `.`) is recorded per worktree, as the plain
-// `.lyx-anchor` marker at the root of that worktree's own weft branch (see `internal/lyxcwd/anchor.go`);
-// `lyxcwd.Resolve` is the reader.
+// The lym-anchor subpath (e.g. `backend` or `.`)
+// is recorded per worktree, as the plain `.lym-anchor` marker at the root of that worktree's own weft branch (see `internal/lymcwd/anchor.go`);
+// `lymcwd.Resolve` is the reader.
 // `CloneHub` records the prime's marker first, committing it on the prime's weft branch (`commitAnchorMarker`, anchormarker.go) on a fresh bind and adopting it from there on a re-clone.
-// The Bolt marker at `BoardDir(Hub)` is read only as the fallback of a hub whose prime weft is still markerless, until `lyx fabric reconcile` migrates it.
-// `Resolve` treats the record as truth once present — it sets
-// `AnchorRel` from the marker, then hard-errors if cwd does not equal the anchored directory
-// exactly — and falls back to `AnchorRel` `"."` only when no marker is recorded yet (mid-clone, a
-// gitkit synthetic hub, or a non-fabric git repo).
-// A hub still carrying the pre-rename marker spelling (`lyxcwd.StaleAnchorFileName`) with no
-// renamed marker beside it is NOT such a fallback case: it recorded a real subpath under the old
-// name, so every resolver returns `lyxcwd.ErrStaleAnchorMarker` rather than answering `"."` — which
-// would re-anchor the repo at its root and let `lyx fabric reconcile` wire a second junction set
-// there. `CloneHub` refuses the same state at clone time, on its Bolt fallback read only, naming the
-// same literal from the same single declarer.
+// The Bolt marker at `BoardDir(Hub)` is read only as the fallback of a hub whose prime weft is still markerless, until `lym fabric reconcile` migrates it.
+// `Resolve` treats the record as truth once present — it sets `AnchorRel` from the marker, then hard-errors if cwd does not equal the anchored directory exactly — and falls back to `AnchorRel` `"."`
+// only when no marker is recorded yet (mid-clone, a gitkit synthetic hub, or a non-fabric git repo).
+// A hub still carrying the pre-rename marker spelling (`lymcwd.StaleAnchorFileName`) with no renamed marker beside it is NOT such a fallback case: it recorded a real subpath under the old name, so every resolver returns `lymcwd.ErrStaleAnchorMarker` rather than answering `"."`
+// — which would re-anchor the repo at its root and let `lym fabric reconcile` wire a second junction set there.
+// `CloneHub` refuses the same state at clone time, on its Bolt fallback read only, naming the same literal from the same single declarer.
 //
 // A marker that is PRESENT but empty after trimming is a third state, and it is fabric's to refuse
-// rather than lyxcwd's: `lyxcwd` deliberately treats it as absent and falls back to `"."`, which is
+// rather than lymcwd's: `lymcwd` deliberately treats it as absent and falls back to `"."`, which is
 // exactly right for a hub that never recorded an anchor and exactly wrong for one whose marker was
 // truncated.
 // Since `Reconcile` is the only verb that wires junctions, it is the only verb that can turn that
 // fallback into the second-junction-set damage above, so it judges each present weft's own marker before wiring that pair (`migrateWeftMarker`, reconcile.go):
-// a blank one fails that pair alone through `refuseEmptyOwnMarker`, with its wiring untouched and the pass going on, leaving `lyxcwd`'s documented fallback untouched.
+// a blank one fails that pair alone through `refuseEmptyOwnMarker`, with its wiring untouched and the pass going on, leaving `lymcwd`'s documented fallback untouched.
 //
 // A weft with no committed marker is migrated by the same pass.
 // `committedMarker` reads the file from git objects, and `treeAnchor` is the one rule for the anchor of a branch that records none:
-// the committed non-blank marker at the revision, else the shallowest directory of the revision's tree that holds one of the wired names (`.` when the root holds one, a tie at one depth going to the byte-wise smaller path), else the caller's fallback, which is the resolution of `lyxcwd.NamedWorktree`.
+// the committed non-blank marker at the revision, else the shallowest directory of the revision's tree that holds one of the wired names (`.` when the root holds one, a tie at one depth going to the byte-wise smaller path), else the caller's fallback, which is the resolution of `lymcwd.NamedWorktree`.
 // `Reconcile` commits that value with `commitAnchorMarker` under `fabric reconcile: record anchor <value>`, the prime's weft first, hands the commit to the detached push `SpawnPairPush` spawns, and wires the pair at the anchor read back through `NamedWorktree`.
 // `Topology.Add` does the same for an adopted weft branch with no committed marker or a blank one, right after the branch's worktree is added, and builds every path for the pair at its own anchor; an adopted branch that carries a marker uses it.
 //
@@ -514,36 +492,31 @@
 // the prime's weft and every local pair's weft carry a non-blank committed marker at `HEAD`, and every weft branch, local or fetched, whose warp sibling is on origin carries one on its already-fetched remote-tracking ref.
 // A weft branch with no warp sibling on origin is an orphan and is not counted.
 // A branch whose ref is not fetched, a marker commit not yet pushed or a blank committed marker keeps the Bolt marker for a later reconcile.
-// When the census holds, `_board/.lyx-anchor` and a leftover `.fabric-anchor` beside it are deleted through an `os.Root` in one board commit written by `Bolt.PullThenCommitWritten`, so it never writes over a stale board, and then pushed.
-// `ReconcileResult.BoltAnchor` carries the verdict (`removed`, or `kept: <reason>` with the first branch that keeps it or the skip's detail), `lyx fabric reconcile` reports it as `bolt_anchor`, and a hub with no Bolt marker reports nothing.
-// `lyx fabric unwire` keeps leaving every marker.
+// When the census holds, `_board/.lym-anchor` and a leftover `.fabric-anchor` beside it are deleted through an `os.Root` in one board commit written by `Bolt.PullThenCommitWritten`, so it never writes over a stale board, and then pushed.
+// `ReconcileResult.BoltAnchor` carries the verdict (`removed`, or `kept: <reason>` with the first branch that keeps it or the skip's detail), `lym fabric reconcile` reports it as `bolt_anchor`, and a hub with no Bolt marker reports nothing.
+// `lym fabric unwire` keeps leaving every marker.
 //
-// The warp binding is a repo-wide record beside the repo-wide `fabric.yaml`
-// config, held as a plain single-line file, `.lyx-warp`, at the board root (`<BoardDir>/.lyx-warp`,
-// see codebinding.go), containing the warp URL only.
-// `CloneHub` resolves the effective warp URL from that record when the caller supplies no warp URL,
-// and writes the record when none exists yet and a warp URL is supplied;
+// The warp binding is a repo-wide record beside the repo-wide `fabric.yaml` config, held as a plain single-line file, `.lym-warp`, at the board root (`<BoardDir>/.lym-warp`, see codebinding.go), containing the warp URL only.
+// `CloneHub` resolves the effective warp URL from that record when the caller supplies no warp URL, and writes the record when none exists yet and a warp URL is supplied;
 // a supplied URL that disagrees with the recorded one is a hard error, never a silent re-point.
 // That resolution runs through a throwaway pre-hub probe clone of the weft remote (recordsprobe.go), because the hub is named after the warp repo and therefore has no path to resolve into until the warp URL is known.
-// `Reconcile` backfills the record once per hub from the warp side's own `origin` remote
-// (reconcile.go's reconcileWarpBinding), with the CLI layer driving the commit and push, exactly as
-// clone's own binding write is committed CLI-side.
+// `Reconcile` backfills the record once per hub from the warp side's own `origin` remote (reconcile.go's reconcileWarpBinding), with the CLI layer driving the commit and push, exactly as clone's own binding write is committed CLI-side.
 //
-// The hub's shortname is a fifth repo-wide record, held the same way as a plain single-line file, `.lyx-shortname`, beside `.lyx-warp` at the board root (see shortnamebinding.go).
+// The hub's shortname is a fifth repo-wide record, held the same way as a plain single-line file, `.lym-shortname`, beside `.lym-warp` at the board root (see shortnamebinding.go).
 // This package alone reads and writes it.
 // At clone the CLI layer commits it onto weft:main through Bolt, with the rest of the fresh hub;
 // on a live hub `CommitShortname` (shortnamecommit.go) commits it alone under the board write lock, so no pending board change rides along.
-// `lyx fabric clone --shortname <shortname>` records it; a clone of a fresh bind (a weft carrying neither `.lyx-warp` nor `.lyx-anchor`) refuses without `--shortname`,
+// `lym fabric clone --shortname <shortname>` records it; a clone of a fresh bind (a weft carrying neither `.lym-warp` nor `.lym-anchor`) refuses without `--shortname`,
 // while a bound weft that lacks the record takes `--shortname` or warns.
-// `lyx fabric shortname [<shortname>]` prints the recorded shortname, or records one on a hub that has none, which is how a repo bound before shortnames existed gets its shortname.
+// `lym fabric shortname [<shortname>]` prints the recorded shortname, or records one on a hub that has none, which is how a repo bound before shortnames existed gets its shortname.
 // The grammar and the way reed uses the shortname are in internal/agentname's package doc.
 //
 // The worktree's anchor marker, the repo-wide config, and the warp binding are the records that let a
-// later `lyx fabric reconcile` re-wire a hub with no re-clone at all;
+// later `lym fabric reconcile` re-wire a hub with no re-clone at all;
 // `Unwire` leaves all three untouched.
 //
 // The wired junction set is likewise a **repo-wide** fact, not a per-worktree one: the `pathspec`
-// key lives in the repo-wide `fabric.yaml` at `<BoardDir>/_lyx/config/fabric.yaml`, so every
+// key lives in the repo-wide `fabric.yaml` at `<BoardDir>/_lym/config/fabric.yaml`, so every
 // worktree in the repo reconciles against the one recorded name-set rather than each carrying its
 // own.
 // Reconcile (reconcile.go) is declarative convergence to that pathspec — add what's missing,
@@ -551,18 +524,18 @@
 // repo-wide `fabric.yaml` aborts stale-removal for that pair and touches nothing, rather than
 // risking a blanket sweep on a broken read.
 //
-// `Unwire` (unwire.go) is the per-worktree full deactivation that replaced the deleted `lyx init
+// `Unwire` (unwire.go) is the per-worktree full deactivation that replaced the deleted `lym init
 // --undo`:
 // with its `apply` parameter set it removes every fabric junction actually present on disk (not just the ones the current wired name-set names), the root scratch link excepted, and their warp `.git/info/exclude` entries;
 // without it nothing is removed and the result reports what an applied run would remove.
 // Either way it never deletes weft-side
-// content — `_lyx` and `.lyx` are both preserved — and never touches the repo-wide
-// `weft:main` records, which survive so a later `lyx fabric reconcile` re-wires the worktree from the
+// content — `_lym` and `.lym` are both preserved — and never touches the repo-wide
+// `weft:main` records, which survive so a later `lym fabric reconcile` re-wires the worktree from the
 // same anchor and pathspec.
 //
 // # The scratch link
 //
-// Wiring ends with the scratch step (scratchlink.go): the warp worktree's root `.scratch` becomes a directory link to `<weft worktree>/<anchor>/.lyx/scratch`.
+// Wiring ends with the scratch step (scratchlink.go): the warp worktree's root `.scratch` becomes a directory link to `<weft worktree>/<anchor>/.lym/scratch`.
 // A real directory would change its own modification time with every file an agent creates or removes beneath it, and every source-scan test that opens the module root hashes that time into its `go test` cache key; a link's own `Lstat` stays fixed while files change under its target.
 // The warp `.git/info/exclude` carries `/.scratch` with no trailing slash, since git matches a link as a file and a directory-only pattern would not exclude it; a legacy `/.scratch/` line is replaced.
 //
@@ -571,20 +544,20 @@
 // A correct link has an absent target recreated, and is otherwise untouched.
 // A real directory with an absent target is moved into the target and linked, recorded as `path_renamed`.
 // A link to another target, a real directory while the target exists, a regular file and a tracked `.scratch` are left as found, each reported with its way forward.
-// The step creates nothing when the pair's weft worktree is absent, so a weft torn down mid-repair does not get its `.lyx/scratch` recreated as a plain directory.
+// The step creates nothing when the pair's weft worktree is absent, so a weft torn down mid-repair does not get its `.lym/scratch` recreated as a plain directory.
 // It never fails wiring and removes nothing; a leave or a failure reaches the log as a warning.
-// `lyx fabric unwire` keeps the link and its exclude.
+// `lym fabric unwire` keeps the link and its exclude.
 //
-// `lyx fabric reconcile` runs the step on every managed pair after the junction repair, on a healthy and a re-wired pair alike and whether or not the repair failed.
+// `lym fabric reconcile` runs the step on every managed pair after the junction repair, on a healthy and a re-wired pair alike and whether or not the repair failed.
 // It reports what the step changed or left in the pair's Detail and changes neither the pair's Action nor its Error, since scratch is agent convenience and never downgrades a verdict about the pair.
 // A pair that never reaches the repair, such as a raw-adopted one, an unmanaged one or one whose weft worktree is still missing, gets no link and no target.
 // A weft worktree torn down mid-repair gets nothing created either, because the step checks the weft root itself first.
 // The stale-junction sweep never claims the root link and never strips its exclude line.
-// After this lands, the operator runs `lyx fabric reconcile` once to convert the prime and every pair an older binary wired.
+// After this lands, the operator runs `lym fabric reconcile` once to convert the prime and every pair an older binary wired.
 //
-// `lyx fabric remove` unlinks the root link through the destructive gate before it removes the warp worktree directory, at a root and at a subpath anchor alike, and records one `link_removed` at the root.
+// `lym fabric remove` unlinks the root link through the destructive gate before it removes the warp worktree directory, at a root and at a subpath anchor alike, and records one `link_removed` at the root.
 // It claims only a link that resolves into the pair's weft worktree; any other entry at the root is left to the worktree removal.
-// The link's target lives in the pair's weft `.lyx` and goes with the weft worktree teardown.
+// The link's target lives in the pair's weft `.lym` and goes with the weft worktree teardown.
 //
 // `Remove` (remove.go) is the paired teardown, and it never deletes a directory git itself declined
 // to remove unless that directory is a registered LINKED worktree of the warp repo.
@@ -612,7 +585,7 @@
 // The sibling's worktree is removed under `dirtyRecordsDisposable`, a dirtiness declaration that passes and makes git discard what the worktree holds uncommitted: a local pair's records are disposable by its contract, so no `force` answers them, and content outside the record pathspec was already refused by `RemoveRefusal`.
 // The task branch goes through the same landed-work gate as an ordinary pair's, so unlanded work keeps it with `CodeBranchKeptReason`, still marked.
 // With `remote`, a local remove sets `RemoteSkippedReason` and deletes nothing on origin; the result carries `Local`, `LocalMarkBranch` and `DroppedRecordsTip`.
-// Two checks stand behind that path for any other caller: `archiveWeftTip` returns no tag and a skipped reason for a marked weft branch, and the remote-branch gate refuses to delete the remote copy of a branch whose local copy is marked, naming `lyx fabric remove`.
+// Two checks stand behind that path for any other caller: `archiveWeftTip` returns no tag and a skipped reason for a marked weft branch, and the remote-branch gate refuses to delete the remote copy of a branch whose local copy is marked, naming `lym fabric remove`.
 // The result names the code branch's fate in `CodeBranchDeleted` and `CodeBranchKeptReason` (JSON `code_branch_deleted`, `code_branch_kept_reason`, `remote_code_branch_deleted`, `remote_code_branch_kept_reason`).
 // `PairStatus`, `PruneEntry` and `ReconcilePairResult` carry the pair's paths as `CodeWorktree` and `RecordsWorktree` (JSON `code_worktree`, `records_worktree`).
 //
@@ -690,7 +663,7 @@
 // The pair's first weft commit, the origin record's, stages the root's deletions when the fork point tracked anything there.
 // The adopt path drops nothing, because an existing branch's run records are its own, and `Reconcile`'s dormant-weft creation keeps the plain fork since it makes no commit to carry a drop.
 //
-// `Add` records the pair's origin (`_lyx/fabric/origin.json`) in that same first weft commit.
+// `Add` records the pair's origin (`_lym/fabric/origin.json`) in that same first weft commit.
 // The record holds two write-once fields: `parent_branch`, the warp branch the pair was forked from, and `parent_worktree`, the `WorktreeName` of the worktree `Add` ran from.
 // The parent worktree is what a run's parent agent name is resolved from.
 // A record written before `parent_worktree` existed, or by a legacy-worktree repair that cannot know the creator, decodes with it empty.
@@ -701,41 +674,25 @@
 // The warp branch forks from the parent worktree's HEAD (`git worktree add -b <branch> <path> <sha>`) and the weft branch from the parent's records branch,
 // and the origin record carries the parent's branch as `parent_branch` and the parent's slug as `parent_worktree`.
 // The acting worktree keeps every other role, so a caller in any worktree that passes the prime's location forks from the named parent.
-// `resolveAddParent` refuses, before any mutation and naming the way forward, a parent that is no live pair of the hub (`lyx fabric pairs`), the prime itself, a parent on a detached HEAD or unborn branch and a parent whose checked-out branch is not its own pair branch (`lyx fabric checkout <branch>` in the parent).
+// `resolveAddParent` refuses, before any mutation and naming the way forward, a parent that is no live pair of the hub (`lym fabric pairs`), the prime itself, a parent on a detached HEAD or unborn branch and a parent whose checked-out branch is not its own pair branch (`lym fabric checkout <branch>` in the parent).
 // A named parent checks no tracked dirt in either worktree and logs the parent's dirty paths at Info: the fork takes the parent's last commit, never its uncommitted edits.
 // Without `Parent`, `Add` forks from the acting worktree's HEAD and refuses its tracked dirt with `ErrSourceDirty`.
 //
 // With `AddOptions.AdoptLocal`, `Add` makes a pair over an unmarked local warp branch that already exists, instead of refusing `ErrBranchExists`.
 // The branch is checked out into the new worktree (`git worktree add <path> <branch>`) and, like an adopted marked branch, is never deleted by the rollback; the weft side follows the usual rules, adopting a live records branch and otherwise forking from the parent's records branch.
-// Only `lyx fabric add --adopt-local` sets it, so an unattended run never adopts a stale branch left under a reused slug.
-// Before any mutation `refuseAdoptLocalCheckedOut` refuses a warp branch checked out in another worktree (`lyx fabric checkout <other branch>` in it) and a records branch checked out in another records worktree (`git switch` off it in that worktree, or `git switch --detach` when it belongs to no pair).
+// Only `lym fabric add --adopt-local` sets it, so an unattended run never adopts a stale branch left under a reused slug.
+// Before any mutation `refuseAdoptLocalCheckedOut` refuses a warp branch checked out in another worktree (`lym fabric checkout <other branch>` in it) and a records branch checked out in another records worktree (`git switch` off it in that worktree, or `git switch --detach` when it belongs to no pair).
 // The origin record's parent comes from `Parent` or the acting worktree, except when the adopted branch is the warp's default branch: then `parent_branch` and `parent_worktree` are empty, a root pair, which batten's Land row refuses to land on.
 //
 // # The one-repo illusion at the public API boundary
 //
-// fabric exists to sell one illusion to every other package: a developer, an agent, and every lyx
-// module see one repository, called fabric,
-// never the warp/weft split underneath it.
-// `Open(l *lyxcwd.Location) (*Fabric, error)` is the only constructor any other package calls — it
-// derives both paths from l and stat-validates them, performing no wiring of its own (wiring is
-// Topology's job: Add/Checkout/Reconcile/Remove/Prune/Cleanup).
-// `OpenParent` is the parent-fabric resolution chain built on `List` — it matches the hub's
-// worktrees against a caller-supplied branch, skipping any `Prunable` entry (git's own signal that a
-// worktree's directory is gone but its administrative entry survives), resolves the match via
-// `lyxcwd.ResolveWorktree`, and opens it through `Open`, returning a plain error a caller turns into
-// `Stuck` when no live pair matches; `Fabric.OriginURL()` and `Fabric.PushBranch(opts)` are the two
-// single-sided methods a caller like `internal/loomcli` reaches for under the same carve-out `Open`'s
-// own bullet already states, `OriginURL` wrapping the warp side's `RemoteURL("origin")` and
-// `PushBranch` wrapping `PushWarpRebaseFreeAt` under a vocabulary-neutral name `internal/loomcli` is
-// not permitted to say itself.
-// `Fabric.Commit`'s `CommitResult.Committed() bool` is the one commit result a consumer outside the
-// owner set should read;
-// the four raw `WarpSHA`/`WarpCommitted`/`WeftSHA`/`WeftCommitted` fields stay exported only because
-// `internal/fabriccli`'s own `lyx fabric weft …` verb prints them by design.
-// `RefScanner` (refscanner.go), constructed via `NewRefScanner(l)`, is how a consumer like
-// `websterengine`'s audit asks "does this command reference fabric's two-checkout mechanism" without
-// ever holding the weft path or the command-spelling pattern itself — fabric owns every word in the
-// answer.
+// fabric exists to sell one illusion to every other package: a developer, an agent, and every lym module see one repository, called fabric, never the warp/weft split underneath it.
+// `Open(l *lymcwd.Location) (*Fabric, error)` is the only constructor any other package calls — it derives both paths from l and stat-validates them, performing no wiring of its own (wiring is Topology's job: Add/Checkout/Reconcile/Remove/Prune/Cleanup).
+// `OpenParent` is the parent-fabric resolution chain built on `List` — it matches the hub's worktrees against a caller-supplied branch, skipping any `Prunable` entry (git's own signal that a worktree's directory is gone but its administrative entry survives), resolves the match via `lymcwd.ResolveWorktree`, and opens it through `Open`, returning a plain error a caller turns into `Stuck` when no live pair matches;
+// `Fabric.OriginURL()` and `Fabric.PushBranch(opts)` are the two single-sided methods a caller like `internal/loomcli` reaches for under the same carve-out `Open`'s own bullet already states, `OriginURL` wrapping the warp side's `RemoteURL("origin")` and `PushBranch` wrapping `PushWarpRebaseFreeAt` under a vocabulary-neutral name `internal/loomcli` is not permitted to say itself.
+// `Fabric.Commit`'s `CommitResult.Committed() bool` is the one commit result a consumer outside the owner set should read;
+// the four raw `WarpSHA`/`WarpCommitted`/`WeftSHA`/`WeftCommitted` fields stay exported only because `internal/fabriccli`'s own `lym fabric weft …` verb prints them by design.
+// `RefScanner` (refscanner.go), constructed via `NewRefScanner(l)`, is how a consumer like `websterengine`'s audit asks "does this command reference fabric's two-checkout mechanism" without ever holding the weft path or the command-spelling pattern itself — fabric owns every word in the answer.
 // `ReferenceRule` (refscanner.go), constructed via `NewReferenceRule()`, is the location-free part of that answer.
 // Its `MatchPath` and `MatchSpelling` return the matched text without any worktree, so a plan check shares one rule with the audit.
 // `IsReadOnlyCommand` (refscanner.go) rejects an unquoted parenthesis and a dollar expansion in a reader segment, because a zsh glob qualifier and a parameter expansion run code with no substitution marker.
@@ -743,24 +700,17 @@
 // A reader joins `readOnlyCommands` only if none of its flags writes or executes, and a reader that blocks, such as `tail -f`, writes nothing and is admitted.
 // In `git` words an unquoted glob is rejected except after the `--` of `log`, `show`, `diff` and `status`, because git reads every word after `--` as a pathspec, so an expanded name is a path and never a flag.
 // Every other rule is in `IsReadOnlyCommand`'s comment.
-// `Healthy(l)` returns a typed `HealthReason` (drift.go) rather than a string a caller would have to
-// substring-match, so a caller like `preflight.CheckResolved` switches on `HealthReason.Cause`
-// instead of parsing prose.
+// `Healthy(l)` returns a typed `HealthReason` (drift.go) rather than a string a caller would have to substring-match, so a caller like `preflight.CheckResolved` switches on `HealthReason.Cause` instead of parsing prose.
 // `PushAnchored(l, opts, lockWait)`, `PushPairAnchored(l, opts, lockWait)`, `MergeStateActive(l)`, `MidMerge(l)` and `RequireDrivableWorktree(l)` are further vocabulary-neutral, `l`-in entry points reachable the same way `CommitAnchoredPaths` is.
 // `MidMerge(l)` answers whether the pair carries an unfinished merge and which paths are still conflicted.
 // On an opened `*Fabric`, `Fabric.MidMerge` is the same probe over that pair's own location, and `Fabric.CodeDirtyPaths` reads the code checkout's tracked dirty paths, the list the dirty merge guard decides on.
 // For a parked fabric merge the answer also carries the record's verb, source branch and the code side's source and start SHAs.
-// `lyx loom start` consults it before putting a driver to work.
-// `RequireDrivableWorktree` is `RequireWarpWorktree` under a name a non-owner may say at all — the
-// invariant's scan matches the bare token inside an identifier, so the published name is itself the
-// leak, and a caller that must refuse fabric's own checkouts before driving topology has no other
-// way in.
-// `PushAnchored` and `PushPairAnchored` are the synchronous, rebase-free counterparts to `CommitAnchoredPaths`:
-// the first pushes the records side only;
+// `lym loom start` consults it before putting a driver to work.
+// `RequireDrivableWorktree` is `RequireWarpWorktree` under a name a non-owner may say at all — the invariant's scan matches the bare token inside an identifier, so the published name is itself the leak, and a caller that must refuse fabric's own checkouts before driving topology has no other way in.
+// `PushAnchored` and `PushPairAnchored` are the synchronous, rebase-free counterparts to `CommitAnchoredPaths`: the first pushes the records side only;
 // the second pushes the code side and then the records side, except in the hub's prime, where it pushes the records side only and reports a code branch with unpushed commits in `PushResult.CodePushSkipped`;
 // and both run under the weft-side absorbing push lock that `CoalescePushBothAt` also holds.
-// `lockWait` bounds only the wait for that lock:
-// `StatusPushLockWait` is the bound `commit-records` passes, and the default of the wait `Remove` gives a push of the pair for the pair's teardown lock;
+// `lockWait` bounds only the wait for that lock: `StatusPushLockWait` is the bound `commit-records` passes, and the default of the wait `Remove` gives a push of the pair for the pair's teardown lock;
 // an expiry returns an error wrapping `ErrPushLockBusy` with nothing pushed;
 // and `LockWaitUnbounded` blocks.
 //
@@ -888,7 +838,7 @@
 // reconcile. `ReconcileActionVanishedMidWalk` names the race instead and sets no `Error`, because
 // nothing failed to reconcile: the pair simply stopped existing.
 //
-// See `cmd/lyx/destructiveguard_test.go`'s `TestMutationRecord_FabricengineProductionSource` for the
+// See `cmd/lym/destructiveguard_test.go`'s `TestMutationRecord_FabricengineProductionSource` for the
 // guard itself.
 //
 // # The fabric vocabulary rule
@@ -904,14 +854,14 @@
 // stand-in by hand, and therefore names both sides), `internal/boardengine` (the pre-existing board
 // carve-out, since board lives at `weft:main`), `internal/configsync` (string literals and
 // comments, never identifiers, for the on-disk legacy config filenames `warp.yaml`/`weft.yaml`).
-// `internal/hubforge` and `internal/lyxcwd` also sit in the narrower `weftname`-import subset alongside
+// `internal/hubforge` and `internal/lymcwd` also sit in the narrower `weftname`-import subset alongside
 // `internal/fabricengine`, `internal/fabriccli`, and `internal/gitkit`.
 // `tools/` and `sandbox/` are deliberately NOT in that owner set: the enforcement walk covers
 // `internal/` and `cmd/` only, so an owner entry for them would be a rule that never matches —
-// their vocabulary (naming the real `lyx-test-weft`/`lyx-fabric-test-weft` GitHub repos) is a
+// their vocabulary (naming the real `lym-test-weft`/`lym-fabric-test-weft` GitHub repos) is a
 // review obligation instead. See PATTERN-fabric-vocabulary for the authoritative
 // list.
-// `TestEnforcement_FabricVocabulary` (`internal/lyxcwd/enforcement_test.go`) machine-checks
+// `TestEnforcement_FabricVocabulary` (`internal/lymcwd/enforcement_test.go`) machine-checks
 // identifiers, string literals, and comments in every production `.go` file plus the embedded agent
 // prompt templates;
 // `PATTERN-fabric-vocabulary` records the rule in full, including the phrase-based
@@ -1125,15 +1075,11 @@
 // `writeLaunchers` (launchers.go) writes into `<hub>/_launchers/<AnchorRel>/<slug>` — a hub-level structural container, not the freshly-created worktree — and once wrote through a raw primitive that resolved and followed the container path itself, `os.MkdirAll`+`os.WriteFile`.
 // A STATIC symlink planted at the `<slug>` leaf OR the `_launchers` container (no race, no observation) carried the write OUTSIDE the hub — executable launcher content to an attacker-chosen path — while `add` reported `ok:true` with a mutation record naming the hub-relative path the bytes never reached, the exact delete-side M3 false-success shape and strictly easier to exploit (no timing).
 // This is the same asymmetry the delete side already closed for `removeLaunchers`, live on the create side of the same two verbs.
-// It now writes through an `os.Root` rooted at `l.HubPath` (the true containment boundary; `_launchers` is never legitimately a symlink), so any component escaping the hub is refused at write time.
+// It now writes through an `os.Root` rooted at `l.HubPath` (the true containment boundary;
+// `_launchers` is never legitimately a symlink), so any component escaping the hub is refused at write time.
 // `writeHubWorkspace` (hubworkspace_write.go) writes the hub workspace file the same way.
-// The remaining raw writes in the package are NOT this class — they target a git-owned `.git/…` path (hook.go, gitexclude.go) or a
-// worktree/board directory a contained minter (`createExclusiveDir`/`containedWorktreeAdd`) brought into
-// being in the same call (clone.go, codebinding.go, recordsgit.go, junction.go's weft-target materialisation),
-// where only a post-creation same-UID race, never a static pre-plant, could redirect them — the same accepted
-// residual class as the gate's dirtiness window — and each is an allowlisted, reasoned entry in the write-side
-// guard rather than a routed write. See PATTERN-fabric-git and
-// `cmd/lyx/uncontainedwrite_test.go`'s `TestNoUncontainedWrite_FabricengineProductionSource` for the guard.
+// The remaining raw writes in the package are NOT this class — they target a git-owned `.git/…` path (hook.go, gitexclude.go) or a worktree/board directory a contained minter (`createExclusiveDir`/`containedWorktreeAdd`) brought into being in the same call (clone.go, codebinding.go, recordsgit.go, junction.go's weft-target materialisation), where only a post-creation same-UID race, never a static pre-plant, could redirect them — the same accepted residual class as the gate's dirtiness window — and each is an allowlisted, reasoned entry in the write-side guard rather than a routed write.
+// See PATTERN-fabric-git and `cmd/lym/uncontainedwrite_test.go`'s `TestNoUncontainedWrite_FabricengineProductionSource` for the guard.
 //
 // **The launcher teardown path was the last corner still holding the old shape, because every prior
 // round fixed it from the outside and none audited it on its own terms.** R3 rerouted the gate's two
@@ -1156,14 +1102,9 @@
 //
 // Third, and separate from containment: `refuseUncontainedPath`, the pre-gate guard the teardown helper opens with, returned a bare `fmt.Errorf`.
 // Every one of its best-effort call sites (`Remove`, `Prune`) wraps the call in `surfaceRefusal`, which by design discards anything that is not a `*destructiveRefusal` — so the one refusal class that must never be dropped was dropped.
-// A STATIC symlink at
-// the `_launchers` container (no race) made the whole teardown refuse correctly, nothing escaping, while
-// `lyx fabric remove` reported `ok:true`, `partial:false` and exit 0 with the pair's launcher scripts still on
-// disk and no reason for the operator to reach for `reconcile` — R2's M2 dishonest-success shape, relocated onto
-// the teardown path. The guard now returns the gate's own refusal type, so every site propagates it with no
-// call-site change and `RefusalOf` answers for it like any other. The lesson worth keeping is that a refusal's
-// TYPE is part of its contract here: a containment check that refuses correctly but is not the type the
-// best-effort wrapper propagates is, from the operator's side, indistinguishable from no check at all.
+// A STATIC symlink at the `_launchers` container (no race) made the whole teardown refuse correctly, nothing escaping, while `lym fabric remove` reported `ok:true`, `partial:false` and exit 0 with the pair's launcher scripts still on disk and no reason for the operator to reach for `reconcile` — R2's M2 dishonest-success shape, relocated onto the teardown path.
+// The guard now returns the gate's own refusal type, so every site propagates it with no call-site change and `RefusalOf` answers for it like any other.
+// The lesson worth keeping is that a refusal's TYPE is part of its contract here: a containment check that refuses correctly but is not the type the best-effort wrapper propagates is, from the operator's side, indistinguishable from no check at all.
 //
 // **Why the token-carrying ownership kinds exist, and the honest limit of what backs them.**
 // `ownedFreshlyCreatedPath`/`ownedFreshlyCreatedWorktree` let a rollback site prove "the gate
@@ -1186,8 +1127,8 @@
 // A pair's parent is the `parent_worktree` of its origin record, read with `ReadOriginFor`; the prime when that is empty, names the prime or names a pair that is gone, and when the record is absent or cannot be read.
 // A pair under a beam is left out of the hub file.
 // Beside it, `BeamWorkspacePath` names `<hub>/<RepoName>-<beam>.code-workspace` for each pair whose origin record carries the beam mark, listing the beam, its parent, `Bolt` and every pair whose parent is the beam; a sub-beam appears there by its own worktree only and has a file of its own.
-// Each beam file carries `lyx.generated: true` as its first key, and a regeneration removes such a file only when its beam pair is gone, through the hub's `os.Root`, so an operator's unmarked file of that name stays.
-// The files are lyx-owned and rewritten from the hub's current worktrees and origin records whenever their bytes would change, so a hand edit is overwritten;
+// Each beam file carries `lym.generated: true` as its first key, and a regeneration removes such a file only when its beam pair is gone, through the hub's `os.Root`, so an operator's unmarked file of that name stays.
+// The files are lym-owned and rewritten from the hub's current worktrees and origin records whenever their bytes would change, so a hand edit is overwritten;
 // settings belong in the prime's `.vscode/settings.json`, which the file splices verbatim.
 // A regeneration runs under `HubWorkspaceLockPath(hub)`, a leaf lock under the hub scratch directory, and lists the folders only after taking it,
 // so a pair created while the regeneration waits is listed.
@@ -1228,7 +1169,7 @@
 // rebuild writes still loses the recorded entry.
 // This is accepted, not overlooked: LOW severity and self-healing, because the weft commit
 // trailers are the sole source of truth and the index is an explicitly rebuildable cache, so the
-// worst observable effect is one spurious `no_weft_correspondence` from `lyx fabric diff` that a
+// worst observable effect is one spurious `no_weft_correspondence` from `lym fabric diff` that a
 // re-run clears.
 // `record()`'s side of the race is closed; the reverse direction, against `RebuildIndex`'s own
 // scan-to-write span, is not.
@@ -1284,32 +1225,32 @@
 //
 // **The record.** A change with something to do leaves a move record, `anchor-move.json` in the weft's lock directory (moverecord.go), written before the weft is touched and removed when the change finishes or is undone.
 // It holds A, B, the kind, the upstream tip U an integration rebuilds on, and the pid and start time of the process holding the move lock.
-// `MoveInProgress` reads it for every weft writer, so a held lock names a change in progress when the record's pid and start time are a live process and a change still starting otherwise, and a free lock names the interrupted change and the `lyx fabric anchor <slug> --set <B>` run that recovers it.
+// `MoveInProgress` reads it for every weft writer, so a held lock names a change in progress when the record's pid and start time are a live process and a change still starting otherwise, and a free lock names the interrupted change and the `lym fabric anchor <slug> --set <B>` run that recovers it.
 //
 // **Begin.** `BeginAnchorChange` refuses before it moves anything, each refusal naming its next step: an empty own marker; a target the warp checkout cannot hold; a held move lock; and, with a record standing, a target other than the record's B.
-// `validateAnchorTarget` requires a target that passes `lyxcwd.ValidateAnchorRel`, has no segment that is a link or a wired, `.lyx`, `.scratch` or hub-reserved name, is a directory the warp checkout's HEAD tracks, and holds no real wired name, since a junction cannot be wired over one.
+// `validateAnchorTarget` requires a target that passes `lymcwd.ValidateAnchorRel`, has no segment that is a link or a wired, `.lym`, `.scratch` or hub-reserved name, is a directory the warp checkout's HEAD tracks, and holds no real wired name, since a junction cannot be wired over one.
 // A target HEAD lacks while the warp's fetched upstream tracks it names the update of the warp checkout, and one neither tracks names the commit that brings it in; both cost a code commit on the checked-out warp branch, shared by every machine that checks it out.
-// With no record the weft needs a committed marker and no uncommitted or untracked path under A's wired names or in its marker, the never-tracked `.lyx` apart.
+// With no record the weft needs a committed marker and no uncommitted or untracked path under A's wired names or in its marker, the never-tracked `.lym` apart.
 // The kind is `integrate` when the weft's fetched upstream has commits its tip lacks and the two tips carry different anchors, else `move` when B differs from A, else none.
 // A change of kind none takes no lock and writes no record, and its `Apply` and `Finish` do nothing.
 // Any other holds the move lock until `Close` and writes the record, a standing record keeping its other fields.
 // `Close` before `Apply` removes a record this `BeginAnchorChange` wrote, and keeps one it found standing.
 //
 // **Apply.** `Apply` unwires the pair's junctions, exclude entries and root scratch link at A through the destruction chokepoint, holds the weft write lock, and moves the weft.
-// A move runs `moveWeftContent` (anchormove.go): it moves each wired name's tracked content with `git mv`, renames `A/.lyx` to `B/.lyx`, writes the marker B last through an `os.Root` at the weft, and commits those paths, the marker among them, in one weft commit.
-// An integration writes U into the record, runs `integrateWeft`, which replays the weft's local commits onto U and re-roots the result to B, and then renames `A/.lyx` to `B/.lyx`.
+// A move runs `moveWeftContent` (anchormove.go): it moves each wired name's tracked content with `git mv`, renames `A/.lym` to `B/.lym`, writes the marker B last through an `os.Root` at the weft, and commits those paths, the marker among them, in one weft commit.
+// An integration writes U into the record, runs `integrateWeft`, which replays the weft's local commits onto U and re-roots the result to B, and then renames `A/.lym` to `B/.lym`.
 // `Apply` then wires the junctions and scratch link at B, writes the launchers under `_launchers/<B>/<slug>` and removes `_launchers/<A>/<slug>`, and regenerates the hub and beam workspace files.
 // The prime has no launcher directory, so it loses the menu launcher of A instead.
 // `Finish` removes the record and spawns the pair's detached push, which carries the commit.
 //
-// **Failure and recovery.** A failure before the commit, or before the integration moves the branch, restores the weft's paths and `.lyx`, rewires A and removes the record, and `Apply` returns `landed` false.
+// **Failure and recovery.** A failure before the commit, or before the integration moves the branch, restores the weft's paths and `.lym`, rewires A and removes the record, and `Apply` returns `landed` false.
 // The restore is `restoreMovePathsToHead` (destroy.go), the executor that resets the index to HEAD for A's and B's wired names and the marker, restores the tracked files, and removes the untracked files git does not ignore.
 // When a restoring step itself fails, the record stays and the error names the re-run.
 // A failure after the commit, or after the branch moved, leaves the record, returns `landed` true, and names the re-run that skips the move and finishes the wiring.
 // A re-run finds the record, and the record's A, B, kind and U govern.
 // The change landed when HEAD's committed marker is B, an integration also holding U among HEAD's ancestors; no U means not landed.
-// A re-run of a change that did not land recovers it first: it refuses when both `A/.lyx` and `B/.lyx` stand, naming both and the merge by hand, moves a lone `B/.lyx` back to A, restores the paths to HEAD and judges the tree clean.
-// A re-run of a change that landed moves a lone `A/.lyx` to B and does the wiring.
+// A re-run of a change that did not land recovers it first: it refuses when both `A/.lym` and `B/.lym` stand, naming both and the merge by hand, moves a lone `B/.lym` back to A, restores the paths to HEAD and judges the tree clean.
+// A re-run of a change that landed moves a lone `A/.lym` to B and does the wiring.
 //
 // `UpstreamRunUnfinished` reads the pair's own run status at the tree of its weft's fetched upstream tip, since a weft stopped by a marker change keeps a checked-out status that goes stale.
 //
@@ -1344,7 +1285,7 @@
 // operator's own plain-git merge in the weft checkout, which the Fabric Git Invariant's carve-out
 // permits — does surface a weft path in the returned `Conflicts`. Reproduced live: a raw conflicting
 // merge in the weft while a fabric merge record was open made `merge --continue` refuse with
-// `unresolved: ["_lyx/loom/status.json"]`. That is the machinery working, not leaking: the weft is
+// `unresolved: ["_lym/loom/status.json"]`. That is the machinery working, not leaking: the weft is
 // invisible from the visible worktree, so naming the path is the only actionable refusal available,
 // and the arm must stay for the legacy-record case `concludeMergeSides` still handles.
 //
@@ -1555,61 +1496,30 @@
 // every path that carries no conflict, so a consumer's JSON never has to distinguish `[]` from
 // `null`.
 //
-// **Resolving a conflict takes three steps, and the middle one is not skippable.**
-// `MergeContinue`'s conflict guard is an INDEX probe (`ConflictedFiles()`), so editing a conflicted
-// file to remove its markers does not on its own let the merge conclude — the path has to be marked
-// resolved. `MergeStageResolved` is that step: it takes the same unified paths `Conflicts` reported
-// and stages each on whichever side's index actually lists it unmerged.
-// It is not merely a convenience for callers that would otherwise shell out to `git add`, because for
-// a weft-side path there is no `git add` that works. A conflict under a wired junction name — every
-// `_lyx/…` conflict — lives in the weft checkout, reachable from the single visible worktree only
-// through the junction, and git refuses to stage through it (`pathspec … is beyond a symbolic link`).
+// **Resolving a conflict takes three steps, and the middle one is not skippable.** `MergeContinue`'s conflict guard is an INDEX probe (`ConflictedFiles()`), so editing a conflicted file to remove its markers does not on its own let the merge conclude — the path has to be marked resolved.
+// `MergeStageResolved` is that step: it takes the same unified paths `Conflicts` reported and stages each on whichever side's index actually lists it unmerged.
+// It is not merely a convenience for callers that would otherwise shell out to `git add`, because for a weft-side path there is no `git add` that works.
+// A conflict under a wired junction name — every `_lym/…` conflict — lives in the weft checkout, reachable from the single visible worktree only through the junction, and git refuses to stage through it (`pathspec … is beyond a symbolic link`).
 // So a merge whose conflicts land on the weft side is completable ONLY through this verb.
-// A refusal for that reason names the paths, and it did not always. `MergeContinue` reads both sides'
-// `ConflictedFiles()` to decide the guard and then threw the answer away, returning
-// `unresolved conflicts remain` and nothing else. That is un-actionable in the one flow that reaches
-// it: an operator who staged some of the reported paths and not all of them cannot re-run `merge-in`
-// to reprint the list (a merge is already in progress), `lyx fabric status` reports a remaining
-// weft-side conflict as an ordinary weft change indistinguishable from any other, and plain
-// `git status` in the visible worktree does not see it at all, because it lives across the junction.
-// `status` does now report the parked merge itself, through its `merge_in_progress` key, while still
-// not distinguishing which weft path is conflicted.
-// The only route back to the list was raw git inside the weft checkout — the one place the Fabric
-// illusion says an operator never has to look, which is the same argument that made `merge-stage` a
-// shipped gap. The refusal now carries the still-unresolved paths, mapped through the same
-// `unifyConflictPaths` the conflict result uses, and the CLI reports them under `unresolved` rather
-// than `conflicts`: `conflicts` is the documented discriminator between a conflict result and a hard
-// failure, so it stays exclusive to the former.
-// That listing is best-effort and never replaces the refusal: a geometry read that fails, or a
-// remaining path that maps nowhere in the visible tree, yields no list rather than a partial one that
-// would mislead the operator about what is left.
-// That made it a shipped gap rather than an internal detail while the verb had no CLI surface at all
-// and existed solely for `internal/mergeresolve`: an operator following `lyx fabric merge-in`'s own
-// help reached a `merge --continue` that refused forever, with the only escape being raw git inside
-// the weft checkout — the one place the Fabric illusion says they never have to look. `lyx fabric
-// merge-stage <path>...` is the surface, and the CLI's help now names the full resolve → stage →
-// continue sequence rather than the two-step one that cannot finish.
+// A refusal for that reason names the paths, and it did not always.
+// `MergeContinue` reads both sides' `ConflictedFiles()` to decide the guard and then threw the answer away, returning `unresolved conflicts remain` and nothing else.
+// That is un-actionable in the one flow that reaches it: an operator who staged some of the reported paths and not all of them cannot re-run `merge-in` to reprint the list (a merge is already in progress), `lym fabric status` reports a remaining weft-side conflict as an ordinary weft change indistinguishable from any other, and plain `git status` in the visible worktree does not see it at all, because it lives across the junction.
+// `status` does now report the parked merge itself, through its `merge_in_progress` key, while still not distinguishing which weft path is conflicted.
+// The only route back to the list was raw git inside the weft checkout — the one place the Fabric illusion says an operator never has to look, which is the same argument that made `merge-stage` a shipped gap.
+// The refusal now carries the still-unresolved paths, mapped through the same `unifyConflictPaths` the conflict result uses, and the CLI reports them under `unresolved` rather than `conflicts`: `conflicts` is the documented discriminator between a conflict result and a hard failure, so it stays exclusive to the former.
+// That listing is best-effort and never replaces the refusal: a geometry read that fails, or a remaining path that maps nowhere in the visible tree, yields no list rather than a partial one that would mislead the operator about what is left.
+// That made it a shipped gap rather than an internal detail while the verb had no CLI surface at all and existed solely for `internal/mergeresolve`: an operator following `lym fabric merge-in`'s own help reached a `merge --continue` that refused forever, with the only escape being raw git inside the weft checkout — the one place the Fabric illusion says they never have to look.
+// `lym fabric merge-stage <path>...`
+// is the surface, and the CLI's help now names the full resolve → stage → continue sequence rather than the two-step one that cannot finish.
 //
-// **The one path-separator reconciliation, and why its guard is shaped oddly.** The visible-tree
-// membership test compares two values that do NOT arrive in the same separator convention: the
-// conflicted path is git's own output and is always forward-slash, while `AnchorRel` comes back from
-// `lyxcwd.ValidateAnchorRel` as an OS-separator path. On Windows a multi-segment anchor recorded as
-// `apps/backend` therefore arrives as `apps\backend`, and the joined prefix never matches what git
-// reports — every `_lyx` conflict under such an anchor is then classed unmappable and the whole
-// merge self-aborts with `*ErrUnmergeableState`. Converting the anchor's separator to `/` is what
-// closes that, and it must convert the OS separator specifically, not every backslash: on a POSIX
-// host a backslash is an ordinary filename character and a directory really can be named
-// `weird\name`.
-// The conversion is written against an explicit separator argument rather than calling
-// `filepath.ToSlash`, purely so it can be tested. `filepath.ToSlash` is the identity function
-// wherever the OS separator already is `/`, so on every host this project builds on, deleting it
-// changes no observable behaviour and no test can fail — which is exactly how a Windows-only fix
-// rots unnoticed. The separator-explicit form lets a POSIX test drive the Windows spelling directly.
-// One atom stays beyond runtime reach here — the `os.PathSeparator` argument at the entry point,
-// indistinguishable from a hardcoded `/` on this host — and is pinned by source inspection instead,
-// with that limitation stated rather than papered over. No Windows host has existed at any point in
-// this module's history, so this is the strongest available proof, not a substitute for one that was
-// skipped.
+// **The one path-separator reconciliation, and why its guard is shaped oddly.** The visible-tree membership test compares two values that do NOT arrive in the same separator convention: the conflicted path is git's own output and is always forward-slash, while `AnchorRel` comes back from `lymcwd.ValidateAnchorRel` as an OS-separator path.
+// On Windows a multi-segment anchor recorded as `apps/backend` therefore arrives as `apps\backend`, and the joined prefix never matches what git reports — every `_lym` conflict under such an anchor is then classed unmappable and the whole merge self-aborts with `*ErrUnmergeableState`.
+// Converting the anchor's separator to `/` is what closes that, and it must convert the OS separator specifically, not every backslash: on a POSIX host a backslash is an ordinary filename character and a directory really can be named `weird\name`.
+// The conversion is written against an explicit separator argument rather than calling `filepath.ToSlash`, purely so it can be tested.
+// `filepath.ToSlash` is the identity function wherever the OS separator already is `/`, so on every host this project builds on, deleting it changes no observable behaviour and no test can fail — which is exactly how a Windows-only fix rots unnoticed.
+// The separator-explicit form lets a POSIX test drive the Windows spelling directly.
+// One atom stays beyond runtime reach here — the `os.PathSeparator` argument at the entry point, indistinguishable from a hardcoded `/` on this host — and is pinned by source inspection instead, with that limitation stated rather than papered over.
+// No Windows host has existed at any point in this module's history, so this is the strongest available proof, not a substitute for one that was skipped.
 //
 // **A conflict result is not a failure, and a script tells them apart by the envelope.** At the CLI
 // both a conflicted merge and a hard error exit 1 with `"ok": false` — the shared envelope has no
@@ -1693,22 +1603,22 @@
 // The gc is skipped, with the keys still written, while the `InFlightProbe` set through `Topology.SetInFlightProbe` reports another pair's live reed session, logged at Info with the sessions, or fails, logged at Warn; a nil probe reports none, and production sets the real probe through `pairteardown`, the only route to `Remove`.
 // It prunes unreachable loose objects older than a day (`gc.pruneExpire=1.day.ago`) and never prunes a worktree's admin entry, so what it deletes is unreachable objects past that expiry and reflog entries past git's own default expiry, nothing `destroy.go`'s gate protects.
 // An existing hub picks the keys up at its next pair create or removal.
-// The keys disable git's automatic gc and maintenance for everyone using the store, the operator's manual git included: lyx's housekeeping is the replacement, a manual `git gc` still works, and maintenance an operator registers with `git maintenance start` stays outside lyx's control.
+// The keys disable git's automatic gc and maintenance for everyone using the store, the operator's manual git included: lym's housekeeping is the replacement, a manual `git gc` still works, and maintenance an operator registers with `git maintenance start` stays outside lym's control.
 // The gc threshold is not operator configuration.
 //
 // **Platform verification: Linux only.**
 // Fabric is written cross-platform, and `internal/fslink` exists because Windows uses directory junctions where other platforms use symlinks,
 // but every hardening round ran on Linux and no line of it has been executed on Windows.
 // The branches reasoned about and never driven are:
-// `lyxcwd.ValidateAnchorRel`'s volume-rooted rejection (`C:\...`, `\\server\share`), which Linux cannot produce inputs for;
+// `lymcwd.ValidateAnchorRel`'s volume-rooted rejection (`C:\...`, `\\server\share`), which Linux cannot produce inputs for;
 // `excludePatternFor`'s separator handling, since git wants forward slashes and `filepath` on Windows produces backslashes;
-// `lyxcwd.samePath`'s case-insensitive branch, which is dead code on Linux;
+// `lymcwd.samePath`'s case-insensitive branch, which is dead code on Linux;
 // and `internal/fslink`'s junction path, which every link fabric creates on Windows goes through.
 // The anchor and subpath mechanism, the source of the largest group of findings, has likewise been verified on one platform only.
 // This weighs more than an ordinary coverage gap: the data-loss defects found in the destruction chokepoint's campaign were all found by driving real git against a real filesystem with hostile or dirty state, while the hermetic suite stayed green, so fabric's defects live where platform behaviour lives, in path composition, link creation and filesystem semantics.
 // Closing the gap needs a Windows host rather than a design.
 // The minimum is the existing suite there (`go build`, `go vet`, `go test`, `go test -tags integration`);
-// beyond it, the scenarios worth driving by hand are a `--subpath` anchored hub (junction targets, `_lyx` and `.lyx` placement, the cwd gate refusing the warp root and its subdirectories),
+// beyond it, the scenarios worth driving by hand are a `--subpath` anchored hub (junction targets, `_lym` and `.lym` placement, the cwd gate refusing the warp root and its subdirectories),
 // `add`/`remove` slug hygiene, and the `prune` and `clone --reset` ownership refusals.
 // Deciding that Windows is not a goal is a valid resolution, but it must be written down, because `internal/fslink` and the filesystem-links rule in `CLAUDE.md` currently assert the opposite.
 //

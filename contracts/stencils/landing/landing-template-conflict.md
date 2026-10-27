@@ -1,6 +1,6 @@
 <!-- This is the landing conflict-resolution session's entire instruction set. It is shipped as an
      embedded default in the top-level stencils package (stencils/stencils.go), seeded to
-     <hub>/_board/_lyx/stencils/landing/, and read from there at call time by mergeresolve's own spec
+     <hub>/_board/_lym/stencils/landing/, and read from there at call time by mergeresolve's own spec
      builder via internal/stencil, then handed to shuttle as the resolving agent's whole prompt.
      Every marker below is a top-level {{.X}} substitution; stencil.Fill requires every marker
      non-empty, parent_directive (rendered by internal/parentdirective) and edit_directive (rendered unconditionally by internal/editdirective) included, and

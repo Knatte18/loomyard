@@ -1,12 +1,12 @@
-// Package helpcli provides the cobra command tree for `lyx help`, which replaces cobra's built-in help command on the root.
+// Package helpcli provides the cobra command tree for `lym help`, which replaces cobra's built-in help command on the root.
 //
-// `lyx help [<command>...]` keeps cobra's behaviour: bare `lyx help` prints the root's help, and a command path prints that command's help.
-// A word that names no child of the command reached so far is refused with a JSON error that names it, so `lyx help board bogus` is refused rather than printing the board group's help.
-// `lyx help` also completes command names from the root.
+// `lym help [<command>...]` keeps cobra's behaviour: bare `lym help` prints the root's help, and a command path prints that command's help.
+// A word that names no child of the command reached so far is refused with a JSON error that names it, so `lym help board bogus` is refused rather than printing the board group's help.
+// `lym help` also completes command names from the root.
 //
 // # Index
 //
-// `lyx help index [--audience <audience>]` prints the command index: a nested markdown list of one line per command of the running binary, filtered by the audience annotation each invocable command carries.
+// `lym help index [--audience <audience>]` prints the command index: a nested markdown list of one line per command of the running binary, filtered by the audience annotation each invocable command carries.
 // The audience is `operator` by default; `role` and `internal` print the other two classes, and a value outside `clihelp.Audiences` is refused naming that set.
 //
 // A group line is the name and its short description.
@@ -19,5 +19,5 @@
 // # Wiring
 //
 // The module reads no stencils and carries the stencil-seed skip annotation, so it stays silent.
-// `cmd/lyx`'s root mounts it with `SetHelpCommand` followed by `InitDefaultHelpCmd`, which puts the command in the root's children before any execution.
+// `cmd/lym`'s root mounts it with `SetHelpCommand` followed by `InitDefaultHelpCmd`, which puts the command in the root's children before any execution.
 package helpcli

@@ -1,7 +1,7 @@
 //go:build tier1
 
 // warplayout_test.go pins warpLayoutFor's two branches against each other: the hub-sibling
-// fast path and the lyxcwd.ResolveWorktree fallback are documented as equivalent, so this
+// fast path and the lymcwd.ResolveWorktree fallback are documented as equivalent, so this
 // asserts they actually produce the same Location for the same worktree rather than one branch
 // quietly omitting a field.
 //
@@ -19,7 +19,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 //testtiming:keep the fast-path layout equalling the resolved worktree layout; coverage of its blocks by other tests does not show an assertion of this
@@ -33,9 +33,9 @@ func TestWarpLayoutFor_FastPathMatchesResolveWorktree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("warpLayoutFor(hub sibling): %v", err)
 	}
-	slow, err := lyxcwd.ResolveWorktree(worktreeRoot)
+	slow, err := lymcwd.ResolveWorktree(worktreeRoot)
 	if err != nil {
-		t.Fatalf("lyxcwd.ResolveWorktree(%s): %v", worktreeRoot, err)
+		t.Fatalf("lymcwd.ResolveWorktree(%s): %v", worktreeRoot, err)
 	}
 
 	if *fast != *slow {

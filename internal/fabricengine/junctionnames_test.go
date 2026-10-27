@@ -1,7 +1,7 @@
 //go:build tier0
 
 // junctionnames_test.go — unit tests for junctionNames, filterHubReserved, and the hub-structural
-// name constructors BoardDir, HubPath and IsReservedHubName relocated from internal/lyxcwd in this
+// name constructors BoardDir, HubPath and IsReservedHubName relocated from internal/lymcwd in this
 // batch.
 //
 // Package fabricengine (not fabricengine_test) so it can call the unexported junctionNames and
@@ -17,15 +17,15 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // TestJunctionNames_NoFallbackOnLoadFailure asserts the no-fallback rule: a config-load failure at
-// baseDir is surfaced as a non-nil error and a nil name slice, never silently defaulted to `_lyx`.
+// baseDir is surfaced as a non-nil error and a nil name slice, never silently defaulted to `_lym`.
 //
-//testtiming:keep a config-load failure surfacing as an error and a nil name slice instead of defaulting to _lyx; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep a config-load failure surfacing as an error and a nil name slice instead of defaulting to _lym; coverage of its blocks by other tests does not show an assertion of this
 func TestJunctionNames_NoFallbackOnLoadFailure(t *testing.T) {
-	baseDir := t.TempDir() // no _lyx/, so LoadConfig cannot find fabric.yaml
+	baseDir := t.TempDir() // no _lym/, so LoadConfig cannot find fabric.yaml
 
 	names, err := junctionNames(configengine.Dirs{Board: baseDir})
 	if err == nil {
@@ -48,8 +48,8 @@ func TestFilterHubReserved(t *testing.T) {
 	}{
 		{
 			name:  "MixedDropsReservedKeepsOrder",
-			input: append(append([]string{"_lyx"}, reserved...), "_other", "_extra"),
-			want:  []string{"_lyx", "_other", "_extra"},
+			input: append(append([]string{"_lym"}, reserved...), "_other", "_extra"),
+			want:  []string{"_lym", "_other", "_extra"},
 		},
 		{
 			name:  "AllReservedYieldsEmpty",
@@ -58,8 +58,8 @@ func TestFilterHubReserved(t *testing.T) {
 		},
 		{
 			name:  "NoneReservedReturnedUnchanged",
-			input: []string{"_lyx", "_other", "_extra"},
-			want:  []string{"_lyx", "_other", "_extra"},
+			input: []string{"_lym", "_other", "_extra"},
+			want:  []string{"_lym", "_other", "_extra"},
 		},
 	}
 
@@ -94,13 +94,13 @@ func TestFilterHubReserved(t *testing.T) {
 		}
 	}
 
-	// .lyx must NEVER be in HubReservedNames(): adding it there would make
+	// .lym must NEVER be in HubReservedNames(): adding it there would make
 	// filterHubReserved delete it from the wired names (so the per-worktree
 	// junction is never created) and would make scanOnDiskJunctionNames skip
 	// it (so Unwire's sweep and applyStaleRemoval could never see it).
 	for _, r := range reserved {
-		if r == ".lyx" {
-			t.Errorf("HubReservedNames() = %v; want it to NEVER contain %q", reserved, ".lyx")
+		if r == ".lym" {
+			t.Errorf("HubReservedNames() = %v; want it to NEVER contain %q", reserved, ".lym")
 		}
 	}
 }
@@ -123,8 +123,8 @@ func TestBoardDir(t *testing.T) {
 		},
 		{
 			name: "nested hub",
-			hub:  "/repos/loomyard-LYXHUB",
-			want: filepath.Join("/repos/loomyard-LYXHUB", BoardDirName),
+			hub:  "/repos/loomyard-LYMHUB",
+			want: filepath.Join("/repos/loomyard-LYMHUB", BoardDirName),
 		},
 	}
 
@@ -139,12 +139,9 @@ func TestBoardDir(t *testing.T) {
 }
 
 // TestHubPath verifies that HubPath joins parent and name with HubSuffix.
-// The two cases are deliberately expressed differently: "simple repo name" pins the literal
-// -LYXHUB suffix value, so a future change to HubSuffix fails this test, while "nested parent"
-// pins composition through HubSuffix, so the test still covers that HubPath composes from the
-// constant rather than from a hardcoded string of its own.
+// The two cases are deliberately expressed differently: "simple repo name" pins the literal -LYMHUB suffix value, so a future change to HubSuffix fails this test, while "nested parent" pins composition through HubSuffix, so the test still covers that HubPath composes from the constant rather than from a hardcoded string of its own.
 //
-//testtiming:keep HubPath joining parent and name with HubSuffix, pinning the literal -LYXHUB suffix; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep HubPath joining parent and name with HubSuffix, pinning the literal -LYMHUB suffix; coverage of its blocks by other tests does not show an assertion of this
 func TestHubPath(t *testing.T) {
 	t.Parallel()
 
@@ -158,7 +155,7 @@ func TestHubPath(t *testing.T) {
 			name:     "simple repo name",
 			parent:   "/repos",
 			repoName: "loomyard",
-			want:     filepath.Join("/repos", "loomyard-LYXHUB"),
+			want:     filepath.Join("/repos", "loomyard-LYMHUB"),
 		},
 		{
 			name:     "nested parent",
@@ -193,7 +190,7 @@ func TestIsReservedHubName(t *testing.T) {
 		input string
 		want  bool
 	}{
-		{"lyx dir", "_lyx", true},
+		{"lym dir", "_lym", true},
 		{"raddle dir", "_raddle", false},
 		{"board dir", "_board", true},
 		{"portals dir", "_portals", true},
@@ -257,16 +254,16 @@ func TestIsReservedHubName(t *testing.T) {
 	// from the junctionNames union entirely (there is no longer any junction
 	// name for a default-configured repo to inject).
 	// With junctionNames now empty, the four survivors no longer share one
-	// source: _lyx is reserved via structuralCommittedDirs (never the config
+	// source: _lym is reserved via structuralCommittedDirs (never the config
 	// arm), while _board, _portals, and _launchers are reserved via
 	// HubReservedNames().
-	// `.lyx` is reserved too, via structuralNeverCommittedDirs, but was never a
+	// `.lym` is reserved too, via structuralNeverCommittedDirs, but was never a
 	// member of this list and still is not -- this is a positive "these are
 	// reserved" set, not an exhaustiveness assertion over every reserved name.
 	t.Run("default pathspec union reserves exactly four names", func(t *testing.T) {
 		t.Parallel()
 
-		wantReserved := []string{"_lyx", "_board", "_portals", "_launchers"}
+		wantReserved := []string{"_lym", "_board", "_portals", "_launchers"}
 		for _, name := range wantReserved {
 			if got := IsReservedHubName(name, junctionNames); !got {
 				t.Errorf("IsReservedHubName(%q, %v) = %v; want true", name, junctionNames, got)
@@ -277,7 +274,7 @@ func TestIsReservedHubName(t *testing.T) {
 		}
 	})
 
-	// _raddle has converged on an anchor-level `_lyx/raddle/` design with no
+	// _raddle has converged on an anchor-level `_lym/raddle/` design with no
 	// hub-level presence, so a worktree slug named _raddle is now accepted by
 	// IsReservedHubName -- the observable behaviour change this batch delivers.
 	t.Run("raddle slug is no longer reserved", func(t *testing.T) {
@@ -326,7 +323,7 @@ func TestConfigDirs(t *testing.T) {
 			t.Parallel()
 			hub := t.TempDir()
 			tt.makeBoard(t, BoardDir(hub))
-			loc := &lyxcwd.Location{RepoName: "repo", HubPath: hub, WorktreeName: "main", AnchorRel: "."}
+			loc := &lymcwd.Location{RepoName: "repo", HubPath: hub, WorktreeName: "main", AnchorRel: "."}
 
 			got := ConfigDirs(loc)
 

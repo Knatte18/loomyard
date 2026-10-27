@@ -195,14 +195,14 @@ func TestExecutionBatches_Refusals(t *testing.T) {
 			plan:      partitionPlan(),
 			partition: []websterengine.PartitionBatch{{Cards: []string{"01-a", "02-b", "03-c", "04-gone"}}},
 			wantErr:   websterengine.ErrPartitionMismatch,
-			want:      []string{"recorded cards 04-gone are not cards of the plan", "`lyx webster rebaseline --card NN`", "`lyx webster restore-plan`"},
+			want:      []string{"recorded cards 04-gone are not cards of the plan", "`lym webster rebaseline --card NN`", "`lym webster restore-plan`"},
 		},
 		{
 			name:      "a plan card outside the partition",
 			plan:      partitionPlan(),
 			partition: []websterengine.PartitionBatch{{Cards: []string{"01-a"}}, {Cards: []string{"02-b"}}},
 			wantErr:   websterengine.ErrPartitionMismatch,
-			want:      []string{"plan cards 03-c are in no recorded batch", "`lyx webster rebaseline --card NN`", "`lyx webster restore-plan`"},
+			want:      []string{"plan cards 03-c are in no recorded batch", "`lym webster rebaseline --card NN`", "`lym webster restore-plan`"},
 		},
 		{
 			name: "a backward dependency",
@@ -212,7 +212,7 @@ func TestExecutionBatches_Refusals(t *testing.T) {
 			}},
 			partition: []websterengine.PartitionBatch{{Cards: []string{"01-a"}}, {Cards: []string{"02-b"}}},
 			wantErr:   websterengine.ErrBatchOrder,
-			want:      []string{`batch 1 (card 1) uses "FooFunc", which batch 2 (card 2) targets`, "`lyx webster rebaseline --card NN`", "`lyx webster run --fresh`"},
+			want:      []string{`batch 1 (card 1) uses "FooFunc", which batch 2 (card 2) targets`, "`lym webster rebaseline --card NN`", "`lym webster run --fresh`"},
 		},
 	}
 	for _, tc := range tests {

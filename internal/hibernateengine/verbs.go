@@ -17,7 +17,7 @@ func refuseCaller(strand string) error {
 	if strand != "" {
 		name, err := agentname.Parse(strand)
 		if err != nil || name.Role != agentname.RoleOrch {
-			return errors.New(`hibernate: an agent may not request or cancel a hibernate; way forward: ask your parent session, which runs "lyx hibernate request" or "lyx hibernate cancel" for you`)
+			return errors.New(`hibernate: an agent may not request or cancel a hibernate; way forward: ask your parent session, which runs "lym hibernate request" or "lym hibernate cancel" for you`)
 		}
 	}
 	return nil
@@ -26,7 +26,7 @@ func refuseCaller(strand string) error {
 // refusePlatform refuses any platform but Linux.
 func refusePlatform(goos string) error {
 	if goos != "linux" {
-		return fmt.Errorf("hibernate: lyx hibernates the machine on Linux only, and this machine runs %s; way forward: hibernate it from the desktop yourself", goos)
+		return fmt.Errorf("hibernate: lym hibernates the machine on Linux only, and this machine runs %s; way forward: hibernate it from the desktop yourself", goos)
 	}
 	return nil
 }
@@ -70,7 +70,7 @@ func Submit(deps Deps, req SubmitRequest) (Request, error) {
 		return Request{}, err
 	}
 	if _, err := deps.LookPath("systemctl"); err != nil {
-		return Request{}, errors.New(`hibernate: systemctl is not on PATH, so lyx cannot hibernate this machine; way forward: put systemctl on PATH, then re-run "lyx hibernate request"`)
+		return Request{}, errors.New(`hibernate: systemctl is not on PATH, so lym cannot hibernate this machine; way forward: put systemctl on PATH, then re-run "lym hibernate request"`)
 	}
 	if req.After != "" && req.AfterAll {
 		return Request{}, errors.New(`hibernate: --after and --after-all are exclusive; way forward: pass one of them, or neither to hibernate once the pause is confirmed`)
@@ -90,7 +90,7 @@ func Submit(deps Deps, req SubmitRequest) (Request, error) {
 	err := updateRequest(deps.RequestPath, func(cur Request, found bool) (Request, error) {
 		if found && !cur.Terminal() {
 			if daemonLive(deps, cur) {
-				return Request{}, fmt.Errorf(`hibernate: a hibernate request is pending in phase %s with daemon pid %d; way forward: run "lyx hibernate cancel", then request again`, cur.Phase, cur.DaemonPID)
+				return Request{}, fmt.Errorf(`hibernate: a hibernate request is pending in phase %s with daemon pid %d; way forward: run "lym hibernate cancel", then request again`, cur.Phase, cur.DaemonPID)
 			}
 			if _, err := liftOwned(deps, cur); err != nil {
 				return Request{}, err
@@ -168,7 +168,7 @@ func Cancel(deps Deps) (CancelReport, error) {
 		}
 		live := daemonLive(deps, cur)
 		if live && cur.Phase == PhaseHibernating {
-			return Request{}, errors.New(`hibernate: the machine is going into hibernation; way forward: none until it wakes, when the daemon lifts its own pause; run "lyx hibernate status" to follow it`)
+			return Request{}, errors.New(`hibernate: the machine is going into hibernation; way forward: none until it wakes, when the daemon lifts its own pause; run "lym hibernate status" to follow it`)
 		}
 		report.Cancelled, report.Phase = true, cur.Phase
 		if live {

@@ -40,8 +40,8 @@ type CommandDeps struct {
 	Setting func(module, key string) (any, error)
 	// ExecutableSetting is the owner's lookup over the template and the board default layer only; the command is read through it and nothing else.
 	ExecutableSetting func(module, key string) (any, error)
-	// Lyx and Slug are the values of the {lyx} and {slug} placeholders.
-	Lyx, Slug string
+	// Lym and Slug are the values of the {lym} and {slug} placeholders.
+	Lym, Slug string
 	// TaskDir returns the value of the {task_dir} placeholder; it is called only when the command holds that placeholder.
 	TaskDir func() (string, error)
 	// Dir is the directory the command runs in.
@@ -82,10 +82,10 @@ func (p *CommandProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 	}
 	done := shedengine.Done
 	if p.deps.ExecutableSetting == nil {
-		return fail("the recipe's owner tells no executable-key lookup; way forward: wire an executable-key lookup over the template and the board default layer in the recipe's owner, then re-run the run on the rebuilt lyx (%s)", p.deps.Rerun)
+		return fail("the recipe's owner tells no executable-key lookup; way forward: wire an executable-key lookup over the template and the board default layer in the recipe's owner, then re-run the run on the rebuilt lym (%s)", p.deps.Rerun)
 	}
 
-	setCommand := fmt.Sprintf("`lyx config %s --layer default --set %s=<value>` from the prime", p.row.CommandModule, p.row.CommandKey)
+	setCommand := fmt.Sprintf("`lym config %s --layer default --set %s=<value>` from the prime", p.row.CommandModule, p.row.CommandKey)
 	value, err := p.deps.ExecutableSetting(p.row.CommandModule, p.row.CommandKey)
 	if err != nil {
 		return fail("read the command %s.%s: %v; way forward: correct it with %s, then %s", p.row.CommandModule, p.row.CommandKey, err, setCommand, p.deps.Rerun)
@@ -102,8 +102,8 @@ func (p *CommandProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 	}
 
 	values := map[string]string{}
-	if strings.Contains(command, "{lyx}") {
-		values["lyx"] = p.deps.Lyx
+	if strings.Contains(command, "{lym}") {
+		values["lym"] = p.deps.Lym
 	}
 	if strings.Contains(command, "{slug}") {
 		values["slug"] = p.deps.Slug
@@ -162,8 +162,8 @@ func refusedPlaceholderWayForward(placeholder string) string {
 	switch placeholder {
 	case "{task_dir}":
 		return "put the hub at a path without a percent sign"
-	case "{lyx}":
-		return "build lyx into a Go bin dir whose path has no percent sign"
+	case "{lym}":
+		return "build lym into a Go bin dir whose path has no percent sign"
 	default:
 		return "use a " + placeholder + " value without a percent sign"
 	}

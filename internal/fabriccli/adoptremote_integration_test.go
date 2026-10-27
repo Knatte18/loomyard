@@ -16,8 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
@@ -69,7 +69,7 @@ func requireOnOriginalBranches(t *testing.T, h *hubforge.Hub, slug string) {
 // weftLockDirName is the lock directory every weft worktree carries.
 const weftLockDirName = ".weft"
 
-// addRawWarpWorktree creates a warp worktree for slug outside lyx, on a new branch slug, at the pair's warp path.
+// addRawWarpWorktree creates a warp worktree for slug outside lym, on a new branch slug, at the pair's warp path.
 // It removes the worktree and branch again at cleanup when removeAtCleanup is set,
 // so a pair left unrepairable does not fail later reconciles.
 func addRawWarpWorktree(t *testing.T, h *hubforge.Hub, slug string, removeAtCleanup bool) {
@@ -121,7 +121,7 @@ func requireAdoptedFromOrigin(t *testing.T, h *hubforge.Hub, slug string) {
 	}
 	for _, path := range []string{
 		filepath.Join(weft, weftLockDirName),
-		filepath.Join(h.PairCodeWorktree(slug), h.Location.AnchorRel, lyxdirs.LyxDirName),
+		filepath.Join(h.PairCodeWorktree(slug), h.Location.AnchorRel, lymdirs.LymDirName),
 		h.PairLauncherDir(slug),
 	} {
 		if _, err := os.Lstat(path); err != nil {
@@ -243,7 +243,7 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			}
 			for _, path := range []string{
 				filepath.Join(weftSibling, weftLockDirName),
-				filepath.Join(h.PairCodeWorktree(slug), h.Location.AnchorRel, lyxdirs.LyxDirName),
+				filepath.Join(h.PairCodeWorktree(slug), h.Location.AnchorRel, lymdirs.LymDirName),
 				h.PairLauncherDir(slug),
 			} {
 				if _, err := os.Lstat(path); err != nil {
@@ -317,7 +317,7 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			weftClone := t.TempDir()
 			gitkit.MustRun(t, weftClone, "git", "clone", "--quiet", h.RecordsBare, ".")
 			gitkit.MustRun(t, weftClone, "git", "checkout", "--quiet", "-b", weftBranch)
-			gitkit.CommitFile(t, weftClone, lyxcwd.AnchorFileName, h.Location.AnchorRel+"\n", "record the anchor")
+			gitkit.CommitFile(t, weftClone, lymcwd.AnchorFileName, h.Location.AnchorRel+"\n", "record the anchor")
 			gitkit.CommitFile(t, weftClone, originMarkerFile, "from origin\n", "origin-only weft work")
 			weftTip := gitkit.CommitFile(t, weftClone, runRecord, "run record\n", "origin-only run record")
 			gitkit.MustRun(t, weftClone, "git", "push", "--quiet", "origin", weftBranch)

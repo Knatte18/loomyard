@@ -10,7 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // concludeMergeSides lands the conclude-commit on both sides of an in-progress merge, under the
@@ -195,7 +195,7 @@ func sideConcludeAlreadyLanded(repo *gitrepo.Repo, start, sourceSHA string, squa
 // path the operator must still resolve would mislead them about what is left — the same judgment
 // unifyConflictPaths' own unmappable arm makes when it refuses to report a misleading path.
 func (f *Fabric) unifiedRemainingConflicts(warpConflicts, weftConflicts []string) []string {
-	l, err := lyxcwd.ResolveWorktree(f.warpPath)
+	l, err := lymcwd.ResolveWorktree(f.warpPath)
 	if err != nil {
 		logger.Warn("fabricengine: resolve layout to list remaining conflicts failed", "path", f.warpPath, "error", err)
 		return nil

@@ -127,7 +127,7 @@ func validate(plan *planparser.Plan, worktreeRoot string, loader typesLoader) ([
 // the wanted end state is already the tree's state.
 // The same target under the card's own Edit, Uses or Rename old side keeps its blocking finding.
 // The downgrade does not check why the target is gone: it lets through a target removed by a card that edited the wrong file, or one only a mid-run plan edit added.
-// The plan gate and `lyx webster validate` saw every target exist before the run started,
+// The plan gate and `lym webster validate` saw every target exist before the run started,
 // so only a target the run removed or a mid-run edit added reaches it, and the advisory names the target and the card.
 func ValidateDispatch(plan *planparser.Plan, worktreeRoot string, completed, forthcoming []planparser.Card) ([]Finding, error) {
 	findings, err := dispatchFindings(plan, worktreeRoot, completed, forthcoming)
@@ -338,13 +338,8 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string, done, forthcoming m
 
 	handleFindings, rewrote, err := CanonicalizeHandles(pending, worktreeRoot, results)
 	if err != nil {
-		// NOT wrapped in ErrQuarryUnavailable: CanonicalizeHandles' error comes from
-		// planparser.RewriteRefs, which parses the plan and writes card files, so a read-only
-		// _lyx/plan or a card file deleted mid-run was reported to the operator as "quarry could not
-		// answer" and sent them at the wrong subsystem entirely (crucible round opus-medium-r6,
-		// R6-12). Both callers' non-quarry branch already fails the gate with an accurate,
-		// plan-named message, which is the right disposition for a plan artifact lyx could not
-		// rewrite.
+		// NOT wrapped in ErrQuarryUnavailable: CanonicalizeHandles' error comes from planparser.RewriteRefs, which parses the plan and writes card files, so a read-only _lym/plan or a card file deleted mid-run was reported to the operator as "quarry could not answer" and sent them at the wrong subsystem entirely (crucible round opus-medium-r6, R6-12).
+		// Both callers' non-quarry branch already fails the gate with an accurate, plan-named message, which is the right disposition for a plan artifact lym could not rewrite.
 		return handleFindings, fmt.Errorf("canonicalize handles in plan %s: %w", planDir, err)
 	}
 

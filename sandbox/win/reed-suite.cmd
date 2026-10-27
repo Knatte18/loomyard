@@ -1,5 +1,5 @@
 @echo off
-REM Launcher for the lyx SANDBOX-REED-SUITE: runs the interactive reed black-box
+REM Launcher for the lym SANDBOX-REED-SUITE: runs the interactive reed black-box
 REM agent session (live tmux required). The machine-specific parent directory
 REM is hardcoded HERE (the base under which sandbox Hubs are created) — the Go
 REM tool stays general.

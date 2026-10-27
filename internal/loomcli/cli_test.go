@@ -16,7 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/frictionengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -25,13 +25,13 @@ import (
 )
 
 // TestResolvePersistentPreRun_SkipsSlugGroups asserts the loom parent's pre-run never arms the circling, decision or peers group or their verbs, and that loom has no review group.
-// cmd/lyx sets cobra.EnableTraverseRunHooks, so cobra calls that pre-run for a group verb too;
+// cmd/lym sets cobra.EnableTraverseRunHooks, so cobra calls that pre-run for a group verb too;
 // over a non-git cwd an arm would write an error envelope and abort, so silence proves the skip.
 func TestResolvePersistentPreRun_SkipsSlugGroups(t *testing.T) {
 	parent := Command()
 	for _, child := range parent.Commands() {
 		if child.Name() == "review" {
-			t.Fatal(`loom has a "review" child; want "lyx loom review" to be no command`)
+			t.Fatal(`loom has a "review" child; want "lym loom review" to be no command`)
 		}
 	}
 	for _, name := range []string{"circling", decisionGroup, peersGroup} {
@@ -40,7 +40,7 @@ func TestResolvePersistentPreRun_SkipsSlugGroups(t *testing.T) {
 			t.Fatalf("Find(%q) = %v, %v; want the %s group", name, group, err, name)
 		}
 		for _, cmd := range append([]*cobra.Command{group}, group.Commands()...) {
-			ctx, _ := clihelp.NewExitContext(lyxcwd.WithCwd(t.Context(), t.TempDir()))
+			ctx, _ := clihelp.NewExitContext(lymcwd.WithCwd(t.Context(), t.TempDir()))
 			cmd.SetContext(ctx)
 			var out bytes.Buffer
 			cmd.SetOut(&out)
@@ -78,7 +78,7 @@ func TestCommand_StartVerbCarriesParentAndHiddenNoAttach(t *testing.T) {
 	}
 }
 
-// TestRunCLI_GroupGuard_NoGitRepoNeeded asserts that a bare "lyx loom" invocation succeeds without
+// TestRunCLI_GroupGuard_NoGitRepoNeeded asserts that a bare "lym loom" invocation succeeds without
 // needing a git repository, proving the PersistentPreRunE guard for cmd.Name() == "loom" fires before
 // any cwd resolution.
 func TestRunCLI_GroupGuard_NoGitRepoNeeded(t *testing.T) {
@@ -161,31 +161,31 @@ func loomVerbCommand(c *loomCLI, verb string) *cobra.Command {
 	panic("loomVerbCommand: no shedverbs command named " + verb)
 }
 
-// TestLoomVerbHelp_NamesBothSeedingRoutes asserts the step and run help name "lyx loom start" and the driverless seed, the seed before the first "lyx loom step",
+// TestLoomVerbHelp_NamesBothSeedingRoutes asserts the step and run help name "lym loom start" and the driverless seed, the seed before the first "lym loom step",
 // and that step's help does not claim it bootstraps exactly as start does.
 func TestLoomVerbHelp_NamesBothSeedingRoutes(t *testing.T) {
 	t.Parallel()
-	const driverlessSeed = "lyx shed seed self --recipe loom --driver go --param parent=<parent-branch>"
+	const driverlessSeed = "lym shed seed self --recipe loom --driver go --param parent=<parent-branch>"
 	tests := []struct {
 		verb       string
 		wantAbsent string
 		wantExtra  string
 	}{
-		{verb: "step", wantAbsent: `exactly as "lyx loom start" does`, wantExtra: "refuses without one"},
+		{verb: "step", wantAbsent: `exactly as "lym loom start" does`, wantExtra: "refuses without one"},
 		{verb: "run"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.verb, func(t *testing.T) {
 			t.Parallel()
 			long := strings.Join(strings.Fields(loomVerbCommand(&loomCLI{}, tt.verb).Long), " ")
-			wants := []string{"lyx loom start", driverlessSeed, "parent_branch", "lyx loom step", tt.wantExtra}
+			wants := []string{"lym loom start", driverlessSeed, "parent_branch", "lym loom step", tt.wantExtra}
 			for _, want := range wants {
 				if !strings.Contains(long, want) {
 					t.Errorf("%s help lacks %q:\n%s", tt.verb, want, long)
 				}
 			}
-			if seed, step := strings.Index(long, driverlessSeed), strings.Index(long, "lyx loom step"); seed < 0 || step < seed {
-				t.Errorf("%s help names \"lyx loom step\" at %d before the driverless seed at %d", tt.verb, step, seed)
+			if seed, step := strings.Index(long, driverlessSeed), strings.Index(long, "lym loom step"); seed < 0 || step < seed {
+				t.Errorf("%s help names \"lym loom step\" at %d before the driverless seed at %d", tt.verb, step, seed)
 			}
 			if tt.wantAbsent != "" && strings.Contains(long, tt.wantAbsent) {
 				t.Errorf("%s help still holds %q", tt.verb, tt.wantAbsent)
@@ -207,7 +207,7 @@ func TestVerbRefusals(t *testing.T) {
 		wantRemedy string
 		// wantAlso, when set, is a second remedy the output must hold.
 		wantAlso string
-		// treeArgs, when set, runs these arguments through the whole loom command tree, mounted under a parent as in lyx, instead of the one verb.
+		// treeArgs, when set, runs these arguments through the whole loom command tree, mounted under a parent as in lym, instead of the one verb.
 		treeArgs []string
 	}{
 		{
@@ -225,18 +225,18 @@ func TestVerbRefusals(t *testing.T) {
 		{
 			name:       "Run_SeedMissing",
 			verb:       "run",
-			wantRemedy: `lyx loom start`,
-			wantAlso:   `lyx loom step`,
+			wantRemedy: `lym loom start`,
+			wantAlso:   `lym loom step`,
 		},
 		{
 			name:       "Pause_AbsentFile",
 			verb:       "pause",
-			wantRemedy: `lyx loom start`,
+			wantRemedy: `lym loom start`,
 		},
 		{
 			name:       "Status_NotFound",
 			verb:       "status",
-			wantRemedy: `lyx loom start`,
+			wantRemedy: `lym loom start`,
 		},
 	}
 
@@ -253,7 +253,7 @@ func TestVerbRefusals(t *testing.T) {
 			var out bytes.Buffer
 			var exitCode int
 			if tt.treeArgs != nil {
-				root := &cobra.Command{Use: "lyx"}
+				root := &cobra.Command{Use: "lym"}
 				root.AddCommand(Command())
 				exitCode = clihelp.Execute(root, &out, append([]string{"loom"}, tt.treeArgs...))
 			} else {
@@ -281,7 +281,7 @@ func TestVerbRefusals(t *testing.T) {
 //
 //testtiming:keep pins specFor's scratch directory from the location and run-id, the friction directory passed through, and a nil location giving no scratch directory; its covering tests run specFor without asserting those fields
 func TestSpecFor_ScratchAndFrictionDir(t *testing.T) {
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 
 	t.Run("ScratchDirFromLocationAndRunID", func(t *testing.T) {
 		c := &loomCLI{location: loc, runID: "self", caller: "orch"}
@@ -366,13 +366,13 @@ func TestSpecFor_ScratchAndFrictionDir(t *testing.T) {
 }
 
 // TestPauseCmd_BareLoomPauseRefusesNamingBothWaysForward runs loom's pause verb on a hand-populated receiver over a running status at Plan-Write:
-// a flagless pause refuses naming `lyx tender pause <slug>` and `lyx loom pause --after Plan-Write`, and leaves the status file byte-identical.
+// a flagless pause refuses naming `lym tender pause <slug>` and `lym loom pause --after Plan-Write`, and leaves the status file byte-identical.
 func TestPauseCmd_BareLoomPauseRefusesNamingBothWaysForward(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
 	c := &loomCLI{
-		location: &lyxcwd.Location{HubPath: dir, WorktreeName: "some-slug", AnchorRel: "."},
+		location: &lymcwd.Location{HubPath: dir, WorktreeName: "some-slug", AnchorRel: "."},
 		shedPaths: shedbuild.ShedPaths{
 			StatusPath:     filepath.Join(dir, "status.json"),
 			StatusLockPath: filepath.Join(dir, "status.json.lock"),
@@ -392,7 +392,7 @@ func TestPauseCmd_BareLoomPauseRefusesNamingBothWaysForward(t *testing.T) {
 	if exitCode := clihelp.Execute(loomVerbCommand(c, "pause"), &out, nil); exitCode != 1 {
 		t.Fatalf("bare pause exit code = %d; want 1; output: %s", exitCode, out.String())
 	}
-	for _, want := range []string{`lyx tender pause some-slug`, `lyx loom pause --after Plan-Write`} {
+	for _, want := range []string{`lym tender pause some-slug`, `lym loom pause --after Plan-Write`} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("bare pause output %q does not name %q", out.String(), want)
 		}

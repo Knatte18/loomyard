@@ -364,11 +364,11 @@ func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 	}
 
 	if incoming.Kind == KindNote && len(incoming.DependsOn) > 0 {
-		return fmt.Errorf("note %q has depends_on, and only a task can depend on another entry: clear it with \"lyx board set-deps\", or make the entry a task with \"lyx board promote\"", incoming.Slug)
+		return fmt.Errorf("note %q has depends_on, and only a task can depend on another entry: clear it with \"lym board set-deps\", or make the entry a task with \"lym board promote\"", incoming.Slug)
 	}
 	for _, dep := range incoming.DependsOn {
 		if snapshotIndex[dep].Kind == KindNote {
-			return fmt.Errorf("%q depends on note %q, and a note cannot be depended on: promote %q with \"lyx board promote\", or drop the dependency with \"lyx board set-deps\"", incoming.Slug, dep, dep)
+			return fmt.Errorf("%q depends on note %q, and a note cannot be depended on: promote %q with \"lym board promote\", or drop the dependency with \"lym board set-deps\"", incoming.Slug, dep, dep)
 		}
 	}
 	if incoming.Kind == KindNote {
@@ -379,7 +379,7 @@ func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 			}
 		}
 		if len(dependents) > 0 {
-			return fmt.Errorf("note %q cannot be a note: %s depend on it; clear their depends_on with \"lyx board set-deps\", or keep the entry a task", incoming.Slug, strings.Join(dependents, ", "))
+			return fmt.Errorf("note %q cannot be a note: %s depend on it; clear their depends_on with \"lym board set-deps\", or keep the entry a task", incoming.Slug, strings.Join(dependents, ", "))
 		}
 	}
 
@@ -728,7 +728,7 @@ func (s *Store) Promote(idOrSlug any) (task Task, changed bool, err error) {
 		return Task{}, false, fmt.Errorf("task not found: %v", idOrSlug)
 	}
 	if current.Kind == KindProject {
-		return Task{}, false, fmt.Errorf("entry %q is a project, and a project is never made a task: make it a beam with `lyx beam create %s`", current.Slug, current.Slug)
+		return Task{}, false, fmt.Errorf("entry %q is a project, and a project is never made a task: make it a beam with `lym beam create %s`", current.Slug, current.Slug)
 	}
 	if current.Kind == KindTask {
 		return current, false, nil
@@ -958,7 +958,7 @@ func (s *Store) checkRemovedProjectsUnnamed(projected []Task, incoming Task, rem
 			members = append(members, incoming.Slug)
 		}
 		if len(members) > 0 {
-			return fmt.Errorf("cannot remove project %q: %s still name it in project: move them to another project, or drop their project, with `lyx board upsert` first", slug, strings.Join(members, ", "))
+			return fmt.Errorf("cannot remove project %q: %s still name it in project: move them to another project, or drop their project, with `lym board upsert` first", slug, strings.Join(members, ", "))
 		}
 	}
 	return nil

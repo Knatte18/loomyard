@@ -115,7 +115,7 @@ func registeredBodies(t *testing.T) map[string]string {
 // TestStencils_OpeningStencilsRenderParentDirective fails when a role's opening stencil is unregistered or lacks the parent directive marker.
 //
 //testtiming:keep pins PATTERN-parent-directive's marker on every role's opening stencil, a guard that fires which no other test asserts
-//lyx:guard
+//lym:guard
 func TestStencils_OpeningStencilsRenderParentDirective(t *testing.T) {
 	t.Parallel()
 
@@ -127,7 +127,7 @@ func TestStencils_OpeningStencilsRenderParentDirective(t *testing.T) {
 // TestStencils_OpeningStencilsRenderEditDirective fails when a role's opening stencil is unregistered or lacks the edit directive marker.
 //
 //testtiming:keep pins PATTERN-parent-directive's marker on every role's opening stencil, a guard that fires which no other test asserts
-//lyx:guard
+//lym:guard
 func TestStencils_OpeningStencilsRenderEditDirective(t *testing.T) {
 	t.Parallel()
 
@@ -139,7 +139,7 @@ func TestStencils_OpeningStencilsRenderEditDirective(t *testing.T) {
 // TestStencils_NoEditRuleRestatement fails for any registered stencil other than edit-directive with a sentence that restates the edit rule.
 //
 //testtiming:keep pins PATTERN-parent-directive's rule that the edit-directive stencil is the only statement of the edit rule, a guard that fires which no other test asserts
-//lyx:guard
+//lym:guard
 func TestStencils_NoEditRuleRestatement(t *testing.T) {
 	t.Parallel()
 
@@ -156,7 +156,7 @@ func TestStencils_NoEditRuleRestatement(t *testing.T) {
 // TestStencils_NoUnboundedAskOperator fails for any registered stencil outside the orch family with an ask-the-operator sentence that carries no prohibition word.
 //
 //testtiming:keep pins PATTERN-parent-directive's ban on an unbounded ask-the-operator sentence in a spawned role's stencil, a guard that fires which no other test asserts
-//lyx:guard
+//lym:guard
 func TestStencils_NoUnboundedAskOperator(t *testing.T) {
 	t.Parallel()
 

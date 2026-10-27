@@ -17,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
@@ -41,12 +41,12 @@ func TestAwaitRunLockOrPass(t *testing.T) {
 	}{
 		{
 			name: "HubEntryUnderAParentLockRefusesWithTheNoSlugResume", holdLock: true, paused: true, hubEntry: true, parentLock: true,
-			wantContains:    []string{"lyx tender resume` with no slug", "lifts every live entry of the hub"},
-			wantNotContains: []string{"lyx tender resume slug"},
+			wantContains:    []string{"lym tender resume` with no slug", "lifts every live entry of the hub"},
+			wantNotContains: []string{"lym tender resume slug"},
 		},
 		{
 			name: "SlugEntryUnderAParentLockRefusesWithTheSlugResume", holdLock: true, paused: true, parentLock: true,
-			wantContains: []string{"lyx tender resume slug"},
+			wantContains: []string{"lym tender resume slug"},
 		},
 		{name: "WaitingMarkerOfTheHoldersPidPassesUnderAParentLock", holdLock: true, parentLock: true, waiting: true, wantPass: true},
 		{name: "PausedWithNoParentLockPasses", holdLock: true, paused: true, wantPass: true},
@@ -63,7 +63,7 @@ func TestAwaitRunLockOrPass(t *testing.T) {
 				t.Fatalf("create the task root: %v", err)
 			}
 			gitkit.MustRun(t, taskRoot, "git", "init")
-			task, err := lyxcwd.ResolveWorktree(taskRoot)
+			task, err := lymcwd.ResolveWorktree(taskRoot)
 			if err != nil {
 				t.Fatalf("ResolveWorktree: %v", err)
 			}
@@ -78,7 +78,7 @@ func TestAwaitRunLockOrPass(t *testing.T) {
 				defer func() { _ = held.Release() }()
 			}
 
-			prime := &lyxcwd.Location{HubPath: hub, AnchorRel: "."}
+			prime := &lymcwd.Location{HubPath: hub, AnchorRel: "."}
 			startTime, _ := proc.StartTime(pid)
 			if tt.parentLock {
 				store := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoardDir(hub))}

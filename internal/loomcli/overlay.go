@@ -1,4 +1,4 @@
-// overlay.go reads and words the stdin side of `lyx loom validate-plan --overlay`: the proposed plan file contents the verb checks in memory, and the refusal for each way that input or its names are unusable.
+// overlay.go reads and words the stdin side of `lym loom validate-plan --overlay`: the proposed plan file contents the verb checks in memory, and the refusal for each way that input or its names are unusable.
 
 package loomcli
 
@@ -108,14 +108,14 @@ func overlaidPlan(in io.Reader, planDir string) (plan *planparser.Plan, refusal 
 // It returns "" for any other error, which is a plan that does not parse.
 func overlayRefusal(err error) string {
 	const prefix = "loom: validate-plan --overlay: "
-	const objectForm = "pipe one JSON object mapping plan file names to their full proposed content on stdin, as `lyx loom validate-plan --help` shows"
+	const objectForm = "pipe one JSON object mapping plan file names to their full proposed content on stdin, as `lym loom validate-plan --help` shows"
 	switch {
 	case errors.Is(err, errOverlayNoInput):
 		return prefix + err.Error() + "; way forward: " + objectForm
 	case errors.Is(err, errOverlayMalformed):
 		return prefix + err.Error() + "; way forward: " + objectForm + ", with distinct names and string values"
 	case errors.Is(err, planparser.ErrOverlayName):
-		return prefix + err.Error() + "; way forward: name only `00-overview.md` or a card file the Card Index lists, and add or remove a card with `lyx loom insert-card` or `lyx loom remove-card`"
+		return prefix + err.Error() + "; way forward: name only `00-overview.md` or a card file the Card Index lists, and add or remove a card with `lym loom insert-card` or `lym loom remove-card`"
 	case errors.Is(err, planparser.ErrOverlayFileMissing):
 		return prefix + err.Error() + "; way forward: write the card file the Card Index names, then re-run"
 	}

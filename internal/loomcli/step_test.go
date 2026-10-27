@@ -18,7 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -96,7 +96,7 @@ func TestStepCmd_BusyRefusal_BeforeBootstrap(t *testing.T) {
 	t.Cleanup(func() { _ = held.Release() })
 
 	c := &loomCLI{
-		location:    &lyxcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."},
+		location:    &lymcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."},
 		frictionDir: filepath.Join(dir, "friction"),
 		shedPaths: shedbuild.ShedPaths{
 			LockPath:       lockPath,
@@ -130,8 +130,8 @@ func TestStepCmd_BusyRefusal_BeforeBootstrap(t *testing.T) {
 	if !strings.Contains(out.String(), `"transient":""`) {
 		t.Errorf("stepCmd() output missing transient:\"\"; got: %q", out.String())
 	}
-	if !strings.Contains(out.String(), "lyx loom pause --after "+loomshed.NameWebster) {
-		t.Errorf("stepCmd() output missing the lyx loom pause --after remedy; got: %q", out.String())
+	if !strings.Contains(out.String(), "lym loom pause --after "+loomshed.NameWebster) {
+		t.Errorf("stepCmd() output missing the lym loom pause --after remedy; got: %q", out.String())
 	}
 
 	if _, found, err := shedrun.ReadSeed(c.location, shedrun.SelfRunID); err != nil || found {

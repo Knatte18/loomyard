@@ -306,7 +306,7 @@ func TestCancelRun(t *testing.T) {
 				if !f.endRequest.Keep || f.endRequest.Slug != cancelSlug {
 					t.Errorf("EndForCancel request = %+v; want Keep for the slug", f.endRequest)
 				}
-				wantWay := `run "lyx batten cancel some-slug --remove" before rerunning it`
+				wantWay := `run "lym batten cancel some-slug --remove" before rerunning it`
 				if r.WayForward != wantWay || r.PairRemoved {
 					t.Errorf("report way forward, pair removed = %q, %v; want %q, false", r.WayForward, r.PairRemoved, wantWay)
 				}
@@ -403,21 +403,21 @@ func TestCancelRun(t *testing.T) {
 		{
 			name:    "HubPauseRefuses",
 			setup:   func(f *cancelFake) { f.hubPaused = true },
-			wantErr: `a hub pause covers the prime; way forward: run "lyx tender resume", then "lyx batten cancel some-slug" again`,
+			wantErr: `a hub pause covers the prime; way forward: run "lym tender resume", then "lym batten cancel some-slug" again`,
 			noCalls: append([]string{"ExemptGate", "TaskWorktreePresent", "TakeMarker"}, destructiveCancelCalls...),
 			marker:  "none",
 		},
 		{
 			name:    "ReachedParentRefuses",
 			setup:   func(f *cancelFake) { f.reached = true },
-			wantErr: `way forward: run "lyx batten run some-slug" to finish the landing, then "lyx batten cleanup --apply"`,
+			wantErr: `way forward: run "lym batten run some-slug" to finish the landing, then "lym batten cleanup --apply"`,
 			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
 			marker:  "none",
 		},
 		{
 			name:    "EndedDoneWithRecordsRefuses",
 			setup:   func(f *cancelFake) { f.worktreePresent = true; f.report = entry(fabricengine.EntryEnded) },
-			wantErr: `some-slug was landed by another machine; way forward: run "lyx cleanup --apply" from the prime`,
+			wantErr: `some-slug was landed by another machine; way forward: run "lym cleanup --apply" from the prime`,
 			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
 			marker:  "none",
 		},
@@ -444,21 +444,21 @@ func TestCancelRun(t *testing.T) {
 		{
 			name:    "OwnedElsewherePresentRefuses",
 			setup:   func(f *cancelFake) { f.worktreePresent = true; f.report = entry(fabricengine.EntryOwnedElsewhere) },
-			wantErr: `some-slug is owned by machine other-machine; way forward: run "lyx adopt some-beam" on this machine first, or "lyx batten cancel some-slug" on other-machine`,
+			wantErr: `some-slug is owned by machine other-machine; way forward: run "lym adopt some-beam" on this machine first, or "lym batten cancel some-slug" on other-machine`,
 			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
 			marker:  "none",
 		},
 		{
 			name:    "OwnedElsewhereAbsentRefuses",
 			setup:   func(f *cancelFake) { f.owner, f.subject = "other-machine", "some-beam" },
-			wantErr: `some-slug is owned by machine other-machine; way forward: run "lyx adopt some-beam" on this machine first`,
+			wantErr: `some-slug is owned by machine other-machine; way forward: run "lym adopt some-beam" on this machine first`,
 			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
 			marker:  "none",
 		},
 		{
 			name:    "OwnedElsewhereAbsentRootTaskNamesRoot",
 			setup:   func(f *cancelFake) { f.owner, f.subject = "other-machine", "root" },
-			wantErr: `some-slug is owned by machine other-machine; way forward: run "lyx adopt root" on this machine first`,
+			wantErr: `some-slug is owned by machine other-machine; way forward: run "lym adopt root" on this machine first`,
 			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
 			marker:  "none",
 		},
@@ -468,7 +468,7 @@ func TestCancelRun(t *testing.T) {
 				f.worktreePresent, f.report = true, fabricengine.OriginReport{Unreachable: true}
 				f.owner, f.subject = "other-machine", "some-beam"
 			},
-			wantErr: `some-slug is owned by machine other-machine; way forward: run "lyx adopt some-beam" on this machine first`,
+			wantErr: `some-slug is owned by machine other-machine; way forward: run "lym adopt some-beam" on this machine first`,
 			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
 			marker:  "none",
 		},
@@ -479,7 +479,7 @@ func TestCancelRun(t *testing.T) {
 				f.report = entry(fabricengine.EntryStopped)
 				f.report.Branches = []fabricengine.BranchOutcome{{Branch: "some-slug-records", Repo: "records", Slug: cancelSlug, State: fabricengine.BranchDiverged, WayForward: "reset it"}}
 			},
-			wantErr: `cannot cancel "some-slug": branch some-slug-records is diverged against origin; reset it; then run "lyx batten cancel some-slug" again`,
+			wantErr: `cannot cancel "some-slug": branch some-slug-records is diverged against origin; reset it; then run "lym batten cancel some-slug" again`,
 			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
 			marker:  "none",
 		},
@@ -502,28 +502,28 @@ func TestCancelRun(t *testing.T) {
 					{Branch: "some-slug-records", Repo: "records", Slug: cancelSlug, State: fabricengine.BranchAnchorStopped, WayForward: "run the set"},
 				}
 			},
-			wantErr: `cannot cancel "some-slug": branch some-slug is diverged against origin; reset it; then run "lyx batten cancel some-slug" again`,
+			wantErr: `cannot cancel "some-slug": branch some-slug is diverged against origin; reset it; then run "lym batten cancel some-slug" again`,
 			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
 			marker:  "none",
 		},
 		{
 			name:    "ReconcileErrorRefuses",
 			setup:   func(f *cancelFake) { f.worktreePresent = true; f.reconcileErr = errors.New("git is gone") },
-			wantErr: `git is gone; way forward: fix the cause it names, then run "lyx batten cancel some-slug" again`,
+			wantErr: `git is gone; way forward: fix the cause it names, then run "lym batten cancel some-slug" again`,
 			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
 			marker:  "none",
 		},
 		{
 			name:    "PullErrorRefuses",
 			setup:   func(f *cancelFake) { f.pullErr = errors.New("board is dirty") },
-			wantErr: `board is dirty; way forward: fix the cause it names, then run "lyx batten cancel some-slug" again`,
+			wantErr: `board is dirty; way forward: fix the cause it names, then run "lym batten cancel some-slug" again`,
 			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
 			marker:  "none",
 		},
 		{
 			name:    "WindowsLiveRecordAtFirstListRefusesAndRemovesAFreshMarker",
 			setup:   func(f *cancelFake) { f.goos = "windows"; f.recordLists = [][]runproc.Record{nil, {liveRecord}} },
-			wantErr: `pid 4242 (batten): taskkill /PID 4242 /T /F; way forward: end each with its taskkill line, then run "lyx batten cancel some-slug" again`,
+			wantErr: `pid 4242 (batten): taskkill /PID 4242 /T /F; way forward: end each with its taskkill line, then run "lym batten cancel some-slug" again`,
 			noCalls: destructiveCancelCalls,
 			marker:  "removed",
 		},
@@ -565,7 +565,7 @@ func TestCancelRun(t *testing.T) {
 			setup: func(f *cancelFake) {
 				f.recordsPresent, f.boardStatus, f.boardFound, f.statusFound = false, nil, false, false
 			},
-			wantErr: `nothing of some-slug is left to cancel; way forward: check it with "lyx board list"`,
+			wantErr: `nothing of some-slug is left to cancel; way forward: check it with "lym board list"`,
 			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
 			marker:  "none",
 		},
@@ -575,7 +575,7 @@ func TestCancelRun(t *testing.T) {
 				f.recordsPresent, f.boardStatus, f.boardFound = false, nil, false
 				f.parts = fabricengine.PairParts{TaskBranch: true}
 			},
-			wantErr: `run "lyx batten cancel some-slug --remove", which archives and deletes its task branch`,
+			wantErr: `run "lym batten cancel some-slug --remove", which archives and deletes its task branch`,
 			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
 			marker:  "none",
 		},
@@ -595,7 +595,7 @@ func TestCancelRun(t *testing.T) {
 				f.recordsPresent, f.boardStatus, f.boardFound = false, nil, false
 				f.pullErr = pullUnreachable
 			},
-			wantErr: `origin was unreachable, so the task branch of some-slug on origin could not be read; way forward: run "lyx batten cancel some-slug --remove" again once origin answers`,
+			wantErr: `origin was unreachable, so the task branch of some-slug on origin could not be read; way forward: run "lym batten cancel some-slug --remove" again once origin answers`,
 			noCalls: append([]string{"TakeMarker", "TaskBranchOnOrigin"}, destructiveCancelCalls...),
 			marker:  "none",
 		},
@@ -626,7 +626,7 @@ func TestCancelRun(t *testing.T) {
 		},
 		{
 			name:    "EndForCancelRefusalLeavesTheMarker",
-			setup:   func(f *cancelFake) { f.endErr = errors.New("driver busy; run \"lyx batten cancel some-slug\" again") },
+			setup:   func(f *cancelFake) { f.endErr = errors.New("driver busy; run \"lym batten cancel some-slug\" again") },
 			wantErr: "driver busy",
 			noCalls: []string{"StopTackler", "RemovePair", "RemoveRecords", "ClearClaim", "LiftPauses"},
 			marker:  "left",
@@ -638,7 +638,7 @@ func TestCancelRun(t *testing.T) {
 				f.parts = fabricengine.PairParts{TaskWorktree: true}
 				f.removeErr = errors.New("dirty beyond force")
 			},
-			wantErr: `dirty beyond force; way forward: fix the cause it names, then run "lyx batten cancel some-slug --remove" again`,
+			wantErr: `dirty beyond force; way forward: fix the cause it names, then run "lym batten cancel some-slug --remove" again`,
 			noCalls: []string{"DiscardTaskBranch", "RemoveRecords", "ClearClaim", "LiftPauses"},
 			marker:  "left",
 		},
@@ -649,7 +649,7 @@ func TestCancelRun(t *testing.T) {
 				f.parts = fabricengine.PairParts{TaskBranch: true}
 				f.discardErr = errors.New("archive tag push refused")
 			},
-			wantErr: `archive tag push refused; way forward: fix the cause it names, then run "lyx batten cancel some-slug --remove" again`,
+			wantErr: `archive tag push refused; way forward: fix the cause it names, then run "lym batten cancel some-slug --remove" again`,
 			noCalls: []string{"RemoveRecords", "ClearClaim", "LiftPauses"},
 			marker:  "left",
 		},
@@ -694,7 +694,7 @@ func TestCancelRun(t *testing.T) {
 		{
 			name:    "RecordsRemovalFailureStopsBeforeTheClaim",
 			setup:   func(f *cancelFake) { f.recordsErr = errors.New("commit failed") },
-			wantErr: `could not remove the records of some-slug: commit failed; way forward: fix the cause, then run "lyx batten cancel some-slug" again`,
+			wantErr: `could not remove the records of some-slug: commit failed; way forward: fix the cause, then run "lym batten cancel some-slug" again`,
 			noCalls: []string{"ClearClaim", "LiftPauses"},
 			marker:  "left",
 		},
@@ -708,10 +708,10 @@ func TestCancelRun(t *testing.T) {
 			name: "BeamWithMembersRefusesNamingThemWithNothingTakenOrEnded",
 			setup: func(f *cancelFake) {
 				f.beamProject = true
-				f.landRefusal = errors.New("battencli: the beam some-slug cannot land while work remains under it; way forward: the open entry m is a member of the beam: land it with `lyx batten run m`, or end it with `lyx batten cancel m --remove`")
+				f.landRefusal = errors.New("battencli: the beam some-slug cannot land while work remains under it; way forward: the open entry m is a member of the beam: land it with `lym batten run m`, or end it with `lym batten cancel m --remove`")
 			},
 			wantErr:     "the open entry m is a member of the beam",
-			wantErrAlso: []string{"lyx batten run m", `then run "lyx batten cancel some-slug" again`},
+			wantErrAlso: []string{"lym batten run m", `then run "lym batten cancel some-slug" again`},
 			wantCalls:   []string{"BeamProject", "ReconcileHub", "LandRefusal", "LandingHeld"},
 			noCalls:     append([]string{"TakeMarker", "LandBlockers", "StopBeam"}, destructiveCancelCalls...),
 			marker:      "none",
@@ -721,7 +721,7 @@ func TestCancelRun(t *testing.T) {
 			setup: func(f *cancelFake) {
 				f.beamProject = true
 				f.landingHeld = true
-				f.landRefusal = errors.New("battencli: the beam some-slug cannot land while work remains under it; way forward: land it with `lyx batten run m`")
+				f.landRefusal = errors.New("battencli: the beam some-slug cannot land while work remains under it; way forward: land it with `lym batten run m`")
 				f.landBlockers = BeamLandBlockers{
 					Members: []BeamLandMember{
 						{Slug: "m", HasPair: true},
@@ -731,14 +731,14 @@ func TestCancelRun(t *testing.T) {
 					ChildPairs: []string{"p"},
 				}
 			},
-			wantErr: "the open entry m is a member of the beam: end it with `lyx batten cancel m --remove`, run in the beam's parent worktree, then move its `project` off the beam with `lyx board upsert`",
+			wantErr: "the open entry m is a member of the beam: end it with `lym batten cancel m --remove`, run in the beam's parent worktree, then move its `project` off the beam with `lym board upsert`",
 			wantErrAlso: []string{
-				"the open entry k is a member of the beam: end it with `lyx batten cancel k --remove`",
-				"the open entry n is a member of the beam with no run status: move its `project` off the beam with `lyx board upsert`",
-				"the pair p was forked from the beam: end it with `lyx batten cancel p --remove`",
-				`then run "lyx batten cancel some-slug" again`,
+				"the open entry k is a member of the beam: end it with `lym batten cancel k --remove`",
+				"the open entry n is a member of the beam with no run status: move its `project` off the beam with `lym board upsert`",
+				"the pair p was forked from the beam: end it with `lym batten cancel p --remove`",
+				`then run "lym batten cancel some-slug" again`,
 			},
-			errAbsent: []string{"lyx batten run"},
+			errAbsent: []string{"lym batten run"},
 			wantCalls: []string{"BeamProject", "ReconcileHub", "LandRefusal", "LandingHeld", "LandBlockers"},
 			noCalls:   append([]string{"TakeMarker", "StopBeam"}, destructiveCancelCalls...),
 			marker:    "none",
@@ -747,7 +747,7 @@ func TestCancelRun(t *testing.T) {
 			name:        "BeamWithOriginUnreachableRefusesNamingTheReRun",
 			setup:       func(f *cancelFake) { f.beamProject = true; f.hubReport = fabricengine.OriginReport{Unreachable: true} },
 			wantErr:     "the members of the beam some-slug could not be read against it",
-			wantErrAlso: []string{`run "lyx batten cancel some-slug" once origin answers`},
+			wantErrAlso: []string{`run "lym batten cancel some-slug" once origin answers`},
 			noCalls:     append([]string{"TakeMarker", "LandRefusal", "StopBeam"}, destructiveCancelCalls...),
 			marker:      "none",
 		},
@@ -755,7 +755,7 @@ func TestCancelRun(t *testing.T) {
 			name:        "BeamWhoseHubReconcileFailsRefusesNamingTheReRun",
 			setup:       func(f *cancelFake) { f.beamProject = true; f.hubReconcileErr = errors.New("git failed") },
 			wantErr:     "the origin reconcile of the hub failed: git failed",
-			wantErrAlso: []string{`then run "lyx batten cancel some-slug" again`},
+			wantErrAlso: []string{`then run "lym batten cancel some-slug" again`},
 			noCalls:     append([]string{"TakeMarker", "LandRefusal", "StopBeam"}, destructiveCancelCalls...),
 			marker:      "none",
 		},
@@ -801,7 +801,7 @@ func TestCancelRun(t *testing.T) {
 					if !r.EndOnly || r.RecordsRemoved || r.ClaimCleared {
 						t.Errorf("report = %+v; want end-only with nothing removed or cleared", r)
 					}
-					if !strings.Contains(f.notices[0], `run "lyx batten cancel some-slug`) || !strings.Contains(f.notices[0], "once origin answers") {
+					if !strings.Contains(f.notices[0], `run "lym batten cancel some-slug`) || !strings.Contains(f.notices[0], "once origin answers") {
 						t.Errorf("notice = %q; want it to name the cancel to run once origin answers", f.notices[0])
 					}
 					if f.locksHeld != 0 {

@@ -1,15 +1,15 @@
-// Package loomcli is the `lyx loom` command: it bootstraps and drives one task's phase machine per worktree on the generic shed engine, and carries the verbs through which the operator and the run's parent answer its gates.
+// Package loomcli is the `lym loom` command: it bootstraps and drives one task's phase machine per worktree on the generic shed engine, and carries the verbs through which the operator and the run's parent answer its gates.
 //
 // The run, step, status, pause and goto bodies are the shared `internal/shedverbs` verbs, mounted here with loom's own text.
 // Friction-Reflect, the last row, runs the Tier 2 friction reflection under run and under step alike, before the run records done.
-// A `blocked` or `failed` halt, and an interrupted stop, write their Go halt note and spawn no reflection, so no stop holds the driver lock for a friction session and `lyx loom resume` never waits on one; the note waits for the run's Friction-Reflect row, which reflects every note in the friction directory.
+// A `blocked` or `failed` halt, and an interrupted stop, write their Go halt note and spawn no reflection, so no stop holds the driver lock for a friction session and `lym loom resume` never waits on one; the note waits for the run's Friction-Reflect row, which reflects every note in the friction directory.
 // An interrupted stop's note carries the `interrupted-stop` anomaly kind, never `producer-hard-failure`, with the stop's cause as its reason and the in-flight step's trace file where the stop knows it.
 //
 // A run seeded with the recipe `pawl` is a beam's life, batten's Seed-Child seeds it in the beam's pair.
 // Its shed reads Beam-Up, Beam-Await, Parent-Align, the Code-Review perch, Beam-Describe, Finalize and Beam-Down, with no plan and no reroute edge.
 // wire fills `Env.Pawl` for it through `pawlDeps`: the run's seed id is the seed's start time, the status is written on the beam's project entry through the board, and Beam-Up's one step is `orchcli.BeamUp` with no prepare, since the run already judged origin.
 // The beam's dobby is stopped through `runproc.EndRole` by its `RoleDobby` record, and restarted through `dobbyengine.EnsureLive` naming the beam alone.
-// Beam-Await's re-check reads `battencli.ReadBeamLandBlockers` and `battencli.BeamLandRefusal` with the beam's owner and its parent's owner, and words each failure as `pawlRecheckLines` does, naming `lyx adopt <beam>` or the parent's adopt subject, `root` for the prime.
+// Beam-Await's re-check reads `battencli.ReadBeamLandBlockers` and `battencli.BeamLandRefusal` with the beam's owner and its parent's owner, and words each failure as `pawlRecheckLines` does, naming `lym adopt <beam>` or the parent's adopt subject, `root` for the prime.
 // Its snapshot is the beam project entry's, written and committed because the Code-Review perch reads its answer key from the committed tree.
 // A running shed also watches the land request's directory, so a request wakes Beam-Await at once.
 // Beam-Describe writes the change description from the beam's board entry and the commits the beam adds over the parent branch its pair records.
@@ -19,17 +19,17 @@
 //
 // # Start
 //
-// `lyx loom start` works in order.
+// `lym loom start` works in order.
 // It resolves the recorded parent branch, seeds the status file when absent and commits the seed into the fabric before anything else touches it.
 // An unseeded run is seeded with the driver `loom.yaml`'s `driver_kind` resolves to over `shed.yaml`'s, `llm` by default;
 // a seeded run keeps its recorded driver whatever the key says later.
 // It brings up the worktree's tmux session;
 // it ensures the status strand on either driver, and the per-hub watchdog daemon is spawned best-effort.
-// The status strand runs the hidden `lyx loom checklist` verb: the session's overview window, drawing the checklist frame: the recipe's rows in order, each entry numbered after its box and a review segment taking one number, each with its box, a row the run passed on a false entry gate and never visited boxed `[-]` apart from one not reached, the time spent in it, its visit count and its visit lines under it, each carrying no output path, a gate line per gate entry under a visit that recorded gate spans, opening with the UTC clock time its gate entry started, the visit after a gate row's refusal marked as rework for it and its time added to the gate row's line, a review segment's rounds each carrying their total, every closed time drawn to the second and every time that includes the open visit in whole minutes, then the run's state line, with the note of what a running run waits on (the same note `lyx loom status` reports), and the wait line.
+// The status strand runs the hidden `lym loom checklist` verb: the session's overview window, drawing the checklist frame: the recipe's rows in order, each entry numbered after its box and a review segment taking one number, each with its box, a row the run passed on a false entry gate and never visited boxed `[-]` apart from one not reached, the time spent in it, its visit count and its visit lines under it, each carrying no output path, a gate line per gate entry under a visit that recorded gate spans, opening with the UTC clock time its gate entry started, the visit after a gate row's refusal marked as rework for it and its time added to the gate row's line, a review segment's rounds each carrying their total, every closed time drawn to the second and every time that includes the open visit in whole minutes, then the run's state line, with the note of what a running run waits on (the same note `lym loom status` reports), and the wait line.
 // A Stuck visit whose status entry records where Shed routed it reads `bounced` and an awaiting one reads `escalated`, in this window only.
 // The verb reads the status file and the seed without arming a run, and reports no content size to reed.
 // Right after ensuring the status strand, every start entry, a fresh run, a re-entrant start on a live run and a resume of a parked run, turns the session's follow state on and selects the run's relevant window;
-// a failure there is logged and never fails the start, and `lyx loom resume`, which never brings reed up, leaves the follow state as it is.
+// a failure there is logged and never fails the start, and `lym loom resume`, which never brings reed up, leaves the follow state as it is.
 // Unless a driver is already alive, it spawns the driver the seed records, which is never chosen by a flag;
 // a second invocation while a driver runs ensures the substrate instead.
 //
@@ -40,14 +40,14 @@
 // a landed resume or a fresh spawn removes the file.
 // A live loom driver over a run halted at a hand-back (awaiting, blocked, paused or failed) that has not yet written its park marker is still writing its stop report, so start refuses with the kind `driver_not_parked`;
 // a live driver over a running run is left working.
-// Before anything else, start and resume refuse a run whose status file exists and that another machine owns, with the kind `owned_elsewhere` and the owner's name, naming `lyx adopt <subject>`, the beam or `root` the owner verdict carries;
+// Before anything else, start and resume refuse a run whose status file exists and that another machine owns, with the kind `owned_elsewhere` and the owner's name, naming `lym adopt <subject>`, the beam or `root` the owner verdict carries;
 // the owner is judged by a judge-only run-scope origin reconcile from the hub's prime, or from the local board when origin is unreachable, and nothing is written.
 // Before spawning or resuming a driver, start refuses with the kind `merge_in_progress` over an unfinished merge, naming the conflicted paths and the remedy, the fabric verbs for a fabric merge and git for one fabric did not start.
 // The exception is a run whose current producer is Parent-Align or Finalize, which goes through over a parked fabric merge-in of its own parent branch, since that row aborts and redoes it.
 // A loom driver strand reed marked retiring is never adopted: start removes it and spawns a fresh driver.
 //
 // start returns once the driver's readiness signal confirms it is up, and for a parked loom driver once delivery of the resume line is verified.
-// For the Go driver, `lyx loom drive`, the signal is the driver lock being taken, since the verb takes it first and holds it for life while the run lock is free between steps;
+// For the Go driver, `lym loom drive`, the signal is the driver lock being taken, since the verb takes it first and holds it for life while the run lock is free between steps;
 // for a loom driver it is the provider TUI coming up ready within shuttle's `startup_timeout_s`, with any one-time startup gate its provider requires dismissed along the way.
 // A readiness refusal removes the driver strand, so the next start spawns a fresh one.
 // The signal is checked only for a driver this invocation spawns, so a strand left live because shuttle got no liveness answer from reed, or could not remove the strand, is returned over by a later start without re-checking.
@@ -57,35 +57,35 @@
 // a loom driver strand writes no such log, since its pane holds its output.
 // A loom driver strand launches from the driver stencil, read from the stencils directory at start time.
 //
-// An operator session started with `lyx reed add --cmd claude --name claude` is the strand named `claude`, and the run's panes are its siblings.
-// To self-check, compare `$TMUX_PANE` against the tracked strands `lyx reed status` reports: tracked is fine;
-// set but untracked means relaunching through `lyx reed add` or proceeding without reed supervision;
+// An operator session started with `lym reed add --cmd claude --name claude` is the strand named `claude`, and the run's panes are its siblings.
+// To self-check, compare `$TMUX_PANE` against the tracked strands `lym reed status` reports: tracked is fine;
+// set but untracked means relaunching through `lym reed add` or proceeding without reed supervision;
 // unset is unconfirmed rather than failed, since psmux on Windows may not export it.
 //
 // # Resume
 //
-// `lyx loom resume` takes the bootstrap lock start takes, so the two never run at once, and decides by the run's state:
+// `lym loom resume` takes the bootstrap lock start takes, so the two never run at once, and decides by the run's state:
 //
-//   - no status file: refused, naming `lyx loom start`.
+//   - no status file: refused, naming `lym loom start`.
 //   - done: a no-op success.
 //   - awaiting at a review segment's Bouncer row with a circling decision recorded: handled as a halted run, so a live, parked driver is woken and its step acts on the decision.
 //   - awaiting at a Bouncer row with no decision: refused, naming the circling verbs and then resume.
 //   - awaiting at a Bouncer row with an unreadable decision: refused naming the file, to fix it or delete it and record the decision again.
-//   - awaiting at any other row: refused, naming the verb the run's waiting note names, after which a batten run watching the child resumes it, or `lyx batten run <slug>` from the prime when none does.
+//   - awaiting at any other row: refused, naming the verb the run's waiting note names, after which a batten run watching the child resumes it, or `lym batten run <slug>` from the prime when none does.
 //   - running: a no-op success when the driver is live or holds the run lock or the driver lock, and refused as a halted run otherwise.
 //   - halted with the run lock or the driver lock held, or with a live driver and no park marker: refused with the kind `driver_not_parked`, to retry shortly; a held driver lock means the Go driver is still settling the stop.
 //   - halted with a live driver and a park marker: resumed, refused with `merge_in_progress` over an unfinished merge under start's Publish and Finalize exception, and with `driver_busy` when the driver's pane would not take the resume line.
 //   - halted with no live driver and a seed recording the Go driver: refused over an unfinished merge with `merge_in_progress`, otherwise a Go driver is spawned, which re-steps the run unless it starts at a blocked Finalize stop under a dirty parent code checkout, where it hands back and steps nothing, and the success envelope names its pid.
-//   - halted with no live driver otherwise: refused over an unfinished merge with `merge_in_progress`, otherwise naming `lyx batten run <slug>` from the prime and then resume for a dead strand, and `lyx loom start` for a retiring strand or none.
+//   - halted with no live driver otherwise: refused over an unfinished merge with `merge_in_progress`, otherwise naming `lym batten run <slug>` from the prime and then resume for a dead strand, and `lym loom start` for a retiring strand or none.
 //
 // The driver strand is read from reed's directory, which still lists a session that died with the machine, never from the run's seed;
 // the seed is read only to tell a go-seeded run that has no driver, which gets a Go driver.
-// `lyx loom circling continue` refuses at or past the perch's hard cap, with `circling accept` or raising the cap as its way forward.
-// A resume line that cannot be delivered is refused, naming `lyx loom status` and a re-run of resume.
+// `lym loom circling continue` refuses at or past the perch's hard cap, with `circling accept` or raising the cap as its way forward.
+// A resume line that cannot be delivered is refused, naming `lym loom status` and a re-run of resume.
 //
 // # Plan card verbs
 //
-// `lyx loom insert-card <position> <slug> --intent <intent>`, `lyx loom remove-card <position>` and `lyx loom restore-renumber` are the sanctioned way to add or drop one card of the plan and renumber the cards after it.
+// `lym loom insert-card <position> <slug> --intent <intent>`, `lym loom remove-card <position>` and `lym loom restore-renumber` are the sanctioned way to add or drop one card of the plan and renumber the cards after it.
 // A renumber moves each later card's file name prefix, heading number, explicit `Commit:` prefix and Card Index number, and writes a heading-only stub for an inserted card, which the agent fills with Edit or Write.
 // A card id naming a moved card, `<N>-<slug>` or its zero-padded file form `<NN>-<slug>`, is rewritten to the card's new number in the overview and every card file, since the slug pins which card it means.
 // The success envelope carries `plan_dir`, `moved`, `created` or `removed`, `rewritten_refs` and `prose_mentions`.
@@ -107,7 +107,7 @@
 //
 // # Format verb
 //
-// `lyx loom fmt <file>...` rewrites each named `.go` file in place to its `go/format` form, in-process with no `gofmt` binary, so an agent fixes the formatting `cmd/lyx/gofmt_test.go` fails the way its edit directive names.
+// `lym loom fmt <file>...` rewrites each named `.go` file in place to its `go/format` form, in-process with no `gofmt` binary, so an agent fixes the formatting `cmd/lym/gofmt_test.go` fails the way its edit directive names.
 // It reads only the worktree root and the caller's cwd, so it joins the lightweight wiring, and its arguments are files, never a run-id.
 // `planGoFormat` checks and formats every file before any write: a path that does not exist, lies outside the worktree (a symlink resolving outside it included), does not end in `.go`, cannot be read or does not parse refuses the whole call and writes nothing.
 // The success envelope's `changed` lists the files rewritten as named; a file already formatted is left untouched and unreported.
@@ -115,12 +115,12 @@
 //
 // # Validate plan lens review
 //
-// `lyx loom validate-plan --lens-review` runs the flag-less check set plus the check that the plan directory's `lens-review.md` holds a recorded lens review, the check set of a twill Plan-Write run's own gate.
+// `lym loom validate-plan --lens-review` runs the flag-less check set plus the check that the plan directory's `lens-review.md` holds a recorded lens review, the check set of a twill Plan-Write run's own gate.
 // It runs alone: combined with `--rework`, `--require-approved` or `--overlay` it is refused before the plan is parsed.
 //
 // # Validate plan overlay
 //
-// `lyx loom validate-plan --overlay` checks the plan with proposed plan file contents laid over it, in memory, so a fix can be checked before any file is edited.
+// `lym loom validate-plan --overlay` checks the plan with proposed plan file contents laid over it, in memory, so a fix can be checked before any file is edited.
 // Stdin is one JSON object whose keys are plan file names and whose values are their full proposed content;
 // the names are `00-overview.md` and the card files the Card Index on disk lists.
 // The verb builds a `planparser.Overlay` over the plan directory, parses it, and runs the flag-less check set (`loomshed.ValidatePlan`) over the overlaid plan, reporting through the same envelope.
@@ -130,7 +130,7 @@
 //
 // # Arbiter
 //
-// `lyx loom arbiter <run-id> --envelope <path> [--report <path>]` is run only by the run's driver, at a stop it cannot settle.
+// `lym loom arbiter <run-id> --envelope <path> [--report <path>]` is run only by the run's driver, at a stop it cannot settle.
 // It spawns a cold arbiter agent on the `arbiter` model through shuttle, waits for its verdict file and prints the validated verdict.
 // The arbiter's model, timeout and spawn budget are `shed.yaml`'s `arbiter`, `arbiter_timeout_min` and `arbiter_max_spawns` under the run's recipe override, `darn.yaml`'s for a darn run and `loom.yaml`'s otherwise.
 // It is a role verb, so the orch's command index leaves it out.
@@ -163,7 +163,7 @@
 // The printed envelope carries `verdict`, `reason`, `question`, `goto`, `verbs`, `cause`, `attempt`, `attempt_dir` and `verdict_path`, and for a `resume` the `relaunch` line.
 // A `resume` the verb finds unsound reads `hand-on` with cause `precondition`: no circling decision pending at an escalation, no goto target at a `blocked` stop, a goto target the run's current row does not admit, or a goto target the told goto guard refuses.
 // The verb moves no run itself;
-// `lyx shed step <run-id> --until-stop --arbiter-attempt <N>` performs the verdict's goto under the run and status locks, once per attempt;
+// `lym shed step <run-id> --until-stop --arbiter-attempt <N>` performs the verdict's goto under the run and status locks, once per attempt;
 // a run already paused at the verdict's goto target with only goto entries since the spawn, the last naming that target, is admitted with no second goto.
 // A guard refusal inside that re-launch refuses the attempt, and the driver hands back with the refusal text.
 //
@@ -179,7 +179,7 @@
 //
 // # Go driver
 //
-// `lyx loom drive` is the hidden role verb that drives a go-seeded run, spawned by `lyx loom start`, by `lyx loom resume` for a halted go run and by a hand-over.
+// `lym loom drive` is the hidden role verb that drives a go-seeded run, spawned by `lym loom start`, by `lym loom resume` for a halted go run and by a hand-over.
 // It mounts `internal/sheddriver` with loom's seams, and serves darn runs as well as loom runs; the loop, rule table, hand-back and tackler below are that package's.
 // It takes the run's driver lock, waiting a short grace for a momentary probe to let go, and holds it for its whole life, so a settling driver reads as live while the run lock is free between steps, and a second driver refuses once the grace runs out.
 // On start it removes the park marker and the resume report.
@@ -189,7 +189,7 @@
 //
 // The loop steps the run through the shared `--until-stop` body, saves each stop envelope under the run's drive-reports directory and decides the stop by a closed rule table over the envelope's fields and the facts it reads from disk, never over a row name or the reason text.
 // The table settles a done run, a busy exit, a re-step of an interrupted step under the `reinvoke` policy up to a cap of two per stop key, and the one verify goto to the Publish failure record's target;
-// it asks the tackler at a stop no rule settles, the arbiter at an awaiting stop with a pending hard-cap or circling escalation only, after a tackler `escalate` and when an applied tackler `resume` returns to the same stop, and hands over at a binary-eligible stop whose last step ran another build than the `lyx` on disk.
+// it asks the tackler at a stop no rule settles, the arbiter at an awaiting stop with a pending hard-cap or circling escalation only, after a tackler `escalate` and when an applied tackler `resume` returns to the same stop, and hands over at a binary-eligible stop whose last step ran another build than the `lym` on disk.
 // Everything else hands back.
 // Every action appends a settle record to the friction directory, so the repair cap, the one verify retry and the one hand-over per stop key and build are counted from disk and a restarted driver keeps every cap.
 //
@@ -198,13 +198,13 @@
 // a status at another stop key is a moved run, which an orch goto sends to a re-step and anything else decides afresh, and which is never parked and gets no friction note.
 // While a pause covers the slug the driver holds in the pause wait before any re-step, goto, agent spawn or hand-over.
 //
-// A hand-back leaves a Go-authored stop report, commits the run records and writes the park marker through the code `lyx loom commit-records --park` runs, and queues the parent messages the LLM driver's notify rules send.
+// A hand-back leaves a Go-authored stop report, commits the run records and writes the park marker through the code `lym loom commit-records --park` runs, and queues the parent messages the LLM driver's notify rules send.
 // A watching batten announces the run and retries a matching verify halt itself, so only the parent notice, a question and a friction-failed done are sent; an unwatched run also gets one line naming the run-id and the report.
 // A paused stop that carries no reason also writes a `go-driver-paused` friction note.
 // A done run commits its records, and one that finished with `friction: failed` also gets a report and a notice without being parked.
 //
 // A hand-over runs only at a binary-eligible stop, once per stop key and build, over a clean tree outside the run's records and never under a pause.
-// It records the hand-over, leaves the stop report and the park marker, releases the driver lock and spawns a fresh `lyx loom drive` of the on-disk build, which re-steps;
+// It records the hand-over, leaves the stop report and the park marker, releases the driver lock and spawns a fresh `lym loom drive` of the on-disk build, which re-steps;
 // a driver starting at a blocked Finalize stop first runs the Finalize arm and hands back, stepping nothing, while the parent's code checkout is dirty.
 //
 // A driver restarted over a halted run finds an agent attempt that no later hand-back closed and lets the agent's own call reuse it, so no second agent is spawned.
@@ -234,7 +234,7 @@
 //
 // # Peers
 //
-// `lyx loom peers` lists the other runs in flight in the hub, and `lyx loom peers show <slug> --record decision|plan` prints one peer's decision record or its plan's `00-overview.md` under a `content` key.
+// `lym loom peers` lists the other runs in flight in the hub, and `lym loom peers show <slug> --record decision|plan` prints one peer's decision record or its plan's `00-overview.md` under a `content` key.
 // An agent in one pair uses them to compare its run with the others without forming another worktree's path itself.
 //
 // The peer set is every board task whose status is a run status, whatever the run's state, with the caller's own slug left out.
@@ -244,26 +244,26 @@
 // Both verbs refuse in a hub with no board, and `show` refuses an unknown slug, a task holding no run status, the caller's own slug, an unknown record name and a record the peer lacks, each naming its way forward.
 //
 // The verbs write nothing and read only the board, the peers' two records and git history through `internal/fabricengine`.
-// They resolve the location through `lyxcwd` in the group's own pre-run, as the `review` and `decision` groups do; every loom verb is hub-only, so `internal/cliwire` does not apply.
-// A bare `lyx loom peers` outside a lyx worktree lists the group's verbs instead of resolving.
+// They resolve the location through `lymcwd` in the group's own pre-run, as the `review` and `decision` groups do; every loom verb is hub-only, so `internal/cliwire` does not apply.
+// A bare `lym loom peers` outside a lym worktree lists the group's verbs instead of resolving.
 //
 // # Decision amends-plan
 //
-// `lyx loom decision add --amends-plan` records a decision that amends the approved plan:
+// `lym loom decision add --amends-plan` records a decision that amends the approved plan:
 // besides the entry, the call appends the title of each entry to the tracked plan amendment record, a `--from` batch appending every title in input order, and one commit lands the entries and the amendment record.
 // The commit pathspec of the discussion artifacts names the record when it exists or git tracks it, and nothing otherwise, so git is never handed a pathspec matching nothing.
 // The flag is refused on a darn run, which has no plan to amend, and while the current generation has no approved plan;
-// a plan that does not parse is refused naming `lyx loom validate-plan`, and a plan or record read failure is refused with the verb's retry way forward.
+// a plan that does not parse is refused naming `lym loom validate-plan`, and a plan or record read failure is refused with the verb's retry way forward.
 // Both refusals tell the caller to record the decision without the flag, since Plan-Write and Plan-Review read the decision record.
-// After a successful call the parent runs `lyx loom goto --to Plan-Burler-Review` and `lyx loom resume`.
+// After a successful call the parent runs `lym loom goto --to Plan-Burler-Review` and `lym loom resume`.
 //
 // A failed append puts both records back to their bytes before the call, removing the amendment record when the call created it, and leaves a decision record that was absent absent.
 // When a status commit has already landed the call's amendment bytes, the verb commits the restored record alone, so HEAD never keeps a title whose entry did not land;
-// a failure of that commit is refused naming `lyx fabric commit`.
+// a failure of that commit is refused naming `lym fabric commit`.
 // A failed commit of the entry reads HEAD:
 // both records at HEAD succeeds with `commit_error` on the envelope;
-// the amendment record without the entry, or a HEAD that cannot be read, keeps both files and names `lyx fabric commit`;
-// a HEAD that differs restores both files and names the re-run of the verb, never `lyx fabric commit`.
+// the amendment record without the entry, or a HEAD that cannot be read, keeps both files and names `lym fabric commit`;
+// a HEAD that differs restores both files and names the re-run of the verb, never `lym fabric commit`.
 //
 // The landing wiring reads the run's start from the pair's seed and fails on a seed it cannot decode.
 //
@@ -283,7 +283,7 @@
 //
 // # The recorded driver's one reading site
 //
-// A recorded seed driver value is read only in a recipe's bootstrap verbs: loom's start and resume, and `lyx loom drive`'s own package.
+// A recorded seed driver value is read only in a recipe's bootstrap verbs: loom's start and resume, and `lym loom drive`'s own package.
 // Each branch on it selects the run's driving surface — which driver spawns and whether the session carries the loom status strand — and nothing else.
 // No producer, generic verb or engine reads the recorded value, and no code path gates behaviour on it, because a second reader lets what a run is doing diverge silently from what it was seeded as.
 //

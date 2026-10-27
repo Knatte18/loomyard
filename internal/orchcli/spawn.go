@@ -1,4 +1,4 @@
-// spawn.go declares the production watcher spawn: the detached `lyx orch watch` child `start` launches so the handoff cycle outlives the command that began it.
+// spawn.go declares the production watcher spawn: the detached `lym orch watch` child `start` launches so the handoff cycle outlives the command that began it.
 
 package orchcli
 
@@ -12,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
-// spawnWatcherProcess starts `<lyx> orch watch` detached, with its output appended to the watch log.
+// spawnWatcherProcess starts `<lym> orch watch` detached, with its output appended to the watch log.
 // The child runs from the prime's anchor so its own cwd resolution finds the prime.
 // It is a no-op under `go test`, since re-executing os.Executable() there would run the test binary.
 func (c *orchCLI) spawnWatcherProcess() error {

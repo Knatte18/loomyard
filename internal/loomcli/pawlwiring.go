@@ -19,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
@@ -33,7 +33,7 @@ const pawlProgram = "PAWL"
 // pawlDeps assembles the seams of the pawl producers for the beam pair at location, whose slug names its project entry.
 // Every closure reads or writes on demand and opens nothing at build time, since wire also runs for status and pause.
 // The run id is the seed's start time, left empty when the run has no seed yet, which the producer's constructor refuses naming the field.
-func pawlDeps(location *lyxcwd.Location, slug string) (pawlengine.Deps, error) {
+func pawlDeps(location *lymcwd.Location, slug string) (pawlengine.Deps, error) {
 	seed, found, err := shedrun.ReadSeed(location, shedrun.SelfRunID)
 	if err != nil {
 		return pawlengine.Deps{}, err
@@ -43,7 +43,7 @@ func pawlDeps(location *lyxcwd.Location, slug string) (pawlengine.Deps, error) {
 		runID = seed.StartedAt
 	}
 
-	prime := func() (*lyxcwd.Location, error) { return primeOfHub(location) }
+	prime := func() (*lymcwd.Location, error) { return primeOfHub(location) }
 	return pawlengine.Deps{
 		Slug:  slug,
 		Paths: hubgeom.PawlPaths(location),
@@ -177,9 +177,9 @@ func openLandRequestWatch(paths pawlengine.Paths) <-chan struct{} {
 	return changed
 }
 
-// ownerOfSubject returns the owner machine the board entry slug reads as, from the local board, and the subject `lyx adopt` takes to move it.
+// ownerOfSubject returns the owner machine the board entry slug reads as, from the local board, and the subject `lym adopt` takes to move it.
 // An empty slug is the root: its owner is the prime owner and its subject the root's.
-func ownerOfSubject(location *lyxcwd.Location, slug string) (owner, subject string, err error) {
+func ownerOfSubject(location *lymcwd.Location, slug string) (owner, subject string, err error) {
 	prime, err := primeOfHub(location)
 	if err != nil {
 		return "", "", err
@@ -201,7 +201,7 @@ func ownerOfSubject(location *lyxcwd.Location, slug string) (owner, subject stri
 
 // pawlRecheck reads what the landing re-check judges for the beam slug at location: the members and pairs working under it, the beam's owner and its parent's owner.
 // It returns the lines of pawlRecheckLines, empty when the beam may land.
-func pawlRecheck(location *lyxcwd.Location, slug string) ([]string, error) {
+func pawlRecheck(location *lymcwd.Location, slug string) ([]string, error) {
 	here, err := machinename.Name()
 	if err != nil {
 		return nil, err
@@ -231,20 +231,20 @@ func pawlRecheck(location *lyxcwd.Location, slug string) ([]string, error) {
 }
 
 // pawlRecheckLines words the failed landing re-check of the beam slug, one line per blocker, empty when every check passes.
-// Each way forward of refusal, the text of the beam's blockers, is a line; a beam this machine does not own names `lyx adopt <slug>`, and a parent another machine owns names `lyx adopt <parentSubject>`, which is `root` for the prime.
+// Each way forward of refusal, the text of the beam's blockers, is a line; a beam this machine does not own names `lym adopt <slug>`, and a parent another machine owns names `lym adopt <parentSubject>`, which is `root` for the prime.
 func pawlRecheckLines(slug string, blockers battencli.BeamLandBlockers, refusal error, here, beamOwner, parentOwner, parentSubject string) []string {
 	var lines []string
 	switch {
 	case refusal != nil:
 		lines = append(lines, refusalWays(refusal)...)
 	case !blockers.Empty():
-		lines = append(lines, fmt.Sprintf("work remains under the beam %s; run `lyx beam land %s` again once it is gone", slug, slug))
+		lines = append(lines, fmt.Sprintf("work remains under the beam %s; run `lym beam land %s` again once it is gone", slug, slug))
 	}
 	if boardengine.OwnedElsewhere(beamOwner, here) {
-		lines = append(lines, fmt.Sprintf("the beam %s is owned by %s, not this machine (%s): run `lyx adopt %s` to take it", slug, beamOwner, here, slug))
+		lines = append(lines, fmt.Sprintf("the beam %s is owned by %s, not this machine (%s): run `lym adopt %s` to take it", slug, beamOwner, here, slug))
 	}
 	if boardengine.OwnedElsewhere(parentOwner, here) {
-		lines = append(lines, fmt.Sprintf("the beam's parent is owned by %s, not this machine (%s): run `lyx adopt %s` to take it", parentOwner, here, parentSubject))
+		lines = append(lines, fmt.Sprintf("the beam's parent is owned by %s, not this machine (%s): run `lym adopt %s` to take it", parentOwner, here, parentSubject))
 	}
 	return lines
 }
@@ -259,7 +259,7 @@ func refusalWays(refusal error) []string {
 }
 
 // pawlLandBlockers returns the seam Finalize's land check reads: the open members and the local pairs forked from the beam slug, from the hub of prime.
-func pawlLandBlockers(prime *lyxcwd.Location, slug string) func() ([]landingshed.LandBlocker, error) {
+func pawlLandBlockers(prime *lymcwd.Location, slug string) func() ([]landingshed.LandBlocker, error) {
 	return func() ([]landingshed.LandBlocker, error) {
 		found, err := battencli.ReadBeamLandBlockers(prime, slug)
 		if err != nil {
@@ -277,7 +277,7 @@ func pawlLandBlockers(prime *lyxcwd.Location, slug string) func() ([]landingshed
 }
 
 // stopBeamDobby ends the dobby of the beam slug when its lock reads held, through its `RoleDobby` record alone, so no other process of the beam is signalled.
-func stopBeamDobby(prime *lyxcwd.Location, slug string) error {
+func stopBeamDobby(prime *lymcwd.Location, slug string) error {
 	geometry, err := hubgeom.DobbyGeometry(prime, slug)
 	if err != nil {
 		return err
@@ -292,7 +292,7 @@ func stopBeamDobby(prime *lyxcwd.Location, slug string) error {
 
 // startBeamDobbyAlone starts the dobby of the beam slug unless it is live, naming no other worktree.
 // A refusal, such as a beam another machine owns, is returned as an error carrying its detail.
-func startBeamDobbyAlone(prime *lyxcwd.Location, slug string) error {
+func startBeamDobbyAlone(prime *lymcwd.Location, slug string) error {
 	report, err := dobbyengine.EnsureLive(hubgeom.DobbyStart(prime), []string{slug})
 	if err != nil {
 		return err
@@ -307,7 +307,7 @@ func startBeamDobbyAlone(prime *lyxcwd.Location, slug string) error {
 }
 
 // beamParentWorktree returns the name of the parent worktree the beam slug records in its origin record, the prime's name when the record names none.
-func beamParentWorktree(prime *lyxcwd.Location, slug string) (string, error) {
+func beamParentWorktree(prime *lymcwd.Location, slug string) (string, error) {
 	origin, found, err := fabricengine.ReadOriginFor(prime, slug)
 	if err != nil {
 		return "", err

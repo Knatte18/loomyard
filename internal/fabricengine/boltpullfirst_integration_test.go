@@ -25,7 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
-const boltTestLabel = "(0123456789ab production /bin/lyx)"
+const boltTestLabel = "(0123456789ab production /bin/lym)"
 
 // boltFixture is a hub, its board as a Bolt and the board's branch.
 type boltFixture struct {
@@ -449,8 +449,8 @@ func TestBolt_PullThenCommitWritten(t *testing.T) {
 		if res.Skipped != fabricengine.BoltSkipDirty || runs != 0 || f.head() != tip {
 			t.Errorf("skipped %q, %d writes run, head %s; want dirty, none run, head %s", res.Skipped, runs, f.head(), tip)
 		}
-		if !strings.Contains(res.SkipDetail, "lyx board sync") {
-			t.Errorf("detail %q does not name lyx board sync", res.SkipDetail)
+		if !strings.Contains(res.SkipDetail, "lym board sync") {
+			t.Errorf("detail %q does not name lym board sync", res.SkipDetail)
 		}
 	})
 

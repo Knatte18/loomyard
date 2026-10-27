@@ -372,7 +372,7 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 		{
 			name:    "no decision record",
 			setup:   func(f *decisionFake, _ *decisionInput) { f.appendErr = fmt.Errorf("read: %w", fs.ErrNotExist) },
-			want:    []string{"loom: decision add:", "no decision record", "way forward:", "lyx loom start", "Darn-Write has validated it"},
+			want:    []string{"loom: decision add:", "no decision record", "way forward:", "lym loom start", "Darn-Write has validated it"},
 			notWant: []string{"never has one"},
 		},
 		{
@@ -1028,7 +1028,7 @@ func TestDecisionVerb_CommitFailureNamesWayForward(t *testing.T) {
 		t.Fatalf("exit = 0; want a refusal when the commit fails")
 	}
 	msg := envelope.Decode(t, out.String()).Error
-	if !strings.Contains(msg, "index locked") || !strings.Contains(msg, "way forward:") || !strings.Contains(msg, "a session lyx refuses the verb from reports status: FAILED and the orch runs it") {
+	if !strings.Contains(msg, "index locked") || !strings.Contains(msg, "way forward:") || !strings.Contains(msg, "a session lym refuses the verb from reports status: FAILED and the orch runs it") {
 		t.Errorf("message %q; want the commit error and a way forward naming the orch", msg)
 	}
 }
@@ -1113,7 +1113,7 @@ func TestDecisionVerb_AmendsPlan(t *testing.T) {
 		{
 			name:  "PlanUnparsed_RefusedNamingValidatePlan",
 			setup: func(_ *testing.T, f *decisionFake) { f.planErr = fmt.Errorf("%w: bad frontmatter", errPlanUnparsed) },
-			want:  []string{"bad frontmatter", "way forward:", "lyx loom validate-plan", "without --amends-plan"},
+			want:  []string{"bad frontmatter", "way forward:", "lym loom validate-plan", "without --amends-plan"},
 		},
 		{
 			name: "AbsentDecisionRecord_RefusedLeavingBothAbsent",
@@ -1123,7 +1123,7 @@ func TestDecisionVerb_AmendsPlan(t *testing.T) {
 				}
 				f.appendErr = fmt.Errorf("read: %w", fs.ErrNotExist)
 			},
-			want:           []string{"no decision record", "way forward:", "lyx loom start"},
+			want:           []string{"no decision record", "way forward:", "lym loom start"},
 			decisionAbsent: true,
 		},
 		{
@@ -1179,7 +1179,7 @@ func TestDecisionVerb_AmendsPlan(t *testing.T) {
 				f.amendCommitErr = errors.New("index locked")
 				f.findings = []discussionparser.Finding{{Check: "sections", Detail: "missing ## Scope"}}
 			},
-			want:             []string{"index locked", "way forward:", "lyx fabric commit"},
+			want:             []string{"index locked", "way forward:", "lym fabric commit"},
 			wantAmendCommits: 1,
 		},
 		{
@@ -1198,7 +1198,7 @@ func TestDecisionVerb_AmendsPlan(t *testing.T) {
 				f.committedCopy, f.committedFound = []byte(decisionPriorRecord), true
 				f.amendCommittedCopy, f.amendCommittedFound = amendmentBytesAfterCall(t, f, title), true
 			},
-			want:       []string{"index locked", "without the entry", "way forward:", "lyx fabric commit"},
+			want:       []string{"index locked", "without the entry", "way forward:", "lym fabric commit"},
 			wantTitles: []string{title}, entry: true, wantCommits: 1,
 		},
 		{
@@ -1208,8 +1208,8 @@ func TestDecisionVerb_AmendsPlan(t *testing.T) {
 				f.commitErr = errors.New("index locked")
 				f.amendCommittedCopy, f.amendCommittedFound = amendmentBytesAfterCall(t, f, "First"), true
 			},
-			want:       []string{"index locked", "way forward:", "re-run \"lyx loom decision add ... --amends-plan\""},
-			notWant:    []string{"lyx fabric commit"},
+			want:       []string{"index locked", "way forward:", "re-run \"lym loom decision add ... --amends-plan\""},
+			notWant:    []string{"lym fabric commit"},
 			wantTitles: []string{"First"}, wantCommits: 1,
 		},
 		{
@@ -1218,7 +1218,7 @@ func TestDecisionVerb_AmendsPlan(t *testing.T) {
 				f.commitErr = errors.New("index locked")
 				f.amendCommittedErr = errors.New("head boom")
 			},
-			want:       []string{"index locked", "head boom", "way forward:", "lyx fabric commit"},
+			want:       []string{"index locked", "head boom", "way forward:", "lym fabric commit"},
 			wantTitles: []string{title}, entry: true, wantCommits: 1,
 		},
 	}
@@ -1311,7 +1311,7 @@ func TestDecisionVerb_AmendsPlan(t *testing.T) {
 		{
 			name: "PlanThatDoesNotParse_WrapsErrPlanUnparsed",
 			write: func(t *testing.T, anchor string) {
-				plankit.WriteTree(t, anchor, map[string]string{"_lyx/plan/00-overview.md": "not a plan\n"})
+				plankit.WriteTree(t, anchor, map[string]string{"_lym/plan/00-overview.md": "not a plan\n"})
 			},
 			wantErr: errPlanUnparsed,
 		},

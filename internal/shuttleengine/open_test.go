@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -37,7 +37,7 @@ func TestRunner_Open(t *testing.T) {
 		wantErr string
 	}{
 		{name: "an empty role is refused before anything is created", spec: OpenSpec{}, wantErr: "the role must not be empty"},
-		{name: "a live pause covering the worktree is refused", spec: spec, covered: true, wantErr: "re-run lyx shuttle open",
+		{name: "a live pause covering the worktree is refused", spec: spec, covered: true, wantErr: "re-run lym shuttle open",
 			engine: func() Engine { return &openerFakeEngine{openErr: errors.New("provider down")} },
 		},
 		{name: "an engine without the capability is refused", spec: spec, engine: func() Engine { return &fakeEngine{} }, wantErr: "cannot open a session"},
@@ -71,7 +71,7 @@ func TestRunner_Open(t *testing.T) {
 			if len(reed.AddStrandCalls) != 0 {
 				t.Errorf("AddStrand calls = %v; want none from a refused open", reed.AddStrandCalls)
 			}
-			markerDir := filepath.Join(fx.Anchor, lyxdirs.DotLyxDirName, openMarkerDirName)
+			markerDir := filepath.Join(fx.Anchor, lymdirs.DotLymDirName, openMarkerDirName)
 			if _, err := os.Stat(markerDir); !os.IsNotExist(err) {
 				t.Errorf("marker directory stat err = %v; want it absent from a refused open", err)
 			}
@@ -109,12 +109,12 @@ func TestRunner_Open(t *testing.T) {
 		if add.Display != (render.Display{Anchor: render.AnchorOwnWindow}) {
 			t.Errorf("Display = %+v; want the own-window anchor alone", add.Display)
 		}
-		markerDir := filepath.Join(fx.Anchor, lyxdirs.DotLyxDirName, openMarkerDirName)
+		markerDir := filepath.Join(fx.Anchor, lymdirs.DotLymDirName, openMarkerDirName)
 		if len(add.DoneWhen) != 1 || filepath.Dir(add.DoneWhen[0]) != markerDir || !strings.HasSuffix(add.DoneWhen[0], ".exited") {
 			t.Fatalf("DoneWhen = %v; want one .exited marker under %s", add.DoneWhen, markerDir)
 		}
 		marker := add.DoneWhen[0]
-		selfRemove := sh.Invoke("lyx") + " reed remove --name " + sh.EnvRef(agentname.StrandNameEnv) + " --detach"
+		selfRemove := sh.Invoke("lym") + " reed remove --name " + sh.EnvRef(agentname.StrandNameEnv) + " --detach"
 		if want := sh.Chain("open-cmd", sh.Touch(marker), selfRemove, "exit"); add.Cmd != want {
 			t.Errorf("Cmd = %q; want %q", add.Cmd, want)
 		}

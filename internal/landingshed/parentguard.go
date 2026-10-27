@@ -74,9 +74,9 @@ func (g parentGuard) ensure(ctx context.Context, producer string) (string, error
 	case err == nil:
 		return "", nil
 	case errors.Is(err, parentlock.ErrPaused):
-		return fmt.Sprintf("halted while waiting for the parent lock on %q held by %s, as \"lyx loom pause --after %s\" asked; way forward: run \"lyx loom goto --to %s\", then \"lyx loom resume\"", g.parentBranch, holderSlug, producer, producer), nil
+		return fmt.Sprintf("halted while waiting for the parent lock on %q held by %s, as \"lym loom pause --after %s\" asked; way forward: run \"lym loom goto --to %s\", then \"lym loom resume\"", g.parentBranch, holderSlug, producer, producer), nil
 	case errors.Is(err, parentlock.ErrUnreadable):
-		return fmt.Sprintf("the parent lock record of %q is unreadable: %v; way forward: run \"lyx batten lock release %s\" from the prime, then \"lyx loom resume\" in the task worktree", g.parentBranch, err, g.parentBranch), nil
+		return fmt.Sprintf("the parent lock record of %q is unreadable: %v; way forward: run \"lym batten lock release %s\" from the prime, then \"lym loom resume\" in the task worktree", g.parentBranch, err, g.parentBranch), nil
 	default:
 		return "", fmt.Errorf("landingshed: %s: take the parent lock on %q: %w", producer, g.parentBranch, err)
 	}
@@ -99,9 +99,9 @@ func (g parentGuard) release(producer string) {
 }
 
 // stillHeld re-reads the parent lock record just before a landing and returns "" when it still names this run.
-// A record that no longer names the run, or none, means something released the lock: an owner pause, another machine's ownership of the run or an operator's `lyx batten lock release`.
+// A record that no longer names the run, or none, means something released the lock: an owner pause, another machine's ownership of the run or an operator's `lym batten lock release`.
 // An unreadable record is a reason too, as at ensure.
-// Both reasons open with LandingStopPrefix, so only the orch's `lyx loom resume` lifts the halt they make.
+// Both reasons open with LandingStopPrefix, so only the orch's `lym loom resume` lifts the halt they make.
 // A guard with no lock store holds no lock and checks none.
 // Any other failure is returned as an error.
 func (g parentGuard) stillHeld(producer string) (string, error) {
@@ -115,13 +115,13 @@ func (g parentGuard) stillHeld(producer string) (string, error) {
 	record, found, err := g.lock.Store.Read(g.parentBranch)
 	switch {
 	case errors.Is(err, parentlock.ErrUnreadable):
-		return fmt.Sprintf("%sthe parent lock record of %q is unreadable before the landing: %v; nothing was landed; way forward: run \"lyx batten lock release %s\" from the prime, then \"lyx loom resume\" in the task worktree", LandingStopPrefix, g.parentBranch, err, g.parentBranch), nil
+		return fmt.Sprintf("%sthe parent lock record of %q is unreadable before the landing: %v; nothing was landed; way forward: run \"lym batten lock release %s\" from the prime, then \"lym loom resume\" in the task worktree", LandingStopPrefix, g.parentBranch, err, g.parentBranch), nil
 	case err != nil:
 		return "", fmt.Errorf("landingshed: %s: re-read the parent lock on %q: %w", producer, g.parentBranch, err)
 	case found && record.Owner.SameRun(owner):
 		return "", nil
 	}
-	return fmt.Sprintf("%sthe parent lock on %q no longer names this run, so something released it before the landing: an owner pause, another machine's ownership of the run or an operator's `lyx batten lock release`; nothing was landed; way forward: `lyx loom resume` once no owner pause stands and the run is this machine's, which after an operator's release holds already", LandingStopPrefix, g.parentBranch), nil
+	return fmt.Sprintf("%sthe parent lock on %q no longer names this run, so something released it before the landing: an owner pause, another machine's ownership of the run or an operator's `lym batten lock release`; nothing was landed; way forward: `lym loom resume` once no owner pause stands and the run is this machine's, which after an operator's release holds already", LandingStopPrefix, g.parentBranch), nil
 }
 
 // pauseRequested reads the told pause seam, which reports a `--after` naming the waiting row; a read error counts as not paused.

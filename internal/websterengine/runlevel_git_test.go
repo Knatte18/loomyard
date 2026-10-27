@@ -1,7 +1,7 @@
 //go:build tier1
 
 // runlevel_git_test.go exercises Run's plan-level verify gate over a real scratch git repository and real shell commands:
-// the gate asks git for the tree's dirty paths and for the commits since the first failure, and runs the `final` gate call through the built `lyx` in a subprocess.
+// the gate asks git for the tree's dirty paths and for the commits since the first failure, and runs the `final` gate call through the built `lym` in a subprocess.
 // Every other Run behavior is tested over a fakeGit in runlevel_test.go.
 
 package websterengine_test
@@ -18,9 +18,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -40,12 +40,12 @@ func newGateScenario(t *testing.T) *gateScenario {
 
 // restart puts the repository back on its base commit with a clean tree, and returns a one-card Run fixture over it whose `final` tier runs verify as a shell stand-in.
 // The fixture's Git is nil, so webster asks the repository itself.
-// It writes a gate.yaml declaring that tier into the fixture hub's board directory, which the built `lyx` reads there, tells Geom.GateConfig a reader over it, excludes the `.lyx` directory a standalone `lyx gate test` records under, and puts the tree's `lyx` first on `PATH`, so a caller is not parallel.
+// It writes a gate.yaml declaring that tier into the fixture hub's board directory, which the built `lym` reads there, tells Geom.GateConfig a reader over it, excludes the `.lym` directory a standalone `lym gate test` records under, and puts the tree's `lym` first on `PATH`, so a caller is not parallel.
 // This overrides the gate config the fixture would otherwise carry.
 // It adds one card commit touching internal/batch1 under a go.mod module, and returns that commit too; the worktree is clean afterwards, so the gate's own verify is the only thing that can fail.
 func (s *gateScenario) restart(t *testing.T, verify string) (*runFixture, string) {
 	t.Helper()
-	lyxbin.PutFirstOnPath(t)
+	lymbin.PutFirstOnPath(t)
 	gitkit.Git(t, s.repo, "reset", "--hard", s.base)
 	gitkit.Git(t, s.repo, "clean", "-fdx")
 	fx := newRunFixtureOver(t, 1, s.repo, nil)
@@ -54,7 +54,7 @@ func (s *gateScenario) restart(t *testing.T, verify string) (*runFixture, string
 	if err := os.MkdirAll(filepath.Dir(exclude), 0o755); err != nil {
 		t.Fatalf("create the exclude directory: %v", err)
 	}
-	if err := os.WriteFile(exclude, []byte(lyxdirs.DotLyxDirName+"/\n"), 0o644); err != nil {
+	if err := os.WriteFile(exclude, []byte(lymdirs.DotLymDirName+"/\n"), 0o644); err != nil {
 		t.Fatalf("write the exclude file: %v", err)
 	}
 	config, err := yaml.Marshal(map[string]any{
@@ -77,7 +77,7 @@ func (s *gateScenario) restart(t *testing.T, verify string) (*runFixture, string
 	if err != nil {
 		t.Fatalf("marshal gate.yaml: %v", err)
 	}
-	// The fixture's parent directory holds a board directory, so the built `lyx` reads the hub-wide gate.yaml there, outside the repository.
+	// The fixture's parent directory holds a board directory, so the built `lym` reads the hub-wide gate.yaml there, outside the repository.
 	dirs := configengine.Dirs{Anchor: s.repo, Board: fabricengine.BoardDir(filepath.Dir(s.repo))}
 	configFile := configengine.ConfigFile(dirs.Board, "gate")
 	if err := os.MkdirAll(filepath.Dir(configFile), 0o755); err != nil {
@@ -112,7 +112,7 @@ func verifyGateOf(t *testing.T, fx *runFixture) shuttleengine.GateEntry {
 
 // TestRun_VerifyGate runs every verify-gate case over one scratch repository, one step per case.
 // Each step starts by restarting the repository from its base commit, so no step relies on another's state.
-// It is not parallel: each step's restart puts the built `lyx` first on `PATH`, which is process-global state.
+// It is not parallel: each step's restart puts the built `lym` first on `PATH`, which is process-global state.
 func TestRun_VerifyGate(t *testing.T) {
 	s := newGateScenario(t)
 

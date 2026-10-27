@@ -66,9 +66,9 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 			{"set-option", "-t", target, "status-position", "bottom"},
 			{"set-option", "-w", "-t", target, "window-size", "latest"},
 			// The fixture's tmux binary does not resolve, so the follow jump line is unset.
-			{"set-option", "-gu", "@lyx_follow_command"},
+			{"set-option", "-gu", "@lym_follow_command"},
 			// The test binary carries no VCS stamp, so the bindings' build stamp is unset.
-			{"set-option", "-gu", "@lyx_bindings_build"},
+			{"set-option", "-gu", "@lym_bindings_build"},
 		}
 		if !slices.EqualFunc(calls, wantOptions, slices.Equal[[]string]) {
 			t.Errorf("pinGeometryOptionsLocked set-option calls = %v, want %v", calls, wantOptions)
@@ -89,8 +89,8 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 			{"set-option", "-t", target, "default-command", "/bin/sh"},
 		}
 		wantLast := [][]string{
-			{"set-option", "-gu", "@lyx_follow_command"},
-			{"set-option", "-gu", "@lyx_bindings_build"},
+			{"set-option", "-gu", "@lym_follow_command"},
+			{"set-option", "-gu", "@lym_bindings_build"},
 		}
 		if len(calls) < len(wantTail)+len(wantLast) {
 			t.Fatalf("pinGeometryOptionsLocked set-option calls = %v, want at least the window-size pin, the two shell pins, the follow-command unset and the build-stamp unset", calls)
@@ -123,7 +123,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 			switch call[0] {
 			case "set-option":
 				lastOption = i
-				if slices.Equal(call, []string{"set-option", "-gu", "@lyx_follow_command"}) {
+				if slices.Equal(call, []string{"set-option", "-gu", "@lym_follow_command"}) {
 					followUnset = i
 				}
 			case "bind-key":

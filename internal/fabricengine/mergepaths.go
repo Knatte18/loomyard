@@ -10,12 +10,12 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // resolveMergeGeometry resolves the geometry a merge call needs to map conflicted paths onto the
 // single visible worktree: l's AnchorRel, and the repo-wide wired junction-name set.
-// l is the caller's own already-resolved lyxcwd.ResolveWorktree result, so a merge call resolves the
+// l is the caller's own already-resolved lymcwd.ResolveWorktree result, so a merge call resolves the
 // worktree once, not twice.
 // It is called once per merge call, before any mutation, and never cached on the Fabric handle —
 // the same re-read-per-call precedent Fabric.Commit's config load follows, since a merge is rare
@@ -23,7 +23,7 @@ import (
 // changed.
 // l's WorktreePath() is NOT the config base; RepoWiredNames derives the repo-wide `weft:main` base
 // itself.
-func resolveMergeGeometry(l *lyxcwd.Location) (anchorRel string, wiredNames []string, err error) {
+func resolveMergeGeometry(l *lymcwd.Location) (anchorRel string, wiredNames []string, err error) {
 	wiredNames, err = RepoWiredNames(l)
 	if err != nil {
 		return "", nil, err
@@ -38,19 +38,14 @@ func resolveMergeGeometry(l *lyxcwd.Location) (anchorRel string, wiredNames []st
 // passes this check *is* the visible worktree-relative path, unchanged — no transformation, only a
 // membership test.
 //
-// The two arguments do not arrive in the same separator convention, and reconciling them is what the
-// separator conversion below is doing here rather than decoration. weftPath is git's own output,
-// which is always forward-slash. anchorRel comes from lyxcwd.ValidateAnchorRel, which returns
-// filepath.Clean(filepath.FromSlash(raw)) — an OS-separator path. On Windows a multi-segment anchor
-// recorded in .lyx-anchor as "apps/backend" therefore arrives as `apps\backend`, and joining it with
-// the slash-only path package yields the prefix `apps\backend/_lyx/` while git reports
-// `apps/backend/_lyx/…`. The prefix test then fails for a perfectly mappable conflict,
-// unifyConflictPaths marks it unmappable, and MergeIn self-aborts the entire merge on both sides
-// with *ErrUnmergeableState. Single-segment anchors and "." carry no separator and were never
-// affected, which is why every existing fixture passes either way.
-// Replacing only the OS separator — not every backslash — is the correct conversion, because on a
-// platform whose separator already is '/' a directory name legitimately containing a backslash must
-// never be rewritten into a path component boundary that does not exist.
+// The two arguments do not arrive in the same separator convention, and reconciling them is what the separator conversion below is doing here rather than decoration.
+// weftPath is git's own output, which is always forward-slash.
+// anchorRel comes from lymcwd.ValidateAnchorRel, which returns filepath.Clean(filepath.FromSlash(raw)) — an OS-separator path.
+// On Windows a multi-segment anchor recorded in .lym-anchor as "apps/backend" therefore arrives as `apps\backend`, and joining it with the slash-only path package yields the prefix `apps\backend/_lym/` while git reports `apps/backend/_lym/…`.
+// The prefix test then fails for a perfectly mappable conflict, unifyConflictPaths marks it unmappable, and MergeIn self-aborts the entire merge on both sides with *ErrUnmergeableState.
+// Single-segment anchors and "."
+// carry no separator and were never affected, which is why every existing fixture passes either way.
+// Replacing only the OS separator — not every backslash — is the correct conversion, because on a platform whose separator already is '/' a directory name legitimately containing a backslash must never be rewritten into a path component boundary that does not exist.
 //
 // The conversion is written against an explicit separator (weftPathVisibleWithSeparator) rather than
 // calling filepath.ToSlash directly, and that is a testability decision with a concrete reason.

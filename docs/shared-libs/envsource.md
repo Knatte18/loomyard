@@ -3,7 +3,7 @@
 The **single source of truth** for how environment variables enter the system.
 It reads the `.env` file and overlays the OS environment into a unified map.
 
-**Dependency direction (Go enforces it):** `internal/envsource` is a **stdlib-only leaf** — it imports no other internal package, `lyxcwd` included.
+**Dependency direction (Go enforces it):** `internal/envsource` is a **stdlib-only leaf** — it imports no other internal package, `lymcwd` included.
 It computes the `.env` path itself (`DotEnv`, below) rather than asking another module for it.
 All modules that need env data call `envsource.Build()`.
 
@@ -38,13 +38,13 @@ Reads and merges environment variables from `.env` and the OS environment.
 **Precedence:**
 
 OS environment variables always override `.env` variables for the same key.
-This allows a single `lyx` invocation to override `.env` with a real process environment variable if needed:
+This allows a single `lym` invocation to override `.env` with a real process environment variable if needed:
 
 ```bash
 # .env contains: HOME=/old/path
 # Running with an override:
 export HOME=/new/path
-lyx board status          # uses /new/path from OS env, not .env
+lym board status          # uses /new/path from OS env, not .env
 ```
 
 **Eager evaluation:**

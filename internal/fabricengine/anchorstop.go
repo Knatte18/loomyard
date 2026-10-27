@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // ErrAnchorChange is wrapped by every stop that keeps a weft from crossing a change of its anchor marker, or from working with a marker it cannot read.
@@ -108,7 +108,7 @@ func emptyMarkerStop(weftPath string) *AnchorStopError {
 		return nil
 	}
 	return &AnchorStopError{
-		Reason:     fmt.Sprintf("the weft's %s is empty", lyxcwd.AnchorFileName),
+		Reason:     fmt.Sprintf("the weft's %s is empty", lymcwd.AnchorFileName),
 		WayForward: err.Error(),
 	}
 }
@@ -117,11 +117,11 @@ func emptyMarkerStop(weftPath string) *AnchorStopError {
 // A local weft ahead of origin with a re-anchor not yet pushed differs as well, since the comparison ignores ancestry.
 // An empty own marker is refused first.
 // Both refusals wrap ErrAnchorChange, and the difference names the anchor change and ends with re-running the same adopt under --drop-local, since the pair may be a moved run that no adopt names.
-func refuseDropLocalAnchorChange(l *lyxcwd.Location, slug, weftPath, tracking string) error {
+func refuseDropLocalAnchorChange(l *lymcwd.Location, slug, weftPath, tracking string) error {
 	if stop := emptyMarkerStop(weftPath); stop != nil {
 		return fmt.Errorf("%w: %s", stop, stop.WayForward)
 	}
-	pair, err := lyxcwd.NamedWorktree(l.HubPath, slug)
+	pair, err := lymcwd.NamedWorktree(l.HubPath, slug)
 	if err != nil {
 		return err
 	}
@@ -133,7 +133,7 @@ func refuseDropLocalAnchorChange(l *lyxcwd.Location, slug, weftPath, tracking st
 	if err != nil || !stop {
 		return err
 	}
-	return fmt.Errorf("%w: the weft of %s and origin's tip carry different anchors, origin's being %q, so moving it to origin's tip would cross an anchor change; run `lyx fabric anchor %s --set %s`, then re-run the same `lyx adopt` with `--drop-local`",
+	return fmt.Errorf("%w: the weft of %s and origin's tip carry different anchors, origin's being %q, so moving it to origin's tip would cross an anchor change; run `lym fabric anchor %s --set %s`, then re-run the same `lym adopt` with `--drop-local`",
 		ErrAnchorChange, slug, want, slug, want)
 }
 
@@ -145,7 +145,7 @@ func upstreamAnchorStop(weftPath, codeWorktree, upstream string) (*AnchorStopErr
 	if !ok {
 		return nil, fmt.Errorf("fabricengine: %s is no weft sibling worktree", weftPath)
 	}
-	pair, err := lyxcwd.NamedWorktree(filepath.Dir(weftPath), slug)
+	pair, err := lymcwd.NamedWorktree(filepath.Dir(weftPath), slug)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +159,7 @@ func upstreamAnchorStop(weftPath, codeWorktree, upstream string) (*AnchorStopErr
 	}
 	return &AnchorStopError{
 		Reason: "origin's weft branch carries another anchor marker than this checkout, so its commits cannot be taken in without crossing an anchor change",
-		WayForward: fmt.Sprintf("run `lyx fabric anchor %s --set %s` in %s, which integrates the other marker, then re-run this command",
+		WayForward: fmt.Sprintf("run `lym fabric anchor %s --set %s` in %s, which integrates the other marker, then re-run this command",
 			slug, want, codeWorktree),
 	}, nil
 }

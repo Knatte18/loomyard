@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Launcher for the lyx sandbox suite: runs the interactive black-box agent session.
+# Launcher for the lym sandbox suite: runs the interactive black-box agent session.
 # The machine-specific parent directory is hardcoded HERE (the base under which
 # sandbox Hubs are created, mirroring the win/ launcher's C:\Code) -- the Go
 # tool stays general.

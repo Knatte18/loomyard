@@ -1,5 +1,5 @@
 // verifypackage.go holds verify-package-missing, the plan check that refuses an author-written card Verify command whose relative package argument names no directory.
-// It reads the same shell-chain shapes as verifymodule.go's checks, for `go test`, `go build`, `go vet` and `lyx gate test`.
+// It reads the same shell-chain shapes as verifymodule.go's checks, for `go test`, `go build`, `go vet` and `lym gate test`.
 
 package planparser
 
@@ -23,7 +23,7 @@ type missingPackageArg struct {
 	Hint string
 }
 
-// checkVerifyPackageMissing implements verify-package-missing: a relative package argument of a `go test`, `go build`, `go vet` or `lyx gate test` command in a card's Verify value must name a directory.
+// checkVerifyPackageMissing implements verify-package-missing: a relative package argument of a `go test`, `go build`, `go vet` or `lym gate test` command in a card's Verify value must name a directory.
 // A card's value is judged against the directories on disk plus those the plan creates through that card.
 // A card's Verify is skipped when that card or an earlier one holds a Move group, since a Move's destination lives in Intent prose.
 // The overview's `## verify:` section is not read, since no gate runs it.
@@ -144,7 +144,7 @@ func missingPackageArgs(chain, worktreeRoot string, created []string) []missingP
 			if subcommand != "test" && subcommand != "build" && subcommand != "vet" {
 				continue
 			}
-		case len(fields) >= 3 && fields[0] == "lyx" && fields[1] == "gate" && fields[2] == "test":
+		case len(fields) >= 3 && fields[0] == "lym" && fields[1] == "gate" && fields[2] == "test":
 			var ok bool
 			commandDir, packageArgs, ok = gateTestDirAndPackages(runDir, fields[3:])
 			if !ok {
@@ -172,7 +172,7 @@ func missingPackageArgs(chain, worktreeRoot string, created []string) []missingP
 	return found
 }
 
-// gateTestDirAndPackages reads the fields after `lyx gate test`: the directory the command runs in and its relative package arguments.
+// gateTestDirAndPackages reads the fields after `lym gate test`: the directory the command runs in and its relative package arguments.
 // `-C` and `--dir`, spelled with a space or `=`, set the directory, `--tags` skips its value, and reading stops at `--`.
 // ok is false when a directory cannot be placed.
 func gateTestDirAndPackages(runDir string, fields []string) (commandDir string, packageArgs []string, ok bool) {

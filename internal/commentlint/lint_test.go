@@ -76,7 +76,7 @@ func TestFindNewWrappedBreaks(t *testing.T) {
 		{"an untouched legacy comma-conjunction break is not checked", source("// the gate runs,", "// and returns the value."), source("// the gate runs,", "// and returns the value."), nil},
 		{"a comma before anything else is flagged", "", source("// one thing, then", "// another."), []int{3}},
 		{"a block's blank separator line ends the paragraph", "", source("// first paragraph without a stop", "//", "// second paragraph."), nil},
-		{"a directive line ends its block, so the prose above it is still checked", "", source("// a wrapped", "// line", "//lyx:guard"), []int{3}},
+		{"a directive line ends its block, so the prose above it is still checked", "", source("// a wrapped", "// line", "//lym:guard"), []int{3}},
 		{"an indented code paragraph is never flagged", "", source("// a wrapped", "// line", "//\tcode"), nil},
 		{"a list item paragraph is never flagged", "", source("// a wrapped", "// line", "// - item"), nil},
 		{"a heading paragraph is never flagged", "", source("// a wrapped", "// line", "// # Heading"), nil},

@@ -1,4 +1,4 @@
-// buildvcs.go reads the VCS stamp the Go toolchain embeds in a lyx binary.
+// buildvcs.go reads the VCS stamp the Go toolchain embeds in a lym binary.
 
 package buildvcs
 
@@ -12,7 +12,7 @@ import (
 // shortRevisionLength is how many leading characters of a revision a commit message and a log line carry.
 const shortRevisionLength = 12
 
-// Identity is the VCS stamp of a lyx build.
+// Identity is the VCS stamp of a lym build.
 // An empty Revision means the binary carries no VCS stamp, which makes the identity unknown.
 // A zero Time means the build recorded no parseable commit time.
 type Identity struct {

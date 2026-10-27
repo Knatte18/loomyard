@@ -1,14 +1,14 @@
 # PATTERN-fabric-git
 
-Every git op lyx's own code performs, on either weft or warp, goes through `internal/fabricengine` in Go, in-process — never raw git.
-The entry binds lyx's own code only.
+Every git op lym's own code performs, on either weft or warp, goes through `internal/fabricengine` in Go, in-process — never raw git.
+The entry binds lym's own code only.
 
 ## Scope
 
 - Weft-internal git and warp-to-weft topology both go through `fabricengine` only; read-only verbs (SHA, `status --porcelain`) are exempt.
 - The weft commit is Go calling the engine at a boundary the run controls.
-  Code that writes into `_lyx` through the junction never commits it, and code that commits to warp never commits weft.
-- Code outside the `lyx` binary is not bound.
+  Code that writes into `_lym` through the junction never commits it, and code that commits to warp never commits weft.
+- Code outside the `lym` binary is not bound.
   Its one raw-git mutation is the stranded-branch exception: deleting a warp branch a failed step's trace proves was created (and, remotely, pushed).
   That makes no commit, so the commit clause above does not reach it.
 
@@ -21,12 +21,12 @@ The entry binds lyx's own code only.
 ## Excludes
 
 - Junction exclusion is `.git/info/exclude` on both sides, mutated only via `fabricengine.mutateGitExclude`, never a tracked `.gitignore`.
-- The same holds for every warp-side writer: lyx's own code never writes a `.gitignore` in a warp worktree, the prime included, and every ignore it needs there goes to `.git/info/exclude` through `fabricengine`.
+- The same holds for every warp-side writer: lym's own code never writes a `.gitignore` in a warp worktree, the prime included, and every ignore it needs there goes to `.git/info/exclude` through `fabricengine`.
 - The one weft-side `.gitignore` writer is `boardengine`'s lock and manifest patterns in `_board`, the weft's `main` worktree.
 
 ## Unwire and teardown
 
-- `Unwire` removes warp junctions and exclude entries only; weft-side `_lyx` and `.lyx` content is always preserved.
+- `Unwire` removes warp junctions and exclude entries only; weft-side `_lym` and `.lym` content is always preserved.
 - Every teardown of an existing pair's weft branch (`Remove`, `Cleanup`) first pushes an `archive/<slug>/<tip>` tag to the weft origin, so the run records stay reachable.
   A rolled-back `Add` is excepted, and `force` never skips the tag.
   A rolled-back `Add` also deletes the warp branch it created, locally only: `Add` pushes nothing, so no origin branch is its to delete.
@@ -50,7 +50,7 @@ The entry binds lyx's own code only.
 
 ## Store housekeeping
 
-The hub's code store and records store never auto-gc, and `internal/fabricengine/housekeeping.go` is the only lyx code that runs `gc` on them or writes their `gc.*` and `maintenance.*` keys.
+The hub's code store and records store never auto-gc, and `internal/fabricengine/housekeeping.go` is the only lym code that runs `gc` on them or writes their `gc.*` and `maintenance.*` keys.
 
 - Both stores hold more unreferenced loose objects than git's auto-gc threshold, so nearly every commit, merge or fetch, an agent's or the operator's, would otherwise start a detached repack under live steps.
 - `Topology.Add` sets `gc.auto=0` and `maintenance.auto=false` in both stores' shared config once its pre-flight refusals pass.
@@ -64,5 +64,5 @@ The hub's code store and records store never auto-gc, and `internal/fabricengine
   gc deletes only unreachable loose objects older than a day, through `gc.pruneExpire=1.day.ago`, and reflog entries past git's own default expiry, and housekeeping passes `gc.worktreePruneExpire=never` so a worktree's admin entry stays under the destruction gate.
   That is why it lives in its own file and not in `destroy.go`, and it holds none of the destructive guard's banned tokens.
 - The keys disable git's automatic gc and maintenance for everyone using the store, the operator's manual git included.
-  A manual `git gc` still works, and maintenance an operator registers with `git maintenance start` stays outside lyx's control.
+  A manual `git gc` still works, and maintenance an operator registers with `git maintenance start` stays outside lym's control.
 - The gc threshold is git's default `gc.auto`; it is a variable only so a test can lower it, and is not operator configuration.

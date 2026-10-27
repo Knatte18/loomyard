@@ -1,6 +1,6 @@
 //go:build tier0
 
-// cli_test.go drives the help module through a small root with the help command mounted the way cmd/lyx's newRoot mounts it.
+// cli_test.go drives the help module through a small root with the help command mounted the way cmd/lym's newRoot mounts it.
 
 package helpcli
 
@@ -21,7 +21,7 @@ func newFixtureRoot() *cobra.Command {
 		return map[string]string{clihelp.AudienceAnnotation: audience}
 	}
 
-	root := &cobra.Command{Use: "lyx", Short: "fixture root", Long: "fixture root long"}
+	root := &cobra.Command{Use: "lym", Short: "fixture root", Long: "fixture root long"}
 	board := &cobra.Command{Use: "board", Short: "track tasks", RunE: clihelp.GroupRunE}
 	board.AddCommand(&cobra.Command{Use: "get <id>", Short: "read an entry", Annotations: annotate(clihelp.AudienceOperator), RunE: run})
 	root.AddCommand(

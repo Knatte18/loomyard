@@ -15,7 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // pushFromSecondClone commits one new file on main in a fresh clone of bareDir, pushes it and returns the new upstream tip.
@@ -367,7 +367,7 @@ func TestFastForwardPair_MovesBehindPairToUpstream(t *testing.T) {
 		moveRecord bool
 	}{
 		{"WeftWhoseUpstreamAlsoMovedIsAdvanced", "from-clone-b.txt", "b", true, false},
-		{"WeftWhoseUpstreamCarriesAnotherMarkerStaysPut", lyxcwd.AnchorFileName, "sub\n", false, false},
+		{"WeftWhoseUpstreamCarriesAnotherMarkerStaysPut", lymcwd.AnchorFileName, "sub\n", false, false},
 		{"WeftWithAMoveRecordStaysPut", "from-clone-b.txt", "b", false, true},
 	}
 	for _, tt := range tests {

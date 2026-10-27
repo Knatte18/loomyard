@@ -10,9 +10,9 @@ const arbiterAbsentPath = "none"
 
 // arbiterRepairVerbs names the verbs a loom-engine run's arbiter may run, as the stencil's recipe marker carries them.
 const arbiterRepairVerbs = "Its repair verbs, run with `<slug>` the task named above:" +
-	" at a review escalation exactly one of `lyx loom circling accept <slug>` or `lyx loom circling continue <slug>`;" +
-	" `lyx loom decision add <slug> --by arbiter --title … --decision … --rationale … [--amends-plan]` to record a design call." +
-	" A decision that adds, changes or removes a PATTERN entry also passes `--pattern-entry`, `--pattern-action` and, for `adds` or `changes`, `--pattern-text`, as `lyx loom decision add --help` says."
+	" at a review escalation exactly one of `lym loom circling accept <slug>` or `lym loom circling continue <slug>`;" +
+	" `lym loom decision add <slug> --by arbiter --title … --decision … --rationale … [--amends-plan]` to record a design call." +
+	" A decision that adds, changes or removes a PATTERN entry also passes `--pattern-entry`, `--pattern-action` and, for `adds` or `changes`, `--pattern-text`, as `lym loom decision add --help` says."
 
 // arbiterRecipeDescription returns the description of recipe the arbiter stencil's recipe marker carries: what the run is and the repair verbs the arbiter may run.
 func arbiterRecipeDescription(recipe string) string {

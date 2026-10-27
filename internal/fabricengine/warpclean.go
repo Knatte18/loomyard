@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // Clean reports whether both the warp and weft worktrees have no dirty paths, including untracked
@@ -17,7 +17,7 @@ import (
 // It is package-level for use by preflight.CheckResolved.
 // The weft-side check is skipped when the weft worktree does not exist.
 // Returns (false, reason, nil) when dirty or (false, "", err) for system errors.
-func Clean(l *lyxcwd.Location) (clean bool, reason string, err error) {
+func Clean(l *lymcwd.Location) (clean bool, reason string, err error) {
 	warpReason, err := dirtyReason("git status --porcelain", l.WorktreePath())
 	if err != nil {
 		return false, "", err
@@ -38,7 +38,7 @@ func Clean(l *lyxcwd.Location) (clean bool, reason string, err error) {
 		reasons = append(reasons, fmt.Sprintf("uncommitted code changes: %s", warpReason))
 	}
 	if weftReason != "" {
-		reasons = append(reasons, fmt.Sprintf("uncommitted state changes under `_lyx`: %s", weftReason))
+		reasons = append(reasons, fmt.Sprintf("uncommitted state changes under `_lym`: %s", weftReason))
 	}
 	if len(reasons) == 0 {
 		return true, "", nil

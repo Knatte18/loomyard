@@ -1,6 +1,6 @@
 //go:build tier1
 
-// reconcile_anchor_integration_test.go drives `lyx fabric reconcile` from a pair whose anchor differs from the prime's.
+// reconcile_anchor_integration_test.go drives `lym fabric reconcile` from a pair whose anchor differs from the prime's.
 // Package fabriccli_test, sharing the single TestMain in testmain_test.go.
 
 package fabriccli_test

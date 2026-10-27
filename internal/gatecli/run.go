@@ -1,4 +1,4 @@
-// run.go runs one `lyx gate test`: it refuses a malformed call, resolves hub membership and the gate config, plans the tiers, takes each tier's gate slots in turn, runs the tier inside them and turns a terminating signal into a clean exit.
+// run.go runs one `lym gate test`: it refuses a malformed call, resolves hub membership and the gate config, plans the tiers, takes each tier's gate slots in turn, runs the tier inside them and turns a terminating signal into a clean exit.
 
 package gatecli
 
@@ -23,21 +23,21 @@ import (
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
-// siteLabelPrefix starts every holder and wait record this verb writes, so `lyx loom status` names the command that holds or waits for a slot.
-const siteLabelPrefix = "lyx gate test"
+// siteLabelPrefix starts every holder and wait record this verb writes, so `lym loom status` names the command that holds or waits for a slot.
+const siteLabelPrefix = "lym gate test"
 
 // runTest runs request and returns the verb's exit code: the first failing run's own, SlotBusyExit for a hub whose slots stay held past request.slotWait when no earlier run failed, 128 plus the signal number after a terminating signal, and 1 for a refusal or a timed-out tier.
 func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	if refusal := flagShapeRefusal(request); refusal != "" {
 		return output.Err(out, refusal)
 	}
-	cwd, err := lyxcwd.CwdFrom(ctx)
+	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("gate test: cannot read the working directory: %v; way forward: re-run the same command", err))
 	}
@@ -120,7 +120,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 
 	exe.green = green
 
-	// The tiers run without the strand name, so a test driving `lyx fabric` never meets a role guard that reads it.
+	// The tiers run without the strand name, so a test driving `lym fabric` never meets a role guard that reads it.
 	// They also run without this process's trace id, which is new at every run and would change the test cache key of every package that reads it.
 	env := slices.DeleteFunc(os.Environ(), func(entry string) bool {
 		return strings.HasPrefix(entry, agentname.StrandNameEnv+"=") || strings.HasPrefix(entry, logger.TraceIDEnv+"=")
@@ -129,7 +129,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	watching, reason := watchdogApplies(request.busyQuit, request.args, os.Getenv(enclosingGateEnv), proc.IsAncestor)
 	logger.Info("gate test: CPU watchdog decision", "applies", watching, "reason", reason)
 	exe.request.watching = watching
-	// A nested `lyx gate test` reads the variable to learn this run's watchdog already sees its test binaries.
+	// A nested `lym gate test` reads the variable to learn this run's watchdog already sees its test binaries.
 	exe.env = append(slices.DeleteFunc(env, func(entry string) bool { return strings.HasPrefix(entry, enclosingGateEnv+"=") }), enclosingGateEnv+"="+strconv.Itoa(os.Getpid()))
 
 	// A failed run does not stop the call, so a failure the change under test did not cause leaves every later tier and guard run checked.
@@ -271,15 +271,15 @@ func gateKeyRefusal(cfg gateslot.Config, request testRequest) string {
 // loadGate resolves the worktree that contains dir and loads its gate config:
 // the hub's, with this machine's override, inside a hub, and the worktree's own outside every hub.
 // A refusal is returned as its message, with the other results unset.
-func loadGate(dir string) (location *lyxcwd.Location, inHub bool, cfg gateslot.Config, refusal string) {
+func loadGate(dir string) (location *lymcwd.Location, inHub bool, cfg gateslot.Config, refusal string) {
 	location, inHub, err := resolveHub(dir)
 	if err != nil {
 		return nil, false, gateslot.Config{}, fmt.Sprintf("gate test: %v; way forward: re-run the same command", err)
 	}
 	if !inHub {
-		location, err = lyxcwd.ResolveWorktree(dir)
-		if errors.Is(err, lyxcwd.ErrNotAGitRepo) {
-			return nil, false, gateslot.Config{}, fmt.Sprintf("gate test: %s is in no git worktree, so no gate.yaml applies; way forward: run \"lyx config gate\" in a git worktree to write its own gate.yaml, then run the same command from there%s", dir, roleClause)
+		location, err = lymcwd.ResolveWorktree(dir)
+		if errors.Is(err, lymcwd.ErrNotAGitRepo) {
+			return nil, false, gateslot.Config{}, fmt.Sprintf("gate test: %s is in no git worktree, so no gate.yaml applies; way forward: run \"lym config gate\" in a git worktree to write its own gate.yaml, then run the same command from there%s", dir, roleClause)
 		}
 		if err != nil {
 			return nil, false, gateslot.Config{}, fmt.Sprintf("gate test: resolve the worktree of %s: %v; way forward: re-run the same command", dir, err)
@@ -292,7 +292,7 @@ func loadGate(dir string) (location *lyxcwd.Location, inHub bool, cfg gateslot.C
 	}
 	cfg, err = gateslot.LoadConfig(fabricengine.ConfigDirs(location))
 	if errors.Is(err, gateslot.ErrConfigAbsent) {
-		return nil, false, gateslot.Config{}, fmt.Sprintf("gate test: the hub has no gate config: %v; way forward: run \"lyx fabric reconcile\", then re-run the same command; a session lyx refuses the verb from reports status: FAILED and the orch runs it", err)
+		return nil, false, gateslot.Config{}, fmt.Sprintf("gate test: the hub has no gate config: %v; way forward: run \"lym fabric reconcile\", then re-run the same command; a session lym refuses the verb from reports status: FAILED and the orch runs it", err)
 	}
 	if err != nil {
 		return nil, false, gateslot.Config{}, fmt.Sprintf("gate test: cannot read the hub's gate config: %v; way forward: take the step it names, then re-run the same command", err)
@@ -321,7 +321,7 @@ func tierNumbers(plan []tierRun) []int {
 }
 
 // originSlug returns the task slug the pair's fabric origin record names for location, and "" for the prime or a pair with no record.
-func originSlug(location *lyxcwd.Location) string {
+func originSlug(location *lymcwd.Location) string {
 	_, found, err := fabricengine.ReadOrigin(location)
 	if err != nil {
 		logger.Warn("gate test: could not read the fabric origin record; the run record carries no slug", "cause", err)
@@ -339,7 +339,7 @@ type execution struct {
 	out      io.Writer
 	request  testRequest
 	cfg      gateslot.Config
-	location *lyxcwd.Location
+	location *lymcwd.Location
 	// pool is the hub's slot pool; nil outside a hub, where the tiers run unslotted.
 	pool *gateslot.Pool
 	// inherited is whether an enclosing gate run's slot is held, so no tier acquires one.
@@ -485,15 +485,15 @@ func (e *execution) writeRecord(record gateslot.RunRecord, log []byte, run strin
 
 // resolveHub returns the location of the hub worktree that contains dir, and whether dir is inside a hub at all.
 // A dir outside every git worktree, or in a worktree whose hub carries no board, is outside every hub.
-func resolveHub(dir string) (*lyxcwd.Location, bool, error) {
-	location, err := lyxcwd.ResolveWorktree(dir)
-	if errors.Is(err, lyxcwd.ErrNotAGitRepo) {
+func resolveHub(dir string) (*lymcwd.Location, bool, error) {
+	location, err := lymcwd.ResolveWorktree(dir)
+	if errors.Is(err, lymcwd.ErrNotAGitRepo) {
 		return nil, false, nil
 	}
 	if err != nil {
 		return nil, false, fmt.Errorf("resolve the worktree of %s: %w", dir, err)
 	}
-	if !preflight.BoardLyxPresent(location) {
+	if !preflight.BoardLymPresent(location) {
 		return nil, false, nil
 	}
 	return location, true, nil
@@ -502,7 +502,7 @@ func resolveHub(dir string) (*lyxcwd.Location, bool, error) {
 // acquireSlot takes count slots of pool for tier, keeping a wait record in the worktree's wait directory until the acquire returns.
 // Without request.wait the wait lasts at most request.slotWait; with it the call blocks until the slots free.
 // It returns the held lease, or a nil lease and the exit code to return: SlotBusyExit with the holders named once the wait bound passes, and 1 for any other failure, a cancelled ctx included.
-func acquireSlot(ctx context.Context, out io.Writer, pool *gateslot.Pool, location *lyxcwd.Location, request testRequest, tier string, count int) (*gateslot.Lease, int) {
+func acquireSlot(ctx context.Context, out io.Writer, pool *gateslot.Pool, location *lymcwd.Location, request testRequest, tier string, count int) (*gateslot.Lease, int) {
 	site := strings.TrimSpace(siteLabelPrefix + " " + tier + " " + strings.Join(request.targets, " "))
 	waitPath, err := gateslot.WriteWait(gateslot.WaitDir(location.AnchorPath()), gateslot.Wait{Site: site, PID: os.Getpid(), Started: time.Now()})
 	if err != nil {

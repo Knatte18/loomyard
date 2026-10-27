@@ -76,7 +76,7 @@ func WaitUncovered(ctx context.Context, path, slug string, w Waiter) error {
 	for {
 		record, err := Read(path)
 		if err != nil {
-			notify(fmt.Sprintf("lyx: pause record unreadable, not holding: %v", err))
+			notify(fmt.Sprintf("lym: pause record unreadable, not holding: %v", err))
 			return nil
 		}
 		entry, covered := w.covering(record, slug)
@@ -101,12 +101,12 @@ func WaitUncovered(ctx context.Context, path, slug string, w Waiter) error {
 
 // heldLine renders the line a wait writes when it starts, naming the pause and the resume that lifts it.
 func heldLine(entry Entry) string {
-	pause, resume := "a hub-wide pause", `"lyx tender resume"`
+	pause, resume := "a hub-wide pause", `"lym tender resume"`
 	if entry.Scope != ScopeHub {
 		pause = fmt.Sprintf("the pause of %s", entry.Scope)
-		resume += fmt.Sprintf(` or "lyx tender resume %s"`, entry.Scope)
+		resume += fmt.Sprintf(` or "lym tender resume %s"`, entry.Scope)
 	}
-	return fmt.Sprintf("lyx: held by %s since %s; it continues after %s", pause, entry.PausedAt.Format(time.RFC3339), resume)
+	return fmt.Sprintf("lym: held by %s since %s; it continues after %s", pause, entry.PausedAt.Format(time.RFC3339), resume)
 }
 
 // sleepOnTimer waits d on a timer, or until ctx ends.

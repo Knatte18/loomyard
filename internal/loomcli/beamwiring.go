@@ -15,14 +15,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
 // beamDescribeDeps assembles the BeamDescribe row's seams for the beam pair at location, whose slug names its board entry and whose parentBranch is the branch it lands on.
 // Every closure reads or writes on demand and opens nothing at build time.
 // An empty parentBranch, a pair with no origin record, is refused when the commit subjects are read.
-func beamDescribeDeps(location *lyxcwd.Location, slug, parentBranch string) landingshed.BeamDescribeDeps {
+func beamDescribeDeps(location *lymcwd.Location, slug, parentBranch string) landingshed.BeamDescribeDeps {
 	return landingshed.BeamDescribeDeps{
 		Slug:            slug,
 		DescriptionPath: summaryparser.Path(loomengine.LandingDir(location)),
@@ -36,7 +36,7 @@ func beamDescribeDeps(location *lyxcwd.Location, slug, parentBranch string) land
 				return "", "", err
 			}
 			if !found {
-				return "", "", fmt.Errorf("the board holds no entry %q; way forward: restore the entry with \"lyx board upsert\", then run \"lyx beam land %s\" again", slug, slug)
+				return "", "", fmt.Errorf("the board holds no entry %q; way forward: restore the entry with \"lym board upsert\", then run \"lym beam land %s\" again", slug, slug)
 			}
 			return task.Title, task.Brief, nil
 		},
@@ -52,9 +52,9 @@ func beamDescribeDeps(location *lyxcwd.Location, slug, parentBranch string) land
 }
 
 // beamCommitSubjects lists the subjects of the commits the beam at location adds over its merge base with parentBranch, oldest first, merge commits left out.
-func beamCommitSubjects(location *lyxcwd.Location, parentBranch string) ([]string, error) {
+func beamCommitSubjects(location *lymcwd.Location, parentBranch string) ([]string, error) {
 	if parentBranch == "" {
-		return nil, errors.New("the beam's pair records no parent branch to measure its commits from; way forward: make the beam through \"lyx beam create\", which records its parent branch")
+		return nil, errors.New("the beam's pair records no parent branch to measure its commits from; way forward: make the beam through \"lym beam create\", which records its parent branch")
 	}
 	repo := gitrepo.New(location.WorktreePath())
 	head, err := repo.CurrentSHA()
@@ -97,7 +97,7 @@ func beamCommitSubjects(location *lyxcwd.Location, parentBranch string) ([]strin
 
 // beamParentBranch returns the parent branch the beam pair at location records, or "" when the pair has no origin record yet.
 // The record is stat'ed first so a pair without one reads as unrecorded, as the merge base reader's wiring does.
-func beamParentBranch(location *lyxcwd.Location) (string, error) {
+func beamParentBranch(location *lymcwd.Location) (string, error) {
 	if _, err := os.Stat(fabricengine.OriginRecordPath(location)); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return "", nil

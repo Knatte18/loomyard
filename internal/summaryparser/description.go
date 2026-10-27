@@ -1,5 +1,5 @@
 // description.go validates the change-description artifact: ValidateDescription is the single
-// function both the description gate and `lyx loom validate-description` call, turning each of
+// function both the description gate and `lym loom validate-description` call, turning each of
 // Parse's failures, plus a few structural checks, into findings.
 
 package summaryparser

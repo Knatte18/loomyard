@@ -18,8 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/lensreport"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -29,9 +29,9 @@ import (
 )
 
 // planTableLayout returns a location under a temp hub, anchored under anchorRel, whose anchor directory exists.
-func planTableLayout(t *testing.T, anchorRel string) *lyxcwd.Location {
+func planTableLayout(t *testing.T, anchorRel string) *lymcwd.Location {
 	t.Helper()
-	layout := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "repo", AnchorRel: anchorRel}
+	layout := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "repo", AnchorRel: anchorRel}
 	if err := os.MkdirAll(layout.AnchorPath(), 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", layout.AnchorPath(), err)
 	}
@@ -56,8 +56,8 @@ const templatePlanFan = "twill-plan"
 func TestPlanTable(t *testing.T) {
 	t.Parallel()
 	reg := discussionTableRegistry(t)
-	wantOverview := func(layout *lyxcwd.Location) string {
-		return filepath.Join(layout.AnchorPath(), lyxdirs.LyxDirName, planparser.PlanDirName, "00-overview.md")
+	wantOverview := func(layout *lymcwd.Location) string {
+		return filepath.Join(layout.AnchorPath(), lymdirs.LymDirName, planparser.PlanDirName, "00-overview.md")
 	}
 
 	tests := []struct {
@@ -135,14 +135,14 @@ func TestPlanTable(t *testing.T) {
 			}
 			prompt := prompts[""]
 
-			wantPlanDir := filepath.Join(layout.AnchorPath(), lyxdirs.LyxDirName, planparser.PlanDirName)
+			wantPlanDir := filepath.Join(layout.AnchorPath(), lymdirs.LymDirName, planparser.PlanDirName)
 			for _, want := range []string{"`ly:orch`", DiscussionDecisionRecord(layout), planparser.PlanDir(layout.AnchorPath()), planparser.PlanOverview(layout.AnchorPath()), wantPlanDir, specsDir} {
 				if !strings.Contains(prompt, want) {
 					t.Errorf("lead prompt does not contain %q", want)
 				}
 			}
 			if tt.anchorRel != "" {
-				wrongPlanDir := filepath.Join(layout.WorktreePath(), lyxdirs.LyxDirName, planparser.PlanDirName)
+				wrongPlanDir := filepath.Join(layout.WorktreePath(), lymdirs.LymDirName, planparser.PlanDirName)
 				if strings.Contains(prompt, wrongPlanDir) {
 					t.Errorf("lead prompt contains the WorktreePath()-rooted plan dir %q; want only the AnchorPath()-rooted one", wrongPlanDir)
 				}
@@ -228,8 +228,8 @@ func TestPlanTable(t *testing.T) {
 
 			table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, newTestStencilsDir(t), newTestSpecsDir(t), planTableConfig(""), reg, "none")
 			if malformed {
-				if err == nil || !strings.Contains(err.Error(), "lyx loom validate-discussion") {
-					t.Errorf("PlanTable(malformed section) = _, %v; want an error naming lyx loom validate-discussion", err)
+				if err == nil || !strings.Contains(err.Error(), "lym loom validate-discussion") {
+					t.Errorf("PlanTable(malformed section) = _, %v; want an error naming lym loom validate-discussion", err)
 				}
 				continue
 			}
@@ -292,7 +292,7 @@ func TestPlanTable(t *testing.T) {
 		t.Parallel()
 		lensesConfig, err := lenses.Load(configengine.Dirs{Anchor: t.TempDir()})
 		if err != nil {
-			t.Fatalf("lenses.Load(dir without _lyx) = _, %v; want nil error", err)
+			t.Fatalf("lenses.Load(dir without _lym) = _, %v; want nil error", err)
 		}
 		templateFan, err := lenses.ResolveFan(lensesConfig, templatePlanFan)
 		if err != nil {
@@ -348,13 +348,13 @@ func TestPlanTable(t *testing.T) {
 				for _, want := range []string{
 					stencilstore.Path(stencilsDir, "loom-rubric-plan-review"),
 					filepath.Join(planparser.PlanDir(layout.AnchorPath()), planparser.LensReviewFileName),
-					"`lyx loom validate-plan --lens-review`",
+					"`lym loom validate-plan --lens-review`",
 					"`Step 2`",
-					"`lyx loom validate-plan` per `Step 5`",
+					"`lym loom validate-plan` per `Step 5`",
 					"`" + planparser.PlanOverview(layout.AnchorPath()) + "` last",
 					"every file in `" + planparser.PlanDir(layout.AnchorPath()) + "`",
 					"Report defects only, never a passed check.",
-					"opened in this session, a `path:line` or glyph, a `PATTERN` entry, a test or caller the change would break, or the `lyx loom validate-plan` output, and what it shows",
+					"opened in this session, a `path:line` or glyph, a `PATTERN` entry, a test or caller the change would break, or the `lym loom validate-plan` output, and what it shows",
 					planTwillSeverityRule,
 					"verbatim to `" + lensreport.PathPattern(filepath.Join(planparser.PlanDir(layout.AnchorPath()), planparser.LensReviewFileName)) + "`",
 					"`" + stencilstore.Path(specsDir, lensreport.SpecName) + "` defines",
@@ -491,7 +491,7 @@ func writeTestPattern(t *testing.T, dir string) {
 const declaredBullet = "- `PATTERN-example-entry` — adds: the new rule text"
 
 // writeDeclaredPatternRecord writes an active PATTERN.md at layout's worktree root and a decision record whose `## PATTERN changes` section holds body.
-func writeDeclaredPatternRecord(t *testing.T, layout *lyxcwd.Location, body string) {
+func writeDeclaredPatternRecord(t *testing.T, layout *lymcwd.Location, body string) {
 	t.Helper()
 	writeTestPattern(t, layout.WorktreePath())
 	record := DiscussionDecisionRecord(layout)

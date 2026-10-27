@@ -1,4 +1,4 @@
-// planfixer.go implements the cold plan fixer `lyx webster fix-plan` drives after begin-batch refuses with a plan conflict:
+// planfixer.go implements the cold plan fixer `lym webster fix-plan` drives after begin-batch refuses with a plan conflict:
 // the bounded spawn-or-attach of a strand at the master role with the plan-fix prompt, the wait that reads its verdict, and its terminal record.
 
 package websterengine
@@ -18,7 +18,7 @@ import (
 )
 
 // fixPlanCommand is the verb that runs the plan fixer, as Master runs it.
-const fixPlanCommand = "lyx webster fix-plan"
+const fixPlanCommand = "lym webster fix-plan"
 
 // planFixerStrandRole is the reed strand role the plan fixer runs under.
 const planFixerStrandRole = "plan-fixer"
@@ -112,7 +112,7 @@ func FixPlanSpawnOrAttach(deps FixPlanDeps, st *State, clk Clock) (*PlanFixerSta
 
 	choice, ok := deps.Roles[RoleMaster]
 	if !ok {
-		return nil, false, fmt.Errorf("webster: no resolved model-spec for role %q; way forward: set %s in webster.yaml with lyx config webster, then re-run `%s`", RoleMaster, RoleMaster, fixPlanCommand)
+		return nil, false, fmt.Errorf("webster: no resolved model-spec for role %q; way forward: set %s in webster.yaml with lym config webster, then re-run `%s`", RoleMaster, RoleMaster, fixPlanCommand)
 	}
 	if err := roleAuditEngine(deps.Engines, RoleMaster, choice); err != nil {
 		return nil, false, err

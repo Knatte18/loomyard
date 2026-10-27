@@ -1,6 +1,6 @@
 //go:build tier1
 
-// land_integration_test.go runs "lyx beam land" through RunCLIIn over a hubforge hub, from inside a task pair.
+// land_integration_test.go runs "lym beam land" through RunCLIIn over a hubforge hub, from inside a task pair.
 
 package beamcli_test
 

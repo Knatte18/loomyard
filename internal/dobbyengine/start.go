@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	// LogFileName is the dobby log file in the marker directory, which a spawned dobby appends its output to.
+	// LogFileName is the dobby log file in the worktree's `.lym/beam/` directory, which a spawned dobby appends its output to.
 	LogFileName = "dobby.log"
 	// PrimeLabel is the worktree label a StartReport gives the prime's dobby.
 	PrimeLabel = "prime"
@@ -110,9 +110,9 @@ func OwnedWorktrees(deps StartDeps) ([]string, error) {
 }
 
 // EnsureLive starts the dobby of each named worktree, the prime's name or a beam's slug, each only when it is not live already.
-// The prime is handled first when named; a prime with no recorded owner is claimed for this machine first, and a claim that fails is reported for the prime with its cause and the `lyx beam start` re-run, the prime's dobby is not started, and the beams go on.
-// A named prime another machine owns is reported with its owner and `lyx adopt root`, and a named beam another machine owns is reported with its owner and `lyx adopt <slug>`; neither starts a dobby.
-// A named beam whose landing hold stands is reported naming `lyx batten status <slug>` and starts no dobby.
+// The prime is handled first when named; a prime with no recorded owner is claimed for this machine first, and a claim that fails is reported for the prime with its cause and the `lym beam start` re-run, the prime's dobby is not started, and the beams go on.
+// A named prime another machine owns is reported with its owner and `lym adopt root`, and a named beam another machine owns is reported with its owner and `lym adopt <slug>`; neither starts a dobby.
+// A named beam whose landing hold stands is reported naming `lym batten status <slug>` and starts no dobby.
 // A failed spawn is reported for its worktree and the others still start; the returned error lists every failure.
 // A second call reports every dobby live and changes nothing.
 func EnsureLive(deps StartDeps, worktrees []string) (StartReport, error) {
@@ -154,7 +154,7 @@ func EnsureLive(deps StartDeps, worktrees []string) (StartReport, error) {
 				report.Entries = append(report.Entries, StartEntry{
 					Worktree: PrimeLabel,
 					Outcome:  OutcomeFailed,
-					Detail:   fmt.Sprintf("this machine was not recorded as the prime owner: %v; re-run `lyx beam start root` once that works", claimErr),
+					Detail:   fmt.Sprintf("this machine was not recorded as the prime owner: %v; re-run `lym beam start root` once that works", claimErr),
 				})
 			case lostTo != "":
 				primeOwner = lostTo
@@ -170,7 +170,7 @@ func EnsureLive(deps StartDeps, worktrees []string) (StartReport, error) {
 			report.Entries = append(report.Entries, StartEntry{
 				Worktree: PrimeLabel,
 				Outcome:  OutcomeRefused,
-				Detail:   fmt.Sprintf("owned by %s; lyx adopt root takes it over here", primeOwner),
+				Detail:   fmt.Sprintf("owned by %s; lym adopt root takes it over here", primeOwner),
 			})
 		}
 	}
@@ -190,7 +190,7 @@ func EnsureLive(deps StartDeps, worktrees []string) (StartReport, error) {
 			report.Entries = append(report.Entries, StartEntry{
 				Worktree: slug,
 				Outcome:  OutcomeRefused,
-				Detail:   fmt.Sprintf("owned by %s; lyx adopt %s takes it over here", owner, slug),
+				Detail:   fmt.Sprintf("owned by %s; lym adopt %s takes it over here", owner, slug),
 			})
 			continue
 		}
@@ -200,7 +200,7 @@ func EnsureLive(deps StartDeps, worktrees []string) (StartReport, error) {
 }
 
 // ensureOne starts the dobby of the worktree named worktree unless it is live, and reports it under label.
-// A worktree with an anchor change standing is refused with the change's way forward as the detail and starts nothing, a worktree whose landing hold stands is refused naming `lyx batten status`, and an unreadable record is a failure.
+// A worktree with an anchor change standing is refused with the change's way forward as the detail and starts nothing, a worktree whose landing hold stands is refused naming `lym batten status`, and an unreadable record is a failure.
 func ensureOne(deps StartDeps, label, worktree string) StartEntry {
 	geom, err := deps.Geometry(worktree)
 	if err != nil {
@@ -221,7 +221,7 @@ func ensureOne(deps StartDeps, label, worktree string) StartEntry {
 			return StartEntry{Worktree: label, Outcome: OutcomeFailed, Detail: fmt.Sprintf("read whether the landing hold stands: %v", err)}
 		}
 		if held {
-			return StartEntry{Worktree: label, Outcome: OutcomeRefused, Detail: fmt.Sprintf("the landing hold stands; see `lyx batten status %s`", worktree)}
+			return StartEntry{Worktree: label, Outcome: OutcomeRefused, Detail: fmt.Sprintf("the landing hold stands; see `lym batten status %s`", worktree)}
 		}
 	}
 	live, err := deps.Live(geom)
@@ -239,7 +239,7 @@ func ensureOne(deps StartDeps, label, worktree string) StartEntry {
 
 // Live reports whether the dobby of geom is running: its lock is held.
 // The lock is tried without blocking and released at once when it was free, so a free lock reads not live.
-// A worktree whose marker directory does not exist yet has never run a dobby.
+// A worktree whose `.lym/beam/` directory does not exist yet has never run a dobby.
 func Live(geom Geometry) (bool, error) {
 	if _, err := os.Stat(filepath.Dir(geom.LockPath)); errors.Is(err, os.ErrNotExist) {
 		return false, nil
@@ -254,33 +254,32 @@ func Live(geom Geometry) (bool, error) {
 	return false, held.Release()
 }
 
-// SpawnDetached starts `<lyx> beam dobby <worktree root>` for geom as a detached process with the hub root as its working directory.
-// The child's output is appended to the marker directory's log, and the child is started but never waited for.
+// SpawnDetached starts `<lym> beam dobby <worktree root>` for geom as a detached process with the hub root as its working directory.
+// The child's output is appended to the file at geom.LogPath, and the child is started but never waited for.
 // It returns ErrSpawnUnderTest, starting nothing, in a test binary.
 func SpawnDetached(geom Geometry) error {
 	if testing.Testing() {
 		return ErrSpawnUnderTest
 	}
-	if err := os.MkdirAll(geom.MarkerDir, 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(geom.LogPath), 0o755); err != nil {
 		return err
 	}
-	logPath := filepath.Join(geom.MarkerDir, LogFileName)
-	logFile, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	logFile, err := os.OpenFile(geom.LogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
 	}
 	defer logFile.Close()
 
 	args := []string{"beam", "dobby", geom.WorktreeRoot}
-	cmd := exec.Command(geom.LyxExecutable, args...)
+	cmd := exec.Command(geom.LymExecutable, args...)
 	cmd.Dir = geom.HubRoot
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	proc.Detach(cmd)
 	if err := cmd.Start(); err != nil {
-		logger.Warn("dobbyengine: spawn dobby failed", "exe", geom.LyxExecutable, "args", args, "dir", geom.HubRoot, "error", err)
+		logger.Warn("dobbyengine: spawn dobby failed", "exe", geom.LymExecutable, "args", args, "dir", geom.HubRoot, "error", err)
 		return err
 	}
-	logger.Info("dobbyengine: spawned dobby", "exe", geom.LyxExecutable, "args", args, "dir", geom.HubRoot, "pid", cmd.Process.Pid, "log", logPath)
+	logger.Info("dobbyengine: spawned dobby", "exe", geom.LymExecutable, "args", args, "dir", geom.HubRoot, "pid", cmd.Process.Pid, "log", geom.LogPath)
 	return nil
 }

@@ -66,9 +66,9 @@ type RunLockedError struct {
 // Error names the entry, its status and both ways forward: a note for the finding, and the batten cancel for an abandoned run.
 func (e *RunLockedError) Error() string {
 	return fmt.Sprintf("entry %q is held by a run (status %q) and takes no scope edits: "+
-		"record the new finding as a note of its own with `lyx board upsert` and \"kind\":\"note\"; "+
-		"to unlock, run `lyx batten status %s` from the hub's prime worktree, "+
-		"and to abandon the run end it with `lyx batten cancel %s` from the prime, "+
+		"record the new finding as a note of its own with `lym board upsert` and \"kind\":\"note\"; "+
+		"to unlock, run `lym batten status %s` from the hub's prime worktree, "+
+		"and to abandon the run end it with `lym batten cancel %s` from the prime, "+
 		"which ends its processes, removes its records and clears this status",
 		e.Slug, e.Status, e.Slug, e.Slug)
 }
@@ -87,7 +87,7 @@ type BeamRunLockedError struct {
 // Error names the entry, its status and the batten cancel that ends the run first.
 func (e *BeamRunLockedError) Error() string {
 	return fmt.Sprintf("beam project %q has a run (status %q) and cannot be removed, or have its project, kind, recipe or beam changed, while it stands: "+
-		"end the run first with `lyx batten cancel %s` from the hub's prime worktree",
+		"end the run first with `lym batten cancel %s` from the hub's prime worktree",
 		e.Slug, e.Status, e.Slug)
 }
 

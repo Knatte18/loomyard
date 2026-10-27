@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -24,7 +24,7 @@ func TestProbeQuietSeesTheGoDriverLock(t *testing.T) {
 		t.Fatalf("create the task root: %v", err)
 	}
 	gitkit.MustRun(t, taskRoot, "git", "init")
-	task, err := lyxcwd.ResolveWorktree(taskRoot)
+	task, err := lymcwd.ResolveWorktree(taskRoot)
 	if err != nil {
 		t.Fatalf("ResolveWorktree: %v", err)
 	}
@@ -36,7 +36,7 @@ func TestProbeQuietSeesTheGoDriverLock(t *testing.T) {
 		t.Fatalf("write the park marker: %v", err)
 	}
 	td := &Teardown{
-		prime:          &lyxcwd.Location{HubPath: hub, AnchorRel: "."},
+		prime:          &lymcwd.Location{HubPath: hub, AnchorRel: "."},
 		ownedProcesses: func(string) ([]runproc.Record, error) { return nil, nil },
 	}
 

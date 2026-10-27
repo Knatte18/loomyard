@@ -57,7 +57,7 @@ func TestOrchLiveFrom(t *testing.T) {
 			name: "A reed session that is gone",
 			st:   orchengine.State{Strand: "g1"},
 			strands: func() ([]reedengine.StrandStatus, error) {
-				return nil, fmt.Errorf("no reed session; run \"lyx reed up\": %w", reedengine.ErrNoSession)
+				return nil, fmt.Errorf("no reed session; run \"lym reed up\": %w", reedengine.ErrNoSession)
 			},
 		},
 		{

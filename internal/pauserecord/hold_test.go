@@ -67,12 +67,12 @@ func TestWaitUncovered(t *testing.T) {
 	}{
 		{name: "no entry returns at once with no line", slug: "a"},
 		{
-			name: "a hub entry holds until resumed, with one line naming lyx tender resume",
+			name: "a hub entry holds until resumed, with one line naming lym tender resume",
 			live: []Entry{hub}, slug: "a",
 			onSleep:    func(t *testing.T, call int, path string) { resumeLive(t, path) },
 			wantDelays: []time.Duration{second},
 			wantLines:  1,
-			wantLine:   `lyx: held by a hub-wide pause since 2026-01-10T12:00:00Z; it continues after "lyx tender resume"`,
+			wantLine:   `lym: held by a hub-wide pause since 2026-01-10T12:00:00Z; it continues after "lym tender resume"`,
 		},
 		{
 			name: "a slug entry holds its slug and names both resumes",
@@ -80,7 +80,7 @@ func TestWaitUncovered(t *testing.T) {
 			onSleep:    func(t *testing.T, call int, path string) { resumeLive(t, path) },
 			wantDelays: []time.Duration{second},
 			wantLines:  1,
-			wantLine:   `lyx: held by the pause of a since 2026-01-10T12:00:00Z; it continues after "lyx tender resume" or "lyx tender resume a"`,
+			wantLine:   `lym: held by the pause of a since 2026-01-10T12:00:00Z; it continues after "lym tender resume" or "lym tender resume a"`,
 		},
 		{name: "a slug entry does not hold another slug", live: []Entry{slugEntry}, slug: "b"},
 		{name: "an exempt caller passes a slug entry", live: []Entry{slugEntry}, slug: "a", exempt: true},
@@ -116,7 +116,7 @@ func TestWaitUncovered(t *testing.T) {
 			wantDelays: []time.Duration{1 * second, 2 * second, 1 * second},
 			wantLines:  1,
 		},
-		{name: "an undecodable record returns at once with one line", slug: "a", corrupt: true, wantLines: 1, wantLine: "lyx: pause record unreadable, not holding: decode pause record"},
+		{name: "an undecodable record returns at once with one line", slug: "a", corrupt: true, wantLines: 1, wantLine: "lym: pause record unreadable, not holding: decode pause record"},
 		{name: "a cancelled context returns its error", live: []Entry{hub}, slug: "a", cancelled: true, wantLines: 1, wantErr: context.Canceled},
 	}
 	for _, tt := range tests {

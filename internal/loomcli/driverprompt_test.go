@@ -25,7 +25,7 @@ func seededStencils(t *testing.T) string {
 func TestDriverPrompt(t *testing.T) {
 	t.Parallel()
 	const runID = "operator-surface"
-	const reportPath = "/hub/wt/.lyx/shed/operator-surface/drive-report-20260920-120000-cafe.md"
+	const reportPath = "/hub/wt/.lym/shed/operator-surface/drive-report-20260920-120000-cafe.md"
 
 	// The teardown joins commit and removal by ';', so a failed commit still ends the session.
 	if strings.Contains(driverTeardownCommand, "&&") {
@@ -49,9 +49,9 @@ func TestDriverPrompt(t *testing.T) {
 				"teardown command":  driverTeardownCommand,
 				"parent name":       "hub:orch",
 				"edit directive":    "Edit or Write",
-				"literal teardown":  "lyx loom commit-records; lyx reed remove --name driver --detach",
-				"literal park mark": `lyx loom commit-records --park "` + reportPath + `"`,
-				"literal arbiter":   "lyx loom arbiter " + runID + " --envelope <envelope_path> --report <report_path>",
+				"literal teardown":  "lym loom commit-records; lym reed remove --name driver --detach",
+				"literal park mark": `lym loom commit-records --park "` + reportPath + `"`,
+				"literal arbiter":   "lym loom arbiter " + runID + " --envelope <envelope_path> --report <report_path>",
 			},
 		},
 		{name: "no parent renders the no-parent variant", parent: ""},
@@ -154,7 +154,7 @@ func TestDriverWatched(t *testing.T) {
 		want    bool
 	}{
 		{"live pid", ptr("4242\n"), true},
-		{"live pid with a scratch directory and a row name", ptr("4242\n/hub/.lyx/batten\nRun-Shed\n"), true},
+		{"live pid with a scratch directory and a row name", ptr("4242\n/hub/.lym/batten\nRun-Shed\n"), true},
 		{"dead pid", ptr("4243\n"), false},
 		{"garbage", ptr("not a pid\n"), false},
 		{"absent marker", nil, false},

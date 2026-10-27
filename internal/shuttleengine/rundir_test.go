@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 func TestRunDirRoot(t *testing.T) {
@@ -35,9 +35,9 @@ func TestRunDirRoot(t *testing.T) {
 		want       string
 	}{
 		{
-			name:       "default uses dot-lyx shuttle under the anchor path",
+			name:       "default uses dot-lym shuttle under the anchor path",
 			anchorPath: defaultAnchor,
-			want:       filepath.Join(defaultAnchor, lyxdirs.DotLyxDirName, "shuttle"),
+			want:       filepath.Join(defaultAnchor, lymdirs.DotLymDirName, "shuttle"),
 		},
 		{
 			name:       "relative resolves against the anchor root",

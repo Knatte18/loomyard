@@ -15,7 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // leftoverKind is the closed set of reasons ErrRemoteLeftover refuses.
@@ -76,7 +76,7 @@ type weftLeftover struct {
 // Without it, an absent remote branch returns the zero answer,
 // an origin tip covered by an archive/<slug>/* tag whose target equals or descends from it is a replaceable leftover (tip and tag),
 // and any other origin tip makes the pair live.
-func probeWeftLeftover(l *lyxcwd.Location, slug, weftBranch string, localExists bool) (weftLeftover, error) {
+func probeWeftLeftover(l *lymcwd.Location, slug, weftBranch string, localExists bool) (weftLeftover, error) {
 	weftRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		return weftLeftover{}, fmt.Errorf("resolve weft repo root: %w", err)
@@ -159,7 +159,7 @@ func probeLiveLocalWeft(weftRoot, slug, weftBranch, originTip string) (weftLefto
 // For a live pair a present origin branch is adopted whatever its relation to HEAD.
 // For a pair that is not live it returns "" when the branch is absent or its tip equals or is an ancestor of the HEAD the new branch forks from, and refuses otherwise.
 // It never fetches.
-func probeWarpLeftover(l *lyxcwd.Location, slug, warpBranch string, live bool) (adoptTip string, err error) {
+func probeWarpLeftover(l *lymcwd.Location, slug, warpBranch string, live bool) (adoptTip string, err error) {
 	dir := l.WorktreePath()
 	tip, err := remoteHeadTip(dir, warpBranch)
 	if err != nil || tip == "" {

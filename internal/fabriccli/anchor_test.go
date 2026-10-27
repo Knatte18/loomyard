@@ -1,6 +1,6 @@
 //go:build tier0
 
-// anchor_test.go covers the sequence of `lyx fabric anchor` over a fake anchorDeps: the print path, every refusal, the order of the move's steps and the restart or the re-run each failure calls for.
+// anchor_test.go covers the sequence of `lym fabric anchor` over a fake anchorDeps: the print path, every refusal, the order of the move's steps and the restart or the re-run each failure calls for.
 
 package fabriccli
 
@@ -16,7 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runproc"
 )
 
@@ -31,7 +31,7 @@ type anchorFake struct {
 	goos    string
 
 	owners map[string]string
-	// subjects is what `lyx adopt` takes to move each worktree.
+	// subjects is what `lym adopt` takes to move each worktree.
 	subjects     map[string]string
 	upstream     string
 	hasUpstream  bool
@@ -136,8 +136,8 @@ func (c *fakeChange) Close() {
 	}
 }
 
-func (f *anchorFake) location(slug string) *lyxcwd.Location {
-	return &lyxcwd.Location{RepoName: "repo", HubPath: "/hub", WorktreeName: slug, AnchorRel: f.anchors[slug]}
+func (f *anchorFake) location(slug string) *lymcwd.Location {
+	return &lymcwd.Location{RepoName: "repo", HubPath: "/hub", WorktreeName: slug, AnchorRel: f.anchors[slug]}
 }
 
 func (f *anchorFake) deps() anchorDeps {
@@ -145,7 +145,7 @@ func (f *anchorFake) deps() anchorDeps {
 		GOOS:   f.goos,
 		Acting: f.acting,
 		Prime:  f.prime,
-		Worktree: func(slug string) (*lyxcwd.Location, bool, error) {
+		Worktree: func(slug string) (*lymcwd.Location, bool, error) {
 			if _, held := f.anchors[slug]; !held {
 				return nil, false, nil
 			}
@@ -162,17 +162,17 @@ func (f *anchorFake) deps() anchorDeps {
 		},
 		ForeignOwner: func(slug string) (string, error) { return f.owners[slug], nil },
 		AdoptSubject: func(slug string) (string, error) { return f.subjects[slug], nil },
-		UpstreamAnchor: func(*lyxcwd.Location) (string, bool, error) {
+		UpstreamAnchor: func(*lymcwd.Location) (string, bool, error) {
 			return f.upstream, f.hasUpstream, nil
 		},
-		MoveRecord: func(*lyxcwd.Location) (fabricengine.MoveRecord, bool, error) {
+		MoveRecord: func(*lymcwd.Location) (fabricengine.MoveRecord, bool, error) {
 			return fabricengine.MoveRecord{A: ".", B: "sub", Kind: fabricengine.MoveKindMove}, f.recordFound, nil
 		},
-		ReedHeld:              func(l *lyxcwd.Location) (bool, error) { return f.reed[l.WorktreeName], nil },
-		DriverLockHeld:        func(*lyxcwd.Location) (bool, error) { return f.driverLocked, nil },
-		BattenLive:            func(*lyxcwd.Location) (bool, error) { return f.battenLive, nil },
-		RunUnfinished:         func(*lyxcwd.Location) (bool, error) { return f.runOpen, nil },
-		UpstreamRunUnfinished: func(*lyxcwd.Location) (bool, error) { return f.upstreamOpen, nil },
+		ReedHeld:              func(l *lymcwd.Location) (bool, error) { return f.reed[l.WorktreeName], nil },
+		DriverLockHeld:        func(*lymcwd.Location) (bool, error) { return f.driverLocked, nil },
+		BattenLive:            func(*lymcwd.Location) (bool, error) { return f.battenLive, nil },
+		RunUnfinished:         func(*lymcwd.Location) (bool, error) { return f.runOpen, nil },
+		UpstreamRunUnfinished: func(*lymcwd.Location) (bool, error) { return f.upstreamOpen, nil },
 		PrimeRunUnfinished:    func(string) (bool, error) { return f.primeRunOpen, nil },
 		DobbyPID: func(worktree string) (int, bool, error) {
 			pid, live := f.dobbyPIDs[worktree]
@@ -197,7 +197,7 @@ func (f *anchorFake) deps() anchorDeps {
 			return ctx.Err()
 		},
 		Note: func(line string) { f.log("note %s", line) },
-		AcquireParentLock: func(_ context.Context, l *lyxcwd.Location) (func(), error) {
+		AcquireParentLock: func(_ context.Context, l *lymcwd.Location) (func(), error) {
 			if f.lockErr != nil {
 				return nil, f.lockErr
 			}
@@ -215,7 +215,7 @@ func (f *anchorFake) deps() anchorDeps {
 			f.log("ensure-dobbies %s", strings.Join(worktrees, ","))
 			return f.startErr
 		},
-		Begin: func(l *lyxcwd.Location, target string) (anchorChange, error) {
+		Begin: func(l *lymcwd.Location, target string) (anchorChange, error) {
 			f.log("begin %s", target)
 			if f.beginErr != nil {
 				return nil, f.beginErr
@@ -279,14 +279,14 @@ func TestChangeAnchor(t *testing.T) {
 		}
 	})
 
-	t.Run("A slug this machine does not hold is refused naming lyx fabric pairs", func(t *testing.T) {
+	t.Run("A slug this machine does not hold is refused naming lym fabric pairs", func(t *testing.T) {
 		t.Parallel()
 		f := newAnchorFake()
 
 		_, err := runAnchorFake(t, f, anchorRequest{Slug: "nobody", Set: "sub"})
 
-		if err == nil || !strings.Contains(err.Error(), "lyx fabric pairs") {
-			t.Errorf("changeAnchor() error = %v; want a refusal naming `lyx fabric pairs`", err)
+		if err == nil || !strings.Contains(err.Error(), "lym fabric pairs") {
+			t.Errorf("changeAnchor() error = %v; want a refusal naming `lym fabric pairs`", err)
 		}
 		if len(f.calls) != 0 {
 			t.Errorf("calls = %v; want none", f.calls)
@@ -309,8 +309,8 @@ func TestChangeAnchor(t *testing.T) {
 					f.owners["pair1"] = "elsewhere"
 					f.subjects["pair1"] = "beam1"
 				},
-				want:   []string{"elsewhere", "`lyx adopt beam1` here", "`lyx adopt beam1 --keep-local`", "lyx fabric anchor pair1 --set sub` on elsewhere"},
-				absent: []string{"the marker at the fetched upstream tip", "lyx adopt pair1"},
+				want:   []string{"elsewhere", "`lym adopt beam1` here", "`lym adopt beam1 --keep-local`", "lym fabric anchor pair1 --set sub` on elsewhere"},
+				absent: []string{"the marker at the fetched upstream tip", "lym adopt pair1"},
 			},
 			{
 				name: "AnotherMachineOwnsItAndItsUpstreamTipRecordsAnotherAnchor",
@@ -319,7 +319,7 @@ func TestChangeAnchor(t *testing.T) {
 					f.owners["pair1"] = "elsewhere"
 					f.upstream, f.hasUpstream = "backend", true
 				},
-				want: []string{"lyx fabric anchor pair1 --set backend`, the marker at the fetched upstream tip"},
+				want: []string{"lym fabric anchor pair1 --set backend`, the marker at the fetched upstream tip"},
 			},
 			{
 				name: "AnotherMachineOwnsItAndItsUpstreamTipRecordsTheCheckedOutAnchor",
@@ -337,38 +337,38 @@ func TestChangeAnchor(t *testing.T) {
 				mutate: func(f *anchorFake) {
 					f.owners["prime"] = "elsewhere"
 				},
-				want:   []string{"lyx adopt root", "elsewhere"},
+				want:   []string{"lym adopt root", "elsewhere"},
 				absent: []string{"--prime"},
 			},
 			{
 				name:   "ReedHoldsAStrand",
 				slug:   "pair1",
 				mutate: func(f *anchorFake) { f.reed["pair1"] = true },
-				want:   []string{"lyx reed down", "pair1"},
+				want:   []string{"lym reed down", "pair1"},
 			},
 			{
 				name:   "TheDriverLockIsHeld",
 				slug:   "pair1",
 				mutate: func(f *anchorFake) { f.driverLocked = true },
-				want:   []string{"driver lock", "lyx batten cancel pair1"},
+				want:   []string{"driver lock", "lym batten cancel pair1"},
 			},
 			{
 				name:   "ABattenRunIsLive",
 				slug:   "pair1",
 				mutate: func(f *anchorFake) { f.battenLive = true },
-				want:   []string{"batten run", "lyx batten cancel pair1"},
+				want:   []string{"batten run", "lym batten cancel pair1"},
 			},
 			{
 				name:   "TheRunStatusIsUnfinished",
 				slug:   "pair1",
 				mutate: func(f *anchorFake) { f.runOpen = true },
-				want:   []string{"unfinished run", "lyx batten cancel pair1", "an entry stopped only by this change"},
+				want:   []string{"unfinished run", "lym batten cancel pair1", "an entry stopped only by this change"},
 			},
 			{
 				name:   "ThePrimesBattenStatusOfThePairIsUnfinished",
 				slug:   "pair1",
 				mutate: func(f *anchorFake) { f.primeRunOpen = true },
-				want:   []string{"unfinished in the prime", "lyx batten cancel pair1"},
+				want:   []string{"unfinished in the prime", "lym batten cancel pair1"},
 			},
 			{
 				name: "ARunThatReadsUnfinishedAtTheFetchedUpstreamTipOfAWorktreeAnotherMachineOwns",
@@ -379,26 +379,26 @@ func TestChangeAnchor(t *testing.T) {
 					f.upstreamOpen = true
 					f.runOpen = false
 				},
-				want:   []string{"fetched upstream tip", "lyx batten cancel pair1` on elsewhere", "lyx fabric pull", "the marker at that tip"},
-				absent: []string{"lyx batten cancel pair1`, which an entry stopped only by this change"},
+				want:   []string{"fetched upstream tip", "lym batten cancel pair1` on elsewhere", "lym fabric pull", "the marker at that tip"},
+				absent: []string{"lym batten cancel pair1`, which an entry stopped only by this change"},
 			},
 			{
 				name:   "ALiveDobbyOnWindows",
 				slug:   "beam1",
 				mutate: func(f *anchorFake) { f.goos = "windows"; f.dobbyPIDs["beam1"] = 4321 },
-				want:   []string{"4321", "taskkill /PID 4321 /T /F", "lyx fabric anchor beam1 --set sub"},
+				want:   []string{"4321", "taskkill /PID 4321 /T /F", "lym fabric anchor beam1 --set sub"},
 			},
 			{
 				name:   "ReedHoldsAStrandSomewhereInTheHubForThePrime",
 				slug:   "prime",
 				mutate: func(f *anchorFake) { f.hubReed = []string{"orch", "beam2"} },
-				want:   []string{"orch, beam2", "lyx reed down", "the orch's included"},
+				want:   []string{"orch, beam2", "lym reed down", "the orch's included"},
 			},
 			{
 				name:   "ABattenRunIsLiveSomewhereInTheHubForThePrime",
 				slug:   "prime",
 				mutate: func(f *anchorFake) { f.hubBatten = []string{"task-a"} },
-				want:   []string{"task-a", "lyx batten status", "lyx batten pause"},
+				want:   []string{"task-a", "lym batten status", "lym batten pause"},
 			},
 			{
 				name:   "AGateSlotIsHeldForThePrime",
@@ -410,7 +410,7 @@ func TestChangeAnchor(t *testing.T) {
 				name:   "TheHibernateDaemonIsLiveForThePrime",
 				slug:   "prime",
 				mutate: func(f *anchorFake) { f.hibernating = true },
-				want:   []string{"lyx hibernate cancel"},
+				want:   []string{"lym hibernate cancel"},
 			},
 		}
 		for _, tt := range tests {
@@ -643,8 +643,8 @@ func TestChangeAnchor(t *testing.T) {
 
 				_, err := runAnchorFake(t, f, anchorRequest{Set: "sub"})
 
-				if err == nil || !strings.Contains(err.Error(), "lyx fabric anchor beam1 --set sub") {
-					t.Fatalf("changeAnchor() error = %v; want it to name `lyx fabric anchor beam1 --set sub`", err)
+				if err == nil || !strings.Contains(err.Error(), "lym fabric anchor beam1 --set sub") {
+					t.Fatalf("changeAnchor() error = %v; want it to name `lym fabric anchor beam1 --set sub`", err)
 				}
 				if f.did("ensure-dobbies") {
 					t.Errorf("calls = %v; want no dobby started while the record stands", f.calls)
@@ -666,7 +666,7 @@ func TestChangeAnchor(t *testing.T) {
 
 				_, err := runAnchorFake(t, f, anchorRequest{Set: "sub"})
 
-				if err == nil || !strings.Contains(err.Error(), "lyx fabric anchor beam1 --set sub") {
+				if err == nil || !strings.Contains(err.Error(), "lym fabric anchor beam1 --set sub") {
 					t.Errorf("changeAnchor() error = %v; want it to name the re-run of the --set", err)
 				}
 				if f.did("ensure-dobbies") || !f.did("release-parent-lock") {
@@ -706,7 +706,7 @@ func TestChangeAnchor(t *testing.T) {
 
 		_, err := runAnchorFake(t, f, anchorRequest{Set: "sub"})
 
-		if err == nil || !strings.Contains(err.Error(), "lyx fabric anchor beam1 --set sub") {
+		if err == nil || !strings.Contains(err.Error(), "lym fabric anchor beam1 --set sub") {
 			t.Errorf("changeAnchor() error = %v; want it to name the re-run of the --set", err)
 		}
 		if !f.recordFound || f.did("ensure-dobbies") || f.did("finish") {
@@ -721,7 +721,7 @@ func TestChangeAnchor(t *testing.T) {
 
 		_, err := runAnchorFake(t, before, anchorRequest{Set: "sub"})
 
-		if err == nil || !strings.Contains(err.Error(), "lyx fabric anchor beam1 --set sub") || before.did("ensure-dobbies") {
+		if err == nil || !strings.Contains(err.Error(), "lym fabric anchor beam1 --set sub") || before.did("ensure-dobbies") {
 			t.Errorf("changeAnchor() = %v, calls %v; want an error naming the re-run and no dobby started", err, before.calls)
 		}
 
@@ -766,7 +766,7 @@ func TestChangeAnchor(t *testing.T) {
 		}
 	})
 
-	t.Run("A dobby start that fails after Finish is reported with lyx beam start and fails nothing", func(t *testing.T) {
+	t.Run("A dobby start that fails after Finish is reported with lym beam start and fails nothing", func(t *testing.T) {
 		t.Parallel()
 		f := newAnchorFake()
 		f.startErr = errors.New("spawn refused")
@@ -776,8 +776,8 @@ func TestChangeAnchor(t *testing.T) {
 		if err != nil || !result.Changed || result.DobbyStartError != "spawn refused" {
 			t.Errorf("changeAnchor() = (%+v, %v); want the start failure reported and no error", result, err)
 		}
-		if fields := result.fields(); fields["way_forward"] != "lyx beam start" || fields["dobby_start_error"] != "spawn refused" {
-			t.Errorf("fields = %v; want the way forward `lyx beam start` beside the start failure", fields)
+		if fields := result.fields(); fields["way_forward"] != "lym beam start" || fields["dobby_start_error"] != "spawn refused" {
+			t.Errorf("fields = %v; want the way forward `lym beam start` beside the start failure", fields)
 		}
 	})
 }

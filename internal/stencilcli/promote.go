@@ -17,15 +17,15 @@ import (
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// newPromoteCmd builds the promote subcommand. loc resolves the *lyxcwd.Location the parent's
+// newPromoteCmd builds the promote subcommand. loc resolves the *lymcwd.Location the parent's
 // PersistentPreRunE stored, the same closure-over-a-shared-variable pattern Command() uses for list,
 // validate, and sync.
-func newPromoteCmd(loc func() *lyxcwd.Location) *cobra.Command {
+func newPromoteCmd(loc func() *lymcwd.Location) *cobra.Command {
 	return &cobra.Command{
 		Use:         "promote <name>",
 		Short:       "copy a board-copy edit back into this worktree's contracts/stencils/ source tree",
@@ -39,7 +39,7 @@ func newPromoteCmd(loc func() *lyxcwd.Location) *cobra.Command {
 			out := cmd.OutOrStdout()
 
 			if len(args) != 1 {
-				clihelp.SetExit(cmd.Context(), output.Err(out, "usage: lyx stencil promote <name>"))
+				clihelp.SetExit(cmd.Context(), output.Err(out, "usage: lym stencil promote <name>"))
 				return nil
 			}
 			name := args[0]
@@ -88,7 +88,7 @@ func newPromoteCmd(loc func() *lyxcwd.Location) *cobra.Command {
 	}
 }
 
-// stripStampLine removes only the "lyx-stencil: sha256=..." line from content's leading
+// stripStampLine removes only the "lym-stencil: sha256=..." line from content's leading
 // `<!-- ... -->` banner, leaving every other line of that banner and the entire body
 // byte-identical. A stencil.StripLeadingComment of the whole banner would discard human-facing
 // documentation the source file is supposed to keep -- this strips exactly the stamp and nothing

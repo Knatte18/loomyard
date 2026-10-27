@@ -31,11 +31,11 @@ func TestCheckMainCapture(t *testing.T) {
 		{name: "a halt at Drift-Await", status: status("Drift-Await", shedengine.StateBlocked, "waiting"), head: "bp"},
 		{
 			name: "a blocked status at Drift-Baseline that is no capture halt", status: status("Drift-Baseline", shedengine.StateBlocked, "decision needed"), head: "bp",
-			want: []string{"drift capture refused:", "other than a capture halt", "lyx loom resume"},
+			want: []string{"drift capture refused:", "other than a capture halt", "lym loom resume"},
 		},
 		{
 			name: "running at Drift-Await", status: status("Drift-Await", shedengine.StateRunning, ""), head: "bp",
-			want: []string{"drift capture refused:", "Drift-Await (running)", "run lyx drift capture at a Drift-Await halt or at a Drift-Baseline capture halt"},
+			want: []string{"drift capture refused:", "Drift-Await (running)", "run lym drift capture at a Drift-Await halt or at a Drift-Baseline capture halt"},
 		},
 		{
 			name: "blocked at another row", status: status("Code-Review", shedengine.StateBlocked, "x"), head: "bp",
@@ -43,16 +43,16 @@ func TestCheckMainCapture(t *testing.T) {
 		},
 		{
 			name: "a moved HEAD", status: status("Drift-Baseline", shedengine.StateRunning, ""), head: "later",
-			want: []string{"drift capture refused:", "HEAD later", "branch point bp", "lyx drift defer, then lyx loom resume"},
+			want: []string{"drift capture refused:", "HEAD later", "branch point bp", "lym drift defer, then lym loom resume"},
 		},
 		{
 			name: "a dirty tree at Drift-Baseline", status: status("Drift-Baseline", shedengine.StateRunning, ""), head: "bp", dirty: []string{"a.go", "b.go"},
-			want:    []string{"drift capture refused:", "a.go, b.go", "restore those paths to HEAD or stash them", "lyx loom resume, which captures again", "lyx drift defer, then lyx loom resume"},
-			wantNot: []string{"lyx drift capture again", "remove"},
+			want:    []string{"drift capture refused:", "a.go, b.go", "restore those paths to HEAD or stash them", "lym loom resume, which captures again", "lym drift defer, then lym loom resume"},
+			wantNot: []string{"lym drift capture again", "remove"},
 		},
 		{
 			name: "a dirty tree at a Drift-Await halt", status: status("Drift-Await", shedengine.StateBlocked, "waiting"), head: "bp", dirty: []string{"a.go"},
-			want:    []string{"drift capture refused:", "restore those paths to HEAD or stash them", "lyx drift capture again, then lyx loom resume", "lyx drift defer, then lyx loom resume"},
+			want:    []string{"drift capture refused:", "restore those paths to HEAD or stash them", "lym drift capture again, then lym loom resume", "lym drift defer, then lym loom resume"},
 			wantNot: []string{"captures again", "remove"},
 		},
 	}

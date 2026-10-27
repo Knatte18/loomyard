@@ -27,36 +27,36 @@ func TestMergePaths_UnifyConflictPaths(t *testing.T) {
 			warpConflicts: []string{"warp-file.txt", "sub/warp-other.txt"},
 			weftConflicts: nil,
 			anchorRel:     ".",
-			wiredNames:    []string{"_lyx"},
+			wiredNames:    []string{"_lym"},
 			wantUnified:   []string{"sub/warp-other.txt", "warp-file.txt"},
 		},
 		{
 			name:          "weft identity mapping at anchorRel dot",
 			warpConflicts: nil,
-			weftConflicts: []string{"_lyx/pattern/foo.md"},
+			weftConflicts: []string{"_lym/pattern/foo.md"},
 			anchorRel:     ".",
-			wiredNames:    []string{"_lyx"},
-			wantUnified:   []string{"_lyx/pattern/foo.md"},
+			wiredNames:    []string{"_lym"},
+			wantUnified:   []string{"_lym/pattern/foo.md"},
 		},
 		{
 			name:          "weft identity mapping at subpath anchor",
 			warpConflicts: nil,
-			weftConflicts: []string{"backend/_lyx/pattern/foo.md"},
+			weftConflicts: []string{"backend/_lym/pattern/foo.md"},
 			anchorRel:     "backend",
-			wiredNames:    []string{"_lyx"},
-			wantUnified:   []string{"backend/_lyx/pattern/foo.md"},
+			wiredNames:    []string{"_lym"},
+			wantUnified:   []string{"backend/_lym/pattern/foo.md"},
 		},
 		{
-			// A multi-segment anchor is reachable (`lyx fabric clone --subpath apps/backend`) and is
+			// A multi-segment anchor is reachable (`lym fabric clone --subpath apps/backend`) and is
 			// the shape the separator bug bites on Windows, where ValidateAnchorRel hands this
 			// function `apps\backend`. On Linux the value is already slash-form, so this row guards
 			// the mapping itself rather than the conversion.
 			name:          "weft identity mapping at a multi-segment subpath anchor",
 			warpConflicts: nil,
-			weftConflicts: []string{"apps/backend/_lyx/pattern/foo.md"},
+			weftConflicts: []string{"apps/backend/_lym/pattern/foo.md"},
 			anchorRel:     "apps/backend",
-			wiredNames:    []string{"_lyx"},
-			wantUnified:   []string{"apps/backend/_lyx/pattern/foo.md"},
+			wiredNames:    []string{"_lym"},
+			wantUnified:   []string{"apps/backend/_lym/pattern/foo.md"},
 		},
 		{
 			// A backslash is an ordinary filename character on Linux, so an anchor directory really
@@ -66,17 +66,17 @@ func TestMergePaths_UnifyConflictPaths(t *testing.T) {
 			// boundary that does not exist and make every conflict under it unmappable.
 			name:          "single anchor segment containing a backslash is not split",
 			warpConflicts: nil,
-			weftConflicts: []string{`weird\name/_lyx/foo.md`},
+			weftConflicts: []string{`weird\name/_lym/foo.md`},
 			anchorRel:     `weird\name`,
-			wiredNames:    []string{"_lyx"},
-			wantUnified:   []string{`weird\name/_lyx/foo.md`},
+			wiredNames:    []string{"_lym"},
+			wantUnified:   []string{`weird\name/_lym/foo.md`},
 		},
 		{
 			name:           "weft path outside the wired set is unmappable",
 			warpConflicts:  nil,
 			weftConflicts:  []string{"README.md"},
 			anchorRel:      ".",
-			wiredNames:     []string{"_lyx"},
+			wiredNames:     []string{"_lym"},
 			wantUnified:    []string{},
 			wantUnmappable: true,
 		},
@@ -85,33 +85,33 @@ func TestMergePaths_UnifyConflictPaths(t *testing.T) {
 			warpConflicts:  nil,
 			weftConflicts:  []string{"warp-binding.yaml"},
 			anchorRel:      ".",
-			wiredNames:     []string{"_lyx"},
+			wiredNames:     []string{"_lym"},
 			wantUnified:    []string{},
 			wantUnmappable: true,
 		},
 		{
 			name:           "both-sides collision on one unified path is unmappable",
-			warpConflicts:  []string{"_lyx/config.yaml"},
-			weftConflicts:  []string{"_lyx/config.yaml"},
+			warpConflicts:  []string{"_lym/config.yaml"},
+			weftConflicts:  []string{"_lym/config.yaml"},
 			anchorRel:      ".",
-			wiredNames:     []string{"_lyx"},
-			wantUnified:    []string{"_lyx/config.yaml"},
+			wiredNames:     []string{"_lym"},
+			wantUnified:    []string{"_lym/config.yaml"},
 			wantUnmappable: true,
 		},
 		{
 			name:          "merged list lexically sorted with per-side ordering destroyed",
 			warpConflicts: []string{"z-warp.txt", "a-warp.txt"},
-			weftConflicts: []string{"_lyx/z-weft.txt", "_lyx/a-weft.txt"},
+			weftConflicts: []string{"_lym/z-weft.txt", "_lym/a-weft.txt"},
 			anchorRel:     ".",
-			wiredNames:    []string{"_lyx"},
-			wantUnified:   []string{"_lyx/a-weft.txt", "_lyx/z-weft.txt", "a-warp.txt", "z-warp.txt"},
+			wiredNames:    []string{"_lym"},
+			wantUnified:   []string{"_lym/a-weft.txt", "_lym/z-weft.txt", "a-warp.txt", "z-warp.txt"},
 		},
 		{
 			name:          "empty inputs yield empty non-nil result",
 			warpConflicts: nil,
 			weftConflicts: nil,
 			anchorRel:     ".",
-			wiredNames:    []string{"_lyx"},
+			wiredNames:    []string{"_lym"},
 			wantUnified:   []string{},
 		},
 	}
@@ -152,7 +152,7 @@ func TestMergePaths_UnifyConflictPaths(t *testing.T) {
 //   - blanket-replacing every backslash regardless of the OS separator → the PosixBackslashInName
 //     rows start matching a component boundary that does not exist.
 func TestMergePaths_WeftPathVisibleAcrossSeparators(t *testing.T) {
-	wired := []string{"_lyx", ".lyx"}
+	wired := []string{"_lym", ".lym"}
 
 	tests := []struct {
 		name      string
@@ -162,19 +162,17 @@ func TestMergePaths_WeftPathVisibleAcrossSeparators(t *testing.T) {
 		want      bool
 	}{
 		{
-			// The Windows shape round 6's fix is about: ValidateAnchorRel hands back `apps\backend`
-			// while git reports `apps/backend/_lyx/…`. Without the conversion the prefix is
-			// `apps\backend/_lyx/`, nothing matches, and MergeIn self-aborts the whole merge with
-			// *ErrUnmergeableState for a conflict squarely inside the fabric-managed tree.
+			// The Windows shape round 6's fix is about: ValidateAnchorRel hands back `apps\backend` while git reports `apps/backend/_lym/…`.
+			// Without the conversion the prefix is `apps\backend/_lym/`, nothing matches, and MergeIn self-aborts the whole merge with *ErrUnmergeableState for a conflict squarely inside the fabric-managed tree.
 			name:      "WindowsMultiSegmentAnchor_MapsUnderWiredName",
-			weftPath:  "apps/backend/_lyx/pattern/foo.md",
+			weftPath:  "apps/backend/_lym/pattern/foo.md",
 			anchorRel: `apps\backend`,
 			separator: '\\',
 			want:      true,
 		},
 		{
 			name:      "WindowsMultiSegmentAnchor_MapsUnderTheOtherWiredName",
-			weftPath:  "apps/backend/.lyx/scratch/foo.md",
+			weftPath:  "apps/backend/.lym/scratch/foo.md",
 			anchorRel: `apps\backend`,
 			separator: '\\',
 			want:      true,
@@ -188,7 +186,7 @@ func TestMergePaths_WeftPathVisibleAcrossSeparators(t *testing.T) {
 		},
 		{
 			name:      "WindowsSingleSegmentAnchor_CarriesNoSeparatorAndMapsEitherWay",
-			weftPath:  "backend/_lyx/foo.md",
+			weftPath:  "backend/_lym/foo.md",
 			anchorRel: "backend",
 			separator: '\\',
 			want:      true,
@@ -199,21 +197,21 @@ func TestMergePaths_WeftPathVisibleAcrossSeparators(t *testing.T) {
 			// directory really can be named `weird\name`. Rewriting it into a component boundary
 			// makes every conflict under that anchor unmappable.
 			name:      "PosixBackslashInName_IsNotSplitIntoComponents",
-			weftPath:  `weird\name/_lyx/foo.md`,
+			weftPath:  `weird\name/_lym/foo.md`,
 			anchorRel: `weird\name`,
 			separator: '/',
 			want:      true,
 		},
 		{
 			name:      "PosixBackslashInName_SlashSpellingDoesNotMatch",
-			weftPath:  "weird/name/_lyx/foo.md",
+			weftPath:  "weird/name/_lym/foo.md",
 			anchorRel: `weird\name`,
 			separator: '/',
 			want:      false,
 		},
 		{
 			name:      "DotAnchor_IsSeparatorIndependent",
-			weftPath:  "_lyx/foo.md",
+			weftPath:  "_lym/foo.md",
 			anchorRel: ".",
 			separator: '\\',
 			want:      true,
@@ -240,7 +238,7 @@ func TestMergePaths_WeftPathVisibleAcrossSeparators(t *testing.T) {
 //
 // The conversion LOGIC, which is where the defect actually lived, is fully exercised at runtime by
 // TestMergePaths_WeftPathVisibleAcrossSeparators. What is left over is one argument, and a source
-// scan is the proportionate guard for it — the same posture cmd/lyx's destructive- and
+// scan is the proportionate guard for it — the same posture cmd/lym's destructive- and
 // uncontained-write guards take for facts no runtime assertion on this host can reach.
 //
 //testtiming:keep weftPathVisible being wired to its separator-explicit form, by source inspection; coverage of its blocks by other tests does not show an assertion of this

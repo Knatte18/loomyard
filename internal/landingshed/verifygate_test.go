@@ -121,8 +121,8 @@ func newGateFixture(t *testing.T, gateKey, command string, closureErr error) *ga
 
 // The calls the fixtures render for the gates, standing in for what the hub's gate config renders.
 const (
-	gateLandingCall = "lyx gate test --wait --tier 0 --tier 1 --all"
-	gateBaseCall    = "lyx gate test --wait --tier 0 --all"
+	gateLandingCall = "lym gate test --wait --tier 0 --tier 1 --all"
+	gateBaseCall    = "lym gate test --wait --tier 0 --all"
 )
 
 // fixedGateTierLists are the tier lists fixedGateTiers answers, one gate's highest tier differing from its first.
@@ -245,7 +245,7 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 			name: "failed after a watchdog quit names the window and busy_quit_sec", command: "false", site: "Publish",
 			result:        verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1},
 			logBody:       "ok  \texample.com/mod/b\t0.1s\n" + gateslot.WatchdogLine("/tmp/x/a.test", 42, 2*time.Minute) + "\nSIGQUIT: quit\n",
-			wantReasonHas: []string{"exit code 1", "2m0s", "busy_quit_sec", `"lyx config gate" from the prime`, "fix forward on the task branch, then resume"},
+			wantReasonHas: []string{"exit code 1", "2m0s", "busy_quit_sec", `"lym config gate" from the prime`, "fix forward on the task branch, then resume"},
 		},
 		{
 			name: "could not start", command: "true", site: "Publish",
@@ -258,7 +258,7 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 			wantReasonExact: func(logPath string) string {
 				return `landing gate timed out after merging parent branch "main": gate tier2 exceeded timeout_min 30m0s and was killed; output: ` + logPath +
 					`; fix the hanging test on the task branch, or, for a tier that is slow but healthy, rewrite the tier whole from the prime with ` +
-					"`lyx config gate --set 'tiers.tier<N>={...}'`" +
+					"`lym config gate --set 'tiers.tier<N>={...}'`" +
 					`, carrying every key of the tier and the raised timeout_min, since a dotted key under the tier writes an entry the loader refuses; a session that is not the prime reports status: FAILED and the orch runs it; then resume`
 			},
 		},
@@ -268,7 +268,7 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 			wantReasonExact: func(logPath string) string {
 				return `landing gate timed out after merging parent branch "main": gate build exceeded timeout_min 5m0s and was killed; output: ` + logPath +
 					`; fix the hanging build, such as a stalled restore or compile, on the task branch, or, for a build that is slow but healthy, rewrite the build whole from the prime with ` +
-					"`lyx config gate --set 'build={...}'`" +
+					"`lym config gate --set 'build={...}'`" +
 					`, carrying every key of the build and the raised timeout_min, since a dotted key under the build writes an entry the loader refuses; a session that is not the prime reports status: FAILED and the orch runs it; then resume`
 			},
 		},

@@ -1,6 +1,6 @@
 //go:build tier1
 
-// dobby_integration_test.go runs "lyx beam dobby" through RunCLIIn over a hubforge hub, on paths dobby cannot place.
+// dobby_integration_test.go runs "lym beam dobby" through RunCLIIn over a hubforge hub, on paths dobby cannot place.
 
 package beamcli_test
 
@@ -41,12 +41,12 @@ func TestDobbyCmd_RefusesAPathItCannotPlace(t *testing.T) {
 			var out bytes.Buffer
 			beamcli.RunCLIIn(h.Path, &out, []string{"dobby", tt.root})
 
-			envelope.RequireErr(t, out.String(), "lyx beam start")
+			envelope.RequireErr(t, out.String(), "lym beam start")
 			owners, err := runproc.Owners(fabricengine.RunProcDir(h.Path))
 			if err != nil || len(owners) != 0 {
 				t.Errorf("runproc.Owners() = %v, %v; want no record written", owners, err)
 			}
-			if _, err := os.Stat(filepath.Join(tt.root, ".lyx", "beam", dobbyengine.LockFileName)); !os.IsNotExist(err) {
+			if _, err := os.Stat(filepath.Join(tt.root, ".lym", "beam", dobbyengine.LockFileName)); !os.IsNotExist(err) {
 				t.Errorf("Stat(dobby lock) = %v; want it absent", err)
 			}
 		})

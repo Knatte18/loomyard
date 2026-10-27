@@ -17,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
@@ -33,9 +33,9 @@ func TestSpawnStatusPush(t *testing.T) {
 	boardDir := fabricengine.BoardDir(h.Location.HubPath)
 	recorder := fabricengine.SwapPushRecorderForTest(t)
 
-	resolve := func(t *testing.T, worktree string) *lyxcwd.Location {
+	resolve := func(t *testing.T, worktree string) *lymcwd.Location {
 		t.Helper()
-		l, err := lyxcwd.ResolveWorktree(worktree)
+		l, err := lymcwd.ResolveWorktree(worktree)
 		if err != nil {
 			t.Fatalf("ResolveWorktree(%s): %v", worktree, err)
 		}

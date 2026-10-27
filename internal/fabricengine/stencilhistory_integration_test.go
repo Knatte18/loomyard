@@ -48,11 +48,11 @@ func TestStencilBaseByStamp(t *testing.T) {
 	// A file stamped from an older default is found by that stamp, returning the older default's body.
 	t.Run("FindsOlderDefaultByStamp", func(t *testing.T) {
 		older := []byte("older default body\n")
-		seedStencil(t, hub, name, older, "lyx: seed stencils (v1)")
+		seedStencil(t, hub, name, older, "lym: seed stencils (v1)")
 		olderStamp := stencilstore.BodyHash(older)
 
 		newer := []byte("newer default body\n")
-		seedStencil(t, hub, name, newer, "lyx: seed stencils (v2)")
+		seedStencil(t, hub, name, newer, "lym: seed stencils (v2)")
 
 		base, rev, found, err := fabricengine.StencilBaseByStamp(hub.Path, name, olderStamp)
 		if err != nil {
@@ -72,7 +72,7 @@ func TestStencilBaseByStamp(t *testing.T) {
 	// No revision's body matches the stamp: found == false and a nil error -- the case `diff` must
 	// report explicitly instead of rendering an empty diff.
 	t.Run("NoMatchReturnsFoundFalse", func(t *testing.T) {
-		seedStencil(t, hub, name, []byte("only default body\n"), "lyx: seed stencils")
+		seedStencil(t, hub, name, []byte("only default body\n"), "lym: seed stencils")
 
 		const neverMatchedStamp = "0000000000000000000000000000000000000000000000000000000000000000"
 		base, rev, found, err := fabricengine.StencilBaseByStamp(hub.Path, name, neverMatchedStamp)
@@ -97,7 +97,7 @@ func TestStencilBaseByStamp(t *testing.T) {
 	// regression here would silently disable it entirely.
 	t.Run("HashNormalisationAcrossCRLF", func(t *testing.T) {
 		olderLF := []byte("older default body\nsecond line\n")
-		seedStencil(t, hub, name, olderLF, "lyx: seed stencils (v1)")
+		seedStencil(t, hub, name, olderLF, "lym: seed stencils (v1)")
 
 		// The stamp a CRLF working-tree checkout would have produced: BodyHash normalises LF internally,
 		// so this equals BodyHash(olderLF) even though the raw bytes differ.
@@ -105,7 +105,7 @@ func TestStencilBaseByStamp(t *testing.T) {
 		stampFromCRLFCopy := stencilstore.BodyHash(olderCRLF)
 
 		newer := []byte("newer default body\n")
-		seedStencil(t, hub, name, newer, "lyx: seed stencils (v2)")
+		seedStencil(t, hub, name, newer, "lym: seed stencils (v2)")
 
 		base, _, found, err := fabricengine.StencilBaseByStamp(hub.Path, name, stampFromCRLFCopy)
 		if err != nil {

@@ -23,7 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -33,13 +33,13 @@ import (
 // DobbyParents answers hubgeom.ParentOf once per slug, since a run's parent never changes and the answer reads the worktree list.
 // It is safe for concurrent use.
 type DobbyParents struct {
-	prime *lyxcwd.Location
+	prime *lymcwd.Location
 	mu    sync.Mutex
 	known map[string]string
 }
 
 // NewDobbyParents returns an empty cache over the hub of prime.
-func NewDobbyParents(prime *lyxcwd.Location) *DobbyParents {
+func NewDobbyParents(prime *lymcwd.Location) *DobbyParents {
 	return &DobbyParents{prime: prime, known: map[string]string{}}
 }
 
@@ -66,8 +66,8 @@ type dobbyRun struct {
 
 // dobbyParentRuns lists the batten runs of the prime whose parent worktree is geom's, read from the prime's local status files whatever each run's state.
 // A run whose seed or parent cannot be read is left out with one Warn, so one broken run never stops the rest.
-// A run whose pair holds an invalid anchor marker is no such read failure: it returns an error naming the pair and wrapping lyxcwd.ErrInvalidAnchor.
-func dobbyParentRuns(prime *lyxcwd.Location, geom dobbyengine.Geometry, parents *DobbyParents) ([]dobbyRun, error) {
+// A run whose pair holds an invalid anchor marker is no such read failure: it returns an error naming the pair and wrapping lymcwd.ErrInvalidAnchor.
+func dobbyParentRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *DobbyParents) ([]dobbyRun, error) {
 	slugs, err := shedrun.List(prime)
 	if err != nil {
 		return nil, err
@@ -83,7 +83,7 @@ func dobbyParentRuns(prime *lyxcwd.Location, geom dobbyengine.Geometry, parents 
 			continue
 		}
 		parent, err := parents.Of(slug)
-		if errors.Is(err, lyxcwd.ErrInvalidAnchor) {
+		if errors.Is(err, lymcwd.ErrInvalidAnchor) {
 			return nil, err
 		}
 		if err != nil {
@@ -123,7 +123,7 @@ func readDobbyRunStatus(path string) (shedengine.Status, bool, error) {
 
 // DobbyRuns builds the RunView of every batten run whose parent worktree is geom's, with the pause coverage read from the record at pauseRecord.
 // A run's slot reading comes from its board entry on the local board at geom.BoardDir, which runTakesNoSlot judges.
-func DobbyRuns(prime *lyxcwd.Location, geom dobbyengine.Geometry, parents *DobbyParents, pauseRecord string) ([]dobbyengine.RunView, error) {
+func DobbyRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *DobbyParents, pauseRecord string) ([]dobbyengine.RunView, error) {
 	runs, err := dobbyParentRuns(prime, geom, parents)
 	if err != nil {
 		return nil, err
@@ -151,7 +151,7 @@ func DobbyRuns(prime *lyxcwd.Location, geom dobbyengine.Geometry, parents *Dobby
 			Covered:  record.CoverageOf(slug, now).Covered,
 			NoSlot:   runTakesNoSlot(entryOf[slug]),
 		}
-		pair, err := lyxcwd.NamedWorktree(prime.HubPath, slug)
+		pair, err := lymcwd.NamedWorktree(prime.HubPath, slug)
 		if err != nil {
 			return nil, fmt.Errorf("locate the pair %s: %w", slug, err)
 		}
@@ -210,7 +210,7 @@ func lockHeld(path string) (bool, error) {
 }
 
 // DobbyLandings lists the slugs of the runs of geom's parent worktree whose batten history holds a Land that finished.
-func DobbyLandings(prime *lyxcwd.Location, geom dobbyengine.Geometry, parents *DobbyParents) ([]string, error) {
+func DobbyLandings(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *DobbyParents) ([]string, error) {
 	runs, err := dobbyParentRuns(prime, geom, parents)
 	if err != nil {
 		return nil, err
@@ -229,7 +229,7 @@ func DobbyLandings(prime *lyxcwd.Location, geom dobbyengine.Geometry, parents *D
 // DobbyTasks reads the local board under boardDir as TaskViews.
 // Only a released task, one with an empty status, gets its parent worktree and owner read; the others carry neither.
 // A dependency no longer on the board was pruned as done.
-func DobbyTasks(prime *lyxcwd.Location, boardDir string, parents *DobbyParents) ([]dobbyengine.TaskView, error) {
+func DobbyTasks(prime *lymcwd.Location, boardDir string, parents *DobbyParents) ([]dobbyengine.TaskView, error) {
 	tasks, err := boardengine.ReadTasks(boardDir)
 	if err != nil {
 		return nil, err
@@ -283,7 +283,7 @@ func DobbyTasks(prime *lyxcwd.Location, boardDir string, parents *DobbyParents) 
 // DobbyViewReader reads the View of the dobby of one worktree from outside its process, keeping the parents it resolved across reads.
 // It is not safe for concurrent use.
 type DobbyViewReader struct {
-	prime       *lyxcwd.Location
+	prime       *lymcwd.Location
 	geom        dobbyengine.Geometry
 	dirs        configengine.Dirs
 	pauseRecord string
@@ -291,12 +291,12 @@ type DobbyViewReader struct {
 }
 
 // NewDobbyViewReader returns the reader of the dobby of the worktree named worktree, in the hub of prime.
-func NewDobbyViewReader(prime *lyxcwd.Location, worktree string) (*DobbyViewReader, error) {
+func NewDobbyViewReader(prime *lymcwd.Location, worktree string) (*DobbyViewReader, error) {
 	geom, err := hubgeom.DobbyGeometry(prime, worktree)
 	if err != nil {
 		return nil, err
 	}
-	location, err := lyxcwd.ResolveWorktree(geom.WorktreeRoot)
+	location, err := lymcwd.ResolveWorktree(geom.WorktreeRoot)
 	if err != nil {
 		return nil, err
 	}

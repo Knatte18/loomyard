@@ -25,8 +25,8 @@ const pollFloor = time.Second
 
 // waitOrCancel pauses for d, returning as soon as ctx is cancelled if that happens first.
 // It is the production value a nil Sleep resolves to, so a caller driving a producer
-// under a cancellable context gets it back promptly. The lyx CLI itself never cancels its context:
-// an operator's Ctrl-C ends the process outright, and "lyx batten pause" is read between rows, so
+// under a cancellable context gets it back promptly. The lym CLI itself never cancels its context:
+// an operator's Ctrl-C ends the process outright, and "lym batten pause" is read between rows, so
 // it waits out the current interval.
 func waitOrCancel(ctx context.Context, d time.Duration) {
 	timer := time.NewTimer(d)
@@ -54,11 +54,11 @@ func SpawnConfirmedFile(scratchDir, producer string) string {
 // haltedWaitReason renders the stuck reason of a halted child's wait.
 // Nothing on the prime side resumes the child's own driver,
 // so the reason names the operator's resume command and says this run keeps watching.
-// startFallback adds `lyx loom start`, for a child with no driver strand to wake or whose revive failed.
+// startFallback adds `lym loom start`, for a child with no driver strand to wake or whose revive failed.
 func haltedWaitReason(status shedengine.Status, startFallback bool) string {
-	resume := `run "lyx loom resume" in the task worktree to resume it`
+	resume := `run "lym loom resume" in the task worktree to resume it`
 	if startFallback {
-		resume = `run "lyx loom resume" in the task worktree to resume it, or "lyx loom start" in the task worktree when no driver can be woken`
+		resume = `run "lym loom resume" in the task worktree to resume it, or "lym loom start" in the task worktree when no driver can be woken`
 	}
 	return fmt.Sprintf("inner shed run is %s: error=%q current_producer=%q; %s; this run then keeps watching", status.State, status.Error, status.CurrentProducer, resume)
 }
@@ -127,8 +127,8 @@ func parseDecisionActed(raw string) (identity string, historyLen int, hasLen boo
 }
 
 // awaitingHandOff is the operator instruction an awaiting child's wait carries: the child waits on a review segment's escalation, and only the operator can settle it from inside the task worktree.
-// An escalation's circling decision is resumed by the operator's own `lyx loom resume`.
-const awaitingHandOff = "at a review segment's escalation run \"lyx loom circling accept <slug>\" or \"lyx loom circling continue <slug>\" and then \"lyx loom resume\" in the task worktree"
+// An escalation's circling decision is resumed by the operator's own `lym loom resume`.
+const awaitingHandOff = "at a review segment's escalation run \"lym loom circling accept <slug>\" or \"lym loom circling continue <slug>\" and then \"lym loom resume\" in the task worktree"
 
 // innerRunProducer spawns the inner shed run for a task worktree, once, and then checks the child's persisted status once per Call.
 // A Call returns Stuck, always budget-exempt, only when the check has something to record, so shedengine's own on_stuck self-route re-enters it as a new bounce;
@@ -164,7 +164,7 @@ type innerRunProducer struct {
 	restep restepWatch
 	// ownedBy is the machine the owner check last read as owning the run, empty while it reads as owned here, across Calls.
 	ownedBy string
-	// ownedSubject is what `lyx adopt` takes to move the run the owner check last read as owned elsewhere, empty when the verdict brought none, across Calls.
+	// ownedSubject is what `lym adopt` takes to move the run the owner check last read as owned elsewhere, empty when the verdict brought none, across Calls.
 	ownedSubject string
 	// ownerNoticed is whether the orch was noticed of the current owner episode.
 	ownerNoticed bool
@@ -390,7 +390,7 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 // Every Stuck here is budget-exempt and follows a real event, so the self-route can never burn the bounce budget in a tight loop before reaching a halt.
 //
 // Bound: a running child is checked without a time limit.
-// "lyx batten pause", honoured within one check, cancellation and the notices bound it;
+// "lym batten pause", honoured within one check, cancellation and the notices bound it;
 // a running child whose driver is dead and whose status file does not change yields on every check, the driver-dead notice being the only signal.
 //
 // A ResolveStatus error and a ReadStatus error are both returned hard errors, not verdicts: the
@@ -564,7 +564,7 @@ func statusModTime(path string) time.Time {
 }
 
 // driverAtWork reports whether the child already has a driver at work: a live or retiring driver strand, a held child run lock, or a held Go driver lock.
-// A retiring strand counts as live, since someone already asked to remove it and `lyx loom start` replaces it.
+// A retiring strand counts as live, since someone already asked to remove it and `lym loom start` replaces it.
 // A held driver lock is a Go driver settling between steps, when the run lock is free.
 // A read error from any seam is returned as a hard error,
 // and the next Call retries.
@@ -675,7 +675,7 @@ func stuckWaitEnd(text string) *waitEnd {
 	return &waitEnd{outcome: shedengine.Stuck, pointer: shedengine.OutputPointer{Path: text, Reason: text, BudgetExempt: true}}
 }
 
-// report writes reason to the reason file when it differs from the last one written, so `lyx batten status` shows what the child is waited on for.
+// report writes reason to the reason file when it differs from the last one written, so `lym batten status` shows what the child is waited on for.
 // It logs the reason at Info only the first time key is seen, so a reason whose text only counts up logs once per state of the child.
 // An arm can alternate between reasons, so a set of keys, not the last key, keeps each from logging on every check.
 // key is the reason with its counters, countdowns and error tails left out.
@@ -811,7 +811,7 @@ func (p *innerRunProducer) runningStep(ctx context.Context, w *childWait) *waitE
 }
 
 // haltedStep is the halted arm for a blocked, paused or failed child: it logs one Info line per halt episode, revives a dead driver strand once per episode, and reports the resume command the operator runs.
-// It never spawns or resumes the child, except for the one re-step of a driverless go child on a new lyx build (binaryRestep).
+// It never spawns or resumes the child, except for the one re-step of a driverless go child on a new lym build (binaryRestep).
 // The child is waited on until its state changes.
 func (p *innerRunProducer) haltedStep(ctx context.Context, w *childWait) *waitEnd {
 	if err := p.warnHaltEpisode(w.status); err != nil {
@@ -858,13 +858,13 @@ func (p *innerRunProducer) warnHaltEpisode(status shedengine.Status) error {
 
 // driverRevival is what reviveDeadDriver learned about the child's driver strand.
 type driverRevival struct {
-	// startFallback is true when the halted reason should also name `lyx loom start`: the child has no driver strand in reed state,
+	// startFallback is true when the halted reason should also name `lym loom start`: the child has no driver strand in reed state,
 	// or a revive failed in this episode.
 	startFallback bool
 }
 
 // reviveDeadDriver brings back the dead driver strand of a halted or awaiting child through deps.ReviveStrands, at most once per episode.
-// A retiring strand is left to `lyx loom start`,
+// A retiring strand is left to `lym loom start`,
 // a live one needs nothing,
 // and a child with no driver strand has nothing to revive, which it never tells from a Go-driven child by the seed.
 // The attempt is recorded in the revived marker, which stands until the episode ends;
@@ -943,7 +943,7 @@ func (p *innerRunProducer) awaitingStep(ctx context.Context, w *childWait) *wait
 		actedIdentity, actedLen, hasLen := parseDecisionActed(string(acted))
 		if actedIdentity == identity {
 			if hasLen && len(w.status.History) == actedLen {
-				p.reportState(w, fmt.Sprintf("the %s at %s was acted on and the resume was delivered, but the child's driver has not re-stepped yet; if this persists, inspect a live driver in its pane, or run \"lyx loom start\" in the task worktree if the driver has ended", decision.Kind, decision.At))
+				p.reportState(w, fmt.Sprintf("the %s at %s was acted on and the resume was delivered, but the child's driver has not re-stepped yet; if this persists, inspect a live driver in its pane, or run \"lym loom start\" in the task worktree if the driver has ended", decision.Kind, decision.At))
 				return nil
 			}
 			p.reportState(w, fmt.Sprintf("the %s at %s was already acted on and the child is awaiting again; decide again: %s", decision.Kind, decision.At, awaitingHandOff))

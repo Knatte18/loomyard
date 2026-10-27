@@ -44,7 +44,7 @@ type RunView struct {
 	NoSlot bool
 }
 
-// PassExit is how a `lyx batten run` pass ended: its exit code and its last error text.
+// PassExit is how a `lym batten run` pass ended: its exit code and its last error text.
 type PassExit struct {
 	Code  int
 	Error string
@@ -347,7 +347,7 @@ func (d *daemon) originOwed(slug string) bool {
 
 // noticeFailingPass posts the failing-pass notice for slug and records the text as noticed once it went out.
 func (d *daemon) noticeFailingPass(slug, errText string) {
-	line := fmt.Sprintf("%s: batten pass keeps failing: %s; way forward: fix the cause the text names, then run lyx batten run %s; lyx batten status %s shows the run", slug, errText, slug, slug)
+	line := fmt.Sprintf("%s: batten pass keeps failing: %s; way forward: fix the cause the text names, then run lym batten run %s; lym batten status %s shows the run", slug, errText, slug, slug)
 	if err := d.deps.Notice(d.tickCtx, line); err != nil {
 		logger.Warn("dobbyengine: the failing-pass notice did not go out", "slug", slug, "error", err)
 		return

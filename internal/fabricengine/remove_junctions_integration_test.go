@@ -7,9 +7,9 @@
 // worktree root's immediate children) cannot see it. At RelPath == "." the
 // safety net masks the bug entirely, which is why this file drives the
 // nested case specifically. From card 15 onward WarpJunctions returns two
-// entries (_lyx and a second, non-_lyx junction), so this is now a true
-// discriminator against the old _lyx-hardcoded form: the second junction's
-// nested removal has no _lyx-shaped shortcut to fall back on.
+// entries (_lym and a second, non-_lym junction), so this is now a true
+// discriminator against the old _lym-hardcoded form: the second junction's
+// nested removal has no _lym-shaped shortcut to fall back on.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -25,8 +25,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // TestRemove_TearsDownNestedJunction wires a junction nested one level below the worktree root
@@ -43,7 +43,7 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 
 	// Resolve a nested layout: same worktree (l.WorktreePath()), but anchored
 	// one level deeper — AnchorRel becomes "sub", matching the hub-wide
-	// nesting convention CodeLyxLink/WeftLyxDirFor assume (every sibling
+	// nesting convention CodeLymLink/WeftLymDirFor assume (every sibling
 	// worktree nests at the same AnchorRel offset as the caller's own). The
 	// strict cwd gate requires the anchor to actually be recorded before
 	// Resolve(subDir) can succeed at that subpath.
@@ -52,21 +52,21 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 		t.Fatalf("mkdir %s: %v", subDir, err)
 	}
 	seedAnchorMarker(t, h, "sub")
-	nestedLayout, err := lyxcwd.Resolve(subDir)
+	nestedLayout, err := lymcwd.Resolve(subDir)
 	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(%s): %v", subDir, err)
+		t.Fatalf("lymcwd.Resolve(%s): %v", subDir, err)
 	}
 	if nestedLayout.AnchorRel != "sub" {
 		t.Fatalf("nestedLayout.AnchorRel = %q; want %q", nestedLayout.AnchorRel, "sub")
 	}
 
-	if err := fabricengine.WireJunctions(nestedLayout, slug, []string{"_lyx", "_extra"}); err != nil {
+	if err := fabricengine.WireJunctions(nestedLayout, slug, []string{"_lym", "_extra"}); err != nil {
 		t.Fatalf("WireJunctions(nested): %v", err)
 	}
 
-	nestedLyxLink := fabricengine.CodeLyxLink(nestedLayout, slug)
-	if isLink, err := fslink.IsLink(nestedLyxLink); err != nil || !isLink {
-		t.Fatalf("setup: nested _lyx junction %s not wired: isLink=%v err=%v", nestedLyxLink, isLink, err)
+	nestedLymLink := fabricengine.CodeLymLink(nestedLayout, slug)
+	if isLink, err := fslink.IsLink(nestedLymLink); err != nil || !isLink {
+		t.Fatalf("setup: nested _lym junction %s not wired: isLink=%v err=%v", nestedLymLink, isLink, err)
 	}
 	nestedPatternLink := filepath.Join(fabricengine.WorktreePath(nestedLayout, slug), nestedLayout.AnchorRel, "_extra")
 	if isLink, err := fslink.IsLink(nestedPatternLink); err != nil || !isLink {
@@ -83,8 +83,8 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 		t.Fatalf("Remove: %v", err)
 	}
 
-	if _, statErr := os.Lstat(nestedLyxLink); !os.IsNotExist(statErr) {
-		t.Errorf("nested _lyx junction %s still exists after Remove", nestedLyxLink)
+	if _, statErr := os.Lstat(nestedLymLink); !os.IsNotExist(statErr) {
+		t.Errorf("nested _lym junction %s still exists after Remove", nestedLymLink)
 	}
 	if _, statErr := os.Lstat(nestedPatternLink); !os.IsNotExist(statErr) {
 		t.Errorf("nested _extra junction %s still exists after Remove", nestedPatternLink)
@@ -111,9 +111,9 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 			t.Fatalf("Remove: %v", err)
 		}
 
-		// Exactly the two wired junctions (_lyx, .lyx) at the pair's own anchor.
+		// Exactly the two wired junctions (_lym, .lym) at the pair's own anchor.
 		if result.LinksRemoved != 2 {
-			t.Errorf("LinksRemoved = %d; want 2 (_lyx, .lyx at <slug>/sub)", result.LinksRemoved)
+			t.Errorf("LinksRemoved = %d; want 2 (_lym, .lym at <slug>/sub)", result.LinksRemoved)
 		}
 		assertAbsent(t, pairLauncherDir)
 		assertPresent(t, primeAnchorLauncherDir)
@@ -169,9 +169,9 @@ func TestRemove_SweepsAnchoredLinksOnSubpathHub(t *testing.T) {
 	}
 	seedAnchorMarker(t, h, anchor)
 
-	l, err := lyxcwd.ResolveWorktree(h.Location.WorktreePath())
+	l, err := lymcwd.ResolveWorktree(h.Location.WorktreePath())
 	if err != nil {
-		t.Fatalf("lyxcwd.ResolveWorktree: %v", err)
+		t.Fatalf("lymcwd.ResolveWorktree: %v", err)
 	}
 	if l.AnchorRel != anchor {
 		t.Fatalf("fixture AnchorRel = %q; want %q — the anchored geometry this test needs is not in place", l.AnchorRel, anchor)
@@ -183,20 +183,20 @@ func TestRemove_SweepsAnchoredLinksOnSubpathHub(t *testing.T) {
 	}
 
 	anchorDir := filepath.Join(fabricengine.WorktreePath(l, slug), anchor)
-	lyxLink := filepath.Join(anchorDir, lyxdirs.LyxDirName)
-	if isLink, linkErr := fslink.IsLink(lyxLink); linkErr != nil || !isLink {
-		t.Fatalf("setup: %s is not a junction (isLink=%v err=%v)", lyxLink, isLink, linkErr)
+	lymLink := filepath.Join(anchorDir, lymdirs.LymDirName)
+	if isLink, linkErr := fslink.IsLink(lymLink); linkErr != nil || !isLink {
+		t.Fatalf("setup: %s is not a junction (isLink=%v err=%v)", lymLink, isLink, linkErr)
 	}
 
 	result, err := topology.Remove(l, slug, true, false)
 	if err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
-	// Exactly the two wired junctions (_lyx, .lyx) — an exact count, not merely non-zero: with the
+	// Exactly the two wired junctions (_lym, .lym) — an exact count, not merely non-zero: with the
 	// _board special case gone, the anchored sweep is the sole contributor to LinksRemoved, so an
 	// exact count is what proves the sweep ran at all.
 	if result.LinksRemoved != 2 {
-		t.Errorf("LinksRemoved = %d; want 2 (_lyx, .lyx at the anchored directory)", result.LinksRemoved)
+		t.Errorf("LinksRemoved = %d; want 2 (_lym, .lym at the anchored directory)", result.LinksRemoved)
 	}
 
 	// The root scratch link is no anchored junction, so it is unlinked separately and ahead of the warp worktree removal.
@@ -240,5 +240,5 @@ func TestRemove_FailedWeftTeardownIsReported(t *testing.T) {
 // seedAnchorMarker records anchor as the prime's subpath the same way a real clone does, by committing the marker at the root of the prime's weft worktree, where it wins over any Bolt marker.
 func seedAnchorMarker(t *testing.T, h *hubforge.Hub, anchor string) {
 	t.Helper()
-	gitkit.CommitFile(t, h.PrimeRecords(), lyxcwd.AnchorFileName, anchor+"\n", "test fixture: re-anchor the prime at "+anchor)
+	gitkit.CommitFile(t, h.PrimeRecords(), lymcwd.AnchorFileName, anchor+"\n", "test fixture: re-anchor the prime at "+anchor)
 }

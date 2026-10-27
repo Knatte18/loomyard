@@ -372,7 +372,7 @@ func TestSeedChild_RunSettings(t *testing.T) {
 			settings:     map[string]any{"darn": map[string]any{"verify": "x"}},
 			prepareErr:   invalid,
 			wantOutcome:  shedengine.Stuck,
-			wantReasonIn: []string{"darn", "verify", "lyx board upsert", "lyx config profiles", "lyx batten run myslug"},
+			wantReasonIn: []string{"darn", "verify", "lym board upsert", "lym config profiles", "lym batten run myslug"},
 		},
 		{
 			name:         "AnUnreadableBoardIsStuck",

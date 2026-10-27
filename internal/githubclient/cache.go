@@ -35,23 +35,22 @@ type cachedCredentials struct {
 // in writeCachedToken keeps concurrent processes safe.
 var cacheMu sync.Mutex
 
-// cacheDir resolves the cache directory: %LOCALAPPDATA%\lyx on Windows,
-// $XDG_CONFIG_HOME/lyx or $HOME/.config/lyx elsewhere. Returns ("", false)
-// when no usable environment variable is set.
+// cacheDir resolves the cache directory: %LOCALAPPDATA%\lym on Windows, $XDG_CONFIG_HOME/lym or $HOME/.config/lym elsewhere.
+// Returns ("", false) when no usable environment variable is set.
 func cacheDir() (string, bool) {
 	if runtime.GOOS == "windows" {
 		base := os.Getenv("LOCALAPPDATA")
 		if base == "" {
 			return "", false
 		}
-		return filepath.Join(base, "lyx"), true
+		return filepath.Join(base, "lym"), true
 	}
 
 	if base := os.Getenv("XDG_CONFIG_HOME"); base != "" {
-		return filepath.Join(base, "lyx"), true
+		return filepath.Join(base, "lym"), true
 	}
 	if home := os.Getenv("HOME"); home != "" {
-		return filepath.Join(home, ".config", "lyx"), true
+		return filepath.Join(home, ".config", "lym"), true
 	}
 	return "", false
 }

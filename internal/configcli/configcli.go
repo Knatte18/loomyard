@@ -1,6 +1,6 @@
 // configcli.go — configuration CLI command.
 //
-// Implements the lyx config command, which edits module configurations, committing a hub-wide module in _board and syncing fabric for any other.
+// Implements the lym config command, which edits module configurations, committing a hub-wide module in _board and syncing fabric for any other.
 
 package configcli
 
@@ -24,7 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
@@ -153,7 +153,7 @@ func editOne(dirs configDirs, out io.Writer, module string, edit configengine.Ed
 	if err != nil {
 		// Check if this is an abort (user saved without fixing YAML).
 		if errors.Is(err, configengine.ErrAborted) {
-			return output.Err(out, fmt.Sprintf("aborted: _lyx/config/%s.yaml unchanged", module))
+			return output.Err(out, fmt.Sprintf("aborted: _lym/config/%s.yaml unchanged", module))
 		}
 		// Any other error (I/O, parse loop termination, etc.).
 		return output.Err(out, err.Error())
@@ -163,7 +163,7 @@ func editOne(dirs configDirs, out io.Writer, module string, edit configengine.Ed
 	if dirs.board == "" {
 		return output.Ok(out, map[string]any{
 			"module":  module,
-			"message": fmt.Sprintf("edited _lyx/config/%s.yaml", module),
+			"message": fmt.Sprintf("edited _lym/config/%s.yaml", module),
 		})
 	}
 
@@ -174,12 +174,12 @@ func editOne(dirs configDirs, out io.Writer, module string, edit configengine.Ed
 		// Sync succeeded; emit a JSON envelope.
 		return output.Ok(out, map[string]any{
 			"module":  module,
-			"message": fmt.Sprintf("edited and synced _lyx/config/%s.yaml", module),
+			"message": fmt.Sprintf("edited and synced _lym/config/%s.yaml", module),
 		})
 	}
 
 	// Sync failed; include its output in the failure message for diagnosis.
-	return output.Err(out, fmt.Sprintf("edited _lyx/config/%s.yaml but fabric sync failed: %s", module, buf.String()))
+	return output.Err(out, fmt.Sprintf("edited _lym/config/%s.yaml but fabric sync failed: %s", module, buf.String()))
 }
 
 // parseSetFlags parses a list of raw "key=value" strings (as collected from
@@ -243,9 +243,9 @@ func setModule(dirs configDirs, out io.Writer, module string, pairs []yamlengine
 	// A worktree with no board is no hub's, so there is nothing to sync.
 	var buf bytes.Buffer
 	exitCode := 0
-	message := fmt.Sprintf("edited and synced _lyx/config/%s.yaml", module)
+	message := fmt.Sprintf("edited and synced _lym/config/%s.yaml", module)
 	if dirs.board == "" {
-		message = fmt.Sprintf("edited _lyx/config/%s.yaml", module)
+		message = fmt.Sprintf("edited _lym/config/%s.yaml", module)
 	} else {
 		exitCode = sync(&buf)
 	}
@@ -263,7 +263,7 @@ func setModule(dirs configDirs, out io.Writer, module string, pairs []yamlengine
 	}
 
 	// Sync failed; include its output in the failure message for diagnosis.
-	return output.Err(out, fmt.Sprintf("edited _lyx/config/%s.yaml but fabric sync failed: %s", module, buf.String()))
+	return output.Err(out, fmt.Sprintf("edited _lym/config/%s.yaml but fabric sync failed: %s", module, buf.String()))
 }
 
 // setChecked writes pairs into the layer's file of module at path and checks the result with the module's own loader.
@@ -381,7 +381,7 @@ func editLocal(dirs configDirs, out io.Writer, mod configreg.Module, path string
 // hubWriteGuard is called before a default-layer write and refuses it with its message; a nil guard allows every write.
 // terminal tells whether the command's input is an interactive terminal:
 // without one, an editor path is refused before the layer is dispatched, the hub-write guard is consulted, a file is scaffolded or the editor runs.
-func dispatch(l *lyxcwd.Location, out io.Writer, args []string, edit configengine.EditorFunc, sync syncFunc, commit hubCommitFunc, printOnly bool, setFlags []string, layer string, hubWriteGuard func() (string, error), terminal bool) int {
+func dispatch(l *lymcwd.Location, out io.Writer, args []string, edit configengine.EditorFunc, sync syncFunc, commit hubCommitFunc, printOnly bool, setFlags []string, layer string, hubWriteGuard func() (string, error), terminal bool) int {
 	if !validLayer(layer) {
 		return output.Err(out, fmt.Sprintf("unknown --layer %q; use default, worktree, machine or local", layer))
 	}
@@ -420,7 +420,7 @@ func dispatch(l *lyxcwd.Location, out io.Writer, args []string, edit configengin
 	// Command lists modules for a bare invocation before dispatch runs,
 	// so a module is always present here.
 	if len(args) < 1 {
-		return output.Err(out, `module required; run "lyx config" to list modules and verbs`)
+		return output.Err(out, `module required; run "lym config" to list modules and verbs`)
 	}
 	// The editor paths need a terminal; --set and --print above need none.
 	if !terminal {
@@ -441,15 +441,15 @@ func noTerminalRefusal(module, layer string) string {
 	if module == "" {
 		module = "<module>"
 	}
-	target := "lyx config " + module
+	target := "lym config " + module
 	if layer != "" {
 		target += " --layer " + layer
 	}
-	return fmt.Sprintf(`lyx config opens an editor only from an interactive terminal, and stdin is not one; way forward: "%s --print" to read, "%s --set key=value" to write`, target, target)
+	return fmt.Sprintf(`lym config opens an editor only from an interactive terminal, and stdin is not one; way forward: "%s --print" to read, "%s --set key=value" to write`, target, target)
 }
 
-// baseDirOf returns the enclosing _lyx parent: the worktree root joined with the relative path.
-func baseDirOf(l *lyxcwd.Location) string {
+// baseDirOf returns the enclosing _lym parent: the worktree root joined with the relative path.
+func baseDirOf(l *lymcwd.Location) string {
 	return filepath.Join(l.WorktreePath(), l.AnchorRel)
 }
 
@@ -463,28 +463,28 @@ func buildConfigLong() string {
 			hubWide = append(hubWide, mod.Name)
 		}
 	}
-	return "config edits a module's configuration in _lyx/config/ and syncs fabric on\n" +
+	return "config edits a module's configuration in _lym/config/ and syncs fabric on\n" +
 		"success. A hub-wide module (" + strings.Join(hubWide, ", ") + ") is edited instead at the\n" +
 		"hub's board dir and committed in _board. With no argument it lists the known\n" +
 		"modules and verbs; with a module\n" +
-		"name it edits that module directly; `lyx config menu` is the interactive\n" +
+		"name it edits that module directly; `lym config menu` is the interactive\n" +
 		"picker, which lists the modules and edits the one you choose. The editor is\n" +
 		"resolved from $VISUAL or $EDITOR;\n" +
 		"with neither set it uses `code --wait` when code is on PATH, else\n" +
 		"notepad on Windows, or nano and then vi elsewhere.\n\n" +
 		"Use --print to print the on-disk YAML without launching the editor.\n\n" +
 		"Use --set key=value (repeatable) to write config values with no editor, e.g.\n" +
-		"  lyx config board --set design_prefix=foo- --set readme=Home.md\n" +
+		"  lym config board --set design_prefix=foo- --set readme=Home.md\n" +
 		"A list-valued key takes a YAML flow list and is replaced whole, e.g.\n" +
-		"  lyx config landing --set 'deploy_branches=[]'\n" +
+		"  lym config landing --set 'deploy_branches=[]'\n" +
 		"A module may declare an open map, whose keys are the repo's own; --set\n" +
 		"adds or rewrites one entry of it with a scalar value, e.g.\n" +
-		"  lyx config board --set labels.quarry=\"glyphs and the quarry index\"\n" +
+		"  lym config board --set labels.quarry=\"glyphs and the quarry index\"\n" +
 		"A value the module's loader refuses is refused, naming the key.\n" +
 		"Pre-existing config keys not recognized by the current template are\n" +
 		"preserved and reported via a \"preserved\" field in the JSON success output;\n" +
-		"run \"lyx config reconcile --layer default --apply\" from the prime to remove them from the\n" +
-		"board dir's files, and \"lyx config reconcile --apply\" to remove them from a worktree file.\n\n" +
+		"run \"lym config reconcile --layer default --apply\" from the prime to remove them from the\n" +
+		"board dir's files, and \"lym config reconcile --apply\" to remove them from a worktree file.\n\n" +
 		"--layer default|worktree|machine|local picks the file to print or write: default is the board's\n" +
 		"repo default, committed from the prime; local is an untracked override.\n\n" +
 		"--resolved <module> prints the merged result, each unit annotated with its\n" +
@@ -507,21 +507,21 @@ func resolvedRefusal(args []string, printOnly bool, setFlags []string, layer str
 	return ""
 }
 
-// runResolved is the package-private handler for lyx config <module> --resolved.
+// runResolved is the package-private handler for lym config <module> --resolved.
 // It resolves the location as runConfig does and prints the module's annotated resolved configuration.
 func runResolved(ctx context.Context, out io.Writer, module string) int {
-	cwd, err := lyxcwd.CwdFrom(ctx)
+	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
-	l, err := lyxcwd.Resolve(cwd)
+	l, err := lymcwd.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 	return printResolved(dirsOf(l), out, module)
 }
 
-// runReconcile is the package-private handler for the lyx config reconcile subcommand.
+// runReconcile is the package-private handler for the lym config reconcile subcommand.
 //
 // With no layer it reconciles the worktree's own and local config files against their templates via configsync.ReconcileAll;
 // with layer default it reconciles every file under the hub's board dir instead, guarded and committed in _board on apply.
@@ -530,21 +530,21 @@ func runResolved(ctx context.Context, out io.Writer, module string) int {
 // 1 on any error.
 func runReconcile(ctx context.Context, out io.Writer, apply bool, layer string) int {
 	// Resolve the seam cwd and layout.
-	cwd, err := lyxcwd.CwdFrom(ctx)
+	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("getwd: %v", err))
 	}
 
-	l, err := lyxcwd.Resolve(cwd)
+	l, err := lymcwd.Resolve(cwd)
 	if err != nil {
-		// lyxcwd.Resolve's error is already self-describing; pass it
+		// lymcwd.Resolve's error is already self-describing; pass it
 		// through bare rather than restating it with a redundant prefix.
 		return output.Err(out, err.Error())
 	}
 
 	boardDir := fabricengine.BoardDir(l.HubPath)
 	if filepath.Clean(l.WorktreePath()) == filepath.Clean(boardDir) {
-		return output.Err(out, fmt.Sprintf("reconcile is refused in the board dir %s, whose files are the hub's, not a worktree's; way forward: run \"lyx config reconcile --layer default\" from the hub's prime worktree", boardDir))
+		return output.Err(out, fmt.Sprintf("reconcile is refused in the board dir %s, whose files are the hub's, not a worktree's; way forward: run \"lym config reconcile --layer default\" from the hub's prime worktree", boardDir))
 	}
 	if layer != "" && layer != string(configengine.LayerDefault) {
 		return output.Err(out, fmt.Sprintf("reconcile takes --layer %s alone, for the files under the hub's board dir; way forward: run it with no --layer to reconcile this worktree's own and local files", configengine.LayerDefault))
@@ -553,7 +553,7 @@ func runReconcile(ctx context.Context, out io.Writer, apply bool, layer string) 
 		return reconcileDefaultLayer(l, out, apply, realHubWriteGuard(l))
 	}
 
-	// Compute baseDir as the enclosing _lyx parent: the worktree root joined with the relative path.
+	// Compute baseDir as the enclosing _lym parent: the worktree root joined with the relative path.
 	baseDir := baseDirOf(l)
 
 	// Reconcile all modules; apply controls whether changes are written to disk.
@@ -638,23 +638,19 @@ func reconcileEnvelope(apply bool, results []configsync.Result) map[string]any {
 		"modules": modules,
 	}
 	if baseStripPending {
-		fields["base_strip"] = "the board's base files still hold units equal to the template; this command never strips them, and only the hub reconcile of a start verb such as `lyx loom resume` or `lyx batten run` does"
+		fields["base_strip"] = "the board's base files still hold units equal to the template; this command never strips them, and only the hub reconcile of a start verb such as `lym loom resume` or `lym batten run` does"
 	}
 	return fields
 }
 
-// Command returns the cobra command for lyx config.
+// Command returns the cobra command for lym config.
 //
-// The returned command uses a configCmd variable (closure pattern) so that the --print flag value
-// is readable in the RunE handler.
+// The returned command uses a configCmd variable (closure pattern) so that the --print flag value is readable in the RunE handler.
 // The --print flag makes config read-only: it prints on-disk YAML without launching the editor.
 // Args is cobra.MaximumNArgs(1) so extra positionals are rejected.
 // ValidArgs is set to the known config module names for shell completion only.
-// A reconcile subcommand is registered so that "lyx config reconcile" is routed there while "lyx
-// config <module>" continues to invoke the edit RunE.
-// The RunE decides before resolving any cwd:
-// a bare invocation with neither --print nor --set prints the help,
-// and an argument that is not a module is refused as an unknown subcommand.
+// A reconcile subcommand is registered so that "lym config reconcile" is routed there while "lym config <module>" continues to invoke the edit RunE.
+// The RunE decides before resolving any cwd: a bare invocation with neither --print nor --set prints the help, and an argument that is not a module is refused as an unknown subcommand.
 func Command() *cobra.Command {
 	configCmd := &cobra.Command{
 		Use:         "config [<module>]",
@@ -667,7 +663,7 @@ func Command() *cobra.Command {
 	configCmd.Flags().Bool("print", false, "print on-disk config as YAML without launching the editor")
 	configCmd.Flags().StringArray("set", nil, "set config key=value directly, bypassing the editor (repeatable)")
 	configCmd.Flags().Bool("resolved", false, "print the module's resolved config, each unit annotated with the layer it came from")
-	configCmd.Flags().String("layer", "", "the layer to print or write: default, worktree, machine or local (default: the module's own file); machine is a hub-wide module's never-tracked override of its machine keys under the board dir's .lyx, written from the prime")
+	configCmd.Flags().String("layer", "", "the layer to print or write: default, worktree, machine or local (default: the module's own file); machine is a hub-wide module's never-tracked override of its machine keys under the board dir's .lym, written from the prime")
 	// The RunE closure captures configCmd so the --print/--set flags are
 	// readable without consulting os.Args directly.
 	configCmd.RunE = func(cmd *cobra.Command, args []string) error {
@@ -689,7 +685,7 @@ func Command() *cobra.Command {
 		}
 		if len(args) > 0 {
 			if _, ok := configreg.Template(args[0]); !ok {
-				return fmt.Errorf("unknown subcommand %q for %q; run \"lyx config\" to list modules and verbs", args[0], cmd.CommandPath())
+				return fmt.Errorf("unknown subcommand %q for %q; run \"lym config\" to list modules and verbs", args[0], cmd.CommandPath())
 			}
 		}
 		if resolved {
@@ -700,14 +696,12 @@ func Command() *cobra.Command {
 		return nil
 	}
 
-	// Build the reconcile subcommand and register it so cobra routes
-	// "lyx config reconcile" here while "lyx config <module>" continues
-	// to invoke the edit RunE above.
+	// Build the reconcile subcommand and register it so cobra routes "lym config reconcile" here while "lym config <module>" continues to invoke the edit RunE above.
 	reconcileCmd := &cobra.Command{
 		Use:         "reconcile",
 		Short:       "reconcile module configs against templates",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `reconcile compares all module configuration files in _lyx/config/ against
+		Long: `reconcile compares all module configuration files in _lym/config/ against
 their live templates, reporting added keys (new in template) and removed keys
 (deleted from template). By default it is a dry-run: no files are written.
 A per-name map entry holding the template's value is reported under "dropped"
@@ -757,7 +751,7 @@ Reconcile is refused in the board dir itself.`,
 	return configCmd
 }
 
-// RunCLI is the public seam for the lyx config command.
+// RunCLI is the public seam for the lym config command.
 //
 // It delegates to clihelp.Execute(Command(), out, args) so that all existing in-process callers and
 // tests compile and pass unchanged.
@@ -769,7 +763,7 @@ func RunCLI(out io.Writer, args []string) int {
 // RunCLIIn is RunCLI's seam-cwd-carrying sibling: an empty cwd means "read the process cwd" and
 // delegates to clihelp.Execute exactly as RunCLI always has, while any other value seeds cwd into
 // the execution context via clihelp.ExecuteIn.
-// The branch exists because lyxcwd.WithCwd panics on an empty directory, so a uniform delegation to
+// The branch exists because lymcwd.WithCwd panics on an empty directory, so a uniform delegation to
 // ExecuteIn would panic on every existing RunCLI call.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
@@ -778,7 +772,7 @@ func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }
 
-// runConfig is the package-private handler for the lyx config command.
+// runConfig is the package-private handler for the lym config command.
 //
 // It resolves the layout from the seam cwd,
 // builds the real editor (DefaultEditor),
@@ -799,13 +793,13 @@ func runConfig(ctx context.Context, in io.Reader, out io.Writer, args []string, 
 }
 
 // realHubWriteGuard returns the guard over l and the calling session's strand name from the environment.
-func realHubWriteGuard(l *lyxcwd.Location) func() (string, error) {
+func realHubWriteGuard(l *lymcwd.Location) func() (string, error) {
 	return func() (string, error) {
 		return hubWriteRefusal(l, os.Getenv(agentname.StrandNameEnv))
 	}
 }
 
-// runMenu is the package-private handler for the lyx config menu subcommand.
+// runMenu is the package-private handler for the lym config menu subcommand.
 //
 // It resolves the layout and builds the real sync and hub commit exactly as runConfig does,
 // then runs the picker over in with the real editor.
@@ -825,12 +819,12 @@ func runMenu(ctx context.Context, in io.Reader, out io.Writer) int {
 // rather than letting the nested call re-derive it from process state;
 // doing so is precisely the bug this seam removes.
 // The hub commit is newHubCommit over the hub's board dir.
-func resolveReal(ctx context.Context) (*lyxcwd.Location, syncFunc, hubCommitFunc, error) {
-	cwd, err := lyxcwd.CwdFrom(ctx)
+func resolveReal(ctx context.Context) (*lymcwd.Location, syncFunc, hubCommitFunc, error) {
+	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	l, err := lyxcwd.Resolve(cwd)
+	l, err := lymcwd.Resolve(cwd)
 	if err != nil {
 		return nil, nil, nil, err
 	}

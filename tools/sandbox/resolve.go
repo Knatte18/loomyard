@@ -1,9 +1,9 @@
-// resolve.go implements the dev/prod lyx binary resolution used across the sandbox launcher:
-// resolveLyx picks the derived .dev-bin binary when it is present on disk and falls back to the
+// resolve.go implements the dev/prod lym binary resolution used across the sandbox launcher:
+// resolveLym picks the derived .dev-bin binary when it is present on disk and falls back to the
 // existing PATH lookup otherwise,
 // and prependPath builds the PATH a child process should see when a dev binary is in play.
-// This is the only file in package main permitted to perform a bare-PATH "lyx" lookup;
-// every other call site resolves through resolveLyx instead so the dev/prod distinction stays in
+// This is the only file in package main permitted to perform a bare-PATH "lym" lookup;
+// every other call site resolves through resolveLym instead so the dev/prod distinction stays in
 // one place.
 
 package main
@@ -16,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/tools/internal/devbin"
 )
 
-// Source labels returned by resolveLyx, identifying which binary a caller
+// Source labels returned by resolveLym, identifying which binary a caller
 // resolved to. The distinction is surfaced (not just the resolved path) so
 // callers can stamp it into fingerprints and log output.
 const (
@@ -29,10 +29,10 @@ const (
 // devBinPath is a testability seam over devbin.BinPath.
 var devBinPath = devbin.BinPath
 
-// resolveLyx picks the lyx binary to run: the derived .dev-bin binary when
-// it exists, otherwise the PATH-based "lyx" lookup. Errors from devBinPath
+// resolveLym picks the lym binary to run: the derived .dev-bin binary when
+// it exists, otherwise the PATH-based "lym" lookup. Errors from devBinPath
 // are treated as "no dev binary available"; errors from PATH lookup are fatal.
-func resolveLyx() (path string, source string, err error) {
+func resolveLym() (path string, source string, err error) {
 	// devBinPath itself only derives a path; it does not guarantee the file
 	// exists. Stat it explicitly so a repo checked out without a dev build
 	// falls through to prod rather than returning a dangling path.
@@ -42,10 +42,10 @@ func resolveLyx() (path string, source string, err error) {
 		}
 	}
 
-	prodPath, lookErr := lookPath("lyx")
+	prodPath, lookErr := lookPath("lym")
 	if lookErr != nil {
 		return "", "", fmt.Errorf(
-			"lyx not found on PATH -- deploy the binary (or run deploy-dev) before running the suite: %w",
+			"lym not found on PATH -- deploy the binary (or run deploy-dev) before running the suite: %w",
 			lookErr,
 		)
 	}

@@ -95,7 +95,7 @@ func (p *BurlerFixProducer) sendDecisionFindings(round int, reviewPath string) {
 	if len(items) == 0 {
 		return
 	}
-	line := fmt.Sprintf("%s round %d raised decision findings its fixer does not take, each a call for you: %s. Review: %s. Way forward: record each call with \"lyx loom decision add <slug> --by parent\", or leave it open; the round goes on.", p.name, round, strings.Join(items, "; "), reviewPath)
+	line := fmt.Sprintf("%s round %d raised decision findings its fixer does not take, each a call for you: %s. Review: %s. Way forward: record each call with \"lym loom decision add <slug> --by parent\", or leave it open; the round goes on.", p.name, round, strings.Join(items, "; "), reviewPath)
 	if err := p.notifyParent(line); err != nil {
 		logger.Warn("shedadapters: burler fix could not send the review's decision findings to the parent", "producer", p.name, "engine", burlerFixEngineLabel, "round", round, "findings", len(items), "error", err)
 		return
@@ -105,7 +105,7 @@ func (p *BurlerFixProducer) sendDecisionFindings(round int, reviewPath string) {
 
 // wayForward is the way forward every refusal that needs the round reviewed again ends with.
 func (p *BurlerFixProducer) wayForward() string {
-	return fmt.Sprintf("way forward: run \"lyx loom goto --to %s\", then \"lyx loom resume\", in the task worktree", p.reviewRow)
+	return fmt.Sprintf("way forward: run \"lym loom goto --to %s\", then \"lym loom resume\", in the task worktree", p.reviewRow)
 }
 
 // archive renames the files of round that exist to stamped siblings, logging but never masking a failure.

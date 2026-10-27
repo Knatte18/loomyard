@@ -28,10 +28,10 @@ re-batched by the active batcher.yaml profile.
 It refuses, leaving state.json untouched, when the edit changes the cards of a
 batch the run already begun (a begun card's content counts, not only its id),
 or removes such a batch; the way forward then is
-to restore those cards, or to run "lyx webster reset --to start" and then
-"lyx webster run".
+to restore those cards, or to run "lym webster reset --to start" and then
+"lym webster run".
 A named card of a batch that is failed, dead or stuck is the exception: its
-edit is accepted, and "lyx webster recover-batch NN" then runs on the edited
+edit is accepted, and "lym webster recover-batch NN" then runs on the edited
 card. A named card of an in-flight batch is accepted too, and the envelope's
 cards_amended lists it: the running fork or recovery strand keeps working on
 the old text, and recovery re-runs the batch on the edited card. An edited
@@ -49,7 +49,7 @@ On success the envelope carries previous_fingerprint, plan_fingerprint,
 batches_kept and cards_accepted.
 
 Example:
-  lyx webster rebaseline --card 05 --card 07`,
+  lym webster rebaseline --card 05 --card 07`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
@@ -62,7 +62,7 @@ Example:
 			for _, v := range cardFlags {
 				n, convErr := strconv.Atoi(v)
 				if convErr != nil || n <= 0 {
-					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: --card %q is not a card number; way forward: re-run \"lyx webster rebaseline\" naming each changed card by its number, such as --card 5 or --card 05", v)))
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: --card %q is not a card number; way forward: re-run \"lym webster rebaseline\" naming each changed card by its number, such as --card 5 or --card 05", v)))
 					return nil
 				}
 				cards = append(cards, n)
@@ -92,7 +92,7 @@ Example:
 				return nil
 			}
 			if st == nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, `webster: no run in progress; run "lyx webster run" first`))
+				clihelp.SetExit(cmd.Context(), output.Err(out, `webster: no run in progress; run "lym webster run" first`))
 				return nil
 			}
 

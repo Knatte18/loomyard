@@ -5,7 +5,7 @@
 # The one argument is the plan directory, made absolute here because the tool runs in a
 # subshell cd'd to the repo root (two levels up from this tools/plandag folder, mirroring the
 # .cmd launcher's pushd/popd) so `go run` finds go.mod:
-# plandag.sh ../some-pair/_lyx/plan
+# plandag.sh ../some-pair/_lym/plan
 if [ "$#" -ne 1 ]; then
 	echo "usage: plandag.sh <plan-dir>" >&2
 	exit 2

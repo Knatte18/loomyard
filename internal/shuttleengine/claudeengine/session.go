@@ -160,7 +160,7 @@ func (c *Claude) RewindPicker(capture string) bool {
 }
 
 // InterruptSettle returns how long after an interrupt key the pane is left alone before it is read again.
-// It exceeds Claude Code's double-Esc window, so two of lyx's keys never read as a double Esc.
+// It exceeds Claude Code's double-Esc window, so two of lym's keys never read as a double Esc.
 func (c *Claude) InterruptSettle() time.Duration {
 	return interruptSettle
 }

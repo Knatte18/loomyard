@@ -132,7 +132,7 @@ func refGateValuesDeclared(t *testing.T) []refGate {
 //
 // The forward direction is the one with teeth: a gate declared and dispatched through lookup but
 // never given a ledger entry yields a nil policy map, so lookupIn reads the disposition zero value
-// and PANICS -- out of `lyx loom validate-plan` or `lyx webster begin-batch`, on the first plan
+// and PANICS -- out of `lym loom validate-plan` or `lym webster begin-batch`, on the first plan
 // whose refs reach that gate, as a raw Go panic rather than a finding or an error envelope.
 // TestLedgerCompleteness cannot see that case at all, because it iterates ledger's own keys and an
 // absent key contributes no iteration.

@@ -38,7 +38,7 @@ func TestCheckTexts(t *testing.T) {
 				continue
 			}
 			found = true
-			for _, want := range []string{"lyx gate test", "--tier", "--card", "with a long timeout", "no gate slot is free"} {
+			for _, want := range []string{"lym gate test", "--tier", "--card", "with a long timeout", "no gate slot is free"} {
 				if !strings.Contains(row.Steer, want) || !strings.Contains(row.Notice, want) {
 					t.Errorf("refuse-raw steer %q and notice %q: want both to name %q", row.Steer, row.Notice, want)
 				}

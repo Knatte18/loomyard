@@ -1,4 +1,4 @@
-// directory.go owns the read-only name directory behind `lyx reed list`: one row per strand in this worktree's state, with the pane's current title beside the name it should carry.
+// directory.go owns the read-only name directory behind `lym reed list`: one row per strand in this worktree's state, with the pane's current title beside the name it should carry.
 
 package reedengine
 

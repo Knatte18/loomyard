@@ -1,4 +1,4 @@
-// relevant.go implements CheckRelevant, the format check of `_lyx/discussion/relevant.md`.
+// relevant.go implements CheckRelevant, the format check of `_lym/discussion/relevant.md`.
 // That file is the Discussion-Write lead's list of the code it read, per contracts/specs/loom-discussion-spec.md.
 
 package discussionparser

@@ -18,16 +18,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/verifyrun"
 )
 
-// pauseRequested returns the seam that reads the pause_requested flag of batten's own status file, the one `lyx batten pause` writes.
+// pauseRequested returns the seam that reads the pause_requested flag of batten's own status file, the one `lym batten pause` writes.
 // An absent status file reads as not paused.
-func pauseRequested(location *lyxcwd.Location, slug string) func() (bool, error) {
+func pauseRequested(location *lymcwd.Location, slug string) func() (bool, error) {
 	return func() (bool, error) {
 		status, found, err := state.ReadJSONNoMkdir[shedengine.Status](StatusFile(location, slug), StatusLock(location, slug))
 		if err != nil || !found {
@@ -38,7 +38,7 @@ func pauseRequested(location *lyxcwd.Location, slug string) func() (bool, error)
 }
 
 // landDeps returns the Land row's seams over the prime location and the task worktree locator.
-func landDeps(location *lyxcwd.Location, slug string, locateTask func() (*lyxcwd.Location, error)) battenshed.LandDeps {
+func landDeps(location *lymcwd.Location, slug string, locateTask func() (*lymcwd.Location, error)) battenshed.LandDeps {
 	landLockPath := LandLock(location)
 	return battenshed.LandDeps{
 		ParentBranch: func() (string, error) {

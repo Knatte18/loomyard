@@ -115,8 +115,8 @@ func Directive(notePath, stencilsDir string, role Role) (string, error) {
 // rendered anyway" case, which covers both Tier 2 being off and a friction.Directive read error the
 // composer swallowed, and neither should warn about a missing marker.
 // It no-ops when directive is empty; otherwise, when template does not contain the marker literal,
-// it logs a Warn naming the stencil and the marker and pointing the operator at "lyx stencil diff"
-// and "lyx stencil sync".
+// it logs a Warn naming the stencil and the marker and pointing the operator at "lym stencil diff"
+// and "lym stencil sync".
 func WarnIfMarkerAbsent(template []byte, stencilName, directive string) {
 	if directive == "" {
 		return
@@ -124,7 +124,7 @@ func WarnIfMarkerAbsent(template []byte, stencilName, directive string) {
 	if bytes.Contains(template, []byte(markerLiteral)) {
 		return
 	}
-	logger.Warn("friction: stencil is missing the friction directive marker; a computed directive will render as nothing -- see \"lyx stencil diff\" and \"lyx stencil sync\"", "stencil", stencilName, "marker", markerLiteral)
+	logger.Warn("friction: stencil is missing the friction directive marker; a computed directive will render as nothing -- see \"lym stencil diff\" and \"lym stencil sync\"", "stencil", stencilName, "marker", markerLiteral)
 }
 
 // NotePath composes a non-clobbering path for a note named by the stem id inside frictionDir.
@@ -211,7 +211,7 @@ func pathTaken(path string) bool {
 }
 
 // EnsureDir creates dir, including any missing parents, and never returns an error: a failed create
-// must never fail `lyx loom start` or `lyx loom run`, so a failure is reported via logger.Warn
+// must never fail `lym loom start` or `lym loom run`, so a failure is reported via logger.Warn
 // instead.
 // It no-ops on an empty dir.
 func EnsureDir(dir string) {

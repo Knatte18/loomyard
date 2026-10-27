@@ -119,7 +119,7 @@ func TestPollInterval_FloorsNonPositive(t *testing.T) {
 func TestRun_Wait_MechanismFailure_KeepsRunIdentity(t *testing.T) {
 	// A permanently failing reed.Status is the live shape (a torn-down session answers every
 	// Status the same way), so Wait gives up after maxStatusRetries consecutive failures.
-	reed := &fakeReed{StatusErr: errors.New(`no reed session; run "lyx reed up"`)}
+	reed := &fakeReed{StatusErr: errors.New(`no reed session; run "lym reed up"`)}
 	fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig))
 	runDir := t.TempDir()
 	fc := newFakeClock(time.Now())
@@ -174,7 +174,7 @@ const (
 //   - Wait used to derive one boolean from reed's strand table and treat both negative answers
 //     alike, so a Status that succeeded with the run's guid simply ABSENT — reed's bookkeeping reset
 //     under a run whose agent is still working — classified OutcomeDied. Reproduced live twice:
-//     renaming the worktree under an in-flight run, and deleting .lyx/reed.json both returned
+//     renaming the worktree under an in-flight run, and deleting .lym/reed.json both returned
 //     outcome:"died" ~6 s later while the claude process kept working in its pane.
 //   - Reed clears every pane binding in a state file whose recorded pane generation is not the
 //     session incarnation now running, and its Status then reports the strand with an EMPTY PaneID,
@@ -316,9 +316,7 @@ func TestRun_Wait_Classification(t *testing.T) {
 			wantOutcome: "", wantErr: errStrandNotTracked, wantErrIn: "strand-1", wantIdentity: true, wantCleanup: cleanupSkipped,
 		},
 		{
-			// An agent that wrote every output file and was then untracked (its pane removed by a
-			// `lyx reed remove`, say) finished its work, and a caller must not be told to go
-			// diagnose a run that actually succeeded.
+			// An agent that wrote every output file and was then untracked (its pane removed by a `lym reed remove`, say) finished its work, and a caller must not be told to go diagnose a run that actually succeeded.
 			name: "untracked strand with output files is still done", status: []reedengine.StatusResult{{Strands: nil}}, output: true,
 			wantOutcome: OutcomeDone,
 		},

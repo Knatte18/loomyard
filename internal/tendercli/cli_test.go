@@ -1,6 +1,6 @@
 //go:build tier1
 
-// cli_test.go drives `lyx tender pause`, `status`, `resume` and `revive` through the cobra commands over a hubforge hub with one pair and no agents running, and the network gate installer over the same hub.
+// cli_test.go drives `lym tender pause`, `status`, `resume` and `revive` through the cobra commands over a hubforge hub with one pair and no agents running, and the network gate installer over the same hub.
 // No test but TestNewShuttlePair_TellsTheHubsPauseGeometry calls t.Parallel: each sets the strand-name variable or reads the process-wide network gate.
 
 package tendercli
@@ -23,7 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
@@ -105,7 +105,7 @@ func TestStatus_PrintsOutstandingFailedPushes(t *testing.T) {
 			t.Errorf("failed_pushes row %s = %v; want %v", key, row[key], want)
 		}
 	}
-	if wayForward, _ := row["way_forward"].(string); !strings.Contains(wayForward, "lyx fabric push") || !strings.Contains(wayForward, pair) {
+	if wayForward, _ := row["way_forward"].(string); !strings.Contains(wayForward, "lym fabric push") || !strings.Contains(wayForward, pair) {
 		t.Errorf("failed_pushes way_forward = %q; want the push step run in %s", wayForward, pair)
 	}
 }
@@ -185,8 +185,8 @@ func TestPauseAndResume_WriteLiftAndRefuseOverTheHub(t *testing.T) {
 	}
 
 	slugResume, code := verb(t, Command(), prime, "resume", pairSlug)
-	if slugResume.OK || code == 0 || !strings.Contains(slugResume.Error, `"lyx tender resume"`) {
-		t.Errorf("resume <slug> under a hub entry: ok=%v error=%q; want a refusal naming lyx tender resume", slugResume.OK, slugResume.Error)
+	if slugResume.OK || code == 0 || !strings.Contains(slugResume.Error, `"lym tender resume"`) {
+		t.Errorf("resume <slug> under a hub entry: ok=%v error=%q; want a refusal naming lym tender resume", slugResume.OK, slugResume.Error)
 	}
 
 	// A fresh resolution from another worktree still sees the entry on disk.
@@ -213,7 +213,7 @@ func TestPauseOwnedElsewhere_PausesTheSlugOnceUnderTheOwnerCaller(t *testing.T) 
 	var endErr error
 	previous := endOwnedElsewhere
 	t.Cleanup(func() { endOwnedElsewhere = previous })
-	endOwnedElsewhere = func(location *lyxcwd.Location, slug string) ([]runproc.Ended, error) {
+	endOwnedElsewhere = func(location *lymcwd.Location, slug string) ([]runproc.Ended, error) {
 		live, _ := liveEntries(t, h)
 		if len(live) != 1 {
 			t.Errorf("live entries at the end = %+v; want the pause written first", live)
@@ -252,11 +252,11 @@ func TestPauseOwnedElsewhere_PausesTheSlugOnceUnderTheOwnerCaller(t *testing.T) 
 func TestPauseAndResume_ApplyTheCallerRules(t *testing.T) {
 	h := newHub(t)
 	prime := h.PrimeWorktree()
-	agent, err := agentname.Format("lyx", pairSlug, "worker")
+	agent, err := agentname.Format("lym", pairSlug, "worker")
 	if err != nil {
 		t.Fatal(err)
 	}
-	orch, err := agentname.Format("lyx", "", agentname.RoleOrch)
+	orch, err := agentname.Format("lym", "", agentname.RoleOrch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -323,7 +323,7 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 	agentWorktree := filepath.Join(agentWorktrees, "agent")
 	gitkit.Git(t, h.PrimeWorktree(), "worktree", "add", "--detach", agentWorktree)
 	for _, outside := range []string{t.TempDir(), agentWorktree} {
-		InstallNetworkGate(lyxcwd.WithCwd(t.Context(), outside), nil, DetachedChild{})
+		InstallNetworkGate(lymcwd.WithCwd(t.Context(), outside), nil, DetachedChild{})
 		_, probeDone := pauserecord.Network("probe")
 		probeDone()
 	}
@@ -335,7 +335,7 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 		t.Errorf("Stat(agent worktree's sibling _board) error = %v; want it absent", err)
 	}
 
-	InstallNetworkGate(lyxcwd.WithCwd(t.Context(), h.PairCodeWorktree(pairSlug)), nil, DetachedChild{})
+	InstallNetworkGate(lymcwd.WithCwd(t.Context(), h.PairCodeWorktree(pairSlug)), nil, DetachedChild{})
 	pauserecord.Network("pair-probe")
 	geometry, err := hubgeom.PauseGeometry(h.Location)
 	if err != nil {
@@ -361,7 +361,7 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 			hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: tt.anchor})
 			slug := tt.pauseSlug
 			boardWorktree := fabricengine.BoardDir(hub.Location.HubPath)
-			InstallNetworkGate(lyxcwd.WithCwd(t.Context(), boardWorktree), &slug, DetachedChild{})
+			InstallNetworkGate(lymcwd.WithCwd(t.Context(), boardWorktree), &slug, DetachedChild{})
 			pauserecord.Network("board-probe")
 			geometry, err := hubgeom.PauseGeometry(hub.Location)
 			if err != nil {
@@ -407,7 +407,7 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 				t.Fatal(err)
 			}
 			setLive(t, geometry.RecordPath, tt.live...)
-			InstallNetworkGate(lyxcwd.WithCwd(t.Context(), tt.cwd(hub)), tt.pauseSlug, tt.child)
+			InstallNetworkGate(lymcwd.WithCwd(t.Context(), tt.cwd(hub)), tt.pauseSlug, tt.child)
 			if got := pauserecord.GateCovered(); got != tt.wantCovered {
 				t.Errorf("GateCovered() = %v; want %v", got, tt.wantCovered)
 			}
@@ -425,7 +425,7 @@ func ptr(s string) *string {
 func TestNewShuttlePair_TellsTheHubsPauseGeometry(t *testing.T) {
 	t.Parallel()
 	h := newHub(t)
-	location, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree(pairSlug))
+	location, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(pairSlug))
 	if err != nil {
 		t.Fatal(err)
 	}

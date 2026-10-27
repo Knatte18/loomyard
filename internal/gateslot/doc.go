@@ -1,6 +1,6 @@
 // Package gateslot owns the hub-wide pool of gate slots that bounds how many gate builds and test runs the hub executes at once.
 //
-// The package is told every directory it works on and derives none beyond the Dir, WaitDir and Pool.PrebuiltDir joins, which spell the ephemeral directory name only through internal/lyxdirs.
+// The package is told every directory it works on and derives none beyond the Dir, WaitDir and Pool.PrebuiltDir joins, which spell the ephemeral directory name only through internal/lymdirs.
 //
 // # Slots
 //
@@ -41,24 +41,24 @@
 //
 // # Prebuilt store
 //
-// Pool.PrebuiltDir is `<Dir>/prebuilt`, where a tagged gate run keeps the `lyx` it built under a name derived from the binary's content, so PrebuiltLyxEnv holds the same value for every run on an unchanged tree.
+// Pool.PrebuiltDir is `<Dir>/prebuilt`, where a tagged gate run keeps the `lym` it built under a name derived from the binary's content, so PrebuiltLymEnv holds the same value for every run on an unchanged tree.
 // The gate run that writes the store also prunes it.
 //
 // # Config
 //
-// The hub-wide `gate` config module keeps `slots`, `busy_quit_sec` and the tier keys below at `<BoardDir>/_lyx/config/gate.yaml`, seeded from template.yaml by the hub-wide reconcile.
-// `slots` and `tier_parallel` take a machine-local override at `<BoardDir>/.lyx/config/gate.machine.yaml`, never reconciled and read at every acquire; every other key stays hub-file only.
+// The hub-wide `gate` config module keeps `slots`, `busy_quit_sec` and the tier keys below at `<BoardDir>/_lym/config/gate.yaml`, seeded from template.yaml by the hub-wide reconcile.
+// `slots` and `tier_parallel` take a machine-local override at `<BoardDir>/.lym/config/gate.machine.yaml`, never reconciled and read at every acquire; every other key stays hub-file only.
 // `cli_wait_sec` is a retired key: every load drops it and reconcile prunes it, since the slot wait is bounded by the keep-cache-warm cap with no knob.
 // `go_parallel` is retired in the hub and machine layers alike, in favor of `tier_parallel`, with the same load and prune behavior.
 // `guard_tier` is retired too: the guard step runs each guard test under the tier its file belongs to, so no key names one tier for them all, and the same load and prune behavior applies.
 // LoadConfig reads it strictly and refuses any value below 1 naming its key, except `busy_quit_sec`, which accepts 0 and is refused below it; Config.Limits converts it to the Limits a Pool reads.
-// An absent hub file is ErrConfigAbsent with the way forward `lyx fabric reconcile`; outside every hub, where the dirs tell no board, the file is the worktree's own and the way forward is `lyx config gate`, after creating the worktree's `_lyx` directory.
+// An absent hub file is ErrConfigAbsent with the way forward `lym fabric reconcile`; outside every hub, where the dirs tell no board, the file is the worktree's own and the way forward is `lym config gate`, after creating the worktree's `_lym` directory.
 // TemplateConfig decodes the template alone, for a run outside every hub.
 //
 // The tier keys are `tiers`, `gates`, `scoper`, `refuse_raw`, `tier_parallel`, `build` and `inert_paths`.
-// `tiers` is an open map keyed `tier0`, `tier1`, and so on, each a Tier written whole with one `lyx config gate --set 'tiers.tierN={...}'` flow mapping;
+// `tiers` is an open map keyed `tier0`, `tier1`, and so on, each a Tier written whole with one `lym config gate --set 'tiers.tierN={...}'` flow mapping;
 // `gates` is a per-name map from a gate key to a GateKey written `{tiers: [<n>...], scope: card|diff|all}`, so a hub file that sets one key keeps the template's value for every other, and `tier_parallel` an open map from a tier name to this machine's parallel for it.
-// The keys lyx reads are `card` and `batch` (scope `card`), `webster`, `parent-align` and `finalize` (scope `all`), and `webster-fix`, `darn-write`, `code-burler-fix` and `drift-verify` (scope `diff`).
+// The keys lym reads are `card` and `batch` (scope `card`), `webster`, `parent-align` and `finalize` (scope `all`), and `webster-fix`, `darn-write`, `code-burler-fix` and `drift-verify` (scope `diff`).
 // `tiers` and `build` are executable keys, since a tier or build command runs any shell command in a task worktree, and `gates`, `scoper`, `refuse_raw` and `inert_paths` are guard keys, so all of them are hub-file only.
 // `build` is an open map, so its sub-keys travel whole through the layer stack and reconcile never prunes a hub's build.
 // A tier may also hold `filter`, its own test-filter expression, `shared_build: true`, which makes the tier depend on the build step, and `carry: false`, which keeps a green run from being carried over an unchanged tree; Tier.NoCarry is the negative form, so a zero Tier carries.
@@ -67,21 +67,21 @@
 // Config.AllInert is true only when the list and the paths are both non-empty and every path is inert.
 // The `dotnet` scoper derives the impacted C# test projects and classes from the type-name closure over test classes.
 // The machine override is a sibling map rather than a path under `tiers`, because an open map is one unit in the layer merge, so a machine layer holding part of `tiers` would replace the hub's tiers whole.
-// A tier's `manual: true` keeps it out of a `lyx gate test --upto` range, so it runs only when named by number.
+// A tier's `manual: true` keeps it out of a `lym gate test --upto` range, so it runs only when named by number.
 // A declared tier's effective Parallel is its `tier_parallel` entry when one is set, from whichever layer sets it, and 1 when neither sets one; a standalone worktree has no machine layer and sets the key in its own file.
 //
-// LoadConfig refuses at load, naming the key and `lyx config gate`: a tier lacking `command`, `timeout_min` or `counter`, or `all_targets` when its command holds `{targets}`;
+// LoadConfig refuses at load, naming the key and `lym config gate`: a tier lacking `command`, `timeout_min` or `counter`, or `all_targets` when its command holds `{targets}`;
 // `manual: true` on `tier0`, the tier a call with no tier flag runs; `parallel` or `timeout_min` below 1, `slots` neither `all` nor at least 1, a counter other than `go-json` or `vstest`, a scoper other than `go`, `none` or `dotnet`;
 // a tier `filter` whose command holds no `{filter}`, a non-empty `build` lacking `command` or `timeout_min`, a build `timeout_min` below 1, and a tier with `shared_build: true` while the hub declares no build step;
 // a `covers` entry not lower than its tier's number, a tier key not spelled `tier<N>`, a `refuse_raw` entry that is not words of letters, digits, `.`, `_` and `-` separated by single spaces, and a `tier_parallel` entry that is no integer of at least 1;
 // a gate key whose scope is not `card`, `diff` or `all`, and a `card` scope on any key but `card` and `batch`.
-// A `gates` entry still in the retired list shape, such as `card: [0]`, is refused naming `lyx fabric reconcile` as the way forward, since the reconcile runs MigrateConfig.
+// A `gates` entry still in the retired list shape, such as `card: [0]`, is refused naming `lym fabric reconcile` as the way forward, since the reconcile runs MigrateConfig.
 // A `tier_parallel` entry for a tier the config does not declare is dropped with a logged warning, so a tier the hub removes leaves no entry that fails the load.
 // Cross-references are checked at use, never at load, so the template and a hub whose gate keys name an undeclared tier both load.
 //
 // At use, Config.Gate returns a key's tiers and scope and refuses a hub with no `tier0`, a key the config does not hold, an empty tier list, and a listed tier the hub does not declare; Config.TierList returns its tiers; Config.Tier refuses an undeclared number.
-// Each refusal names `lyx config gate` and closes with the clause that a session that is not the prime reports status: FAILED and the orch takes the steps.
-// Config.GateCall renders the one `lyx gate test --wait --gate <key>` call a site runs, followed by one `--card <id>` per card given.
+// Each refusal names `lym config gate` and closes with the clause that a session that is not the prime reports status: FAILED and the orch takes the steps.
+// Config.GateCall renders the one `lym gate test --wait --gate <key>` call a site runs, followed by one `--card <id>` per card given.
 // MigrateConfig prunes the retired `gates.publish` list and the retired `guard_tier` key from a gate.yaml document and migrates the retired lists, so reconcile rewrites the hub file:
 // `landing` becomes `parent-align` and `finalize` with scope `all` and `darn-write` and `code-burler-fix` with scope `diff`, `final` becomes `webster` with scope `all`, `round` becomes `webster-fix` with scope `diff`, and a `card` or `batch` list becomes a mapping with scope `card`.
 // A `merge-in` key is renamed to `parent-align` with its value, and dropped beside an existing `parent-align`.
@@ -114,12 +114,12 @@
 // The line the gate test's CPU watchdog prints after a quit is rendered by WatchdogLine and found by FindWatchdogQuit.
 // BusyQuitWayForward is the way forward after one.
 // The line the gate prints when a tier outlives its `timeout_min` is rendered by TierTimeoutLine and found by FindTierTimeout;
-// it names the tier, the timeout and the whole-tier `lyx config gate --set` rewrite that raises it.
-// The build step's timeout line is rendered by BuildTimeoutLine, names `lyx config gate --set 'build={...}'` as the rewrite, and FindTierTimeout finds it too and returns `build` as the tier.
+// it names the tier, the timeout and the whole-tier `lym config gate --set` rewrite that raises it.
+// The build step's timeout line is rendered by BuildTimeoutLine, names `lym config gate --set 'build={...}'` as the rewrite, and FindTierTimeout finds it too and returns `build` as the tier.
 //
 // # Run log
 //
-// RunLogDir is `<gateDir>/runs`, under the board's never-tracked `.lyx` inside a hub and under the worktree's own outside one, so the records outlive the worktree.
+// RunLogDir is `<gateDir>/runs`, under the board's never-tracked `.lym` inside a hub and under the worktree's own outside one, so the records outlive the worktree.
 // WriteRunRecord writes one RunRecord per tier run as `<stamp>-tier<N>-<pid>.json`, and the build step's record, whose `build` field is set, as `<stamp>-build-<pid>.json`, with the run's full output beside it as a `.log`, and prunes files older than 14 days first.
 // ReadRunRecords reads a directory's records tolerantly, skipping a file that does not decode, for the reports that total them.
 // The record is a domain log that no run reads to proceed.

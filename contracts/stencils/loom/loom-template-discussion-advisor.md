@@ -19,14 +19,14 @@ You study the task and answer the chair's questions, and read the draft record a
 Read this task's board entry:
 
 ```bash
-lyx board get '{"slug":"{{.slug}}"}'
+lym board get '{"slug":"{{.slug}}"}'
 ```
 
 Then list the rest of the board and read every entry that touches this task:
 
 ```bash
-lyx board list
-lyx board get '{"slug":"<other-slug>"}'
+lym board list
+lym board get '{"slug":"<other-slug>"}'
 ```
 
 Read `PATTERN.md` and the background files that touch the task.

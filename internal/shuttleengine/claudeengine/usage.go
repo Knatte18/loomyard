@@ -310,7 +310,7 @@ func (c *Claude) SessionUsage(sessionID, workdir string) shuttleengine.SessionUs
 	return reading
 }
 
-// launchLine matches the launch line lyx types into a session, capturing the prompt file's path.
+// launchLine matches the launch line lym types into a session, capturing the prompt file's path.
 var launchLine = regexp.MustCompile(`(?m)^Read (.+) in full first; it is your complete, authoritative instructions\.\s*$`)
 
 // claudeUsage is the usage record of a Claude transcript message.

@@ -9,7 +9,7 @@
 
 # Plan-Review rubric
 
-The subject under review is the current plan: `_lyx/plan/00-overview.md` and the card files its Card Index names.
+The subject under review is the current plan: `_lym/plan/00-overview.md` and the card files its Card Index names.
 The plan directory may also hold `archive-*/` subdirectories, which are rotations of superseded plans;
 they are out of scope, and a finding raised against one is never legitimate.
 
@@ -31,7 +31,7 @@ It appears in neither the artifact list nor the answer key, and it must not be r
 `none` means webster has begun no batch, and no card is frozen.
 Otherwise a done card is frozen: a fix never edits its file.
 A fix to its work is a follow-up card placed after the last begun batch, with its Card Index line in `00-overview.md`, in the format `{{.specs_dir}}/loom/loom-plan-spec.md` defines.
-A fix inserts or removes a card only with `lyx loom insert-card` or `lyx loom remove-card`, which renumber the later cards and whose `--help` says what they do, never by renaming, rewriting under a new name or deleting a card file by hand.
+A fix inserts or removes a card only with `lym loom insert-card` or `lym loom remove-card`, which renumber the later cards and whose `--help` says what they do, never by renaming, rewriting under a new name or deleting a card file by hand.
 
 ## Do not flag
 
@@ -79,17 +79,17 @@ Do not flag any of the following as a finding:
   a card that breaks one of their rules is a finding, and the finding names the entry.
   In a repository without a `PATTERN.md` this check does not apply.
 - **Fidelity to the answer key.**
-  Every Decision and every Constraint in `_lyx/discussion/decision-record.md` is carried by some card, and no card introduces scope the answer key does not license.
+  Every Decision and every Constraint in `_lym/discussion/decision-record.md` is carried by some card, and no card introduces scope the answer key does not license.
   A Decision step no card carries is accepted only when the step changes this task's own board entry's body or scope and the decision record carries an `Added after Discussion` entry recording its drop;
   any other uncarried Decision stays a finding.
   That path is anchor-relative: it resolves from this session's own working directory, and it is deliberately not the absolute form the artifact list uses.
   The answer key is the measuring stick and never the subject — every finding is raised against the plan, never against the decision record or a findings file.
-  An entry between `<!-- lyx:carry-over … -->` marker lines in the decision record's `## Open risks` is not part of the answer key, and it licenses no card's scope.
+  An entry between `<!-- lym:carry-over … -->` marker lines in the decision record's `## Open risks` is not part of the answer key, and it licenses no card's scope.
   In a rework generation the live generation's `findings.md` joins the decision record as the answer key:
   every finding in it is covered by some card, and every card's scope is licensed by the decision record or by a finding.
   A finding in `findings.md` is a reviewer's claim the rework plan answers, never a ruling;
   it licenses a card's scope unless it overturns a Decision of the decision record, and a card carrying a finding that overturns a Decision with no `Added after Discussion` entry recording it is a finding.
-  The live generation's round is, among `_lyx/loom/rework/round-<N>/` directories, the highest `N` whose `record.json` carries a `class` and whose `first_card` equals the `first_card` in `_lyx/plan/00-overview.md`'s frontmatter (absent means `1`).
+  The live generation's round is, among `_lym/loom/rework/round-<N>/` directories, the highest `N` whose `record.json` carries a `class` and whose `first_card` equals the `first_card` in `_lym/plan/00-overview.md`'s frontmatter (absent means `1`).
   With no such round (generation 0, or a fresh Plan-Write plan after an operator `goto Plan-Write`), the decision record alone is the answer key.
   The round's `prior-generation/` archive is context only, and a finding raised against anything inside it is never legitimate.
 - **A card that carries a research step.**
@@ -105,7 +105,7 @@ Do not flag any of the following as a finding:
 - **Card order.**
   A card that depends on something a later card does breaks the rule in `{{.specs_dir}}/loom/loom-plan-spec.md`'s "Plan vs. schedule" section; the finding names the card and the later card it depends on.
 - **Verify lines.**
-  A card's `**Verify:**` line naming a raw test command is a finding, because the gates run the hub's tier lists over scopes lyx computes and a line that tests is one `lyx gate test --wait` call with a tier list and a scope form.
+  A card's `**Verify:**` line naming a raw test command is a finding, because the gates run the hub's tier lists over scopes lym computes and a line that tests is one `lym gate test --wait` call with a tier list and a scope form.
   The hub's tiers and gate lists, as the plan writer was given them:
 {{.gate_tiers}}
   A plan-level `## verify:` section is accepted and ignored, so it is no finding.
@@ -129,8 +129,8 @@ When the reviewer sees no admissible fix, it still reports the defect and names 
 A finding's `fix` key is a proposal: the fixer may apply any other fix the checks admit, and when none exists it defers the finding with the constraining check as the reason.
 The rule narrows only which fix shapes a reviewer proposes; no defect becomes unreportable.
 
-Before writing a finding whose `fix` adds, drops, moves or pairs targets, or changes a verify command, the agent writing the review file checks the fixes against the plan gate with `lyx loom validate-plan --overlay`, which checks proposed plan file contents in memory and writes no file.
-`lyx loom validate-plan --help` shows the stdin format; this rubric does not restate it.
+Before writing a finding whose `fix` adds, drops, moves or pairs targets, or changes a verify command, the agent writing the review file checks the fixes against the plan gate with `lym loom validate-plan --overlay`, which checks proposed plan file contents in memory and writes no file.
+`lym loom validate-plan --help` shows the stdin format; this rubric does not restate it.
 It first runs `validate-plan --overlay` with `{}` as a baseline, never the flag-less run, so that no run writes a file.
 It then runs it once with every such fix applied together, with its Bash timeout raised to cover a type load, and proposes no fix whose run reports a blocking finding the baseline does not.
 When the combined run reports a new blocking finding, it re-runs with each fix overlaid alone.
@@ -139,7 +139,7 @@ A new blocking finding of the combined run that no solo run reproduces is a join
 A fix that inserts, removes or renumbers cards is not overlaid, since it goes through `insert-card` and `remove-card`.
 The directive binds writing a finding's `fix`, not a Bouncer row's focus file.
 
-A finding whose proposed glyph stands for a comment or a line it cites names the function or method whose body encloses that line, confirmed with `lyx quarry resolve` that the line lies inside the glyph's span, never the member after or near it.
+A finding whose proposed glyph stands for a comment or a line it cites names the function or method whose body encloses that line, confirmed with `lym quarry resolve` that the line lies inside the glyph's span, never the member after or near it.
 When no member span holds the line, as for a free-standing comment between declarations, it names the file's self glyph.
 
 ## Amendment

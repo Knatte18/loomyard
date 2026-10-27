@@ -198,7 +198,7 @@ type Env struct {
 	// constructors.
 	Now func() time.Time
 	// DiscussionTable is the injected shedadapters.TableSource the DiscussionWrite entry evaluates once per Call.
-	// It arrives as a closure rather than as recipe Config because building the table needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly.
+	// It arrives as a closure rather than as recipe Config because building the table needs a *lymcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly.
 	// It is named per-producer rather than carried in a generic keyed map because Env already carries per-producer named fields.
 	DiscussionTable shedadapters.TableSource
 	// CommitDiscussion is the injected closure that commits the discussion output directory.
@@ -222,7 +222,7 @@ type Env struct {
 	// Each entry requires the fields its producer uses, and Watch alone may be nil.
 	Pawl pawlengine.Deps
 	// PlanTable is the injected shedadapters.TableSource the PlanWrite entry evaluates once per Call.
-	// It arrives as a closure rather than as recipe Config because building the table needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly; internal/loomcli's wire() is what supplies it.
+	// It arrives as a closure rather than as recipe Config because building the table needs a *lymcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly; internal/loomcli's wire() is what supplies it.
 	// It is named per-producer, like DiscussionTable, because Env already carries per-producer named fields.
 	PlanTable shedadapters.TableSource
 	// CommitPlan is the injected closure that commits the plan output directory, invoked by the
@@ -265,7 +265,7 @@ type Env struct {
 	// Rework carries the told values and seams of the earlier rework rounds a run recorded: the Plan-Review skip seam, the plan archive and the committed-plan reads all take it, and Plan-Write's rotation takes its ArchiveWebster.
 	Rework loomshed.PRReworkDeps
 	// DarnTable is the injected table factory the DarnWrite entry evaluates once per Call, with the token texts the producer tells that session.
-	// It arrives as a closure rather than as recipe Config because building the table needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly;
+	// It arrives as a closure rather than as recipe Config because building the table needs a *lymcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly;
 	// internal/loomcli's wire() is what supplies it.
 	DarnTable func(loomshed.DarnTold) (seatengine.Table, error)
 	// DarnVerifyAttempts is the verify gate's attempt budget of the darn recipe, which `darn.yaml`'s verify_attempts supplies.
@@ -279,7 +279,7 @@ type Env struct {
 	PlanIndex planindex.Index
 
 	// Slug is the run-wide task slug, read by all three batten entries (WorktreeCreate, InnerRun, WorktreeTeardown) for producer identity and stuck-reason text,
-	// and by the Bouncer entry for the `lyx loom circling` verbs its CIRCLING Awaiting Reason names.
+	// and by the Bouncer entry for the `lym loom circling` verbs its CIRCLING Awaiting Reason names.
 	// It is legal on Env because Env carries roots and run-wide values,
 	// and a value that differs per row belongs in Config instead -- Slug does not differ between the three batten rows a single caller wires.
 	Slug string

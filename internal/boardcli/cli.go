@@ -6,8 +6,8 @@
 // The intake group (list, import, close) comes from intakeCommand in intake.go, over the hub repository the hubRepo closure opens from the resolved location.
 // list and find take --text to print the compact listing from text.go instead of JSON.
 // Configuration resolution happens once in a PersistentPreRunE.
-// The config file (readme, design_prefix) is loaded from the hub's <hub>/_board/_lyx/config/board.yaml, whatever worktree the verb runs in,
-// and the board data dir is resolved as fabricengine.BoardDir(layout.HubPath) via lyxcwd.Resolve.
+// The config file (readme, design_prefix) is loaded from the hub's <hub>/_board/_lym/config/board.yaml, whatever worktree the verb runs in,
+// and the board data dir is resolved as fabricengine.BoardDir(layout.HubPath) via lymcwd.Resolve.
 // The hidden --board-path persistent flag overrides the data dir for the detached sync child
 // process launched by spawn.go, bypassing both config and path resolution.
 
@@ -30,7 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubissues"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/runprofile"
@@ -53,7 +53,7 @@ func Command() *cobra.Command {
 		return runprofile.Load(configengine.Dirs{Board: config.Path})
 	}
 	// location is the worktree PersistentPreRunE resolved, nil under --board-path.
-	var location *lyxcwd.Location
+	var location *lymcwd.Location
 	// hubRepo opens the hub's own repository's issues, resolved only when an intake verb asks.
 	hubRepo := func() (*hubissues.Repo, error) {
 		if location == nil {
@@ -74,26 +74,26 @@ func Command() *cobra.Command {
 			clihelp.IndexNoteAnnotation:         "— " + payloadLegend,
 			clihelp.IndexNoteAudienceAnnotation: clihelp.AudienceOperator,
 		},
-		Long: `board manages the task-tracker board for the current lyx worktree.
+		Long: `board manages the task-tracker board for the current lym worktree.
 
 The board is one store: every entry is a task, a note or a project (its kind) and carries labels. Only
 a task can be claimed and depend on other tasks; a note is an idea or observation. A project groups
 entries: a task or note joins it through its "project" field, the project lists its members' plan
-order in "order", and its "beam" flag, set only by "lyx beam create", makes it
+order in "order", and its "beam" flag, set only by "lym beam create", makes it
 a long-lived pair that runs its members. "get" and "list" carry an entry's "parent_beam", the slug of
 the beam above it, empty when the prime is its parent. A task carries at least
 one type label, a note exactly one, and every label must be configured in board.yaml. Every entry
 carries a handle the board assigns, T and a number for a task, P and a number for a project, a
 note's type letter and a number for a note, such as T4 or B2. The README renders tasks split into dependency layers and notes grouped by
 type, each table sorted by handle. Agents read and write the
-board through "lyx board", never through the JSON files under _board.
+board through "lym board", never through the JSON files under _board.
 
-The config file is the hub's <hub>/_board/_lyx/config/board.yaml, read whatever worktree the verb runs in.
+The config file is the hub's <hub>/_board/_lym/config/board.yaml, read whatever worktree the verb runs in.
 It controls non-geometry settings: readme
 and design_prefix filenames and the types and labels lists. The board data dir (<hub>/_board) is
-derived from the worktree layout via lyxcwd and is not config- or
+derived from the worktree layout via lymcwd and is not config- or
 env-overridable. The hidden --board-path flag overrides the data dir for the
-detached sync child process. Running "lyx board" with no subcommand lists
+detached sync child process. Running "lym board" with no subcommand lists
 available subcommands without requiring a git repo.
 
 ` + payloadLegend,
@@ -120,14 +120,14 @@ available subcommands without requiring a git repo.
 			cfg = boardengine.Config{Path: *boardPathFlag}
 		} else {
 			// Resolve configuration from the current working directory.
-			cwd, err := lyxcwd.CwdFrom(ctx)
+			cwd, err := lymcwd.CwdFrom(ctx)
 			if err != nil {
 				output.Err(cmd.OutOrStdout(), fmt.Sprintf("failed to get working directory: %v", err))
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
 
-			layout, rerr := lyxcwd.Resolve(cwd)
+			layout, rerr := lymcwd.Resolve(cwd)
 			if rerr != nil {
 				output.Err(cmd.OutOrStdout(), rerr.Error())
 				clihelp.Abort(ctx, 1)
@@ -171,7 +171,7 @@ available subcommands without requiring a git repo.
 		Long: `Turn a note into a task. A task is returned unchanged, and nothing is written.
 The promoted entry loses its priority, which only a note carries, and its note handle: it takes
 the lowest free T handle.
-Demotion goes through "lyx board upsert" with "kind":"note".
+Demotion goes through "lym board upsert" with "kind":"note".
 
 Fields (one of):
   "slug"   string  — entry slug
@@ -179,8 +179,8 @@ Fields (one of):
   "handle" string  — entry handle, such as B4
 
 Examples:
-  lyx board promote '{"slug":"my-note"}'
-  lyx board promote B4` + slugLimitNote(),
+  lym board promote '{"slug":"my-note"}'
+  lym board promote B4` + slugLimitNote(),
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -219,7 +219,7 @@ Output:
   {"ok":true,"task":{...},"mentions":["other-entry"]}
 
 Example:
-  lyx board rename '{"slug":"old-name","to":"new-name"}'` + slugLimitNote(),
+  lym board rename '{"slug":"old-name","to":"new-name"}'` + slugLimitNote(),
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -251,8 +251,8 @@ tasks' depends_on, and prints the removed slugs. Takes no payload. The output ca
 or false.
 
 Example:
-  lyx board prune
-  lyx board prune --apply`,
+  lym board prune
+  lym board prune --apply`,
 		Args: cobra.NoArgs,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			removed, err := b.Prune(pruneApply)
@@ -275,15 +275,15 @@ Example:
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Find tasks whose slug, title, brief or body contains the text, done tasks included.
 The arguments are joined with single spaces into one search text. At least one argument is required.
-Prints the same tasks array as "lyx board list", in an envelope without prime_owner; with --text it prints the compact one-line-per-task
+Prints the same tasks array as "lym board list", in an envelope without prime_owner; with --text it prints the compact one-line-per-task
 listing instead (errors stay JSON); its columns are handle, kind, priority, age, time since last revision, slug, title, labels and, when set, [status].
 --label <name> keeps only entries carrying that label; repeat it to require several (AND).
 A label that is in neither the types nor the labels list of board.yaml and that no entry carries is refused.
 
 Examples:
-  lyx board find retry backoff
-  lyx board find --text retry
-  lyx board find --label bug retry`,
+  lym board find retry backoff
+  lym board find --text retry
+  lym board find --label bug retry`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			tasks, err := b.Find(strings.Join(args, " "), findLabels)
@@ -299,17 +299,17 @@ Examples:
 	var retireLegacyApply bool
 	retireLegacyCmd := &cobra.Command{
 		Use:         "retire-legacy",
-		Short:       "delete the legacy tasks.json and notes.json files once no pre-upgrade lyx reads them",
+		Short:       "delete the legacy tasks.json and notes.json files once no pre-upgrade lym reads them",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Without --apply, retire-legacy is a read-only dry run: it prints the legacy files it would delete
 under legacy_files and changes nothing.
-With --apply it ends the compatibility window with a pre-upgrade lyx: it folds any last done marks
+With --apply it ends the compatibility window with a pre-upgrade lym: it folds any last done marks
 from the legacy files into board.json, then deletes tasks.json and notes.json. Errors when neither
 file exists. Takes no payload. The output carries "applied": true or false.
 
 Example:
-  lyx board retire-legacy
-  lyx board retire-legacy --apply`,
+  lym board retire-legacy
+  lym board retire-legacy --apply`,
 		Args: cobra.NoArgs,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			legacyFiles, err := b.RetireLegacy(retireLegacyApply)
@@ -369,7 +369,7 @@ Output:
   {"ok":true,"types":[{"label":"bug","description":"..."}],"labels":[{"label":"quarry","description":"..."}]}
 
 Example:
-  lyx board labels`,
+  lym board labels`,
 		Args: cobra.NoArgs,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			return output.Ok(out, map[string]any{
@@ -387,13 +387,13 @@ Example:
 one block per recipe, each module name to config keys, the shape of a task's run_settings.
 Seed-Child writes only the block of the recipe the task runs. An empty list prints as [].
 defaults maps a recipe to the profile a task of that recipe takes when it names none. Takes no payload.
-Edit the profiles with "lyx config profiles".
+Edit the profiles with "lym config profiles".
 
 Output:
   {"ok":true,"defaults":{"loom":"light"},"profiles":[{"name":"light","settings":{"loom":{"loom":{"plan_max_bounces":1}}}}]}
 
 Example:
-  lyx board profiles`,
+  lym board profiles`,
 		Args: cobra.NoArgs,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			loaded, err := profiles()
@@ -501,18 +501,18 @@ Optional fields:
   "created"    string — RFC 3339 creation time
   "revised"    string — RFC 3339 last scope change time
   "run_settings" object — module name to config keys for the pair's local config; {} clears it
-  "profile"    string — a "lyx board profiles" name laid under run_settings; "" clears it
-  "owner_machine" string — the effective owner only; "lyx adopt" moves it
+  "profile"    string — a "lym board profiles" name laid under run_settings; "" clears it
+  "owner_machine" string — the effective owner only; "lym adopt" moves it
   "project"    string — slug of the open project the entry belongs to; "" leaves none
   "order"      array  — a project's member slugs in plan order
-  "beam"       bool   — a project's beam flag; only the "lyx beam" verbs set it
+  "beam"       bool   — a project's beam flag; only the "lym beam" verbs set it
 
 Flag:
   --body-file <path>  read "body" from the file, or from stdin when the path is "-";
                       refused when the payload also carries "body" or is itself "-".
 
 Example:
-  lyx board upsert '{"slug":"my-task","title":"My Task","brief":"Short summary","kind":"task","labels":["enhancement"]}'` + slugLimitNote(),
+  lym board upsert '{"slug":"my-task","title":"My Task","brief":"Short summary","kind":"task","labels":["enhancement"]}'` + slugLimitNote(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return clihelp.WrapRun(func(out io.Writer, args []string) int {
 				// cobra strips the "upsert" token; json payload is now args[0].
@@ -557,14 +557,14 @@ Example:
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Create or update multiple tasks in one atomic write.
 An absent or empty "tasks" array is an error. Each task element uses the same fields as
-"lyx board upsert" ("slug" required per element).
+"lym board upsert" ("slug" required per element).
 The "notice" names siblings sharing a new depends_on and a label.
 
 Required wrapper field:
   "tasks" array — one or more task objects (each with "slug" required)
 
 Example:
-  lyx board upsert-batch '{"tasks":[{"slug":"t1","title":"One","kind":"task","labels":["bug"]},{"slug":"t2","title":"Two","kind":"task","labels":["bug"]}]}'` + slugLimitNote(),
+  lym board upsert-batch '{"tasks":[{"slug":"t1","title":"One","kind":"task","labels":["bug"]},{"slug":"t2","title":"Two","kind":"task","labels":["bug"]}]}'` + slugLimitNote(),
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -633,8 +633,8 @@ Fields:
   "status" string|null — new status value; null releases a draft task
 
 Examples:
-  lyx board set-status '{"slug":"my-task","status":"active"}'
-  lyx board set-status '{"id":96,"status":null}'` + slugLimitNote(),
+  lym board set-status '{"slug":"my-task","status":"active"}'
+  lym board set-status '{"id":96,"status":null}'` + slugLimitNote(),
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -674,8 +674,8 @@ Fields:
   "handle" string  — task handle, such as T4 (one of slug, id or handle)
 
 Examples:
-  lyx board remove '{"slug":"my-task"}'
-  lyx board remove T4` + slugLimitNote(),
+  lym board remove '{"slug":"my-task"}'
+  lym board remove T4` + slugLimitNote(),
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -703,7 +703,7 @@ The result is the envelope {"task": {...}}, which the discussion stencil reads.
 A task's "owner_machine" is the machine that owns it: the owner it reads as through its beam, or through root.
 --body writes the entry's body alone, verbatim, with no envelope; an empty body writes nothing.
 With --body a target that does not exist is an error, since there is no task:null to print.
-Editing a body as a file: lyx board get ... --body > body.md, edit it, then feed it back with
+Editing a body as a file: lym board get ... --body > body.md, edit it, then feed it back with
 upsert --body-file body.md (merge --body-file takes the same file for a merged entry).
 
 Fields:
@@ -712,9 +712,9 @@ Fields:
   "handle" string  — task handle, such as B4 (one of slug, id or handle)
 
 Examples:
-  lyx board get '{"id":96}'
-  lyx board get B4
-  lyx board get '{"slug":"my-task"}' --body` + slugLimitNote(),
+  lym board get '{"id":96}'
+  lym board get B4
+  lym board get '{"slug":"my-task"}' --body` + slugLimitNote(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return clihelp.WrapRun(func(out io.Writer, args []string) int {
 				if len(args) == 0 {
@@ -730,7 +730,7 @@ Examples:
 				}
 				if getBody {
 					if !found {
-						return outputError(out, fmt.Sprintf("no entry %v: check the slug, id or handle with lyx board list", selector))
+						return outputError(out, fmt.Sprintf("no entry %v: check the slug, id or handle with lym board list", selector))
 					}
 					if _, err := io.WriteString(out, task.Body); err != nil {
 						return outputError(out, err.Error())
@@ -775,10 +775,10 @@ A label that is in neither the types nor the labels list of board.yaml and that 
 an entry without the date goes last, and entries that tie keep README order.
 
 Examples:
-  lyx board list
-  lyx board list --text
-  lyx board list --text --sort age
-  lyx board list --label bug --label enhancement`,
+  lym board list
+  lym board list --text
+  lym board list --text --sort age
+  lym board list --label bug --label enhancement`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			tasks, err := board().ListTasksBrief(listLabels)
 			if err != nil {
@@ -831,7 +831,7 @@ The "notice" names siblings sharing a new depends_on and a label.
 
 Fields:
   "remove_slugs" array  — slug strings to remove (optional; omit to skip)
-  "upsert"       object — task to create or update (required; same fields as "lyx board upsert")
+  "upsert"       object — task to create or update (required; same fields as "lym board upsert")
   "set_status"   object — status to set after upsert (optional):
     "slug"   string      — task slug (one of slug, id or handle)
     "id"     integer     — numeric task ID (one of slug, id or handle)
@@ -846,7 +846,7 @@ Flag:
                       and when the payload argument is itself "-" (stdin can feed only one of them).
 
 Example:
-  lyx board merge '{"remove_slugs":["old"],"upsert":{"slug":"new","title":"New"},"set_status":{"slug":"new","status":"active"}}'` + slugLimitNote(),
+  lym board merge '{"remove_slugs":["old"],"upsert":{"slug":"new","title":"New"},"set_status":{"slug":"new","status":"active"}}'` + slugLimitNote(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return clihelp.WrapRun(func(out io.Writer, args []string) int {
 				if len(args) == 0 {
@@ -958,7 +958,7 @@ Fields:
   "depends_on" array   — complete list of dependency slug strings; replaces existing list (required)
 
 Example:
-  lyx board set-deps '{"slug":"my-task","depends_on":["dep-a","dep-b"]}'` + slugLimitNote(),
+  lym board set-deps '{"slug":"my-task","depends_on":["dep-a","dep-b"]}'` + slugLimitNote(),
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -1100,7 +1100,7 @@ func lookupSelector(m map[string]any) (any, error) {
 			return nil, fmt.Errorf("handle must be a string")
 		}
 		if _, _, ok := boardengine.ParseHandle(handle); !ok {
-			return nil, fmt.Errorf("handle %q is not a letter followed by a number, such as T4: check it with lyx board list --text", handle)
+			return nil, fmt.Errorf("handle %q is not a letter followed by a number, such as T4: check it with lym board list --text", handle)
 		}
 		return boardengine.Handle(handle), nil
 	}
@@ -1132,7 +1132,7 @@ func RunCLI(out io.Writer, args []string) int {
 // RunCLIIn is RunCLI's seam-cwd-carrying sibling: an empty cwd means "read the process cwd" and
 // delegates to clihelp.Execute exactly as RunCLI always has, while any other value seeds cwd into
 // the execution context via clihelp.ExecuteIn.
-// The branch exists because lyxcwd.WithCwd panics on an empty directory, so a uniform delegation to
+// The branch exists because lymcwd.WithCwd panics on an empty directory, so a uniform delegation to
 // ExecuteIn would panic on every existing RunCLI call.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
@@ -1166,7 +1166,7 @@ func siblingNotice(siblings []boardengine.Sibling) string {
 	lines := make([]string, len(siblings))
 	for i, sibling := range siblings {
 		lines[i] = fmt.Sprintf(
-			`%q now waits on %s, which %q also waits on, and the two share module labels %s: chain one after the other with "lyx board set-deps", or leave both if they do not overlap`,
+			`%q now waits on %s, which %q also waits on, and the two share module labels %s: chain one after the other with "lym board set-deps", or leave both if they do not overlap`,
 			sibling.Task, strings.Join(sibling.Deps, ", "), sibling.Sibling, strings.Join(sibling.Labels, ", "))
 	}
 	return strings.Join(lines, "\n")

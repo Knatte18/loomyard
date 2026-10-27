@@ -1,4 +1,4 @@
-<!-- This is the reload pointer `lyx orch` types after an auto-compaction, once `/reload-plugins` has run, rendered by RenderReloadPrompt (internal/orchengine/prompt.go).
+<!-- This is the reload pointer `lym orch` types after an auto-compaction, once `/reload-plugins` has run, rendered by RenderReloadPrompt (internal/orchengine/prompt.go).
      A compaction keeps the session's skills, so none are retyped before it.
      It must render to ONE line: shuttle's Send refuses multi-line text.
      Its one marker is {{.role_path}}, the role file to read. -->

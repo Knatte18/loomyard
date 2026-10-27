@@ -12,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
-// terminatingSignalSet are the signals `lyx gate test` catches to kill the child's tree and release its slot before it exits.
+// terminatingSignalSet are the signals `lym gate test` catches to kill the child's tree and release its slot before it exits.
 // Windows delivers only the interrupt and ignores the rest.
 var terminatingSignalSet = []os.Signal{syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP}
 

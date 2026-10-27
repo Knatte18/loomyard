@@ -37,7 +37,7 @@ import (
 // AND the steer redirected the work in-session, rather than the turn stalling or the agent giving
 // up once its preferred tool was refused.
 func TestSmokeGuardrailDeniesAgentTool(t *testing.T) {
-	llmkit.Claude(t, "LYX_REED_CLAUDE")
+	llmkit.Claude(t, "LYM_REED_CLAUDE")
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	deferHubRelease(t, h.Path)
@@ -95,7 +95,7 @@ func TestSmokeGuardrailDeniesAgentTool(t *testing.T) {
 // The test then answers through Run.Send with a text ending in MessageTail, and the run finishes done with the output file written —
 // the same live state the sandbox suite's S2 hold scenario depends on.
 func TestSmokeGuardrailQuestionHoldsRunUntilAnswered(t *testing.T) {
-	llmkit.Claude(t, "LYX_REED_CLAUDE")
+	llmkit.Claude(t, "LYM_REED_CLAUDE")
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	deferHubRelease(t, h.Path)

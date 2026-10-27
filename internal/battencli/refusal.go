@@ -33,15 +33,15 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // RefuseUnlessPrime is the whole prime-only guard as one call: fabric's own drivable-worktree check
 // first, then the prime-name comparison, in that order for the reason armAt gives.
-// It is exported for the one site outside this package that creates batten runs, "lyx shed seed":
+// It is exported for the one site outside this package that creates batten runs, "lym shed seed":
 // a batten seed written anywhere but prime is a run no verb can ever drive, so the seeding site
 // applies the same refusal every batten verb applies.
-func RefuseUnlessPrime(location *lyxcwd.Location) error {
+func RefuseUnlessPrime(location *lymcwd.Location) error {
 	if err := fabricengine.RequireDrivableWorktree(location); err != nil {
 		return fmt.Errorf("battencli: this verb runs from the hub's prime worktree only: %w", err)
 	}
@@ -49,12 +49,12 @@ func RefuseUnlessPrime(location *lyxcwd.Location) error {
 	return refuseNonPrime(location.WorktreeName, primeName, primeNameErr)
 }
 
-// ResolveBattenPrime is the guard of every batten verb, `lyx adopt` and `lyx cleanup`: it returns the hub prime's location when location is the prime or a beam.
+// ResolveBattenPrime is the guard of every batten verb, `lym adopt` and `lym cleanup`: it returns the hub prime's location when location is the prime or a beam.
 // A beam is a pair whose own origin record carries the beam mark, so a session in a beam acts on the hub as from the prime, and every path stays under the prime's anchor.
 // Fabric's drivable-worktree check runs first.
 // It refuses a beam whose board entry holds a run status, since only its landing works in it, naming the landing and the beam's parent worktree.
 // It refuses every other worktree, a task pair that is not a beam included, naming it and the nearest beam above it, else the prime, as where to run the verb.
-func ResolveBattenPrime(location *lyxcwd.Location) (*lyxcwd.Location, error) {
+func ResolveBattenPrime(location *lymcwd.Location) (*lymcwd.Location, error) {
 	if err := fabricengine.RequireDrivableWorktree(location); err != nil {
 		return nil, fmt.Errorf("battencli: this verb runs from the hub's prime worktree or a beam: %w", err)
 	}
@@ -87,12 +87,12 @@ func ResolveBattenPrime(location *lyxcwd.Location) (*lyxcwd.Location, error) {
 			location.WorktreeName, landing, parentWorktreeOrPrime(origin, primeName),
 		)
 	}
-	return lyxcwd.ResolveWorktree(fabricengine.WorktreePath(location, primeName))
+	return lymcwd.ResolveWorktree(fabricengine.WorktreePath(location, primeName))
 }
 
 // beamLanding returns the run status of the board entry named after the beam at location; empty when the entry is absent or its run does not hold it.
 // A pawl run from Worktree-Create through Beam-Await holds nothing, so a verb runs inside the beam then.
-func beamLanding(location *lyxcwd.Location) (string, error) {
+func beamLanding(location *lymcwd.Location) (string, error) {
 	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(location.HubPath))
 	if err != nil {
 		return "", fmt.Errorf("battencli: read the board to tell whether the beam %q is being landed: %w", location.WorktreeName, err)
@@ -115,7 +115,7 @@ func parentWorktreeOrPrime(origin fabricengine.Origin, primeName string) string 
 
 // nearestBeamAbove returns the name of the nearest worktree up from location's origin chain that exists here and is a beam, the prime's name when none is.
 // A record that cannot be read, a parent that is gone and a cycle each end the walk at the prime, since the answer only names where to run a verb.
-func nearestBeamAbove(location *lyxcwd.Location, origin fabricengine.Origin, primeName string) string {
+func nearestBeamAbove(location *lymcwd.Location, origin fabricengine.Origin, primeName string) string {
 	visited := map[string]bool{location.WorktreeName: true}
 	for parent := origin.ParentWorktree; parent != "" && parent != primeName && !visited[parent]; {
 		visited[parent] = true
@@ -135,7 +135,7 @@ func nearestBeamAbove(location *lyxcwd.Location, origin fabricengine.Origin, pri
 }
 
 // refuseOwnPair refuses a verb that creates or destroys the pair of slug when the session acting runs in that pair itself, naming its parent worktree, or the prime, as where to run it.
-func refuseOwnPair(acting, prime *lyxcwd.Location, slug, verb string) error {
+func refuseOwnPair(acting, prime *lymcwd.Location, slug, verb string) error {
 	if acting.WorktreeName == prime.WorktreeName || acting.WorktreeName != slug {
 		return nil
 	}

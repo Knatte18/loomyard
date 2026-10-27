@@ -6,7 +6,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // SetOpenPRHeadsForTest replaces the open-PR lookup with lookup for the test's lifetime.
@@ -17,9 +17,9 @@ func SetOpenPRHeadsForTest(t *testing.T, lookup func(ctx context.Context, remote
 	t.Cleanup(func() { listOpenPRHeads = prev })
 }
 
-// SetPairPushForTest makes "lyx fabric add" push a new pair through push instead of a detached child, for the whole test binary.
+// SetPairPushForTest makes "lym fabric add" push a new pair through push instead of a detached child, for the whole test binary.
 // It returns the previous seam so a test can restore it.
-func SetPairPushForTest(push func(*lyxcwd.Location) error) (previous func(*lyxcwd.Location) error) {
+func SetPairPushForTest(push func(*lymcwd.Location) error) (previous func(*lymcwd.Location) error) {
 	previous = spawnPairPush
 	spawnPairPush = push
 	return previous

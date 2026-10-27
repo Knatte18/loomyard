@@ -51,13 +51,13 @@ func TestRunCLI_RefusesBeforeAnyHubWork(t *testing.T) {
 			name:              "CloneWithZeroArgs",
 			args:              []string{"clone"},
 			wantExit:          1,
-			wantErrorContains: "usage: lyx fabric clone",
+			wantErrorContains: "usage: lym fabric clone",
 		},
 		{
 			name:              "CloneWithThreeArgs",
 			args:              []string{"clone", "https://example.com/weft", "https://example.com/warp", "https://example.com/board"},
 			wantExit:          1,
-			wantErrorContains: "usage: lyx fabric clone",
+			wantErrorContains: "usage: lym fabric clone",
 		},
 		{
 			name:              "MergeContinueRejectsExtraArg",

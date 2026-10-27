@@ -4,7 +4,7 @@
 // reading, and validation -- against a caller-supplied absolute stencils directory.
 // It never derives that directory's geometry itself: baseDir always arrives fully resolved from the
 // caller (fabricengine.StencilsDir), which is what keeps this package's tests hermetic against a
-// bare t.TempDir() and keeps it free of the _board/_lyx literals those packages own.
+// bare t.TempDir() and keeps it free of the _board/_lym literals those packages own.
 // A Mode sets how a pass treats an untouched board copy whose shipped default has changed.
 // ModeProduction, chosen by ModeFor only for a production-stamped binary with a clean VCS stamp, refreshes it forward only:
 // when the copy records no writer, or when the caller's Older ordering reports the recorded writer older than the running binary.

@@ -148,14 +148,14 @@ func TestResume(t *testing.T) {
 				t.Errorf("report %+v, err %v; want the orch left to its watcher", report, err)
 			}
 		}},
-		{"a slug that only a hub entry covers refuses naming lyx tender resume and changes nothing", func(t *testing.T) {
+		{"a slug that only a hub entry covers refuses naming lym tender resume and changes nothing", func(t *testing.T) {
 			e := newEnv(t, newPair("p1"))
 			e.seedLive(hubEntry(e.clock.Now()))
 
 			_, err := e.resume("p1")
 
-			if err == nil || !strings.Contains(err.Error(), `"lyx tender resume"`) {
-				t.Fatalf("err = %v; want a refusal naming lyx tender resume", err)
+			if err == nil || !strings.Contains(err.Error(), `"lym tender resume"`) {
+				t.Fatalf("err = %v; want a refusal naming lym tender resume", err)
 			}
 			if live := e.record().Live; len(live) != 1 {
 				t.Errorf("live entries = %+v; want the hub entry untouched", live)
@@ -602,7 +602,7 @@ func TestRevive(t *testing.T) {
 		{"a stalled beam orch is revived beside a healthy prime orch, and both are reported", func(t *testing.T) {
 			prime := newPair("prime", "orch")
 			prime.states["g-orch"] = shuttleengine.SessionState{Name: shuttleengine.SessionBusy, Cause: shuttleengine.SessionCauseTurn}
-			beam := &beamOrch{strand: "g-beam", name: "lyx:b:orch", pair: newPair("b", "orch")}
+			beam := &beamOrch{strand: "g-beam", name: "lym:b:orch", pair: newPair("b", "orch")}
 			beam.pair.states["g-beam"] = stalled
 			e := newEnv(t, newPair("p1"))
 			e.prime, e.orchStrand = prime, "g-orch"
@@ -612,7 +612,7 @@ func TestRevive(t *testing.T) {
 
 			want := []OrchRevive{
 				{Strand: primeOrchName, Result: "skipped", Reason: "busy (turn)"},
-				{Strand: "lyx:b:orch", Result: "injected", InjectID: 1},
+				{Strand: "lym:b:orch", Result: "injected", InjectID: 1},
 			}
 			if !reflect.DeepEqual(report.Orchs, want) || len(e.creel.injected()) != 0 || !reflect.DeepEqual(beam.creel.injected(), []string{ReviveLine}) {
 				t.Errorf("orch part %+v, prime injected %v, beam injected %v; want %+v with only the beam injected", report.Orchs, e.creel.injected(), beam.creel.injected(), want)
@@ -776,21 +776,21 @@ func TestStatus(t *testing.T) {
 		}
 	})
 
-	t.Run("stale processes keep a replaced lyx inside the hub and nothing else", func(t *testing.T) {
+	t.Run("stale processes keep a replaced lym inside the hub and nothing else", func(t *testing.T) {
 		e := newEnv(t)
 		e.hubPath = "/home/u/hub"
-		e.executable = "/home/u/go/bin/lyx"
+		e.executable = "/home/u/go/bin/lym"
 		listed := func(pid int, exe, cwd string) proc.Process {
-			return proc.Process{PID: pid, StartTime: "t" + fmt.Sprint(pid), Exe: exe, Cwd: cwd, Argv: []string{"lyx", "orch", "watch"}}
+			return proc.Process{PID: pid, StartTime: "t" + fmt.Sprint(pid), Exe: exe, Cwd: cwd, Argv: []string{"lym", "orch", "watch"}}
 		}
 		e.processes = []proc.Process{
-			listed(1, "/home/u/go/bin/lyx (deleted)", "/home/u/hub/prime"),
-			listed(2, "/home/u/hub/x/.dev-bin/lyx (deleted)", "/home/u/hub"),
-			listed(3, "/home/u/go/bin/lyx", "/home/u/hub"),
+			listed(1, "/home/u/go/bin/lym (deleted)", "/home/u/hub/prime"),
+			listed(2, "/home/u/hub/x/.dev-bin/lym (deleted)", "/home/u/hub"),
+			listed(3, "/home/u/go/bin/lym", "/home/u/hub"),
 			listed(4, "/home/u/go/bin/other (deleted)", "/home/u/hub"),
-			listed(5, "/home/u/go/bin/lyx (deleted)", "/home/u/hub-other"),
-			listed(6, "/home/u/go/bin/lyx (deleted)", "/home/u"),
-			listed(7, "/home/u/go/bin/lyx (deleted)", "/home/u/hub/gone (deleted)"),
+			listed(5, "/home/u/go/bin/lym (deleted)", "/home/u/hub-other"),
+			listed(6, "/home/u/go/bin/lym (deleted)", "/home/u"),
+			listed(7, "/home/u/go/bin/lym (deleted)", "/home/u/hub/gone (deleted)"),
 		}
 
 		report := read(t, e)
@@ -802,7 +802,7 @@ func TestStatus(t *testing.T) {
 		if !report.Stale.Supported || !reflect.DeepEqual(pids, []int{1, 2, 7}) {
 			t.Errorf("stale = %+v; want pids 1, 2 and 7 on a supported platform", report.Stale)
 		}
-		if first := report.Stale.Processes[0]; first.StartTime != "t1" || !reflect.DeepEqual(first.Argv, []string{"lyx", "orch", "watch"}) {
+		if first := report.Stale.Processes[0]; first.StartTime != "t1" || !reflect.DeepEqual(first.Argv, []string{"lym", "orch", "watch"}) {
 			t.Errorf("first stale process = %+v; want its start time and argv", first)
 		}
 	})
@@ -892,7 +892,7 @@ func TestStatus(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				e := newEnv(t)
-				e.runProcs, e.worktrees, e.processes, e.executable = tt.runProcs, tt.worktrees, tt.processes, "/bin/lyx"
+				e.runProcs, e.worktrees, e.processes, e.executable = tt.runProcs, tt.worktrees, tt.processes, "/bin/lym"
 
 				report := read(t, e).Processes
 
@@ -955,23 +955,23 @@ func TestStatus(t *testing.T) {
 		}
 	})
 
-	t.Run("unregistered lyx processes are those in a deleted hub directory outside every worktree that no record owns", func(t *testing.T) {
+	t.Run("unregistered lym processes are those in a deleted hub directory outside every worktree that no record owns", func(t *testing.T) {
 		e := newEnv(t)
 		e.hubPath = "/home/u/hub"
-		e.executable = "/home/u/go/bin/lyx"
+		e.executable = "/home/u/go/bin/lym"
 		e.worktrees = []string{"/home/u/hub/live"}
 		e.runProcs = map[string][]runproc.Record{"p": {{PID: 4, Role: runproc.RoleLoop, RegisteredAt: e.clock.Now()}}}
 		listed := func(pid int, exe, cwd string) proc.Process {
-			return proc.Process{PID: pid, StartTime: "t" + fmt.Sprint(pid), Exe: exe, Cwd: cwd, Argv: []string{"lyx", "x"}}
+			return proc.Process{PID: pid, StartTime: "t" + fmt.Sprint(pid), Exe: exe, Cwd: cwd, Argv: []string{"lym", "x"}}
 		}
-		const lyx = "/home/u/go/bin/lyx"
+		const lym = "/home/u/go/bin/lym"
 		e.processes = []proc.Process{
-			listed(1, lyx, "/home/u/hub/gone (deleted)"),
-			listed(2, lyx, "/home/u/hub/live/sub (deleted)"),
-			listed(3, lyx, "/home/u/other (deleted)"),
-			listed(4, lyx, "/home/u/hub/gone (deleted)"),
-			listed(5, lyx+" (deleted)", "/home/u/hub/gone (deleted)"),
-			listed(6, lyx, "/home/u/hub/live"),
+			listed(1, lym, "/home/u/hub/gone (deleted)"),
+			listed(2, lym, "/home/u/hub/live/sub (deleted)"),
+			listed(3, lym, "/home/u/other (deleted)"),
+			listed(4, lym, "/home/u/hub/gone (deleted)"),
+			listed(5, lym+" (deleted)", "/home/u/hub/gone (deleted)"),
+			listed(6, lym, "/home/u/hub/live"),
 			listed(7, "/usr/bin/other", "/home/u/hub/gone (deleted)"),
 		}
 

@@ -2,7 +2,7 @@
 
 // merge_target_integration_test.go covers Merge's target-pair scenario matrix against a real
 // hubforge pair: a second "target"/"target-weft" pair added alongside the fixture's own source pair,
-// with a *fabricengine.Fabric handle opened on the target's own worktree via lyxcwd.ResolveWorktree +
+// with a *fabricengine.Fabric handle opened on the target's own worktree via lymcwd.ResolveWorktree +
 // fabricengine.Open — driven while cwd stays on the source pair, proving the path-anchored,
 // cwd-gate-free Go API the handle decision requires.
 // Reuses newMergePairFixture and its sibling helpers from mergein_integration_test.go, since both
@@ -23,12 +23,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 // newMergeTargetFixture builds a real hubforge pair (the source/task pair, at anchor) plus a second
 // pair "target"/"target-weft" (hubforge.AddPair) — Merge's target — and opens a *fabricengine.Fabric
-// handle on the target pair's own worktree via lyxcwd.ResolveWorktree + fabricengine.Open, entirely
+// handle on the target pair's own worktree via lymcwd.ResolveWorktree + fabricengine.Open, entirely
 // independent of the source pair's own handle newMergePairFixture already opened.
 // It returns h (for path lookups on both pairs), target (the Merge-under-test handle), and the two
 // closures newMergePairFixture already builds for diverging the source pair's branches directly on
@@ -39,9 +39,9 @@ func newMergeTargetFixture(t *testing.T, anchor string) (h *hubforge.Hub, target
 	h, _, commitOnSourceWarp, commitOnSourceWeft, _, _ = newMergePairFixture(t, anchor)
 	hubforge.AddPair(t, h, "target")
 
-	l, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree("target"))
+	l, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("target"))
 	if err != nil {
-		t.Fatalf("lyxcwd.ResolveWorktree(%s): %v", h.PairCodeWorktree("target"), err)
+		t.Fatalf("lymcwd.ResolveWorktree(%s): %v", h.PairCodeWorktree("target"), err)
 	}
 	target, err = fabricengine.Open(l)
 	if err != nil {
@@ -165,7 +165,7 @@ func TestMerge_CleanNonSquash(t *testing.T) {
 	// merge on the warp side rather than a plain pointer advance. The weft-side commit only proves the
 	// weft checkout stays put across the merge.
 	gitkit.CommitFile(t, targetWarpPath, "target-progress.txt", "target progress\n", "target: progress")
-	gitkit.CommitFile(t, targetWeftPath, "_lyx/target-progress.txt", "target progress\n", "target: progress weft")
+	gitkit.CommitFile(t, targetWeftPath, "_lym/target-progress.txt", "target progress\n", "target: progress weft")
 	weftBefore := fabricengine.CurrentSHAForTest(t, targetWeftPath)
 
 	seedSourceAndTarget(t, commitOnSourceWarp, commitOnSourceWeft)
@@ -282,11 +282,11 @@ func TestMerge_DirtyTargetHalts(t *testing.T) {
 	gitkit.CommitFile(t, targetWarpPath2, "warp-progress.txt", "target progress\n", "target: progress")
 	seedSourceAndTarget(t, commitOnSourceWarp2, commitOnSourceWeft2)
 	targetWeftPath2 := h2.PairRecordsSibling("target")
-	gitkit.CommitFile(t, targetWeftPath2, "_lyx/tracked.txt", "v1\n", "target: seed tracked weft")
+	gitkit.CommitFile(t, targetWeftPath2, "_lym/tracked.txt", "v1\n", "target: seed tracked weft")
 	warpBefore2 := fabricengine.CurrentSHAForTest(t, targetWarpPath2)
 	weftBefore2 := fabricengine.CurrentSHAForTest(t, targetWeftPath2)
-	if err := os.WriteFile(filepath.Join(targetWeftPath2, "_lyx", "tracked.txt"), []byte("v2 (uncommitted)\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(_lyx/tracked.txt): %v", err)
+	if err := os.WriteFile(filepath.Join(targetWeftPath2, "_lym", "tracked.txt"), []byte("v2 (uncommitted)\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(_lym/tracked.txt): %v", err)
 	}
 	res, errWeftDirty := target2.Merge("feature", fabricengine.MergeOptions{})
 	if errWeftDirty != nil {
@@ -301,8 +301,8 @@ func TestMerge_DirtyTargetHalts(t *testing.T) {
 	if got := fabricengine.CurrentSHAForTest(t, targetWeftPath2); got != weftBefore2 {
 		t.Errorf("[weft dirty] target weft HEAD changed to %q; want unchanged %q — Merge never touches the weft", got, weftBefore2)
 	}
-	if got := gitkit.GitStatusPorcelain(t, targetWeftPath2); !strings.Contains(got, "_lyx/tracked.txt") {
-		t.Errorf("[weft dirty] weft git status --porcelain = %q; want it to still mention the uncommitted _lyx/tracked.txt", got)
+	if got := gitkit.GitStatusPorcelain(t, targetWeftPath2); !strings.Contains(got, "_lym/tracked.txt") {
+		t.Errorf("[weft dirty] weft git status --porcelain = %q; want it to still mention the uncommitted _lym/tracked.txt", got)
 	}
 }
 
@@ -501,7 +501,7 @@ func TestMerge_CrashRecovery(t *testing.T) {
 		h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
 		targetWarpPath, targetWeftPath := h.PairCodeWorktree("target"), h.PairRecordsSibling("target")
 		gitkit.CommitFile(t, targetWarpPath, "target-progress.txt", "v1\n", "target: progress")
-		gitkit.CommitFile(t, targetWeftPath, "_lyx/target-progress.txt", "v1\n", "target: progress weft")
+		gitkit.CommitFile(t, targetWeftPath, "_lym/target-progress.txt", "v1\n", "target: progress weft")
 		seedSourceAndTarget(t, commitOnSourceWarp, commitOnSourceWeft)
 
 		warpStart := fabricengine.CurrentSHAForTest(t, targetWarpPath)
@@ -561,7 +561,7 @@ func TestMerge_CrashRecovery(t *testing.T) {
 		h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
 		targetWarpPath, targetWeftPath := h.PairCodeWorktree("target"), h.PairRecordsSibling("target")
 		gitkit.CommitFile(t, targetWarpPath, "target-progress.txt", "v1\n", "target: progress")
-		gitkit.CommitFile(t, targetWeftPath, "_lyx/target-progress.txt", "v1\n", "target: progress weft")
+		gitkit.CommitFile(t, targetWeftPath, "_lym/target-progress.txt", "v1\n", "target: progress weft")
 		seedSourceAndTarget(t, commitOnSourceWarp, commitOnSourceWeft)
 
 		warpStart := fabricengine.CurrentSHAForTest(t, targetWarpPath)

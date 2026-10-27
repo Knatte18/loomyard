@@ -28,11 +28,11 @@ type dialogLatch struct {
 }
 
 // dialogNotice builds the single-line notice for a dialog on the pane of the agent named strandName.
-// It names the strand and says the pane shows a permission or input dialog lyx cannot answer.
-// The way forward it gives is that the operator answers it in the pane, reached with `lyx reed attach` in the run's worktree.
+// It names the strand and says the pane shows a permission or input dialog lym cannot answer.
+// The way forward it gives is that the operator answers it in the pane, reached with `lym reed attach` in the run's worktree.
 func dialogNotice(strandName string) string {
-	return fmt.Sprintf("Shuttle notice: Agent %s has a permission or input dialog on its pane that lyx cannot answer. "+
-		"To answer it, attach to the pane with `lyx reed attach` in the run's worktree.", strandName)
+	return fmt.Sprintf("Shuttle notice: Agent %s has a permission or input dialog on its pane that lym cannot answer. "+
+		"To answer it, attach to the pane with `lym reed attach` in the run's worktree.", strandName)
 }
 
 // watchDialog advances the dialog latch one tick and notifies the parent once when the latch has stood for permissionNoticeBound with no input box on the pane.

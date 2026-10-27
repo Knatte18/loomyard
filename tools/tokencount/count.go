@@ -322,7 +322,7 @@ func cardPointers(text string) []string {
 }
 
 // beginBatchCommand matches a shell command that invokes the webster begin-batch verb.
-var beginBatchCommand = regexp.MustCompile(`\blyx\s+webster\s+begin-batch\b`)
+var beginBatchCommand = regexp.MustCompile(`\blym\s+webster\s+begin-batch\b`)
 
 // recordBase scans one webster session's entries for begin-batch result envelopes and keeps the start_sha of the earliest-timestamped one across every session of the run.
 // An envelope is a tool result answering a begin-batch shell call whose text is a JSON object with a non-empty start_sha;

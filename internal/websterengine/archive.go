@@ -162,7 +162,7 @@ func archiveRunInPlace(geom Geometry, now func() time.Time) error {
 
 // ArchiveRunAfterReset archives the run record in place once a reset to the run's start has moved the branch, or has no branch move to make.
 // It first judges every pending audit finding against the worktree's HEAD, which is the tree the next run starts from:
-// it refuses with ErrPendingAuditFindings, archiving nothing, only where the caller can clear the state, each refusal naming the clearing step and then `lyx webster reset --to start`.
+// it refuses with ErrPendingAuditFindings, archiving nothing, only where the caller can clear the state, each refusal naming the clearing step and then `lym webster reset --to start`.
 // Those are an uncleared contract file a fork, recovery or verify-fixer session wrote last, a plan path that differs from the recorded plan, and a suspect path that differs from HEAD.
 // Every other pending finding, and every batch record's uncheckable entries, is dropped with the archived record, and the returned warnings name each drop.
 // A nil state has nothing to judge, and archives whatever record is on disk.

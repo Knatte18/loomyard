@@ -67,7 +67,7 @@ func composeReminder(unread []Message, holdOwner string) string {
 	if rest := len(unread) - len(listed); rest > 0 {
 		listed = append(listed, fmt.Sprintf("+%d more", rest))
 	}
-	command := "lyx creel read"
+	command := "lym creel read"
 	if holdOwner != "" {
 		command += " --from " + holdOwner
 	}

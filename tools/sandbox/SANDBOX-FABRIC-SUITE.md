@@ -1,27 +1,27 @@
-# SANDBOX-FABRIC-SUITE -- lyx fabric black-box agent suite
+# SANDBOX-FABRIC-SUITE -- lym fabric black-box agent suite
 
 ## What this is
 
-A structured test-loop for exercising `lyx fabric` against the same shared GitHub test repos (`Knatte18/lyx-test` as warp, `Knatte18/lyx-test-weft` as weft) the main and per-module suites use.
+A structured test-loop for exercising `lym fabric` against the same shared GitHub test repos (`Knatte18/lym-test` as warp, `Knatte18/lym-test-weft` as weft) the main and per-module suites use.
 This suite proves fabric's stricter `main-weft`-suffixed branch-naming scheme holds up under real use -- including this suite's own destructive scenarios (re-clone, `--reset`, `prune --apply`, `cleanup --apply`), which a sandbox Hub exists to absorb; `sandbox/build.cmd -reset` is the recovery path if a run leaves the Hub in a state another suite would trip on.
 
-Like the other suites, the value is a Claude session driving `lyx fabric` by hand in a real hub, treating every break, surprise, or rough edge as a LoomYard finding to record in the report.
+Like the other suites, the value is a Claude session driving `lym fabric` by hand in a real hub, treating every break, surprise, or rough edge as a LoomYard finding to record in the report.
 
 ## Pre-conditions
 
 Before starting a session:
 
 1. **Deploy a fresh binary.**
-   Run `deploy-dev.cmd` so the dev `lyx.exe` in `.dev-bin` is current source.
+   Run `deploy-dev.cmd` so the dev `lym.exe` in `.dev-bin` is current source.
    The deployed binary is a snapshot -- re-deploy after any source change you want to test.
 2. **Materialize the hub.**
    Run `sandbox/build.cmd` (or `sandbox/build.cmd -reset` to start clean) -- the same operating model as the main and per-module suites, which this suite now shares rather than materializing its own dedicated hub.
 
    **Re-clone adoption.**
    When a clone runs against a weft remote that already carries the suffixed primary branch (a fresh machine, or `clone --reset`), the weft prime adopts `origin/main-weft` as a tracking branch — inheriting the previously synced weft state — rather than forking a new, untracked `main-weft` at `main`'s HEAD.
-   After any re-clone, confirm the weft prime's `main-weft` has an upstream (`git -C <weft-prime> branch -vv`) and contains the previously synced `_lyx/` content.
-3. **`lyx` on PATH.**
-   Confirm `lyx --help` works from any directory.
+   After any re-clone, confirm the weft prime's `main-weft` has an upstream (`git -C <weft-prime> branch -vv`) and contains the previously synced `_lym/` content.
+3. **`lym` on PATH.**
+   Confirm `lym --help` works from any directory.
 
 ### PowerShell JSON-quoting
 
@@ -29,22 +29,22 @@ See the PowerShell JSON-quoting note in `SANDBOX-CORE-SUITE.md`'s Pre-conditions
 
 ### Operating model
 
-lyx resolves against the current directory's own `_lyx/` and does **not** walk up to a parent.
+lym resolves against the current directory's own `_lym/` and does **not** walk up to a parent.
 The hub warp repo is initialized at its root, so the agent runs the entire session from there (cwd is fixed at the root).
 
 ## Black-box rule
 
-**The agent under test works exclusively inside the Hub's warp repo (`lyx-test-LYXHUB/lyx-test`).
-It tests `lyx.exe` as a black box -- exactly as a real user with only the binary on PATH.
-It must not look for, read, or reason about the lyx source tree.
+**The agent under test works exclusively inside the Hub's warp repo (`lym-test-LYMHUB/lym-test`).
+It tests `lym.exe` as a black box -- exactly as a real user with only the binary on PATH.
+It must not look for, read, or reason about the lym source tree.
 No peeking at `C:\Code\loomyard\` or any other path outside the Hub.**
 
-Discovering the command surface is done via `lyx fabric`, `lyx fabric <subcommand>`, and `lyx fabric <subcommand> --help` alone -- not from documentation outside the Hub.
+Discovering the command surface is done via `lym fabric`, `lym fabric <subcommand>`, and `lym fabric <subcommand> --help` alone -- not from documentation outside the Hub.
 
 ## Fingerprint header
 
 The launcher prepends a "binary under test" fingerprint block to this file when it copies it into the fabric Hub's warp repo.
-The fingerprint records the absolute path, file size, modification time, and a short SHA-256 of the `lyx.exe` binary at launch time.
+The fingerprint records the absolute path, file size, modification time, and a short SHA-256 of the `lym.exe` binary at launch time.
 
 The same fingerprint identifies the binary for the report's provenance: a separate fetch step (run after this session) stamps it into `meta.fingerprint` of the fetched `sandbox-report.json` so a maintainer can reproduce the exact binary that produced each finding.
 The agent does not need to transcribe the fingerprint anywhere itself.
@@ -54,8 +54,8 @@ The agent does not need to transcribe the fingerprint anywhere itself.
 For each scenario below:
 
 - Read the **Goal** -- it names the task, not the commands.
-  Discover the commands via `lyx fabric`, `lyx fabric <subcommand>`, and `--help` flags (F0 ethos).
-- **Watch** what lyx does.
+  Discover the commands via `lym fabric`, `lym fabric <subcommand>`, and `--help` flags (F0 ethos).
+- **Watch** what lym does.
   Note where it stalls, guesses wrong, or hits an error.
 - Record the outcome per the verdict buckets: `OK` (worked) / `WARN` (rough edge) / `FAIL` (broke).
 
@@ -64,7 +64,7 @@ For each scenario below:
 - `OK`   -- completed without friction
 - `WARN` -- completed but with confusion, awkward UX, or a non-fatal error
 - `FAIL` -- did not complete;
-  lyx broke, panicked, or gave wrong output
+  lym broke, panicked, or gave wrong output
 
 ## Capturing findings
 
@@ -97,10 +97,10 @@ Confine all free text to the `title`/`body` string fields so the JSON stays well
 
 ### F0 -- Discovery (help surface smoke test)
 
-**Goal:** "You have `lyx` on PATH and nothing else inside this repo.
-Find out what `lyx fabric` can do and report its full command tree."
+**Goal:** "You have `lym` on PATH and nothing else inside this repo.
+Find out what `lym fabric` can do and report its full command tree."
 
-**Watch:** Does `lyx fabric` list all of its verbs (`clone`, `add`, `list`, `remove`, `checkout`, `pairs`, `reconcile`, `prune`, `cleanup`, `status`, `commit`, `push`, `pull`, `sync`, `diff`, `unwire`, `merge`, `merge-in`, `merge-stage`)?
+**Watch:** Does `lym fabric` list all of its verbs (`clone`, `add`, `list`, `remove`, `checkout`, `pairs`, `reconcile`, `prune`, `cleanup`, `status`, `commit`, `push`, `pull`, `sync`, `diff`, `unwire`, `merge`, `merge-in`, `merge-stage`)?
 Does each `--help` explain itself?
 Is each description accurate and useful?
 
@@ -112,12 +112,12 @@ Is each description accurate and useful?
 
 **Covers:** fabric
 
-**Goal:** "Confirm the Hub the launcher just materialized (or reused) looks the way `lyx fabric clone` promises."
+**Goal:** "Confirm the Hub the launcher just materialized (or reused) looks the way `lym fabric clone` promises."
 
 **Watch:** `_board` is a linked worktree of the same weft repo as the weft prime, never a separate clone -- confirm `git -C <weft-prime> rev-parse --git-common-dir` and `git -C _board rev-parse --git-common-dir` resolve to the same path. `_board` is checked out on the warp's own dynamically-derived unsuffixed default branch (**never hardcoded to `main`** -- whatever the warp repo's actual default branch is), which `git -C _board branch --show-current` should confirm directly;
 this mirrors the assertion shape `internal/fabricengine/clone_adopt_test.go`'s `assertBoardIsWeftWorktree` already makes in code.
 The weft prime's checked-out branch is **`main-weft`**, not `main` -- fabric's uniform branch-suffix scheme applies from the very first pair, unlike the pre-fabric mirrored (identical) branch-naming convention.
-Use `lyx fabric pairs` and plain git (`git -C <weft-prime> branch --show-current`) to confirm;
+Use `lym fabric pairs` and plain git (`git -C <weft-prime> branch --show-current`) to confirm;
 neither should require guessing or `ls`-ing around.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
@@ -128,10 +128,10 @@ neither should require guessing or `ls`-ing around.
 
 **Goal:** "Add a new warp+weft worktree pair, inspect it, coordinate-checkout it, reconcile it, then prune and clean it up."
 
-**Watch:** Run `lyx fabric add <slug>` and confirm the new weft branch is named `<warp-branch>-weft` (the fixed suffix, not a mirrored name -- e.g. adding slug `foo` with an empty branch prefix yields warp branch `foo` and weft branch `foo-weft`).
-Does `lyx fabric pairs` report the new pair as in-sync?
-Does `lyx fabric checkout` switch both sides together and re-point the junction?
-After removing the warp side by hand (or via `lyx fabric remove`), does `lyx fabric reconcile` report and repair drift sanely, and do `lyx fabric prune`/`lyx fabric cleanup` (dry-run first, then `--apply`) correctly identify the orphaned `<slug>-weft` branch as fabric-managed (by its suffix) and handle it per the flag matrix described in `lyx fabric cleanup --help`?
+**Watch:** Run `lym fabric add <slug>` and confirm the new weft branch is named `<warp-branch>-weft` (the fixed suffix, not a mirrored name -- e.g. adding slug `foo` with an empty branch prefix yields warp branch `foo` and weft branch `foo-weft`).
+Does `lym fabric pairs` report the new pair as in-sync?
+Does `lym fabric checkout` switch both sides together and re-point the junction?
+After removing the warp side by hand (or via `lym fabric remove`), does `lym fabric reconcile` report and repair drift sanely, and do `lym fabric prune`/`lym fabric cleanup` (dry-run first, then `--apply`) correctly identify the orphaned `<slug>-weft` branch as fabric-managed (by its suffix) and handle it per the flag matrix described in `lym fabric cleanup --help`?
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -144,9 +144,9 @@ After removing the warp side by hand (or via `lyx fabric remove`), does `lyx fab
 **Watch:** `fabric status` now reports the unified both-sides uncommitted-change view: a side-labelled list of `{path, side}` entries (`side` is `"warp"` or `"weft"`), not the old weft-only branch/dirty/ahead/behind map -- confirm the test change to the weft-tracked scope shows up as an entry with `side: "weft"`.
 The envelope also carries a `merge_in_progress` boolean; confirm it is `false` in this scenario's no-merge state.
 Do `commit`/`push` mirror it to the weft remote?
-The commit message is always the fixed string `"weft sync"` -- it is not generated from changed files and there is no `-m` flag to customize it (confirm via `lyx fabric commit --help`).
+The commit message is always the fixed string `"weft sync"` -- it is not generated from changed files and there is no `-m` flag to customize it (confirm via `lym fabric commit --help`).
 Every fabric weft commit also carries a trailing `Warp-SHA: <sha>` trailer naming the paired warp repo's current HEAD -- inspect the commit body (e.g. `git -C <weft-worktree> log -1`) and confirm the trailer is present and names a real, resolvable warp commit. `fabric sync` pushes via a detached child process, so `status` immediately after `sync` may lag behind the actual push -- a confusing-but-expected rough edge to note as a `WARN`, not to pre-judge here.
-Staging is scoped to the directories listed in the fabric config (default `_lyx`), so the test change should land inside that scope to be picked up at all.
+Staging is scoped to the directories listed in the fabric config (default `_lym`), so the test change should land inside that scope to be picked up at all.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -156,32 +156,32 @@ Staging is scoped to the directories listed in the fabric config (default `_lyx`
 
 **Covers:** fabric
 
-**Goal:** "Confirm `lyx fabric add` refuses a slug that would collide with the weft-worktree directory namespace, before it can create a booby-trapped pair."
+**Goal:** "Confirm `lym fabric add` refuses a slug that would collide with the weft-worktree directory namespace, before it can create a booby-trapped pair."
 
-**Watch:** Run `lyx fabric add <name>-weft` (a slug ending in the reserved `-weft` suffix -- e.g. `add zed-weft`).
+**Watch:** Run `lym fabric add <name>-weft` (a slug ending in the reserved `-weft` suffix -- e.g. `add zed-weft`).
 It must be **rejected** with an `invalid slug` error and create nothing.
-It must NOT create a warp worktree directory `<name>-weft`: such a directory is indistinguishable from a weft worktree, so a later `lyx fabric prune --apply` would misclassify the warp worktree as an orphaned weft and delete it (destroying any uncommitted work).
-To confirm the guard holds, follow the rejected add with `lyx fabric list`/`lyx fabric pairs` and plain `ls` of the hub -- no `<name>-weft` warp worktree should exist. (Historical: before this guard, `add zed-weft` succeeded and a routine `prune --apply` silently `os.RemoveAll`'d the warp worktree -- a data-loss bug.)
+It must NOT create a warp worktree directory `<name>-weft`: such a directory is indistinguishable from a weft worktree, so a later `lym fabric prune --apply` would misclassify the warp worktree as an orphaned weft and delete it (destroying any uncommitted work).
+To confirm the guard holds, follow the rejected add with `lym fabric list`/`lym fabric pairs` and plain `ls` of the hub -- no `<name>-weft` warp worktree should exist. (Historical: before this guard, `add zed-weft` succeeded and a routine `prune --apply` silently `os.RemoveAll`'d the warp worktree -- a data-loss bug.)
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
 ---
 
-### F5 -- Junction deactivation (`lyx fabric unwire`)
+### F5 -- Junction deactivation (`lym fabric unwire`)
 
 **Covers:** fabric
 
-**Goal:** "Deactivate a wired worktree with `lyx fabric unwire --apply`, confirm it tears down exactly what it should and nothing more, then confirm `lyx fabric reconcile` re-wires it afterward."
+**Goal:** "Deactivate a wired worktree with `lym fabric unwire --apply`, confirm it tears down exactly what it should and nothing more, then confirm `lym fabric reconcile` re-wires it afterward."
 
-**Watch:** On a wired worktree (the fabric prime, or a pair added in F2), run bare `lyx fabric unwire` first.
+**Watch:** On a wired worktree (the fabric prime, or a pair added in F2), run bare `lym fabric unwire` first.
 Confirm it reports `"applied": false` with the junctions it would remove, and that those junctions are all still wired.
-Then run `lyx fabric unwire --apply` on the same worktree.
-Confirm it removes every fabric junction present on disk (e.g. `_lyx`, `.lyx`) — `ls`/`git -C <warp> ls-files --others -i --exclude-standard` or plain directory inspection should show the junction entries gone.
-Confirm it preserves the weft-side `_lyx` content — `_lyx/` under the paired weft worktree should be untouched, not cleared — since `_lyx` is deliberately never touched by unwire.
+Then run `lym fabric unwire --apply` on the same worktree.
+Confirm it removes every fabric junction present on disk (e.g. `_lym`, `.lym`) — `ls`/`git -C <warp> ls-files --others -i --exclude-standard` or plain directory inspection should show the junction entries gone.
+Confirm it preserves the weft-side `_lym` content — `_lym/` under the paired weft worktree should be untouched, not cleared — since `_lym` is deliberately never touched by unwire.
 Confirm it reverts the junction's own `.git/info/exclude` entry — there is no committed `.gitignore` block to revert, since junctions are excluded through `.git/info/exclude` alone.
 If a SECOND worktree in the same hub is still wired, confirm the exclude entry is KEPT (that file lives in the repo's shared gitdir, so removing it would make the other worktree's live junctions show up as untracked dirt) — check with `git -C <other-warp-worktree> status --porcelain`, which must stay clean.
-Run `lyx fabric unwire --apply` a second time immediately after: it must be idempotent and no-op cleanly on an already-unwired worktree, not error.
-Finally, confirm the repo-wide records survive unwire — `.lyx-anchor`, `<BoardDir>/_lyx/config/fabric.yaml`, and `.lyx-warp` are untouched — by running `lyx fabric reconcile` afterward and confirming it re-wires the worktree's junctions from those same repo-wide records, with no re-clone needed.
+Run `lym fabric unwire --apply` a second time immediately after: it must be idempotent and no-op cleanly on an already-unwired worktree, not error.
+Finally, confirm the repo-wide records survive unwire — `.lym-anchor`, `<BoardDir>/_lym/config/fabric.yaml`, and `.lym-warp` are untouched — by running `lym fabric reconcile` afterward and confirming it re-wires the worktree's junctions from those same repo-wide records, with no re-clone needed.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -191,14 +191,14 @@ Finally, confirm the repo-wide records survive unwire — `.lyx-anchor`, `<Board
 
 **Covers:** fabric
 
-**Goal:** "Drive `lyx fabric pull` against a warp remote whose history was rebased or force-pushed underneath your local clone, and confirm fabric detects the drift and re-aligns rather than silently fast-forwarding or erroring."
-Discover the surface via `lyx fabric pull --help`.
+**Goal:** "Drive `lym fabric pull` against a warp remote whose history was rebased or force-pushed underneath your local clone, and confirm fabric detects the drift and re-aligns rather than silently fast-forwarding or erroring."
+Discover the surface via `lym fabric pull --help`.
 
 **Watch:** `pull` now touches **both** warp and weft, not weft-only -- confirm both sides move where expected.
 A clean local warp (no unpushed commits of its own) should auto-reconcile: warp resets to the new remote history, and weft's own correspondence re-anchors to it, with no operator intervention needed.
 A local warp carrying unpushed commits of its own, run against the same rewritten remote, should instead abort loudly and make no changes to either repo -- confirm neither warp nor weft moved after the abort.
 In the auto-reconciled case, inspect the JSON output: it should report `reconciled: true`, the re-anchor baseline (`anchor_warp_sha`, `anchor_weft_sha`) and the new anchor commit (`reanchor_weft_sha`).
-Before any of that, dirty the warp worktree with an uncommitted edit to a tracked file and run `lyx fabric pull` against an advanced remote: it must REFUSE to move warp and the edit must survive byte-for-byte -- advancing warp goes through a hard reset, so a pull that proceeded here would silently destroy the edit.
+Before any of that, dirty the warp worktree with an uncommitted edit to a tracked file and run `lym fabric pull` against an advanced remote: it must REFUSE to move warp and the edit must survive byte-for-byte -- advancing warp goes through a hard reset, so a pull that proceeded here would silently destroy the edit.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -215,7 +215,7 @@ Delete the hub directory outright, then re-clone it supplying only the weft URL,
 Confirm the hub comes up at the same path and identically wired: the same `_board`-is-a-weft-worktree check and the same `main-weft` branch check F1 already makes both hold here too.
 Confirm the success envelope reports the derived warp URL, and reports that the binding was **not** re-written on this re-clone -- it already existed from the earlier two-URL clone.
 Confirm the binding record itself is present and tracked at the board root;
-the record's filename is the one the fabric module documents (`.lyx-warp`), so confirm that exact name rather than guessing at it.
+the record's filename is the one the fabric module documents (`.lym-warp`), so confirm that exact name rather than guessing at it.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -227,10 +227,10 @@ the record's filename is the one the fabric module documents (`.lyx-warp`), so c
 
 **Goal:** "Clone a hub anchored at a subdirectory of the warp repo rather than its root, and confirm the whole verb surface works from the anchored directory and nowhere else."
 
-**Watch:** Clone with `lyx fabric clone --subpath <dir> <weft-url> <warp-url>`, where `<dir>` is a directory that really exists in the warp repo.
-Confirm `_lyx` and `.lyx` land as links inside `<warp>/<dir>/`, that `<warp>/<dir>/` has no `_board` entry at all, and that the warp repo ROOT has none of `_lyx`/`.lyx` either — `ls -la` both.
+**Watch:** Clone with `lym fabric clone --subpath <dir> <weft-url> <warp-url>`, where `<dir>` is a directory that really exists in the warp repo.
+Confirm `_lym` and `.lym` land as links inside `<warp>/<dir>/`, that `<warp>/<dir>/` has no `_board` entry at all, and that the warp repo ROOT has none of `_lym`/`.lym` either — `ls -la` both.
 Confirm every verb runs from `<warp>/<dir>` (`status`, `pairs`, `list`, `reconcile`, `prune`, `cleanup`, `sync`), and that running any of them from the warp repo root, from a subdirectory of `<dir>`, or from a sibling directory is REFUSED with an error naming both cwd and the anchored directory — not a confusing downstream failure.
-Confirm `lyx fabric add <slug>` produces a second pair anchored identically (`<hub>/<slug>/<dir>/_lyx`), and that `lyx fabric commit` after editing `<dir>/_lyx/...` commits to the weft at `<dir>/_lyx/...` while leaving the warp side untouched (`git -C <warp> status`).
+Confirm `lym fabric add <slug>` produces a second pair anchored identically (`<hub>/<slug>/<dir>/_lym`), and that `lym fabric commit` after editing `<dir>/_lym/...` commits to the weft at `<dir>/_lym/...` while leaving the warp side untouched (`git -C <warp> status`).
 Confirm a bad `--subpath` is refused before anything is created and leaves no hub behind: an absolute path (`--subpath /<dir>`), one escaping the repo (`--subpath ../..`), one naming a file, and one naming a directory that does not exist.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
@@ -241,12 +241,12 @@ Confirm a bad `--subpath` is refused before anything is created and leaves no hu
 
 **Covers:** fabric
 
-**Goal:** "Confirm `lyx fabric reconcile`, the repair verb, converges wiring without deleting anything the operator put in the warp repo themselves."
+**Goal:** "Confirm `lym fabric reconcile`, the repair verb, converges wiring without deleting anything the operator put in the warp repo themselves."
 
 **Watch:** In a wired worktree, commit a real symlink of your own beside the junctions at the anchored directory — e.g. `ln -s <existing-dir> latest && git add latest && git commit`.
-Run `lyx fabric reconcile`.
+Run `lym fabric reconcile`.
 The symlink must still be there afterwards, and `git status` must be clean: fabric owns only the links it created (those pointing into the paired weft worktree), and a link pointing anywhere else is the operator's, never a "stale junction" to sweep.
-Then check the anchor-marker migration guard: rename `<hub>/_board/.lyx-anchor` to `.fabric-anchor` and run any verb.
+Then check the anchor-marker migration guard: rename `<hub>/_board/.lym-anchor` to `.fabric-anchor` and run any verb.
 Every verb must hard-error naming both marker names and the rename remedy — it must NOT fall back to treating the repo as root-anchored, which on a subpath hub would wire a second junction set at the warp repo root.
 Rename it back and confirm normal operation resumes.
 
@@ -260,12 +260,12 @@ Rename it back and confirm normal operation resumes.
 
 **Goal:** "Confirm the two verbs that delete things refuse the targets that are not theirs to delete, instead of deleting them and reporting success."
 
-**Watch:** Run `lyx fabric remove <prime-slug>` -- the hub's own warp worktree directory name, the one every operator can reach by tab-completion.
+**Watch:** Run `lym fabric remove <prime-slug>` -- the hub's own warp worktree directory name, the one every operator can reach by tab-completion.
 It must be **refused**, naming the prime worktree, and `<hub>/<prime>` must still be there afterwards WITH its `.git` directory: git declines to remove a main working tree, and fabric must report that rather than deleting the clone. (Historical: this deleted the entire warp repository, gitdir included, on a clean hub with no `--force`, while the JSON envelope claimed "warp worktree removed".)
-Then run `lyx fabric remove _board` and `lyx fabric remove <prime>-weft`.
-Both must be refused with an `invalid slug` error and both directories must survive intact -- `_board` holds `.lyx-anchor`, `.lyx-warp` and the repo-wide `fabric.yaml`, and `<prime>-weft` is the entire durable `_lyx` store. `lyx fabric add` already refuses exactly this name set;
+Then run `lym fabric remove _board` and `lym fabric remove <prime>-weft`.
+Both must be refused with an `invalid slug` error and both directories must survive intact -- `_board` holds `.lym-anchor`, `.lym-warp` and the repo-wide `fabric.yaml`, and `<prime>-weft` is the entire durable `_lym` store. `lym fabric add` already refuses exactly this name set;
 `remove` must refuse the same one.
-Then the cleanup half: with the prime pair on the default branch, `lyx fabric checkout <other-branch>` to move it off, then run `lyx fabric cleanup --apply --force` and confirm `main-weft` is reported `protected: true` and still exists (`git -C <hub>/<prime>-weft branch`).
+Then the cleanup half: with the prime pair on the default branch, `lym fabric checkout <other-branch>` to move it off, then run `lym fabric cleanup --apply --force` and confirm `main-weft` is reported `protected: true` and still exists (`git -C <hub>/<prime>-weft branch`).
 The primary weft branch is the durable weft line whatever the prime happens to be checked out on;
 promoting it to a deletable orphan destroys any weft commit it alone carries.
 
@@ -298,12 +298,12 @@ Do the whole matrix on a `--subpath`-anchored hub, since that is where the ancho
 
 **Watch:** First `prune`. Create `<hub>/notes-weft/` holding a file, as an operator keeping scratch notes beside their worktrees, and separately `git init` a wholly unrelated project at `<hub>/proj-weft/` with one committed file and a clean working tree.
 Neither is a fabric worktree; both merely end in the weft suffix, which is all prune's orphan pass enumerates on.
-Run `lyx fabric prune`, then `lyx fabric prune --apply`, then `lyx fabric prune --apply --force`.
+Run `lym fabric prune`, then `lym fabric prune --apply`, then `lym fabric prune --apply --force`.
 All three must report each entry `"unowned": true` with `"removed": false` and an error naming the weft repo it is not a worktree of, and **both directories must survive every run byte-for-byte, `.git` included**.
 `--force` must NOT get through: force answers "discard this uncommitted work", never "this directory is mine". (Historical: `prune --apply` deleted both, reporting `removed: true`, `ok: true`, exit 0, with no `--force` and no warning -- `git worktree remove` refusing the path was read as licence to `os.RemoveAll` it.)
 Also confirm the gate refuses only what is not fabric's: make a genuine stale pair (delete a `<slug>/` warp worktree directory by hand, leaving its registration) and check `prune --apply` still removes its weft side.
 
-Then `clone --reset`. In an empty directory create `<name>-LYXHUB/important/data.txt`, where `<name>` is the basename your warp URL derives to, and run `lyx fabric clone --reset <weft-url> <warp-url>` there.
+Then `clone --reset`. In an empty directory create `<name>-LYMHUB/important/data.txt`, where `<name>` is the basename your warp URL derives to, and run `lym fabric clone --reset <weft-url> <warp-url>` there.
 It must be **refused**, naming the path and saying it is not a fabric hub, and `data.txt` must survive.
 The hub name is derived rather than typed -- in the one-argument form it comes from the binding recorded on the weft, so the operator never even sees the name being deleted.
 Then re-run `--reset` against a real hub and confirm the idempotent re-clone still works.
@@ -318,12 +318,12 @@ Then re-run `--reset` against a real hub and confirm the idempotent re-clone sti
 
 **Goal:** "Clone the documented first-ever-setup shape -- a brand-new, zero-commit weft remote -- and confirm the hub it produces is actually usable."
 
-**Watch:** Create a bare weft remote with no commits at all (`git init --bare`, `HEAD` on `main`) and a warp remote with real content, then `lyx fabric clone --shortname <shortname> <empty-weft-url> <warp-url>`, since a first-ever bind refuses a clone without one.
+**Watch:** Create a bare weft remote with no commits at all (`git init --bare`, `HEAD` on `main`) and a warp remote with real content, then `lym fabric clone --shortname <shortname> <empty-weft-url> <warp-url>`, since a first-ever bind refuses a clone without one.
 The clone reports `ok: true`, so the check is what comes after.
 Confirm `git -C <hub>/<prime>-weft rev-parse --verify refs/heads/main-weft` RESOLVES.
 A branch can be checked out and reported as current while its ref does not exist: `git checkout -b` on an unborn HEAD writes nothing.
-Then run the documented example, `lyx fabric add my-task`, and `lyx fabric remove my-task`.
-(Historical: the weft primary was left on an unborn `main-weft`, so every pair-creating verb died on `fatal: invalid reference: main-weft` -- `add` included, which is the example both `lyx fabric --help` and `lyx fabric add --help` print.)
+Then run the documented example, `lym fabric add my-task`, and `lym fabric remove my-task`.
+(Historical: the weft primary was left on an unborn `main-weft`, so every pair-creating verb died on `fatal: invalid reference: main-weft` -- `add` included, which is the example both `lym fabric --help` and `lym fabric add --help` print.)
 Repeat the whole scenario with `--subpath backend`, since the anchor and the branch are resolved in separate steps.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
@@ -336,9 +336,9 @@ Repeat the whole scenario with `--subpath backend`, since the anchor and the bra
 
 **Goal:** "Hand every teardown verb a slug that is a relative path element rather than a name, and confirm nothing outside the named pair is touched."
 
-**Watch:** On a hub with one added pair, run `lyx fabric remove ..`, then `lyx fabric remove .`, then `lyx fabric remove ../evil`, `lyx fabric remove a/b`, and `lyx fabric remove ""`.
+**Watch:** On a hub with one added pair, run `lym fabric remove ..`, then `lym fabric remove .`, then `lym fabric remove ../evil`, `lym fabric remove a/b`, and `lym fabric remove ""`.
 Every one must be refused BEFORE any teardown runs, and after all five the hub must still list `_board _launchers <RepoName>.code-workspace <prime> <prime>-weft <slug> <slug>-weft` exactly as before, with `_launchers` still holding `ide-menu.sh` and the pair's directory.
-Then confirm an ordinary `lyx fabric remove <slug>` still works.
+Then confirm an ordinary `lym fabric remove <slug>` still works.
 (Historical: `.` and `..` passed every rule in the shared slug validator -- not empty, no separator, no weft suffix, no reserved hub name -- and `<hub>/_launchers/<anchor>/<slug>` then resolved to `<hub>` itself, whose `os.RemoveAll` deleted the warp clone, the weft clone, `_board`, every pair and all uncommitted work, after which the verb returned `"failed to check worktree status"` -- an error claiming nothing had happened.)
 Repeat on a `--subpath backend` hub, where the anchor segment absorbs one `..` and the damage lands one level lower.
 
@@ -354,10 +354,10 @@ Repeat on a `--subpath backend` hub, where the anchor segment absorbs one `..` a
 
 **Watch:** On a hub with six added pairs, append a pattern of your own -- say `/my-secret-build-dir` -- to `<warp>/.git/info/exclude`, and note that the file also carries git's default six-line comment block.
 That file lives in the repo's COMMON gitdir, so it is ONE file for the whole hub, not one per worktree.
-Now launch all six worktrees at once (background five, run one in the foreground, `wait`), alternating `lyx fabric unwire --apply` and `lyx fabric reconcile`, and repeat for ten rounds, printing the file's line count after each.
-The count must never drop and your own pattern must be present after every round, alongside `/_lyx` and `/.lyx` exactly once each.
+Now launch all six worktrees at once (background five, run one in the foreground, `wait`), alternating `lym fabric unwire --apply` and `lym fabric reconcile`, and repeat for ten rounds, printing the file's line count after each.
+The count must never drop and your own pattern must be present after every round, alongside `/_lym` and `/.lym` exactly once each.
 (Historical: the count collapsed from 10 lines to 3 at round 6 and to 1 at round 9 on two independent hubs -- the operator's pattern and git's comment block destroyed, and fabric's own junction exclusions transiently lost, which makes every worktree's junctions show as untracked and a plain `git add -A` commit symlinks into the warp repo. The identical sequence run sequentially never lost a line.)
-Also run the destructive verbs against each other -- `prune --apply` alongside `checkout`, `cleanup --apply` alongside `commit`, `add` alongside `remove` -- and confirm every verb either succeeds or refuses with git's real message, and `lyx fabric pairs` afterwards reports every surviving pair `in_sync` and `junction_healthy`.
+Also run the destructive verbs against each other -- `prune --apply` alongside `checkout`, `cleanup --apply` alongside `commit`, `add` alongside `remove` -- and confirm every verb either succeeds or refuses with git's real message, and `lym fabric pairs` afterwards reports every surviving pair `in_sync` and `junction_healthy`.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -369,11 +369,11 @@ Also run the destructive verbs against each other -- `prune --apply` alongside `
 
 **Goal:** "Confirm the drift-warning hook is installed where git looks for it, runs, and neither clobbers nor re-enables an operator's own hook."
 
-**Watch:** After `clone`, `git checkout -b feature` in the warp worktree must print `fabric: warp/weft out of sync` naming both branches, and `lyx fabric checkout feature` must NOT leak that text into its JSON output.
+**Watch:** After `clone`, `git checkout -b feature` in the warp worktree must print `fabric: warp/weft out of sync` naming both branches, and `lym fabric checkout feature` must NOT leak that text into its JSON output.
 Then three variations, each on its own hub.
-(a) Put an EXECUTABLE `post-checkout` of your own in `<warp>/.git/hooks/`, run `lyx fabric add <slug>`, and confirm it was moved to `post-checkout.user`, that a real `git checkout` runs your hook first and then prints fabric's warning.
+(a) Put an EXECUTABLE `post-checkout` of your own in `<warp>/.git/hooks/`, run `lym fabric add <slug>`, and confirm it was moved to `post-checkout.user`, that a real `git checkout` runs your hook first and then prints fabric's warning.
 (b) Repeat with your hook at mode 0644 -- a hook you had DISABLED. The wrapper git ends up with must be executable (fabric's warning still fires), the backup must still be 0644, and your disabled hook must not run. (Historical: `os.WriteFile` applies its perm argument only when it CREATES the file, so the wrapper inherited 0644 and git printed `hint: the hook was ignored because it's not set as executable` -- silently retiring both hooks.)
-(c) Set `core.hooksPath` to a directory outside `.git`, run `lyx fabric add <slug>`, and confirm the hook lands in THAT directory and that `git checkout` onto a diverged branch still warns. (Historical: fabric composed `<git-common-dir>/hooks`, which ignores `core.hooksPath`, wrote into a directory git no longer consults, and reported success.)
+(c) Set `core.hooksPath` to a directory outside `.git`, run `lym fabric add <slug>`, and confirm the hook lands in THAT directory and that `git checkout` onto a diverged branch still warns. (Historical: fabric composed `<git-common-dir>/hooks`, which ignores `core.hooksPath`, wrote into a directory git no longer consults, and reported success.)
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -385,13 +385,13 @@ Then three variations, each on its own hub.
 
 **Goal:** "Break the hub-level `_launchers` artefacts and confirm the repair verb repairs them and the teardown verb owns only what it created."
 
-**Watch:** After `lyx fabric add <slug>`, confirm `<hub>/_launchers/<slug>/` holds `ide` and `fabric-checkout` scripts.
-Delete the launcher directory, then run `lyx fabric reconcile`: it must report `launchers_restored` for that pair -- not `already_healthy` -- and the directory must be back. A second `reconcile` must report `already_healthy`. (Historical: reconcile reported `already_healthy` and `pairs` reported `junction_healthy: true` for a pair whose launchers were gone, and restored nothing, leaving remove-and-re-add as the only recovery.)
-Then ownership: put a file of your own inside `<hub>/_launchers/<slug>/` and run `lyx fabric remove <slug>`. Fabric's two scripts must go, your file must survive, and the pair must still be torn down.
+**Watch:** After `lym fabric add <slug>`, confirm `<hub>/_launchers/<slug>/` holds `ide` and `fabric-checkout` scripts.
+Delete the launcher directory, then run `lym fabric reconcile`: it must report `launchers_restored` for that pair -- not `already_healthy` -- and the directory must be back. A second `reconcile` must report `already_healthy`. (Historical: reconcile reported `already_healthy` and `pairs` reported `junction_healthy: true` for a pair whose launchers were gone, and restored nothing, leaving remove-and-re-add as the only recovery.)
+Then ownership: put a file of your own inside `<hub>/_launchers/<slug>/` and run `lym fabric remove <slug>`. Fabric's two scripts must go, your file must survive, and the pair must still be torn down.
 Finally confirm the hub's prime worktree is left alone throughout: it never had a launcher directory, and `reconcile` must not start creating one.
-Then the retired-artifact sweep: plant a link `<hub>/_portals/<anchor>/<slug>` pointing at `<hub>/<slug>/<anchor>/_lyx`, a file at `<hub>/_launchers/<anchor>/<prime>.code-workspace`, and a foreign file of your own under `<hub>/_portals/<anchor>/`.
-Run a verb that regenerates the hub workspace file, such as `lyx fabric add`, and confirm its log warns about the retired artifacts and names `lyx fabric reconcile`.
-Then run `lyx fabric reconcile`: the planted link and the old workspace file must be gone, your foreign file and `_portals` must survive, and `hub_details` must name the foreign file.
+Then the retired-artifact sweep: plant a link `<hub>/_portals/<anchor>/<slug>` pointing at `<hub>/<slug>/<anchor>/_lym`, a file at `<hub>/_launchers/<anchor>/<prime>.code-workspace`, and a foreign file of your own under `<hub>/_portals/<anchor>/`.
+Run a verb that regenerates the hub workspace file, such as `lym fabric add`, and confirm its log warns about the retired artifacts and names `lym fabric reconcile`.
+Then run `lym fabric reconcile`: the planted link and the old workspace file must be gone, your foreign file and `_portals` must survive, and `hub_details` must name the foreign file.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -403,17 +403,17 @@ Then run `lyx fabric reconcile`: the planted link and the old workspace file mus
 
 **Goal:** "Merge a task pair's branch into the hub's prime pair, resolve the conflict it produces, conclude it -- then do the same merge again and abandon it instead."
 
-**Watch:** Create a pair, diverge it from the prime on **both** sides so the merge is a real merge and not a fast-forward, then run `lyx fabric merge-in <slug>` from the prime worktree.
+**Watch:** Create a pair, diverge it from the prime on **both** sides so the merge is a real merge and not a fast-forward, then run `lym fabric merge-in <slug>` from the prime worktree.
 A conflict is a *result*, not a failure to re-run differently: the envelope is `ok: false`, exit 1, and carries a `conflicts` array of **worktree-relative** paths -- one flat list covering both repos, never two lists and never an absolute path.
 Note the exit code: a conflict result and a hard error both exit 1, so the only correct discriminator for a script is the presence of the `conflicts` key.
-While the merge is live, confirm the sibling verbs refuse with the single fixed message `a merge is in progress; run "lyx fabric merge --continue" or "lyx fabric merge --abort" first` -- try `commit`, `pull`, `push`, `sync`, `checkout`, and `remove` of the merge's own source pair.
+While the merge is live, confirm the sibling verbs refuse with the single fixed message `a merge is in progress; run "lym fabric merge --continue" or "lym fabric merge --abort" first` -- try `commit`, `pull`, `push`, `sync`, `checkout`, and `remove` of the merge's own source pair.
 `fabric status`, run from the **prime worktree** (the pair holding the merge record), is the read-only way to ask whether the merge is parked: it reports `merge_in_progress: true` for the whole live window and `false` again after both `merge --continue` and `merge --abort`.
 That field does NOT predict every refusal in the list two lines above: `remove` of the merge's own source pair refuses on a hub-wide predicate, and run from *that* pair `merge_in_progress` is correctly `false`.
-Resolve every listed path, then `lyx fabric merge-stage <those same paths>`, then `lyx fabric merge --continue`, and confirm both sides carry a merge commit whose subject names a **SHA, never a branch**.
+Resolve every listed path, then `lym fabric merge-stage <those same paths>`, then `lym fabric merge --continue`, and confirm both sides carry a merge commit whose subject names a **SHA, never a branch**.
 The `merge-stage` step is not optional and is worth checking on its own: `--continue` gates on the git INDEX, not on file content, so editing a conflicted file and going straight to `--continue` must still refuse with `unresolved conflicts remain`.
-Make at least one of the conflicts land under `_lyx/`, and confirm plain `git add _lyx/<file>` from the visible worktree is REFUSED by git (`pathspec ... is beyond a symbolic link`) while `merge-stage` accepts the same path -- for a weft-side conflict that verb is the only route, and without it the merge is uncompletable through the CLI. (Historical: `merge-stage` had no CLI surface at all, so this help text told the operator to run a step that could not be run.)
+Make at least one of the conflicts land under `_lym/`, and confirm plain `git add _lym/<file>` from the visible worktree is REFUSED by git (`pathspec ... is beyond a symbolic link`) while `merge-stage` accepts the same path -- for a weft-side conflict that verb is the only route, and without it the merge is uncompletable through the CLI. (Historical: `merge-stage` had no CLI surface at all, so this help text told the operator to run a step that could not be run.)
 Also confirm `merge-stage` with a path that is not conflicted fails the WHOLE call, leaving the genuinely conflicted paths in the same call still unstaged.
-Repeat the whole scenario and take `lyx fabric merge --abort` instead: both sides must return to their exact pre-merge SHAs, both worktrees must come back clean, and `git status` in each checkout must show no merge in progress.
+Repeat the whole scenario and take `lym fabric merge --abort` instead: both sides must return to their exact pre-merge SHAs, both worktrees must come back clean, and `git status` in each checkout must show no merge in progress.
 Also check `committed`: it is true only when a conclude-commit actually landed, so a merge that fast-forwarded both sides reports `committed: false` while still having advanced the pair.
 Then repeat one conflicted round with a filename outside ASCII (e.g. `ä-note.md`) conflicting on each side in turn: the `conflicts` array must carry the real path, byte for byte -- never git's C-quoted rendering (`"\303\244..."`, quotes included) -- and a non-ASCII conflict inside the fabric-managed tree must never abort as *conflicts outside the fabric-managed tree*. (Historical: `ConflictedFiles` read `--name-only` without `-z`, so `core.quotepath` quoting made exactly that happen.)
 
@@ -432,7 +432,7 @@ Then repeat one conflicted round with a filename outside ASCII (e.g. `ä-note.md
 - A dirty worktree on either side -> `worktree dirty`.
 - A detached HEAD on either checkout (`git checkout --detach`) -> `checkout is not on a branch`. This one matters: without it the merge would land a warp commit reachable from no ref while the weft half landed for good.
 - A source that is a tag, a raw SHA, `HEAD`, or a branch with no `-weft` counterpart -> `source branch is not fabric-managed`; a source that exists nowhere -> that plus `source branch not found`.
-- Real plain-git merge state you leave behind yourself (`git merge <branch>` conflicted, or `git merge --squash <branch>` conflicted -- the latter leaves **no** `MERGE_HEAD`) -> `git merge state exists that fabric did not start`, with the foreign state left untouched for you to finish with plain git. `lyx fabric commit` over that same foreign state must give the **same** foreign-state message -- not `a merge is in progress; run "lyx fabric merge --continue" or "lyx fabric merge --abort" first`, whose advice both those verbs would refuse.
+- Real plain-git merge state you leave behind yourself (`git merge <branch>` conflicted, or `git merge --squash <branch>` conflicted -- the latter leaves **no** `MERGE_HEAD`) -> `git merge state exists that fabric did not start`, with the foreign state left untouched for you to finish with plain git. `lym fabric commit` over that same foreign state must give the **same** foreign-state message -- not `a merge is in progress; run "lym fabric merge --continue" or "lym fabric merge --abort" first`, whose advice both those verbs would refuse.
 
 Then set hostile git config and confirm fabric is immune to it: `merge.ff = only` must not break a non-fast-forward merge (fabric pins `--ff`), and `core.editor` set to something that blocks forever must not hang `merge --continue` (fabric pins `--no-edit`). A hang here is a blocking defect.
 Finally, check the flag pre-flight: `merge --abort --squash` and `merge --abort -m <msg>` are both rejected as usage errors rather than silently ignoring the flag, while `merge --continue -m <msg>` really does name the conclude-commit.
@@ -450,58 +450,58 @@ Finally, check the flag pre-flight: `merge --abort --squash` and `merge --abort 
 **Watch:** First the empty-result merge. On the warp side, branch `dup` off the current branch and change a file;
 then go back to the current branch and make the **same** change again, independently, so `dup` is not an ancestor of HEAD but merging it produces no difference.
 Do the same on the weft side for `dup-weft`.
-Run `lyx fabric merge-in dup`.
+Run `lym fabric merge-in dup`.
 It must land a real conclude-commit and report `"committed": true` -- **not** `"already_up_to_date": true`.
 Then check both checkouts with plain `git status`: neither may say "you are still merging".
 A merge fabric reported as a clean no-op while leaving a live `MERGE_HEAD` behind is the failure mode here, and it is a blocking one -- the record and git disagree, and every later merge verb (including `merge --abort`) refuses the pair as carrying state fabric did not start.
-Confirm recovery is unnecessary by running `lyx fabric merge --abort`: it must say *no merge in progress*, never *git merge state exists that fabric did not start*.
+Confirm recovery is unnecessary by running `lym fabric merge --abort`: it must say *no merge in progress*, never *git merge state exists that fabric did not start*.
 
-Then the squash companion: repeat the same fixture and run `lyx fabric merge dup --squash`.
+Then the squash companion: repeat the same fixture and run `lym fabric merge dup --squash`.
 Squash genuinely has nothing to commit here, so `"already_up_to_date": true` with `"committed": false` **is** the right answer, and no `MERGE_HEAD` may appear.
 
-Finally the half-concluded abort. Build a normal divergent merge on both sides, install a `pre-commit` hook in the weft checkout that just does `exit 1` (`.git/hooks/pre-commit`), and run `lyx fabric merge-in <branch>`.
-The warp conclude lands, the weft conclude fails, and you get *merge conclude did not finish; run "lyx fabric merge --continue" again* with a `merge_committed` mutation for the warp side.
-Now run `lyx fabric merge --abort`.
+Finally the half-concluded abort. Build a normal divergent merge on both sides, install a `pre-commit` hook in the weft checkout that just does `exit 1` (`.git/hooks/pre-commit`), and run `lym fabric merge-in <branch>`.
+The warp conclude lands, the weft conclude fails, and you get *merge conclude did not finish; run "lym fabric merge --continue" again* with a `merge_committed` mutation for the warp side.
+Now run `lym fabric merge --abort`.
 It must **refuse**, naming `merge conclude already landed`, and the warp conclude-commit must still be there (`git -C <warp> log -1`).
 An abort that reports `"ok": true` here and silently resets the warp past its landed conclude-commit is destroying committed work -- in the conflict flow that commit carries your own hand-written resolutions.
-Remove the hook and confirm `lyx fabric merge --continue` finishes the job, skipping the side that already landed.
+Remove the hook and confirm `lym fabric merge --continue` finishes the job, skipping the side that already landed.
 
 Last, the invisible landed conclude -- the crash shape where a side's conclude-commit landed but the record never learned its SHA.
 Build a conflicted `merge-in`, resolve the conflict, `git add` it, then commit it yourself with plain `git commit --no-edit` in that checkout -- on-disk state now identical to a kill between fabric's conclude-commit and its record re-save (`*_committed` still empty, HEAD on the merge commit, no `MERGE_HEAD`).
-`lyx fabric merge --abort` must refuse (`merge conclude already landed`), and `lyx fabric merge --continue` must **succeed by adoption**: `"committed": true`, a `merge_committed` mutation carrying the hand-landed SHA, HEAD unmoved (no second commit), record gone, sibling verbs unblocked.
-A `--continue` that loops forever on *merge conclude did not finish; run "lyx fabric merge --continue" again* here is the failure mode: the pair is then permanently wedged, since no fabric verb can clear the record and plain git cannot reach it.
+`lym fabric merge --abort` must refuse (`merge conclude already landed`), and `lym fabric merge --continue` must **succeed by adoption**: `"committed": true`, a `merge_committed` mutation carrying the hand-landed SHA, HEAD unmoved (no second commit), record gone, sibling verbs unblocked.
+A `--continue` that loops forever on *merge conclude did not finish; run "lym fabric merge --continue" again* here is the failure mode: the pair is then permanently wedged, since no fabric verb can clear the record and plain git cannot reach it.
 
 Now the adversarial twin of that same shape, which looks identical to fabric from the outside and must NOT be adopted.
 Build the conflicted `merge-in` again, then instead of resolving it, discard it with plain `git merge --abort` in the warp checkout and make one ordinary commit of your own there — anything, an unrelated file.
 HEAD has now moved off the recorded pre-merge SHA with no `MERGE_HEAD`, exactly as a landed conclude leaves it, but nothing was merged.
-`lyx fabric merge --continue` must **refuse**: *merge conclude did not finish; run "lyx fabric merge --continue" again*, with the record still on disk.
+`lym fabric merge --continue` must **refuse**: *merge conclude did not finish; run "lym fabric merge --continue" again*, with the record still on disk.
 `"ok": true` / `"committed": true` naming your unrelated commit is the failure mode, and it is a blocking one — the record is deleted, the source is still un-merged, and there is nothing left to inspect.
 `merge --abort` refusing too (`merge conclude already landed`) is correct here, not a second bug: the pair is honestly stuck, and plain git is the documented way out.
 
 Finally the squash version of the same question, which has no evidence either way and must therefore also refuse.
-Install the failing `pre-commit` hook in the **warp** checkout, run `lyx fabric merge <branch> --squash`, remove the hook, then land the squash conclude yourself with plain `git commit -m ...`.
-`lyx fabric merge --continue` must refuse with *merge conclude did not finish*, leave the record on disk, and leave your commit untouched — a squash conclude is a one-parent commit indistinguishable from any other, so adopting it would be a guess.
+Install the failing `pre-commit` hook in the **warp** checkout, run `lym fabric merge <branch> --squash`, remove the hook, then land the squash conclude yourself with plain `git commit -m ...`.
+`lym fabric merge --continue` must refuse with *merge conclude did not finish*, leave the record on disk, and leave your commit untouched — a squash conclude is a one-parent commit indistinguishable from any other, so adopting it would be a guess.
 
 Last, the octopus — a commit that satisfies every *other* adoption clause and still must be refused.
 Build the merge so the warp side merges CLEANLY (a real non-fast-forward merge of a branch that touches different files) while the weft side conflicts, so `merge-in` returns conflicts and the record survives with the warp side staged and unconcluded.
 Then, in the warp checkout, `git merge --abort`, branch a decoy off the repo's ROOT commit (`git rev-list --max-parents=0 HEAD`) with one unrelated file on it, and merge BOTH at once: `git merge <the record's warp_source> <decoy>`.
 Read the record at `<weft checkout>/.git/fabric-merge.json` for that source SHA;
 rooting the decoy outside the merge's own history is what stops git dropping the pre-merge tip as a redundant parent, so confirm with `git rev-list --parents -n 1 HEAD` that you really got THREE parents, the first being the record's `warp_start` and the second its `warp_source`.
-`lyx fabric merge --continue` must refuse with *merge conclude did not finish; run "lyx fabric merge --continue" again* and leave the record on disk.
+`lym fabric merge --continue` must refuse with *merge conclude did not finish; run "lym fabric merge --continue" again* and leave the record on disk.
 Reporting `"committed": true` here is the failure mode and it is a blocking one: fabric would be claiming a commit it can never build — it starts every non-squash merge with a single `git merge --ff --no-commit <sha>`, so its own conclude has exactly two parents — and the branch would silently carry the decoy's content, brought in by no side of the merge and named by no `merge_staged` entry, with the record deleted and nothing left to inspect.
 
 Last of all, the same three questions asked WITHOUT committing, which is the half the adoption evidence never sees.
 Everything above reaches the adoption arm because the operator committed;
 leaving the hand-made merge uncommitted routes into the conclude's plain `git commit` instead, and that arm demanded no evidence at all until this round.
-Build the warp-merges-cleanly / weft-conflicts fixture again, resolve and `lyx fabric merge-stage` the weft conflict so `--continue` really reaches the warp side, then in the warp checkout run `git merge --abort` and, in place of committing anything, do each of these in turn:
+Build the warp-merges-cleanly / weft-conflicts fixture again, resolve and `lym fabric merge-stage` the weft conflict so `--continue` really reaches the warp side, then in the warp checkout run `git merge --abort` and, in place of committing anything, do each of these in turn:
 
 - `git merge --no-commit --no-ff <an unrelated branch>` — a different merge left live.
 - `git merge --no-commit <the record's warp_source> <a decoy rooted at the repo's root commit>` — an uncommitted octopus. Confirm with `git rev-parse --verify --quiet MERGE_HEAD` that it prints exactly the record's `warp_source`: that truncated answer is what a first-head-only check would accept, and `cat "$(git rev-parse --git-path MERGE_HEAD)"` must show two SHAs.
 - nothing merged at all, just `git add` an unrelated new file — no `MERGE_HEAD`, but a commit that would succeed.
 
-In all three, `lyx fabric merge --continue` must refuse with *merge preconditions failed: checkout no longer carries the recorded merge*, leave the record on disk, land no commit, and leave the warp HEAD exactly where the operator left it.
+In all three, `lym fabric merge --continue` must refuse with *merge preconditions failed: checkout no longer carries the recorded merge*, leave the record on disk, land no commit, and leave the warp HEAD exactly where the operator left it.
 `"ok": true` / `"committed": true` here is the failure mode and it is a blocking one: fabric commits and claims a merge it never started, records correspondence for a pair whose warp side does not carry the source at all, and deletes the record — the same silent false success as the adoption cases, reached by not committing first.
-Then confirm the refusal did not wedge the pair: `lyx fabric merge --abort` must still succeed and restore both sides to their recorded pre-merge SHAs.
+Then confirm the refusal did not wedge the pair: `lym fabric merge --abort` must still succeed and restore both sides to their recorded pre-merge SHAs.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -518,7 +518,7 @@ Create a target pair and a source pair, then push a commit to the target branch'
 At this point the target is genuinely diverged, but its own `origin/<branch>` still names a commit that is an ancestor of its HEAD, so anything reading remote-tracking refs sees "merely ahead".
 Confirm that first, so you know the scenario is really the unfetched shape: `git -C <target> rev-parse origin/<branch>` must differ from the bare remote's own tip, and `git -C <target> merge-base --is-ancestor origin/<branch> HEAD` must succeed.
 
-Now run `lyx fabric merge <source-slug>` from the target worktree.
+Now run `lym fabric merge <source-slug>` from the target worktree.
 It must **refuse** with `merge preconditions failed: branch not synced to upstream`, `mutations: []`, and both HEADs unmoved.
 (Historical: it returned `ok: true` with `committed: true` and landed the merge, because the guard read `@{u}` before the call's own fetch and the sync step then discarded the divergence it had just made visible. `git rev-list --left-right --count 'HEAD...@{u}'` afterwards reported a real divergence in both directions.)
 Run the same check with the divergence on the **weft** side instead of the warp side -- both sides carry their own upstream, and each is decided separately.
@@ -534,33 +534,33 @@ Finally check the opposite state is NOT refused -- a target merely **behind** it
 
 **Covers:** batten
 
-**Goal:** "Exercise everything `lyx batten`'s run/status/step surface can prove without an LLM: the status verb round-tripping a hand-written fixture, the run and step verbs' shared refusals on a `done` status and a held run lock, both verbs' prime-only refusal, `lyx shed seed` pre-seeding a batten run ahead of batten's own auto-seed, and the create row halting blocked against a deliberately dirty prime."
+**Goal:** "Exercise everything `lym batten`'s run/status/step surface can prove without an LLM: the status verb round-tripping a hand-written fixture, the run and step verbs' shared refusals on a `done` status and a held run lock, both verbs' prime-only refusal, `lym shed seed` pre-seeding a batten run ahead of batten's own auto-seed, and the create row halting blocked against a deliberately dirty prime."
 
 **Fixture note:** This scenario still never drives a fresh pair past the create row: a freshly created pair with no task status file spawns a real driver into the LLM rows the first time either `batten run` or `batten step` reaches past create with the run lock free, and neither verb exposes a way to interpose a fixture mid-run. `step`'s own refusals below are exercised the same way `run`'s are -- against a fixture that refuses before the engine is ever called -- never against a completed step.
 
-**Watch:** Hand-write a slug's `_lyx/shed/<slug>/status.json` as a fixture, following `shedengine.Status`'s own shape (`current_producer`/`state`/`error`/`activity`/`history`), and confirm `lyx batten status <slug>` round-trips every one of those fields back out through its JSON envelope unchanged, alongside `history_length` and `history_truncated: false` — a fixture of a handful of entries is well under the cap the envelope applies to a long `Run-Shed` watch, so nothing is dropped here.
-Then hand-write a `.lyx/shed/<slug>/Worktree-Create-stuck.md` beside a fixture whose `state` is `blocked` and `current_producer` is `Worktree-Create`, and confirm the envelope carries that file's text as `stuck_reason`: Worktree-Create, Seed-Child and Worktree-Teardown carry no `on_stuck`, so their own reason is the persisted `error`, and this key is kept for the Run-Shed block through the budget arm, whose `error` stays the fixed budget literal.
-Set the fixture's `state` to `done` and confirm both `lyx batten run <slug>` and `lyx batten step <slug>` refuse, naming the per-slug directory to delete to run it again.
-Hold `.lyx/shed/<slug>/run.lock` yourself (any advisory-lock-compatible hold) and confirm both `lyx batten run <slug>` and `lyx batten step <slug>` refuse, naming that lock path.
-Run `lyx batten run <slug>`, `lyx batten step <slug>`, and `lyx batten status <slug>` from a task worktree rather than the hub's prime, and confirm each refuses naming both worktree names and telling the operator to re-run it from the prime.
+**Watch:** Hand-write a slug's `_lym/shed/<slug>/status.json` as a fixture, following `shedengine.Status`'s own shape (`current_producer`/`state`/`error`/`activity`/`history`), and confirm `lym batten status <slug>` round-trips every one of those fields back out through its JSON envelope unchanged, alongside `history_length` and `history_truncated: false` — a fixture of a handful of entries is well under the cap the envelope applies to a long `Run-Shed` watch, so nothing is dropped here.
+Then hand-write a `.lym/shed/<slug>/Worktree-Create-stuck.md` beside a fixture whose `state` is `blocked` and `current_producer` is `Worktree-Create`, and confirm the envelope carries that file's text as `stuck_reason`: Worktree-Create, Seed-Child and Worktree-Teardown carry no `on_stuck`, so their own reason is the persisted `error`, and this key is kept for the Run-Shed block through the budget arm, whose `error` stays the fixed budget literal.
+Set the fixture's `state` to `done` and confirm both `lym batten run <slug>` and `lym batten step <slug>` refuse, naming the per-slug directory to delete to run it again.
+Hold `.lym/shed/<slug>/run.lock` yourself (any advisory-lock-compatible hold) and confirm both `lym batten run <slug>` and `lym batten step <slug>` refuse, naming that lock path.
+Run `lym batten run <slug>`, `lym batten step <slug>`, and `lym batten status <slug>` from a task worktree rather than the hub's prime, and confirm each refuses naming both worktree names and telling the operator to re-run it from the prime.
 Run the same three verbs from the weft prime (`<hub>/<warp>-weft`) and from `_board`, and confirm each refuses naming the records sibling or the `_board` checkout -- the weft prime is a repository of its own whose prime is itself, so a name comparison alone would let batten's bookend rows drive fabric against the weft repository.
-With a slug's durable `_lyx/shed/<slug>/status.json` in place, delete its ephemeral `.lyx/shed/<slug>/` directory (what a fresh clone on another machine has) and confirm `lyx batten status <slug>` and `lyx batten pause <slug>` answer from the durable file rather than failing to open a lock.
-Follow the `done`-slug refusal's remedy verbatim and confirm it names the durable `_lyx/shed/<slug>/` run directory AND the branches the torn-down pair left behind, local and remote -- removing the run directory alone lands the re-run on the create row's leftover-branch refusal -- and that removing all of them does let the slug run again.
-Upsert a Board task with `"type":"batten"` and confirm `lyx batten step <slug>` halts `blocked` at `Seed-Child` with a `stuck_reason` naming the Board type, with no seed written in the task worktree and nothing committed on its branch.
-With a slug's task worktree already created, delete prime's own `_lyx/shed/<slug>/status.json` -- the state a process killed between the create finishing and its transition being persisted leaves behind -- and confirm `lyx batten step <slug>` reports `Worktree-Create` done and advances to `Seed-Child` rather than halting `blocked` on fabric's pre-existing-branch refusal, with the task worktree untouched.
-Before touching a fresh slug, run `lyx shed seed <a-fresh-slug> --recipe batten` by hand and confirm it writes `_lyx/shed/<a-fresh-slug>/seed.json` naming `recipe: batten`; then dirty the prime worktree with an uncommitted edit to a tracked file and run `lyx batten run <a-fresh-slug>`: confirm the create row halts `blocked` rather than `stuck`, the reason surfaces fabric's own dirty-worktree refusal text, no task worktree was created, and batten's own auto-seed step left the hand-written seed untouched rather than treating it as a disagreeing seed.
-After a fresh slug's `Worktree-Create` completes, hand-write and commit a disagreeing seed directly onto the task worktree's own `_lyx/shed/<slug>/seed.json` (e.g. a different `driver` than prime's own `child_driver` param would produce), then run `lyx batten step <slug>` and confirm `Seed-Child` halts `blocked` with a `stuck_reason` naming the disagreement, rather than a hard failure with no `stuck_reason` at all.
+With a slug's durable `_lym/shed/<slug>/status.json` in place, delete its ephemeral `.lym/shed/<slug>/` directory (what a fresh clone on another machine has) and confirm `lym batten status <slug>` and `lym batten pause <slug>` answer from the durable file rather than failing to open a lock.
+Follow the `done`-slug refusal's remedy verbatim and confirm it names the durable `_lym/shed/<slug>/` run directory AND the branches the torn-down pair left behind, local and remote -- removing the run directory alone lands the re-run on the create row's leftover-branch refusal -- and that removing all of them does let the slug run again.
+Upsert a Board task with `"type":"batten"` and confirm `lym batten step <slug>` halts `blocked` at `Seed-Child` with a `stuck_reason` naming the Board type, with no seed written in the task worktree and nothing committed on its branch.
+With a slug's task worktree already created, delete prime's own `_lym/shed/<slug>/status.json` -- the state a process killed between the create finishing and its transition being persisted leaves behind -- and confirm `lym batten step <slug>` reports `Worktree-Create` done and advances to `Seed-Child` rather than halting `blocked` on fabric's pre-existing-branch refusal, with the task worktree untouched.
+Before touching a fresh slug, run `lym shed seed <a-fresh-slug> --recipe batten` by hand and confirm it writes `_lym/shed/<a-fresh-slug>/seed.json` naming `recipe: batten`; then dirty the prime worktree with an uncommitted edit to a tracked file and run `lym batten run <a-fresh-slug>`: confirm the create row halts `blocked` rather than `stuck`, the reason surfaces fabric's own dirty-worktree refusal text, no task worktree was created, and batten's own auto-seed step left the hand-written seed untouched rather than treating it as a disagreeing seed.
+After a fresh slug's `Worktree-Create` completes, hand-write and commit a disagreeing seed directly onto the task worktree's own `_lym/shed/<slug>/seed.json` (e.g. a different `driver` than prime's own `child_driver` param would produce), then run `lym batten step <slug>` and confirm `Seed-Child` halts `blocked` with a `stuck_reason` naming the disagreement, rather than a hard failure with no `stuck_reason` at all.
 
-Build a slug whose task worktree is present in its durable status but missing on disk (create the pair, then remove only the worktree, e.g. `lyx fabric remove <slug>` leaving the warp branch behind) and run `lyx batten run <slug>` from prime: confirm the refusal names no `lyx fabric` command that would restore it — `lyx fabric checkout` switches the CALLER's own worktree (prime, since every batten verb runs from there) onto the named branch rather than recreating anything, so the text must say the operator has to resolve it by hand instead of naming that command.
-Follow that refusal's abandon path verbatim -- delete the named run directory and the pair's local and remote branches -- and confirm `lyx batten step <slug>` then reaches a fresh `Worktree-Create` rather than re-refusing at the row the run had reached.
-Re-run a slug whose pair was torn down cleanly (delete only its durable `_lyx/shed/<slug>/` run directory on prime's weft and commit) and confirm `Worktree-Create` halts `blocked` with a `stuck_reason` that names the leftover branch, its deletion locally and on the remote, and `lyx fabric cleanup --apply --remote` for the orphaned weft branch -- and never suggests `lyx fabric checkout`, which from prime would switch prime's own pair onto the task's branches; delete only the local branch, re-step, and confirm the push is rejected by the remote copy and the row halts `blocked` again rather than half-creating the pair.
-Step a slug to `Worktree-Teardown` (hand-write the task worktree's own status as `done` and commit it there), then `lyx fabric remove <slug>` before stepping teardown -- the state a process killed right after teardown's own removal leaves -- and confirm the next `lyx batten step <slug>` reports `done` rather than halting on the missing pair.
-Step another slug to `Worktree-Teardown` the same way, then remove only its warp worktree (`git -C <prime> worktree remove <slug>`), leaving `<slug>-weft` on disk -- the state a process killed between fabric's warp removal and its weft teardown leaves -- and confirm `lyx batten step <slug>` halts `blocked` with a `stuck_reason` naming the leftover `<slug>-weft` path and `lyx fabric prune --apply`, never `done`; run that prune from prime and confirm the next step reports `done` with `<slug>-weft` gone locally and on the remote.
-Step a third slug to `Worktree-Teardown`, point the weft prime's `origin` at a missing path, and confirm `lyx batten step <slug>` removes the pair but halts `blocked` naming the other-side branch's remote copy; restore `origin` and confirm the next step reports `done` with that branch gone from the remote.
-From prime, create only a fresh slug's task worktree (`git worktree add -b <branch_prefix><slug> <hub>/<slug>`, the state a create killed right after its first step leaves) and confirm `lyx batten step <slug>` halts `blocked` at `Worktree-Create` naming `lyx fabric remove --force <slug>` and `git branch -D <branch_prefix><slug>`; run both verbatim from prime and confirm the next step creates the pair.
-Step a fresh slug to `Run-Shed` and run that one step with `LYX_REED_TMUX` pointed at a nonexistent path, so the child's bootstrap fails after seeding its status: confirm a named spawn error, then that the next plain `lyx batten step <slug>` spawns the bootstrap again (a `lyx loom run` driver appears) rather than reporting "still running" over a child with no driver.
-Run `lyx shed seed <run-id> --recipe loom` from `_board` and from the weft prime, and confirm each refuses and leaves no `_lyx/shed/` behind in that checkout.
-Run `lyx shed seed <run-id> --recipe batten` from a task worktree and confirm it refuses with batten's own prime-only wording and leaves no `_lyx/shed/<run-id>/` in that pair, while the same command with `--recipe loom` there succeeds.
+Build a slug whose task worktree is present in its durable status but missing on disk (create the pair, then remove only the worktree, e.g. `lym fabric remove <slug>` leaving the warp branch behind) and run `lym batten run <slug>` from prime: confirm the refusal names no `lym fabric` command that would restore it — `lym fabric checkout` switches the CALLER's own worktree (prime, since every batten verb runs from there) onto the named branch rather than recreating anything, so the text must say the operator has to resolve it by hand instead of naming that command.
+Follow that refusal's abandon path verbatim -- delete the named run directory and the pair's local and remote branches -- and confirm `lym batten step <slug>` then reaches a fresh `Worktree-Create` rather than re-refusing at the row the run had reached.
+Re-run a slug whose pair was torn down cleanly (delete only its durable `_lym/shed/<slug>/` run directory on prime's weft and commit) and confirm `Worktree-Create` halts `blocked` with a `stuck_reason` that names the leftover branch, its deletion locally and on the remote, and `lym fabric cleanup --apply --remote` for the orphaned weft branch -- and never suggests `lym fabric checkout`, which from prime would switch prime's own pair onto the task's branches; delete only the local branch, re-step, and confirm the push is rejected by the remote copy and the row halts `blocked` again rather than half-creating the pair.
+Step a slug to `Worktree-Teardown` (hand-write the task worktree's own status as `done` and commit it there), then `lym fabric remove <slug>` before stepping teardown -- the state a process killed right after teardown's own removal leaves -- and confirm the next `lym batten step <slug>` reports `done` rather than halting on the missing pair.
+Step another slug to `Worktree-Teardown` the same way, then remove only its warp worktree (`git -C <prime> worktree remove <slug>`), leaving `<slug>-weft` on disk -- the state a process killed between fabric's warp removal and its weft teardown leaves -- and confirm `lym batten step <slug>` halts `blocked` with a `stuck_reason` naming the leftover `<slug>-weft` path and `lym fabric prune --apply`, never `done`; run that prune from prime and confirm the next step reports `done` with `<slug>-weft` gone locally and on the remote.
+Step a third slug to `Worktree-Teardown`, point the weft prime's `origin` at a missing path, and confirm `lym batten step <slug>` removes the pair but halts `blocked` naming the other-side branch's remote copy; restore `origin` and confirm the next step reports `done` with that branch gone from the remote.
+From prime, create only a fresh slug's task worktree (`git worktree add -b <branch_prefix><slug> <hub>/<slug>`, the state a create killed right after its first step leaves) and confirm `lym batten step <slug>` halts `blocked` at `Worktree-Create` naming `lym fabric remove --force <slug>` and `git branch -D <branch_prefix><slug>`; run both verbatim from prime and confirm the next step creates the pair.
+Step a fresh slug to `Run-Shed` and run that one step with `LYM_REED_TMUX` pointed at a nonexistent path, so the child's bootstrap fails after seeding its status: confirm a named spawn error, then that the next plain `lym batten step <slug>` spawns the bootstrap again (a `lym loom run` driver appears) rather than reporting "still running" over a child with no driver.
+Run `lym shed seed <run-id> --recipe loom` from `_board` and from the weft prime, and confirm each refuses and leaves no `_lym/shed/` behind in that checkout.
+Run `lym shed seed <run-id> --recipe batten` from a task worktree and confirm it refuses with batten's own prime-only wording and leaves no `_lym/shed/<run-id>/` in that pair, while the same command with `--recipe loom` there succeeds.
 
 Say in the report that **no automated test drives a real child bootstrap at all**: the `integration`-tagged end-to-end test walks all four rows against a real hub, but it replaces `Env.InnerRun.Spawn` with a no-op and `Env.InnerRun.ReadStatus` with an in-memory stub, so the loom run itself is exactly the part it does not drive.
 Treat that as a stated gap, not as coverage this scenario is narrower than.
@@ -576,10 +576,10 @@ Two `integration`-tagged tests do drive the unstubbed seams either side of the c
 
 **Goal:** "Add a local-only pair and confirm it pushes nothing, then confirm `--local` never takes over an ordinary pair."
 
-**Watch:** Run `lyx fabric add --local <slug>` from the prime and confirm the envelope carries `local: true` and no `push_spawned` entry, that no `_launchers/<slug>` exists, and that `git config branch.<slug>.lyxlocal` reads `true` in the warp repo and `git config branch.<slug>-weft.lyxlocal` in the weft repo.
-Run `lyx fabric push` from the new pair and confirm it exits 0 with `local_skipped` naming both branches, and that neither branch exists on either origin (`git ls-remote origin <branch>` in each repo).
-Add an ordinary pair with another slug, remove both of its worktrees with `git worktree remove`, and run `lyx fabric add --local <that-slug>`: confirm it refuses before creating anything, naming `lyx fabric checkout` and `git branch -D`.
-Remove the local pair's two worktrees and its weft branch by hand, then run a plain `lyx fabric add <slug>` over the kept warp branch and confirm it succeeds with `local_mark_cleared` naming the cleared branches and the mark gone from `git config`.
+**Watch:** Run `lym fabric add --local <slug>` from the prime and confirm the envelope carries `local: true` and no `push_spawned` entry, that no `_launchers/<slug>` exists, and that `git config branch.<slug>.lymlocal` reads `true` in the warp repo and `git config branch.<slug>-weft.lymlocal` in the weft repo.
+Run `lym fabric push` from the new pair and confirm it exits 0 with `local_skipped` naming both branches, and that neither branch exists on either origin (`git ls-remote origin <branch>` in each repo).
+Add an ordinary pair with another slug, remove both of its worktrees with `git worktree remove`, and run `lym fabric add --local <that-slug>`: confirm it refuses before creating anything, naming `lym fabric checkout` and `git branch -D`.
+Remove the local pair's two worktrees and its weft branch by hand, then run a plain `lym fabric add <slug>` over the kept warp branch and confirm it succeeds with `local_mark_cleared` naming the cleared branches and the mark gone from `git config`.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -625,6 +625,6 @@ sandbox-report.json written: <count of WARN/FAIL items>
 
 ## Notes
 
-- This suite is deliberately scoped to fabric alone, but runs against the same shared Hub (`lyx-test`/`lyx-test-weft`) as `SANDBOX-CORE-SUITE.md` and every per-module suite -- it is not isolated from them. Several scenarios here are destructive by design (F7's delete-and-re-clone, `--reset`, `prune --apply`, `cleanup --apply`); if a run leaves the Hub in a state another suite would trip on, `sandbox/build.cmd -reset` is the recovery path, not a fabric defect.
-- fabric is lyx's sole warp↔weft git-coordination module (see `internal/fabricengine/doc.go`);
+- This suite is deliberately scoped to fabric alone, but runs against the same shared Hub (`lym-test`/`lym-test-weft`) as `SANDBOX-CORE-SUITE.md` and every per-module suite -- it is not isolated from them. Several scenarios here are destructive by design (F7's delete-and-re-clone, `--reset`, `prune --apply`, `cleanup --apply`); if a run leaves the Hub in a state another suite would trip on, `sandbox/build.cmd -reset` is the recovery path, not a fabric defect.
+- fabric is lym's sole warp↔weft git-coordination module (see `internal/fabricengine/doc.go`);
   its stricter `main-weft`-suffixed branch-naming scheme is exactly what this suite exists to exercise, on the same Hub every other suite already proves the ordinary CLI surface against.

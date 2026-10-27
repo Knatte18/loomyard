@@ -10,14 +10,14 @@ The suite is split into four tiers, and which tier a test belongs to is decided 
 "Substrate" means one of a fixed set of categories a hermetic, in-process unit test cannot fake: real `git` subprocess spawning, real filesystem junction/symlink creation, real `tmux` sessions, and real cross-compilation.
 A test that is merely slow — a big table-driven case, a large in-memory fixture — stays untagged in `tier0`.
 
-The hub declares its tiers in `gate.yaml`, numbered `tier0` through `tier3`, and `lyx gate test --tier <n>` runs one over a scope lyx computes or `--all`.
+The hub declares its tiers in `gate.yaml`, numbered `tier0` through `tier3`, and `lym gate test --tier <n>` runs one over a scope lym computes or `--all`.
 
-- **`tier0` — the default offline loop** (`lyx gate test --tier 0`): pure-unit and static-guard tests only.
+- **`tier0` — the default offline loop** (`lym gate test --tier 0`): pure-unit and static-guard tests only.
   No `git init` / `git worktree add` / fixture-tree copies anywhere in an untagged test — that is the tier's **premise** (a cheap, expected-to-fail `git rev-parse` on an error path, e.g. via `hubgeometry.Resolve`, is still allowed and does not violate it).
-  Machine- enforced by `cmd/lyx/tierpurity_test.go` (`TestTierPurity_UntaggedTestsSpawnNothing`).
+  Machine- enforced by `cmd/lym/tierpurity_test.go` (`TestTierPurity_UntaggedTestsSpawnNothing`).
   Fast again: measured median ~29 s on Windows (Cortex XDR), ~1 s on Linux.
   This is what you run constantly and what must stay fast.
-- **`tier1` — the opt-in integration loop** (`lyx gate test --tier 1`): `tier0` **plus** the gated tests that spawn one of the substrate categories above — real `git` (worktrees, commits, pushes, junctions), real filesystem junctions/symlinks, real cross-compilation, or real external-binary spawn; a test that drives real `tmux` sessions belongs to `tier2` instead.
+- **`tier1` — the opt-in integration loop** (`lym gate test --tier 1`): `tier0` **plus** the gated tests that spawn one of the substrate categories above — real `git` (worktrees, commits, pushes, junctions), real filesystem junctions/symlinks, real cross-compilation, or real external-binary spawn; a test that drives real `tmux` sessions belongs to `tier2` instead.
   It is slow **by design** — it does far more work.
   Measured median ~128 s on Windows (Cortex XDR), ~5 s on Linux.
   Numbers across machines and operating systems: [test-suite-timing.md](test-suite-timing.md#all-environments).
@@ -27,15 +27,15 @@ The hub declares its tiers in `gate.yaml`, numbered `tier0` through `tier3`, and
 
 Two further opt-in tags exist alongside `integration`, each gating a distinct kind of live substrate rather than widening `integration` itself:
 
-- **`tier2` — `tmux`** (`lyx gate test --tier 2`): tests that start a real tmux server and drive real panes.
+- **`tier2` — `tmux`** (`lym gate test --tier 2`): tests that start a real tmux server and drive real panes.
   It needs `tmux` on `$PATH` and spends no tokens.
   A test that only probes `tmux has-session` stays in `integration`.
-- **`tier3` — `llm`** (`go vet -tags llm ./...` to compile; `lyx gate test --tier 3 <package> -- -run <Test>` by hand to run): tests that spawn a real `claude` session.
+- **`tier3` — `llm`** (`go vet -tags llm ./...` to compile; `lym gate test --tier 3 <package> -- -run <Test>` by hand to run): tests that spawn a real `claude` session.
   It needs a logged-in `claude` and costs tokens, wall-clock and RAM.
   No gate ever runs `llm`; the plan verify and the card gates only compile it.
 
 The tags do not nest: `-tags tier1` does not run `tier0`'s tests and does not include `tier2` or `tier3`, and a run that wants several names them all (`-tags tier1,tier2`).
-`cmd/lyx/tierpurity_test.go` holds the untagged tier to its premise and `cmd/lyx/llmtier_test.go` keeps LLM spawns inside `llm`.
+`cmd/lym/tierpurity_test.go` holds the untagged tier to its premise and `cmd/lym/llmtier_test.go` keeps LLM spawns inside `llm`.
 The rules behind the tiers live in `PATTERN-test-speed` in `PATTERN.md`, which this page does not restate.
 
 ## Commands
@@ -43,20 +43,20 @@ The rules behind the tiers live in `PATTERN-test-speed` in `PATTERN.md`, which t
 ```sh
 # tier0 — default / offline loop. No build tag. (Premise: no `git init` /
 # `git worktree add` / fixture-tree copies — see test-suite-timing.md.)
-lyx gate test --tier 0 --all
+lym gate test --tier 0 --all
 
 # tier1 — gated integration loop. Real worktrees, commits, pushes, junctions.
-lyx gate test --tier 1 --all
+lym gate test --tier 1 --all
 
 # tier2 — real tmux servers, no tokens.
-lyx gate test --tier 2 --all
+lym gate test --tier 2 --all
 
 # tier3 — real LLM sessions: compile only; run one test by hand, never in a gate.
 go vet -tags llm ./...
-lyx gate test --tier 3 ./internal/<package> -- -run <TestName>
+lym gate test --tier 3 ./internal/<package> -- -run <TestName>
 
 # One package of a tier, verbose, with per-test seconds.
-lyx gate test --tier 0 ./internal/fabricengine -- -v
+lym gate test --tier 0 ./internal/fabricengine -- -v
 ```
 
 `-count=1` disables the test cache so every run is honest;
@@ -86,8 +86,8 @@ go run ./cmd/testtiming -tags tier2
 
 It shells out to `go test ./... -json -count=1 -tags <tags>` (`tier0` with no tags of its own, `tier1` in full mode), so it needs nothing beyond a working Go toolchain.
 The tiers are disjoint, so a run that wants several names every tag.
-A run under a tier above `tier0` builds `lyx` once and hands it to every test binary through the `LYX_PREBUILT_LYX` variable, as `lyx gate test --tags` does, and a `tier0` run builds nothing and strips an inherited value.
-`lyx gate test --tags <tags> <packages>` is where one `lyx` build serves every package of the run.
+A run under a tier above `tier0` builds `lym` once and hands it to every test binary through the `LYM_PREBUILT_LYM` variable, as `lym gate test --tags` does, and a `tier0` run builds nothing and strips an inherited value.
+`lym gate test --tags <tags> <packages>` is where one `lym` build serves every package of the run.
 Exit code mirrors `go test`: `0` on success, `1` if any package fails to build or any test fails (failing rows are marked `FAIL` in the table).
 
 `go run ./cmd/testtiming -redundancy` writes the per-test coverage redundancy report; the committed report is [test-redundancy.md](test-redundancy.md).
@@ -104,7 +104,7 @@ Any other run rewrites only the sections of the packages it measured and leaves 
 A run whose `-tags` differ from the report's header refuses and writes nothing.
 
 `go run ./cmd/testtiming -resources` measures what each package costs instead of how long it takes: wall time, CPU, peak memory, processes started, processes left behind and the git processes it ran, split into fixture setup and code under test.
-It runs one package at a time inside one gate slot, so it needs no `lyx gate test` wrapper; every `cmd/testtiming` mode holds one slot for its whole run in a hub.
+It runs one package at a time inside one gate slot, so it needs no `lym gate test` wrapper; every `cmd/testtiming` mode holds one slot for its whole run in a hub.
 The committed report is [test-suite-weight.md](test-suite-weight.md), regenerated by three commands, one per measured tier:
 
 ```sh
@@ -125,7 +125,7 @@ Running Tier 0 (offline)  —  go test -tags tier0 ./... -count=1
 PACKAGE                                   ELAPSED
 ----------------------------------------  --------
 internal/boardengine/boardtest                1.49s
-cmd/lyx                                       0.93s
+cmd/lym                                       0.93s
 ...
 internal/git                              (no test files)
 
@@ -136,9 +136,9 @@ Slowest 15 top-level tests
 RESULT: all packages passed
 ```
 
-## `LYX_TRACE=1` and the durable sink
+## `LYM_TRACE=1` and the durable sink
 
-`internal/logger`'s durable trace sink (`ensureDurableSink`) short-circuits under `testing.Testing()` unless `LYX_TRACE=1` is set, and its `sinkOnce` is process-wide, so the first call to log in a test binary pins the trace directory for every subsequent call in that same process, for the rest of that binary's run.
+`internal/logger`'s durable trace sink (`ensureDurableSink`) short-circuits under `testing.Testing()` unless `LYM_TRACE=1` is set, and its `sinkOnce` is process-wide, so the first call to log in a test binary pins the trace directory for every subsequent call in that same process, for the rest of that binary's run.
 
 Before the chdir-to-`RunCLIIn` migration (see [test-suite-timing.md](test-suite-timing.md#trend-log)'s 2026-08-13 row), a test process that chdir'd across several fixture hubs left the sink pinned against whichever hub happened to log first — an arbitrary answer, since it depended on test execution order within the binary.
 After the migration, the process cwd itself never moves (every test drives its CLI seam at an explicit cwd instead), so the sink resolves against the repo worktree the test binary was launched from — a deterministic answer, and the same one every time.
@@ -152,7 +152,7 @@ If the suite feels slow locally, the highest-leverage levers, in order:
 
 1. **Rely on the test cache** — a tier's command keeps the cache warm;
    only changed packages re-run, so a no-op tier run returns in ~1 s.
-2. **Scope to the package you're editing** — `lyx gate test --tier 0 ./internal/fabricengine` beats the whole repo.
+2. **Scope to the package you're editing** — `lym gate test --tier 0 ./internal/fabricengine` beats the whole repo.
 3. **Stay in the offline tier.**
    `tier0` spawns no `git init` / `git worktree add` / fixture-tree copies repo-wide (see [test-suite-timing.md](test-suite-timing.md#levers-that-moved-the-numbers)).
    Only reach for `tier1` when you are changing fabric / hubgeometry / board / ide git behaviour — and budget ~128 s (~2 min) for that tier.

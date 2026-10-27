@@ -154,7 +154,7 @@ func TestMergeState_Record(t *testing.T) {
 
 // assertMergeStateFileInvisibleToGit fails the test if `git status --porcelain` in dir mentions
 // mergeStateFileName. It does not require dir to be otherwise clean — a prime weft worktree
-// legitimately carries its own untracked scaffolding (e.g. the _lyx junction target) independent of
+// legitimately carries its own untracked scaffolding (e.g. the _lym junction target) independent of
 // the merge-state record — only that saving the record itself produced no observable git-status
 // entry.
 func assertMergeStateFileInvisibleToGit(t *testing.T, label, dir string) {

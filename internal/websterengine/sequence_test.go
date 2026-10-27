@@ -53,7 +53,7 @@ func groupedCardBatch(number int, groupType planparser.CardType, ref string, ent
 func TestCheckBatchOrder(t *testing.T) {
 	t.Parallel()
 
-	const wayForward = "way forward: fix the plan's card order so every card follows the cards whose targets it uses, then `lyx webster rebaseline --card NN` naming each card you edited, or `lyx webster run --fresh` for a run that has not begun a batch"
+	const wayForward = "way forward: fix the plan's card order so every card follows the cards whose targets it uses, then `lym webster rebaseline --card NN` naming each card you edited, or `lym webster run --fresh` for a run that has not begun a batch"
 
 	tests := []struct {
 		name string
@@ -176,7 +176,7 @@ func TestCheckBatchOrder(t *testing.T) {
 			clause := wayForward
 			if tc.step != "" {
 				clause = "way forward: fix the plan's card order so every card follows the cards whose targets it uses, then " + tc.step
-				for _, manual := range []string{"lyx webster rebaseline", "lyx webster run"} {
+				for _, manual := range []string{"lym webster rebaseline", "lym webster run"} {
 					if strings.Contains(err.Error(), manual) {
 						t.Errorf("CheckBatchOrder() error = %q; want it to name neither manual verb, found %q", err.Error(), manual)
 					}

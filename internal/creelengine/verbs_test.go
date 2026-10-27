@@ -402,11 +402,11 @@ func TestStore_InjectAndHold(t *testing.T) {
 		}},
 		{"Inject_NonPrivilegedNeedsPost", func(t *testing.T, e *env) {
 			_, err := e.store.Inject(strand(beta), alpha, "/clear", 0, false)
-			wantErr(t, err, "lyx creel post")
+			wantErr(t, err, "lym creel post")
 			_, err = e.store.Interrupt(strand(beta), alpha)
-			wantErr(t, err, "lyx creel post")
+			wantErr(t, err, "lym creel post")
 			_, err = e.store.Hold(strand(beta), alpha, time.Minute)
-			wantErr(t, err, "lyx creel post")
+			wantErr(t, err, "lym creel post")
 			if queued := e.store.Queued(alpha); len(queued) != 0 || len(e.del.Interrupts()) != 0 {
 				t.Errorf("a refusal left queued %v and interrupts %v", queued, e.del.Interrupts())
 			}
@@ -469,7 +469,7 @@ func TestStore_InjectAndHold(t *testing.T) {
 			}
 			e.del.SetClaimLive(alpha, func() (bool, error) { return false, nil })
 			_, err = e.store.Interrupt(program(batten), alpha)
-			wantErr(t, err, "was lifted before the interrupt", "way forward", `"lyx creel interrupt `+alpha+`"`)
+			wantErr(t, err, "was lifted before the interrupt", "way forward", `"lym creel interrupt `+alpha+`"`)
 			e.del.SetClaimLive(alpha, func() (bool, error) { return false, errors.New("live read broke") })
 			_, err = e.store.Interrupt(program(batten), alpha)
 			wantErr(t, err, "could not read the pause record for "+alpha, "so nothing was interrupted", "live read broke")
@@ -498,7 +498,7 @@ func TestStore_InjectAndHold(t *testing.T) {
 			_, err = e.store.Interrupt(external(), alpha)
 			wantErr(t, err, batten)
 			_, err = e.store.Interrupt(strand(beta), alpha)
-			wantErr(t, err, "lyx creel post")
+			wantErr(t, err, "lym creel post")
 			if queued := e.store.Queued(alpha); len(queued) != 0 || len(e.del.Claims()) != 0 || len(e.del.Interrupts()) != 0 || len(e.del.Sends()) != 0 {
 				t.Errorf("refusals left queued %v, claims %v, interrupts %v, sends %v", queued, e.del.Claims(), e.del.Interrupts(), e.del.Sends())
 			}
@@ -665,7 +665,7 @@ func TestStore_InjectAndHold(t *testing.T) {
 			for _, name := range []string{orch, orch2} {
 				for _, sender := range []creelengine.Sender{external(), strand(orch), strand(orch2)} {
 					_, err := e.store.Hold(sender, name, time.Minute)
-					want := fmt.Sprintf("creel: only a program may hold an orch strand, and %s is not one; send %s mail with `lyx creel post`, or cycle the orch with `lyx orch distill` or `lyx orch refresh`", sender.Name, name)
+					want := fmt.Sprintf("creel: only a program may hold an orch strand, and %s is not one; send %s mail with `lym creel post`, or cycle the orch with `lym orch distill` or `lym orch refresh`", sender.Name, name)
 					if err == nil || err.Error() != want {
 						t.Errorf("Hold by %s on %s = %v; want the refusal %q", sender.Name, name, err, want)
 					}

@@ -54,7 +54,7 @@ func TestLoad(t *testing.T) {
 		{name: "a comments-only file holds no profile", contents: new("# no profiles\n"), wantNames: []string{}, wantDefaults: map[string]string{}},
 		{name: "a profile that is not a mapping is refused", contents: new("light: 3\n"), wantRefusal: []string{`profile "light"`, "mapping of recipe name", "way forward"}},
 		{name: "a recipe block that is not a mapping is refused", contents: new("light:\n  loom: 3\n"), wantRefusal: []string{`profile "light"`, `recipe "loom"`}},
-		{name: "a profile in the old module-to-keys shape is refused", contents: new("light:\n  loom: {plan_max_bounces: 1}\n"), wantRefusal: []string{`profile "light"`, `recipe "loom"`, `module "plan_max_bounces"`, "lyx config profiles"}},
+		{name: "a profile in the old module-to-keys shape is refused", contents: new("light:\n  loom: {plan_max_bounces: 1}\n"), wantRefusal: []string{`profile "light"`, `recipe "loom"`, `module "plan_max_bounces"`, "lym config profiles"}},
 		{name: "defaults that are not a mapping are refused", contents: new("defaults: solid\n"), wantRefusal: []string{"defaults must be a mapping", "way forward"}},
 		{name: "a profile named defaults is refused", contents: new("defaults:\n  loom:\n    loom: {plan_max_bounces: 1}\n"), wantRefusal: []string{`recipe "loom" must name a profile`}},
 		{name: "a default naming an unknown profile is refused", contents: new("defaults: {loom: heavy}\n"), wantRefusal: []string{`recipe "loom"`, `unknown profile "heavy"`}},
@@ -189,7 +189,7 @@ func TestSettings(t *testing.T) {
 		name, profile, recipe string
 		want                  []string
 	}{
-		{"an unknown profile", "heavy", "darn", []string{`"heavy"`, "known: docs", "lyx config profiles --set heavy="}},
+		{"an unknown profile", "heavy", "darn", []string{`"heavy"`, "known: docs", "lym config profiles --set heavy="}},
 		{"a profile without the recipe's block", "docs", "loom", []string{`"docs"`, "no loom block", "covers: darn", "way forward"}},
 	}
 	for _, tt := range refusals {

@@ -15,7 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/spf13/cobra"
@@ -30,18 +30,15 @@ type burlerCLI struct {
 	// wireHub loads them from the hub's language.yaml; wireStandalone leaves them empty.
 	languageSkills []string
 
-	// cwd is the seam cwd resolvePersistentPreRun read via lyxcwd.CwdFrom -- the SAME base wire
+	// cwd is the seam cwd resolvePersistentPreRun read via lymcwd.CwdFrom -- the SAME base wire
 	// resolves --target-dir and --stencils-dir against. It is stored so the run verb resolves
 	// --profile against it too, rather than against the process cwd, which under an in-process
 	// driver is a different directory (crucible round opus-medium-r6, R6-17).
 	cwd string
 
-	// reedUp brings the standalone reed session up, idempotently. It is set by
-	// wireStandalone alone — the run verb calls it immediately before driving a round, because
-	// standalone mode has no other way to a live session: `lyx reed up` is hub-only (its pre-run
-	// requires lyxcwd.Resolve), so the session on standalone's own geometry (socket "lyx-<hash8>",
-	// state under the derived state directory) can only be booted in-process. It stays nil in hub
-	// mode, where bringing reed up remains the operator's (or loom's) own act.
+	// reedUp brings the standalone reed session up, idempotently.
+	// It is set by wireStandalone alone — the run verb calls it immediately before driving a round, because standalone mode has no other way to a live session: `lym reed up` is hub-only (its pre-run requires lymcwd.Resolve), so the session on standalone's own geometry (socket "lym-<hash8>", state under the derived state directory) can only be booted in-process.
+	// It stays nil in hub mode, where bringing reed up remains the operator's (or loom's) own act.
 	reedUp func() error
 
 	// stencilsDirFlag and targetDirFlag hold the raw, as-parsed values of the two standalone-entry
@@ -80,7 +77,7 @@ func (c *burlerCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) e
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
 
-	cwd, err := lyxcwd.CwdFrom(ctx)
+	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
 		output.Err(out, err.Error())
 		clihelp.Abort(ctx, 1)
@@ -114,7 +111,7 @@ func Command() *cobra.Command {
 		Long: `burler drives one review+fix round over an artifact with two sessions run
 one after the other: a reviewer (role burler-review) reviews the target
 against a fasit (a source of truth) and writes a structured review file
-(verdict + findings, each finding carrying its fix), then, once lyx has
+(verdict + findings, each finding carrying its fix), then, once lym has
 accepted the review, a fixer (role burler-fix) validates what the
 reviewer found, fixes it and writes a fixer report. A review with no findings
 spawns no fixer. What to review, what to judge it against, and how the round is
@@ -122,11 +119,11 @@ allowed to write its fixes are all supplied as a profile YAML file — burler
 itself carries zero domain logic about the artifact under review.
 
 Modes:
-  burler runs in hub mode inside a lyx hub worktree, and in standalone mode
-  anywhere else -- a plain git checkout with no lyx hub beside it. Two
+  burler runs in hub mode inside a lym hub worktree, and in standalone mode
+  anywhere else -- a plain git checkout with no lym hub beside it. Two
   persistent flags cross that boundary: --stencils-dir is optional and
   read-only in BOTH modes (hub default: the hub's own stencils dir;
-  standalone default: the derived state directory's own _lyx/stencils);
+  standalone default: the derived state directory's own _lym/stencils);
   --target-dir is standalone-only, defaults to the current directory, and is
   refused in hub mode, where the anchor path is structurally the target. A
   relative value for either is resolved against the current directory, and
@@ -135,19 +132,17 @@ Modes:
   from the same state directory and reed session, as standing at its root.
 
 Example:
-  lyx burler run --profile profile.yaml
+  lym burler run --profile profile.yaml
 
-Example (standalone, outside any lyx hub):
-  lyx burler run --profile profile.yaml --target-dir /path/to/repo`,
-		// RunE is set so that bare "lyx burler" lists subcommands and "lyx
-		// burler bogus" emits a JSON error envelope instead of falling
-		// through to cobra's plain-text help.
+Example (standalone, outside any lym hub):
+  lym burler run --profile profile.yaml --target-dir /path/to/repo`,
+		// RunE is set so that bare "lym burler" lists subcommands and "lym burler bogus" emits a JSON error envelope instead of falling through to cobra's plain-text help.
 		RunE:              clihelp.GroupRunE,
 		PersistentPreRunE: c.resolvePersistentPreRun,
 	}
 
 	parent.PersistentFlags().StringVar(&c.stencilsDirFlag, "stencils-dir", "",
-		"override the stencils directory read at call time (read-only in both modes; hub default: the hub's own stencils dir; standalone default: the derived state directory's _lyx/stencils)")
+		"override the stencils directory read at call time (read-only in both modes; hub default: the hub's own stencils dir; standalone default: the derived state directory's _lym/stencils)")
 	parent.PersistentFlags().StringVar(&c.targetDirFlag, "target-dir", "",
 		"standalone-only: the directory burler reviews against; defaults to the current directory, and either way is lifted to the containing repository's root; refused in hub mode, where the anchor path is already the target")
 
@@ -165,7 +160,7 @@ func RunCLI(out io.Writer, args []string) int {
 // RunCLIIn is RunCLI's seam-cwd-carrying sibling: an empty cwd means "read the process cwd" and
 // delegates to clihelp.Execute exactly as RunCLI always has, while any other value seeds cwd into
 // the execution context via clihelp.ExecuteIn.
-// The branch exists because lyxcwd.WithCwd panics on an empty directory, so a uniform delegation to
+// The branch exists because lymcwd.WithCwd panics on an empty directory, so a uniform delegation to
 // ExecuteIn would panic on every existing RunCLI call.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {

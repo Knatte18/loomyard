@@ -1,9 +1,5 @@
-// trace.go implements the process-wide trace-identity primitive: a single 16-hex-character ID that
-// is minted or adopted once per process and stamped onto every emitted log line (batch 5's
-// Debug/Info/Warn rewrite wires the call site).
-// It provides two entry points: the lazy TraceID() accessor, used by any code path that logs before
-// cmd/lyx's root hook has run, and MintOrAdoptAndExport, the root hook's explicit call that also
-// exports the ID into the environment so spawned children inherit it.
+// trace.go implements the process-wide trace-identity primitive: a single 16-hex-character ID that is minted or adopted once per process and stamped onto every emitted log line (batch 5's Debug/Info/Warn rewrite wires the call site).
+// It provides two entry points: the lazy TraceID() accessor, used by any code path that logs before cmd/lym's root hook has run, and MintOrAdoptAndExport, the root hook's explicit call that also exports the ID into the environment so spawned children inherit it.
 
 package logger
 
@@ -17,7 +13,7 @@ import (
 )
 
 // TraceIDEnv names the environment variable a process adopts its trace-identity from and exports it in.
-const TraceIDEnv = "LYX_TRACE_ID"
+const TraceIDEnv = "LYM_TRACE_ID"
 
 var traceOnce sync.Once
 var traceID string
@@ -27,8 +23,8 @@ var traceID string
 //
 // The trace-identity is not merely a log field: sink.go interpolates it into the trace filename and
 // filepath.Join CLEANS the composed name, so a value carrying separators or ".." walks the write out
-// of the logs directory entirely (LYX_TRACE_ID='ci-run/../../pwned' landed a trace file one level
-// ABOVE .lyx/logs, and a longer chain escapes the state directory). Validating here rather than at
+// of the logs directory entirely (LYM_TRACE_ID='ci-run/../../pwned' landed a trace file one level
+// ABOVE .lym/logs, and a longer chain escapes the state directory). Validating here rather than at
 // the filename is deliberate: MintOrAdoptAndExport re-exports the resolved value into the
 // environment, so one unvalidated value would propagate to every spawned child.
 //
@@ -52,7 +48,7 @@ func NewTraceID() string {
 	return mintTraceID()
 }
 
-// adoptOrMintTraceID returns LYX_TRACE_ID's value when it matches the minted alphabet exactly, and a
+// adoptOrMintTraceID returns LYM_TRACE_ID's value when it matches the minted alphabet exactly, and a
 // freshly minted identity otherwise.
 //
 // A rejected value is replaced silently rather than reported, because there is no one to report to:
@@ -66,7 +62,7 @@ func adoptOrMintTraceID() string {
 	return mintTraceID()
 }
 
-// resolveTraceID implements trace-ID precedence: pre-set value, a VALID LYX_TRACE_ID env var, or
+// resolveTraceID implements trace-ID precedence: pre-set value, a VALID LYM_TRACE_ID env var, or
 // fresh mint.
 func resolveTraceID() {
 	if traceID != "" {
@@ -85,7 +81,7 @@ func TraceID() string {
 // MintOrAdoptAndExport resolves the trace-identity and exports it to the environment.
 //
 // The export is why adoption goes through adoptOrMintTraceID here too and not only in
-// resolveTraceID: this function OVERWRITES LYX_TRACE_ID with whatever it resolved, so validating on
+// resolveTraceID: this function OVERWRITES LYM_TRACE_ID with whatever it resolved, so validating on
 // only one of the two entry points would leave the other free to launder a malformed value into
 // every child process this one spawns.
 func MintOrAdoptAndExport() string {

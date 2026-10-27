@@ -27,7 +27,7 @@ func TestRun_NoPassWhileAMoveStands(t *testing.T) {
 	stencils := filepath.Join(t.TempDir(), "stencils")
 	stencilkit.SeedInto(t, stencils)
 	h.geom.MoveRecords = []string{record}
-	h.geom.MarkerDir = filepath.Join(filepath.Dir(h.geom.StatePath), MarkerDirName)
+	h.geom.TidyDir = filepath.Join(filepath.Dir(h.geom.StatePath), TidyDirName)
 
 	passes, fullPasses := map[string]int{}, map[string]int{}
 	shuttle := &tidyShuttleFake{}

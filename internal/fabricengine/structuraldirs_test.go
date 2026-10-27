@@ -12,7 +12,7 @@ package fabricengine
 import (
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 )
 
 // wiredNamesFromConfig reproduces junctionNames' pure name-arithmetic (dedupUnion of
@@ -25,56 +25,56 @@ func wiredNamesFromConfig(cfg Config) []string {
 
 // TestStructuralNameSets_ForAConfigNamingNeitherStructuralDirectory covers the name-sets for a
 // Config whose Pathspec names neither structural directory:
-// the wired name-set always contains `_lyx`, which arrives structurally, not from config, so an empty
+// the wired name-set always contains `_lym`, which arrives structurally, not from config, so an empty
 // or unrelated pathspec cannot remove it;
-// the pathspec/commit-routing set always contains `_lyx` but never `.lyx`, since `.lyx` reaching it
+// the pathspec/commit-routing set always contains `_lym` but never `.lym`, since `.lym` reaching it
 // would let a caller's classifyPaths/Commit call route never-committed content into the weft-side
 // commit;
-// the wired name-set does contain `.lyx` (structuralNeverCommittedDirs folded in) while the
+// the wired name-set does contain `.lym` (structuralNeverCommittedDirs folded in) while the
 // routing set still never does, the one assertion that pins the deliberate asymmetry between the two
 // sets;
-// `.lyx` is refused as a worktree slug even when the caller-supplied junctionNames argument is
+// `.lym` is refused as a worktree slug even when the caller-supplied junctionNames argument is
 // empty, the refusal coming from IsReservedHubName's own structuralNeverCommittedDirs union and not
 // from whatever a particular config happens to wire;
-// and slugReservedNames contains lyxdirs.DotLyxDirName exactly once, sourced from
+// and slugReservedNames contains lymdirs.DotLymDirName exactly once, sourced from
 // structuralNeverCommittedDirs, proving the removal of hubSlugReservedNames() was
 // behaviour-preserving: the refusal holds identically on both sides of that fold.
 //
-//testtiming:keep _lyx always wired and routed, .lyx wired but never routed, .lyx refused as a slug and counted once in the reserved set; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep _lym always wired and routed, .lym wired but never routed, .lym refused as a slug and counted once in the reserved set; coverage of its blocks by other tests does not show an assertion of this
 func TestStructuralNameSets_ForAConfigNamingNeitherStructuralDirectory(t *testing.T) {
 	cfg := Config{Pathspec: "_extra"}
 
 	wired := wiredNamesFromConfig(cfg)
-	if !containsName(wired, "_lyx") {
-		t.Errorf("wiredNamesFromConfig(%+v) = %v; want it to contain %q", cfg, wired, "_lyx")
+	if !containsName(wired, "_lym") {
+		t.Errorf("wiredNamesFromConfig(%+v) = %v; want it to contain %q", cfg, wired, "_lym")
 	}
-	if !containsName(wired, ".lyx") {
-		t.Errorf("wiredNamesFromConfig(%+v) = %v; want it to contain %q", cfg, wired, ".lyx")
+	if !containsName(wired, ".lym") {
+		t.Errorf("wiredNamesFromConfig(%+v) = %v; want it to contain %q", cfg, wired, ".lym")
 	}
 
 	routing := pathspecNames(cfg)
-	if !containsName(routing, "_lyx") {
-		t.Errorf("pathspecNames(%+v) = %v; want it to contain %q", cfg, routing, "_lyx")
+	if !containsName(routing, "_lym") {
+		t.Errorf("pathspecNames(%+v) = %v; want it to contain %q", cfg, routing, "_lym")
 	}
-	if containsName(routing, ".lyx") {
-		t.Errorf("pathspecNames(%+v) = %v; want it to NEVER contain %q", cfg, routing, ".lyx")
+	if containsName(routing, ".lym") {
+		t.Errorf("pathspecNames(%+v) = %v; want it to NEVER contain %q", cfg, routing, ".lym")
 	}
 
-	if !IsReservedHubName(".lyx", nil) {
-		t.Errorf("IsReservedHubName(%q, nil) = false; want true", ".lyx")
+	if !IsReservedHubName(".lym", nil) {
+		t.Errorf("IsReservedHubName(%q, nil) = false; want true", ".lym")
 	}
 
 	slugReserved := slugReservedNames(cfg)
-	if count := countName(slugReserved, lyxdirs.DotLyxDirName); count != 1 {
-		t.Errorf("slugReservedNames(%+v) = %v; want exactly one %q, got %d", cfg, slugReserved, lyxdirs.DotLyxDirName, count)
+	if count := countName(slugReserved, lymdirs.DotLymDirName); count != 1 {
+		t.Errorf("slugReservedNames(%+v) = %v; want exactly one %q, got %d", cfg, slugReserved, lymdirs.DotLymDirName, count)
 	}
 }
 
-// TestDeployedLyxPathspec_YieldsNoDuplicateLyx asserts that a deployed `pathspec: "_lyx _pattern"`
-// Config — `_lyx` arriving from both the structural set and cfg.Dirs() in the same call — yields no
-// duplicate `_lyx` in the wired set, the routing set, or the slug-reservation set. Without dedup,
+// TestDeployedLymPathspec_YieldsNoDuplicateLym asserts that a deployed `pathspec: "_lym _pattern"`
+// Config — `_lym` arriving from both the structural set and cfg.Dirs() in the same call — yields no
+// duplicate `_lym` in the wired set, the routing set, or the slug-reservation set. Without dedup,
 // duplicate names would reach WarpJunctions, ScopedPathspec, and status output.
-// The `"_lyx _pattern"` value is deliberate and is not retargeted to `_extra` like this batch's other
+// The `"_lym _pattern"` value is deliberate and is not retargeted to `_extra` like this batch's other
 // exemplar Config values: per the no-migration decision (see the plan's Shared Decisions), a deployed
 // repo's pathspec naming `_pattern` is exactly what an already-deployed fabric.yaml keeps indefinitely
 // — this task never migrates existing config values — so this is the only test in the package
@@ -84,39 +84,39 @@ func TestStructuralNameSets_ForAConfigNamingNeitherStructuralDirectory(t *testin
 // fabric.yaml and never widens it, so an already-deployed repo stays on its existing value forever
 // and only a fresh clone picks up the new empty template default.
 //
-//testtiming:keep a deployed "_lyx _pattern" pathspec yielding exactly one _lyx in the wired, routing and slug-reserved sets; coverage of its blocks by other tests does not show an assertion of this
-func TestDeployedLyxPathspec_YieldsNoDuplicateLyx(t *testing.T) {
-	cfg := Config{Pathspec: "_lyx _pattern"}
+//testtiming:keep a deployed "_lym _pattern" pathspec yielding exactly one _lym in the wired, routing and slug-reserved sets; coverage of its blocks by other tests does not show an assertion of this
+func TestDeployedLymPathspec_YieldsNoDuplicateLym(t *testing.T) {
+	cfg := Config{Pathspec: "_lym _pattern"}
 
 	wired := wiredNamesFromConfig(cfg)
-	if got := countName(wired, "_lyx"); got != 1 {
-		t.Errorf("wiredNamesFromConfig(%+v) = %v; want exactly one %q, got %d", cfg, wired, "_lyx", got)
+	if got := countName(wired, "_lym"); got != 1 {
+		t.Errorf("wiredNamesFromConfig(%+v) = %v; want exactly one %q, got %d", cfg, wired, "_lym", got)
 	}
 
 	routing := pathspecNames(cfg)
-	if got := countName(routing, "_lyx"); got != 1 {
-		t.Errorf("pathspecNames(%+v) = %v; want exactly one %q, got %d", cfg, routing, "_lyx", got)
+	if got := countName(routing, "_lym"); got != 1 {
+		t.Errorf("pathspecNames(%+v) = %v; want exactly one %q, got %d", cfg, routing, "_lym", got)
 	}
 
 	slugReserved := slugReservedNames(cfg)
-	if got := countName(slugReserved, "_lyx"); got != 1 {
-		t.Errorf("slugReservedNames(%+v) = %v; want exactly one %q, got %d", cfg, slugReserved, "_lyx", got)
+	if got := countName(slugReserved, "_lym"); got != 1 {
+		t.Errorf("slugReservedNames(%+v) = %v; want exactly one %q, got %d", cfg, slugReserved, "_lym", got)
 	}
 }
 
 // TestHubReservedNames_StillReturnsExactlyTheThreeHubStructuralTokens asserts that HubReservedNames()
-// — the junction-wiring block set scanOnDiskJunctionNames relies on to see `.lyx` at all — still
-// returns exactly the three hub-structural tokens, with `.lyx` absent.
+// — the junction-wiring block set scanOnDiskJunctionNames relies on to see `.lym` at all — still
+// returns exactly the three hub-structural tokens, with `.lym` absent.
 //
-//testtiming:keep HubReservedNames returning exactly the three hub tokens without .lyx; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep HubReservedNames returning exactly the three hub tokens without .lym; coverage of its blocks by other tests does not show an assertion of this
 func TestHubReservedNames_StillReturnsExactlyTheThreeHubStructuralTokens(t *testing.T) {
 	want := []string{BoardDirName, portalsDirName, launchersDirName}
 	got := HubReservedNames()
 	if !stringSlicesEqual(got, want) {
 		t.Errorf("HubReservedNames() = %v; want %v", got, want)
 	}
-	if containsName(got, ".lyx") {
-		t.Errorf("HubReservedNames() = %v; want it to NEVER contain %q", got, ".lyx")
+	if containsName(got, ".lym") {
+		t.Errorf("HubReservedNames() = %v; want it to NEVER contain %q", got, ".lym")
 	}
 }
 

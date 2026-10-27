@@ -65,7 +65,7 @@ func TestInnerRun_HaltedStatesWaitExemptWithoutSpawning(t *testing.T) {
 				}
 				deps.PairDir = func() (string, error) { return "/wt/task", nil }
 				deps.StopReport = func() (string, time.Time, bool, error) {
-					return "/wt/task/_lyx/stop-report.md", clock.Now(), true, nil
+					return "/wt/task/_lym/stop-report.md", clock.Now(), true, nil
 				}
 			}
 
@@ -76,7 +76,7 @@ func TestInnerRun_HaltedStatesWaitExemptWithoutSpawning(t *testing.T) {
 			if err != nil || outcome != shedengine.Stuck || !ptr.BudgetExempt {
 				t.Fatalf("Call() = %v %+v %v; want an exempt Stuck", outcome, ptr, err)
 			}
-			for _, want := range []string{string(tt.state), "loom session halted", tt.producer, "lyx loom resume", "lyx loom start"} {
+			for _, want := range []string{string(tt.state), "loom session halted", tt.producer, "lym loom resume", "lym loom start"} {
 				if !strings.Contains(clock.lastReason(), want) {
 					t.Errorf("wait reason = %q; want substring %q", clock.lastReason(), want)
 				}
@@ -239,7 +239,7 @@ func driverStrandScript(strands ...ChildDriverStrand) func(context.Context) (Chi
 const reviveFailedWarn = "the revive left the child's driver strand not live"
 
 // TestInnerRun_HaltedRevivesADeadDriverOncePerEpisode asserts a halted child's dead driver strand is revived once per episode however many passes it takes, that the child is never spawned or resumed,
-// that a retiring, live or absent strand is not revived, and that the reason names `lyx loom resume` and, only when no driver can be woken, `lyx loom start` too.
+// that a retiring, live or absent strand is not revived, and that the reason names `lym loom resume` and, only when no driver can be woken, `lym loom start` too.
 func TestInnerRun_HaltedRevivesADeadDriverOncePerEpisode(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -307,11 +307,11 @@ func TestInnerRun_HaltedRevivesADeadDriverOncePerEpisode(t *testing.T) {
 			if got := strings.Count(buf.String(), reviveFailedWarn); got != tt.wantWarns {
 				t.Errorf("revive warn count = %d; want %d\nlog: %s", got, tt.wantWarns, buf.String())
 			}
-			if !strings.Contains(reason, `"lyx loom resume"`) {
-				t.Errorf("wait reason = %q; want it to name lyx loom resume", reason)
+			if !strings.Contains(reason, `"lym loom resume"`) {
+				t.Errorf("wait reason = %q; want it to name lym loom resume", reason)
 			}
-			if got := strings.Contains(reason, `"lyx loom start"`); got != tt.wantStart {
-				t.Errorf("wait reason = %q; names lyx loom start = %v, want %v", reason, got, tt.wantStart)
+			if got := strings.Contains(reason, `"lym loom start"`); got != tt.wantStart {
+				t.Errorf("wait reason = %q; names lym loom start = %v, want %v", reason, got, tt.wantStart)
 			}
 			raw, err := os.ReadFile(revivedFile(scratchDir, "innerrun"))
 			if tt.wantMarkerAs == "" {

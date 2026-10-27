@@ -1,6 +1,6 @@
 // jsonhelp.go implements the global --json flag, its help renderer and the HelpFunc installer for the clihelp package.
-// The global --json flag turns every invocation into a help request: lyx --json, lyx <module> --json and lyx <module> <cmd> --json all print structured JSON describing the command's name, short/long description, immediate non-hidden subcommands and local non-meta flags, exit 0, and never run the command.
-// A command that declares its own local --json flag (lyx shed status --json) shadows the global one, so there --json keeps the command's own meaning and the command runs.
+// The global --json flag turns every invocation into a help request: lym --json, lym <module> --json and lym <module> <cmd> --json all print structured JSON describing the command's name, short/long description, immediate non-hidden subcommands and local non-meta flags, exit 0, and never run the command.
+// A command that declares its own local --json flag (lym shed status --json) shadows the global one, so there --json keeps the command's own meaning and the command runs.
 
 package clihelp
 

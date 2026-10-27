@@ -37,7 +37,7 @@ var paneCreationAllowlist = []scankit.Entry{
 	},
 	{
 		Key: "internal/reedengine/selvagepane.go",
-		Why: "Selvage's own split, exempt by name per the Pane Binary Resolution clause: Selvage is a one-row status band with no operator input and no lyx invocation",
+		Why: "Selvage's own split, exempt by name per the Pane Binary Resolution clause: Selvage is a one-row status band with no operator input and no lym invocation",
 	},
 	{
 		Key: "internal/reedengine/probe.go",
@@ -49,7 +49,7 @@ var paneCreationAllowlist = []scankit.Entry{
 var windowCreationAllowlist = []scankit.Entry{
 	{
 		Key: "internal/reedengine/spawn.go",
-		Why: "the one window-creation helper, newWindowLocked: own windows open through it with a bare shell pane that then runs the same prelude-composing tail as every strand pane, and OpenWindow opens its `lyx` command through it, composed by composeWindowCommand, which carries the pane-binary prelude",
+		Why: "the one window-creation helper, newWindowLocked: own windows open through it with a bare shell pane that then runs the same prelude-composing tail as every strand pane, and OpenWindow opens its `lym` command through it, composed by composeWindowCommand, which carries the pane-binary prelude",
 	},
 	{
 		Key: "internal/reedengine/probe.go",

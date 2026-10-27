@@ -21,7 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
-// TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGate drives "run" from a temporary directory that is not a git repository at all -- lyxcwd.Resolve fails there, so preflight.HubPresent folds it into standalone mode rather than refusing outright.
+// TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGate drives "run" from a temporary directory that is not a git repository at all -- lymcwd.Resolve fails there, so preflight.HubPresent folds it into standalone mode rather than refusing outright.
 // It redirects the standalone state directory to a temporary one via XDG_STATE_HOME (the per-OS variable standalonestate.Derive reads on Linux, the platform this test runs on) before calling RunCLIIn, since without that redirect the real Derive would resolve into the operator's actual home directory.
 // The redirect is why this test is not marked t.Parallel(): t.Setenv panics under a parallel test.
 //
@@ -36,7 +36,7 @@ func TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("standalonestate.Derive(%q) = %v; want nil error", target, err)
 	}
-	seedMissingIntentPlanDir(t, filepath.Join(stateDir, "_lyx", "plan"))
+	seedMissingIntentPlanDir(t, filepath.Join(stateDir, "_lym", "plan"))
 	tmuxPath, err := exec.LookPath("tmux")
 	if err != nil {
 		t.Skipf("tmux not found on PATH: %v", err)
@@ -63,7 +63,7 @@ func TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGate(t *testing.T) {
 // tearDownStandaloneReed registers a t.Cleanup that brings down the standalone reed session this test's own invocation boots, addressed through the same standalonegeom.ReedGeometry the CLI's wiring derives.
 //
 // It exists because the `run` verb boots that session (wiring.go's reedUp seam) BEFORE websterengine.Run reaches the plan-validation gate this test asserts on, so the assertion cannot be made without a real tmux server coming up.
-// Nothing else ever takes it down: the target it was derived from is a t.TempDir() that is deleted out from under it, and each execution derives a fresh hash8, so the leak does not even coalesce — it was one orphaned `tmux -L lyx-<hash8>` server per run of this suite, on every machine that ran it, forever (crucible round opus-medium-r5, R5-1).
+// Nothing else ever takes it down: the target it was derived from is a t.TempDir() that is deleted out from under it, and each execution derives a fresh hash8, so the leak does not even coalesce — it was one orphaned `tmux -L lym-<hash8>` server per run of this suite, on every machine that ran it, forever (crucible round opus-medium-r5, R5-1).
 //
 // Registered BEFORE the invocation rather than after it, so a t.Fatal inside the assertions still tears the server down.
 // Down's own error is reported rather than ignored: a cleanup that silently fails is how this leak would come back.

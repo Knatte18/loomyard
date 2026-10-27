@@ -91,7 +91,7 @@ func TestRunCLI_ColdHub(t *testing.T) {
 		if !strings.Contains(errMsg, "--name") {
 			t.Errorf("RunCLI(add --if-absent, no --name) error = %q; want it to name the --name requirement", errMsg)
 		}
-		noSessionMsg := `no reed session; run "lyx reed up"`
+		noSessionMsg := `no reed session; run "lym reed up"`
 		if errMsg == noSessionMsg {
 			t.Errorf("RunCLI(add --if-absent, no --name) error = %q; want the --name rejection to precede the session check, not the no-session message", errMsg)
 		}
@@ -132,7 +132,7 @@ func TestRunCLI_ColdHub(t *testing.T) {
 			t.Errorf("RunCLI(remove) before up = %d; want 1 (no live tmux session)", exitCode)
 		}
 
-		wantErr := `no reed session; run "lyx reed up"`
+		wantErr := `no reed session; run "lym reed up"`
 		if errMsg := envelope.Decode(t, out.String()).Error; errMsg != wantErr {
 			t.Errorf("RunCLI(remove) before up error = %q; want %q", errMsg, wantErr)
 		}
@@ -140,10 +140,10 @@ func TestRunCLI_ColdHub(t *testing.T) {
 		return
 	}
 
-	// StatusNotUp_EnrichedResumeHint verifies that running `status` before `up` with persisted strands surfaces the enriched "lyx reed resume" message.
+	// StatusNotUp_EnrichedResumeHint verifies that running `status` before `up` with persisted strands surfaces the enriched "lym reed resume" message.
 	// It removes the state file it persists, so the next step finds the worktree cold again.
 	if !t.Run("StatusNotUp_EnrichedResumeHint", func(t *testing.T) {
-		stateDir := filepath.Join(h.Location.WorktreePath(), ".lyx")
+		stateDir := filepath.Join(h.Location.WorktreePath(), ".lym")
 		st := &reedengine.ReedState{
 			Socket:  "test-socket",
 			Session: "test-session",
@@ -168,7 +168,7 @@ func TestRunCLI_ColdHub(t *testing.T) {
 			t.Errorf("RunCLI(status) before up = %d; want 1 (no live tmux session)", exitCode)
 		}
 
-		wantErr := `no reed session (2 strands persisted); run "lyx reed resume" to rebuild, or "lyx reed up" for a bare substrate`
+		wantErr := `no reed session (2 strands persisted); run "lym reed resume" to rebuild, or "lym reed up" for a bare substrate`
 		if errMsg := envelope.Decode(t, out.String()).Error; errMsg != wantErr {
 			t.Errorf("RunCLI(status) before up error = %q; want %q", errMsg, wantErr)
 		}

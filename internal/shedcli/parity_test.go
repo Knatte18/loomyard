@@ -1,10 +1,10 @@
 //go:build tier1
 
-// parity_test.go asserts byte-identical envelopes from the same fixture across the two invocation paths -- "lyx <module> <verb> [<run-id>]" and "lyx shed <verb> [<run-id>]" -- for every verb/ recipe pair this table supports, plus the lightweight-wiring proof.
+// parity_test.go asserts byte-identical envelopes from the same fixture across the two invocation paths -- "lym <module> <verb> [<run-id>]" and "lym shed <verb> [<run-id>]" -- for every verb/ recipe pair this table supports, plus the lightweight-wiring proof.
 //
-// Every case here is tier 2: RunCLIIn reaches each module's PersistentPreRunE and therefore lyxcwd.Resolve, which spawns git through internal/gitexec, and the Test Tier Purity Invariant bans gitexec.Run outside tier-tagged files -- loom's own run additionally calls c.reed.Up() and fabricengine.Open. internal/loomcli/parity_test.go is the precedent for the comparison shape but not for the tier -- its own header states no test there calls RunCLIIn, so it stays tier 1.
+// Every case here is tier 2: RunCLIIn reaches each module's PersistentPreRunE and therefore lymcwd.Resolve, which spawns git through internal/gitexec, and the Test Tier Purity Invariant bans gitexec.Run outside tier-tagged files -- loom's own run additionally calls c.reed.Up() and fabricengine.Open. internal/loomcli/parity_test.go is the precedent for the comparison shape but not for the tier -- its own header states no test there calls RunCLIIn, so it stays tier 1.
 //
-// Every case that drives a verb through "lyx shed" first writes the addressed run-id's own seed via shedrun.WriteSeed: shedcli's own pre-run reads a seed before it can resolve which recipe arms the invocation, and both module paths (loomcli's own resolveRunID, battencli's own armSeed) apply their own seed-presence check too, so a missing seed would refuse before either side ever reaches the fixture behaviour a case means to compare.
+// Every case that drives a verb through "lym shed" first writes the addressed run-id's own seed via shedrun.WriteSeed: shedcli's own pre-run reads a seed before it can resolve which recipe arms the invocation, and both module paths (loomcli's own resolveRunID, battencli's own armSeed) apply their own seed-presence check too, so a missing seed would refuse before either side ever reaches the fixture behaviour a case means to compare.
 //
 // The comparison itself is a plain byte-for-byte equality of the two captured stdout buffers, rather than loomcli's own three-way producer-vs-CLI verdict mapping: this suite compares two already- materialized CLI outputs against each other, not a producer's own outcome against a CLI's envelope, so there is no second vocabulary to map onto a shared verdict type -- byte equality is the direct and correct check, and it is what "byte-identical" means to a supervisor parsing the line.
 //
@@ -28,27 +28,25 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomcli"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
-// lyxcwdResolveWorktreeForTest resolves cwd -- a pair's code worktree root -- into a *lyxcwd.Location
-// via lyxcwd.ResolveWorktree, which applies no cwd gate: the caller here holds a worktree root, not
-// an acting cwd, exactly as internal/battencli's own taskWorktreeLocation does.
-func lyxcwdResolveWorktreeForTest(t *testing.T, cwd string) (*lyxcwd.Location, error) {
+// lymcwdResolveWorktreeForTest resolves cwd -- a pair's code worktree root -- into a *lymcwd.Location via lymcwd.ResolveWorktree, which applies no cwd gate: the caller here holds a worktree root, not an acting cwd, exactly as internal/battencli's own taskWorktreeLocation does.
+func lymcwdResolveWorktreeForTest(t *testing.T, cwd string) (*lymcwd.Location, error) {
 	t.Helper()
-	return lyxcwd.ResolveWorktree(cwd)
+	return lymcwd.ResolveWorktree(cwd)
 }
 
 // seedRunForTest writes runID's seed under the pair rooted at cwd, naming recipe, t.Fatal-ing on
-// failure. Every case driving a verb through "lyx shed" calls this first: shedcli's own pre-run
+// failure. Every case driving a verb through "lym shed" calls this first: shedcli's own pre-run
 // reads a seed before it can resolve which recipe arms the invocation.
 func seedRunForTest(t *testing.T, cwd, runID, recipe string) {
 	t.Helper()
-	location, err := lyxcwdResolveWorktreeForTest(t, cwd)
+	location, err := lymcwdResolveWorktreeForTest(t, cwd)
 	if err != nil {
 		t.Fatalf("resolve worktree %s: %v", cwd, err)
 	}
@@ -61,7 +59,7 @@ func seedRunForTest(t *testing.T, cwd, runID, recipe string) {
 // shedrun.SelfRunID.
 func seedLoomStatus(t *testing.T, cwd string, st shedengine.Status) {
 	t.Helper()
-	location, err := lyxcwdResolveWorktreeForTest(t, cwd)
+	location, err := lymcwdResolveWorktreeForTest(t, cwd)
 	if err != nil {
 		t.Fatalf("resolve worktree %s: %v", cwd, err)
 	}
@@ -92,7 +90,7 @@ func runBoth(t *testing.T, label string, moduleFn, shedFn func() (exitCode int, 
 	}
 }
 
-// parityLoomRunNoStatusFile drives "lyx loom run" and "lyx shed run" over a fresh pair seeded at "self" for loom but with no loom status file, which refuses at the very first statement in loomPreRun -- well above reed.Up() and fabricengine.Open.
+// parityLoomRunNoStatusFile drives "lym loom run" and "lym shed run" over a fresh pair seeded at "self" for loom but with no loom status file, which refuses at the very first statement in loomPreRun -- well above reed.Up() and fabricengine.Open.
 func parityLoomRunNoStatusFile(t *testing.T, h *hubforge.Hub) {
 	hubforge.AddPair(t, h, "parity-run")
 	cwd := h.PairCodeWorktree("parity-run")
@@ -127,13 +125,13 @@ func readRecordedEnvelope(t *testing.T, label string, printed map[string]any) ma
 	return envelope.Decode(t, string(data)).Raw
 }
 
-// parityLoomStepRunLockBusy drives "lyx loom step" and "lyx shed step" over a pair seeded at "self" for loom whose run lock is already held, which refuses at the early run-lock probe with kind: busy -- above seedAndCommitBootstrap and above reed Up.
+// parityLoomStepRunLockBusy drives "lym loom step" and "lym shed step" over a pair seeded at "self" for loom whose run lock is already held, which refuses at the early run-lock probe with kind: busy -- above seedAndCommitBootstrap and above reed Up.
 func parityLoomStepRunLockBusy(t *testing.T, h *hubforge.Hub) {
 	hubforge.AddPair(t, h, "parity-step")
 	cwd := h.PairCodeWorktree("parity-step")
 	seedRunForTest(t, cwd, shedrun.SelfRunID, shedrun.RecipeLoom)
 
-	location, err := lyxcwdResolveWorktreeForTest(t, cwd)
+	location, err := lymcwdResolveWorktreeForTest(t, cwd)
 	if err != nil {
 		t.Fatalf("resolve worktree %s: %v", cwd, err)
 	}
@@ -204,7 +202,7 @@ func parityLoomStepRunLockBusy(t *testing.T, h *hubforge.Hub) {
 	}
 }
 
-// parityBattenStepRunLockBusy drives "lyx batten step <slug>" and "lyx shed step <slug>" over a batten-seeded slug whose run lock is already held, which refuses with kind: busy, and asserts the envelope names the slug's scratch_dir and no friction_dir.
+// parityBattenStepRunLockBusy drives "lym batten step <slug>" and "lym shed step <slug>" over a batten-seeded slug whose run lock is already held, which refuses with kind: busy, and asserts the envelope names the slug's scratch_dir and no friction_dir.
 func parityBattenStepRunLockBusy(t *testing.T, h *hubforge.Hub) {
 	cwd := h.PrimeWorktree()
 	const slug = "parity-batten-step-busy"
@@ -251,7 +249,7 @@ func parityBattenStepRunLockBusy(t *testing.T, h *hubforge.Hub) {
 	}
 }
 
-// parityLoomStatusSeeded drives "lyx loom status" and "lyx shed status" over a pair seeded at "self" for loom with a seeded status file, exercising the success envelope: status is read-only and lightweight-wired, and never reaches the substrate on any path.
+// parityLoomStatusSeeded drives "lym loom status" and "lym shed status" over a pair seeded at "self" for loom with a seeded status file, exercising the success envelope: status is read-only and lightweight-wired, and never reaches the substrate on any path.
 func parityLoomStatusSeeded(t *testing.T, h *hubforge.Hub) {
 	hubforge.AddPair(t, h, "parity-status")
 	cwd := h.PairCodeWorktree("parity-status")
@@ -277,7 +275,7 @@ func parityLoomStatusSeeded(t *testing.T, h *hubforge.Hub) {
 	)
 }
 
-// parityLoomPauseSeeded drives "lyx loom pause --after" and "lyx shed pause --after" over a pair seeded at "self" for loom with a seeded status file, exercising the success envelope. The envelope carries status_file and the recorded conditions; the shed call clears the loom call's condition first, so neither answers a replaced one.
+// parityLoomPauseSeeded drives "lym loom pause --after" and "lym shed pause --after" over a pair seeded at "self" for loom with a seeded status file, exercising the success envelope. The envelope carries status_file and the recorded conditions; the shed call clears the loom call's condition first, so neither answers a replaced one.
 func parityLoomPauseSeeded(t *testing.T, h *hubforge.Hub) {
 	hubforge.AddPair(t, h, "parity-pause")
 	cwd := h.PairCodeWorktree("parity-pause")
@@ -308,14 +306,14 @@ func parityLoomPauseSeeded(t *testing.T, h *hubforge.Hub) {
 	)
 }
 
-// parityBattenRunStateDone drives "lyx batten run <slug>" and "lyx shed run <slug>" over a slug seeded for batten whose persisted status is StateDone, which refuses inside batten's own PreRun before BuildShed is ever called.
+// parityBattenRunStateDone drives "lym batten run <slug>" and "lym shed run <slug>" over a slug seeded for batten whose persisted status is StateDone, which refuses inside batten's own PreRun before BuildShed is ever called.
 func parityBattenRunStateDone(t *testing.T, h *hubforge.Hub) {
 	cwd := h.PrimeWorktree()
 	const slug = "parity-batten-done"
 	seedRunForTest(t, cwd, slug, shedrun.RecipeBatten)
 
-	// battencli.StatusLock lives under the ephemeral .lyx tree, a different parent directory than
-	// the durable _lyx one seedRunForTest's own shedrun.WriteSeed just created; state.WriteJSON
+	// battencli.StatusLock lives under the ephemeral .lym tree, a different parent directory than
+	// the durable _lym one seedRunForTest's own shedrun.WriteSeed just created; state.WriteJSON
 	// only MkdirAlls its own status-file parent, never the lock's.
 	statusLockPath := battencli.StatusLock(h.Location, slug)
 	if err := os.MkdirAll(filepath.Dir(statusLockPath), 0o755); err != nil {
@@ -342,14 +340,14 @@ func parityBattenRunStateDone(t *testing.T, h *hubforge.Hub) {
 	)
 }
 
-// parityLightweightWiringStatusSucceedsWhenRunRefuses is the proof "lyx shed status" reaches loom's lightweight wiring rather than the full wire(): over a pair seeded at "self" for loom whose loom module config is deliberately broken in a way that refuses "lyx shed run", "lyx shed status" must still succeed.
+// parityLightweightWiringStatusSucceedsWhenRunRefuses is the proof "lym shed status" reaches loom's lightweight wiring rather than the full wire(): over a pair seeded at "self" for loom whose loom module config is deliberately broken in a way that refuses "lym shed run", "lym shed status" must still succeed.
 // A verb-blind arming would silently reintroduce the exact hazard wireLightweight exists to avoid, on this path only.
 func parityLightweightWiringStatusSucceedsWhenRunRefuses(t *testing.T, h *hubforge.Hub) {
 	hubforge.AddPair(t, h, "parity-lightweight")
 	cwd := h.PairCodeWorktree("parity-lightweight")
 	seedRunForTest(t, cwd, shedrun.SelfRunID, shedrun.RecipeLoom)
 
-	location, err := lyxcwdResolveWorktreeForTest(t, cwd)
+	location, err := lymcwdResolveWorktreeForTest(t, cwd)
 	if err != nil {
 		t.Fatalf("resolve worktree %s: %v", cwd, err)
 	}
@@ -363,7 +361,7 @@ func parityLightweightWiringStatusSucceedsWhenRunRefuses(t *testing.T, h *hubfor
 	// modelspec.Parse(cfg.Discussion) call fails on it, which is enough to fail the full wire()
 	// without touching YAML syntax. wireLightweight never loads this file at all, so status must
 	// still succeed.
-	cfgPath := filepath.Join(location.AnchorPath(), "_lyx", "config", "loom.yaml")
+	cfgPath := filepath.Join(location.AnchorPath(), "_lym", "config", "loom.yaml")
 	if err := os.WriteFile(cfgPath, []byte("discussion: \"::not-a-valid-modelspec::\"\n"), 0o644); err != nil {
 		t.Fatalf("write broken loom.yaml: %v", err)
 	}

@@ -1,4 +1,4 @@
-// intake.go holds the `lyx board intake` verb group: list, import and close against the hub's own repository.
+// intake.go holds the `lym board intake` verb group: list, import and close against the hub's own repository.
 //
 // It does the mechanics of intake and never triages: the caller decides what each issue becomes.
 // boardengine owns the store side and hubissues the GitHub side; this file only wires the two.
@@ -56,8 +56,8 @@ With --full, each issue also carries body, labels, url, comments (the comment co
 The filtering is the same in both modes.
 
 Examples:
-  lyx board intake list
-  lyx board intake list --full`,
+  lym board intake list
+  lym board intake list --full`,
 		Args: cobra.NoArgs,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			repo, err := hubRepo()
@@ -85,14 +85,14 @@ Fields:
 
 A new note carries the issue's configured labels and needs exactly one type label. A fold appends the
 issue to the entry's body and issues list. Either way the issue's comments, oldest first and without
-lyx's own import pointers, are carried in the body. An issue an entry already records is a no-op that prints the
+lym's own import pointers, are carried in the body. An issue an entry already records is a no-op that prints the
 recording entries and touches nothing on GitHub. A success prints slug, issue, labels and dropped,
 the slug being the entry folded into for a fold. The board is written before GitHub is touched; when
 the comment or close then fails, the error carries the slug, issue, labels and dropped it would have printed, and the "close" payload to run.
 
 Examples:
-  lyx board intake import '{"issue":12,"slug":"retry-backoff"}'
-  lyx board intake import '{"issue":13,"into":"retry-backoff"}'` + slugLimitNote(),
+  lym board intake import '{"issue":12,"slug":"retry-backoff"}'
+  lym board intake import '{"issue":13,"into":"retry-backoff"}'` + slugLimitNote(),
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -119,7 +119,7 @@ Fields:
   "completed" bool    — close as completed instead of not planned (optional)
 
 Example:
-  lyx board intake close '{"issue":14,"reason":"Duplicate of #12."}'`,
+  lym board intake close '{"issue":14,"reason":"Duplicate of #12."}'`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -136,13 +136,13 @@ Example:
 	return cmd
 }
 
-// importPointerFormat is the comment lyx posts on an issue after importing it, with the entry slug in backticks.
+// importPointerFormat is the comment lym posts on an issue after importing it, with the entry slug in backticks.
 const importPointerFormat = "Imported into the board as `%s`."
 
 // importPointerPattern matches a whole comment body that is an import pointer for any slug.
 var importPointerPattern = regexp.MustCompile(`^` + strings.Replace(regexp.QuoteMeta(importPointerFormat), "%s", "[^`]*", 1) + `$`)
 
-// importPointer builds the comment lyx posts on an issue after importing it as the entry named slug.
+// importPointer builds the comment lym posts on an issue after importing it as the entry named slug.
 func importPointer(slug string) string {
 	return fmt.Sprintf(importPointerFormat, slug)
 }
@@ -243,7 +243,7 @@ func decodeIssueNumber(fields map[string]json.RawMessage) (int, error) {
 }
 
 // inboxIssue converts a fetched issue and its comments, oldest first, to the boardengine view of it.
-// A comment that is an import pointer is dropped, since lyx posted it and it carries nothing.
+// A comment that is an import pointer is dropped, since lym posted it and it carries nothing.
 func inboxIssue(issue hubissues.Issue, comments []hubissues.IssueComment) boardengine.InboxIssue {
 	var carried []boardengine.IssueComment
 	for _, comment := range comments {

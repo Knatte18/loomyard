@@ -11,7 +11,7 @@ A raw `RunGit` or `r.run` call stands only at a site pinned with a `//gitexec:ra
 
 ## Never force-add
 
-A transient file is kept out of the index through `.git/info/exclude`, and lyx never runs `git add -f`.
+A transient file is kept out of the index through `.git/info/exclude`, and lym never runs `git add -f`.
 `internal/gitrepo/noforceadd_test.go` enforces it.
 
 ## The go-git read helper

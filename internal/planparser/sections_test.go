@@ -50,7 +50,7 @@ func TestParsePlan_PlanLevelSections(t *testing.T) {
 			t.Errorf("plan.RenameMechanic = %q; want %q", plan.RenameMechanic, wantRenameMechanic)
 		}
 
-		wantVerify := "go test ./internal/boardcli/... ./internal/boardengine/... ./cmd/lyx/..."
+		wantVerify := "go test ./internal/boardcli/... ./internal/boardengine/... ./cmd/lym/..."
 		if plan.Verify != wantVerify {
 			t.Errorf("plan.Verify = %q; want %q", plan.Verify, wantVerify)
 		}

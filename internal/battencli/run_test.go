@@ -26,7 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
@@ -43,7 +43,7 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 	dir := t.TempDir()
 
 	c := &battenCLI{
-		location: &lyxcwd.Location{RepoName: "example", HubPath: dir, WorktreeName: "hub-repo", AnchorRel: "."},
+		location: &lymcwd.Location{RepoName: "example", HubPath: dir, WorktreeName: "hub-repo", AnchorRel: "."},
 		slug:     "some-slug",
 	}
 	c.shedPaths = shedbuild.ShedPaths{
@@ -124,7 +124,7 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 	c.env.Setting = func(module, key string) (any, error) { return false, nil }
 	c.env.ExecutableSetting = func(module, key string) (any, error) { return "", nil }
 	c.env.SettingKnown = func(module, key string) error { return nil }
-	c.env.Resume = "lyx batten run some-slug"
+	c.env.Resume = "lym batten run some-slug"
 	c.untilStop = inProcessUntilStop(t, c)
 	return c
 }
@@ -165,7 +165,7 @@ func inProcessUntilStop(t *testing.T, c *battenCLI) func(ctx context.Context, at
 	}
 }
 
-// runCommand returns the run verb as "lyx batten run" mounts it: the shedverbs run command with its body replaced by driveRun.
+// runCommand returns the run verb as "lym batten run" mounts it: the shedverbs run command with its body replaced by driveRun.
 func runCommand(c *battenCLI) *cobra.Command {
 	cmd := battenVerbCommand(c, "run")
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error { return c.driveRun(cmd) }
@@ -183,8 +183,8 @@ func writeStatus(t *testing.T, c *battenCLI, st shedengine.Status) {
 
 // TestRunCmd_ResumeDispositions covers StateRunning, StateBlocked, StateFailed and StatePaused, each resuming silently from the persisted current producer, and an absent status file, which is a fresh start and not a refusal: every fake succeeds trivially, so the whole run completes and the verb reports success, with a history_length key matching the persisted history.
 // A run whose status carries a pause_after naming the first row stops paused, and the driver hands it back with no tackler; a run whose row fails again ends in an error envelope carrying the status error.
-// A resume runs the origin reconcile once: an active or unreachable verdict resumes, an ended verdict refuses naming the landing and "lyx cleanup --apply", a stopped verdict refuses with the branch's way forward verbatim followed by the re-run, and a reconcile error refuses with the error and the re-run; an absent status file never runs it.
-// Over fake owner seams, an owned_elsewhere verdict refuses naming the owner and "lyx adopt", a run-held entry with no owner resumes and the resume writes no owner, an unreachable origin reads the local board instead and writes nothing, a hub with no prime owner has this machine claim it, and a status still at Worktree-Create with no pair runs the start check and no reconcile.
+// A resume runs the origin reconcile once: an active or unreachable verdict resumes, an ended verdict refuses naming the landing and "lym cleanup --apply", a stopped verdict refuses with the branch's way forward verbatim followed by the re-run, and a reconcile error refuses with the error and the re-run; an absent status file never runs it.
+// Over fake owner seams, an owned_elsewhere verdict refuses naming the owner and "lym adopt", a run-held entry with no owner resumes and the resume writes no owner, an unreachable origin reads the local board instead and writes nothing, a hub with no prime owner has this machine claim it, and a status still at Worktree-Create with no pair runs the start check and no reconcile.
 func TestRunCmd_ResumeDispositions(t *testing.T) {
 	t.Parallel()
 
@@ -194,7 +194,7 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 	elsewhereReport := fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryOwnedElsewhere, Owner: "there", AdoptSubject: "some-beam"}}}
 	unreachableReport := fabricengine.OriginReport{Unreachable: true}
 	owning := func(fake fakeOwners) func() *fakeOwners { return func() *fakeOwners { return &fake } }
-	const stopWayForward = "`lyx fabric pull` in /hub/example"
+	const stopWayForward = "`lym fabric pull` in /hub/example"
 	stoppedReport := fabricengine.OriginReport{
 		Branches: []fabricengine.BranchOutcome{{Branch: "some-slug", Repo: "code", Slug: slug, State: fabricengine.BranchRewritten, WayForward: stopWayForward}},
 		Entries:  []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryStopped, WayForward: stopWayForward}},
@@ -239,12 +239,12 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 		{
 			name: "reconcile_ended", state: shedengine.StateRunning, wantReconcile: 1,
 			report:     fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryEnded, How: "done"}}},
-			wantErrors: []string{"landed", "lyx cleanup --apply", "from the prime"},
+			wantErrors: []string{"landed", "lym cleanup --apply", "from the prime"},
 		},
 		{
 			name: "reconcile_stopped", state: shedengine.StateRunning, wantReconcile: 1,
 			report:     stoppedReport,
-			wantErrors: []string{"branch some-slug", "rewritten", stopWayForward + "; then re-run lyx batten run " + slug},
+			wantErrors: []string{"branch some-slug", "rewritten", stopWayForward + "; then re-run lym batten run " + slug},
 		},
 		{
 			name: "reconcile_unreachable", state: shedengine.StateRunning, wantOutcome: "done", wantReconcile: 1,
@@ -266,14 +266,14 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 		{
 			name: "reconcile_error", state: shedengine.StateRunning, wantReconcile: 1,
 			reconcileErr: errors.New("origin refused the credentials"),
-			wantErrors:   []string{"origin refused the credentials", "fix the cause it names, then re-run lyx batten run " + slug},
+			wantErrors:   []string{"origin refused the credentials", "fix the cause it names, then re-run lym batten run " + slug},
 		},
 		{
 			name: "owner_elsewhere_verdict_refuses_naming_the_adopt", state: shedengine.StateRunning, producer: teardown, wantReconcile: 1,
 			owner:      owning(fakeOwners{machine: "here", owners: ownedBy("here", "", false)}),
 			report:     elsewhereReport,
 			wantExit:   dobbyengine.PassExitOwnedElsewhere,
-			wantErrors: []string{"there", "`lyx adopt some-beam`"},
+			wantErrors: []string{"there", "`lym adopt some-beam`"},
 		},
 		{
 			name: "run_held_entry_with_no_owner_resumes_writing_no_owner", state: shedengine.StateRunning, producer: teardown, wantOutcome: "done", wantReconcile: 1,
@@ -285,7 +285,7 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 			owner:      owning(fakeOwners{machine: "here", owners: ownedBy("here", "there", true)}),
 			report:     unreachableReport,
 			wantExit:   dobbyengine.PassExitOwnedElsewhere,
-			wantErrors: []string{"the local board shows", "there", "once origin answers", "lyx batten run " + slug, "`lyx adopt some-beam`"},
+			wantErrors: []string{"the local board shows", "there", "once origin answers", "lym batten run " + slug, "`lym adopt some-beam`"},
 		},
 		{
 			name: "unreachable_origin_with_an_unowned_run_held_entry_resumes_without_a_write", state: shedengine.StateRunning, producer: teardown, wantOutcome: "done", wantReconcile: 1,
@@ -309,7 +309,7 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 			report:     elsewhereReport,
 			wantSets:   []string{"prime"},
 			wantExit:   dobbyengine.PassExitOwnedElsewhere,
-			wantErrors: []string{"there", "`lyx adopt some-beam`"},
+			wantErrors: []string{"there", "`lym adopt some-beam`"},
 		},
 		{
 			name: "worktree_create_without_a_pair_runs_the_start_check_and_no_reconcile", state: shedengine.StateRunning, wantOutcome: "done",
@@ -592,7 +592,7 @@ func TestPauseCmd_AbsentFileRefuses(t *testing.T) {
 	if !strings.Contains(out.String(), "there is nothing running to pause") {
 		t.Errorf("pause() output = %q; want it to name the absent-file refusal", out.String())
 	}
-	if !strings.Contains(out.String(), "lyx batten run") {
+	if !strings.Contains(out.String(), "lym batten run") {
 		t.Errorf("pause() output = %q; want it to name batten's own entry verb as the remedy", out.String())
 	}
 }
@@ -732,7 +732,7 @@ func TestRecentHistory(t *testing.T) {
 func TestReadStuckReason(t *testing.T) {
 	scratchDir := t.TempDir()
 	const producer = "Worktree-Create"
-	const reason = `branch "crashcreate" already exists; switch a pair onto it with "lyx fabric checkout crashcreate"`
+	const reason = `branch "crashcreate" already exists; switch a pair onto it with "lym fabric checkout crashcreate"`
 
 	if _, found := readStuckReason(scratchDir, producer); found {
 		t.Fatalf("precondition: readStuckReason found a reason before any was written")
@@ -789,7 +789,7 @@ func TestHaltedOverDoneChild(t *testing.T) {
 			if !tt.wantFlag {
 				return
 			}
-			for _, want := range []string{"batten is " + string(tt.batten), `"lyx batten run some-slug"`, "lands the run through Land"} {
+			for _, want := range []string{"batten is " + string(tt.batten), `"lym batten run some-slug"`, "lands the run through Land"} {
 				if !strings.Contains(got, want) {
 					t.Errorf("flag %q lacks %q", got, want)
 				}

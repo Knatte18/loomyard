@@ -1,4 +1,4 @@
-// anchor.go is `lyx fabric anchor [<slug>] [--set <dir>]`: it prints a worktree's anchor, or moves it to another directory of the warp.
+// anchor.go is `lym fabric anchor [<slug>] [--set <dir>]`: it prints a worktree's anchor, or moves it to another directory of the warp.
 // The refusals, the waits and the session, run and dobby steps around the move are this file's; the move itself is fabricengine's AnchorChange.
 
 package fabriccli
@@ -16,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/spf13/cobra"
@@ -26,7 +26,7 @@ import (
 const anchorPassPoll = 2 * time.Second
 
 // beamStartWayForward is the verb that starts the dobby a finished change could not.
-const beamStartWayForward = "lyx beam start"
+const beamStartWayForward = "lym beam start"
 
 // anchorRequest is one call of the verb.
 type anchorRequest struct {
@@ -50,7 +50,7 @@ type anchorResult struct {
 	NoOp bool
 	// PushError is the failure of the detached push a finished change spawns, which the next push of the worktree makes up.
 	PushError string
-	// DobbyStartError is the failure to start the worktree's dobby after a finished change, whose way forward is `lyx beam start`.
+	// DobbyStartError is the failure to start the worktree's dobby after a finished change, whose way forward is `lym beam start`.
 	DobbyStartError string
 	// Mutations is the record of what the call changed.
 	Mutations fabricengine.Mutations
@@ -92,29 +92,29 @@ type anchorDeps struct {
 	// Acting and Prime name the acting worktree and the hub's prime worktree.
 	Acting, Prime string
 	// Worktree returns the Location of the worktree called slug at its own anchor, and reports false when this machine holds no such worktree.
-	Worktree func(slug string) (location *lyxcwd.Location, held bool, err error)
+	Worktree func(slug string) (location *lymcwd.Location, held bool, err error)
 	// IsBeam reports whether the pair called slug is a beam, which runs a dobby.
 	IsBeam func(slug string) (bool, error)
 	// LocalBeams lists the beams this machine holds.
 	LocalBeams func() ([]string, error)
 	// ForeignOwner returns the machine other than this one that the board names as the worktree's effective owner, empty when none does.
 	ForeignOwner func(slug string) (string, error)
-	// AdoptSubject returns the beam or `root` that `lyx adopt` takes to move the worktree called slug, read from the local board.
+	// AdoptSubject returns the beam or `root` that `lym adopt` takes to move the worktree called slug, read from the local board.
 	AdoptSubject func(slug string) (string, error)
 	// UpstreamAnchor returns the anchor the worktree's weft records at its fetched upstream tip, and found false when it has no upstream.
-	UpstreamAnchor func(location *lyxcwd.Location) (anchor string, found bool, err error)
+	UpstreamAnchor func(location *lymcwd.Location) (anchor string, found bool, err error)
 	// MoveRecord reads the move record of the worktree's weft.
-	MoveRecord func(location *lyxcwd.Location) (record fabricengine.MoveRecord, found bool, err error)
+	MoveRecord func(location *lymcwd.Location) (record fabricengine.MoveRecord, found bool, err error)
 	// ReedHeld reports whether the worktree's reed state holds a session or a strand, live or stored.
-	ReedHeld func(location *lyxcwd.Location) (bool, error)
+	ReedHeld func(location *lymcwd.Location) (bool, error)
 	// DriverLockHeld reports whether the worktree's run driver lock is held.
-	DriverLockHeld func(location *lyxcwd.Location) (bool, error)
+	DriverLockHeld func(location *lymcwd.Location) (bool, error)
 	// BattenLive reports whether a registered batten run of the worktree is live.
-	BattenLive func(location *lyxcwd.Location) (bool, error)
+	BattenLive func(location *lymcwd.Location) (bool, error)
 	// RunUnfinished reports whether the worktree's own run status, as checked out, names an unfinished run.
-	RunUnfinished func(location *lyxcwd.Location) (bool, error)
+	RunUnfinished func(location *lymcwd.Location) (bool, error)
 	// UpstreamRunUnfinished reports the same from the tree of the worktree's weft's fetched upstream tip.
-	UpstreamRunUnfinished func(location *lyxcwd.Location) (bool, error)
+	UpstreamRunUnfinished func(location *lymcwd.Location) (bool, error)
 	// PrimeRunUnfinished reports whether the prime's batten status of the run called slug names an unfinished run.
 	PrimeRunUnfinished func(slug string) (bool, error)
 	// DobbyPID returns the pid of the live dobby of the worktree, and live false when it runs none.
@@ -134,13 +134,13 @@ type anchorDeps struct {
 	// Note tells the operator what the verb waits on.
 	Note func(line string)
 	// AcquireParentLock takes the parent lock of the worktree's branch as the verb's own owner, queuing behind a holder, and returns its release.
-	AcquireParentLock func(ctx context.Context, location *lyxcwd.Location) (release func(), err error)
+	AcquireParentLock func(ctx context.Context, location *lymcwd.Location) (release func(), err error)
 	// EndDobbies ends the dobbies of the worktrees, leaving alone the processes registered with a role in spare, and returns the ones it ended.
 	EndDobbies func(worktrees []string, spare ...string) (ended []string, err error)
 	// EnsureDobbies starts the dobby of each worktree named that is not live, refusing one this machine does not own or whose landing hold stands.
 	EnsureDobbies func(worktrees []string) error
 	// Begin begins the change of the worktree's anchor in the engine.
-	Begin func(location *lyxcwd.Location, target string) (anchorChange, error)
+	Begin func(location *lymcwd.Location, target string) (anchorChange, error)
 	// ReopenLog moves the process's trace sink to dir.
 	ReopenLog func(dir string) error
 }
@@ -160,14 +160,14 @@ func changeAnchor(ctx context.Context, deps anchorDeps, req anchorRequest) (anch
 		return anchorResult{}, err
 	}
 	if !held {
-		return anchorResult{}, fmt.Errorf("no worktree called %q is present on this machine; `lyx fabric pairs` lists the pairs it holds", slug)
+		return anchorResult{}, fmt.Errorf("no worktree called %q is present on this machine; `lym fabric pairs` lists the pairs it holds", slug)
 	}
 	result := anchorResult{Slug: slug, Anchor: location.AnchorRel}
 	if req.Set == "" {
 		return result, nil
 	}
 
-	target, err := lyxcwd.ValidateAnchorRel(req.Set)
+	target, err := lymcwd.ValidateAnchorRel(req.Set)
 	if err != nil {
 		return result, fmt.Errorf("%w; choose another directory of the warp checkout", err)
 	}
@@ -178,9 +178,9 @@ func changeAnchor(ctx context.Context, deps anchorDeps, req anchorRequest) (anch
 }
 
 // refuseAnchorChange returns the refusal that stops the move of location's anchor to target before anything is touched, nil when none does.
-func refuseAnchorChange(deps anchorDeps, location *lyxcwd.Location, target string) error {
+func refuseAnchorChange(deps anchorDeps, location *lymcwd.Location, target string) error {
 	slug := location.WorktreeName
-	again := fmt.Sprintf("then run `lyx fabric anchor %s --set %s` again", slug, target)
+	again := fmt.Sprintf("then run `lym fabric anchor %s --set %s` again", slug, target)
 
 	_, standing, err := deps.MoveRecord(location)
 	if err != nil {
@@ -199,17 +199,17 @@ func refuseAnchorChange(deps anchorDeps, location *lyxcwd.Location, target strin
 	if reedHeld, err := deps.ReedHeld(location); err != nil {
 		return err
 	} else if reedHeld {
-		return fmt.Errorf("the reed state of %s holds a session or a strand; run `lyx reed down` in that worktree, %s", slug, again)
+		return fmt.Errorf("the reed state of %s holds a session or a strand; run `lym reed down` in that worktree, %s", slug, again)
 	}
 	if locked, err := deps.DriverLockHeld(location); err != nil {
 		return err
 	} else if locked {
-		return fmt.Errorf("the run driver of %s is live, its driver lock being held; wait for it, or run `lyx batten cancel %s`, %s", slug, slug, again)
+		return fmt.Errorf("the run driver of %s is live, its driver lock being held; wait for it, or run `lym batten cancel %s`, %s", slug, slug, again)
 	}
 	if live, err := deps.BattenLive(location); err != nil {
 		return err
 	} else if live {
-		return fmt.Errorf("a batten run of %s is live; wait for it to halt or finish, or run `lyx batten cancel %s`, %s", slug, slug, again)
+		return fmt.Errorf("a batten run of %s is live; wait for it to halt or finish, or run `lym batten cancel %s`, %s", slug, slug, again)
 	}
 	if err := refuseUnfinishedRun(deps, location, owner, target); err != nil {
 		return err
@@ -219,7 +219,7 @@ func refuseAnchorChange(deps anchorDeps, location *lyxcwd.Location, target strin
 
 // refuseForeignOwner refuses a move of a worktree another machine owns, unless target is the anchor the weft's fetched upstream tip already records.
 // The refusal names the three ways forward: adopting the worktree here, running the move on the owner machine, and taking the upstream tip's anchor when it differs from the checked-out one.
-func refuseForeignOwner(deps anchorDeps, location *lyxcwd.Location, owner, target string) error {
+func refuseForeignOwner(deps anchorDeps, location *lymcwd.Location, owner, target string) error {
 	slug := location.WorktreeName
 	upstream, hasUpstream, err := deps.UpstreamAnchor(location)
 	if err != nil {
@@ -234,13 +234,13 @@ func refuseForeignOwner(deps anchorDeps, location *lyxcwd.Location, owner, targe
 			return err
 		}
 	}
-	adopt := fmt.Sprintf("`lyx adopt %s` here, which records this machine as the owner, or `lyx adopt %s --keep-local` over a weft stopped by an anchor change, which records the owner over the stopped weft", subject, subject)
+	adopt := fmt.Sprintf("`lym adopt %s` here, which records this machine as the owner, or `lym adopt %s --keep-local` over a weft stopped by an anchor change, which records the owner over the stopped weft", subject, subject)
 	if slug == deps.Prime {
-		adopt = "`lyx adopt root` here, which records this machine as the owner, and whose refusal over a prime weft stopped by an anchor change names the `--set` to its upstream tip's marker"
+		adopt = "`lym adopt root` here, which records this machine as the owner, and whose refusal over a prime weft stopped by an anchor change names the `--set` to its upstream tip's marker"
 	}
-	message := fmt.Sprintf("the board names %s as the owner of %s, so this machine does not change its anchor; run %s; or run `lyx fabric anchor %s --set %s` on %s", owner, slug, adopt, slug, target, owner)
+	message := fmt.Sprintf("the board names %s as the owner of %s, so this machine does not change its anchor; run %s; or run `lym fabric anchor %s --set %s` on %s", owner, slug, adopt, slug, target, owner)
 	if hasUpstream && filepath.Clean(upstream) != filepath.Clean(location.AnchorRel) {
-		message += fmt.Sprintf("; or run `lyx fabric anchor %s --set %s`, the marker at the fetched upstream tip of its weft, which this refusal lets through", slug, upstream)
+		message += fmt.Sprintf("; or run `lym fabric anchor %s --set %s`, the marker at the fetched upstream tip of its weft, which this refusal lets through", slug, upstream)
 	}
 	return errors.New(message)
 }
@@ -248,9 +248,9 @@ func refuseForeignOwner(deps anchorDeps, location *lyxcwd.Location, owner, targe
 // refuseUnfinishedRun refuses a worktree whose run status names an unfinished run.
 // The status is the worktree's own, read from the weft's fetched upstream tip when another machine owns the worktree, since the weft pull that would refresh the checked-out copy stops at the marker change.
 // A pair's batten status in the prime counts too.
-func refuseUnfinishedRun(deps anchorDeps, location *lyxcwd.Location, owner, target string) error {
+func refuseUnfinishedRun(deps anchorDeps, location *lymcwd.Location, owner, target string) error {
 	slug := location.WorktreeName
-	again := fmt.Sprintf("`lyx fabric anchor %s --set %s`", slug, target)
+	again := fmt.Sprintf("`lym fabric anchor %s --set %s`", slug, target)
 
 	if owner != "" {
 		unfinished, err := deps.UpstreamRunUnfinished(location)
@@ -258,7 +258,7 @@ func refuseUnfinishedRun(deps anchorDeps, location *lyxcwd.Location, owner, targ
 			return err
 		}
 		if unfinished {
-			return fmt.Errorf("the run of %s reads unfinished at the fetched upstream tip of its weft, and %s owns it; run `lyx batten cancel %s` on %s, which accepts it, then, once the cancel's push has reached origin, run `lyx fabric pull` in the worktree, which fetches before it stops and so moves the fetched tip, then run %s with the marker at that tip",
+			return fmt.Errorf("the run of %s reads unfinished at the fetched upstream tip of its weft, and %s owns it; run `lym batten cancel %s` on %s, which accepts it, then, once the cancel's push has reached origin, run `lym fabric pull` in the worktree, which fetches before it stops and so moves the fetched tip, then run %s with the marker at that tip",
 				slug, owner, slug, owner, again)
 		}
 	} else {
@@ -267,7 +267,7 @@ func refuseUnfinishedRun(deps anchorDeps, location *lyxcwd.Location, owner, targ
 			return err
 		}
 		if unfinished {
-			return fmt.Errorf("%s has an unfinished run; wait for it to finish, or run `lyx batten cancel %s`, which an entry stopped only by this change lets through, then run %s again", slug, slug, again)
+			return fmt.Errorf("%s has an unfinished run; wait for it to finish, or run `lym batten cancel %s`, which an entry stopped only by this change lets through, then run %s again", slug, slug, again)
 		}
 	}
 	if slug == deps.Prime {
@@ -278,15 +278,15 @@ func refuseUnfinishedRun(deps anchorDeps, location *lyxcwd.Location, owner, targ
 		return err
 	}
 	if unfinished {
-		return fmt.Errorf("the batten run of %s reads unfinished in the prime; wait for it to finish, or run `lyx batten cancel %s`, then run %s again", slug, slug, again)
+		return fmt.Errorf("the batten run of %s reads unfinished in the prime; wait for it to finish, or run `lym batten cancel %s`, then run %s again", slug, slug, again)
 	}
 	return nil
 }
 
 // refuseLiveDobbies refuses the move on Windows when a dobby it would end is live, and for the prime when anything of the hub is.
-func refuseLiveDobbies(deps anchorDeps, location *lyxcwd.Location, target string) error {
+func refuseLiveDobbies(deps anchorDeps, location *lymcwd.Location, target string) error {
 	slug := location.WorktreeName
-	again := fmt.Sprintf("then run `lyx fabric anchor %s --set %s` again", slug, target)
+	again := fmt.Sprintf("then run `lym fabric anchor %s --set %s` again", slug, target)
 
 	if deps.GOOS == "windows" {
 		worktrees, err := dobbyWorktrees(deps, slug)
@@ -310,12 +310,12 @@ func refuseLiveDobbies(deps anchorDeps, location *lyxcwd.Location, target string
 	if reed, err := deps.HubReedHeld(); err != nil {
 		return err
 	} else if len(reed) > 0 {
-		return fmt.Errorf("reed holds a session or a strand in %s; run `lyx reed down` in each of those worktrees, the orch's included, %s", strings.Join(reed, ", "), again)
+		return fmt.Errorf("reed holds a session or a strand in %s; run `lym reed down` in each of those worktrees, the orch's included, %s", strings.Join(reed, ", "), again)
 	}
 	if runs, err := deps.HubBattenLive(); err != nil {
 		return err
 	} else if len(runs) > 0 {
-		return fmt.Errorf("batten runs are live: %s; wait for each to halt or finish, which `lyx batten status` in that run's worktree reports, or pause it with `lyx batten pause`, %s", strings.Join(runs, ", "), again)
+		return fmt.Errorf("batten runs are live: %s; wait for each to halt or finish, which `lym batten status` in that run's worktree reports, or pause it with `lym batten pause`, %s", strings.Join(runs, ", "), again)
 	}
 	if holders, err := deps.GateHolders(); err != nil {
 		return err
@@ -325,7 +325,7 @@ func refuseLiveDobbies(deps anchorDeps, location *lyxcwd.Location, target string
 	if live, err := deps.HibernateLive(); err != nil {
 		return err
 	} else if live {
-		return fmt.Errorf("the hub's hibernate daemon is live; cancel it with `lyx hibernate cancel`, %s", again)
+		return fmt.Errorf("the hub's hibernate daemon is live; cancel it with `lym hibernate cancel`, %s", again)
 	}
 	return nil
 }
@@ -347,7 +347,7 @@ func dobbyWorktrees(deps anchorDeps, slug string) ([]string, error) {
 }
 
 // moveAnchor carries the move of location's anchor to target out, around the engine's three calls.
-func moveAnchor(ctx context.Context, deps anchorDeps, location *lyxcwd.Location, target string, result anchorResult) (anchorResult, error) {
+func moveAnchor(ctx context.Context, deps anchorDeps, location *lymcwd.Location, target string, result anchorResult) (anchorResult, error) {
 	slug := location.WorktreeName
 	rec := fabricengine.NewMutations(location.HubPath)
 	change, err := deps.Begin(location, target)
@@ -376,7 +376,7 @@ func moveAnchor(ctx context.Context, deps anchorDeps, location *lyxcwd.Location,
 		change.Close()
 		result.Mutations = rec.Snapshot()
 		_, standing, readErr := deps.MoveRecord(location)
-		rerun := fmt.Sprintf("`lyx fabric anchor %s --set %s`", slug, target)
+		rerun := fmt.Sprintf("`lym fabric anchor %s --set %s`", slug, target)
 		switch {
 		case readErr != nil:
 			return result, fmt.Errorf("%w; whether the change record stands could not be read (%v), so no dobby is started: run %s again", cause, readErr, rerun)
@@ -476,7 +476,7 @@ func startDobbies(deps anchorDeps, ended []string) error {
 	return deps.EnsureDobbies(ended)
 }
 
-// runAnchor executes `lyx fabric anchor [<slug>] [--set <dir>]`.
+// runAnchor executes `lym fabric anchor [<slug>] [--set <dir>]`.
 func runAnchor(ctx context.Context, out io.Writer, args []string, set string) int {
 	_, location, err := resolveWarpLocation(ctx)
 	if err != nil {
@@ -506,7 +506,7 @@ func anchorCommand() *cobra.Command {
 		Short:       "print a worktree's anchor, or move it to another directory of the warp",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `anchor prints the anchor of <slug>, the acting worktree when it is left out, which
-is the directory of the warp checkout lyx works in for it. <slug> names the prime by
+is the directory of the warp checkout lym works in for it. <slug> names the prime by
 its worktree name, or a pair present on this machine.
 
 With --set <dir> it moves the worktree's anchor there: its junctions and launchers,
@@ -515,7 +515,7 @@ and whose marker names the new directory. <dir> must be a directory the warp che
 tracks, so commit it there first when it is new.
 
 The commit is shared by every machine that checks the records branch out. Their
-pulls and pushes of it stop at the marker change until "lyx fabric anchor <slug> --set
+pulls and pushes of it stop at the marker change until "lym fabric anchor <slug> --set
 <dir>" integrates the change there, carrying their unpushed records commits along.
 A worktree already at <dir> is left as it is, and a killed move is finished by running
 the same --set again.
@@ -527,14 +527,14 @@ refused while any reed session, batten run, gate slot or hibernate daemon of the
 live. It waits out the passes of the dobbies it ends, takes the parent lock of the
 worktree's branch, ends the worktree's dobby, or every dobby of this machine for the
 prime, and starts it again afterwards, reporting a start that failed as
-dobby_start_error with the way forward "lyx beam start".
+dobby_start_error with the way forward "lym beam start".
 
-Start no session, hand pass or "lyx beam dobby" in the worktree while it runs, and for
+Start no session, hand pass or "lym beam dobby" in the worktree while it runs, and for
 the prime none in the hub: the verb holds no lock against them.
 
 Example:
-  lyx fabric anchor
-  lyx fabric anchor my-task --set backend`,
+  lym fabric anchor
+  lym fabric anchor my-task --set backend`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
 			set, _ := anchorCmd.Flags().GetString("set")
 			return runAnchor(ctx, out, args, set)

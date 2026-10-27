@@ -231,11 +231,11 @@ func TestCallerLabel(t *testing.T) {
 		want   string
 	}{
 		{name: "an empty strand is the operator", strand: "", want: "operator"},
-		{name: "the orch", strand: "lyx:orch", want: "orch"},
-		{name: "a numbered orch", strand: "lyx:orch-2", want: "orch"},
-		{name: "a run driver", strand: "lyx:my-task:driver", want: "driver"},
-		{name: "a numbered run driver", strand: "lyx:my-task:driver-2", want: "driver"},
-		{name: "any other role is itself", strand: "lyx:my-task:alignment", want: "alignment"},
+		{name: "the orch", strand: "lym:orch", want: "orch"},
+		{name: "a numbered orch", strand: "lym:orch-2", want: "orch"},
+		{name: "a run driver", strand: "lym:my-task:driver", want: "driver"},
+		{name: "a numbered run driver", strand: "lym:my-task:driver-2", want: "driver"},
+		{name: "any other role is itself", strand: "lym:my-task:alignment", want: "alignment"},
 		{name: "an unparseable strand without a colon is itself", strand: "garbage", want: "garbage"},
 		{name: "an unparseable strand reads the text after its last colon", strand: "Bad:Role", want: "Role"},
 	}

@@ -2,15 +2,11 @@
 
 // seam_enforcement_test.go enforces this package's Told-Geometry Invariant membership: production
 // code in internal/landingshed takes every absolute path it operates on from its caller and has no
-// direct production import of internal/lyxcwd. Modelled directly on internal/loomshed's own
+// direct production import of internal/lymcwd. Modelled directly on internal/loomshed's own
 // seam_enforcement_test.go.
 //
-// The allowlist below is deliberately a membership list rather than a bare internal/lyxcwd denylist:
-// it catches the excluded import and anything else that would drag geometry resolution in, with no
-// list maintenance beyond a genuine new dependency. A transitive reach through an allowlisted
-// dependency (internal/fabricengine and internal/githubclient both import internal/lyxcwd
-// themselves) is explicitly fine -- the invariant's membership predicate is about a direct
-// production import, and transitive is never policed.
+// The allowlist below is deliberately a membership list rather than a bare internal/lymcwd denylist: it catches the excluded import and anything else that would drag geometry resolution in, with no list maintenance beyond a genuine new dependency.
+// A transitive reach through an allowlisted dependency (internal/fabricengine and internal/githubclient both import internal/lymcwd themselves) is explicitly fine -- the invariant's membership predicate is about a direct production import, and transitive is never policed.
 
 package landingshed
 

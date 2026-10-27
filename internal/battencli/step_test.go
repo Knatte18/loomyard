@@ -104,7 +104,7 @@ func TestBattenPreStep_RefusalKinds(t *testing.T) {
 				})
 			},
 			wantKind:   shedverbs.KindBootstrap,
-			wantSubstr: []string{"lyx batten cleanup --apply", "task branch", "locally and on the remote", "to run it again", "different slug"},
+			wantSubstr: []string{"lym batten cleanup --apply", "task branch", "locally and on the remote", "to run it again", "different slug"},
 		},
 		{
 			// A step drives no run another machine owns, so the reconcile's owned_elsewhere verdict refuses it as a bootstrap failure.
@@ -119,7 +119,7 @@ func TestBattenPreStep_RefusalKinds(t *testing.T) {
 				}
 			},
 			wantKind:   shedverbs.KindBootstrap,
-			wantSubstr: []string{`"there"`, "`lyx adopt some-beam`"},
+			wantSubstr: []string{`"there"`, "`lym adopt some-beam`"},
 		},
 	}
 	for _, tt := range tests {

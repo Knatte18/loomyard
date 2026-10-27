@@ -18,7 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
@@ -38,7 +38,7 @@ import (
 
 // HubDeps fills the engine's Deps for the hub location belongs to, with strand the caller's strand name.
 // Every task pair of the hub is a Pair, the prime excluded, and the pair slugs are returned beside the Deps.
-func HubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []string, error) {
+func HubDeps(location *lymcwd.Location, strand string) (tenderengine.Deps, []string, error) {
 	geometry, err := hubgeom.PauseGeometry(location)
 	if err != nil {
 		return tenderengine.Deps{}, nil, err
@@ -50,9 +50,9 @@ func HubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []str
 	var (
 		pairs []tenderengine.Pair
 		slugs []string
-		prime *lyxcwd.Location
+		prime *lymcwd.Location
 		// pairLocations holds each task pair's location by slug, for the push a lift spawns.
-		pairLocations = map[string]*lyxcwd.Location{}
+		pairLocations = map[string]*lymcwd.Location{}
 		// pairByWorktree holds the shuttle-backed Pair of each wired worktree, the prime's included, by worktree path, for the orch that runs there.
 		pairByWorktree = map[string]tenderengine.Pair{}
 	)
@@ -64,7 +64,7 @@ func HubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []str
 		if worktree.Prunable {
 			continue
 		}
-		pairLocation, err := lyxcwd.ResolveWorktree(worktree.Path)
+		pairLocation, err := lymcwd.ResolveWorktree(worktree.Path)
 		if err != nil {
 			logger.Warn("tendercli: skipping a worktree that does not resolve", "worktree", worktree.Path, "error", err)
 			continue
@@ -214,7 +214,7 @@ const ownerPauseGrace = 10 * time.Second
 // A slug whose entry already stands adds none.
 // Once the pause stands it ends the run's owned processes on this machine, unless the run's Finalize is past its parent-side merge;
 // a failed end or a survivor is logged at Warn and never fails the pause.
-func PauseOwnedElsewhere(location *lyxcwd.Location, slug string) error {
+func PauseOwnedElsewhere(location *lymcwd.Location, slug string) error {
 	deps, _, err := HubDeps(location, os.Getenv(agentname.StrandNameEnv))
 	if err != nil {
 		return err
@@ -235,7 +235,7 @@ func PauseOwnedElsewhere(location *lyxcwd.Location, slug string) error {
 
 // ReviveStalled gives the revive line to the sessions of the pair slug that are stalled on an API error, through the conditioned send.
 // It returns an error when the revive sent nothing and a session refused or did not land the line, so a caller that revives once per episode can warn.
-func ReviveStalled(location *lyxcwd.Location, slug string) error {
+func ReviveStalled(location *lymcwd.Location, slug string) error {
 	deps, _, err := HubDeps(location, os.Getenv(agentname.StrandNameEnv))
 	if err != nil {
 		return err
@@ -266,14 +266,14 @@ var endOwnedElsewhere = EndOwnedElsewhere
 // EndOwnedElsewhere ends the processes registered under slug in the hub location belongs to, because another machine owns its run.
 // A run whose Finalize is past its parent-side merge keeps them, since it finishes its landing on either machine, and so does a run whose reading fails.
 // The calling process and its ancestors are never ended.
-func EndOwnedElsewhere(location *lyxcwd.Location, slug string) ([]runproc.Ended, error) {
+func EndOwnedElsewhere(location *lymcwd.Location, slug string) ([]runproc.Ended, error) {
 	taskPath := fabricengine.WorktreePath(location, slug)
-	var taskLocation *lyxcwd.Location
-	locateTask := func() (*lyxcwd.Location, error) {
+	var taskLocation *lymcwd.Location
+	locateTask := func() (*lymcwd.Location, error) {
 		if taskLocation != nil {
 			return taskLocation, nil
 		}
-		resolved, err := lyxcwd.ResolveWorktree(taskPath)
+		resolved, err := lymcwd.ResolveWorktree(taskPath)
 		taskLocation = resolved
 		return resolved, err
 	}
@@ -356,7 +356,7 @@ func (e ownedElsewhereEnder) run() ([]runproc.Ended, error) {
 	}
 	ended, err := e.end()
 	if err != nil {
-		return ended, fmt.Errorf("end the processes of %s: %w; run `lyx fabric remove %s`, or `lyx reed down` in the pair, while the pair exists, and `lyx tender reap` once it is gone", e.slug, err, e.slug)
+		return ended, fmt.Errorf("end the processes of %s: %w; run `lym fabric remove %s`, or `lym reed down` in the pair, while the pair exists, and `lym tender reap` once it is gone", e.slug, err, e.slug)
 	}
 	return ended, nil
 }
@@ -371,7 +371,7 @@ const orchReviveTTL = time.Minute
 const postedEvent = "posted"
 
 // orchReviveTarget returns a creel client signing as tender and the name of the orch strand of worktree the revive injects into.
-func orchReviveTarget(worktree *lyxcwd.Location) (*creelcli.GoClient, string, error) {
+func orchReviveTarget(worktree *lymcwd.Location) (*creelcli.GoClient, string, error) {
 	orch, recorded, err := orchcli.OrchStrandOf(worktree)
 	if err != nil {
 		return nil, "", err
@@ -388,7 +388,7 @@ func orchReviveTarget(worktree *lyxcwd.Location) (*creelcli.GoClient, string, er
 
 // hubOrchs lists the orchs of the hub location belongs to that record a strand, the prime's and each beam's.
 // An orch is listed with the Pair in pairByWorktree for its worktree, nil when that worktree did not wire, which leaves its sessions unread.
-func hubOrchs(location *lyxcwd.Location, pairByWorktree map[string]tenderengine.Pair) ([]tenderengine.Orch, error) {
+func hubOrchs(location *lymcwd.Location, pairByWorktree map[string]tenderengine.Pair) ([]tenderengine.Orch, error) {
 	worktrees, err := orchcli.HubOrchs(location)
 	if err != nil {
 		return nil, err
@@ -457,7 +457,7 @@ func revivePending(entries []creelengine.LogEntry) bool {
 
 // shuttlePair is one task pair read and driven through its own shuttle runner and reed session.
 type shuttlePair struct {
-	location *lyxcwd.Location
+	location *lymcwd.Location
 	cfg      shuttleengine.Config
 	engines  shuttleengine.EngineSet
 	reed     *reedengine.Engine
@@ -465,7 +465,7 @@ type shuttlePair struct {
 }
 
 // newShuttlePair builds the pair's runner the way the pair's own wiring does: its reed and shuttle config and its reed geometry.
-func newShuttlePair(location *lyxcwd.Location) (shuttlePair, error) {
+func newShuttlePair(location *lymcwd.Location) (shuttlePair, error) {
 	configDirs := fabricengine.ConfigDirs(location)
 	reedCfg, err := reedengine.LoadConfig(configDirs, "reed")
 	if err != nil {

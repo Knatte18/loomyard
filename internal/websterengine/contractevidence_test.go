@@ -27,9 +27,9 @@ func evidenceGeom(t *testing.T) Geometry {
 	root := t.TempDir()
 	return Geometry{
 		WorktreeRoot: filepath.Join(root, "wt"),
-		PlanDir:      filepath.Join(root, "wt", "_lyx", "plan"),
-		WebsterDir:   filepath.Join(root, "wt", "_lyx", "webster"),
-		ScratchDir:   filepath.Join(root, "wt", ".lyx", "webster"),
+		PlanDir:      filepath.Join(root, "wt", "_lym", "plan"),
+		WebsterDir:   filepath.Join(root, "wt", "_lym", "webster"),
+		ScratchDir:   filepath.Join(root, "wt", ".lym", "webster"),
 	}
 }
 
@@ -104,7 +104,7 @@ func TestContractFileStatus(t *testing.T) {
 			wantContract: true, wantWriter: writerFork,
 		},
 		{
-			name: "a non-contract _lyx path is no contract path", path: filepath.Join(geom.WebsterDir, "state.json"),
+			name: "a non-contract _lym path is no contract path", path: filepath.Join(geom.WebsterDir, "state.json"),
 			writes: RunWrites{Forks: []shuttleengine.WriteEvent{fork}},
 		},
 	}
@@ -174,7 +174,7 @@ func TestAcceptPendingAudit_ContractFiles(t *testing.T) {
 				return []string{path}, writesEngine([]shuttleengine.WriteEvent{succeeded(path, 0)}, []shuttleengine.WriteEvent{succeeded(path, time.Minute)})
 			},
 			wantRefusal: func(paths []string) []string {
-				return []string{"rm " + paths[0], "after Master's last write", "lyx webster accept-audit"}
+				return []string{"rm " + paths[0], "after Master's last write", "lym webster accept-audit"}
 			},
 		},
 	}

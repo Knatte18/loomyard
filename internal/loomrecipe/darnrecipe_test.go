@@ -103,7 +103,7 @@ func TestDarnPerch_SharesLoomsPerchBarTheAnswerKey(t *testing.T) {
 		}
 	}
 
-	answerKey := []any{"_lyx/discussion/board-entry.md", "_lyx/discussion/decision-record.md"}
+	answerKey := []any{"_lym/discussion/board-entry.md", "_lym/discussion/decision-record.md"}
 	if got := darn[loomshed.NameCodeBouncer].Config["artifact_paths"]; !reflect.DeepEqual(got, answerKey) {
 		t.Errorf("darn Code-Bouncer artifact_paths = %v; want %v", got, answerKey)
 	}
@@ -294,7 +294,7 @@ func TestDarnVerifyBudget(t *testing.T) {
 		if err == nil || shed != nil {
 			t.Fatalf("NewDarn() = %v, %v; want nil and an error", shed, err)
 		}
-		want := `loomrecipe: verify_attempts = 0; want at least 1; way forward: run "lyx config darn --set verify_attempts=<n>" from the prime, then "lyx loom resume"`
+		want := `loomrecipe: verify_attempts = 0; want at least 1; way forward: run "lym config darn --set verify_attempts=<n>" from the prime, then "lym loom resume"`
 		if err.Error() != want {
 			t.Errorf("NewDarn() error = %q; want %q", err.Error(), want)
 		}

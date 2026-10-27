@@ -1,8 +1,8 @@
 //go:build tier0
 
 // seed_test.go covers seed.go's two testable workers: writeSeed and parseSeedParams. Both perform
-// no lyxcwd.Resolve and no cwd read of their own (writeSeed's own doc comment), so this file drives
-// them directly against a hand-built *lyxcwd.Location, with no real git repository behind it, and
+// no lymcwd.Resolve and no cwd read of their own (writeSeed's own doc comment), so this file drives
+// them directly against a hand-built *lymcwd.Location, with no real git repository behind it, and
 // stays Tier 1.
 
 package shedcli
@@ -15,11 +15,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// TestWriteSeed_SucceedsWithNoSeedPresent covers the pre-run exemption first: "lyx shed seed <run-id> --recipe <name>" succeeds with no seed present and no recipe armed -- writeSeed itself never calls Arm at all, structurally, and this is the case resolvePersistentPreRun would otherwise refuse three different ways (no seed to read, an unresolvable recipe, and a verb gate with nothing to gate).
+// TestWriteSeed_SucceedsWithNoSeedPresent covers the pre-run exemption first: "lym shed seed <run-id> --recipe <name>" succeeds with no seed present and no recipe armed -- writeSeed itself never calls Arm at all, structurally, and this is the case resolvePersistentPreRun would otherwise refuse three different ways (no seed to read, an unresolvable recipe, and a verb gate with nothing to gate).
 // The seed reads back carrying the recipe and the driver: the default when none is passed, the typed llm driver otherwise.
 func TestWriteSeed_SucceedsWithNoSeedPresent(t *testing.T) {
 	t.Parallel()
@@ -34,7 +34,7 @@ func TestWriteSeed_SucceedsWithNoSeedPresent(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+			loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 
 			if _, found, err := shedrun.ReadSeed(loc, "some-slug"); err != nil || found {
 				t.Fatalf("precondition: ReadSeed = (found=%v, err=%v); want (false, nil)", found, err)
@@ -87,7 +87,7 @@ func TestResolveSeedDriver(t *testing.T) {
 // TestWriteSeed_UnknownRecipeRefusesWithTheAvailableNames asserts an unresolvable --recipe value
 // refuses via this package's own lookup, naming the available recipes.
 func TestWriteSeed_UnknownRecipeRefusesWithTheAvailableNames(t *testing.T) {
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 
 	_, err := writeSeed(loc, "some-slug", "bogus-recipe", "", nil)
 	if err == nil {
@@ -110,12 +110,12 @@ func TestWriteSeed_RecipeLocationRuleGatesTheWrite(t *testing.T) {
 
 	refusal := errors.New("this recipe seeds from prime only")
 	recipes = map[string]entry{
-		shedrun.RecipeBatten: {Arm: original[shedrun.RecipeBatten].Arm, Verbs: original[shedrun.RecipeBatten].Verbs, RefuseSeedAt: func(*lyxcwd.Location) error { return refusal }},
+		shedrun.RecipeBatten: {Arm: original[shedrun.RecipeBatten].Arm, Verbs: original[shedrun.RecipeBatten].Verbs, RefuseSeedAt: func(*lymcwd.Location) error { return refusal }},
 		shedrun.RecipeLoom:   {Arm: original[shedrun.RecipeLoom].Arm, Verbs: original[shedrun.RecipeLoom].Verbs, BootstrapVerb: "start"},
 	}
 
 	t.Run("RefusingRuleWritesNothing", func(t *testing.T) {
-		loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+		loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 		_, err := writeSeed(loc, "some-slug", shedrun.RecipeBatten, "", nil)
 		if !errors.Is(err, refusal) {
 			t.Fatalf("writeSeed(batten) = %v; want the recipe's own refusal", err)
@@ -126,7 +126,7 @@ func TestWriteSeed_RecipeLocationRuleGatesTheWrite(t *testing.T) {
 	})
 
 	t.Run("NilRuleWrites", func(t *testing.T) {
-		loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+		loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 		if _, err := writeSeed(loc, "some-slug", shedrun.RecipeLoom, "", nil); err != nil {
 			t.Fatalf("writeSeed(loom) = %v; want nil", err)
 		}
@@ -151,7 +151,7 @@ func TestWriteSeed_LLMDriverGatedOnBootstrapVerbCapability(t *testing.T) {
 	}
 
 	t.Run("EmptyBootstrapVerbRefuses", func(t *testing.T) {
-		loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+		loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 		_, err := writeSeed(loc, "some-slug", shedrun.RecipeBatten, shedrun.DriverLLM, nil)
 		if err == nil {
 			t.Fatal("writeSeed(driver=llm) = nil; want a refusal naming the missing bootstrap verb")
@@ -168,14 +168,14 @@ func TestWriteSeed_LLMDriverGatedOnBootstrapVerbCapability(t *testing.T) {
 	})
 
 	t.Run("NonEmptyBootstrapVerbAccepts", func(t *testing.T) {
-		loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+		loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 		if _, err := writeSeed(loc, "some-slug", shedrun.RecipeLoom, shedrun.DriverLLM, nil); err != nil {
 			t.Fatalf("writeSeed(driver=llm) = %v; want nil", err)
 		}
 	})
 
 	t.Run("EmptyBootstrapVerbDefaultsToGo", func(t *testing.T) {
-		loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+		loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 		driver, err := writeSeed(loc, "some-slug", shedrun.RecipeBatten, "", nil)
 		if err != nil {
 			t.Fatalf("writeSeed(no driver) = %v; want nil", err)
@@ -216,7 +216,7 @@ func TestParseSeedParams(t *testing.T) {
 // TestWriteSeed_IdempotentAgainstAnIdenticalSeedAndRefusesADisagreeingOne asserts calling writeSeed twice with the identical seed is a no-op the second time, and that it refuses once an existing seed disagrees with the incoming one.
 func TestWriteSeed_IdempotentAgainstAnIdenticalSeedAndRefusesADisagreeingOne(t *testing.T) {
 	t.Parallel()
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 	params := map[string]string{"slug": "some-slug"}
 
 	if _, err := writeSeed(loc, "some-slug", "loom", shedrun.DriverGo, params); err != nil {
@@ -235,7 +235,7 @@ func TestWriteSeed_IdempotentAgainstAnIdenticalSeedAndRefusesADisagreeingOne(t *
 // already applies, so a stray seed can never land in a checkout no run is driven from.
 func TestWriteSeed_RefusesFabricsOwnCheckouts(t *testing.T) {
 	hub := t.TempDir()
-	siblingName := filepath.Base(fabricengine.RecordsWorktree(&lyxcwd.Location{HubPath: hub, WorktreeName: "pair", AnchorRel: "."}))
+	siblingName := filepath.Base(fabricengine.RecordsWorktree(&lymcwd.Location{HubPath: hub, WorktreeName: "pair", AnchorRel: "."}))
 	tests := []struct {
 		name         string
 		worktreeName string
@@ -245,13 +245,13 @@ func TestWriteSeed_RefusesFabricsOwnCheckouts(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			loc := &lyxcwd.Location{HubPath: hub, WorktreeName: tt.worktreeName, AnchorRel: "."}
+			loc := &lymcwd.Location{HubPath: hub, WorktreeName: tt.worktreeName, AnchorRel: "."}
 			_, err := writeSeed(loc, "a-run", shedrun.RecipeLoom, "", nil)
 			if err == nil {
 				t.Fatalf("writeSeed(%q) error = nil; want a refusal", tt.worktreeName)
 			}
-			if !strings.Contains(err.Error(), "way forward:") || !strings.Contains(err.Error(), "lyx shed seed") {
-				t.Errorf("writeSeed(%q) error = %q; want a way forward naming lyx shed seed", tt.worktreeName, err.Error())
+			if !strings.Contains(err.Error(), "way forward:") || !strings.Contains(err.Error(), "lym shed seed") {
+				t.Errorf("writeSeed(%q) error = %q; want a way forward naming lym shed seed", tt.worktreeName, err.Error())
 			}
 			if _, found, readErr := shedrun.ReadSeed(loc, "a-run"); readErr != nil || found {
 				t.Errorf("ReadSeed after a refused writeSeed = found %v, err %v; want no seed written", found, readErr)

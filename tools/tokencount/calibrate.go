@@ -327,7 +327,7 @@ func websterInstructionFiles(reads ReadSet, run RunTally) []string {
 // the Webster session engine's instruction files in the engine's order, the Master template and the orchestrator PATTERN directive rendered from the directive stencil and PATTERN.md.
 // An instruction file or PATTERN.md absent at the base commit adds nothing, as it does for a live run.
 // An instruction file the engine loads but git does not track is untracked and cannot be reconstructed, so it is absent at every base commit;
-// the derivation assumes the run's worktree had none, as a lyx-created worktree has none.
+// the derivation assumes the run's worktree had none, as a lym-created worktree has none.
 // A run without a base, whose base commit is not in the repository, or whose Master template or directive stencil is absent there has a reason instead of texts;
 // a failed read or render is an error.
 func merriamTexts(run RunTally, trees BaseTrees, instructionFiles []string) ([]string, string, error) {

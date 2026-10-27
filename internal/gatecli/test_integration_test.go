@@ -1,6 +1,6 @@
 //go:build tier1
 
-// test_integration_test.go drives `lyx gate test` over one hubforge hub and a stand-in tier command, each run in a process of its own so a test can signal the gate it started:
+// test_integration_test.go drives `lym gate test` over one hubforge hub and a stand-in tier command, each run in a process of its own so a test can signal the gate it started:
 // the tier run, its slots, the wait bound, inheritance, hub resolution from -C, the unslotted run outside every hub, the child's lifetime under a catchable signal, a SIGKILL and a timeout, the prebuild, the run record, and the refusals that need a hub.
 // It is Tier 2: it builds a real hub and spawns git, the stand-in and a few real go test runs, so it needs the integration build tag.
 
@@ -33,13 +33,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxtemp"
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 const (
-	// helperRoleGate runs `lyx gate test` over helperCwdEnv and the process arguments, with the stand-in as its go binary unless helperGoEnv is empty.
+	// helperRoleGate runs `lym gate test` over helperCwdEnv and the process arguments, with the stand-in as its go binary unless helperGoEnv is empty.
 	helperRoleGate = "gate"
 	// helperRoleStandIn records how it was invoked, then exits with helperExitEnv or, under helperHoldEnv, sleeps until killed with a sleeper child.
 	// A build invocation instead writes helperBuildContentEnv to its `-o` file when it succeeds and exits with helperBuildExitEnv.
@@ -83,7 +83,7 @@ type standInRecord struct {
 	Slot string `json:"slot"`
 	// Strand is the strand-name variable the stand-in saw; empty when the gate dropped it.
 	Strand string `json:"strand"`
-	// Prebuilt is the prebuilt-lyx variable the stand-in saw.
+	// Prebuilt is the prebuilt-lym variable the stand-in saw.
 	Prebuilt string `json:"prebuilt"`
 	// Enclosing is the enclosing-gate pid variable the stand-in saw.
 	Enclosing string `json:"enclosing"`
@@ -94,7 +94,7 @@ type standInRecord struct {
 }
 
 func runGateHelper() int {
-	// The helper stands for `lyx`'s main, whose logs reach the real stderr; under go test the logger defaults to discarding them.
+	// The helper stands for `lym`'s main, whose logs reach the real stderr; under go test the logger defaults to discarding them.
 	logger.SetOutput(os.Stderr)
 	logger.SetVerbosity(1)
 	// The tier commands and the prebuild run this same binary, in the stand-in role.
@@ -114,8 +114,8 @@ func runGateHelper() int {
 		}
 	}
 	code := clihelp.ExecuteIn(newCommand(goBinary, time.Second, durations[helperSlotWaitEnv], durations[helperCeilingEnv], durations[helperUnitEnv]), os.Getenv(helperCwdEnv), os.Stdout, os.Args[1:])
-	// The helper stands for `lyx`'s main, which removes the process run directory on exit.
-	_ = lyxtemp.Remove()
+	// The helper stands for `lym`'s main, which removes the process run directory on exit.
+	_ = lymtemp.Remove()
 	return code
 }
 
@@ -123,7 +123,7 @@ func runStandIn() int {
 	cwd, _ := os.Getwd()
 	sharedBuild := len(os.Args) > 1 && os.Args[1] == "sharedbuild"
 	isBuild := sharedBuild || (len(os.Args) > 1 && os.Args[1] == "build")
-	record := standInRecord{Args: os.Args[1:], Build: isBuild, Cwd: cwd, GoFlags: os.Getenv("GOFLAGS"), BuildMark: os.Getenv("BUILD_MARK"), Slot: os.Getenv(gateslot.InheritEnv), Strand: os.Getenv(agentname.StrandNameEnv), Prebuilt: os.Getenv(gateslot.PrebuiltLyxEnv), Enclosing: os.Getenv(enclosingGateEnv), Trace: os.Getenv(logger.TraceIDEnv), PID: os.Getpid()}
+	record := standInRecord{Args: os.Args[1:], Build: isBuild, Cwd: cwd, GoFlags: os.Getenv("GOFLAGS"), BuildMark: os.Getenv("BUILD_MARK"), Slot: os.Getenv(gateslot.InheritEnv), Strand: os.Getenv(agentname.StrandNameEnv), Prebuilt: os.Getenv(gateslot.PrebuiltLymEnv), Enclosing: os.Getenv(enclosingGateEnv), Trace: os.Getenv(logger.TraceIDEnv), PID: os.Getpid()}
 	// A prebuild invocation only records itself and exits with its own code; the hold belongs to the tier's invocation and the shared build's.
 	hold := (!isBuild || sharedBuild) && os.Getenv(helperHoldEnv) != ""
 	if hold {
@@ -170,7 +170,7 @@ func runStandIn() int {
 // strandEnvEntry is the strand-name entry a gate run is started with, which the gate must not hand to its tier commands.
 var strandEnvEntry = agentname.StrandNameEnv + "=gate-test-strand"
 
-// gateRun is one `lyx gate test` process to start.
+// gateRun is one `lym gate test` process to start.
 type gateRun struct {
 	cwd  string
 	args []string
@@ -415,7 +415,7 @@ func runRecordAt(t *testing.T, logPath string, tier int) (record gateslot.RunRec
 }
 
 // scenarioConfig returns the gate.yaml the scenario's hub holds, after mutate has changed it.
-// tier0 runs the stand-in over targets and args with a GOFLAGS of its own, tier1 holds every slot, tier2 holds no placeholder, tier3 prebuilds lyx, tier5 runs a real go test, tier6 runs the stand-in over targets and args and tier7 replaces its shell with the stand-in.
+// tier0 runs the stand-in over targets and args with a GOFLAGS of its own, tier1 holds every slot, tier2 holds no placeholder, tier3 prebuilds lym, tier5 runs a real go test, tier6 runs the stand-in over targets and args and tier7 replaces its shell with the stand-in.
 func scenarioConfig(t *testing.T, mutate func(cfg map[string]any)) []byte {
 	t.Helper()
 
@@ -434,7 +434,7 @@ func scenarioConfig(t *testing.T, mutate func(cfg map[string]any)) []byte {
 			"tier0": tier(standIn+" {targets} {args}", map[string]any{"parallel": 3, "env": map[string]string{"GOFLAGS": "-trimpath -p={parallel}"}}),
 			"tier1": tier(standIn+" {targets} {args}", map[string]any{"slots": "all"}),
 			"tier2": tier(standIn+" whole", nil),
-			"tier3": tier(standIn+" {targets} {args}", map[string]any{"parallel": 3, "prebuilt_lyx": true}),
+			"tier3": tier(standIn+" {targets} {args}", map[string]any{"parallel": 3, "prebuilt_lym": true}),
 			"tier5": tier("go test -json {targets} {args}", map[string]any{"all_targets": "./..."}),
 			"tier6": tier(standIn+" {targets} {args}", nil),
 			"tier7": tier("exec "+standIn+" {targets} {args}", nil),
@@ -729,9 +729,9 @@ func TestGateTest_Scenario(t *testing.T) {
 			"guardtiers/go.mod":            "module example.com/guardtiers\n\ngo 1.21\n",
 			"guardtiers/pkg/pkg.go":        "package pkg\n",
 			"guardtiers/g/g.go":            "package g\n",
-			"guardtiers/g/g_test.go":       "package g\n\nimport \"testing\"\n\n//lyx:guard\nfunc TestGuardZero(t *testing.T) {}\n",
+			"guardtiers/g/g_test.go":       "package g\n\nimport \"testing\"\n\n//lym:guard\nfunc TestGuardZero(t *testing.T) {}\n",
 			"guardtiers/h/h.go":            "package h\n",
-			"guardtiers/h/h_tier1_test.go": "//go:build tier1\n\npackage h\n\nimport \"testing\"\n\n//lyx:guard\nfunc TestGuardOne(t *testing.T) {}\n",
+			"guardtiers/h/h_tier1_test.go": "//go:build tier1\n\npackage h\n\nimport \"testing\"\n\n//lym:guard\nfunc TestGuardOne(t *testing.T) {}\n",
 		} {
 			full := filepath.Join(prime, filepath.FromSlash(rel))
 			if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
@@ -857,7 +857,7 @@ func TestGateTest_Scenario(t *testing.T) {
 
 	t.Run("status names each held slot's number, worktree, site, tier and start, the slot count and the drain", func(t *testing.T) {
 		acquire(t, "holder one")
-		lease, err := pool.AcquireSlots(context.Background(), gateslot.Holder{Worktree: "/tiered/worktree", Site: "lyx gate test tier1", Tier: "tier1"}, 1)
+		lease, err := pool.AcquireSlots(context.Background(), gateslot.Holder{Worktree: "/tiered/worktree", Site: "lym gate test tier1", Tier: "tier1"}, 1)
 		if err != nil {
 			t.Fatalf("AcquireSlots: %v", err)
 		}
@@ -889,7 +889,7 @@ func TestGateTest_Scenario(t *testing.T) {
 		if first.Slot != 1 || first.Worktree != "/other/worktree" || first.Site != "holder one" || first.Tier != "" || first.PID != os.Getpid() || first.Started.IsZero() {
 			t.Errorf("status held[0] = %+v; want slot 1 held by holder one with no tier, this pid and a start", first)
 		}
-		if second.Slot != 2 || second.Worktree != "/tiered/worktree" || second.Site != "lyx gate test tier1" || second.Tier != "tier1" || second.Started.Before(first.Started) {
+		if second.Slot != 2 || second.Worktree != "/tiered/worktree" || second.Site != "lym gate test tier1" || second.Tier != "tier1" || second.Started.Before(first.Started) {
 			t.Errorf("status held[1] = %+v; want slot 2 held by the tier1 run, started no earlier than slot 1", second)
 		}
 	})
@@ -989,7 +989,7 @@ func TestGateTest_Scenario(t *testing.T) {
 		holder := startGate(t, gateRun{cwd: prime, args: []string{"test", "./held"}, env: []string{helperHoldEnv + "=1"}})
 		held := holder.standIn(t)
 		holders, err := pool.Holders()
-		if err != nil || len(holders) != 1 || holders[0].Worktree != prime || holders[0].Tier != "tier0" || holders[0].Site != "lyx gate test tier0 ./held" {
+		if err != nil || len(holders) != 1 || holders[0].Worktree != prime || holders[0].Tier != "tier0" || holders[0].Site != "lym gate test tier0 ./held" {
 			t.Errorf("Holders = (%+v, %v); want the holding gate's worktree, tier and site", holders, err)
 		}
 
@@ -1013,7 +1013,7 @@ func TestGateTest_Scenario(t *testing.T) {
 		if code := enclosed.wait(t); code != 0 {
 			t.Errorf("enclosed exit code = %d, stdout %q; want 0 inside the held slot", code, enclosed.stdout.String())
 		}
-		if stderr := enclosed.stderr.String(); !strings.Contains(stderr, "enclosing lyx gate test") || strings.Contains(stderr, "CPU watchdog started") {
+		if stderr := enclosed.stderr.String(); !strings.Contains(stderr, "enclosing lym gate test") || strings.Contains(stderr, "CPU watchdog started") {
 			t.Errorf("enclosed stderr = %q; want the enclosing-run reason and no watchdog start", stderr)
 		}
 
@@ -1078,7 +1078,7 @@ func TestGateTest_Scenario(t *testing.T) {
 		if code != 1 {
 			t.Errorf("exit code = %d, stdout %q; want 1", code, stdout)
 		}
-		for _, want := range []string{"tier5", "example.com/emptytier/p", "lyx config gate"} {
+		for _, want := range []string{"tier5", "example.com/emptytier/p", "lym config gate"} {
 			if !strings.Contains(stdout, want) {
 				t.Errorf("stdout %q lacks %q", stdout, want)
 			}
@@ -1157,7 +1157,7 @@ func TestGateTest_Scenario(t *testing.T) {
 	})
 
 	t.Run("a refusal after a failed tier ends the call with the closing line and the refusal's code", func(t *testing.T) {
-		if err := os.MkdirAll(filepath.Join(prime, "cmd", "lyx"), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(prime, "cmd", "lym"), 0o755); err != nil {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = os.RemoveAll(filepath.Join(prime, "cmd")) })
@@ -1233,7 +1233,7 @@ func TestGateTest_Scenario(t *testing.T) {
 		requireFree(t)
 	})
 
-	stale := gateslot.PrebuiltLyxEnv + "=/stale/lyx"
+	stale := gateslot.PrebuiltLymEnv + "=/stale/lym"
 	t.Run("an untagged tier builds nothing and strips an inherited prebuilt variable", func(t *testing.T) {
 		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "./pkg"}, env: []string{stale}})
 		if code := g.wait(t); code != 0 {
@@ -1241,23 +1241,23 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 		records := g.records(t)
 		if len(records) != 1 || records[0].Build || records[0].Prebuilt != "" {
-			t.Errorf("records = %+v; want the tier invocation alone, with no %s", records, gateslot.PrebuiltLyxEnv)
+			t.Errorf("records = %+v; want the tier invocation alone, with no %s", records, gateslot.PrebuiltLymEnv)
 		}
 	})
 
-	t.Run("a prebuilding tier in a root without cmd/lyx builds nothing and strips an inherited prebuilt variable", func(t *testing.T) {
+	t.Run("a prebuilding tier in a root without cmd/lym builds nothing and strips an inherited prebuilt variable", func(t *testing.T) {
 		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "3", "./pkg"}, env: []string{stale}})
 		if code := g.wait(t); code != 0 {
 			t.Fatalf("exit code = %d; want 0", code)
 		}
 		records := g.records(t)
 		if len(records) != 1 || records[0].Build || records[0].Prebuilt != "" {
-			t.Errorf("records = %+v; want the tier invocation alone, with no %s", records, gateslot.PrebuiltLyxEnv)
+			t.Errorf("records = %+v; want the tier invocation alone, with no %s", records, gateslot.PrebuiltLymEnv)
 		}
 	})
 
-	t.Run("a prebuilding tier builds lyx once, exports it from the store under its content's name and removes the build", func(t *testing.T) {
-		if err := os.MkdirAll(filepath.Join(prime, "cmd", "lyx"), 0o755); err != nil {
+	t.Run("a prebuilding tier builds lym once, exports it from the store under its content's name and removes the build", func(t *testing.T) {
+		if err := os.MkdirAll(filepath.Join(prime, "cmd", "lym"), 0o755); err != nil {
 			t.Fatal(err)
 		}
 		// buildAndExport runs one prebuilding gate whose stand-in build writes content, and returns the build path and the path the tier saw.
@@ -1272,30 +1272,30 @@ func TestGateTest_Scenario(t *testing.T) {
 				t.Fatalf("records = %+v; want one build invocation, then the tier invocation", records)
 			}
 			bin = records[0].Args[7]
-			if want := []string{"build", "-C", prime, "-p", "3", "-trimpath", "-o", bin, "./cmd/lyx"}; !slices.Equal(records[0].Args, want) {
+			if want := []string{"build", "-C", prime, "-p", "3", "-trimpath", "-o", bin, "./cmd/lym"}; !slices.Equal(records[0].Args, want) {
 				t.Errorf("build args = %q; want %q", records[0].Args, want)
 			}
 			return bin, records[1].Prebuilt
 		}
 
-		bin, exported := buildAndExport(t, "lyx build one")
-		if filepath.Dir(exported) != pool.PrebuiltDir() || !strings.HasPrefix(filepath.Base(exported), "lyx-") {
-			t.Errorf("the tier saw %s = %q; want a lyx- entry of the store %s", gateslot.PrebuiltLyxEnv, exported, pool.PrebuiltDir())
+		bin, exported := buildAndExport(t, "lym build one")
+		if filepath.Dir(exported) != pool.PrebuiltDir() || !strings.HasPrefix(filepath.Base(exported), "lym-") {
+			t.Errorf("the tier saw %s = %q; want a lym- entry of the store %s", gateslot.PrebuiltLymEnv, exported, pool.PrebuiltDir())
 		}
-		if got, err := os.ReadFile(exported); err != nil || string(got) != "lyx build one" {
+		if got, err := os.ReadFile(exported); err != nil || string(got) != "lym build one" {
 			t.Errorf("the stored binary %s = (%q, %v); want the build's content", exported, got, err)
 		}
-		if _, again := buildAndExport(t, "lyx build one"); again != exported {
+		if _, again := buildAndExport(t, "lym build one"); again != exported {
 			t.Errorf("a second run of the same build exported %q; want the same %q", again, exported)
 		}
-		if _, changed := buildAndExport(t, "lyx build two"); changed == exported || filepath.Dir(changed) != pool.PrebuiltDir() {
+		if _, changed := buildAndExport(t, "lym build two"); changed == exported || filepath.Dir(changed) != pool.PrebuiltDir() {
 			t.Errorf("a changed build exported %q; want a store entry other than %q", changed, exported)
 		}
 		if _, err := os.Stat(filepath.Dir(bin)); !os.IsNotExist(err) {
 			t.Errorf("the build directory %s survived the gate (stat err=%v); want it removed", filepath.Dir(bin), err)
 		}
 		// The gate runs in a helper process of its own, so its run directory is a sibling of this process's, made by the temp package's beside-the-parent rule.
-		parentRun, err := lyxtemp.Dir()
+		parentRun, err := lymtemp.Dir()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1324,7 +1324,7 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 		return dir
 	}
-	t.Run("a worktree outside every hub runs unslotted under its own gate.yaml and records under its own .lyx", func(t *testing.T) {
+	t.Run("a worktree outside every hub runs unslotted under its own gate.yaml and records under its own .lym", func(t *testing.T) {
 		worktree := standalone(t, true)
 		g := startGate(t, gateRun{cwd: worktree, args: []string{"test", "./pkg"}, env: []string{strandEnvEntry}})
 		if code := g.wait(t); code != 0 {
@@ -1348,10 +1348,10 @@ func TestGateTest_Scenario(t *testing.T) {
 
 	t.Run("a prebuilding tier outside every hub exports its own build path and removes it afterwards", func(t *testing.T) {
 		worktree := standalone(t, true)
-		if err := os.MkdirAll(filepath.Join(worktree, "cmd", "lyx"), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(worktree, "cmd", "lym"), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		g := startGate(t, gateRun{cwd: worktree, args: []string{"test", "--tier", "3", "./pkg"}, env: []string{helperBuildContentEnv + "=lyx build"}})
+		g := startGate(t, gateRun{cwd: worktree, args: []string{"test", "--tier", "3", "./pkg"}, env: []string{helperBuildContentEnv + "=lym build"}})
 		if code := g.wait(t); code != 0 {
 			t.Fatalf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
 		}
@@ -1361,7 +1361,7 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 		bin := records[0].Args[7]
 		if records[1].Prebuilt != bin {
-			t.Errorf("the tier saw %s = %q; want the build's own -o path %q", gateslot.PrebuiltLyxEnv, records[1].Prebuilt, bin)
+			t.Errorf("the tier saw %s = %q; want the build's own -o path %q", gateslot.PrebuiltLymEnv, records[1].Prebuilt, bin)
 		}
 		if _, err := os.Stat(filepath.Dir(bin)); !os.IsNotExist(err) {
 			t.Errorf("the build directory %s survived the gate (stat err=%v); want it removed", filepath.Dir(bin), err)
@@ -1379,22 +1379,22 @@ func TestGateTest_Scenario(t *testing.T) {
 		wantError []string
 	}{
 		{
-			name: "an absent gate.yaml names lyx fabric reconcile",
+			name: "an absent gate.yaml names lym fabric reconcile",
 			setup: func(t *testing.T) func() {
 				if err := os.Remove(configPath); err != nil {
 					t.Fatal(err)
 				}
 				return func() { writeConfig(t, gateConfig) }
 			},
-			wantError: []string{`way forward: run "lyx fabric reconcile", then re-run the same command; a session lyx refuses the verb from reports status: FAILED and the orch runs it`},
+			wantError: []string{`way forward: run "lym fabric reconcile", then re-run the same command; a session lym refuses the verb from reports status: FAILED and the orch runs it`},
 		},
 		{
-			name: "a gate.yaml value below 1 names lyx config gate",
+			name: "a gate.yaml value below 1 names lym config gate",
 			setup: func(t *testing.T) func() {
 				writeConfig(t, []byte("slots: 0\n"))
 				return func() { writeConfig(t, gateConfig) }
 			},
-			wantError: []string{`fix it with "lyx config gate" from the prime`},
+			wantError: []string{`fix it with "lym config gate" from the prime`},
 		},
 		{
 			name: "a machine tier_parallel below 1 names both files and both ways forward",
@@ -1415,31 +1415,31 @@ func TestGateTest_Scenario(t *testing.T) {
 			wantError: []string{
 				configengine.ConfigFile(h.BoardDir(), "gate"),
 				configengine.MachineFile(h.BoardDir(), "gate"),
-				"lyx config gate --layer machine",
+				"lym config gate --layer machine",
 				"by removing",
 				"take the step it names, then re-run the same command",
 				"a session that is not the prime takes none of these steps; it reports status: FAILED and the orch runs them",
 			},
 		},
 		{
-			name: "a hub with no tier names lyx config gate",
+			name: "a hub with no tier names lym config gate",
 			setup: func(t *testing.T) func() {
 				writeConfig(t, []byte("slots: 2\n"))
 				return func() { writeConfig(t, gateConfig) }
 			},
-			wantError: []string{"declares no tier0", `"lyx config gate"`, "reports status: FAILED"},
+			wantError: []string{"declares no tier0", `"lym config gate"`, "reports status: FAILED"},
 		},
 		{
-			name:      "an undeclared tier names lyx config gate",
+			name:      "an undeclared tier names lym config gate",
 			args:      []string{"test", "--tier", "9", "./pkg"},
 			setup:     func(t *testing.T) func() { return func() {} },
-			wantError: []string{"declares no tier9", `"lyx config gate"`},
+			wantError: []string{"declares no tier9", `"lym config gate"`},
 		},
 		{
-			name:      "words after -- for a tier without {args} name lyx config gate",
+			name:      "words after -- for a tier without {args} name lym config gate",
 			args:      []string{"test", "--tier", "2", "./pkg", "--", "-v"},
 			setup:     func(t *testing.T) func() { return func() {} },
-			wantError: []string{"command of tier2 holds no {args}", `"lyx config gate"`, "reports status: FAILED"},
+			wantError: []string{"command of tier2 holds no {args}", `"lym config gate"`, "reports status: FAILED"},
 		},
 		{
 			name: "a tier whose dir does not exist is a refusal naming the dir",
@@ -1515,28 +1515,28 @@ func TestGateTest_Scenario(t *testing.T) {
 		})
 	}
 
-	t.Run("a worktree outside every hub with no gate.yaml names lyx config gate", func(t *testing.T) {
+	t.Run("a worktree outside every hub with no gate.yaml names lym config gate", func(t *testing.T) {
 		g := startGate(t, gateRun{cwd: standalone(t, false), args: []string{"test", "./pkg"}})
 		code := g.wait(t)
-		if code != 1 || !strings.Contains(g.stdout.String(), `lyx config gate`) {
-			t.Errorf("gate = exit %d, stdout %q; want exit 1 and a refusal naming lyx config gate", code, g.stdout.String())
+		if code != 1 || !strings.Contains(g.stdout.String(), `lym config gate`) {
+			t.Errorf("gate = exit %d, stdout %q; want exit 1 and a refusal naming lym config gate", code, g.stdout.String())
 		}
 	})
 
-	t.Run("a directory in no git worktree names lyx config gate run in one", func(t *testing.T) {
+	t.Run("a directory in no git worktree names lym config gate run in one", func(t *testing.T) {
 		g := startGate(t, gateRun{cwd: t.TempDir(), args: []string{"test", "./pkg"}})
 		code := g.wait(t)
-		if code != 1 || !strings.Contains(g.stdout.String(), "is in no git worktree") || !strings.Contains(g.stdout.String(), `lyx config gate`) {
-			t.Errorf("gate = exit %d, stdout %q; want exit 1 and a refusal naming lyx config gate in a git worktree", code, g.stdout.String())
+		if code != 1 || !strings.Contains(g.stdout.String(), "is in no git worktree") || !strings.Contains(g.stdout.String(), `lym config gate`) {
+			t.Errorf("gate = exit %d, stdout %q; want exit 1 and a refusal naming lym config gate in a git worktree", code, g.stdout.String())
 		}
 	})
 
 	guarded := writeModule(t, "guarded", map[string]string{
 		"pkg/pkg.go":  "package pkg\n",
 		"g/g.go":      "package g\n",
-		"g/g_test.go": "package g\n\nimport \"testing\"\n\n//lyx:guard\nfunc TestGuard(t *testing.T) {}\n",
+		"g/g_test.go": "package g\n\nimport \"testing\"\n\n//lym:guard\nfunc TestGuard(t *testing.T) {}\n",
 		"h/h.go":      "package h\n",
-		"h/h_test.go": "package h\n\nimport \"testing\"\n\n//lyx:guard\nfunc TestGuardH(t *testing.T) {}\n",
+		"h/h_test.go": "package h\n\nimport \"testing\"\n\n//lym:guard\nfunc TestGuardH(t *testing.T) {}\n",
 	})
 	guardRun := []string{"./g", "./h", "-run", "^(TestGuard|TestGuardH)$"}
 	guardTests := []struct {
@@ -1602,7 +1602,7 @@ func TestGateTest_Scenario(t *testing.T) {
 	t.Run("--guards: a guard in the module's root package runs as the . package", func(t *testing.T) {
 		rooted := writeModule(t, "rooted", map[string]string{
 			"root.go":      "package rooted\n",
-			"root_test.go": "package rooted\n\nimport \"testing\"\n\n//lyx:guard\nfunc TestGuardRoot(t *testing.T) {}\n",
+			"root_test.go": "package rooted\n\nimport \"testing\"\n\n//lym:guard\nfunc TestGuardRoot(t *testing.T) {}\n",
 		})
 		g := startGate(t, gateRun{cwd: t.TempDir(), args: []string{"test", "-C", rooted, "--guards", "."}})
 		if code := g.wait(t); code != 0 {
@@ -1642,12 +1642,12 @@ func TestGateTest_Scenario(t *testing.T) {
 	}{
 		{
 			name:      "a misplaced marker names its file and line and says to move it",
-			files:     map[string]string{"p/p.go": "package p\n", "p/p_test.go": "package p\n\n//lyx:guard\nfunc helper() {}\n"},
+			files:     map[string]string{"p/p.go": "package p\n", "p/p_test.go": "package p\n\n//lym:guard\nfunc helper() {}\n"},
 			wantError: []string{"p/p_test.go:3", "move the marker directly above its func Test line"},
 		},
 		{
 			name:      "a marker in a tier2 file names its file and line and says to move it into a tier0 or tier1 file",
-			files:     map[string]string{"p/p.go": "package p\n", "p/p_test.go": "//go:build tier2\n\npackage p\n\nimport \"testing\"\n\n//lyx:guard\nfunc TestA(t *testing.T) {}\n"},
+			files:     map[string]string{"p/p.go": "package p\n", "p/p_test.go": "//go:build tier2\n\npackage p\n\nimport \"testing\"\n\n//lym:guard\nfunc TestA(t *testing.T) {}\n"},
 			wantError: []string{"p/p_test.go:7", "move the marked test into a tier0 or tier1 file"},
 		},
 		{
