@@ -1,0 +1,13 @@
+input	setting	finding	own_severity	label	claude_finding	claude_severity	note
+P2	med1-handler	F1	BLOCKING	unique-real			fork guard-reach: an earlier Delete of Draw(string) and a re-sign of Draw(int) into that id may share a batch, since card 13 adds boundaries only for a later use of the re-sign's old glyph and boundary.go sees no cover; after the batch Draw(string) exists, so DoneChecks answers delete-not-done before RebindResigns runs; holds on cards 11 lines 39 to 40 and 59, 12 line 36, 13 lines 12 to 14, boundary.go lines 12 to 29 and donecheck.go lines 96 to 100 and 201 to 205
+P2	med1-handler	F2	BLOCKING	unique-real			handler: TestRenameCSharpDecl tests the unexported renameCSharpDecl directly, against PATTERN-test-economy ("an unexported helper is tested through the surface that uses it"); holds on card 10 line 41, severity BLOCKING arguable
+P2	med1-handler	F3	BLOCKING	unique-real			handler: card 14 defers the package docs and the PATTERN text past their implementing cards, against CLAUDE.md's same-commit rule; the grade is arguable, as in codex-v2-p2-bench
+P2	med1-handler	F4	MEDIUM	shared	F1	BLOCKING	fork guard-reach: the declaredNameIndex fallback picks IProvider in card 9's own draft row
+P2	med1-handler	F5	MEDIUM	unique-real			fork guard-reach: card 6's resolve half reads a .cs symbol from a Uses ref as a changed C# target; holds on planglyph.go lines 432 to 452
+P2	med1-handler	F6	MEDIUM	unique-real			fork affected-set: the new status and Unit readers of cards 6, 8, 11 and 12 are missing from allowedStatusConsumers; holds on status_enforcement_test.go lines 64 to 99 and 135
+P2	med1-handler	F7	MEDIUM	unique-real			handler: PathEntryPath is an exported planparser symbol with two consumers (cards 6 and 7) created inside card 6; the plan-review rubric gives a public-surface symbol its own card
+P2	med1-handler	F8	LOW	unique-real			handler: card 5 says none already skipped every gated check, but validate_test.go line 1700 has the row "language none still fires" for checkVerifyNestedModule, which has no language guard
+P2	med1-handler	F9	LOW	unique-real			handler: Plan.Language's field comment (plan.go lines 49 to 53) names only go and none, and neither card 2 nor card 14 covers it
+P2	med2-handler	F1	MEDIUM	shared	F1	BLOCKING	handler and fork guard-reach: the declaredNameIndex fallback picks IProvider in card 9's own draft row
+P2	med2-handler	F2	MEDIUM	unique-real			fork affected-set: the new status and Unit readers are missing from allowedStatusConsumers
+P2	med2-handler	F3	MEDIUM	unique-real			fork affected-set: card 10's renameDeclSource calls ParseRef with no plan to give it; holds on handle.go line 98

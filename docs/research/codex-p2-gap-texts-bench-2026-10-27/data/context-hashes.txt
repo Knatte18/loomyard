@@ -1,0 +1,5 @@
+53db14071cc6f8d2 AGENTS.md
+53db14071cc6f8d2 CLAUDE.md
+4561518c3453800e PATTERN.md
+b01ae3bd0b21fd5a block-v2-gap.md
+2a417e8389136273 block-v2.md (earlier bench)

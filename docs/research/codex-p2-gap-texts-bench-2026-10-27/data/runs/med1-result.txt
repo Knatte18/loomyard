@@ -1,0 +1,5 @@
+rc=0 wall_seconds=600
+rollout-2026-10-27T15-24-28-01a17dbf-8b56-7cd3-9b8c-81f875035624.jsonl
+rollout-2026-10-27T15-25-47-01a17dc0-c489-7fa2-a62d-3aec3fb3fcc9.jsonl
+rollout-2026-10-27T15-26-01-01a17dc0-fc85-7c02-9ebf-36c80728ffac.jsonl
+rollout-2026-10-27T15-26-16-01a17dc1-34e1-7410-b3f5-276c682514e0.jsonl

@@ -1,0 +1,6 @@
+Own whether each guard can be reached. For each guard, refusal, branch or
+test row a card adds, trace the sequence of states a real entry point
+passes through to reach it. Say whether the state it guards can occur at
+that point, and whether the guarded site recurs elsewhere on a path the
+card does not guard. A guard whose state cannot occur, and a guarded site
+that recurs unguarded, are findings. Find the recurrences by a search for the callers of the guarded function, and treat each command, hook and pre-run that calls it, and each environment variable or flag that turns the guarded step off, as an entry point. For a value a card copies or captures, say when it is assigned and when the copy runs, and check that the copy comes later. For each check a card prescribes in text, such as a regex, comparison, threshold, refusal or verify line, run it by hand on the nearest input that must not pass and the nearest that must, and follow the input of the card's test row through every loader, filler and validator that runs before the check, to the first that rejects, rewrites or drops it. Your list: per guard, the entry points that reach the guarded site and which of them the guard covers.
