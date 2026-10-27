@@ -1,0 +1,22 @@
+# One line per rollout: id, parent, start, end, commands, first model request, last total
+id=01a17d4a-0cf3-7973-bc3f-74e3ed79c96d forked_from=- start=2026-10-27T12:16:07.781Z end=2026-10-27T12:31:57.079Z commands_including_inherited=37 first_request={"input_tokens":16325,"cached_input_tokens":12160} total={"input_tokens":5312070,"cached_input_tokens":5026176,"output_tokens":19142,"reasoning_output_tokens":6483}
+id=01a17d4c-ab67-75d0-8f9f-9d04f7369c2d forked_from=01a17d4a-0cf3-7973-bc3f-74e3ed79c96d start=2026-10-27T12:18:59.051Z end=2026-10-27T12:22:10.533Z commands_including_inherited=25 first_request={"input_tokens":195616,"cached_input_tokens":112000} total={"input_tokens":1512703,"cached_input_tokens":1391488,"output_tokens":4225,"reasoning_output_tokens":1874}
+id=01a17d4c-cfce-7251-96e8-6de82ed500ab forked_from=01a17d4a-0cf3-7973-bc3f-74e3ed79c96d start=2026-10-27T12:19:08.370Z end=2026-10-27T12:23:37.880Z commands_including_inherited=24 first_request={"input_tokens":196102,"cached_input_tokens":112000} total={"input_tokens":1248828,"cached_input_tokens":1141632,"output_tokens":5523,"reasoning_output_tokens":3289}
+id=01a17d4c-f35d-7b73-a5ac-4da436701804 forked_from=01a17d4a-0cf3-7973-bc3f-74e3ed79c96d start=2026-10-27T12:19:17.473Z end=2026-10-27T12:23:01.013Z commands_including_inherited=25 first_request={"input_tokens":196546,"cached_input_tokens":112000} total={"input_tokens":1507812,"cached_input_tokens":1390848,"output_tokens":4748,"reasoning_output_tokens":2647}
+
+# spawn_agent calls in the handler's rollout (message bodies are encrypted)
+2026-10-27T12:18:59.036Z	{"task_name":"affected_set","fork_turns":"all"}
+2026-10-27T12:19:08.355Z	{"task_name":"guard_reach","fork_turns":"all"}
+2026-10-27T12:19:17.459Z	{"task_name":"way_forward","fork_turns":"all"}
+
+# AGENTS.md load notices (project instructions in the first model input), per rollout
+2026-10-27T13-16-07-01a17d4a-0cf3-7973-bc3f-74e3ed79 2
+2026-10-27T13-18-59-01a17d4c-ab67-75d0-8f9f-9d04f736 1
+2026-10-27T13-19-08-01a17d4c-cfce-7251-96e8-6de82ed5 1
+2026-10-27T13-19-17-01a17d4c-f35d-7b73-a5ac-4da43670 1
+
+# handler reads of pattern/ background files before the first spawn
+cat pattern/PATTERN-{leaf-packages,tolerant-records,told-geometry,cli-cobra,cliwire-sole-wiring,refusal-way-forward,no-denied-recovery,friction-capture,fabric-git,fabric-destruction-chokepoint,mutation-record,pair-teardown,push-both-sides,test-economy,test-speed,test-isolation,testkit,hubforge-fixtures,documentation-lifecycle,daemon-wakeups,comment-line-breaks}.md
+cat pattern/PATTERN-{mutation-record,pair-teardown,push-both-sides,test-economy,test-speed,test-isolation,testkit,hubforge-fixtures,documentation-lifecycle,daemon-wakeups,comment-line-breaks}.md
+cat pattern/PATTERN-{testkit,hubforge-fixtures,documentation-lifecycle,spawn-observability,stencil-ownership,shed-run-directory,shed-driver,shed-verb-set,transient-stop,failure-stop-visible,battan-bookend}.md
+cat pattern/PATTERN-batten-bookend.md pattern/PATTERN-cwd-resolution.md pattern/PATTERN-durable-vs-ephemeral-state.md
