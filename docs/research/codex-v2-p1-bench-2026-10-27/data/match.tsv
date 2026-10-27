@@ -1,0 +1,26 @@
+input	setting	finding	own_severity	label	claude_finding	claude_severity	note
+P1	astra-v2-forkfan-high	F1	BLOCKING	shared	F2	BLOCKING	affected-set fork: templateDefaults and the direct Gates assignments in TestCardGateCommand, TestBeginBatch_PromptFile and TestRecoverSpawnOrAttach, four of the fan's readers; also unique parts: the tree-sitter link guard, tmuxkit's allow_tmux.go, card 3's rendered --tier assertions and TestDerive_OverARepository; misses the darnengine dead code and guard_tier mentions
+P1	astra-v2-forkfan-high	F2	BLOCKING	shared	F1	BLOCKING	handler: card 3 grows PATTERN.md before card 23 shortens it; proposes spreading the shortening over the growing cards
+P1	astra-v2-forkfan-high	F3	MEDIUM	shared	F3	MEDIUM	handler: Custom retag on a false premise, scan displaced from D5
+P1	astra-v2-forkfan-high	F4	MEDIUM	unique-real			guard-reach fork: card 24's checker passes a flow-style tier mapping and accepts -tags nottier0; the nottier0 half was graded unique-real in the P1 high bench; the fan's F9 is a different defect of the same line
+P1	astra-v2-forkfan-high	F5	MEDIUM	shared	F4	MEDIUM	handler: no re-sign arrows on darnTreeScope and guardRunOf
+P1	astra-v2-forkfan-high	F6	MEDIUM	shared	F6	MEDIUM	way-forward fork: card 19's recovery edits run_settings and the wrong layer after Seed-Child
+P1	astra-v2-forkfan-high	F7	MEDIUM	unique-real			handler: ReadRunRecords and CheckSettingKey bundled into feature cards; arguable, each has one consumer
+P1	astra-v2-forkfan-high	F8	LOW	shared	F8	LOW	way-forward fork: bare lym config reconcile is a dry run on the wrong layer
+P1	astra-v2-forkfan-med1	F1	BLOCKING	shared	F2	BLOCKING	affected-set fork: templateDefaults only, one of the fan's readers
+P1	astra-v2-forkfan-med1	F2	BLOCKING	unique-real			affected-set fork: the tree-sitter link guard's go list tags and tmuxkit allow_tmux.go; holds on both files as in the P1 high bench
+P1	astra-v2-forkfan-med1	F3	BLOCKING	unique-real			guard-reach fork: card 24's checker passes a flow mapping and -tags nottier0; the fan's F9 is a different defect
+P1	astra-v2-forkfan-med1	F4	MEDIUM	shared	F8	LOW	guard-reach fork: bare reconcile is a dry run; adds that configengine.Load rejects the list before decodeConfig, as the P1 high bench's F7 held
+P1	astra-v2-forkfan-med1	F5	MEDIUM	shared	F6	MEDIUM	way-forward fork: run_settings and the prime's layer
+P1	astra-v2-forkfan-med1	F6	MEDIUM	shared	F3	MEDIUM	handler: Custom retag on a false premise
+P1	astra-v2-forkfan-med1	F7	MEDIUM	shared	F4	MEDIUM	handler: missing re-sign arrows
+P1	astra-v2-forkfan-med2	F1	BLOCKING	shared	F2	BLOCKING	affected-set and guard-reach forks: templateDefaults, TestDerive_OverARepository's Guards type, the tree-sitter guard, and the card: [0] input that cannot reach the decoder refusal; names one of the fan's readers
+P1	astra-v2-forkfan-med2	F2	BLOCKING	shared	F1	BLOCKING	handler: card 3 and cards 7 and 19 grow PATTERN.md before card 23; adds that moving all shortening earlier leaves card 33 crossing the line
+P1	astra-v2-forkfan-med2	F3	BLOCKING	unique-real			guard-reach fork: targetsFor and scanGuards drop guards in any impacted package, so a tier0 run over a package holding a tier1 guard compiles no such guard; D6 says outside the guard's own tier's scope; holds on targets.go:126 and scope.go:138
+P1	astra-v2-forkfan-med2	F4	BLOCKING	unique-real			guard-reach fork: card 24's checker passes -tags nottier0 and a flow mapping; the fan's F9 is a different defect
+P1	astra-v2-forkfan-med2	F5	BLOCKING	shared	F6	MEDIUM	way-forward fork: run_settings and the prime's layer
+P1	astra-v2-forkfan-med2	F6	BLOCKING	unique-real			handler: card 20's new test repeats stepCommandRows_FollowTheTasksLocalSwitch; the P1 high bench graded it unique-real; Astra rates it BLOCKING
+P1	astra-v2-forkfan-med2	F7	MEDIUM	shared	F3	MEDIUM	handler: Custom retag on a false premise
+P1	astra-v2-forkfan-med2	F8	MEDIUM	unique-real			guard-reach fork: a caller -run among the args still exempts a guard run from the empty-tier check, against the card's own sentence; the planned test covers only empty args
+P1	astra-v2-forkfan-med2	F9	MEDIUM	shared	F4	MEDIUM	handler: missing re-sign arrows
+P1	astra-v2-forkfan-med2	F10	LOW	shared	F8	LOW	way-forward fork: bare reconcile is a dry run
