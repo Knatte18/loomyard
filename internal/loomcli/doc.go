@@ -3,7 +3,9 @@
 // The run, step, status, pause and goto bodies are the shared `internal/shedverbs` verbs, mounted here with loom's own text.
 // Friction-Reflect, the last row, runs the Tier 2 friction reflection under run and under step alike, before the run records done.
 // A `blocked` or `failed` halt, and an interrupted stop, write their Go halt note and spawn no reflection, so no stop holds the driver lock for a friction session and `lym loom resume` never waits on one; the note waits for the run's Friction-Reflect row, which reflects every note in the friction directory.
-// An interrupted stop's note carries the `interrupted-stop` anomaly kind, never `producer-hard-failure`, with the stop's cause as its reason and the in-flight step's trace file where the stop knows it.
+// An interrupted stop's note carries the `interrupted-stop` anomaly kind, never `producer-hard-failure`, with the stop's cause as its reason and the in-flight step's trace file, or its captured stderr, where the stop knows it.
+// It records the state the status file holds after the stop, which stays `paused` for a step that died before its resume write over a paused run,
+// and an error the status file holds that the stop did not write, such as the step's own producer failure, on a `status error:` line of its reason.
 //
 // A run seeded with the recipe `pawl` is a beam's life, batten's Seed-Child seeds it in the beam's pair.
 // Its shed reads Beam-Up, Beam-Await, Parent-Align, the Code-Review perch, Beam-Describe, Finalize and Beam-Down, with no plan and no reroute edge.

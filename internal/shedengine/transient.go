@@ -7,7 +7,7 @@ package shedengine
 import "errors"
 
 // TransientClass names one kind of transient infrastructure failure.
-// The set is closed at the three constants below, and the empty class means "not transient".
+// The set is closed at the constants below, and the empty class means "not transient".
 // A failure qualifies only when the same step, run again unchanged, can plausibly succeed;
 // a rejected credential, a merge conflict, a missing branch or any verdict never does.
 type TransientClass string
@@ -20,8 +20,11 @@ const (
 	// A 4xx that names a bad request, a missing resource or bad credentials never qualifies, and neither does a rate limit, since an immediate retry hits the same limit.
 	TransientGitHubAPI TransientClass = "github-api"
 	// TransientAgentStart is an agent session that never became ready or never took its first input.
-	// An agent that started and then died or timed out never qualifies.
+	// An agent that started and then died or timed out never qualifies here.
 	TransientAgentStart TransientClass = "agent-start"
+	// TransientHostResources is a process start the host refused for a temporary resource shortage, EAGAIN from fork or exec, or an agent that died shortly after the step's own process saw such a refusal.
+	// An agent that died with no such refusal behind it, or timed out, never qualifies.
+	TransientHostResources TransientClass = "host-resources"
 )
 
 // transientError carries a class beside the error it wraps.

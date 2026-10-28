@@ -101,8 +101,9 @@ type Hooks struct {
 	// the --watch line drops the note on an error rather than ending the tail.
 	// The hook closes over whatever location the arming module was told, so shedverbs stays path-free.
 	Waiting func(st shedengine.Status) (string, error)
-	// AfterInterrupt runs when the loop stops on a child step that ended without an envelope, after the stop is classified and before its envelope is written.
-	// It receives the stop row, the cause and the first trace file of the child, and its return is the envelope's friction key, like AfterStep's.
+	// AfterInterrupt runs when the loop stops on a child step that ended without an envelope, after the failed stop is written and before its envelope is written, so it reads the status the stop leaves.
+	// It receives the stop row, the one the status file names once the child exited, the cause and the first trace file of the child, or its captured stderr when it left no trace.
+	// Its return is the envelope's friction key, like AfterStep's.
 	// At a stop on the status read, absent or unreadable, no child ran and the trace file is the loop log.
 	AfterInterrupt func(ctx context.Context, producer, cause, traceFile string) string
 	// ConsumeAttempt runs in step's waiter, on `--until-stop --arbiter-attempt <attempt>`, before the loop is spawned.

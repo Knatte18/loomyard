@@ -174,9 +174,26 @@ func TestClassifyHalt(t *testing.T) {
 			wantOK:      true,
 		},
 		{
-			name:        "RunningInterrupted_None",
+			name:        "PausedInterrupted_InterruptedStop",
+			state:       shedengine.StatePaused,
+			reason:      "exited: exit status 2",
+			interrupted: true,
+			wantKind:    AnomalyInterrupted,
+			wantOK:      true,
+		},
+		{
+			name:        "RunningInterrupted_InterruptedStop",
 			state:       shedengine.StateRunning,
 			interrupted: true,
+			wantKind:    AnomalyInterrupted,
+			wantOK:      true,
+		},
+		{
+			name:        "DoneInterrupted_InterruptedStop",
+			state:       shedengine.StateDone,
+			interrupted: true,
+			wantKind:    AnomalyInterrupted,
+			wantOK:      true,
 		},
 		{
 			name:   "Running_None",

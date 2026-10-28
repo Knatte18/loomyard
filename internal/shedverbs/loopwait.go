@@ -492,6 +492,7 @@ func loopExitStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, detail str
 		CurrentProducer: after.CurrentProducer,
 		HistoryLength:   len(after.History),
 		State:           string(after.State),
+		PauseReason:     after.PauseReason,
 	}
 	obj.StatusMoved = rec.hasChild() && !rec.inFlightAt(after)
 	if spec.Hooks.InterruptPolicyFor != nil {

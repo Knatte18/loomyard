@@ -26,7 +26,7 @@ const (
 	AnomalyBudgetExhausted AnomalyKind = "bounce-budget-exhausted"
 	// AnomalyProducerFailure is trigger 4: a failed halt, an engine-level producer error.
 	AnomalyProducerFailure AnomalyKind = "producer-hard-failure"
-	// AnomalyInterrupted is trigger 5: a failed halt of a step that ended without an envelope, from outside its producer:
+	// AnomalyInterrupted is trigger 5: a non-blocked halt of a step that ended without an envelope, from outside its producer:
 	// a killed or crashed step, a stalled one the watchdog killed, or a loop that died under it.
 	AnomalyInterrupted AnomalyKind = "interrupted-stop"
 )
@@ -73,8 +73,9 @@ func DetectCrashResume(entry EntryObservation) bool {
 
 // ClassifyHalt evaluates the halt-kind triggers (escalation, budget-exhausted, producer-hard-failure, interrupted-stop) against a run's final state, the reason it persisted and whether the halt is an interrupted stop.
 // At most one fires, since the triggers partition state:
-// blocked with shedengine.ReasonBounceBudgetExhausted, blocked with anything else, failed by an interrupted stop, or failed otherwise.
-// interrupted is told by the caller that wrote the stop and changes no blocked kind.
+// blocked with shedengine.ReasonBounceBudgetExhausted, blocked with anything else, any non-blocked state by an interrupted stop, or failed otherwise.
+// interrupted is told by the caller that wrote the stop and changes no blocked kind;
+// an interrupted step leaves whatever state its failed write could reach, such as a paused run that died before its resume write or a running one the failed write found busy, and still classifies as an interrupted stop.
 // shedengine persists StateBlocked from exactly two arms, so "blocked and not budget-exhausted" is exactly the
 // escalation arm whatever reason its producer supplied.
 // The one text the partition still matches is the budget prefix, matched with strings.HasPrefix because the persisted reason carries the exhausted row and the told resume way forward after it:
@@ -86,7 +87,7 @@ func ClassifyHalt(state shedengine.State, reason string, interrupted bool) (Anom
 		return AnomalyBudgetExhausted, true
 	case state == shedengine.StateBlocked:
 		return AnomalyEscalation, true
-	case state == shedengine.StateFailed && interrupted:
+	case interrupted:
 		return AnomalyInterrupted, true
 	case state == shedengine.StateFailed:
 		return AnomalyProducerFailure, true

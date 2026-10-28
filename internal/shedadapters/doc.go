@@ -43,7 +43,7 @@
 //   - MultiLLMProducer: the chair's result maps as follows:
 //     shuttleengine.OutcomeDone maps to Done with the chair's first output as the pointer's path,
 //     a done chair whose gate failed maps to Stuck with that pointer and the gate's attempts and reason,
-//     and OutcomeDied and OutcomeTimeout are engine-level errors, wrapping shuttleengine.ErrNotStarted when the chair's provider never came up and carrying the start error's text when shuttle reported one.
+//     and OutcomeDied and OutcomeTimeout are engine-level errors, wrapping shuttleengine.ErrNotStarted when the chair's provider never came up and carrying the start error's text when shuttle reported one, and a chair that started and died wraps shuttleengine.ErrAgentDied.
 //     The advisors' results are logged and never judged, since an advisor's death weakens nothing the chair decided.
 //     Before archiving anything Call probes the table's seats through its SeatRunner: a live chair is resumed and its result mapped,
 //     and otherwise the probe has stopped every live advisor, so Call archives every seat's stale outputs and runs the table fresh.

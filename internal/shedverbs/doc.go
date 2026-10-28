@@ -34,6 +34,10 @@
 // halted is a run that is no longer running: blocked, awaiting, done or paused by request.
 // stop-condition is a pause_before or pause_after condition that fired.
 // error is a step that ended in an error, and interrupted a child that ended without an envelope; both write the status file failed while it still reads running.
+// An interrupted child's cause is its exit, its command line and an excerpt of its captured stderr: a Go crash's first lines when stderr holds one, and its last lines otherwise.
+// The stop names the row the status file names once the child exited, since a child that skipped gated rows moved the run on before it died,
+// and its trace file is the child's first trace file, or its captured stderr when it left none.
+// The failed write comes before Hooks.AfterInterrupt, so the hook reads the status the stop leaves: a child that died before its resume write leaves a paused run paused.
 // interrupted is also the stop on the status read at an iteration's top, with the cause status-missing for an absent file and status-unreadable: <error> for an unreadable one.
 // A decode error stops at once, since the file stays undecodable to this binary; any other read error gets one re-read through the same re-step the transient errors share, and stops when that fails or the re-step is already used.
 // No child runs at such a stop, the trace file is the loop log, and the error names the status file and the loop log and ends with a way forward split by cause: the recipe's own reseed for an absent file, a lym binary that decodes the file for a decode error, and a re-run of the step for a read error.
@@ -48,12 +52,13 @@
 // LastStepBuildChanged reads whether the last step ran on a known build other than the one passed, which an in-process driver judges against the lym on disk.
 //
 // The final envelope is the stop step's short envelope plus a loop object whose keys are closed:
-// steps, first_producer, stop, detail, status_moved, hand_back, restep_hold, restep (only when a re-step ran), current_producer, history_length, state, interrupt_policy, trace_copy and stderr_path.
+// steps, first_producer, stop, detail, status_moved, hand_back, restep_hold, restep (only when a re-step ran), current_producer, history_length, state, interrupt_policy, trace_copy, stderr_path and pause_reason.
 // hand_back is true when the stop is blocked and Spec.HandBack, the recipe's told check, answers true for the status's current producer and error, so a driver hands the halt to the orch; nil marks nothing.
 // restep_hold is true under the same rule for Spec.RestepHold, the recipe's told check of a blocked stop that a driver's own build re-launch leaves alone, though such a stop still goes to the arbiter first.
 // lym shed status reports the same hand_back and restep_hold keys at their top level, over the status file.
 // detail is the stop's error or reason and the WARN and ERROR lines and last lines of the stop step's trace, capped by lines and bytes.
 // trace_copy is a copy of the stop step's trace files, which outlives a sweep of the trace directory.
+// pause_reason is the status file's pause reason as the stop leaves it, empty unless the run is paused, so a stop that leaves a paused run names why even when the stop step's own envelope carries no reason.
 // A refusal of the --until-stop invocation's own arming goes through ReportLoopArmError, which prints the bootstrap error with a loop object that stopped with no step run.
 //
 // The loop runs detached, and the --until-stop invocation is a waiter on it.

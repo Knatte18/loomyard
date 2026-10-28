@@ -51,6 +51,7 @@ type Stop struct {
 }
 
 // parseDriveStop decodes the envelope shedverbs.RunUntilStop prints.
+// A stop that leaves the run paused with no reason of its own takes the loop's pause_reason, the one the status file records.
 // An unknown key is tolerated, and bytes that do not decode are refused.
 func parseDriveStop(envelope []byte) (Stop, error) {
 	var decoded struct {
@@ -73,17 +74,22 @@ func parseDriveStop(envelope []byte) (Stop, error) {
 			StatusMoved     bool   `json:"status_moved"`
 			TraceCopy       string `json:"trace_copy"`
 			StderrPath      string `json:"stderr_path"`
+			PauseReason     string `json:"pause_reason"`
 			HandBack        bool   `json:"hand_back"`
 		} `json:"loop"`
 	}
 	if err := json.Unmarshal(envelope, &decoded); err != nil {
 		return Stop{}, fmt.Errorf("sheddriver: drive: the loop's stop envelope does not decode: %w", err)
 	}
+	reason := decoded.Reason
+	if reason == "" && decoded.Loop.State == string(shedengine.StatePaused) {
+		reason = decoded.Loop.PauseReason
+	}
 	return Stop{
 		OK:              decoded.OK,
 		Outcome:         decoded.Outcome,
 		State:           decoded.State,
-		Reason:          decoded.Reason,
+		Reason:          reason,
 		Kind:            decoded.Kind,
 		Transient:       decoded.Transient,
 		ParentNotice:    decoded.ParentNotice,

@@ -25,7 +25,7 @@ func loopOf(t *testing.T, env map[string]any) map[string]any {
 // assertLoopKeys checks the loop object's closed key set.
 func assertLoopKeys(t *testing.T, loop map[string]any, withRestep bool) {
 	t.Helper()
-	want := []string{"steps", "first_producer", "stop", "detail", "status_moved", "hand_back", "restep_hold", "current_producer", "history_length", "state", "interrupt_policy", "trace_copy", "stderr_path"}
+	want := []string{"steps", "first_producer", "stop", "detail", "status_moved", "hand_back", "restep_hold", "current_producer", "history_length", "state", "interrupt_policy", "trace_copy", "stderr_path", "pause_reason"}
 	if withRestep {
 		want = append(want, "restep")
 	}

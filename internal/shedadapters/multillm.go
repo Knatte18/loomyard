@@ -140,7 +140,8 @@ func (p *MultiLLMProducer) errorExit(ctx context.Context, what string, err error
 
 // mapOutcome maps the chair's result onto shedengine's contract, shared by the resume path and the fresh path:
 // done maps to Done with the chair's first output as the pointer, unless its gate failed, which maps to Stuck with the pointer and the gate's attempts and reason;
-// died and timeout are engine-level errors, wrapping shuttleengine.ErrNotStarted when the chair never started and carrying the chair's start error text when shuttle reported one.
+// died and timeout are engine-level errors, wrapping shuttleengine.ErrNotStarted when the chair never started and carrying the chair's start error text when shuttle reported one;
+// a chair that started and died wraps shuttleengine.ErrAgentDied.
 // A genuine success survives cancellation, the one exception cancelErr never applies to.
 func (p *MultiLLMProducer) mapOutcome(ctx context.Context, result seatengine.Result) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	for _, advisor := range result.Advisors {
@@ -175,6 +176,9 @@ func (p *MultiLLMProducer) mapOutcome(ctx context.Context, result seatengine.Res
 				return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): shuttle run outcome %s: %w: %s", p.name, multiLLMEngineLabel, chair.Outcome, shuttleengine.ErrNotStarted, chair.StartError)
 			}
 			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): shuttle run outcome %s: %w", p.name, multiLLMEngineLabel, chair.Outcome, shuttleengine.ErrNotStarted)
+		}
+		if chair.Outcome == shuttleengine.OutcomeDied {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): shuttle run outcome %s: %w", p.name, multiLLMEngineLabel, chair.Outcome, shuttleengine.ErrAgentDied)
 		}
 		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): shuttle run outcome %s", p.name, multiLLMEngineLabel, chair.Outcome)
 

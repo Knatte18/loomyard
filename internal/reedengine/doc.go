@@ -287,6 +287,7 @@
 // Every tmux call goes through TmuxCmd's run, runStdin or output (overlay.go), and a tmux the host could not start for EAGAIN is retried there: four tries in all, waiting 250 ms before the first retry and doubling the wait each time, each retry logged at Warn.
 // A fork or exec failure means tmux never ran, so a retry repeats no side effect; a tmux that ran and exited nonzero, and every other start failure, returns at once.
 // So a transient process-table shortage never reads to a liveness check, a capture or a strand removal as a dead pane or a failed command.
+// Each EAGAIN failure is noted in proc's spawn-refusal record, which the step's transient classifier reads to judge an agent that died soon after.
 //
 // Pane enumeration: listPanes (overlay.go) always runs
 //
