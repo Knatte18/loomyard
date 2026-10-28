@@ -32,6 +32,7 @@ Copy these lines verbatim into every fork's prompt, ahead of its lens text.
   Review them through your lens as an outsider, as your context holds them, and never read them again.
 - Your context already holds the writer's exploration, the reviewed files and the rubric, so never re-read what your context shows.
   Make at most 6 further tool calls, each for something your lens needs that your context lacks.
+  Issue every such call you can name in one message; wait for a result only to choose the next call.
   End your report with one line per such call, saying what you read and why your context lacked it.
 - You are read-only: never write, edit or delete a file, run no git command, and never call the Agent tool.
 - Return your findings only as your final message, each with {{.severity_rule}}, the section or decision it concerns, a one-line summary and the evidence.

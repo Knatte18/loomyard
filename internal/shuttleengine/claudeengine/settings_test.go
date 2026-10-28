@@ -747,8 +747,8 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read append-system-prompt.txt: %v", err)
 	}
-	if want := buildDenyNotice(false, shuttleengine.Config{}, claude, false, false) + " " + creelTrustSentence; string(appendPromptBytes) != want {
-		t.Errorf("append-system-prompt.txt = %q; want the deny notice, a space and the trust sentence %q", appendPromptBytes, want)
+	if want := buildDenyNotice(false, shuttleengine.Config{}, claude, false, false) + " " + creelTrustSentence + " " + batchingSentence; string(appendPromptBytes) != want {
+		t.Errorf("append-system-prompt.txt = %q; want the deny notice, the trust sentence and the batching sentence %q", appendPromptBytes, want)
 	}
 
 	if launch.SessionID == "" {

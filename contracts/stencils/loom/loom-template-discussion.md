@@ -51,6 +51,7 @@ Read each such note `lym board list` shows.
 
 Read the relevant parts of the codebase before asking the operator anything.
 Do not ask a question the codebase already answers — read the files and check recent commits.
+Issue every search and read you can name in one message; wait for a result only to choose the next call.
 Only unresolved design questions belong in the interview.
 
 This exploration is bounded, the same way Step 3's interview categories are: at a coarse level you MAY establish which module boundary the work falls under and whether the design conflicts with an existing pattern.

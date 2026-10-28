@@ -223,7 +223,7 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		return shuttleengine.Launch{}, fmt.Errorf("write env file: %w", err)
 	}
 
-	// The deny notice and the creel trust sentence ride one file, since the sentence holds a quote that not every shell passes through as an argument.
+	// The deny notice, the creel trust sentence and the batching sentence ride one file, since the trust sentence holds a quote that not every shell passes through as an argument.
 	appendPromptPath, err := filepath.Abs(filepath.Join(runDir, appendPromptFileName))
 	if err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("resolve append system prompt path: %w", err)

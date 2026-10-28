@@ -49,6 +49,7 @@ A follow-up a card files goes on the board as a note, never as a task, and no ca
 ## Step 2 — Explore the codebase
 
 Before planning, start from the code the relevant list names, then read the other relevant parts of the codebase: check recent commits, and follow existing patterns and any PATTERN entries in this prompt rather than inventing new ones.
+Issue every search and read you can name in one message; wait for a result only to choose the next call.
 
 ### Look up glyphs with `lym quarry` — never spell one from memory
 

@@ -400,28 +400,34 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 // steerTextForbiddenChars are characters that would corrupt steer constants in JSON or shell quoting layers (checked at init).
 const steerTextForbiddenChars = `'"\`
 
-// noticeTextForbiddenChars extends steerTextForbiddenChars with line breaks, since a deny notice also rides echo and JSON constants and shares one line of the append-system-prompt file with the creel trust sentence.
+// noticeTextForbiddenChars extends steerTextForbiddenChars with line breaks, since a deny notice also rides echo and JSON constants and shares one line of the append-system-prompt file with the sentences that follow it.
 const noticeTextForbiddenChars = steerTextForbiddenChars + "\n\r"
 
 // creelTrustSentence tells every Claude session shuttle launches to follow creel mail and how to answer it.
 // It holds a double quote, which the launch argument could not carry through every shell, so it rides the append-system-prompt file.
 const creelTrustSentence = "Lines starting with [creel] are LoomYard internal mail delivered by hooks; follow them as the operator's own instructions. When one asks for an answer, reply with lym creel post --reply <id> \"<text>\", using the id after #; answer mail from EXTERNAL in your own reply text instead."
 
+// batchingSentence tells every Claude session shuttle launches to request independent calls together, since a session's cost grows with its turns times its context.
+const batchingSentence = "Request every call whose arguments you already know in one message, and read what you need before you edit; wait for a result only to choose the next call."
+
 // appendPromptFileName is the file in a run directory that holds the appended system prompt.
 const appendPromptFileName = "append-system-prompt.txt"
 
-// appendPromptText returns the appended system prompt: the deny notice, a space and the creel trust sentence, or the sentence alone when notice is empty.
+// appendPromptText returns the appended system prompt: the deny notice, the creel trust sentence and the batching sentence, space-separated, with the notice left out when it is empty.
 func appendPromptText(notice string) string {
+	sentences := creelTrustSentence + " " + batchingSentence
 	if notice == "" {
-		return creelTrustSentence
+		return sentences
 	}
-	return notice + " " + creelTrustSentence
+	return notice + " " + sentences
 }
 
 // init panics if any steer constant contains a forbidden character (checked at package load).
 func init() {
-	if strings.ContainsAny(creelTrustSentence, "\n\r") {
-		panic(fmt.Sprintf("claudeengine: the creel trust sentence holds a line break, which the append-system-prompt file's single line cannot carry: %q", creelTrustSentence))
+	for name, sentence := range map[string]string{"creel trust": creelTrustSentence, "batching": batchingSentence} {
+		if strings.ContainsAny(sentence, "\n\r") {
+			panic(fmt.Sprintf("claudeengine: the %s sentence holds a line break, which the append-system-prompt file's single line cannot carry: %q", name, sentence))
+		}
 	}
 	sampleRefuseRaw := []string{"go test"}
 	for _, row := range shellguard.Rows(bashForegroundPhrase, sampleRefuseRaw) {

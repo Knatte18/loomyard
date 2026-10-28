@@ -36,4 +36,6 @@ Each finding also carries one of the four classes — `design`, `scope`, `decisi
 
 ## Tool-use rules — how you gather evidence
 
+Make the reads your focus needs, or the whole target when no focus is set, in one message.
+
 {{.tool_use_rules}}{{.fork_reading}}

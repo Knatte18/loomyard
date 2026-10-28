@@ -71,7 +71,8 @@ A later spawn that finds both present and passing leaves them as they are.
 
 1. Edit the repository to make the change.
    Follow the existing patterns, and the PATTERN entries in this prompt.
-2. Test as you work with `lym gate test --wait`, which computes its scope from your changes, never a raw test command or a module-wide run.
+   Read every file the change touches, with the greps that find them, in one message before the first edit of each commit, and make independent edits in one message.
+2. Test with `lym gate test --wait` once, after the last edit of each commit, never after each edit; it computes its scope from your changes; never run a raw test command or a module-wide run.
 3. Update the docs the repository's `CLAUDE.md` names for your kind of change in the same commits as the code.
 4. Commit on the task branch in small, coherent commits, each leaving the tree green.
    Never push: the landing steps that follow push the branch.
