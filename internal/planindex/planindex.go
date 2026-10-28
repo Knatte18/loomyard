@@ -97,9 +97,36 @@ type Index interface {
 	// LaterDeleteReferences reports the later cards that still reference a symbol the deleting cards delete.
 	// A finding is blocking for a resolved reference and informational for a method matched by name alone, since it runs no type load.
 	LaterDeleteReferences(plan *planparser.Plan, deleting, later []planparser.Card, worktreeRoot string) ([]Finding, error)
+	// ResolveGlyphs resolves glyphs against the tree at worktreeRoot under the same policy the plan gates apply to a card's refs, and answers positionally, one GlyphAnswer per glyph.
+	// A glyph that is not a well-formed glyph is GlyphMissing.
+	// A failure to answer at all is an error wrapping ErrQuarryUnavailable, never an answer.
+	ResolveGlyphs(worktreeRoot string, glyphs []string) ([]GlyphAnswer, error)
 	// Delta reads the git delta of the range fromSHA..toSHA in worktree.
 	// On an ErrQuarryUnavailable error the returned Delta is the empty delta, never nil.
 	Delta(worktree, fromSHA, toSHA string) (Delta, error)
+}
+
+// GlyphVerdict is the closed vocabulary of how a glyph resolves against the tree.
+type GlyphVerdict string
+
+const (
+	// GlyphFound marks a glyph that resolves to one or more declarations, including a name declared once per mutually exclusive build constraint.
+	GlyphFound GlyphVerdict = "found"
+	// GlyphMissing marks a glyph that resolves to no declaration, or that the index could not read an answer for.
+	GlyphMissing GlyphVerdict = "missing"
+	// GlyphAmbiguous marks a glyph that several declarations match with nothing to choose between them.
+	GlyphAmbiguous GlyphVerdict = "ambiguous"
+)
+
+// GlyphAnswer is the index's answer for one asked glyph.
+// Glyph is the asked glyph, verbatim.
+// Files holds the worktree-relative files declaring a found glyph, deduplicated, in answer order.
+// Candidates holds one entry per candidate of an ambiguous answer, naming its declaring file and build constraint.
+type GlyphAnswer struct {
+	Glyph      string
+	Verdict    GlyphVerdict
+	Files      []string
+	Candidates []string
 }
 
 // Delta is the git delta of one batch, read once and consumed by every check that needs it.

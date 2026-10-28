@@ -53,6 +53,8 @@ func assertNoZeroFields(t *testing.T, label string, v any) {
 // and deleteMergeState removes a saved record and tolerates a second call against an already-absent
 // one.
 // The steps run serially on one fixture, each starting from the record state the step before left.
+//
+//lym:seam internal/fabricengine#MergeStateForTest
 func TestMergeState_Record(t *testing.T) {
 	t.Parallel()
 

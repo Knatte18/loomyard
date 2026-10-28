@@ -45,14 +45,19 @@ func (c *loomCLI) validateDiscussionCmd() *cobra.Command {
 		Long: `validate-discussion runs the loom gate's check against the current
 worktree's discussion files -- the identical check Discussion-Write's and
 Discussion-Burler-Fix's own gate runs: the decision record and support log
-check, plus the relevant list check when relevant.md exists -- and reports the
-result as one JSON envelope. It takes no arguments and no flags; it always
-checks the worktree's own discussion files.
+check, the decision-id and acceptance checks, the citation check, plus the
+relevant list check when relevant.md exists -- and reports the result as one
+JSON envelope. It takes no arguments and no flags; it always checks the
+worktree's own discussion files.
+
+On a loom run the citation check refuses a path or symbol the decision record
+cites that does not exist in the worktree, unless marked (new) or (removed).
 
 On a darn run it is the Darn-Write row's gate check and does not read the
-relevant list: it also refuses a record missing an "Added after Discussion"
-entry its commit history held, and a clean run commits the decision record and
-support log.
+relevant list or test the citations: it runs the decision-id and acceptance
+checks, also refuses a record missing an "Added after Discussion" entry its
+commit history held, and a clean run commits the decision record and support
+log.
 
 Example:
   lym loom validate-discussion`,
@@ -69,7 +74,7 @@ Example:
 			if darn {
 				findings, err = loomshed.ValidateDarnDiscussion(c.env.DecisionRecordPath, c.env.SupportLogPath, c.env.DiscussionHistory)
 			} else {
-				findings, err = loomshed.ValidateLoomDiscussion(c.env.DecisionRecordPath, c.env.SupportLogPath, c.env.RelevantPath)
+				findings, err = loomshed.ValidateLoomDiscussion(c.env.DecisionRecordPath, c.env.SupportLogPath, c.env.RelevantPath, c.env.WorktreeRoot, c.env.PlanIndex)
 			}
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate discussion: "+err.Error()))
@@ -178,15 +183,16 @@ format-only checks over the whole new plan plus a check that its first_card
 equals the number one past the highest card of the plan committed at HEAD. The default and --rework
 modes include the card-fabric-reference, fabric-vocabulary-name and
 edit-test-file checks; --require-approved leaves all three out.
-Every mode but --require-approved also runs rename-tool-missing and
-pattern-changes-mismatch, which read language.yaml and the decision record.
+Every mode but --require-approved also runs rename-tool-missing,
+pattern-changes-mismatch, test-tier-unstated, seam-test-unlisted and
+doc-go-unlisted; the first two read language.yaml and the record.
 
 --lens-review: the no-flag checks plus the check that the plan directory's
 lens-review.md holds a recorded lens review, the check set of a twill
 Plan-Write run's own gate.
 
 --overlay: the no-flag checks over the plan with proposed contents laid over
-its files, in memory; nothing is written. Pipe one JSON object on stdin, keys
+its files, in memory. Pipe one JSON object on stdin, keys
 the file names and values their full content. A name is 00-overview.md or a
 card file the Card Index lists; adding, removing or renumbering a card still
 goes through insert-card and remove-card. {} checks the plan as it is. It
@@ -260,11 +266,12 @@ Example:
 					return nil
 				}
 				// An absent gate.yaml refuses no raw command, so the verb stays usable in a repo without one.
-				var refuseRaw []string
+				var refuseRaw, tierTags []string
 				gateCfg, gateErr := gateslot.LoadConfig(fabricengine.ConfigDirs(c.location))
 				switch {
 				case gateErr == nil:
 					refuseRaw = gateCfg.RefuseRaw
+					tierTags = gateTierTags(gateCfg)
 				case !errors.Is(gateErr, gateslot.ErrConfigAbsent):
 					clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate-plan: "+gateErr.Error()))
 					return nil
@@ -272,6 +279,8 @@ Example:
 				pc = loomshed.PlanContext{
 					RenameTools:        language.RenameTools,
 					RefuseRaw:          refuseRaw,
+					TierTags:           tierTags,
+					SeamTests:          loomshed.SeamTestReader(c.env.WorktreeRoot),
 					DecisionRecordPath: c.env.PatternRecordPath,
 					PatternBase:        loomshed.PatternBaseReader(c.env.WorktreeRoot, c.env.VerifyMergeBase),
 				}

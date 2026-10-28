@@ -96,6 +96,9 @@ Each card lives in its own file, and the file's content is:
    - `list_json_test.go`
    ```
 
+   A new test file is named as a `**Create:**` file target, and the card's Intent states its `//go:build` line, such as `//go:build tier0`, on a line that names no other test file; `test-tier-unstated` reads that statement.
+   A card that touches a struct a `//lym:seam` test marks lists that test, by its member glyph under `Edit` when it changes it and under `Uses` when it stays as is; `seam-test-unlisted` refuses the card otherwise.
+   A card that changes a package's non-test Go code covers the package's `doc.go`: under `Edit` when it changes what the doc says, under `Extends` when it only adds to it, under `Uses` when it stays as is; `doc-go-unlisted` refuses the card otherwise.
    An `Edit` bullet may carry the re-sign arrow, `` `<glyph>` -> `<new declaration head>` ``, which marks a signature change and states the new head, parsed like a `Create` declaration head.
    The left token stays an ordinary `Edit` target, and it must name a member glyph: a file, a package or a handle has no prior signature to re-sign (`resign-not-member`).
    Under `language: csharp` the head is C# source, and a re-sign obeys these bounds:
@@ -407,7 +410,7 @@ The rows that name `internal/planglyph` as their emitter are an exception: that 
 `glyph-ambiguous` is not raised for a member declared once per mutually exclusive build-constraint set, which resolves as one member.
 `card-fabric-reference` is the other exception: it is a `planparser` function outside both entry points, which the plan index appends to its own format validation.
 `done-card-edited` is the third: `loomshed.ValidatePlan` appends it after the index's validation.
-`rename-tool-missing`, `pattern-changes-mismatch`, `pattern-removes-prescribed`, `pattern-headroom`, `pattern-card-headroom` and `pattern-line-unprescribed` join it, appended by `loomshed` outside the `planparser` entry points in every mode (default, `--lens-review` and `--rework`, and the Plan-Write, Plan-Burler-Fix and PR-Rework gates).
+`rename-tool-missing`, `pattern-changes-mismatch`, `pattern-removes-prescribed`, `pattern-headroom`, `pattern-card-headroom`, `pattern-line-unprescribed`, `test-tier-unstated`, `seam-test-unlisted` and `doc-go-unlisted` join it, appended by `loomshed` outside the `planparser` entry points in every mode but `--require-approved` (default, `--lens-review`, `--overlay` and `--rework`, and the Plan-Write, Plan-Burler-Fix and PR-Rework gates).
 `rename-tool-missing` is one blocking finding per symbol `Rename` pair of a card not recorded done, raised when `language.yaml` lists no `rename_tools`; its way forward is to set `rename_tools` with `lym config language` from the prime, or recast the card.
 A file pair raises none.
 `pattern-changes-mismatch` is one blocking finding per entry (ID, action and text) that the decision record's `## PATTERN changes` section and the overview's section do not both declare; its way forward is to copy the record's bullets into the overview's section, one per entry, without the added-after-Discussion suffix.
@@ -619,10 +622,42 @@ The rows below stay in one fixed order regardless of which entry point runs them
     A test is named after the symbol when it is `Test<base>` or `Test<base>_<case>`, with base `Name`, or `T_M` for a method; `TestNameX` is not.
     An implementer renames such a test with its symbol, so a later card still naming the old test refuses at its `begin-batch`.
     One blocking finding per test ref, attributed to the renaming card and naming the card that edits the test; its way forward is to add the test's rename as a `Rename` pair on the renaming card.
+54. `test-tier-unstated` — under `language: go`, a test file a card creates as a `**Create:**` file target whose path ends in `_test.go` and whose Intent lines state no valid tier.
+    The check collects the Intent lines that name the file, by its worktree-relative path or by its base name as a token of its own, never the tail of a longer path, and the tier tags those lines name as whole words, each tier key of the hub's `gate.yaml` being a tag; the tags are collected as a set of distinct tags, so the same tag stated on several naming lines counts as one.
+    A line that also names another test file carries that file's tags into the file's collection, so each file's statement goes on a line that names no other test file.
+    The file passes when the lines name exactly one tag; or several, each pair of consecutive ones joined by `||` on the same line, the form of a helper several tiers share; or the word `untagged` and no tag, a support-only file.
+    One blocking finding per file, attributed to the card and naming the file and the tags its naming lines hold; its way forward is "add an Intent line naming the file and its `//go:build` line, such as `//go:build tier0`, or the word `untagged` when the file holds support only (TestMain, helpers) and carries no build line, on a line that names no other test file; where the lines name several tags, join them with || only for a helper several tiers share, else keep one; drop untagged or the tag when both appear".
+    `loomshed.ValidatePlan` and `loomshed.ValidateReworkPlan` append it with the context checks, from the hub's `gate.yaml` tier keys; an absent `gate.yaml` reports nothing, a done card is not read, and the rework gate reads the fresh generation's cards.
+    Bound: a test file created as a member handle rather than a file target is not seen; whether the stated tier fits stays with `cmd/lym/tiertags_test.go` and review.
+    Dispatch, `--require-approved` and webster's own `validate` verb do not run it.
+55. `seam-test-unlisted` — under `language: go`, a card not recorded done that touches a struct a `//lym:seam` test reflects over without covering that test.
+    A test carries `//lym:seam <unit>#<Type>` in the comment block directly above its `func Test…` line, one line per struct its reflection walks.
+    A card touches a marked struct `u#T` when a ref of its `Create`, `Edit`, `Extends`, `Delete` or `Rename` groups, with a `plan:` prefix stripped, is `u#T`, a member `u#T.<x>`, the file self glyph of a file declaring `T`, or the package self glyph `u#`.
+    Such a card covers a test marked for `u#T` when its own target groups name the test's glyph `<Unit>#<Name>` or the glyph's package counterpart, or its `Uses`, `Delete`, `Rename` or `Move` refs name the test's file, or any of its refs is the package self glyph of the test's unit or of its counterpart unit; or when a later card names the test glyph or its counterpart under `Edit` or `Extends`.
+    One blocking finding per card, struct and test, naming all three; its way forward is "list it under Edit by its member glyph when the card changes it, under Uses when it stays as is and no later card targets it, leave it to the later card that edits it, else list it under Edit".
+    The closing "else list it under Edit" covers a test a later card deletes, renames or moves, where `uses-later-target` refuses the `Uses` listing and no later `Edit` or `Extends` covers it.
+    `loomshed.ValidatePlan` and `loomshed.ValidateReworkPlan` append it with the context checks, after reading the markers once through the context's seam-test reader and resolving every marked struct in one index call; a done card is not read.
+    A marker the parser rejects, or a test file that does not parse, halts the gate with the scan error: it names the file and line, the halt is the parent's, and the operator corrects the marker or the unparsable test file the error names in the task worktree and re-runs `lym loom validate-plan`.
+    Bound: a method change on a marked struct also requires the listing; a field added through a target this rule does not name is not seen; a test listed under `Uses`, or edited by a later card for another reason, passes while the card breaks it, and the card's gate test run and review catch that.
+    Dispatch, `--require-approved` and webster's own `validate` verb do not run it.
+56. `doc-go-unlisted` — under `language: go`, a card not recorded done that changes a package's non-test Go code without covering the package's `doc.go`.
+    A card changes a package through the refs of its `Create`, `Edit`, `Extends`, `Delete`, `Rename` and `Move` groups, with a `plan:` prefix stripped, never `Prosa` or `Custom`; each maps to its package directory, a file unit's directory or a `<dir>_test` unit's `<dir>`.
+    A file target whose path does not end in `.go`, such as `internal/d/template.yaml`, is not Go code and is skipped.
+    A ref is test code when it is a file ending `_test.go`, has a `_test` pseudo-unit, is a member glyph the index reports declared only in `_test.go` files, or is a member that does not resolve yet and either is a `Rename` new side whose old side is test code or has a member name beginning `Test`, `Benchmark`, `Fuzz` or `Example`; every other ref, an ambiguous answer included, is non-test code.
+    The name rule applies to any unresolved member, a `Create` handle included, so a card creating `plan:<dir>#TestNew` is test-only, while one creating a helper handle whose name begins with none of the prefixes is not.
+    A directory with no `doc.go` on disk is skipped, which covers a package the plan creates.
+    The card covers `<dir>/doc.go` when any of its own groups or its `Uses` names that file, when a ref is the package self glyph `<dir>#`, or when a later card names the file under `Edit` or `Extends`.
+    One blocking finding per card and package, naming both; its way forward is "list it under Edit when the card changes what it says, under Extends when it only adds to it, under Uses when it stays as is and no later card targets it, leave it to the later card that edits it, else list it under Edit".
+    The closing "else list it under Edit" covers a `doc.go` a later card deletes or moves, where `uses-later-target` refuses the `Uses` listing and no later `Edit` or `Extends` covers it.
+    A `Uses` listing records that the writer read the doc and found nothing the card falsifies.
+    `loomshed.ValidatePlan` and `loomshed.ValidateReworkPlan` append it with the context checks, resolving every member ref of the told cards in one index call.
+    Bound: a `doc.go` under `Extends` or `Uses` whose text the card falsifies, or one a later card edits for another reason, passes and stays with review; a test-only card, `Prosa` and `Custom` groups, and `docs/overview.md` are not checked; a card creating a test helper by a handle whose name begins with none of the test prefixes counts as non-test code and lists the `doc.go`.
+    Dispatch, `--require-approved` and webster's own `validate` verb do not run it.
 
 `plan-language-mismatch` and `rename-namespace-pair` run in the position of their own place in the order, not of their numbers: the first right after `plan-language-unrecognized`, the second right after `path-missing`.
 `extends-overlap` and `extends-resign` run right after `card-field-overlap`, in that order.
 `rename-leaves-test` runs right after `rename-mechanic-missing`.
+`test-tier-unstated`, `seam-test-unlisted` and `doc-go-unlisted` run after the other `loomshed` context checks, in that order, after `verify-gate-no-wait` and before `plan-verify-retired`.
 
 A plan under `language: csharp` skips the checks that read Go source or Go toolchain semantics: `verify-nested-module`, `verify-module-wide`, `verify-package-missing`, the `.go` file-unit half of `handle-malformed`, `delete-before-reference`, `caller-uncovered`, `rename-leaves-test`, and the Go package-directory mapping of a unit.
 The remaining checks run under it as they do under `go`.

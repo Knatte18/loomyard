@@ -118,3 +118,51 @@ func (d batchDelta) RemovedTargets(fullPlan *planparser.Plan, completed, own []p
 func (d batchDelta) DetectDrift(fullPlan *planparser.Plan, completed []planparser.Card, reported []planindex.Rename, planDir, worktreeRoot, sha, now string) ([]Finding, error) {
 	return DetectDrift(fullPlan, PendingPlan(fullPlan, completed), planDir, worktreeRoot, d.answer, reported, sha, now)
 }
+
+// ResolveGlyphs resolves glyphs through the package's Resolve and answers each by the status policy statusFindings applies, so a glyph resolves here exactly when a card ref naming it would raise no glyph-not-found or glyph-ambiguous finding.
+// A quarry failure is returned wrapping ErrQuarryUnavailable, never an answer.
+func (index) ResolveGlyphs(worktreeRoot string, glyphs []string) ([]planindex.GlyphAnswer, error) {
+	if len(glyphs) == 0 {
+		return nil, nil
+	}
+	results, err := Resolve(worktreeRoot, glyphs)
+	if err != nil {
+		return nil, err
+	}
+
+	answers := make([]planindex.GlyphAnswer, len(glyphs))
+	for i, r := range results {
+		verdict, _, classified := resolveVerdict(worktreeRoot, r)
+		answer := planindex.GlyphAnswer{Glyph: glyphs[i], Verdict: verdict}
+		switch verdict {
+		case planindex.GlyphFound:
+			var files []string
+			for _, symbol := range r.Symbols {
+				files = append(files, symbol.File)
+			}
+			for _, candidate := range classified.Candidates {
+				files = append(files, candidate.File)
+			}
+			answer.Files = dedupe(files)
+		case planindex.GlyphAmbiguous:
+			for _, candidate := range classified.Candidates {
+				answer.Candidates = append(answer.Candidates, candidateList([]constrainedCandidate{candidate}))
+			}
+		}
+		answers[i] = answer
+	}
+	return answers, nil
+}
+
+// dedupe returns values without repeats, keeping first-seen order.
+func dedupe(values []string) []string {
+	seen := make(map[string]bool, len(values))
+	var unique []string
+	for _, value := range values {
+		if !seen[value] {
+			seen[value] = true
+			unique = append(unique, value)
+		}
+	}
+	return unique
+}

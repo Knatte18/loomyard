@@ -1,5 +1,5 @@
 // validate.go implements Validate, the discussion gate's decision record and support log check: both `_lym/discussion/` files exist, and the decision record carries every required H2 section.
-// The loom gate's other check is CheckRelevant, and a darn run runs Validate alone.
+// Both callers also run CheckDecisionIDs beside Validate, and the loom gate runs CheckRelevant too.
 // It backs both gated discussion sites -- Discussion-Write's own gate and Discussion-Burler-Fix's own fix-step gate, both built by internal/loomshed's NewDiscussionGate -- and the standalone `lym loom validate-discussion` verb, per the Gate Self-Check Parity Invariant, so extracting it into this stdlib-only leaf changes nothing about when a failed check re-prompts the live session versus when an I/O fault aborts the run as an ordinary producer error.
 
 package discussionparser

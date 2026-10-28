@@ -116,6 +116,7 @@ lym loom validate-discussion
 The verb takes no arguments.
 It exits 0 on a clean gate and 1 otherwise, and puts its findings under the failure envelope's `findings` key.
 Fix whatever it reports, then re-run it until it exits 0 before ending your turn.
+The gate also runs the decision-id, acceptance and citation checks that the decision record section of `{{.specs_dir}}/loom/loom-discussion-spec.md` states.
 A design change in that turn may update `{{.relevant_path}}` in the same turn.
 
 ## Never use `AskUserQuestion`

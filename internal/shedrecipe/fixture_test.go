@@ -68,7 +68,7 @@ var fakeWebsterRun shedadapters.WebsterRunner = func(websterengine.RunDeps, webs
 // placeholderIndex is a non-nil planindex.Index for constructor checks: it panics if a method is called, which no test here does.
 type placeholderIndex struct{ planindex.Index }
 
-// noFindingsPlanIndex is a planindex.Index whose ValidateFormat and ValidateRework, the methods the plan gates call, answer no findings and a nil error; any other method panics.
+// noFindingsPlanIndex is a planindex.Index whose ValidateFormat and ValidateRework, the methods the plan gates call, answer no findings and a nil error, and whose ResolveGlyphs finds every glyph; any other method panics.
 type noFindingsPlanIndex struct{ planindex.Index }
 
 func (noFindingsPlanIndex) ValidateFormat(*planparser.Plan, string, []planparser.Card) ([]planindex.Finding, error) {
@@ -77,6 +77,15 @@ func (noFindingsPlanIndex) ValidateFormat(*planparser.Plan, string, []planparser
 
 func (noFindingsPlanIndex) ValidateRework(*planparser.Plan, string, int) ([]planindex.Finding, error) {
 	return nil, nil
+}
+
+// ResolveGlyphs answers every glyph GlyphFound with no declaring files, so a gate row holds a marked struct through its own glyph and never calls the nil embedded index.
+func (noFindingsPlanIndex) ResolveGlyphs(_ string, glyphs []string) ([]planindex.GlyphAnswer, error) {
+	answers := make([]planindex.GlyphAnswer, len(glyphs))
+	for i, g := range glyphs {
+		answers[i] = planindex.GlyphAnswer{Glyph: g, Verdict: planindex.GlyphFound}
+	}
+	return answers, nil
 }
 
 // symbolRenamePlan returns a one-card plan whose card renames a symbol, and so needs the hub's rename tool.

@@ -35,6 +35,8 @@ var loomshedAllowedImports = []string{
 	// The resolve-backed implementation, internal/planglyph, links tree-sitter and stays out of this package for good.
 	"github.com/Knatte18/loomyard/internal/planindex",
 	"github.com/Knatte18/loomyard/internal/discussionparser",
+	// internal/impactset parses the `//lym:seam` markers of the package directories it is told and resolves no geometry.
+	"github.com/Knatte18/loomyard/internal/impactset",
 	"github.com/Knatte18/loomyard/internal/batcher",
 	// internal/configengine carries the told Dirs the batcher-backed rows load through.
 	// It is handed the dirs and resolves no geometry.
@@ -66,6 +68,10 @@ var loomshedAllowedImports = []string{
 	// internal/shedverbs is imported for the two interrupt-policy words and no behaviour.
 	// It imports no lymcwd, so the told-geometry membership holds.
 	"github.com/Knatte18/loomyard/internal/shedverbs",
+	// github.com/Knatte18/quarry/glyph is the cgo-free glyph grammar internal/planparser already imports.
+	"github.com/Knatte18/quarry/glyph",
+	// internal/lymdirs names the two root directory names and resolves no geometry.
+	"github.com/Knatte18/loomyard/internal/lymdirs",
 	// gopkg.in/yaml.v3 decodes and encodes the amendment record, which is YAML.
 	// The package still resolves no geometry: the record's path is told.
 	"gopkg.in/yaml.v3",

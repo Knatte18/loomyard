@@ -36,9 +36,14 @@
 // ModuleGuardTests runs the same scan over every package directory a `go list -e ./...` of a module names, under every tier tag.
 // A package whose test file cannot be read stays listed, so the scan reports that file; an unreadable package directory or a failed `go list` is a plain error naming the module and the enumeration's error.
 // A marker not directly above a top-level `func Test…` line, or in a `tier2` or `tier3` file, is an error naming the file and line.
-// That error is a *GuardScanError whose Kind is GuardMisplaced, GuardWrongTier or GuardParse, and whose Line is the marker's line, or the parser's for GuardParse when it reports one.
+// That error is a *GuardScanError whose Kind is GuardMisplaced, GuardWrongTier, GuardParse or SeamMalformed, and whose Line is the marker's line, or the parser's for GuardParse when it reports one.
 // A file that cannot be parsed or read is a GuardParse error.
-// A `//testtiming:keep` line between the marker and the func line does not displace the marker, since a test carrying both stacks them as contiguous directive lines.
+// A `//testtiming:keep` or `//lym:seam` line between the marker and the func line does not displace the marker, since a test carrying several markers stacks them as contiguous directive lines.
+//
+// FindSeamTests is the same static parse for `//lym:seam <unit>#<Type>`, the marker of a test that reflects over a struct's fields.
+// It returns, per directory, the SeamTest values of the tests carrying at least one such line: the test's name, its glyph unit, its file and the marked glyphs in comment order.
+// A seam line outside the comment block of a top-level `func Test…` is a GuardMisplaced error, and one whose argument is not a single `<unit>#<Type>` token is a SeamMalformed error.
+// Whether a glyph names a struct is for the caller to judge.
 // A guard scan failure from DeriveTargets is returned as the *GuardScanError.
 //
 // Bound: a narrower run skips only packages the import graph shows unreachable.

@@ -86,10 +86,11 @@ func hasBlockingFinding(findings []planindex.Finding) bool {
 }
 
 // NewDiscussionGate returns the Discussion-Write row's gate closure: a shuttleengine.Gate that
-// calls ValidateLoomDiscussion(decisionRecordPath, supportLogPath, relevantPath) once.
+// calls ValidateLoomDiscussion(decisionRecordPath, supportLogPath, relevantPath, worktreeRoot, index) once.
 // It maps the result onto the gate contract.
 //
-// The three paths are told rather than derived, because loomengine's own accessors for them take a *lymcwd.Location this package may not import.
+// The three paths and the worktree root are told rather than derived, because loomengine's own accessors for them take a *lymcwd.Location this package may not import.
+// index resolves the symbols the decision record cites; a quarry outage is an infrastructure fault returned as an error, never a finding.
 // A relevantPath nobody wrote passes, since the relevant list is optional.
 //
 // A non-nil error from ValidateLoomDiscussion is returned verbatim alongside the zero shuttleengine.GateResult: a
@@ -100,9 +101,9 @@ func hasBlockingFinding(findings []planindex.Finding) bool {
 // formatted findings -- that warn line is the only durable record of why an artifact was refused,
 // because the findings file itself lives in the ephemeral run directory finalize deletes on the Done
 // cleanup. An empty slice produces GateResult{Passed: true} and a nil error.
-func NewDiscussionGate(decisionRecordPath, supportLogPath, relevantPath string) shuttleengine.Gate {
+func NewDiscussionGate(decisionRecordPath, supportLogPath, relevantPath, worktreeRoot string, index planindex.Index) shuttleengine.Gate {
 	return func() (shuttleengine.GateResult, error) {
-		findings, err := ValidateLoomDiscussion(decisionRecordPath, supportLogPath, relevantPath)
+		findings, err := ValidateLoomDiscussion(decisionRecordPath, supportLogPath, relevantPath, worktreeRoot, index)
 		if err != nil {
 			return shuttleengine.GateResult{}, err
 		}
@@ -116,14 +117,27 @@ func NewDiscussionGate(decisionRecordPath, supportLogPath, relevantPath string) 
 	}
 }
 
-// ValidateLoomDiscussion is the loom run's discussion check: discussionparser.Validate's decision record and support log check, then discussionparser.CheckRelevant's relevant list check.
-// CheckRelevant runs even when Validate finds defects, so one re-prompt names every defect, and the findings are Validate's followed by CheckRelevant's.
-// A missing relevant list adds no finding.
-// Either function's error is returned as is, with nil findings.
-func ValidateLoomDiscussion(decisionRecordPath, supportLogPath, relevantPath string) ([]discussionparser.Finding, error) {
+// ValidateLoomDiscussion is the loom run's discussion check: discussionparser.Validate's decision record and support log check, then discussionparser.CheckDecisionIDs' decision id and acceptance check, then the citation check, then discussionparser.CheckRelevant's relevant list check.
+// The citation check tests the record's cited paths against the worktree at worktreeRoot and its cited symbols through index.
+// The later checks run even when Validate finds defects, so one re-prompt names every defect, and the findings come in that order.
+// A missing decision record adds no decision id or citation finding, and a missing relevant list adds no relevant finding.
+// Any function's error, a read error of the record and a quarry outage are returned as is, with nil findings.
+func ValidateLoomDiscussion(decisionRecordPath, supportLogPath, relevantPath, worktreeRoot string, index planindex.Index) ([]discussionparser.Finding, error) {
 	findings, err := discussionparser.Validate(decisionRecordPath, supportLogPath)
 	if err != nil {
 		return nil, err
+	}
+	record, found, err := readDecisionRecord(decisionRecordPath)
+	if err != nil {
+		return nil, err
+	}
+	if found {
+		findings = append(findings, stampFindings(discussionparser.CheckDecisionIDs(record), decisionRecordPath)...)
+		citations, err := citationFindings(worktreeRoot, index, discussionparser.Citations(record))
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, stampFindings(citations, decisionRecordPath)...)
 	}
 	relevantFindings, err := discussionparser.CheckRelevant(relevantPath)
 	if err != nil {
@@ -132,14 +146,21 @@ func ValidateLoomDiscussion(decisionRecordPath, supportLogPath, relevantPath str
 	return append(findings, relevantFindings...), nil
 }
 
-// ValidateDarnDiscussion is the darn run's discussion check: discussionparser.Validate's section check, then the history check.
-// A record Validate finds defects in comes back with those findings alone, since a missing or section-less record has no history worth comparing yet.
-// Otherwise history supplies every committed version of the record, and the findings are the added-decision entries the record dropped from them.
+// ValidateDarnDiscussion is the darn run's discussion check: discussionparser.Validate's section check, then discussionparser.CheckDecisionIDs' decision id and acceptance check, then the history check.
+// A record Validate finds defects in comes back with Validate's findings followed by the decision id findings, since a missing or section-less record has no history worth comparing yet.
+// Otherwise history supplies every committed version of the record, and the findings are the decision id findings followed by the added-decision entries the record dropped from them.
 // A read error and a history error are returned errors, as Validate's I/O errors are.
 func ValidateDarnDiscussion(decisionRecordPath, supportLogPath string, history func() ([][]byte, error)) ([]discussionparser.Finding, error) {
 	findings, err := discussionparser.Validate(decisionRecordPath, supportLogPath)
-	if err != nil || len(findings) > 0 {
-		return findings, err
+	if err != nil {
+		return nil, err
+	}
+	idFindings, err := decisionIDFindings(decisionRecordPath)
+	if err != nil {
+		return nil, err
+	}
+	if len(findings) > 0 {
+		return append(findings, idFindings...), nil
 	}
 
 	record, err := os.ReadFile(decisionRecordPath)
@@ -151,11 +172,38 @@ func ValidateDarnDiscussion(decisionRecordPath, supportLogPath string, history f
 		return nil, err
 	}
 
-	findings = discussionparser.CheckAddedDecisionsKept(record, versions)
-	for i := range findings {
-		findings[i].Path = decisionRecordPath
+	historyFindings := discussionparser.CheckAddedDecisionsKept(record, versions)
+	for i := range historyFindings {
+		historyFindings[i].Path = decisionRecordPath
 	}
-	return findings, nil
+	return append(idFindings, historyFindings...), nil
+}
+
+// decisionIDFindings reads the decision record and returns discussionparser.CheckDecisionIDs' findings stamped with its path.
+// A record that does not exist adds nothing, since Validate already reported it missing.
+func decisionIDFindings(decisionRecordPath string) ([]discussionparser.Finding, error) {
+	record, found, err := readDecisionRecord(decisionRecordPath)
+	if err != nil || !found {
+		return nil, err
+	}
+	return stampFindings(discussionparser.CheckDecisionIDs(record), decisionRecordPath), nil
+}
+
+// readDecisionRecord reads the decision record, and reports found false for a record that does not exist.
+func readDecisionRecord(decisionRecordPath string) (record []byte, found bool, err error) {
+	record, err = os.ReadFile(decisionRecordPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, false, nil
+	}
+	return record, err == nil, err
+}
+
+// stampFindings sets the path of each of findings and returns them.
+func stampFindings(findings []discussionparser.Finding, path string) []discussionparser.Finding {
+	for i := range findings {
+		findings[i].Path = path
+	}
+	return findings
 }
 
 // NewDarnDiscussionGate returns the darn run's discussion gate closure: a shuttleengine.Gate that calls ValidateDarnDiscussion and commits the record once the check is clean.
@@ -266,7 +314,7 @@ func ValidatePlan(plan *planparser.Plan, anchorPath, worktreeRoot string, index 
 			pending = append(pending, c)
 		}
 	}
-	contextFindings, err := planContextFindings(plan, pending, worktreeRoot, pc)
+	contextFindings, err := planContextFindings(plan, pending, worktreeRoot, index, pc)
 	if err != nil {
 		return nil, err
 	}
@@ -327,7 +375,7 @@ func ValidateReworkPlan(plan *planparser.Plan, worktreeRoot string, index planin
 	if err != nil {
 		return nil, err
 	}
-	contextFindings, err := planContextFindings(plan, plan.Cards, worktreeRoot, pc)
+	contextFindings, err := planContextFindings(plan, plan.Cards, worktreeRoot, index, pc)
 	if err != nil {
 		return nil, err
 	}

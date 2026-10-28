@@ -148,6 +148,9 @@ func TestResolveGateSpec_ValidOneEntryPerVocabularyName(t *testing.T) {
 			}
 		}
 		var history [][]byte
+		// The darn form never tests citations, so it needs neither the index nor the worktree root.
+		env.PlanIndex = nil
+		env.WorktreeRoot = ""
 		commits := 0
 		env.DiscussionHistory = func() ([][]byte, error) { return history, nil }
 		env.CommitDiscussion = func() error { commits++; return nil }
@@ -245,10 +248,19 @@ func TestResolveGateSpec_Rejections(t *testing.T) {
 		}}, `"gates" element 1`},
 		{"BadPassOnCap", Config{"gates": []any{map[string]any{"name": "plan", "attempts": 1, "pass_on_cap": "yes"}}}, "pass_on_cap"},
 		{"GateKeyNotAString", Config{"gates": []any{map[string]any{"name": "verify", "attempts": 1}}, "gate_key": 3}, "gate_key"},
+		{"LoomDiscussionNilPlanIndex", gatesCfg("discussion", 1), "PlanIndex"},
+		{"LoomDiscussionRelativeWorktreeRoot", gatesCfg("discussion", 1), "WorktreeRoot"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := resolveGateSpec("TheRow", tt.cfg, newTestEnv(t))
+			env := newTestEnv(t)
+			switch tt.name {
+			case "LoomDiscussionNilPlanIndex":
+				env.PlanIndex = nil
+			case "LoomDiscussionRelativeWorktreeRoot":
+				env.WorktreeRoot = "relative/worktree"
+			}
+			_, err := resolveGateSpec("TheRow", tt.cfg, env)
 			assertErrContains(t, err, "TheRow")
 			assertErrContains(t, err, tt.want)
 			if tt.name == "GateKeyNotAString" {

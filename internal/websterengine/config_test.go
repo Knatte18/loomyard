@@ -41,6 +41,7 @@ func seedConfig(t *testing.T, baseDir, module, content string) {
 // review to notice the gap.
 //
 //testtiming:keep pins every Config yaml tag having a template line; the load test only observes the keys the template already holds
+//lym:seam internal/websterengine#Config
 func TestConfigTemplate(t *testing.T) {
 	t.Parallel()
 

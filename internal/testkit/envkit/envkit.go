@@ -560,3 +560,12 @@ func mustMkdir(t testing.TB, path string) string {
 	}
 	return path
 }
+
+// ResolveGlyphs answers every glyph found with no files.
+func (noFindingsIndex) ResolveGlyphs(_ string, glyphs []string) ([]planindex.GlyphAnswer, error) {
+	answers := make([]planindex.GlyphAnswer, len(glyphs))
+	for i, glyph := range glyphs {
+		answers[i] = planindex.GlyphAnswer{Glyph: glyph, Verdict: planindex.GlyphFound}
+	}
+	return answers, nil
+}

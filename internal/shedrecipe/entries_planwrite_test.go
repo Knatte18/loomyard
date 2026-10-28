@@ -330,6 +330,81 @@ func TestPlanWriteEntry_GateConfig(t *testing.T) {
 		}
 	})
 
+	t.Run("PlanWriteGateChecksCreatedTestFilesAgainstTheEnvsTierTags", func(t *testing.T) {
+		for _, tt := range []struct {
+			name string
+			tags []string
+			want bool
+		}{
+			{"no tier tags", nil, false},
+			{"tier tags", []string{"tier0", "tier1"}, true},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				env := newTestEnv(t)
+				env.PlanIndex = noFindingsPlanIndex{}
+				env.TierTags = tt.tags
+				plankit.Write(t, planparser.PlanDir(env.AnchorPath), plankit.Plan{
+					Approved: true,
+					Language: "go",
+					Framing:  "Framing.",
+					Cards: []plankit.Card{{
+						Number:  1,
+						Slug:    "first-card",
+						Summary: "placeholder",
+						Groups:  []plankit.Group{{Label: "Create", Targets: []string{"internal/x/new_test.go"}}},
+						Intent:  "placeholder.",
+					}},
+				})
+
+				gateSpec, err := planWriteGateSpec(gatesCfg("plan", 3), env)
+				if err != nil {
+					t.Fatalf("planWriteGateSpec() error = %v; want nil", err)
+				}
+				result, err := gateSpec[0].Gate()
+				if err != nil {
+					t.Fatalf("Gate() error = %v; want nil", err)
+				}
+				if got := strings.Contains(result.Findings, "test-tier-unstated"); got != tt.want {
+					t.Errorf("Gate() = %+v; want test-tier-unstated: %v", result, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("PlanWriteGateChecksATouchedMarkedStructAgainstTheWorktreesSeamTests", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.PlanIndex = noFindingsPlanIndex{}
+		plankit.WriteTree(t, env.WorktreeRoot, map[string]string{
+			"internal/s/s.go":      "package s\n\ntype Deps struct{}\n",
+			"internal/c/c_test.go": "package c\n\nimport \"testing\"\n\n//lym:seam internal/s#Deps\nfunc TestDeps(t *testing.T) {}\n",
+		})
+		plankit.Write(t, planparser.PlanDir(env.AnchorPath), plankit.Plan{
+			Approved: true,
+			Language: "go",
+			Framing:  "Framing.",
+			Cards: []plankit.Card{{
+				Number:        1,
+				Slug:          "first-card",
+				Summary:       "placeholder",
+				Groups:        []plankit.Group{{Label: "Edit", Targets: []string{"internal/s#Deps"}}},
+				Intent:        "placeholder.",
+				ImpactSummary: "Touches the struct.",
+			}},
+		})
+
+		gateSpec, err := planWriteGateSpec(gatesCfg("plan", 3), env)
+		if err != nil {
+			t.Fatalf("planWriteGateSpec() error = %v; want nil", err)
+		}
+		result, err := gateSpec[0].Gate()
+		if err != nil {
+			t.Fatalf("Gate() error = %v; want nil", err)
+		}
+		if result.Passed || !strings.Contains(result.Findings, "seam-test-unlisted") {
+			t.Errorf("Gate() = %+v; want a failure naming seam-test-unlisted", result)
+		}
+	})
+
 	t.Run("PlanWriteSetsForkedOnItsPlanEntry", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.PlanIndex = noFindingsPlanIndex{}

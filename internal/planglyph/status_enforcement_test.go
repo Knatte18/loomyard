@@ -88,6 +88,7 @@ func statusConsumerKey(rel, fn string) string {
 // Adding a new .Status consumer means making it fail closed (see this file's own doc comment) and then adding its pair here -- the test is what forces that review, not a style preference.
 var allowedStatusConsumers = []scankit.Entry{
 	{Key: "internal/planglyph/resolve.go:statusFindings", Why: "fail-closed status reader"},
+	{Key: "internal/planglyph/resolve.go:resolveVerdict", Why: "fail-closed status reader: an unreadable answer is missing"},
 	{Key: "internal/planglyph/resolve.go:unreadableStatusDetail", Why: "fail-closed status reader"},
 	{Key: "internal/planglyph/create.go:createFindings", Why: "fail-closed status reader"},
 	{Key: "internal/planglyph/donecheck.go:doneCheckVerdicts", Why: "fail-closed status reader"},

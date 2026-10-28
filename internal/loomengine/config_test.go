@@ -1114,6 +1114,7 @@ func TestLandingAndApprovalAccessors(t *testing.T) {
 // The Config Strictness Invariant makes a struct field with no matching template key a silent hole rather than a load error, which is exactly what this check guards against.
 //
 //testtiming:keep pins that every Config yaml tag has a template line, a reflection check no LoadConfig case makes
+//lym:seam internal/loomengine#Config
 func TestConfigTemplate_ContainsEveryConfigYAMLTag(t *testing.T) {
 	t.Parallel()
 	text := ConfigTemplate()

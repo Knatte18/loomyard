@@ -137,7 +137,7 @@ func TestGateParity_DiscussionGate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			c := tc.build(t, t.TempDir())
 
-			gate := loomshed.NewDiscussionGate(c.env.DecisionRecordPath, c.env.SupportLogPath, c.env.RelevantPath)
+			gate := loomshed.NewDiscussionGate(c.env.DecisionRecordPath, c.env.SupportLogPath, c.env.RelevantPath, c.env.WorktreeRoot, c.env.PlanIndex)
 			if c.env.DiscussionHistory != nil {
 				gate = loomshed.NewDarnDiscussionGate(c.env.DecisionRecordPath, c.env.SupportLogPath, c.env.DiscussionHistory, c.env.CommitDiscussion)
 			}
@@ -318,8 +318,38 @@ type planParityCase struct {
 	// languageContent is the hub's language.yaml the verb loads, and rename_tools the gate is told the same list; both empty lists no tool.
 	languageContent string
 	renameTools     []string
+	// gateContent is the hub's gate.yaml the verb loads, and tierTags the tier keys the gate is told the same file declares; both empty leaves the hub without a gate.yaml.
+	gateContent string
+	tierTags    []string
+	// seamTests tells the gate the seam reader over the fixture worktree, as the verb tells itself.
+	seamTests bool
 	// absentFinding, when set, is a substring neither the gate's findings nor the verb's envelope may carry.
 	absentFinding string
+}
+
+// testTierPlanFixture writes a one-card language: go plan whose card creates sub/new_test.go and states no tier for it.
+func testTierPlanFixture(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
+	t.Helper()
+
+	plankit.WriteTree(t, worktreeRoot, map[string]string{"sub/a.go": "package sub\n"})
+	plankit.Write(t, planparser.PlanDir(anchorPath), plankit.Plan{
+		Approved: true,
+		Language: "go",
+		Cards: []plankit.Card{{
+			Number:  1,
+			Slug:    "validate-fixture",
+			Summary: "a minimal fixture card",
+			Groups:  []plankit.Group{{Label: "Create", Targets: []string{"sub/new_test.go"}}},
+			Intent:  "minimal fixture card for validate-plan tests.",
+			Commit:  "1: validate-fixture",
+		}},
+	})
+
+	return &loomCLI{env: shedrecipe.Env{
+		PlanIndex:    planglyph.NewIndex(fabricengine.NewReferenceRule()),
+		AnchorPath:   anchorPath,
+		WorktreeRoot: worktreeRoot,
+	}}
 }
 
 // TestGateParity_PlanGate drives NewPlanGate and the validate-plan verb, flag-absent mode.
@@ -580,6 +610,50 @@ func TestGateParity_PlanGate(t *testing.T) {
 			wantCLI:         verdictDone,
 			absentFinding:   "rename-tool-missing",
 		},
+		{
+			name:        "CreatedTestFileWithNoTier",
+			build:       testTierPlanFixture,
+			gateContent: gateConfigWithTwoTiers(),
+			tierTags:    []string{"tier0", "tier1"},
+			wantGate:    verdictStuck,
+			wantCLI:     verdictStuck,
+			wantFinding: "test-tier-unstated",
+		},
+		{
+			name:       "CreatedTestFileWithNoTierUnderLensReview",
+			lensReview: true,
+			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
+				c := testTierPlanFixture(t, anchorPath, worktreeRoot)
+				writeLensReview(t, anchorPath, "The lens review.\n")
+				return c
+			},
+			gateContent: gateConfigWithTwoTiers(),
+			tierTags:    []string{"tier0", "tier1"},
+			wantGate:    verdictStuck,
+			wantCLI:     verdictStuck,
+			wantFinding: "test-tier-unstated",
+		},
+		{
+			name:        "MarkedStructEditedWithoutItsSeamTest",
+			build:       seamTestPlanFixture,
+			seamTests:   true,
+			wantGate:    verdictStuck,
+			wantCLI:     verdictStuck,
+			wantFinding: "seam-test-unlisted",
+		},
+		{
+			name:       "MarkedStructEditedWithoutItsSeamTestUnderLensReview",
+			lensReview: true,
+			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
+				c := seamTestPlanFixture(t, anchorPath, worktreeRoot)
+				writeLensReview(t, anchorPath, "The lens review.\n")
+				return c
+			},
+			seamTests:   true,
+			wantGate:    verdictStuck,
+			wantCLI:     verdictStuck,
+			wantFinding: "seam-test-unlisted",
+		},
 	}
 
 	for _, tc := range cases {
@@ -588,13 +662,20 @@ func TestGateParity_PlanGate(t *testing.T) {
 			worktreeRoot := t.TempDir()
 			c := tc.build(t, anchorPath, worktreeRoot)
 			c.location = hubLocationAt(t, anchorPath, tc.languageContent)
+			if tc.gateContent != "" {
+				writeHubGateConfig(t, c.location.HubPath, tc.gateContent)
+			}
 			newGate := loomshed.NewPlanGate
 			var args []string
 			if tc.lensReview {
 				newGate = loomshed.NewLensReviewPlanGate
 				args = []string{"--lens-review"}
 			}
-			gate := newGate(c.env.AnchorPath, c.env.WorktreeRoot, c.env.RunScratchDir, planglyph.NewIndex(fabricengine.NewReferenceRule()), loomshed.PlanContext{RenameTools: tc.renameTools})
+			planContext := loomshed.PlanContext{RenameTools: tc.renameTools, TierTags: tc.tierTags}
+			if tc.seamTests {
+				planContext.SeamTests = loomshed.SeamTestReader(c.env.WorktreeRoot)
+			}
+			gate := newGate(c.env.AnchorPath, c.env.WorktreeRoot, c.env.RunScratchDir, planglyph.NewIndex(fabricengine.NewReferenceRule()), planContext)
 			result, err := gate()
 			pv := producerVerdict(result, err)
 
@@ -784,5 +865,34 @@ func reworkParityFixture(t *testing.T, anchorPath, worktreeRoot string, cardNumb
 			data, ok := head[rel]
 			return data, ok, nil
 		}},
+	}}
+}
+
+// seamTestPlanFixture writes a one-card language: go plan whose card edits the struct internal/s#Deps, which a test in internal/c marks with `//lym:seam`, without listing that test.
+func seamTestPlanFixture(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
+	t.Helper()
+
+	plankit.WriteTree(t, worktreeRoot, map[string]string{
+		"internal/s/s.go":      "package s\n\ntype Deps struct{}\n",
+		"internal/c/c_test.go": "package c\n\nimport \"testing\"\n\n//lym:seam internal/s#Deps\nfunc TestDeps(t *testing.T) {}\n",
+	})
+	plankit.Write(t, planparser.PlanDir(anchorPath), plankit.Plan{
+		Approved: true,
+		Language: "go",
+		Cards: []plankit.Card{{
+			Number:        1,
+			Slug:          "validate-fixture",
+			Summary:       "a minimal fixture card",
+			Groups:        []plankit.Group{{Label: "Edit", Targets: []string{"internal/s#Deps"}}},
+			Intent:        "minimal fixture card for validate-plan tests.",
+			ImpactSummary: "Touches the struct.",
+			Commit:        "1: validate-fixture",
+		}},
+	})
+
+	return &loomCLI{env: shedrecipe.Env{
+		PlanIndex:    planglyph.NewIndex(fabricengine.NewReferenceRule()),
+		AnchorPath:   anchorPath,
+		WorktreeRoot: worktreeRoot,
 	}}
 }

@@ -6,11 +6,14 @@ package impactset
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 // writeTestFile writes one fixture file into a package directory of root.
@@ -44,6 +47,16 @@ func TestFindGuardTests(t *testing.T) {
 		{
 			name: "a marker stacked with a testtiming keep line is found",
 			file: "package p\n\n//lym:guard\n//testtiming:keep pins the scan\nfunc TestA(t *testing.T) {}\n",
+			want: []GuardTest{{Name: "TestA", Tier: 0}},
+		},
+		{
+			name: "a guard then a seam line is found",
+			file: "package p\n\n//lym:guard\n//lym:seam p#T\nfunc TestA(t *testing.T) {}\n",
+			want: []GuardTest{{Name: "TestA", Tier: 0}},
+		},
+		{
+			name: "a seam line then a guard is found",
+			file: "package p\n\n//lym:seam p#T\n//lym:guard\nfunc TestA(t *testing.T) {}\n",
 			want: []GuardTest{{Name: "TestA", Tier: 0}},
 		},
 		{
@@ -132,6 +145,96 @@ func TestFindGuardTests(t *testing.T) {
 			}
 			if !slices.Equal(got["dir/p"], tt.want) {
 				t.Errorf("FindGuardTests()[dir/p] = %v; want %v", got["dir/p"], tt.want)
+			}
+		})
+	}
+}
+
+func TestFindSeamTests(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		pkg      string
+		file     string
+		want     []SeamTest
+		wantKind GuardScanKind
+		wantLine int
+	}{
+		{
+			name: "one marker above a test is found with its unit, file and struct",
+			pkg:  "package p\n\n//lym:seam p#T\nfunc TestA(t *testing.T) {}\n\nfunc TestUnmarked(t *testing.T) {}\n",
+			want: []SeamTest{{Name: "TestA", Unit: "dir/p", File: "dir/p/p_test.go", Structs: []string{"p#T"}}},
+		},
+		{
+			name: "two markers on one test come back in order",
+			pkg:  "package p\n\n// TestA walks two structs.\n//\n//lym:seam q#B\n//lym:seam p#A\nfunc TestA(t *testing.T) {}\n",
+			want: []SeamTest{{Name: "TestA", Unit: "dir/p", File: "dir/p/p_test.go", Structs: []string{"q#B", "p#A"}}},
+		},
+		{
+			name: "a marker in an external test package has the _test unit",
+			pkg:  "package p_test\n\n//lym:seam time#Time\nfunc TestA(t *testing.T) {}\n",
+			want: []SeamTest{{Name: "TestA", Unit: "dir/p_test", File: "dir/p/p_test.go", Structs: []string{"time#Time"}}},
+		},
+		{
+			name: "a seam line stacked with a guard and a keep line on either side is found",
+			pkg:  "package p\n\n//lym:guard\n//lym:seam p#T\n//testtiming:keep pins it\nfunc TestA(t *testing.T) {}\n\n//lym:seam p#U\n//testtiming:keep pins it\n//lym:guard\nfunc TestB(t *testing.T) {}\n",
+			want: []SeamTest{
+				{Name: "TestA", Unit: "dir/p", File: "dir/p/p_test.go", Structs: []string{"p#T"}},
+				{Name: "TestB", Unit: "dir/p", File: "dir/p/p_test.go", Structs: []string{"p#U"}},
+			},
+		},
+		{
+			name:     "a marker above a helper func is misplaced at its line",
+			pkg:      "package p\n\n//lym:seam p#T\nfunc helper() {}\n",
+			wantKind: GuardMisplaced,
+			wantLine: 3,
+		},
+		{
+			name:     "a marker followed by prose before the func line is misplaced at its line",
+			pkg:      "package p\n\n//lym:seam p#T\n// a stray line\nfunc TestA(t *testing.T) {}\n",
+			wantKind: GuardMisplaced,
+			wantLine: 3,
+		},
+		{
+			name:     "a marker with no argument is malformed",
+			pkg:      "package p\n\n//lym:seam\nfunc TestA(t *testing.T) {}\n",
+			wantKind: SeamMalformed,
+			wantLine: 3,
+		},
+		{
+			name:     "a marker without a hash is malformed",
+			pkg:      "package p\n\n//lym:seam Env\nfunc TestA(t *testing.T) {}\n",
+			wantKind: SeamMalformed,
+			wantLine: 3,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			writeTestFile(t, root, "dir/p", "p_test.go", tt.pkg)
+
+			got, err := FindSeamTests(root, []string{"dir/p"})
+			if tt.wantKind != "" {
+				var scanErr *GuardScanError
+				if !errors.As(err, &scanErr) {
+					t.Fatalf("FindSeamTests() error = %#v; want a *GuardScanError", err)
+				}
+				if scanErr.File != "dir/p/p_test.go" || scanErr.Kind != tt.wantKind || scanErr.Line != tt.wantLine {
+					t.Errorf("FindSeamTests() error file, kind, line = %q, %q, %d; want %q, %q, %d", scanErr.File, scanErr.Kind, scanErr.Line, "dir/p/p_test.go", tt.wantKind, tt.wantLine)
+				}
+				if !strings.Contains(err.Error(), "way forward:") || !strings.Contains(err.Error(), fmt.Sprintf("p_test.go:%d", tt.wantLine)) {
+					t.Errorf("FindSeamTests() error = %v; want the file, line and a way forward", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("FindSeamTests() error = %v; want nil", err)
+			}
+			if diff := cmp.Diff(tt.want, got["dir/p"]); diff != "" {
+				t.Errorf("FindSeamTests()[dir/p] mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
