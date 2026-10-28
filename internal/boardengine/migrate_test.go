@@ -123,6 +123,17 @@ func TestMigrateEntriesRewrites(t *testing.T) {
 			},
 		},
 		{
+			name: "only a beam project keeps its owner and colour",
+			in: []storedEntry{
+				{Task: Task{Slug: "b", Kind: KindProject, Labels: []string{"bug"}, Beam: true, OwnerMachine: "neve", BeamColor: "#7d2d6b"}},
+				{Task: Task{Slug: "g", Kind: KindProject, Labels: []string{"bug"}, OwnerMachine: "neve", BeamColor: "#7d2d6b"}},
+			},
+			want: []Task{
+				{Kind: KindProject, Labels: []string{"bug"}, OwnerMachine: "neve", BeamColor: "#7d2d6b"},
+				{Kind: KindProject, Labels: []string{"bug"}},
+			},
+		},
+		{
 			name: "an entry with neither tier nor kind is a note with empty labels",
 			in:   []storedEntry{{Task: Task{Slug: "a"}}},
 			want: []Task{{Kind: KindNote, Labels: []string{}}},
@@ -138,6 +149,7 @@ func TestMigrateEntriesRewrites(t *testing.T) {
 			for i, want := range tt.want {
 				e := got[i]
 				if e.Kind != want.Kind || e.Brief != want.Brief || e.Body != want.Body ||
+					e.OwnerMachine != want.OwnerMachine || e.BeamColor != want.BeamColor ||
 					!slices.Equal(e.Labels, want.Labels) || (e.Labels == nil) != (want.Labels == nil) ||
 					!slices.Equal(e.DependsOn, want.DependsOn) || (e.Status == nil) != (want.Status == nil) {
 					t.Errorf("entry %d = %+v, want %+v", i, e, want)

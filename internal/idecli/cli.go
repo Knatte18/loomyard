@@ -2,9 +2,9 @@
 //
 // Command() returns the root "ide" command with four subcommands — spawn, menu, seed and open.
 // spawn and menu wrap the existing handler bodies;
-// seed writes an existing pair's .vscode/ config and title-bar colour and launches nothing.
-// open starts VS Code on that pair's folder.
-// Both take a slug.
+// seed writes an existing worktree's .vscode/ config, window title and colours and launches nothing;
+// with no slug it seeds the worktree it runs in, the prime included.
+// open starts VS Code on a pair's folder and takes a slug.
 // Layout resolution happens once in a PersistentPreRunE so that the no-arg "lym ide" listing never
 // requires a git repo.
 
@@ -100,20 +100,25 @@ func Command() *cobra.Command {
 		},
 	}
 
-	seedCmd := slugVerbCommand(&l, "seed", "write a task worktree's VS Code config and title-bar colour", ideengine.SeedTask)
-	openCmd := slugVerbCommand(&l, "open", "open a task worktree's folder in VS Code", ideengine.OpenTask)
+	seedCmd := slugVerbCommand(&l, "seed", "write the VS Code config, window title and colours of the prime or a task worktree, the current worktree with no slug", true, ideengine.Seed)
+	openCmd := slugVerbCommand(&l, "open", "open a task worktree's folder in VS Code", false, ideengine.OpenTask)
 
 	cmd.AddCommand(spawnCmd, menuCmd, seedCmd, openCmd)
 	return cmd
 }
 
-// slugVerbCommand builds the operator-audience verb name <slug> that runs action on an existing pair of the hub.
+// slugVerbCommand builds the operator-audience verb name <slug> that runs action on an existing worktree of the hub.
+// With slugOptional, the slug may be left out and names the worktree the verb runs in, the prime included.
 // Before calling action it refuses a slug failing the slug grammar and one whose worktree directory under the hub does not exist,
 // so the verb acts only on a directory directly under the hub.
 // The location is read through l when the verb runs, after the root's pre-run has resolved it.
-func slugVerbCommand(l **lymcwd.Location, name, short string, action func(*lymcwd.Location, string) error) *cobra.Command {
+func slugVerbCommand(l **lymcwd.Location, name, short string, slugOptional bool, action func(*lymcwd.Location, string) error) *cobra.Command {
+	use := name + " <slug>"
+	if slugOptional {
+		use = name + " [<slug>]"
+	}
 	return &cobra.Command{
-		Use:         name + " <slug>",
+		Use:         use,
 		Short:       short,
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -121,11 +126,16 @@ func slugVerbCommand(l **lymcwd.Location, name, short string, action func(*lymcw
 				return nil
 			}
 
-			if len(args) < 1 {
-				clihelp.SetExit(cmd.Context(), output.Err(cmd.OutOrStdout(), "usage: lym ide "+name+" <slug>"))
+			var slug string
+			switch {
+			case len(args) > 0:
+				slug = args[0]
+			case slugOptional:
+				slug = (*l).WorktreeName
+			default:
+				clihelp.SetExit(cmd.Context(), output.Err(cmd.OutOrStdout(), "usage: lym ide "+use))
 				return nil
 			}
-			slug := args[0]
 
 			if err := agentname.ValidateSlug(slug); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(cmd.OutOrStdout(), fmt.Sprintf("%s failed: %v", name, err)))

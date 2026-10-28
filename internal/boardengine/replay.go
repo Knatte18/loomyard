@@ -54,6 +54,7 @@ var replayFields = []replayField{
 	{"project", func(t Task) any { return t.Project }, func(dst *Task, src Task) { dst.Project = src.Project }},
 	{"order", func(t Task) any { return orEmpty(t.Order) }, func(dst *Task, src Task) { dst.Order = slices.Clone(src.Order) }},
 	{"beam", func(t Task) any { return t.Beam }, func(dst *Task, src Task) { dst.Beam = src.Beam }},
+	{"beam_color", func(t Task) any { return t.BeamColor }, func(dst *Task, src Task) { dst.BeamColor = src.BeamColor }},
 }
 
 // orEmpty returns values, or an empty slice for nil, so a nil and an empty slice compare equal.

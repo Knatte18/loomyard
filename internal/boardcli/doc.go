@@ -25,6 +25,7 @@
 // `ValidateSlug` applies fabric's pair slug rule, with the hub's configured junction names, to every task or project slug a write makes, a promote and a rename included;
 // `PairExists` reports whether a directory stands at the slug's pair worktree path, for the refusal of a project change or rename on an entry with a pair;
 // `ParentOf` is `hubgeom.ParentOf`, the one parent resolver.
+// `get` emits a beam's `beam_color`, which only the owner setter writes, so `upsert` refuses a payload naming it as an unknown field.
 // `get` carries the entry's `parent_beam` beside `task` in its envelope, the slug of the beam above it and empty when the prime is its parent, and gives a project its effective owner as it gives a task's; `list` carries `parent_beam` on each entry that has one.
 //
 // A payload argument that is a bare handle, in either letter case, reads as `{"handle":…}`, so `lym board get B4` works and a verb that needs further keys refuses it as missing them.

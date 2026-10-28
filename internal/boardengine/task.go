@@ -50,6 +50,8 @@ type Task struct {
 	Order []string `json:"order,omitempty"`
 	// Beam reports whether a project is a beam, a long-lived pair that runs its members; only a project carries it.
 	Beam bool `json:"beam,omitempty"`
+	// BeamColor is the #rrggbb colour a beam project's VS Code windows show, recorded once by the owner setter; only a beam project carries it.
+	BeamColor string `json:"beam_color,omitempty"`
 
 	// Unknown holds the decoded entry's keys this binary does not know, each with its raw JSON value, nil when there are none.
 	// Encoding writes them back after the known fields in key order, and no step decodes a value into a Go type.
@@ -274,6 +276,7 @@ func normalizeTask(t *Task) error {
 	}
 	if t.Kind != KindProject || !t.Beam {
 		t.OwnerMachine = ""
+		t.BeamColor = ""
 	}
 	t.Created = entryTime(t.Created)
 	t.Revised = entryTime(t.Revised)

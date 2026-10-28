@@ -1,7 +1,7 @@
 //go:build tier1
 
 // cli_test.go covers the ide CLI cobra surface: spawn dispatch with a stubbed
-// launcher, the non-git refusal and the missing-slug error.
+// launcher, seed with and without a slug, the non-git refusal and the missing-slug error.
 
 package idecli
 
@@ -102,6 +102,31 @@ func TestRunCLI_SpawnScenario(t *testing.T) {
 		}
 	})
 
+	t.Run("seed without a slug seeds the worktree it runs in, the prime included", func(t *testing.T) {
+		launches = nil
+		var out bytes.Buffer
+		code := RunCLIIn(h.PrimeWorktree(), &out, []string{"seed"})
+
+		if code != 0 {
+			t.Fatalf("RunCLI(seed) in the prime = %d; output: %s", code, out.String())
+		}
+		var envelope struct {
+			Slug string `json:"slug"`
+		}
+		if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+			t.Fatalf("envelope %q: %v", out.String(), err)
+		}
+		if want := filepath.Base(h.PrimeWorktree()); envelope.Slug != want {
+			t.Errorf("seeded slug = %q; want the prime %q", envelope.Slug, want)
+		}
+		if _, err := os.Stat(filepath.Join(h.PrimeWorktree(), ".vscode", "settings.json")); err != nil {
+			t.Errorf("prime .vscode/settings.json: %v", err)
+		}
+		if len(launches) != 0 {
+			t.Errorf("seed launched %v; want no launch", launches)
+		}
+	})
+
 	t.Run("open launches once on the pair folder", func(t *testing.T) {
 		launches = nil
 		var out bytes.Buffer
@@ -122,7 +147,7 @@ func TestRunCLI_SpawnScenario(t *testing.T) {
 		wantVerb  string
 		wantUsage bool
 	}{
-		{name: "seed without a slug", args: []string{"seed"}, wantVerb: "usage: lym ide seed", wantUsage: true},
+		{name: "open without a slug", args: []string{"open"}, wantVerb: "usage: lym ide open", wantUsage: true},
 		{name: "seed of a slug with no pair", args: []string{"seed", "nosuch"}, wantVerb: "seed"},
 		{name: "open of a slug with no pair", args: []string{"open", "nosuch"}, wantVerb: "open"},
 		{name: "open of a path-shaped slug", args: []string{"open", "../child"}, wantVerb: "open"},

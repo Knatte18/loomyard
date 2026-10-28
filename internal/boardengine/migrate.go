@@ -101,6 +101,7 @@ func migrateEntries(entries []storedEntry, vocab *Vocabulary) []Task {
 		// Only a beam project records an owner, so the key a task or grouping project carried from an older machine is dropped here and leaves board.json at the next write.
 		if out[i].Kind != KindProject || !out[i].Beam {
 			out[i].OwnerMachine = ""
+			out[i].BeamColor = ""
 		}
 		if out[i].Kind != KindTask {
 			continue

@@ -50,13 +50,30 @@ func HubWorkspaceLockPath(hubPath string) string {
 
 // RegenerateHubWorkspace rewrites the hub workspace file and a workspace file per beam from the hub's current worktrees, the pairs' origin records and the prime's .vscode/settings.json, and returns the hub file's path.
 // The hub file lists the prime, the board as Bolt, then every pair whose parent is the prime, beams included, and no pair under a beam.
-// A beam's file, BeamWorkspacePath, lists the beam, its parent, Bolt and every pair whose parent is the beam, and a file of a beam that is gone is removed when it carries the generated mark.
+// A beam's file, BeamWorkspacePath, lists the beam, its parent, Bolt and every pair whose parent is the beam, with the beam's own .vscode/settings.json when it has a readable one and the prime's otherwise, and a file of a beam that is gone is removed when it carries the generated mark.
 // A pair with no readable origin record is listed in the hub file as a pair of the prime.
 // Each file is rewritten only when its bytes change; a write or removal is recorded in rec.
 // The regeneration runs under the hub workspace lock, so two callers never interleave their listing and write.
 // A prime that cannot be resolved, unreadable prime settings, a lock that stays held for the wait, or a failed write returns an error and writes nothing.
 func RegenerateHubWorkspace(rec *Mutations, l *lymcwd.Location) (string, error) {
 	return regenerateHubWorkspace(rec, l, hubWorkspaceLockWait)
+}
+
+// beamWorkspaceSettings returns the settings a beam's workspace file splices: the beam's own .vscode/settings.json, which carries its window title and colours, or primeSettings when the beam has none.
+// An unreadable anchor or settings file is an error.
+func beamWorkspaceSettings(l *lymcwd.Location, beam string, primeSettings []byte) ([]byte, error) {
+	beamLoc, err := lymcwd.NamedWorktree(l.HubPath, beam)
+	if err != nil {
+		return nil, fmt.Errorf("read the anchor of beam %s: %w", beam, err)
+	}
+	settings, err := vscode.ReadSettings(beamLoc.AnchorPath())
+	if err != nil {
+		return nil, fmt.Errorf("read settings of beam %s: %w", beam, err)
+	}
+	if settings == nil {
+		return primeSettings, nil
+	}
+	return settings, nil
 }
 
 // regenerateAfterVerb regenerates the hub workspace file at the end of a fabric verb that changed the hub's worktrees.
@@ -118,7 +135,12 @@ func regenerateHubWorkspace(rec *Mutations, l *lymcwd.Location, lockWait time.Du
 	kept := map[string]bool{}
 	for _, beam := range layout.beams {
 		kept[beam.slug] = true
-		beamContent, err := vscode.BuildWorkspace(beam.folders, settings)
+		beamSettings, err := beamWorkspaceSettings(l, beam.slug, settings)
+		if err != nil {
+			logger.Warn("fabricengine: a beam's own settings could not be read, so its workspace file splices the prime's", "beam", beam.slug, "error", err)
+			beamSettings = settings
+		}
+		beamContent, err := vscode.BuildWorkspace(beam.folders, beamSettings)
 		if err != nil {
 			return "", fmt.Errorf("build workspace of beam %s: %w", beam.slug, err)
 		}

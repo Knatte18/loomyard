@@ -1,5 +1,5 @@
-// spawn.go implements the ide entry point Spawn (`ide spawn`), and its two halves for a task pair, SeedTask and OpenTask.
-// It assigns a title-bar color, generates the worktree's .vscode/ config, and launches VS Code;
+// spawn.go implements the ide entry point Spawn (`ide spawn`), and its two halves, Seed and OpenTask.
+// It resolves a worktree's window title and colours from the prime, the board's beams and the worktree's parent, generates the worktree's .vscode/ config, and launches VS Code;
 // it regenerates tasks.json on every call and keeps .vscode/ out of git through info/exclude.
 // A task slug opens its bare folder.
 // The prime instead opens the lym-generated hub workspace <hub>/<RepoName>.code-workspace (prime, Bolt, every task pair), regenerated on every prime spawn.
@@ -8,12 +8,14 @@ package ideengine
 
 import (
 	"fmt"
-	"log/slog"
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/vscode"
@@ -38,13 +40,13 @@ var KeybindingsPath = vscode.UserKeybindingsPath
 // Before launching it seeds the lym block of key bindings into the user's VS Code keybindings.json and returns the outcome beside the error;
 // a skipped seed never fails the spawn.
 func Spawn(l *lymcwd.Location, slug string) (vscode.KeybindingsResult, error) {
-	worktreeDir, color, primeName, primeResolved := resolveSpawnTarget(l, slug, targetUnknown)
 	own, err := lymcwd.NamedWorktree(l.HubPath, slug)
 	if err != nil {
 		return vscode.KeybindingsResult{}, fmt.Errorf("read the anchor of %q: %w", slug, err)
 	}
+	worktreeDir, look, primeName, primeResolved := resolveSpawnTarget(l, own, slug)
 
-	if err := writeWorktreeConfig(l, worktreeDir, slug, color); err != nil {
+	if err := writeWorktreeConfig(own, worktreeDir, slug, look); err != nil {
 		return vscode.KeybindingsResult{}, err
 	}
 
@@ -62,11 +64,15 @@ func Spawn(l *lymcwd.Location, slug string) (vscode.KeybindingsResult, error) {
 	return keybindings, CodeLauncher(openDir)
 }
 
-// SeedTask writes task slug's title-bar color and .vscode/ config, as Spawn does for a task pair, and launches nothing.
+// Seed writes the window title and colours and the .vscode/ config of the worktree slug, the prime or a pair, as Spawn does, and launches nothing.
 // It leaves the user's keybindings.json alone.
-func SeedTask(l *lymcwd.Location, slug string) error {
-	worktreeDir, color, _, _ := resolveSpawnTarget(l, slug, targetTask)
-	return writeWorktreeConfig(l, worktreeDir, slug, color)
+func Seed(l *lymcwd.Location, slug string) error {
+	own, err := lymcwd.NamedWorktree(l.HubPath, slug)
+	if err != nil {
+		return fmt.Errorf("read the anchor of %q: %w", slug, err)
+	}
+	worktreeDir, look, _, _ := resolveSpawnTarget(l, own, slug)
+	return writeWorktreeConfig(own, worktreeDir, slug, look)
 }
 
 // OpenTask launches VS Code on task slug's bare folder at the task's own anchor, as Spawn does for a task pair, and writes nothing.
@@ -78,15 +84,11 @@ func OpenTask(l *lymcwd.Location, slug string) error {
 	return CodeLauncher(filepath.Join(fabricengine.WorktreePath(l, slug), own.AnchorRel))
 }
 
-// writeWorktreeConfig writes slug's .vscode/ config at slug's own anchor through writeVSCodeConfig, stamping in the absolute lym path.
+// writeWorktreeConfig writes slug's .vscode/ config at own's anchor through writeVSCodeConfig, stamping in the absolute lym path.
 // The path degrades to the empty string on error so vscode.WriteConfig's own bare-name fallback rule applies.
-func writeWorktreeConfig(l *lymcwd.Location, worktreeDir, slug, color string) error {
-	own, err := lymcwd.NamedWorktree(l.HubPath, slug)
-	if err != nil {
-		return fmt.Errorf("read the anchor of %q: %w", slug, err)
-	}
+func writeWorktreeConfig(own *lymcwd.Location, worktreeDir, slug string, look vscode.Look) error {
 	lymPath, _ := os.Executable()
-	return writeVSCodeConfig(own, worktreeDir, slug, color, lymPath)
+	return writeVSCodeConfig(own, worktreeDir, slug, look, lymPath)
 }
 
 // seedKeybindings seeds the user's keybindings.json through the KeybindingsPath seam; a path it cannot resolve is a skip.
@@ -101,7 +103,7 @@ func seedKeybindings() vscode.KeybindingsResult {
 // writeVSCodeConfig keeps .vscode/ out of git and writes the .vscode/ config at the worktree's anchor.
 // When .vscode/tasks.json is already tracked, it logs one warning and writes neither file nor the exclude line.
 // Otherwise it first adds an anchored .vscode line to the shared info/exclude, then calls vscode.WriteConfig.
-func writeVSCodeConfig(l *lymcwd.Location, worktreeDir, slug, color, lymPath string) error {
+func writeVSCodeConfig(l *lymcwd.Location, worktreeDir, slug string, look vscode.Look, lymPath string) error {
 	tasksRel := path.Join(filepath.ToSlash(l.AnchorRel), ".vscode", "tasks.json")
 	tracked, err := fabricengine.PathTracked(worktreeDir, tasksRel)
 	if err != nil {
@@ -118,52 +120,93 @@ func writeVSCodeConfig(l *lymcwd.Location, worktreeDir, slug, color, lymPath str
 	if changed {
 		logger.Info("excluded .vscode/ from git", "slug", slug, "exclude", excludePath)
 	}
-	if err := vscode.WriteConfig(worktreeDir, l.AnchorRel, slug, color, lymPath); err != nil {
+	if err := vscode.WriteConfig(worktreeDir, l.AnchorRel, look, lymPath); err != nil {
 		return fmt.Errorf("write vscode config: %w", err)
 	}
 	return nil
 }
 
-// spawnTarget is what a spawn opens, as far as the caller can tell before the prime's name is known.
-type spawnTarget int
-
-const (
-	// targetUnknown is a spawn whose slug may name the prime; fabricengine has no structural check that tells without the prime-name read.
-	targetUnknown spawnTarget = iota
-	// targetTask is a spawn that always opens a task pair.
-	targetTask
-	// targetPrime is a spawn known to open the prime.
-	targetPrime
-)
-
-// primeResolveLogLevel decides how loudly a prime-name resolution failure is logged for target.
-// A prime or unknown target logs at WARN, since a prime spawn must never lose its warning;
-// a task target logs at debug, since only its title-bar color degrades.
-// No error logs nothing.
-func primeResolveLogLevel(target spawnTarget, err error) (level slog.Level, log bool) {
-	if err == nil {
-		return 0, false
-	}
-	if target == targetTask {
-		return slog.LevelDebug, true
-	}
-	return slog.LevelWarn, true
-}
-
-// resolveSpawnTarget resolves slug's worktree path and title-bar color, and the prime's name.
-// A prime-resolution failure is logged here, once, at the level primeResolveLogLevel picks for target, and degrades rather than failing the spawn:
-// PickColor skips its prime-skip step, and the returned flag is false.
-// A wrong title-bar color or a missing hub workspace is not worth aborting over.
-func resolveSpawnTarget(l *lymcwd.Location, slug string, target spawnTarget) (worktreeDir, color, primeName string, primeResolved bool) {
+// resolveSpawnTarget resolves slug's worktree path and window look, own being slug's location, and the prime's name.
+// A prime-resolution failure is logged here, once, and degrades rather than failing the spawn:
+// slug reads as a task under the prime, and the returned flag is false.
+// A wrong colour or a missing hub workspace is not worth aborting over.
+func resolveSpawnTarget(l, own *lymcwd.Location, slug string) (worktreeDir string, look vscode.Look, primeName string, primeResolved bool) {
 	worktreeDir = fabricengine.WorktreePath(l, slug)
 	primeName, primeErr := fabricengine.PrimeName(l)
-	if level, ok := primeResolveLogLevel(target, primeErr); ok {
-		if level == slog.LevelDebug {
-			logger.Debug("resolve prime name; opening the bare folder", "slug", slug, "error", primeErr)
-		} else {
-			logger.Warn("resolve prime name; opening the bare folder", "slug", slug, "error", primeErr)
+	if primeErr != nil {
+		logger.Warn("resolve prime name; opening the bare folder", "slug", slug, "error", primeErr)
+	}
+	return worktreeDir, lookFor(l, own, slug, primeName), primeName, primeErr == nil
+}
+
+// lookFor returns the window look of the worktree slug, whose location is own: its title, its project's colour and its own colour.
+// The prime takes green on both, and a beam its board-recorded colour on both.
+// A task takes its parent's colour, green under the prime or the beam's colour under a beam, as its project colour, and as its own colour keeps the one its settings.json holds while that is allowed and free, else picks one avoiding its siblings'.
+// An empty primeName, an unreadable board or an unresolvable parent reads slug as a task under the prime, logged at Warn.
+func lookFor(l, own *lymcwd.Location, slug, primeName string) vscode.Look {
+	title := slug
+	if shortname, found := fabricengine.ReadShortname(fabricengine.BoardDir(l.HubPath)); found {
+		title = strings.ToUpper(shortname) + ": " + slug
+	}
+	if primeName != "" && slug == primeName {
+		return vscode.Look{Title: title, ProjectColor: vscode.PrimeColor, WorktreeColor: vscode.PrimeColor}
+	}
+
+	beams, err := beamColors(l.HubPath)
+	if err != nil {
+		logger.Warn("read the board's beams; colouring as a task under the prime", "slug", slug, "error", err)
+	}
+	if color, isBeam := beams[slug]; isBeam {
+		return vscode.Look{Title: title, ProjectColor: color, WorktreeColor: color}
+	}
+
+	projectColor := vscode.PrimeColor
+	if primeName != "" {
+		if parent, err := parentOf(l.HubPath, primeName, slug); err != nil {
+			logger.Warn("read the parent of a worktree; colouring it as a task under the prime", "slug", slug, "error", err)
+		} else if color, isBeam := beams[parent]; isBeam {
+			projectColor = color
 		}
 	}
-	color = vscode.PickColor(l, primeName)
-	return worktreeDir, color, primeName, primeErr == nil
+	current := vscode.ActivityBarColor(own.AnchorPath())
+	siblings := vscode.SiblingWorktreeColors(l, projectColor, slug)
+	return vscode.Look{Title: title, ProjectColor: projectColor, WorktreeColor: vscode.PickWorktreeColor(projectColor, current, siblings)}
+}
+
+// parentOf returns the slug of the pair slug was forked from, "" for the prime, read over the prime primeName of the hub at hubPath.
+func parentOf(hubPath, primeName, slug string) (string, error) {
+	prime, err := lymcwd.NamedWorktree(hubPath, primeName)
+	if err != nil {
+		return "", fmt.Errorf("read the prime's anchor: %w", err)
+	}
+	return hubgeom.ParentOf(prime, slug)
+}
+
+// beamColors maps the slug of every open beam on the hub's board to its colour:
+// its recorded colour, or for a beam with none the colour a new beam would record, without recording it.
+// An absent board holds no beam.
+func beamColors(hubPath string) (map[string]string, error) {
+	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(hubPath))
+	if err != nil {
+		return nil, err
+	}
+	colors := map[string]string{}
+	var held, unrecorded []string
+	for _, task := range tasks {
+		if task.Kind != boardengine.KindProject || !task.Beam || (task.Status != nil && *task.Status == "done") {
+			continue
+		}
+		if task.BeamColor == "" {
+			unrecorded = append(unrecorded, task.Slug)
+			continue
+		}
+		colors[task.Slug] = task.BeamColor
+		held = append(held, task.BeamColor)
+	}
+	for _, slug := range unrecorded {
+		color := vscode.PickBeamColor(held)
+		colors[slug] = color
+		held = append(held, color)
+	}
+	return colors, nil
 }
