@@ -5,8 +5,13 @@
 package planglyph
 
 import (
+	"errors"
+	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
@@ -161,5 +166,67 @@ func TestIndex_AppendsPlanChecks(t *testing.T) {
 				t.Errorf("%s findings = %d, want %d (all: %v)", tc.check, got, tc.want, findings)
 			}
 		})
+	}
+}
+
+// TestResolveGlyphs asserts the index answers each glyph by the same status policy a card ref gets, positionally, and reports a quarry failure as an error.
+func TestResolveGlyphs(t *testing.T) {
+	t.Parallel()
+
+	root := writeFixtureRepo(t, map[string]string{
+		"go.mod":         "module example.com/m\n\ngo 1.22\n",
+		"p/t.go":         "package p\n\ntype T struct{}\n",
+		"p/f_linux.go":   "package p\n\nfunc F() {}\n",
+		"p/f_windows.go": "package p\n\nfunc F() {}\n",
+		"p/g1.go":        "package p\n\nfunc G() {}\n",
+		"p/g2.go":        "package p\n\nfunc G() {}\n",
+	})
+	idx := NewIndex(noFabricReference{})
+
+	glyphs := []string{"p#T", "p#F", "p#G", "p#Missing", "nosuch#X", "p#bad#x"}
+	answers, err := idx.ResolveGlyphs(root, glyphs)
+	if err != nil {
+		t.Fatalf("ResolveGlyphs() error = %v; want nil", err)
+	}
+	if len(answers) != len(glyphs) {
+		t.Fatalf("ResolveGlyphs() returned %d answers; want %d", len(answers), len(glyphs))
+	}
+
+	tests := []struct {
+		verdict        planindex.GlyphVerdict
+		files          []string
+		candidateFiles []string
+	}{
+		{verdict: planindex.GlyphFound, files: []string{"p/t.go"}},
+		{verdict: planindex.GlyphFound, files: []string{"p/f_linux.go", "p/f_windows.go"}},
+		{verdict: planindex.GlyphAmbiguous, candidateFiles: []string{"p/g1.go", "p/g2.go"}},
+		{verdict: planindex.GlyphMissing},
+		{verdict: planindex.GlyphMissing},
+		{verdict: planindex.GlyphMissing},
+	}
+	for i, want := range tests {
+		got := answers[i]
+		if got.Glyph != glyphs[i] || got.Verdict != want.verdict {
+			t.Errorf("answer %d = %+v; want glyph %q and verdict %q", i, got, glyphs[i], want.verdict)
+		}
+		gotFiles := slices.Clone(got.Files)
+		slices.Sort(gotFiles)
+		if !slices.Equal(gotFiles, want.files) {
+			t.Errorf("answer %d Files = %v; want %v", i, got.Files, want.files)
+		}
+		if len(got.Candidates) != len(want.candidateFiles) {
+			t.Errorf("answer %d Candidates = %v; want one per file of %v", i, got.Candidates, want.candidateFiles)
+			continue
+		}
+		for _, file := range want.candidateFiles {
+			if !slices.ContainsFunc(got.Candidates, func(candidate string) bool { return strings.Contains(candidate, file) }) {
+				t.Errorf("answer %d Candidates = %v; want one naming %q", i, got.Candidates, file)
+			}
+		}
+	}
+
+	answers, err = idx.ResolveGlyphs(filepath.Join(t.TempDir(), "absent"), glyphs)
+	if !errors.Is(err, planindex.ErrQuarryUnavailable) || answers != nil {
+		t.Errorf("ResolveGlyphs(absent root) = %v, %v; want no answers and an error wrapping ErrQuarryUnavailable", answers, err)
 	}
 }

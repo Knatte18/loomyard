@@ -45,14 +45,14 @@ type GuardTest struct {
 	Tier int
 }
 
-// GuardScanError is a failure of the guard scan that sits in the content of a test file: a file that does not parse, a marker not directly above a top-level test, or a marker in a `tier2` or `tier3` file.
+// GuardScanError is a failure of the guard or seam scan that sits in the content of a test file: a file that does not parse, a `//lym:guard` or `//lym:seam` marker not directly above a top-level test, a guard marker in a `tier2` or `tier3` file, or a seam marker whose argument is not a `<unit>#<Type>` glyph.
 // The author of the change can fix each one, unlike a failure to read a directory or git.
 type GuardScanError struct {
 	// File is the worktree-relative, slash-separated path of the test file the error sits in.
 	File string
-	// Kind is which of the three failures this is.
+	// Kind is which of the four failures this is.
 	Kind GuardScanKind
-	// Line is the marker's line for the two marker kinds, and the parser's line for GuardParse when the parser reports a position; 0 otherwise.
+	// Line is the marker's line for the marker kinds, and the parser's line for GuardParse when the parser reports a position; 0 otherwise.
 	Line int
 
 	message string
@@ -191,10 +191,10 @@ func guardNamesInFile(path, rel string) ([]GuardTest, error) {
 	return names, nil
 }
 
-// onlyKeepLinesAfter reports whether every comment is a `//testtiming:keep` line, the only line allowed between a marker and its func line.
+// onlyKeepLinesAfter reports whether every comment is a `//testtiming:keep` or `//lym:seam` line, the only lines allowed between a marker and its func line.
 func onlyKeepLinesAfter(comments []*ast.Comment) bool {
 	for _, comment := range comments {
-		if !strings.HasPrefix(comment.Text, testtimingKeepTag) {
+		if !strings.HasPrefix(comment.Text, testtimingKeepTag) && !isSeamLine(comment.Text) {
 			return false
 		}
 	}

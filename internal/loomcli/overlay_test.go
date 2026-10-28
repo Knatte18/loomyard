@@ -124,6 +124,23 @@ func TestValidatePlanCmd_Overlay(t *testing.T) {
 			wantOut:  []string{"create-already-exists", "sub#Foo"},
 		},
 		{
+			name: "a card creating a test file with no tier statement is test-tier-unstated",
+			setup: func(t *testing.T, anchorPath string) {
+				writeHubGateConfig(t, filepath.Dir(anchorPath), gateConfigWithTwoTiers())
+			},
+			overlay: func(t *testing.T, anchorPath string) string {
+				encoded, err := json.Marshal(map[string]string{
+					cardFile: "# Card 1 — first-card\n\n**Create:**\n- `sub/new_test.go`\n\n**Intent:** add the test.\n",
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				return string(encoded)
+			},
+			wantExit: 1,
+			wantOut:  []string{"test-tier-unstated", "sub/new_test.go"},
+		},
+		{
 			name: "an overlay of a done card is done-card-edited",
 			setup: func(t *testing.T, anchorPath string) {
 				data, err := os.ReadFile(filepath.Join(planparser.PlanDir(anchorPath), cardFile))

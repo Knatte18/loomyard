@@ -66,6 +66,7 @@ func TestAppendDecision_AppendsAtEndOfDecisionsSection(t *testing.T) {
 	withEntry := func(record string) string {
 		return strings.Replace(record, "## Decisions\n\nbody text.\n", "## Decisions\n\nbody text.\n"+wantEntry, 1)
 	}
+	someDecision := strings.Replace(allSectionsContent(), "## Decisions\n\nbody text.\n", "## Decisions\n\n### Some decision\n\nbody text.\n", 1)
 	pattern := &PatternChange{ID: "PATTERN-new", Action: "adds", Text: "New rule."}
 	notes := "## Notes for the plan writer\n\nhint.\n"
 	withSection := allSectionsContent() + "## PATTERN changes\n\n- `PATTERN-old` — removes\n\n" + notes
@@ -118,6 +119,11 @@ func TestAppendDecision_AppendsAtEndOfDecisionsSection(t *testing.T) {
 			prior:    middleBefore + middleAfter,
 			relevant: "a stray paragraph line\n",
 			want:     strings.TrimSuffix(middleBefore, "\n") + wantEntry + "\n" + middleAfter,
+		},
+		{
+			name:  "a decision heading without an id is not refused",
+			prior: someDecision,
+			want:  strings.Replace(someDecision, "### Some decision\n\nbody text.\n", "### Some decision\n\nbody text.\n"+wantEntry, 1),
 		},
 		{name: "decisions is the last section", prior: decisionsLast.String(), want: decisionsLast.String() + wantEntry},
 		{name: "last line has no trailing newline", prior: unterminated, want: unterminated + "\n" + wantEntry},

@@ -27,7 +27,7 @@ var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 //
 // Each element carries a required "name", resolved against a closed four-value vocabulary:
 // "discussion" requires env.DecisionRecordPath and env.SupportLogPath to pass requireAbsRoot and returns loomshed.NewDiscussionGate over them, or, when env.DiscussionHistory is set, loomshed.NewDarnDiscussionGate over them, the history seam and a non-nil env.CommitDiscussion;
-// on a loom run, where env.DiscussionHistory is unset, "discussion" also requires env.RelevantPath to pass requireAbsRoot and passes it to the gate;
+// on a loom run, where env.DiscussionHistory is unset, "discussion" also requires env.RelevantPath and env.WorktreeRoot to pass requireAbsRoot and a non-nil env.PlanIndex, and passes them to the gate, whose citation check reads the worktree and the index;
 // "plan" requires env.AnchorPath, env.WorktreeRoot and a non-nil env.PlanIndex and returns loomshed.NewPlanGate over them;
 // "description" requires env.DescriptionPath to pass requireAbsRoot and returns landingshed.NewDescriptionGate over it;
 // "verify" requires the absolute env.WorktreeRoot and env.VerifyDir and a non-nil env.VerifyCommand, takes the optional env.VerifyMergeBase and env.VerifyTreeScope, and returns loomshed.NewVerifyGate over them, with the site label "<row name> gate";
@@ -120,13 +120,15 @@ func resolveGateEntry(entry, row, gateKey string, index int, elem Config, env En
 	return shuttleengine.GateEntry{Name: name, Gate: closure, Attempts: attempts, PassOnCap: passOnCap}, nil
 }
 
-// planContextOf builds the plan gates' PlanContext from env: the hub's rename tools and refused raw commands, and the decision record on a loom run.
+// planContextOf builds the plan gates' PlanContext from env: the hub's rename tools, refused raw commands and tier tags, the seam-test reader over the worktree, and the decision record on a loom run.
 // A darn run has no PatternRecordPath, so its plan is not compared with a record.
 // The PATTERN.md base is read at the merge base the verify gate's headroom lint is told.
 func planContextOf(env Env) loomshed.PlanContext {
 	return loomshed.PlanContext{
 		RenameTools:        env.RenameTools,
 		RefuseRaw:          env.RefuseRaw,
+		TierTags:           env.TierTags,
+		SeamTests:          loomshed.SeamTestReader(env.WorktreeRoot),
 		DecisionRecordPath: env.PatternRecordPath,
 		PatternBase:        loomshed.PatternBaseReader(env.WorktreeRoot, env.VerifyMergeBase),
 	}
@@ -152,7 +154,13 @@ func resolvePlainGateClosure(entry, row, gateKey string, index int, name string,
 		if err := requireAbsRoot(entry, "RelevantPath", env.RelevantPath); err != nil {
 			return nil, err
 		}
-		return loomshed.NewDiscussionGate(env.DecisionRecordPath, env.SupportLogPath, env.RelevantPath), nil
+		if err := requireAbsRoot(entry, "WorktreeRoot", env.WorktreeRoot); err != nil {
+			return nil, err
+		}
+		if err := requireSeam(entry, "PlanIndex", env.PlanIndex); err != nil {
+			return nil, err
+		}
+		return loomshed.NewDiscussionGate(env.DecisionRecordPath, env.SupportLogPath, env.RelevantPath, env.WorktreeRoot, env.PlanIndex), nil
 	case "plan":
 		if err := requireAbsRoot(entry, "AnchorPath", env.AnchorPath); err != nil {
 			return nil, err

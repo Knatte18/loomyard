@@ -458,3 +458,156 @@ func TestMissingSections_ASingleHugeLineDoesNotHideEveryHeadingBelowIt(t *testin
 		t.Errorf("missingSections(...) = %v; want none — every required heading is present, one just sits below a 128 KB line", got)
 	}
 }
+
+func TestCheckDecisionIDs(t *testing.T) {
+	t.Parallel()
+
+	// record returns a decision record with the given Decisions and Acceptance criteria bodies; a nil acceptance leaves the section out.
+	record := func(decisions string, acceptance *string) string {
+		var b strings.Builder
+		for _, h := range requiredDiscussionSections {
+			switch {
+			case h == "## Decisions":
+				b.WriteString(h + "\n\n" + decisions + "\n")
+			case h == "## Acceptance criteria":
+				if acceptance != nil {
+					b.WriteString(h + "\n\n" + *acceptance + "\n")
+				}
+			default:
+				b.WriteString(h + "\n\nbody.\n\n")
+			}
+		}
+		return b.String()
+	}
+	accept := func(s string) *string { return &s }
+	const twoDecisions = "### D1 — x\n\nDecision: a.\n\n### D2 — y\n\nDecision: b.\n"
+	const bothNamed = "- D1 holds.\n- D2 holds.\n"
+
+	type want struct {
+		check    string
+		contains []string
+	}
+	tests := []struct {
+		name   string
+		record string
+		want   []want
+	}{
+		{name: "Clean", record: record(twoDecisions, accept(bothNamed))},
+		{
+			name:   "MalformedHeading",
+			record: record("### Some decision\n\nDecision: a.\n", accept(bothNamed)),
+			want:   []want{{"decision-heading-malformed", []string{"### Some decision", "line ", "way forward: rewrite the heading as `### D<n> — <title>` when it is a decision, or demote it to H4 or plain text when it is not"}}},
+		},
+		{
+			name:   "EmptyTitleIsMalformed",
+			record: record("### D1 — \n\nDecision: a.\n", accept("- D1 holds.\n")),
+			want:   []want{{"decision-heading-malformed", []string{"### D1 —"}}},
+		},
+		{
+			name:   "AddedAfterDiscussionEntryCarriesNoID",
+			record: record(twoDecisions+"\n### Added after Discussion (orch, 2026-10-28): t\n\nDecision: c.\n", accept(bothNamed)),
+		},
+		{
+			name:   "RepeatedID",
+			record: record(twoDecisions+"\n### D1 — z\n\nDecision: c.\n", accept(bothNamed)),
+			want:   []want{{"decision-id-duplicate", []string{"D1", "way forward: renumber one of the decisions and every mention of its id"}}},
+		},
+		{
+			name:   "IDNamedInNoBullet",
+			record: record(twoDecisions+"\n### D3 — z\n\nDecision: c.\n", accept(bothNamed)),
+			want:   []want{{"decision-not-in-acceptance", []string{"D3", "way forward: name it in the criterion that covers it, or add one"}}},
+		},
+		{
+			name:   "IDOnlyAsLongerID",
+			record: record("### D1 — x\n\nDecision: a.\n", accept("- D10 holds.\n")),
+			want:   []want{{"decision-not-in-acceptance", []string{"D1 "}}},
+		},
+		{
+			name:   "RangeCoversOnlyTheIDsItSpells",
+			record: record(twoDecisions+"\n### D3 — z\n\nDecision: c.\n\n### D4 — w\n\nDecision: d.\n", accept("- D1 to D4 hold.\n")),
+			want: []want{
+				{"decision-not-in-acceptance", []string{"D2"}},
+				{"decision-not-in-acceptance", []string{"D3"}},
+			},
+		},
+		{
+			name:   "IDInsideNonBulletProseIsNotCovered",
+			record: record("### D1 — x\n\nDecision: a.\n", accept("D1 is prose, not a bullet.\n")),
+			want:   []want{{"decision-not-in-acceptance", []string{"D1 "}}},
+		},
+		{
+			name:   "FencedHeadingIsNotRead",
+			record: record("### D1 — x\n\n```\n### D9 — x\n### Some decision\n```\n", accept("- D1 holds.\n")),
+		},
+		{
+			name:   "NoAcceptanceSectionNoCoverageFinding",
+			record: record(twoDecisions, nil),
+		},
+		{name: "NoDecisionsSection", record: "# Record\n\n## Goal\n\nbody.\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := CheckDecisionIDs([]byte(tt.record))
+			if len(got) != len(tt.want) {
+				t.Fatalf("CheckDecisionIDs() = %v; want %d findings", got, len(tt.want))
+			}
+			for i, w := range tt.want {
+				if got[i].Check != w.check || got[i].Path != "" {
+					t.Errorf("finding %d = %+v; want Check %q and an empty Path", i, got[i], w.check)
+				}
+				for _, part := range w.contains {
+					if !strings.Contains(got[i].Detail, part) {
+						t.Errorf("finding %d Detail = %q; want it to contain %q", i, got[i].Detail, part)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestCitations(t *testing.T) {
+	t.Parallel()
+
+	const bulletSuffix = " — added after Discussion (parent, 2026-03-04)"
+	tests := []struct {
+		name   string
+		record string
+		want   []Citation
+	}{
+		{"TokenAndLine", "intro\nSee `a/b.go` here.\n", []Citation{{Token: "a/b.go", Line: 2}}},
+		{
+			"NewAndRemovedMarksAreMarkedOldIsNot",
+			"`a` (new), `b` (removed), `c` (old), `d`(new)\n",
+			[]Citation{{"a", 1, true}, {"b", 1, true}, {"c", 1, false}, {"d", 1, false}},
+		},
+		{"TwoSpansOnOneLineInOrder", "`x` and `y`\n", []Citation{{"x", 1, false}, {"y", 1, false}}},
+		{"EmptySpanIsAbsent", "`` and `z`\n", []Citation{{"z", 1, false}}},
+		{"UnclosedSpanIsAbsent", "`open only\n", nil},
+		{"FencedBlockIsSkipped", "```\n`fenced`\n```\n`after`\n", []Citation{{"after", 4, false}}},
+		{"HeadingIsReadLikeAnyLine", "## `Decisions`\n", []Citation{{"Decisions", 1, false}}},
+		{
+			"AddedAfterDiscussionEntryIsSkipped",
+			"## Decisions\n\n### D1 — `kept`\n\n### Added after Discussion (orch, 2026-10-28): t\n\nDecision: `skipped`.\n\n## Constraints\n\n`after`\n",
+			[]Citation{{"kept", 3, false}, {"after", 11, false}},
+		},
+		{
+			"PatternChangesBulletWithSuffixIsSkippedAndWithoutIsRead",
+			"## PATTERN changes\n\n- `PATTERN-a` — adds: rule `x`." + bulletSuffix + "\n- `PATTERN-b` — adds: rule `y`.\n\n## Notes\n\n- `PATTERN-c` — adds: rule `z`." + bulletSuffix + "\n",
+			[]Citation{{"PATTERN-b", 4, false}, {"y", 4, false}, {"PATTERN-c", 8, false}, {"z", 8, false}},
+		},
+		{
+			"CarryOverBlockIsSkippedUnclosedRunsToTheEnd",
+			"`a`\n<!-- lym:carry-over loom -->\n`b`\n<!-- /lym:carry-over loom -->\n`c`\n<!-- lym:carry-over loom -->\n`d`\n",
+			[]Citation{{"a", 1, false}, {"c", 5, false}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := Citations([]byte(tt.record)); !slices.Equal(got, tt.want) {
+				t.Errorf("Citations() = %+v; want %+v", got, tt.want)
+			}
+		})
+	}
+}

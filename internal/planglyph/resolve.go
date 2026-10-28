@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/quarry/quarry"
 )
@@ -81,15 +82,23 @@ func statusFindings(plan *planparser.Plan, worktreeRoot string, results []quarry
 	for _, r := range results {
 		cards := sortedCards(index[r.Target])
 
-		switch r.Status {
-		case quarry.StatusFound, quarry.StatusMultipart:
-			// Both pass with no finding.
-		case quarry.StatusAmbiguous:
-			classified := classifyAmbiguity(worktreeRoot, r.Candidates)
-			if classified.Partitioned {
-				// One member declared once per mutually exclusive build-constraint set passes like multipart.
-				continue
+		verdict, readable, classified := resolveVerdict(worktreeRoot, r)
+		switch {
+		case !readable:
+			// Fail closed: an absent Status is quarry's pre-resolution rejection of the target string itself, and any other value is a vocabulary this package has not been taught.
+			// resolveVerdict routes both here rather than passing them, so widening quarry's four-value vocabulary can never silently pass (crucible round opus-high-r9, R9-6).
+			for _, c := range cards {
+				findings = append(findings, Finding{
+					Check:    "glyph-rejected",
+					Card:     c.ID(),
+					Detail:   unreadableStatusDetail("target", r.Target, r),
+					Severity: SeverityBlocking,
+					Ref:      r.Target,
+				})
 			}
+		case verdict == planindex.GlyphFound:
+			// Found, multipart and an ambiguous answer partitioned by build constraint pass with no finding.
+		case verdict == planindex.GlyphAmbiguous:
 			detail := fmt.Sprintf("target %q is ambiguous among candidates: %s", r.Target, candidateList(classified.Candidates))
 			if crossDetail, crossAlphabet := crossAlphabetDetail(r); crossAlphabet {
 				detail = fmt.Sprintf("target %q is ambiguous: %s", r.Target, crossDetail)
@@ -103,7 +112,7 @@ func statusFindings(plan *planparser.Plan, worktreeRoot string, results []quarry
 					Ref:      r.Target,
 				})
 			}
-		case quarry.StatusNotFound:
+		case verdict == planindex.GlyphMissing:
 			var detail string
 			if r.Unit == quarry.StatusFound {
 				detail = fmt.Sprintf("target %q's unit exists but the member is missing — check for a misspelled member", r.Target)
@@ -119,25 +128,31 @@ func statusFindings(plan *planparser.Plan, worktreeRoot string, results []quarry
 					Ref:      r.Target,
 				})
 			}
-		default:
-			// Fail closed: an absent Status is quarry's pre-resolution rejection of the target
-			// string itself, and any other value is a vocabulary this package has not been taught.
-			// Written as the switch's own default rather than as a pre-switch "" test, so widening
-			// quarry's four-value vocabulary can never silently pass here either (crucible round
-			// opus-high-r9, R9-6).
-			for _, c := range cards {
-				findings = append(findings, Finding{
-					Check:    "glyph-rejected",
-					Card:     c.ID(),
-					Detail:   unreadableStatusDetail("target", r.Target, r),
-					Severity: SeverityBlocking,
-					Ref:      r.Target,
-				})
-			}
 		}
 	}
 
 	return findings
+}
+
+// resolveVerdict is the glyph-not-found status policy both statusFindings and ResolveGlyphs apply, so the two can never disagree about what resolves.
+// Found and multipart are GlyphFound; ambiguous is GlyphFound when classifyAmbiguity reports the candidates partitioned by build constraint, else GlyphAmbiguous; not_found is GlyphMissing.
+// readable is false for a pre-resolution rejection and for a status outside quarry's vocabulary, which are GlyphMissing, so the policy fails closed.
+// The classification of an ambiguous answer is returned for the candidate list and is the zero value for any other answer.
+func resolveVerdict(worktreeRoot string, r quarry.ResolveResult) (verdict planindex.GlyphVerdict, readable bool, classified ambiguity) {
+	switch r.Status {
+	case quarry.StatusFound, quarry.StatusMultipart:
+		return planindex.GlyphFound, true, ambiguity{}
+	case quarry.StatusAmbiguous:
+		classified = classifyAmbiguity(worktreeRoot, r.Candidates)
+		if classified.Partitioned {
+			return planindex.GlyphFound, true, classified
+		}
+		return planindex.GlyphAmbiguous, true, classified
+	case quarry.StatusNotFound:
+		return planindex.GlyphMissing, true, ambiguity{}
+	default:
+		return planindex.GlyphMissing, false, ambiguity{}
+	}
 }
 
 // candidateList renders a batched Resolve answer's ambiguous candidates for an operator-facing

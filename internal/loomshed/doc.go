@@ -10,7 +10,9 @@
 // any other load fault names the fix-and-re-step one.
 // The check reads and never writes, and validates no other module's config.
 //
-// Its plan gates resolve plan refs through a told planindex.Index, so the package links no tree-sitter grammar.
+// Its plan gates, and the loom discussion gate's citation check, resolve refs and symbols through a told planindex.Index, so the package links no tree-sitter grammar.
+// The citation check parses glyphs with the cgo-free `quarry/glyph` grammar.
+// It tests a loom decision record's cited paths and symbols against the worktree, and a quarry outage is a returned error, never a finding.
 // The plan gate and `lym loom validate-plan` share ValidatePlan, which reads webster's run record under the anchor and tells the index the cards of every batch it holds done.
 // A twill Plan-Write run's gate and `lym loom validate-plan --lens-review` share ValidatePlanLensReview, which adds the presence check on `lens-review.md`.
 // Those cards are history, not targets: a run moved back to the plan review after Webster executed batches has their work in the tree, so their tree-dependent checks are skipped.
@@ -22,7 +24,11 @@
 // `rename-tool-missing` is one finding per symbol `Rename` pair of a card not recorded done when the context's rename tools are empty, with `lym config language` as the way forward.
 // `pattern-changes-mismatch` is one finding per `## PATTERN changes` bullet that the overview and the context's decision record do not both declare.
 // An absent record adds nothing, and a malformed record section is a returned error naming `lym loom validate-discussion`.
-// The zero PlanContext runs neither of those two.
+// `test-tier-unstated` is one finding per test file a go plan's card not recorded done creates as a file target whose Intent lines do not state exactly one tier of the context's tier tags, a `||` join of several, or untagged.
+// `seam-test-unlisted` is one finding per card not recorded done, struct a `//lym:seam` test marks and marked test, for a go plan's card that touches the struct without listing the test.
+// SeamTestReader returns the PlanContext reader that parses the markers of the worktree's package directories; a marker fault is a returned error naming the file and line.
+// `doc-go-unlisted` is one finding per card not recorded done and package directory whose non-test Go code a go plan's card changes without covering the package's `doc.go`; a directory with no `doc.go` on disk is skipped.
+// The zero PlanContext runs none of the first four of these checks, a nil TierTags, the state with no gate.yaml, skips test-tier-unstated, a nil SeamTests skips seam-test-unlisted, and doc-go-unlisted needs no context field.
 //
 // Four PATTERN checks follow them, in this order, each reading `PATTERN.md` in the worktree and the overview PlanContext.PatternBase returns for the task branch's merge base, or for HEAD with no parent recorded.
 // `pattern-removes-prescribed` is one finding per removed entry that a card not recorded done fences a line for.

@@ -109,3 +109,26 @@ func readGitDirExcludePatterns(repo *git.Repository) ([]gitignore.Pattern, error
 	}
 	return patterns, nil
 }
+
+// TrackedRootEntries returns, sorted and deduplicated, the first path segment of every entry of the repository's index.
+// A root entry staged and never committed counts as tracked, and an untracked one does not.
+// An absent index yields an empty, never nil, result.
+func (r *Repo) TrackedRootEntries() ([]string, error) {
+	return readGoGit(r, func(repo *git.Repository) ([]string, error) {
+		idx, err := repo.Storer.Index()
+		if err != nil {
+			return nil, fmt.Errorf("gitrepo: read index: %w", err)
+		}
+		seen := map[string]bool{}
+		entries := []string{}
+		for _, entry := range idx.Entries {
+			root, _, _ := strings.Cut(entry.Name, "/")
+			if !seen[root] {
+				seen[root] = true
+				entries = append(entries, root)
+			}
+		}
+		sort.Strings(entries)
+		return entries, nil
+	})
+}

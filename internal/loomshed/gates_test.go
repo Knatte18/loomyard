@@ -27,6 +27,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/planglyph"
@@ -114,7 +115,7 @@ func TestNewDiscussionGate(t *testing.T) {
 		dir := t.TempDir()
 		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, validDecisionRecord, "support log")
 
-		gate := NewDiscussionGate(decisionRecordPath, supportLogPath, filepath.Join(dir, "relevant.md"))
+		gate := NewDiscussionGate(decisionRecordPath, supportLogPath, filepath.Join(dir, "relevant.md"), dir, planglyph.NewIndex(fabricengine.NewReferenceRule()))
 		result, err := gate()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
@@ -135,7 +136,7 @@ func TestNewDiscussionGate(t *testing.T) {
 			t.Fatalf("write advisor notes: %v", err)
 		}
 
-		result, err := NewDiscussionGate(decisionRecordPath, supportLogPath, filepath.Join(dir, "relevant.md"))()
+		result, err := NewDiscussionGate(decisionRecordPath, supportLogPath, filepath.Join(dir, "relevant.md"), dir, planglyph.NewIndex(fabricengine.NewReferenceRule()))()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
 		}
@@ -150,7 +151,7 @@ func TestNewDiscussionGate(t *testing.T) {
 		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, withoutGoal, "support log")
 
 		buf := logcapture.Capture(t)
-		gate := NewDiscussionGate(decisionRecordPath, supportLogPath, filepath.Join(dir, "relevant.md"))
+		gate := NewDiscussionGate(decisionRecordPath, supportLogPath, filepath.Join(dir, "relevant.md"), dir, planglyph.NewIndex(fabricengine.NewReferenceRule()))
 		result, err := gate()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
@@ -185,7 +186,7 @@ func TestNewDiscussionGate(t *testing.T) {
 			t.Fatalf("write relevant list: %v", err)
 		}
 
-		result, err := NewDiscussionGate(decisionRecordPath, supportLogPath, relevantPath)()
+		result, err := NewDiscussionGate(decisionRecordPath, supportLogPath, relevantPath, dir, planglyph.NewIndex(fabricengine.NewReferenceRule()))()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
 		}
@@ -193,6 +194,30 @@ func TestNewDiscussionGate(t *testing.T) {
 		strayAt := strings.Index(result.Findings, "relevant-stray-line")
 		if result.Passed || sectionAt < 0 || strayAt < sectionAt {
 			t.Errorf("gate() = %+v; want a failure naming discussion-section-missing before relevant-stray-line", result)
+		}
+	})
+
+	// A malformed decision heading fails the gate, after the section findings.
+	t.Run("DecisionIDFindingsFollowTheSectionFindings", func(t *testing.T) {
+		malformed := strings.Replace(validDecisionRecord, "Decisions text.", "### Some decision\n\nDecision: a.", 1)
+		withoutGoal := strings.Replace(malformed, "## Goal\n\nGoal text.\n\n", "", 1)
+		for _, tt := range []struct {
+			name, record, first string
+		}{
+			{"MalformedHeading", malformed, "decision-heading-malformed"},
+			{"SectionFindingFirst", withoutGoal, "discussion-section-missing"},
+		} {
+			dir := t.TempDir()
+			decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, tt.record, "support log")
+			result, err := NewDiscussionGate(decisionRecordPath, supportLogPath, filepath.Join(dir, "relevant.md"), dir, planglyph.NewIndex(fabricengine.NewReferenceRule()))()
+			if err != nil {
+				t.Fatalf("%s: gate() error = %v; want nil", tt.name, err)
+			}
+			firstAt := strings.Index(result.Findings, tt.first)
+			headingAt := strings.LastIndex(result.Findings, "decision-heading-malformed")
+			if result.Passed || firstAt < 0 || headingAt < firstAt {
+				t.Errorf("%s: gate() = %+v; want a failure naming %s first and decision-heading-malformed", tt.name, result, tt.first)
+			}
 		}
 	})
 
@@ -208,7 +233,7 @@ func TestNewDiscussionGate(t *testing.T) {
 			t.Fatalf("mkdir decision record: %v", err)
 		}
 
-		gate := NewDiscussionGate(decisionRecordPath, supportLogPath, filepath.Join(dir, "relevant.md"))
+		gate := NewDiscussionGate(decisionRecordPath, supportLogPath, filepath.Join(dir, "relevant.md"), dir, planglyph.NewIndex(fabricengine.NewReferenceRule()))
 		result, err := gate()
 		if err == nil {
 			t.Fatalf("gate() error = nil; want a non-nil error (decision record path is a directory)")
@@ -221,6 +246,7 @@ func TestNewDiscussionGate(t *testing.T) {
 	// The darn gate adds the history check and the commit to the section check, so each case drives it over a told history and a counting commit.
 	const addedEntry = "\n### Added after Discussion (parent, 2026-03-04): Keep the cache\n\nDecision: Keep the cache per run.\n\nRationale: A shared cache races.\n"
 	const addedHeading = "### Added after Discussion (parent, 2026-03-04): Keep the cache"
+	dupIDRecord := strings.Replace(strings.Replace(validDecisionRecord, "Decisions text.", "### D1 — a\n\nDecision: a.\n\n### D1 — b\n\nDecision: b.", 1), "Criteria text.", "- D1 holds.", 1)
 	historyError := errors.New("history unavailable")
 	commitError := errors.New("commit failed")
 
@@ -232,6 +258,7 @@ func TestNewDiscussionGate(t *testing.T) {
 		commitErr     error
 		wantPassed    bool
 		wantFindings  string
+		wantThen      string
 		wantErr       error
 		wantCommits   int
 		wantHistoryOn bool
@@ -242,6 +269,8 @@ func TestNewDiscussionGate(t *testing.T) {
 		// A `lym fabric commit` of the overwrite leaves the dropping copy as the newest version, so the check must read the whole history.
 		{name: "a dropped entry fails when the newest version is the dropping copy", record: validDecisionRecord, history: [][]byte{[]byte(validDecisionRecord), []byte(validDecisionRecord + addedEntry)}, wantFindings: addedHeading, wantHistoryOn: true},
 		{name: "a record missing a section never reads the history", record: strings.Replace(validDecisionRecord, "## Goal\n\nGoal text.\n\n", "", 1), history: [][]byte{[]byte(validDecisionRecord + addedEntry)}, wantFindings: "discussion-section-missing"},
+		{name: "a repeated id fails, reads the history once and commits nothing", record: dupIDRecord, wantFindings: "decision-id-duplicate", wantHistoryOn: true},
+		{name: "a repeated id beside a missing section names both, section first, and never reads the history", record: strings.Replace(dupIDRecord, "## Goal\n\nGoal text.\n\n", "", 1), wantFindings: "discussion-section-missing", wantThen: "decision-id-duplicate"},
 		{name: "a history error comes back as the gate's error", record: validDecisionRecord, historyErr: historyError, wantErr: historyError, wantHistoryOn: true},
 		{name: "a commit error comes back as the gate's error", record: validDecisionRecord, history: [][]byte{[]byte(validDecisionRecord)}, commitErr: commitError, wantErr: commitError, wantCommits: 1, wantHistoryOn: true},
 	}
@@ -274,6 +303,9 @@ func TestNewDiscussionGate(t *testing.T) {
 			}
 			if tt.wantFindings != "" && !strings.Contains(result.Findings, tt.wantFindings) {
 				t.Errorf("gate() Findings = %q; want it to contain %q", result.Findings, tt.wantFindings)
+			}
+			if tt.wantThen != "" && strings.Index(result.Findings, tt.wantThen) < strings.Index(result.Findings, tt.wantFindings) {
+				t.Errorf("gate() Findings = %q; want %q after %q", result.Findings, tt.wantThen, tt.wantFindings)
 			}
 			if commits != tt.wantCommits {
 				t.Errorf("commit calls = %d; want %d", commits, tt.wantCommits)
@@ -1018,4 +1050,301 @@ func TestHasBlockingFinding_AgainstTheGate(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestValidatePlan_CardChecks drives ValidatePlan over a language: go plan whose single card creates test files, and counts the findings of the card checks.
+// It is a table apart from TestNewPlanGate's context table because that table's plan is language: none, which the card checks skip.
+func TestValidatePlan_CardChecks(t *testing.T) {
+	t.Parallel()
+
+	const (
+		ownLineClause  = "on a line that names no other test file"
+		untaggedClause = "or the word `untagged`"
+		joinClause     = "join them with ||"
+		keepOneClause  = "else keep one"
+		dropClause     = "drop untagged or the tag"
+	)
+	tierTags := []string{"tier0", "tier1", "tier2", "tier3"}
+	doneBatchOne := &websterengine.State{Batches: map[int]*websterengine.BatchState{
+		1: {Slug: "first-card", Cards: []string{"01-first-card"}, Terminal: true, Status: websterengine.DigestStatusDone},
+	}}
+
+	type cardCheckCase struct {
+		name     string
+		language string
+		noTags   bool
+		done     bool
+		creates  []string
+		intent   string
+		// seam makes the worktree hold a marked test for internal/s#Deps and tells the context the seam reader, unless noSeamReader.
+		seam bool
+		// docs makes the worktree hold the package internal/d with a doc.go, and internal/n without one.
+		docs         bool
+		noSeamReader bool
+		// groups replaces the Create group of creates; uses and later add a Uses list to card 1 and a second card holding the told groups.
+		groups []plankit.Group
+		uses   []string
+		later  []plankit.Group
+		// check is the check counted, test-tier-unstated by default.
+		check string
+		// wantGlyphNotFound, when positive, is how many glyph-not-found findings the run must hold.
+		wantGlyphNotFound int
+		// wantFiles are the entries that must each draw one finding of the check, whose Detail holds the entry and every wantDetail.
+		wantFiles   []string
+		wantDetails []string
+	}
+	tests := []cardCheckCase{
+		{name: "NoStatementFails", creates: []string{"internal/x/new_test.go"}, intent: "Add the behavior.",
+			wantFiles: []string{"internal/x/new_test.go"}, wantDetails: []string{"card 1", untaggedClause}},
+		{name: "FullPathTierPasses", creates: []string{"internal/x/new_test.go"}, intent: "internal/x/new_test.go carries `//go:build tier1`."},
+		{name: "BaseNameTierPasses", creates: []string{"internal/x/new_test.go"}, intent: "new_test.go carries `//go:build tier1`."},
+		{name: "SameTagOnTwoLinesPasses", creates: []string{"internal/x/new_test.go"},
+			intent: "internal/x/new_test.go carries `//go:build tier1`.\nnew_test.go also pins the behavior under `//go:build tier1`."},
+		{name: "TwoTagsFail", creates: []string{"internal/x/new_test.go"}, intent: "new_test.go carries tier0 tier1.",
+			wantFiles: []string{"internal/x/new_test.go"}, wantDetails: []string{"tier0", "tier1", joinClause, keepOneClause}},
+		{name: "TagsJoinedByOrPass", creates: []string{"internal/x/new_test.go"}, intent: "new_test.go carries `//go:build tier0 || tier1`."},
+		{name: "UntaggedPasses", creates: []string{"internal/x/new_test.go"}, intent: "new_test.go is untagged support."},
+		{name: "UntaggedWithTagFails", creates: []string{"internal/x/new_test.go"}, intent: "new_test.go is untagged and carries tier0.",
+			wantFiles: []string{"internal/x/new_test.go"}, wantDetails: []string{"tier0", dropClause}},
+		{name: "TwoFilesOnOneLineFailBoth", creates: []string{"internal/x/a_test.go", "internal/x/b_test.go"},
+			intent:    "internal/x/a_test.go and internal/x/b_test.go carry tier0 and tier1.",
+			wantFiles: []string{"internal/x/a_test.go", "internal/x/b_test.go"}, wantDetails: []string{"tier0", "tier1", ownLineClause}},
+		{name: "TwoFilesOnTwoLinesPass", creates: []string{"internal/x/a_test.go", "internal/x/b_test.go"},
+			intent: "internal/x/a_test.go carries tier0.\ninternal/x/b_test.go carries tier1."},
+		{name: "TagAndUntaggedOnOneLineFailBoth", creates: []string{"internal/x/x_test.go", "internal/x/helper_test.go"},
+			intent:    "x_test.go carries tier0 and helper_test.go is untagged.",
+			wantFiles: []string{"internal/x/x_test.go", "internal/x/helper_test.go"}, wantDetails: []string{"tier0", ownLineClause}},
+		{name: "TagAndUntaggedOnTwoLinesPass", creates: []string{"internal/x/x_test.go", "internal/x/helper_test.go"},
+			intent: "x_test.go carries tier0.\nhelper_test.go is untagged."},
+		{name: "SameBaseNameInTwoDirectoriesPasses", creates: []string{"internal/x/a_test.go", "internal/y/a_test.go"},
+			intent: "internal/x/a_test.go carries tier0.\ninternal/y/a_test.go carries tier1."},
+		{name: "NilTierTagsSkipsTheCheck", noTags: true, creates: []string{"internal/x/new_test.go"}, intent: "Add the behavior."},
+		{name: "CsharpPlanSkipsTheCheck", language: "csharp", creates: []string{"internal/x/new_test.go"}, intent: "Add the behavior."},
+		{name: "DoneCardSkipsTheCheck", done: true, creates: []string{"internal/x/new_test.go"}, intent: "Add the behavior."},
+	}
+
+	edit := func(targets ...string) []plankit.Group { return []plankit.Group{{Label: "Edit", Targets: targets}} }
+	touchRows := []struct {
+		name   string
+		groups []plankit.Group
+	}{
+		{"EditingTheStruct", edit("internal/s#Deps")},
+		{"EditingAStructMember", edit("internal/s#Deps.Field")},
+		{"CreatingAMethodHandle", []plankit.Group{{Label: "Create", Targets: []string{"plan:internal/s#Deps.Run` -> `func (d Deps) Run()"}}}},
+		{"EditingTheDeclaringFile", edit("internal/s/s.go")},
+		{"EditingThePackage", edit("internal/s#")},
+		{"ExtendingTheStruct", []plankit.Group{{Label: "Extends", Targets: []string{"internal/s#Deps"}}}},
+		{"DeletingAStructMember", []plankit.Group{{Label: "Delete", Targets: []string{"internal/s#Deps.Field"}}}},
+		{"RenamingAStructMember", []plankit.Group{{Label: "Rename", Targets: []string{"`internal/s#Deps.Field` -> `plan:internal/s#Deps.Other`"}}}},
+	}
+	for _, row := range touchRows {
+		tests = append(tests, cardCheckCase{name: "SeamTest" + row.name + "Fails", seam: true, groups: row.groups, check: seamTestUnlistedCheck,
+			wantFiles: []string{"internal/s#Deps"}, wantDetails: []string{"card 1", "internal/c#TestDeps", "else list it under Edit"}})
+	}
+	for _, row := range []struct {
+		name  string
+		uses  []string
+		later []plankit.Group
+	}{
+		{"UsesListingPasses", []string{"internal/c#TestDeps"}, nil},
+		{"LaterEditPasses", nil, edit("internal/c#TestDeps")},
+		{"LaterExtendsPasses", nil, []plankit.Group{{Label: "Extends", Targets: []string{"internal/c#TestDeps"}}}},
+		{"TestFileUsesPasses", []string{"internal/c/c_test.go"}, nil},
+		{"PackageUsesPasses", []string{"internal/c#"}, nil},
+	} {
+		tests = append(tests, cardCheckCase{name: "SeamTest" + row.name, seam: true, groups: edit("internal/s#Deps"), uses: row.uses, later: row.later, check: seamTestUnlistedCheck})
+	}
+	editsTheTest := append(edit("internal/s#Deps"), plankit.Group{Label: "Edit", Targets: []string{"internal/c#TestDeps"}})
+	tests = append(tests,
+		cardCheckCase{name: "SeamTestCounterpartUsesPasses", seam: true, groups: edit("internal/s#Deps"), uses: []string{"internal/c_test#TestDeps"}, check: seamTestUnlistedCheck, wantGlyphNotFound: 1},
+		cardCheckCase{name: "SeamTestCounterpartPackageUsesPasses", seam: true, groups: edit("internal/s#Deps"), uses: []string{"internal/c_test#"}, check: seamTestUnlistedCheck, wantGlyphNotFound: 1},
+		cardCheckCase{name: "SeamTestEditingTheTestFileFails", seam: true, groups: append(edit("internal/s#Deps"), plankit.Group{Label: "Edit", Targets: []string{"internal/c/c_test.go"}}), check: seamTestUnlistedCheck,
+			wantFiles: []string{"internal/s#Deps"}, wantDetails: []string{"card 1", "internal/c#TestDeps", "else list it under Edit"}},
+		cardCheckCase{name: "SeamTestEditingTheTestToo", seam: true, groups: editsTheTest, check: seamTestUnlistedCheck},
+		cardCheckCase{name: "SeamTestUnrelatedCardPasses", seam: true, groups: edit("internal/x#Other"), check: seamTestUnlistedCheck},
+		cardCheckCase{name: "SeamTestDoneCardPasses", seam: true, done: true, groups: edit("internal/s#Deps"), check: seamTestUnlistedCheck},
+		cardCheckCase{name: "SeamTestCsharpPlanPasses", seam: true, language: "csharp", groups: edit("internal/s#Deps"), check: seamTestUnlistedCheck},
+		cardCheckCase{name: "SeamTestNilReaderPasses", seam: true, noSeamReader: true, groups: edit("internal/s#Deps"), check: seamTestUnlistedCheck},
+	)
+
+	genericCreate := func(handle, head string) []plankit.Group {
+		return []plankit.Group{{Label: "Create", Targets: []string{"plan:" + handle + "` -> `" + head}}}
+	}
+	for _, row := range []struct {
+		name   string
+		groups []plankit.Group
+		uses   []string
+		later  []plankit.Group
+		fails  bool
+	}{
+		{"EditingAFunctionFails", edit("internal/d#Do"), nil, nil, true},
+		{"EditingAnAmbiguousMemberFails", edit("internal/d#Twice"), nil, nil, true},
+		{"CreatingAHelperHandleFails", genericCreate("internal/d#newFixture", "func newFixture()"), nil, nil, true},
+		{"UsesListingPasses", edit("internal/d#Do"), []string{"internal/d/doc.go"}, nil, false},
+		{"LaterEditPasses", edit("internal/d#Do"), nil, edit("internal/d/doc.go"), false},
+		{"LaterExtendsPasses", edit("internal/d#Do"), nil, []plankit.Group{{Label: "Extends", Targets: []string{"internal/d/doc.go"}}}, false},
+		{"PackageSelfGlyphPasses", edit("internal/d#"), nil, nil, false},
+		{"DeletingDocGoPasses", []plankit.Group{{Label: "Delete", Targets: []string{"internal/d/doc.go"}}}, nil, nil, false},
+		{"EditingATestPasses", edit("internal/d#TestDo"), nil, nil, false},
+		{"EditingATestHelperPasses", edit("internal/d#fixture"), nil, nil, false},
+		{"CreatingATestFilePasses", []plankit.Group{{Label: "Create", Targets: []string{"internal/d/new_test.go"}}}, nil, nil, false},
+		{"CreatingAnExternalTestHandlePasses", genericCreate("internal/d_test#TestNew", "func TestNew(t *testing.T)"), nil, nil, false},
+		{"CreatingATestNamedHandlePasses", genericCreate("internal/d#TestNew", "func TestNew(t *testing.T)"), nil, nil, false},
+		{"RenamingATestHelperPasses", []plankit.Group{{Label: "Rename", Targets: []string{"`internal/d#fixture` -> `plan:internal/d#fixture2`"}}}, nil, nil, false},
+		{"RenamingATestPasses", []plankit.Group{{Label: "Rename", Targets: []string{"`internal/d#TestDo` -> `plan:internal/d#TestDoes`"}}}, nil, nil, false},
+		{"ProsaGroupPasses", []plankit.Group{{Label: "Prosa", Targets: []string{"internal/d/d.go"}}}, nil, nil, false},
+		{"CustomGroupPasses", []plankit.Group{{Label: "Custom", Targets: []string{"internal/d/d.go"}}}, nil, nil, false},
+		{"PackageWithNoDocGoPasses", genericCreate("internal/n#New", "func New()"), nil, nil, false},
+		{"NonGoFilePasses", edit("internal/d/template.yaml"), nil, nil, false},
+	} {
+		c := cardCheckCase{name: "DocGo" + row.name, docs: true, groups: row.groups, uses: row.uses, later: row.later, check: docGoUnlistedCheck}
+		if row.fails {
+			c.wantFiles = []string{"internal/d"}
+			c.wantDetails = []string{"card 1", "internal/d/doc.go", "else list it under Edit"}
+		}
+		tests = append(tests, c)
+	}
+	tests = append(tests,
+		cardCheckCase{name: "DocGoDoneCardPasses", docs: true, done: true, groups: edit("internal/d#Do"), check: docGoUnlistedCheck},
+		cardCheckCase{name: "DocGoCsharpPlanPasses", docs: true, language: "csharp", groups: edit("internal/d#Do"), check: docGoUnlistedCheck},
+	)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			anchorPath := t.TempDir()
+			files := map[string]string{"internal/x/x.go": "package x\n"}
+			if tt.seam {
+				files["internal/s/s.go"] = "package s\n\ntype Deps struct{ Field int }\n"
+				files["internal/s/doc.go"] = "package s\n"
+				files["internal/c/c_test.go"] = "package c\n\nimport \"testing\"\n\n//lym:seam internal/s#Deps\nfunc TestDeps(t *testing.T) {}\n"
+			}
+			if tt.docs {
+				files["internal/d/doc.go"] = "package d\n"
+				files["internal/d/d.go"] = "package d\n\nfunc Do() {}\n"
+				files["internal/d/template.yaml"] = "key: value\n"
+				files["internal/d/twice_a.go"] = "package d\n\nfunc Twice() {}\n"
+				files["internal/d/twice_b.go"] = "package d\n\nfunc Twice() {}\n"
+				files["internal/d/d_test.go"] = "package d\n\nimport \"testing\"\n\nfunc TestDo(t *testing.T) {}\n\nfunc fixture() {}\n"
+				files["internal/n/n.go"] = "package n\n"
+			}
+			worktreeRoot := plankit.Repo(t, files)
+			language := tt.language
+			if language == "" {
+				language = "go"
+			}
+			groups := tt.groups
+			if groups == nil {
+				groups = []plankit.Group{{Label: "Create", Targets: tt.creates}}
+			}
+			cards := []plankit.Card{{
+				Number: 1, Slug: "first-card", Summary: "placeholder card 1",
+				Groups: groups, Uses: tt.uses,
+				Intent:        tt.intent,
+				ImpactSummary: "Touches the listed targets.",
+			}}
+			if tt.later != nil {
+				cards = append(cards, plankit.Card{
+					Number: 2, Slug: "second-card", Summary: "placeholder card 2",
+					Groups: tt.later, Intent: "later card.", ImpactSummary: "Touches the listed targets.",
+				})
+			}
+			plan := plankit.Plan{Approved: true, Language: language, Framing: "Framing.", Cards: cards}
+			plankit.Write(t, planparser.PlanDir(anchorPath), plan)
+			if tt.done {
+				if err := websterengine.SaveState(websterengine.Dir(anchorPath), websterengine.ScratchDir(anchorPath), doneBatchOne); err != nil {
+					t.Fatalf("SaveState: %v", err)
+				}
+			}
+			parsed, err := planparser.ParsePlan(planparser.PlanDir(anchorPath))
+			if err != nil {
+				t.Fatalf("ParsePlan: %v", err)
+			}
+			pc := PlanContext{TierTags: tierTags}
+			if tt.noTags {
+				pc.TierTags = nil
+			}
+			if tt.seam && !tt.noSeamReader {
+				pc.SeamTests = SeamTestReader(worktreeRoot)
+			}
+			check := tt.check
+			if check == "" {
+				check = testTierUnstatedCheck
+			}
+			index := planglyph.NewIndex(fabricengine.NewReferenceRule())
+
+			findings, err := ValidatePlan(parsed, anchorPath, worktreeRoot, index, pc)
+			if err != nil {
+				t.Fatalf("ValidatePlan error = %v; want nil", err)
+			}
+			var got []planindex.Finding
+			for _, f := range findings {
+				if f.Check == check {
+					got = append(got, f)
+				}
+			}
+			if tt.wantGlyphNotFound > 0 {
+				notFound := 0
+				for _, f := range findings {
+					if f.Check == "glyph-not-found" {
+						notFound++
+					}
+				}
+				if notFound != tt.wantGlyphNotFound {
+					t.Errorf("glyph-not-found findings = %d; want %d (%+v)", notFound, tt.wantGlyphNotFound, findings)
+				}
+			}
+			if len(got) != len(tt.wantFiles) {
+				t.Fatalf("%s findings = %+v; want one per entry of %v", check, got, tt.wantFiles)
+			}
+			for i, file := range tt.wantFiles {
+				if !strings.Contains(got[i].Detail, file) {
+					t.Errorf("finding %d Detail = %q; want it to name %q", i, got[i].Detail, file)
+				}
+				for _, want := range tt.wantDetails {
+					if !strings.Contains(got[i].Detail, want) {
+						t.Errorf("finding %d Detail = %q; want it to contain %q", i, got[i].Detail, want)
+					}
+				}
+			}
+
+			// Webster's dispatch runs only the index, which never reads a PlanContext.
+			if len(tt.wantFiles) == 0 {
+				return
+			}
+			dispatch, err := index.ValidateDispatch(parsed, worktreeRoot, nil, parsed.Cards)
+			if err != nil {
+				t.Fatalf("ValidateDispatch error = %v; want nil", err)
+			}
+			for _, f := range dispatch {
+				if f.Check == check {
+					t.Errorf("ValidateDispatch reported %+v; want no %s", f, check)
+				}
+			}
+		})
+	}
+
+	t.Run("SeamTestMarkerTheParserRejectsIsAReturnedError", func(t *testing.T) {
+		t.Parallel()
+		anchorPath := t.TempDir()
+		worktreeRoot := plankit.Repo(t, map[string]string{
+			"internal/s/s.go":      "package s\n\ntype Deps struct{}\n",
+			"internal/c/c_test.go": "package c\n\n//lym:seam internal/s#Deps\nvar misplaced int\n",
+		})
+		plankit.Write(t, planparser.PlanDir(anchorPath), plankit.Plan{Approved: true, Language: "go", Framing: "Framing.", Cards: []plankit.Card{{
+			Number: 1, Slug: "first-card", Summary: "placeholder card 1",
+			Groups:        []plankit.Group{{Label: "Edit", Targets: []string{"internal/s#Deps"}}},
+			ImpactSummary: "Touches the listed targets.",
+		}}})
+		parsed, err := planparser.ParsePlan(planparser.PlanDir(anchorPath))
+		if err != nil {
+			t.Fatalf("ParsePlan: %v", err)
+		}
+
+		_, err = ValidatePlan(parsed, anchorPath, worktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()), PlanContext{SeamTests: SeamTestReader(worktreeRoot)})
+		var scanErr *impactset.GuardScanError
+		if !errors.As(err, &scanErr) || scanErr.Kind != impactset.GuardMisplaced {
+			t.Fatalf("ValidatePlan error = %v; want a GuardMisplaced scan error", err)
+		}
+	})
 }

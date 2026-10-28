@@ -94,6 +94,8 @@ The plan runs strictly in card order, and the Card Index lists the cards in that
 A card that needs a corpus or a fixture takes it from committed test data in the tree, created by an earlier card where it does not exist yet, never from the live files of other worktrees or the fabric repo.
 `card-fabric-reference` in `{{.specs_dir}}/loom/loom-plan-spec.md` names what the plan gate refuses.
 
+The plan gate also refuses a card for `test-tier-unstated`, `seam-test-unlisted` and `doc-go-unlisted`; `{{.specs_dir}}/loom/loom-plan-spec.md`'s validation checks hold their rules.
+
 A card that prescribes an addition to a `PATTERN.md` entry line leaves the line's rule text under the cap, `pattern-entry-line-cap` in the same spec: the gate fails a fenced verbatim entry line whose rule text is over it.
 A declared `adds` or `changes` entry is prescribed verbatim as its whole overview line in a fenced block on a card that edits `PATTERN.md`.
 A card fences only the new line, never the old one or an example, since the gate reads every fenced line that opens like an entry.

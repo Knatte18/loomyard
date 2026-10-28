@@ -220,6 +220,8 @@ func assertStructFieldsSideFree(t *testing.T, v any) {
 // so this is the one place that still catches a leak onto the public merge surface.
 //
 //testtiming:keep every exported field name and JSON tag of MergeResult and MergeOptions being free of warp/weft and host phrases; coverage of its blocks by other tests does not show an assertion of this
+//lym:seam internal/fabricengine#MergeResult
+//lym:seam internal/fabricengine#MergeOptions
 func TestMergeVocabulary_ResultAndOptionsFieldsAreSideFree(t *testing.T) {
 	assertStructFieldsSideFree(t, MergeResult{})
 	assertStructFieldsSideFree(t, MergeOptions{})

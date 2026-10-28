@@ -21,6 +21,29 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
+//lym:seam internal/battenshed#InnerRunDeps
+//lym:seam internal/battenshed#LandDeps
+//lym:seam internal/battenshed#PrimeLock
+//lym:seam internal/battenshed#RowNoticeDeps
+//lym:seam internal/battenshed#SeedChildDeps
+//lym:seam internal/battenshed#TeardownDeps
+//lym:seam internal/configengine#Dirs
+//lym:seam internal/driftengine#Deps
+//lym:seam internal/driftengine#Paths
+//lym:seam internal/landingshed#BeamDescribeDeps
+//lym:seam internal/landingshed#Config
+//lym:seam internal/landingshed#Deps
+//lym:seam internal/landingshed#ParentLockDeps
+//lym:seam internal/loomshed#DarnDeps
+//lym:seam internal/loomshed#PRReworkDeps
+//lym:seam internal/pawlengine#Deps
+//lym:seam internal/pawlengine#Paths
+//lym:seam internal/shedadapters#CommandDeps
+//lym:seam internal/shedrecipe#Env
+//lym:seam internal/shuttleengine#Config
+//lym:seam internal/websterengine#Config
+//lym:seam internal/websterengine#Geometry
+//lym:seam internal/websterengine#RunDeps
 func TestWire_BeamRecipe(t *testing.T) {
 	t.Parallel()
 

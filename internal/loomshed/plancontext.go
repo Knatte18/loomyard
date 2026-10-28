@@ -1,4 +1,4 @@
-// plancontext.go holds the plan gate's context checks: rename-tool-missing, pattern-changes-mismatch, verify-raw-command, verify-gate-no-wait and plan-verify-retired, and calls the PATTERN checks of patternplan.go.
+// plancontext.go holds the plan gate's context checks: rename-tool-missing, pattern-changes-mismatch, verify-raw-command, verify-gate-no-wait, test-tier-unstated, seam-test-unlisted, doc-go-unlisted and plan-verify-retired, and calls the PATTERN checks of patternplan.go.
 // Each compares the plan with something outside the plan directory, such as the hub's config or the decision record, so they live here rather than in planparser.
 
 package loomshed
@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/discussionparser"
+	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
@@ -40,6 +41,12 @@ type PlanContext struct {
 	// RefuseRaw is the hub's gate.yaml refuse_raw list.
 	// A card Verify command opening with an entry is refused.
 	RefuseRaw []string
+	// TierTags is the hub's gate.yaml tier keys, each a test build tag.
+	// Nil skips the test-tier-unstated check, which is the state with no gate.yaml.
+	TierTags []string
+	// SeamTests returns the tests marked `//lym:seam` in the worktree, read once per check.
+	// Nil skips the seam-test-unlisted check.
+	SeamTests func() ([]impactset.SeamTest, error)
 	// DecisionRecordPath is the decision record whose `## PATTERN changes` section the plan must carry.
 	// Empty skips the comparison.
 	DecisionRecordPath string
@@ -48,11 +55,12 @@ type PlanContext struct {
 	PatternBase func() ([]byte, error)
 }
 
-// planContextFindings returns the context checks' findings over cards, in this order: one rename-tool-missing per symbol Rename pair when pc.RenameTools is empty, one pattern-changes-mismatch per bullet the plan and the decision record do not both declare, then per card the verify-raw-command and verify-gate-no-wait findings of its Verify line, then an informational plan-verify-retired when the overview carries a `## verify:` section.
+// planContextFindings returns the context checks' findings over cards, in this order: one rename-tool-missing per symbol Rename pair when pc.RenameTools is empty, one pattern-changes-mismatch per bullet the plan and the decision record do not both declare, then per card the verify-raw-command and verify-gate-no-wait findings of its Verify line, then the test-tier-unstated findings of testTierFindings, then the seam-test-unlisted findings of seamTestFindings, then the doc-go-unlisted findings of docGoFindings, then an informational plan-verify-retired when the overview carries a `## verify:` section.
 // The PATTERN findings of patternPlanFindings follow the mismatch findings; they read worktreeRoot's PATTERN.md.
 // The record comparison and the retired-section check are over plan, not cards.
 // An absent record adds nothing; a read error is returned, and so is a record whose section is malformed, since the plan writer cannot fix the record.
-func planContextFindings(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string, pc PlanContext) ([]planindex.Finding, error) {
+// The seam-test-unlisted and doc-go-unlisted findings resolve through index, the first after reading pc.SeamTests once; a reader or index error is returned, since a marker fault sits in a test file the plan writer cannot fix.
+func planContextFindings(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string, index planindex.Index, pc PlanContext) ([]planindex.Finding, error) {
 	var findings []planindex.Finding
 	if len(pc.RenameTools) == 0 {
 		for _, card := range cards {
@@ -78,6 +86,25 @@ func planContextFindings(plan *planparser.Plan, cards []planparser.Card, worktre
 	}
 	findings = append(findings, patternFindings...)
 	findings = append(findings, verifyLineFindings(cards, pc.RefuseRaw)...)
+	findings = append(findings, testTierFindings(plan, cards, pc.TierTags)...)
+	if plan.GoToolchain() && pc.SeamTests != nil {
+		seams, err := pc.SeamTests()
+		if err != nil {
+			return nil, err
+		}
+		seamFindings, err := seamTestFindings(plan, cards, worktreeRoot, index, seams)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, seamFindings...)
+	}
+	if plan.GoToolchain() {
+		docGoFound, err := docGoFindings(plan, cards, worktreeRoot, index)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, docGoFound...)
+	}
 	if plan.Verify != "" {
 		findings = append(findings, planindex.Finding{
 			Check:    planVerifyRetiredCheck,

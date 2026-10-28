@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/planglyph"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/indexkit"
@@ -425,6 +426,20 @@ func TestValidatePlanCmd_ReworkReportsFindingsForFirstCardMismatch(t *testing.T)
 	worktreeRoot := t.TempDir()
 	plankit.WriteTree(t, worktreeRoot, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
 	c := reworkParityFixture(t, anchorPath, worktreeRoot, 1, "", "", "", true)
+	// The fresh generation's card creates a test file and states no tier for it.
+	plankit.Write(t, planparser.PlanDir(anchorPath), plankit.Plan{
+		Approved: true,
+		Language: "go",
+		Framing:  "Framing.",
+		Cards: []plankit.Card{{
+			Number:  1,
+			Slug:    "new-card",
+			Summary: "placeholder card 1",
+			Groups:  []plankit.Group{{Label: "Create", Targets: []string{"sub/new_test.go"}}},
+			Intent:  "new generation card.",
+		}},
+	})
+	writeHubGateConfig(t, c.location.HubPath, gateConfigWithTwoTiers())
 
 	var out bytes.Buffer
 	if exitCode := clihelp.Execute(c.validatePlanCmd(), &out, []string{"--rework"}); exitCode != 1 {
@@ -434,8 +449,10 @@ func TestValidatePlanCmd_ReworkReportsFindingsForFirstCardMismatch(t *testing.T)
 	if _, ok := env.Raw["findings"]; !ok {
 		t.Fatalf("envelope = %v; want a findings key", env)
 	}
-	if !strings.Contains(out.String(), "rework-first-card") {
-		t.Errorf("envelope = %q; want it to carry rework-first-card", out.String())
+	for _, want := range []string{"rework-first-card", "test-tier-unstated"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("envelope = %q; want it to carry %s", out.String(), want)
+		}
 	}
 }
 
@@ -629,6 +646,32 @@ func TestValidatePlanCmd(t *testing.T) {
 			t.Errorf("output = %q; want no verify-raw-command finding without a gate.yaml", out.String())
 		}
 	})
+
+	// The same plan reports test-tier-unstated in the default mode and not under --require-approved, which runs no context check.
+	for _, tt := range []struct {
+		name     string
+		args     []string
+		wantExit int
+		want     bool
+	}{
+		{"CreatedTestFileWithNoTierFlagAbsent", nil, 1, true},
+		{"CreatedTestFileWithNoTierRequireApproved", []string{"--require-approved"}, 0, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			anchorPath := t.TempDir()
+			c := testTierPlanFixture(t, anchorPath, t.TempDir())
+			c.location = hubLocationAt(t, anchorPath, "")
+			writeHubGateConfig(t, c.location.HubPath, gateConfigWithTwoTiers())
+
+			var out bytes.Buffer
+			if exitCode := clihelp.Execute(c.validatePlanCmd(), &out, tt.args); exitCode != tt.wantExit {
+				t.Fatalf("exit code = %d; want %d (output: %q)", exitCode, tt.wantExit, out.String())
+			}
+			if got := strings.Contains(out.String(), "test-tier-unstated"); got != tt.want {
+				t.Errorf("output = %q; want test-tier-unstated: %v", out.String(), tt.want)
+			}
+		})
+	}
 
 	t.Run("LensReviewReportsASymbolRenameWithNoRenameTool", func(t *testing.T) {
 		anchorPath := t.TempDir()

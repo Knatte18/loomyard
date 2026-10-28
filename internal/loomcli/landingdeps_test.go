@@ -41,6 +41,7 @@ import (
 // caught automatically rather than silently passing an enumerated list of assertions.
 //
 //testtiming:keep drift guard walking every landingshed.Deps field by reflection so a field added later must be populated; the covering mark-done test populates only the fields it uses
+//lym:seam internal/landingshed#Deps
 func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 	t.Parallel()
 

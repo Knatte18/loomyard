@@ -84,7 +84,7 @@ type Env struct {
 	AnchorPath string
 	// ConfigDirs is the told geometry of a layered config load, read by LoomPreflight and Webster, which load batcher through it.
 	ConfigDirs configengine.Dirs
-	// WorktreeRoot is the told worktree root, read by the gate resolver's "plan" and "verify" gates.
+	// WorktreeRoot is the told worktree root, read by the gate resolver's "plan", "verify" and loom "discussion" gates.
 	WorktreeRoot string
 	// RunScratchDir is the told ephemeral shed scratch directory of the run, read by the gate resolver's "plan" gate, which records its informational findings in a file under it.
 	// Empty keeps those findings inline in the log.
@@ -136,6 +136,8 @@ type Env struct {
 	RenameTools []string
 	// RefuseRaw is the hub's gate.yaml refuse_raw list, read by the plan gates' verify-raw-command check; empty refuses nothing.
 	RefuseRaw []string
+	// TierTags is the hub's gate.yaml tier keys, read by the plan gates' test-tier-unstated check; nil skips the check.
+	TierTags []string
 	// SupportLogPath is the told support log path, read by the gate resolver's "discussion" gate.
 	SupportLogPath string
 	// RelevantPath is the told relevant list path.
@@ -274,7 +276,7 @@ type Env struct {
 	// Darn is a whole-struct passthrough to loomshed.NewDarnWrite, following Env.Landing's own precedent:
 	// the producer has behaviour of its own that per-seam fakes must be able to substitute individually.
 	Darn loomshed.DarnDeps
-	// PlanIndex is the code index the "plan" gate resolves plan refs against.
+	// PlanIndex is the code index the "plan" gate resolves plan refs against, and the loom "discussion" gate resolves the symbols a decision record cites.
 	// It arrives as an interface so this package, and the recipe packages built on it, link no tree-sitter grammar.
 	PlanIndex planindex.Index
 

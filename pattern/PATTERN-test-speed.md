@@ -80,12 +80,22 @@ Bound: a forged value misleads only an ungated raw run, since `lym gate test` se
 - A test that reads repository files outside its own package directory carries `//lym:guard` on the line directly above its `func Test…` line, the way `//testtiming:keep` sits above a kept test.
 - A narrowed gate's guard step runs every marked test by name under its file's tier, whatever the impacted set, because a guard's result depends on files no import edge names.
 - A test carrying both markers stacks them as contiguous directive lines directly above the `func Test…` line, in either order.
-  `//lym:guard` counts as directly above when only `//testtiming:keep` lines separate it from the func line, and `//testtiming:keep` counts as directly above when only `//lym:` lines separate it; two stacked keeps stay an error.
+  `//lym:guard` counts as directly above when only `//testtiming:keep` and `//lym:seam` lines separate it from the func line, and `//testtiming:keep` counts as directly above when only `//lym:` lines separate it; two stacked keeps stay an error.
 - A test that reads only its own package directory is left unmarked, since the impacted set selects it whenever that package changes.
 - No marked test sits in a `tier2` or `tier3` file.
 - Whether a scanning test carries the marker is review discipline, not a test.
 - Bound: an unmarked scanning test is not run by the round gate or darn's writer gates, so a violation passes those and is caught by the whole verify at the sites that keep it for a diff touching production code, never on `main`.
   For a tree-scoped darn diff, a site runs its row's key over the trees' targets, so such a violation can reach the parent, bounded by what the hub lists as non-production in `darn.yaml`'s `tree_scope`.
+
+## Reflective tests carry `//lym:seam`
+
+- A test whose body reflects over a struct's field set carries one `//lym:seam <unit>#<Type>` line per struct its reflection walks, nested structs included, in the comment block directly above its `func Test…` line.
+- `//lym:seam`, `//lym:guard` and `//testtiming:keep` lines stack there in any order.
+- The tier0 scan refuses an unmarked reflective test it sees, a marker whose glyph names no struct, and a test reaching `envkit.NilSeams` whose markers miss a struct the `Env` set holds.
+- A struct declared outside the module is marked by its import path, such as `//lym:seam time#Time`.
+  Such a marker, whose unit's first segment names no worktree directory, is not checked against a declaration.
+- Bound: reflection through a non-test helper other than `envkit.NilSeams` is not seen.
+- `lym loom validate-plan` reads the markers for `seam-test-unlisted`.
 
 ## Time is injectable
 

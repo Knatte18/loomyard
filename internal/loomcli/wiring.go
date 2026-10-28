@@ -10,8 +10,10 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
@@ -256,7 +258,7 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 // the identical reason: both writer agents' own stencils instruct them to run these two verbs as a
 // pre-handoff self-check, mid-run, while a sibling process may be actively rewriting any of the eight
 // configs wire() loads -- and validateDiscussionCmd/validatePlanCmd (validate.go) read only
-// DecisionRecordPath/SupportLogPath/AnchorPath/WorktreeRoot, none of which need any config load.
+// DecisionRecordPath/SupportLogPath/AnchorPath/WorktreeRoot, and validate-discussion on a loom run also reads PlanIndex, none of which need any config load.
 // validatePlanCmd reads language.yaml alone, on its own.
 // validate-description joined for the same reason, reading DescriptionPath alone.
 //
@@ -369,6 +371,11 @@ func writeCarryOver(location *lymcwd.Location, entry discussionparser.CarryOver)
 // loomProgram is the program name loom signs its notices to the orch with.
 const loomProgram = "LOOM"
 
+// gateTierTags returns the sorted tier keys of cfg, the build tags the plan gates' test-tier-unstated check accepts.
+func gateTierTags(cfg gateslot.Config) []string {
+	return slices.Sorted(maps.Keys(cfg.Tiers))
+}
+
 // wire builds the whole engine stack onto c from location and cwd: every module config anchored at
 // location.AnchorPath(), the reed engine and shuttle runner, the assembled websterengine.RunDeps, and
 // the assembled shedrecipe.Env/shedbuild.ShedPaths pair wrapping it.
@@ -404,11 +411,12 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	languageSkills := language.Skills
 	// An absent gate.yaml renders the gate_tiers marker as none and refuses no raw command; any other load error already names the way forward.
 	gateTiers := "none"
-	var refuseRaw []string
+	var refuseRaw, tierTags []string
 	gateCfg, err := gateslot.LoadConfig(fabricengine.ConfigDirs(location))
 	if err == nil {
 		gateTiers = gateCfg.TiersValue()
 		refuseRaw = gateCfg.RefuseRaw
+		tierTags = gateTierTags(gateCfg)
 	} else if !errors.Is(err, gateslot.ErrConfigAbsent) {
 		return err
 	}
@@ -566,6 +574,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		GateTiers:          gateTiers,
 		RenameTools:        language.RenameTools,
 		RefuseRaw:          refuseRaw,
+		TierTags:           tierTags,
 		StatusPath:         statusPath,
 		StatusLockPath:     statusLockPath,
 		DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),

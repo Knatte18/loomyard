@@ -115,6 +115,17 @@
 // The success envelope's `changed` lists the files rewritten as named; a file already formatted is left untouched and unreported.
 // A write that fails stops the call, naming `written` and `failed`.
 //
+// # Validate plan card checks
+//
+// Every `lym loom validate-plan` mode but `--require-approved` also runs three card checks of the plan gates, from the context `validatePlanCmd` builds beside the rename tools and refused raw commands.
+// `test-tier-unstated` reads the tier keys of the hub's `gate.yaml`, `seam-test-unlisted` reads the `//lym:seam` markers of the wired worktree through `loomshed.SeamTestReader`, and `doc-go-unlisted` reads the package `doc.go` files there.
+// An absent `gate.yaml` skips the tier check, as `loomCLI.wire` does for the gates it builds.
+//
+// # Validate discussion
+//
+// `lym loom validate-discussion` on a loom run also runs the citation check of the loom discussion check, which tests the decision record's cited paths against the worktree and its cited symbols through the wired `PlanIndex`, so it reads that field beside the discussion paths.
+// A darn run tests no citation.
+//
 // # Validate plan lens review
 //
 // `lym loom validate-plan --lens-review` runs the flag-less check set plus the check that the plan directory's `lens-review.md` holds a recorded lens review, the check set of a twill Plan-Write run's own gate.

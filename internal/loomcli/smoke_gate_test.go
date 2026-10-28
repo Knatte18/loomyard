@@ -37,9 +37,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 )
@@ -165,7 +167,7 @@ func TestSmokeGate_RepromptsThroughARealPaneAndFixesTheArtifact(t *testing.T) {
 	}
 
 	// The same closure resolveGateSpec builds for a row's "gates" entry named "discussion" (see internal/shedrecipe/entries_gate.go), driven here over a real Runner instead of a fake one.
-	gate := loomshed.NewDiscussionGate(decisionRecordPath, supportLogPath, filepath.Join(filepath.Dir(supportLogPath), "relevant.md"))
+	gate := loomshed.NewDiscussionGate(decisionRecordPath, supportLogPath, filepath.Join(filepath.Dir(supportLogPath), "relevant.md"), filepath.Dir(supportLogPath), planglyph.NewIndex(fabricengine.NewReferenceRule()))
 
 	// RunGated blocks until Wait reaches a terminal outcome, bounded by spec.Timeout above -- no
 	// separate test-level deadline is needed on top of it.
