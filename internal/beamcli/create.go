@@ -7,6 +7,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/vscode"
 )
 
 // createDeps holds the seam of every create step, which hubCreateDeps fills over the hub and TestCreate fakes.
@@ -135,7 +136,8 @@ func judgeParentOwner(deps createDeps, owners boardengine.Owners, here, slug str
 
 // createSteps runs the three steps in order, each skipped when its result stands, and records what it did on result.
 // The root is claimed when the board records no root owner; a claim another machine wins is judged again, so a parent that now reads as theirs refuses.
-// The owner step records this machine as the beam's owner with the beam flag and the pawl recipe in one write.
+// The owner step records this machine as the beam's owner with the beam flag and the pawl recipe in one write, and a colour for the beam's VS Code windows when it has none;
+// a beam recorded here with no colour runs the step again to get one.
 // The run is the last step, so a beam's pair is made by the run's own Worktree-Create and marked by its Beam-Up.
 func createSteps(deps createDeps, owners boardengine.Owners, here, slug, anchor string, result *createResult) error {
 	rerun := "run `lym beam create " + slug + "` again"
@@ -158,8 +160,8 @@ func createSteps(deps createDeps, owners boardengine.Owners, here, slug, anchor 
 	}
 
 	entry := owners.Entries[slug]
-	if !entry.Beam || entry.Owner != here {
-		write, err := deps.SetOwners(boardengine.OwnerRequest{Machine: here, Slugs: []string{slug}, Beam: true, ParentOf: deps.ParentOf})
+	if !entry.Beam || entry.Owner != here || entry.BeamColor == "" {
+		write, err := deps.SetOwners(boardengine.OwnerRequest{Machine: here, Slugs: []string{slug}, Beam: true, BeamColor: vscode.PickBeamColor, ParentOf: deps.ParentOf})
 		if err != nil {
 			return fmt.Errorf("lym beam create: record this machine as the owner of %s with the beam flag: %w; way forward: fix the cause it names, then %s", slug, err, rerun)
 		}

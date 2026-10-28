@@ -45,6 +45,8 @@ type OwnerRequest struct {
 	Claim string
 	// Beam sets the beam flag and the project recipe on each named project the write records, in the same commit as the owner; only the beam verbs ask for it.
 	Beam bool
+	// BeamColor picks the colour a Beam request records on a beam that has none, given the colours the board's other open beams hold, in the same write; nil records none.
+	BeamColor func(held []string) string
 	// ParentOf names the slug of an entry's parent pair, "" for the prime, so the effective owner is judged as a read judges it; nil reads every parent as the prime.
 	ParentOf func(slug string) (string, error)
 	// Sleep waits out the retry delay after a held lock deferred the push; nil sleeps.
@@ -190,6 +192,9 @@ func writeOwners(boardDir string, req OwnerRequest, lost map[string]string) (wri
 		if req.Beam && entry.Kind == KindProject {
 			entry.Beam = true
 			entry.Recipe = ProjectRecipe
+			if entry.BeamColor == "" && req.BeamColor != nil {
+				entry.BeamColor = req.BeamColor(heldBeamColors(store.tasks, slug))
+			}
 		}
 		isBeam := entry.Kind == KindProject && entry.Beam
 		switch {
@@ -289,4 +294,15 @@ func ReadOwners(boardDir string) (Owners, error) {
 		return Owners{}, nil
 	}
 	return ParseOwners(raw)
+}
+
+// heldBeamColors returns the colours recorded on the open beam projects among tasks other than slug.
+func heldBeamColors(tasks []Task, slug string) []string {
+	var held []string
+	for _, task := range tasks {
+		if task.Slug != slug && task.Kind == KindProject && task.Beam && task.BeamColor != "" && !isDone(task) {
+			held = append(held, task.BeamColor)
+		}
+	}
+	return held
 }

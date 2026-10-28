@@ -490,6 +490,19 @@ func TestUpsertFieldAllowlist(t *testing.T) {
 		}
 	})
 
+	t.Run("beam_color_is_output_only_and_refused_as_an_unknown_field", func(t *testing.T) {
+		s := boardengine.NewStore("")
+		err := s.UpsertTasksBatch([]map[string]any{
+			{"slug": "beamer", "beam_color": "#7d2d6b"},
+		})
+		if err == nil {
+			t.Fatalf("expected error for the beam_color key")
+		}
+		if !stringContains(err.Error(), `"beam_color"`) {
+			t.Errorf("expected error naming 'beam_color', got %v", err)
+		}
+	})
+
 	t.Run("owner_machine_is_accepted_only_as_the_effective_owner", func(t *testing.T) {
 		entryPoints := []struct {
 			name  string
@@ -1443,6 +1456,20 @@ func TestLoad(t *testing.T) {
 			},
 			save:     true,
 			wantKeys: [][3]string{{"t", "owner_machine", ""}, {"g", "owner_machine", ""}, {"b", "owner_machine", `"box"`}},
+		},
+		{
+			name: "a task's and a grouping project's recorded beam colour is dropped and a beam project's kept",
+			body: `{"version":1,"entries":[` +
+				`{"id":0,"slug":"t","kind":"task","beam_color":"#7d2d6b"},` +
+				`{"id":1,"slug":"g","kind":"project","beam_color":"#7d2d6b"},` +
+				`{"id":2,"slug":"b","kind":"project","beam":true,"beam_color":"#7d2d6b"}]}`,
+			check: func(t *testing.T, tasks []boardengine.Task) {
+				if len(tasks) != 3 || tasks[0].BeamColor != "" || tasks[1].BeamColor != "" || tasks[2].BeamColor != "#7d2d6b" {
+					t.Errorf("loaded %+v; want no colour on the task and the grouping project and #7d2d6b on the beam", tasks)
+				}
+			},
+			save:     true,
+			wantKeys: [][3]string{{"t", "beam_color", ""}, {"g", "beam_color", ""}, {"b", "beam_color", `"#7d2d6b"`}},
 		},
 		{
 			name: "a kind with no labels key becomes an empty labels list",

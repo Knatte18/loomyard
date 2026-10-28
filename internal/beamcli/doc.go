@@ -19,7 +19,8 @@
 //
 //  1. `boardengine.SetOwners` with `Prime` claims the root for this machine when the board records no root owner.
 //     A claim another machine wins reads the board again, and a parent that now reads as theirs is refused naming `lym adopt root`.
-//  2. `boardengine.SetOwners` records this machine as the beam's owner with the beam flag and `recipe: pawl`; a write lost to another machine is refused naming `lym adopt <slug>`.
+//  2. `boardengine.SetOwners` records this machine as the beam's owner with the beam flag and `recipe: pawl`, and the beam's colour when it has none; a write lost to another machine is refused naming `lym adopt <slug>`.
+//     A beam recorded here with no colour runs the step again.
 //  3. `battencli.StartFirstPass` starts the beam's batten run as a detached first pass recording the anchor, driven on by the parent's dobby.
 //     A run in flight, a batten status file not done, is reported live and starts nothing; a flagged beam with no run status, or a legacy beam with a marked pair and no pawl run, gets its pawl run.
 //     A first pass whose envelope is not ok, such as one a covering pause refused, is the verb's error carrying the envelope's error and leaves no run.

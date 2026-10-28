@@ -340,6 +340,42 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 		}
 	})
 
+	t.Run("SplicesTheBeamsOwnSettingsIntoItsFileAndThePrimesWhenItHasNone", func(t *testing.T) {
+		t.Parallel()
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		hubforge.AddPairWith(t, h, "b", beamAddOptions)
+		writeSettingsAt(t, h.PrimeWorktree(), `{"window.title": "prime"}`)
+		beamPath := fabricengine.BeamWorkspacePath(h.Location, "b")
+
+		path, _ := regenerateHub(t, h)
+		for file, want := range map[string]string{path: "prime", beamPath: "prime"} {
+			if got := workspaceTitle(t, file); got != want {
+				t.Errorf("%s window.title = %q; want %q with no beam settings", filepath.Base(file), got, want)
+			}
+		}
+
+		writeSettingsAt(t, fabricengine.WorktreePath(h.Location, "b"), `{"window.title": "beam"}`)
+		regenerateHub(t, h)
+		for file, want := range map[string]string{path: "prime", beamPath: "beam"} {
+			if got := workspaceTitle(t, file); got != want {
+				t.Errorf("%s window.title = %q; want %q", filepath.Base(file), got, want)
+			}
+		}
+
+		// A settings.json that is a directory cannot be read: the beam falls back to the prime's settings.
+		settingsPath := filepath.Join(fabricengine.WorktreePath(h.Location, "b"), ".vscode", "settings.json")
+		if err := os.Remove(settingsPath); err != nil {
+			t.Fatalf("remove the beam settings: %v", err)
+		}
+		if err := os.Mkdir(settingsPath, 0o755); err != nil {
+			t.Fatalf("make the beam settings unreadable: %v", err)
+		}
+		regenerateHub(t, h)
+		if got := workspaceTitle(t, beamPath); got != "prime" {
+			t.Errorf("%s window.title = %q; want %q with unreadable beam settings", filepath.Base(beamPath), got, "prime")
+		}
+	})
+
 	t.Run("PlacesAReanchoredBeamAtItsOwnAnchorFromAnyWorktree", func(t *testing.T) {
 		t.Parallel()
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -609,4 +645,32 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 		}
 		assertNoWorkspaceFile(t, h)
 	})
+}
+
+// writeSettingsAt writes content as <dir>/.vscode/settings.json.
+func writeSettingsAt(t *testing.T, dir, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(dir, ".vscode"), 0o755); err != nil {
+		t.Fatalf("create .vscode: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".vscode", "settings.json"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write settings: %v", err)
+	}
+}
+
+// workspaceTitle returns the window.title the workspace file at path carries in its settings.
+func workspaceTitle(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	var ws struct {
+		Settings map[string]any `json:"settings"`
+	}
+	if err := json.Unmarshal(data, &ws); err != nil {
+		t.Fatalf("%s is not valid JSON: %v\n%s", path, err, data)
+	}
+	title, _ := ws.Settings["window.title"].(string)
+	return title
 }

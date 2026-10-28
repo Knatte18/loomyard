@@ -68,6 +68,7 @@ func newOwnerFixture(t *testing.T, primeOwner string) *ownerFixture {
 		case "boxed":
 			store.tasks[i].Beam = true
 			store.tasks[i].OwnerMachine = "box"
+			store.tasks[i].BeamColor = "#7d2d6b"
 		}
 	}
 	store.primeOwner = primeOwner
@@ -415,16 +416,32 @@ func TestSetOwners(t *testing.T) {
 		t.Parallel()
 		f := newOwnerFixture(t, "neve")
 
-		got, err := SetOwners(f.boardDir, OwnerRequest{Machine: "neve", Slugs: []string{"grouping"}, Beam: true, Sleep: failOnSleep(t)})
+		var held []string
+		pick := func(colors []string) string {
+			held = colors
+			return "#2d4f7d"
+		}
+		got, err := SetOwners(f.boardDir, OwnerRequest{Machine: "neve", Slugs: []string{"grouping"}, Beam: true, BeamColor: pick, Sleep: failOnSleep(t)})
 		if err != nil || !slices.Equal(got.Recorded, []string{"grouping"}) {
 			t.Fatalf("SetOwners() = %+v, %v; want grouping recorded", got, err)
 		}
 		grouping := originTasks(t, f)["grouping"]
-		if !grouping.Beam || grouping.OwnerMachine != "neve" || grouping.Recipe != ProjectRecipe {
-			t.Errorf("origin grouping = beam %v, owner %q, recipe %q; want the beam flag, neve and recipe %s written together", grouping.Beam, grouping.OwnerMachine, grouping.Recipe, ProjectRecipe)
+		if !grouping.Beam || grouping.OwnerMachine != "neve" || grouping.Recipe != ProjectRecipe || grouping.BeamColor != "#2d4f7d" {
+			t.Errorf("origin grouping = beam %v, owner %q, recipe %q, colour %q; want the beam flag, neve, recipe %s and #2d4f7d written together", grouping.Beam, grouping.OwnerMachine, grouping.Recipe, grouping.BeamColor, ProjectRecipe)
+		}
+		if !slices.Equal(held, []string{"#7d2d6b"}) {
+			t.Errorf("colour picker saw held = %v; want [#7d2d6b], the other open beam's colour", held)
 		}
 		if count := gitkit.Git(t, f.bare, "rev-list", "--count", f.seedHead+"..main"); count != "1" {
-			t.Errorf("commits on origin since the seed = %s; want 1, the flag and the owner in one commit", count)
+			t.Errorf("commits on origin since the seed = %s; want 1, the flag, the owner and the colour in one commit", count)
+		}
+
+		repick := func([]string) string { return "#ffffff" }
+		if _, err := SetOwners(f.boardDir, OwnerRequest{Machine: "neve", Slugs: []string{"grouping"}, Beam: true, BeamColor: repick, Sleep: failOnSleep(t)}); err != nil {
+			t.Fatalf("second SetOwners() error = %v; want nil", err)
+		}
+		if color := originTasks(t, f)["grouping"].BeamColor; color != "#2d4f7d" {
+			t.Errorf("origin grouping colour after a second beam write = %q; want #2d4f7d kept", color)
 		}
 	})
 

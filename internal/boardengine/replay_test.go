@@ -83,6 +83,10 @@ func withOrder(slugs ...string) func(*Task) {
 
 func asBeam(task *Task) { task.Beam = true }
 
+func withBeamColor(color string) func(*Task) {
+	return func(task *Task) { task.BeamColor = color }
+}
+
 // boardJSON encodes tasks as a board.json, numbering the entries by position.
 func boardJSON(t *testing.T, tasks []Task) []byte {
 	t.Helper()
@@ -341,6 +345,32 @@ func TestFabricReplay(t *testing.T) {
 			check: func(t *testing.T, _ string, got map[string]Task) {
 				if got["a"].OwnerMachine != "box" {
 					t.Errorf("owner_machine = %q; want origin's box", got["a"].OwnerMachine)
+				}
+			},
+		},
+		{
+			name:        "BeamColorOnlyTheCommitChangedLandsOnABeamOriginLacksItOn",
+			base:        []Task{replayEntry("a", asProject, asBeam)},
+			origin:      []Task{replayEntry("a", asProject, asBeam)},
+			parent:      []Task{replayEntry("a", asProject, asBeam)},
+			commit:      []Task{replayEntry("a", asProject, asBeam, withBeamColor("#7d2d6b"))},
+			wantEntries: map[string]string{"a": "a"},
+			check: func(t *testing.T, _ string, got map[string]Task) {
+				if got["a"].BeamColor != "#7d2d6b" {
+					t.Errorf("beam_color = %q; want the commit's #7d2d6b", got["a"].BeamColor)
+				}
+			},
+		},
+		{
+			name:        "BeamFlagClearedByTheCommitDropsTheColourOriginRecorded",
+			base:        []Task{replayEntry("a", asProject, asBeam)},
+			origin:      []Task{replayEntry("a", asProject, asBeam, withBeamColor("#7d2d6b"))},
+			parent:      []Task{replayEntry("a", asProject, asBeam)},
+			commit:      []Task{replayEntry("a", asProject)},
+			wantEntries: map[string]string{"a": "a"},
+			check: func(t *testing.T, _ string, got map[string]Task) {
+				if got["a"].Beam || got["a"].BeamColor != "" {
+					t.Errorf("beam = %v, beam_color = %q; want a non-beam entry with no colour", got["a"].Beam, got["a"].BeamColor)
 				}
 			},
 		},

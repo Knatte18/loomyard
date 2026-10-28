@@ -89,8 +89,14 @@ func (w *createWorld) deps() createDeps {
 			if owner, lost := w.lost[slug]; lost {
 				return boardengine.OwnerWrite{Lost: map[string]string{slug: owner}}, nil
 			}
+			if req.BeamColor == nil {
+				return boardengine.OwnerWrite{}, errors.New("the beam owner write carries no colour picker")
+			}
 			entry := w.owners.Entries[slug]
 			entry.Owner, entry.Beam = req.Machine, req.Beam
+			if entry.BeamColor == "" {
+				entry.BeamColor = req.BeamColor(nil)
+			}
 			w.owners.Entries[slug] = entry
 			return boardengine.OwnerWrite{Recorded: []string{slug}}, nil
 		},
@@ -238,16 +244,25 @@ func TestCreate(t *testing.T) {
 			name: "RerunAfterTheOwnerStepSkipsIt",
 			slug: "group",
 			setup: func(w *createWorld) {
-				w.owners.Entries["group"] = boardengine.OwnerEntry{IsProject: true, Beam: true, Owner: here}
+				w.owners.Entries["group"] = boardengine.OwnerEntry{IsProject: true, Beam: true, Owner: here, BeamColor: "#7d2d6b"}
 			},
 			wantCalls:   []string{"start"},
+			wantAnchors: []string{""},
+		},
+		{
+			name: "BeamRecordedHereWithNoColourRunsTheOwnerStepForOne",
+			slug: "group",
+			setup: func(w *createWorld) {
+				w.owners.Entries["group"] = boardengine.OwnerEntry{IsProject: true, Beam: true, Owner: here}
+			},
+			wantCalls:   []string{"owner", "start"},
 			wantAnchors: []string{""},
 		},
 		{
 			name: "PawlRunInFlightIsReportedLiveAndStartsNothing",
 			slug: "group",
 			setup: func(w *createWorld) {
-				w.owners.Entries["group"] = boardengine.OwnerEntry{IsProject: true, Beam: true, Owner: here}
+				w.owners.Entries["group"] = boardengine.OwnerEntry{IsProject: true, Beam: true, Owner: here, BeamColor: "#7d2d6b"}
 				w.runs["group"] = shedengine.StateRunning
 			},
 			check: func(t *testing.T, got createResult) {
@@ -261,7 +276,7 @@ func TestCreate(t *testing.T) {
 			slug:   "group",
 			anchor: "y",
 			setup: func(w *createWorld) {
-				w.owners.Entries["group"] = boardengine.OwnerEntry{IsProject: true, Beam: true, Owner: here}
+				w.owners.Entries["group"] = boardengine.OwnerEntry{IsProject: true, Beam: true, Owner: here, BeamColor: "#7d2d6b"}
 			},
 			wantCalls:   []string{"start"},
 			wantAnchors: []string{"y"},

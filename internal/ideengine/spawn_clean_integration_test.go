@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/vscode"
 )
 
 // sharedExcludePath resolves the shared info/exclude of the task worktree's repo.
@@ -110,7 +111,7 @@ func checkTaskPairStaysClean(t *testing.T, h *hubforge.Hub, slug, gitignore stri
 	assertAttachTaskOnly(t, anchorDir)
 }
 
-// checkOverwritesTasksKeepsSettings asserts an untracked tasks.json holding an old chain is replaced and an existing settings.json is untouched.
+// checkOverwritesTasksKeepsSettings asserts an untracked tasks.json holding an old chain is replaced and an existing settings.json keeps its keys and gains the title and colours.
 func checkOverwritesTasksKeepsSettings(t *testing.T, h *hubforge.Hub, slug string) {
 	l := h.Location
 	recordLauncher(t)
@@ -133,12 +134,9 @@ func checkOverwritesTasksKeepsSettings(t *testing.T, h *hubforge.Hub, slug strin
 	}
 
 	assertAttachTaskOnly(t, filepath.Dir(vscodeDir))
-	got, err := os.ReadFile(filepath.Join(vscodeDir, "settings.json"))
-	if err != nil {
-		t.Fatalf("read settings: %v", err)
-	}
-	if string(got) != settings {
-		t.Errorf("settings.json changed:\n%s", got)
+	got := readPrimeLook(t, filepath.Join(vscodeDir, "settings.json"))
+	if got.TabSize != 2 || got.Title != "TST: "+slug || got.Colors["titleBar.activeBackground"] != vscode.PrimeColor || got.Colors["activityBar.background"] == "" || got.Colors["activityBar.background"] == vscode.PrimeColor {
+		t.Errorf("settings.json = %+v; want tabSize 2 kept, title %q, green title bar and a non-green activity bar", got, "TST: "+slug)
 	}
 }
 

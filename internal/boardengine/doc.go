@@ -105,7 +105,8 @@
 //
 // SetOwners is the only writer of an owner or the prime owner.
 // It pulls the board level with its upstream, writes one commit "board: owner <machine> for <slugs>" that sets each named beam project's owner, the prime owner when asked and an optional claim status on its slug, and pushes it.
-// A named task or grouping project gets no owner, and a Beam request sets the beam flag and `recipe: pawl` on a named project in the same commit.
+// A named task or grouping project gets no owner, and a Beam request sets the beam flag and `recipe: pawl` on a named project in the same commit, and with a BeamColor picker the beam's `beam_color` when it has none, picked from the colours the other open beams hold.
+// `beam_color` is no upsert key, and only a beam project keeps one.
 // A claim writes the run status alone, never an owner, and lands only on a task or on a project whose beam flag is set; any other entry keeps its status, and a claim on an entry whose effective owner is another machine is reported in OwnerWrite.Lost.
 // Without Takeover it leaves an entry whose effective owner is another machine untouched and reports it in OwnerWrite.Lost; `lym adopt` alone passes Takeover.
 // A competing write origin already holds wins the replay of a rejected push, and the owners re-read from the local board.json after the push decide Recorded and Lost.

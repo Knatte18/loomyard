@@ -107,14 +107,14 @@ func TestOwnersEffective(t *testing.T) {
 	t.Run("ReadsProjectAndBeam", func(t *testing.T) {
 		t.Parallel()
 		owners, err := ParseOwners([]byte(`{"version":1,"entries":[` +
-			`{"id":0,"slug":"beamer","title":"b","kind":"project","labels":["bug"],"beam":true,"owner_machine":"box"},` +
+			`{"id":0,"slug":"beamer","title":"b","kind":"project","labels":["bug"],"beam":true,"owner_machine":"box","beam_color":"#7d2d6b"},` +
 			`{"id":1,"slug":"grouping","title":"g","kind":"project","labels":["bug"]},` +
 			`{"id":2,"slug":"work","title":"w","kind":"task","labels":["bug"]}]}`))
 		if err != nil {
 			t.Fatalf("ParseOwners() error = %v; want nil", err)
 		}
 		want := map[string]OwnerEntry{
-			"beamer":   {Owner: "box", IsProject: true, Beam: true},
+			"beamer":   {Owner: "box", IsProject: true, Beam: true, BeamColor: "#7d2d6b"},
 			"grouping": {IsProject: true},
 			"work":     {IsTask: true},
 		}

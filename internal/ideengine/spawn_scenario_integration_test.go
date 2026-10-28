@@ -110,8 +110,8 @@ func TestSpawnAnchoredScenario(t *testing.T) {
 		hubforge.ReanchorPair(t, h, slug, taskAnchor)
 		anchorDir := filepath.Join(fabricengine.WorktreePath(h.Location, slug), taskAnchor)
 
-		if err := SeedTask(h.Location, slug); err != nil {
-			t.Fatalf("SeedTask: %v", err)
+		if err := Seed(h.Location, slug); err != nil {
+			t.Fatalf("Seed: %v", err)
 		}
 		assertAttachTaskOnly(t, anchorDir)
 		if err := OpenTask(h.Location, slug); err != nil {

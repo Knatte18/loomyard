@@ -26,6 +26,8 @@ type OwnerEntry struct {
 	IsProject bool
 	// Beam reports whether the entry is a project that is a beam.
 	Beam bool
+	// BeamColor is the colour a beam project records, empty when none is recorded and for every other entry.
+	BeamColor string
 	// Done reports whether the entry is marked done.
 	Done bool
 	// RunHeld reports whether a run status stands on the entry; it does not change whose owner the entry reads.
@@ -79,6 +81,7 @@ func ownersOf(primeOwner string, tasks []Task) Owners {
 		}
 		if entry.isBeamProject() {
 			entry.Owner = task.OwnerMachine
+			entry.BeamColor = task.BeamColor
 		}
 		owners.Entries[task.Slug] = entry
 	}
