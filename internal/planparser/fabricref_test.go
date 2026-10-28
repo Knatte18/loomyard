@@ -57,6 +57,9 @@ func TestCheckCardFabricReference(t *testing.T) {
 		return plan
 	}
 
+	gateVerify := parsed("", "alpha", "")
+	gateVerify.Cards[0].Verify = "lym gate test --card 1-prime" + fabricSuffix
+
 	tests := []struct {
 		name string
 		plan *planparser.Plan
@@ -78,6 +81,7 @@ func TestCheckCardFabricReference(t *testing.T) {
 		{"plan without either passes", parsed("", fenced("go test ./..."), "go build ./..."), nil},
 		{"card slug ending in the fabric suffix fails", withSlug("prime" + fabricSuffix), []string{"card 1-prime" + fabricSuffix, "rename the card"}},
 		{"card slug holding the fabric suffix mid-name passes", withSlug("prime" + fabricSuffix + "-marker"), nil},
+		{"gate command naming a suffix-ending card id in a Verify passes", gateVerify, nil},
 	}
 
 	matcher := fabricengine.NewReferenceRule()

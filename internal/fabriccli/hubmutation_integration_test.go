@@ -25,6 +25,28 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
+// TestRunCLI_BypassPushPointsTheTraceSinkAtItsHub checks that a bypass push run from a hub's board worktree points the process-wide trace sink at that hub's logs directory.
+// It stays serial (no t.Parallel): the trace sink is process-global state, and a parallel test's verb would repoint it between the push and the read.
+func TestRunCLI_BypassPushPointsTheTraceSinkAtItsHub(t *testing.T) {
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	t.Cleanup(func() { logger.SetDurableSinkDir("") })
+
+	var out bytes.Buffer
+	exitCode := fabriccli.RunCLIIn(h.BoardDir(), &out, []string{
+		"--warp-path", h.PrimeWorktree(),
+		"--weft-path", h.PrimeRecords(),
+		"push",
+	})
+	if exitCode != 0 {
+		t.Fatalf("RunCLI bypass push = %d; want 0\noutput: %s", exitCode, out.String())
+	}
+
+	envelope.RequireOK(t, out.String())
+	if got, want := logger.TraceDir(), fabricengine.HubLogsDir(h.Path); got != want {
+		t.Errorf("trace sink after bypass push = %q; want the test hub's %q", got, want)
+	}
+}
+
 // TestRunCLI_HubMutationScenario runs the mutating-verb checks over one hub.
 // Steps run serially in this order, each one leaving state the next tolerates:
 // the steps that break the board remote or plant an unrepairable pair come last, because every later reconcile would otherwise see that damage.
@@ -54,7 +76,7 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			wantWarpSHA := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD")
 
 			// A real forked push child cannot itself be observed from a test binary (it would re-exec the test binary), so the synchronous bypass handler it runs is the deterministic proof that a supplied path is pushed.
-			// It runs from the hub's board worktree, where the real child starts, because the bypass branch points the process-wide trace sink at the hub it resolves from cwd.
+			// It runs from the hub's board worktree, where the real child starts, because the bypass branch resolves its hub from cwd and points the process-wide trace sink there.
 			t.Cleanup(func() { logger.SetDurableSinkDir("") })
 			var out bytes.Buffer
 			exitCode := fabriccli.RunCLIIn(h.BoardDir(), &out, []string{
@@ -67,9 +89,6 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			}
 
 			envelope.RequireOK(t, out.String())
-			if got, want := logger.TraceDir(), fabricengine.HubLogsDir(h.Path); got != want {
-				t.Errorf("trace sink after bypass push = %q; want the test hub's %q", got, want)
-			}
 
 			if gotWeftSHA := gitkit.RevParse(t, h.RecordsBare, "refs/heads/"+weftBranch); gotWeftSHA != wantWeftSHA {
 				t.Errorf("weft bare %s = %s; want %s (the unpushed commit was not pushed)", weftBranch, gotWeftSHA, wantWeftSHA)

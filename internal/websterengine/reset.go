@@ -135,8 +135,8 @@ func PlanReset(deps ResetDeps, to ResetTarget, batch int) (ResetPlan, error) {
 		return ResetPlan{}, err
 	}
 	if active && to != ResetToReportHead {
-		return ResetPlan{}, fmt.Errorf("%w: %q (run.lock held); %s", ErrRunBusy, geom.ScratchDir,
-			wayForwardSteps("wait for it to finish, or check `lym webster status`"))
+		return ResetPlan{}, fmt.Errorf("%w: %q (run.lock held); this reset runs only once the run has stopped, so a Webster session inside the run ends it as stuck instead; %s", ErrRunBusy, geom.ScratchDir,
+			wayForwardSteps("the run's parent waits until `lym webster status` shows no run in progress", rerun))
 	}
 	if deps.State == nil {
 		return ResetPlan{}, resetRefusal(to, "the run has no state.json", wayForwardSteps("run `lym webster run` first"))

@@ -290,7 +290,9 @@
 // One narrow exception keeps the batches before it (AcceptBatchFabricReference, `lym webster accept-audit --batch NN`):
 // when every Uncheckable entry is a pathless fabric reference, the batch recorded a start commit and the worktree is clean apart from the run's own state,
 // the explicit call clears the entries and records each as a batch audit warning, and recover-batch then proceeds;
-// the refusal names that route only for such a record.
+// the refusal names that route only for such a record, and only where the same evidence check, run without mutating, admits it.
+// When the evidence holds, the refusal names `accept-audit --batch NN` then `recover-batch NN`.
+// Otherwise it names the check's own reason and steps, which end by re-running both, beside the reset-to-start route.
 // It has two routes.
 // Either HEAD is that start, so the batch changed nothing (a batch that committed qualifies after `lym webster reset --to batch-start --batch NN`),
 // or the start is an ancestor of HEAD and every entry's recorded command is read-only (`fabricengine.IsReadOnlyCommand`), so the batch's commits are kept.
@@ -663,6 +665,7 @@
 // `--batch` is required for `report-head` and `batch-start` and refused for the other three, before any git read.
 // The refusals run in order: the `--batch` pairing, run lock held (transient, except for `report-head`), no state, a merge in progress, a checked-out branch that is not the task branch,
 // no recorded target, a recorded commit missing from the repository, a target that is not an ancestor of HEAD, and a dirty tracked path outside the run's own writes.
+// The run-lock refusal's way forward has the run's parent re-run the reset once the run has stopped, since a Webster session inside the run cannot.
 // The own paths are the tracked paths that loadRunWrites records a successful write to, Master's, every fork's, every recovery session's and every cold verify-gate fixer session's; a failed write is not evidence.
 // Each refusal ends in wayForwardSteps' numbered list.
 // The plan carries the SHA and the own paths, and reads no force flag.

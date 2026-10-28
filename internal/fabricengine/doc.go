@@ -696,6 +696,8 @@
 // `RefScanner` (refscanner.go), constructed via `NewRefScanner(l)`, is how a consumer like `websterengine`'s audit asks "does this command reference fabric's two-checkout mechanism" without ever holding the weft path or the command-spelling pattern itself — fabric owns every word in the answer.
 // `ReferenceRule` (refscanner.go), constructed via `NewReferenceRule()`, is the location-free part of that answer.
 // Its `MatchPath` and `MatchSpelling` return the matched text without any worktree, so a plan check shares one rule with the audit.
+// `MatchPath` reads no bare weft-suffixed word inside a `lym gate` invocation, because a card ID may end in the suffix and a gate resolves its arguments inside the worktree;
+// a separator-prefixed weft path there still matches.
 // `IsReadOnlyCommand` (refscanner.go) rejects an unquoted parenthesis and a dollar expansion in a reader segment, because a zsh glob qualifier and a parameter expansion run code with no substitution marker.
 // It otherwise leaves readers' globs and flags free, because no flag of a listed reader writes a file or runs a command, so a glob that expands into a flag-shaped name can do nothing a typed flag could not.
 // A reader joins `readOnlyCommands` only if none of its flags writes or executes, and a reader that blocks, such as `tail -f`, writes nothing and is admitted.
