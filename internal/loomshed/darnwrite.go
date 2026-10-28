@@ -14,6 +14,18 @@ import (
 // darnResumeWayForward is appended to the Reason of a Darn-Write session whose gate failed.
 const darnResumeWayForward = "way forward: run \"lym loom resume\" in the task worktree, which re-spawns Darn-Write with a fresh verify budget"
 
+// decisionsWinLine tells the darn writer that a decision recorded after the Discussion wins over a gate finding it forbids fixing.
+const decisionsWinLine = "Where a decision under `Added after Discussion` in the decision record forbids fixing a finding, follow the decision and leave that finding unfixed."
+
+// DarnGateReprompt returns the re-prompt line renderer of a Darn-Write gate entry.
+// The line names the findings file and decisionRecordPath, and lets a decision recorded after the Discussion win over a finding it forbids fixing, which the default "fix every finding" line contradicts.
+// The rendered line carries no newline, as a gate re-prompt requires.
+func DarnGateReprompt(decisionRecordPath string) func(findingsPath string) string {
+	return func(findingsPath string) string {
+		return fmt.Sprintf("Gate findings recorded at %s — read it and fix every finding, bar one a decision under `Added after Discussion` in %s forbids fixing, which you leave unfixed; then end your turn.", findingsPath, decisionRecordPath)
+	}
+}
+
 // DarnTold carries the token text the producer decides for one darn writer spawn, empty when it has nothing to tell.
 type DarnTold struct {
 	// PriorWork is the note that the change is already under way on the task branch.
@@ -24,15 +36,15 @@ type DarnTold struct {
 type DarnOutcome struct {
 	// Outcome is the entry's outcome.
 	Outcome shedengine.Outcome
-	// Reason is the halt reason recorded with the entry; empty when the run did not halt there.
-	Reason string
+	// FindingsPath is the row's kept gate findings file, which holds the text of the last failed gate; empty when no file is kept.
+	FindingsPath string
 }
 
 // DarnDeps carries the told seams NewDarnWrite needs.
 type DarnDeps struct {
 	// Commit commits the landing directory.
 	Commit func() error
-	// LatestOutcome returns the latest Darn-Write history entry of the run; found is false when the row has no entry yet.
+	// LatestOutcome returns the latest Darn-Write history entry of the run that records a spawn; found is false when the row has no such entry yet.
 	LatestOutcome func() (DarnOutcome, bool, error)
 }
 
@@ -102,13 +114,23 @@ func (p *darnWrite) checkSeams() error {
 	return nil
 }
 
-// renderPriorWork returns the note that the change is already under way on the task branch, naming the latest outcome's halt reason.
-// It is empty when the row has no halt reason.
+// renderPriorWork returns the note that the change is already under way on the task branch, naming the latest outcome and its kept gate findings file.
+// It tells the writer that a decision recorded after the Discussion wins over a finding it forbids fixing, so a resumed spawn never works against the parent's call.
+// It is empty when the row has no earlier entry.
 func renderPriorWork(latest DarnOutcome, found bool) string {
-	if !found || latest.Reason == "" {
+	if !found {
 		return ""
 	}
-	return fmt.Sprintf("An earlier spawn of this task already began the change, and its work is committed on the task branch.\nRead that work first and continue it instead of starting over.\nThe run halted there with: %s", latest.Reason)
+	lines := []string{
+		"An earlier spawn of this task already began the change, and its work is committed on the task branch.",
+		"Read that work first and continue it instead of starting over.",
+		fmt.Sprintf("That spawn ended %s.", latest.Outcome),
+	}
+	if latest.FindingsPath != "" {
+		lines = append(lines, fmt.Sprintf("Its last gate findings are kept at %s: read them and fix what they name.", latest.FindingsPath))
+	}
+	lines = append(lines, decisionsWinLine)
+	return strings.Join(lines, "\n")
 }
 
 // nonEmpty returns the values that are not empty, in order.

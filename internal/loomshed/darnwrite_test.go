@@ -67,10 +67,10 @@ func TestDarnWrite_Call(t *testing.T) {
 			wantEvents: "session,commit",
 		},
 		{
-			name: "prior work names the halt reason",
+			name: "prior work names the earlier outcome and its kept findings",
 			mutate: func(f *darnFixture) {
 				f.deps.LatestOutcome = func() (DarnOutcome, bool, error) {
-					return DarnOutcome{Outcome: shedengine.Stuck, Reason: "verify failed"}, true, nil
+					return DarnOutcome{Outcome: shedengine.Stuck, FindingsPath: "/run/Darn-Write.findings.md"}, true, nil
 				}
 			},
 			session:    true,
@@ -78,7 +78,9 @@ func TestDarnWrite_Call(t *testing.T) {
 			wantEvents: "session,commit",
 			wantTold: DarnTold{PriorWork: "An earlier spawn of this task already began the change, and its work is committed on the task branch.\n" +
 				"Read that work first and continue it instead of starting over.\n" +
-				"The run halted there with: verify failed"},
+				"That spawn ended stuck.\n" +
+				"Its last gate findings are kept at /run/Darn-Write.findings.md: read them and fix what they name.\n" +
+				decisionsWinLine},
 		},
 		{
 			name: "gate-failed Stuck commits, keeps the record and appends the way forward",
@@ -208,9 +210,8 @@ func TestRenderPriorWork(t *testing.T) {
 		want   string
 	}{
 		{"nothing to name", DarnOutcome{}, false, ""},
-		{"outcome without a reason", DarnOutcome{Outcome: shedengine.Done}, true, ""},
-		{"reason of an entry the read did not find is ignored", DarnOutcome{Reason: "stale"}, false, ""},
-		{"reason only", DarnOutcome{Reason: "halted"}, true, "An earlier spawn of this task already began the change, and its work is committed on the task branch.\nRead that work first and continue it instead of starting over.\nThe run halted there with: halted"},
+		{"findings of an entry the read did not find are ignored", DarnOutcome{FindingsPath: "/run/stale.md"}, false, ""},
+		{"an earlier entry with no kept findings", DarnOutcome{Outcome: shedengine.Done}, true, "An earlier spawn of this task already began the change, and its work is committed on the task branch.\nRead that work first and continue it instead of starting over.\nThat spawn ended done.\n" + decisionsWinLine},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

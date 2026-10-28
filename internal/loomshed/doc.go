@@ -70,7 +70,10 @@
 // Webster's run record and the Plan-Review and Code-Review run directories are generation-scoped: they move into the round with the plan, so the next generation starts with none.
 //
 // The Darn-Write row's producer (NewDarnWrite) wraps the gated darn writer session and tells it a prior-work note, empty when absent.
-// The note, written in Go, says the change is already under way on the task branch and names the latest Darn-Write history entry's halt reason.
+// The note, written in Go, is told whenever the run's history holds a Darn-Write entry:
+// it says the change is already under way on the task branch, names that entry's outcome and the row's kept gate findings file when one exists, and lets a decision recorded after the Discussion win over a finding it forbids fixing.
+// It reads no halt reason, because the shed's resume write clears the status error before the row is called.
+// Each Darn-Write gate entry re-prompts with DarnGateReprompt's line, which names the decision record and lets the same decisions win over a gate finding.
 // On a non-empty output pointer, Done or a gate-failed Stuck, it commits the landing directory.
 // A gate-failed Stuck keeps its record and gains the resume way forward.
 // A failed commit is a returned error, since re-running the session cannot fix a git or filesystem fault.

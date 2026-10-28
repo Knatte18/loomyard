@@ -7,6 +7,7 @@ package shedrecipe
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -95,6 +96,16 @@ func TestDarnWriteEntry_HappyPath(t *testing.T) {
 	gate := fake.GotTables[0].Gate
 	if len(gate) != 2 || gate[0].Name != "verify" || gate[1].Name != "description" || gate[0].Attempts != 2 || gate[1].Attempts != 2 {
 		t.Errorf("table gate = %+v; want the verify and description entries with 2 attempts each", gate)
+	}
+	for _, entry := range gate {
+		if entry.Reprompt == nil {
+			t.Errorf("gate entry %q Reprompt = nil; want the darn line", entry.Name)
+			continue
+		}
+		line := entry.Reprompt("/run/findings.md")
+		if !strings.Contains(line, "/run/findings.md") || !strings.Contains(line, env.DecisionRecordPath) || !strings.Contains(line, "Added after Discussion") || strings.Contains(line, "\n") {
+			t.Errorf("gate entry %q Reprompt() = %q; want one line naming the findings file, %s and the Added after Discussion entries", entry.Name, line, env.DecisionRecordPath)
+		}
 	}
 
 	// An exhausted gate's reason names the row's findings file, so an entry that drops the chain fails here.
