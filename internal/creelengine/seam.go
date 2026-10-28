@@ -27,8 +27,6 @@ type Strand struct {
 	PanePID int
 	// CreelHooks reports whether shuttle launched the strand's session with creel's hook delivery, so the daemon may ring its idle waiter and ring its bell.
 	CreelHooks bool
-	// PaneMail reports whether the strand's engine has no creel hook delivery, so its posts keep the pane path: the notice line and the reminder.
-	PaneMail bool
 }
 
 // Delivery is the seam through which the engine learns the hub's strands and reaches their panes.

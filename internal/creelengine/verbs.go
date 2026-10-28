@@ -102,7 +102,7 @@ func (s *Store) interruptBeforePost(sender Sender, receiver string) (bool, error
 		return false, err
 	}
 	if !target.CreelHooks {
-		return false, fmt.Errorf("creel: %s runs no creel hook delivery, so post --interrupt cannot hand it the post; way forward: lym creel inject --interrupt %s <text>, which stops the turn and types the text, or a post without --interrupt, which the receiver gets by its typed notice or reminder when its engine is unknown or has no hooks and by lym creel read otherwise", target.Name, target.Name)
+		return false, fmt.Errorf("creel: %s runs no creel hook delivery, so post --interrupt cannot hand it the post; way forward: lym creel inject --interrupt %s <text>, which stops the turn and types the text, or a post without --interrupt, which the receiver gets by its typed notice or reminder", target.Name, target.Name)
 	}
 	interrupted, err := s.interruptTarget(sender, target)
 	var refusal *interruptRefusal

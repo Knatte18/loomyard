@@ -243,27 +243,19 @@ func TestScheduler_Reminders(t *testing.T) {
 				t.Errorf("typed %q; want %q", got, want)
 			}
 		}},
-		{"StrandsWithoutPaneMailGetNoNoticeOrReminderButTheirInjectsAreTyped", func(t *testing.T, e *env) {
-			unflagged := creelfake.LiveStrand(alpha)
-			unflagged.PaneMail = false
-			e.del.SetStrands(unflagged, creelfake.HookStrand(beta))
+		{"AHookStrandGetsNoNoticeOrReminderButItsInjectsAreTyped", func(t *testing.T, e *env) {
+			e.del.SetStrands(creelfake.LiveStrand(alpha), creelfake.HookStrand(beta))
 			e.start(t)
-			e.post(t, program(batten), alpha, "notice")
-			e.post(t, strand(beta), alpha, "from a strand")
 			e.post(t, program(batten), beta, "notice")
 			e.post(t, strand(alpha), beta, "from a strand")
 			e.driveProbeWaits(4)
-			for _, name := range []string{alpha, beta} {
-				if got := e.typed(name); len(got) != 0 {
-					t.Fatalf("typed %q into %s; want nothing for a strand that is not a pane-mail strand", got, name)
-				}
+			if got := e.typed(beta); len(got) != 0 {
+				t.Fatalf("typed %q into %s; want nothing for a strand marked CreelHooks", got, beta)
 			}
-			for _, name := range []string{alpha, beta} {
-				if _, err := e.store.Inject(program(batten), name, "/one", 0, false); err != nil {
-					t.Fatalf("Inject: %v", err)
-				}
-				awaitTyped(t, e, name, "/one")
+			if _, err := e.store.Inject(program(batten), beta, "/one", 0, false); err != nil {
+				t.Fatalf("Inject: %v", err)
 			}
+			awaitTyped(t, e, beta, "/one")
 		}},
 		{"ReplyToAStrandWithNoWorkerIsRemindedOnce", func(t *testing.T, e *env) {
 			first := e.post(t, strand(beta), alpha, "question")
@@ -2007,9 +1999,7 @@ func TestScheduler_HookWake(t *testing.T) {
 			}
 		}},
 		{"OnlyAStrandMarkedCreelHooksOnAnUnpausedPaneGetsTheBell", func(t *testing.T, e *env) {
-			neither := creelfake.LiveStrand(beta)
-			neither.PaneMail = false
-			e.del.SetStrands(creelfake.LiveStrand(alpha), neither, creelfake.HookStrand(orch))
+			e.del.SetStrands(creelfake.LiveStrand(alpha), creelfake.LiveStrand(beta), creelfake.HookStrand(orch))
 			e.del.SetPaused(orch, true)
 			e.start(t)
 			settle(e, func() {

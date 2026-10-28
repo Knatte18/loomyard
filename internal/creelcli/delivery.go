@@ -260,16 +260,6 @@ func (d *hubDelivery) primeWorktree() string {
 	return filepath.Join(d.hubPath, strings.TrimSuffix(filepath.Base(d.hubPath), fabricengine.HubSuffix))
 }
 
-// hasHookDelivery reports whether the engine a strand's provider tag names delivers creel mail by hooks.
-// An empty tag, as a strand added by hand carries, and a tag no registered engine renders delivery for both read false.
-func hasHookDelivery(provider string) bool {
-	if provider == "" {
-		return false
-	}
-	_, ok := shuttleengines.ToolBoundaryRenderer(provider)
-	return ok
-}
-
 // worktreeStrands reads the strands persisted in one worktree and their liveness from its reed status.
 func (d *hubDelivery) worktreeStrands(entry fabricengine.WorktreeEntry) ([]creelengine.Strand, error) {
 	location, err := lymcwd.ResolveWorktree(entry.Path)
@@ -316,7 +306,6 @@ func (d *hubDelivery) worktreeStrands(entry fabricengine.WorktreeEntry) ([]creel
 			Live:       strandStatus.Live,
 			PanePID:    strandStatus.PanePID,
 			CreelHooks: persisted.CreelHooks,
-			PaneMail:   !hasHookDelivery(persisted.Provider),
 		})
 	}
 	return strands, nil

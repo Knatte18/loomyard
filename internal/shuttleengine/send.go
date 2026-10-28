@@ -602,6 +602,7 @@ func retryLanded(sc sendContext, text string) bool {
 // A turn start past sentAt, or an empty box, means the paste landed.
 // A send with a landingStart, to an engine that parses session signals, instead lands on a session start of that source past sentAt, and an empty box does not end its reads while the window and the read cap allow more;
 // when they run out with none, the box read decides as for any send.
+// Such a send that has read its box empty is submitted: from then on any box text, which can only be a new draft such as the operator's typed during a compaction, and no readable box are read again with no key sent, and the window or read cap running out returns nil.
 // A box holding exactly the sent text, or the provider's placeholder for it, means the Enter did not take, and the guarded Enter is sent and the box read again.
 // No readable box sends nothing and is read again.
 // The sent text beside other text fails with ErrSentTextInDraft, and any other text fails with ErrForeignBoxText quoting the box; neither sends a key.
@@ -611,6 +612,7 @@ func confirmPasted(sc sendContext, paster TextPaster, reader InputBoxReader, tex
 	settle := reader.SubmitSettle()
 	interval := settle
 	maxReads := windowPollCap(submitConfirmTimeout(sc.cfg), idlePollInitial)
+	submitted := false
 	for read := 1; ; read++ {
 		wait := min(interval, closeAt.Sub(sc.clock.Now()))
 		sc.clock.Sleep(max(wait, settle))
@@ -622,13 +624,13 @@ func confirmPasted(sc sendContext, paster TextPaster, reader InputBoxReader, tex
 		if awaitsLanding && sessionStartedSince(sc.engine, sc.eventsPath, sentAt, sc.landingStart) {
 			return nil
 		}
-		if boxText, readable := readInputBox(sc, reader); readable {
+		if boxText, readable := readInputBox(sc, reader); readable && !submitted {
 			box := normalizePaneText(boxText)
 			switch {
+			case box == "" && !awaitsLanding:
+				return nil
 			case box == "":
-				if !awaitsLanding || windowClosed(sc.clock, closeAt) || read >= maxReads {
-					return nil
-				}
+				submitted = true
 			case box == normalized || paster.OwnPastePlaceholder(boxText, text):
 				if _, err := guardedEnter(sc); err != nil {
 					return err
@@ -640,6 +642,9 @@ func confirmPasted(sc sendContext, paster TextPaster, reader InputBoxReader, tex
 			}
 		}
 		if windowClosed(sc.clock, closeAt) || read >= maxReads {
+			if submitted {
+				return nil
+			}
 			reason := fmt.Errorf("%w: the pasted text is still pending, or its box unreadable, after %d read(s) within the %s submit window", ErrSubmissionNotLanded, read, submitConfirmTimeout(sc.cfg))
 			return failUnlanded(sc, reader, normalized, reason)
 		}
