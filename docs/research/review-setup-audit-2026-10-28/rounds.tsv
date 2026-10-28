@@ -1,0 +1,105 @@
+run	perch	round	fan	review_model	review_effort	review_wall_s	review_fresh	review_cache	forks	fork_fresh	fix_wall_s	fix_fresh	review_verdict	bouncer_verdict	findings	gating	new_ledger_keys
+adopt-runs-tests	code	1	review-code	sonnet	medium	124	128629	1946640	4	28401	266	89860	APPROVED	CONVERGED	3	0	3
+beam-overview-window	code-20261025T184844Z	1	review-code	sonnet	medium	166	177367	3132505	4	49170	266	112750	APPROVED	CONTINUE	4	1	4
+beam-overview-window	code	1	review-code	sonnet	medium	217	111180	1763057	4	20787	0	0	APPROVED	CONVERGED	0	0	0
+beam-start-and-ownership	code	1	review-code	sonnet	medium	186	219104	3968820	4	63254	376	119825	APPROVED	CONVERGED	3	0	3
+beam-start-and-ownership	discussion	1	review-discussion	opus	medium	617	325592	8580565	6	89862	388	173314	BLOCKING	CONTINUE	18	7	18
+beam-start-and-ownership	discussion	2	review-discussion	opus	medium	472	320756	6046907	5	115533	283	152979	BLOCKING	CONTINUE	13	7	13
+beam-start-and-ownership	discussion	3		sonnet	high	273	161605	2904121	0	0	211	127412	APPROVED	CIRCLING	3	2	1
+beam-start-and-ownership	plan	1	review-plan	opus	medium	1046	541950	23272415	3	101005	613	282115	APPROVED	CONTINUE	17	3	17
+beam-start-and-ownership	plan	2		sonnet	high	574	313206	8894369	0	0	325	178163	APPROVED	CONVERGED	6	5	5
+beam-start-and-ownership	plan	3		sonnet	high	1070	488856	26486160	0	0	205	159400	BLOCKING	CONTINUE	7	4	7
+card-gate-vets-all-tag-sets	code-20261024T143501Z	1	review-code	sonnet	medium	131	171436	2324140	4	53351	186	95814	APPROVED	CONVERGED	3	0	3
+card-gate-vets-all-tag-sets	code	1	review-code	sonnet	medium	94	111059	1319802	4	25974	0	0	APPROVED	CONVERGED	0	0	0
+checklist-skipped-row-box	code	1	review-code	sonnet	medium	100	103349	1206391	4	17761	133	83749	APPROVED	CONVERGED	1	0	1
+codex-review-bench	code	1	review-code	sonnet	medium	201	148384	1489870	4	24026	669	324833	APPROVED	CONTINUE	12	7	12
+creel-hook-delivery-test	code	1	review-code	sonnet	medium	113	94908	1131536	4	13363	139	95593	APPROVED	CONVERGED	6	1	6
+decision-add-batch	code-20261024T085458Z	1	review-code	sonnet	medium	141	152661	2517825	4	31090	418	118058	BLOCKING	CONTINUE	6	1	6
+decision-add-batch	code	1	review-code	sonnet	medium	139	160027	2614319	4	32265	302	58916	APPROVED	CONVERGED	2	0	2
+discussion-scope-in-lenses	code	1	review-code	sonnet	medium	192	267781	4886597	4	86419	289	100188	APPROVED	CONVERGED	3	1	3
+discussion-scope-in-lenses	discussion	1	review-discussion	opus	medium	576	286392	6483354	4	65764	447	167430	BLOCKING	CONTINUE	12	5	12
+discussion-scope-in-lenses	discussion	2	review-discussion	opus	medium	528	274034	7818945	4	49993	335	151246	BLOCKING	CONTINUE	8	6	8
+discussion-scope-in-lenses	discussion	3		sonnet	high	262	156702	2768261	0	0	229	128272	APPROVED	CIRCLING	2	2	1
+discussion-scope-in-lenses	plan	1	review-plan	opus	medium	854	426229	17354022	3	61930	344	187961	BLOCKING	CONTINUE	9	3	9
+discussion-scope-in-lenses	plan	2		sonnet	high	679	330271	12513563	0	0	330	177324	APPROVED	CONVERGED	4	1	3
+dobby-overview-window	code	1	review-code	sonnet	medium	192	195657	3378263	4	45937	522	184980	BLOCKING	CONTINUE	7	4	7
+dobby-skip-done-runs	code	1	review-code	sonnet	medium	92	108264	1403844	4	25242	0	0	APPROVED	CONVERGED	0	0	0
+dotnet-scoped-verify	code	1	review-code	sonnet	medium	285	250096	3354974	4	85877	129	82064	APPROVED	CONTINUE	3	1	3
+dotnet-scoped-verify	discussion	1	review-discussion	opus	medium	548	289018	6387202	4	64093	630	206965	APPROVED	CONTINUE	15	11	15
+dotnet-scoped-verify	discussion	2	review-discussion	opus	medium	548	314852	6225121	4	100162	410	140059	APPROVED	CONVERGED	15	5	15
+dotnet-scoped-verify	plan	1	review-plan	opus	medium	893	390806	13514201	3	34843	273	150104	APPROVED	CONTINUE	13	2	13
+dotnet-scoped-verify	plan	2		sonnet	high	364	201179	3364174	0	0	257	129809	APPROVED	CONVERGED	3	0	3
+drop-transitional-tag-spellings	code	1	review-code	sonnet	medium	143	174017	1855256	4	54677	401	113461	APPROVED	CONTINUE	4	3	4
+fork-git-guard-scratch-repo	code	1	review-code	sonnet	medium	160	131402	1109140	4	24019	239	97230	APPROVED	CONVERGED	4	0	4
+gate-runs-once	code	1	review-code	sonnet	medium	229	275091	4552500	4	83495	234	136100	APPROVED	CONTINUE	6	1	6
+gate-runs-once	discussion	1	review-discussion	opus	medium	471	280728	8327081	4	76034	333	152949	BLOCKING	CONTINUE	14	8	14
+gate-runs-once	discussion	2	review-discussion	opus	medium	640	371245	11662884	4	117342	370	155974	BLOCKING	CONTINUE	14	8	14
+gate-runs-once	discussion	3		sonnet	high	349	194854	3892324	0	0	0	0	APPROVED	CONVERGED	0	0	0
+gate-runs-once	plan	1	review-plan	opus	medium	604	384339	14493244	3	91847	817	313222	BLOCKING	CONTINUE	12	6	12
+gate-runs-once	plan	2		sonnet	high	1526	665793	43326389	0	0	595	258173	BLOCKING	CONTINUE	4	3	3
+gate-runs-once	plan	3		sonnet	high	575	344722	11726133	0	0	325	183437	BLOCKING	CIRCLING	5	4	3
+gate-runs-past-failing-tier	code-20261024T140755Z	1	review-code	sonnet	medium	126	147945	1781124	4	23660	431	128284	APPROVED	CONTINUE	4	2	4
+gate-runs-past-failing-tier	code	1	review-code	sonnet	medium	106	117597	1750146	4	22332	0	0	APPROVED	CONVERGED	0	0	0
+gate-stale-vet-cache-path	code	1	review-code	sonnet	medium	110	112813	1393245	4	22862	138	69186	APPROVED	CONVERGED	1	0	1
+ide-attach-task	code	1	review-code	sonnet	medium	109	110458	1357432	4	15319	174	59685	APPROVED	CONVERGED	2	1	2
+idle-notice-no-live-run	code-20261024T085501Z	1	review-code	sonnet	medium	97	112380	1753866	4	19504	365	89540	APPROVED	CONVERGED	3	0	3
+idle-notice-no-live-run	code	1	review-code	sonnet	medium	77	98088	1256924	4	16866	249	29846	APPROVED	CONVERGED	1	0	1
+lens-fork-reports-kept	code-20261024T075300Z	1	review-code	sonnet	medium	85	149453	2102292	4	35978	257	102720	APPROVED	CONTINUE	4	2	4
+lens-fork-reports-kept	code	1	review-code	sonnet	medium	99	123105	1847581	4	24113	163	64520	APPROVED	CONVERGED	2	0	2
+pattern-cleanup	code-20261024T140224Z	1	review-code	sonnet	medium	137	141776	2926481	4	19378	899	115103	APPROVED	CONVERGED	1	0	1
+pattern-cleanup	code-20261024T141315Z	1	review-code	sonnet	medium	152	131716	2248181	4	21814	300	55116	APPROVED	CONVERGED	1	0	1
+pattern-cleanup	code-20261024T141937Z	1	review-code	sonnet	medium	102	95376	1233545	4	16468	0	0	APPROVED	CONVERGED	0	0	0
+pattern-cleanup	code	1	review-code	sonnet	medium	119	115859	1638323	4	27171	0	0	APPROVED	CONVERGED	0	0	0
+pattern-line-cap-text-only	code	1	review-code	sonnet	medium	95	116215	1453614	4	16967	137	61376	APPROVED	CONVERGED	2	1	2
+pattern-restore-caller-rules	code	1	review-code	sonnet	medium	99	86957	1028877	4	12126	0	0	APPROVED	CONVERGED	0	0	0
+plan-check-lint-pattern-per-card	code	1	review-code	sonnet	medium	105	111402	1399611	4	20395	145	78200	APPROVED	CONVERGED	1	0	1
+plan-refs-auto-rewrite	code	1	review-code	sonnet	medium	146	161154	1885192	4	54434	206	90693	APPROVED	CONVERGED	2	0	2
+regression-baseline-verify	code	1	review-code	sonnet	medium	239	260362	3907667	4	73843	374	162027	APPROVED	CONTINUE	4	1	4
+regression-baseline-verify	discussion	1	review-discussion	opus	medium	532	268052	4816007	6	79173	498	182071	BLOCKING	CONTINUE	15	9	15
+regression-baseline-verify	discussion	2	review-discussion	opus	medium	534	341823	8316628	6	91206	526	207205	BLOCKING	CONTINUE	16	11	11
+regression-baseline-verify	discussion	3		sonnet	high	306	162252	2234721	0	0	419	189090	BLOCKING	CONTINUE	7	3	7
+regression-baseline-verify	plan	1	review-plan	opus	medium	1097	495951	24751627	3	50927	597	269166	BLOCKING	CONTINUE	12	8	12
+regression-baseline-verify	plan	2		sonnet	high	449	221934	4835611	0	0	188	102531	BLOCKING	CONTINUE	1	1	1
+regression-baseline-verify	plan	3		sonnet	high	282	142854	2251236	0	0	216	122535	BLOCKING	CONTINUE	6	3	6
+rename-binary-lym	code	1	review-code	sonnet	medium	153	132097	2111603	4	20834	181	71727	APPROVED	CONVERGED	3	0	3
+rename-target-checks	code	1	review-code	sonnet	medium	120	166926	2109307	4	59066	374	104212	APPROVED	CONTINUE	4	1	4
+run-profiles-ladder	code-20261024T145358Z	1	review-code	sonnet	medium	148	155693	2069026	4	46966	322	92216	APPROVED	CONVERGED	5	1	5
+run-profiles-ladder	code	1	review-code	sonnet	medium	91	92347	954151	4	9612	0	0	APPROVED	CONVERGED	0	0	0
+runs-never-write-board	code-20261024T151505Z	1	review-code	sonnet	medium	125	127375	1861381	4	29221	182	79333	APPROVED	CONTINUE	4	1	4
+runs-never-write-board	code	1	review-code	sonnet	medium	132	113707	1651142	4	19439	0	0	APPROVED	CONVERGED	0	0	0
+scripted-edits-allowed	code-20261026T124255Z	1	review-code	sonnet	medium	118	160629	2523825	4	37741	136	82582	APPROVED	CONVERGED	4	1	4
+scripted-edits-allowed	code	1	review-code	sonnet	medium	100	138779	2048777	4	36376	0	0	APPROVED	CONVERGED	0	0	0
+shortcuts-short-only	code	1	review-code	sonnet	medium	95	138678	1378187	4	30877	0	0	APPROVED	CONVERGED	0	0	0
+shuttle-start-hardening	code	1	review-code	sonnet	medium	157	172833	2277238	4	45799	363	150995	APPROVED	CONVERGED	5	2	5
+umbrella-anchor	code-20261025T191455Z	1	review-code	sonnet	medium	185	188974	2331541	4	72976	734	160851	APPROVED	CONVERGED	3	0	3
+umbrella-anchor	code-20261025T192952Z	1	review-code	sonnet	medium	171	137028	2230706	4	27939	333	149427	APPROVED	CONVERGED	2	0	2
+umbrella-anchor	code	1	review-code	sonnet	medium	91	92198	1142872	4	16338	0	0	APPROVED	CONVERGED	0	0	0
+umbrella-anchor	discussion	1	review-discussion	opus	medium	581	330350	7083648	6	126311	788	252348	BLOCKING	CONTINUE	16	11	16
+umbrella-anchor	discussion	2	review-discussion	opus	medium	657	272295	6311704	5	56461	414	189236	BLOCKING	CONTINUE	13	10	9
+umbrella-anchor	discussion	3		sonnet	high	611	263769	3575039	0	0	288	156262	BLOCKING	CONTINUE	5	1	5
+umbrella-anchor	plan	1	review-plan	opus	medium	534	345637	8121453	3	100648	565	278913	BLOCKING	CONTINUE	13	10	13
+umbrella-anchor	plan	2		sonnet	high	593	268410	7623993	0	0	438	201570	BLOCKING	CONTINUE	4	4	2
+umbrella-anchor	plan	3		sonnet	high	420	226893	5097911	0	0	278	143076	APPROVED	CONVERGED	5	1	5
+umbrella-daemon	code	1	review-code	sonnet	medium	206	246601	4030887	4	60263	249	107551	APPROVED	CONTINUE	4	2	4
+umbrella-daemon	discussion	1	review-discussion	opus	medium	555	285232	6526460	4	57018	468	210349	BLOCKING	CONTINUE	17	7	17
+umbrella-daemon	discussion	2	review-discussion	opus	medium	630	268300	7834782	4	47661	363	167573	BLOCKING	CONTINUE	10	8	7
+umbrella-daemon	discussion	3		sonnet	high	429	219547	3955001	0	0	435	183032	BLOCKING	CIRCLING	6	6	2
+umbrella-daemon	discussion	4		sonnet	high	255	170978	2871585	0	0	205	114016	APPROVED	CONVERGED	4	1	2
+umbrella-daemon	plan	1	review-plan	opus	medium	1465	636657	39148483	3	64376	759	313560	BLOCKING	CONTINUE	21	7	21
+umbrella-daemon	plan	2		sonnet	high	863	491942	27798323	0	0	458	200281	APPROVED	CONTINUE	3	1	2
+umbrella-groundwork	code	1	review-code	sonnet	medium	190	245560	4417188	4	64328	637	145785	APPROVED	CONVERGED	4	0	4
+umbrella-groundwork	discussion	1	review-discussion	opus	medium	584	256262	5284115	4	58567	532	216568	BLOCKING	CONTINUE	16	9	16
+umbrella-groundwork	discussion	2	review-discussion	opus	medium	566	246894	6326187	4	37480	340	172523	BLOCKING	CONTINUE	11	5	8
+umbrella-groundwork	discussion	3		sonnet	high	215	136551	2900223	0	0	190	107463	APPROVED	CONVERGED	4	2	3
+umbrella-groundwork	plan	1	review-plan	opus	medium	613	369611	13433179	3	80890	474	194158	APPROVED	CONTINUE	15	8	15
+umbrella-groundwork	plan	2		sonnet	high	374	203123	3834839	0	0	118	85898	APPROVED	CONVERGED	2	2	1
+usage-limit-hold-quiet	code	1	review-code	sonnet	medium	115	123764	1779678	4	23756	249	91536	APPROVED	CONVERGED	3	0	3
+webstercli-tests-ignore-tmp-git	code-20261024T140336Z	1	review-code	sonnet	medium	115	128803	1344066	4	29139	135	86946	APPROVED	CONVERGED	3	0	3
+webstercli-tests-ignore-tmp-git	code	1	review-code	sonnet	medium	89	105845	1173055	4	16731	0	0	APPROVED	CONVERGED	0	0	0
+webster-orch-need-to-parent	code	1	review-code	sonnet	medium	185	201559	3623576	4	62154	283	135408	APPROVED	CONVERGED	6	0	6
+webster-reset-reopens-dead-batch	code	1	review-code	sonnet	medium	98	121426	1590302	4	25548	127	68010	APPROVED	CONVERGED	1	0	1
+webster-stop-asked-once	code	1	review-code	sonnet	medium	149	177725	2517128	4	43842	391	121135	BLOCKING	CONTINUE	4	2	4
+webster-stop-asked-once	code	2		sonnet	medium	63	79958	762491	0	0	334	102709	BLOCKING	CONTINUE	3	2	0
+webster-tree-moved-fixer	code	1	review-code	sonnet	medium	192	225564	4057246	4	54399	447	138310	APPROVED	CONTINUE	7	2	7
+webster-tree-moved-fixer	code	2		sonnet	medium	64	91023	1164110	0	0	218	71892	APPROVED	CONVERGED	1	0	1
+weft-suffix-card-slug-audit	code	1	review-code	sonnet	medium	107	105408	1402215	4	19733	0	0	APPROVED	CONVERGED	0	0	0

@@ -1,0 +1,578 @@
+run	perch	round	id	severity	class	origin
+adopt-runs-tests	code	1	F1	LOW	consistency	lens:code-affected-set
+adopt-runs-tests	code	1	F2	LOW	scope	lens:code-tests
+adopt-runs-tests	code	1	F3	LOW	consistency	lens:code-pattern-fit
+beam-overview-window	code-20261025T184844Z	1	F1	MEDIUM	design	lens:code-correctness
+beam-overview-window	code-20261025T184844Z	1	F2	LOW	consistency	lens:code-affected-set
+beam-overview-window	code-20261025T184844Z	1	F3	LOW	design	lens:code-tests
+beam-overview-window	code-20261025T184844Z	1	F4	LOW	consistency	lens:code-correctness
+beam-start-and-ownership	code	1	F1	LOW	design	lens:code-correctness
+beam-start-and-ownership	code	1	F2	LOW	design	lens:code-correctness
+beam-start-and-ownership	code	1	F3	LOW	consistency	lens:code-affected-set
+beam-start-and-ownership	discussion	1	F1	BLOCKING	design	lens:existing-paths
+beam-start-and-ownership	discussion	1	F2	BLOCKING	design	lens:existing-paths
+beam-start-and-ownership	discussion	1	F3	MEDIUM	consistency	lens:interactions
+beam-start-and-ownership	discussion	1	F4	MEDIUM	design	lens:bound-breaker
+beam-start-and-ownership	discussion	1	F5	MEDIUM	design	lens:interactions
+beam-start-and-ownership	discussion	1	F6	MEDIUM	design	lens:interactions
+beam-start-and-ownership	discussion	1	F7	MEDIUM	consistency	handler
+beam-start-and-ownership	discussion	1	F8	LOW	design	lens:bound-breaker
+beam-start-and-ownership	discussion	1	F9	LOW	design	lens:bound-breaker
+beam-start-and-ownership	discussion	1	F10	LOW	design	lens:existing-paths
+beam-start-and-ownership	discussion	1	F11	LOW	design	lens:bound-breaker
+beam-start-and-ownership	discussion	1	F12	LOW	design	lens:walkthrough
+beam-start-and-ownership	discussion	1	F13	LOW	design	lens:walkthrough
+beam-start-and-ownership	discussion	1	F14	LOW	consistency	lens:walkthrough
+beam-start-and-ownership	discussion	1	F15	LOW	consistency	lens:walkthrough
+beam-start-and-ownership	discussion	1	F16	LOW	consistency	lens:goal-scope
+beam-start-and-ownership	discussion	1	F17	LOW	consistency	handler
+beam-start-and-ownership	discussion	1	F18	NIT	consistency	handler
+beam-start-and-ownership	discussion	2	F1	BLOCKING	consistency	lens:interactions
+beam-start-and-ownership	discussion	2	F2	MEDIUM	design	lens:interactions
+beam-start-and-ownership	discussion	2	F3	MEDIUM	design	lens:existing-paths
+beam-start-and-ownership	discussion	2	F4	MEDIUM	consistency	lens:interactions
+beam-start-and-ownership	discussion	2	F5	MEDIUM	design	handler
+beam-start-and-ownership	discussion	2	F6	MEDIUM	design	lens:existing-paths
+beam-start-and-ownership	discussion	2	F7	MEDIUM	design	lens:bound-breaker
+beam-start-and-ownership	discussion	2	F8	LOW	design	lens:bound-breaker
+beam-start-and-ownership	discussion	2	F9	LOW	design	lens:bound-breaker
+beam-start-and-ownership	discussion	2	F10	LOW	design	lens:bound-breaker
+beam-start-and-ownership	discussion	2	F11	LOW	consistency	lens:interactions
+beam-start-and-ownership	discussion	2	F12	LOW	consistency	lens:walkthrough
+beam-start-and-ownership	discussion	2	F13	LOW	consistency	lens:walkthrough
+beam-start-and-ownership	discussion	3	F1	MEDIUM	design	
+beam-start-and-ownership	discussion	3	F2	MEDIUM	design	
+beam-start-and-ownership	discussion	3	F3	LOW	consistency	
+beam-start-and-ownership	plan	1	F1	MEDIUM	design	lens:affected-set
+beam-start-and-ownership	plan	1	F2	MEDIUM	scope	handler
+beam-start-and-ownership	plan	1	F3	MEDIUM	consistency	handler
+beam-start-and-ownership	plan	1	F4	LOW	design	handler
+beam-start-and-ownership	plan	1	F5	LOW	scope	handler
+beam-start-and-ownership	plan	1	F6	LOW	consistency	lens:way-forward
+beam-start-and-ownership	plan	1	F7	LOW	design	lens:way-forward
+beam-start-and-ownership	plan	1	F8	LOW	consistency	lens:way-forward
+beam-start-and-ownership	plan	1	F9	LOW	consistency	lens:way-forward
+beam-start-and-ownership	plan	1	F10	LOW	consistency	lens:way-forward
+beam-start-and-ownership	plan	1	F11	LOW	consistency	handler
+beam-start-and-ownership	plan	1	F12	LOW	consistency	handler
+beam-start-and-ownership	plan	1	F13	LOW	design	handler
+beam-start-and-ownership	plan	1	F14	LOW	design	lens:guard-reach
+beam-start-and-ownership	plan	1	F15	NIT	consistency	lens:way-forward
+beam-start-and-ownership	plan	1	F16	NIT	consistency	handler
+beam-start-and-ownership	plan	1	F17	NIT	consistency	lens:affected-set
+beam-start-and-ownership	plan	2	F1	MEDIUM	scope	
+beam-start-and-ownership	plan	2	F2	MEDIUM	scope	
+beam-start-and-ownership	plan	2	F3	LOW	scope	
+beam-start-and-ownership	plan	2	F4	MEDIUM	decision	
+beam-start-and-ownership	plan	2	F5	MEDIUM	scope	
+beam-start-and-ownership	plan	2	F6	MEDIUM	scope	
+beam-start-and-ownership	plan	3	F1	BLOCKING	design	
+beam-start-and-ownership	plan	3	F2	BLOCKING	consistency	
+beam-start-and-ownership	plan	3	F3	MEDIUM	scope	
+beam-start-and-ownership	plan	3	F4	MEDIUM	scope	
+beam-start-and-ownership	plan	3	F5	LOW	decision	
+beam-start-and-ownership	plan	3	F6	LOW	scope	
+beam-start-and-ownership	plan	3	F7	LOW	consistency	
+card-gate-vets-all-tag-sets	code-20261024T143501Z	1	F1	LOW	design	lens:code-tests
+card-gate-vets-all-tag-sets	code-20261024T143501Z	1	F2	LOW	design	lens:code-tests
+card-gate-vets-all-tag-sets	code-20261024T143501Z	1	F3	NIT	consistency	lens:code-pattern-fit
+checklist-skipped-row-box	code	1	F1	LOW	scope	lens:code-tests
+codex-review-bench	code	1	F1	MEDIUM	design	handler
+codex-review-bench	code	1	F2	MEDIUM	design	handler
+codex-review-bench	code	1	F3	MEDIUM	scope	handler
+codex-review-bench	code	1	F4	MEDIUM	scope	handler
+codex-review-bench	code	1	F5	MEDIUM	design	handler
+codex-review-bench	code	1	F6	MEDIUM	design	lens:code-correctness
+codex-review-bench	code	1	F7	MEDIUM	design	lens:code-correctness
+codex-review-bench	code	1	F8	LOW	consistency	handler
+codex-review-bench	code	1	F9	LOW	design	lens:code-correctness
+codex-review-bench	code	1	F10	LOW	design	lens:code-correctness
+codex-review-bench	code	1	F11	LOW	consistency	lens:code-correctness
+codex-review-bench	code	1	F12	LOW	consistency	lens:code-pattern-fit
+creel-hook-delivery-test	code	1	F1	MEDIUM	decision	handler
+creel-hook-delivery-test	code	1	F2	LOW	consistency	handler
+creel-hook-delivery-test	code	1	F3	LOW	consistency	handler
+creel-hook-delivery-test	code	1	F4	LOW	consistency	handler
+creel-hook-delivery-test	code	1	F5	NIT	consistency	lens:code-pattern-fit
+creel-hook-delivery-test	code	1	F6	NIT	consistency	lens:code-pattern-fit
+decision-add-batch	code-20261024T085458Z	1	F1	BLOCKING	design	lens:code-correctness
+decision-add-batch	code-20261024T085458Z	1	F2	LOW	design	lens:code-correctness
+decision-add-batch	code-20261024T085458Z	1	F3	LOW	design	lens:code-tests
+decision-add-batch	code-20261024T085458Z	1	F4	LOW	consistency	lens:code-affected-set
+decision-add-batch	code-20261024T085458Z	1	F5	LOW	consistency	lens:code-affected-set
+decision-add-batch	code-20261024T085458Z	1	F6	LOW	consistency	lens:code-pattern-fit
+decision-add-batch	code	1	F1	LOW	consistency	lens:code-affected-set
+decision-add-batch	code	1	F2	LOW	consistency	lens:code-affected-set
+discussion-scope-in-lenses	code	1	F1	MEDIUM	scope	lens:code-pattern-fit
+discussion-scope-in-lenses	code	1	F2	LOW	scope	lens:code-pattern-fit
+discussion-scope-in-lenses	code	1	F3	LOW	scope	lens:code-tests
+discussion-scope-in-lenses	discussion	1	F1	BLOCKING	design	lens:bound-breaker
+discussion-scope-in-lenses	discussion	1	F2	MEDIUM	design	lens:interactions
+discussion-scope-in-lenses	discussion	1	F3	MEDIUM	design	lens:bound-breaker
+discussion-scope-in-lenses	discussion	1	F4	MEDIUM	design	lens:existing-paths
+discussion-scope-in-lenses	discussion	1	F5	MEDIUM	decision	handler
+discussion-scope-in-lenses	discussion	1	F6	LOW	design	lens:interactions
+discussion-scope-in-lenses	discussion	1	F7	LOW	consistency	lens:interactions
+discussion-scope-in-lenses	discussion	1	F8	LOW	design	lens:bound-breaker
+discussion-scope-in-lenses	discussion	1	F9	LOW	consistency	lens:existing-paths
+discussion-scope-in-lenses	discussion	1	F10	LOW	consistency	lens:walkthrough
+discussion-scope-in-lenses	discussion	1	F11	LOW	consistency	lens:interactions
+discussion-scope-in-lenses	discussion	1	F12	LOW	design	lens:bound-breaker
+discussion-scope-in-lenses	discussion	2	F1	BLOCKING	design	lens:interactions
+discussion-scope-in-lenses	discussion	2	F2	MEDIUM	design	lens:bound-breaker
+discussion-scope-in-lenses	discussion	2	F3	MEDIUM	design	lens:interactions
+discussion-scope-in-lenses	discussion	2	F4	MEDIUM	design	lens:bound-breaker
+discussion-scope-in-lenses	discussion	2	F5	MEDIUM	design	lens:existing-paths
+discussion-scope-in-lenses	discussion	2	F6	MEDIUM	design	lens:walkthrough
+discussion-scope-in-lenses	discussion	2	F7	LOW	consistency	lens:bound-breaker
+discussion-scope-in-lenses	discussion	2	F8	LOW	consistency	lens:interactions
+discussion-scope-in-lenses	discussion	3	F1	MEDIUM	design	
+discussion-scope-in-lenses	discussion	3	F2	MEDIUM	design	
+discussion-scope-in-lenses	plan	1	F1	BLOCKING	design	lens:guard-reach
+discussion-scope-in-lenses	plan	1	F2	MEDIUM	scope	handler
+discussion-scope-in-lenses	plan	1	F3	MEDIUM	design	lens:affected-set
+discussion-scope-in-lenses	plan	1	F4	LOW	consistency	lens:guard-reach
+discussion-scope-in-lenses	plan	1	F5	LOW	design	lens:way-forward
+discussion-scope-in-lenses	plan	1	F6	LOW	design	lens:guard-reach
+discussion-scope-in-lenses	plan	1	F7	LOW	consistency	lens:way-forward
+discussion-scope-in-lenses	plan	1	F8	LOW	consistency	lens:affected-set
+discussion-scope-in-lenses	plan	1	F9	LOW	scope	handler
+discussion-scope-in-lenses	plan	2	F1	MEDIUM	design	
+discussion-scope-in-lenses	plan	2	F2	LOW	design	
+discussion-scope-in-lenses	plan	2	F3	LOW	design	
+discussion-scope-in-lenses	plan	2	F4	LOW	design	
+dobby-overview-window	code	1	F1	BLOCKING	design	lens:code-correctness
+dobby-overview-window	code	1	F2	MEDIUM	design	handler
+dobby-overview-window	code	1	F3	MEDIUM	design	lens:code-tests
+dobby-overview-window	code	1	F4	MEDIUM	design	lens:code-tests
+dobby-overview-window	code	1	F5	LOW	design	lens:code-correctness
+dobby-overview-window	code	1	F6	LOW	design	lens:code-tests
+dobby-overview-window	code	1	F7	NIT	consistency	handler
+dotnet-scoped-verify	code	1	F1	MEDIUM	design	lens:code-correctness
+dotnet-scoped-verify	code	1	F2	LOW	design	lens:code-correctness
+dotnet-scoped-verify	code	1	F3	LOW	consistency	lens:code-affected-set
+dotnet-scoped-verify	discussion	1	F1	MEDIUM	design	lens:bound-breaker
+dotnet-scoped-verify	discussion	1	F2	MEDIUM	design	lens:interactions
+dotnet-scoped-verify	discussion	1	F3	MEDIUM	consistency	lens:existing-paths
+dotnet-scoped-verify	discussion	1	F4	MEDIUM	design	lens:existing-paths
+dotnet-scoped-verify	discussion	1	F5	MEDIUM	design	lens:bound-breaker
+dotnet-scoped-verify	discussion	1	F6	MEDIUM	design	lens:bound-breaker
+dotnet-scoped-verify	discussion	1	F7	MEDIUM	design	lens:existing-paths
+dotnet-scoped-verify	discussion	1	F8	MEDIUM	design	lens:bound-breaker
+dotnet-scoped-verify	discussion	1	F9	MEDIUM	design	lens:bound-breaker
+dotnet-scoped-verify	discussion	1	F10	MEDIUM	consistency	lens:interactions
+dotnet-scoped-verify	discussion	1	F11	MEDIUM	design	handler
+dotnet-scoped-verify	discussion	1	F12	LOW	decision	lens:bound-breaker
+dotnet-scoped-verify	discussion	1	F13	LOW	consistency	lens:interactions
+dotnet-scoped-verify	discussion	1	F14	LOW	consistency	lens:interactions
+dotnet-scoped-verify	discussion	1	F15	LOW	consistency	lens:walkthrough
+dotnet-scoped-verify	discussion	2	F1	MEDIUM	design	lens:walkthrough
+dotnet-scoped-verify	discussion	2	F2	MEDIUM	design	lens:existing-paths
+dotnet-scoped-verify	discussion	2	F3	MEDIUM	design	handler
+dotnet-scoped-verify	discussion	2	F4	MEDIUM	design	lens:bound-breaker
+dotnet-scoped-verify	discussion	2	F5	MEDIUM	design	lens:bound-breaker
+dotnet-scoped-verify	discussion	2	F6	LOW	consistency	lens:interactions
+dotnet-scoped-verify	discussion	2	F7	LOW	consistency	lens:interactions
+dotnet-scoped-verify	discussion	2	F8	LOW	consistency	lens:walkthrough
+dotnet-scoped-verify	discussion	2	F9	LOW	consistency	lens:interactions
+dotnet-scoped-verify	discussion	2	F10	LOW	design	lens:bound-breaker
+dotnet-scoped-verify	discussion	2	F11	LOW	design	lens:bound-breaker
+dotnet-scoped-verify	discussion	2	F12	LOW	design	lens:bound-breaker
+dotnet-scoped-verify	discussion	2	F13	LOW	design	lens:bound-breaker
+dotnet-scoped-verify	discussion	2	F14	LOW	consistency	handler
+dotnet-scoped-verify	discussion	2	F15	NIT	consistency	lens:bound-breaker
+dotnet-scoped-verify	plan	1	F1	MEDIUM	design	lens:guard-reach
+dotnet-scoped-verify	plan	1	F2	MEDIUM	consistency	lens:guard-reach
+dotnet-scoped-verify	plan	1	F3	LOW	consistency	lens:way-forward
+dotnet-scoped-verify	plan	1	F4	LOW	consistency	lens:guard-reach
+dotnet-scoped-verify	plan	1	F5	LOW	design	lens:way-forward
+dotnet-scoped-verify	plan	1	F6	LOW	consistency	lens:way-forward
+dotnet-scoped-verify	plan	1	F7	LOW	scope	handler
+dotnet-scoped-verify	plan	1	F8	LOW	consistency	handler
+dotnet-scoped-verify	plan	1	F9	LOW	consistency	handler
+dotnet-scoped-verify	plan	1	F10	LOW	consistency	lens:affected-set
+dotnet-scoped-verify	plan	1	F11	NIT	consistency	lens:affected-set
+dotnet-scoped-verify	plan	1	F12	NIT	consistency	lens:way-forward
+dotnet-scoped-verify	plan	1	F13	NIT	consistency	handler
+dotnet-scoped-verify	plan	2	F1	LOW	design	
+dotnet-scoped-verify	plan	2	F2	LOW	design	
+dotnet-scoped-verify	plan	2	F3	LOW	design	
+drop-transitional-tag-spellings	code	1	F1	MEDIUM	design	lens:code-correctness
+drop-transitional-tag-spellings	code	1	F2	MEDIUM	consistency	lens:code-pattern-fit
+drop-transitional-tag-spellings	code	1	F3	MEDIUM	consistency	lens:code-pattern-fit
+drop-transitional-tag-spellings	code	1	F4	LOW	consistency	lens:code-affected-set
+fork-git-guard-scratch-repo	code	1	F1	LOW	design	lens:code-correctness
+fork-git-guard-scratch-repo	code	1	F2	LOW	design	lens:code-correctness
+fork-git-guard-scratch-repo	code	1	F3	LOW	scope	lens:code-tests
+fork-git-guard-scratch-repo	code	1	F4	NIT	consistency	handler
+gate-runs-once	code	1	F1	MEDIUM	design	lens:code-tests
+gate-runs-once	code	1	F2	LOW	design	lens:code-tests
+gate-runs-once	code	1	F3	LOW	design	lens:code-tests
+gate-runs-once	code	1	F4	LOW	consistency	lens:code-affected-set
+gate-runs-once	code	1	F5	LOW	design	lens:code-correctness
+gate-runs-once	code	1	F6	NIT	design	lens:code-correctness
+gate-runs-once	discussion	1	F1	BLOCKING	design	lens:bound-breaker
+gate-runs-once	discussion	1	F2	MEDIUM	design	lens:interactions
+gate-runs-once	discussion	1	F3	MEDIUM	consistency	lens:bound-breaker
+gate-runs-once	discussion	1	F4	MEDIUM	design	lens:existing-paths
+gate-runs-once	discussion	1	F5	MEDIUM	design	lens:existing-paths
+gate-runs-once	discussion	1	F6	MEDIUM	design	lens:bound-breaker
+gate-runs-once	discussion	1	F7	MEDIUM	design	lens:walkthrough
+gate-runs-once	discussion	1	F8	MEDIUM	design	handler
+gate-runs-once	discussion	1	F9	LOW	design	lens:bound-breaker
+gate-runs-once	discussion	1	F10	LOW	consistency	lens:existing-paths
+gate-runs-once	discussion	1	F11	LOW	design	lens:existing-paths
+gate-runs-once	discussion	1	F12	LOW	consistency	lens:interactions
+gate-runs-once	discussion	1	F13	LOW	consistency	lens:walkthrough
+gate-runs-once	discussion	1	F14	NIT	consistency	handler
+gate-runs-once	discussion	2	F1	BLOCKING	design	lens:walkthrough
+gate-runs-once	discussion	2	F2	MEDIUM	design	lens:walkthrough
+gate-runs-once	discussion	2	F3	MEDIUM	design	lens:existing-paths
+gate-runs-once	discussion	2	F4	MEDIUM	design	lens:existing-paths
+gate-runs-once	discussion	2	F5	MEDIUM	decision	lens:walkthrough
+gate-runs-once	discussion	2	F6	MEDIUM	design	lens:interactions
+gate-runs-once	discussion	2	F7	MEDIUM	consistency	lens:interactions
+gate-runs-once	discussion	2	F8	MEDIUM	decision	lens:bound-breaker
+gate-runs-once	discussion	2	F9	LOW	decision	lens:bound-breaker
+gate-runs-once	discussion	2	F10	LOW	consistency	lens:bound-breaker
+gate-runs-once	discussion	2	F11	LOW	design	lens:existing-paths
+gate-runs-once	discussion	2	F12	LOW	consistency	lens:bound-breaker
+gate-runs-once	discussion	2	F13	LOW	consistency	handler
+gate-runs-once	discussion	2	F14	LOW	consistency	handler
+gate-runs-once	plan	1	F1	BLOCKING	design	handler
+gate-runs-once	plan	1	F2	BLOCKING	design	lens:affected-set
+gate-runs-once	plan	1	F3	MEDIUM	design	handler
+gate-runs-once	plan	1	F4	MEDIUM	consistency	handler
+gate-runs-once	plan	1	F5	MEDIUM	consistency	lens:guard-reach
+gate-runs-once	plan	1	F6	MEDIUM	consistency	lens:way-forward
+gate-runs-once	plan	1	F7	LOW	consistency	lens:way-forward
+gate-runs-once	plan	1	F8	LOW	consistency	lens:way-forward
+gate-runs-once	plan	1	F9	LOW	design	lens:way-forward
+gate-runs-once	plan	1	F10	LOW	scope	handler
+gate-runs-once	plan	1	F11	LOW	design	lens:guard-reach
+gate-runs-once	plan	1	F12	LOW	design	handler
+gate-runs-once	plan	2	F1	BLOCKING	design	
+gate-runs-once	plan	2	F2	MEDIUM	design	
+gate-runs-once	plan	2	F3	MEDIUM	consistency	
+gate-runs-once	plan	2	F4	LOW	consistency	
+gate-runs-once	plan	3	F1	BLOCKING	design	
+gate-runs-once	plan	3	F2	MEDIUM	consistency	
+gate-runs-once	plan	3	F3	MEDIUM	consistency	
+gate-runs-once	plan	3	F4	MEDIUM	consistency	
+gate-runs-once	plan	3	F5	LOW	scope	
+gate-runs-past-failing-tier	code-20261024T140755Z	1	F1	MEDIUM	design	lens:code-affected-set
+gate-runs-past-failing-tier	code-20261024T140755Z	1	F2	MEDIUM	design	lens:code-correctness
+gate-runs-past-failing-tier	code-20261024T140755Z	1	F3	LOW	design	lens:code-correctness
+gate-runs-past-failing-tier	code-20261024T140755Z	1	F4	LOW	design	lens:code-tests
+gate-stale-vet-cache-path	code	1	F1	LOW	design	lens:code-tests
+ide-attach-task	code	1	F1	MEDIUM	consistency	lens:code-affected-set
+ide-attach-task	code	1	F2	NIT	consistency	lens:code-pattern-fit
+idle-notice-no-live-run	code-20261024T085501Z	1	F1	LOW	scope	lens:code-tests
+idle-notice-no-live-run	code-20261024T085501Z	1	F2	LOW	design	lens:code-correctness
+idle-notice-no-live-run	code-20261024T085501Z	1	F3	NIT	consistency	lens:code-correctness
+idle-notice-no-live-run	code	1	F1	NIT	design	lens:code-correctness
+lens-fork-reports-kept	code-20261024T075300Z	1	F1	MEDIUM	scope	lens:code-affected-set
+lens-fork-reports-kept	code-20261024T075300Z	1	F2	MEDIUM	design	lens:code-tests
+lens-fork-reports-kept	code-20261024T075300Z	1	F3	LOW	design	lens:code-tests
+lens-fork-reports-kept	code-20261024T075300Z	1	F4	LOW	consistency	handler
+lens-fork-reports-kept	code	1	F1	LOW	scope	handler
+lens-fork-reports-kept	code	1	F2	LOW	design	lens:code-tests
+pattern-cleanup	code-20261024T140224Z	1	F1	LOW	consistency	lens:code-affected-set
+pattern-cleanup	code-20261024T141315Z	1	F1	NIT	consistency	handler
+pattern-line-cap-text-only	code	1	F1	MEDIUM	scope	lens:code-affected-set
+pattern-line-cap-text-only	code	1	F2	LOW	consistency	lens:code-affected-set
+plan-check-lint-pattern-per-card	code	1	F1	LOW	scope	lens:code-tests
+plan-refs-auto-rewrite	code	1	F1	LOW	scope	lens:code-tests
+plan-refs-auto-rewrite	code	1	F2	LOW	design	lens:code-correctness
+regression-baseline-verify	code	1	F1	MEDIUM	design	lens:code-correctness
+regression-baseline-verify	code	1	F2	LOW	consistency	lens:code-correctness
+regression-baseline-verify	code	1	F3	LOW	scope	lens:code-affected-set
+regression-baseline-verify	code	1	F4	LOW	design	lens:code-correctness
+regression-baseline-verify	discussion	1	F1	BLOCKING	consistency	lens:interactions
+regression-baseline-verify	discussion	1	F2	BLOCKING	design	lens:bound-breaker
+regression-baseline-verify	discussion	1	F3	MEDIUM	design	lens:bound-breaker
+regression-baseline-verify	discussion	1	F4	MEDIUM	design	lens:interactions
+regression-baseline-verify	discussion	1	F5	MEDIUM	design	lens:walkthrough
+regression-baseline-verify	discussion	1	F6	MEDIUM	design	lens:existing-paths
+regression-baseline-verify	discussion	1	F7	MEDIUM	design	lens:bound-breaker
+regression-baseline-verify	discussion	1	F8	MEDIUM	consistency	lens:interactions
+regression-baseline-verify	discussion	1	F9	MEDIUM	decision	lens:board-fit
+regression-baseline-verify	discussion	1	F10	LOW	decision	lens:goal-scope
+regression-baseline-verify	discussion	1	F11	LOW	consistency	lens:bound-breaker
+regression-baseline-verify	discussion	1	F12	LOW	consistency	lens:existing-paths
+regression-baseline-verify	discussion	1	F13	LOW	consistency	lens:board-fit
+regression-baseline-verify	discussion	1	F14	NIT	consistency	lens:interactions
+regression-baseline-verify	discussion	1	F15	NIT	consistency	lens:existing-paths
+regression-baseline-verify	discussion	2	F1	BLOCKING	design	lens:walkthrough
+regression-baseline-verify	discussion	2	F2	BLOCKING	design	lens:walkthrough
+regression-baseline-verify	discussion	2	F3	BLOCKING	design	lens:bound-breaker
+regression-baseline-verify	discussion	2	F4	BLOCKING	design	lens:bound-breaker
+regression-baseline-verify	discussion	2	F5	BLOCKING	consistency	lens:interactions
+regression-baseline-verify	discussion	2	F6	MEDIUM	design	lens:interactions
+regression-baseline-verify	discussion	2	F7	MEDIUM	design	lens:bound-breaker
+regression-baseline-verify	discussion	2	F8	MEDIUM	design	lens:bound-breaker
+regression-baseline-verify	discussion	2	F9	MEDIUM	design	lens:interactions
+regression-baseline-verify	discussion	2	F10	MEDIUM	design	lens:existing-paths
+regression-baseline-verify	discussion	2	F11	MEDIUM	design	lens:bound-breaker
+regression-baseline-verify	discussion	2	F12	LOW	consistency	lens:existing-paths
+regression-baseline-verify	discussion	2	F13	LOW	design	lens:interactions
+regression-baseline-verify	discussion	2	F14	LOW	consistency	lens:goal-scope
+regression-baseline-verify	discussion	2	F15	LOW	consistency	lens:existing-paths
+regression-baseline-verify	discussion	2	F16	LOW	consistency	lens:interactions
+regression-baseline-verify	discussion	3	F1	BLOCKING	design	
+regression-baseline-verify	discussion	3	F2	MEDIUM	consistency	
+regression-baseline-verify	discussion	3	F3	MEDIUM	consistency	
+regression-baseline-verify	discussion	3	F4	LOW	design	
+regression-baseline-verify	discussion	3	F5	LOW	consistency	
+regression-baseline-verify	discussion	3	F6	LOW	consistency	
+regression-baseline-verify	discussion	3	F7	LOW	design	
+regression-baseline-verify	plan	1	F1	BLOCKING	design	handler
+regression-baseline-verify	plan	1	F2	BLOCKING	design	lens:guard-reach
+regression-baseline-verify	plan	1	F3	MEDIUM	design	lens:guard-reach
+regression-baseline-verify	plan	1	F4	MEDIUM	scope	lens:affected-set
+regression-baseline-verify	plan	1	F5	MEDIUM	consistency	lens:way-forward
+regression-baseline-verify	plan	1	F6	MEDIUM	consistency	handler
+regression-baseline-verify	plan	1	F7	MEDIUM	design	handler
+regression-baseline-verify	plan	1	F8	MEDIUM	scope	handler
+regression-baseline-verify	plan	1	F9	LOW	consistency	lens:guard-reach
+regression-baseline-verify	plan	1	F10	LOW	consistency	lens:guard-reach
+regression-baseline-verify	plan	1	F11	LOW	consistency	lens:affected-set
+regression-baseline-verify	plan	1	F12	LOW	consistency	handler
+regression-baseline-verify	plan	2	F1	BLOCKING	design	
+regression-baseline-verify	plan	3	F1	BLOCKING	design	
+regression-baseline-verify	plan	3	F2	MEDIUM	design	
+regression-baseline-verify	plan	3	F3	MEDIUM	decision	
+regression-baseline-verify	plan	3	F4	LOW	consistency	
+regression-baseline-verify	plan	3	F5	LOW	scope	
+regression-baseline-verify	plan	3	F6	NIT	consistency	
+rename-binary-lym	code	1	F1	LOW	consistency	lens:code-correctness
+rename-binary-lym	code	1	F2	LOW	consistency	lens:code-affected-set
+rename-binary-lym	code	1	F3	LOW	design	lens:code-tests
+rename-target-checks	code	1	F1	MEDIUM	design	lens:code-correctness
+rename-target-checks	code	1	F2	LOW	design	lens:code-tests
+rename-target-checks	code	1	F3	LOW	design	lens:code-tests
+rename-target-checks	code	1	F4	NIT	design	lens:code-tests
+run-profiles-ladder	code-20261024T145358Z	1	F1	MEDIUM	consistency	lens:code-affected-set
+run-profiles-ladder	code-20261024T145358Z	1	F2	LOW	consistency	lens:code-affected-set
+run-profiles-ladder	code-20261024T145358Z	1	F3	LOW	scope	lens:code-tests
+run-profiles-ladder	code-20261024T145358Z	1	F4	LOW	scope	lens:code-tests
+run-profiles-ladder	code-20261024T145358Z	1	F5	NIT	consistency	handler
+runs-never-write-board	code-20261024T151505Z	1	F1	MEDIUM	design	lens:code-correctness
+runs-never-write-board	code-20261024T151505Z	1	F2	LOW	scope	lens:code-tests
+runs-never-write-board	code-20261024T151505Z	1	F3	LOW	consistency	lens:code-affected-set
+runs-never-write-board	code-20261024T151505Z	1	F4	NIT	consistency	lens:code-tests
+scripted-edits-allowed	code-20261026T124255Z	1	F1	MEDIUM	consistency	lens:code-affected-set
+scripted-edits-allowed	code-20261026T124255Z	1	F2	LOW	consistency	lens:code-correctness
+scripted-edits-allowed	code-20261026T124255Z	1	F3	LOW	consistency	lens:code-tests
+scripted-edits-allowed	code-20261026T124255Z	1	F4	LOW	consistency	lens:code-pattern-fit
+shuttle-start-hardening	code	1	F1	MEDIUM	decision	handler
+shuttle-start-hardening	code	1	F2	MEDIUM	consistency	lens:code-affected-set
+shuttle-start-hardening	code	1	F3	LOW	consistency	lens:code-tests
+shuttle-start-hardening	code	1	F4	LOW	design	lens:code-tests
+shuttle-start-hardening	code	1	F5	LOW	design	lens:code-tests
+umbrella-anchor	code-20261025T191455Z	1	F1	LOW	design	lens:code-correctness
+umbrella-anchor	code-20261025T191455Z	1	F2	LOW	design	lens:code-correctness
+umbrella-anchor	code-20261025T191455Z	1	F3	LOW	design	lens:code-correctness
+umbrella-anchor	code-20261025T192952Z	1	F1	LOW	design	handler
+umbrella-anchor	code-20261025T192952Z	1	F2	LOW	design	lens:code-tests
+umbrella-anchor	discussion	1	F1	BLOCKING	design	lens:bound-breaker
+umbrella-anchor	discussion	1	F2	BLOCKING	design	lens:existing-paths
+umbrella-anchor	discussion	1	F3	BLOCKING	design	lens:interactions
+umbrella-anchor	discussion	1	F4	MEDIUM	design	lens:existing-paths
+umbrella-anchor	discussion	1	F5	MEDIUM	design	lens:walkthrough
+umbrella-anchor	discussion	1	F6	MEDIUM	design	lens:bound-breaker
+umbrella-anchor	discussion	1	F7	MEDIUM	design	lens:bound-breaker
+umbrella-anchor	discussion	1	F8	MEDIUM	design	lens:goal-scope
+umbrella-anchor	discussion	1	F9	MEDIUM	design	lens:walkthrough
+umbrella-anchor	discussion	1	F10	MEDIUM	design	lens:existing-paths
+umbrella-anchor	discussion	1	F11	MEDIUM	design	lens:bound-breaker
+umbrella-anchor	discussion	1	F12	LOW	consistency	lens:interactions
+umbrella-anchor	discussion	1	F13	LOW	design	lens:bound-breaker
+umbrella-anchor	discussion	1	F14	LOW	design	lens:existing-paths
+umbrella-anchor	discussion	1	F15	LOW	consistency	lens:interactions
+umbrella-anchor	discussion	1	F16	LOW	consistency	lens:walkthrough
+umbrella-anchor	discussion	2	F1	BLOCKING	design	lens:interactions
+umbrella-anchor	discussion	2	F2	BLOCKING	design	lens:walkthrough
+umbrella-anchor	discussion	2	F3	BLOCKING	design	lens:bound-breaker
+umbrella-anchor	discussion	2	F4	MEDIUM	design	lens:bound-breaker
+umbrella-anchor	discussion	2	F5	MEDIUM	design	lens:interactions
+umbrella-anchor	discussion	2	F6	MEDIUM	design	lens:interactions
+umbrella-anchor	discussion	2	F7	MEDIUM	design	lens:bound-breaker
+umbrella-anchor	discussion	2	F8	MEDIUM	design	lens:interactions
+umbrella-anchor	discussion	2	F9	MEDIUM	design	lens:walkthrough
+umbrella-anchor	discussion	2	F10	MEDIUM	design	lens:walkthrough
+umbrella-anchor	discussion	2	F11	LOW	consistency	lens:walkthrough
+umbrella-anchor	discussion	2	F12	LOW	consistency	lens:interactions
+umbrella-anchor	discussion	2	F13	LOW	consistency	lens:interactions
+umbrella-anchor	discussion	3	F1	BLOCKING	design	
+umbrella-anchor	discussion	3	F2	LOW	design	
+umbrella-anchor	discussion	3	F3	LOW	consistency	
+umbrella-anchor	discussion	3	F4	LOW	consistency	
+umbrella-anchor	discussion	3	F5	LOW	consistency	
+umbrella-anchor	plan	1	F1	BLOCKING	design	lens:guard-reach
+umbrella-anchor	plan	1	F2	MEDIUM	design	lens:way-forward
+umbrella-anchor	plan	1	F3	MEDIUM	design	lens:way-forward
+umbrella-anchor	plan	1	F4	MEDIUM	consistency	lens:way-forward
+umbrella-anchor	plan	1	F5	MEDIUM	design	lens:guard-reach
+umbrella-anchor	plan	1	F6	MEDIUM	scope	lens:affected-set
+umbrella-anchor	plan	1	F7	MEDIUM	design	handler
+umbrella-anchor	plan	1	F8	MEDIUM	design	handler
+umbrella-anchor	plan	1	F9	MEDIUM	design	handler
+umbrella-anchor	plan	1	F10	MEDIUM	decision	handler
+umbrella-anchor	plan	1	F11	LOW	consistency	lens:guard-reach
+umbrella-anchor	plan	1	F12	LOW	consistency	lens:affected-set
+umbrella-anchor	plan	1	F13	LOW	decision	handler
+umbrella-anchor	plan	2	F1	BLOCKING	design	
+umbrella-anchor	plan	2	F2	BLOCKING	design	
+umbrella-anchor	plan	2	F3	MEDIUM	scope	
+umbrella-anchor	plan	2	F4	MEDIUM	design	
+umbrella-anchor	plan	3	F1	MEDIUM	scope	
+umbrella-anchor	plan	3	F2	LOW	consistency	
+umbrella-anchor	plan	3	F3	LOW	scope	
+umbrella-anchor	plan	3	F4	LOW	consistency	
+umbrella-anchor	plan	3	F5	NIT	consistency	
+umbrella-daemon	code	1	F1	MEDIUM	design	lens:code-correctness
+umbrella-daemon	code	1	F2	MEDIUM	design	lens:code-correctness
+umbrella-daemon	code	1	F3	LOW	design	lens:code-correctness
+umbrella-daemon	code	1	F4	LOW	consistency	lens:code-affected-set
+umbrella-daemon	discussion	1	F1	BLOCKING	design	lens:bound-breaker
+umbrella-daemon	discussion	1	F2	BLOCKING	design	lens:bound-breaker
+umbrella-daemon	discussion	1	F3	BLOCKING	design	lens:bound-breaker
+umbrella-daemon	discussion	1	F4	MEDIUM	design	lens:existing-paths
+umbrella-daemon	discussion	1	F5	MEDIUM	design	lens:existing-paths
+umbrella-daemon	discussion	1	F6	MEDIUM	design	handler
+umbrella-daemon	discussion	1	F7	MEDIUM	consistency	lens:interactions
+umbrella-daemon	discussion	1	F8	LOW	design	lens:bound-breaker
+umbrella-daemon	discussion	1	F9	LOW	design	lens:existing-paths
+umbrella-daemon	discussion	1	F10	LOW	design	lens:bound-breaker
+umbrella-daemon	discussion	1	F11	LOW	design	lens:bound-breaker
+umbrella-daemon	discussion	1	F12	LOW	design	lens:bound-breaker
+umbrella-daemon	discussion	1	F13	LOW	consistency	lens:interactions
+umbrella-daemon	discussion	1	F14	LOW	consistency	lens:interactions
+umbrella-daemon	discussion	1	F15	LOW	consistency	lens:interactions
+umbrella-daemon	discussion	1	F16	LOW	design	lens:bound-breaker
+umbrella-daemon	discussion	1	F17	LOW	consistency	handler
+umbrella-daemon	discussion	2	F1	BLOCKING	design	lens:interactions
+umbrella-daemon	discussion	2	F2	BLOCKING	design	lens:existing-paths
+umbrella-daemon	discussion	2	F3	BLOCKING	design	handler
+umbrella-daemon	discussion	2	F4	MEDIUM	design	lens:interactions
+umbrella-daemon	discussion	2	F5	MEDIUM	design	lens:interactions
+umbrella-daemon	discussion	2	F6	MEDIUM	design	lens:existing-paths
+umbrella-daemon	discussion	2	F7	MEDIUM	design	lens:bound-breaker
+umbrella-daemon	discussion	2	F8	MEDIUM	design	lens:bound-breaker
+umbrella-daemon	discussion	2	F9	LOW	consistency	lens:walkthrough
+umbrella-daemon	discussion	2	F10	LOW	design	lens:walkthrough
+umbrella-daemon	discussion	3	F1	BLOCKING	design	
+umbrella-daemon	discussion	3	F2	MEDIUM	design	
+umbrella-daemon	discussion	3	F3	MEDIUM	design	
+umbrella-daemon	discussion	3	F4	MEDIUM	design	
+umbrella-daemon	discussion	3	F5	MEDIUM	design	
+umbrella-daemon	discussion	3	F6	MEDIUM	design	
+umbrella-daemon	discussion	4	F1	MEDIUM	decision	
+umbrella-daemon	discussion	4	F2	LOW	design	
+umbrella-daemon	discussion	4	F3	LOW	decision	
+umbrella-daemon	discussion	4	F4	LOW	decision	
+umbrella-daemon	plan	1	F1	BLOCKING	design	handler
+umbrella-daemon	plan	1	F2	BLOCKING	design	lens:affected-set
+umbrella-daemon	plan	1	F3	MEDIUM	design	lens:guard-reach
+umbrella-daemon	plan	1	F4	MEDIUM	design	handler
+umbrella-daemon	plan	1	F5	MEDIUM	design	lens:way-forward
+umbrella-daemon	plan	1	F6	MEDIUM	decision	handler
+umbrella-daemon	plan	1	F7	MEDIUM	consistency	handler
+umbrella-daemon	plan	1	F8	LOW	consistency	lens:guard-reach
+umbrella-daemon	plan	1	F9	LOW	decision	lens:guard-reach
+umbrella-daemon	plan	1	F10	LOW	decision	handler
+umbrella-daemon	plan	1	F11	LOW	design	handler
+umbrella-daemon	plan	1	F12	LOW	consistency	lens:guard-reach
+umbrella-daemon	plan	1	F13	LOW	consistency	lens:guard-reach
+umbrella-daemon	plan	1	F14	LOW	design	lens:guard-reach
+umbrella-daemon	plan	1	F15	LOW	scope	lens:way-forward
+umbrella-daemon	plan	1	F16	LOW	design	lens:way-forward
+umbrella-daemon	plan	1	F17	LOW	consistency	lens:way-forward
+umbrella-daemon	plan	1	F18	LOW	scope	lens:way-forward
+umbrella-daemon	plan	1	F19	LOW	consistency	lens:affected-set
+umbrella-daemon	plan	1	F20	LOW	consistency	handler
+umbrella-daemon	plan	1	F21	LOW	decision	handler
+umbrella-daemon	plan	2	F1	MEDIUM	design	
+umbrella-daemon	plan	2	F2	LOW	consistency	
+umbrella-daemon	plan	2	F3	LOW	consistency	
+umbrella-groundwork	code	1	F1	LOW	consistency	lens:code-affected-set
+umbrella-groundwork	code	1	F2	LOW	design	lens:code-correctness
+umbrella-groundwork	code	1	F3	LOW	consistency	handler
+umbrella-groundwork	code	1	F4	LOW	consistency	handler
+umbrella-groundwork	discussion	1	F1	BLOCKING	design	lens:bound-breaker
+umbrella-groundwork	discussion	1	F2	BLOCKING	design	lens:existing-paths
+umbrella-groundwork	discussion	1	F3	BLOCKING	consistency	lens:interactions
+umbrella-groundwork	discussion	1	F4	MEDIUM	design	lens:existing-paths
+umbrella-groundwork	discussion	1	F5	MEDIUM	design	lens:walkthrough
+umbrella-groundwork	discussion	1	F6	MEDIUM	design	lens:walkthrough
+umbrella-groundwork	discussion	1	F7	MEDIUM	design	lens:bound-breaker
+umbrella-groundwork	discussion	1	F8	MEDIUM	consistency	lens:interactions
+umbrella-groundwork	discussion	1	F9	MEDIUM	design	lens:interactions
+umbrella-groundwork	discussion	1	F10	LOW	consistency	lens:interactions
+umbrella-groundwork	discussion	1	F11	LOW	consistency	lens:interactions
+umbrella-groundwork	discussion	1	F12	LOW	design	lens:interactions
+umbrella-groundwork	discussion	1	F13	LOW	design	lens:bound-breaker
+umbrella-groundwork	discussion	1	F14	LOW	design	lens:bound-breaker
+umbrella-groundwork	discussion	1	F15	LOW	consistency	handler
+umbrella-groundwork	discussion	1	F16	NIT	consistency	handler
+umbrella-groundwork	discussion	2	F1	BLOCKING	design	lens:interactions
+umbrella-groundwork	discussion	2	F2	MEDIUM	design	lens:existing-paths
+umbrella-groundwork	discussion	2	F3	MEDIUM	design	lens:bound-breaker
+umbrella-groundwork	discussion	2	F4	MEDIUM	design	lens:bound-breaker
+umbrella-groundwork	discussion	2	F5	MEDIUM	design	lens:existing-paths
+umbrella-groundwork	discussion	2	F6	LOW	design	lens:bound-breaker
+umbrella-groundwork	discussion	2	F7	LOW	consistency	lens:interactions
+umbrella-groundwork	discussion	2	F8	LOW	consistency	lens:interactions
+umbrella-groundwork	discussion	2	F9	LOW	consistency	lens:bound-breaker
+umbrella-groundwork	discussion	2	F10	LOW	design	lens:walkthrough
+umbrella-groundwork	discussion	2	F11	NIT	consistency	handler
+umbrella-groundwork	discussion	3	F1	MEDIUM	consistency	
+umbrella-groundwork	discussion	3	F2	MEDIUM	design	
+umbrella-groundwork	discussion	3	F3	LOW	consistency	
+umbrella-groundwork	discussion	3	F4	NIT	consistency	
+umbrella-groundwork	plan	1	F1	MEDIUM	consistency	lens:affected-set
+umbrella-groundwork	plan	1	F2	MEDIUM	consistency	lens:affected-set
+umbrella-groundwork	plan	1	F3	MEDIUM	design	lens:guard-reach
+umbrella-groundwork	plan	1	F4	MEDIUM	consistency	lens:guard-reach
+umbrella-groundwork	plan	1	F5	MEDIUM	consistency	handler
+umbrella-groundwork	plan	1	F6	MEDIUM	design	handler
+umbrella-groundwork	plan	1	F7	MEDIUM	consistency	lens:way-forward
+umbrella-groundwork	plan	1	F8	MEDIUM	consistency	lens:way-forward
+umbrella-groundwork	plan	1	F9	LOW	consistency	handler
+umbrella-groundwork	plan	1	F10	LOW	consistency	lens:way-forward
+umbrella-groundwork	plan	1	F11	LOW	consistency	lens:way-forward
+umbrella-groundwork	plan	1	F12	LOW	consistency	lens:way-forward
+umbrella-groundwork	plan	1	F13	LOW	consistency	lens:way-forward
+umbrella-groundwork	plan	1	F14	LOW	consistency	lens:guard-reach
+umbrella-groundwork	plan	1	F15	LOW	decision	handler
+umbrella-groundwork	plan	2	F1	MEDIUM	consistency	
+umbrella-groundwork	plan	2	F2	MEDIUM	scope	
+usage-limit-hold-quiet	code	1	F1	LOW	scope	lens:code-tests
+usage-limit-hold-quiet	code	1	F2	LOW	scope	lens:code-tests
+usage-limit-hold-quiet	code	1	F3	LOW	consistency	lens:code-correctness
+webstercli-tests-ignore-tmp-git	code-20261024T140336Z	1	F1	LOW	design	lens:code-tests
+webstercli-tests-ignore-tmp-git	code-20261024T140336Z	1	F2	LOW	consistency	lens:code-tests
+webstercli-tests-ignore-tmp-git	code-20261024T140336Z	1	F3	LOW	consistency	lens:code-pattern-fit
+webster-orch-need-to-parent	code	1	F1	LOW	design	lens:code-correctness
+webster-orch-need-to-parent	code	1	F2	LOW	design	lens:code-correctness
+webster-orch-need-to-parent	code	1	F3	LOW	scope	lens:code-tests
+webster-orch-need-to-parent	code	1	F4	LOW	consistency	lens:code-tests
+webster-orch-need-to-parent	code	1	F5	NIT	consistency	lens:code-affected-set
+webster-orch-need-to-parent	code	1	F6	NIT	consistency	lens:code-pattern-fit
+webster-reset-reopens-dead-batch	code	1	F1	LOW	scope	lens:code-tests
+webster-stop-asked-once	code	1	F1	BLOCKING	consistency	lens:code-pattern-fit
+webster-stop-asked-once	code	1	F2	MEDIUM	scope	lens:code-pattern-fit
+webster-stop-asked-once	code	1	F3	LOW	consistency	lens:code-tests
+webster-stop-asked-once	code	1	F4	LOW	scope	lens:code-tests
+webster-stop-asked-once	code	2	F1	BLOCKING	design	
+webster-stop-asked-once	code	2	F2	MEDIUM	design	
+webster-stop-asked-once	code	2	F3	LOW	consistency	
+webster-tree-moved-fixer	code	1	F1	MEDIUM	consistency	lens:code-affected-set
+webster-tree-moved-fixer	code	1	F2	MEDIUM	design	lens:code-tests
+webster-tree-moved-fixer	code	1	F3	LOW	design	lens:code-tests
+webster-tree-moved-fixer	code	1	F4	LOW	consistency	lens:code-tests
+webster-tree-moved-fixer	code	1	F5	LOW	design	lens:code-tests
+webster-tree-moved-fixer	code	1	F6	LOW	consistency	lens:code-pattern-fit
+webster-tree-moved-fixer	code	1	F7	NIT	consistency	lens:code-affected-set
+webster-tree-moved-fixer	code	2	F1	LOW	consistency	

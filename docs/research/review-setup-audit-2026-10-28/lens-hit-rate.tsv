@@ -1,0 +1,14 @@
+perch	lens	rounds_ran	rounds_with_finding	rounds_with_gating	rounds_with_blocking
+code	code-affected-set	58	23	8	0
+code	code-correctness	58	23	11	2
+code	code-pattern-fit	58	13	3	1
+code	code-tests	58	29	4	0
+discussion	board-fit	4	1	1	0
+discussion	bound-breaker	16	16	16	8
+discussion	existing-paths	16	15	15	4
+discussion	goal-scope	6	4	1	0
+discussion	interactions	16	16	15	9
+discussion	walkthrough	16	15	9	3
+plan	affected-set	8	8	6	2
+plan	guard-reach	8	8	6	3
+plan	way-forward	8	8	4	0
