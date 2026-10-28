@@ -7,6 +7,7 @@ package claudeengine
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -159,7 +160,8 @@ func signalFromPayload(hookName string, fields map[string]any) (shuttleengine.Se
 			ErrorText: apiErrorText(fields),
 		}, true
 	case hookEventUserPromptSubmit:
-		return shuttleengine.SessionSignal{Kind: shuttleengine.SessionSignalTurnStart}, true
+		prompt, _ := fields["prompt"].(string)
+		return shuttleengine.SessionSignal{Kind: shuttleengine.SessionSignalTurnStart, Instruction: typedInstruction(prompt)}, true
 	case hookEventPreToolUse:
 		if toolName, _ := fields["tool_name"].(string); toolName != askUserQuestionToolName {
 			return shuttleengine.SessionSignal{}, false
@@ -186,6 +188,23 @@ func signalFromPayload(hookName string, fields map[string]any) (shuttleengine.Se
 		return shuttleengine.SessionSignal{Kind: shuttleengine.SessionSignalSessionStart, Source: sessionStartSource(source)}, true
 	}
 	return shuttleengine.SessionSignal{}, false
+}
+
+// taskNotificationPrefix opens the prompt Claude Code submits by itself when a background task or fork finishes.
+const taskNotificationPrefix = "<task-notification>"
+
+// typedInstruction returns a UserPromptSubmit prompt as a typed instruction, or "" for a task notification and a slash command, which are not instructions to the agent.
+// A prompt is a slash command when its first word starts with "/" and holds no further "/", so one that opens with a multi-segment path is an instruction.
+// A prompt opening with a one-segment path such as "/etc" reads as a command, since it is indistinguishable from one.
+func typedInstruction(prompt string) string {
+	trimmed := strings.TrimSpace(prompt)
+	if strings.HasPrefix(trimmed, taskNotificationPrefix) {
+		return ""
+	}
+	if words := strings.Fields(trimmed); len(words) > 0 && strings.HasPrefix(words[0], "/") && !strings.Contains(words[0][1:], "/") {
+		return ""
+	}
+	return trimmed
 }
 
 // sessionStartSource maps a SessionStart payload's source string to the provider-neutral source, or the empty source for any other string.

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -77,6 +78,7 @@ func stampPrintf(hookEventName, quotedEventsPath string) string {
 
 // TestBuildSettings_RecordingHooks pins the recording hooks every document carries: one command entry per event with no tool matcher, each appending a stamp line and then the payload to the events path in its POSIX form.
 // Stop keeps the payload append's exit status, and the other hooks end in `; true` so they exit 0 whatever the append does.
+// Outside a hub, PostToolUse, PreCompact and PostCompact each carry the one command that touches the activity stamp beside the events file and exits 0.
 // A run directory path containing a literal apostrophe (an unusual but legal Windows path character, e.g. a worktree named "operator's-box") must not break out of the hooks' single-quoted shell argument: the embedded quote is escaped via the standard sh idiom rather than passed through raw.
 //
 //testtiming:keep pins the recording hooks' exact commands and their single-quote escaping, which its covering test does not assert
@@ -87,9 +89,11 @@ func TestBuildSettings_RecordingHooks(t *testing.T) {
 		name       string
 		eventsPath string
 		quoted     string
+		// quotedStamp is the quoted activity stamp path beside the events file.
+		quotedStamp string
 	}{
-		{"plain_path", "/c/run/events.jsonl", `'/c/run/events.jsonl'`},
-		{"embedded_single_quote_escaped", `/c/run's dir/events.jsonl`, `'/c/run'\''s dir/events.jsonl'`},
+		{"plain_path", "/c/run/events.jsonl", `'/c/run/events.jsonl'`, `'/c/run/activity-stamp'`},
+		{"embedded_single_quote_escaped", `/c/run's dir/events.jsonl`, `'/c/run'\''s dir/events.jsonl'`, `'/c/run'\''s dir/activity-stamp'`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -112,6 +116,9 @@ func TestBuildSettings_RecordingHooks(t *testing.T) {
 				{"SessionEnd", stampPrintf("SessionEnd", tt.quoted) + "; " + payload + "; true"},
 				{"SessionStart", stampPrintf("SessionStart", tt.quoted) + "; " + payload + "; true"},
 				{"PermissionRequest", stampPrintf("PermissionRequest", tt.quoted) + "; " + payload + "; true"},
+				{"PostToolUse", "touch " + tt.quotedStamp + "; true"},
+				{"PreCompact", "touch " + tt.quotedStamp + "; true"},
+				{"PostCompact", "touch " + tt.quotedStamp + "; true"},
 			} {
 				entries := hooksFor(doc, hook.event)
 				if len(entries) != 1 {
@@ -214,8 +221,8 @@ func TestHookContext(t *testing.T) {
 }
 
 // TestBuildSettings_CreelMailHook pins the creel hooks in a hub and out of one:
-// the PostToolUse mail hook as one entry with no matcher testing the flag directory it is told, and the two Stop entries, the merged turn-end command and the idle waiter with asyncRewake and its 86400-second timeout.
-// Told no flag directory, the document carries no PostToolUse key and the one plain Stop recording.
+// the PostToolUse mail hook as an entry with no matcher after the activity stamp, testing the flag directory it is told, and the two Stop entries, the merged turn-end command and the idle waiter with asyncRewake and its 86400-second timeout.
+// Told no flag directory, PostToolUse carries the activity stamp alone and Stop the one plain recording.
 func TestBuildSettings_CreelMailHook(t *testing.T) {
 	t.Parallel()
 	const eventsPath = "/c/run/events.jsonl"
@@ -233,13 +240,13 @@ func TestBuildSettings_CreelMailHook(t *testing.T) {
 	}{
 		{
 			"InAHub", `/c/hub's/_board/.lym/creel/flags`,
-			[]string{creelMailHookCommand(`'/c/hub'\''s/_board/.lym/creel/flags'`)},
+			[]string{"touch '/c/run/activity-stamp'; true", creelMailHookCommand(`'/c/hub'\''s/_board/.lym/creel/flags'`)},
 			[]stopHook{
 				{command: creelStopHookCommand(`'/c/hub'\''s/_board/.lym/creel/flags'`, quotedEventsPath)},
 				{command: creelWaitHookCommand(), asyncRewake: true, timeout: 86400},
 			},
 		},
-		{"Standalone", "", nil, []stopHook{{command: recordingCommand(hookEventStop, quotedEventsPath)}}},
+		{"Standalone", "", []string{"touch '/c/run/activity-stamp'; true"}, []stopHook{{command: recordingCommand(hookEventStop, quotedEventsPath)}}},
 	}
 	for _, tt := range tests {
 		data, err := buildSettings(eventsPath, false, shuttleengine.Config{}, Config{}, false, false, "", tt.flagDir)
@@ -653,7 +660,7 @@ func TestPrepare_PromptLaunchLimit(t *testing.T) {
 	})
 }
 
-// TestPrepare_CreelMailHookFollowsTheBoardDirectory pins that Prepare derives the creel flag directory from the hub's board directory and marks the launch CreelHooks, and that an engine in no hub writes no PostToolUse hook and marks nothing.
+// TestPrepare_CreelMailHookFollowsTheBoardDirectory pins that Prepare derives the creel flag directory from the hub's board directory and marks the launch CreelHooks, and that an engine in no hub writes the activity stamp alone on PostToolUse and marks nothing.
 func TestPrepare_CreelMailHookFollowsTheBoardDirectory(t *testing.T) {
 	t.Parallel()
 	boardDir := t.TempDir()
@@ -668,10 +675,11 @@ func TestPrepare_CreelMailHookFollowsTheBoardDirectory(t *testing.T) {
 	tests := []struct {
 		name  string
 		board string
-		want  []string
+		// mail is the creel mail command expected after the activity stamp; empty expects the stamp alone.
+		mail string
 	}{
-		{"InAHub", boardDir, []string{creelMailHookCommand(shQuote(flagDir))}},
-		{"Standalone", "", nil},
+		{"InAHub", boardDir, creelMailHookCommand(shQuote(flagDir))},
+		{"Standalone", "", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -702,8 +710,18 @@ func TestPrepare_CreelMailHookFollowsTheBoardDirectory(t *testing.T) {
 					got = append(got, command)
 				}
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("PostToolUse commands = %q; want %q", got, tt.want)
+			eventsPathForHook := filepath.Join(runDir, "events.jsonl")
+			if runtime.GOOS == "windows" {
+				if eventsPathForHook, err = shuttleengine.PosixPath(eventsPathForHook); err != nil {
+					t.Fatal(err)
+				}
+			}
+			want := []string{"touch " + shQuote(path.Join(path.Dir(eventsPathForHook), shuttleengine.ActivityStampFileName)) + "; true"}
+			if tt.mail != "" {
+				want = append(want, tt.mail)
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("PostToolUse commands = %q; want %q", got, want)
 			}
 		})
 	}

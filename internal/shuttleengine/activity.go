@@ -1,4 +1,4 @@
-// activity.go declares the provider-neutral reading of what a worktree's live shuttle runs have been doing:
+// activity.go declares the provider-neutral reading of what a worktree's running shuttle runs have been doing:
 // when each last showed activity, and whether its newest turn end is an API error.
 // A caller that judges a run quiet, or stalled on an API error, reads it through ReadAgentActivity.
 // Like ReadWaitMarker it reads files only, so any process may call it.
@@ -43,11 +43,11 @@ type UsageLimit struct {
 	ResetsAt time.Time
 }
 
-// AgentActivity is the reading of one live run.
+// AgentActivity is the reading of one run whose record reads running, whether or not a process still waits on it.
 type AgentActivity struct {
 	// StrandName is the run's strand name, the strand guid for a record that predates the name.
 	StrandName string
-	// LastActivity is the newer of the session's last activity, its forks included, and the time of the events file's newest Stop or ask line.
+	// LastActivity is the newest of the session's last activity, its forks included, the time of the events file's newest Stop or ask line, and the modification time of the run's activity stamp.
 	// A Stop or ask line with no time, an engine without a SessionSignalParser and a file yielding no signals count the events file's last write instead.
 	// It is the run's creation time when none of these can be read.
 	LastActivity time.Time
@@ -57,17 +57,20 @@ type AgentActivity struct {
 	APIErrorText string
 	// UsageLimit is the usage-limit reading of the run's newest turn end.
 	UsageLimit UsageLimit
+	// WaiterGone is true when the run's record reads running but no process is known to wait on it: the recorded waiting process is gone, or the record names none.
+	// Such a reading carries its last activity only, and does not show the agent live: a caller that acts on a live run skips it.
+	WaiterGone bool
 }
 
 // unreadableFiles keeps one failure episode per file the files-only readers skip, keyed by the path their log line names.
 // It is package-level because the readers are free functions that loops in several processes poll: a file that stays unreadable warns once, and readers that skip the same path share its episode.
 var unreadableFiles logger.EpisodeSet
 
-// ReadAgentActivity returns one reading per live run under the run-directory root of anchorPath.
-// A run is live when its record reads running and the pid of the process that waits on it is alive.
-// A directory that is not a run directory, a run with no record, an undecodable record and a run that is not live are skipped,
+// ReadAgentActivity returns one reading per running run under the run-directory root of anchorPath, a run whose record reads running.
+// A directory that is not a run directory, a run with no record, an undecodable record and a run whose record reads anything else are skipped,
 // and an undecodable record is logged once per episode so one torn file cannot hide another run.
-// A record that reads running while the process recorded as waiting on it is gone is skipped too, and logged once per episode, so a working agent that lost its waiter leaves a trace.
+// A running record whose recorded waiting process is gone is read too, so an agent that lost its waiter still reads as working;
+// it is logged once per episode, and its reading carries its last activity only, with no API error or usage limit and WaiterGone set, since no process waits on its turn ends.
 // Each run is read through the engine its record names, the set's default for a record naming none:
 // its events past its prompt offset are parsed through that engine, and the newest turn end among them is handed to the engine's ActivityReader;
 // a run with no turn end past the offset hands over the newest one before it, a skill-load turn end of the same session, for its last activity only, so a first turn spent in a fork still reads active.
@@ -99,17 +102,21 @@ func ReadAgentActivity(cfg Config, anchorPath string, engines EngineSet) ([]Agen
 			waiterlessRuns.Recover(runDir, waiterlessRecovered, "runDir", runDir)
 			continue
 		}
-		if !runIsLive(rs) {
-			noteWaiterlessRun(runDir, rs)
+		noteWaiterlessRun(runDir, rs)
+		if rs.Outcome != runOutcomeRunning {
 			continue
 		}
-		waiterlessRuns.Recover(runDir, waiterlessRecovered, "runDir", runDir)
 		engine, ok := engines.engineOfRun(runDir, rs)
 		if !ok {
 			continue
 		}
 		reader, _ := engine.(ActivityReader)
-		readings = append(readings, readRunActivity(rs, engine, reader))
+		reading := readRunActivity(runDir, rs, engine, reader)
+		if !runIsLive(rs) {
+			reading.APIError, reading.APIErrorText, reading.UsageLimit = false, "", UsageLimit{}
+			reading.WaiterGone = true
+		}
+		readings = append(readings, reading)
 	}
 	return readings, nil
 }
@@ -126,20 +133,20 @@ var waiterlessRuns logger.EpisodeSet
 // waiterlessRecovered is the recovery line of a waiterless-run episode.
 const waiterlessRecovered = "shuttle: run no longer has a gone waiting process"
 
-// noteWaiterlessRun logs the skip of the run at runDir, whose record rs is not live, once per episode when rs reads running with a recorded waiter that is gone.
-// Such a run's agent may still be working where no reader sees it.
+// noteWaiterlessRun logs the run at runDir once per episode when its record rs reads running with a recorded waiter that is gone.
+// Such a run's agent may still be working with no process acting on its turn ends.
 // It ends the episode when rs reads anything else.
 // A record with no pid predates the field and is not counted.
 func noteWaiterlessRun(runDir string, rs RunState) {
-	if rs.Outcome == runOutcomeRunning && rs.PID > 0 {
-		waiterlessRuns.Fail(runDir, "shuttle: skipping a run that reads running but whose waiting process is gone", "runDir", runDir, "strand", rs.StrandName, "pid", rs.PID)
+	if rs.Outcome == runOutcomeRunning && rs.PID > 0 && !isAlive(rs.PID) {
+		waiterlessRuns.Fail(runDir, "shuttle: a run reads running but its waiting process is gone", "runDir", runDir, "strand", rs.StrandName, "pid", rs.PID)
 		return
 	}
 	waiterlessRuns.Recover(runDir, waiterlessRecovered, "runDir", runDir)
 }
 
-// readRunActivity builds the reading of the live run rs; reader is nil when the engine has no ActivityReader.
-func readRunActivity(rs RunState, engine Engine, reader ActivityReader) AgentActivity {
+// readRunActivity builds the reading of the running run rs in runDir; reader is nil when the engine has no ActivityReader.
+func readRunActivity(runDir string, rs RunState, engine Engine, reader ActivityReader) AgentActivity {
 	reading := AgentActivity{StrandName: rs.StrandName}
 	if reading.StrandName == "" {
 		reading.StrandName = rs.StrandGUID
@@ -165,6 +172,9 @@ func readRunActivity(rs RunState, engine Engine, reader ActivityReader) AgentAct
 	reading.LastActivity = activity.TranscriptModTime
 	if eventsActivity.After(reading.LastActivity) {
 		reading.LastActivity = eventsActivity
+	}
+	if info, err := os.Stat(filepath.Join(runDir, ActivityStampFileName)); err == nil && info.ModTime().After(reading.LastActivity) {
+		reading.LastActivity = info.ModTime()
 	}
 	if reading.LastActivity.IsZero() {
 		if createdAt, err := time.Parse(time.RFC3339, rs.CreatedAt); err == nil {

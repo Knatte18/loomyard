@@ -344,7 +344,7 @@ func TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree(t *testing.T) {
 	}
 }
 
-// TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker asserts the Activity seam's reading maps a task worktree's live shuttle run onto battenshed's type, with the session state of its stamped turn end, skips a run whose process has ended, and reports a live wait marker, a live parent lock wait record or a child running at Beam-Await, ignoring a lock wait record whose writer is dead.
+// TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker asserts the Activity seam's reading maps a task worktree's live shuttle run onto battenshed's type, with the session state of its stamped turn end, skips a run whose record reads stopped, and reports a live wait marker, a live parent lock wait record or a child running at Beam-Await, ignoring a lock wait record whose writer is dead.
 // It points HOME at a session registry through t.Setenv, so it does not run in parallel.
 func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 	home := t.TempDir()
@@ -365,12 +365,12 @@ func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 
 	taskLocation := &lymcwd.Location{RepoName: "example", HubPath: t.TempDir(), WorktreeName: "task", AnchorRel: "."}
 	runsRoot := filepath.Join(taskLocation.AnchorPath(), ".lym", "shuttle")
-	writeRun := func(name string, pid int, strand string) string {
+	writeRun := func(name string, pid int, strand, outcome string) string {
 		dir := filepath.Join(runsRoot, name)
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		record := fmt.Sprintf(`{"runId":%q,"strandName":%q,"outcome":"running","pid":%d,"eventsPath":%q,"createdAt":"2026-01-01T09:00:00Z"}`, name, strand, pid, filepath.Join(dir, "events"))
+		record := fmt.Sprintf(`{"runId":%q,"strandName":%q,"outcome":%q,"pid":%d,"eventsPath":%q,"createdAt":"2026-01-01T09:00:00Z"}`, name, strand, outcome, pid, filepath.Join(dir, "events"))
 		if err := os.WriteFile(filepath.Join(dir, "run.json"), []byte(record), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -378,7 +378,7 @@ func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 	}
 	livePID := os.Getpid()
 
-	liveDir := writeRun("live", livePID, "hub:task:impl")
+	liveDir := writeRun("live", livePID, "hub:task:impl", "running")
 	activeAt := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
 	eventsPath := filepath.Join(liveDir, "events")
 	stampedStop := fmt.Sprintf(`{"lym_stamp":"Stop","lym_at":%q}`+"\n"+`{"hook_event_name":"Stop","session_id":"sess-1"}`+"\n", activeAt.Format(time.RFC3339))
@@ -388,7 +388,7 @@ func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 	if err := os.Chtimes(eventsPath, activeAt, activeAt); err != nil {
 		t.Fatal(err)
 	}
-	writeRun("ended", 1<<30, "hub:task:review")
+	writeRun("ended", 1<<30, "hub:task:review", "stopped")
 
 	runs, waitLive, err := readAgentActivity(taskLocation)
 	if err != nil || waitLive || len(runs) != 1 || runs[0].Producer != "hub:task:impl" || !runs[0].LastActivity.Equal(activeAt) || runs[0].APIError {

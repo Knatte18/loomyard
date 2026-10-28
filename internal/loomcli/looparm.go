@@ -123,6 +123,7 @@ func (c *loomCLI) stopStepRuns(tie shuttleengine.StepTie) (shuttleengine.StepSto
 }
 
 // agentActivityFor returns the reading of the run's agent activity: the newest LastActivity over every live agent run of loc's worktree.
+// A running run whose waiting process is gone is not live here.
 // The runs come from shuttle through its registered engines, which list every strand, so a MultiLLM row's chair and each of its advisors count.
 // A running verify, a live parent lock wait, a held drift capture lock or compare marker, or a shuttle wait that is not a held turn end, reads as activity now.
 // A verify held by a pause does no work and reads as none, and a drift lock a dead process left reads free.
@@ -170,12 +171,17 @@ func agentActivityFor(loc *lymcwd.Location, cfg shuttleengine.Config) func() (ti
 			return time.Time{}, false, err
 		}
 		var newest time.Time
+		live := false
 		for _, reading := range readings {
+			if reading.WaiterGone {
+				continue
+			}
+			live = true
 			if reading.LastActivity.After(newest) {
 				newest = reading.LastActivity
 			}
 		}
-		return newest, len(readings) > 0, nil
+		return newest, live, nil
 	}
 }
 

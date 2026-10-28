@@ -76,6 +76,8 @@ type activityRun struct {
 	noEventsFile bool
 	// engine is the engine name the record carries; empty leaves the record naming none.
 	engine string
+	// stampWritten, when set, writes the run's activity stamp with that modification time.
+	stampWritten time.Time
 }
 
 func TestReadAgentActivity(t *testing.T) {
@@ -216,14 +218,36 @@ func TestReadAgentActivity(t *testing.T) {
 			want: []AgentActivity{{StrandName: "guid-run-a", LastActivity: eventsWritten}},
 		},
 		{
-			name: "dead-pid, pid-less and finished runs are skipped",
+			name:       "an activity stamp newer than the transcript and the events file is the last activity",
+			runs:       map[string]activityRun{"run-a": {outcome: runOutcomeRunning, pid: livePID, strandName: "hub:task:driver", events: "STOP:turn\n", stampWritten: transcriptWritten.Add(10 * time.Minute)}},
+			transcript: map[string]TurnEndActivity{"turn": {TranscriptModTime: transcriptWritten}},
+			want:       []AgentActivity{{StrandName: "hub:task:driver", LastActivity: transcriptWritten.Add(10 * time.Minute)}},
+		},
+		{
+			name:       "an activity stamp older than the transcript leaves the transcript time",
+			runs:       map[string]activityRun{"run-a": {outcome: runOutcomeRunning, pid: livePID, strandName: "hub:task:driver", events: "STOP:turn\n", stampWritten: created.Add(time.Minute)}},
+			transcript: map[string]TurnEndActivity{"turn": {TranscriptModTime: transcriptWritten}},
+			want:       []AgentActivity{{StrandName: "hub:task:driver", LastActivity: transcriptWritten}},
+		},
+		{
+			name:       "a running run whose waiter is gone reads its activity without its API error or usage limit",
+			runs:       map[string]activityRun{"run-a": {outcome: runOutcomeRunning, pid: 4343, strandName: "hub:task:driver", events: "STOP:turn\n", stampWritten: transcriptWritten.Add(time.Minute)}},
+			transcript: map[string]TurnEndActivity{"turn": {TranscriptModTime: transcriptWritten, APIError: true, APIErrorText: "You've hit your weekly limit", UsageLimit: UsageLimit{Limited: true}}},
+			want:       []AgentActivity{{StrandName: "hub:task:driver", LastActivity: transcriptWritten.Add(time.Minute), WaiterGone: true}},
+		},
+		{
+			name: "a finished run is skipped, and dead-pid and pid-less running runs are read",
 			runs: map[string]activityRun{
 				"run-a": {outcome: runOutcomeRunning, pid: 4343, events: "STOP:turn\n"},
 				"run-b": {outcome: runOutcomeRunning, events: "STOP:turn\n"},
 				"run-c": {outcome: string(OutcomeDone), pid: livePID, events: "STOP:turn\n"},
 				"run-d": live,
 			},
-			want: []AgentActivity{{StrandName: "hub:task:driver", LastActivity: eventsWritten}},
+			want: []AgentActivity{
+				{StrandName: "guid-run-a", LastActivity: eventsWritten, WaiterGone: true},
+				{StrandName: "guid-run-b", LastActivity: eventsWritten, WaiterGone: true},
+				{StrandName: "hub:task:driver", LastActivity: eventsWritten},
+			},
 		},
 	}
 	for _, tt := range tests {
@@ -325,17 +349,17 @@ func TestReadAgentActivity(t *testing.T) {
 		}
 
 		for range 3 {
-			if got := read(); len(got) != 0 {
-				t.Fatalf("ReadAgentActivity = %+v; want no readings while no run has a live waiter", got)
+			if got := read(); len(got) != 2 {
+				t.Fatalf("ReadAgentActivity = %+v; want the waiterless and the pid-less running runs read", got)
 			}
 		}
 		writeActivityRun(t, root, "run-a", live, created, eventsWritten)
-		if got := read(); len(got) != 1 {
-			t.Fatalf("ReadAgentActivity = %+v; want the one run whose waiter is live again", got)
+		if got := read(); len(got) != 2 {
+			t.Fatalf("ReadAgentActivity = %+v; want the run whose waiter is live again and the pid-less run", got)
 		}
 
 		log := buf.String()
-		requireFailureEpisode(t, log, "reads running but whose waiting process is gone", 2, waiterlessRecovered)
+		requireFailureEpisode(t, log, "reads running but its waiting process is gone", 2, waiterlessRecovered)
 
 		// A record that stops reading running, or vanishes, ends an open episode with one Info each.
 		writeActivityRun(t, root, "run-a", waiterless, created, eventsWritten)
@@ -417,7 +441,7 @@ func TestReadAgentActivity(t *testing.T) {
 	})
 }
 
-// writeActivityRun writes the run directory name under root: its run.json, and its events file stamped with eventsWritten unless the run has none.
+// writeActivityRun writes the run directory name under root: its run.json, its activity stamp when the run sets one, and its events file stamped with eventsWritten unless the run has none.
 func writeActivityRun(t *testing.T, root, name string, run activityRun, created, eventsWritten time.Time) {
 	t.Helper()
 	runDir := filepath.Join(root, name)
@@ -431,6 +455,15 @@ func writeActivityRun(t *testing.T, root, name string, run activityRun, created,
 	}
 	if err := saveRunState(runDir, state); err != nil {
 		t.Fatal(err)
+	}
+	if !run.stampWritten.IsZero() {
+		stampPath := filepath.Join(runDir, ActivityStampFileName)
+		if err := os.WriteFile(stampPath, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(stampPath, run.stampWritten, run.stampWritten); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if run.noEventsFile {
 		return

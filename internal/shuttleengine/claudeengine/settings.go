@@ -4,6 +4,7 @@
 // The UserPromptSubmit, StopFailure, Notification, SessionEnd, SessionStart and PermissionRequest hooks append their payloads to the same file for ParseSessionSignals;
 // the SessionStart hook of a run whose spec sets a context-after-compaction command runs that command on the compaction source, so its output joins the session's context.
 // Every recording hook writes a stamp line with the hook-side time before its payload, which ParseEvents skips.
+// The PostToolUse, PreCompact and PostCompact hooks of every session touch the run's activity stamp beside the events file, so a tool call, a fork's included, and a compaction read as activity.
 // The document also carries the PreToolUse guardrails that keep a run's work visible in its own pane —
 // denying the in-process Agent tool (or, in a fork-mode run, letting fork subagents through it while still denying every other subagent type; a run with Spec.AllowAgentTool set installs no Agent deny at all),
 // refusing `lym webster` verbs from inside a fork in a fork-mode run (the fork-context deadlock guard),
@@ -21,6 +22,7 @@ package claudeengine
 import (
 	"encoding/json"
 	"fmt"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -71,7 +73,7 @@ type hookEntry struct {
 
 // settingsHooks is the "hooks" object of a Claude Code settings.json document.
 // Every event but PreToolUse and PostToolUse is a recording hook installed for every session.
-// PostToolUse carries the creel mail hook, and is omitted for a session in no hub.
+// PostToolUse, PreCompact and PostCompact touch the activity stamp, and PostToolUse also carries the creel mail hook in a hub.
 // In a hub, Stop carries two entries: the recording merged with creel's turn-end delivery, and creel's idle waiter; in no hub it carries the recording alone.
 // PreToolUse is omitted when an autonomous run has every deny off; interactive runs always carry at least the AskUserQuestion marker.
 type settingsHooks struct {
@@ -83,7 +85,9 @@ type settingsHooks struct {
 	SessionEnd        []hookEntry `json:"SessionEnd"`
 	SessionStart      []hookEntry `json:"SessionStart"`
 	PermissionRequest []hookEntry `json:"PermissionRequest"`
-	PostToolUse       []hookEntry `json:"PostToolUse,omitempty"`
+	PostToolUse       []hookEntry `json:"PostToolUse"`
+	PreCompact        []hookEntry `json:"PreCompact"`
+	PostCompact       []hookEntry `json:"PostCompact"`
 }
 
 // compactionMatcher is the SessionStart matcher for a session restarting after a compaction.
@@ -322,7 +326,14 @@ func recordingCommand(hookEventName, quotedEventsPath string) string {
 	return stamp + "; " + payload
 }
 
+// activityStampHook returns the hook entry that touches the activity stamp beside the events file at eventsPathPosix and always exits 0, so a failed touch never blocks the session.
+func activityStampHook(eventsPathPosix string) []hookEntry {
+	stampPath := path.Join(path.Dir(eventsPathPosix), shuttleengine.ActivityStampFileName)
+	return []hookEntry{{Hooks: []hookCommand{{Type: "command", Command: "touch " + shQuote(stampPath) + "; true"}}}}
+}
+
 // buildSettings marshals settings.json: a Stop hook and the other recording hooks appending their events to eventsPathPosix, and PreToolUse guardrails per cfg, claude and interactive.
+// The activity stamp hooks touch the file named shuttleengine.ActivityStampFileName in eventsPathPosix's directory.
 // eventsPathPosix must be a git-bash POSIX path (from shuttleengine.PosixPath); it's embedded via shQuote to escape any apostrophes.
 // The denies are the entries of standingDeniesFor(cfg.RefuseRaw).
 // Agent-tool and AskUserQuestion denies are controlled by claude, the python deny by cfg and the refuse-raw deny by cfg.RefuseRaw; forkSubagents narrows the Agent deny to non-fork subagent types and adds a webster-verb guard,
@@ -332,7 +343,7 @@ func recordingCommand(hookEventName, quotedEventsPath string) string {
 // Empty gives a single recording entry with no matcher.
 // The recordings print nothing and exit 0, so the PermissionRequest recording answers no request and the SessionStart recording adds nothing to the session's context.
 // A non-empty creelFlagDirPosix is a git-bash POSIX path like eventsPathPosix.
-// It adds the PostToolUse creel mail hook testing the strand's flag in that directory, replaces the Stop recording with the command that merges it with creel's turn-end delivery, and adds creel's idle waiter as a second Stop entry.
+// It adds the PostToolUse creel mail hook, after the stamp, testing the strand's flag in that directory, replaces the Stop recording with the command that merges it with creel's turn-end delivery, and adds creel's idle waiter as a second Stop entry.
 // Empty adds none of them and keeps the plain Stop recording.
 func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, allowAgentTool bool, contextAfterCompaction, creelFlagDirPosix string) ([]byte, error) {
 	quotedEventsPath := shQuote(eventsPathPosix)
@@ -352,6 +363,9 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 			Notification:      recordingHook(hookEventNotification, true),
 			SessionEnd:        recordingHook(hookEventSessionEnd, true),
 			PermissionRequest: recordingHook(hookEventPermissionRequest, true),
+			PostToolUse:       activityStampHook(eventsPathPosix),
+			PreCompact:        activityStampHook(eventsPathPosix),
+			PostCompact:       activityStampHook(eventsPathPosix),
 		},
 	}
 
@@ -383,7 +397,7 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 	}
 	if creelFlagDirPosix != "" {
 		quotedFlagDir := shQuote(creelFlagDirPosix)
-		doc.Hooks.PostToolUse = []hookEntry{{Hooks: []hookCommand{{Type: "command", Command: creelMailHookCommand(quotedFlagDir)}}}}
+		doc.Hooks.PostToolUse = append(doc.Hooks.PostToolUse, hookEntry{Hooks: []hookCommand{{Type: "command", Command: creelMailHookCommand(quotedFlagDir)}}})
 		doc.Hooks.Stop = []hookEntry{
 			{Hooks: []hookCommand{{Type: "command", Command: creelStopHookCommand(quotedFlagDir, quotedEventsPath)}}},
 			{Hooks: []hookCommand{{Type: "command", Command: creelWaitHookCommand(), AsyncRewake: true, Timeout: creelWaitTimeout}}},

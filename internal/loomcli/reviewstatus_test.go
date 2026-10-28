@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"testing"
 	"time"
@@ -38,6 +39,38 @@ func writeShuttleMarker(t *testing.T, runRoot, kind string, pid int) {
 	body := "kind: " + kind + "\nstarted: 2026-10-03T09:15:00Z\npid: " + strconv.Itoa(pid) + "\n"
 	if err := os.WriteFile(filepath.Join(runDir, "wait.yaml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// writeRunningShuttleRun writes a run record that reads running, under strandName and waited on by pid, into a run directory of loc's anchor.
+// Its creation time lies an hour ahead, so a reading of it never predates a probe started after the call.
+func writeRunningShuttleRun(t *testing.T, loc *lymcwd.Location, strandName string, pid int) {
+	t.Helper()
+	runDir := filepath.Join(loc.AnchorPath(), ".lym", "shuttle", strandName)
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	createdAt := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	body := `{"strandName":"` + strandName + `","outcome":"running","pid":` + strconv.Itoa(pid) + `,"createdAt":"` + createdAt + `"}`
+	if err := os.WriteFile(filepath.Join(runDir, "run.json"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestLiveRunStrands_SkipsRunWithGoneWaiter asserts a running run whose waiting process is gone is left out of the live strands.
+func TestLiveRunStrands_SkipsRunWithGoneWaiter(t *testing.T) {
+	t.Parallel()
+	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "task", AnchorRel: "."}
+	writeRunningShuttleRun(t, loc, "live-run", os.Getpid())
+	writeRunningShuttleRun(t, loc, "waiterless-run", 1<<30)
+
+	got, err := liveRunStrands(loc)
+
+	if err != nil {
+		t.Fatalf("liveRunStrands() error = %v", err)
+	}
+	if want := []string{"live-run"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("liveRunStrands() = %v; want %v", got, want)
 	}
 }
 
@@ -337,7 +370,7 @@ func TestParentLockWaiting(t *testing.T) {
 	}
 }
 
-// TestAgentActivity_LiveLockWaitReadsAsActivity asserts a live parent lock wait record, a live running verify marker, a held drift capture lock and a held compare marker read as activity now, and a dead writer's record, a dead marker, a verify marker held by a pause and a lock file with no holder do not.
+// TestAgentActivity_LiveLockWaitReadsAsActivity asserts a live parent lock wait record, a live running verify marker, a held drift capture lock, a held compare marker and a running agent run with a live waiter read as activity now, and a dead writer's record, a dead marker, a verify marker held by a pause, a lock file with no holder and a running agent run whose waiter is gone do not.
 // A capture lock path the probe cannot take returns the probe's error.
 func TestAgentActivity_LiveLockWaitReadsAsActivity(t *testing.T) {
 	t.Parallel()
@@ -405,6 +438,12 @@ func TestAgentActivity_LiveLockWaitReadsAsActivity(t *testing.T) {
 		{"live running verify marker", writeVerifyMarkerState(os.Getpid(), verifytree.MarkerStateRunning), true, false},
 		{"live paused verify marker", writeVerifyMarkerState(os.Getpid(), verifytree.MarkerStatePaused), false, false},
 		{"dead verify marker", writeVerifyMarkerState(1<<30, verifytree.MarkerStateRunning), false, false},
+		{"running agent run with a live waiter", func(t *testing.T, loc *lymcwd.Location) {
+			writeRunningShuttleRun(t, loc, "live-run", os.Getpid())
+		}, true, false},
+		{"running agent run with a gone waiter", func(t *testing.T, loc *lymcwd.Location) {
+			writeRunningShuttleRun(t, loc, "waiterless-run", 1<<30)
+		}, false, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -842,6 +842,7 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 }
 
 // liveRunStrands returns the strand names of the live shuttle runs of target's worktree, read through the registered engines.
+// A running run whose waiting process is gone is not live here.
 func liveRunStrands(target *lymcwd.Location) ([]string, error) {
 	configDirs := fabricengine.ConfigDirs(target)
 	cfg, err := shuttleengine.LoadConfig(configDirs, "shuttle")
@@ -858,7 +859,9 @@ func liveRunStrands(target *lymcwd.Location) ([]string, error) {
 	}
 	strands := make([]string, 0, len(readings))
 	for _, reading := range readings {
-		strands = append(strands, reading.StrandName)
+		if !reading.WaiterGone {
+			strands = append(strands, reading.StrandName)
+		}
 	}
 	return strands, nil
 }

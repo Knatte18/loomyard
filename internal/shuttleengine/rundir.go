@@ -156,6 +156,11 @@ type RunState struct {
 	// Engine is the name of the engine the run was started with.
 	// A record without it, which every record written before the field is, reads as the engine set's default engine.
 	Engine string `json:"engine,omitempty"`
+	// RoleKey is the spawning Spec's name override, else its role, which a later run start matches its predecessor by.
+	// A record without it is never a predecessor.
+	RoleKey string `json:"roleKey,omitempty"`
+	// CarriedInstructions are the operator instructions the run's prompt carried over from its predecessor, so a later re-spawn carries them again.
+	CarriedInstructions []string `json:"carriedInstructions,omitempty"`
 }
 
 // createRunDir mints a fresh run id, creates <root>/<runID>, and returns

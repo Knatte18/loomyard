@@ -464,11 +464,18 @@ const (
 	promptFileName   = "prompt.md"
 	settingsFileName = "settings.json"
 	eventsFileName   = "events.jsonl"
+	// sentTextsFileName is where every verified send appends the text it types, one JSON string per line,
+	// so the run's turn starts can be told apart from instructions an operator typed.
+	sentTextsFileName = "sent-texts.jsonl"
 	// startupCaptureFileName is where abandonStartup saves the last successful pane capture on a
 	// not-ready teardown, so an operator (or a re-run of the recipe in
 	// docs/reference/claude-trust-dialog-repro.md) can see what the provider's pane last showed.
 	startupCaptureFileName = "startup-capture.txt"
 )
+
+// ActivityStampFileName is the file in a run directory whose modification time is the run's activity stamp.
+// An engine's hooks touch it whenever the session works, so a session reads active whatever its waiter or its events file say.
+const ActivityStampFileName = "activity-stamp"
 
 // Start prepares one run described by spec, registers it with reed, and returns a handle only once
 // the run's provider is past its startup gates.
@@ -478,6 +485,7 @@ const (
 // A provider that never becomes ready is torn down (strand removed, run dir and its last pane
 // capture kept) and reported as an error wrapping ErrNotStarted — see awaitStartup/abandonStartup
 // (wait.go) for the startup step itself.
+// A start whose role's newest earlier run ended unfinished appends that run's operator instructions to the prompt, records them in the new run's record and tells the notifier.
 func (r *Runner) Start(spec Spec) (*Run, error) {
 	return r.StartGated(spec, GateSpec{})
 }
@@ -538,12 +546,21 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 		return nil, Result{}, fmt.Errorf("shuttle: wait for the pause to lift: %w", err)
 	}
 
+	// Read before the sweep, which may remove the predecessor's directory once its strand is gone.
+	carried := r.carriedInstructions(roleKey(spec))
+	if len(carried) > 0 {
+		spec.Prompt += carryOverBlock(carried)
+	}
+
 	r.sweepOrphansOpportunistic()
 
 	attempts := 1 + r.cfg.StartRetries
 	for attempt := 1; ; attempt++ {
-		run, result, err := r.launch(spec, gate, engine, engineName, resumeWarning)
+		run, result, err := r.launch(spec, gate, engine, engineName, resumeWarning, carried)
 		if err == nil {
+			if len(carried) > 0 {
+				r.noticeCarriedInstructions(run.state.StrandName, roleKey(spec), carried)
+			}
 			return run, Result{}, nil
 		}
 		if run == nil || !run.startRetryable(result) || attempt >= attempts {
@@ -564,10 +581,11 @@ func (run *Run) startRetryable(result Result) bool {
 }
 
 // launch is one attempt of start past its checks: it creates a run directory, prepares the engine's launch, registers the strand with reed, persists run.json, and blocks on the new *Run's awaitStartup and, for a deferred prompt, its skill loading and prompt delivery.
+// carried is the operator instructions spec's prompt carries over from a predecessor, which run.json records.
 // It returns (run, Result{}, nil) once the provider is past its startup gates.
 // A failure before the strand registered returns (nil, Result{}, err).
 // A failure after it returns the torn-down run beside the result and error abandonStartup gave, so start can judge whether to launch again.
-func (r *Runner) launch(spec Spec, gate GateSpec, engine Engine, engineName, resumeWarning string) (*Run, Result, error) {
+func (r *Runner) launch(spec Spec, gate GateSpec, engine Engine, engineName, resumeWarning string, carried []string) (*Run, Result, error) {
 	root := runDirRoot(r.cfg, r.anchorPath)
 	runID, runDir, err := createRunDir(root)
 	if err != nil {
@@ -658,6 +676,8 @@ func (r *Runner) launch(spec Spec, gate GateSpec, engine Engine, engineName, res
 		Step:                 r.step,
 		ForkSubagents:        spec.ForkSubagents,
 		Engine:               engineName,
+		RoleKey:              roleKey(spec),
+		CarriedInstructions:  carried,
 	}
 	if err := saveRunState(runDir, state); err != nil {
 		// The strand registered and its pane is already launching, but
@@ -1571,6 +1591,7 @@ func sendVerified(sc sendContext, text string) error {
 // An Enter goes only into a box holding exactly the sent text, so it never lands on an empty box, a running turn or any draft.
 // A send that does not land fails with ErrSubmissionNotLanded, after clearUnlandedText has emptied a box holding exactly this send's own text where the engine can.
 // An engine that also implements TextPaster and SessionCycler is written to through pasteVerified instead: one paste through reed, then confirmPasted, with no Escape and no typed keys.
+// A send into a run with a record first appends text to the run's sent-texts file, so the run's turn starts that no send typed read as operator instructions.
 // A paste that may have left its text in the box is recorded in the run's pending-send file, and the retry of the same text types nothing when a turn has started since.
 // An engine without the capability plays ComposeSend and keeps the appearance-only check with no window,
 // so a text that collapses into a paste placeholder is never confirmed there and relies on the engine's own pacing.
@@ -1580,6 +1601,9 @@ func sendVerified(sc sendContext, text string) error {
 //
 // It assumes the caller has already judged the session ready to take the text.
 func typeVerified(sc sendContext, text string) error {
+	if sc.runDir != "" {
+		recordSentText(sc.runDir, text)
+	}
 	reed, engine, guid := sc.reed, sc.engine, sc.guid
 	reader, readsBox := engine.(InputBoxReader)
 	if paster, ok := engine.(TextPaster); ok && readsBox {
