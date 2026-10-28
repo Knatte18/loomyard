@@ -83,7 +83,7 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 		"claude":  {"binary", "deny_agent_tool", "deny_ask_user_question"},
 		"reed":    {"debug_log", "mouse", "shell", "tmux", "tmux_conf"},
 		"shuttle": {"deny_python", "run_dir"},
-		"loom":    {"code_auto_accept", "code_fixer_fan", "code_reviewer_fan", "discussion_advisors", "discussion_auto_accept", "discussion_fixer_fan", "discussion_lenses", "discussion_reviewer_fan", "plan_auto_accept", "plan_fixer_fan", "plan_lenses", "plan_reviewer_fan"},
+		"loom":    {"code_auto_accept", "code_fixer_fan", "discussion_advisors", "discussion_auto_accept", "discussion_fixer_fan", "discussion_lenses", "discussion_reviewer_fan", "plan_auto_accept", "plan_fixer_fan", "plan_lenses", "plan_reviewer_fan"},
 		"lenses":  {"fans", "lens_set", "lenses", "remove"},
 	}
 	for _, m := range Modules() {

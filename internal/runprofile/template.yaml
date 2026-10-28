@@ -15,18 +15,18 @@ defaults:
   pawl: light
 speed:
   loom:
-    loom: {discussion_max_bounces: 0, discussion_hard_max_bounces: 1, plan_max_bounces: 0, plan_hard_max_bounces: 1, code_max_bounces: 1, code_hard_max_bounces: 2}
+    loom: {discussion_max_bounces: 0, discussion_hard_max_bounces: 1, plan_max_bounces: 0, plan_hard_max_bounces: 1, code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: ""}
   darn:
     loom: {code_max_bounces: 0, code_hard_max_bounces: 1}
   pawl:
     loom: {code_max_bounces: 0, code_hard_max_bounces: 1}
 light:
   loom:
-    loom: {discussion_max_bounces: 1, discussion_hard_max_bounces: 2, plan_max_bounces: 1, plan_hard_max_bounces: 2, code_max_bounces: 1, code_hard_max_bounces: 2}
+    loom: {discussion_max_bounces: 1, discussion_hard_max_bounces: 2, plan_max_bounces: 1, plan_hard_max_bounces: 2, code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: ""}
   darn:
-    loom: {code_max_bounces: 1, code_hard_max_bounces: 2}
+    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: ""}
   pawl:
-    loom: {code_max_bounces: 1, code_hard_max_bounces: 2}
+    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: ""}
 solid:
   loom:
     loom: {discussion_max_bounces: 2, discussion_hard_max_bounces: 3, plan_max_bounces: 2, plan_hard_max_bounces: 3, code_max_bounces: 1, code_hard_max_bounces: 2}
@@ -44,4 +44,4 @@ wide:
 docs:
   darn:
     darn: {writer: "sonnet[medium]"}
-    loom: {code_max_bounces: 1, code_hard_max_bounces: 2}
+    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: ""}

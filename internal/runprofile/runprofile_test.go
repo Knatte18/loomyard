@@ -109,11 +109,12 @@ func TestTemplateLadder(t *testing.T) {
 		profile                string
 		discussion, plan, code int
 		darnCode               int
+		solo                   []string
 	}{
-		{"speed", 0, 0, 1, 0},
-		{"light", 1, 1, 1, 1},
-		{"solid", 2, 2, 1, 2},
-		{"wide", 3, 2, 1, 3},
+		{"speed", 0, 0, 1, 0, []string{"loom"}},
+		{"light", 1, 1, 1, 1, []string{"loom", "darn", "pawl"}},
+		{"solid", 2, 2, 1, 2, nil},
+		{"wide", 3, 2, 1, 3, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.profile, func(t *testing.T) {
@@ -144,6 +145,13 @@ func TestTemplateLadder(t *testing.T) {
 			if !reflect.DeepEqual(got, want) {
 				t.Errorf("Settings(%s) rounds = %v; want %v", tt.profile, got, want)
 			}
+			blockKeys := map[string]map[string]any{"loom": loom["loom"].(map[string]any), "darn": darnKeys, "pawl": pawlKeys}
+			for block, keys := range blockKeys {
+				fan, present := keys["code_reviewer_fan"]
+				if wantSolo := slices.Contains(tt.solo, block); present != wantSolo || (present && fan != "") {
+					t.Errorf("Settings(%s, %s) code_reviewer_fan = %v, present %v; want %q present %v", tt.profile, block, fan, present, "", wantSolo)
+				}
+			}
 		})
 	}
 }
@@ -161,7 +169,7 @@ func TestTemplateDocsProfile(t *testing.T) {
 	}
 	want := map[string]any{
 		"darn": map[string]any{"writer": "sonnet[medium]"},
-		"loom": map[string]any{"code_max_bounces": 1, "code_hard_max_bounces": 2},
+		"loom": map[string]any{"code_max_bounces": 1, "code_hard_max_bounces": 2, "code_reviewer_fan": ""},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Settings(docs, darn) = %v; want %v", got, want)
