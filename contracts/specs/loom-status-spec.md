@@ -95,6 +95,14 @@ Per-field notes — `product`'s three fields are the whole of loom's own half of
 Both are true when the run is blocked and the recipe's told check answers true for the status's `current_producer` and `error`, and false otherwise, including when no check is told.
 For loom and darn the check is `landingshed.HandsBack`: a blocked stop at Parent-Align or Finalize whose reason opens with the landing-stop prefix, or a blocked stop at Finalize whose reason opens with the reroute-cap prefix.
 A true key marks a halt that goes to the orch, so every driver hands it back instead of routing it.
+A loom or darn fixer's escalate halt opens with the landing-escalate prefix, `landingshed.EscalateHalt` answers true for it, and the key stays false: it goes to the arbiter first.
+
+## The `restep_hold` key
+
+`lym loom status` carries a top-level `restep_hold` key, and the loop's stop envelope carries `loop.restep_hold`.
+Both are true when the run is blocked and the recipe's told check answers true for the status's `current_producer` and `error`, and false otherwise, including when no check is told.
+For loom and darn the check is `landingshed.EscalateHalt`: a blocked stop at Parent-Align or Finalize whose reason opens with the landing-escalate prefix.
+A true key marks a halt the LLM driver's own build re-launch and binary watch leave alone; it still goes to the arbiter first, and only the arbiter's `resume` or the orch's `lym loom resume` moves it.
 
 ## The `waiting` key
 

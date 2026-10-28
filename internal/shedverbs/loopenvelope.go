@@ -44,6 +44,7 @@ type loopObject struct {
 	Detail          string
 	StatusMoved     bool
 	HandBack        bool
+	RestepHold      bool
 	Restep          *loopRestep
 	CurrentProducer string
 	HistoryLength   int
@@ -62,6 +63,7 @@ func (o loopObject) fields() map[string]any {
 		"detail":           o.Detail,
 		"status_moved":     o.StatusMoved,
 		"hand_back":        o.HandBack,
+		"restep_hold":      o.RestepHold,
 		"current_producer": o.CurrentProducer,
 		"history_length":   o.HistoryLength,
 		"state":            o.State,

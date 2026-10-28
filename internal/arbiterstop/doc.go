@@ -11,6 +11,7 @@
 // a `budget` or `decision` escalation, an unknown cause and an unreadable record all go to the run's parent.
 // A blocked stop that is a landing halt, as the landing rows' hand-back predicate reads the status's producer and error, is refused too, since only the run's parent lifts it.
 // So is a decision halt, a blocked stop whose error opens with the decision halt prefix.
+// A loom or darn fixer's escalate halt opens with neither prefix, so it is no landing halt and is eligible as a blocked stop.
 // HandsBack is the one predicate of a blocked stop that goes to the run's parent: a landing halt or a decision halt.
 // Every refusal ends with HandBackWayForward.
 //

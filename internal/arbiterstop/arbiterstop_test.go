@@ -34,6 +34,8 @@ func TestCheck_RefusesLandingHalts(t *testing.T) {
 		{name: "blocked halt at Discussion-Bouncer without the prefix", producer: "Discussion-Bouncer", reason: "a plain halt"},
 		{name: "reroute-cap halt at Webster", producer: "Webster", reason: shedengine.ReasonRerouteCapReached + ": Webster rerouted to Plan-Write 3 times; way forward: x"},
 		{name: "ordinary blocked halt", producer: "Plan-Write", reason: "a plain halt"},
+		{name: "escalate halt at Finalize", producer: "Finalize", reason: landingshed.EscalateStopPrefix + "the fixer of Finalize found a parent change that conflicts with a decision of the record; way forward: record the deciding decision, then `lym loom resume`"},
+		{name: "escalate halt at Parent-Align", producer: "Parent-Align", reason: landingshed.EscalateStopPrefix + "the fixer of Parent-Align found a parent change that conflicts with a decision of the record; way forward: record the deciding decision, then `lym loom resume`"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

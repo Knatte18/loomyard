@@ -94,11 +94,12 @@ You re-launch the loop on your own in exactly these cases, a closed list:
 
 - the fork's action is a re-launch;
 - the arbiter's verdict is `resume`, whose envelope carries the `relaunch` line to run; this is allowed over a spent repair cap, and for this case it reverses the rule that a `blocked` stop is never repaired;
-- `lym shed status`'s `last_step.binary_changed` is true at an eligible stop, which is a `blocked` stop or an escalated `producer`, `bootstrap`, `unseeded`, `interrupted` or transient error, and the stop is not marked `hand_back`;
+- `lym shed status`'s `last_step.binary_changed` is true at an eligible stop, which is a `blocked` stop or an escalated `producer`, `bootstrap`, `unseeded`, `interrupted` or transient error, and the stop is marked neither `hand_back` nor `restep_hold`;
   the guide's binary watch states the watch and the clean-tree guard that gate it.
 
-Never re-launch over an `awaiting`, `paused` or `busy` stop, an `ownership` stop, a no-kind refusal, a stop marked `hand_back`, or an `interrupted` stop under `interrupt_policy: handback`.
+Never re-launch over an `awaiting`, `paused` or `busy` stop, an `ownership` stop, a no-kind refusal, a stop marked `hand_back` or `restep_hold`, or an `interrupted` stop under `interrupt_policy: handback`.
 A stop marked `hand_back` goes to the parent with no arbiter and no re-step, since only the parent's resume lifts it.
+A stop marked `restep_hold` goes to the arbiter first and is never re-launched on a build change; only the arbiter's `resume` or the parent's resume moves it.
 Before any self-initiated re-launch, remove the park marker.
 
 ## Arbiter
@@ -141,7 +142,7 @@ At a hand-back, which is every stop other than `done` and a `busy` refusal, you 
 
 1. write your stop report to `{{.report_path}}`, unless the fork already wrote it there, in which case you add your own lines to it;
 2. run the park command `{{.park_command}}`, which commits the run records and writes the park marker, named `driver-parked`, under `scratch_dir`, holding the stop report's path;
-3. start the binary watch the guide describes as a background job when the stop is binary-change eligible and not marked `hand_back`.
+3. start the binary watch the guide describes as a background job when the stop is binary-change eligible and marked neither `hand_back` nor `restep_hold`.
 
 Never write the park marker by hand: the park command owns it.
 `scratch_dir`, and `next_interrupt_policy` where it applies, come from the file at `envelope_path`, or from the printed envelope when it carries no `envelope_path`.

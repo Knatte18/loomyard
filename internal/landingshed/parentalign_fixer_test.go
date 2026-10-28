@@ -80,6 +80,22 @@ func requireHalt(t *testing.T, outcome shedengine.Outcome, ptr shedengine.Output
 	return ptr.Reason
 }
 
+// requireEscalateHalt asserts the call ended in a halting Stuck whose reason opens with EscalateStopPrefix, no hand-back for the orch, and holds every fragment.
+func requireEscalateHalt(t *testing.T, outcome shedengine.Outcome, ptr shedengine.OutputPointer, producer string, fragments ...string) {
+	t.Helper()
+	if outcome != shedengine.Stuck || !ptr.Halt || !strings.HasPrefix(ptr.Reason, EscalateStopPrefix) {
+		t.Fatalf("Call() = %q, %+v; want a halting Stuck opening with %q", outcome, ptr, EscalateStopPrefix)
+	}
+	for _, want := range fragments {
+		if !strings.Contains(ptr.Reason, want) {
+			t.Errorf("reason = %q; want it to contain %q", ptr.Reason, want)
+		}
+	}
+	if HandsBack(producer, ptr.Reason) || !EscalateHalt(producer, ptr.Reason) {
+		t.Errorf("HandsBack(%q) = %v, EscalateHalt = %v for %q; want false and true", producer, HandsBack(producer, ptr.Reason), EscalateHalt(producer, ptr.Reason), ptr.Reason)
+	}
+}
+
 // resumeAfterMerge readies the fixture for a resumed Merge-In whose merge is already up to date, so the merge base is now the merged tip.
 func (fx *mergeInFixture) resumeAfterMerge() {
 	fx.mergeBase = "p1"
@@ -182,6 +198,9 @@ func TestMergeIn_Fixer(t *testing.T) {
 		outcome, ptr := fx.call(t)
 
 		requireHalt(t, outcome, ptr, fx.fixerReportPath(), "decision D3")
+		if strings.Contains(ptr.Reason, "`lym loom decision add`") {
+			t.Errorf("reason = %q; want no decision verb on a run that does not judge an escalate first", ptr.Reason)
+		}
 		if rec, _ := fx.attemptsOnDisk(t); rec.Spent != 0 || rec.AlignFrom != "b0" {
 			t.Errorf("attempt record = %+v; want no spent turn and the fork point b0", rec)
 		}
@@ -194,6 +213,18 @@ func TestMergeIn_Fixer(t *testing.T) {
 		if len(fx.seats.tables) != 2 || fx.seats.tables[1].Values["aligned_tip"] != "b0" {
 			t.Errorf("fixer sessions = %d; want the resumed entry's second one over the fork point b0", len(fx.seats.tables))
 		}
+	})
+
+	t.Run("escalate on a run that judges it first halts with the escalate prefix, no hand-back", func(t *testing.T) {
+		t.Parallel()
+		fx := newMergeInFixture(t)
+		brought(fx)
+		fx.m.deps.EscalateJudgedFirst = true
+		fx.seats.turns = []func(){fx.fixerTurn(t, escalateReport, "t2")}
+
+		outcome, ptr := fx.call(t)
+
+		requireEscalateHalt(t, outcome, ptr, parentAlignName, fx.fixerReportPath(), "decision D3", "`lym loom decision add`")
 	})
 
 	t.Run("a first Merge-In that stops with an error after the merge still spawns the fixer when resumed", func(t *testing.T) {

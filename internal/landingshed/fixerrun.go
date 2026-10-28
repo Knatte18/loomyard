@@ -22,6 +22,9 @@ import (
 // LandingStopPrefix opens the reason of every halt a landing row hands back to the orch, so the hand-back predicate finds it.
 const LandingStopPrefix = "landing stop: "
 
+// EscalateStopPrefix opens the reason of a loom or darn merge fixer's escalate halt, which goes to the arbiter first and is no hand-back.
+const EscalateStopPrefix = "landing escalate: "
+
 // fixerGateName labels the fixer session's one gate entry.
 const fixerGateName = "landing"
 
@@ -293,8 +296,11 @@ func (s *fixerSession) judge() (shuttleengine.GateResult, error) {
 }
 
 // haltReason words the halt a run that did not end fixed ends the row with.
-// Each reason opens with LandingStopPrefix and ends with a way forward, and is one line.
-func (o fixerOutcome) haltReason(row string) string {
+// Every reason except a loom or darn escalate opens with LandingStopPrefix and ends with a way forward, and is one line.
+// An escalate end with escalateJudgedFirst true opens with EscalateStopPrefix instead and names the decision verb as its way forward;
+// with it false the way forward is the conflict settled on the task branch, since a pawl run refuses the decision verb.
+func (o fixerOutcome) haltReason(row string, escalateJudgedFirst bool) string {
+	prefix := LandingStopPrefix
 	var cause, wayForward string
 	switch o.end {
 	case fixerEndSpent:
@@ -302,7 +308,12 @@ func (o fixerOutcome) haltReason(row string) string {
 		wayForward = "fix the failure on the task branch, then `lym loom resume`"
 	case fixerEndEscalate:
 		cause = fmt.Sprintf("the fixer of %s found a parent change that conflicts with a decision of the record; report: %s; conflict: %s", row, o.reportPath, singleLine(o.conflict))
-		wayForward = "add the deciding decision with `lym loom decision add` in the task worktree, then `lym loom resume`"
+		if escalateJudgedFirst {
+			prefix = EscalateStopPrefix
+			wayForward = "record the deciding decision with `lym loom decision add` in the task worktree, then `lym loom resume`"
+		} else {
+			wayForward = "settle the conflict on the task branch, then `lym loom resume`"
+		}
 	case fixerEndTimeout, fixerEndNoReport, fixerEndDirty:
 		cause = fmt.Sprintf("the fixer session of %s ended without a usable turn (%s); session log: %s; report: %s", row, o.end, o.sessionLog, o.reportPath)
 		wayForward = "fix or clean the task branch, then `lym loom resume`"
@@ -312,7 +323,7 @@ func (o fixerOutcome) haltReason(row string) string {
 	default:
 		return ""
 	}
-	return LandingStopPrefix + cause + "; way forward: " + wayForward
+	return prefix + cause + "; way forward: " + wayForward
 }
 
 // singleLine collapses every run of whitespace in text, line breaks included, to one space.

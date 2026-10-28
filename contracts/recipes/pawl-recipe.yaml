@@ -28,10 +28,10 @@
 # they stay in the round's review files.
 # Beam-Describe carries no entry gate: it writes from the entry and the commits whatever the budget.
 #
-# Finalize never reroutes, so it declares no on_reroute: a conflict or a merge too large to land has no
-# earlier row to return to, because Beam-Describe writes from the entry and the commits and reviews
-# nothing. A merge conflict goes to Finalize's merge fixer, a large merge runs the landing gate, and a
-# failure the fixer cannot fix halts the run for the orch.
+# Finalize never reroutes, so it declares no on_reroute: a spent or over-cap fixer has no review to
+# return to, because Beam-Describe writes from the entry and the commits and reviews nothing, so it
+# halts for the orch. A conflict or a large merge lands through the gate in every recipe: the merge
+# fixer takes a failing merged tree.
 #
 # Parent-Align and Beam-Describe carry no on_stuck: Parent-Align fixes its own merge and test failures in
 # its merge fixer, and a description that fails validation halts the run for the orch, which ends the

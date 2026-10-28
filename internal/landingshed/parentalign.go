@@ -119,6 +119,7 @@ func NewParentAlign(deps Deps) (*ParentAlign, error) {
 // It writes nothing in the parent pair and holds no parent lock across the merge; a paused lock wait and an unreadable lock record for the local-tip read are Stuck with Halt, so the run stops at this row.
 // After the merge and the `landing` gate it aligns: it runs the merge fixer when the parent brought in commits or the gate fails,
 // and every halt of that alignment is a Stuck with Halt whose reason opens with LandingStopPrefix.
+// A fixer's escalate on a loom or darn run (Deps.EscalateJudgedFirst) opens with EscalateStopPrefix instead.
 // A failed record write and every infrastructure fault are errors.
 func (m *ParentAlign) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, parentAlignName); err != nil {
@@ -389,7 +390,7 @@ func (m *ParentAlign) align(ctx context.Context, tip, mergeCommit string, gateRe
 		}
 		m.attempts = updated
 	}
-	return m.haltStop(ctx, outcome.haltReason(parentAlignName))
+	return m.haltStop(ctx, outcome.haltReason(parentAlignName, m.deps.EscalateJudgedFirst))
 }
 
 // alignError returns err from Call, or the cancellation error when ctx is cancelled.
@@ -416,7 +417,7 @@ func (m *ParentAlign) haltSpent(ctx context.Context, gateReason string) (shedeng
 	if found {
 		log = failure.LogPath
 	}
-	return m.haltStop(ctx, fixerOutcome{end: fixerEndSpent, failureLog: log}.haltReason(parentAlignName))
+	return m.haltStop(ctx, fixerOutcome{end: fixerEndSpent, failureLog: log}.haltReason(parentAlignName, m.deps.EscalateJudgedFirst))
 }
 
 // judgeFixerChange judges the entry's fixer change, from its baseline to HEAD, against the caps when no review follows Parent-Align.

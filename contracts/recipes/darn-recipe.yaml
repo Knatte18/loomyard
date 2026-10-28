@@ -40,7 +40,7 @@
 # _lym/discussion/board-entry.md, as amended by the decision record's `Added after Discussion`
 # entries; the record's other sections are the writer's own claim, reviewed against the snapshot.
 #
-# Finalize declares on_reroute: Code-Bouncer, the row a conflict or a merge too large to land sends
+# Finalize declares on_reroute: Code-Bouncer, the row a spent or over-cap fixer change sends
 # the run back to, so the perch reviews the code the writer changed in answer.
 # Shed's reroute cap bounds that edge, and a reroute spends no bounce budget.
 # With a budget of 0 the Bouncer settles approved at once on that reroute too.
@@ -227,7 +227,7 @@ producers:
 
   # Finalize takes the parent lock first, merges the parent into the task branch, runs the landing
   # gate and the merge fixer, then fast-forwards the parent and releases the lock on every way out.
-  # A conflict or a merge too large to land reroutes to Code-Bouncer.
+  # Only a spent or over-cap fixer change reroutes to Code-Bouncer; a conflict or a large merge lands through the gate.
   - name: Finalize
     engine: Finalize
     on_reroute: Code-Bouncer

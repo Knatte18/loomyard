@@ -142,7 +142,7 @@
 // A halted go child is also re-stepped once per halt and per lym build (innerrun_binaryrestep.go), so a fix deployed after a Go driver handed back lands without a parent turn.
 // The child is re-stepped, through the same Spawn seam as every bootstrap, only when it is blocked or failed, its reed state holds no driver strand, neither its run lock nor its driver lock is held;
 // the lym on disk must differ from the build the child's last step recorded, and the task pair must have no uncommitted or untracked path outside the run's records.
-// A blocked halt that `InnerRunDeps.HandBack` marks as a landing halt is skipped and writes no marker, so only the orch's `lym loom resume` lifts it; every other halt keeps the re-step, so a fix deployed in a new build can still clear it.
+// A blocked halt that `InnerRunDeps.HandBack` marks as a landing halt is skipped and writes no marker, so only the orch's `lym loom resume` lifts it; a loom or darn fixer's escalate halt, which the arbiter judges first, is marked and skipped too; every other halt keeps the re-step, so a fix deployed in a new build can still clear it.
 // The `<row>-binary-restep` marker holds the halt's stop key and the build label, and is written only after the spawn returns success, so the re-step happens once per halt and build and survives a batten restart.
 // A spawn refused as not parked or as a busy pane, and a dirty tree, write no marker and are tried again at the next due check; the spawns are capped at five per halt and build.
 // Reading the build and the dirty paths costs a process, so the check runs once per interval, kept in the memory record:

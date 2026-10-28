@@ -138,7 +138,7 @@ func newFinalizeAt(t *testing.T, taskBranch, taskCode, parentCode string, shuttl
 
 // TestFinalize_OverRealHub lands tasks into a parent pair of one hub, a step at a time.
 //
-// The first step builds a task pair and a parent pair off the hub, diverges both on conflict.txt (a genuine code-side conflict) and diverges the task pair alone on a second, clean records-side file, runs Finalize with a fake session that writes a real resolution to the conflicted file, which reroutes as a large merge, runs it again, which lands, and asserts that the parent pair's code side afterward carries the task's resolved content and the squash setting took effect there, that the parent pair's records side is left byte-identical -- the records side is not a merge participant, per this task's own no-caller-facing-signature-change-in-fabric-shaped change to Fabric.Merge -- and that no merge record is left behind on either pair.
+// The first step builds a task pair and a parent pair off the hub, diverges both on conflict.txt (a genuine code-side conflict) and diverges the task pair alone on a second, clean records-side file, runs Finalize with a fake session that writes a real resolution to the conflicted file, and lands in that one call, resolving the conflict with one conflict session, and asserts that the parent pair's code side afterward carries the task's resolved content and the squash setting took effect there, that the parent pair's records side is left byte-identical -- the records side is not a merge participant, per this task's own no-caller-facing-signature-change-in-fabric-shaped change to Fabric.Merge -- and that no merge record is left behind on either pair.
 //
 // The second step lands a second task into the same parent once, then calls Finalize again on the same pair, and asserts the second call is Done with no second landing commit.
 // A fresh Finalize over a parent that already carries the task's squashed diff behaves the same way.
@@ -179,12 +179,8 @@ func TestFinalize_OverRealHub(t *testing.T) {
 		// convention for its records side (see e.g. its merge-local integration test).
 		parentRecordsBefore := gitkit.RevParse(t, parentRecords, "HEAD")
 
-		// A conflict that needed the conflict session makes the merge large, so Finalize keeps the merge commit and reroutes with nothing landed.
-		if ptr := shedfake.RequireOutcome(t, fz, shedengine.Stuck); !ptr.Reroute {
-			t.Errorf("OutputPointer.Reroute = false; want a reroute after a conflict that needed the conflict session")
-		}
-		// The next Finalize finds the merge already made and lands.
-		shedfake.RequireOutcome(t, newFinalizeAt(t, "task", taskCode, parentCode, shuttle, true, nil, nil), shedengine.Done)
+		// One Finalize call resolves the conflict with one conflict session under the parent lock and lands.
+		shedfake.RequireOutcome(t, fz, shedengine.Done)
 		if len(shuttle.Specs) != 1 {
 			t.Errorf("fake shuttle Run() called %d time(s); want exactly 1 (one conflict-resolution session)", len(shuttle.Specs))
 		} else if want := []string{"scribe:prose", "scribe:code-quality", "scribe:golang-testing"}; !slices.Equal(shuttle.Specs[0].Skills, want) {

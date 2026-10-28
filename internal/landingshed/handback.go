@@ -1,4 +1,4 @@
-// handback.go implements HandsBack, the one predicate every driver reads to tell a landing halt that goes to the orch from a stop the recipe routes itself.
+// handback.go implements HandsBack and EscalateHalt, the predicates every driver reads to tell a landing halt that goes to the orch, or a loom or darn escalate halt that goes to the arbiter first, from a stop the recipe routes itself.
 
 package landingshed
 
@@ -19,6 +19,17 @@ func HandsBack(producer, reason string) bool {
 		return strings.HasPrefix(reason, LandingStopPrefix)
 	case finalizeName:
 		return strings.HasPrefix(reason, LandingStopPrefix) || strings.HasPrefix(reason, shedengine.ReasonRerouteCapReached)
+	}
+	return false
+}
+
+// EscalateHalt reports whether a blocked stop at producer with the persisted reason is a loom or darn merge fixer's escalate halt.
+// A stop at Parent-Align, Finalize or Merge-In, the row's name before its rename, whose reason opens with EscalateStopPrefix is one.
+// Such a halt is no hand-back: the arbiter judges it first, and batten's binary re-step leaves it alone.
+func EscalateHalt(producer, reason string) bool {
+	switch producer {
+	case parentAlignName, retiredMergeInName, finalizeName:
+		return strings.HasPrefix(reason, EscalateStopPrefix)
 	}
 	return false
 }

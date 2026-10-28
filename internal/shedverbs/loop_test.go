@@ -242,11 +242,13 @@ func TestLoop_RunsUntilStopAndPrintsOneEnvelope(t *testing.T) {
 		wantStep map[string]any
 		// wantHandBack is the loop's hand_back under a told check that answers true for the producer B, where every halting script leaves the run.
 		wantHandBack bool
+		// wantRestepHold is the loop's restep_hold under a told check that answers true for the producer B, true for the blocked row only.
+		wantRestepHold bool
 		// wantStatusLeftAtA is whether the status file must still read running at the row the run was seeded on.
 		wantStatusLeftAtA bool
 	}{
 		{name: "yield", scripts: []childScript{yielding()}, wantStop: LoopStopHalted, wantStatusLeftAtA: true},
-		{name: "blocked", scripts: []childScript{continuing("B", 1), halting(shedengine.StateBlocked, shedengine.ReasonBounceBudgetExhausted, 2)}, wantStop: LoopStopHalted, wantHandBack: true},
+		{name: "blocked", scripts: []childScript{continuing("B", 1), halting(shedengine.StateBlocked, shedengine.ReasonBounceBudgetExhausted, 2)}, wantStop: LoopStopHalted, wantHandBack: true, wantRestepHold: true},
 		{name: "awaiting", scripts: []childScript{halting(shedengine.StateAwaiting, "", 1)}, wantStop: LoopStopHalted},
 		{name: "done", scripts: []childScript{continuing("B", 1), halting(shedengine.StateDone, "", 2)}, wantStop: LoopStopHalted},
 		{name: "bare pause", scripts: []childScript{halting(shedengine.StatePaused, "", 1)}, wantStop: LoopStopHalted},
@@ -264,6 +266,7 @@ func TestLoop_RunsUntilStopAndPrintsOneEnvelope(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fx := newLoopFixture(t, tt.scripts...)
 			fx.spec.HandBack = func(producer, _ string) bool { return producer == "B" }
+			fx.spec.RestepHold = func(producer, _ string) bool { return producer == "B" }
 			startCalls, childrenAtStart := 0, -1
 			fx.spec.Loop.OnStart = func() {
 				startCalls++
@@ -286,6 +289,9 @@ func TestLoop_RunsUntilStopAndPrintsOneEnvelope(t *testing.T) {
 			}
 			if loop["hand_back"] != tt.wantHandBack {
 				t.Errorf("loop hand_back = %v; want %v", loop["hand_back"], tt.wantHandBack)
+			}
+			if loop["restep_hold"] != tt.wantRestepHold {
+				t.Errorf("loop restep_hold = %v; want %v", loop["restep_hold"], tt.wantRestepHold)
 			}
 
 			if st := fx.readStatus(); tt.wantStatusLeftAtA && (st.State != shedengine.StateRunning || st.CurrentProducer != "A") {

@@ -474,6 +474,9 @@ func TestStatusCmd_FoundEnvelope_GenericCore(t *testing.T) {
 			if env["hand_back"] != false {
 				t.Errorf("hand_back = %v; want false with no check told", env["hand_back"])
 			}
+			if env["restep_hold"] != false {
+				t.Errorf("restep_hold = %v; want false with no check told", env["restep_hold"])
+			}
 		})
 	}
 
@@ -506,6 +509,36 @@ func TestStatusCmd_FoundEnvelope_GenericCore(t *testing.T) {
 			env, code := execEnvelope(t, statusCmd(statusTexts(), spec), nil)
 			if code != 0 || env["hand_back"] != tt.want {
 				t.Errorf("status = exit %d, hand_back %v; want exit 0, hand_back %v", code, env["hand_back"], tt.want)
+			}
+		})
+	}
+
+	restepHoldCheck := func(producer, reason string) bool {
+		return producer == "Finalize" && strings.HasPrefix(reason, "escalate: ")
+	}
+	restepHoldTests := []struct {
+		name  string
+		state shedengine.State
+		check func(producer, reason string) bool
+		want  bool
+	}{
+		{"BlockedFinalizeEscalate", shedengine.StateBlocked, restepHoldCheck, true},
+		{"NoCheckTold", shedengine.StateBlocked, nil, false},
+		{"FailedFinalize", shedengine.StateFailed, restepHoldCheck, false},
+	}
+	for _, tt := range restepHoldTests {
+		t.Run("RestepHold_"+tt.name, func(t *testing.T) {
+			spec := seededStatusSpec(t, Hooks{})
+			spec.RestepHold = tt.check
+			if err := state.UpdateJSON(spec.StatusPath, spec.StatusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {
+				cur.CurrentProducer, cur.State, cur.Error = "Finalize", tt.state, "escalate: the fixer needs a decision"
+				return cur, nil
+			}); err != nil {
+				t.Fatalf("record the halt: %v", err)
+			}
+			env, code := execEnvelope(t, statusCmd(statusTexts(), spec), nil)
+			if code != 0 || env["restep_hold"] != tt.want {
+				t.Errorf("status = exit %d, restep_hold %v; want exit 0, restep_hold %v", code, env["restep_hold"], tt.want)
 			}
 		})
 	}

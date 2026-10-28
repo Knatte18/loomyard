@@ -90,9 +90,6 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 	if build(shedrun.RecipeDarn).TraceFailure != nil {
 		t.Error("landingDeps(...).TraceFailure is set for the darn recipe; want nil")
 	}
-	if !deps.ConflictReroutes || build(shedrun.RecipeDarn).ConflictReroutes {
-		t.Error("landingDeps(...).ConflictReroutes is not true for loom and false for darn")
-	}
 
 	// The slug entry stops the verify until the run holds its parent lock, which exempts the slug's entries.
 	if !deps.VerifyHold.PastGrace() {
@@ -126,14 +123,12 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 	v := reflect.ValueOf(deps)
 	typ := v.Type()
 	// FixerSeats is filled by wireLanding, from the seat engine wire built, and GateKey by each landing row's registry entry, on its own copy of Deps.
-	// LargeMergeLands is true for a beam run only, and the loom run built here leaves it false.
 	// LandBlockers and ParentWorktree are a pawl run's, which a loom run leaves unset.
 	unfilled := map[string]bool{
-		"FixerSeats":      true,
-		"GateKey":         true,
-		"LargeMergeLands": true,
-		"LandBlockers":    true,
-		"ParentWorktree":  true,
+		"FixerSeats":     true,
+		"GateKey":        true,
+		"LandBlockers":   true,
+		"ParentWorktree": true,
 	}
 	for i := 0; i < v.NumField(); i++ {
 		field := v.Field(i)

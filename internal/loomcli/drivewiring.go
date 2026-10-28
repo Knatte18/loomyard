@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -125,12 +126,14 @@ func tacklerFor(dirs configengine.Dirs, recipe string, reg modelspec.Registry) (
 }
 
 // loomArbiterSeam builds the arbiter seam loom hands the shed driver.
-// Merriam reports a batch it cannot carry on only as a stuck outcome, so the arbiter, not the tackler, is the first to judge a blocked stop at the Webster row before it reaches the parent; no other row is marked.
+// Merriam reports a batch it cannot carry on only as a stuck outcome, and a loom or darn landing merge fixer reports an escalate as a halt of its own, so the arbiter, not the tackler, is the first to judge a blocked stop at the Webster row or a landing escalate before it reaches the parent; no other stop is marked.
 func loomArbiterSeam(arbiterDeps shedarbiter.Deps, runID string) *sheddriver.ArbiterSeam {
 	seam := shedarbiter.Seam(arbiterDeps, runID, func(producer string) bool {
 		return arbiterstop.EscalationEligible(producer, arbiterDeps.Stop)
 	})
-	seam.JudgesFirst = func(producer string) bool { return producer == loomshed.NameWebster }
+	seam.JudgesFirst = func(producer, reason string) bool {
+		return producer == loomshed.NameWebster || landingshed.EscalateHalt(producer, reason)
+	}
 	return seam
 }
 

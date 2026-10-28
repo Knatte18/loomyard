@@ -87,7 +87,7 @@ func TestWire_BeamRecipe(t *testing.T) {
 		}
 	})
 
-	t.Run("the landing deps of a pawl run let a large merge land and halt a spent fixer", func(t *testing.T) {
+	t.Run("the landing deps of a pawl run halt a spent fixer, and only a loom or darn run judges an escalate first", func(t *testing.T) {
 		t.Parallel()
 		loc := hubLocation(t, "pair", ".")
 		runner := &shuttleengine.Runner{}
@@ -95,15 +95,14 @@ func TestWire_BeamRecipe(t *testing.T) {
 		lock := parentLockDeps(loc, shedrun.SelfRunID, "", "")
 
 		tests := []struct {
-			recipe               string
-			wantLargeMerge       bool
-			wantConflictReroutes bool
-			wantRerouteSeam      bool
-			wantLandBlockers     bool
+			recipe                  string
+			wantRerouteSeam         bool
+			wantLandBlockers        bool
+			wantEscalateJudgedFirst bool
 		}{
-			{shedrun.RecipeLoom, false, true, true, false},
-			{shedrun.RecipeDarn, false, false, true, false},
-			{shedrun.RecipePawl, true, false, false, true},
+			{shedrun.RecipeLoom, true, false, true},
+			{shedrun.RecipeDarn, true, false, true},
+			{shedrun.RecipePawl, false, true, false},
 		}
 		for _, tt := range tests {
 			deps := landingDeps(
@@ -123,17 +122,14 @@ func TestWire_BeamRecipe(t *testing.T) {
 				planVerifySource(loc),
 				lock,
 			)
-			if deps.LargeMergeLands != tt.wantLargeMerge {
-				t.Errorf("%s: LargeMergeLands = %v; want %v", tt.recipe, deps.LargeMergeLands, tt.wantLargeMerge)
-			}
-			if deps.ConflictReroutes != tt.wantConflictReroutes {
-				t.Errorf("%s: ConflictReroutes = %v; want %v", tt.recipe, deps.ConflictReroutes, tt.wantConflictReroutes)
-			}
 			if (deps.RerouteReviewed != nil) != tt.wantRerouteSeam {
 				t.Errorf("%s: RerouteReviewed set = %v; want %v", tt.recipe, deps.RerouteReviewed != nil, tt.wantRerouteSeam)
 			}
 			if (deps.LandBlockers != nil) != tt.wantLandBlockers {
 				t.Errorf("%s: LandBlockers set = %v; want %v", tt.recipe, deps.LandBlockers != nil, tt.wantLandBlockers)
+			}
+			if deps.EscalateJudgedFirst != tt.wantEscalateJudgedFirst {
+				t.Errorf("%s: EscalateJudgedFirst = %v; want %v", tt.recipe, deps.EscalateJudgedFirst, tt.wantEscalateJudgedFirst)
 			}
 			if tt.recipe == shedrun.RecipePawl {
 				if deps.TraceFailure != nil {

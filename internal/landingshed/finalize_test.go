@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -385,9 +386,12 @@ func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 		wantOrder   string
 		wantCalls   int
 		wantReroute bool
+		// parentMoves makes the parent tip read p2 until the first parent-side merge call and p3 after it, as a code-side commit arriving between the passes does.
+		parentMoves bool
 	}{
-		{"retry lands", mergeCallResult{result: fabricengine.MergeResult{Committed: true}}, shedengine.Done, "merge-in,records,merge,merge-in,records,merge,mark,push", 2, false},
-		{"retry also required stays Stuck", mergeCallResult{err: &fabricengine.ErrMergeInRequired{}}, shedengine.Stuck, "merge-in,records,merge,merge-in,records,merge", 2, false},
+		{"retry lands", mergeCallResult{result: fabricengine.MergeResult{Committed: true}}, shedengine.Done, "merge-in,records,merge,merge-in,records,merge,mark,push", 2, false, false},
+		{"retry also required stays Stuck", mergeCallResult{err: &fabricengine.ErrMergeInRequired{}}, shedengine.Stuck, "merge-in,records,merge,merge-in,records,merge", 2, false, false},
+		{"a code-side parent commit between the passes lands through the retry", mergeCallResult{result: fabricengine.MergeResult{Committed: true}}, shedengine.Done, "merge-in,records,merge,merge-in,records,merge,mark,push", 2, false, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -404,9 +408,27 @@ func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 				results: []mergeCallResult{{err: &fabricengine.ErrMergeInRequired{Source: deps.TaskBranch}}, tt.secondTry},
 				order:   &order,
 			}
+			var changed []string
+			if tt.parentMoves {
+				deps.MergeBase = func(string) (string, error) { return "b0", nil }
+				deps.ReadParentTips = func(bool) (fabricengine.ParentTips, error) {
+					tip := "p2"
+					if len(merger.calls) > 0 {
+						tip = "p3"
+					}
+					return fabricengine.ParentTips{Local: tip, Upstream: tip, Relation: fabricengine.ParentEqual}, nil
+				}
+				deps.ChangedPaths = func(from, to string) ([]string, error) {
+					changed = append(changed, from+".."+to)
+					return []string{"x.go"}, nil
+				}
+			}
 			fz := &Finalize{deps: deps, resolver: res, guard: newParentGuard(deps), parentOpener: func() (parentMerger, error) { return merger, nil }}
 
 			ptr := shedfake.RequireOutcome(t, fz, tt.wantOutcome)
+			if tt.parentMoves && !slices.Contains(changed, "p2..p3") {
+				t.Errorf("ChangedPaths calls = %v; want the retry to read the parent's changes since p2 as a p2..p3 call", changed)
+			}
 			if len(merger.calls) != tt.wantCalls {
 				t.Fatalf("parent-side merge calls = %d; want %d", len(merger.calls), tt.wantCalls)
 			}

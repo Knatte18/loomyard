@@ -12,7 +12,7 @@
 // --by <label> stores a free-text caller label beside the request it accompanies: pause_requested_by for a bare pause, pause_before_by with --before and pause_after_by with --after, each replaced with its condition and --clear dropping both condition labels.
 // The label gates nothing, and the engine records it in the paused run's pause_reason;
 // --by shed is refused before any write, since shed is the label of lym's own automatic steps.
-// status's generic core is eleven keys, and pause_reason is the status file's value; the human view prints it as a "why" line for a paused run with a non-empty reason.
+// status's generic core is twelve keys, and pause_reason is the status file's value; the human view prints it as a "why" line for a paused run with a non-empty reason.
 // Spec.GotoGuard is the recipe's told check of a goto target, which every goto passes on; nil admits every target.
 // Spec.HandBack is the recipe's told check of a blocked stop that goes to the orch, which keeps the package recipe-generic: the loop's stop envelope and lym shed status report its answer as hand_back.
 //
@@ -48,9 +48,10 @@
 // LastStepBuildChanged reads whether the last step ran on a known build other than the one passed, which an in-process driver judges against the lym on disk.
 //
 // The final envelope is the stop step's short envelope plus a loop object whose keys are closed:
-// steps, first_producer, stop, detail, status_moved, hand_back, restep (only when a re-step ran), current_producer, history_length, state, interrupt_policy, trace_copy and stderr_path.
+// steps, first_producer, stop, detail, status_moved, hand_back, restep_hold, restep (only when a re-step ran), current_producer, history_length, state, interrupt_policy, trace_copy and stderr_path.
 // hand_back is true when the stop is blocked and Spec.HandBack, the recipe's told check, answers true for the status's current producer and error, so a driver hands the halt to the orch; nil marks nothing.
-// lym shed status reports the same hand_back key at its top level, over the status file.
+// restep_hold is true under the same rule for Spec.RestepHold, the recipe's told check of a blocked stop that a driver's own build re-launch leaves alone, though such a stop still goes to the arbiter first.
+// lym shed status reports the same hand_back and restep_hold keys at their top level, over the status file.
 // detail is the stop's error or reason and the WARN and ERROR lines and last lines of the stop step's trace, capped by lines and bytes.
 // trace_copy is a copy of the stop step's trace files, which outlives a sweep of the trace directory.
 // A refusal of the --until-stop invocation's own arming goes through ReportLoopArmError, which prints the bootstrap error with a loop object that stopped with no step run.

@@ -64,8 +64,8 @@ The `reinvoke` sub-case counts toward the cap.
 
 The watch is a background shell loop that resolves the `lym` executable once, checks its modification time about once a minute, and exits when it changes.
 It never runs a long-lived `lym` process, which would block a deploy's overwrite on Windows.
-When it exits, read `lym shed status <run-id>` once, and re-step only if `binary_changed` is true, the clean-tree guard passes and `hand_back` is false; otherwise re-arm the watch.
-A stop marked `hand_back` starts no watch and is handed back to the parent.
+When it exits, read `lym shed status <run-id>` once, and re-step only if `binary_changed` is true, the clean-tree guard passes and neither `hand_back` nor `restep_hold` is true; otherwise re-arm the watch.
+A stop marked `hand_back` starts no watch and is handed back to the parent; a stop marked `restep_hold` starts no watch and goes to the arbiter first.
 A watch job that ends by the harness timeout is re-armed, never read as a resume.
 
 ## Interrupted invocations

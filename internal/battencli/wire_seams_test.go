@@ -16,11 +16,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -149,6 +151,38 @@ func TestWire_EverySeamFilled(t *testing.T) {
 		if !slices.Contains(nils, path) {
 			t.Errorf("intentionallyNil lists c.env.%s but wire() now fills it; remove the entry", path)
 		}
+	}
+
+	escalated := shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "Finalize", Error: landingshed.EscalateStopPrefix + "the fixer escalated"}
+	if !c.env.InnerRun.HandBack(escalated) {
+		t.Errorf("InnerRun.HandBack(%+v) = false; want true, so the binary re-step leaves a loom or darn escalate halt alone", escalated)
+	}
+}
+
+// TestRestepSkips pins which child statuses the binary re-step leaves alone: a blocked landing, decision or escalate halt, and nothing else.
+func TestRestepSkips(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		status shedengine.Status
+		want   bool
+	}{
+		{"LandingHaltAtFinalize", shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "Finalize", Error: landingshed.LandingStopPrefix + "over the caps"}, true},
+		{"DecisionHalt", shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "Discussion-Bouncer", Error: shedadapters.DecisionHaltPrefix + "a held accept"}, true},
+		{"EscalateHaltAtFinalize", shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "Finalize", Error: landingshed.EscalateStopPrefix + "a conflict"}, true},
+		{"EscalateHaltAtParentAlign", shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "Parent-Align", Error: landingshed.EscalateStopPrefix + "a conflict"}, true},
+		{"EscalateReasonOnAFailedStatus", shedengine.Status{State: shedengine.StateFailed, CurrentProducer: "Finalize", Error: landingshed.EscalateStopPrefix + "a conflict"}, false},
+		{"EscalateReasonAtDescribe", shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "Describe", Error: landingshed.EscalateStopPrefix + "a conflict"}, false},
+		{"PlainHalt", shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "Finalize", Error: "dirty parent"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := restepSkips(tt.status); got != tt.want {
+				t.Errorf("restepSkips(%+v) = %v; want %v", tt.status, got, tt.want)
+			}
+		})
 	}
 }
 

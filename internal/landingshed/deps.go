@@ -69,6 +69,10 @@ type Deps struct {
 	// PushSkipped is the told skip decision, which Finalize's parent push honours by skipping its push.
 	PushSkipped bool
 
+	// EscalateJudgedFirst is the told decision whether a merge fixer's escalate halts with EscalateStopPrefix, so the arbiter judges it before the orch, or with LandingStopPrefix as a hand-back.
+	// True on a loom or darn run, false on a pawl run, whose arbiter has no decision verb to settle it with.
+	EscalateJudgedFirst bool
+
 	// OpenFabric and OpenParentFabric are the two lazy opener closures Parent-Align and Finalize hold,
 	// respectively -- Parent-Align's over the task worktree's own pair, Finalize's over the parent
 	// branch's pair. Laziness is required, not stylistic: the constructor each closure wraps
@@ -152,15 +156,6 @@ type Deps struct {
 	// ParentWorktree is the name of the beam's parent worktree, which the land check's ways forward name as where a cancel runs.
 	// Told by the caller, and unset where LandBlockers is nil.
 	ParentWorktree string
-
-	// ConflictReroutes reports whether a conflict in Finalize's merge of the parent branch into the task aborts the merge and reroutes, which leaves the merge and its conflict session to Parent-Align outside the parent lock.
-	// Told by the caller: true for loom.
-	// False, darn's value, resolves the conflict with the conflict session under the lock, since darn has no other merging row.
-	ConflictReroutes bool
-	// LargeMergeLands lets a merge that needed the conflict session, or whose parent changes touch a file the task changed, go on to the gate instead of rerouting, writing no overlap note.
-	// Told by the caller, for a Finalize whose recipe row declares no reroute edge; it is meant for ConflictReroutes false, since a conflict that aborts the merge still reroutes.
-	// False, the value of loom and darn, reroutes a large merge.
-	LargeMergeLands bool
 
 	// CommitParentRecords commits the parent pair's own run records, which Finalize calls after its merge of the parent branch and before the parent-side merge.
 	// Sibling runs leave their status records uncommitted in the parent pair, and the merge guard refuses any tracked modification there.
