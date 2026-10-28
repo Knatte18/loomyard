@@ -1508,6 +1508,10 @@ func TestReconcileAll_SparseLayers(t *testing.T) {
 		{
 			name: "absent local file reports nothing", module: "loom", layer: configengine.LayerLocal,
 		},
+		{
+			name: "a local loom file keeps a solo code_reviewer_fan", module: "loom", layer: configengine.LayerLocal,
+			content: "code_reviewer_fan: \"\"\n", wantFile: ptr("code_reviewer_fan: \"\"\n"), wantResult: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2061,7 +2065,7 @@ func TestReconcile_MovesKeysAcrossModules(t *testing.T) {
 		cfg.Lenses["generic"] = tunedGeneric + "\n"
 	})
 	burlerOldTemplate := burlerFixture(t, func(cfg *lenses.Config) {
-		cfg.Fans["twill-discussion"] = cfg.Fans["twill-discussion"][:6]
+		cfg.Fans["twill-discussion"] = cfg.Fans["twill-discussion"][:5]
 	})
 	lensesEqualTemplate := lensesFixture(t, func(cfg *lenses.Config) {})
 	lensesWithHubLens := lensesFixture(t, func(cfg *lenses.Config) {

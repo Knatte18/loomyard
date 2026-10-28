@@ -43,7 +43,7 @@ func TestPrepareRunSettings(t *testing.T) {
 		{
 			name:     "no profiles file takes the template's default for the recipe",
 			settings: battenshed.RunSettings{Recipe: "darn"},
-			wantDocs: map[string]string{"loom": "code_hard_max_bounces: 2\ncode_max_bounces: 1\n"},
+			wantDocs: map[string]string{"loom": "code_hard_max_bounces: 2\ncode_max_bounces: 1\ncode_reviewer_fan: \"\"\n"},
 		},
 		{
 			name:        "the task's settings lie over the loom block, and the profile's retired merge_max_bounces is dropped",

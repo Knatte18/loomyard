@@ -11,6 +11,7 @@
 // The template's starting profiles are one ladder of review rounds per perch, `speed`, `light`, `solid` and `wide`, each perch's hard cap its rounds plus one, and `docs`, a darn-only profile for prose and config value edits;
 // its defaults are `solid` for loom and `light` for darn and pawl.
 // Each ladder profile's pawl block carries the same perch values as its darn block.
+// `light`, `docs` and `speed`'s loom block run the Code-Review round solo through `loom.code_reviewer_fan: ""`, while `solid`, `wide` and the rest take the hub's fan.
 // A round count of 0 turns a perch off, since its Bouncer then settles approved with no review round.
 //
 // The module is hub-wide and seed-only: the hub reconcile seeds an absent file with the template's entries and never rewrites a present one.

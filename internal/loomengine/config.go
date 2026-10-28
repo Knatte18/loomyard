@@ -498,6 +498,7 @@ func ConfigOpenMaps() []string {
 // Only the keys that can switch off or hollow a review or approval gate are barred from the local layer.
 // The budget, hard-cap and auto-accept keys come from reviewbudget: a budget of 0 is the per-run off switch and no guard, while the auto-accept keys are guards.
 // discussion_advisors, discussion_lenses and plan_lenses are barred too, so no local override or task run_settings can start advisors, turn the lens forks off or change their fan.
+// code_reviewer_fan is the one reviewer fan key open to the local layer, since its value names only a fan the guarded lenses.yaml defines, or "" for a solo round, and the perch's round count, rubric and whole-diff read stay.
 func ConfigSpec() configengine.Spec {
 	none := configengine.CategoryNone
 	guard := configengine.CategoryGuard
@@ -525,7 +526,7 @@ func ConfigSpec() configengine.Spec {
 			"code_fixer_model":           none,
 			"discussion_reviewer_fan":    guard,
 			"plan_reviewer_fan":          guard,
-			"code_reviewer_fan":          guard,
+			"code_reviewer_fan":          none,
 			"discussion_fixer_fan":       guard,
 			"plan_fixer_fan":             guard,
 			"code_fixer_fan":             guard,

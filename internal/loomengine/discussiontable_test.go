@@ -410,9 +410,9 @@ func TestDiscussionTable(t *testing.T) {
 			wantLenses  []string
 		}{
 			{name: "template fan without lenses.yaml", wantLenses: lensNames(templateFan)},
-			{name: "lenses.yaml redefines the fan", lensesYAML: "fans:\n  twill-discussion: [goal-scope]\n", wantLenses: []string{"goal-scope"}},
-			{name: "the fan lives only in the repo default", defaultYAML: "fans:\n  twill-discussion: [goal-scope]\n", wantLenses: []string{"goal-scope"}},
-			{name: "the key names a fan of lenses.yaml's own", fan: "writer-lenses", lensesYAML: "fans:\n  writer-lenses: [goal-scope]\n", wantLenses: []string{"goal-scope"}},
+			{name: "lenses.yaml redefines the fan", lensesYAML: "fans:\n  twill-discussion: [board-scope]\n", wantLenses: []string{"board-scope"}},
+			{name: "the fan lives only in the repo default", defaultYAML: "fans:\n  twill-discussion: [board-scope]\n", wantLenses: []string{"board-scope"}},
+			{name: "the key names a fan of lenses.yaml's own", fan: "writer-lenses", lensesYAML: "fans:\n  writer-lenses: [board-scope]\n", wantLenses: []string{"board-scope"}},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -456,7 +456,7 @@ func TestDiscussionTable(t *testing.T) {
 				}
 				if tt.lensesYAML != "" || tt.defaultYAML != "" {
 					for _, dropped := range templateFan {
-						if dropped.Name != "goal-scope" && strings.Contains(prompt, "- "+dropped.Name+": ") {
+						if dropped.Name != "board-scope" && strings.Contains(prompt, "- "+dropped.Name+": ") {
 							t.Errorf("twill lead prompt carries lens %q; want only the lenses.yaml fan %v", dropped.Name, tt.wantLenses)
 						}
 					}

@@ -1,13 +1,15 @@
 //go:build tier0
 
 // config_test.go table-drives Load, ResolveFan and CheckLoad, and pins the embedded template.yaml's self-consistency:
-// every fan entry names a defined lens, the seeded fan lengths and orders, each writer fan holding its reviewer fan's lenses, and the emphasis-never-exclusion posture (no lens text carries "ignore " phrasing).
+// every fan entry names a defined lens, the seeded fan lengths and orders, each writer fan holding its reviewer fan's lenses but the reviewer-only repo-invariants, and the emphasis-never-exclusion posture (no lens text carries "ignore " phrasing).
 // Untagged unit tier: no process spawns, fixtures written directly via os.WriteFile under t.TempDir.
 
 package lenses
 
 import (
 	"errors"
+	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -42,6 +44,94 @@ func loadTemplateConfig(t *testing.T) Config {
 	return cfg
 }
 
+// emphasisLine closes every lens that is not a procedure lens and is not generic.
+const emphasisLine = "Report anything else you notice too — emphasis, never exclusion."
+
+// emphasisLineGaps returns, sorted, the names in lensTexts, other than generic and those exempt holds, whose whitespace-normalised text does not end with the emphasis line.
+func emphasisLineGaps(lensTexts map[string]string, exempt map[string]bool) []string {
+	var gaps []string
+	for name, text := range lensTexts {
+		if name != "generic" && !exempt[name] && !strings.HasSuffix(strings.Join(strings.Fields(text), " "), emphasisLine) {
+			gaps = append(gaps, name)
+		}
+	}
+	slices.Sort(gaps)
+	return gaps
+}
+
+// writerFanGaps returns one message per lens of a reviewer fan in writerOf that its writer fan's order lacks, neither itself nor through absorbedBy, and that reviewerOnly does not hold.
+func writerFanGaps(orders map[string][]string, writerOf map[string]string, absorbedBy map[string]string, reviewerOnly map[string]bool) []string {
+	var gaps []string
+	for _, reviewerFan := range slices.Sorted(maps.Keys(writerOf)) {
+		writerFan := writerOf[reviewerFan]
+		for _, lensName := range orders[reviewerFan] {
+			if reviewerOnly[lensName] || slices.Contains(orders[writerFan], lensName) || slices.Contains(orders[writerFan], absorbedBy[lensName]) {
+				continue
+			}
+			gaps = append(gaps, fmt.Sprintf("fan %q lacks lens %q of reviewer fan %q", writerFan, lensName, reviewerFan))
+		}
+	}
+	return gaps
+}
+
+// TestTemplateChecks_FlagBrokenTemplates drives the template checks' helpers over hand-built inputs that must fail, since the template itself holds none.
+func TestTemplateChecks_FlagBrokenTemplates(t *testing.T) {
+	t.Parallel()
+	t.Run("emphasisLineGaps", func(t *testing.T) {
+		t.Parallel()
+		exempt := map[string]bool{"board-scope": true}
+		tests := []struct {
+			name  string
+			lens  map[string]string
+			wants []string
+		}{
+			{"an exempt lens ending in its list", map[string]string{"board-scope": "Own it. Your list: x."}, nil},
+			{"non-procedure lenses without the line", map[string]string{"scenarios": "Focus.", "leanness": "Focus."}, []string{"leanness", "scenarios"}},
+			{"generic without the line", map[string]string{"generic": "Anything."}, nil},
+			{"a lens ending with the line", map[string]string{"scenarios": "Focus.\n  " + emphasisLine}, nil},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				if got := emphasisLineGaps(tt.lens, exempt); !slices.Equal(got, tt.wants) {
+					t.Errorf("emphasisLineGaps() = %v; want %v", got, tt.wants)
+				}
+			})
+		}
+	})
+
+	t.Run("writerFanGaps", func(t *testing.T) {
+		t.Parallel()
+		writerOf := map[string]string{"review": "twill"}
+		tests := []struct {
+			name         string
+			orders       map[string][]string
+			absorbedBy   map[string]string
+			reviewerOnly map[string]bool
+			wantLens     []string
+		}{
+			{"a reviewer lens the writer fan lacks", map[string][]string{"review": {"way-forward"}, "twill": {"coverage"}}, nil, nil, []string{"way-forward"}},
+			{"a lens absorbed by a writer lens", map[string][]string{"review": {"affected-set"}, "twill": {"forced-edits"}}, map[string]string{"affected-set": "forced-edits"}, nil, nil},
+			{"a reviewer-only lens with no exemption", map[string][]string{"review": {"repo-invariants"}, "twill": {"coverage"}}, nil, map[string]bool{}, []string{"repo-invariants"}},
+			{"a reviewer-only lens with its exemption", map[string][]string{"review": {"repo-invariants"}, "twill": {"coverage"}}, nil, map[string]bool{"repo-invariants": true}, nil},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				got := writerFanGaps(tt.orders, writerOf, tt.absorbedBy, tt.reviewerOnly)
+				if len(got) != len(tt.wantLens) {
+					t.Fatalf("writerFanGaps() = %v; want one message per lens %v", got, tt.wantLens)
+				}
+				for i, lens := range tt.wantLens {
+					if !strings.Contains(got[i], fmt.Sprintf("%q", lens)) {
+						t.Errorf("writerFanGaps()[%d] = %q; want it to name %q", i, got[i], lens)
+					}
+				}
+			})
+		}
+	})
+}
+
 // TestLoad covers Load's layer stack: the per-name fill from the template, per-name layer replacement, the local layer's refusal, the strict decode and the expansion of lens prose.
 // Its rows run serially, since logcapture.CaptureVerbose swaps the process-global logger.
 func TestLoad(t *testing.T) {
@@ -65,7 +155,7 @@ func TestLoad(t *testing.T) {
 
 	t.Run("a hub lens keeps its own text over the template's while a sibling lens of the fan resolves the template's", func(t *testing.T) {
 		boardDir, anchor := t.TempDir(), t.TempDir()
-		writeLensesYAML(t, boardDir, "lenses:\n  goal-scope: tuned goal-scope prose\n")
+		writeLensesYAML(t, boardDir, "lenses:\n  interactions: tuned interactions prose\n")
 
 		cfg, err := Load(configengine.Dirs{Anchor: anchor, Board: boardDir})
 		if err != nil {
@@ -80,11 +170,11 @@ func TestLoad(t *testing.T) {
 		for _, lens := range lenses {
 			texts[lens.Name] = lens.Text
 		}
-		if texts["goal-scope"] != "tuned goal-scope prose" {
-			t.Errorf("ResolveFan(review-discussion) goal-scope text = %q; want the hub's own text", texts["goal-scope"])
+		if texts["interactions"] != "tuned interactions prose" {
+			t.Errorf("ResolveFan(review-discussion) interactions text = %q; want the hub's own text", texts["interactions"])
 		}
-		if texts["board-fit"] != template.Lenses["board-fit"] {
-			t.Errorf("ResolveFan(review-discussion) board-fit text = %q; want the template's", texts["board-fit"])
+		if texts["existing-paths"] != template.Lenses["existing-paths"] {
+			t.Errorf("ResolveFan(review-discussion) existing-paths text = %q; want the template's", texts["existing-paths"])
 		}
 	})
 
@@ -250,7 +340,7 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 
 	cfg := loadTemplateConfig(t)
 
-	const wantLenses = 38
+	const wantLenses = 37
 	if len(cfg.Lenses) != wantLenses {
 		t.Errorf("seeded template has %d lenses; want %d", len(cfg.Lenses), wantLenses)
 	}
@@ -265,7 +355,7 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 			}
 		}
 	}
-	for fanName, wantEntries := range map[string]int{"standard": 5, "full": 8, "discussion": 5, "plan": 5, "twill-discussion": 7, "twill-plan": 5, "review-discussion": 6, "review-plan": 3, "fix-discussion": 4, "fix-plan": 4, "review-code": 4, "fix-code": 4} {
+	for fanName, wantEntries := range map[string]int{"standard": 5, "full": 8, "discussion": 5, "plan": 5, "twill-discussion": 6, "twill-plan": 5, "review-discussion": 4, "review-plan": 3, "fix-discussion": 4, "fix-plan": 4, "review-code": 3, "fix-code": 4} {
 		entries, ok := cfg.Fans[fanName]
 		if !ok {
 			t.Errorf("seeded template is missing fan %q", fanName)
@@ -275,15 +365,15 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 		}
 	}
 	wantOrders := map[string][]string{
-		"discussion":        {"generic", "goal-scope", "pattern-fit", "scenarios", "leanness"},
+		"discussion":        {"generic", "board-scope", "pattern-fit", "scenarios", "leanness"},
 		"plan":              {"generic", "decision-coverage", "card-structure", "verify-tests", "pattern-fit"},
-		"twill-discussion":  {"interactions", "existing-paths", "bound-breaker", "walkthrough", "goal-scope", "board-fit", "leanness"},
+		"twill-discussion":  {"interactions", "existing-paths", "bound-breaker", "walkthrough", "board-scope", "leanness"},
 		"twill-plan":        {"coverage", "row-validity", "forced-edits", "guard-reach", "way-forward"},
-		"review-discussion": {"interactions", "existing-paths", "bound-breaker", "walkthrough", "goal-scope", "board-fit"},
-		"review-plan":       {"affected-set", "guard-reach", "way-forward"},
+		"review-discussion": {"interactions", "existing-paths", "bound-breaker", "walkthrough"},
+		"review-plan":       {"affected-set", "guard-reach", "repo-invariants"},
 		"fix-discussion":    {"fix-consistency", "fix-claims", "fix-proposal", "fix-way-forward"},
 		"fix-plan":          {"fix-consistency", "fix-claims", "fix-proposal", "fix-affected-set"},
-		"review-code":       {"code-correctness", "code-affected-set", "code-tests", "code-pattern-fit"},
+		"review-code":       {"code-correctness", "code-affected-set", "code-tests"},
 		"fix-code":          {"fix-code-correctness", "fix-consistency", "fix-proposal", "fix-affected-set"},
 	}
 	procedureLenses := map[string]bool{}
@@ -308,14 +398,13 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 		}
 	}
 
+	procedureLenses["board-scope"] = true
+
 	// A perch's writer runs every procedure its reviewer judges it by, itself or through the writer lens that absorbed it.
 	absorbedBy := map[string]string{"affected-set": "forced-edits"}
-	for reviewerFan, writerFan := range map[string]string{"review-discussion": "twill-discussion", "review-plan": "twill-plan"} {
-		for _, lensName := range wantOrders[reviewerFan] {
-			if !slices.Contains(wantOrders[writerFan], lensName) && !slices.Contains(wantOrders[writerFan], absorbedBy[lensName]) {
-				t.Errorf("fan %q lacks lens %q of reviewer fan %q", writerFan, lensName, reviewerFan)
-			}
-		}
+	// repo-invariants is the one lens only a reviewer runs: the writer reads the repository's invariants through its own lenses.
+	for _, gap := range writerFanGaps(wantOrders, map[string]string{"review-discussion": "twill-discussion", "review-plan": "twill-plan"}, absorbedBy, map[string]bool{"repo-invariants": true}) {
+		t.Error(gap)
 	}
 
 	for lensName, wantSentences := range map[string][]string{
@@ -325,6 +414,18 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 		},
 		"forced-edits": {"a registration no card lists is a finding"},
 		"row-validity": {"a zero-value or nil seam of a new field has a stated meaning"},
+		"repo-invariants": {
+			"A broken invariant no card lists is a finding.",
+			"reflective seam test",
+		},
+		"code-affected-set": {"PATTERN.md", "Declared PATTERN changes landed", "Commit messages and departures"},
+		"code-tests":        {"Your list: per behaviour, the test that pins it, or none."},
+		"board-scope": {
+			"that is at most six tool calls",
+			"reports only a contradiction with the board",
+			"class `decision`",
+			"Your list:",
+		},
 	} {
 		text := strings.Join(strings.Fields(cfg.Lenses[lensName]), " ")
 		for _, wantSentence := range wantSentences {
@@ -334,21 +435,34 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 		}
 	}
 
-	const emphasisLine = "Report anything else you notice too — emphasis, never exclusion."
+	if strings.Contains(strings.Join(strings.Fields(cfg.Lenses["code-tests"]), " "), "Test economy") {
+		t.Errorf("lens code-tests names \"Test economy\"; want the review lead alone to judge it")
+	}
+	if strings.Contains(strings.Join(strings.Fields(cfg.Lenses["board-scope"]), " "), emphasisLine) {
+		t.Errorf("lens board-scope text carries the emphasis line; want nothing after its list")
+	}
+	for _, retired := range []string{"goal-scope", "board-fit", "code-pattern-fit"} {
+		if _, ok := cfg.Lenses[retired]; ok {
+			t.Errorf("seeded template defines retired lens %q", retired)
+		}
+	}
+	if procedureLenses["leanness"] {
+		t.Errorf("procedure lenses = %v; want leanness out", procedureLenses)
+	}
 	for name, text := range cfg.Lenses {
 		if strings.TrimSpace(text) == "" {
 			t.Errorf("lens %q has empty text", name)
-		}
-		if name != "generic" && !procedureLenses[name] && !strings.HasSuffix(strings.Join(strings.Fields(text), " "), emphasisLine) {
-			t.Errorf("lens %q text does not end with the emphasis line", name)
 		}
 		if strings.Contains(text, "ignore ") {
 			t.Errorf("lens %q text contains hard-exclusion phrasing (\"ignore \"): %q", name, text)
 		}
 	}
+	for _, name := range emphasisLineGaps(cfg.Lenses, procedureLenses) {
+		t.Errorf("lens %q text does not end with the emphasis line", name)
+	}
 
 	// The exemption from the emphasis line is computed from the base fans only, so a lens a layer adds to a review fan still ends with it.
-	baseProcedureLenses := map[string]bool{}
+	baseProcedureLenses := map[string]bool{"board-scope": true}
 	for fanName, entries := range cfg.Fans {
 		if strings.HasPrefix(fanName, "review-") || strings.HasPrefix(fanName, "fix-") {
 			for _, name := range entries {
@@ -404,10 +518,8 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 					t.Errorf("fan %q under lens_set %s = %v; want %v", name, layerName, entries, want)
 				}
 			}
-			for name, text := range layer.Lenses {
-				if name != "generic" && !baseProcedureLenses[name] && !strings.HasSuffix(strings.Join(strings.Fields(text), " "), emphasisLine) {
-					t.Errorf("layer %s lens %q does not end with the emphasis line", layerName, name)
-				}
+			for _, name := range emphasisLineGaps(layer.Lenses, baseProcedureLenses) {
+				t.Errorf("layer %s lens %q does not end with the emphasis line", layerName, name)
 			}
 			for name, entries := range layer.Fans {
 				baseEntries, inBase := cfg.Fans[name]
@@ -575,7 +687,7 @@ func TestCheckLoad(t *testing.T) {
 	t.Run("a remove emptying a fan passes the check and the fan is refused at resolution", func(t *testing.T) {
 		t.Parallel()
 		anchor := t.TempDir()
-		writeLensesYAML(t, anchor, "remove: [code-correctness, code-affected-set, code-tests, code-pattern-fit]\n")
+		writeLensesYAML(t, anchor, "remove: [code-correctness, code-affected-set, code-tests]\n")
 		dirs := configengine.Dirs{Anchor: anchor}
 
 		if err := CheckLoad(dirs); err != nil {

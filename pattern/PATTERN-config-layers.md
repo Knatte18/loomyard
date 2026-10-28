@@ -10,6 +10,7 @@ Machine alone opens a key to the machine layer.
 - **Sourced file**: the key sources a file into a shared process.
 - **Cross-pair**: the key reaches across pairs, including a shared process's boot option or what lands on the parent branch.
 - **Guard**: the key switches off or hollows a guard, including a review or an approval gate, a timeout whose expiry lets that gate pass, and the prose or lens set a reviewer is given.
+  `loom.code_reviewer_fan` is the one reviewer fan key open to the local layer: its value names only a fan the guarded `lenses.yaml` defines, or `""` for a solo round, and the perch's rounds, rubric and whole-diff read are unchanged.
 - **Machine**: the key's value is a property of the machine, bounding a resource every worktree of the hub on that machine shares.
   It opens the key to the machine layer and keeps it closed to the local layer.
 

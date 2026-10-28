@@ -166,7 +166,6 @@ fans:
     - code-correctness
     - code-affected-set
     - code-tests
-    - code-pattern-fit
     - models-rules
 ```
 

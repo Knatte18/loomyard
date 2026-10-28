@@ -467,6 +467,11 @@ review_timeout_min: 240
 				local:  "driver_kind: go\n",
 				mutate: func(c *Config) { c.DriverKind = "go" },
 			},
+			{
+				name:   "a local code_reviewer_fan of \"\" is open to the local layer",
+				local:  "code_reviewer_fan: \"\"\n",
+				mutate: func(c *Config) { c.CodeReviewerFan = lenses.FanList{""} },
+			},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -684,7 +689,7 @@ func TestLoadConfig_Refuses(t *testing.T) {
 
 	t.Run("a local fan key is refused naming the local file and the key", func(t *testing.T) {
 		t.Parallel()
-		for _, key := range []string{"discussion_reviewer_fan", "plan_reviewer_fan", "code_reviewer_fan", "discussion_fixer_fan", "plan_fixer_fan", "code_fixer_fan"} {
+		for _, key := range []string{"discussion_reviewer_fan", "plan_reviewer_fan", "discussion_fixer_fan", "plan_fixer_fan", "code_fixer_fan"} {
 			t.Run(key, func(t *testing.T) {
 				t.Parallel()
 				board, anchor := t.TempDir(), t.TempDir()
