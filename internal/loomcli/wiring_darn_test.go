@@ -409,34 +409,59 @@ func TestLatestDarnOutcome(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name      string
-		status    *shedengine.Status
-		wantFound bool
-		want      loomshed.DarnOutcome
+		name   string
+		status *shedengine.Status
+		// findingsKept writes the row's gate findings file before the read.
+		findingsKept bool
+		wantFound    bool
+		want         loomshed.DarnOutcome
+		// wantFindings expects the outcome to name the kept findings file.
+		wantFindings bool
+		// invalidPath gives the findings path a NUL byte, so stat fails with an invalid-argument error on every platform.
+		invalidPath bool
+		wantErr     bool
 	}{
 		{name: "absent status file"},
 		{name: "no Darn-Write entry", status: &shedengine.Status{History: []shedengine.HistoryEntry{{Producer: loomshed.NamePreflight, Outcome: shedengine.Done}}}},
 		{
-			name:      "latest Darn-Write entry of a run that moved on carries no reason",
+			name:      "latest Darn-Write entry of a run that moved on, with no findings kept",
 			status:    &shedengine.Status{CurrentProducer: loomshed.NameFinalize, State: shedengine.StateRunning, Error: "stale", History: []shedengine.HistoryEntry{{Producer: loomshed.NameDarnWrite, Outcome: shedengine.Stuck}, {Producer: loomshed.NameDarnWrite, Outcome: shedengine.Done}}},
 			wantFound: true,
 			want:      loomshed.DarnOutcome{Outcome: shedengine.Done},
 		},
 		{
-			name:      "halted at Darn-Write carries the status error",
-			status:    &shedengine.Status{CurrentProducer: loomshed.NameDarnWrite, State: shedengine.StateBlocked, Error: "verify gate failed", History: []shedengine.HistoryEntry{{Producer: loomshed.NameDarnWrite, Outcome: shedengine.Stuck}}},
-			wantFound: true,
-			want:      loomshed.DarnOutcome{Outcome: shedengine.Stuck, Reason: "verify gate failed"},
+			name:         "a resumed run, its error cleared, names the kept findings",
+			status:       &shedengine.Status{CurrentProducer: loomshed.NameDarnWrite, State: shedengine.StateRunning, History: []shedengine.HistoryEntry{{Producer: loomshed.NameDarnWrite, Outcome: shedengine.Stuck}}},
+			findingsKept: true,
+			wantFound:    true,
+			want:         loomshed.DarnOutcome{Outcome: shedengine.Stuck},
+			wantFindings: true,
 		},
 		{
-			name:      "a Darn-Write reroute entry is skipped for the last real halt",
-			status:    &shedengine.Status{CurrentProducer: loomshed.NameDarnWrite, State: shedengine.StateBlocked, Error: "verify gate failed", History: []shedengine.HistoryEntry{{Producer: loomshed.NameDarnWrite, Outcome: shedengine.Stuck}, {Producer: loomshed.NameDarnWrite, Outcome: shedengine.OutcomeReroute}}},
-			wantFound: true,
-			want:      loomshed.DarnOutcome{Outcome: shedengine.Stuck, Reason: "verify gate failed"},
+			name:         "a Darn-Write reroute entry is skipped for the last real entry",
+			status:       &shedengine.Status{CurrentProducer: loomshed.NameDarnWrite, State: shedengine.StateBlocked, Error: "verify gate failed", History: []shedengine.HistoryEntry{{Producer: loomshed.NameDarnWrite, Outcome: shedengine.Stuck}, {Producer: loomshed.NameDarnWrite, Outcome: shedengine.OutcomeReroute}}},
+			findingsKept: true,
+			wantFound:    true,
+			want:         loomshed.DarnOutcome{Outcome: shedengine.Stuck},
+			wantFindings: true,
 		},
 		{
 			name:   "a lone Darn-Write reroute entry reports not found",
 			status: &shedengine.Status{CurrentProducer: loomshed.NameParentAlign, State: shedengine.StateRunning, History: []shedengine.HistoryEntry{{Producer: loomshed.NameDarnWrite, Outcome: shedengine.OutcomeReroute}}},
+		},
+		{
+			name:        "a findings path that cannot be statted is returned as the error",
+			status:      &shedengine.Status{CurrentProducer: loomshed.NameDarnWrite, State: shedengine.StateRunning, History: []shedengine.HistoryEntry{{Producer: loomshed.NameDarnWrite, Outcome: shedengine.Stuck}}},
+			invalidPath: true,
+			wantErr:     true,
+		},
+		{
+			name:   "a lone Darn-Write goto entry reports not found",
+			status: &shedengine.Status{CurrentProducer: loomshed.NameDarnWrite, State: shedengine.StateRunning, History: []shedengine.HistoryEntry{{Producer: loomshed.NameDarnWrite, Outcome: shedengine.OutcomeGoto}}},
+		},
+		{
+			name:   "a lone Darn-Write skipped entry reports not found",
+			status: &shedengine.Status{CurrentProducer: loomshed.NameFinalize, State: shedengine.StateRunning, History: []shedengine.HistoryEntry{{Producer: loomshed.NameDarnWrite, Outcome: shedengine.OutcomeSkipped}}},
 		},
 	}
 	for _, tt := range tests {
@@ -450,14 +475,61 @@ func TestLatestDarnOutcome(t *testing.T) {
 					t.Fatalf("WriteJSON() = %v; want nil", err)
 				}
 			}
-			got, found, err := latestDarnOutcome(statusPath, lockPath)
+			findingsPath := filepath.Join(dir, "Darn-Write.findings.md")
+			if tt.findingsKept {
+				if err := os.WriteFile(findingsPath, []byte("verify failed"), 0o644); err != nil {
+					t.Fatalf("write the findings file: %v", err)
+				}
+			}
+			if tt.invalidPath {
+				findingsPath = filepath.Join(dir, "Darn-Write\x00.findings.md")
+			}
+			want := tt.want
+			if tt.wantFindings {
+				want.FindingsPath = findingsPath
+			}
+			got, found, err := latestDarnOutcome(statusPath, lockPath, findingsPath)
+			if tt.wantErr {
+				if err == nil || found || got != (loomshed.DarnOutcome{}) {
+					t.Errorf("latestDarnOutcome() = %+v, %v, %v; want the stat error and not found", got, found, err)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatalf("latestDarnOutcome() error = %v; want nil", err)
 			}
-			if found != tt.wantFound || got != tt.want {
-				t.Errorf("latestDarnOutcome() = %+v, %v; want %+v, %v", got, found, tt.want, tt.wantFound)
+			if found != tt.wantFound || got != want {
+				t.Errorf("latestDarnOutcome() = %+v, %v; want %+v, %v", got, found, want, tt.wantFound)
 			}
 		})
+	}
+}
+
+// TestDarnDeps_LatestOutcomeNamesTheRowsFindingsFile pins that the LatestOutcome seam reads the run's status file and names the findings file Env.GateFindingsFile gives the Darn-Write row.
+func TestDarnDeps_LatestOutcomeNamesTheRowsFindingsFile(t *testing.T) {
+	t.Parallel()
+
+	loc := hubLocation(t, "pair", ".")
+	statusPath, statusLock := shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID)
+	if err := os.MkdirAll(filepath.Dir(statusLock), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	seed := shedengine.Status{CurrentProducer: loomshed.NameDarnWrite, State: shedengine.StateRunning, History: []shedengine.HistoryEntry{{Producer: loomshed.NameDarnWrite, Outcome: shedengine.Stuck}}}
+	if err := state.WriteJSON(statusPath, statusLock, seed); err != nil {
+		t.Fatalf("state.WriteJSON() = %v; want nil", err)
+	}
+	findingsPath := shedrun.GateFindingsFile(loc, shedrun.SelfRunID, loomshed.NameDarnWrite)
+	if err := os.MkdirAll(filepath.Dir(findingsPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(findingsPath, []byte("verify failed"), 0o644); err != nil {
+		t.Fatalf("write the findings file: %v", err)
+	}
+
+	got, found, err := darnDeps(loc, shedrun.SelfRunID).LatestOutcome()
+	want := loomshed.DarnOutcome{Outcome: shedengine.Stuck, FindingsPath: findingsPath}
+	if err != nil || !found || got != want {
+		t.Errorf("LatestOutcome() = %+v, %v, %v; want %+v, true, nil", got, found, err, want)
 	}
 }
 

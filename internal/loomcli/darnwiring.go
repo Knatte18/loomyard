@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -114,9 +115,11 @@ func darnTreeScope(l *lymcwd.Location) func(gateKey string) (string, bool, error
 }
 
 // latestDarnOutcome returns the latest Darn-Write history entry of the status file at statusPath, locked by statusLockPath.
-// Reason is the status file's error while the run is halted at the Darn-Write row, and empty otherwise.
-// An absent status file and a history with no Darn-Write entry report not found.
-func latestDarnOutcome(statusPath, statusLockPath string) (loomshed.DarnOutcome, bool, error) {
+// FindingsPath is findingsPath when that file exists, and empty otherwise:
+// the kept findings outlive the resume write that clears the status file's error before the row is called.
+// Reroute, goto and skipped entries record no spawn that did work, so they are passed over.
+// An absent status file and a history with no other Darn-Write entry report not found.
+func latestDarnOutcome(statusPath, statusLockPath, findingsPath string) (loomshed.DarnOutcome, bool, error) {
 	st, found, err := state.ReadJSON[shedengine.Status](statusPath, statusLockPath)
 	// A run directory not yet created fails the lock open with not-exist; that is an absent status file too.
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -126,13 +129,15 @@ func latestDarnOutcome(statusPath, statusLockPath string) (loomshed.DarnOutcome,
 		return loomshed.DarnOutcome{}, false, nil
 	}
 	for i := len(st.History) - 1; i >= 0; i-- {
-		if st.History[i].Producer != loomshed.NameDarnWrite || st.History[i].Outcome == shedengine.OutcomeReroute {
+		entry := st.History[i]
+		if entry.Producer != loomshed.NameDarnWrite || entry.Outcome == shedengine.OutcomeReroute || entry.Outcome == shedengine.OutcomeGoto || entry.Outcome == shedengine.OutcomeSkipped {
 			continue
 		}
-		latest := loomshed.DarnOutcome{Outcome: st.History[i].Outcome}
-		halted := st.State == shedengine.StateBlocked || st.State == shedengine.StateAwaiting || st.State == shedengine.StateFailed
-		if halted && st.CurrentProducer == loomshed.NameDarnWrite {
-			latest.Reason = st.Error
+		latest := loomshed.DarnOutcome{Outcome: entry.Outcome}
+		if _, err := os.Stat(findingsPath); err == nil {
+			latest.FindingsPath = findingsPath
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return loomshed.DarnOutcome{}, false, err
 		}
 		return latest, true, nil
 	}
@@ -150,7 +155,7 @@ func darnDeps(l *lymcwd.Location, runID string) loomshed.DarnDeps {
 			return err
 		},
 		LatestOutcome: func() (loomshed.DarnOutcome, bool, error) {
-			return latestDarnOutcome(shedrun.StatusFile(l, runID), shedrun.StatusLock(l, runID))
+			return latestDarnOutcome(shedrun.StatusFile(l, runID), shedrun.StatusLock(l, runID), shedrun.GateFindingsFile(l, runID, loomshed.NameDarnWrite))
 		},
 	}
 }
