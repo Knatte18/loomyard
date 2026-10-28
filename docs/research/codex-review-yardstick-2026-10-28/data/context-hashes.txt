@@ -1,0 +1,3 @@
+CLAUDE.md of both snapshots and the AGENTS.md copy the Codex handler loaded:
+503b050e86fd77f16ea10b50500ae6dcbc779455b80cca00d57c21582488798d  FOR/for1/work/AGENTS.md
+503b050e86fd77f16ea10b50500ae6dcbc779455b80cca00d57c21582488798d  STB/stb1/work/AGENTS.md

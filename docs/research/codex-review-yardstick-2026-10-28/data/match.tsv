@@ -1,0 +1,12 @@
+run	codex_id	severity	grade	reference	note
+stb1	F1	MEDIUM	shared	F1,F3	failed-start cause omits `start-failed after <n> tries: <error>` and can overstate the count; found at MEDIUM, the fan's is BLOCKING
+stb1	F2	MEDIUM	shared	F2	loop trace discarded when a child starts but exits without trace or stderr
+stb1	F3	MEDIUM	shared	F3	retry cancellation and Warn emission untested
+stb1	F4	MEDIUM	shared	F4	fallback precedence and an empty callback result untested; the nil-callback row of the fan's F4 is not named
+stb1	F5	MEDIUM	shared	F5	rename-failure cleanup untested
+for1	F1	BLOCKING	unique-real		approval rewrite through WriteFixerAttempts drops unknown keys; PATTERN-tolerant-records
+for1	F2	BLOCKING	unique-real		fix-review-report gate has no CLI self-check and parity check; PATTERN-gate-slot; arguable as in the earlier bench
+for1	F3	BLOCKING	shared	F1,F2,F4	approval write, moved HEAD, timeout, transient start, retry, model and timeout untested, citing D3, D5 and D6 acceptance
+for1	F4	MEDIUM	unique-real		wait error from a started review session returns before the dirty-tree and HEAD checks
+for1	F5	MEDIUM	unique-real		bare `verdict: approved` passes the parser
+for1	F6	LOW	unique-real		Finalize.Call comment still says every over-cap fix reroutes or halts
