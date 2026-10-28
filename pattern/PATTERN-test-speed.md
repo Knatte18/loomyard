@@ -108,6 +108,16 @@ Bound: a forged value misleads only an ungated raw run, since `lym gate test` se
 - A test calls `t.Parallel` unless it touches process-global state: env, cwd or a shared fixture.
 - A comment at the test, or once atop its file, names that state.
 
+## No test skips by design
+
+A skip in a gate log names a missing prerequisite, so every skip is worth reading.
+
+- A test that means something on one OS alone sits in a file only that OS compiles: a `_windows` or `_linux` file name, or a `!windows` term beside its tier tag.
+- A table row or subtest bound to one OS is not generated on another; the loop passes over it before `t.Run`.
+- A child-process body is no test function: the package's `TestMain` runs it when its environment variable is set.
+- A skip that remains names a prerequisite the host lacks, such as a binary, a privilege or a non-root user.
+- Enforcement is review discipline, not a test.
+
 ## Tree-sitter links
 
 - Linking tree-sitter slows a test binary's link, so only the packages that call the code index for real may do it.

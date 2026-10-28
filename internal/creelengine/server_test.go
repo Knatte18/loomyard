@@ -630,10 +630,8 @@ func TestDaemon_Protocol(t *testing.T) {
 				t.Errorf("withdraw answered %+v; want %+v", resp.Withdrawn, want)
 			}
 		}},
-		{"StrandClaimFromOutsideEveryPaneCarriesTheRefusalCode", false, func(t *testing.T, r *rig) {
-			if runtime.GOOS != "linux" {
-				t.Skip("the outside-pane refusal rests on D4's Linux-only ancestry check")
-			}
+		{"StrandClaimFromOutsideEveryPaneCarriesTheRefusalCode", false, linuxOnly(func(t *testing.T, r *rig) {
+			// The outside-pane refusal rests on D4's Linux-only ancestry check.
 			r.start()
 			c := r.client(strandClaim(alpha), nil, creelfake.NewClock(epoch))
 			_, err := c.Call(creelengine.Request{Verb: creelengine.VerbLog}, 0, nil)
@@ -646,7 +644,7 @@ func TestDaemon_Protocol(t *testing.T) {
 			if resp := r.rawExchange(`{"verb":"frobnicate"}`); resp.OK || resp.Code != "" {
 				t.Errorf("an unrelated refusal = %+v; want no code", resp)
 			}
-		}},
+		})},
 		{"NonWaitingCallToAListenerThatNeverAnswersTimesOut", false, func(t *testing.T, r *rig) {
 			listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: r.geom.SocketPath, Net: "unix"})
 			if err != nil {
@@ -683,6 +681,9 @@ func TestDaemon_Protocol(t *testing.T) {
 		}},
 	}
 	for _, tt := range tests {
+		if tt.run == nil {
+			continue
+		}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			tt.run(t, newRig(t, tt.asStrand))
@@ -754,10 +755,10 @@ func TestDaemon_Lifecycle(t *testing.T) {
 				mode   os.FileMode
 				// lostRace has the spawn fire a lost-race exit at once.
 				lostRace bool
-				// skipRoot skips the row on Windows and as root, where the mode denies nothing.
-				skipRoot bool
-				want     []string
-				notWant  []string
+				// modeDenies marks a row resting on the file mode denying access, which it does neither on Windows, where the row is not generated, nor to root, where it skips.
+				modeDenies bool
+				want       []string
+				notWant    []string
 			}{
 				{
 					name: "OwnLinesAndAPanicLineAfterItsHeaderAreQuoted",
@@ -795,20 +796,20 @@ func TestDaemon_Lifecycle(t *testing.T) {
 					notWant: []string{"seventy-seven"},
 				},
 				{
-					name:     "ALogThatCannotBeAppendedToCouldNotBeOpened",
-					content:  "pid=4242 hidden\n",
-					mode:     0o444,
-					skipRoot: true,
-					want:     []string{"could not be opened"},
-					notWant:  []string{"hidden"},
+					name:       "ALogThatCannotBeAppendedToCouldNotBeOpened",
+					content:    "pid=4242 hidden\n",
+					mode:       0o444,
+					modeDenies: true,
+					want:       []string{"could not be opened"},
+					notWant:    []string{"hidden"},
 				},
 				{
-					name:     "ALogThatCannotBeReadCouldNotBeOpened",
-					content:  "pid=4242 hidden\n",
-					mode:     0o200,
-					skipRoot: true,
-					want:     []string{"could not be opened"},
-					notWant:  []string{"hidden"},
+					name:       "ALogThatCannotBeReadCouldNotBeOpened",
+					content:    "pid=4242 hidden\n",
+					mode:       0o200,
+					modeDenies: true,
+					want:       []string{"could not be opened"},
+					notWant:    []string{"hidden"},
 				},
 				{
 					name:   "AnAbsentLogCouldNotBeOpened",
@@ -817,10 +818,13 @@ func TestDaemon_Lifecycle(t *testing.T) {
 				},
 			}
 			for _, tt := range logTests {
+				if tt.modeDenies && runtime.GOOS == "windows" {
+					continue
+				}
 				t.Run(tt.name, func(t *testing.T) {
 					t.Parallel()
-					if tt.skipRoot && (runtime.GOOS == "windows" || os.Geteuid() == 0) {
-						t.Skip("the file mode denies nothing on Windows or to root")
+					if tt.modeDenies && os.Geteuid() == 0 {
+						t.Skip("the file mode denies nothing to root")
 					}
 					r := newRig(t, false)
 					if !tt.absent {
@@ -1256,4 +1260,12 @@ func TestDaemon_Lifecycle(t *testing.T) {
 			tt.run(t, newRig(t, false))
 		})
 	}
+}
+
+// linuxOnly returns run on Linux and nil elsewhere, so a table loop that passes over a nil run generates no subtest for the row off Linux.
+func linuxOnly(run func(*testing.T, *rig)) func(*testing.T, *rig) {
+	if runtime.GOOS != "linux" {
+		return nil
+	}
+	return run
 }

@@ -482,7 +482,7 @@
 //     original bug's "exit status 1: no server running" reproduction
 //     observed. On psmux (the Windows default) it corpses the pane
 //     (pane_dead=1, exit 0) and the session survives — verified, not
-//     unverified, by internal/reedcli/smoke_lifecycle_test.go's
+//     unverified, by internal/reedcli/smoke_lifecycle_windows_test.go's
 //     TestSmokeRemoveLastStrandThenAddRunsTheNewCommand (remove of the sole
 //     strand returns 0, then a subsequent add finds the session already up
 //     through ensureSessionLocked's own liveness probe and boots nothing —

@@ -99,10 +99,7 @@ func TestSmokeTeardown(t *testing.T) {
 	// Only the reap of the pane session's remaining members reaches that child, since no snapshot holds it.
 	//
 	// POSIX-only: the payload needs a shell-level SIGHUP trap, which has no Windows equivalent.
-	if !t.Run("DownForceKillsSighupImmunePaneChildren", func(t *testing.T) {
-		if runtime.GOOS == "windows" {
-			t.Skip("payload needs a POSIX shell SIGHUP trap to become immune to tmux's own teardown cascade; Windows has no equivalent")
-		}
+	if runtime.GOOS != "windows" && !t.Run("DownForceKillsSighupImmunePaneChildren", func(t *testing.T) {
 		run(t, prime, "up")
 
 		// `exec` on the outer sleep keeps the immune child's parent pid stable, so

@@ -91,18 +91,19 @@ func recordPlanFileHashes(t *testing.T, deps *websterengine.RebaselineDeps) {
 	deps.State.PlanFileHashes = hashes
 }
 
-// skipWithoutPermissionBits skips the test where file permissions do not bind: on Windows and for root.
-func skipWithoutPermissionBits(t *testing.T) {
+// skipAsRoot skips the test for root, whom file mode bits do not bind.
+// A caller is a test Windows never generates, since mode bits bind nothing there either.
+func skipAsRoot(t *testing.T) {
 	t.Helper()
-	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
-		t.Skip("file permissions do not bind here")
+	if os.Geteuid() == 0 {
+		t.Skip("file mode bits do not bind root")
 	}
 }
 
-// makeUnreadable removes path's read permission, skipping the test where permissions do not bind.
+// makeUnreadable removes path's read permission, skipping the test for root.
 func makeUnreadable(t *testing.T, path string) {
 	t.Helper()
-	skipWithoutPermissionBits(t)
+	skipAsRoot(t)
 	if err := os.Chmod(path, 0); err != nil {
 		t.Fatalf("make %s unreadable: %v", path, err)
 	}
@@ -179,6 +180,8 @@ func TestRebaseline_CardSet(t *testing.T) {
 		wantPartition []websterengine.PartitionBatch
 		// wantTailPosition, when set, is the position the regrouped tail's first batch records in its Breakdown, and wantPartition is not compared.
 		wantTailPosition int
+		// permissionBits marks a row that needs file mode bits to deny a read, which Windows never does.
+		permissionBits bool
 		// step is the way forward the call is told; a refusal under a set step names it and neither manual verb.
 		step string
 		// prepare adjusts the deps before the call.
@@ -350,10 +353,11 @@ func TestRebaseline_CardSet(t *testing.T) {
 			wantText:      []string{"01-json-flag.md changed but not named", "then " + reStep},
 		},
 		{
-			name:      "a set step keys the changed-file read transient",
-			cards:     []planparser.Card{card(1, "json-flag"), card(2, "list-tests")},
-			partition: recorded,
-			active:    fixedBatcher{[]batcher.Batch{{Cards: []planparser.Card{card(2, "list-tests")}}}},
+			name:           "a set step keys the changed-file read transient",
+			permissionBits: true,
+			cards:          []planparser.Card{card(1, "json-flag"), card(2, "list-tests")},
+			partition:      recorded,
+			active:         fixedBatcher{[]batcher.Batch{{Cards: []planparser.Card{card(2, "list-tests")}}}},
 			prepare: func(t *testing.T, deps *websterengine.RebaselineDeps) {
 				recordPlanFileHashes(t, deps)
 				makeUnreadable(t, filepath.Join(deps.Plan.Dir, "01-json-flag.md"))
@@ -363,11 +367,12 @@ func TestRebaseline_CardSet(t *testing.T) {
 			wantText:      []string{"way forward: transient, " + reStep},
 		},
 		{
-			name:      "a set step keys the card-hash read transient",
-			cards:     []planparser.Card{card(1, "json-flag"), card(2, "list-tests")},
-			partition: recorded,
-			active:    fixedBatcher{[]batcher.Batch{{Cards: []planparser.Card{card(2, "list-tests")}}}},
-			edit:      func(rec *websterengine.BatchState) { rec.CardHashes = map[string]string{"01-json-flag": "recorded"} },
+			name:           "a set step keys the card-hash read transient",
+			permissionBits: true,
+			cards:          []planparser.Card{card(1, "json-flag"), card(2, "list-tests")},
+			partition:      recorded,
+			active:         fixedBatcher{[]batcher.Batch{{Cards: []planparser.Card{card(2, "list-tests")}}}},
+			edit:           func(rec *websterengine.BatchState) { rec.CardHashes = map[string]string{"01-json-flag": "recorded"} },
 			prepare: func(t *testing.T, deps *websterengine.RebaselineDeps) {
 				makeUnreadable(t, filepath.Join(deps.Plan.Dir, "01-json-flag.md"))
 			},
@@ -391,6 +396,9 @@ func TestRebaseline_CardSet(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
+		if tc.permissionBits && runtime.GOOS == "windows" {
+			continue
+		}
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

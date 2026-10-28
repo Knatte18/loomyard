@@ -255,37 +255,39 @@ func TestFmtCmd(t *testing.T) {
 		})
 	}
 
-	t.Run("a write that fails partway reports the files written and the one that failed", func(t *testing.T) {
-		t.Parallel()
-		if runtime.GOOS == "windows" || os.Geteuid() == 0 {
-			t.Skip("a read-only file stops a write only for a non-root user off Windows")
-		}
-		dir := newWorktree(t)
-		first := filepath.Join(dir, "first.go")
-		second := filepath.Join(dir, "second.go")
-		write(t, first, misformattedGo, 0o644)
-		write(t, second, misformattedGo, 0o444)
+	if runtime.GOOS != "windows" {
+		t.Run("a write that fails partway reports the files written and the one that failed", func(t *testing.T) {
+			t.Parallel()
+			if os.Geteuid() == 0 {
+				t.Skip("file mode bits do not bind root")
+			}
+			dir := newWorktree(t)
+			first := filepath.Join(dir, "first.go")
+			second := filepath.Join(dir, "second.go")
+			write(t, first, misformattedGo, 0o644)
+			write(t, second, misformattedGo, 0o444)
 
-		exitCode, env := run(t, dir, dir, "first.go", "second.go")
+			exitCode, env := run(t, dir, dir, "first.go", "second.go")
 
-		if exitCode != 1 || env.OK {
-			t.Fatalf("exit code = %d, ok = %v; want 1, false", exitCode, env.OK)
-		}
-		wantEnd := `way forward: re-run "lym loom fmt" with the same files once the write error is fixed; a formatted file is left untouched`
-		if !strings.HasSuffix(env.Error, wantEnd) {
-			t.Errorf("error = %q; want it to end %q", env.Error, wantEnd)
-		}
-		if got := stringList(t, env, "written"); !slices.Equal(got, []string{"first.go"}) {
-			t.Errorf("written = %v; want [first.go]", got)
-		}
-		if failed, _ := env.Raw["failed"].(string); !strings.HasPrefix(failed, "second.go: ") {
-			t.Errorf("failed = %q; want it to name second.go", failed)
-		}
-		if got := read(t, first); got != formattedGo {
-			t.Errorf("first.go = %q; want %q", got, formattedGo)
-		}
-		if got := read(t, second); got != misformattedGo {
-			t.Errorf("second.go = %q; want it left as %q", got, misformattedGo)
-		}
-	})
+			if exitCode != 1 || env.OK {
+				t.Fatalf("exit code = %d, ok = %v; want 1, false", exitCode, env.OK)
+			}
+			wantEnd := `way forward: re-run "lym loom fmt" with the same files once the write error is fixed; a formatted file is left untouched`
+			if !strings.HasSuffix(env.Error, wantEnd) {
+				t.Errorf("error = %q; want it to end %q", env.Error, wantEnd)
+			}
+			if got := stringList(t, env, "written"); !slices.Equal(got, []string{"first.go"}) {
+				t.Errorf("written = %v; want [first.go]", got)
+			}
+			if failed, _ := env.Raw["failed"].(string); !strings.HasPrefix(failed, "second.go: ") {
+				t.Errorf("failed = %q; want it to name second.go", failed)
+			}
+			if got := read(t, first); got != formattedGo {
+				t.Errorf("first.go = %q; want %q", got, formattedGo)
+			}
+			if got := read(t, second); got != misformattedGo {
+				t.Errorf("second.go = %q; want it left as %q", got, misformattedGo)
+			}
+		})
+	}
 }

@@ -67,7 +67,7 @@ func cloneHubResetCellCount() int {
 // what restricts a hostile-input case or the CloneHub{Reset} column to "clean" alone, or the full
 // package-level States slice when vc.States is empty, which is every ordinary verb's default.
 // A state a case does not name is never turned into a subtest at all -- there is no verb-shaped reason
-// to generate five hundred mostly-skipped cells when the case's own States field already says which
+// to generate five hundred mostly-omitted cells when the case's own States field already says which
 // ones apply.
 func effectiveStates(vc VerbCase) []State {
 	if len(vc.States) == 0 {
@@ -85,15 +85,14 @@ func effectiveStates(vc VerbCase) []State {
 	return subset
 }
 
-// omittedReason reports the recorded reason and true if the (verbName, stateName) pair appears in
-// verbs.go's Omissions table, so a matching cell is skipped rather than silently absent.
-func omittedReason(verbName, stateName string) (string, bool) {
+// isOmitted reports whether the (verbName, stateName) pair appears in verbs.go's Omissions table, so the loop generates no cell for it.
+func isOmitted(verbName, stateName string) bool {
 	for _, o := range Omissions {
 		if o.Verb == verbName && o.State == stateName {
-			return o.Reason, true
+			return true
 		}
 	}
-	return "", false
+	return false
 }
 
 // assertExpectation asserts err against exp's declared Kind: KindRefusedByGate asserts RefusedByGate for
@@ -198,7 +197,7 @@ func assertSurvivesIfUnpermitted(t *testing.T, h *hubforge.Hub, abs string, perm
 	check()
 }
 
-// runCell drives one non-skipped cell's five phases in the fixed order the five-phase-cell-order Shared
+// runCell drives one non-omitted cell's five phases in the fixed order the five-phase-cell-order Shared
 // Decision requires -- build, arrange, state, capture-before, run-then-capture-after -- then asserts
 // against the state-derived Expectation: the declared Kind, the cell's Effect if it names one (populated
 // for both refusal and Proceeds kinds throughout verbs.go, so it is always run when present rather than
@@ -248,7 +247,7 @@ func runCell(t *testing.T, anchor string, state State, vc VerbCase) {
 func TestCrossProduct(t *testing.T) {
 	verbs := mainVerbs()
 	ran := 0
-	skipped := 0
+	omitted := 0
 
 	for _, anchor := range anchors {
 		for _, verbCase := range verbs {
@@ -256,15 +255,10 @@ func TestCrossProduct(t *testing.T) {
 				anchor, verbCase, state := anchor, verbCase, state
 				name := anchor + "/" + state.Name + "/" + verbCase.Name
 
-				reason, omitted := omittedReason(verbCase.Name, state.Name)
-				if omitted {
-					skipped++
-					t.Run(name, func(t *testing.T) {
-						// A skipped cell states out loud what it did not run, and why, rather than
-						// silently omitting it -- so a green matrix is auditable against doc.go's
-						// omission table without a reader having to reconstruct the exclusion by hand.
-						t.Skip(reason)
-					})
+				// The Omissions table records what the matrix does not run and why,
+				// so an omitted cell gets no subtest and only the tally below counts it.
+				if isOmitted(verbCase.Name, state.Name) {
+					omitted++
 					continue
 				}
 
@@ -280,27 +274,24 @@ func TestCrossProduct(t *testing.T) {
 		}
 	}
 
-	assertCellTally(t, ran, skipped)
+	assertCellTally(t, ran, omitted)
 }
 
-// assertCellTally fails t unless ran and skipped match the enumeration the Verbs, States and Omissions
-// tables in this package describe, so a silently capped loop or a silently swallowed skip cannot hide
-// behind a green run.
-// Every want* value below is derived from the tables' own lengths and contents, never a hardcoded
-// literal, so appending a verb, a state, or an omission updates the expected count automatically instead
-// of failing the next run for an unrelated reason.
-func assertCellTally(t *testing.T, ran, skipped int) {
+// assertCellTally fails t unless ran and omitted match the enumeration the Verbs, States and Omissions tables in this package describe,
+// so a silently capped loop or an omission row naming no cell cannot hide behind a green run.
+// Every want* value below is derived from the tables' own lengths and contents, never a hardcoded literal, so appending a verb, a state, or an omission updates the expected count automatically instead of failing the next run for an unrelated reason.
+func assertCellTally(t *testing.T, ran, omitted int) {
 	t.Helper()
 
-	wantSkipped := len(Omissions) * len(anchors)
-	if skipped != wantSkipped {
-		t.Errorf("TestCrossProduct skipped %d cells; want %d (len(Omissions) * len(anchors))", skipped, wantSkipped)
+	wantOmitted := len(Omissions) * len(anchors)
+	if omitted != wantOmitted {
+		t.Errorf("TestCrossProduct omitted %d cells; want %d (len(Omissions) * len(anchors))", omitted, wantOmitted)
 	}
 
 	wantRanPerAnchor := 0
 	for _, verbCase := range mainVerbs() {
 		for _, state := range effectiveStates(verbCase) {
-			if _, omitted := omittedReason(verbCase.Name, state.Name); !omitted {
+			if !isOmitted(verbCase.Name, state.Name) {
 				wantRanPerAnchor++
 			}
 		}
@@ -315,7 +306,7 @@ func assertCellTally(t *testing.T, ran, skipped int) {
 	if total != wantTotal {
 		t.Errorf("cross-product total (TestCrossProduct's ran cells + the CloneHub{Reset} column) = %d; want %d", total, wantTotal)
 	}
-	t.Logf("cross-product cell tally: %d ran, %d skipped (omission table), %d CloneHub{Reset} column cells, %d total", ran, skipped, cloneHubResetCellCount(), total)
+	t.Logf("cross-product cell tally: %d ran, %d omitted (omission table), %d CloneHub{Reset} column cells, %d total", ran, omitted, cloneHubResetCellCount(), total)
 }
 
 // TestCloneHubReset drives the CloneHub{Reset: true} column: two targets (a non-hub directory refused at

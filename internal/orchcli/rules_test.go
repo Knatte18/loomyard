@@ -188,6 +188,10 @@ func TestWriteHubRules(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
+		// A read-only directory does not stop a write on Windows, so Windows generates no subtest for a read-only row.
+		if tt.readOnly && runtime.GOOS == "windows" {
+			continue
+		}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -208,8 +212,8 @@ func TestWriteHubRules(t *testing.T) {
 				}
 			}
 			if tt.readOnly {
-				if runtime.GOOS == "windows" || os.Geteuid() == 0 {
-					t.Skip("a read-only directory does not stop a write on Windows or as root")
+				if os.Geteuid() == 0 {
+					t.Skip("a read-only directory does not stop a write as root")
 				}
 				if err := os.Chmod(filepath.Dir(rulesPath), 0o500); err != nil {
 					t.Fatalf("chmod rules dir: %v", err)

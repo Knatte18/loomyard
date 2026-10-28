@@ -57,5 +57,5 @@
 
 ## Testing
 
-- `PATTERN-test-speed` — Writing or running a test: via `lym gate test` by gate key; one `tierN` tag, the lowest that fits; it pins behavior no test covers; injected clocks, `t.Parallel` by default; a test reflecting over a struct's fields carries `//lym:seam`. (test) — [background](pattern/PATTERN-test-speed.md)
+- `PATTERN-test-speed` — Writing or running a test: via `lym gate test` by gate key; one `tierN` tag, the lowest that fits; it pins behavior no test covers; a skip never names the OS alone; injected clocks, `t.Parallel` by default; a test reflecting over a struct's fields carries `//lym:seam`. (test) — [background](pattern/PATTERN-test-speed.md)
 - `PATTERN-test-isolation` — Testing package: hermetic git and `tmuxkit.Main`; shared support in one `internal/testkit/<kit>/`; hub fixtures via `hubforge`. (test) — [background](pattern/PATTERN-test-isolation.md)

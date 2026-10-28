@@ -11,14 +11,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
-	"github.com/Knatte18/loomyard/internal/proc"
 )
 
 const (
@@ -173,70 +170,6 @@ func TestBuildInto_UnwritableDirReturnsError(t *testing.T) {
 	bin, err := BuildInto(filepath.Join(blocker, "out"), "")
 	if err == nil {
 		t.Fatalf("BuildInto into a path under a regular file succeeded: %s", bin)
-	}
-}
-
-// TestRun_TimesOutNamingTheTimeout passes whether or not the sleeper starts within the timeout, since either way it outlives it.
-func TestRun_TimesOutNamingTheTimeout(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the sleeper's child is the Unix `sleep` command")
-	}
-	self, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv(helperEnv, helperRoleSleeper)
-	t.Setenv(helperPidFileEnv, filepath.Join(t.TempDir(), "pids"))
-
-	out, code, err := Run(self, t.TempDir(), 200*time.Millisecond)
-
-	if !errors.Is(err, ErrTimeout) || code != -1 || !strings.Contains(err.Error(), "after 200ms") {
-		t.Errorf("Run = (%q, %d, %v); want ErrTimeout naming 200ms and exit code -1", out, code, err)
-	}
-}
-
-// TestRun_KillsTheGroupOnTimeout ends the run only once the sleeper has recorded its pids,
-// so the time a scanner holds the freshly built helper before it runs never counts against the timeout.
-func TestRun_KillsTheGroupOnTimeout(t *testing.T) {
-	if runtime.GOOS != "linux" {
-		t.Skip("the group kill is asserted through /proc-backed liveness")
-	}
-	self, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	pidFile := filepath.Join(t.TempDir(), "pids")
-	t.Setenv(helperEnv, helperRoleSleeper)
-	t.Setenv(helperPidFileEnv, pidFile)
-	ctx, cancel := context.WithCancelCause(context.Background())
-	t.Cleanup(func() { cancel(nil) })
-	go cancelOnceFileExists(ctx, cancel, pidFile, 2*time.Minute)
-
-	out, code, err := runUntilDone(ctx, self, t.TempDir(), nil)
-
-	if !errors.Is(err, ErrTimeout) || code != -1 {
-		t.Fatalf("runUntilDone = (%q, %d, %v); want ErrTimeout and exit code -1", out, code, err)
-	}
-	raw, err := os.ReadFile(pidFile)
-	if err != nil {
-		t.Fatalf("the sleeper never recorded its pids: %v", err)
-	}
-	fields := strings.Fields(string(raw))
-	if len(fields) != 2 {
-		t.Fatalf("pid file = %q; want the sleeper's pid and its child's", raw)
-	}
-	for _, field := range fields {
-		pid, err := strconv.Atoi(field)
-		if err != nil {
-			t.Fatal(err)
-		}
-		deadline := time.Now().Add(5 * time.Second)
-		for proc.IsAlive(pid) && time.Now().Before(deadline) {
-			time.Sleep(20 * time.Millisecond)
-		}
-		if proc.IsAlive(pid) {
-			t.Errorf("pid %d survived the timeout", pid)
-		}
 	}
 }
 

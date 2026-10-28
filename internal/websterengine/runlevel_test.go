@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -822,6 +823,8 @@ func TestRun_AutoRebaseline(t *testing.T) {
 			want   []string
 			// soleWayForward expects exactly one way-forward clause, ending the message in the re-entry step.
 			soleWayForward bool
+			// permissionBits marks a row that needs file mode bits to deny a write, which Windows never does.
+			permissionBits bool
 		}{
 			{
 				name:  "a done card's edit",
@@ -890,10 +893,11 @@ func TestRun_AutoRebaseline(t *testing.T) {
 				want:   []string{"fix the plan's card order", "then " + reStep},
 			},
 			{
-				name:  "a failed save of the restamped state",
-				cards: 1,
+				name:           "a failed save of the restamped state",
+				cards:          1,
+				permissionBits: true,
 				edit: func(t *testing.T, fx *runFixture) {
-					skipWithoutPermissionBits(t)
+					skipAsRoot(t)
 					addCards(t, fx, 2)
 					websterDir := fx.Deps.Geom.WebsterDir
 					if err := os.Chmod(websterDir, 0o555); err != nil {
@@ -933,6 +937,9 @@ func TestRun_AutoRebaseline(t *testing.T) {
 			},
 		}
 		for _, tc := range cases {
+			if tc.permissionBits && runtime.GOOS == "windows" {
+				continue
+			}
 			t.Run(tc.name, func(t *testing.T) {
 				fx := seed(t, tc.cards, tc.shape)
 				fingerprint := loadRunState(t, fx).PlanFingerprint

@@ -36,30 +36,36 @@ func TestModuleGuardTests_OverAModule(t *testing.T) {
 		}
 	})
 
-	t.Run("an unreadable test file is a parse error naming it with no line", func(t *testing.T) {
-		skipAsRoot(t)
-		makeUnreadable(t, filepath.Join(moduleDir, "p", "p_test.go"))
+	// chmod never makes a file unreadable on Windows, so Windows generates no subtest for it.
+	if runtime.GOOS != "windows" {
+		t.Run("an unreadable test file is a parse error naming it with no line", func(t *testing.T) {
+			skipAsRoot(t)
+			makeUnreadable(t, filepath.Join(moduleDir, "p", "p_test.go"))
 
-		_, err := ModuleGuardTests(moduleDir)
-		var scanErr *GuardScanError
-		if !errors.As(err, &scanErr) {
-			t.Fatalf("ModuleGuardTests() error = %v; want a *GuardScanError", err)
-		}
-		if scanErr.Kind != GuardParse || scanErr.File != "p/p_test.go" || scanErr.Line != 0 {
-			t.Errorf("ModuleGuardTests() error = %+v; want kind %q, file p/p_test.go, line 0", scanErr, GuardParse)
-		}
-	})
+			_, err := ModuleGuardTests(moduleDir)
+			var scanErr *GuardScanError
+			if !errors.As(err, &scanErr) {
+				t.Fatalf("ModuleGuardTests() error = %v; want a *GuardScanError", err)
+			}
+			if scanErr.Kind != GuardParse || scanErr.File != "p/p_test.go" || scanErr.Line != 0 {
+				t.Errorf("ModuleGuardTests() error = %+v; want kind %q, file p/p_test.go, line 0", scanErr, GuardParse)
+			}
+		})
+	}
 
-	t.Run("an unreadable package directory is a plain error naming the module and the directory", func(t *testing.T) {
-		skipAsRoot(t)
-		writeRepoFile(t, moduleDir, "c/c.go", "package c\n")
-		makeUnreadable(t, filepath.Join(moduleDir, "c"))
+	// chmod never makes a file unreadable on Windows, so Windows generates no subtest for it.
+	if runtime.GOOS != "windows" {
+		t.Run("an unreadable package directory is a plain error naming the module and the directory", func(t *testing.T) {
+			skipAsRoot(t)
+			writeRepoFile(t, moduleDir, "c/c.go", "package c\n")
+			makeUnreadable(t, filepath.Join(moduleDir, "c"))
 
-		_, err := ModuleGuardTests(moduleDir)
-		if err == nil || IsGuardScanError(err) || !strings.Contains(err.Error(), moduleDir) || !strings.Contains(err.Error(), "open c:") {
-			t.Errorf("ModuleGuardTests() error = %v; want a plain error naming %s and c", err, moduleDir)
-		}
-	})
+			_, err := ModuleGuardTests(moduleDir)
+			if err == nil || IsGuardScanError(err) || !strings.Contains(err.Error(), moduleDir) || !strings.Contains(err.Error(), "open c:") {
+				t.Errorf("ModuleGuardTests() error = %v; want a plain error naming %s and c", err, moduleDir)
+			}
+		})
+	}
 
 	t.Run("a directory with no go.mod is an error naming it", func(t *testing.T) {
 		bare := t.TempDir()
@@ -69,11 +75,11 @@ func TestModuleGuardTests_OverAModule(t *testing.T) {
 	})
 }
 
-// skipAsRoot skips a step that relies on a permission denial, which the root user never meets and `chmod` never causes on Windows.
+// skipAsRoot skips a step that relies on a permission denial, which the root user never meets.
 func skipAsRoot(t *testing.T) {
 	t.Helper()
-	if os.Geteuid() == 0 || runtime.GOOS == "windows" {
-		t.Skip("the platform or user reads any file")
+	if os.Geteuid() == 0 {
+		t.Skip("root reads any file")
 	}
 }
 

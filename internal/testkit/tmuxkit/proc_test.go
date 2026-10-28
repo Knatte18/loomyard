@@ -1,4 +1,4 @@
-//go:build tier0
+//go:build tier0 && linux
 
 // proc_test.go checks the kit's stat and comm probes against the test's own process.
 
@@ -7,7 +7,6 @@ package tmuxkit
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"testing"
 )
@@ -19,9 +18,6 @@ const commMaxBytes = 15
 func TestProcProbes_OwnProcess(t *testing.T) {
 	t.Parallel()
 
-	if runtime.GOOS != "linux" {
-		t.Skip("/proc probes exist on linux only")
-	}
 	const absentPID = 1 << 30
 	pid := os.Getpid()
 

@@ -521,29 +521,32 @@ func TestPush_NoRemoteConfigured_SurfacesGitError(t *testing.T) {
 	}
 }
 
-// TestPushCoalescedChildProcess is not a standalone test: it is the child body TestPushCoalesced's cross-process step re-execs from the test binary with GITREPO_TEST_PUSH_DIR set, so the single-pusher lock is exercised across genuinely separate OS processes.
-// It skips in a normal run (env unset).
-func TestPushCoalescedChildProcess(t *testing.T) {
-	dir := os.Getenv("GITREPO_TEST_PUSH_DIR")
-	if dir == "" {
-		t.Skip("child-process body; runs only re-exec'd with GITREPO_TEST_PUSH_DIR set")
-	}
-	if err := gitrepo.New(dir).PushCoalesced(); err != nil {
-		t.Fatalf("PushCoalesced() in child process error = %v; want nil", err)
-	}
+// The child bodies TestPushCoalesced re-execs this test binary to run, keyed by the variable that names the clone.
+const (
+	pushChildEnv       = "GITREPO_TEST_PUSH_DIR"
+	lockHolderChildEnv = "GITREPO_TEST_LOCKHOLD_DIR"
+)
+
+func init() {
+	childBodies[pushChildEnv] = pushCoalescedChild
+	childBodies[lockHolderChildEnv] = lockHolderChild
 }
 
-// TestLockHolderChildProcess is not a standalone test: it is the child body TestPushCoalesced's crashed-lock-holder step re-execs.
-// It acquires the repo's push lock, prints a marker so the parent knows the lock is held, and blocks until the parent SIGKILLs it.
-// It skips in a normal run.
-func TestLockHolderChildProcess(t *testing.T) {
-	dir := os.Getenv("GITREPO_TEST_LOCKHOLD_DIR")
-	if dir == "" {
-		t.Skip("child-process body; runs only re-exec'd with GITREPO_TEST_LOCKHOLD_DIR set")
+// pushCoalescedChild runs PushCoalesced against the clone at dir, so the single-pusher lock is exercised across separate OS processes.
+func pushCoalescedChild(dir string) int {
+	if err := gitrepo.New(dir).PushCoalesced(); err != nil {
+		fmt.Fprintf(os.Stderr, "PushCoalesced() in child process error = %v; want nil\n", err)
+		return 1
 	}
+	return 0
+}
+
+// lockHolderChild acquires the push lock of the clone at dir, prints a marker so the parent knows the lock is held, and blocks until the parent SIGKILLs it.
+func lockHolderChild(dir string) int {
 	held, err := lock.AcquireWriteLock(filepath.Join(dir, ".gitrepo-push.lock"))
 	if err != nil {
-		t.Fatalf("AcquireWriteLock() in child process error = %v", err)
+		fmt.Fprintf(os.Stderr, "AcquireWriteLock() in child process error = %v\n", err)
+		return 1
 	}
 	fmt.Println("LOCK-HELD")
 	// Block until SIGKILLed. KeepAlive prevents the garbage collector from
@@ -639,8 +642,8 @@ func TestPushCoalesced(t *testing.T) {
 			wg.Add(1)
 			go func(i int) {
 				defer wg.Done()
-				cmd := exec.Command(testBin, "-test.run=^TestPushCoalescedChildProcess$", "-test.v")
-				cmd.Env = append(os.Environ(), "GITREPO_TEST_PUSH_DIR="+repoPath)
+				cmd := exec.Command(testBin, "-test.run=^$")
+				cmd.Env = append(os.Environ(), pushChildEnv+"="+repoPath)
 				out, err := cmd.CombinedOutput()
 				outputs[i], errs[i] = string(out), err
 			}(i)
@@ -667,8 +670,8 @@ func TestPushCoalesced(t *testing.T) {
 		if err != nil {
 			t.Fatalf("os.Executable() error = %v", err)
 		}
-		cmd := exec.Command(testBin, "-test.run=^TestLockHolderChildProcess$", "-test.v")
-		cmd.Env = append(os.Environ(), "GITREPO_TEST_LOCKHOLD_DIR="+repoPath)
+		cmd := exec.Command(testBin, "-test.run=^$")
+		cmd.Env = append(os.Environ(), lockHolderChildEnv+"="+repoPath)
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
 			t.Fatalf("StdoutPipe() error = %v", err)

@@ -16,8 +16,20 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
-// TestMain runs gitkit.HermeticGitEnv() before any test in this package spawns git, then runs the tests under tmuxkit.Main.
+// childBodies maps an environment variable to the child-process body a test re-execs this binary to run, given the variable's value.
+// A body returns the child's exit code.
+// Tier-tagged files register their bodies from init, so a body never shows up as a test the runner skips.
+var childBodies = map[string]func(value string) int{}
+
+// TestMain runs gitkit.HermeticGitEnv() before any test in this package spawns git.
+// A binary re-exec'd with a registered child variable set runs that child body and exits;
+// otherwise the tests run under tmuxkit.Main.
 func TestMain(m *testing.M) {
 	gitkit.HermeticGitEnv()
+	for name, body := range childBodies {
+		if value := os.Getenv(name); value != "" {
+			os.Exit(body(value))
+		}
+	}
 	os.Exit(tmuxkit.Main(m))
 }

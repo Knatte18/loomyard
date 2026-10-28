@@ -198,10 +198,7 @@ func TestResolve_AnchorScenario(t *testing.T) {
 	// A start reached through a symlink resolves to the real root's Location, as `git rev-parse --show-toplevel` resolves it, so one hub never gets two hub paths.
 	// A link to a subdirectory has no repository among its lexical parents, so only a walk from the resolved start finds the root.
 	// Windows links are junctions, which filepath.EvalSymlinks leaves unresolved as a mount point.
-	if !t.Run("symlinked start", func(t *testing.T) {
-		if runtime.GOOS == "windows" {
-			t.Skip("fslink creates a junction on Windows, which is not resolved")
-		}
+	if runtime.GOOS != "windows" && !t.Run("symlinked start", func(t *testing.T) {
 		linkDir := t.TempDir()
 		rootLink := filepath.Join(linkDir, "root-link")
 		subLink := filepath.Join(linkDir, "sub-link")
