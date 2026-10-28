@@ -1064,6 +1064,9 @@ func TestDaemon_Lifecycle(t *testing.T) {
 			}
 			first := r.start()
 			mustCall(t, r.client(externalClaim(), nil, creelfake.NewClock(epoch)), creelengine.Request{Verb: creelengine.VerbPost, Receiver: alpha, Text: "one"})
+			// The post's own wake reads the turn before any waiter exists;
+			// consuming that read keeps it from passing for the waiter's registration, which would stop the daemon before the waiter connects.
+			awaitProbe()
 			clientClock := creelfake.NewClock(epoch)
 			waiting := callAsync(r.client(strandClaim(alpha), r.spawn, clientClock), creelengine.Request{Verb: creelengine.VerbHookWait, Wait: true}, 0)
 			awaitProbe()
