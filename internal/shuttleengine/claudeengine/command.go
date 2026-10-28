@@ -335,7 +335,7 @@ var _ shuttleengine.SessionOpener = (*Claude)(nil)
 // stalled at its first tool dialog with no operator present, which shuttle can only classify as a
 // timeout, and it came back on the provider default model rather than the one the caller pinned.
 // It carries the append-system-prompt file too, when its path is non-empty: Claude Code re-renders the system prompt from the current flags after a compaction and where recording is not enabled,
-// so a resume line without --append-system-prompt-file would lose the deny notice and the creel trust sentence.
+// so a resume line without --append-system-prompt-file would lose the deny notice, the creel trust sentence and the batching sentence.
 // It carries --name as a reference to LYM_STRAND_NAME, not a value, for the same reason buildLaunchCmd does,
 // and because reed replays this line on every resume, a line without it would bring Claude back unnamed.
 // When forkSubagents is true, the line is wrapped to keep the fork-subagent capability.

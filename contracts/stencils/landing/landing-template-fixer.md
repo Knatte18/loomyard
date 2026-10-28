@@ -22,6 +22,8 @@ The task branch is `{{.task_branch}}` and it lands on `{{.parent_branch}}`.
 - The landing failure record, when this line names one: `{{.failure_record_path}}`.
   It names the gate's log, which you read as well.
 
+Issue every search and read you can name in one message; wait for a result only to choose the next call.
+
 ## What to do in each mode
 
 In `parent-align` mode the parent has moved since the task was aligned, and its changes are in the tree now.

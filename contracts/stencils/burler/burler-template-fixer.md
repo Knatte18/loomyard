@@ -25,8 +25,10 @@ The review is already written and accepted on disk; you hold none of the reviewe
 2. **Validate.**
    Check each finding's premise against the code you read and, separately, the change its `fix` key proposes.
    `{{.instruction_fix_path}}` says what to do with each result.
+   Read the files the findings name together, in one message.
 3. **Fix.**
    Read and execute `{{.instruction_fix_path}}`: the fix-everything rule, your write surface and the fixer-report.
+   Apply the corrections to one file in one message.
 
 Read the fix step only when its step is reached, never early.
 

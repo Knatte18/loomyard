@@ -51,6 +51,7 @@ Make exactly the changes the card describes, in exactly the targets its type lab
 {{.rename_tools}}
 
    Locate them with one `lym quarry resolve <glyph>...` call over the card's target and `Uses:` glyphs: each answer gives the member's `file` and its `start` and `end` lines, so read those spans instead of grepping for them or reading whole files.
+   Read every span it names in one message before the card's first edit, put the card's edits that do not depend on each other in one message, and run the card's gate, as step 3 lists it, after the card's last edit rather than after each edit.
    A `plan:` handle names a member the card creates and does not resolve yet.
 3. Run each step of the card's gate from the list below, in order, each as its own foreground Bash call under the gate rule in your system prompt.
    A failure here is the card's own gate — fix it before moving on;

@@ -206,8 +206,8 @@
 // and a skill is loaded when its Skill call is answered by a successful result, unknown when that result is an error or the latest skill listing does not name it, and missing otherwise.
 // A missing transcript_path, an unreadable file, a transcript with no matching message or one with no skill listing degrades to an unverified report.
 //
-// The engine also announces each standing tool deny to the session, and tells it to trust and answer creel mail, through the run directory's append-system-prompt.txt, named by --append-system-prompt-file on both the launch and the resume line.
-// The file holds the deny notice, a space and the creel trust sentence, or the sentence alone when no deny is installed.
+// The engine also announces each standing tool deny to the session, tells it to trust and answer creel mail, and tells it to request every call whose arguments it already knows in one message, through the run directory's append-system-prompt.txt, named by --append-system-prompt-file on both the launch and the resume line.
+// The file holds the deny notice, the creel trust sentence and the batching sentence, space-separated, with the notice left out when no deny is installed.
 // It is a file because the sentence holds a double quote, which an argument passed through pwsh's Legacy mode (an npm claude.cmd shim) would drop.
 // A session opened with `lym shuttle open` writes no run directory and carries no file.
 // Both the hooks and the notice are built from one deny list in settings.go, so the two cannot drift:
