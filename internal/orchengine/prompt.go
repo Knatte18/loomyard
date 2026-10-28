@@ -1,4 +1,4 @@
-// prompt.go renders the orch stencils (orch-template-role, orch-template-note, orch-template-start, orch-template-handoff, orch-template-resume, orch-template-handoff-soft, orch-template-compact, orch-template-reload).
+// prompt.go renders the orch stencils (orch-template-role, orch-template-note, orch-template-start, orch-template-handoff, orch-template-resume, orch-template-handoff-soft, orch-template-compact, orch-template-reload, orch-template-usage-limit-wake).
 // Each is read from a told stencils directory at call time via stencilstore.Read, per the Stencil Ownership Invariant, and filled with stencil.Fill, which drops the leading comment.
 // The role and note stencils render to files the session reads, and the two note requests render to the mail body creel posts.
 // Every other render is injected as one creel text line or handed to shuttle as its launch pointer, and a creel text inject is one line,
@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/stencil"
@@ -32,6 +33,7 @@ const (
 	softHandoffStencilName = "orch-template-handoff-soft"
 	compactStencilName     = "orch-template-compact"
 	reloadStencilName      = "orch-template-reload"
+	usageLimitWakeStencil  = "orch-template-usage-limit-wake"
 )
 
 const (
@@ -142,6 +144,16 @@ func renderMailBody(stencilsDir, name string, values map[string]string) (string,
 // RenderReloadPrompt renders the one-line reload pointer typed after an auto-compaction, with rolePath filled in.
 func RenderReloadPrompt(stencilsDir, rolePath string) (string, error) {
 	return render(stencilsDir, reloadStencilName, map[string]string{"role_path": rolePath}, true)
+}
+
+// RenderUsageLimitWake renders the one-line wake line typed once a usage limit that stopped the orch should have reset.
+// A zero resetsAt renders that the reset time could not be read; any other renders it in its own zone.
+func RenderUsageLimitWake(stencilsDir string, resetsAt time.Time) (string, error) {
+	reset := "has a reset time that could not be read, so this is a retry"
+	if !resetsAt.IsZero() {
+		reset = "reset at " + resetsAt.Format("2006-01-02 15:04 -07:00")
+	}
+	return render(stencilsDir, usageLimitWakeStencil, map[string]string{"reset": reset}, true)
 }
 
 // RenderCompactFocus renders the one-line focus text typed after `/compact`.

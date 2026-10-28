@@ -425,6 +425,20 @@
 //     An orch the entry does not own, such as an idle one or the caller, gets none.
 //   - An unreadable record holds nothing, with one Warn per change of error.
 //
+// # Usage limit
+//
+// The orch shares the account's usage limit with every session it watches, so a limit that stops them stops the orch too, and notices sent meanwhile only pile up.
+// An idle tick that reads a turn end asks Session.UsageLimit about the newest one.
+// A usage-limited turn end records State.UsageLimitAt, the reset time the limit message states in State.UsageLimitResetsAt, and the next wake in State.UsageLimitWakeAt:
+// one minute past the reset time, at once when that has passed, and 30 minutes on when the limit states no reset time.
+// While the limit stands, the idle tick renews the watcher's creel hold on the orch strand, so no other sender's mail or inject reaches the orch, and starts no cycle.
+// Once the wake time has passed, the watcher injects one line rendered from the `orch-template-usage-limit-wake` stencil, its own delivery, which the hold lets through, telling the orch to run `lym tender revive` and check each run, and moves the wake 30 minutes on, so the line repeats until the orch answers.
+// A later usage-limited turn end sets the reset and wake times afresh.
+// The first turn end that is not a usage limit clears the record and releases the hold, so the held notices are delivered.
+// A fresh launch clears the record.
+// Bound: the hold covers deliveries to the orch strand only, lapses within `cycleHoldDuration` when the watcher dies, and is renewed only while the orch's newest turn end reads usage-limited; a hub pause's held tick does not renew it.
+// A limit is read only at an idle tick: one hit during a cycle is left to the cycle's own timeouts and read at the next idle turn end.
+//
 // # Binary re-exec
 //
 // A watcher told a check through `WatchBinary`, which `lym orch watch` wires to a `selfexec` watcher, re-execs onto a replaced binary.

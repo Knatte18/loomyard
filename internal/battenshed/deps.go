@@ -321,6 +321,10 @@ type AgentActivity struct {
 	APIError bool
 	// APIErrorText is the error's text; empty unless APIError is true.
 	APIErrorText string
+	// UsageLimited is true when the API error is the provider's usage limit.
+	UsageLimited bool
+	// UsageLimitResetsAt is when that limit resets, as the provider's message states it; zero when it states no readable time or UsageLimited is false.
+	UsageLimitResetsAt time.Time
 	// SessionState, SessionCause and SessionSince are the run's session state, its cause and the RFC 3339 time it began, empty when unread.
 	// They are only logged where a notice is decided, and no decision reads them.
 	SessionState string

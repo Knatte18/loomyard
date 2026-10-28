@@ -156,6 +156,14 @@ type State struct {
 	// ReloadSkipsSkills is true for a reload entered after a compaction, which has no skills step;
 	// false after `/clear`.
 	ReloadSkipsSkills bool `json:"reload_skips_skills"`
+
+	// UsageLimitAt is when the watcher first read the orch's newest turn end as the provider's usage limit; zero while no limit stands.
+	// While it is set the watcher holds the orch's creel deliveries and starts no cycle.
+	UsageLimitAt time.Time `json:"usage_limit_at"`
+	// UsageLimitResetsAt is when that limit resets as the limit message states; zero when it states no readable time.
+	UsageLimitResetsAt time.Time `json:"usage_limit_resets_at"`
+	// UsageLimitWakeAt is when the watcher next types the wake line into the orch; zero while no limit stands.
+	UsageLimitWakeAt time.Time `json:"usage_limit_wake_at"`
 }
 
 // The resuming phase's steps, persisted in State.ReloadStep.
@@ -427,6 +435,7 @@ func NewHandoffPath(p Paths, now time.Time) string {
 // A non-idle phase is recorded in LastAbortReason as abandoned;
 // the offsets are zeroed because a new run has a new events file.
 // The pending step, the note request's id, the stuck reason and the recorded fresh-launch failure are cleared too, since they belong to the abandoned phase or the earlier launch.
+// A usage limit the earlier session stood on is cleared, and the new session's first usage-limited turn end records it again.
 // The context reading and the turn end it was taken through are cleared, since they describe the previous session;
 // the new session's first turn end sets them again.
 // CompactionBaseline becomes launchedAt, so a compaction boundary the session already carried never triggers a reload, and LaunchedAt records it.
@@ -451,6 +460,7 @@ func ResetForFreshLaunch(s State, strand string, launchedAt time.Time) State {
 	s.Pending, s.RequestID, s.RequestReadAt = nil, 0, time.Time{}
 	s.Stuck, s.StuckByCreel = "", false
 	s.FreshLaunchFailure, s.ResumeLineWithdrawn = "", false
+	s.UsageLimitAt, s.UsageLimitResetsAt, s.UsageLimitWakeAt = time.Time{}, time.Time{}, time.Time{}
 	s.WatcherExit = ""
 	return s
 }

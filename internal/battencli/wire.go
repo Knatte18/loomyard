@@ -608,7 +608,8 @@ func readAgentActivity(taskLocation *lymcwd.Location) (runs []battenshed.AgentAc
 	}
 	states := readSessionStatesByStrand(cfg, anchor, engines)
 	for _, reading := range readings {
-		run := battenshed.AgentActivity{Producer: reading.StrandName, LastActivity: reading.LastActivity, APIError: reading.APIError, APIErrorText: reading.APIErrorText}
+		run := battenshed.AgentActivity{Producer: reading.StrandName, LastActivity: reading.LastActivity, APIError: reading.APIError, APIErrorText: reading.APIErrorText,
+			UsageLimited: reading.UsageLimit.Limited, UsageLimitResetsAt: reading.UsageLimit.ResetsAt}
 		if state, ok := states[reading.StrandName]; ok {
 			run.SessionState, run.SessionCause = string(state.Name), state.Cause
 			if !state.Since.IsZero() {

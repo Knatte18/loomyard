@@ -153,6 +153,9 @@
 // The API-error part reads the main transcript only.
 // A session whose newest such entry carries the marker stands on an API error, and the entry's final text is the error's text;
 // a sidechain entry never counts, and a later normal turn end clears the error.
+// The same entry gives the activity reading's usage limit when it carries the usage-limit classification below, with the reset time its text states:
+// the first instant after the entry's timestamp that matches a `resets 2pm (Europe/Oslo)` clause, with optional minutes and an optional month and day, in the clause's IANA zone.
+// The classification alone decides that the limit stopped the turn; a text with no readable clause, or one naming a day its month lacks, gives a limit with no reset time.
 // Every failure degrades to the zero reading.
 //
 // The usage-limit reading (UsageLimitReader) reads Claude Code's own classification, the `error` field `rate_limit` on a synthetic `isApiErrorMessage` entry, never the entry's text or the agent's words.

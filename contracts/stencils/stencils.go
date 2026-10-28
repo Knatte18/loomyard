@@ -296,6 +296,11 @@ var OrchTemplateNote []byte
 //go:embed orch/orch-template-reload.md
 var OrchTemplateReload []byte
 
+// OrchTemplateUsageLimitWake is orch's shipped-default one-line wake line typed once a usage limit that stopped the orch should have reset.
+//
+//go:embed orch/orch-template-usage-limit-wake.md
+var OrchTemplateUsageLimitWake []byte
+
 // PatternDirectiveImplementer is the shipped-default PATTERN directive for RoleImplementer.
 //
 //go:embed pattern/pattern-directive-implementer.md
@@ -499,6 +504,7 @@ var entries = []registryEntry{
 	{"orch-template-role", &OrchTemplateRole},
 	{"orch-template-note", &OrchTemplateNote},
 	{"orch-template-reload", &OrchTemplateReload},
+	{"orch-template-usage-limit-wake", &OrchTemplateUsageLimitWake},
 	{"pattern-directive-implementer", &PatternDirectiveImplementer},
 	{"pattern-directive-review-fix", &PatternDirectiveReviewFix},
 	{"pattern-directive-orchestrator", &PatternDirectiveOrchestrator},

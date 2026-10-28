@@ -53,6 +53,9 @@ const (
 	// noticeAPIError is a live agent run of the running child whose newest turn end is an API error and which has not been active for noticeAPIErrorIdle since.
 	// It takes precedence over noticeQuiet and is informational.
 	noticeAPIError = "api-error"
+	// noticeUsageLimit is a live agent run of the running child whose newest turn end is the provider's usage limit and which has not been active for noticeAPIErrorIdle since.
+	// It takes precedence over noticeAPIError and noticeQuiet, sends no api-error revive, and its key stands while any run of the child still reads usage-limited.
+	noticeUsageLimit = "usage-limit"
 )
 
 // noticeDriverBusyCondition is the condition text of the notice for a resume held back by a busy driver pane.
@@ -158,7 +161,7 @@ func haltText(status shedengine.Status) string {
 }
 
 // noticeKey renders the episode key of one condition: the condition, the child's state and the stamp that tells its episodes apart.
-// The stamp of a state-changed and of a driver-dead notice is the state episode's since; a quiet and an api-error notice's is the newest agent activity.
+// The stamp of a state-changed and of a driver-dead notice is the state episode's since; a quiet and an api-error notice's is the newest agent activity, and a usage-limit notice's the limit's reset time.
 func noticeKey(condition string, state shedengine.State, stampNanos int64) string {
 	return condition + "|" + string(state) + "|" + strconv.FormatInt(stampNanos, 10)
 }
@@ -180,7 +183,7 @@ func readNoticeKeys(path string) []string {
 
 // keepEpisode drops the keys the current status no longer belongs to.
 // A key ends with its episode when the child's state changed or the state episode's since moved;
-// a quiet or api-error key ends when the newest agent activity moved, and stays while the activity cannot be read.
+// a quiet or api-error key ends when the newest agent activity moved, and a usage-limit key when no run reads usage-limited any more; each stays while the activity cannot be read.
 func keepEpisode(keys []string, state shedengine.State, sinceNanos int64, activity activityStamp) []string {
 	var kept []string
 	for _, k := range keys {
@@ -188,7 +191,11 @@ func keepEpisode(keys []string, state shedengine.State, sinceNanos int64, activi
 		if len(parts) != 3 || parts[1] != string(state) {
 			continue
 		}
-		if parts[0] == noticeQuiet || parts[0] == noticeAPIError {
+		if parts[0] == noticeUsageLimit {
+			if activity.known && !activity.usageLimited {
+				continue
+			}
+		} else if parts[0] == noticeQuiet || parts[0] == noticeAPIError {
 			if activity.known && parts[2] != strconv.FormatInt(activity.nanos, 10) {
 				continue
 			}
@@ -201,9 +208,11 @@ func keepEpisode(keys []string, state shedengine.State, sinceNanos int64, activi
 }
 
 // activityStamp is the newest agent activity as an episode stamp, known only when the agents were read.
+// usageLimited is true when any run read stands on the provider's usage limit.
 type activityStamp struct {
-	nanos int64
-	known bool
+	nanos        int64
+	known        bool
+	usageLimited bool
 }
 
 // noticeFinding is the condition the child is in, the stamp of its episode key, and the words that replace the condition's fixed text when it carries any.
@@ -459,6 +468,16 @@ func (p *innerRunProducer) judgeAgents(ctx context.Context, w *childWait) (notic
 	}
 	stamp := activityStamp{nanos: newest.UnixNano(), known: true}
 	for _, run := range reading.runs {
+		stamp.usageLimited = stamp.usageLimited || run.UsageLimited
+	}
+	for _, run := range reading.runs {
+		if run.UsageLimited && awakeSince(run.LastActivity) >= noticeAPIErrorIdle {
+			text := fmt.Sprintf("agent %s hit a usage limit, %s: %s", run.Producer, resetText(run.UsageLimitResetsAt), oneLine(run.APIErrorText, noticeErrorMax))
+			p.logSessionStatesAtNotice(reading.runs, noticeUsageLimit)
+			return noticeFinding{condition: noticeUsageLimit, stamp: resetStamp(run.UsageLimitResetsAt), text: text}, stamp
+		}
+	}
+	for _, run := range reading.runs {
 		if run.APIError && awakeSince(run.LastActivity) >= noticeAPIErrorIdle {
 			text := fmt.Sprintf("agent %s hit an API error: %s", run.Producer, oneLine(run.APIErrorText, noticeErrorMax))
 			p.logSessionStatesAtNotice(reading.runs, noticeAPIError)
@@ -642,4 +661,20 @@ func (p *innerRunProducer) saveEpisode(keys, old []string) {
 	if err := os.WriteFile(noticeEpisodeFile(p.scratchDir, p.name), []byte(content), 0o644); err != nil {
 		logger.Warn("battenshed: write notice marker failed", "producer", p.name, "slug", p.slug, "error", err)
 	}
+}
+
+// resetText renders when a usage limit resets, in UTC as a notice's since is, or that its reset time is unknown.
+func resetText(resetsAt time.Time) string {
+	if resetsAt.IsZero() {
+		return "reset time unknown"
+	}
+	return "resets " + resetsAt.UTC().Format(time.RFC3339)
+}
+
+// resetStamp returns the episode stamp of a usage limit that resets at resetsAt: its Unix seconds, or 0 for an unknown reset time.
+func resetStamp(resetsAt time.Time) int64 {
+	if resetsAt.IsZero() {
+		return 0
+	}
+	return resetsAt.Unix()
 }

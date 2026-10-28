@@ -21,6 +21,7 @@ func TestTurnEndActivity(t *testing.T) {
 		toolUse       = `{"type":"assistant","message":{"stop_reason":"tool_use","content":[{"type":"text","text":"working"}]}}`
 		apiError      = `{"type":"assistant","isApiErrorMessage":true,"message":{"stop_reason":"stop_sequence","content":[{"type":"text","text":"API Error: 529 overloaded"}]}}`
 		sidechainErr  = `{"type":"assistant","isSidechain":true,"isApiErrorMessage":true,"message":{"stop_reason":"stop_sequence","content":[{"type":"text","text":"API Error: 500"}]}}`
+		usageLimit    = `{"type":"assistant","timestamp":"2026-10-28T11:03:42.000Z","isApiErrorMessage":true,"error":"rate_limit","message":{"stop_reason":"stop_sequence","content":[{"type":"text","text":"You've hit your weekly limit · resets 2pm (Europe/Oslo)"}]}}`
 	)
 	written := time.Date(2026, 10, 7, 9, 30, 0, 0, time.UTC)
 	now := written.Add(2 * time.Hour)
@@ -52,6 +53,12 @@ func TestTurnEndActivity(t *testing.T) {
 			want:       shuttleengine.TurnEndActivity{TranscriptModTime: written},
 		},
 		{
+			name:       "a usage-limit turn end reads the limit and its reset time",
+			transcript: []string{normalTurnEnd, usageLimit},
+			want: shuttleengine.TurnEndActivity{TranscriptModTime: written, APIError: true, APIErrorText: "You've hit your weekly limit · resets 2pm (Europe/Oslo)",
+				UsageLimit: shuttleengine.UsageLimit{Limited: true, ResetsAt: time.Date(2026, 10, 28, 13, 0, 0, 0, time.UTC)}},
+		},
+		{
 			name:       "a transcript with no turn end reports its time alone",
 			transcript: []string{toolUse},
 			want:       shuttleengine.TurnEndActivity{TranscriptModTime: written},
@@ -70,7 +77,8 @@ func TestTurnEndActivity(t *testing.T) {
 
 			got := newClaude().TurnEndActivity(stopEventFor(t, path))
 
-			if !got.TranscriptModTime.Equal(tt.want.TranscriptModTime) || got.APIError != tt.want.APIError || got.APIErrorText != tt.want.APIErrorText {
+			if !got.TranscriptModTime.Equal(tt.want.TranscriptModTime) || got.APIError != tt.want.APIError || got.APIErrorText != tt.want.APIErrorText ||
+				got.UsageLimit.Limited != tt.want.UsageLimit.Limited || !got.UsageLimit.ResetsAt.Equal(tt.want.UsageLimit.ResetsAt) {
 				t.Errorf("TurnEndActivity = %+v; want %+v", got, tt.want)
 			}
 		})

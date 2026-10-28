@@ -86,6 +86,8 @@ type Session interface {
 	ClassifySkillLoad(guid string, turnEnd shuttleengine.Event, skills []string) (shuttleengine.SkillLoadReport, error)
 	// CompactedSince returns the newest compaction boundary after since in the transcript turnEnd names, with the turn ends that follow it, for the run identified by guid.
 	CompactedSince(guid string, turnEnd shuttleengine.Event, since time.Time) (shuttleengine.CompactionBoundary, bool, error)
+	// UsageLimit returns the usage-limit reading of the transcript turnEnd names, for the run identified by guid.
+	UsageLimit(guid string, turnEnd shuttleengine.Event) (shuttleengine.UsageLimit, error)
 	// Interrupt stops the session's running turn with the provider's interrupt key, sent only into a pane showing one.
 	// It fails with shuttleengine.ErrNoRunningTurn when the pane shows none, and with shuttleengine.ErrRewindPickerOpen when it closed an open rewind picker.
 	Interrupt(guid string) error
@@ -293,7 +295,11 @@ func (w *Watcher) tick() (done bool, err error) {
 		}
 	}
 	var compactedAt time.Time
+	var limit shuttleengine.UsageLimit
 	if lastTurnEnd != nil {
+		if limit, err = w.session.UsageLimit(st.Strand, *lastTurnEnd); err != nil {
+			return false, err
+		}
 		boundary, found, err := w.session.CompactedSince(st.Strand, *lastTurnEnd, st.CompactionBaseline)
 		if err != nil {
 			return false, err
@@ -327,8 +333,17 @@ func (w *Watcher) tick() (done bool, err error) {
 			w.seen.turnEnds = append(w.seen.turnEnds, ev)
 		}
 	}
+	limitEnded := false
+	if lastTurnEnd != nil {
+		limitEnded = recordUsageLimit(&st, limit, now)
+	}
 	if readingChanged {
 		if err := w.save(st); err != nil {
+			return false, err
+		}
+	}
+	if limitEnded {
+		if err := w.releaseHold(&st); err != nil {
 			return false, err
 		}
 	}
@@ -371,6 +386,9 @@ func (w *Watcher) tick() (done bool, err error) {
 
 	switch st.Phase {
 	case PhaseIdle:
+		if !st.UsageLimitAt.IsZero() {
+			return false, w.tickUsageLimit(st, now)
+		}
 		return false, w.tickIdle(st, now)
 	case PhaseHandoffRequested:
 		return false, w.tickHandoff(st, now)

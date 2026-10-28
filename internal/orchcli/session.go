@@ -97,3 +97,8 @@ func (s runnerSession) ClassifySkillLoad(guid string, turnEnd shuttleengine.Even
 func (s runnerSession) CompactedSince(guid string, turnEnd shuttleengine.Event, since time.Time) (shuttleengine.CompactionBoundary, bool, error) {
 	return s.runner.CompactedSince(guid, turnEnd, since)
 }
+
+// UsageLimit delegates to Runner.UsageLimit.
+func (s runnerSession) UsageLimit(guid string, turnEnd shuttleengine.Event) (shuttleengine.UsageLimit, error) {
+	return s.runner.UsageLimit(guid, turnEnd)
+}

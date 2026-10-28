@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
@@ -198,6 +199,10 @@ func TestRenderPointers_OneLineNamingTheirPaths(t *testing.T) {
 		{"resume", func() (string, error) { return RenderResumePrompt(dir, testRolePath, "/tmp/h/one.md") }, []string{testRolePath, "/tmp/h/one.md"}},
 		{"reload", func() (string, error) { return RenderReloadPrompt(dir, testRolePath) }, []string{testRolePath}},
 		{"compact focus", func() (string, error) { return RenderCompactFocus(dir) }, nil},
+		{"usage-limit wake", func() (string, error) {
+			return RenderUsageLimitWake(dir, time.Date(2026, 10, 28, 14, 0, 0, 0, time.FixedZone("CET", 3600)))
+		}, []string{"reset at 2026-10-28 14:00 +01:00", "lym tender revive"}},
+		{"usage-limit wake with no reset time", func() (string, error) { return RenderUsageLimitWake(dir, time.Time{}) }, []string{"could not be read", "lym tender revive"}},
 	}
 	for _, c := range cases {
 		got, err := c.render()
@@ -225,6 +230,7 @@ func TestRenderPointers_MultiLineOverrideFails(t *testing.T) {
 		{startStencilName, func(dir string) (string, error) { return RenderStartPrompt(dir, testRolePath) }},
 		{resumeStencilName, func(dir string) (string, error) { return RenderResumePrompt(dir, testRolePath, "/tmp/h/one.md") }},
 		{reloadStencilName, func(dir string) (string, error) { return RenderReloadPrompt(dir, testRolePath) }},
+		{usageLimitWakeStencil, func(dir string) (string, error) { return RenderUsageLimitWake(dir, time.Time{}) }},
 	}
 	for _, c := range cases {
 		dir := seedStencils(t)

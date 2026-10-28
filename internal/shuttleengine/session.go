@@ -205,6 +205,27 @@ func (r *Runner) CompactedSince(guid string, turnEnd Event, since time.Time) (Co
 	return boundary, found, nil
 }
 
+// UsageLimit returns the usage-limit reading of the transcript turnEnd names, via the ActivityReader of the engine the run identified by guid records.
+// An engine without the capability reads no usage limit.
+func (r *Runner) UsageLimit(guid string, turnEnd Event) (UsageLimit, error) {
+	if r.toldErr != nil {
+		return UsageLimit{}, r.toldErr
+	}
+	state, _, err := FindRun(r.cfg, r.anchorPath, guid)
+	if err != nil {
+		return UsageLimit{}, fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
+	}
+	engine, _, err := r.engineFor(state)
+	if err != nil {
+		return UsageLimit{}, err
+	}
+	reader, ok := engine.(ActivityReader)
+	if !ok {
+		return UsageLimit{}, nil
+	}
+	return reader.TurnEndActivity(turnEnd).UsageLimit, nil
+}
+
 // SessionIdle reports whether the run identified by guid can take typed input.
 // The answer is the readiness reading over the run's hook-derived session state and one pane capture, styled where the engine can blank its placeholder:
 // a ready reading is idle and a held one is not idle with its Reason, and the runner keeps one turn-start hold per strand across calls.

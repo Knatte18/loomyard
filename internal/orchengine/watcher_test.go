@@ -43,6 +43,7 @@ type fakeSession struct {
 
 	skillLoads  map[string]shuttleengine.SkillLoadReport    // Turn-end message to the report ClassifySkillLoad answers, else a report with every skill loaded.
 	autoCompact map[string]shuttleengine.CompactionBoundary // Turn-end message to a main-chain compaction boundary CompactedSince finds through it.
+	limits      map[string]shuttleengine.UsageLimit         // Turn-end message to the reading UsageLimit answers, else no limit.
 
 	sessionState    shuttleengine.SessionState // Answered by SessionState while stateErr is nil.
 	sessionStateErr error                      // Returned by every SessionState while set.
@@ -98,6 +99,10 @@ func (f *fakeSession) ClassifySkillLoad(guid string, turnEnd shuttleengine.Event
 func (f *fakeSession) CompactedSince(guid string, turnEnd shuttleengine.Event, since time.Time) (shuttleengine.CompactionBoundary, bool, error) {
 	b, ok := f.autoCompact[turnEnd.Message]
 	return b, ok && b.At.After(since), nil
+}
+
+func (f *fakeSession) UsageLimit(guid string, turnEnd shuttleengine.Event) (shuttleengine.UsageLimit, error) {
+	return f.limits[turnEnd.Message], nil
 }
 
 func (f *fakeSession) StrandAlive(string) (bool, error) {
