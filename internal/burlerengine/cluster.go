@@ -49,6 +49,22 @@ var gitTagWritingOptions = map[string]bool{
 // gitTagValuedListOptions holds the git tag list-output options whose value may be the following word, so a value such as -version:refname is never read as an option.
 var gitTagValuedListOptions = map[string]bool{"--sort": true, "--format": true}
 
+// gitBranchReadOptions holds the git branch long options that never create, delete, rename, copy or move a branch or change its upstream or description.
+// The value reports whether the option puts git branch in list mode, where every operand is a pattern rather than a branch to create.
+var gitBranchReadOptions = map[string]bool{
+	"--list": true, "--contains": true, "--no-contains": true, "--merged": true,
+	"--no-merged": true, "--points-at": true, "--show-current": true,
+	"--all": false, "--verbose": false, "--remotes": false, "--ignore-case": false, "--format": false, "--sort": false,
+	"--column": false, "--no-column": false, "--color": false, "--no-color": false, "--abbrev": false,
+	"--no-abbrev": false, "--omit-empty": false,
+}
+
+// gitBranchReadShortOptions holds the git branch short options that only read, with the value reporting whether the option puts git branch in list mode.
+var gitBranchReadShortOptions = map[rune]bool{'l': true, 'v': false, 'a': false, 'r': false, 'i': false}
+
+// gitBranchValuedReadOptions holds the git branch read options whose value is the following word when not given in the = form, so a value such as -committerdate is never read as an option or an operand.
+var gitBranchValuedReadOptions = map[string]bool{"--format": true, "--sort": true, "--points-at": true}
+
 // gitRepositoryOptions holds git's global options that name the repository or working tree apart from the directory git runs in.
 var gitRepositoryOptions = map[string]bool{"--git-dir": true, "--work-tree": true}
 
@@ -64,7 +80,7 @@ var gitWorktreeAddValuedOptions = map[string]bool{"-b": true, "-B": true, "--rea
 // firstMutatingGitCommand returns the first of commands, one fork's Bash commands in transcript order, that invokes git with a state-mutating subcommand against a repository the fork did not create, and reports whether there is one.
 // A command is split into segments at ;, &, | and newlines, and a segment is a git invocation when its first word is git, bare or path-prefixed.
 // Only the subcommand word decides, so a mutating verb named as an argument, as in git help cherry-pick, never counts.
-// The one exception is git tag, which counts only when it does not merely list tags.
+// The exceptions are git tag, which counts only when it does not merely list tags, and git branch, which counts only when it does not merely list branches or show the current one.
 // A -h or --help among the global options or directly after the subcommand only prints usage and never counts either;
 // further along it is an option value or an operand, as in git commit -m -h.
 //
@@ -127,6 +143,10 @@ func (repos *forkRepositories) gitInvocationMutates(invocation gitInvocation) bo
 		}
 	case "tag":
 		if gitTagListsOnly(invocation.args) {
+			return false
+		}
+	case "branch":
+		if gitBranchReadsOnly(invocation.args) {
 			return false
 		}
 	}
@@ -295,6 +315,42 @@ func isGitTagLineCount(word string) bool {
 		}
 	}
 	return true
+}
+
+// gitBranchReadsOnly reports whether args, the words after git branch, only list branches or show the current one.
+// Every option must be a known read-only option, a short-option cluster such as -avv counting letter by letter, and a long option counting in its --name=value form too;
+// any other option keeps the command mutating.
+// An operand, any word after --, makes git branch create a branch unless a list-mode option such as --list or --contains turns operands into patterns.
+func gitBranchReadsOnly(args []string) bool {
+	listMode, hasOperand := false, false
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		name, _, valueAttached := strings.Cut(arg, "=")
+		switch {
+		case arg == "--":
+			return listMode || !hasOperand && i+1 == len(args)
+		case strings.HasPrefix(arg, "--"):
+			lists, known := gitBranchReadOptions[name]
+			if !known {
+				return false
+			}
+			listMode = listMode || lists
+			if gitBranchValuedReadOptions[name] && !valueAttached {
+				i++
+			}
+		case len(arg) > 1 && arg[0] == '-':
+			for _, letter := range arg[1:] {
+				lists, known := gitBranchReadShortOptions[letter]
+				if !known {
+					return false
+				}
+				listMode = listMode || lists
+			}
+		default:
+			hasOperand = true
+		}
+	}
+	return listMode || !hasOperand
 }
 
 // splitShellSegments splits cmd into segments at unquoted ;, &, | and newlines, each segment a list of words.

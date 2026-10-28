@@ -248,7 +248,7 @@ func TestAuditClusterRound(t *testing.T) {
 
 // TestFirstMutatingGitCommand matrixes firstMutatingGitCommand over a single command against every Bash command shape the audit must classify correctly.
 // Every listed mutating subcommand matches, tolerant of a leading path, a chain prefix, a later line and global options.
-// Read-only subcommands whose arguments name a mutating verb, help requests and git tag's list forms never match.
+// Read-only subcommands whose arguments name a mutating verb, help requests and the list forms of git tag and git branch never match.
 func TestFirstMutatingGitCommand(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -297,6 +297,23 @@ func TestFirstMutatingGitCommand(t *testing.T) {
 		{"tag --list as a message value", "git tag -m --list v1", true},
 		{"tag short-option cluster", "git tag -ln v1", true},
 		{"branch", "git branch -d old", true},
+		{"branch create", "git branch new", true},
+		{"branch force delete", "git branch -D old", true},
+		{"branch rename", "git branch -m a b", true},
+		{"branch copy", "git branch -c a b", true},
+		{"branch set upstream", "git branch -u origin/main", true},
+		{"branch set upstream in the = form", "git branch --set-upstream-to=origin/main", true},
+		{"branch unset upstream", "git branch --unset-upstream", true},
+		{"branch force reset", "git branch -f main HEAD", true},
+		{"branch -a with a branch name creates it", "git branch -a foo", true},
+		{"branch -v with a branch name creates it", "git branch -v foo", true},
+		{"branch --verbose with a branch name creates it", "git branch --verbose foo", true},
+		{"branch -vv with a branch name creates it", "git branch -vv foo", true},
+		{"branch name before a trailing double dash", "git branch foo --", true},
+		{"branch --format with a branch name creates it", "git branch --format %(refname) foo", true},
+		{"branch delete beside a list option", "git branch -l -d old", true},
+		{"branch delete in a read-only cluster", "git branch -aD old", true},
+		{"branch name after a double dash", "git branch -- new", true},
 		{"leading path", "/usr/bin/git commit -m x", true},
 		{"chained with &&", "cd internal/burler && git commit -am fix", true},
 		{"chained with ;", "cd internal/burler; git push", true},
@@ -341,6 +358,25 @@ func TestFirstMutatingGitCommand(t *testing.T) {
 		{"tag --sort value starting with a dash is not mutating", "git tag -l --sort -version:refname", false},
 		{"tag --format value starting with a dash is not mutating", "git tag -l --format -version:refname", false},
 		{"tag list option before a double dash is not mutating", "git tag -l -- v1", false},
+		{"bare git branch is not mutating", "git branch", false},
+		{"branch -a is not mutating", "git branch -a", false},
+		{"branch -r is not mutating", "git branch -r", false},
+		{"branch -avv cluster is not mutating", "git branch -avv", false},
+		{"branch -a --contains is not mutating", "git branch -a --contains 71a46b11", false},
+		{"branch --contains in the = form is not mutating", "git branch --contains=71a46b11", false},
+		{"branch -l with a pattern is not mutating", "git branch -l 'feat*'", false},
+		{"branch --list with a pattern is not mutating", "git branch --list feat*", false},
+		{"branch --merged is not mutating", "git branch --merged main", false},
+		{"branch --no-merged is not mutating", "git branch --no-merged main", false},
+		{"branch --points-at is not mutating", "git branch --points-at HEAD", false},
+		{"branch --show-current is not mutating", "git branch --show-current", false},
+		{"branch --sort value starting with a dash is not mutating", "git branch --sort -committerdate", false},
+		{"branch --format value starting with a dash is not mutating", "git branch --format -x", false},
+		{"branch --points-at value starting with a dash is not mutating", "git branch --points-at -x", false},
+		{"branch bare double dash is not mutating", "git branch --", false},
+		{"branch -v is not mutating", "git branch -v", false},
+		{"branch -v beside -l with a pattern is not mutating", "git branch -v -l feat*", false},
+		{"branch list option before a pattern after a double dash is not mutating", "git branch -l -- feat*", false},
 		{"git log is not mutating", "git log --oneline", false},
 		{"git diff is not mutating", "git diff HEAD~1", false},
 		{"git status is not mutating", "git status", false},
