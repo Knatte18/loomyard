@@ -29,7 +29,8 @@
 # Webster's Stuck halts the run for a human too, with one exception: Webster declares on_reroute:
 # Plan-Burler-Review, and its producer marks a Stuck Reroute only when begin-batch left a new
 # plan-conflict record.
-# Finalize declares on_reroute: Parent-Align, the edge a spent or over-cap fixer change takes when a review follows.
+# Finalize declares on_reroute: Parent-Align, the edge a spent fixer change, or an over-cap one its
+# fix review does not approve, takes when a review follows.
 # Shed's reroute cap bounds that edge, and a reroute spends no bounce budget.
 #
 # PR-Review and Friction-Reflect are outside the escalate-to-a-human set: each also carries no
@@ -541,7 +542,9 @@ producers:
 
   # Finalize takes the parent lock first, merges the parent into the task branch, runs the landing
   # gate and the merge fixer, then fast-forwards the parent and releases the lock on every way out.
-  # Only a spent or over-cap fixer change reroutes to Parent-Align; a conflict or a large merge lands through the gate.
+  # An over-cap fixer change goes to Finalize's own solo fix review first, and lands on its approval.
+  # Only a spent fixer change, or an over-cap one the fix review does not approve, reroutes to Parent-Align;
+  # a conflict or a large merge lands through the gate.
   - name: Finalize
     engine: Finalize
     on_reroute: Parent-Align

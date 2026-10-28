@@ -45,3 +45,8 @@ It imports the standard library only.
 
 `internal/landingshed`'s `ParseFixerReport` is the sole parser of the merge fixer's report format, which `contracts/specs/landing-fixer-report-spec.md` defines.
 Parent-Align and Finalize read only the `FixerReport` it returns.
+
+## Fix review report format (`internal/landingshed`)
+
+`internal/landingshed`'s `ParseFixReviewReport` is the sole parser of the fix review's report format, which `contracts/specs/landing-fix-review-spec.md` defines.
+Finalize reads only the `FixReviewReport` it returns.

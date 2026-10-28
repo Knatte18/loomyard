@@ -53,9 +53,9 @@ type Config struct {
 	// A run at Finalize and running, or with a live verify, keeps the lock past it.
 	// A value below 1 reads as the default.
 	ParentLockIdleReleaseMin int `yaml:"parent_lock_idle_release_min"`
-	// Fixer is the model-spec string selecting the model the merge fixer session runs under.
+	// Fixer is the model-spec string selecting the model the merge fixer session and the fix review session run under.
 	Fixer string `yaml:"fixer"`
-	// FixerTimeoutMin is the minutes one fixer turn may run.
+	// FixerTimeoutMin is the minutes one fixer turn, or the fix review session, may run.
 	FixerTimeoutMin int `yaml:"fixer_timeout_min"`
 	// ParentAlignFixAttempts is the fixer turns one Parent-Align row entry may spend.
 	ParentAlignFixAttempts int `yaml:"parent_align_fix_attempts"`

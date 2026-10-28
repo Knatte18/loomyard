@@ -33,6 +33,11 @@ var LandingTemplateDescribeDarn []byte
 //go:embed landing/landing-template-fixer.md
 var LandingTemplateFixer []byte
 
+// LandingTemplateFixReview is the landing fix review's shipped-default prompt: the solo session that judges an over-cap merge fixer change before Finalize lands it.
+//
+//go:embed landing/landing-template-fix-review.md
+var LandingTemplateFixReview []byte
+
 // DarnTemplateWrite is the darn writer's shipped-default prompt: the whole instruction set of the one session that makes a board entry's change.
 //
 //go:embed darn/darn-template-write.md
@@ -443,6 +448,7 @@ var entries = []registryEntry{
 	{"landing-template-describe", &LandingTemplateDescribe},
 	{"landing-template-describe-darn", &LandingTemplateDescribeDarn},
 	{"landing-template-fixer", &LandingTemplateFixer},
+	{"landing-template-fix-review", &LandingTemplateFixReview},
 	{"darn-template-write", &DarnTemplateWrite},
 	{"drift-template-baseline", &DriftTemplateBaseline},
 	{"drift-template-verify", &DriftTemplateVerify},
@@ -541,6 +547,7 @@ var roleOpeningStencils = map[string][]string{
 	"burler-fix":         {"burler-template-fixer"},
 	"conflict":           {"landing-template-conflict"},
 	"fixer":              {"landing-template-fixer"},
+	"fix-reviewer":       {"landing-template-fix-review"},
 	"bouncer-judge":      {"bouncer-template-judge"},
 	"bouncer-seed":       {"bouncer-template-seed"},
 	"treadle-targeting":  {"treadle-template-targeting"},

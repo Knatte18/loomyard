@@ -175,6 +175,9 @@ func (g verifyGate) clean(producer, point string) (string, error) {
 	return dirtyReason(point, paths), nil
 }
 
+// dirtyWayForward ends every dirty-tree reason with what the operator does about it.
+const dirtyWayForward = "; commit or remove them on the task branch, then resume"
+
 // dirtyReason is the Stuck reason for a dirty tree found at point.
 func dirtyReason(point string, paths []string) string {
 	shown := paths
@@ -185,7 +188,7 @@ func dirtyReason(point string, paths []string) string {
 	if more := len(paths) - len(shown); more > 0 {
 		list = fmt.Sprintf("%s and %d more", list, more)
 	}
-	return fmt.Sprintf("the task worktree has uncommitted changes %s: %s; commit or remove them on the task branch, then resume", point, list)
+	return fmt.Sprintf("the task worktree has uncommitted changes %s: %s%s", point, list, dirtyWayForward)
 }
 
 // readBase returns the base command, the one whose record entry every pass of this gate keeps.

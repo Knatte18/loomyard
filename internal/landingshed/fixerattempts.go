@@ -24,6 +24,8 @@ type FixerAttempts struct {
 	AlignFrom string `json:"align_from"`
 	// Halt notes the halt that last stopped the entry: "spent", "over-cap" or empty.
 	Halt string `json:"halt"`
+	// Reviewed is the HEAD a fix review approved the entry's over-cap change at; empty when none did.
+	Reviewed string `json:"reviewed,omitempty"`
 }
 
 // FixerAttemptsPath is the attempt record's path for row under scratchDir: one file per row.
