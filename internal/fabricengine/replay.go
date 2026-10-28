@@ -23,12 +23,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// The board's file names a replay recognises: the entry store, the rendered overview and the per-entry design files.
+// The board's file names a replay recognises: the entry store, the rendered overview, the per-project overview files and the per-entry design files.
+// boardProjectPrefix must equal the project file prefix the board renders, which this package cannot import.
 const (
-	boardFileName     = "board.json"
-	boardOverviewFile = "README.md"
-	boardDesignPrefix = "design-"
-	boardDesignSuffix = ".md"
+	boardFileName      = "board.json"
+	boardOverviewFile  = "README.md"
+	boardProjectPrefix = "project-"
+	boardDesignPrefix  = "design-"
+	boardDesignSuffix  = ".md"
 	// boardEntryDone is the status an entry carries once its run has landed.
 	boardEntryDone = "done"
 )
@@ -518,9 +520,20 @@ func boardDesignSlug(path string) (string, bool) {
 	return slug, found && slug != ""
 }
 
-// isBoardPath reports whether path is one a board commit changes: the entry store, the rendered overview or a design file.
+// isBoardOverview reports whether path is a rendered overview file at the board's root: `README.md` or a project's `project-<slug>.md`.
+// The board re-renders every overview after a replay, so none names an entry change.
+func isBoardOverview(path string) bool {
+	if path == boardOverviewFile {
+		return true
+	}
+	name, found := strings.CutPrefix(path, boardProjectPrefix)
+	slug, isMarkdown := strings.CutSuffix(name, boardDesignSuffix)
+	return found && isMarkdown && slug != "" && !strings.Contains(path, "/")
+}
+
+// isBoardPath reports whether path is one a board commit changes: the entry store, a rendered overview file or a design file.
 func isBoardPath(path string) bool {
-	if path == boardFileName || path == boardOverviewFile {
+	if path == boardFileName || isBoardOverview(path) {
 		return true
 	}
 	_, design := boardDesignSlug(path)
@@ -622,7 +635,7 @@ func localBoardEntries(repo *gitrepo.Repo, head string, ahead []string) (slugs [
 		if err != nil {
 			return nil, nil, err
 		}
-		entryPaths := slices.DeleteFunc(slices.Clone(detail.Paths), func(path string) bool { return !isBoardPath(path) || path == boardOverviewFile })
+		entryPaths := slices.DeleteFunc(slices.Clone(detail.Paths), func(path string) bool { return !isBoardPath(path) || isBoardOverview(path) })
 		if len(entryPaths) == 0 {
 			continue
 		}

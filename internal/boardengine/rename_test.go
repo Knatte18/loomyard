@@ -133,12 +133,16 @@ func TestRename_KeepsEntryRewritesDependentsAndReportsMentions(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(boardPath, "proposal-new.md")); err != nil {
 		t.Errorf("design doc of the new slug is missing: %v", err)
 	}
-	readme, err := os.ReadFile(filepath.Join(boardPath, "Home.md"))
+	// new is grouping-two's member, so it renders in that project's own board file.
+	projectFile, err := os.ReadFile(filepath.Join(boardPath, "project-grouping-two.md"))
 	if err != nil {
-		t.Fatalf("read Home.md: %v", err)
+		t.Fatalf("read project-grouping-two.md: %v", err)
 	}
-	if strings.Contains(string(readme), "`old`") || !strings.Contains(string(readme), "`new`") {
-		t.Errorf("Home.md must name `new` and not `old`:\n%s", readme)
+	if strings.Contains(string(projectFile), "`old`") || !strings.Contains(string(projectFile), "`new`") {
+		t.Errorf("project-grouping-two.md must name `new` and not `old`:\n%s", projectFile)
+	}
+	if _, err := os.Stat(filepath.Join(boardPath, "project-grouping.md")); !os.IsNotExist(err) {
+		t.Errorf("board file of the old project slug must be gone; stat err = %v", err)
 	}
 }
 
