@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -42,6 +43,7 @@ const (
 	// helperRoleGate runs `lym gate test` over helperCwdEnv and the process arguments, with the stand-in as its go binary unless helperGoEnv is empty.
 	helperRoleGate = "gate"
 	// helperRoleStandIn records how it was invoked, then exits with helperExitEnv or, under helperHoldEnv, sleeps until killed with a sleeper child.
+	// Under helperShortageEnv a tier invocation prints a resource-shortage error and exits 1 instead.
 	// A build invocation instead writes helperBuildContentEnv to its `-o` file when it succeeds and exits with helperBuildExitEnv.
 	// The hub's shared build step is such an invocation too, with `sharedbuild` as its first argument, and holds under helperHoldEnv like a tier does.
 	helperRoleStandIn = "standin"
@@ -57,7 +59,9 @@ const (
 	helperBuildExitEnv    = "GATECLI_TEST_BUILD_EXIT"
 	helperBuildContentEnv = "GATECLI_TEST_BUILD_CONTENT"
 	helperHoldEnv         = "GATECLI_TEST_HOLD"
-	// helperSlotWaitEnv, helperCeilingEnv and helperUnitEnv are durations the gate helper passes to newCommand in place of its defaults.
+	// helperShortageEnv makes a tier invocation print a resource-shortage error and exit 1, on its first run when the value is `once` and on every run when it is `always`.
+	helperShortageEnv = "GATECLI_TEST_SHORTAGE"
+	// helperSlotWaitEnv, helperCeilingEnv and helperUnitEnv are durations the gate helper passes to newCommand in place of its defaults, and the helper always passes a shortage-rerun delay of 0.
 	helperSlotWaitEnv = "GATECLI_TEST_SLOT_WAIT"
 	helperCeilingEnv  = "GATECLI_TEST_CEILING"
 	helperUnitEnv     = "GATECLI_TEST_UNIT"
@@ -88,9 +92,12 @@ type standInRecord struct {
 	// Enclosing is the enclosing-gate pid variable the stand-in saw.
 	Enclosing string `json:"enclosing"`
 	// Trace is the trace-id variable the stand-in saw; empty when the gate dropped it.
-	Trace      string `json:"trace"`
-	PID        int    `json:"pid"`
-	Grandchild int    `json:"grandchild"`
+	Trace string `json:"trace"`
+	// NodeReuse and MSBuildServer are the MSBuild node-reuse and build-server variables the stand-in saw.
+	NodeReuse     string `json:"node_reuse"`
+	MSBuildServer string `json:"msbuild_server"`
+	PID           int    `json:"pid"`
+	Grandchild    int    `json:"grandchild"`
 }
 
 func runGateHelper() int {
@@ -113,7 +120,7 @@ func runGateHelper() int {
 			durations[name] = parsed
 		}
 	}
-	code := clihelp.ExecuteIn(newCommand(goBinary, time.Second, durations[helperSlotWaitEnv], durations[helperCeilingEnv], durations[helperUnitEnv]), os.Getenv(helperCwdEnv), os.Stdout, os.Args[1:])
+	code := clihelp.ExecuteIn(newCommand(goBinary, time.Second, durations[helperSlotWaitEnv], durations[helperCeilingEnv], durations[helperUnitEnv], 0), os.Getenv(helperCwdEnv), os.Stdout, os.Args[1:])
 	// The helper stands for `lym`'s main, which removes the process run directory on exit.
 	_ = lymtemp.Remove()
 	return code
@@ -123,7 +130,7 @@ func runStandIn() int {
 	cwd, _ := os.Getwd()
 	sharedBuild := len(os.Args) > 1 && os.Args[1] == "sharedbuild"
 	isBuild := sharedBuild || (len(os.Args) > 1 && os.Args[1] == "build")
-	record := standInRecord{Args: os.Args[1:], Build: isBuild, Cwd: cwd, GoFlags: os.Getenv("GOFLAGS"), BuildMark: os.Getenv("BUILD_MARK"), Slot: os.Getenv(gateslot.InheritEnv), Strand: os.Getenv(agentname.StrandNameEnv), Prebuilt: os.Getenv(gateslot.PrebuiltLymEnv), Enclosing: os.Getenv(enclosingGateEnv), Trace: os.Getenv(logger.TraceIDEnv), PID: os.Getpid()}
+	record := standInRecord{Args: os.Args[1:], Build: isBuild, Cwd: cwd, GoFlags: os.Getenv("GOFLAGS"), BuildMark: os.Getenv("BUILD_MARK"), Slot: os.Getenv(gateslot.InheritEnv), Strand: os.Getenv(agentname.StrandNameEnv), Prebuilt: os.Getenv(gateslot.PrebuiltLymEnv), Enclosing: os.Getenv(enclosingGateEnv), Trace: os.Getenv(logger.TraceIDEnv), NodeReuse: os.Getenv("MSBUILDDISABLENODEREUSE"), MSBuildServer: os.Getenv("DOTNET_CLI_USE_MSBUILD_SERVER"), PID: os.Getpid()}
 	// A prebuild invocation only records itself and exits with its own code; the hold belongs to the tier's invocation and the shared build's.
 	hold := (!isBuild || sharedBuild) && os.Getenv(helperHoldEnv) != ""
 	if hold {
@@ -134,6 +141,8 @@ func runStandIn() int {
 		}
 		record.Grandchild = sleeper.Process.Pid
 	}
+	prior, _ := os.ReadFile(os.Getenv(helperRecordEnv))
+	priorRecords := bytes.Count(prior, []byte("\n"))
 	data, err := json.Marshal(record)
 	if err != nil {
 		return 1
@@ -162,6 +171,10 @@ func runStandIn() int {
 	exitEnv := helperExitEnv
 	if slices.ContainsFunc(os.Args, func(arg string) bool { return strings.HasPrefix(arg, "^(TestGuard") }) && os.Getenv(helperGuardExitEnv) != "" {
 		exitEnv = helperGuardExitEnv
+	}
+	if shortage := os.Getenv(helperShortageEnv); shortage == "always" || shortage == "once" && priorRecords == 0 {
+		fmt.Println("fork/exec /usr/bin/git: Resource temporarily unavailable")
+		return 1
 	}
 	code, _ := strconv.Atoi(os.Getenv(exitEnv))
 	return code
@@ -578,7 +591,7 @@ func TestGateTest_Scenario(t *testing.T) {
 		writeConfig(t, scenarioConfig(t, withSharedBuild("sub")))
 		defer writeConfig(t, gateConfig)
 
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "0", "--tier", "6", "./pkg", "--", "-count=1"}})
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "0", "--tier", "6", "./pkg", "--", "-count=1"}, env: []string{"MSBUILDDISABLENODEREUSE=0", "DOTNET_CLI_USE_MSBUILD_SERVER=1"}})
 		if code := g.wait(t); code != 0 {
 			t.Fatalf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
 		}
@@ -588,6 +601,9 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 		if build := builds[0]; !slices.Equal(build.Args, []string{"sharedbuild"}) || build.Cwd != buildDir || build.BuildMark != "1" || filepath.Dir(build.Slot) != pool.Dir {
 			t.Errorf("build invocation = %+v; want only `sharedbuild`, run in %s with BUILD_MARK and a slot of %s", build, buildDir, pool.Dir)
+		}
+		if build := builds[0]; build.NodeReuse != "1" || build.MSBuildServer != "0" {
+			t.Errorf("build environment MSBUILDDISABLENODEREUSE = %q, DOTNET_CLI_USE_MSBUILD_SERVER = %q; want 1 and 0 over the inherited values", build.NodeReuse, build.MSBuildServer)
 		}
 		if records := g.records(t); len(records) != 3 || !records[0].Build || records[1].Build || records[2].Build || records[1].BuildMark != "" || records[1].Slot != builds[0].Slot {
 			t.Errorf("stand-in records = %+v; want the build first, then both tiers in the build's slot without its env", records)
@@ -786,7 +802,7 @@ func TestGateTest_Scenario(t *testing.T) {
 	})
 
 	t.Run("a free slot runs the tier under its env, exits with its code and records the run", func(t *testing.T) {
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "./pkg", "--", "-run", "X"}, env: []string{helperExitEnv + "=7", strandEnvEntry, logger.TraceIDEnv + "=0123456789abcdef"}})
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "./pkg", "--", "-run", "X"}, env: []string{helperExitEnv + "=7", strandEnvEntry, logger.TraceIDEnv + "=0123456789abcdef", "MSBUILDDISABLENODEREUSE=0", "DOTNET_CLI_USE_MSBUILD_SERVER=1"}})
 		if code := g.wait(t); code != 7 {
 			t.Errorf("exit code = %d; want the stand-in's 7", code)
 		}
@@ -796,6 +812,9 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 		if record.Trace != "" {
 			t.Errorf("tier environment %s = %q; want it dropped", logger.TraceIDEnv, record.Trace)
+		}
+		if record.NodeReuse != "1" || record.MSBuildServer != "0" {
+			t.Errorf("tier environment MSBUILDDISABLENODEREUSE = %q, DOTNET_CLI_USE_MSBUILD_SERVER = %q; want 1 and 0 over the inherited values", record.NodeReuse, record.MSBuildServer)
 		}
 		if want := strconv.Itoa(g.cmd.Process.Pid); record.Enclosing != want {
 			t.Errorf("tier environment %s = %q; want the gate's pid %s", enclosingGateEnv, record.Enclosing, want)
@@ -823,6 +842,56 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 		if !slices.Contains(strings.Split(g.stdout.String(), "\n"), trimpath) {
 			t.Errorf("gate output = %q; want the -trimpath line %q", g.stdout.String(), trimpath)
+		}
+		requireFree(t)
+	})
+
+	t.Run("a tier's own env overrides the MSBuild variables the gate sets", func(t *testing.T) {
+		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+			cfg["tiers"].(map[string]any)["tier6"].(map[string]any)["env"] = map[string]string{"MSBUILDDISABLENODEREUSE": "0"}
+		}))
+		defer writeConfig(t, gateConfig)
+
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "6", "./pkg"}})
+		if code := g.wait(t); code != 0 {
+			t.Fatalf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
+		}
+		if record := g.standIn(t); record.NodeReuse != "0" || record.MSBuildServer != "0" {
+			t.Errorf("tier environment MSBUILDDISABLENODEREUSE = %q, DOTNET_CLI_USE_MSBUILD_SERVER = %q; want the tier's 0 and the gate's 0", record.NodeReuse, record.MSBuildServer)
+		}
+		requireFree(t)
+	})
+
+	t.Run("a tier that fails once on a resource shortage is rerun and ends passed with the rerun announced", func(t *testing.T) {
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "6", "./pkg"}, env: []string{helperShortageEnv + "=once"}})
+		if code := g.wait(t); code != 0 {
+			t.Fatalf("exit code = %d, stdout %q; want 0 after the rerun", code, g.stdout.String())
+		}
+		if got := len(g.tierRecords(t)); got != 2 {
+			t.Errorf("tier invocations = %d; want the run and its one rerun", got)
+		}
+		if !strings.Contains(g.stdout.String(), "gate test: tier6 failed on a resource shortage") {
+			t.Errorf("stdout = %q; want the rerun announced", g.stdout.String())
+		}
+		requireFree(t)
+	})
+
+	t.Run("a tier that fails on a resource shortage twice keeps its exit code and is named a resource shortage in the closing line", func(t *testing.T) {
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "6", "./pkg"}, env: []string{helperShortageEnv + "=always"}})
+		if code := g.wait(t); code != 1 {
+			t.Fatalf("exit code = %d, stdout %q; want the run's own 1", code, g.stdout.String())
+		}
+		if got := len(g.tierRecords(t)); got != 2 {
+			t.Errorf("tier invocations = %d; want the run and one rerun, no more", got)
+		}
+		closing := ""
+		for _, line := range strings.Split(g.stdout.String(), "\n") {
+			if strings.HasPrefix(line, gateslot.FailedRunsPrefix) {
+				closing = line
+			}
+		}
+		if !strings.Contains(closing, "tier6 (exit 1, a resource shortage") {
+			t.Errorf("closing line = %q; want it to name tier6 as a resource shortage", closing)
 		}
 		requireFree(t)
 	})
@@ -1697,5 +1766,38 @@ func TestGateTest_Scenario(t *testing.T) {
 			}
 			requireFree(t)
 		})
+	}
+}
+
+func TestGateTest_UnsetDirFollowsTheAnchor(t *testing.T) {
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend"})
+	prime := h.PrimeWorktree()
+	anchor := h.Location.AnchorPath()
+	if err := os.MkdirAll(filepath.Join(prime, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gateConfig := scenarioConfig(t, func(cfg map[string]any) {
+		cfg["build"] = map[string]any{"command": "'" + os.Args[0] + "' sharedbuild", "timeout_min": 1}
+		tiers := cfg["tiers"].(map[string]any)
+		tiers["tier0"].(map[string]any)["shared_build"] = true
+		tiers["tier6"].(map[string]any)["dir"] = "."
+		tiers["tier2"].(map[string]any)["dir"] = "sub"
+	})
+	if err := os.WriteFile(configengine.ConfigFile(h.BoardDir(), "gate"), gateConfig, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	g := startGate(t, gateRun{cwd: anchor, args: []string{"test", "--tier", "0", "--tier", "2", "--tier", "6", "./pkg"}})
+	if code := g.wait(t); code != 0 {
+		t.Fatalf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
+	}
+	var cwds []string
+	for _, record := range g.records(t) {
+		cwds = append(cwds, record.Cwd)
+	}
+	if want := []string{anchor, anchor, filepath.Join(prime, "sub"), prime}; !slices.Equal(cwds, want) {
+		t.Errorf("build, tier0, tier2 and tier6 ran in %q; want the build and tier0, which set no dir, in the anchor, tier2, whose dir is sub, in sub under the worktree root, and tier6, whose dir is ., in the worktree root: %q", cwds, want)
 	}
 }

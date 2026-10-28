@@ -4,7 +4,7 @@ busy_quit_sec: 120  # seconds a Go test binary under lym gate test may keep a CP
 # The hub's test tiers, keyed tier0, tier1, and so on; the template declares none.
 # A tier is written whole with one flow mapping: lym config gate --set 'tiers.tier0={command: "go test -json {targets} {args}", all_targets: ./..., timeout_min: 60, counter: go-json}'
 # It holds command (with {targets}, {parallel} and {args} placeholders), timeout_min (at least 1) and counter (go-json or vstest), and all_targets when the command holds {targets}.
-# It may also hold about, dir (default .), env, parallel (at least 1, default 1), covers (lower tier numbers its command runs anyway), slots (a count of at least 1, or all; default 1), prebuilt_lym and manual (true keeps a tier above tier0 out of lym gate test --upto, so it runs only when --tier names it).
+# It may also hold about, dir (relative to the worktree root; default the worktree's anchor), env, parallel (at least 1, default 1), covers (lower tier numbers its command runs anyway), slots (a count of at least 1, or all; default 1), prebuilt_lym and manual (true keeps a tier above tier0 out of lym gate test --upto, so it runs only when --tier names it).
 # Three more keys: filter (the tier's own test-filter expression, allowed only when the command holds {filter}), shared_build (true runs the hub's build step first, once per call) and carry (false keeps a green run from being carried over an unchanged tree; default true).
 # Inside the mapping a value holding a brace, comma or bracket is a double-quoted string.
 tiers: {}
@@ -29,7 +29,7 @@ gates:
 scoper: none
 
 # The build a tier with shared_build runs once per call; {} declares none.
-# It holds command and timeout_min (at least 1), and may hold about, dir (default .) and env.
+# It holds command and timeout_min (at least 1), and may hold about, dir (relative to the worktree root; default the worktree's anchor) and env.
 build: {}
 
 # Glob patterns of files no test reads, such as "*.md" or "docs/*": a pattern without a slash matches the file's base name, one with a slash the whole worktree-relative path.

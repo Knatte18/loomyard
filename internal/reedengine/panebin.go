@@ -2,7 +2,7 @@
 // The composition lives in this one file, reached from two chokepoints, launchStrandLocked in spawn.go for strand panes and OpenWindow in window.go for detached windows,
 // so the property "every pane reed creates for a `lym` command resolves lym to its spawning binary" holds by construction rather than by every pane-creating call site remembering to apply it.
 // It also composes the session-switch command the Alt-key bindings run, from the same executablePath chokepoint.
-// The same composition exports LYM_STRAND_NAME (the strand's full name) and LYM_PARENT (the worktree's parent, when told) beside LYM_BIN.
+// The same composition exports LYM_STRAND_NAME (the strand's full name), LYM_PARENT (the worktree's parent, when told) and the .NET build-server switches beside LYM_BIN.
 // The file also owns the per-strand launch script the composed line is written to,
 // so the pane types a short source statement instead of the full line.
 
@@ -15,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
@@ -48,11 +49,20 @@ func nameExports(sh shell.Shell, name, parent string) string {
 	return sh.Chain(parts...)
 }
 
-// composePaneLaunchLine returns the launch script's content: the pane-binary prelude, the name exports, then launchCmd, on sh's dialect.
+// buildServerExports returns the statements exporting proc.BuildServerOffEnv on sh's dialect, so no .NET build the strand's process runs leaves MSBuild servers behind.
+func buildServerExports(sh shell.Shell) string {
+	parts := make([]string, 0, len(proc.BuildServerOffEnv))
+	for _, v := range proc.BuildServerOffEnv {
+		parts = append(parts, sh.ExportEnv(v.Name, v.Value))
+	}
+	return sh.Chain(parts...)
+}
+
+// composePaneLaunchLine returns the launch script's content: the pane-binary prelude, the build-server exports, the name exports, then launchCmd, on sh's dialect.
 // launchStrandLocked writes it through stageLaunchScript and types only the source statement.
 // It reads the running process's own path via executablePath;
 // on error it logs a named logger.Warn and drops the prelude, so the pane launches with no prelude rather than failing the strand launch (executable-error-warns-and-degrades Shared Decision).
-// The name exports do not depend on that lookup and stay either way.
+// The build-server and name exports do not depend on that lookup and stay either way.
 // Because Chain drops empty parts, an empty launchCmd yields the statements alone with no trailing separator and no empty command fragment.
 // It also returns the executable path the prelude exports, empty when the lookup failed and the prelude was dropped.
 func composePaneLaunchLine(sh shell.Shell, launchCmd, strandGUID, name, parent string) (line, exe string) {
@@ -64,7 +74,7 @@ func composePaneLaunchLine(sh shell.Shell, launchCmd, strandGUID, name, parent s
 	} else {
 		prelude = paneBinPrelude(sh, exe)
 	}
-	return sh.Chain(prelude, nameExports(sh, name, parent), launchCmd), exe
+	return sh.Chain(prelude, buildServerExports(sh), nameExports(sh, name, parent), launchCmd), exe
 }
 
 // composeWindowCommand returns the shell line a detached reed window runs: the pane-binary prelude, then `lym` invoked with lymArgs, each quoted, on sh's dialect.

@@ -21,7 +21,7 @@ type Tier struct {
 	About string
 	// Command is the shell command a run executes, with the placeholders {targets}, {parallel}, {args} and {filter}.
 	Command string
-	// Dir is the run directory relative to the worktree root.
+	// Dir is the run directory relative to the worktree root, empty when gate.yaml sets none.
 	Dir string
 	// Env is the environment the command runs with; values may hold {parallel}.
 	Env map[string]string
@@ -141,9 +141,6 @@ func decodeTier(key string, number int, file tierFile) (Tier, error) {
 	if tier.Manual && number == 0 {
 		return Tier{}, refuse("manual", "true; want false, since tier0 is the tier a call with no tier flag runs")
 	}
-	if tier.Dir == "" {
-		tier.Dir = "."
-	}
 	if strings.TrimSpace(tier.Command) == "" {
 		return Tier{}, refuse("command", "missing; want the shell command a run executes")
 	}
@@ -247,6 +244,23 @@ func sortedKeys[V any](m map[string]V) []string {
 // useRefusal returns a use-time refusal naming lym config gate and closing with the role clause.
 func useRefusal(format string, args ...any) error {
 	return fmt.Errorf("gate config: %s; fix it with \"lym config gate\" from the prime%s", fmt.Sprintf(format, args...), roleClause)
+}
+
+// WithDefaultDir returns c with every tier and the build step that set no dir running in dir, a path relative to the worktree root.
+// A gate run fills it with the worktree's anchor, so a hub whose commands only work in a subdirectory anchor need not spell it per tier.
+func (c Config) WithDefaultDir(dir string) Config {
+	tiers := make(map[string]Tier, len(c.Tiers))
+	for key, tier := range c.Tiers {
+		if tier.Dir == "" {
+			tier.Dir = dir
+		}
+		tiers[key] = tier
+	}
+	c.Tiers = tiers
+	if c.Build.Command != "" && c.Build.Dir == "" {
+		c.Build.Dir = dir
+	}
+	return c
 }
 
 // Tier returns the declared tier with the given number, or refuses naming lym config gate.

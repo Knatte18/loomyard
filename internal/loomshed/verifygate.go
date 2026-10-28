@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/Knatte18/loomyard/internal/commentlint"
 	"github.com/Knatte18/loomyard/internal/gateslot"
@@ -17,10 +18,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/patternlint"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/verifytree"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // verifyLogTailBytes bounds how much of the verify log a failing verdict quotes.
 const verifyLogTailBytes = 4096
+
+// verifyFailuresBytes bounds the failures section a failing verdict quotes in place of the log tail; one failure longer than the bound is cut to it.
+const verifyFailuresBytes = 8192
+
+// verifyFailureTruncated ends a failure cut to verifyFailuresBytes.
+const verifyFailureTruncated = "\n[truncated]"
 
 // NewVerifyGate returns a must-pass shuttleengine.Gate that, at each arrival, reads the told verify command, lints the comments the work added, and runs the command through verifytree.Verify over worktreeRoot, keeping its record, marker and log in verifyDir.
 // siteLabel names the call site in the running marker, and the closure's own count of its calls is the attempt.
@@ -155,7 +163,8 @@ func commentLintFindings(findings []commentlint.Finding) string {
 	return b.String()
 }
 
-// verifyFailureFindings renders a StatusFailed result as the exit code or the timeout, the log path and the log's tail.
+// verifyFailureFindings renders a StatusFailed result as the exit code or the timeout, the log path, and the failing tests and packages the log names, each with its own output, and the gate's closing line of failed runs;
+// a log that names no failing test or package is quoted as its tail instead, since in the output of parallel packages the last lines need not hold the failures.
 // When the whole log holds the CPU watchdog's line, a paragraph after the first sentence names the window and the way forward for a healthy package that is CPU-bound.
 func verifyFailureFindings(res verifytree.Result, logPath string) string {
 	log, _ := os.ReadFile(logPath)
@@ -172,7 +181,12 @@ func verifyFailureFindings(res verifytree.Result, logPath string) string {
 		fmt.Fprintf(&b, "\n\nThe gate test's CPU watchdog quit a test binary that kept a CPU core busy for %s, so its goroutine stacks are in the log: look there for a livelock or a spin, and if the package is CPU-bound but healthy, %s, then re-step the row.", window, gateslot.BusyQuitWayForward)
 	}
 	fmt.Fprintf(&b, "\n\nFull log: %s\n", logPath)
-	if tail := logTail(log); tail != "" {
+	if failures := failuresSection(log); failures != "" {
+		fmt.Fprintf(&b, "\nFailures:\n\n%s\n", failures)
+		if line := failedRunsLine(log); line != "" {
+			fmt.Fprintf(&b, "\n%s\n", line)
+		}
+	} else if tail := logTail(log); tail != "" {
 		fmt.Fprintf(&b, "\nLog tail:\n\n%s\n", tail)
 	}
 	return b.String()
@@ -184,4 +198,82 @@ func logTail(log []byte) string {
 		log = log[len(log)-verifyLogTailBytes:]
 	}
 	return string(bytes.TrimSpace(log))
+}
+
+// failuresSection returns the failing tests and packages websterengine.ParseVerifyFailures names in log, each as its identity and its own output, within verifyFailuresBytes, or "" when it names none.
+// A test whose output the parser found nested under its header gets that output, and otherwise the output above its header, where `lym gate test` renders a test's output.
+func failuresSection(log []byte) string {
+	lines := strings.Split(strings.ReplaceAll(string(log), "\r\n", "\n"), "\n")
+	var b strings.Builder
+	for _, failure := range websterengine.ParseVerifyFailures(string(log)) {
+		if failure.Kind == websterengine.FailureKindOpaque {
+			continue
+		}
+		output := strings.TrimSpace(failure.Tail)
+		if output == "" && failure.Kind == websterengine.FailureKindTest {
+			output = outputAboveHeader(lines, failure.Package, strings.TrimPrefix(failure.ID, failure.Package+"."))
+		}
+		entry := fmt.Sprintf("%s:\n%s\n\n", failure.ID, output)
+		if len(entry) > verifyFailuresBytes {
+			cut := verifyFailuresBytes - len(verifyFailureTruncated) - len("\n\n")
+			for cut > 0 && !utf8.RuneStart(entry[cut]) {
+				cut--
+			}
+			entry = entry[:cut] + verifyFailureTruncated + "\n\n"
+		}
+		if b.Len() > 0 && b.Len()+len(entry) > verifyFailuresBytes {
+			b.WriteString("More failures are in the full log.\n")
+			break
+		}
+		b.WriteString(entry)
+	}
+	return strings.TrimSpace(b.String())
+}
+
+// failedRunsLine returns the last line of log that `lym gate test` closes a failed call with, naming each failed run, or "" when log holds none.
+func failedRunsLine(log []byte) string {
+	lines := strings.Split(strings.TrimSpace(string(log)), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if line := strings.TrimSpace(lines[i]); strings.HasPrefix(line, gateslot.FailedRunsPrefix) {
+			return line
+		}
+	}
+	return ""
+}
+
+// verifyOutputAboveLines caps the output outputAboveHeader quotes for one test.
+const verifyOutputAboveLines = 40
+
+// outputAboveHeader returns the output lines directly above the first `--- FAIL: <test> ` header in the block of package pkg, back to the nearest `=== ` or `--- ` marker line, at most verifyOutputAboveLines of them, or "" when no block of pkg holds such a header.
+// A block runs from the line after the previous package's closing line to pkg's own `FAIL\t<pkg>` line, so a test name another package shares never borrows that package's output.
+func outputAboveHeader(lines []string, pkg, test string) string {
+	header := "--- FAIL: " + test + " "
+	blockStart := 0
+	for closing, line := range lines {
+		isFail := strings.HasPrefix(line, "FAIL\t")
+		if !isFail && !strings.HasPrefix(line, "ok  \t") && !strings.HasPrefix(line, "?   \t") {
+			continue
+		}
+		fields := strings.Fields(strings.TrimPrefix(line, "FAIL\t"))
+		if !isFail || len(fields) == 0 || fields[0] != pkg {
+			blockStart = closing + 1
+			continue
+		}
+		for i := blockStart; i < closing; i++ {
+			if !strings.HasPrefix(strings.TrimSpace(lines[i]), header) {
+				continue
+			}
+			start := i
+			for start > blockStart && i-start < verifyOutputAboveLines {
+				above := strings.TrimSpace(lines[start-1])
+				if strings.HasPrefix(above, "=== ") || strings.HasPrefix(above, "--- ") {
+					break
+				}
+				start--
+			}
+			return strings.TrimSpace(strings.Join(lines[start:i], "\n"))
+		}
+		blockStart = closing + 1
+	}
+	return ""
 }

@@ -64,6 +64,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	if refusal := gateKeyRefusal(cfg, request); refusal != "" {
 		return output.Err(out, refusal)
 	}
+	cfg = cfg.WithDefaultDir(location.AnchorRel)
 	request.root = buildRoot(location, dir)
 	request.busyQuit = cfg.Limits().BusyQuit
 
@@ -126,6 +127,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 		return strings.HasPrefix(entry, agentname.StrandNameEnv+"=") || strings.HasPrefix(entry, logger.TraceIDEnv+"=")
 	})
 	env = gateslot.StripPrebuilt(env)
+	env = withBuildServerOff(env)
 	watching, reason := watchdogApplies(request.busyQuit, request.args, os.Getenv(enclosingGateEnv), proc.IsAncestor)
 	logger.Info("gate test: CPU watchdog decision", "applies", watching, "reason", reason)
 	exe.request.watching = watching
@@ -154,7 +156,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 			}
 			failures = append(failures, runLabel(run)+" (blocked by the build)")
 		} else if end.ran && end.code != 0 {
-			failures = append(failures, fmt.Sprintf("%s (exit %d)", runLabel(run), end.code))
+			failures = append(failures, failedRunLabel(run, end))
 			if code == 0 {
 				code, firstFailed = end.code, runLabel(run)
 			}
@@ -194,7 +196,15 @@ func printFailedRuns(stderr io.Writer, failures []string, firstFailed string, ha
 	if halted {
 		suffix = "; the call stopped there, so later runs did not run"
 	}
-	printLine(stderr, fmt.Sprintf("gate test: failed runs: %s; the exit code is %s's%s", strings.Join(failures, ", "), firstFailed, suffix))
+	printLine(stderr, fmt.Sprintf("%s%s; the exit code is %s's%s", gateslot.FailedRunsPrefix, strings.Join(failures, ", "), firstFailed, suffix))
+}
+
+// failedRunLabel names run, which ran and failed as end says, in the closing line of failed runs: its label and exit code, and for a run that failed on a resource shortage twice, the marker and the way forward of re-running once the load drops.
+func failedRunLabel(run tierRun, end runEnd) string {
+	if end.shortage == "" {
+		return fmt.Sprintf("%s (exit %d)", runLabel(run), end.code)
+	}
+	return fmt.Sprintf("%s (exit %d, a resource shortage, %q, in its run and its rerun: an environment error, not a test failure; way forward: re-run the same command once the machine's process load drops)", runLabel(run), end.code, end.shortage)
 }
 
 // runEnd is how one run of the plan ended: its exit code, and whether the call stops there instead of going on to the next run.
@@ -206,6 +216,8 @@ type runEnd struct {
 	ran bool
 	// blocked is set for a tier that ran no command since the build step it opts into failed; code is then the build's exit code.
 	blocked bool
+	// shortage is the resource-shortage marker of a run that failed on one twice, its run and its one rerun; empty otherwise.
+	shortage string
 }
 
 // runLabel names run in the closing line of failed runs: its tier, prefixed `guard` for a guard run and `vet` for a vet run.
@@ -411,7 +423,9 @@ func (e *execution) runGreenAware(run tierRun) runEnd {
 				return result
 			}
 		}
-		return runTier(e.ctx, e.out, run, env, e.request)
+		return retryOnShortage(e.ctx, e.request.stderr, runLabel(run), e.request.shortageRetryDelay, func() tierResult {
+			return runTier(e.ctx, e.out, run, env, e.request)
+		})
 	})
 	if end.code == 0 && !end.halt && e.green != nil {
 		e.green.recordPass(e.ctx, run, run.invocations, plan, e.env, time.Now())
@@ -465,7 +479,7 @@ func (e *execution) report(run tierRun, result tierResult, waitStart time.Time) 
 	if e.request.observer.Ended != nil {
 		e.request.observer.Ended(record)
 	}
-	return runEnd{code: record.ExitCode, halt: e.ctx.Err() != nil, ran: true}
+	return runEnd{code: record.ExitCode, halt: e.ctx.Err() != nil, ran: true, shortage: result.shortage}
 }
 
 // writeRecord adds the call's worktree, slug, tier list and gate key to record, writes it with log under a stamp later than the previous record's, and returns the log's path, "(not written)" when the write failed.
@@ -603,4 +617,15 @@ func exitCodeOf(runErr error) int {
 		return exitErr.ExitCode()
 	}
 	return 1
+}
+
+// withBuildServerOff returns env with every proc.BuildServerOffEnv variable set to its value, replacing an inherited one, so no .NET build a run starts leaves MSBuild servers behind.
+func withBuildServerOff(env []string) []string {
+	env = slices.DeleteFunc(env, func(entry string) bool {
+		return slices.ContainsFunc(proc.BuildServerOffEnv, func(v proc.EnvVar) bool { return strings.HasPrefix(entry, v.Name+"=") })
+	})
+	for _, v := range proc.BuildServerOffEnv {
+		env = append(env, v.Name+"="+v.Value)
+	}
+	return env
 }

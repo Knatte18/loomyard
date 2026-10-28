@@ -463,12 +463,16 @@ func TestLaunchStrandLocked_LaunchScript(t *testing.T) {
 			name:       "NoPreludeWhenTheExecutableIsUnresolvable",
 			executable: errors.New("no exe"),
 			cmds:       []string{"claude"},
-			want:       func(shell.Shell, Strand, *Engine) string { return "claude\n" },
+			want: func(sh shell.Shell, _ Strand, _ *Engine) string {
+				return sh.Chain(buildServerExports(sh), "claude") + "\n"
+			},
 		},
 		{
-			name: "EmptyCommandWritesThePreludeAlone",
+			name: "EmptyCommandWritesThePreludeAndExportsAlone",
 			cmds: []string{""},
-			want: func(sh shell.Shell, _ Strand, _ *Engine) string { return paneBinPrelude(sh, exe) + "\n" },
+			want: func(sh shell.Shell, _ Strand, _ *Engine) string {
+				return sh.Chain(paneBinPrelude(sh, exe), buildServerExports(sh)) + "\n"
+			},
 		},
 	}
 	for _, tt := range tests {
