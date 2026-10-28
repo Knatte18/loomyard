@@ -284,7 +284,7 @@ func TestResetForFreshLaunch(t *testing.T) {
 	deferred := time.Date(2026, 1, 2, 3, 5, 6, 0, time.UTC)
 	launched := time.Date(2026, 1, 2, 3, 6, 7, 0, time.UTC)
 	t.Run("idle", func(t *testing.T) {
-		in := State{Phase: PhaseIdle, LastHandoff: "h", PhaseEventsOffset: 5, LastInjectionOffset: 6, CycleCount: 2, LastContextTokens: 9, LastContextKnown: true, ReloadStep: ReloadStepRetry, ReloadTypedAt: deferred, ReloadRetry: []string{"ly:board"}, RequestReadAt: deferred}
+		in := State{Phase: PhaseIdle, LastHandoff: "h", PhaseEventsOffset: 5, LastInjectionOffset: 6, CycleCount: 2, LastContextTokens: 9, LastContextKnown: true, ReloadStep: ReloadStepRetry, ReloadTypedAt: deferred, ReloadRetry: []string{"ly:board"}, RequestReadAt: deferred, UsageLimitAt: deferred, UsageLimitResetsAt: deferred, UsageLimitWakeAt: deferred}
 		got := ResetForFreshLaunch(in, "g2", launched)
 		if !got.RequestReadAt.IsZero() {
 			t.Errorf("RequestReadAt = %v, want cleared", got.RequestReadAt)
@@ -297,6 +297,9 @@ func TestResetForFreshLaunch(t *testing.T) {
 		}
 		if got.LastAbortReason != "" {
 			t.Errorf("LastAbortReason = %q, want empty", got.LastAbortReason)
+		}
+		if !got.UsageLimitAt.IsZero() || !got.UsageLimitResetsAt.IsZero() || !got.UsageLimitWakeAt.IsZero() {
+			t.Errorf("usage limit = %v/%v/%v, want cleared", got.UsageLimitAt, got.UsageLimitResetsAt, got.UsageLimitWakeAt)
 		}
 		if got.Strand != "g2" || got.Phase != PhaseIdle {
 			t.Errorf("Strand/Phase = %q/%q", got.Strand, got.Phase)

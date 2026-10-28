@@ -1,4 +1,4 @@
-// activity.go implements shuttleengine.ActivityReader for Claude: the session's last activity, its forks included, and whether the newest main-chain turn end of the transcript a Stop payload names through transcript_path is an API error.
+// activity.go implements shuttleengine.ActivityReader for Claude: the session's last activity, its forks included, and whether the newest main-chain turn end of the transcript a Stop payload names through transcript_path is an API error, and whether that error is the usage limit, with its reset time.
 // It also implements shuttleengine.UsageLimitReader: whether Claude Code's usage-limit classification stopped that turn end or a fork during its turn.
 // The session's last activity is the newest of the main transcript's last write and its fork transcripts' activity;
 // a fork's pending tool call reads active up to bashMaxTimeout past its last write, and the API-error part reads the main transcript only.
@@ -63,7 +63,7 @@ func (c *Claude) TurnEndActivity(turnEnd shuttleengine.Event) shuttleengine.Turn
 	}
 	readBackward(f, info.Size(), initialReadChunk, func(data []byte) bool {
 		var found bool
-		activity.APIError, activity.APIErrorText, found = newestTurnEndError(data)
+		activity.APIError, activity.APIErrorText, activity.UsageLimit, found = newestTurnEndError(data)
 		return found
 	})
 	return activity
@@ -164,9 +164,9 @@ func newestToolCallingMessagePending(data []byte) (pending, settled bool) {
 	return false, settled
 }
 
-// newestTurnEndError scans the complete lines of data from the last to the first and reports whether the first main-chain assistant entry that ends a turn or carries the API-error marker is an API error, with its final text.
+// newestTurnEndError scans the complete lines of data from the last to the first and reports whether the first main-chain assistant entry that ends a turn or carries the API-error marker is an API error, with its final text and its usage-limit reading.
 // found is false when data holds no such entry.
-func newestTurnEndError(data []byte) (apiError bool, text string, found bool) {
+func newestTurnEndError(data []byte) (apiError bool, text string, limit shuttleengine.UsageLimit, found bool) {
 	for end := len(data); end > 0; {
 		start := bytes.LastIndexByte(data[:end], '\n') + 1
 		line := bytes.TrimSpace(data[start:end])
@@ -181,12 +181,16 @@ func newestTurnEndError(data []byte) (apiError bool, text string, found bool) {
 		if e.IsSidechain || e.Type != "assistant" || !(e.isTurnEnd() || e.IsAPIErrorMessage) {
 			continue
 		}
-		if e.IsAPIErrorMessage {
-			return true, e.finalText(), true
+		if !e.IsAPIErrorMessage {
+			return false, "", shuttleengine.UsageLimit{}, true
 		}
-		return false, "", true
+		text = e.finalText()
+		if e.isUsageLimit() {
+			limit = shuttleengine.UsageLimit{Limited: true, ResetsAt: usageLimitResetsAt(text, e.Timestamp)}
+		}
+		return true, text, limit, true
 	}
-	return false, "", false
+	return false, "", shuttleengine.UsageLimit{}, false
 }
 
 // TurnEndUsageLimited reads the transcript turnEnd's transcript_path names.

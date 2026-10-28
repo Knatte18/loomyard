@@ -21,6 +21,9 @@
 // The api-error notice goes when the newest turn end of any live run is an API error and that run has not been active for two minutes since; it names the producer and the error text cut to one line, and takes precedence over quiet.
 // With the ReviveAPIError seam wired, the first sight of an api-error episode revives the stalled sessions and notices nothing:
 // the notice goes when the same episode still stands at a later probe check, or at the third revived episode in a row with no write of the child's status file between them.
+// A run whose API error the provider classifies as its usage limit gets the usage-limit notice instead, ahead of the api-error and quiet ones, after the same two minutes:
+// it names the producer, when the limit resets in UTC or that the reset time is unknown, and the limit's text, and no revive is sent, since a revive typed into a limited session only ends in the limit again.
+// Its episode is the limit, keyed by the reset time, and lasts while any live run of the child reads usage-limited, however its activity moves, so a standing limit sends one notice and a later limit another.
 // The quiet notice goes when every live run has been idle for the quiet window and no verify marker, shuttle wait marker, parent lock wait record or child status running at the pawl recipe's Beam-Await row is live, and says how long the agents have been idle;
 // with no live run found, it falls back to "no agent activity readable" counted from the later of the child's newest history entry and since.
 // Both episodes are keyed by the newest agent activity, so they end when an agent is active again, with `since` on the line as content only.

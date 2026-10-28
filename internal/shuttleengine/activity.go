@@ -30,6 +30,17 @@ type TurnEndActivity struct {
 	APIError bool
 	// APIErrorText is the error's text; empty unless APIError is true.
 	APIErrorText string
+	// UsageLimit is the usage-limit reading of the same turn end.
+	UsageLimit UsageLimit
+}
+
+// UsageLimit is the provider's reading of whether its usage limit refused a session's newest turn end, and when that limit resets.
+// The zero value is no usage limit.
+type UsageLimit struct {
+	// Limited is true when the newest main-chain turn end is an API error the provider classifies as its usage limit.
+	Limited bool
+	// ResetsAt is when the limit resets, as the provider's limit message states it; zero when the message states no readable time.
+	ResetsAt time.Time
 }
 
 // AgentActivity is the reading of one live run.
@@ -44,6 +55,8 @@ type AgentActivity struct {
 	APIError bool
 	// APIErrorText is the error's text; empty unless APIError is true.
 	APIErrorText string
+	// UsageLimit is the usage-limit reading of the run's newest turn end.
+	UsageLimit UsageLimit
 }
 
 // unreadableFiles keeps one failure episode per file the files-only readers skip, keyed by the path their log line names.
@@ -146,7 +159,7 @@ func readRunActivity(rs RunState, engine Engine, reader ActivityReader) AgentAct
 	}
 	// A turn end before the prompt offset stands in only for the session's last activity: its API error is not the run's own.
 	if ownTurnEnd {
-		reading.APIError, reading.APIErrorText = activity.APIError, activity.APIErrorText
+		reading.APIError, reading.APIErrorText, reading.UsageLimit = activity.APIError, activity.APIErrorText, activity.UsageLimit
 	}
 
 	reading.LastActivity = activity.TranscriptModTime

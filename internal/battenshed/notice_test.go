@@ -886,6 +886,98 @@ func TestNotice_APIErrorStall(t *testing.T) {
 	})
 }
 
+func TestNotice_UsageLimitNotifiesOncePerLimitWithoutARevive(t *testing.T) {
+	const limitText = "You've hit your weekly limit · resets 2pm (Europe/Oslo)"
+	resetsAt := time.Date(2026, 10, 28, 13, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name     string
+		resetsAt time.Time
+		wantText string
+	}{
+		{"AReadableResetTime", resetsAt, "running at Plan-Write; agent t:task:impl hit a usage limit, resets 2026-10-28T13:00:00Z: " + limitText},
+		{"AnUnknownResetTime", time.Time{}, "running at Plan-Write; agent t:task:impl hit a usage limit, reset time unknown: " + limitText},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newNoticeHarness(t)
+			h.reviveAPI = true
+			h.setStatus(shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Plan-Write"})
+			p := h.producer()
+			limited := func(resetsAt time.Time) {
+				h.runs = []AgentActivity{{Producer: "t:task:impl", LastActivity: h.clock.Now(), APIError: true, APIErrorText: limitText, UsageLimited: true, UsageLimitResetsAt: resetsAt}}
+			}
+
+			// The session's activity moves under a standing limit, as a revive typed into it would move it.
+			for range 3 {
+				limited(tt.resetsAt)
+				h.clock.advance(noticeAPIErrorIdle)
+				h.call(p)
+				h.clock.advance(2 * h.quiet)
+				h.call(p)
+			}
+			if h.revives != 0 || len(h.notified) != 1 || !strings.Contains(h.notified[0], tt.wantText) {
+				t.Fatalf("revives = %d, notified = %v; want no revive and one usage-limit notice containing %q", h.revives, h.notified, tt.wantText)
+			}
+
+			// The limit ends, and a later one is a new notice.
+			h.runs = []AgentActivity{{Producer: "t:task:impl", LastActivity: h.clock.Now()}}
+			h.call(p)
+			limited(tt.resetsAt.Add(24 * time.Hour))
+			h.clock.advance(noticeAPIErrorIdle)
+			h.call(p)
+			if len(h.notified) != 2 || !strings.Contains(h.notified[1], "hit a usage limit") {
+				t.Fatalf("notified = %v; want a second usage-limit notice for the later limit", h.notified)
+			}
+		})
+	}
+}
+
+func TestNotice_UsageLimitOfOneRunOutranksTheOthersAndStandsWhileItReadsLimited(t *testing.T) {
+	const limitText = "You've hit your weekly limit · resets 2pm (Europe/Oslo)"
+	resetsAt := time.Date(2026, 10, 28, 13, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name string
+		// otherRun builds the child's second run at now.
+		otherRun func(now time.Time) AgentActivity
+		// limitedFirst puts the limited run ahead of the other run in the reading.
+		limitedFirst bool
+	}{
+		{"AnotherRunWithAPlainAPIError", func(now time.Time) AgentActivity {
+			return AgentActivity{Producer: "t:task:review", LastActivity: now, APIError: true, APIErrorText: "API Error: 529 overloaded"}
+		}, false},
+		{"AnotherRunNotLimited", func(now time.Time) AgentActivity {
+			return AgentActivity{Producer: "t:task:review", LastActivity: now}
+		}, false},
+		{"AnotherRunNotLimitedAfterTheLimitedRun", func(now time.Time) AgentActivity {
+			return AgentActivity{Producer: "t:task:review", LastActivity: now}
+		}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newNoticeHarness(t)
+			h.reviveAPI = true
+			h.setStatus(shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Plan-Write"})
+			p := h.producer()
+
+			for range 3 {
+				now := h.clock.Now()
+				limited := AgentActivity{Producer: "t:task:impl", LastActivity: now, APIError: true, APIErrorText: limitText, UsageLimited: true, UsageLimitResetsAt: resetsAt}
+				h.runs = []AgentActivity{tt.otherRun(now), limited}
+				if tt.limitedFirst {
+					h.runs = []AgentActivity{limited, tt.otherRun(now)}
+				}
+				h.clock.advance(noticeAPIErrorIdle)
+				h.call(p)
+				h.clock.advance(2 * h.quiet)
+				h.call(p)
+			}
+			if len(h.notified) != 1 || !strings.Contains(h.notified[0], "hit a usage limit") || strings.Contains(h.notified[0], "API error") {
+				t.Fatalf("notified = %v; want exactly one usage-limit notice and no API-error notice", h.notified)
+			}
+		})
+	}
+}
+
 func TestNotice_RestartDoesNotRenotify(t *testing.T) {
 	h := newNoticeHarness(t)
 	h.setStatus(parked(shedengine.StateFailed))

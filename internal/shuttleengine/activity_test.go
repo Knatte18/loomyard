@@ -159,6 +159,24 @@ func TestReadAgentActivity(t *testing.T) {
 			want:       []AgentActivity{{StrandName: "hub:task:driver", LastActivity: transcriptWritten, APIError: true, APIErrorText: "API Error: 529 overloaded"}},
 		},
 		{
+			name:       "a usage-limited turn end carries its limit",
+			runs:       map[string]activityRun{"run-a": live},
+			transcript: map[string]TurnEndActivity{"turn": {TranscriptModTime: transcriptWritten, APIError: true, APIErrorText: "You've hit your weekly limit", UsageLimit: UsageLimit{Limited: true, ResetsAt: transcriptWritten.Add(time.Hour)}}},
+			want:       []AgentActivity{{StrandName: "hub:task:driver", LastActivity: transcriptWritten, APIError: true, APIErrorText: "You've hit your weekly limit", UsageLimit: UsageLimit{Limited: true, ResetsAt: transcriptWritten.Add(time.Hour)}}},
+		},
+		{
+			name: "a usage limit on a turn end before the prompt offset is not the run's own",
+			runs: map[string]activityRun{"run-a": {
+				outcome: runOutcomeRunning, pid: livePID, strandName: "hub:task:driver",
+				events: "STOP:skill\nSTOP:turn\n", promptOffset: int64(len("STOP:skill\n")),
+			}},
+			transcript: map[string]TurnEndActivity{
+				"skill": {UsageLimit: UsageLimit{Limited: true, ResetsAt: transcriptWritten.Add(time.Hour)}},
+				"turn":  {TranscriptModTime: transcriptWritten},
+			},
+			want: []AgentActivity{{StrandName: "hub:task:driver", LastActivity: transcriptWritten}},
+		},
+		{
 			name: "turn ends before the prompt offset are not the run's own",
 			runs: map[string]activityRun{"run-a": {
 				outcome: runOutcomeRunning, pid: livePID, strandName: "hub:task:driver",

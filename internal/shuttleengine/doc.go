@@ -432,7 +432,8 @@
 // ReadAgentActivity logs a record that reads running with its recorded waiter gone at Warn once per episode per run directory, at Debug while it repeats and at Info once it reads live again, no longer reads running or has no record.
 // Such a run's agent may still be working where no activity reader sees it.
 // ReadAgentActivity returns one AgentActivity per live run under a run-directory root:
-// the run's strand name, its last activity, and whether its newest turn end is an API error with the error's text.
+// the run's strand name, its last activity, and whether its newest turn end is an API error with the error's text, and its UsageLimit: whether the provider classifies that error as its usage limit, and when the limit resets as its message states.
+// Runner.UsageLimit gives the same UsageLimit for one turn end of a named run, which the orch watcher reads at its own session's turn ends.
 // The last activity is the newer of the session's last activity, its forks included, and the time of the events file's newest Stop or ask line, the run's creation time when neither is readable.
 // A Stop or ask line carrying no time, an engine without the optional SessionSignalParser capability, and a file yielding no signals count the events file's last write instead, so an idle notice, a prompt submission or a stamp line never moves it.
 // The events past the prompt offset are parsed through the Engine, and the newest turn end goes to the optional ActivityReader capability for the session part.
