@@ -157,17 +157,62 @@ func lineEndPair(before, after commentLine) string {
 	return beforeWords[len(beforeWords)-1] + " " + afterWords[0]
 }
 
-// baseLineEndPairs returns the word pairs adjacent across a line end inside a comment block of src.
-func baseLineEndPairs(src string) map[string]bool {
-	pairs := map[string]bool{}
+// linePair is the words of the two lines either side of a break.
+type linePair struct {
+	before, after []string
+}
+
+// baseBreaks is the line breaks inside the comment blocks of a base text.
+type baseBreaks struct {
+	// wordPairs holds the word pairs adjacent across a base line end.
+	wordPairs map[string]bool
+	// linePairsByShape holds the base line pairs, keyed by the word counts of their two lines.
+	linePairsByShape map[[2]int][]linePair
+}
+
+// newBaseBreaks collects the line breaks inside the comment blocks of src.
+func newBaseBreaks(src string) baseBreaks {
+	breaks := baseBreaks{wordPairs: map[string]bool{}, linePairsByShape: map[[2]int][]linePair{}}
 	for _, block := range commentBlocks(src) {
 		for _, paragraph := range paragraphs(block) {
 			for i := 0; i+1 < len(paragraph); i++ {
-				pairs[lineEndPair(paragraph[i], paragraph[i+1])] = true
+				before, after := paragraph[i], paragraph[i+1]
+				breaks.wordPairs[lineEndPair(before, after)] = true
+				pair := linePair{before: strings.Fields(before.content), after: strings.Fields(after.content)}
+				shape := [2]int{len(pair.before), len(pair.after)}
+				breaks.linePairsByShape[shape] = append(breaks.linePairsByShape[shape], pair)
 			}
 		}
 	}
-	return pairs
+	return breaks
+}
+
+// carriesOver reports whether the break between two new lines already stood in the base text.
+// It did when the base holds the same word pair across a line end.
+// It also did when the base holds a line pair that differs from the two lines only by words substituted in place, such as a renamed word, and whose unchanged words outnumber the substituted ones.
+func (b baseBreaks) carriesOver(before, after commentLine) bool {
+	if b.wordPairs[lineEndPair(before, after)] {
+		return true
+	}
+	pair := linePair{before: strings.Fields(before.content), after: strings.Fields(after.content)}
+	for _, basePair := range b.linePairsByShape[[2]int{len(pair.before), len(pair.after)}] {
+		unchanged := countEqualPositions(basePair.before, pair.before) + countEqualPositions(basePair.after, pair.after)
+		if 2*unchanged > len(pair.before)+len(pair.after) {
+			return true
+		}
+	}
+	return false
+}
+
+// countEqualPositions returns the number of positions at which two equally long word lists hold the same word.
+func countEqualPositions(first, second []string) int {
+	count := 0
+	for i := range first {
+		if first[i] == second[i] {
+			count++
+		}
+	}
+	return count
 }
 
 // endsSemanticBreak reports whether a line may end where it does: at a sentence end, a semicolon, or a comma before a coordinating conjunction that opens a clause.
@@ -238,7 +283,7 @@ func findNewWrappedBreaks(path, baseText, newText string) []Finding {
 	if generatedPattern.MatchString(newText) {
 		return nil
 	}
-	known := baseLineEndPairs(baseText)
+	known := newBaseBreaks(baseText)
 	var findings []Finding
 	for _, block := range commentBlocks(newText) {
 		for _, paragraph := range paragraphs(block) {
@@ -247,7 +292,7 @@ func findNewWrappedBreaks(path, baseText, newText string) []Finding {
 			}
 			for i := 0; i+1 < len(paragraph); i++ {
 				before, after := paragraph[i], paragraph[i+1]
-				if known[lineEndPair(before, after)] || endsSemanticBreak(before, after) {
+				if endsSemanticBreak(before, after) || known.carriesOver(before, after) {
 					continue
 				}
 				findings = append(findings, Finding{File: path, Line: before.number, Text: strings.TrimSpace(before.literal)})
