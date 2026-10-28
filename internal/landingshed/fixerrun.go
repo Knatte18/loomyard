@@ -114,7 +114,7 @@ func (f fixerRun) run(ctx context.Context, mode FixerMode, rec FixerAttempts, ca
 	if err != nil {
 		return fixerOutcome{}, rec, fmt.Errorf("landingshed: %s: %w", f.row, err)
 	}
-	if err := f.archiveStaleReport(reportPath); err != nil {
+	if err := archiveStaleReport(reportPath, f.gate.now(), f.row, "fixer"); err != nil {
 		return fixerOutcome{}, rec, err
 	}
 	remoteBefore, err := f.deps.TaskRemoteTip()
@@ -181,12 +181,13 @@ func (f fixerRun) failureRecordPath() string {
 	return f.gate.paths.LandingFailure
 }
 
-// archiveStaleReport renames a report an earlier fixer run left at reportPath, so a new session never starts beside a finished report.
-func (f fixerRun) archiveStaleReport(reportPath string) error {
-	stamp := f.gate.now().UTC().Format("20060102T150405Z")
+// archiveStaleReport renames a report an earlier session of row left at reportPath, stamped with now, so a new session never starts beside a finished report.
+// what names the session in the error.
+func archiveStaleReport(reportPath string, now time.Time, row, what string) error {
+	stamp := now.UTC().Format("20060102T150405Z")
 	archived := strings.TrimSuffix(reportPath, ".md") + "-" + stamp + ".md"
 	if err := os.Rename(reportPath, archived); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("landingshed: %s: archive the stale fixer report: %w", f.row, err)
+		return fmt.Errorf("landingshed: %s: archive the stale %s report: %w", row, what, err)
 	}
 	return nil
 }

@@ -28,10 +28,15 @@ type fakeFixerSeats struct {
 	// turns scripts each turn by its index: it may write the report, commit, dirty the tree, move the remote tip, advance the gate's clock or release a lock record.
 	// A turn past the script does nothing.
 	turns []func()
+	// reviewTurns scripts a fix review session's turns the same way, in place of turns.
+	reviewTurns []func()
 	// startErr, when set, is returned by Run before any turn, as a seat that never started.
 	startErr error
 	// sessionTimeout makes the session end on the table's timeout without reaching the gate closure.
 	sessionTimeout bool
+	// reviewTimeout and reviewStartErr do what sessionTimeout and startErr do, for a fix review session alone.
+	reviewTimeout  bool
+	reviewStartErr error
 	// hangAfter, when above zero, makes the turn at that index run its callback and then end the session with hangOutcome, never reaching the gate closure.
 	hangAfter   int
 	hangOutcome shuttleengine.Outcome
@@ -50,14 +55,22 @@ func (f *fakeFixerSeats) Run(table seatengine.Table) (seatengine.Result, error) 
 	if f.startErr != nil {
 		return seatengine.Result{}, f.startErr
 	}
-	if f.sessionTimeout {
+	isReview := table.RolePrefix == fixReviewRole
+	if isReview && f.reviewStartErr != nil {
+		return seatengine.Result{}, f.reviewStartErr
+	}
+	if f.sessionTimeout || (isReview && f.reviewTimeout) {
 		return seatengine.Result{Chair: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout, RunDir: fakeFixerRunDir}}, nil
+	}
+	turns := f.turns
+	if isReview {
+		turns = f.reviewTurns
 	}
 	entry := table.Gate[0]
 	for turn := 0; turn <= entry.Attempts; turn++ {
 		f.turnsRun++
-		if turn < len(f.turns) {
-			f.turns[turn]()
+		if turn < len(turns) {
+			turns[turn]()
 		}
 		if f.hangAfter > 0 && turn == f.hangAfter {
 			return seatengine.Result{Chair: shuttleengine.Result{Outcome: f.hangOutcome, RunDir: fakeFixerRunDir}}, nil

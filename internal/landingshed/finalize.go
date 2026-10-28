@@ -588,7 +588,8 @@ func (fz *Finalize) mergeAndGate(ctx context.Context) (shedengine.Outcome, shede
 // A failing gate spawns the fixer on the attempts landing.yaml's finalize_fix_attempts leaves the entry, read from the attempt record under the row's entry.
 // The fixer's whole change is judged against the size and kind caps from the entry's Baseline, the HEAD before its first turn, so turns that each stay under the cap but sum past it are over it.
 // An entry has no attempts left when its Spent reaches the cap, whatever the record's Halt notes, and such an entry spawns no fixer: over a failing gate it ends as a spent cap, and over a passing one its change since Baseline is judged.
-// A spent cap or a change over the caps keeps the fixer's commits and reroutes when a review follows the reroute (Deps.RerouteReviewed), and halts with LandingStopPrefix otherwise, noting the cause in the attempt record's Halt.
+// A change over the caps, when a review follows the reroute (Deps.RerouteReviewed), goes to the fix review, whose approval lets Finalize land.
+// A spent cap, and a change over the caps the fix review does not approve, keep the fixer's commits and reroute when a review follows the reroute, and halt with LandingStopPrefix otherwise, noting the cause in the attempt record's Halt.
 // A resume after such an over-cap halt writes Baseline afresh at the HEAD the gate starts from and reads the operator's review as acceptance of the fixer's commits.
 // An escalate report halts with EscalateStopPrefix on a loom or darn run (Deps.EscalateJudgedFirst) and with LandingStopPrefix on a pawl run;
 // an unusable turn and an attempt record that does not decode each halt with LandingStopPrefix, and a failed spawn is an error that spends no attempt.
@@ -696,10 +697,18 @@ func (fz *Finalize) failedGateLog(gateReason string) string {
 
 // judgeFixerChange judges the entry's fixer change, from its Baseline to HEAD, against the size and kind caps.
 // An entry whose fixer never ran has no Baseline and no change.
-// A change within the caps lets Finalize go on; one over them ends as an over-cap change.
+// A change within the caps lets Finalize go on.
+// A change over them, on a run where a review follows the reroute, goes to the fix review first, which reads only the fixer's commits:
+// an approval lets Finalize go on and is kept in the attempt record as the HEAD it approved, so a later pass at that HEAD lands without a second review;
+// a rejection, or a review that gives no verdict, ends as an over-cap change naming why;
+// and a review that changed the task branch halts with LandingStopPrefix.
+// With no review after the reroute an over-cap change ends as one at once.
 func (fz *Finalize) judgeFixerChange(ctx context.Context, rec FixerAttempts) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
-	if rec.Baseline == "" {
+	proceed := func() (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 		return "", shedengine.OutputPointer{}, nil, false
+	}
+	if rec.Baseline == "" {
+		return proceed()
 	}
 	head, err := fz.deps.TaskHead()
 	if err != nil {
@@ -710,21 +719,60 @@ func (fz *Finalize) judgeFixerChange(ctx context.Context, rec FixerAttempts) (sh
 		return fz.errorStop(ctx, fmt.Errorf("landingshed: %s: read the fixer's change: %w", finalizeName, err))
 	}
 	reason := FixCap{MaxLines: fz.deps.Config.FinalizeFixMaxLines, IsTestFile: fz.deps.IsTestFile}.Exceeded(change)
-	if reason == "" {
-		return "", shedengine.OutputPointer{}, nil, false
+	if reason == "" || rec.Reviewed == head {
+		return proceed()
 	}
-	return fz.keepFixerCommits(ctx, rec, fixerHaltOverCap, fmt.Sprintf("the fixer's change in %s is over the caps: %s", finalizeName, reason))
+	cause := fmt.Sprintf("the fixer's change in %s is over the caps: %s", finalizeName, reason)
+	reviewed, err := fz.reviewFollowsReroute()
+	if err != nil {
+		return fz.errorStop(ctx, err)
+	}
+	if !reviewed {
+		return fz.keepFixerCommits(ctx, rec, fixerHaltOverCap, cause, false)
+	}
+
+	review, err := runFixReview(fz.deps, fz.gate, finalizeName, rec.Baseline, head, reason)
+	if err != nil {
+		return fz.errorStop(ctx, err)
+	}
+	switch review.end {
+	case fixReviewEndApproved:
+		rec.Reviewed = head
+		if err := WriteFixerAttempts(FixerAttemptsPath(fz.deps.ScratchDir, finalizeName), rec); err != nil {
+			return fz.errorStop(ctx, err)
+		}
+		return proceed()
+	case fixReviewEndChanged:
+		return fz.halt(ctx, fmt.Sprintf("%sthe fix review session of %s changed the task branch: %s; session log: %s; way forward: restore the task branch to the fixer's commits %s..%s with a clean tree, then `lym loom resume`", LandingStopPrefix, finalizeName, review.cause, review.sessionLog, rec.Baseline, head))
+	}
+	return fz.keepFixerCommits(ctx, rec, fixerHaltOverCap, cause+"; "+review.rerouteCause(), true)
+}
+
+// reviewFollowsReroute reports whether a review follows Finalize's reroute, through Deps.RerouteReviewed; a Finalize built with no such read answers false.
+func (fz *Finalize) reviewFollowsReroute() (bool, error) {
+	if fz.deps.RerouteReviewed == nil {
+		return false, nil
+	}
+	reviewed, err := fz.deps.RerouteReviewed()
+	if err != nil {
+		return false, fmt.Errorf("landingshed: %s: read whether a review follows the reroute: %w", finalizeName, err)
+	}
+	return reviewed, nil
 }
 
 // endSpent ends an entry whose attempts are spent over a gate that still fails, naming the failed gate's log.
 func (fz *Finalize) endSpent(ctx context.Context, rec FixerAttempts, log string) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
-	return fz.keepFixerCommits(ctx, rec, fixerHaltSpent, fmt.Sprintf("the fixer spent every attempt of %s and the landing gate still fails; log: %s", finalizeName, log))
+	reviewed, err := fz.reviewFollowsReroute()
+	if err != nil {
+		return fz.errorStop(ctx, err)
+	}
+	return fz.keepFixerCommits(ctx, rec, fixerHaltSpent, fmt.Sprintf("the fixer spent every attempt of %s and the landing gate still fails; log: %s", finalizeName, log), reviewed)
 }
 
 // keepFixerCommits ends the entry on cause while keeping the fixer's commits on the task branch.
-// When a review follows the reroute, Finalize reroutes through rerouteReason so that review sees the fix.
+// When reviewed, a review follows the reroute, and Finalize reroutes through rerouteReason so that review sees the fix.
 // Otherwise it halts with LandingStopPrefix, naming the fixer's commits and noting in the attempt record's Halt which cause it was.
-func (fz *Finalize) keepFixerCommits(ctx context.Context, rec FixerAttempts, note, cause string) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+func (fz *Finalize) keepFixerCommits(ctx context.Context, rec FixerAttempts, note, cause string, reviewed bool) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	head, err := fz.deps.TaskHead()
 	if err != nil {
 		return fz.errorStop(ctx, fmt.Errorf("landingshed: %s: read the task head: %w", finalizeName, err))
@@ -732,12 +780,6 @@ func (fz *Finalize) keepFixerCommits(ctx context.Context, rec FixerAttempts, not
 	commits := "none"
 	if rec.Baseline != "" {
 		commits = rec.Baseline + ".." + head
-	}
-	reviewed := false
-	if fz.deps.RerouteReviewed != nil {
-		if reviewed, err = fz.deps.RerouteReviewed(); err != nil {
-			return fz.errorStop(ctx, fmt.Errorf("landingshed: %s: read whether a review follows the reroute: %w", finalizeName, err))
-		}
 	}
 	if reviewed {
 		outcome, out, err := fz.reroute(ctx, fz.rerouteReason(fmt.Sprintf("%s; fixer commits: %s", cause, commits)))

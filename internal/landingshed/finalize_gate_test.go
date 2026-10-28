@@ -6,14 +6,18 @@ package landingshed
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
@@ -103,6 +107,26 @@ func (fx *finalizeGateFixture) turn(t *testing.T, content, head string) func() {
 		fx.head = head
 	}
 }
+
+// reviewPath is the report the fix review session writes for Finalize.
+func (fx *finalizeGateFixture) reviewPath() string {
+	return filepath.Join(fx.deps.ScratchDir, finalizeName+"-fix-review.md")
+}
+
+// review scripts a fix review turn that writes content as its report.
+func (fx *finalizeGateFixture) review(t *testing.T, content string) func() {
+	t.Helper()
+	return func() {
+		if err := os.WriteFile(fx.reviewPath(), []byte(content), 0o644); err != nil {
+			t.Errorf("write fix review report: %v", err)
+		}
+	}
+}
+
+const (
+	approvedReview = "verdict: approved\n\n## Findings\n"
+	rejectedReview = "verdict: rejected\n\n## Findings\n- f1 loosens the assertion in a_test.go\n"
+)
 
 // scriptGate makes the n-th verify from now answer results[n], and every later one the last result.
 func (fx *finalizeGateFixture) scriptGate(results ...verifytree.Result) {
@@ -216,12 +240,13 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 		}
 	})
 
-	t.Run("two turns each under the line cap but past it together reroute as over the cap, measured from the entry's baseline", func(t *testing.T) {
+	t.Run("two turns each under the line cap but past it together are over the cap, measured from the entry's baseline", func(t *testing.T) {
 		fx := newFinalizeGateFixture(t)
 		fx.reviewed = true
 		fx.lineChange = fabricengine.LineChange{Lines: 60, Paths: []string{"a/a.go"}}
 		fx.scriptGate(failing, failing, passing)
 		fx.seats.turns = []func(){fx.turn(t, fixedReport, "f1"), fx.turn(t, fixedReport, "f2")}
+		fx.seats.reviewTurns = []func(){fx.review(t, rejectedReview)}
 
 		outcome, ptr := fx.call(t)
 
@@ -249,19 +274,21 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 		}
 	})
 
-	t.Run("an entry whose last turn ended without a note is resumed with no spawn", func(t *testing.T) {
+	t.Run("an entry whose last turn ended without a note is resumed with no fixer spawn", func(t *testing.T) {
 		tests := []struct {
-			name       string
-			gate       verifytree.Result
-			change     fabricengine.LineChange
-			reviewed   bool
+			name     string
+			gate     verifytree.Result
+			change   fabricengine.LineChange
+			reviewed bool
+			// review is the fix review's report, written when the row reaches one.
+			review     string
 			wantLand   bool
 			wantReason []string
 		}{
 			{name: "a failing gate reroutes as a spent cap does", gate: failing, reviewed: true, wantReason: []string{"spent every attempt", "verify-", "fixer commits: t2..f1"}},
 			{name: "a failing gate halts where no review follows the reroute", gate: failing, wantReason: []string{"spent every attempt", "verify-", "fixer commits: t2..f1"}},
 			{name: "a passing gate over a change within the caps proceeds", gate: passing, change: small, reviewed: true, wantLand: true},
-			{name: "a passing gate over a change past the caps reroutes", gate: passing, change: fabricengine.LineChange{Lines: 500}, reviewed: true, wantReason: []string{"over the cap of 50", "fixer commits: t2..f1"}},
+			{name: "a passing gate over a change past the caps reroutes on the fix review's rejection", gate: passing, change: fabricengine.LineChange{Lines: 500}, reviewed: true, review: rejectedReview, wantReason: []string{"over the cap of 50", "the fix review rejected it", "fixer commits: t2..f1"}},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -271,11 +298,23 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 				fx.lineChange = tt.change
 				fx.seed(t, FixerAttempts{Entry: 1, Spent: 2, Baseline: "t2"})
 				fx.scriptGate(tt.gate)
+				if tt.review != "" {
+					fx.seats.reviewTurns = []func(){fx.review(t, tt.review)}
+				}
 
 				outcome, ptr := fx.call(t)
 
-				if len(fx.seats.tables) != 0 {
-					t.Errorf("fixer sessions = %d; want none", len(fx.seats.tables))
+				wantSessions := 0
+				if tt.review != "" {
+					wantSessions = 1
+				}
+				if len(fx.seats.tables) != wantSessions {
+					t.Fatalf("sessions = %d; want %d", len(fx.seats.tables), wantSessions)
+				}
+				for _, table := range fx.seats.tables {
+					if table.RolePrefix != fixReviewRole {
+						t.Errorf("session role = %q; want no fixer spawned", table.RolePrefix)
+					}
 				}
 				switch {
 				case tt.wantLand:
@@ -292,7 +331,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 		}
 	})
 
-	t.Run("a fix over the caps reroutes with its commits kept, whatever makes it over", func(t *testing.T) {
+	t.Run("a fix over the caps goes to the fix review over the fixer's commits, and a rejection reroutes with the commits kept, whatever makes it over", func(t *testing.T) {
 		tests := []struct {
 			name       string
 			change     fabricengine.LineChange
@@ -320,15 +359,214 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 				}
 				fx.scriptGate(failing, passing)
 				fx.seats.turns = []func(){fx.turn(t, fixedReport, "f1")}
+				fx.seats.reviewTurns = []func(){fx.review(t, rejectedReview)}
 
 				outcome, ptr := fx.call(t)
 
-				fx.requireReroute(t, outcome, ptr, tt.wantReason, "fixer commits: t2..f1")
+				fx.requireReroute(t, outcome, ptr, tt.wantReason, "the fix review rejected it: f1 loosens the assertion", fx.reviewPath(), "fixer commits: t2..f1")
+				if len(fx.seats.tables) != 2 {
+					t.Fatalf("sessions = %d; want the fixer's and the fix review's", len(fx.seats.tables))
+				}
+				review := fx.seats.tables[1]
+				if review.RolePrefix != fixReviewRole || review.Values["baseline"] != "t2" || review.Values["head"] != "f1" || !strings.Contains(review.Values["cap_reason"], tt.wantReason) {
+					t.Errorf("fix review table = %q, %v; want role %q over t2..f1 naming %q", review.RolePrefix, review.Values, fixReviewRole, tt.wantReason)
+				}
+				if got := review.Values["fixer_report_path"]; got != fx.reportPath() {
+					t.Errorf("fix review fixer_report_path = %q; want %q", got, fx.reportPath())
+				}
+				if want := time.Duration(fx.deps.Config.FixerTimeoutMin) * time.Minute; review.Timeout != want {
+					t.Errorf("fix review timeout = %v; want fixer_timeout_min, %v", review.Timeout, want)
+				}
+				if got, want := review.Seats[0].ModelChoice, fx.seats.tables[0].Seats[0].ModelChoice; got != want {
+					t.Errorf("fix review model choice = %+v; want the fixer's %+v", got, want)
+				}
 			})
 		}
 	})
 
-	t.Run("with no review after the reroute an over-cap change halts naming its commits and noting over-cap", func(t *testing.T) {
+	t.Run("the fix review's end decides where an over-cap change goes", func(t *testing.T) {
+		tests := []struct {
+			name string
+			// review scripts the fix review's one turn, given the fixture.
+			review     func(t *testing.T, fx *finalizeGateFixture) func()
+			wantLand   bool
+			wantHalt   bool
+			wantReason []string
+			// rePrompted is the report the re-prompt's turn writes, when the first turn's report does not parse.
+			rePrompted string
+			// reviewTimeout makes the review session end on its timeout.
+			reviewTimeout bool
+			// absentReason is a fragment the halt reason must not hold.
+			absentReason string
+		}{
+			{
+				name:     "an approval lands",
+				review:   func(t *testing.T, fx *finalizeGateFixture) func() { return fx.review(t, approvedReview) },
+				wantLand: true,
+			},
+			{
+				name:          "a session past its timeout reroutes naming the timeout key",
+				review:        func(*testing.T, *finalizeGateFixture) func() { return func() {} },
+				reviewTimeout: true,
+				wantReason:    []string{"the fix review gave no verdict", "fixer_timeout_min", "session log: " + fakeFixerRunDir, "fixer commits: t2..f1"},
+			},
+			{
+				name:       "an unparseable report is re-prompted once, and the report that follows decides",
+				review:     func(t *testing.T, fx *finalizeGateFixture) func() { return fx.review(t, "verdict: maybe\n") },
+				rePrompted: approvedReview,
+				wantLand:   true,
+			},
+			{
+				name:       "a session that leaves no report reroutes naming the missing report",
+				review:     func(*testing.T, *finalizeGateFixture) func() { return func() {} },
+				wantReason: []string{"the fix review gave no verdict", "session log: " + fakeFixerRunDir, "fixer commits: t2..f1"},
+			},
+			{
+				name:       "a report with no known verdict reroutes naming the line",
+				review:     func(t *testing.T, fx *finalizeGateFixture) func() { return fx.review(t, "verdict: maybe\n") },
+				wantReason: []string{"the fix review gave no verdict", "is no known verdict"},
+			},
+			{
+				name: "a session that dirties the tree halts naming the way forward",
+				review: func(t *testing.T, fx *finalizeGateFixture) func() {
+					return func() {
+						fx.review(t, approvedReview)()
+						fx.gate.fake.dirtyAt(fx.gate.fake.dirtyCalls, "a/a.go")
+					}
+				},
+				wantHalt:     true,
+				wantReason:   []string{"the fix review session of Finalize changed the task branch", "a/a.go", "way forward: restore the task branch to the fixer's commits t2..f1", "`lym loom resume`"},
+				absentReason: "commit or remove them",
+			},
+			{
+				name: "a session that commits halts naming the moved head",
+				review: func(t *testing.T, fx *finalizeGateFixture) func() {
+					return func() {
+						fx.review(t, approvedReview)()
+						fx.head = "r1"
+					}
+				},
+				wantHalt:   true,
+				wantReason: []string{"the task head moved from f1 to r1", "way forward: restore the task branch"},
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				fx := newFinalizeGateFixture(t)
+				fx.reviewed = true
+				fx.lineChange = fabricengine.LineChange{Lines: 3, Paths: []string{"a/a_test.go"}}
+				fx.scriptGate(failing, passing)
+				fx.seats.turns = []func(){fx.turn(t, fixedReport, "f1")}
+				fx.seats.reviewTurns = []func(){tt.review(t, fx)}
+				if tt.rePrompted != "" {
+					fx.seats.reviewTurns = append(fx.seats.reviewTurns, fx.review(t, tt.rePrompted))
+				}
+				fx.seats.reviewTimeout = tt.reviewTimeout
+
+				outcome, ptr := fx.call(t)
+
+				switch {
+				case tt.wantLand:
+					fx.requireLanded(t, outcome, ptr)
+				case tt.wantHalt:
+					requireHalt(t, outcome, ptr, tt.wantReason...)
+					if tt.absentReason != "" && strings.Contains(ptr.Reason, tt.absentReason) {
+						t.Errorf("reason = %q; want it without %q", ptr.Reason, tt.absentReason)
+					}
+					if len(fx.merger.calls) != 0 {
+						t.Errorf("parent-side merges = %d; want none after a halt", len(fx.merger.calls))
+					}
+				default:
+					fx.requireReroute(t, outcome, ptr, tt.wantReason...)
+				}
+			})
+		}
+	})
+
+	t.Run("an approval is kept in the attempt record as the HEAD it approved", func(t *testing.T) {
+		fx := newFinalizeGateFixture(t)
+		fx.reviewed = true
+		fx.lineChange = fabricengine.LineChange{Lines: 3, Paths: []string{"a/a_test.go"}}
+		fx.merger.pushErr = errors.New("push refused")
+		fx.scriptGate(failing, passing)
+		fx.seats.turns = []func(){fx.turn(t, fixedReport, "f1")}
+		fx.seats.reviewTurns = []func(){fx.review(t, approvedReview)}
+
+		// The refused push stops the landing after the merge, which keeps the record the landing would otherwise remove.
+		if _, _, err := fx.fz.Call(context.Background()); err != nil {
+			t.Fatalf("Call() error = %v", err)
+		}
+
+		if len(fx.merger.calls) != 1 {
+			t.Fatalf("parent-side merges = %d; want the landing to reach its merge after the approval", len(fx.merger.calls))
+		}
+		if rec, found := fx.attempts(t); !found || rec.Reviewed != "f1" {
+			t.Errorf("attempt record = %+v, %v; want Reviewed f1, the HEAD the review approved", rec, found)
+		}
+	})
+
+	t.Run("a pass at a HEAD the fix review approved lands with no second review, and at any other HEAD is reviewed again", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			reviewed string
+			// review is the fix review's report, written when a review runs.
+			review       string
+			wantSessions int
+			wantLand     bool
+		}{
+			{name: "the approved HEAD", reviewed: "f1", wantLand: true},
+			{name: "a HEAD that moved since the approval", reviewed: "e9", review: rejectedReview, wantSessions: 1},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				fx := newFinalizeGateFixture(t)
+				fx.reviewed = true
+				fx.head = "f1"
+				fx.lineChange = fabricengine.LineChange{Lines: 3, Paths: []string{"a/a_test.go"}}
+				fx.seed(t, FixerAttempts{Entry: 1, Spent: 1, Baseline: "t2", Reviewed: tt.reviewed})
+				fx.scriptGate(passing)
+				if tt.review != "" {
+					fx.seats.reviewTurns = []func(){fx.review(t, tt.review)}
+				}
+
+				outcome, ptr := fx.call(t)
+
+				if tt.wantLand {
+					fx.requireLanded(t, outcome, ptr)
+				} else {
+					fx.requireReroute(t, outcome, ptr, "the fix review rejected it")
+				}
+				if len(fx.seats.tables) != tt.wantSessions {
+					t.Errorf("sessions = %d; want %d", len(fx.seats.tables), tt.wantSessions)
+				}
+				for _, table := range fx.seats.tables {
+					if table.RolePrefix != fixReviewRole {
+						t.Errorf("session role = %q; want only fix review sessions", table.RolePrefix)
+					}
+				}
+			})
+		}
+	})
+
+	t.Run("a fix review session that fails to start returns a transient error and lands nothing", func(t *testing.T) {
+		fx := newFinalizeGateFixture(t)
+		fx.reviewed = true
+		fx.lineChange = fabricengine.LineChange{Lines: 3, Paths: []string{"a/a_test.go"}}
+		fx.scriptGate(failing, passing)
+		fx.seats.turns = []func(){fx.turn(t, fixedReport, "f1")}
+		fx.seats.reviewStartErr = fmt.Errorf("seat chair: %w", shuttleengine.ErrNotStarted)
+
+		_, _, err := fx.fz.Call(context.Background())
+
+		if err == nil || shedengine.TransientOf(err) != shedengine.TransientAgentStart {
+			t.Fatalf("Call() error = %v; want one the transient mark classifies as %q", err, shedengine.TransientAgentStart)
+		}
+		if len(fx.merger.calls) != 0 {
+			t.Errorf("parent-side merges = %d; want none after a failed start", len(fx.merger.calls))
+		}
+	})
+
+	t.Run("with no review after the reroute an over-cap change halts naming its commits and noting over-cap, with no fix review", func(t *testing.T) {
 		fx := newFinalizeGateFixture(t)
 		fx.lineChange = fabricengine.LineChange{Lines: 3, Paths: []string{"a/a_test.go"}}
 		fx.scriptGate(failing, passing)
@@ -342,6 +580,9 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 		}
 		if len(fx.merger.calls) != 0 {
 			t.Errorf("parent-side merges = %d; want none after a halt", len(fx.merger.calls))
+		}
+		if len(fx.seats.tables) != 1 {
+			t.Errorf("sessions = %d; want the fixer's alone", len(fx.seats.tables))
 		}
 	})
 
