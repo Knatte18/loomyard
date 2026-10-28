@@ -112,6 +112,14 @@
 // The dobbies the move ends then start through `EnsureLive`, named one by one, the prime's move naming the prime and every local beam and a beam's move that beam alone, so a beam this machine does not own or whose landing hold stands is refused there; a move that fails restarts only the dobbies it ended, and a start that fails is `dobby_start_error` with the way forward `lym beam start`, the verb exiting 0.
 // The verb holds no lock against a session, a hand pass or a hidden `lym beam dobby` started meanwhile, and its help says so.
 //
+// # Hub pull
+//
+// `lym fabric pull --hub` brings the whole hub up to date from origin instead of the acting pair, from any warp worktree of the hub (hubpull.go).
+// It resolves the prime from the acting location and runs `fabricengine.PullHub`, passing the parent lock seam `lym fabric anchor` takes: the lock of each pair's code branch, queued behind a holder with no time limit, its wait named on stderr with the holder, and its owner's run id `fabric-pull`.
+// The envelope's `sides` lists every side in pull order with its `kind`, `worktree`, `outcome` and `detail`.
+// Any stopped side makes it an error envelope that names the stopped sides and still carries every side's entry.
+// A pull that moves the prime's branch moves it outside any run's Finalize, as the plain pull in the prime does, but under that branch's parent lock, so it never moves a branch under a landing in progress.
+//
 // # Merge
 //
 // Conflicts are a result of `merge-in`, not a failure to run again differently: the pair stays mid-merge until every conflict is resolved, staged and concluded, or until the merge is aborted.

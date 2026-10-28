@@ -1220,6 +1220,17 @@
 // The commit is built from loose blobs and `git mktree`, so no branch moves and neither worktree's index is touched; with nothing uncommitted it writes nothing.
 // `SnapshotTagged` reports whether such an annotated tag of a slug exists, which tells a later run that an earlier one took the snapshot.
 //
+// # The hub pull
+//
+// `PullHub` (hubpull.go) brings a hub up to date from origin side by side: Bolt, then the prime pair, then each local beam pair in `git worktree list` order.
+// Bolt goes through `Bolt.Pull`, which takes the board write lock, so it never interleaves with a board write, and reports a Bolt it cannot bring up to date as a skip with the way forward.
+// Each pair goes through `Fabric.Pull` while the caller's `PairLock` holds the parent lock of its code branch, held for that one pair only.
+// A local beam is a pair present here whose origin record carries the beam mark, whatever machine owns it; task pairs are left to their runs.
+// A beam whose code branch has no upstream is up to date without taking the lock, and a pair whose records side could not reach origin is stopped.
+// A pull honoring `SkipGit` leaves every side up to date, and a pair whose origin record cannot be read is reported as a stopped beam side, since its beam mark is unknown.
+// A side that stops never keeps the next one from running, and each side reports `moved`, `up_to_date` or `stopped` with the stop's way forward.
+// It pushes nothing.
+//
 // # Changing an anchor
 //
 // A worktree's anchor changes in three calls a CLI interleaves with its session, run and dobby checks: `Topology.BeginAnchorChange`, `AnchorChange.Apply` and `AnchorChange.Finish`, with `Close` ending every path (anchorchange.go).

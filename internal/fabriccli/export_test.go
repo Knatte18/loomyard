@@ -1,9 +1,10 @@
-// export_test.go exposes the add verb's pair-push seam and the open-PR lookup seam to this package's external tests.
+// export_test.go exposes the add verb's pair-push seam, the open-PR lookup seam and the hub pull runner to this package's external tests.
 
 package fabriccli
 
 import (
 	"context"
+	"io"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -23,4 +24,9 @@ func SetPairPushForTest(push func(*lymcwd.Location) error) (previous func(*lymcw
 	previous = spawnPairPush
 	spawnPairPush = push
 	return previous
+}
+
+// RunHubPullForTest runs the hub pull of the acting location l under ctx, so a test can cancel a wait on a parent lock.
+func RunHubPullForTest(ctx context.Context, out io.Writer, l *lymcwd.Location) int {
+	return runHubPull(ctx, out, l)
 }
