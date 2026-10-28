@@ -203,46 +203,11 @@ func AcceptPendingAudit(engines AuditEngines, st *State, geom Geometry, parentBr
 // It never saves;
 // the caller holds the state-mutation lease and saves.
 func AcceptBatchFabricReference(st *State, geom Geometry, n int, readOnly func(cmd string) bool, verb string) (accepted []string, err error) {
+	basis, err := batchFabricReferenceEvidence(st, geom, n, readOnly, fmt.Sprintf("re-run \"lym webster %s %d\"", verb, n))
+	if err != nil {
+		return nil, err
+	}
 	bs := st.Batches[n]
-	if bs == nil || !bs.Terminal || bs.Status != DigestStatusFailed || len(bs.Uncheckable) == 0 {
-		return nil, fmt.Errorf("%w: batch %02d is not a failed batch with uncheckable findings; accept-audit --batch accepts only those", ErrAuditNotAcceptable, n)
-	}
-	if !allPathlessFabricReference(bs.Uncheckable) {
-		return nil, fmt.Errorf("%w: batch %02d carries an uncheckable finding that is not a pathless fabric reference: %s; %s", ErrAuditNotAcceptable, n, strings.Join(bs.Uncheckable, ", "), resetToStartSteps(stepRun))
-	}
-	if bs.StartSHA == "" {
-		return nil, fmt.Errorf("%w: batch %02d recorded no start commit, so its tree cannot be shown unchanged; %s", ErrAuditNotAcceptable, n, resetToStartSteps(stepRun))
-	}
-	head, err := geom.git().HeadSHA(geom.WorktreeRoot)
-	if err != nil {
-		return nil, err
-	}
-	atStart := head == bs.StartSHA
-	if !atStart {
-		reachable, err := geom.git().IsAncestor(geom.WorktreeRoot, bs.StartSHA, head)
-		if err != nil {
-			return nil, err
-		}
-		if !reachable {
-			return nil, fmt.Errorf("%w: HEAD %s is not batch %02d's start commit %s, nor does it descend from it; %s", ErrAuditNotAcceptable, head, n, bs.StartSHA, wayForwardSteps(stepResetToStart, "lym webster run"))
-		}
-	}
-	dirty, err := UncommittedPaths(geom)
-	if err != nil {
-		return nil, err
-	}
-	if len(dirty) > 0 {
-		return nil, fmt.Errorf("%w: the worktree has uncommitted or untracked changes: %s; way forward: restore or remove them with git, then re-run \"lym webster %s %d\"", ErrAuditNotAcceptable, strings.Join(dirty, ", "), verb, n)
-	}
-	basis := "HEAD was the batch's start commit and the tree clean"
-	if !atStart {
-		for _, entry := range bs.Uncheckable {
-			if cmd, ok := fabricReferenceCommand(entry); !ok || !readOnly(cmd) {
-				return nil, fmt.Errorf("%w: batch %02d's commits are kept only when every fabric reference is a read-only command, and this one is not: %s; %s", ErrAuditNotAcceptable, n, entry, wayForwardSteps(resetVerb(ResetToBatchStart, n), fmt.Sprintf("re-run \"lym webster %s %d\"", verb, n)))
-			}
-		}
-		basis = "the batch's commits were kept as the command is read-only and the tree clean"
-	}
 	for i, entry := range bs.Uncheckable {
 		id := fmt.Sprintf("accepted:batch-%02d:%d", n, i+1)
 		markDisposition(st, id, dispositionWarned)
@@ -251,6 +216,56 @@ func AcceptBatchFabricReference(st *State, geom Geometry, n int, readOnly func(c
 	accepted = bs.Uncheckable
 	bs.Uncheckable = nil
 	return accepted, nil
+}
+
+// batchFabricReferenceEvidence reports, mutating nothing, whether failed batch n's uncheckable entries may be accepted, and returns the basis that holds.
+// Every entry must be a pathless fabric reference, the batch must have recorded a start commit, and the worktree must be clean apart from the run's own state.
+// HEAD must be that start, or descend from it with every entry recording a command readOnly accepts.
+// A nil readOnly accepts none.
+// rerun is the step a refusal names for running the accepting verb again once the evidence is restored.
+// A refusal wraps ErrAuditNotAcceptable and ends in its way forward;
+// any other error is a git read failure.
+func batchFabricReferenceEvidence(st *State, geom Geometry, n int, readOnly func(cmd string) bool, rerun string) (basis string, err error) {
+	bs := st.Batches[n]
+	if bs == nil || !bs.Terminal || bs.Status != DigestStatusFailed || len(bs.Uncheckable) == 0 {
+		return "", fmt.Errorf("%w: batch %02d is not a failed batch with uncheckable findings; accept-audit --batch accepts only those", ErrAuditNotAcceptable, n)
+	}
+	if !allPathlessFabricReference(bs.Uncheckable) {
+		return "", fmt.Errorf("%w: batch %02d carries an uncheckable finding that is not a pathless fabric reference: %s; %s", ErrAuditNotAcceptable, n, strings.Join(bs.Uncheckable, ", "), resetToStartSteps(stepRun))
+	}
+	if bs.StartSHA == "" {
+		return "", fmt.Errorf("%w: batch %02d recorded no start commit, so its tree cannot be shown unchanged; %s", ErrAuditNotAcceptable, n, resetToStartSteps(stepRun))
+	}
+	head, err := geom.git().HeadSHA(geom.WorktreeRoot)
+	if err != nil {
+		return "", err
+	}
+	atStart := head == bs.StartSHA
+	if !atStart {
+		reachable, err := geom.git().IsAncestor(geom.WorktreeRoot, bs.StartSHA, head)
+		if err != nil {
+			return "", err
+		}
+		if !reachable {
+			return "", fmt.Errorf("%w: HEAD %s is not batch %02d's start commit %s, nor does it descend from it; %s", ErrAuditNotAcceptable, head, n, bs.StartSHA, wayForwardSteps(stepResetToStart, "lym webster run"))
+		}
+	}
+	dirty, err := UncommittedPaths(geom)
+	if err != nil {
+		return "", err
+	}
+	if len(dirty) > 0 {
+		return "", fmt.Errorf("%w: the worktree has uncommitted or untracked changes: %s; way forward: restore or remove them with git, then %s", ErrAuditNotAcceptable, strings.Join(dirty, ", "), rerun)
+	}
+	if atStart {
+		return "HEAD was the batch's start commit and the tree clean", nil
+	}
+	for _, entry := range bs.Uncheckable {
+		if cmd, ok := fabricReferenceCommand(entry); !ok || readOnly == nil || !readOnly(cmd) {
+			return "", fmt.Errorf("%w: batch %02d's commits are kept only when every fabric reference is a read-only command, and this one is not: %s; %s", ErrAuditNotAcceptable, n, entry, wayForwardSteps(resetVerb(ResetToBatchStart, n), rerun))
+		}
+	}
+	return "the batch's commits were kept as the command is read-only and the tree clean", nil
 }
 
 // UncommittedPaths returns, sorted, the worktree-relative paths of the task's uncommitted work: every tracked change and untracked file git status names, minus the run's own state.

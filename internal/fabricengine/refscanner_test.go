@@ -65,6 +65,16 @@ func TestRefScanner_Matches(t *testing.T) {
 		{"weft name ending the command matches", "ls /hub/other-weft", true},
 		{"escaped alternation in a quoted grep is text", `grep -n "weftBranch\s*[:=]\|WeftSuffix\|-weft" x_test.go`, false},
 		{"windows sibling weft path matches", `dir C:\hub\other-weft\_lym`, true},
+		{"gate card ID ending in the suffix is text", "lym gate test --wait --gate card --card 6-clone-records-marker-on-prime-weft 2>&1 | tail -40", false},
+		{"gate card ID after a commit with a quoted message is text", "git add -A internal && git commit -q -m \"7: anchor\n\nbody\" && lym gate test --wait --gate batch --card 6-prime-weft --card 7-anchor 2>&1 | grep -E \"^(--- FAIL|FAIL)\"", false},
+		{"gate test with a separator-prefixed weft path matches", "lym gate test ../other-weft/internal/x", true},
+		{"bare weft name after a gate segment matches", "lym gate test --card 6-prime-weft && git -C other-weft status", true},
+		{"gate words outside command position are not blanked", "echo lym gate other-weft", true},
+		{"bare weft name after a semicolon ends the gate segment", "lym gate test --card a-weft; ls other-weft", true},
+		{"bare weft name after a pipe ends the gate segment", "lym gate test --card a-weft | grep other-weft", true},
+		{"bare weft name after a double pipe ends the gate segment", "lym gate test --card a-weft || ls other-weft", true},
+		{"bare weft name after a newline ends the gate segment", "lym gate test --card a-weft\nls other-weft", true},
+		{"gate card ID after a stderr redirect is text", "lym gate test 2>&1 --card 6-prime-weft", false},
 	}
 
 	for _, tt := range tests {

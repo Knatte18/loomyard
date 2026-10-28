@@ -26,6 +26,14 @@ var spellingPattern = regexp.MustCompile(
 		`(?:\S*[/\\])?lym(?:\.exe)?\s+(?:fabric|weft|warp)\b`,
 )
 
+// gateSegmentPattern matches a `lym gate` invocation in command position, from the separator before it up to the next separator.
+// It runs over a quote-blanked copy, so a separator inside a quoted argument does not end the segment.
+// The ampersand of a redirect (`2>&1`, `>&2`, `&>`) stays inside the segment, so an argument after it is still a gate argument.
+var gateSegmentPattern = regexp.MustCompile(
+	"(?:^|[;&|(\\n`]|\\$\\()\\s*(?:(?:env|exec|command|nohup|time|xargs)\\s+|\\w+=\\S*\\s+)*" +
+		"(?:\\S*[/\\\\])?lym(?:\\.exe)?\\s+gate\\b(?:[0-9]*[<>]&[0-9-]*|&>|[^;&|()\\n`])*",
+)
+
 // heredocOpener matches a heredoc redirection (`<<EOF`, `<<-EOF`, `<<'EOF'`, `<<"EOF"`) and captures
 // its delimiter word.
 var heredocOpener = regexp.MustCompile(`<<-?\s*['"]?(\w+)['"]?`)
@@ -35,6 +43,7 @@ var heredocOpener = regexp.MustCompile(`<<-?\s*['"]?(\w+)['"]?`)
 // Heredoc bodies are dropped before any match, since a file an agent writes is content, not a command it runs.
 // A weft sibling counts as a path when the name follows a path separator (`/hub/x-weft`, quoted or not).
 // A bare word ending in the weft suffix counts only outside quotes, so a string literal such as `"archive-happy-weft"` in a test is text.
+// It counts only outside a `lym gate` invocation as well, since a gate's arguments are gate keys, card IDs, tiers and package patterns resolved inside the worktree, and a card ID may end in the suffix.
 // Construct via NewReferenceRule; the zero value is not valid.
 type ReferenceRule struct {
 	pathPattern *regexp.Regexp
@@ -60,14 +69,17 @@ func NewReferenceRule() *ReferenceRule {
 }
 
 // MatchPath reports the sibling-name reference in cmd, if any.
-// A separator-prefixed name ending in the suffix is found with quotes intact, then a bare word ending in the suffix on a copy with quoted spans blanked.
+// A separator-prefixed name ending in the suffix is found with quotes intact, then a bare word ending in the suffix on a copy with quoted spans and `lym gate` invocations blanked.
 // The returned text comes from the copy the pattern ran on, without its trailing separator.
 func (r *ReferenceRule) MatchPath(cmd string) (string, bool) {
 	cmd = stripHeredocBodies(cmd)
 	if m := r.pathPattern.FindString(cmd); m != "" {
 		return strings.TrimRight(m, referenceTrim), true
 	}
-	if m := r.barePattern.FindString(blankQuoted(cmd)); m != "" {
+	bareView := gateSegmentPattern.ReplaceAllStringFunc(blankQuoted(cmd), func(segment string) string {
+		return strings.Repeat(" ", len(segment))
+	})
+	if m := r.barePattern.FindString(bareView); m != "" {
 		return strings.TrimRight(m, referenceTrim), true
 	}
 	return "", false

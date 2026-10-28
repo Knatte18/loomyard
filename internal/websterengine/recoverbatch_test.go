@@ -1050,21 +1050,36 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 		fx.Deps.State.Batches[1] = rec
 		fx.Deps.ReadOnly = fabricengine.IsReadOnlyCommand
 	}
-	// Only a refusal over pathless fabric references names the accept-audit --batch route.
+	// A refusal over pathless fabric references names the accept-audit --batch route only where accept-audit's own evidence check admits it.
 	const acceptBatchStep = `"lym webster accept-audit --batch 1" then "lym webster recover-batch 1"`
-	// The route names both evidence: HEAD at the start commit, and a committed batch whose recorded commands are read-only.
-	const startRouteText = "when the worktree is clean and HEAD is the batch's start commit (\"lym webster reset --to batch-start --batch 01\" moves it there if the batch committed)"
-	const committedRouteText = "or the batch's commits are kept and every recorded command is read-only"
-	fabricRefusalCheck := func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
-		fabricRefusalBase(t, fx, bs, spawned, err)
-		if err == nil {
-			return
-		}
-		for _, want := range []string{acceptBatchStep, startRouteText, committedRouteText} {
-			if !strings.Contains(err.Error(), want) {
-				t.Errorf("error %q lacks %q", err, want)
+	const noStartText = "accept-audit --batch 1 refuses it: batch 01 recorded no start commit"
+	// noStartCheck wraps base, the check of a batch with no recorded start, so it also wants the accept-audit refusal named and no accept-audit route.
+	noStartCheck := func(base func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error)) func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+		return func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+			base(t, fx, bs, spawned, err)
+			if err == nil {
+				return
+			}
+			if !strings.Contains(err.Error(), noStartText) {
+				t.Errorf("error %q lacks %q", err, noStartText)
+			}
+			if strings.Contains(err.Error(), acceptBatchStep) {
+				t.Errorf("error %q names %s, which accept-audit refuses", err, acceptBatchStep)
 			}
 		}
+	}
+	fabricRefusalCheck := noStartCheck(fabricRefusalBase)
+	// atStartSetup and committedSetup seed a mutating fabric reference with a recorded start, at HEAD = the start and one commit past it.
+	atStartBaseSetup, atStartBase := uncheckableRefusal(readOnlyEntry("lym fabric add x"))
+	atStartSetup := func(fx *recoverFixture) {
+		atStartBaseSetup(fx).StartSHA = fx.Git.head
+		fx.Deps.ReadOnly = fabricengine.IsReadOnlyCommand
+	}
+	committedBaseSetup, _ := uncheckableRefusal(readOnlyEntry("lym fabric add x"))
+	committedSetup := func(fx *recoverFixture) {
+		committedBaseSetup(fx).StartSHA = fx.Git.head
+		fx.Git.commit()
+		fx.Deps.ReadOnly = fabricengine.IsReadOnlyCommand
 	}
 	pauseRefusalCheck := func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
 		pauseRefusalBase(t, fx, bs, spawned, err)
@@ -1407,17 +1422,104 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 			check: longBesidePathCheck,
 		},
 		{
-			name:  "a pathless entry longer than NAME_MAX alone is refused toward the accept-audit route",
+			name:  "a pathless entry longer than NAME_MAX alone with no recorded start names why accept-audit refuses",
 			setup: func(fx *recoverFixture) { longAloneSetup(fx) },
+			check: noStartCheck(longAloneBase),
+		},
+		{
+			name:  "a mutating fabric reference at the batch's start on a clean tree is refused toward the accept-audit route",
+			setup: atStartSetup,
 			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
-				longAloneBase(t, fx, bs, spawned, err)
-				if err == nil {
-					return
+				atStartBase(t, fx, bs, spawned, err)
+				if err != nil && !strings.Contains(err.Error(), "way forward: "+acceptBatchStep+"; otherwise 1) lym webster reset --to start; 2) lym webster run") {
+					t.Errorf("error %q lacks the accept-audit route", err)
 				}
-				for _, want := range []string{acceptBatchStep, startRouteText, committedRouteText} {
-					if !strings.Contains(err.Error(), want) {
-						t.Errorf("error %q lacks %q", err, want)
-					}
+			},
+		},
+		{
+			name:  "a mutating fabric reference past the batch's start names the batch-start reset before accept-audit",
+			setup: committedSetup,
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				if !errors.Is(err, websterengine.ErrRecoveryNeedsFresh) || spawned {
+					t.Fatalf("RecoverSpawnOrAttach() = spawned %v, err %v; want ErrRecoveryNeedsFresh and no strand", spawned, err)
+				}
+				want := "accept-audit --batch 1 refuses it: batch 01's commits are kept only when every fabric reference is a read-only command" +
+					`, and this one is not: ` + readOnlyEntry("lym fabric add x") +
+					`; way forward: 1) lym webster reset --to batch-start --batch 01; 2) re-run ` + acceptBatchStep +
+					"; otherwise 1) lym webster reset --to start; 2) lym webster run"
+				if !strings.HasSuffix(err.Error(), want) {
+					t.Errorf("error %q; want it to end %q", err, want)
+				}
+			},
+		},
+		{
+			name: "a mutating fabric reference on a dirty tree names accept-audit's dirty-tree reason and the re-run",
+			setup: func(fx *recoverFixture) {
+				atStartSetup(fx)
+				fx.Git.dirtyPaths = []string{"internal/x/x.go"}
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				if !errors.Is(err, websterengine.ErrRecoveryNeedsFresh) || spawned {
+					t.Fatalf("RecoverSpawnOrAttach() = spawned %v, err %v; want ErrRecoveryNeedsFresh and no strand", spawned, err)
+				}
+				want := "accept-audit --batch 1 refuses it: the worktree has uncommitted or untracked changes: internal/x/x.go" +
+					"; way forward: restore or remove them with git, then re-run " + acceptBatchStep +
+					"; otherwise 1) lym webster reset --to start; 2) lym webster run"
+				if !strings.HasSuffix(err.Error(), want) {
+					t.Errorf("error %q; want it to end %q", err, want)
+				}
+			},
+		},
+		{
+			name: "a mutating fabric reference with a HEAD that does not descend from the start names only the reset-to-start route",
+			setup: func(fx *recoverFixture) {
+				atStartSetup(fx)
+				unrelated := fx.Git.mint()
+				fx.Git.parents[unrelated] = nil
+				fx.Git.head = unrelated
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				if !errors.Is(err, websterengine.ErrRecoveryNeedsFresh) || spawned {
+					t.Fatalf("RecoverSpawnOrAttach() = spawned %v, err %v; want ErrRecoveryNeedsFresh and no strand", spawned, err)
+				}
+				want := "nor does it descend from it; way forward: 1) lym webster reset --to start; 2) lym webster run"
+				if !strings.HasSuffix(err.Error(), want) {
+					t.Errorf("error %q; want it to end %q", err, want)
+				}
+				if strings.Contains(err.Error(), "; otherwise") || strings.Contains(err.Error(), acceptBatchStep) {
+					t.Errorf("error %q names a route beyond reset-to-start", err)
+				}
+			},
+		},
+		{
+			name: "a git read failure while checking accept-audit's evidence is returned and is not needs_fresh",
+			setup: func(fx *recoverFixture) {
+				atStartSetup(fx)
+				fx.Git.headErr = errors.New("git head unreadable")
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				if err == nil || spawned {
+					t.Fatalf("RecoverSpawnOrAttach() = spawned %v, err %v; want the git error and no strand", spawned, err)
+				}
+				if errors.Is(err, websterengine.ErrRecoveryNeedsFresh) || !strings.Contains(err.Error(), "git head unreadable") {
+					t.Errorf("error %q; want the git read failure, not ErrRecoveryNeedsFresh", err)
+				}
+			},
+		},
+		{
+			name: "a committed batch with no read-only classifier names the batch-start reset",
+			setup: func(fx *recoverFixture) {
+				committedSetup(fx)
+				fx.Deps.ReadOnly = nil
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				if !errors.Is(err, websterengine.ErrRecoveryNeedsFresh) || spawned {
+					t.Fatalf("RecoverSpawnOrAttach() = spawned %v, err %v; want ErrRecoveryNeedsFresh and no strand", spawned, err)
+				}
+				want := "way forward: 1) lym webster reset --to batch-start --batch 01; 2) re-run " + acceptBatchStep +
+					"; otherwise 1) lym webster reset --to start; 2) lym webster run"
+				if !strings.HasSuffix(err.Error(), want) {
+					t.Errorf("error %q; want it to end %q", err, want)
 				}
 			},
 		},

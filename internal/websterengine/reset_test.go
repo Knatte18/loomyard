@@ -34,12 +34,14 @@ func TestPlanReset_HeldRunLockIsTransientBusy(t *testing.T) {
 		ParentBranch: func() (string, error) { return "main", nil },
 		Branch:       func() (string, error) { return "task", nil },
 	}
-	_, err = websterengine.PlanReset(deps, websterengine.ResetToStart, 0)
+	_, err = websterengine.PlanReset(deps, websterengine.ResetToBatchStart, 6)
 	if !errors.Is(err, websterengine.ErrRunBusy) {
 		t.Fatalf("PlanReset error = %v, want ErrRunBusy", err)
 	}
-	if !strings.Contains(err.Error(), "wait for it to finish, or check `lym webster status`") {
-		t.Errorf("error = %v, want the wait way forward", err)
+	// The refusal names who resets and when, since the session holding the lock cannot.
+	want := "a Webster session inside the run ends it as stuck instead; way forward: 1) the run's parent waits until `lym webster status` shows no run in progress; 2) re-run `lym webster reset --to batch-start --batch 06`"
+	if !strings.HasSuffix(err.Error(), want) {
+		t.Errorf("error = %v, want it to end %q", err, want)
 	}
 
 	// report-head is the one target Master runs inside its run, so it passes the lock and reaches the batch check.

@@ -29,7 +29,7 @@ type scanSpan struct {
 }
 
 // CheckCardFabricReference reports one card-fabric-reference finding per distinct command a plan carries that reaches the fabric repo, and one per card whose card id the path rule matches.
-// Such a card id would make every command naming the card, its own gate run included, a fabric reference to the implementer audit; its way forward is renaming the card.
+// Such a card id would make every command naming the card, except a `lym gate` invocation, a fabric reference to the implementer audit; its way forward is renaming the card.
 // The spans scanned are a card's `**Verify:**` value and the overview's `## verify:` section body (path rule and spelling rule), every fenced code block of every plan file whatever its info string (both rules), and every inline code span of every plan file (path rule only, because a span documenting a command opens with the spelling).
 // Prose outside code is never scanned.
 // A finding names the card, or for a hit in the overview the section it is in, and the matched text; its way forward is committed test data an earlier card creates, or dropping the command.
@@ -72,7 +72,7 @@ func CheckCardFabricReference(plan *Plan, matcher FabricReferenceMatcher) []Vali
 	for _, card := range plan.Cards {
 		id := cardID(card)
 		if matched, ok := matcher.MatchPath(id); ok {
-			detail := fmt.Sprintf("card %s has an id the implementer audit reads as a fabric-repo worktree name: %q, so every command naming the card fails the audit; rename the card in the Card Index and its file name so its slug no longer ends in the fabric suffix", id, matched)
+			detail := fmt.Sprintf("card %s has an id the implementer audit reads as a fabric-repo worktree name: %q, so any command naming the card other than a lym gate invocation fails the audit; rename the card in the Card Index and its file name so its slug no longer ends in the fabric suffix", id, matched)
 			findings = append(findings, ValidationError{Check: cardFabricReferenceCheck, Card: id, Detail: detail})
 		}
 		spans := codeSpans(card.Text)

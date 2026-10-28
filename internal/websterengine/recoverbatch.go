@@ -538,7 +538,9 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 			}
 			wayForward := resetToStartSteps(stepRun)
 			if len(contracts.Uncleared) == 0 && allPathlessFabricReference(contracts.Rest) {
-				wayForward = fmt.Sprintf("way forward: when the worktree is clean and HEAD is the batch's start commit (\"%s\" moves it there if the batch committed), or the batch's commits are kept and every recorded command is read-only, \"lym webster accept-audit --batch %d\" then \"lym webster recover-batch %d\"; otherwise %s", resetVerb(ResetToBatchStart, batchNumber), batchNumber, batchNumber, freshRestartSteps(stepRun))
+				if wayForward, err = acceptAuditWayForward(deps, batchNumber); err != nil {
+					return nil, false, err
+				}
 			}
 			return nil, false, &recoveryNeedsFreshError{msg: fmt.Sprintf("webster: batch %02d failed on findings recovery cannot check: %s; %s", batchNumber, strings.Join(what, ", "), wayForward)}
 		}
@@ -567,6 +569,28 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 	deps.State.Batches[batchNumber] = fresh
 	deps.State.CurrentBatch = batchNumber
 	return fresh, true, nil
+}
+
+// acceptAuditWayForward is the way forward of a refusal over a failed batch whose uncheckable entries are all pathless fabric references.
+// It runs the evidence check `lym webster accept-audit --batch` applies, mutating nothing, so it names that verb only on a route the check admits.
+// When the evidence holds, the way forward is accept-audit then recover-batch.
+// Otherwise it is the evidence refusal's reason and its own steps, which re-run both verbs.
+// Either way it also names the reset-to-start route.
+// A git read failure is returned.
+func acceptAuditWayForward(deps RecoverDeps, batchNumber int) (string, error) {
+	acceptThenRecover := fmt.Sprintf("\"lym webster accept-audit --batch %d\" then \"lym webster recover-batch %d\"", batchNumber, batchNumber)
+	_, err := batchFabricReferenceEvidence(deps.State, deps.Geom, batchNumber, deps.ReadOnly, "re-run "+acceptThenRecover)
+	if err == nil {
+		return fmt.Sprintf("way forward: %s; otherwise %s", acceptThenRecover, freshRestartSteps(stepRun)), nil
+	}
+	if !errors.Is(err, ErrAuditNotAcceptable) {
+		return "", err
+	}
+	refusal := fmt.Sprintf("accept-audit --batch %d refuses it: %s", batchNumber, strings.TrimPrefix(err.Error(), ErrAuditNotAcceptable.Error()+": "))
+	if !strings.Contains(refusal, stepResetToStart) {
+		refusal += "; otherwise " + freshRestartSteps(stepRun)
+	}
+	return refusal, nil
 }
 
 // RecoveryWaitBudget is the wait one recover-batch call blocks for by default: recovery_timeout_min plus one poll tick.

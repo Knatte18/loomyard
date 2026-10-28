@@ -532,7 +532,7 @@ The rows below stay in one fixed order regardless of which entry point runs them
     Each span is matched on its own, with the same rule the implementer audit uses.
     The finding names the card, or for the overview the section the hit is in, and the matched text.
     Its way forward is to take the data from committed test data an earlier card creates, or to drop the command.
-    The path rule also runs over each card id, since a slug ending in the fabric suffix makes every command naming the card, its own `lym gate test --card` run included, a fabric reference to the implementer audit.
+    The path rule also runs over each card id, since a slug ending in the fabric suffix makes every command naming the card, except a `lym gate` invocation, a fabric reference to the implementer audit.
     That finding names the card and the matched id, and its way forward is to rename the card in the Card Index and its file name.
     The plan index runs it in its format validation, so both plan gates and `lym loom validate-plan`'s default and `--rework` modes report it; `--require-approved`, webster's own `validate` verb and dispatch validation do not run it.
     It only refuses and removes no guard: it misses a spelling in `bash -c "…"` or built from a variable, the rest of a span after an unterminated quote, a spelling in an inline span or prose, and a fabric-repo path not spelled as a name ending in the suffix, and the implementer audit stays the guard for those.
