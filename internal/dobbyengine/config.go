@@ -27,6 +27,8 @@ type Config struct {
 	BoardTidyEvery int `yaml:"board_tidy_every"`
 	// BoardTidyTimeoutMin is the minutes the board-tidy agent may run.
 	BoardTidyTimeoutMin int `yaml:"board_tidy_timeout_min"`
+	// TaskHeadroom is the fewest free tasks under the cgroup task limit for dobby to start a run; 0 never holds a start.
+	TaskHeadroom int `yaml:"task_headroom"`
 }
 
 // ConfigSpec returns beam's layered-load spec: a per-worktree module whose every key is open to every layer.
@@ -38,6 +40,7 @@ func ConfigSpec() configengine.Spec {
 			"max_runs":               configengine.CategoryNone,
 			"board_tidy_every":       configengine.CategoryNone,
 			"board_tidy_timeout_min": configengine.CategoryNone,
+			"task_headroom":          configengine.CategoryNone,
 		},
 	}
 }
@@ -60,6 +63,7 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 		{"max_runs", cfg.MaxRuns},
 		{"board_tidy_every", cfg.BoardTidyEvery},
 		{"board_tidy_timeout_min", cfg.BoardTidyTimeoutMin},
+		{"task_headroom", cfg.TaskHeadroom},
 	} {
 		if key.value < 0 {
 			return Config{}, configengine.MarkInvalid(fmt.Errorf("beam config key %q is %d: must not be negative; way forward: fix it with `lym config beam --set %s=<value>`", key.name, key.value, key.name))

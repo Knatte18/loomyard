@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/proc"
 )
 
 func TestPlanPass(t *testing.T) {
@@ -85,6 +87,11 @@ type passFake struct {
 	maxRuns  int
 	statuses map[string]bool
 	covers   map[string]bool
+
+	// taskHeadroom is beam.yaml's task_headroom, and limit and limitFound what the task-limit seam reads.
+	taskHeadroom int
+	limit        proc.TaskLimit
+	limitFound   bool
 }
 
 type spawnedPass struct {
@@ -144,7 +151,8 @@ func newPassHarness(t *testing.T, runs ...RunView) *passHarness {
 			},
 			Machine:      func() (string, error) { return "m1", nil },
 			Tasks:        func() ([]TaskView, error) { return append([]TaskView(nil), fake.tasks...), nil },
-			LoadConfig:   func() (Config, error) { return Config{MaxRuns: fake.maxRuns}, nil },
+			LoadConfig:   func() (Config, error) { return Config{MaxRuns: fake.maxRuns, TaskHeadroom: fake.taskHeadroom}, nil },
+			TaskLimit:    func() (proc.TaskLimit, bool) { return fake.limit, fake.limitFound },
 			StatusExists: func(slug string) (bool, error) { return fake.statuses[slug], nil },
 			PauseCovers:  func(slug string) (bool, error) { return fake.covers[slug], nil },
 			PauseOwned: func(context.Context, string) error {

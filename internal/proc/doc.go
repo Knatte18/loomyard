@@ -17,6 +17,8 @@
 // All of these read /proc or signal by pid, so they work on Linux only: on Windows TreeCPU, ListProcesses and ListStats return errors.ErrUnsupported, IsAncestor is false, SignalProcess only kills and SignalGroup returns ErrNoProcessGroup.
 // CreationTime is the exception: it reads a process's creation time by pid on Windows, where StartTime is unreadable, and is always the zero time and false elsewhere.
 //
+// ReadTaskLimit reads the cgroup v2 task limit closest to being reached over the calling process's cgroup and its ancestors, its `pids.current` and `pids.max`, so a caller can hold back new work before every fork fails; it finds none on Windows or a cgroup v1 host.
+//
 // IsSpawnAgain tells a process start the host refused for a temporary resource shortage, EAGAIN from fork or exec, from every other start failure.
 // NoteSpawnAgain records the time of each such refusal process-wide, and LastSpawnAgain reads it back, so a caller that sees a later failure can judge whether a host resource shortage preceded it.
 //

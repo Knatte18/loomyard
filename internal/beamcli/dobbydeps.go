@@ -143,6 +143,7 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 		},
 		Tasks:      func() ([]dobbyengine.TaskView, error) { return battencli.DobbyTasks(prime, boardDir, parents) },
 		LoadConfig: func() (dobbyengine.Config, error) { return dobbyengine.LoadConfig(dirs) },
+		TaskLimit:  proc.ReadTaskLimit,
 		StatusExists: func(slug string) (bool, error) {
 			return fileExists(shedrun.StatusFile(prime, slug))
 		},
