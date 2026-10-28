@@ -1,0 +1,20 @@
+run	codex_id	severity	grade	reference	note
+stb1	F1	BLOCKING	false		Warn per ETXTBSY retry; the decision record's D1 decides Warn per retry, and the logger's hard rule bounds a flood at roughly 10 iterations, the loop makes at most 4
+stb1	F2	MEDIUM	shared	F3	cancelled backoff reports five tries
+stb1	F3	MEDIUM	shared	F5	rename-failure cleanup untested
+stb1	F4	MEDIUM	unique-real		no row pins child trace and stderr over the loop trace when the fallback is armed
+stb2	F1	BLOCKING	false		same as stb1 F1
+stb2	F2	MEDIUM	shared	F3	cancelled backoff reports five tries
+stb2	F3	MEDIUM	shared	F5	rename-failure cleanup untested
+stb2	F4	LOW	false		retry log records unasserted; premised on F1's levels
+for1	F1	BLOCKING	unique-real		fix-review-report gate closure has no CLI self-check and parity check; PATTERN-gate-slot names a gate in a producer closure; the diff adds neither
+for1	F2	BLOCKING	unique-real		approval rewrite through WriteFixerAttempts drops unknown keys; PATTERN-tolerant-records; the helper predates the diff and every attempt-record write uses it
+for1	F3	MEDIUM	shared	F1,F2,F4	approval write and moved-HEAD, timeout, failed start, re-prompt, model and timeout untested
+for1	F4	LOW	unique-real		bare `verdict: approved` passes ParseFixReviewReport; the spec requires the Findings heading
+for2	F1	BLOCKING	unique-real		same as for1 F2
+for2	F2	MEDIUM	unique-real		a wait error from a started review session returns an error before the dirty-tree and HEAD checks
+for2	F3	MEDIUM	shared	F1	approval write and HEAD invalidation untested
+for2	F4	MEDIUM	shared	F2	timeout, failed start, re-prompt untested
+for2	F5	MEDIUM	shared	F4	model and timeout wiring untested
+for2	F6	LOW	unique-real		same as for1 F4
+for2	F7	LOW	unique-real		Finalize.Call overview still says every over-cap fix reroutes or halts

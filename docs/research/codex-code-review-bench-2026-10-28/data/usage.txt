@@ -1,0 +1,4 @@
+for1 fresh_total=179729 handler_fresh=116565 handler_wall=391 max_fork_cmds=4
+for2 fresh_total=167672 handler_fresh=107778 handler_wall=347 max_fork_cmds=4
+stb1 fresh_total=108420 handler_fresh=79594 handler_wall=306 max_fork_cmds=2
+stb2 fresh_total=115483 handler_fresh=72754 handler_wall=276 max_fork_cmds=3
