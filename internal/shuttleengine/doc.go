@@ -430,18 +430,26 @@
 //
 // Agent activity: RunState records the pid of the process that waits on the run, which Start writes and an attach rewrites to the attaching process.
 // A run counts as live when its outcome reads running and that pid is alive; a record without a pid, from an older binary, is not live.
-// ReadAgentActivity logs a record that reads running with its recorded waiter gone at Warn once per episode per run directory, at Debug while it repeats and at Info once it reads live again, no longer reads running or has no record.
-// Such a run's agent may still be working where no activity reader sees it.
-// ReadAgentActivity returns one AgentActivity per live run under a run-directory root:
-// the run's strand name, its last activity, and whether its newest turn end is an API error with the error's text, and its UsageLimit: whether the provider classifies that error as its usage limit, and when the limit resets as its message states.
+// ReadAgentActivity returns one AgentActivity per run under a run-directory root whose record reads running, live or not, so an agent whose waiter died still reads as working.
+// It logs a record that reads running with its recorded waiter gone at Warn once per episode per run directory, at Debug while it repeats and at Info once it reads live again, no longer reads running or has no record;
+// such a run's reading carries its last activity only, with no API error or usage limit and WaiterGone set, since no process acts on its turn ends.
+// Each reading carries the run's strand name, its last activity, and whether its newest turn end is an API error with the error's text, and its UsageLimit: whether the provider classifies that error as its usage limit, and when the limit resets as its message states.
 // Runner.UsageLimit gives the same UsageLimit for one turn end of a named run, which the orch watcher reads at its own session's turn ends.
-// The last activity is the newer of the session's last activity, its forks included, and the time of the events file's newest Stop or ask line, the run's creation time when neither is readable.
+// The last activity is the newest of the session's last activity, its forks included, the time of the events file's newest Stop or ask line, and the modification time of the run's activity stamp, the file ActivityStampFileName names in the run directory, which an engine's hooks touch whenever the session works;
+// it is the run's creation time when none is readable.
 // A Stop or ask line carrying no time, an engine without the optional SessionSignalParser capability, and a file yielding no signals count the events file's last write instead, so an idle notice, a prompt submission or a stamp line never moves it.
 // The events past the prompt offset are parsed through the Engine, and the newest turn end goes to the optional ActivityReader capability for the session part.
 // With no turn end past the offset, the newest one before it, a skill-load turn end of the same session, goes instead, for the session's last activity only and never its API error,
 // so a first turn spent in a fork reads active before it ends.
 // An engine without the capability, and a run with no turn end at all, are judged by the events file alone.
 // Like ReadWaitMarker it reads files only, so a process that runs no shuttle may call it.
+//
+// Operator instructions carried over: every verified send into a run appends the text it types, as one JSON string line, to the run directory's sent-texts file before typing.
+// A run's operator instructions are the SessionSignal.Instruction texts of its turn starts past its prompt offset, without the first, which is the run's prompt, and without any text the sent-texts file holds.
+// RunState records a role key, the spec's NameOverride else its Role, and the instructions the run carried over.
+// Before its orphan sweep, a start finds the newest run under the root with the same role key;
+// when that run is unfinished, its record reading stopped, died or timeout or reading running with its waiter gone, its carried and operator instructions, without repeats, are appended to the new prompt as one block, recorded as the new run's carried instructions and named in one Warn log line and one notifier line.
+// A done or live predecessor, an empty role key and a predecessor directory already swept carry nothing.
 //
 // Session state has two consumers: Runner.SessionIdle and the verified send's idle wait, which gate on the readiness reading built from it.
 // The reading is ready or held, or unknown when the state is, and an unknown reading falls back to the pane probe.

@@ -587,7 +587,7 @@ func readStopReport(taskLocation *lymcwd.Location) (path string, at time.Time, f
 	return strings.TrimSpace(string(raw)), info.ModTime(), true, nil
 }
 
-// readAgentActivity reads the live agent runs of the task worktree through the shuttle config and its registered engines, mapped onto battenshed's neutral type,
+// readAgentActivity reads the running agent runs of the task worktree, those whose waiting process is gone included, through the shuttle config and its registered engines, mapped onto battenshed's neutral type,
 // and reports whether a Go-side wait is live: a running verify, a parent lock wait, a child running at Beam-Await, or a shuttle wait that is not a held turn end.
 // A held run is idle at its turn end, so it does not suppress the quiet notice, and neither does a verify held by a pause.
 // A lock wait record whose writer is dead is ignored.

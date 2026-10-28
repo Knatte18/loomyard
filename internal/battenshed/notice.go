@@ -431,8 +431,8 @@ func (p *innerRunProducer) agentActivity(ctx context.Context, w *childWait) (rea
 }
 
 // judgeAgents returns the api-error or quiet finding of a running child with a live driver, and the newest agent activity.
-// With several live runs, api-error needs any one and quiet needs every run idle.
-// With no live run found, quiet falls back to the later of the child's newest history entry and the state episode's since.
+// With several runs read, api-error needs any one and quiet needs every run idle.
+// With no run read, quiet falls back to the later of the child's newest history entry and the state episode's since.
 // Both idle clocks measure awake unpaused time: every recorded sleep and every paused interval after an activity is subtracted from the time since it, so a sleep or a pause can delay a notice and never raise one earlier.
 func (p *innerRunProducer) judgeAgents(ctx context.Context, w *childWait) (noticeFinding, activityStamp) {
 	reading, ok := p.agentActivity(ctx, w)

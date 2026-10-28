@@ -18,14 +18,15 @@
 // A state-changed and a driver-dead episode ends when the child's state changes, and the state's since is the status file's modification time at the first sight of the child in it:
 // a rewrite of the file in the same state does not move it, and only a batten start reads it from the file.
 // The api-error and quiet notices need a running child with a live driver strand, and read the agents through the injected Activity seam at most once per notice_probe_s; a failed read sends neither.
-// The api-error notice goes when the newest turn end of any live run is an API error and that run has not been active for two minutes since; it names the producer and the error text cut to one line, and takes precedence over quiet.
+// The api-error notice goes when the newest turn end of any read run is an API error and that run has not been active for two minutes since; it names the producer and the error text cut to one line, and takes precedence over quiet.
 // With the ReviveAPIError seam wired, the first sight of an api-error episode revives the stalled sessions and notices nothing:
 // the notice goes when the same episode still stands at a later probe check, or at the third revived episode in a row with no write of the child's status file between them.
 // A run whose API error the provider classifies as its usage limit gets the usage-limit notice instead, ahead of the api-error and quiet ones, after the same two minutes:
 // it names the producer, when the limit resets in UTC or that the reset time is unknown, and the limit's text, and no revive is sent, since a revive typed into a limited session only ends in the limit again.
-// Its episode is the limit, keyed by the reset time, and lasts while any live run of the child reads usage-limited, however its activity moves, so a standing limit sends one notice and a later limit another.
-// The quiet notice goes when every live run has been idle for the quiet window and no verify marker, shuttle wait marker, parent lock wait record or child status running at the pawl recipe's Beam-Await row is live, and says how long the agents have been idle;
-// with no live run found, it falls back to "no agent activity readable" counted from the later of the child's newest history entry and since.
+// Its episode is the limit, keyed by the reset time, and lasts while any read run of the child reads usage-limited, however its activity moves, so a standing limit sends one notice and a later limit another.
+// The quiet notice goes when every read run has been idle for the quiet window and no verify marker, shuttle wait marker, parent lock wait record or child status running at the pawl recipe's Beam-Await row is live, and says how long the agents have been idle;
+// with no run read, it falls back to "no agent activity readable" counted from the later of the child's newest history entry and since.
+// A running run whose waiting process is gone is read too, with its activity only, so the quiet notice names its agent as idle instead of falling back.
 // Both episodes are keyed by the newest agent activity, so they end when an agent is active again, with `since` on the line as content only.
 // Both idle clocks measure awake time: the machine sleeps the scheduling dobby recorded, read through the injected Sleeps seam, are intervals, and the time since an activity is net of the sleeps after it.
 // The subtraction can delay a notice and never raise one earlier.
@@ -33,7 +34,7 @@
 // While it covers the slug, the row spawns, resumes and revives nothing, sends no notice for a running child, keeps a covered holder's parent lock and reports `held by the pause of <scope> since <paused_at>` as its wait reason;
 // a child that halts still ends the pass with its state-changed notice, and batten's own pause is still honoured.
 // The paused intervals leave the idle clocks, so after the resume a run idle for its window is noticed as before.
-// Limits: a run whose pid is dead is not read, a run that keeps writing or hangs in a live wait is never quiet, and both notices are informational.
+// Limits: a run whose record no longer reads running is not read, a run that keeps writing or hangs in a live wait is never quiet, and both notices are informational.
 // A marker under the row's scratch directory records the notices sent, and only those posted, so a batten restart sends the notices not yet sent and never one already sent.
 // A state-changed notice names what happened, the child's state and the row it stopped at, for example `awaiting at Plan-Bouncer`.
 // Every notice names the child's state and current row, and a quiet, an api-error and a driver-dead notice follow them with their own text, for example `running at Plan-Write; agents idle for 25m0s`.

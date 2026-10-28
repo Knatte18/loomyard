@@ -220,9 +220,9 @@ type InnerRunDeps struct {
 	// NoticeQuiet is how long a running child's agents may all stay idle, with its driver strand alive and no wait marker live, before the row sends a quiet notice.
 	// Zero disables the quiet notice.
 	NoticeQuiet time.Duration
-	// Activity reads what the task worktree's live agent runs have been doing, and whether a Go-side wait (a verify or a shuttle wait) is live.
+	// Activity reads what the task worktree's running agent runs, those whose waiting process is gone included, have been doing, and whether a Go-side wait (a verify or a shuttle wait) is live.
 	// The wait reads it for a running child with a live driver strand, at most once per notice probe; an error is warned about and sends no activity notice.
-	// A nil Activity resolves to reporting no live run and no live wait in NewInnerRun.
+	// A nil Activity resolves to reporting no run and no live wait in NewInnerRun.
 	Activity func(ctx context.Context) (runs []AgentActivity, waitLive bool, err error)
 	// PairDir returns the task worktree directory a notice renders its paths relative to.
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
@@ -311,7 +311,7 @@ type ChildParentLock struct {
 	KeepsLock func() (bool, error)
 }
 
-// AgentActivity is the reading of one live agent run of the child's task worktree.
+// AgentActivity is the reading of one running agent run of the child's task worktree.
 type AgentActivity struct {
 	// Producer labels the run, the strand name its agent works under.
 	Producer string

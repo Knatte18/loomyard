@@ -247,7 +247,7 @@ func logAttempt(first bool, msg string, args ...any) {
 // A nil deps.TacklerInFlight resolves to reporting no tackler.
 // A nil deps.ChildBuildChanged or deps.ChildDirtyPaths switches the binary re-step off.
 // A nil deps.PauseRequested resolves to never paused, and a nil deps.Pause to never covered by a pause record.
-// A nil deps.MarkWatched resolves to reporting not held, a nil deps.Activity to reporting no live run and no live wait, a nil deps.ArbiterInFlight to reporting no arbiter and a nil deps.ArbiterStop to a reading that is not eligible.
+// A nil deps.MarkWatched resolves to reporting not held, a nil deps.Activity to reporting no run and no live wait, a nil deps.ArbiterInFlight to reporting no arbiter and a nil deps.ArbiterStop to a reading that is not eligible.
 // A nil deps.ParentLock switches the parent lock step off.
 // A nil deps.OwnerCheck switches the owner check off, a nil deps.PauseOwned resolves to a no-op, and a nil deps.ParentHoldsTaskWork or deps.Restepped to reporting false.
 // A nil deps.HandBack resolves to marking no status.

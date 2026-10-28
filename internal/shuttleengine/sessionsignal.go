@@ -61,6 +61,9 @@ type SessionSignal struct {
 	EndsProcess bool
 	// Source is a session start's SessionStartSource; empty on every other kind and on a start whose source the provider could not name.
 	Source SessionStartSource
+	// Instruction is a turn start's prompt text when it is an instruction typed into the session;
+	// empty for a prompt the provider injects itself, for a command to the provider's own interface and on every other kind.
+	Instruction string
 	// Event is true when ParseEvents also yields an event from the same line.
 	Event bool
 	// Raw is the exact hook payload line the signal was read from.
