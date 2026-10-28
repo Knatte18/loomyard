@@ -1202,7 +1202,7 @@
 // The set-aside commits are tagged before the branch moves, so a stop leaves a tag on a commit still on the branch.
 // A Bolt failure after the pick restores the starting tip, and a restore git refuses is joined into the error.
 //
-// **Bolt.** A commit touching only `board.json`, `README.md` and design files is re-applied by entry through the installed `BoardReplay`, so an entry only one side changed never conflicts and no entry change stops the replay.
+// **Bolt.** A commit touching only `board.json`, `README.md`, `project-<slug>.md` files and design files is re-applied by entry through the installed `BoardReplay`, so an entry only one side changed never conflicts and no entry change stops the replay.
 // A change that lost a value to origin or met a board refusal is committed for what was kept, and its original is set aside.
 // Seed commits are dropped, and any other commit is cherry-picked as on a weft.
 // `Bolt.pullFirst` replays through it: a conflict skips as diverged, naming the conflicting paths and the two ways to settle them, and an uncommitted change on a touched path skips as dirty.

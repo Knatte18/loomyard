@@ -501,6 +501,41 @@ func TestRecordsReplay(t *testing.T) {
 			requireClean(t, board)
 		})
 
+		t.Run("A commit touching a project file beside board.json and README.md replays by entry with no stop", func(t *testing.T) {
+			t.Parallel()
+			f := newRecordsFixture(t)
+			board := f.hub.BoardDir()
+			branch := gitkit.CurrentBranch(t, board)
+			pushBase(t, board, branch, boardEntry("a", withBoardTitle("A")), boardEntry("b", withBoardTitle("B")))
+			files := map[string]string{
+				"board.json":   boardFileOf(t, boardEntry("a", withBoardTitle("A")), boardEntry("b", withBoardTitle("B2"))),
+				"README.md":    "# Board\n",
+				"project-x.md": "# P1 X\n",
+			}
+			for rel, content := range files {
+				if err := os.WriteFile(filepath.Join(board, rel), []byte(content), 0o644); err != nil {
+					t.Fatalf("write %s: %v", rel, err)
+				}
+			}
+			gitkit.Git(t, board, "add", "--all")
+			gitkit.Git(t, board, "commit", "--message", "retitle b with overviews")
+			local := gitkit.Git(t, board, "rev-parse", "HEAD")
+			f.originCommit(branch, "board.json", boardFileOf(t, boardEntry("a", withBoardTitle("A2")), boardEntry("b", withBoardTitle("B"))), "retitle a")
+			gitkit.Git(t, board, "fetch")
+
+			outcome, err := fabricengine.ReplayBoltForTest(f.hub.Location, board, nil)
+			if err != nil {
+				t.Fatalf("ReplayBoltForTest: %v", err)
+			}
+			if !slices.Equal(outcome.Replayed, []string{strings.TrimSpace(local)}) || len(outcome.Lost) != 0 || len(outcome.Refused) != 0 {
+				t.Errorf("outcome = %+v, want only %s replayed", outcome, strings.TrimSpace(local))
+			}
+			if got := boardTitles(t, board); got["a"] != "A2" || got["b"] != "B2" {
+				t.Errorf("board titles = %v, want a=A2 and b=B2", got)
+			}
+			requireClean(t, board)
+		})
+
 		t.Run("One field changed on both sides keeps origin's value and tags the local commit", func(t *testing.T) {
 			t.Parallel()
 			f := newRecordsFixture(t)
