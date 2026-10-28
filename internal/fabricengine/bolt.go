@@ -240,6 +240,21 @@ func (b *Bolt) PullThenCommitWritten(writes []BoltWrite, rec *Mutations) (res Bo
 	return res, nil
 }
 
+// Pull brings Bolt up to date with its upstream under the board write lock, recording in rec what moved, and writes nothing.
+// A Bolt that cannot be brought up to date, such as a dirty or diverged one, returns a non-empty skip with a detail naming the way forward.
+// A Bolt with no upstream, and a pull honoring SkipGit, does nothing.
+func (b *Bolt) Pull(opts SyncOptions, rec *Mutations) (BoltSkip, string, error) {
+	if opts.SkipGit {
+		return "", "", nil
+	}
+	l, err := lock.AcquireWriteLock(filepath.Join(b.path, BoardWriteLockFile))
+	if err != nil {
+		return "", "", fmt.Errorf("fabricengine: acquire board write lock: %w", err)
+	}
+	defer func() { _ = l.Release() }()
+	return b.pullFirst(rec)
+}
+
 // pullFirst brings Bolt up to date with its upstream and reports why it could not, as a skip with a detail naming the way forward.
 // The caller holds the board write lock.
 // pullFirst also holds the push lock in the board dir for its whole run, taken after the board write lock.

@@ -341,12 +341,18 @@ fetched and inspected against its upstream tracking ref:
     commits this checkout holds (the refusal names the two ways to settle it).
   - A warp worktree with uncommitted tracked changes is refused before warp
     is moved at all — commit or stash, then re-run. Advancing warp goes
-    through a hard reset that would silently discard those changes.`,
+    through a hard reset that would silently discard those changes.
+
+--hub pulls the whole hub instead and reports each side under "sides".`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
 			out := cmd.OutOrStdout()
+			if hub, _ := cmd.Flags().GetBool("hub"); hub {
+				clihelp.SetExit(cmd.Context(), runHubPull(cmd.Context(), out, l))
+				return nil
+			}
 			result, err := fab.Pull(fabricengine.EnvSyncOptions())
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, result.Mutated(), err))
@@ -440,6 +446,8 @@ Example:
 			return nil
 		},
 	}
+
+	pullCmd.Flags().Bool("hub", false, "pull the board, the prime pair and each local beam pair instead of this pair, live orch and runs included: the board under the board write lock, each pair under its branch's parent lock, waited for; any stop fails the verb, the other sides still pulled")
 
 	cmd.AddCommand(statusCmd, commitCmd, pushCmd, pullCmd, syncCmd, diffCmd)
 

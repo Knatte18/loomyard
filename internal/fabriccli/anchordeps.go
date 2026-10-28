@@ -34,9 +34,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// anchorLockOwnerRunID is the run id of the parent lock owner the verb takes the lock as.
-const anchorLockOwnerRunID = "fabric-anchor"
-
 // hibernateRequestFileName is the hibernate request file in the hub's hibernate directory.
 // This package cannot import the hibernate packages: their import chain leads back to it through a test fixture.
 const hibernateRequestFileName = "request.json"
@@ -235,7 +232,7 @@ func hubAnchorDeps(acting *lymcwd.Location) (anchorDeps, error) {
 		},
 		Note: func(line string) { fmt.Fprintln(os.Stderr, "lym fabric anchor: "+line) },
 		AcquireParentLock: func(ctx context.Context, location *lymcwd.Location) (func(), error) {
-			return acquireBranchLock(ctx, location, boardDir)
+			return acquireBranchLock(ctx, location, boardDir, "anchor")
 		},
 		EndDobbies: func(worktrees []string, spare ...string) ([]string, error) {
 			var ended []string
@@ -458,7 +455,8 @@ func dobbyPassInFlight(acting *lymcwd.Location, primeName, runProcDir, owner, wo
 }
 
 // acquireBranchLock takes the parent lock of the branch checked out in location's code worktree as the calling process, queuing behind a holder, and returns the release.
-func acquireBranchLock(ctx context.Context, location *lymcwd.Location, boardDir string) (func(), error) {
+// The lock owner's run id is "fabric-" and verb, and the wait notice on stderr names `lym fabric <verb>` and the holder.
+func acquireBranchLock(ctx context.Context, location *lymcwd.Location, boardDir, verb string) (func(), error) {
 	branch, err := gitrepo.New(fabricengine.WorktreePath(location, location.WorktreeName)).CurrentBranch()
 	if err != nil {
 		return nil, fmt.Errorf("read the branch of %s to lock it: %w", location.WorktreeName, err)
@@ -468,19 +466,19 @@ func acquireBranchLock(ctx context.Context, location *lymcwd.Location, boardDir 
 	owner := parentlock.Owner{
 		Slug:      location.WorktreeName,
 		Pair:      location.WorktreePath(),
-		RunID:     anchorLockOwnerRunID,
+		RunID:     "fabric-" + verb,
 		PID:       os.Getpid(),
 		StartTime: startTime,
 	}
 	waiter := parentlock.Waiter{OnWait: func(holder parentlock.Record) {
-		fmt.Fprintf(os.Stderr, "lym fabric anchor: waiting for the parent lock of %s, held by %s\n", branch, holder.Owner.Slug)
+		fmt.Fprintf(os.Stderr, "lym fabric %s: waiting for the parent lock of %s, held by %s\n", verb, branch, holder.Owner.Slug)
 	}}
 	if _, err := store.Acquire(ctx, branch, owner, waiter); err != nil {
 		return nil, fmt.Errorf("take the parent lock of %s: %w", branch, err)
 	}
 	return func() {
 		if _, err := store.Release(branch, owner); err != nil {
-			logger.Warn("fabriccli: the parent lock of an anchor change is not released", "branch", branch, "error", err)
+			logger.Warn("fabriccli: a verb's parent lock is not released", "verb", verb, "branch", branch, "error", err)
 		}
 	}, nil
 }
