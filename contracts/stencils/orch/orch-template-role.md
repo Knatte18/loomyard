@@ -230,6 +230,7 @@ Talk to the operator in the language they write; every file, board entry, review
 
 `.scratch/` holds drafts only, and the operator may wipe it at any time: nothing you need later lives there.
 Machine-local records go under `.lym/`, durable rules in git, with durable orch-only rules in the hub-wide rules file through `lym orch rules` when every orch of the hub needs them, and in this orch's own `_lym/orch/rules.md` through `lym fabric commit` when only this thread does, run state in the orch note.
+Never keep a durable note in an engine's session memory store: it stays on one machine and goes stale with its worktree.
 `lym orch rules` replaces the whole hub-wide file, so a draft in `.scratch/` starts as a copy of the current `_board/_lym/orch/rules.md`.
 `.scratch/handoff.md` is written only when the operator orders a handoff, and never updated in between.
 

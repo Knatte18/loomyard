@@ -6,7 +6,6 @@ This repository develops LoomYard and is itself developed by LoomYard: its tasks
 
 Read `PATTERN.md`, and the `pattern/` background files that touch a change, before writing or reviewing code.
 Its invariants are enforced partly by `go test` and partly by review.
-Agents lym spawns get the `PATTERN.md` overview inlined in their prompt.
 A new cross-cutting invariant goes into PATTERN in the same commit as the code.
 
 ## Build: cgo
@@ -17,18 +16,14 @@ A new cross-cutting invariant goes into PATTERN in the same commit as the code.
 
 `update-plugins.sh` (`.cmd` on Windows) is the only route to production: from a clean, pushed `main`, it deploys the plugins and builds `lym` into the Go bin dir.
 Never run it unasked, never install `lym` elsewhere.
-Batten's Land row runs the hub's `deploy` command after every landing into a `deploy_branches` branch, one made with no orch turn included.
 For internal tests, `./deploy-dev` builds into `.dev-bin` instead.
 There is no versioning: plugins stay at `1.0.0`.
 
-## Notes go in git, not file-memory
+## This file holds LoomYard development rules only
 
-Task worktrees are torn down on merge, and the file-based `memory/` store goes with them.
-Put durable notes in this file, `_lym/raddle/` or code comments.
-`_lym/raddle/` reaches the parent by being regenerated against the parent's HEAD at landing, never through a merge.
-A rule or workaround only the orch needs goes in the orch rules, never in `CLAUDE.md`:
-the hub-wide file on Bolt, `_board/_lym/orch/rules.md`, written through `lym orch rules`, when every orch of the hub needs it,
-and the orch thread's own `_lym/orch/rules.md`, committed with `lym fabric commit`, when only that thread does.
+A rule for developing LoomYard itself goes in this file or a code comment.
+A rule for every use of lym, in any repository, goes into lym: what lym enforces into its code, what agents must be told into the stencils and skills it ships.
+It never goes into this file, which only this repository reads, nor into a package's `doc.go`, which documents what the code does.
 
 ## Worktrees
 
@@ -46,10 +41,7 @@ Headless use is moving off subscription coverage onto API billing, so every agen
 ## Docs land in the same commit
 
 A task that adds a module, changes observable CLI behavior or adds cross-cutting infrastructure updates, in the same commit: the module doc in the package's `doc.go`, `docs/overview.md` if the module table or execution stack changes, and `PATTERN.md` for a new invariant.
-An unbuilt design lives in its board entry's body, and a built design lives in its package's `doc.go`.
-The task that builds a design writes it into the package's `doc.go` and never changes its own board entry's body or scope:
-the landing marks the entry done and the board prune removes it, so no pointer is left behind.
-No decision, card or step of a run changes the running task's own board entry's body or scope, because the run's board lock refuses such a change.
+A built design lives in its package's `doc.go`, written there by the task that builds it.
 
 ## Markdown: semantic line breaks
 
@@ -64,7 +56,7 @@ These are conversational shorthands; never rename code, files or docs to them un
   its strand is named `<shortname>:<slug>:webster`.
 - **perch**: a `Bouncer` row in a `Shed` producer list whose `OnStuck` points at a `Burler`-round row, whose own `OnStuck` points back (see `internal/shedadapters` and `contracts/recipes/loom-recipe.yaml`).
   Each review segment wires its own pair; there is no perch type.
-- **board**: the task tracker, read and written only through `lym board`; **Bolt** is the nickname of the records repository's `main` branch, the board's git home, never the tracker.
+- **board**: the task tracker, `lym board`; **Bolt** is the nickname of the records repository's `main` branch, the board's git home, never the tracker.
 
 ## Filesystem links
 

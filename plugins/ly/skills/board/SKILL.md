@@ -169,3 +169,5 @@ Never name another task as a dependency in a task's brief or body: put it in `de
 The README computes each task's After column and its Ready or layer subsection from `depends_on`, drops a finished entry from After, and `prune` strips it, while a dependency written as prose goes stale once that entry lands.
 Whenever you set `depends_on`, check the other tasks waiting on the same entry for overlap, not only the running ones, and act on the `notice` warning `set-deps` and the upsert verbs print by chaining overlapping tasks with `lym board set-deps`.
 A relation between notes has no `depends_on`, so it is a sentence in a body.
+A body holds an entry's design while it is unbuilt.
+The task that builds it documents the result in the repository and never rewrites its own entry's body or scope: the landing marks the entry done and `lym board prune` removes it.
