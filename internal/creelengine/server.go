@@ -275,12 +275,23 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 	ok := Response{OK: true, Sender: sender.Name}
 	switch req.Verb {
 	case VerbPost:
+		if req.Interrupt {
+			id, interrupted, waiter, err := store.PostInterrupt(sender, req.Receiver, req.Text, req.Wait)
+			if err != nil {
+				return err
+			}
+			if req.Wait {
+				return d.awaitOutcome(conn, reader, waiter, id, sender, interrupted)
+			}
+			ok.ID, ok.Interrupted = id, interrupted
+			break
+		}
 		if req.Wait {
 			id, waiter, err := store.PostWait(sender, req.Receiver, req.Text)
 			if err != nil {
 				return err
 			}
-			return d.awaitOutcome(conn, reader, waiter, id, sender)
+			return d.awaitOutcome(conn, reader, waiter, id, sender, false)
 		}
 		id, err := store.Post(sender, req.Receiver, req.Text)
 		if err != nil {
@@ -292,7 +303,7 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 		if err != nil {
 			return err
 		}
-		return d.awaitOutcome(conn, reader, waiter, req.ID, sender)
+		return d.awaitOutcome(conn, reader, waiter, req.ID, sender, false)
 	case VerbReply:
 		id, err := store.Reply(sender, req.ID, req.Text)
 		if err != nil {
@@ -302,11 +313,17 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 	case VerbRead:
 		return d.read(conn, reader, sender, req)
 	case VerbClaim:
-		reading, err := store.ClaimAtBoundary(sender)
+		reading, err := store.ClaimAtBoundary(sender, Boundary{Stop: req.Stop, StopHookActive: req.StopHookActive})
 		if err != nil {
 			return err
 		}
 		return d.handOut(conn, reader, sender, reading)
+	case VerbHookWait:
+		waiter, err := store.HookWait(sender)
+		if err != nil {
+			return err
+		}
+		return d.awaitOutcome(conn, reader, waiter, 0, sender, false)
 	case VerbInbox:
 		inbox, err := store.Inbox(sender)
 		if err != nil {
@@ -337,7 +354,7 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 			if err != nil {
 				return err
 			}
-			return d.awaitOutcome(conn, reader, waiter, result.ID, sender)
+			return d.awaitOutcome(conn, reader, waiter, result.ID, sender, false)
 		}
 		result, err := store.Inject(sender, req.Receiver, req.Text, ttl, req.Interrupt)
 		if err != nil {
@@ -349,7 +366,7 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 		if err != nil {
 			return err
 		}
-		return d.awaitOutcome(conn, reader, waiter, req.ID, sender)
+		return d.awaitOutcome(conn, reader, waiter, req.ID, sender, false)
 	case VerbInterrupt:
 		sent, err := store.Interrupt(sender, req.Receiver)
 		if err != nil {
@@ -381,11 +398,11 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 }
 
 // awaitOutcome answers a waiting verb: an interim response with the id at once, a progress response for each stall note of a waiting inject, and the outcome when the waiter is answered.
-// The interim and final responses carry the resolved sender's name.
+// The interim and final responses carry the resolved sender's name and whether the verb stopped the receiver's running turn.
 // A client that closes its connection, or a daemon that shuts down, ends the wait with no answer.
-func (d *daemon) awaitOutcome(conn net.Conn, reader *bufio.Reader, waiter *Waiter, id int64, sender Sender) error {
+func (d *daemon) awaitOutcome(conn net.Conn, reader *bufio.Reader, waiter *Waiter, id int64, sender Sender, interrupted bool) error {
 	defer waiter.Cancel()
-	if err := d.write(conn, Response{OK: true, Pending: true, ID: id, Sender: sender.Name}); err != nil {
+	if err := d.write(conn, Response{OK: true, Pending: true, ID: id, Sender: sender.Name, Interrupted: interrupted}); err != nil {
 		return nil
 	}
 	watcher := watchClose(conn, reader)
@@ -405,7 +422,7 @@ func (d *daemon) awaitOutcome(conn net.Conn, reader *bufio.Reader, waiter *Waite
 				}
 			default:
 			}
-			resp := Response{OK: true, ID: id, Sender: sender.Name, Outcome: outcome.Kind, Stall: outcome.Stall, StallAt: outcome.StallAt}
+			resp := Response{OK: true, ID: id, Sender: sender.Name, Interrupted: interrupted, Outcome: outcome.Kind, Stall: outcome.Stall, StallAt: outcome.StallAt}
 			if outcome.Kind == OutcomeReply || outcome.Kind == OutcomeReturned {
 				resp.Message = &outcome.Message
 			}

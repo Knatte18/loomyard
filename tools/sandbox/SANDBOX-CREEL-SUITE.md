@@ -5,6 +5,8 @@
 A structured test-loop for exercising `lym creel` against a **live tmux server and a logged-in claude** in the sandbox Hub's Fabric repo.
 Like `SANDBOX-REED-SUITE.md`, the value here is partly **visual**: mail reminders and injected lines typed into a strand's pane, a message's events in the log.
 Not an automated suite -- an agent drives it, an operator watches.
+Every strand the suite adds comes from `lym reed add`, has no provider and so keeps the pane path, which is why its typed notices and reminders hold here.
+A Claude session shuttle launches gets its mail through its hooks instead, which no scenario of this suite drives.
 
 ## Pre-conditions
 
@@ -110,7 +112,7 @@ Confine all free text to the `title`/`body` string fields so the JSON stays well
 
 **Watch:** Add a strand with `lym reed add --cmd claude` and let it reach its idle prompt, and add a shell strand with `lym reed add --cmd bash`.
 `lym creel post <strand name> "please say CARRIED"` from the operator's shell prints one JSON envelope with the message `id`, and the first creel verb of the hub starts its daemon by itself.
-The terminal is EXTERNAL, so at the agent's next idle moment `[creel] #<id> from <shortname>:EXTERNAL: please say CARRIED` appears typed in its pane, and the message is read with no `lym creel read`.
+The terminal is EXTERNAL, so at the agent's next idle moment `[creel] #<id> from "<shortname>:EXTERNAL": please say CARRIED` appears typed in its pane, and the message is read with no `lym creel read`.
 `lym creel post <strand name> "please say READ"` run in the shell strand's pane is agent mail: at the agent's next idle moment a one-line reminder naming the shell strand appears typed in its pane, and the reminder is not repeated while the agent works.
 Asking the agent to run `lym creel read` prints, as plain text, the message's id, its sender and the reply command on one line and its body below, and a second `lym creel read` prints `nothing unread`.
 `lym creel inject <strand name> "say INJECTED" --wait` types the line into the pane at idle and exits 0 with `"outcome":"injected"`.

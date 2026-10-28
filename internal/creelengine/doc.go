@@ -7,6 +7,8 @@
 // Creel decides what is delivered and when, shuttle knows the provider and its idle check and safe send, and reed knows the pane and does the keystrokes: creel → shuttle → reed → tmux.
 // The engine imports neither reed nor shuttle, and every keystroke goes through the Delivery seam; `PATTERN-pane-text-injection` pins that with an import scan.
 // Delivery lists the hub's strands, asks whether a strand is idle, asks whether a pause covers it, claims a covered strand into its pause for the interrupt, types one line into its pane, runs one command of a closed set in its session and sends the guarded interrupt.
+// Each strand it lists carries two fields the adapter fills: `CreelHooks`, the mark shuttle's launch set when the session runs creel's hook delivery, and `PaneMail`, true when the strand's engine has no hook delivery, as for a strand with no provider tag, so its posts keep the pane path.
+// Its idle answer also carries `NoTurn`, whether no turn is in progress whatever the input box holds, and `TurnEndedAt`, when the hook-derived reading behind it began, zero when the pane decided.
 // Its idle answer carries a stall reason when a not-idle pane waits on something the operator can act on, a pane too short for the input box, a draft in it or a pane showing no input box, and the engine journals each change of that reason as a `stalled` record.
 // `internal/creelcli` implements it over the hub's worktrees, reed's persisted state and status, the pause record, and a shuttle runner built per worktree at each call.
 // Shuttle's idle check, verified send and guarded interrupt work on a strand with no run record, such as a session added by hand with `lym reed add`.
@@ -72,16 +74,19 @@
 // # Mail
 //
 // post stores a message for a receiver and answers its id once the line is journaled.
-// A body is non-empty and at most 64 KiB; a longer message is a file the sender writes and the mail names.
+// A body is non-empty and its `[creel] #<id> from "<sender>": <body>` line at most 8 KiB, so one hook field carries every claimed line whole; a longer message is a file the sender writes and the mail names.
+// A reply to an EXTERNAL sender, which only a waiting `post --wait-reply` receives and no claim hands out, keeps a 64 KiB cap on its body.
+// A claim never hands out a message an older binary stored whose line is past 10,000 UTF-16 units, the cap Claude Code keeps of one hook field; it stays for `lym creel read` and raises no mail flag.
 //
+// The pane path types notices and reminders only into a pane-mail strand, one whose engine has no creel hook delivery; a strand whose engine delivers by hooks gets its mail there, and only queued injects are typed into its pane.
 // A notice is a message from any sender but an agent strand, a program or EXTERNAL, whose body is at most 4 KiB.
-// It is carried in full in its own line, typed when the receiver is idle, `[creel] #<id> from <sender>: <body>`, with every run of line breaks and other control characters turned into one space.
+// It is carried in full in its own line, typed when the receiver is idle, `[creel] #<id> from "<sender>": <body>`, with every run of line breaks and other control characters turned into one space.
 // The line opens with the id, so a sender that takes replies is answered with `lym creel post --reply <id>` and no read; creel does not know which senders answer.
 // The delivery reserves it before the line is typed, so no tool-boundary claim hands it out meanwhile, and types nothing when a claim reserved it first.
 // It is journaled read once the line was typed, landed or not; a busy send releases it unread for the next probe, and a crash between the typing and the read record types it once more.
 // Mail from an agent strand is never typed into a pane, so an agent's text cannot pose as an instruction in another agent's pane.
 //
-// Every other unread message, an agent strand's or one over the cap, is reminded by one line, typed when the receiver is idle: `[creel] N unread: #id from <sender>, … — run lym creel read`.
+// Every other unread message, an agent strand's or one over the cap, is reminded by one line, typed when the receiver is idle: `[creel] N unread: #id from "<sender>", … — run lym creel read`.
 // A reminder lists at most five messages and counts the rest, and carries no text a sender wrote, so it cannot pose as an instruction; under a hold it reads `lym creel read --from <owner>`.
 // An orch strand is reminded like any other strand.
 // A new unread set is reminded at once, and an unchanged set after a backoff that starts at five minutes and doubles to an hour.
@@ -110,10 +115,39 @@
 // Under a hold it hands out only the owner's mail, and while a pause covers the strand nothing.
 // One claim stops before the message whose line would take its lines, with the newlines joining them, past an 8 KiB budget, though it always hands out the first, and what it leaves stays unread with its flag standing.
 // Each message is one MessageLine, the line a notice is typed as.
+//
+// The Stop hook claims through the same verb with the Stop flag and the hook input's stop_hook_active, and blocks the turn end while it hands out mail.
+// The store counts, per strand, the consecutive Stop blocks of the strand's current turn: a Stop whose stop_hook_active is false resets the count to 0, a Stop at 6 blocks or more claims nothing so the turn end is recorded, a Stop that hands out mail adds one before the client writes it, and a tool-boundary claim that hands out mail resets the count to 0.
+// A strand with no count is at the cap, so a daemon that just started, a restart included, blocks no Stop until one of those resets; the count is never journaled.
+// The cap of 6 stays below the 8 Claude Code allows, so no override discards a block whose mail was journaled read.
 // Bound: an agent strand's text reaches the session in full here, where the pane path only reminds it; the line opens with the sender creel stamps, and only mail the strand already holds is handed over.
 //
 // Each message is delivered once, by whichever path reserves it first: the claim during a turn, or the pane path, which reserves a notice before it types it.
 // A turn that ends with no tool call is reached by the pane path.
+//
+// # Idle wake
+//
+// A hook strand, one marked `CreelHooks`, has an idle waiter: the `hook-wait` verb registers a wait for the calling strand, and only a strand may register one.
+// A newer waiter of the same strand ends the older, which is answered `superseded` before the new one registers, and a waiter lives exactly as long as its connection.
+// A dropped hook-wait is resumed by sending the same request again, up to MaxReconnects.
+//
+// A worker rings the waiter, answering it `ring`, when the strand's claimable messages are non-empty and differ from those of its last ring, a waiter is registered, and the delivery reads no turn in progress, whatever the input box holds, so a draft does not hold the ring.
+// The claimable messages are the unread ones a boundary claim would hand out if its byte budget were unlimited.
+// A ring carries no mail and claims nothing; the woken turn's first tool call or its Stop takes the mail.
+// It starts the strand's Stop count over and records the claimable ids and the clock time, in memory alone.
+// A woken turn records no prompt submit, so from a ring on the no-turn reading holds false until the reading carries a turn end recorded after the ring; a reading the pane decided has no turn end time and is taken as it reads.
+// The same claimable set is never rung twice, a restarted daemon has no marks and may ring a set once more, and a pause or a hold from another sender silences the ring as it does the pane path.
+// Bound: one ring costs one short model turn before the mail turn, and a ring that races a turn the operator starts delivers nothing and leaves one stale bell reminder.
+//
+// A user interrupt fires no Stop, so a hook strand can sit idle with mail no waiter reaches; the worker then types the fixed bell line into its pane, `[creel] Mail is waiting for you. End this turn now; creel hands the mail to you as the turn ends. Do not run lym creel read for it.`, which carries no sender text, so no post is typed.
+// A ring is answered by a claim of the strand that hands out at least one message, or by a probe that reads a turn in progress after the ring.
+// When the worker does not ring, it types the bell for a claimable set no bell was typed for, in one of two cases.
+// With no unanswered ring standing, it types it when no waiter is live and none has been for 5 seconds, counted from the later of the store's opening and the end of the strand's last waiter, so the bell stays out of the moment between a Stop and its waiter's connection.
+// With the last ring unanswered, the grace does not apply, since a ring ends the waiter it rings, and it types the bell once the ring has gone unanswered for 30 seconds.
+// The bell goes through the guarded send under every rule a typed line has: a draft, a too-short pane or a missing input box holds it, a send that did not land is recorded and never retyped for the set, and a busy send is tried again on the next probe.
+// A newer set may get its own bell, and an unchanged set never gets a second; a pause silences the bell as it does the ring, and under a hold from another sender only the owner's mail makes a set.
+// Only a strand marked `CreelHooks` gets the bell: a pane-mail strand has its notice and reminder, and a strand with neither field reads its mail with `lym creel read`.
+// Bound: one fixed line per claimable set; a waiter whose session died rings into nothing once and the window hands the set to the bell; a restarted daemon may type the bell once more for a set it already woke.
 //
 // # Inject and interrupt
 //
@@ -158,12 +192,17 @@
 // A strand a pause covers is claimed into that pause and then interrupted, so `lym tender resume` gives it its resume line.
 // An unreadable pause record, a pause lifted before the key and another sender's hold refuse it.
 //
+// post --interrupt stops the receiver's running turn and then posts, so a scope change that must not wait for the next tool call lands as the input of the next turn: the Stop block delivers it, through the bell when the turn's stop fired no waiter.
+// It is one request: it validates the post, then applies the privilege rule of interrupt, so a sender stops a turn only where interrupt already lets it, and refuses a receiver not marked `CreelHooks`, since no hook delivery or bell would hand the post to the stopped session.
+// The refusals of the interrupt come back worded for the post and say that nothing was interrupted or posted; a receiver with no running turn still gets the post and the answer says it was not interrupted.
+// A post that fails to store after the turn was stopped says so and names a post without `--interrupt` as the way forward.
+//
 // EXTERNAL senders, programs and orch strands may inject, interrupt and hold on any strand, an orch strand included; any other strand may do so on its own strand only.
 // A hold on an orch strand is the exception: only a program may hold one, and any other sender is refused with the way forward, mail with `lym creel post` or a cycle with `lym orch distill` or `lym orch refresh`.
 //
 // # Holds
 //
-// hold keeps a receiver's deliveries to the holder's own for up to an hour: only the owner's injects pass and only the owner's mail is reminded, and a mail still arrives.
+// hold keeps a receiver's deliveries to the holder's own for up to an hour: only the owner's injects pass and only the owner's mail is delivered, through the receiver's hooks or by its notice or reminder when it is a pane-mail strand, and a mail still arrives.
 // The same owner holding again renews it, another sender's hold on a held receiver is refused, and release ends the owner's hold even on a strand removed since.
 // A hold's start is a `held` log event and its release a `released` one;
 // a renewal is journaled as a `renewed` record that keeps the new expiry across a restart and is no log event, so a holder renewing every few seconds adds nothing to the log.
@@ -189,7 +228,7 @@
 //
 // # Orch strands
 //
-// Creel delivers into an orch strand as into any strand: its mail is reminded, and an inject or interrupt into it is typed.
+// Creel delivers into an orch strand as into any strand: an orch strand shuttle launched with creel's hooks gets its mail through them, or through the bell when it is idle, and an orch strand without hook delivery has its mail reminded; an inject or interrupt into it is typed.
 // A program's mailbox is never reminded; a program reads with `read --wait`.
 // A journal written by stage 1 may hold `withheld` records for orch mail; the fold keeps them in the log, acts on none, and the daemon reminds that mail from its first probe.
 //
@@ -206,7 +245,7 @@
 // The Scheduler runs one worker per receiver with a queued inject or unread mail, and at most one delivery is in flight per receiver.
 // A worker probes from a one-second base and doubles the wait to eight seconds after every probe that delivers nothing; a wake from the store or a probe that delivers returns it to the base, and the worker ends when nothing is pending.
 // While the receiver is live and unpaused, the wait is capped at its soonest queued inject's remaining TTL, never below one second, so an inject expires when its TTL runs out and not at the next backed-off probe.
-// A probe finds the strand, skips a dormant or paused one, and types the first queued inject, or under a hold the owner's; with none due it types the oldest notice no read or claim holds reserved, under a hold the owner's, and with none of those the reminder.
+// A probe finds the strand, skips a dormant or paused one, and types the first queued inject, or under a hold the owner's; with none due, and only for a pane-mail strand, it types the oldest notice no read or claim holds reserved, under a hold the owner's, and with none of those the reminder.
 // Each delivery asks the seam whether the strand is idle first, and every wait goes through the Clock, so a test never waits out an interval.
 // Every idle answer feeds the stall journal: a new non-empty reason is journaled, a repeat only stamps when it was read, and a reading with no reason, a probe error or a typed line clears it with no record.
 // The inject TTL keeps running while a strand is stalled, live and unpaused.

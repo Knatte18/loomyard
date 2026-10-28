@@ -1,6 +1,6 @@
 // Package creelfake fakes the two seams creelengine is told: Delivery, the hub's strands and their panes, and Clock.
 //
-// Delivery answers from scripted strands, idle and pause flags, stall reasons and errors, and records every send, command, interrupt and idle probe.
+// Delivery answers from scripted strands, idle and pause flags, a per-strand turn script beside them, stall reasons and errors, and records every send, command, interrupt and idle probe.
 // Its send and interrupt answers can also come from a function, which may block.
 // Clock advances only when a test says so and records every duration passed to After, in order.
 // Neither fake asserts anything or takes a testing.TB; a test reads the recorded values and asserts itself.
@@ -20,9 +20,17 @@ import (
 // No real process has it, so a live strand left at its default is neither an ancestor of the test process nor refused as unreadable.
 const DefaultPanePID = 999_999_999
 
-// LiveStrand returns a live strand with the given full name and the default pane pid.
+// LiveStrand returns a live pane-mail strand with the given full name and the default pane pid, so the scheduler types its notices and reminders into it.
 func LiveStrand(name string) creelengine.Strand {
-	return creelengine.Strand{Name: name, GUID: "guid-" + name, Worktree: "/hub/worktree", Live: true, PanePID: DefaultPanePID}
+	return creelengine.Strand{Name: name, GUID: "guid-" + name, Worktree: "/hub/worktree", Live: true, PanePID: DefaultPanePID, PaneMail: true}
+}
+
+// HookStrand returns a live strand with the given full name and the default pane pid whose session runs creel's hook delivery: CreelHooks set and PaneMail not.
+func HookStrand(name string) creelengine.Strand {
+	strand := LiveStrand(name)
+	strand.CreelHooks = true
+	strand.PaneMail = false
+	return strand
 }
 
 // DormantStrand returns a strand with the given full name that has no running pane.
@@ -44,6 +52,12 @@ type CommandCall struct {
 	Command creelengine.Command
 }
 
+// turnScript is the scripted turn reading of one strand.
+type turnScript struct {
+	running bool
+	endedAt time.Time
+}
+
 // Delivery is a creelengine.Delivery whose answers are scripted.
 // A strand is idle unless set otherwise and no pause covers it.
 type Delivery struct {
@@ -52,6 +66,7 @@ type Delivery struct {
 	idle    map[string]bool
 	paused  map[string]bool
 	stalls  map[string]creelengine.Stall
+	turns   map[string]turnScript
 
 	strandsErr, idleErr, pausedErr, sendErr, commandErr, interruptErr error
 	sendFn                                                            func(strand, text string) error
@@ -70,7 +85,7 @@ type Delivery struct {
 
 // NewDelivery returns a Delivery with no strands.
 func NewDelivery() *Delivery {
-	return &Delivery{idle: map[string]bool{}, paused: map[string]bool{}, stalls: map[string]creelengine.Stall{}, claimLive: map[string]func() (bool, error){}, idleCalls: map[string]int{}, pausedCalls: map[string]int{}}
+	return &Delivery{idle: map[string]bool{}, paused: map[string]bool{}, stalls: map[string]creelengine.Stall{}, turns: map[string]turnScript{}, claimLive: map[string]func() (bool, error){}, idleCalls: map[string]int{}, pausedCalls: map[string]int{}}
 }
 
 // SetStrands replaces the strand list; a strand with pane pid zero gets DefaultPanePID.
@@ -201,11 +216,29 @@ func (d *Delivery) Idle(strand creelengine.Strand) (creelengine.Idleness, error)
 	if d.idleErr != nil {
 		return creelengine.Idleness{}, d.idleErr
 	}
+	turn, turnScripted := d.turns[strand.Name]
 	if stall := d.stalls[strand.Name]; stall != "" {
-		return creelengine.Idleness{Stall: stall}, nil
+		idleness := creelengine.Idleness{Stall: stall}
+		if turnScripted {
+			idleness.NoTurn, idleness.TurnEndedAt = !turn.running, turn.endedAt
+		}
+		return idleness, nil
 	}
 	idle, scripted := d.idle[strand.Name]
-	return creelengine.Idleness{Idle: idle || !scripted}, nil
+	idleness := creelengine.Idleness{Idle: idle || !scripted}
+	idleness.NoTurn = idleness.Idle
+	if turnScripted {
+		idleness.NoTurn, idleness.TurnEndedAt = !turn.running, turn.endedAt
+	}
+	return idleness, nil
+}
+
+// SetTurn scripts the turn reading the named strand's Idle answers carry, a stall answer included:
+// NoTurn is !running and TurnEndedAt is endedAt.
+func (d *Delivery) SetTurn(name string, running bool, endedAt time.Time) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.turns[name] = turnScript{running: running, endedAt: endedAt}
 }
 
 // SetStall scripts the stall reason the strand's not-idle answer carries; an empty stall clears it.

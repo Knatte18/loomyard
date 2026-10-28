@@ -232,7 +232,7 @@ func (w *Watcher) recordOrchInEntry(entry pauserecord.Entry, st State, now time.
 }
 
 // queueResumeLine posts the resume line of the newest resumed entry that owns the orch and has not yet noticed it as creel mail to the orch strand, then marks it noticed under the record lock.
-// Creel reminds mail once the pause is lifted and mail has no TTL, so the line cannot expire while the orch stays busy.
+// The line reaches the orch through its hooks, or the bell when it is idle, once no pause or hold mutes it, and mail has no TTL, so the line cannot expire while the orch stays busy.
 // The line is posted before the mark, so a crash or a failed post between the two posts it again rather than never.
 func (w *Watcher) queueResumeLine(record pauserecord.Record, st State, now time.Time) error {
 	var resumed pauserecord.Entry

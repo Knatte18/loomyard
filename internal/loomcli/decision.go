@@ -90,6 +90,7 @@ const (
 	decisionWayPlanUnparsed    = `way forward: run "lym loom validate-plan" to show the plan's defect, and record the decision without --amends-plan until the plan parses`
 	decisionWayAmendsNoPlan    = `way forward: record the decision without --amends-plan; Plan-Write and Plan-Review read the decision record`
 	decisionWayAmendsDarn      = `way forward: record the decision without --amends-plan`
+	decisionWayNoticeTooLong   = "way forward: shorten the decision or rationale, put the detail in a file and name that file in the entry"
 )
 
 // errPlanUnparsed marks an approval read that failed because the plan does not parse, as opposed to one that failed reading a file.
@@ -222,6 +223,8 @@ func unknownEntryKey(data []byte) (int, string) {
 type decisionDeps struct {
 	// strandName is the full name reed exported to the calling session, empty for a shell reed did not spawn.
 	strandName string
+	// programName resolves the hub's full LOOM program name, '<shortname>:LOOM', the sender of a notice posted as the program.
+	programName func() (string, error)
 	// parent resolves the orch that receives the run's notices, the nearest live one up the beam chain, called only for a named caller.
 	parent func() (hubgeom.Parent, error)
 	// arbiterStrand reports whether name is the target run's own arbiter strand, called only for a named caller.
@@ -296,6 +299,19 @@ func decisionNoticeLine(recordPath string, added []discussionparser.AddedDecisio
 		decisionNoticeOpening, len(added), recordPath, strings.Join(parts, ", "))
 }
 
+// noticeFits reports whether line fits one creel hook delivery under every sender name a notice may be posted as: the calling strand, when named, and the hub's LOOM program.
+func noticeFits(deps decisionDeps, line string) bool {
+	if deps.strandName != "" && !creelengine.LineFits(deps.strandName, line) {
+		return false
+	}
+	programName, err := deps.programName()
+	if err != nil {
+		// The post as the program fails on the same geometry and is reported per strand.
+		return true
+	}
+	return creelengine.LineFits(programName, line)
+}
+
 // decisionNoticeInline reports whether the live run's strand named strand reads no decision record, so its notice carries every entry's text.
 func decisionNoticeInline(strand string) bool {
 	name, err := agentname.Parse(strand)
@@ -324,7 +340,21 @@ func notifyLiveRuns(deps decisionDeps, added []discussionparser.AddedDecision) (
 		if !decisionNoticeReceiver(strand, deps.strandName) {
 			continue
 		}
-		if err := deps.notify(strand, decisionNoticeLine(deps.recordPath, added, decisionNoticeInline(strand))); err != nil {
+		lines := []string{decisionNoticeLine(deps.recordPath, added, decisionNoticeInline(strand))}
+		if len(added) > 1 && !noticeFits(deps, lines[0]) {
+			// Each one-entry notice fits, which decisionVerb checked before it recorded anything.
+			lines = lines[:0]
+			for _, d := range added {
+				lines = append(lines, decisionNoticeLine(deps.recordPath, []discussionparser.AddedDecision{d}, true))
+			}
+		}
+		var err error
+		for _, line := range lines {
+			if err = deps.notify(strand, line); err != nil {
+				break
+			}
+		}
+		if err != nil {
 			logger.Warn("loom: decision add could not notify a live agent", "strand", strand, "error", err)
 			failures = append(failures, decisionNoticeError{Strand: strand, Error: err.Error()})
 			continue
@@ -633,6 +663,11 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 		titles = append(titles, strings.TrimSpace(entry.Title))
 		headings = append(headings, addedDecisionHeading(d))
 	}
+	for i, d := range added {
+		if !noticeFits(deps, decisionNoticeLine(deps.recordPath, []discussionparser.AddedDecision{d}, true)) {
+			return refuse("the decision notice for %q would pass the line creel delivers in one hook field; "+decisionWayNoticeTooLong, headings[i])
+		}
+	}
 	var amendment *amendmentCall
 	if input.amendsPlan {
 		amendment, err = beginAmendment(deps, titles)
@@ -749,7 +784,14 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 	supportLogPath := loomengine.DiscussionSupportLog(target)
 	s.deps = decisionDeps{
 		strandName: os.Getenv(agentname.StrandNameEnv),
-		parent:     func() (hubgeom.Parent, error) { return orchcli.NearestLiveParent(target) },
+		programName: func() (string, error) {
+			geometry, err := hubgeom.ReedGeometry(target)
+			if err != nil {
+				return "", err
+			}
+			return agentname.FormatProgram(geometry.NameShortname, loomProgram)
+		},
+		parent: func() (hubgeom.Parent, error) { return orchcli.NearestLiveParent(target) },
 		arbiterStrand: func(name string) bool {
 			geometry, err := hubgeom.ReedGeometry(target)
 			if err != nil {

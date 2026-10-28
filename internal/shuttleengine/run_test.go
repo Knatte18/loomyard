@@ -207,7 +207,7 @@ func TestRunner_StartGated_CarriesNoDoneWhen(t *testing.T) {
 //testtiming:keep pins Start's exact AddSpec wiring, its single ready probe, the persisted Started, running Outcome and fork authorization, and RunDir naming the created directory
 func TestRunner_Start_HappyPath(t *testing.T) {
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
-	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "launch-cmd", ResumeCmd: "resume-cmd", SessionID: "session-1"}}
+	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "launch-cmd", ResumeCmd: "resume-cmd", SessionID: "session-1", CreelHooks: true}}
 	fx := newFixture(t, reed, supportingEngine{fakeEngine: engine, supported: []Requirement{RequirementForks}}, withConfig(fastConfig))
 	runner, anchorPath := fx.Runner, fx.Anchor
 	readyStart(reed, engine)
@@ -238,15 +238,16 @@ func TestRunner_Start_HappyPath(t *testing.T) {
 		}
 		got := reed.AddStrandCalls[0]
 		want := reedengine.AddSpec{
-			Role:      "reviewer",
-			Segment:   "review",
-			Provider:  "fake",
-			Parent:    "parent-guid",
-			Cmd:       "launch-cmd",
-			ResumeCmd: "resume-cmd",
-			SessionID: "session-1",
-			Display:   render.Display{Anchor: render.AnchorOwnWindow},
-			DoneWhen:  []string{filepath.Join(fx.Worktree, "out.md")},
+			Role:       "reviewer",
+			Segment:    "review",
+			Provider:   "fake",
+			CreelHooks: true,
+			Parent:     "parent-guid",
+			Cmd:        "launch-cmd",
+			ResumeCmd:  "resume-cmd",
+			SessionID:  "session-1",
+			Display:    render.Display{Anchor: render.AnchorOwnWindow},
+			DoneWhen:   []string{filepath.Join(fx.Worktree, "out.md")},
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("AddStrand spec = %+v, want %+v", got, want)

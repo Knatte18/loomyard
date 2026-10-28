@@ -36,7 +36,10 @@ This list holds every `lym` command you may use, and `lym <command> --help` give
    To give up a run for good, end it with `lym batten cancel <slug>` from the prime when the operator asks, and add `--remove` to discard its pair.
    A kept pair needs `lym batten cancel <slug> --remove` before the slug runs again.
 4. Keep no polling shell and start no Monitor for a run.
-   The wake-up is a line creel types: mail from a program or EXTERNAL is carried in full in the line itself, `[creel] #<id> from <sender>: <text>`, is already read and is answered with `lym creel post --reply <id>` when it asks for an answer, while a reminder that you have unread agent mail names the command that reads it, `lym creel read --from <owner>` under a hold and `lym creel read` otherwise.
+   The wake-up is creel mail delivered by your session's hooks: a `[creel] #<id> from "<sender>": <text>` line arrives in full under a tool result or as your turn ends, is already read, and is answered with `lym creel post --reply <id> "<text>"` when it asks for an answer.
+   An idle orch is woken first by the fixed line `[creel] Mail is waiting for you.`; end that turn, after which the mail shows.
+   Mail from `EXTERNAL` is answered in your own reply text, since a reply to it reaches only a waiting `lym creel post --wait-reply`.
+   `lym creel read` is needed only for mail the hooks could not hand over, which `lym creel inbox` shows.
    Each notice line or mail body whose text starts with `[batten notice]` is a notice, handled as Notices says.
 5. Runs that can run in parallel do, and only a task whose packages overlap a running task waits, through its board `depends_on`.
 

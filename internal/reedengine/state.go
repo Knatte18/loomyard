@@ -41,6 +41,9 @@ type Strand struct {
 	// Provider is the opaque tag its spawner set; reed stores it and keys the session namers by it, never reading what it means.
 	// A strand recorded before the field existed, or added outside shuttle, decodes with none.
 	Provider string `json:"provider,omitempty"`
+	// CreelHooks is the opaque mark its spawner sets when the strand's session runs creel's hook delivery; reed stores it and never reads what it means.
+	// A strand recorded before the field existed, or added outside shuttle, decodes with none.
+	CreelHooks bool `json:"creelHooks,omitempty"`
 	// LymBin is the absolute `lym` path the strand's pane prelude exported as LYM_BIN at its latest launch, empty when no prelude was composed.
 	// A strand recorded before the field existed decodes with none.
 	LymBin string `json:"lymBin,omitempty"`

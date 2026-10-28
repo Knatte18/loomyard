@@ -227,6 +227,7 @@
 // The tick resets a drifted pane title itself and repairs a drifted provider session name through the SessionNamer seam, which the provider package implements and `internal/shuttleengines` fills.
 // A strand carries an opaque provider tag its spawner sets (Strand.Provider, JSON `provider`, omitted when empty); reed stores it and never interprets it.
 // The watchdog is handed a map from tag to SessionNamer and repairs each strand's session name through the namer for its tag, so a strand whose tag has no namer gets its pane title repaired only.
+// A strand also carries the opaque `CreelHooks` mark its spawner sets (Strand.CreelHooks, JSON `creelHooks`, omitted when false); reed stores it, keeps it through a resume and never interprets it.
 // The session-name repair types the rename only into an idle pane with no active operator, and does it with one paste-submit under the op lock it already holds; an active operator defers the repair to the next tick, and an unreadable client list does not hold it.
 // The name-repair tick backs off: its wait starts at ten seconds, doubles through NextWakeCadence up to a minute across passes that repair nothing, and returns to ten seconds after a pass that repaired a title or a session name.
 // NextWakeCadence is the one backoff rule the daemon's loops share.

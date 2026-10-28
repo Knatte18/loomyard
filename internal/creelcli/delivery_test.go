@@ -42,6 +42,8 @@ type stubOps struct {
 	tooShort     bool
 	draft        bool
 	noInputBox   bool
+	noTurn       bool
+	turnEndedAt  time.Time
 	sendErr      error
 	commandErr   error
 	interruptErr error
@@ -60,7 +62,7 @@ func (s *stubOps) Status() (reedengine.StatusResult, error) {
 }
 
 func (s *stubOps) SessionIdle(string) (shuttleengine.IdleProbe, error) {
-	return shuttleengine.IdleProbe{Idle: s.idle, TooShort: s.tooShort, Draft: s.draft, NoInputBox: s.noInputBox}, nil
+	return shuttleengine.IdleProbe{Idle: s.idle, TooShort: s.tooShort, Draft: s.draft, NoInputBox: s.noInputBox, NoTurn: s.noTurn, TurnEndedAt: s.turnEndedAt}, nil
 }
 
 func (s *stubOps) Send(string, string) error { return s.sendErr }
@@ -213,6 +215,22 @@ func seedReedState(t *testing.T, path string, strands map[string]string) {
 	}
 }
 
+// seedReedStrands persists whole reed strands, provider and creel-hooks mark included, in the reed state of the worktree at path.
+func seedReedStrands(t *testing.T, path string, strands []reedengine.Strand) {
+	t.Helper()
+	location, err := lymcwd.ResolveWorktree(path)
+	if err != nil {
+		t.Fatalf("ResolveWorktree(%q) = %v", path, err)
+	}
+	dotLym := filepath.Join(location.AnchorPath(), lymdirs.DotLymDirName)
+	if err := os.MkdirAll(dotLym, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v", dotLym, err)
+	}
+	if err := reedengine.SaveState(dotLym, &reedengine.ReedState{Strands: strands}); err != nil {
+		t.Fatalf("SaveState(%q) = %v", dotLym, err)
+	}
+}
+
 // pauseRecordPath is where the hub's pause record lives, told through the worktree at path.
 func pauseRecordPath(t *testing.T, path string) string {
 	t.Helper()
@@ -250,13 +268,44 @@ func TestHubDelivery(t *testing.T) {
 			t.Fatalf("Strands() = %v", err)
 		}
 		want := []creelengine.Strand{
-			{Name: "ly:orch", GUID: "guid-orch", Worktree: prime, Live: true, PanePID: 11},
-			{Name: "ly:pair:dormant", GUID: "guid-dormant", Worktree: pair, Slug: pairSlug},
-			{Name: "ly:pair:impl", GUID: "guid-impl", Worktree: pair, Slug: pairSlug, Live: true, PanePID: 22},
+			{Name: "ly:orch", GUID: "guid-orch", Worktree: prime, Live: true, PanePID: 11, PaneMail: true},
+			{Name: "ly:pair:dormant", GUID: "guid-dormant", Worktree: pair, Slug: pairSlug, PaneMail: true},
+			{Name: "ly:pair:impl", GUID: "guid-impl", Worktree: pair, Slug: pairSlug, Live: true, PanePID: 22, PaneMail: true},
 		}
 		sortStrands(got)
 		if diff := cmp.Diff(want, got); diff != "" {
 			t.Errorf("Strands() mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("Strands marks which strands keep the pane path and which have hook delivery", func(t *testing.T) {
+		t.Parallel()
+		hub, prime, _ := newHub(t)
+		seedReedStrands(t, prime, []reedengine.Strand{
+			{Name: "ly:hooked", GUID: "guid-hooked", Provider: "claude", CreelHooks: true},
+			{Name: "ly:codex", GUID: "guid-codex", Provider: "codex"},
+			{Name: "ly:hand", GUID: "guid-hand"},
+			{Name: "ly:unmarked", GUID: "guid-unmarked", Provider: "claude"},
+		})
+		delivery := newStubbedDelivery(hub, map[string]*stubOps{prime: {}})
+
+		got, err := delivery.Strands()
+		if err != nil {
+			t.Fatalf("Strands() = %v", err)
+		}
+		type fields struct{ creelHooks, paneMail bool }
+		gotFields := map[string]fields{}
+		for _, strand := range got {
+			gotFields[strand.Name] = fields{strand.CreelHooks, strand.PaneMail}
+		}
+		want := map[string]fields{
+			"ly:hooked":   {creelHooks: true},
+			"ly:codex":    {paneMail: true},
+			"ly:hand":     {paneMail: true},
+			"ly:unmarked": {},
+		}
+		if diff := cmp.Diff(want, gotFields, cmp.AllowUnexported(fields{})); diff != "" {
+			t.Errorf("Strands() creel fields mismatch (-want +got):\n%s", diff)
 		}
 	})
 
@@ -422,6 +471,7 @@ func TestHubDelivery(t *testing.T) {
 	t.Run("Idle reports the stub's probe", func(t *testing.T) {
 		t.Parallel()
 		hub, prime, _ := newHub(t)
+		turnEnd := time.Date(2026, 10, 28, 9, 0, 0, 0, time.UTC)
 		strand := creelengine.Strand{Name: "ly:orch", GUID: "guid-orch", Worktree: prime}
 		tests := []struct {
 			name string
@@ -436,6 +486,8 @@ func TestHubDelivery(t *testing.T) {
 			{"too short and no input box", stubOps{tooShort: true, noInputBox: true}, creelengine.Idleness{Stall: creelengine.StallTooShort}},
 			{"draft and no input box", stubOps{draft: true, noInputBox: true}, creelengine.Idleness{Stall: creelengine.StallDraft}},
 			{"not idle with no reason", stubOps{}, creelengine.Idleness{}},
+			{"idle with a turn end", stubOps{idle: true, noTurn: true, turnEndedAt: turnEnd}, creelengine.Idleness{Idle: true, NoTurn: true, TurnEndedAt: turnEnd}},
+			{"draft held with a turn end", stubOps{draft: true, noTurn: true, turnEndedAt: turnEnd}, creelengine.Idleness{Stall: creelengine.StallDraft, NoTurn: true, TurnEndedAt: turnEnd}},
 		}
 		for _, tt := range tests {
 			stub := tt.stub
@@ -703,7 +755,7 @@ func TestHubDelivery_SkipsAWorktreeThatNoLongerResolves(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Strands() call %d = %v; want the skip to leave the call whole", call, err)
 				}
-				want := []creelengine.Strand{{Name: "ly:orch", GUID: "guid-orch", Worktree: prime, Live: true, PanePID: 11}}
+				want := []creelengine.Strand{{Name: "ly:orch", GUID: "guid-orch", Worktree: prime, Live: true, PanePID: 11, PaneMail: true}}
 				if diff := cmp.Diff(want, got); diff != "" {
 					t.Errorf("Strands() call %d mismatch (-want +got):\n%s", call, diff)
 				}

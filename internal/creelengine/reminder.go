@@ -33,7 +33,7 @@ func isNotice(msg *Message) bool {
 // its id, so the receiver can reply without a read, its sender and its body, with every run of control characters and line breaks turned into one space.
 func MessageLine(msg Message) string {
 	body := strings.Join(strings.FieldsFunc(msg.Body, unicode.IsControl), " ")
-	return fmt.Sprintf("[creel] #%d from %s: %s", msg.ID, msg.From, strings.TrimSpace(body))
+	return fmt.Sprintf("[creel] #%d from \"%s\": %s", msg.ID, msg.From, strings.TrimSpace(body))
 }
 
 // reminderBackoff returns the wait after the reminder at the given step of an unchanged unread set: 5 minutes, doubling to the 1-hour ceiling.
@@ -63,7 +63,7 @@ func composeReminder(unread []Message, holdOwner string) string {
 		if i == maxReminderMessages {
 			break
 		}
-		listed = append(listed, fmt.Sprintf("#%d from %s", msg.ID, msg.From))
+		listed = append(listed, fmt.Sprintf("#%d from \"%s\"", msg.ID, msg.From))
 	}
 	if rest := len(unread) - len(listed); rest > 0 {
 		listed = append(listed, fmt.Sprintf("+%d more", rest))

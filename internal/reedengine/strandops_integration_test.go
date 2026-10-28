@@ -131,7 +131,7 @@ func TestStrandOps_RealTmux(t *testing.T) {
 		if err != nil {
 			t.Fatalf("AddStrand(finished) = %v, want nil", err)
 		}
-		unfinished, err := e.AddStrand(AddSpec{NameOverride: "unfinished", Provider: "claude", Display: display, DoneWhen: []string{filepath.Join(t.TempDir(), "never-written")}})
+		unfinished, err := e.AddStrand(AddSpec{NameOverride: "unfinished", Provider: "claude", CreelHooks: true, Display: display, DoneWhen: []string{filepath.Join(t.TempDir(), "never-written")}})
 		if err != nil {
 			t.Fatalf("AddStrand(unfinished) = %v, want nil", err)
 		}
@@ -161,6 +161,9 @@ func TestStrandOps_RealTmux(t *testing.T) {
 		}
 		if relaunched.Provider != "claude" {
 			t.Errorf("relaunched strand Provider = %q, want claude kept", relaunched.Provider)
+		}
+		if !relaunched.CreelHooks {
+			t.Errorf("relaunched strand CreelHooks = false, want true kept")
 		}
 	})
 }

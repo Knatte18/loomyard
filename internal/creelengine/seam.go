@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 )
@@ -24,6 +25,10 @@ type Strand struct {
 	Live bool
 	// PanePID is the process id of the strand's pane process, 0 when unknown.
 	PanePID int
+	// CreelHooks reports whether shuttle launched the strand's session with creel's hook delivery, so the daemon may ring its idle waiter and ring its bell.
+	CreelHooks bool
+	// PaneMail reports whether the strand's engine has no creel hook delivery, so its posts keep the pane path: the notice line and the reminder.
+	PaneMail bool
 }
 
 // Delivery is the seam through which the engine learns the hub's strands and reaches their panes.
@@ -67,6 +72,10 @@ type Idleness struct {
 	// Stall names why a not-idle strand cannot take typed input.
 	// It is empty on an idle answer and on any not-idle reading that names no reason, such as a running turn or an active operator.
 	Stall Stall
+	// NoTurn reports whether no turn is in progress whatever the strand's input box holds, so a draft leaves it true while Idle is false.
+	NoTurn bool
+	// TurnEndedAt is when the hook-derived reading that decided NoTurn began; zero when the pane decided or a turn is in progress.
+	TurnEndedAt time.Time
 }
 
 // Stall is the reason a delivery to a live strand waits on something the operator can act on.

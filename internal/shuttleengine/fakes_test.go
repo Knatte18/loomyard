@@ -1167,6 +1167,20 @@ func (e *styledReadinessEngine) PlainBoxCapture(styled string) string {
 	return blankMarkedSpans(styled)
 }
 
+// guardedReadinessEngine is a readinessEngine plus the InterruptGuard capability: a capture shows a running turn when it contains "RUNNING".
+// A row on it has both the input box and the running-turn check that Claude's pane probe uses.
+type guardedReadinessEngine struct {
+	*readinessEngine
+}
+
+func (e *guardedReadinessEngine) RunningTurn(capture string) bool {
+	return strings.Contains(capture, "RUNNING")
+}
+
+func (e *guardedReadinessEngine) InterruptSettle() time.Duration { return 0 }
+
+var _ InterruptGuard = (*guardedReadinessEngine)(nil)
+
 // restoreReed is a fakeReed whose pane is stateful across an interrupt, like Claude's: it draws a running turn and a box before the key, and after an Escape a box holding the restored prompt that C-u and BSpace then delete.
 // Each capture first runs the embedded fakeReed's capture, so CaptureErrQueue fails a scripted capture, counted over every capture of the call, and each key is recorded through the embedded fakeReed, whose SendKeyErrQueue fails a scripted key.
 type restoreReed struct {

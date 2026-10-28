@@ -219,9 +219,10 @@ func envFileContentFor(goos string) string {
 // and everything else on the line is identical, so the run's own settings file routes the adopted session's hooks.
 // It passes pointer as the first message when non-empty, and none otherwise (a launch that loads skills passes the skill-load message there and sends the prompt pointer afterwards),
 // quotes all interpolated values, and appends --effort/--model only when non-empty.
-// When notice is non-empty it rides the line as --append-system-prompt,
-// so the session is told which tools are denied;
-// an empty notice leaves the line unchanged.
+// When appendPromptPath is non-empty it rides the line as --append-system-prompt-file,
+// so the session is told which tools are denied and how to trust and answer creel mail;
+// the text rides a file because a quote in it would be dropped by an argument passed through pwsh's Legacy mode.
+// An empty path leaves the line unchanged.
 // It names the session with --name, passed as a reference to LYM_STRAND_NAME rather than a value:
 // shuttle builds this line before reed forms the strand's name,
 // so the pane shell expands the variable from the export reed's launch script makes.
@@ -230,7 +231,7 @@ func envFileContentFor(goos string) string {
 // It assigns promptCacheTTL, the non-empty value Prepare validated, to promptCacheTTLEnvKey.
 // It assigns bashMaxTimeoutMS to bashMaxTimeoutEnvKey, so the line carries the Bash timeout ceiling.
 // It then wraps the finished line in the envFileKey assignment naming envFilePath, so that assignment leads the line.
-func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model, effort, notice, envFilePath, promptCacheTTL string, resume, skipPermissions, forkSubagents bool) string {
+func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model, effort, appendPromptPath, envFilePath, promptCacheTTL string, resume, skipPermissions, forkSubagents bool) string {
 	sessionFlag := " --session-id "
 	if resume {
 		sessionFlag = " --resume "
@@ -250,8 +251,8 @@ func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model
 	if skipPermissions {
 		cmd += " --dangerously-skip-permissions"
 	}
-	if notice != "" {
-		cmd += " --append-system-prompt " + sh.Quote(notice)
+	if appendPromptPath != "" {
+		cmd += " --append-system-prompt-file " + sh.Quote(appendPromptPath)
 	}
 	if forkSubagents {
 		cmd = sh.WithEnv(forkSubagentEnvKey, "1", cmd)
@@ -333,15 +334,15 @@ var _ shuttleengine.SessionOpener = (*Claude)(nil)
 // Dropping them silently downgraded a resumed run: an autonomous run came back permission-gated and
 // stalled at its first tool dialog with no operator present, which shuttle can only classify as a
 // timeout, and it came back on the provider default model rather than the one the caller pinned.
-// It carries the notice too, when non-empty: Claude Code re-renders the system prompt from the current flags after a compaction and where recording is not enabled,
-// so a resume line without --append-system-prompt would lose the notice.
+// It carries the append-system-prompt file too, when its path is non-empty: Claude Code re-renders the system prompt from the current flags after a compaction and where recording is not enabled,
+// so a resume line without --append-system-prompt-file would lose the deny notice and the creel trust sentence.
 // It carries --name as a reference to LYM_STRAND_NAME, not a value, for the same reason buildLaunchCmd does,
 // and because reed replays this line on every resume, a line without it would bring Claude back unnamed.
 // When forkSubagents is true, the line is wrapped to keep the fork-subagent capability.
 // It carries the promptCacheTTLEnvKey assignment too: the resumed claude inherits nothing from the launch, so without it the session would fall back to Claude Code's default TTL.
 // It carries the bashMaxTimeoutEnvKey assignment too, for the same reason.
 // It carries the envFileKey assignment naming envFilePath, leading the line, so a resumed session keeps the default stdin of its Bash tool.
-func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort, notice, envFilePath, promptCacheTTL string, skipPermissions, forkSubagents bool) string {
+func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort, appendPromptPath, envFilePath, promptCacheTTL string, skipPermissions, forkSubagents bool) string {
 	cmd := sh.Invoke(bin) + " --resume " + sh.Quote(sessionID) + " --settings " + sh.Quote(settingsPath) +
 		" --name " + sh.EnvRef(agentname.StrandNameEnv)
 	if model != "" {
@@ -353,8 +354,8 @@ func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort,
 	if skipPermissions {
 		cmd += " --dangerously-skip-permissions"
 	}
-	if notice != "" {
-		cmd += " --append-system-prompt " + sh.Quote(notice)
+	if appendPromptPath != "" {
+		cmd += " --append-system-prompt-file " + sh.Quote(appendPromptPath)
 	}
 	if forkSubagents {
 		cmd = sh.WithEnv(forkSubagentEnvKey, "1", cmd)

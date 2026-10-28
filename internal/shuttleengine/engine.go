@@ -46,6 +46,8 @@ type Launch struct {
 	PromptLine string
 	// RecordsSessionStarts declares that the launch writes a session-start line into the run's events file when the provider's session begins, so startup waits for that line beside the ready pane.
 	RecordsSessionStarts bool
+	// CreelHooks declares that the launch's settings carry creel's hook delivery (the tool-boundary claim, the turn-end Stop delivery and the idle waiter), so creel may ring the strand's bell.
+	CreelHooks bool
 }
 
 // PaneInput is one step of provider-specific key choreography sent to a pane via reed's send-keys.
@@ -213,11 +215,36 @@ type ResumeContextRenderer interface {
 	ResumeContext(text string) ([]byte, error)
 }
 
-// ToolBoundaryContextRenderer is an optional capability beside Engine: the provider's rendering of text as the output of the hook it runs after each tool call, which adds the text to the session's context.
-// An engine without it has no tool-boundary hook to render for.
+// HookEvent names a provider hook event creel's delivery acts on.
+type HookEvent string
+
+const (
+	// HookEventToolBoundary is the hook the provider runs after each tool call.
+	HookEventToolBoundary HookEvent = "tool-boundary"
+	// HookEventStop is the hook the provider runs when a turn ends.
+	HookEventStop HookEvent = "stop"
+)
+
+// HookInput is what a creel hook needs from the provider's hook input.
+type HookInput struct {
+	// Event is the hook event the input belongs to, empty for an event creel does not act on.
+	Event HookEvent
+	// Subagent is true when the call comes from a subagent or fork rather than the session's main thread.
+	Subagent bool
+	// StopHookActive is true when the turn-end input says the session already continues because of an earlier Stop block.
+	StopHookActive bool
+}
+
+// ToolBoundaryContextRenderer is an optional capability beside Engine: the provider's side of creel's hook delivery.
+// It parses a hook's input, renders the block that hands text to the session and shows it to the operator, and renders what an idle waiter hook writes to wake the session.
+// An engine without it delivers creel mail by no hook.
 type ToolBoundaryContextRenderer interface {
-	// ToolBoundaryContext renders text as the provider's after-tool-call hook output.
-	ToolBoundaryContext(text string) ([]byte, error)
+	// HookInput parses the provider's hook input payload, refusing a payload that is not a hook input.
+	HookInput(payload []byte) (HookInput, error)
+	// BoundaryBlock renders text as the provider's hook output that hands it to the session and shows it to the operator, the same for both events.
+	BoundaryBlock(text string) ([]byte, error)
+	// RewakeOutput returns what an idle waiter hook writes to standard error and exits with to wake the session with text.
+	RewakeOutput(text string) (stderr []byte, exitCode int)
 }
 
 // InstructionFileLister is an optional capability beside Engine: the names of the files the provider loads as project instructions.
@@ -395,6 +422,11 @@ type IdleProbe struct {
 	// NoInputBox is true when Idle is false and the pane shows no input box to an engine that reads one, as when the pane runs no agent or a dialog covers the box.
 	// It is always false when Idle is true, when the pane is too short to draw a box and for an engine that reads no box.
 	NoInputBox bool
+	// NoTurn is true when no turn is in progress whatever the input box holds, so a draft or a missing box leaves it true while Idle stays false.
+	// On the pane probe it is the pane's idle answer or, for an engine with InterruptGuard, true when the input box was found, the pane is not too short and no running turn shows.
+	NoTurn bool
+	// TurnEndedAt is when the hook-derived reading that decided NoTurn began; zero when the pane probe decided or a turn is in progress.
+	TurnEndedAt time.Time
 }
 
 // SessionCycler is an optional capability beside Engine: the provider operations a caller needs to cycle a live session's context (read its usage, probe whether it is idle, clear it, compact it).

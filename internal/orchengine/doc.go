@@ -383,7 +383,7 @@
 //     It is released at every return to idle.
 //     A restarted watcher in a non-idle phase takes the hold again before anything else.
 //     Bound: a watcher that dies mid-cycle leaves a hold that lapses within `cycleHoldDuration`;
-//     a live cycle keeps the orch's other mail unreminded until it returns to idle, which the phase timeouts bound everywhere but the clearing phase, where `lym orch status` shows the stall.
+//     a live cycle keeps the orch's other mail from reaching it, through its hooks or the bell, until it returns to idle, which the phase timeouts bound everywhere but the clearing phase, where `lym orch status` shows the stall.
 //   - A failed creel call, an unreachable daemon, a refusal or the sender-resolution refusal, goes through `creelFailed`:
 //     it is logged once per change of error and recorded in State.Stuck with State.StuckByCreel set, and the tick returns no error, so a creel outage holds the cycle and never ends the watcher.
 //     A failed release at a return to idle does not keep the phase: the watcher returns to idle, and the hold it could not release lapses.
@@ -403,7 +403,7 @@
 //     A failing retry rewrites State.Stuck with the failure and leaves State.StuckByCreel unset, so no successful creel call clears it and a restarted watcher keeps it while the field is set.
 //     The tick in which both succeed clears State.FreshLaunchFailure and State.Stuck in one save and hands a withdrawn resume line to `ClearResumeNoticed`.
 //     A `ClearResumeNoticed` failure counts as a retry failure; the removed resume line is kept in State.ResumeLineWithdrawn until the clear succeeds, because a later withdraw finds nothing.
-//     Bound: while the second withdraw has failed and no retry has succeeded, an old watcher's inject queued between the two rounds, a `/clear` or `/compact` included, is typed on the relaunched session's first idle probe within its ten-minute time to live, and old mail it posted is reminded;
+//     Bound: while the second withdraw has failed and no retry has succeeded, an old watcher's inject queued between the two rounds, a `/clear` or `/compact` included, is typed on the relaunched session's first idle probe within its ten-minute time to live, and old mail it posted reaches the relaunched orch through its hooks;
 //     a release that failed leaves the old watcher's hold on the relaunched orch until a retry succeeds or the hold lapses.
 //
 // # Hub pause
@@ -420,7 +420,7 @@
 //     A later tick at least the provider's settle time after it re-probes and, when the orch still reads busy, sends the guarded second and last key.
 //     A guarded refusal reads as an idle orch, with one Info line; an open rewind picker gets one Warn line and no further key.
 //     An entry resumed before that point or during the settle, one a live entry already owns the orch in, and a watcher restarted during the settle send no key.
-//   - After the entry is resumed, an orch it owns gets the resume line once, posted as creel mail to the orch strand's name, which creel reminds once the pause is lifted, then marked noticed in the record.
+//   - After the entry is resumed, an orch it owns gets the resume line once, posted as creel mail to the orch strand's name, which reaches the orch through its hooks, or the bell when it is idle, once no pause or hold mutes it, then marked noticed in the record.
 //     Mail has no TTL, so the line cannot expire while the orch stays busy, and the mark follows the post, so a failed post is posted again on the next tick.
 //     An orch the entry does not own, such as an idle one or the caller, gets none.
 //   - An unreadable record holds nothing, with one Warn per change of error.

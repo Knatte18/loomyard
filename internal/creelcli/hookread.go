@@ -1,9 +1,10 @@
-// hookread.go implements the hidden `hook-read` verb, which a strand's tool-boundary hook runs to take the strand's unread mail into its session.
+// hookread.go implements the hidden `hook-read` verb, which a strand's tool-boundary and Stop hooks run to take the strand's unread mail into its session.
 
 package creelcli
 
 import (
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -11,36 +12,48 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/creelengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 )
 
-// hookReadVerb is the hidden verb's name, which the Claude engine's PostToolUse hook spells.
+// hookReadVerb is the hidden verb's name, which the Claude engine's hooks spell.
 const hookReadVerb = "hook-read"
 
 // hookReadTimeout bounds the verb's call to the daemon, since the provider holds the session at the tool boundary until its hook ends.
 const hookReadTimeout = 10 * time.Second
 
-// hookReadCmd builds the `hook-read` subcommand, hidden because only a strand's tool-boundary hook runs it.
-// Its standard output is the named engine's tool-boundary context JSON, or nothing when no mail was claimed;
-// a refusal goes to standard error with exit 1 and leaves standard output empty, since the provider parses the hook's standard output as its JSON.
+// hookReadCmd builds the `hook-read` subcommand, hidden because only a strand's hooks run it.
+// Its standard output is the named engine's block JSON, or nothing when no mail was claimed;
+// a refusal goes to standard error and leaves standard output empty, since the provider parses the hook's standard output as its JSON.
+// The exit code is 0 after a tool-boundary call that raised no error and, on a Stop, exactly when a block was written.
 func hookReadCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         hookReadVerb + " <engine>",
-		Short:       "print the caller strand's unread mail as the engine's tool-boundary hook context and mark it read (run by the hook)",
+		Short:       "print the caller strand's unread mail as the engine's visible block and mark it read (run by the hook)",
 		Hidden:      true,
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
-		Long: `hook-read claims the caller strand's unread mail, oldest first, and prints it as
-the named engine's tool-boundary hook output, one "[creel] #<id> from <sender>: <body>"
-line per message, which the provider adds to the session's context after the tool call.
-The messages are marked read once the output is written. With nothing to claim it
-prints nothing. A hold limits it to the holder's mail, a pause to none.`,
+		Long: `hook-read reads the engine's hook input from standard input and, for the
+after-tool-call or the turn-end event of the session's main thread, claims the
+caller strand's unread mail, oldest first, and prints it as the named engine's
+block, one [creel] #<id> from "<sender>": <body> line per message, which the
+provider hands to the session and shows to the operator. The messages are
+marked read once the block is written. With nothing to claim it prints nothing.
+A hold limits it to the holder's mail, a pause to none.
+
+A call from a subagent or fork claims and prints nothing, so the mail stays for
+the main thread. After a tool call the exit code is 0. On a turn end it is 0
+exactly when a block was written and 1 otherwise, which the merged turn-end
+command reads as "record the turn end". An input of any other event is refused
+on standard error with exit 1.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
-			if err := hookRead(cmd, args[0]); err != nil {
-				clihelp.SetExit(cmd.Context(), 1)
+			event, wrote, err := hookRead(cmd, args[0])
+			code, printErr := hookReadExit(event, wrote, err)
+			clihelp.SetExit(cmd.Context(), code)
+			if printErr {
 				msg := err.Error()
 				if !strings.HasPrefix(msg, "creel: ") {
 					msg = "creel: " + msg
@@ -52,31 +65,65 @@ prints nothing. A hold limits it to the holder's mail, a pause to none.`,
 	}
 }
 
-// hookRead claims the caller's mail through the daemon and writes it as engine's tool-boundary context, before the client acknowledges it.
-func hookRead(cmd *cobra.Command, engine string) error {
+// hookReadExit decides the exit code of hook-read and whether its error is printed, from the event the input carried, whether the block was written and the error the call ended with.
+// A Stop exits 0 exactly when the block was written, whatever followed the write, since exit 0 tells the merged turn-end command a block was written and no turn end is to be recorded;
+// any other call exits 1 on an error.
+// An error is always printed, so a failed acknowledgement after the write still reaches standard error.
+func hookReadExit(event shuttleengine.HookEvent, wrote bool, err error) (exitCode int, printErr bool) {
+	printErr = err != nil
+	switch {
+	case event == shuttleengine.HookEventStop && wrote:
+		return 0, printErr
+	case event == shuttleengine.HookEventStop, err != nil:
+		return 1, printErr
+	}
+	return 0, false
+}
+
+// hookRead parses the hook input on the command's standard input and, for the main thread's tool-boundary or Stop event, claims the caller's mail through the daemon and writes it as engine's visible block, before the client acknowledges it.
+// It returns the event the input carried and whether the block was written, beside the error the call ended with.
+func hookRead(cmd *cobra.Command, engine string) (event shuttleengine.HookEvent, wrote bool, err error) {
 	renderer, ok := shuttleengines.ToolBoundaryRenderer(engine)
 	if !ok {
-		return fmt.Errorf("the engine %q renders no tool-boundary context; the registered engines: %s", engine, strings.Join(shuttleengines.Names(), ", "))
+		return "", false, fmt.Errorf("the engine %q renders no creel hook delivery; the registered engines: %s", engine, strings.Join(shuttleengines.Names(), ", "))
+	}
+	payload, err := io.ReadAll(cmd.InOrStdin())
+	if err != nil {
+		return "", false, fmt.Errorf("could not read the hook input: %w", err)
+	}
+	input, err := renderer.HookInput(payload)
+	if err != nil {
+		return "", false, err
+	}
+	switch input.Event {
+	case shuttleengine.HookEventToolBoundary, shuttleengine.HookEventStop:
+	default:
+		return "", false, fmt.Errorf("hook-read takes the engine's after-tool-call and turn-end hook inputs, and this input is neither")
+	}
+	if input.Subagent {
+		return input.Event, false, nil
 	}
 	client, err := hubClient(cmd.Context())
 	if err != nil {
-		return err
+		return input.Event, false, err
 	}
 	out := cmd.OutOrStdout()
-	writeContext := func(resp creelengine.Response) error {
+	writeBlock := func(resp creelengine.Response) error {
 		lines := make([]string, len(resp.Messages))
 		for i, msg := range resp.Messages {
 			lines[i] = creelengine.MessageLine(msg)
 		}
-		data, err := renderer.ToolBoundaryContext(strings.Join(lines, "\n"))
+		data, err := renderer.BoundaryBlock(strings.Join(lines, "\n"))
 		if err != nil {
 			return err
 		}
 		if _, err := out.Write(append(data, '\n')); err != nil {
 			return fmt.Errorf("could not write the mail, so it stays unread: %w", err)
 		}
+		wrote = true
 		return nil
 	}
-	_, err = client.Call(creelengine.Request{Verb: creelengine.VerbClaim}, hookReadTimeout, writeContext)
-	return err
+	request := creelengine.Request{Verb: creelengine.VerbClaim, Stop: input.Event == shuttleengine.HookEventStop, StopHookActive: input.StopHookActive}
+	_, err = client.Call(request, hookReadTimeout, writeBlock)
+	return input.Event, wrote, err
 }

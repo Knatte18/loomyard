@@ -263,8 +263,9 @@ func TestShellGuardDenies_RenderedCommandsGrepThePayload(t *testing.T) {
 	}
 }
 
-// TestCreelMailHook_RunsLymOnlyWhenTheStrandsFlagStands runs the creel mail hook under sh with a stub `lym` on PATH that prints its directory and arguments.
-// The hook forms the flag's file name as agentname.FileName does, runs `lym creel hook-read claude` from the session's project directory only while that flag stands, and otherwise exits 0 having printed nothing.
+// TestCreelMailHook_RunsLymOnlyWhenTheStrandsFlagStands runs the creel mail hook and the idle waiter hook under sh with a stub `lym` on PATH that prints its directory and arguments.
+// The mail hook forms the flag's file name as agentname.FileName does, runs `lym creel hook-read claude` from the session's project directory only while that flag stands, and otherwise exits 0 having printed nothing;
+// the waiter hook runs `lym creel hook-wait claude` from the project directory whether or not a flag stands.
 func TestCreelMailHook_RunsLymOnlyWhenTheStrandsFlagStands(t *testing.T) {
 	t.Parallel()
 
@@ -305,6 +306,122 @@ func TestCreelMailHook_RunsLymOnlyWhenTheStrandsFlagStands(t *testing.T) {
 			stdout, exitCode := runHookCommand(t, command, `{"hook_event_name":"PostToolUse"}`, append(slices.Clone(baseEnv), tt.env...))
 			if stdout != tt.want || exitCode != 0 {
 				t.Errorf("hook stdout = %q, exit = %d; want %q and exit 0", stdout, exitCode, tt.want)
+			}
+		})
+	}
+	// The idle waiter runs from the project directory whether or not a flag stands.
+	waitCommand := creelWaitHookCommand()
+	waiters := []struct {
+		name string
+		env  []string
+	}{
+		{"WaiterWithTheFlagStanding", []string{agentname.StrandNameEnv + "=" + name}},
+		{"WaiterWithNoFlag", nil},
+	}
+	for _, tt := range waiters {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			stdout, exitCode := runHookCommand(t, waitCommand, `{"hook_event_name":"Stop"}`, append(slices.Clone(baseEnv), tt.env...))
+			if want := resolvedProjectDir + " creel hook-wait claude\n"; stdout != want || exitCode != 0 {
+				t.Errorf("hook stdout = %q, exit = %d; want %q and exit 0", stdout, exitCode, want)
+			}
+		})
+	}
+}
+
+// TestCreelStopHook_RecordsATurnEndOnlyWithoutABlock runs the merged Stop command under sh with a stub `lym` on PATH that records the standard input it got, prints a fixed block and exits as the row says.
+// A block written (the stub exits 0) leaves the events file empty and the block on standard output; otherwise, with the flag absent as well, the file holds the Stop stamp and then the payload byte for byte, which ParseEvents reads as the payload alone.
+// An unwritable events file fails the command as the plain recording command does.
+func TestCreelStopHook_RecordsATurnEndOnlyWithoutABlock(t *testing.T) {
+	t.Parallel()
+
+	const (
+		name  = "ly:creel-stop:driver"
+		block = `{"decision":"block","reason":"mail","systemMessage":"mail"}`
+	)
+	payload := paddedPayload(t, map[string]any{"hook_event_name": "Stop", "session_id": "s1", "last_assistant_message": "done"}, 20000)
+	tests := []struct {
+		name        string
+		flagStands  bool
+		stubExit    string
+		stubOut     string
+		eventsDir   string
+		wantStdout  string
+		wantRecord  bool
+		wantStubRun bool
+		wantFailure bool
+	}{
+		{"FlagStandsAndABlockIsWritten", true, "0", block, "", block + "\n", false, true, false},
+		{"FlagStandsAndNothingIsClaimed", true, "1", "", "", "", true, true, false},
+		{"FlagAbsent", false, "0", block, "", "", true, false, false},
+		{"UnwritableEventsFile", true, "1", "", "missing-dir", "", false, true, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			flagDir, binDir, projectDir := filepath.Join(root, "flags"), filepath.Join(root, "bin"), filepath.Join(root, "project")
+			for _, dir := range []string{flagDir, binDir, projectDir} {
+				if err := os.MkdirAll(dir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			stdinPath := filepath.Join(root, "stub-stdin")
+			stub := "#!/bin/sh\ncat > \"$STUB_STDIN\"\n[ -n \"$STUB_OUT\" ] && printf '%s\\n' \"$STUB_OUT\"\nexit \"$STUB_EXIT\"\n"
+			if err := os.WriteFile(filepath.Join(binDir, "lym"), []byte(stub), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if tt.flagStands {
+				if err := os.WriteFile(filepath.Join(flagDir, agentname.FileName(name)), nil, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			eventsPath := filepath.Join(root, tt.eventsDir, "events.jsonl")
+			command := creelStopHookCommand(shQuote(flagDir), shQuote(eventsPath))
+			env := []string{
+				"PATH=" + binDir + ":/usr/bin:/bin", "CLAUDE_PROJECT_DIR=" + projectDir, agentname.StrandNameEnv + "=" + name,
+				"STUB_STDIN=" + stdinPath, "STUB_OUT=" + tt.stubOut, "STUB_EXIT=" + tt.stubExit,
+			}
+
+			stdout, exitCode := runHookCommand(t, command, payload, env)
+			if stdout != tt.wantStdout || (exitCode != 0) != tt.wantFailure {
+				t.Fatalf("hook stdout = %q, exit = %d; want %q and failure = %v", stdout, exitCode, tt.wantStdout, tt.wantFailure)
+			}
+			got, err := os.ReadFile(stdinPath)
+			switch {
+			case tt.wantStubRun && (err != nil || string(got) != payload):
+				t.Errorf("the stub's standard input = %d bytes (err %v); want the %d-byte payload", len(got), err, len(payload))
+			case !tt.wantStubRun && err == nil:
+				t.Errorf("the stub ran with the flag absent")
+			}
+
+			file, err := os.ReadFile(eventsPath)
+			if !tt.wantRecord {
+				if len(file) != 0 {
+					t.Errorf("events file = %q; want it empty", file)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			stampLine, rest, found := strings.Cut(string(file), "\n")
+			var stamp map[string]string
+			if !found || rest != payload+"\n" || json.Unmarshal([]byte(stampLine), &stamp) != nil || stamp["lym_stamp"] != "Stop" {
+				t.Fatalf("events file = %d bytes; want the Stop stamp line, then the payload byte for byte and a newline", len(file))
+			}
+			claude := &Claude{}
+			fromFile, err := claude.ParseEvents(file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			fromPayload, err := claude.ParseEvents([]byte(payload))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(fromPayload) != 1 || !reflect.DeepEqual(fromFile, fromPayload) {
+				t.Errorf("ParseEvents over the file = %+v; want the payload's %+v", fromFile, fromPayload)
 			}
 		})
 	}

@@ -223,8 +223,17 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		return shuttleengine.Launch{}, fmt.Errorf("write env file: %w", err)
 	}
 
-	bin := claudeBinary(claude)
+	// The deny notice and the creel trust sentence ride one file, since the sentence holds a quote that not every shell passes through as an argument.
+	appendPromptPath, err := filepath.Abs(filepath.Join(runDir, appendPromptFileName))
+	if err != nil {
+		return shuttleengine.Launch{}, fmt.Errorf("resolve append system prompt path: %w", err)
+	}
 	notice := buildDenyNotice(spec.Interactive, cfg, claude, spec.ForkSubagents, spec.AllowAgentTool)
+	if err := os.WriteFile(appendPromptPath, []byte(appendPromptText(notice)), 0o644); err != nil {
+		return shuttleengine.Launch{}, fmt.Errorf("write append system prompt: %w", err)
+	}
+
+	bin := claudeBinary(claude)
 	// sh selects pane-shell mechanics per OS (pwsh on Windows, posix elsewhere).
 	sh := shell.ForGOOS()
 	// A spec that names skills launches with the load message as its first turn, and the pointer goes out after the skills as Launch.PromptLine.
@@ -233,11 +242,13 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		launchArg, promptLine = skillLoadMessage, pointer
 	}
 	return shuttleengine.Launch{
-		Cmd:        buildLaunchCmd(sh, bin, launchArg, settingsPath, sessionID, resolvedModel, spec.Effort, notice, envFilePath, promptCacheTTL, resume, skipPermissions, spec.ForkSubagents),
-		ResumeCmd:  buildResumeCmd(sh, bin, settingsPath, sessionID, resolvedModel, spec.Effort, notice, envFilePath, promptCacheTTL, skipPermissions, spec.ForkSubagents),
+		Cmd:        buildLaunchCmd(sh, bin, launchArg, settingsPath, sessionID, resolvedModel, spec.Effort, appendPromptPath, envFilePath, promptCacheTTL, resume, skipPermissions, spec.ForkSubagents),
+		ResumeCmd:  buildResumeCmd(sh, bin, settingsPath, sessionID, resolvedModel, spec.Effort, appendPromptPath, envFilePath, promptCacheTTL, skipPermissions, spec.ForkSubagents),
 		SessionID:  sessionID,
 		PromptLine: promptLine,
 
 		RecordsSessionStarts: true,
+		// The settings carry the PostToolUse, Stop and waiter hooks exactly when a creel flag directory was passed.
+		CreelHooks: creelFlagDirForHook != "",
 	}, nil
 }

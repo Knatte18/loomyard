@@ -191,7 +191,7 @@ func TestBuildSettings_SessionStartHook(t *testing.T) {
 	}
 }
 
-// TestHookContext pins the exact additional-context JSON the session-start and tool-boundary hooks print, with the text escaped.
+// TestHookContext pins the exact JSON the session-start hook and creel's boundary block print, with the text escaped.
 func TestHookContext(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -200,7 +200,7 @@ func TestHookContext(t *testing.T) {
 		want   string
 	}{
 		{"SessionStart", SessionStartContext, `{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"read \"role.md\""}}`},
-		{"ToolBoundary", New().ToolBoundaryContext, `{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"read \"role.md\""}}`},
+		{"BoundaryBlock", New().BoundaryBlock, `{"decision":"block","reason":"read \"role.md\"","systemMessage":"read \"role.md\""}`},
 	}
 	for _, tt := range tests {
 		got, err := tt.render(`read "role.md"`)
@@ -213,23 +213,40 @@ func TestHookContext(t *testing.T) {
 	}
 }
 
-// TestBuildSettings_CreelMailHook pins the PostToolUse creel mail hook: one entry with no matcher testing the flag directory it is told, and no PostToolUse key when told none.
+// TestBuildSettings_CreelMailHook pins the creel hooks in a hub and out of one:
+// the PostToolUse mail hook as one entry with no matcher testing the flag directory it is told, and the two Stop entries, the merged turn-end command and the idle waiter with asyncRewake and its 86400-second timeout.
+// Told no flag directory, the document carries no PostToolUse key and the one plain Stop recording.
 func TestBuildSettings_CreelMailHook(t *testing.T) {
 	t.Parallel()
+	const eventsPath = "/c/run/events.jsonl"
+	quotedEventsPath := shQuote(eventsPath)
+	type stopHook struct {
+		command     string
+		asyncRewake bool
+		timeout     float64
+	}
 	tests := []struct {
-		name    string
-		flagDir string
-		want    []string
+		name     string
+		flagDir  string
+		wantPost []string
+		wantStop []stopHook
 	}{
-		{"InAHub", `/c/hub's/_board/.lym/creel/flags`, []string{creelMailHookCommand(`'/c/hub'\''s/_board/.lym/creel/flags'`)}},
-		{"Standalone", "", nil},
+		{
+			"InAHub", `/c/hub's/_board/.lym/creel/flags`,
+			[]string{creelMailHookCommand(`'/c/hub'\''s/_board/.lym/creel/flags'`)},
+			[]stopHook{
+				{command: creelStopHookCommand(`'/c/hub'\''s/_board/.lym/creel/flags'`, quotedEventsPath)},
+				{command: creelWaitHookCommand(), asyncRewake: true, timeout: 86400},
+			},
+		},
+		{"Standalone", "", nil, []stopHook{{command: recordingCommand(hookEventStop, quotedEventsPath)}}},
 	}
 	for _, tt := range tests {
-		data, err := buildSettings("/c/run/events.jsonl", false, shuttleengine.Config{}, Config{}, false, false, "", tt.flagDir)
+		data, err := buildSettings(eventsPath, false, shuttleengine.Config{}, Config{}, false, false, "", tt.flagDir)
 		if err != nil {
 			t.Fatalf("buildSettings(%s) error: %v", tt.name, err)
 		}
-		var got []string
+		var gotPost []string
 		for _, raw := range hooksFor(parseSettings(t, data), "PostToolUse") {
 			entry, _ := raw.(map[string]any)
 			if _, hasMatcher := entry["matcher"]; hasMatcher {
@@ -238,11 +255,29 @@ func TestBuildSettings_CreelMailHook(t *testing.T) {
 			hooks, _ := entry["hooks"].([]any)
 			for _, hook := range hooks {
 				command, _ := hook.(map[string]any)["command"].(string)
-				got = append(got, command)
+				gotPost = append(gotPost, command)
 			}
 		}
-		if !reflect.DeepEqual(got, tt.want) {
-			t.Errorf("%s: PostToolUse commands = %q; want %q", tt.name, got, tt.want)
+		if !reflect.DeepEqual(gotPost, tt.wantPost) {
+			t.Errorf("%s: PostToolUse commands = %q; want %q", tt.name, gotPost, tt.wantPost)
+		}
+		var gotStop []stopHook
+		for _, raw := range hooksFor(parseSettings(t, data), "Stop") {
+			entry, _ := raw.(map[string]any)
+			if _, hasMatcher := entry["matcher"]; hasMatcher {
+				t.Errorf("%s: Stop entry carries a matcher: %v", tt.name, entry)
+			}
+			hooks, _ := entry["hooks"].([]any)
+			for _, raw := range hooks {
+				hook, _ := raw.(map[string]any)
+				command, _ := hook["command"].(string)
+				asyncRewake, _ := hook["asyncRewake"].(bool)
+				timeout, _ := hook["timeout"].(float64)
+				gotStop = append(gotStop, stopHook{command, asyncRewake, timeout})
+			}
+		}
+		if !reflect.DeepEqual(gotStop, tt.wantStop) {
+			t.Errorf("%s: Stop hooks = %+v; want %+v", tt.name, gotStop, tt.wantStop)
 		}
 	}
 }
@@ -618,7 +653,7 @@ func TestPrepare_PromptLaunchLimit(t *testing.T) {
 	})
 }
 
-// TestPrepare_CreelMailHookFollowsTheBoardDirectory pins that Prepare derives the creel flag directory from the hub's board directory, and that an engine in no hub writes no PostToolUse hook.
+// TestPrepare_CreelMailHookFollowsTheBoardDirectory pins that Prepare derives the creel flag directory from the hub's board directory and marks the launch CreelHooks, and that an engine in no hub writes no PostToolUse hook and marks nothing.
 func TestPrepare_CreelMailHookFollowsTheBoardDirectory(t *testing.T) {
 	t.Parallel()
 	boardDir := t.TempDir()
@@ -644,8 +679,12 @@ func TestPrepare_CreelMailHookFollowsTheBoardDirectory(t *testing.T) {
 			engine := engineWith(t, templateConfig(t))
 			engine.dirs.Board = tt.board
 			runDir := t.TempDir()
-			if _, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "do the thing"}, shuttleengine.Config{}); err != nil {
+			launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "do the thing"}, shuttleengine.Config{})
+			if err != nil {
 				t.Fatalf("Prepare() error: %v", err)
+			}
+			if launch.CreelHooks != (tt.board != "") {
+				t.Errorf("Launch.CreelHooks = %v; want %v", launch.CreelHooks, tt.board != "")
 			}
 			settingsBytes, err := os.ReadFile(filepath.Join(runDir, "settings.json"))
 			if err != nil {
@@ -702,6 +741,14 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 	doc := parseSettings(t, settingsBytes)
 	if len(hooksFor(doc, "Stop")) != 1 {
 		t.Errorf("settings.json missing its Stop hook entry: %s", settingsBytes)
+	}
+
+	appendPromptBytes, err := os.ReadFile(filepath.Join(runDir, "append-system-prompt.txt"))
+	if err != nil {
+		t.Fatalf("read append-system-prompt.txt: %v", err)
+	}
+	if want := buildDenyNotice(false, shuttleengine.Config{}, claude, false, false) + " " + creelTrustSentence; string(appendPromptBytes) != want {
+		t.Errorf("append-system-prompt.txt = %q; want the deny notice, a space and the trust sentence %q", appendPromptBytes, want)
 	}
 
 	if launch.SessionID == "" {
@@ -800,8 +847,15 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 			if gotRefuse != tt.wantRefused {
 				t.Errorf("settings.json carries the refuse-raw deny = %v; want %v", gotRefuse, tt.wantRefused)
 			}
-			if got := strings.Contains(gateLaunch.Cmd, refuseRow.Notice); got != tt.wantRefused {
-				t.Errorf("Launch.Cmd names the refuse-raw notice = %v; want %v", got, tt.wantRefused)
+			gatePrompt, err := os.ReadFile(filepath.Join(gateRunDir, "append-system-prompt.txt"))
+			if err != nil {
+				t.Fatalf("read append-system-prompt.txt: %v", err)
+			}
+			if got := strings.Contains(string(gatePrompt), refuseRow.Notice); got != tt.wantRefused {
+				t.Errorf("append-system-prompt.txt names the refuse-raw notice = %v; want %v", got, tt.wantRefused)
+			}
+			if !strings.Contains(gateLaunch.Cmd, "--append-system-prompt-file") {
+				t.Errorf("Launch.Cmd = %q; want it to name the append-system-prompt file", gateLaunch.Cmd)
 			}
 		})
 	}
@@ -809,7 +863,7 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 
 // TestBuildDenyNotice_MatchesInstalledDenies pins that the notice names exactly the denies buildSettings installs, over every deny combination.
 //
-//testtiming:keep pins the notice sentences against the installed hooks over every combination, which its covering test checks only for the --append-system-prompt flag
+//testtiming:keep pins the notice sentences against the installed hooks over every combination, which its covering test checks only for the append-system-prompt.txt file
 func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
 	for _, agentDeny := range []bool{false, true} {
 		for _, askUserDeny := range []bool{false, true} {

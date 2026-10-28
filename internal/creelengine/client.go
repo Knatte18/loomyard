@@ -169,10 +169,11 @@ func (c *Client) CallWatching(req Request, timeout time.Duration, handle func(Re
 }
 
 // resume builds the request that continues a waiting call on a new connection.
+// A read and a hook-wait resume by sending the same request again, since neither waits on an id.
 func (c *Client) resume(req Request, state *waitState) (Request, error) {
 	resumed := Request{Claim: c.claim, ID: state.id, Wait: true}
 	switch {
-	case req.Verb == VerbRead:
+	case req.Verb == VerbRead, req.Verb == VerbHookWait:
 		return req, nil
 	case state.id == 0:
 		return Request{}, fmt.Errorf("creel: the connection to %s dropped before the %s was acknowledged, so it cannot be resumed", c.geom.SocketPath, req.Verb)

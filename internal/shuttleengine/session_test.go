@@ -226,7 +226,7 @@ func TestRunner_SessionIdle_DeadStrandErrors(t *testing.T) {
 	}
 }
 
-// TestRunner_SessionIdle_ReturnsScriptedClassification drives Runner.SessionIdle over a fake reed and an engine with the signal parser, the cycler and the box reader.
+// TestRunner_SessionIdle_ReturnsScriptedClassification drives Runner.SessionIdle over a fake reed and an engine with the signal parser, the cycler and the box reader, or, for a guarded row, the box reader and the running-turn check.
 // Each row is a series of probes of one strand on one runner, each appending events and moving the clock before it reads one pane capture:
 // a ready, held or unknown readiness reading and its fallback to the pane, a draft, a pane too short, a hook turn end beside a pane needle, a turn start held then released by a later turn end, an interrupt report and the idle override across polls.
 // An engine without the signal parser falls back to the pane probe, whose TooShort is reported only for a pane that is not idle.
@@ -248,18 +248,29 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 	const (
 		idleFrame   = "IDLE\n❯ "
 		needleFrame = "working (esc to interrupt)\n❯ "
-		turnEnded   = "START\nSTOP:done\n"
+		// endStamp stamps the line after it, so the state it causes begins at endedAt.
+		endStamp  = "@2026-10-08T07:59:00Z\n"
+		turnEnded = "START\n" + endStamp + "STOP:done\n"
 		// suggestionFrame is an idle pane whose box shows only a placeholder, marked the way a styled capture marks it.
 		suggestionFrame = "IDLE\n❯ ~Try something~"
 	)
 	shell := BackgroundTask{Kind: BackgroundShell, ID: "bsh1", Label: "sleep 600", Signal: SignalPayload}
+	endedAt := time.Date(2026, 10, 8, 7, 59, 0, 0, time.UTC)
+	// idleAtEnd is the ready answer of a session whose turn ended at endedAt; atEnd adds the no-turn reading of that turn end to a held answer.
+	idleAtEnd := IdleProbe{Idle: true, NoTurn: true, TurnEndedAt: endedAt}
+	atEnd := func(held IdleProbe) IdleProbe {
+		held.NoTurn, held.TurnEndedAt = true, endedAt
+		return held
+	}
 	tests := []struct {
 		name string
 		// engine settings; the zero value is a live process.
 		dead, unproven, interrupted, tooShort bool
 		interactive, outputsExist             bool
 		// styled gives the engine the styled box read, which blanks a capture's ~…~ spans.
-		styled      bool
+		styled bool
+		// guarded runs the row on guardedReadinessEngine, which adds the running-turn check Claude's pane probe uses.
+		guarded     bool
 		outstanding []BackgroundTask
 		// progress is what the engine reads of any turn start.
 		progress TurnProgress
@@ -267,41 +278,45 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 		// wantLog is a substring the probes' log must hold.
 		wantLog string
 	}{
-		{name: "idle-done is ready", outputsExist: true, probes: []probe{{events: turnEnded, capture: idleFrame, want: IdleProbe{Idle: true}}}},
-		{name: "idle-stalled is ready", probes: []probe{{events: turnEnded, capture: idleFrame, want: IdleProbe{Idle: true}}}},
-		{name: "asking at an awaited turn end is ready", interactive: true, probes: []probe{{events: turnEnded, capture: idleFrame, want: IdleProbe{Idle: true}}}},
-		{name: "busy on background work is ready", outstanding: []BackgroundTask{shell}, probes: []probe{{events: "START\nWAIT:bg\n", capture: idleFrame, want: IdleProbe{Idle: true}}}},
+		{name: "idle-done is ready", outputsExist: true, probes: []probe{{events: turnEnded, capture: idleFrame, want: idleAtEnd}}},
+		{name: "idle-stalled is ready", probes: []probe{{events: turnEnded, capture: idleFrame, want: idleAtEnd}}},
+		{name: "asking at an awaited turn end is ready", interactive: true, probes: []probe{{events: turnEnded, capture: idleFrame, want: idleAtEnd}}},
+		{name: "busy on background work is ready", outstanding: []BackgroundTask{shell}, probes: []probe{{events: "START\n" + endStamp + "WAIT:bg\n", capture: idleFrame, want: idleAtEnd}}},
 		{name: "a running turn is held", probes: []probe{{events: "START\n", capture: idleFrame, want: IdleProbe{Reason: "a turn is running"}, wantReason: "a turn is running"}}},
 		{name: "an ask is held", probes: []probe{{events: "START\nASK\n", capture: idleFrame, want: IdleProbe{Reason: "the session waits on an answer"}, wantReason: "waits on an answer"}}},
 		{name: "a dead process is held", dead: true, probes: []probe{{events: turnEnded, capture: idleFrame, want: IdleProbe{Reason: "the session's process is gone"}, wantReason: "process is gone"}}},
-		{name: "an unknown reading falls back to an idle pane", unproven: true, probes: []probe{{events: turnEnded, capture: idleFrame, want: IdleProbe{Idle: true}}}},
+		{name: "an unknown reading falls back to an idle pane", unproven: true, probes: []probe{{events: turnEnded, capture: idleFrame, want: IdleProbe{Idle: true, NoTurn: true}}}},
 		{name: "an unknown reading falls back to a busy pane, too short or not", unproven: true, tooShort: true, probes: []probe{{events: turnEnded, capture: needleFrame, want: IdleProbe{TooShort: true}}}},
-		{name: "a draft in the box is held with its reason", probes: []probe{{events: turnEnded, capture: "IDLE\n❯ half a draft", want: IdleProbe{Reason: `the input box holds a draft: "half a draft"`, Draft: true}, wantReason: "draft"}}},
-		{name: "a placeholder in the box is idle for a styled box read", styled: true, probes: []probe{{events: turnEnded, capture: suggestionFrame, want: IdleProbe{Idle: true}}}},
-		{name: "a placeholder in the box is a draft for a plain box read", probes: []probe{{events: turnEnded, capture: suggestionFrame, want: IdleProbe{Reason: `the input box holds a draft: "~Try something~"`, Draft: true}, wantReason: "draft"}}},
-		{name: "an unknown reading over a placeholder falls back to an idle pane for a styled box read", unproven: true, styled: true, probes: []probe{{events: turnEnded, capture: suggestionFrame, want: IdleProbe{Idle: true}}}},
-		{name: "an unknown reading falls back to a busy pane holding a draft", unproven: true, probes: []probe{{events: turnEnded, capture: "BUSY\n❯ half a draft", want: IdleProbe{Draft: true}}}},
-		{name: "a pane too short is held and reported too short", tooShort: true, probes: []probe{{events: turnEnded, capture: "IDLE", want: IdleProbe{TooShort: true, Reason: readinessReasonPaneTooShort}, wantReason: "too short"}}},
+		{name: "a draft in the box is held with its reason", probes: []probe{{events: turnEnded, capture: "IDLE\n❯ half a draft", want: atEnd(IdleProbe{Reason: `the input box holds a draft: "half a draft"`, Draft: true}), wantReason: "draft"}}},
+		{name: "a placeholder in the box is idle for a styled box read", styled: true, probes: []probe{{events: turnEnded, capture: suggestionFrame, want: idleAtEnd}}},
+		{name: "a placeholder in the box is a draft for a plain box read", probes: []probe{{events: turnEnded, capture: suggestionFrame, want: atEnd(IdleProbe{Reason: `the input box holds a draft: "~Try something~"`, Draft: true}), wantReason: "draft"}}},
+		{name: "an unknown reading over a placeholder falls back to an idle pane for a styled box read", unproven: true, styled: true, probes: []probe{{events: turnEnded, capture: suggestionFrame, want: IdleProbe{Idle: true, NoTurn: true}}}},
+		{name: "an unknown reading falls back to a busy pane holding a draft", unproven: true, probes: []probe{{events: turnEnded, capture: "BUSY\n❯ half a draft", want: IdleProbe{Draft: true, NoTurn: true}}}},
+		{name: "a guarded pane holding a draft with no running turn reads no turn while not idle", unproven: true, guarded: true, probes: []probe{{events: turnEnded, capture: "BUSY\n❯ half a draft", want: IdleProbe{Draft: true, NoTurn: true}}}},
+		{name: "a guarded pane showing a running turn reads a turn", unproven: true, guarded: true, probes: []probe{{events: turnEnded, capture: "RUNNING\n❯ half a draft", want: IdleProbe{Draft: true}}}},
+		{name: "a guarded pane too short reads a turn as possible", unproven: true, guarded: true, tooShort: true, probes: []probe{{events: turnEnded, capture: "BUSY\n❯ ", want: IdleProbe{TooShort: true}}}},
+		{name: "a guarded pane showing no input box reads a turn as possible", unproven: true, guarded: true, probes: []probe{{events: turnEnded, capture: "BUSY no box here", want: IdleProbe{NoInputBox: true}}}},
+		{name: "a pane too short is held and reported too short", tooShort: true, probes: []probe{{events: turnEnded, capture: "IDLE", want: atEnd(IdleProbe{TooShort: true, Reason: readinessReasonPaneTooShort}), wantReason: "too short"}}},
 		{
 			name:    "a hook turn end beside a pane needle reads idle and logs the disagreement",
-			probes:  []probe{{events: turnEnded, capture: needleFrame, want: IdleProbe{Idle: true}}},
+			probes:  []probe{{events: turnEnded, capture: needleFrame, want: idleAtEnd}},
 			wantLog: "readiness reads ready beside a pane that does not show idle",
 		},
-		{name: "a pane with no readable box is held for an engine that reads one", probes: []probe{{events: turnEnded, capture: "no box here", want: IdleProbe{Reason: readinessReasonNoInputBox, NoInputBox: true}, wantReason: "no input box"}}},
-		{name: "an active operator is held with the activity reason", probes: []probe{{events: turnEnded, capture: idleFrame, active: true, want: IdleProbe{Reason: "the operator typed in this pane within the last 5 s"}, wantReason: "operator typed"}}},
+		{name: "a pane with no readable box is held for an engine that reads one", probes: []probe{{events: turnEnded, capture: "no box here", want: atEnd(IdleProbe{Reason: readinessReasonNoInputBox, NoInputBox: true}), wantReason: "no input box"}}},
+		{name: "an active operator is held with the activity reason", probes: []probe{{events: turnEnded, capture: idleFrame, active: true, want: atEnd(IdleProbe{Reason: "the operator typed in this pane within the last 5 s"}), wantReason: "operator typed"}}},
 		{
 			name: "a turn start with no turn end is held, then released by a later turn end",
 			probes: []probe{
 				{events: "START\n", capture: idleFrame, want: IdleProbe{Reason: "a turn is running"}, wantReason: "a turn is running"},
-				{events: "STOP:done\n", capture: idleFrame, want: IdleProbe{Idle: true}},
+				{events: endStamp + "STOP:done\n", capture: idleFrame, want: idleAtEnd},
 			},
 		},
-		{name: "a reported interrupt releases the turn start", interrupted: true, probes: []probe{{events: "START\n", capture: idleFrame, want: IdleProbe{Idle: true}}}},
+		{name: "a reported interrupt releases the turn start", interrupted: true, probes: []probe{{events: "START\n", capture: idleFrame, want: IdleProbe{Idle: true, NoTurn: true}}}},
 		{
 			name: "the idle override releases a turn start the pane has read idle across polls",
 			probes: []probe{
-				{events: "START\n", capture: idleFrame, want: IdleProbe{Reason: "a turn is running"}, wantReason: "a turn is running"},
-				{advance: turnStartIdleOverride, capture: idleFrame, want: IdleProbe{Idle: true}},
+				{events: endStamp + "START\n", capture: idleFrame, want: IdleProbe{Reason: "a turn is running"}, wantReason: "a turn is running"},
+				{advance: turnStartIdleOverride, capture: idleFrame, want: idleAtEnd},
 			},
 			wantLog: "released an unmatched turn start",
 		},
@@ -313,11 +328,11 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 				{advance: turnStartIdleOverride, capture: idleFrame, want: IdleProbe{Reason: "a turn is running"}, wantReason: "a turn is running"},
 			},
 		},
-		{name: "a session start after a turn end leaves it idle", probes: []probe{{events: turnEnded + "SESSIONSTART\n", capture: idleFrame, want: IdleProbe{Idle: true}}}},
-		{name: "idle-fresh with an empty box is ready", probes: []probe{{events: "SESSIONSTART:startup\n", capture: idleFrame, want: IdleProbe{Idle: true}}}},
-		{name: "idle-fresh with a draft is held with its reason", probes: []probe{{events: "SESSIONSTART:clear\n", capture: "IDLE\n❯ half a draft", want: IdleProbe{Reason: `the input box holds a draft: "half a draft"`, Draft: true}, wantReason: "draft"}}},
-		{name: "idle-fresh with a pane too short is held and reported too short", tooShort: true, probes: []probe{{events: "SESSIONSTART:startup\n", capture: "IDLE", want: IdleProbe{TooShort: true, Reason: readinessReasonPaneTooShort}, wantReason: "too short"}}},
-		{name: "idle-fresh with no readable box is held", probes: []probe{{events: "SESSIONSTART:resume\n", capture: "no box here", want: IdleProbe{Reason: readinessReasonNoInputBox, NoInputBox: true}, wantReason: "no input box"}}},
+		{name: "a session start after a turn end leaves it idle", probes: []probe{{events: turnEnded + "SESSIONSTART\n", capture: idleFrame, want: idleAtEnd}}},
+		{name: "idle-fresh with an empty box is ready", probes: []probe{{events: endStamp + "SESSIONSTART:startup\n", capture: idleFrame, want: idleAtEnd}}},
+		{name: "idle-fresh with a draft is held with its reason", probes: []probe{{events: endStamp + "SESSIONSTART:clear\n", capture: "IDLE\n❯ half a draft", want: atEnd(IdleProbe{Reason: `the input box holds a draft: "half a draft"`, Draft: true}), wantReason: "draft"}}},
+		{name: "idle-fresh with a pane too short is held and reported too short", tooShort: true, probes: []probe{{events: endStamp + "SESSIONSTART:startup\n", capture: "IDLE", want: atEnd(IdleProbe{TooShort: true, Reason: readinessReasonPaneTooShort}), wantReason: "too short"}}},
+		{name: "idle-fresh with no readable box is held", probes: []probe{{events: endStamp + "SESSIONSTART:resume\n", capture: "no box here", want: atEnd(IdleProbe{Reason: readinessReasonNoInputBox, NoInputBox: true}), wantReason: "no input box"}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -335,9 +350,13 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 				engine.liveness = LivenessUnproven
 			}
 			engine.interrupted = tt.interrupted
+			engine.markEvents = true
 			engine.progress = tt.progress
 			engine.outstanding = tt.outstanding
 			var probed Engine = engine
+			if tt.guarded {
+				probed = &guardedReadinessEngine{readinessEngine: engine}
+			}
 			if tt.styled {
 				probed = &styledReadinessEngine{readinessEngine: engine}
 			}
@@ -389,9 +408,9 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 		}{
 			{name: "a pane with no box for an engine that reads one", capture: "no box here", want: IdleProbe{NoInputBox: true}},
 			{name: "a pane with no box for an engine that reads none", readsNoBox: true, capture: "no box here", want: IdleProbe{}},
-			{name: "an idle pane", capture: "IDLE\n❯ ", want: IdleProbe{Idle: true}},
-			{name: "a busy pane holding a draft", capture: "BUSY\n❯ half a draft", want: IdleProbe{Draft: true}},
-			{name: "a placeholder in the box for a styled box read", styled: true, capture: "IDLE\n❯ ~Try something~", want: IdleProbe{Idle: true}},
+			{name: "an idle pane", capture: "IDLE\n❯ ", want: IdleProbe{Idle: true, NoTurn: true}},
+			{name: "a busy pane holding a draft", capture: "BUSY\n❯ half a draft", want: IdleProbe{Draft: true, NoTurn: true}},
+			{name: "a placeholder in the box for a styled box read", styled: true, capture: "IDLE\n❯ ~Try something~", want: IdleProbe{Idle: true, NoTurn: true}},
 		}
 		for _, tt := range tests {
 			reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{tt.capture}}
@@ -421,7 +440,7 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 
 	t.Run("an engine without the signal parser reads the pane", func(t *testing.T) {
 		// TooShort is reported only for a pane that is not idle.
-		for _, want := range []IdleProbe{{Idle: true}, {}, {TooShort: true}} {
+		for _, want := range []IdleProbe{{Idle: true, NoTurn: true}, {}, {TooShort: true}} {
 			reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"the pane"}}
 			engine := &cyclerEngine{idle: want.Idle, tooShort: want.TooShort || want.Idle}
 			runner := newFixture(t, reed, engine, withStrand("strand-1")).Runner

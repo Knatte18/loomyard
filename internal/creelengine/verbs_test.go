@@ -7,6 +7,8 @@ package creelengine_test
 import (
 	"errors"
 	"fmt"
+	"math"
+	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -143,10 +145,25 @@ func TestStore_Mail(t *testing.T) {
 		{"Post_RefusesEmptyAndOversizedBody", func(t *testing.T, e *env) {
 			_, err := e.store.Post(strand(alpha), beta, "  ")
 			wantErr(t, err, "empty")
-			_, err = e.store.Post(strand(alpha), beta, strings.Repeat("x", 64<<10+1))
+			const budget = 8 << 10
+			overhead := len(creelengine.MessageLine(creelengine.Message{ID: math.MaxInt64, From: alpha}))
+			_, err = e.store.Post(strand(alpha), beta, strings.Repeat("x", budget-overhead+1))
 			wantErr(t, err, "write it to a file", "mail the file")
-			if _, err := e.store.Post(strand(alpha), beta, strings.Repeat("x", 64<<10)); err != nil {
-				t.Errorf("a body of exactly 64 KiB: %v", err)
+			if got := e.readBodies(t, strand(beta), ""); len(got) != 0 {
+				t.Errorf("a refused post stored %q; want nothing", got)
+			}
+			exact := strings.Repeat("x", budget-overhead)
+			if _, err := e.store.Post(strand(alpha), beta, exact); err != nil {
+				t.Errorf("a body whose line fits the budget exactly: %v", err)
+			}
+		}},
+		{"Reply_OverTheBudgetIsRefusedAndStoresNothing", func(t *testing.T, e *env) {
+			id := e.post(t, strand(alpha), beta, "question")
+			e.readBodies(t, strand(beta), "")
+			_, err := e.store.Reply(strand(beta), id, strings.Repeat("x", 9<<10))
+			wantErr(t, err, "write it to a file", "mail the file")
+			if got := e.readBodies(t, strand(alpha), ""); len(got) != 0 {
+				t.Errorf("a refused reply stored %q; want nothing", got)
 			}
 		}},
 		{"Post_RefusesUnknownReceiverListingNames", func(t *testing.T, e *env) {
@@ -293,13 +310,15 @@ func TestStore_Mail(t *testing.T) {
 			if err != nil {
 				t.Fatalf("PostWait: %v", err)
 			}
-			replyID, err := e.store.Reply(strand(alpha), id, "answer")
+			// A reply to EXTERNAL is never claimed, so it keeps the 64 KiB cap and passes the 8 KiB line budget.
+			answer := strings.Repeat("a", 9<<10)
+			replyID, err := e.store.Reply(strand(alpha), id, answer)
 			if err != nil {
 				t.Fatalf("Reply: %v", err)
 			}
 			select {
 			case outcome := <-waiter.C:
-				if outcome.Kind != creelengine.OutcomeReply || outcome.Message.Body != "answer" || outcome.Message.ID != replyID {
+				if outcome.Kind != creelengine.OutcomeReply || outcome.Message.Body != answer || outcome.Message.ID != replyID {
 					t.Errorf("outcome = %+v; want the reply #%d handed over", outcome, replyID)
 				}
 			default:
@@ -336,6 +355,116 @@ func TestStore_Mail(t *testing.T) {
 					t.Errorf("events of the post to %s = %v; want posted only", name, got)
 				}
 			}
+		}},
+		{"PostInterrupt_StopsARunningTurnThenStoresTheMessage", func(t *testing.T, e *env) {
+			e.del.SetStrands(creelfake.HookStrand(alpha), creelfake.HookStrand(beta))
+			id, interrupted, _, err := e.store.PostInterrupt(program(batten), beta, "stop, scope changed", false)
+			if err != nil || !interrupted || id == 0 {
+				t.Fatalf("PostInterrupt = %d, %v, %v; want the turn stopped and the message stored", id, interrupted, err)
+			}
+			if !slices.Equal(e.del.Interrupts(), []string{beta}) {
+				t.Errorf("interrupts = %v; want one key into %s", e.del.Interrupts(), beta)
+			}
+			if got := eventsOf(e.store.Log(creelengine.LogFilter{To: beta})); !slices.Equal(got, []string{"interrupted", "posted"}) {
+				t.Errorf("events = %v; want one interrupted record and the post", got)
+			}
+			wantBodies(t, e.readBodies(t, strand(beta), ""), "stop, scope changed")
+		}},
+		{"PostInterrupt_WithNoRunningTurnStoresTheMessageUninterrupted", func(t *testing.T, e *env) {
+			e.del.SetStrands(creelfake.HookStrand(beta))
+			e.del.SetInterruptError(creelengine.ErrNoRunningTurn)
+			id, interrupted, _, err := e.store.PostInterrupt(program(batten), beta, "idle already", false)
+			if err != nil || interrupted || id == 0 {
+				t.Fatalf("PostInterrupt = %d, %v, %v; want the message stored and nothing interrupted", id, interrupted, err)
+			}
+			wantBodies(t, e.readBodies(t, strand(beta), ""), "idle already")
+		}},
+		{"PostInterrupt_RefusalsSendNoKeyAndStoreNothing", func(t *testing.T, e *env) {
+			overhead := len(creelengine.MessageLine(creelengine.Message{ID: math.MaxInt64, From: batten}))
+			refusals := []struct {
+				name     string
+				sender   creelengine.Sender
+				receiver string
+				body     string
+				setup    func()
+				want     []string
+			}{
+				{"EmptyBody", program(batten), beta, "  ", nil, []string{"empty"}},
+				{"LineOverTheBudget", program(batten), beta, strings.Repeat("x", 8<<10-overhead+1), nil, []string{"write it to a file", "mail the file"}},
+				{"UnknownReceiver", program(batten), "ly:nobody:driver", "hi", nil, []string{"unknown strand", beta}},
+				{"ReceiverWithoutTheHookMark", program(batten), alpha, "hi", nil, []string{alpha, "runs no creel hook delivery", "inject --interrupt " + alpha, "post without --interrupt"}},
+				{"OtherStrandsPane", strand(alpha), beta, "hi", nil, []string{"may not interrupt another strand's pane", "lym creel post"}},
+				{"AnotherSendersHold", external(), beta, "hi", func() {
+					if _, err := e.store.Hold(program(batten), beta, 30*time.Minute); err != nil {
+						t.Fatalf("Hold: %v", err)
+					}
+				}, []string{batten, "nothing was interrupted or posted", "post without --interrupt", "after the hold ends"}},
+				{"PauseLiftedBeforeTheKey", program(batten), beta, "hi", func() {
+					e.del.SetPaused(beta, true)
+					e.del.SetClaimLive(beta, func() (bool, error) { return false, nil })
+				}, []string{"was lifted before the interrupt", "nothing was interrupted or posted", "lym creel post --interrupt " + beta}},
+				{"UnreadablePauseRecord", program(batten), beta, "hi", func() {
+					e.del.SetClaimLive(beta, nil)
+					e.del.SetPaused(beta, false)
+					e.del.SetPausedError(errors.New("pause record is torn"))
+				}, []string{"could not read the pause record for " + beta, "pause record is torn", "nothing was interrupted or posted", "post without --interrupt", "once the pause record reads"}},
+			}
+			e.del.SetStrands(creelfake.LiveStrand(alpha), creelfake.HookStrand(beta))
+			for _, tt := range refusals {
+				if tt.setup != nil {
+					tt.setup()
+				}
+				_, interrupted, _, err := e.store.PostInterrupt(tt.sender, tt.receiver, tt.body, false)
+				if interrupted {
+					t.Errorf("%s: reported the turn interrupted", tt.name)
+				}
+				wantErr(t, err, tt.want...)
+			}
+			e.del.SetPausedError(nil)
+			if keys := e.del.Interrupts(); len(keys) != 0 {
+				t.Errorf("refusals sent keys into %v; want none", keys)
+			}
+			wantBodies(t, e.readBodies(t, strand(beta), ""))
+		}},
+		{"PostInterrupt_ADeliveryFailureOfTheKeyStoresNothing", func(t *testing.T, e *env) {
+			e.del.SetStrands(creelfake.HookStrand(beta))
+			boom := errors.New("pane gone")
+			e.del.SetInterruptError(boom)
+			_, interrupted, _, err := e.store.PostInterrupt(program(batten), beta, "hi", false)
+			if !errors.Is(err, boom) || interrupted || strings.Contains(err.Error(), "was interrupted") {
+				t.Errorf("PostInterrupt = %v, %v; want the delivery's error as the interrupt words it", interrupted, err)
+			}
+			wantBodies(t, e.readBodies(t, strand(beta), ""))
+		}},
+		{"PostInterrupt_AJournalThatFailsAfterTheKeyAnswersTheTurnWasInterrupted", func(t *testing.T, e *env) {
+			e.del.SetStrands(creelfake.HookStrand(beta))
+			e.del.SetInterruptFunc(func(string) error {
+				// The interrupted record rolls to the next day's file, which a directory in its place cannot open for writing.
+				e.clock.Advance(13 * time.Hour)
+				if err := os.Mkdir(filepath.Join(e.geom.JournalDir, "2026-10-02.jsonl"), 0o755); err != nil {
+					t.Errorf("Mkdir: %v", err)
+				}
+				return nil
+			})
+			_, interrupted, _, err := e.store.PostInterrupt(program(batten), beta, "hi", false)
+			if !interrupted {
+				t.Errorf("interrupted = false; want true, since the key was sent")
+			}
+			wantErr(t, err, "the turn of "+beta+" was interrupted", "the post was not stored", "post again without --interrupt")
+		}},
+		{"PostInterrupt_AStoreThatFailsAfterTheKeyAnswersTheTurnWasInterrupted", func(t *testing.T, e *env) {
+			e.del.SetStrands(creelfake.HookStrand(beta))
+			e.del.SetInterruptFunc(func(string) error {
+				e.del.SetStrandsError(errors.New("reed state is unreadable"))
+				return nil
+			})
+			_, interrupted, _, err := e.store.PostInterrupt(program(batten), beta, "hi", false)
+			if !interrupted {
+				t.Errorf("interrupted = false; want true, since the key was sent")
+			}
+			wantErr(t, err, "the turn of "+beta+" was interrupted", "the post was not stored", "reed state is unreadable", "post again without --interrupt")
+			e.del.SetStrandsError(nil)
+			wantBodies(t, e.readBodies(t, strand(beta), ""))
 		}},
 		{"Log_FiltersAndNeverShowsABody", func(t *testing.T, e *env) {
 			first := e.post(t, strand(alpha), beta, "subject line\nsecret body")
@@ -846,10 +975,10 @@ func TestStore_InjectAndHold(t *testing.T) {
 
 func TestStore_ClaimAtBoundary(t *testing.T) {
 	t.Parallel()
-	// claimLines claims as the strand and returns the claimed messages' lines, leaving the reading unacknowledged.
-	claimLines := func(t *testing.T, e *env, as string) (*creelengine.Reading, []string) {
+	// claimWith claims as the strand at boundary and returns the claimed messages' lines, leaving the reading unacknowledged.
+	claimWith := func(t *testing.T, e *env, as string, boundary creelengine.Boundary) (*creelengine.Reading, []string) {
 		t.Helper()
-		reading, err := e.store.ClaimAtBoundary(strand(as))
+		reading, err := e.store.ClaimAtBoundary(strand(as), boundary)
 		if err != nil {
 			t.Fatalf("ClaimAtBoundary(%s): %v", as, err)
 		}
@@ -859,6 +988,11 @@ func TestStore_ClaimAtBoundary(t *testing.T) {
 		}
 		return reading, lines
 	}
+	// claimLines claims as a tool boundary.
+	claimLines := func(t *testing.T, e *env, as string) (*creelengine.Reading, []string) {
+		t.Helper()
+		return claimWith(t, e, as, creelengine.Boundary{})
+	}
 	tests := []struct {
 		name string
 		run  func(t *testing.T, e *env)
@@ -867,7 +1001,7 @@ func TestStore_ClaimAtBoundary(t *testing.T) {
 			e.post(t, strand(alpha), beta, "from a strand\nsecond line")
 			e.post(t, program(batten), beta, "from a program")
 			reading, lines := claimLines(t, e, beta)
-			want := []string{"[creel] #1 from " + alpha + ": from a strand second line", "[creel] #2 from " + batten + ": from a program"}
+			want := []string{"[creel] #1 from \"" + alpha + "\": from a strand second line", "[creel] #2 from \"" + batten + "\": from a program"}
 			if !slices.Equal(lines, want) {
 				t.Errorf("claimed %q; want %q", lines, want)
 			}
@@ -891,7 +1025,9 @@ func TestStore_ClaimAtBoundary(t *testing.T) {
 			big := strings.Repeat("x", 5000)
 			e.post(t, strand(alpha), beta, big)
 			e.post(t, strand(alpha), beta, big)
-			e.post(t, strand(alpha), beta, strings.Repeat("y", 10000))
+			if _, err := e.store.PostUnchecked(strand(alpha), beta, strings.Repeat("y", 9000)); err != nil {
+				t.Fatalf("PostUnchecked: %v", err)
+			}
 			first, lines := claimLines(t, e, beta)
 			if len(lines) != 1 || !strings.HasPrefix(lines[0], "[creel] #1 ") {
 				t.Fatalf("first claim handed out %d lines; want only #1, since #2 takes it past the budget", len(lines))
@@ -904,6 +1040,74 @@ func TestStore_ClaimAtBoundary(t *testing.T) {
 			_ = second.Ack()
 			if _, lines := claimLines(t, e, beta); len(lines) != 1 || !strings.HasPrefix(lines[0], "[creel] #3 ") {
 				t.Errorf("third claim handed out %d lines; want #3 whole though it is over the budget", len(lines))
+			}
+		}},
+		{"SkipsAMessageWhoseLineIsOverTheHookFieldCap", func(t *testing.T, e *env) {
+			const hookFieldCap = 10000
+			// The prefix is ASCII, so its byte length is its UTF-16 length; each é is two bytes and one unit.
+			prefix := len(creelengine.MessageLine(creelengine.Message{ID: 2, From: alpha}))
+			e.post(t, strand(alpha), beta, "short")
+			atCap, err := e.store.PostUnchecked(strand(alpha), beta, strings.Repeat("é", hookFieldCap-prefix))
+			if err != nil {
+				t.Fatalf("PostUnchecked(at the cap): %v", err)
+			}
+			overBody := strings.Repeat("é", hookFieldCap-prefix+1)
+			if _, err := e.store.PostUnchecked(strand(alpha), beta, overBody); err != nil {
+				t.Fatalf("PostUnchecked(over the cap): %v", err)
+			}
+			first, lines := claimLines(t, e, beta)
+			if len(lines) != 1 || !strings.HasPrefix(lines[0], "[creel] #1 ") {
+				t.Fatalf("first claim handed out %q; want only #1, since the line at the cap is far over the budget", lines)
+			}
+			_ = first.Ack()
+			second, lines := claimLines(t, e, beta)
+			if len(lines) != 1 || !strings.HasPrefix(lines[0], fmt.Sprintf("[creel] #%d ", atCap)) || len(lines[0]) <= hookFieldCap {
+				t.Fatalf("second claim handed out %d lines; want the line of exactly the cap in UTF-16 units, over it in bytes", len(lines))
+			}
+			_ = second.Ack()
+			if _, lines := claimLines(t, e, beta); len(lines) != 0 {
+				t.Errorf("a claim handed out %q; want nothing, since the last line is one unit over the cap", lines)
+			}
+			wantBodies(t, e.readBodies(t, strand(beta), ""), overBody)
+		}},
+		{"StopHoldsNoBlocksAfterADaemonStartUntilAToolBoundaryClaimResetsTheCount", func(t *testing.T, e *env) {
+			for range 3 {
+				e.post(t, strand(alpha), beta, strings.Repeat("x", 5000))
+			}
+			if _, lines := claimWith(t, e, beta, creelengine.Boundary{Stop: true, StopHookActive: true}); len(lines) != 0 {
+				t.Fatalf("a fresh store's Stop handed out %q; want nothing, since the count is at the cap", lines)
+			}
+			reading, lines := claimLines(t, e, beta)
+			if len(lines) != 1 {
+				t.Fatalf("tool-boundary claim handed out %d lines; want 1", len(lines))
+			}
+			_ = reading.Ack()
+			if _, lines := claimWith(t, e, beta, creelengine.Boundary{Stop: true, StopHookActive: true}); len(lines) != 1 {
+				t.Errorf("Stop after a tool-boundary claim handed out %d lines; want 1", len(lines))
+			}
+		}},
+		{"StopBlocksAreCappedAtSixPerTurnAndANewTurnStartsTheCountOver", func(t *testing.T, e *env) {
+			for range 10 {
+				e.post(t, strand(alpha), beta, strings.Repeat("x", 5000))
+			}
+			stopHandsOutOne := func(active bool) bool {
+				reading, lines := claimWith(t, e, beta, creelengine.Boundary{Stop: true, StopHookActive: active})
+				_ = reading.Ack()
+				return len(lines) == 1
+			}
+			if !stopHandsOutOne(false) {
+				t.Fatal("the first Stop of a turn handed out nothing; want one message")
+			}
+			for i := 2; i <= 6; i++ {
+				if !stopHandsOutOne(true) {
+					t.Fatalf("Stop block %d of the turn handed out nothing; want one message", i)
+				}
+			}
+			if stopHandsOutOne(true) {
+				t.Error("the seventh Stop of a turn handed out a message; want none at the cap of 6")
+			}
+			if !stopHandsOutOne(false) {
+				t.Error("a Stop that starts a new turn handed out nothing; want one message")
 			}
 		}},
 		{"BudgetCountsTheNewlinesJoiningTheLines", func(t *testing.T, e *env) {
@@ -937,7 +1141,7 @@ func TestStore_ClaimAtBoundary(t *testing.T) {
 			if _, err := e.store.Hold(program(batten), beta, time.Minute); err != nil {
 				t.Fatalf("Hold: %v", err)
 			}
-			if _, lines := claimLines(t, e, beta); !slices.Equal(lines, []string{"[creel] #2 from " + batten + ": owner's"}) {
+			if _, lines := claimLines(t, e, beta); !slices.Equal(lines, []string{"[creel] #2 from \"" + batten + "\": owner's"}) {
 				t.Errorf("claimed %q under the hold; want only the owner's mail", lines)
 			}
 		}},
@@ -951,11 +1155,11 @@ func TestStore_ClaimAtBoundary(t *testing.T) {
 		{"UnreadablePauseRefuses", func(t *testing.T, e *env) {
 			e.post(t, strand(alpha), beta, "unknown pause")
 			e.del.SetPausedError(errors.New("pause record torn"))
-			_, err := e.store.ClaimAtBoundary(strand(beta))
+			_, err := e.store.ClaimAtBoundary(strand(beta), creelengine.Boundary{})
 			wantErr(t, err, "pause record", "pause record torn")
 		}},
 		{"NonStrandSenderRefusedNamingRead", func(t *testing.T, e *env) {
-			_, err := e.store.ClaimAtBoundary(program(batten))
+			_, err := e.store.ClaimAtBoundary(program(batten), creelengine.Boundary{})
 			wantErr(t, err, "no strand", "lym creel read")
 		}},
 	}

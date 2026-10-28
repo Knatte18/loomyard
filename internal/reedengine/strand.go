@@ -48,6 +48,8 @@ type AddSpec struct {
 	Segment string
 	// Provider is stamped verbatim onto the new strand's Provider.
 	Provider string
+	// CreelHooks is stamped verbatim onto the new strand's CreelHooks.
+	CreelHooks bool
 }
 
 // Removed reports every strand RemoveStrand deleted: the target plus its whole cascaded descendant
@@ -408,17 +410,18 @@ func (e *Engine) addStrandLocked(st *ReedState, spec AddSpec) (Strand, error) {
 	}
 
 	st.Strands = append(st.Strands, Strand{
-		GUID:      guid,
-		Name:      name,
-		Worktree:  e.geom.WorktreeRoot,
-		Parent:    spec.Parent,
-		Cmd:       spec.Cmd,
-		ResumeCmd: spec.ResumeCmd,
-		SessionID: spec.SessionID,
-		Display:   spec.Display,
-		DoneWhen:  spec.DoneWhen,
-		Segment:   spec.Segment,
-		Provider:  spec.Provider,
+		GUID:       guid,
+		Name:       name,
+		Worktree:   e.geom.WorktreeRoot,
+		Parent:     spec.Parent,
+		Cmd:        spec.Cmd,
+		ResumeCmd:  spec.ResumeCmd,
+		SessionID:  spec.SessionID,
+		Display:    spec.Display,
+		DoneWhen:   spec.DoneWhen,
+		Segment:    spec.Segment,
+		Provider:   spec.Provider,
+		CreelHooks: spec.CreelHooks,
 	})
 	strand := &st.Strands[len(st.Strands)-1]
 
