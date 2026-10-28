@@ -606,12 +606,17 @@ func TestBolt_PushRecorded_DropsSeedCommitsOnRebaseConflict(t *testing.T) {
 			t.Fatalf("write pre-receive hook: %v", err)
 		}
 		rec := fabricengine.NewMutations(f.hub.Path)
+		sleeps := 0
 
-		err := f.bolt.PushRecorded(fabricengine.SyncOptions{}, rec)
+		err := f.bolt.PushRecorded(fabricengine.SyncOptions{BackoffSleep: func(time.Duration) { sleeps++ }}, rec)
 
 		if !errors.Is(err, gitrepo.ErrPushRejected) {
 			t.Errorf("PushRecorded error = %v, want the retry's own push rejection", err)
 		}
+		if want := len(gitrepo.PushBackoffDelays()); sleeps < want {
+			t.Errorf("backoff sleeps = %d, want at least %d, the whole backoff waited out before the record", sleeps, want)
+		}
+		requireOneFailedPush(t, f.hub.Path, "bolt", fabricengine.PushFailureNotFastForward)
 		if gitkit.IsAncestor(t, f.board, seed, "HEAD") || !gitkit.IsAncestor(t, f.board, upstream, "HEAD") {
 			t.Errorf("seed %s under HEAD or upstream %s missing from it; want the drop kept", seed, upstream)
 		}

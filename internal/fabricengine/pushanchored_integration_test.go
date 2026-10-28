@@ -282,7 +282,7 @@ func countBranchPushed(res fabricengine.PushResult, detailPrefix string) int {
 }
 
 // TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide walks one pair through the behaviors of PushPairAnchored in order:
-// both sides pushed and recorded, a remote that declines once retried to success on both entries, a rejection whose fetch then fails returned without a retry, a remote that keeps declining reported as a bare rejection, an unborn code side skipped while the records side still pushes, a diverged code side reported while the records side still pushes, and both sides failing reported together.
+// both sides pushed and recorded, a remote that declines once retried to success on both entries, a rejection whose fetch then keeps failing never pushed again, a remote that keeps declining reported as a bare rejection, an unborn code side skipped while the records side still pushes, a diverged code side reported while the records side still pushes, and both sides failing reported together.
 // Two subtests then run on hubs of their own: the prime pushes its records side only and reports the skipped code push, and a prime that cannot be resolved fails the call with nothing pushed.
 func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T) {
 	t.Parallel()
@@ -328,9 +328,10 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 		t.Errorf("weft bare = %q; want local HEAD %q after the retry", got, weftSHA)
 	}
 
-	// A rejection whose fetch then fails is not retried:
+	// A rejection whose fetch then keeps failing is never pushed again:
 	// the code side pushes to its real bare but fetches from a missing path,
 	// and a remote that declines once would accept a retry.
+	noSleep := fabricengine.SyncOptions{BackoffSleep: func(time.Duration) {}}
 	warpBareBeforeFetchFailure := fabricengine.BareBranchSHAForTest(t, p.hub.CodeBare, p.warpBranch)
 	if err := os.Remove(filepath.Join(p.hub.CodeBare, "declined-once")); err != nil {
 		t.Fatalf("reset decline-once marker: %v", err)
@@ -339,26 +340,31 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 	warpFetchURL := gitkit.Git(t, p.warpPath, "config", "--get", "remote.origin.url")
 	gitkit.MustRun(t, p.warpPath, "git", "config", "remote.origin.pushurl", warpFetchURL)
 	gitkit.MustRun(t, p.warpPath, "git", "config", "remote.origin.url", filepath.Join(t.TempDir(), "missing"))
-	_, err = fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded)
+	_, err = fabricengine.PushPairAnchored(p.location, noSleep, fabricengine.LockWaitUnbounded)
 	if !fabricengine.IsPushRejected(err) {
 		t.Errorf("PushPairAnchored() with a rejected push and a failing fetch error = %v; want the bare rejection", err)
 	}
 	if got := fabricengine.BareBranchSHAForTest(t, p.hub.CodeBare, p.warpBranch); got != warpBareBeforeFetchFailure {
-		t.Errorf("warp bare = %q; want it unmoved at %q (no retry after a failed fetch)", got, warpBareBeforeFetchFailure)
+		t.Errorf("warp bare = %q; want it unmoved at %q (no push after a failed fetch)", got, warpBareBeforeFetchFailure)
 	}
 	gitkit.MustRun(t, p.warpPath, "git", "config", "remote.origin.url", warpFetchURL)
 	gitkit.MustRun(t, p.warpPath, "git", "config", "--unset", "remote.origin.pushurl")
 
-	// A remote that keeps declining: the one retry is rejected too,
+	// A remote that keeps declining: every retry is rejected too,
 	// so the bare rejection surfaces and nothing local moves.
 	installPreReceive(t, p.hub.CodeBare, "#!/bin/sh\necho 'declined always' >&2\nexit 1\n")
 	gitkit.CommitFile(t, p.warpPath, "warp-file.txt", "warp change declined", "warp change declined")
 	declinedWarpBare := fabricengine.BareBranchSHAForTest(t, p.hub.CodeBare, p.warpBranch)
 	declinedWarpHead := head(p.warpPath)
-	_, err = fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded)
+	sleeps := 0
+	_, err = fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{BackoffSleep: func(time.Duration) { sleeps++ }}, fabricengine.LockWaitUnbounded)
 	if !fabricengine.IsPushRejected(err) {
-		t.Errorf("PushPairAnchored() against a remote that keeps declining error = %v; want IsPushRejected after the one retry", err)
+		t.Errorf("PushPairAnchored() against a remote that keeps declining error = %v; want IsPushRejected after the retries", err)
 	}
+	if want := len(gitrepo.PushBackoffDelays()); sleeps < want {
+		t.Errorf("backoff sleeps = %d; want at least %d, the whole backoff waited out before the record", sleeps, want)
+	}
+	requireOneFailedPush(t, p.hub.Location.HubPath, "code", fabricengine.PushFailureNotFastForward)
 	if got := fabricengine.BareBranchSHAForTest(t, p.hub.CodeBare, p.warpBranch); got != declinedWarpBare {
 		t.Errorf("warp bare = %q; want it unmoved at %q", got, declinedWarpBare)
 	}

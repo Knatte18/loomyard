@@ -113,8 +113,9 @@ func (b *Bolt) Push(opts SyncOptions) error {
 }
 
 // PushRecorded pushes any unpushed commits in the Bolt's repo rebase-free and records what a replay of them does in rec.
-// A push origin rejects is retried once after the board's local commits are replayed onto origin's, under the board write lock and then the push lock;
-// the replay drops the seed commits, and an entry only one side changed never conflicts.
+// A push origin rejects is retried after the board's local commits are replayed onto origin's, under the board write lock and then the push lock;
+// the replay retry runs again over the push backoff while it fails with a bare rejection or an error no class names, and a rejection that outlasts the backoff is recorded.
+// The replay drops the seed commits, and an entry only one side changed never conflicts.
 // A held board write lock or an uncommitted change on a path the replay touches defers the push to the next one and returns nil.
 // A failed push is recorded as a failed push and returned as a *PushFailedError.
 // A push honoring SkipGit or SkipPush does nothing.

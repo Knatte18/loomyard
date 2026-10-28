@@ -239,13 +239,20 @@ func FailedPushWayForward(f FailedPush) string {
 	}
 }
 
-// recordsConflictWayForward names a records replay stop: the conflicting paths and local commits,
+// recordsConflictWayForward names a records branch origin moved past: the conflicting paths when a replay stopped on some, the local commits,
 // and the two ways to settle it, each run in worktree, followed by pushVerb, the push step with its directory.
+// It names no machine, since no commit names the machine that wrote it.
 func recordsConflictWayForward(worktree, branch string, paths, commits []string, pushVerb string) string {
-	return fmt.Sprintf("another machine wrote the same paths on origin/%s (paths: %s; local commits: %s); "+
+	found := fmt.Sprintf("origin/%s holds commits this branch lacks (local commits: %s)", branch, joinOrNone(commits))
+	settle := "settle any conflict"
+	if len(paths) > 0 {
+		found = fmt.Sprintf("origin/%s holds commits that change the same paths as this branch's (paths: %s; local commits: %s)", branch, strings.Join(paths, " "), joinOrNone(commits))
+		settle = "settle the named paths"
+	}
+	return fmt.Sprintf("%s; "+
 		"to keep origin's side, run `git reset --keep origin/%s` in %s, which drops the local commits; "+
-		"to keep this machine's, run `git merge origin/%s` in %s, settle the named paths and commit, then run %s, whose push is then a fast-forward and meets no replay",
-		branch, joinOrNone(paths), joinOrNone(commits), branch, worktree, branch, worktree, pushVerb)
+		"to keep this machine's, run `git merge origin/%s` in %s, %s and commit, then run %s, whose push is then a fast-forward and meets no replay",
+		found, branch, worktree, branch, worktree, settle, pushVerb)
 }
 
 // codeDivergedWayForward names the merge that settles a code branch origin moved past.

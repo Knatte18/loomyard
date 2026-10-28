@@ -217,9 +217,13 @@ func TestPushFailureClasses(t *testing.T) {
 		f.originCommit(branch, "status.json", "from the other machine\n", "other status")
 		local := gitkit.CommitFile(t, weft, "status.json", "from this machine\n", "local status")
 		before := bareBranchTip(t, f.hub.RecordsBare, branch)
+		sleeps := 0
 
-		if _, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WeftPath: weft}, opts); err != nil {
+		if _, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WeftPath: weft}, fabricengine.SyncOptions{BackoffSleep: countingBackoff(&sleeps, nil)}); err != nil {
 			t.Fatalf("CoalescePushRequest() error = %v; want nil, a detached push never fails", err)
+		}
+		if sleeps != 0 {
+			t.Errorf("backoff sleeps = %d; want none, a replay conflict is not retried", sleeps)
 		}
 
 		record := requireOneFailedPush(t, f.hub.Location.HubPath, "records", fabricengine.PushFailureNotFastForward)
@@ -244,8 +248,9 @@ func TestPushFailureClasses(t *testing.T) {
 		gitkit.CommitFile(t, weft, "local.txt", "local\n", "local")
 		// The first push never reaches the hook, since git refuses it against the other machine's tip; only the retry's push does.
 		installPreReceive(t, f.hub.RecordsBare, "#!/bin/sh\necho 'declined' >&2\nexit 1\n")
+		sleeps := 0
 
-		if _, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WeftPath: weft}, opts); err != nil {
+		if _, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WeftPath: weft}, fabricengine.SyncOptions{BackoffSleep: countingBackoff(&sleeps, nil)}); err != nil {
 			t.Fatalf("CoalescePushRequest() error = %v; want nil", err)
 		}
 
@@ -255,6 +260,101 @@ func TestPushFailureClasses(t *testing.T) {
 		}
 		if len(fake.lines) != 1 {
 			t.Errorf("mails = %q; want one", fake.lines)
+		}
+		if want := len(gitrepo.PushBackoffDelays()); sleeps < want {
+			t.Errorf("backoff sleeps = %d; want at least %d, the whole backoff waited out before the record", sleeps, want)
+		}
+	})
+
+	t.Run("ACodeRetryWhoseEveryPushIsRejectedWritesANotFastForwardRecordAndOneMail", func(t *testing.T) {
+		f, fake := newFailureFixture(t)
+		prime := f.hub.PrimeWorktree()
+		gitkit.CommitFile(t, prime, "local.txt", "local\n", "local")
+		installPreReceive(t, f.hub.CodeBare, "#!/bin/sh\necho 'declined' >&2\nexit 1\n")
+		sleeps := 0
+
+		_, err := hubforge.OpenFabric(t, f.hub).PushBranch(fabricengine.SyncOptions{BackoffSleep: countingBackoff(&sleeps, nil)})
+
+		if !fabricengine.IsPushRejected(err) {
+			t.Errorf("PushBranch() error = %v; want IsPushRejected", err)
+		}
+		requireOneFailedPush(t, f.hub.Location.HubPath, "code", fabricengine.PushFailureNotFastForward)
+		if len(fake.lines) != 1 {
+			t.Errorf("mails = %q; want one", fake.lines)
+		}
+		if want := len(gitrepo.PushBackoffDelays()); sleeps < want {
+			t.Errorf("backoff sleeps = %d; want at least %d, the whole backoff waited out before the record", sleeps, want)
+		}
+	})
+
+	t.Run("ACodeRejectionWhoseRetryIsRefusedForAuthIsNotRetriedAgain", func(t *testing.T) {
+		f, _ := newFailureFixture(t)
+		prime := f.hub.PrimeWorktree()
+		gitkit.CommitFile(t, prime, "local.txt", "local\n", "local")
+		// The first push is a bare rejection; every later one is refused for permission.
+		marker := filepath.ToSlash(filepath.Join(f.hub.CodeBare, "declines"))
+		installPreReceive(t, f.hub.CodeBare, "#!/bin/sh\nn=$(cat '"+marker+"' 2>/dev/null || echo 0)\necho $((n + 1)) > '"+marker+"'\nif [ \"$n\" -lt 1 ]; then\n  echo 'declined' >&2\nelse\n  echo 'Permission to hub denied to tester.' >&2\nfi\nexit 1\n")
+		sleeps := 0
+
+		_, err := hubforge.OpenFabric(t, f.hub).PushBranch(fabricengine.SyncOptions{BackoffSleep: countingBackoff(&sleeps, nil)})
+
+		if err == nil {
+			t.Fatal("PushBranch() error = nil; want a failed push")
+		}
+		requireOneFailedPush(t, f.hub.Location.HubPath, "code", fabricengine.PushFailureAuth)
+		if sleeps != 0 {
+			t.Errorf("backoff sleeps = %d; want none, an auth refusal of the retry is not retried", sleeps)
+		}
+	})
+
+	t.Run("APushThatLostARaceIsRetriedUntilItLandsWithNoRecord", func(t *testing.T) {
+		// The hook declines the first push and the first retry, the way a racing push of the same branch makes them lose, while origin keeps no commit the branch lacks.
+		declineTwice := func(t *testing.T, bare string) {
+			t.Helper()
+			marker := filepath.ToSlash(filepath.Join(bare, "declines"))
+			installPreReceive(t, bare, "#!/bin/sh\nn=$(cat '"+marker+"' 2>/dev/null || echo 0)\nif [ \"$n\" -lt 2 ]; then\n  echo $((n + 1)) > '"+marker+"'\n  echo 'declined' >&2\n  exit 1\nfi\nexit 0\n")
+		}
+		tests := []struct {
+			name string
+			push func(t *testing.T, f *recordsFixture, opts fabricengine.SyncOptions) (local, bare, branch string)
+		}{
+			{"Code", func(t *testing.T, f *recordsFixture, opts fabricengine.SyncOptions) (string, string, string) {
+				prime := f.hub.PrimeWorktree()
+				local := gitkit.CommitFile(t, prime, "local.txt", "local\n", "local")
+				declineTwice(t, f.hub.CodeBare)
+				if _, err := hubforge.OpenFabric(t, f.hub).PushBranch(opts); err != nil {
+					t.Fatalf("PushBranch() error = %v; want nil", err)
+				}
+				return local, f.hub.CodeBare, gitkit.CurrentBranch(t, prime)
+			}},
+			{"Records", func(t *testing.T, f *recordsFixture, opts fabricengine.SyncOptions) (string, string, string) {
+				weft, branch := f.primeWeft()
+				local := gitkit.CommitFile(t, weft, "local.txt", "local\n", "local")
+				declineTwice(t, f.hub.RecordsBare)
+				if _, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WeftPath: weft}, opts); err != nil {
+					t.Fatalf("CoalescePushRequest() error = %v; want nil", err)
+				}
+				return local, f.hub.RecordsBare, branch
+			}},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				f, fake := newFailureFixture(t)
+				sleeps := 0
+
+				local, bare, branch := tt.push(t, f, fabricengine.SyncOptions{BackoffSleep: countingBackoff(&sleeps, nil)})
+
+				if got := bareBranchTip(t, bare, branch); got != local {
+					t.Errorf("origin tip = %s; want the local commit %s", got, local)
+				}
+				requireNoFailedPush(t, f.hub.Location.HubPath)
+				if len(fake.lines) != 0 {
+					t.Errorf("mails = %q; want none", fake.lines)
+				}
+				if sleeps != 1 {
+					t.Errorf("backoff sleeps = %d; want 1, between the declined retry and the one that lands", sleeps)
+				}
+			})
 		}
 	})
 
@@ -299,12 +399,16 @@ func TestPushFailureClasses(t *testing.T) {
 				wantNamed := tt.arrange(t, p)
 				weftHeadWas := gitkit.RevParse(t, p.weftPath, "HEAD")
 				originTipWas := bareBranchTip(t, p.hub.RecordsBare, p.weftBranch)
+				sleeps := 0
 
-				_, err := fabricengine.PushPairAnchored(p.location, opts, fabricengine.LockWaitUnbounded)
+				_, err := fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{BackoffSleep: countingBackoff(&sleeps, nil)}, fabricengine.LockWaitUnbounded)
 
 				var failed *fabricengine.PushFailedError
 				if !errors.As(err, &failed) || !errors.Is(err, fabricengine.ErrAnchorChange) {
 					t.Fatalf("PushPairAnchored() error = %v; want a *PushFailedError wrapping ErrAnchorChange", err)
+				}
+				if sleeps != 0 {
+					t.Errorf("backoff sleeps = %d; want none, an anchor stop is not retried", sleeps)
 				}
 				record := requireOneFailedPush(t, p.hub.Location.HubPath, "records", fabricengine.PushFailureAnchorChange)
 				wayForward := fabricengine.FailedPushWayForward(record)
@@ -725,12 +829,16 @@ func TestPushFailureClasses(t *testing.T) {
 			gitkit.Git(t, other, "push", "origin", branch)
 			gitkit.CommitFile(t, prime, "local.txt", "local\n", "local")
 			opened := hubforge.OpenFabric(t, f.hub)
+			sleeps := 0
 
-			_, err := opened.PushBranch(opts)
+			_, err := opened.PushBranch(fabricengine.SyncOptions{BackoffSleep: countingBackoff(&sleeps, nil)})
 
 			var failed *fabricengine.PushFailedError
 			if !errors.As(err, &failed) || failed.Record.Class != fabricengine.PushFailureNotFastForward || !failed.Record.Prime {
 				t.Fatalf("PushBranch() error = %v; want a not-fast-forward *PushFailedError of the prime", err)
+			}
+			if sleeps != 0 {
+				t.Errorf("backoff sleeps = %d; want 0, since origin holding commits the branch lacks is reported at once", sleeps)
 			}
 			if want := fmt.Sprintf("then run `git push` in %s", prime); !strings.HasSuffix(err.Error(), want) {
 				t.Errorf("PushBranch() error = %q; want it to end in %q", err, want)

@@ -85,9 +85,10 @@ type pushJob struct {
 // A task branch origin rewound is not pushed either, since a plain push would restore the commits the rewind dropped.
 // A gone branch whose entry is not ended and an unreachable origin are retried by one backoff before they are recorded.
 //
-// A records rejection runs retryRecords once, which replays the local commits onto origin's and pushes again;
+// A rejection is retried before it is recorded, over the push backoff, while each retry fails with a bare rejection or an unnamed error such as a failed fetch, so a push that lost a race with another push of the branch lands instead of reporting a divergence.
+// A records retry runs retryRecords, which replays the local commits onto origin's and pushes again;
 // a deferral it reports writes a deferred record and returns nil, leaving the commits to the next push of the branch.
-// A code-side rejection is retried only when the rejection came from a stale remote-tracking ref.
+// A code-side retry fetches and pushes again only while origin's tip is contained in the local tip, and reports the rejection at once when origin holds commits the branch lacks.
 // Every other failure is recorded and returned as a *PushFailedError holding the push's own error, under the "other" class when it matches none.
 // A push that lands removes the record of its side and branch.
 func pushClassified(rec *Mutations, hubPath, side, path string, opts SyncOptions, retryRecords func() (deferred bool, err error)) error {
@@ -122,19 +123,19 @@ func pushClassified(rec *Mutations, hubPath, side, path string, opts SyncOptions
 	if errors.Is(pushErr, gitrepo.ErrLocalBranch) {
 		return pushErr
 	}
-	if errors.Is(pushErr, gitrepo.ErrPushRejected) && retryRecords != nil {
-		deferred, retryErr := retryRecords()
+	if errors.Is(pushErr, gitrepo.ErrPushRejected) {
+		retry := retryRecords
+		if retry == nil {
+			retry = job.repushOverOriginContained
+		}
+		deferred, retryErr := job.settleRejection(pushErr, retry)
 		switch {
 		case deferred:
 			return job.deferral()
 		case retryErr == nil:
 			return job.landed(hadUnpushed, hadUnpushedErr)
 		}
-		if failed, classified := job.classifyFailure(retryErr); classified {
-			return failed
-		}
-		// A retry that stopped before it pushed leaves the rejection as the failure, with the retry's own error joined so the record names it.
-		pushErr = errors.Join(pushErr, retryErr)
+		pushErr = retryErr
 	}
 	if failed, classified := job.classifyFailure(pushErr); classified {
 		return failed
@@ -142,12 +143,81 @@ func pushClassified(rec *Mutations, hubPath, side, path string, opts SyncOptions
 	return job.fail(PushFailureOther, pushErr, nil, nil, "")
 }
 
-// push runs the side's rebase-free push; a code side keeps the stale-remote-tracking-ref retry.
+// push runs the side's rebase-free push.
 func (j *pushJob) push() error {
-	if j.side == failedPushSideCode {
-		return pushRebaseFreeRetryingOnce(j.repo)
-	}
 	return j.repo.PushRebaseFree()
+}
+
+// errOriginAhead is returned by a code-side retry that found origin holding commits the local branch lacks, a divergence no retry settles.
+var errOriginAhead = errors.New("fabricengine: origin holds commits the local branch lacks")
+
+// settleRejection retries a rejected push before it is reported, by running retry until it lands, defers or fails for a reason no retry clears.
+// Two pushes of one branch can race, and the loser's rejection, or a fetch its retry made while the winner held the tracking ref, names a divergence the winner's landing already removed.
+// retry runs again, after one delay of the push backoff slept through the job's BackoffSleep, only while it fails with a bare rejection or an error no class names, such as a failed fetch;
+// it is bounded by the backoff's length.
+// It returns the deferral or nil of a retry that deferred or landed, and otherwise the error to classify:
+// rejected when a code-side retry finds origin ahead, the retry's own error when a class names it,
+// and an unnamed error joined to rejected so the record still reads as a rejection and names the retry's error.
+func (j *pushJob) settleRejection(rejected error, retry func() (deferred bool, err error)) (deferred bool, err error) {
+	delays := gitrepo.PushBackoffDelays()
+	sleep := j.opts.BackoffSleep
+	if sleep == nil {
+		sleep = time.Sleep
+	}
+	for attempt := 0; ; attempt++ {
+		deferred, retryErr := retry()
+		if deferred || retryErr == nil {
+			return deferred, nil
+		}
+		if errors.Is(retryErr, errOriginAhead) {
+			return false, rejected
+		}
+		named, retryable := rejectionRetryKind(retryErr)
+		if !named {
+			retryErr = errors.Join(rejected, retryErr)
+		}
+		if !retryable || attempt == len(delays) {
+			return false, retryErr
+		}
+		logger.Warn("fabricengine: rejected push retried", "side", j.side, "branch", j.branch, "attempt", attempt+1, "error", retryErr)
+		sleep(delays[attempt])
+	}
+}
+
+// rejectionRetryKind sorts the failure of a retried rejected push.
+// named reports whether a failure class names err.
+// retryable reports whether another attempt may still land the push: true for a bare rejection and for an error no class names, such as a failed fetch.
+func rejectionRetryKind(err error) (named, retryable bool) {
+	var anchorStop *AnchorStopError
+	var refusal *destructiveRefusal
+	switch {
+	case errors.As(err, &anchorStop), errors.Is(err, gitrepo.ErrPushAuthRefused):
+		return true, false
+	case errors.Is(err, gitrepo.ErrPushRejected):
+		return true, true
+	case errors.Is(err, ErrReplayConflict), errors.As(err, &refusal):
+		return true, false
+	case errors.Is(err, gitrepo.ErrPushRetriesExhausted), gitexec.IsTransportFailure(err):
+		return true, false
+	default:
+		return false, true
+	}
+}
+
+// repushOverOriginContained is the code side's retry of a rejected push: it fetches and pushes again while origin's tip is contained in the local tip, which makes the rejection a race or a stale tracking ref rather than a divergence.
+// It returns errOriginAhead, without pushing, when origin holds commits the local branch lacks, and never rebases, merges or forces.
+func (j *pushJob) repushOverOriginContained() (deferred bool, err error) {
+	if err := j.repo.Fetch(); err != nil {
+		return false, err
+	}
+	unpulled, err := j.repo.HasUnpulled()
+	if err != nil {
+		return false, err
+	}
+	if unpulled {
+		return false, errOriginAhead
+	}
+	return false, j.repo.PushRebaseFree()
 }
 
 // isPrimeWorktree reports whether the worktree at the job's path is the hub's prime.

@@ -262,7 +262,8 @@ func PushWarpAt(warpPath string, opts SyncOptions) (res PushResult, err error) {
 //
 // A failed push is classified, recorded as a failed push and returned as a *PushFailedError.
 // The error wraps gitrepo.ErrPushRejected for a rejection and gitrepo.ErrPushAuthRefused for a refused credential.
-// A rejection is a human-decidable condition, never retried here.
+// A rejection is retried over the push backoff only while origin holds no commit the branch lacks,
+// and the rejection that remains is a human-decidable condition.
 // A task branch origin no longer has, or rewound past commits this machine holds, is not pushed.
 func PushWarpRebaseFreeAt(warpPath string, opts SyncOptions) (res PushResult, err error) {
 	rec := NewMutations(filepath.Dir(warpPath))

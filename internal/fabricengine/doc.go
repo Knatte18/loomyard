@@ -750,8 +750,8 @@
 // `PushSpawn.ParentLocked` is set at spawn time by `statusPushRequest` for a task pair when a live parent lock record names the pair's slug, which holds exactly for the pushes a Finalize spawns past its parent-side merge.
 // It travels as the hidden `--parent-locked` flag and through the pending flags and their respawns, and a parent-locked child never exits for coverage and lets only its own slug's owner entry pass.
 // The mark covers only pushes spawned while that record stood.
-// A code-side rejected push is retried once, after a fetch, only when the fetched remote tip is already contained in local HEAD,
-// so a stale remote-tracking ref recovers by itself while a real divergence does not.
+// A code-side rejected push is retried over the push backoff by `repushOverOriginContained`, only while origin's tip is contained in the local tip,
+// so a stale remote-tracking ref or a lost race recovers while a real divergence is reported at once.
 // A caller treats the `gitrepo.ErrPushRejected` that remains, carried by a `*PushFailedError`, as a human-decidable condition.
 // `IsPushRejected(err)` is the side-neutral predicate that reads it without importing `gitrepo`.
 // `MergeStateActive` is the weft-only, git-level mid-merge probe a path-scoped commit must consult before landing, distinct from both `Fabric.MergeInProgress` and the two-sided `foreignMergeStatePresent`.
@@ -926,17 +926,20 @@
 // a plain push would fast-forward origin and restore the commits the rewind dropped.
 // The prime's code branch, a weft and Bolt are never held back as rewound.
 //
-// A records rejection (`gitrepo.ErrPushRejected`) runs the side's retry once:
+// A rejection (`gitrepo.ErrPushRejected`) of any side runs the side's retry before anything is recorded:
 // `retryWeftPush` fetches the weft branch and origin's Bolt branch, try-acquires the weft write lock while the caller holds the push lock, reads the ended set from the fetched Bolt tip and replays the local commits with `replayWeft`;
 // `retryBoltPush` try-acquires the board write lock, takes the push lock in the board dir, fetches, reads the ended set and replays with `replayBolt`, which drops the seed commits.
 // Each then pushes again.
+// A code-side retry (`repushOverOriginContained`) fetches and pushes again only while origin's tip is contained in the local tip, and reports the rejection at once when origin holds commits the branch lacks.
+// Two pushes of one branch can race, and the loser's rejection, or a fetch its retry made while the winner held the tracking ref, names a divergence the winner's landing already removed;
+// so `settleRejection` runs the retry again, one delay of `gitrepo.PushBackoffDelays` apart slept through `SyncOptions.BackoffSleep`, while it fails with a bare rejection or an error no class names, such as a failed fetch, and records the failure only once the backoff runs out.
 // A held write lock or an uncommitted change on a path the replay touches is a deferral:
 // the push returns nil, writes a `deferred` record that mails nothing, and leaves the commits to the next push of the branch, whose landing removes the record.
-// A replay that stops on a conflict, or a second rejection, is a `not_fast_forward` failure carrying the conflicting paths and the local commits.
-// A code-side rejection is retried only through the stale-tracking-ref retry of `pushRebaseFreeRetryingOnce`, and otherwise fails as `not_fast_forward` at once.
+// A replay that stops on a conflict, or a rejection that outlasts the backoff, is a `not_fast_forward` failure carrying the conflicting paths, if any, and the local commits.
+// Its way forward names no machine, since no commit names the machine that wrote it, and names paths only when a replay stopped on some.
 // An auth refusal (`gitrepo.ErrPushAuthRefused`) is class `auth` at once, and a transport failure of the push call, or an exhausted push retry, is class `transport`.
 // Any other failure of the push call is class `other`, so no refused push is left to a log line.
-// A records retry that stops before it pushes keeps the rejection as the class and joins the retry's error into the record.
+// A retry that stops before it pushes, through the whole backoff, keeps the rejection as the class and joins the retry's error into the record.
 //
 // A failure `pushClassified` records returns a `*PushFailedError` holding the `FailedPush` record and the push's own error, which `Unwrap` returns, so `errors.Is` against `gitrepo.ErrPushRejected` or `gitrepo.ErrPushAuthRefused` still holds.
 // Its text is the push's error followed by `; way forward: ` and `FailedPushWayForward` of the record, so a caller that appends a way forward of its own does so only when `HasUnclassifiedFailure` reports a failure without one.
