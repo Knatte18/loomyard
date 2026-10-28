@@ -212,6 +212,8 @@ func (r *Runner) CompactedSince(guid string, turnEnd Event, since time.Time) (Co
 // An unknown reading, and a strand with no run record, fall back to the pane probe, which logs the cause at Debug.
 // The engine is the one the run's record names, the set's default for a strand with no record.
 // TooShort, Draft and NoInputBox are filled only for an answer that is not idle, on the pane fallback as on the readiness reading.
+// NoTurn and TurnEndedAt are filled for a ready or held readiness reading that finds no turn, the operator-activity hold included;
+// on the pane fallback NoTurn is the pane's idle answer or, for an engine with InterruptGuard, true when the box was found, the pane is not too short and no running turn shows, and TurnEndedAt stays zero.
 func (r *Runner) SessionIdle(guid string) (IdleProbe, error) {
 	if r.toldErr != nil {
 		return IdleProbe{}, r.toldErr
@@ -248,21 +250,25 @@ func (r *Runner) SessionIdle(guid string) (IdleProbe, error) {
 			}
 			if hold := operatorActivityHold(r.reed, guid, &r.activityFailures); hold != "" {
 				logger.Debug("shuttle: session idle probe held", "strandGUID", guid, "reason", hold)
-				return IdleProbe{Reason: hold}, nil
+				return IdleProbe{Reason: hold, NoTurn: reading.noTurn, TurnEndedAt: reading.turnEndedAt}, nil
 			}
-			return IdleProbe{Idle: true}, nil
+			return IdleProbe{Idle: true, NoTurn: reading.noTurn, TurnEndedAt: reading.turnEndedAt}, nil
 		case !reading.unknown:
 			logger.Debug("shuttle: session idle probe held", "strandGUID", guid, "reason", reading.reason)
-			return IdleProbe{Reason: reading.reason, Draft: reading.draft != "", TooShort: reading.reason == readinessReasonPaneTooShort, NoInputBox: reading.reason == readinessReasonNoInputBox}, nil
+			return IdleProbe{Reason: reading.reason, Draft: reading.draft != "", TooShort: reading.reason == readinessReasonPaneTooShort, NoInputBox: reading.reason == readinessReasonNoInputBox, NoTurn: reading.noTurn, TurnEndedAt: reading.turnEndedAt}, nil
 		}
 		logger.Debug("shuttle: session readiness unknown, reading the pane", "strandGUID", guid, "cause", reading.cause)
 	}
 	probe := IdleProbe{Idle: cycler.IdleSession(capture)}
+	probe.NoTurn = probe.Idle
 	if !probe.Idle {
 		probe.TooShort = cycler.PaneTooShort(capture)
 		box := readBox(engine, capture)
 		probe.Draft = strings.TrimSpace(box.text) != ""
 		probe.NoInputBox = box.reader && !box.read && !probe.TooShort
+		if guard, ok := engine.(InterruptGuard); ok {
+			probe.NoTurn = box.read && !probe.TooShort && !guard.RunningTurn(capture)
+		}
 	}
 	logger.Debug("shuttle: session idle probe", "strandGUID", guid, "idle", probe.Idle, "tooShort", probe.TooShort, "draft", probe.Draft, "noInputBox", probe.NoInputBox)
 	return probe, nil

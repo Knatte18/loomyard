@@ -1,6 +1,6 @@
 //go:build tier0
 
-// prepare_test.go covers Prepare's spec handling: an unrealizable effort, permission mode, resume session id or model-plus-version combination is rejected before any artifact is written (mirroring TestPrepare_PromptLaunchLimit's before-artifacts guarantee), the flags a valid spec threads into Launch.Cmd and Launch.ResumeCmd, the --append-system-prompt notice, ResumeSessionID adoption, and the skills-deferred prompt pointer.
+// prepare_test.go covers Prepare's spec handling: an unrealizable effort, permission mode, resume session id or model-plus-version combination is rejected before any artifact is written (mirroring TestPrepare_PromptLaunchLimit's before-artifacts guarantee), the flags a valid spec threads into Launch.Cmd and Launch.ResumeCmd, the append-system-prompt file carrying the deny notice and the creel trust sentence, ResumeSessionID adoption, and the skills-deferred prompt pointer.
 
 package claudeengine
 
@@ -289,9 +289,10 @@ func TestPrepare_ThreadsSpecIntoLaunchCmds(t *testing.T) {
 	}
 }
 
-// TestPrepare_AppendSystemPromptMatchesDenyNotice proves that for every combination of the deny inputs, Launch.Cmd and Launch.ResumeCmd both carry --append-system-prompt if and only if buildDenyNotice is non-empty, and carry its sentences.
+// TestPrepare_AppendSystemPromptMatchesDenyNotice proves that for every combination of the deny inputs, Launch.Cmd and Launch.ResumeCmd both carry --append-system-prompt-file naming the run directory's append-system-prompt.txt and no --append-system-prompt argument,
+// and that the file holds the deny notice, a space and the creel trust sentence, or the sentence alone when the notice is empty.
 //
-//testtiming:keep pins --append-system-prompt equal to the notice on both lines over every deny combination, which its covering tests do not assert
+//testtiming:keep pins append-system-prompt.txt equal to the notice and the trust sentence, named on both lines over every deny combination, which its covering tests do not assert
 func TestPrepare_AppendSystemPromptMatchesDenyNotice(t *testing.T) {
 	for _, denyAgent := range []bool{false, true} {
 		for _, denyAsk := range []bool{false, true} {
@@ -304,18 +305,30 @@ func TestPrepare_AppendSystemPromptMatchesDenyNotice(t *testing.T) {
 						spec := shuttleengine.Spec{Prompt: "do the thing", Interactive: interactive, ForkSubagents: fork}
 						notice := buildDenyNotice(interactive, cfg, claude, fork, false)
 
-						launch, err := engineWith(t, claude).Prepare(t.TempDir(), spec, cfg)
+						runDir := t.TempDir()
+						launch, err := engineWith(t, claude).Prepare(runDir, spec, cfg)
 						if err != nil {
 							t.Fatalf("Prepare(agent=%v ask=%v python=%v interactive=%v fork=%v) error: %v", denyAgent, denyAsk, denyPython, interactive, fork, err)
 						}
+						promptFile, err := filepath.Abs(filepath.Join(runDir, "append-system-prompt.txt"))
+						if err != nil {
+							t.Fatalf("Abs: %v", err)
+						}
 						for name, cmd := range map[string]string{"Cmd": launch.Cmd, "ResumeCmd": launch.ResumeCmd} {
-							has := strings.Contains(cmd, "--append-system-prompt")
-							if has != (notice != "") {
-								t.Errorf("agent=%v ask=%v python=%v interactive=%v fork=%v: %s = %q; --append-system-prompt present=%v, notice non-empty=%v", denyAgent, denyAsk, denyPython, interactive, fork, name, cmd, has, notice != "")
+							if !strings.Contains(cmd, " --append-system-prompt-file "+shell.ForGOOS().Quote(promptFile)) {
+								t.Errorf("agent=%v ask=%v python=%v interactive=%v fork=%v: %s = %q; want --append-system-prompt-file naming %q", denyAgent, denyAsk, denyPython, interactive, fork, name, cmd, promptFile)
 							}
-							if notice != "" && !strings.Contains(cmd, notice) {
-								t.Errorf("agent=%v ask=%v python=%v interactive=%v fork=%v: %s = %q; want it to carry the notice %q", denyAgent, denyAsk, denyPython, interactive, fork, name, cmd, notice)
+							if strings.Contains(cmd, "--append-system-prompt ") {
+								t.Errorf("agent=%v ask=%v python=%v interactive=%v fork=%v: %s = %q; want no --append-system-prompt argument", denyAgent, denyAsk, denyPython, interactive, fork, name, cmd)
 							}
+						}
+						want := creelTrustSentence
+						if notice != "" {
+							want = notice + " " + creelTrustSentence
+						}
+						got, err := os.ReadFile(promptFile)
+						if err != nil || string(got) != want {
+							t.Errorf("agent=%v ask=%v python=%v interactive=%v fork=%v: append-system-prompt.txt = %q, %v; want %q", denyAgent, denyAsk, denyPython, interactive, fork, got, err, want)
 						}
 					}
 				}

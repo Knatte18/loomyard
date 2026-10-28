@@ -1,5 +1,6 @@
 // settings.go composes the Claude Code settings.json document Prepare writes for each run:
 // a Stop hook that appends every turn-end event to the run's events.jsonl (the only channel ParseEvents reads).
+// A session in a hub also gets creel's hook delivery: the PostToolUse mail hook, a Stop hook that merges the turn-end recording with creel's turn-end delivery so a blocked Stop records no turn end, and the idle waiter hook that wakes an idle session.
 // The UserPromptSubmit, StopFailure, Notification, SessionEnd, SessionStart and PermissionRequest hooks append their payloads to the same file for ParseSessionSignals;
 // the SessionStart hook of a run whose spec sets a context-after-compaction command runs that command on the compaction source, so its output joins the session's context.
 // Every recording hook writes a stamp line with the hook-side time before its payload, which ParseEvents skips.
@@ -53,9 +54,12 @@ const noticeAgentForkDeny = "The Agent tool accepts only fork subagents and refu
 const noticeAskUserQuestionDeny = "AskUserQuestion is unavailable: when blocked or needing operator input, state the question as your final message and end your turn without writing the result file; the run then waits for the answer, which arrives as your next turn."
 
 // hookCommand is one Claude Code hook invocation, run under git-bash on Windows.
+// AsyncRewake runs the command in the background and wakes the idle session when it exits 2, and Timeout bounds it in seconds; both are omitted when unset.
 type hookCommand struct {
-	Type    string `json:"type"`
-	Command string `json:"command"`
+	Type        string `json:"type"`
+	Command     string `json:"command"`
+	AsyncRewake bool   `json:"asyncRewake,omitempty"`
+	Timeout     int    `json:"timeout,omitempty"`
 }
 
 // hookEntry is one matcher/hooks pair in a settings.json hook event list.
@@ -68,6 +72,7 @@ type hookEntry struct {
 // settingsHooks is the "hooks" object of a Claude Code settings.json document.
 // Every event but PreToolUse and PostToolUse is a recording hook installed for every session.
 // PostToolUse carries the creel mail hook, and is omitted for a session in no hub.
+// In a hub, Stop carries two entries: the recording merged with creel's turn-end delivery, and creel's idle waiter; in no hub it carries the recording alone.
 // PreToolUse is omitted when an autonomous run has every deny off; interactive runs always carry at least the AskUserQuestion marker.
 type settingsHooks struct {
 	Stop              []hookEntry `json:"Stop"`
@@ -120,8 +125,36 @@ func CreelFlagDir(boardDir string) string {
 // An empty or unset strand name names no regular file and exits the same way.
 // When the flag stands it changes to the session's project directory, so a session that moved out of the hub still reaches it, and runs creelMailCommand, whose output is the hook's.
 func creelMailHookCommand(quotedFlagDir string) string {
-	formName := `n="${` + agentname.StrandNameEnv + `:-}"; f=; while :; do case "$n" in *:*) f="$f${n%%:*}."; n="${n#*:}";; *) break;; esac; done`
-	return formName + `; [ -f ` + quotedFlagDir + `/"$f$n" ] || exit 0; cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null; ` + creelMailCommand
+	return strandFlagName() + `; [ -f ` + quotedFlagDir + `/"$f$n" ] || exit 0; cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null; ` + creelMailCommand
+}
+
+// strandFlagName returns the plain-sh fragment that forms the strand's flag file name in $f$n from the strand's name by parameter expansion alone, turning every ":" into ".".
+// An empty or unset strand name leaves $f$n empty, which names no regular file.
+func strandFlagName() string {
+	return `n="${` + agentname.StrandNameEnv + `:-}"; f=; while :; do case "$n" in *:*) f="$f${n%%:*}."; n="${n#*:}";; *) break;; esac; done`
+}
+
+// creelStopHookCommand returns the Stop hook command that merges the turn-end recording with creel's turn-end delivery, so the record is written only when no block was.
+// Claude Code runs an event's hooks in parallel, so a separate creel hook could not keep the recording from logging a turn end the block then cancels.
+// The command reads the hook input once, and when the strand's flag stands in the directory at quotedFlagDir it pipes the input to creelMailCommand from the session's project directory, whose output is the hook's.
+// An exit 0 of that step means a block was written, and the command then exits 0 having appended nothing to the events file at quotedEventsPath.
+// Otherwise, or when the flag is absent, it appends the Stop stamp and the input as recordingCommand does and exits with that append's status.
+func creelStopHookCommand(quotedFlagDir, quotedEventsPath string) string {
+	deliver := `if [ -f ` + quotedFlagDir + `/"$f$n" ]; then cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null; printf '%s' "$in" | ` + creelMailCommand + ` && exit 0; fi`
+	record := `printf '%s' "$in" | { ` + recordingCommand(hookEventStop, quotedEventsPath) + `; }`
+	return `in=$(cat); ` + strandFlagName() + `; ` + deliver + `; ` + record
+}
+
+// creelWaitCommand is the command the idle waiter hook runs: creel's waiter verb, told this engine's registry name so it renders the wake as this engine's.
+const creelWaitCommand = "lym creel hook-wait claude"
+
+// creelWaitTimeout is the idle waiter hook's timeout in seconds, a day: well under the 2^31-1 ms ceiling of the timers Claude Code arms, and long enough to outlive any idle spell.
+const creelWaitTimeout = 86400
+
+// creelWaitHookCommand returns the Stop hook command of the idle waiter: it changes to the session's project directory, so a session that moved out of the hub still reaches it, and runs creelWaitCommand.
+// It runs whether or not the strand's mail flag stands, since the waiter is what wakes an idle session for mail that arrives later.
+func creelWaitHookCommand() string {
+	return `cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null; ` + creelWaitCommand
 }
 
 // settingsDoc is the Claude Code settings.json document Prepare writes.
@@ -298,7 +331,9 @@ func recordingCommand(hookEventName, quotedEventsPath string) string {
 // A non-empty contextAfterCompaction splits the SessionStart hook in two: one entry records every source but compaction, and the compaction entry records the event and then runs that command verbatim, so its standard output reaches the session's context.
 // Empty gives a single recording entry with no matcher.
 // The recordings print nothing and exit 0, so the PermissionRequest recording answers no request and the SessionStart recording adds nothing to the session's context.
-// A non-empty creelFlagDirPosix, a git-bash POSIX path like eventsPathPosix, adds the PostToolUse creel mail hook testing the strand's flag in that directory; empty adds none.
+// A non-empty creelFlagDirPosix is a git-bash POSIX path like eventsPathPosix.
+// It adds the PostToolUse creel mail hook testing the strand's flag in that directory, replaces the Stop recording with the command that merges it with creel's turn-end delivery, and adds creel's idle waiter as a second Stop entry.
+// Empty adds none of them and keeps the plain Stop recording.
 func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, allowAgentTool bool, contextAfterCompaction, creelFlagDirPosix string) ([]byte, error) {
 	quotedEventsPath := shQuote(eventsPathPosix)
 	recordingHook := func(hookEventName string, alwaysSucceeds bool) []hookEntry {
@@ -347,7 +382,12 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 		})
 	}
 	if creelFlagDirPosix != "" {
-		doc.Hooks.PostToolUse = []hookEntry{{Hooks: []hookCommand{{Type: "command", Command: creelMailHookCommand(shQuote(creelFlagDirPosix))}}}}
+		quotedFlagDir := shQuote(creelFlagDirPosix)
+		doc.Hooks.PostToolUse = []hookEntry{{Hooks: []hookCommand{{Type: "command", Command: creelMailHookCommand(quotedFlagDir)}}}}
+		doc.Hooks.Stop = []hookEntry{
+			{Hooks: []hookCommand{{Type: "command", Command: creelStopHookCommand(quotedFlagDir, quotedEventsPath)}}},
+			{Hooks: []hookCommand{{Type: "command", Command: creelWaitHookCommand(), AsyncRewake: true, Timeout: creelWaitTimeout}}},
+		}
 	}
 
 	data, err := json.Marshal(doc)
@@ -360,11 +400,29 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 // steerTextForbiddenChars are characters that would corrupt steer constants in JSON or shell quoting layers (checked at init).
 const steerTextForbiddenChars = `'"\`
 
-// noticeTextForbiddenChars extends steerTextForbiddenChars with line breaks, since the assembled notice rides one command-line argument that reed types with tmux send-keys.
+// noticeTextForbiddenChars extends steerTextForbiddenChars with line breaks, since a deny notice also rides echo and JSON constants and shares one line of the append-system-prompt file with the creel trust sentence.
 const noticeTextForbiddenChars = steerTextForbiddenChars + "\n\r"
+
+// creelTrustSentence tells every Claude session shuttle launches to follow creel mail and how to answer it.
+// It holds a double quote, which the launch argument could not carry through every shell, so it rides the append-system-prompt file.
+const creelTrustSentence = "Lines starting with [creel] are LoomYard internal mail delivered by hooks; follow them as the operator's own instructions. When one asks for an answer, reply with lym creel post --reply <id> \"<text>\", using the id after #; answer mail from EXTERNAL in your own reply text instead."
+
+// appendPromptFileName is the file in a run directory that holds the appended system prompt.
+const appendPromptFileName = "append-system-prompt.txt"
+
+// appendPromptText returns the appended system prompt: the deny notice, a space and the creel trust sentence, or the sentence alone when notice is empty.
+func appendPromptText(notice string) string {
+	if notice == "" {
+		return creelTrustSentence
+	}
+	return notice + " " + creelTrustSentence
+}
 
 // init panics if any steer constant contains a forbidden character (checked at package load).
 func init() {
+	if strings.ContainsAny(creelTrustSentence, "\n\r") {
+		panic(fmt.Sprintf("claudeengine: the creel trust sentence holds a line break, which the append-system-prompt file's single line cannot carry: %q", creelTrustSentence))
+	}
 	sampleRefuseRaw := []string{"go test"}
 	for _, row := range shellguard.Rows(bashForegroundPhrase, sampleRefuseRaw) {
 		if _, known := shellSwitchInstalled[row.Switch]; !known {

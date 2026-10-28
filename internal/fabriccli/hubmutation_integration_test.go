@@ -77,6 +77,8 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 
 			// A real forked push child cannot itself be observed from a test binary (it would re-exec the test binary), so the synchronous bypass handler it runs is the deterministic proof that a supplied path is pushed.
 			// It runs from the hub's board worktree, where the real child starts, because the bypass branch resolves its hub from cwd and points the process-wide trace sink there.
+			traceSinkMu.RLock()
+			t.Cleanup(traceSinkMu.RUnlock)
 			t.Cleanup(func() { logger.SetDurableSinkDir("") })
 			var out bytes.Buffer
 			exitCode := fabriccli.RunCLIIn(h.BoardDir(), &out, []string{

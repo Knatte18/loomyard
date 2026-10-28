@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
@@ -98,6 +99,17 @@ func (s *smokeHub) addStrand(t *testing.T, role, command string) (name, guid str
 		t.Fatalf("lym reed add printed %q; want the strand's name and guid: %v", out.String(), err)
 	}
 	return added.Name, added.GUID
+}
+
+// addProviderStrand adds a strand through the smoke hub's reed engine running command, with the provider tag set, and returns its name and guid.
+// `lym reed add` names no provider, so a strand that needs one is added here.
+func (s *smokeHub) addProviderStrand(t *testing.T, role, command, provider string) (name, guid string) {
+	t.Helper()
+	strand, err := s.reed.AddStrand(reedengine.AddSpec{Role: role, Cmd: command, Provider: provider, Display: render.Display{Anchor: render.AnchorOwnWindow}})
+	if err != nil {
+		t.Fatalf("AddStrand(%q, provider %q) = %v", command, provider, err)
+	}
+	return strand.Name, strand.GUID
 }
 
 // startDaemon runs the creel daemon in process on the hub's real socket, with the hub delivery over enginesFor, and stops it when the test ends.

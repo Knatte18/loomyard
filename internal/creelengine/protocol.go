@@ -30,6 +30,8 @@ const (
 	VerbWithdraw = "withdraw"
 	// VerbClaim hands a strand's tool-boundary hook its unread mail, acknowledged on the same connection as a read is.
 	VerbClaim = "claim"
+	// VerbHookWait holds a strand's idle waiter: it is answered with a ring when the daemon wakes the idle strand, and with a supersede when a newer waiter of the same strand replaces it.
+	VerbHookWait = "hook-wait"
 )
 
 // CodeStrandClaimOutsidePane is the Response.Code of the refusal of a strand claim that names a listed strand from a process in no strand pane.
@@ -54,9 +56,9 @@ type Request struct {
 	ID int64 `json:"id,omitempty"`
 	// From is the sender filter of read and log.
 	From string `json:"from,omitempty"`
-	// Wait makes post wait for its reply, inject wait for its outcome, and read wait for unread mail.
+	// Wait makes post wait for its reply, inject wait for its outcome, read wait for unread mail, and hook-wait wait for a ring.
 	Wait bool `json:"wait,omitempty"`
-	// Interrupt makes inject interrupt the receiver's running turn first.
+	// Interrupt makes inject and post interrupt the receiver's running turn first.
 	Interrupt bool `json:"interrupt,omitempty"`
 	// TTLSeconds is the TTL of an inject, 0 for the default.
 	TTLSeconds int64 `json:"ttl_s,omitempty"`
@@ -64,6 +66,10 @@ type Request struct {
 	ForSeconds int64 `json:"for_s,omitempty"`
 	// Since is the lower time bound of log.
 	Since time.Time `json:"since,omitzero"`
+	// Stop marks a claim as the turn-end Stop hook's; absent, the claim is a tool boundary's.
+	Stop bool `json:"stop,omitempty"`
+	// StopHookActive is the Stop hook input's stop_hook_active, read by the claim verb alone.
+	StopHookActive bool `json:"stop_hook_active,omitempty"`
 }
 
 // Response is what the daemon answers on a connection; every one carries the hub path.
@@ -93,7 +99,7 @@ type Response struct {
 	// Outcome is how a waited-on thing settled, with the reply or returned message in Message.
 	Outcome OutcomeKind `json:"outcome,omitempty"`
 	Message *Message    `json:"message,omitempty"`
-	// Sent says an interrupt stopped a running turn, and Interrupted that an inject did.
+	// Sent says an interrupt stopped a running turn, and Interrupted that an inject or a post did.
 	Sent        bool `json:"sent,omitempty"`
 	Interrupted bool `json:"interrupted,omitempty"`
 	// Hold is the hold a hold verb set; Released says a release ended one.

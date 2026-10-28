@@ -192,7 +192,7 @@ func orchStrandIsRemindedAndTypedInto(name string) func(t *testing.T, e *env) {
 		e.start(t)
 		e.probeWaits(1)
 		e.tick(time.Second)
-		want := []string{"/one", reminderFor(2, "", "#1 from "+alpha, "#2 from "+beta)}
+		want := []string{"/one", reminderFor(2, "", "#1 from \""+alpha+"\"", "#2 from \""+beta+"\"")}
 		if got := e.typed(name); !slices.Equal(got, want) {
 			t.Errorf("typed %q into %s; want %q", got, name, want)
 		}
@@ -238,9 +238,31 @@ func TestScheduler_Reminders(t *testing.T) {
 			e.post(t, strand(alpha), beta, "hello")
 			e.probeWaits(1)
 			e.tick(time.Second)
-			want := []string{reminderFor(1, "", "#1 from "+alpha)}
+			want := []string{reminderFor(1, "", "#1 from \""+alpha+"\"")}
 			if got := e.typed(beta); !slices.Equal(got, want) {
 				t.Errorf("typed %q; want %q", got, want)
+			}
+		}},
+		{"StrandsWithoutPaneMailGetNoNoticeOrReminderButTheirInjectsAreTyped", func(t *testing.T, e *env) {
+			unflagged := creelfake.LiveStrand(alpha)
+			unflagged.PaneMail = false
+			e.del.SetStrands(unflagged, creelfake.HookStrand(beta))
+			e.start(t)
+			e.post(t, program(batten), alpha, "notice")
+			e.post(t, strand(beta), alpha, "from a strand")
+			e.post(t, program(batten), beta, "notice")
+			e.post(t, strand(alpha), beta, "from a strand")
+			e.driveProbeWaits(4)
+			for _, name := range []string{alpha, beta} {
+				if got := e.typed(name); len(got) != 0 {
+					t.Fatalf("typed %q into %s; want nothing for a strand that is not a pane-mail strand", got, name)
+				}
+			}
+			for _, name := range []string{alpha, beta} {
+				if _, err := e.store.Inject(program(batten), name, "/one", 0, false); err != nil {
+					t.Fatalf("Inject: %v", err)
+				}
+				awaitTyped(t, e, name, "/one")
 			}
 		}},
 		{"ReplyToAStrandWithNoWorkerIsRemindedOnce", func(t *testing.T, e *env) {
@@ -251,7 +273,7 @@ func TestScheduler_Reminders(t *testing.T) {
 				t.Fatalf("Reply: %v", err)
 			}
 			e.probeWaits(1)
-			want := []string{reminderFor(1, "", "#2 from "+alpha)}
+			want := []string{reminderFor(1, "", "#2 from \""+alpha+"\"")}
 			if got := e.typed(beta); !slices.Equal(got, want) {
 				t.Errorf("typed %q; want %q", got, want)
 			}
@@ -260,7 +282,7 @@ func TestScheduler_Reminders(t *testing.T) {
 			e.post(t, strand(alpha), beta, "waiting")
 			e.start(t)
 			e.probeWaits(1)
-			want := []string{reminderFor(1, "", "#1 from "+alpha)}
+			want := []string{reminderFor(1, "", "#1 from \""+alpha+"\"")}
 			if got := e.typed(beta); !slices.Equal(got, want) {
 				t.Errorf("typed %q; want %q", got, want)
 			}
@@ -300,7 +322,7 @@ func TestScheduler_Reminders(t *testing.T) {
 			}
 			e.del.SetStrands(creelfake.LiveStrand(alpha), creelfake.LiveStrand(beta))
 			e.tick(8 * time.Second)
-			want := []string{reminderFor(1, "", "#1 from "+alpha)}
+			want := []string{reminderFor(1, "", "#1 from \""+alpha+"\"")}
 			if got := e.typed(beta); !slices.Equal(got, want) {
 				t.Errorf("typed %q once the strand was live; want %q", got, want)
 			}
@@ -403,7 +425,7 @@ func TestScheduler_Reminders(t *testing.T) {
 			e.probeWaits(1)
 			var listed []string
 			for i := 1; i <= 5; i++ {
-				listed = append(listed, fmt.Sprintf("#%d from %s", i, alpha))
+				listed = append(listed, fmt.Sprintf("#%d from \"%s\"", i, alpha))
 			}
 			want := []string{reminderFor(7, "", append(listed, "+2 more")...)}
 			if got := e.typed(beta); !slices.Equal(got, want) {
@@ -415,7 +437,7 @@ func TestScheduler_Reminders(t *testing.T) {
 			e.post(t, strand(alpha), beta, subject+"\nsecond line")
 			e.start(t)
 			e.probeWaits(1)
-			want := []string{reminderFor(1, "", "#1 from "+alpha)}
+			want := []string{reminderFor(1, "", "#1 from \""+alpha+"\"")}
 			if got := e.typed(beta); !slices.Equal(got, want) {
 				t.Errorf("typed %q; want %q", got, want)
 			}
@@ -430,7 +452,7 @@ func TestScheduler_Reminders(t *testing.T) {
 			e.probeWaits(1)
 			e.tick(time.Second)
 			e.tick(time.Second)
-			want := []string{"/one", "[creel] #1 from " + batten + ": task-x: landed; newly ready: task-y", reminderFor(1, "", "#2 from "+alpha)}
+			want := []string{"/one", "[creel] #1 from \"" + batten + "\": task-x: landed; newly ready: task-y", reminderFor(1, "", "#2 from \""+alpha+"\"")}
 			if got := e.typed(beta); !slices.Equal(got, want) {
 				t.Errorf("typed %q; want %q", got, want)
 			}
@@ -452,9 +474,9 @@ func TestScheduler_Reminders(t *testing.T) {
 			e.tick(time.Second)
 			e.tick(time.Second)
 			want := []string{
-				"[creel] #1 from " + batten + ": first line second line",
-				"[creel] #3 from " + external().Name + ": from a terminal",
-				reminderFor(2, "", "#2 from "+batten, "#4 from "+alpha),
+				"[creel] #1 from \"" + batten + "\": first line second line",
+				"[creel] #3 from \"" + external().Name + "\": from a terminal",
+				reminderFor(2, "", "#2 from \""+batten+"\"", "#4 from \""+alpha+"\""),
 			}
 			if got := e.typed(beta); !slices.Equal(got, want) {
 				t.Errorf("typed %q; want %q", got, want)
@@ -468,7 +490,7 @@ func TestScheduler_Reminders(t *testing.T) {
 			}
 			e.start(t)
 			e.probeWaits(1)
-			want := []string{reminderFor(1, "", "#1 from "+batten)}
+			want := []string{reminderFor(1, "", "#1 from \""+batten+"\"")}
 			if got := e.typed(beta); !slices.Equal(got, want) {
 				t.Fatalf("typed %q while a read held the notice; want %q", got, want)
 			}
@@ -483,7 +505,7 @@ func TestScheduler_Reminders(t *testing.T) {
 			notice := e.post(t, program(batten), beta, "typing")
 			claimed := make(chan []creelengine.Message, 1)
 			e.del.SetSendFunc(func(string, string) error {
-				reading, err := e.store.ClaimAtBoundary(strand(beta))
+				reading, err := e.store.ClaimAtBoundary(strand(beta), creelengine.Boundary{})
 				if err != nil {
 					t.Errorf("ClaimAtBoundary during the send: %v", err)
 					claimed <- nil
@@ -522,7 +544,7 @@ func TestScheduler_Reminders(t *testing.T) {
 			if outcome := awaitOutcome(t, waiter); outcome.Kind != creelengine.OutcomeMail {
 				t.Errorf("the holder's wait was answered %+v; want mail once the busy send released the notice", outcome)
 			}
-			reading, err := e.store.ClaimAtBoundary(strand(beta))
+			reading, err := e.store.ClaimAtBoundary(strand(beta), creelengine.Boundary{})
 			if err != nil {
 				t.Fatalf("ClaimAtBoundary: %v", err)
 			}
@@ -537,7 +559,7 @@ func TestScheduler_Reminders(t *testing.T) {
 			// The claim lands between the probe's idle check and its reservation of the notice.
 			e.del.SetIdleHook(func(string) {
 				once.Do(func() {
-					reading, err := e.store.ClaimAtBoundary(strand(beta))
+					reading, err := e.store.ClaimAtBoundary(strand(beta), creelengine.Boundary{})
 					if err != nil {
 						t.Errorf("ClaimAtBoundary during the idle check: %v", err)
 					}
@@ -570,7 +592,7 @@ func TestScheduler_Reminders(t *testing.T) {
 			}
 			e.del.SetSendError(creelengine.ErrNotLanded)
 			e.tick(time.Second)
-			want := []string{"[creel] #1 from " + batten + ": busy", "[creel] #1 from " + batten + ": busy"}
+			want := []string{"[creel] #1 from \"" + batten + "\": busy", "[creel] #1 from \"" + batten + "\": busy"}
 			if got := e.typed(beta); !slices.Equal(got, want) {
 				t.Errorf("typed %q; want the busy try and the retry", got)
 			}
@@ -625,17 +647,17 @@ func TestScheduler_Reminders(t *testing.T) {
 			if got := e.typed(beta); len(got) != 0 {
 				t.Fatalf("typed %q under another sender's hold", got)
 			}
-			notice := "[creel] #3 from " + batten + ": from the owner"
+			notice := "[creel] #3 from \"" + batten + "\": from the owner"
 			e.post(t, program(batten), beta, "from the owner")
 			awaitTyped(t, e, beta, notice)
 			e.post(t, program(batten), beta, strings.Repeat("y", 4097))
-			want := []string{notice, reminderFor(1, batten, "#4 from "+batten)}
+			want := []string{notice, reminderFor(1, batten, "#4 from \""+batten+"\"")}
 			awaitTyped(t, e, beta, want...)
 			seen = len(e.probeWaits(0))
 			e.clock.Advance(31 * time.Minute)
 			mark = e.del.PausedCalls(beta)
 			e.awaitMarkedProbe(t, beta, mark, seen)
-			want = append(want, "[creel] #2 from "+webster+": muted notice", reminderFor(2, "", "#1 from "+alpha, "#4 from "+batten))
+			want = append(want, "[creel] #2 from \""+webster+"\": muted notice", reminderFor(2, "", "#1 from \""+alpha+"\"", "#4 from \""+batten+"\""))
 			awaitTyped(t, e, beta, want...)
 		}},
 		{"LogByIDListsTheRemindedEventsThatHoldTheID", func(t *testing.T, e *env) {
@@ -691,7 +713,7 @@ func TestScheduler_Injects(t *testing.T) {
 			e.probeWaits(1)
 			e.tick(time.Second)
 			e.tick(time.Second)
-			want := []string{"/one", "/two", reminderFor(1, "", "#1 from "+alpha)}
+			want := []string{"/one", "/two", reminderFor(1, "", "#1 from \""+alpha+"\"")}
 			if got := e.typed(beta); !slices.Equal(got, want) {
 				t.Errorf("typed %q; want %q", got, want)
 			}
@@ -1501,7 +1523,7 @@ func TestSweep_RemovedHolders(t *testing.T) {
 			if !slices.Equal(got, want) {
 				t.Errorf("events = %v; want %v", got, want)
 			}
-			awaitTyped(t, e, orch2, reminderFor(1, "", "#1 from "+external().Name))
+			awaitTyped(t, e, orch2, reminderFor(1, "", "#1 from \""+external().Name+"\""))
 			without(e, alpha, orch2)
 			e.sweepStep()
 			e.sweepLast()
@@ -1596,6 +1618,420 @@ func TestSweep_RemovedHolders(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			tt.run(t, newEnv(t))
+		})
+	}
+}
+
+// TestScheduler_HookWake drives a store over the fake delivery and clock with hook strands, and pins when the daemon rings a strand's idle waiter and when it types the bell.
+// A strand's waiter is answered once per claimable set, and only while no turn is in progress, whatever the input box holds.
+// The bell follows a set no waiter reaches, once per set, after the grace of 5 seconds or after a ring unanswered for 30.
+func TestScheduler_HookWake(t *testing.T) {
+	t.Parallel()
+	// bigBody is sized so two of its lines pass the claim's byte budget and each claim takes one message.
+	bigBody := strings.Repeat("x", 5000)
+	hookEnv := func(t *testing.T) *env {
+		t.Helper()
+		e := newEnv(t)
+		e.del.SetStrands(creelfake.HookStrand(alpha), creelfake.HookStrand(beta), creelfake.LiveStrand(orch))
+		return e
+	}
+	// settle runs trigger and waits until a worker has probed after it and gone back to sleep.
+	settle := func(e *env, trigger func()) {
+		seen := len(e.probeWaits(0))
+		trigger()
+		e.probeWaits(seen + 1)
+	}
+	register := func(t *testing.T, e *env, name string) *creelengine.Waiter {
+		t.Helper()
+		waiter, err := e.store.HookWait(strand(name))
+		if err != nil {
+			t.Fatalf("HookWait(%s): %v", name, err)
+		}
+		return waiter
+	}
+	wantKind := func(t *testing.T, waiter *creelengine.Waiter, want creelengine.OutcomeKind) {
+		t.Helper()
+		if got := awaitOutcome(t, waiter).Kind; got != want {
+			t.Fatalf("the waiter was answered %q; want %q", got, want)
+		}
+	}
+	wantSilent := func(t *testing.T, waiter *creelengine.Waiter) {
+		t.Helper()
+		select {
+		case outcome := <-waiter.C:
+			t.Fatalf("the waiter was answered %q; want no answer", outcome.Kind)
+		default:
+		}
+	}
+	claim := func(t *testing.T, e *env, stopHookActive bool) []creelengine.Message {
+		t.Helper()
+		reading, err := e.store.ClaimAtBoundary(strand(alpha), creelengine.Boundary{Stop: true, StopHookActive: stopHookActive})
+		if err != nil {
+			t.Fatalf("ClaimAtBoundary: %v", err)
+		}
+		if err := reading.Ack(); err != nil {
+			t.Fatalf("Ack: %v", err)
+		}
+		return reading.Messages
+	}
+	// step runs one probe of the worker at the wait it armed.
+	step := func(e *env) {
+		waits := e.probeWaits(1)
+		e.tick(waits[len(waits)-1])
+	}
+	// untilBell steps probes until the bell was sent into alpha, and returns the clock time since from; the fake-time minute only bounds a failing test.
+	untilBell := func(t *testing.T, e *env, from time.Time) time.Duration {
+		t.Helper()
+		for e.clock.Now().Sub(from) < time.Minute {
+			step(e)
+			if slices.Contains(e.typed(alpha), creelengine.BellLine) {
+				return e.clock.Now().Sub(from)
+			}
+		}
+		t.Fatal("no bell was typed within a minute of fake time")
+		return 0
+	}
+	tests := []struct {
+		name string
+		run  func(t *testing.T, e *env)
+	}{
+		{"AnIdleStrandWithADraftIsRungOnceForASetAndAgainForANewPost", func(t *testing.T, e *env) {
+			e.del.SetTurn(alpha, false, time.Time{})
+			e.del.SetStall(alpha, creelengine.StallDraft)
+			e.start(t)
+			first := register(t, e, alpha)
+			settle(e, func() { e.post(t, strand(beta), alpha, "one") })
+			wantKind(t, first, creelengine.OutcomeRing)
+			if got := e.typed(alpha); len(got) != 0 {
+				t.Fatalf("typed %q into a hook strand; want nothing", got)
+			}
+			var second *creelengine.Waiter
+			settle(e, func() { second = register(t, e, alpha) })
+			wantSilent(t, second)
+			settle(e, func() { e.post(t, strand(beta), alpha, "two") })
+			wantKind(t, second, creelengine.OutcomeRing)
+		}},
+		{"ARunningTurnRingsNothingUntilItEnds", func(t *testing.T, e *env) {
+			e.del.SetTurn(alpha, true, time.Time{})
+			e.start(t)
+			settle(e, func() { e.post(t, strand(beta), alpha, "one") })
+			var waiter *creelengine.Waiter
+			settle(e, func() { waiter = register(t, e, alpha) })
+			wantSilent(t, waiter)
+			e.del.SetTurn(alpha, false, time.Time{})
+			settle(e, func() { e.post(t, strand(beta), alpha, "two") })
+			wantKind(t, waiter, creelengine.OutcomeRing)
+		}},
+		{"AClaimableSetStandingBeforeTheWaiterRegistersRingsAtOnce", func(t *testing.T, e *env) {
+			e.start(t)
+			settle(e, func() { e.post(t, strand(beta), alpha, "one") })
+			var waiter *creelengine.Waiter
+			settle(e, func() { waiter = register(t, e, alpha) })
+			wantKind(t, waiter, creelengine.OutcomeRing)
+		}},
+		{"APauseRingsNothing", func(t *testing.T, e *env) {
+			e.del.SetPaused(alpha, true)
+			e.start(t)
+			waiter := register(t, e, alpha)
+			settle(e, func() { e.post(t, strand(beta), alpha, "one") })
+			wantSilent(t, waiter)
+		}},
+		{"UnderAnotherSendersHoldOnlyTheOwnersMailMakesASet", func(t *testing.T, e *env) {
+			if _, err := e.store.Hold(program(batten), alpha, time.Hour); err != nil {
+				t.Fatalf("Hold: %v", err)
+			}
+			e.start(t)
+			waiter := register(t, e, alpha)
+			settle(e, func() { e.post(t, strand(beta), alpha, "not the owner's") })
+			wantSilent(t, waiter)
+			settle(e, func() { e.post(t, program(batten), alpha, "the owner's") })
+			wantKind(t, waiter, creelengine.OutcomeRing)
+		}},
+		{"ANewerWaiterOfTheStrandSupersedesTheOlder", func(t *testing.T, e *env) {
+			older := register(t, e, alpha)
+			newer := register(t, e, alpha)
+			wantKind(t, older, creelengine.OutcomeSuperseded)
+			wantSilent(t, newer)
+		}},
+		{"ATurnEndBeforeTheRingHoldsTheReadingFalseUntilOneIsRecordedAfterIt", func(t *testing.T, e *env) {
+			ringAt := e.clock.Now()
+			e.del.SetTurn(alpha, false, ringAt.Add(-time.Minute))
+			e.start(t)
+			first := register(t, e, alpha)
+			settle(e, func() { e.post(t, strand(beta), alpha, "one") })
+			wantKind(t, first, creelengine.OutcomeRing)
+			var second *creelengine.Waiter
+			settle(e, func() { second = register(t, e, alpha) })
+			settle(e, func() { e.post(t, strand(beta), alpha, "two") })
+			wantSilent(t, second)
+			e.del.SetTurn(alpha, false, ringAt.Add(time.Second))
+			var third *creelengine.Waiter
+			settle(e, func() { third = register(t, e, alpha) })
+			wantKind(t, second, creelengine.OutcomeSuperseded)
+			wantKind(t, third, creelengine.OutcomeRing)
+		}},
+		{"MailArrivingInAWokenTurnsBlockedChainRingsNothingUntilANewTurnEnd", func(t *testing.T, e *env) {
+			ringAt := e.clock.Now()
+			e.del.SetTurn(alpha, false, ringAt.Add(-time.Minute))
+			e.start(t)
+			first := register(t, e, alpha)
+			settle(e, func() {
+				e.post(t, strand(beta), alpha, bigBody)
+				e.post(t, strand(beta), alpha, bigBody)
+			})
+			wantKind(t, first, creelengine.OutcomeRing)
+			if got := claim(t, e, false); len(got) != 1 {
+				t.Fatalf("the Stop claim took %d messages; want part of the set", len(got))
+			}
+			var blocked *creelengine.Waiter
+			settle(e, func() { blocked = register(t, e, alpha) })
+			settle(e, func() { e.post(t, strand(beta), alpha, bigBody) })
+			wantSilent(t, blocked)
+			e.del.SetTurn(alpha, false, ringAt.Add(time.Second))
+			var woken *creelengine.Waiter
+			settle(e, func() { woken = register(t, e, alpha) })
+			wantKind(t, woken, creelengine.OutcomeRing)
+		}},
+		{"ARingStartsTheStopCountOverWhereTheDaemonStartCapRefusedMail", func(t *testing.T, e *env) {
+			e.start(t)
+			settle(e, func() { e.post(t, strand(beta), alpha, "one") })
+			if got := claim(t, e, true); len(got) != 0 {
+				t.Fatalf("a Stop claim on a count no claim of this daemon set took %d messages; want none", len(got))
+			}
+			var waiter *creelengine.Waiter
+			settle(e, func() { waiter = register(t, e, alpha) })
+			wantKind(t, waiter, creelengine.OutcomeRing)
+			if got := claim(t, e, true); len(got) != 1 {
+				t.Fatalf("a Stop claim after the ring took %d messages; want the mail", len(got))
+			}
+		}},
+		{"ARingAfterTheStopCapStartsAFreshCount", func(t *testing.T, e *env) {
+			e.start(t)
+			settle(e, func() {
+				for range 8 {
+					e.post(t, strand(beta), alpha, bigBody)
+				}
+			})
+			for i := range 6 {
+				if got := claim(t, e, i > 0); len(got) != 1 {
+					t.Fatalf("Stop claim %d took %d messages; want one", i+1, len(got))
+				}
+			}
+			if got := claim(t, e, true); len(got) != 0 {
+				t.Fatalf("the seventh Stop claim took %d messages; want none past the cap", len(got))
+			}
+			var waiter *creelengine.Waiter
+			settle(e, func() { waiter = register(t, e, alpha) })
+			wantKind(t, waiter, creelengine.OutcomeRing)
+			if got := claim(t, e, true); len(got) != 1 {
+				t.Fatalf("the Stop claim after the ring took %d messages; want one", len(got))
+			}
+		}},
+		{"OnlyAStrandRegistersAWaiter", func(t *testing.T, e *env) {
+			for _, sender := range []struct {
+				name    creelengine.Sender
+				wantErr string
+			}{
+				{program(batten), "lym creel read"},
+				{external(), "lym creel post --wait-reply"},
+			} {
+				_, err := e.store.HookWait(sender.name)
+				if err == nil || !strings.Contains(err.Error(), "is no strand") || !strings.Contains(err.Error(), sender.wantErr) {
+					t.Errorf("HookWait(%s) = %v; want a refusal naming %q", sender.name.Name, err, sender.wantErr)
+				}
+			}
+		}},
+		{"APaneMailStrandIsNeverRung", func(t *testing.T, e *env) {
+			e.del.SetStrands(creelfake.LiveStrand(alpha), creelfake.LiveStrand(beta))
+			e.start(t)
+			waiter := register(t, e, alpha)
+			settle(e, func() { e.post(t, strand(beta), alpha, "one") })
+			wantSilent(t, waiter)
+			if got := e.typed(alpha); len(got) != 1 {
+				t.Errorf("typed %q into a pane-mail strand; want its reminder", got)
+			}
+		}},
+		{"AnIdleStrandWithNoWaiterGetsTheBellOnceAfterTheGraceAndAgainForANewPost", func(t *testing.T, e *env) {
+			e.start(t)
+			opened := e.clock.Now()
+			settle(e, func() { e.post(t, strand(beta), alpha, "one") })
+			for e.clock.Now().Sub(opened) < 3*time.Second {
+				step(e)
+			}
+			if got := e.typed(alpha); len(got) != 0 {
+				t.Fatalf("typed %q before the grace; want nothing", got)
+			}
+			if elapsed := untilBell(t, e, opened); elapsed < 5*time.Second {
+				t.Errorf("the bell came %v after the store opened; want at least the 5s grace", elapsed)
+			}
+			for range 4 {
+				step(e)
+			}
+			if got := e.typed(alpha); !slices.Equal(got, []string{creelengine.BellLine}) {
+				t.Fatalf("typed %q over later probes of an unchanged set; want the bell once", got)
+			}
+			settle(e, func() { e.post(t, strand(beta), alpha, "two") })
+			if got := e.typed(alpha); !slices.Equal(got, []string{creelengine.BellLine, creelengine.BellLine}) {
+				t.Errorf("typed %q after a new post; want the bell once more", got)
+			}
+		}},
+		{"ADraftHoldsTheBellAndABusySendTypesItOnTheNextProbe", func(t *testing.T, e *env) {
+			e.del.SetStall(alpha, creelengine.StallDraft)
+			e.start(t)
+			opened := e.clock.Now()
+			settle(e, func() { e.post(t, strand(beta), alpha, "one") })
+			for e.clock.Now().Sub(opened) < 20*time.Second {
+				step(e)
+			}
+			if got := e.typed(alpha); len(got) != 0 {
+				t.Fatalf("typed %q into a pane holding a draft; want nothing", got)
+			}
+			e.del.SetStall(alpha, "")
+			e.del.SetSendError(creelengine.ErrBusy)
+			untilBell(t, e, e.clock.Now())
+			attempts := len(e.typed(alpha))
+			e.del.SetSendError(nil)
+			step(e)
+			for range 3 {
+				step(e)
+			}
+			if got := e.typed(alpha); len(got) != attempts+1 {
+				t.Errorf("typed %d bell lines after the busy one; want one retry and no more", len(got)-attempts)
+			}
+		}},
+		{"ASendThatDidNotLandRecordsTheBellForTheSet", func(t *testing.T, e *env) {
+			e.del.SetSendError(creelengine.ErrNotLanded)
+			e.start(t)
+			opened := e.clock.Now()
+			settle(e, func() { e.post(t, strand(beta), alpha, "one") })
+			untilBell(t, e, opened)
+			for range 4 {
+				step(e)
+			}
+			if got := e.typed(alpha); len(got) != 1 {
+				t.Errorf("typed %q over later probes after a send that did not land; want the one attempt", got)
+			}
+		}},
+		{"ARingUnansweredForTheWindowIsFollowedByTheBell", func(t *testing.T, e *env) {
+			e.start(t)
+			settle(e, func() { e.post(t, strand(beta), alpha, "one") })
+			var waiter *creelengine.Waiter
+			settle(e, func() { waiter = register(t, e, alpha) })
+			wantKind(t, waiter, creelengine.OutcomeRing)
+			ringAt := e.clock.Now()
+			if elapsed := untilBell(t, e, ringAt); elapsed < 30*time.Second {
+				t.Errorf("the bell came %v after the ring; want it only after the 30s window", elapsed)
+			}
+		}},
+		{"ARingAnsweredByAClaimIsNotFollowedByTheBell", func(t *testing.T, e *env) {
+			e.del.SetTurn(alpha, false, e.clock.Now().Add(-time.Minute))
+			e.start(t)
+			settle(e, func() {
+				e.post(t, strand(beta), alpha, bigBody)
+				e.post(t, strand(beta), alpha, bigBody)
+			})
+			var first *creelengine.Waiter
+			settle(e, func() { first = register(t, e, alpha) })
+			wantKind(t, first, creelengine.OutcomeRing)
+			ringAt := e.clock.Now()
+			for e.clock.Now().Sub(ringAt) < 20*time.Second {
+				step(e)
+			}
+			if got := claim(t, e, false); len(got) != 1 {
+				t.Fatalf("the Stop claim took %d messages; want part of the set", len(got))
+			}
+			var second *creelengine.Waiter
+			settle(e, func() { second = register(t, e, alpha) })
+			wantSilent(t, second)
+			for e.clock.Now().Sub(ringAt) < 45*time.Second {
+				step(e)
+			}
+			if got := e.typed(alpha); len(got) != 0 {
+				t.Errorf("typed %q after a claim answered the ring; want no bell", got)
+			}
+		}},
+		{"ARingAnsweredByARunningTurnIsNotFollowedByTheBell", func(t *testing.T, e *env) {
+			e.del.SetTurn(alpha, false, e.clock.Now().Add(-time.Minute))
+			e.start(t)
+			settle(e, func() { e.post(t, strand(beta), alpha, "one") })
+			var first *creelengine.Waiter
+			settle(e, func() { first = register(t, e, alpha) })
+			wantKind(t, first, creelengine.OutcomeRing)
+			ringAt := e.clock.Now()
+			e.del.SetTurn(alpha, true, time.Time{})
+			step(e)
+			e.del.SetTurn(alpha, false, ringAt.Add(-time.Minute))
+			var second *creelengine.Waiter
+			settle(e, func() { second = register(t, e, alpha) })
+			wantSilent(t, second)
+			for e.clock.Now().Sub(ringAt) < 45*time.Second {
+				step(e)
+			}
+			if got := e.typed(alpha); len(got) != 0 {
+				t.Errorf("typed %q after a running turn answered the ring; want no bell", got)
+			}
+		}},
+		{"AWaiterThatEndsWithoutARingStartsTheGraceAgainFromItsEnd", func(t *testing.T, e *env) {
+			e.del.SetTurn(alpha, true, time.Time{})
+			e.start(t)
+			opened := e.clock.Now()
+			waiter := register(t, e, alpha)
+			settle(e, func() { e.post(t, strand(beta), alpha, "one") })
+			for e.clock.Now().Sub(opened) < 20*time.Second {
+				step(e)
+			}
+			if got := e.typed(alpha); len(got) != 0 {
+				t.Fatalf("typed %q while a waiter was live; want nothing", got)
+			}
+			endedAt := e.clock.Now()
+			waiter.Cancel()
+			if elapsed := untilBell(t, e, endedAt); elapsed < 5*time.Second {
+				t.Errorf("the bell came %v after the waiter ended; want at least the 5s grace", elapsed)
+			}
+		}},
+		{"UnderAnotherSendersHoldOnlyTheOwnersMailGetsTheBell", func(t *testing.T, e *env) {
+			if _, err := e.store.Hold(program(batten), alpha, time.Hour); err != nil {
+				t.Fatalf("Hold: %v", err)
+			}
+			e.start(t)
+			settle(e, func() { e.post(t, strand(beta), alpha, "not the owner's") })
+			for range 3 {
+				step(e)
+			}
+			if got := e.typed(alpha); len(got) != 0 {
+				t.Fatalf("typed %q for mail the hold mutes; want nothing", got)
+			}
+			settle(e, func() { e.post(t, program(batten), alpha, "the owner's") })
+			if got := e.typed(alpha); !slices.Equal(got, []string{creelengine.BellLine}) {
+				t.Errorf("typed %q for the owner's mail; want the bell", got)
+			}
+		}},
+		{"OnlyAStrandMarkedCreelHooksOnAnUnpausedPaneGetsTheBell", func(t *testing.T, e *env) {
+			neither := creelfake.LiveStrand(beta)
+			neither.PaneMail = false
+			e.del.SetStrands(creelfake.LiveStrand(alpha), neither, creelfake.HookStrand(orch))
+			e.del.SetPaused(orch, true)
+			e.start(t)
+			settle(e, func() {
+				e.post(t, strand(orch), alpha, "one")
+				e.post(t, strand(orch), beta, "one")
+				e.post(t, strand(alpha), orch, "one")
+			})
+			for range 4 {
+				step(e)
+			}
+			for _, name := range []string{alpha, beta, orch} {
+				if slices.Contains(e.typed(name), creelengine.BellLine) {
+					t.Errorf("typed the bell into %s; want it only for an unpaused strand marked CreelHooks", name)
+				}
+			}
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			e := hookEnv(t)
+			tt.run(t, e)
 		})
 	}
 }

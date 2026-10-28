@@ -126,7 +126,15 @@
 //
 // An engine told a hub board directory also installs one PostToolUse hook with no matcher, creel's mail hook, and an engine told none, a standalone run, installs no PostToolUse key.
 // Its command is plain POSIX `sh`: it forms the strand's flag name from `$LYM_STRAND_NAME` by parameter expansion alone, turning every `:` into `.` as agentname.FileName does, and exits 0 at once unless that flag stands in CreelFlagDir of the board directory, so a tool call with no mail starts no process.
-// When the flag stands it changes to `$CLAUDE_PROJECT_DIR` and runs `lym creel hook-read claude`, whose standard output, ToolBoundaryContext's PostToolUse additional-context JSON, adds the strand's mail to the session's context after the tool call.
+// When the flag stands it changes to `$CLAUDE_PROJECT_DIR` and runs `lym creel hook-read claude`, whose standard output, BoundaryBlock's `{"decision":"block","reason":<text>,"systemMessage":<text>}`, hands the strand's mail to the session after the tool call as the reason and shows it to the operator as the system message.
+// HookInput parses a hook's payload: `PostToolUse` and `Stop` map to the tool-boundary and stop events, a non-empty `agent_id` marks a subagent, and `stop_hook_active` is carried; RewakeOutput returns the text plus a newline and exit code 2, the `asyncRewake` wake.
+// Claude Code runs an event's matching hooks in parallel, so a separate creel Stop hook could not keep the recording from logging a turn end its block then cancels, and ParseEvents would read every blocked Stop as a turn end.
+// An engine told a board directory therefore replaces the plain Stop recording with one merged command, and adds the idle waiter as a second Stop entry; a standalone run keeps the plain recording.
+// The merged command reads the hook input once, and only when the strand's flag stands it pipes the input to `lym creel hook-read claude` from `$CLAUDE_PROJECT_DIR`, writing straight to the hook's standard output, so the mail is acknowledged only after the block reached Claude Code.
+// When that exits 0 a block was written, and the command exits 0 having appended nothing to the events file; otherwise, or with the flag absent, it appends the Stop stamp and the payload as the recording command does, and exits with that append's status.
+// Bound: a merged command killed at its timeout after the write never reaches its record step, so when Claude Code drops the killed hook's output the turn ends with no Stop record.
+// The waiter entry runs `lym creel hook-wait claude` from `$CLAUDE_PROJECT_DIR` whether or not a flag stands, with `asyncRewake` true and a timeout of 86400 seconds, so Claude Code runs it in the background and wakes the idle session when it exits 2.
+// Prepare marks the launch CreelHooks exactly when it passes the board directory's flag directory, so a strand is marked only when its settings carry the PostToolUse, Stop and waiter hooks.
 // On Windows the flag directory takes the same git-bash POSIX conversion as the events path.
 //
 // Prepare declares the launch as recording session starts, so startup waits for the `startup` line beside the ready pane.
@@ -198,7 +206,10 @@
 // and a skill is loaded when its Skill call is answered by a successful result, unknown when that result is an error or the latest skill listing does not name it, and missing otherwise.
 // A missing transcript_path, an unreadable file, a transcript with no matching message or one with no skill listing degrades to an unverified report.
 //
-// The engine also announces each standing tool deny to the session through --append-system-prompt, on both the launch and the resume line.
+// The engine also announces each standing tool deny to the session, and tells it to trust and answer creel mail, through the run directory's append-system-prompt.txt, named by --append-system-prompt-file on both the launch and the resume line.
+// The file holds the deny notice, a space and the creel trust sentence, or the sentence alone when no deny is installed.
+// It is a file because the sentence holds a double quote, which an argument passed through pwsh's Legacy mode (an npm claude.cmd shim) would drop.
+// A session opened with `lym shuttle open` writes no run directory and carries no file.
 // Both the hooks and the notice are built from one deny list in settings.go, so the two cannot drift:
 // each row names its tool matcher, hook command, notice sentence and the run inputs that install it.
 // The webster fork guard has no notice sentence and is not announced.

@@ -260,6 +260,16 @@ func (d *hubDelivery) primeWorktree() string {
 	return filepath.Join(d.hubPath, strings.TrimSuffix(filepath.Base(d.hubPath), fabricengine.HubSuffix))
 }
 
+// hasHookDelivery reports whether the engine a strand's provider tag names delivers creel mail by hooks.
+// An empty tag, as a strand added by hand carries, and a tag no registered engine renders delivery for both read false.
+func hasHookDelivery(provider string) bool {
+	if provider == "" {
+		return false
+	}
+	_, ok := shuttleengines.ToolBoundaryRenderer(provider)
+	return ok
+}
+
 // worktreeStrands reads the strands persisted in one worktree and their liveness from its reed status.
 func (d *hubDelivery) worktreeStrands(entry fabricengine.WorktreeEntry) ([]creelengine.Strand, error) {
 	location, err := lymcwd.ResolveWorktree(entry.Path)
@@ -299,12 +309,14 @@ func (d *hubDelivery) worktreeStrands(entry fabricengine.WorktreeEntry) ([]creel
 	for _, persisted := range reedState.Strands {
 		strandStatus := statusByGUID[persisted.GUID]
 		strands = append(strands, creelengine.Strand{
-			Name:     persisted.Name,
-			GUID:     persisted.GUID,
-			Worktree: entry.Path,
-			Slug:     slug,
-			Live:     strandStatus.Live,
-			PanePID:  strandStatus.PanePID,
+			Name:       persisted.Name,
+			GUID:       persisted.GUID,
+			Worktree:   entry.Path,
+			Slug:       slug,
+			Live:       strandStatus.Live,
+			PanePID:    strandStatus.PanePID,
+			CreelHooks: persisted.CreelHooks,
+			PaneMail:   !hasHookDelivery(persisted.Provider),
 		})
 	}
 	return strands, nil
@@ -333,18 +345,20 @@ func (d *hubDelivery) Idle(strand creelengine.Strand) (creelengine.Idleness, err
 	if err != nil {
 		return creelengine.Idleness{}, err
 	}
+	idleness := creelengine.Idleness{NoTurn: probe.NoTurn, TurnEndedAt: probe.TurnEndedAt}
 	if probe.Idle {
-		return creelengine.Idleness{Idle: true}, nil
+		idleness.Idle = true
+		return idleness, nil
 	}
 	switch {
 	case probe.TooShort:
-		return creelengine.Idleness{Stall: creelengine.StallTooShort}, nil
+		idleness.Stall = creelengine.StallTooShort
 	case probe.Draft:
-		return creelengine.Idleness{Stall: creelengine.StallDraft}, nil
+		idleness.Stall = creelengine.StallDraft
 	case probe.NoInputBox:
-		return creelengine.Idleness{Stall: creelengine.StallNoInputBox}, nil
+		idleness.Stall = creelengine.StallNoInputBox
 	}
-	return creelengine.Idleness{}, nil
+	return idleness, nil
 }
 
 // Paused reports whether a pause covers the strand.

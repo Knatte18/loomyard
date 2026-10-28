@@ -25,17 +25,17 @@ func TestWriteMessagesText(t *testing.T) {
 		{
 			"StrandMailNamesTheIdAndTheReplyCommand",
 			[]creelengine.Message{{ID: 3, From: "ly:alpha:driver", Kind: "mail", Body: "two\nlines\n", Posted: fresh}},
-			"#3 from ly:alpha:driver — reply with: lym creel post --reply 3 <text>\ntwo\nlines\n",
+			"#3 from \"ly:alpha:driver\" — reply with: lym creel post --reply 3 <text>\ntwo\nlines\n",
 		},
 		{
 			"ExternalMailShowsNoEnvelope",
 			[]creelengine.Message{{ID: 4, From: "ly:EXTERNAL", Envelope: "claude, pts/4", Body: "hi", Posted: fresh}},
-			"#4 from ly:EXTERNAL — reply with: lym creel post --reply 4 <text>\nhi\n",
+			"#4 from \"ly:EXTERNAL\" — reply with: lym creel post --reply 4 <text>\nhi\n",
 		},
 		{
 			"ProgramMailNamesTheIdAndTheReplyCommandToo",
 			[]creelengine.Message{{ID: 5, From: "ly:ORCHWATCH", Body: "write the note", Posted: fresh}},
-			"#5 from ly:ORCHWATCH — reply with: lym creel post --reply 5 <text>\nwrite the note\n",
+			"#5 from \"ly:ORCHWATCH\" — reply with: lym creel post --reply 5 <text>\nwrite the note\n",
 		},
 		{
 			"OldReplyAndReturnedMailNameWhatTheyAre",
@@ -43,8 +43,8 @@ func TestWriteMessagesText(t *testing.T) {
 				{ID: 6, From: "ly:alpha:driver", Kind: "reply", ReplyTo: 2, Body: "answer", Posted: now.Add(-5*time.Minute - time.Second)},
 				{ID: 7, From: "ly:BATTEN", EndedUnreadBy: "ly:beta:driver", Path: []string{"ly:beta:driver"}, Body: "back", Posted: fresh},
 			},
-			"#6 from ly:alpha:driver, in reply to #2, posted 2026-10-18T11:54:59Z — reply with: lym creel post --reply 6 <text>\nanswer\n" +
-				"\n#7 from ly:BATTEN, returned unread by ly:beta:driver — reply with: lym creel post --reply 7 <text>\nback\n",
+			"#6 from \"ly:alpha:driver\", in reply to #2, posted 2026-10-18T11:54:59Z — reply with: lym creel post --reply 6 <text>\nanswer\n" +
+				"\n#7 from \"ly:BATTEN\", returned unread by ly:beta:driver — reply with: lym creel post --reply 7 <text>\nback\n",
 		},
 	}
 	for _, tt := range tests {

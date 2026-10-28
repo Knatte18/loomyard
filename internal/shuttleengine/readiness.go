@@ -6,6 +6,7 @@ package shuttleengine
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 // Reasons a readiness reading is held that callers tell apart or pin.
@@ -32,6 +33,10 @@ type readiness struct {
 	cause string
 	// draft is the box's text of a reading held only for a draft in the input box; empty on every other reading.
 	draft string
+	// noTurn is true when the session state shows no turn in progress and no turn start is unmatched, whatever the input box holds.
+	noTurn bool
+	// turnEndedAt is the session state's Since when noTurn is true; zero otherwise.
+	turnEndedAt time.Time
 }
 
 // boxReading is what a pane capture says about the provider's input box.
@@ -80,6 +85,7 @@ func readBox(engine Engine, capture string) boxReading {
 // A finished, stalled or freshly started session, one waiting on input at a turn end and one busy only on background work are ready, provided no turn start is unmatched and the box, where one is read, is blank.
 // A running turn, a question awaiting an answer and a dead process are held, as are a pane too short, a pane showing no input box to an engine that reads one, an unmatched turn start and a draft in the box.
 // An unknown state is neither: the caller falls back to the pane.
+// A reading that passes the state switch with no unmatched turn start also carries noTurn and the state's Since as turnEndedAt, held or not, since a too-short pane, a missing box or a draft says nothing about a turn.
 func judgeReadiness(state SessionState, unmatched bool, box boxReading) readiness {
 	switch state.Name {
 	case SessionUnknown:
@@ -98,18 +104,23 @@ func judgeReadiness(state SessionState, unmatched bool, box boxReading) readines
 	default:
 		return readiness{reason: fmt.Sprintf("the session reads %s", state.Name)}
 	}
+	noTurn := !unmatched
+	var turnEndedAt time.Time
+	if noTurn {
+		turnEndedAt = state.Since
+	}
 	switch {
 	case box.tooShort:
-		return readiness{reason: readinessReasonPaneTooShort}
+		return readiness{reason: readinessReasonPaneTooShort, noTurn: noTurn, turnEndedAt: turnEndedAt}
 	case box.reader && !box.read:
-		return readiness{reason: readinessReasonNoInputBox}
+		return readiness{reason: readinessReasonNoInputBox, noTurn: noTurn, turnEndedAt: turnEndedAt}
 	case unmatched:
 		return readiness{reason: "a turn start has no turn end"}
 	case box.read && strings.TrimSpace(box.text) != "":
 		draft := strings.TrimSpace(box.text)
-		return readiness{reason: fmt.Sprintf("the input box holds a draft: %q", draft), draft: draft}
+		return readiness{reason: fmt.Sprintf("the input box holds a draft: %q", draft), draft: draft, noTurn: noTurn, turnEndedAt: turnEndedAt}
 	}
-	return readiness{ready: true}
+	return readiness{ready: true, noTurn: noTurn, turnEndedAt: turnEndedAt}
 }
 
 // sessionReadiness reads the readiness of the strand sc names from capture, its pane just captured.

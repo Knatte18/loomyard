@@ -8,6 +8,7 @@ package fabriccli_test
 
 import (
 	"os"
+	"sync"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabriccli"
@@ -16,6 +17,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
+
+// traceSinkMu orders the tests that point the process-wide trace sink at their own hub.
+// A test that only drives such a verb holds the read side, so those tests still run in parallel;
+// a test that asserts where the sink points holds the write side across the verb and the assertion, so no parallel verb repoints the sink in between.
+var traceSinkMu sync.RWMutex
 
 // TestMain runs gitkit.HermeticGitEnv() before any test spawns git, then runs the tests under tmuxkit.Main.
 // The add verb's pair push runs in the foreground: a detached one would fork this test binary, and the tests read the pushed branches on the remote.

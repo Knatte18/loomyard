@@ -18,3 +18,23 @@ func (s *Store) ReadThenFail(id int64, holder string) error {
 		return ErrAfterJournaling
 	})
 }
+
+// PostUnchecked journals a posted record from sender to receiver and delivers it as post does, without the line check, as a binary before the check did.
+func (s *Store) PostUnchecked(sender Sender, receiver, body string) (int64, error) {
+	strands, err := s.readStrands()
+	if err != nil {
+		return 0, err
+	}
+	var id int64
+	err = s.do(func() error {
+		if err := s.checkReceiverLocked(strands, receiver); err != nil {
+			return err
+		}
+		var err error
+		if id, err = s.appendPostedLocked(sender, receiver, kindMail, body, 0); err != nil {
+			return err
+		}
+		return s.deliverMailLocked(id, receiver)
+	})
+	return id, err
+}

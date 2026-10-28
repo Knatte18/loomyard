@@ -4,6 +4,7 @@ package creelengine
 
 import (
 	"errors"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -19,9 +20,18 @@ const (
 	probeBackoffCeiling = 8 * time.Second
 	// agedPersistInterval is how often the TTL an inject has consumed is journaled while it runs.
 	agedPersistInterval = time.Minute
+	// bellGrace is how long a hook strand with no waiter live waits, after the later of the store's opening and its last waiter's end, before it gets the bell; it keeps the bell out of the moment between a Stop and its waiter's connection.
+	bellGrace = 5 * time.Second
+	// ringAnswerWindow is how long a ring may stand unanswered before the bell follows it.
+	ringAnswerWindow = 30 * time.Second
 )
 
+// BellLine is the fixed line typed into an idle hook strand that has mail no waiter reaches; it carries no sender text, so no post is typed.
+const BellLine = "[creel] Mail is waiting for you. End this turn now; creel hands the mail to you as the turn ends. Do not run lym creel read for it."
+
 // Scheduler delivers what the pool holds into panes: one worker per receiver with pending deliveries, at most one delivery in flight per receiver.
+// It types queued injects into every live strand, and notices and reminders only into a pane-mail strand, one whose engine has no creel hook delivery.
+// A hook strand's mail is rung to its idle waiter, and a fixed bell line wakes it where no waiter reaches.
 // A program's mailbox is never reminded.
 type Scheduler struct {
 	store    *Store
@@ -185,6 +195,7 @@ func (w *worker) report(kind string, err error) {
 }
 
 // probe makes one delivery attempt for the receiver.
+// It types a queued inject into any live strand first; with none due it rings a hook strand's idle waiter, or types a notice or the reminder into a pane-mail strand.
 // It reports whether it typed something, and whether the receiver still has deliveries pending.
 func (w *worker) probe() (delivered, pending bool) {
 	store, clock := w.scheduler.store, w.scheduler.clock
@@ -221,10 +232,82 @@ func (w *worker) probe() (delivered, pending bool) {
 			return w.typeInject(strand, inject), true
 		}
 	}
+	if strand.CreelHooks {
+		return w.wakeHookStrand(strand, now), true
+	}
+	if !strand.PaneMail {
+		return false, true
+	}
 	if len(snap.notices) > 0 {
 		return w.typeNotice(strand, snap.notices[0]), true
 	}
 	return w.remind(strand, snap, now), true
+}
+
+// wakeHookStrand wakes a strand whose session runs creel's hook delivery, and reports whether it rang or typed the bell.
+// It rings the idle waiter when the strand's claimable ids are non-empty and differ from those of its last ring, a waiter is registered, and the delivery reads no turn in progress, whatever the input box holds.
+// A woken turn records no prompt submit, so from a ring on the reading counts as no turn only once a turn end was recorded after the ring; a reading the pane decided has no turn end time and is taken as it reads.
+// A probe that reads a turn in progress after a ring marks the ring answered.
+// When it does not ring, it types the bell for a claimable set no bell was typed for.
+// With no unanswered ring standing, the bell waits for bellGrace with no waiter live; with one standing, it waits until the ring has gone unanswered for ringAnswerWindow.
+func (w *worker) wakeHookStrand(strand Strand, now time.Time) bool {
+	store := w.scheduler.store
+	ids, mark, waiting := store.hookWakeState(strand.Name)
+	if len(ids) == 0 {
+		return false
+	}
+	sameSet := slices.Equal(ids, mark.ids)
+	ringable := waiting && !sameSet
+	belled := len(mark.bellIDs) > 0 && slices.Equal(ids, mark.bellIDs)
+	if belled && !ringable {
+		return false
+	}
+	idleness, err := w.scheduler.delivery.Idle(strand)
+	w.report("idle", err)
+	if err != nil {
+		return false
+	}
+	unanswered := !mark.at.IsZero() && !mark.answered
+	if unanswered && !idleness.NoTurn {
+		store.markRingAnswered(strand.Name)
+		unanswered = false
+	}
+	if ringable && idleness.NoTurn && (mark.at.IsZero() || idleness.TurnEndedAt.IsZero() || idleness.TurnEndedAt.After(mark.at)) {
+		return store.ringHook(strand.Name, ids, now)
+	}
+	if belled {
+		return false
+	}
+	if unanswered {
+		if now.Sub(mark.at) < ringAnswerWindow {
+			return false
+		}
+	} else if waiting || now.Sub(store.lastHookWaiterEnd(strand.Name)) < bellGrace {
+		return false
+	}
+	return w.typeBell(strand, ids)
+}
+
+// typeBell types BellLine into a hook strand once it is idle, and records the bell for the claimable set ids, whether the line landed or not.
+// A line that did not land is never typed again for the same set; a busy send records nothing, so the next probe tries again.
+func (w *worker) typeBell(strand Strand, ids []int64) bool {
+	store := w.scheduler.store
+	if !w.idle(strand) {
+		return false
+	}
+	err := w.scheduler.delivery.Send(strand, BellLine)
+	switch {
+	case err == nil, errors.Is(err, ErrNotLanded):
+		w.report("send", nil)
+		store.markBell(strand.Name, ids)
+		w.report("journal", store.noteStall(w.receiver, ""))
+		return true
+	default:
+		if !errors.Is(err, ErrBusy) {
+			w.report("send", err)
+		}
+		return false
+	}
 }
 
 // locate finds the receiver's strand and reports whether its TTL runs: it is live and no pause covers it.
@@ -395,6 +478,35 @@ func (s *Store) pendingReceivers() []string {
 	}
 	sort.Strings(receivers)
 	return receivers
+}
+
+// lastHookWaiterEnd returns the later of the store's opening and the clock time strand's last hook waiter ended.
+func (s *Store) lastHookWaiterEnd(strand string) time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if ended := s.waiterEnds[strand]; ended.After(s.opened) {
+		return ended
+	}
+	return s.opened
+}
+
+// markRingAnswered marks strand's last ring answered.
+func (s *Store) markRingAnswered(strand string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if mark, ok := s.wakeMarks[strand]; ok {
+		mark.answered = true
+		s.wakeMarks[strand] = mark
+	}
+}
+
+// markBell records that the bell was typed for the claimable set ids, keeping the strand's ring time and whether that ring was answered.
+func (s *Store) markBell(strand string, ids []int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	mark := s.wakeMarks[strand]
+	mark.bellIDs = ids
+	s.wakeMarks[strand] = mark
 }
 
 // mailSequence returns a counter that grows with every post, reply, forward, return and inject.

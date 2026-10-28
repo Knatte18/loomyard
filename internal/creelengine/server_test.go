@@ -326,6 +326,41 @@ func TestDaemon_Protocol(t *testing.T) {
 				t.Errorf("a read after the acked one = %d messages; want none", len(again.Messages))
 			}
 		}},
+		{"HookWaitIsPendingAtOnceAndAPostToTheIdleStrandRingsIt", true, func(t *testing.T, r *rig) {
+			// The rig's default strand is a pane-mail strand that never rings, so alpha is re-scripted as a hook strand with the test process's pane.
+			hook := creelfake.HookStrand(alpha)
+			hook.PanePID = os.Getpid()
+			r.del.SetStrands(hook, creelfake.LiveStrand(beta))
+			r.start()
+			conn, err := net.Dial("unix", r.geom.SocketPath)
+			if err != nil {
+				t.Fatalf("dial: %v", err)
+			}
+			defer conn.Close()
+			if err := conn.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
+				t.Fatalf("SetReadDeadline: %v", err)
+			}
+			if _, err := conn.Write([]byte(`{"verb":"hook-wait","claim":{"strand_name":"` + alpha + `"},"wait":true}` + "\n")); err != nil {
+				t.Fatalf("write: %v", err)
+			}
+			reader := bufio.NewReader(conn)
+			next := func() creelengine.Response {
+				t.Helper()
+				line, err := reader.ReadBytes('\n')
+				var resp creelengine.Response
+				if err != nil || json.Unmarshal(line, &resp) != nil {
+					t.Fatalf("read %q: %v", line, err)
+				}
+				return resp
+			}
+			if pending := next(); !pending.OK || !pending.Pending {
+				t.Fatalf("hook-wait answered %+v; want a pending response", pending)
+			}
+			mustCall(t, r.client(externalClaim(), nil, creelfake.NewClock(epoch)), creelengine.Request{Verb: creelengine.VerbPost, Receiver: alpha, Text: "wake up"})
+			if rung := next(); !rung.OK || rung.Outcome != creelengine.OutcomeRing {
+				t.Errorf("hook-wait after a post answered %+v; want the ring", rung)
+			}
+		}},
 		{"ClaimHandsOutTheStrandsMailAndItsFlagFollowsTheMail", true, func(t *testing.T, r *rig) {
 			r.geom.FlagDir = filepath.Join(r.geom.StateDir, "flags")
 			flag := filepath.Join(r.geom.FlagDir, agentname.FileName(alpha))
@@ -968,7 +1003,7 @@ func TestDaemon_Lifecycle(t *testing.T) {
 				`{"event":"withheld","at":"2026-10-01T11:00:00Z","id":1,"to":"`+orch+`","notice":"creel-notices"}`)
 			r.start()
 			r.clock.AwaitWaitsWhere(1, isProbeWait)
-			want := []creelfake.Send{{Strand: orch, Text: "[creel] 1 unread: #1 from " + alpha + " — run lym creel read"}}
+			want := []creelfake.Send{{Strand: orch, Text: "[creel] 1 unread: #1 from \"" + alpha + "\" — run lym creel read"}}
 			if got := r.del.Sends(); !slices.Equal(got, want) {
 				t.Errorf("typed %v; want the reminder of the stage 1 mail %v", got, want)
 			}
@@ -1004,6 +1039,48 @@ func TestDaemon_Lifecycle(t *testing.T) {
 			r.clock.Advance(time.Hour)
 			if sends := r.del.Sends(); len(sends) != 0 {
 				t.Errorf("typed %v after a restart over a send with no outcome", sends)
+			}
+		}},
+		{"HookWaitReconnectsAcrossARestartAndAPostToTheNewDaemonRingsIt", func(t *testing.T, r *rig) {
+			hook := creelfake.HookStrand(alpha)
+			hook.PanePID = os.Getpid()
+			r.del.SetStrands(hook, creelfake.LiveStrand(beta))
+			// A running turn keeps the ring back, and the idle read marks the point where the waiter is registered with mail standing.
+			r.del.SetTurn(alpha, true, time.Time{})
+			probed := make(chan struct{}, 16)
+			r.del.SetIdleHook(func(string) {
+				select {
+				case probed <- struct{}{}:
+				default:
+				}
+			})
+			awaitProbe := func() {
+				t.Helper()
+				select {
+				case <-probed:
+				case <-time.After(10 * time.Second):
+					t.Fatal("no probe read the hook strand's turn")
+				}
+			}
+			first := r.start()
+			mustCall(t, r.client(externalClaim(), nil, creelfake.NewClock(epoch)), creelengine.Request{Verb: creelengine.VerbPost, Receiver: alpha, Text: "one"})
+			clientClock := creelfake.NewClock(epoch)
+			waiting := callAsync(r.client(strandClaim(alpha), r.spawn, clientClock), creelengine.Request{Verb: creelengine.VerbHookWait, Wait: true}, 0)
+			awaitProbe()
+			if err := first.stop(); err != nil {
+				t.Fatalf("stop: %v", err)
+			}
+			clientClock.AwaitWaits(1)
+			for len(probed) > 0 {
+				<-probed
+			}
+			r.start()
+			clientClock.Advance(time.Second)
+			awaitProbe()
+			r.del.SetTurn(alpha, false, time.Time{})
+			mustCall(t, r.client(externalClaim(), nil, creelfake.NewClock(epoch)), creelengine.Request{Verb: creelengine.VerbPost, Receiver: alpha, Text: "two"})
+			if got := result(t, waiting); got.err != nil || got.resp.Outcome != creelengine.OutcomeRing {
+				t.Errorf("hook-wait across a restart = %+v, %v; want the ring a post to the new daemon caused", got.resp, got.err)
 			}
 		}},
 		{"WaiterReconnectsAcrossARestartAndReceivesTheInjectedOutcome", func(t *testing.T, r *rig) {

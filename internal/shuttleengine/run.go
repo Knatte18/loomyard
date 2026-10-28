@@ -598,6 +598,7 @@ func (r *Runner) launch(spec Spec, gate GateSpec, engine Engine, engineName, res
 		NameOverride: spec.NameOverride,
 		Segment:      string(spec.Segment),
 		Provider:     engineName,
+		CreelHooks:   launch.CreelHooks,
 		Parent:       spec.Parent,
 		Cmd:          launch.Cmd,
 		ResumeCmd:    launch.ResumeCmd,

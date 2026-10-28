@@ -37,6 +37,8 @@ type decisionFake struct {
 	findings  []discussionparser.Finding
 	appendErr error
 	commitErr error
+	// programNameErr is what the LOOM program name resolver returns.
+	programNameErr error
 	// strandName is the caller's exported strand name, empty for an unnamed shell.
 	strandName string
 	parent     hubgeom.Parent
@@ -77,6 +79,9 @@ type decisionFake struct {
 	notifyErrs map[string]error
 	// posts records every post the verb made, receiver and line.
 	posts []decisionPost
+	// notifyFailAt, when positive, makes the notify call with that 1-based number fail, and notifyCalls counts every call.
+	notifyFailAt int
+	notifyCalls  int
 
 	// amendmentPath is the plan amendment record the fake's seams write, in a temp dir.
 	amendmentPath string
@@ -134,6 +139,7 @@ func newDarnDecisionFake(t *testing.T) *decisionFake {
 func (f *decisionFake) deps() decisionDeps {
 	return decisionDeps{
 		strandName:    f.strandName,
+		programName:   func() (string, error) { return "hub:LOOM", f.programNameErr },
 		parent:        func() (hubgeom.Parent, error) { return f.parent, f.parentErr },
 		arbiterStrand: func(name string) bool { return name == f.arbiterName },
 		readStatus:    func() (shedengine.Status, bool, error) { return f.status, f.found, f.statusErr },
@@ -206,6 +212,10 @@ func (f *decisionFake) deps() decisionDeps {
 		},
 		liveStrands: func() ([]string, error) { return f.liveStrands, f.liveErr },
 		notify: func(receiver, line string) error {
+			f.notifyCalls++
+			if f.notifyFailAt == f.notifyCalls {
+				return fmt.Errorf("creel down on post %d", f.notifyCalls)
+			}
 			if err := f.notifyErrs[receiver]; err != nil {
 				return err
 			}
@@ -283,6 +293,8 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 		running bool
 		// pattern sets the three PATTERN-change flags.
 		pattern bool
+		// programNameFails makes the LOOM program name resolver fail.
+		programNameFails bool
 	}{
 		{name: "parent label with the PATTERN-change form", by: "parent", pattern: true},
 		{name: "darn run from an unnamed shell", by: "parent", darn: true},
@@ -290,6 +302,7 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 		{name: "darn run while Darn-Write runs", by: "parent", darn: true, running: true},
 		{name: "parent label from an unnamed shell", by: "parent"},
 		{name: "operator label from an unnamed shell", by: "operator"},
+		{name: "program name unresolvable", by: "parent", programNameFails: true},
 		{name: "recorded parent's own name", by: "parent", strandName: "hub:orch", parentName: "hub:orch"},
 		{name: "slug-bearing recorded parent's own name", by: "parent", strandName: "hub:other:orch", parentName: "hub:other:orch"},
 		{name: "the run's arbiter strand with the arbiter label", by: "arbiter", strandName: "hub:slug:arbiter", parentName: "hub:orch", arbiterName: "hub:slug:arbiter"},
@@ -307,6 +320,9 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 			}
 			f.strandName = tc.strandName
 			f.arbiterName = tc.arbiterName
+			if tc.programNameFails {
+				f.programNameErr = errors.New("geometry boom")
+			}
 			f.parent = hubgeom.Parent{Name: tc.parentName}
 			input := goodDecisionInput()
 			input.by = by
@@ -712,6 +728,12 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 			want:         []string{"entries 1 and 2 of the --from file both change PATTERN-x", "way forward:"},
 		},
 		{
+			name:         "entry whose notice passes the line creel delivers",
+			setup:        func(_ *decisionFake, in *decisionInput) { in.decision = strings.Repeat("d", 9000) },
+			inputRefusal: true,
+			want:         []string{"would pass the line creel delivers in one hook field", decisionWayNoticeTooLong},
+		},
+		{
 			name: "darn batch entry missing from the committed record after the commit",
 			from: decisionBatchJSON,
 			setup: func(f *decisionFake, _ *decisionInput) {
@@ -776,6 +798,8 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 // and that a failed listing or post is reported on a success envelope.
 func TestDecisionVerb_NotifiesLiveAgents(t *testing.T) {
 	t.Parallel()
+	// Two entries whose joined inline notice passes the line cap while each one-entry notice fits.
+	oversizedBatch := fmt.Sprintf(`[{"title": "First", "decision": %q, "rationale": "r"}, {"title": "Second", "decision": %q, "rationale": "r"}]`, strings.Repeat("a", 4500), strings.Repeat("b", 4500))
 	tests := []struct {
 		name        string
 		strandName  string
@@ -783,7 +807,11 @@ func TestDecisionVerb_NotifiesLiveAgents(t *testing.T) {
 		liveStrands []string
 		liveErr     error
 		notifyErrs  map[string]error
-		want        []string
+		// from, when set, is the content of a --from file the call passes in place of the per-entry flags; the posts then split per entry and wantPosts counts them.
+		from      string
+		failPost  int
+		wantPosts int
+		want      []string
 		// wantErrors are the strands of the reported failures, "" for a failed listing.
 		wantErrors []string
 	}{
@@ -821,6 +849,21 @@ func TestDecisionVerb_NotifiesLiveAgents(t *testing.T) {
 			want:        []string{"hub:task-a:plan"},
 			wantErrors:  []string{"hub:task-a:darn"},
 		},
+		{
+			name:        "InlineBatchOverTheCap_SplitsIntoOneNoticePerEntry",
+			liveStrands: []string{"hub:task-a:webster"},
+			from:        oversizedBatch,
+			want:        []string{"hub:task-a:webster"},
+			wantPosts:   2,
+		},
+		{
+			name:        "InlineBatchOverTheCap_SecondPostFails_NotReportedNotified",
+			liveStrands: []string{"hub:task-a:webster"},
+			from:        oversizedBatch,
+			failPost:    2,
+			wantErrors:  []string{"hub:task-a:webster"},
+			wantPosts:   1,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -837,6 +880,10 @@ func TestDecisionVerb_NotifiesLiveAgents(t *testing.T) {
 				f.arbiterName = tt.strandName
 				input.by = "arbiter"
 			}
+			if tt.from != "" {
+				input = decisionInput{by: "parent", from: writeDecisionBatch(t, tt.from)}
+			}
+			f.notifyFailAt = tt.failPost
 			var out bytes.Buffer
 			if code := decisionVerb(&out, "task-a", f.deps(), input); code != 0 {
 				t.Fatalf("exit = %d, out %s; want 0", code, out.String())
@@ -861,6 +908,25 @@ func TestDecisionVerb_NotifiesLiveAgents(t *testing.T) {
 				t.Errorf("envelope notice_errors strands = %v; want %v", gotErrors, tt.wantErrors)
 			}
 
+			if tt.from != "" {
+				if len(f.posts) != tt.wantPosts {
+					t.Fatalf("posts = %v; want %d, one per entry in entry order", f.posts, tt.wantPosts)
+				}
+				for i, post := range f.posts {
+					if !strings.HasPrefix(post.line, decisionNoticeOpening) || !strings.Contains(post.line, addedDecisionHeading(f.lastBatch[i])) {
+						t.Errorf("post %d line = %q; want the opening and entry %d's heading", i, post.line, i+1)
+					}
+					if other := addedDecisionHeading(f.lastBatch[1-i]); strings.Contains(post.line, other) {
+						t.Errorf("post %d line = %q; want it to carry only entry %d", i, post.line, i+1)
+					}
+				}
+				if tt.failPost != 0 {
+					if got := data["notice_errors"].([]any)[0].(map[string]any)["error"]; got != fmt.Sprintf("creel down on post %d", tt.failPost) {
+						t.Errorf("notice error = %v; want the failed post's error", got)
+					}
+				}
+				return
+			}
 			if len(f.posts) != len(tt.want) {
 				t.Fatalf("posts = %v; want one to each of %v", f.posts, tt.want)
 			}

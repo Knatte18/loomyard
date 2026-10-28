@@ -1,4 +1,4 @@
-// Package creelcli builds the `lym creel` group over internal/creelengine: `post`, `inject`, `interrupt`, `forward`, `read`, `inbox`, `log`, `hold`, `release` and the hidden `daemon` and `hook-read`.
+// Package creelcli builds the `lym creel` group over internal/creelengine: `post`, `inject`, `interrupt`, `forward`, `read`, `inbox`, `log`, `hold`, `release` and the hidden `daemon`, `hook-read` and `hook-wait`.
 // The design, the protocol and the delivery rules are documented in internal/creelengine; this package wires them to the hub, its worktrees and their agent panes.
 //
 // Every operator verb resolves the mode from its cwd and refuses a standalone directory, since creel needs a hub.
@@ -18,10 +18,18 @@
 // A success envelope that cannot be written exits 1 with one `creel: ` answer line on stderr, after any stall notes.
 // For post and inject the line names what they already stored, and for a forward, hold, release or interrupt it says the verb took effect.
 // The refusal fallback line opens with that statement too for a post or inject that stored before it refused.
+// `post --interrupt` stops the receiver's running turn before posting and adds `interrupted` to the envelope beside the id; with `--reply` it is refused before any call.
+// The help of the `creel` group and of `post` carries the reply rule: answer mail with `lym creel post --reply <id>` using the id after the `#`, and answer mail from EXTERNAL in your own reply text, since such a reply reaches only a waiting `post --wait-reply`.
 // `inbox` prints the caller's unread counts as `inbox.senders`, a list of `{from, unread}`, and no other key.
-// `hook-read <engine>` is what a strand's tool-boundary hook runs: it claims the caller's mail through the daemon's claim verb and prints it as the named engine's tool-boundary context, one MessageLine per message, which shuttleengines.ToolBoundaryRenderer renders.
+// `hook-read <engine>` is what a strand's tool-boundary and Stop hooks run: it reads the hook input from stdin, parses it with the engine's capability from shuttleengines.ToolBoundaryRenderer, claims the caller's mail through the daemon's claim verb and prints it as the engine's visible block, one MessageLine per message joined by newlines.
+// The claim carries whether the event is a Stop and the input's stop_hook_active, which the daemon's Stop count rests on.
+// A call from a subagent or fork claims and prints nothing, so the mail and its flag stay for the main thread's next boundary.
 // It prints nothing when nothing was claimed, acknowledges the mail only once its output was written, and bounds its call by 10 seconds, since the provider holds the session at the boundary meanwhile.
-// A refusal, an unknown engine included, goes to stderr as one `creel: ` line with exit 1 and leaves stdout empty, because the provider parses the hook's stdout as its JSON.
+// After a tool call it exits 0; on a Stop it exits 0 exactly when it wrote a block, whatever follows the write, and 1 otherwise, since the merged turn-end command records no turn end after an exit 0.
+// A refusal, an unknown engine and an input of another event included, goes to stderr as one `creel: ` line with exit 1 and leaves stdout empty, because the provider parses the hook's stdout as its JSON.
+// `hook-wait <engine>` is the idle waiter a strand's hook holds open: it parses its hook input, exits 0 at once for a subagent call, and otherwise holds the daemon's hook-wait verb with no timeout of its own, the hook entry's timeout bounding it.
+// On a ring it writes the engine's wake output carrying creelengine.BellLine to stderr and exits with the engine's wake code, 2 for Claude; a superseded wait, an unreachable daemon and any refusal exit 0 printing nothing, so it exits with the wake code on a ring alone.
+// A waiter costs one idle process per live strand, blocked on its socket.
 // GoClient is the one Go-side caller of creel, so no other module builds a creel request by hand.
 // NewProgramClient signs as `<shortname>:<PROGRAM>` and claims no strand, whatever `$LYM_STRAND_NAME` holds, and NewStrandClient claims a strand and no program; the daemon's identity rules still decide who the caller is.
 // Both refuse a location outside a hub with the way forward, start the daemon through the spawn seam when none answers, and connect on the first call.

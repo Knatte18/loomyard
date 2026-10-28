@@ -24,7 +24,7 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
 - creel's delivery workers in `internal/creelengine/deliver.go`, which probe from one second and double to eight seconds after every wake that delivers nothing, returning to one second on a new post, reply, forward, inject or release and on a wake that delivers, and capping a live, unpaused receiver's wait at its soonest queued inject's remaining TTL, never below one second,
 - creel's removed-holder sweep in `internal/creelengine/sweep.go`, which runs while mail or injects exist, from 30 seconds doubling to 50 seconds while the strand-name set is unchanged, with a 10-second confirm after a first miss,
 - creel's daemon poll in `internal/creelengine/server.go`, which asks once a second whether its binary was replaced and whether the UTC day changed,
-- creel's waiting verbs in `internal/creelengine/client.go` and `server.go` (`post --wait-reply`, `inject --wait` and `read --wait`), which wait on their connection and reconnect from one second; the client's connect wait after a spawn also ends on the exit of the daemon it started, other than a lost start race.
+- creel's waiting verbs in `internal/creelengine/client.go` and `server.go` (`post --wait-reply`, `inject --wait`, `read --wait` and `hook-wait`), which wait on their connection and reconnect from one second; the client's connect wait after a spawn also ends on the exit of the daemon it started, other than a lost start race.
 
 A bounded wait that ends within a minute is outside the rule.
 

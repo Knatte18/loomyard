@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	// maxBodyBytes caps a message body; a longer message is a file the sender writes and the mail names.
+	// maxBodyBytes caps the body of a reply to EXTERNAL, which only a waiting post --wait-reply receives and no claim hands out; every other message is capped by the line it renders (LineFits).
 	maxBodyBytes = 64 << 10
 	// defaultInjectTTL is how long an inject lives when its sender names no TTL.
 	defaultInjectTTL = 10 * time.Minute
@@ -48,6 +48,14 @@ type Store struct {
 	paneLocks map[string]*sync.Mutex
 	// flags holds the file names of the flags the flag directory holds, as this store last set or found them.
 	flags map[string]bool
+	// stopBlocks maps a strand to the Stop blocks of its current turn; a strand with no entry counts as at the cap, and the count is never journaled.
+	stopBlocks map[string]int
+	// wakeMarks maps a hook strand to the claimable set its last ring was for, the clock time of that ring, whether it was answered and the set its bell was typed for; it is kept in memory alone.
+	wakeMarks map[string]wakeMark
+	// opened is the clock time the store opened, from which a strand whose hook waiter never registered counts its bell grace.
+	opened time.Time
+	// waiterEnds maps a hook strand to the clock time its last hook waiter ended.
+	waiterEnds map[string]time.Time
 }
 
 // paneLock returns the one mutex of receiver's pane.
@@ -102,7 +110,8 @@ func OpenStore(geom Geometry, delivery Delivery, clock Clock) (*Store, error) {
 	return &Store{
 		geom: geom, delivery: delivery, clock: clock, state: state, writer: writer,
 		reserved: map[int64]string{}, waiters: map[waitKey][]*Waiter{}, agedWritten: map[int64]int64{},
-		stalls: map[string]stallNote{}, paneLocks: map[string]*sync.Mutex{}, flags: map[string]bool{},
+		stalls: map[string]stallNote{}, paneLocks: map[string]*sync.Mutex{}, flags: map[string]bool{}, stopBlocks: map[string]int{}, wakeMarks: map[string]wakeMark{},
+		opened: clock.Now(), waiterEnds: map[string]time.Time{},
 	}, nil
 }
 
@@ -233,6 +242,10 @@ const (
 	OutcomeExpired     OutcomeKind = "expired"
 	// OutcomeMail means the waited-on holder now holds unread mail.
 	OutcomeMail OutcomeKind = "mail"
+	// OutcomeRing means the daemon woke the idle strand whose waiter this was; it carries no mail and claims nothing.
+	OutcomeRing OutcomeKind = "ring"
+	// OutcomeSuperseded means a newer waiter of the same strand replaced this one.
+	OutcomeSuperseded OutcomeKind = "superseded"
 )
 
 // Outcome is the answer to a Waiter; Message is the reply or the returned message, and zero for the others.
@@ -256,9 +269,10 @@ const (
 	waitReply waitKind = iota
 	waitInject
 	waitHolder
+	waitHook waitKind = 3
 )
 
-// waitKey names what a waiter waits on: the reply to a message id, an inject id, or mail for a holder.
+// waitKey names what a waiter waits on: the reply to a message id, an inject id, mail for a holder, or the ring of a strand's idle waiter.
 type waitKey struct {
 	kind   waitKind
 	id     int64
@@ -296,9 +310,13 @@ func (w *Waiter) notify(note StallNote) {
 }
 
 // Cancel unregisters the wait; a waiter already answered is unaffected.
+// A hook waiter's end, answered or not, is recorded at the clock time, from which its strand's bell grace runs.
 func (w *Waiter) Cancel() {
 	w.store.mu.Lock()
 	defer w.store.mu.Unlock()
+	if w.key.kind == waitHook {
+		w.store.waiterEnds[w.key.holder] = w.store.clock.Now()
+	}
 	list := w.store.waiters[w.key]
 	for i, other := range list {
 		if other == w {
@@ -403,4 +421,15 @@ func (s *Store) unreadLocked(holder, from string) []*Message {
 	}
 	sort.Slice(unread, func(i, j int) bool { return unread[i].ID < unread[j].ID })
 	return unread
+}
+
+// wakeMark is the record of a hook strand's last ring and bell: the claimable message ids the ring was for, the clock time of the ring and whether the ring was answered.
+// A ring is answered by a claim that handed out mail, or by a probe reading a turn in progress after it.
+// The time and the answer stay until the next ring replaces them, whatever the set does meanwhile.
+// bellIDs are the claimable ids the typed bell was for, empty when none was typed; a different set is a set no bell was typed for.
+type wakeMark struct {
+	ids      []int64
+	at       time.Time
+	answered bool
+	bellIDs  []int64
 }

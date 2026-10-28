@@ -70,18 +70,23 @@ func Command() *cobra.Command {
 		Use:   "creel",
 		Short: "send messages and injects between the agents of the hub through its message daemon",
 		Long: `creel is the hub's message daemon and its verbs. post leaves a message for a
-strand; a message from an agent strand is announced by a one-line reminder
-typed when the receiver is idle and handed over by read, while mail from
-EXTERNAL or a program is carried in full in the typed line when it fits the
-line cap. A working Claude strand also gets its mail in full at its next tool
-call, through a hook that runs the hidden hook-read verb. inject types a line
-into an idle strand at once, interrupt stops a running turn, forward passes a
-message on, hold keeps a receiver to one sender for a while, and inbox and log
-show the pool. The daemon starts by itself on the first verb.`,
+strand. A strand shuttle launched with creel's hooks gets the message in full
+at its next tool call or turn end, through hooks that run the hidden hook-read
+verb, and an idle one is woken first by a waiter that runs the hidden hook-wait
+verb. A strand whose engine is unknown or has no hooks, a hand-added one
+included, gets a typed notice or reminder and reads the message with read.
+inject types a line into an idle strand at once, interrupt stops a running
+turn, forward passes a message on, hold keeps a receiver to one sender for a
+while, and inbox and log show the pool. The daemon starts by itself on the
+first verb.
+
+To answer a message, run lym creel post --reply <id> "<text>" with the id after
+the #. Answer mail from EXTERNAL in your own reply text, since such a reply
+reaches only a waiting post --wait-reply.`,
 		RunE: clihelp.GroupRunE,
 	}
 	creel.AddCommand(
-		postCmd(), injectCmd(), interruptCmd(), forwardCmd(), readCmd(), inboxCmd(), logCmd(), holdCmd(), releaseCmd(), daemonCmd(), hookReadCmd(),
+		postCmd(), injectCmd(), interruptCmd(), forwardCmd(), readCmd(), inboxCmd(), logCmd(), holdCmd(), releaseCmd(), daemonCmd(), hookReadCmd(), hookWaitCmd(),
 	)
 	// Creel reads no stencils, and the seed pass's log lines would mix into the stderr its verbs use for refusals and stall progress.
 	// The long-lived daemon must also never commit seed writes into the hub.
@@ -298,6 +303,7 @@ func postCmd() *cobra.Command {
 	var (
 		replyID   int64
 		waitReply bool
+		interrupt bool
 		timeout   time.Duration
 	)
 	cmd := &cobra.Command{
@@ -305,18 +311,28 @@ func postCmd() *cobra.Command {
 		Short:       "leave a message for a strand, or reply to one",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `post leaves the text as a message for the receiver strand and prints its id.
-A message from an agent strand is announced to the receiver by a one-line
-reminder typed when it is idle, and read with "lym creel read". Mail from
-EXTERNAL or a program is carried in full in the typed line and needs no read,
-unless it is longer than the line cap, when it is announced and read like an
-agent's.
+A strand shuttle launched with creel's hooks gets the message in full at its
+next tool call or turn end, an idle one woken first. A strand whose engine is
+unknown or has no hooks, a hand-added one included, gets a typed notice or
+reminder and reads the message with "lym creel read".
 
 With --reply <id> the text answers message <id> and goes to its sender, so no
-receiver is given. With --wait-reply the call waits for the reply, up to
+receiver is given. To answer mail you received, run
+lym creel post --reply <id> "<text>" with the id after the #; answer mail from
+EXTERNAL in your own reply text, since such a reply reaches only a waiting
+post --wait-reply. With --wait-reply the call waits for the reply, up to
 --timeout, and exits 5 if the message returns undelivered.
+
+--interrupt stops the receiver's running turn first, so the message arrives as
+the input of the turn after it; it needs a receiver shuttle launched with
+creel's hooks, and answers whether a turn was stopped as interrupted. A
+receiver a pause covers is claimed into the pause and interrupted; an
+unreadable pause record and another sender's hold refuse it with nothing
+interrupted or posted.
 
 Example:
   lym creel post ly:impl "the schema changed, rebase before you go on"
+  lym creel post --interrupt ly:impl "stop, the scope changed: drop the migration"
   lym creel post --reply 12 "done"`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -328,6 +344,8 @@ Example:
 				return refuse(cmd, errors.New("post takes a receiver and a text; the forms are: post <receiver> <text> and post --reply <id> <text>"))
 			case replying && waitReply:
 				return refuse(cmd, errors.New("--wait-reply applies to a post to a receiver, not to a --reply"))
+			case replying && interrupt:
+				return refuse(cmd, errors.New("--interrupt applies to a post to a receiver, not to a --reply; way forward: post --interrupt to the original sender by name when it is a strand, or post --reply <id> without --interrupt when it is EXTERNAL or a program"))
 			}
 			return runVerb(cmd, timeout, func(client *creelengine.Client, _ io.Writer) (result, error) {
 				if replying {
@@ -337,11 +355,14 @@ Example:
 					}
 					return result{fields: map[string]any{"id": resp.ID, "sender": resp.Sender}, done: fmt.Sprintf("message #%d was posted", resp.ID)}, nil
 				}
-				resp, err := client.Call(creelengine.Request{Verb: creelengine.VerbPost, Receiver: args[0], Text: args[1], Wait: waitReply}, timeoutWhenWaiting(waitReply, timeout), nil)
+				resp, err := client.Call(creelengine.Request{Verb: creelengine.VerbPost, Receiver: args[0], Text: args[1], Wait: waitReply, Interrupt: interrupt}, timeoutWhenWaiting(waitReply, timeout), nil)
 				if err != nil {
 					return result{}, err
 				}
 				fields := map[string]any{"id": resp.ID, "sender": resp.Sender}
+				if interrupt {
+					fields["interrupted"] = resp.Interrupted
+				}
 				done := fmt.Sprintf("message #%d was posted", resp.ID)
 				if !waitReply {
 					return result{fields: fields, done: done}, nil
@@ -361,6 +382,7 @@ Example:
 	}
 	cmd.Flags().Int64Var(&replyID, "reply", 0, "answer the message with this id instead of posting to a receiver")
 	cmd.Flags().BoolVar(&waitReply, "wait-reply", false, "wait for the reply to the message")
+	cmd.Flags().BoolVar(&interrupt, "interrupt", false, "stop the receiver's running turn before posting")
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "give up waiting after this long, 0 for never")
 	return cmd
 }
@@ -473,8 +495,9 @@ func forwardCmd() *cobra.Command {
 		Short:       "pass a message on to another strand",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `forward hands the message with the id to the receiver, which then holds it
-and gets a reminder; the message keeps its original sender and records who
-passed it on.
+and gets it through its hooks, or by its notice or reminder when it is a
+pane-mail strand; the message keeps its original sender and records who passed
+it on.
 
 Example:
   lym creel forward 12 ly:reviewer`,
@@ -510,7 +533,7 @@ func writeMessagesText(out io.Writer, messages []creelengine.Message, now time.T
 		if i > 0 {
 			text.WriteString("\n")
 		}
-		header := fmt.Sprintf("#%d from %s", message.ID, message.From)
+		header := fmt.Sprintf("#%d from \"%s\"", message.ID, message.From)
 		if message.ReplyTo != 0 {
 			header += fmt.Sprintf(", in reply to #%d", message.ReplyTo)
 		}
@@ -718,8 +741,9 @@ func holdCmd() *cobra.Command {
 		Short:       "hold a receiver's deliveries to the caller's own for a while",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `hold keeps the receiver's deliveries to the caller's: only the caller's injects
-pass and only its mail is reminded, until the hold lapses after --for or
-"lym creel release". Holding again renews it; another sender's hold on a held
+pass and only its mail is delivered, through the receiver's hooks or by its
+notice or reminder when it is a pane-mail strand, until the hold lapses after
+--for or "lym creel release". Holding again renews it; another sender's hold on a held
 receiver is refused. EXTERNAL callers, programs and orch strands may inject,
 interrupt and hold on any strand, and any other strand on its own strand only.
 

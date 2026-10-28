@@ -248,7 +248,8 @@ func (a instructionsAdapter) InstructionFiles() []string {
 	return a.instructions.InstructionFiles()
 }
 
-// ToolBoundaryRenderer returns the registered engine named name as its tool-boundary context renderer, and false when no engine of that name is registered or the engine renders none.
+// ToolBoundaryRenderer returns the creel hook-delivery capability of the registered engine named name, and false when no engine of that name is registered or the engine has none.
+// A false answer means the engine delivers creel mail by no hook.
 // The engine is built with a zero shuttle config and no config directories, as RecordReaders builds them, since rendering reads no config.
 func ToolBoundaryRenderer(name string) (shuttleengine.ToolBoundaryContextRenderer, bool) {
 	registered, ok := registry[name]

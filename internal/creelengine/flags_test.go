@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
@@ -115,6 +116,15 @@ func TestStore_MailFlags(t *testing.T) {
 			}
 			if got := e.flags(t); len(got) != 0 {
 				t.Errorf("flags after a callback that journaled the read and failed = %q; want none", got)
+			}
+		}},
+		{"OnlyAnOverlongMessageSetsNoFlag", nil, func(t *testing.T, e *env) {
+			// A message an older binary stored past the hook field cap is never claimed, so it raises no flag.
+			if _, err := e.store.PostUnchecked(strand(alpha), beta, strings.Repeat("x", 10001)); err != nil {
+				t.Fatalf("PostUnchecked: %v", err)
+			}
+			if got := e.flags(t); len(got) != 0 {
+				t.Errorf("flags after only an overlong message = %q; want none", got)
 			}
 		}},
 		{"ProgramReceiverGetsNoFlag", nil, func(t *testing.T, e *env) {

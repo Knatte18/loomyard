@@ -41,7 +41,7 @@ func TestAddStrandLocked(t *testing.T) {
 	e := newTestEngine(t)
 	st := &ReedState{}
 	hidden := render.Display{Anchor: render.AnchorHidden}
-	spec := AddSpec{Cmd: "claude --session-id abc", SessionID: "caller-session-abc", Provider: "claude", Display: hidden}
+	spec := AddSpec{Cmd: "claude --session-id abc", SessionID: "caller-session-abc", Provider: "claude", CreelHooks: true, Display: hidden}
 
 	first, err := e.addStrandLocked(st, spec)
 	if err != nil {
@@ -70,6 +70,9 @@ func TestAddStrandLocked(t *testing.T) {
 		if s.Provider != spec.Provider {
 			t.Errorf("hidden-add strand %q Provider = %q, want %q", s.GUID, s.Provider, spec.Provider)
 		}
+		if !s.CreelHooks {
+			t.Errorf("hidden-add strand %q CreelHooks = false, want the spec's true", s.GUID)
+		}
 	}
 	if err := SaveState(e.stateDir(), st); err != nil {
 		t.Fatalf("SaveState: %v", err)
@@ -80,6 +83,9 @@ func TestAddStrandLocked(t *testing.T) {
 	}
 	if got, ok := strandByGUID(loaded.Strands, first.GUID); !ok || got.SessionID != spec.SessionID {
 		t.Errorf("loaded strand = %+v (found %v), want SessionID %q to survive SaveState/LoadState", got, ok, spec.SessionID)
+	}
+	if got, ok := strandByGUID(loaded.Strands, first.GUID); !ok || !got.CreelHooks {
+		t.Errorf("loaded strand = %+v (found %v), want CreelHooks to survive SaveState/LoadState", got, ok)
 	}
 
 	child, err := e.addStrandLocked(st, AddSpec{Parent: first.GUID, Display: hidden})

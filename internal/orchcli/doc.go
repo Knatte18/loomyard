@@ -75,7 +75,7 @@
 //
 //  1. Create the task worktree with `lym fabric add <slug>`, then start its run from inside it with `lym loom start`.
 //     The run's status file is `_lym/shed/<slug>/status.json` under the worktree, and its `state` is one of running, awaiting, blocked, failed or done.
-//  2. Keep no watch loop of your own: a batten notice posted as batten's program arrives in full as its own `[creel] #<id> from <shortname>:BATTEN: …` line, one posted under a strand claim as mail announced by creel's reminder that you read, and on either you check the run with `lym batten status <slug>`.
+//  2. Keep no watch loop of your own: a batten notice arrives in full as its own quoted `[creel] #<id> from "<sender>": …` line through the orch session's hooks, whichever claim it was posted under, and you check the run with `lym batten status <slug>`.
 //  3. The run's own tail merges, reviews and lands without an approval step: Parent-Align and its fixer, the Code-Review ring, Describe and a Finalize that takes the parent lock first and lands on the parent.
 //     No approval step follows; a landing halt at Parent-Align or Finalize is the orchestrator's to read.
 //  4. On blocked or failed, read `error` in the status file and rerun the failing tests to tell a flaky failure from a real one.

@@ -100,6 +100,64 @@ func runCreelSplit(cwd string, stderr io.Writer, args ...string) cliRun {
 	return run
 }
 
+// The hook inputs Claude Code passes a creel hook on standard input, as far as the engine's parse reads them.
+const (
+	postToolUseInput         = `{"hook_event_name":"PostToolUse"}`
+	stopInput                = `{"hook_event_name":"Stop"}`
+	stopActiveInput          = `{"hook_event_name":"Stop","stop_hook_active":true}`
+	subagentPostToolUseInput = `{"hook_event_name":"PostToolUse","agent_id":"agent-1"}`
+	subagentStopInput        = `{"hook_event_name":"Stop","agent_id":"agent-1"}`
+)
+
+// runCreelHook runs the creel command as runCreelSplit does with stdin as its standard input.
+func runCreelHook(cwd, stdin string, stderr io.Writer, args ...string) cliRun {
+	var out bytes.Buffer
+	cmd := Command()
+	cmd.SetIn(strings.NewReader(stdin))
+	cmd.SetOut(&out)
+	cmd.SetErr(stderr)
+	cmd.SetArgs(args)
+	code := clihelp.RunRootCtx(lymcwd.WithCwd(context.Background(), cwd), cmd, &out)
+	run := cliRun{code: code, raw: out.String()}
+	_ = json.Unmarshal([]byte(strings.TrimSpace(run.raw)), &run.fields)
+	return run
+}
+
+// runHookAsync starts runCreelHook in its own goroutine, for a hook verb that waits.
+func runHookAsync(cwd, stdin string, stderr io.Writer, args ...string) <-chan cliRun {
+	results := make(chan cliRun, 1)
+	go func() { results <- runCreelHook(cwd, stdin, stderr, args...) }()
+	return results
+}
+
+// newHookRig starts a rig whose daemon knows one strand, a hook strand in this process's pane, makes the test that strand, and returns the rig and the strand's name.
+func newHookRig(t *testing.T) (*rig, string) {
+	t.Helper()
+	r := newRig(t)
+	alpha := r.name("alpha:driver")
+	t.Setenv(agentname.StrandNameEnv, alpha)
+	strand := creelfake.HookStrand(alpha)
+	strand.PanePID = os.Getpid()
+	r.delivery.SetStrands(strand)
+	r.startDaemon(t)
+	return r, alpha
+}
+
+// hookLine is the line a claim hands out for message id from sender with the given body.
+func hookLine(id int, sender, body string) string {
+	return fmt.Sprintf("[creel] #%d from \"%s\": %s", id, sender, body)
+}
+
+// hookBlock is what hook-read prints for text: the claude engine's block and a newline.
+func hookBlock(t *testing.T, text string) string {
+	t.Helper()
+	block, err := claudeengine.New().BoundaryBlock(text)
+	if err != nil {
+		t.Fatalf("BoundaryBlock: %v", err)
+	}
+	return string(block) + "\n"
+}
+
 // failingWriter is an output that refuses every write.
 type failingWriter struct{}
 
@@ -390,6 +448,37 @@ func TestCreelCLI(t *testing.T) {
 		}
 	})
 
+	t.Run("post --interrupt is refused with --reply, and to a marked strand answers its id and interrupted", func(t *testing.T) {
+		r := newRig(t)
+		alpha := r.name("alpha:driver")
+		r.delivery.SetStrands(creelfake.HookStrand(alpha))
+		r.startDaemon(t)
+
+		refused := runCreel(r.cwd, "post", "--interrupt", "--reply", "3", "text")
+		if refused.code != 1 || !strings.Contains(refused.errorText(), "post --interrupt to the original sender by name") || !strings.Contains(refused.errorText(), "post --reply <id> without --interrupt") {
+			t.Errorf("creel post --interrupt --reply = (%d, %q); want exit 1 with its way forward", refused.code, refused.raw)
+		}
+		post := runCreel(r.cwd, "post", "--interrupt", alpha, "stop, scope changed")
+		if id, _ := post.fields["id"].(float64); post.code != 0 || id < 1 || post.fields["interrupted"] != true {
+			t.Errorf("creel post --interrupt = (%d, %q); want exit 0 with the message id and interrupted true", post.code, post.raw)
+		}
+		if got := r.delivery.Interrupts(); !slices.Equal(got, []string{alpha}) {
+			t.Errorf("interrupts = %v; want one key into %s", got, alpha)
+		}
+	})
+
+	t.Run("the group help and the post help both carry the reply rule", func(t *testing.T) {
+		r := newRig(t)
+		for _, args := range [][]string{{"--help"}, {"post", "--help"}} {
+			run := runCreel(r.cwd, args...)
+			for _, want := range []string{"lym creel post --reply <id>", "EXTERNAL"} {
+				if !strings.Contains(run.raw, want) {
+					t.Errorf("creel %v printed %q; want it to hold %q", args, run.raw, want)
+				}
+			}
+		}
+	})
+
 	t.Run("as EXTERNAL the posting and waiting verbs report their outcomes", func(t *testing.T) {
 		r := newRig(t)
 		alpha, beta := r.name("alpha:driver"), r.name("beta:driver")
@@ -569,7 +658,7 @@ func TestCreelCLI(t *testing.T) {
 		r.clientClock.Advance(6 * time.Minute)
 		read := runCreel(r.cwd, "read")
 		posted := epoch.Format(time.RFC3339)
-		want := fmt.Sprintf("#1 from %[1]s, posted %[2]s — reply with: lym creel post --reply 1 <text>\nnote to self\n\n#2 from %[1]s, posted %[2]s — reply with: lym creel post --reply 2 <text>\nand another\n", alpha, posted)
+		want := fmt.Sprintf("#1 from \"%[1]s\", posted %[2]s — reply with: lym creel post --reply 1 <text>\nnote to self\n\n#2 from \"%[1]s\", posted %[2]s — reply with: lym creel post --reply 2 <text>\nand another\n", alpha, posted)
 		if read.code != 0 || read.raw != want {
 			t.Fatalf("creel read = (%d, %q); want exit 0 with %q", read.code, read.raw, want)
 		}
@@ -589,34 +678,171 @@ func TestCreelCLI(t *testing.T) {
 		}
 	})
 
-	t.Run("as a strand hook-read prints its mail as the engine's tool-boundary context, nothing when none is left, and refuses to stderr", func(t *testing.T) {
-		r := newRig(t)
-		alpha := r.name("alpha:driver")
-		t.Setenv(agentname.StrandNameEnv, alpha)
-		strand := creelfake.LiveStrand(alpha)
-		strand.PanePID = os.Getpid()
-		r.delivery.SetStrands(strand)
-		r.startDaemon(t)
+	t.Run("as a strand hook-read prints its mail as the engine's visible block, nothing when none is left, and refuses to stderr", func(t *testing.T) {
+		r, alpha := newHookRig(t)
 
 		for _, body := range []string{"first\nline", "second"} {
 			if post := runCreel(r.cwd, "post", alpha, body); post.code != 0 {
 				t.Fatalf("creel post = (%d, %q); want exit 0", post.code, post.raw)
 			}
 		}
-		wantContext, err := claudeengine.New().ToolBoundaryContext(fmt.Sprintf("[creel] #1 from %[1]s: first line\n[creel] #2 from %[1]s: second", alpha))
-		if err != nil {
-			t.Fatalf("ToolBoundaryContext: %v", err)
-		}
+		wantBlock := hookBlock(t, fmt.Sprintf("[creel] #1 from \"%[1]s\": first line\n[creel] #2 from \"%[1]s\": second", alpha))
 		var stderr bytes.Buffer
-		if got := runCreelSplit(r.cwd, &stderr, "hook-read", "claude"); got.code != 0 || got.raw != string(wantContext)+"\n" || stderr.Len() != 0 {
-			t.Fatalf("creel hook-read claude = (%d, %q, stderr %q); want exit 0 with %s", got.code, got.raw, stderr.String(), wantContext)
+		if got := runCreelHook(r.cwd, postToolUseInput, &stderr, "hook-read", "claude"); got.code != 0 || got.raw != wantBlock || stderr.Len() != 0 {
+			t.Fatalf("creel hook-read claude = (%d, %q, stderr %q); want exit 0 with %s", got.code, got.raw, stderr.String(), wantBlock)
 		}
-		if again := runCreelSplit(r.cwd, &stderr, "hook-read", "claude"); again.code != 0 || again.raw != "" {
+		if again := runCreelHook(r.cwd, postToolUseInput, &stderr, "hook-read", "claude"); again.code != 0 || again.raw != "" {
 			t.Errorf("creel hook-read after the claimed mail = (%d, %q); want exit 0 printing nothing", again.code, again.raw)
 		}
-		unknown := runCreelSplit(r.cwd, &stderr, "hook-read", "nope")
+		unknown := runCreelHook(r.cwd, postToolUseInput, &stderr, "hook-read", "nope")
 		if unknown.code != 1 || unknown.raw != "" || !strings.HasPrefix(stderr.String(), "creel: ") || !strings.Contains(stderr.String(), `"nope"`) {
 			t.Errorf("creel hook-read nope = (%d, %q, stderr %q); want exit 1, no stdout and the refusal on stderr", unknown.code, unknown.raw, stderr.String())
+		}
+	})
+
+	t.Run("hook-read on a Stop hands out one budgeted block per claim, and exits 1 printing nothing with no mail", func(t *testing.T) {
+		r, alpha := newHookRig(t)
+		bodies := []string{strings.Repeat("a", 5000), strings.Repeat("b", 5000)}
+		for _, body := range bodies {
+			if post := runCreel(r.cwd, "post", alpha, body); post.code != 0 {
+				t.Fatalf("creel post = (%d, %q); want exit 0", post.code, post.raw)
+			}
+		}
+		var stderr bytes.Buffer
+		first := runCreelHook(r.cwd, stopInput, &stderr, "hook-read", "claude")
+		if want := hookBlock(t, hookLine(1, alpha, bodies[0])); first.code != 0 || first.raw != want {
+			t.Fatalf("first Stop = (%d, %q); want exit 0 with the block of the first message", first.code, first.raw)
+		}
+		second := runCreelHook(r.cwd, stopActiveInput, &stderr, "hook-read", "claude")
+		if want := hookBlock(t, hookLine(2, alpha, bodies[1])); second.code != 0 || second.raw != want {
+			t.Fatalf("Stop with stop_hook_active = (%d, %q); want exit 0 with the block of the second message", second.code, second.raw)
+		}
+		if empty := runCreelHook(r.cwd, stopInput, &stderr, "hook-read", "claude"); empty.code != 1 || empty.raw != "" || stderr.Len() != 0 {
+			t.Errorf("Stop with no mail = (%d, %q, stderr %q); want exit 1 printing nothing on either stream", empty.code, empty.raw, stderr.String())
+		}
+	})
+
+	t.Run("hook-read after a tool call hands out whole lines up to the claim budget and the next call the one left", func(t *testing.T) {
+		r, alpha := newHookRig(t)
+		firstPrefix, secondPrefix := hookLine(1, alpha, ""), hookLine(2, alpha, "")
+		firstBody := strings.Repeat("a", 4000)
+		// The two lines and the newline between them fill the 8 KiB budget exactly.
+		secondBody := strings.Repeat("b", 8<<10-1-len(firstPrefix)-len(firstBody)-len(secondPrefix))
+		bodies := []string{firstBody, secondBody, "beyond the budget"}
+		for _, body := range bodies {
+			if post := runCreel(r.cwd, "post", alpha, body); post.code != 0 {
+				t.Fatalf("creel post = (%d, %q); want exit 0", post.code, post.raw)
+			}
+		}
+		var stderr bytes.Buffer
+		want := hookBlock(t, hookLine(1, alpha, bodies[0])+"\n"+hookLine(2, alpha, bodies[1]))
+		if got := runCreelHook(r.cwd, postToolUseInput, &stderr, "hook-read", "claude"); got.code != 0 || got.raw != want {
+			t.Fatalf("first call = (%d, %d bytes); want exit 0 with the block of the two lines that fill the budget", got.code, len(got.raw))
+		}
+		if got, want := runCreelHook(r.cwd, postToolUseInput, &stderr, "hook-read", "claude"), hookBlock(t, hookLine(3, alpha, bodies[2])); got.code != 0 || got.raw != want {
+			t.Errorf("next call = (%d, %q); want exit 0 with the block of the one left", got.code, got.raw)
+		}
+	})
+
+	t.Run("hook-read from a subagent claims nothing and leaves the mail for the main thread, and refuses another event", func(t *testing.T) {
+		r, alpha := newHookRig(t)
+		if post := runCreel(r.cwd, "post", alpha, "mail"); post.code != 0 {
+			t.Fatalf("creel post = (%d, %q); want exit 0", post.code, post.raw)
+		}
+		var stderr bytes.Buffer
+		if got := runCreelHook(r.cwd, subagentPostToolUseInput, &stderr, "hook-read", "claude"); got.code != 0 || got.raw != "" || stderr.Len() != 0 {
+			t.Errorf("subagent PostToolUse = (%d, %q, stderr %q); want exit 0 printing nothing", got.code, got.raw, stderr.String())
+		}
+		if got := runCreelHook(r.cwd, subagentStopInput, &stderr, "hook-read", "claude"); got.code != 1 || got.raw != "" || stderr.Len() != 0 {
+			t.Errorf("subagent Stop = (%d, %q, stderr %q); want exit 1 printing nothing", got.code, got.raw, stderr.String())
+		}
+		if got, want := runCreelHook(r.cwd, postToolUseInput, &stderr, "hook-read", "claude"), hookBlock(t, hookLine(1, alpha, "mail")); got.code != 0 || got.raw != want {
+			t.Errorf("main-thread call after the subagent calls = (%d, %q); want exit 0 with the mail the subagent left", got.code, got.raw)
+		}
+		other := runCreelHook(r.cwd, `{"hook_event_name":"SessionStart"}`, &stderr, "hook-read", "claude")
+		if other.code != 1 || other.raw != "" || !strings.HasPrefix(stderr.String(), "creel: ") {
+			t.Errorf("another event = (%d, %q, stderr %q); want exit 1 with the refusal on stderr", other.code, other.raw, stderr.String())
+		}
+	})
+
+	t.Run("hook-wait rings a strand as exit 2 with the bell line, and a subagent or a refused call exits 0 printing nothing", func(t *testing.T) {
+		r, alpha := newHookRig(t)
+		if post := runCreel(r.cwd, "post", alpha, "mail"); post.code != 0 {
+			t.Fatalf("creel post = (%d, %q); want exit 0", post.code, post.raw)
+		}
+		var rung lockedBuffer
+		got := awaitRun(t, runHookAsync(r.cwd, postToolUseInput, &rung, "hook-wait", "claude"))
+		if got.code != 2 || got.raw != "" || rung.String() != creelengine.BellLine+"\n" {
+			t.Errorf("hook-wait = (%d, %q, stderr %q); want exit 2 with the bell line on stderr", got.code, got.raw, rung.String())
+		}
+		silent := []struct {
+			name  string
+			input string
+			args  []string
+		}{
+			{"Subagent", subagentPostToolUseInput, []string{"hook-wait", "claude"}},
+			{"UnknownEngine", postToolUseInput, []string{"hook-wait", "nope"}},
+			{"InputThatIsNotJSON", "not json", []string{"hook-wait", "claude"}},
+		}
+		for _, tt := range silent {
+			var stderr lockedBuffer
+			if got := awaitRun(t, runHookAsync(r.cwd, tt.input, &stderr, tt.args...)); got.code != 0 || got.raw != "" || stderr.String() != "" {
+				t.Errorf("hook-wait %s = (%d, %q, stderr %q); want exit 0 printing nothing", tt.name, got.code, got.raw, stderr.String())
+			}
+		}
+		// With the strand's pane elsewhere and no strand name, the daemon resolves the caller as EXTERNAL.
+		t.Setenv(agentname.StrandNameEnv, "")
+		r.delivery.SetStrands(creelfake.HookStrand(alpha))
+		var stderr lockedBuffer
+		if got := awaitRun(t, runHookAsync(r.cwd, postToolUseInput, &stderr, "hook-wait", "claude")); got.code != 0 || got.raw != "" || stderr.String() != "" {
+			t.Errorf("hook-wait from a caller that is no strand = (%d, %q, stderr %q); want exit 0 printing nothing", got.code, got.raw, stderr.String())
+		}
+	})
+
+	t.Run("hook-wait with no daemon to reach exits 0 printing nothing", func(t *testing.T) {
+		r := newRig(t)
+		done := make(chan struct{})
+		defer close(done)
+		go r.clientClock.AutoAdvance(done)
+		t.Setenv(agentname.StrandNameEnv, r.name("alpha:driver"))
+		var stderr lockedBuffer
+		if got := awaitRun(t, runHookAsync(r.cwd, postToolUseInput, &stderr, "hook-wait", "claude")); got.code != 0 || got.raw != "" || stderr.String() != "" {
+			t.Errorf("hook-wait with no daemon = (%d, %q, stderr %q); want exit 0 printing nothing", got.code, got.raw, stderr.String())
+		}
+	})
+
+	t.Run("a hook-wait superseded by a newer one of the strand exits 0 printing nothing", func(t *testing.T) {
+		r, alpha := newHookRig(t)
+		// A running turn keeps the daemon from ringing, and each registration wakes the worker, whose probe reads the turn.
+		r.delivery.SetTurn(alpha, true, time.Time{})
+		if post := runCreel(r.cwd, "post", alpha, "mail"); post.code != 0 {
+			t.Fatalf("creel post = (%d, %q); want exit 0", post.code, post.raw)
+		}
+		r.clock.AwaitWaitsWhere(1, isProbeWait)
+		var older, newer lockedBuffer
+		start := func(stderr *lockedBuffer) <-chan cliRun {
+			probes := r.delivery.IdleCalls(alpha)
+			results := runHookAsync(r.cwd, postToolUseInput, stderr, "hook-wait", "claude")
+			deadline := time.Now().Add(10 * time.Second)
+			for r.delivery.IdleCalls(alpha) == probes {
+				if time.Now().After(deadline) {
+					t.Fatal("the daemon did not probe after the waiter registered")
+				}
+				time.Sleep(time.Millisecond)
+			}
+			return results
+		}
+		olderResults := start(&older)
+		newerResults := start(&newer)
+		if got := awaitRun(t, olderResults); got.code != 0 || got.raw != "" || older.String() != "" {
+			t.Errorf("superseded hook-wait = (%d, %q, stderr %q); want exit 0 printing nothing", got.code, got.raw, older.String())
+		}
+		r.delivery.SetTurn(alpha, false, time.Time{})
+		if post := runCreel(r.cwd, "post", alpha, "more mail"); post.code != 0 {
+			t.Fatalf("creel post = (%d, %q); want exit 0", post.code, post.raw)
+		}
+		if got := awaitRun(t, newerResults); got.code != 2 || newer.String() != creelengine.BellLine+"\n" {
+			t.Errorf("the newer hook-wait = (%d, %q, stderr %q); want it still waiting, then rung with exit 2", got.code, got.raw, newer.String())
 		}
 	})
 

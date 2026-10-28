@@ -48,17 +48,17 @@ func TestClaudeBinary(t *testing.T) {
 //testtiming:keep pins the exact launch line for every flag combination and both shell dialects, which its covering tests only substring-match
 func TestBuildLaunchCmd(t *testing.T) {
 	tests := []struct {
-		name          string
-		sh            shell.Shell // nil defaults to shell.Pwsh(), the pre-existing coverage's shell
-		bin           string
-		promptPath    string
-		settingsPath  string
-		sessionID     string
-		model         string
-		effort        string
-		notice        string
-		interactive   bool
-		forkSubagents bool
+		name             string
+		sh               shell.Shell // nil defaults to shell.Pwsh(), the pre-existing coverage's shell
+		bin              string
+		promptPath       string
+		settingsPath     string
+		sessionID        string
+		model            string
+		effort           string
+		appendPromptPath string
+		interactive      bool
+		forkSubagents    bool
 		// promptCacheTTL defaults to 5m when empty.
 		promptCacheTTL string
 		want           string
@@ -223,25 +223,25 @@ func TestBuildLaunchCmd(t *testing.T) {
 			want:         pwshEnvLead + `& 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME" --effort 'my effort''s name' --dangerously-skip-permissions`,
 		},
 		{
-			name:         "notice_pwsh",
-			bin:          "claude",
-			promptPath:   `C:\run\prompt.md`,
-			settingsPath: `C:\run\settings.json`,
-			sessionID:    "abc-123",
-			notice:       "Agent is denied. It's final.",
-			interactive:  false,
-			want:         pwshEnvLead + `& 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME" --dangerously-skip-permissions --append-system-prompt 'Agent is denied. It''s final.'`,
+			name:             "notice_pwsh",
+			bin:              "claude",
+			promptPath:       `C:\run\prompt.md`,
+			settingsPath:     `C:\run\settings.json`,
+			sessionID:        "abc-123",
+			appendPromptPath: `C:\run\append-system-prompt.txt`,
+			interactive:      false,
+			want:             pwshEnvLead + `& 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME" --dangerously-skip-permissions --append-system-prompt-file 'C:\run\append-system-prompt.txt'`,
 		},
 		{
-			name:         "notice_posix",
-			sh:           shell.Posix(),
-			bin:          "claude",
-			promptPath:   "/run/prompt.md",
-			settingsPath: "/run/settings.json",
-			sessionID:    "abc-123",
-			notice:       "Agent is denied.",
-			interactive:  true,
-			want:         posixEnvLead + `'claude' 'Read /run/prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings '/run/settings.json' --name "${LYM_STRAND_NAME}" --append-system-prompt 'Agent is denied.'`,
+			name:             "notice_posix",
+			sh:               shell.Posix(),
+			bin:              "claude",
+			promptPath:       "/run/prompt.md",
+			settingsPath:     "/run/settings.json",
+			sessionID:        "abc-123",
+			appendPromptPath: "/run/append-system-prompt.txt",
+			interactive:      true,
+			want:             posixEnvLead + `'claude' 'Read /run/prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings '/run/settings.json' --name "${LYM_STRAND_NAME}" --append-system-prompt-file '/run/append-system-prompt.txt'`,
 		},
 		{
 			// Proves the seam is shell-agnostic: the same builder produces the
@@ -284,28 +284,28 @@ func TestBuildLaunchCmd(t *testing.T) {
 			want:          posixEnvLead + `CLAUDE_CODE_FORK_SUBAGENT='1' 'claude' 'Read /run/prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings '/run/settings.json' --name "${LYM_STRAND_NAME}" --dangerously-skip-permissions`,
 		},
 		{
-			// A real assembled notice, whose ':' and ';' must stay inside the one quoted argument, riding inside the fork-mode env wrap rather than after it.
-			name:          "fork_mode_real_notice_pwsh",
-			bin:           "claude",
-			promptPath:    `C:\run\prompt.md`,
-			settingsPath:  `C:\run\settings.json`,
-			sessionID:     "abc-123",
-			notice:        noticeAgentForkDeny + " " + noticeAskUserQuestionDeny,
-			interactive:   false,
-			forkSubagents: true,
-			want:          pwshEnvLead + `$env:CLAUDE_CODE_FORK_SUBAGENT = '1'; & 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME" --dangerously-skip-permissions --append-system-prompt '` + noticeAgentForkDeny + " " + noticeAskUserQuestionDeny + `'`,
+			// The prompt file flag rides inside the fork-mode env wrap rather than after it.
+			name:             "fork_mode_prompt_file_pwsh",
+			bin:              "claude",
+			promptPath:       `C:\run\prompt.md`,
+			settingsPath:     `C:\run\settings.json`,
+			sessionID:        "abc-123",
+			appendPromptPath: `C:\run\append-system-prompt.txt`,
+			interactive:      false,
+			forkSubagents:    true,
+			want:             pwshEnvLead + `$env:CLAUDE_CODE_FORK_SUBAGENT = '1'; & 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME" --dangerously-skip-permissions --append-system-prompt-file 'C:\run\append-system-prompt.txt'`,
 		},
 		{
-			name:          "fork_mode_real_notice_posix",
-			sh:            shell.Posix(),
-			bin:           "claude",
-			promptPath:    "/run/prompt.md",
-			settingsPath:  "/run/settings.json",
-			sessionID:     "abc-123",
-			notice:        noticeAgentForkDeny + " " + noticeAskUserQuestionDeny,
-			interactive:   false,
-			forkSubagents: true,
-			want:          posixEnvLead + `CLAUDE_CODE_FORK_SUBAGENT='1' 'claude' 'Read /run/prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings '/run/settings.json' --name "${LYM_STRAND_NAME}" --dangerously-skip-permissions --append-system-prompt '` + noticeAgentForkDeny + " " + noticeAskUserQuestionDeny + `'`,
+			name:             "fork_mode_prompt_file_posix",
+			sh:               shell.Posix(),
+			bin:              "claude",
+			promptPath:       "/run/prompt.md",
+			settingsPath:     "/run/settings.json",
+			sessionID:        "abc-123",
+			appendPromptPath: "/run/append-system-prompt.txt",
+			interactive:      false,
+			forkSubagents:    true,
+			want:             posixEnvLead + `CLAUDE_CODE_FORK_SUBAGENT='1' 'claude' 'Read /run/prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings '/run/settings.json' --name "${LYM_STRAND_NAME}" --dangerously-skip-permissions --append-system-prompt-file '/run/append-system-prompt.txt'`,
 		},
 		{
 			// Fork mode off: the line is unchanged from today's shape — no
@@ -332,7 +332,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			if promptCacheTTL == "" {
 				promptCacheTTL = "5m"
 			}
-			got := buildLaunchCmd(sh, tt.bin, launchPointer(tt.promptPath), tt.settingsPath, tt.sessionID, tt.model, tt.effort, tt.notice, envFilePath, promptCacheTTL, false, !tt.interactive, tt.forkSubagents)
+			got := buildLaunchCmd(sh, tt.bin, launchPointer(tt.promptPath), tt.settingsPath, tt.sessionID, tt.model, tt.effort, tt.appendPromptPath, envFilePath, promptCacheTTL, false, !tt.interactive, tt.forkSubagents)
 			if got != tt.want {
 				t.Errorf("buildLaunchCmd(...) = %q; want %q", got, tt.want)
 			}
@@ -464,6 +464,9 @@ func TestOpenLaunch(t *testing.T) {
 			if strings.ContainsAny(launch.Cmd+launch.ResumeCmd, "\r\n") {
 				t.Errorf("launch = %+v; want single-line commands", launch)
 			}
+			if strings.Contains(launch.Cmd+launch.ResumeCmd, "--append-system-prompt-file") {
+				t.Errorf("launch = %+v; want no --append-system-prompt-file on an open session", launch)
+			}
 			tt.check(t, launch)
 		})
 	}
@@ -547,19 +550,19 @@ func TestBuildResumeCmd(t *testing.T) {
 	// with no operator present, which shuttle can only classify as a timeout) and on the provider
 	// default model rather than the pinned one.
 	tests := []struct {
-		name          string
-		model         string
-		effort        string
-		notice        string
-		interactive   bool
-		forkSubagents bool
-		ttl           string
-		want          string
+		name             string
+		model            string
+		effort           string
+		appendPromptPath string
+		interactive      bool
+		forkSubagents    bool
+		ttl              string
+		want             string
 	}{
 		{"autonomous_bare", "", "", "", false, false, "5m", pwshEnvLead + `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME" --dangerously-skip-permissions`},
 		{"interactive_bare", "", "", "", true, false, "5m", pwshEnvLead + `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME"`},
 		{"model_and_effort_pinned", "haiku", "low", "", false, false, "5m", pwshEnvLead + `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME" --model 'haiku' --effort 'low' --dangerously-skip-permissions`},
-		{"notice_on_resume", "", "", "Agent is denied.", false, false, "5m", pwshEnvLead + `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME" --dangerously-skip-permissions --append-system-prompt 'Agent is denied.'`},
+		{"prompt_file_on_resume", "", "", `C:\run\append-system-prompt.txt`, false, false, "5m", pwshEnvLead + `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYM_STRAND_NAME" --dangerously-skip-permissions --append-system-prompt-file 'C:\run\append-system-prompt.txt'`},
 		{
 			// A resumed fork-mode session must keep the fork-subagent
 			// capability it launched with.
@@ -570,7 +573,7 @@ func TestBuildResumeCmd(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := buildResumeCmd(shell.Pwsh(), "claude", `C:\run\settings.json`, "abc-123", tt.model, tt.effort, tt.notice, pwshEnvFilePath, tt.ttl, !tt.interactive, tt.forkSubagents)
+			got := buildResumeCmd(shell.Pwsh(), "claude", `C:\run\settings.json`, "abc-123", tt.model, tt.effort, tt.appendPromptPath, pwshEnvFilePath, tt.ttl, !tt.interactive, tt.forkSubagents)
 			if got != tt.want {
 				t.Errorf("buildResumeCmd(...) = %q; want %q", got, tt.want)
 			}
@@ -581,14 +584,13 @@ func TestBuildResumeCmd(t *testing.T) {
 	}
 }
 
-// TestBuildResumeCmd_NoticePosix pins the posix resume line carrying a real assembled notice inside the fork-mode env wrap.
+// TestBuildResumeCmd_NoticePosix pins the posix resume line carrying the append-system-prompt file inside the fork-mode env wrap.
 //
-//testtiming:keep pins the posix resume line with a real notice inside the fork env wrap, which its covering test only substring-matches
+//testtiming:keep pins the posix resume line with the prompt file flag inside the fork env wrap, which its covering test only substring-matches
 func TestBuildResumeCmd_NoticePosix(t *testing.T) {
-	notice := noticeAgentForkDeny + " " + noticeAskUserQuestionDeny
-	want := posixEnvLead + `CLAUDE_CODE_FORK_SUBAGENT='1' 'claude' --resume 'abc-123' --settings '/run/settings.json' --name "${LYM_STRAND_NAME}" --dangerously-skip-permissions --append-system-prompt '` + notice + `'`
+	want := posixEnvLead + `CLAUDE_CODE_FORK_SUBAGENT='1' 'claude' --resume 'abc-123' --settings '/run/settings.json' --name "${LYM_STRAND_NAME}" --dangerously-skip-permissions --append-system-prompt-file '/run/append-system-prompt.txt'`
 
-	got := buildResumeCmd(shell.Posix(), "claude", "/run/settings.json", "abc-123", "", "", notice, posixEnvFilePath, "5m", true, true)
+	got := buildResumeCmd(shell.Posix(), "claude", "/run/settings.json", "abc-123", "", "", "/run/append-system-prompt.txt", posixEnvFilePath, "5m", true, true)
 	if got != want {
 		t.Errorf("buildResumeCmd(...) = %q; want %q", got, want)
 	}
