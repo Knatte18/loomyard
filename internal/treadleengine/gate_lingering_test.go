@@ -1,4 +1,4 @@
-//go:build tier1
+//go:build tier1 && windows
 
 // gate_lingering_test.go holds the one treadleengine test that spawns real
 // cmd/ping child processes and, by design, sits in the production
@@ -14,7 +14,6 @@ package treadleengine
 
 import (
 	"os"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -24,10 +23,6 @@ import (
 // bounded when a child holds the output pipe.
 // Windows-only: the child-spawning idiom (cmd's start /b) has no portable equivalent.
 func TestExecGateCommand_LingeringChildDoesNotHangPastWaitDelay(t *testing.T) {
-	if runtime.GOOS != "windows" {
-		t.Skip("uses cmd.exe's start /b to spawn a pipe-holding child")
-	}
-
 	// Both subtests spend most of their time inside gateWaitDelay; run them
 	// in parallel so the suite pays for the grace window once, not twice.
 	t.Run("command exits zero, child still holds the pipe", func(t *testing.T) {

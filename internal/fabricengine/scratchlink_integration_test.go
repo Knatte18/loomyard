@@ -165,11 +165,11 @@ func writeLegacyScratchExclude(t *testing.T, l *lymcwd.Location, slug string) {
 	}
 }
 
-// skipUnlessChmodBlocksWrites skips the test where a read-only directory does not stop the writer.
-func skipUnlessChmodBlocksWrites(t *testing.T) {
+// skipAsRoot skips the test for root, whom a read-only directory does not stop.
+func skipAsRoot(t *testing.T) {
 	t.Helper()
-	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
-		t.Skip("a read-only directory does not block writes on this platform or as root")
+	if os.Geteuid() == 0 {
+		t.Skip("a read-only directory does not block writes as root")
 	}
 }
 
@@ -191,6 +191,8 @@ type scratchShapeCase struct {
 	leaves bool
 	// phrase is the part of the left report that names this shape.
 	phrase string
+	// readOnlyDir marks a shape that needs a read-only directory to stop a write, which it does not on Windows, so Windows generates no subtest for it.
+	readOnlyDir bool
 }
 
 var scratchShapeCases = []scratchShapeCase{
@@ -256,9 +258,10 @@ var scratchShapeCases = []scratchShapeCase{
 		phrase: "tracked by git",
 	},
 	{
-		name: "FailedRename",
+		name:        "FailedRename",
+		readOnlyDir: true,
 		arrange: func(t *testing.T, l *lymcwd.Location, slug string) {
-			skipUnlessChmodBlocksWrites(t)
+			skipAsRoot(t)
 			root, target := scratchPaths(l, slug)
 			replaceLinkWithRealDirectory(t, root)
 			removeTarget(t, target)
@@ -268,9 +271,10 @@ var scratchShapeCases = []scratchShapeCase{
 		phrase: "whose move to",
 	},
 	{
-		name: "FailedExcludeWrite",
+		name:        "FailedExcludeWrite",
+		readOnlyDir: true,
 		arrange: func(t *testing.T, l *lymcwd.Location, slug string) {
-			skipUnlessChmodBlocksWrites(t)
+			skipAsRoot(t)
 			root, target := scratchPaths(l, slug)
 			replaceLinkWithRealDirectory(t, root)
 			removeTarget(t, target)
@@ -428,6 +432,9 @@ func TestWireJunctions_ScratchLink(t *testing.T) {
 	})
 
 	for _, tt := range scratchShapeCases {
+		if tt.readOnlyDir && runtime.GOOS == "windows" {
+			continue
+		}
 		t.Run("Leaves_"+tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -996,6 +1003,9 @@ func TestReconcile_ScratchLink(t *testing.T) {
 	}
 
 	for _, tt := range scratchShapeCases {
+		if tt.readOnlyDir && runtime.GOOS == "windows" {
+			continue
+		}
 		t.Run("Leaves_"+tt.name, func(t *testing.T) {
 			t.Parallel()
 

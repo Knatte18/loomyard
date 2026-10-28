@@ -1,4 +1,4 @@
-//go:build tier1
+//go:build tier1 && !windows
 
 // deploy_integration_test.go covers runDeploy against a real shell, which is why it sits in the integration tier.
 
@@ -8,7 +8,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -18,9 +17,6 @@ import (
 func TestRunDeploy_WritesTheLogAndReportsExitCodeAndTimeout(t *testing.T) {
 	t.Parallel()
 
-	if runtime.GOOS == "windows" {
-		t.Skip("the commands below are written for sh")
-	}
 	tests := []struct {
 		name         string
 		command      string

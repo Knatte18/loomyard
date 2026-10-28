@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -123,12 +124,12 @@ func TestCheckAlive(t *testing.T) {
 	t.Parallel()
 
 	self := os.Getpid()
-	ticks, readable := proc.StartTime(self)
+	ticks, _ := proc.StartTime(self)
 	tests := []struct {
 		name   string
 		record CheckRecord
 		want   bool
-		// needsTicks skips a row on a platform that cannot read a start time.
+		// needsTicks marks a row that needs a readable start time, which only Linux gives, so no other platform generates a subtest for it.
 		needsTicks bool
 	}{
 		{name: "OwnPidAndTicksIsAlive", record: CheckRecord{PID: self, StartTicks: ticks}, want: true},
@@ -137,11 +138,11 @@ func TestCheckAlive(t *testing.T) {
 		{name: "PidNoProcessHoldsIsDead", record: CheckRecord{PID: math.MaxInt32 - 1, StartTicks: ticks}},
 	}
 	for _, tt := range tests {
+		if tt.needsTicks && runtime.GOOS != "linux" {
+			continue
+		}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if tt.needsTicks && !readable {
-				t.Skip("the platform cannot read a process start time")
-			}
 			if got := checkAlive(tt.record); got != tt.want {
 				t.Errorf("checkAlive(%+v) = %v; want %v", tt.record, got, tt.want)
 			}

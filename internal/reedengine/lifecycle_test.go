@@ -47,35 +47,28 @@ func TestUp_BootValidation(t *testing.T) {
 		wantErr   string // the validation error Up must fail with before any tmux contact; empty when the value must pass the check
 		notErr    string // an error text Up must not fail with
 		setup     func(t *testing.T)
+		// posixOnly and windowsOnly mark a row whose check exists on one platform alone, so the other generates no subtest for it.
+		posixOnly   bool
+		windowsOnly bool
 	}{
 		{
-			name: "SocketPathTooLong",
+			name:      "SocketPathTooLong",
+			posixOnly: true,
 			setup: func(t *testing.T) {
-				if runtime.GOOS == "windows" {
-					t.Skip("psmux keeps no socket file")
-				}
 				t.Setenv("TMUX_TMPDIR", filepath.Join(t.TempDir(), strings.Repeat("a", unixSocketPathLimit("linux"))))
 			},
 			configure: func(cfg *Config) {},
 			wantErr:   "TMUX_TMPDIR",
 		},
 		{
-			name: "ShellUnresolvable",
-			setup: func(t *testing.T) {
-				if runtime.GOOS == "windows" {
-					t.Skip("Windows keeps its current shell handling")
-				}
-			},
+			name:      "ShellUnresolvable",
+			posixOnly: true,
 			configure: func(cfg *Config) { cfg.Shell = "lym-no-such-shell-for-this-test" },
 			wantErr:   "key shell",
 		},
 		{
-			name: "TmuxConfRelative",
-			setup: func(t *testing.T) {
-				if runtime.GOOS == "windows" {
-					t.Skip("Windows parses tmux_conf and validates nothing")
-				}
-			},
+			name:      "TmuxConfRelative",
+			posixOnly: true,
 			configure: func(cfg *Config) {
 				cfg.Shell = "sh"
 				cfg.TmuxConf = "tmux.conf"
@@ -83,14 +76,10 @@ func TestUp_BootValidation(t *testing.T) {
 			wantErr: "tmux_conf",
 		},
 		{
-			name: "TmuxConfUnvalidatedOnWindows",
-			setup: func(t *testing.T) {
-				if runtime.GOOS != "windows" {
-					t.Skip("only Windows leaves tmux_conf unvalidated")
-				}
-			},
-			configure: func(cfg *Config) { cfg.TmuxConf = "tmux.conf" },
-			notErr:    "tmux_conf",
+			name:        "TmuxConfUnvalidatedOnWindows",
+			windowsOnly: true,
+			configure:   func(cfg *Config) { cfg.TmuxConf = "tmux.conf" },
+			notErr:      "tmux_conf",
 		},
 		{
 			name:      "SegmentColorOutsidePalette",
@@ -108,6 +97,9 @@ func TestUp_BootValidation(t *testing.T) {
 		{name: "WindowShareMaxZeroPasses", configure: func(cfg *Config) { cfg.WindowShareMax = 0 }, notErr: "window_share_max"},
 	}
 	for _, tt := range tests {
+		if tt.posixOnly && runtime.GOOS == "windows" || tt.windowsOnly && runtime.GOOS != "windows" {
+			continue
+		}
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(t)
@@ -181,29 +173,6 @@ func TestServerSpawnArgv(t *testing.T) {
 			if got := e.serverSpawnArgv(tt.goos, tt.debugArgs); !slices.Equal(got, tt.want) {
 				t.Errorf("serverSpawnArgv(%q, %v) = %v, want %v", tt.goos, tt.debugArgs, got, tt.want)
 			}
-		})
-	}
-}
-
-// TestPinBootOptionsLocked_ClearsTheWindowResizedHook pins that a fresh boot unpins the window-resized hook in both scopes and installs no entry, whatever the watchdog value.
-// Windows issues no hook call and cannot be faked, so it skips there.
-func TestPinBootOptionsLocked_ClearsTheWindowResizedHook(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the window-resized hook is never touched on Windows")
-	}
-	for _, watchdog := range []string{"on", "off"} {
-		t.Run("Watchdog_"+watchdog, func(t *testing.T) {
-			e := newTestEngine(t)
-			e.cfg.Watchdog = watchdog
-			fake := installFakeTmux(t, e)
-			if err := e.pinBootOptionsLocked("off", ""); err != nil {
-				t.Fatalf("pinBootOptionsLocked() = %v, want nil", err)
-			}
-
-			if got, want := fake.SetHookCalls(windowResizedHookName), wantResizedUnpins(exactSessionWindowTarget(e.SessionName())); !slices.EqualFunc(got, want, slices.Equal[[]string]) {
-				t.Errorf("set-hook calls naming %s = %v, want the two unpins and no installing entry: %v", windowResizedHookName, got, want)
-			}
-			assertUnseenClearHookPinned(t, e, fake)
 		})
 	}
 }

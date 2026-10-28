@@ -412,29 +412,31 @@ func TestConfigOverRealHub(t *testing.T) {
 			t.Fatalf("board loom.yaml = %q, %v after a dry run and refusals; want it unchanged", after, err)
 		}
 
-		t.Run("a failed apply leaves the board files as they were", func(t *testing.T) {
-			if runtime.GOOS == "windows" || os.Geteuid() == 0 {
-				t.Skip("a read-only config dir does not stop writes here")
-			}
-			configDir := configengine.ConfigDir(boardDir)
-			if err := os.Chmod(configDir, 0o555); err != nil {
-				t.Fatalf("make the board config dir read-only: %v", err)
-			}
-			t.Cleanup(func() { _ = os.Chmod(configDir, 0o755) })
-			headBefore := boardHead(t, boardDir)
+		if runtime.GOOS != "windows" {
+			t.Run("a failed apply leaves the board files as they were", func(t *testing.T) {
+				if os.Geteuid() == 0 {
+					t.Skip("file mode bits do not bind root")
+				}
+				configDir := configengine.ConfigDir(boardDir)
+				if err := os.Chmod(configDir, 0o555); err != nil {
+					t.Fatalf("make the board config dir read-only: %v", err)
+				}
+				t.Cleanup(func() { _ = os.Chmod(configDir, 0o755) })
+				headBefore := boardHead(t, boardDir)
 
-			var out bytes.Buffer
-			if code := RunCLIIn(primeWorktreePath, &out, []string{"reconcile", "--layer", "default", "--apply"}); code != 1 {
-				t.Fatalf("reconcile --layer default --apply into a read-only dir = %d; want 1; output: %s", code, out.String())
-			}
-			assertJSONErrContains(t, out.String(), "reconcile:")
-			if after, err := os.ReadFile(loomFile); err != nil || !bytes.Equal(before, after) {
-				t.Errorf("board loom.yaml = %q, %v after a failed apply; want it unchanged", after, err)
-			}
-			if head := boardHead(t, boardDir); head != headBefore {
-				t.Errorf("_board HEAD = %s after a failed apply; want %s", head, headBefore)
-			}
-		})
+				var out bytes.Buffer
+				if code := RunCLIIn(primeWorktreePath, &out, []string{"reconcile", "--layer", "default", "--apply"}); code != 1 {
+					t.Fatalf("reconcile --layer default --apply into a read-only dir = %d; want 1; output: %s", code, out.String())
+				}
+				assertJSONErrContains(t, out.String(), "reconcile:")
+				if after, err := os.ReadFile(loomFile); err != nil || !bytes.Equal(before, after) {
+					t.Errorf("board loom.yaml = %q, %v after a failed apply; want it unchanged", after, err)
+				}
+				if head := boardHead(t, boardDir); head != headBefore {
+					t.Errorf("_board HEAD = %s after a failed apply; want %s", head, headBefore)
+				}
+			})
+		}
 
 		// A hub-wide orch rules file left uncommitted in Bolt must stay out of the config commit.
 		const rulesContent = "an uncommitted rule\n"

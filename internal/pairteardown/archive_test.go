@@ -91,9 +91,12 @@ func pairWithLogs(t *testing.T, slug string) (td *Teardown, traceLog string) {
 	return td, traceLog
 }
 
-// canMakeUnreadable reports whether chmod 000 makes a file unreadable to this process.
-func canMakeUnreadable() bool {
-	return runtime.GOOS != "windows" && os.Geteuid() != 0
+// posixOnly returns run off Windows and nil on it, where chmod 000 leaves a file readable, so a table loop that passes over a nil run generates no subtest for the row there.
+func posixOnly(run func(t *testing.T)) func(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	return run
 }
 
 // TestLogArchive asserts the archive's write, prune and pair-teardown step: what lands in an entry, what is left alone, and what is logged.
@@ -220,9 +223,9 @@ func TestLogArchive(t *testing.T) {
 				t.Errorf("INFO lines = %d, line %q; want one naming %s and files=2\n%s", got, line, entry, buf.String())
 			}
 		}},
-		{"archiving a pair whose trace file is unreadable leaves no entry and logs one Warn", true, func(t *testing.T) {
-			if !canMakeUnreadable() {
-				t.Skip("an unreadable file stays readable here")
+		{"archiving a pair whose trace file is unreadable leaves no entry and logs one Warn", true, posixOnly(func(t *testing.T) {
+			if os.Geteuid() == 0 {
+				t.Skip("an unreadable file stays readable to root")
 			}
 			buf := logcapture.CaptureVerbose(t)
 			td, traceLog := pairWithLogs(t, "slug")
@@ -236,9 +239,12 @@ func TestLogArchive(t *testing.T) {
 			if got := countArchiveLogLines(buf.String(), "WARN", ""); got != 1 {
 				t.Errorf("WARN lines = %d; want 1\n%s", got, buf.String())
 			}
-		}},
+		})},
 	}
 	for _, tt := range tests {
+		if tt.run == nil {
+			continue
+		}
 		t.Run(tt.name, func(t *testing.T) {
 			if !tt.serial {
 				t.Parallel()

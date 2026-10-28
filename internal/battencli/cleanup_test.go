@@ -249,10 +249,14 @@ func TestCleanup(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		// Windows does not enforce directory permissions, so it generates no subtest for a denying row.
+		if tt.denyRunsRoot && runtime.GOOS == "windows" {
+			continue
+		}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if tt.denyRunsRoot && (runtime.GOOS == "windows" || os.Geteuid() == 0) {
-				t.Skip("directory permissions are not enforced here")
+			if tt.denyRunsRoot && os.Geteuid() == 0 {
+				t.Skip("directory permissions are not enforced for root")
 			}
 
 			location := newCleanupLocation(t)

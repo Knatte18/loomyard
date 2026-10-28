@@ -1159,33 +1159,32 @@ func TestGateTest_Scenario(t *testing.T) {
 		requireFree(t)
 	})
 
-	t.Run("a test binary that keeps cores busy past busy_quit_sec is quit with its stacks printed", func(t *testing.T) {
-		if runtime.GOOS != "linux" {
-			t.Skip("the CPU watchdog samples /proc, which only Linux has")
-		}
-		spinModule := writeModule(t, "spin", map[string]string{
-			"spin_test.go": "package spin\n\nimport (\n\t\"sync/atomic\"\n\t\"testing\"\n)\n\nvar sink atomic.Uint64\n\nfunc spinForever() {\n\tfor {\n\t\tsink.Add(1)\n\t}\n}\n\nfunc TestSpin(t *testing.T) {\n\tfor i := 0; i < 4; i++ {\n\t\tgo spinForever()\n\t}\n\tspinForever()\n}\n",
+	if runtime.GOOS == "linux" {
+		t.Run("a test binary that keeps cores busy past busy_quit_sec is quit with its stacks printed", func(t *testing.T) {
+			spinModule := writeModule(t, "spin", map[string]string{
+				"spin_test.go": "package spin\n\nimport (\n\t\"sync/atomic\"\n\t\"testing\"\n)\n\nvar sink atomic.Uint64\n\nfunc spinForever() {\n\tfor {\n\t\tsink.Add(1)\n\t}\n}\n\nfunc TestSpin(t *testing.T) {\n\tfor i := 0; i < 4; i++ {\n\t\tgo spinForever()\n\t}\n\tspinForever()\n}\n",
+			})
+			writeConfig(t, scenarioConfig(t, func(cfg map[string]any) { cfg["busy_quit_sec"] = 1 }))
+			defer writeConfig(t, gateConfig)
+
+			started := time.Now()
+			g := startGate(t, gateRun{cwd: t.TempDir(), realGo: true, args: []string{"test", "--tier", "5", "-C", spinModule, "./..."}})
+			code := g.wait(t)
+			elapsed := time.Since(started)
+
+			stdout := g.stdout.String()
+			if code == 0 || !strings.Contains(stdout, "SIGQUIT: quit") || !strings.Contains(stdout, "goroutine ") {
+				t.Errorf("spin run = exit %d, stdout %q; want a non-zero exit and the Go runtime's SIGQUIT stacks", code, stdout)
+			}
+			if window, ok := gateslot.FindWatchdogQuit(stdout); !ok || window != "1s" {
+				t.Errorf("FindWatchdogQuit(stdout) = %q, %v; want the run's own 1s window, which the template's 120s cannot produce", window, ok)
+			}
+			if elapsed > time.Minute {
+				t.Errorf("spin run took %s; want the quit to end it long before the tier's timeout", elapsed)
+			}
+			requireFree(t)
 		})
-		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) { cfg["busy_quit_sec"] = 1 }))
-		defer writeConfig(t, gateConfig)
-
-		started := time.Now()
-		g := startGate(t, gateRun{cwd: t.TempDir(), realGo: true, args: []string{"test", "--tier", "5", "-C", spinModule, "./..."}})
-		code := g.wait(t)
-		elapsed := time.Since(started)
-
-		stdout := g.stdout.String()
-		if code == 0 || !strings.Contains(stdout, "SIGQUIT: quit") || !strings.Contains(stdout, "goroutine ") {
-			t.Errorf("spin run = exit %d, stdout %q; want a non-zero exit and the Go runtime's SIGQUIT stacks", code, stdout)
-		}
-		if window, ok := gateslot.FindWatchdogQuit(stdout); !ok || window != "1s" {
-			t.Errorf("FindWatchdogQuit(stdout) = %q, %v; want the run's own 1s window, which the template's 120s cannot produce", window, ok)
-		}
-		if elapsed > time.Minute {
-			t.Errorf("spin run took %s; want the quit to end it long before the tier's timeout", elapsed)
-		}
-		requireFree(t)
-	})
+	}
 
 	t.Run("a two-tier call runs both tiers in turn", func(t *testing.T) {
 		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "6", "--tier", "0", "./pkg"}})
@@ -1270,37 +1269,35 @@ func TestGateTest_Scenario(t *testing.T) {
 		requireFree(t)
 	})
 
-	t.Run("a catchable signal kills the tier's whole group and frees the slot", func(t *testing.T) {
-		if runtime.GOOS == "windows" {
-			t.Skip("a catchable signal cannot be sent to a Windows process")
-		}
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "./held"}, env: []string{helperHoldEnv + "=1"}})
-		record := g.standIn(t)
-		if err := g.cmd.Process.Signal(syscall.SIGTERM); err != nil {
-			t.Fatal(err)
-		}
-		if code := g.wait(t); code != 128+int(syscall.SIGTERM) {
-			t.Errorf("exit code = %d; want 128 plus SIGTERM", code)
-		}
-		eventually(t, "the tier's command and its sleeper to end", func() bool { return processGone(record.PID) && processGone(record.Grandchild) })
-		requireFree(t)
-	})
+	if runtime.GOOS != "windows" {
+		t.Run("a catchable signal kills the tier's whole group and frees the slot", func(t *testing.T) {
+			g := startGate(t, gateRun{cwd: prime, args: []string{"test", "./held"}, env: []string{helperHoldEnv + "=1"}})
+			record := g.standIn(t)
+			if err := g.cmd.Process.Signal(syscall.SIGTERM); err != nil {
+				t.Fatal(err)
+			}
+			if code := g.wait(t); code != 128+int(syscall.SIGTERM) {
+				t.Errorf("exit code = %d; want 128 plus SIGTERM", code)
+			}
+			eventually(t, "the tier's command and its sleeper to end", func() bool { return processGone(record.PID) && processGone(record.Grandchild) })
+			requireFree(t)
+		})
+	}
 
-	t.Run("a SIGKILL of the gate ends the tier's command", func(t *testing.T) {
-		if runtime.GOOS != "linux" {
-			t.Skip("only Linux gives the child a parent-death signal")
-		}
-		// Only the shell the gate started carries the parent-death signal, so the tier's command is the one `exec` replaces it with.
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "7", "./held"}, env: []string{helperHoldEnv + "=1"}})
-		record := g.standIn(t)
-		t.Cleanup(func() { _ = (&os.Process{Pid: record.Grandchild}).Kill() })
-		if err := g.cmd.Process.Kill(); err != nil {
-			t.Fatal(err)
-		}
-		g.wait(t)
-		eventually(t, "the tier's command to end with its killed parent", func() bool { return processGone(record.PID) })
-		requireFree(t)
-	})
+	if runtime.GOOS == "linux" {
+		t.Run("a SIGKILL of the gate ends the tier's command", func(t *testing.T) {
+			// Only the shell the gate started carries the parent-death signal, so the tier's command is the one `exec` replaces it with.
+			g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "7", "./held"}, env: []string{helperHoldEnv + "=1"}})
+			record := g.standIn(t)
+			t.Cleanup(func() { _ = (&os.Process{Pid: record.Grandchild}).Kill() })
+			if err := g.cmd.Process.Kill(); err != nil {
+				t.Fatal(err)
+			}
+			g.wait(t)
+			eventually(t, "the tier's command to end with its killed parent", func() bool { return processGone(record.PID) })
+			requireFree(t)
+		})
+	}
 
 	stale := gateslot.PrebuiltLymEnv + "=/stale/lym"
 	t.Run("an untagged tier builds nothing and strips an inherited prebuilt variable", func(t *testing.T) {
@@ -1687,8 +1684,8 @@ func TestGateTest_Scenario(t *testing.T) {
 	// Each row writes its own module, so a broken one never disturbs another; makeUnreadable removes a path's permissions until the row ends.
 	makeUnreadable := func(t *testing.T, path string) {
 		t.Helper()
-		if os.Geteuid() == 0 || runtime.GOOS == "windows" {
-			t.Skip("the platform or user reads any file")
+		if os.Geteuid() == 0 {
+			t.Skip("root reads any file")
 		}
 		info, err := os.Stat(path)
 		if err != nil {
@@ -1734,6 +1731,10 @@ func TestGateTest_Scenario(t *testing.T) {
 		},
 	}
 	for i, tc := range scanRefusals {
+		// Windows mode bits leave any file readable, so Windows generates no subtest for an unreadable row.
+		if tc.unreadable != "" && runtime.GOOS == "windows" {
+			continue
+		}
 		t.Run("--guards: "+tc.name, func(t *testing.T) {
 			module := writeModule(t, "scan"+strconv.Itoa(i), tc.files)
 			if tc.unreadable != "" {

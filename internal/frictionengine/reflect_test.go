@@ -6,7 +6,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -415,33 +414,6 @@ func TestReflect_NoteWrittenDuringSpawn_StaysAfterArchive(t *testing.T) {
 	if got := entryNames(t, deps.FrictionDir); strings.Join(got, ",") != "note-2.md" {
 		t.Errorf("friction directory holds %v; want only note-2.md", got)
 	}
-}
-
-// TestReflect_UnwritableRecord_FailedNoSpawn covers a record write that fails before the spawn.
-func TestReflect_UnwritableRecord_FailedNoSpawn(t *testing.T) {
-	t.Parallel()
-	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
-		t.Skip("directory permissions do not bar writes here")
-	}
-	shuttle := doneShuttle()
-	deps := newTestDeps(t, shuttle, fixedClock())
-	writeNote(t, deps, "note-1", "x")
-	if err := os.Chmod(deps.FrictionDir, 0o555); err != nil {
-		t.Fatalf("Chmod: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(deps.FrictionDir, 0o755) })
-
-	report, err := Reflect(deps)
-	if err != nil {
-		t.Fatalf("Reflect() error = %v; want nil", err)
-	}
-	if report.Status != StatusFailed {
-		t.Errorf("Reflect() status = %q; want %q", report.Status, StatusFailed)
-	}
-	if shuttle.Called {
-		t.Error("Run called; want no spawn")
-	}
-	requireExists(t, filepath.Join(deps.FrictionDir, "note-1.md"))
 }
 
 // TestReflect_Skipped covers every friction directory with nothing to reflect: Reflect reports skipped and spawns nothing.

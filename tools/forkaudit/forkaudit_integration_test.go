@@ -1,4 +1,4 @@
-//go:build tier1
+//go:build tier1 && !windows
 
 // forkaudit_integration_test.go runs forkaudit.sh against temporary directories and checks its exit codes, refusals and report.
 
@@ -15,7 +15,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -37,9 +36,6 @@ const noForksSentence = "No Webster implementer forks matched."
 // It returns what the script printed and its exit code.
 func runForkaudit(t *testing.T, env []string, args ...string) (stdout, stderr string, exit int) {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("forkaudit.sh runs under bash, which is not assumed on Windows")
-	}
 	if _, err := exec.LookPath("jq"); err != nil {
 		t.Fatalf("forkaudit tests need jq on PATH: %v", err)
 	}

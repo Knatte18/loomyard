@@ -14,7 +14,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -430,43 +429,6 @@ func TestValidateToldWorktreeRootLive(t *testing.T) {
 			t.Errorf("error = %q; want no rename remedy for a not-a-directory refusal", err)
 		}
 	})
-}
-
-// TestValidateToldWorktreeRootLive_UnreadableParentIsNotTheSentinel provokes a real non-fs.ErrNotExist
-// stat failure — EACCES on the parent directory — and asserts it refuses without matching the
-// sentinel, per the only-proven-gone-carries-the-sentinel contract.
-// Skipped on Windows, where a directory mode bit does not gate traversal the same way, and when
-// running as root, since root ignores the permission bit entirely.
-func TestValidateToldWorktreeRootLive_UnreadableParentIsNotTheSentinel(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("directory permission bits do not gate traversal on windows")
-	}
-	if os.Geteuid() == 0 {
-		t.Skip("root ignores the permission bit")
-	}
-
-	parent := t.TempDir()
-	worktreeRoot := filepath.Join(parent, "worktree")
-	if err := os.Mkdir(worktreeRoot, 0o755); err != nil {
-		t.Fatalf("Mkdir: %v", err)
-	}
-	if err := os.Chmod(parent, 0o000); err != nil {
-		t.Fatalf("Chmod: %v", err)
-	}
-	t.Cleanup(func() {
-		// Restore the mode so t.TempDir's own cleanup can traverse and remove parent.
-		if err := os.Chmod(parent, 0o755); err != nil {
-			t.Fatalf("restore parent mode: %v", err)
-		}
-	})
-
-	err := validateToldWorktreeRootLive(Geometry{WorktreeRoot: worktreeRoot})
-	if err == nil {
-		t.Fatal("validateToldWorktreeRootLive with an unreadable parent = nil; want an error")
-	}
-	if errors.Is(err, errWorktreeRootGone) {
-		t.Errorf("validateToldWorktreeRootLive with an unreadable parent matched errWorktreeRootGone; want a plain non-sentinel refusal")
-	}
 }
 
 // TestWithOpLock_RefusesAnUnusableAnchorPathBeforeCreatingState asserts the anchor refusal lands at

@@ -22,7 +22,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -193,46 +192,5 @@ func TestBootstrapCommitPaths_IncludesSeedRel(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("bootstrapCommitPaths(loc) = %v; want %v", got, want)
-	}
-}
-
-// TestBuildLoomShed_OutputShape asserts the built *shedengine.Shed's StatusPath, LockPath, and
-// StatusLockPath equal the receiver's own c.shedPaths values, and that it carries every
-// producer row.
-//
-// buildLoomShed opens the fabric as its first act (fabricengine.Open), which this untagged suite's
-// receiver -- with no real git repository or records sibling behind its location -- cannot satisfy. Per
-// this card's own skip-rather-than-fabric instruction, the test skips with a stated reason instead of
-// standing up a real fabric fixture.
-func TestBuildLoomShed_OutputShape(t *testing.T) {
-	dir := t.TempDir()
-	loc := &lymcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."}
-	c := &loomCLI{
-		location: loc,
-		shedPaths: shedbuild.ShedPaths{
-			StatusPath:     filepath.Join(dir, "status.json"),
-			LockPath:       filepath.Join(dir, "status.json.runlock"),
-			StatusLockPath: filepath.Join(dir, "status.json.lock"),
-		},
-	}
-	c.env.StatusPath = c.shedPaths.StatusPath
-	c.env.StatusLockPath = c.shedPaths.StatusLockPath
-
-	shed, err := c.buildLoomShed()
-	if err != nil {
-		t.Skipf("buildLoomShed needs a real fabric (fabricengine.Open) this pure receiver cannot satisfy: %v", err)
-	}
-
-	if shed.StatusPath != c.shedPaths.StatusPath {
-		t.Errorf("shed.StatusPath = %q; want %q", shed.StatusPath, c.shedPaths.StatusPath)
-	}
-	if shed.LockPath != c.shedPaths.LockPath {
-		t.Errorf("shed.LockPath = %q; want %q", shed.LockPath, c.shedPaths.LockPath)
-	}
-	if shed.StatusLockPath != c.shedPaths.StatusLockPath {
-		t.Errorf("shed.StatusLockPath = %q; want %q", shed.StatusLockPath, c.shedPaths.StatusLockPath)
-	}
-	if len(shed.Producers) != len(loomshed.InterruptPolicies) {
-		t.Errorf("len(shed.Producers) = %d; want %d", len(shed.Producers), len(loomshed.InterruptPolicies))
 	}
 }

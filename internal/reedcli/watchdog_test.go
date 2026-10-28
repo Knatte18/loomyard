@@ -320,6 +320,8 @@ func TestWorktreeRootGoneAndHubIsLiveDir(t *testing.T) {
 		path     func(t *testing.T, root string) string
 		wantGone bool
 		wantLive bool
+		// modeBits marks a row resting on directory mode bits, which deny nothing on Windows, so Windows generates no subtest for it.
+		modeBits bool
 	}{
 		{
 			name:     "missing path",
@@ -352,11 +354,9 @@ func TestWorktreeRootGoneAndHubIsLiveDir(t *testing.T) {
 			wantLive: true,
 		},
 		{
-			name: "stat error that is not not-exist",
+			name:     "stat error that is not not-exist",
+			modeBits: true,
 			path: func(t *testing.T, root string) string {
-				if runtime.GOOS == "windows" {
-					t.Skip("directory mode bits do not deny traversal on Windows")
-				}
 				if os.Geteuid() == 0 {
 					t.Skip("mode bits are not enforced for uid 0")
 				}
@@ -386,6 +386,9 @@ func TestWorktreeRootGoneAndHubIsLiveDir(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
+		if tt.modeBits && runtime.GOOS == "windows" {
+			continue
+		}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			path := tt.path(t, t.TempDir())
@@ -539,6 +542,8 @@ func TestConsumeDiscoverSignal(t *testing.T) {
 		wantStop     bool
 		wantErr      bool
 		wantRemoved  bool
+		// modeBits marks a row resting on directory mode bits, which deny nothing on Windows, so Windows generates no subtest for it.
+		modeBits bool
 	}{
 		{
 			name: "an empty file is a discover",
@@ -584,10 +589,11 @@ func TestConsumeDiscoverSignal(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "a readable file in a read-only directory fails the removal",
+			name:     "a readable file in a read-only directory fails the removal",
+			modeBits: true,
 			setup: func(t *testing.T, dir string) string {
-				if runtime.GOOS == "windows" || os.Geteuid() == 0 {
-					t.Skip("removal from a read-only directory succeeds on Windows and as root")
+				if os.Geteuid() == 0 {
+					t.Skip("removal from a read-only directory succeeds as root")
 				}
 				locked := filepath.Join(dir, "locked")
 				if err := os.Mkdir(locked, 0o755); err != nil {
@@ -607,6 +613,9 @@ func TestConsumeDiscoverSignal(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
+		if tt.modeBits && runtime.GOOS == "windows" {
+			continue
+		}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			path := tt.setup(t, t.TempDir())

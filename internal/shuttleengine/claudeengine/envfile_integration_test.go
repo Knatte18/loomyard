@@ -62,13 +62,13 @@ func TestEnvFile_DefaultStdinIsDevNull(t *testing.T) {
 	lymBinSet := agentname.LymBinEnv + "=" + realLym
 	lymBinEmpty := agentname.LymBinEnv + "="
 	tests := []struct {
-		name          string
-		goos          string
-		command       string
-		path          string
-		extraEnv      []string
-		want          string
-		skipOnWindows bool
+		name      string
+		goos      string
+		command   string
+		path      string
+		extraEnv  []string
+		want      string
+		posixOnly bool
 	}{
 		{"bare_cat_ends_at_once", "linux", "cat", hostPath, nil, "", false},
 		{"heredoc_still_feeds_cat", "linux", "cat <<'EOF'\nheredoc body\nEOF", hostPath, nil, "heredoc body\n", false},
@@ -81,11 +81,12 @@ func TestEnvFile_DefaultStdinIsDevNull(t *testing.T) {
 		{"windows_converts_and_unsets_scratch_variable", "windows", `command -v lym; printf %s "${__lym_bin_dir-unset}"`, stubPath, []string{lymBinSet}, realLym + "\nunset", true},
 	}
 	for _, tt := range tests {
+		// The PATH rows build POSIX paths, so Windows generates no subtest for them.
+		if tt.posixOnly && runtime.GOOS == "windows" {
+			continue
+		}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if tt.skipOnWindows && runtime.GOOS == "windows" {
-				t.Skip("the PATH rows build POSIX paths")
-			}
 
 			r, w, err := os.Pipe()
 			if err != nil {

@@ -335,16 +335,19 @@ func TestBattenIntegration_Rows(t *testing.T) {
 		{"StopReport_ReadsTheParkMarkersContentAndTime", stepStopReport_ReadsTheParkMarkersContentAndTime},
 		{"TaskWorktreeSeams_RunGitOnlyUntilTheFirstResolution", stepTaskWorktreeSeams_RunGitOnlyUntilTheFirstResolution},
 		{"Status_FlagsAHaltedBattenOverADoneChild", stepStatusFlagsAHaltedBattenOverADoneChild},
-		{"CommandRows_RunTheBoardDefaultCommandsWithEverySwitchOn", stepCommandRows_RunTheBoardDefaultCommandsWithEverySwitchOn},
-		{"CommandRows_IgnoreACommandSetInTheTasksTrackedLayer", stepCommandRows_IgnoreACommandSetInTheTasksTrackedLayer},
-		{"CommandRows_FollowTheTasksLocalSwitch", stepCommandRows_FollowTheTasksLocalSwitch},
-		{"CommandRows_ResumeAtARowAnOlderBinaryLeftStanding", stepCommandRows_ResumeAtARowAnOlderBinaryLeftStanding},
-		{"RunRowCommand_ReportsATimeoutAndAnExitCode", stepRunRowCommand_ReportsATimeoutAndAnExitCode},
-		{"StartCost_CommandRowsCostUnderTheBoundBeyondTheCommitAndTheProcess", stepStartCost_CommandRowsCostUnderTheBoundBeyondTheCommitAndTheProcess},
+		{"CommandRows_RunTheBoardDefaultCommandsWithEverySwitchOn", posixOnly(stepCommandRows_RunTheBoardDefaultCommandsWithEverySwitchOn)},
+		{"CommandRows_IgnoreACommandSetInTheTasksTrackedLayer", posixOnly(stepCommandRows_IgnoreACommandSetInTheTasksTrackedLayer)},
+		{"CommandRows_FollowTheTasksLocalSwitch", posixOnly(stepCommandRows_FollowTheTasksLocalSwitch)},
+		{"CommandRows_ResumeAtARowAnOlderBinaryLeftStanding", posixOnly(stepCommandRows_ResumeAtARowAnOlderBinaryLeftStanding)},
+		{"RunRowCommand_ReportsATimeoutAndAnExitCode", posixOnly(stepRunRowCommand_ReportsATimeoutAndAnExitCode)},
+		{"StartCost_CommandRowsCostUnderTheBoundBeyondTheCommitAndTheProcess", posixOnly(stepStartCost_CommandRowsCostUnderTheBoundBeyondTheCommitAndTheProcess)},
 		// Last, since it leaves the prime dirty for every step after it.
 		{"DirtyPrime_CreateRowBlocksBeforeAnythingCreated", stepDirtyPrime_CreateRowBlocksBeforeAnythingCreated},
 	}
 	for _, step := range steps {
+		if step.run == nil {
+			continue
+		}
 		if !t.Run(step.name, func(t *testing.T) { step.run(t, h) }) {
 			return
 		}
@@ -1144,9 +1147,6 @@ func stepDirtyPrime_CreateRowBlocksBeforeAnythingCreated(t *testing.T, h *hubfor
 // The board default is set after the wiring, since the executable lookup reads it when the first row runs, and is emptied again when the step ends.
 func newCommandRowFixture(t *testing.T, h *hubforge.Hub, slug string) (*battenCLI, map[string]string, string) {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("the commands below are written for sh")
-	}
 	seedBoardTask(t, h, slug, "loom")
 	hubforge.AddPair(t, h, slug)
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
@@ -1395,9 +1395,6 @@ func stepStartCost_CommandRowsCostUnderTheBoundBeyondTheCommitAndTheProcess(t *t
 
 // stepRunRowCommand_ReportsATimeoutAndAnExitCode asserts runRowCommand ends a command that outlives its timeout well before the command would, and reports a non-zero exit code.
 func stepRunRowCommand_ReportsATimeoutAndAnExitCode(t *testing.T, h *hubforge.Hub) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the commands below are written for sh")
-	}
 	dir := t.TempDir()
 
 	start := time.Now()
@@ -1902,4 +1899,12 @@ func stepSeedChild_WritesTheRunSettingsIntoThePairsLocalLayer(t *testing.T, h *h
 			t.Errorf("child seed found = %v, err %v; want none written", found, err)
 		}
 	})
+}
+
+// posixOnly returns run off Windows and nil on it, so the step loop generates no subtest for a step whose commands are written for sh.
+func posixOnly(run func(*testing.T, *hubforge.Hub)) func(*testing.T, *hubforge.Hub) {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	return run
 }

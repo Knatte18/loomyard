@@ -383,10 +383,14 @@ func TestRemoveWarpWorktreeDir_LeftoverRetry(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		// A read-only directory stops git's delete only off Windows, so Windows generates no subtest for a row.
+		if runtime.GOOS == "windows" {
+			continue
+		}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if runtime.GOOS == "windows" || os.Geteuid() == 0 {
-				t.Skip("a read-only directory stops git's delete only for a non-root user off Windows")
+			if os.Geteuid() == 0 {
+				t.Skip("a read-only directory stops git's delete only for a non-root user")
 			}
 
 			slug := tt.slug
@@ -410,42 +414,41 @@ func TestRemoveWarpWorktreeDir_LeftoverRetry(t *testing.T) {
 		})
 	}
 
-	t.Run("a file held open by its writer is removed once the writer closes it", func(t *testing.T) {
-		t.Parallel()
-		if runtime.GOOS != "windows" {
-			t.Skip("a file held open stops a delete only on Windows")
-		}
+	if runtime.GOOS == "windows" {
+		t.Run("a file held open by its writer is removed once the writer closes it", func(t *testing.T) {
+			t.Parallel()
 
-		const slug = "leftover-held-open"
-		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-		l := h.Location
-		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
-		target := fabricengine.WorktreePath(l, slug)
-		gitkit.CommitFile(t, target, "held.txt", "committed\n", "add a file its writer holds open")
-		held, err := os.Open(filepath.Join(target, "held.txt"))
-		if err != nil {
-			t.Fatalf("open held file: %v", err)
-		}
-		t.Cleanup(func() { _ = held.Close() })
+			const slug = "leftover-held-open"
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+			l := h.Location
+			hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
+			target := fabricengine.WorktreePath(l, slug)
+			gitkit.CommitFile(t, target, "held.txt", "committed\n", "add a file its writer holds open")
+			held, err := os.Open(filepath.Join(target, "held.txt"))
+			if err != nil {
+				t.Fatalf("open held file: %v", err)
+			}
+			t.Cleanup(func() { _ = held.Close() })
 
-		sleepCalls := 0
-		fabricengine.SetLeftoverSeamForTest(h.Topology, nil, func(time.Duration) {
-			sleepCalls++
-			_ = held.Close()
+			sleepCalls := 0
+			fabricengine.SetLeftoverSeamForTest(h.Topology, nil, func(time.Duration) {
+				sleepCalls++
+				_ = held.Close()
+			})
+			res, err := h.Topology.Remove(l, slug, false, false)
+
+			if err != nil {
+				t.Fatalf("Remove error = %v; want the leftover finished once the writer closed the file", err)
+			}
+			want := fabricengine.Mutation{Kind: fabricengine.KindPathRemoved, Target: slug, Detail: "recursive"}
+			if !slices.Contains(res.Mutations.Entries(), want) {
+				t.Errorf("mutation record = %+v; want it to hold %+v", res.Mutations.Entries(), want)
+			}
+			if sleepCalls != 1 {
+				t.Errorf("sleep ran %d times; want 1", sleepCalls)
+			}
 		})
-		res, err := h.Topology.Remove(l, slug, false, false)
-
-		if err != nil {
-			t.Fatalf("Remove error = %v; want the leftover finished once the writer closed the file", err)
-		}
-		want := fabricengine.Mutation{Kind: fabricengine.KindPathRemoved, Target: slug, Detail: "recursive"}
-		if !slices.Contains(res.Mutations.Entries(), want) {
-			t.Errorf("mutation record = %+v; want it to hold %+v", res.Mutations.Entries(), want)
-		}
-		if sleepCalls != 1 {
-			t.Errorf("sleep ran %d times; want 1", sleepCalls)
-		}
-	})
+	}
 }
 
 // TestOwnership_RegisteredLinkedWorktreeKind covers the git-touching predicate behind
@@ -613,27 +616,26 @@ func TestOwnership_FabricHubKind(t *testing.T) {
 		}
 	})
 
-	t.Run("RefusesUnreadableDirectory", func(t *testing.T) {
-		t.Parallel()
-		if runtime.GOOS == "windows" {
-			t.Skip("os.Chmod does not restrict directory listing on Windows")
-		}
-		if os.Geteuid() == 0 {
-			t.Skip("running as root; a 0o000 directory is still readable")
-		}
-		parent := t.TempDir()
-		hub := filepath.Join(parent, "unreadable"+fabricengine.HubSuffix)
-		if err := os.MkdirAll(hub, 0o755); err != nil {
-			t.Fatalf("mkdir hub: %v", err)
-		}
-		if err := os.Chmod(hub, 0o000); err != nil {
-			t.Fatalf("chmod: %v", err)
-		}
-		t.Cleanup(func() { _ = os.Chmod(hub, 0o755) })
-		if fabricengine.LooksLikeHubForTest(hub) {
-			t.Errorf("LooksLikeHubForTest(unreadable) = true; want false, the conservative direction")
-		}
-	})
+	if runtime.GOOS != "windows" {
+		t.Run("RefusesUnreadableDirectory", func(t *testing.T) {
+			t.Parallel()
+			if os.Geteuid() == 0 {
+				t.Skip("running as root; a 0o000 directory is still readable")
+			}
+			parent := t.TempDir()
+			hub := filepath.Join(parent, "unreadable"+fabricengine.HubSuffix)
+			if err := os.MkdirAll(hub, 0o755); err != nil {
+				t.Fatalf("mkdir hub: %v", err)
+			}
+			if err := os.Chmod(hub, 0o000); err != nil {
+				t.Fatalf("chmod: %v", err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(hub, 0o755) })
+			if fabricengine.LooksLikeHubForTest(hub) {
+				t.Errorf("LooksLikeHubForTest(unreadable) = true; want false, the conservative direction")
+			}
+		})
+	}
 }
 
 // TestWorktreeDirty_BothScopesAcrossFourStates asserts scopeTracked and scopeAll separately against

@@ -90,10 +90,14 @@ func TestDeriveCards(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
+		// A mode-0 file stays readable on Windows, so Windows generates no subtest for a lock row.
+		if tt.lock != "" && runtime.GOOS == "windows" {
+			continue
+		}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if tt.lock != "" && (runtime.GOOS == "windows" || os.Geteuid() == 0) {
-				t.Skip("a mode-0 file stays readable on Windows and to root")
+			if tt.lock != "" && os.Geteuid() == 0 {
+				t.Skip("a mode-0 file stays readable to root")
 			}
 			files := csTree()
 			for rel, content := range tt.extra {
