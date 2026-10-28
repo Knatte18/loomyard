@@ -50,6 +50,19 @@ var remoteDeadline = 10 * time.Minute
 // It is a variable only so a test can shorten it.
 var stallBound = 30 * time.Second
 
+// spawnAgainAttempts is how many times a git the host could not start for EAGAIN is tried in all.
+const spawnAgainAttempts = 4
+
+// spawnAgainFirstDelay is the wait before the first retry of such a start; each later wait doubles it.
+// It is a variable only so a test can shorten it.
+var spawnAgainFirstDelay = 250 * time.Millisecond
+
+// sleepBeforeRetry waits between start retries; it is a variable only so a test can record the waits instead of sitting them out.
+var sleepBeforeRetry = time.Sleep
+
+// runCommand runs one git child to completion; it is a variable only so a test can make a start fail.
+var runCommand = (*exec.Cmd).Run
+
 // remoteWaitDelay bounds the wait on output pipes after a remote git command exits or is killed, since an orphaned helper such as git-remote-https can still hold them.
 const remoteWaitDelay = 10 * time.Second
 
@@ -203,6 +216,7 @@ func runCore(args []string, cwd, stdin string, extraEnv []string) (stdout, stder
 // A remote subcommand runs under deadline and stallBound, in its own process group, with lowSpeedEnv added to the environment;
 // a local one runs unbounded.
 // A remote subcommand killed for a stall runs once more, since it received nothing from the remote and so changed nothing there.
+// A git the host could not start for EAGAIN is started again as runSpawning says, before any of this judges the result.
 // A remote subcommand first waits while a pause covers the process, through the installed network gate, if any, and its bounds start only once it runs.
 // Every child gets the process environment less GIT_DIR, GIT_WORK_TREE and GIT_OPTIONAL_LOCKS, with GIT_OPTIONAL_LOCKS=0 set, and extraEnv after all of it.
 func runCoreWithin(args []string, cwd, stdin string, extraEnv []string, deadline time.Duration) (stdout, stderr string, exitCode int, err error) {
@@ -210,23 +224,40 @@ func runCoreWithin(args []string, cwd, stdin string, extraEnv []string, deadline
 		return "", "", -1, floorErr
 	}
 	if !remoteSubcommands[subcommand(args)] {
-		stdout, stderr, exitCode, _, err = runAttempt(args, cwd, stdin, extraEnv, false, deadline)
+		stdout, stderr, exitCode, _, err = runSpawning(args, cwd, stdin, extraEnv, false, deadline)
 		return stdout, stderr, exitCode, err
 	}
 
 	// The hold comes before the bounds' timers, so a command held by a pause starts its bounds only when it runs.
 	_, done := pauserecord.Network(subcommand(args))
 	defer done()
-	stdout, stderr, exitCode, stalled, err := runAttempt(args, cwd, stdin, extraEnv, true, deadline)
+	stdout, stderr, exitCode, stalled, err := runSpawning(args, cwd, stdin, extraEnv, true, deadline)
 	if !stalled {
 		return stdout, stderr, exitCode, err
 	}
 	logger.Warn("gitexec: remote sent no answer, retrying once", "subcommand", subcommand(args), "dir", cwd, "stall_bound", stallBound)
-	stdout, stderr, exitCode, stalled, err = runAttempt(args, cwd, stdin, extraEnv, true, deadline)
+	stdout, stderr, exitCode, stalled, err = runSpawning(args, cwd, stdin, extraEnv, true, deadline)
 	if stalled {
 		return stdout, stderr, -1, &GitError{Args: args, Dir: cwd, ExitCode: -1, Stderr: stderr, Timeout: stallBound, Stalled: true}
 	}
 	return stdout, stderr, exitCode, err
+}
+
+// runSpawning is runAttempt started again after a doubling wait while git could not be started for EAGAIN, up to spawnAgainAttempts tries in all.
+// It returns the first attempt that is not such a failure, or the last one.
+// Each EAGAIN failure is noted in proc's spawn-refusal record and each retry is logged at Warn;
+// git never ran on such a failure, so a retry repeats no side effect, local or remote.
+func runSpawning(args []string, cwd, stdin string, extraEnv []string, remote bool, deadline time.Duration) (stdout, stderr string, exitCode int, stalled bool, err error) {
+	delay := spawnAgainFirstDelay
+	for try := 1; ; try++ {
+		stdout, stderr, exitCode, stalled, err = runAttempt(args, cwd, stdin, extraEnv, remote, deadline)
+		if !proc.NoteSpawnAgain(err) || try == spawnAgainAttempts {
+			return stdout, stderr, exitCode, stalled, err
+		}
+		logger.Warn("gitexec: git could not be started, retrying", "subcommand", subcommand(args), "dir", cwd, "attempt", try, "delay", delay, "error", err)
+		sleepBeforeRetry(delay)
+		delay *= 2
+	}
 }
 
 // runAttempt spawns git once with args in cwd and captures its output, with runCoreWithin's result contract.
@@ -284,7 +315,7 @@ func runAttempt(args []string, cwd, stdin string, extraEnv []string, remote bool
 
 	proc.HideWindow(cmd)
 
-	runErr := cmd.Run()
+	runErr := runCommand(cmd)
 
 	if runErr != nil && sawStall.Load() {
 		return outBuf.String(), errBuf.String(), -1, true, nil

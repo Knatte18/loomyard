@@ -473,26 +473,71 @@ func TestStep_ProducerErrorWritesTheHaltNoteAndNoReflection(t *testing.T) {
 }
 
 // TestLoomAfterInterrupt_WritesTheHaltNoteAndNoReflection asserts the interrupt hook writes the `loom-halt` note as an interrupted stop with the cause as reason, reports skipped and runs the reflection shuttle zero times.
+// The note records the state the status file holds after the stop, `failed` when there is none, and an error in it the stop did not write.
 func TestLoomAfterInterrupt_WritesTheHaltNoteAndNoReflection(t *testing.T) {
 	t.Parallel()
 
-	f := newHaltFixture(t)
-	f.c.runID = "self"
-	f.seedStatus(t, "Plan-Write", shedengine.StateRunning, "")
-
-	got := f.c.specFor("step").Hooks.AfterInterrupt(t.Context(), "Plan-Write", "watchdog", "/logs/child.log")
-
-	if got != frictionengine.StatusSkipped {
-		t.Errorf("AfterInterrupt() = %q; want %q", got, frictionengine.StatusSkipped)
+	tests := []struct {
+		name       string
+		state      shedengine.State
+		unseeded   bool
+		errText    string
+		want       []string
+		wantAbsent string
+	}{
+		{
+			name:       "FailedByTheStop",
+			state:      shedengine.StateFailed,
+			errText:    "shedverbs: step Plan-Write interrupted (watchdog); way forward: re-run",
+			want:       []string{"loom halted failed at Plan-Write", "state: failed"},
+			wantAbsent: "status error:",
+		},
+		{
+			name:    "ChildRecordedItsOwnFailure",
+			state:   shedengine.StateFailed,
+			errText: "fork/exec /usr/bin/git: resource temporarily unavailable",
+			want:    []string{"loom halted failed at Plan-Write", "watchdog\nstatus error: fork/exec /usr/bin/git: resource temporarily unavailable"},
+		},
+		{
+			name:       "NoStatusFile_FallsBackToFailed",
+			unseeded:   true,
+			want:       []string{"loom halted failed at Plan-Write", "state: failed"},
+			wantAbsent: "status error:",
+		},
+		{
+			name:  "PausedRunLeftPaused",
+			state: shedengine.StatePaused,
+			want:  []string{"loom halted paused at Plan-Write", "state: paused"},
+		},
 	}
-	if len(f.shuttle.Specs) != 0 {
-		t.Errorf("reflection shuttle ran %d times; want 0", len(f.shuttle.Specs))
-	}
-	note := readNote(t, filepath.Join(f.frictionDir, "loom-halt.md"))
-	for _, want := range []string{"loom halted failed at Plan-Write", "state: failed", "anomaly: " + string(loomengine.AnomalyInterrupted), "watchdog", "trace_file: /logs/child.log"} {
-		if !strings.Contains(note, want) {
-			t.Errorf("halt note %q does not contain %q", note, want)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := newHaltFixture(t)
+			f.c.runID = "self"
+			if !tt.unseeded {
+				f.seedStatus(t, "Plan-Write", tt.state, tt.errText)
+			}
+
+			got := f.c.specFor("step").Hooks.AfterInterrupt(t.Context(), "Plan-Write", "watchdog", "/logs/child.log")
+
+			if got != frictionengine.StatusSkipped {
+				t.Errorf("AfterInterrupt() = %q; want %q", got, frictionengine.StatusSkipped)
+			}
+			if len(f.shuttle.Specs) != 0 {
+				t.Errorf("reflection shuttle ran %d times; want 0", len(f.shuttle.Specs))
+			}
+			note := readNote(t, filepath.Join(f.frictionDir, "loom-halt.md"))
+			for _, want := range append(tt.want, "anomaly: "+string(loomengine.AnomalyInterrupted), "watchdog", "trace_file: /logs/child.log") {
+				if !strings.Contains(note, want) {
+					t.Errorf("halt note %q does not contain %q", note, want)
+				}
+			}
+			if tt.wantAbsent != "" && strings.Contains(note, tt.wantAbsent) {
+				t.Errorf("halt note %q contains %q", note, tt.wantAbsent)
+			}
+		})
 	}
 }
 

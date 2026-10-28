@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
@@ -537,6 +538,21 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 					t.Errorf("envelope friction = %v; want the hook's noted", env["friction"])
 				}
 			})
+		}
+	})
+
+	t.Run("a paused status keeps its pause reason in the stop's loop object", func(t *testing.T) {
+		w := newWaitWorld(t)
+		if err := state.WriteJSON(w.paths.StatusPath, w.paths.StatusLockPath, shedengine.Status{CurrentProducer: "A", State: shedengine.StatePaused, PauseReason: "goto to A by orch", History: historyOf(1)}); err != nil {
+			t.Fatalf("write status: %v", err)
+		}
+		w.writePID(LoopPIDRecord{LoopID: "dead-1", Child: proc.TreeRecord{PID: 4242}, CurrentProducer: "A"})
+
+		env, _ := w.wait()
+
+		loop := loopOf(t, env)
+		if loop["stop"] != string(LoopStopInterrupted) || loop["state"] != "paused" || loop["pause_reason"] != "goto to A by orch" {
+			t.Errorf("loop stop/state/pause_reason = %v/%v/%v; want interrupted/paused/goto to A by orch", loop["stop"], loop["state"], loop["pause_reason"])
 		}
 	})
 

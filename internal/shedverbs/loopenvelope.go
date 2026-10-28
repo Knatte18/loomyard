@@ -52,6 +52,7 @@ type loopObject struct {
 	InterruptPolicy string
 	TraceCopy       string
 	StderrPath      string
+	PauseReason     string
 }
 
 // fields renders the object as its envelope keys; restep is omitted when no re-step ran.
@@ -70,6 +71,7 @@ func (o loopObject) fields() map[string]any {
 		"interrupt_policy": o.InterruptPolicy,
 		"trace_copy":       o.TraceCopy,
 		"stderr_path":      o.StderrPath,
+		"pause_reason":     o.PauseReason,
 	}
 	if o.Restep != nil {
 		fields["restep"] = map[string]any{"producer": o.Restep.Producer, "error": o.Restep.Error, "transient": o.Restep.Transient}

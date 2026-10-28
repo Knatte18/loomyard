@@ -373,7 +373,7 @@ func TestLoop_InterruptedChildFillsTheErrorForm(t *testing.T) {
 		env, code := fx.execute()
 
 		id := fx.childIDs()[0]
-		wantText := "shedverbs: step A interrupted (exited: exit status 3); way forward: read loop.trace_copy and loop.stderr_path, apply the interrupted rule under loop.interrupt_policy, then re-run lym shed step run-1 --until-stop"
+		wantText := "shedverbs: step A interrupted (exited: exit status 3; command: lym-fake); way forward: read loop.trace_copy and loop.stderr_path, apply the interrupted rule under loop.interrupt_policy, then re-run lym shed step run-1 --until-stop"
 		recordPath := filepath.Join(fx.stepsDir, id+".json")
 		if code != 1 || env["kind"] != KindInterrupted || env["error"] != wantText || env["transient"] != "" || env["run_id"] != "run-1" {
 			t.Errorf("exit/kind/error/transient/run_id = %d/%v/%v/%v/%v; want 1/%s/%q/empty/run-1", code, env["kind"], env["error"], env["transient"], env["run_id"], KindInterrupted, wantText)
@@ -381,7 +381,7 @@ func TestLoop_InterruptedChildFillsTheErrorForm(t *testing.T) {
 		if env["trace_file"] != traceFile || env["friction"] != "reflected" || env["envelope_path"] != recordPath {
 			t.Errorf("trace_file/friction/envelope_path = %v/%v/%v; want %s/reflected/%s", env["trace_file"], env["friction"], env["envelope_path"], traceFile, recordPath)
 		}
-		if !reflect.DeepEqual(hookArgs, []string{"A", "exited: exit status 3", traceFile}) {
+		if !reflect.DeepEqual(hookArgs, []string{"A", "exited: exit status 3; command: lym-fake", traceFile}) {
 			t.Errorf("AfterInterrupt args = %v; want the stop row, the cause and the first trace file", hookArgs)
 		}
 
@@ -409,6 +409,139 @@ func TestLoop_InterruptedChildFillsTheErrorForm(t *testing.T) {
 		_, wantStderr := fx.spec.Loop.StopFiles(id)
 		if loop["stop"] != string(LoopStopInterrupted) || loop["state"] != "failed" || loop["interrupt_policy"] != "policy-A" || loop["stderr_path"] != wantStderr {
 			t.Errorf("loop stop/state/interrupt_policy/stderr_path = %v/%v/%v/%v; want interrupted/failed/policy-A/%s", loop["stop"], loop["state"], loop["interrupt_policy"], loop["stderr_path"], wantStderr)
+		}
+	})
+
+	t.Run("child crashes with no trace after moving the run on", func(t *testing.T) {
+		var stderrPath string
+		fx := newLoopFixture(t, func(fx *loopFixture, traceID string, _ ChildRequest) error {
+			fx.setStatus("B", shedengine.StateRunning, 1)
+			_, stderrPath = fx.spec.Loop.StopFiles(traceID)
+			crash := "time=t level=WARN msg=retrying\nruntime: failed to create new OS thread\nfatal error: newosproc\n\ngoroutine 1 [running]:\nmain.main()\n"
+			if err := os.MkdirAll(filepath.Dir(stderrPath), 0o755); err != nil {
+				t.Fatalf("create the stderr directory: %v", err)
+			}
+			if err := os.WriteFile(stderrPath, []byte(crash), 0o644); err != nil {
+				t.Fatalf("write stderr: %v", err)
+			}
+			return errors.New("exit status 2")
+		})
+		var hookArgs []string
+		var hookState shedengine.State
+		fx.spec.Hooks.AfterInterrupt = func(_ context.Context, producer, cause, file string) string {
+			hookArgs = []string{producer, cause, file}
+			hookState = fx.readStatus().State
+			return ""
+		}
+
+		env, _ := fx.execute()
+
+		wantCause := "exited: exit status 2; command: lym-fake; stderr: runtime: failed to create new OS thread | fatal error: newosproc | goroutine 1 [running]:"
+		if !reflect.DeepEqual(hookArgs, []string{"B", wantCause, stderrPath}) {
+			t.Errorf("AfterInterrupt args = %q; want the row the status names, the cause with the crash lines and the stderr file", hookArgs)
+		}
+		if hookState != shedengine.StateFailed {
+			t.Errorf("status state at the hook = %s; want failed, written before the hook", hookState)
+		}
+		if env["trace_file"] != stderrPath {
+			t.Errorf("trace_file = %v; want the captured stderr %s", env["trace_file"], stderrPath)
+		}
+		if st := fx.readStatus(); st.CurrentProducer != "B" || !strings.Contains(st.Error, "step B interrupted (") {
+			t.Errorf("status current/error = %s/%q; want B blamed", st.CurrentProducer, st.Error)
+		}
+	})
+
+	t.Run("child dies leaving the status without a producer", func(t *testing.T) {
+		fx := newLoopFixture(t, func(fx *loopFixture, _ string, _ ChildRequest) error {
+			fx.setStatus("", shedengine.StateRunning, 1)
+			return errors.New("exit status 2")
+		})
+		var hookProducer string
+		fx.spec.Hooks.AfterInterrupt = func(_ context.Context, producer, _, _ string) string {
+			hookProducer = producer
+			return ""
+		}
+
+		env, _ := fx.execute()
+
+		if hookProducer != "A" || !strings.Contains(fmt.Sprint(env["error"]), "step A interrupted (") {
+			t.Errorf("hook producer/error = %q/%v; want the row read before the child, A, blamed", hookProducer, env["error"])
+		}
+	})
+
+	t.Run("status file unreadable after the child exited", func(t *testing.T) {
+		fx := newLoopFixture(t, func(fx *loopFixture, _ string, _ ChildRequest) error {
+			if err := os.WriteFile(fx.paths.StatusPath, []byte("{"), 0o644); err != nil {
+				t.Fatalf("corrupt the status file: %v", err)
+			}
+			return errors.New("exit status 2")
+		})
+		var hookProducer string
+		fx.spec.Hooks.AfterInterrupt = func(_ context.Context, producer, _, _ string) string {
+			hookProducer = producer
+			return ""
+		}
+
+		env, _ := fx.execute()
+
+		if hookProducer != "A" || !strings.Contains(fmt.Sprint(env["error"]), "step A interrupted (") {
+			t.Errorf("hook producer/error = %q/%v; want the row read before the child, A, blamed", hookProducer, env["error"])
+		}
+	})
+
+	t.Run("child leaves an empty stderr and no trace file", func(t *testing.T) {
+		var stderrPath string
+		fx := newLoopFixture(t, func(fx *loopFixture, traceID string, _ ChildRequest) error {
+			_, stderrPath = fx.spec.Loop.StopFiles(traceID)
+			if err := os.MkdirAll(filepath.Dir(stderrPath), 0o755); err != nil {
+				t.Fatalf("create the stderr directory: %v", err)
+			}
+			if err := os.WriteFile(stderrPath, nil, 0o644); err != nil {
+				t.Fatalf("write stderr: %v", err)
+			}
+			return errors.New("exit status 2")
+		})
+
+		env, _ := fx.execute()
+
+		if env["trace_file"] != "" {
+			t.Errorf("trace_file = %v; want none for an empty stderr %s", env["trace_file"], stderrPath)
+		}
+	})
+
+	t.Run("loop without stop files has no trace file to name", func(t *testing.T) {
+		fx := newLoopFixture(t, func(*loopFixture, string, ChildRequest) error { return errors.New("exit status 2") })
+		fx.spec.Loop.StopFiles = nil
+
+		env, _ := fx.execute()
+
+		if env["kind"] != KindInterrupted || env["trace_file"] != "" {
+			t.Errorf("kind/trace_file = %v/%v; want an interrupted stop with no trace file", env["kind"], env["trace_file"])
+		}
+	})
+
+	t.Run("child dies before its resume write over a paused run", func(t *testing.T) {
+		fx := newLoopFixture(t, func(*loopFixture, string, ChildRequest) error { return errors.New("exit status 2") })
+		if err := state.WriteJSON(fx.paths.StatusPath, fx.paths.StatusLockPath, shedengine.Status{CurrentProducer: "A", State: shedengine.StatePaused, PauseReason: "goto to A by orch", History: historyOf(1)}); err != nil {
+			t.Fatalf("write status: %v", err)
+		}
+		var hookProducer string
+		fx.spec.Hooks.AfterInterrupt = func(_ context.Context, producer, _, _ string) string {
+			hookProducer = producer
+			return ""
+		}
+
+		env, _ := fx.execute()
+
+		if st := fx.readStatus(); st.State != shedengine.StatePaused || st.PauseReason != "goto to A by orch" {
+			t.Errorf("status state/pause_reason = %s/%q; want the pause left as found", st.State, st.PauseReason)
+		}
+		loop := loopOf(t, env)
+		if loop["state"] != "paused" || loop["pause_reason"] != "goto to A by orch" {
+			t.Errorf("loop state/pause_reason = %v/%v; want paused/goto to A by orch", loop["state"], loop["pause_reason"])
+		}
+		if hookProducer != "A" || env["trace_file"] != "" {
+			t.Errorf("hook producer/trace_file = %s/%v; want A and no trace file", hookProducer, env["trace_file"])
 		}
 	})
 
@@ -1166,5 +1299,30 @@ func TestLoop_WakeHookRunsOnWatchWakes(t *testing.T) {
 	}
 	if wakes != len(delays) {
 		t.Errorf("hook ran %d times for %d watch wakes; want one run per wake", wakes, len(delays))
+	}
+}
+
+// TestStderrExcerpt pins the stderr lines an interrupted cause carries when the child wrote no Go crash: the last non-empty lines, or none for an absent file.
+// A Go crash's lines are pinned by the interrupted-child test.
+func TestStderrExcerpt(t *testing.T) {
+	dir := t.TempDir()
+	tail := filepath.Join(dir, "tail.log")
+	if err := os.WriteFile(tail, []byte("one\ntwo\n\nthree\nfour\n\n"), 0o644); err != nil {
+		t.Fatalf("write stderr: %v", err)
+	}
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{name: "LastLines", path: tail, want: "two | three | four"},
+		{name: "AbsentFile", path: filepath.Join(dir, "absent.log"), want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := stderrExcerpt(tt.path); got != tt.want {
+				t.Errorf("stderrExcerpt(%s) = %q; want %q", tt.path, got, tt.want)
+			}
+		})
 	}
 }

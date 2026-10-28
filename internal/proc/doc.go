@@ -17,6 +17,9 @@
 // All of these read /proc or signal by pid, so they work on Linux only: on Windows TreeCPU, ListProcesses and ListStats return errors.ErrUnsupported, IsAncestor is false, SignalProcess only kills and SignalGroup returns ErrNoProcessGroup.
 // CreationTime is the exception: it reads a process's creation time by pid on Windows, where StartTime is unreadable, and is always the zero time and false elsewhere.
 //
+// IsSpawnAgain tells a process start the host refused for a temporary resource shortage, EAGAIN from fork or exec, from every other start failure.
+// NoteSpawnAgain records the time of each such refusal process-wide, and LastSpawnAgain reads it back, so a caller that sees a later failure can judge whether a host resource shortage preceded it.
+//
 // BuildServerOffEnv is the environment that keeps a .NET build from leaving MSBuild reuse nodes and the MSBuild server running after it exits;
 // reed exports it in every strand pane and `lym gate test` sets it for every run, so builds that parallel agents start leave no thread-holding servers behind.
 package proc

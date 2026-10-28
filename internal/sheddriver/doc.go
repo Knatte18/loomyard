@@ -42,7 +42,8 @@
 //   - a producer, bootstrap or unseeded error, an interrupted step over the repair cap, or a blocked stop: the tackler decides;
 //   - anything else: hand back.
 //
-// A stop built from a paused status takes the status's `pause_reason` as its reason, and a stop report for a paused stop with none says `paused with no recorded reason`.
+// A stop built from a paused status takes the status's `pause_reason` as its reason, and so does a stop whose loop envelope leaves the run paused with no reason of its own, through the loop object's `pause_reason`;
+// a stop report for a paused stop with none says `paused with no recorded reason`.
 // The landing-halt, budget-exhausted and precondition-unmet rows only hand back; they never resume a run.
 // A recipe's told `GotoGuard` reaches the tackler through `TacklerDeps`: a verdict whose goto the guard refuses, or cannot decide, is rejected as an invalid resume with the guard's text.
 //

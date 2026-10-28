@@ -199,6 +199,10 @@ var errStrandPaneBindingCleared = errors.New(
 // see abandonStartup for the teardown and the full error text a caller actually sees.
 var ErrNotStarted = errors.New("shuttle: the provider never became ready")
 
+// ErrAgentDied reports that a run's provider started and then died before it wrote its outputs, the OutcomeDied result of a run that got past its start.
+// shuttle never returns it; a caller that turns such a result into an error wraps it, so a classifier can tell the death from other failures.
+var ErrAgentDied = errors.New("shuttle: the agent died before it wrote its outputs")
+
 // Wait blocks until run reaches a terminal outcome.
 // Error is reserved for mechanism failures that leave no classifiable outcome.
 // A turn end without every output file is held, never terminal: Wait logs the hold and keeps polling,

@@ -178,6 +178,33 @@ func TestParseDriveStop(t *testing.T) {
 			},
 			wantKey: StopKey{CurrentProducer: "Run-Shed", HistoryLength: 3, State: "running"},
 		},
+		{
+			name:     "interrupted stop over a paused run takes the loop's pause reason",
+			envelope: `{"ok":false,"error":"interrupted","kind":"interrupted","loop":{"stop":"interrupted","current_producer":"Darn-Write","history_length":6,"state":"paused","pause_reason":"goto to Darn-Write by orch"}}`,
+			want: Stop{
+				Reason: "goto to Darn-Write by orch", Error: "interrupted", Kind: "interrupted",
+				Stop: "interrupted", CurrentProducer: "Darn-Write", HistoryLength: 6, LoopState: "paused",
+			},
+			wantKey: StopKey{CurrentProducer: "Darn-Write", HistoryLength: 6, State: "paused"},
+		},
+		{
+			name:     "a stop's own reason wins over the loop's pause reason",
+			envelope: `{"ok":true,"state":"paused","reason":"paused by request","loop":{"stop":"halted","current_producer":"A","history_length":1,"state":"paused","pause_reason":"older"}}`,
+			want: Stop{
+				OK: true, State: "paused", Reason: "paused by request",
+				Stop: "halted", CurrentProducer: "A", HistoryLength: 1, LoopState: "paused",
+			},
+			wantKey: StopKey{CurrentProducer: "A", HistoryLength: 1, State: "paused"},
+		},
+		{
+			name:     "a pause reason on a run that is not paused is not taken",
+			envelope: `{"ok":false,"error":"interrupted","kind":"interrupted","loop":{"stop":"interrupted","current_producer":"A","history_length":1,"state":"failed","pause_reason":"older"}}`,
+			want: Stop{
+				Error: "interrupted", Kind: "interrupted",
+				Stop: "interrupted", CurrentProducer: "A", HistoryLength: 1, LoopState: "failed",
+			},
+			wantKey: StopKey{CurrentProducer: "A", HistoryLength: 1, State: "failed"},
+		},
 		{name: "undecodable bytes are refused", envelope: `{"ok":`, wantErr: true},
 	}
 	for _, tt := range tests {

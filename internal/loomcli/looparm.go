@@ -179,19 +179,24 @@ func agentActivityFor(loc *lymcwd.Location, cfg shuttleengine.Config) func() (ti
 }
 
 // loomAfterInterrupt is loom's AfterInterrupt hook and returns the envelope's "friction" key.
-// It writes the halt note a `failed` halt writes, classified as an interrupted stop with the cause as the reason, and spawns no reflection, so an interrupted stop leaves a note the run's Friction-Reflect row covers.
+// It writes a halt note classified as an interrupted stop, with the cause as the reason, and spawns no reflection, so an interrupted stop leaves a note the run's Friction-Reflect row covers.
+// The note records the state the status file holds after the stop, or `failed` when the file is unreadable.
+// When the file holds an error the stop did not write, such as the child's own producer failure, the reason carries it on a `status error:` line, so the two halts of one step are linked.
 // It always reports skipped.
 func (c *loomCLI) loomAfterInterrupt(_ context.Context, producer, cause, traceFile string) string {
-	var history []shedengine.HistoryEntry
-	if st, found, err := state.ReadJSON[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath); err == nil && found {
-		history = st.History
-	}
-	return c.reflectHalt(haltNote{
+	note := haltNote{
 		Producer:    producer,
 		State:       shedengine.StateFailed,
 		Reason:      cause,
-		History:     history,
 		TraceFile:   traceFile,
 		Interrupted: true,
-	})
+	}
+	if st, found, err := state.ReadJSON[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath); err == nil && found {
+		note.State = st.State
+		note.History = st.History
+		if st.Error != "" && !strings.Contains(st.Error, cause) {
+			note.Reason = cause + "\nstatus error: " + st.Error
+		}
+	}
+	return c.reflectHalt(note)
 }

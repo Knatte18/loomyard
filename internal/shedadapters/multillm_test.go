@@ -279,6 +279,7 @@ func TestMultiLLMProducer_MapsTheLeadResult(t *testing.T) {
 		// wantErr is a substring of the error, and "" means no error.
 		wantErr        string
 		wantNotStarted bool
+		wantDied       bool
 	}{
 		{name: "done", result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, wantOutcome: shedengine.Done},
 		{
@@ -335,7 +336,7 @@ func TestMultiLLMProducer_MapsTheLeadResult(t *testing.T) {
 			keepFindings: true,
 			preWritten:   true,
 		},
-		{name: "died", result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}, wantErr: "shuttle run outcome died"},
+		{name: "died", result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}, wantErr: "shuttle run outcome died", wantDied: true},
 		{name: "timeout", result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}, wantErr: "shuttle run outcome timeout"},
 		{
 			name:           "a provider that never came up",
@@ -389,6 +390,9 @@ func TestMultiLLMProducer_MapsTheLeadResult(t *testing.T) {
 				}
 				if errors.Is(err, shuttleengine.ErrNotStarted) != tt.wantNotStarted {
 					t.Errorf("Call() error = %v, want wrapping ErrNotStarted = %v", err, tt.wantNotStarted)
+				}
+				if errors.Is(err, shuttleengine.ErrAgentDied) != tt.wantDied {
+					t.Errorf("Call() error = %v, want wrapping ErrAgentDied = %v", err, tt.wantDied)
 				}
 				if outcome != "" || !reflect.DeepEqual(pointer, shedengine.OutputPointer{}) {
 					t.Errorf("Call() = %q, %+v on error, want the zero outcome and pointer", outcome, pointer)

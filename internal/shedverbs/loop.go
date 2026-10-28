@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -286,23 +287,23 @@ func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out 
 	var (
 		errText   string
 		transient string
+		traceFile string
 	)
+	interrupted := stop == LoopStopInterrupted
 	switch stop {
 	case LoopStopInterrupted:
+		// A child that skipped gated rows moved the run on before it died, so the status file names the row it died in.
+		if after, found := readStatusFile(spec); found && !res.statusStop && after.CurrentProducer != "" {
+			lastKnown = after.CurrentProducer
+		}
 		message, wayForward := interruptedError(spec.RunID, lastKnown, res.cause)
 		errText = message + "; way forward: " + wayForward
-		traceFile := ""
 		if res.statusStop {
 			errText = fmt.Sprintf("%s; status file %s, loop log %s; %s", message, spec.StatusPath, loop.LogPath, statusStopWayForward(spec, res.statusErr))
 			traceFile = loop.LogPath
-		} else if files := traceFilesOf(loop, res.traceID); len(files) > 0 {
-			traceFile = files[0]
+		} else {
+			traceFile = interruptedTraceFile(loop, res.traceID)
 		}
-		friction := ""
-		if spec.Hooks.AfterInterrupt != nil {
-			friction = spec.Hooks.AfterInterrupt(ctx, lastKnown, res.cause, traceFile)
-		}
-		res.full, res.path = interruptedRecord(spec, res.traceID, errText, traceFile, friction)
 	case LoopStopError, LoopStopBusy:
 		errText, _ = res.full["error"].(string)
 		transient, _ = res.full["transient"].(string)
@@ -322,6 +323,14 @@ func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out 
 			stop = LoopStopBusy
 		}
 	}
+	// The hook runs after the failed write, so it reads the status the stop leaves.
+	if interrupted {
+		friction := ""
+		if spec.Hooks.AfterInterrupt != nil {
+			friction = spec.Hooks.AfterInterrupt(ctx, lastKnown, res.cause, traceFile)
+		}
+		res.full, res.path = interruptedRecord(spec, res.traceID, errText, traceFile, friction)
+	}
 	logger.Info("shed: loop stop", "stop", string(stop), "steps", obj.Steps, "trace_id", res.traceID, "error", errText)
 
 	after, _ := readStatusFile(spec)
@@ -334,6 +343,7 @@ func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out 
 	obj.State = string(after.State)
 	obj.HandBack = spec.handsBack(after)
 	obj.RestepHold = spec.restepHolds(after)
+	obj.PauseReason = after.PauseReason
 	obj.StatusMoved = before.CurrentProducer != after.CurrentProducer || len(before.History) != len(after.History)
 	if spec.Hooks.InterruptPolicyFor != nil {
 		obj.InterruptPolicy = spec.Hooks.InterruptPolicyFor(after.CurrentProducer)
@@ -393,7 +403,7 @@ func loopStartRefusal(loop LoopSpec) string {
 // runChild runs one child step under a fresh trace id and reads back what it left.
 // The child's own record, <StepsDir>/<traceID>.json, is its full envelope;
 // a child that refused before its step body ran left an error envelope on stdout instead;
-// a child that left neither is reported interrupted for the cause its exit gives, or for the cause the watchdog's kill renders when the idle watch killed it, which ends with the note OnWatchdogKill returned.
+// a child that left neither is reported interrupted for the cause its exit gives, followed by its command line and an excerpt of its captured stderr, or for the cause the watchdog's kill renders when the idle watch killed it, which ends with the note OnWatchdogKill returned.
 // record is told the child's process tree when it starts and the zero record when it has exited.
 // idleWindow is the window of the child's idle watch, and zero disarms it.
 func runChild(ctx context.Context, spec *Spec, argv []string, traceID string, idleWindow time.Duration, record func(proc.TreeRecord)) childResult {
@@ -452,6 +462,10 @@ func runChild(ctx context.Context, spec *Spec, argv []string, traceID string, id
 	if waitErr != nil {
 		cause += ": " + waitErr.Error()
 	}
+	cause += "; command: " + strings.Join(append([]string{loop.Executable}, argv...), " ")
+	if excerpt := stderrExcerpt(stderrPath); excerpt != "" {
+		cause += "; stderr: " + excerpt
+	}
 	return childResult{traceID: traceID, cause: cause}
 }
 
@@ -506,6 +520,52 @@ func traceFilesOf(loop LoopSpec, traceID string) []string {
 		return nil
 	}
 	return files
+}
+
+// interruptedTraceFile returns the first trace file of the child under traceID, or its captured stderr when it left no trace file and the capture is not empty, or "" when it left neither.
+// A child that died before its logger wrote leaves no trace, and its stderr then holds what it said.
+func interruptedTraceFile(loop LoopSpec, traceID string) string {
+	if files := traceFilesOf(loop, traceID); len(files) > 0 {
+		return files[0]
+	}
+	if loop.StopFiles == nil {
+		return ""
+	}
+	_, stderrPath := loop.StopFiles(traceID)
+	if info, err := os.Stat(stderrPath); err != nil || info.Size() == 0 {
+		return ""
+	}
+	return stderrPath
+}
+
+// stderrExcerptLines caps the lines of a child's stderr an interrupted cause carries.
+const stderrExcerptLines = 3
+
+// goCrashPrefixes open the line a Go program writes to stderr when it panics or dies of a runtime fatal error, which exits with status 2.
+var goCrashPrefixes = []string{"panic: ", "fatal error: ", "runtime: "}
+
+// stderrExcerpt returns at most stderrExcerptLines non-empty lines of the stderr file at path, joined with " | ", or "" when it is empty or unreadable.
+// A Go crash's lines are taken from its first crash line on, since the goroutine stacks that follow it name no cause;
+// otherwise the file's last lines are taken.
+func stderrExcerpt(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	var lines []string
+	for _, line := range strings.Split(string(data), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			lines = append(lines, line)
+		}
+	}
+	excerpt := lines[max(len(lines)-stderrExcerptLines, 0):]
+	for i, line := range lines {
+		if slices.ContainsFunc(goCrashPrefixes, func(prefix string) bool { return strings.HasPrefix(line, prefix) }) {
+			excerpt = lines[i:min(i+stderrExcerptLines, len(lines))]
+			break
+		}
+	}
+	return strings.Join(excerpt, " | ")
 }
 
 // copyTraceFiles concatenates files, in order, into dest, and reports whether a copy was written.

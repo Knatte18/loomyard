@@ -17,10 +17,10 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/proc"
 )
 
 // TmuxCmd wraps low-level tmux operations for one binary and one server, addressed by -L socket name or, in socket-path mode, by -S socket path.
@@ -60,20 +60,15 @@ const (
 	execAgainFirstDelay = 250 * time.Millisecond
 )
 
-// isExecAgain reports whether err is a failure to start tmux because the host was temporarily out of a resource, EAGAIN from fork or exec.
-// A tmux that started and exited nonzero never matches, so a retry never repeats a tmux command that ran.
-func isExecAgain(err error) bool {
-	return errors.Is(err, syscall.EAGAIN)
-}
-
 // retryExecAgain calls attempt, and calls it again after a doubling wait while it fails with EAGAIN, up to execAgainAttempts calls in all.
 // It returns the first result that is not an EAGAIN failure, or the last attempt's.
-// Each retry is logged at Warn with the tmux argv.
+// Each EAGAIN failure is noted in the process's spawn-refusal record, and each retry is logged at Warn with the tmux argv.
+// A tmux that started and exited nonzero is never retried, so a retry never repeats a tmux command that ran.
 func retryExecAgain[T any](p TmuxCmd, args []string, attempt func() (T, error)) (T, error) {
 	delay := execAgainFirstDelay
 	for try := 1; ; try++ {
 		value, err := attempt()
-		if err == nil || try == execAgainAttempts || !isExecAgain(err) {
+		if !proc.NoteSpawnAgain(err) || try == execAgainAttempts {
 			return value, err
 		}
 		logger.Warn("reed: tmux could not be started, retrying", "args", args, "attempt", try, "delay", delay, "err", err)

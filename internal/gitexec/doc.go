@@ -46,6 +46,12 @@
 // The bounds are not configuration.
 // A legitimate remote command that runs longer than the deadline, or moves under the low-speed limit for the low-speed time, fails as a transport failure.
 //
+// # Start retry
+//
+// A git the host could not start for EAGAIN, a fork or exec refused for a temporary resource shortage, is started again: four tries in all, waiting 250 ms before the first retry and doubling the wait each time, each retry logged at Warn.
+// git never ran on such a failure, so the retry repeats no side effect, for a local or a remote subcommand alike; a git that ran and exited nonzero, and every other start failure, returns at once.
+// Each refusal is noted in proc's spawn-refusal record, and a start still refused after the last try returns its exec error unwrapped, as any other exec-level failure.
+//
 // # Limits
 //
 // On Windows there is no process group to signal, so a timed-out git's helper process, such as git-remote-https, may outlive the kill.
