@@ -268,9 +268,19 @@ func TestFailedPushRecord(t *testing.T) {
 				Repo: "records", RepoPath: "/hub/task-weft", CodeWorktree: "/hub/task", Branch: "task-weft", Class: fabricengine.PushFailureNotFastForward,
 				Paths: []string{"_lym/a.md"}, Commits: []string{"abc123"},
 			},
-			"another machine wrote the same paths on origin/task-weft (paths: _lym/a.md; local commits: abc123); " +
+			"origin/task-weft holds commits that change the same paths as this branch's (paths: _lym/a.md; local commits: abc123); " +
 				"to keep origin's side, run `git reset --keep origin/task-weft` in /hub/task-weft, which drops the local commits; " +
 				"to keep this machine's, run `git merge origin/task-weft` in /hub/task-weft, settle the named paths and commit, then run `lym fabric push` in /hub/task, whose push is then a fast-forward and meets no replay",
+		},
+		{
+			"RecordsNotFastForwardWithNoConflictingPathsNamesNone",
+			fabricengine.FailedPush{
+				Repo: "records", RepoPath: "/hub/task-weft", CodeWorktree: "/hub/task", Branch: "task-weft", Class: fabricengine.PushFailureNotFastForward,
+				Commits: []string{"abc123"},
+			},
+			"origin/task-weft holds commits this branch lacks (local commits: abc123); " +
+				"to keep origin's side, run `git reset --keep origin/task-weft` in /hub/task-weft, which drops the local commits; " +
+				"to keep this machine's, run `git merge origin/task-weft` in /hub/task-weft, settle any conflict and commit, then run `lym fabric push` in /hub/task, whose push is then a fast-forward and meets no replay",
 		},
 		{
 			"PrimeRecordsNotFastForwardPushesInThePrimeWorktree",
@@ -278,7 +288,7 @@ func TestFailedPushRecord(t *testing.T) {
 				Repo: "records", RepoPath: "/hub/main-weft", CodeWorktree: "/hub/main", Branch: "main-weft", Class: fabricengine.PushFailureNotFastForward,
 				Paths: []string{"_lym/a.md"}, Commits: []string{"abc123"},
 			},
-			"another machine wrote the same paths on origin/main-weft (paths: _lym/a.md; local commits: abc123); " +
+			"origin/main-weft holds commits that change the same paths as this branch's (paths: _lym/a.md; local commits: abc123); " +
 				"to keep origin's side, run `git reset --keep origin/main-weft` in /hub/main-weft, which drops the local commits; " +
 				"to keep this machine's, run `git merge origin/main-weft` in /hub/main-weft, settle the named paths and commit, then run `lym fabric push` in /hub/main, whose push is then a fast-forward and meets no replay",
 		},
@@ -288,7 +298,7 @@ func TestFailedPushRecord(t *testing.T) {
 				Repo: "bolt", RepoPath: "/hub/_board", Branch: "main", Class: fabricengine.PushFailureNotFastForward,
 				Paths: []string{"board.json"}, Commits: []string{"def456"},
 			},
-			"another machine wrote the same paths on origin/main (paths: board.json; local commits: def456); " +
+			"origin/main holds commits that change the same paths as this branch's (paths: board.json; local commits: def456); " +
 				"to keep origin's side, run `git reset --keep origin/main` in /hub/_board, which drops the local commits; " +
 				"to keep this machine's, run `git merge origin/main` in /hub/_board, settle the named paths and commit, then run `lym board sync` from the prime worktree, whose push is then a fast-forward and meets no replay",
 		},

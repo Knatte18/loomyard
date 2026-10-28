@@ -58,25 +58,6 @@ func pushLockBusyError(lockDir string, lockWait time.Duration) error {
 	return fmt.Errorf("%w: %s still held after %s; neither side was pushed", ErrPushLockBusy, filepath.Join(lockDir, weftPushLockFile), lockWait)
 }
 
-// pushRebaseFreeRetryingOnce pushes a code-side repo rebase-free.
-// On a rejection it fetches, and pushes once more only when the fetched remote tip is already contained in local HEAD, which makes the rejection a stale remote-tracking ref rather than a divergence.
-// Any other outcome returns the push's own error, a rejection as the bare gitrepo.ErrPushRejected.
-// It never rebases, merges or forces.
-// A remote holding commits the local branch lacks is left alone.
-func pushRebaseFreeRetryingOnce(repo *gitrepo.Repo) error {
-	err := repo.PushRebaseFree()
-	if !errors.Is(err, gitrepo.ErrPushRejected) {
-		return err
-	}
-	if fetchErr := repo.Fetch(); fetchErr != nil {
-		return err
-	}
-	if hasUnpulled, unpulledErr := repo.HasUnpulled(); unpulledErr != nil || hasUnpulled {
-		return err
-	}
-	return repo.PushRebaseFree()
-}
-
 // PushAnchored pushes unpushed commits in l's weft sibling worktree rebase-free.
 // It resolves its target the same way CommitAnchoredPaths does, from l alone via RecordsWorktree(l),
 // so a caller outside the Fabric Vocabulary Invariant's owner set never learns the weft exists.
@@ -92,7 +73,7 @@ func pushRebaseFreeRetryingOnce(repo *gitrepo.Repo) error {
 // and a holder lasts as long as git does.
 // The push marks the records side pending before it takes the lock and re-reads the flag after releasing it,
 // so a push that landed returns nil even when a later holder took the lock first.
-// A rejection is retried once after a fetch when the remote tip is already contained in local HEAD;
+// A rejection is retried over the push backoff, through a fetch or a replay, before it is reported;
 // a rejection that stays still surfaces gitrepo.ErrPushRejected UNWRAPPED,
 // so a caller can discriminate it from every other push failure with errors.Is.
 // The underlying primitive is gitrepo.PushRebaseFree, never gitrepo.PushCoalesced, whose rejected-push path runs `git pull --rebase` and would rewrite this side's SHAs under a running weft.
@@ -147,7 +128,7 @@ func PushAnchored(l *lymcwd.Location, opts SyncOptions, lockWait time.Duration) 
 // Otherwise the code side is pushed first.
 // The records side is attempted even when the code side failed.
 // A side whose HEAD is unborn is skipped, and so is a side whose branch carries the local-only mark, which PushResult.LocalSkipped names.
-// Each side retries a rejection once, after a fetch, when the remote tip is already contained in local HEAD.
+// Each side retries a rejection over the push backoff, after a fetch, while the remote tip is contained in local HEAD.
 // A failing side's error is wrapped as `fabricengine: push <side> side at <path>: %w` with the side named code or records,
 // so errors.Is(err, gitrepo.ErrPushRejected) holds for a rejected side;
 // both failing returns the errors.Join of the two.
