@@ -19,7 +19,6 @@ import (
 	"path"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
@@ -27,7 +26,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
@@ -59,47 +57,10 @@ type parentMerger interface {
 // The compile-time assertion that *fabricengine.Fabric satisfies parentMerger.
 var _ parentMerger = (*fabricengine.Fabric)(nil)
 
-// taskMerger is the narrow seam over the task pair's merge-in of the parent branch and its abort, which `*fabricengine.Fabric` satisfies.
-// A loom Finalize merges through it, so a conflict is a result state it aborts, never a session it runs.
-type taskMerger interface {
-	// MergeIn merges source into the task pair, returning any conflicts as a result state rather than an error. See fabricengine.Fabric.MergeIn.
-	MergeIn(source string) (fabricengine.MergeResult, error)
-	// MergeAbort discards the merge the task pair has parked. See fabricengine.Fabric.MergeAbort.
-	MergeAbort() (fabricengine.MergeResult, error)
-}
-
-// The compile-time assertion that *fabricengine.Fabric satisfies taskMerger.
-var _ taskMerger = (*fabricengine.Fabric)(nil)
-
-// conflictSessions wraps the conflict session runner and counts the sessions it starts, so a darn Finalize can tell a merge that needed one.
-type conflictSessions struct {
-	inner   mergeresolve.Shuttle
-	started atomic.Int64
-}
-
-// Run counts the session and starts it on the wrapped runner.
-func (c *conflictSessions) Run(spec shuttleengine.Spec) (shuttleengine.Result, error) {
-	c.started.Add(1)
-	return c.inner.Run(spec)
-}
-
-// count returns the sessions started so far; a nil counter has started none.
-func (c *conflictSessions) count() int64 {
-	if c == nil {
-		return 0
-	}
-	return c.started.Load()
-}
-
 // Finalize is the ShedProducer that merges the parent branch into the task worktree under the parent lock, then merges the task branch into the parent pair's own worktree.
 type Finalize struct {
 	deps     Deps
 	resolver resolver
-	// taskMerger merges the parent branch into the task pair for a loom Finalize, whose conflict it aborts.
-	// A struct-literal Finalize leaves it nil and merges through its resolver, as a darn one does.
-	taskMerger taskMerger
-	// sessions counts the conflict sessions resolver starts; nil counts none.
-	sessions *conflictSessions
 	// parentOpener adapts deps.OpenParentFabric's concrete *fabricengine.Fabric return type onto
 	// the parentMerger seam. It is called once per Call, never at construction: the pair
 	// constructor it wraps stat-checks a layout that may not be wired yet, so opening eagerly
@@ -151,15 +112,9 @@ func NewFinalize(deps Deps) (*Finalize, error) {
 		return nil, fmt.Errorf("landingshed: NewFinalize: open pair: %w", err)
 	}
 
-	// A nil told shuttle stays nil, so the resolver's constructor refuses it as it refuses any other.
-	sessions := &conflictSessions{inner: deps.Shuttle}
-	var shuttle mergeresolve.Shuttle
-	if deps.Shuttle != nil {
-		shuttle = sessions
-	}
 	res, err := mergeresolve.New(mergeresolve.Deps{
 		Fabric:         fabricHandle,
-		Shuttle:        shuttle,
+		Shuttle:        deps.Shuttle,
 		WorktreeRoot:   deps.WorktreeRoot,
 		ScratchDir:     deps.ScratchDir,
 		StencilsDir:    deps.StencilsDir,
@@ -176,13 +131,11 @@ func NewFinalize(deps Deps) (*Finalize, error) {
 	gate := newVerifyGate(deps)
 	gate.recorder = &failureRecorder{failingTests: deps.FailingTests, traceFailure: deps.TraceFailure, head: deps.TaskHead}
 	return &Finalize{
-		deps:       deps,
-		resolver:   res,
-		taskMerger: fabricHandle,
-		sessions:   sessions,
-		gate:       gate,
-		premerge:   newPreMerge(deps),
-		guard:      newParentGuard(deps),
+		deps:     deps,
+		resolver: res,
+		gate:     gate,
+		premerge: newPreMerge(deps),
+		guard:    newParentGuard(deps),
 		parentOpener: func() (parentMerger, error) {
 			h, err := deps.OpenParentFabric()
 			if err != nil {
@@ -200,9 +153,9 @@ func NewFinalize(deps Deps) (*Finalize, error) {
 // Under that lock it runs the owner checks: a run origin ended or stopped is Stuck, and a run or parent another machine owns, an unreachable origin and a failed owner read halt.
 // A parent already holding the task's work skips the owner checks and the unreachable halt, and an unreachable origin then proceeds.
 // It then opens the parent pair and syncs it: a pair that is missing, dirty or mid-merge, or a parent that cannot be fast-forwarded to its upstream, is Stuck with a way forward before any merge.
-// It then merges the parent branch into the task worktree and judges the merge: a conflict a loom Finalize aborts, a conflict a darn Finalize resolves, and a merge large by its conflict or by files both sides changed reroute, with no gate run.
-// A merge that proceeds is gated by the `landing` gate, and a failing gate runs the merge fixer in finalize mode; a spent cap or an over-cap fix reroutes or halts.
-// After a merge-in-required error from the parent-side merge it re-runs the merge and its gate once under the same lock.
+// It then merges the parent branch into the task worktree through its resolver, which resolves a conflict with the conflict session under the lock, and gates the merged tree with no reroute on a conflict or a large merge.
+// The `landing` gate judges the merged tree, and a failing gate runs the merge fixer in finalize mode; a spent cap or an over-cap fix reroutes or halts.
+// After a merge-in-required error from the parent-side merge it re-runs the merge and its gate once under the same lock, so a code-side parent commit that arrived in between is merged, gated and landed.
 //
 // Immediately before each landing attempt it re-reads the parent lock record, so a lock something released lands nothing and is a halting Stuck.
 // The re-read and the landing are not atomic: a release between them is caught only by the parent push's rejection.
@@ -317,7 +270,7 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 	}
 
 	// Retry: on the merge-in-required error, re-run steps 2 to 5 under the same lock and retry the parent-side merge exactly once.
-	// Step 2 merges and judges the parent again, so a code-side commit that arrived between the check and the parent-side merge reroutes there and never lands.
+	// Step 2 merges the parent again, so a code-side commit that arrived between the check and the parent-side merge is merged, gated and landed.
 	var mergeInRequired *fabricengine.ErrMergeInRequired
 	if errors.As(mergeErr, &mergeInRequired) {
 		if outcome, out, err, done := fz.mergeAndGate(ctx); done {
@@ -637,7 +590,8 @@ func (fz *Finalize) mergeAndGate(ctx context.Context) (shedengine.Outcome, shede
 // An entry has no attempts left when its Spent reaches the cap, whatever the record's Halt notes, and such an entry spawns no fixer: over a failing gate it ends as a spent cap, and over a passing one its change since Baseline is judged.
 // A spent cap or a change over the caps keeps the fixer's commits and reroutes when a review follows the reroute (Deps.RerouteReviewed), and halts with LandingStopPrefix otherwise, noting the cause in the attempt record's Halt.
 // A resume after such an over-cap halt writes Baseline afresh at the HEAD the gate starts from and reads the operator's review as acceptance of the fixer's commits.
-// An escalate report, an unusable turn and an attempt record that does not decode each halt with LandingStopPrefix, and a failed spawn is an error that spends no attempt.
+// An escalate report halts with EscalateStopPrefix on a loom or darn run (Deps.EscalateJudgedFirst) and with LandingStopPrefix on a pawl run;
+// an unusable turn and an attempt record that does not decode each halt with LandingStopPrefix, and a failed spawn is an error that spends no attempt.
 // done is false when the tree passed within the caps and Call proceeds; otherwise the other values are what Call returns at once.
 func (fz *Finalize) gateAndFix(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	attemptsPath := FixerAttemptsPath(fz.deps.ScratchDir, finalizeName)
@@ -729,7 +683,7 @@ func (fz *Finalize) runFixer(ctx context.Context, rec FixerAttempts) (shedengine
 	case fixerEndSpent:
 		return fz.endSpent(ctx, updated, outcome.failureLog)
 	}
-	return fz.halt(ctx, outcome.haltReason(finalizeName))
+	return fz.halt(ctx, outcome.haltReason(finalizeName, fz.deps.EscalateJudgedFirst))
 }
 
 // failedGateLog names the log of the landing gate's failure: the failure record's log when one was written, and the gate's own reason otherwise.
@@ -824,24 +778,17 @@ type parentMergeBefore struct {
 type parentMerge struct {
 	// upToDate reports that the task already held the parent's tip.
 	upToDate bool
-	// conflicted reports that the merge needed the conflict session, or, for a loom Finalize, conflicted and was aborted.
-	conflicted bool
-	// conflicts are the paths a loom Finalize's aborted merge conflicted in.
-	conflicts []string
 }
 
 // mergeParent merges the parent branch into the task worktree and judges the merge, which are Finalize's steps 2 and 3 under the parent lock it already holds.
 // It clears a parked merge-in, checks the tree clean and merges.
-// A loom Finalize merges through taskMerger and, on a conflict, aborts the merge and reroutes, leaving the merge and its conflict session to Parent-Align outside the lock.
-// A darn Finalize merges through its resolver, which resolves a conflict with the conflict session under the lock, since darn has no other merging row.
+// The merge goes through the resolver, which resolves a conflict with the conflict session under the lock.
 //
-// The merge is large when it needed the conflict session, or when the parent's changes since the merged tip the merge record names touch a file the task changed.
+// The merge is large when the parent's changes since the merged tip the merge record names touch a file the task changed.
 // A merge record that cannot be read is logged and read as absent, so the parent side is measured from the task's merge base; a parent already holding the task's work is never large.
 // The merge record is written with the new merged tip and the aligned tip as it was.
-// A large merge keeps the merge commit and reroutes, with no gate run and no fixer;
-// a darn Finalize first writes the overlap note naming the parent's changes to the overlapping files since the tip the parent side was measured from.
-// With Deps.LargeMergeLands a large merge is neither rerouted nor noted: the merge record is written and the gate judges the merged tree.
-// done is false when the merge is within bounds and Call goes on to the gate; otherwise the other values are what Call returns at once.
+// A large merge writes the merge record, with the overlap, and goes on to the gate like any other merge.
+// done is false when the merge settled and Call goes on to the gate; otherwise the other values are what Call returns at once.
 func (fz *Finalize) mergeParent(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	reason, err := fz.premerge.clear(finalizeName, fz.deps.ParentBranch)
 	if outcome, out, err, stop := fz.gateStop(ctx, reason, err); stop {
@@ -865,10 +812,6 @@ func (fz *Finalize) mergeParent(ctx context.Context) (shedengine.Outcome, sheden
 	}
 	if reason != "" {
 		outcome, out, err := fz.stuckOrCancelled(ctx, reason)
-		return outcome, out, err, true
-	}
-	if len(merge.conflicts) > 0 {
-		outcome, out, err := fz.reroute(ctx, fz.rerouteReason(fmt.Sprintf("merging parent branch %q into the task conflicts in %s, and the merge was aborted", fz.deps.ParentBranch, strings.Join(merge.conflicts, ", "))))
 		return outcome, out, err, true
 	}
 	reason, err = fz.gate.clean(finalizeName, "after the merge-in")
@@ -901,25 +844,6 @@ func (fz *Finalize) mergeParent(ctx context.Context) (shedengine.Outcome, sheden
 	}
 	if err := WriteMergeRecord(fz.deps.MergeRecordPath, record); err != nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %w", finalizeName, err), true
-	}
-
-	// A darn run's re-entered Code-Bouncer reads the note as its review input; a loom run's Code-Perch reads the fixer's report instead.
-	if (merge.conflicted || len(overlap.Files) > 0) && !fz.deps.ConflictReroutes && !fz.deps.LargeMergeLands {
-		measured := MergeRecord{ParentBranch: fz.deps.ParentBranch, MergedTip: fz.mergedTipRead(before)}
-		if err := WriteOverlapNote(OverlapNotePath(fz.deps.ScratchDir), measured, overlap.Files); err != nil {
-			return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %w", finalizeName, err), true
-		}
-	}
-
-	switch {
-	case fz.deps.LargeMergeLands:
-		// A large merge lands: the finalize gate over the merged tree judges it.
-	case merge.conflicted:
-		outcome, out, err := fz.reroute(ctx, fz.rerouteReason(fmt.Sprintf("merging parent branch %q into the task needed the conflict session, so the merge is large", fz.deps.ParentBranch)))
-		return outcome, out, err, true
-	case len(overlap.Files) > 0:
-		outcome, out, err := fz.reroute(ctx, fz.rerouteReason(fmt.Sprintf("the parent's changes since %s touch files the task changed, so the merge is large: %s", fz.mergedTipRead(before), strings.Join(overlap.Files, ", "))))
-		return outcome, out, err, true
 	}
 	return "", shedengine.OutputPointer{}, nil, false
 }
@@ -956,24 +880,9 @@ func (fz *Finalize) mergedTipRead(before parentMergeBefore) string {
 }
 
 // mergeIntoTask merges the parent branch into the task worktree and reports how the merge ended, or a Stuck reason.
-// A loom Finalize aborts a conflicted merge and reports its conflicts; a darn Finalize resolves it.
+// The resolver resolves a conflict with the conflict session.
 func (fz *Finalize) mergeIntoTask(ctx context.Context) (parentMerge, string, error) {
 	parent := fz.deps.ParentBranch
-	if fz.deps.ConflictReroutes {
-		result, err := fz.taskMerger.MergeIn(parent)
-		if err != nil {
-			return parentMerge{}, fmt.Sprintf("merge-in of parent branch %q failed: %v", parent, err), nil
-		}
-		if len(result.Conflicts) > 0 {
-			if _, err := fz.taskMerger.MergeAbort(); err != nil {
-				return parentMerge{}, "", fmt.Errorf("landingshed: %s: abort the conflicted merge-in of parent branch %q: %w", finalizeName, parent, err)
-			}
-			return parentMerge{conflicted: true, conflicts: result.Conflicts}, "", nil
-		}
-		return parentMerge{upToDate: result.AlreadyUpToDate}, "", nil
-	}
-
-	startedBefore := fz.sessions.count()
 	result, err := fz.resolver.Resolve(ctx, parent, "")
 	if err != nil {
 		return parentMerge{}, "", fmt.Errorf("landingshed: %s: merge-in against parent branch %q: %w", finalizeName, parent, err)
@@ -981,7 +890,7 @@ func (fz *Finalize) mergeIntoTask(ctx context.Context) (parentMerge, string, err
 	if result.Outcome == mergeresolve.OutcomeStuck {
 		return parentMerge{}, result.Reason, nil
 	}
-	return parentMerge{upToDate: result.AlreadyUpToDate, conflicted: fz.sessions.count() > startedBefore}, "", nil
+	return parentMerge{upToDate: result.AlreadyUpToDate}, "", nil
 }
 
 // judgeParentMerge reads the parent's tip after the merge and the files both sides changed since the merged tip the merge record names.

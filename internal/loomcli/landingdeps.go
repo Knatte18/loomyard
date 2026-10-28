@@ -90,17 +90,16 @@ func landingDeps(
 		}
 	}
 	return landingshed.Deps{
-		ParentName:      parentName,
-		LanguageSkills:  languageSkills,
-		WorktreeRoot:    l.WorktreePath(),
-		TaskBranch:      taskBranch,
-		ParentBranch:    parentBranch,
-		DescriptionPath: summaryparser.Path(loomengine.LandingDir(l)),
-		// Only a loom run's Finalize reroutes a conflict to Parent-Align; a darn or pawl run resolves it under the lock, since neither declares the reroute.
-		ConflictReroutes: recipe == shedrun.RecipeLoom,
-		StencilsDir:      geom.StencilsDir,
-		ScratchDir:       loomengine.LoomScratchDir(l),
-		PushSkipped:      pushSkipped,
+		ParentName:          parentName,
+		LanguageSkills:      languageSkills,
+		WorktreeRoot:        l.WorktreePath(),
+		TaskBranch:          taskBranch,
+		ParentBranch:        parentBranch,
+		DescriptionPath:     summaryparser.Path(loomengine.LandingDir(l)),
+		StencilsDir:         geom.StencilsDir,
+		ScratchDir:          loomengine.LoomScratchDir(l),
+		PushSkipped:         pushSkipped,
+		EscalateJudgedFirst: recipe == shedrun.RecipeLoom || recipe == shedrun.RecipeDarn,
 		OpenFabric: func() (*fabricengine.Fabric, error) {
 			return fabricengine.Open(l)
 		},
@@ -262,8 +261,6 @@ func landingDeps(
 		CodeReviewOff:   codeReviewOff(l, recipe),
 		RerouteReviewed: reviewFollowsReroute,
 		LandBlockers:    landBlockers,
-		// A pawl run has no reroute edge: a large merge runs the gate, and a spent or over-cap fixer halts for the orch.
-		LargeMergeLands: recipe == shedrun.RecipePawl,
 		// The task branch's remote-tracking ref is read without a fetch, so an absent one is no tip.
 		TaskRemoteTip: func() (string, error) {
 			tip, err := gitrepo.New(l.WorktreePath()).RefSHA("refs/remotes/origin/" + taskBranch)

@@ -35,6 +35,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -1062,10 +1063,8 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				}
 				return sheddriver.RestepRecorded(records, status), nil
 			},
-			// HandBack marks a blocked landing halt or decision halt over the child status's current producer and error, so the binary re-step leaves it to the orch.
-			HandBack: func(status shedengine.Status) bool {
-				return status.State == shedengine.StateBlocked && arbiterstop.HandsBack(status.CurrentProducer, status.Error)
-			},
+			// HandBack marks a blocked landing halt, decision halt or loom or darn escalate halt, so the binary re-step leaves it alone.
+			HandBack: restepSkips,
 			// PauseRequested reads batten's own status file, the one `lym batten pause` writes, so the in-call wait notices a pause within one check.
 			PauseRequested: pauseRequested(location, slug),
 			// Pause reads the hub's pause record at the prime's geometry, for the slug this run drives.
@@ -1483,4 +1482,14 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 		BudgetWayForward:        fmt.Sprintf("run \"lym batten run %s\": the resume grants the row one more budget", slug),
 	}
 	return nil
+}
+
+// restepSkips reports whether a child's status is a blocked halt the binary re-step leaves alone:
+// a landing halt or a decision halt for the orch, or a loom or darn fixer's escalate halt for the arbiter.
+// The halt is read over the status's current producer and error.
+func restepSkips(status shedengine.Status) bool {
+	if status.State != shedengine.StateBlocked {
+		return false
+	}
+	return arbiterstop.HandsBack(status.CurrentProducer, status.Error) || landingshed.EscalateHalt(status.CurrentProducer, status.Error)
 }

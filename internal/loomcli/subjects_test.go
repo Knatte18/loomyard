@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/discussionparser"
-	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -142,7 +141,6 @@ func TestReviewInputSeams(t *testing.T) {
 		{"FixerReportUnderRetiredName", fixerReportInput, func(scratchDir string) string {
 			return filepath.Join(scratchDir, "Merge-In-fixer-report.md")
 		}},
-		{"OverlapNote", overlapNoteInput, landingshed.OverlapNotePath},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

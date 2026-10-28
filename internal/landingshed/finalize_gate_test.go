@@ -380,7 +380,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 		fx.seats.turns = []func(){fx.turn(t, escalateReport, "h6")}
 		outcome, ptr = fx.call(t)
 
-		requireHalt(t, outcome, ptr, fx.reportPath(), "decision D3", "`lym loom decision add`")
+		requireHalt(t, outcome, ptr, fx.reportPath(), "decision D3")
 		if got := fx.seats.tables[1].Gate[0].Attempts; got != 1 {
 			t.Errorf("gate attempts = %d; want the 1 turn the entry has left", got)
 		}
@@ -426,9 +426,23 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 		outcome, ptr := fx.call(t)
 
 		requireHalt(t, outcome, ptr, fx.reportPath(), "decision D3")
+		if strings.Contains(ptr.Reason, "`lym loom decision add`") {
+			t.Errorf("reason = %q; want no decision verb on a run that does not judge an escalate first", ptr.Reason)
+		}
 		if rec, _ := fx.attempts(t); rec.Spent != 0 || rec.Halt != "" {
 			t.Errorf("attempt record = %+v; want no spent turn and no halt noted", rec)
 		}
+	})
+
+	t.Run("an escalate report on a run that judges it first halts with the escalate prefix, no hand-back", func(t *testing.T) {
+		fx := newFinalizeGateFixture(t)
+		fx.fz.deps.EscalateJudgedFirst = true
+		fx.scriptGate(failing)
+		fx.seats.turns = []func(){fx.turn(t, escalateReport, "f1")}
+
+		outcome, ptr := fx.call(t)
+
+		requireEscalateHalt(t, outcome, ptr, finalizeName, fx.reportPath(), "decision D3", "`lym loom decision add`")
 	})
 
 	t.Run("a re-entry from another row starts at zero attempts while a resume keeps the spent ones", func(t *testing.T) {

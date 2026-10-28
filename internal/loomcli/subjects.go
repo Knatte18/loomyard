@@ -244,12 +244,6 @@ func fixerReportInput(scratchDir string) func() (string, time.Time, bool, error)
 	}
 }
 
-// overlapNoteInput returns the review input seam of a darn run: the overlap note Finalize writes under scratchDir on a large-merge reroute, with the time it was written.
-// A run that never rerouted leaves no note, which answers not found.
-func overlapNoteInput(scratchDir string) func() (string, time.Time, bool, error) {
-	return reviewInputFile(landingshed.OverlapNotePath(scratchDir))
-}
-
 // reviewInputFile returns the seam that reports the file at path and its modification time, and not found while the file is absent.
 func reviewInputFile(path string) func() (string, time.Time, bool, error) {
 	return func() (string, time.Time, bool, error) {

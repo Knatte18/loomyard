@@ -154,13 +154,14 @@ func TestFixerRun_Outcomes(t *testing.T) {
 
 	failing := verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}
 	tests := []struct {
-		name       string
-		start      FixerAttempts
-		setup      func(t *testing.T, fx *fixerRunFixture)
-		wantEnd    fixerEnd
-		wantSpent  int
-		wantTurns  int
-		wantReason []string
+		name        string
+		start       FixerAttempts
+		setup       func(t *testing.T, fx *fixerRunFixture)
+		wantEnd     fixerEnd
+		wantSpent   int
+		wantTurns   int
+		wantReason  []string
+		avoidReason []string
 	}{
 		{
 			name: "fixed over a passing gate with an unmoved remote tip",
@@ -175,7 +176,8 @@ func TestFixerRun_Outcomes(t *testing.T) {
 				fx.seats.turns = []func(){func() { fx.writeReport(t, escalateReport) }}
 			},
 			wantEnd: fixerEndEscalate, wantSpent: 0, wantTurns: 1,
-			wantReason: []string{LandingStopPrefix, "decision D3", "`lym loom decision add`", "`lym loom resume`"},
+			wantReason:  []string{LandingStopPrefix, "settle the conflict on the task branch", "decision D3", "`lym loom resume`"},
+			avoidReason: []string{"`lym loom decision add`"},
 		},
 		{
 			name: "a failing gate re-prompts, and the last turn's failure is spent",
@@ -302,12 +304,32 @@ func TestFixerRun_Outcomes(t *testing.T) {
 			if outcome.reportPath != fx.reportPath() {
 				t.Errorf("run() report path = %q; want %q", outcome.reportPath, fx.reportPath())
 			}
-			reason := outcome.haltReason(fixerTestRow)
+			reason := outcome.haltReason(fixerTestRow, false)
+			judged := outcome.haltReason(fixerTestRow, true)
 			if tt.wantEnd == fixerEndFixed {
-				if reason != "" {
-					t.Errorf("haltReason() = %q for a fixed run; want none", reason)
+				if reason != "" || judged != "" {
+					t.Errorf("haltReason() = %q, %q for a fixed run; want none", reason, judged)
 				}
 				return
+			}
+			for _, avoid := range tt.avoidReason {
+				if strings.Contains(reason, avoid) {
+					t.Errorf("haltReason() = %q; want it to omit %q", reason, avoid)
+				}
+			}
+			if tt.wantEnd != fixerEndEscalate {
+				if judged != reason {
+					t.Errorf("haltReason(judged first) = %q; want the unjudged reason %q", judged, reason)
+				}
+			} else {
+				if !strings.HasPrefix(judged, EscalateStopPrefix) {
+					t.Errorf("haltReason(judged first) = %q; want the prefix %q", judged, EscalateStopPrefix)
+				}
+				for _, want := range []string{outcome.reportPath, fixerTestRow, "decision D3", "`lym loom decision add`", "`lym loom resume`"} {
+					if !strings.Contains(judged, want) {
+						t.Errorf("haltReason(judged first) = %q; want it to contain %q", judged, want)
+					}
+				}
 			}
 			for _, want := range tt.wantReason {
 				if !strings.Contains(reason, want) {

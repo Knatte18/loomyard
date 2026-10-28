@@ -118,13 +118,13 @@ func (l *loopRun) assertLoop(t *testing.T, envelope map[string]any) {
 	if !ok {
 		t.Fatalf("envelope %v has no loop object", envelope)
 	}
-	for _, key := range []string{"steps", "first_producer", "stop", "detail", "status_moved", "hand_back", "current_producer", "history_length", "state", "interrupt_policy", "trace_copy", "stderr_path"} {
+	for _, key := range []string{"steps", "first_producer", "stop", "detail", "status_moved", "hand_back", "restep_hold", "current_producer", "history_length", "state", "interrupt_policy", "trace_copy", "stderr_path"} {
 		if _, present := loop[key]; !present {
 			t.Errorf("loop %v lacks key %q", loop, key)
 		}
 	}
-	if len(loop) != 12 {
-		t.Errorf("loop %v has %d keys; want the closed set of 12", loop, len(loop))
+	if len(loop) != 13 {
+		t.Errorf("loop %v has %d keys; want the closed set of 13", loop, len(loop))
 	}
 	if loop["stop"] != l.wantStop || loop["steps"] != float64(0) {
 		t.Errorf("loop stop/steps = %v/%v; want %s/0", loop["stop"], loop["steps"], l.wantStop)

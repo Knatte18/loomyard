@@ -114,12 +114,19 @@ func TestGoDriver_Settle(t *testing.T) {
 	blockedLater := func(t *testing.T) []byte {
 		return driveEnvelopeJSON(t, map[string]any{"ok": true, "state": "blocked"}, map[string]any{"state": "blocked", "current_producer": "Build", "history_length": 3})
 	}
+	escalateBlocked := func(t *testing.T) []byte {
+		return driveEnvelopeJSON(t, map[string]any{"ok": true, "state": "blocked", "reason": "escalate: the fixer needs a decision"},
+			map[string]any{"state": "blocked", "current_producer": "Build", "history_length": 2})
+	}
 	blockedKey := StopKey{CurrentProducer: "Build", HistoryLength: 2, State: "blocked"}
 	awaitingKey := StopKey{CurrentProducer: "Review", HistoryLength: 2, State: "awaiting"}
 	blockedStatus := shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "Build", History: []shedengine.HistoryEntry{
 		{Producer: "Plan", Outcome: shedengine.Done, At: driveTestEpoch.Format(time.RFC3339)},
 		{Producer: "Build", Outcome: shedengine.Stuck, At: driveTestEpoch.Add(time.Second).Format(time.RFC3339)},
 	}}
+	escalateStatus := blockedStatus
+	escalateStatus.Error = "escalate: the fixer needs a decision"
+	escalateStatus.History = append(slices.Clone(blockedStatus.History), shedengine.HistoryEntry{Producer: "Build", Outcome: shedengine.Stuck, At: driveTestEpoch.Add(2 * time.Second).Format(time.RFC3339)})
 	awaitingStatus := shedengine.Status{State: shedengine.StateAwaiting, CurrentProducer: "Review", History: blockedStatus.History}
 	tacklerOutcome := func(verdict string, attempt int) TacklerEnvelope {
 		dir := fmt.Sprintf("tackler/%d", attempt)
@@ -164,9 +171,11 @@ func TestGoDriver_Settle(t *testing.T) {
 		runLockHeld bool
 		escalation  bool
 		// judgesFirst, when set, is the one row the arbiter seam judges before the tackler.
-		judgesFirst  string
-		pauseCovered []bool
-		orchRecorded bool
+		judgesFirst string
+		// judgesFirstReason, when set, limits the judgesFirst row to a stop whose reason opens with it.
+		judgesFirstReason string
+		pauseCovered      []bool
+		orchRecorded      bool
 
 		// The agent seams: what Tackler and Arbiter return, and what ConsumeTackler refuses with.
 		tacklerReturns TacklerEnvelope
@@ -339,6 +348,27 @@ func TestGoDriver_Settle(t *testing.T) {
 			wantCalls:   []string{"step", "arbiter:"},
 			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerArbiter, shedrun.SettlerParent},
 			wantReports: 2, wantParked: true, wantNotifies: 1, wantHandBack: true, wantExit: ExitHandBack, wantReportHas: map[int][]string{2: {"a row the arbiter judges first", "which way?"}},
+		},
+		{
+			name:  "a blocked stop at a row the arbiter judges first by its escalate reason goes to the arbiter with no tackler call",
+			steps: []func(*testing.T) []byte{escalateBlocked}, judgesFirst: "Build", judgesFirstReason: "escalate: ", arbiterReturns: arbiterOutcome("hand-on", 1),
+			wantCalls:   []string{"step", "arbiter:"},
+			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerArbiter, shedrun.SettlerParent},
+			wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
+		},
+		{
+			name:  "a blocked stop at the judged row with a plain reason goes to the tackler",
+			steps: []func(*testing.T) []byte{blocked}, judgesFirst: "Build", judgesFirstReason: "escalate: ", tacklerReturns: tacklerOutcome(TacklerVerdictHandBack, 1),
+			wantCalls:   []string{"step", "tackler", "snapshot", "snapshot"},
+			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerTackler, shedrun.SettlerParent},
+			wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
+		},
+		{
+			name:  "a status moved to a blocked stop whose error is an escalate goes to the arbiter with no tackler call",
+			steps: []func(*testing.T) []byte{blocked}, statusSeq: []shedengine.Status{escalateStatus}, judgesFirst: "Build", judgesFirstReason: "escalate: ", arbiterReturns: arbiterOutcome("hand-on", 1),
+			wantCalls:   []string{"step", "arbiter:"},
+			wantActions: []string{shedrun.SettleMoved, shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerGoRule, shedrun.SettlerArbiter, shedrun.SettlerParent},
+			wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
 			name:  "a blocked stop at a row the arbiter does not judge first goes to the tackler",
@@ -733,7 +763,9 @@ func TestGoDriver_Settle(t *testing.T) {
 				},
 			}
 			if tt.judgesFirst != "" {
-				deps.Arbiter.JudgesFirst = func(producer string) bool { return producer == tt.judgesFirst }
+				deps.Arbiter.JudgesFirst = func(producer, reason string) bool {
+					return producer == tt.judgesFirst && strings.HasPrefix(reason, tt.judgesFirstReason)
+				}
 			}
 			if tt.noArbiter {
 				deps.Arbiter = nil

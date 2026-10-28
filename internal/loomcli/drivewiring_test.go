@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedarbiter"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -71,28 +72,33 @@ func TestLoomPark(t *testing.T) {
 	}
 }
 
-// TestLoomArbiterSeam_JudgesFirst covers the arbiter seam loom hands the driver: its arbiter-first marking is set, the Webster row is marked, and no other producer is.
+// TestLoomArbiterSeam_JudgesFirst covers the arbiter seam loom hands the driver: its arbiter-first marking is set, the Webster row is marked with any reason, a landing row is marked only for an escalate reason, and no other stop is.
 func TestLoomArbiterSeam_JudgesFirst(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		producer string
+		reason   string
 		want     bool
 	}{
-		{loomshed.NameWebster, true},
-		{loomshed.NameDarnWrite, false},
-		{loomshed.NameFinalize, false},
-		{"", false},
+		{loomshed.NameWebster, "", true},
+		{loomshed.NameWebster, "stuck: a batch failed", true},
+		{loomshed.NameFinalize, landingshed.EscalateStopPrefix + "the fixer needs a decision", true},
+		{loomshed.NameParentAlign, landingshed.EscalateStopPrefix + "the fixer needs a decision", true},
+		{loomshed.NameFinalize, landingshed.LandingStopPrefix + "a cap was reached", false},
+		{loomshed.NameFinalize, "a plain reason", false},
+		{loomshed.NameDarnWrite, landingshed.EscalateStopPrefix + "the fixer needs a decision", false},
+		{"", "", false},
 	}
 	seam := loomArbiterSeam(shedarbiter.Deps{}, "run-1")
 	if seam.JudgesFirst == nil {
 		t.Fatal("loomArbiterSeam().JudgesFirst = nil; want the arbiter-first marking")
 	}
 	for _, tt := range tests {
-		t.Run(tt.producer, func(t *testing.T) {
+		t.Run(tt.producer+"/"+tt.reason, func(t *testing.T) {
 			t.Parallel()
-			if got := seam.JudgesFirst(tt.producer); got != tt.want {
-				t.Errorf("JudgesFirst(%q) = %v; want %v", tt.producer, got, tt.want)
+			if got := seam.JudgesFirst(tt.producer, tt.reason); got != tt.want {
+				t.Errorf("JudgesFirst(%q, %q) = %v; want %v", tt.producer, tt.reason, got, tt.want)
 			}
 		})
 	}

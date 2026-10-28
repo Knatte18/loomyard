@@ -36,15 +36,13 @@
 // A Finalize already past its parent-side merge, an empty list and a nil seam land as before.
 // Bound: a member that lands into the beam between this check and the parent-side merge is not caught here, and the Worktree-Create hold read keeps any member from forking once the landing hold stands.
 // A parent that already holds the task's work, after a GitHub merge or an earlier landing, lands through the already-landed path.
-// Finalize then merges the parent branch into the task worktree under the lock and judges the merge.
+// Finalize then merges the parent branch into the task worktree through its resolver for every recipe, which resolves a conflict with the conflict session under the lock, and gates the merged tree.
 // It reads the merge record's merged tip, clears a parked merge-in, checks the tree clean and merges.
-// A loom Finalize (Deps.ConflictReroutes) merges through the task pair's merge-in and, on a conflict, aborts the merge and reroutes, leaving the merge and its conflict session to Parent-Align outside the lock.
-// A darn Finalize merges through its resolver, which resolves a conflict with the conflict session under the lock, since darn has no other merging row.
-// An unreadable merge record is logged and read as absent, so the parent side is measured from the task's merge base, as a darn run with no record is.
-// The merge is large when it needed the conflict session, or when the parent's changes since the merged tip it read touch a file the task changed since its merge base; a parent already holding the task's work is never large.
-// A large merge keeps the merge commit and reroutes with no gate run: a Stuck with Reroute set on the row's on_reroute edge, which spends no bounce budget, and the deferred release frees the lock first, with shed's reroute cap as its bound.
-// A Finalize built with Deps.LargeMergeLands, for a recipe row that declares no reroute edge, neither reroutes a large merge nor writes the overlap note, and goes on to the gate.
-// What that lets through, unseen by any review, is the conflict session's resolution against the parent's newer work and a textually clean merge of the parent's changes to files the task also changed; the `finalize` gate over the merged tree bounds both, and a spent fixer or a change past the caps halts for the orch.
+// An unreadable merge record is logged and read as absent, so the parent side is measured from the task's merge base, as a run with no record is.
+// The merge is large when the parent's changes since the merged tip it read touch a file the task changed since its merge base; a parent already holding the task's work is never large.
+// A large merge writes the merge record, with its overlap, and goes on to the gate like any other merge, and a conflict or a large merge reroutes in no recipe.
+// Bound: what lands with no review is the conflict session's resolution against the parent's newer work and a textually clean merge of the parent's changes to files the task also changed; the `finalize` gate over the merged tree bounds both, and a spent fixer or a change past the caps reroutes when a review follows the reroute and halts for the orch otherwise.
+// The conflict session runs while the parent lock is held, so sibling landings onto that parent wait, bounded by the lock's owner, pause and release rules.
 // Finalize then writes the merge record with the new merged tip and the aligned tip as it was.
 // Next it runs its own gate key, `finalize`, over the merged tree through verifytree, which skips a tree it already verified, so a run that went right holds the lock for one merge, a skipped gate and the landing.
 // A darn Finalize over a diff wholly under `tree_scope` runs the tree-scoped command, since darn's verify source answers it.
@@ -55,12 +53,12 @@
 // An entry has no attempts left when its Spent reaches `finalize_fix_attempts`, whatever the record's Halt notes, and a resumed entry with none left spawns no fixer: over a failing gate it ends as a spent cap, and over a passing one its change since Baseline is judged.
 // A spent cap or a change over the caps keeps the fixer's commits and reroutes through the reroute reason when a review follows the reroute (Deps.RerouteReviewed), and halts with LandingStopPrefix otherwise, naming the commits and noting `spent` or `over-cap` in the record's Halt.
 // A resume after an over-cap halt writes Baseline afresh at the HEAD the gate starts from, clears the note in the same record write, reads the operator's review as acceptance of the commits and runs the gate: a passing gate lands without judging the change, and a failing one runs the fixer on the attempts left.
-// An escalate report keeps the commits and halts naming the report; a turn that ended without a usable result halts, and a failed spawn is an error that spends no attempt.
+// An escalate report keeps the commits and halts naming the report, with EscalateStopPrefix on a loom or darn run; a turn that ended without a usable result halts, and a failed spawn is an error that spends no attempt.
 // An attempt record that does not decode halts naming the file, with removing it, which grants a fresh cap, as the way forward.
 // A Finalize reroute leaves the entry's attempt record for the next entry to clear, and a Done clears it.
 // The size and kind caps bound what an unreviewed Finalize fix lets through: a fix within them lands with no perch, behind only the `finalize` gate it passed and the finalize mode's instruction to fix failing tests only.
 // After a merge-in-required error from the parent-side merge Finalize retries once, which covers a parent moved by run records alone;
-// the retry merges and judges the parent again under the same lock, so a code-side commit that arrives between the first merge and the parent-side merge reroutes there and never lands.
+// the retry merges the parent again and gates the merged tree under the same lock, so a code-side commit that arrives between the first merge and the parent-side merge is merged, gated and landed.
 // A dirty parent is Stuck naming the parent's code checkout and its tracked dirty paths, capped at 20, with the way forward per reason.
 // The run records Finalize commits at its parent-records step never count as that dirt, since the guard reads the code checkout alone, whose `_lym` link is excluded from its index.
 // A parent push that fails for a reason other than a transient one carries a repair note when origin's parent already holds the task's work, which an adopter-first landing leaves:
@@ -105,7 +103,7 @@
 // Parent commits brought in, or a failing gate, run the merge fixer in parent-align mode on the attempts `parent_align_fix_attempts` leaves the entry; a `fixed` report over a passing gate advances the aligned tip and is Done.
 // The entry's fork point is kept in its attempt record before the merge, so a resumed entry whose merge is already up to date still reads what the first merge brought in.
 // With the Code-Review perch's budget 0, or told nothing, a fixer change over `finalize_fix_max_lines` or touching a test, testdata or gate configuration file, or adding a test skip or a build constraint, halts over-cap; with a budget above 0 the change goes to the Code-Perch unjudged.
-// An escalate report, a spent cap, a turn that ended without a usable result and an over-cap change each halt with a reason opening with LandingStopPrefix and a way forward; the resume after an over-cap halt reads the operator's review as the alignment.
+// A spent cap, a turn that ended without a usable result and an over-cap change each halt with a reason opening with LandingStopPrefix and a way forward; the resume after an over-cap halt reads the operator's review as the alignment.
 // Every Done clears the entry's attempt record, and an entry reached again from another row starts at zero attempts.
 // A run halted on the row under its name before the rename, Merge-In, resumes with its spent attempts: the row reads the old name's attempt record when its own is absent, and every Done removes both.
 // Last it writes the merge record: the tip merged, the task head before the merge, the parent tip last merged into the task, the aligned tip, the merge commit and where the parent's changes since the aligned tip meet the task's changes since its last merge base.
@@ -117,9 +115,14 @@
 // HandsBack is the one predicate that names the halts the orch takes over: a blocked stop at Parent-Align or Finalize whose reason opens with LandingStopPrefix, and a blocked stop at Finalize whose reason opens with the reroute-cap prefix.
 // Parent-Align has no reroute edge, and a reroute-cap halt at another row, such as Webster's, stays routed as before.
 // A merge or test failure at Parent-Align or Finalize is the recipe's own to settle:
-// the row's fixer fixes it, a loom conflict, a large merge or a spent or over-cap fix at Finalize routes back through the recipe's reroute edge, or halts where that edge reaches no review, and the halt goes to the orch.
+// the row's fixer fixes it, a spent or over-cap fix at Finalize routes back through the recipe's reroute edge, or halts where that edge reaches no review, and the halt goes to the orch.
 // No driver, batten, arbiter or record target routes a Parent-Align or Finalize failure to another row.
 // The recipe's owner tells it to shedverbs as Spec.HandBack, which marks the loop's stop envelope and the status as hand_back; the drivers read the predicate or that mark.
+//
+// An escalate report halts with a reason opening with EscalateStopPrefix on a loom or darn run, which Deps.EscalateJudgedFirst tells, and with LandingStopPrefix on a pawl run, whose arbiter has no decision verb.
+// EscalateHalt is the prefix's only reader: a blocked stop at Parent-Align, Finalize or Merge-In whose reason opens with it.
+// Such a halt is no hand-back, so the driver's arbiter judges it first and batten's binary re-step leaves it alone.
+// Only a fixer's escalate changes route; a halt an older build parked under LandingStopPrefix stays a hand-back.
 //
 // A darn run whose diff lies wholly under its configured non-production trees runs only the tree-scoped command at Parent-Align and Finalize, the hub's whole statement of what such a diff needs.
 // landing.yaml's retired `publish_verify` key loads and is dropped, and `lym config reconcile` prunes it.

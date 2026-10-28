@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/frictionengine"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -400,5 +401,39 @@ func TestPauseCmd_BareLoomPauseRefusesNamingBothWaysForward(t *testing.T) {
 	after, err := os.ReadFile(c.shedPaths.StatusPath)
 	if err != nil || !bytes.Equal(before, after) {
 		t.Errorf("status file after a refused bare pause = %q, %v; want it unchanged: %q", after, err, before)
+	}
+}
+
+// TestSpecFor_RestepHold asserts specFor tells loom and darn the escalate-halt check as RestepHold, and pawl and a receiver with no recipe none.
+func TestSpecFor_RestepHold(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		recipe   string
+		told     bool
+		producer string
+		reason   string
+		want     bool
+	}{
+		{shedrun.RecipeLoom, true, "Finalize", landingshed.EscalateStopPrefix + "the fixer needs a decision", true},
+		{shedrun.RecipeLoom, true, "Finalize", "a plain reason", false},
+		{shedrun.RecipeDarn, true, "Parent-Align", landingshed.EscalateStopPrefix + "the fixer needs a decision", true},
+		{shedrun.RecipeDarn, true, "Parent-Align", "a plain reason", false},
+		{shedrun.RecipePawl, false, "", "", false},
+		{"", false, "", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.recipe+"/"+tt.reason, func(t *testing.T) {
+			t.Parallel()
+			c := &loomCLI{runID: shedrun.SelfRunID, recipe: tt.recipe}
+			spec := c.specFor("status")
+			if (spec.RestepHold != nil) != tt.told {
+				t.Fatalf("specFor(status).RestepHold told = %v; want %v", spec.RestepHold != nil, tt.told)
+			}
+			if tt.told {
+				if got := spec.RestepHold(tt.producer, tt.reason); got != tt.want {
+					t.Errorf("RestepHold(%q, %q) = %v; want %v", tt.producer, tt.reason, got, tt.want)
+				}
+			}
+		})
 	}
 }

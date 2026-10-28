@@ -150,7 +150,6 @@ func LandingDeps(dir string) landingshed.Deps {
 		TaskBranch:       "task-branch",
 		ParentBranch:     "fixture-parent",
 		DescriptionPath:  summaryparser.Path(dir),
-		ConflictReroutes: true,
 		StencilsDir:      dir,
 		ParentName:       "fixture-parent-session",
 		ScratchDir:       filepath.Join(dir, "landing-scratch"),

@@ -70,7 +70,7 @@ Its stop report then carries the arbiter's verdict path and question: read the v
 - A landing-stop halt at Parent-Align or Finalize, or a reroute-cap halt at Finalize: see Landing halts below.
   Never a goto to Plan-Bouncer for either, since the plan does not change.
 - A parent lock held too long: `lym batten lock list` shows who holds each parent lock, and `lym batten lock release <branch>` frees one whose owner is alive but wedged.
-  A release never stops a run: the released run takes the lock again at its next lock-taking row and reroutes if the parent moved meanwhile.
+  A release never stops a run: the released run takes the lock again at its next lock-taking row and merges the moved parent at its next Finalize.
 - A design call the child cannot make, in an escalation that is not a review escalation: decide it and record it with `lym loom decision add`; a review escalation never takes this bullet and follows the hand-on bullet or the fault paragraph below.
   A design call that amends the approved plan is recorded with `--amends-plan`, as Fixing a run says, never by a card edit.
 - An escalation naming a peer run: classify each as a hand-on or a fault first, and investigate a fault as a stop.
@@ -124,13 +124,14 @@ A brief for a non-fork agent that runs `lym gate test` carries a copy of the gat
 
 A run lands with no orch turn: Parent-Align and Finalize fix their own merge and test failures with the merge fixer, and no pull request waits for an approval.
 Finalize takes the parent lock first, syncs the task branch with main, squashes it onto main, marks the board task done and pushes main.
-A parent that moved since Parent-Align, a loom conflict or a merge too large to land sends the run back to Parent-Align by itself.
+A parent that moved since Parent-Align, a conflict or a large merge no longer sends the run back: Finalize merges the parent in place, resolves a conflict under the lock and gates the merged tree.
 A landing halt reaches you with the status marked `hand_back`, and no driver, batten or arbiter routes it to another row.
-- A landing-stop halt at Parent-Align or Finalize means the fixer spent its cap, failed, made a change no review on the way back can see, escalated a decision for `lym loom decision add`, or found its attempt record undecodable.
+- A landing-stop halt at Parent-Align or Finalize means the fixer spent its cap, failed, made a change no review on the way back can see, on a pawl run escalated a decision, or found its attempt record undecodable.
   The halt's reason says which, and names the commits the fixer kept.
   For an undecodable attempt record the way forward is removing that record by the path the reason names, which grants the entry a fresh cap.
   Read the commits, decide with the operator what the run needs, then `lym loom resume` in the task worktree.
-- A reroute-cap halt at Finalize means a parent that keeps moving, or a fixer that keeps failing to clear the gate within its caps; read the cause from the halt's reason.
+- On a loom or darn run a fixer that escalated a decision halts with the landing-escalate prefix instead, and the arbiter judges it first, so it reaches you only as the arbiter's hand-on; record the deciding decision with `lym loom decision add`, then `lym loom resume`.
+- A reroute-cap halt at Finalize means a fixer that keeps failing to clear the gate within its caps; read the cause from the halt's reason.
 After a run lands, amend the board entries it superseded.
 
 ## After landing

@@ -43,6 +43,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/frictionengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -342,6 +343,10 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 		spec.Hooks.AfterInterrupt = c.loomAfterInterrupt
 		spec.Hooks.ConsumeAttempt = c.loomConsumeAttempt
 		spec.GotoGuard = c.settledGuard()
+	}
+	if c.recipe == shedrun.RecipeLoom || c.recipe == shedrun.RecipeDarn {
+		// A fixer escalate halt goes to the arbiter first on loom and darn runs, so a driver's build re-launch leaves it alone.
+		spec.RestepHold = landingshed.EscalateHalt
 	}
 	spec.Routing = c.routing
 

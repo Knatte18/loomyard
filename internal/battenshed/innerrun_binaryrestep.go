@@ -50,7 +50,7 @@ func restepStopKey(status shedengine.Status) string {
 
 // binaryRestep re-steps a halted driverless go child once per halt and build, through the child's bootstrap.
 // It acts only when every condition holds:
-// the child is blocked or failed, is not a landing halt that deps.HandBack marks for the orch, and its reed state holds no driver strand;
+// the child is blocked or failed, is not a landing halt, decision halt or loom or darn escalate halt that deps.HandBack marks, and its reed state holds no driver strand;
 // neither its run lock nor its driver lock is held;
 // the on-disk build differs from the child's last step's, and the task pair has no uncommitted path outside the run's records;
 // and the marker does not already name this halt and this build.

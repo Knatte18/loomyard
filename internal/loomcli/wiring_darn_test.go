@@ -15,7 +15,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
@@ -55,19 +54,12 @@ func TestWire_DarnRecipe(t *testing.T) {
 				}
 			}
 		}
-		// envkit.NilSeams skips ReviewInput through nilLegal, so a direct check pins that wireDarn tells it the overlap note Finalize writes.
+		// envkit.NilSeams skips ReviewInput through nilLegal, so a direct check pins that a darn seed keeps the shared wiring's seam, which answers not found since darn has no Parent-Align report.
 		if c.env.ReviewInput == nil {
 			t.Fatal("ReviewInput is nil after wire() of a darn seed; want it told")
 		}
 		if path, _, found, err := c.env.ReviewInput(); err != nil || found {
-			t.Errorf("ReviewInput() before a reroute = %q, %v, %v; want not found, nil", path, found, err)
-		}
-		notePath := landingshed.OverlapNotePath(loomengine.LoomScratchDir(loc))
-		if err := landingshed.WriteOverlapNote(notePath, landingshed.MergeRecord{ParentBranch: "main", MergedTip: "p1"}, []string{"b.go"}); err != nil {
-			t.Fatalf("WriteOverlapNote() = %v; want nil", err)
-		}
-		if path, _, found, err := c.env.ReviewInput(); err != nil || !found || path != notePath {
-			t.Errorf("ReviewInput() after a reroute = %q, %v, %v; want %q, found, nil", path, found, err, notePath)
+			t.Errorf("ReviewInput() = %q, %v, %v; want not found, nil", path, found, err)
 		}
 		if c.env.VerifyMergeBase == nil {
 			t.Error("c.env.VerifyMergeBase is nil after wire() of a darn seed; want the merge base reader")

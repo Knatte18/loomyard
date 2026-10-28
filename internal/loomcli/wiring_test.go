@@ -1045,18 +1045,18 @@ func TestWire_LanguageSkills(t *testing.T) {
 	}
 }
 
-// TestLoomRerouteCapWayForward_IsRowNeutral proves the reroute-cap clause serves every row's cap halt: it names the resume verb, the parent-branch cause and the plan amendment route of a Webster plan conflict.
+// TestLoomRerouteCapWayForward_IsRowNeutral proves the reroute-cap clause serves every row's cap halt: it names the resume verb and the plan amendment route of a Webster plan conflict.
 func TestLoomRerouteCapWayForward_IsRowNeutral(t *testing.T) {
 	t.Parallel()
 
-	for _, want := range []string{`lym loom resume`, "parent branch has settled", "--amends-plan", "lym loom goto --to Plan-Burler-Review"} {
+	for _, want := range []string{`lym loom resume`, "--amends-plan", "lym loom goto --to Plan-Burler-Review"} {
 		if !strings.Contains(loomRerouteCapWayForward, want) {
 			t.Errorf("loomRerouteCapWayForward = %q; want it to contain %q", loomRerouteCapWayForward, want)
 		}
 	}
 }
 
-// TestLoomRerouteCapWayForward proves a loom shed that reroutes Finalize past the cap halts blocked at Finalize with the told clause, which names the parent-branch cause, the spent fixer cap and the over-cap fixer change, each with its way forward.
+// TestLoomRerouteCapWayForward proves a loom shed that reroutes Finalize past the cap halts blocked at Finalize with the told clause, which names the spent fixer cap and the over-cap fixer change, each with its way forward.
 func TestLoomRerouteCapWayForward(t *testing.T) {
 	t.Parallel()
 
@@ -1096,7 +1096,6 @@ func TestLoomRerouteCapWayForward(t *testing.T) {
 		t.Errorf("Run() reason = %q; want it to start with %q", res.Reason, shedengine.ReasonRerouteCapReached)
 	}
 	for _, want := range []string{
-		"for a parent-branch reroute, once the parent branch has settled",
 		"for a fixer whose attempts are spent, once the failing tests are fixed on the task branch",
 		"for a fixer whose change is over the caps, once the fixer's commits are reviewed and fixed on the task branch",
 		`run "lym loom resume"`,

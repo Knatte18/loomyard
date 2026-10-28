@@ -235,8 +235,6 @@ func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, fri
 		return loomrecipe.DarnRouting(budgets)
 	})
 	c.env.Darn = darnDeps(location, c.runID)
-	// The overlap note Finalize writes on a large-merge reroute is the Code-Bouncer's review input.
-	c.env.ReviewInput = overlapNoteInput(loomengine.LoomScratchDir(location))
 	// The history seam turns the Darn-Write row's "discussion" gate into the darn gate, whose commit snapshots the board entry the perch reads.
 	c.env.DiscussionHistory = discussionHistory(location)
 	c.env.CommitDiscussion = func() error { return commitDarnDiscussion(location) }

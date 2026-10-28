@@ -14,7 +14,7 @@
 // A running shed also watches the land request's directory, so a request wakes Beam-Await at once.
 // Beam-Describe writes the change description from the beam's board entry and the commits the beam adds over the parent branch its pair records.
 // The perch's budget is `loom.yaml`'s Code-Review one, and a budget of 0 turns Parent-Align's review off as for a loom run.
-// Its Finalize reads the hub's `finalize` gate key over the whole merged tree, lets a large merge go on to the gate in place of a reroute, and halts for the orch on a fixer that is spent or over its caps.
+// Its Finalize reads the hub's `finalize` gate key over the whole merged tree and halts for the orch on a fixer that is spent or over its caps.
 // A land check backstops the re-check: Finalize halts, behind its own prefix, while an open member or a pair forked from the beam still works, reading `pawlLandBlockers` and naming the beam's parent worktree as where a cancel runs.
 //
 // # Start
