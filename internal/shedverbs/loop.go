@@ -54,6 +54,8 @@ type LoopSpec struct {
 	StopFiles func(traceID string) (traceCopy, stderr string)
 	// TraceFiles lists the trace files of the child that ran under traceID, oldest first.
 	TraceFiles func(traceID string) ([]string, error)
+	// LoopTraceFile names the loop process's own trace file, which holds a child start's failure and is the trace file of an interrupted stop whose child left no trace file and no stderr; nil names none.
+	LoopTraceFile func() string
 	// Runner starts a child step; nil selects the production runner, which ties the child to the loop.
 	Runner ChildRunner
 	// ReadStatus is the read of the status file at the top of each iteration; nil selects readStatusAt.
@@ -304,6 +306,9 @@ func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out 
 		} else {
 			traceFile = interruptedTraceFile(loop, res.traceID)
 		}
+		if traceFile == "" && loop.LoopTraceFile != nil {
+			traceFile = loop.LoopTraceFile()
+		}
 	case LoopStopError, LoopStopBusy:
 		errText, _ = res.full["error"].(string)
 		transient, _ = res.full["transient"].(string)
@@ -417,15 +422,19 @@ func runChild(ctx context.Context, spec *Spec, argv []string, traceID string, id
 	if runner == nil {
 		runner = procChildRunner
 	}
-	child, err := runner(ctx, ChildRequest{
+	child, tries, err := startChild(ctx, loop, runner, ChildRequest{
 		Argv:       append([]string{loop.Executable}, argv...),
 		Env:        childEnvironment(traceID),
 		Stdout:     &stdout,
 		StderrPath: stderrPath,
-	})
+	}, traceID)
 	if err != nil {
 		logger.Warn("shed: loop child did not start", "trace_id", traceID, "error", err.Error())
-		return childResult{traceID: traceID, cause: "start-failed: " + err.Error()}
+		cause := fmt.Sprintf("start-failed after %d tries: %s", tries, err.Error())
+		if proc.IsSpawnBusy(err) {
+			cause += "; the executable was open for writing, as while a deploy replaces it in place"
+		}
+		return childResult{traceID: traceID, cause: cause}
 	}
 	record(child.Record())
 	now := loop.Now
