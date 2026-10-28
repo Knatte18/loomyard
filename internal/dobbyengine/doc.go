@@ -85,6 +85,10 @@
 //   - A task waits on the board as `draft` until released, and dobby starts it from an empty status.
 //     It starts a task when the entry is a task whose dependencies are all done, its parent is this dobby's worktree, no other machine owns it, and no pause entry covers the hub or the slug.
 //     Each tick reads the local board, which a write of `board.json` and the probe tick both cause, and starts each ready task while fewer than `max_runs` runs it drives are in flight: halted runs count, done runs, runs recorded owned elsewhere and pawl runs with no landing hold do not, and `max_runs: 0` starts nothing.
+//   - Right before each start, dobby reads the cgroup task limit it sits under through Deps.TaskLimit, the level of its own cgroup ancestry with the fewest free tasks, such as the user slice; while fewer than beam.yaml's `task_headroom` tasks are free, the tick starts no task.
+//     A held task gets no refused-start record, notice or backoff and is tried on the next tick; the first held start of an episode logs `hold starts: <current> of <max> tasks in <cgroup>, below task_headroom <n>` and the first start let through after it logs `starts resume: …`, the episode kept in process only.
+//     `task_headroom: 0`, a nil seam and a limit that does not read, as on Windows or a cgroup v1 host, hold nothing.
+//     Bound: the hold only delays starts, never a pass of a run already started, and a start goes within the idle timer's minute of the headroom returning; first passes fork little at their start, so starts in one tick or by several dobbies can each pass the check before the earlier ones grow.
 //   - Starting is the run's first pass, a full pass, which claims the task as batten does; a slug with a pass in flight is never started twice.
 //     A first pass refused for a covering pause is no refused start: no notice, no marker and no backoff, and the start waits for the lift.
 //     Any other first pass that exits non-zero and leaves no status file, a refusal as owned elsewhere included, is a refused start: one notice per refusal text, and a retry from one probe interval, doubling up to an hour, or at once when the entry changes.
@@ -125,7 +129,7 @@
 //   - The runs are the listed ones that are not done, each with batten's state and producer, a pass in flight while its driver lock is held, and its last pass exit, owed full pass, owner mark and failing count from the state record.
 //   - A task waits while it is released to the worktree, a task with an empty status whose parent is the worktree, and not started.
 //     Its reasons are the start step's own conditions: the dependencies not done, another machine's ownership, a covering pause, a refused start whose backoff has not run out for the entry as it reads now, and `max_runs`.
-//     The `max_runs` reason falls, in board order as the start step walks, on the tasks nothing else holds once the runs that take a slot fill it; a task with no reason starts on the dobby's next tick.
+//     The `max_runs` reason falls, in board order as the start step walks, on the tasks nothing else holds once the runs that take a slot fill it; a task with no reason starts on the dobby's next tick unless the task-limit hold stands, which the view does not read and the dobby log records.
 //   - Bound: a first pass in flight that has left no status file is in no file, so its task reads as ready and its slot as free until the status appears.
 //
 // Told-geometry tier: the package takes every absolute path from its caller and imports neither internal/lymcwd nor any CLI package, per PATTERN-cwd-resolution.

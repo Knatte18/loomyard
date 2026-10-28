@@ -99,6 +99,9 @@ type Deps struct {
 	Tasks func() ([]TaskView, error)
 	// LoadConfig loads beam.yaml over the dobby's worktree layer stack.
 	LoadConfig func() (Config, error)
+	// TaskLimit reads the cgroup task limit the dobby sits under, `proc.ReadTaskLimit` in production; found is false where none reads.
+	// A nil TaskLimit holds no start.
+	TaskLimit func() (limit proc.TaskLimit, found bool)
 	// StatusExists reports whether a first pass left batten's status file for slug.
 	StatusExists func(slug string) (bool, error)
 	// PauseCovers reports whether a live pause entry covers the hub or slug.
@@ -261,6 +264,8 @@ type daemon struct {
 	// tickFailLogged and ownerUnreadable report whether the standing failure episode of the ticks or the owner read has logged its line.
 	tickFailLogged  bool
 	ownerUnreadable bool
+	// taskLimitHeld reports whether the cgroup task limit held the last start the start step tried.
+	taskLimitHeld bool
 
 	sleepWatch pauserecord.SleepWatch
 	owesAll    bool

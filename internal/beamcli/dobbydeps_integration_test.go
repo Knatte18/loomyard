@@ -1,6 +1,6 @@
 //go:build tier1
 
-// dobbydeps_integration_test.go pins the seams hubDobbyDeps fills differently for a beam's dobby and the prime's, over a hubforge hub.
+// dobbydeps_integration_test.go pins the seams hubDobbyDeps fills, those that differ between a beam's dobby and the prime's and those it fills for both, over a hubforge hub.
 
 package beamcli
 
@@ -41,5 +41,13 @@ func TestHubDobbyDeps_PrimeTidyShuttle(t *testing.T) {
 	}
 	if primeDeps.PrimeTidyShuttle != nil {
 		t.Errorf("prime PrimeTidyShuttle = %#v; want nil", primeDeps.PrimeTidyShuttle)
+	}
+
+	// The seam reads the host's real cgroup, so it is checked for being filled and never called.
+	if beamDeps.TaskLimit == nil {
+		t.Errorf("beam TaskLimit = nil; want the task-limit reader")
+	}
+	if primeDeps.TaskLimit == nil {
+		t.Errorf("prime TaskLimit = nil; want the task-limit reader")
 	}
 }

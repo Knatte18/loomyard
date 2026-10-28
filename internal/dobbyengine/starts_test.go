@@ -1,13 +1,16 @@
 //go:build tier0
 
-// starts_test.go pins the start condition of a board task and the start step's cap, refusal notices and backoff.
+// starts_test.go pins the start condition of a board task and the start step's cap, task-limit hold, refusal notices and backoff.
 
 package dobbyengine
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/proc"
 )
 
 func TestReadyToStart(t *testing.T) {
@@ -300,4 +303,110 @@ func TestStartReady_RefusalsAndBackoff(t *testing.T) {
 			t.Errorf("notices after the claim and the same text again = %d; want it noticed again, 3", len(h.fake.notices))
 		}
 	})
+}
+
+func TestStartReady_TaskLimitHold(t *testing.T) {
+	t.Parallel()
+	near := proc.TaskLimit{Current: 2997, Max: 3000, Cgroup: "/user.slice/user-1000.slice"}
+	free := proc.TaskLimit{Current: 1200, Max: 3000, Cgroup: "/user.slice/user-1000.slice"}
+
+	t.Run("a start waits while the headroom is below task_headroom, logged once, and goes once it returns", func(t *testing.T) {
+		t.Parallel()
+		h := newPassHarness(t)
+		lines := h.recordLog()
+		h.fake.taskHeadroom = 500
+		h.fake.limit, h.fake.limitFound = near, true
+		h.fake.tasks = []TaskView{readyTask("a"), readyTask("b")}
+
+		h.tick(true)
+		h.tick(true)
+		if len(h.fake.spawned) != 0 {
+			t.Fatalf("first passes under the hold = %+v; want none", h.fake.spawned)
+		}
+		if starts := h.stateRecord().Starts; len(starts) != 0 {
+			t.Errorf("start records under the hold = %+v; want none", starts)
+		}
+		want := []string{"hold starts: 2997 of 3000 tasks in /user.slice/user-1000.slice, below task_headroom 500"}
+		if !slices.Equal(*lines, want) {
+			t.Fatalf("log lines under the hold = %q; want %q", *lines, want)
+		}
+
+		h.fake.limit = free
+		h.tick(true)
+		if got := h.fake.spawned; len(got) != 2 {
+			t.Errorf("first passes once the headroom returned = %+v; want both tasks", got)
+		}
+		want = append(want, "starts resume: 1200 of 3000 tasks in /user.slice/user-1000.slice", "start a", "start b")
+		if !slices.Equal(*lines, want) {
+			t.Errorf("log lines = %q; want %q", *lines, want)
+		}
+	})
+
+	t.Run("a hold ended by task_headroom 0 logs the resume without a reading", func(t *testing.T) {
+		t.Parallel()
+		h := newPassHarness(t)
+		lines := h.recordLog()
+		h.fake.taskHeadroom = 500
+		h.fake.limit, h.fake.limitFound = near, true
+		h.fake.tasks = []TaskView{readyTask("a")}
+		h.tick(true)
+		h.fake.taskHeadroom = 0
+		h.tick(true)
+		want := []string{"hold starts: 2997 of 3000 tasks in /user.slice/user-1000.slice, below task_headroom 500", "starts resume: no task limit applies", "start a"}
+		if !slices.Equal(*lines, want) {
+			t.Errorf("log lines = %q; want %q", *lines, want)
+		}
+	})
+
+	t.Run("the limit is read right before each start, so a reading that turns near holds the next task", func(t *testing.T) {
+		t.Parallel()
+		h := newPassHarness(t)
+		lines := h.recordLog()
+		h.fake.taskHeadroom = 500
+		h.fake.tasks = []TaskView{readyTask("a"), readyTask("b")}
+		reads := 0
+		h.d.deps.TaskLimit = func() (proc.TaskLimit, bool) {
+			reads++
+			if reads == 1 {
+				return free, true
+			}
+			return near, true
+		}
+
+		h.tick(true)
+		if got := h.fake.spawned; len(got) != 1 || got[0].slug != "a" {
+			t.Errorf("first passes = %+v; want only the first task", got)
+		}
+		want := []string{"start a", "hold starts: 2997 of 3000 tasks in /user.slice/user-1000.slice, below task_headroom 500"}
+		if !slices.Equal(*lines, want) {
+			t.Errorf("log lines = %q; want %q", *lines, want)
+		}
+	})
+
+	tests := []struct {
+		name         string
+		taskHeadroom int
+		limitFound   bool
+		nilSeam      bool
+	}{
+		{"TaskHeadroomZeroHoldsNothing", 0, true, false},
+		{"AnUnreadLimitHoldsNothing", 500, false, false},
+		{"ANilSeamHoldsNothing", 500, true, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			h := newPassHarness(t)
+			h.fake.taskHeadroom = tt.taskHeadroom
+			h.fake.limit, h.fake.limitFound = near, tt.limitFound
+			if tt.nilSeam {
+				h.d.deps.TaskLimit = nil
+			}
+			h.fake.tasks = []TaskView{readyTask("a")}
+			h.tick(true)
+			if len(h.fake.spawnsOf("a")) != 1 {
+				t.Errorf("first passes = %+v; want the task started", h.fake.spawned)
+			}
+		})
+	}
 }

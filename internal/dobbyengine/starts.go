@@ -1,4 +1,4 @@
-// starts.go starts the beam's ready tasks from the board: the start condition, the cap on runs in flight, and the notice and backoff of a refused first pass.
+// starts.go starts the beam's ready tasks from the board: the start condition, the cap on runs in flight, the hold under the cgroup task limit, and the notice and backoff of a refused first pass.
 
 package dobbyengine
 
@@ -10,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/proc"
 )
 
 // startBackoffCeiling is the longest wait between two attempts to start a refused task.
@@ -52,6 +53,7 @@ func readyToStart(task TaskView, here string, covered bool) bool {
 // Starting is the run's first pass, a full pass, which claims the task as batten does; a slug with a pass in flight is never started twice.
 // The runs counted are the ones listed for this tick, halted ones included and done ones, ones recorded owned elsewhere and pawl runs without their landing hold not, plus first passes that have not yet left a status file.
 // A task whose backoff has not run out waits, unless its entry changed since the refusal.
+// While the cgroup task limit leaves fewer than task_headroom tasks free, the step starts no task.
 func (d *daemon) startReady(ctx context.Context, now time.Time) error {
 	cfg, err := d.deps.LoadConfig()
 	if err != nil {
@@ -94,6 +96,9 @@ func (d *daemon) startReady(ctx context.Context, now time.Time) error {
 		if now.Before(attempt.NextTry) {
 			continue
 		}
+		if d.taskLimitHolds(cfg.TaskHeadroom, now) {
+			break
+		}
 		running++
 		d.startFirstPass(task, now)
 	}
@@ -101,6 +106,28 @@ func (d *daemon) startReady(ctx context.Context, now time.Time) error {
 		d.busy = true
 	}
 	return nil
+}
+
+// taskLimitHolds reports whether the cgroup task limit holds a start: fewer than headroom tasks are free under it, so a new run could take the host to where every fork fails.
+// A headroom of 0, a nil TaskLimit seam and a limit that does not read hold nothing.
+// The first held start of an episode logs the reading, and the first start let through after it logs the resume.
+func (d *daemon) taskLimitHolds(headroom int, now time.Time) bool {
+	var limit proc.TaskLimit
+	found := false
+	if headroom > 0 && d.deps.TaskLimit != nil {
+		limit, found = d.deps.TaskLimit()
+	}
+	held := found && limit.Headroom() < headroom
+	switch {
+	case held && !d.taskLimitHeld:
+		d.logLine(now, fmt.Sprintf("hold starts: %d of %d tasks in %s, below task_headroom %d", limit.Current, limit.Max, limit.Cgroup, headroom))
+	case !held && d.taskLimitHeld && found:
+		d.logLine(now, fmt.Sprintf("starts resume: %d of %d tasks in %s", limit.Current, limit.Max, limit.Cgroup))
+	case !held && d.taskLimitHeld:
+		d.logLine(now, "starts resume: no task limit applies")
+	}
+	d.taskLimitHeld = held
+	return held
 }
 
 // runsInFlight counts the runs this dobby drives that take a slot: the listed ones not recorded owned elsewhere, and first passes that left no run yet.
