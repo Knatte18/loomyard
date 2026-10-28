@@ -1,0 +1,12 @@
+AGENTS.md instruction blocks per rollout (handler and its three forks hold one each):
+STB/stb1 1
+STB/stb1 1
+STB/stb1 1
+STB/stb1 1
+FOR/for1 1
+FOR/for1 1
+FOR/for1 1
+FOR/for1 1
+
+stb1 fresh_total=126256 handler_fresh=86525 handler_wall=324 codex_exec_wall=327 max_fork_cmds=3
+for1 fresh_total=188084 handler_fresh=117839 handler_wall=374 codex_exec_wall=377 max_fork_cmds=4
