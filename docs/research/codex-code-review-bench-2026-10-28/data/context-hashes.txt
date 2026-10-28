@@ -1,0 +1,23 @@
+CLAUDE.md of both snapshots and the AGENTS.md copy the Codex handler loaded:
+503b050e86fd77f16ea10b50500ae6dcbc779455b80cca00d57c21582488798d  FOR/work/CLAUDE.md
+503b050e86fd77f16ea10b50500ae6dcbc779455b80cca00d57c21582488798d  STB/work/CLAUDE.md
+503b050e86fd77f16ea10b50500ae6dcbc779455b80cca00d57c21582488798d  FOR/work/AGENTS.md
+503b050e86fd77f16ea10b50500ae6dcbc779455b80cca00d57c21582488798d  STB/work/AGENTS.md
+
+AGENTS.md instruction blocks per rollout (handler and its three forks hold one each):
+FOR/for1 1
+FOR/for1 1
+FOR/for1 1
+FOR/for1 1
+FOR/for2 1
+FOR/for2 1
+FOR/for2 1
+FOR/for2 1
+STB/stb1 1
+STB/stb1 1
+STB/stb1 1
+STB/stb1 1
+STB/stb2 1
+STB/stb2 1
+STB/stb2 1
+STB/stb2 1
