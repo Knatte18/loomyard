@@ -1,7 +1,7 @@
 //go:build tier0
 
 // main_test.go covers the production deploy's pieces — the dirty-tree refusal, the marketplace
-// parse, the plugin mirror, and the stray-binary report — plus -dev's destination and a
+// parse, the plugin mirror, the binary install and the stray-binary report — plus -dev's destination and a
 // source-level guard that the -ldflags -X path in run() still names a variable that actually exists
 // at internal/buildinfo, and a go.mod guard that lymMainPackage still names lym's main package.
 // Tests spawn no git, go build, or go env;
@@ -10,9 +10,11 @@
 package main
 
 import (
+	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -272,4 +274,88 @@ func declaresExportedVar(file *ast.File, name string) bool {
 		}
 	}
 	return false
+}
+
+// TestInstallBinary_RenameFailureRemovesTheBuild verifies a rename that fails leaves the target as it was and no temporary file behind.
+func TestInstallBinary_RenameFailureRemovesTheBuild(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	// A non-empty directory at the target makes the rename of the built file over it fail.
+	dest := filepath.Join(dir, "lym")
+	if err := os.MkdirAll(filepath.Join(dest, "keep"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	err := installBinary(dest, func(out string) error {
+		return os.WriteFile(out, []byte("new"), 0o755)
+	})
+
+	if err == nil {
+		t.Fatal("installBinary() error = nil; want the rename failure")
+	}
+	if _, statErr := os.Stat(filepath.Join(dest, "keep")); statErr != nil {
+		t.Errorf("target after the failed rename: %v; want it untouched", statErr)
+	}
+	entries, readErr := os.ReadDir(dir)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if len(entries) != 1 || entries[0].Name() != "lym" {
+		t.Errorf("install directory = %v; want the target alone", entries)
+	}
+}
+
+// TestInstallBinary_RenamesTheBuildOverTheTarget verifies a deploy never rewrites the installed binary in place:
+// a reader holding the old file keeps its content, and the install directory ends with the target alone.
+func TestInstallBinary_RenamesTheBuildOverTheTarget(t *testing.T) {
+	t.Parallel()
+	buildErr := errors.New("go build: exit status 1")
+	tests := []struct {
+		name        string
+		buildErr    error
+		wantErr     error
+		wantContent string
+	}{
+		{"BuildSucceeds", nil, nil, "new"},
+		{"BuildFails", buildErr, buildErr, "old"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			dest := filepath.Join(dir, "lym")
+			if err := os.WriteFile(dest, []byte("old"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			held, err := os.Open(dest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { held.Close() })
+
+			err = installBinary(dest, func(out string) error {
+				if err := os.WriteFile(out, []byte("new"), 0o755); err != nil {
+					return err
+				}
+				return tt.buildErr
+			})
+
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("installBinary() error = %v; want %v", err, tt.wantErr)
+			}
+			if got, _ := os.ReadFile(dest); string(got) != tt.wantContent {
+				t.Errorf("target content = %q; want %q", got, tt.wantContent)
+			}
+			if got, _ := io.ReadAll(held); string(got) != "old" {
+				t.Errorf("held old file content = %q; want \"old\", never rewritten in place", got)
+			}
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(entries) != 1 || entries[0].Name() != "lym" {
+				t.Errorf("install directory = %v; want the target alone", entries)
+			}
+		})
+	}
 }

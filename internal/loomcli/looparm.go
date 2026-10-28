@@ -48,11 +48,12 @@ func loopSpecFor(loc *lymcwd.Location, runID string, idle time.Duration, activit
 		StopFiles: func(traceID string) (string, string) {
 			return shedrun.StepTraceCopy(loc, runID, traceID), shedrun.StepStderr(loc, runID, traceID)
 		},
-		TraceFiles:  func(traceID string) ([]string, error) { return logger.TraceFilesFor(logger.TraceDir(), traceID) },
-		Executable:  executable,
-		IdleTimeout: idle,
-		Activity:    activity,
-		OnStart:     func() { registerRunProcess(loc, loc.WorktreeName, runproc.RoleLoop) },
+		TraceFiles:    func(traceID string) ([]string, error) { return logger.TraceFilesFor(logger.TraceDir(), traceID) },
+		LoopTraceFile: logger.TraceFile,
+		Executable:    executable,
+		IdleTimeout:   idle,
+		Activity:      activity,
+		OnStart:       func() { registerRunProcess(loc, loc.WorktreeName, runproc.RoleLoop) },
 		Pause: func(now time.Time) (pauserecord.Coverage, error) {
 			geometry, err := hubgeom.PauseGeometry(loc)
 			if err != nil {

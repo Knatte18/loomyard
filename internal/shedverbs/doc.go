@@ -36,7 +36,10 @@
 // error is a step that ended in an error, and interrupted a child that ended without an envelope; both write the status file failed while it still reads running.
 // An interrupted child's cause is its exit, its command line and an excerpt of its captured stderr: a Go crash's first lines when stderr holds one, and its last lines otherwise.
 // The stop names the row the status file names once the child exited, since a child that skipped gated rows moved the run on before it died,
-// and its trace file is the child's first trace file, or its captured stderr when it left none.
+// and its trace file is the child's first trace file, or its captured stderr when it left none, or the loop process's own trace file when it left neither.
+// A child start refused because the executable was open for writing, ETXTBSY, as while a deploy rewrites the lym binary in place, is tried again, five tries in all, waiting 100 ms before the first retry and doubling after through Spec.Loop.Sleep.
+// A child that never started is interrupted with the cause start-failed after <n> tries: <error>, which for ETXTBSY adds what the refusal means.
+// The loop process's own trace file, which Spec.Loop.LoopTraceFile names, holds the start failure of a child that never started.
 // The failed write comes before Hooks.AfterInterrupt, so the hook reads the status the stop leaves: a child that died before its resume write leaves a paused run paused.
 // interrupted is also the stop on the status read at an iteration's top, with the cause status-missing for an absent file and status-unreadable: <error> for an unreadable one.
 // A decode error stops at once, since the file stays undecodable to this binary; any other read error gets one re-read through the same re-step the transient errors share, and stops when that fails or the re-step is already used.

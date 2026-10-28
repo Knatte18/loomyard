@@ -13,12 +13,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -670,6 +672,151 @@ func TestLoop_InterruptedChildFillsTheErrorForm(t *testing.T) {
 			t.Errorf("error/children/restep = %v/%d/%v; want the read error stop after one child, with the re-step naming the child's failure", env["error"], len(fx.requests), restep)
 		}
 	})
+}
+
+func TestLoop_ChildStartRetriesABusyExecutable(t *testing.T) {
+	busy := &fs.PathError{Op: "fork/exec", Path: "lym-fake", Err: syscall.ETXTBSY}
+	const busyMeaning = "; the executable was open for writing, as while a deploy replaces it in place"
+	diesWithoutTrace := func(*loopFixture, string, ChildRequest) error { return errors.New("exit status 1") }
+	tests := []struct {
+		name      string
+		refusals  int
+		refusal   error
+		sleepErr  error
+		script    childScript
+		wantTries int
+		wantWaits []time.Duration
+		wantCause string
+		wantStop  LoopStop
+		// loopTrace is how the spec names the loop's own trace file: the real path, nil, or a function returning "".
+		loopTrace string
+		// wantTrace is the trace_file an interrupted stop records.
+		wantTrace string
+	}{
+		{
+			name:      "BusyThenStarted",
+			refusals:  2,
+			refusal:   busy,
+			wantTries: 3,
+			wantWaits: []time.Duration{100 * time.Millisecond, 200 * time.Millisecond},
+			wantStop:  LoopStopHalted,
+		},
+		{
+			name:      "BusyOnEveryTry",
+			refusals:  childStartBusyAttempts,
+			refusal:   busy,
+			wantTries: childStartBusyAttempts,
+			wantWaits: []time.Duration{100 * time.Millisecond, 200 * time.Millisecond, 400 * time.Millisecond, 800 * time.Millisecond},
+			wantCause: fmt.Sprintf("start-failed after %d tries: fork/exec lym-fake: text file busy%s", childStartBusyAttempts, busyMeaning),
+			wantStop:  LoopStopInterrupted,
+			loopTrace: "path",
+			wantTrace: "path",
+		},
+		{
+			name:      "WaitEndedBeforeTheLastTry",
+			refusals:  childStartBusyAttempts,
+			refusal:   busy,
+			sleepErr:  errors.New("context canceled"),
+			wantTries: 1,
+			wantWaits: []time.Duration{100 * time.Millisecond},
+			wantCause: "start-failed after 1 tries: fork/exec lym-fake: text file busy" + busyMeaning,
+			wantStop:  LoopStopInterrupted,
+			loopTrace: "path",
+			wantTrace: "path",
+		},
+		{
+			name:      "OtherStartErrorNotRetried",
+			refusals:  1,
+			refusal:   &fs.PathError{Op: "fork/exec", Path: "lym-fake", Err: syscall.ENOENT},
+			wantTries: 1,
+			wantCause: "start-failed after 1 tries: fork/exec lym-fake: no such file or directory",
+			wantStop:  LoopStopInterrupted,
+			loopTrace: "path",
+			wantTrace: "path",
+		},
+		{
+			name:      "StartedChildDiesWithoutTrace",
+			script:    diesWithoutTrace,
+			wantTries: 1,
+			wantCause: "exited: exit status 1; command: lym-fake",
+			wantStop:  LoopStopInterrupted,
+			loopTrace: "path",
+			wantTrace: "path",
+		},
+		{
+			name:      "NoLoopTraceFileNamed",
+			script:    diesWithoutTrace,
+			wantTries: 1,
+			wantCause: "exited: exit status 1; command: lym-fake",
+			wantStop:  LoopStopInterrupted,
+			loopTrace: "nil",
+		},
+		{
+			name:      "LoopTraceFileNamedEmpty",
+			script:    diesWithoutTrace,
+			wantTries: 1,
+			wantCause: "exited: exit status 1; command: lym-fake",
+			wantStop:  LoopStopInterrupted,
+			loopTrace: "empty",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			script := tt.script
+			if script == nil {
+				script = halting(shedengine.StateDone, "", 1)
+			}
+			fx := newLoopFixture(t, script)
+			tries := 0
+			fx.spec.Loop.Runner = func(ctx context.Context, req ChildRequest) (Child, error) {
+				tries++
+				if tries <= tt.refusals {
+					return nil, tt.refusal
+				}
+				return fx.run(ctx, req)
+			}
+			var waits []time.Duration
+			fx.spec.Loop.Sleep = func(_ context.Context, delay time.Duration) error {
+				waits = append(waits, delay)
+				return tt.sleepErr
+			}
+			loopTrace := filepath.Join(t.TempDir(), "loop-trace.log")
+			switch tt.loopTrace {
+			case "path":
+				fx.spec.Loop.LoopTraceFile = func() string { return loopTrace }
+			case "empty":
+				fx.spec.Loop.LoopTraceFile = func() string { return "" }
+			}
+			wantTrace := ""
+			if tt.wantTrace == "path" {
+				wantTrace = loopTrace
+			}
+			var hookCause, hookTrace string
+			fx.spec.Hooks.AfterInterrupt = func(_ context.Context, _, cause, file string) string {
+				hookCause, hookTrace = cause, file
+				return ""
+			}
+
+			env, _ := fx.execute()
+
+			if tries != tt.wantTries {
+				t.Errorf("child starts = %d; want %d", tries, tt.wantTries)
+			}
+			if !reflect.DeepEqual(waits, tt.wantWaits) {
+				t.Errorf("waits between starts = %v; want %v", waits, tt.wantWaits)
+			}
+			if stop := loopOf(t, env)["stop"]; stop != string(tt.wantStop) {
+				t.Errorf("loop stop = %v; want %s", stop, tt.wantStop)
+			}
+			if tt.wantStop != LoopStopInterrupted {
+				return
+			}
+			gotTrace, _ := env["trace_file"].(string)
+			if hookCause != tt.wantCause || hookTrace != wantTrace || gotTrace != wantTrace {
+				t.Errorf("AfterInterrupt cause/trace, envelope trace_file = %q/%q, %q; want %q and trace %q", hookCause, hookTrace, gotTrace, tt.wantCause, wantTrace)
+			}
+		})
+	}
 }
 
 func TestLoop_TransientRestepOnce(t *testing.T) {

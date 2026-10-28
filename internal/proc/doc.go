@@ -21,6 +21,7 @@
 //
 // IsSpawnAgain tells a process start the host refused for a temporary resource shortage, EAGAIN from fork or exec, from every other start failure.
 // NoteSpawnAgain records the time of each such refusal process-wide, and LastSpawnAgain reads it back, so a caller that sees a later failure can judge whether a host resource shortage preceded it.
+// IsSpawnBusy tells a start refused because the executable was open for writing, ETXTBSY, as while a deploy rewrites the binary in place.
 //
 // BuildServerOffEnv is the environment that keeps a .NET build from leaving MSBuild reuse nodes and the MSBuild server running after it exits;
 // reed exports it in every strand pane and `lym gate test` sets it for every run, so builds that parallel agents start leave no thread-holding servers behind.

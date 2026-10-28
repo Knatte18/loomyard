@@ -534,8 +534,9 @@ func battenLoopSpec(location *lymcwd.Location, slug string) shedverbs.LoopSpec {
 		StopFiles: func(traceID string) (string, string) {
 			return shedrun.StepTraceCopy(location, slug, traceID), shedrun.StepStderr(location, slug, traceID)
 		},
-		TraceFiles: func(traceID string) ([]string, error) { return logger.TraceFilesFor(logger.TraceDir(), traceID) },
-		Executable: executable,
+		TraceFiles:    func(traceID string) ([]string, error) { return logger.TraceFilesFor(logger.TraceDir(), traceID) },
+		LoopTraceFile: logger.TraceFile,
+		Executable:    executable,
 		OnStart: func() {
 			if err := runproc.Register(fabricengine.RunProcDir(location.HubPath), slug, runproc.SelfRecord(runproc.RoleLoop)); err != nil {
 				logger.Warn("battencli: could not register the loop process", "slug", slug, "error", err.Error())

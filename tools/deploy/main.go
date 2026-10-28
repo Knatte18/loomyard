@@ -3,6 +3,7 @@
 // Production is the default and is what update-plugins.sh / update-plugins.cmd run: it puts the checked-out, committed code into production in one step.
 // It refuses a dirty working tree or a HEAD that is not pushed to origin/main, mirrors every installed loomyard plugin's git-tracked files into the Claude Code plugin cache, and builds lym into the Go bin dir (`go env GOBIN`, else GOPATH/bin).
 // Nothing reaches production except through this step.
+// Every deploy installs lym by building it beside its target and renaming it over the target, so a process starting lym while it deploys never finds the file open for writing.
 // No pointer on origin records the deployed commit: each machine deploys on its own, so a shared one could not say what any one machine runs.
 //
 // -dev (deploy-dev / deploy-dev.cmd) builds the working tree as-is into <repoRoot>/.dev-bin (see
@@ -24,6 +25,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/Knatte18/loomyard/tools/internal/devbin"
@@ -77,16 +79,21 @@ func run(dev bool) error {
 	if dev {
 		ldflags = "-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev"
 	}
-	args := []string{"build", "-o", dest, "-ldflags", ldflags, "./cmd/lym"}
-	build := exec.Command("go", args...)
-	build.Dir = root
-	// lym links quarry's tree-sitter grammars through cgo, so pin CGO_ENABLED=1
-	// explicitly: an environment that has disabled cgo must fail here at the
-	// compiler rather than produce a binary silently missing that linkage.
-	build.Env = append(os.Environ(), "CGO_ENABLED=1")
-	build.Stdout, build.Stderr = os.Stdout, os.Stderr
-	if err := build.Run(); err != nil {
-		return fmt.Errorf("go build: %w", err)
+	err = installBinary(dest, func(out string) error {
+		build := exec.Command("go", "build", "-o", out, "-ldflags", ldflags, "./cmd/lym")
+		build.Dir = root
+		// lym links quarry's tree-sitter grammars through cgo, so pin CGO_ENABLED=1
+		// explicitly: an environment that has disabled cgo must fail here at the
+		// compiler rather than produce a binary silently missing that linkage.
+		build.Env = append(os.Environ(), "CGO_ENABLED=1")
+		build.Stdout, build.Stderr = os.Stdout, os.Stderr
+		if err := build.Run(); err != nil {
+			return fmt.Errorf("go build: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 
 	info, err := os.Stat(dest)
@@ -105,6 +112,22 @@ func run(dev bool) error {
 	}
 	for _, other := range otherLymBinaries(pathDirs, destDir, name, lymMainPackage) {
 		fmt.Printf("  WARNING: another %s on PATH: %s - remove it; production lym lives only in %s.\n", name, other, destDir)
+	}
+	return nil
+}
+
+// installBinary has build write the binary to a temporary file beside dest and renames it over dest, so a process starting or running the old binary never finds dest open for writing, which exec refuses with ETXTBSY.
+// The rename stays on dest's filesystem, where it replaces the directory entry at once and a running process keeps the old file.
+// A failed build or rename removes the temporary file and leaves dest as it was.
+func installBinary(dest string, build func(out string) error) error {
+	tmp := filepath.Join(filepath.Dir(dest), "."+filepath.Base(dest)+".deploy-"+strconv.Itoa(os.Getpid()))
+	if err := build(tmp); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, dest); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("install the built binary over %s: %w", dest, err)
 	}
 	return nil
 }
