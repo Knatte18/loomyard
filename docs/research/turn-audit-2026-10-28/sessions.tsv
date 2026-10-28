@@ -1,0 +1,214 @@
+slug	session	kind	role	turns	calls	single	zero	weight	m_runs	m_turns	m_saved_turns	m_weight	m_saved_weight	u_runs	u_turns	u_saved_turns	u_weight	u_saved_weight	edit_calls	edit_turns	first_edit_turn	reads_after_edit	switches	reedits	gate	testlint	validate	weight_after_first_edit	check_pairs	edit_pairs	edit_pair_weight
+claude-review-gaps	f173842b-3cee-47ff-aad4-5e27704f2009	main	darn	41	60	35	2	860799	5	12	7	174718	100763	5	12	7	174718	100763	17	3	35	1	3	15	0	0	2	269955	0	0	0
+creel-hook-channels-spike	e6f45b67-6038-497e-a3b2-2847e509ac7a	main	darn	44	49	38	2	546489	1	2	1	28440.6	11838.2	1	2	1	28440.6	11838.2	11	11	10	3	4	0	0	0	3	423630	1	2	22037.5
+creel-hook-delivery	063d366e-591e-4b29-9f54-9923536a8fb3	main	code-burler-fix	51	71	35	6	758664	5	22	17	287780	223868	4	22	18	287780	237838	22	8	11	18	9	7	5	3	0	651018	1	0	0
+creel-hook-delivery	agent-a2526c71955f48847	fork	code-burler-fix+fork	2	1	1	1	41872.2	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+creel-hook-delivery	agent-a62372ed932b62556	fork	code-burler-fix+fork	5	4	4	1	75361	0	0	0	0	0	1	2	1	27774.9	13648.4	1	1	2	2	1	0	0	0	0	60714.7	0	0	0
+creel-hook-delivery	agent-a934c7226b5c213ce	fork	code-burler-fix+fork	4	3	3	1	70486.1	0	0	0	0	0	1	2	1	37997.2	15306.4	0	0		0	0	0	0	0	0	0	0	0	0
+creel-hook-delivery	agent-af364b890447285e8	fork	code-burler-fix+fork	4	4	2	1	75178.3	0	0	0	0	0	0	0	0	0	0	1	1	2	1	1	0	0	0	0	48717	0	0	0
+creel-hook-delivery	12130a5b-46c1-42f6-82b5-f8094095bd2b	main	code-bouncer-seed	7	7	4	2	82279.6	0	0	0	0	0	0	0	0	0	0	1	1	6	0	1	0	0	0	0	32893.6	0	0	0
+creel-hook-delivery	42ba8e5e-9518-46c6-88b3-37f08d804775	main	code-bouncer-judge	6	7	2	2	59648.2	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	13990.4	0	0	0
+creel-hook-delivery	49df9c41-5459-4dff-9091-e8fa909fc8ed	main	code-burler-review	20	34	12	2	372932	2	9	7	136518	99174.8	3	11	8	149302	104610	5	2	18	0	1	0	0	0	0	112988	0	0	0
+creel-hook-delivery	agent-a3d5617c55caab4ff	fork	code-burler-review+fork	4	4	2	1	90382.8	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+creel-hook-delivery	agent-ad0fcde84539aa80d	fork	code-burler-review+fork	5	5	3	1	76627	0	0	0	0	0	1	2	1	29832.4	11749.1	0	0		0	0	0	0	0	0	0	0	0	0
+creel-hook-delivery	agent-ad470030f5759d2a0	fork	code-burler-review+fork	4	3	3	1	60941.1	0	0	0	0	0	1	2	1	23649.3	13254	0	0		0	0	0	0	0	0	0	0	0	0
+creel-hook-delivery	agent-afec02d9fa0686e21	fork	code-burler-review+fork	3	2	2	1	56424.7	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+creel-hook-delivery	7dbfc300-f269-4603-a1fe-8bce211f74be	main	code-bouncer-seed	8	8	5	2	71870	1	2	1	16188.6	6883.85	1	2	1	16188.6	6883.85	1	1	7	0	1	0	0	0	0	14638.9	0	0	0
+creel-hook-delivery	97c1cf10-f7bd-4b8a-9b8f-48dc8c6ea708	main	code-bouncer-judge	6	7	2	2	67810.5	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	18334.2	0	0	0
+creel-hook-delivery	9f713339-38bd-4178-a986-15562b2d8c35	main	darn	134	148	120	2	3.43986e+06	14	56	42	1.23236e+06	908300	12	62	50	1343277	1.04031e+06	37	35	40	39	33	1	5	17	2	2.74875e+06	8	12	370992
+creel-hook-delivery	aa59e131-cc04-427a-a49a-3978e11df7ae	main	code-burler-review	14	25	4	5	203637	0	0	0	0	0	1	2	1	12779.8	5438.3	6	2	6	2	3	0	0	0	0	138015	0	0	0
+creel-hook-delivery	agent-ab678cd557cbf3c3d	fork	code-burler-review+fork	3	2	2	1	30343.6	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+creel-hook-delivery	agent-ae205668c99834a9f	fork	code-burler-review+fork	2	1	1	1	21310.3	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+creel-hook-delivery	agent-aec5f06bcbeb63047	fork	code-burler-review+fork	2	1	1	1	18339.1	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+creel-hook-delivery	agent-afbe4f8baf4dbadd8	fork	code-burler-review+fork	2	1	1	1	38561.6	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+creel-hook-delivery	bbcbcfec-d962-4830-968f-eaff825dd5b8	main	describe	7	5	5	2	60576.3	0	0	0	0	0	1	2	1	11781	5251.15	0	0		0	0	0	0	0	2	0	1	0	0
+creel-hook-delivery	ef2146d6-74d7-4716-bacc-0763536c4820	main	describe	8	6	6	2	76189.1	0	0	0	0	0	1	3	2	22954.8	16179.8	0	0		0	0	0	0	0	2	0	1	0	0
+darn-drift-await-row	09451609-02dc-49ad-be5b-35e02fdb6acd	main	code-bouncer-judge	6	7	2	2	63272.4	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	13894.7	0	0	0
+darn-drift-await-row	3fd9a173-5a27-4290-855d-f6f541270310	main	describe	7	5	5	2	60969.3	0	0	0	0	0	1	3	2	19978.8	13464.1	0	0		0	0	0	0	0	1	0	0	0	0
+darn-drift-await-row	4da7f227-c1af-4c41-bf71-d4a2b76800e5	main	code-bouncer-judge	6	7	2	2	64827.1	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	16321.8	0	0	0
+darn-drift-await-row	6036423d-a6f4-4861-83d0-245584764b8c	main	code-burler-fix	15	20	4	6	162756	0	0	0	0	0	0	0	0	0	0	3	2	6	1	3	0	0	0	0	109418	0	0	0
+darn-drift-await-row	agent-a28c92337cce79bf0	fork	code-burler-fix+fork	4	3	3	1	29291.3	0	0	0	0	0	1	2	1	13777.4	6110.1	0	0		0	0	0	0	0	0	0	0	0	0
+darn-drift-await-row	agent-a6f5d86eec78251f6	fork	code-burler-fix+fork	4	3	3	1	28462.3	1	2	1	13755.4	6626.8	1	2	1	13755.4	6626.8	0	0		0	0	0	0	0	0	0	0	0	0
+darn-drift-await-row	agent-aaf6a333676a2d6e8	fork	code-burler-fix+fork	3	2	2	1	21329.5	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+darn-drift-await-row	agent-acd525641342c8a93	fork	code-burler-fix+fork	5	4	4	1	39125.7	1	3	2	20949.5	13088.5	1	3	2	20949.5	13088.5	0	0		0	0	0	0	0	0	0	0	0	0
+darn-drift-await-row	709abeda-9ec4-491d-bceb-cfd5694b13f1	main	code-burler-review	26	31	16	6	396537	2	11	9	154285	136344	2	13	11	167042	149005	2	2	24	0	1	0	0	0	0	67078.1	0	1	21602.5
+darn-drift-await-row	agent-a04675a3c5f742686	fork	code-burler-review+fork	2	1	1	1	35236.8	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+darn-drift-await-row	agent-a377dcf1d64d23c41	fork	code-burler-review+fork	2	1	1	1	44486.8	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+darn-drift-await-row	agent-a3e2270780bedda7c	fork	code-burler-review+fork	3	2	2	1	51577.5	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+darn-drift-await-row	agent-ac034cf401ef8f37c	fork	code-burler-review+fork	4	3	3	1	56889.9	0	0	0	0	0	1	2	1	27325.9	14267.6	0	0		0	0	0	0	0	0	0	0	0	0
+darn-drift-await-row	7e3aac85-8f8e-49de-a8c7-b714596a08f3	main	code-bouncer-seed	9	9	6	2	75487.2	1	3	2	20051.2	13221.3	1	3	2	20051.2	13221.3	1	1	8	0	1	0	0	0	0	14257.2	0	0	0
+darn-drift-await-row	88dac2d2-f3e4-4b1c-a012-473670f7e36f	main	code-burler-review	16	31	8	2	246219	1	3	2	31546.5	23296	2	5	3	44292.7	28727.3	5	1	15	0	1	0	0	1	0	64942.5	0	0	0
+darn-drift-await-row	agent-a09ea242bfd756494	fork	code-burler-review+fork	4	3	3	1	62195.2	0	0	0	0	0	1	2	1	35678.9	26886.3	0	0		0	0	0	0	0	0	0	0	0	0
+darn-drift-await-row	agent-a5611391c51f0343c	fork	code-burler-review+fork	3	2	2	1	34049.6	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+darn-drift-await-row	agent-a5c481df9ee9a07a1	fork	code-burler-review+fork	4	3	3	1	50662.1	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+darn-drift-await-row	agent-ad2e4cb1c956c907d	fork	code-burler-review+fork	2	1	1	1	25945.2	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+darn-drift-await-row	cee10e40-aeaa-495e-a724-a61d1c60ffb9	main	code-bouncer-seed	6	5	3	2	54488	0	0	0	0	0	0	0	0	0	0	1	1	5	0	1	0	0	0	0	16639.5	0	0	0
+darn-drift-await-row	cee8bdc7-9331-420e-b197-c6492de64415	main	describe	7	5	5	2	60441.4	0	0	0	0	0	1	3	2	19756.8	13265.4	0	0		0	0	0	0	0	1	0	0	0	0
+darn-drift-await-row	ed16c0dd-a89b-436c-9e7e-c0459e40c450	main	darn	75	78	71	2	1.26161e+06	6	21	15	317871	221051	7	27	20	390646	275558	21	21	22	18	17	0	5	8	1	975543	2	10	169245
+dobby-and-adopt-hardening	12994fda-fc8b-47be-8f3b-c4eb629c295b	main	discussion-burler-review	26	34	17	2	433202	2	8	6	137515	108634	3	10	7	146786	113769	3	2	20	3	4	2	0	0	0	124760	0	0	0
+dobby-and-adopt-hardening	1b73a1cc-c2e9-4649-8435-7aac4738934b	main	plan-burler-review	81	85	76	2	2.32924e+06	13	57	44	1.58825e+06	1.25013e+06	5	64	59	1.68919e+06	1.54978e+06	5	3	75	1	3	0	0	0	3	357766	1	0	0
+dobby-and-adopt-hardening	agent-a14b35a48537127c1	fork	plan-burler-review+fork	4	3	3	1	160287	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-a374bbdd277cadbf9	fork	plan-burler-review+fork	5	4	4	1	204555	0	0	0	0	0	1	2	1	79372.1	36098.7	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-ac8a1811cb0527572	fork	plan-burler-review+fork	7	6	6	1	251970	2	4	2	134714	67284.2	1	5	4	169420	134648	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	2792f3bf-4046-4c5d-a8d7-a2cb20723d64	main	plan-bouncer-judge	6	8	2	2	86879.7	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	34712.9	0	0	0
+dobby-and-adopt-hardening	2ef95d19-4696-4e7c-97f8-1704777fc1ab	main	discussion	51	54	39	7	830149	6	29	23	417974	345038	5	30	25	424685	364186	5	3	40	1	2	2	0	0	1	289714	0	0	0
+dobby-and-adopt-hardening	agent-a30315e271fbffe49	fork	discussion+fork	2	1	1	1	41954.7	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-a6236f43d801f3bf2	fork	discussion+fork	2	1	1	1	57902.2	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-a629a83ae951ee087	fork	discussion+fork	2	1	1	1	48264.7	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-a9323b4f72a108a83	fork	discussion+fork	3	2	2	1	57472.2	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-a941942b332555b3b	fork	discussion+fork	6	5	5	1	160413	1	4	3	112470	59426.5	1	4	3	112470	59426.5	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-ab6a09ef9978282ab	fork	discussion+fork	6	5	5	1	144714	1	3	2	55065.5	34299.1	1	4	3	86635.5	55065.4	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-aefaf389d960d16df	fork	discussion+fork	6	7	3	1	139575	1	2	1	43801.5	20305.8	1	2	1	43801.5	20305.8	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	50e30c6e-0c68-4fd7-a85d-8bb84a9b7da5	main	code-bouncer-judge	6	7	2	2	73204	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	21539.1	0	0	0
+dobby-and-adopt-hardening	563fdc2a-8eb7-4c66-ad18-0f006980c6ed	main	plan-burler-fix	56	58	47	5	837678	4	24	20	306749	253417	2	26	24	315754	289516	14	14	28	8	13	0	2	0	3	504022	1	5	85896
+dobby-and-adopt-hardening	agent-a6dd4ca267802e510	fork	plan-burler-fix+fork	5	5	3	1	87226.8	1	2	1	31221.9	13588.9	1	2	1	31221.9	13588.9	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-a84397b40ff3211c1	fork	plan-burler-fix+fork	5	4	4	1	97851.6	1	2	1	39153.8	22067.4	1	3	2	60435.4	39153.8	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-a96bf4a874f6ad7a5	fork	plan-burler-fix+fork	3	3	1	1	67175.7	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-af57f5f892302a6bd	fork	plan-burler-fix+fork	6	7	4	1	106489	1	3	2	46768.4	30356.9	1	3	2	46768.4	30356.9	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	6246eb0d-4a1b-42ab-aaf0-d74e7bcd2ec0	main	plan-burler-review	23	32	12	3	442170	1	4	3	118422	64593.1	2	6	4	130478	69697.1	4	3	16	2	5	3	0	0	0	141888	0	0	0
+dobby-and-adopt-hardening	64cb5999-8d7e-4d34-85bc-088dba261f80	main	discussion-burler-fix	28	41	14	6	357780	3	9	6	97283.9	74133.9	2	10	8	101231	88232.9	21	8	11	5	7	14	0	0	0	243095	0	0	0
+dobby-and-adopt-hardening	agent-a495fadaeac7c6db7	fork	discussion-burler-fix+fork	4	3	3	1	47928.3	0	0	0	0	0	1	2	1	22860.7	9664.65	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-a5fac7ecb753d7878	fork	discussion-burler-fix+fork	2	1	1	1	26655.8	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-ae0c5a80d36be800f	fork	discussion-burler-fix+fork	2	1	1	1	25255.8	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-afcbfb621d1baeeb3	fork	discussion-burler-fix+fork	2	1	1	1	34557	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	673a7745-c95e-4cea-9b76-2280f41d2f45	main	discussion-burler-review	43	47	32	8	852304	4	23	19	358757	305003	2	25	23	367897	345992	9	4	34	3	4	1	0	0	0	330244	0	1	27889.5
+dobby-and-adopt-hardening	agent-a3f852308ea704ebe	fork	discussion-burler-review+fork	5	5	3	1	118748	1	2	1	44318.1	18201.1	1	2	1	44318.1	18201.1	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-a6a75da75e9cbd50a	fork	discussion-burler-review+fork	8	7	7	1	143487	3	6	3	102740	54049.2	1	6	5	102740	87959.7	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-a9fa17ae88ba47a9c	fork	discussion-burler-review+fork	6	5	5	1	127544	2	4	2	77738.4	46192.1	1	4	3	77738.4	63303.1	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-aa9e1ba953697cebd	fork	discussion-burler-review+fork	6	5	5	1	131261	1	3	2	50667.6	32678.4	1	4	3	84174.1	50667.6	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-ac639ca5b71367080	fork	discussion-burler-review+fork	2	1	1	1	65009.3	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-aec5422afe1b80c0c	fork	discussion-burler-review+fork	3	2	2	1	69110.5	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	686f63a9-deec-4eab-9b61-e010dbb1d85a	main	plan	101	141	80	8	3.02297e+06	12	45	33	1.02826e+06	705924	5	54	49	1.15788e+06	1.00322e+06	29	19	70	8	11	8	3	0	3	1.24376e+06	2	6	214915
+dobby-and-adopt-hardening	agent-a0702dbe4cf2e4808	fork	plan+fork	8	7	7	1	334457	1	2	1	77485.2	47647.1	2	5	3	184896	118624	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-a1c442d2d57e0daff	fork	plan+fork	3	2	2	1	163582	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-a5dde8f5a5f880a66	fork	plan+fork	5	7	3	1	272898	1	2	1	128456	88200.1	1	2	1	128456	88200.1	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-a7af601dda0b274c7	fork	plan+fork	48	47	47	1	1.80049e+06	3	21	18	716184	601651	2	21	19	716184	630606	19	19	26	1	3	0	0	0	2	959621	1	17	754161
+dobby-and-adopt-hardening	agent-acd57ad5a96100cda	fork	plan+fork	2	1	1	1	129889	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-adf826f221b2507ff	fork	plan+fork	7	6	6	1	284304	2	5	3	167520	91768.6	1	5	4	167520	119677	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	6bae80f5-54af-46f3-a363-1efcff37f319	main	webster	24	24	13	7	258137	0	0	0	0	0	0	0	0	0	0	4	2	18	1	3	2	0	0	0	72738.8	0	0	0
+dobby-and-adopt-hardening	agent-a3c8d3349674a995f	fork	webster+fork	148	232	99	1	4.55014e+06	15	36	21	1.08077e+06	654698	14	37	23	1.11374e+06	718469	122	68	11	66	59	85	14	7	0	4.39538e+06	4	10	330126
+dobby-and-adopt-hardening	agent-a421ccae2f6aeb320	fork	webster+fork	27	28	24	1	305924	2	6	4	67238.6	48714	1	8	7	85587.6	77089.6	7	6	11	3	5	3	5	0	0	196545	2	1	12725.4
+dobby-and-adopt-hardening	agent-acd4c719ce54473dd	fork	webster+fork	64	85	50	1	1.25561e+06	6	12	6	226546	117119	6	15	9	279994	162348	18	14	10	34	17	1	10	8	0	1.14754e+06	6	4	101041
+dobby-and-adopt-hardening	agent-af2c3d679bfe2515b	fork	webster+fork	84	96	73	1	2.09957e+06	9	27	18	611759	410849	8	32	24	699714	534740	25	20	10	32	19	2	17	5	0	1.97875e+06	8	2	52690.9
+dobby-and-adopt-hardening	6d179293-5cde-40f7-8cca-70b0db8109b3	main	plan-bouncer-judge	6	7	2	2	96938.5	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	35065.4	0	0	0
+dobby-and-adopt-hardening	872c3f84-0b5b-4a7b-88b8-c686ac12cf5b	main	plan-burler-fix	16	15	8	6	180482	1	2	1	22033.2	13140.9	1	4	3	31467.6	27506.2	2	2	7	2	3	0	0	0	0	118511	0	0	0
+dobby-and-adopt-hardening	agent-a06acdf8fa4ad1dca	fork	plan-burler-fix+fork	3	2	2	1	27397.4	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-a0b13e0949564a32b	fork	plan-burler-fix+fork	4	3	3	1	37169.2	0	0	0	0	0	1	2	1	19004.8	11122.3	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-a1e8d73b357107d10	fork	plan-burler-fix+fork	3	2	2	1	29717.1	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-a56ba14f0af54e3e6	fork	plan-burler-fix+fork	3	2	2	1	25042.2	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	88504fb6-32bb-4385-bca6-b1df099194fc	main	discussion-burler-fix	39	75	18	6	697716	3	10	7	161935	113437	3	14	11	203223	162151	49	15	14	7	7	42	0	0	0	527115	0	0	0
+dobby-and-adopt-hardening	agent-a4524105c7f2f5bb6	fork	discussion-burler-fix+fork	2	1	1	1	48577.9	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-a52e6de3971f41800	fork	discussion-burler-fix+fork	4	3	3	1	80222.7	1	2	1	50255.9	17434.8	1	2	1	50255.9	17434.8	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-a5b37cf16127f54c4	fork	discussion-burler-fix+fork	5	5	3	1	97111.4	1	2	1	28587.4	11947.7	1	2	1	28587.4	11947.7	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-a80c5f1c9aa48e6b0	fork	discussion-burler-fix+fork	6	7	4	1	107512	0	0	0	0	0	1	2	1	32270.9	14754.6	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	8fbc513f-6a85-407d-b692-cb9aa72d408f	main	discussion-bouncer-judge	6	8	2	2	82561.5	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	34930.7	0	0	0
+dobby-and-adopt-hardening	906d0ebf-ed3a-4afe-aa6d-ce387d66b58f	main	discussion-bouncer-seed	7	7	4	2	79153.1	1	2	1	34559.6	8097.6	1	2	1	34559.6	8097.6	1	1	6	0	1	0	0	0	0	30276.3	0	0	0
+dobby-and-adopt-hardening	97b28ccb-c475-40e2-a691-e8068fa829e6	main	describe	9	7	7	2	72595.9	1	4	3	21897	16166.6	1	5	4	28406.5	21897	0	0		0	0	0	0	0	1	0	0	0	0
+dobby-and-adopt-hardening	a994722b-83e7-4770-8773-92c9a418176e	main	plan-bouncer-seed	6	4	4	2	54242.4	0	0	0	0	0	1	2	1	19193.5	12373.9	1	1	5	0	1	0	0	0	0	13989.7	0	0	0
+dobby-and-adopt-hardening	b2a11115-5d41-41fd-87dc-ce5d796d68b3	main	discussion-burler-review	46	51	34	8	984909	4	26	22	433206	380824	2	29	27	453161	433205	8	3	42	1	2	1	0	0	0	259661	0	1	58988.8
+dobby-and-adopt-hardening	agent-a25d1ee8023240880	fork	discussion-burler-review+fork	4	3	3	1	110610	1	2	1	58544.5	23220.9	1	2	1	58544.5	23220.9	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-a277be9b6dfd6bea9	fork	discussion-burler-review+fork	3	2	2	1	64570.9	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-a81cb0f6a36bab4bb	fork	discussion-burler-review+fork	3	2	2	1	91274.5	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-ac733b3b2f6e2f6d0	fork	discussion-burler-review+fork	5	6	2	1	116260	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-accda36a35fe9d96e	fork	discussion-burler-review+fork	6	5	5	1	147474	1	4	3	91747.4	74607.6	1	4	3	91747.4	74607.6	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-aeff0ec2fb9305cfb	fork	discussion-burler-review+fork	7	6	6	1	169094	1	5	4	116633	98709.9	1	5	4	116633	98709.9	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	c17e031e-dce3-46d7-be76-74729d3f0899	main	plan-bouncer-judge	6	8	2	2	77395.8	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	27542.7	0	0	0
+dobby-and-adopt-hardening	c552bf76-2518-44f1-a821-2a39a634c0d6	main	fixer	50	51	43	3	602958	8	20	12	258393	179690	5	26	21	302317	257526	6	5	15	21	6	2	4	2	0	466326	1	0	0
+dobby-and-adopt-hardening	d59e6335-17e4-468b-8d66-56fdfde1a328	main	discussion-bouncer-judge	6	7	2	2	84521.1	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	37592.8	0	0	0
+dobby-and-adopt-hardening	ddb2fcf0-4dd4-419f-90fa-b628bd33413f	main	discussion-burler-fix	24	54	10	6	400504	1	7	6	77380.8	71912.8	1	8	7	81328.7	77380.8	37	7	11	2	3	33	0	0	0	288729	0	0	0
+dobby-and-adopt-hardening	agent-a112ac2011ce8d5e6	fork	discussion-burler-fix+fork	5	4	4	1	62983.2	1	3	2	36011.9	23143.8	1	3	2	36011.9	23143.8	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-a20d7e1dcb8e28980	fork	discussion-burler-fix+fork	3	2	2	1	47144.7	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-addba3ff00a0af66d	fork	discussion-burler-fix+fork	2	1	1	1	28111.5	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-ae666813309b06877	fork	discussion-burler-fix+fork	4	4	2	1	56791.6	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	dfcca852-6e41-47d8-afb3-2c06cec93209	main	conflict	13	15	9	2	138347	1	2	1	16715.5	8342.25	1	3	2	21015.3	16715.5	5	5	4	4	5	0	1	0	0	88092.1	0	0	0
+dobby-and-adopt-hardening	e01010d0-6b17-43e8-bbd4-bbf38f6627a0	main	plan-burler-fix	32	40	18	7	360677	2	10	8	86496.1	74724.3	2	12	10	98574.4	87764.8	18	8	8	10	9	11	0	0	0	301655	0	0	0
+dobby-and-adopt-hardening	agent-a0454b6e46ab90425	fork	plan-burler-fix+fork	5	4	4	1	73742.2	1	3	2	46177.8	24092.8	1	3	2	46177.8	24092.8	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-a77be76602689c1ba	fork	plan-burler-fix+fork	3	2	2	1	38622.3	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-a8be86bd040cf5ee1	fork	plan-burler-fix+fork	5	4	4	1	62970.9	1	2	1	20491.1	9054.75	1	3	2	36332.3	20491.1	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-aaa3f78392897a07f	fork	plan-burler-fix+fork	4	3	3	1	64555.9	0	0	0	0	0	1	2	1	33764.6	18594.7	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	e5bb1390-09da-44c9-a9a5-d187e7c90628	main	code-burler-fix	34	54	20	4	391966	5	11	6	108979	61841	4	11	7	108979	69924.4	18	6	13	8	7	7	4	1	0	278723	0	0	0
+dobby-and-adopt-hardening	agent-a16b7c2326b0527e5	fork	code-burler-fix+fork	2	1	1	1	26674.2	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-a261c22da325cf36e	fork	code-burler-fix+fork	3	3	1	1	35837.2	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-ad58403fec8e8f8c7	fork	code-burler-fix+fork	2	1	1	1	22756.7	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-adea5aeb2f78d9547	fork	code-burler-fix+fork	3	4	1	1	35684.5	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	e7fbf480-bc85-4296-94bc-cc96b71e6b6d	main	code-burler-review	32	44	21	3	756526	4	11	7	287086	187541	4	13	9	299970	207310	7	4	26	1	3	0	0	1	0	213782	0	1	19633.5
+dobby-and-adopt-hardening	agent-a32440af2c1d15423	fork	code-burler-review+fork	5	4	4	1	114756	1	2	1	38275	19847.7	1	3	2	54402.4	38275	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-aa3fa7b23e54d3086	fork	code-burler-review+fork	4	3	3	1	96453.9	1	2	1	38741.6	20469.2	1	2	1	38741.6	20469.2	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-ac356b7d7d717732d	fork	code-burler-review+fork	4	3	3	1	137251	1	2	1	84337.2	26448.6	1	2	1	84337.2	26448.6	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	agent-af7d27a2b3f06b545	fork	code-burler-review+fork	3	2	2	1	98162.3	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+dobby-and-adopt-hardening	e81047d8-1911-4763-8843-cfc930daa90e	main	discussion-bouncer-judge	6	8	2	2	100283	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	52755.1	0	0	0
+dobby-and-adopt-hardening	eae3f534-3061-499b-b74b-1a4e83f54565	main	plan-burler-review	23	31	13	2	479982	1	7	6	191390	173197	3	11	8	242124	196438	1	1	21	1	2	0	0	0	0	93740.8	0	0	0
+dobby-and-adopt-hardening	efd3d30d-afd9-4edf-b518-60b2537a60f4	main	code-bouncer-seed	6	5	3	2	78654.8	0	0	0	0	0	0	0	0	0	0	1	1	5	0	1	0	0	0	0	35078.2	0	0	0
+docs-link-skip-bench-data	503d7739-f5e9-4431-a460-b718b66b5cdb	main	code-burler-review	17	24	9	4	231040	1	2	1	23139.8	9773.9	2	4	2	35984.8	15255.6	1	1	15	1	2	0	0	1	0	38202.7	0	0	0
+docs-link-skip-bench-data	agent-a2be2a2cb5278f1f0	fork	code-burler-review+fork	3	2	2	1	28912.8	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+docs-link-skip-bench-data	agent-a2f19c513df04506c	fork	code-burler-review+fork	3	2	2	1	30207.9	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+docs-link-skip-bench-data	agent-a83ec7f484ff17114	fork	code-burler-review+fork	3	2	2	1	31764.5	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+docs-link-skip-bench-data	agent-ac41187755ba6ecac	fork	code-burler-review+fork	3	2	2	1	30315.9	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+docs-link-skip-bench-data	597fee70-1ea1-4f06-9687-d4a611baaf7d	main	describe	7	5	5	2	56129.6	0	0	0	0	0	1	2	1	11865	5330.05	0	0		0	0	0	1	0	1	0	1	0	0
+docs-link-skip-bench-data	6cb7a111-15a0-4fd5-8eb2-997c861186a1	main	code-burler-fix	16	27	4	5	198479	0	0	0	0	0	0	0	0	0	0	7	3	6	2	5	1	1	1	0	145810	1	0	0
+docs-link-skip-bench-data	agent-a51c0025d0962f693	fork	code-burler-fix+fork	2	1	1	1	30076.8	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+docs-link-skip-bench-data	agent-aadd0b0ad6315befc	fork	code-burler-fix+fork	5	4	4	1	44967.7	1	3	2	26522.2	16377	1	3	2	26522.2	16377	0	0		0	0	0	0	0	0	0	0	0	0
+docs-link-skip-bench-data	agent-ae938edcc99f00104	fork	code-burler-fix+fork	3	2	2	1	30908.5	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+docs-link-skip-bench-data	agent-af344212f886f9879	fork	code-burler-fix+fork	4	3	3	1	34271.6	1	2	1	16537.3	7779.65	1	2	1	16537.3	7779.65	0	0		0	0	0	0	0	0	0	0	0	0
+docs-link-skip-bench-data	891f80b8-ddb0-42a2-872a-89087078db0d	main	code-bouncer-judge	6	7	2	2	65277.4	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	16626	0	0	0
+docs-link-skip-bench-data	98168653-d856-4abb-9b69-f0f1afb4d24e	main	code-bouncer-seed	7	7	4	2	73324.6	0	0	0	0	0	0	0	0	0	0	1	1	6	0	1	0	0	0	0	15690.1	0	0	0
+docs-link-skip-bench-data	addafafb-572a-4e1c-b8b9-c00a4c124029	main	darn	18	21	14	2	230863	2	4	2	46462.3	29118.1	1	6	5	64357.5	59984.9	4	3	10	1	2	2	1	1	2	101920	1	1	10382.2
+hub-reader-creates-lym	081ba47d-95e6-4b6a-a200-e4182eadec97	main	darn	116	127	96	6	2.10925e+06	12	40	28	635987	458015	10	45	35	724875	555969	38	31	27	39	34	6	4	4	5	1.75796e+06	2	8	141862
+hub-reader-creates-lym	3be81e05-7d78-4f05-9bf6-f42de0a70f2f	main	describe	7	5	5	2	75027.9	0	0	0	0	0	1	3	2	20483	17019.9	0	0		0	0	0	0	0	1	0	0	0	0
+hub-reader-creates-lym	75b76303-c81a-4d2a-ab52-72b947e77e9e	main	darn	22	22	17	4	200653	1	2	1	16829	7494.8	3	6	3	50084.8	29917	0	0		0	0	0	2	0	3	0	2	0	0
+hub-reader-creates-lym	8a06f8ec-6628-4b5f-932a-08381ebdb3c8	main	darn	23	22	17	5	227899	1	3	2	36207.7	26816.4	5	11	6	105868	67367.4	0	0		0	0	0	1	0	2	0	0	0	0
+hub-reader-creates-lym	a1be091b-432c-4f0b-9c08-194c8126751f	main	tackler	10	14	7	1	183573	1	2	1	52139	8033.9	1	3	2	68042.5	23937.4	1	1	9	0	1	0	0	0	0	28125.2	0	0	0
+hub-reader-creates-lym	a5b44be2-0aaf-4097-a657-0e56c4e8f222	main	code-bouncer-seed	7	7	4	2	60735.6	1	2	1	23995.4	8096.9	1	2	1	23995.4	8096.9	1	1	6	0	1	0	0	0	0	20275.2	0	0	0
+hub-reader-creates-lym	ab8e69b6-fba7-4934-834b-ce705d4ca78a	main	code-burler-review	20	32	10	4	357352	2	5	3	69299.3	36483.2	3	7	4	82110.8	41943.7	5	2	18	0	1	0	0	0	0	107340	0	0	0
+hub-reader-creates-lym	agent-a393bb6192ba8de1b	fork	code-burler-review+fork	4	4	2	1	73604.4	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+hub-reader-creates-lym	agent-a5f22197299ddd12c	fork	code-burler-review+fork	3	2	2	1	59831.4	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+hub-reader-creates-lym	agent-a8fb3caf83f8f726a	fork	code-burler-review+fork	4	4	2	1	64644.2	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+hub-reader-creates-lym	agent-adc7d6c2fff8438f8	fork	code-burler-review+fork	3	2	2	1	55871.1	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+hub-reader-creates-lym	c65e675a-f8ff-4da4-ae72-29155b1fa0b7	main	code-burler-fix	46	62	29	7	663126	4	8	4	101732	45361.3	2	8	6	101732	68147.1	13	8	14	6	9	2	11	1	0	513565	5	1	8820.95
+hub-reader-creates-lym	agent-a159967e0bc77e4b8	fork	code-burler-fix+fork	2	1	1	1	38496.7	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+hub-reader-creates-lym	agent-a626c361bdaa5c005	fork	code-burler-fix+fork	4	3	3	1	58595.6	0	0	0	0	0	0	0	0	0	0	1	1	3	0	1	0	0	0	0	31850.2	0	0	0
+hub-reader-creates-lym	agent-ac5c843a363e9aac6	fork	code-burler-fix+fork	4	3	3	1	56756.2	1	2	1	28290.9	13984.1	1	2	1	28290.9	13984.1	0	0		0	0	0	0	0	0	0	0	0	0
+hub-reader-creates-lym	agent-ad55d549ce06d4507	fork	code-burler-fix+fork	6	5	5	1	89305.7	1	3	2	41570.6	27599.1	1	4	3	59294.9	41570.6	0	0		0	0	0	0	0	0	0	0	0	0
+hub-reader-creates-lym	cd8709cd-a07b-4e4a-b703-7a24d42fddfb	main	code-bouncer-judge	6	7	2	2	67820.6	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	20752.7	0	0	0
+hub-reader-creates-lym	e4b941ff-a223-4499-b51c-16ba88b0b242	main	friction	10	8	8	2	80490.8	1	2	1	9632.75	4188.15	1	2	1	9632.75	4188.15	1	1	9	0	1	0	1	0	0	12251.3	0	0	0
+readme-draft-not-ready	02dd5a60-3d95-45f3-88fc-cc76aa5b7242	main	code-bouncer-judge	6	7	2	2	65486.1	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	16873.6	0	0	0
+readme-draft-not-ready	1d33bab4-9f20-4a7c-b952-44b5c3d64fe6	main	code-burler-fix	13	22	6	2	146796	1	2	1	17881.4	6787.85	1	2	1	17881.4	6787.85	4	4	6	4	5	0	0	0	0	93621.4	0	1	7383.4
+readme-draft-not-ready	agent-a47a2abe162203557	fork	code-burler-fix+fork	3	2	2	1	22572.4	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+readme-draft-not-ready	agent-a9eec77650a9ad9c4	fork	code-burler-fix+fork	2	1	1	1	15466.2	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+readme-draft-not-ready	agent-ab0be6e035be3763e	fork	code-burler-fix+fork	3	3	1	1	23099.7	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+readme-draft-not-ready	agent-ae85df330cc863a98	fork	code-burler-fix+fork	3	2	2	1	25132.4	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+readme-draft-not-ready	39796a7c-ae6c-40fe-a08b-f8ef4ef9a779	main	darn	22	21	16	5	219779	1	2	1	21022.8	11750.8	3	7	4	62246.9	43115.6	1	1	21	0	1	0	1	0	2	19436	1	0	0
+readme-draft-not-ready	47a74103-cbf7-436c-acd7-c0def705629d	main	describe	7	5	5	2	56330.2	0	0	0	0	0	1	3	2	18695.4	12184.6	0	0		0	0	0	0	0	1	0	0	0	0
+readme-draft-not-ready	68b16f7f-5937-4785-88b1-ec3494a797f6	main	darn	60	58	53	6	812214	5	18	13	223601	167850	7	25	18	304799	228899	8	8	16	15	6	0	5	1	3	620560	2	5	72738.1
+readme-draft-not-ready	6efe2dfb-7257-443d-825d-c4bb1e601208	main	tackler	7	12	4	1	150496	0	0	0	0	0	1	2	1	58998.2	12492.2	2	2	5	0	1	0	0	0	0	46381.8	0	1	12627.4
+readme-draft-not-ready	712c299e-af29-4769-8c4f-d14e57352772	main	arbiter	8	7	7	1	81384.4	1	2	1	18836.9	7519	1	5	4	54000.6	37439.6	1	1	7	0	1	0	0	0	0	19666.2	0	0	0
+readme-draft-not-ready	7f051a8c-d926-436e-b536-d637f498f7b9	main	code-burler-review	16	29	8	2	259400	1	3	2	39182.2	26690	2	6	4	68725.1	44630.4	5	2	14	0	1	0	0	0	0	71556.6	0	0	0
+readme-draft-not-ready	agent-a2f2c55201cc895c1	fork	code-burler-review+fork	5	4	4	1	51208.1	0	0	0	0	0	1	3	2	29076.9	19300.8	0	0		0	0	0	0	0	0	0	0	0	0
+readme-draft-not-ready	agent-a4ee38b91a0a85154	fork	code-burler-review+fork	2	1	1	1	27057.2	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+readme-draft-not-ready	agent-a8e3fe61706ea3b8e	fork	code-burler-review+fork	3	2	2	1	34768.2	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+readme-draft-not-ready	agent-afe1db2abe59c4013	fork	code-burler-review+fork	2	1	1	1	42165.9	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+readme-draft-not-ready	7fda619b-6886-4844-9509-79255e9eaff2	main	code-bouncer-seed	7	7	4	2	63225.6	0	0	0	0	0	0	0	0	0	0	1	1	6	0	1	0	0	0	0	15616.5	0	0	0
+readme-draft-not-ready	ca10365b-7495-46ea-b141-8af4f7b5580a	main	friction	8	6	6	2	53680.2	0	0	0	0	0	0	0	0	0	0	2	2	6	0	1	0	0	0	0	15793.7	0	1	4978.6
+readme-draft-not-ready	dd34894e-4472-4419-badc-d30f662c6c78	main	darn	14	17	10	2	134949	2	6	4	43838.8	28796.9	3	8	5	61868.8	42603.1	1	1	10	3	2	0	1	0	2	43240.1	1	0	0
+readme-draft-not-ready	e401c584-4dbc-4ce6-85f4-5e890c643d7f	main	tackler	9	15	5	1	168629	1	2	1	24464.6	11762.8	1	2	1	24464.6	11762.8	1	1	8	0	1	0	0	0	0	29441.7	0	0	0
+review-setup-audit	1aebadb8-ecf0-4f23-80d5-f7c9fa6a9095	main	friction	8	6	6	2	58955.7	0	0	0	0	0	0	0	0	0	0	2	2	6	0	1	0	0	0	0	17311.8	0	1	4916.15
+review-setup-audit	3cdb0d1e-e5cd-4966-9461-9fcff741faa6	main	arbiter	11	10	10	1	107962	1	3	2	21878.4	16263.5	1	5	4	48132.3	31523.8	1	1	10	0	1	0	0	0	0	19840.3	0	0	0
+review-setup-audit	c46778bb-dc3e-46f3-9c5f-1b71063e0068	main	darn	62	65	58	2	1.15355e+06	6	15	9	227811	132234	6	16	10	235137	145804	16	16	20	15	22	0	1	0	5	942060	2	3	61854.1
+review-setup-audit	e1091a80-01ad-40fd-9575-55353cc0a12c	main	tackler	5	9	2	1	58278.3	0	0	0	0	0	0	0	0	0	0	1	1	4	0	1	0	0	0	0	14540	0	0	0
+test-logs-leak-into-bolt	018ea4c2-d9d7-42e1-b24f-8214017f84fe	main	code-bouncer-judge	6	7	2	2	64834.2	0	0	0	0	0	0	0	0	0	0	3	1	5	0	1	0	0	0	0	15989.3	0	0	0
+test-logs-leak-into-bolt	1120fe2d-9310-4b9f-bafb-abe1f50b9d82	main	darn	73	77	62	6	1.07124e+06	9	30	21	363104	266038	8	36	28	460100	351633	18	13	29	16	16	5	4	1	4	740790	3	2	31134.9
+test-logs-leak-into-bolt	45f5aaf8-bd9d-461a-9fde-aafcb0dfdd7b	main	friction	7	5	5	2	48694.7	0	0	0	0	0	1	3	2	16157.8	9602.25	1	1	6	0	1	0	0	0	0	8687.65	0	0	0
+test-logs-leak-into-bolt	5076b5fe-e29b-455e-8cf5-8ab24c5d5a84	main	code-burler-fix	25	37	11	5	281615	1	2	1	20374.2	6692.35	1	2	1	20374.2	6692.35	9	6	8	5	7	5	4	1	0	207754	0	0	0
+test-logs-leak-into-bolt	agent-a425d4b59781b9baa	fork	code-burler-fix+fork	2	1	1	1	17649.4	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+test-logs-leak-into-bolt	agent-a5a8c6d6f508055a4	fork	code-burler-fix+fork	2	1	1	1	17141.9	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+test-logs-leak-into-bolt	agent-a5e3094abb0d1c0e5	fork	code-burler-fix+fork	3	2	2	1	37890.2	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+test-logs-leak-into-bolt	agent-aa1ef1c7f0ba2dd0c	fork	code-burler-fix+fork	2	1	1	1	21895.7	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+test-logs-leak-into-bolt	5a5e2e43-e423-4c42-98bc-6cf515d4700d	main	describe	7	5	5	2	57250.8	0	0	0	0	0	1	3	2	18493.2	11993.2	0	0		0	0	0	1	0	0	0	0	0	0
+test-logs-leak-into-bolt	83e4ac80-41d2-4a54-969a-2d682843258d	main	code-bouncer-seed	7	7	4	2	66118.4	0	0	0	0	0	0	0	0	0	0	1	1	6	0	1	0	0	0	0	18613.7	0	0	0
+test-logs-leak-into-bolt	8544acc1-820d-48e2-851b-7ce04ecbf13d	main	darn	57	60	49	4	705792	7	28	21	322684	246800	6	33	27	366420	306541	1	1	56	0	1	0	8	0	2	27842.5	4	0	0
+test-logs-leak-into-bolt	ce36060b-64d9-48aa-943c-43f796d08279	main	tackler	9	13	6	1	163095	1	2	1	53094.4	8611.7	1	4	3	77322.2	32839.6	1	1	8	0	1	0	0	0	0	35160.1	0	0	0
+test-logs-leak-into-bolt	d45188d4-f044-478b-974f-45f4342419e8	main	code-burler-review	18	35	9	2	347375	2	6	4	110887	70247.6	3	8	5	123746	75741.6	5	2	16	0	1	0	0	0	0	95217.7	0	0	0
+test-logs-leak-into-bolt	agent-a0ff10d49321c6fa3	fork	code-burler-review+fork	3	2	2	1	41309.8	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+test-logs-leak-into-bolt	agent-a21722c370f27b937	fork	code-burler-review+fork	4	4	2	1	59359.6	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+test-logs-leak-into-bolt	agent-a430e471a4388f4a0	fork	code-burler-review+fork	3	2	2	1	42031	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0
+test-logs-leak-into-bolt	agent-a4528fa8c866a4d15	fork	code-burler-review+fork	2	1	1	1	47998.8	0	0	0	0	0	0	0	0	0	0	0	0		0	0	0	0	0	0	0	0	0	0

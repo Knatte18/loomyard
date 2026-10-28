@@ -1,0 +1,143 @@
+role	class	command	removable_turns	removable_weight
+arbiter	search	cat	1	10847
+arbiter	search	grep	1	5416
+arbiter	search	sed	1	7519
+code-bouncer-seed	git-read	git diff	2	12984
+code-bouncer-seed	search	grep	1	7120
+code-bouncer-seed	skill	Skill	1	8096
+code-burler-fix	search	grep	14	174600
+code-burler-fix	search	sed	8	88094
+code-burler-fix	read	sed	4	51963
+code-burler-fix	git-read	git diff	1	10683
+code-burler-fix	read	echo	1	6787
+code-burler-fix	search	cat	1	12420
+code-burler-fix+fork	search	grep	7	69813
+code-burler-fix+fork	read	Read	2	15641
+code-burler-review	search	grep	12	202236
+code-burler-review	read	echo	7	94416
+code-burler-review	read	Read	4	51532
+code-burler-review	git-read	git diff	3	75331
+code-burler-review	search	sed	3	48802
+code-burler-review	read	sed	2	35855
+code-burler-review	git-read	cat	1	31630
+code-burler-review	git-read	grep	1	28499
+code-burler-review	search	cat	1	11668
+code-burler-review	search	ls	1	9577
+code-burler-review+fork	git-read	grep	1	19847
+code-burler-review+fork	search	echo	1	20469
+code-burler-review+fork	search	grep	1	26448
+conflict	read	sed	1	8342
+darn	search	grep	68	1072895
+darn	read	sed	34	637225
+darn	search	sed	12	178500
+darn	read	cat	11	133780
+darn	search	ls	7	125518
+darn	search	cat	6	80102
+darn	lym-read	lym board	4	48824
+darn	lym-read	lym loom	4	58436
+darn	git-read	cat	3	26610
+darn	git-read	git -C	3	42072
+darn	git-read	grep	2	30016
+darn	lym-read	cat	2	19162
+darn	search	awk	2	41130
+darn	search	head	2	21959
+darn	git-read	git diff	1	18290
+darn	git-read	git log	1	14819
+darn	git-read	git show	1	9125
+darn	git-read	ls	1	13641
+darn	git-read	lym loom	1	11863
+darn	search	find	1	11008
+darn	search	wc	1	21877
+describe	git-read	cat	1	6367
+describe	lym-read	grep	1	5123
+describe	read	sed	1	4675
+discussion	search	grep	9	142762
+discussion	search	ls	4	65691
+discussion	search	sed	4	51382
+discussion	lym-read	lym board	1	19376
+discussion	read	cat	1	15785
+discussion	read	sed	1	13315
+discussion	search	cat	1	7367
+discussion	search	find	1	17043
+discussion	search	head	1	12313
+discussion+fork	search	grep	5	97733
+discussion+fork	search	sed	1	16297
+discussion-bouncer-seed	skill	Skill	1	8097
+discussion-burler-fix	search	grep	6	94667
+discussion-burler-fix	read	sed	5	54046
+discussion-burler-fix	search	sed	5	71701
+discussion-burler-fix	read	cat	2	28601
+discussion-burler-fix	search	awk	1	10467
+discussion-burler-fix+fork	search	sed	3	35091
+discussion-burler-fix+fork	search	grep	1	17434
+discussion-burler-review	search	grep	21	399647
+discussion-burler-review	lym-read	lym board	6	50309
+discussion-burler-review	search	ls	5	77839
+discussion-burler-review	search	sed	5	86060
+discussion-burler-review	search	cat	4	56991
+discussion-burler-review	read	sed	3	60565
+discussion-burler-review	read	cat	2	40154
+discussion-burler-review	search	find	1	22893
+discussion-burler-review+fork	search	grep	12	275878
+discussion-burler-review+fork	search	sed	3	53579
+discussion-burler-review+fork	lym-read	lym loom	1	18201
+fixer	git-read	grep	4	67407
+fixer	search	grep	4	65655
+fixer	git-read	git show	1	12694
+fixer	git-read	head	1	9719
+fixer	read	sed	1	9691
+fixer	search	sed	1	14521
+friction	search	cd	1	4188
+plan	search	grep	13	292565
+plan	search	sed	7	142870
+plan	read	cat	5	95847
+plan	quarry	lym quarry	2	67364
+plan	read	sed	2	35905
+plan	search	cat	2	39518
+plan	git-read	cat	1	21801
+plan	read	Read	1	10052
+plan+fork	search	grep	10	391902
+plan+fork	quarry	lym quarry	4	135667
+plan+fork	read	sed	2	61550
+plan+fork	quarry	for	1	29583
+plan+fork	quarry	sed	1	27771
+plan+fork	read	head	1	31859
+plan+fork	search	echo	1	47647
+plan+fork	search	head	1	38789
+plan+fork	search	ls	1	30169
+plan+fork	search	sed	1	34324
+plan-burler-fix	search	grep	13	163895
+plan-burler-fix	read	cat	5	59577
+plan-burler-fix	read	sed	4	42305
+plan-burler-fix	search	cat	2	33808
+plan-burler-fix	search	sed	2	21637
+plan-burler-fix	git-read	cat	1	4551
+plan-burler-fix	git-read	ls	1	5139
+plan-burler-fix	search	ls	1	10366
+plan-burler-fix+fork	search	grep	3	52324
+plan-burler-fix+fork	read	sed	2	18490
+plan-burler-fix+fork	search	sed	2	28346
+plan-burler-review	search	grep	27	764942
+plan-burler-review	read	cat	6	115861
+plan-burler-review	read	sed	6	190480
+plan-burler-review	search	cat	5	121859
+plan-burler-review	search	sed	4	109587
+plan-burler-review	lym-read	lym board	2	51244
+plan-burler-review	search	awk	1	32341
+plan-burler-review	search	jq	1	37177
+plan-burler-review	search	which	1	64424
+plan-burler-review+fork	search	echo	1	33659
+plan-burler-review+fork	search	grep	1	33624
+tackler	git-read	sed	2	20374
+tackler	read	sed	1	8033
+webster+fork	search	grep	26	753184
+webster+fork	search	sed	10	248319
+webster+fork	read	sed	4	96081
+webster+fork	read	Read	2	30900
+webster+fork	git-read	cat	1	14015
+webster+fork	git-read	grep	1	11684
+webster+fork	git-read	ls	1	12477
+webster+fork	git-read	sed	1	12833
+webster+fork	quarry	lym quarry	1	8398
+webster+fork	read	head	1	23768
+webster+fork	search	tail	1	19715
