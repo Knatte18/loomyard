@@ -268,9 +268,9 @@ func TestHubDelivery(t *testing.T) {
 			t.Fatalf("Strands() = %v", err)
 		}
 		want := []creelengine.Strand{
-			{Name: "ly:orch", GUID: "guid-orch", Worktree: prime, Live: true, PanePID: 11, PaneMail: true},
-			{Name: "ly:pair:dormant", GUID: "guid-dormant", Worktree: pair, Slug: pairSlug, PaneMail: true},
-			{Name: "ly:pair:impl", GUID: "guid-impl", Worktree: pair, Slug: pairSlug, Live: true, PanePID: 22, PaneMail: true},
+			{Name: "ly:orch", GUID: "guid-orch", Worktree: prime, Live: true, PanePID: 11},
+			{Name: "ly:pair:dormant", GUID: "guid-dormant", Worktree: pair, Slug: pairSlug},
+			{Name: "ly:pair:impl", GUID: "guid-impl", Worktree: pair, Slug: pairSlug, Live: true, PanePID: 22},
 		}
 		sortStrands(got)
 		if diff := cmp.Diff(want, got); diff != "" {
@@ -278,7 +278,7 @@ func TestHubDelivery(t *testing.T) {
 		}
 	})
 
-	t.Run("Strands marks which strands keep the pane path and which have hook delivery", func(t *testing.T) {
+	t.Run("Strands carries each strand's CreelHooks mark whatever its provider, so an unmarked Claude strand keeps the pane path", func(t *testing.T) {
 		t.Parallel()
 		hub, prime, _ := newHub(t)
 		seedReedStrands(t, prime, []reedengine.Strand{
@@ -293,19 +293,18 @@ func TestHubDelivery(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Strands() = %v", err)
 		}
-		type fields struct{ creelHooks, paneMail bool }
-		gotFields := map[string]fields{}
+		gotHooks := map[string]bool{}
 		for _, strand := range got {
-			gotFields[strand.Name] = fields{strand.CreelHooks, strand.PaneMail}
+			gotHooks[strand.Name] = strand.CreelHooks
 		}
-		want := map[string]fields{
-			"ly:hooked":   {creelHooks: true},
-			"ly:codex":    {paneMail: true},
-			"ly:hand":     {paneMail: true},
-			"ly:unmarked": {},
+		want := map[string]bool{
+			"ly:hooked":   true,
+			"ly:codex":    false,
+			"ly:hand":     false,
+			"ly:unmarked": false,
 		}
-		if diff := cmp.Diff(want, gotFields, cmp.AllowUnexported(fields{})); diff != "" {
-			t.Errorf("Strands() creel fields mismatch (-want +got):\n%s", diff)
+		if diff := cmp.Diff(want, gotHooks); diff != "" {
+			t.Errorf("Strands() CreelHooks mismatch (-want +got):\n%s", diff)
 		}
 	})
 
@@ -755,7 +754,7 @@ func TestHubDelivery_SkipsAWorktreeThatNoLongerResolves(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Strands() call %d = %v; want the skip to leave the call whole", call, err)
 				}
-				want := []creelengine.Strand{{Name: "ly:orch", GUID: "guid-orch", Worktree: prime, Live: true, PanePID: 11, PaneMail: true}}
+				want := []creelengine.Strand{{Name: "ly:orch", GUID: "guid-orch", Worktree: prime, Live: true, PanePID: 11}}
 				if diff := cmp.Diff(want, got); diff != "" {
 					t.Errorf("Strands() call %d mismatch (-want +got):\n%s", call, diff)
 				}

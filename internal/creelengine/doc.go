@@ -7,7 +7,7 @@
 // Creel decides what is delivered and when, shuttle knows the provider and its idle check and safe send, and reed knows the pane and does the keystrokes: creel → shuttle → reed → tmux.
 // The engine imports neither reed nor shuttle, and every keystroke goes through the Delivery seam; `PATTERN-pane-text-injection` pins that with an import scan.
 // Delivery lists the hub's strands, asks whether a strand is idle, asks whether a pause covers it, claims a covered strand into its pause for the interrupt, types one line into its pane, runs one command of a closed set in its session and sends the guarded interrupt.
-// Each strand it lists carries two fields the adapter fills: `CreelHooks`, the mark shuttle's launch set when the session runs creel's hook delivery, and `PaneMail`, true when the strand's engine has no hook delivery, as for a strand with no provider tag, so its posts keep the pane path.
+// Each strand it lists carries `CreelHooks`, the mark shuttle's launch set when the session runs creel's hook delivery; every strand without it is a pane-mail strand, whatever its engine, so its posts keep the pane path.
 // Its idle answer also carries `NoTurn`, whether no turn is in progress whatever the input box holds, and `TurnEndedAt`, when the hook-derived reading behind it began, zero when the pane decided.
 // Its idle answer carries a stall reason when a not-idle pane waits on something the operator can act on, a pane too short for the input box, a draft in it or a pane showing no input box, and the engine journals each change of that reason as a `stalled` record.
 // `internal/creelcli` implements it over the hub's worktrees, reed's persisted state and status, the pause record, and a shuttle runner built per worktree at each call.
@@ -78,7 +78,8 @@
 // A reply to an EXTERNAL sender, which only a waiting `post --wait-reply` receives and no claim hands out, keeps a 64 KiB cap on its body.
 // A claim never hands out a message an older binary stored whose line is past 10,000 UTF-16 units, the cap Claude Code keeps of one hook field; it stays for `lym creel read` and raises no mail flag.
 //
-// The pane path types notices and reminders only into a pane-mail strand, one whose engine has no creel hook delivery; a strand whose engine delivers by hooks gets its mail there, and only queued injects are typed into its pane.
+// The pane path types notices and reminders only into a pane-mail strand, one whose session runs without creel's hook delivery, as a Claude session launched before that delivery, a `lym shuttle open` session or a hand-added strand does;
+// a strand marked `CreelHooks` gets its mail through its hooks, and only queued injects are typed into its pane.
 // A notice is a message from any sender but an agent strand, a program or EXTERNAL, whose body is at most 4 KiB.
 // It is carried in full in its own line, typed when the receiver is idle, `[creel] #<id> from "<sender>": <body>`, with every run of line breaks and other control characters turned into one space.
 // The line opens with the id, so a sender that takes replies is answered with `lym creel post --reply <id>` and no read; creel does not know which senders answer.
@@ -146,7 +147,7 @@
 // With the last ring unanswered, the grace does not apply, since a ring ends the waiter it rings, and it types the bell once the ring has gone unanswered for 30 seconds.
 // The bell goes through the guarded send under every rule a typed line has: a draft, a too-short pane or a missing input box holds it, a send that did not land is recorded and never retyped for the set, and a busy send is tried again on the next probe.
 // A newer set may get its own bell, and an unchanged set never gets a second; a pause silences the bell as it does the ring, and under a hold from another sender only the owner's mail makes a set.
-// Only a strand marked `CreelHooks` gets the bell: a pane-mail strand has its notice and reminder, and a strand with neither field reads its mail with `lym creel read`.
+// Only a strand marked `CreelHooks` gets the bell: every other strand is a pane-mail strand and has its notice and reminder, so mail to an idle strand always wakes it.
 // Bound: one fixed line per claimable set; a waiter whose session died rings into nothing once and the window hands the set to the bell; a restarted daemon may type the bell once more for a set it already woke.
 //
 // # Inject and interrupt

@@ -478,15 +478,20 @@ func (e *slashPasteEngine) ParseSessionSignals(data []byte) ([]SessionSignal, in
 
 // pasteLineReed is a fakeReed that appends line to the events file after every paste, as the provider's hook does when a pasted command restarts the session.
 // An empty line appends nothing.
+// A non-nil onPaste runs after every paste, before the line is appended.
 type pasteLineReed struct {
 	*fakeReed
 
 	eventsPath string
 	line       string
+	onPaste    func()
 }
 
 func (r *pasteLineReed) PasteSubmit(guid, text string, submit bool) error {
 	err := r.fakeReed.PasteSubmit(guid, text, submit)
+	if r.onPaste != nil {
+		r.onPaste()
+	}
 	if r.line == "" {
 		return err
 	}
@@ -531,18 +536,22 @@ type parserlessPasteEngine struct {
 // newSlashPasteRunner returns a runner over a live strand "strand-1" on a paste-path engine whose input box reads box and whose pane shows an operator active or not, and the reed it drives.
 func newSlashPasteRunner(t *testing.T, box string, active, noColor bool) (*Runner, *fakeReed, string) {
 	t.Helper()
-	runner, reed, runDir, _ := newSlashPasteRunnerAppending(t, box, active, noColor, "", false)
+	runner, reed, runDir, _ := newSlashPasteRunnerAppending(t, box, active, noColor, "", false, nil)
 	return runner, reed, runDir
 }
 
 // newSlashPasteRunnerAppending is newSlashPasteRunner with every paste appending pasteLine to the events file, and returns the runner's clock as well.
+// A non-nil afterPaste replaces the box's answers once the paste is made, so the reads that confirm the send see it.
 // parserless hides the engine's session-signal parsing behind parserlessPasteEngine.
-func newSlashPasteRunnerAppending(t *testing.T, box string, active, noColor bool, pasteLine string, parserless bool) (*Runner, *fakeReed, string, *fakeClock) {
+func newSlashPasteRunnerAppending(t *testing.T, box string, active, noColor bool, pasteLine string, parserless bool, afterPaste []inputBoxAnswer) (*Runner, *fakeReed, string, *fakeClock) {
 	t.Helper()
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"IDLE"}, ActiveQueue: []bool{active}}
 	appending := &pasteLineReed{fakeReed: reed, line: pasteLine}
 	clock := newFakeClock(time.Now())
 	boxes := &inputBoxEngine{fakeEngine: readyAgentEngine(), boxes: []inputBoxAnswer{{box, true}}, settle: 100 * time.Millisecond}
+	if afterPaste != nil {
+		appending.onPaste = func() { boxes.boxes = afterPaste }
+	}
 	slash := &slashPasteEngine{scriptedPasteEngine: &scriptedPasteEngine{clearableBoxEngine: &clearableBoxEngine{inputBoxEngine: boxes}, pasteSubmits: true}, noColor: noColor}
 	var engine Engine = slash
 	if parserless {
@@ -562,12 +571,15 @@ func newSlashPasteRunnerAppending(t *testing.T, box string, active, noColor bool
 	return fx.Runner, reed, filepath.Dir(fx.EventsPath), clock
 }
 
-// checkLandingStartConfirmation drives call, a session command that restarts the session with the source landing, over a paste-path engine whose box reads empty after the paste.
+// checkLandingStartConfirmation drives call, a session command that restarts the session with the source landing, over a paste-path engine whose box reads empty after the paste unless a row scripts it.
 // A session-start line of landing appended by the paste confirms the send at its first read.
 // A line of other, or none, leaves the send waiting out the whole submit window before the empty box confirms it.
 // A line of landing already in the events file before the send is older than the pre-send offset and is waited out too.
 // An engine that parses no session signals confirms on the empty box at once.
-func checkLandingStartConfirmation(t *testing.T, landing, other SessionStartSource, call func(*Runner) error) {
+// A box that read empty after the paste stays confirmed when it then holds other text, as an operator typing during a compaction leaves it, or holds sentText or cannot be read;
+// other text before any empty read fails the send with ErrForeignBoxText.
+// No row sends a key after the paste.
+func checkLandingStartConfirmation(t *testing.T, landing, other SessionStartSource, sentText string, call func(*Runner) error) {
 	t.Helper()
 	window := submitConfirmTimeout(Config{SubmitConfirmTimeoutS: 30})
 	tests := []struct {
@@ -575,23 +587,39 @@ func checkLandingStartConfirmation(t *testing.T, landing, other SessionStartSour
 		priorLine  string
 		pasteLine  string
 		parserless bool
+		afterPaste []inputBoxAnswer
 		wantWait   bool
+		wantErr    error
 	}{
 		{name: "a session start of the matching source confirms the send at once", pasteLine: "SESSIONSTART:" + string(landing)},
 		{name: "a session start of the other source is waited out", pasteLine: "SESSIONSTART:" + string(other), wantWait: true},
 		{name: "no session start confirms on the empty box once the window closes", wantWait: true},
 		{name: "a session start of the matching source before the send is waited out", priorLine: "SESSIONSTART:" + string(landing), wantWait: true},
 		{name: "an engine that parses no session signals confirms on the empty box at once", parserless: true},
+		{name: "a box that read empty and then holds the operator's draft confirms once the window closes", afterPaste: []inputBoxAnswer{{"", true}, {"the operator's draft", true}}, wantWait: true},
+		{name: "a box holding the operator's draft before any empty read fails as foreign text", afterPaste: []inputBoxAnswer{{"the operator's draft", true}}, wantErr: ErrForeignBoxText},
+		{name: "a box that read empty and then cannot be read confirms once the window closes", afterPaste: []inputBoxAnswer{{"", true}, {"", false}}, wantWait: true},
+		{name: "a box that read empty and then holds the sent text confirms once the window closes", afterPaste: []inputBoxAnswer{{"", true}, {sentText, true}}, wantWait: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			runner, _, runDir, clock := newSlashPasteRunnerAppending(t, "", false, false, tt.pasteLine, tt.parserless)
+			runner, reed, runDir, clock := newSlashPasteRunnerAppending(t, "", false, false, tt.pasteLine, tt.parserless, tt.afterPaste)
 			if tt.priorLine != "" {
 				appendEventsLine(t, filepath.Join(runDir, eventsFileName), tt.priorLine)
 			}
 			start := clock.Now()
-			if err := call(runner); err != nil {
+			err := call(runner)
+			if keys := sentCalls(reed); len(keys) != 0 {
+				t.Errorf("sent calls = %v, want none after the paste", keys)
+			}
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Errorf("error = %v, want one wrapping %v", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
 				t.Fatalf("error = %v, want the command confirmed", err)
 			}
 			waited := clock.Now().Sub(start)
@@ -671,7 +699,7 @@ func TestRunner_ClearSession_PlaysScriptedSequence(t *testing.T) {
 	}
 
 	checkPastedSessionCommand(t, "/clear", func(r *Runner) error { return r.ClearSession("strand-1") })
-	checkLandingStartConfirmation(t, SessionStartClear, SessionStartCompact, func(r *Runner) error { return r.ClearSession("strand-1") })
+	checkLandingStartConfirmation(t, SessionStartClear, SessionStartCompact, "/clear", func(r *Runner) error { return r.ClearSession("strand-1") })
 }
 
 // sentCalls returns the keys and texts reed was asked to write, in order.
@@ -758,7 +786,7 @@ func TestRunner_CompactSession_PlaysSequenceForFocus(t *testing.T) {
 	}
 
 	checkPastedSessionCommand(t, "/compact the plan", func(r *Runner) error { return r.CompactSession("strand-1", "the plan") })
-	checkLandingStartConfirmation(t, SessionStartCompact, SessionStartClear, func(r *Runner) error { return r.CompactSession("strand-1", "the plan") })
+	checkLandingStartConfirmation(t, SessionStartCompact, SessionStartClear, "/compact the plan", func(r *Runner) error { return r.CompactSession("strand-1", "the plan") })
 }
 
 func TestRunner_CompactSession_RefusesMultiLineFocus(t *testing.T) {

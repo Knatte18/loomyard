@@ -30,8 +30,9 @@ const (
 const BellLine = "[creel] Mail is waiting for you. End this turn now; creel hands the mail to you as the turn ends. Do not run lym creel read for it."
 
 // Scheduler delivers what the pool holds into panes: one worker per receiver with pending deliveries, at most one delivery in flight per receiver.
-// It types queued injects into every live strand, and notices and reminders only into a pane-mail strand, one whose engine has no creel hook delivery.
-// A hook strand's mail is rung to its idle waiter, and a fixed bell line wakes it where no waiter reaches.
+// It types queued injects into every live strand.
+// A hook strand, one marked CreelHooks, has its mail rung to its idle waiter, and a fixed bell line wakes it where no waiter reaches;
+// every other strand is a pane-mail strand, whatever its engine, and gets notices and reminders.
 // A program's mailbox is never reminded.
 type Scheduler struct {
 	store    *Store
@@ -234,9 +235,6 @@ func (w *worker) probe() (delivered, pending bool) {
 	}
 	if strand.CreelHooks {
 		return w.wakeHookStrand(strand, now), true
-	}
-	if !strand.PaneMail {
-		return false, true
 	}
 	if len(snap.notices) > 0 {
 		return w.typeNotice(strand, snap.notices[0]), true

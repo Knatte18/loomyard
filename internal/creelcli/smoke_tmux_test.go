@@ -74,7 +74,7 @@ func (e *scriptProviderEngine) CompactSessionSequence(string) []shuttleengine.Pa
 func (e *scriptProviderEngine) ReloadPluginsSequence() []shuttleengine.PaneInput { return nil }
 
 // TestSmokeCreelFakeProviderPane runs the real daemon on the real socket over a hub whose one strand is the fake provider.
-// The strand carries the provider tag `script`, which no engine renders hook delivery for, so it is a pane-mail strand.
+// The strand carries the provider tag `script` and no `CreelHooks` mark, so it is a pane-mail strand.
 // A post is acknowledged and its carried line is typed into the pane, a privileged inject is typed and reported injected, and the log shows the events.
 func TestSmokeCreelFakeProviderPane(t *testing.T) {
 	// The strand name in the environment is process-global state, set by newSmokeHub.

@@ -22,14 +22,13 @@ const DefaultPanePID = 999_999_999
 
 // LiveStrand returns a live pane-mail strand with the given full name and the default pane pid, so the scheduler types its notices and reminders into it.
 func LiveStrand(name string) creelengine.Strand {
-	return creelengine.Strand{Name: name, GUID: "guid-" + name, Worktree: "/hub/worktree", Live: true, PanePID: DefaultPanePID, PaneMail: true}
+	return creelengine.Strand{Name: name, GUID: "guid-" + name, Worktree: "/hub/worktree", Live: true, PanePID: DefaultPanePID}
 }
 
-// HookStrand returns a live strand with the given full name and the default pane pid whose session runs creel's hook delivery: CreelHooks set and PaneMail not.
+// HookStrand returns a live strand with the given full name and the default pane pid whose session runs creel's hook delivery: CreelHooks set.
 func HookStrand(name string) creelengine.Strand {
 	strand := LiveStrand(name)
 	strand.CreelHooks = true
-	strand.PaneMail = false
 	return strand
 }
 
