@@ -22,7 +22,7 @@ var (
 // Supports reports whether Claude Code meets req; it meets each requirement the seam names.
 func (c *Claude) Supports(req shuttleengine.Requirement) bool {
 	switch req {
-	case shuttleengine.RequirementForks, shuttleengine.RequirementPeerMessaging, shuttleengine.RequirementBackgroundWake:
+	case shuttleengine.RequirementForks, shuttleengine.RequirementBackgroundWake:
 		return true
 	}
 	return false

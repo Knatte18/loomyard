@@ -37,7 +37,7 @@ An interrupt key reaches an agent pane only through shuttle's two pane guards, a
   So lym's own keys land at least the settle apart and never open the rewind picker.
 - The guarded picker close is the one exception: before every interrupt and every verified send it sends exactly one key of the interrupt sequence, only into a capture the provider reads as the rewind picker.
   It then re-captures after the settle, never selects an entry, never sends a second key, and fails the operation with `ErrRewindPickerOpen`.
-- `Runner.Inject` skips the ready-pane check, so it refuses any input list holding a key of the engine's interrupt sequence (case-insensitive, `C-[` read as `Escape`) or a `Text` with a control character, whatever its `SettleMS` and neighbours, and names `lym shuttle interrupt`.
+- `Runner.Inject` skips the ready-pane check, so it refuses any input list holding a key of the engine's interrupt sequence (case-insensitive, `C-[` read as `Escape`) or a `Text` with a control character, whatever its `SettleMS` and neighbours, and names `lym creel interrupt`.
   A tmux spelling of the interrupt key beyond those still passes, bounded by Inject having no production caller.
 - The orch watcher's hub-pause interrupt is the one key the watcher still sends: it reaches the orch pane through the guarded interrupt, under the exemption the orch pane section below keeps for it.
 - `Runner.InterruptRestoring` is a second entry point: its key goes only through the guarded interrupt, and its clear is the engine's restored-prompt clear of the box, never an interrupt key.
@@ -61,11 +61,11 @@ Typing a line into a session a pause covers: shuttle's send refuses with `ErrPau
 - Tender resume claims the session into the refusing pause.
 - Tender revive's conditioned send reports the refusal as a send error.
 - The start's segment-color line is logged and dropped.
-- `lym loom resume` and `lym shuttle send` refuse with the pause's way forward.
+- `lym loom resume` refuses with the pause's way forward.
 
 ### Enforcement
 
-Review discipline and the shuttle send tests; no scan enforces it.
+Review discipline and the shuttle runner's send tests; no scan enforces it.
 
 ## The orch pane
 

@@ -2,7 +2,7 @@
 
 // live_test.go covers the orch liveness predicate over hand-built orch state and a fake reed strand list.
 
-package orchcli
+package orchroute
 
 import (
 	"errors"
@@ -13,7 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
-func TestOrchLiveFrom(t *testing.T) {
+func TestLiveFrom(t *testing.T) {
 	t.Parallel()
 
 	boom := errors.New("reed is down")
@@ -72,12 +72,12 @@ func TestOrchLiveFrom(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := orchLiveFrom(tt.st, tt.strands)
+			got, err := liveFrom(tt.st, tt.strands)
 			if (err != nil) != tt.wantErr {
-				t.Fatalf("orchLiveFrom() error = %v; want error %t", err, tt.wantErr)
+				t.Fatalf("liveFrom() error = %v; want error %t", err, tt.wantErr)
 			}
 			if got != tt.want {
-				t.Errorf("orchLiveFrom() = %t; want %t", got, tt.want)
+				t.Errorf("liveFrom() = %t; want %t", got, tt.want)
 			}
 		})
 	}

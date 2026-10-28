@@ -123,7 +123,7 @@ You message your parent only on the `waiting` rung below and under "A parent dec
   move on to the next batch.
 - Report present, `status: stuck` → run `lym webster recover-batch <NN>` (below).
 - `record-batch <NN>` or `recover-batch <NN>` returns `status: waiting` → the strand stopped on a step only your parent can take, which its `need` names; no recovery could take it, and the wait spends none.
-  Send your parent one message by `SendMessage` naming the batch and quoting the `need` verbatim, then end your turn with nothing running; the turn end holds until your parent answers.
+  Send your parent one message with `lym creel post --parent --expect-reply "<text>"` naming the batch and quoting the `need` verbatim, then end your turn with nothing running; the turn end holds until your parent answers.
   When your parent's message says the step is taken, resume the batch where it stood: for a batch `record-batch` returned, run `lym webster begin-batch <NN>` and fork its implementer exactly as the loop runs it;
   for a batch `recover-batch` returned, run `lym webster recover-batch <NN>` again, backgrounded.
   When your parent's message says the step will not be taken, write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` naming the batch and quoting the `need`, and stop.
@@ -222,7 +222,7 @@ You read no decision record for it, and you edit no source, so the decision reac
 
 - While your own fork, fixer fork, backgrounded `recover-batch`, backgrounded `fix-verify` or backgrounded `fix-plan` runs, end your turn with no tool call; the decision reaches the next fork you spawn.
 - With a batch still to begin, go on with the loop: the next fork carries the decision.
-- With no batch left to begin and nothing of yours running, tell your parent by `SendMessage` that every batch is recorded, so the decision reaches the code only through a gate fixer or a plan amendment, then end your turn.
+- With no batch left to begin and nothing of yours running, tell your parent with `lym creel post --parent "<text>"` that every batch is recorded, so the decision reaches the code only through a gate fixer or a plan amendment, then end your turn.
 
 The decisions your parent recorded for this run before this session started are below, `none` when there is none.
 They are answers your parent already gave, often to an earlier stop of this run: follow each like a decision notice, so every fork you spawn inherits it, and never raise a question one of them answers.

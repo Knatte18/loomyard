@@ -291,7 +291,7 @@ func buildOpenCmd(sh shell.Shell, bin, sessionID, model, effort string, skipPerm
 // Bypass is the default, and spec.PermissionMode "prompt" opts out per call;
 // the session still loads Claude Code's own settings layers, whose deny rules and hooks Claude Code applies in bypass too, and carries no shuttle --settings or guard.
 // "prompt" adds nothing, so it cannot override a default mode the settings set.
-// The session takes no turn until text reaches its pane through the operator, `lym shuttle send` or creel, each bounded by its own rules.
+// The session takes no turn until text reaches its pane through the operator or creel, each bounded by its own rules.
 // ResumeCmd resumes the session and falls back to a fresh start under the same id, because Claude Code keeps no transcript for a session that never took a turn, so --resume fails there.
 // Bound: the fresh line runs whenever the resume line exits nonzero, including a resumed session that ends nonzero after a working life;
 // a fresh start under a session id whose transcript exists fails at once, so the fallback never starts a second live session over a recorded one.

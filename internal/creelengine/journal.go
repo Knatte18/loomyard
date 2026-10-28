@@ -85,9 +85,18 @@ type record struct {
 	Argument string      `json:"argument,omitempty"`
 	ReplyTo  int64       `json:"reply_to,omitempty"`
 	Path     []string    `json:"path,omitempty"`
+	// ExpectReply marks a posted record, or a carried snapshot of one, whose message expects a reply.
+	ExpectReply bool `json:"expect_reply,omitempty"`
+	// Chase is the chase number of a chase's posted record and of a chased record; on a carried snapshot it is the chase count of the message.
+	Chase int `json:"chase,omitempty"`
+	// Chased is the id of the message a chase's posted record chases, and the same on a carried snapshot of a chase.
+	Chased int64 `json:"chased,omitempty"`
+	// ReadAt is when a carried snapshot's message was read, and MarkSeconds the chase clock at its last chase step.
+	ReadAt      time.Time `json:"read_at,omitzero"`
+	MarkSeconds int64     `json:"mark_s,omitempty"`
 	// Receiver is the receiver that ended a returned message unread.
 	Receiver string `json:"receiver,omitempty"`
-	// TTLSeconds is an inject's time to live, and ConsumedSeconds the part of it already used.
+	// TTLSeconds is an inject's time to live, and ConsumedSeconds the part of it already used, or a message's chase clock on a chase-aged record, a chase's posted record and a carried snapshot.
 	TTLSeconds      int64 `json:"ttl_s,omitempty"`
 	ConsumedSeconds int64 `json:"consumed_s,omitempty"`
 	// Head marks an inject queued at the head of its receiver's queue.

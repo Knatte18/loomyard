@@ -146,6 +146,7 @@
 // A notice of a run goes to the nearest live orch up its pair's beam chain, the prime's when none is live:
 // `NotifyParent` resolves it from the pair's recorded parent worktree at each call, `NotifyFrom` starts the walk at the given worktree itself, for a run whose pair is absent,
 // and `ParentOrchRecorded` answers whether that destination records a strand, the watched-or-silent decision a driver reads.
+// `NotifyAsker` is the hold notice's route: it resolves the orch with `orchroute.Asker`, the rule `lym creel post --parent` uses, so a held agent's notice reaches the orch its own question reached, the walk starting at the worktree itself from a beam or the prime.
 // Callers that act on no run's pair, hibernate's notice and fabric's push notifier, keep `NotifyPrime`.
 // `HubOrchs` lists the worktrees an orch may run in, the prime's location and each local pair whose origin record carries the beam mark, for the readers that must cover every orch of the hub.
 // It skips a pair still being created, in its staging directory or without its `_lym` junction, and reads nothing through it, so a poll during `lym fabric add` leaves nothing the wiring refuses.

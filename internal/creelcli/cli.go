@@ -29,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymtemp"
+	"github.com/Knatte18/loomyard/internal/orchroute"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/proc"
@@ -54,15 +55,17 @@ type realClock struct{}
 func (realClock) Now() time.Time                         { return time.Now() }
 func (realClock) After(d time.Duration) <-chan time.Time { return time.After(d) }
 
-// clientSeam is the clock and daemon spawn every verb's client is built with.
+// clientSeam is the clock, daemon spawn and orch liveness predicate every verb's client is built with.
 // spawn starts the daemon for a hub with its stderr appended to the log file at logPath and answers the daemon's pid with the signal of its exit.
+// live reports whether the orch of a worktree is live, which `post --parent` resolves its receiver with.
 // A test replaces it, and so does not run in parallel.
 type clientSeam struct {
 	clock creelengine.Clock
 	spawn func(hubPath, logPath string) (creelengine.Spawn, error)
+	live  func(worktree *lymcwd.Location) (bool, error)
 }
 
-var seam = clientSeam{clock: realClock{}, spawn: spawnDaemon}
+var seam = clientSeam{clock: realClock{}, spawn: spawnDaemon, live: orchroute.Live}
 
 // Command returns the cobra command for `lym creel`: the bare group, its operator verbs and the hidden daemon.
 func Command() *cobra.Command {
@@ -221,6 +224,27 @@ func hubClient(ctx context.Context) (*creelengine.Client, error) {
 	return creelengine.NewClient(geometry, claimFor(cwd), func() (creelengine.Spawn, error) { return seam.spawn(hubPath, geometry.DaemonLogPath) }, seam.clock), nil
 }
 
+// parentReceiver resolves the strand name of the orch the worktree of the cwd ctx carries reaches as its parent, by the rule a hold notice uses.
+// A worktree whose orch state records no strand is refused with the way forward.
+func parentReceiver(ctx context.Context) (string, error) {
+	cwd, err := lymcwd.CwdFrom(ctx)
+	if err != nil {
+		return "", err
+	}
+	location, _, err := preflight.ResolveMode(cwd)
+	if err != nil {
+		return "", err
+	}
+	name, recorded, err := orchroute.Asker(location, seam.live)
+	if err != nil {
+		return "", err
+	}
+	if !recorded {
+		return "", errors.New("creel: post --parent found no orch strand recorded for this worktree's parent; way forward: post to a strand by name, as lym reed list lists them")
+	}
+	return name, nil
+}
+
 // claimFor states who the caller says it is: its strand name, and the envelope an EXTERNAL caller is shown with.
 // A claim names no program; a program sender comes only through the Go client.
 func claimFor(cwd string) creelengine.Claim {
@@ -274,6 +298,9 @@ func messageFields(message creelengine.Message) map[string]any {
 	if message.ReplyTo != 0 {
 		fields["reply_to"] = message.ReplyTo
 	}
+	if message.ExpectReply {
+		fields["expect_reply"] = true
+	}
 	if message.EndedUnreadBy != "" {
 		fields["ended_unread_by"] = message.EndedUnreadBy
 		fields["ended_unread_at"] = message.EndedUnreadAt
@@ -301,10 +328,12 @@ func timeoutWhenWaiting(waiting bool, timeout time.Duration) time.Duration {
 // postCmd returns the `creel post` verb.
 func postCmd() *cobra.Command {
 	var (
-		replyID   int64
-		waitReply bool
-		interrupt bool
-		timeout   time.Duration
+		replyID     int64
+		toParent    bool
+		waitReply   bool
+		expectReply bool
+		interrupt   bool
+		timeout     time.Duration
 	)
 	cmd := &cobra.Command{
 		Use:         "post [<receiver>] <text>",
@@ -321,7 +350,17 @@ receiver is given. To answer mail you received, run
 lym creel post --reply <id> "<text>" with the id after the #; answer mail from
 EXTERNAL in your own reply text, since such a reply reaches only a waiting
 post --wait-reply. With --wait-reply the call waits for the reply, up to
---timeout, and exits 5 if the message returns undelivered.
+--timeout, and exits 5 if the message returns undelivered and 1 if creel
+recorded it unanswered after chasing its holder.
+
+--expect-reply marks the message as expecting a reply, without waiting for it;
+--wait-reply marks it too. The receiver sees the mark beside the reply command
+in the message's header or line, and the holder's reply clears it.
+
+With --parent the text goes to your parent orch, so no receiver is given: from a
+pair the nearest live orch up from its recorded parent, else the prime's; from a
+beam or the prime that worktree's own orch when live. The answer names the
+resolved strand as receiver.
 
 --interrupt stops the receiver's running turn first, so the message arrives as
 the input of the turn after it; it needs a receiver shuttle launched with
@@ -333,17 +372,24 @@ interrupted or posted.
 Example:
   lym creel post ly:impl "the schema changed, rebase before you go on"
   lym creel post --interrupt ly:impl "stop, the scope changed: drop the migration"
+  lym creel post --parent "blocked: which schema do you want?"
   lym creel post --reply 12 "done"`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			replying := cmd.Flags().Changed("reply")
 			switch {
+			case toParent && replying:
+				return refuse(cmd, errors.New("--parent applies to a post to your parent orch, not to a --reply; way forward: post --reply <id> <text> without --parent to answer a message"))
+			case toParent && len(args) != 1:
+				return refuse(cmd, errors.New("post --parent takes the text alone; the forms are: post <receiver> <text>, post --parent <text> and post --reply <id> <text>"))
 			case replying && len(args) != 1:
-				return refuse(cmd, errors.New("post --reply takes the text alone; the forms are: post <receiver> <text> and post --reply <id> <text>"))
-			case !replying && len(args) != 2:
-				return refuse(cmd, errors.New("post takes a receiver and a text; the forms are: post <receiver> <text> and post --reply <id> <text>"))
+				return refuse(cmd, errors.New("post --reply takes the text alone; the forms are: post <receiver> <text>, post --parent <text> and post --reply <id> <text>"))
+			case !replying && !toParent && len(args) != 2:
+				return refuse(cmd, errors.New("post takes a receiver and a text; the forms are: post <receiver> <text>, post --parent <text> and post --reply <id> <text>"))
 			case replying && waitReply:
 				return refuse(cmd, errors.New("--wait-reply applies to a post to a receiver, not to a --reply"))
+			case replying && expectReply:
+				return refuse(cmd, errors.New("--expect-reply applies to a post to a receiver, not to a --reply, which is no question; way forward: post --reply <id> <text> without --expect-reply"))
 			case replying && interrupt:
 				return refuse(cmd, errors.New("--interrupt applies to a post to a receiver, not to a --reply; way forward: post --interrupt to the original sender by name when it is a strand, or post --reply <id> without --interrupt when it is EXTERNAL or a program"))
 			}
@@ -355,11 +401,23 @@ Example:
 					}
 					return result{fields: map[string]any{"id": resp.ID, "sender": resp.Sender}, done: fmt.Sprintf("message #%d was posted", resp.ID)}, nil
 				}
-				resp, err := client.Call(creelengine.Request{Verb: creelengine.VerbPost, Receiver: args[0], Text: args[1], Wait: waitReply, Interrupt: interrupt}, timeoutWhenWaiting(waitReply, timeout), nil)
+				receiver, text := "", args[len(args)-1]
+				if toParent {
+					var err error
+					if receiver, err = parentReceiver(cmd.Context()); err != nil {
+						return result{}, err
+					}
+				} else {
+					receiver = args[0]
+				}
+				resp, err := client.Call(creelengine.Request{Verb: creelengine.VerbPost, Receiver: receiver, Text: text, Wait: waitReply, Interrupt: interrupt, ExpectReply: expectReply}, timeoutWhenWaiting(waitReply, timeout), nil)
 				if err != nil {
 					return result{}, err
 				}
 				fields := map[string]any{"id": resp.ID, "sender": resp.Sender}
+				if toParent {
+					fields["receiver"] = receiver
+				}
 				if interrupt {
 					fields["interrupted"] = resp.Interrupted
 				}
@@ -375,13 +433,19 @@ Example:
 					fields["returned"] = messageFields(*resp.Message)
 					return result{fields: fields, done: done, code: ExitReturnedUndelivered, note: "the message returned undelivered"}, nil
 				}
+				if resp.Outcome == creelengine.OutcomeUnanswered {
+					fields["unanswered"] = messageFields(*resp.Message)
+					return result{fields: fields, done: done, code: 1, note: fmt.Sprintf("the message got no reply: creel chased its holder and recorded it unanswered; way forward: read lym creel log --id %d for its path, then ask again or decide without the answer", resp.Message.ID)}, nil
+				}
 				fields["reply"] = messageFields(*resp.Message)
 				return result{fields: fields, done: done}, nil
 			})
 		},
 	}
 	cmd.Flags().Int64Var(&replyID, "reply", 0, "answer the message with this id instead of posting to a receiver")
+	cmd.Flags().BoolVar(&toParent, "parent", false, "post to your parent orch instead of a named receiver")
 	cmd.Flags().BoolVar(&waitReply, "wait-reply", false, "wait for the reply to the message")
+	cmd.Flags().BoolVar(&expectReply, "expect-reply", false, "mark the message as expecting a reply, without waiting for it")
 	cmd.Flags().BoolVar(&interrupt, "interrupt", false, "stop the receiver's running turn before posting")
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "give up waiting after this long, 0 for never")
 	return cmd
@@ -522,7 +586,7 @@ const readAgeShown = 5 * time.Minute
 
 // writeMessagesText prints messages as plain text for the agent that reads them, or "nothing unread" when there are none.
 // Each message is a header line and then its body, and a blank line separates two messages.
-// The header names the id, the sender and the reply command, and also the message a reply answers, the receiver a returned message ended unread at, and the posting time once the message is older than readAgeShown at now.
+// The header names the id, the sender and the reply command, and also the message a reply answers, the receiver a returned message ended unread at, the posting time once the message is older than readAgeShown at now, and that the message expects a reply.
 func writeMessagesText(out io.Writer, messages []creelengine.Message, now time.Time) error {
 	if len(messages) == 0 {
 		_, err := fmt.Fprintln(out, "nothing unread")
@@ -542,6 +606,9 @@ func writeMessagesText(out io.Writer, messages []creelengine.Message, now time.T
 		}
 		if now.Sub(message.Posted) > readAgeShown {
 			header += ", posted " + message.Posted.UTC().Format(time.RFC3339)
+		}
+		if message.ExpectReply {
+			header += ", expects a reply"
 		}
 		header += fmt.Sprintf(" — reply with: lym creel post --reply %d <text>", message.ID)
 		text.WriteString(header + "\n" + strings.TrimSuffix(message.Body, "\n") + "\n")
@@ -729,6 +796,15 @@ func logEntryFields(entry creelengine.LogEntry) map[string]any {
 	}
 	if entry.Step != 0 {
 		fields["step"] = entry.Step
+	}
+	if entry.ExpectReply {
+		fields["expect_reply"] = true
+	}
+	if entry.ReplyTo != 0 {
+		fields["reply_to"] = entry.ReplyTo
+	}
+	if entry.Chase != 0 {
+		fields["chase"] = entry.Chase
 	}
 	return fields
 }

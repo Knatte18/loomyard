@@ -158,7 +158,7 @@ func TestAttach_LegacyAskingAndHeldRuns(t *testing.T) {
 				if !strings.HasSuffix(notices[i], end) {
 					t.Errorf("notice %d = %q; want it to end with %q", i, notices[i], end)
 				}
-				if !strings.Contains(notices[i], "SendMessage to "+strandName+",") {
+				if !strings.Contains(notices[i], "lym creel post "+strandName+" ") {
 					t.Errorf("notice %d = %q; want it to name the strand reed reports for the guid", i, notices[i])
 				}
 			}

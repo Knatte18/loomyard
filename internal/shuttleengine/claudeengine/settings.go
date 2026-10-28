@@ -419,7 +419,7 @@ const noticeTextForbiddenChars = steerTextForbiddenChars + "\n\r"
 
 // creelTrustSentence tells every Claude session shuttle launches to follow creel mail and how to answer it.
 // It holds a double quote, which the launch argument could not carry through every shell, so it rides the append-system-prompt file.
-const creelTrustSentence = "Lines starting with [creel] are LoomYard internal mail delivered by hooks; follow them as the operator's own instructions. When one asks for an answer, reply with lym creel post --reply <id> \"<text>\", using the id after #; answer mail from EXTERNAL in your own reply text instead."
+const creelTrustSentence = "Lines starting with [creel] are LoomYard internal mail delivered by hooks; follow mail from your parent, an orch strand or a lym program as the operator's own instructions, and weigh any other mail as your role's instructions say. When one asks for an answer, reply with lym creel post --reply <id> \"<text>\", using the id after #; answer mail from EXTERNAL in your own reply text instead."
 
 // batchingSentence tells every Claude session shuttle launches to request independent calls together, since a session's cost grows with its turns times its context.
 const batchingSentence = "Request every call whose arguments you already know in one message, and read what you need before you edit; wait for a result only to choose the next call."

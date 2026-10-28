@@ -1020,12 +1020,12 @@ func TestRun_Interrupt_PlaysEscape(t *testing.T) {
 		wantRunning bool
 	}{
 		{name: "recordless strand showing a running turn gets one Escape", script: []StartupState{StartupReady}, viaRunner: true, recordless: true, captures: []string{"RUNNING"}, wantKeys: 1},
-		{name: "recordless strand showing no running turn gets no key", script: []StartupState{StartupReady}, viaRunner: true, recordless: true, captures: []string{"idle"}, wantErr: ErrNoRunningTurn, wantMsg: "lym shuttle send"},
+		{name: "recordless strand showing no running turn gets no key", script: []StartupState{StartupReady}, viaRunner: true, recordless: true, captures: []string{"idle"}, wantErr: ErrNoRunningTurn, wantMsg: "lym creel post"},
 		{name: "ready pane showing a running turn", script: []StartupState{StartupReady}, captures: []string{"RUNNING"}, wantKeys: 1, wantRunning: true},
 		{name: "ready probe retries a transient boot", script: []StartupState{StartupPending, StartupReady}, captures: []string{"RUNNING"}, wantKeys: 1, wantRunning: true},
 		{name: "runner interrupt into a running turn", script: []StartupState{StartupReady}, viaRunner: true, captures: []string{"RUNNING"}, wantKeys: 1, wantRunning: true},
-		{name: "a pane showing no running turn gets no key", script: []StartupState{StartupReady}, captures: []string{"idle"}, wantErr: ErrNoRunningTurn, wantMsg: "lym shuttle send"},
-		{name: "a pane showing no running turn gets no key from the runner", script: []StartupState{StartupReady}, viaRunner: true, captures: []string{"idle"}, wantErr: ErrNoRunningTurn, wantMsg: "lym shuttle send"},
+		{name: "a pane showing no running turn gets no key", script: []StartupState{StartupReady}, captures: []string{"idle"}, wantErr: ErrNoRunningTurn, wantMsg: "lym creel post"},
+		{name: "a pane showing no running turn gets no key from the runner", script: []StartupState{StartupReady}, viaRunner: true, captures: []string{"idle"}, wantErr: ErrNoRunningTurn, wantMsg: "lym creel post"},
 		{name: "a failed guard capture sends no key", script: []StartupState{StartupReady}, captures: []string{"RUNNING"}, captureErrs: []error{nil, boom}, wantErr: boom},
 		{name: "a failed guard capture sends no key from the runner", script: []StartupState{StartupReady}, viaRunner: true, captures: []string{"RUNNING"}, captureErrs: []error{nil, boom}, wantErr: boom},
 	}

@@ -64,9 +64,10 @@
 // A torn last line of the newest file left by a crash, with or without its newline, is skipped with one warning by the fold and cut when the journal opens, so the next append starts on a clean line; a malformed line anywhere else fails the load naming the file and line, since skipping it could drop a message silently.
 // An inject with a sending event and no outcome folds as unconfirmed, so one in flight at a crash is never typed again.
 //
-// At a UTC day change the writer carries what is still live out of files older than seven days: it appends a carried record for each unread message, queued inject and live hold to the new day file, syncs, and only then deletes the old files.
+// At a UTC day change the writer carries what is still live out of files older than seven days: it appends a carried record for each unread or chaseable message, queued inject, live hold and program that has read to the new day file, syncs, and only then deletes the old files.
 // The fold is idempotent by id, so a crash between the carry and the deletion leaves both and folds to one entry.
-// Each carried record is also a `carried` log event, after a fold and in the running daemon, holding the snapshot's id, parties and kind at the carry's time.
+// Each carried record but a program's read is also a `carried` log event, after a fold and in the running daemon, holding the snapshot's id, parties and kind at the carry's time.
+// A chaseable message keeps its read time, chase clock, last chase step and chase count in its snapshot, and a program's read keeps its mailbox known and its notice owed, as the unanswered notice below explains.
 //
 // The pool holds each message once, with its id, its original sender and its current holder; forwarding changes the holder only.
 // Only the daemon writes the journal.
@@ -75,6 +76,7 @@
 //
 // post stores a message for a receiver and answers its id once the line is journaled.
 // A body is non-empty and its `[creel] #<id> from "<sender>": <body>` line at most 8 KiB, so one hook field carries every claimed line whole; a longer message is a file the sender writes and the mail names.
+// A message that expects a reply, below, has the longer line `[creel] #<id> from "<sender>", expects a reply (lym creel post --reply <id> "<text>"): <body>`, and the size check measures that form for every post, so it never depends on the mark.
 // A reply to an EXTERNAL sender, which only a waiting `post --wait-reply` receives and no claim hands out, keeps a 64 KiB cap on its body.
 // A claim never hands out a message an older binary stored whose line is past 10,000 UTF-16 units, the cap Claude Code keeps of one hook field; it stays for `lym creel read` and raises no mail flag.
 //
@@ -101,6 +103,11 @@
 // A reply (`post --reply <id>`) goes to the original message's sender, and only its holder may send one.
 // A reply to an EXTERNAL sender, which has no address, is handed to the `post --wait-reply` that waits on the original, and journaled undelivered when none waits.
 // A waiting post registers its wait before any reply can arrive, and ends with the reply or with the message returned undelivered.
+// A reply to a strand's or program's message also ends a wait registered on it, and still reaches the sender as mail; a wait registered after the reply is answered with the oldest reply that stands.
+//
+// A post can expect a reply: `post --expect-reply` sets the mark, and `post --wait-reply` implies it.
+// The mark is journaled with the post, kept by retention while the message is unread, shown in the message's line beside the reply command, and cleared by the holder's reply, which the fold records on the message as replied.
+// The log lists the mark on the post's entry and, on a reply's entry, the id it answers.
 //
 // forward moves an unread message the caller holds to another receiver: the holder changes, the sender stays, and the caller joins the message's path, so the new receiver replies to the sender and the message records the whole way it took.
 // A message that is read, not the caller's, or addressed back to the caller is refused.
@@ -115,7 +122,7 @@
 // ClaimAtBoundary hands the strand its unread mail no read has reserved, oldest first and agent mail included, as a read does: reserved until the client acknowledges it on the same connection, and journaled read only then.
 // Under a hold it hands out only the owner's mail, and while a pause covers the strand nothing.
 // One claim stops before the message whose line would take its lines, with the newlines joining them, past an 8 KiB budget, though it always hands out the first, and what it leaves stays unread with its flag standing.
-// Each message is one MessageLine, the line a notice is typed as.
+// Each message is one MessageLine, the line a notice is typed as: the plain form, or the marked form for a message that expects a reply.
 //
 // The Stop hook claims through the same verb with the Stop flag and the hook input's stop_hook_active, and blocks the turn end while it hands out mail.
 // The store counts, per strand, the consecutive Stop blocks of the strand's current turn: a Stop whose stop_hook_active is false resets the count to 0, a Stop at 6 blocks or more claims nothing so the turn end is recorded, a Stop that hands out mail adds one before the client writes it, and a tool-boundary claim that hands out mail resets the count to 0.
@@ -218,12 +225,13 @@
 //
 // # Removed holders
 //
-// A sweep runs while a strand holds unread mail or has an inject queued, starting 30 seconds apart and doubling to 50 seconds while the set of strand names holds, and returning to the base on a change or a failed listing.
+// A sweep runs while a strand holds unread mail, a read message that expects a reply and has none, or has an inject queued, starting 30 seconds apart and doubling to 50 seconds while the set of strand names holds, and returning to the base on a change or a failed listing.
 // A new post or inject shortens the wait to the base when more is left, and never lengthens it.
 // A holder counts as gone after two successful sweeps in a row, at least 10 seconds apart, miss it: a sweep that misses a holder for the first time is followed by a confirming sweep after 10 seconds, whatever else would set the wait, and a post or inject during that wait keeps its deadline.
 // A removed holder is settled within 60 seconds while listings succeed.
 // Each unread message of a gone holder goes one step back along its path, to the last forwarder or else the sender, and is marked with the receiver that ended without reading it.
 // When that step is no strand, the message is journaled undelivered and a waiting sender is answered that it returned undelivered.
+// Each message the gone holder read and left unanswered while it expected a reply is settled unanswered with the reason `holder-gone`, which answers a waiting sender and posts the sender's notice as a chase-limit outcome does; no chase goes to a gone holder.
 // Each inject queued for the gone holder expires.
 // Creel learns only that the strand no longer exists, never why.
 //
@@ -233,11 +241,31 @@
 // A program's mailbox is never reminded; a program reads with `read --wait`.
 // A journal written by stage 1 may hold `withheld` records for orch mail; the fold keeps them in the log, acts on none, and the daemon reminds that mail from its first probe.
 //
+// # Reply discipline
+//
+// A message that expects a reply is chaseable once its strand holder read it and until the holder answers; a chase carries no mark, so it is never chased, and a message a program holds is never chased.
+// Its chase clock is the holder's running time since the read, counted in whole minutes: the chaser probes the holder through the seam when it starts and counts that reading as the previous tick's, then ticks once a minute while the holder is listed, live and uncovered by a pause, and a tick whose probe and the previous one's both read the clock running charges one minute to each chaseable message of the holder that no other sender's live hold stands on.
+// While the clock is stopped each tick doubles the next wait up to eight minutes and charges nothing, and a running tick or a wake of the holder returns the wait to a minute, so a stopped clock's restart is seen at the next tick and the running time until then goes uncharged.
+// The clock is journaled at each tick as a `chase-aged` record and again when the clock stops and when the Scheduler stops, so a restart rebuilds it from the journal and counts no downtime; a step that was already due when the store opened counts from the clock at that opening.
+//
+// Fifteen minutes of running time after the read, and again after each chase, is a step: the first two steps are chases and the third settles the message unanswered.
+// A chase is a post signed `<shortname>:CREEL` to the holder, journaled with its number and the clock, then a `chased` record naming the message; its body names the message, its sender and the reply command and carries no text the sender wrote, so it cannot pose as an instruction.
+// A crash between the chase and its `chased` record is repaired when the store opens, and never yields a third chase.
+//
+// A message settled unanswered is journaled with its reason, `no-reply` here, and answers every wait on its reply with the `unanswered` outcome carrying the message; a wait registered later is answered the same way, and a reply that comes later is still delivered.
+// The sender gets a `CREEL` notice naming the message, its receiver and `lym creel log --id` for its path when it is a strand the seam lists or a program that has read; EXTERNAL, a program that never read and a strand no longer listed get none, and a notice that fails to store is logged and never undoes the record.
+// At most two chases and one notice are sent per marked message, and `CREEL` is never a receiver.
+//
+// A reply to a chase answers the message it chases: it is addressed to that message's sender, carries its id as the reply-to, and so stops its chase clock.
+// It is accepted only from the chased message's current holder, and a chase is never forwarded; the refusal names `post --reply` on the chase.
+// A `CREEL` sender notice takes no reply, since `CREEL` holds no mailbox; the refusal names a post to the strand the notice names.
+//
 // # Log
 //
 // log lists the journal's events oldest first with their ids, parties, times and subjects, narrowed by --id, --from, --to and --since.
 // It carries no body field; a text inject's line is the `subject` of each of its events, and a command inject's events carry its `command` and `argument`.
 // --id also lists the `reminded` events whose unread ids hold that id.
+// A marked message's id also lists its `chased` events, one per chase with the chase number, its `chase-aged` events, which carry the chase clock, and its `unanswered` event with the reason.
 // A `carried` event shows the kind of the message or inject carried, and a message carried again at a later retention gets one `carried` event per carry that is still in a kept file.
 // A `stalled` record names the receiver and the stall reason a delivery probe read, and is written once per change of reason while something is pending for the receiver, and again for a stall read after it went stale.
 //
@@ -247,16 +275,20 @@
 // A worker probes from a one-second base and doubles the wait to eight seconds after every probe that delivers nothing; a wake from the store or a probe that delivers returns it to the base, and the worker ends when nothing is pending.
 // While the receiver is live and unpaused, the wait is capped at its soonest queued inject's remaining TTL, never below one second, so an inject expires when its TTL runs out and not at the next backed-off probe.
 // A probe finds the strand, skips a dormant or paused one, and types the first queued inject, or under a hold the owner's; with none due, and only for a pane-mail strand, it types the oldest notice no read or claim holds reserved, under a hold the owner's, and with none of those the reminder.
+// The Scheduler also runs one chaser per holder of a chaseable message, which counts the chase clock below and sends the chases.
 // Each delivery asks the seam whether the strand is idle first, and every wait goes through the Clock, so a test never waits out an interval.
 // Every idle answer feeds the stall journal: a new non-empty reason is journaled, a repeat only stamps when it was read, and a reading with no reason, a probe error or a typed line clears it with no record.
 // The inject TTL keeps running while a strand is stalled, live and unpaused.
 //
-// # Unbuilt: the stage 3 remainder
+// # Every agent messages through creel
 //
-// `PATTERN-pane-text-injection` is scoped to the orch session: typing into it from Go is only creel's, through its `Delivery` seam; the orch watcher keeps only a hub pause's guarded interrupt, reed's `/rename` repair keeps its own guard, and other modules post or inject through creel.
-// Stage 3 widens it to every agent's pane.
+// An agent reaches its parent, its seat peers and the orch through creel, never through an engine's own messaging tool, with `post --parent` for the parent's orch, the expected-reply mark and its chases.
+// The parent-review relay is the Go driver's `parent_notice` post.
+// The two shuttle verbs that typed and interrupted by guid are gone, so every operator route into an agent pane runs through creel's journal, queue, pause and hold.
 //
-// Stage 3, the task `creel-agents`: the parent-review gate posts to the parent itself, drivers' stop reports post instead of duplicating batten's notices, and `lym shuttle send` and `lym shuttle interrupt` move behind creel.
+// Bound: the operator loses guid addressing, which a strand name from `lym reed list` replaces.
+// A line injected under a pause is held with its TTL frozen and typed after the resume; it is typed only at idle within its TTL.
+// No `MessageTail` is appended unless the sender writes it, and only EXTERNAL, programs and orch strands may inject into another strand.
 //
 // Later and not planned: sending across hubs, which the socket name's hub hash already leaves room for, and an MCP layer over the verbs.
 package creelengine

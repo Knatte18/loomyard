@@ -1,6 +1,6 @@
 // cli.go builds the cobra command tree for the report module and the RunCLI/RunCLIIn seams that wire it into the standard io.Writer-based call contract.
 // The convergence verb validates its flags, resolves the prime's geometry once, and hands it to the report engine.
-// The prime resolution both verbs share lives here too.
+// The prime resolution every verb shares lives here too.
 
 package reportcli
 
@@ -32,19 +32,21 @@ const (
 	defaultFreshDays = 3
 )
 
-// Command returns the cobra command for the report module: the bare `report` group and its two verbs, convergence and timing.
+// Command returns the cobra command for the report module: the bare `report` group and its three verbs, convergence, timing and replies.
 func Command() *cobra.Command {
 	report := &cobra.Command{
 		Use:   "report",
 		Short: "read-only reports over the hub's records and history",
 		Long: `report holds the read-only reports lym computes from the records it already
-writes: convergence, which asks whether the orch's work converges, and timing,
-which asks where run time went. Every verb runs from the hub's prime worktree
-only and changes nothing.`,
+writes: convergence, which asks whether the orch's work converges, timing,
+which asks where run time went, and replies, which asks which roles often need
+chasing for a reply. Every verb runs from the hub's prime worktree only and
+changes nothing.`,
 		RunE: clihelp.GroupRunE,
 	}
 	report.AddCommand(convergenceCommand())
 	report.AddCommand(timingCommand())
+	report.AddCommand(repliesCommand())
 	return report
 }
 

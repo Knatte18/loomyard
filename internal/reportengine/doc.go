@@ -1,7 +1,8 @@
 // Package reportengine computes the read-only report behind `lym report convergence`: per finished run and per ISO week, what woke the orch, what stopped and repaired runs, and how the parent branch's landings fared.
-// Every figure comes from records lym already writes, each read from git objects through a tolerant parse in the package that owns its format.
+// Every convergence and timing figure comes from records lym already writes, each read from git objects through a tolerant parse in the package that owns its format.
 // A record a run lacks is reported absent, never as zero.
 // ComputeTiming is the second compute entry, over the same snapshot: where each run's time went, per phase and per day or week.
+// ComputeReplies is the third, over creel log entries instead of a snapshot.
 //
 // # Told geometry
 //
@@ -175,6 +176,12 @@
 // Each stop counts in the bucket its time falls in under its kind and settler.
 // TimingReport.Phases holds, per recipe, each phase a run of it can hold, which is the phases its table names plus setup, land, paused and other.
 // Each such phase's median is over the landed runs of that recipe holding it whose archive tag is committed in the window; the median of an even count is the mean of the two middle values rounded down, and a run in flight never enters one.
+//
+// # Replies
+//
+// ComputeReplies is pure over creel log entries and groups by the receiver's role: a strand's role, a program's upper-case name.
+// Per role it counts Expected, the `posted` entries marked as expecting a reply, by their receiver; Replied, the `posted` reply entries whose reply-to names a message the entries show as marked, by the reply's sender; Chased, the `chased` entries, by their receiver; and Unanswered, the `unanswered` entries, by their holder.
+// A reply whose reply-to names no marked message counts nowhere, a name that is neither a strand nor a program counts nowhere, and roles come out in name order.
 //
 // # Outputs
 //

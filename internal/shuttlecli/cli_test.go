@@ -1,9 +1,8 @@
 //go:build tier0
 
-// cli_test.go covers the shuttlecli cobra seam through RunCLI: run's flag-shape validation, and interrupt/send's exact-args validation.
-// It also pins, over a fake reed and engine, the message tail `send` appends.
+// cli_test.go covers the shuttlecli cobra seam through RunCLI: run's flag-shape validation and the positional-argument validation of the remaining verbs.
 // No live tmux/claude session is required by any test in this file;
-// the full run/interrupt/send round-trip against a live agent lives in smoke tests (batch 6) and
+// the full run round-trip against a live agent lives in smoke tests (batch 6) and
 // the sandbox suite.
 
 package shuttlecli
@@ -22,7 +21,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
@@ -219,18 +217,24 @@ func parseSingleEnvelope(t *testing.T, out []byte) map[string]any {
 	return envelope
 }
 
-// TestRunCLI_PositionalArgValidation verifies that "lym shuttle interrupt" and "lym shuttle send" enforce their exact positional arguments (<guid>, and <guid> <text>), and "lym shuttle state" accepts none, via cobra's Args validation, which runs before PersistentPreRunE — so this fires even against a non-git directory with no config to resolve.
-// Each subtest changes the process working directory, so none runs in parallel.
+// TestRunCLI_PositionalArgValidation verifies that "lym shuttle state" accepts no argument and "lym shuttle await" needs one, via cobra's Args validation, which runs before PersistentPreRunE — so this fires even against a non-git directory with no config to resolve.
+// It also asserts the command tree registers no `send` or `interrupt` child, so a verb registered again fails.
+// Each subtest that runs the CLI changes the process working directory, so none runs in parallel.
 func TestRunCLI_PositionalArgValidation(t *testing.T) {
+	for _, removed := range []string{"send", "interrupt"} {
+		t.Run("NoChild_"+removed, func(t *testing.T) {
+			for _, child := range Command().Commands() {
+				if child.Name() == removed {
+					t.Errorf("Command() registers a %q child; want none", removed)
+				}
+			}
+		})
+	}
+
 	tests := []struct {
 		name string
 		args []string
 	}{
-		{"InterruptNoArgs", []string{"interrupt"}},
-		{"InterruptTooManyArgs", []string{"interrupt", "guid-1", "guid-2"}},
-		{"SendNoArgs", []string{"send"}},
-		{"SendOnlyGuid", []string{"send", "guid-1"}},
-		{"SendTooManyArgs", []string{"send", "guid-1", "text", "extra"}},
 		{"StateStrayArgument", []string{"state", "stray"}},
 		{"AwaitNoArgs", []string{"await"}},
 	}
@@ -498,194 +502,6 @@ func TestRunCmd_MechanismFailure_EnvelopeCarriesRunIdentity(t *testing.T) {
 	}
 	if got, _ := envelope["runDir"].(string); got == "" {
 		t.Errorf("envelope runDir is empty; want the run dir that is still on disk; output: %s", out.String())
-	}
-}
-
-// TestSendCmd_AppendsMessageTail drives sendCmd over a started run on a fake reed and engine and asserts the one text typed into the pane,
-// so the verb is what is pinned, not the helper it calls.
-func TestSendCmd_AppendsMessageTail(t *testing.T) {
-	t.Parallel()
-	tail := shuttleengine.MessageTail
-	tests := []struct {
-		name    string
-		text    string
-		want    string
-		covered bool
-	}{
-		{"plain text gains the tail", "read the plan", "read the plan " + tail, false},
-		{"text already ending with the tail is typed once with it", "read the plan " + tail, "read the plan " + tail, false},
-		{"a strand a live pause covers is refused and types nothing", "read the plan", "", true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			root := t.TempDir()
-			var pane strings.Builder
-			reed := &shuttlefake.Reed{
-				SendTextFn: func(_, text string, _ bool) error {
-					pane.WriteString(text + "\n")
-					return nil
-				},
-				CapturePaneFn: func(string) (string, error) { return pane.String(), nil },
-			}
-			engine := &shuttlefake.Engine{
-				PrepareLaunch: &shuttleengine.Launch{Cmd: "launch", ResumeCmd: "resume", SessionID: "session-1"},
-				ComposeSendFn: func(text string) []shuttleengine.PaneInput {
-					return []shuttleengine.PaneInput{{Text: text, Submit: true}}
-				},
-			}
-			runner := newFakeClockRunner(reed, engine, root, root)
-			run, err := runner.Start(shuttleengine.Spec{Prompt: "do the thing", OutputFiles: []string{filepath.Join(root, "out.md")}})
-			if err != nil {
-				t.Fatalf("runner.Start: %v", err)
-			}
-
-			cli := &shuttleCLI{runner: runner}
-			if tt.covered {
-				cli.pause = pauserecord.Geometry{RecordPath: filepath.Join(root, "pause", pauserecord.RecordFileName), Slug: "s1"}
-				now := time.Now()
-				if _, err := pauserecord.Update(cli.pause.RecordPath, now, func(record *pauserecord.Record) error {
-					record.Live = append(record.Live, pauserecord.Entry{Scope: "s1", PausedAt: now, Caller: "EXTERNAL"})
-					return nil
-				}); err != nil {
-					t.Fatalf("pauserecord.Update: %v", err)
-				}
-			}
-			cmd := cli.sendCmd()
-			var out bytes.Buffer
-			cmd.SetOut(&out)
-			cmd.SetErr(&out)
-			cmd.SetArgs([]string{run.StrandGUID(), tt.text})
-			if err := cmd.Execute(); err != nil {
-				t.Fatalf("cmd.Execute() error: %v; output: %s", err, out.String())
-			}
-
-			envelope := parseSingleEnvelope(t, out.Bytes())
-			if tt.covered {
-				if ok, _ := envelope["ok"].(bool); ok {
-					t.Fatalf("envelope ok = true; want a refusal; output: %s", out.String())
-				}
-				if msg, _ := envelope["error"].(string); !strings.Contains(msg, "lym tender resume s1") {
-					t.Errorf("refusal = %q; want it to name %q", msg, "lym tender resume s1")
-				}
-				if len(reed.SendTextCalls) != 0 {
-					t.Errorf("typed texts = %+v; want none", reed.SendTextCalls)
-				}
-				return
-			}
-			if ok, _ := envelope["ok"].(bool); !ok {
-				t.Fatalf("envelope ok = false; output: %s", out.String())
-			}
-			if len(reed.SendTextCalls) != 1 || reed.SendTextCalls[0].Text != tt.want {
-				t.Errorf("typed texts = %+v; want exactly one, %q", reed.SendTextCalls, tt.want)
-			}
-		})
-	}
-}
-
-// TestInterruptAndSendCmd_FailWithTheGuardsMessage drives interruptCmd and sendCmd over a started run whose pane shows no running turn or the rewind picker.
-// Each verb's error envelope carries the engine's message, and only the picker's one closing key is pressed.
-func TestInterruptAndSendCmd_FailWithTheGuardsMessage(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name       string
-		pickerOpen bool
-		send       bool
-		wantError  string
-		wantKeys   []string
-		// pausedSlug, when set, covers that slug with a live entry and is told, with the empty slug, through both cli.pause and runner.SetPause;
-		// the CLI's own check by the empty slug reads uncovered, so the refusal comes from the runner.
-		pausedSlug string
-		// strandName names the started strand, so the runner judges the send by its slug.
-		strandName string
-		// alsoWant is a second substring the refusal must contain.
-		alsoWant string
-	}{
-		{"interrupt on a pane with no running turn fails naming lym shuttle send", false, false, "lym shuttle send", nil, "", "", ""},
-		{"interrupt on an open picker closes it once and fails", true, false, "rewind picker was open", []string{"Escape"}, "", "", ""},
-		{"send on an open picker closes it once, fails and types nothing", true, true, "rewind picker was open", []string{"Escape"}, "", "", ""},
-		{"send into a strand another slug's pause covers is refused naming the resume and the retry", false, true, "lym tender resume p1", nil, "p1", "ly:p1:impl", "lym shuttle send"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			root := t.TempDir()
-			var pickerOpen bool
-			reed := &shuttlefake.Reed{
-				CapturePaneFn: func(string) (string, error) {
-					if pickerOpen {
-						return "PICKER", nil
-					}
-					return "idle", nil
-				},
-				SendKeyFn: func(_, key string) error {
-					if key == "Escape" {
-						pickerOpen = false
-					}
-					return nil
-				},
-			}
-			engine := &shuttlefake.Engine{
-				PrepareLaunch:       &shuttleengine.Launch{Cmd: "launch", ResumeCmd: "resume", SessionID: "session-1"},
-				InterruptSequenceFn: func() []shuttleengine.PaneInput { return []shuttleengine.PaneInput{{Key: "Escape"}} },
-				RewindPickerFn:      func(capture string) bool { return capture == "PICKER" },
-				RunningTurnFn:       func(string) bool { return false },
-			}
-			runner := newFakeClockRunner(reed, engine, root, root)
-			run, err := runner.Start(shuttleengine.Spec{Prompt: "do the thing", OutputFiles: []string{filepath.Join(root, "out.md")}, NameOverride: tt.strandName})
-			if err != nil {
-				t.Fatalf("runner.Start: %v", err)
-			}
-			pickerOpen = tt.pickerOpen
-			reed.SendKeyCalls = nil
-
-			cli := &shuttleCLI{runner: runner}
-			if tt.pausedSlug != "" {
-				cli.pause = pauserecord.Geometry{RecordPath: filepath.Join(root, "pause", pauserecord.RecordFileName)}
-				runner.SetPause(cli.pause)
-				now := time.Now()
-				if _, err := pauserecord.Update(cli.pause.RecordPath, now, func(record *pauserecord.Record) error {
-					record.Live = append(record.Live, pauserecord.Entry{Scope: tt.pausedSlug, PausedAt: now, Caller: "EXTERNAL"})
-					return nil
-				}); err != nil {
-					t.Fatalf("pauserecord.Update: %v", err)
-				}
-			}
-			cmd := cli.interruptCmd()
-			args := []string{run.StrandGUID()}
-			if tt.send {
-				cmd = cli.sendCmd()
-				args = append(args, "read the plan")
-			}
-			var out bytes.Buffer
-			cmd.SetOut(&out)
-			cmd.SetErr(&out)
-			cmd.SetArgs(args)
-			if err := cmd.Execute(); err != nil {
-				t.Fatalf("cmd.Execute() error: %v; output: %s", err, out.String())
-			}
-
-			envelope := parseSingleEnvelope(t, out.Bytes())
-			if ok, _ := envelope["ok"].(bool); ok {
-				t.Fatalf("envelope ok = true; want a refusal; output: %s", out.String())
-			}
-			if msg, _ := envelope["error"].(string); !strings.Contains(msg, tt.wantError) {
-				t.Errorf("error = %q; want it to contain %q", msg, tt.wantError)
-			}
-			if msg, _ := envelope["error"].(string); !strings.Contains(msg, tt.alsoWant) {
-				t.Errorf("error = %q; want it to contain %q", msg, tt.alsoWant)
-			}
-			var keys []string
-			for _, call := range reed.SendKeyCalls {
-				keys = append(keys, call.Key)
-			}
-			if strings.Join(keys, ",") != strings.Join(tt.wantKeys, ",") {
-				t.Errorf("keys pressed = %v; want %v", keys, tt.wantKeys)
-			}
-			if len(reed.SendTextCalls) != 0 || len(reed.PasteSubmitCalls) != 0 {
-				t.Errorf("typed texts %+v and pastes %+v; want none", reed.SendTextCalls, reed.PasteSubmitCalls)
-			}
-		})
 	}
 }
 

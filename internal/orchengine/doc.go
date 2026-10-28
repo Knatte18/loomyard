@@ -465,7 +465,7 @@
 // # Residuals
 //
 //   - Shuttle switches Claude's prompt suggestion off in every settings file it writes, and the idle check creel delivers behind still fails closed on any non-empty box other than the provider's placeholder, so no cycle step is typed over a draft until it is cleared.
-//   - A SendMessage landing between the handoff turn's end and `/clear` is lost from context.
+//   - Creel mail handed over between the handoff turn's end and `/clear` is lost from context like any text of that turn, while mail still unread stays in the pool for the cleared session.
 //   - The transcript and Stop-payload shapes are Claude Code internals, so usage degrades to unknown rather than failing.
 //   - A threshold above the auto-compaction point lets Claude Code compact first, and the boundary it writes is a reading, so the watcher reads the shrunken context correctly.
 //   - In clear mode, reed's resume path replays the launch's `--resume <session-id>`, which names the pre-clear session once a cycle has run, so a reed server rebirth resumes the older context.
@@ -479,7 +479,7 @@
 //
 //   - A background task survives `/clear`: its completion notification reached the resumed session, in the transcript and the pane.
 //     A resumed session may therefore find its background shell still running instead of starting another.
-//   - A `SendMessage` address stays stable across `/clear`: `<shortname>:orch` before and after.
+//   - The strand name, `<shortname>:orch`, stays the creel address across `/clear`: the same before and after.
 //   - `--resume` with a positional prompt submitted the prompt: an adopted session answered the adopt stencil's turn and its turn end reached the events file.
 //     No startup dialog stopped the resume launch; shuttle's startup probe cleared it without operator input.
 //   - The idle probe passes on a live orch pane.

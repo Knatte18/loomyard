@@ -9,7 +9,8 @@ The chair leads this step: {{.chair_name}}
 Your seat is {{.seat_name}}.
 
 - Your output is the only file set you write: {{.output_files}}
-- Message the chair only, with `SendMessage` to its strand name above.
+- Answer the chair's question with `lym creel post --reply <id> "<text>"`, the id after the `#` of its `[creel]` mail.
+  Message the chair unprompted with `lym creel post {{.chair_name}} "<text>"`.
   Never message another advisor and never any other session.
 - Write your output when your task is done or when the chair asks you to wrap up.
   After writing it, keep answering the chair.

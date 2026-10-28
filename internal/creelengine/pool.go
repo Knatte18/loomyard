@@ -56,6 +56,10 @@ type Store struct {
 	opened time.Time
 	// waiterEnds maps a hook strand to the clock time its last hook waiter ended.
 	waiterEnds map[string]time.Time
+	// chaseWritten maps a message id to the whole seconds of its chase clock its last chase-aged record recorded.
+	chaseWritten map[int64]int64
+	// chaseBase maps a message id whose chase step was already due when the store opened to the clock at that opening, the base its next step counts from.
+	chaseBase map[int64]time.Duration
 }
 
 // paneLock returns the one mutex of receiver's pane.
@@ -107,12 +111,19 @@ func OpenStore(geom Geometry, delivery Delivery, clock Clock) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Store{
+	store := &Store{
 		geom: geom, delivery: delivery, clock: clock, state: state, writer: writer,
 		reserved: map[int64]string{}, waiters: map[waitKey][]*Waiter{}, agedWritten: map[int64]int64{},
 		stalls: map[string]stallNote{}, paneLocks: map[string]*sync.Mutex{}, flags: map[string]bool{}, stopBlocks: map[string]int{}, wakeMarks: map[string]wakeMark{},
 		opened: clock.Now(), waiterEnds: map[string]time.Time{},
-	}, nil
+		chaseWritten: map[int64]int64{}, chaseBase: map[int64]time.Duration{},
+	}
+	store.seedChaseClock()
+	if err := store.repairChases(); err != nil {
+		_ = writer.close()
+		return nil, err
+	}
+	return store, nil
 }
 
 // Close closes the journal's open day file.
@@ -240,6 +251,8 @@ const (
 	OutcomeInjected    OutcomeKind = "injected"
 	OutcomeUnconfirmed OutcomeKind = "unconfirmed"
 	OutcomeExpired     OutcomeKind = "expired"
+	// OutcomeUnanswered is a marked message its holder read and never answered, after its chases.
+	OutcomeUnanswered OutcomeKind = "unanswered"
 	// OutcomeMail means the waited-on holder now holds unread mail.
 	OutcomeMail OutcomeKind = "mail"
 	// OutcomeRing means the daemon woke the idle strand whose waiter this was; it carries no mail and claims nothing.
@@ -371,7 +384,7 @@ func (s *Store) answerLocked(key waitKey, outcome Outcome) int {
 }
 
 // settledOutcomeLocked reports an outcome that already stands in the pool for key.
-// A reply waiting undelivered for an EXTERNAL sender is handed over here and journaled delivered.
+// A reply waiting undelivered for an EXTERNAL sender is handed over here and journaled delivered; a reply to any other sender is handed over without a record.
 func (s *Store) settledOutcomeLocked(key waitKey) (Outcome, bool, error) {
 	switch key.kind {
 	case waitReply:
@@ -388,6 +401,21 @@ func (s *Store) settledOutcomeLocked(key waitKey) (Outcome, bool, error) {
 				return Outcome{}, false, err
 			}
 			return Outcome{Kind: OutcomeReply, Message: *reply}, true, nil
+		}
+		if original := s.state.messages[key.id]; original != nil && !isExternalName(original.From) {
+			// A reply to a strand's or program's message stays mail to it, so no delivered record is journaled.
+			var oldest *Message
+			for _, msg := range s.state.messages {
+				if msg.Kind == kindReply && msg.ReplyTo == key.id && (oldest == nil || msg.ID < oldest.ID) {
+					oldest = msg
+				}
+			}
+			if oldest != nil {
+				return Outcome{Kind: OutcomeReply, Message: *oldest}, true, nil
+			}
+		}
+		if msg := s.state.messages[key.id]; msg != nil && msg.Unanswered != "" {
+			return Outcome{Kind: OutcomeUnanswered, Message: *msg}, true, nil
 		}
 		if msg := s.state.messages[key.id]; msg != nil && msg.Status == StatusUndelivered {
 			return Outcome{Kind: OutcomeReturned, Message: *msg}, true, nil

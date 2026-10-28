@@ -1,7 +1,7 @@
 //go:build tier3
 
 // smoke_seats_test.go is seatengine's opt-in live smoke: one chair and one advisor run against a real claude in real tmux panes.
-// The chair asks the advisor one question over the session channel and writes the answer into its output.
+// The chair asks the advisor one question in creel mail and writes the answer into its output.
 // The test is the caller that wires the real substrate (reedengine, claudeengine and shuttleengine.Runner) in an external package, since seatengine itself never imports claudeengine (PATTERN-shuttle-provider-seam).
 // It proves the seat machinery and the file contract, never answer quality, and is run by hand: it is compiled by every gate and run by none.
 
@@ -123,7 +123,7 @@ func TestSmokeSeatsChairAsksAdvisor(t *testing.T) {
 		t.Fatalf("format advisor strand name: %v", err)
 	}
 	// The advisor waits for the chair's question before it writes its output,
-	// so its session reads an idle stall until the chair's SendMessage starts a turn.
+	// so its session reads an idle stall until the chair's creel mail starts a turn.
 	var longestHistory []shuttleengine.SessionState
 	stopPolling, polled := make(chan struct{}), make(chan struct{})
 	go func() {

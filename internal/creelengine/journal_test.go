@@ -153,6 +153,71 @@ func TestJournal_Fold(t *testing.T) {
 			},
 		},
 		{
+			name: "a marked post folds with its mark, and a reply by the holder, also after a forward, sets Replied",
+			files: map[string]string{"2026-10-01.jsonl": strings.Join([]string{
+				line(record{Event: eventPosted, ID: 1, From: alpha, To: beta, Body: "question", ExpectReply: true}),
+				line(record{Event: eventRead, ID: 1, By: beta}),
+				line(record{Event: eventPosted, Kind: kindReply, ID: 2, From: beta, To: alpha, Body: "answer", ReplyTo: 1}),
+				line(record{Event: eventPosted, ID: 3, From: alpha, To: beta, Body: "second", ExpectReply: true}),
+				line(record{Event: eventForwarded, ID: 3, By: beta, To: gamma}),
+				line(record{Event: eventPosted, Kind: kindReply, ID: 4, From: gamma, To: alpha, Body: "answer", ReplyTo: 3}),
+				posted(5, alpha, beta, "plain"),
+				line(record{Event: eventPosted, Kind: kindReply, ID: 6, From: beta, To: alpha, Body: "answer", ReplyTo: 5}),
+			}, "\n") + "\n"},
+			check: func(t *testing.T, p *pool) {
+				type marks struct{ ExpectReply, Replied bool }
+				want := map[int64]marks{1: {true, true}, 2: {}, 3: {true, true}, 4: {}, 5: {}, 6: {}}
+				got := map[int64]marks{}
+				for id, msg := range p.messages {
+					got[id] = marks{msg.ExpectReply, msg.Replied}
+				}
+				if !reflect.DeepEqual(got, want) {
+					t.Errorf("marks = %+v, want %+v", got, want)
+				}
+			},
+		},
+		{
+			name: "chase records fold into the message's chase count, mark, clock and reason, and a program's post stays out of readers while its read puts it in",
+			files: map[string]string{"2026-10-01.jsonl": strings.Join([]string{
+				line(record{Event: eventPosted, ID: 1, From: alpha, To: beta, Body: "question", ExpectReply: true}),
+				line(record{Event: eventRead, ID: 1, By: beta}),
+				line(record{Event: eventChaseAged, ID: 1, ConsumedSeconds: 900}),
+				line(record{Event: eventPosted, ID: 2, From: "ly:CREEL", To: beta, Body: "chase", Chase: 1, Chased: 1, ConsumedSeconds: 900}),
+				line(record{Event: eventChased, ID: 1, To: beta, Chase: 1}),
+				line(record{Event: eventPosted, ID: 3, From: "ly:CREEL", To: "ly:BATTEN", Body: "sender notice"}),
+				line(record{Event: eventPosted, ID: 4, From: "ly:BATTEN", To: alpha, Body: "post only"}),
+				line(record{Event: eventRead, By: "ly:WEBSTER"}),
+				line(record{Event: eventUnanswered, ID: 1, To: beta, Reason: UnansweredNoReply}),
+			}, "\n") + "\n"},
+			check: func(t *testing.T, p *pool) {
+				msg := p.messages[1]
+				if msg.Chases != 1 || msg.ChaseMark != 15*time.Minute || msg.ChaseConsumed != 15*time.Minute || msg.Unanswered != UnansweredNoReply || !msg.ReadAt.Equal(journalEpoch) {
+					t.Errorf("message 1 = chases %d, mark %v, clock %v, unanswered %q, read at %v; want 1, 15m, 15m, no-reply, the read time", msg.Chases, msg.ChaseMark, msg.ChaseConsumed, msg.Unanswered, msg.ReadAt)
+				}
+				if p.messages[2].ChaseOf != 1 || p.chased[1] != 1 {
+					t.Errorf("chase of = %d and highest chased = %d; want 1 and 1", p.messages[2].ChaseOf, p.chased[1])
+				}
+				if want := map[string]bool{"ly:BATTEN": true, "ly:WEBSTER": true}; !reflect.DeepEqual(p.programs, want) {
+					t.Errorf("program mailboxes = %v; want %v, with no CREEL since a chase and a sender notice make no mailbox", p.programs, want)
+				}
+				if want := map[string]string{"ly:WEBSTER": "2026-10-01"}; !reflect.DeepEqual(p.readers, want) {
+					t.Errorf("readers = %v; want %v, since ly:BATTEN only posted", p.readers, want)
+				}
+				var chased, unanswered LogEntry
+				for _, entry := range p.events {
+					switch entry.Event {
+					case eventChased:
+						chased = entry
+					case eventUnanswered:
+						unanswered = entry
+					}
+				}
+				if chased.Chase != 1 || chased.ID != 1 || unanswered.Reason != UnansweredNoReply {
+					t.Errorf("log entries = chased %+v, unanswered %+v; want chase 1 of message 1 and the no-reply reason", chased, unanswered)
+				}
+			},
+		},
+		{
 			name: "an unknown key and an unknown event name are ignored",
 			files: map[string]string{"2026-10-01.jsonl": `{"event":"posted","id":1,"from":"` + alpha + `","to":"` + beta + `","body":"hi","at":"2026-10-01T12:00:00Z","zzz":{"a":1}}` + "\n" +
 				`{"event":"from-the-future","id":9,"at":"2026-10-01T12:00:00Z"}` + "\n" +
@@ -429,7 +494,7 @@ func TestJournal_Retention(t *testing.T) {
 	renewedPast := livePast.AddDate(0, 0, 1)
 
 	// Day one: two messages (one read), two injects (one finished), and three holds (one live and renewed to a later expiry, one expiring before the carry, one released).
-	appendRecord(record{Event: eventPosted, ID: 1, From: alpha, To: beta, Body: "unread"})
+	appendRecord(record{Event: eventPosted, ID: 1, From: alpha, To: beta, Body: "unread", ExpectReply: true})
 	appendRecord(record{Event: eventForwarded, ID: 1, By: beta, To: gamma})
 	appendRecord(record{Event: eventPosted, ID: 2, From: alpha, To: beta, Body: "read"})
 	appendRecord(record{Event: eventRead, ID: 2, By: beta})
@@ -494,11 +559,14 @@ func TestJournal_Retention(t *testing.T) {
 		if got := p.messages[1].Posted; !got.Equal(journalEpoch) {
 			t.Errorf("%s: message 1 posted at %v, want its original time", label, got)
 		}
+		if !p.messages[1].ExpectReply || p.messages[5].ExpectReply {
+			t.Errorf("%s: ExpectReply of messages 1 and 5 = %v and %v, want the carried unread message to keep its mark and the unmarked one none", label, p.messages[1].ExpectReply, p.messages[5].ExpectReply)
+		}
 		if !p.programs["ly:BATTEN"] || p.maxID != 6 {
 			t.Errorf("%s: programs = %v and maxID = %d, want ly:BATTEN known and 6", label, p.programs, p.maxID)
 		}
 		dayEleven := journalEpoch.AddDate(0, 0, 10)
-		wantMail := []LogEntry{{Day: "2026-10-11", Event: eventCarried, At: dayEleven, ID: 1, From: alpha, To: gamma, Kind: kindMail, Subject: "unread"}}
+		wantMail := []LogEntry{{Day: "2026-10-11", Event: eventCarried, At: dayEleven, ID: 1, From: alpha, To: gamma, Kind: kindMail, Subject: "unread", ExpectReply: true}}
 		if got := carriedEntries(p, 1); !reflect.DeepEqual(got, wantMail) {
 			t.Errorf("%s: carried entries of message 1 = %+v, want %+v", label, got, wantMail)
 		}
@@ -547,7 +615,7 @@ func TestJournal_Retention(t *testing.T) {
 	dayNineteen := journalEpoch.AddDate(0, 0, 18)
 	clock.now = dayNineteen
 	appendRecord(record{Event: eventPosted, ID: 7, From: alpha, To: beta, Body: "later"})
-	wantLater := []LogEntry{{Day: "2026-10-19", Event: eventCarried, At: dayNineteen, ID: 1, From: alpha, To: gamma, Kind: kindMail, Subject: "unread"}}
+	wantLater := []LogEntry{{Day: "2026-10-19", Event: eventCarried, At: dayNineteen, ID: 1, From: alpha, To: gamma, Kind: kindMail, Subject: "unread", ExpectReply: true}}
 	if got := carriedEntries(state, 1); !reflect.DeepEqual(got, wantLater) {
 		t.Errorf("the writer's pool after a second carry: carried entries of message 1 = %+v, want %+v", got, wantLater)
 	}
@@ -558,6 +626,60 @@ func TestJournal_Retention(t *testing.T) {
 	if got := carriedEntries(refoldedLater, 1); !reflect.DeepEqual(got, wantLater) {
 		t.Errorf("the refolded journal after a second carry: carried entries of message 1 = %+v, want %+v", got, wantLater)
 	}
+
+	t.Run("a chaseable message, an unread chase and a program's read are carried, and no carry makes CREEL a mailbox", func(t *testing.T) {
+		chaseDir := filepath.Join(t.TempDir(), "journal")
+		chaseClock := &testClock{now: journalEpoch}
+		chasePool := newPool()
+		chaseWriter, err := openJournal(chaseDir, chaseClock, chasePool)
+		if err != nil {
+			t.Fatalf("openJournal: %v", err)
+		}
+		t.Cleanup(func() { _ = chaseWriter.close() })
+		for _, rec := range []record{
+			{Event: eventPosted, ID: 1, From: alpha, To: beta, Body: "question", ExpectReply: true},
+			{Event: eventRead, ID: 1, By: beta},
+			{Event: eventChaseAged, ID: 1, ConsumedSeconds: 600},
+			{Event: eventPosted, ID: 2, From: "ly:CREEL", To: beta, Body: "chase", Chase: 1, Chased: 1, ConsumedSeconds: 600},
+			{Event: eventChased, ID: 1, To: beta, Chase: 1},
+			{Event: eventPosted, ID: 3, From: "ly:CREEL", To: "ly:BATTEN", Body: "sender notice"},
+			{Event: eventRead, By: "ly:WEBSTER"},
+		} {
+			if err := chaseWriter.append(rec); err != nil {
+				t.Fatalf("append %s: %v", rec.Event, err)
+			}
+		}
+		// Day eleven puts day one past seven days.
+		chaseClock.now = journalEpoch.AddDate(0, 0, 10)
+		if err := chaseWriter.append(record{Event: eventPosted, ID: 4, From: alpha, To: beta, Body: "new"}); err != nil {
+			t.Fatalf("append: %v", err)
+		}
+		refolded, err := foldJournal(chaseDir)
+		if err != nil {
+			t.Fatalf("foldJournal after retention: %v", err)
+		}
+		for label, p := range map[string]*pool{"the writer's pool": chasePool, "the refolded journal": refolded} {
+			msg := p.messages[1]
+			if msg == nil || msg.Holder != beta || msg.Status != StatusRead || !msg.ReadAt.Equal(journalEpoch) || !isChaseable(msg) {
+				t.Fatalf("%s: message 1 = %+v; want it carried read and still chaseable with beta", label, msg)
+			}
+			if msg.ChaseConsumed != 10*time.Minute || msg.ChaseMark != 10*time.Minute || msg.Chases != 1 || p.chased[1] != 1 {
+				t.Errorf("%s: message 1 clock %v, mark %v, chases %d, highest chased %d; want 10m, 10m, 1, 1", label, msg.ChaseConsumed, msg.ChaseMark, msg.Chases, p.chased[1])
+			}
+			if chase := p.messages[2]; chase == nil || chase.Holder != beta || chase.Status != StatusUnread || chase.ChaseOf != 1 {
+				t.Errorf("%s: chase = %+v; want it carried unread with beta, chasing message 1", label, chase)
+			}
+			if notice := p.messages[3]; notice == nil || notice.Holder != "ly:BATTEN" || notice.Status != StatusUnread {
+				t.Errorf("%s: sender notice = %+v; want it carried unread with ly:BATTEN", label, notice)
+			}
+			if _, read := p.readers["ly:WEBSTER"]; !read || !p.programs["ly:WEBSTER"] {
+				t.Errorf("%s: readers = %v and programs = %v; want the program whose only read is past retention still in both", label, p.readers, p.programs)
+			}
+			if p.programs["ly:CREEL"] {
+				t.Errorf("%s: programs = %v; want no ly:CREEL, the condition a post to it is refused as an unknown receiver on", label, p.programs)
+			}
+		}
+	})
 }
 
 // carriedEntries returns the carried entries of the log for id, oldest first; id 0 selects the entries of holds.

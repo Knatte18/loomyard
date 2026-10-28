@@ -29,11 +29,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/creelengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymtemp"
+	"github.com/Knatte18/loomyard/internal/orchengine"
+	"github.com/Knatte18/loomyard/internal/orchroute"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
@@ -46,7 +49,10 @@ var epoch = time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 // isProbeWait and isSweepWait tell the delivery workers' waits (1 to 8 seconds) from the sweep's (longer than the probe ceiling) on the daemon's clock.
 func isProbeWait(d time.Duration) bool { return d <= 8*time.Second }
 
-func isSweepWait(d time.Duration) bool { return d > 8*time.Second }
+func isSweepWait(d time.Duration) bool { return d > 8*time.Second && d <= 50*time.Second }
+
+// isChaseWait tells the chase timer's waits, from one minute to eight, from the workers' and the sweep's.
+func isChaseWait(d time.Duration) bool { return d >= time.Minute && d <= 8*time.Minute }
 
 // cliRun is one verb's exit code and the JSON envelope it printed.
 type cliRun struct {
@@ -270,7 +276,7 @@ func newRig(t *testing.T) *rig {
 		delivery: creelfake.NewDelivery(), clock: creelfake.NewClock(epoch), clientClock: creelfake.NewClock(epoch),
 	}
 	previous := seam
-	seam = clientSeam{clock: r.clientClock, spawn: func(string, string) (creelengine.Spawn, error) { return creelengine.Spawn{}, nil }}
+	seam = clientSeam{clock: r.clientClock, spawn: func(string, string) (creelengine.Spawn, error) { return creelengine.Spawn{}, nil }, live: previous.live}
 	t.Cleanup(func() { seam = previous })
 	return r
 }
@@ -438,13 +444,68 @@ func TestCreelCLI(t *testing.T) {
 		}
 	})
 
-	t.Run("post refuses one argument without --reply and two with it", func(t *testing.T) {
+	t.Run("post refuses a wrong form before any call, naming the three forms or the way forward", func(t *testing.T) {
 		r := newRig(t)
-		for _, args := range [][]string{{"post", "text"}, {"post", "--reply", "3", "a", "b"}} {
-			run := runCreel(r.cwd, args...)
-			if run.code != 1 || !strings.Contains(run.errorText(), "post <receiver> <text>") {
-				t.Errorf("creel %v = (%d, %q); want exit 1 naming both forms", args, run.code, run.raw)
+		tests := []struct {
+			args []string
+			want string
+		}{
+			{[]string{"post", "text"}, "post --parent <text>"},
+			{[]string{"post", "--reply", "3", "a", "b"}, "post --parent <text>"},
+			{[]string{"post", "--parent", "receiver", "text"}, "post --parent takes the text alone; the forms are: post <receiver> <text>, post --parent <text> and post --reply <id> <text>"},
+			{[]string{"post", "--parent", "--reply", "3", "text"}, "post --reply <id> <text> without --parent"},
+		}
+		for _, tt := range tests {
+			run := runCreel(r.cwd, tt.args...)
+			if run.code != 1 || !strings.Contains(run.errorText(), tt.want) {
+				t.Errorf("creel %v = (%d, %q); want exit 1 naming %q", tt.args, run.code, run.raw, tt.want)
 			}
+		}
+		r.startDaemon(t)
+		if log := runCreel(r.cwd, "log"); logHasEvent(log, "posted") {
+			t.Errorf("creel log after the refused forms = %q; want no posted event", log.raw)
+		}
+	})
+
+	t.Run("post --parent posts to the parent orch of the caller's worktree and refuses when none is recorded", func(t *testing.T) {
+		r := newRig(t)
+		hubforge.AddPairWith(t, r.hub, "b", fabricengine.AddOptions{SkipPush: true, Beam: true})
+		beam, err := lymcwd.ResolveWorktree(r.hub.PairCodeWorktree("b"))
+		if err != nil {
+			t.Fatalf("ResolveWorktree(b) = %v", err)
+		}
+		beamOrch := r.name("b:orch")
+		r.delivery.SetStrands(creelfake.LiveStrand(beamOrch))
+		r.startDaemon(t)
+		previous := seam.live
+		t.Cleanup(func() { seam.live = previous })
+
+		unrecorded := runCreel(r.cwd, "post", "--parent", "nobody home")
+		wantRefusal := "creel: post --parent found no orch strand recorded for this worktree's parent; way forward: post to a strand by name, as lym reed list lists them"
+		if unrecorded.code != 1 || unrecorded.errorText() != wantRefusal {
+			t.Errorf("creel post --parent with no orch recorded = (%d, %q); want exit 1 with %q", unrecorded.code, unrecorded.raw, wantRefusal)
+		}
+		if log := runCreel(r.cwd, "log"); logHasEvent(log, "posted") {
+			t.Errorf("creel log after the unrecorded refusal = %q; want no posted event", log.raw)
+		}
+
+		if err := orchengine.SaveState(orchroute.Paths(beam), orchengine.State{Phase: orchengine.PhaseIdle, Strand: "beam-guid"}); err != nil {
+			t.Fatalf("SaveState(b) = %v", err)
+		}
+		seam.live = func(worktree *lymcwd.Location) (bool, error) { return worktree.WorktreeName == "b", nil }
+		post := runCreel(r.hub.PairCodeWorktree("b"), "post", "--parent", "which schema?")
+		if id, _ := post.fields["id"].(float64); post.code != 0 || id < 1 || post.fields["receiver"] != beamOrch {
+			t.Fatalf("creel post --parent from a beam with its orch live = (%d, %q); want exit 0 with receiver %q", post.code, post.raw, beamOrch)
+		}
+		entries, _ := runCreel(r.cwd, "log").fields["log"].([]any)
+		var holders []any
+		for _, entry := range entries {
+			if fields, _ := entry.(map[string]any); fields["event"] == "posted" {
+				holders = append(holders, fields["to"])
+			}
+		}
+		if !reflect.DeepEqual(holders, []any{beamOrch}) {
+			t.Errorf("creel log posted receivers = %v; want only %q", holders, beamOrch)
 		}
 	})
 
@@ -464,6 +525,103 @@ func TestCreelCLI(t *testing.T) {
 		}
 		if got := r.delivery.Interrupts(); !slices.Equal(got, []string{alpha}) {
 			t.Errorf("interrupts = %v; want one key into %s", got, alpha)
+		}
+	})
+
+	t.Run("post --expect-reply marks the message for its receiver, a reply's log entry names the id it answers, and --reply refuses the flag", func(t *testing.T) {
+		r := newRig(t)
+		alpha := r.name("alpha:driver")
+		t.Setenv(agentname.StrandNameEnv, alpha)
+		strand := creelfake.LiveStrand(alpha)
+		strand.PanePID = os.Getpid()
+		r.delivery.SetStrands(strand)
+		r.startDaemon(t)
+
+		refused := runCreel(r.cwd, "post", "--expect-reply", "--reply", "3", "text")
+		if refused.code != 1 || !strings.Contains(refused.errorText(), "post --reply <id> <text> without --expect-reply") {
+			t.Errorf("creel post --expect-reply --reply = (%d, %q); want exit 1 with its way forward", refused.code, refused.raw)
+		}
+		if log := runCreel(r.cwd, "log"); logHasEvent(log, "posted") {
+			t.Errorf("creel log after the refused form = %q; want no posted event", log.raw)
+		}
+
+		post := runCreel(r.cwd, "post", "--expect-reply", alpha, "question")
+		if id, _ := post.fields["id"].(float64); post.code != 0 || id != 1 {
+			t.Fatalf("creel post --expect-reply = (%d, %q); want exit 0 with message 1", post.code, post.raw)
+		}
+		posted := runCreel(r.cwd, "log", "--id", "1").fields["log"].([]any)[0].(map[string]any)
+		if posted["event"] != "posted" || posted["expect_reply"] != true {
+			t.Errorf("creel log --id 1 first entry = %v; want the posted event with expect_reply true", posted)
+		}
+		read := runCreel(r.cwd, "read", "--envelope")
+		messages, _ := read.fields["messages"].([]any)
+		if read.code != 0 || len(messages) != 1 || messages[0].(map[string]any)["expect_reply"] != true {
+			t.Fatalf("creel read --envelope = (%d, %q); want the one message with expect_reply true", read.code, read.raw)
+		}
+
+		if reply := runCreel(r.cwd, "post", "--reply", "1", "answer"); reply.code != 0 {
+			t.Fatalf("creel post --reply = (%d, %q); want exit 0", reply.code, reply.raw)
+		}
+		answer := runCreel(r.cwd, "log", "--id", "2").fields["log"].([]any)[0].(map[string]any)
+		if answer["event"] != "posted" || answer["reply_to"] != float64(1) || answer["expect_reply"] != nil {
+			t.Errorf("creel log --id 2 first entry = %v; want the posted event with reply_to 1 and no mark", answer)
+		}
+	})
+
+	t.Run("post --wait-reply on a message its holder reads and never answers exits 1 unanswered after two chases, and the log shows their numbers", func(t *testing.T) {
+		r, alpha := newHookRig(t)
+		waiting := runAsync(r.cwd, "post", "--wait-reply", alpha, "question")
+		r.awaitLogged(t, "question")
+		if read := runCreel(r.cwd, "read"); read.code != 0 {
+			t.Fatalf("creel read = (%d, %q); want exit 0", read.code, read.raw)
+		}
+		// 15 minutes of running time is a step: two chases, then the step that settles the message.
+		for range 44 {
+			waits := r.clock.AwaitWaitsWhere(1, isChaseWait)
+			r.clock.Advance(waits[len(waits)-1])
+			r.clock.AwaitWaitsWhere(len(waits)+1, isChaseWait)
+		}
+		waits := r.clock.AwaitWaitsWhere(1, isChaseWait)
+		r.clock.Advance(waits[len(waits)-1])
+
+		unanswered := awaitRun(t, waiting)
+		if unanswered.code != 1 || unanswered.fields["outcome"] != "unanswered" || unanswered.fields["unanswered"] == nil {
+			t.Fatalf("creel post --wait-reply = (%d, %q); want exit 1 with outcome unanswered and the message under unanswered", unanswered.code, unanswered.raw)
+		}
+		for _, want := range []string{"the message got no reply", "recorded it unanswered", "lym creel log --id 1"} {
+			if !strings.Contains(unanswered.errorText(), want) {
+				t.Errorf("creel post --wait-reply error %q lacks %q", unanswered.errorText(), want)
+			}
+		}
+
+		var path []string
+		var chases []float64
+		for _, entry := range runCreel(r.cwd, "log", "--id", "1").fields["log"].([]any) {
+			fields := entry.(map[string]any)
+			event, _ := fields["event"].(string)
+			switch event {
+			case "posted":
+				if fields["expect_reply"] != true {
+					t.Errorf("posted entry = %v; want expect_reply true", fields)
+				}
+			case "unanswered":
+				if fields["reason"] != creelengine.UnansweredNoReply {
+					t.Errorf("unanswered entry = %v; want reason %q", fields, creelengine.UnansweredNoReply)
+				}
+			case "chased":
+				chase, _ := fields["chase"].(float64)
+				chases = append(chases, chase)
+			case "read":
+			default:
+				continue
+			}
+			path = append(path, event)
+		}
+		if want := []string{"posted", "read", "chased", "chased", "unanswered"}; !slices.Equal(path, want) {
+			t.Errorf("creel log --id 1 events = %v; want %v", path, want)
+		}
+		if want := []float64{1, 2}; !slices.Equal(chases, want) {
+			t.Errorf("chased entries carry chase numbers %v; want %v", chases, want)
 		}
 	})
 

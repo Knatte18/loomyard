@@ -462,7 +462,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	}
 	runner.SetPause(pauseGeom)
 	runner.SetNotifier(func(line string) error {
-		_, err := orchcli.NotifyParent(location, loomProgram, line)
+		_, err := orchcli.NotifyAsker(location, loomProgram, line)
 		return err
 	})
 

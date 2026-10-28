@@ -12,7 +12,7 @@ import (
 
 // ErrNoRunningTurn marks an interrupt refused because the pane shows no running turn: there is nothing to stop.
 // A caller that only needs the turn stopped treats it as success.
-var ErrNoRunningTurn = errors.New("shuttle: the pane shows no running turn, so there is nothing to interrupt; way forward: \"lym shuttle send <guid> <text>\" gives the agent a turn")
+var ErrNoRunningTurn = errors.New("shuttle: the pane shows no running turn, so there is nothing to interrupt; way forward: \"lym creel post <strand> <text>\" gives the agent a turn")
 
 // ErrRewindPickerOpen marks an operation that found the provider's rewind picker open in the pane.
 // It never wraps ErrSessionBusy, so no caller retries a picker as a busy session.
@@ -128,10 +128,10 @@ func refuseInterruptKey(engine Engine, inputs []PaneInput) error {
 	}
 	for index, input := range inputs {
 		if input.Key != "" && interruptKeys[canonicalKeyName(input.Key)] {
-			return fmt.Errorf("shuttle: Inject: the inputs hold the interrupt key %q, which Inject never sends; way forward: \"lym shuttle interrupt <guid>\" sends it behind the pane guard", input.Key)
+			return fmt.Errorf("shuttle: Inject: the inputs hold the interrupt key %q, which Inject never sends; way forward: \"lym creel interrupt <strand>\" sends it behind the pane guard", input.Key)
 		}
 		if control := strings.IndexFunc(input.Text, unicode.IsControl); control >= 0 {
-			return fmt.Errorf("shuttle: Inject: input %d's text holds the control character %q, which Inject never types; way forward: send a key as a Key input, and the interrupt key through \"lym shuttle interrupt <guid>\"", index, []rune(input.Text[control:])[0])
+			return fmt.Errorf("shuttle: Inject: input %d's text holds the control character %q, which Inject never types; way forward: send a key as a Key input, and the interrupt key through \"lym creel interrupt <strand>\"", index, []rune(input.Text[control:])[0])
 		}
 	}
 	return nil

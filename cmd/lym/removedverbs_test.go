@@ -13,13 +13,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
-// removedVerbs are the commands that no longer exist; each is named by `lym beam start`, `lym adopt <beam>` or `lym adopt root` now.
+// removedVerbs are the commands that no longer exist; each is named by `lym beam start`, `lym adopt <beam>`, `lym adopt root`, `lym creel post` or `lym creel interrupt` now.
 var removedVerbs = []string{
 	"lym orch start",
 	"lym orch cleanup",
 	"lym prime",
 	"lym beam promote",
 	"lym adopt --prime",
+	"lym shuttle send",
+	"lym shuttle interrupt",
 }
 
 // removedVerbHits returns one "line N: verb" entry per line of content that names a removed verb.

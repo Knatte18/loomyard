@@ -66,7 +66,7 @@ func (k ModelKey) Wrap(err error) error {
 }
 
 // knownRequirements lists the closed set of requirements, in the order a refusal names them.
-var knownRequirements = []Requirement{RequirementForks, RequirementPeerMessaging, RequirementBackgroundWake}
+var knownRequirements = []Requirement{RequirementForks, RequirementBackgroundWake}
 
 // knownRequirement reports whether req is one of the Requirement constants.
 func knownRequirement(req Requirement) bool {

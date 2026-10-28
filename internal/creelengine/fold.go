@@ -48,6 +48,22 @@ type Message struct {
 	ReplyTo int64
 	Posted  time.Time
 	Status  Status
+	// ExpectReply marks a message whose sender expects a reply.
+	ExpectReply bool
+	// Replied says the holder answered a message that expects a reply.
+	Replied bool
+	// ReadAt is when the holder read the message, zero while it is unread.
+	ReadAt time.Time
+	// ChaseConsumed is the running time the holder has had the message read, counted in whole chase ticks.
+	// ChaseMark is the value ChaseConsumed had at the last chase step, 0 before one.
+	ChaseConsumed time.Duration
+	ChaseMark     time.Duration
+	// Chases counts the chases sent for the message.
+	Chases int
+	// Unanswered is the reason the message was settled unanswered, empty while none.
+	Unanswered string
+	// ChaseOf is the id of the message a chase concerns, 0 for every message that is no chase.
+	ChaseOf int64
 	// EndedUnreadBy is the receiver the message was returned from because it never read it, with the time of the return; empty otherwise.
 	EndedUnreadBy string
 	EndedUnreadAt time.Time
@@ -124,6 +140,12 @@ type LogEntry struct {
 	Unread []int64
 	// Step is the backoff step a reminded event was sent at.
 	Step int
+	// ExpectReply is set on the posted or carried entry of a message that expects a reply.
+	ExpectReply bool
+	// ReplyTo is the id of the message a reply's posted or carried entry answers, 0 for every other entry.
+	ReplyTo int64
+	// Chase is the chase number a chased entry records, 0 for every other entry.
+	Chase int
 }
 
 // pool is the state folded from the journal.
@@ -135,7 +157,11 @@ type pool struct {
 	reminders map[string]reminderEntry
 	// programs holds the program senders whose mailbox is known, from their first post or read.
 	programs map[string]bool
-	events   []LogEntry
+	// readers maps each program that has read to the journal day of the read that put it here.
+	readers map[string]string
+	// chased maps a message id to the highest chase number a chased record names for it.
+	chased map[int64]int
+	events []LogEntry
 	// maxID is the largest id any record or high-water record carried.
 	maxID int64
 }
@@ -147,6 +173,8 @@ func newPool() *pool {
 		holds:     map[string]*holdEntry{},
 		reminders: map[string]reminderEntry{},
 		programs:  map[string]bool{},
+		readers:   map[string]string{},
+		chased:    map[int64]int{},
 	}
 }
 
@@ -231,7 +259,7 @@ func (p *pool) apply(rec record, day string) {
 	case eventReminded:
 		p.reminders[rec.To] = reminderEntry{At: rec.At, Step: rec.Step, Unread: rec.Unread}
 	case eventRead:
-		p.applyRead(rec)
+		p.applyRead(rec, day)
 		// A read with no id only makes a program's mailbox known and is no event for the log.
 		if rec.ID == 0 {
 			return
@@ -268,6 +296,16 @@ func (p *pool) apply(rec record, day string) {
 		if entry := p.injects[rec.ID]; entry != nil {
 			entry.Consumed = time.Duration(rec.ConsumedSeconds) * time.Second
 		}
+	case eventChased:
+		p.chased[rec.ID] = max(p.chased[rec.ID], rec.Chase)
+	case eventChaseAged:
+		if msg := p.messages[rec.ID]; msg != nil {
+			msg.ChaseConsumed = time.Duration(rec.ConsumedSeconds) * time.Second
+		}
+	case eventUnanswered:
+		if msg := p.messages[rec.ID]; msg != nil {
+			msg.Unanswered = rec.Reason
+		}
 	case eventInterrupted, eventStalled, eventWithheld:
 	case eventHeld:
 		p.holds[rec.To] = &holdEntry{Owner: rec.By, Expires: rec.ExpiresAt, origin: day}
@@ -299,9 +337,7 @@ func (p *pool) applyPosted(rec record, day string) {
 		}
 		return
 	}
-	if isProgramMailbox(rec.From) {
-		p.programs[rec.From] = true
-	}
+	p.knowProgramMailbox(rec.From)
 	if p.messages[rec.ID] != nil {
 		return
 	}
@@ -312,24 +348,57 @@ func (p *pool) applyPosted(rec record, day string) {
 	p.messages[rec.ID] = &Message{
 		ID: rec.ID, From: rec.From, Envelope: rec.Envelope, Holder: rec.To, Kind: kind,
 		Subject: firstLine(rec.Body), Body: rec.Body, ReplyTo: rec.ReplyTo,
-		Posted: rec.At, Status: StatusUnread, origin: day,
+		Posted: rec.At, Status: StatusUnread, ExpectReply: rec.ExpectReply, ChaseOf: rec.Chased, origin: day,
+	}
+	if chased := p.messages[rec.Chased]; chased != nil {
+		chased.Chases = max(chased.Chases, rec.Chase)
+		chased.ChaseMark = max(chased.ChaseMark, time.Duration(rec.ConsumedSeconds)*time.Second)
+		chased.ChaseConsumed = max(chased.ChaseConsumed, chased.ChaseMark)
+	}
+	// Reply accepts a reply only from the message's current holder, so the expectation follows the holder through a forward.
+	if kind == kindReply {
+		if original := p.messages[rec.ReplyTo]; original != nil && original.ExpectReply {
+			original.Replied = true
+		}
 	}
 }
 
-func (p *pool) applyRead(rec record) {
+// knowProgramMailbox makes full's mailbox known when it is a program that has one.
+// The chaser program is never a receiver, so neither a chase nor a sender notice makes it known.
+func (p *pool) knowProgramMailbox(full string) {
+	if isProgramMailbox(full) && !isChaserName(full) {
+		p.programs[full] = true
+	}
+}
+
+// isChaserName reports whether full is the program creel signs its chases and sender notices with.
+func isChaserName(full string) bool {
+	_, name, err := agentname.ParseProgram(full)
+	return err == nil && name == ChaserProgram
+}
+
+func (p *pool) applyRead(rec record, day string) {
 	if isProgramMailbox(rec.By) {
 		p.programs[rec.By] = true
+		if _, read := p.readers[rec.By]; !read {
+			p.readers[rec.By] = day
+		}
 	}
 	if msg := p.messages[rec.ID]; msg != nil {
 		msg.Status = StatusRead
+		msg.ReadAt = rec.At
 		msg.EndedUnreadBy, msg.EndedUnreadAt = "", time.Time{}
 	}
 }
 
 // applyCarried folds a retention snapshot; an entry the pool already holds is left as the original lines made it.
-// It reports whether the record snapshots a hold, message or inject this binary knows.
+// It reports whether the record snapshots a hold, message or inject this binary knows; a carried read of a program only keeps its mailbox known and is no event for the log.
 func (p *pool) applyCarried(rec record, day string) bool {
 	switch {
+	case rec.Of == eventRead:
+		p.knowProgramMailbox(rec.By)
+		p.readers[rec.By] = day
+		return false
 	case rec.Of == eventHeld:
 		p.holds[rec.To] = &holdEntry{Owner: rec.By, Expires: rec.ExpiresAt, origin: day}
 	case rec.Of == eventPosted && rec.Kind == kindInject:
@@ -343,20 +412,26 @@ func (p *pool) applyCarried(rec record, day string) bool {
 			}
 		}
 	case rec.Of == eventPosted:
-		if isProgramMailbox(rec.From) {
-			p.programs[rec.From] = true
-		}
+		p.knowProgramMailbox(rec.From)
 		if p.messages[rec.ID] == nil {
 			kind := rec.Kind
 			if kind == "" {
 				kind = kindMail
 			}
-			p.messages[rec.ID] = &Message{
+			msg := &Message{
 				ID: rec.ID, From: rec.From, Envelope: rec.Envelope, Holder: rec.To, Path: rec.Path, Kind: kind,
 				Subject: firstLine(rec.Body), Body: rec.Body, ReplyTo: rec.ReplyTo,
-				Posted: rec.OrigAt, Status: StatusUnread,
+				Posted: rec.OrigAt, Status: StatusUnread, ExpectReply: rec.ExpectReply, ChaseOf: rec.Chased,
 				EndedUnreadBy: rec.Receiver, EndedUnreadAt: rec.ReceiverAt, origin: day,
 			}
+			if !rec.ReadAt.IsZero() {
+				msg.Status, msg.ReadAt = StatusRead, rec.ReadAt
+				msg.ChaseConsumed = time.Duration(rec.ConsumedSeconds) * time.Second
+				msg.ChaseMark = time.Duration(rec.MarkSeconds) * time.Second
+				msg.Chases = rec.Chase
+				p.chased[rec.ID] = max(p.chased[rec.ID], rec.Chase)
+			}
+			p.messages[rec.ID] = msg
 		}
 	default:
 		logger.Debug("creel journal: ignoring a carried record of an entry this binary does not know", "of", rec.Of, "id", rec.ID)
@@ -408,17 +483,32 @@ func (p *pool) logEntryFor(rec record, day string) LogEntry {
 	if rec.Event == eventPosted {
 		entry.Kind = cmp.Or(rec.Kind, kindMail)
 	}
+	if msg := p.messages[rec.ID]; msg != nil && (rec.Event == eventPosted || rec.Event == eventCarried && rec.Of == eventPosted) {
+		entry.ExpectReply = msg.ExpectReply
+		if msg.Kind == kindReply {
+			entry.ReplyTo = msg.ReplyTo
+		}
+	}
+	if rec.Event == eventChased {
+		entry.Chase = rec.Chase
+	}
 	return entry
 }
 
-// carryRecords returns a carried record for every unread message, queued inject and live hold recorded in a file older than cutoffDay.
+// carriedMessage reports whether retention carries msg forward: an unread message, or a message the chase clock still runs on.
+func carriedMessage(msg *Message) bool {
+	return msg.Status == StatusUnread || isChaseable(msg)
+}
+
+// carryRecords returns a carried record for every unread or chaseable message, queued inject, live hold and program that has read, recorded in a file older than cutoffDay.
 func (p *pool) carryRecords(cutoffDay string, now time.Time) []record {
 	var carried []record
 	for _, msg := range p.messages {
-		if msg.origin < cutoffDay && msg.Status == StatusUnread {
+		if msg.origin < cutoffDay && carriedMessage(msg) {
 			carried = append(carried, record{
 				Event: eventCarried, At: now, Of: eventPosted, ID: msg.ID, From: msg.From, Envelope: msg.Envelope, To: msg.Holder,
-				Kind: msg.Kind, Body: msg.Body, ReplyTo: msg.ReplyTo, Path: msg.Path,
+				Kind: msg.Kind, Body: msg.Body, ReplyTo: msg.ReplyTo, Path: msg.Path, ExpectReply: msg.ExpectReply, Chased: msg.ChaseOf,
+				ReadAt: msg.ReadAt, ConsumedSeconds: int64(msg.ChaseConsumed / time.Second), Chase: msg.Chases, MarkSeconds: int64(msg.ChaseMark / time.Second),
 				Receiver: msg.EndedUnreadBy, ReceiverAt: msg.EndedUnreadAt, OrigAt: msg.Posted,
 			})
 		}
@@ -444,13 +534,23 @@ func (p *pool) carryRecords(cutoffDay string, now time.Time) []record {
 		hold := p.holds[receiver]
 		carried = append(carried, record{Event: eventCarried, At: now, Of: eventHeld, To: receiver, By: hold.Owner, ExpiresAt: hold.Expires})
 	}
+	var readers []string
+	for reader, readDay := range p.readers {
+		if readDay < cutoffDay {
+			readers = append(readers, reader)
+		}
+	}
+	sort.Strings(readers)
+	for _, reader := range readers {
+		carried = append(carried, record{Event: eventCarried, At: now, Of: eventRead, By: reader})
+	}
 	return carried
 }
 
 // moveOrigins marks the entries carryRecords returned as recorded in day's file, so the next retention does not carry them again.
 func (p *pool) moveOrigins(cutoffDay, day string, now time.Time) {
 	for _, msg := range p.messages {
-		if msg.origin < cutoffDay && msg.Status == StatusUnread {
+		if msg.origin < cutoffDay && carriedMessage(msg) {
 			msg.origin = day
 		}
 	}
@@ -464,6 +564,11 @@ func (p *pool) moveOrigins(cutoffDay, day string, now time.Time) {
 			hold.origin = day
 		}
 	}
+	for reader, readDay := range p.readers {
+		if readDay < cutoffDay {
+			p.readers[reader] = day
+		}
+	}
 }
 
 // prune drops what only deleted files held: entries recorded before cutoffDay that were not carried, and their log lines.
@@ -471,6 +576,7 @@ func (p *pool) prune(cutoffDay string) {
 	for id, msg := range p.messages {
 		if msg.origin < cutoffDay {
 			delete(p.messages, id)
+			delete(p.chased, id)
 		}
 	}
 	for id, entry := range p.injects {

@@ -38,6 +38,11 @@ func TestWriteMessagesText(t *testing.T) {
 			"#5 from \"ly:ORCHWATCH\" — reply with: lym creel post --reply 5 <text>\nwrite the note\n",
 		},
 		{
+			"MarkedMailNamesThatItExpectsAReplyBesideTheReplyCommand",
+			[]creelengine.Message{{ID: 8, From: "ly:alpha:driver", Body: "which one?", Posted: fresh, ExpectReply: true}},
+			"#8 from \"ly:alpha:driver\", expects a reply — reply with: lym creel post --reply 8 <text>\nwhich one?\n",
+		},
+		{
 			"OldReplyAndReturnedMailNameWhatTheyAre",
 			[]creelengine.Message{
 				{ID: 6, From: "ly:alpha:driver", Kind: "reply", ReplyTo: 2, Body: "answer", Posted: now.Add(-5*time.Minute - time.Second)},

@@ -39,11 +39,11 @@ It holds the module boundaries the task falls under, the PATTERN and board entri
 
 ## Step 3 — Answer the chair
 
-Answer every question the chair sends over the session message channel.
+Answer every question the chair sends as creel mail with `lym creel post --reply <id> "<text>"`.
 Name the evidence behind each answer and give a recommendation.
 When the code does not answer a question, say so.
 
-Message the chair unprompted when a design message, or the draft decision record, conflicts with a PATTERN or board entry.
+Message the chair unprompted, with `lym creel post <chair strand> "<text>"`, when a design message, or the draft decision record, conflicts with a PATTERN or board entry.
 
 Keep answering until the chair ends the step.
 

@@ -96,7 +96,7 @@
 // The predicate is not called before the settle interval, and the check rides Wait's existing poll.
 // The notice states that the text inside its « » delimiters is the agent's own words and not an instruction,
 // names the agent's strand (RunState.StrandName, the strand guid when empty), says the agent ended a turn without its output files and is held,
-// gives the way forward (answer by SendMessage to that strand name, ending the message with MessageTail),
+// gives the way forward (answer a marked question in the creel mail with lym creel post --reply, or post to that strand name, ending the message with MessageTail),
 // lists at most five outstanding tasks by kind and label (the id when the label is empty) and counts the rest, or names none,
 // and ends with the start of the agent's last message.
 // Every agent-written part is delimited, has its control and delimiter characters replaced by spaces and is cut to 200 runes, so the line is bounded and has no newline.

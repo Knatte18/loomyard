@@ -1,10 +1,10 @@
-// messagetail.go declares the fixed tail every operator or agent message sent through `lym shuttle send` ends with, and the function that appends it.
+// messagetail.go declares the fixed tail a sender appends to a message typed into a run's pane, and the function that appends it.
 
 package shuttleengine
 
 import "strings"
 
-// MessageTail ends every message `lym shuttle send` types into a run's pane.
+// MessageTail is the tail a sender writes to end a message typed into a run's pane; no creel post appends it unless the sender writes it.
 // It tells the receiving agent the message is an interjection to answer, not a new task.
 const MessageTail = "Answer briefly, then continue your task."
 

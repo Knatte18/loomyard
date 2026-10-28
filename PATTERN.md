@@ -43,6 +43,7 @@
 
 - `PATTERN-stencil-ownership` — Reading prompt or spec: at call time via `internal/stencilstore`, never embedded; an instruction file points at another producer's format contract, never restating it. — [background](pattern/PATTERN-stencil-ownership.md)
 - `PATTERN-parent-directive` — Writing a spawned role's stencil: it renders the parent and edit directives; its skills and color go on the launch spec, never asked of the agent. (test) — [background](pattern/PATTERN-parent-directive.md)
+- `PATTERN-agent-messaging` — Messaging another session from an agent: only through creel, never an engine's own tool, bar a fork addressed in-session under ForkSubagents. (test)
 - `PATTERN-shuttle-provider-seam` — Touching a provider or shuttle run: specifics only under `internal/shuttleengine/<engine>`, model-specs via `NewModelChoice`, a strand stopped via the stop verb, a negative finish after `allOutputFilesExist`. (test) — [background](pattern/PATTERN-shuttle-provider-seam.md)
 - `PATTERN-pane-text-injection` — Typing into an agent pane: reed's guarded paste-submit, an interrupt key only via shuttle's guards, a covered session held; the orch pane and creel journal only via creel. (test) — [background](pattern/PATTERN-pane-text-injection.md)
 - `PATTERN-agent-name` — Forming, parsing or matching an agent name: only `internal/agentname`, a strand's full name formed once by reed; a spawned role is its module's constant.
