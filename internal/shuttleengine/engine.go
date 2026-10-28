@@ -182,8 +182,6 @@ type Requirement string
 const (
 	// RequirementForks: the engine's sessions can spawn fork subagents.
 	RequirementForks Requirement = "forks"
-	// RequirementPeerMessaging: the engine's sessions can message peer sessions.
-	RequirementPeerMessaging Requirement = "peer-messaging"
 	// RequirementBackgroundWake: the engine's sessions wake on the completion of their own background work.
 	RequirementBackgroundWake Requirement = "background-wake"
 )

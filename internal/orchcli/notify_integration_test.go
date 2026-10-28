@@ -105,6 +105,12 @@ func TestParentOrchStrand(t *testing.T) {
 			t.Errorf("parentOrchStrand(m) = (%q, %v, %v); want (%q, true, nil)", name, recorded, err, beamOrch)
 		}
 	})
+	t.Run("a live beam orch is its own asker destination, where the pair walk starts above it", func(t *testing.T) {
+		name, recorded, err := askerOrchStrand(beam, beamLive(true))
+		if err != nil || !recorded || name != beamOrch {
+			t.Errorf("askerOrchStrand(b) = (%q, %v, %v); want (%q, true, nil)", name, recorded, err, beamOrch)
+		}
+	})
 	t.Run("a stopped beam orch leaves the prime's", func(t *testing.T) {
 		name, recorded, err := parentOrchStrand(member, beamLive(false))
 		if err != nil || !recorded || name != primeOrch {

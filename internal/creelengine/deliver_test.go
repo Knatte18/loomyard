@@ -1,12 +1,15 @@
 //go:build tier0
 
-// deliver_test.go pins delivery into panes through the fake seam: reminders, injects, the probe and sweep intervals, and the removed-holder sweep.
+// deliver_test.go pins delivery into panes through the fake seam: reminders, injects, the probe and sweep intervals, the removed-holder sweep and the chase clock.
 
 package creelengine_test
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -19,16 +22,19 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
-// isProbeWait and isSweepWait tell the waits of the delivery workers (1 to 8 seconds) from the sweep's (longer than the probe ceiling) on the shared fake clock.
+// isProbeWait, isSweepWait and isChaseWait tell the waits of the delivery workers (1 to 8 seconds), the sweep (up to its 50-second ceiling) and the chasers (one to eight minutes) apart on the shared fake clock.
 func isProbeWait(d time.Duration) bool { return d <= 8*time.Second }
 
-func isSweepWait(d time.Duration) bool { return d > 8*time.Second }
+func isSweepWait(d time.Duration) bool { return d > 8*time.Second && d <= 50*time.Second }
+
+func isChaseWait(d time.Duration) bool { return d >= time.Minute && d <= 8*time.Minute }
 
 // start runs a scheduler over the env's store and stops it when the test ends.
 func (e *env) start(t *testing.T) {
 	t.Helper()
 	scheduler := creelengine.NewScheduler(e.store, e.del, e.clock)
 	scheduler.Start()
+	e.scheduler = scheduler
 	t.Cleanup(scheduler.Stop)
 }
 
@@ -1605,6 +1611,60 @@ func TestSweep_RemovedHolders(t *testing.T) {
 				t.Errorf("a rebuilt pool queues %+v; the expired inject must not come back", queued)
 			}
 		}},
+		{"HolderRemovedAfterReadingAMarkedMessageSettlesItUnansweredHolderGoneWithNoChase", func(t *testing.T, e *env) {
+			id, waiter, err := e.store.PostWait(strand(beta), alpha, "which schema?")
+			if err != nil {
+				t.Fatalf("PostWait: %v", err)
+			}
+			e.start(t)
+			e.readBodies(t, strand(alpha), "")
+			without(e, alpha)
+			e.sweepStep()
+			e.sweepLast()
+			if outcome := awaitOutcome(t, waiter); outcome.Kind != creelengine.OutcomeUnanswered || outcome.Message.ID != id {
+				t.Errorf("wait answered %+v; want unanswered carrying message #%d", outcome, id)
+			}
+			var reasons []string
+			for _, entry := range e.store.Log(creelengine.LogFilter{ID: id}) {
+				if entry.Event == "unanswered" {
+					reasons = append(reasons, entry.Reason)
+				}
+			}
+			if want := []string{creelengine.UnansweredHolderGone}; !slices.Equal(reasons, want) {
+				t.Errorf("unanswered reasons = %v; want %v", reasons, want)
+			}
+			if got := e.countEvents(id, "chased"); got != 0 {
+				t.Errorf("chased events = %d; want no chase to a gone holder", got)
+			}
+			var notices []string
+			for _, entry := range e.store.Log(creelengine.LogFilter{From: "ly:CREEL", To: beta}) {
+				if entry.Event == "posted" {
+					notices = append(notices, entry.Subject)
+				}
+			}
+			if len(notices) != 1 || !strings.Contains(notices[0], "its holder is gone") {
+				t.Errorf("notices to the sender = %q; want one that the holder is gone", notices)
+			}
+		}},
+		{"HolderRemovedAfterReadingAMarkedMessageStillReturnsItsUnreadMailAlongItsPath", func(t *testing.T, e *env) {
+			id, waiter, err := e.store.PostWait(strand(beta), alpha, "which schema?")
+			if err != nil {
+				t.Fatalf("PostWait: %v", err)
+			}
+			e.start(t)
+			e.readBodies(t, strand(alpha), "")
+			e.post(t, strand(orch), alpha, "unread when the holder goes")
+			without(e, alpha)
+			e.sweepStep()
+			e.sweepLast()
+			if outcome := awaitOutcome(t, waiter); outcome.Kind != creelengine.OutcomeUnanswered || outcome.Message.ID != id {
+				t.Errorf("wait answered %+v; want unanswered carrying message #%d", outcome, id)
+			}
+			back := holderOf(t, e, orch)
+			if len(back) != 1 || back[0].EndedUnreadBy != alpha {
+				t.Errorf("orch's mail = %+v; want the unread message back, marked as ended unread by %s", back, alpha)
+			}
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2022,6 +2082,576 @@ func TestScheduler_HookWake(t *testing.T) {
 			t.Parallel()
 			e := hookEnv(t)
 			tt.run(t, e)
+		})
+	}
+}
+
+// chaseTick advances the clock by the chaser's current wait and waits until the chaser has rearmed, so the tick's charge, steps and journal records are done when it returns.
+func (e *env) chaseTick() {
+	waits := e.clock.AwaitWaitsWhere(1, isChaseWait)
+	e.clock.Advance(waits[len(waits)-1])
+	e.clock.AwaitWaitsWhere(len(waits)+1, isChaseWait)
+}
+
+// chaseTicks runs n chase ticks.
+func (e *env) chaseTicks(n int) {
+	for range n {
+		e.chaseTick()
+	}
+}
+
+// chaseTickLast advances the clock by the chaser's current wait without waiting for a rearm, for the tick after which the chaser ends.
+func (e *env) chaseTickLast() {
+	waits := e.clock.AwaitWaitsWhere(1, isChaseWait)
+	e.clock.Advance(waits[len(waits)-1])
+}
+
+// awaitEvent waits until the log of message id holds an event of the given name; the real-time deadline only bounds a failing test.
+func (e *env) awaitEvent(t *testing.T, id int64, event string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for !slices.Contains(eventsOf(e.store.Log(creelengine.LogFilter{ID: id})), event) {
+		if time.Now().After(deadline) {
+			t.Fatalf("message #%d never logged %q; events %v", id, event, eventsOf(e.store.Log(creelengine.LogFilter{ID: id})))
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// countEvents counts the entries of message id's log with the given event name.
+func (e *env) countEvents(id int64, event string) int {
+	count := 0
+	for _, name := range eventsOf(e.store.Log(creelengine.LogFilter{ID: id})) {
+		if name == event {
+			count++
+		}
+	}
+	return count
+}
+
+// tickToUnanswered runs the 45 ticks of two chases and the step after them, and waits for the unanswered record of message id.
+// The last tick ends the chaser, so it waits for no rearm.
+func (e *env) tickToUnanswered(t *testing.T, id int64) {
+	t.Helper()
+	e.chaseTicks(44)
+	e.chaseTickLast()
+	e.awaitEvent(t, id, "unanswered")
+}
+
+// chaseAgedSeconds returns the consumed seconds of every chase-aged record of message id in the journal, oldest first.
+func chaseAgedSeconds(t *testing.T, e *env, id int64) []int64 {
+	t.Helper()
+	var seconds []int64
+	for _, line := range strings.Split(journalText(t, e.geom), "\n") {
+		var rec struct {
+			Event           string `json:"event"`
+			ID              int64  `json:"id"`
+			ConsumedSeconds int64  `json:"consumed_s"`
+		}
+		if line == "" || json.Unmarshal([]byte(line), &rec) != nil {
+			continue
+		}
+		if rec.Event == "chase-aged" && rec.ID == id {
+			seconds = append(seconds, rec.ConsumedSeconds)
+		}
+	}
+	return seconds
+}
+
+// writeJournal writes the lines as the journal file of the given day under the env's journal directory, for a store opened after it.
+func (e *env) writeJournal(t *testing.T, day string, lines ...string) {
+	t.Helper()
+	if err := os.MkdirAll(e.geom.JournalDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(e.geom.JournalDir, day+".jsonl"), []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+}
+
+// reopen stops the env's scheduler, closes its store and opens a new store and scheduler over the same journal.
+func (e *env) reopen(t *testing.T) {
+	t.Helper()
+	if e.scheduler != nil {
+		e.scheduler.Stop()
+	}
+	if err := e.store.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	store, err := creelengine.OpenStore(e.geom, e.del, e.clock)
+	if err != nil {
+		t.Fatalf("OpenStore: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	e.store = store
+	e.start(t)
+}
+
+// awaitChaseLines waits until n chase lines were typed into the strand and returns them; the real-time deadline only bounds a failing test.
+func awaitChaseLines(t *testing.T, e *env, strandName string, n int) []string {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		var lines []string
+		for _, line := range e.typed(strandName) {
+			if strings.Contains(line, "Chase ") {
+				lines = append(lines, line)
+			}
+		}
+		if len(lines) >= n {
+			return lines
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("typed %d chase lines into %s; want %d", len(lines), strandName, n)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// awaitTypedWith waits until a line containing part was typed into the strand; the real-time deadline only bounds a failing test.
+func awaitTypedWith(t *testing.T, e *env, strandName, part string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for !slices.ContainsFunc(e.typed(strandName), func(line string) bool { return strings.Contains(line, part) }) {
+		if time.Now().After(deadline) {
+			t.Fatalf("typed %q into %s; want a line containing %q", e.typed(strandName), strandName, part)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// creelPostTo returns the id of the first message sender posted to receiver, 0 when there is none.
+func creelPostTo(e *env, sender, receiver string) int64 {
+	for _, entry := range e.store.Log(creelengine.LogFilter{From: sender}) {
+		if entry.Event == "posted" && entry.To == receiver {
+			return entry.ID
+		}
+	}
+	return 0
+}
+
+// postMarked posts text from sender to receiver expecting a reply and returns the id.
+func (e *env) postMarked(t *testing.T, sender creelengine.Sender, receiver, text string) int64 {
+	t.Helper()
+	id, _, _, err := e.store.PostWith(sender, receiver, text, creelengine.PostOptions{ExpectReply: true})
+	if err != nil {
+		t.Fatalf("PostWith(%s -> %s): %v", sender.Name, receiver, err)
+	}
+	return id
+}
+
+func TestScheduler_Chases(t *testing.T) {
+	t.Parallel()
+	const creel = "ly:CREEL"
+	// seeded is a marked message from beta to alpha that alpha read, as journal lines a store folds at open.
+	seeded := func(extra ...string) []string {
+		return append([]string{
+			`{"event":"posted","at":"2026-10-01T12:00:00Z","id":1,"from":"` + beta + `","to":"` + alpha + `","kind":"mail","body":"question","expect_reply":true}`,
+			`{"event":"read","at":"2026-10-01T12:00:00Z","id":1,"by":"` + alpha + `"}`,
+		}, extra...)
+	}
+	tests := []struct {
+		name string
+		run  func(t *testing.T, e *env)
+	}{
+		{"ProgramSendersMessageIsChasedTwiceThenSettledUnansweredAndTheSenderIsTold", func(t *testing.T, e *env) {
+			// A read makes batten's mailbox known, so it gets the notice.
+			e.readBodies(t, program(batten), "")
+			id, waiter, err := e.store.PostWait(program(batten), alpha, "which schema?")
+			if err != nil {
+				t.Fatalf("PostWait: %v", err)
+			}
+			e.start(t)
+			awaitTyped(t, e, alpha, "[creel] #1 from \""+batten+"\", expects a reply (lym creel post --reply 1 \"<text>\"): which schema?")
+
+			e.chaseTicks(14)
+			if got := e.countEvents(id, "chased"); got != 0 {
+				t.Errorf("chased events after 14 ticks = %d; want none", got)
+			}
+			e.chaseTick()
+			if got := e.countEvents(id, "chased"); got != 1 {
+				t.Errorf("chased events after 15 ticks = %d; want chase 1", got)
+			}
+			e.chaseTicks(14)
+			if got := e.countEvents(id, "chased"); got != 1 {
+				t.Errorf("chased events after 29 ticks = %d; want only chase 1", got)
+			}
+			e.chaseTick()
+			if got := e.countEvents(id, "chased"); got != 2 {
+				t.Errorf("chased events after 30 ticks = %d; want chase 2", got)
+			}
+			e.chaseTicks(14)
+			if got := e.countEvents(id, "unanswered"); got != 0 {
+				t.Errorf("unanswered events after 44 ticks = %d; want none", got)
+			}
+			e.chaseTickLast()
+			outcome := awaitOutcome(t, waiter)
+			if outcome.Kind != creelengine.OutcomeUnanswered || outcome.Message.ID != id {
+				t.Errorf("outcome = %+v; want unanswered carrying message #%d", outcome, id)
+			}
+			for _, entry := range e.store.Log(creelengine.LogFilter{ID: id}) {
+				if entry.Event == "unanswered" && entry.Reason != creelengine.UnansweredNoReply {
+					t.Errorf("unanswered reason = %q; want %q", entry.Reason, creelengine.UnansweredNoReply)
+				}
+			}
+			for _, chase := range awaitChaseLines(t, e, alpha, 2) {
+				for _, want := range []string{"from \"" + creel + "\"", "#1 from " + batten, "lym creel post --reply 1 "} {
+					if !strings.Contains(chase, want) {
+						t.Errorf("chase line %q lacks %q", chase, want)
+					}
+				}
+				if strings.Contains(chase, "which schema?") {
+					t.Errorf("chase line %q carries the sender's text", chase)
+				}
+			}
+			notice := e.readBodies(t, program(batten), "")
+			if len(notice) != 1 || !strings.Contains(notice[0], "#1") || !strings.Contains(notice[0], alpha) || !strings.Contains(notice[0], "lym creel log --id 1") {
+				t.Errorf("sender notice = %q; want one naming message #1, the receiver and lym creel log --id 1", notice)
+			}
+		}},
+		{"StrandSendersMessageReadThroughReadAndAckIsChasedTheSameWay", func(t *testing.T, e *env) {
+			e.start(t)
+			id := e.postMarked(t, strand(beta), alpha, "which schema?")
+			e.readBodies(t, strand(alpha), "")
+			e.tickToUnanswered(t, id)
+			if got := e.countEvents(id, "chased"); got != 2 {
+				t.Errorf("chased events = %d; want 2", got)
+			}
+			// The notice is a program's line, so the pane path types it into the pane-mail strand.
+			awaitTypedWith(t, e, beta, "lym creel log --id 1")
+		}},
+		{"ARepliesStopTheStepsAfterItAndALateReplyIsStillDelivered", func(t *testing.T, e *env) {
+			e.start(t)
+			beforeFirst := e.postMarked(t, strand(beta), alpha, "answered before the first chase")
+			betweenChases := e.postMarked(t, strand(beta), alpha, "answered after the first chase")
+			never := e.postMarked(t, strand(beta), alpha, "never answered in time")
+			e.readBodies(t, strand(alpha), "")
+			e.chaseTicks(5)
+			if _, err := e.store.Reply(strand(alpha), beforeFirst, "early"); err != nil {
+				t.Fatalf("Reply: %v", err)
+			}
+			e.chaseTicks(11)
+			if _, err := e.store.Reply(strand(alpha), betweenChases, "middle"); err != nil {
+				t.Fatalf("Reply: %v", err)
+			}
+			e.chaseTicks(28)
+			e.chaseTickLast()
+			e.awaitEvent(t, never, "unanswered")
+
+			for _, tt := range []struct {
+				name                   string
+				id                     int64
+				chases, unansweredWant int
+			}{{"before the first chase", beforeFirst, 0, 0}, {"after the first chase", betweenChases, 1, 0}, {"never", never, 2, 1}} {
+				if got := e.countEvents(tt.id, "chased"); got != tt.chases {
+					t.Errorf("%s: chased events = %d; want %d", tt.name, got, tt.chases)
+				}
+				if got := e.countEvents(tt.id, "unanswered"); got != tt.unansweredWant {
+					t.Errorf("%s: unanswered events = %d; want %d", tt.name, got, tt.unansweredWant)
+				}
+			}
+
+			waiter, err := e.store.WaitReply(strand(beta), never)
+			if err != nil {
+				t.Fatalf("WaitReply: %v", err)
+			}
+			if outcome := awaitOutcome(t, waiter); outcome.Kind != creelengine.OutcomeUnanswered || outcome.Message.ID != never {
+				t.Errorf("a wait registered after the outcome = %+v; want unanswered carrying message #%d", outcome, never)
+			}
+			if _, err := e.store.Reply(strand(alpha), never, "late"); err != nil {
+				t.Fatalf("Reply after the outcome: %v", err)
+			}
+			if bodies := e.readBodies(t, strand(beta), ""); !slices.Contains(bodies, "late") {
+				t.Errorf("beta's mail = %q; want the late reply still delivered", bodies)
+			}
+			again, err := e.store.WaitReply(strand(beta), never)
+			if err != nil {
+				t.Fatalf("WaitReply: %v", err)
+			}
+			if outcome := awaitOutcome(t, again); outcome.Kind != creelengine.OutcomeReply {
+				t.Errorf("a wait registered after the late reply = %+v; want the reply", outcome)
+			}
+		}},
+		{"AnUnreadMarkedMessageAndOneAProgramHoldsAreNeverChased", func(t *testing.T, e *env) {
+			e.start(t)
+			e.readBodies(t, program(batten), "")
+			e.postMarked(t, strand(alpha), beta, "never read")
+			e.postMarked(t, strand(alpha), batten, "held by a program")
+			e.readBodies(t, program(batten), "")
+			// Stopping waits for every goroutine, so a chaser a wake had started has armed its first wait by now.
+			e.scheduler.Stop()
+			var chaseWaits []time.Duration
+			for _, wait := range e.clock.Waits() {
+				if isChaseWait(wait) {
+					chaseWaits = append(chaseWaits, wait)
+				}
+			}
+			if len(chaseWaits) != 0 {
+				t.Errorf("chase waits = %v; want no chaser", chaseWaits)
+			}
+		}},
+		{"AChaseAgedRecordFollowsEachRunningTickAndAPauseStopsTheClockAndBacksTheWaitOff", func(t *testing.T, e *env) {
+			e.start(t)
+			id := e.postMarked(t, strand(beta), alpha, "question")
+			e.readBodies(t, strand(alpha), "")
+			e.chaseTick()
+			if got, want := chaseAgedSeconds(t, e, id), []int64{60}; !slices.Equal(got, want) {
+				t.Fatalf("chase-aged seconds after one running tick = %v; want %v", got, want)
+			}
+			e.del.SetPaused(alpha, true)
+			e.chaseTicks(4)
+			e.del.SetPaused(alpha, false)
+			// The first running tick finds the clock stopped at the previous reading, so it charges nothing.
+			e.chaseTick()
+			if got := chaseAgedSeconds(t, e, id); !slices.Equal(got, []int64{60}) {
+				t.Errorf("chase-aged seconds after the pause = %v; want no time charged while paused", got)
+			}
+			e.chaseTick()
+			if got, want := chaseAgedSeconds(t, e, id), []int64{60, 120}; !slices.Equal(got, want) {
+				t.Errorf("chase-aged seconds once the clock runs again = %v; want %v", got, want)
+			}
+			minutes := func(n ...int) []time.Duration {
+				waits := make([]time.Duration, len(n))
+				for i, v := range n {
+					waits[i] = time.Duration(v) * time.Minute
+				}
+				return waits
+			}
+			if got, want := e.clock.AwaitWaitsWhere(0, isChaseWait), minutes(1, 1, 2, 4, 8, 8, 1, 1); !slices.Equal(got, want) {
+				t.Errorf("chase waits = %v; want %v", got, want)
+			}
+		}},
+		{"ADormantHolderAndAnotherSendersHoldStopTheClockWhileTheMessagesOwnSendersHoldDoesNot", func(t *testing.T, e *env) {
+			e.start(t)
+			own := e.postMarked(t, strand(orch), alpha, "from the holder of the hold")
+			other := e.postMarked(t, strand(beta), alpha, "from another sender")
+			e.readBodies(t, strand(alpha), "")
+			if _, err := e.store.Hold(strand(orch), alpha, time.Hour); err != nil {
+				t.Fatalf("Hold: %v", err)
+			}
+			e.chaseTick()
+			if got := chaseAgedSeconds(t, e, own); !slices.Equal(got, []int64{60}) {
+				t.Errorf("chase-aged seconds of the hold owner's message = %v; want the clock to run", got)
+			}
+			if got := chaseAgedSeconds(t, e, other); len(got) != 0 {
+				t.Errorf("chase-aged seconds of the other sender's message = %v; want the hold to stop its clock", got)
+			}
+			e.del.SetStrands(creelfake.DormantStrand(alpha), creelfake.LiveStrand(beta), creelfake.LiveStrand(orch), creelfake.LiveStrand(orch2))
+			e.chaseTicks(2)
+			if got := chaseAgedSeconds(t, e, own); !slices.Equal(got, []int64{60}) {
+				t.Errorf("chase-aged seconds of the hold owner's message while the holder is dormant = %v; want no time charged", got)
+			}
+		}},
+		{"AReopenAfterAPauseCountsNoPausedTimeAndNeitherRepeatsNorSkipsAChase", func(t *testing.T, e *env) {
+			e.start(t)
+			id := e.postMarked(t, strand(beta), alpha, "question")
+			e.readBodies(t, strand(alpha), "")
+			e.chaseTicks(14)
+			e.del.SetPaused(alpha, true)
+			e.chaseTick()
+			armed := len(e.clock.AwaitWaitsWhere(0, isChaseWait))
+			e.reopen(t)
+			// The restarted chaser has read the pause once its first wait is armed.
+			e.clock.AwaitWaitsWhere(armed+1, isChaseWait)
+			e.del.SetPaused(alpha, false)
+			e.chaseTick()
+			if got := e.countEvents(id, "chased"); got != 0 {
+				t.Errorf("chased events after the first running tick of the restarted clock = %d; want none, since that tick charges nothing", got)
+			}
+			e.chaseTick()
+			if got := e.countEvents(id, "chased"); got != 1 {
+				t.Errorf("chased events after the second tick = %d; want chase 1 once, 840 seconds of running time plus 60", got)
+			}
+			e.chaseTicks(3)
+			if got := e.countEvents(id, "chased"); got != 1 {
+				t.Errorf("chased events after more ticks = %d; want the chase not repeated", got)
+			}
+		}},
+		{"ASeededChasePostWithNoChasedRecordGetsItAtOpenAndYieldsNoThirdChase", func(t *testing.T, e *env) {
+			e.writeJournal(t, "2026-10-01", seeded(
+				`{"event":"posted","at":"2026-10-01T12:00:00Z","id":2,"from":"`+creel+`","to":"`+alpha+`","kind":"mail","body":"chase 1","chase":1,"chased":1,"consumed_s":900}`,
+				`{"event":"chased","at":"2026-10-01T12:00:00Z","id":1,"to":"`+alpha+`","chase":1}`,
+				`{"event":"posted","at":"2026-10-01T12:00:00Z","id":3,"from":"`+creel+`","to":"`+alpha+`","kind":"mail","body":"chase 2","chase":2,"chased":1,"consumed_s":1800}`,
+				`{"event":"chase-aged","at":"2026-10-01T12:00:00Z","id":1,"consumed_s":1800}`,
+			)...)
+			e.reopen(t)
+			var numbers []int
+			for _, entry := range e.store.Log(creelengine.LogFilter{ID: 1}) {
+				if entry.Event == "chased" {
+					numbers = append(numbers, entry.Chase)
+				}
+			}
+			if !slices.Equal(numbers, []int{1, 2}) {
+				t.Errorf("chased entries after open = %v; want chase 2's record written", numbers)
+			}
+			e.chaseTicks(14)
+			e.chaseTickLast()
+			e.awaitEvent(t, 1, "unanswered")
+			if got := e.countEvents(1, "chased"); got != 2 {
+				t.Errorf("chased events = %d; want no third chase", got)
+			}
+		}},
+		{"ASeededClockPastTheNextStepTakesThatStepAtTheFifteenthTickAfterTheRestartAndTheNextAtTheThirtieth", func(t *testing.T, e *env) {
+			e.writeJournal(t, "2026-10-01", seeded(`{"event":"chase-aged","at":"2026-10-01T12:00:00Z","id":1,"consumed_s":2400}`)...)
+			e.reopen(t)
+			e.chaseTicks(14)
+			if got := e.countEvents(1, "chased"); got != 0 {
+				t.Errorf("chased events after 14 ticks = %d; want none", got)
+			}
+			e.chaseTick()
+			if got := e.countEvents(1, "chased"); got != 1 {
+				t.Errorf("chased events after 15 ticks = %d; want chase 1", got)
+			}
+			e.chaseTicks(14)
+			if got := e.countEvents(1, "chased"); got != 1 {
+				t.Errorf("chased events after 29 ticks = %d; want only chase 1", got)
+			}
+			e.chaseTick()
+			if got := e.countEvents(1, "chased"); got != 2 {
+				t.Errorf("chased events after 30 ticks = %d; want chase 2", got)
+			}
+		}},
+		{"NoNoticeGoesToAProgramThatNeverReadOrToAStrandRemovedBeforeTheOutcomeAndTheirWaitsAreStillAnswered", func(t *testing.T, e *env) {
+			// batten posted but never read, so its mailbox is known and still no notice is owed.
+			programID, programWaiter, err := e.store.PostWait(program(batten), alpha, "from a program that never reads")
+			if err != nil {
+				t.Fatalf("PostWait: %v", err)
+			}
+			strandID, strandWaiter, err := e.store.PostWait(strand(beta), alpha, "from a strand that leaves")
+			if err != nil {
+				t.Fatalf("PostWait: %v", err)
+			}
+			e.start(t)
+			e.readBodies(t, strand(alpha), "")
+			e.chaseTicks(44)
+			e.del.SetStrands(creelfake.LiveStrand(alpha), creelfake.LiveStrand(orch), creelfake.LiveStrand(orch2))
+			e.chaseTickLast()
+			for _, tt := range []struct {
+				name   string
+				id     int64
+				waiter *creelengine.Waiter
+			}{{"program", programID, programWaiter}, {"strand", strandID, strandWaiter}} {
+				e.awaitEvent(t, tt.id, "unanswered")
+				if outcome := awaitOutcome(t, tt.waiter); outcome.Kind != creelengine.OutcomeUnanswered {
+					t.Errorf("%s: outcome = %+v; want unanswered", tt.name, outcome)
+				}
+			}
+			if bodies := e.readBodies(t, program(batten), ""); len(bodies) != 0 {
+				t.Errorf("batten's mail = %q; want no notice", bodies)
+			}
+			if bodies := e.readBodies(t, strand(beta), ""); len(bodies) != 0 {
+				t.Errorf("beta's mail = %q; want no notice", bodies)
+			}
+		}},
+		{"AnExternalSendersMessageIsChasedByItsBareNameWithNoSenderTextAndItsOutcomePostsNoNotice", func(t *testing.T, e *env) {
+			id, waiter, err := e.store.PostWait(external(), alpha, "SECRET question text")
+			if err != nil {
+				t.Fatalf("PostWait: %v", err)
+			}
+			e.start(t)
+			e.readBodies(t, strand(alpha), "")
+			e.tickToUnanswered(t, id)
+			if outcome := awaitOutcome(t, waiter); outcome.Kind != creelengine.OutcomeUnanswered {
+				t.Errorf("outcome = %+v; want unanswered", outcome)
+			}
+			chases := 0
+			for _, entry := range e.store.Log(creelengine.LogFilter{From: creel}) {
+				if entry.Event != "posted" {
+					continue
+				}
+				chases++
+				if entry.To != alpha {
+					t.Errorf("a %s post went to %s; want only the two chases to %s and no notice", creel, entry.To, alpha)
+				}
+			}
+			if chases != 2 {
+				t.Errorf("%s posts = %d; want the two chases", creel, chases)
+			}
+			for _, line := range awaitChaseLines(t, e, alpha, 2) {
+				if !strings.Contains(line, "from ly:EXTERNAL") {
+					t.Errorf("chase line %q lacks the sender's bare name", line)
+				}
+				for _, leaked := range []string{"SECRET", "claude", "pts/4", "/home/me"} {
+					if strings.Contains(line, leaked) {
+						t.Errorf("chase line %q carries %q of the sender", line, leaked)
+					}
+				}
+			}
+		}},
+		{"AReplyToAChaseAnswersTheChasedMessageAndStopsItsChasesWhileAnotherUnansweredOneRunsOn", func(t *testing.T, e *env) {
+			e.start(t)
+			answered := e.postMarked(t, strand(beta), alpha, "answered through its chase")
+			never := e.postMarked(t, strand(beta), alpha, "never answered")
+			e.readBodies(t, strand(alpha), "")
+			e.chaseTicks(15)
+			chase := creelPostTo(e, creel, alpha)
+			replyID, err := e.store.Reply(strand(alpha), chase, "the answer")
+			if err != nil {
+				t.Fatalf("Reply to the chase: %v", err)
+			}
+			var reply *creelengine.LogEntry
+			for _, entry := range e.store.Log(creelengine.LogFilter{ID: replyID}) {
+				if entry.Event == "posted" {
+					reply = &entry
+				}
+			}
+			if reply == nil || reply.To != beta || reply.From != alpha || reply.ReplyTo != answered {
+				t.Errorf("reply entry = %+v; want a post from %s to %s answering #%d", reply, alpha, beta, answered)
+			}
+			e.chaseTicks(14)
+			e.chaseTick()
+			if got := e.countEvents(answered, "chased"); got != 1 {
+				t.Errorf("chased events of the answered message = %d; want only chase 1", got)
+			}
+			if got := e.countEvents(never, "chased"); got != 2 {
+				t.Errorf("chased events of the unanswered message = %d; want both chases", got)
+			}
+			e.chaseTicks(14)
+			e.chaseTickLast()
+			e.awaitEvent(t, never, "unanswered")
+			if got := e.countEvents(answered, "unanswered"); got != 0 {
+				t.Errorf("unanswered events of the answered message = %d; want none", got)
+			}
+		}},
+		{"AChaseTheHolderStillHoldsUnreadIsRefusedForwardingAndStaysWithItsHolder", func(t *testing.T, e *env) {
+			e.start(t)
+			e.postMarked(t, strand(beta), alpha, "question")
+			e.readBodies(t, strand(alpha), "")
+			e.chaseTicks(15)
+			chase := creelPostTo(e, creel, alpha)
+			before := len(e.store.Log(creelengine.LogFilter{}))
+			wantErr(t, e.store.Forward(strand(alpha), chase, beta),
+				fmt.Sprintf("message #%d is a chase and cannot be forwarded", chase),
+				fmt.Sprintf("way forward: answer it with lym creel post --reply %d", chase), "which answers #1")
+			if got := len(e.store.Log(creelengine.LogFilter{})); got != before {
+				t.Errorf("journal entries after the refused forward = %d; want %d", got, before)
+			}
+			inbox, err := e.store.Inbox(strand(alpha))
+			if err != nil {
+				t.Fatalf("Inbox: %v", err)
+			}
+			if want := []creelengine.InboxEntry{{From: creel, Unread: 1}}; !slices.Equal(inbox.Senders, want) {
+				t.Errorf("alpha's unread senders = %+v; want the chase still with its holder", inbox.Senders)
+			}
+		}},
+		{"ASenderNoticeOfAnUnansweredOutcomeTakesNoReply", func(t *testing.T, e *env) {
+			e.start(t)
+			id := e.postMarked(t, strand(beta), alpha, "question")
+			e.readBodies(t, strand(alpha), "")
+			e.tickToUnanswered(t, id)
+			notice := creelPostTo(e, creel, beta)
+			before := len(e.store.Log(creelengine.LogFilter{}))
+			_, err := e.store.Reply(strand(beta), notice, "thanks")
+			wantErr(t, err, fmt.Sprintf("message #%d is a creel notice and takes no reply", notice), "way forward: post to the strand it names with lym creel post <strand>")
+			if got := len(e.store.Log(creelengine.LogFilter{})); got != before {
+				t.Errorf("journal entries after the refused reply = %d; want %d", got, before)
+			}
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			tt.run(t, newEnv(t))
 		})
 	}
 }

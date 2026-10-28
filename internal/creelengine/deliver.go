@@ -39,8 +39,10 @@ type Scheduler struct {
 	delivery Delivery
 	clock    Clock
 
-	mu       sync.Mutex
-	workers  map[string]*worker
+	mu      sync.Mutex
+	workers map[string]*worker
+	// chasers holds the one chaser of each holder with a chaseable message.
+	chasers  map[string]*chaser
 	stopping bool
 	stop     chan struct{}
 	wg       sync.WaitGroup
@@ -52,11 +54,11 @@ type Scheduler struct {
 func NewScheduler(store *Store, delivery Delivery, clock Clock) *Scheduler {
 	return &Scheduler{
 		store: store, delivery: delivery, clock: clock,
-		workers: map[string]*worker{}, stop: make(chan struct{}), sweepWake: make(chan struct{}, 1),
+		workers: map[string]*worker{}, chasers: map[string]*chaser{}, stop: make(chan struct{}), sweepWake: make(chan struct{}, 1),
 	}
 }
 
-// Start subscribes to the store's wake notifications, starts the removed-holder sweep and launches a worker for every receiver the pool already shows with a queued inject or unread mail.
+// Start subscribes to the store's wake notifications, starts the removed-holder sweep, launches a worker for every receiver the pool already shows with a queued inject or unread mail, and a chaser for every holder of a chaseable message.
 func (s *Scheduler) Start() {
 	s.store.SetWakeHook(s.wake)
 	s.wg.Add(1)
@@ -64,9 +66,12 @@ func (s *Scheduler) Start() {
 	for _, receiver := range s.store.pendingReceivers() {
 		s.wake(receiver)
 	}
+	for _, holder := range s.store.chaseSubjects() {
+		s.wake(holder)
+	}
 }
 
-// Stop starts no new send, waits for the sends in flight to return and their outcomes to be journaled, and persists the TTL each queued inject has consumed.
+// Stop starts no new send, waits for the sends in flight to return and their outcomes to be journaled, and persists the TTL each queued inject has consumed and the chase clock each chaser has counted.
 func (s *Scheduler) Stop() {
 	s.mu.Lock()
 	if s.stopping {
@@ -90,6 +95,7 @@ func (s *Scheduler) wake(receiver string) {
 	if s.stopping {
 		return
 	}
+	s.wakeChaserLocked(receiver)
 	if running := s.workers[receiver]; running != nil {
 		select {
 		case running.wake <- struct{}{}:
@@ -739,7 +745,7 @@ func (s *Store) markNoticeRead(receiver string, id int64) error {
 		if msg == nil || msg.Holder != receiver || msg.Status != StatusUnread {
 			return nil
 		}
-		return s.writer.append(record{Event: eventRead, ID: id, By: receiver})
+		return s.journalReadLocked(msg, receiver)
 	})
 }
 
@@ -748,4 +754,23 @@ func (s *Store) journalReminded(receiver string, ids []int64, step int) error {
 	return s.do(func() error {
 		return s.writer.append(record{Event: eventReminded, To: receiver, Step: step, Unread: ids})
 	})
+}
+
+// wakeChaserLocked nudges the chaser of holder, or starts one when the holder holds a chaseable message and none runs.
+// The caller holds the scheduler's mutex.
+func (s *Scheduler) wakeChaserLocked(holder string) {
+	if running := s.chasers[holder]; running != nil {
+		select {
+		case running.wake <- struct{}{}:
+		default:
+		}
+		return
+	}
+	if !s.store.chasePending(holder) {
+		return
+	}
+	started := &chaser{scheduler: s, holder: holder, wake: make(chan struct{}, 1), lastError: map[string]string{}}
+	s.chasers[holder] = started
+	s.wg.Add(1)
+	go started.run()
 }

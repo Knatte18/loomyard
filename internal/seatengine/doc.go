@@ -1,6 +1,6 @@
 // Package seatengine runs one step as a table of seats: a chair and its advisors, each a shuttle run in its own strand.
 // The chair's turn end, outputs and gate decide the step as a single agent's would; the advisors' outputs are the chair's inputs,
-// and the advisors talk to the chair over Claude Code's session message.
+// and the advisors talk to the chair through creel mail.
 // The seat-running logic lives here, below internal/shedadapters, whose MultiLLM producer maps the chair's result onto the Shed contract.
 //
 // # The seat model
@@ -10,7 +10,7 @@
 // A Seat names its stencil, its model choice, engine included, the files it reads (Inputs) and writes (Outputs), its skills and its own marker values.
 // An advisor Seat may also carry its own Gate, which adds a check to that advisor's run, and ForkSubagents, which authorizes the seat's session to spawn in-session fork subagents.
 // The engine audits no fork, so the caller that sets ForkSubagents owns the fork audit.
-// A Seat also lists the Requires its engine must meet and the ModelKey its model came from: the spec adds peer messaging for a table of more than one seat, whose seats message each other, and a start refusal for an unmet requirement is wrapped with the seat's key so it names the config key to change.
+// A Seat also lists the Requires its engine must meet and the ModelKey its model came from: a start refusal for an unmet requirement is wrapped with the seat's key so it names the config key to change.
 // An advisor may be Required, with an Accept hook that judges its terminal result: a step then depends on that advisor's accepted output before its chair goes on.
 // A required advisor's held turn end still notifies the parent, where every other advisor holds quietly.
 // The first seat is the lead, which the engine also calls the chair, and it carries no name; every later seat carries a name the table's builder takes from a recipe or config, valid under ValidateSeatName.

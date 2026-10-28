@@ -60,6 +60,8 @@ type Request struct {
 	Wait bool `json:"wait,omitempty"`
 	// Interrupt makes inject and post interrupt the receiver's running turn first.
 	Interrupt bool `json:"interrupt,omitempty"`
+	// ExpectReply marks a post as expecting a reply, which Wait implies.
+	ExpectReply bool `json:"expect_reply,omitempty"`
 	// TTLSeconds is the TTL of an inject, 0 for the default.
 	TTLSeconds int64 `json:"ttl_s,omitempty"`
 	// ForSeconds is how long a hold lasts.

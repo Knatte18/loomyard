@@ -31,9 +31,13 @@ func isNotice(msg *Message) bool {
 
 // MessageLine renders the one line that carries a message in full, as a notice typed into an idle pane or as mail handed over at a tool boundary:
 // its id, so the receiver can reply without a read, its sender and its body, with every run of control characters and line breaks turned into one space.
+// A message that expects a reply also carries the mark and the command that answers it.
 func MessageLine(msg Message) string {
-	body := strings.Join(strings.FieldsFunc(msg.Body, unicode.IsControl), " ")
-	return fmt.Sprintf("[creel] #%d from \"%s\": %s", msg.ID, msg.From, strings.TrimSpace(body))
+	body := strings.TrimSpace(strings.Join(strings.FieldsFunc(msg.Body, unicode.IsControl), " "))
+	if msg.ExpectReply {
+		return fmt.Sprintf("[creel] #%d from \"%s\", expects a reply (lym creel post --reply %d \"<text>\"): %s", msg.ID, msg.From, msg.ID, body)
+	}
+	return fmt.Sprintf("[creel] #%d from \"%s\": %s", msg.ID, msg.From, body)
 }
 
 // reminderBackoff returns the wait after the reminder at the given step of an unchanged unread set: 5 minutes, doubling to the 1-hour ceiling.

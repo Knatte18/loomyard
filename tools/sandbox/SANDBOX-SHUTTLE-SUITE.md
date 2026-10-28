@@ -118,29 +118,28 @@ and afterward the strand's pane and run directory are cleaned up (no leftover pa
 
 **Covers:** shuttle
 
-**Goal:** "Give a shuttle agent a task it cannot complete without a decision only the operator can make, and confirm the run keeps waiting at the agent's question, then let the operator answer it directly in the pane or by `lym shuttle send`, and confirm the run ends `done`."
+**Goal:** "Give a shuttle agent a task it cannot complete without a decision only the operator can make, and confirm the run keeps waiting at the agent's question, then let the operator answer it directly in the pane or by `lym creel post`, and confirm the run ends `done`."
 
 **Watch:** `lym shuttle run --prompt "before writing decision.md, stop and ask me which of two options you should pick — do not guess" --output-file decision.md --interactive` does not return when the agent ends its turn with its question: the run is held;
 the strand and its pane are still alive (`lym reed status` still lists the guid;
 `decision.md` does not exist yet).
-The agent then instructs the operator to attach (`lym reed attach` in a second terminal, per the reed suite's M7/M14 pattern), answer the question in the pane or by `lym shuttle send <guid> "<answer>"`, and confirm the agent continues, eventually writes `decision.md`, and the original `lym shuttle run` returns `"outcome":"done"`.
+The agent then instructs the operator to attach (`lym reed attach` in a second terminal, per the reed suite's M7/M14 pattern), answer the question in the pane or by `lym creel post <strand> "<answer>"`, and confirm the agent continues, eventually writes `decision.md`, and the original `lym shuttle run` returns `"outcome":"done"`.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
 ---
 
-### S3 -- Interrupt and send (cross-terminal poke)
+### S3 -- Interrupt and post (cross-terminal poke)
 
 **Covers:** shuttle
 
-**Goal:** "Start a long-running shuttle agent from one terminal, then from a second terminal interrupt its current turn and send it a one-line update, and confirm the agent continues from the new instruction."
+**Goal:** "Start a long-running shuttle agent from one terminal, then from a second terminal interrupt its current turn and post it a one-line update, and confirm the agent continues from the new instruction."
 
 **Watch:** Start a long-running run in one terminal, e.g. `lym shuttle run --prompt "count slowly to a very large number out loud, one number per line, before writing done.md" --output-file done.md`.
-From a second terminal, note the `guid` (via `lym reed status`) and run `lym shuttle interrupt <guid>` -- the agent's current turn stops without killing its pane or session (`lym reed status` still shows it `live: true`).
-Then run `lym shuttle send <guid> "stop counting and write done.md right away"` -- a single-line update only.
+From a second terminal, note the strand name (via `lym reed list`) and run `lym creel interrupt <strand>` -- the agent's current turn stops without killing its pane or session (`lym reed status` still shows it `live: true`).
+Then run `lym creel post <strand> "stop counting and write done.md right away"` -- a single-line update only.
 The deterministic property to verify is that `done.md` eventually appears with the redirected content: the first terminal's envelope reports `"outcome":"done"`, because the interrupted turn's own Stop is a hold and only the redirect turn's completion ends the run.
 Any other outcome (or a missing/wrong `done.md`) is a real failure here.
-Sending multiline text must be rejected outright (a "must be a single line" error), not silently truncated or mis-submitted.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -181,7 +180,7 @@ Three things must hold, and each was a real defect before:
 2. The envelope must still carry `guid`, `sessionId` and `runDir`, so the operator can reach the pane that is still running.
 3. Confirm the agent really is still alive afterward (`tmux -L <socket> capture-pane` on its pane shows the same turn still progressing) -- the whole point of the verdict in (1).
 
-Then, with `reed.json` still absent, start a SECOND run in the same worktree with a deliberately cheap prompt (e.g. `--model haiku --prompt "write ok" --output-file second.md`): `add strand` now self-heals rather than refusing, so this second run boots a fresh session and spawns a real second agent -- **this step now costs real tokens**, unlike the no-session refusal it used to hit. Confirm the FIRST run's directory under `<worktree>/.lym/shuttle/` is **still there** once the second run has started. A missing run directory is a FAIL: it holds the `events.jsonl` the live agent's Stop hook is still appending to, and the `run.json` without which `lym shuttle interrupt/send <guid>` can no longer find the running agent at all.
+Then, with `reed.json` still absent, start a SECOND run in the same worktree with a deliberately cheap prompt (e.g. `--model haiku --prompt "write ok" --output-file second.md`): `add strand` now self-heals rather than refusing, so this second run boots a fresh session and spawns a real second agent -- **this step now costs real tokens**, unlike the no-session refusal it used to hit. Confirm the FIRST run's directory under `<worktree>/.lym/shuttle/` is **still there** once the second run has started. A missing run directory is a FAIL: it holds the `events.jsonl` the live agent's Stop hook is still appending to, and the `run.json` without which `lym creel interrupt` and `lym creel post` can no longer find the running agent at all.
 
 Restore with `lym reed up` (which writes a fresh `reed.json`) and `lym reed down` to tear the session down.
 
@@ -196,16 +195,16 @@ Restore with `lym reed up` (which writes a fresh `reed.json`) and `lym reed down
 **Goal:** "Send one instruction twice into a busy agent pane, with the first copy scrolled to the very top of the viewport, and confirm the second send is delivered exactly once and reported as delivered."
 
 **Watch:** Start a run with `--keep-pane` and a trivial prompt (e.g. `lym shuttle run --prompt "write READY into ready.txt" --output-file ready.txt --keep-pane --model haiku`), which leaves one live, idle agent pane to drive.
-Note the `guid` from `lym reed status`.
+Note the strand name from `lym reed list`.
 
-Send an instruction whose ANSWER is long enough to fill the pane, e.g. `lym shuttle send <guid> "reply with the numbers 1 to 38 one per line and nothing else"`.
+Send an instruction whose ANSWER is long enough to fill the pane, e.g. `lym creel post <strand> "reply with the numbers 1 to 38 one per line and nothing else"`.
 Wait for the reply to finish, then look at the pane (`tmux -L <socket> capture-pane -p -t <paneId>`): the line echoing your instruction must have been pushed to within a line or two of the TOP of the viewport, still visible.
 That is the setup -- if it scrolled off entirely, send it once more and re-check.
 
 Now send the SAME instruction again, timing it while the earlier copy is still visible at the top.
 Two things must hold:
 
-1. The command answers `{"ok":true,"action":"send",...}` within about a second. An `"ok":false` "the send was NOT delivered" here is a FAIL -- and the giveaway is that it takes ~11 s to say it.
+1. The command answers `"ok":true` within about a second. An `"ok":false` "the send was NOT delivered" here is a FAIL -- and the giveaway is that it takes ~11 s to say it.
 2. The pane must show the instruction accepted exactly ONCE more, not twice. A second, duplicate copy of your instruction (and a second answer to it) is the same FAIL seen from the other side: the delivery check gave up and re-typed a message the agent had already received.
 
 Both halves failed before this was fixed, because the earlier copy scrolling off as the new one arrived left the occurrence COUNT unchanged, which is indistinguishable from nothing arriving unless position is taken into account.
@@ -232,7 +231,7 @@ Reed then logs `persisted pane bindings were minted against a different tmux ses
 Two things must hold:
 
 1. The blocked `lym shuttle run` must return `"ok":false` saying reed holds no pane binding for the strand and that the agent may still be working -- **never** `"ok":true` with `"outcome":"died"`. A `died` envelope here is the same FAIL as S5's, for the same reason: it tells an unattended caller to respawn onto a worktree whose agent is still running.
-2. `lym shuttle interrupt <guid>` must refuse, and its message must NOT claim the run reached a terminal outcome or that its pane died -- neither is true here.
+2. `lym creel interrupt <strand>` must refuse, and its message must NOT claim the run reached a terminal outcome or that its pane died -- neither is true here.
 
 Restore the original `created` value to make the binding usable again (`lym reed status` will show the strand `live: true` on its pane once more, which also proves the agent was alive throughout), then `lym reed remove <guid>` and `lym reed down`.
 

@@ -181,7 +181,7 @@ func TestEngine_Run_StartFailureEndingTheRunStopsEveryStartedSeat(t *testing.T) 
 		{name: "the discussion chair", forks: true, requires: forkWake, key: shuttleengine.ModelKey{Module: "loom", Key: "discussion"}, wantText: "set discussion in loom.yaml to an alias whose engine meets them"},
 		{name: "the plan chair", forks: true, requires: forkWake, key: shuttleengine.ModelKey{Module: "loom", Key: "plan"}, wantText: "set plan in loom.yaml to an alias whose engine meets them"},
 		{name: "the cluster-fan reviewer", forks: true, key: shuttleengine.ModelKey{Module: "loom", Key: "discussion_reviewer_model"}, wantText: "set discussion_reviewer_model in loom.yaml to an alias whose engine meets them"},
-		{name: "a recipe seat of a two-seat table", advisors: 1, wantText: "set the seat's model to an alias whose engine meets them"},
+		{name: "a recipe seat of a two-seat table", advisors: 1, requires: forkWake, wantText: "set the seat's model to an alias whose engine meets them"},
 	}
 	for _, tt := range unmet {
 		t.Run("an unmet requirement refuses "+tt.name, func(t *testing.T) {
@@ -234,9 +234,10 @@ func TestEngine_Run_AdvisorStartFailureIsRecordedAndNamedToTheChair(t *testing.T
 			table := engineTable(geom.WorktreeRoot, 2)
 			var reed *shuttlefake.Reed
 			if tt.unmetKey {
-				// The chair of a two-seat table requires peer messaging itself, so no chair could start on the fake engine's set: only this advisor runs on it.
+				// Only this advisor runs on the real runner, whose fake engine supports no requirement, so its own requirement is the one unmet.
 				var runner Shuttle
 				runner, reed = realRunnerShuttle(t, geom.WorktreeRoot)
+				table.Seats[1].Requires = []shuttleengine.Requirement{shuttleengine.RequirementBackgroundWake}
 				shuttle.startedBy = map[string]Shuttle{advisorRole: runner}
 				table.Seats[1].ModelKey = shuttleengine.ModelKey{Module: "loom", Key: "discussion_advisors", Entry: advisorName(1)}
 			}

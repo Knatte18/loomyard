@@ -11,7 +11,10 @@
 // `read` prints plain text: each message is a header line and its body, with a blank line between two.
 // The header names the message's id, its sender and the `lym creel post --reply <id>` command.
 // It also names the message a reply answers and the receiver a returned message ended unread at, and the posting time once the message is more than five minutes old by the client's clock.
-// `read --envelope` prints the messages as one JSON envelope line with every field instead, for programs.
+// A message that expects a reply has `, expects a reply` in its header, just before the reply command.
+// `read --envelope` prints the messages as one JSON envelope line with every field instead, for programs; a message that expects a reply carries `expect_reply: true`.
+// `log` entries carry `expect_reply: true` on an entry of a marked message, `reply_to`, the answered id, on a reply's entry and `chase`, the chase number, on a `chased` entry.
+// A `post --wait-reply` whose message creel recorded unanswered prints its envelope with `outcome: unanswered` and the message under `unanswered`, and exits 1 with a note whose way forward is `lym creel log --id <id>`.
 // The flag is not named `--json`, which would shadow the root's global `--json` help flag on a verb that marks mail read.
 // `read` acknowledges its messages only once its output was written, so output that cannot be written leaves them unread.
 // A refusal whose JSON envelope cannot be written to stdout writes the error to stderr with the same exit code, on one line that opens with `creel: ` once, whether or not the error already carried the prefix.
@@ -20,6 +23,11 @@
 // The refusal fallback line opens with that statement too for a post or inject that stored before it refused.
 // `post --interrupt` stops the receiver's running turn before posting and adds `interrupted` to the envelope beside the id; with `--reply` it is refused before any call.
 // The help of the `creel` group and of `post` carries the reply rule: answer mail with `lym creel post --reply <id>` using the id after the `#`, and answer mail from EXTERNAL in your own reply text, since such a reply reaches only a waiting `post --wait-reply`.
+// `post --expect-reply` marks the post as expecting a reply without waiting for it, and `--wait-reply` marks it too; with `--reply` it is refused before any call, since a reply is no question.
+// `post --parent <text>` takes no receiver and posts to the caller's parent orch, resolved at post time from the caller's worktree with orchroute.Asker, the rule a hold notice uses: from a pair the nearest live orch up from the pair's recorded parent, from a beam or the prime the walk starting at that worktree itself, the prime's orch at the end.
+// It adds `receiver`, the resolved strand name, to the envelope beside the id and sender, combines with `--wait-reply` and `--interrupt`, and is refused before any call with a receiver argument or with `--reply`.
+// A worktree whose resolved orch state records no strand is refused with nothing posted.
+// The liveness predicate it resolves with is part of the client seam.
 // `inbox` prints the caller's unread counts as `inbox.senders`, a list of `{from, unread}`, and no other key.
 // `hook-read <engine>` is what a strand's tool-boundary and Stop hooks run: it reads the hook input from stdin, parses it with the engine's capability from shuttleengines.ToolBoundaryRenderer, claims the caller's mail through the daemon's claim verb and prints it as the engine's visible block, one MessageLine per message joined by newlines.
 // The claim carries whether the event is a Stop and the input's stop_hook_active, which the daemon's Stop count rests on.

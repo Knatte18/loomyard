@@ -34,7 +34,7 @@ type requiresRig struct {
 
 func newRequiresRig(t *testing.T) *requiresRig {
 	t.Helper()
-	full := supportingEngine{fakeEngine: &fakeEngine{}, supported: []Requirement{RequirementForks, RequirementPeerMessaging, RequirementBackgroundWake}}
+	full := supportingEngine{fakeEngine: &fakeEngine{}, supported: []Requirement{RequirementForks, RequirementBackgroundWake}}
 	wake := supportingEngine{fakeEngine: &fakeEngine{}, supported: []Requirement{RequirementBackgroundWake}}
 	plain := &fakeEngine{}
 	engines := NewEngineSet("full", map[string]Engine{"full": full, "wake": wake, "plain": plain})
@@ -82,10 +82,10 @@ func TestRunner_Requires(t *testing.T) {
 		spec Spec
 		want []string
 	}{
-		{"an unknown requirement", Spec{Requires: []Requirement{"telepathy"}},
-			[]string{`shuttle: start: unknown requirement "telepathy"; known requirements: forks, peer-messaging, background-wake`}},
-		{"a requirement the engine does not meet names the engine, the requirement and the meeting engine", Spec{ModelChoice: ModelChoice{Engine: "wake"}, Requires: []Requirement{RequirementBackgroundWake, RequirementPeerMessaging}},
-			[]string{`engine "wake"`, "peer-messaging", "engines that meet them all: full", startWayForward}},
+		{"an unknown requirement", Spec{Requires: []Requirement{"peer-messaging"}},
+			[]string{`shuttle: start: unknown requirement "peer-messaging"; known requirements: forks, background-wake`}},
+		{"a requirement the engine does not meet names the engine, the requirement and the meeting engine", Spec{ModelChoice: ModelChoice{Engine: "wake"}, Requires: []Requirement{RequirementBackgroundWake, RequirementForks}},
+			[]string{`engine "wake"`, "forks", "engines that meet them all: full", startWayForward}},
 		{"a ForkSubagents spec on an engine without forks", Spec{ModelChoice: ModelChoice{Engine: "wake"}, ForkSubagents: true},
 			[]string{`engine "wake"`, "forks", "engines that meet them all: full", startWayForward}},
 		{"an engine without the capability meets nothing", Spec{ModelChoice: ModelChoice{Engine: "plain"}, Requires: []Requirement{RequirementBackgroundWake}},
@@ -124,12 +124,12 @@ func TestRunner_Requires(t *testing.T) {
 		t.Run("ModelKey_Wrap_replaces_the_generic_way_forward_for_"+tt.name, func(t *testing.T) {
 			t.Parallel()
 			rig := newRequiresRig(t)
-			_, refused := rig.start(Spec{ModelChoice: ModelChoice{Engine: "wake"}, Requires: []Requirement{RequirementPeerMessaging}})
+			_, refused := rig.start(Spec{ModelChoice: ModelChoice{Engine: "plain"}, Requires: []Requirement{RequirementBackgroundWake}})
 			got := tt.key.Wrap(refused)
 			if !errors.Is(got, ErrRequirementsUnmet) {
 				t.Fatalf("Wrap() error = %v; want it to wrap ErrRequirementsUnmet", got)
 			}
-			for _, want := range []string{`engine "wake"`, "peer-messaging", "way forward: " + tt.want} {
+			for _, want := range []string{`engine "plain"`, "background-wake", "way forward: " + tt.want} {
 				if !strings.Contains(got.Error(), want) {
 					t.Errorf("Wrap() error = %q; want it to contain %q", got, want)
 				}
@@ -141,7 +141,7 @@ func TestRunner_Requires(t *testing.T) {
 				t.Errorf("Wrap() error = %q; want exactly one way forward", got)
 			}
 
-			_, unknown := rig.start(Spec{Requires: []Requirement{"telepathy"}})
+			_, unknown := rig.start(Spec{Requires: []Requirement{"peer-messaging"}})
 			if tt.key.Wrap(unknown) != unknown {
 				t.Errorf("Wrap(unknown requirement) changed the error")
 			}
@@ -193,7 +193,7 @@ func TestRunner_Requires(t *testing.T) {
 	}{
 		{name: "a spec requirement the recorded engine does not meet", requires: []Requirement{RequirementBackgroundWake}, want: []string{`engine "plain"`, "background-wake"}, wantWayForward: true},
 		{name: "a record carrying ForkSubagents on an engine without forks", forkSubagents: true, want: []string{`engine "plain"`, "forks"}, wantWayForward: true},
-		{name: "an unknown requirement", requires: []Requirement{"telepathy"}, want: []string{`shuttle: attach: unknown requirement "telepathy"; known requirements: forks, peer-messaging, background-wake`}},
+		{name: "an unknown requirement", requires: []Requirement{"peer-messaging"}, want: []string{`shuttle: attach: unknown requirement "peer-messaging"; known requirements: forks, background-wake`}},
 	}
 	for _, tt := range attachRefusals {
 		t.Run("attach_refuses_"+tt.name, func(t *testing.T) {

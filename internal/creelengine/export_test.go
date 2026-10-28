@@ -31,7 +31,7 @@ func (s *Store) PostUnchecked(sender Sender, receiver, body string) (int64, erro
 			return err
 		}
 		var err error
-		if id, err = s.appendPostedLocked(sender, receiver, kindMail, body, 0); err != nil {
+		if id, err = s.appendPostedLocked(sender, record{To: receiver, Kind: kindMail, Body: body}); err != nil {
 			return err
 		}
 		return s.deliverMailLocked(id, receiver)

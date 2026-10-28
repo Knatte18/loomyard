@@ -27,7 +27,6 @@ func TestClaude_Capabilities(t *testing.T) {
 		want bool
 	}{
 		{shuttleengine.RequirementForks, true},
-		{shuttleengine.RequirementPeerMessaging, true},
 		{shuttleengine.RequirementBackgroundWake, true},
 		{shuttleengine.Requirement("other"), false},
 	}

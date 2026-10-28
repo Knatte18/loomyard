@@ -301,6 +301,21 @@ func TestDaemon_Protocol(t *testing.T) {
 				t.Errorf("the journal lacks the posted line: %q", journalText(t, r.geom))
 			}
 		}},
+		{"PostWithExpectReplyIsMarkedInTheLogAndAPlainPostIsNot", false, func(t *testing.T, r *rig) {
+			r.start()
+			c := r.client(externalClaim(), nil, creelfake.NewClock(epoch))
+			marked := mustCall(t, c, creelengine.Request{Verb: creelengine.VerbPost, Receiver: beta, Text: "question", ExpectReply: true})
+			plain := mustCall(t, c, creelengine.Request{Verb: creelengine.VerbPost, Receiver: beta, Text: "fyi"})
+			for _, tt := range []struct {
+				id   int64
+				want bool
+			}{{marked.ID, true}, {plain.ID, false}} {
+				entries := mustCall(t, c, creelengine.Request{Verb: creelengine.VerbLog, ID: tt.id}).Log
+				if len(entries) == 0 || entries[0].Event != "posted" || entries[0].ExpectReply != tt.want {
+					t.Errorf("log of #%d = %+v; want a posted entry first with ExpectReply %v", tt.id, entries, tt.want)
+				}
+			}
+		}},
 		{"ReadAckMarksReadAndAClientDyingBeforeTheAckLeavesMessagesUnread", true, func(t *testing.T, r *rig) {
 			r.start()
 			c := r.client(strandClaim(alpha), nil, creelfake.NewClock(epoch))

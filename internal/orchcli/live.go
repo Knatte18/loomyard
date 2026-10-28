@@ -3,15 +3,10 @@
 package orchcli
 
 import (
-	"errors"
-
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/orchengine"
-	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengines"
+	"github.com/Knatte18/loomyard/internal/orchroute"
 )
 
 // HubOrchs lists the worktrees of the hub that location belongs to in which an orch may run: the prime's location first, then each local pair whose origin record carries the beam mark.
@@ -61,35 +56,5 @@ func HubOrchs(location *lymcwd.Location) ([]*lymcwd.Location, error) {
 // OrchLive reports whether the orch of worktree is live: its orch state records a strand that reed tracks and reports live.
 // A worktree whose orch never started, whose reed session is gone, or whose recorded strand reed no longer tracks, is not live.
 func OrchLive(worktree *lymcwd.Location) (bool, error) {
-	st, err := orchengine.LoadState(orchPaths(worktree))
-	if err != nil {
-		return false, err
-	}
-	reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(worktree), "reed")
-	if err != nil {
-		return false, err
-	}
-	reedGeom, err := hubgeom.ReedGeometry(worktree)
-	if err != nil {
-		return false, err
-	}
-	reed := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
-	return orchLiveFrom(st, newReedStrandOps(reed).Strands)
-}
-
-// orchLiveFrom reports whether st records a strand that strands lists as live.
-// strands is read only when st records a strand, so a never-started orch costs no reed call.
-func orchLiveFrom(st orchengine.State, strands func() ([]reedengine.StrandStatus, error)) (bool, error) {
-	if st.Strand == "" {
-		return false, nil
-	}
-	listed, err := strands()
-	if errors.Is(err, reedengine.ErrNoSession) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	strand, tracked := trackedStrand(listed, st.Strand)
-	return tracked && strand.Live, nil
+	return orchroute.Live(worktree)
 }

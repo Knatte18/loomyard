@@ -1,9 +1,9 @@
-// Package reportcli is the report module: `lym report convergence [--since <date>] [--fresh-days <n>] [--format json|markdown]`, the read-only convergence report, and `lym report timing [--since <date>] [--by day|week] [--format json|markdown]`, the read-only timing report.
-// Each verb validates its flags, resolves the prime's geometry and hands it to internal/reportengine, which does the reading; the engine's package documentation describes every figure.
+// Package reportcli is the report module: `lym report convergence [--since <date>] [--fresh-days <n>] [--format json|markdown]`, the read-only convergence report, `lym report timing [--since <date>] [--by day|week] [--format json|markdown]`, the read-only timing report, and `lym report replies`, the read-only count of creel's expected replies.
+// Each verb validates its flags, resolves the prime's geometry and hands it to internal/reportengine, which does the computing; the engine's package documentation describes every figure.
 //
 // # The verbs
 //
-// Both run from the hub's prime worktree only: after resolving the cwd they apply fabric's drivable-worktree check and then refuse any worktree that is not the prime, naming `lym report <verb>` and the prime and saying to re-run it there.
+// All run from the hub's prime worktree only: after resolving the cwd they apply fabric's drivable-worktree check and then refuse any worktree that is not the prime, naming `lym report <verb>` and the prime and saying to re-run it there.
 // The flags are checked before any cwd resolution or read, and each refusal is a JSON error with exit 1 naming the flag, the value given and the form accepted.
 //
 // `convergence` takes:
@@ -17,6 +17,10 @@
 //   - `--since` takes a `YYYY-MM-DD` date in UTC and defaults to the UTC date seven days before today's; a date after today is accepted and gives an empty report.
 //   - `--by` is `day` (the default) or `week`, the bucket width.
 //   - `--format` is `json` (the default) or `markdown`.
+//
+// `replies` takes no flags.
+// It reads the creel journal, which keeps seven days, as the `REPORT` program through creelcli.NewProgramClient, whose `Log` the package seam `creelLog` wraps, and prints one `{"ok":true}` envelope holding `roles`, the engine's counts per receiver role.
+// The program claim is accepted from the operator's terminal or an orch pane, the places the report verbs run from, and creel refuses it from another agent's pane, naming the claim.
 //
 // # The geometry
 //
@@ -38,7 +42,7 @@
 //
 // With `json` `convergence` prints one `{"ok":true}` envelope holding `selection`, `runs`, `partial`, `landings`, `weeks`, `absent` and `findings`, and `timing` one holding `selection`, `runs`, `phases`, `buckets`, `sleep_note` and `findings`.
 // With `markdown` each prints its rendered document instead.
-// Both exit 0 whatever findings the report holds, since a record that does not decode is a finding and not a failure, and a hub with no archive tags prints an empty report.
+// The first two exit 0 whatever findings the report holds, since a record that does not decode is a finding and not a failure, and a hub with no archive tags prints an empty report.
 // An error from reading the repositories themselves is a JSON error with exit 1.
 // The verbs write nothing, take no lock and make no commit.
 package reportcli

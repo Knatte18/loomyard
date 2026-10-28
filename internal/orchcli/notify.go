@@ -1,4 +1,4 @@
-// notify.go declares the ways a module sends a notice to an orch as creel mail, NotifyPrime to the hub's prime orch, NotifyParent and NotifyFrom to the nearest live orch up a beam chain, NotifyOrchAt to one named worktree's orch, and the lookups of the strand that mail addresses.
+// notify.go declares the ways a module sends a notice to an orch as creel mail, NotifyPrime to the hub's prime orch, NotifyParent and NotifyFrom to the nearest live orch up a beam chain, NotifyAsker to a held agent's parent orch, NotifyOrchAt to one named worktree's orch, and the lookups of the strand that mail addresses.
 
 package orchcli
 
@@ -6,18 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/creelengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/lymdirs"
-	"github.com/Knatte18/loomyard/internal/orchengine"
-	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/orchroute"
 )
 
 // notifyPoster is the one creel call a notice makes: leaving a body as mail for a receiver.
@@ -55,6 +51,14 @@ func NotifyFrom(from *lymcwd.Location, program, line string) (posted bool, err e
 // NotifyFromScoped sends line like NotifyFrom, signed as the program scoped to the beam slug, as "<shortname>:<slug>:<NAME>".
 func NotifyFromScoped(from *lymcwd.Location, slug, program, line string) (posted bool, err error) {
 	return postNotice(from, slug, program, line, func() (string, bool, error) { return nearestOrchStrand(from, OrchLive) })
+}
+
+// NotifyAsker sends line as creel mail, signed as the module's program, to the orch the agents of location reach as their parent, and reports whether it was posted.
+// It serves a hold notice: the walk to the nearest live orch starts at the pair's recorded parent from a pair, and at location itself from a beam or the prime.
+// A destination with no orch strand recorded is not an error: the notice is logged and nothing is posted.
+// A refusal or failure comes back as an error carrying the full line, and the notice is not retried.
+func NotifyAsker(location *lymcwd.Location, program, line string) (posted bool, err error) {
+	return postNotice(location, "", program, line, func() (string, bool, error) { return askerOrchStrand(location, OrchLive) })
 }
 
 // NotifyOrchAt sends line as creel mail to the orch strand of worktree itself, signed as the module's program, and reports whether it was posted.
@@ -104,42 +108,24 @@ func nearestLiveParent(pair *lymcwd.Location, live func(worktree *lymcwd.Locatio
 	return hubgeom.NearestLiveOrch(start, live)
 }
 
+// askerOrchStrand answers the orch strand a hold notice of location goes to, by the rule `lym creel post --parent` resolves its receiver with.
+func askerOrchStrand(location *lymcwd.Location, live func(worktree *lymcwd.Location) (bool, error)) (name string, recorded bool, err error) {
+	return orchroute.Asker(location, live)
+}
+
 // parentOrchStrand answers the orch strand a notice of pair goes to: the nearest worktree up from the pair's parent whose orch live reports live, else the prime's.
-// The parent worktree comes from the pair's origin record, and the prime stands in when it names none or is gone.
 func parentOrchStrand(pair *lymcwd.Location, live func(worktree *lymcwd.Location) (bool, error)) (name string, recorded bool, err error) {
-	parent, err := hubgeom.ResolveParent(pair)
-	if err != nil {
-		return "", false, err
-	}
-	start, err := worktreeOrPrime(pair, parent.Worktree)
-	if err != nil {
-		return "", false, err
-	}
-	return nearestOrchStrand(start, live)
+	return orchroute.FromPair(pair, live)
 }
 
 // nearestOrchStrand answers the orch strand of the nearest worktree, from start up its beam chain, whose orch live reports live, else the prime's.
 func nearestOrchStrand(start *lymcwd.Location, live func(worktree *lymcwd.Location) (bool, error)) (name string, recorded bool, err error) {
-	destination, err := hubgeom.NearestLiveOrch(start, live)
-	if err != nil {
-		return "", false, err
-	}
-	worktree, err := worktreeOrPrime(start, destination.Worktree)
-	if err != nil {
-		return "", false, err
-	}
-	return OrchStrandOf(worktree)
+	return orchroute.From(start, live)
 }
 
 // worktreeOrPrime resolves the hub worktree named worktree, and the prime of the hub of location when worktree is empty or no longer exists.
 func worktreeOrPrime(location *lymcwd.Location, worktree string) (*lymcwd.Location, error) {
-	if worktree != "" {
-		root := filepath.Join(location.HubPath, worktree)
-		if _, err := os.Stat(filepath.Join(root, ".git")); err == nil {
-			return lymcwd.ResolveWorktree(root)
-		}
-	}
-	return resolvePrime(location)
+	return orchroute.WorktreeOrPrime(location, worktree)
 }
 
 // PrimeOrchStrand answers the name of the orch strand of the prime of the hub that location's worktree belongs to, and whether the prime's orch state records one.
@@ -155,50 +141,12 @@ func PrimeOrchStrand(location *lymcwd.Location) (name string, recorded bool, err
 // OrchStrandOf answers the name of the orch strand of worktree and whether its orch state records one.
 // The name is the one reed's state holds for the recorded GUID; a GUID reed no longer holds is answered under the fixed name, `<shortname>:orch` for the prime and `<shortname>:<slug>:orch` for a beam, so creel decides whether that strand is listed.
 func OrchStrandOf(worktree *lymcwd.Location) (name string, recorded bool, err error) {
-	orch, err := orchengine.LoadState(orchPaths(worktree))
-	if err != nil {
-		return "", false, err
-	}
-	if orch.Strand == "" {
-		return "", false, nil
-	}
-	reedState, err := reedengine.LoadState(filepath.Join(worktree.AnchorPath(), lymdirs.DotLymDirName))
-	if err != nil {
-		return "", false, err
-	}
-	if reedState != nil {
-		for _, strand := range reedState.Strands {
-			if strand.GUID == orch.Strand {
-				return strand.Name, true, nil
-			}
-		}
-	}
-	shortname, found := fabricengine.ReadShortname(fabricengine.BoardDir(worktree.HubPath))
-	if !found {
-		return "", false, fmt.Errorf("orch: the hub of %s has no usable shortname record to name the orch strand; way forward: run `lym fabric shortname <shortname>`", worktree.WorktreePath())
-	}
-	primeName, err := fabricengine.PrimeName(worktree)
-	if err != nil {
-		return "", false, err
-	}
-	slug := worktree.WorktreeName
-	if slug == primeName {
-		slug = ""
-	}
-	fixed, err := agentname.Format(shortname, slug, agentname.RoleOrch)
-	if err != nil {
-		return "", false, err
-	}
-	return fixed, true, nil
+	return orchroute.StrandOf(worktree)
 }
 
 // resolvePrime resolves the prime worktree of the hub that location's worktree belongs to.
 func resolvePrime(location *lymcwd.Location) (*lymcwd.Location, error) {
-	primeName, err := fabricengine.PrimeName(location)
-	if err != nil {
-		return nil, err
-	}
-	return lymcwd.ResolveWorktree(fabricengine.WorktreePath(location, primeName))
+	return orchroute.Prime(location)
 }
 
 // notifyPrime posts line to the orch strand orch answers.

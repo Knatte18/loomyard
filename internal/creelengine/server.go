@@ -275,29 +275,14 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 	ok := Response{OK: true, Sender: sender.Name}
 	switch req.Verb {
 	case VerbPost:
-		if req.Interrupt {
-			id, interrupted, waiter, err := store.PostInterrupt(sender, req.Receiver, req.Text, req.Wait)
-			if err != nil {
-				return err
-			}
-			if req.Wait {
-				return d.awaitOutcome(conn, reader, waiter, id, sender, interrupted)
-			}
-			ok.ID, ok.Interrupted = id, interrupted
-			break
-		}
-		if req.Wait {
-			id, waiter, err := store.PostWait(sender, req.Receiver, req.Text)
-			if err != nil {
-				return err
-			}
-			return d.awaitOutcome(conn, reader, waiter, id, sender, false)
-		}
-		id, err := store.Post(sender, req.Receiver, req.Text)
+		id, interrupted, waiter, err := store.PostWith(sender, req.Receiver, req.Text, PostOptions{Wait: req.Wait, Interrupt: req.Interrupt, ExpectReply: req.ExpectReply})
 		if err != nil {
 			return err
 		}
-		ok.ID = id
+		if req.Wait {
+			return d.awaitOutcome(conn, reader, waiter, id, sender, interrupted)
+		}
+		ok.ID, ok.Interrupted = id, interrupted
 	case VerbWaitReply:
 		waiter, err := store.WaitReply(sender, req.ID)
 		if err != nil {
@@ -423,7 +408,7 @@ func (d *daemon) awaitOutcome(conn net.Conn, reader *bufio.Reader, waiter *Waite
 			default:
 			}
 			resp := Response{OK: true, ID: id, Sender: sender.Name, Interrupted: interrupted, Outcome: outcome.Kind, Stall: outcome.Stall, StallAt: outcome.StallAt}
-			if outcome.Kind == OutcomeReply || outcome.Kind == OutcomeReturned {
+			if outcome.Kind == OutcomeReply || outcome.Kind == OutcomeReturned || outcome.Kind == OutcomeUnanswered {
 				resp.Message = &outcome.Message
 			}
 			_ = d.write(conn, resp)

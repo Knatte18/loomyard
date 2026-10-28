@@ -33,7 +33,7 @@ type sweeper struct {
 	lastError  string
 }
 
-// sweepLoop sweeps while unread mail or a queued inject exists.
+// sweepLoop sweeps while a strand holds unread mail, a read message that expects a reply and has none, or a queued inject exists.
 // The wait starts at 30 seconds and doubles to a 50-second ceiling while the strand-name set holds, and it returns to the base on a change of that set or a failed sweep.
 // A sweep that misses a holder for the first time is followed by a confirming sweep after 10 seconds, whatever else would set the wait.
 // A new post or inject shortens a wait to the base when more is left, and never lengthens one; a pending confirm keeps its deadline.
@@ -170,18 +170,18 @@ func isStrandName(full string) bool {
 	return err == nil
 }
 
-// sweepNeeded reports whether a strand holds unread mail or has an inject queued.
+// sweepNeeded reports whether a strand holds unread mail, a read message that expects a reply and has none, or has an inject queued.
 func (s *Store) sweepNeeded() bool {
 	return len(s.sweepSubjects()) > 0
 }
 
-// sweepSubjects returns the strands that hold unread mail or have an inject queued, in name order.
+// sweepSubjects returns the strands that hold unread mail, a chaseable message or have an inject queued, in name order.
 func (s *Store) sweepSubjects() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	seen := map[string]bool{}
 	for _, msg := range s.state.messages {
-		if msg.Status == StatusUnread && isStrandName(msg.Holder) {
+		if (msg.Status == StatusUnread && isStrandName(msg.Holder)) || isChaseable(msg) {
 			seen[msg.Holder] = true
 		}
 	}
@@ -201,8 +201,10 @@ func (s *Store) sweepSubjects() []string {
 // releaseGoneHolder moves what a removed strand held.
 // Each unread message goes one step back along its path, the last forwarder or else the sender, marked with the receiver that ended unread.
 // When that step is no strand, the message is journaled undelivered and a wait on it is answered that it returned undelivered.
+// Each message the strand read and left unanswered while it expected a reply is settled unanswered, with no chase sent.
 // Each inject queued for the strand expires.
 func (s *Store) releaseGoneHolder(holder string) error {
+	listing := s.listStrands()
 	return s.do(func() error {
 		var ids []int64
 		for id, msg := range s.state.messages {
@@ -228,6 +230,11 @@ func (s *Store) releaseGoneHolder(holder string) error {
 				return err
 			}
 			if err := s.deliverMailLocked(id, next); err != nil {
+				return err
+			}
+		}
+		for _, msg := range s.chaseableLocked(holder) {
+			if err := s.settleUnansweredLocked(msg.ID, UnansweredHolderGone, listing); err != nil {
 				return err
 			}
 		}

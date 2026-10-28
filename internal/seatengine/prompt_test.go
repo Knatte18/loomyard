@@ -177,13 +177,12 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 	if got := seatSpec(oneSeat, oneSeat.Seats[0], "").Requires; len(got) != 0 {
 		t.Errorf("lone seat spec Requires = %v, want none", got)
 	}
-	wantPeers := []shuttleengine.Requirement{shuttleengine.RequirementPeerMessaging}
-	if !slices.Equal(chairSpec.Requires, wantPeers) || !slices.Equal(advisorSpec.Requires, wantPeers) {
-		t.Errorf("table spec Requires = chair %v, advisor %v; want %v on both", chairSpec.Requires, advisorSpec.Requires, wantPeers)
+	if len(chairSpec.Requires) != 0 || len(advisorSpec.Requires) != 0 {
+		t.Errorf("table spec Requires = chair %v, advisor %v; want none, since the seats declare none", chairSpec.Requires, advisorSpec.Requires)
 	}
 	wakeSeat := table.Seats[0]
 	wakeSeat.Requires = []shuttleengine.Requirement{shuttleengine.RequirementBackgroundWake}
-	if got, want := seatSpec(table, wakeSeat, "").Requires, []shuttleengine.Requirement{shuttleengine.RequirementBackgroundWake, shuttleengine.RequirementPeerMessaging}; !slices.Equal(got, want) {
+	if got, want := seatSpec(table, wakeSeat, "").Requires, []shuttleengine.Requirement{shuttleengine.RequirementBackgroundWake}; !slices.Equal(got, want) {
 		t.Errorf("seat spec Requires with its own background-wake = %v, want %v", got, want)
 	}
 	requiredSpec := seatSpec(table, Seat{Name: advisorName(1), Required: true}, "")

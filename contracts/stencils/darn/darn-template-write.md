@@ -42,8 +42,8 @@ When `{{.decision_record_path}}` or `{{.support_log_path}}` is absent, or `lym l
 Check the entry before you write:
 
 - Read `lym board list`, every entry that touches the task and every board note titled `Decision for {{.slug}}:` for it, and `lym loom peers` for the runs in flight and the parent's commits since the fork.
-- When the entry is plainly outdated, because landed work overtook it or another board entry or run contradicts it, and no decision note answers it, send your parent a message by `SendMessage` naming what overtook or contradicts the entry.
-  Ask it to write its answer as a `Decision for {{.slug}}:` board note and then reply by `SendMessage`, since a note alone wakes nothing; then end your turn to wait.
+- When the entry is plainly outdated, because landed work overtook it or another board entry or run contradicts it, and no decision note answers it, send your parent a message with `lym creel post --parent --expect-reply "<text>"` naming what overtook or contradicts the entry.
+  Ask it to write its answer as a `Decision for {{.slug}}:` board note and then reply with `lym creel post --reply <id>`, since a note alone wakes nothing; then end your turn to wait.
   On any message from your parent, re-read the board for the note.
 - Write the answer into the decision record as a Decision citing the parent.
 - Once the record is committed, ask your parent to record the same answer with `lym loom decision add`.

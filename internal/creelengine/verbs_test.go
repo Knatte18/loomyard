@@ -38,6 +38,8 @@ type env struct {
 	del   *creelfake.Delivery
 	clock *creelfake.Clock
 	geom  creelengine.Geometry
+	// scheduler is the scheduler start last launched, nil before one.
+	scheduler *creelengine.Scheduler
 }
 
 func newEnv(t *testing.T) *env {
@@ -146,8 +148,12 @@ func TestStore_Mail(t *testing.T) {
 			_, err := e.store.Post(strand(alpha), beta, "  ")
 			wantErr(t, err, "empty")
 			const budget = 8 << 10
-			overhead := len(creelengine.MessageLine(creelengine.Message{ID: math.MaxInt64, From: alpha}))
+			overhead := len(creelengine.MessageLine(creelengine.Message{ID: math.MaxInt64, From: alpha, ExpectReply: true}))
 			_, err = e.store.Post(strand(alpha), beta, strings.Repeat("x", budget-overhead+1))
+			wantErr(t, err, "write it to a file", "mail the file")
+			// A body that fits the plain line but not the marked one is refused, so the size check never depends on the mark.
+			plainOverhead := len(creelengine.MessageLine(creelengine.Message{ID: math.MaxInt64, From: alpha}))
+			_, err = e.store.Post(strand(alpha), beta, strings.Repeat("x", budget-plainOverhead))
 			wantErr(t, err, "write it to a file", "mail the file")
 			if got := e.readBodies(t, strand(beta), ""); len(got) != 0 {
 				t.Errorf("a refused post stored %q; want nothing", got)
@@ -465,6 +471,100 @@ func TestStore_Mail(t *testing.T) {
 			wantErr(t, err, "the turn of "+beta+" was interrupted", "the post was not stored", "reed state is unreadable", "post again without --interrupt")
 			e.del.SetStrandsError(nil)
 			wantBodies(t, e.readBodies(t, strand(beta), ""))
+		}},
+		{"PostWith_MarksTheMessageAndItsLogEntryWhenAReplyIsExpected", func(t *testing.T, e *env) {
+			tests := []struct {
+				name string
+				opts creelengine.PostOptions
+				want bool
+			}{
+				{"ExpectReply", creelengine.PostOptions{ExpectReply: true}, true},
+				{"WaitImpliesTheMark", creelengine.PostOptions{Wait: true}, true},
+				{"PlainPostCarriesNone", creelengine.PostOptions{}, false},
+			}
+			for _, tt := range tests {
+				id, _, waiter, err := e.store.PostWith(strand(alpha), beta, tt.name, tt.opts)
+				if err != nil {
+					t.Fatalf("%s: PostWith: %v", tt.name, err)
+				}
+				if (waiter != nil) != tt.opts.Wait {
+					t.Errorf("%s: waiter = %v; want one exactly when Wait is set", tt.name, waiter)
+				}
+				if entries := e.store.Log(creelengine.LogFilter{ID: id}); len(entries) != 1 || entries[0].ExpectReply != tt.want {
+					t.Errorf("%s: posted log entry = %+v; want ExpectReply %v", tt.name, entries, tt.want)
+				}
+			}
+			reading, err := e.store.Read(strand(beta), "")
+			if err != nil || len(reading.Messages) != 3 {
+				t.Fatalf("Read = %+v, %v; want the three messages", reading, err)
+			}
+			for i, tt := range tests {
+				if got := reading.Messages[i].ExpectReply; got != tt.want {
+					t.Errorf("%s: handed-out message ExpectReply = %v; want %v", tt.name, got, tt.want)
+				}
+			}
+		}},
+		{"Reply_LogEntryCarriesTheIdItAnswers", func(t *testing.T, e *env) {
+			id, _, _, err := e.store.PostWith(strand(alpha), beta, "question", creelengine.PostOptions{ExpectReply: true})
+			if err != nil {
+				t.Fatalf("PostWith: %v", err)
+			}
+			e.readBodies(t, strand(beta), "")
+			replyID, err := e.store.Reply(strand(beta), id, "answer")
+			if err != nil {
+				t.Fatalf("Reply: %v", err)
+			}
+			entries := e.store.Log(creelengine.LogFilter{ID: replyID})
+			if len(entries) != 1 || entries[0].ReplyTo != id || entries[0].ExpectReply {
+				t.Errorf("reply log entry = %+v; want ReplyTo %d and no mark", entries, id)
+			}
+		}},
+		{"PostWait_AStrandsWaitEndsWithTheReplyWhichStillReachesItAsMail", func(t *testing.T, e *env) {
+			id, waiter, err := e.store.PostWait(strand(alpha), beta, "question")
+			if err != nil {
+				t.Fatalf("PostWait: %v", err)
+			}
+			e.readBodies(t, strand(beta), "")
+			replyID, err := e.store.Reply(strand(beta), id, "answer")
+			if err != nil {
+				t.Fatalf("Reply: %v", err)
+			}
+			select {
+			case outcome := <-waiter.C:
+				if outcome.Kind != creelengine.OutcomeReply || outcome.Message.ID != replyID || outcome.Message.Body != "answer" {
+					t.Errorf("outcome = %+v; want the reply #%d", outcome, replyID)
+				}
+			default:
+				t.Fatal("the waiting post was not answered by the reply")
+			}
+			wantBodies(t, e.readBodies(t, strand(alpha), ""), "answer")
+		}},
+		{"WaitReply_AReplyThatLandedWhileNoWaitWasRegisteredIsHandedOverWithoutADeliveredRecord", func(t *testing.T, e *env) {
+			id, waiter, err := e.store.PostWait(strand(alpha), beta, "question")
+			if err != nil {
+				t.Fatalf("PostWait: %v", err)
+			}
+			waiter.Cancel()
+			e.readBodies(t, strand(beta), "")
+			replyID, err := e.store.Reply(strand(beta), id, "answer")
+			if err != nil {
+				t.Fatalf("Reply: %v", err)
+			}
+			again, err := e.store.WaitReply(strand(alpha), id)
+			if err != nil {
+				t.Fatalf("WaitReply: %v", err)
+			}
+			select {
+			case outcome := <-again.C:
+				if outcome.Kind != creelengine.OutcomeReply || outcome.Message.ID != replyID {
+					t.Errorf("outcome = %+v; want the reply #%d", outcome, replyID)
+				}
+			default:
+				t.Fatal("the reconnecting wait was not answered by the standing reply")
+			}
+			if got := eventsOf(e.store.Log(creelengine.LogFilter{ID: replyID})); !slices.Equal(got, []string{"posted"}) {
+				t.Errorf("events of the reply = %v; want posted only", got)
+			}
 		}},
 		{"Log_FiltersAndNeverShowsABody", func(t *testing.T, e *env) {
 			first := e.post(t, strand(alpha), beta, "subject line\nsecret body")
@@ -1013,6 +1113,20 @@ func TestStore_ClaimAtBoundary(t *testing.T) {
 			}
 			if got := eventsOf(e.store.Log(creelengine.LogFilter{To: beta})); !slices.Equal(got, []string{"posted", "posted", "read", "read"}) {
 				t.Errorf("Log(to beta) events = %v; want two posts and two reads", got)
+			}
+		}},
+		{"ClaimedLineOfAMarkedMessageIsTheMarkedFormAndAnUnmarkedOneThePlainForm", func(t *testing.T, e *env) {
+			if _, _, _, err := e.store.PostWith(strand(alpha), beta, "marked", creelengine.PostOptions{ExpectReply: true}); err != nil {
+				t.Fatalf("PostWith: %v", err)
+			}
+			e.post(t, strand(alpha), beta, "plain")
+			_, lines := claimLines(t, e, beta)
+			want := []string{
+				"[creel] #1 from \"" + alpha + "\", expects a reply (lym creel post --reply 1 \"<text>\"): marked",
+				"[creel] #2 from \"" + alpha + "\": plain",
+			}
+			if !slices.Equal(lines, want) {
+				t.Errorf("claimed %q; want %q", lines, want)
 			}
 		}},
 		{"ReleasedClaimLeavesTheMailUnread", func(t *testing.T, e *env) {

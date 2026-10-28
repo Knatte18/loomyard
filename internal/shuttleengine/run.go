@@ -1032,7 +1032,7 @@ func (r *Runner) RunGated(spec Spec, gate GateSpec) (Result, error) {
 //     and the state a `git clean -xdf` leaves — a sanctioned operator action under the
 //     Durable-vs-Ephemeral State Invariant. What the sweep then destroys is not inert: events.jsonl is
 //     the file the provider's Stop hook is still appending to, and run.json is the ONLY map from a
-//     strand guid back to a run, so afterwards `lym shuttle interrupt/send <guid>` answers "is not a
+//     strand guid back to a run, so afterwards `lym creel post` and `lym creel interrupt` answer "is not a
 //     shuttle strand" for an agent still working in its pane — the exact outcome findRunByStrand's
 //     own message was hardened to avoid.
 //
@@ -1259,7 +1259,7 @@ func notShuttleOrLiveStrandError(guid string, liveErr error) error {
 // in-process Run handle.
 // Unlike Send/Interrupt, Inject deliberately skips the requireReadyAgentPane guard to deliver keys
 // while the provider is busy.
-// It refuses any input list holding the engine's interrupt key or a control character in a text, and names "lym shuttle interrupt", the guarded way to send the interrupt key.
+// It refuses any input list holding the engine's interrupt key or a control character in a text, and names "lym creel interrupt", the guarded way to send the interrupt key.
 // Empty inputs is rejected.
 func (r *Runner) Inject(guid string, inputs []PaneInput) error {
 	if r.toldErr != nil {

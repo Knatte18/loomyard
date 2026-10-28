@@ -30,10 +30,15 @@ func validateBody(body string) error {
 	return nil
 }
 
-// LineFits reports whether the line carrying a message from from with that body is at most boundaryClaimBudget bytes, measured with the widest id an int64 takes so the answer never depends on the id the post gets.
+// LineFits reports whether the line carrying a message from from with that body is at most boundaryClaimBudget bytes, measured with the widest id an int64 takes and the longer, marked form so the answer never depends on the id the post gets or on whether it expects a reply.
 // A line of that size is at most 8,192 UTF-16 units, the measure a hook field is capped by, so a fitting line always arrives whole.
 func LineFits(from, body string) bool {
-	return len(MessageLine(Message{ID: math.MaxInt64, From: from, Body: body})) <= boundaryClaimBudget
+	return len(widestLine(from, body)) <= boundaryClaimBudget
+}
+
+// widestLine renders the longest line a message from from with that body can take.
+func widestLine(from, body string) string {
+	return MessageLine(Message{ID: math.MaxInt64, From: from, Body: body, ExpectReply: true})
 }
 
 // validateLine refuses an empty body and one whose line does not fit one hook delivery.
@@ -44,8 +49,7 @@ func validateLine(from, body string) error {
 	if LineFits(from, body) {
 		return nil
 	}
-	size := len(MessageLine(Message{ID: math.MaxInt64, From: from, Body: body}))
-	return fmt.Errorf("creel: the message's line is %d bytes, over the %d-byte limit one hook delivery carries; write it to a file and mail the file's path", size, boundaryClaimBudget)
+	return fmt.Errorf("creel: the message's line is %d bytes, over the %d-byte limit one hook delivery carries; write it to a file and mail the file's path", len(widestLine(from, body)), boundaryClaimBudget)
 }
 
 // lineOverHookField reports whether msg's line is longer than hookFieldCap UTF-16 units, so Claude Code would show a preview of it instead of the whole line.
@@ -53,14 +57,13 @@ func lineOverHookField(msg *Message) bool {
 	return len(utf16.Encode([]rune(MessageLine(*msg)))) > hookFieldCap
 }
 
-// appendPostedLocked journals a posted record from sender to receiver and returns its new id.
-func (s *Store) appendPostedLocked(sender Sender, receiver, kind, body string, replyTo int64) (int64, error) {
-	id := s.state.newID()
-	err := s.writer.append(record{
-		Event: eventPosted, ID: id, From: sender.Name, Envelope: sender.Envelope(),
-		To: receiver, Kind: kind, Body: body, ReplyTo: replyTo,
-	})
-	return id, err
+// appendPostedLocked journals rec as a posted record from sender under a new id and returns that id.
+// rec carries the receiver, kind, body and the fields a post adds; the event, id, sender and envelope are filled here.
+func (s *Store) appendPostedLocked(sender Sender, rec record) (int64, error) {
+	rec.Event, rec.ID = eventPosted, s.state.newID()
+	rec.From, rec.Envelope = sender.Name, sender.Envelope()
+	err := s.writer.append(rec)
+	return rec.ID, err
 }
 
 // deliverMailLocked finishes a post, reply or forward to receiver: the holder's waiters and the wake.
@@ -71,15 +74,31 @@ func (s *Store) deliverMailLocked(id int64, receiver string) error {
 	return nil
 }
 
+// PostOptions are the choices of a post beyond its receiver and body.
+type PostOptions struct {
+	// Wait registers a wait for the reply to the new message, before any reply can arrive; it implies ExpectReply.
+	Wait bool
+	// Interrupt stops the receiver's running turn first.
+	Interrupt bool
+	// ExpectReply marks the message as expecting a reply from its holder.
+	ExpectReply bool
+}
+
+// PostWith stores a message for receiver as opts say and returns its id, whether a running turn was stopped and the wait the options registered.
+// The post is validated, and with Interrupt the receiver must run creel's hook delivery and be one the sender may interrupt, before any key is sent.
+func (s *Store) PostWith(sender Sender, receiver, body string, opts PostOptions) (int64, bool, *Waiter, error) {
+	return s.post(sender, receiver, body, opts)
+}
+
 // Post stores a message for receiver and returns its id.
 func (s *Store) Post(sender Sender, receiver, body string) (int64, error) {
-	id, _, _, err := s.post(sender, receiver, body, false, false)
+	id, _, _, err := s.post(sender, receiver, body, PostOptions{})
 	return id, err
 }
 
 // PostWait is Post that also registers a wait for the reply to the new message, before any reply can arrive.
 func (s *Store) PostWait(sender Sender, receiver, body string) (int64, *Waiter, error) {
-	id, _, waiter, err := s.post(sender, receiver, body, true, false)
+	id, _, waiter, err := s.post(sender, receiver, body, PostOptions{Wait: true})
 	return id, waiter, err
 }
 
@@ -88,7 +107,7 @@ func (s *Store) PostWait(sender Sender, receiver, body string) (int64, *Waiter, 
 // The post is validated, and the receiver must run creel's hook delivery and be one the sender may interrupt, before any key is sent.
 // A refusal, and a post whose store fails, say what was and was not done and the way forward.
 func (s *Store) PostInterrupt(sender Sender, receiver, body string, wait bool) (int64, bool, *Waiter, error) {
-	return s.post(sender, receiver, body, wait, true)
+	return s.post(sender, receiver, body, PostOptions{Wait: wait, Interrupt: true})
 }
 
 // interruptBeforePost stops the running turn of receiver for a post from sender and reports whether one was stopped.
@@ -119,12 +138,12 @@ func (s *Store) interruptBeforePost(sender Sender, receiver string) (bool, error
 	}
 }
 
-func (s *Store) post(sender Sender, receiver, body string, wait, interrupt bool) (int64, bool, *Waiter, error) {
+func (s *Store) post(sender Sender, receiver, body string, opts PostOptions) (int64, bool, *Waiter, error) {
 	if err := validateLine(sender.Name, body); err != nil {
 		return 0, false, nil, err
 	}
 	var interrupted bool
-	if interrupt {
+	if opts.Interrupt {
 		var err error
 		interrupted, err = s.interruptBeforePost(sender, receiver)
 		if err != nil && !interrupted {
@@ -134,7 +153,7 @@ func (s *Store) post(sender Sender, receiver, body string, wait, interrupt bool)
 			return 0, true, nil, storedAfterInterrupt(receiver, err)
 		}
 	}
-	id, waiter, err := s.storePost(sender, receiver, body, wait)
+	id, waiter, err := s.storePost(sender, receiver, body, opts.Wait, opts.ExpectReply || opts.Wait)
 	if err != nil && interrupted {
 		return 0, true, nil, storedAfterInterrupt(receiver, err)
 	}
@@ -146,8 +165,8 @@ func storedAfterInterrupt(receiver string, cause error) error {
 	return fmt.Errorf("creel: the turn of %s was interrupted, but the post was not stored: %w; way forward: post again without --interrupt", receiver, cause)
 }
 
-// storePost journals a validated post to receiver and, with wait, registers the wait for its reply.
-func (s *Store) storePost(sender Sender, receiver, body string, wait bool) (int64, *Waiter, error) {
+// storePost journals a validated post to receiver, marked as expecting a reply when expect is set, and, with wait, registers the wait for its reply.
+func (s *Store) storePost(sender Sender, receiver, body string, wait, expect bool) (int64, *Waiter, error) {
 	strands, err := s.readStrands()
 	if err != nil {
 		return 0, nil, err
@@ -161,7 +180,7 @@ func (s *Store) storePost(sender Sender, receiver, body string, wait bool) (int6
 			return err
 		}
 		var err error
-		if id, err = s.appendPostedLocked(sender, receiver, kindMail, body, 0); err != nil {
+		if id, err = s.appendPostedLocked(sender, record{To: receiver, Kind: kindMail, Body: body, ExpectReply: expect}); err != nil {
 			return err
 		}
 		if wait {
@@ -177,12 +196,29 @@ func (s *Store) storePost(sender Sender, receiver, body string, wait bool) (int6
 // Reply posts text as an answer to message id, addressed to the original sender.
 // The caller must hold or have read the message.
 // A reply to an EXTERNAL sender is handed to the wait registered on id, and journaled undelivered when none is.
+// A reply to a chase answers the message the chase chases, and only from that message's holder.
+// A sender notice from creel takes no reply, since creel holds no mailbox.
 func (s *Store) Reply(sender Sender, id int64, text string) (int64, error) {
 	var replyID int64
 	err := s.do(func() error {
 		original := s.state.messages[id]
 		if original == nil {
 			return fmt.Errorf("creel: message #%d is no longer in the pool", id)
+		}
+		if original.Holder != sender.Name {
+			return fmt.Errorf("creel: message #%d is not yours to reply to: you neither hold nor have read it", id)
+		}
+		if original.ChaseOf != 0 {
+			chased := s.state.messages[original.ChaseOf]
+			if chased == nil {
+				return fmt.Errorf("creel: message #%d chases #%d, which is no longer in the pool", id, original.ChaseOf)
+			}
+			if chased.Holder != sender.Name {
+				return fmt.Errorf("creel: message #%d chases #%d, which %s holds now; way forward: the strand that holds #%d answers it, as lym creel log --id %d shows", id, chased.ID, chased.Holder, chased.ID, chased.ID)
+			}
+			original, id = chased, chased.ID
+		} else if isChaserName(original.From) {
+			return fmt.Errorf("creel: message #%d is a creel notice and takes no reply; way forward: post to the strand it names with lym creel post <strand> \"<text>\"", id)
 		}
 		validate := validateBody
 		if !isExternalName(original.From) {
@@ -191,15 +227,14 @@ func (s *Store) Reply(sender Sender, id int64, text string) (int64, error) {
 		if err := validate(text); err != nil {
 			return err
 		}
-		if original.Holder != sender.Name {
-			return fmt.Errorf("creel: message #%d is not yours to reply to: you neither hold nor have read it", id)
-		}
 		var err error
-		if replyID, err = s.appendPostedLocked(sender, original.From, kindReply, text, id); err != nil {
+		if replyID, err = s.appendPostedLocked(sender, record{To: original.From, Kind: kindReply, Body: text, ReplyTo: id}); err != nil {
 			return err
 		}
 		reply := *s.state.messages[replyID]
 		if !isExternalName(original.From) {
+			// A strand's or program's wait ends with the reply, which still reaches it as mail.
+			s.answerLocked(waitKey{kind: waitReply, id: id}, Outcome{Kind: OutcomeReply, Message: reply})
 			return s.deliverMailLocked(replyID, original.From)
 		}
 		if s.answerLocked(waitKey{kind: waitReply, id: id}, Outcome{Kind: OutcomeReply, Message: reply}) > 0 {
@@ -421,6 +456,17 @@ func (s *Store) ringHook(strand string, ids []int64, now time.Time) bool {
 
 var errExternalHoldsNothing = errors.New("creel: an EXTERNAL caller holds no mail; wait for an answer with `lym creel post --wait-reply`")
 
+// journalReadLocked journals msg read by holder, and wakes holder when msg expects a reply: its chase clock starts at the read, and the removed-holder sweep has a read message to watch.
+func (s *Store) journalReadLocked(msg *Message, holder string) error {
+	if err := s.writer.append(record{Event: eventRead, ID: msg.ID, By: holder}); err != nil {
+		return err
+	}
+	if msg.ExpectReply {
+		s.wakeLocked(holder)
+	}
+	return nil
+}
+
 // Ack marks the reserved messages read and journals each; a message that left the holder meanwhile stays as it is.
 func (r *Reading) Ack() error {
 	return r.store.do(func() error {
@@ -430,7 +476,7 @@ func (r *Reading) Ack() error {
 			if msg == nil || msg.Holder != r.holder || msg.Status != StatusUnread {
 				continue
 			}
-			if err := r.store.writer.append(record{Event: eventRead, ID: id, By: r.holder}); err != nil {
+			if err := r.store.journalReadLocked(msg, r.holder); err != nil {
 				return err
 			}
 		}
@@ -544,6 +590,8 @@ func (s *Store) Forward(sender Sender, id int64, receiver string) error {
 			return fmt.Errorf("creel: message #%d is no longer in the pool", id)
 		case msg.Holder != sender.Name:
 			return fmt.Errorf("creel: message #%d is not yours to forward: you do not hold it", id)
+		case msg.ChaseOf != 0:
+			return fmt.Errorf("creel: message #%d is a chase and cannot be forwarded; way forward: answer it with lym creel post --reply %d \"<text>\", which answers #%d", id, id, msg.ChaseOf)
 		case msg.Status != StatusUnread:
 			return fmt.Errorf("creel: message #%d is already read and cannot be forwarded", id)
 		case receiver == sender.Name:
