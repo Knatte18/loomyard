@@ -59,7 +59,7 @@ build:
 It builds the whole solution whatever the tiers' scopes, and relies on MSBuild's incremental up-to-date checks for the projects a change did not touch.
 It restores implicitly, so there is no separate restore step: NuGet's no-op restore does real work only when a project file or package reference changed.
 The properties on the command make the gated and baseline projects test projects, so the tiers' `--no-build` runs find them built.
-lym adds no MSBuild or compiler-server switch to the command, and the words after `--` never reach it.
+lym adds no switch to the command, and the words after `--` never reach it.
 Its output passes into the call's output and its own log.
 `build` has its own `timeout_min`, counted from the slot hold, and the tier's `timeout_min` starts after the build.
 
@@ -139,15 +139,15 @@ refuse_raw: ["dotnet test"]
 
 The shell guard then refuses an agent's raw `dotnet test` and steers it to `lym gate test`.
 
-## Warm build processes
+## Build processes
 
-lym sets nothing that disables MSBuild node reuse or the shared compiler server, so the SDK's defaults keep build processes warm where the platform allows it.
-On Linux, idle nodes outlive the build's process, since only a cancelled call kills its process group, and serve later gate calls until the SDK's idle timeout.
-On Windows, the build runs in a job object that ends every process it started, so nodes and the compiler server end with each build or tier run.
-The saving there is the one build per call and the `--no-build` test runs, not warmth across calls.
+lym sets `MSBUILDDISABLENODEREUSE=1` and `DOTNET_CLI_USE_MSBUILD_SERVER=0` in the environment of every gate run and every agent pane it starts, so no MSBuild worker node or MSBuild server outlives the build that started it.
+Idle reuse nodes from the builds of parallel agents otherwise pile up until the user's task limit refuses every fork.
+The saving left is the one build per call and the `--no-build` test runs, not warmth across calls.
+The shared compiler server is left at the SDK's default.
 A warm node holds none of the child's output pipe, so a call ends when the build or test process does.
 Set neither `MSBUILDENSURESTDOUTFORTASKPROCESSES` nor `MSBUILDNODEWINDOW` in a `build` or tier `env`: on a later SDK either leaves a Unix node's output unredirected, and the call then waits on idle nodes until `timeout_min`.
-A hub that wants the opt-in MSBuild server sets `DOTNET_CLI_USE_MSBUILD_SERVER` in its `build` and tier `env`.
+A tier's own `env` is applied after these values, so a hub that wants warm nodes for a tier sets them there; a `build` `env` likewise.
 
 ## The repo-rules lens
 

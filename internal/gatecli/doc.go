@@ -7,6 +7,10 @@
 // `lym gate test [-C <dir>] [--gate <key>] [--tier N]... [--upto N] [--card <id>]... [--base <rev>] [--all] [--guards] [--wait] [<targets>...] [-- <args>]` runs the tiers the hub declares in gate.yaml, in ascending tier number, and then the vet step and the guard step below when they are planned.
 // A run that fails does not stop the call: every later tier, vet and guard run still runs, so a failure the change under test did not cause, such as one present at the base, hides no later check.
 // When a run failed, the verb closes with one stderr line naming each failed run, a vet run as `vet tierN` and a guard run as `guard tierN`, with its exit code.
+// A tier run that fails without timing out and whose output holds a resource-shortage marker, `resource temporarily unavailable`, `failed to create new OS thread` or `cannot fork` in any case, runs once more inside the same slots after a ten-second delay, and the rerun's result is the tier's;
+// a stderr line names the marker, and the rerun's log opens with it.
+// A rerun that fails on a marker again keeps its exit code, and the closing line names the run as a resource shortage, an environment error, with the way forward of re-running once the machine's process load drops.
+// Bound: one rerun per tier run, so a test whose own output holds a marker costs one extra run and keeps its verdict; the build step is not rerun.
 // A refusal, a slot wait that does not end with the slots held and a terminating signal still end the call at once.
 // `--gate <key>` runs the tiers and the scope the `gates` key of that name holds, and `listedTiers` takes the key's tiers as the listed tiers.
 // It goes with none of `--tier`, `--upto`, `--all` and `--base`, which is refused before hub resolution naming the key and the flag to drop, since the key's tiers and scope come from gate.yaml.
@@ -29,8 +33,8 @@
 // Terms that push the expression past `greenCommandBudget` are dropped and the tier's `filter` stands alone, so that project runs whole within itself, and an Info log names the tier.
 // A command without `{filter}` renders no filter whatever terms it is given.
 // A tier's `filter` applies at whole scope too, landing gates included, bounded by the executable, hub-file-only `tiers` key.
-// The command runs through the shell `verifyrun.ShellFor` names, as a tied child in the run directory, with this process's environment less the strand-name and trace-id variables, less an inherited `gateslot.PrebuiltLymEnv`, plus the tier's `env` with `{parallel}` filled, plus the lease's `gateslot.InheritEnv` and the enclosing-gate pid.
-// The tier's `dir`, relative to the worktree root, is the run directory.
+// The command runs through the shell `verifyrun.ShellFor` names, as a tied child in the run directory, with this process's environment less the strand-name and trace-id variables, less an inherited `gateslot.PrebuiltLymEnv`, plus `proc.BuildServerOffEnv`, replacing an inherited value, plus the tier's `env` with `{parallel}` filled, plus the lease's `gateslot.InheritEnv` and the enclosing-gate pid.
+// The tier's `dir`, relative to the worktree root, is the run directory, and a tier that sets no `dir` runs in the worktree's anchor, filled by `gateslot.Config.WithDefaultDir` once the config is loaded, so a hub anchored at a subdirectory need not spell it per tier.
 // A tier with `prebuilt_lym` first builds `lym` at the tier's `parallel`, inside its slots and timeout, only where the worktree root holds `cmd/lym`, and exports `gateslot.PrebuiltLymEnv`.
 // Inside a hub the binary is copied into the pool's store (`gateslot.Pool.PrebuiltDir`) as `lym-` and the first 16 hex digits of its SHA-256, the build directory is removed, and the variable names the stored copy;
 // outside a hub the variable names the build directory's binary, which is removed after the tier.
@@ -99,7 +103,8 @@
 // The first such tier in plan order whose run takes slots, one with invocations left after the green record's subtraction or one with only a build to run, runs `runBuild` inside its slots, before its own command, and no later tier runs it again.
 // A call whose opted-in tiers are all carried, or whose shares are empty, such as an inert-only, all-inert-card or empty diff, runs no build, bar a `carry: false` tier, which runs whole and so runs the build before its command.
 // A `shared_build` tier whose share selected no test class has no invocation and takes its slots only to run the build, so a compile break still fails the gate; it then passes with nothing discovered.
-// The command runs through the platform shell as a tied child in the build's `dir`, with the call's environment, the slot's inherited variable and the build's `env`; the words after `--` never reach it, and lym adds no MSBuild or compiler-server switch.
+// The command runs through the platform shell as a tied child in the build's `dir`, with the call's environment, the slot's inherited variable and the build's `env`; the words after `--` never reach it, and lym adds no switch to the command.
+// A build that sets no `dir` runs in the anchor, as a tier does.
 // Its output passes to stdout and into its log, and it is bounded by its own `timeout_min` counted from the hold, so the tier's `timeout_min` starts after it.
 // A timeout kills the tree, exits 1 and prints and logs `gateslot.BuildTimeoutLine`.
 // A shell that cannot start is refused naming the build's `dir`, halts the call with exit 1 and writes no build record.

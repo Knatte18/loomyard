@@ -103,7 +103,7 @@ func TestLoadConfig(t *testing.T) {
 		{
 			"a tier in flow form reads parallel and slots as 1", baseKeys + tier0Flow,
 			hubWith(func(c *Config) {
-				c.Tiers["tier0"] = Tier{Command: "go test -json {targets} {args}", Dir: ".", AllTargets: "./...", Parallel: 1, TimeoutMin: 60, Counter: "go-json", Slots: 1}
+				c.Tiers["tier0"] = Tier{Command: "go test -json {targets} {args}", AllTargets: "./...", Parallel: 1, TimeoutMin: 60, Counter: "go-json", Slots: 1}
 			}), "",
 		},
 		{
@@ -112,7 +112,7 @@ func TestLoadConfig(t *testing.T) {
   tier1: {about: integration, command: "go test -tags integration {targets}", all_targets: ./..., dir: sub, env: {GOFLAGS: "-p={parallel}"}, parallel: 3, timeout_min: 30, counter: go-json, covers: [0], slots: all, prebuilt_lym: true}
 `,
 			hubWith(func(c *Config) {
-				c.Tiers["tier0"] = Tier{Command: "go test", Dir: ".", Parallel: 1, TimeoutMin: 5, Counter: "vstest", Slots: 1}
+				c.Tiers["tier0"] = Tier{Command: "go test", Parallel: 1, TimeoutMin: 5, Counter: "vstest", Slots: 1}
 				c.Tiers["tier1"] = Tier{About: "integration", Command: "go test -tags integration {targets}", Dir: "sub", Env: map[string]string{"GOFLAGS": "-p={parallel}"}, AllTargets: "./...", Parallel: 3, TimeoutMin: 30, Counter: "go-json", Covers: []int{0}, Slots: 0, PrebuiltLym: true}
 			}), "",
 		},
@@ -130,8 +130,8 @@ func TestLoadConfig(t *testing.T) {
 		{
 			"a manual tier above tier0 loads", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest}, tier3: {command: y, timeout_min: 5, counter: vstest, manual: true}}`,
 			hubWith(func(c *Config) {
-				c.Tiers["tier0"] = Tier{Command: "x", Dir: ".", Parallel: 1, TimeoutMin: 5, Counter: "vstest", Slots: 1}
-				c.Tiers["tier3"] = Tier{Command: "y", Dir: ".", Parallel: 1, TimeoutMin: 5, Counter: "vstest", Slots: 1, Manual: true}
+				c.Tiers["tier0"] = Tier{Command: "x", Parallel: 1, TimeoutMin: 5, Counter: "vstest", Slots: 1}
+				c.Tiers["tier3"] = Tier{Command: "y", Parallel: 1, TimeoutMin: 5, Counter: "vstest", Slots: 1, Manual: true}
 			}), "",
 		},
 		{"a manual tier0", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest, manual: true}}`, Config{}, `gate config key "tiers.tier0.manual": true; want false, since tier0 is the tier a call with no tier flag runs` + fixIt},
@@ -155,9 +155,9 @@ build: {command: "dotnet build", timeout_min: 10}
 inert_paths: ["*.md", "docs/*"]
 `,
 			hubWith(func(c *Config) {
-				c.Tiers["tier0"] = Tier{Command: "dotnet test {filter}", Dir: ".", Parallel: 1, TimeoutMin: 5, Counter: "vstest", Slots: 1, Filter: "Category!=Slow", SharedBuild: true, NoCarry: true}
-				c.Tiers["tier1"] = Tier{Command: "x", Dir: ".", Parallel: 1, TimeoutMin: 5, Counter: "vstest", Slots: 1}
-				c.Build = BuildStep{Command: "dotnet build", Dir: ".", TimeoutMin: 10}
+				c.Tiers["tier0"] = Tier{Command: "dotnet test {filter}", Parallel: 1, TimeoutMin: 5, Counter: "vstest", Slots: 1, Filter: "Category!=Slow", SharedBuild: true, NoCarry: true}
+				c.Tiers["tier1"] = Tier{Command: "x", Parallel: 1, TimeoutMin: 5, Counter: "vstest", Slots: 1}
+				c.Build = BuildStep{Command: "dotnet build", TimeoutMin: 10}
 				c.InertPaths = []string{"*.md", "docs/*"}
 			}), "",
 		},
@@ -261,14 +261,14 @@ inert_paths: ["*.md", "docs/*"]
 		{
 			name: "a machine tier_parallel entry beats the tier's own parallel", hub: baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest, parallel: 4}}`, machine: "tier_parallel:\n  tier0: 2\n",
 			want: hubWith(func(c *Config) {
-				c.Tiers["tier0"] = Tier{Command: "x", Dir: ".", Parallel: 2, TimeoutMin: 5, Counter: "vstest", Slots: 1}
+				c.Tiers["tier0"] = Tier{Command: "x", Parallel: 2, TimeoutMin: 5, Counter: "vstest", Slots: 1}
 				c.TierParallel["tier0"] = 2
 			}),
 		},
 		{
 			name: "a machine tier_parallel entry written as the string a scalar set writes", hub: baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest}}`, machine: "tier_parallel:\n  tier0: \"3\"\n",
 			want: hubWith(func(c *Config) {
-				c.Tiers["tier0"] = Tier{Command: "x", Dir: ".", Parallel: 3, TimeoutMin: 5, Counter: "vstest", Slots: 1}
+				c.Tiers["tier0"] = Tier{Command: "x", Parallel: 3, TimeoutMin: 5, Counter: "vstest", Slots: 1}
 				c.TierParallel["tier0"] = 3
 			}),
 		},
@@ -303,7 +303,7 @@ inert_paths: ["*.md", "docs/*"]
 		{
 			name: "a board-only load never stacks the machine file", hub: hubTier0, machine: machineBadParallel, boardOnly: true,
 			want: hubWith(func(c *Config) {
-				c.Tiers["tier0"] = Tier{Command: "x", Dir: ".", Parallel: 1, TimeoutMin: 5, Counter: "vstest", Slots: 1}
+				c.Tiers["tier0"] = Tier{Command: "x", Parallel: 1, TimeoutMin: 5, Counter: "vstest", Slots: 1}
 			}),
 		},
 		{

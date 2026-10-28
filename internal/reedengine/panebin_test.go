@@ -80,8 +80,8 @@ func TestPaneBinPrelude_ComposesPrependThenExport(t *testing.T) {
 }
 
 // TestComposePaneLaunchLine drives composePaneLaunchLine in both dialects with an injected executable path:
-// the prelude, then the name export (always when a name is told), the parent export (only when a parent is told), then the command, all on one line;
-// an empty command emits the prelude alone with no trailing separator;
+// the prelude, then the .NET build-server exports, the name export (always when a name is told), the parent export (only when a parent is told), then the command, all on one line;
+// an empty command emits the prelude and exports alone with no trailing separator;
 // and a failed executable lookup drops only the prelude, passing the command and exports through with a warning naming the strand.
 //
 //testtiming:keep pins the composed pane launch line per dialect: prelude, name and parent exports then the command on one line, the prelude alone for an empty command, and only the prelude dropped with a warning naming the strand when the executable cannot be resolved; its covering tests run this code without asserting it
@@ -108,18 +108,22 @@ func TestComposePaneLaunchLine(t *testing.T) {
 		{
 			name: "PreludeThenCommand",
 			cmd:  launchCmd,
-			want: func(sh shell.Shell) string { return sh.Chain(paneBinPrelude(sh, exe), launchCmd) },
+			want: func(sh shell.Shell) string {
+				return sh.Chain(paneBinPrelude(sh, exe), buildServerExports(sh), launchCmd)
+			},
 		},
 		{
 			// The shape a strand added with no command produces (for example `lym reed add` without `--cmd`).
 			name: "EmptyCmdEmitsThePreludeAlone",
-			want: func(sh shell.Shell) string { return paneBinPrelude(sh, exe) },
+			want: func(sh shell.Shell) string { return sh.Chain(paneBinPrelude(sh, exe), buildServerExports(sh)) },
 		},
 		{
 			name:   "NameExportWithoutParent",
 			cmd:    launchCmd,
 			strand: name,
-			want:   func(sh shell.Shell) string { return sh.Chain(paneBinPrelude(sh, exe), nameExport(sh), launchCmd) },
+			want: func(sh shell.Shell) string {
+				return sh.Chain(paneBinPrelude(sh, exe), buildServerExports(sh), nameExport(sh), launchCmd)
+			},
 		},
 		{
 			name:   "NameAndParentExports",
@@ -127,19 +131,19 @@ func TestComposePaneLaunchLine(t *testing.T) {
 			strand: name,
 			parent: parent,
 			want: func(sh shell.Shell) string {
-				return sh.Chain(paneBinPrelude(sh, exe), nameExport(sh), parentExport(sh), launchCmd)
+				return sh.Chain(paneBinPrelude(sh, exe), buildServerExports(sh), nameExport(sh), parentExport(sh), launchCmd)
 			},
 		},
 		{
 			name:       "ExecutableErrorPassesTheCommandThrough",
 			executable: noExecutable,
 			cmd:        launchCmd,
-			want:       func(sh shell.Shell) string { return launchCmd },
+			want:       func(sh shell.Shell) string { return sh.Chain(buildServerExports(sh), launchCmd) },
 		},
 		{
-			name:       "ExecutableErrorWithEmptyCommandIsEmpty",
+			name:       "ExecutableErrorWithEmptyCommandIsTheBuildServerExportsAlone",
 			executable: noExecutable,
-			want:       func(sh shell.Shell) string { return "" },
+			want:       func(sh shell.Shell) string { return buildServerExports(sh) },
 		},
 		{
 			name:       "ExportsSurviveAnExecutableError",
@@ -147,7 +151,9 @@ func TestComposePaneLaunchLine(t *testing.T) {
 			cmd:        launchCmd,
 			strand:     name,
 			parent:     parent,
-			want:       func(sh shell.Shell) string { return sh.Chain(nameExport(sh), parentExport(sh), launchCmd) },
+			want: func(sh shell.Shell) string {
+				return sh.Chain(buildServerExports(sh), nameExport(sh), parentExport(sh), launchCmd)
+			},
 		},
 	}
 	for _, tt := range tests {
@@ -172,6 +178,11 @@ func TestComposePaneLaunchLine(t *testing.T) {
 				}
 				if want := tt.want(sh); got != want {
 					t.Errorf("composePaneLaunchLine(...) = %q, want %q", got, want)
+				}
+				for _, export := range []string{sh.ExportEnv("MSBUILDDISABLENODEREUSE", "1"), sh.ExportEnv("DOTNET_CLI_USE_MSBUILD_SERVER", "0")} {
+					if !strings.Contains(got, export) {
+						t.Errorf("composePaneLaunchLine(...) = %q, want it to hold %q", got, export)
+					}
 				}
 				if strings.Contains(got, "\n") {
 					t.Errorf("composePaneLaunchLine(...) = %q, want a single line with no newline", got)

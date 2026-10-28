@@ -41,6 +41,8 @@ type tierResult struct {
 	trimpathNote string
 	// buildFailed is set instead of an outcome when the build step that precedes the tier failed or timed out, so the tier ran no command and is reported blocked.
 	buildFailed bool
+	// shortage is the resource-shortage marker of a tier that failed on one in its run and again in its one rerun; empty otherwise.
+	shortage string
 }
 
 // runTier runs the tier of run in ctx with its slots held: it prebuilds `lym` when the tier asks, then runs each invocation's command through the platform shell as a tied child, stopping at the first non-zero exit.
@@ -111,6 +113,54 @@ func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, requ
 	record.Discovered, record.Passed, record.Failed, record.Skipped = counts.discovered, counts.passed, counts.failed, counts.skipped
 	record.Launches = counter.Launches()
 	return tierResult{record: record, log: logBuffer.Bytes(), trimpathNote: trimpathNote}
+}
+
+// shortageMarkers are lowercase fragments of the errors a process or thread creation prints when the user's task limit or the machine's process table is momentarily exhausted:
+// Go's fork/exec and thread-creation EAGAIN and a shell's failed fork.
+var shortageMarkers = []string{"resource temporarily unavailable", "failed to create new os thread", "cannot fork"}
+
+// resourceShortage returns the first of shortageMarkers that log holds, matched without case, or "" when it holds none.
+func resourceShortage(log []byte) string {
+	lower := bytes.ToLower(log)
+	for _, marker := range shortageMarkers {
+		if bytes.Contains(lower, []byte(marker)) {
+			return marker
+		}
+	}
+	return ""
+}
+
+// failedOnShortage returns the resource-shortage marker of a tier run that ran to a failing exit without timing out, or "" for any other result.
+func failedOnShortage(result tierResult) string {
+	if result.refusal != "" || result.buildFailed || result.record.ExitCode == 0 || result.record.TimedOut {
+		return ""
+	}
+	return resourceShortage(result.log)
+}
+
+// retryOnShortage runs attempt, the tier named tier, and when it failed on a resource shortage, an environment error a rerun clears, runs it once more after delay and returns the rerun's result.
+// The rerun's log opens with the line announcing it, which also goes to stderr, and a rerun that fails on a shortage again carries its marker in shortage.
+// A ctx cancelled before or during the delay returns the first result.
+func retryOnShortage(ctx context.Context, stderr io.Writer, tier string, delay time.Duration, attempt func() tierResult) tierResult {
+	result := attempt()
+	marker := failedOnShortage(result)
+	if marker == "" || ctx.Err() != nil {
+		return result
+	}
+	line := fmt.Sprintf("gate test: %s failed on a resource shortage (%q in its output), an environment error a rerun clears; running it once more in %s", tier, marker, delay)
+	printLine(stderr, line)
+	logger.Warn("gate test: rerunning a tier that failed on a resource shortage", "tier", tier, "marker", marker, "delay", delay)
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return result
+	case <-timer.C:
+	}
+	retried := attempt()
+	retried.shortage = failedOnShortage(retried)
+	retried.log = append([]byte(line+"\n"), retried.log...)
+	return retried
 }
 
 // runInvocations prebuilds `lym` when the tier asks, then runs each invocation of run in order under ctx, stopping at the first non-zero exit.

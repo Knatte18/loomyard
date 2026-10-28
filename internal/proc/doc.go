@@ -16,4 +16,7 @@
 // SignalProcess and SignalGroup send SIGTERM, or SIGKILL when asked, to one pid or to one process group and return the raw syscall error.
 // All of these read /proc or signal by pid, so they work on Linux only: on Windows TreeCPU, ListProcesses and ListStats return errors.ErrUnsupported, IsAncestor is false, SignalProcess only kills and SignalGroup returns ErrNoProcessGroup.
 // CreationTime is the exception: it reads a process's creation time by pid on Windows, where StartTime is unreadable, and is always the zero time and false elsewhere.
+//
+// BuildServerOffEnv is the environment that keeps a .NET build from leaving MSBuild reuse nodes and the MSBuild server running after it exits;
+// reed exports it in every strand pane and `lym gate test` sets it for every run, so builds that parallel agents start leave no thread-holding servers behind.
 package proc

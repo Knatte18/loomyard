@@ -26,7 +26,7 @@ type TierObserver struct {
 // The envelope goes to out and the summary lines to stderr.
 func RunGate(ctx context.Context, dir, gate string, out, stderr io.Writer, observer TierObserver) int {
 	request := testRequest{
-		goBinary: defaultGoBinary, samplePeriod: defaultSamplePeriod, slotWait: shuttleengine.DefaultAwaitCap, preTierCeiling: defaultPreTierCeiling, timeoutUnit: time.Minute,
+		goBinary: defaultGoBinary, samplePeriod: defaultSamplePeriod, slotWait: shuttleengine.DefaultAwaitCap, preTierCeiling: defaultPreTierCeiling, timeoutUnit: time.Minute, shortageRetryDelay: defaultShortageRetryDelay,
 		stderr: stderr, gate: gate, wait: true, observer: observer,
 	}
 	return runTest(lymcwd.WithCwd(ctx, dir), out, request)

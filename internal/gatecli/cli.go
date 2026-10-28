@@ -28,13 +28,16 @@ const defaultGoBinary = "go"
 // defaultPreTierCeiling bounds the work before a call's first tier.
 const defaultPreTierCeiling = 10 * time.Minute
 
+// defaultShortageRetryDelay is how long a tier that failed on a resource shortage waits before its one rerun, long enough for a burst of short-lived processes elsewhere to end.
+const defaultShortageRetryDelay = 10 * time.Second
+
 // Command builds the cobra command tree for the gate module.
 func Command() *cobra.Command {
-	return newCommand(defaultGoBinary, defaultSamplePeriod, shuttleengine.DefaultAwaitCap, defaultPreTierCeiling, time.Minute)
+	return newCommand(defaultGoBinary, defaultSamplePeriod, shuttleengine.DefaultAwaitCap, defaultPreTierCeiling, time.Minute, defaultShortageRetryDelay)
 }
 
-// newCommand builds the gate command tree over goBinary, the go command a prebuilding tier builds `lym` with, samplePeriod, how often the CPU watchdog samples a tier's process tree, slotWait, the longest the test verb waits for a free slot without --wait, preTierCeiling, the bound on the work before the first tier, and timeoutUnit, the length of one `timeout_min` minute.
-func newCommand(goBinary string, samplePeriod, slotWait, preTierCeiling, timeoutUnit time.Duration) *cobra.Command {
+// newCommand builds the gate command tree over goBinary, the go command a prebuilding tier builds `lym` with, samplePeriod, how often the CPU watchdog samples a tier's process tree, slotWait, the longest the test verb waits for a free slot without --wait, preTierCeiling, the bound on the work before the first tier, timeoutUnit, the length of one `timeout_min` minute, and shortageRetryDelay, how long a tier that failed on a resource shortage waits before its one rerun.
+func newCommand(goBinary string, samplePeriod, slotWait, preTierCeiling, timeoutUnit, shortageRetryDelay time.Duration) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "gate",
 		Short: "run the hub's test tiers inside the hub's gate-slot pool",
@@ -86,7 +89,7 @@ Examples:
 				return nil
 			}
 			request := testRequest{
-				goBinary: goBinary, samplePeriod: samplePeriod, slotWait: slotWait, preTierCeiling: preTierCeiling, timeoutUnit: timeoutUnit,
+				goBinary: goBinary, samplePeriod: samplePeriod, slotWait: slotWait, preTierCeiling: preTierCeiling, timeoutUnit: timeoutUnit, shortageRetryDelay: shortageRetryDelay,
 				stderr: cmd.ErrOrStderr(), dir: dir, tags: tags, gate: gate, tiers: tiers, cards: cards, base: base, all: all, guards: guards, wait: wait, targets: args,
 				upto: upto, uptoGiven: cmd.Flags().Changed("upto"),
 			}
@@ -141,6 +144,8 @@ type testRequest struct {
 	preTierCeiling time.Duration
 	// timeoutUnit is the length of one `timeout_min` minute.
 	timeoutUnit time.Duration
+	// shortageRetryDelay is how long a tier that failed on a resource shortage waits before its one rerun.
+	shortageRetryDelay time.Duration
 	// stderr receives the lines the verb prints beside its output: the CPU watchdog's quit, a tier's timeout and each tier's summary.
 	stderr io.Writer
 	// dir is the -C value as typed; empty means the tier's own dir.

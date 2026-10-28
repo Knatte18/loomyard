@@ -175,6 +175,7 @@
 //
 // Every strand pane reed creates resolves `lym` to the binary that spawned it, because launchStrandLocked prepends that binary's directory to the pane's PATH and exports LYM_BIN to its absolute path as shell statements.
 // A fresh shell a strand's command starts re-runs its rc and can reorder PATH, so LYM_BIN names the spawning binary there, and a shuttle engine re-asserts LYM_BIN's directory in its agent's tool shell.
+// After the prelude the line exports `proc.BuildServerOffEnv`, so no .NET build an agent runs leaves MSBuild reuse nodes or the MSBuild server holding threads after it exits; these exports stay when the prelude is dropped.
 // The composed line, prelude and launch command together, is written to the strand's launch script, and the typed send-keys line sources it in the pane shell's own scope, so the prelude still runs after the pane shell's profile.
 // The shell dialect's discard-line key (`C-u` on POSIX, none on PowerShell) is sent ahead of that line, so input that reached the booting pane first, such as a viewer's keystrokes or a terminal reply after a window switch, never prefixes it.
 // The strand records that absolute path as `Strand.LymBin` at every launch and relaunch, and reed's status reports it.

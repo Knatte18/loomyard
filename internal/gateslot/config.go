@@ -50,7 +50,7 @@ type BuildStep struct {
 	About string
 	// Command is the shell command the build runs.
 	Command string
-	// Dir is the run directory relative to the worktree root.
+	// Dir is the run directory relative to the worktree root, empty when gate.yaml sets none.
 	Dir string
 	// Env is the environment the command runs with.
 	Env map[string]string
@@ -288,11 +288,7 @@ func decodeBuild(file buildFile) (BuildStep, error) {
 	if *file.TimeoutMin < 1 {
 		return BuildStep{}, refuse("timeout_min", fmt.Sprintf("%d; want at least 1", *file.TimeoutMin))
 	}
-	step := BuildStep{About: file.About, Command: file.Command, Dir: file.Dir, Env: file.Env, TimeoutMin: *file.TimeoutMin}
-	if step.Dir == "" {
-		step.Dir = "."
-	}
-	return step, nil
+	return BuildStep{About: file.About, Command: file.Command, Dir: file.Dir, Env: file.Env, TimeoutMin: *file.TimeoutMin}, nil
 }
 
 // Inert reports whether the worktree-relative slash path rel matches an inert_paths pattern:

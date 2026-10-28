@@ -198,6 +198,9 @@ func FindTierTimeout(log string) (tier string, ok bool) {
 	return "", false
 }
 
+// FailedRunsPrefix opens the one stderr line a gate call that had a failed run closes with, naming each failed run, so a reader of the call's output can find it.
+const FailedRunsPrefix = "gate test: failed runs: "
+
 // TierSummaryLine renders the one stderr line the gate prints after each tier run.
 // A carried tier is marked with `carried` after its scope form.
 func TierSummaryLine(record RunRecord, logPath string) string {

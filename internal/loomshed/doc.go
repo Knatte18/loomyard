@@ -44,7 +44,7 @@
 // The round form lints the comments added since the told command's latest recorded pass when that commit is an ancestor of HEAD, else since the merge base, so a first round lints rather than skips; with neither base it runs no lint.
 // It then runs the told command as it is through verifytree.Verify: the gate derives its own diff base, narrowing, fallback to whole and guard step.
 // Webster's gate, Publish and Finalize keep the full verify on the tree that lands.
-// A failed run's findings carry the exit code, the log path and the log's tail, and when the whole log holds the CPU watchdog's line that `lym gate test` prints after it quits a busy test binary, a paragraph naming the window.
+// A failed run's findings carry the exit code, the log path, and the failing tests and packages the log names, each with its own output, followed by `lym gate test`'s closing line of failed runs; a log that names none is quoted as its tail instead, and when the whole log holds the CPU watchdog's line that `lym gate test` prints after it quits a busy test binary, a paragraph naming the window.
 // A watchdog quit of a healthy package has no code fix: the way forward is raising `busy_quit_sec` through `lym config gate` from the prime, then re-stepping the row.
 // The gate runs no flake rerun.
 // The told command runs the tiers its key lists and nothing else, so `tmux` and `llm` tiers run only if the hub lists them in that key.
