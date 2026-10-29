@@ -1688,6 +1688,9 @@ func TestScheduler_HookWake(t *testing.T) {
 		return e
 	}
 	// settle runs trigger and waits until a worker has probed after it and gone back to sleep.
+	// It counts one probe, so the trigger wakes alpha's worker at most once:
+	// a second wake during that probe is buffered and runs a probe after settle returned.
+	// A row that posts several messages at once posts them before the scheduler starts and settles the start.
 	settle := func(e *env, trigger func()) {
 		seen := len(e.probeWaits(0))
 		trigger()
@@ -1825,12 +1828,10 @@ func TestScheduler_HookWake(t *testing.T) {
 		{"MailArrivingInAWokenTurnsBlockedChainRingsNothingUntilANewTurnEnd", func(t *testing.T, e *env) {
 			ringAt := e.clock.Now()
 			e.del.SetTurn(alpha, false, ringAt.Add(-time.Minute))
-			e.start(t)
 			first := register(t, e, alpha)
-			settle(e, func() {
-				e.post(t, strand(beta), alpha, bigBody)
-				e.post(t, strand(beta), alpha, bigBody)
-			})
+			e.post(t, strand(beta), alpha, bigBody)
+			e.post(t, strand(beta), alpha, bigBody)
+			settle(e, func() { e.start(t) })
 			wantKind(t, first, creelengine.OutcomeRing)
 			if got := claim(t, e, false); len(got) != 1 {
 				t.Fatalf("the Stop claim took %d messages; want part of the set", len(got))
@@ -1858,12 +1859,10 @@ func TestScheduler_HookWake(t *testing.T) {
 			}
 		}},
 		{"ARingAfterTheStopCapStartsAFreshCount", func(t *testing.T, e *env) {
-			e.start(t)
-			settle(e, func() {
-				for range 8 {
-					e.post(t, strand(beta), alpha, bigBody)
-				}
-			})
+			for range 8 {
+				e.post(t, strand(beta), alpha, bigBody)
+			}
+			settle(e, func() { e.start(t) })
 			for i := range 6 {
 				if got := claim(t, e, i > 0); len(got) != 1 {
 					t.Fatalf("Stop claim %d took %d messages; want one", i+1, len(got))
@@ -1977,11 +1976,9 @@ func TestScheduler_HookWake(t *testing.T) {
 		}},
 		{"ARingAnsweredByAClaimIsNotFollowedByTheBell", func(t *testing.T, e *env) {
 			e.del.SetTurn(alpha, false, e.clock.Now().Add(-time.Minute))
-			e.start(t)
-			settle(e, func() {
-				e.post(t, strand(beta), alpha, bigBody)
-				e.post(t, strand(beta), alpha, bigBody)
-			})
+			e.post(t, strand(beta), alpha, bigBody)
+			e.post(t, strand(beta), alpha, bigBody)
+			settle(e, func() { e.start(t) })
 			var first *creelengine.Waiter
 			settle(e, func() { first = register(t, e, alpha) })
 			wantKind(t, first, creelengine.OutcomeRing)

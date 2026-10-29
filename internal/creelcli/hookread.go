@@ -113,7 +113,7 @@ func hookRead(cmd *cobra.Command, engine string) (event shuttleengine.HookEvent,
 		for i, msg := range resp.Messages {
 			lines[i] = creelengine.MessageLine(msg)
 		}
-		data, err := renderer.BoundaryBlock(strings.Join(lines, "\n"))
+		data, err := renderer.BoundaryBlock(input.Event, strings.Join(lines, "\n"))
 		if err != nil {
 			return err
 		}

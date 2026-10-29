@@ -39,6 +39,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchroute"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/creelfake"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
@@ -154,10 +155,10 @@ func hookLine(id int, sender, body string) string {
 	return fmt.Sprintf("[creel] #%d from \"%s\": %s", id, sender, body)
 }
 
-// hookBlock is what hook-read prints for text: the claude engine's block and a newline.
-func hookBlock(t *testing.T, text string) string {
+// hookBlock is what hook-read prints for text on event: the claude engine's block and a newline.
+func hookBlock(t *testing.T, event shuttleengine.HookEvent, text string) string {
 	t.Helper()
-	block, err := claudeengine.New().BoundaryBlock(text)
+	block, err := claudeengine.New().BoundaryBlock(event, text)
 	if err != nil {
 		t.Fatalf("BoundaryBlock: %v", err)
 	}
@@ -852,7 +853,7 @@ func TestCreelCLI(t *testing.T) {
 				t.Fatalf("creel post = (%d, %q); want exit 0", post.code, post.raw)
 			}
 		}
-		wantBlock := hookBlock(t, fmt.Sprintf("[creel] #1 from \"%[1]s\": first line\n[creel] #2 from \"%[1]s\": second", alpha))
+		wantBlock := hookBlock(t, shuttleengine.HookEventToolBoundary, fmt.Sprintf("[creel] #1 from \"%[1]s\": first line\n[creel] #2 from \"%[1]s\": second", alpha))
 		var stderr bytes.Buffer
 		if got := runCreelHook(r.cwd, postToolUseInput, &stderr, "hook-read", "claude"); got.code != 0 || got.raw != wantBlock || stderr.Len() != 0 {
 			t.Fatalf("creel hook-read claude = (%d, %q, stderr %q); want exit 0 with %s", got.code, got.raw, stderr.String(), wantBlock)
@@ -876,11 +877,11 @@ func TestCreelCLI(t *testing.T) {
 		}
 		var stderr bytes.Buffer
 		first := runCreelHook(r.cwd, stopInput, &stderr, "hook-read", "claude")
-		if want := hookBlock(t, hookLine(1, alpha, bodies[0])); first.code != 0 || first.raw != want {
+		if want := hookBlock(t, shuttleengine.HookEventStop, hookLine(1, alpha, bodies[0])); first.code != 0 || first.raw != want {
 			t.Fatalf("first Stop = (%d, %q); want exit 0 with the block of the first message", first.code, first.raw)
 		}
 		second := runCreelHook(r.cwd, stopActiveInput, &stderr, "hook-read", "claude")
-		if want := hookBlock(t, hookLine(2, alpha, bodies[1])); second.code != 0 || second.raw != want {
+		if want := hookBlock(t, shuttleengine.HookEventStop, hookLine(2, alpha, bodies[1])); second.code != 0 || second.raw != want {
 			t.Fatalf("Stop with stop_hook_active = (%d, %q); want exit 0 with the block of the second message", second.code, second.raw)
 		}
 		if empty := runCreelHook(r.cwd, stopInput, &stderr, "hook-read", "claude"); empty.code != 1 || empty.raw != "" || stderr.Len() != 0 {
@@ -901,11 +902,11 @@ func TestCreelCLI(t *testing.T) {
 			}
 		}
 		var stderr bytes.Buffer
-		want := hookBlock(t, hookLine(1, alpha, bodies[0])+"\n"+hookLine(2, alpha, bodies[1]))
+		want := hookBlock(t, shuttleengine.HookEventToolBoundary, hookLine(1, alpha, bodies[0])+"\n"+hookLine(2, alpha, bodies[1]))
 		if got := runCreelHook(r.cwd, postToolUseInput, &stderr, "hook-read", "claude"); got.code != 0 || got.raw != want {
 			t.Fatalf("first call = (%d, %d bytes); want exit 0 with the block of the two lines that fill the budget", got.code, len(got.raw))
 		}
-		if got, want := runCreelHook(r.cwd, postToolUseInput, &stderr, "hook-read", "claude"), hookBlock(t, hookLine(3, alpha, bodies[2])); got.code != 0 || got.raw != want {
+		if got, want := runCreelHook(r.cwd, postToolUseInput, &stderr, "hook-read", "claude"), hookBlock(t, shuttleengine.HookEventToolBoundary, hookLine(3, alpha, bodies[2])); got.code != 0 || got.raw != want {
 			t.Errorf("next call = (%d, %q); want exit 0 with the block of the one left", got.code, got.raw)
 		}
 	})
@@ -922,7 +923,7 @@ func TestCreelCLI(t *testing.T) {
 		if got := runCreelHook(r.cwd, subagentStopInput, &stderr, "hook-read", "claude"); got.code != 1 || got.raw != "" || stderr.Len() != 0 {
 			t.Errorf("subagent Stop = (%d, %q, stderr %q); want exit 1 printing nothing", got.code, got.raw, stderr.String())
 		}
-		if got, want := runCreelHook(r.cwd, postToolUseInput, &stderr, "hook-read", "claude"), hookBlock(t, hookLine(1, alpha, "mail")); got.code != 0 || got.raw != want {
+		if got, want := runCreelHook(r.cwd, postToolUseInput, &stderr, "hook-read", "claude"), hookBlock(t, shuttleengine.HookEventToolBoundary, hookLine(1, alpha, "mail")); got.code != 0 || got.raw != want {
 			t.Errorf("main-thread call after the subagent calls = (%d, %q); want exit 0 with the mail the subagent left", got.code, got.raw)
 		}
 		other := runCreelHook(r.cwd, `{"hook_event_name":"SessionStart"}`, &stderr, "hook-read", "claude")
