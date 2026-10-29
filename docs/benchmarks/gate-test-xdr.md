@@ -181,3 +181,38 @@ No run failed a test, so no test was re-run.
 The wall time is bound by `internal/fabricengine`, the longest package, which rose from 140 s at 4 to 175 s at 8 and 12 as more packages shared the cores.
 
 8 was the fastest value with no new failures, 6 percent under 4, but the two runs at 4 differ by 36 s, so the sweep shows no gain from a higher `go_parallel` beyond run-to-run noise when XDR holds few binaries.
+
+## Refill after a change to `internal/logger`
+
+```yaml
+base: 3474f712, the installed lym
+date: 2026-10-29
+input: one edit to internal/logger/logger.go per run, not committed
+knob: tier_parallel of tier0, tier1 and tier2, which replaced the retired go_parallel
+kernel: Linux 7.0.0-42-generic, the rest of the Machine block unchanged
+```
+
+Each run was `/usr/bin/time -v lym gate test --wait --upto 2` from a task worktree, the call a push to `main` is gated on.
+The scope is the diff from the merge base, so each tier ran the packages that import `internal/logger`, about 130 per tier.
+The two runs used different edits, an unexported `buildMarker` string with an `init` that reads it, `bench-run-1` for the run at 4 and `bench-run-2-eight` for the run at 8, so the second run could not hit the test cache the first had filled and linked binaries with hashes XDR had not seen.
+The tree was restored with `git checkout` after each run.
+`tier_parallel` was 4 in the hub for the first run and 8 for the second, set in the machine layer and removed afterwards; each tier's `GOFLAGS` showed `-p=4` and `-p=8`.
+The 1-minute load average was 3.20 before the run at 4 and 3.86 before the run at 8, and no other run was active.
+"Held" counts the `ok` lines of the three tiers at 7 s or more, as above; the `go_parallel` sweep section shows that at higher parallelism that count also holds packages slowed by contention.
+
+| `tier_parallel` | Load before | Wall | User | Sys | CPU (user+sys) | Max RSS | Tier 0 wall | Tier 1 wall | Tier 2 wall | Packages cached | Failed | Held (7 s or more) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 4 | 3.20 | 497.1 s | 690.0 s | 533.5 s | 1223.5 s | 1485 MiB | 79.7 s | 292.6 s | 122.0 s | 3 | 0 | 22 |
+| 8 | 3.86 | 542.8 s | 717.5 s | 689.3 s | 1406.8 s | 1539 MiB | 68.9 s | 386.4 s | 85.9 s | 3 | 1 package | 38 |
+
+Held by tier at 4 was 1, 14 and 7, and at 8 was 2, 32 and 4.
+
+The run at 8 failed `TestScheduler_HookWake/MailArrivingInAWokenTurnsBlockedChainRingsNothingUntilANewTurnEnd` in `internal/creelengine` after 10.05 s, in tier 0; its package ran 11.7 s and is in no held count.
+The cap allowed no repeat, so the run stands as measured, and the failure is a flake of a creel test that the earlier flake task did not cover.
+
+Raising `tier_parallel` to 8 gave no gain in the verify as a whole: 9 percent slower in wall time and 15 percent more CPU, with the difference in tier 1.
+Tier 0 and tier 2 were 11 s and 36 s faster, and tier 1 was 94 s slower; tier 1 holds the `go build` and `go vet` steps and the `integration` tests, which are heavy on system time (533 s at 4, 689 s at 8).
+Two runs cannot separate this from run-to-run noise, which was 36 s between two runs at 4 in the sweep above, but the direction agrees with it: 8 is no faster than 4.
+Held packages rose from 22 to 38 at 8, the same rise the sweep found, which follows contention more than holds.
+The refill itself took about 8 min at 4, over three tiers.
+`tier_parallel` stays 4.
