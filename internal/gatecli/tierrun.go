@@ -112,6 +112,7 @@ func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, requ
 	}
 	record.Discovered, record.Passed, record.Failed, record.Skipped = counts.discovered, counts.passed, counts.failed, counts.skipped
 	record.Launches = counter.Launches()
+	record.Failures = counter.Failures()
 	return tierResult{record: record, log: logBuffer.Bytes(), trimpathNote: trimpathNote}
 }
 
