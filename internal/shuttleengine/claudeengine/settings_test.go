@@ -198,16 +198,21 @@ func TestBuildSettings_SessionStartHook(t *testing.T) {
 	}
 }
 
-// TestHookContext pins the exact JSON the session-start hook and creel's boundary block print, with the text escaped.
+// TestHookContext pins the exact JSON the session-start hook and creel's boundary blocks print, with the text escaped:
+// after a tool call the text is the reason, and on a Stop it is the additional context and appears in no reason.
 func TestHookContext(t *testing.T) {
 	t.Parallel()
+	boundaryBlock := func(event shuttleengine.HookEvent) func(string) ([]byte, error) {
+		return func(text string) ([]byte, error) { return New().BoundaryBlock(event, text) }
+	}
 	tests := []struct {
 		name   string
 		render func(string) ([]byte, error)
 		want   string
 	}{
 		{"SessionStart", SessionStartContext, `{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"read \"role.md\""}}`},
-		{"BoundaryBlock", New().BoundaryBlock, `{"decision":"block","reason":"read \"role.md\"","systemMessage":"read \"role.md\""}`},
+		{"ToolBoundaryBlock", boundaryBlock(shuttleengine.HookEventToolBoundary), `{"decision":"block","reason":"read \"role.md\"","systemMessage":"read \"role.md\""}`},
+		{"StopBlock", boundaryBlock(shuttleengine.HookEventStop), `{"decision":"block","reason":"` + stopBlockReason + `","systemMessage":"read \"role.md\"","hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"read \"role.md\""}}`},
 	}
 	for _, tt := range tests {
 		got, err := tt.render(`read "role.md"`)

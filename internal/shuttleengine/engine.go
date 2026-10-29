@@ -239,8 +239,8 @@ type HookInput struct {
 type ToolBoundaryContextRenderer interface {
 	// HookInput parses the provider's hook input payload, refusing a payload that is not a hook input.
 	HookInput(payload []byte) (HookInput, error)
-	// BoundaryBlock renders text as the provider's hook output that hands it to the session and shows it to the operator, the same for both events.
-	BoundaryBlock(text string) ([]byte, error)
+	// BoundaryBlock renders text as the provider's hook output for event that hands it to the session once and shows it to the operator.
+	BoundaryBlock(event HookEvent, text string) ([]byte, error)
 	// RewakeOutput returns what an idle waiter hook writes to standard error and exits with to wake the session with text.
 	RewakeOutput(text string) (stderr []byte, exitCode int)
 }

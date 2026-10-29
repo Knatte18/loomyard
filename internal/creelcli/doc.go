@@ -29,7 +29,7 @@
 // A worktree whose resolved orch state records no strand is refused with nothing posted.
 // The liveness predicate it resolves with is part of the client seam.
 // `inbox` prints the caller's unread counts as `inbox.senders`, a list of `{from, unread}`, and no other key.
-// `hook-read <engine>` is what a strand's tool-boundary and Stop hooks run: it reads the hook input from stdin, parses it with the engine's capability from shuttleengines.ToolBoundaryRenderer, claims the caller's mail through the daemon's claim verb and prints it as the engine's visible block, one MessageLine per message joined by newlines.
+// `hook-read <engine>` is what a strand's tool-boundary and Stop hooks run: it reads the hook input from stdin, parses it with the engine's capability from shuttleengines.ToolBoundaryRenderer, claims the caller's mail through the daemon's claim verb and prints it as the engine's visible block for the input's event, one MessageLine per message joined by newlines.
 // The claim carries whether the event is a Stop and the input's stop_hook_active, which the daemon's Stop count rests on.
 // A call from a subagent or fork claims and prints nothing, so the mail and its flag stay for the main thread's next boundary.
 // It prints nothing when nothing was claimed, acknowledges the mail only once its output was written, and bounds its call by 10 seconds, since the provider holds the session at the boundary meanwhile.

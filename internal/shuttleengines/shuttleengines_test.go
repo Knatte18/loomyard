@@ -341,8 +341,8 @@ func TestToolBoundaryRenderer(t *testing.T) {
 	if !ok {
 		t.Fatal("ToolBoundaryRenderer(claude) found none")
 	}
-	got, err := renderer.BoundaryBlock("mail")
-	want, wantErr := claudeengine.New().BoundaryBlock("mail")
+	got, err := renderer.BoundaryBlock(shuttleengine.HookEventStop, "mail")
+	want, wantErr := claudeengine.New().BoundaryBlock(shuttleengine.HookEventStop, "mail")
 	if err != nil || wantErr != nil || string(got) != string(want) {
 		t.Errorf("BoundaryBlock = %s, %v; want the engine's %s", got, err, want)
 	}
