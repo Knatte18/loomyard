@@ -6,6 +6,7 @@
 - `PATTERN-lym-temp-root` — Creating temp file or dir: under `internal/lymtemp`'s run dir, never `os.TempDir()`. (test) — [background](pattern/PATTERN-lym-temp-root.md)
 - `PATTERN-durable-vs-ephemeral-state` — Adding file: tracked under `_lym`, never-tracked under `.lym`, same subpath; only `internal/lymdirs` names either, bar a `tools/` script's variable block. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
 - `PATTERN-leaf-packages` — Importing into a leaf package: only closed import set. — [background](pattern/PATTERN-leaf-packages.md)
+- `PATTERN-fs-links` — Creating a filesystem link: only `internal/fslink`'s `CreateDirLink`; no `os.Symlink` or `os.Link` outside `internal/fslink`. (test) — [background](pattern/PATTERN-fs-links.md)
 
 ## CLI and config
 
@@ -45,6 +46,7 @@
 - `PATTERN-parent-directive` — Writing a spawned role's stencil: it renders the parent and edit directives; its skills and color go on the launch spec, never asked of the agent. (test) — [background](pattern/PATTERN-parent-directive.md)
 - `PATTERN-agent-messaging` — Messaging another session from an agent: only through creel, never an engine's own tool, bar a fork addressed in-session under ForkSubagents. (test)
 - `PATTERN-shuttle-provider-seam` — Touching a provider or shuttle run: specifics only under `internal/shuttleengine/<engine>`, model-specs via `NewModelChoice`, a strand stopped via the stop verb, a negative finish after `allOutputFilesExist`. (test) — [background](pattern/PATTERN-shuttle-provider-seam.md)
+- `PATTERN-interactive-spawn` — Spawning an agent: an interactive tmux session driven through reed, never headless `claude` with `-p` or `--print`. (test) — [background](pattern/PATTERN-interactive-spawn.md)
 - `PATTERN-pane-text-injection` — Typing into an agent pane: reed's guarded paste-submit, an interrupt key only via shuttle's guards, a covered session held; the orch pane and creel journal only via creel. (test) — [background](pattern/PATTERN-pane-text-injection.md)
 - `PATTERN-agent-name` — Forming, parsing or matching an agent name: only `internal/agentname`, a strand's full name formed once by reed; a spawned role is its module's constant.
 - `PATTERN-wait-mark-display-only` — Marking a pane waiting: only reed's `SetWaitMark`; no Go decision reads `@lym_wait` or `@lym_wait_start`.
