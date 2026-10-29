@@ -336,6 +336,7 @@ The tiers below match this repo's own test-tier discipline:
   Implemented as the Go-rendered per-card gate: the hub's `card` key call, `lym gate test --wait --gate card --card <card id>`, then the comment line-break lint and the PATTERN headroom lint.
   The gate call computes the card's packages per module from the plan and runs the guard step over the `//lym:guard` tests itself, so the prompt names no package.
   The card gate does not build or test the rest of the module; a card that breaks a package outside its targets passes it unless the break is in a `//lym:guard` test, and the batch gate or the `webster` gate catches that.
+  It runs only the tiers the `card` key lists, so a card that breaks a higher-tier test passes it too, and a passing call closes with a line naming the declared tiers it did not run, so its pass is never read as green for them.
   Untagged tests are fast by construction, per the Test Tier Purity Invariant's own discipline — no cwd resolution, no process spawn.
   Fully mechanical — no author enumerates a file list, which is what made V1-style `verify:` lists grow long in practice.
 - **Tier 2 (per batch for its own packages, plan-level for the whole suite).**

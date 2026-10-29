@@ -7,6 +7,9 @@
 // `lym gate test [-C <dir>] [--gate <key>] [--tier N]... [--upto N] [--card <id>]... [--base <rev>] [--all] [--guards] [--wait] [<targets>...] [-- <args>]` runs the tiers the hub declares in gate.yaml, in ascending tier number, and then the vet step and the guard step below when they are planned.
 // A run that fails does not stop the call: every later tier, vet and guard run still runs, so a failure the change under test did not cause, such as one present at the base, hides no later check.
 // When a run failed, the verb closes with one stderr line naming each failed run, a vet run as `vet tierN` and a guard run as `guard tierN`, with its exit code.
+// When no run failed under the `--card` scope form, the verb closes with one stderr line naming each declared tier that no listed tier is or covers, manual tiers included, and saying the pass is not green for them, so a card gate that runs tier0 is never read as fully green;
+// a vet or guard run under a tier does not count as running it.
+// Bound: the line is output only and changes no exit code or record, and no other scope form prints it, since their tier lists are the coverage the hub chose for that site.
 // A tier run that fails without timing out and whose output holds a resource-shortage marker, `resource temporarily unavailable`, `failed to create new OS thread` or `cannot fork` in any case, runs once more inside the same slots after a ten-second delay, and the rerun's result is the tier's;
 // a stderr line names the marker, and the rerun's log opens with it.
 // A rerun that fails on a marker again keeps its exit code, and the closing line names the run as a resource shortage, an environment error, with the way forward of re-running once the machine's process load drops.
