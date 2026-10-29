@@ -170,6 +170,9 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 		}
 	}
 	printFailedRuns(request.stderr, failures, firstFailed, false)
+	if code == 0 && sc.form == scopeCard {
+		printNotRunTiers(request.stderr, notRunTiers(cfg, plan))
+	}
 	return exitAfterSignal(caught, code)
 }
 
@@ -197,6 +200,17 @@ func printFailedRuns(stderr io.Writer, failures []string, firstFailed string, ha
 		suffix = "; the call stopped there, so later runs did not run"
 	}
 	printLine(stderr, fmt.Sprintf("%s%s; the exit code is %s's%s", gateslot.FailedRunsPrefix, strings.Join(failures, ", "), firstFailed, suffix))
+}
+
+// notRunSuffix closes the line a passing card-scope call prints naming the declared tiers it did not run.
+const notRunSuffix = " did not run, so this pass is not green for them"
+
+// printNotRunTiers writes the line naming the tiers numbers to stderr, so a card-scope pass is not read as green for tiers it never ran, and nothing when numbers is empty.
+func printNotRunTiers(stderr io.Writer, numbers []int) {
+	if len(numbers) == 0 {
+		return
+	}
+	printLine(stderr, "gate test: "+tierNames(numbers)+notRunSuffix)
 }
 
 // failedRunLabel names run, which ran and failed as end says, in the closing line of failed runs: its label and exit code, and for a run that failed on a resource shortage twice, the marker and the way forward of re-running once the load drops.

@@ -409,3 +409,20 @@ func trimpathLine(tier string, env []string) string {
 	}
 	return fmt.Sprintf("gate test: %s builds with GOFLAGS=%q, and -trimpath makes runtime.Caller report module-relative file paths; a test locates its repository from its working directory or go.mod, never from a runtime.Caller path alone", tier, goFlags)
 }
+
+// notRunTiers returns the tiers cfg declares that no listed run of plan is or covers, ascending.
+// A guard or vet run does not count, since it runs a tier's guard tests or compiles its files without running the tier.
+func notRunTiers(cfg gateslot.Config, plan []tierRun) []int {
+	var numbers []int
+	for key := range cfg.Tiers {
+		number, _ := strconv.Atoi(strings.TrimPrefix(key, "tier"))
+		ran := slices.ContainsFunc(plan, func(run tierRun) bool {
+			return !run.guardStep && !run.vetStep && (run.number == number || slices.Contains(run.tier.Covers, number))
+		})
+		if !ran {
+			numbers = append(numbers, number)
+		}
+	}
+	sort.Ints(numbers)
+	return numbers
+}

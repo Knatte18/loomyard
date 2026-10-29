@@ -185,6 +185,9 @@ func TestGateTest_Scopes(t *testing.T) {
 		if !guard.GuardStep || guard.Tier != 0 || guard.Slots != 1 || guard.ScopeForm != "guard" {
 			t.Errorf("guard step run record = %+v; want the guard group of tier0, whose guard test sits in an untagged file, holding tier0's one slot", guard)
 		}
+		if strings.Contains(g.stdout.String(), notRunSuffix) {
+			t.Errorf("stdout = %q; want no line naming the tiers a pass did not run, which only the card scope form prints", g.stdout.String())
+		}
 		requireFree(t)
 	})
 
@@ -432,6 +435,9 @@ func TestGateTest_Scopes(t *testing.T) {
 		if line := vetSummary(t, g.stdout.String()); !strings.Contains(line, " exit 0 ") {
 			t.Errorf("vet summary line = %q; want exit 0", line)
 		}
+		if want := "gate test: tier1, tier2, tier3, tier5, tier6, tier7" + notRunSuffix + "\n"; !strings.Contains(g.stdout.String(), want) {
+			t.Errorf("stdout = %q; want the line %q, which names tier1 since its vet run does not run the tier", g.stdout.String(), want)
+		}
 		requireFree(t)
 	})
 
@@ -451,6 +457,9 @@ func TestGateTest_Scopes(t *testing.T) {
 			if !strings.Contains(output, want) {
 				t.Errorf("stdout = %q; want it to hold %q", output, want)
 			}
+		}
+		if strings.Contains(output, notRunSuffix) {
+			t.Errorf("stdout = %q; want no line naming the tiers a pass did not run, since the call failed", output)
 		}
 		_, logPath, _ := strings.Cut(vetSummary(t, output), " log ")
 		if vet, _ := runRecordAt(t, logPath, 1); !slices.Equal(vet.TierList, []int{0}) {
@@ -504,6 +513,17 @@ func TestGateTest_Scopes(t *testing.T) {
 		wantArgs(t, g, []string{"./lib"}, []string{"."}, guardInvocation)
 		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "card" || run.GateKey != "card" {
 			t.Errorf("tier0 run record = %+v; want the card scope form and gate key card", run)
+		}
+		if want := "gate test: tier1, tier2, tier3, tier5, tier6, tier7" + notRunSuffix + "\n"; !strings.Contains(g.stdout.String(), want) {
+			t.Errorf("stdout = %q; want the line naming every declared tier the pass did not run, %q", g.stdout.String(), want)
+		}
+	})
+
+	t.Run("a passing --card call leaves a tier a listed tier covers out of the tiers it did not run", func(t *testing.T) {
+		edit(t, "docs/note.md", "a dirtying note\n")
+		g := gate(t, pair, nil, "--card", "1", "--tier", "1")
+		if want := "gate test: tier2, tier3, tier5, tier6, tier7" + notRunSuffix + "\n"; g.exit != 0 || !strings.Contains(g.stdout.String(), want) {
+			t.Errorf("gate = exit %d, stdout %q; want exit 0 and the line %q, without tier0, which tier1 covers", g.exit, g.stdout.String(), want)
 		}
 	})
 
