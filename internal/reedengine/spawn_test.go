@@ -436,6 +436,7 @@ func breakSaveState(t *testing.T, e *Engine) {
 //
 //testtiming:keep pins what a launch types and writes: any discard-line key, the source statement then a separate Enter, and a launch script holding the prelude joined onto the command, regenerated on relaunch, the bare command when the executable is unresolvable and the prelude alone for an empty command; its covering tests run this code without asserting it
 func TestLaunchStrandLocked_LaunchScript(t *testing.T) {
+	t.Parallel()
 	const exe = "/opt/lym/bin/lym"
 	tests := []struct {
 		name       string
@@ -447,7 +448,7 @@ func TestLaunchStrandLocked_LaunchScript(t *testing.T) {
 			name: "PreludeAheadOfTheStrandCommand",
 			cmds: []string{"claude --continue"},
 			want: func(sh shell.Shell, s Strand, e *Engine) string {
-				line, _ := composePaneLaunchLine(sh, "claude --continue", s.GUID, s.Name, e.geom.ParentName)
+				line, _ := composePaneLaunchLine(sh, e.executablePath, "claude --continue", s.GUID, s.Name, e.geom.ParentName)
 				return line + "\n"
 			},
 		},
@@ -455,7 +456,7 @@ func TestLaunchStrandLocked_LaunchScript(t *testing.T) {
 			name: "RelaunchRegeneratesTheScript",
 			cmds: []string{"first cmd", "second cmd"},
 			want: func(sh shell.Shell, s Strand, e *Engine) string {
-				line, _ := composePaneLaunchLine(sh, "second cmd", s.GUID, s.Name, e.geom.ParentName)
+				line, _ := composePaneLaunchLine(sh, e.executablePath, "second cmd", s.GUID, s.Name, e.geom.ParentName)
 				return line + "\n"
 			},
 		},
@@ -477,13 +478,14 @@ func TestLaunchStrandLocked_LaunchScript(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			e := newTestEngine(t)
-			withInjectedExecutablePath(t, func() (string, error) {
+			e.executablePath = func() (string, error) {
 				if tt.executable != nil {
 					return "", tt.executable
 				}
 				return exe, nil
-			})
+			}
 			fake := launchFake(t, e, nil)
 			st := &ReedState{SelvagePaneID: "%selvage", Strands: []Strand{{GUID: "new"}}}
 			s := &st.Strands[0]
@@ -539,11 +541,12 @@ func TestLaunchStrandLocked_LaunchScript(t *testing.T) {
 
 // TestLaunchStrandLocked_WriteFailureSendsTheFullLine pins the degrade path: a regular file where the launch directory's parent belongs makes the payload the composed line,
 // and the warning names the strand GUID.
+// It captures the process-global logger, so it does not run in parallel.
 //
 //testtiming:keep pins the degrade path: when the launch script cannot be written the send-keys payload is the full composed line and the warning names the strand guid; its covering tests run this code without asserting it
 func TestLaunchStrandLocked_WriteFailureSendsTheFullLine(t *testing.T) {
 	e := newTestEngine(t)
-	withInjectedExecutablePath(t, func() (string, error) { return "/opt/lym/bin/lym", nil })
+	e.executablePath = func() (string, error) { return "/opt/lym/bin/lym", nil }
 	fake := launchFake(t, e, nil)
 	if err := os.MkdirAll(e.stateDir(), 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
@@ -558,7 +561,7 @@ func TestLaunchStrandLocked_WriteFailureSendsTheFullLine(t *testing.T) {
 	if err := e.launchStrandLocked(st, &st.Strands[0], launchCmd); err != nil {
 		t.Fatalf("launchStrandLocked: %v", err)
 	}
-	line, _ := composePaneLaunchLine(shell.ForGOOS(), launchCmd, "guid-w", st.Strands[0].Name, e.geom.ParentName)
+	line, _ := composePaneLaunchLine(shell.ForGOOS(), e.executablePath, launchCmd, "guid-w", st.Strands[0].Name, e.geom.ParentName)
 	want := sendKeysLiteralArg(line)
 	sends := fake.ArgvFor("send-keys")
 	if literal := sends[len(sends)-2]; literal[len(literal)-1] != want {
@@ -573,6 +576,7 @@ func TestLaunchStrandLocked_WriteFailureSendsTheFullLine(t *testing.T) {
 // a launch whose literal send-keys fails deletes the script it already wrote,
 // and a SaveState failure right after the launch deletes the never-persisted strand's script, for add and for replace alike.
 func TestLaunchScriptDoesNotSurviveAFailedLaunch(t *testing.T) {
+	t.Parallel()
 	spec := AddSpec{Role: "worker", NameOverride: "n", Cmd: "claude"}
 	tests := []struct {
 		name  string
@@ -618,8 +622,9 @@ func TestLaunchScriptDoesNotSurviveAFailedLaunch(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			e := newTestEngine(t)
-			withInjectedExecutablePath(t, func() (string, error) { return "/opt/lym/bin/lym", nil })
+			e.executablePath = func() (string, error) { return "/opt/lym/bin/lym", nil }
 			tt.setup(t, e)
 
 			if err := tt.run(e); err == nil {
@@ -636,6 +641,7 @@ func TestLaunchScriptDoesNotSurviveAFailedLaunch(t *testing.T) {
 // and therefore changes the pane's inherited PATH — and that pane resolves claude by bare name, so the change would stop the agent binary resolving at all.
 // The two title commands then run in order between the window creation and the send-keys, and carry the strand's full name;
 // a tmux whose version predates allow-set-title runs only the select-pane, with no log naming the option.
+// It captures the process-global logger, so it does not run in parallel.
 //
 //testtiming:keep pins the new-window argv ending with -c and the told cwd with no trailing shell command, which would make tmux exec a non-login shell, and the two title commands running in order between the window creation and the send-keys; its covering tests run this code without asserting it
 func TestLaunchStrandLocked_SplitWindowAndPaneTitleCalls(t *testing.T) {
@@ -702,7 +708,7 @@ func TestLaunchStrandLocked_SplitWindowAndPaneTitleCalls(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newTestEngine(t)
-			withInjectedExecutablePath(t, func() (string, error) { return "/opt/lym/bin/lym", nil })
+			e.executablePath = func() (string, error) { return "/opt/lym/bin/lym", nil }
 			fake := launchFake(t, e, nil)
 			e.tmux.floorLine = tt.floorLine
 			if tt.failAllowSetTitle {

@@ -476,3 +476,10 @@ Each line is a lead for a prune task under `PATTERN-test-speed`, not a verdict; 
 - `internal/shedrun` 22 to 72 tests: +903/-209 lines in 11 files over 27 commits, a plausible match for new behavior (beams, dobby, arbiter) but worth a redundancy pass.
 - `internal/battenshed` +84, `internal/shuttleengine` +78, `internal/loomcli` +61 and `internal/fabricengine` +51 track 49 to 142 commits and 9.7 to 34.9 thousand changed lines each, so their growth matches new behavior.
 - `internal/reedengine` `tier2`: 2 tests spending 40.00 s, a candidate for an injectable duration under `PATTERN-test-speed`.
+
+#### Correction (2026-10-29)
+
+The per-package counts above for the three prune leads do not match the packages' sources, so the per-package split of the gate's logs is not reliable as a count.
+Counted by `func Test` declarations, `internal/shell` went from 11 to 14 tests, `internal/boardengine/boardtest` stayed at 3 and `internal/battenrecipe` went from 8 to 9; a verbose run shows `internal/shell`'s 14 tests carrying 60 subtests, which neither count includes.
+`internal/reedengine`'s `tier2` time was no waited-out duration: its 32 tests ran serially, with the slowest at 11 s, and their times summed to the package's wall.
+A later audit counts per package from `go test -json` events keyed by package, or from a verbose run of the package alone.

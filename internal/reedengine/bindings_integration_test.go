@@ -3,7 +3,6 @@
 // bindings_integration_test.go drives the Alt-key and status-bar bindings against a real tmux server and an attached client.
 // The terminal's own byte sequences are written into the client's pty (ESC [1;3A..D, SGR mouse clicks at the bar's cells), so the whole key path is exercised.
 // The client is attached through the pty harness attachgeometry_integration_test.go defines.
-// Every test swaps the package-level executablePath seam and so never runs in parallel.
 
 package reedengine
 
@@ -53,9 +52,8 @@ func newBindingsFixture(t *testing.T) *bindingsFixture {
 	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("write recorder script: %v", err)
 	}
-	withInjectedExecutablePath(t, func() (string, error) { return scriptPath, nil })
-
 	e := newIntegrationEngine(t, "on")
+	e.executablePath = func() (string, error) { return scriptPath, nil }
 	if _, err := e.Up(); err != nil {
 		t.Fatalf("Up: %v", err)
 	}
@@ -193,6 +191,7 @@ func (f *bindingsFixture) click(t *testing.T, row int, label string) {
 }
 
 func TestBindings_AltUpDownStepWindowsInIndexOrderPastHiddenOnes(t *testing.T) {
+	t.Parallel()
 	f := newBindingsFixture(t)
 	if _, err := f.e.AddStrand(AddSpec{NameOverride: "agent", Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorOwnWindow}}); err != nil {
 		t.Fatalf("AddStrand(agent): %v", err)
@@ -245,6 +244,7 @@ func TestBindings_AltUpDownStepWindowsInIndexOrderPastHiddenOnes(t *testing.T) {
 }
 
 func TestBindings_StatusBarClicksSelectAndZoomByRangeType(t *testing.T) {
+	t.Parallel()
 	f := newBindingsFixture(t)
 	session := f.e.SessionName()
 	socketPath := strings.TrimSpace(mustTmuxOutput(t, f.e, "display-message", "-p", "#{socket_path}"))
@@ -356,6 +356,7 @@ func TestBindings_StatusBarClicksSelectAndZoomByRangeType(t *testing.T) {
 }
 
 func TestBindings_AltLeftRightRunTheSwitchCommandWithTheToldPaths(t *testing.T) {
+	t.Parallel()
 	f := newBindingsFixture(t)
 	socketPath := strings.TrimSpace(mustTmuxOutput(t, f.e, "display-message", "-p", "#{socket_path}"))
 	f.setFollow(t, f.e.SessionName(), "on")

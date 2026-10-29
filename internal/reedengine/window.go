@@ -95,7 +95,7 @@ func (e *Engine) OpenWindowIn(name, dir string, lymArgs []string) (WindowResult,
 			logger.Debug("reed: could not list the session's windows to place the new window", "socket", e.Socket(), "session", session, "err", err)
 		}
 
-		command := composeWindowCommand(shell.ForGOOS(), lymArgs)
+		command := composeWindowCommand(shell.ForGOOS(), e.executablePath, lymArgs)
 		// No other window holds the temporary name, so the chained options cannot land on a same-named window.
 		temporaryName := fmt.Sprintf("%s%d-%d", temporaryWindowNamePrefix, os.Getpid(), temporaryWindowCounter.Add(1))
 		temporaryTarget := exactSessionWindowTarget(session) + "=" + temporaryName

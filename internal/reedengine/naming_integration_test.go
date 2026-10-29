@@ -19,7 +19,7 @@ import (
 // addEnvProbeStrand adds a role strand whose command writes $LYM_STRAND_NAME and $LYM_PARENT to a file and returns the strand with the file's path.
 func addEnvProbeStrand(t *testing.T, e *Engine, role string) (Strand, string) {
 	t.Helper()
-	withInjectedExecutablePath(t, func() (string, error) { return filepath.Join(t.TempDir(), "lym"), nil })
+	e.executablePath = func() (string, error) { return filepath.Join(t.TempDir(), "lym"), nil }
 
 	probe := filepath.Join(t.TempDir(), "env.txt")
 	cmd := "printf '%s\\n%s\\n' \"$LYM_STRAND_NAME\" \"$LYM_PARENT\" > " + shell.Posix().Quote(probe)
@@ -47,7 +47,7 @@ func paneTitle(t *testing.T, e *Engine, paneID string) string {
 }
 
 // TestNaming runs the naming steps against one cold session; each step adds its own role's strand, and the geometry fields a step needs are set on the shared engine for that step alone.
-// Process-global state: withInjectedExecutablePath and the captured log, so the scenario is not parallel.
+// Process-global state: the captured log, so the scenario is not parallel.
 func TestNaming(t *testing.T) {
 	logs := logcapture.CaptureVerbose(t)
 	e := newColdScratchEngine(t)

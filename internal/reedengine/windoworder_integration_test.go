@@ -18,16 +18,17 @@ import (
 )
 
 // TestWindowOrder_RealTmux runs its steps in order on one cold session.
-// It overrides the executable path so the detached `lym` window of OpenWindow is a stub that sleeps for its first argument's seconds, which makes it process-global state, so it does not run in parallel.
+// It overrides the executable path so the detached `lym` window of OpenWindow is a stub that sleeps for its first argument's seconds.
 func TestWindowOrder_RealTmux(t *testing.T) {
+	t.Parallel()
 	stubDir := t.TempDir()
 	stub := filepath.Join(stubDir, "lym")
 	if err := os.WriteFile(stub, []byte("#!/bin/sh\nsleep \"$1\"\n"), 0o755); err != nil {
 		t.Fatalf("write lym stub: %v", err)
 	}
-	withInjectedExecutablePath(t, func() (string, error) { return stub, nil })
 
 	e := newColdScratchEngine(t)
+	e.executablePath = func() (string, error) { return stub, nil }
 	if _, err := e.Up(); err != nil {
 		t.Fatalf("Up: %v", err)
 	}

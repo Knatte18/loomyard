@@ -1,7 +1,7 @@
 // panebin.go owns the whole pane-binary seam: composing the shell prelude that resolves `lym` to the binary that spawned every strand pane, the one function (composePaneLaunchLine) that joins it onto a strand's launch command, and the one (composeWindowCommand) that joins it onto a detached window's `lym` command.
 // The composition lives in this one file, reached from two chokepoints, launchStrandLocked in spawn.go for strand panes and OpenWindow in window.go for detached windows,
 // so the property "every pane reed creates for a `lym` command resolves lym to its spawning binary" holds by construction rather than by every pane-creating call site remembering to apply it.
-// It also composes the session-switch command the Alt-key bindings run, from the same executablePath chokepoint.
+// It also composes the session-switch command the Alt-key bindings run, from the same executable-path lookup, which the engine passes in.
 // The same composition exports LYM_STRAND_NAME (the strand's full name), LYM_PARENT (the worktree's parent, when told) and the .NET build-server switches beside LYM_BIN.
 // The file also owns the per-strand launch script the composed line is written to,
 // so the pane types a short source statement instead of the full line.
@@ -18,13 +18,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shell"
 )
-
-// executablePath is a package-local testability seam over os.Executable, modelled on
-// tools/sandbox/resolve.go's own devBinPath seam. Under `go test` the live value is the test
-// binary's path, so hermetic tests inject a path here instead of asserting against the real one —
-// re-exec'ing os.Executable() under go test is itself barred by
-// PATTERN-spawn-observability.
-var executablePath = os.Executable
 
 // paneBinPrelude returns the pure, injectable pane-binary composition for exe on sh's dialect: sh's
 // own PrependPathEntry of exe's parent directory, then sh's own ExportEnv of agentname.LymBinEnv to exe,
@@ -65,7 +58,7 @@ func buildServerExports(sh shell.Shell) string {
 // The build-server and name exports do not depend on that lookup and stay either way.
 // Because Chain drops empty parts, an empty launchCmd yields the statements alone with no trailing separator and no empty command fragment.
 // It also returns the executable path the prelude exports, empty when the lookup failed and the prelude was dropped.
-func composePaneLaunchLine(sh shell.Shell, launchCmd, strandGUID, name, parent string) (line, exe string) {
+func composePaneLaunchLine(sh shell.Shell, executablePath func() (string, error), launchCmd, strandGUID, name, parent string) (line, exe string) {
 	prelude := ""
 	exe, err := executablePath()
 	if err != nil {
@@ -80,7 +73,7 @@ func composePaneLaunchLine(sh shell.Shell, launchCmd, strandGUID, name, parent s
 // composeWindowCommand returns the shell line a detached reed window runs: the pane-binary prelude, then `lym` invoked with lymArgs, each quoted, on sh's dialect.
 // No strand name exports, since a window is not a strand.
 // An unresolvable executable path logs a named logger.Warn and drops the prelude, as composePaneLaunchLine does.
-func composeWindowCommand(sh shell.Shell, lymArgs []string) string {
+func composeWindowCommand(sh shell.Shell, executablePath func() (string, error), lymArgs []string) string {
 	prelude := ""
 	exe, err := executablePath()
 	if err != nil {
@@ -101,7 +94,7 @@ func composeWindowCommand(sh shell.Shell, lymArgs []string) string {
 // Every pinned token is quoted once and then has each # doubled, because run-shell format-expands its whole command at key press;
 // #{q:client_name} is the one value left for that expansion, as its own unquoted word.
 // An unresolvable executable path logs a named logger.Warn and returns false, so the caller pins no switch binding.
-func composeSwitchCommand(sh shell.Shell, next bool, socketPath, tmuxPath string) (string, bool) {
+func composeSwitchCommand(sh shell.Shell, executablePath func() (string, error), next bool, socketPath, tmuxPath string) (string, bool) {
 	exe, err := executablePath()
 	if err != nil {
 		logger.Warn("reed: could not resolve this binary, pinning no session-switch binding", "err", err)
@@ -126,7 +119,7 @@ func composeSwitchCommand(sh shell.Shell, next bool, socketPath, tmuxPath string
 // Every pinned token is quoted once and then has each # doubled, because the line is format-expanded when the button is clicked;
 // #{q:session_name} is the one value left for that expansion, as its own unquoted word, so the session reaches the verb as one quoted argument.
 // An unresolvable executable path logs a named logger.Warn and returns false, so the caller pins no follow jump.
-func composeFollowCommand(sh shell.Shell, socketPath, tmuxPath string) (string, bool) {
+func composeFollowCommand(sh shell.Shell, executablePath func() (string, error), socketPath, tmuxPath string) (string, bool) {
 	exe, err := executablePath()
 	if err != nil {
 		logger.Warn("reed: could not resolve this binary, pinning no follow jump", "err", err)

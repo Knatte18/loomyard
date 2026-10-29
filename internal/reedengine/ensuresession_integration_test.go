@@ -82,6 +82,7 @@ func newColdScratchEngine(t *testing.T) *Engine {
 // TestEnsureSession_BootedTrueOnColdSessionFalseOnWarm pins the primitive both this task's
 // attribution log lines derive from: EnsureSession answers true against a worktree whose session has
 // never been created, and false when called again against the live session it just created.
+// It sets an environment variable, process-global state, so it does not run in parallel.
 func TestEnsureSession_BootedTrueOnColdSessionFalseOnWarm(t *testing.T) {
 	t.Setenv(scrubProbeEnv, "1")
 	e := newColdScratchEngine(t)
@@ -147,6 +148,7 @@ func TestEnsureSession_BootedTrueOnColdSessionFalseOnWarm(t *testing.T) {
 // TestAddStrand_LogsAttributionOnlyOnColdBoot pins AddStrand's own log line, using logcapture.CaptureVerbose, which sets both the logger output and its verbosity — neither alone captures at Info.
 // A cold AddStrand must emit the attribution line;
 // a second AddStrand against the now-live session must not.
+// It captures the process-global logger, so it does not run in parallel.
 func TestAddStrand_LogsAttributionOnlyOnColdBoot(t *testing.T) {
 	e := newColdScratchEngine(t)
 	logs := logcapture.CaptureVerbose(t)

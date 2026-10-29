@@ -80,6 +80,7 @@ func (f *barFixture) expand(t *testing.T, format string) string {
 }
 
 func TestBar_LineOneButtonsFollowTheWindowZoomAndWaitMarks(t *testing.T) {
+	t.Parallel()
 	f := newBarFixture(t)
 	e := f.e
 	if err := e.tmux.run("select-window", "-t", f.strandWindow); err != nil {
@@ -210,6 +211,7 @@ func TestBar_LineOneButtonsFollowTheWindowZoomAndWaitMarks(t *testing.T) {
 // The session carrying @lym_prime_session comes ahead of the rest.
 // With no session marked the first loop draws nothing, and the second loop's order is session name on tmux 3.4 and session id on newer tmux, so no order is asserted.
 func TestBar_LineTwoListsSessionsPrimeFirst(t *testing.T) {
+	t.Parallel()
 	f := newBarFixture(t)
 
 	current := "list=focus bg=yellow fg=black bold] " + f.e.SessionName() + " "

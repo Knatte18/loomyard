@@ -35,6 +35,7 @@ func waitForCapture(t *testing.T, e *Engine, guid string, pred func(screen strin
 }
 
 func TestPasteSubmit_DeliversTextAndLeavesTheBufferStackAlone(t *testing.T) {
+	t.Parallel()
 	e := newIntegrationEngine(t, "off")
 	if _, err := e.Up(); err != nil {
 		t.Fatalf("Up: %v", err)
