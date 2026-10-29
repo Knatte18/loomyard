@@ -19,7 +19,7 @@ No operator is present, so make best-judgment calls and never block on a dialog.
 
 Read the task's subject: {{.subject_reading}}.
 It is the whole statement of the change the task makes.
-Also read the repository's `CLAUDE.md`, which names how the repository is built and tested.
+Also read the repository's README and its test setup, which name how the repository is built and tested.
 
 ## Step 2 — Decide the scope
 
