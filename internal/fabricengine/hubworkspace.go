@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -49,6 +50,7 @@ func HubWorkspaceLockPath(hubPath string) string {
 }
 
 // RegenerateHubWorkspace rewrites the hub workspace file and a workspace file per beam from the hub's current worktrees, the pairs' origin records and the prime's .vscode/settings.json, and returns the hub file's path.
+// Each file splices its settings with the workspace look set: a title naming the workspace and the workspace colour on the activity bar.
 // The hub file lists the prime, the board as Bolt, then every pair whose parent is the prime, beams included, and no pair under a beam.
 // A beam's file, BeamWorkspacePath, lists the beam, its parent, Bolt and every pair whose parent is the beam, with the beam's own .vscode/settings.json when it has a readable one and the prime's otherwise, and a file of a beam that is gone is removed when it carries the generated mark.
 // A pair with no readable origin record is listed in the hub file as a pair of the prime.
@@ -74,6 +76,16 @@ func beamWorkspaceSettings(l *lymcwd.Location, beam string, primeSettings []byte
 		return primeSettings, nil
 	}
 	return settings, nil
+}
+
+// workspaceWindowTitle returns the window title of the workspace file named after name, a repository or a beam:
+// "<SHORTNAME>: <name> workspace", or "<name> workspace" when the board at the hub records no shortname.
+func workspaceWindowTitle(hubPath, name string) string {
+	title := name + " workspace"
+	if shortname, found := ReadShortname(BoardDir(hubPath)); found {
+		return strings.ToUpper(shortname) + ": " + title
+	}
+	return title
 }
 
 // regenerateAfterVerb regenerates the hub workspace file at the end of a fabric verb that changed the hub's worktrees.
@@ -119,7 +131,11 @@ func regenerateHubWorkspace(rec *Mutations, l *lymcwd.Location, lockWait time.Du
 	if err != nil {
 		return "", fmt.Errorf("compute workspace folders: %w", err)
 	}
-	content, err := vscode.BuildWorkspace(layout.hub, settings)
+	hubSettings, err := vscode.WorkspaceSettings(settings, workspaceWindowTitle(l.HubPath, l.RepoName))
+	if err != nil {
+		return "", fmt.Errorf("set the hub workspace look: %w", err)
+	}
+	content, err := vscode.BuildWorkspace(layout.hub, hubSettings)
 	if err != nil {
 		return "", fmt.Errorf("build workspace: %w", err)
 	}
@@ -139,6 +155,10 @@ func regenerateHubWorkspace(rec *Mutations, l *lymcwd.Location, lockWait time.Du
 		if err != nil {
 			logger.Warn("fabricengine: a beam's own settings could not be read, so its workspace file splices the prime's", "beam", beam.slug, "error", err)
 			beamSettings = settings
+		}
+		beamSettings, err = vscode.WorkspaceSettings(beamSettings, workspaceWindowTitle(l.HubPath, beam.slug))
+		if err != nil {
+			return "", fmt.Errorf("set the workspace look of beam %s: %w", beam.slug, err)
 		}
 		beamContent, err := vscode.BuildWorkspace(beam.folders, beamSettings)
 		if err != nil {

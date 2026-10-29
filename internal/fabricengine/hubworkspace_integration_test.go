@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/vscode"
 )
 
 // workspaceFolder is one entry of the hub workspace file's folders array.
@@ -344,21 +345,30 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 		t.Parallel()
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		hubforge.AddPairWith(t, h, "b", beamAddOptions)
-		writeSettingsAt(t, h.PrimeWorktree(), `{"window.title": "prime"}`)
+		writeSettingsAt(t, h.PrimeWorktree(), `{"source": "prime"}`)
 		beamPath := fabricengine.BeamWorkspacePath(h.Location, "b")
 
 		path, _ := regenerateHub(t, h)
 		for file, want := range map[string]string{path: "prime", beamPath: "prime"} {
-			if got := workspaceTitle(t, file); got != want {
-				t.Errorf("%s window.title = %q; want %q with no beam settings", filepath.Base(file), got, want)
+			if got := workspaceSettings(t, file)["source"]; got != want {
+				t.Errorf("%s source = %v; want %q with no beam settings", filepath.Base(file), got, want)
 			}
 		}
 
-		writeSettingsAt(t, fabricengine.WorktreePath(h.Location, "b"), `{"window.title": "beam"}`)
+		const beamColor = "#7d2d6b"
+		writeSettingsAt(t, fabricengine.WorktreePath(h.Location, "b"), `{"source": "beam", "workbench.colorCustomizations": {"titleBar.activeBackground": "`+beamColor+`"}}`)
 		regenerateHub(t, h)
-		for file, want := range map[string]string{path: "prime", beamPath: "beam"} {
-			if got := workspaceTitle(t, file); got != want {
-				t.Errorf("%s window.title = %q; want %q", filepath.Base(file), got, want)
+		tests := []struct {
+			file, source, title, titleBar string
+		}{
+			{path, "prime", "TST: " + h.Location.RepoName + " workspace", vscode.PrimeColor},
+			{beamPath, "beam", "TST: b workspace", beamColor},
+		}
+		for _, tt := range tests {
+			settings := workspaceSettings(t, tt.file)
+			colors, _ := settings["workbench.colorCustomizations"].(map[string]any)
+			if settings["source"] != tt.source || settings["window.title"] != tt.title || colors["titleBar.activeBackground"] != tt.titleBar || colors["activityBar.background"] != vscode.WorkspaceColor {
+				t.Errorf("%s settings = %v; want source %q, title %q, title bar %s and activity bar %s", filepath.Base(tt.file), settings, tt.source, tt.title, tt.titleBar, vscode.WorkspaceColor)
 			}
 		}
 
@@ -371,8 +381,26 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 			t.Fatalf("make the beam settings unreadable: %v", err)
 		}
 		regenerateHub(t, h)
-		if got := workspaceTitle(t, beamPath); got != "prime" {
-			t.Errorf("%s window.title = %q; want %q with unreadable beam settings", filepath.Base(beamPath), got, "prime")
+		if got := workspaceSettings(t, beamPath)["source"]; got != "prime" {
+			t.Errorf("%s source = %v; want %q with unreadable beam settings", filepath.Base(beamPath), got, "prime")
+		}
+	})
+
+	t.Run("TitlesWorkspacesWithoutAShortnamePrefixWhenTheBoardRecordsNone", func(t *testing.T) {
+		t.Parallel()
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		hubforge.AddPairWith(t, h, "b", beamAddOptions)
+		if err := os.Remove(filepath.Join(h.BoardDir(), fabricengine.ShortnameFileName)); err != nil {
+			t.Fatalf("remove the shortname record: %v", err)
+		}
+
+		path, _ := regenerateHub(t, h)
+
+		beamPath := fabricengine.BeamWorkspacePath(h.Location, "b")
+		for file, want := range map[string]string{path: h.Location.RepoName + " workspace", beamPath: "b workspace"} {
+			if got := workspaceSettings(t, file)["window.title"]; got != want {
+				t.Errorf("%s window.title = %v; want %q", filepath.Base(file), got, want)
+			}
 		}
 	})
 
@@ -658,8 +686,8 @@ func writeSettingsAt(t *testing.T, dir, content string) {
 	}
 }
 
-// workspaceTitle returns the window.title the workspace file at path carries in its settings.
-func workspaceTitle(t *testing.T, path string) string {
+// workspaceSettings returns the settings the workspace file at path carries.
+func workspaceSettings(t *testing.T, path string) map[string]any {
 	t.Helper()
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -671,6 +699,5 @@ func workspaceTitle(t *testing.T, path string) string {
 	if err := json.Unmarshal(data, &ws); err != nil {
 		t.Fatalf("%s is not valid JSON: %v\n%s", path, err, data)
 	}
-	title, _ := ws.Settings["window.title"].(string)
-	return title
+	return ws.Settings
 }

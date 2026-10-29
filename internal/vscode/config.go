@@ -8,12 +8,15 @@
 // Text on either bar is black or white by the background's luminance.
 // No status-bar, border or tab colour is written: the status bar loses its background in an unfocused window, the active border is not drawn, and tab colours follow the selected tab.
 // lym owns those keys and window.title in a worktree's settings.json and rewrites them at every seed; every other key is the operator's.
+// A workspace window keeps its project's colour on the title bar and takes WorkspaceColor, which no worktree takes, on its activity bar;
+// WorkspaceSettings sets that look in the settings a workspace file splices.
 // It also seeds the marked block of key bindings into the user's keybindings.json (see SeedKeybindings):
 // the Alt-arrow keys the integrated terminal forwards to reed's tmux bindings, and ctrl+alt+a, which runs the reed attach task.
+// A user-level binding applies in every VS Code window, so the Alt-arrow keys reach reed in any hub.
 // The mill values (palette, settings keys, cmd /c code) are baked in — no external Python is read.
 //
-// Limitation: BuildWorkspace splices the prime's settings verbatim into the hub workspace file at <hub>/<RepoName>.code-workspace, so a relative path value (starting with ./ or ../) resolves against the hub directory, no longer against the prime's own folder.
-// RelativeSettingKeys names such keys so the caller can warn; no setting is rewritten.
+// Limitation: the hub workspace file at <hub>/<RepoName>.code-workspace carries the prime's settings, so a relative path value (starting with ./ or ../) resolves against the hub directory, no longer against the prime's own folder.
+// RelativeSettingKeys names such keys so the caller can warn; no relative path value is rewritten.
 
 package vscode
 
@@ -98,6 +101,20 @@ func writeSettings(settingsPath string, look Look) error {
 		}
 	}
 
+	applyLook(settings, look)
+
+	data, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return err
+	}
+	if string(data) == string(content) {
+		return nil
+	}
+	return os.WriteFile(settingsPath, data, 0o644)
+}
+
+// applyLook sets the keys lym owns in settings from look: window.title and the title-bar and activity-bar keys of workbench.colorCustomizations, keeping every other colour customization.
+func applyLook(settings map[string]any, look Look) {
 	customizations, _ := settings[colorCustomizationsKey].(map[string]any)
 	if customizations == nil {
 		customizations = map[string]any{}
@@ -113,15 +130,6 @@ func writeSettings(settingsPath string, look Look) error {
 	customizations[activityBarInactiveForeground] = activityForeground + inactiveForegroundAlphaHex
 	settings[colorCustomizationsKey] = customizations
 	settings[windowTitleKey] = look.Title
-
-	data, err := json.MarshalIndent(settings, "", "  ")
-	if err != nil {
-		return err
-	}
-	if string(data) == string(content) {
-		return nil
-	}
-	return os.WriteFile(settingsPath, data, 0o644)
 }
 
 // attachTaskLabel names the reed attach task; the seeded key binding finds the task by this label.

@@ -22,6 +22,13 @@ func TestPaletteStartsWithThePrimeGreen(t *testing.T) {
 	}
 }
 
+func TestWorkspaceColorIsNoPaletteColor(t *testing.T) {
+	t.Parallel()
+	if slices.Contains(palette, WorkspaceColor) {
+		t.Errorf("palette %v holds WorkspaceColor %s; want it outside the palette, so no worktree picks it", palette, WorkspaceColor)
+	}
+}
+
 func TestPickBeamColor(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

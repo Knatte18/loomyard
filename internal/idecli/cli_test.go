@@ -1,7 +1,7 @@
 //go:build tier1
 
 // cli_test.go covers the ide CLI cobra surface: spawn dispatch with a stubbed
-// launcher, seed with and without a slug, the non-git refusal and the missing-slug error.
+// launcher, seed with and without a slug and its key bindings, the non-git refusal and the missing-slug error.
 
 package idecli
 
@@ -104,6 +104,8 @@ func TestRunCLI_SpawnScenario(t *testing.T) {
 
 	t.Run("seed without a slug seeds the worktree it runs in, the prime included", func(t *testing.T) {
 		launches = nil
+		keybindingsPath := filepath.Join(t.TempDir(), "keybindings.json")
+		ideengine.KeybindingsPath = func() (string, error) { return keybindingsPath, nil }
 		var out bytes.Buffer
 		code := RunCLIIn(h.PrimeWorktree(), &out, []string{"seed"})
 
@@ -111,13 +113,19 @@ func TestRunCLI_SpawnScenario(t *testing.T) {
 			t.Fatalf("RunCLI(seed) in the prime = %d; output: %s", code, out.String())
 		}
 		var envelope struct {
-			Slug string `json:"slug"`
+			Slug        string `json:"slug"`
+			Keybindings struct {
+				Outcome string `json:"outcome"`
+			} `json:"keybindings"`
 		}
 		if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
 			t.Fatalf("envelope %q: %v", out.String(), err)
 		}
 		if want := filepath.Base(h.PrimeWorktree()); envelope.Slug != want {
 			t.Errorf("seeded slug = %q; want the prime %q", envelope.Slug, want)
+		}
+		if envelope.Keybindings.Outcome != "created" {
+			t.Errorf("keybindings outcome = %q; want created", envelope.Keybindings.Outcome)
 		}
 		if _, err := os.Stat(filepath.Join(h.PrimeWorktree(), ".vscode", "settings.json")); err != nil {
 			t.Errorf("prime .vscode/settings.json: %v", err)

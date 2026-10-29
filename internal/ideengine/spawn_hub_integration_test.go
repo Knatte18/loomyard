@@ -141,8 +141,8 @@ func readOptionalFile(t *testing.T, path string) (data []byte, exists bool) {
 	return data, true
 }
 
-// checkTaskSlugOpensBareFolder asserts a task spawn launches its bare folder and leaves the workspace file's bytes, or its absence, unchanged.
-// It also asserts Seed writes the same on-demand attach task Spawn does, and leaves the keybindings.json alone where Spawn seeds it.
+// checkTaskSlugOpensBareFolder asserts a task spawn launches its bare folder, and that a task seed and spawn leave the workspace file's bytes, or its absence, unchanged.
+// It also asserts Seed writes the same on-demand attach task Spawn does and seeds the keybindings.json as Spawn does, each into a missing file.
 func checkTaskSlugOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 	resetPrimeEditorState(t, h)
 	l := h.Location
@@ -157,12 +157,19 @@ func checkTaskSlugOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 	}
 	workspaceBefore, workspaceExisted := readOptionalFile(t, fabricengine.HubWorkspacePath(l))
 
-	if err := Seed(l, slug); err != nil {
+	keybindings, err := Seed(l, slug)
+	if err != nil {
 		t.Fatalf("Seed: %v", err)
 	}
 	assertAttachTaskOnly(t, filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel))
-	if _, err := os.Stat(keybindingsPath); !os.IsNotExist(err) {
-		t.Errorf("keybindings.json exists after Seed (stat err = %v)", err)
+	if keybindings.Outcome != vscode.KeybindingsCreated {
+		t.Errorf("Seed keybindings outcome = %+v; want %q", keybindings, vscode.KeybindingsCreated)
+	}
+	if _, err := os.Stat(keybindingsPath); err != nil {
+		t.Errorf("keybindings.json missing after Seed: %v", err)
+	}
+	if err := os.RemoveAll(keybindingsPath); err != nil {
+		t.Fatalf("remove keybindings: %v", err)
 	}
 
 	if _, err := Spawn(l, slug); err != nil {
@@ -178,11 +185,30 @@ func checkTaskSlugOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 	}
 	workspaceAfter, workspaceExists := readOptionalFile(t, fabricengine.HubWorkspacePath(l))
 	if workspaceExists != workspaceExisted || !bytes.Equal(workspaceAfter, workspaceBefore) {
-		t.Errorf("workspace file changed by a task spawn: existed %v then, %v now; bytes before %q, after %q", workspaceExisted, workspaceExists, workspaceBefore, workspaceAfter)
+		t.Errorf("workspace file changed by a task seed and spawn: existed %v then, %v now; bytes before %q, after %q", workspaceExisted, workspaceExists, workspaceBefore, workspaceAfter)
 	}
 }
 
-// checkPrimeSplicesSettingsAndRegenerates covers JSONC splice, idempotence, settings changes and hand-edit overwrite.
+// checkPrimeSeedWritesHubWorkspace asserts a seed of the prime writes the hub workspace file with the workspace title and launches nothing.
+func checkPrimeSeedWritesHubWorkspace(t *testing.T, h *hubforge.Hub) {
+	resetPrimeEditorState(t, h)
+	l := h.Location
+	launched := recordLauncher(t)
+
+	if _, err := Seed(l, primeOf(t, h)); err != nil {
+		t.Fatalf("Seed: %v", err)
+	}
+
+	if len(*launched) != 0 {
+		t.Errorf("CodeLauncher calls = %v, want none", *launched)
+	}
+	want := "TST: " + l.RepoName + " workspace"
+	if got := readWorkspaceLook(t, fabricengine.HubWorkspacePath(l)).Title; got != want {
+		t.Errorf("hub workspace window.title = %q, want %q", got, want)
+	}
+}
+
+// checkPrimeSplicesSettingsAndRegenerates covers the splice of JSONC settings with the workspace look, idempotence, settings changes and hand-edit overwrite.
 func checkPrimeSplicesSettingsAndRegenerates(t *testing.T, h *hubforge.Hub) {
 	resetPrimeEditorState(t, h)
 	l := h.Location
@@ -209,8 +235,9 @@ func checkPrimeSplicesSettingsAndRegenerates(t *testing.T, h *hubforge.Hub) {
 	if err != nil {
 		t.Fatalf("read workspace: %v", err)
 	}
-	if !strings.Contains(string(first), string(settings.Raw)) {
-		t.Fatalf("workspace file does not carry the prime's settings verbatim:\n%s", first)
+	workspaceTitle := "TST: " + l.RepoName + " workspace"
+	if ws := readWorkspaceLook(t, wsPath); ws.TabSize != 2 || ws.Title != workspaceTitle || ws.Colors["titleBar.activeBackground"] != vscode.PrimeColor || ws.Colors["activityBar.background"] != vscode.WorkspaceColor {
+		t.Fatalf("workspace settings = %+v; want the prime's tabSize 2, title %q, green on the title bar and %s on the activity bar", ws, workspaceTitle, vscode.WorkspaceColor)
 	}
 
 	if _, err := Spawn(l, prime); err != nil {
@@ -229,7 +256,7 @@ func checkPrimeSplicesSettingsAndRegenerates(t *testing.T, h *hubforge.Hub) {
 	}
 	changed := readPrimeLook(t, settingsPath)
 	got, _ := os.ReadFile(wsPath)
-	if changed.TabSize != 8 || !strings.Contains(string(got), string(changed.Raw)) || strings.Contains(string(got), "keep me") {
+	if changed.TabSize != 8 || readWorkspaceLook(t, wsPath).TabSize != 8 || strings.Contains(string(got), "keep me") {
 		t.Errorf("changed settings not reflected:\n%s", got)
 	}
 
@@ -267,7 +294,7 @@ func checkPrimeSettingsReadFailure(t *testing.T, h *hubforge.Hub) {
 	}
 }
 
-// checkPrimeWriteFailure plants a read-only workspace file of different bytes and asserts the prime spawn returns the write error, launches nothing and leaves the file's bytes.
+// checkPrimeWriteFailure plants a read-only workspace file of different bytes and asserts the prime spawn and the prime seed return the write error, the spawn launches nothing and both leave the file's bytes.
 // It skips as root, where mode bits refuse nothing.
 func checkPrimeWriteFailure(t *testing.T, h *hubforge.Hub) {
 	if os.Geteuid() == 0 {
@@ -294,14 +321,38 @@ func checkPrimeWriteFailure(t *testing.T, h *hubforge.Hub) {
 	if readErr != nil || !bytes.Equal(got, planted) {
 		t.Errorf("workspace file = %q (read err %v), want the planted bytes", got, readErr)
 	}
+
+	_, err = Seed(l, primeOf(t, h))
+	if err == nil || !strings.Contains(err.Error(), "write workspace file") {
+		t.Fatalf("Seed error = %v, want the write cause", err)
+	}
+	got, readErr = os.ReadFile(wsPath)
+	if readErr != nil || !bytes.Equal(got, planted) {
+		t.Errorf("workspace file after Seed = %q (read err %v), want the planted bytes", got, readErr)
+	}
 }
 
-// primeLook is the part of a seeded settings.json the prime checks read, with the file's bytes.
+// primeLook is the part of a seeded settings.json, or of a workspace file's settings, the prime checks read.
 type primeLook struct {
 	TabSize int               `json:"editor.tabSize"`
 	Title   string            `json:"window.title"`
 	Colors  map[string]string `json:"workbench.colorCustomizations"`
-	Raw     []byte            `json:"-"`
+}
+
+// readWorkspaceLook reads the workspace file at path and decodes the settings it carries.
+func readWorkspaceLook(t *testing.T, path string) primeLook {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read workspace: %v", err)
+	}
+	var ws struct {
+		Settings primeLook `json:"settings"`
+	}
+	if err := json.Unmarshal(data, &ws); err != nil {
+		t.Fatalf("decode workspace: %v\n%s", err, data)
+	}
+	return ws.Settings
 }
 
 // readPrimeLook reads and decodes the settings.json at path.
@@ -315,6 +366,5 @@ func readPrimeLook(t *testing.T, path string) primeLook {
 	if err := json.Unmarshal(data, &look); err != nil {
 		t.Fatalf("decode settings: %v\n%s", err, data)
 	}
-	look.Raw = data
 	return look
 }

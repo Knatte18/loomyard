@@ -71,6 +71,11 @@ func TestSpawnScenario(t *testing.T) {
 	}) {
 		return
 	}
+	if !step("prime seed writes the hub workspace with its own look", func(t *testing.T) {
+		checkPrimeSeedWritesHubWorkspace(t, h)
+	}) {
+		return
+	}
 	if !step("prime splices settings and regenerates", func(t *testing.T) {
 		checkPrimeSplicesSettingsAndRegenerates(t, h)
 	}) {
@@ -110,7 +115,7 @@ func TestSpawnAnchoredScenario(t *testing.T) {
 		hubforge.ReanchorPair(t, h, slug, taskAnchor)
 		anchorDir := filepath.Join(fabricengine.WorktreePath(h.Location, slug), taskAnchor)
 
-		if err := Seed(h.Location, slug); err != nil {
+		if _, err := Seed(h.Location, slug); err != nil {
 			t.Fatalf("Seed: %v", err)
 		}
 		assertAttachTaskOnly(t, anchorDir)
