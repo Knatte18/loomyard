@@ -115,7 +115,7 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 	// A separate Enter then submits it.
 	// The dialect's discard-line key goes first: input routed to the booting pane before the payload, a viewer's keystrokes or a terminal reply while a window switch lands on it, would otherwise prefix the launch line and break it.
 	sh := shell.ForGOOS()
-	composedLine, exe := composePaneLaunchLine(sh, launchCmd, s.GUID, s.Name, e.geom.ParentName)
+	composedLine, exe := composePaneLaunchLine(sh, e.executablePath, launchCmd, s.GUID, s.Name, e.geom.ParentName)
 	s.LymBin = exe
 	payload := stageLaunchScript(sh, e.stateDir(), s.GUID, composedLine)
 	if key := sh.DiscardLineKey(); key != "" {

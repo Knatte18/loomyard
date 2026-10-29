@@ -1,11 +1,7 @@
 //go:build tier0
 
-// panebin_test.go hermetically covers panebin.go's composition: paneBinPrelude and
-// composePaneLaunchLine, driven directly against injected inputs with no tmux and no process
-// spawned. Every case injects the executable path by overriding executablePath and restoring it via
-// t.Cleanup -- under go test the live os.Executable() value is the test binary's path, which
-// PATTERN-spawn-observability bars re-exec'ing, so no case here reads
-// it.
+// panebin_test.go hermetically covers panebin.go's composition: paneBinPrelude and composePaneLaunchLine, driven directly against injected inputs with no tmux and no process spawned.
+// Every case passes a stub executable lookup: under go test the live os.Executable() value is the test binary's path, which PATTERN-spawn-observability bars re-exec'ing, so no case here reads it.
 // The stageLaunchScript cases at the end cover the per-strand launch script file.
 
 package reedengine
@@ -83,6 +79,7 @@ func TestPaneBinPrelude_ComposesPrependThenExport(t *testing.T) {
 // the prelude, then the .NET build-server exports, the name export (always when a name is told), the parent export (only when a parent is told), then the command, all on one line;
 // an empty command emits the prelude and exports alone with no trailing separator;
 // and a failed executable lookup drops only the prelude, passing the command and exports through with a warning naming the strand.
+// It captures the process-global logger, so it does not run in parallel.
 //
 //testtiming:keep pins the composed pane launch line per dialect: prelude, name and parent exports then the command on one line, the prelude alone for an empty command, and only the prelude dropped with a warning naming the strand when the executable cannot be resolved; its covering tests run this code without asserting it
 func TestComposePaneLaunchLine(t *testing.T) {
@@ -158,16 +155,16 @@ func TestComposePaneLaunchLine(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			withInjectedExecutablePath(t, func() (string, error) {
+			executablePath := func() (string, error) {
 				if tt.executable != nil {
 					return "", tt.executable
 				}
 				return exe, nil
-			})
+			}
 			for _, sh := range launchScriptDialects() {
 				buf := logcapture.CaptureVerbose(t)
 
-				got, gotExe := composePaneLaunchLine(sh, tt.cmd, guid, tt.strand, tt.parent)
+				got, gotExe := composePaneLaunchLine(sh, executablePath, tt.cmd, guid, tt.strand, tt.parent)
 
 				wantExe := exe
 				if tt.executable != nil {
@@ -283,6 +280,7 @@ func TestStageLaunchScript_WriteFailureDegrades(t *testing.T) {
 }
 
 // TestComposeSwitchCommand pins the switch command a key binding runs and the follow command the follow button runs: the pinned tokens are quoted once and have every # doubled, #{q:client_name} or #{q:session_name} stays an unquoted word, and an unresolvable executable pins nothing.
+// It captures the process-global logger, so it does not run in parallel.
 func TestComposeSwitchCommand(t *testing.T) {
 	const (
 		exe        = "/opt/it's#here/lym"
@@ -295,10 +293,10 @@ func TestComposeSwitchCommand(t *testing.T) {
 			direction = "--next"
 		}
 		t.Run(direction, func(t *testing.T) {
-			withInjectedExecutablePath(t, func() (string, error) { return exe, nil })
+			executablePath := func() (string, error) { return exe, nil }
 			sh := shell.Posix()
 
-			got, ok := composeSwitchCommand(sh, next, socketPath, tmuxPath)
+			got, ok := composeSwitchCommand(sh, executablePath, next, socketPath, tmuxPath)
 
 			want := sh.Invoke(exe) + " reed switch " + direction + " --socket " + sh.Quote(socketPath) + " --client #{q:client_name} --tmux " + sh.Quote(tmuxPath)
 			want = strings.ReplaceAll(want, "#{q:client_name}", "\x00")
@@ -311,10 +309,10 @@ func TestComposeSwitchCommand(t *testing.T) {
 	}
 
 	t.Run("unresolvable executable pins nothing", func(t *testing.T) {
-		withInjectedExecutablePath(t, func() (string, error) { return "", errors.New("no executable") })
+		executablePath := func() (string, error) { return "", errors.New("no executable") }
 		logs := logcapture.CaptureVerbose(t)
 
-		got, ok := composeSwitchCommand(shell.Posix(), true, socketPath, tmuxPath)
+		got, ok := composeSwitchCommand(shell.Posix(), executablePath, true, socketPath, tmuxPath)
 
 		if ok || got != "" {
 			t.Errorf("composeSwitchCommand with an unresolvable executable = (%q, %v), want (\"\", false)", got, ok)
@@ -325,10 +323,10 @@ func TestComposeSwitchCommand(t *testing.T) {
 	})
 
 	t.Run("follow", func(t *testing.T) {
-		withInjectedExecutablePath(t, func() (string, error) { return exe, nil })
+		executablePath := func() (string, error) { return exe, nil }
 		sh := shell.Posix()
 
-		got, ok := composeFollowCommand(sh, socketPath, tmuxPath)
+		got, ok := composeFollowCommand(sh, executablePath, socketPath, tmuxPath)
 
 		want := sh.Invoke(exe) + " reed follow --socket " + sh.Quote(socketPath) + " --session #{q:session_name} --tmux " + sh.Quote(tmuxPath)
 		want = strings.ReplaceAll(want, "#{q:session_name}", "\x00")
@@ -340,10 +338,10 @@ func TestComposeSwitchCommand(t *testing.T) {
 	})
 
 	t.Run("follow with an unresolvable executable pins nothing", func(t *testing.T) {
-		withInjectedExecutablePath(t, func() (string, error) { return "", errors.New("no executable") })
+		executablePath := func() (string, error) { return "", errors.New("no executable") }
 		logs := logcapture.CaptureVerbose(t)
 
-		got, ok := composeFollowCommand(shell.Posix(), socketPath, tmuxPath)
+		got, ok := composeFollowCommand(shell.Posix(), executablePath, socketPath, tmuxPath)
 
 		if ok || got != "" {
 			t.Errorf("composeFollowCommand with an unresolvable executable = (%q, %v), want (\"\", false)", got, ok)

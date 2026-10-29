@@ -149,6 +149,7 @@ func waitForClientAttached(t *testing.T, e *Engine, timeout time.Duration) {
 // lands a working attach: attach is the operator's escape hatch, and this pins
 // that a pre-flight with no client size known is a working attach, not a broken one.
 func TestAttachGeometry_DegradedPathStillAttaches(t *testing.T) {
+	t.Parallel()
 	e := setupAttachGeometryFixture(t)
 
 	argv := e.AttachArgv(0, 0)
@@ -181,6 +182,7 @@ func TestAttachGeometry_DegradedPathStillAttaches(t *testing.T) {
 // a client attached to a session that is killed while the server lives on exits 0, and a client attached to a session whose server is killed exits non-zero.
 // A second session is created up front, so killing the first leaves the server running under tmux's exit-empty.
 func TestAttachGeometry_ClientExitStatusOnSessionEndAndServerShutdown(t *testing.T) {
+	t.Parallel()
 	e := setupAttachGeometryFixture(t)
 	const otherSession = "attach-exit-status-other"
 	if err := e.tmux.run("new-session", "-d", "-s", otherSession, "sleep 300"); err != nil {

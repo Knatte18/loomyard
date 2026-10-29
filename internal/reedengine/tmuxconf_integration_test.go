@@ -71,6 +71,7 @@ func bootConcurrently(t *testing.T, engines ...*Engine) []error {
 
 // TestBoot_TmuxConf boots reed with an operator file named by tmux_conf, each time into a server reed starts itself.
 func TestBoot_TmuxConf(t *testing.T) {
+	t.Parallel()
 	t.Run("FileOptionsStandOnTheServer", func(t *testing.T) {
 		conf := writeTmuxConf(t, "set -g @operator_marker yes", "set -g prefix C-a", "set -g escape-time 7")
 		e, _ := tmuxConfEngine(t, t.TempDir(), "worktree", conf)

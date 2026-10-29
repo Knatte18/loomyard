@@ -196,9 +196,9 @@ func (e *Engine) switchBindingCommandsLocked() (prev, next, follow string) {
 		return "", "", ""
 	}
 	sh := shell.ForGOOS()
-	prev, prevOK := composeSwitchCommand(sh, false, socketPath, tmuxPath)
-	next, nextOK := composeSwitchCommand(sh, true, socketPath, tmuxPath)
-	follow, followOK := composeFollowCommand(sh, socketPath, tmuxPath)
+	prev, prevOK := composeSwitchCommand(sh, e.executablePath, false, socketPath, tmuxPath)
+	next, nextOK := composeSwitchCommand(sh, e.executablePath, true, socketPath, tmuxPath)
+	follow, followOK := composeFollowCommand(sh, e.executablePath, socketPath, tmuxPath)
 	if !prevOK || !nextOK || !followOK {
 		return "", "", ""
 	}

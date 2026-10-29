@@ -65,6 +65,7 @@ func bootOwnServer(t *testing.T, e *Engine) error {
 // It reads no operator config, pins the resolved shell on the session, and a pane split into the session starts that shell, which a login-shell pane would not report.
 //
 // The second step pins that the option names the kit's config sets to the shell are the names reed pins per session.
+// It sets HOME, process-global state, so it does not run in parallel.
 func TestBoot_ReadsNoOperatorConfigAndStartsNonLoginPanes(t *testing.T) {
 	t.Run("ReadsNoOperatorConfigAndStartsNonLoginPanes", func(t *testing.T) {
 		home := t.TempDir()

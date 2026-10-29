@@ -79,8 +79,6 @@ func TestWindowOrder(t *testing.T) {
 // TestEnsureShellWindow drives the shell window check through its callers, OpenWindow and AttachArgv.
 // It captures the process-global logger, so it does not run in parallel.
 func TestEnsureShellWindow(t *testing.T) {
-	withInjectedExecutablePath(t, func() (string, error) { return "/opt/lym/bin/lym", nil })
-
 	// The fake derives its session pane listing from list-panes, placing every pane in window @0.
 	const (
 		selvageInSession = "%1"
@@ -141,6 +139,7 @@ func TestEnsureShellWindow(t *testing.T) {
 			t.Run(tt.name+"/"+via, func(t *testing.T) {
 				buf := logcapture.CaptureVerbose(t)
 				e := newTestEngine(t)
+				e.executablePath = func() (string, error) { return "/opt/lym/bin/lym", nil }
 				if err := SaveState(e.stateDir(), &ReedState{SelvagePaneID: tt.selvage}); err != nil {
 					t.Fatalf("SaveState: %v", err)
 				}

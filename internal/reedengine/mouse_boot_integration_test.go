@@ -90,6 +90,7 @@ func readMouseOption(t *testing.T, e *Engine) string {
 // on a separate fresh hub, "on", asserting the live server reports the matching value after Up() in
 // both directions.
 func TestMouseBootIntegration_PinsOptionAtBoot(t *testing.T) {
+	t.Parallel()
 	t.Run("off", func(t *testing.T) {
 		e := newIntegrationEngine(t, "off")
 		if _, err := e.Up(); err != nil {
@@ -118,6 +119,7 @@ func TestMouseBootIntegration_PinsOptionAtBoot(t *testing.T) {
 // set-option, so the live value must stay "off" — proving there is no live toggle without a server
 // restart.
 func TestMouseBootIntegration_NoLiveToggleWithoutRestart(t *testing.T) {
+	t.Parallel()
 	e1 := newIntegrationEngine(t, "off")
 	if _, err := e1.Up(); err != nil {
 		t.Fatalf("first Up(): %v", err)

@@ -29,11 +29,12 @@ func readOrEmpty(path string) string {
 
 // TestLaunchScript_SourcedScriptRunsInThePaneShellScope adds a strand whose command writes a marker file, then checks the script's content, the command's effect, and that LYM_BIN and PATH still carry the prelude's values in the pane shell after the command returned.
 func TestLaunchScript_SourcedScriptRunsInThePaneShellScope(t *testing.T) {
+	t.Parallel()
 	e := newColdScratchEngine(t)
 
 	work := t.TempDir()
 	fakeExe := filepath.Join(work, "fakebin", "lym")
-	withInjectedExecutablePath(t, func() (string, error) { return fakeExe, nil })
+	e.executablePath = func() (string, error) { return fakeExe, nil }
 
 	sh := shell.ForGOOS()
 	q := shell.Posix()
@@ -58,7 +59,7 @@ func TestLaunchScript_SourcedScriptRunsInThePaneShellScope(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read launch script %q: %v", scriptPath, err)
 	}
-	line, _ := composePaneLaunchLine(sh, cmd, strand.GUID, strand.Name, e.geom.ParentName)
+	line, _ := composePaneLaunchLine(sh, e.executablePath, cmd, strand.GUID, strand.Name, e.geom.ParentName)
 	if want := line + "\n"; string(got) != want {
 		t.Errorf("launch script = %q, want %q", got, want)
 	}

@@ -182,7 +182,7 @@
 // The composition lives in panebin.go and is reached from the one chokepoint, so the property holds by construction for every present and future AddStrand caller including Resume's replay.
 // The mechanism is a typed shell statement rather than `split-window -e` or `set-environment`, so it prepends onto the pane's live PATH instead of replacing it with a value computed from the lym process's own environment, it survives the pane shell's profile (which has already run by the time anything is typed), and it needs no multiplexer capability.
 // Selvage's pane and the new-session first pane are out of scope.
-// The detached `lym` window OpenWindow opens composes its command in panebin.go with the same prelude, and every key binding that runs `lym` names the pinning binary's absolute path from the same executablePath seam, each `#` doubled for run-shell's format expansion.
+// The detached `lym` window OpenWindow opens composes its command in panebin.go with the same prelude, and every key binding that runs `lym` names the pinning binary's absolute path from the same executable-path lookup, an engine field New sets to os.Executable, each `#` doubled for run-shell's format expansion.
 // The detached `lym loom run` and watchdog daemon spawns are outside the rule, since both are spawned from the executable path and never resolve `lym` from PATH.
 // Every shell token is emitted through internal/shell, in the shell.ForGOOS() dialect the launch command uses.
 // A failed launch-script write degrades to typing the composed line, and an unresolvable executable to a pane with no prelude and no such binding, each with a named logger.Warn, never a failed launch.

@@ -24,7 +24,13 @@ import (
 
 // TestNew_RowNamesMatchTheDurableIdentityConstants asserts New assembles exactly the rows the Name* constants name, in order.
 // It is the durable-identity guard internal/loomrecipe's own row-name test mirrors.
+// It also pins NameRunShed's value: shedengine persists the row name, not the engine name, into the status file,
+// so a symmetry-minded rename of the row onto its InnerRun engine would break resume for an in-flight run.
 func TestNew_RowNamesMatchTheDurableIdentityConstants(t *testing.T) {
+	if NameRunShed != "Run-Shed" {
+		t.Errorf("NameRunShed = %q; want the durable value %q", NameRunShed, "Run-Shed")
+	}
+
 	env, paths := testEnv(t)
 	shed, err := New(env, paths)
 	if err != nil {
@@ -171,33 +177,6 @@ func TestNew_CarriesShedPathsVerbatim(t *testing.T) {
 	}
 	if shed.MaxBounces != paths.MaxBounces {
 		t.Errorf("MaxBounces = %d; want %d", shed.MaxBounces, paths.MaxBounces)
-	}
-}
-
-// TestNameRunShed_ValueIsPinnedAgainstASymmetryRename exists because shedengine persists
-// CurrentProducer -- the row name, not the engine name -- into the status file, so renaming a row
-// breaks resume for an in-flight run. This guard makes a later symmetry-minded rename of the
-// durable identity (matching the engine's InnerRun rename onto the row) fail loudly here rather
-// than silently breaking resume.
-func TestNameRunShed_ValueIsPinnedAgainstASymmetryRename(t *testing.T) {
-	if NameRunShed != "Run-Shed" {
-		t.Errorf("NameRunShed = %q; want the durable value %q", NameRunShed, "Run-Shed")
-	}
-
-	env, paths := testEnv(t)
-	shed, err := New(env, paths)
-	if err != nil {
-		t.Fatalf("New() error = %v, want nil", err)
-	}
-
-	wantNames := []string{NameWorktreeCreate, NameSeedChild, NameOpenWindow, NameSeedIDE, NameOpenIDE, NameRunShed, NameLand, NameWorktreeTeardown}
-	if len(shed.Producers) != len(wantNames) {
-		t.Fatalf("New() row count = %d, want %d", len(shed.Producers), len(wantNames))
-	}
-	for i, want := range wantNames {
-		if got := shed.Producers[i].Name; got != want {
-			t.Errorf("row %d name = %q; want %q", i, got, want)
-		}
 	}
 }
 

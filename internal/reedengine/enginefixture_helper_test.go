@@ -58,14 +58,6 @@ func newTestEngine(t *testing.T) *Engine {
 	return New(cfg, geom, testScrub)
 }
 
-// withInjectedExecutablePath overrides executablePath for the duration of t, restoring the previous value on cleanup.
-func withInjectedExecutablePath(t *testing.T, fn func() (string, error)) {
-	t.Helper()
-	prev := executablePath
-	executablePath = fn
-	t.Cleanup(func() { executablePath = prev })
-}
-
 // containsArg reports whether want appears verbatim anywhere in args.
 func containsArg(args []string, want string) bool {
 	for _, a := range args {

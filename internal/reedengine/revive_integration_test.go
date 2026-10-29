@@ -115,6 +115,7 @@ func killServerAndWait(t *testing.T, e *Engine) {
 
 // TestRevive_RestartedServerKeepsSpawnOrder pins the revival against a real server restart.
 func TestRevive_RestartedServerKeepsSpawnOrder(t *testing.T) {
+	t.Parallel()
 	names := []string{"wt-a", "wt-b", "wt-c"}
 
 	t.Run("BootingTheLastBringsTheSessionsBackInListOrder", func(t *testing.T) {

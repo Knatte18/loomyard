@@ -14,9 +14,8 @@ import (
 )
 
 // TestOpenWindow drives every outcome of OpenWindow.
-// The injected executable path makes it process-global, so it does not run in parallel.
 func TestOpenWindow(t *testing.T) {
-	withInjectedExecutablePath(t, func() (string, error) { return "/opt/lym/bin/lym", nil })
+	t.Parallel()
 	const name = "batten:slug"
 	sh := shell.ForGOOS()
 	wantCommand := sh.Chain(paneBinPrelude(sh, "/opt/lym/bin/lym"), sh.Invoke("lym")+" "+sh.Quote("batten")+" "+sh.Quote("run")+" "+sh.Quote("my slug"))
@@ -135,7 +134,9 @@ func TestOpenWindow(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			e := newTestEngine(t)
+			e.executablePath = func() (string, error) { return "/opt/lym/bin/lym", nil }
 			fake := installFakeTmux(t, e)
 			fake.answer("-V", fakeVersionOutput, nil)
 			fake.answer("list-commands", fakeFullCommandsOutput(), nil)

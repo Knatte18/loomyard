@@ -52,6 +52,8 @@ type Engine struct {
 	ensureServerGone func(serverPID int) error
 	// paneAge reports the elapsed time of a pane's first process; New sets it to paneProcessAge and a test sets a stub.
 	paneAge func(pid int) (time.Duration, bool)
+	// executablePath resolves the path of the running lym binary, which pane preludes and key bindings name; New sets it to os.Executable and a test sets a stub, since under go test the live value is the test binary.
+	executablePath func() (string, error)
 }
 
 // New builds an Engine for the given Config, Geometry and EnvScrub.
@@ -68,9 +70,10 @@ func New(cfg Config, geom Geometry, scrub EnvScrub) *Engine {
 		scrub: scrub,
 		tmux:  NewTmuxCmd(cfg.Tmux, geom.SocketKey),
 
-		warnOut: os.Stderr,
-		build:   buildvcs.Running(),
-		paneAge: paneProcessAge,
+		warnOut:        os.Stderr,
+		build:          buildvcs.Running(),
+		paneAge:        paneProcessAge,
+		executablePath: os.Executable,
 	}
 }
 
