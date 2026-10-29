@@ -397,11 +397,12 @@ User-facing modules each get one `lym <module>` namespace:
   `lym ide spawn` regenerates `tasks.json` on every spawn, overwriting an untracked one, and in an existing `settings.json` sets only the window title and colour keys lym owns.
   The title bar takes the project's colour, green for the prime and a task under it, a beam's recorded `beam_color` for the beam and a task under it, and the activity bar the worktree's own colour, which a task picks avoiding its siblings';
   `window.title` is the upper-cased hub shortname, a colon and the slug.
-  A beam's own `<RepoName>-<beam>.code-workspace` carries the beam's settings.
-  `lym ide seed` writes the same config and launches nothing; with no slug it seeds the worktree it runs in, the prime included.
+  A beam's own `<RepoName>-<beam>.code-workspace` carries the beam's settings, as the hub's carries the prime's, each with the workspace look: `window.title` names the repository or beam followed by `workspace`, and the activity bar takes the workspace's blue-grey, which no worktree takes.
+  `lym ide seed` writes the same config and, for the prime, the hub workspace file, and launches nothing; with no slug it seeds the worktree it runs in, the prime included.
   It keeps `.vscode/` out of git through the repository's shared `info/exclude` at the anchor subpath rather than `.gitignore`, and leaves a tracked `tasks.json` alone with a warning.
-  `lym ide spawn` also seeds a `// lym:begin` … `// lym:end` block into the user's VS Code `keybindings.json`, forwarding the four Alt keys of reed's tmux bindings to the integrated terminal and binding `ctrl+alt+a` to run the `reed attach` task, and reports the outcome in its JSON result.
-  It writes only between its own markers, and a file it cannot merge safely is skipped with a reason and never fails the spawn.
+  `lym ide spawn` and `lym ide seed` also seed a `// lym:begin` … `// lym:end` block into the user's VS Code `keybindings.json`, forwarding the four Alt keys of reed's tmux bindings through the integrated terminal and binding `ctrl+alt+a` to run the `reed attach` task, and report the outcome in their JSON result.
+  A user-level binding applies in every VS Code window, so the keys reach reed in any hub.
+  It writes only between its own markers, and a file it cannot merge safely is skipped with a reason and never fails the verb.
   Batten does not open it: VS Code opens only when the operator runs `lym ide`. ✅ Implemented.
 - **selfreport** — file bugs and enhancements against `Knatte18/loomyard` via go-github through `internal/githubclient`, filed by `lym selfreport create <title>`, run by the operator or by an agent; the friction reflection is its only automatic caller, and no Go code files an issue itself.
   It files LoomYard bugs only, from whatever hub lym runs in; an issue about another repository is filed to that repository's own issues.
@@ -661,7 +662,7 @@ User-facing modules each get one `lym <module>` namespace:
   A stop the tackler escalates meets the arbiter next, wired in batten's driver after the tackler and set by `batten.yaml`'s `arbiter`, `arbiter_timeout_min` and `arbiter_max_spawns`, overrides of `shed.yaml`'s keys of the same names; its goto is held to the halted row.
   The process holds the run's driver lock for its life, so a second `lym batten run` for the slug is refused.
   Between `Seed-Child` and `Run-Shed`, three `Command` rows each run one shell command from `internal/shedadapters`' `Command` producer, each run only when its entry gate's `batten.yaml` setting, which a task's `run_settings` may set, is on: `Open-Window` (`open_window`, on by default, command `open_window_command`) opens one desktop terminal window on the task worktree, titled with the slug, through `lym reed window`;
-  `Seed-IDE` (`seed_ide`, on, command `seed_ide_command`) runs `lym ide seed`, which writes the task worktree's VS Code title, colours and `.vscode/` config as `lym ide spawn` does, without the user's key bindings;
+  `Seed-IDE` (`seed_ide`, on, command `seed_ide_command`) runs `lym ide seed`, which writes the task worktree's VS Code title, colours and `.vscode/` config and the user's key bindings as `lym ide spawn` does;
   `Open-IDE` (`open_ide`, off, command `open_ide_command`) runs `lym ide open`, which opens VS Code on it.
   A command key is read from the template and the board default layer only; `lym config batten --layer default --set <key>=<value>` from the prime changes one, and a different value in the task worktree's own layers is ignored with a warning.
   A failed command only warns, and the row passes on.

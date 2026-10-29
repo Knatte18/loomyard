@@ -1,6 +1,6 @@
 //go:build tier0
 
-// workspace_test.go covers BuildWorkspace's exact output shape and its settings splicing.
+// workspace_test.go covers BuildWorkspace's exact output shape and its settings splicing, and the workspace look WorkspaceSettings sets.
 
 package vscode
 
@@ -48,6 +48,94 @@ func TestBuildWorkspace(t *testing.T) {
 			}
 			if tt.valid && !json.Valid(got) {
 				t.Errorf("output is not valid JSON:\n%s", got)
+			}
+		})
+	}
+}
+
+func TestWorkspaceSettings(t *testing.T) {
+	t.Parallel()
+
+	const beamColor = "#7d2d6b"
+	lookColors := func(project string) map[string]any {
+		return map[string]any{
+			"titleBar.activeBackground":      project,
+			"titleBar.inactiveBackground":    project,
+			"titleBar.activeForeground":      "#ffffff",
+			"titleBar.inactiveForeground":    "#ffffffaa",
+			"activityBar.background":         WorkspaceColor,
+			"activityBar.foreground":         "#ffffff",
+			"activityBar.inactiveForeground": "#ffffffaa",
+		}
+	}
+	withKey := func(colors map[string]any, key string, value any) map[string]any {
+		colors[key] = value
+		return colors
+	}
+
+	tests := []struct {
+		name     string
+		settings []byte
+		want     map[string]any
+	}{
+		{
+			"PrimeSettingsKeepTheirKeysAndGreen",
+			[]byte(`{"editor.tabSize": 2, "window.title": "LY: prime", "workbench.colorCustomizations": {"titleBar.activeBackground": "#1b5e20", "activityBar.background": "#1b5e20", "editor.background": "#000000"}}`),
+			map[string]any{
+				"editor.tabSize":                float64(2),
+				"window.title":                  "LY: hub workspace",
+				"workbench.colorCustomizations": withKey(lookColors(PrimeColor), "editor.background", "#000000"),
+			},
+		},
+		{
+			"BeamSettingsKeepTheBeamColorOnTheTitleBar",
+			[]byte(`{"workbench.colorCustomizations": {"titleBar.activeBackground": "` + beamColor + `", "activityBar.background": "#2d4f7d"}}`),
+			map[string]any{"window.title": "LY: hub workspace", "workbench.colorCustomizations": lookColors(beamColor)},
+		},
+		{
+			"JSONCWithBOMDecodes",
+			append([]byte{0xEF, 0xBB, 0xBF}, []byte("{\n  // c\n  \"a\": 1,\n}")...),
+			map[string]any{"a": float64(1), "window.title": "LY: hub workspace", "workbench.colorCustomizations": lookColors(PrimeColor)},
+		},
+		{
+			"NoSettingsTakeGreen",
+			nil,
+			map[string]any{"window.title": "LY: hub workspace", "workbench.colorCustomizations": lookColors(PrimeColor)},
+		},
+		{
+			"CommentsOnlyTakeGreen",
+			[]byte("// only a comment"),
+			map[string]any{"window.title": "LY: hub workspace", "workbench.colorCustomizations": lookColors(PrimeColor)},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := WorkspaceSettings(tt.settings, "LY: hub workspace")
+			if err != nil {
+				t.Fatalf("WorkspaceSettings: %v", err)
+			}
+			var decoded map[string]any
+			if err := json.Unmarshal(got, &decoded); err != nil {
+				t.Fatalf("WorkspaceSettings output is not JSON: %v\n%s", err, got)
+			}
+			if !reflect.DeepEqual(decoded, tt.want) {
+				t.Errorf("WorkspaceSettings() = %v; want %v", decoded, tt.want)
+			}
+		})
+	}
+
+	undecodable := []struct{ name, settings string }{
+		{"Truncated", `{"a": `},
+		{"Array", `["x"]`},
+		{"Null", `null`},
+	}
+	for _, tt := range undecodable {
+		t.Run("UndecodableReturnedUnchanged_"+tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := WorkspaceSettings([]byte(tt.settings), "LY: hub workspace")
+			if err != nil || string(got) != tt.settings {
+				t.Errorf("WorkspaceSettings(%q) = %q, %v; want the settings unchanged and no error", tt.settings, got, err)
 			}
 		})
 	}

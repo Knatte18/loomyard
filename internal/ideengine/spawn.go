@@ -2,7 +2,7 @@
 // It resolves a worktree's window title and colours from the prime, the board's beams and the worktree's parent, generates the worktree's .vscode/ config, and launches VS Code;
 // it regenerates tasks.json on every call and keeps .vscode/ out of git through info/exclude.
 // A task slug opens its bare folder.
-// The prime instead opens the lym-generated hub workspace <hub>/<RepoName>.code-workspace (prime, Bolt, every task pair), regenerated on every prime spawn.
+// The prime instead opens the lym-generated hub workspace <hub>/<RepoName>.code-workspace (prime, Bolt, every task pair), regenerated on every prime spawn or seed.
 
 package ideengine
 
@@ -30,49 +30,60 @@ var CodeLauncher = vscode.Launch
 // It defaults to vscode.UserKeybindingsPath and is exported so that tests in other packages can point it at a temporary file.
 var KeybindingsPath = vscode.UserKeybindingsPath
 
-// Spawn regenerates a worktree's .vscode/ config on every call and launches VS Code.
-// It keeps .vscode/ out of git through info/exclude and never writes a .gitignore;
-// a tracked .vscode/tasks.json is left alone with a warning, and the launch still happens.
-// A task slug launches its bare folder <hub>/<slug>/<its own anchor> and writes no workspace file.
-// When slug names the prime, Spawn regenerates the hub workspace file <hub>/<RepoName>.code-workspace, whose settings carry the prime's .vscode/settings.json, and launches that file instead;
+// Spawn writes the window title and colours and the .vscode/ config of the worktree slug and the user's lym key bindings, then launches VS Code.
+// A task slug launches its bare folder <hub>/<slug>/<its own anchor>.
+// When slug names the prime, Spawn first regenerates the hub workspace file <hub>/<RepoName>.code-workspace and launches that file instead;
 // every error on that path is returned, never degraded to the bare folder.
 // A failure to resolve the prime's name is logged and degrades to the bare-folder path.
-// Before launching it seeds the lym block of key bindings into the user's VS Code keybindings.json and returns the outcome beside the error;
-// a skipped seed never fails the spawn.
+// It returns the keybindings seed's outcome beside the error; a skipped keybindings seed never fails the spawn.
 func Spawn(l *lymcwd.Location, slug string) (vscode.KeybindingsResult, error) {
+	result, err := seed(l, slug)
+	if err != nil {
+		return result.keybindings, err
+	}
+	return result.keybindings, CodeLauncher(result.launchPath)
+}
+
+// Seed writes the window title and colours and the .vscode/ config of the worktree slug, the prime or a pair, and launches nothing.
+// It keeps .vscode/ out of git through info/exclude and never writes a .gitignore;
+// a tracked .vscode/tasks.json is left alone with a warning.
+// When slug names the prime, Seed then regenerates the hub workspace file, whose settings carry the prime's with the workspace look, and returns any error on that path;
+// a task slug leaves the workspace file as it is.
+// It seeds the lym block of key bindings, the Alt-arrow keys the integrated terminal passes to reed, into the user's VS Code keybindings.json and returns the outcome beside the error;
+// a skipped keybindings seed never fails the seed.
+func Seed(l *lymcwd.Location, slug string) (vscode.KeybindingsResult, error) {
+	result, err := seed(l, slug)
+	return result.keybindings, err
+}
+
+// seedResult is what seed did: the keybindings seed's outcome and the path a launch of the worktree opens.
+type seedResult struct {
+	keybindings vscode.KeybindingsResult
+	launchPath  string
+}
+
+// seed writes slug's .vscode/ config, seeds the user's keybindings.json and, for the prime, regenerates the hub workspace file, which is then the launch path;
+// a task's launch path is its bare folder at its own anchor.
+func seed(l *lymcwd.Location, slug string) (seedResult, error) {
 	own, err := lymcwd.NamedWorktree(l.HubPath, slug)
 	if err != nil {
-		return vscode.KeybindingsResult{}, fmt.Errorf("read the anchor of %q: %w", slug, err)
+		return seedResult{}, fmt.Errorf("read the anchor of %q: %w", slug, err)
 	}
 	worktreeDir, look, primeName, primeResolved := resolveSpawnTarget(l, own, slug)
 
 	if err := writeWorktreeConfig(own, worktreeDir, slug, look); err != nil {
-		return vscode.KeybindingsResult{}, err
+		return seedResult{}, err
 	}
 
-	keybindings := seedKeybindings()
-
-	openDir := filepath.Join(worktreeDir, own.AnchorRel)
+	result := seedResult{keybindings: seedKeybindings(), launchPath: filepath.Join(worktreeDir, own.AnchorRel)}
 	if primeResolved && slug == primeName {
 		workspacePath, err := fabricengine.RegenerateHubWorkspace(fabricengine.NewMutations(l.HubPath), l)
 		if err != nil {
-			return keybindings, err
+			return result, err
 		}
-		return keybindings, CodeLauncher(workspacePath)
+		result.launchPath = workspacePath
 	}
-
-	return keybindings, CodeLauncher(openDir)
-}
-
-// Seed writes the window title and colours and the .vscode/ config of the worktree slug, the prime or a pair, as Spawn does, and launches nothing.
-// It leaves the user's keybindings.json alone.
-func Seed(l *lymcwd.Location, slug string) error {
-	own, err := lymcwd.NamedWorktree(l.HubPath, slug)
-	if err != nil {
-		return fmt.Errorf("read the anchor of %q: %w", slug, err)
-	}
-	worktreeDir, look, _, _ := resolveSpawnTarget(l, own, slug)
-	return writeWorktreeConfig(own, worktreeDir, slug, look)
+	return result, nil
 }
 
 // OpenTask launches VS Code on task slug's bare folder at the task's own anchor, as Spawn does for a task pair, and writes nothing.

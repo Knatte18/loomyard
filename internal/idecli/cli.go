@@ -2,7 +2,7 @@
 //
 // Command() returns the root "ide" command with four subcommands — spawn, menu, seed and open.
 // spawn and menu wrap the existing handler bodies;
-// seed writes an existing worktree's .vscode/ config, window title and colours and launches nothing;
+// seed writes an existing worktree's .vscode/ config, window title and colours, the hub workspace file for the prime, and the user's lym key bindings, and launches nothing;
 // with no slug it seeds the worktree it runs in, the prime included.
 // open starts VS Code on a pair's folder and takes a slug.
 // Layout resolution happens once in a PersistentPreRunE so that the no-arg "lym ide" listing never
@@ -13,6 +13,7 @@ package idecli
 import (
 	"fmt"
 	"io"
+	"maps"
 	"os"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
@@ -100,19 +101,26 @@ func Command() *cobra.Command {
 		},
 	}
 
-	seedCmd := slugVerbCommand(&l, "seed", "write the VS Code config, window title and colours of the prime or a task worktree, the current worktree with no slug", true, ideengine.Seed)
-	openCmd := slugVerbCommand(&l, "open", "open a task worktree's folder in VS Code", false, ideengine.OpenTask)
+	seedCmd := slugVerbCommand(&l, "seed", "write the VS Code config, window title and colours of the prime or a task worktree, the current worktree with no slug, and the user key bindings", true,
+		func(l *lymcwd.Location, slug string) (map[string]any, error) {
+			keybindings, err := ideengine.Seed(l, slug)
+			return map[string]any{"keybindings": keybindings}, err
+		})
+	openCmd := slugVerbCommand(&l, "open", "open a task worktree's folder in VS Code", false,
+		func(l *lymcwd.Location, slug string) (map[string]any, error) {
+			return nil, ideengine.OpenTask(l, slug)
+		})
 
 	cmd.AddCommand(spawnCmd, menuCmd, seedCmd, openCmd)
 	return cmd
 }
 
-// slugVerbCommand builds the operator-audience verb name <slug> that runs action on an existing worktree of the hub.
+// slugVerbCommand builds the operator-audience verb name <slug> that runs action on an existing worktree of the hub and prints the slug and the fields action returns.
 // With slugOptional, the slug may be left out and names the worktree the verb runs in, the prime included.
 // Before calling action it refuses a slug failing the slug grammar and one whose worktree directory under the hub does not exist,
 // so the verb acts only on a directory directly under the hub.
 // The location is read through l when the verb runs, after the root's pre-run has resolved it.
-func slugVerbCommand(l **lymcwd.Location, name, short string, slugOptional bool, action func(*lymcwd.Location, string) error) *cobra.Command {
+func slugVerbCommand(l **lymcwd.Location, name, short string, slugOptional bool, action func(*lymcwd.Location, string) (map[string]any, error)) *cobra.Command {
 	use := name + " <slug>"
 	if slugOptional {
 		use = name + " [<slug>]"
@@ -147,11 +155,14 @@ func slugVerbCommand(l **lymcwd.Location, name, short string, slugOptional bool,
 				return nil
 			}
 
-			if err := action(*l, slug); err != nil {
+			fields, err := action(*l, slug)
+			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(cmd.OutOrStdout(), fmt.Sprintf("%s failed: %v", name, err)))
 				return nil
 			}
-			clihelp.SetExit(cmd.Context(), output.Ok(cmd.OutOrStdout(), map[string]any{"slug": slug}))
+			result := map[string]any{"slug": slug}
+			maps.Copy(result, fields)
+			clihelp.SetExit(cmd.Context(), output.Ok(cmd.OutOrStdout(), result))
 			return nil
 		},
 	}

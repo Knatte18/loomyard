@@ -1135,8 +1135,9 @@
 // Beside it, `BeamWorkspacePath` names `<hub>/<RepoName>-<beam>.code-workspace` for each pair whose origin record carries the beam mark, listing the beam, its parent, `Bolt` and every pair whose parent is the beam; a sub-beam appears there by its own worktree only and has a file of its own.
 // Each beam file carries `lym.generated: true` as its first key, and a regeneration removes such a file only when its beam pair is gone, through the hub's `os.Root`, so an operator's unmarked file of that name stays.
 // The files are lym-owned and rewritten from the hub's current worktrees and origin records whenever their bytes would change, so a hand edit is overwritten;
-// settings belong in the prime's `.vscode/settings.json`, which the hub file splices verbatim.
+// settings belong in the prime's `.vscode/settings.json`, which the hub file splices.
 // A beam's file splices the beam's own `.vscode/settings.json` when it exists and can be read, and the prime's otherwise, with a Warn for an unreadable one.
+// Each file splices its settings with the workspace look `vscode.WorkspaceSettings` sets, titled `<SHORTNAME>: <name> workspace` after the repository or the beam, so a workspace window is told apart from the worktree whose settings it carries.
 // A regeneration runs under `HubWorkspaceLockPath(hub)`, a leaf lock under the hub scratch directory, and lists the folders only after taking it,
 // so a pair created while the regeneration waits is listed.
 // The write goes through an `os.Root` at the hub, so a symlink planted at the file's path that escapes the hub is refused.

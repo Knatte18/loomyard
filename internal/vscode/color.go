@@ -23,6 +23,10 @@ var ErrUnsupported = errors.New("vscode launch unsupported on this platform")
 // PrimeColor is the green the prime takes on its title bar and activity bar, and every task under the prime on its title bar.
 const PrimeColor = "#1b5e20"
 
+// WorkspaceColor is the blue-grey a workspace window takes on its activity bar.
+// It is outside the palette, so no worktree window takes it.
+const WorkspaceColor = "#455a64"
+
 // palette lists the window colours in pick order, the prime's green first.
 var palette = []string{
 	PrimeColor,

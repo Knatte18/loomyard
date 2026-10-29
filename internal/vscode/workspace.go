@@ -1,4 +1,4 @@
-// workspace.go builds the content of a VS Code .code-workspace file.
+// workspace.go builds the content of a VS Code .code-workspace file and sets the workspace look in the settings it splices.
 // It owns VS Code format knowledge only: folder names and paths arrive as values,
 // and no hub geometry is known here.
 
@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"sort"
 	"strings"
+
+	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 // WorkspaceFolder is one entry of a .code-workspace file's folders array.
@@ -46,6 +48,30 @@ func BuildWorkspace(folders []WorkspaceFolder, settings []byte) ([]byte, error) 
 	out.Write(value)
 	out.WriteString("\n}\n")
 	return out.Bytes(), nil
+}
+
+// WorkspaceSettings returns settings with the keys lym owns set to the look of a workspace window titled title,
+// so a workspace window is told apart from the worktree windows whose settings it splices.
+// The title bar keeps the project colour settings hold, the prime's green when they hold none, and the activity bar takes WorkspaceColor.
+// Every other key is kept, though comments are not.
+// Settings holding no JSON value yield the look's keys alone;
+// settings that do not decode as a JSONC object are returned unchanged with a warning, so the workspace file still splices them.
+func WorkspaceSettings(settings []byte, title string) ([]byte, error) {
+	value := bytes.TrimPrefix(settings, utf8BOM)
+	decoded := map[string]any{}
+	if holdsValue(value) {
+		if err := json.Unmarshal(stripJSONC(value), &decoded); err != nil || decoded == nil {
+			logger.Warn("vscode: workspace settings are not a JSON object; splicing them without the workspace title and colours", "error", err)
+			return settings, nil
+		}
+	}
+	customizations, _ := decoded[colorCustomizationsKey].(map[string]any)
+	projectColor, _ := customizations[titleBarActiveBackground].(string)
+	if projectColor == "" {
+		projectColor = PrimeColor
+	}
+	applyLook(decoded, Look{Title: title, ProjectColor: projectColor, WorktreeColor: WorkspaceColor})
+	return json.MarshalIndent(decoded, "", "  ")
 }
 
 // RelativeSettingKeys returns, sorted, the top-level keys of the settings document whose string value starts with "./" or "../".
