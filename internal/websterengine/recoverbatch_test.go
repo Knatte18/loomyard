@@ -981,11 +981,11 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 	fabricSetup, fabricCheck := failedBatchPrompt("fabric-reference in parent transcript", "card verify failed: go test ./x", "suspect path: internal/x/x.go")
 	doneCheckSetup, doneCheckCheck := failedBatchPrompt("Create target internal/never/there.go# does not resolve")
 	uncheckableRefusal := func(uncheckable ...string) (func(fx *recoverFixture) *websterengine.BatchState, func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error)) {
-		var rec *websterengine.BatchState
 		setup := func(fx *recoverFixture) *websterengine.BatchState {
-			rec = failedRecord("correctness finding")
+			rec := failedRecord("correctness finding")
 			rec.Uncheckable = uncheckable
 			fx.Deps.State.Batches[1] = rec
+			fx.Seeded = rec
 			return rec
 		}
 		check := func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
@@ -1000,6 +1000,7 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 					t.Errorf("error %q lacks %q", err, want)
 				}
 			}
+			rec := fx.Seeded
 			if fx.Deps.State.Batches[1] != rec || !rec.Terminal || rec.Status != websterengine.DigestStatusFailed || rec.StrandGUID != "" {
 				t.Errorf("record changed: %+v", rec)
 			}

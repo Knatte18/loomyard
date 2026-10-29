@@ -51,6 +51,8 @@ type recoverFixture struct {
 	Index *fakeIndex
 	// Head returns the worktree's current HEAD commit.
 	Head func(t *testing.T) string
+	// Seeded is the batch record a row's setup seeded, for the row's check to compare against.
+	Seeded *websterengine.BatchState
 }
 
 func newRecoverFixture(t *testing.T) *recoverFixture {
