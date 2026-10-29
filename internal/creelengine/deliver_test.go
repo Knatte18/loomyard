@@ -2615,8 +2615,12 @@ func TestScheduler_Chases(t *testing.T) {
 		}},
 		{"AChaseTheHolderStillHoldsUnreadIsRefusedForwardingAndStaysWithItsHolder", func(t *testing.T, e *env) {
 			e.start(t)
-			e.postMarked(t, strand(beta), alpha, "question")
+			e.postMarked(t, strand(orch), alpha, "question")
 			e.readBodies(t, strand(alpha), "")
+			// The question's sender holds alpha so its chase clock runs while the delivery worker leaves the chase unread.
+			if _, err := e.store.Hold(strand(orch), alpha, time.Hour); err != nil {
+				t.Fatalf("Hold: %v", err)
+			}
 			e.chaseTicks(15)
 			chase := creelPostTo(e, creel, alpha)
 			before := len(e.store.Log(creelengine.LogFilter{}))
