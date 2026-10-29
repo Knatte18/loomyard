@@ -376,6 +376,21 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 		}
 	})
 
+	if !t.Run("fails with the file and line of a misplaced marker", func(t *testing.T) {
+		f.commitFiles(t, map[string]string{"a/a_test.go": "package a\n\nimport \"testing\"\n\n//lym:guard\nvar misplaced = 1\n\nfunc TestA(t *testing.T) {}\n"})
+		passed, findings := f.runGate(t, nil)
+		if passed || !strings.Contains(findings, "a/a_test.go:5") || !strings.Contains(findings, "directly above") {
+			t.Errorf("gate() passed = %v, findings = %q; want a failure naming a/a_test.go:5 and the way to place the marker", passed, findings)
+		}
+
+		got, err := f.diffGate(toldCommand, baseOf(firstPass.Commit), notScoped)
+		if err != nil || got.Passed || !strings.Contains(got.Findings, "a/a_test.go:5") || !strings.Contains(got.Findings, "directly above") {
+			t.Errorf("darn gate() = %+v, %v; want a failure naming a/a_test.go:5 and the way to place the marker", got, err)
+		}
+	}) {
+		return
+	}
+
 	if !t.Run("fails on a wrapped new comment before any test runs", func(t *testing.T) {
 		f.commitFiles(t, map[string]string{
 			"a/a_test.go": "package a\n\nimport \"testing\"\n\nfunc TestA(t *testing.T) {}\n",
