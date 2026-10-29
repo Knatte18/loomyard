@@ -355,6 +355,7 @@ func gitBranchReadsOnly(args []string) bool {
 
 // splitShellSegments splits cmd into segments at unquoted ;, &, | and newlines, each segment a list of words.
 // A single or double quoted run is part of one word with its quotes removed.
+// An unquoted < or > redirection is no word: the operator, an unquoted file-descriptor number attached before it, an & attached after it and the target word that follows are all dropped, so 2>/dev/null is never read as an operand.
 // A backslash-newline pair is removed, so a continued line stays in its segment.
 // A # at the start of a word comments out the rest of its line.
 // Any other backslash outside single quotes escapes the next character, so an escaped quote opens no quoted run.
@@ -363,16 +364,23 @@ func splitShellSegments(cmd string) [][]string {
 	var words []string
 	var word strings.Builder
 	inWord := false
+	wordQuoted := false
 	var quote rune
+	dropNextWord := false
 	endWord := func() {
 		if inWord {
-			words = append(words, word.String())
+			if !dropNextWord {
+				words = append(words, word.String())
+			}
+			dropNextWord = false
 			word.Reset()
 			inWord = false
+			wordQuoted = false
 		}
 	}
 	endSegment := func() {
 		endWord()
+		dropNextWord = false
 		segments = append(segments, words)
 		words = nil
 	}
@@ -400,9 +408,24 @@ func splitShellSegments(cmd string) [][]string {
 			i++
 			word.WriteRune(runes[i])
 			inWord = true
+			wordQuoted = true
 		case r == '\'' || r == '"':
 			quote = r
 			inWord = true
+			wordQuoted = true
+		case r == '<' || r == '>':
+			if fd := word.String(); inWord && !wordQuoted && fd != "" && strings.Trim(fd, "0123456789") == "" {
+				word.Reset()
+				inWord = false
+			}
+			endWord()
+			for i+1 < len(runes) && (runes[i+1] == '<' || runes[i+1] == '>') {
+				i++
+			}
+			if i+1 < len(runes) && runes[i+1] == '&' {
+				i++
+			}
+			dropNextWord = true
 		case strings.ContainsRune(";&|\n", r):
 			endSegment()
 		case r == ' ' || r == '\t' || r == '\r':

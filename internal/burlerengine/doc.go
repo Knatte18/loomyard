@@ -301,6 +301,7 @@
 // so a mutating verb named as an argument, as in git help cherry-pick or git log --grep merge, and a -h or --help request pass;
 // git tag alone is judged by its arguments too, and passes when bare or in list mode, as in git tag --points-at HEAD, with no option that creates, deletes or signs a tag;
 // git branch is judged by its arguments too, and passes when every option only reads and it either has no operand or is in list mode, as in git branch -a --contains HEAD or git branch --show-current, while a branch name beside -a, -r, -v or --format alone still counts, since git creates that branch;
+// a redirection such as 2>/dev/null, with its target, is no word of the command, so it is never read as an operand;
 // a mutating invocation also passes when it acts inside a repository the fork itself created earlier, by git init or by git worktree add from such a repository, so a fork may experiment on a throwaway repository in its scratchpad;
 // the directory is resolved lexically from each command's cd segments and -C options, and git push, --git-dir, --work-tree and an unresolvable directory never pass this way, and a git init whose relative path is the starting directory, an ancestor or leaves it through .. records no repository, and a .. climbing above a leading ~ or $ word leaves the directory unresolvable;
 // any named spawn is a hard error.
