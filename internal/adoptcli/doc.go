@@ -92,13 +92,14 @@
 // `check.json`, the progress record, written through `internal/state` under its own state lock;
 // `check.lock`, the verb's own lock;
 // and `check.out`, which the spawn of the check points its stdout and stderr at.
-// `CheckRecord` holds the check's pid and start ticks, its start, the gate key, each `CheckTier` as it ended, the tier in flight, its state (`running`, `green` or `failed`), its end time, the first failed tier and an error, and an unknown key reads.
+// `CheckRecord` holds the check's pid and start ticks, its start, the gate key, each `CheckTier` as it ended with the failed tests the gate's counter named, the tier in flight, its state (`running`, `green` or `failed`), its end time, the first failed tier and an error, and an unknown key reads.
 // `ReadCheck` stats the record first and reports false, taking no lock and creating no directory, when it is absent; a record that does not decode reads as absent with one Warn, so a damaged file never blocks the next check.
 //
 // `runCheck` takes `check.lock` with a non-blocking acquire and returns at once, having written and posted nothing, when it is held.
 // Holding it, it truncates `suite.log`, writes a running record and reconciles the hub through `hubreconcile.Ensure`, so a hub whose build stamp is stale seeds `adopt` from its tuned `finalize` before the gate reads it.
 // A failing reconcile ends the check failed with the way forward and runs no tier, so no check goes green on the template's tiers.
-// The gate's `suite.log` is its log; its observer rewrites the record as each tier starts and ends and posts `adopt check: tier<N> <green|failed>, passed <p> failed <f> skipped <s>, <wall>s`.
+// The gate's `suite.log` is its log; its observer rewrites the record as each tier starts and ends and posts `adopt check: tier<N> <green|failed>, passed <p> failed <f> skipped <s>, <wall>s`;
+// a failed tier's notice adds one line per failed test, `<package> <test>: <first line>`, at most `maxListedFailures` and then `and <n> more`, and a last line naming `suite.log`.
 // A green gate ends the record green and posts the tiers and `suite.log`; any other exit ends it failed, with the first failed tier, or with the gate's exit code as the error when no tier ended, and posts the failure, `suite.log` and the rerun `lym gate test --gate adopt` in the prime.
 // A tier that refuses after it started returns without ending, so the end clears the tier in flight.
 // A post that fails is logged and changes nothing.

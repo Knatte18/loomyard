@@ -42,6 +42,8 @@ const (
 	checkGateKey = "adopt"
 	// checkProgram signs the check's notices to the orch.
 	checkProgram = "ADOPT"
+	// maxListedFailures caps the failed tests one tier's notice lists; suite.log and check.json hold the rest.
+	maxListedFailures = 10
 )
 
 // The states a CheckRecord is in.
@@ -81,6 +83,8 @@ type CheckTier struct {
 	Failed      int     `json:"failed"`
 	Skipped     int     `json:"skipped"`
 	WallSeconds float64 `json:"wall_seconds"`
+	// Failures lists the tier's failed tests as the gate's counter reported them.
+	Failures []gateslot.TestFailure `json:"failures,omitempty"`
 }
 
 // ReadCheck reads the check record at recordPath and reports whether one exists.
@@ -169,14 +173,14 @@ func runCheck(ctx context.Context, deps checkDeps) (CheckRecord, bool, error) {
 			save()
 		},
 		Ended: func(ended gateslot.RunRecord) {
-			tier := CheckTier{Tier: ended.Tier, Outcome: checkGreen, Passed: ended.Passed, Failed: ended.Failed, Skipped: ended.Skipped, WallSeconds: ended.WallSec}
+			tier := CheckTier{Tier: ended.Tier, Outcome: checkGreen, Passed: ended.Passed, Failed: ended.Failed, Skipped: ended.Skipped, WallSeconds: ended.WallSec, Failures: ended.Failures}
 			if ended.Outcome != "passed" {
 				tier.Outcome = checkFailed
 			}
 			record.Tiers = append(record.Tiers, tier)
 			record.Running = nil
 			save()
-			post(fmt.Sprintf("adopt check: tier%d %s, passed %d failed %d skipped %d, %.1fs", tier.Tier, tier.Outcome, tier.Passed, tier.Failed, tier.Skipped, tier.WallSeconds))
+			post(tierNotice(tier, logPath))
 		},
 	}
 	code := deps.RunGate(ctx, logFile, observer)
@@ -207,6 +211,27 @@ func runCheck(ctx context.Context, deps checkDeps) (CheckRecord, bool, error) {
 		post(fmt.Sprintf("adopt check: failed, %s; log %s; way forward: fix it, then run %s in the prime", failure, logPath, rerun))
 	}
 	return finish()
+}
+
+// tierNotice renders the notice of one ended tier: its outcome and counts on the first line, and for a failed tier one line per failed test with the first line it printed, at most maxListedFailures, then the log at logPath.
+func tierNotice(tier CheckTier, logPath string) string {
+	lines := []string{fmt.Sprintf("adopt check: tier%d %s, passed %d failed %d skipped %d, %.1fs", tier.Tier, tier.Outcome, tier.Passed, tier.Failed, tier.Skipped, tier.WallSeconds)}
+	if tier.Outcome != checkFailed {
+		return lines[0]
+	}
+	for i, failure := range tier.Failures {
+		if i == maxListedFailures {
+			lines = append(lines, fmt.Sprintf("and %d more", len(tier.Failures)-maxListedFailures))
+			break
+		}
+		line := failure.Package + " " + failure.Test
+		if failure.FirstLine != "" {
+			line += ": " + failure.FirstLine
+		}
+		lines = append(lines, line)
+	}
+	lines = append(lines, "log "+logPath)
+	return strings.Join(lines, "\n")
 }
 
 // writeCheck writes record to the check record at recordPath under its state lock.

@@ -30,6 +30,7 @@ func TestWriteRunRecord(t *testing.T) {
 			ExitCode: 1, TimedOut: false, Outcome: "failed", GuardStep: true, Carried: true,
 			Discovered: 9, Passed: 7, Failed: 1, Skipped: 1,
 			Launches: []PackageLaunch{{Package: "example.com/p", LaunchSeconds: 0.25, ElapsedSeconds: 1.5}},
+			Failures: []TestFailure{{Package: "example.com/p", Test: "TestA/sub", FirstLine: "a_test.go:12: got 1; want 2"}, {Package: "example.com/q", Test: "TestB"}},
 		}
 		path, err := WriteRunRecord(dir, want, []byte("FAIL\n"), now)
 		if err != nil {
@@ -90,22 +91,24 @@ func TestWriteRunRecord(t *testing.T) {
 		})
 	}
 
-	t.Run("RecordWithoutLaunchesReadsWithNone", func(t *testing.T) {
+	t.Run("RecordWithoutLaunchesOrFailuresReadsWithNone", func(t *testing.T) {
 		t.Parallel()
 
 		var got RunRecord
 		if err := json.Unmarshal([]byte(`{"tier":0,"outcome":"passed","discovered":3}`), &got); err != nil {
 			t.Fatalf("decode record: %v", err)
 		}
-		if got.Launches != nil || got.Discovered != 3 {
-			t.Errorf("record read back = %+v; want no launches and the other fields kept", got)
+		if got.Launches != nil || got.Failures != nil || got.Discovered != 3 {
+			t.Errorf("record read back = %+v; want no launches, no failures and the other fields kept", got)
 		}
 		data, err := json.Marshal(RunRecord{})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(string(data), "launches") {
-			t.Errorf("record without launches encodes as %s; want the key omitted", data)
+		for _, key := range []string{"launches", "failures"} {
+			if strings.Contains(string(data), key) {
+				t.Errorf("record without %s encodes as %s; want the key omitted", key, data)
+			}
 		}
 	})
 

@@ -68,6 +68,16 @@ type RunRecord struct {
 	Skipped    int    `json:"skipped"`
 	// Launches lists, per package whose test binary ran, how long the binary took to launch; empty for a record written before the list existed, a tier that reads no packages and a run that launched none.
 	Launches []PackageLaunch `json:"launches,omitempty"`
+	// Failures lists the failed tests of a go-json tier in the order they failed, leaves only, so a test whose subtest failed is left out; empty for a tier that failed none and for a VSTest tier.
+	Failures []TestFailure `json:"failures,omitempty"`
+}
+
+// TestFailure is one failed test of a tier run.
+// FirstLine is the first line the test printed beside go test's own `=== ` and `--- ` status lines, trimmed, which is where an error, a fatal or a panic states its cause; empty when the test printed nothing else.
+type TestFailure struct {
+	Package   string `json:"package"`
+	Test      string `json:"test"`
+	FirstLine string `json:"first_line,omitempty"`
 }
 
 // PackageLaunch is one package's launch timing in a go-json tier run.

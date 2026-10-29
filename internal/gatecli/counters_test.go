@@ -66,6 +66,8 @@ func TestCounters(t *testing.T) {
 		wantLaunches []gateslot.PackageLaunch
 		// wantTestsRun is the per-package count of tests that ran.
 		wantTestsRun map[string]int
+		// wantFailures is the failed leaf tests the counter reports.
+		wantFailures []gateslot.TestFailure
 	}{
 		{
 			name: "a package with start, a later event and a closing pass has one launch entry",
@@ -99,6 +101,7 @@ func TestCounters(t *testing.T) {
 			wantOut:      "=== RUN   TestA\n--- FAIL: TestB (0.00s)\nFAIL\n",
 			wantCounts:   tierCounts{discovered: 2, passed: 1, failed: 1},
 			wantTestsRun: map[string]int{"example.com/p": 2},
+			wantFailures: []gateslot.TestFailure{{Package: "example.com/p", Test: "TestB"}},
 		},
 		{
 			name:         "a skipped test",
@@ -117,6 +120,34 @@ func TestCounters(t *testing.T) {
 			wantTestsRun: map[string]int{"example.com/p": 2},
 		},
 		{
+			name: "a failed subtest is named with its first error line and its failed parent is left out",
+			kind: "go-json",
+			writes: []string{strings.Join([]string{
+				goEvent("run", "TestA", ""), goEvent("output", "TestA", "=== RUN   TestA\n"),
+				goEvent("run", "TestA/sub", ""), goEvent("output", "TestA/sub", "=== RUN   TestA/sub\n"),
+				goEvent("output", "TestA/sub", "    a_test.go:12: got 1; want 2\n"), goEvent("output", "TestA/sub", "    a_test.go:13: second\n"),
+				goEvent("output", "TestA/sub", "    --- FAIL: TestA/sub (0.00s)\n"), goEvent("fail", "TestA/sub", ""),
+				goEvent("output", "TestA", "--- FAIL: TestA (0.00s)\n"), goEvent("fail", "TestA", ""),
+				goEvent("run", "TestB", ""), goEvent("output", "TestB", "    b_test.go:5: passing note\n"), goEvent("pass", "TestB", ""),
+			}, "\n") + "\n"},
+			wantOut: "=== RUN   TestA\n=== RUN   TestA/sub\n    a_test.go:12: got 1; want 2\n    a_test.go:13: second\n    --- FAIL: TestA/sub (0.00s)\n--- FAIL: TestA (0.00s)\n" +
+				"    b_test.go:5: passing note\n",
+			wantCounts:   tierCounts{discovered: 3, passed: 1, failed: 2},
+			wantTestsRun: map[string]int{"example.com/p": 3},
+			wantFailures: []gateslot.TestFailure{{Package: "example.com/p", Test: "TestA/sub", FirstLine: "a_test.go:12: got 1; want 2"}},
+		},
+		{
+			name: "a failed test whose name prefixes another failed test's name without a slash is still named",
+			kind: "go-json",
+			writes: []string{strings.Join([]string{
+				goEvent("run", "TestA", ""), goEvent("fail", "TestA", ""),
+				goEvent("run", "TestAB", ""), goEvent("fail", "TestAB", ""),
+			}, "\n") + "\n"},
+			wantCounts:   tierCounts{discovered: 2, failed: 2},
+			wantTestsRun: map[string]int{"example.com/p": 2},
+			wantFailures: []gateslot.TestFailure{{Package: "example.com/p", Test: "TestA"}, {Package: "example.com/p", Test: "TestAB"}},
+		},
+		{
 			name: "a panic's output and a build error's non-JSON lines read as text",
 			kind: "go-json",
 			writes: []string{
@@ -125,6 +156,7 @@ func TestCounters(t *testing.T) {
 			wantOut:      "# example.com/p\nx.go:1:1: undefined: y\npanic: boom\nFAIL\texample.com/p [build failed]\n",
 			wantCounts:   tierCounts{failed: 1},
 			wantTestsRun: map[string]int{"example.com/p": 0},
+			wantFailures: []gateslot.TestFailure{{Package: "example.com/p", Test: "TestA", FirstLine: "panic: boom"}},
 		},
 		{
 			name:         "a line split across two writes",
@@ -198,6 +230,9 @@ func TestCounters(t *testing.T) {
 			}
 			if got := c.TestsRun(); !maps.Equal(got, tt.wantTestsRun) {
 				t.Errorf("TestsRun() = %v; want %v", got, tt.wantTestsRun)
+			}
+			if got := c.Failures(); !slices.Equal(got, tt.wantFailures) {
+				t.Errorf("Failures() = %+v; want %+v", got, tt.wantFailures)
 			}
 		})
 	}

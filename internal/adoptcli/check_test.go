@@ -7,9 +7,11 @@ package adoptcli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -62,8 +64,9 @@ func passedTier(tier, passed, skipped int) gateslot.RunRecord {
 	return gateslot.RunRecord{Tier: tier, Outcome: "passed", Passed: passed, Skipped: skipped, WallSec: 1.5}
 }
 
-func failedTier(tier, failed int) gateslot.RunRecord {
-	return gateslot.RunRecord{Tier: tier, Outcome: "failed", ExitCode: 1, Passed: 3, Failed: failed, WallSec: 2}
+// failedTier returns a failed tier record whose counter named failures; Failed counts them.
+func failedTier(tier int, failures ...gateslot.TestFailure) gateslot.RunRecord {
+	return gateslot.RunRecord{Tier: tier, Outcome: "failed", ExitCode: 1, Passed: 3, Failed: len(failures), WallSec: 2, Failures: failures}
 }
 
 func (f *checkFixture) recordPath() string { return filepath.Join(f.dir, checkRecordName) }
@@ -83,7 +86,7 @@ func TestRunCheck(t *testing.T) {
 		if record.State != checkGreen || record.Running != nil || record.FailedTier != nil || record.EndedAt.IsZero() || record.PID != 4242 || record.StartTicks != "777" || record.Gate != "adopt" {
 			t.Errorf("record = %+v; want green, nothing in flight, no failed tier, an end time and this process's identity", record)
 		}
-		if want := []CheckTier{{0, checkGreen, 10, 0, 1, 1.5}, {1, checkGreen, 4, 0, 0, 1.5}}; !slices.Equal(record.Tiers, want) {
+		if want := []CheckTier{{0, checkGreen, 10, 0, 1, 1.5, nil}, {1, checkGreen, 4, 0, 0, 1.5, nil}}; !reflect.DeepEqual(record.Tiers, want) {
 			t.Errorf("tiers = %+v; want %+v", record.Tiers, want)
 		}
 		wantNotices := []string{
@@ -99,9 +102,13 @@ func TestRunCheck(t *testing.T) {
 		}
 	})
 
-	t.Run("a failing tier ends the check failed naming the tier, the log and the rerun", func(t *testing.T) {
+	t.Run("a failing tier ends the check failed naming the tier, its failed tests, the log and the rerun", func(t *testing.T) {
 		t.Parallel()
-		f := newCheckFixture(t, []scriptedTier{{0, passedTier(0, 10, 0)}, {1, failedTier(1, 2)}}, 1)
+		failures := []gateslot.TestFailure{
+			{Package: "example.com/a", Test: "TestA/sub", FirstLine: "a_test.go:12: got 1; want 2"},
+			{Package: "example.com/b", Test: "TestB"},
+		}
+		f := newCheckFixture(t, []scriptedTier{{0, passedTier(0, 10, 0)}, {1, failedTier(1, failures...)}}, 1)
 
 		record, _, err := runCheck(context.Background(), f.deps)
 		if err != nil {
@@ -109,6 +116,16 @@ func TestRunCheck(t *testing.T) {
 		}
 		if record.State != checkFailed || record.FailedTier == nil || *record.FailedTier != 1 || record.Error != "" {
 			t.Errorf("record = %+v; want failed at tier 1 with no error text", record)
+		}
+		wantTierNotice := "adopt check: tier1 failed, passed 3 failed 2 skipped 0, 2.0s\n" +
+			"example.com/a TestA/sub: a_test.go:12: got 1; want 2\n" +
+			"example.com/b TestB\n" +
+			"log " + f.logPath()
+		if len(f.notices) < 2 || f.notices[1] != wantTierNotice {
+			t.Errorf("notices = %q; want the tier1 notice %q", f.notices, wantTierNotice)
+		}
+		if onDisk, _, err := ReadCheck(f.recordPath()); err != nil || len(onDisk.Tiers) != 2 || !slices.Equal(onDisk.Tiers[1].Failures, failures) {
+			t.Errorf("ReadCheck() = %+v, %v; want tier1's failures on disk", onDisk, err)
 		}
 		end := f.notices[len(f.notices)-1]
 		for _, want := range []string{"tier1", f.logPath(), "lym gate test --gate adopt"} {
@@ -118,6 +135,42 @@ func TestRunCheck(t *testing.T) {
 		}
 		if len(f.notices) != 3 {
 			t.Errorf("notices = %q; want two tier lines and one end notice", f.notices)
+		}
+	})
+
+	t.Run("a failing tier's notice lists failed tests up to the cap and counts the rest", func(t *testing.T) {
+		t.Parallel()
+		failures := make([]gateslot.TestFailure, maxListedFailures+3)
+		for i := range failures {
+			failures[i] = gateslot.TestFailure{Package: "example.com/p", Test: fmt.Sprintf("Test%d", i), FirstLine: "boom"}
+		}
+		f := newCheckFixture(t, []scriptedTier{{0, failedTier(0, failures...)}}, 1)
+
+		if _, _, err := runCheck(context.Background(), f.deps); err != nil {
+			t.Fatalf("runCheck() error = %v", err)
+		}
+		lines := strings.Split(f.notices[0], "\n")
+		if want := maxListedFailures + 3; len(lines) != want {
+			t.Fatalf("tier notice = %q; want %d lines: the summary, %d tests, the remainder and the log", f.notices[0], want, maxListedFailures)
+		}
+		if got, want := lines[maxListedFailures], "example.com/p Test9: boom"; got != want {
+			t.Errorf("last listed test = %q; want %q", got, want)
+		}
+		if got, want := lines[len(lines)-2:], []string{"and 3 more", "log " + f.logPath()}; !slices.Equal(got, want) {
+			t.Errorf("notice tail = %q; want %q", got, want)
+		}
+	})
+
+	t.Run("a failing tier with no recorded failures has a notice of the summary line and the log", func(t *testing.T) {
+		t.Parallel()
+		f := newCheckFixture(t, []scriptedTier{{0, failedTier(0)}}, 1)
+
+		if _, _, err := runCheck(context.Background(), f.deps); err != nil {
+			t.Fatalf("runCheck() error = %v", err)
+		}
+		want := "adopt check: tier0 failed, passed 3 failed 0 skipped 0, 2.0s\nlog " + f.logPath()
+		if len(f.notices) == 0 || f.notices[0] != want {
+			t.Errorf("notices = %q; want the tier0 notice %q", f.notices, want)
 		}
 	})
 

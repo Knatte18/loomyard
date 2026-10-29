@@ -1064,41 +1064,36 @@ func TestDaemon_Lifecycle(t *testing.T) {
 			hook := creelfake.HookStrand(alpha)
 			hook.PanePID = os.Getpid()
 			r.del.SetStrands(hook, creelfake.LiveStrand(beta))
-			// A running turn keeps the ring back, and the idle read marks the point where the waiter is registered with mail standing.
+			// A running turn keeps the ring back while the waiters register with mail standing.
 			r.del.SetTurn(alpha, true, time.Time{})
-			probed := make(chan struct{}, 16)
-			r.del.SetIdleHook(func(string) {
-				select {
-				case probed <- struct{}{}:
-				default:
-				}
-			})
-			awaitProbe := func() {
-				t.Helper()
-				select {
-				case <-probed:
-				case <-time.After(10 * time.Second):
-					t.Fatal("no probe read the hook strand's turn")
-				}
-			}
 			first := r.start()
 			mustCall(t, r.client(externalClaim(), nil, creelfake.NewClock(epoch)), creelengine.Request{Verb: creelengine.VerbPost, Receiver: alpha, Text: "one"})
-			// The post's own wake reads the turn before any waiter exists;
-			// consuming that read keeps it from passing for the waiter's registration, which would stop the daemon before the waiter connects.
-			awaitProbe()
+			// Two waiters of one strand: whichever registers second supersedes the other, so the superseded answer proves the survivor is registered with the first daemon before it stops.
+			// The waiters spawn nothing, so a waiter that connected late would fail instead of starting a daemon that takes the hub from the restart.
 			clientClock := creelfake.NewClock(epoch)
-			waiting := callAsync(r.client(strandClaim(alpha), r.spawn, clientClock), creelengine.Request{Verb: creelengine.VerbHookWait, Wait: true}, 0)
-			awaitProbe()
+			hookWait := func() <-chan callResult {
+				return callAsync(r.client(strandClaim(alpha), nil, clientClock), creelengine.Request{Verb: creelengine.VerbHookWait, Wait: true}, 0)
+			}
+			one, other := hookWait(), hookWait()
+			var superseded callResult
+			var waiting <-chan callResult
+			select {
+			case superseded = <-one:
+				waiting = other
+			case superseded = <-other:
+				waiting = one
+			case <-time.After(10 * time.Second):
+				t.Fatal("neither hook-wait was superseded")
+			}
+			if superseded.err != nil || superseded.resp.Outcome != creelengine.OutcomeSuperseded {
+				t.Fatalf("the first hook-wait to end = %+v, %v; want superseded by the second", superseded.resp, superseded.err)
+			}
 			if err := first.stop(); err != nil {
 				t.Fatalf("stop: %v", err)
 			}
 			clientClock.AwaitWaits(1)
-			for len(probed) > 0 {
-				<-probed
-			}
 			r.start()
 			clientClock.Advance(time.Second)
-			awaitProbe()
 			r.del.SetTurn(alpha, false, time.Time{})
 			mustCall(t, r.client(externalClaim(), nil, creelfake.NewClock(epoch)), creelengine.Request{Verb: creelengine.VerbPost, Receiver: alpha, Text: "two"})
 			if got := result(t, waiting); got.err != nil || got.resp.Outcome != creelengine.OutcomeRing {

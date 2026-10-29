@@ -244,6 +244,20 @@ func awaitRun(t *testing.T, results <-chan cliRun) cliRun {
 	}
 }
 
+// advanceUntilReturned steps clock by each newly recorded wait keep accepts until the async verb returns, and returns its run.
+// Stepping on every new wait, instead of once after a counted one, never mistakes a wait an earlier verb's worker recorded late for one the verb's own work caused.
+func advanceUntilReturned(t *testing.T, clock *creelfake.Clock, keep func(time.Duration) bool, results <-chan cliRun) cliRun {
+	t.Helper()
+	returned := make(chan struct{})
+	forwarded := make(chan cliRun, 1)
+	go func() {
+		forwarded <- <-results
+		close(returned)
+	}()
+	clock.AdvanceByWaitsWhere(keep, returned)
+	return awaitRun(t, forwarded)
+}
+
 // rig is one hub with a daemon running in process over a fake delivery.
 type rig struct {
 	hub      *hubforge.Hub
@@ -668,11 +682,8 @@ func TestCreelCLI(t *testing.T) {
 		r.delivery.SetSendError(nil)
 
 		r.delivery.SetIdle(alpha, false)
-		probesBefore := len(r.clock.AwaitWaitsWhere(0, isProbeWait))
 		expiring := runAsync(r.cwd, "inject", "--wait", "--ttl", "1m", alpha, "/clear")
-		r.clock.AwaitWaitsWhere(probesBefore+1, isProbeWait)
-		r.clock.Advance(61 * time.Second)
-		if expired := awaitRun(t, expiring); expired.code != ExitInjectExpired {
+		if expired := advanceUntilReturned(t, r.clock, isProbeWait, expiring); expired.code != ExitInjectExpired {
 			t.Errorf("creel inject --wait past its TTL = (%d, %q); want exit %d", expired.code, expired.raw, ExitInjectExpired)
 		}
 
@@ -687,11 +698,8 @@ func TestCreelCLI(t *testing.T) {
 		r.delivery.SetIdle(beta, false)
 		waiting := runAsync(r.cwd, "post", "--wait-reply", beta, "anyone?")
 		r.awaitLogged(t, "anyone?")
-		r.clock.AwaitWaitsWhere(1, isSweepWait)
 		r.delivery.SetStrands(creelfake.LiveStrand(alpha))
-		r.sweepStep()
-		r.sweepLast()
-		if returned := awaitRun(t, waiting); returned.code != ExitReturnedUndelivered {
+		if returned := advanceUntilReturned(t, r.clock, isSweepWait, waiting); returned.code != ExitReturnedUndelivered {
 			t.Errorf("creel post --wait-reply once the receiver left = (%d, %q); want exit %d", returned.code, returned.raw, ExitReturnedUndelivered)
 		} else if returned.fields["sender"] != external {
 			t.Errorf("creel post --wait-reply printed sender %v; want %q", returned.fields["sender"], external)

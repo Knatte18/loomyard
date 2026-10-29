@@ -220,6 +220,7 @@
 // A write failure is logged and decides nothing.
 // The `go-json` counter also keeps, per package, the gap from its `start` event to its next event and its closing event's elapsed time, and the record carries them as `launches`; a cached package and one with no test files are left out, and a `vstest` run records none.
 // The `go-json` counter also keeps, per package, the number of tests that ran in it, and a `vstest` run keeps none.
+// The `go-json` counter also records each failed test with the first line it printed beside `go test`'s `=== ` and `--- ` status lines, leaving out a test whose subtest failed, and the record carries them as `failures`; a `vstest` run records none.
 // A `go-json` tier under the `go` scoper fails when a package holding a test under the tier's tag ran none, since the tier's command then lacks its tag: a package with a `Test` function in a file whose build constraint holds under `tierN` on the host's GOOS and GOARCH.
 // The failure exits 1 and its line, naming the tier, the package and `lym config gate`, goes to stderr and the log before the summary line.
 // A run whose words after `--` carry `-run`, `-skip`, `-list` or `-bench` is exempt, since its filter may match nothing; the guard step's own `-run` filter exempts nothing.
