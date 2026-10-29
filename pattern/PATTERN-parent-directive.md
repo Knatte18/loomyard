@@ -10,9 +10,9 @@ A spawned role's top-level stencil renders the parent directive, and no stencil 
 
 A spawned role's opening stencil renders the edit directive through `internal/editdirective`.
 
-- The `edit-directive` stencil is the only statement of the edit rule.
+- The `edit-directive` stencil is the only statement of the edit directive's rules.
 - The orch stencils are exempt.
-- A test enforces the rule.
+- A test enforces the edit rule.
 
 ## Role skills
 

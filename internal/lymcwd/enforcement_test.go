@@ -556,7 +556,7 @@ var vocabScanAllowlist = []vocabScanAllowlistEntry{
 var vocabScanSkippedRoots = map[string]bool{"_lym": true, ".lym": true, "sandbox": true}
 
 // vocabScanRootFiles are the repo-root files the extended scan covers.
-var vocabScanRootFiles = map[string]bool{"CLAUDE.md": true, "README.md": true}
+var vocabScanRootFiles = map[string]bool{"README.md": true}
 
 func vocabScanAllowlisted(rel string) bool {
 	for _, e := range vocabScanAllowlist {
@@ -572,7 +572,7 @@ func vocabScanAllowlisted(rel string) bool {
 //
 // Bare weft/warp rule, outside the owner set (configsync's literal-and-comment carve-out aside):
 // every *_test.go file anywhere; every non-test .go file under internal/ and the doc roots; every
-// .md and .yaml file under the doc roots; every .md under internal/; CLAUDE.md and README.md, which may name the records repository loomyard-weft.
+// .md and .yaml file under the doc roots; every .md under internal/; README.md, which may name the records repository loomyard-weft.
 // Host-phrase rule: non-test .go under internal/ and cmd/, and .md under internal/ and contracts/stencils/.
 // Weftname import rule: non-test .go under internal/ and cmd/, and every test file but weftnameTestImporter.
 func fabricVocabularyFailures(t *testing.T, base string) ([]string, int) {
@@ -711,7 +711,7 @@ func importsWeftname(f *ast.File) bool {
 // The bare-token rule fails any file in fabricVocabularyFailures's scope, outside the owner set,
 // that contains "weft" or "warp" (in an identifier, a string literal or a comment);
 // the scope is every test file, the non-test Go and the doc files under the roots it names,
-// and the root CLAUDE.md and README.md, minus vocabScanAllowlist.
+// and the root README.md, minus vocabScanAllowlist.
 // The host-phrase rule fails any production file or markdown body in its scope, owner set or not --
 // host is retired, not merely scoped, so the owner set never carves out a host hit.
 // The import rule fails any file outside {fabricengine, fabriccli, gitkit, hubforge} that imports internal/weftname,

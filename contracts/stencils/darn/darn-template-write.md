@@ -23,9 +23,6 @@ Read the board entry for task `{{.slug}}` with `lym board get '{"slug":"{{.slug}
 It is the whole statement of the change you make.
 Once the decision record at `{{.decision_record_path}}` holds `Added after Discussion` entries, they amend the board entry and win over its body where they differ.
 
-Also read the repository's `CLAUDE.md`.
-It names the docs and the checks a change to this repository carries.
-
 ## Step 2 — This spawn's work
 
 Prior work, which you continue from when it is not `(none)`:
@@ -73,7 +70,9 @@ A later spawn that finds both present and passing leaves them as they are.
    Follow the existing patterns, and the PATTERN entries in this prompt.
    Read every file the change touches, with the greps that find them, in one message before the first edit of each commit, and make independent edits in one message.
 2. Test with `lym gate test --wait` once, after the last edit of each commit, never after each edit; it computes its scope from your changes; never run a raw test command or a module-wide run.
-3. Update the docs the repository's `CLAUDE.md` names for your kind of change in the same commits as the code.
+3. Update, in the same commits as the code, the docs the change makes stale: the package doc of each package whose behavior changes, `doc.go` for a Go package;
+   the repository's overview doc when a module table or execution stack it shows changes;
+   and, when the repository has a `PATTERN.md`, its entry for a cross-cutting invariant the change adds or changes.
 4. Commit on the task branch in small, coherent commits, each leaving the tree green.
    Never push: the landing steps that follow push the branch.
 

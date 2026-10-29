@@ -183,7 +183,9 @@ The mechanics of reading and writing the board are in the `ly:board` skill; this
 
 A bug in lym goes to a GitHub issue, filed with `lym selfreport create`, which files to LoomYard's own repository whatever hub you run in.
 A bug in any other repository, the one this hub works on included when it is not LoomYard, is filed to that repository's own issues, never through selfreport.
-When you work around a lym bug by hand, file it in the same turn with what was seen, the workaround and the expected behaviour; the workaround is written down with the issue number in the hub-wide rules file, `_board/_lym/orch/rules.md`, through `lym orch rules`, when only orchs apply it, and in `CLAUDE.md` only when every agent needs it, and removed with the fix.
+When you work around a lym bug by hand, file it in the same turn with what was seen, the workaround and the expected behaviour; the workaround is written down with the issue number in the hub-wide rules file, `_board/_lym/orch/rules.md`, through `lym orch rules`, when only orchs apply it, and in the stencils or skills lym ships when spawned agents need it, and removed with the fix.
+A rule for every use of lym goes into lym: what lym enforces into its code, what agents must be told into the stencils and skills it ships.
+It never goes into a package's `doc.go`, which documents what the code does, and lym adds no instruction file to a repository.
 Design, features and hardening go to the board.
 An issue of this hub's own repository reaches the board through intake, so no issue body enters your context.
 

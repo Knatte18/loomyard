@@ -1639,7 +1639,7 @@
 // The minimum is the existing suite there (`go build`, `go vet`, `go test`, `go test -tags integration`);
 // beyond it, the scenarios worth driving by hand are a `--subpath` anchored hub (junction targets, `_lym` and `.lym` placement, the cwd gate refusing the warp root and its subdirectories),
 // `add`/`remove` slug hygiene, and the `prune` and `clone --reset` ownership refusals.
-// Deciding that Windows is not a goal is a valid resolution, but it must be written down, because `internal/fslink` and the filesystem-links rule in `CLAUDE.md` currently assert the opposite.
+// Deciding that Windows is not a goal is a valid resolution, but it must be written down, because `internal/fslink` and `PATTERN-fs-links` currently assert the opposite.
 //
 // **Test layout.**
 // A test builds its hub through `internal/hubforge` only, never a package-local fixture type.

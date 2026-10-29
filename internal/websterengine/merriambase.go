@@ -19,7 +19,8 @@ import (
 // merriamFixedContext is the context, in tokens, of Merriam's system prompt, tools and the skills loaded at launch.
 // tools/tokencount's Merriam fixed-context calibration section re-measures it from real runs; the value changes only when the operator updates it from that report.
 // It is 20600, the measured Merriam session start, minus the computed size of the texts the base covers at the commit the constant was taken at:
-// 392 lines (CLAUDE.md 59, the Master stencil 229 and its inlined PATTERN overview 104) at the template's context_per_line of 12, so the computed base reproduces the measured start over that tree.
+// 392 lines (a 59-line instruction file, the Master stencil 229 and its inlined PATTERN overview 104) at the template's context_per_line of 12, so the computed base reproduces the measured start over that tree.
+// The fixed figure excludes every text the base counts, so it holds as well for a tree without that instruction file, whose base is smaller by its lines.
 const merriamFixedContext = 20600 - 392*12
 
 // MerriamBaseOf returns the start base for the given texts: their summed line count, counted as batcher.DiskSizes counts a file's, and the fixed system-prompt-and-tools context.

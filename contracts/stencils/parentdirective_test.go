@@ -138,7 +138,7 @@ func TestStencils_OpeningStencilsRenderEditDirective(t *testing.T) {
 
 // TestStencils_NoEditRuleRestatement fails for any registered stencil other than edit-directive with a sentence that restates the edit rule.
 //
-//testtiming:keep pins PATTERN-parent-directive's rule that the edit-directive stencil is the only statement of the edit rule, a guard that fires which no other test asserts
+//testtiming:keep pins the rule that only the edit-directive stencil states the edit rule, a guard that fires which no other test asserts
 //lym:guard
 func TestStencils_NoEditRuleRestatement(t *testing.T) {
 	t.Parallel()

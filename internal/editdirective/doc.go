@@ -4,9 +4,10 @@
 //
 // # What it says
 //
-// The directive states one rule: change files with Edit or Write, or by script with `sed -i`, `perl -i`, `awk` or a shell heredoc or redirect wherever a script is simpler.
+// The directive states how a role changes files: with Edit or Write, or by script with `sed -i`, `perl -i`, `awk` or a shell heredoc or redirect wherever a script is simpler.
 // A Go file's formatting goes through `lym loom fmt`, and scratch files go under `.scratch/`.
-// It names the tools a role edits with, never what the role may write.
+// It also keeps a role in its own worktree: no edit, commit, push or new worktree elsewhere unless its parent or the operator says so for that case.
+// It names the tools a role edits with and the worktree it edits in, never what the role may write.
 // It has no inactive case: the text renders in a repo without a `PATTERN.md` as in one with it.
 //
 // # Who renders it
