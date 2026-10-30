@@ -48,7 +48,7 @@ import (
 func TestWire_BeamRecipe(t *testing.T) {
 	t.Parallel()
 
-	t.Run("a pawl seed fills the BeamDescribe and Pawl seams and routes its nine rows with no reroute edge", func(t *testing.T) {
+	t.Run("a pawl seed fills the BeamDescribe and Pawl seams and routes its rows with no reroute edge", func(t *testing.T) {
 		t.Parallel()
 		loc := hubLocation(t, "pair", ".")
 		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipePawl}
@@ -91,7 +91,7 @@ func TestWire_BeamRecipe(t *testing.T) {
 				t.Errorf("row %q OnReroute = %q; want none", producer.Name, producer.OnReroute)
 			}
 		}
-		if want := []string{"Beam-Up", "Beam-Await", "Parent-Align", "Code-Bouncer", "Code-Burler-Review", "Code-Burler-Fix", "Beam-Describe", "PR-Review", "Finalize", "Beam-Down"}; strings.Join(rows, ",") != strings.Join(want, ",") {
+		if want := []string{"Preflight", "Beam-Up", "Beam-Await", "Parent-Align", "Code-Bouncer", "Code-Burler-Review", "Code-Burler-Fix", "Beam-Describe", "PR-Review", "Finalize", "Beam-Down"}; strings.Join(rows, ",") != strings.Join(want, ",") {
 			t.Errorf("recipeRouting() rows = %v; want %v", rows, want)
 		}
 	})
