@@ -13,31 +13,17 @@
 // fabric-internal side -- write "the task worktree" and "the pair" instead of naming either side
 // by name.
 //
-// The InnerRun row notices a child that left running, a driver strand found dead while the child runs, an agent run of a running child stalled on an API error, and a running child whose agents are all idle for the quiet window (notice_quiet_min), and it notifies through the injected Notify seam (notice.go).
+// The InnerRun row notices a child that halted or awaits a hand-off, and a halted or awaiting child whose dead driver strand a revive failed to bring back, and it notifies through the injected Notify seam (notice.go).
+// A running child's notices, a dead driver, an API-error stall, a usage limit and idle agents, are sent by the dobby that drives the run, never by the row.
 // A notice is one line, sent once per episode, from a pass's check.
-// A state-changed and a driver-dead episode ends when the child's state changes, and the state's since is the status file's modification time at the first sight of the child in it:
+// An episode ends when the child's state changes, and the state's since is the status file's modification time at the first sight of the child in it:
 // a rewrite of the file in the same state does not move it, and only a batten start reads it from the file.
-// The api-error and quiet notices need a running child with a live driver strand, and read the agents through the injected Activity seam at most once per notice_probe_s; a failed read sends neither.
-// The api-error notice goes when the newest turn end of any read run is an API error and that run has not been active for two minutes since; it names the producer and the error text cut to one line, and takes precedence over quiet.
-// With the ReviveAPIError seam wired, the first sight of an api-error episode revives the stalled sessions and notices nothing:
-// the notice goes when the same episode still stands at a later probe check, or at the third revived episode in a row with no write of the child's status file between them.
-// A run whose API error the provider classifies as its usage limit gets the usage-limit notice instead, ahead of the api-error and quiet ones, after the same two minutes:
-// it names the producer, when the limit resets in UTC or that the reset time is unknown, and the limit's text, and no revive is sent, since a revive typed into a limited session only ends in the limit again.
-// Its episode is the limit, keyed by the reset time, and lasts while any read run of the child reads usage-limited, however its activity moves, so a standing limit sends one notice and a later limit another.
-// The quiet notice goes when every read run has been idle for the quiet window and no verify marker, shuttle wait marker, parent lock wait record or child status running at the pawl recipe's Beam-Await row or at the PR-Review row is live, and says how long the agents have been idle;
-// with no run read, it falls back to "no agent activity readable" counted from the later of the child's newest history entry and since.
-// A running run whose waiting process is gone is read too, with its activity only, so the quiet notice names its agent as idle instead of falling back.
-// Both episodes are keyed by the newest agent activity, so they end when an agent is active again, with `since` on the line as content only.
-// Both idle clocks measure awake time: the machine sleeps the scheduling dobby recorded, read through the injected Sleeps seam, are intervals, and the time since an activity is net of the sleeps after it.
-// The subtraction can delay a notice and never raise one earlier.
 // The InnerRun row also reads the hub's pause record through the Pause seam, once per check.
-// While it covers the slug, the row spawns, resumes and revives nothing, sends no notice for a running child, keeps a covered holder's parent lock and reports `held by the pause of <scope> since <paused_at>` as its wait reason;
+// While it covers the slug, the row spawns, resumes and revives nothing, keeps a covered holder's parent lock and reports `held by the pause of <scope> since <paused_at>` as its wait reason;
 // a child that halts still ends the pass with its state-changed notice, and batten's own pause is still honoured.
-// The paused intervals leave the idle clocks, so after the resume a run idle for its window is noticed as before.
-// Limits: a run whose record no longer reads running is not read, a run that keeps writing or hangs in a live wait is never quiet, and both notices are informational.
 // A marker under the row's scratch directory records the notices sent, and only those posted, so a batten restart sends the notices not yet sent and never one already sent.
 // A state-changed notice names what happened, the child's state and the row it stopped at, for example `awaiting at Plan-Bouncer`.
-// Every notice names the child's state and current row, and a quiet, an api-error and a driver-dead notice follow them with their own text, for example `running at Plan-Write; agents idle for 25m0s`.
+// Every notice names the child's state and current row, and a driver-dead notice follows them with its own text, for example `blocked at Publish; driver strand could not be revived; …`.
 // The child's reason is labelled `error:` for a failed or blocked child and `waiting:` for any other state.
 // Every notice carries `since` and `history`, and a notice for a parked stop (blocked, paused, failed, awaiting) carries the driver's stop report, or `report none yet`.
 // Every path under the task pair is rendered relative to it, since the slug already names the pair, and a notice carries no attach command.
@@ -60,7 +46,7 @@
 // a Notify error or an unposted line is retried at most once per notice_probe_s and at most three times, then dropped with a Warn.
 // Control flow is unchanged: a notice is informational, a delivery failure is only warned about, and the outcomes, halts and waits are the same with or without it.
 // Bound: the report wait delays a notice by at most three minutes, the relay wait by at most ten minutes after the report, and an arbiter hold by at most the arbiter's deadline plus the report wait; none loses it, and there is one notice per episode.
-// A driver that is alive but parked -- a provider waiting on an interactive prompt its launcher never answered -- or that stops of its own accord with the run still non-terminal is told apart from a working one only by the quiet window, or by an API-error notice when the stall is one; an operator attaches to the child's session to tell the cases apart.
+// A driver that is alive but parked -- a provider waiting on an interactive prompt its launcher never answered -- or that stops of its own accord with the run still non-terminal is told apart from a working one only by the dobby's quiet notice, or by its API-error notice when the stall is one; an operator attaches to the child's session to tell the cases apart.
 //
 // A batten run is one pass after another: "lym batten run <slug>" runs one pass and exits, started by the run's parent worktree's dobby or by hand in a terminal, and a hand pass makes sure that dobby is live once it is over.
 // `lym adopt` and `lym beam land` start a run's first pass detached, and a second batten for the slug is refused by the run's own driver lock inside the pass, in batten's own log.
@@ -96,13 +82,14 @@
 // An arm's own event ends it too: an awaiting child's decision is acted on, and a done child's driver ending or its grace elapsing returns Done.
 // A pass that ends nothing returns Yield with an empty pointer, which shed persists nothing for, and logs it at Debug; the run stays at the row, running.
 // File stats and small file reads run on every pass, the notice step's own reads (the decision record, the stop report) included;
-// anything costing a process or a multiplexer round trip (the driver, review and agent-activity reads, a not-parked resume retry, the parent lock step, a notice's delivery) runs on a probe pass, at most once per notice_probe_s.
+// anything costing a process or a multiplexer round trip (the driver and review reads, a not-parked resume retry, the parent lock step, a notice's delivery) runs on a probe pass, at most once per notice_probe_s.
 // The memory record (innerrun_memory.go) is a tolerant JSON record under the row's scratch directory, written through internal/state, and carries what one pass knows for the next:
-// the notice episode and each delivery's attempts, the owner trigger, the failure episodes, the binary re-step's interval, the parent lock's idle readings, the resume retry, the last probe and the wait reason with the keys it was logged under.
+// the notice episode and each delivery's attempts, the owner trigger, the failure episodes, the binary re-step's interval, the parent lock's idle readings, the resume retry, the respawn count, the last probe and the wait reason with the keys it was logged under.
 // A Call loads it first and saves it on every return; a missing or undecodable record reads as empty, the latter with one Warn, and a failed write warns and changes no verdict.
+// RespawnCapReached reads the respawn count against the status file's modification time for a reader outside the row, which names the cap in the driver-dead notice of a running child; a status write since the last respawn reads as not capped.
 // Bound: a running child is checked without a time limit, bounded by "lym batten pause" (honoured at the next pass), cancellation and the notices;
 // a file that ends a wait between passes, such as a stop report or a strand's end, is seen at the next pass, up to one notice_probe_s later, and none is lost;
-// a running child whose driver is dead and whose status file does not change yields on every pass, the driver-dead notice being the only signal.
+// a running child whose driver is dead and whose status file does not change yields on every pass, the dobby's driver-dead notice being the only signal.
 //
 // Seed-Child writes the task worktree's local config layer from the board task's run settings, after reading the child driver and before the seed:
 // it reads the task's profile and settings fresh on every Call and lays the settings key by key over one block from the hub's `profiles.yaml` (see `internal/runprofile`): the block, for the recipe the row resolved, of the task's run profile, or of the recipe's default profile when the task names none.

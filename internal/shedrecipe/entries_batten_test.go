@@ -265,12 +265,9 @@ func TestInnerRunEntry_PollConfigKeys(t *testing.T) {
 	})
 }
 
-// TestInnerRunEntry_NoticeQuietKey covers innerRunEntry's notice_quiet_min config key: absent resolves to defaultInnerRunNoticeQuietMin, an explicit value builds successfully, and a negative value is rejected naming the key.
+// TestInnerRunEntry_NoticeQuietKey covers innerRunEntry's notice_quiet_min config key, which it validates for the hub wiring: absent or explicit builds successfully, and a negative value is rejected naming the key.
 func TestInnerRunEntry_NoticeQuietKey(t *testing.T) {
-	t.Run("DefaultIsThirty", func(t *testing.T) {
-		if defaultInnerRunNoticeQuietMin != 30 {
-			t.Errorf("defaultInnerRunNoticeQuietMin = %d; want 30", defaultInnerRunNoticeQuietMin)
-		}
+	t.Run("Absent", func(t *testing.T) {
 		producer, err := innerRunEntry(RowIdentity{Name: "InnerRun"}, Config{}, newTestEnv(t))
 		if err != nil || producer == nil {
 			t.Fatalf("innerRunEntry() = %v, %v; want a producer", producer, err)

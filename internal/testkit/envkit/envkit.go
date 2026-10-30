@@ -88,10 +88,8 @@ var nilLegal = map[string]bool{
 	"WebsterDeps.Geom.Git":             true,
 	"WebsterDeps.Geom.GateSlots":       true,
 	"WebsterDeps.Geom.GateConfig":      true,
-	"InnerRun.ReviveAPIError":          true,
 	"InnerRun.Now":                     true,
 	"InnerRun.Awake":                   true,
-	"InnerRun.Sleeps":                  true,
 	"InnerRun.Pause":                   true,
 	"InnerRun.Notify":                  true,
 	"InnerRun.PairDir":                 true,
@@ -453,9 +451,6 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			ParentLock:         &battenshed.ChildParentLock{},
 			StopReport:         func() (string, time.Time, bool, error) { return "", time.Time{}, false, nil },
 			HandBack:           func(shedengine.Status) bool { return false },
-			Activity: func(context.Context) ([]battenshed.AgentActivity, bool, error) {
-				return nil, false, nil
-			},
 		},
 		Teardown: battenshed.TeardownDeps{
 			Shutdown: func(context.Context) (string, error) { return "", nil },

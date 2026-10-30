@@ -84,6 +84,29 @@ func driverAliveFrom(present bool, status func() (reedengine.StatusResult, error
 	return false, nil
 }
 
+// childDriverAlive reports whether the driver strand of slug's child is live, reading the task worktree's reed status when the worktree is present.
+func childDriverAlive(prime *lymcwd.Location, slug string, locateTask func() (*lymcwd.Location, error)) (bool, error) {
+	present, err := taskWorktreePresent(prime, slug)
+	if err != nil {
+		return false, err
+	}
+	return driverAliveFrom(present, func() (reedengine.StatusResult, error) {
+		taskLocation, err := locateTask()
+		if err != nil {
+			return reedengine.StatusResult{}, err
+		}
+		reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "reed")
+		if err != nil {
+			return reedengine.StatusResult{}, err
+		}
+		reedGeom, err := hubgeom.ReedGeometry(taskLocation)
+		if err != nil {
+			return reedengine.StatusResult{}, err
+		}
+		return reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub()).Status()
+	})
+}
+
 // driverStrandFrom reports the child's driver strand from reed's sessionless directory, over an injected reader so its answers are testable without tmux.
 // An absent task worktree and a directory with no driver row are none;
 // a live row is retiring when its Retiring is set and live otherwise;
@@ -588,12 +611,12 @@ func readStopReport(taskLocation *lymcwd.Location) (path string, at time.Time, f
 	return strings.TrimSpace(string(raw)), info.ModTime(), true, nil
 }
 
-// readAgentActivity reads the running agent runs of the task worktree, those whose waiting process is gone included, through the shuttle config and its registered engines, mapped onto battenshed's neutral type,
+// readAgentActivity reads the running agent runs of the task worktree, those whose waiting process is gone included, through the shuttle config and its registered engines, mapped onto dobbyengine's neutral type,
 // and reports whether a Go-side wait is live: a running verify, a parent lock wait, a child running at Beam-Await or at PR-Review, or a shuttle wait that is not a held turn end.
 // A held run is idle at its turn end, so it does not suppress the quiet notice, and neither does a verify held by a pause.
 // A lock wait record whose writer is dead is ignored.
 // The waits are read from their marker and record files, never from the pane options that display them.
-func readAgentActivity(taskLocation *lymcwd.Location) (runs []battenshed.AgentActivity, waitLive bool, err error) {
+func readAgentActivity(taskLocation *lymcwd.Location) (runs []dobbyengine.AgentRun, waitLive bool, err error) {
 	anchor := taskLocation.AnchorPath()
 	cfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "shuttle")
 	if err != nil {
@@ -609,7 +632,7 @@ func readAgentActivity(taskLocation *lymcwd.Location) (runs []battenshed.AgentAc
 	}
 	states := readSessionStatesByStrand(cfg, anchor, engines)
 	for _, reading := range readings {
-		run := battenshed.AgentActivity{Producer: reading.StrandName, LastActivity: reading.LastActivity, APIError: reading.APIError, APIErrorText: reading.APIErrorText,
+		run := dobbyengine.AgentRun{Producer: reading.StrandName, LastActivity: reading.LastActivity, APIError: reading.APIError, APIErrorText: reading.APIErrorText,
 			UsageLimited: reading.UsageLimit.Limited, UsageLimitResetsAt: reading.UsageLimit.ResetsAt}
 		if state, ok := states[reading.StrandName]; ok {
 			run.SessionState, run.SessionCause = string(state.Name), state.Cause
@@ -673,7 +696,7 @@ func childAtWaitingRow(taskLocation *lymcwd.Location) bool {
 }
 
 // readSessionStatesByStrand reads the session state of every running shuttle run under anchor, keyed by strand name.
-// The states are only logged beside batten's notices, so a failed read is logged at Warn once and yields none.
+// The states are only logged beside dobby's run notices, so a failed read is logged at Warn once and yields none.
 func readSessionStatesByStrand(cfg shuttleengine.Config, anchor string, engines shuttleengine.EngineSet) map[string]shuttleengine.SessionState {
 	readings, err := shuttleengine.ReadSessionStates(cfg, anchor, engines, time.Now())
 	if err != nil {
@@ -1015,11 +1038,6 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				return arbiterstop.HoldReading(taskLocation, status)
 			},
 			MarkWatched: markWatched,
-			// Sleeps reads the machine sleeps the parent worktree's dobby recorded.
-			Sleeps: func() ([]pauserecord.Interval, error) {
-				_, sleeps, err := dobbyReading(location, slug)
-				return sleeps, err
-			},
 			// Awake is the wall clock less those sleeps, so every pass measures awake time from the same origin.
 			// An unreadable record excludes none, as the Sleeps seam's own error does.
 			Awake: func() time.Duration {
@@ -1028,10 +1046,6 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 					logger.Debug("battencli: the dobby's recorded sleeps are unreadable; the awake clock excludes none", "slug", slug, "error", err)
 				}
 				return awakeReading(time.Now(), sleeps)
-			},
-			// ReviveAPIError gives the pair's sessions stalled on an API error tender's revive line.
-			ReviveAPIError: func(ctx context.Context) error {
-				return tendercli.ReviveStalled(location, slug)
 			},
 			ParentLock: childParentLock(slug, locateTask, fabricengine.BoardDir(location.HubPath), lockIdleBound(location)),
 			// OwnerCheck judges, without moving a ref, the slug's run-scope reconcile from the prime and reads its owner verdict.
@@ -1081,14 +1095,6 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				}
 				return pauserecord.ReadCoverage(geometry.RecordPath, slug, time.Now())
 			},
-			// Activity resolves the task worktree on Call like every seam here.
-			Activity: func(context.Context) ([]battenshed.AgentActivity, bool, error) {
-				taskLocation, err := locateTask()
-				if err != nil {
-					return nil, false, err
-				}
-				return readAgentActivity(taskLocation)
-			},
 			PairDir: func() (string, error) {
 				taskLocation, err := locateTask()
 				if err != nil {
@@ -1102,25 +1108,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				return battenshed.ChildDecision{}, false, nil
 			},
 			DriverAlive: func(ctx context.Context) (bool, error) {
-				present, err := taskWorktreePresent(location, slug)
-				if err != nil {
-					return false, err
-				}
-				return driverAliveFrom(present, func() (reedengine.StatusResult, error) {
-					taskLocation, err := locateTask()
-					if err != nil {
-						return reedengine.StatusResult{}, err
-					}
-					reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "reed")
-					if err != nil {
-						return reedengine.StatusResult{}, err
-					}
-					reedGeom, err := hubgeom.ReedGeometry(taskLocation)
-					if err != nil {
-						return reedengine.StatusResult{}, err
-					}
-					return reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub()).Status()
-				})
+				return childDriverAlive(location, slug, locateTask)
 			},
 			DriverStrand: func(ctx context.Context) (battenshed.ChildDriverStrand, error) {
 				present, err := taskWorktreePresent(location, slug)

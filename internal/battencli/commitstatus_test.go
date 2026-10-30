@@ -132,7 +132,7 @@ func TestStatusPushSpawns_TellTheirLocationAndGateSlug(t *testing.T) {
 	}
 }
 
-// TestBattenRunCommitPaths asserts a status transition commits the run's seed alongside its status once one exists, and commits the status alone while none does.
+// TestBattenRunCommitPaths asserts a status transition commits the run's seed and dobby's run notice marker alongside its status once each exists, and commits the status alone while neither does.
 // A run directory is durable, fabric-synced state: a status committed without its seed leaves a resumed machine able to read how far the run came but not what it is running.
 //
 //testtiming:keep pins the seed-alongside-status commit paths, which the end-to-end rows never assert
@@ -157,5 +157,13 @@ func TestBattenRunCommitPaths(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("battenRunCommitPaths(...)[%d] = %q; want %q", i, got[i], want[i])
 		}
+	}
+
+	if err := os.WriteFile(shedrun.NoticeEpisodeFile(loc, runID), []byte("driver-dead|running|1\n"), 0o644); err != nil {
+		t.Fatalf("write notice marker: %v", err)
+	}
+	got = battenRunCommitPaths(loc, runID)
+	if want = append(want, shedrun.NoticeEpisodeRel(loc, runID)); !reflect.DeepEqual(got, want) {
+		t.Errorf("battenRunCommitPaths with a notice marker on disk = %v; want %v", got, want)
 	}
 }

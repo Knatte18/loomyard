@@ -78,7 +78,9 @@ func TestInnerRun_MemoryOutlivesTheProcess(t *testing.T) {
 	t.Run("ASeamFailingEveryPassIsOneEpisodeUntilItRecovers", func(t *testing.T) {
 		t.Parallel()
 		h := newNoticeHarness(t)
-		h.activityErr = errors.New("shuttle config unreadable")
+		// A fresh blocked stop with a live driver and no report is never ready, so every pass reads the arbiter marker.
+		h.setStatus(parked(shedengine.StateBlocked))
+		h.arbiterErr = errors.New("marker unreadable")
 		pass := func() {
 			t.Helper()
 			if outcome, _, err := h.newProducer().Call(ctx); err != nil || outcome != shedengine.Yield {
@@ -88,13 +90,13 @@ func TestInnerRun_MemoryOutlivesTheProcess(t *testing.T) {
 
 		for want := 1; want <= 3; want++ {
 			pass()
-			if got := h.memory().Failures[failAgentActivity]; got != want {
+			if got := h.memory().Failures[failArbiterMarker]; got != want {
 				t.Fatalf("failed ticks after pass %d = %d; want the episode to count on", want, got)
 			}
 		}
-		h.activityErr = nil
+		h.arbiterErr = nil
 		pass()
-		if ticks, open := h.memory().Failures[failAgentActivity]; open {
+		if ticks, open := h.memory().Failures[failArbiterMarker]; open {
 			t.Errorf("failed ticks = %d after the seam read again; want the episode closed", ticks)
 		}
 	})

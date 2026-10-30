@@ -213,6 +213,20 @@ func StatusRel(l *lymcwd.Location, runID string) string {
 	return filepath.Join(lymdirs.LymDirName, shedDirName, runSegment(l, runID), "status.json")
 }
 
+// noticeEpisodeFileName is the file in a run's durable directory holding the episode keys of the run notices dobby sent for it, one per line.
+const noticeEpisodeFileName = "notice-episode"
+
+// NoticeEpisodeFile returns the path of the run notices' marker: RunDir(l, runID) joined with noticeEpisodeFileName.
+// It is durable so the keys of the notices sent reach the next machine with the run's records.
+func NoticeEpisodeFile(l *lymcwd.Location, runID string) string {
+	return filepath.Join(RunDir(l, runID), noticeEpisodeFileName)
+}
+
+// NoticeEpisodeRel returns the worktree-anchor-relative form of NoticeEpisodeFile's path, for a records commit's pathspec.
+func NoticeEpisodeRel(l *lymcwd.Location, runID string) string {
+	return filepath.Join(lymdirs.LymDirName, shedDirName, runSegment(l, runID), noticeEpisodeFileName)
+}
+
 // DriveReportsDir returns the path to the durable directory holding a run's drive reports:
 // RunDir(l, runID) joined with driveReportsDirName.
 func DriveReportsDir(l *lymcwd.Location, runID string) string {

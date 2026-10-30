@@ -244,44 +244,6 @@ func TestInnerRun_OwnerCheck(t *testing.T) {
 		h.requireAdoptNotice("lym adopt myslug")
 	})
 
-	t.Run("a running child with no driver is noticed once the owner pause lifts and an owned-here verdict follows, and not while the pause covers it", func(t *testing.T) {
-		t.Parallel()
-		h := newLockHarness(t, running)
-		h.record = loopRecord()
-		recordSpawnConfirmed("innerrun", "myslug", h.scratchDir, SpawnConfirmedFile(h.scratchDir, "innerrun"))
-		h.verdict = func(n int) (OwnerVerdict, error) {
-			if n == 1 {
-				return OwnerVerdict{Owner: "m2", Elsewhere: true}, nil
-			}
-			return OwnerVerdict{}, nil
-		}
-		h.coverage = func(call int) pauserecord.Coverage {
-			return pauserecord.Coverage{Covered: call < 5, OwnerHeld: true, Entry: pauserecord.Entry{Scope: "myslug", Caller: pauserecord.OwnerCaller}}
-		}
-		driverDeadNotices := func() int {
-			count := 0
-			for _, line := range h.notices {
-				if strings.Contains(line, "driver strand is dead") {
-					count++
-				}
-			}
-			return count
-		}
-		h.seedOwnerDue()
-		coveredNotices := -1
-		h.clock.onSleep = func(call int) {
-			if call == 4 {
-				coveredNotices = driverDeadNotices()
-			}
-		}
-
-		h.runChecks(10)
-
-		if coveredNotices != 0 || driverDeadNotices() != 1 {
-			t.Errorf("driver-dead notices = %d while covered, %d in the end; want 0 and 1 (notices %q)", coveredNotices, driverDeadNotices(), h.notices)
-		}
-	})
-
 	t.Run("a done child under an owner-held pause is held until the coverage clears", func(t *testing.T) {
 		t.Parallel()
 		h := newLockHarness(t, shedengine.Status{State: shedengine.StateDone})

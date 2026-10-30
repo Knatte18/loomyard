@@ -432,7 +432,7 @@
 // The held wait starts at a held turn end, stamped with the run clock's time, and the next tick that reads a new event or a turn start past the held turn end clears it, so the following turn start, turn end or ask ends it.
 // A held turn end read in the same batch as a turn start past it is logged and notified, and shows no hold, since the next turn is already under way.
 // ReadWaitMarker returns the first marker with a live pid among a run-directory root's runs, which is how `lym loom status` reads it.
-// ReadWaitMarkers returns every such marker, and WaitMarker.Held tells the held label, so batten's wait reading can skip a held wait: a held run is idle, and its quiet notice still fires.
+// ReadWaitMarkers returns every such marker, and WaitMarker.Held tells the held label, so the run notices' wait reading can skip a held wait: a held run is idle, and its quiet notice still fires.
 // Both exist only for display and status: no shuttle decision reads either,
 // and a failure to write, remove, set or clear one is logged and changes no verdict, error return, re-prompt or gate outcome.
 // Wait clears the pane mark and removes the marker file on entry,

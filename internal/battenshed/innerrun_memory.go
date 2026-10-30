@@ -73,10 +73,6 @@ type innerRunMemory struct {
 	// Respawns is how many times the running child was respawned with no write to its status file between, and RespawnStatusTime the status file's modification time after the last respawn.
 	Respawns          int       `json:"respawns"`
 	RespawnStatusTime time.Time `json:"respawn_status_time"`
-	// APIReviveKey is the api-error episode key last revived, APIRevives how many episodes in a row were revived and APIReviveStatusTime the status file's modification time at the last revive.
-	APIReviveKey        string    `json:"api_revive_key"`
-	APIRevives          int       `json:"api_revives"`
-	APIReviveStatusTime time.Time `json:"api_revive_status_time"`
 }
 
 // memoryEpisode is noticeEpisode as the record holds it.
@@ -139,7 +135,6 @@ func (p *innerRunProducer) applyMemory(memory innerRunMemory) {
 	p.restep = restepWatch{stop: memory.Restep.Stop, build: memory.Restep.Build, interval: memory.Restep.Interval, nextAt: memory.Restep.NextAt, attempts: memory.Restep.Attempts, dirtyLogged: memory.Restep.DirtyLogged}
 	p.watchedAnswer = watchedAnswer(memory.WatchedAnswer)
 	p.respawns, p.respawnStatusTime = memory.Respawns, memory.RespawnStatusTime
-	p.apiReviveKey, p.apiRevives, p.apiReviveStatusTime = memory.APIReviveKey, memory.APIRevives, memory.APIReviveStatusTime
 
 	w := p.cur
 	if memory.IdleWatching && p.deps.ParentLock != nil {
@@ -172,10 +167,6 @@ func (p *innerRunProducer) saveMemory() {
 		Respawns:          p.respawns,
 		RespawnStatusTime: p.respawnStatusTime,
 
-		APIReviveKey:        p.apiReviveKey,
-		APIRevives:          p.apiRevives,
-		APIReviveStatusTime: p.apiReviveStatusTime,
-
 		ResumeRetryAt:   w.resumeRetryAt,
 		NotParkedLogged: w.notParkedLogged,
 		BusyLogged:      w.busyLogged,
@@ -199,4 +190,21 @@ func (p *innerRunProducer) saveMemory() {
 	if err := state.WriteJSON(innerRunMemoryFile(p.scratchDir, p.name), innerRunMemoryLockFile(p.scratchDir, p.name), memory); err != nil {
 		logger.Warn("battenshed: could not write the run's memory record; the next pass starts from the one before", "producer", p.name, "slug", p.slug, "error", err)
 	}
+}
+
+// RespawnCap is how many times the row respawns a running child with no write to its status file between, before it leaves the child to the operator.
+const RespawnCap = respawnCap
+
+// RespawnCapReached reports whether the memory record of the row producer under scratchDir shows its running child respawned the cap of times with no write to the child's status file between.
+// statusModified is the status file's modification time now: a write after the last respawn is progress and reads as not capped, as the row's own pass reads it.
+// It lets a reader outside the row, such as the dobby that sends the driver-dead notice, name the cap; a missing record reads as false.
+func RespawnCapReached(scratchDir, producer string, statusModified time.Time) (bool, error) {
+	memory, found, err := state.ReadJSON[innerRunMemory](innerRunMemoryFile(scratchDir, producer), innerRunMemoryLockFile(scratchDir, producer))
+	if err != nil || !found {
+		return false, err
+	}
+	if statusModified.After(memory.RespawnStatusTime) {
+		return false, nil
+	}
+	return memory.Respawns >= respawnCap, nil
 }
