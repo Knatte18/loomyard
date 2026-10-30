@@ -1,7 +1,9 @@
 //go:build tier1
 
-// landingdeps_integration_test.go drives landingDeps' config-change seams over a real hub: ConfigChanges reads a pair's committed config files through real branches,
-// and Notify posts creel mail to the prime's orch.
+// landingdeps_integration_test.go drives landingDeps' seams over a real hub.
+// ConfigChanges reads a pair's committed config files through real branches.
+// Notify posts creel mail to the prime's orch.
+// The PullRequest seams read the receiving branch's mode, the run's board entry and the task branch's commits.
 // This package's own testmain_test.go arms the hermetic git test environment for the whole binary,
 // so this file adds no TestMain.
 
@@ -251,6 +253,48 @@ func TestLandingDeps_PullRequestModeReadsTheParent(t *testing.T) {
 		field, err = depsOf(member).PullRequest.EntryField()
 		if err != nil || field != "" {
 			t.Errorf("member EntryField() = %q, %v; want an empty field for an absent entry, nil", field, err)
+		}
+	})
+}
+
+// TestLandingDeps_TaskHasCommitsReadsTheTaskHeadAgainstTheParent asserts the TaskHasCommits seam is false for a task branch level with its parent, true once the task branch holds a commit the parent lacks, and an error when the parent branch does not resolve.
+func TestLandingDeps_TaskHasCommitsReadsTheTaskHeadAgainstTheParent(t *testing.T) {
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPair(t, h, "task")
+	taskWorktree := h.PairCodeWorktree("task")
+	taskLocation, err := lymcwd.ResolveWorktree(taskWorktree)
+	if err != nil {
+		t.Fatalf("lymcwd.ResolveWorktree(task) error = %v; want nil", err)
+	}
+	taskHasCommits := func(parentBranch string) (bool, error) {
+		deps := landingDeps(taskLocation, shedrun.RecipeLoom, websterengine.Geometry{}, "task", parentBranch,
+			true, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(taskLocation), parentLockDeps(taskLocation, shedrun.SelfRunID, "", ""))
+		return deps.PullRequest.TaskHasCommits()
+	}
+
+	if !t.Run("LevelWithTheParentHasNoCommits", func(t *testing.T) {
+		got, err := taskHasCommits("main")
+		if err != nil || got {
+			t.Errorf("TaskHasCommits() = %v, %v; want false, nil for a task branch level with its parent", got, err)
+		}
+	}) {
+		return
+	}
+
+	t.Run("OneCommitBeyondTheParentHasCommits", func(t *testing.T) {
+		gitkit.CommitFile(t, taskWorktree, "task.txt", "work\n", "task: add work")
+		got, err := taskHasCommits("main")
+		if err != nil || !got {
+			t.Errorf("TaskHasCommits() = %v, %v; want true, nil after one commit on the task branch", got, err)
+		}
+	})
+
+	t.Run("AParentBranchThatDoesNotResolveIsAnError", func(t *testing.T) {
+		got, err := taskHasCommits("no-such-branch")
+		if err == nil || !strings.Contains(err.Error(), "no-such-branch") || got {
+			t.Errorf("TaskHasCommits() = %v, %v; want false and an error naming the parent branch", got, err)
 		}
 	})
 }

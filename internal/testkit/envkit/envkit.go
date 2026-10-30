@@ -207,6 +207,7 @@ func LandingDeps(dir string) landingshed.Deps {
 			},
 			PushTask:        func() error { return nil },
 			CommitsMissing:  func(string, string) ([]string, error) { return nil, nil },
+			TaskHasCommits:  func() (bool, error) { return true, nil },
 			DirtyPaths:      func() ([]string, error) { return nil, nil },
 			MailAgent:       func(string, string) error { return nil },
 			PauseCovered:    func() (bool, error) { return false, nil },

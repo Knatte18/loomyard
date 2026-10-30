@@ -1,7 +1,7 @@
 // Package landingshed owns landing's general producers, Parent-Align, the PR-Review row and Finalize, which any producer list may name -- none is special-cased by the engine that drives them.
 //
 // PR-Review lands a run through a GitHub pull request when ResolvePullRequest says so; PRReview names it for a recipe row.
-// It reads the receiving branch's beam.yaml `pull_request`, the landing entry's field and the origin through Deps.PullRequest, and takes no parent lock.
+// It reads the receiving branch's beam.yaml `pull_request`, the landing entry's field, the origin and whether the task branch has commits beyond its parent through Deps.PullRequest, and takes no parent lock.
 // A beam.yaml it cannot read is Stuck with Halt naming the worktree and `lym config beam`, and a resolver Halt is Stuck with Halt.
 // A no logs the reason, closes a recorded pull request GitHub reports open with the comment `lym closed this pull request: <reason>`, drops the record and ends Done.
 // A yes pushes the task branch, then finds the pull request the record names or the open one on the task branch, else opens one, sets its title and body from the change description and records its number, URL, base and head, and then waits on it in process.
@@ -27,13 +27,15 @@
 // It stops it at the first wake a pause covers and resumes it at the first uncovered wake, and on every verdict, Stuck and error, and it leaves it running when the context is cancelled.
 // The wait's wakes start no session, so an operator who closes the window ends the agent until the next entry of the row.
 // The driver strand's wait mark reads `PR #<n>` while the wait runs.
-// A transient push or GitHub failure is an error the driver re-steps; an unresolvable token, a push the fabric refuses and any other GitHub failure are Stuck with Halt naming their way forward.
+// A transient push or GitHub failure is an error the driver re-steps; an unresolvable or rejected token, a push the fabric refuses and any other GitHub failure are Stuck with Halt naming their way forward.
+// The way forward names the token only for a token failure or a 401 or 403 response, and a 422 says GitHub accepted the token but refused the request's content.
 // A nil seam, an empty record path and a cancelled context are errors.
 //
 // ResolvePullRequest is the one decision of whether a landing goes through a pull request, so PR-Review and Finalize cannot disagree.
-// It takes the receiving branch's beam.yaml `pull_request` (`on`, `off` or `required`), the landing entry's `pull_request` field (empty, `on` or `off`) and the origin facts, and reads no file: its callers read the parent's beam.yaml and the entry and tell the values.
+// It takes the receiving branch's beam.yaml `pull_request` (`on`, `off` or `required`), the landing entry's `pull_request` field (empty, `on` or `off`), the origin facts and whether the task branch has commits beyond its parent, and reads no file: its callers read the parent's beam.yaml, the entry and the task branch through git and tell the values.
 // A required parent wants a pull request whatever the field says, an on parent wants one unless the field is off, and an off parent wants one only when the field is on.
 // A wanted pull request needs an origin on github.com that the owner and repository parse from, an upstream for the parent and no push skip.
+// A wanted pull request on a task branch with no commit beyond its parent is a no, before any origin fact is judged, since GitHub opens none on an empty branch; both rows then take the no path, and Finalize's parent-side merge commits nothing.
 // A missing fact is a Halt when the parent is required or the field is on, and a no with the fact named when the parent is on alone; an origin on github.com that names no repository is a Halt in every mode that wants a pull request.
 //
 // A merge or test failure at Parent-Align or Finalize is owned by the recipe: it ends in the row's fixer, a reroute or a halt to the orch.
@@ -211,7 +213,7 @@
 // After the parent-side merge and before the push, Finalize marks the board task done.
 //
 // Finalize lands through the run's pull request, which it merges on GitHub only here, under the parent lock.
-// Right after it takes the lock it asks ResolvePullRequest the question PR-Review asked, from the same beam.yaml, entry field and origin, and a Finalize with no `ParentMode` seam skips the step and lands locally.
+// Right after it takes the lock it asks ResolvePullRequest the question PR-Review asked, from the same beam.yaml, entry field, origin and task-branch commits, and a Finalize with no `ParentMode` seam skips the step and lands locally.
 // A no closes a recorded pull request GitHub reports open with the comment `lym closed this pull request: <reason>`, removes the record, and lands locally.
 // A yes with no record is Stuck with Halt naming `lym loom goto PR-Review`, and a yes whose pull request GitHub reports closed while the record is not marked closed for continue is Stuck with Halt naming a reopen on GitHub and `lym batten cancel`; only PR-Review writes that mark.
 // A yes whose record is marked closed for continue and whose pull request is closed is the operator's ending, and lands locally with Finalize's gate and trailer.

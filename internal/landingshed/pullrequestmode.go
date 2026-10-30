@@ -46,8 +46,9 @@ type PullRequestDecision struct {
 // A field off under a required parent logs one Warn and still wants one.
 // A wanted pull request needs, in this order, an origin on github.com, an origin ParseOwnerRepo accepts, an upstream for the parent and no push skip.
 // A missing fact is a Halt when the parent is required or the field is on, and an origin on github.com that ParseOwnerRepo refuses is always a Halt; any other missing fact under an on parent alone is no pull request, naming the fact.
-// It reads no file: the caller reads the parent's beam.yaml and the entry and tells the values.
-func ResolvePullRequest(slug, parentMode, entryField string, origin Origin) PullRequestDecision {
+// A wanted pull request on a task branch with no commit beyond its parent, taskHasCommits false, is no pull request before any origin fact is judged, since GitHub opens none on an empty branch.
+// It reads no file: the caller reads the parent's beam.yaml, the entry and the task branch and tells the values.
+func ResolvePullRequest(slug, parentMode, entryField string, origin Origin, taskHasCommits bool) PullRequestDecision {
 	if parentMode == pullRequestRequired && entryField == pullRequestOff {
 		logger.Warn("landingshed: the entry's pull_request is off but the parent's beam.yaml pull_request is required, so a pull request is still required", "slug", slug)
 	}
@@ -68,6 +69,9 @@ func ResolvePullRequest(slug, parentMode, entryField string, origin Origin) Pull
 	}
 	if !wanted {
 		return PullRequestDecision{Reason: fmt.Sprintf("pull request off: the parent's beam.yaml pull_request is %s and the entry's pull_request is %s", parentMode, field)}
+	}
+	if !taskHasCommits {
+		return PullRequestDecision{Reason: fmt.Sprintf("no pull request: %s, but the task branch has no commits beyond its parent, so the landing is empty", demand)}
 	}
 
 	owner, repo, missing, alwaysHalt := checkOrigin(origin)

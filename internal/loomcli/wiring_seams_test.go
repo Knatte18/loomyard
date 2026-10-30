@@ -41,6 +41,7 @@ var intentionallyNil = map[string]string{
 	"Landing.PullRequest.API":             "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.PullRequest.PushTask":        "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.PullRequest.CommitsMissing":  "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
+	"Landing.PullRequest.TaskHasCommits":  "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.PullRequest.DirtyPaths":      "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.PullRequest.MailAgent":       "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.PullRequest.PauseCovered":    "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",

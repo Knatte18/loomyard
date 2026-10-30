@@ -321,6 +321,34 @@ func TestCommitLog_ListsTheRangeNewestFirst(t *testing.T) {
 	}
 }
 
+// TestHeadHoldsCommitsNotIn asserts HEAD level with a ref reads false, a commit past the ref reads true, the HEAD tip as the ref reads false, and an unknown ref is an error naming it.
+func TestHeadHoldsCommitsNotIn(t *testing.T) {
+	t.Parallel()
+
+	f, warpPath, _, _, _, _, _ := buildReconcileFixture(t, t.TempDir(), 1)
+	base := fabricengine.CurrentSHAForTest(t, warpPath)
+
+	level, err := f.HeadHoldsCommitsNotIn(base)
+	if err != nil || level {
+		t.Errorf("HeadHoldsCommitsNotIn(base) = %v, %v; want false, nil", level, err)
+	}
+
+	ahead := gitkit.CommitFile(t, warpPath, "a.txt", "a", "first change")
+	past, err := f.HeadHoldsCommitsNotIn(base)
+	if err != nil || !past {
+		t.Errorf("HeadHoldsCommitsNotIn(base) = %v, %v; want true, nil", past, err)
+	}
+
+	atTip, err := f.HeadHoldsCommitsNotIn(ahead)
+	if err != nil || atTip {
+		t.Errorf("HeadHoldsCommitsNotIn(HEAD tip) = %v, %v; want false, nil", atTip, err)
+	}
+
+	if _, err := f.HeadHoldsCommitsNotIn("no-such-ref"); err == nil || !strings.Contains(err.Error(), "no-such-ref") {
+		t.Errorf("HeadHoldsCommitsNotIn(unknown ref) error = %v; want it to name the ref", err)
+	}
+}
+
 // TestHoldsWork covers a source the base lacks, one the base holds after a squash, and a conflicting one.
 func TestHoldsWork(t *testing.T) {
 	t.Parallel()
