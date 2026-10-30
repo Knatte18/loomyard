@@ -1,7 +1,7 @@
 //go:build tier1
 
-// landingdeps_integration_test.go drives landingDeps' config-change seams over a real hub: ConfigChanges reads a pair's committed config files through real branches,
-// and Notify posts creel mail to the prime's orch.
+// landingdeps_integration_test.go drives landingDeps' seams over a real hub: ConfigChanges reads a pair's committed config files through real branches,
+// Notify posts creel mail to the prime's orch, and the PullRequest seams read the receiving branch's mode, the run's board entry and the task branch's commits.
 // This package's own testmain_test.go arms the hermetic git test environment for the whole binary,
 // so this file adds no TestMain.
 
