@@ -229,18 +229,19 @@ type HookInput struct {
 	Event HookEvent
 	// Subagent is true when the call comes from a subagent or fork rather than the session's main thread.
 	Subagent bool
-	// StopHookActive is true when the turn-end input says the session already continues because of an earlier Stop block.
+	// StopHookActive is true when the turn-end input says the session already continues because of an earlier Stop hook's output.
 	StopHookActive bool
 }
 
 // ToolBoundaryContextRenderer is an optional capability beside Engine: the provider's side of creel's hook delivery.
-// It parses a hook's input, renders the block that hands text to the session and shows it to the operator, and renders what an idle waiter hook writes to wake the session.
+// It parses a hook's input, renders the hook output that hands mail to the session and shows the operator the echo, and renders what an idle waiter hook writes to wake the session.
 // An engine without it delivers creel mail by no hook.
 type ToolBoundaryContextRenderer interface {
 	// HookInput parses the provider's hook input payload, refusing a payload that is not a hook input.
 	HookInput(payload []byte) (HookInput, error)
-	// BoundaryBlock renders text as the provider's hook output for event that hands it to the session once and shows it to the operator.
-	BoundaryBlock(event HookEvent, text string) ([]byte, error)
+	// HookOutput renders the provider's hook output for event: mail, the claimed lines joined by newlines, goes to the session once, and echo, the operator-only text of a mail an idle wake already handed over, goes to the operator.
+	// Either may be empty.
+	HookOutput(event HookEvent, mail, echo string) ([]byte, error)
 	// RewakeOutput returns what an idle waiter hook writes to standard error and exits with to wake the session with text.
 	RewakeOutput(text string) (stderr []byte, exitCode int)
 }

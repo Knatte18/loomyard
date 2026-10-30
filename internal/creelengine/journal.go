@@ -153,6 +153,8 @@ type journalWriter struct {
 	file  *os.File
 	// appended counts the records append folded into the pool, so a caller tells whether a change of its own reached the pool.
 	appended uint64
+	// writeFault, when set, is called before each line write and fails the write with its error; a test seam, nil in production.
+	writeFault func() error
 }
 
 // openJournal prepares the writer over the pool folded from dir.
@@ -254,6 +256,11 @@ func (w *journalWriter) close() error {
 
 // writeLine writes rec as one line to the open day file and syncs it.
 func (w *journalWriter) writeLine(rec record) error {
+	if w.writeFault != nil {
+		if err := w.writeFault(); err != nil {
+			return err
+		}
+	}
 	line, err := json.Marshal(rec)
 	if err != nil {
 		return fmt.Errorf("creel journal: encode a %s record: %w", rec.Event, err)

@@ -48,10 +48,12 @@ type Store struct {
 	paneLocks map[string]*sync.Mutex
 	// flags holds the file names of the flags the flag directory holds, as this store last set or found them.
 	flags map[string]bool
-	// stopBlocks maps a strand to the Stop blocks of its current turn; a strand with no entry counts as at the cap, and the count is never journaled.
+	// stopBlocks maps a strand to the Stop claims that handed out mail in its current turn; a strand with no entry counts as at the cap, and the count is never journaled.
 	stopBlocks map[string]int
 	// wakeMarks maps a hook strand to the claimable set its last ring was for, the clock time of that ring, whether it was answered and the set its bell was typed for; it is kept in memory alone.
 	wakeMarks map[string]wakeMark
+	// echoes maps a strand to the ring mail its operator is still owed as an echo, oldest first; it is kept in memory alone, so a restart drops it.
+	echoes map[string][]echoItem
 	// opened is the clock time the store opened, from which a strand whose hook waiter never registered counts its bell grace.
 	opened time.Time
 	// waiterEnds maps a hook strand to the clock time its last hook waiter ended.
@@ -115,7 +117,7 @@ func OpenStore(geom Geometry, delivery Delivery, clock Clock) (*Store, error) {
 		geom: geom, delivery: delivery, clock: clock, state: state, writer: writer,
 		reserved: map[int64]string{}, waiters: map[waitKey][]*Waiter{}, agedWritten: map[int64]int64{},
 		stalls: map[string]stallNote{}, paneLocks: map[string]*sync.Mutex{}, flags: map[string]bool{}, stopBlocks: map[string]int{}, wakeMarks: map[string]wakeMark{},
-		opened: clock.Now(), waiterEnds: map[string]time.Time{},
+		echoes: map[string][]echoItem{}, opened: clock.Now(), waiterEnds: map[string]time.Time{},
 		chaseWritten: map[int64]int64{}, chaseBase: map[int64]time.Duration{},
 	}
 	store.seedChaseClock()
@@ -255,7 +257,8 @@ const (
 	OutcomeUnanswered OutcomeKind = "unanswered"
 	// OutcomeMail means the waited-on holder now holds unread mail.
 	OutcomeMail OutcomeKind = "mail"
-	// OutcomeRing means the daemon woke the idle strand whose waiter this was; it carries no mail and claims nothing.
+	// OutcomeRing means the daemon woke the idle strand whose waiter this was.
+	// A ring to a waiter marked as taking mail carries the claimed mail in Outcome.Reading, and one to an unmarked waiter carries none.
 	OutcomeRing OutcomeKind = "ring"
 	// OutcomeSuperseded means a newer waiter of the same strand replaced this one.
 	OutcomeSuperseded OutcomeKind = "superseded"
@@ -263,11 +266,13 @@ const (
 
 // Outcome is the answer to a Waiter; Message is the reply or the returned message, and zero for the others.
 // Stall and StallAt are the receiver's fresh stall when an inject expired and the time it began, empty and zero when none stood.
+// Reading is the claim a ring to a marked waiter carries, reserved until its taker acknowledges or releases it, and nil for every other outcome.
 type Outcome struct {
 	Kind    OutcomeKind
 	Message Message
 	Stall   Stall
 	StallAt time.Time
+	Reading *Reading
 }
 
 // StallNote is a stall a probe read for a receiver and the time the stall began.
@@ -304,6 +309,8 @@ type Waiter struct {
 	key      waitKey
 	// told is the stall the waiter was last told, empty when none; a reading that differs from it is notified.
 	told Stall
+	// takesMail marks an idle waiter whose ring carries the strand's claimed mail; it is set under the store's mutex when the waiter registers.
+	takesMail bool
 }
 
 // notify hands note to the waiter's progress channel, replacing a note nobody has read.
@@ -324,9 +331,9 @@ func (w *Waiter) notify(note StallNote) {
 
 // Cancel unregisters the wait; a waiter already answered is unaffected.
 // A hook waiter's end, answered or not, is recorded at the clock time, from which its strand's bell grace runs.
+// A hook waiter's ring outcome still unread in its channel is drained and its claim released, so a ring nobody took returns its mail.
 func (w *Waiter) Cancel() {
 	w.store.mu.Lock()
-	defer w.store.mu.Unlock()
 	if w.key.kind == waitHook {
 		w.store.waiterEnds[w.key.holder] = w.store.clock.Now()
 	}
@@ -341,6 +348,17 @@ func (w *Waiter) Cancel() {
 		delete(w.store.waiters, w.key)
 	} else {
 		w.store.waiters[w.key] = list
+	}
+	w.store.mu.Unlock()
+	if w.key.kind != waitHook {
+		return
+	}
+	select {
+	case outcome := <-w.ch:
+		if outcome.Reading != nil {
+			outcome.Reading.Release()
+		}
+	default:
 	}
 }
 
@@ -452,7 +470,7 @@ func (s *Store) unreadLocked(holder, from string) []*Message {
 }
 
 // wakeMark is the record of a hook strand's last ring and bell: the claimable message ids the ring was for, the clock time of the ring and whether the ring was answered.
-// A ring is answered by a claim that handed out mail, or by a probe reading a turn in progress after it.
+// A ring is answered by the acknowledgement of its own claim, by a claim that handed out mail, or by a probe that reads a turn in progress after it.
 // The time and the answer stay until the next ring replaces them, whatever the set does meanwhile.
 // bellIDs are the claimable ids the typed bell was for, empty when none was typed; a different set is a set no bell was typed for.
 type wakeMark struct {

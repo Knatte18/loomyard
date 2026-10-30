@@ -198,24 +198,31 @@ func TestBuildSettings_SessionStartHook(t *testing.T) {
 	}
 }
 
-// TestHookContext pins the exact JSON the session-start hook and creel's boundary blocks print, with the text escaped:
-// after a tool call the text is the reason, and on a Stop it is the additional context and appears in no reason.
+// TestHookContext pins the exact JSON the session-start hook and creel's hook output print, with the text escaped:
+// the mail is the additional context and the operator's system message is the echo, the mail after a tool call with no echo, and no output carries a decision or a reason.
 func TestHookContext(t *testing.T) {
 	t.Parallel()
-	boundaryBlock := func(event shuttleengine.HookEvent) func(string) ([]byte, error) {
-		return func(text string) ([]byte, error) { return New().BoundaryBlock(event, text) }
+	const mail = `read "role.md"`
+	const echo = "[creel] Delivered while idle:\nread \"role.md\""
+	hookOutput := func(event shuttleengine.HookEvent, mail, echo string) func() ([]byte, error) {
+		return func() ([]byte, error) { return New().HookOutput(event, mail, echo) }
 	}
+	sessionStart := func() ([]byte, error) { return SessionStartContext(mail) }
 	tests := []struct {
 		name   string
-		render func(string) ([]byte, error)
+		render func() ([]byte, error)
 		want   string
 	}{
-		{"SessionStart", SessionStartContext, `{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"read \"role.md\""}}`},
-		{"ToolBoundaryBlock", boundaryBlock(shuttleengine.HookEventToolBoundary), `{"decision":"block","reason":"read \"role.md\"","systemMessage":"read \"role.md\""}`},
-		{"StopBlock", boundaryBlock(shuttleengine.HookEventStop), `{"decision":"block","reason":"` + stopBlockReason + `","systemMessage":"read \"role.md\"","hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"read \"role.md\""}}`},
+		{"SessionStart", sessionStart, `{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"read \"role.md\""}}`},
+		{"ToolBoundaryWithMail", hookOutput(shuttleengine.HookEventToolBoundary, mail, ""), `{"systemMessage":"read \"role.md\"","hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"read \"role.md\""}}`},
+		{"ToolBoundaryWithMailAndEcho", hookOutput(shuttleengine.HookEventToolBoundary, mail, echo), `{"systemMessage":"[creel] Delivered while idle:\nread \"role.md\"\nread \"role.md\"","hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"read \"role.md\""}}`},
+		{"ToolBoundaryWithEchoAlone", hookOutput(shuttleengine.HookEventToolBoundary, "", echo), `{"systemMessage":"[creel] Delivered while idle:\nread \"role.md\""}`},
+		{"StopWithMail", hookOutput(shuttleengine.HookEventStop, mail, ""), `{"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"read \"role.md\""}}`},
+		{"StopWithMailAndEcho", hookOutput(shuttleengine.HookEventStop, mail, echo), `{"systemMessage":"[creel] Delivered while idle:\nread \"role.md\"","hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"read \"role.md\""}}`},
+		{"StopWithEchoAlone", hookOutput(shuttleengine.HookEventStop, "", echo), `{"systemMessage":"[creel] Delivered while idle:\nread \"role.md\""}`},
 	}
 	for _, tt := range tests {
-		got, err := tt.render(`read "role.md"`)
+		got, err := tt.render()
 		if err != nil {
 			t.Fatalf("%s context error: %v", tt.name, err)
 		}
@@ -233,9 +240,11 @@ func TestBuildSettings_CreelMailHook(t *testing.T) {
 	const eventsPath = "/c/run/events.jsonl"
 	quotedEventsPath := shQuote(eventsPath)
 	type stopHook struct {
-		command     string
-		asyncRewake bool
-		timeout     float64
+		command       string
+		asyncRewake   bool
+		timeout       float64
+		rewakeMessage string
+		rewakeSummary string
 	}
 	tests := []struct {
 		name     string
@@ -248,7 +257,7 @@ func TestBuildSettings_CreelMailHook(t *testing.T) {
 			[]string{"touch '/c/run/activity-stamp'; true", creelMailHookCommand(`'/c/hub'\''s/_board/.lym/creel/flags'`)},
 			[]stopHook{
 				{command: creelStopHookCommand(`'/c/hub'\''s/_board/.lym/creel/flags'`, quotedEventsPath)},
-				{command: creelWaitHookCommand(), asyncRewake: true, timeout: 86400},
+				{command: creelWaitHookCommand(), asyncRewake: true, timeout: 86400, rewakeMessage: creelRewakeMessage, rewakeSummary: creelRewakeSummary},
 			},
 		},
 		{"Standalone", "", []string{"touch '/c/run/activity-stamp'; true"}, []stopHook{{command: recordingCommand(hookEventStop, quotedEventsPath)}}},
@@ -285,7 +294,9 @@ func TestBuildSettings_CreelMailHook(t *testing.T) {
 				command, _ := hook["command"].(string)
 				asyncRewake, _ := hook["asyncRewake"].(bool)
 				timeout, _ := hook["timeout"].(float64)
-				gotStop = append(gotStop, stopHook{command, asyncRewake, timeout})
+				rewakeMessage, _ := hook["rewakeMessage"].(string)
+				rewakeSummary, _ := hook["rewakeSummary"].(string)
+				gotStop = append(gotStop, stopHook{command, asyncRewake, timeout, rewakeMessage, rewakeSummary})
 			}
 		}
 		if !reflect.DeepEqual(gotStop, tt.wantStop) {

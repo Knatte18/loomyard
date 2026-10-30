@@ -1,6 +1,6 @@
 // settings.go composes the Claude Code settings.json document Prepare writes for each run:
 // a Stop hook that appends every turn-end event to the run's events.jsonl (the only channel ParseEvents reads).
-// A session in a hub also gets creel's hook delivery: the PostToolUse mail hook, a Stop hook that merges the turn-end recording with creel's turn-end delivery so a blocked Stop records no turn end, and the idle waiter hook that wakes an idle session.
+// A session in a hub also gets creel's hook delivery: the PostToolUse mail hook, a Stop hook that merges the turn-end recording with creel's turn-end delivery so a Stop that handed mail to the session records no turn end, and the idle waiter hook that wakes an idle session.
 // The UserPromptSubmit, StopFailure, Notification, SessionEnd, SessionStart and PermissionRequest hooks append their payloads to the same file for ParseSessionSignals;
 // the SessionStart hook of a run whose spec sets a context-after-compaction command runs that command on the compaction source, so its output joins the session's context.
 // Every recording hook writes a stamp line with the hook-side time before its payload, which ParseEvents skips.
@@ -56,12 +56,16 @@ const noticeAgentForkDeny = "The Agent tool accepts only fork subagents and refu
 const noticeAskUserQuestionDeny = "AskUserQuestion is unavailable: when blocked or needing operator input, state the question as your final message and end your turn without writing the result file; the run then waits for the answer, which arrives as your next turn."
 
 // hookCommand is one Claude Code hook invocation, run under git-bash on Windows.
-// AsyncRewake runs the command in the background and wakes the idle session when it exits 2, and Timeout bounds it in seconds; both are omitted when unset.
+// AsyncRewake runs the command in the background and wakes the idle session when it exits 2, and Timeout bounds it in seconds.
+// RewakeMessage and RewakeSummary label that wake for the model and the operator's notification row.
+// Every one of them is omitted when unset.
 type hookCommand struct {
-	Type        string `json:"type"`
-	Command     string `json:"command"`
-	AsyncRewake bool   `json:"asyncRewake,omitempty"`
-	Timeout     int    `json:"timeout,omitempty"`
+	Type          string `json:"type"`
+	Command       string `json:"command"`
+	AsyncRewake   bool   `json:"asyncRewake,omitempty"`
+	Timeout       int    `json:"timeout,omitempty"`
+	RewakeMessage string `json:"rewakeMessage,omitempty"`
+	RewakeSummary string `json:"rewakeSummary,omitempty"`
 }
 
 // hookEntry is one matcher/hooks pair in a settings.json hook event list.
@@ -138,11 +142,11 @@ func strandFlagName() string {
 	return `n="${` + agentname.StrandNameEnv + `:-}"; f=; while :; do case "$n" in *:*) f="$f${n%%:*}."; n="${n#*:}";; *) break;; esac; done`
 }
 
-// creelStopHookCommand returns the Stop hook command that merges the turn-end recording with creel's turn-end delivery, so the record is written only when no block was.
-// Claude Code runs an event's hooks in parallel, so a separate creel hook could not keep the recording from logging a turn end the block then cancels.
+// creelStopHookCommand returns the Stop hook command that merges the turn-end recording with creel's turn-end delivery, so the record is written only when no mail was handed to the session.
+// Claude Code runs an event's hooks in parallel, so a separate creel hook could not keep the recording from logging a turn end the mail then continues.
 // The command reads the hook input once, and when the strand's flag stands in the directory at quotedFlagDir it pipes the input to creelMailCommand from the session's project directory, whose output is the hook's.
-// An exit 0 of that step means a block was written, and the command then exits 0 having appended nothing to the events file at quotedEventsPath.
-// Otherwise, or when the flag is absent, it appends the Stop stamp and the input as recordingCommand does and exits with that append's status.
+// An exit 0 of that step means mail was handed to the session, which continues the turn, and the command then exits 0 having appended nothing to the events file at quotedEventsPath.
+// Otherwise, or when the flag is absent, it appends the Stop stamp and the input as recordingCommand does and exits with that append's status, leaving whatever the delivery step printed as the hook's output, which an echo printed with exit 1 relies on to reach the operator.
 func creelStopHookCommand(quotedFlagDir, quotedEventsPath string) string {
 	deliver := `if [ -f ` + quotedFlagDir + `/"$f$n" ]; then cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null; printf '%s' "$in" | ` + creelMailCommand + ` && exit 0; fi`
 	record := `printf '%s' "$in" | { ` + recordingCommand(hookEventStop, quotedEventsPath) + `; }`
@@ -154,6 +158,15 @@ const creelWaitCommand = "lym creel hook-wait claude"
 
 // creelWaitTimeout is the idle waiter hook's timeout in seconds, a day: well under the 2^31-1 ms ceiling of the timers Claude Code arms, and long enough to outlive any idle spell.
 const creelWaitTimeout = 86400
+
+// creelRewakeMessage is the label the idle waiter's wake carries for the model, in place of Claude Code's default naming the hook's command.
+// Both rewake keys are in Claude Code 2.1.312's hook schema marked `@internal`.
+// The message opens with `[creel]` so the wake's first line matches the creel trust sentence.
+const creelRewakeMessage = "[creel] Mail that arrived while you were idle:"
+
+// creelRewakeSummary is the row the operator's terminal draws for the idle waiter's wake.
+// It is fixed for the session because Claude Code takes a per-wake summary only from a hook of an Anthropic-marketplace plugin.
+const creelRewakeSummary = "creel mail"
 
 // creelWaitHookCommand returns the Stop hook command of the idle waiter: it changes to the session's project directory, so a session that moved out of the hub still reaches it, and runs creelWaitCommand.
 // It runs whether or not the strand's mail flag stands, since the waiter is what wakes an idle session for mail that arrives later.
@@ -400,7 +413,7 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 		doc.Hooks.PostToolUse = append(doc.Hooks.PostToolUse, hookEntry{Hooks: []hookCommand{{Type: "command", Command: creelMailHookCommand(quotedFlagDir)}}})
 		doc.Hooks.Stop = []hookEntry{
 			{Hooks: []hookCommand{{Type: "command", Command: creelStopHookCommand(quotedFlagDir, quotedEventsPath)}}},
-			{Hooks: []hookCommand{{Type: "command", Command: creelWaitHookCommand(), AsyncRewake: true, Timeout: creelWaitTimeout}}},
+			{Hooks: []hookCommand{{Type: "command", Command: creelWaitHookCommand(), AsyncRewake: true, Timeout: creelWaitTimeout, RewakeMessage: creelRewakeMessage, RewakeSummary: creelRewakeSummary}}},
 		}
 	}
 

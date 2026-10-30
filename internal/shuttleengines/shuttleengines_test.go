@@ -333,7 +333,7 @@ func TestRecordReaders(t *testing.T) {
 	}
 }
 
-// TestToolBoundaryRenderer pins that the claude entry renders the boundary block as the engine does and that an unknown name renders none.
+// TestToolBoundaryRenderer pins that the claude entry renders the hook output as the engine does and that an unknown name renders none.
 func TestToolBoundaryRenderer(t *testing.T) {
 	t.Parallel()
 
@@ -341,10 +341,10 @@ func TestToolBoundaryRenderer(t *testing.T) {
 	if !ok {
 		t.Fatal("ToolBoundaryRenderer(claude) found none")
 	}
-	got, err := renderer.BoundaryBlock(shuttleengine.HookEventStop, "mail")
-	want, wantErr := claudeengine.New().BoundaryBlock(shuttleengine.HookEventStop, "mail")
+	got, err := renderer.HookOutput(shuttleengine.HookEventStop, "mail", "")
+	want, wantErr := claudeengine.New().HookOutput(shuttleengine.HookEventStop, "mail", "")
 	if err != nil || wantErr != nil || string(got) != string(want) {
-		t.Errorf("BoundaryBlock = %s, %v; want the engine's %s", got, err, want)
+		t.Errorf("HookOutput = %s, %v; want the engine's %s", got, err, want)
 	}
 	if _, ok := ToolBoundaryRenderer("nope"); ok {
 		t.Error("ToolBoundaryRenderer(nope) found one; want none")

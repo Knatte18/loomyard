@@ -43,6 +43,8 @@ type rig struct {
 	// serving is closed when the first daemon of the rig listens.
 	serving     chan struct{}
 	servingOnce sync.Once
+	// beforeOutcomeWait, when set before start, runs in the daemon ahead of each waiting verb's select.
+	beforeOutcomeWait func(outcomeQueued, clientLeft func() bool)
 }
 
 // newRig returns a rig over a socket in the process run directory.
@@ -76,7 +78,7 @@ func newRig(t *testing.T, asStrand bool) *rig {
 }
 
 func (r *rig) options(ready func()) creelengine.Options {
-	return creelengine.Options{
+	opts := creelengine.Options{
 		Geometry: r.geom, Delivery: r.del, Clock: r.clock, PollClock: r.pollClock, ParentPID: proc.ParentPID, GOOS: runtime.GOOS,
 		Replaced: r.replaced.Load,
 		Ready: func() {
@@ -87,6 +89,10 @@ func (r *rig) options(ready func()) creelengine.Options {
 			}
 		},
 	}
+	if r.beforeOutcomeWait != nil {
+		opts = creelengine.WithBeforeOutcomeWait(opts, r.beforeOutcomeWait)
+	}
+	return opts
 }
 
 // running is one daemon started by a rig.
@@ -219,6 +225,44 @@ func mustCall(t *testing.T, c *creelengine.Client, req creelengine.Request) cree
 	return got.resp
 }
 
+// dialHookWait re-scripts alpha as a hook strand with the test process's pane, since the rig's default strand is a pane-mail strand that never rings.
+// It starts the daemon and sends alpha's raw hook-wait request with extraKeys, a JSON fragment of further keys, on a connection it returns with a reader of the daemon's responses.
+func dialHookWait(t *testing.T, r *rig, extraKeys string) (net.Conn, func() creelengine.Response) {
+	t.Helper()
+	hook := creelfake.HookStrand(alpha)
+	hook.PanePID = os.Getpid()
+	r.del.SetStrands(hook, creelfake.LiveStrand(beta))
+	r.start()
+	return sendHookWait(t, r, extraKeys)
+}
+
+// sendHookWait sends alpha's raw hook-wait request with extraKeys on a new connection to the running daemon and returns the connection with a reader of its responses.
+func sendHookWait(t *testing.T, r *rig, extraKeys string) (net.Conn, func() creelengine.Response) {
+	t.Helper()
+	conn, err := net.Dial("unix", r.geom.SocketPath)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	if err := conn.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		t.Fatalf("SetReadDeadline: %v", err)
+	}
+	if _, err := conn.Write([]byte(`{"verb":"hook-wait","claim":{"strand_name":"` + alpha + `"},"wait":true` + extraKeys + `}` + "\n")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	reader := bufio.NewReader(conn)
+	next := func() creelengine.Response {
+		t.Helper()
+		line, err := reader.ReadBytes('\n')
+		var resp creelengine.Response
+		if err != nil || json.Unmarshal(line, &resp) != nil {
+			t.Fatalf("read %q: %v", line, err)
+		}
+		return resp
+	}
+	return conn, next
+}
+
 func journalText(t *testing.T, geom creelengine.Geometry) string {
 	t.Helper()
 	entries, err := os.ReadDir(geom.JournalDir)
@@ -342,38 +386,98 @@ func TestDaemon_Protocol(t *testing.T) {
 			}
 		}},
 		{"HookWaitIsPendingAtOnceAndAPostToTheIdleStrandRingsIt", true, func(t *testing.T, r *rig) {
-			// The rig's default strand is a pane-mail strand that never rings, so alpha is re-scripted as a hook strand with the test process's pane.
-			hook := creelfake.HookStrand(alpha)
-			hook.PanePID = os.Getpid()
-			r.del.SetStrands(hook, creelfake.LiveStrand(beta))
-			r.start()
-			conn, err := net.Dial("unix", r.geom.SocketPath)
-			if err != nil {
-				t.Fatalf("dial: %v", err)
-			}
+			conn, next := dialHookWait(t, r, "")
 			defer conn.Close()
-			if err := conn.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
-				t.Fatalf("SetReadDeadline: %v", err)
-			}
-			if _, err := conn.Write([]byte(`{"verb":"hook-wait","claim":{"strand_name":"` + alpha + `"},"wait":true}` + "\n")); err != nil {
-				t.Fatalf("write: %v", err)
-			}
-			reader := bufio.NewReader(conn)
-			next := func() creelengine.Response {
-				t.Helper()
-				line, err := reader.ReadBytes('\n')
-				var resp creelengine.Response
-				if err != nil || json.Unmarshal(line, &resp) != nil {
-					t.Fatalf("read %q: %v", line, err)
-				}
-				return resp
-			}
 			if pending := next(); !pending.OK || !pending.Pending {
 				t.Fatalf("hook-wait answered %+v; want a pending response", pending)
 			}
 			mustCall(t, r.client(externalClaim(), nil, creelfake.NewClock(epoch)), creelengine.Request{Verb: creelengine.VerbPost, Receiver: alpha, Text: "wake up"})
-			if rung := next(); !rung.OK || rung.Outcome != creelengine.OutcomeRing {
-				t.Errorf("hook-wait after a post answered %+v; want the ring", rung)
+			if rung := next(); !rung.OK || rung.Outcome != creelengine.OutcomeRing || len(rung.Messages) != 0 || rung.AckRequired {
+				t.Errorf("hook-wait after a post answered %+v; want the ring with no messages and no ack_required", rung)
+			}
+		}},
+		{"AMarkedHookWaitIsRungWithTheMailAndItsAckJournalsTheRead", true, func(t *testing.T, r *rig) {
+			conn, next := dialHookWait(t, r, `,"takes_mail":true`)
+			defer conn.Close()
+			if pending := next(); !pending.OK || !pending.Pending {
+				t.Fatalf("hook-wait answered %+v; want a pending response", pending)
+			}
+			c := r.client(externalClaim(), nil, creelfake.NewClock(epoch))
+			mustCall(t, c, creelengine.Request{Verb: creelengine.VerbPost, Receiver: alpha, Text: "wake up"})
+			rung := next()
+			if !rung.OK || rung.Outcome != creelengine.OutcomeRing || len(rung.Messages) != 1 || rung.Messages[0].Body != "wake up" || !rung.AckRequired {
+				t.Fatalf("marked hook-wait after a post answered %+v; want the ring with the message and ack_required", rung)
+			}
+			if _, err := conn.Write([]byte(`{"ack":true}` + "\n")); err != nil {
+				t.Fatalf("write the ack: %v", err)
+			}
+			if confirmed := next(); !confirmed.OK {
+				t.Fatalf("the ack was answered %+v; want ok", confirmed)
+			}
+			var events []string
+			for _, entry := range mustCall(t, c, creelengine.Request{Verb: creelengine.VerbLog, Receiver: alpha}).Log {
+				events = append(events, entry.Event)
+			}
+			if !slices.Equal(events, []string{"posted", "read"}) {
+				t.Errorf("log to alpha events = %v; want the post and its read", events)
+			}
+		}},
+		{"AMarkedHookWaitWhoseClientLeavesBeforeTheAckLeavesTheMailUnread", true, func(t *testing.T, r *rig) {
+			conn, next := dialHookWait(t, r, `,"takes_mail":true`)
+			if pending := next(); !pending.OK || !pending.Pending {
+				t.Fatalf("hook-wait answered %+v; want a pending response", pending)
+			}
+			mustCall(t, r.client(externalClaim(), nil, creelfake.NewClock(epoch)), creelengine.Request{Verb: creelengine.VerbPost, Receiver: alpha, Text: "wake up"})
+			if rung := next(); len(rung.Messages) != 1 || !rung.AckRequired {
+				t.Fatalf("marked hook-wait after a post answered %+v; want the ring with the message and ack_required", rung)
+			}
+			_ = conn.Close()
+			c := r.client(strandClaim(alpha), nil, creelfake.NewClock(epoch))
+			got := mustCall(t, c, creelengine.Request{Verb: creelengine.VerbRead, Wait: true})
+			if len(got.Messages) != 1 || got.Messages[0].Body != "wake up" {
+				t.Errorf("read --wait after the leaving client = %+v; want the message back", got.Messages)
+			}
+		}},
+		{"AMarkedHookWaitWhoseClientLeavesAfterTheRingWasQueuedLeavesTheMailUnread", true, func(t *testing.T, r *rig) {
+			// The daemon holds each wait until the ring stands in the waiter's channel and its close watch saw the client leave, so the select sees both ready and picks at random.
+			// Rounds repeat so a missing release on either pick fails the row.
+			const rounds = 8
+			clientConn := make(chan net.Conn, 1)
+			ordered := make(chan struct{})
+			r.beforeOutcomeWait = func(outcomeQueued, clientLeft func() bool) {
+				conn := <-clientConn
+				deadline := time.Now().Add(10 * time.Second)
+				for !outcomeQueued() && time.Now().Before(deadline) {
+					time.Sleep(time.Millisecond)
+				}
+				_ = conn.Close()
+				for !clientLeft() && time.Now().Before(deadline) {
+					time.Sleep(time.Millisecond)
+				}
+				ordered <- struct{}{}
+			}
+			hook := creelfake.HookStrand(alpha)
+			hook.PanePID = os.Getpid()
+			r.del.SetStrands(hook, creelfake.LiveStrand(beta))
+			r.start()
+			poster := r.client(externalClaim(), nil, creelfake.NewClock(epoch))
+			reader := r.client(strandClaim(alpha), nil, creelfake.NewClock(epoch))
+			for round := 1; round <= rounds; round++ {
+				conn, next := sendHookWait(t, r, `,"takes_mail":true`)
+				clientConn <- conn
+				if pending := next(); !pending.OK || !pending.Pending {
+					t.Fatalf("round %d: hook-wait answered %+v; want a pending response", round, pending)
+				}
+				mustCall(t, poster, creelengine.Request{Verb: creelengine.VerbPost, Receiver: alpha, Text: "wake up"})
+				select {
+				case <-ordered:
+				case <-time.After(10 * time.Second):
+					t.Fatalf("round %d: the daemon never reached the wait", round)
+				}
+				got := mustCall(t, reader, creelengine.Request{Verb: creelengine.VerbRead, Wait: true})
+				if len(got.Messages) != 1 || got.Messages[0].Body != "wake up" {
+					t.Fatalf("round %d: read --wait after the ring was queued and the client left = %+v; want the message back", round, got.Messages)
+				}
 			}
 		}},
 		{"ClaimHandsOutTheStrandsMailAndItsFlagFollowsTheMail", true, func(t *testing.T, r *rig) {
@@ -1263,6 +1367,50 @@ func TestDaemon_Lifecycle(t *testing.T) {
 				t.Errorf("events of the in-flight inject = %v; want its outcome journaled", events)
 			}
 		}},
+		{"AHookWaitWhoseConfirmationIsLostAfterItsRingReachedTheHandlerIsNotResumed", func(t *testing.T, r *rig) {
+			fake := listenRingingFake(t, r)
+			fake.serve(func(conn net.Conn, reader *bufio.Reader) {
+				_, _ = reader.ReadString('\n')
+				_ = conn.Close()
+			})
+			clock := creelfake.NewClock(epoch)
+			results := make(chan callResult, 1)
+			go func() {
+				resp, err := r.client(strandClaim(alpha), nil, clock).Call(creelengine.Request{Verb: creelengine.VerbHookWait, Wait: true, TakesMail: true}, 0, func(creelengine.Response) error { return nil })
+				results <- callResult{resp, err}
+			}()
+			got := result(t, results)
+			if got.err == nil || errors.Is(got.err, creelengine.ErrAckUnsent) {
+				t.Errorf("Call error = %v; want the lost confirmation, which is not ErrAckUnsent", got.err)
+			}
+			if accepted := fake.accepted.Load(); accepted != 1 {
+				t.Errorf("the fake accepted %d connections; want 1, the wait never resumed", accepted)
+			}
+		}},
+		{"AHookWaitWhoseAckCannotBeSentReturnsErrAckUnsent", func(t *testing.T, r *rig) {
+			fake := listenRingingFake(t, r)
+			closed := make(chan struct{})
+			fake.serve(func(conn net.Conn, _ *bufio.Reader) {
+				_ = conn.Close()
+				close(closed)
+			})
+			clock := creelfake.NewClock(epoch)
+			results := make(chan callResult, 1)
+			go func() {
+				resp, err := r.client(strandClaim(alpha), nil, clock).Call(creelengine.Request{Verb: creelengine.VerbHookWait, Wait: true, TakesMail: true}, 0, func(creelengine.Response) error {
+					<-closed
+					return nil
+				})
+				results <- callResult{resp, err}
+			}()
+			got := result(t, results)
+			if !errors.Is(got.err, creelengine.ErrAckUnsent) {
+				t.Errorf("Call error = %v; want ErrAckUnsent", got.err)
+			}
+			if accepted := fake.accepted.Load(); accepted != 1 {
+				t.Errorf("the fake accepted %d connections; want 1, the wait never resumed", accepted)
+			}
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1270,6 +1418,60 @@ func TestDaemon_Lifecycle(t *testing.T) {
 			tt.run(t, newRig(t, false))
 		})
 	}
+}
+
+// ringingFake is a stand-in daemon on the rig's socket that answers every request line with a pending line and a ring line of one message asking an acknowledgement.
+type ringingFake struct {
+	t        *testing.T
+	r        *rig
+	listener net.Listener
+	accepted atomic.Int32
+}
+
+// listenRingingFake listens on the rig's socket path and closes the listener when the test ends.
+func listenRingingFake(t *testing.T, r *rig) *ringingFake {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(r.geom.SocketPath), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	listener, err := net.Listen("unix", r.geom.SocketPath)
+	if err != nil {
+		t.Fatalf("listen on %s: %v", r.geom.SocketPath, err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	return &ringingFake{t: t, r: r, listener: listener}
+}
+
+// serve answers each accepted connection with the pending and ring lines, then hands it to after, which owns closing it.
+func (f *ringingFake) serve(after func(conn net.Conn, reader *bufio.Reader)) {
+	go func() {
+		for {
+			conn, err := f.listener.Accept()
+			if err != nil {
+				return
+			}
+			f.accepted.Add(1)
+			go func() {
+				reader := bufio.NewReader(conn)
+				if _, err := reader.ReadString('\n'); err != nil {
+					_ = conn.Close()
+					return
+				}
+				lines := []creelengine.Response{
+					{OK: true, HubPath: f.r.geom.HubPath, Pending: true},
+					{OK: true, HubPath: f.r.geom.HubPath, Outcome: creelengine.OutcomeRing, Messages: []creelengine.Message{{ID: 1, From: beta, Holder: alpha, Body: "mail"}}, AckRequired: true},
+				}
+				for _, line := range lines {
+					data, _ := json.Marshal(line)
+					if _, err := conn.Write(append(data, '\n')); err != nil {
+						_ = conn.Close()
+						return
+					}
+				}
+				after(conn, reader)
+			}()
+		}
+	}()
 }
 
 // linuxOnly returns run on Linux and nil elsewhere, so a table loop that passes over a nil run generates no subtest for the row off Linux.

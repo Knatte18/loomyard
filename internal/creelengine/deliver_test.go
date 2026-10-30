@@ -14,10 +14,12 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/creelengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/testkit/creelfake"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
@@ -1698,11 +1700,78 @@ func TestScheduler_HookWake(t *testing.T) {
 	}
 	register := func(t *testing.T, e *env, name string) *creelengine.Waiter {
 		t.Helper()
-		waiter, err := e.store.HookWait(strand(name))
+		waiter, err := e.store.HookWait(strand(name), false)
 		if err != nil {
 			t.Fatalf("HookWait(%s): %v", name, err)
 		}
 		return waiter
+	}
+	// registerTaking registers a waiter marked as taking mail, whose ring carries the claimed messages.
+	registerTaking := func(t *testing.T, e *env, name string) *creelengine.Waiter {
+		t.Helper()
+		waiter, err := e.store.HookWait(strand(name), true)
+		if err != nil {
+			t.Fatalf("HookWait(%s, takes mail): %v", name, err)
+		}
+		return waiter
+	}
+	// ringed waits for the waiter's ring and returns its claim, which a marked waiter's ring always carries.
+	ringed := func(t *testing.T, waiter *creelengine.Waiter) *creelengine.Reading {
+		t.Helper()
+		outcome := awaitOutcome(t, waiter)
+		if outcome.Kind != creelengine.OutcomeRing || outcome.Reading == nil {
+			t.Fatalf("the marked waiter was answered %+v; want a ring carrying a claim", outcome)
+		}
+		return outcome.Reading
+	}
+	// bodiesOf returns the bodies of the messages a reading holds.
+	bodiesOf := func(reading *creelengine.Reading) []string {
+		var bodies []string
+		for _, msg := range reading.Messages {
+			bodies = append(bodies, msg.Body)
+		}
+		return bodies
+	}
+	// boundaryClaim claims as alpha's tool-boundary hook and acknowledges, returning the bodies handed out.
+	boundaryClaim := func(t *testing.T, e *env) []string {
+		t.Helper()
+		reading, err := e.store.ClaimAtBoundary(strand(alpha), creelengine.Boundary{})
+		if err != nil {
+			t.Fatalf("ClaimAtBoundary: %v", err)
+		}
+		if err := reading.Ack(); err != nil {
+			t.Fatalf("Ack: %v", err)
+		}
+		return bodiesOf(reading)
+	}
+	// linesOf returns the lines the messages are handed out as.
+	linesOf := func(messages []creelengine.Message) []string {
+		var lines []string
+		for _, msg := range messages {
+			lines = append(lines, creelengine.MessageLine(msg))
+		}
+		return lines
+	}
+	// claimOnce claims as alpha's hook at the boundary and returns the reading without settling it.
+	claimOnce := func(t *testing.T, e *env, boundary creelengine.Boundary) *creelengine.Reading {
+		t.Helper()
+		reading, err := e.store.ClaimAtBoundary(strand(alpha), boundary)
+		if err != nil {
+			t.Fatalf("ClaimAtBoundary: %v", err)
+		}
+		return reading
+	}
+	// ackedRing rings a marked waiter of alpha for a post of body, acknowledges the ring and returns the line it carried, which is then owed as an echo.
+	ackedRing := func(t *testing.T, e *env, body string) []string {
+		t.Helper()
+		waiter := registerTaking(t, e, alpha)
+		e.post(t, strand(beta), alpha, body)
+		settle(e, func() { e.start(t) })
+		ring := ringed(t, waiter)
+		if err := ring.Ack(); err != nil {
+			t.Fatalf("Ack of the ring: %v", err)
+		}
+		return linesOf(ring.Messages)
 	}
 	wantKind := func(t *testing.T, waiter *creelengine.Waiter, want creelengine.OutcomeKind) {
 		t.Helper()
@@ -1782,7 +1851,291 @@ func TestScheduler_HookWake(t *testing.T) {
 			settle(e, func() { e.post(t, strand(beta), alpha, "one") })
 			var waiter *creelengine.Waiter
 			settle(e, func() { waiter = register(t, e, alpha) })
-			wantKind(t, waiter, creelengine.OutcomeRing)
+			if outcome := awaitOutcome(t, waiter); outcome.Kind != creelengine.OutcomeRing || outcome.Reading != nil {
+				t.Fatalf("the unmarked waiter was answered %+v; want a ring carrying no claim", outcome)
+			}
+			if got := boundaryClaim(t, e); !slices.Equal(got, []string{"one"}) {
+				t.Errorf("a claim after the unmarked ring handed out %q; want the mail", got)
+			}
+		}},
+		{"AMarkedWaiterIsRungWithTheBudgetedClaimAndItsAckJournalsItAndAnswersTheRing", func(t *testing.T, e *env) {
+			ringAt := e.clock.Now()
+			e.del.SetTurn(alpha, false, ringAt.Add(-time.Minute))
+			first := registerTaking(t, e, alpha)
+			e.post(t, strand(beta), alpha, bigBody)
+			e.post(t, strand(beta), alpha, bigBody)
+			settle(e, func() { e.start(t) })
+			reading := ringed(t, first)
+			if len(reading.Messages) != 1 || reading.Messages[0].ID != 1 {
+				t.Fatalf("the ring carried %+v; want #1 alone, since #2 passes the byte budget", reading.Messages)
+			}
+			if err := reading.Ack(); err != nil {
+				t.Fatalf("Ack: %v", err)
+			}
+			if got := eventsOf(e.store.Log(creelengine.LogFilter{To: alpha})); !slices.Equal(got, []string{"posted", "posted", "read"}) {
+				t.Errorf("Log(to alpha) events = %v; want two posts and the read of #1", got)
+			}
+			var second *creelengine.Waiter
+			settle(e, func() { second = registerTaking(t, e, alpha) })
+			for e.clock.Now().Sub(ringAt) < 45*time.Second {
+				step(e)
+			}
+			if got := e.typed(alpha); len(got) != 0 {
+				t.Errorf("typed %q after an acknowledged ring; want no bell, since the acknowledgement answered it", got)
+			}
+			wantSilent(t, second)
+			if got := boundaryClaim(t, e); len(got) != 0 {
+				t.Errorf("the tool-boundary claim after the ring handed out %d messages; want the echo of #1 alone, which fills the budget", len(got))
+			}
+			if got := boundaryClaim(t, e); len(got) != 1 || got[0] != bigBody {
+				t.Errorf("a later tool-boundary claim handed out %d messages; want #2", len(got))
+			}
+		}},
+		{"AMarkedRingStartsTheStopCountOver", func(t *testing.T, e *env) {
+			waiter := registerTaking(t, e, alpha)
+			e.post(t, strand(beta), alpha, bigBody)
+			e.post(t, strand(beta), alpha, bigBody)
+			settle(e, func() { e.start(t) })
+			if err := ringed(t, waiter).Ack(); err != nil {
+				t.Fatalf("Ack: %v", err)
+			}
+			if got := claim(t, e, true); len(got) != 0 {
+				t.Fatalf("the first Stop claim after the marked ring handed out %+v; want the echo of #1 alone, which fills the budget", got)
+			}
+			if got := claim(t, e, true); len(got) != 1 || got[0].ID != 2 {
+				t.Errorf("the Stop claim after the marked ring handed out %+v; want #2, which a count no claim of this daemon set would refuse", got)
+			}
+		}},
+		{"AMarkedWaiterUnderAnotherSendersHoldIsRungWithTheOwnersMailOnly", func(t *testing.T, e *env) {
+			if _, err := e.store.Hold(program(batten), alpha, time.Hour); err != nil {
+				t.Fatalf("Hold: %v", err)
+			}
+			e.start(t)
+			waiter := registerTaking(t, e, alpha)
+			settle(e, func() { e.post(t, strand(beta), alpha, "not the owner's") })
+			wantSilent(t, waiter)
+			settle(e, func() { e.post(t, program(batten), alpha, "the owner's") })
+			if got := bodiesOf(ringed(t, waiter)); !slices.Equal(got, []string{"the owner's"}) {
+				t.Errorf("the ring carried %q; want the owner's mail only", got)
+			}
+		}},
+		{"AMarkedWaiterIsRungWithoutALineOverTheHookFieldCap", func(t *testing.T, e *env) {
+			waiter := registerTaking(t, e, alpha)
+			if _, err := e.store.PostUnchecked(strand(beta), alpha, strings.Repeat("x", 10001)); err != nil {
+				t.Fatalf("PostUnchecked: %v", err)
+			}
+			e.post(t, strand(beta), alpha, "short")
+			settle(e, func() { e.start(t) })
+			if got := bodiesOf(ringed(t, waiter)); !slices.Equal(got, []string{"short"}) {
+				t.Errorf("the ring carried %q; want the short post alone", got)
+			}
+		}},
+		{"APauseReadAtTheRingRingsNothingAndKeepsTheWaiter", func(t *testing.T, e *env) {
+			e.start(t)
+			waiter := registerTaking(t, e, alpha)
+			e.del.SetIdleHook(func(string) { e.del.SetPaused(alpha, true) })
+			settle(e, func() { e.post(t, strand(beta), alpha, "one") })
+			wantSilent(t, waiter)
+			e.del.SetIdleHook(nil)
+			e.del.SetPaused(alpha, false)
+			settle(e, func() { e.post(t, strand(beta), alpha, "two") })
+			if got := bodiesOf(ringed(t, waiter)); !slices.Equal(got, []string{"one", "two"}) {
+				t.Errorf("the ring carried %q; want both posts", got)
+			}
+		}},
+		{"APauseReadErrorAtTheRingRingsNothingAndKeepsTheWaiter", func(t *testing.T, e *env) {
+			e.start(t)
+			waiter := registerTaking(t, e, alpha)
+			e.del.SetIdleHook(func(string) { e.del.SetPausedError(errors.New("pause record unreadable")) })
+			settle(e, func() { e.post(t, strand(beta), alpha, "one") })
+			wantSilent(t, waiter)
+			e.del.SetIdleHook(nil)
+			e.del.SetPausedError(nil)
+			settle(e, func() { e.post(t, strand(beta), alpha, "two") })
+			if got := bodiesOf(ringed(t, waiter)); !slices.Equal(got, []string{"one", "two"}) {
+				t.Errorf("the ring carried %q; want both posts", got)
+			}
+		}},
+		{"AClaimTakingTheSetBeforeTheRingRingsNothingAndKeepsTheWaiter", func(t *testing.T, e *env) {
+			e.start(t)
+			waiter := registerTaking(t, e, alpha)
+			var held atomic.Pointer[creelengine.Reading]
+			e.del.SetIdleHook(func(string) {
+				if held.Load() != nil {
+					return
+				}
+				reading, err := e.store.ClaimAtBoundary(strand(alpha), creelengine.Boundary{})
+				if err != nil {
+					t.Errorf("ClaimAtBoundary during the probe: %v", err)
+					return
+				}
+				held.Store(reading)
+			})
+			settle(e, func() { e.post(t, strand(beta), alpha, "one") })
+			wantSilent(t, waiter)
+			e.del.SetIdleHook(nil)
+			if reading := held.Load(); reading == nil || len(reading.Messages) != 1 {
+				t.Fatalf("the claim during the probe held %+v; want the set", reading)
+			} else {
+				reading.Release()
+			}
+			settle(e, func() { e.post(t, strand(beta), alpha, "two") })
+			if got := bodiesOf(ringed(t, waiter)); !slices.Equal(got, []string{"one", "two"}) {
+				t.Errorf("the ring carried %q; want both posts", got)
+			}
+		}},
+		{"ARingOutcomeNeverTakenIsReleasedWhenItsWaitIsCancelled", func(t *testing.T, e *env) {
+			e.start(t)
+			waiter := registerTaking(t, e, alpha)
+			ringAt := e.clock.Now()
+			settle(e, func() { e.post(t, strand(beta), alpha, "one") })
+			if got := len(waiter.C); got != 1 {
+				t.Fatalf("the waiter's channel holds %d outcomes after the ring; want one", got)
+			}
+			waiter.Cancel()
+			if elapsed := untilBell(t, e, ringAt); elapsed < 30*time.Second {
+				t.Errorf("the bell came %v after the ring; want at least the 30s window", elapsed)
+			}
+			if got := boundaryClaim(t, e); !slices.Equal(got, []string{"one"}) {
+				t.Errorf("a claim after the cancelled wait handed out %q; want the mail the ring reserved", got)
+			}
+		}},
+		{"AReleasedRingClaimLeavesTheMailUnreadAndTheBellFollows", func(t *testing.T, e *env) {
+			e.start(t)
+			waiter := registerTaking(t, e, alpha)
+			ringAt := e.clock.Now()
+			settle(e, func() { e.post(t, strand(beta), alpha, "one") })
+			ringed(t, waiter).Release()
+			if elapsed := untilBell(t, e, ringAt); elapsed < 30*time.Second {
+				t.Errorf("the bell came %v after the ring; want at least the 30s window", elapsed)
+			}
+			if got := boundaryClaim(t, e); !slices.Equal(got, []string{"one"}) {
+				t.Errorf("a claim after the released ring handed out %q; want the mail", got)
+			}
+		}},
+		{"AJournalFailureAtTheRingsAckLeavesTheRingUnanswered", func(t *testing.T, e *env) {
+			e.start(t)
+			waiter := registerTaking(t, e, alpha)
+			ringAt := e.clock.Now()
+			settle(e, func() { e.post(t, strand(beta), alpha, "one") })
+			reading := ringed(t, waiter)
+			e.store.FailJournalWrites(0)
+			if err := reading.Ack(); err == nil {
+				t.Fatal("Ack with the journal write failing returned nil; want an error")
+			}
+			e.store.FailJournalWrites(-1)
+			if elapsed := untilBell(t, e, ringAt); elapsed < 30*time.Second {
+				t.Errorf("the bell came %v after the ring; want at least the 30s window, since the failed ack answered nothing", elapsed)
+			}
+		}},
+		{"AnAcknowledgedRingLeavesAnEchoTheNextClaimHandsOutAheadOfItsMail", func(t *testing.T, e *env) {
+			ring := ackedRing(t, e, "one")
+			settle(e, func() { e.post(t, strand(beta), alpha, "two") })
+			reading := claimOnce(t, e, creelengine.Boundary{})
+			if !slices.Equal(reading.Echo, ring) || !slices.Equal(bodiesOf(reading), []string{"two"}) {
+				t.Fatalf("the claim handed out echo %q and messages %q; want %q and the second post", reading.Echo, bodiesOf(reading), ring)
+			}
+			if err := reading.Ack(); err != nil {
+				t.Fatalf("Ack: %v", err)
+			}
+			if again := claimOnce(t, e, creelengine.Boundary{}); len(again.Echo) != 0 || len(again.Messages) != 0 {
+				t.Errorf("the claim after the acknowledged one handed out echo %q and messages %q; want nothing", again.Echo, bodiesOf(again))
+			}
+		}},
+		{"ThePausedOrHeldStrandsClaimStillHandsOutTheEcho", func(t *testing.T, e *env) {
+			ring := ackedRing(t, e, "one")
+			e.del.SetPaused(alpha, true)
+			paused := claimOnce(t, e, creelengine.Boundary{})
+			if !slices.Equal(paused.Echo, ring) || len(paused.Messages) != 0 {
+				t.Fatalf("the paused claim handed out echo %q and messages %q; want the echo alone", paused.Echo, bodiesOf(paused))
+			}
+			paused.Release()
+			e.del.SetPaused(alpha, false)
+			if _, err := e.store.Hold(program(batten), alpha, time.Hour); err != nil {
+				t.Fatalf("Hold: %v", err)
+			}
+			settle(e, func() { e.post(t, strand(beta), alpha, "not the owner's") })
+			held := claimOnce(t, e, creelengine.Boundary{})
+			if !slices.Equal(held.Echo, ring) || len(held.Messages) != 0 {
+				t.Errorf("the held claim handed out echo %q and messages %q; want the echo alone", held.Echo, bodiesOf(held))
+			}
+		}},
+		{"TheStopCapKeepsTheMailBackButNotTheEcho", func(t *testing.T, e *env) {
+			ring := ackedRing(t, e, "short")
+			settle(e, func() { e.post(t, strand(beta), alpha, bigBody) })
+			for i := range 6 {
+				reading := claimOnce(t, e, creelengine.Boundary{Stop: true, StopHookActive: i > 0})
+				if !slices.Equal(reading.Echo, ring) || !slices.Equal(bodiesOf(reading), []string{bigBody}) {
+					t.Fatalf("Stop claim %d handed out echo %q and %d messages; want the echo and the big post", i+1, reading.Echo, len(reading.Messages))
+				}
+				reading.Release()
+			}
+			capped := claimOnce(t, e, creelengine.Boundary{Stop: true, StopHookActive: true})
+			if !slices.Equal(capped.Echo, ring) || len(capped.Messages) != 0 {
+				t.Errorf("the seventh Stop claim handed out echo %q and %d messages; want the echo alone", capped.Echo, len(capped.Messages))
+			}
+		}},
+		{"TheEchoSharesTheBudgetAndAReleaseKeepsIt", func(t *testing.T, e *env) {
+			ring := ackedRing(t, e, bigBody)
+			settle(e, func() { e.post(t, strand(beta), alpha, bigBody) })
+			for range 2 {
+				reading := claimOnce(t, e, creelengine.Boundary{})
+				if !slices.Equal(reading.Echo, ring) || len(reading.Messages) != 0 {
+					t.Fatalf("the claim handed out echo %d lines and %d messages; want the echo alone, since the big post passes the shared budget", len(reading.Echo), len(reading.Messages))
+				}
+				reading.Release()
+			}
+		}},
+		{"AJournalFailureAtTheRingsAckEchoesOnlyTheIdsBeforeTheFailingWrite", func(t *testing.T, e *env) {
+			waiter := registerTaking(t, e, alpha)
+			for _, body := range []string{"one", "two", "three"} {
+				e.post(t, strand(beta), alpha, body)
+			}
+			settle(e, func() { e.start(t) })
+			ring := ringed(t, waiter)
+			e.store.FailJournalWrites(1)
+			if err := ring.Ack(); err == nil {
+				t.Fatal("Ack with the second journal write failing returned nil; want an error")
+			}
+			e.store.FailJournalWrites(-1)
+			reading := claimOnce(t, e, creelengine.Boundary{})
+			if want := linesOf(ring.Messages[:1]); !slices.Equal(reading.Echo, want) || !slices.Equal(bodiesOf(reading), []string{"two", "three"}) {
+				t.Errorf("the claim handed out echo %q and messages %q; want the first line and the two released posts", reading.Echo, bodiesOf(reading))
+			}
+		}},
+		{"AJournalFailureAtAClaimsAckDropsTheEchoItHandedOut", func(t *testing.T, e *env) {
+			ring := ackedRing(t, e, "one")
+			settle(e, func() { e.post(t, strand(beta), alpha, "two") })
+			reading := claimOnce(t, e, creelengine.Boundary{})
+			if !slices.Equal(reading.Echo, ring) || !slices.Equal(bodiesOf(reading), []string{"two"}) {
+				t.Fatalf("the claim handed out echo %q and messages %q; want the echo and the second post", reading.Echo, bodiesOf(reading))
+			}
+			e.store.FailJournalWrites(0)
+			if err := reading.Ack(); err == nil {
+				t.Fatal("Ack with the journal write failing returned nil; want an error")
+			}
+			e.store.FailJournalWrites(-1)
+			after := claimOnce(t, e, creelengine.Boundary{})
+			if len(after.Echo) != 0 || !slices.Equal(bodiesOf(after), []string{"two"}) {
+				t.Errorf("the claim after the failed ack handed out echo %q and messages %q; want no echo and the released post", after.Echo, bodiesOf(after))
+			}
+		}},
+		{"ARingAckEchoesAnIdThatLeftTheHolderBeforeTheAck", func(t *testing.T, e *env) {
+			waiter := registerTaking(t, e, alpha)
+			e.post(t, strand(beta), alpha, "one")
+			e.post(t, strand(beta), alpha, "two")
+			settle(e, func() { e.start(t) })
+			ring := ringed(t, waiter)
+			if err := e.store.Forward(strand(alpha), 2, beta); err != nil {
+				t.Fatalf("Forward: %v", err)
+			}
+			if err := ring.Ack(); err != nil {
+				t.Fatalf("Ack: %v", err)
+			}
+			reading := claimOnce(t, e, creelengine.Boundary{})
+			if want := linesOf(ring.Messages); !slices.Equal(reading.Echo, want) || len(reading.Messages) != 0 {
+				t.Errorf("the claim handed out echo %q and messages %q; want both lines of the ring and no mail", reading.Echo, bodiesOf(reading))
+			}
 		}},
 		{"APauseRingsNothing", func(t *testing.T, e *env) {
 			e.del.SetPaused(alpha, true)
@@ -1886,7 +2239,7 @@ func TestScheduler_HookWake(t *testing.T) {
 				{program(batten), "lym creel read"},
 				{external(), "lym creel post --wait-reply"},
 			} {
-				_, err := e.store.HookWait(sender.name)
+				_, err := e.store.HookWait(sender.name, false)
 				if err == nil || !strings.Contains(err.Error(), "is no strand") || !strings.Contains(err.Error(), sender.wantErr) {
 					t.Errorf("HookWait(%s) = %v; want a refusal naming %q", sender.name.Name, err, sender.wantErr)
 				}
@@ -2655,4 +3008,236 @@ func TestScheduler_Chases(t *testing.T) {
 			tt.run(t, newEnv(t))
 		})
 	}
+}
+
+// TestStore_ClaimLog pins the daemon log line of each hook delivery attempt and each bell send: its level, path, ids, echo ids, outcome and reason.
+// It is not parallel because it redirects the process-global logger.
+func TestStore_ClaimLog(t *testing.T) {
+	logs := logcapture.Capture(t)
+	logger.SetVerbosity(2)
+	bigBody := strings.Repeat("x", 5000)
+	hookEnv := func(t *testing.T) *env {
+		t.Helper()
+		e := newEnv(t)
+		e.del.SetStrands(creelfake.HookStrand(alpha), creelfake.HookStrand(beta), creelfake.LiveStrand(orch))
+		return e
+	}
+	// settle runs trigger and waits until a worker has probed after it and gone back to sleep.
+	settle := func(e *env, trigger func()) {
+		seen := len(e.probeWaits(0))
+		trigger()
+		e.probeWaits(seen + 1)
+	}
+	registerTaking := func(t *testing.T, e *env) *creelengine.Waiter {
+		t.Helper()
+		waiter, err := e.store.HookWait(strand(alpha), true)
+		if err != nil {
+			t.Fatalf("HookWait: %v", err)
+		}
+		return waiter
+	}
+	// ring registers a marked waiter of alpha, posts one short message and returns the ring's claim.
+	ring := func(t *testing.T, e *env) *creelengine.Reading {
+		t.Helper()
+		waiter := registerTaking(t, e)
+		e.post(t, strand(beta), alpha, "one")
+		settle(e, func() { e.start(t) })
+		outcome := awaitOutcome(t, waiter)
+		if outcome.Reading == nil {
+			t.Fatalf("the marked waiter was answered %+v; want a ring carrying a claim", outcome)
+		}
+		return outcome.Reading
+	}
+	claim := func(t *testing.T, e *env, boundary creelengine.Boundary) *creelengine.Reading {
+		t.Helper()
+		reading, err := e.store.ClaimAtBoundary(strand(alpha), boundary)
+		if err != nil {
+			t.Fatalf("ClaimAtBoundary: %v", err)
+		}
+		return reading
+	}
+	// owedEcho acknowledges a ring of one message, leaving its line owed as an echo, and clears the log of the ring's own line.
+	owedEcho := func(t *testing.T, e *env) {
+		t.Helper()
+		if err := ring(t, e).Ack(); err != nil {
+			t.Fatalf("Ack of the ring: %v", err)
+		}
+		logs.Reset()
+	}
+	// untilBellAttempt steps probes until a bell was sent into alpha; the fake-time minute only bounds a failing test.
+	untilBellAttempt := func(t *testing.T, e *env) {
+		t.Helper()
+		start := e.clock.Now()
+		for e.clock.Now().Sub(start) < time.Minute {
+			waits := e.probeWaits(1)
+			e.tick(waits[len(waits)-1])
+			if slices.Contains(e.typed(alpha), creelengine.BellLine) {
+				return
+			}
+		}
+		t.Fatal("no bell was sent within a minute of fake time")
+	}
+	postBellSet := func(t *testing.T, e *env) {
+		t.Helper()
+		e.start(t)
+		settle(e, func() { e.post(t, strand(beta), alpha, "one") })
+		untilBellAttempt(t, e)
+	}
+	failure := errors.New("pane exploded")
+	tests := []struct {
+		name string
+		run  func(t *testing.T, e *env)
+		// msg is the one log message the row expects exactly once, and fields what its line carries, the level included.
+		msg    string
+		fields map[string]string
+	}{
+		{"AToolBoundaryClaimAcknowledged", func(t *testing.T, e *env) {
+			e.post(t, strand(beta), alpha, "one")
+			if err := claim(t, e, creelengine.Boundary{}).Ack(); err != nil {
+				t.Fatalf("Ack: %v", err)
+			}
+		}, "creel claim", map[string]string{"level": "INFO", "strand": alpha, "path": "tool", "ids": "[1]", "echo_ids": "[]", "outcome": "acknowledged"}},
+		{"AStopClaimAcknowledged", func(t *testing.T, e *env) {
+			e.post(t, strand(beta), alpha, "one")
+			if err := claim(t, e, creelengine.Boundary{Stop: true}).Ack(); err != nil {
+				t.Fatalf("Ack: %v", err)
+			}
+		}, "creel claim", map[string]string{"level": "INFO", "path": "stop", "ids": "[1]", "echo_ids": "[]", "outcome": "acknowledged"}},
+		{"AClaimReleased", func(t *testing.T, e *env) {
+			e.post(t, strand(beta), alpha, "one")
+			claim(t, e, creelengine.Boundary{}).Release()
+		}, "creel claim", map[string]string{"level": "INFO", "path": "tool", "ids": "[1]", "outcome": "released"}},
+		{"AnEmptyClaimReleasedLogsTheNothingLineAlone", func(t *testing.T, e *env) {
+			claim(t, e, creelengine.Boundary{}).Release()
+		}, "creel claim", map[string]string{"level": "DEBUG", "path": "tool", "outcome": "nothing", "reason": "nothing-claimable"}},
+		{"AClaimWhoseAckFailsNamesTheReleasedIdsAndTheDroppedEcho", func(t *testing.T, e *env) {
+			owedEcho(t, e)
+			settle(e, func() { e.post(t, strand(beta), alpha, "two") })
+			e.post(t, strand(beta), alpha, "three")
+			reading := claim(t, e, creelengine.Boundary{})
+			e.store.FailJournalWrites(0)
+			if err := reading.Ack(); err == nil {
+				t.Fatal("Ack with the journal write failing returned nil; want an error")
+			}
+		}, "creel claim", map[string]string{
+			"level": "WARN", "path": "tool", "ids": "[2 3]", "echo_ids": "[1]", "outcome": "ack-failed",
+			"released_ids": "[2 3]", "dropped_echo_ids": "[1]", "error": "creel journal: injected write fault",
+		}},
+		{"ARingWhoseAckFailsNamesTheReleasedIdsAndNoEcho", func(t *testing.T, e *env) {
+			reading := ring(t, e)
+			e.store.FailJournalWrites(0)
+			if err := reading.Ack(); err == nil {
+				t.Fatal("Ack with the journal write failing returned nil; want an error")
+			}
+		}, "creel claim", map[string]string{
+			"level": "WARN", "path": "ring", "ids": "[1]", "echo_ids": "[]", "outcome": "ack-failed",
+			"released_ids": "[1]", "dropped_echo_ids": "[]",
+		}},
+		{"AClaimHandingOutAnEchoIsAcknowledgedWithItsEchoIds", func(t *testing.T, e *env) {
+			owedEcho(t, e)
+			if err := claim(t, e, creelengine.Boundary{}).Ack(); err != nil {
+				t.Fatalf("Ack: %v", err)
+			}
+		}, "creel claim", map[string]string{"level": "INFO", "path": "tool", "ids": "[]", "echo_ids": "[1]", "outcome": "acknowledged"}},
+		{"ARingAcknowledged", func(t *testing.T, e *env) {
+			if err := ring(t, e).Ack(); err != nil {
+				t.Fatalf("Ack: %v", err)
+			}
+		}, "creel claim", map[string]string{"level": "INFO", "path": "ring", "ids": "[1]", "echo_ids": "[]", "outcome": "acknowledged"}},
+		{"ARingReleased", func(t *testing.T, e *env) {
+			ring(t, e).Release()
+		}, "creel claim", map[string]string{"level": "INFO", "path": "ring", "ids": "[1]", "outcome": "released"}},
+		{"APausedRingLogsTheNothingLineWithThePathRing", func(t *testing.T, e *env) {
+			e.start(t)
+			registerTaking(t, e)
+			e.del.SetIdleHook(func(string) { e.del.SetPaused(alpha, true) })
+			settle(e, func() { e.post(t, strand(beta), alpha, "one") })
+		}, "creel claim", map[string]string{"level": "DEBUG", "path": "ring", "outcome": "nothing", "reason": "paused"}},
+		{"APausedStrandsClaimHandsOutNothing", func(t *testing.T, e *env) {
+			e.post(t, strand(beta), alpha, "one")
+			e.del.SetPaused(alpha, true)
+			claim(t, e, creelengine.Boundary{})
+		}, "creel claim", map[string]string{"level": "DEBUG", "path": "tool", "outcome": "nothing", "reason": "paused"}},
+		{"AnotherSendersHoldKeepsTheClaimFromMailThatIsNotTheOwners", func(t *testing.T, e *env) {
+			if _, err := e.store.Hold(program(batten), alpha, time.Hour); err != nil {
+				t.Fatalf("Hold: %v", err)
+			}
+			e.post(t, strand(beta), alpha, "not the owner's")
+			claim(t, e, creelengine.Boundary{})
+		}, "creel claim", map[string]string{"level": "DEBUG", "path": "tool", "outcome": "nothing", "reason": "held"}},
+		{"TheStopCapHandsOutNothing", func(t *testing.T, e *env) {
+			for range 8 {
+				e.post(t, strand(beta), alpha, bigBody)
+			}
+			for i := range 6 {
+				if err := claim(t, e, creelengine.Boundary{Stop: true, StopHookActive: i > 0}).Ack(); err != nil {
+					t.Fatalf("Ack of Stop claim %d: %v", i+1, err)
+				}
+			}
+			logs.Reset()
+			claim(t, e, creelengine.Boundary{Stop: true, StopHookActive: true})
+		}, "creel claim", map[string]string{"level": "DEBUG", "path": "stop", "outcome": "nothing", "reason": "stop-cap"}},
+		{"AStopCountNoClaimSetHandsOutNothing", func(t *testing.T, e *env) {
+			e.post(t, strand(beta), alpha, "one")
+			claim(t, e, creelengine.Boundary{Stop: true, StopHookActive: true})
+		}, "creel claim", map[string]string{"level": "DEBUG", "path": "stop", "outcome": "nothing", "reason": "stop-count-unknown"}},
+		{"NoMailHandsOutNothing", func(t *testing.T, e *env) {
+			claim(t, e, creelengine.Boundary{})
+		}, "creel claim", map[string]string{"level": "DEBUG", "path": "tool", "outcome": "nothing", "reason": "nothing-claimable"}},
+		{"ABellSentAfterTheGraceWithNoWaiter", func(t *testing.T, e *env) {
+			postBellSet(t, e)
+		}, "creel bell", map[string]string{"level": "INFO", "strand": alpha, "ids": "[1]", "outcome": "sent"}},
+		{"ABellWhoseSendDidNotLand", func(t *testing.T, e *env) {
+			e.del.SetSendError(creelengine.ErrNotLanded)
+			postBellSet(t, e)
+		}, "creel bell", map[string]string{"level": "INFO", "ids": "[1]", "outcome": "not-landed"}},
+		{"ABusyBell", func(t *testing.T, e *env) {
+			e.del.SetSendError(creelengine.ErrBusy)
+			postBellSet(t, e)
+		}, "creel bell", map[string]string{"level": "INFO", "ids": "[1]", "outcome": "busy"}},
+		{"AFailedBellNamesItsError", func(t *testing.T, e *env) {
+			e.del.SetSendError(failure)
+			postBellSet(t, e)
+		}, "creel bell", map[string]string{"level": "INFO", "ids": "[1]", "outcome": "failed", "error": failure.Error()}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logs.Reset()
+			tt.run(t, hookEnv(t))
+			lines := logLinesWithMessage(logs.String(), tt.msg)
+			if len(lines) != 1 {
+				t.Fatalf("%d %q lines; want exactly one:\n%s", len(lines), tt.msg, strings.Join(lines, "\n"))
+			}
+			for key, want := range tt.fields {
+				if got := logField(lines[0], key); got != want {
+					t.Errorf("%s of %q = %q; want %q", key, lines[0], got, want)
+				}
+			}
+		})
+	}
+}
+
+// logLinesWithMessage returns the lines of text, logger output in its text form, whose message is msg.
+func logLinesWithMessage(text, msg string) []string {
+	var lines []string
+	for _, line := range strings.Split(text, "\n") {
+		if strings.Contains(line, `msg="`+msg+`"`) {
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
+
+// logField returns the value of key in a logger text line, unquoted, and empty when the line carries no such key.
+func logField(line, key string) string {
+	_, rest, found := strings.Cut(" "+line, " "+key+"=")
+	if !found {
+		return ""
+	}
+	if strings.HasPrefix(rest, `"`) {
+		quoted, _, _ := strings.Cut(rest[1:], `"`)
+		return quoted
+	}
+	value, _, _ := strings.Cut(rest, " ")
+	return value
 }

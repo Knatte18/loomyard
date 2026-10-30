@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/creelengine"
@@ -134,6 +135,59 @@ func TestStore_MailFlags(t *testing.T) {
 			if got := e.flags(t); len(got) != 0 {
 				t.Errorf("flags after mail to a program = %q; want none", got)
 			}
+		}},
+		{"AnOwedEchoKeepsTheFlagUntilTheClaimThatShowsItIsAcknowledged", nil, func(t *testing.T, e *env) {
+			// newFlaggedEnv scripts pane-mail strands that are never rung, so the row re-scripts alpha as a hook strand before the scheduler starts.
+			e.del.SetStrands(creelfake.HookStrand(alpha), creelfake.LiveStrand(beta))
+			ringAndAck := func() {
+				t.Helper()
+				waiter, err := e.store.HookWait(strand(alpha), true)
+				if err != nil {
+					t.Fatalf("HookWait: %v", err)
+				}
+				outcome := awaitOutcome(t, waiter)
+				if outcome.Reading == nil {
+					t.Fatalf("the marked waiter was answered %+v; want a ring carrying a claim", outcome)
+				}
+				if err := outcome.Reading.Ack(); err != nil {
+					t.Fatalf("Ack of the ring: %v", err)
+				}
+			}
+			claimAndAck := func() {
+				t.Helper()
+				reading, err := e.store.ClaimAtBoundary(strand(alpha), creelengine.Boundary{})
+				if err != nil {
+					t.Fatalf("ClaimAtBoundary: %v", err)
+				}
+				if err := reading.Ack(); err != nil {
+					t.Fatalf("Ack: %v", err)
+				}
+			}
+			wantFlags := func(want []string, when string) {
+				t.Helper()
+				if got := e.flags(t); !slices.Equal(got, want) {
+					t.Errorf("flags %s = %q; want %q", when, got, want)
+				}
+			}
+			e.start(t)
+			e.post(t, strand(beta), alpha, "one")
+			ringAndAck()
+			wantFlags([]string{alphaFlag}, "after the acknowledged ring, with no unread mail but an echo owed")
+			claimAndAck()
+			wantFlags(nil, "after the claim that showed the echo was acknowledged")
+
+			// Two posts of 5000 bytes pass the claim budget together, so the ring takes the first and leaves the second unread.
+			// The first ring's woken turn recorded no prompt submit, so a turn end after the ring stands in for the next turn's end.
+			e.del.SetTurn(alpha, false, e.clock.Now().Add(time.Second))
+			big := strings.Repeat("x", 5000)
+			e.post(t, strand(beta), alpha, big)
+			e.post(t, strand(beta), alpha, big)
+			ringAndAck()
+			wantFlags([]string{alphaFlag}, "after a ring that left the second post unread and owes the echo of the first")
+			claimAndAck()
+			wantFlags([]string{alphaFlag}, "after the echo claim, which the budget kept from the second post")
+			claimAndAck()
+			wantFlags(nil, "after the claim of the second post")
 		}},
 		{"ReconcileRestoresALostFlag", nil, func(t *testing.T, e *env) {
 			e.post(t, strand(alpha), beta, "kept unread")

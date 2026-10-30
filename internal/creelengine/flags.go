@@ -13,9 +13,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// flaggedFilesLocked returns the flag file names the pool asks for: one per strand holding unread mail a claim can hand out, and none for a program.
+// flaggedFilesLocked returns the flag file names the pool asks for: one per strand holding unread mail a claim can hand out or owed an echo, reserved or not, and none for a program.
 func (s *Store) flaggedFilesLocked() map[string]bool {
 	want := map[string]bool{}
+	for strand := range s.echoes {
+		want[agentname.FileName(strand)] = true
+	}
 	for _, msg := range s.state.messages {
 		if msg.Status == StatusUnread && deliverableReceiver(msg.Holder) && !lineOverHookField(msg) {
 			want[agentname.FileName(msg.Holder)] = true

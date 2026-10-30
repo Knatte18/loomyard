@@ -289,6 +289,112 @@ func (c *claudeScenario) awaitTurnEnds(n int) {
 	c.await(fmt.Sprintf("%d recorded turn ends", n), func() bool { return c.payloads("Stop") >= n })
 }
 
+// mainTranscript returns the path of the session's own transcript, the first transcript_path its events hold, or empty before any event carries one.
+func (c *claudeScenario) mainTranscript() string {
+	for _, record := range c.eventRecords() {
+		if path, _ := record["transcript_path"].(string); path != "" {
+			return path
+		}
+	}
+	return ""
+}
+
+// transcriptCount counts the occurrences of text in the session's main transcript.
+func (c *claudeScenario) transcriptCount(text string) int {
+	path := c.mainTranscript()
+	if path == "" {
+		return 0
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0
+	}
+	return strings.Count(string(data), text)
+}
+
+// requireTranscriptLacks fails when the main transcript holds any of texts, which stand for the hook command text and the error label a block would leave there.
+func (c *claudeScenario) requireTranscriptLacks(texts ...string) {
+	c.t.Helper()
+	for _, text := range texts {
+		if got := c.transcriptCount(text); got != 0 {
+			c.fail("the transcript holds %q %d times; want none", text, got)
+		}
+	}
+}
+
+// requireWakeShown checks the session's wake-th idle wake once the model has acted on its mail, taking the wakes before it as delivered.
+// The token is in the transcript with no turn end recorded since the earlier wake ended, which a turn that ran without the mail would have left.
+// After the woken turn ends, the pane shows one `creel mail` row per wake so far and the echo under creelengine.EchoHeading, with the token under it once.
+func (c *claudeScenario) requireWakeShown(token string, wake int) {
+	c.t.Helper()
+	c.await("the transcript to hold "+token, func() bool { return c.transcriptCount(token) > 0 })
+	if got := c.payloads("Stop"); got != wake {
+		c.fail("events hold %d Stop payloads when the wake of %s reached the transcript; want %d, so no turn ran before the mail", got, token, wake)
+	}
+	c.awaitTurnEnds(wake + 1)
+	c.await("the pane to show the echo of "+token, func() bool { return paneEchoCount(c.smoke.lastPane(c.t, c.guid), token) >= 1 })
+	pane := c.smoke.lastPane(c.t, c.guid)
+	if got := strings.Count(pane, "creel mail"); got != wake {
+		c.fail("the pane shows %d `creel mail` rows; want one per wake, %d", got, wake)
+	}
+	if got := paneEchoCount(pane, token); got != 1 {
+		c.fail("the pane shows the echo of %s %d times; want once", token, got)
+	}
+}
+
+// paneEchoCount counts the echoes of token in pane: the lines of creelengine.EchoHeading whose next non-empty line holds token.
+func paneEchoCount(pane, token string) int {
+	lines := strings.Split(pane, "\n")
+	count := 0
+	for i, line := range lines {
+		if !strings.Contains(line, creelengine.EchoHeading) {
+			continue
+		}
+		for _, next := range lines[i+1:] {
+			if strings.TrimSpace(next) == "" {
+				continue
+			}
+			if strings.Contains(next, token) {
+				count++
+			}
+			break
+		}
+	}
+	return count
+}
+
+// requireHeadShownOnce checks the pane's stop-hook summary of a Stop claim of many lines: the first token appears once in the Stop hook feedback lines, there is no second `Stop hook feedback:` row, and no `Stop says:` line carries any token.
+// The model's own reply and tool calls may quote a token, so only those summary lines are read.
+func (c *claudeScenario) requireHeadShownOnce(first string, tokens []string) {
+	c.t.Helper()
+	lines := strings.Split(c.smoke.lastPane(c.t, c.guid), "\n")
+	rows, inFeedback, headShown := 0, false, 0
+	for _, line := range lines {
+		if strings.Contains(line, "Stop hook feedback:") {
+			rows++
+			inFeedback = true
+		} else if strings.TrimSpace(line) == "" {
+			inFeedback = false
+		}
+		if inFeedback {
+			headShown += strings.Count(line, first)
+		}
+		if strings.Contains(line, "Stop says:") {
+			for _, token := range tokens {
+				if strings.Contains(line, token) {
+					c.fail("a `Stop says:` line carries %s; the operator is shown the head once, in the feedback row", token)
+				}
+			}
+		}
+	}
+	if rows != 1 {
+		c.fail("the pane shows %d `Stop hook feedback:` rows; want exactly one", rows)
+	}
+	if headShown != 1 {
+		c.fail("the pane's Stop hook feedback lines hold %s %d times; want once", first, headShown)
+	}
+}
+
 // TestSmokeCreelHookDelivery proves creel's hook delivery into real Claude sessions started by shuttle's own launch, so their settings and launch line are the ones production renders.
 // The test process posts as EXTERNAL.
 // It needs a `lym` built from this tree on PATH, since the sessions' hooks run `lym creel hook-read` and `lym creel hook-wait`.
@@ -310,9 +416,10 @@ func TestSmokeCreelHookDelivery(t *testing.T) {
 		c.awaitShown("creel-midturn-token")
 		c.awaitTurnEnds(1)
 		c.requireNoPanePath()
+		c.requireTranscriptLacks("lym creel hook-read", "hook blocking error")
 	})
 
-	t.Run("a post after the last tool call is delivered by the Stop block and the turn goes on", func(t *testing.T) {
+	t.Run("a post after the last tool call is delivered at the Stop as additional context and the turn goes on", func(t *testing.T) {
 		c := newClaudeScenario(t, smoke, "Run one Bash call, `echo only-command`. After it, write out the lines item-1 to item-200, one per line, and end your turn. "+
 			"If a message starting with [creel] arrives, do what it says before you end your turn.", false)
 		c.awaitShown("item-20")
@@ -327,6 +434,27 @@ func TestSmokeCreelHookDelivery(t *testing.T) {
 			c.fail("events hold %d Stop stamps; want exactly the real end's, none for the blocked stop", got)
 		}
 		c.requireNoPanePath()
+		c.requireTranscriptLacks("lym creel hook-read", "hook blocking error")
+	})
+
+	t.Run("a Stop claim of more than five lines shows the operator its head once", func(t *testing.T) {
+		c := newClaudeScenario(t, smoke, "Run one Bash call, `echo only-command`. After it, write out the lines item-1 to item-200, one per line, and end your turn. "+
+			"If messages starting with [creel] arrive, act on the last one before you end your turn.", false)
+		c.awaitShown("item-20")
+		var tokens []string
+		for i := 1; i <= 7; i++ {
+			token := fmt.Sprintf("creel-head-%d", i)
+			tokens = append(tokens, token)
+			body := token + ": nothing to do for this one"
+			if i == 7 {
+				body = token + ": write the word ok into the file " + c.file("head.txt")
+			}
+			c.post(c.name, body)
+		}
+		c.awaitFile("head.txt")
+		c.awaitTurnEnds(1)
+		c.requireHeadShownOnce(tokens[0], tokens)
+		c.requireNoPanePath()
 	})
 
 	t.Run("an idle session with a draft is woken and keeps its draft", func(t *testing.T) {
@@ -340,8 +468,7 @@ func TestSmokeCreelHookDelivery(t *testing.T) {
 		c.awaitShown(draft)
 		c.post(c.name, "creel-wake-token: write the word ok into the file "+c.file("wake.txt"))
 		c.awaitFile("wake.txt")
-		c.awaitShown("creel-wake-token")
-		c.await("the woken turn to end", func() bool { return c.payloads("Stop") >= 2 })
+		c.requireWakeShown("creel-wake-token", 1)
 		if !strings.Contains(smoke.lastPane(t, c.guid), draft) {
 			c.fail("the draft %q is gone from the input box", draft)
 		}
@@ -351,7 +478,7 @@ func TestSmokeCreelHookDelivery(t *testing.T) {
 		c.requireNoPanePath()
 	})
 
-	t.Run("successive wakes are each delivered through the Stop block", func(t *testing.T) {
+	t.Run("successive wakes are each delivered through the waiter", func(t *testing.T) {
 		c := newClaudeScenario(t, smoke, "Reply with the single word ready and end your turn. "+
 			"Each time a message starting with [creel] arrives, do what it says.", false)
 		c.awaitTurnEnds(1)
@@ -360,8 +487,7 @@ func TestSmokeCreelHookDelivery(t *testing.T) {
 			file := fmt.Sprintf("successive-%d.txt", i)
 			c.post(c.name, token+": write the word ok into the file "+c.file(file))
 			c.awaitFile(file)
-			c.awaitShown(token)
-			c.awaitTurnEnds(1 + i)
+			c.requireWakeShown(token, i)
 		}
 		if got := c.promptsContaining(creelengine.BellLine); got != 0 {
 			c.fail("%d prompts contain the bell line; each wake was to come from the waiter", got)
@@ -422,13 +548,7 @@ func TestSmokeCreelHookDelivery(t *testing.T) {
 
 // forkTranscripts returns the transcripts of the session's forks: the files under the directory named for the session's own transcript, and when that directory does not exist the other transcripts of its project directory.
 func forkTranscripts(c *claudeScenario) []string {
-	var main string
-	for _, record := range c.eventRecords() {
-		if path, _ := record["transcript_path"].(string); path != "" {
-			main = path
-			break
-		}
-	}
+	main := c.mainTranscript()
 	if main == "" {
 		return nil
 	}

@@ -155,14 +155,20 @@ func hookLine(id int, sender, body string) string {
 	return fmt.Sprintf("[creel] #%d from \"%s\": %s", id, sender, body)
 }
 
-// hookBlock is what hook-read prints for text on event: the claude engine's block and a newline.
+// hookBlock is what hook-read prints for text on event: the claude engine's hook output and a newline.
 func hookBlock(t *testing.T, event shuttleengine.HookEvent, text string) string {
 	t.Helper()
-	block, err := claudeengine.New().BoundaryBlock(event, text)
+	return hookOutputLine(t, event, text, "")
+}
+
+// hookOutputLine is what hook-read prints for mail and echo on event: the claude engine's hook output and a newline.
+func hookOutputLine(t *testing.T, event shuttleengine.HookEvent, mail, echo string) string {
+	t.Helper()
+	output, err := claudeengine.New().HookOutput(event, mail, echo)
 	if err != nil {
-		t.Fatalf("BoundaryBlock: %v", err)
+		t.Fatalf("HookOutput: %v", err)
 	}
-	return string(block) + "\n"
+	return string(output) + "\n"
 }
 
 // failingWriter is an output that refuses every write.
@@ -845,7 +851,7 @@ func TestCreelCLI(t *testing.T) {
 		}
 	})
 
-	t.Run("as a strand hook-read prints its mail as the engine's visible block, nothing when none is left, and refuses to stderr", func(t *testing.T) {
+	t.Run("as a strand hook-read prints its mail as the engine's hook output, nothing when none is left, and refuses to stderr", func(t *testing.T) {
 		r, alpha := newHookRig(t)
 
 		for _, body := range []string{"first\nline", "second"} {
@@ -932,15 +938,54 @@ func TestCreelCLI(t *testing.T) {
 		}
 	})
 
-	t.Run("hook-wait rings a strand as exit 2 with the bell line, and a subagent or a refused call exits 0 printing nothing", func(t *testing.T) {
+	t.Run("after a ring hook-read shows the echo to the operator alone, ahead of any mail", func(t *testing.T) {
+		r, alpha := newHookRig(t)
+		if post := runCreel(r.cwd, "post", alpha, "mail"); post.code != 0 {
+			t.Fatalf("creel post = (%d, %q); want exit 0", post.code, post.raw)
+		}
+		var rung lockedBuffer
+		if got := awaitRun(t, runHookAsync(r.cwd, postToolUseInput, &rung, "hook-wait", "claude")); got.code != 2 {
+			t.Fatalf("hook-wait = (%d, %q, stderr %q); want exit 2", got.code, got.raw, rung.String())
+		}
+		var stderr bytes.Buffer
+		echoOnly := hookOutputLine(t, shuttleengine.HookEventStop, "", creelengine.EchoHeading+"\n"+hookLine(1, alpha, "mail"))
+		if got := runCreelHook(r.cwd, stopInput, &stderr, "hook-read", "claude"); got.code != 1 || got.raw != echoOnly || stderr.Len() != 0 {
+			t.Fatalf("first Stop = (%d, %q, stderr %q); want exit 1 with the echo alone as %q", got.code, got.raw, stderr.String(), echoOnly)
+		}
+		if got := runCreelHook(r.cwd, stopInput, &stderr, "hook-read", "claude"); got.code != 1 || got.raw != "" || stderr.Len() != 0 {
+			t.Fatalf("second Stop = (%d, %q, stderr %q); want exit 1 printing nothing, since the echo was shown", got.code, got.raw, stderr.String())
+		}
+
+		// The first ring's woken turn recorded no prompt submit, so a turn end after the ring stands in for the next turn's end.
+		r.delivery.SetTurn(alpha, false, r.clock.Now().Add(time.Second))
+		if post := runCreel(r.cwd, "post", alpha, "second"); post.code != 0 {
+			t.Fatalf("creel post = (%d, %q); want exit 0", post.code, post.raw)
+		}
+		var secondRing lockedBuffer
+		if got := awaitRun(t, runHookAsync(r.cwd, postToolUseInput, &secondRing, "hook-wait", "claude")); got.code != 2 {
+			t.Fatalf("second hook-wait = (%d, %q, stderr %q); want exit 2", got.code, got.raw, secondRing.String())
+		}
+		if post := runCreel(r.cwd, "post", alpha, "third"); post.code != 0 {
+			t.Fatalf("creel post = (%d, %q); want exit 0", post.code, post.raw)
+		}
+		both := hookOutputLine(t, shuttleengine.HookEventToolBoundary, hookLine(3, alpha, "third"), creelengine.EchoHeading+"\n"+hookLine(2, alpha, "second"))
+		if got := runCreelHook(r.cwd, postToolUseInput, &stderr, "hook-read", "claude"); got.code != 0 || got.raw != both {
+			t.Errorf("tool-boundary hook-read = (%d, %q); want exit 0 with the echo of the second post and the third as mail, %q", got.code, got.raw, both)
+		}
+	})
+
+	t.Run("hook-wait rings a strand as exit 2 with its mail, and a subagent or a refused call exits 0 printing nothing", func(t *testing.T) {
 		r, alpha := newHookRig(t)
 		if post := runCreel(r.cwd, "post", alpha, "mail"); post.code != 0 {
 			t.Fatalf("creel post = (%d, %q); want exit 0", post.code, post.raw)
 		}
 		var rung lockedBuffer
 		got := awaitRun(t, runHookAsync(r.cwd, postToolUseInput, &rung, "hook-wait", "claude"))
-		if got.code != 2 || got.raw != "" || rung.String() != creelengine.BellLine+"\n" {
-			t.Errorf("hook-wait = (%d, %q, stderr %q); want exit 2 with the bell line on stderr", got.code, got.raw, rung.String())
+		if want := hookLine(1, alpha, "mail") + "\n"; got.code != 2 || got.raw != "" || rung.String() != want {
+			t.Errorf("hook-wait = (%d, %q, stderr %q); want exit 2 with %q on stderr", got.code, got.raw, rung.String(), want)
+		}
+		if !logHasEvent(runCreel(r.cwd, "log", "--id", "1"), "read") {
+			t.Errorf("creel log --id 1 after the ring holds no read event; want the ring's mail journaled read")
 		}
 		silent := []struct {
 			name  string
@@ -1008,8 +1053,39 @@ func TestCreelCLI(t *testing.T) {
 		if post := runCreel(r.cwd, "post", alpha, "more mail"); post.code != 0 {
 			t.Fatalf("creel post = (%d, %q); want exit 0", post.code, post.raw)
 		}
-		if got := awaitRun(t, newerResults); got.code != 2 || newer.String() != creelengine.BellLine+"\n" {
-			t.Errorf("the newer hook-wait = (%d, %q, stderr %q); want it still waiting, then rung with exit 2", got.code, got.raw, newer.String())
+		want := hookLine(1, alpha, "mail") + "\n" + hookLine(2, alpha, "more mail") + "\n"
+		if got := awaitRun(t, newerResults); got.code != 2 || newer.String() != want {
+			t.Errorf("the newer hook-wait = (%d, %q, stderr %q); want it still waiting, then rung with exit 2 and %q", got.code, got.raw, newer.String(), want)
+		}
+	})
+
+	t.Run("hook-wait whose stderr refuses the lines exits 0 and leaves the mail unread", func(t *testing.T) {
+		r, alpha := newHookRig(t)
+		if post := runCreel(r.cwd, "post", alpha, "mail"); post.code != 0 {
+			t.Fatalf("creel post = (%d, %q); want exit 0", post.code, post.raw)
+		}
+		if got := awaitRun(t, runHookAsync(r.cwd, postToolUseInput, failingWriter{}, "hook-wait", "claude")); got.code != 0 || got.raw != "" {
+			t.Fatalf("hook-wait over a refusing stderr = (%d, %q); want exit 0 printing nothing", got.code, got.raw)
+		}
+		// The daemon releases the ring's claim on its own goroutine once it reads the closed connection, so a hook-read before that prints nothing and claims nothing.
+		want := hookBlock(t, shuttleengine.HookEventToolBoundary, hookLine(1, alpha, "mail"))
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			var stderr bytes.Buffer
+			got := runCreelHook(r.cwd, postToolUseInput, &stderr, "hook-read", "claude")
+			if got.raw == want {
+				break
+			}
+			if got.raw != "" || got.code != 0 {
+				t.Fatalf("hook-read after the refused wake = (%d, %q, stderr %q); want nothing until the mail is released, then %q", got.code, got.raw, stderr.String(), want)
+			}
+			if time.Now().After(deadline) {
+				t.Fatal("the mail was never released after the refused wake")
+			}
+			time.Sleep(time.Millisecond)
+		}
+		if !logHasEvent(runCreel(r.cwd, "log", "--id", "1"), "read") {
+			t.Errorf("creel log --id 1 holds no read event; want the mail journaled read by the hook-read that showed it")
 		}
 	})
 

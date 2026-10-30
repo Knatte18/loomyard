@@ -75,8 +75,8 @@ func Command() *cobra.Command {
 		Long: `creel is the hub's message daemon and its verbs. post leaves a message for a
 strand. A strand shuttle launched with creel's hooks gets the message in full
 at its next tool call or turn end, through hooks that run the hidden hook-read
-verb, and an idle one is woken first by a waiter that runs the hidden hook-wait
-verb. Any other strand, a hand-added one or a session launched without those
+verb, and an idle one is woken by a waiter that runs the hidden hook-wait verb
+with the message itself. Any other strand, a hand-added one or a session launched without those
 hooks included, gets a typed notice or reminder and reads the message with read.
 inject types a line into an idle strand at once, interrupt stops a running
 turn, forward passes a message on, hold keeps a receiver to one sender for a
@@ -341,9 +341,9 @@ func postCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `post leaves the text as a message for the receiver strand and prints its id.
 A strand shuttle launched with creel's hooks gets the message in full at its
-next tool call or turn end, an idle one woken first. Any other strand, a
-hand-added one or a session launched without those hooks included, gets a
-typed notice or reminder and reads the message with "lym creel read".
+next tool call or turn end, an idle one woken with it.
+Any other strand, a hand-added one or a session launched without those hooks included,
+gets a typed notice or reminder and reads the message with "lym creel read".
 
 With --reply <id> the text answers message <id> and goes to its sender, so no
 receiver is given. To answer mail you received, run
