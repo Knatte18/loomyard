@@ -168,7 +168,7 @@
 // README.md opens with the UTC date and time it was rendered, so its ages read as of that moment, and the prime owner;
 // a project file opens with its handle and title, the render time, a link up to its parent's file, its brief, and for a beam the word `beam` and its effective owner, its recorded owner_machine else its parent's, resolved through ParentBeam over the rendered entries with the prime owner as the root's.
 // The Running table's Owner column shows a task's effective owner the same way.
-// After its header, README.md holds one section per open project on the board, nested ones included, so every open entry shows in the README:
+// After its header, README.md holds one section per open project on the board, nested ones included, so the entries of every open project show in the README:
 // the projects under the root by handle, each followed by the sections of the projects under it in their parent's order key, then by handle.
 // An open project under a done project counts as under the root, since a done project has no section.
 // A project section's `##` heading links the project's handle and title to its file and counts its open members, and under it come the brief and one table of those members, every kind in RenderOrder's order, laid out as a Notes table with the Entry column in place of Note, or `_None._` when it has none.
