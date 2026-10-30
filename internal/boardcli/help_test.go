@@ -59,6 +59,7 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 				"labels",
 				"recipe",
 				"priority",
+				"pull_request",
 				"notice",
 				"Example",
 			},

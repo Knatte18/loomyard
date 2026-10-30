@@ -40,10 +40,11 @@ var InterruptPolicies = map[string]string{
 	NameCodeBouncer:       shedverbs.InterruptPolicyReinvoke,
 	NameDescribe:          shedverbs.InterruptPolicyReinvoke,
 	NameParentAlign:       shedverbs.InterruptPolicyReinvoke, // spawns only the conflict session the resolver reattaches
-	NamePRReview:          shedverbs.InterruptPolicyReinvoke, // spawns nothing
-	NameDarnWrite:         shedverbs.InterruptPolicyReinvoke, // the single-session adapter reattaches rather than double-spawns
-	NameFinalize:          shedverbs.InterruptPolicyReinvoke,
-	NameFrictionReflect:   shedverbs.InterruptPolicyReinvoke,
+	// PR-Review reattaches the run's live interactive session, or resumes it by its recorded session id, rather than spawning a second one.
+	NamePRReview:        shedverbs.InterruptPolicyReinvoke,
+	NameDarnWrite:       shedverbs.InterruptPolicyReinvoke, // the single-session adapter reattaches rather than double-spawns
+	NameFinalize:        shedverbs.InterruptPolicyReinvoke,
+	NameFrictionReflect: shedverbs.InterruptPolicyReinvoke,
 
 	// Both halves of every review segment probe for a live session and resume it rather than spawn a second one.
 	NameDiscussionBurlerReview: shedverbs.InterruptPolicyReinvoke,

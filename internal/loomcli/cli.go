@@ -493,7 +493,7 @@ Example:
 	pauseVerb.Args = cobra.MaximumNArgs(1)
 	gotoVerb.Args = cobra.MaximumNArgs(1)
 
-	parent.AddCommand(c.startCmd(), c.resumeCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.insertCardCmd(), c.removeCardCmd(), c.restoreRenumberCmd(), c.validateDescriptionCmd(), c.lintCommentsCmd(), c.lintPatternCmd(), c.fmtCmd(), c.commitRecordsCmd(), c.circlingCmd(), c.decisionCmd(), c.peersCmd(), c.arbiterCmd(), c.checklistCmd(), c.driveCmd())
+	parent.AddCommand(c.startCmd(), c.resumeCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.insertCardCmd(), c.removeCardCmd(), c.restoreRenumberCmd(), c.validateDescriptionCmd(), c.lintCommentsCmd(), c.lintPatternCmd(), c.fmtCmd(), c.commitRecordsCmd(), c.prContinueCmd(), c.circlingCmd(), c.decisionCmd(), c.peersCmd(), c.arbiterCmd(), c.checklistCmd(), c.driveCmd())
 
 	return parent
 }

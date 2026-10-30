@@ -205,6 +205,7 @@ type denyInputs struct {
 	claude         Config
 	forkSubagents  bool
 	allowAgentTool bool
+	denyPublish    bool
 }
 
 // standingDeny is one PreToolUse deny lym installs, with the system-prompt sentence announcing it.
@@ -274,8 +275,9 @@ var bashForegroundPhrase = "with the Bash tool timeout set to " + bashMaxTimeout
 
 // shellSwitchInstalled maps each shellguard.Switch to whether a run with the given inputs installs the rows hanging on it.
 var shellSwitchInstalled = map[shellguard.Switch]func(denyInputs) bool{
-	shellguard.SwitchNone:       func(denyInputs) bool { return true },
-	shellguard.SwitchDenyPython: func(in denyInputs) bool { return in.cfg.DenyPython },
+	shellguard.SwitchNone:        func(denyInputs) bool { return true },
+	shellguard.SwitchDenyPython:  func(in denyInputs) bool { return in.cfg.DenyPython },
+	shellguard.SwitchDenyPublish: func(in denyInputs) bool { return in.denyPublish },
 }
 
 // shellGuardInstalled reports whether a run with the given inputs installs the shell guard rows hanging on sw; a switch it does not know is not installed.
@@ -318,8 +320,8 @@ func renderShellGuard(row shellguard.Row) standingDeny {
 }
 
 // buildDenyNotice returns the one-line system-prompt notice announcing each deny buildSettings installs under the same inputs, or "" when it installs none.
-func buildDenyNotice(interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, allowAgentTool bool) string {
-	in := denyInputs{interactive: interactive, cfg: cfg, claude: claude, forkSubagents: forkSubagents, allowAgentTool: allowAgentTool}
+func buildDenyNotice(interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, allowAgentTool, denyPublish bool) string {
+	in := denyInputs{interactive: interactive, cfg: cfg, claude: claude, forkSubagents: forkSubagents, allowAgentTool: allowAgentTool, denyPublish: denyPublish}
 	var sentences []string
 	for _, deny := range standingDeniesFor(cfg.RefuseRaw) {
 		if deny.notice != "" && deny.installed(in) {
@@ -351,6 +353,7 @@ func activityStampHook(eventsPathPosix string) []hookEntry {
 // The denies are the entries of standingDeniesFor(cfg.RefuseRaw).
 // Agent-tool and AskUserQuestion denies are controlled by claude, the python deny by cfg and the refuse-raw deny by cfg.RefuseRaw; forkSubagents narrows the Agent deny to non-fork subagent types and adds a webster-verb guard,
 // and allowAgentTool drops the Agent deny entirely while leaving the webster-verb guard keyed on forkSubagents alone.
+// denyPublish adds the publish deny of git push and gh.
 // Every SessionStart source is recorded exactly once.
 // A non-empty contextAfterCompaction splits the SessionStart hook in two: one entry records every source but compaction, and the compaction entry records the event and then runs that command verbatim, so its standard output reaches the session's context.
 // Empty gives a single recording entry with no matcher.
@@ -358,7 +361,7 @@ func activityStampHook(eventsPathPosix string) []hookEntry {
 // A non-empty creelFlagDirPosix is a git-bash POSIX path like eventsPathPosix.
 // It adds the PostToolUse creel mail hook, after the stamp, testing the strand's flag in that directory, replaces the Stop recording with the command that merges it with creel's turn-end delivery, and adds creel's idle waiter as a second Stop entry.
 // Empty adds none of them and keeps the plain Stop recording.
-func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, allowAgentTool bool, contextAfterCompaction, creelFlagDirPosix string) ([]byte, error) {
+func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, allowAgentTool, denyPublish bool, contextAfterCompaction, creelFlagDirPosix string) ([]byte, error) {
 	quotedEventsPath := shQuote(eventsPathPosix)
 	recordingHook := func(hookEventName string, alwaysSucceeds bool) []hookEntry {
 		command := recordingCommand(hookEventName, quotedEventsPath)
@@ -392,7 +395,7 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 		}
 	}
 
-	in := denyInputs{interactive: interactive, cfg: cfg, claude: claude, forkSubagents: forkSubagents, allowAgentTool: allowAgentTool}
+	in := denyInputs{interactive: interactive, cfg: cfg, claude: claude, forkSubagents: forkSubagents, allowAgentTool: allowAgentTool, denyPublish: denyPublish}
 	for _, deny := range standingDeniesFor(cfg.RefuseRaw) {
 		if deny.installed(in) {
 			doc.Hooks.PreToolUse = append(doc.Hooks.PreToolUse, hookEntry{

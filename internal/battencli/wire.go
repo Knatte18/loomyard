@@ -39,6 +39,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/parentlock"
@@ -588,7 +589,7 @@ func readStopReport(taskLocation *lymcwd.Location) (path string, at time.Time, f
 }
 
 // readAgentActivity reads the running agent runs of the task worktree, those whose waiting process is gone included, through the shuttle config and its registered engines, mapped onto battenshed's neutral type,
-// and reports whether a Go-side wait is live: a running verify, a parent lock wait, a child running at Beam-Await, or a shuttle wait that is not a held turn end.
+// and reports whether a Go-side wait is live: a running verify, a parent lock wait, a child running at Beam-Await or at PR-Review, or a shuttle wait that is not a held turn end.
 // A held run is idle at its turn end, so it does not suppress the quiet notice, and neither does a verify held by a pause.
 // A lock wait record whose writer is dead is ignored.
 // The waits are read from their marker and record files, never from the pane options that display them.
@@ -632,7 +633,7 @@ func readAgentActivity(taskLocation *lymcwd.Location) (runs []battenshed.AgentAc
 	if lockWaiting {
 		return runs, true, nil
 	}
-	if childAtBeamAwait(taskLocation) {
+	if childAtWaitingRow(taskLocation) {
 		return runs, true, nil
 	}
 	markers, err := shuttleengine.ReadWaitMarkers(cfg, anchor)
@@ -647,24 +648,28 @@ func readAgentActivity(taskLocation *lymcwd.Location) (runs []battenshed.AgentAc
 	return runs, false, nil
 }
 
-// childAtBeamAwait reports whether the child's own status file reads running at the pawl recipe's Beam-Await row, which waits on its beam's members with no agent running.
+// childAtWaitingRow reports whether the child's own status file reads running at the pawl recipe's Beam-Await row, which waits on its beam's members with no agent running, or at the PR-Review row, which waits on the run's pull request.
+// The wait is live for as long as the status reads running at either row.
 // An unreadable child status reads as no such wait, as an absent one does.
-func childAtBeamAwait(taskLocation *lymcwd.Location) bool {
+func childAtWaitingRow(taskLocation *lymcwd.Location) bool {
 	statusPath := shedrun.StatusFile(taskLocation, shedrun.SelfRunID)
 	if _, err := os.Stat(statusPath); err != nil {
 		return false
 	}
 	statusLockPath := shedrun.StatusLock(taskLocation, shedrun.SelfRunID)
 	if err := os.MkdirAll(filepath.Dir(statusLockPath), 0o755); err != nil {
-		logger.Debug("battencli: the child's status lock directory could not be made; it reads as no Beam-Await wait", "path", statusLockPath, "cause", err)
+		logger.Debug("battencli: the child's status lock directory could not be made; it reads as no waiting row", "path", statusLockPath, "cause", err)
 		return false
 	}
 	status, found, err := state.ReadJSON[shedengine.Status](statusPath, statusLockPath)
 	if err != nil {
-		logger.Debug("battencli: the child's status is unreadable; it reads as no Beam-Await wait", "path", statusPath, "cause", err)
+		logger.Debug("battencli: the child's status is unreadable; it reads as no waiting row", "path", statusPath, "cause", err)
 		return false
 	}
-	return found && status.State == shedengine.StateRunning && status.CurrentProducer == pawlengine.NameBeamAwait
+	if !found || status.State != shedengine.StateRunning {
+		return false
+	}
+	return status.CurrentProducer == pawlengine.NameBeamAwait || status.CurrentProducer == loomshed.NamePRReview
 }
 
 // readSessionStatesByStrand reads the session state of every running shuttle run under anchor, keyed by strand name.

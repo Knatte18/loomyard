@@ -506,6 +506,23 @@ func (r *Runner) StartGated(spec Spec, gate GateSpec) (*Run, error) {
 	return run, nil
 }
 
+// StartSession starts one unawaited session carrying spec.Prompt and returns once its provider is past startup, without ever calling Wait.
+// The session gets a run directory, a run record reading running, settings and shell guards, its skills and its startup gates, exactly as an ungated Start run does.
+// The caller owns stopping it, through StopStrand, which records the stop.
+// A spec with ResumeSessionID set resumes that session through the engine's resume capability.
+// A spec without Unawaited is refused before anything is created.
+// Bound: one session per call in the caller's worktree, with no timeout classification, since nothing waits on it.
+func (r *Runner) StartSession(spec Spec) (OpenResult, error) {
+	if !spec.Unawaited {
+		return OpenResult{}, errors.New("shuttle: StartSession needs Spec.Unawaited; use Start for a session whose output files are its result")
+	}
+	run, _, err := r.start(spec, GateSpec{})
+	if err != nil {
+		return OpenResult{}, err
+	}
+	return OpenResult{StrandGUID: run.state.StrandGUID, StrandName: run.state.StrandName, SessionID: run.state.SessionID, Engine: run.engineName}, nil
+}
+
 // start is StartGated's whole body: it prepares one run, registers it with reed, persists run.json,
 // then blocks on the new *Run's awaitStartup before ever returning it.
 // Every pre-strand failure (told-path validation, spec validation, run-dir creation,

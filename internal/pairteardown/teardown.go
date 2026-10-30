@@ -131,6 +131,8 @@ type Teardown struct {
 	snapshot func(rec *fabricengine.Mutations, slug string) (tag string, paths []string, err error)
 	// archive copies the pair's trace and verify logs into the hub's log archive; it never fails the teardown.
 	archive func(slug string)
+	// closePR closes the run's open pull request, which a pair torn down unlanded would otherwise leave looking like pending work; it never fails the teardown.
+	closePR func(slug string)
 	sleep   func(ctx context.Context, d time.Duration) error
 
 	// landed reports whether the present task worktree's run finished a Finalize.
@@ -190,6 +192,7 @@ func New(prime *lymcwd.Location) (*Teardown, error) {
 	}
 	t.endSession = t.endReedSession
 	t.archive = t.archivePairLogs
+	t.closePR = t.closePairPullRequest
 	t.killCapture = t.killPairCapture
 	t.killLoop = t.killPairLoop
 	t.seizeLoop = t.holdPairLoopLock
@@ -361,8 +364,9 @@ func (t *Teardown) driverLockBusyError(slug, retry string) error {
 	return fmt.Errorf("%w: the driver lock %s of pair %q is held by a process the owner record does not reach; %s", ErrDriverBusy, lockPath, slug, wayForward)
 }
 
-// RemovePair archives the pair's logs, removes the pair, then settles the pair's board claim.
+// RemovePair closes the run's open pull request, archives the pair's logs, removes the pair, then settles the pair's board claim.
 // It runs only after EndSession succeeded for the same request: Run and batten's one-row producer are its only sequencers.
+// The pull request is closed first, after the snapshot and before the archive and the removal, so the record under the run's scratch directory is still there, and a failure to close it never stops the teardown.
 // The archive copies and never fails the teardown, so the removal follows it whatever it did.
 //
 // Whether the pair's work landed is req.Landed, or else read before the removal from the task worktree's status file, since the file goes with the worktree;
@@ -385,6 +389,8 @@ func (t *Teardown) RemovePair(req Request) (fabricengine.RemoveResult, error) {
 			return snap.applyTo(fabricengine.RemoveResult{}), err
 		}
 	}
+
+	t.closePR(req.Slug)
 
 	settles := !req.Local && !req.LeaveClaim
 	landed, landedKnown := req.Landed, settles

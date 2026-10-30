@@ -1,6 +1,6 @@
 //go:build tier0
 
-// pawlrecipe_test.go covers NewPawl and PawlRouting: the pawl recipe's nine rows, their edges and producer types, the Code-Review perch's budget, the absence of a reroute edge on Finalize, the refusal of an unfilled seam, and the hold boundary the recipe's rows pin against boardengine.RunHolds.
+// pawlrecipe_test.go covers NewPawl and PawlRouting: the pawl recipe's ten rows, their edges, with Beam-Describe handing to PR-Review, and producer types, the Code-Review perch's budget, the absence of a reroute edge on Finalize, the refusal of an unfilled seam, and the hold boundary the recipe's rows pin against boardengine.RunHolds.
 
 package loomrecipe
 
@@ -42,7 +42,8 @@ func wantPawlRows(t *testing.T) []wantPawlRow {
 		{loomshed.NameCodeBouncer, bouncerType, "Beam-Describe", loomshed.NameCodeBurlerReview},
 		{loomshed.NameCodeBurlerReview, burlerReviewType, loomshed.NameCodeBurlerFix, loomshed.NameCodeBurlerFix},
 		{loomshed.NameCodeBurlerFix, burlerFixType, loomshed.NameCodeBouncer, loomshed.NameCodeBouncer},
-		{"Beam-Describe", reflect.TypeOf(describe), loomshed.NameFinalize, ""},
+		{"Beam-Describe", reflect.TypeOf(describe), loomshed.NamePRReview, ""},
+		{loomshed.NamePRReview, reflect.TypeOf(&landingshed.PRReview{}), loomshed.NameFinalize, ""},
 		{loomshed.NameFinalize, reflect.TypeOf(&landingshed.Finalize{}), pawlengine.NameBeamDown, ""},
 		{pawlengine.NameBeamDown, reflect.TypeOf(&pawlengine.BeamDown{}), "", ""},
 	}
@@ -51,7 +52,7 @@ func wantPawlRows(t *testing.T) []wantPawlRow {
 func TestNewPawl(t *testing.T) {
 	t.Parallel()
 
-	t.Run("BuildsTheNineRowsAndTheirEdges", func(t *testing.T) {
+	t.Run("BuildsTheTenRowsAndTheirEdges", func(t *testing.T) {
 		t.Parallel()
 		env, paths := testEnv(t)
 		setCodeBudget(&env, 3)

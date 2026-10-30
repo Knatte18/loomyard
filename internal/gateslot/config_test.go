@@ -34,6 +34,7 @@ var templateDefaults = Config{
 		"darn-write":      {Tiers: []int{0}, Scope: "diff"},
 		"code-burler-fix": {Tiers: []int{0}, Scope: "diff"},
 		"drift-verify":    {Tiers: []int{0}, Scope: "diff"},
+		"pr-review":       {Tiers: []int{0}, Scope: "diff"},
 	},
 	Scoper: "none",
 }

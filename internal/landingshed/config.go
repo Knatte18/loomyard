@@ -41,6 +41,8 @@ type Config struct {
 	Describe string `yaml:"describe"`
 	// DescribeTimeoutMin is the Describe session's wall-clock budget in minutes.
 	DescribeTimeoutMin int `yaml:"describe_timeout_min"`
+	// PRReviewer is the model-spec string selecting the model the PR-Review row's interactive session runs under.
+	PRReviewer string `yaml:"pr_reviewer"`
 	// TrailerText is the landing commit's fixed trailer lines, copied verbatim; empty adds none.
 	TrailerText string `yaml:"trailer_text"`
 	// EngineTrailers maps an engine name to the trailer text the landing commit carries when that engine ran a session in the task.
@@ -117,6 +119,7 @@ func ConfigSpec() configengine.Spec {
 			"conflict_timeout_min": configengine.CategoryNone,
 			"describe":             configengine.CategoryNone,
 			"describe_timeout_min": configengine.CategoryNone,
+			"pr_reviewer":          configengine.CategoryNone,
 			"trailer_text":         configengine.CategoryCrossPair,
 			engineTrailersKey:      configengine.CategoryCrossPair,
 			"deploy":               configengine.CategoryExecutable,
@@ -137,7 +140,7 @@ func ConfigSpec() configengine.Spec {
 }
 
 // LoadConfig loads and unmarshals configuration for the landing module strictly through the hub-wide layer stack under dirs.
-// It validates the conflict, describe and fixer keys' model-spec grammar at load time, refuses a fixer timeout, fixer attempt cap or fixer line cap below 1, and refuses an engine_trailers entry whose key names no engine.
+// It validates the conflict, describe, pr_reviewer and fixer keys' model-spec grammar at load time, refuses a fixer timeout, fixer attempt cap or fixer line cap below 1, and refuses an engine_trailers entry whose key names no engine.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	spec := ConfigSpec()
 	spec.Name = module
@@ -160,6 +163,10 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 
 	if _, err := modelspec.Parse(cfg.Describe); err != nil {
 		return Config{}, fmt.Errorf("landing config key %q: %w", "describe", err)
+	}
+
+	if _, err := modelspec.Parse(cfg.PRReviewer); err != nil {
+		return Config{}, fmt.Errorf("landing config key %q: %w", "pr_reviewer", err)
 	}
 
 	if _, err := modelspec.Parse(cfg.Fixer); err != nil {

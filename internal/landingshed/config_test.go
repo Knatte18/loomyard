@@ -63,6 +63,9 @@ func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	if cfg.DescribeTimeoutMin != 30 {
 		t.Errorf("cfg.DescribeTimeoutMin = %d; want 30", cfg.DescribeTimeoutMin)
 	}
+	if cfg.PRReviewer != "opus[high]" {
+		t.Errorf("cfg.PRReviewer = %q; want %q", cfg.PRReviewer, "opus[high]")
+	}
 	if cfg.TrailerText != "" {
 		t.Errorf("cfg.TrailerText = %q; want empty", cfg.TrailerText)
 	}
@@ -265,13 +268,14 @@ func TestLoadConfig_InvalidKeys(t *testing.T) {
 	t.Parallel()
 
 	const wellFormed = "deploy_branches: [\"main\"]\nsquash: true\nconflict: opus[high]\nconflict_timeout_min: 60\n" +
-		"describe: sonnet[medium]\ndescribe_timeout_min: 30\nfixer: opus[high]\nfixer_timeout_min: 60\nparent_align_fix_attempts: 2\n" +
+		"describe: sonnet[medium]\ndescribe_timeout_min: 30\npr_reviewer: opus[high]\nfixer: opus[high]\nfixer_timeout_min: 60\nparent_align_fix_attempts: 2\n" +
 		"finalize_fix_attempts: 2\nfinalize_fix_max_lines: 40\nengine_trailers:\n  claude: \"Co-Authored-By: Claude <noreply@anthropic.com>\"\n"
 	cases := []struct {
 		name, valid, invalid, key string
 	}{
 		{"malformed conflict", "conflict: opus[high]", "conflict: \"opus[high\"", "conflict"},
 		{"malformed describe", "describe: sonnet[medium]", "describe: \"sonnet[medium\"", "describe"},
+		{"malformed pr_reviewer", "pr_reviewer: opus[high]", "pr_reviewer: not-a-spec[", "pr_reviewer"},
 		{"engine_trailers key naming no engine", "  claude:", "  claud:", "engine_trailers.claud"},
 		{"malformed fixer", "fixer: opus[high]", "fixer: \"opus[high\"", "fixer"},
 		{"fixer timeout below 1", "fixer_timeout_min: 60", "fixer_timeout_min: 0", "fixer_timeout_min"},

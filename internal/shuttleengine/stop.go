@@ -13,8 +13,9 @@ import (
 // It is a record-only terminal value, never a Result.Outcome.
 const runOutcomeStopped = "stopped"
 
-// stopOutcome returns the outcome a stop leaves in a run's record: outcome itself when it is done or every file in outputFiles exists, runOutcomeStopped otherwise.
+// stopOutcome returns the outcome a stop leaves in a run's record: outcome itself when it is done or every file in a non-empty outputFiles exists, runOutcomeStopped otherwise.
 // A finished run's files outrank the stop, so a stop never turns finished work into a stopped record.
+// An empty outputFiles is an unawaited run's, which has no files to finish, so only its outcome can keep it.
 func stopOutcome(outcome string, outputFiles []string) string {
 	if outcome == string(OutcomeDone) || allOutputFilesExist(outputFiles) {
 		return outcome
@@ -29,7 +30,7 @@ func (run *Run) saveState() error {
 }
 
 // Stop removes the run's strand, when it is live or an own-window strand with a dead pane, and records the stop.
-// A record already terminal keeps its outcome, and a record still reading running whose output files all exist keeps running; any other record reads stopped.
+// A record already terminal keeps its outcome, and a record still reading running whose output files all exist keeps running; any other record, an unawaited run's included, reads stopped.
 // The record is written before the strand is removed, so a failed write returns its error with the strand untouched, and a failed removal leaves the terminal record over a live strand.
 // A Wait on this handle that sees the strand go finalizes with the stop mark, so it records stopped unless the run's files show it done.
 func (run *Run) Stop() error {

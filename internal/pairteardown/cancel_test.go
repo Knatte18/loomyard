@@ -200,6 +200,14 @@ func TestEndForCancel(t *testing.T) {
 					t.Errorf("EndForCancel result = %+v, want %+v", result, tt.wantResult)
 				}
 			}
+			// A cancel that stopped the strands closed the pull request once right after, whether it keeps the pair or removes it; any other cancel closed none.
+			if strings.Contains(tt.wantCalls, "stopStrands") {
+				if len(f.closePRs) != 1 || !strings.HasSuffix(f.closePRs[0], "stopStrands") {
+					t.Errorf("pull request closes = %q, want one right after stopStrands", f.closePRs)
+				}
+			} else if len(f.closePRs) != 0 {
+				t.Errorf("pull request closes = %q, want none before the strands are stopped", f.closePRs)
+			}
 		})
 	}
 }

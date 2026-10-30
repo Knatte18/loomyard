@@ -61,9 +61,7 @@ func engineMinimalConfig(advisorStencilName, leadStencilName, rubricStencilName 
 		"Implementer": {
 			"implementer_setting": "loom.implementer",
 		},
-		"PRReview": {
-			"pr_review_setting": "loom.pr_review",
-		},
+		"PRReview": {},
 		"MultiLLM": {
 			"role":    "coverage",
 			"segment": "plan",

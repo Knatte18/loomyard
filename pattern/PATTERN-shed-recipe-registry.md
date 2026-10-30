@@ -21,3 +21,5 @@ Its command comes from the template and the board default layer only.
 ## Entry gates
 
 A recipe row that config leaves out is left out by its `entry_gate`, never by a recipe rewrite or a switch inside the producer.
+
+A row whose off reads more than one config key, such as PR-Review's, which reads the parent's anchor, a board field and the origin, decides it in its own call, never by a recipe rewrite.

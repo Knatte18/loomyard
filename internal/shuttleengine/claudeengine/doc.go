@@ -229,6 +229,8 @@
 // The Bash denies below are not declared here: they render the rows of `internal/shellguard`'s table as PreToolUse(Bash) hooks, every row in table order after the Claude rows.
 // The python row denies a Bash command that runs `python`, `python3` or `python3.<minor>` in command position, in every run mode;
 // `shuttle.yaml`'s `deny_python` switches it off for a Python target repo.
+// The publish row denies a Bash `git push`, with any flag words before `push`, and `gh`, in command position;
+// it is installed only for a run whose spec sets `DenyPublish`, which the `deny_publish` switch of the shell guard table names, and announced like every other row.
 // The command-shaped rows read the command as the shell would, so a command word in quoted text, a heredoc body or another payload field such as the description does not trip a row.
 // For every such row, a command substitution inside a double-quoted string, a command after a `<` before a quote or a backslash, and any line after a heredoc operator's line are not read and pass.
 // It is a guardrail, not a barrier: its hook greps the payload, so python behind `bash -c`, `eval`, a launcher or a command substitution inside a double-quoted string passes, and a separator inside a quote the scan misreads is falsely denied.

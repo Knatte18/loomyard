@@ -9,6 +9,7 @@ package envkit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -30,11 +31,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/verifytree"
@@ -142,6 +145,15 @@ func (noopFixerSeats) Run(seatengine.Table) (seatengine.Result, error) {
 	return seatengine.Result{}, nil
 }
 
+// noopSessions is a session runner that starts nothing and stops nothing, since the fixture's landing takes the local path and opens no session.
+type noopSessions struct{}
+
+func (noopSessions) StartSession(shuttleengine.Spec) (shuttleengine.OpenResult, error) {
+	return shuttleengine.OpenResult{}, errors.New("envkit: the fixture's landing starts no session")
+}
+
+func (noopSessions) StopStrand(string) error { return nil }
+
 // LandingDeps returns a `landingshed.Deps` with every field the Parent-Align and Finalize constructors require, filled with told values derived from dir.
 func LandingDeps(dir string) landingshed.Deps {
 	return landingshed.Deps{
@@ -183,6 +195,28 @@ func LandingDeps(dir string) landingshed.Deps {
 		TaskRemoteTip:      func() (string, error) { return "", nil },
 		CodeReviewOff:      func() (bool, error) { return false, nil },
 		RerouteReviewed:    func() (bool, error) { return true, nil },
+		// ParentMode answers off and Origin is empty, so a landing through this deps takes the local path and calls no GitHub.
+		PullRequest: landingshed.PullRequestDeps{
+			RecordPath:     filepath.Join(dir, "landing-scratch", "pull-request.json"),
+			RecordLockPath: filepath.Join(dir, "landing-scratch", "pull-request.lock"),
+			ParentMode:     func() (string, string, error) { return "off", "fixture-parent", nil },
+			EntryField:     func() (string, error) { return "", nil },
+			Origin:         func() (landingshed.Origin, error) { return landingshed.Origin{}, nil },
+			API: func(string) (pullrequest.API, error) {
+				return nil, errors.New("envkit: the fixture's landing reaches no GitHub")
+			},
+			PushTask:        func() error { return nil },
+			CommitsMissing:  func(string, string) ([]string, error) { return nil, nil },
+			DirtyPaths:      func() ([]string, error) { return nil, nil },
+			MailAgent:       func(string, string) error { return nil },
+			PauseCovered:    func() (bool, error) { return false, nil },
+			Now:             time.Now,
+			Sleep:           func(context.Context, time.Duration) error { return nil },
+			Sessions:        noopSessions{},
+			SessionLive:     func(string) (bool, error) { return false, nil },
+			RegisterSession: func(string) error { return nil },
+			BoardEntryPath:  filepath.Join(dir, "landing-scratch", "board-entry.md"),
+		},
 	}
 }
 
@@ -231,6 +265,7 @@ var fixedGateLists = map[string][]int{
 	"darn-write":      {0, 1},
 	"code-burler-fix": {0, 1},
 	"drift-verify":    {0, 1},
+	"pr-review":       {0, 1},
 }
 
 // fixedGateTiers answers a named gate's tier list from fixedGateLists, and errors naming a gate the kit holds no list for.

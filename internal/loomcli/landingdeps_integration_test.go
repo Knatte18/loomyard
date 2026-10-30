@@ -13,7 +13,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -167,4 +169,88 @@ func TestParentRecordsCommitter_CommitsTheRecordedParent(t *testing.T) {
 	if got := gitkit.Git(t, primeRecords, "rev-parse", "HEAD"); got != primeHead {
 		t.Errorf("prime records HEAD = %s, was %s; want no commit", got, primeHead)
 	}
+}
+
+// TestLandingDeps_PullRequestModeReadsTheParent asserts the PR-Review row's ParentMode seam reads the receiving branch's beam.yaml and never the task worktree's own:
+// a task under the prime reads the prime's, a member under a beam reads the beam's, and the beam reads the prime's.
+// It also asserts EntryField reads the run's own board entry.
+func TestLandingDeps_PullRequestModeReadsTheParent(t *testing.T) {
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	boardLayer := configengine.ConfigFile(h.BoardDir(), "beam")
+	if err := os.MkdirAll(filepath.Dir(boardLayer), 0o755); err != nil {
+		t.Fatalf("create the board's beam config directory: %v", err)
+	}
+	if err := os.WriteFile(boardLayer, []byte(dobbyengine.ConfigTemplate()), 0o644); err != nil {
+		t.Fatalf("write the board's beam.yaml: %v", err)
+	}
+	hubforge.AddPair(t, h, "task")
+	hubforge.AddPairWith(t, h, "beam", fabricengine.AddOptions{Beam: true})
+	hubforge.AddPairWith(t, h, "member", fabricengine.AddOptions{Parent: "beam"})
+
+	locate := func(codeWorktree string) *lymcwd.Location {
+		t.Helper()
+		location, err := lymcwd.ResolveWorktree(codeWorktree)
+		if err != nil {
+			t.Fatalf("lymcwd.ResolveWorktree(%s) error = %v; want nil", codeWorktree, err)
+		}
+		return location
+	}
+	setMode := func(location *lymcwd.Location, mode string) {
+		t.Helper()
+		layer := configengine.ConfigFile(location.AnchorPath(), "beam")
+		if err := os.MkdirAll(filepath.Dir(layer), 0o755); err != nil {
+			t.Fatalf("create %s: %v", filepath.Dir(layer), err)
+		}
+		if err := os.WriteFile(layer, []byte("pull_request: \""+mode+"\"\n"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", layer, err)
+		}
+	}
+	depsOf := func(location *lymcwd.Location) landingshed.Deps {
+		return landingDeps(location, shedrun.RecipeLoom, websterengine.Geometry{}, location.WorktreeName, "main",
+			true, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(location), parentLockDeps(location, shedrun.SelfRunID, "", ""))
+	}
+
+	prime, task, beam, member := h.Location, locate(h.PairCodeWorktree("task")), locate(h.PairCodeWorktree("beam")), locate(h.PairCodeWorktree("member"))
+	setMode(prime, "off")
+	setMode(task, "required")
+	setMode(beam, "required")
+	board, err := boardengine.OpenHub(h.Location.HubPath)
+	if err != nil {
+		t.Fatalf("boardengine.OpenHub() error = %v; want nil", err)
+	}
+	if _, err := board.UpsertTask(map[string]any{"slug": "beam", "title": "Beam", "kind": "project", "labels": []string{"bug"}, "pull_request": "on"}); err != nil {
+		t.Fatalf("UpsertTask(beam) error = %v; want nil", err)
+	}
+
+	tests := []struct {
+		name         string
+		location     *lymcwd.Location
+		wantMode     string
+		wantWorktree string
+	}{
+		{"TaskUnderThePrimeReadsThePrimesNotItsOwn", task, "off", prime.WorktreeName},
+		{"MemberUnderABeamReadsTheBeams", member, "required", "beam"},
+		{"BeamReadsThePrimes", beam, "off", prime.WorktreeName},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mode, worktree, err := depsOf(tt.location).PullRequest.ParentMode()
+			if err != nil || mode != tt.wantMode || worktree != tt.wantWorktree {
+				t.Errorf("ParentMode() = %q, %q, %v; want %q, %q, nil", mode, worktree, err, tt.wantMode, tt.wantWorktree)
+			}
+		})
+	}
+
+	t.Run("EntryFieldReadsTheRunsOwnEntry", func(t *testing.T) {
+		field, err := depsOf(beam).PullRequest.EntryField()
+		if err != nil || field != "on" {
+			t.Errorf("beam EntryField() = %q, %v; want \"on\", nil", field, err)
+		}
+		field, err = depsOf(member).PullRequest.EntryField()
+		if err != nil || field != "" {
+			t.Errorf("member EntryField() = %q, %v; want an empty field for an absent entry, nil", field, err)
+		}
+	})
 }

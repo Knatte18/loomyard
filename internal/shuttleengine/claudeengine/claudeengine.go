@@ -205,7 +205,7 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		}
 	}
 
-	settingsJSON, err := buildSettings(eventsPathForHook, spec.Interactive, cfg, claude, spec.ForkSubagents, spec.AllowAgentTool, spec.ContextAfterCompaction, creelFlagDirForHook)
+	settingsJSON, err := buildSettings(eventsPathForHook, spec.Interactive, cfg, claude, spec.ForkSubagents, spec.AllowAgentTool, spec.DenyPublish, spec.ContextAfterCompaction, creelFlagDirForHook)
 	if err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("build settings: %w", err)
 	}
@@ -228,7 +228,7 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	if err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("resolve append system prompt path: %w", err)
 	}
-	notice := buildDenyNotice(spec.Interactive, cfg, claude, spec.ForkSubagents, spec.AllowAgentTool)
+	notice := buildDenyNotice(spec.Interactive, cfg, claude, spec.ForkSubagents, spec.AllowAgentTool, spec.DenyPublish)
 	if err := os.WriteFile(appendPromptPath, []byte(appendPromptText(notice)), 0o644); err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("write append system prompt: %w", err)
 	}

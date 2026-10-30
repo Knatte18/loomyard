@@ -176,8 +176,8 @@ func TestNewDarn_Routing(t *testing.T) {
 		if holds, _, err := describe.EntryGate(); err != nil || !holds {
 			t.Errorf("Describe EntryGate() with a review budget of 4 = %v, %v; want true, nil", holds, err)
 		}
-		if prReview := rows[loomshed.NamePRReview]; prReview.OnDone != loomshed.NameFinalize || prReview.OnStuck != "" || prReview.Segment != "" {
-			t.Errorf("PR-Review OnDone/OnStuck/Segment = %q/%q/%q; want %q/empty/empty", prReview.OnDone, prReview.OnStuck, prReview.Segment, loomshed.NameFinalize)
+		if prReview := rows[loomshed.NamePRReview]; prReview.OnDone != loomshed.NameFinalize || prReview.OnStuck != "" || prReview.Segment != "" || prReview.EntryGate != nil {
+			t.Errorf("PR-Review OnDone/OnStuck/Segment/EntryGate set = %q/%q/%q/%v; want %q/empty/empty/false", prReview.OnDone, prReview.OnStuck, prReview.Segment, prReview.EntryGate != nil, loomshed.NameFinalize)
 		}
 		if _, ok := rows[loomshed.NameParentAlign]; ok {
 			t.Errorf("darn recipe has a %s row; want none", loomshed.NameParentAlign)

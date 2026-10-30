@@ -1,7 +1,7 @@
 // Package runproc owns the owner record of a run's processes and the one sequence that ends them.
 //
 // Every detached or long-lived process lym starts for a run registers a Record under its owner: the run's slug, or HubOwner for the hub's own processes.
-// A record holds the pid, the process group when the process leads it, the start time, the role (`RoleDriver`, `RoleLoop`, `RoleBatten`, `RolePush`, `RoleSync`, `RoleDobby` or `RoleCapture`), the command line and the registration time.
+// A record holds the pid, the process group when the process leads it, the start time, the role (`RoleDriver`, `RoleLoop`, `RoleBatten`, `RolePush`, `RoleSync`, `RoleDobby`, `RoleCapture` or `RoleSession`), the command line and the registration time.
 // Register writes `<dir>/<owner>/<pid>-<start time>.json` through `internal/state`, so a key the record does not declare survives a rewrite by an older binary.
 // The package is told its directory and derives no path.
 // `HubOwner` is `_board`, a name the fabric slug check refuses as reserved hub geometry, so no slug can take it.

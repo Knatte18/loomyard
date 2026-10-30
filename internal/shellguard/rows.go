@@ -18,6 +18,8 @@ const (
 	SwitchNone Switch = ""
 	// SwitchDenyPython marks the row the python switch of the shuttle config turns off.
 	SwitchDenyPython Switch = "deny_python"
+	// SwitchDenyPublish marks the row a launch spec turns on to keep a session from publishing: git push and gh.
+	SwitchDenyPublish Switch = "deny_publish"
 )
 
 // Row is one guard against shell commands.
@@ -93,6 +95,16 @@ const noticeSleepDeny = steerSleepDeny + "."
 // It matches systemctl in command position, optionally path-prefixed, followed by any flag words and then one of the verbs sleep, hibernate, suspend, hybrid-sleep or suspend-then-hibernate as a whole word, so hibernate.target is no verb.
 // A word that is not a flag ends the match, so systemctl status and every other verb pass.
 const sleepCommandPattern = commandPositionPattern + `systemctl([[:space:]]+-` + goWordPattern + `)*[[:space:]]+(sleep|hibernate|suspend|hybrid-sleep|suspend-then-hibernate)([^A-Za-z0-9_.-]|$)`
+
+// steerPublishDeny refuses a Bash git push or gh; it must contain no single/double quote or backslash (checked at init).
+const steerPublishDeny = "git push and gh are refused in this session: lym pushes the task branch after it gates your commits, and only lym opens, merges or closes the pull request; commit your change and tell the operator"
+
+// noticePublishDeny announces the publish deny in the same wording as its steer.
+const noticePublishDeny = steerPublishDeny + "."
+
+// publishCommandPattern is the grep -E pattern the publish deny matches against the raw PreToolUse payload JSON.
+// It matches, in command position and optionally path-prefixed, either git followed by any flag words, with -C taking its directory word, and then push as a whole word, or gh as a whole word.
+const publishCommandPattern = commandPositionPattern + `(git([[:space:]]+(-C[[:space:]=]+` + goWordPattern + `|-` + goWordPattern + `))*[[:space:]]+push|gh)([^A-Za-z0-9_./-]|$)`
 
 // goSubcommandPattern is the grep -E prefix of a go test, build or vet command: go in command position directly before the subcommand, with an optional -C <dir> between them, then whitespace.
 const goSubcommandPattern = commandPositionPattern + `go[[:space:]]+(-C[[:space:]=]+[^[:space:]]+[[:space:]]+)?`
@@ -229,6 +241,16 @@ func rowsAfterRawGo() []Row {
 				{"systemctl", "hybrid-sleep"},
 				{"systemctl", "suspend-then-hibernate"},
 			},
+		},
+		{
+			// Installed only for a launch spec that sets DenyPublish, the PR-Review session.
+			// A guardrail, not a barrier: bash -c, a script, env forms the pattern does not list, a git alias or hub pass, and a gh spelling after a separator inside a quote commandPositionPattern misreads is falsely denied.
+			// A lym verb that pushes the task branch, such as lym fabric push or the detached both-sides push a run-record commit fires, reaches origin from the session too, so the row gates what lands, not what reaches the pull request.
+			Name:     "publish",
+			Patterns: []string{publishCommandPattern},
+			Steer:    steerPublishDeny,
+			Notice:   noticePublishDeny,
+			Switch:   SwitchDenyPublish,
 		},
 	}
 }

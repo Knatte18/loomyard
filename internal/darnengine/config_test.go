@@ -80,6 +80,11 @@ func TestLoadConfig(t *testing.T) {
 			want:     templateConfig(func(c *Config) { c.TreeScope = map[string]string{"tools": "./tools/..."} }),
 		},
 		{
+			name: "a retired pr_review key still loads", seed: true,
+			contents: ConfigTemplate() + "pr_review: true\n",
+			want:     templateConfig(func(*Config) {}),
+		},
+		{
 			name: "tree keys written twice", seed: true,
 			contents: withTreeScope("\n  tools: ./tools/...\n  tools/: ./tools/..."),
 			wantErr:  []string{`"tools" and "tools/"`}, wantIs: ErrTreeScopeKey,

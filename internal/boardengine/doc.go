@@ -197,6 +197,12 @@
 // boardengine imports nothing GitHub-specific: the caller converts a fetched issue into InboxIssue and makes every network call outside the board lock.
 // An imported or folded body carries the issue's comments after the issue body, the ones the caller kept, oldest first: each is a heading naming its UTC creation date, one level below the body's own heading, followed by the comment verbatim, its author not recorded.
 //
+// # Pull request
+//
+// A task or project may carry a `pull_request` override, "on" or "off", and any other non-empty value is refused; empty means none and stores no key.
+// The field is scope for the run lock, so a held entry takes no change to it.
+// A landing reads it against the parent's beam.yaml `pull_request` mode to decide whether the landing goes through a pull request.
+//
 // # Run lock
 //
 // A run holds a board entry while the entry's status has the run-status form "<state> · <producer>", which RunStatus composes and IsRunStatus recognizes.

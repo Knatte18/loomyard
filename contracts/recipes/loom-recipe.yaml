@@ -19,8 +19,10 @@
 # Those four are not the whole escalate-to-a-human set, and the difference matters when auditing
 # routing from this header.
 # These PRODUCER rows also carry no on_stuck -- Discussion-Write, Drift-Baseline, Plan-Write,
-# Drift-Await, Webster, Drift-Verify and Describe -- and their Stuck halts the whole run just as a
-# gate's does.
+# Drift-Await, Webster, Drift-Verify, Describe and PR-Review -- and their Stuck halts the whole run just
+# as a gate's does.
+# PR-Review carries no entry_gate either: whether it opens a pull request reads the parent's anchor, a
+# board field and the origin, which the row decides in its own call.
 # A gated writer row's exhausted gate halts the run for a human rather than bouncing to a fresh
 # writer, deliberately: after three in-session re-prompts with the findings already in hand,
 # a cold respawn that knows nothing about the complaint is strictly worse than stopping and telling
@@ -33,8 +35,8 @@
 # fix review does not approve, takes when a review follows.
 # Shed's reroute cap bounds that edge, and a reroute spends no bounce budget.
 #
-# PR-Review and Friction-Reflect are outside the escalate-to-a-human set: each also carries no
-# on_stuck, but each always returns Done and never Stuck.
+# Friction-Reflect is outside the escalate-to-a-human set: it also carries no on_stuck, but it always
+# returns Done and never Stuck.
 #
 # Parent-Align follows Webster and brings the parent's upstream tip into the task branch with no parent
 # lock, then hands to the Code-Review perch.
@@ -532,13 +534,11 @@ producers:
         - name: description
           attempts: 3
 
-  # PR-Review is the stub seat the human pull-request review will take over. It always returns Done,
-  # so it carries no on_stuck, and loom.yaml's pr_review key only decides whether it logs.
+  # PR-Review lands the task through a GitHub pull request when the pull-request resolver says so.
+  # It carries no entry_gate and no on_stuck, because its Stuck is always a Halt.
   - name: PR-Review
     engine: PRReview
     on_done: Finalize
-    config:
-      pr_review_setting: loom.pr_review
 
   # Finalize takes the parent lock first, merges the parent into the task branch, runs the landing
   # gate and the merge fixer, then fast-forwards the parent and releases the lock on every way out.

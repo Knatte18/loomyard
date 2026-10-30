@@ -61,6 +61,7 @@ Every verify site runs the call rendered from a gate of the hub's `gate.yaml` th
 - Code-Burler-Fix and Darn-Write each run their own gate key's call through `Verify`, the `code-burler-fix` and `darn-write` keys, and share no pass with Webster's end gate.
   Each lints from its own latest recorded pass or the merge base, and Darn-Write, and Code-Burler-Fix in a darn run, lint from the merge base on every attempt and run their own key's call over the touched trees' targets for a diff wholly under `darn.yaml`'s `tree_scope`, else their own key's call alone.
 - Drift-Verify runs its own `drift-verify` key's call through `Verify`, wrapped to run only once its agent committed code, and shares no pass with another site.
+- PR-Review runs its own `pr-review` key's call through `Verify` over each clean head its agent commits, and shares no pass with another site.
 - Parent-Align and Finalize run the `landing` call through `Verify` with `BaseCommand` set to the base command, which is the `final` call in a loom run and the `landing` call in a darn run, so a landing-list pass keeps the entry the next round diffs from.
   A darn Finalize runs its `finalize` key's call over the touched trees' targets in its place for a tree-scoped diff, resolved at each call; it is one `lym gate test --wait` call, and an empty one, rendered when no touched tree contributes a target, runs nothing.
 - Each run that spawns its command writes its own `verify-<n>.log` in the verify directory and names it on its result, so no later verify overwrites an earlier run's log.

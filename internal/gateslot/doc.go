@@ -58,7 +58,7 @@
 // The tier keys are `tiers`, `gates`, `scoper`, `refuse_raw`, `tier_parallel`, `build` and `inert_paths`.
 // `tiers` is an open map keyed `tier0`, `tier1`, and so on, each a Tier written whole with one `lym config gate --set 'tiers.tierN={...}'` flow mapping;
 // `gates` is a per-name map from a gate key to a GateKey written `{tiers: [<n>...], scope: card|diff|all}`, so a hub file that sets one key keeps the template's value for every other, and `tier_parallel` an open map from a tier name to this machine's parallel for it.
-// The keys lym reads are `card` and `batch` (scope `card`), `webster`, `parent-align`, `finalize` and `adopt` (scope `all`), and `webster-fix`, `darn-write`, `code-burler-fix` and `drift-verify` (scope `diff`).
+// The keys lym reads are `card` and `batch` (scope `card`), `webster`, `parent-align`, `finalize` and `adopt` (scope `all`), and `webster-fix`, `darn-write`, `code-burler-fix`, `drift-verify` and `pr-review` (scope `diff`).
 // `tiers` and `build` are executable keys, since a tier or build command runs any shell command in a task worktree, and `gates`, `scoper`, `refuse_raw` and `inert_paths` are guard keys, so all of them are hub-file only.
 // `build` is an open map, so its sub-keys travel whole through the layer stack and reconcile never prunes a hub's build.
 // A tier may also hold `filter`, its own test-filter expression, `shared_build: true`, which makes the tier depend on the build step, and `carry: false`, which keeps a green run from being carried over an unchanged tree; Tier.NoCarry is the negative form, so a zero Tier carries.
@@ -103,6 +103,7 @@
 //	loom        Parent-Align                            parent-align     all
 //	loom, darn  Code-Burler-Fix                         code-burler-fix  diff
 //	loom, darn  Drift-Verify                            drift-verify     diff
+//	loom, darn, pawl  PR-Review                         pr-review        diff
 //	loom, darn  Finalize                                finalize         all
 //	adopt       lym adopt check                         adopt            all
 //	darn        Darn-Write                              darn-write       diff

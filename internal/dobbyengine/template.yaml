@@ -2,3 +2,4 @@ max_runs: 3  # the most runs of this beam's tasks dobby drives at once; 0 starts
 board_tidy_every: 5  # dobby starts the board-tidy agent after this many landings; 0 never tidies
 board_tidy_timeout_min: 30  # the minutes the board-tidy agent may run before dobby gives up on it
 task_headroom: 500  # the fewest free tasks under the cgroup task limit (pids.max) for dobby to start a run; 0 never holds a start
+pull_request: "on"  # whether a landing into this worktree's branch goes through a GitHub pull request: on (unless the entry's pull_request field is off), off (only when the entry's field is on) or required (always, whatever the field says)

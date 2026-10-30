@@ -1,13 +1,14 @@
 # pawl-recipe.yaml is the pawl recipe, a beam's life: Beam-Up brings the beam up, Beam-Await holds the run
 # until a land request passes the landing re-check, Parent-Align brings the parent's upstream tip into the
 # beam, the Code-Review perch reviews the beam's diff, Beam-Describe writes the change description from the
-# beam's board entry and the commits it adds, Finalize merges the beam's parent into the beam, runs the
-# landing gate and fast-forwards the parent, and Beam-Down takes the beam's dobby and orch down.
+# beam's board entry and the commits it adds, PR-Review lands the beam through a pull request when the
+# resolver says so, Finalize merges the beam's parent into the beam, runs the landing gate and
+# fast-forwards the parent, and Beam-Down takes the beam's dobby and orch down.
 # It is embedded into the binary by the sibling recipes.go rather than read from disk. The row names below
 # are the durable on-disk identities that resume depends on.
 #
 # The rows are Beam-Up, Beam-Await, Parent-Align, the Code-Review perch (Code-Bouncer,
-# Code-Burler-Review, Code-Burler-Fix), Beam-Describe, Finalize and Beam-Down.
+# Code-Burler-Review, Code-Burler-Fix), Beam-Describe, PR-Review, Finalize and Beam-Down.
 # Beam-Up, Beam-Await and Beam-Down are Go producers that spawn no agent, and Beam-Await returns Done only
 # for a land request that names this run and passes the re-check.
 #
@@ -143,6 +144,11 @@ producers:
 
   - name: Beam-Describe
     engine: BeamDescribe
+    on_done: PR-Review
+
+  # PR-Review carries no entry_gate and no on_stuck, because its Stuck is always a Halt.
+  - name: PR-Review
+    engine: PRReview
     on_done: Finalize
 
   - name: Finalize

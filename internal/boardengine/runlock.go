@@ -145,6 +145,7 @@ func removedDoneSlugs(loaded, after []Task) map[string]bool {
 // Slices compare element-wise with nil equal to empty;
 // before's DependsOn and Order are first stripped of the slugs in removedDone.
 // Project, Order and Beam are compared, so a held entry takes no membership or beam change.
+// PullRequest is compared too, so a held entry takes no change to its pull-request override.
 // RunSettings, Profile and OwnerMachine are never compared: a run settings, profile or owner change is not a scope change, so a run-held entry takes it.
 // Unknown is never compared either, since this binary cannot change a kept key.
 func scopeChanged(before, now Task, removedDone map[string]bool) bool {
@@ -164,6 +165,7 @@ func scopeChanged(before, now Task, removedDone map[string]bool) bool {
 		before.ShortName != now.ShortName ||
 		before.Project != now.Project ||
 		before.Beam != now.Beam ||
+		before.PullRequest != now.PullRequest ||
 		!slices.Equal(order, now.Order) ||
 		!slices.Equal(before.Labels, now.Labels) ||
 		!slices.Equal(before.Issues, now.Issues) ||

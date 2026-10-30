@@ -47,6 +47,13 @@ func TestSpec_Validate(t *testing.T) {
 	}{
 		{name: "empty prompt", spec: Spec{OutputFiles: []string{"out.md"}}, wantErr: true},
 		{name: "empty output files", spec: Spec{Prompt: "do the thing"}, wantErr: true},
+		{name: "unawaited spec with no output file passes", spec: Spec{Prompt: "do the thing", Unawaited: true}},
+		{
+			name:      "unawaited spec with an output file rejected",
+			spec:      Spec{Prompt: "do the thing", Unawaited: true, OutputFiles: []string{"out.md"}},
+			wantErr:   true,
+			wantErrIn: "must be empty for an unawaited session",
+		},
 		{
 			name: "relative output files resolve to absolute",
 			spec: Spec{Prompt: "do the thing", OutputFiles: []string{"out.md", "sub/report.json"}},

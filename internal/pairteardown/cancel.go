@@ -48,6 +48,7 @@ type CancelResult struct {
 // It skips the quiet wait, the removal refusal probe and the pre-end run-lock wait, and waits for the run lock after the processes are ended.
 // With the task worktree present the order is: the owned-process end under the prime's and the pair's records write locks, the driver-lock probe, req.AfterEnd, the drift capture job's termination, the strand stop, the loop end, the run-lock wait and the session end;
 // with it gone, only the owned-process end, req.AfterEnd, the drift capture job's termination and the session end by name run.
+// With the task worktree present the strand stop is followed by closing the run's open pull request, since the cancel ends the run for good.
 // A hook that reports busy gets the owned-process end and the probe once more, then the hook again; a lock still busy then is refused.
 // Every refusal wraps ErrDriverBusy where a busy holder caused it and names `lym batten cancel <slug>` as the way to run the phase again.
 func (t *Teardown) EndForCancel(ctx context.Context, req CancelRequest) (CancelResult, error) {
@@ -109,6 +110,8 @@ func (t *Teardown) EndForCancel(ctx context.Context, req CancelRequest) (CancelR
 		if err != nil {
 			return res, fmt.Errorf("stop the pair's strands: %w; for this cancel, run %s again", err, retry)
 		}
+		// The cancel ends the run for good, so a pull request it left open would look like pending work; closing it never stops the cancel.
+		t.closePR(req.Slug)
 		releaseLoopLock, err = t.seizeLoop(ctx, req.Slug, func() (bool, error) { return t.killLoop(req.Slug) })
 		if err != nil {
 			return res, cancelAgain(err, req.Slug)

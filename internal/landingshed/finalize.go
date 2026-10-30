@@ -9,6 +9,8 @@
 //
 // A merged pull request does not make this producer redundant:
 // the remote service only ever sees one of the two sides, so the other side's branch was never in the pull request at all, and after a remote-side merge the visible side reports already-up-to-date while the other genuinely merges.
+//
+// A landing the pull-request resolver says goes through a pull request merges the run's open pull request on GitHub, under the parent lock and before the parent-side merge; see finalize_pr.go.
 
 package landingshed
 
@@ -159,7 +161,12 @@ func NewFinalize(deps Deps) (*Finalize, error) {
 //
 // Immediately before each landing attempt it re-reads the parent lock record, so a lock something released lands nothing and is a halting Stuck.
 // The re-read and the landing are not atomic: a release between them is caught only by the parent push's rejection.
-// The landing commit carries the change description and a trailer block ending in a `Lym-Task: <slug>` line, and Finalize opens, looks up and closes no pull request.
+// The landing commit carries the change description and a trailer block ending in a `Lym-Task: <slug>` line.
+//
+// Right after the lock it follows the pull-request resolver: a no closes a recorded open pull request, drops the record and lands locally;
+// a yes needs the recorded pull request and halts without one, and halts on one closed without the operator's ending;
+// the operator's ending, a closed pull request whose record is marked closed for continue, lands locally with the gate and trailer, and a merged one lands through the already-landed path.
+// An open pull request is merged on GitHub just before the parent-side merge, with the pushed task head as its expected head, and the parent pair is fast-forwarded to the merge, so the parent-side merge then finds the parent holding the task's work.
 //
 // Finalize is idempotent over an already-landed parent: when the parent already contains the task's
 // changes -- an operator squash-merged the task on the remote, or an earlier Finalize landed and
@@ -187,7 +194,8 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 			return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: read the engines the task ran under: %w", finalizeName, err)
 		}
 	}
-	landingMessage := summary.LandingMessage(taskTrailer(fz.deps.Config.TrailerBlock(enginesRun), fz.deps.Slug))
+	trailer := taskTrailer(fz.deps.Config.TrailerBlock(enginesRun), fz.deps.Slug)
+	landingMessage := summary.LandingMessage(trailer)
 
 	// Step 1b: commit the product's own status file, so the pair carries no tracked modification
 	// when the merge guard below runs. This must happen inside Call rather than once at bootstrap:
@@ -216,6 +224,12 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		return stuckVerdict(ctx, finalizeName, lockReason, true)
 	}
 	defer fz.guard.release(finalizeName)
+
+	// Step 1b2b: under the lock, decide how the landing relates to the run's pull request, following the resolver PR-Review follows.
+	landing, outcome, out, err, stop := fz.pullRequestLanding(ctx)
+	if stop {
+		return outcome, out, err
+	}
 
 	// Step 1b3: judge the run against origin under the lock, and halt unless this machine owns the run and its parent.
 	// A run whose Finalize already merged into the local parent here is never read as ended or owned elsewhere, so a Finalize re-entered after its done mark proceeds.
@@ -257,6 +271,14 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 	// Step 5: re-check the lock immediately before the landing, so a release since the acquire lands nothing.
 	if outcome, out, err, stop := fz.recheckLock(ctx); stop {
 		return outcome, out, err
+	}
+
+	// Step 5b: a landing through an open pull request merges it on GitHub first, once, so the parent-side merge below finds the parent holding the task's work.
+	// The retry after a merge-in-required error never comes back here, since the GitHub merge is done.
+	if landing.merge {
+		if outcome, out, err, stop := fz.mergeOnGitHub(ctx, parentHandle, landing, summary.Title, pullRequestMergeMessage(summary.Body, trailer)); stop {
+			return outcome, out, err
+		}
 	}
 
 	// Step 6: the parent-side merge, this producer's own merge critical section. Message is set
@@ -520,7 +542,7 @@ func (fz *Finalize) markTaskDone() {
 // Deps.PushSkipped suppresses the push.
 //
 // On its Done return only, a non-empty notice is queued through Deps.Notify, and a failure there is a logged warning that never changes the verdict.
-// Finalize opens, looks up and closes no pull request, so the landing makes no GitHub call.
+// The push is the parent branch's own, whether the landing went through a pull request merged on GitHub or not.
 func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger, notice string) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if _, err := parentHandle.PushBranch(fabricengine.SyncOptions{SkipPush: fz.deps.PushSkipped}); err != nil {
 		if terr := transientFailure(ctx, finalizeName, "push parent branch", err); terr != nil {

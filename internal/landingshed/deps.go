@@ -12,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentlock"
+	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -319,6 +320,48 @@ type Deps struct {
 	// It is read each time Finalize ends on a spent cap or an over-cap change.
 	// A nil RerouteReviewed reads as no review, so Finalize halts instead of rerouting, and a returned error is an error stop of the row.
 	RerouteReviewed func() (bool, error)
+
+	// PullRequest is the PR-Review row's told seams.
+	PullRequest PullRequestDeps
+}
+
+// PullRequestDeps carries the told seams the PR-Review row decides and opens the run's pull request through.
+// The row treats every field but BoardEntryPath as required and returns an error naming the first one left unset.
+type PullRequestDeps struct {
+	// RecordPath is the run's pull-request record file, and RecordLockPath the advisory lock that guards it.
+	RecordPath     string
+	RecordLockPath string
+	// ParentMode reads the receiving branch's beam.yaml `pull_request` and returns it with the name of the worktree it read it in.
+	// On an error the worktree name is still returned, so the halt names where to fix the file.
+	ParentMode func() (mode, worktree string, err error)
+	// EntryField reads the landing entry's `pull_request` field, empty when the entry has none.
+	EntryField func() (string, error)
+	// Origin reads the facts about the task pair's origin that a pull request needs.
+	Origin func() (Origin, error)
+	// API opens the GitHub calls for the repository the origin URL names.
+	API func(originURL string) (pullrequest.API, error)
+	// PushTask pushes the task branch to its origin and returns once the push has finished.
+	PushTask func() error
+	// CommitsMissing lists the task commits not reachable from merged, the head GitHub merged.
+	CommitsMissing func(merged, task string) ([]string, error)
+	// DirtyPaths lists the task worktree's uncommitted paths.
+	DirtyPaths func() ([]string, error)
+	// MailAgent posts line to the creel strand named strandName.
+	MailAgent func(strandName, line string) error
+	// PauseCovered reports whether a pause covers the run now.
+	PauseCovered func() (bool, error)
+	// Now reads the clock the wait's poll spacing runs on, and Sleep waits d or returns the context's error once ctx ends first.
+	Now   func() time.Time
+	Sleep func(ctx context.Context, d time.Duration) error
+	// Sessions starts and stops the interactive session the operator discusses the pull request with, which `*shuttleengine.Runner` satisfies.
+	Sessions prSessions
+	// SessionLive reports whether the strand guid names is live.
+	SessionLive func(guid string) (bool, error)
+	// RegisterSession registers the process of the session's pane under the run, so a teardown ends it.
+	RegisterSession func(guid string) error
+	// BoardEntryPath is the run's snapshot of its task's board entry, listed in the session's prompt when it exists.
+	// Empty means the run keeps none.
+	BoardEntryPath string
 }
 
 // ParentOwnership is who owns the parent a run lands on.

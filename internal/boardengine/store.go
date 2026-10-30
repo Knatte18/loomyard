@@ -456,7 +456,7 @@ type MergeStatusUpdate struct {
 // "owner_machine" is accepted only as the entry's effective owner, a no-op, and "beam" only as the entry's stored flag.
 // "beam_color" is output only: a beam carries it in what is read back, the owner setter records it, and an upsert naming it is refused as an unknown field.
 func UpsertPayloadKeys() (required, optional []string) {
-	return []string{"slug"}, []string{"title", "brief", "body", "depends_on", "isolated", "status", "kind", "labels", "recipe", "priority", "short_name", "issues", "created", "revised", "run_settings", "profile", "owner_machine", "project", "order", "beam"}
+	return []string{"slug"}, []string{"title", "brief", "body", "depends_on", "isolated", "status", "kind", "labels", "recipe", "priority", "short_name", "issues", "created", "revised", "run_settings", "profile", "pull_request", "owner_machine", "project", "order", "beam"}
 }
 
 // upsertAllowedKeys is the set of field names every upsert path accepts, enforced at the store boundary.

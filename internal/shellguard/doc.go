@@ -14,5 +14,9 @@
 // A command substitution inside a double-quoted string and a < before a quote or a backslash, as in <"f" or <<<"f", are not read as command position either, so a command behind them passes.
 // Every row is a guardrail over static text and not a barrier; each pattern's comment states what it lets through and what it falsely denies.
 //
+// A row hangs on a Switch.
+// A SwitchNone row is installed for every run, and SwitchDenyPython follows the shuttle config's python key.
+// SwitchDenyPublish, which the publish row hangs on, is turned on only by a launch spec, so only the session that sets it cannot run git push or gh.
+//
 // Its imports are the standard library and the two packages that own the environment-variable names the raw go row's pattern names.
 package shellguard

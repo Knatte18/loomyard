@@ -36,6 +36,8 @@ const (
 	RoleDobby = "dobby"
 	// RoleCapture is the detached child that runs a task's regression capture.
 	RoleCapture = "capture"
+	// RoleSession is the pane process of an interactive agent session.
+	RoleSession = "session"
 )
 
 // Record is one registered process of a run.

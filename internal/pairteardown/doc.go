@@ -51,6 +51,16 @@
 // RemovePair then archives the pair's logs and calls Topology.Remove.
 // It repeats the probe's checks, so a refusal raised only by Remove means the pair changed between probe and removal, and the session is already ended.
 //
+// # Pull request
+//
+// A pair torn down unlanded leaves no open pull request that looks like pending work.
+// RemovePair closes the run's pull request first, after the snapshot and before the archive and the removal, so the record under the run's scratch directory is still there; every removing route goes through RemovePair, so each closes it.
+// EndForCancel closes it too, after the strand stop and before the session end with the task worktree present, since a cancel ends the run for good.
+// A recorded pull request GitHub reports open is closed with one comment saying the pair was torn down before it landed; a merged or closed one is left as it is, so a landed run's merged pull request stays.
+// A task worktree already gone has no record to read, so it logs a Warn naming the slug and the task branch and that a pull request from that branch, if the run opened one, may stay open, and calls nothing.
+// Every failure, an unreadable record, the client, the status read and the close included, logs a Warn naming the pull request's URL where it is known and never stops the teardown.
+// The remote task branch is handled as before.
+//
 // # Log archive
 //
 // Before the removal, and so after the session end and the run-lock wait, RemovePair copies the pair's trace logs and its `verify-<n>.log` files into the hub's log archive, `fabricengine.LogArchiveDir`.

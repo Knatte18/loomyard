@@ -50,6 +50,7 @@ var replayFields = []replayField{
 	{"short_name", func(t Task) any { return t.ShortName }, func(dst *Task, src Task) { dst.ShortName = src.ShortName }},
 	{"run_settings", func(t Task) any { return orNilSettings(t.RunSettings) }, func(dst *Task, src Task) { dst.RunSettings = cloneSettings(src.RunSettings) }},
 	{"profile", func(t Task) any { return t.Profile }, func(dst *Task, src Task) { dst.Profile = src.Profile }},
+	{"pull_request", func(t Task) any { return t.PullRequest }, func(dst *Task, src Task) { dst.PullRequest = src.PullRequest }},
 	{"owner_machine", func(t Task) any { return t.OwnerMachine }, func(dst *Task, src Task) { dst.OwnerMachine = src.OwnerMachine }},
 	{"project", func(t Task) any { return t.Project }, func(dst *Task, src Task) { dst.Project = src.Project }},
 	{"order", func(t Task) any { return orEmpty(t.Order) }, func(dst *Task, src Task) { dst.Order = slices.Clone(src.Order) }},

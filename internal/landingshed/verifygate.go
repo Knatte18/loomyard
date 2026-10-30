@@ -180,15 +180,20 @@ const dirtyWayForward = "; commit or remove them on the task branch, then resume
 
 // dirtyReason is the Stuck reason for a dirty tree found at point.
 func dirtyReason(point string, paths []string) string {
-	shown := paths
+	return fmt.Sprintf("the task worktree has uncommitted changes %s: %s%s", point, listShown(paths), dirtyWayForward)
+}
+
+// listShown names the first dirtyPathsShown of items, comma-separated, and counts the rest.
+func listShown(items []string) string {
+	shown := items
 	if len(shown) > dirtyPathsShown {
 		shown = shown[:dirtyPathsShown]
 	}
 	list := strings.Join(shown, ", ")
-	if more := len(paths) - len(shown); more > 0 {
+	if more := len(items) - len(shown); more > 0 {
 		list = fmt.Sprintf("%s and %d more", list, more)
 	}
-	return fmt.Sprintf("the task worktree has uncommitted changes %s: %s%s", point, list, dirtyWayForward)
+	return list
 }
 
 // readBase returns the base command, the one whose record entry every pass of this gate keeps.
@@ -244,6 +249,77 @@ func (g verifyGate) check(ctx context.Context, producer, parentBranch string) (s
 		g.clearFailure()
 	}
 	return reason, err
+}
+
+// checkHead runs the call of the row's gate key over the task head for producer, the PR-Review gate over an agent's commits.
+// It reads the key's command and base command and marks the wait as check does, skipping with a warning when no command is configured, and writes no landing failure record.
+//
+// It returns the reason the gate refuses the head, written for the agent to act on in a new commit, an error for an infrastructure fault or a cancellation, and ("", nil) on a pass or a skip.
+// A dirty result returns the dirty reason.
+func (g verifyGate) checkHead(ctx context.Context, producer string) (string, error) {
+	if g.command == nil {
+		return "", nil
+	}
+	command, err := g.command(g.key)
+	if err != nil {
+		return "", fmt.Errorf("landingshed: %s: read gate command: %w", producer, err)
+	}
+	if command == "" {
+		logger.Warn("landingshed: the pr-review gate skipped because no verify command is configured", "producer", producer)
+		return "", nil
+	}
+	base, err := g.readBase(producer)
+	if err != nil {
+		return "", err
+	}
+
+	g.markWait("")
+	g.markWait("verify " + producer)
+	result, err := g.verify(ctx, g.paths, verifytree.Site{Label: producer, BaseCommand: base, Hold: g.hold}, command)
+	g.markWait("")
+	if err != nil {
+		return "", fmt.Errorf("landingshed: %s: %w", producer, err)
+	}
+	switch result.Status {
+	case verifytree.StatusPassed:
+		logger.Info("landingshed: the pr-review gate passed", "producer", producer)
+	case verifytree.StatusSkipped:
+		logger.Info("landingshed: the pr-review gate skipped because the tree is already verified", "producer", producer, "tree", result.Tree)
+	case verifytree.StatusDirty:
+		return dirtyReason("when the pr-review gate was about to run", result.Dirty), nil
+	case verifytree.StatusFailed:
+		return g.headFailureReason(result), nil
+	default:
+		return "", fmt.Errorf("landingshed: %s: unknown pr-review gate status %q", producer, result.Status)
+	}
+	return "", nil
+}
+
+// headFailureReason is the reason a failed run of the pr-review gate gives the agent: the failing tier or the build, the log and the instruction to fix it in a new commit.
+// A timeout and a shell that could not start name no tier, since neither names a failing test.
+func (g verifyGate) headFailureReason(result verifytree.Result) string {
+	switch {
+	case result.TimedOut:
+		return fmt.Sprintf("the pr-review gate timed out: %s; output: %s; fix the hanging test or build in a new commit", result.Detail, result.Log)
+	case result.ExitCode < 0:
+		return fmt.Sprintf("the pr-review gate could not start: %s; output: %s", result.Detail, result.Log)
+	}
+	var log string
+	if content, err := os.ReadFile(result.Log); err == nil {
+		log = string(content)
+	}
+	if tier, build, found := gateslot.FailedTier(log); found {
+		if build {
+			return fmt.Sprintf("the pr-review gate build failed; output: %s; fix it in a new commit", result.Log)
+		}
+		return fmt.Sprintf("the pr-review gate failed at tier %d; output: %s; fix it in a new commit", tier, result.Log)
+	}
+	if g.tiers != nil {
+		if list, err := g.tiers(g.key); err == nil && len(list) > 0 {
+			return fmt.Sprintf("the pr-review gate failed at tier %d; output: %s; fix it in a new commit", slices.Max(list), result.Log)
+		}
+	}
+	return fmt.Sprintf("the pr-review gate failed; output: %s; fix it in a new commit", result.Log)
 }
 
 // watchdogClause returns the clause a failed verify's reason carries when the log at logPath holds the CPU watchdog's line, and empty for an unreadable log or one without it.

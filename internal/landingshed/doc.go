@@ -1,8 +1,40 @@
-// Package landingshed owns landing's general producers, Parent-Align, the PR-Review stub and Finalize, which any producer list may name -- none is special-cased by the engine that drives them.
+// Package landingshed owns landing's general producers, Parent-Align, the PR-Review row and Finalize, which any producer list may name -- none is special-cased by the engine that drives them.
 //
-// PR-Review is the stub of the human pull-request review that is not built yet; PRReview names it for a recipe row.
-// Its call is Done every time: with its flag off it logs nothing, and with its flag on it logs one Info line that the PR review is not built.
-// It opens no pull request, calls no GitHub API, reads no file and takes no lock, and a cancelled context is an error.
+// PR-Review lands a run through a GitHub pull request when ResolvePullRequest says so; PRReview names it for a recipe row.
+// It reads the receiving branch's beam.yaml `pull_request`, the landing entry's field and the origin through Deps.PullRequest, and takes no parent lock.
+// A beam.yaml it cannot read is Stuck with Halt naming the worktree and `lym config beam`, and a resolver Halt is Stuck with Halt.
+// A no logs the reason, closes a recorded pull request GitHub reports open with the comment `lym closed this pull request: <reason>`, drops the record and ends Done.
+// A yes pushes the task branch, then finds the pull request the record names or the open one on the task branch, else opens one, sets its title and body from the change description and records its number, URL, base and head, and then waits on it in process.
+// The record's gated head is set to the task head on the first entry only, so a re-entry keeps it, and a record the operator's ending marked closed keeps the run's ending when the task head is still the gated one and starts a new review when it is not.
+//
+// The wait has no timeout and wakes at least a second apart, doubling to a minute while nothing changes and back to a second when the task head moves.
+// Each wake re-reads the record, which the agent's `lym loom pr-continue` writes the continue flag into; a record write goes through the record's update so a flag written meanwhile survives.
+// A clean tree whose head the record has not gated runs the `pr-review` gate key; a pass pushes the head and records it as gated, and a failure pushes nothing and mails the reason, naming the failing tier and log, to the PR-Review session once per head.
+// A head moved or a tree dirtied during the gate discards its verdict, and a dirty tree is the agent at work and is not gated.
+// The pull request's status is read at most once a minute, the entry's own read counting as the first, and at once on the first wake that sees the continue flag.
+// Merged at the gated head on a clean tree is Done, and merged without task commits or at another head is Stuck with Halt naming the way forward.
+// Closed after the operator's ending is Done on a clean tree, and closed otherwise is Stuck with Halt.
+// The continue flag on an open pull request at a clean gated head closes it with a comment, records the ending and is Done; an open one approved at the gated and task head is Done.
+// A merged pull request takes the merged verdicts whatever the flag says, and an uncommitted file at any ending is Stuck with Halt.
+// A pause that covers the run holds the row in process, before its push and at each wake, and does no gate, push or GitHub call meanwhile.
+//
+// The row keeps one interactive agent session per run, in a window of its own in the task worktree, for the operator to discuss the pull request in; the row never waits on its output.
+// After it records the pull request, and before it waits, it reuses the recorded strand when that is live, resumes the recorded session id when the strand is not, and otherwise starts a new session.
+// A review the operator already ended through a closed record gets no session.
+// The session starts from the `landing-template-pr-review` stencil filled with paths only, under the `pr_reviewer` model, with the publish shell guard installed and the pane process registered under the run.
+// A start that fails transiently is an error the driver re-steps, and any other start failure is Stuck with Halt naming `lym loom resume`.
+// The row stops the session before each read that may end the review, which is a merged pull request, an approval of the gated head and the continue flag, and resumes it when that read keeps waiting.
+// It stops it at the first wake a pause covers and resumes it at the first uncovered wake, and on every verdict, Stuck and error, and it leaves it running when the context is cancelled.
+// The wait's wakes start no session, so an operator who closes the window ends the agent until the next entry of the row.
+// The driver strand's wait mark reads `PR #<n>` while the wait runs.
+// A transient push or GitHub failure is an error the driver re-steps; an unresolvable token, a push the fabric refuses and any other GitHub failure are Stuck with Halt naming their way forward.
+// A nil seam, an empty record path and a cancelled context are errors.
+//
+// ResolvePullRequest is the one decision of whether a landing goes through a pull request, so PR-Review and Finalize cannot disagree.
+// It takes the receiving branch's beam.yaml `pull_request` (`on`, `off` or `required`), the landing entry's `pull_request` field (empty, `on` or `off`) and the origin facts, and reads no file: its callers read the parent's beam.yaml and the entry and tell the values.
+// A required parent wants a pull request whatever the field says, an on parent wants one unless the field is off, and an off parent wants one only when the field is on.
+// A wanted pull request needs an origin on github.com that the owner and repository parse from, an upstream for the parent and no push skip.
+// A missing fact is a Halt when the parent is required or the field is on, and a no with the fact named when the parent is on alone; an origin on github.com that names no repository is a Halt in every mode that wants a pull request.
 //
 // A merge or test failure at Parent-Align or Finalize is owned by the recipe: it ends in the row's fixer, a reroute or a halt to the orch.
 //
@@ -131,6 +163,7 @@
 //
 // A darn run whose diff lies wholly under its configured non-production trees runs only the tree-scoped command at Parent-Align and Finalize, the hub's whole statement of what such a diff needs.
 // landing.yaml's retired `publish_verify` key loads and is dropped, and `lym config reconcile` prunes it.
+// landing.yaml's `pr_reviewer` is the model-spec of the PR-Review row's interactive session.
 //
 // Landing.yaml's `deploy` is read only by batten's Land row, from the board dir like the rest of landing config and never from a pair.
 // It runs in the prime only for a parent branch in `deploy_branches` when the row runs.
@@ -175,7 +208,20 @@
 // An unreadable record is a Stuck with Halt too, as at the acquire, and both halts open with LandingStopPrefix, so only the orch's resume lifts them.
 // The resume re-runs Finalize from its first step under a lock taken afresh, so a resume made before the cause clears lands nothing.
 // The re-read and the landing are not atomic: a release between them is caught only by the parent push's rejection.
-// After the parent-side merge and before the push, Finalize marks the board task done, and it opens, looks up and closes no pull request, so the landing makes no GitHub call. A parent
+// After the parent-side merge and before the push, Finalize marks the board task done.
+//
+// Finalize lands through the run's pull request, which it merges on GitHub only here, under the parent lock.
+// Right after it takes the lock it asks ResolvePullRequest the question PR-Review asked, from the same beam.yaml, entry field and origin, and a Finalize with no `ParentMode` seam skips the step and lands locally.
+// A no closes a recorded pull request GitHub reports open with the comment `lym closed this pull request: <reason>`, removes the record, and lands locally.
+// A yes with no record is Stuck with Halt naming `lym loom goto PR-Review`, and a yes whose pull request GitHub reports closed while the record is not marked closed for continue is Stuck with Halt naming a reopen on GitHub and `lym batten cancel`; only PR-Review writes that mark.
+// A yes whose record is marked closed for continue and whose pull request is closed is the operator's ending, and lands locally with Finalize's gate and trailer.
+// A merged pull request makes no GitHub merge, and the parent sync fast-forwards to the merged upstream so the parent-side merge takes the already-landed path.
+// An open one is merged on GitHub after the lock re-check and before the parent-side merge: Finalize pushes the task branch, merges with the pushed head as the expected head, `squash` choosing the method, the change description's title as the commit title and its body and the trailer block as the commit message, then fetches and fast-forwards the parent pair.
+// A merge GitHub refuses as pending is retried for at most a minute under the lock, a method refusal names `lym config landing --set squash=<true|false>`, and any other refusal names a second person's approval and, for the operator alone, `lym loom goto PR-Review`.
+// The retry after a merge-in-required error never merges on GitHub a second time.
+// Every GitHub failure is judged as PR-Review judges one, with each halt opening with LandingStopPrefix.
+//
+// A parent
 // that already holds the task's work makes Finalize idempotent: it takes the already-landed path
 // rather than merging again. The parent branch is pushed to its upstream, so a landing reaches the
 // remote rather than only the hub's own parent worktree. That parent-side merge is this producer's own

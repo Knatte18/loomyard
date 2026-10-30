@@ -24,7 +24,10 @@
 # Drift-Verify compares the code the writer committed, and the Code-Review perch reviews its fixes.
 # The comparison never sees the code the Code-Review perch's fixes change, a Finalize merge and its
 # fixer, or the code a Finalize reroute makes the perch review.
-# PR-Review, like Friction-Reflect, carries none either, because it never returns Stuck.
+# PR-Review carries no on_stuck because its Stuck is always a Halt, and Friction-Reflect none because it
+# never returns Stuck.
+# PR-Review carries no entry_gate either: whether it opens a pull request reads the parent's anchor, a
+# board field and the origin, which the row decides in its own call.
 #
 # Code-Bouncer, Code-Burler-Review and Code-Burler-Fix are the Code-Review perch, the same perch
 # loom's recipe runs, with the same row names, segment, run_subdir, role_prefix, rubric and loom.yaml
@@ -218,13 +221,11 @@ producers:
         - name: description
           attempts: 3
 
-  # PR-Review is the stub seat the human pull-request review will take over. It always returns Done,
-  # so it carries no on_stuck, and darn.yaml's pr_review key only decides whether it logs.
+  # PR-Review lands the task through a GitHub pull request when the pull-request resolver says so.
+  # It carries no entry_gate and no on_stuck, because its Stuck is always a Halt.
   - name: PR-Review
     engine: PRReview
     on_done: Finalize
-    config:
-      pr_review_setting: darn.pr_review
 
   # Finalize takes the parent lock first, merges the parent into the task branch, runs the landing
   # gate and the merge fixer, then fast-forwards the parent and releases the lock on every way out.

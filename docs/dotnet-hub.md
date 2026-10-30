@@ -94,6 +94,7 @@ gates:
   darn-write: {tiers: [0], scope: diff}
   code-burler-fix: {tiers: [0], scope: diff}
   drift-verify: {tiers: [0], scope: diff}
+  pr-review: {tiers: [0], scope: diff}
   parent-align: {tiers: [0], scope: all}
   finalize: {tiers: [0], scope: all}
   adopt: {tiers: [0], scope: all}

@@ -13,7 +13,7 @@
 //
 // The loom recipe's tail after Webster reads `Parent-Align → Code-Review → Drift-Verify → Describe → PR-Review → Finalize → Friction-Reflect`.
 // Drift-Baseline sits between the Discussion-Review ring and Plan-Write, and Drift-Await between the Plan-Review ring and Webster.
-// PR-Review always ends Done, so it carries no on_stuck, and Finalize's reroute names Parent-Align.
+// PR-Review's Stuck is always a Halt, so it carries no on_stuck, and Finalize's reroute names Parent-Align.
 // The darn recipe reads `Preflight → Drift-Baseline → Drift-Await → Darn-Write → Drift-Verify → Code-Review → Describe → PR-Review → Finalize → Friction-Reflect`, with no Parent-Align, and Finalize's reroute names Code-Bouncer.
 // Every Drift row carries the entry gate `drift.enabled`, so a hub that leaves regression off records each of them skipped.
 // Its Code-Review rows are loom's, with the same names, segment, rubric and `loom.yaml` keys; only their answer key differs, the board entry snapshot and the decision record in place of the record and the plan.
@@ -27,7 +27,7 @@
 // LoomRetiredRows maps the landing row's former name, `Merge-In`, onto `Parent-Align` for a loom run the same way.
 //
 // NewPawl is the third builder: it builds the embedded pawl recipe, a beam's life, and PawlRouting projects that recipe's routing.
-// The recipe reads `Beam-Up → Beam-Await → Parent-Align → Code-Review → Beam-Describe → Finalize → Beam-Down`, with no reroute edge:
+// The recipe reads `Beam-Up → Beam-Await → Parent-Align → Code-Review → Beam-Describe → PR-Review → Finalize → Beam-Down`, with no reroute edge:
 // a merge Finalize cannot land halts the run for the orch.
 // Its Code-Review perch is darn's, with the same names, segment, rubric and `loom.yaml` keys, the project entry's board snapshot as its only answer key and no carry-over.
 // NewPawl takes the perch's budget from shedrecipe.Env.Segments["Code-Review"], and PawlRouting from a map keyed by segment, as NewDarn and DarnRouting do, and both refuse a missing Code-Review entry and a value below 0.
