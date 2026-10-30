@@ -19,13 +19,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // fakeSubstrates records the order of substrate calls and answers from scripted values.
 type fakeSubstrates struct {
-	calls      []string
+	calls []string
+	// closePRs holds, for each pull request close, the calls made before it, comma-joined, so a test reads where in the sequence it ran without it joining calls.
+	closePRs   []string
 	quiets     []quietState
 	refusalErr error
 	endErr     error
@@ -161,6 +165,7 @@ func (f *fakeSubstrates) teardown() *Teardown {
 			return f.endErr == nil, "", f.endErr
 		},
 		archive: func(string) { f.calls = append(f.calls, "archive") },
+		closePR: func(string) { f.closePRs = append(f.closePRs, strings.Join(f.calls, ",")) },
 		remove: func(req Request) (fabricengine.RemoveResult, error) {
 			if req.Local {
 				f.calls = append(f.calls, "remove-local")
@@ -876,6 +881,16 @@ func TestTeardown_CallSequence(t *testing.T) {
 			if sawGone != tt.wantSawGone {
 				t.Errorf("session end told the task worktree is gone = %v, want %v", sawGone, tt.wantSawGone)
 			}
+			// A run that reached the removal closed the pull request once, before the archive and the removal, a local removal included; any other run closed none.
+			reachedRemoval := strings.Contains(tt.wantCalls, "archive")
+			switch {
+			case reachedRemoval && len(f.closePRs) != 1:
+				t.Errorf("pull request closes = %d, want one before the removal", len(f.closePRs))
+			case reachedRemoval && (strings.Contains(f.closePRs[0], "archive") || strings.Contains(f.closePRs[0], "remove")):
+				t.Errorf("the pull request closed after %q, want before the archive and the removal", f.closePRs[0])
+			case !reachedRemoval && len(f.closePRs) != 0:
+				t.Errorf("pull request closes = %d, want none before a removal", len(f.closePRs))
+			}
 		})
 	}
 }
@@ -1147,4 +1162,134 @@ func mustRunLockFree(t *testing.T, lockPath string) bool {
 		t.Fatalf("runLockFree(%s): %v", lockPath, err)
 	}
 	return free
+}
+
+// closeRecordingAPI is a pullrequest.API that answers Status and Close from scripted values and records them; no other call is expected, so the rest fail the test through their panic.
+type closeRecordingAPI struct {
+	status    pullrequest.Status
+	statusErr error
+	closeErr  error
+	calls     []string
+}
+
+var _ pullrequest.API = (*closeRecordingAPI)(nil)
+
+func (a *closeRecordingAPI) FindOpen(context.Context, string, string) (pullrequest.Ref, bool, error) {
+	panic("closeOpenPullRequest called FindOpen")
+}
+
+func (a *closeRecordingAPI) Create(context.Context, string, string, string, string) (pullrequest.Ref, error) {
+	panic("closeOpenPullRequest called Create")
+}
+
+func (a *closeRecordingAPI) Edit(context.Context, int, string, string) error {
+	panic("closeOpenPullRequest called Edit")
+}
+
+func (a *closeRecordingAPI) Status(_ context.Context, number int) (pullrequest.Status, error) {
+	a.calls = append(a.calls, fmt.Sprintf("Status %d", number))
+	return a.status, a.statusErr
+}
+
+func (a *closeRecordingAPI) Close(_ context.Context, number int, comment string) error {
+	a.calls = append(a.calls, fmt.Sprintf("Close %d %s", number, comment))
+	return a.closeErr
+}
+
+func (a *closeRecordingAPI) Merge(context.Context, int, string, bool, string, string) error {
+	panic("closeOpenPullRequest called Merge")
+}
+
+// TestCloseOpenPullRequest asserts a torn-down pair's open pull request is closed with the comment, a merged or closed one and an absent record are left alone, and every failure warns and returns.
+// It captures the process-global logger, so it is not parallel.
+func TestCloseOpenPullRequest(t *testing.T) {
+	const prURL = "https://github.com/acme/widgets/pull/7"
+	const originURL = "https://github.com/acme/widgets.git"
+	const comment = "lym closed this pull request: the run's pair was torn down before it landed"
+	record := &pullrequest.Record{Number: 7, URL: prURL}
+	statusOf := func(state pullrequest.State) pullrequest.Status { return pullrequest.Status{State: state} }
+
+	tests := []struct {
+		name      string
+		gone      bool
+		record    *pullrequest.Record
+		status    pullrequest.Status
+		statusErr error
+		closeErr  error
+		apiErr    error
+		// wantCalls are the GitHub calls in order; wantOpened is whether the client was opened, for originURL.
+		wantCalls  []string
+		wantOpened bool
+		// wantWarn names what the one warning must hold; empty means the call must warn about nothing.
+		wantWarn []string
+	}{
+		{
+			name: "AnOpenPullRequestIsClosedWithTheComment", record: record, status: statusOf(pullrequest.StateOpen),
+			wantCalls: []string{"Status 7", "Close 7 " + comment}, wantOpened: true,
+		},
+		{
+			name: "AMergedPullRequestIsLeftAsItIs", record: record, status: statusOf(pullrequest.StateMerged),
+			wantCalls: []string{"Status 7"}, wantOpened: true,
+		},
+		{
+			name: "AClosedPullRequestIsLeftAsItIs", record: record, status: statusOf(pullrequest.StateClosed),
+			wantCalls: []string{"Status 7"}, wantOpened: true,
+		},
+		{
+			name: "NoRecordCallsNothing",
+		},
+		{
+			name: "AGoneWorktreeWarnsNamingTheSlugAndTaskBranchAndCallsNothing", gone: true, record: record, status: statusOf(pullrequest.StateOpen),
+			wantWarn: []string{"slug=slug", "branch=task/slug", "may stay open"},
+		},
+		{
+			name: "AFailingCloseWarnsNamingTheURL", record: record, status: statusOf(pullrequest.StateOpen), closeErr: errors.New("403 Forbidden"),
+			wantCalls: []string{"Status 7", "Close 7 " + comment}, wantOpened: true, wantWarn: []string{prURL, "403 Forbidden"},
+		},
+		{
+			name: "AFailingStatusReadWarnsNamingTheURL", record: record, statusErr: errors.New("502 Bad Gateway"),
+			wantCalls: []string{"Status 7"}, wantOpened: true, wantWarn: []string{prURL, "502 Bad Gateway"},
+		},
+		{
+			name: "AnOriginURLTheClientCannotUseWarnsNamingTheURL", record: record, apiErr: errors.New("not a github.com origin"),
+			wantOpened: true, wantWarn: []string{prURL, "not a github.com origin"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := logcapture.CaptureVerbose(t)
+			api := &closeRecordingAPI{status: tt.status, statusErr: tt.statusErr, closeErr: tt.closeErr}
+			var openedWith []string
+			open := func(url string) (pullrequest.API, error) {
+				openedWith = append(openedWith, url)
+				return api, tt.apiErr
+			}
+			rec := pullrequest.Record{}
+			if tt.record != nil {
+				rec = *tt.record
+			}
+
+			closeOpenPullRequest(context.Background(), "slug", "task/slug", tt.gone, rec, tt.record != nil, open, originURL)
+
+			if !slices.Equal(api.calls, tt.wantCalls) {
+				t.Errorf("GitHub calls = %q, want %q", api.calls, tt.wantCalls)
+			}
+			var wantOpenedWith []string
+			if tt.wantOpened {
+				wantOpenedWith = []string{originURL}
+			}
+			if !slices.Equal(openedWith, wantOpenedWith) {
+				t.Errorf("client opened with %q, want %q", openedWith, wantOpenedWith)
+			}
+			warned := strings.Contains(logs.String(), "level=WARN")
+			if warned != (len(tt.wantWarn) > 0) {
+				t.Errorf("warned = %v, want %v; log:\n%s", warned, len(tt.wantWarn) > 0, logs.String())
+			}
+			for _, want := range tt.wantWarn {
+				if !strings.Contains(logs.String(), want) {
+					t.Errorf("log lacks %q:\n%s", want, logs.String())
+				}
+			}
+		})
+	}
 }

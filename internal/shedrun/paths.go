@@ -159,6 +159,16 @@ func StatusLock(l *lymcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), "status.json.lock")
 }
 
+// PullRequestRecord returns the path to the ephemeral, never-tracked record of the run's pull request, pull-request.json under ScratchDir(l, runID).
+func PullRequestRecord(l *lymcwd.Location, runID string) string {
+	return filepath.Join(ScratchDir(l, runID), "pull-request.json")
+}
+
+// PullRequestRecordLock returns the path to the advisory lock guarding PullRequestRecord(l, runID), beside it under ScratchDir(l, runID).
+func PullRequestRecordLock(l *lymcwd.Location, runID string) string {
+	return filepath.Join(ScratchDir(l, runID), "pull-request.json.lock")
+}
+
 // LastCommitMarker returns the path to the ephemeral marker recording the last commit this run's
 // fabric sync observed, under ScratchDir(l, runID).
 func LastCommitMarker(l *lymcwd.Location, runID string) string {

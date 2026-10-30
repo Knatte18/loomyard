@@ -34,6 +34,7 @@ import (
 //lym:seam internal/landingshed#Config
 //lym:seam internal/landingshed#Deps
 //lym:seam internal/landingshed#ParentLockDeps
+//lym:seam internal/landingshed#PullRequestDeps
 //lym:seam internal/loomshed#DarnDeps
 //lym:seam internal/loomshed#PRReworkDeps
 //lym:seam internal/pawlengine#Deps
@@ -90,7 +91,7 @@ func TestWire_BeamRecipe(t *testing.T) {
 				t.Errorf("row %q OnReroute = %q; want none", producer.Name, producer.OnReroute)
 			}
 		}
-		if want := []string{"Beam-Up", "Beam-Await", "Parent-Align", "Code-Bouncer", "Code-Burler-Review", "Code-Burler-Fix", "Beam-Describe", "Finalize", "Beam-Down"}; strings.Join(rows, ",") != strings.Join(want, ",") {
+		if want := []string{"Beam-Up", "Beam-Await", "Parent-Align", "Code-Bouncer", "Code-Burler-Review", "Code-Burler-Fix", "Beam-Describe", "PR-Review", "Finalize", "Beam-Down"}; strings.Join(rows, ",") != strings.Join(want, ",") {
 			t.Errorf("recipeRouting() rows = %v; want %v", rows, want)
 		}
 	})

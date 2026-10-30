@@ -23,14 +23,15 @@
 - `PATTERN-gitrepo-client-boundary` — Running git: `gitexec.Run`/`runChecked`, raw only at pinned `//gitexec:raw` sites; in `internal/gitrepo`, local reads via `readGoGit` and `dotgit`; transients via `.git/info/exclude`, never `git add -f`. (test) — [background](pattern/PATTERN-gitrepo-client-boundary.md)
 - `PATTERN-push-both-sides` — Pushing run records from Go: code branch goes along; a push refused after retry leaves a failed-push record and creel notice. (test) — [background](pattern/PATTERN-push-both-sides.md)
 - `PATTERN-pair-teardown` — Tearing down a pair: only via `internal/pairteardown`; a producer creating or destroying a task worktree never runs inside it. (test) — [background](pattern/PATTERN-pair-teardown.md)
-- `PATTERN-parent-lock` — Moving, merging into or landing on a local parent branch: only in a run's Finalize, under `internal/parentlock`'s lock for that parent.
+- `PATTERN-parent-lock` — Moving, merging into or landing on a local parent branch, or merging a run's pull request: only in a run's Finalize, under `internal/parentlock`'s lock for that parent.
 - `PATTERN-owner-machine` — Starting, resuming or landing a run: only where its entry is not owned elsewhere; owners only on root and beam projects, set only by `boardengine`'s owner setter; any other entry reads its `hubgeom.ParentOf` owner; a dobby continue pass is no resume. — [background](pattern/PATTERN-owner-machine.md)
 - `PATTERN-pair-parent` — Picking a new pair's parent for a board entry or reading an entry's owner through its parent: only `ParentBeam` and hubgeom's one `ParentOf`, never the acting worktree.
-- `PATTERN-github-auth` — Calling GitHub: auth only via `internal/githubclient`, no other production package runs `gh`, and only `lym selfreport create` files an issue. (test)
+- `PATTERN-github-auth` — Calling GitHub: auth only via internal/githubclient; no other production package runs gh; only lym selfreport create files an issue; only PR-Review, Finalize and pair teardown open, merge or close a pull request. (test)
 
 ## Shed and loom
 
-- `PATTERN-shed-recipe-registry` — Adding producer or recipe row: one `Constructor` map in `internal/shedrecipe`, bar `Implementer`'s; a row's value looked up by key, a side action a `Command` row, a config-off row its `entry_gate`. — [background](pattern/PATTERN-shed-recipe-registry.md)
+- `PATTERN-shed-recipe-registry` — Adding producer or recipe row: one `Constructor` map in `internal/shedrecipe`, bar `Implementer`'s; a row's value looked up by key, a side action a `Command` row, a row off by one config key its `entry_gate`, one whose off reads more its own call. — [background](pattern/PATTERN-shed-recipe-registry.md)
+- `PATTERN-pull-request-mode` — Deciding whether a landing goes through a pull request: only landingshed's one resolver, from the receiving worktree's `beam.pull_request`, the landing entry's `pull_request` field and the origin; no profile or run setting carries it.
 - `PATTERN-shed-driver` — Driving a shed run: generic verb bodies only in `internal/shedverbs`, the step-until-stop loop only in `internal/sheddriver`, run paths, ids and `Seed` only in `internal/shedrun`. (test) — [background](pattern/PATTERN-shed-driver.md)
 - `PATTERN-shed-stop-chain` — A shed run's stop: rule table, tackler, arbiter, then parent, for every recipe; a blocked stop the driver's arbiter seam marks as judged first, by its row and reason, goes rule table, arbiter, then parent; arbiter keys in shed.yaml with module overrides.
 - `PATTERN-dobby-starts-runs` — Starting or driving a board task's run: its parent's dobby, from an empty status, in batten passes; a hand `lym batten run` is one pass.

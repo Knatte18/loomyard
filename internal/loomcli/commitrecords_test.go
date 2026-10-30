@@ -8,11 +8,14 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/pullrequest"
 )
 
 // stubRecordsDeps builds commitStatusDeps counting Commit and Push calls.
@@ -129,4 +132,65 @@ func TestCommitRecordsVerb_ErrorEnvelopes(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPRContinueVerb(t *testing.T) {
+	t.Parallel()
+	const url = "https://github.com/o/r/pull/7"
+	const noRecordWayForward = "way forward: wait until the PR-Review row has opened the pull request, then run lym loom pr-continue again"
+	newPaths := func(t *testing.T) (record, lock string) {
+		t.Helper()
+		dir := t.TempDir()
+		return filepath.Join(dir, "pull-request.json"), filepath.Join(dir, "pull-request.json.lock")
+	}
+
+	t.Run("SetsContinueAndNamesTheURL", func(t *testing.T) {
+		t.Parallel()
+		record, lock := newPaths(t)
+		if err := pullrequest.WriteRecord(record, lock, pullrequest.Record{Number: 7, URL: url}); err != nil {
+			t.Fatalf("WriteRecord() error: %v", err)
+		}
+		var out bytes.Buffer
+		if code := prContinueVerb(&out, record, lock); code != 0 || !strings.Contains(out.String(), url) {
+			t.Fatalf("prContinueVerb() = %d, %s; want 0 naming %s", code, out.String(), url)
+		}
+		got, _, err := pullrequest.ReadRecord(record, lock)
+		if err != nil || !got.Continue || got.Number != 7 {
+			t.Errorf("record after prContinueVerb = %+v, %v; want Continue set on pull request 7", got, err)
+		}
+
+		before, err := os.Stat(record)
+		if err != nil {
+			t.Fatalf("stat record: %v", err)
+		}
+		out.Reset()
+		if code := prContinueVerb(&out, record, lock); code != 0 {
+			t.Errorf("second prContinueVerb() = %d, %s; want 0", code, out.String())
+		}
+		after, err := os.Stat(record)
+		if err != nil || !after.ModTime().Equal(before.ModTime()) {
+			t.Errorf("second prContinueVerb rewrote the record (stat error %v); want it untouched", err)
+		}
+	})
+
+	t.Run("AbsentRecordIsRefused", func(t *testing.T) {
+		t.Parallel()
+		record, lock := newPaths(t)
+		var out bytes.Buffer
+		if code := prContinueVerb(&out, record, lock); code != 1 || !strings.Contains(out.String(), noRecordWayForward) {
+			t.Errorf("prContinueVerb() = %d, %s; want 1 with the way forward %q", code, out.String(), noRecordWayForward)
+		}
+	})
+
+	t.Run("UndecodableRecordIsAnError", func(t *testing.T) {
+		t.Parallel()
+		record, lock := newPaths(t)
+		if err := os.WriteFile(record, []byte("not json"), 0o644); err != nil {
+			t.Fatalf("write record: %v", err)
+		}
+		var out bytes.Buffer
+		if code := prContinueVerb(&out, record, lock); code != 1 || !strings.Contains(out.String(), "decode failed") {
+			t.Errorf("prContinueVerb() = %d, %s; want 1 carrying the decode error", code, out.String())
+		}
+	})
 }

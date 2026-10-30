@@ -24,7 +24,7 @@
 // A run whose API error the provider classifies as its usage limit gets the usage-limit notice instead, ahead of the api-error and quiet ones, after the same two minutes:
 // it names the producer, when the limit resets in UTC or that the reset time is unknown, and the limit's text, and no revive is sent, since a revive typed into a limited session only ends in the limit again.
 // Its episode is the limit, keyed by the reset time, and lasts while any read run of the child reads usage-limited, however its activity moves, so a standing limit sends one notice and a later limit another.
-// The quiet notice goes when every read run has been idle for the quiet window and no verify marker, shuttle wait marker, parent lock wait record or child status running at the pawl recipe's Beam-Await row is live, and says how long the agents have been idle;
+// The quiet notice goes when every read run has been idle for the quiet window and no verify marker, shuttle wait marker, parent lock wait record or child status running at the pawl recipe's Beam-Await row or at the PR-Review row is live, and says how long the agents have been idle;
 // with no run read, it falls back to "no agent activity readable" counted from the later of the child's newest history entry and since.
 // A running run whose waiting process is gone is read too, with its activity only, so the quiet notice names its agent as idle instead of falling back.
 // Both episodes are keyed by the newest agent activity, so they end when an agent is active again, with `since` on the line as content only.

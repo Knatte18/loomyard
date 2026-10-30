@@ -67,7 +67,7 @@ A smaller task can run the `darn` recipe instead ([`contracts/recipes/darn-recip
   an exhausted budget halts the run for a human rather than looping.
   The judge and the reviewer are fresh agents, independent of the one that wrote the artifact, so no agent ever reviews its own work.
 - **Landing** — `Parent-Align` merges the parent's upstream tip in with no lock, and a merge fixer settles a conflict or a failing merged tree and aligns the task to what the parent brought in.
-  The `Code review` perch then reviews the code, `Describe` writes the change description, and `PR-Review` is a stub for a human pull-request review that is not built.
+  The `Code review` perch then reviews the code, `Describe` writes the change description, and `PR-Review` lands the task through a GitHub pull request when the pull-request resolver says so, and the operator discusses the pull request with an interactive agent session in the task worktree.
   `Finalize` takes the parent lock first, merges the parent again, runs the landing gate and lands on the parent.
   A conflict or a merge too large to land reroutes to `Parent-Align`, and a halt at `Parent-Align` or `Finalize` is handed back to the orchestrator.
 - **Friction-Reflect** — the agents' own notes on what was hard or broken in the tooling are reflected on and can be filed as issues against LoomYard itself (`selfreport`).

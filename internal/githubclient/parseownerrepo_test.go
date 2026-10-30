@@ -53,6 +53,50 @@ func TestParseOwnerRepo(t *testing.T) {
 			wantRepo:  "loomyard",
 		},
 		{
+			name:      "ssh:// form with .git suffix",
+			remoteURL: "ssh://git@github.com/Knatte18/loomyard.git",
+			wantOwner: "Knatte18",
+			wantRepo:  "loomyard",
+		},
+		{
+			name:      "ssh:// form without .git suffix",
+			remoteURL: "ssh://git@github.com/Knatte18/loomyard",
+			wantOwner: "Knatte18",
+			wantRepo:  "loomyard",
+		},
+		{
+			name:      "HTTPS user-info form with .git suffix",
+			remoteURL: "https://Knatte18@github.com/Knatte18/loomyard.git",
+			wantOwner: "Knatte18",
+			wantRepo:  "loomyard",
+		},
+		{
+			name:      "HTTPS user-info form without .git suffix",
+			remoteURL: "https://Knatte18@github.com/Knatte18/loomyard",
+			wantOwner: "Knatte18",
+			wantRepo:  "loomyard",
+		},
+		{
+			name:      "ssh:// form on a non-GitHub host",
+			remoteURL: "ssh://git@gitlab.com/Knatte18/loomyard.git",
+			wantErr:   true,
+		},
+		{
+			name:      "HTTPS user-info form on a non-GitHub host",
+			remoteURL: "https://user@gitlab.com/Knatte18/loomyard",
+			wantErr:   true,
+		},
+		{
+			name:      "HTTPS form with an empty user",
+			remoteURL: "https://@github.com/Knatte18/loomyard",
+			wantErr:   true,
+		},
+		{
+			name:      "ssh:// form with no owner/repo pair",
+			remoteURL: "ssh://git@github.com/loomyard",
+			wantErr:   true,
+		},
+		{
 			name:      "non-GitHub host",
 			remoteURL: "https://gitlab.com/Knatte18/loomyard.git",
 			wantErr:   true,

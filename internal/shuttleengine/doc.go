@@ -178,12 +178,22 @@
 // An open writes no run directory, no run.json and no output file, so the state verb and the hold notices never cover an opened session.
 // OpenSpec.PermissionMode is engine vocabulary carried blind to OpenLaunch, and the engine realizes it or refuses it before anything is created.
 //
+// # Unawaited sessions
+//
+// Runner.StartSession starts a session that carries the rendered prompt and is never awaited, for a caller that talks to the agent itself and stops it when it is done.
+// The Spec sets Unawaited and names no output file, and StartSession refuses a spec without Unawaited, as Spec.validate refuses an unawaited spec that names an output file.
+// It runs the path an ungated Start runs, so the session gets its run directory, run record, settings and shell guards, its skills and its startup gates, and it returns once the provider is past startup, never calling Wait.
+// The run record reads running until a stop ends it, and a resume treats the strand like any other non-live one, since an empty done-when list never drops it as finished.
+// A Spec with ResumeSessionID resumes that session through the engine's resume capability.
+// Bound: one session per call in the caller's worktree, with no timeout classification, since nothing waits on it; the caller stops it through StopStrand.
+//
 // # Stop verb
 //
 // Run.Stop and Runner.StopStrand (the guid form, for a caller holding no handle) remove a run's strand, when it is live or an own-window strand whose pane is present but not live (a dead pane, or one showing only its shell), after recording the stop in run.json.
 // A dead window 0 strand is left to reed's reconcile.
 // The record reads "stopped", a record-only terminal outcome that is never a Result.Outcome;
-// a record already terminal keeps its outcome, and one still reading running whose output files all exist keeps running, so a stop never turns finished work into a stopped record.
+// a record already terminal keeps its outcome, and one still reading running whose output files all exist keeps running, so a stop never turns finished work into a stopped record;
+// an empty output list, an unawaited run's, has no finished work and reads stopped.
 // The record is written first: a failed write returns its error with the strand untouched, and a failed removal leaves the terminal record over a live strand, which Attach reads as respawn-eligible and stops as superseded.
 // A guid with no run record is stopped by removing its strand alone.
 // Runner.SetStepTie tells a runner the shed step its process runs (StepTie: the steps directory and the step's trace id), which every run it starts records in run.json as `step`; a runner never told one writes no step.

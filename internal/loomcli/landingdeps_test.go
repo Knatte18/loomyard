@@ -40,6 +40,7 @@ import (
 //
 //testtiming:keep drift guard walking every landingshed.Deps field by reflection so a field added later must be populated; the covering mark-done test populates only the fields it uses
 //lym:seam internal/landingshed#Deps
+//lym:seam internal/landingshed#PullRequestDeps
 func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 	t.Parallel()
 
@@ -136,6 +137,22 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 		}
 		if field.IsZero() {
 			t.Errorf("landingDeps(...).%s is the zero value; want it populated", typ.Field(i).Name)
+		}
+	}
+
+	// SessionLive and RegisterSession read reed's strand table, which only wireLanding holds, so it fills them.
+	unfilledPullRequest := map[string]bool{
+		"SessionLive":     true,
+		"RegisterSession": true,
+	}
+	pullRequest := reflect.ValueOf(deps.PullRequest)
+	pullRequestType := pullRequest.Type()
+	for i := 0; i < pullRequest.NumField(); i++ {
+		if unfilledPullRequest[pullRequestType.Field(i).Name] {
+			continue
+		}
+		if pullRequest.Field(i).IsZero() {
+			t.Errorf("landingDeps(...).PullRequest.%s is the zero value; want it populated", pullRequestType.Field(i).Name)
 		}
 	}
 }
@@ -352,6 +369,62 @@ func TestConflictSessionStopper(t *testing.T) {
 			}
 			if !reflect.DeepEqual(gotStops, tt.wantStops) {
 				t.Errorf("stopped = %v, want %v", gotStops, tt.wantStops)
+			}
+		})
+	}
+}
+
+// TestPRSessionSeams asserts the liveness seam reads a strand as live only while it is live and not retiring, and the registrar registers the pane process of a strand that has one, and refuses a strand that is absent or has none, passing a failing table read through.
+func TestPRSessionSeams(t *testing.T) {
+	t.Parallel()
+
+	strand := func(guid string, live, retiring bool, panePID int) reedengine.StrandStatus {
+		return reedengine.StrandStatus{GUID: guid, Live: live, Retiring: retiring, PanePID: panePID}
+	}
+	statusErr := errors.New("reed down")
+	registerErr := errors.New("disk full")
+
+	tests := []struct {
+		name         string
+		strands      []reedengine.StrandStatus
+		statusErr    error
+		registerErr  error
+		wantLive     bool
+		wantLiveErr  error
+		wantPID      int
+		wantRegister bool
+		wantRegErr   error
+	}{
+		{name: "LiveStrandIsLiveAndRegistersItsPanePID", strands: []reedengine.StrandStatus{strand("g", true, false, 4242)}, wantLive: true, wantPID: 4242, wantRegister: true},
+		{name: "DeadStrandIsNotLiveAndHasNoPaneToRegister", strands: []reedengine.StrandStatus{strand("g", false, false, 0)}},
+		{name: "RetiringStrandIsNotLive", strands: []reedengine.StrandStatus{strand("g", true, true, 4242)}, wantPID: 4242, wantRegister: true},
+		{name: "AbsentStrandIsNotLive", strands: []reedengine.StrandStatus{strand("other", true, false, 1)}},
+		{name: "TableReadFailureIsPassedThrough", statusErr: statusErr, wantLiveErr: statusErr, wantRegErr: statusErr},
+		{name: "RegisterFailureIsPassedThrough", strands: []reedengine.StrandStatus{strand("g", true, false, 4242)}, registerErr: registerErr, wantLive: true, wantPID: 4242, wantRegister: true, wantRegErr: registerErr},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			status := func() (reedengine.StatusResult, error) {
+				return reedengine.StatusResult{Strands: tt.strands}, tt.statusErr
+			}
+			live, err := sessionLiveness(status)("g")
+			if live != tt.wantLive || !errors.Is(err, tt.wantLiveErr) {
+				t.Errorf("sessionLiveness() = %v, %v; want %v, %v", live, err, tt.wantLive, tt.wantLiveErr)
+			}
+
+			gotPID := 0
+			err = sessionRegistrar(status, func(pid int) error {
+				gotPID = pid
+				return tt.registerErr
+			})("g")
+			if gotPID != tt.wantPID {
+				t.Errorf("sessionRegistrar() registered pid %d; want %d", gotPID, tt.wantPID)
+			}
+			wantErr := tt.wantRegErr != nil || !tt.wantRegister
+			if (err != nil) != wantErr || (tt.wantRegErr != nil && !errors.Is(err, tt.wantRegErr)) {
+				t.Errorf("sessionRegistrar() error = %v; want error %v (%v)", err, wantErr, tt.wantRegErr)
 			}
 		})
 	}

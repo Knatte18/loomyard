@@ -38,6 +38,11 @@ var LandingTemplateFixer []byte
 //go:embed landing/landing-template-fix-review.md
 var LandingTemplateFixReview []byte
 
+// LandingTemplatePRReview is the PR-Review session's shipped-default prompt: the interactive session the operator discusses a run's pull request with.
+//
+//go:embed landing/landing-template-pr-review.md
+var LandingTemplatePRReview []byte
+
 // DarnTemplateWrite is the darn writer's shipped-default prompt: the whole instruction set of the one session that makes a board entry's change.
 //
 //go:embed darn/darn-template-write.md
@@ -454,6 +459,7 @@ var entries = []registryEntry{
 	{"landing-template-describe-darn", &LandingTemplateDescribeDarn},
 	{"landing-template-fixer", &LandingTemplateFixer},
 	{"landing-template-fix-review", &LandingTemplateFixReview},
+	{"landing-template-pr-review", &LandingTemplatePRReview},
 	{"darn-template-write", &DarnTemplateWrite},
 	{"drift-template-baseline", &DriftTemplateBaseline},
 	{"drift-template-verify", &DriftTemplateVerify},
@@ -554,6 +560,7 @@ var roleOpeningStencils = map[string][]string{
 	"conflict":           {"landing-template-conflict"},
 	"fixer":              {"landing-template-fixer"},
 	"fix-reviewer":       {"landing-template-fix-review"},
+	"pr-reviewer":        {"landing-template-pr-review"},
 	"bouncer-judge":      {"bouncer-template-judge"},
 	"bouncer-seed":       {"bouncer-template-seed"},
 	"treadle-targeting":  {"treadle-template-targeting"},

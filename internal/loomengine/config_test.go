@@ -462,6 +462,11 @@ review_timeout_min: 240
 				mutate:     func(*Config) {},
 			},
 			{
+				name:       "a retired pr_review in the repo default is ignored",
+				boardExtra: "pr_review: true\n",
+				mutate:     func(*Config) {},
+			},
+			{
 				name:   "a local driver_kind go is open to the local layer",
 				board:  "driver_kind: llm\n",
 				local:  "driver_kind: go\n",

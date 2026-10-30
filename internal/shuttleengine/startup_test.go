@@ -812,6 +812,96 @@ func TestStartup_HandleReturned(t *testing.T) {
 	}
 }
 
+// TestRunner_StartSession covers the unawaited start.
+// A ready start returns the strand, session id and engine with a run record reading running.
+// A spec without Unawaited is refused before any strand is added, and a ResumeSessionID reaches the engine's launch.
+// StopStrand on the started run records it stopped and removes its strand.
+func TestRunner_StartSession(t *testing.T) {
+	newReed := func() *fakeReed {
+		return &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1", Name: "pr-review"}}
+	}
+	unawaited := Spec{Prompt: "x", Unawaited: true, Role: "pr-review"}
+
+	t.Run("a ready start returns the strand, session id and engine and records running", func(t *testing.T) {
+		reed := newReed()
+		engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
+		readyStart(reed, engine)
+		fx := newFixture(t, reed, engine, withConfig(fastConfig))
+
+		got, err := fx.Runner.StartSession(unawaited)
+		if err != nil {
+			t.Fatalf("StartSession() error = %v; want nil", err)
+		}
+		want := OpenResult{StrandGUID: "strand-1", StrandName: "pr-review", SessionID: "session-1", Engine: "fake"}
+		if got != want {
+			t.Errorf("StartSession() = %+v; want %+v", got, want)
+		}
+		rs, found, err := loadRunState(soleStartupRunDir(t, fastConfig, fx.Anchor))
+		if err != nil || !found {
+			t.Fatalf("loadRunState: found=%v err=%v", found, err)
+		}
+		if rs.Outcome != runOutcomeRunning {
+			t.Errorf("run record Outcome = %q; want %q", rs.Outcome, runOutcomeRunning)
+		}
+	})
+
+	t.Run("a spec without Unawaited is refused before any strand is added", func(t *testing.T) {
+		reed := newReed()
+		engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
+		readyStart(reed, engine)
+		fx := newFixture(t, reed, engine, withConfig(fastConfig))
+
+		_, err := fx.Runner.StartSession(Spec{Prompt: "x", OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}})
+		if err == nil || !strings.Contains(err.Error(), "StartSession needs Spec.Unawaited") {
+			t.Fatalf("StartSession() error = %v; want one naming Spec.Unawaited", err)
+		}
+		if len(reed.AddStrandCalls) != 0 {
+			t.Errorf("AddStrandCalls = %+v; want none", reed.AddStrandCalls)
+		}
+	})
+
+	t.Run("a ResumeSessionID reaches the engine's launch", func(t *testing.T) {
+		reed := newReed()
+		engine := newResumeTestEngine()
+		readyStart(reed, engine.fakeEngine)
+		fx := newFixture(t, reed, engine, withConfig(fastConfig))
+
+		spec := unawaited
+		spec.ResumeSessionID = "11111111-2222-3333-4444-555555555555"
+		if _, err := fx.Runner.StartSession(spec); err != nil {
+			t.Fatalf("StartSession() error = %v; want nil", err)
+		}
+		if len(engine.PrepareCalls) != 1 || engine.PrepareCalls[0].Spec.ResumeSessionID != spec.ResumeSessionID {
+			t.Errorf("Prepare calls = %+v; want one carrying ResumeSessionID %q", engine.PrepareCalls, spec.ResumeSessionID)
+		}
+	})
+
+	t.Run("StopStrand records the unawaited run stopped and removes its strand", func(t *testing.T) {
+		reed := newReed()
+		engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
+		readyStart(reed, engine)
+		fx := newFixture(t, reed, engine, withConfig(fastConfig))
+
+		started, err := fx.Runner.StartSession(unawaited)
+		if err != nil {
+			t.Fatalf("StartSession() error = %v; want nil", err)
+		}
+		if err := fx.Runner.StopStrand(started.StrandGUID); err != nil {
+			t.Fatalf("StopStrand() error = %v; want nil", err)
+		}
+		rs, found, err := loadRunState(soleStartupRunDir(t, fastConfig, fx.Anchor))
+		if err != nil || !found {
+			t.Fatalf("loadRunState: found=%v err=%v", found, err)
+		}
+		if rs.Outcome != runOutcomeStopped {
+			t.Errorf("run record Outcome = %q; want %q", rs.Outcome, runOutcomeStopped)
+		}
+		if len(reed.RemoveStrandCalls) != 1 || reed.RemoveStrandCalls[0].GUID != "strand-1" {
+			t.Errorf("RemoveStrandCalls = %+v; want one for strand-1", reed.RemoveStrandCalls)
+		}
+	})
+}
+
 // TestStartup_MechanismFailure covers the startup status-cap paths: the status retry cap exhausted with no output files, and reed never tracking the strand at all.
 // Each returns a non-nil error wrapping both ErrNotStarted and the failure's own sentinel, removes the strand once and finalizes run.json's Outcome to died.
 func TestStartup_MechanismFailure(t *testing.T) {

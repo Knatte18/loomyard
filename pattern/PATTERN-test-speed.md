@@ -37,6 +37,7 @@ A gate key in `gate.yaml` names a site's tiers and its scope, and a site runs `l
 | `adopt` | `lym adopt check`, in-process through `gatecli.RunGate` | `all` |
 | `darn-write`, `code-burler-fix` | darn's writer and the Code-Burler-Fix rows | `diff` |
 | `drift-verify` | `Drift-Verify`'s test gate over its agent's fixes | `diff` |
+| `pr-review` | PR-Review's gate over the agent's commits | `diff` |
 | By hand | the `tier3` tier | |
 
 ### No gate runs `tier3`

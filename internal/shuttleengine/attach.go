@@ -529,10 +529,8 @@ func dispositionCandidate(c attachCandidate, strands []reedengine.StrandStatus, 
 	// owning run.json at all. Gating on runOutcomeRunning is what keeps the two cases apart: a terminal
 	// or cleaned-up record is excluded, and only a run still declaring itself in flight is harvested.
 	//
-	// allOutputFilesExist is vacuously true for an empty list, which is unreachable here for the same
-	// reason classifyDeadlineExpiry documents: collectAttachCandidates set-matches against a persisted
-	// RunState written by a validated Start, and Spec.validate refuses an empty OutputFiles, so no
-	// candidate with an empty output set is ever built.
+	// An empty OutputFiles exists only on an unawaited run, which Attach never matches.
+	// Every Attach caller passes an awaited spec naming its output files, as classifyDeadlineExpiry documents.
 	if c.state.Outcome == runOutcomeRunning && allOutputFilesExist(spec.OutputFiles) {
 		return verdictAttachable
 	}

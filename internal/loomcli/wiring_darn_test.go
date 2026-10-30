@@ -44,6 +44,7 @@ const wantDarnLandingCall = "lym gate test --wait --gate finalize"
 //lym:seam internal/landingshed#Config
 //lym:seam internal/landingshed#Deps
 //lym:seam internal/landingshed#ParentLockDeps
+//lym:seam internal/landingshed#PullRequestDeps
 //lym:seam internal/loomshed#DarnDeps
 //lym:seam internal/loomshed#PRReworkDeps
 //lym:seam internal/pawlengine#Deps

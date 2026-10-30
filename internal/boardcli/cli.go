@@ -476,7 +476,7 @@ func storeVerbs(board func() *boardengine.Board, profiles func() (runprofile.Pro
 	// upsert subcommand: create or update a single task.
 	var bodyFile string
 	upsertCmd := &cobra.Command{
-		Use:         "upsert {slug, title?, brief?, body?, depends_on?, isolated?, status?, kind?, labels?, recipe?, priority?, short_name?, issues?, created?, revised?, run_settings?, profile?, owner_machine?, project?, order?, beam?}",
+		Use:         "upsert {slug, title?, brief?, body?, depends_on?, isolated?, status?, kind?, labels?, recipe?, priority?, short_name?, issues?, created?, revised?, run_settings?, profile?, pull_request?, owner_machine?, project?, order?, beam?}",
 		Short:       "create or update a single task",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Create or update a task identified by its slug.
@@ -490,20 +490,21 @@ Optional fields:
   "brief"      string — one-line summary shown in board listings
   "body"       string — full markdown body
   "depends_on" array  — slugs this task depends on
-  "isolated"   bool   — true if the task has no dependencies by design
-  "status"     string — lifecycle status (e.g. "active", "done")
+  "isolated"   bool   — true if no dependencies by design
+  "status"     string — lifecycle status, e.g. "active"
   "kind"       string — "task", "note" or "project", default "note"
-  "labels"     array  — configured labels replacing the whole list; a task needs a type label, a note exactly one
-  "recipe"    string — child worktree recipe, "loom" or "darn"; empty means "loom"
+  "labels"     array  — labels replacing the whole list; a task needs a type label, a note exactly one
+  "recipe"    string — "loom" or "darn"; empty means "loom"
   "priority"   string — a note's "high", "normal" or "low"; "normal" clears it
-  "short_name" string — short display label; falls back to the slug
-  "issues"     array  — the hub repository's issue numbers
+  "short_name" string — display label; falls back to the slug
+  "issues"     array  — the hub's issue numbers
   "created"    string — RFC 3339 creation time
-  "revised"    string — RFC 3339 last scope change time
+  "revised"    string — RFC 3339 last scope change
   "run_settings" object — module name to config keys for the pair's local config; {} clears it
   "profile"    string — a "lym board profiles" name laid under run_settings; "" clears it
+  "pull_request" string — "on" or "off" overrides beam.yaml's pull_request mode; "" clears it
   "owner_machine" string — the effective owner only; "lym adopt" moves it
-  "project"    string — slug of the open project the entry belongs to; "" leaves none
+  "project"    string — slug of the open project holding the entry; "" leaves none
   "order"      array  — a project's member slugs in plan order
   "beam"       bool   — a project's beam flag; only the "lym beam" verbs set it
 

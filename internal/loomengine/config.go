@@ -418,9 +418,6 @@ type Config struct {
 	ArbiterTimeoutMin int    `yaml:"arbiter_timeout_min"`
 	ArbiterMaxSpawns  *int   `yaml:"arbiter_max_spawns"`
 
-	// PRReview turns on the PR-Review stub's log line; the stub opens no pull request and acts on nothing either way.
-	PRReview bool `yaml:"pr_review"`
-
 	ReviewCirclingCheckpoint int `yaml:"review_circling_checkpoint"`
 	ReviewMaxBounces         int `yaml:"review_max_bounces"`
 	ReviewHardMaxBounces     int `yaml:"review_hard_max_bounces"`
@@ -549,12 +546,12 @@ func ConfigSpec() configengine.Spec {
 			"tackler":                    none,
 			"tackler_timeout_min":        none,
 			"tackler_max_spawns":         none,
-			"pr_review":                  none,
 			"step_idle_timeout_min":      none,
 			"review_circling_checkpoint": none,
 		},
 		RetiredKeys: map[string]configengine.Category{
 			"fan_review": none,
+			"pr_review":  none,
 		},
 	}
 	for key, category := range reviewbudget.Categories(reviewPerchNames()) {

@@ -70,10 +70,11 @@
 // See PATTERN-shuttle-provider-seam for the cross-reference a reader who
 // checks the PATTERN entries first will find.
 //
-// The one structural precondition the rule rests on: allOutputFilesExist is vacuously true for an
-// empty list, and no *Run with an empty OutputFiles ever exists. Spec.validate refuses one on the
-// Start path, and collectAttachCandidates set-matches against a persisted RunState written by a
-// validated Start, so the Attach path cannot produce one either.
+// The one structural precondition the rule rests on: a *Run with an empty OutputFiles exists only for an unawaited session.
+// Spec.validate refuses an empty list for every other spec.
+// An unawaited run never reaches Wait or Attach, since Runner.StartSession never calls Wait.
+// Attach set-matches a persisted record's output files against the caller's spec, and every caller passes an awaited spec naming its output files, which an unawaited record's empty list never matches.
+// allOutputFilesExist answers false for an empty list, so no negative answer of an unawaited run reads as finished.
 
 package shuttleengine
 
@@ -1191,8 +1192,12 @@ func strandStatusByGUID(strands []reedengine.StrandStatus, guid string) (reedeng
 	return reedengine.StrandStatus{}, false
 }
 
-// allOutputFilesExist reports whether every entry in files exists on disk.
+// allOutputFilesExist reports whether files is non-empty and every entry in it exists on disk.
+// An empty list is an unawaited run's, which has no file contract to satisfy, so it never reads as finished.
 func allOutputFilesExist(files []string) bool {
+	if len(files) == 0 {
+		return false
+	}
 	for _, f := range files {
 		if _, err := os.Stat(f); err != nil {
 			return false
@@ -1494,11 +1499,9 @@ func (run *Run) classifyStartupWindow(startupDeadline time.Time) Outcome {
 // ("inside an attached or started run's own wait loop … the step finished; read it and advance")
 // exists to prevent.
 //
-// allOutputFilesExist is vacuously true for an empty list, which would make this wrong for a run
-// with no declared outputs — there is none: Spec.validate refuses an empty OutputFiles on the Start
-// path, and on the Attach path collectAttachCandidates set-matches against a persisted RunState
-// written by a validated Start, so an empty spec matches no candidate and no *Run is ever built for
-// it. Spec.validate states the same rule from the other side when it refuses a spec whose output
+// An empty OutputFiles exists only on an unawaited run, which never reaches Wait or Attach:
+// Runner.StartSession never calls Wait, and Attach set-matches a persisted record's output files against an awaited caller's spec, which an unawaited record's empty list never matches.
+// Spec.validate states the file contract from the other side when it refuses a spec whose output
 // file ALREADY exists, "a pre-existing file would satisfy the file contract immediately".
 func (run *Run) classifyDeadlineExpiry(expired Outcome) Outcome {
 	if allOutputFilesExist(run.spec.OutputFiles) {
@@ -1526,10 +1529,7 @@ func (run *Run) classifyDeadlineExpiry(expired Outcome) Outcome {
 // a shuttle run whose declared output file was on disk, reed.json truncated mid-run, returned the
 // consecutive-status-failure mechanism error rather than OutcomeDone.
 //
-// The empty-OutputFiles vacuous-truth concern classifyDeadlineExpiry documents does not arise here
-// either, and for the same reason: Spec.validate refuses an empty OutputFiles on the Start path and
-// collectAttachCandidates set-matches against a validated Start's persisted record on the Attach
-// path, so no *Run with an empty OutputFiles ever reaches this loop.
+// An empty OutputFiles exists only on an unawaited run, which never reaches this loop, as classifyDeadlineExpiry documents.
 func (run *Run) finishedDespiteMechanismFailure() (Result, error, bool) {
 	if allOutputFilesExist(run.spec.OutputFiles) {
 		result, err := run.finalize(OutcomeDone)

@@ -34,6 +34,9 @@ type Spec struct {
 	// relative entries and rewrites this slice in place with the resolved
 	// absolute paths.
 	OutputFiles []string
+	// Unawaited marks a session nobody waits on: it has no output file, and its run record reads running until a stop ends it.
+	// Only Runner.StartSession accepts such a spec, and validate refuses one that also names output files.
+	Unawaited bool
 	// ModelChoice is the engine and the model, effort and version the run uses.
 	ModelChoice
 	// ForkSubagents, when true, authorizes this run to spawn in-session fork
@@ -49,6 +52,9 @@ type Spec struct {
 	// No config key or CLI flag reaches it;
 	// only a caller that sets it gets the allowance.
 	AllowAgentTool bool
+	// DenyPublish, when true, makes the engine install a shell guard refusing git push and gh for this one run and announce it.
+	// It is engine vocabulary exactly like ForkSubagents — validate does not inspect this field at all.
+	DenyPublish bool
 	// PermissionMode, when non-empty, selects the run's permission mode;
 	// empty defers to the engine's default, its bypass mode.
 	// PermissionMode values are provider vocabulary, exactly like Effort — validate does NOT inspect this field at all;
@@ -146,7 +152,8 @@ type Spec struct {
 // validate normalizes s in place and reports an error if it is not
 // runnable. Prompt must be non-empty; OutputFiles must name at least one
 // file (an empty list would make "done" undetectable, since the file
-// contract is the only return channel a shuttle run has). Each OutputFiles
+// contract is the only return channel a shuttle run has).
+// An Unawaited spec is the exception: it has no output file and is refused when it names one. Each OutputFiles
 // entry is resolved to an absolute path — already-absolute entries are kept
 // verbatim, relative entries are joined onto worktreeRoot and
 // filepath.Clean-ed — and the resolved paths are written back into
@@ -164,7 +171,10 @@ func (s *Spec) validate(worktreeRoot string, cfg Config) error {
 	if s.Prompt == "" {
 		return fmt.Errorf("shuttle: spec.Prompt must not be empty")
 	}
-	if len(s.OutputFiles) == 0 {
+	if s.Unawaited && len(s.OutputFiles) > 0 {
+		return fmt.Errorf("shuttle: spec.OutputFiles must be empty for an unawaited session, which has no output file")
+	}
+	if !s.Unawaited && len(s.OutputFiles) == 0 {
 		return fmt.Errorf("shuttle: spec.OutputFiles must name at least one file — a run's output file IS its return value")
 	}
 

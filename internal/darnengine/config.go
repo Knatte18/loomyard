@@ -57,8 +57,6 @@ type Config struct {
 	Arbiter           string `yaml:"arbiter"`
 	ArbiterTimeoutMin int    `yaml:"arbiter_timeout_min"`
 	ArbiterMaxSpawns  *int   `yaml:"arbiter_max_spawns"`
-	// PRReview turns on the PR-Review stub's log line; the stub opens no pull request and acts on nothing either way.
-	PRReview bool `yaml:"pr_review"`
 }
 
 // ShedOverride returns the driver, tackler and arbiter keys of darn.yaml as the override of shed.yaml's.
@@ -81,7 +79,7 @@ func ConfigOpenMaps() []string {
 
 // ConfigSpec returns darn's layered-load spec.
 // tree_scope picks which diffs run the narrower targets, so it is a guard key and closed to the local layer; no task run_settings sets it.
-// verify and tree_scope_verify are retired, so a hub file that still sets either loads and reconcile prunes it.
+// verify and tree_scope_verify are retired, as is pr_review, so a hub file that still sets any of them loads and reconcile prunes it.
 func ConfigSpec() configengine.Spec {
 	categories := map[string]configengine.Category{
 		"writer":             configengine.CategoryNone,
@@ -96,7 +94,6 @@ func ConfigSpec() configengine.Spec {
 		"arbiter":             configengine.CategoryNone,
 		"arbiter_timeout_min": configengine.CategoryNone,
 		"arbiter_max_spawns":  configengine.CategoryNone,
-		"pr_review":           configengine.CategoryNone,
 	}
 	return configengine.Spec{
 		Name:       configModule,
@@ -107,6 +104,7 @@ func ConfigSpec() configengine.Spec {
 		RetiredKeys: map[string]configengine.Category{
 			"verify":            configengine.CategoryExecutable,
 			"tree_scope_verify": configengine.CategoryExecutable,
+			"pr_review":         configengine.CategoryNone,
 		},
 	}
 }

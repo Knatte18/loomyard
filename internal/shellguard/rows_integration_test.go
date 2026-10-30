@@ -163,6 +163,15 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 		{"machine-sleep", "status_of_the_hibernate_target", "systemctl status hibernate.target", false},
 		{"machine-sleep", "restart_of_another_unit", "systemctl restart sshd", false},
 		{"machine-sleep", "inside_a_heredoc_body", "cat > .scratch/a <<EOF\nsystemctl hibernate\nEOF", false},
+
+		{"publish", "git_push", "git push", true},
+		{"publish", "git_push_after_dash_c", "git -C x push origin b", true},
+		{"publish", "gh_pr_merge", "gh pr merge 3", true},
+		{"publish", "gh_after_a_separator", "cd x && gh api y", true},
+		{"publish", "git_status", "git status", false},
+		{"publish", "gh_as_an_argument", "echo gh", false},
+		{"publish", "push_in_a_grep_flag", "git log --grep=push", false},
+		{"publish", "longer_word_than_gh", "ghost", false},
 	}
 	// Each description names a command the row would deny as a command, in the payload's description field, beside a command that is harmless.
 	descriptionTests := []struct {

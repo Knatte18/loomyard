@@ -228,6 +228,7 @@ github.com/Knatte18/loomyard/
 ├── internal/boardcli/            the board CLI command
 ├── internal/boardengine/         the board domain kernel
 ├── internal/hubissues/           the GitHub issues of the hub's own repository that `lym board intake` lists, reads, comments on and closes
+├── internal/pullrequest/         the run's pull-request record and its GitHub calls, for PR-Review, Finalize and pair teardown
 ├── internal/cleanupcli/          the cleanup CLI command (`lym cleanup`, the routine cleanups of the hub prime's leftover state, a dry run by default)
 ├── internal/fabriccli/           the fabric CLI command (git coordination of code and records)
 ├── internal/fabricengine/        the fabric domain kernel
@@ -266,7 +267,7 @@ github.com/Knatte18/loomyard/
 ├── internal/shedcli/             the `lym shed` subtree: a named-recipe arming table for the loom, darn and batten recipes plus the three CLI seams that register it under the lym root
 ├── internal/statuscommit/        the shared per-transition status commit core (skip while mid-merge, commit hard-errors, push spawn warns) that `loomcli` and `battencli` wrap
 ├── internal/statuspane/          the pane mechanics the runs overview and the gate checklist share: a redraw-in-place pane loop and a lock-free status-file reader
-├── internal/landingshed/         landing's general ShedProducers, Parent-Align, the PR-Review stub and Finalize, shared by reference across producer lists
+├── internal/landingshed/         landing's general ShedProducers, Parent-Align, the PR-Review row and Finalize, shared by reference across producer lists
 ├── internal/pawlengine/          the pawl recipe's own producers, Beam-Up, Beam-Await and Beam-Down, and the land request Beam-Await consumes, told their geometry and seams by their caller
 ├── internal/failuretrace/        traces a failed Parent-Align or Finalize verify log to the plan cards, batch commit ranges and untraced locations the landing failure record carries
 ├── internal/darnengine/          the darn recipe's hub-wide `darn.yaml` config and the verify command every darn verify reads
@@ -575,7 +576,8 @@ User-facing modules each get one `lym <module>` namespace:
   a darn run's tail is `Darn-Write → Drift-Verify → Code-Review → Describe → PR-Review → Finalize`, with no `Parent-Align`.
   The three regression rows, `Drift-Baseline` before `Plan-Write` in loom and before `Drift-Await` in darn, `Drift-Await` before `Webster` in loom and before `Darn-Write` in darn, and `Drift-Verify` as above, each carry the entry gate `drift.enabled` of the hub-wide `drift.yaml`, so a hub that leaves it off records each of them skipped and spawns or runs nothing for them.
   `Parent-Align` merges the parent's upstream tip into the task with no parent lock, verifies the merged tree through the `parent-align` gate key and runs the merge fixer in parent-align mode, which settles a conflict or a failing tree and aligns the task to what the parent brought in; it writes the merge record with the aligned tip, and the Code-Perch then reviews the task's code against that.
-  `PR-Review` is a stub for the human pull-request review that is not built: it always returns Done, and logs one line when its flag is on.
+  `PR-Review` lands the task through a GitHub pull request when the resolver says so: it pushes the task branch, opens or finds the pull request, sets its title and body from the change description, records it and waits on it, and otherwise passes.
+  The wait takes no parent lock: it gates and pushes the agent's commits through the `pr-review` gate key, never onto a merged pull request, and mails a failure to the agent, reads the pull request at most once a minute and before each gate, and ends Done when the pull request is merged or approved at the gated head, or when the operator's `lym loom pr-continue` makes the row close it, and Stuck on any other ending; a pause that covers the run holds it, and the driver strand's mark reads `PR #<n>`.
   `Finalize` takes the parent lock first, merges the parent into the task in place, resolving a conflict with the conflict session under the lock, with no reroute on a conflict or a large merge; it runs the `finalize` gate key and the merge fixer in finalize mode, lands on the parent with the task trailer and releases the lock on every exit.
   A fixer change over the caps, on a run whose reroute reaches a review, goes first to Finalize's solo fix review, which reads only the fixer's commits: an approval lands it, and a rejection or a missing verdict reroutes as a spent fixer does.
   A halt at `Parent-Align` or `Finalize` (a spent or over-cap fixer, a reroute-cap stop) is handed back to the orch through every driver, and the status marks it `hand_back`.

@@ -17,6 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
+	"github.com/Knatte18/loomyard/internal/creelcli"
+	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/failuretrace"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
@@ -34,6 +36,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -261,6 +264,7 @@ func landingDeps(
 		CodeReviewOff:   codeReviewOff(l, recipe),
 		RerouteReviewed: reviewFollowsReroute,
 		LandBlockers:    landBlockers,
+		PullRequest:     pullRequestDeps(l, parentBranch, pushSkipped, runner),
 		// The task branch's remote-tracking ref is read without a fetch, so an absent one is no tip.
 		TaskRemoteTip: func() (string, error) {
 			tip, err := gitrepo.New(l.WorktreePath()).RefSHA("refs/remotes/origin/" + taskBranch)
@@ -269,6 +273,102 @@ func landingDeps(
 			}
 			return tip, err
 		},
+	}
+}
+
+// pullRequestDeps assembles the PR-Review row's seams for the run of the worktree l.
+// Each seam reads at call time, so a beam.yaml, board entry or origin changed after bootstrap is read as it stands.
+// SessionLive and RegisterSession read reed's strand table, which only wireLanding holds, so it fills them.
+func pullRequestDeps(l *lymcwd.Location, parentBranch string, pushSkipped bool, runner *shuttleengine.Runner) landingshed.PullRequestDeps {
+	slug := seedSlug(l.WorktreeName)
+	return landingshed.PullRequestDeps{
+		RecordPath:     shedrun.PullRequestRecord(l, shedrun.SelfRunID),
+		RecordLockPath: shedrun.PullRequestRecordLock(l, shedrun.SelfRunID),
+		ParentMode:     parentPullRequestMode(l),
+		Sessions:       runner,
+		BoardEntryPath: loomengine.DiscussionBoardEntry(l),
+		EntryField: func() (string, error) {
+			board, err := boardengine.OpenHub(l.HubPath)
+			if err != nil {
+				return "", err
+			}
+			task, found, err := board.GetTask(slug)
+			if err != nil || !found {
+				return "", err
+			}
+			return task.PullRequest, nil
+		},
+		Origin: func() (landingshed.Origin, error) {
+			f, err := fabricengine.Open(l)
+			if err != nil {
+				return landingshed.Origin{}, err
+			}
+			url, err := f.OriginURL()
+			if err != nil {
+				logger.Warn("loomcli: the task pair's origin URL is unreadable, reading the pair as having no origin", "worktree", l.WorktreeName, "cause", err)
+				url = ""
+			}
+			tips, err := f.ReadParentTips(parentBranch, false)
+			if err != nil {
+				return landingshed.Origin{}, err
+			}
+			return landingshed.Origin{URL: url, Upstream: tips.Upstream != "", PushSkipped: pushSkipped}, nil
+		},
+		API: func(originURL string) (pullrequest.API, error) {
+			client, err := pullrequest.Open(originURL)
+			if err != nil {
+				return nil, err
+			}
+			return client, nil
+		},
+		PushTask: func() error {
+			_, err := fabricengine.PushPairAnchored(l, fabricengine.EnvSyncOptions(), fabricengine.StatusPushLockWait)
+			return err
+		},
+		// CommitsMissing reads over the task pair, whose repository holds the merged head once the pair has fetched it.
+		CommitsMissing: func(merged, task string) ([]string, error) {
+			f, err := fabricengine.Open(l)
+			if err != nil {
+				return nil, err
+			}
+			return f.CommitLog(merged, task)
+		},
+		DirtyPaths: func() ([]string, error) { return verifytree.DirtyPaths(l.WorktreePath()) },
+		MailAgent: func(strandName, line string) error {
+			client, err := creelcli.NewProgramClient(l, loomProgram)
+			if err != nil {
+				return err
+			}
+			_, err = client.Post(strandName, line)
+			return err
+		},
+		// PauseCovered reads the pause record as pauseCovered does, so an unreadable record covers nothing.
+		PauseCovered: func() (bool, error) { return pauseCovered(l)(slug), nil },
+		Now:          time.Now,
+		Sleep:        sleepContext,
+	}
+}
+
+// parentPullRequestMode returns the seam that reads the pull_request mode of the branch the run lands on.
+// The parent pair is the one the run's origin record names, and the prime when it names none, so the receiving branch's own beam.yaml decides and the task worktree's is never read.
+// The worktree name is returned with any error, so a halt can say where to fix the file.
+func parentPullRequestMode(l *lymcwd.Location) func() (mode, worktree string, err error) {
+	return func() (string, string, error) {
+		parent, err := hubgeom.ResolveParent(l)
+		if err != nil {
+			return "", "", fmt.Errorf("resolve the parent pair: %w", err)
+		}
+		var parentLocation *lymcwd.Location
+		if parent.Worktree == "" {
+			parentLocation, err = primeOfHub(l)
+		} else {
+			parentLocation, err = lymcwd.ResolveWorktree(fabricengine.WorktreePath(l, parent.Worktree))
+		}
+		if err != nil {
+			return "", parent.Worktree, err
+		}
+		cfg, err := dobbyengine.LoadConfig(fabricengine.ConfigDirs(parentLocation))
+		return cfg.PullRequest, parentLocation.WorktreeName, err
 	}
 }
 
@@ -604,6 +704,44 @@ func driverWaitMark(
 			return nil
 		}
 		return setMark(strand.GUID, label, start)
+	}
+}
+
+// sessionLiveness returns the seam landingshed reads whether the PR-Review session's strand is live through, built over reed's strand table so a test needs no tmux.
+// The table is read at call time, and a strand is live when it is present, live and not retiring.
+func sessionLiveness(status func() (reedengine.StatusResult, error)) func(guid string) (bool, error) {
+	return func(guid string) (bool, error) {
+		result, err := status()
+		if err != nil {
+			return false, err
+		}
+		for _, strand := range result.Strands {
+			if strand.GUID == guid {
+				return strand.Live && !strand.Retiring, nil
+			}
+		}
+		return false, nil
+	}
+}
+
+// sessionRegistrar returns the seam landingshed registers the PR-Review session's pane process through, built over reed's strand table and a register seam so a test needs no tmux.
+// A strand with no live pane process has nothing to register and is an error, which the row logs.
+func sessionRegistrar(status func() (reedengine.StatusResult, error), register func(pid int) error) func(guid string) error {
+	return func(guid string) error {
+		result, err := status()
+		if err != nil {
+			return err
+		}
+		for _, strand := range result.Strands {
+			if strand.GUID != guid {
+				continue
+			}
+			if strand.PanePID == 0 {
+				return fmt.Errorf("loomcli: strand %s has no live pane process to register", guid)
+			}
+			return register(strand.PanePID)
+		}
+		return fmt.Errorf("loomcli: strand %s is not in reed's strand table", guid)
 	}
 }
 

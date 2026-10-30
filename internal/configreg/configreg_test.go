@@ -74,12 +74,13 @@ func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
 func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 	t.Parallel()
 	wantLocalKeys := map[string][]string{
-		"darn":    {"arbiter", "arbiter_max_spawns", "arbiter_timeout_min", "driver_kind", "pr_review", "tackler", "tackler_max_spawns", "tackler_timeout_min", "verify_attempts", "writer", "writer_timeout_min"},
+		"darn":    {"arbiter", "arbiter_max_spawns", "arbiter_timeout_min", "driver_kind", "tackler", "tackler_max_spawns", "tackler_timeout_min", "verify_attempts", "writer", "writer_timeout_min"},
 		"drift":   {"baseline_model", "enabled", "verify_max_runs", "verify_model"},
-		"landing": {"conflict", "conflict_timeout_min", "describe", "describe_timeout_min", "fixer", "fixer_timeout_min"},
+		"landing": {"conflict", "conflict_timeout_min", "describe", "describe_timeout_min", "fixer", "fixer_timeout_min", "pr_reviewer"},
 	}
 	wantLocalDenied := map[string][]string{
 		"batten":  {"open_ide_command", "open_window_command", "seed_ide_command"},
+		"beam":    {"pull_request"},
 		"claude":  {"binary", "deny_agent_tool", "deny_ask_user_question"},
 		"reed":    {"debug_log", "mouse", "shell", "tmux", "tmux_conf"},
 		"shuttle": {"deny_python", "run_dir"},

@@ -34,8 +34,11 @@ func TestLoadConfig(t *testing.T) {
 		want     Config
 		wantErr  []string
 	}{
-		{name: "the template defaults", want: Config{MaxRuns: 3, BoardTidyEvery: 5, BoardTidyTimeoutMin: 30, TaskHeadroom: 500}},
-		{name: "a worktree layer's max_runs of 0 starts none", worktree: "max_runs: 0\n", want: Config{MaxRuns: 0, BoardTidyEvery: 5, BoardTidyTimeoutMin: 30, TaskHeadroom: 500}},
+		{name: "the template defaults", want: Config{MaxRuns: 3, BoardTidyEvery: 5, BoardTidyTimeoutMin: 30, TaskHeadroom: 500, PullRequest: "on"}},
+		{name: "a worktree layer's max_runs of 0 starts none", worktree: "max_runs: 0\n", want: Config{MaxRuns: 0, BoardTidyEvery: 5, BoardTidyTimeoutMin: 30, TaskHeadroom: 500, PullRequest: "on"}},
+		{name: "a worktree layer's pull_request of required resolves as set", worktree: "pull_request: required\n", want: Config{MaxRuns: 3, BoardTidyEvery: 5, BoardTidyTimeoutMin: 30, TaskHeadroom: 500, PullRequest: "required"}},
+		{name: "a worktree layer's pull_request of off resolves as set", worktree: "pull_request: \"off\"\n", want: Config{MaxRuns: 3, BoardTidyEvery: 5, BoardTidyTimeoutMin: 30, TaskHeadroom: 500, PullRequest: "off"}},
+		{name: "an unknown pull_request is refused naming the key and the way forward", worktree: "pull_request: maybe\n", wantErr: []string{"pull_request", "must be on, off or required", "lym config beam --set pull_request="}},
 		{name: "a negative board_tidy_every is refused naming the key", worktree: "board_tidy_every: -1\n", wantErr: []string{"board_tidy_every", "lym config beam --set"}},
 		{name: "a negative task_headroom is refused naming the key", worktree: "task_headroom: -1\n", wantErr: []string{"task_headroom", "lym config beam --set"}},
 	}

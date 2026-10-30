@@ -8,7 +8,7 @@
 // and an error the status file holds that the stop did not write, such as the step's own producer failure, on a `status error:` line of its reason.
 //
 // A run seeded with the recipe `pawl` is a beam's life, batten's Seed-Child seeds it in the beam's pair.
-// Its shed reads Beam-Up, Beam-Await, Parent-Align, the Code-Review perch, Beam-Describe, Finalize and Beam-Down, with no plan and no reroute edge.
+// Its shed reads Beam-Up, Beam-Await, Parent-Align, the Code-Review perch, Beam-Describe, PR-Review, Finalize and Beam-Down, with no plan and no reroute edge.
 // wire fills `Env.Pawl` for it through `pawlDeps`: the run's seed id is the seed's start time, the status is written on the beam's project entry through the board, and Beam-Up's one step is `orchcli.BeamUp` with no prepare, since the run already judged origin.
 // The beam's dobby is stopped through `runproc.EndRole` by its `RoleDobby` record, and restarted through `dobbyengine.EnsureLive` naming the beam alone.
 // Beam-Await's re-check reads `battencli.ReadBeamLandBlockers` and `battencli.BeamLandRefusal` with the beam's owner and its parent's owner, and words each failure as `pawlRecheckLines` does, naming `lym adopt <beam>` or the parent's adopt subject, `root` for the prime.
@@ -210,6 +210,8 @@
 // A running status or a run lock another process holds ends the driver with a `running-exit` record;
 // a status at another stop key is a moved run, which an orch goto sends to a re-step and anything else decides afresh, and which is never parked and gets no friction note.
 // While a pause covers the slug the driver holds in the pause wait before any re-step, goto, agent spawn or hand-over.
+//
+// `lym loom pr-continue` is the PR-Review agent's verb for the operator's ending of a review: it sets the continue flag in the run's pull-request record and nothing else, and is refused until the PR-Review row has opened the pull request.
 //
 // A hand-back leaves a Go-authored stop report, commits the run records and writes the park marker through the code `lym loom commit-records --park` runs, and queues the parent messages the LLM driver's notify rules send.
 // A watching batten announces the run and retries a matching verify halt itself, so only the parent notice, a question and a friction-failed done are sent; an unwatched run also gets one line naming the run-id and the report.

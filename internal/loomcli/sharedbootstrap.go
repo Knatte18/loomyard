@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -332,6 +333,12 @@ func (c *loomCLI) wireLanding() error {
 		c.verifySource(),
 		parentLockDeps(c.location, c.runID, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath),
 	)
+	// The PR-Review session's liveness and process registration read reed's strand table, as the wait-mark and conflict-stopper seams do.
+	slug := seedSlug(c.location.WorktreeName)
+	c.env.Landing.PullRequest.SessionLive = sessionLiveness(c.reed.Status)
+	c.env.Landing.PullRequest.RegisterSession = sessionRegistrar(c.reed.Status, func(pid int) error {
+		return runproc.Register(fabricengine.RunProcDir(c.location.HubPath), slug, runproc.ChildRecord(pid, runproc.RoleSession, nil))
+	})
 	// The fixer runs on the seat engine wire already built, so no second engine is constructed.
 	c.env.Landing.FixerSeats = c.env.Seats
 	// A pawl run's land check names the beam's parent worktree as where a cancel runs, read from the beam's origin record.
