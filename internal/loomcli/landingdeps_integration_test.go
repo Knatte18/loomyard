@@ -254,3 +254,45 @@ func TestLandingDeps_PullRequestModeReadsTheParent(t *testing.T) {
 		}
 	})
 }
+
+// TestLandingDeps_TaskHasCommitsReadsTheTaskHeadAgainstTheParent asserts the TaskHasCommits seam is false for a task branch level with its parent, true once the task branch holds a commit the parent lacks, and an error when the parent branch does not resolve.
+func TestLandingDeps_TaskHasCommitsReadsTheTaskHeadAgainstTheParent(t *testing.T) {
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPair(t, h, "task")
+	taskWorktree := h.PairCodeWorktree("task")
+	taskLocation, err := lymcwd.ResolveWorktree(taskWorktree)
+	if err != nil {
+		t.Fatalf("lymcwd.ResolveWorktree(task) error = %v; want nil", err)
+	}
+	taskHasCommits := func(parentBranch string) (bool, error) {
+		deps := landingDeps(taskLocation, shedrun.RecipeLoom, websterengine.Geometry{}, "task", parentBranch,
+			true, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(taskLocation), parentLockDeps(taskLocation, shedrun.SelfRunID, "", ""))
+		return deps.PullRequest.TaskHasCommits()
+	}
+
+	if !t.Run("LevelWithTheParentHasNoCommits", func(t *testing.T) {
+		got, err := taskHasCommits("main")
+		if err != nil || got {
+			t.Errorf("TaskHasCommits() = %v, %v; want false, nil for a task branch level with its parent", got, err)
+		}
+	}) {
+		return
+	}
+
+	t.Run("OneCommitBeyondTheParentHasCommits", func(t *testing.T) {
+		gitkit.CommitFile(t, taskWorktree, "task.txt", "work\n", "task: add work")
+		got, err := taskHasCommits("main")
+		if err != nil || !got {
+			t.Errorf("TaskHasCommits() = %v, %v; want true, nil after one commit on the task branch", got, err)
+		}
+	})
+
+	t.Run("AParentBranchThatDoesNotResolveIsAnError", func(t *testing.T) {
+		got, err := taskHasCommits("no-such-branch")
+		if err == nil || !strings.Contains(err.Error(), "no-such-branch") || got {
+			t.Errorf("TaskHasCommits() = %v, %v; want false and an error naming the parent branch", got, err)
+		}
+	})
+}
