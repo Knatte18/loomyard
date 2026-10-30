@@ -117,9 +117,12 @@ type Deps struct {
 	StencilsDir string
 	// NearestOrch returns the name of the nearest live orch the tidy agent's parent directive names; empty means there is none.
 	NearestOrch func() (string, error)
-	// CanLand reads whether the beam of this dobby can land, and who owns its parent.
-	// A nil CanLand posts no "can land" notice; the prime's dobby posts none whatever it returns.
+	// CanLand reads whether the beam of this dobby is flagged ready with nothing working under it, and who owns its parent.
+	// A nil CanLand takes no landing step; the prime's dobby takes none whatever it returns.
 	CanLand func() (LandReading, error)
+	// Land asks the beam's pawl run to land the beam by writing its land request, and returns the refusal that kept it from writing one.
+	// It is set whenever CanLand is.
+	Land func() error
 	// Log writes one line to the dobby's log file at path; rotate is set for the dobby's own lines while it holds its lock.
 	// A nil Log logs nothing.
 	Log func(path, line string, rotate bool)
@@ -570,7 +573,7 @@ func (d *daemon) tick(ctx context.Context, now time.Time) error {
 			return err
 		}
 	}
-	if err := d.landNotice(ctx); err != nil {
+	if err := d.landBeam(ctx); err != nil {
 		return err
 	}
 	d.inFlight = d.busy

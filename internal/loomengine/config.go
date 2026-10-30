@@ -121,6 +121,21 @@ func LandingDir(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), LandingDirRel())
 }
 
+// beamReadyFileName is the file name of a beam's ready record within LandingDir.
+// loomengine is this segment's sole declarer.
+const beamReadyFileName = "beam-ready.json"
+
+// BeamReadyPath returns the path of the ready record of the beam whose pair is at l, beside the landing change description.
+// It is AnchorPath-anchored.
+func BeamReadyPath(l *lymcwd.Location) string {
+	return filepath.Join(LandingDir(l), beamReadyFileName)
+}
+
+// BeamReadyLockPath returns the lock path that guards BeamReadyPath's record, at the mirrored never-tracked landing path.
+func BeamReadyLockPath(l *lymcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lymdirs.DotLymDirName, landingDirName, beamReadyFileName+".lock")
+}
+
 // DiscussionDecisionRecordRel returns the worktree-anchor-relative form of DiscussionDecisionRecord's path.
 // It exists so a caller building a fabric commit pathspec for the record alone never has to name a segment loomengine owns.
 func DiscussionDecisionRecordRel() string {

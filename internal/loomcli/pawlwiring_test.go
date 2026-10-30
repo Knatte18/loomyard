@@ -25,7 +25,9 @@ func TestPawlRecheckLines(t *testing.T) {
 		beamOwner     string
 		parentOwner   string
 		parentSubject string
-		want          []string
+		// unflagged says the beam's ready record does not flag it.
+		unflagged bool
+		want      []string
 	}{
 		{name: "NothingBlocksAndBothOwnersAreHere", beamOwner: "here", parentOwner: "here", parentSubject: "root"},
 		{name: "NoOwnerRecordedReadsAsOwnedHere", parentSubject: "root"},
@@ -60,6 +62,14 @@ func TestPawlRecheckLines(t *testing.T) {
 			want:          []string{"the beam's parent is owned by other, not this machine (here): run `lym adopt root` to take it"},
 		},
 		{
+			name:          "AnUnflaggedBeamNamesReady",
+			beamOwner:     "here",
+			parentOwner:   "here",
+			parentSubject: "root",
+			unflagged:     true,
+			want:          []string{"the beam b is not flagged ready to merge: run `lym beam ready b` to flag it"},
+		},
+		{
 			name:          "EveryFailureGivesItsOwnLineInOrder",
 			blockers:      member,
 			refusal:       errors.New("battencli: the beam b cannot land while work remains under it; way forward: end m"),
@@ -76,7 +86,7 @@ func TestPawlRecheckLines(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := pawlRecheckLines("b", tt.blockers, tt.refusal, "here", tt.beamOwner, tt.parentOwner, tt.parentSubject)
+			got := pawlRecheckLines("b", !tt.unflagged, tt.blockers, tt.refusal, "here", tt.beamOwner, tt.parentOwner, tt.parentSubject)
 			if strings.Join(got, "\n") != strings.Join(tt.want, "\n") {
 				t.Errorf("pawlRecheckLines() = %q; want %q", got, tt.want)
 			}

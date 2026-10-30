@@ -169,6 +169,10 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 		// The removed worktree's config is gone by the time this stops a strand, so the runner is built over the prime.
 		deps.PrimeTidyShuttle = &runnerTidyShuttle{worktree: prime}
 		deps.CanLand = func() (dobbyengine.LandReading, error) { return beamLandReading(prime, geom.Slug) }
+		deps.Land = func() error {
+			_, err := land(hubLandDeps(prime), geom.Slug)
+			return err
+		}
 	}
 	if choice, err := resolveTidyModel(dirs); err != nil {
 		logger.Warn("beamcli: the board-tidy model does not resolve; the board tidy is off", "spec", tidyModelSpec, "error", err)
@@ -179,8 +183,12 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 	return deps, nil
 }
 
-// beamLandReading reads whether the beam slug can land, which it can once nothing works under it, and, for a beam that can, which other machine owns its parent and what `lym adopt` takes to move it.
+// beamLandReading reads whether the beam slug can land, which it can once it is flagged ready and nothing works under it, and, for a beam that can, which other machine owns its parent and what `lym adopt` takes to move it.
 func beamLandReading(prime *lymcwd.Location, slug string) (dobbyengine.LandReading, error) {
+	ready, err := hubLandDeps(prime).Ready(slug)
+	if err != nil || !ready {
+		return dobbyengine.LandReading{}, err
+	}
 	blockers, err := battencli.ReadBeamLandBlockers(prime, slug)
 	if err != nil {
 		return dobbyengine.LandReading{}, err

@@ -1,4 +1,4 @@
-// deps.go fills the verbs' deps over a real hub: the board reads and the owner write, the batten run's status and first pass, and the landing's refusal and land request.
+// deps.go fills the verbs' deps over a real hub: the board reads and the owner write, the batten run's status and first pass, the ready record, and the landing's refusal and land request.
 
 package beamcli
 
@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
@@ -111,6 +112,25 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 				return "", fmt.Errorf("the pawl run of %s has no seed start time", slug)
 			}
 			return seed.StartedAt, nil
+		},
+		Ready: func(slug string) (bool, error) {
+			beam, err := beamOf(slug)
+			if err != nil {
+				return false, err
+			}
+			return pawlengine.ReadyFor(loomengine.BeamReadyPath(beam), loomengine.BeamReadyLockPath(beam), slug)
+		},
+		MarkReady: func(slug string, record pawlengine.ReadyRecord) (string, error) {
+			beam, err := beamOf(slug)
+			if err != nil {
+				return "", err
+			}
+			path := loomengine.BeamReadyPath(beam)
+			if err := pawlengine.WriteReady(path, loomengine.BeamReadyLockPath(beam), record); err != nil {
+				return "", err
+			}
+			_, _, err = fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), beam, []string{loomengine.LandingDirRel()}, fmt.Sprintf("beam: %s is ready to merge", slug), fabricengine.EnvSyncOptions())
+			return path, err
 		},
 		Refusal: func(slug string) error { return battencli.BeamLandRefusal(prime, slug) },
 		WriteRequest: func(slug string, req pawlengine.LandRequest) (string, error) {

@@ -1,11 +1,12 @@
 //go:build tier0
 
-// land_test.go drives the land sequence over fake deps: the entries that are not a landable beam, the pawl run and owner refusals, the work-remaining refusal passed through, and the land request written for a beam waiting at Beam-Await.
+// land_test.go drives the land and ready sequences over fake deps: the entries that are not a landable beam, the pawl run, owner and ready refusals, the work-remaining refusal passed through, the land request written for a beam waiting at Beam-Await, and the ready record written once.
 
 package beamcli
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -26,7 +27,10 @@ type landWorld struct {
 	pairs   map[string]bool
 	origins map[string]fabricengine.Origin
 	// children holds each beam's pawl run status; a beam with no entry has no pawl run.
-	children   map[string]shedengine.Status
+	children map[string]shedengine.Status
+	// ready holds each beam whose ready record flags it, and marked the ready records written.
+	ready      map[string]bool
+	marked     []pawlengine.ReadyRecord
 	runID      string
 	refusal    error
 	refusedFor []string
@@ -48,6 +52,7 @@ func newLandWorld() *landWorld {
 		origins:  map[string]fabricengine.Origin{"b": {Beam: true}, "landed": {Beam: true}},
 		children: map[string]shedengine.Status{"b": {State: shedengine.StateRunning, CurrentProducer: pawlengine.NameBeamAwait}},
 		runID:    "2026-02-28T08:00:00Z",
+		ready:    map[string]bool{"b": true},
 	}
 }
 
@@ -66,6 +71,11 @@ func (w *landWorld) deps() landDeps {
 			return status, found, nil
 		},
 		RunID: func(string) (string, error) { return w.runID, nil },
+		Ready: func(slug string) (bool, error) { return w.ready[slug], nil },
+		MarkReady: func(slug string, record pawlengine.ReadyRecord) (string, error) {
+			w.marked = append(w.marked, record)
+			return "/hub/" + slug + "/_lym/landing/beam-ready.json", nil
+		},
 		Refusal: func(slug string) error {
 			w.refusedFor = append(w.refusedFor, slug)
 			return w.refusal
@@ -174,6 +184,14 @@ func TestLand(t *testing.T) {
 			wantErr: []string{"parent of inner is owned by machine there", "lym adopt outer"},
 		},
 		{
+			name: "UnflaggedBeamRefusedNamingReady",
+			slug: "b",
+			setup: func(w *landWorld) {
+				delete(w.ready, "b")
+			},
+			wantErr: []string{"not flagged ready", "lym beam ready b"},
+		},
+		{
 			name: "WorkRemainingRefusalPassesThroughAndWritesNothing",
 			slug: "b",
 			setup: func(w *landWorld) {
@@ -223,6 +241,78 @@ func TestLand(t *testing.T) {
 			}
 			if read := len(w.refusedFor) > 0; read != tt.wantRefusalRead {
 				t.Errorf("land(%q) applied the work-remaining refusal = %v; want %v", tt.slug, read, tt.wantRefusalRead)
+			}
+		})
+	}
+}
+
+func TestMarkReady(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		slug  string
+		setup func(w *landWorld)
+		// wantErr is empty for a ready that succeeds, else every substring the refusal names.
+		wantErr []string
+		// wantAlready says the beam read as flagged before the call, so nothing is written.
+		wantAlready bool
+	}{
+		{name: "TaskRefusedNamingItsOwnLanding", slug: "task1", wantErr: []string{"lym beam ready:", "lym batten run task1"}},
+		{name: "GroupingProjectRefusedNamingCreate", slug: "group", wantErr: []string{"lym beam ready:", "lym beam create group"}},
+		{
+			name: "BeamWithNoPairHereRefusedNamingCreateAndAdopt",
+			slug: "b",
+			setup: func(w *landWorld) {
+				w.pairs["b"] = false
+			},
+			wantErr: []string{"lym beam ready:", "lym beam create b", "lym adopt b"},
+		},
+		{
+			name: "UnflaggedBeamWritesOneRecordNamingIt",
+			slug: "b",
+			setup: func(w *landWorld) {
+				delete(w.ready, "b")
+			},
+		},
+		{name: "FlaggedBeamWritesNothing", slug: "b", wantAlready: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			w := newLandWorld()
+			if tt.setup != nil {
+				tt.setup(w)
+			}
+
+			got, err := markReady(w.deps(), tt.slug)
+
+			if len(tt.wantErr) > 0 {
+				if err == nil {
+					t.Fatalf("markReady(%q) = nil; want a refusal naming %v", tt.slug, tt.wantErr)
+				}
+				for _, want := range tt.wantErr {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("markReady(%q) error = %q; want it to name %q", tt.slug, err.Error(), want)
+					}
+				}
+				if len(w.marked) != 0 {
+					t.Errorf("markReady(%q) wrote %d records on a refusal; want none", tt.slug, len(w.marked))
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("markReady(%q) = %v; want nil", tt.slug, err)
+			}
+			if got["already"] != tt.wantAlready || !strings.Contains(got["way_forward"].(string), "lym batten status b") {
+				t.Errorf("markReady(%q) = %v; want already %t and `lym batten status b`", tt.slug, got, tt.wantAlready)
+			}
+			var want []pawlengine.ReadyRecord
+			if !tt.wantAlready {
+				want = []pawlengine.ReadyRecord{{Slug: "b", SetAt: landNow}}
+			}
+			if !reflect.DeepEqual(w.marked, want) {
+				t.Errorf("markReady(%q) wrote records %v; want %v", tt.slug, w.marked, want)
 			}
 		})
 	}
