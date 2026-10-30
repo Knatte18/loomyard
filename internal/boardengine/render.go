@@ -1,9 +1,10 @@
 // render.go — turns the entry list into the wiki's output files.
 //
-// Render is a pure function: entries in, a map of filename → content out (README.md for the root project and project-<slug>.md for each project, both built by renderBoardFile, plus design-*.md for any entry with a body).
-// Each board file reads like a roadmap of its project's own entries: the projects directly under it, Tasks split into Running, Ready, dependency layers, Independent and Draft, Notes with one subsection per type label, research first, then Done.
-// Each subsection holds one markdown table in RenderOrder's order, each row opening with the entry's handle, and a Notes table adds the priority as H or L after it;
-// README.md opens with the time it was rendered and the machine that owns the hub's prime, and a project file with the time, a link up to its parent's file and the project's brief, kind and owner;
+// Render is a pure function: entries in, a map of filename → content out (README.md for the root project, built by renderReadme, and project-<slug>.md for each project, built by renderProjectFile, plus design-*.md for any entry with a body).
+// Under its header, README.md holds one section per open project on the board, its members in one table, then a Prime section holding the root's own entries;
+// each board file reads like a roadmap of its project's own entries: in a project file the projects directly under it, then Tasks split into Running, Ready, dependency layers, Independent and Draft, Notes with one subsection per type label, research first, then Done.
+// Each subsection holds one markdown table in RenderOrder's order, each row opening with the entry's handle, and a Notes or project-section table adds the priority as H or L after it, under Prio;
+// README.md opens with the time it was rendered and the machine that owns the hub's prime, and a project file with the time, a link up to its parent's file and the project's brief and, for a beam, its owner;
 // the rows show the bold title with the brief, the run profile and each run setting as a bullet under it, the linked slug, the entry's age above its time since its last revision as of that time, and the labels that are not type labels;
 // every Tasks table adds the recipe after the slug, loom for an empty one;
 // Running adds where its run stands and the entry's recorded owner machine, and Ready and the layers add the handles of the open entries each waits on.
@@ -97,11 +98,11 @@ func Render(tasks []Task, primeOwner string, out Outputs, now time.Time) (map[st
 
 	board := newBoardView(ordered, primeOwner, out, now)
 	result := map[string]string{
-		out.Readme: board.renderBoardFile(Task{}),
+		out.Readme: board.renderReadme(),
 	}
 	for _, twl := range ordered {
 		if twl.Kind == KindProject {
-			result[projectFileName(twl.Slug)] = board.renderBoardFile(twl.Task)
+			result[projectFileName(twl.Slug)] = board.renderProjectFile(twl.Task)
 		}
 	}
 
@@ -117,11 +118,19 @@ type readmeSection struct {
 	meaning string
 }
 
-// projectsHeading names the section listing the projects directly under a board file's project; it has no meaning line, since most projects only group entries.
+// projectsHeading names the section of a project file listing the projects directly under its project; it has no meaning line, since most projects only group entries.
 const projectsHeading = "Projects"
 
-// The board files' Tasks, Notes and Done sections and the Running and Ready subsections of Tasks, declared here alone.
+// boardIntro is the paragraph every board file holds under its header.
+var boardIntro = []string{
+	"Tasks are grouped by dependency layer and notes by type.",
+	"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.",
+	"",
+}
+
+// The README's Prime section, the board files' Tasks, Notes and Done sections and the Running and Ready subsections of Tasks, declared here alone.
 var (
+	primeSection   = readmeSection{"Prime", "The root project: the entries under no other project."}
 	tasksSection   = readmeSection{"Tasks", "Concrete and claimable; only a task can run."}
 	runningSection = readmeSection{"Running", "Held by a run; its scope is locked until the run ends."}
 	readySection   = readmeSection{"Ready", "Waits on nothing open; can start now."}
@@ -151,7 +160,7 @@ const emptySectionLine = "_None._"
 // The README table columns: each table opens with the handle, the entry and the linked slug, and closes with the entry's age above the time since its last revision, and its labels.
 const (
 	columnHandle     = "#"
-	columnPriority   = "P"
+	columnPriority   = "Prio"
 	columnSlug       = "Slug"
 	columnRecipe     = "Recipe"
 	columnTask       = "Task"
@@ -164,11 +173,8 @@ const (
 	columnLabels     = "Labels"
 )
 
-// The lines under a project's heading that say whether it is a beam or only a grouping.
-const (
-	projectBeamText     = "beam"
-	projectGroupingText = "grouping"
-)
+// projectBeamText is the line under a beam project's brief that says it is a beam.
+const projectBeamText = "beam"
 
 // cellBreak stacks two lines inside one table cell, where a newline would end the row.
 const cellBreak = "<br>"
@@ -310,7 +316,7 @@ func (b boardView) fileLink(project Task) string {
 	return "[" + cellText(project.Handle+" "+project.Title) + "](" + projectFileName(project.Slug) + ")"
 }
 
-// fileHeader is the opening of project's board file, the zero Task naming the root: the title, the render time, then the prime owner for the root, or for a project a link up to its parent's file, its brief, whether it is a beam or a grouping and a beam's effective owner.
+// fileHeader is the opening of project's board file, the zero Task naming the root: the title, the render time, then the prime owner for the root, or for a project a link up to its parent's file, its brief, and for a beam the word beam and its effective owner.
 func (b boardView) fileHeader(project Task) []string {
 	rendered := "Rendered " + b.now.UTC().Format(renderedTimeLayout) + "; every age below is as of then."
 	if project.Slug == "" {
@@ -321,52 +327,68 @@ func (b boardView) fileHeader(project Task) []string {
 		lines = append(lines, project.Brief, "")
 	}
 	if !project.Beam {
-		return append(lines, projectGroupingText, "")
+		return lines
 	}
 	return append(lines, projectBeamText, "", "Owner: "+primeOwnerText(b.ownerOf(project.Slug))+".", "")
 }
 
-// renderBoardFile builds the board file of project, the zero Task naming the root: its header, an intro, Projects when an open project sits directly under it, Tasks split into Running, Ready, dependency layers, Independent and Draft, Notes split by type label, then Done when any of its entries is done.
-// Every section holds only the entries whose project is this file's project, while layers, After cells and owners read the whole board.
-func (b boardView) renderBoardFile(project Task) string {
-	lines := append(b.fileHeader(project),
-		"Tasks are grouped by dependency layer and notes by type.",
-		"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.",
-		"",
-	)
+// renderReadme builds the root project's board file: its header, the intro, one section per open project on the board, then the Prime section holding the root's own Tasks, Notes and Done one heading level down.
+func (b boardView) renderReadme() string {
+	lines := append(b.fileHeader(Task{}), boardIntro...)
+	lines = append(lines, b.projectSections(Task{})...)
+	lines = append(lines, "## "+primeSection.name, "", primeSection.meaning, "")
+	lines = append(lines, b.entrySections(Task{}, "###")...)
+	return joinLines(lines)
+}
 
+// renderProjectFile builds project's board file: its header, the intro, Projects when an open project sits directly under it, then its own Tasks, Notes and Done.
+func (b boardView) renderProjectFile(project Task) string {
+	lines := append(b.fileHeader(project), boardIntro...)
+	lines = append(lines, b.projectsSection(project)...)
+	lines = append(lines, b.entrySections(project, "##")...)
+	return joinLines(lines)
+}
+
+// joinLines joins a board file's lines into its content, ending in exactly one newline.
+func joinLines(lines []string) string {
+	return strings.TrimRight(strings.Join(lines, "\n"), "\n") + "\n"
+}
+
+// table is one markdown table, a row per entry in the order given, followed by a blank line.
+func (b boardView) table(entries []TaskWithLayer, table readmeTable) []string {
+	lead := []string{columnHandle}
+	if table.priority {
+		lead = append(lead, columnPriority)
+	}
+	// The slug goes second among the middle columns, right after the entry.
+	header := append(append(lead, slices.Insert(slices.Clone(table.columns), 1, columnSlug)...), columnAgeRevised, columnLabels)
+	lines := []string{tableRow(header), tableRow(slices.Repeat([]string{"---"}, len(header)))}
+	for _, twl := range entries {
+		row := []string{cellText(twl.Handle)}
+		if table.priority {
+			row = append(row, priorityCell(twl.Priority))
+		}
+		row = append(row, slices.Insert(table.cells(twl.Task), 1, slugCell(twl.Task, b.out.DesignPrefix))...)
+		row = append(row, ageCell(twl.Task, b.now), labelsCell(twl.Task, b.out.Types))
+		lines = append(lines, tableRow(row))
+	}
+	return append(lines, "")
+}
+
+// entrySections builds the Tasks, Notes and Done sections of project, the zero Task naming the root, with level the markdown level of their headings: Tasks split into Running, Ready, dependency layers, Independent and Draft, Notes split by type label, then Done when any of its entries is done.
+// Every section holds only the entries whose project is project, while layers, After cells and owners read the whole board.
+func (b boardView) entrySections(project Task, level string) []string {
+	sublevel := level + "#"
 	var own []TaskWithLayer
 	for _, twl := range b.ordered {
 		if twl.Project == project.Slug {
 			own = append(own, twl)
 		}
 	}
-	designPrefix, types, now := b.out.DesignPrefix, b.out.Types, b.now
-	// writeTable writes one table, a row per entry in the order given.
-	writeTable := func(entries []TaskWithLayer, table readmeTable) {
-		lead := []string{columnHandle}
-		if table.priority {
-			lead = append(lead, columnPriority)
-		}
-		// The slug goes second among the middle columns, right after the entry.
-		header := append(append(lead, slices.Insert(slices.Clone(table.columns), 1, columnSlug)...), columnAgeRevised, columnLabels)
-		lines = append(lines, tableRow(header), tableRow(slices.Repeat([]string{"---"}, len(header))))
-		for _, twl := range entries {
-			row := []string{cellText(twl.Handle)}
-			if table.priority {
-				row = append(row, priorityCell(twl.Priority))
-			}
-			row = append(row, slices.Insert(table.cells(twl.Task), 1, slugCell(twl.Task, designPrefix))...)
-			row = append(row, ageCell(twl.Task, now), labelsCell(twl.Task, types))
-			lines = append(lines, tableRow(row))
-		}
-		lines = append(lines, "")
-	}
+	types := b.out.Types
 	waitTable := readmeTable{columns: []string{columnTask, columnRecipe, columnAfter}, cells: func(t Task) []string {
 		return []string{entryCell(t), recipeCell(t), b.afterCell(t)}
 	}}
-
-	lines = append(lines, b.projectsSection(own, project)...)
 
 	var tasks []TaskWithLayer
 	for _, twl := range own {
@@ -374,7 +396,7 @@ func (b boardView) renderBoardFile(project Task) string {
 			tasks = append(tasks, twl)
 		}
 	}
-	lines = append(lines, countedHeading("##", tasksSection.name, len(tasks)), "", tasksSection.meaning, "")
+	lines := []string{countedHeading(level, tasksSection.name, len(tasks)), "", tasksSection.meaning, ""}
 	byLayer := func(layer string) []TaskWithLayer {
 		var entries []TaskWithLayer
 		for _, twl := range tasks {
@@ -385,15 +407,15 @@ func (b boardView) renderBoardFile(project Task) string {
 		return entries
 	}
 	if running := byLayer(runningLayer); len(running) > 0 {
-		lines = append(lines, countedHeading("###", runningSection.name, len(running)), "", runningSection.meaning, "")
-		writeTable(running, readmeTable{columns: []string{columnTask, columnRecipe, columnAt, columnOwner}, cells: func(t Task) []string {
+		lines = append(lines, countedHeading(sublevel, runningSection.name, len(running)), "", runningSection.meaning, "")
+		lines = append(lines, b.table(running, readmeTable{columns: []string{columnTask, columnRecipe, columnAt, columnOwner}, cells: func(t Task) []string {
 			return []string{entryCell(t), recipeCell(t), atCell(*t.Status), cellText(b.ownerOf(t.Slug))}
-		}})
+		}})...)
 	}
 	ready := byLayer(readyLayer)
-	lines = append(lines, countedHeading("###", readySection.name, len(ready)), "", readySection.meaning, "")
+	lines = append(lines, countedHeading(sublevel, readySection.name, len(ready)), "", readySection.meaning, "")
 	if len(ready) > 0 {
-		writeTable(ready, waitTable)
+		lines = append(lines, b.table(ready, waitTable)...)
 	} else {
 		lines = append(lines, emptySectionLine, "")
 	}
@@ -405,8 +427,8 @@ func (b boardView) renderBoardFile(project Task) string {
 		}
 		if layer := tasks[start].Layer; layer != runningLayer && layer != readyLayer {
 			section := layerSection(layer)
-			lines = append(lines, countedHeading("###", section.name, end-start), "", section.meaning, "")
-			writeTable(tasks[start:end], waitTable)
+			lines = append(lines, countedHeading(sublevel, section.name, end-start), "", section.meaning, "")
+			lines = append(lines, b.table(tasks[start:end], waitTable)...)
 		}
 		start = end
 	}
@@ -420,7 +442,7 @@ func (b boardView) renderBoardFile(project Task) string {
 			noteCount++
 		}
 	}
-	lines = append(lines, countedHeading("##", notesSection.name, noteCount), "", notesSection.meaning, "")
+	lines = append(lines, countedHeading(level, notesSection.name, noteCount), "", notesSection.meaning, "")
 	noteTable := readmeTable{columns: []string{columnNote}, cells: func(t Task) []string { return []string{entryCell(t)} }, priority: true}
 	for _, typeLabel := range notesTypeOrder(types) {
 		entries := byType[typeLabel]
@@ -431,8 +453,8 @@ func (b boardView) renderBoardFile(project Task) string {
 		if typeLabel != "" {
 			heading = typeHeading(typeLabel)
 		}
-		lines = append(lines, countedHeading("###", heading, len(entries)), "")
-		writeTable(entries, noteTable)
+		lines = append(lines, countedHeading(sublevel, heading, len(entries)), "")
+		lines = append(lines, b.table(entries, noteTable)...)
 	}
 
 	var done []TaskWithLayer
@@ -442,30 +464,28 @@ func (b boardView) renderBoardFile(project Task) string {
 		}
 	}
 	if len(done) > 0 {
-		lines = append(lines, countedHeading("##", doneSection.name, len(done)), "", doneSection.meaning, "")
-		writeTable(done, readmeTable{columns: []string{columnEntry}, cells: func(t Task) []string {
+		lines = append(lines, countedHeading(level, doneSection.name, len(done)), "", doneSection.meaning, "")
+		lines = append(lines, b.table(done, readmeTable{columns: []string{columnEntry}, cells: func(t Task) []string {
 			if t.Kind == KindProject {
 				return []string{"**[" + cellText(t.Title) + "](" + projectFileName(t.Slug) + ")**"}
 			}
 			return []string{entryCell(t)}
-		}})
+		}})...)
 	}
-
-	return strings.TrimRight(strings.Join(lines, "\n"), "\n") + "\n"
+	return lines
 }
 
-// projectsSection builds the Projects section of project's board file from own, the entries directly under it: a heading counting its open projects, then one bullet per open project linking to its file, followed by its brief.
-// The projects follow project's order, then by handle.
-// It returns no lines when no open project sits under it.
-func (b boardView) projectsSection(own []TaskWithLayer, project Task) []string {
+// childProjects returns the open projects directly under project, in project's order, then by handle.
+// The zero Task names the root, which has no order, so its children run by handle;
+// an open project under a done project counts as directly under the root, since a done project has no README section to hold it.
+func (b boardView) childProjects(project Task) []TaskWithLayer {
 	var children []TaskWithLayer
-	for _, twl := range own {
-		if !isDone(twl.Task) && twl.Kind == KindProject {
+	for _, twl := range b.ordered {
+		parent, parentOnBoard := b.bySlug[twl.Project]
+		under := twl.Project == project.Slug || (project.Slug == "" && parentOnBoard && isDone(parent.Task))
+		if under && !isDone(twl.Task) && twl.Kind == KindProject {
 			children = append(children, twl)
 		}
-	}
-	if len(children) == 0 {
-		return nil
 	}
 	position := func(slug string) int {
 		if index := slices.Index(project.Order, slug); index >= 0 {
@@ -482,7 +502,16 @@ func (b boardView) projectsSection(own []TaskWithLayer, project Task) []string {
 		}
 		return x.ID - y.ID
 	})
+	return children
+}
 
+// projectsSection builds the Projects section of project's file: a heading counting the open projects directly under it, then one bullet per such project, in childProjects' order, linking to its file, followed by its brief.
+// It returns no lines when no open project sits under it.
+func (b boardView) projectsSection(project Task) []string {
+	children := b.childProjects(project)
+	if len(children) == 0 {
+		return nil
+	}
 	lines := []string{countedHeading("##", projectsHeading, len(children)), ""}
 	for _, child := range children {
 		line := "- " + b.fileLink(child.Task)
@@ -492,6 +521,32 @@ func (b boardView) projectsSection(own []TaskWithLayer, project Task) []string {
 		lines = append(lines, line)
 	}
 	return append(lines, "")
+}
+
+// projectSections builds one README section per open project under parent, the zero Task naming the root, at any depth: each in childProjects' order, followed by the sections of the projects under it.
+// A section's heading links the project's handle and title to its file and counts its open members; under it come the brief and one table of those members in RenderOrder's order, laid out as a Notes type table, or _None._ when it has none.
+func (b boardView) projectSections(parent Task) []string {
+	memberTable := readmeTable{columns: []string{columnEntry}, cells: func(t Task) []string { return []string{entryCell(t)} }, priority: true}
+	var lines []string
+	for _, child := range b.childProjects(parent) {
+		var members []TaskWithLayer
+		for _, twl := range b.ordered {
+			if twl.Project == child.Slug && !isDone(twl.Task) {
+				members = append(members, twl)
+			}
+		}
+		lines = append(lines, countedHeading("##", b.fileLink(child.Task), len(members)), "")
+		if child.Brief != "" {
+			lines = append(lines, child.Brief, "")
+		}
+		if len(members) > 0 {
+			lines = append(lines, b.table(members, memberTable)...)
+		} else {
+			lines = append(lines, emptySectionLine, "")
+		}
+		lines = append(lines, b.projectSections(child.Task)...)
+	}
+	return lines
 }
 
 // afterCell is the handles of the open entries t depends on, one per line in depends_on order, a dependency the board holds no handle for shown by its slug.
