@@ -57,6 +57,10 @@ func NewClient(geom Geometry, claim Claim, spawn func() (Spawn, error), clock Cl
 	return &Client{geom: geom, claim: claim, spawn: spawn, clock: clock}
 }
 
+// ErrAckUnsent marks a failed write of the acknowledgement line: the daemon never received it, so it journaled nothing of what it handed out.
+// A confirmation the daemon refused or that was lost never matches it, since the acknowledgement was written.
+var ErrAckUnsent = errors.New("creel: the acknowledgement could not be sent, so the daemon journaled nothing")
+
 // connLostError marks a connection that dropped, or never came up, as opposed to a refusal by the daemon.
 type connLostError struct{ err error }
 
@@ -120,12 +124,15 @@ func (c *Client) gaveUp(pid, connects int, err error) error {
 // waitState remembers what a waiting call learned, so a reconnect can resume it.
 type waitState struct {
 	id int64
+	// handled is set once a response reached the caller's handler, after which a hook-wait is never resumed.
+	handled bool
 }
 
 // Call sends the request as the client's claim and returns the final response.
 // A refusal by the daemon comes back as an error carrying its message; one that carries a code also matches that code's sentinel under errors.Is.
 // The timeout is measured on the client's clock over the whole request, waiting or not, and zero means none; its expiry returns ErrWaitTimeout.
 // A waiting call whose connection drops reconnects up to MaxReconnects times, starting the daemon if needed, and resumes the same wait.
+// A hook-wait resumes only until a ring reaches handle; a connection lost after that ends the call, since the daemon may already have journaled the mail the ring carried.
 // A read's response is handed to handle, and acknowledged only when handle returns nil; a handle that fails leaves the messages unread.
 func (c *Client) Call(req Request, timeout time.Duration, handle func(Response) error) (Response, error) {
 	return c.CallWatching(req, timeout, handle, nil)
@@ -154,6 +161,9 @@ func (c *Client) CallWatching(req Request, timeout time.Duration, handle func(Re
 		if !errors.As(err, &lost) || !established || !req.Wait {
 			return Response{}, err
 		}
+		if req.Verb == VerbHookWait && state.handled {
+			return Response{}, err
+		}
 		if reconnects >= MaxReconnects {
 			return Response{}, fmt.Errorf("creel: lost the connection to %s and gave up after %d reconnects: %w", c.geom.SocketPath, reconnects, err)
 		}
@@ -169,7 +179,7 @@ func (c *Client) CallWatching(req Request, timeout time.Duration, handle func(Re
 }
 
 // resume builds the request that continues a waiting call on a new connection.
-// A read and a hook-wait resume by sending the same request again, since neither waits on an id.
+// A read and a hook-wait resume by sending the same request again, since neither waits on an id; a hook-wait whose ring reached the handler is never resumed, and CallWatching ends it before it gets here.
 func (c *Client) resume(req Request, state *waitState) (Request, error) {
 	resumed := Request{Claim: c.claim, ID: state.id, Wait: true}
 	switch {
@@ -252,13 +262,14 @@ func (c *Client) exchange(conn net.Conn, req Request, timer <-chan time.Time, st
 			}
 			if resp.AckRequired {
 				if handle != nil {
+					state.handled = true
 					if err := handle(resp); err != nil {
 						return Response{}, err
 					}
 				}
 				ack, _ := encodeLine(ackLine{Ack: true})
 				if _, err := conn.Write(ack); err != nil {
-					return Response{}, &connLostError{err}
+					return Response{}, &connLostError{fmt.Errorf("%w: %w", ErrAckUnsent, err)}
 				}
 				if err := c.awaitAckConfirmation(lines, timer); err != nil {
 					return Response{}, err

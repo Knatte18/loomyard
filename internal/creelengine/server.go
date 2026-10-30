@@ -42,6 +42,8 @@ type Options struct {
 	Replaced func() bool
 	// Ready, when set, is called once the daemon listens on its socket.
 	Ready func()
+	// beforeOutcomeWait, when set, is called with each waiting verb's waiter and the channel its close watch closes, after the interim response and ahead of the wait's select; a test seam, nil in production.
+	beforeOutcomeWait func(waiter *Waiter, clientClosed <-chan struct{})
 }
 
 // Run serves the hub until ctx ends or its binary is replaced, then returns nil.
@@ -304,7 +306,7 @@ func (d *daemon) dispatch(conn *net.UnixConn, reader *bufio.Reader, sender Sende
 		}
 		return d.handOut(conn, reader, sender, reading)
 	case VerbHookWait:
-		waiter, err := store.HookWait(sender)
+		waiter, err := store.HookWait(sender, req.TakesMail)
 		if err != nil {
 			return err
 		}
@@ -392,6 +394,9 @@ func (d *daemon) awaitOutcome(conn net.Conn, reader *bufio.Reader, waiter *Waite
 	}
 	watcher := watchClose(conn, reader)
 	defer watcher.stop()
+	if d.opts.beforeOutcomeWait != nil {
+		d.opts.beforeOutcomeWait(waiter, watcher.closed)
+	}
 	for {
 		select {
 		case note := <-waiter.Progress:
@@ -406,6 +411,13 @@ func (d *daemon) awaitOutcome(conn net.Conn, reader *bufio.Reader, waiter *Waite
 					return nil
 				}
 			default:
+			}
+			if reading := outcome.Reading; reading != nil {
+				// The close watch reads the connection the acknowledgement arrives on, so it ends first.
+				watcher.stop()
+				_ = d.write(conn, Response{OK: true, ID: id, Sender: sender.Name, Outcome: outcome.Kind, Messages: reading.Messages, AckRequired: true})
+				// Handed over even when the write failed: the ack line's failed read then releases the reading.
+				return d.awaitAck(conn, reader, sender, reading)
 			}
 			resp := Response{OK: true, ID: id, Sender: sender.Name, Interrupted: interrupted, Outcome: outcome.Kind, Stall: outcome.Stall, StallAt: outcome.StallAt}
 			if outcome.Kind == OutcomeReply || outcome.Kind == OutcomeReturned || outcome.Kind == OutcomeUnanswered {
@@ -452,7 +464,7 @@ func (d *daemon) read(conn *net.UnixConn, reader *bufio.Reader, sender Sender, r
 
 // handOut answers the messages of reading, and journals them read only once the client acknowledges them on the same connection; any other answer, or none in time, releases them.
 func (d *daemon) handOut(conn *net.UnixConn, reader *bufio.Reader, sender Sender, reading *Reading) error {
-	resp := Response{OK: true, Sender: sender.Name, Messages: reading.Messages, AckRequired: len(reading.ids) > 0}
+	resp := Response{OK: true, Sender: sender.Name, Messages: reading.Messages, Echo: reading.Echo, AckRequired: len(reading.ids) > 0 || len(reading.echoIDs) > 0}
 	if err := d.write(conn, resp); err != nil {
 		reading.Release()
 		return nil
@@ -460,6 +472,11 @@ func (d *daemon) handOut(conn *net.UnixConn, reader *bufio.Reader, sender Sender
 	if !resp.AckRequired {
 		return nil
 	}
+	return d.awaitAck(conn, reader, sender, reading)
+}
+
+// awaitAck reads the client's acknowledgement of reading under ackReadTimeout and journals the messages read, answering the confirmation or the refusal; any other answer, or none in time, releases them.
+func (d *daemon) awaitAck(conn net.Conn, reader *bufio.Reader, sender Sender, reading *Reading) error {
 	_ = conn.SetReadDeadline(time.Now().Add(ackReadTimeout))
 	line, err := readLine(reader, maxRequestBytes)
 	var ack ackLine
@@ -468,7 +485,10 @@ func (d *daemon) handOut(conn *net.UnixConn, reader *bufio.Reader, sender Sender
 		return nil
 	}
 	if err := reading.Ack(); err != nil {
-		logger.Warn("creel daemon: could not journal an acknowledged read", "error", err)
+		// A claim's and a ring's Ack logged its failure itself, so the one line a failed claim leaves is its ack-failed line.
+		if reading.read {
+			logger.Warn("creel daemon: could not journal an acknowledged read", "error", err)
+		}
 		return d.write(conn, Response{OK: false, Error: err.Error()})
 	}
 	return d.write(conn, Response{OK: true, Sender: sender.Name})

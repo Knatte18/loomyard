@@ -144,6 +144,29 @@ func TestStore_Mail(t *testing.T) {
 			}
 			wantBodies(t, e.readBodies(t, strand(beta), ""), "hello", "again")
 		}},
+		{"AJournalFailureAtAReadsAckKeepsTheIdsItLeftUnjournaledReserved", func(t *testing.T, e *env) {
+			for _, body := range []string{"one", "two", "three"} {
+				e.post(t, strand(alpha), beta, body)
+			}
+			reading, err := e.store.Read(strand(beta), "")
+			if err != nil {
+				t.Fatalf("Read: %v", err)
+			}
+			if len(reading.Messages) != 3 {
+				t.Fatalf("Read handed out %d messages; want 3", len(reading.Messages))
+			}
+			e.store.FailJournalWrites(1)
+			if err := reading.Ack(); err == nil {
+				t.Fatal("Ack with the second journal write failing returned nil; want an error")
+			}
+			e.store.FailJournalWrites(-1)
+			if got := eventsOf(e.store.Log(creelengine.LogFilter{To: beta})); !slices.Equal(got, []string{"posted", "posted", "posted", "read"}) {
+				t.Errorf("Log(to beta) events = %v; want three posts and the one read of #1", got)
+			}
+			if again := e.readBodies(t, strand(beta), ""); len(again) != 0 {
+				t.Errorf("a read after the failed ack handed out %q; want nothing", again)
+			}
+		}},
 		{"Post_RefusesEmptyAndOversizedBody", func(t *testing.T, e *env) {
 			_, err := e.store.Post(strand(alpha), beta, "  ")
 			wantErr(t, err, "empty")
@@ -1127,6 +1150,27 @@ func TestStore_ClaimAtBoundary(t *testing.T) {
 			}
 			if !slices.Equal(lines, want) {
 				t.Errorf("claimed %q; want %q", lines, want)
+			}
+		}},
+		{"AJournalFailureAtTheAckReleasesEveryIdItLeftUnjournaled", func(t *testing.T, e *env) {
+			for _, body := range []string{"one", "two", "three"} {
+				e.post(t, strand(alpha), beta, body)
+			}
+			reading, lines := claimLines(t, e, beta)
+			if len(lines) != 3 {
+				t.Fatalf("claimed %q; want all three", lines)
+			}
+			e.store.FailJournalWrites(1)
+			if err := reading.Ack(); err == nil {
+				t.Fatal("Ack with the second journal write failing returned nil; want an error")
+			}
+			e.store.FailJournalWrites(-1)
+			if got := eventsOf(e.store.Log(creelengine.LogFilter{To: beta})); !slices.Equal(got, []string{"posted", "posted", "posted", "read"}) {
+				t.Errorf("Log(to beta) events = %v; want three posts and the one read of #1", got)
+			}
+			_, again := claimLines(t, e, beta)
+			if len(again) != 2 || !strings.HasPrefix(again[0], "[creel] #2 ") || !strings.HasPrefix(again[1], "[creel] #3 ") {
+				t.Errorf("a claim after the failed ack handed out %q; want #2 and #3", again)
 			}
 		}},
 		{"ReleasedClaimLeavesTheMailUnread", func(t *testing.T, e *env) {

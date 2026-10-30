@@ -245,13 +245,37 @@ func (s *Store) Reply(sender Sender, id int64, text string) (int64, error) {
 	return replyID, err
 }
 
-// Reading is the set of messages a read handed out; they are unread messages, reserved until Ack or Release.
+// EchoHeading is the line hook-read puts above the echoed lines.
+// The echo reaches the operator alone: it is the mail an idle ring already put in the model's context, shown at the woken turn's first claim.
+const EchoHeading = "[creel] Delivered while idle:"
+
+// echoItem is one line of ring mail the operator is still owed, with the id of the message it carries.
+// reserved is true while a claim that handed the line out has not yet been acknowledged or released.
+type echoItem struct {
+	id       int64
+	line     string
+	reserved bool
+}
+
+// Reading is the set of messages a read or a claim handed out; they are unread messages, reserved until Ack or Release.
 type Reading struct {
 	// Messages are the messages handed out, oldest first.
 	Messages []Message
-	store    *Store
-	holder   string
-	ids      []int64
+	// Echo are the echoed lines a claim handed out ahead of its messages, oldest first.
+	Echo   []string
+	store  *Store
+	holder string
+	ids    []int64
+	// echoIDs are the ids of the echo items handed out, kept after the reading settles them so its log line can name them; echoSettled is true once it has.
+	echoIDs     []int64
+	echoSettled bool
+	// path names the claim that made the reading for its log line: tool, stop or ring.
+	// A read's reading has none and logs nothing.
+	path string
+	// read is true for a read verb's reading, whose client already printed the mail, and false for a claim's.
+	read bool
+	// ring is true for the claim an idle waiter's ring carries, whose acknowledgement answers that ring.
+	ring bool
 }
 
 // Read returns the caller's unread mail, oldest first, that no other read has reserved: every message, or with from only that sender's.
@@ -261,7 +285,7 @@ func (s *Store) Read(sender Sender, from string) (*Reading, error) {
 	if sender.Kind == KindExternal {
 		return nil, errExternalHoldsNothing
 	}
-	reading := &Reading{store: s, holder: sender.Name}
+	reading := &Reading{store: s, holder: sender.Name, read: true}
 	err := s.do(func() error {
 		if sender.Kind == KindProgram && !s.state.programs[sender.Name] {
 			if err := s.writer.append(record{Event: eventRead, By: sender.Name}); err != nil {
@@ -291,25 +315,30 @@ const boundaryClaimBudget = 8 << 10
 type Boundary struct {
 	// Stop is true for the turn-end Stop hook and false for the tool-boundary hook.
 	Stop bool
-	// StopHookActive is the Stop hook input's stop_hook_active: true when an earlier Stop block of the same turn already continued it.
+	// StopHookActive is the Stop hook input's stop_hook_active: true when an earlier Stop claim that handed out mail already continued the turn.
 	StopHookActive bool
 }
 
-// stopBlockCap is the number of consecutive Stop blocks creel allows one turn, below the 8 Claude Code allows before it overrides a block.
+// stopBlockCap is the number of consecutive Stop claims that hand out mail, each continuing the turn, creel allows one turn, below the 8 continuations Claude Code allows before it overrides a Stop hook.
 const stopBlockCap = 6
 
 // ClaimAtBoundary hands a strand's tool-boundary hook the strand's unread mail no read has reserved, oldest first and agent mail included, reserved until Ack or Release like a read's.
 // Under a hold it hands out only the hold owner's mail, and while a pause covers the strand it hands out nothing.
 // It never claims a message whose MessageLine is longer than hookFieldCap UTF-16 units, which stays unread for `lym creel read`.
 // It stops before the message whose MessageLine, and the newline joining it to the line before, would take the lines past boundaryClaimBudget, but always hands out the first, and what it leaves stays unread for the next boundary.
-// A Stop claim hands out nothing once the strand's current turn has had stopBlockCap Stop blocks, or when no Stop or tool-boundary claim of this daemon has set its count, so the turn end is recorded.
+// A Stop claim hands out nothing once the strand's current turn has had stopBlockCap Stop claims that handed out mail, or when no Stop or tool-boundary claim of this daemon has set its count, so the turn end is recorded.
 // A claim that hands out at least one message also marks the strand's last ring answered.
+// A strand owed an echo gets its unreserved echo lines first, oldest first, whatever a pause, a hold or the Stop cap keeps from its mail; the echo and the messages share boundaryClaimBudget, and an echo alone continues no turn.
 // Only a strand sender may claim; any other sender is refused with the read verb as the way forward.
 func (s *Store) ClaimAtBoundary(sender Sender, boundary Boundary) (*Reading, error) {
 	if sender.Kind != KindStrand {
 		return nil, fmt.Errorf("creel: only a strand's tool-boundary hook claims mail, and %s is no strand; read with `lym creel read`", sender.Name)
 	}
-	reading := &Reading{store: s, holder: sender.Name}
+	path := "tool"
+	if boundary.Stop {
+		path = "stop"
+	}
+	reading := &Reading{store: s, holder: sender.Name, path: path}
 	strand, err := s.strandTarget(sender.Name)
 	if err != nil {
 		return nil, err
@@ -318,51 +347,117 @@ func (s *Store) ClaimAtBoundary(sender Sender, boundary Boundary) (*Reading, err
 	if err != nil {
 		return nil, fmt.Errorf("creel: could not read the pause record for %s: %w", sender.Name, err)
 	}
-	if paused {
-		return reading, nil
-	}
+	// reason names why the mail steps handed no mail out, for the Debug line of a claim that handed out nothing at all.
+	reason := ""
 	err = s.do(func() error {
+		s.claimEchoLocked(sender.Name, reading)
+		if paused {
+			reason = "paused"
+			return nil
+		}
 		if boundary.Stop && !boundary.StopHookActive {
 			s.stopBlocks[sender.Name] = 0
 		}
 		if boundary.Stop {
-			if blocks, known := s.stopBlocks[sender.Name]; !known || blocks >= stopBlockCap {
+			blocks, known := s.stopBlocks[sender.Name]
+			switch {
+			case !known:
+				reason = "stop-count-unknown"
+				return nil
+			case blocks >= stopBlockCap:
+				reason = "stop-cap"
 				return nil
 			}
 		}
-		used := 0
-		for _, msg := range s.claimableLocked(sender.Name) {
-			size := len(MessageLine(*msg))
-			if len(reading.ids) > 0 {
-				// The newline the hook joins this line to the one before with counts against the budget too.
-				size++
-				if used+size > boundaryClaimBudget {
-					break
-				}
-			}
-			used += size
-			s.reserved[msg.ID] = sender.Name
-			reading.ids = append(reading.ids, msg.ID)
-			reading.Messages = append(reading.Messages, *msg)
+		s.claimLocked(sender.Name, reading)
+		if len(reading.ids) == 0 {
+			reason = s.nothingClaimableReasonLocked(sender.Name)
+			return nil
 		}
-		if len(reading.ids) > 0 {
-			if mark, rung := s.wakeMarks[sender.Name]; rung && !mark.at.IsZero() {
-				mark.answered = true
-				s.wakeMarks[sender.Name] = mark
-			}
-			// Counted before the client writes the lines, so the count errs early and never late.
-			if boundary.Stop {
-				s.stopBlocks[sender.Name]++
-			} else {
-				s.stopBlocks[sender.Name] = 0
-			}
+		if mark, rung := s.wakeMarks[sender.Name]; rung && !mark.at.IsZero() {
+			mark.answered = true
+			s.wakeMarks[sender.Name] = mark
+		}
+		// Counted before the client writes the lines, so the count errs early and never late.
+		if boundary.Stop {
+			s.stopBlocks[sender.Name]++
+		} else {
+			s.stopBlocks[sender.Name] = 0
 		}
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
+	if len(reading.ids) == 0 && len(reading.echoIDs) == 0 {
+		// A standing flag runs the claim at every tool call, so an empty claim logs at Debug.
+		logger.Debug("creel claim", "strand", sender.Name, "path", path, "outcome", "nothing", "reason", reason)
+	}
 	return reading, nil
+}
+
+// nothingClaimableReasonLocked names why a claim found no mail for holder: a live hold from another sender while the holder's unread mail is none of the owner's, or no claimable mail at all.
+func (s *Store) nothingClaimableReasonLocked(holder string) string {
+	if hold := s.liveHoldLocked(holder); hold != nil {
+		unread := s.unreadLocked(holder, "")
+		if len(unread) > 0 && !slices.ContainsFunc(unread, func(msg *Message) bool { return msg.From == hold.Owner }) {
+			return "held"
+		}
+	}
+	return "nothing-claimable"
+}
+
+// claimEchoLocked reserves to reading the holder's unreserved echo items, oldest first, and stops before the line that would take the echo lines past boundaryClaimBudget; it always takes the first.
+func (s *Store) claimEchoLocked(holder string, reading *Reading) {
+	items := s.echoes[holder]
+	used := 0
+	for i := range items {
+		if items[i].reserved {
+			continue
+		}
+		size := len(items[i].line)
+		if len(reading.Echo) > 0 {
+			size++
+			if used+size > boundaryClaimBudget {
+				break
+			}
+		}
+		used += size
+		items[i].reserved = true
+		reading.Echo = append(reading.Echo, items[i].line)
+		reading.echoIDs = append(reading.echoIDs, items[i].id)
+	}
+}
+
+// echoBytes is the byte length of lines joined by newlines.
+func echoBytes(lines []string) int {
+	total := 0
+	for i, line := range lines {
+		if i > 0 {
+			total++
+		}
+		total += len(line)
+	}
+	return total
+}
+
+// claimLocked reserves to reading the holder's claimable messages, oldest first, and stops before the message whose line and joining newline would take the echo and message lines already in reading past boundaryClaimBudget; it always takes the first line, echo or message.
+func (s *Store) claimLocked(holder string, reading *Reading) {
+	used := echoBytes(reading.Echo)
+	for _, msg := range s.claimableLocked(holder) {
+		size := len(MessageLine(*msg))
+		if len(reading.ids) > 0 || len(reading.Echo) > 0 {
+			// The newline the hook joins this line to the one before with counts against the budget too.
+			size++
+			if used+size > boundaryClaimBudget {
+				break
+			}
+		}
+		used += size
+		s.reserved[msg.ID] = holder
+		reading.ids = append(reading.ids, msg.ID)
+		reading.Messages = append(reading.Messages, *msg)
+	}
 }
 
 // claimableLocked returns the unread messages ClaimAtBoundary would hand holder if the byte budget were unlimited, oldest first.
@@ -390,9 +485,10 @@ func (s *Store) resetStopBlocks(strand string) {
 }
 
 // HookWait registers the idle waiter of the calling strand: a wait the daemon answers with OutcomeRing when it wakes the idle strand.
+// With takesMail the waiter is marked: its ring carries the strand's claimed mail, which the waiter acknowledges.
 // A newer waiter of the same strand ends the older, which is answered OutcomeSuperseded before the new one registers.
 // Only a strand sender may wait; any other sender is refused with the way forward for its kind.
-func (s *Store) HookWait(sender Sender) (*Waiter, error) {
+func (s *Store) HookWait(sender Sender, takesMail bool) (*Waiter, error) {
 	if sender.Kind != KindStrand {
 		message := fmt.Sprintf("creel: only a strand's idle waiter hook waits for a wake, and %s is no strand", sender.Name)
 		switch sender.Kind {
@@ -410,6 +506,7 @@ func (s *Store) HookWait(sender Sender) (*Waiter, error) {
 		var err error
 		waiter, err = s.addWaiterLocked(key)
 		if err == nil {
+			waiter.takesMail = takesMail
 			s.wakeLocked(sender.Name)
 		}
 		return err
@@ -430,26 +527,64 @@ func (s *Store) hookWakeState(strand string) (ids []int64, mark wakeMark, waitin
 	return ids, s.wakeMarks[strand], len(s.waiters[waitKey{kind: waitHook, holder: strand}]) > 0
 }
 
+// hookWaiterTakesMail reports whether a registered idle waiter of strand is marked as taking mail.
+func (s *Store) hookWaiterTakesMail(strand string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return anyTakesMail(s.waiters[waitKey{kind: waitHook, holder: strand}])
+}
+
+// anyTakesMail reports whether one of waiters is marked as taking mail.
+func anyTakesMail(waiters []*Waiter) bool {
+	for _, waiter := range waiters {
+		if waiter.takesMail {
+			return true
+		}
+	}
+	return false
+}
+
 // ringHook answers strand's registered waiters with OutcomeRing and records the mark of the ring at now, provided the claimable set is still ids and a waiter is still registered.
+// A marked waiter's ring carries a claim of the set through claimLocked, in a Reading the waiter acknowledges, and is made only when the pause read just before the locked step ran for a marked waiter and found no pause; a pause, a failed pause read or a marked waiter that registered after the read rings nothing and leaves the waiter registered.
+// A pause that keeps a marked ring from claiming logs it at Debug, and the ring's claim logs its outcome like any other.
 // It reports whether it rang, and starts the strand's Stop count over when it did.
-func (s *Store) ringHook(strand string, ids []int64, now time.Time) bool {
+func (s *Store) ringHook(strand Strand, ids []int64, now time.Time) bool {
+	pauseRead := s.hookWaiterTakesMail(strand.Name)
+	if pauseRead {
+		if paused, err := s.delivery.Paused(strand); err != nil || paused {
+			logger.Debug("creel claim", "strand", strand.Name, "path", "ring", "outcome", "nothing", "reason", "paused")
+			return false
+		}
+	}
 	rang := false
 	_ = s.do(func() error {
 		var current []int64
-		for _, msg := range s.claimableLocked(strand) {
+		for _, msg := range s.claimableLocked(strand.Name) {
 			current = append(current, msg.ID)
 		}
 		if !slices.Equal(current, ids) {
 			return nil
 		}
-		rang = s.answerLocked(waitKey{kind: waitHook, holder: strand}, Outcome{Kind: OutcomeRing}) > 0
-		if rang {
-			s.wakeMarks[strand] = wakeMark{ids: ids, at: now}
+		key := waitKey{kind: waitHook, holder: strand.Name}
+		waiters := s.waiters[key]
+		if len(waiters) == 0 {
+			return nil
 		}
+		outcome := Outcome{Kind: OutcomeRing}
+		if anyTakesMail(waiters) {
+			if !pauseRead {
+				return nil
+			}
+			reading := &Reading{store: s, holder: strand.Name, ring: true, path: "ring"}
+			s.claimLocked(strand.Name, reading)
+			outcome.Reading = reading
+		}
+		rang = s.answerLocked(key, outcome) > 0
+		s.wakeMarks[strand.Name] = wakeMark{ids: ids, at: now}
 		return nil
 	})
 	if rang {
-		s.resetStopBlocks(strand)
+		s.resetStopBlocks(strand.Name)
 	}
 	return rang
 }
@@ -468,31 +603,136 @@ func (s *Store) journalReadLocked(msg *Message, holder string) error {
 }
 
 // Ack marks the reserved messages read and journals each; a message that left the holder meanwhile stays as it is.
+// Once every id is journaled, the Ack of a ring's claim marks the strand's last ring answered.
+// When a journal write fails, a claim's Ack releases the id it failed on and every id after it, so a later claim hands them out once more, and answers the holder's mail waiters;
+// a read's Ack leaves them reserved, since its client already printed the mail.
+// The ids before the failing one stay journaled read, and the error is returned.
+// A claim's Ack drops the echo items it handed out, whatever the journal writes do, since the hook already showed them.
+// A ring's Ack appends to the strand's echo one item per id it passed, journaled read or skipped as no longer the holder's unread mail, and none from a failing id on.
+// The Ack of a claim or a ring that handed something out logs its outcome once.
 func (r *Reading) Ack() error {
 	return r.store.do(func() error {
-		for _, id := range r.ids {
-			delete(r.store.reserved, id)
+		var dropped []int64
+		if len(r.echoIDs) > 0 && !r.echoSettled {
+			dropped = r.echoIDs
+		}
+		changedEcho := r.settleEchoLocked(true)
+		defer func() {
+			if changedEcho {
+				r.store.syncFlagsLocked()
+			}
+		}()
+		echo := func(i int) {
+			if r.ring {
+				r.store.echoes[r.holder] = append(r.store.echoes[r.holder], echoItem{id: r.ids[i], line: MessageLine(r.Messages[i])})
+				changedEcho = true
+			}
+		}
+		for i, id := range r.ids {
 			msg := r.store.state.messages[id]
 			if msg == nil || msg.Holder != r.holder || msg.Status != StatusUnread {
+				delete(r.store.reserved, id)
+				echo(i)
 				continue
 			}
 			if err := r.store.journalReadLocked(msg, r.holder); err != nil {
+				var released []int64
+				if !r.read {
+					released = slices.Clone(r.ids[i:])
+					for _, unjournaled := range r.ids[i:] {
+						delete(r.store.reserved, unjournaled)
+					}
+					r.store.answerLocked(waitKey{kind: waitHolder, holder: r.holder}, Outcome{Kind: OutcomeMail})
+					r.ids = nil
+				}
+				r.logOutcome(claimAckFailed, released, dropped, err)
 				return err
 			}
+			delete(r.store.reserved, id)
+			echo(i)
+		}
+		if r.ring {
+			if mark, rung := r.store.wakeMarks[r.holder]; rung && !mark.at.IsZero() {
+				mark.answered = true
+				r.store.wakeMarks[r.holder] = mark
+			}
+		}
+		if len(r.Messages) > 0 || len(r.echoIDs) > 0 {
+			r.logOutcome(claimAcknowledged, nil, nil, nil)
 		}
 		r.ids = nil
 		return nil
 	})
 }
 
+// The outcomes a delivered claim's log line carries.
+const (
+	claimAcknowledged = "acknowledged"
+	claimAckFailed    = "ack-failed"
+	claimReleased     = "released"
+)
+
+// logOutcome writes the one daemon log line of this claim's delivery attempt: the strand, the path that claimed (tool, stop or ring), the message ids and echo ids it handed out, and the outcome.
+// An acknowledged claim logs at Info, a released one at Info, and one whose journal write failed at Warn with the error, the message ids released for a later claim and the echo ids dropped.
+// A reading no claim made, a read's, has no path and logs nothing.
+func (r *Reading) logOutcome(outcome string, released, dropped []int64, err error) {
+	if r.path == "" {
+		return
+	}
+	ids := make([]int64, len(r.Messages))
+	for i, msg := range r.Messages {
+		ids[i] = msg.ID
+	}
+	attrs := []any{"strand", r.holder, "path", r.path, "ids", ids, "echo_ids", r.echoIDs, "outcome", outcome}
+	if outcome == claimAckFailed {
+		logger.Warn("creel claim", append(attrs, "error", err, "released_ids", released, "dropped_echo_ids", dropped)...)
+		return
+	}
+	logger.Info("creel claim", attrs...)
+}
+
+// settleEchoLocked ends this reading's hold on the echo items it handed out, once: it drops them, or with drop false leaves them owed and unreserved.
+// It reports whether the holder's echo had any, and syncs nothing; the caller does.
+func (r *Reading) settleEchoLocked(drop bool) bool {
+	if len(r.echoIDs) == 0 || r.echoSettled {
+		return false
+	}
+	r.echoSettled = true
+	var kept []echoItem
+	for _, item := range r.store.echoes[r.holder] {
+		if item.reserved && slices.Contains(r.echoIDs, item.id) {
+			if drop {
+				continue
+			}
+			item.reserved = false
+		}
+		kept = append(kept, item)
+	}
+	if len(kept) == 0 {
+		delete(r.store.echoes, r.holder)
+	} else {
+		r.store.echoes[r.holder] = kept
+	}
+	return true
+}
+
 // Release drops the reservation and leaves the messages unread; a wait for the holder's mail is answered, since the mail is back.
+// The echo items the claim handed out are unreserved, so they stay owed.
+// A release of a claim or a ring that still held ids or echo items logs its outcome once.
 func (r *Reading) Release() {
 	_ = r.store.do(func() error {
+		held := len(r.ids) > 0 || (len(r.echoIDs) > 0 && !r.echoSettled)
+		if r.settleEchoLocked(false) {
+			r.store.syncFlagsLocked()
+		}
 		for _, id := range r.ids {
 			delete(r.store.reserved, id)
 		}
 		if len(r.ids) > 0 {
 			r.store.answerLocked(waitKey{kind: waitHolder, holder: r.holder}, Outcome{Kind: OutcomeMail})
+		}
+		if held {
+			r.logOutcome(claimReleased, nil, nil, nil)
 		}
 		r.ids = nil
 		return nil

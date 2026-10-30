@@ -31,6 +31,7 @@ const (
 	// VerbClaim hands a strand's tool-boundary hook its unread mail, acknowledged on the same connection as a read is.
 	VerbClaim = "claim"
 	// VerbHookWait holds a strand's idle waiter: it is answered with a ring when the daemon wakes the idle strand, and with a supersede when a newer waiter of the same strand replaces it.
+	// A ring to a waiter whose request set takes_mail carries the claimed messages and asks their acknowledgement on the same connection, as a read and a claim do.
 	VerbHookWait = "hook-wait"
 )
 
@@ -72,6 +73,9 @@ type Request struct {
 	Stop bool `json:"stop,omitempty"`
 	// StopHookActive is the Stop hook input's stop_hook_active, read by the claim verb alone.
 	StopHookActive bool `json:"stop_hook_active,omitempty"`
+	// TakesMail marks a hook-wait request's waiter as taking mail: its ring carries the claimed messages, which the client acknowledges.
+	// A daemon that predates it ignores the key and rings with no mail.
+	TakesMail bool `json:"takes_mail,omitempty"`
 }
 
 // Response is what the daemon answers on a connection; every one carries the hub path.
@@ -93,8 +97,10 @@ type Response struct {
 	Sender string `json:"sender,omitempty"`
 	// ID is the id of the message or inject the verb created or waits on.
 	ID int64 `json:"id,omitempty"`
-	// Messages are the messages a read hands out; AckRequired says the client must ack them on the same connection.
-	Messages    []Message    `json:"messages,omitempty"`
+	// Messages are the messages a read or a claim hands out, and a ring to a marked hook waiter carries; AckRequired says the client must ack them on the same connection.
+	Messages []Message `json:"messages,omitempty"`
+	// Echo are the lines of ring mail a claim hands out ahead of its messages, shown to the operator alone; AckRequired covers them too.
+	Echo        []string     `json:"echo,omitempty"`
 	AckRequired bool         `json:"ack_required,omitempty"`
 	Inbox       *InboxResult `json:"inbox,omitempty"`
 	Log         []LogEntry   `json:"log,omitempty"`

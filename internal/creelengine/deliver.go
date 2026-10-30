@@ -277,7 +277,7 @@ func (w *worker) wakeHookStrand(strand Strand, now time.Time) bool {
 		unanswered = false
 	}
 	if ringable && idleness.NoTurn && (mark.at.IsZero() || idleness.TurnEndedAt.IsZero() || idleness.TurnEndedAt.After(mark.at)) {
-		return store.ringHook(strand.Name, ids, now)
+		return store.ringHook(strand, ids, now)
 	}
 	if belled {
 		return false
@@ -294,12 +294,27 @@ func (w *worker) wakeHookStrand(strand Strand, now time.Time) bool {
 
 // typeBell types BellLine into a hook strand once it is idle, and records the bell for the claimable set ids, whether the line landed or not.
 // A line that did not land is never typed again for the same set; a busy send records nothing, so the next probe tries again.
+// Every send it makes logs one `creel bell` line.
 func (w *worker) typeBell(strand Strand, ids []int64) bool {
 	store := w.scheduler.store
 	if !w.idle(strand) {
 		return false
 	}
 	err := w.scheduler.delivery.Send(strand, BellLine)
+	outcome := "sent"
+	switch {
+	case errors.Is(err, ErrNotLanded):
+		outcome = "not-landed"
+	case errors.Is(err, ErrBusy):
+		outcome = "busy"
+	case err != nil:
+		outcome = "failed"
+	}
+	attrs := []any{"strand", strand.Name, "ids", ids, "outcome", outcome}
+	if outcome == "failed" {
+		attrs = append(attrs, "error", err)
+	}
+	logger.Info("creel bell", attrs...)
 	switch {
 	case err == nil, errors.Is(err, ErrNotLanded):
 		w.report("send", nil)

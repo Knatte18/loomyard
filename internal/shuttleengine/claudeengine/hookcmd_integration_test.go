@@ -329,15 +329,17 @@ func TestCreelMailHook_RunsLymOnlyWhenTheStrandsFlagStands(t *testing.T) {
 	}
 }
 
-// TestCreelStopHook_RecordsATurnEndOnlyWithoutABlock runs the merged Stop command under sh with a stub `lym` on PATH that records the standard input it got, prints a fixed block and exits as the row says.
-// A block written (the stub exits 0) leaves the events file empty and the block on standard output; otherwise, with the flag absent as well, the file holds the Stop stamp and then the payload byte for byte, which ParseEvents reads as the payload alone.
+// TestCreelStopHook_RecordsATurnEndOnlyWithoutABlock runs the merged Stop command under sh with a stub `lym` on PATH that records the standard input it got, prints a fixed output and exits as the row says.
+// Mail written (the stub exits 0) leaves the events file empty and the output on standard output; otherwise, with the flag absent as well, the file holds the Stop stamp and then the payload byte for byte, which ParseEvents reads as the payload alone.
+// An exit 1 that printed an echo alone records the turn end and leaves the printed output as the hook's.
 // An unwritable events file fails the command as the plain recording command does.
 func TestCreelStopHook_RecordsATurnEndOnlyWithoutABlock(t *testing.T) {
 	t.Parallel()
 
 	const (
-		name  = "ly:creel-stop:driver"
-		block = `{"decision":"block","reason":"mail","systemMessage":"mail"}`
+		name = "ly:creel-stop:driver"
+		mail = `{"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"mail"}}`
+		echo = `{"systemMessage":"echo"}`
 	)
 	payload := paddedPayload(t, map[string]any{"hook_event_name": "Stop", "session_id": "s1", "last_assistant_message": "done"}, 20000)
 	tests := []struct {
@@ -351,9 +353,10 @@ func TestCreelStopHook_RecordsATurnEndOnlyWithoutABlock(t *testing.T) {
 		wantStubRun bool
 		wantFailure bool
 	}{
-		{"FlagStandsAndABlockIsWritten", true, "0", block, "", block + "\n", false, true, false},
+		{"FlagStandsAndMailIsWritten", true, "0", mail, "", mail + "\n", false, true, false},
+		{"FlagStandsAndAnEchoAloneIsWritten", true, "1", echo, "", echo + "\n", true, true, false},
 		{"FlagStandsAndNothingIsClaimed", true, "1", "", "", "", true, true, false},
-		{"FlagAbsent", false, "0", block, "", "", true, false, false},
+		{"FlagAbsent", false, "0", mail, "", "", true, false, false},
 		{"UnwritableEventsFile", true, "1", "", "missing-dir", "", false, true, true},
 	}
 	for _, tt := range tests {

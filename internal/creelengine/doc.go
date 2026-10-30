@@ -122,33 +122,56 @@
 // ClaimAtBoundary hands the strand its unread mail no read has reserved, oldest first and agent mail included, as a read does: reserved until the client acknowledges it on the same connection, and journaled read only then.
 // Under a hold it hands out only the owner's mail, and while a pause covers the strand nothing.
 // One claim stops before the message whose line would take its lines, with the newlines joining them, past an 8 KiB budget, though it always hands out the first, and what it leaves stays unread with its flag standing.
+// A journal write that fails at a claim's acknowledgement releases the id it failed on and every id after it, so a later claim hands them out once more; a read's acknowledgement keeps them reserved, since its client already printed the mail.
 // Each message is one MessageLine, the line a notice is typed as: the plain form, or the marked form for a message that expects a reply.
 //
-// The Stop hook claims through the same verb with the Stop flag and the hook input's stop_hook_active, and blocks the turn end while it hands out mail.
-// The store counts, per strand, the consecutive Stop blocks of the strand's current turn: a Stop whose stop_hook_active is false resets the count to 0, a Stop at 6 blocks or more claims nothing so the turn end is recorded, a Stop that hands out mail adds one before the client writes it, and a tool-boundary claim that hands out mail resets the count to 0.
-// A strand with no count is at the cap, so a daemon that just started, a restart included, blocks no Stop until one of those resets; the count is never journaled.
-// The cap of 6 stays below the 8 Claude Code allows, so no override discards a block whose mail was journaled read.
+// The Stop hook claims through the same verb with the Stop flag and the hook input's stop_hook_active, and hands the mail out as additional context that continues the turn while it hands out mail.
+// The store counts, per strand, the consecutive Stop claims that handed out mail in the strand's current turn: a Stop whose stop_hook_active is false resets the count to 0, a Stop at 6 continuations or more claims nothing so the turn end is recorded, a Stop that hands out mail adds one before the client writes it, and a tool-boundary claim that hands out mail resets the count to 0.
+// A strand with no count is at the cap, so a daemon that just started, a restart included, hands out no Stop mail until one of those resets; the count is never journaled.
+// The cap of 6 stays below the 8 Claude Code allows, so no override discards a continuation whose mail was journaled read.
 // Bound: an agent strand's text reaches the session in full here, where the pane path only reminds it; the line opens with the sender creel stamps, and only mail the strand already holds is handed over.
 //
-// Each message is delivered once, by whichever path reserves it first: the claim during a turn, or the pane path, which reserves a notice before it types it.
+// Each message is delivered once, by whichever path reserves it first: the claim during a turn, the ring's claim to a marked idle waiter, or the pane path, which reserves a notice before it types it.
+// Two paths show mail whatever the outcome of its acknowledgement: `hook-read`, and `hook-wait` once its acknowledgement is written, so mail the daemon did not journal is handed out once more.
+// The ring's mail is journaled read before it is shown, so the loss window below loses it as read.
 // A turn that ends with no tool call is reached by the pane path.
 //
 // # Idle wake
 //
 // A hook strand, one marked `CreelHooks`, has an idle waiter: the `hook-wait` verb registers a wait for the calling strand, and only a strand may register one.
 // A newer waiter of the same strand ends the older, which is answered `superseded` before the new one registers, and a waiter lives exactly as long as its connection.
-// A dropped hook-wait is resumed by sending the same request again, up to MaxReconnects.
+// A dropped hook-wait is resumed by sending the same request again, up to MaxReconnects, until a ring reaches the caller's handler; after that a lost connection ends the call, since the daemon may already have journaled the ring's mail.
+// A call whose acknowledgement line could not be written returns an error matching ErrAckUnsent, which tells it apart from an acknowledgement the daemon never confirmed.
 //
 // A worker rings the waiter, answering it `ring`, when the strand's claimable messages are non-empty and differ from those of its last ring, a waiter is registered, and the delivery reads no turn in progress, whatever the input box holds, so a draft does not hold the ring.
 // The claimable messages are the unread ones a boundary claim would hand out if its byte budget were unlimited.
-// A ring carries no mail and claims nothing; the woken turn's first tool call or its Stop takes the mail.
-// It starts the strand's Stop count over and records the claimable ids and the clock time, in memory alone.
+// A waiter whose `hook-wait` request sets `takes_mail` is marked: only a strand registers one, and it takes only its own strand's mail.
+// A ring to a marked waiter claims the claimable set under the boundary rules, hold, `hookFieldCap` and the 8 KiB budget included, skipping only the Stop cap and the Stop count, and carries the claimed messages with `ack_required` on the same connection, as a read and a claim do.
+// The waiter acknowledges them, they are journaled read then, and the acknowledgement answers the ring.
+// A marked ring is made only when the pause read just before the locked step ran for a marked waiter and found no pause; a pause, a failed pause read, a claimable set that changed meanwhile, or a marked waiter that registered after the read rings nothing and leaves the waiter registered, and its registration's wake has the worker probe again.
+// A claim that comes back unacknowledged is released: a client that leaves or answers anything but the acknowledgement, a failed write of the ring, a failed journal write at the acknowledgement, a wait cancelled while its ring still stands unread in its channel, and a daemon that stops all release the mail unread, and the bell follows the ring's window.
+// An unmarked waiter, an older binary's, is rung as before: it carries no mail and claims nothing, and the woken turn's first tool call or its Stop takes the mail.
+// Either ring starts the strand's Stop count over and records the claimable ids and the clock time, in memory alone.
 // A woken turn records no prompt submit, so from a ring on the no-turn reading holds false until the reading carries a turn end recorded after the ring; a reading the pane decided has no turn end time and is taken as it reads.
 // The same claimable set is never rung twice, a restarted daemon has no marks and may ring a set once more, and a pause or a hold from another sender silences the ring as it does the pane path.
-// Bound: one ring costs one short model turn before the mail turn, and a ring that races a turn the operator starts delivers nothing and leaves one stale bell reminder.
+// Bound: a pause starting between the pause read and the locked step lets one ring deliver, and a ring that races a turn the operator starts leaves one stale bell reminder.
+// Bound: the mail is journaled read before Claude Code shows it, so a session that dies, or a hook Claude Code ends at its timeout or at session end, between the journaled read and Claude Code reading the exit loses it as read.
+// An acknowledgement whose confirmation is refused or lost shows the mail the daemon did not journal twice, once in the wake and once at a later claim, and the bell may follow the woken turn.
+// Claude Code escapes `system-reminder` tags and replaces its own marker patterns in the wake body, so such mail reaches the model altered.
+//
+// The operator sees the ring's mail as an echo.
+// The wake reaches the model alone, drawn as one `creel mail` row, so the acknowledgement of a ring leaves the strand an echo: in memory, one item per id the ring passed, oldest first, whether the id was journaled read or skipped because it left the holder before the acknowledgement.
+// An acknowledgement whose journal write fails echoes the ids before the failing one and none from it on, since the ids from it on were released and a later claim hands them out as mail.
+// A claim hands out the strand's unreserved echo lines before its mail, under EchoHeading, so the echo reaches the operator and the mail reaches both;
+// a pause, a hold, the Stop cap and an unknown Stop count keep mail back and never the echo, and a claim that hands out an echo alone neither marks a ring answered nor counts a Stop, so it continues no turn.
+// The echo and the mail share boundaryClaimBudget, the first line, echo or message, always handed out, and what does not fit stays owed.
+// A ring hands out no echo, so with an echo owed it can claim mail the budget of a boundary claim would leave for later.
+// The acknowledgement of a claim drops the echo items it handed out, whether or not its journal writes succeed, since the hook already showed them, and the release of a claim keeps them owed.
+// A strand owed an echo, reserved or not, keeps its mail flag, so the tool-boundary hook and the Stop command claim while an echo is owed.
+// Bound: the echo is shown after the model has the mail, a StopFailure claims nothing and a session that ends first never shows it; a restart of the daemon drops it, and the daemon log's claim line of a ring, path `ring`, records the ids.
 //
 // A user interrupt fires no Stop, so a hook strand can sit idle with mail no waiter reaches; the worker then types the fixed bell line into its pane, `[creel] Mail is waiting for you. End this turn now; creel hands the mail to you as the turn ends. Do not run lym creel read for it.`, which carries no sender text, so no post is typed.
-// A ring is answered by a claim of the strand that hands out at least one message, or by a probe that reads a turn in progress after the ring.
+// A ring is answered by the acknowledgement of its own claim, by a claim of the strand that hands out at least one message, or by a probe that reads a turn in progress after the ring.
 // When the worker does not ring, it types the bell for a claimable set no bell was typed for, in one of two cases.
 // With no unanswered ring standing, it types it when no waiter is live and none has been for 5 seconds, counted from the later of the store's opening and the end of the strand's last waiter, so the bell stays out of the moment between a Stop and its waiter's connection.
 // With the last ring unanswered, the grace does not apply, since a ring ends the waiter it rings, and it types the bell once the ring has gone unanswered for 30 seconds.
@@ -156,6 +179,19 @@
 // A newer set may get its own bell, and an unchanged set never gets a second; a pause silences the bell as it does the ring, and under a hold from another sender only the owner's mail makes a set.
 // Only a strand marked `CreelHooks` gets the bell: every other strand is a pane-mail strand and has its notice and reminder, so mail to an idle strand always wakes it.
 // Bound: one fixed line per claimable set; a waiter whose session died rings into nothing once and the window hands the set to the bell; a restarted daemon may type the bell once more for a set it already woke.
+//
+// # Delivery log
+//
+// The daemon logs each hook delivery attempt and each bell send through internal/logger, so the daemon log shows what reached a session.
+// A claim or ring that handed something out logs one `creel claim` line with `strand`, `path` (`tool`, `stop` or `ring`), `ids` (the message ids handed out), `echo_ids` (the echo ids handed out) and `outcome`.
+// The outcome `acknowledged`, at Info, means its acknowledgement was journaled, a confirmation lost after the journaled read included, and records the ids the loss window above loses as read.
+// The outcome `ack-failed`, at Warn, means a journal write failed, and adds `error`, `released_ids` (the ids released for a later claim) and `dropped_echo_ids` (the echo ids dropped, none for a ring).
+// The outcome `released`, at Info, means the claim ended before its acknowledgement, whether the client dropped or failed, a write failed or a ring's wait was cancelled, and is logged only when the claim held ids or echo items.
+// A failed journal write at a claim's or a ring's acknowledgement logs once, as `ack-failed`; only a read's logs the daemon's own warning.
+// A claim that hands out nothing logs at Debug with `outcome` `nothing` and a `reason`, since a standing flag runs the claim at every tool call: `paused`, `held` (a live hold from another sender while none of the strand's unread mail is the owner's), `stop-cap`, `stop-count-unknown` or `nothing-claimable`.
+// A ring of a marked waiter that a pause or an unreadable pause record keeps from claiming logs the same Debug line with path `ring` and reason `paused`; a claimable set that changed before the locked step claims nothing and logs nothing, since the next probe decides afresh.
+// Every bell send logs one `creel bell` line at Info with `strand`, `ids` (the claimable ids) and `outcome` `sent`, `not-landed`, `busy` or `failed`, adding `error` on the last.
+// Bound: a hook that never reaches the daemon is not logged by it.
 //
 // # Inject and interrupt
 //
@@ -200,7 +236,7 @@
 // A strand a pause covers is claimed into that pause and then interrupted, so `lym tender resume` gives it its resume line.
 // An unreadable pause record, a pause lifted before the key and another sender's hold refuse it.
 //
-// post --interrupt stops the receiver's running turn and then posts, so a scope change that must not wait for the next tool call lands as the input of the next turn: the Stop block delivers it, through the bell when the turn's stop fired no waiter.
+// post --interrupt stops the receiver's running turn and then posts, so a scope change that must not wait for the next tool call lands as the input of the next turn: the Stop claim delivers it, through the bell when the turn's stop fired no waiter.
 // It is one request: it validates the post, then applies the privilege rule of interrupt, so a sender stops a turn only where interrupt already lets it, and refuses a receiver not marked `CreelHooks`, since no hook delivery or bell would hand the post to the stopped session.
 // The refusals of the interrupt come back worded for the post and say that nothing was interrupted or posted; a receiver with no running turn still gets the post and the answer says it was not interrupted.
 // A post that fails to store after the turn was stopped says so and names a post without `--interrupt` as the way forward.

@@ -1,5 +1,5 @@
 // capabilities.go implements Claude's optional engine capabilities.
-// They are requirement support, project instruction files, resume-context rendering and creel's hook delivery: the hook-input parse, the visible block and the wake output.
+// They are requirement support, project instruction files, resume-context rendering and creel's hook delivery: the hook-input parse, the hook output and the wake output.
 
 package claudeengine
 
@@ -63,30 +63,33 @@ func (c *Claude) HookInput(payload []byte) (shuttleengine.HookInput, error) {
 	return input, nil
 }
 
-// stopBlockReason is the reason of creel's Stop block, which points the model at the mail in the block's additional context.
-const stopBlockReason = "[creel] Mail for you arrived as this turn ended; it is in this Stop hook's additional context. Act on it now."
-
-// BoundaryBlock renders text as the JSON a PostToolUse or Stop hook prints to block, handing text to the model once and showing it to the operator as the system message.
-// After a tool call text is the block's reason.
-// On a Stop text is the additional context and the reason is stopBlockReason, since Claude Code hands a Stop block's reason to the model twice, once after the hook's command text.
-func (c *Claude) BoundaryBlock(event shuttleengine.HookEvent, text string) ([]byte, error) {
+// HookOutput renders the JSON a PostToolUse or Stop hook prints to hand mail to the model as additional context, never as a block.
+// After a tool call the operator's system message is echo and a newline before mail, or mail alone with no echo;
+// on a Stop it is echo alone, absent with no echo.
+// With echo and no mail the output is the system message alone, and every empty key is omitted.
+func (c *Claude) HookOutput(event shuttleengine.HookEvent, mail, echo string) ([]byte, error) {
 	type specificOutput struct {
 		HookEventName     string `json:"hookEventName"`
 		AdditionalContext string `json:"additionalContext"`
 	}
-	block := struct {
-		Decision           string          `json:"decision"`
-		Reason             string          `json:"reason"`
-		SystemMessage      string          `json:"systemMessage"`
+	output := struct {
+		SystemMessage      string          `json:"systemMessage,omitempty"`
 		HookSpecificOutput *specificOutput `json:"hookSpecificOutput,omitempty"`
-	}{Decision: "block", Reason: text, SystemMessage: text}
-	if event == shuttleengine.HookEventStop {
-		block.Reason = stopBlockReason
-		block.HookSpecificOutput = &specificOutput{HookEventName: hookEventStop, AdditionalContext: text}
+	}{SystemMessage: echo}
+	if mail != "" {
+		eventName := hookEventPostToolUse
+		if event == shuttleengine.HookEventStop {
+			eventName = hookEventStop
+		} else if echo == "" {
+			output.SystemMessage = mail
+		} else {
+			output.SystemMessage = echo + "\n" + mail
+		}
+		output.HookSpecificOutput = &specificOutput{HookEventName: eventName, AdditionalContext: mail}
 	}
-	data, err := json.Marshal(block)
+	data, err := json.Marshal(output)
 	if err != nil {
-		return nil, fmt.Errorf("marshal boundary block: %w", err)
+		return nil, fmt.Errorf("marshal hook output: %w", err)
 	}
 	return data, nil
 }
