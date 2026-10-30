@@ -225,7 +225,7 @@
 // # The landing hold
 //
 // Whether an entry is held and whether its run is in flight are two questions with two readers.
-// `RunHolds` answers the first: it is true for every entry `IsRunStatus` accepts, except a beam project whose producer half is `Worktree-Create`, `Beam-Up` or `Beam-Await`, the rows a pawl run stands at before it reaches Parent-Align, a halt at any of them included.
+// `RunHolds` answers the first: it is true for every entry `IsRunStatus` accepts, except a beam project whose producer half is `Worktree-Create`, `Preflight`, `Beam-Up` or `Beam-Await`, the rows a pawl run stands at before it reaches Parent-Align, a halt at any of them included.
 // `boardengine` imports no recipe package, so the pawl recipe's own test pins that list against the claim row's and the recipe's row names.
 // The readers that ask whether an entry is held switch on it: membership of a task in a beam, the Project layer, a member forking from its beam, a verb running inside the beam and the `lym loom peers` list.
 // The readers that ask whether a run is in flight keep `IsRunStatus` and see the pawl run at every row: adopt's started-entry test, tender's owner-pause selection, batten's owner check and the parent dobby's driven runs.

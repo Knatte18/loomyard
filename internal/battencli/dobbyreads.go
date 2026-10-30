@@ -176,7 +176,7 @@ func DobbyRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *Dobby
 }
 
 // runTakesNoSlot reports whether the run behind task takes no slot under its dobby's max_runs: a beam project whose status is a run status and whose run does not hold the beam.
-// A pawl run stands at Worktree-Create, Beam-Up and Beam-Await with no hold, waiting on its members, and takes a slot from Parent-Align on.
+// A pawl run stands at Worktree-Create, Preflight, Beam-Up and Beam-Await with no hold, waiting on its members, and takes a slot from Parent-Align on.
 func runTakesNoSlot(task boardengine.Task) bool {
 	return task.Kind == boardengine.KindProject && task.Beam && boardengine.IsRunStatus(task.Status) && !boardengine.RunHolds(task)
 }

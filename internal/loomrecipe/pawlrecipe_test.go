@@ -1,6 +1,6 @@
 //go:build tier0
 
-// pawlrecipe_test.go covers NewPawl and PawlRouting: the pawl recipe's ten rows, their edges, with Beam-Describe handing to PR-Review, and producer types, the Code-Review perch's budget, the absence of a reroute edge on Finalize, the refusal of an unfilled seam, and the hold boundary the recipe's rows pin against boardengine.RunHolds.
+// pawlrecipe_test.go covers NewPawl and PawlRouting: the pawl recipe's rows, their edges, with Beam-Describe handing to PR-Review, and producer types, the Code-Review perch's budget, the absence of a reroute edge on Finalize, the refusal of an unfilled seam, and the hold boundary the recipe's rows pin against boardengine.RunHolds.
 
 package loomrecipe
 
@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
+	"github.com/Knatte18/loomyard/internal/preflightshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
@@ -36,6 +37,7 @@ func wantPawlRows(t *testing.T) []wantPawlRow {
 		t.Fatalf("landingshed.NewBeamDescribe() error = %v; want nil", err)
 	}
 	return []wantPawlRow{
+		{loomshed.NamePreflight, reflect.TypeOf(preflightshed.NewPreflight("", "")), pawlengine.NameBeamUp, ""},
 		{pawlengine.NameBeamUp, reflect.TypeOf(&pawlengine.BeamUp{}), pawlengine.NameBeamAwait, ""},
 		{pawlengine.NameBeamAwait, reflect.TypeOf(&pawlengine.BeamAwait{}), loomshed.NameParentAlign, ""},
 		{loomshed.NameParentAlign, reflect.TypeOf(&landingshed.ParentAlign{}), loomshed.NameCodeBouncer, ""},
@@ -52,7 +54,7 @@ func wantPawlRows(t *testing.T) []wantPawlRow {
 func TestNewPawl(t *testing.T) {
 	t.Parallel()
 
-	t.Run("BuildsTheTenRowsAndTheirEdges", func(t *testing.T) {
+	t.Run("BuildsTheRowsAndTheirEdges", func(t *testing.T) {
 		t.Parallel()
 		env, paths := testEnv(t)
 		setCodeBudget(&env, 3)
@@ -161,8 +163,8 @@ func TestPawlRouting(t *testing.T) {
 		if err != nil {
 			t.Fatalf("PawlRouting() error = %v; want nil", err)
 		}
-		if routing.Entry != pawlengine.NameBeamUp {
-			t.Errorf("PawlRouting().Entry = %q; want %q", routing.Entry, pawlengine.NameBeamUp)
+		if routing.Entry != loomshed.NamePreflight {
+			t.Errorf("PawlRouting().Entry = %q; want %q", routing.Entry, loomshed.NamePreflight)
 		}
 		want := wantPawlRows(t)
 		if len(routing.Producers) != len(want) {

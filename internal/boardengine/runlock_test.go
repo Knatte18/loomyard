@@ -363,6 +363,7 @@ func TestRunHolds(t *testing.T) {
 		{"TaskAtAHoldFreeProducerName", task(boardengine.KindTask, false, strPtr("running · Beam-Await")), true},
 		{"GroupingProjectRunning", task(boardengine.KindProject, false, strPtr("running · Beam-Await")), true},
 		{"BeamAtWorktreeCreate", task(boardengine.KindProject, true, strPtr("running · Worktree-Create")), false},
+		{"BeamAtPreflight", task(boardengine.KindProject, true, strPtr("running · Preflight")), false},
 		{"BeamAtBeamUp", task(boardengine.KindProject, true, strPtr("running · Beam-Up")), false},
 		{"BeamAtBeamAwaitRunning", task(boardengine.KindProject, true, strPtr("running · Beam-Await")), false},
 		{"BeamAtBeamAwaitBlocked", task(boardengine.KindProject, true, strPtr("blocked · Beam-Await")), false},

@@ -101,7 +101,7 @@
 //
 // The slot rule:
 //
-//   - A run whose RunView carries NoSlot takes no slot under `max_runs`, a pawl run whose landing hold does not stand, which only waits on its members at Worktree-Create, Beam-Up and Beam-Await; it takes one from Parent-Align on.
+//   - A run whose RunView carries NoSlot takes no slot under `max_runs`, a pawl run whose landing hold does not stand, which only waits on its members at Worktree-Create, Preflight, Beam-Up and Beam-Await; it takes one from Parent-Align on.
 //     The parent's dobby still schedules the run's passes, owed full passes and probes as for every run it drives, and the view's `max_runs` reasons follow, since BuildView counts through the same rule.
 //
 // The "can land" notice:
