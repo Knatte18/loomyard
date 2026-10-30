@@ -271,8 +271,8 @@ func readmeFixture() []boardengine.Task {
 // Neither row has a run status, the first only the hand-set word "running", so neither renders a Running subsection.
 // A third row pins that a task with a run status renders under Running, before Ready and in no layer, ordered by handle over ID, its At cell dropping the state `running` and keeping any other, and its Owner cell holding the prime owner for a task outside every beam.
 // The same row pins that a task waiting on a running one lands in Layer A, not Ready, still naming its handle under After, and that a task after that one lands in Layer B.
-// A fourth row pins that README.md holds one section per open project, nested ones included, depth-first in each parent's order and then by handle, before Prime, each heading linking the project and counting its open members, with its brief and a Prio table of its open members of every kind, or _None._,
-// that Prime holds only the entries under no project, a done project a linked Done row there, and that every project, open or done, renders to project-<slug>.md.
+// A fourth row pins that README.md holds one section per open project, nested ones included, depth-first in each parent's order and then by handle, before Prime, each heading linking the project and counting its open members, with its brief and a Prio table of its open members of every kind, or _None._.
+// The same row pins that Prime holds only the entries under no project, a done project a linked Done row there, and that every project, open or done, renders to project-<slug>.md.
 // A project file opens with its handle and title, a link up to its parent's file, the brief, and for a beam only, beam and its recorded owner, lists its nested projects in its order and then by handle, and holds its own entries.
 // A task there waiting on a running member and a root task stands in Layer A, its After cell one handle per line, and the running member shows the beam's recorded owner.
 // A dependency naming no board entry shows in the After cell as a code span of its slug, and a draft task in a project file stands in its own Draft subsection after Ready.
