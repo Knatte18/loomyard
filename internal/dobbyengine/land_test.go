@@ -86,8 +86,28 @@ func TestLandBeam(t *testing.T) {
 		h.tick(false)
 		h.tick(false)
 		got := h.fake.notices
-		if h.lands != 1 || len(got) != 1 || !strings.Contains(got[0], "lym batten status b") {
-			t.Errorf("lands, notices = %d, %q; want one land and one notice carrying the refusal's way forward", h.lands, got)
+		if len(got) != 1 || !strings.Contains(got[0], "lym batten status b") {
+			t.Errorf("notices = %q; want one notice carrying the refusal's way forward", got)
+		}
+	})
+
+	t.Run("a refusal that waits on the run posts once and the landing is asked again until it succeeds", func(t *testing.T) {
+		t.Parallel()
+		h := newLandHarness(t, passing)
+		h.refusal = errors.New("lym beam land: the pawl run of b is running at Parent-Align")
+		h.tick(false)
+		h.tick(false)
+		if h.lands != 2 || len(h.fake.notices) != 1 {
+			t.Fatalf("lands, notices = %d, %q; want the landing asked twice and one notice", h.lands, h.fake.notices)
+		}
+		h.refusal = nil
+		h.tick(false)
+		h.tick(false)
+		if h.lands != 3 || len(h.fake.notices) != 1 {
+			t.Errorf("lands, notices = %d, %q; want one landing after the run waits, no further ask and no second notice", h.lands, h.fake.notices)
+		}
+		if record := h.stateRecord(); record.Land == nil || record.Land.Refused {
+			t.Errorf("state Land = %+v; want the episode closed by the landing", record.Land)
 		}
 	})
 

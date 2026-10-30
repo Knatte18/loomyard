@@ -523,7 +523,7 @@ func (d *daemon) standingMove() string {
 	return ""
 }
 
-// tick folds one awake reading into the sleep watch, keeps the state record's pid and sleeps, and runs the per-tick work, ending with the beam's "can land" notice.
+// tick folds one awake reading into the sleep watch, keeps the state record's pid and sleeps, and runs the per-tick work, ending with the beam's landing step.
 // A sleep the watch sees, and a record found without a pid, owe every run a full pass until a tick returns nil.
 // While an anchor-move record of the geometry exists, a tick spawns no pass, starts no task and runs no tidy step, and owes what it owed before.
 // That is logged once per episode, and the state record's upkeep and the landing count go on.
