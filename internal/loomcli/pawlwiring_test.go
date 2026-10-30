@@ -76,10 +76,12 @@ func TestPawlRecheckLines(t *testing.T) {
 			beamOwner:     "other",
 			parentOwner:   "third",
 			parentSubject: "root",
+			unflagged:     true,
 			want: []string{
 				"end m",
 				"the beam b is owned by other, not this machine (here): run `lym adopt b` to take it",
 				"the beam's parent is owned by third, not this machine (here): run `lym adopt root` to take it",
+				"the beam b is not flagged ready to merge: run `lym beam ready b` to flag it",
 			},
 		},
 	}
