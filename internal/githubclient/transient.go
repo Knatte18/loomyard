@@ -1,5 +1,4 @@
-// transient.go classifies a failed GitHub API call as transient:
-// the call failed for a reason a retry a moment later is likely to clear.
+// transient.go classifies a failed GitHub API call: whether it is transient, failed for a reason a retry a moment later is likely to clear, and which HTTP status GitHub answered it with.
 
 package githubclient
 
@@ -43,6 +42,16 @@ func IsTransient(err error) bool {
 		return false
 	}
 	return urlErr.Op != "parse" && !isCertificateFailure(urlErr)
+}
+
+// StatusCode returns the HTTP status of the *github.ErrorResponse in err's chain, or 0 when the chain holds none.
+// A rate-limit refusal is its own error type and reads 0, so a 403 it carries is never taken for a refused token.
+func StatusCode(err error) int {
+	var resp *github.ErrorResponse
+	if !errors.As(err, &resp) || resp.Response == nil {
+		return 0
+	}
+	return resp.Response.StatusCode
 }
 
 // isCertificateFailure reports whether err's chain holds a TLS certificate verification failure.

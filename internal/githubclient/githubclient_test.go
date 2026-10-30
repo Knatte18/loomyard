@@ -366,7 +366,7 @@ func TestCache_ConcurrentWriters(t *testing.T) {
 	}
 }
 
-// TestAuthRT_401Handling covers the transport's 401 contract: a 401 on a cache-sourced token invalidates it, resolves a fresh one exactly once and replays with it -- never in a loop -- with the request body rewound byte-identical (the req.GetBody rewind a drained replay would silently skip); a second consecutive 401 goes back to the caller unchanged; and an environment-sourced token is never replayed, since replaying it reproduces the identical value, so the 401 surfaces as an error naming the rejected variable.
+// TestAuthRT_401Handling covers the transport's 401 contract: a 401 on a cache-sourced token invalidates it, resolves a fresh one exactly once and replays with it -- never in a loop -- with the request body rewound byte-identical (the req.GetBody rewind a drained replay would silently skip); a second consecutive 401 goes back to the caller unchanged; and an environment-sourced token is never replayed, since replaying it reproduces the identical value, so the 401 surfaces as an error naming the rejected variable and wrapping ErrTokenRejected.
 func TestAuthRT_401Handling(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -435,6 +435,9 @@ func TestAuthRT_401Handling(t *testing.T) {
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("client.Do() error = %v; want it to name %q as the rejected source", err, tt.wantErr)
+				}
+				if !errors.Is(err, ErrTokenRejected) {
+					t.Errorf("client.Do() error = %v; want it to wrap ErrTokenRejected", err)
 				}
 			} else {
 				if err != nil {

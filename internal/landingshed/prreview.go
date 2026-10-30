@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/githubclient"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -82,8 +81,12 @@ func (p *PRReview) decide(ctx context.Context) (shedengine.Outcome, shedengine.O
 	if err != nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: read the origin: %w", p.name, err)
 	}
+	hasCommits, err := pr.TaskHasCommits()
+	if err != nil {
+		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: read whether the task branch has commits beyond its parent: %w", p.name, err)
+	}
 
-	decision := ResolvePullRequest(p.deps.Slug, mode, field, origin)
+	decision := ResolvePullRequest(p.deps.Slug, mode, field, origin, hasCommits)
 	if decision.Halt != "" {
 		return stuckVerdict(ctx, p.name, decision.Halt, true)
 	}
@@ -114,6 +117,8 @@ func (p *PRReview) checkWiring() error {
 		missing = "PullRequest.PushTask"
 	case pr.CommitsMissing == nil:
 		missing = "PullRequest.CommitsMissing"
+	case pr.TaskHasCommits == nil:
+		missing = "PullRequest.TaskHasCommits"
 	case pr.DirtyPaths == nil:
 		missing = "PullRequest.DirtyPaths"
 	case pr.MailAgent == nil:
@@ -579,13 +584,13 @@ func (p *PRReview) pollStatus(ctx context.Context, api pullrequest.API, state *p
 }
 
 // pollFailure judges a failed GitHub call of the wait named by action.
-// An unresolvable token and any other failure but a transient one end the call as githubFailure judges them; a transient failure logs one Warn per episode and lets the wait go on.
+// A token failure and any other failure but a transient one end the call as githubFailure judges them; a transient failure logs one Warn per episode and lets the wait go on.
 // It reports whether it ended the call.
 func (p *PRReview) pollFailure(ctx context.Context, state *prWaitState, action string, err error) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
 	if cerr := cancelErr(ctx, p.name); cerr != nil {
 		return "", shedengine.OutputPointer{}, true, cerr
 	}
-	if !errors.Is(err, githubclient.ErrTokenUnresolvable) && shedtransient.Class(err) != "" {
+	if !tokenFailure(err) && shedtransient.Class(err) != "" {
 		if !state.transientWarned {
 			logger.Warn("landingshed: a GitHub call failed transiently, the wait goes on", "row", p.name, "action", action, "cause", err)
 			state.transientWarned = true
@@ -671,9 +676,9 @@ func (p *PRReview) dirtyEndReason(number int, dirty []string) string {
 }
 
 // githubFailure judges a failed GitHub call named by action.
-// An unresolvable token is Stuck with Halt first, since the HTTP client wraps that error in a type the transient classifier reads as transient; then a transient failure is an error the driver re-steps; any other failure is Stuck with Halt.
+// A token failure is Stuck with Halt first, since the HTTP client wraps it in a type the transient classifier reads as transient; then a transient failure is an error the driver re-steps; any other failure is Stuck with Halt.
 func (p *PRReview) githubFailure(ctx context.Context, action string, err error) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	if !errors.Is(err, githubclient.ErrTokenUnresolvable) {
+	if !tokenFailure(err) {
 		if terr := transientFailure(ctx, p.name, action, err); terr != nil {
 			return "", shedengine.OutputPointer{}, terr
 		}

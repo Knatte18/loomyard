@@ -98,6 +98,7 @@ var intentionallyNil = map[string]string{
 	"Landing.PullRequest.API":             "loom-only seam, batten lands no branch",
 	"Landing.PullRequest.PushTask":        "loom-only seam, batten lands no branch",
 	"Landing.PullRequest.CommitsMissing":  "loom-only seam, batten lands no branch",
+	"Landing.PullRequest.TaskHasCommits":  "loom-only seam, batten lands no branch",
 	"Landing.PullRequest.DirtyPaths":      "loom-only seam, batten lands no branch",
 	"Landing.PullRequest.MailAgent":       "loom-only seam, batten lands no branch",
 	"Landing.PullRequest.PauseCovered":    "loom-only seam, batten lands no branch",

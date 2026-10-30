@@ -1,6 +1,6 @@
 //go:build tier0
 
-// pullrequestmode_test.go covers ResolvePullRequest: the nine mode and field combinations, the warning for an off field under a required parent, and each origin fact that blocks a pull request.
+// pullrequestmode_test.go covers ResolvePullRequest: the nine mode and field combinations, the warning for an off field under a required parent, each origin fact that blocks a pull request, and an empty task branch.
 
 package landingshed
 
@@ -29,7 +29,7 @@ func TestResolvePullRequest(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.parent+"_"+tt.field, func(t *testing.T) {
 				logs := logcapture.CaptureVerbose(t)
-				got := ResolvePullRequest("slug", tt.parent, tt.field, githubOrigin)
+				got := ResolvePullRequest("slug", tt.parent, tt.field, githubOrigin, true)
 				if got.Open != tt.wantOpen || got.Halt != "" || got.Reason == "" {
 					t.Errorf("ResolvePullRequest(%q, %q) = %+v; want Open %v, no halt and a reason", tt.parent, tt.field, got, tt.wantOpen)
 				}
@@ -39,7 +39,7 @@ func TestResolvePullRequest(t *testing.T) {
 				}
 			})
 		}
-		off := ResolvePullRequest("slug", "off", "", githubOrigin)
+		off := ResolvePullRequest("slug", "off", "", githubOrigin, true)
 		if want := "pull request off: the parent's beam.yaml pull_request is off and the entry's pull_request is empty"; off.Reason != want {
 			t.Errorf("off reason = %q; want %q", off.Reason, want)
 		}
@@ -80,7 +80,7 @@ func TestResolvePullRequest(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				logcapture.CaptureVerbose(t)
-				got := ResolvePullRequest("slug", tt.parent, tt.field, tt.origin)
+				got := ResolvePullRequest("slug", tt.parent, tt.field, tt.origin, true)
 				if got.Open {
 					t.Fatalf("ResolvePullRequest() = %+v; want no pull request", got)
 				}
@@ -95,6 +95,34 @@ func TestResolvePullRequest(t *testing.T) {
 				}
 				if got.Halt != "" || !strings.Contains(got.Reason, tt.wantIn) {
 					t.Errorf("ResolvePullRequest() = %+v; want no halt and a reason holding %q", got, tt.wantIn)
+				}
+			})
+		}
+	})
+
+	t.Run("EmptyTaskBranch", func(t *testing.T) {
+		const emptyClause = "the task branch has no commits beyond its parent"
+		tests := []struct {
+			name   string
+			parent string
+			field  string
+			origin Origin
+			// wantIn is a substring the reason holds.
+			wantIn string
+		}{
+			{"OnParentIsNo", "on", "", githubOrigin, emptyClause},
+			{"FieldOnIsNo", "off", "on", githubOrigin, emptyClause},
+			{"RequiredParentIsNo", "required", "", githubOrigin, emptyClause},
+			{"RequiredParentWithALocalOriginIsNoRatherThanAHalt", "required", "", Origin{URL: "/srv/hub.git", Upstream: true}, emptyClause},
+			{"GitHubOriginNamingNoRepositoryIsNoRatherThanAHalt", "on", "", Origin{URL: "https://github.com/onlyowner", Upstream: true}, emptyClause},
+			{"OffParentKeepsItsOffReason", "off", "", githubOrigin, "pull request off:"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				logcapture.CaptureVerbose(t)
+				got := ResolvePullRequest("slug", tt.parent, tt.field, tt.origin, false)
+				if got.Open || got.Halt != "" || !strings.Contains(got.Reason, tt.wantIn) {
+					t.Errorf("ResolvePullRequest(%q, %q, %+v, false) = %+v; want no pull request, no halt and a reason holding %q", tt.parent, tt.field, tt.origin, got, tt.wantIn)
 				}
 			})
 		}

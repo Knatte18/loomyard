@@ -139,7 +139,7 @@ func (rt *authRT) authenticate(req *http.Request) (*http.Response, error) {
 		// anyway, so closing the body and returning (nil, err) is
 		// behavior-preserving while staying contract-compliant.
 		resp.Body.Close()
-		return nil, fmt.Errorf("githubclient: GitHub rejected the token from %s (401)", source.envName())
+		return nil, fmt.Errorf("%w: the token from %s (401)", ErrTokenRejected, source.envName())
 	}
 
 	// The rejected token was cache- or gh-CLI-sourced: invalidate it so the

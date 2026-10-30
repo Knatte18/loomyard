@@ -333,6 +333,14 @@ func pullRequestDeps(l *lymcwd.Location, parentBranch string, pushSkipped bool, 
 			}
 			return f.CommitLog(merged, task)
 		},
+		// TaskHasCommits reports whether the task pair's HEAD holds a commit the local parent branch lacks.
+		TaskHasCommits: func() (bool, error) {
+			f, err := fabricengine.Open(l)
+			if err != nil {
+				return false, err
+			}
+			return f.HeadHoldsCommitsNotIn("refs/heads/" + parentBranch)
+		},
 		DirtyPaths: func() ([]string, error) { return verifytree.DirtyPaths(l.WorktreePath()) },
 		MailAgent: func(strandName, line string) error {
 			client, err := creelcli.NewProgramClient(l, loomProgram)

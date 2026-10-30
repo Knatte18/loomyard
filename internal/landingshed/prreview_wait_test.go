@@ -7,6 +7,7 @@ package landingshed
 import (
 	"context"
 	"errors"
+	"net/http"
 	"net/url"
 	"strings"
 	"testing"
@@ -427,7 +428,7 @@ func TestPRReview_Wait(t *testing.T) {
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"gh auth login --hostname github.com", "lym loom resume"},
 		},
 		{
-			name: "AForbiddenPollHaltsNamingTheTokenAndRepositoryAccess", scripts: createdAndStatus(scriptedCall{err: errors.New("403 Forbidden")}),
+			name: "AForbiddenPollHaltsNamingTheTokenAndRepositoryAccess", scripts: createdAndStatus(scriptedCall{err: githubErrorResponse(http.StatusForbidden, "Forbidden")}),
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"403 Forbidden", "GH_TOKEN", "can reach the repository"},
 		},
 		{

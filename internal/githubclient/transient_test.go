@@ -66,3 +66,29 @@ func TestIsTransient(t *testing.T) {
 		})
 	}
 }
+
+func TestStatusCode(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want int
+	}{
+		{"422", errResponse(http.StatusUnprocessableEntity), http.StatusUnprocessableEntity},
+		{"wrapped 403", fmt.Errorf("x: %w", errResponse(http.StatusForbidden)), http.StatusForbidden},
+		{"response without an http response", &github.ErrorResponse{Message: "m"}, 0},
+		{"rate limit carrying a 403", &github.RateLimitError{Response: &http.Response{StatusCode: http.StatusForbidden}}, 0},
+		{"transport failure", &url.Error{Op: "Get", Err: errors.New("connection refused")}, 0},
+		{"nil", nil, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := StatusCode(tt.err); got != tt.want {
+				t.Errorf("StatusCode(%v) = %d; want %d", tt.err, got, tt.want)
+			}
+		})
+	}
+}

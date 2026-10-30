@@ -344,6 +344,8 @@ type PullRequestDeps struct {
 	PushTask func() error
 	// CommitsMissing lists the task commits not reachable from merged, the head GitHub merged.
 	CommitsMissing func(merged, task string) ([]string, error)
+	// TaskHasCommits reports whether the task branch holds a commit the local parent branch lacks, read by git.
+	TaskHasCommits func() (bool, error)
 	// DirtyPaths lists the task worktree's uncommitted paths.
 	DirtyPaths func() ([]string, error)
 	// MailAgent posts line to the creel strand named strandName.
