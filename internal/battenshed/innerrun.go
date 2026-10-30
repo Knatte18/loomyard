@@ -154,8 +154,6 @@ type innerRunProducer struct {
 	driverExitGrace time.Duration
 	// notices is true when the caller wired a Notify, before a nil one resolves to a no-op.
 	notices bool
-	// noticeQuiet is deps.NoticeQuiet, read once at construction.
-	noticeQuiet time.Duration
 	// failures guards each polled seam's failure by its message, across Calls: Warn at the first, Debug while it repeats, Info at recovery.
 	failures logger.EpisodeSet
 	// restepOn is true when the binary re-step is wired: both its build and dirty-path seams.
@@ -176,11 +174,6 @@ type innerRunProducer struct {
 	// respawnStatusTime is the status file's modification time taken after the last respawn returned.
 	respawns          int
 	respawnStatusTime time.Time
-	// apiReviveKey is the api-error episode key last revived, and apiRevives how many episodes in a row were revived.
-	// apiReviveStatusTime is the status file's modification time at the last revive.
-	apiReviveKey        string
-	apiRevives          int
-	apiReviveStatusTime time.Time
 }
 
 // respawnCap is how many times a running child with no driver at work is respawned before the producer leaves it to the operator.
@@ -209,7 +202,6 @@ const (
 	failDriverLiveness        = "battenshed: driver liveness read failed; treating the driver as live"
 	failChildLockRead         = "battenshed: child lock read failed; treating the driver as live"
 	failPairDirectory         = "battenshed: notice skipped; pair directory unresolved"
-	failAgentActivity         = "battenshed: agent activity read failed; no activity notice"
 	failArbiterMarker         = "battenshed: arbiter marker unreadable; holding nothing"
 	failTacklerMarker         = "battenshed: tackler marker unreadable; holding nothing"
 	failStopReport            = "battenshed: stop report unreadable; reading it as none"
@@ -220,8 +212,6 @@ const (
 	failRestepBuild           = "battenshed: binary re-step check skipped; could not read the on-disk build"
 	failRestepDirtyPaths      = "battenshed: binary re-step check skipped; could not read the task pair's uncommitted paths"
 	failRestepMarker          = "battenshed: binary re-step marker unreadable; reading it as absent"
-	failSleepsUnreadable      = "battenshed: the recorded machine sleeps are unreadable; excluding none from the idle clocks"
-	failAPIErrorRevive        = "battenshed: could not revive the session stalled on an API error"
 )
 
 // logAttempt logs msg at Info for a first attempt and at Debug for each retry after a refusal.
@@ -240,14 +230,13 @@ func logAttempt(first bool, msg string, args ...any) {
 // driverExitGrace bounds the wait for a done child's driver strand to end before the row returns Done anyway.
 //
 // A nil deps.Now resolves to time.Now, once here rather than on every Call, so a test's fixed clock is the only value ever substituted.
-// A nil deps.Sleeps excludes no machine sleep from the idle clocks.
 // A nil deps.Notify resolves to a no-op and switches the notice step off.
 // A nil deps.OrchStrandRecorded resolves to reporting a strand recorded, and a nil deps.StopReport to reporting no stop report.
 // A nil deps.DriverStrand resolves to reporting no driver strand, a nil deps.ChildRunLockHeld or deps.ChildDriverLockHeld to reporting no held lock and a nil deps.ReviveStrands to a revive that fails as not wired.
 // A nil deps.TacklerInFlight resolves to reporting no tackler.
 // A nil deps.ChildBuildChanged or deps.ChildDirtyPaths switches the binary re-step off.
 // A nil deps.PauseRequested resolves to never paused, and a nil deps.Pause to never covered by a pause record.
-// A nil deps.MarkWatched resolves to reporting not held, a nil deps.Activity to reporting no run and no live wait, a nil deps.ArbiterInFlight to reporting no arbiter and a nil deps.ArbiterStop to a reading that is not eligible.
+// A nil deps.MarkWatched resolves to reporting not held, a nil deps.ArbiterInFlight to reporting no arbiter and a nil deps.ArbiterStop to a reading that is not eligible.
 // A nil deps.ParentLock switches the parent lock step off.
 // A nil deps.OwnerCheck switches the owner check off, a nil deps.PauseOwned resolves to a no-op, and a nil deps.ParentHoldsTaskWork or deps.Restepped to reporting false.
 // A nil deps.HandBack resolves to marking no status.
@@ -269,9 +258,6 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 	}
 	if deps.ArbiterStop == nil {
 		deps.ArbiterStop = func(context.Context, shedengine.Status) (ChildArbiterStop, error) { return ChildArbiterStop{}, nil }
-	}
-	if deps.Activity == nil {
-		deps.Activity = func(context.Context) ([]AgentActivity, bool, error) { return nil, false, nil }
 	}
 	if deps.Now == nil {
 		deps.Now = time.Now
@@ -326,7 +312,6 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 
 		driverExitGrace: driverExitGrace,
 		notices:         notices,
-		noticeQuiet:     deps.NoticeQuiet,
 		restepOn:        deps.ChildBuildChanged != nil && deps.ChildDirtyPaths != nil,
 	}
 }
@@ -347,7 +332,7 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 // Re-spawning a running child with neither is safe because the bootstrap it runs is idempotent against a driver that is already alive,
 // and it never stacks a second driver.
 // A running child with no driver at work is respawned at most respawnCap times with no write to its status file between the respawns, counted in the memory record;
-// after that nothing is spawned until the file is written or the child's state changes, and the driver-dead notice names the cap.
+// after that nothing is spawned until the file is written or the child's state changes, and the dobby's driver-dead notice names the cap.
 // A halted or done child is never re-spawned, marker or not: the outer run watches the child's own run and never restarts it.
 //
 // The full disposition table, evaluated top to bottom: a spawn as above (logging both Live-Substrate
@@ -391,7 +376,7 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 //
 // Bound: a running child is checked without a time limit.
 // "lym batten pause", honoured within one check, cancellation and the notices bound it;
-// a running child whose driver is dead and whose status file does not change yields on every check, the driver-dead notice being the only signal.
+// a running child whose driver is dead and whose status file does not change yields on every check, the dobby's driver-dead notice being the only signal.
 //
 // A ResolveStatus error and a ReadStatus error are both returned hard errors, not verdicts: the
 // task worktree is required to exist by the time this row runs, and a status file that exists but
@@ -621,10 +606,6 @@ type childWait struct {
 	alive      bool
 	aliveKnown bool
 	aliveStale bool
-	// activity is the newest reading of the child's agent runs, activityOK whether it succeeded, and activityStale is true on a probe check until it is read.
-	activity      agentReading
-	activityOK    bool
-	activityStale bool
 	// resumeRetryAt is when the awaiting arm may try a resume again after the child's driver refused one as not parked yet,
 	// and notParkedLogged whether that refusal was logged already.
 	resumeRetryAt   time.Time
@@ -714,7 +695,6 @@ func (p *innerRunProducer) once(ctx context.Context, w *childWait, step armStep)
 	if w.probeDue {
 		w.lastProbe = now
 		w.aliveStale = true
-		w.activityStale = true
 	}
 	if end := p.check(ctx, w, step, now); end != nil {
 		return end.results()

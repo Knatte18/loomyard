@@ -175,9 +175,9 @@ func TestWire_EverySeamFilled(t *testing.T) {
 		t.Fatalf("wire() error = %v; want nil", err)
 	}
 
-	// envkit lists these three as legal nils, so wire's filling them is asserted here.
-	if c.env.InnerRun.Sleeps == nil || c.env.InnerRun.Awake == nil || c.env.InnerRun.ReviveAPIError == nil {
-		t.Errorf("InnerRun Sleeps, Awake and ReviveAPIError set = %t, %t, %t; want all set after wire()", c.env.InnerRun.Sleeps != nil, c.env.InnerRun.Awake != nil, c.env.InnerRun.ReviveAPIError != nil)
+	// envkit lists Awake as a legal nil, so wire's filling it is asserted here.
+	if c.env.InnerRun.Awake == nil {
+		t.Error("InnerRun.Awake is nil; want it set after wire()")
 	}
 
 	nils := envkit.NilSeams(c.env)
@@ -332,11 +332,12 @@ func TestWire_BattenStatusSeamsReadBattensOwnStatus(t *testing.T) {
 	}
 }
 
-// TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree asserts the watched-marker seams, the stop-report seam and the terminal window seam return an error, rather than reporting not held or not found, when the task worktree their files live in is absent.
+// TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree asserts the watched-marker seams, the stop-report seam, the run notices' agent seam and the terminal window seam return an error, rather than reporting not held or not found, when the task worktree their files live in is absent.
+// The run notices read an absent task worktree's child as not found.
 func TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree(t *testing.T) {
 	t.Parallel()
 
-	c, _ := wiredPrime(t)
+	c, location := wiredPrime(t)
 
 	for name, mark := range map[string]func(context.Context) (bool, error){"RunShed": c.env.InnerRun.MarkWatched, "SeedChild": c.env.SeedChild.MarkWatched} {
 		held, err := mark(context.Background())
@@ -347,8 +348,12 @@ func TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree(t *testing.T) {
 	if _, _, found, err := c.env.InnerRun.StopReport(); err == nil || found || !strings.Contains(err.Error(), "a-slug") {
 		t.Errorf("StopReport() found=%v, error=%v; want the absent-worktree refusal naming the slug", found, err)
 	}
-	if runs, _, err := c.env.InnerRun.Activity(context.Background()); err == nil || runs != nil || !strings.Contains(err.Error(), "a-slug") {
-		t.Errorf("Activity() runs=%v, error=%v; want the absent-worktree refusal naming the slug", runs, err)
+	notices := DobbyRunNotices(location, filepath.Join(location.HubPath, "pause.json"), time.Minute)
+	if runs, _, err := notices.Agents(context.Background(), "a-slug"); err == nil || runs != nil || !strings.Contains(err.Error(), "a-slug") {
+		t.Errorf("Agents() runs=%v, error=%v; want the absent-worktree refusal naming the slug", runs, err)
+	}
+	if _, found, err := notices.ReadChild("a-slug"); err != nil || found {
+		t.Errorf("ReadChild() found=%v, error=%v; want an absent task worktree's child not found", found, err)
 	}
 	if reading, err := c.env.InnerRun.ArbiterStop(context.Background(), shedengine.Status{}); err == nil || reading.Eligible || !strings.Contains(err.Error(), "a-slug") {
 		t.Errorf("ArbiterStop() eligible=%v, error=%v; want the absent-worktree refusal naming the slug", reading.Eligible, err)
@@ -360,7 +365,7 @@ func TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree(t *testing.T) {
 	}
 }
 
-// TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker asserts the Activity seam's reading maps a task worktree's live shuttle run onto battenshed's type, with the session state of its stamped turn end, skips a run whose record reads stopped, and reports a live wait marker, a live parent lock wait record or a child running at Beam-Await or at PR-Review, ignoring a lock wait record whose writer is dead.
+// TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker asserts the Activity seam's reading maps a task worktree's live shuttle run onto dobbyengine's type, with the session state of its stamped turn end, skips a run whose record reads stopped, and reports a live wait marker, a live parent lock wait record or a child running at Beam-Await or at PR-Review, ignoring a lock wait record whose writer is dead.
 // It points HOME at a session registry through t.Setenv, so it does not run in parallel.
 func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 	home := t.TempDir()

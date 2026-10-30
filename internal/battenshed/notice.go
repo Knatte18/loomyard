@@ -1,4 +1,5 @@
 // notice.go renders the run notices the Run-Shed row hands to InnerRunDeps.Notify, decides when a pending notice may go, and keeps the episode bookkeeping that holds each condition to one notice.
+// The row notices a halted or awaiting child; the notices of a running child are its dobby's.
 // A notice is informational: it never changes the row's outcome, and the orch acts on it only through "lym batten status <slug>".
 
 package battenshed
@@ -16,7 +17,6 @@ import (
 	"unicode"
 
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -45,42 +45,12 @@ const noticeMaxAttempts = 3
 const (
 	// noticeStateChanged is the child's state changing away from running.
 	noticeStateChanged = "state-changed"
-	// noticeDriverDead is the child's driver strand found dead while the child is running.
+	// noticeDriverDead is the driver strand of a halted or awaiting child that a revive failed to bring back.
 	noticeDriverDead = "driver-dead"
-	// noticeQuiet is every agent of the running child idle for the quiet window, with its driver strand alive and no wait marker live.
-	// It is informational: an agent that keeps writing, or a verify or shuttle wait that hangs live, is never quiet, and a dead pid is not an agent.
-	noticeQuiet = "quiet"
-	// noticeAPIError is a live agent run of the running child whose newest turn end is an API error and which has not been active for noticeAPIErrorIdle since.
-	// It takes precedence over noticeQuiet and is informational.
-	noticeAPIError = "api-error"
-	// noticeUsageLimit is a live agent run of the running child whose newest turn end is the provider's usage limit and which has not been active for noticeAPIErrorIdle since.
-	// It takes precedence over noticeAPIError and noticeQuiet, sends no api-error revive, and its key stands while any run of the child still reads usage-limited.
-	noticeUsageLimit = "usage-limit"
 )
 
 // noticeDriverBusyCondition is the condition text of the notice for a resume held back by a busy driver pane.
 const noticeDriverBusyCondition = "driver pane busy: clear the draft in the driver's pane; batten resumes the child"
-
-// apiErrorReviveStreak is how many api-error episodes in a row, each revived with no write of the child's status file between, make the orch noticed at the last of them.
-const apiErrorReviveStreak = 3
-
-// noticeAPIErrorIdle is how long an agent run whose newest turn end is an API error must stay inactive before the api-error notice goes.
-const noticeAPIErrorIdle = 2 * time.Minute
-
-// recordedSleeps returns the machine sleeps deps.Sleeps reports, which the idle clocks leave out.
-// A nil Sleeps reports none, and a read error warns once per episode and reports none.
-func (p *innerRunProducer) recordedSleeps() []pauserecord.Interval {
-	if p.deps.Sleeps == nil {
-		return nil
-	}
-	sleeps, err := p.deps.Sleeps()
-	if err != nil {
-		p.seamFailed(failSleepsUnreadable, err)
-		return nil
-	}
-	p.seamRecovered(failSleepsUnreadable)
-	return sleeps
-}
 
 // noticeEpisodeFile returns the path of the marker holding one episode key per line.
 func noticeEpisodeFile(scratchDir, producer string) string {
@@ -161,7 +131,7 @@ func haltText(status shedengine.Status) string {
 }
 
 // noticeKey renders the episode key of one condition: the condition, the child's state and the stamp that tells its episodes apart.
-// The stamp of a state-changed and of a driver-dead notice is the state episode's since; a quiet and an api-error notice's is the newest agent activity, and a usage-limit notice's the limit's reset time.
+// The stamp is the state episode's since.
 func noticeKey(condition string, state shedengine.State, stampNanos int64) string {
 	return condition + "|" + string(state) + "|" + strconv.FormatInt(stampNanos, 10)
 }
@@ -182,37 +152,17 @@ func readNoticeKeys(path string) []string {
 }
 
 // keepEpisode drops the keys the current status no longer belongs to.
-// A key ends with its episode when the child's state changed or the state episode's since moved;
-// a quiet or api-error key ends when the newest agent activity moved, and a usage-limit key when no run reads usage-limited any more; each stays while the activity cannot be read.
-func keepEpisode(keys []string, state shedengine.State, sinceNanos int64, activity activityStamp) []string {
+// A key ends with its episode when the child's state changed or the state episode's since moved.
+func keepEpisode(keys []string, state shedengine.State, sinceNanos int64) []string {
 	var kept []string
 	for _, k := range keys {
 		parts := strings.Split(k, "|")
-		if len(parts) != 3 || parts[1] != string(state) {
-			continue
-		}
-		if parts[0] == noticeUsageLimit {
-			if activity.known && !activity.usageLimited {
-				continue
-			}
-		} else if parts[0] == noticeQuiet || parts[0] == noticeAPIError {
-			if activity.known && parts[2] != strconv.FormatInt(activity.nanos, 10) {
-				continue
-			}
-		} else if parts[2] != strconv.FormatInt(sinceNanos, 10) {
+		if len(parts) != 3 || parts[1] != string(state) || parts[2] != strconv.FormatInt(sinceNanos, 10) {
 			continue
 		}
 		kept = append(kept, k)
 	}
 	return kept
-}
-
-// activityStamp is the newest agent activity as an episode stamp, known only when the agents were read.
-// usageLimited is true when any run read stands on the provider's usage limit.
-type activityStamp struct {
-	nanos        int64
-	known        bool
-	usageLimited bool
 }
 
 // noticeFinding is the condition the child is in, the stamp of its episode key, and the words that replace the condition's fixed text when it carries any.
@@ -221,12 +171,6 @@ type noticeFinding struct {
 	condition string
 	stamp     int64
 	text      string
-}
-
-// agentReading is one reading of the child's agent runs.
-type agentReading struct {
-	runs     []AgentActivity
-	waitLive bool
 }
 
 // noticeDelivery is the record of the attempts to send one notice.
@@ -275,8 +219,8 @@ func (p *innerRunProducer) noticeStep(ctx context.Context, w *childWait) {
 	}
 	status := w.status
 	old := readNoticeKeys(noticeEpisodeFile(p.scratchDir, p.name))
-	finding, activity := p.noticeCondition(ctx, w, old)
-	kept := keepEpisode(old, status.State, p.episode.since.UnixNano(), activity)
+	finding := p.noticeCondition(w, old)
+	kept := keepEpisode(old, status.State, p.episode.since.UnixNano())
 
 	condition := finding.condition
 	if condition == "" {
@@ -289,11 +233,6 @@ func (p *innerRunProducer) noticeStep(ctx context.Context, w *childWait) {
 			p.saveEpisode(kept, old)
 			return
 		}
-	}
-
-	if condition == noticeAPIError && p.deps.ReviveAPIError != nil && !p.apiErrorNoticeDue(ctx, key, w.baseline) {
-		p.saveEpisode(kept, old)
-		return
 	}
 
 	var report string
@@ -318,30 +257,6 @@ func (p *innerRunProducer) noticeStep(ctx context.Context, w *childWait) {
 	p.saveEpisode(kept, old)
 }
 
-// apiErrorNoticeDue revives the stalled sessions through deps.ReviveAPIError when the api-error episode key has not been revived yet, and reports whether the orch is noticed now.
-// The first sight of an episode revives and notices nothing; the same episode standing at a later probe check after its revive is noticed.
-// So is the third revived episode in a row with no write of the child's status file between them, which has its revive sent too.
-// statusTime is the status file's modification time; a write since the last revive resets the count of episodes in a row.
-// A revive error warns once per episode and still counts as the revive.
-func (p *innerRunProducer) apiErrorNoticeDue(ctx context.Context, key string, statusTime time.Time) bool {
-	if p.apiReviveKey == key {
-		return true
-	}
-	if statusTime.After(p.apiReviveStatusTime) {
-		p.apiRevives = 0
-	}
-	if err := p.deps.ReviveAPIError(ctx); err != nil {
-		if ctx.Err() == nil {
-			p.seamFailed(failAPIErrorRevive, err)
-		}
-	} else {
-		p.seamRecovered(failAPIErrorRevive)
-	}
-	p.apiReviveKey, p.apiReviveStatusTime = key, statusTime
-	p.apiRevives++
-	return p.apiRevives >= apiErrorReviveStreak
-}
-
 // noticeDriverBusy posts one orch notice as creel mail per stall on a busy driver pane, and does nothing once one is posted or when no Notify was wired.
 // The notice carries the fixed condition and the child's own status, then cause, the spawn error that refused the resume, as one line cut at noticeErrorMax, so the box text it quotes reaches the orch.
 // The notice key stays the condition, so one stall sends one notice.
@@ -364,38 +279,18 @@ func (p *innerRunProducer) noticeDriverBusy(ctx context.Context, w *childWait, c
 	}
 }
 
-// noticeCondition returns the condition the child is in, with the stamp of its episode key, and the newest agent activity the check could read.
-// A done child is in no condition, since it sends no notice.
-// A dead driver strand is checked before the agents, so an agent-based condition needs a live driver.
+// noticeCondition returns the condition the child is in, with the stamp of its episode key.
+// A done or running child is in no condition here: a done child sends no notice, and a running child's notices are its dobby's.
 // A halted or awaiting child reports its state change first; once that notice is among sent, the keys of the episode, it reports the driver-dead condition when a revive of its driver strand failed in the episode.
-// A running child whose driver is dead reports the cap of respawns when it was respawned that many times with no progress.
-func (p *innerRunProducer) noticeCondition(ctx context.Context, w *childWait, sent []string) (noticeFinding, activityStamp) {
-	if w.status.State == shedengine.StateDone {
-		return noticeFinding{}, activityStamp{}
+func (p *innerRunProducer) noticeCondition(w *childWait, sent []string) noticeFinding {
+	if w.status.State == shedengine.StateDone || w.status.State == shedengine.StateRunning {
+		return noticeFinding{}
 	}
-	if w.status.State != shedengine.StateRunning {
-		stamp := p.episode.since.UnixNano()
-		if slices.Contains(sent, noticeKey(noticeStateChanged, w.status.State, stamp)) && p.reviveFailed() {
-			return noticeFinding{condition: noticeDriverDead, stamp: stamp, text: driverNotRevivedText}, activityStamp{}
-		}
-		return noticeFinding{condition: noticeStateChanged, stamp: stamp}, activityStamp{}
+	stamp := p.episode.since.UnixNano()
+	if slices.Contains(sent, noticeKey(noticeStateChanged, w.status.State, stamp)) && p.reviveFailed() {
+		return noticeFinding{condition: noticeDriverDead, stamp: stamp, text: driverNotRevivedText}
 	}
-	// A running child under a pause has no agents at work and no driver to wait for, so none of its conditions is an event.
-	if w.pause.Covered {
-		return noticeFinding{}, activityStamp{}
-	}
-	alive, known := p.driverAlive(ctx, w)
-	if !known {
-		return noticeFinding{}, activityStamp{}
-	}
-	if !alive {
-		finding := noticeFinding{condition: noticeDriverDead, stamp: p.episode.since.UnixNano()}
-		if p.respawns >= respawnCap {
-			finding.text = fmt.Sprintf("driver strand is dead; respawned %d times without progress; %s", respawnCap, loomStartRemedy)
-		}
-		return finding, activityStamp{}
-	}
-	return p.judgeAgents(ctx, w)
+	return noticeFinding{condition: noticeStateChanged, stamp: stamp}
 }
 
 // loomStartRemedy is the step the operator takes to bring a driver back, which `lym loom resume` does not: it never spawns an LLM driver.
@@ -412,92 +307,6 @@ func (p *innerRunProducer) reviveFailed() bool {
 	}
 	fields := strings.Fields(string(raw))
 	return len(fields) == 2 && fields[1] == "failed"
-}
-
-// agentActivity reads deps.Activity at most once per probe and reuses the answer on the checks between.
-// ok is false when the read failed, which warns once per episode.
-func (p *innerRunProducer) agentActivity(ctx context.Context, w *childWait) (reading agentReading, ok bool) {
-	if w.activityStale {
-		w.activityStale = false
-		runs, waitLive, err := p.deps.Activity(ctx)
-		w.activity, w.activityOK = agentReading{runs: runs, waitLive: waitLive}, err == nil
-		if err == nil {
-			p.seamRecovered(failAgentActivity)
-		} else if ctx.Err() == nil {
-			p.seamFailed(failAgentActivity, err)
-		}
-	}
-	return w.activity, w.activityOK
-}
-
-// judgeAgents returns the api-error or quiet finding of a running child with a live driver, and the newest agent activity.
-// With several runs read, api-error needs any one and quiet needs every run idle.
-// With no run read, quiet falls back to the later of the child's newest history entry and the state episode's since.
-// Both idle clocks measure awake unpaused time: every recorded sleep and every paused interval after an activity is subtracted from the time since it, so a sleep or a pause can delay a notice and never raise one earlier.
-func (p *innerRunProducer) judgeAgents(ctx context.Context, w *childWait) (noticeFinding, activityStamp) {
-	reading, ok := p.agentActivity(ctx, w)
-	now := p.deps.Now()
-	if !ok {
-		return noticeFinding{}, activityStamp{}
-	}
-	sleeps := p.recordedSleeps()
-	awakeSince := func(at time.Time) time.Duration {
-		return pauserecord.AwakeSince(at, now, sleeps, w.pause.Intervals)
-	}
-
-	if len(reading.runs) == 0 {
-		newest := p.episode.since
-		if n := len(w.status.History); n > 0 {
-			if at, err := time.Parse(time.RFC3339, w.status.History[n-1].At); err == nil && at.After(newest) {
-				newest = at
-			}
-		}
-		stamp := activityStamp{nanos: newest.UnixNano(), known: true}
-		if idle := awakeSince(newest); p.noticeQuiet > 0 && !reading.waitLive && idle >= p.noticeQuiet {
-			text := fmt.Sprintf("no agent activity readable for %s", idle.Round(time.Second))
-			return noticeFinding{condition: noticeQuiet, stamp: stamp.nanos, text: text}, stamp
-		}
-		return noticeFinding{}, stamp
-	}
-
-	newest := reading.runs[0].LastActivity
-	for _, run := range reading.runs[1:] {
-		if run.LastActivity.After(newest) {
-			newest = run.LastActivity
-		}
-	}
-	stamp := activityStamp{nanos: newest.UnixNano(), known: true}
-	for _, run := range reading.runs {
-		stamp.usageLimited = stamp.usageLimited || run.UsageLimited
-	}
-	for _, run := range reading.runs {
-		if run.UsageLimited && awakeSince(run.LastActivity) >= noticeAPIErrorIdle {
-			text := fmt.Sprintf("agent %s hit a usage limit, %s: %s", run.Producer, resetText(run.UsageLimitResetsAt), oneLine(run.APIErrorText, noticeErrorMax))
-			p.logSessionStatesAtNotice(reading.runs, noticeUsageLimit)
-			return noticeFinding{condition: noticeUsageLimit, stamp: resetStamp(run.UsageLimitResetsAt), text: text}, stamp
-		}
-	}
-	for _, run := range reading.runs {
-		if run.APIError && awakeSince(run.LastActivity) >= noticeAPIErrorIdle {
-			text := fmt.Sprintf("agent %s hit an API error: %s", run.Producer, oneLine(run.APIErrorText, noticeErrorMax))
-			p.logSessionStatesAtNotice(reading.runs, noticeAPIError)
-			return noticeFinding{condition: noticeAPIError, stamp: stamp.nanos, text: text}, stamp
-		}
-	}
-	if idle := awakeSince(newest); p.noticeQuiet > 0 && !reading.waitLive && idle >= p.noticeQuiet {
-		text := fmt.Sprintf("agents idle for %s", idle.Round(time.Second))
-		p.logSessionStatesAtNotice(reading.runs, noticeQuiet)
-		return noticeFinding{condition: noticeQuiet, stamp: stamp.nanos, text: text}, stamp
-	}
-	return noticeFinding{}, stamp
-}
-
-// logSessionStatesAtNotice logs at Debug the session state of every run in runs beside the condition a finding returned for them, so each notice can be checked against the state.
-// It is shadow logging: no notice, stamp or finding depends on the state fields.
-func (p *innerRunProducer) logSessionStatesAtNotice(runs []AgentActivity, condition string) {
-	for _, run := range runs {
-		logger.Debug("battenshed: session state at notice", "producer", run.Producer, "slug", p.slug, "condition", condition, "state", run.SessionState, "cause", run.SessionCause, "since", run.SessionSince)
-	}
 }
 
 // stateChangeReady decides whether the state-changed notice may go now, and returns its report clause.
@@ -634,14 +443,10 @@ func (p *innerRunProducer) deliver(ctx context.Context, key, condition, line str
 // conditionText renders the condition as the words a notice carries.
 // A state change reads as what the child's state says happened; every other condition leads with that state, then `; `, then its own text.
 func conditionText(finding noticeFinding, status shedengine.Status) string {
-	text := finding.text
-	if finding.condition == noticeDriverDead && text == "" {
-		text = "driver strand is dead"
-	}
-	if text == "" {
+	if finding.text == "" {
 		return haltText(status)
 	}
-	return haltText(status) + "; " + text
+	return haltText(status) + "; " + finding.text
 }
 
 // saveEpisode writes keys to the marker unless they equal old.
@@ -661,20 +466,4 @@ func (p *innerRunProducer) saveEpisode(keys, old []string) {
 	if err := os.WriteFile(noticeEpisodeFile(p.scratchDir, p.name), []byte(content), 0o644); err != nil {
 		logger.Warn("battenshed: write notice marker failed", "producer", p.name, "slug", p.slug, "error", err)
 	}
-}
-
-// resetText renders when a usage limit resets, in UTC as a notice's since is, or that its reset time is unknown.
-func resetText(resetsAt time.Time) string {
-	if resetsAt.IsZero() {
-		return "reset time unknown"
-	}
-	return "resets " + resetsAt.UTC().Format(time.RFC3339)
-}
-
-// resetStamp returns the episode stamp of a usage limit that resets at resetsAt: its Unix seconds, or 0 for an unknown reset time.
-func resetStamp(resetsAt time.Time) int64 {
-	if resetsAt.IsZero() {
-		return 0
-	}
-	return resetsAt.Unix()
 }

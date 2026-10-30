@@ -29,10 +29,6 @@ const defaultInnerRunNoticeProbeS = 30
 // It agrees with the batten recipe's own explicit driver_exit_grace_s: 900 seconds, the longest a done child's live driver strand is waited for before teardown ends it.
 const defaultInnerRunDriverExitGraceS = 900
 
-// defaultInnerRunNoticeQuietMin is innerRunEntry's own default for the notice_quiet_min Config key, in minutes, used when the extracted value is zero, exactly as defaultInnerRunPollIntervalS is.
-// It agrees with the batten recipe's own explicit notice_quiet_min.
-const defaultInnerRunNoticeQuietMin = 30
-
 // worktreeCreateEntry is the Constructor for the "WorktreeCreate" registry row: it validates
 // Env.Slug, Env.ScratchDir, Env.CreateWorktree, Env.PrimeLock.Acquire, and Env.PrimeLock.Path, and
 // returns battenshed.NewWorktreeCreate(name, env.Slug, env.CreateWorktree, env.PrimeLock,
@@ -89,7 +85,8 @@ func worktreeTeardownEntry(row RowIdentity, cfg Config, env Env) (shedengine.She
 }
 
 // innerRunEntry is the Constructor for the "InnerRun" registry row: it reads the optional int Config key poll_interval_s through configInt, defaulting to defaultInnerRunPollIntervalS when the extracted value is zero -- configInt reports an absent key and an explicit zero identically, so both resolve to the same default -- and rejects a negative value with an error naming the key.
-// It reads driver_exit_grace_s the same way, defaulting to defaultInnerRunDriverExitGraceS, and notice_quiet_min likewise, defaulting to defaultInnerRunNoticeQuietMin and set on the deps as InnerRunDeps.NoticeQuiet.
+// It reads driver_exit_grace_s the same way, defaulting to defaultInnerRunDriverExitGraceS.
+// It validates notice_quiet_min as a non-negative int and passes it to no producer: the key is the quiet window of the run notices, which the hub wiring reads from this row for dobby, where a zero or an absent key keeps the default window.
 // It reads notice_probe_s the same way, defaulting to defaultInnerRunNoticeProbeS and set on the deps as InnerRunDeps.NoticeProbe.
 // poll_attempts is retired: the wait lives in the producer's own call, not on a Config key this entry reads, so poll_attempts is rejected as an unrecognised key rather than silently read.
 // It validates Env.Slug, Env.ScratchDir, and Env.InnerRun.Spawn/ResolveStatus/ReadStatus/ReadDecision/DriverAlive -- and not Env.InnerRun.Now, whose nil value is legitimate and selects the production clock.
@@ -124,9 +121,6 @@ func innerRunEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduce
 	}
 	if noticeQuietMin < 0 {
 		return nil, fmt.Errorf("shedrecipe: InnerRun: config key %q must not be negative, got %d", "notice_quiet_min", noticeQuietMin)
-	}
-	if noticeQuietMin == 0 {
-		noticeQuietMin = defaultInnerRunNoticeQuietMin
 	}
 
 	noticeProbeS, err := configInt(cfg, "notice_probe_s", false)
@@ -165,7 +159,6 @@ func innerRunEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduce
 		return nil, err
 	}
 	deps := env.InnerRun
-	deps.NoticeQuiet = time.Duration(noticeQuietMin) * time.Minute
 	deps.NoticeProbe = time.Duration(noticeProbeS) * time.Second
 	return battenshed.NewInnerRun(row.Name, env.Slug, deps, time.Duration(pollIntervalS)*time.Second, env.ScratchDir, time.Duration(driverExitGraceS)*time.Second), nil
 }

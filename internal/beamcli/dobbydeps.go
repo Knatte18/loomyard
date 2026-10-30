@@ -1,4 +1,4 @@
-// dobbydeps.go fills dobbyengine's seams over a real hub: the runs and tasks it reads, the pass it spawns, the notice, owner pause and board tidy it sends, and the registration of the dobby process itself.
+// dobbydeps.go fills dobbyengine's seams over a real hub: the runs and tasks it reads, the pass it spawns, the notices, owner pause and board tidy it sends, and the registration of the dobby process itself.
 
 package beamcli
 
@@ -46,6 +46,8 @@ const (
 	dobbyProgram = "DOBBY"
 	// defaultNoticeProbe is the probe interval when the batten recipe's Run-Shed row names none.
 	defaultNoticeProbe = 30 * time.Second
+	// defaultNoticeQuiet is the run notices' quiet window when the batten recipe's Run-Shed row names none.
+	defaultNoticeQuiet = 30 * time.Minute
 	// tidyModelSpec is the model spec the board-tidy agent runs on.
 	tidyModelSpec = "sonnet[medium]"
 	// passErrorTailBytes bounds the output of a pass dobby keeps to read its error text from.
@@ -75,7 +77,11 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 	if err != nil {
 		return dobbyengine.Deps{}, err
 	}
-	probe, err := noticeProbeInterval()
+	probe, err := runShedDuration("notice_probe_s", time.Second, defaultNoticeProbe)
+	if err != nil {
+		return dobbyengine.Deps{}, err
+	}
+	quiet, err := runShedDuration("notice_quiet_min", time.Minute, defaultNoticeQuiet)
 	if err != nil {
 		return dobbyengine.Deps{}, err
 	}
@@ -151,6 +157,7 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 			coverage, err := pauserecord.ReadCoverage(pause.RecordPath, slug, time.Now())
 			return coverage.Covered, err
 		},
+		RunNotices: battencli.DobbyRunNotices(prime, pause.RecordPath, quiet),
 		Landings: machineLandings(machinename.Name, func(machine string) ([]string, error) {
 			return battencli.DobbyLandings(prime, geom, parents, machine)
 		}),
@@ -217,8 +224,9 @@ func beamLandReading(prime *lymcwd.Location, slug string) (dobbyengine.LandReadi
 	return reading, nil
 }
 
-// noticeProbeInterval reads notice_probe_s from the batten recipe's Run-Shed row, the cadence the run's own wait probes at.
-func noticeProbeInterval() (time.Duration, error) {
+// runShedDuration reads key from the batten recipe's Run-Shed row as a count of unit, or fallback when the row names none or a count that is not positive.
+// The row's notice_probe_s is the cadence the run's own wait probes at, and its notice_quiet_min the run notices' quiet window.
+func runShedDuration(key string, unit, fallback time.Duration) (time.Duration, error) {
 	recipe, err := shedbuild.Parse(recipes.BattenRecipe)
 	if err != nil {
 		return 0, err
@@ -227,16 +235,28 @@ func noticeProbeInterval() (time.Duration, error) {
 		if row.Name != battenrecipe.NameRunShed {
 			continue
 		}
-		switch seconds := row.Config["notice_probe_s"].(type) {
-		case int:
-			return time.Duration(seconds) * time.Second, nil
-		case int64:
-			return time.Duration(seconds) * time.Second, nil
-		case float64:
-			return time.Duration(seconds * float64(time.Second)), nil
+		return durationFromCount(row.Config[key], unit, fallback), nil
+	}
+	return fallback, nil
+}
+
+// durationFromCount reads a recipe value as a count of unit, or fallback when the value is absent, not a number or not positive.
+func durationFromCount(value any, unit, fallback time.Duration) time.Duration {
+	switch count := value.(type) {
+	case int:
+		if count > 0 {
+			return time.Duration(count) * unit
+		}
+	case int64:
+		if count > 0 {
+			return time.Duration(count) * unit
+		}
+	case float64:
+		if count > 0 {
+			return time.Duration(count * float64(unit))
 		}
 	}
-	return defaultNoticeProbe, nil
+	return fallback
 }
 
 // sleepContext waits d, or returns early when ctx ends.

@@ -1,6 +1,6 @@
 //go:build tier0
 
-// innerrun_respawncap_test.go covers the cap on respawning a running child whose driver keeps dying: the count across passes and the driver-dead notice that names the cap.
+// innerrun_respawncap_test.go covers the cap on respawning a running child whose driver keeps dying: the count across passes and the memory record a reader outside the row reads the cap from.
 
 package battenshed
 
@@ -8,7 +8,6 @@ import (
 	"context"
 	"os"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -65,20 +64,18 @@ func (h *respawnHarness) pass() {
 }
 
 // TestInnerRun_RespawnCapStopsWithoutProgress asserts a running child with no driver at work is respawned respawnCap times with no status write between.
-// It asserts the pass after spawns nothing and sends one driver-dead notice naming the cap, and that a live driver strand between two respawns does not reset the count.
+// It asserts the pass after spawns nothing and sends no notice, RespawnCapReached reads the cap from the memory record, and a live driver strand between two respawns does not reset the count.
 // It asserts a rewrite of the status file starts the count again.
 func TestInnerRun_RespawnCapStopsWithoutProgress(t *testing.T) {
 	t.Parallel()
-	capNotice := `driver strand is dead; respawned ` + strconv.Itoa(respawnCap) + ` times without progress; run "lym loom start" in the task worktree to bring a driver back`
-
-	t.Run("TheCapStopsTheRespawnAndSendsOneNotice", func(t *testing.T) {
+	t.Run("TheCapStopsTheRespawnAndIsReadFromTheMemoryRecord", func(t *testing.T) {
 		t.Parallel()
 		h := newRespawnHarness(t)
 		for pass := 0; pass < respawnCap; pass++ {
 			h.pass()
 		}
-		if *h.spawns != respawnCap || len(h.notified) != 0 {
-			t.Fatalf("after %d passes: spawns = %d, notices = %q; want %d and none while the driver is up", respawnCap, *h.spawns, h.notified, respawnCap)
+		if *h.spawns != respawnCap {
+			t.Fatalf("after %d passes: spawns = %d; want %d", respawnCap, *h.spawns, respawnCap)
 		}
 
 		h.driverUp = false
@@ -88,8 +85,15 @@ func TestInnerRun_RespawnCapStopsWithoutProgress(t *testing.T) {
 		if *h.spawns != respawnCap {
 			t.Errorf("spawns = %d; want none after the cap", *h.spawns)
 		}
-		if len(h.notified) != 1 || !strings.Contains(h.notified[0], capNotice) {
-			t.Errorf("notices = %q; want exactly one reading %q", h.notified, capNotice)
+		if len(h.notified) != 0 {
+			t.Errorf("notices = %q; want none: a running child's driver-dead notice is its dobby's", h.notified)
+		}
+		statusModified := statusModTime(h.clock.statusPath)
+		if capped, err := RespawnCapReached(h.scratchDir, "innerrun", statusModified); err != nil || !capped {
+			t.Errorf("RespawnCapReached() = %v, %v; want true", capped, err)
+		}
+		if capped, err := RespawnCapReached(h.scratchDir, "innerrun", statusModified.Add(time.Second)); err != nil || capped {
+			t.Errorf("RespawnCapReached() after a status write = %v, %v; want false", capped, err)
 		}
 	})
 

@@ -166,10 +166,10 @@ type InnerRunDeps struct {
 	// A nil PauseRequested resolves to reporting false in NewInnerRun; an error is warned about and reads as not paused.
 	PauseRequested func() (bool, error)
 	// Pause reads what the hub's pause record says about this run's slug.
-	// The check reads it once per pass: while it reports covered, the check spawns, resumes and revives nothing and sends no running-child notice, and its idle clocks leave out the covered intervals.
+	// The check reads it once per pass: while it reports covered, the check spawns, resumes and revives nothing.
 	// A nil Pause resolves to never covered in NewInnerRun; an error is warned about and reads as not covered.
 	Pause func() (pauserecord.Coverage, error)
-	// NoticeProbe is how rarely a check does anything costing a process or a multiplexer round trip: the driver, review and agent-activity reads, the not-parked resume retry, the parent lock step and a notice's delivery.
+	// NoticeProbe is how rarely a check does anything costing a process or a multiplexer round trip: the driver and review reads, the not-parked resume retry, the parent lock step and a notice's delivery.
 	// The last probe's time is in the memory record, so the interval holds across passes.
 	// Zero makes every check a probe.
 	NoticeProbe time.Duration
@@ -189,10 +189,6 @@ type InnerRunDeps struct {
 	// A nil Awake resolves in NewInnerRun to Go's monotonic reading, measured from an origin taken at construction, which holds for one process only.
 	// That reading stops during suspend on Linux and macOS; on Windows it keeps running, so a nil Awake there counts suspended time.
 	Awake func() time.Duration
-	// Sleeps reports the machine sleeps the scheduling dobby recorded.
-	// The quiet and api-error idle checks leave them out of the time since an activity, beside the intervals a pause covered.
-	// A nil Sleeps excludes none, and an error is warned about once per episode and excludes none.
-	Sleeps func() ([]pauserecord.Interval, error)
 	// Notify hands one run notice line to whoever tells the orch, posted as creel mail behind a seam so this package never imports the orch, and reports whether the line was posted.
 	// A notice is recorded as sent only when it was posted.
 	// The wait invokes it once per condition per episode (see notice.go) and retries an error or an unposted line at most once per notice probe and at most three times; its failure is only warned about and never changes the row's outcome.
@@ -217,13 +213,6 @@ type InnerRunDeps struct {
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	// A nil ArbiterStop resolves to a reading that is not eligible in NewInnerRun.
 	ArbiterStop func(ctx context.Context, status shedengine.Status) (ChildArbiterStop, error)
-	// NoticeQuiet is how long a running child's agents may all stay idle, with its driver strand alive and no wait marker live, before the row sends a quiet notice.
-	// Zero disables the quiet notice.
-	NoticeQuiet time.Duration
-	// Activity reads what the task worktree's running agent runs, those whose waiting process is gone included, have been doing, and whether a Go-side wait (a verify or a shuttle wait) is live.
-	// The wait reads it for a running child with a live driver strand, at most once per notice probe; an error is warned about and sends no activity notice.
-	// A nil Activity resolves to reporting no run and no live wait in NewInnerRun.
-	Activity func(ctx context.Context) (runs []AgentActivity, waitLive bool, err error)
 	// PairDir returns the task worktree directory a notice renders its paths relative to.
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	PairDir func() (string, error)
@@ -263,11 +252,6 @@ type InnerRunDeps struct {
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	// A nil ReviveStrands resolves to a function returning an error that says no revive is wired, in NewInnerRun.
 	ReviveStrands func(ctx context.Context) error
-	// ReviveAPIError sends the revive line to the task pair's sessions stalled on an API error, through the conditioned send.
-	// The notice step calls it once for an api-error episode, before telling the orch.
-	// An error is warned about once per episode and still counts as the revive.
-	// A nil ReviveAPIError sends nothing and keeps the api-error notice at the first sight of the episode.
-	ReviveAPIError func(ctx context.Context) error
 	// MarkWatched writes or removes the batten-watched marker of the task worktree's run and reports whether this batten now holds it.
 	// The marker is held while this batten's notices have a destination that is also the child driver's parent, so the driver can leave the run's stops to batten.
 	// Call invokes it at its start, keeps the last answer for the awaiting notice rule, and reads an error as not held with one Warn per change of answer across passes.
@@ -309,27 +293,6 @@ type ChildParentLock struct {
 	// KeepsLock reports whether the child's run is at Finalize and running, or a verify of it is live, which keeps a loop's record whatever its agents' waits.
 	// A read error keeps the record, and a nil KeepsLock reads as never keeping it.
 	KeepsLock func() (bool, error)
-}
-
-// AgentActivity is the reading of one running agent run of the child's task worktree.
-type AgentActivity struct {
-	// Producer labels the run, the strand name its agent works under.
-	Producer string
-	// LastActivity is when the run last wrote anything.
-	LastActivity time.Time
-	// APIError is true when the run's newest turn end is an API error.
-	APIError bool
-	// APIErrorText is the error's text; empty unless APIError is true.
-	APIErrorText string
-	// UsageLimited is true when the API error is the provider's usage limit.
-	UsageLimited bool
-	// UsageLimitResetsAt is when that limit resets, as the provider's message states it; zero when it states no readable time or UsageLimited is false.
-	UsageLimitResetsAt time.Time
-	// SessionState, SessionCause and SessionSince are the run's session state, its cause and the RFC 3339 time it began, empty when unread.
-	// They are only logged where a notice is decided, and no decision reads them.
-	SessionState string
-	SessionCause string
-	SessionSince string
 }
 
 // ChildDriverStrand is the state of a child's driver strand in its reed state.

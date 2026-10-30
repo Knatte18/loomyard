@@ -157,17 +157,9 @@ func TestInnerRun_ReadFailuresLogOncePerEpisode(t *testing.T) {
 		},
 		{
 			name: "the pair directory", message: "pair directory unresolved",
-			status: shedengine.Status{State: shedengine.StateRunning},
+			status: blocked,
 			wire: func(deps *InnerRunDeps, fail func() error) {
 				deps.PairDir = func() (string, error) { return "/pair", fail() }
-			},
-		},
-		{
-			name: "the agent activity read", message: "agent activity read failed",
-			status: shedengine.Status{State: shedengine.StateRunning},
-			wire: func(deps *InnerRunDeps, fail func() error) {
-				deps.DriverAlive = func(context.Context) (bool, error) { return true, nil }
-				deps.Activity = func(context.Context) ([]AgentActivity, bool, error) { return nil, false, fail() }
 			},
 		},
 		{
@@ -200,7 +192,7 @@ func TestInnerRun_ReadFailuresLogOncePerEpisode(t *testing.T) {
 		},
 		{
 			name: "the unreadable orch state", message: "the orch state is unreadable",
-			status: shedengine.Status{State: shedengine.StateRunning},
+			status: blocked,
 			wire: func(deps *InnerRunDeps, fail func() error) {
 				deps.OrchStrandRecorded = func() (bool, error) { return true, fail() }
 			},
