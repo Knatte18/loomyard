@@ -161,6 +161,24 @@ func (f *Fabric) CommitLog(from, to string) ([]string, error) {
 	return lines, nil
 }
 
+// HeadHoldsCommitsNotIn reports whether the pair's code HEAD holds a commit that ref lacks.
+// A ref that does not resolve is an error naming it.
+func (f *Fabric) HeadHoldsCommitsNotIn(ref string) (bool, error) {
+	refSHA, err := f.code.ResolveSHA(ref)
+	if err != nil {
+		return false, fmt.Errorf("fabricengine: HEAD commits not in %s: %w", ref, err)
+	}
+	headSHA, err := f.code.ResolveSHA("HEAD")
+	if err != nil {
+		return false, fmt.Errorf("fabricengine: HEAD commits not in %s: %w", ref, err)
+	}
+	shas, err := f.code.CommitsNotIn(headSHA, refSHA)
+	if err != nil {
+		return false, fmt.Errorf("fabricengine: HEAD commits not in %s: %w", ref, err)
+	}
+	return len(shas) > 0, nil
+}
+
 // shortSHALength is how many leading characters of a SHA CommitLog prints.
 const shortSHALength = 7
 
