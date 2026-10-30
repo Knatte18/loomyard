@@ -8,9 +8,11 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
@@ -18,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
@@ -152,5 +155,37 @@ func TestHubDobbyDeps_LandsOnlyAFlaggedBeam(t *testing.T) {
 	}
 	if _, statErr := os.Stat(requestPath); statErr != nil {
 		t.Errorf("land request after Land: stat = %v; want the request `lym beam land` writes", statErr)
+	}
+}
+
+func TestHubLandDeps_MarkReadyCommitsAnUncommittedFlaggedRecord(t *testing.T) {
+	t.Parallel()
+
+	h, _ := landingHub(t)
+	beam, err := lymcwd.ResolveWorktree(fabricengine.WorktreePath(h.Location, "b"))
+	if err != nil {
+		t.Fatalf("resolve the beam worktree: %v", err)
+	}
+	path, lockPath := loomengine.BeamReadyPath(beam), loomengine.BeamReadyLockPath(beam)
+	flaggedAt := time.Date(2026, 3, 1, 9, 30, 0, 0, time.UTC)
+	if err := pawlengine.WriteReady(path, lockPath, pawlengine.ReadyRecord{Slug: "b", SetAt: flaggedAt}); err != nil {
+		t.Fatalf("write the ready record: %v", err)
+	}
+
+	result, err := markReady(hubLandDeps(h.Location), "b")
+	if err != nil || result["already"] != true {
+		t.Fatalf("markReady(b) = %v, %v for a flagged beam; want already true", result, err)
+	}
+
+	dirty, err := exec.Command("git", "-C", filepath.Dir(path), "status", "--porcelain", "--", ".").CombinedOutput()
+	if err != nil {
+		t.Fatalf("git status of the ready record: %v: %s", err, dirty)
+	}
+	if len(strings.TrimSpace(string(dirty))) != 0 {
+		t.Errorf("git status of the ready record = %q; want it committed", dirty)
+	}
+	record, found, err := state.ReadJSON[pawlengine.ReadyRecord](path, lockPath)
+	if err != nil || !found || !record.SetAt.Equal(flaggedAt) {
+		t.Errorf("ready record = %+v, %v, %v; want the original, not rewritten", record, found, err)
 	}
 }

@@ -109,11 +109,11 @@
 //   - After the scheduling steps, each tick of a beam's dobby reads Deps.CanLand, whose LandReading says whether the beam is flagged ready with nothing working under it and which other machine, if any, owns the beam's parent.
 //     Without the flag nothing working under the beam is no cause to act, however long the beam has been idle.
 //     The prime's dobby and a nil CanLand take no step; the tick runs on every board change the dobby watches and on every pass exit, so a member's teardown, a cancel with `--remove`, a member moved off the project and one marked done by hand each trigger it.
-//   - A passing reading with no episode recorded in State.Land asks for the landing through Deps.Land, which writes the land request the beam's pawl run consumes, and records the episode.
-//     It posts one notice to the beam's own orch only when it cannot: when another machine owns the parent, naming that machine and `lym adopt <subject>`, and when Land refuses, carrying the refusal; the episode is recorded once the notice goes out.
+//   - A passing reading with no closed episode recorded in State.Land asks for the landing through Deps.Land, which writes the land request the beam's pawl run consumes, and records the episode as closed.
+//     It posts one notice to the beam's own orch only when it cannot: when another machine owns the parent, naming that machine and `lym adopt <subject>`, which closes the episode once the notice goes out, and when Land refuses, carrying the refusal.
 //     A refusal leaves the episode open: Land is asked again each tick, as a refusal may only wait on the run reaching Beam-Await, and the refusal's notice is not posted twice.
 //     A reading that does not pass clears the episode, so a member opened again re-arms the step; a restarted dobby reads the record and takes no second step.
-//   - Bound: the step lands nothing by itself: Beam-Await re-checks the beam before anything lands, and a request it refuses is not asked for again in the same episode.
+//   - Bound: the step lands nothing by itself: Beam-Await re-checks the beam before anything lands, and a land request Beam-Await refuses is not asked for again in the same episode.
 //   - A failed read or post is logged once per episode and changes nothing: a failed post leaves the episode open for the next tick.
 //
 // The board tidy:

@@ -37,7 +37,7 @@ type State struct {
 	LandingsMachineOnly bool `json:"landings_machine_only,omitempty"`
 	// Tidy is the board-tidy agent in flight, nil when none is.
 	Tidy *TidyState `json:"tidy,omitempty"`
-	// Land is the landing step taken in the episode now standing, a land request asked for or a notice posted, nil when none was taken or the beam can no longer land.
+	// Land is the landing step taken in the episode now standing, a land request asked for or a notice posted, nil when none was taken or the beam can no longer land, and open to a retry when it holds only a posted refusal of Land.
 	Land *LandState `json:"land,omitempty"`
 }
 
