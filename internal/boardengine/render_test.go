@@ -477,7 +477,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 		{
 			name: "each project renders to its own file under its parent",
 			tasks: []boardengine.Task{
-				{ID: 1, Handle: "P1", Slug: "ship", Title: "Ship it", Kind: boardengine.KindProject, Beam: true, Brief: "Ships the thing.", OwnerMachine: "box", Order: []string{"later"}},
+				{ID: 1, Handle: "P1", Slug: "ship", Title: "Ship it", Kind: boardengine.KindProject, Beam: true, Brief: "Ships the thing.", OwnerMachine: "box", Order: []string{"later"}, Created: renderTime.AddDate(0, 0, -3)},
 				{ID: 2, Handle: "P2", Slug: "tidy", Title: "Tidy up", Kind: boardengine.KindProject, Brief: "Loose ends."},
 				{ID: 3, Handle: "P3", Slug: "old", Title: "Old project", Kind: boardengine.KindProject, Status: stringPtr("done")},
 				{ID: 10, Handle: "P4", Slug: "inner", Title: "Inner", Kind: boardengine.KindProject, Project: "ship", Brief: "Nested work."},
@@ -502,6 +502,8 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"## [P1 Ship it](project-ship.md) (6)\n" +
 				"\n" +
+				"`ship` · Age 3d · Owner `box`\n" +
+				"\n" +
 				"Ships the thing.\n" +
 				"\n" +
 				"| # | Prio | Entry | Slug | Age<br>Revised | Labels |\n" +
@@ -515,15 +517,21 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"## [P5 Later](project-later.md) (0)\n" +
 				"\n" +
+				"`later` · Owner `box`\n" +
+				"\n" +
 				"_None._\n" +
 				"\n" +
 				"## [P4 Inner](project-inner.md) (0)\n" +
+				"\n" +
+				"`inner` · Owner `box`\n" +
 				"\n" +
 				"Nested work.\n" +
 				"\n" +
 				"_None._\n" +
 				"\n" +
 				"## [P2 Tidy up](project-tidy.md) (1)\n" +
+				"\n" +
+				"`tidy` · Owner `neve`\n" +
 				"\n" +
 				"Loose ends.\n" +
 				"\n" +
@@ -532,6 +540,8 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"| T5 |  | `draft` **Chore** | `chore` |  |  |\n" +
 				"\n" +
 				"## [P6 Orphan](project-orphan.md) (0)\n" +
+				"\n" +
+				"`orphan` · Owner `neve`\n" +
 				"\n" +
 				"Outlived its parent.\n" +
 				"\n" +
@@ -570,11 +580,11 @@ func TestRenderReadmeGolden(t *testing.T) {
 					"Rendered 2026-10-12 09:30 UTC; every age below is as of then.\n" +
 					"Under: [Board](README.md).\n" +
 					"\n" +
+					"`ship` · Age 3d · Owner `box`\n" +
+					"\n" +
 					"Ships the thing.\n" +
 					"\n" +
 					"beam\n" +
-					"\n" +
-					"Owner: `box`.\n" +
 					"\n" +
 					"Tasks are grouped by dependency layer and notes by type.\n" +
 					"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
@@ -634,6 +644,8 @@ func TestRenderReadmeGolden(t *testing.T) {
 					"Rendered 2026-10-12 09:30 UTC; every age below is as of then.\n" +
 					"Under: [P1 Ship it](project-ship.md).\n" +
 					"\n" +
+					"`inner` · Owner `box`\n" +
+					"\n" +
 					"Nested work.\n" +
 					"\n" +
 					"Tasks are grouped by dependency layer and notes by type.\n" +
@@ -656,6 +668,8 @@ func TestRenderReadmeGolden(t *testing.T) {
 					"\n" +
 					"Rendered 2026-10-12 09:30 UTC; every age below is as of then.\n" +
 					"Under: [Board](README.md).\n" +
+					"\n" +
+					"`tidy` · Owner `neve`\n" +
 					"\n" +
 					"Loose ends.\n" +
 					"\n" +
@@ -687,9 +701,10 @@ func TestRenderReadmeGolden(t *testing.T) {
 			projectFiles: []string{"project-inner.md", "project-later.md", "project-old.md", "project-orphan.md", "project-ship.md", "project-tidy.md"},
 		},
 		{
-			name: "a beam with a recorded owner on a board with no prime owner shows that owner",
+			name: "on a board with no prime owner a beam shows its recorded owner and a plain project none",
 			tasks: []boardengine.Task{
 				{ID: 1, Handle: "P1", Slug: "lone", Title: "Lone beam", Kind: boardengine.KindProject, Beam: true, OwnerMachine: "box"},
+				{ID: 2, Handle: "P2", Slug: "loose", Title: "Loose", Kind: boardengine.KindProject},
 			},
 			want: "# Board\n" +
 				"\n" +
@@ -700,6 +715,14 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
 				"\n" +
 				"## [P1 Lone beam](project-lone.md) (0)\n" +
+				"\n" +
+				"`lone` · Owner `box`\n" +
+				"\n" +
+				"_None._\n" +
+				"\n" +
+				"## [P2 Loose](project-loose.md) (0)\n" +
+				"\n" +
+				"`loose` · Owner none recorded\n" +
 				"\n" +
 				"_None._\n" +
 				"\n" +
@@ -726,9 +749,9 @@ func TestRenderReadmeGolden(t *testing.T) {
 					"Rendered 2026-10-12 09:30 UTC; every age below is as of then.\n" +
 					"Under: [Board](README.md).\n" +
 					"\n" +
-					"beam\n" +
+					"`lone` · Owner `box`\n" +
 					"\n" +
-					"Owner: `box`.\n" +
+					"beam\n" +
 					"\n" +
 					"Tasks are grouped by dependency layer and notes by type.\n" +
 					"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
