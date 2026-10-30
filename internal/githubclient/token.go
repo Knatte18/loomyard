@@ -76,6 +76,10 @@ func realRunGHAuthToken(ctx context.Context) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// ErrTokenRejected is wrapped into the error a call returns when GitHub answers 401 to a token taken from GH_TOKEN or GITHUB_TOKEN, which no replay can change.
+// The error reaches the caller inside a *url.Error, so a caller that classifies transient failures checks for it first.
+var ErrTokenRejected = errors.New("githubclient: GitHub rejected the token")
+
 // ErrTokenUnresolvable is returned by resolveToken when no credential source produced a usable
 // token.
 // Callers surface this as a typed error rather than waiting or prompting — there is no code path

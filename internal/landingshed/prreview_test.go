@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-github/v75/github"
 
 	"github.com/Knatte18/loomyard/internal/githubclient"
 	"github.com/Knatte18/loomyard/internal/parentlock"
@@ -121,14 +123,18 @@ func TestPRReview_Call(t *testing.T) {
 		dirty      []string
 		scripts    map[string][]scriptedCall
 		pushErr    error
+		// taskEmpty makes the task branch hold no commit beyond its parent.
+		taskEmpty bool
 
 		wantOutcome shedengine.Outcome
 		wantHalt    bool
 		wantReason  []string
-		wantErr     bool
-		wantCalls   []string
-		wantPushes  int
-		wantRecord  *pullrequest.Record
+		// wantNotInReason are substrings the reason must not hold.
+		wantNotInReason []string
+		wantErr         bool
+		wantCalls       []string
+		wantPushes      int
+		wantRecord      *pullrequest.Record
 		// wantNoRecord asserts the record's file is gone; a case with neither it nor wantRecord leaves the record unchecked.
 		wantNoRecord bool
 	}{
@@ -219,11 +225,52 @@ func TestPRReview_Call(t *testing.T) {
 			wantReason: []string{"gh auth login --hostname github.com", "lym loom resume"},
 		},
 		{
-			name: "NotFoundHaltsNamingTheTokenAndRepositoryAccess", parentMode: "on", origin: githubOrigin,
-			scripts:     map[string][]scriptedCall{"FindOpen": {{err: errors.New("404 Not Found")}}},
+			name: "EmptyTaskBranchUnderOnIsDoneWithNoPushAndNoGitHubCall", parentMode: "on", origin: githubOrigin, taskEmpty: true,
+			wantOutcome: shedengine.Done, wantNoRecord: true,
+		},
+		{
+			name: "EmptyTaskBranchClosesTheRecordedOpenPullRequestAndRemovesTheRecord", parentMode: "on", origin: githubOrigin, taskEmpty: true,
+			record:      &pullrequest.Record{Number: 7},
+			scripts:     map[string][]scriptedCall{"Status": {open}},
+			wantOutcome: shedengine.Done, wantNoRecord: true,
+			wantCalls: []string{"Status 7", "Close 7 lym closed this pull request: " + emptyBranchReason},
+		},
+		{
+			name: "RejectedTokenWrappedInAURLErrorHaltsNamingTheToken", parentMode: "on", origin: githubOrigin,
+			scripts:     map[string][]scriptedCall{"FindOpen": {{err: &url.Error{Op: "Get", URL: "https://api.github.com", Err: fmt.Errorf("%w: the token from GH_TOKEN (401)", githubclient.ErrTokenRejected)}}}},
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantPushes: 1,
 			wantCalls:  []string{"FindOpen task main"},
-			wantReason: []string{"404 Not Found", "GH_TOKEN", "can reach the repository", "lym loom resume"},
+			wantReason: []string{"GH_TOKEN, GITHUB_TOKEN", "lym loom resume"},
+		},
+		{
+			name: "UnauthorizedResponseHaltsNamingTheToken", parentMode: "on", origin: githubOrigin,
+			scripts:     map[string][]scriptedCall{"FindOpen": {{err: githubErrorResponse(http.StatusUnauthorized, "Bad credentials")}}},
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantPushes: 1,
+			wantCalls:  []string{"FindOpen task main"},
+			wantReason: []string{"Bad credentials", "GH_TOKEN", "can reach the repository", "lym loom resume"},
+		},
+		{
+			name: "ForbiddenResponseHaltsNamingTheToken", parentMode: "on", origin: githubOrigin,
+			scripts:     map[string][]scriptedCall{"FindOpen": {{err: githubErrorResponse(http.StatusForbidden, "Resource not accessible")}}},
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantPushes: 1,
+			wantCalls:  []string{"FindOpen task main"},
+			wantReason: []string{"Resource not accessible", "GH_TOKEN", "lym loom resume"},
+		},
+		{
+			name: "UnprocessableResponseHaltsSayingWhatA422MeansAndNotNamingTheToken", parentMode: "on", origin: githubOrigin,
+			scripts:     map[string][]scriptedCall{"Create": {{err: githubErrorResponse(http.StatusUnprocessableEntity, "No commits between main and task")}}},
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantPushes: 1,
+			wantCalls:       []string{"FindOpen task main", wantCreateCall},
+			wantReason:      []string{"No commits between main and task", "(422)", "accepted the token but not the request", "lym loom resume"},
+			wantNotInReason: []string{"GH_TOKEN"},
+		},
+		{
+			name: "NotFoundHaltsNamingGitHubsMessageAndNotTheToken", parentMode: "on", origin: githubOrigin,
+			scripts:     map[string][]scriptedCall{"FindOpen": {{err: githubErrorResponse(http.StatusNotFound, "Not Found")}}},
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantPushes: 1,
+			wantCalls:       []string{"FindOpen task main"},
+			wantReason:      []string{"Not Found", "fix what GitHub's message names", "lym loom resume"},
+			wantNotInReason: []string{"GH_TOKEN"},
 		},
 		{
 			name: "TransientGitHubErrorIsAnError", parentMode: "on", origin: githubOrigin,
@@ -237,6 +284,7 @@ func TestPRReview_Call(t *testing.T) {
 			t.Parallel()
 			fx := newPRReviewFixture(t, tt.parentMode, tt.parentErr, tt.field, tt.origin, tt.record, tt.scripts, tt.pushErr)
 			fx.dirty = tt.dirty
+			fx.deps.PullRequest.TaskHasCommits = func() (bool, error) { return !tt.taskEmpty, nil }
 
 			outcome, pointer, err := NewPRReview("PR-Review", fx.deps).Call(context.Background())
 
@@ -250,6 +298,11 @@ func TestPRReview_Call(t *testing.T) {
 				for _, want := range tt.wantReason {
 					if !strings.Contains(pointer.Reason, want) {
 						t.Errorf("Call() reason %q lacks %q", pointer.Reason, want)
+					}
+				}
+				for _, unwanted := range tt.wantNotInReason {
+					if strings.Contains(pointer.Reason, unwanted) {
+						t.Errorf("Call() reason %q holds %q", pointer.Reason, unwanted)
 					}
 				}
 			}
@@ -290,6 +343,7 @@ func TestPRReview_Call(t *testing.T) {
 			"PullRequest.API":             func(d *Deps) { d.PullRequest.API = nil },
 			"PullRequest.PushTask":        func(d *Deps) { d.PullRequest.PushTask = nil },
 			"PullRequest.CommitsMissing":  func(d *Deps) { d.PullRequest.CommitsMissing = nil },
+			"PullRequest.TaskHasCommits":  func(d *Deps) { d.PullRequest.TaskHasCommits = nil },
 			"PullRequest.DirtyPaths":      func(d *Deps) { d.PullRequest.DirtyPaths = nil },
 			"PullRequest.MailAgent":       func(d *Deps) { d.PullRequest.MailAgent = nil },
 			"PullRequest.PauseCovered":    func(d *Deps) { d.PullRequest.PauseCovered = nil },
@@ -324,6 +378,14 @@ func TestPRReview_Call(t *testing.T) {
 			t.Errorf("Call() = %q, %v; want an empty outcome and an error wrapping context.Canceled", outcome, err)
 		}
 	})
+}
+
+// emptyBranchReason is the resolver's reason for an on parent whose task branch holds no commit beyond it.
+const emptyBranchReason = "no pull request: the parent's beam.yaml pull_request is on, but the task branch has no commits beyond its parent, so the landing is empty"
+
+// githubErrorResponse is the error go-github returns for a response GitHub answered with status and message.
+func githubErrorResponse(status int, message string) *github.ErrorResponse {
+	return &github.ErrorResponse{Response: &http.Response{StatusCode: status}, Message: message}
 }
 
 // prReviewFixture is the Deps a PR-Review test runs under, with the fake API, the push count and the dirty paths it reads back.
@@ -374,6 +436,7 @@ func prReviewTestDeps(t *testing.T, api *fakePullRequestAPI) Deps {
 			API:             func(string) (pullrequest.API, error) { return api, nil },
 			PushTask:        func() error { return nil },
 			CommitsMissing:  func(string, string) ([]string, error) { return nil, nil },
+			TaskHasCommits:  func() (bool, error) { return true, nil },
 			DirtyPaths:      func() ([]string, error) { return nil, nil },
 			MailAgent:       func(string, string) error { return nil },
 			PauseCovered:    func() (bool, error) { return false, nil },

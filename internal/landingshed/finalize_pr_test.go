@@ -63,15 +63,19 @@ func TestFinalize_PullRequest(t *testing.T) {
 		pushErr    error
 		merges     []mergeCallResult
 		ffErr      error
+		// taskEmpty makes the task branch hold no commit beyond its parent.
+		taskEmpty bool
 
-		wantOutcome  shedengine.Outcome
-		wantHalt     bool
-		wantReason   []string
-		wantErr      bool
-		wantCalls    []string
-		wantOrder    string
-		wantMerges   int
-		wantNoRecord bool
+		wantOutcome shedengine.Outcome
+		wantHalt    bool
+		wantReason  []string
+		wantErr     bool
+		wantCalls   []string
+		wantOrder   string
+		wantMerges  int
+		// wantNotInReason are substrings the reason must not hold.
+		wantNotInReason []string
+		wantNoRecord    bool
 	}{
 		{
 			name: "UnreadableParentModeHaltsNamingTheWorktreeBehindTheLandingPrefix", parentErr: errors.New("bad yaml"),
@@ -153,9 +157,18 @@ func TestFinalize_PullRequest(t *testing.T) {
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"gh auth login --hostname github.com", "lym loom resume"}, wantCalls: []string{"Status 7"},
 		},
 		{
-			name: "AFailingStatusReadHaltsNamingTheTokenAndRepositoryAccess", parentMode: "on", record: recorded(),
+			name: "AFailingStatusReadHaltsNamingGitHubsMessageAndNotTheToken", parentMode: "on", record: recorded(),
 			scripts:     statusScript(scriptedCall{err: errors.New("404 Not Found")}),
-			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"404 Not Found", "GH_TOKEN", "can reach the repository"}, wantCalls: []string{"Status 7"},
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"404 Not Found", "fix what GitHub's message names"}, wantNotInReason: []string{"GH_TOKEN"}, wantCalls: []string{"Status 7"},
+		},
+		{
+			name: "AnEmptyTaskBranchUnderOnWithNoRecordLandsLocallyWithNoGitHubCall", parentMode: "on", taskEmpty: true,
+			wantOutcome: shedengine.Done, wantMerges: 1, wantOrder: "merge,mark,push",
+		},
+		{
+			name: "AnEmptyTaskBranchClosesAnOpenRecordedPullRequestAndLandsLocally", parentMode: "on", taskEmpty: true, record: recorded(), scripts: statusScript(open),
+			wantOutcome: shedengine.Done, wantMerges: 1, wantNoRecord: true, wantOrder: "merge,mark,push",
+			wantCalls: []string{"Status 7", "Close 7 lym closed this pull request: " + emptyBranchReason},
 		},
 		{
 			name: "AFailingPushHaltsNamingFabricPushAndMergesNothing", parentMode: "on", record: recorded(), scripts: mergeScript(open, scriptedCall{}), pushErr: errors.New("rejected"),
@@ -194,9 +207,10 @@ func TestFinalize_PullRequest(t *testing.T) {
 					lockHeldAtMode = found && rec.Owner.Slug == "me"
 					return mode, "wt-parent", tt.parentErr
 				},
-				EntryField: func() (string, error) { return "", nil },
-				Origin:     func() (Origin, error) { return origin, nil },
-				API:        func(string) (pullrequest.API, error) { return api, nil },
+				EntryField:     func() (string, error) { return "", nil },
+				Origin:         func() (Origin, error) { return origin, nil },
+				TaskHasCommits: func() (bool, error) { return !tt.taskEmpty, nil },
+				API:            func(string) (pullrequest.API, error) { return api, nil },
 				PushTask: func() error {
 					order = append(order, "task-push")
 					return tt.pushErr
@@ -235,6 +249,11 @@ func TestFinalize_PullRequest(t *testing.T) {
 				for _, want := range tt.wantReason {
 					if !strings.Contains(pointer.Reason, want) {
 						t.Errorf("Call() reason %q lacks %q", pointer.Reason, want)
+					}
+				}
+				for _, unwanted := range tt.wantNotInReason {
+					if strings.Contains(pointer.Reason, unwanted) {
+						t.Errorf("Call() reason %q holds %q", pointer.Reason, unwanted)
 					}
 				}
 			}

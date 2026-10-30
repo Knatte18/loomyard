@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -39,13 +40,27 @@ func pushHaltReason(worktreeRoot string, err error) string {
 	return fmt.Sprintf("pushing the task branch failed: %v; way forward: run lym fabric push in the task worktree %s, then run lym loom resume", err, worktreeRoot)
 }
 
+// tokenFailure reports whether err is a GitHub token that could not be resolved or that GitHub rejected.
+// The HTTP client wraps both in an error the transient classifier reads as transient, so callers check this first.
+func tokenFailure(err error) bool {
+	return errors.Is(err, githubclient.ErrTokenUnresolvable) || errors.Is(err, githubclient.ErrTokenRejected)
+}
+
 // githubHaltReason is the Stuck reason of a failed GitHub call named by action that is not transient.
-// An unresolvable token names gh auth login, and any other failure names the token and repository access.
+// Only an authentication failure names the token: an unresolvable token names gh auth login, and a rejected token or a 401 or 403 response names the token and repository access.
+// A 422 says GitHub refused the request's content, and any other failure names GitHub's message.
 func githubHaltReason(action string, err error) string {
 	if errors.Is(err, githubclient.ErrTokenUnresolvable) {
 		return fmt.Sprintf("no GitHub token is available to %s: %v; way forward: the operator runs gh auth login --hostname github.com, then lym loom resume", action, err)
 	}
-	return fmt.Sprintf("the GitHub call to %s failed: %v; way forward: make sure the gh user's token (GH_TOKEN, GITHUB_TOKEN, or gh auth login --hostname github.com) is valid and can reach the repository, then run lym loom resume", action, err)
+	status := githubclient.StatusCode(err)
+	switch {
+	case errors.Is(err, githubclient.ErrTokenRejected), status == http.StatusUnauthorized, status == http.StatusForbidden:
+		return fmt.Sprintf("GitHub refused the token for the call to %s: %v; way forward: make sure the gh user's token (GH_TOKEN, GITHUB_TOKEN, or gh auth login --hostname github.com) is valid and can reach the repository, then run lym loom resume", action, err)
+	case status == http.StatusUnprocessableEntity:
+		return fmt.Sprintf("GitHub refused the call to %s as invalid (422): %v; a 422 means GitHub accepted the token but not the request, such as a pull request between branches with no commits between them; way forward: fix what GitHub's message names in the task or parent branch, then run lym loom resume", action, err)
+	}
+	return fmt.Sprintf("the GitHub call to %s failed: %v; way forward: fix what GitHub's message names, then run lym loom resume", action, err)
 }
 
 // pullRequestMergeMessage composes the commit message of a pull request's merge: the change description's body, then the trailer block.
@@ -62,10 +77,10 @@ func pullRequestMergeMessage(body, trailer string) string {
 }
 
 // githubFailure judges a failed GitHub call named by action, which is the whole of Finalize's disposition of one.
-// An unresolvable token halts first, since the HTTP client wraps that error in a type the transient classifier reads as transient; then a transient failure is an error the driver re-steps; any other failure halts.
+// A token failure halts first, since the HTTP client wraps it in a type the transient classifier reads as transient; then a transient failure is an error the driver re-steps; any other failure halts.
 // Each halt opens with LandingStopPrefix.
 func (fz *Finalize) githubFailure(ctx context.Context, action string, err error) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
-	if !errors.Is(err, githubclient.ErrTokenUnresolvable) {
+	if !tokenFailure(err) {
 		if terr := transientFailure(ctx, finalizeName, action, err); terr != nil {
 			return "", shedengine.OutputPointer{}, terr, true
 		}
@@ -103,7 +118,11 @@ func (fz *Finalize) pullRequestLanding(ctx context.Context) (prLanding, shedengi
 	if err != nil {
 		return ended(fz.errorStop(ctx, fmt.Errorf("landingshed: %s: read the origin: %w", finalizeName, err)))
 	}
-	decision := ResolvePullRequest(fz.deps.Slug, mode, field, origin)
+	hasCommits, err := pr.TaskHasCommits()
+	if err != nil {
+		return ended(fz.errorStop(ctx, fmt.Errorf("landingshed: %s: read whether the task branch has commits beyond its parent: %w", finalizeName, err)))
+	}
+	decision := ResolvePullRequest(fz.deps.Slug, mode, field, origin, hasCommits)
 	if decision.Halt != "" {
 		return halt(decision.Halt)
 	}

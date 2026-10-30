@@ -80,6 +80,8 @@
 // environment value -- a replay in that case is a guaranteed-identical
 // second failure, not a chance at recovery, so authRT discards the response
 // and returns an error naming the rejected environment variable instead.
+// That error wraps ErrTokenRejected, so a caller can tell a refused token
+// from a transport failure inside the same *url.Error.
 //
 // # The two deadlines
 //
