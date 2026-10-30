@@ -7,6 +7,7 @@ package landingshed
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/url"
 	"path/filepath"
 	"slices"
@@ -65,11 +66,15 @@ func TestFinalize_PullRequest(t *testing.T) {
 		ffErr      error
 		// taskEmpty makes the task branch hold no commit beyond its parent.
 		taskEmpty bool
+		// taskErr makes the TaskHasCommits seam fail.
+		taskErr error
 
 		wantOutcome shedengine.Outcome
 		wantHalt    bool
 		wantReason  []string
 		wantErr     bool
+		// wantErrText is a substring the returned error must hold.
+		wantErrText string
 		wantCalls   []string
 		wantOrder   string
 		wantMerges  int
@@ -157,6 +162,16 @@ func TestFinalize_PullRequest(t *testing.T) {
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"gh auth login --hostname github.com", "lym loom resume"}, wantCalls: []string{"Status 7"},
 		},
 		{
+			name: "ARejectedTokenWrappedInAURLErrorHaltsNamingTheTokenAndNotATransientError", parentMode: "on", record: recorded(),
+			scripts:     statusScript(scriptedCall{err: &url.Error{Op: "Get", URL: "https://api.github.com", Err: fmt.Errorf("%w: the token from GH_TOKEN (401)", githubclient.ErrTokenRejected)}}),
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"GH_TOKEN, GITHUB_TOKEN", "lym loom resume"}, wantCalls: []string{"Status 7"},
+		},
+		{
+			name: "AFailingTaskCommitReadIsAnErrorStopWithNoGitHubCallAndNoMerge", parentMode: "on", record: recorded(),
+			taskErr: errors.New("rev-list failed"),
+			wantErr: true, wantErrText: "read whether the task branch has commits beyond its parent",
+		},
+		{
 			name: "AFailingStatusReadHaltsNamingGitHubsMessageAndNotTheToken", parentMode: "on", record: recorded(),
 			scripts:     statusScript(scriptedCall{err: errors.New("404 Not Found")}),
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"404 Not Found", "fix what GitHub's message names"}, wantNotInReason: []string{"GH_TOKEN"}, wantCalls: []string{"Status 7"},
@@ -209,7 +224,7 @@ func TestFinalize_PullRequest(t *testing.T) {
 				},
 				EntryField:     func() (string, error) { return "", nil },
 				Origin:         func() (Origin, error) { return origin, nil },
-				TaskHasCommits: func() (bool, error) { return !tt.taskEmpty, nil },
+				TaskHasCommits: func() (bool, error) { return !tt.taskEmpty, tt.taskErr },
 				API:            func(string) (pullrequest.API, error) { return api, nil },
 				PushTask: func() error {
 					order = append(order, "task-push")
@@ -238,6 +253,9 @@ func TestFinalize_PullRequest(t *testing.T) {
 
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("Call() error = %v; want error %v", err, tt.wantErr)
+			}
+			if err != nil && !strings.Contains(err.Error(), tt.wantErrText) {
+				t.Errorf("Call() error = %q; want it to hold %q", err, tt.wantErrText)
 			}
 			if err == nil {
 				if outcome != tt.wantOutcome || pointer.Halt != tt.wantHalt {

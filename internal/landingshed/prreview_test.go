@@ -125,6 +125,8 @@ func TestPRReview_Call(t *testing.T) {
 		pushErr    error
 		// taskEmpty makes the task branch hold no commit beyond its parent.
 		taskEmpty bool
+		// taskErr makes the TaskHasCommits seam fail.
+		taskErr error
 
 		wantOutcome shedengine.Outcome
 		wantHalt    bool
@@ -132,9 +134,11 @@ func TestPRReview_Call(t *testing.T) {
 		// wantNotInReason are substrings the reason must not hold.
 		wantNotInReason []string
 		wantErr         bool
-		wantCalls       []string
-		wantPushes      int
-		wantRecord      *pullrequest.Record
+		// wantErrText is a substring the returned error must hold.
+		wantErrText string
+		wantCalls   []string
+		wantPushes  int
+		wantRecord  *pullrequest.Record
 		// wantNoRecord asserts the record's file is gone; a case with neither it nor wantRecord leaves the record unchecked.
 		wantNoRecord bool
 	}{
@@ -236,6 +240,11 @@ func TestPRReview_Call(t *testing.T) {
 			wantCalls: []string{"Status 7", "Close 7 lym closed this pull request: " + emptyBranchReason},
 		},
 		{
+			name: "FailingTaskCommitReadIsAnErrorNamingItWithNoPushAndNoGitHubCall", parentMode: "on", origin: githubOrigin,
+			taskErr: errors.New("rev-list failed"),
+			wantErr: true, wantErrText: "read whether the task branch has commits beyond its parent",
+		},
+		{
 			name: "RejectedTokenWrappedInAURLErrorHaltsNamingTheToken", parentMode: "on", origin: githubOrigin,
 			scripts:     map[string][]scriptedCall{"FindOpen": {{err: &url.Error{Op: "Get", URL: "https://api.github.com", Err: fmt.Errorf("%w: the token from GH_TOKEN (401)", githubclient.ErrTokenRejected)}}}},
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantPushes: 1,
@@ -284,12 +293,15 @@ func TestPRReview_Call(t *testing.T) {
 			t.Parallel()
 			fx := newPRReviewFixture(t, tt.parentMode, tt.parentErr, tt.field, tt.origin, tt.record, tt.scripts, tt.pushErr)
 			fx.dirty = tt.dirty
-			fx.deps.PullRequest.TaskHasCommits = func() (bool, error) { return !tt.taskEmpty, nil }
+			fx.deps.PullRequest.TaskHasCommits = func() (bool, error) { return !tt.taskEmpty, tt.taskErr }
 
 			outcome, pointer, err := NewPRReview("PR-Review", fx.deps).Call(context.Background())
 
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("Call() error = %v; want error %v", err, tt.wantErr)
+			}
+			if err != nil && !strings.Contains(err.Error(), tt.wantErrText) {
+				t.Errorf("Call() error = %q; want it to hold %q", err, tt.wantErrText)
 			}
 			if err == nil {
 				if outcome != tt.wantOutcome || pointer.Halt != tt.wantHalt {
