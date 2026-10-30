@@ -475,11 +475,15 @@ func (b boardView) entrySections(project Task, level string) []string {
 	return lines
 }
 
-// childProjects returns the open projects directly under project, the zero Task naming the root, in project's order, then by handle.
+// childProjects returns the open projects directly under project, in project's order, then by handle.
+// The zero Task names the root, which has no order, so its children run by handle;
+// an open project under a done project counts as directly under the root, since a done project has no README section to hold it.
 func (b boardView) childProjects(project Task) []TaskWithLayer {
 	var children []TaskWithLayer
 	for _, twl := range b.ordered {
-		if twl.Project == project.Slug && !isDone(twl.Task) && twl.Kind == KindProject {
+		parent, parentOnBoard := b.bySlug[twl.Project]
+		under := twl.Project == project.Slug || (project.Slug == "" && parentOnBoard && isDone(parent.Task))
+		if under && !isDone(twl.Task) && twl.Kind == KindProject {
 			children = append(children, twl)
 		}
 	}

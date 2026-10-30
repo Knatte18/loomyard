@@ -482,13 +482,14 @@ func TestRenderReadmeGolden(t *testing.T) {
 				{ID: 3, Handle: "P3", Slug: "old", Title: "Old project", Kind: boardengine.KindProject, Status: stringPtr("done")},
 				{ID: 10, Handle: "P4", Slug: "inner", Title: "Inner", Kind: boardengine.KindProject, Project: "ship", Brief: "Nested work."},
 				{ID: 11, Handle: "P5", Slug: "later", Title: "Later", Kind: boardengine.KindProject, Project: "ship"},
-				{ID: 4, Handle: "T1", Slug: "first", Title: "First step", Kind: boardengine.KindTask, Project: "ship"},
-				{ID: 5, Handle: "T2", Slug: "second", Title: "Second step", Kind: boardengine.KindTask, Project: "ship", Status: stringPtr(boardengine.RunStatus("running", "Webster"))},
+				{ID: 4, Handle: "T1", Slug: "first", Title: "First step", Kind: boardengine.KindTask, Project: "ship", Priority: boardengine.PriorityLow},
+				{ID: 5, Handle: "T2", Slug: "second", Title: "Second step", Kind: boardengine.KindTask, Project: "ship", Status: stringPtr(boardengine.RunStatus("running", "Webster")), Priority: boardengine.PriorityHigh, Body: "Second design."},
 				{ID: 6, Handle: "T3", Slug: "third", Title: "Third step", Kind: boardengine.KindTask, Project: "ship", DependsOn: []string{"second", "base", "ghost", "shipped"}},
 				{ID: 7, Handle: "E1", Slug: "thought", Title: "A thought", Kind: boardengine.KindNote, Project: "ship"},
 				{ID: 8, Handle: "T4", Slug: "shipped", Title: "Shipped step", Kind: boardengine.KindTask, Project: "ship", Status: stringPtr("done")},
 				{ID: 9, Handle: "T5", Slug: "chore", Title: "Chore", Kind: boardengine.KindTask, Project: "tidy", Status: stringPtr(boardengine.StatusDraft)},
 				{ID: 12, Handle: "T7", Slug: "base", Title: "Base", Kind: boardengine.KindTask},
+				{ID: 13, Handle: "P6", Slug: "orphan", Title: "Orphan", Kind: boardengine.KindProject, Project: "old", Brief: "Outlived its parent."},
 			},
 			primeOwner: "neve",
 			want: "# Board\n" +
@@ -505,8 +506,8 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"| # | Prio | Entry | Slug | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- |\n" +
-				"| T2 |  | **Second step** | `second` |  |  |\n" +
-				"| T1 |  | **First step** | `first` |  |  |\n" +
+				"| T2 | H | **Second step** | [`second`](design-second.md) |  |  |\n" +
+				"| T1 | L | **First step** | `first` |  |  |\n" +
 				"| T3 |  | **Third step** | `third` |  |  |\n" +
 				"| P4 |  | **Inner**<br>• Nested work. | `inner` |  |  |\n" +
 				"| P5 |  | **Later** | `later` |  |  |\n" +
@@ -529,6 +530,12 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"| # | Prio | Entry | Slug | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- |\n" +
 				"| T5 |  | `draft` **Chore** | `chore` |  |  |\n" +
+				"\n" +
+				"## [P6 Orphan](project-orphan.md) (0)\n" +
+				"\n" +
+				"Outlived its parent.\n" +
+				"\n" +
+				"_None._\n" +
 				"\n" +
 				"## Prime\n" +
 				"\n" +
@@ -587,7 +594,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 					"\n" +
 					"| # | Task | Slug | Recipe | At | Owner | Age<br>Revised | Labels |\n" +
 					"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
-					"| T2 | **Second step** | `second` | loom | Webster | box |  |  |\n" +
+					"| T2 | **Second step** | [`second`](design-second.md) | loom | Webster | box |  |  |\n" +
 					"\n" +
 					"### Ready (1)\n" +
 					"\n" +
@@ -677,7 +684,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 					"\n" +
 					"Not tasks: ideas and observations, merged into a task when one is promoted.\n",
 			},
-			projectFiles: []string{"project-inner.md", "project-later.md", "project-old.md", "project-ship.md", "project-tidy.md"},
+			projectFiles: []string{"project-inner.md", "project-later.md", "project-old.md", "project-orphan.md", "project-ship.md", "project-tidy.md"},
 		},
 		{
 			name: "a beam with a recorded owner on a board with no prime owner shows that owner",
