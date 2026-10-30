@@ -16,7 +16,7 @@ import (
 // ParentOf names the slug of the pair a slug was forked from, "" for the prime.
 // ChildStatus reads the status of the beam pair's own pawl run, found false when it has none.
 // RunID returns the seed id of that pawl run, which a land request names.
-// Ready reads whether the beam's ready record flags it, and MarkReady writes and commits that record and returns its path.
+// Ready reads whether the beam's ready record flags it, and MarkReady writes that record unless it already flags the beam, commits it and returns its path.
 // Refusal is the landing's refusal of a beam with work remaining under it.
 // WriteRequest writes the land request into the beam worktree and returns its path.
 type landDeps struct {
@@ -82,7 +82,7 @@ func land(deps landDeps, slug string) (map[string]any, error) {
 }
 
 // markReady flags the beam slug ready to be merged into its parent, and returns the ready record's path and how the landing follows.
-// A beam already flagged is reported as such, and nothing is written.
+// A beam already flagged is reported as such and its record is not rewritten, but a record left uncommitted by a failed commit is committed.
 func markReady(deps landDeps, slug string) (map[string]any, error) {
 	owners, err := deps.ReadOwners()
 	if err != nil {
@@ -99,9 +99,6 @@ func markReady(deps landDeps, slug string) (map[string]any, error) {
 		"slug":        slug,
 		"already":     ready,
 		"way_forward": fmt.Sprintf("the beam's dobby lands %s once nothing works under it; run `lym batten status %s` to follow the landing", slug, slug),
-	}
-	if ready {
-		return result, nil
 	}
 	path, err := deps.MarkReady(slug, pawlengine.ReadyRecord{Slug: slug, SetAt: deps.Now().UTC()})
 	if err != nil {

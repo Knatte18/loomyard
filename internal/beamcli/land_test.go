@@ -28,9 +28,13 @@ type landWorld struct {
 	origins map[string]fabricengine.Origin
 	// children holds each beam's pawl run status; a beam with no entry has no pawl run.
 	children map[string]shedengine.Status
-	// ready holds each beam whose ready record flags it, and marked the ready records written.
+	// ready holds each beam whose ready record flags it, marked the ready records written and markCalls the MarkReady calls, which commit a flagged beam's record too.
+	// readyErr and markErr are what the Ready and MarkReady seams fail with.
 	ready      map[string]bool
 	marked     []pawlengine.ReadyRecord
+	markCalls  int
+	readyErr   error
+	markErr    error
 	runID      string
 	refusal    error
 	refusedFor []string
@@ -71,9 +75,15 @@ func (w *landWorld) deps() landDeps {
 			return status, found, nil
 		},
 		RunID: func(string) (string, error) { return w.runID, nil },
-		Ready: func(slug string) (bool, error) { return w.ready[slug], nil },
+		Ready: func(slug string) (bool, error) { return w.ready[slug], w.readyErr },
 		MarkReady: func(slug string, record pawlengine.ReadyRecord) (string, error) {
-			w.marked = append(w.marked, record)
+			w.markCalls++
+			if w.markErr != nil {
+				return "", w.markErr
+			}
+			if !w.ready[slug] {
+				w.marked = append(w.marked, record)
+			}
 			return "/hub/" + slug + "/_lym/landing/beam-ready.json", nil
 		},
 		Refusal: func(slug string) error {
@@ -192,6 +202,32 @@ func TestLand(t *testing.T) {
 			wantErr: []string{"not flagged ready", "lym beam ready b"},
 		},
 		{
+			name: "OwnerRefusalComesBeforeTheReadyRefusal",
+			slug: "b",
+			setup: func(w *landWorld) {
+				w.owners.Entries["b"] = boardengine.OwnerEntry{IsProject: true, Beam: true, Owner: there}
+				delete(w.ready, "b")
+			},
+			wantErr: []string{"owned by machine there", "lym adopt b"},
+		},
+		{
+			name: "ReadyRefusalComesBeforeTheWorkRemainingRefusal",
+			slug: "b",
+			setup: func(w *landWorld) {
+				w.refusal = errors.New("the open entry m is a member of the beam")
+				delete(w.ready, "b")
+			},
+			wantErr: []string{"not flagged ready", "lym beam ready b"},
+		},
+		{
+			name: "UnreadableReadyRecordRefusedNamingLand",
+			slug: "b",
+			setup: func(w *landWorld) {
+				w.readyErr = errors.New("the record is corrupt")
+			},
+			wantErr: []string{"the record is corrupt", "lym beam land b"},
+		},
+		{
 			name: "WorkRemainingRefusalPassesThroughAndWritesNothing",
 			slug: "b",
 			setup: func(w *landWorld) {
@@ -257,6 +293,8 @@ func TestMarkReady(t *testing.T) {
 		wantErr []string
 		// wantAlready says the beam read as flagged before the call, so nothing is written.
 		wantAlready bool
+		// wantMarkCalls is how many times the MarkReady seam, which writes an absent record and commits it, ran.
+		wantMarkCalls int
 	}{
 		{name: "TaskRefusedNamingItsOwnLanding", slug: "task1", wantErr: []string{"lym beam ready:", "lym batten run task1"}},
 		{name: "GroupingProjectRefusedNamingCreate", slug: "group", wantErr: []string{"lym beam ready:", "lym beam create group"}},
@@ -274,8 +312,27 @@ func TestMarkReady(t *testing.T) {
 			setup: func(w *landWorld) {
 				delete(w.ready, "b")
 			},
+			wantMarkCalls: 1,
 		},
-		{name: "FlaggedBeamWritesNothing", slug: "b", wantAlready: true},
+		{name: "FlaggedBeamWritesNothingAndStillCommits", slug: "b", wantAlready: true, wantMarkCalls: 1},
+		{
+			name: "UnreadableReadyRecordRefusedNamingReady",
+			slug: "b",
+			setup: func(w *landWorld) {
+				w.readyErr = errors.New("the record is corrupt")
+			},
+			wantErr: []string{"the record is corrupt", "lym beam ready b"},
+		},
+		{
+			name: "FailedRecordWriteOrCommitRefusedNamingReady",
+			slug: "b",
+			setup: func(w *landWorld) {
+				delete(w.ready, "b")
+				w.markErr = errors.New("the commit failed")
+			},
+			wantErr:       []string{"the commit failed", "lym beam ready b"},
+			wantMarkCalls: 1,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -299,7 +356,13 @@ func TestMarkReady(t *testing.T) {
 				if len(w.marked) != 0 {
 					t.Errorf("markReady(%q) wrote %d records on a refusal; want none", tt.slug, len(w.marked))
 				}
+				if w.markCalls != tt.wantMarkCalls {
+					t.Errorf("markReady(%q) ran MarkReady %d times; want %d", tt.slug, w.markCalls, tt.wantMarkCalls)
+				}
 				return
+			}
+			if w.markCalls != tt.wantMarkCalls {
+				t.Errorf("markReady(%q) ran MarkReady %d times; want %d", tt.slug, w.markCalls, tt.wantMarkCalls)
 			}
 			if err != nil {
 				t.Fatalf("markReady(%q) = %v; want nil", tt.slug, err)

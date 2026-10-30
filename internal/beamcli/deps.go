@@ -126,8 +126,14 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 				return "", err
 			}
 			path := loomengine.BeamReadyPath(beam)
-			if err := pawlengine.WriteReady(path, loomengine.BeamReadyLockPath(beam), record); err != nil {
+			flagged, err := pawlengine.ReadyFor(path, loomengine.BeamReadyLockPath(beam), slug)
+			if err != nil {
 				return "", err
+			}
+			if !flagged {
+				if err := pawlengine.WriteReady(path, loomengine.BeamReadyLockPath(beam), record); err != nil {
+					return "", err
+				}
 			}
 			_, _, err = fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), beam, []string{loomengine.LandingDirRel()}, fmt.Sprintf("beam: %s is ready to merge", slug), fabricengine.EnvSyncOptions())
 			return path, err
