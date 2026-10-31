@@ -102,9 +102,12 @@ func dobbyRunPass(run dobbyengine.ViewRun, now time.Time) string {
 	return strings.Join(notes, ", ")
 }
 
-// dobbyTaskWait renders what a released task waits on, or that nothing holds it back.
+// dobbyTaskWait renders what a released task waits on, or that nothing holds it back, with the last refused start when one was recorded.
 func dobbyTaskWait(task dobbyengine.WaitingTask, maxRuns int, now time.Time) string {
 	if task.Ready() {
+		if task.Refusal != "" {
+			return "ready to start, last refused start: " + firstLine(task.Refusal)
+		}
 		return "ready to start"
 	}
 	var reasons []string
@@ -116,6 +119,9 @@ func dobbyTaskWait(task dobbyengine.WaitingTask, maxRuns int, now time.Time) str
 	}
 	if task.Paused {
 		reasons = append(reasons, "a pause")
+	}
+	if task.StartRefusal != "" {
+		reasons = append(reasons, "a start batten refuses: "+firstLine(task.StartRefusal))
 	}
 	if !task.NextTry.IsZero() {
 		reasons = append(reasons, fmt.Sprintf("a refused start (%s), retry in %s", firstLine(task.Refusal), durfmt.FormatMinutes(task.NextTry.Sub(now))))

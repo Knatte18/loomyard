@@ -32,16 +32,18 @@ func TestBuildView(t *testing.T) {
 		{
 			name: "EachEntryReasonIsListed",
 			mutate: func(in *ViewInput) {
-				deps, owned, paused := readyTask("deps"), readyTask("owned"), readyTask("paused")
+				deps, owned, paused, finished := readyTask("deps"), readyTask("owned"), readyTask("paused"), readyTask("finished")
 				deps.PendingDependencies = []string{"x", "y"}
 				owned.OwnedElsewhere = true
-				in.Tasks = []TaskView{deps, owned, paused}
+				finished.StartRefusal = "already completed"
+				in.Tasks = []TaskView{deps, owned, paused, finished}
 				in.Covers = func(slug string) bool { return slug == "paused" }
 			},
 			want: View{Alive: true, MaxRuns: 2, Runs: []ViewRun{}, Waiting: []WaitingTask{
 				{Slug: "deps", Dependencies: []string{"x", "y"}},
 				{Slug: "owned", OwnedElsewhere: true},
 				{Slug: "paused", Paused: true},
+				{Slug: "finished", StartRefusal: "already completed"},
 			}},
 		},
 		{
@@ -75,6 +77,19 @@ func TestBuildView(t *testing.T) {
 				{Slug: "held", Dependencies: []string{"x"}},
 				{Slug: "first"},
 				{Slug: "second", AtMaxRuns: true},
+			}},
+		},
+		{
+			name: "ATaskWithAStartRefusalTakesNoMaxRunsSlot",
+			mutate: func(in *ViewInput) {
+				in.Config.MaxRuns = 1
+				finished := readyTask("finished")
+				finished.StartRefusal = "already completed"
+				in.Tasks = []TaskView{finished, readyTask("ready")}
+			},
+			want: View{Alive: true, MaxRuns: 1, Runs: []ViewRun{}, Waiting: []WaitingTask{
+				{Slug: "finished", StartRefusal: "already completed"},
+				{Slug: "ready"},
 			}},
 		},
 		{

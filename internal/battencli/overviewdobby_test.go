@@ -42,6 +42,8 @@ func TestDobbyLines(t *testing.T) {
 					{Slug: "refused", Refusal: "dirty source", NextTry: overviewNow.Add(4 * time.Minute)},
 					{Slug: "owned", OwnedElsewhere: true},
 					{Slug: "capped", AtMaxRuns: true},
+					{Slug: "done", StartRefusal: "already completed\nmore detail", Refusal: "already completed\nmore detail"},
+					{Slug: "retry", Refusal: "dirty source"},
 				},
 			},
 			cells: map[string]RunCells{
@@ -57,6 +59,8 @@ func TestDobbyLines(t *testing.T) {
 				"  refused  waits on a refused start (dirty source), retry in 4m",
 				"  owned    waits on another machine's ownership",
 				"  capped   waits on max_runs 2",
+				"  done     waits on a start batten refuses: already completed",
+				"  retry    ready to start, last refused start: dirty source",
 			},
 		},
 		{

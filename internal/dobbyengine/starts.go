@@ -29,6 +29,9 @@ type TaskView struct {
 	Parent string
 	// OwnedElsewhere reports whether the entry's effective owner is another machine; read only for a released task.
 	OwnedElsewhere bool
+	// StartRefusal is the refusal every start of the slug gets now, such as for a finished run record of the same slug, with its way forward; empty when none.
+	// Dobby spawns no pass for a task that carries one, and starts it on the first tick after the refusal is gone; read only for a released task.
+	StartRefusal string
 	// Fingerprint changes whenever the entry does.
 	Fingerprint string
 }
@@ -38,13 +41,13 @@ func released(task TaskView, here string) bool {
 	return task.Kind == boardengine.KindTask && boardengine.IsEmptyStatus(task.Status) && task.Parent == here
 }
 
-// heldByEntry reports whether a released task waits for its entry or the pause record: a dependency not done, another machine's ownership, or a pause entry covering the hub or the slug.
+// heldByEntry reports whether a released task waits for its entry, its run record or the pause record: a dependency not done, another machine's ownership, a refusal every start of the slug gets, or a pause entry covering the hub or the slug.
 func heldByEntry(task TaskView, covered bool) bool {
-	return len(task.PendingDependencies) > 0 || task.OwnedElsewhere || covered
+	return len(task.PendingDependencies) > 0 || task.OwnedElsewhere || task.StartRefusal != "" || covered
 }
 
 // readyToStart reports whether dobby of the worktree named here starts task:
-// the entry is a task with an empty status and every dependency done, its parent is here, no other machine owns it, and no pause entry covers the hub or the slug.
+// the entry is a task with an empty status and every dependency done, its parent is here, no other machine owns it, no refusal awaits every start of its slug, and no pause entry covers the hub or the slug.
 func readyToStart(task TaskView, here string, covered bool) bool {
 	return released(task, here) && !heldByEntry(task, covered)
 }
@@ -82,6 +85,10 @@ func (d *daemon) startReady(ctx context.Context, now time.Time) error {
 		covered, err := d.deps.PauseCovers(task.Slug)
 		if err != nil {
 			return fmt.Errorf("read the pause record: %w", err)
+		}
+		if released(task, d.geom.WorktreeName) && task.StartRefusal != "" && !task.OwnedElsewhere && len(task.PendingDependencies) == 0 && !covered {
+			d.heldStart(task)
+			continue
 		}
 		if !readyToStart(task, d.geom.WorktreeName, covered) {
 			continue
@@ -199,12 +206,23 @@ func (d *daemon) firstPassExited(slug string, f flight, exit PassExit, now time.
 
 // refusedStart records a refused start of slug: the retry backoff, and one notice per refusal text to the nearest live orch.
 func (d *daemon) refusedStart(slug, fingerprint, text string, now time.Time) {
+	d.recordRefusal(slug, fingerprint, text, func(s *StartState) { *s = nextStartTry(*s, now, d.probe) })
+}
+
+// heldStart, called only for a task nothing else holds, records the refusal task carries as its start record's refusal with no backoff, so the task starts on the first tick after the refusal is gone, and posts one notice per refusal text to the nearest live orch.
+func (d *daemon) heldStart(task TaskView) {
+	d.recordRefusal(task.Slug, task.Fingerprint, task.StartRefusal, func(s *StartState) { s.NextTry, s.Interval = time.Time{}, 0 })
+}
+
+// recordRefusal records text as slug's last refused start of the entry fingerprint names, with schedule setting its retry, and posts the notice when the start record has not noticed text yet.
+// A start record of another fingerprint is reset first, so a changed entry is noticed afresh.
+func (d *daemon) recordRefusal(slug, fingerprint, text string, schedule func(*StartState)) {
 	noticeDue := false
 	err := d.updateStart(slug, func(s *StartState) {
 		if s.EntryFingerprint != fingerprint {
 			*s = StartState{}
 		}
-		*s = nextStartTry(*s, now, d.probe)
+		schedule(s)
 		s.EntryFingerprint, s.Refusal = fingerprint, text
 		noticeDue = !slices.Contains(s.Noticed, text)
 	})

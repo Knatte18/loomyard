@@ -31,6 +31,7 @@ func TestReadyToStart(t *testing.T) {
 		{"OpenDependencyDoesNotStart", func(task *TaskView) { task.PendingDependencies = []string{"dep"} }, false, false},
 		{"CoveringPauseDoesNotStart", nil, true, false},
 		{"OwnedElsewhereDoesNotStart", func(task *TaskView) { task.OwnedElsewhere = true }, false, false},
+		{"AStartRefusalDoesNotStart", func(task *TaskView) { task.StartRefusal = "already completed" }, false, false},
 		{"AnotherBeamsTaskDoesNotStart", func(task *TaskView) { task.Parent = "other-beam" }, false, false},
 		{"AProjectDoesNotStart", func(task *TaskView) { task.Kind = "project" }, false, false},
 	}
@@ -134,6 +135,36 @@ func TestStartReady_RefusalsAndBackoff(t *testing.T) {
 		h.tick(true)
 		if len(h.fake.spawned) != 4 {
 			t.Errorf("passes after the entry changed = %d; want one at once, 4", len(h.fake.spawned))
+		}
+	})
+
+	t.Run("a start refusal spawns no pass, notices once per entry, and starts on the first tick after it is gone", func(t *testing.T) {
+		t.Parallel()
+		h := newPassHarness(t)
+		held := readyTask("a")
+		held.StartRefusal = "already completed"
+		h.fake.tasks = []TaskView{held}
+
+		h.tick(true)
+		h.tick(true)
+		h.tick(true)
+		if len(h.fake.spawned) != 0 || len(h.fake.notices) != 1 || h.fake.notices[0] != "a: dobby could not start the task: already completed" {
+			t.Fatalf("passes, notices while held = %d, %q; want no pass and the one notice", len(h.fake.spawned), h.fake.notices)
+		}
+		if got := h.stateRecord().Starts["a"]; got.Refusal != "already completed" || !got.NextTry.IsZero() {
+			t.Errorf("start record while held = %+v; want the refusal text and no backoff", got)
+		}
+
+		h.fake.tasks[0].Fingerprint = "a-v2"
+		h.tick(true)
+		if len(h.fake.notices) != 2 {
+			t.Fatalf("notices after the entry changed = %d; want it noticed again, 2", len(h.fake.notices))
+		}
+
+		h.fake.tasks[0].StartRefusal = ""
+		h.tick(true)
+		if len(h.fake.spawnsOf("a")) != 1 {
+			t.Errorf("passes on the tick after the refusal is gone = %d; want the start, 1", len(h.fake.spawnsOf("a")))
 		}
 	})
 

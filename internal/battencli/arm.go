@@ -588,7 +588,7 @@ func (c *battenCLI) checkRunStatus() (found bool, err error) {
 	}
 	switch st.State {
 	case shedengine.StateDone:
-		return true, c.doneSlugRefusal()
+		return true, doneSlugRefusal(c.location, c.slug)
 	case shedengine.StateRunning, shedengine.StateBlocked, shedengine.StateAwaiting, shedengine.StateFailed, shedengine.StatePaused:
 		// Each of these resumes silently from the persisted current producer, with no
 		// re-seed, no prompt, and no flag: the engine itself already resumes from blocked
@@ -863,15 +863,15 @@ func pastOpenWindow(status shedengine.Status) bool {
 	return false
 }
 
-// doneSlugRefusal is the refusal both pre-run hooks return for a slug whose run has already
+// doneSlugRefusal is the refusal of every start of a slug whose run has already
 // completed, naming the whole abandon path rather than the run directory alone: a torn-down pair
 // keeps its task branch locally and on the remote, so deleting only the run directory leads straight
 // into the create row's leftover-branch refusal on the re-run.
 // It also names the other way forward: giving the new task a different slug.
-func (c *battenCLI) doneSlugRefusal() error {
+func doneSlugRefusal(location *lymcwd.Location, slug string) error {
 	return fmt.Errorf(
 		"battencli: %q has already completed; to run it again, run \"lym batten cleanup --apply\" from the prime, which removes its run directory %s, and delete the task branch its torn-down pair left behind, locally and on the remote (\"lym fabric cleanup --apply --remote\" removes any orphaned sibling branch), or give the new task a different slug",
-		c.slug, shedrun.RunDir(c.location, c.slug),
+		slug, shedrun.RunDir(location, slug),
 	)
 }
 
@@ -919,7 +919,7 @@ func (c *battenCLI) battenPreStepUnmarked(ctx context.Context) (string, error) {
 	if found {
 		switch st.State {
 		case shedengine.StateDone:
-			return shedverbs.KindBootstrap, c.doneSlugRefusal()
+			return shedverbs.KindBootstrap, doneSlugRefusal(c.location, c.slug)
 		case shedengine.StateRunning, shedengine.StateBlocked, shedengine.StateAwaiting, shedengine.StateFailed, shedengine.StatePaused:
 			// Resumes silently, exactly as battenPreRun's own identical switch does.
 		default:

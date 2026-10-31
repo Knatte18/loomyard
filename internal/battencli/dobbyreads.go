@@ -229,6 +229,7 @@ func DobbyLandings(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *D
 
 // DobbyTasks reads the local board under boardDir as TaskViews.
 // Only a released task, one with an empty status, gets its parent worktree and owner read; the others carry neither.
+// A released task whose slug has a finished run record under the prime carries the refusal every start of that slug gets; a run status that does not read holds nothing.
 // A dependency no longer on the board was pruned as done.
 func DobbyTasks(prime *lymcwd.Location, boardDir string, parents *DobbyParents) ([]dobbyengine.TaskView, error) {
 	tasks, err := boardengine.ReadTasks(boardDir)
@@ -269,6 +270,13 @@ func DobbyTasks(prime *lymcwd.Location, boardDir string, parents *DobbyParents) 
 				return nil, fmt.Errorf("read the owner of %s: %w", task.Slug, err)
 			}
 			view.OwnedElsewhere = boardengine.OwnedElsewhere(owner, here)
+			status, found, err := readDobbyRunStatus(shedrun.StatusFile(prime, task.Slug))
+			if err != nil {
+				logger.Warn("battencli: a released task's run status is unreadable and holds no start", "slug", task.Slug, "error", err)
+			}
+			if err == nil && found && status.State == shedengine.StateDone {
+				view.StartRefusal = doneSlugRefusal(prime, task.Slug).Error()
+			}
 		}
 		encoded, err := json.Marshal(task)
 		if err != nil {

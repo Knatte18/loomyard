@@ -43,6 +43,8 @@ type WaitingTask struct {
 	OwnedElsewhere bool     `json:"owned_elsewhere,omitempty"`
 	// Paused reports whether a pause entry covers the hub or the slug.
 	Paused bool `json:"paused,omitempty"`
+	// StartRefusal is the refusal every start of the slug gets now, such as for a finished run record of the same slug, so no pass is spawned while it stands.
+	StartRefusal string `json:"start_refusal,omitempty"`
 	// Refusal is the text of the last refused start of the entry as it reads now.
 	Refusal string `json:"refusal,omitempty"`
 	// NextTry is when the refused start's backoff runs out; zero once it has.
@@ -53,7 +55,7 @@ type WaitingTask struct {
 
 // Ready reports whether nothing holds the task back, so the dobby starts it on its next tick.
 func (w WaitingTask) Ready() bool {
-	return len(w.Dependencies) == 0 && !w.OwnedElsewhere && !w.Paused && w.NextTry.IsZero() && !w.AtMaxRuns
+	return len(w.Dependencies) == 0 && !w.OwnedElsewhere && !w.Paused && w.StartRefusal == "" && w.NextTry.IsZero() && !w.AtMaxRuns
 }
 
 // ViewInput is everything BuildView reads.
@@ -95,7 +97,7 @@ func BuildView(in ViewInput) View {
 			continue
 		}
 		covered := in.Covers(task.Slug)
-		waiting := WaitingTask{Slug: task.Slug, Dependencies: task.PendingDependencies, OwnedElsewhere: task.OwnedElsewhere, Paused: covered}
+		waiting := WaitingTask{Slug: task.Slug, Dependencies: task.PendingDependencies, OwnedElsewhere: task.OwnedElsewhere, Paused: covered, StartRefusal: task.StartRefusal}
 		if attempt, found := in.Record.Starts[task.Slug]; found && attempt.EntryFingerprint == task.Fingerprint {
 			waiting.Refusal = attempt.Refusal
 			if in.Now.Before(attempt.NextTry) {

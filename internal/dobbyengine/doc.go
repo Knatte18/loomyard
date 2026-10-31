@@ -84,7 +84,7 @@
 //     An owner that a continue pass's own check finds sets no mark: that check pauses the run itself and dobby goes on passing it.
 //     A marked run is in flight for the backoff only while no pause covers it.
 //   - A task waits on the board as `draft` until released, and dobby starts it from an empty status.
-//     It starts a task when the entry is a task whose dependencies are all done, its parent is this dobby's worktree, no other machine owns it, and no pause entry covers the hub or the slug.
+//     It starts a task when the entry is a task whose dependencies are all done, its parent is this dobby's worktree, no other machine owns it, no refusal awaits every start of its slug, and no pause entry covers the hub or the slug.
 //     Each tick reads the local board, which a write of `board.json` and the probe tick both cause, and starts each ready task while fewer than `max_runs` runs it drives are in flight: halted runs count, done runs, runs recorded owned elsewhere and pawl runs with no landing hold do not, and `max_runs: 0` starts nothing.
 //   - Right before each start, dobby reads the cgroup task limit it sits under through Deps.TaskLimit, the level of its own cgroup ancestry with the fewest free tasks, such as the user slice; while fewer than beam.yaml's `task_headroom` tasks are free, the tick starts no task.
 //     A held task gets no refused-start record, notice or backoff and is tried on the next tick; the first held start of an episode logs `hold starts: <current> of <max> tasks in <cgroup>, below task_headroom <n>` and the first start let through after it logs `starts resume: …`, the episode kept in process only.
@@ -94,6 +94,9 @@
 //     A first pass refused for a covering pause is no refused start: no notice, no marker and no backoff, and the start waits for the lift.
 //     Any other first pass that exits non-zero and leaves no status file, a refusal as owned elsewhere included, is a refused start: one notice per refusal text, and a retry from one probe interval, doubling up to an hour, or at once when the entry changes.
 //     The backoff, the last refusal text and the noticed texts are kept in the state record, and cleared when a pass claims the task or its board entry changes.
+//   - A released task whose slug has a finished run record carries the refusal every start of that slug gets, from TaskView.StartRefusal, with its way forward.
+//     Dobby spawns no pass for it; unless the task is owned elsewhere, has open dependencies or is covered by a pause, it also records the refusal as the start record's refusal with no backoff, with the same one notice per refusal text, again when the entry changes.
+//     Bound: the record is read every tick, so the task starts on the first tick after the record is gone.
 //   - A task is started only from an empty status, by its parent's dobby or a hand-run `lym batten run`, and never twice while a pass of it is in flight.
 //     Across machines only the owner machine's dobby of the parent runs, and a release written on another machine reaches this dobby when this machine's board is next pulled.
 //   - Bound: per run at most one pass per probe interval plus one per write of the child's status file, and at most one in flight.

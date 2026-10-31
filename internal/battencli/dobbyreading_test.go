@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 func TestDobbyReading(t *testing.T) {
@@ -115,6 +116,54 @@ func TestDobbyTasks_ReadsDependenciesAndParentOfAReleasedTask(t *testing.T) {
 	}
 	if draft := bySlug["open-dep"]; draft.Parent != "" {
 		t.Errorf("DobbyTasks() draft Parent = %q; want none read for a task with a status", draft.Parent)
+	}
+}
+
+func TestDobbyTasks_ReadsTheStartRefusalOfAFinishedRunRecord(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		status      string
+		wantRefused bool
+	}{
+		{name: "NoRunRecordHoldsNothing"},
+		{name: "ADoneRunRecordHoldsTheStart", status: `{"state":"done"}`, wantRefused: true},
+		{name: "ARunningRunRecordHoldsNothing", status: `{"state":"running"}`},
+		{name: "AnUndecodableRunRecordHoldsNothing", status: `{not json`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			boardDir := t.TempDir()
+			content := `{"version":1,"entries":[{"id":0,"slug":"released","title":"R","kind":"task","labels":["bug"]}]}`
+			if err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(content), 0o644); err != nil {
+				t.Fatalf("write board.json: %v", err)
+			}
+			prime := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "main", AnchorRel: "."}
+			if tt.status != "" {
+				path := shedrun.StatusFile(prime, "released")
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					t.Fatalf("create the run directory: %v", err)
+				}
+				if err := os.WriteFile(path, []byte(tt.status), 0o644); err != nil {
+					t.Fatalf("write the run status: %v", err)
+				}
+			}
+			parents := NewDobbyParents(prime)
+			parents.known["released"] = "main"
+
+			views, err := DobbyTasks(prime, boardDir, parents)
+			if err != nil {
+				t.Fatalf("DobbyTasks() error = %v; want nil", err)
+			}
+			want := ""
+			if tt.wantRefused {
+				want = doneSlugRefusal(prime, "released").Error()
+			}
+			if len(views) != 1 || views[0].StartRefusal != want {
+				t.Errorf("DobbyTasks() = %+v; want one task with StartRefusal %q", views, want)
+			}
+		})
 	}
 }
 

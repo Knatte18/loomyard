@@ -24,7 +24,7 @@
 // The dobby section is the lines of the dobby of the worktree the pane runs in (overviewdobby.go), rendered by `DobbyLines` from the `dobbyengine.View` a `DobbyViewReader` reads:
 // a header saying whether the dobby is alive, with its `max_runs`, or not running with `lym beam start` as the way forward;
 // one line per run it drives that is not done, in slug order, with the run's cells `DobbyRunCells` reads, then the pass cell: a pass in flight while the driver lock is held, else the minutes since the last pass exited, then a full pass owed, an owner elsewhere and a failing count from the dobby's state record;
-// and one line per released task it has not started, `ready to start` or `waits on` each of open dependencies, another machine's ownership, a pause, a refused start with its text and the minutes to its retry, and `max_runs`.
+// and one line per released task it has not started, `ready to start`, with the last refused start's text when one is recorded, or `waits on` each of open dependencies, another machine's ownership, a pause, a start batten refuses with its text, a refused start with its text and the minutes to its retry, and `max_runs`.
 // A dobby view that does not read shows `dobby <label>: unreadable`.
 // A run's cells are batten's state, the stage and the time in that stage.
 // A run with a seed and no status shows as `starting`; the stage is the task worktree's current producer while batten is in Run-Shed and that status is found, and batten's own producer otherwise.

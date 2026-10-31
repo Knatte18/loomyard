@@ -71,7 +71,8 @@ func statusCmd() *cobra.Command {
 for every local beam: whether the dobby is alive and its max_runs, each run it
 drives with its state, stage, time in the stage and last pass, and each released task it has not
 started with what the task waits on -- open dependencies, another machine's
-ownership, a pause, a refused start and its retry, or max_runs. Each entry
+ownership, a pause, a start batten refuses, a refused start and its retry, or max_runs.
+A ready task shows its last refused start when one is recorded. Each entry
 carries the structured view and its rendered lines, and the beam's orch: whether its
 strand is live, whether its watcher is live and the session id it recorded.
 The adopt_check section shows the check a lym adopt started: its state, the tier in flight, the
