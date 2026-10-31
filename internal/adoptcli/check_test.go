@@ -28,13 +28,27 @@ type scriptedTier struct {
 	record gateslot.RunRecord
 }
 
-// checkFixture is a runCheck over a temp directory with a fake gate, recording the notices and the gate calls.
+// checkFixture is a runCheck over a temp directory with a fake gate, recording the notices, the status bar marks and the gate calls.
 type checkFixture struct {
 	dir        string
 	deps       checkDeps
 	notices    []string
+	marks      []checkMark
 	gateCalls  int
 	reconciled int
+	clockReads int
+}
+
+// tick is the fixture's clock: its nth read, counting from zero, returns the time checkFixtureAfter(n), so every read differs.
+func (f *checkFixture) tick() time.Time {
+	now := checkFixtureAfter(f.clockReads)
+	f.clockReads++
+	return now
+}
+
+// checkFixtureAfter returns the time a fixture's clock reads at its nth read.
+func checkFixtureAfter(read int) time.Time {
+	return checkFixtureNow.Add(time.Duration(read) * time.Second)
 }
 
 // newCheckFixture returns a fixture whose gate drives tiers through the observer and returns exit.
@@ -43,7 +57,7 @@ func newCheckFixture(t *testing.T, tiers []scriptedTier, exit int) *checkFixture
 	f := &checkFixture{dir: filepath.Join(t.TempDir(), "adopt")}
 	f.deps = checkDeps{
 		Dir:        f.dir,
-		Now:        func() time.Time { return time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC) },
+		Now:        f.tick,
 		PID:        4242,
 		StartTicks: "777",
 		Reconcile:  func() error { f.reconciled++; return nil },
@@ -56,9 +70,13 @@ func newCheckFixture(t *testing.T, tiers []scriptedTier, exit int) *checkFixture
 			return exit
 		},
 		Notice: func(line string) error { f.notices = append(f.notices, line); return nil },
+		Mark:   func(mark checkMark) error { f.marks = append(f.marks, mark); return nil },
 	}
 	return f
 }
+
+// checkFixtureNow is the time of a fixture clock's first read, which the check's start takes.
+var checkFixtureNow = time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC)
 
 func passedTier(tier, passed, skipped int) gateslot.RunRecord {
 	return gateslot.RunRecord{Tier: tier, Outcome: "passed", Passed: passed, Skipped: skipped, WallSec: 1.5}
@@ -174,10 +192,11 @@ func TestRunCheck(t *testing.T) {
 		}
 	})
 
-	t.Run("a notice that fails changes nothing in the record", func(t *testing.T) {
+	t.Run("a notice or mark that fails changes nothing in the record", func(t *testing.T) {
 		t.Parallel()
 		f := newCheckFixture(t, []scriptedTier{{0, passedTier(0, 1, 0)}, {1, passedTier(1, 1, 0)}}, 0)
 		f.deps.Notice = func(string) error { return errors.New("no orch") }
+		f.deps.Mark = func(checkMark) error { return errors.New("no reed session") }
 
 		record, ran, err := runCheck(context.Background(), f.deps)
 		if err != nil || !ran || record.State != checkGreen || len(record.Tiers) != 2 {
@@ -349,4 +368,72 @@ func TestRunCheck(t *testing.T) {
 			t.Errorf("ReadCheck() after the check = %+v, %v, %v; want the fresh green record", onDisk, found, err)
 		}
 	})
+}
+
+// TestRunCheckMarks pins the status bar marks of a check run, in order: its start, each tier in flight and ended, and its end.
+// The clock reads once for the check's start, then once as each tier starts, so tier n starts at read n+1 and a mark timed from the check's start instead fails.
+func TestRunCheckMarks(t *testing.T) {
+	t.Parallel()
+	timed := func(tier int, outcome string, wall float64) scriptedTier {
+		return scriptedTier{tier, gateslot.RunRecord{Tier: tier, Outcome: outcome, WallSec: wall}}
+	}
+	starting := checkMark{State: checkRunning, Text: "adopt check: starting", Start: checkFixtureNow}
+
+	tests := []struct {
+		name      string
+		tiers     []scriptedTier
+		exit      int
+		reconcile error
+		want      []checkMark
+	}{
+		{
+			name:  "GreenShowsEachTierInFlightThenEveryTierWithItsTime",
+			tiers: []scriptedTier{timed(0, "passed", 40), timed(1, "passed", 104)},
+			want: []checkMark{
+				starting,
+				{State: checkRunning, Text: "adopt check: tier0", Start: checkFixtureAfter(1)},
+				{State: checkRunning, Text: "adopt check: tier0 green 40s"},
+				{State: checkRunning, Text: "adopt check: tier0 green 40s · tier1", Start: checkFixtureAfter(2)},
+				{State: checkRunning, Text: "adopt check: tier0 green 40s · tier1 green 104s"},
+				{State: checkGreen, Text: "adopt check green: tier0 40s · tier1 104s"},
+			},
+		},
+		{
+			name:  "FailedEndsWithEveryTierAndItsOutcome",
+			tiers: []scriptedTier{timed(0, "passed", 40), timed(1, "failed", 104)},
+			exit:  1,
+			want: []checkMark{
+				starting,
+				{State: checkRunning, Text: "adopt check: tier0", Start: checkFixtureAfter(1)},
+				{State: checkRunning, Text: "adopt check: tier0 green 40s"},
+				{State: checkRunning, Text: "adopt check: tier0 green 40s · tier1", Start: checkFixtureAfter(2)},
+				{State: checkRunning, Text: "adopt check: tier0 green 40s · tier1 failed 104s"},
+				{State: checkFailed, Text: "adopt check failed: tier0 green 40s · tier1 failed 104s"},
+			},
+		},
+		{
+			name:      "FailedBeforeAnyTierNamesBeamStatus",
+			reconcile: errors.New("config invalid"),
+			want: []checkMark{
+				starting,
+				{State: checkFailed, Text: "adopt check failed before any tier ended; lym beam status shows why"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			f := newCheckFixture(t, tt.tiers, tt.exit)
+			if tt.reconcile != nil {
+				f.deps.Reconcile = func() error { return tt.reconcile }
+			}
+
+			if _, _, err := runCheck(context.Background(), f.deps); err != nil {
+				t.Fatalf("runCheck() error = %v", err)
+			}
+			if !reflect.DeepEqual(f.marks, tt.want) {
+				t.Errorf("marks = %+v; want %+v", f.marks, tt.want)
+			}
+		})
+	}
 }

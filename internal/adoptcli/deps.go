@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -148,7 +149,7 @@ func hubDepsAs(prime *lymcwd.Location, machine func() (string, error)) (adoptDep
 		PrimeName: prime.WorktreeName,
 		StartSuite: func() (suiteStart, error) {
 			dir := fabricengine.AdoptScratchDir(prime.HubPath)
-			return ensureCheck(dir, checkAlive, func() (int, error) {
+			return startCheckWithTiers(prime, dir, checkAlive, func() (int, error) {
 				return startSuite(prime.AnchorPath(), filepath.Join(dir, checkOutName))
 			})
 		},
@@ -229,6 +230,31 @@ func startSuite(dir, outPath string) (int, error) {
 	return pid, nil
 }
 
+// startCheckWithTiers returns the adopt check of the scratch directory dir as ensureCheck finds or starts it, with the tiers of the prime's adopt gate key set.
+func startCheckWithTiers(prime *lymcwd.Location, dir string, alive func(CheckRecord) bool, spawn func() (int, error)) (suiteStart, error) {
+	start, err := ensureCheck(dir, alive, spawn)
+	if err != nil {
+		return suiteStart{}, err
+	}
+	start.Tiers = adoptGateTiers(prime)
+	return start, nil
+}
+
+// adoptGateTiers returns the tiers of the hub's adopt gate key as the prime's gate config reads now, or none when the config does not read or its adopt key names no tier the hub declares, which the check's own reconcile may still repair.
+func adoptGateTiers(prime *lymcwd.Location) []int {
+	cfg, err := gateslot.LoadConfig(fabricengine.ConfigDirs(prime))
+	if err != nil {
+		logger.Warn("adoptcli: the gate config did not read for the adopt check's tiers", "error", err)
+		return nil
+	}
+	tiers, err := cfg.TierList(checkGateKey)
+	if err != nil {
+		logger.Warn("adoptcli: the gate config names no adopt tiers yet", "error", err)
+		return nil
+	}
+	return tiers
+}
+
 // checkAlive reports whether the process that wrote record is still running: its pid is alive and, when both sides can read it, the live process started when the record says.
 // A record without start ticks, or a platform that cannot read a start time, reads alive on the pid alone; a reused pid after a reboot reads dead.
 func checkAlive(record CheckRecord) bool {
@@ -243,7 +269,7 @@ func checkAlive(record CheckRecord) bool {
 }
 
 // ensureCheck returns the adopt check of the scratch directory dir: the running one when check.json reads running and alive passes, else a new one started by spawn.
-// The returned suiteStart names the check's pid and the paths of its log and record.
+// The returned suiteStart names the check's pid, the paths of its log and record, and whether it was found running.
 func ensureCheck(dir string, alive func(CheckRecord) bool, spawn func() (int, error)) (suiteStart, error) {
 	start := suiteStart{Log: filepath.Join(dir, suiteLogName), Record: filepath.Join(dir, checkRecordName)}
 	record, found, err := ReadCheck(start.Record)
@@ -252,6 +278,7 @@ func ensureCheck(dir string, alive func(CheckRecord) bool, spawn func() (int, er
 	}
 	if found && record.State == checkRunning && alive(record) {
 		start.PID = record.PID
+		start.AlreadyRunning = true
 		return start, nil
 	}
 	pid, err := spawn()

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
@@ -87,15 +88,19 @@ func beamStepsOf(report orchcli.BeamUpReport) *beamStepsOutcome {
 	}
 }
 
-// suiteStart names the detached adopt check an adopt started or found running: its pid, the log of its gate and the record of its progress.
+// suiteStart names the detached adopt check an adopt started or found running: its pid, the log of its gate, the record of its progress, the tiers its gate key names and whether it was found running.
 type suiteStart struct {
 	PID int    `json:"pid"`
 	Log string `json:"log"`
 	// Record is the path of the check's progress record.
 	Record string `json:"record"`
+	// Tiers are the tiers of the hub's adopt gate key as the adopt read them, empty when the gate config did not read or holds no adopt key.
+	Tiers []int `json:"tiers,omitempty"`
+	// AlreadyRunning is set when the adopt found a check running and started none.
+	AlreadyRunning bool `json:"already_running,omitempty"`
 }
 
-// outcome is the verb's envelope: the reconcile's report, the mutation record of every step, whether that record is non-empty, the prime's owner write, each entry's slugOutcome, the beam steps of the prime and the warning of a prime start that failed, and the adopt check started or the warning of a start that failed.
+// outcome is the verb's envelope: the reconcile's report, the mutation record of every step, whether that record is non-empty, the prime's owner write, each entry's slugOutcome, the beam steps of the prime and the warning of a prime start that failed, and the adopt check started with its plain message, or the warning of a start that failed.
 type outcome struct {
 	Reconcile        fabricengine.OriginReport
 	Mutations        []fabricengine.Mutation
@@ -106,6 +111,7 @@ type outcome struct {
 	PrimeBeamSteps   *beamStepsOutcome
 	PrimeBeamWarning string
 	Suite            *suiteStart
+	SuiteMessage     string
 	SuiteWarning     string
 }
 
@@ -329,11 +335,29 @@ func adopt(deps adoptDeps, req request) (outcome, error) {
 			result.SuiteWarning = fmt.Sprintf("the adopt check was not started (%v); way forward: run lym fabric reconcile in the prime, then lym gate test --gate adopt there", err)
 		} else {
 			result.Suite = &suite
+			result.SuiteMessage = suiteMessage(suite)
 		}
 	}
 
 	result.Slugs = collect(slugs, outcomes)
 	return finish(), nil
+}
+
+// suiteMessage is the plain line naming the adopt check suite stands for: started or already running, the tiers it runs when known, and that the prime's reed status bar shows it.
+func suiteMessage(suite suiteStart) string {
+	verb := "started"
+	if suite.AlreadyRunning {
+		verb = "already running"
+	}
+	tiers := ""
+	if len(suite.Tiers) > 0 {
+		numbers := make([]string, len(suite.Tiers))
+		for i, tier := range suite.Tiers {
+			numbers[i] = strconv.Itoa(tier)
+		}
+		tiers = ", tiers " + strings.Join(numbers, ", ")
+	}
+	return fmt.Sprintf("adopt check %s in the prime%s; the prime's reed status bar shows its progress and result", verb, tiers)
 }
 
 // namedEntries resolves the request to the beam project slugs it adopts and whether it adopts root.

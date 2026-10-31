@@ -55,6 +55,7 @@ func TestHubCheckDeps_StaleStampRunsTheTunedFinalizeTiers(t *testing.T) {
 		return 0
 	}
 	deps.Notice = func(string) error { return nil }
+	deps.Mark = func(checkMark) error { return nil }
 
 	record, ran, err := runCheck(context.Background(), deps)
 	if err != nil || !ran || record.State != checkGreen {

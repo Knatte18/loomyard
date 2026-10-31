@@ -74,7 +74,8 @@
 // The check's stdout and stderr go to `check.out`, created for append and never `suite.log`, so the gate's output alone reaches `suite.log`, a losing check's envelope goes to `check.out` and a panic of the check is on disk.
 // One call is one adoption session: adopting the prime and two beams together starts one check, and a tier the gate's green record holds green for the prime's tree is carried and runs nothing.
 // `checkAlive` reads a pid that is alive and whose start ticks equal the record's as alive, a pid with other ticks, as after a reboot that reused it, as dead, and a record without ticks, or a platform where the start time is unreadable, as alive on the pid alone.
-// The envelope's `suite` names the check's pid, `suite.log` and `check.json`.
+// The envelope's `suite` names the check's pid, `suite.log`, `check.json`, the tiers of the hub's `adopt` gate key as the gate config reads before the check's own reconcile, none when it does not read, and `already_running` for a check found running;
+// its `message` is one plain sentence naming the check started or already running, those tiers, and that the prime's reed status bar shows its progress and result.
 // A red check only reports, since the owner write and the resumes have already taken effect.
 // A spawn that fails is the envelope's `suite_warning`, naming `lym fabric reconcile` in the prime and then `lym gate test --gate adopt` there, since no reconcile of the hub's config ran and `lym gate test` runs none, and it changes no slug's outcome.
 // Bound: between a spawn and the child's lock, `lym beam status` can show the previous record and a second `lym adopt` can spawn a check that loses the lock and exits, so either envelope's pid can name the check that lost, both naming the same log and record.
@@ -102,7 +103,9 @@
 // a failed tier's notice adds one line per failed test, `<package> <test>: <first line>`, at most `maxListedFailures` and then `and <n> more`, and a last line naming `suite.log`.
 // A green gate ends the record green and posts the tiers and `suite.log`; any other exit ends it failed, with the first failed tier, or with the gate's exit code as the error when no tier ended, and posts the failure, `suite.log` and the rerun `lym gate test --gate adopt` in the prime.
 // A tier that refuses after it started returns without ending, so the end clears the tier in flight.
-// A post that fails is logged and changes nothing.
+// At its start, as each tier starts and ends, and at its end it also sets the check mark on the prime's reed session through `reedengine.Engine.SetCheckMark`, built by `checkMarkOf` from the record: `adopt check: starting`, the done tiers with their outcomes and wall seconds then the tier in flight timed from its start, and at the end `adopt check green` or `adopt check failed` with every tier it ran, or a failure before any tier ended naming `lym beam status`.
+// A post or mark that fails is logged and changes nothing.
+// Bound: a check killed before its end leaves its last running mark, its seconds still growing, until the next check sets one or the prime's session ends.
 //
 // Bound: the gate slots do not serialize two checks, the lock does, so one check at a time writes the record, the log and the posts.
 //
@@ -114,7 +117,7 @@
 //
 // # The envelope
 //
-// It carries `reconcile`, `mutations` and `partial`, `prime_beam_steps` and `prime_beam_warning` for the prime's beam steps, `suite` or `suite_warning` for the adopt check, and per slug what happened: a stop with its branches, pair added, owner recorded, pause lifted or standing, run resumed, none or owned elsewhere by `owned_by`, the `beam_steps` run, the error, and a warning when this machine does not own the slug's parent, since that run halts at Finalize here; the warning names `lym adopt <project of the parent>`, `lym adopt root` for the prime.
+// It carries `reconcile`, `mutations` and `partial`, `prime_beam_steps` and `prime_beam_warning` for the prime's beam steps, `suite` and `message`, or `suite_warning`, for the adopt check, and per slug what happened: a stop with its branches, pair added, owner recorded, pause lifted or standing, run resumed, none or owned elsewhere by `owned_by`, the `beam_steps` run, the error, and a warning when this machine does not own the slug's parent, since that run halts at Finalize here; the warning names `lym adopt <project of the parent>`, `lym adopt root` for the prime.
 //
 // # The bounds
 //

@@ -54,6 +54,11 @@
 // and no Go decision reads it (PATTERN-wait-mark-display-only).
 // The options are set only through SetWaitMark, by shuttleengine and the landing wait-mark callback, which marks the verify and the parent lock wait with the label `parent lock <branch>`.
 //
+// Engine.SetCheckMark marks the session with a check's progress: it sets the session user options @lym_check (the text), @lym_check_state (running, green or failed) and @lym_check_start (epoch seconds the step in flight started, unset for none), or unsets all three on an empty text.
+// Like the wait mark it is display only and dies with the session;
+// line 2 of the status bar renders the current session's mark right-aligned before the clock, styled by its state, with tmux computing the seconds since the start at each refresh.
+// The adopt check sets it on the prime's session.
+//
 // Engine.CapturePaneStyled returns a pane's screen with its SGR attributes beside the plain CapturePane, for a caller that reads cell styles; reed interprets none of it.
 //
 // Segment colors are read from reed.yaml's segment_colors block, resolved only through Engine.segmentColor, and refused only at boot.

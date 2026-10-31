@@ -5,7 +5,8 @@
 // Line 1 follows window index order: the overview, the agents in start order, then the shell button.
 // A window carrying the window user option @lym_hidden still gets no button.
 // Line 2 lists the session carrying the session user option @lym_prime_session first, then every other session in the #{S:} loop's own order.
-// Every option read here is display only but one: no Go decision reads @strand_color, @lym_unseen or @lym_prime_session, while @lym_follow, which the follow button shows, is the follow state that followingLocked reads.
+// Line 2 ends with the current session's check mark, the session user options @lym_check, @lym_check_state and @lym_check_start, before the clock.
+// Every option read here is display only but one: no Go decision reads @strand_color, @lym_unseen, @lym_prime_session or a check mark's options, while @lym_follow, which the follow button shows, is the follow state that followingLocked reads.
 
 package reedengine
 
@@ -56,6 +57,19 @@ const (
 	// Like the bar's other options it is display only, and no Go decision reads it.
 	primeSessionOption = "@lym_prime_session"
 
+	// checkMarkOption, checkMarkStateOption and checkMarkStartOption are the session user options of a check mark: its text, its state (running, green or failed) and the epoch seconds the step in flight started.
+	// Like the bar's other options they are display only, and no Go decision reads them.
+	checkMarkOption      = "@lym_check"
+	checkMarkStateOption = "@lym_check_state"
+	checkMarkStartOption = "@lym_check_start"
+
+	// checkMarkStyleFormat expands to a check mark's style by its state: black on green for green, white on red for failed, and yellow on dark grey otherwise.
+	checkMarkStyleFormat = "#{?#{==:#{" + checkMarkStateOption + "},green},bg=green fg=black bold,#{?#{==:#{" + checkMarkStateOption + "},failed},bg=red fg=white bold,bg=colour236 fg=yellow}}"
+
+	// checkMarkFormat expands to the current session's check mark, its text then, while a start is set, the seconds since it, and to nothing when no mark is set.
+	// The seconds are the status refresh's own strftime epoch (%s) minus the start, computed by tmux at each refresh.
+	checkMarkFormat = "#{?#{" + checkMarkOption + "},#[" + checkMarkStyleFormat + "] #{" + checkMarkOption + "}#{?#{" + checkMarkStartOption + "}, #{e|-:%s,#{" + checkMarkStartOption + "}}s,} #[default] ,}"
+
 	// sessionButtonFormat is one session button, a session range.
 	// The client's session shows its full name lit, every other session its name cut to 12 characters.
 	sessionButtonFormat = "#{?#{==:#{session_name},#{client_session}},#[range=session|#{session_id} list=focus bg=yellow fg=black bold] #{session_name} #[norange list=on default] ,#[range=session|#{session_id} " + unlitButtonStyle + "] #{=12:session_name} #[norange list=on default] }"
@@ -63,12 +77,12 @@ const (
 	// followButtonFormat is the follow button, a user range labelled follow, lit green while the current session's @lym_follow is not off and unlit while it is.
 	followButtonFormat = "#[range=user|follow #{?#{!=:#{@lym_follow},off},bg=green fg=black bold," + unlitButtonStyle + "}] follow #[norange list=on default] "
 
-	// statusFormatSessions is status-format[1]: the prime's session button, then one button per other session, then the follow button, then the time right-aligned.
+	// statusFormatSessions is status-format[1]: the prime's session button, then one button per other session, then the follow button, then, right-aligned, the current session's check mark and the time.
 	// The first loop draws only a session matching both reedSessionFilter and the prime mark, and draws nothing when no session is marked.
 	// The second draws every other session matching reedSessionFilter, in the #{S:} loop's own order: session name on tmux 3.4 and session id on newer tmux.
 	// Each loop takes one format, the only shape tmux 3.4 accepts.
 	statusFormatSessions = listPrologueFormat +
 		"#{S:#{?#{&&:" + reedSessionFilter + ",#{==:#{" + primeSessionOption + "},1}}," + sessionButtonFormat + ",}}" +
 		"#{S:#{?#{&&:" + reedSessionFilter + ",#{!=:#{" + primeSessionOption + "},1}}," + sessionButtonFormat + ",}}" +
-		followButtonFormat + "#[nolist align=right]%H:%M "
+		followButtonFormat + "#[nolist align=right]" + checkMarkFormat + "%H:%M "
 )

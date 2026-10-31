@@ -28,6 +28,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -101,7 +103,7 @@ func ReadCheck(recordPath string) (CheckRecord, bool, error) {
 	return record, found, err
 }
 
-// checkDeps holds the seams of one check run: the scratch directory its files sit in, the clock, the process identity it records, the hub reconcile, the gate and the notice to the orch.
+// checkDeps holds the seams of one check run: the scratch directory its files sit in, the clock, the process identity it records, the hub reconcile, the gate, the notice to the orch and the mark on the prime's status bar.
 // RunGate runs the check's gate key with log as its output and returns its exit code.
 type checkDeps struct {
 	Dir        string
@@ -111,12 +113,13 @@ type checkDeps struct {
 	Reconcile  func() error
 	RunGate    func(ctx context.Context, log io.Writer, observer gatecli.TierObserver) int
 	Notice     func(line string) error
+	Mark       func(mark checkMark) error
 }
 
 // runCheck runs the check under check.lock and returns the final record and whether this call ran it.
 // A held lock returns at once with nothing written or posted.
 // A failing reconcile ends the check failed before any tier runs, so no check goes green on the template's tiers.
-// The record is rewritten as each tier starts and ends; a post that fails is logged and changes nothing.
+// The record is rewritten, and the prime's status bar marked, as the check starts, as each tier starts and ends, and at its end; a post or mark that fails is logged and changes nothing.
 func runCheck(ctx context.Context, deps checkDeps) (CheckRecord, bool, error) {
 	if err := os.MkdirAll(deps.Dir, 0o755); err != nil {
 		return CheckRecord{}, false, fmt.Errorf("create the adopt scratch directory: %w", err)
@@ -142,6 +145,14 @@ func runCheck(ctx context.Context, deps checkDeps) (CheckRecord, bool, error) {
 	if err := writeCheck(recordPath, record); err != nil {
 		return CheckRecord{}, false, err
 	}
+	// tierStart is when the tier in flight started, which the record does not keep.
+	var tierStart time.Time
+	mark := func() {
+		if err := deps.Mark(checkMarkOf(record, tierStart)); err != nil {
+			logger.Warn("adoptcli: the adopt check mark was not set", "error", err)
+		}
+	}
+	mark()
 	post := func(line string) {
 		if err := deps.Notice(line); err != nil {
 			logger.Warn("adoptcli: the adopt check notice was not posted", "line", line, "error", err)
@@ -152,11 +163,14 @@ func runCheck(ctx context.Context, deps checkDeps) (CheckRecord, bool, error) {
 		if err := writeCheck(recordPath, record); err != nil {
 			logger.Warn("adoptcli: the adopt check record was not written", "path", recordPath, "error", err)
 		}
+		mark()
 	}
 	finish := func() (CheckRecord, bool, error) {
 		record.Running = nil
 		record.EndedAt = deps.Now()
-		return record, true, writeCheck(recordPath, record)
+		err := writeCheck(recordPath, record)
+		mark()
+		return record, true, err
 	}
 
 	rerun := "lym gate test --gate " + checkGateKey
@@ -170,6 +184,7 @@ func runCheck(ctx context.Context, deps checkDeps) (CheckRecord, bool, error) {
 	observer := gatecli.TierObserver{
 		Started: func(tier int) {
 			record.Running = &tier
+			tierStart = deps.Now()
 			save()
 		},
 		Ended: func(ended gateslot.RunRecord) {
@@ -213,6 +228,49 @@ func runCheck(ctx context.Context, deps checkDeps) (CheckRecord, bool, error) {
 	return finish()
 }
 
+// checkMark is what the check shows on the prime's status bar: its state, a one-line text and the start of its step in flight, zero for none.
+type checkMark struct {
+	State string
+	Text  string
+	Start time.Time
+}
+
+// checkMarkOf renders record as its status bar mark, where tierStart is when the tier in flight started.
+// A running check shows its done tiers with their outcomes and wall times, then the tier in flight timed from tierStart, or `starting` timed from the check's start before any tier;
+// an ended one shows its result and every tier it ran.
+func checkMarkOf(record CheckRecord, tierStart time.Time) checkMark {
+	parts := make([]string, 0, len(record.Tiers)+1)
+	for _, tier := range record.Tiers {
+		if record.State == checkGreen {
+			parts = append(parts, fmt.Sprintf("tier%d %.0fs", tier.Tier, tier.WallSeconds))
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("tier%d %s %.0fs", tier.Tier, tier.Outcome, tier.WallSeconds))
+	}
+	listed := func(head string) string {
+		if len(parts) == 0 {
+			return head
+		}
+		return head + ": " + strings.Join(parts, " · ")
+	}
+
+	switch {
+	case record.State == checkGreen:
+		return checkMark{State: checkGreen, Text: listed("adopt check green")}
+	case record.State == checkFailed && len(parts) == 0:
+		return checkMark{State: checkFailed, Text: "adopt check failed before any tier ended; lym beam status shows why"}
+	case record.State == checkFailed:
+		return checkMark{State: checkFailed, Text: listed("adopt check failed")}
+	case record.Running != nil:
+		parts = append(parts, "tier"+strconv.Itoa(*record.Running))
+		return checkMark{State: checkRunning, Text: listed("adopt check"), Start: tierStart}
+	case len(parts) == 0:
+		return checkMark{State: checkRunning, Text: "adopt check: starting", Start: record.Start}
+	default:
+		return checkMark{State: checkRunning, Text: listed("adopt check")}
+	}
+}
+
 // tierNotice renders the notice of one ended tier: its outcome and counts on the first line, and for a failed tier one line per failed test with the first line it printed, at most maxListedFailures, then the log at logPath.
 func tierNotice(tier CheckTier, logPath string) string {
 	lines := []string{fmt.Sprintf("adopt check: tier%d %s, passed %d failed %d skipped %d, %.1fs", tier.Tier, tier.Outcome, tier.Passed, tier.Failed, tier.Skipped, tier.WallSeconds)}
@@ -239,10 +297,12 @@ func writeCheck(recordPath string, record CheckRecord) error {
 	return state.WriteJSON(recordPath, recordPath+".lock", record)
 }
 
-// hubCheckDeps fills checkDeps over the prime: the reconcile is the hub's, which reads an absent board-level lym directory as an error since an adopt runs only in a hub, the gate is the hub's adopt key in the prime's anchor, and the notice goes to the nearest live orch.
+// hubCheckDeps fills checkDeps over the prime: the reconcile is the hub's, which reads an absent board-level lym directory as an error since an adopt runs only in a hub, the gate is the hub's adopt key in the prime's anchor, the notice goes to the nearest live orch, and the mark goes on the prime's reed session.
+// A reed config or geometry that does not read is each mark's error.
 func hubCheckDeps(prime *lymcwd.Location) checkDeps {
 	pid := os.Getpid()
 	ticks, _ := proc.StartTime(pid)
+	reed, reedErr := primeReed(prime)
 	return checkDeps{
 		Dir:        fabricengine.AdoptScratchDir(prime.HubPath),
 		Now:        time.Now,
@@ -265,7 +325,26 @@ func hubCheckDeps(prime *lymcwd.Location) checkDeps {
 			}
 			return err
 		},
+		Mark: func(mark checkMark) error {
+			if reedErr != nil {
+				return reedErr
+			}
+			return reed.SetCheckMark(mark.State, mark.Text, mark.Start)
+		},
 	}
+}
+
+// primeReed returns the reed engine of the prime's session.
+func primeReed(prime *lymcwd.Location) (*reedengine.Engine, error) {
+	cfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(prime), "reed")
+	if err != nil {
+		return nil, err
+	}
+	geom, err := hubgeom.ReedGeometry(prime)
+	if err != nil {
+		return nil, err
+	}
+	return reedengine.New(cfg, geom, shuttleengines.EnvScrub()), nil
 }
 
 // checkCmd is the hidden `check` verb, which `lym adopt` spawns detached in the prime.

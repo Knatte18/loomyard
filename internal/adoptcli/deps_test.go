@@ -1,6 +1,6 @@
 //go:build tier0
 
-// deps_test.go covers the hub-only pause reading that makes a pair under a slug-scope pause read live, the adopt check start's guard under go test, its alive skip and its liveness reading.
+// deps_test.go covers the hub-only pause reading that makes a pair under a slug-scope pause read live, the adopt check start's guard under go test, its alive skip and its liveness reading, and the adopt gate tiers it carries.
 
 package adoptcli
 
@@ -9,10 +9,13 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
+	"slices"
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -84,9 +87,11 @@ func TestEnsureCheck(t *testing.T) {
 		wantPID   int
 		wantSpawn int
 		wantErr   bool
+		// wantRunning says the check was found running rather than started.
+		wantRunning bool
 	}{
 		{name: "NoRecordSpawnsOnce", wantPID: 900, wantSpawn: 1},
-		{name: "RunningAliveSpawnsNone", record: &runningRecord, alive: true, wantPID: 77},
+		{name: "RunningAliveSpawnsNone", record: &runningRecord, alive: true, wantPID: 77, wantRunning: true},
 		{name: "RunningDeadSpawnsOnce", record: &runningRecord, wantPID: 900, wantSpawn: 1},
 		{name: "GreenRecordSpawnsOnce", record: &CheckRecord{PID: 77, State: checkGreen}, alive: true, wantPID: 900, wantSpawn: 1},
 		{name: "FailedSpawnReturnsItsError", spawnErr: errors.New("exec failed"), wantSpawn: 1, wantErr: true},
@@ -109,14 +114,77 @@ func TestEnsureCheck(t *testing.T) {
 			if (err != nil) != tt.wantErr || spawns != tt.wantSpawn {
 				t.Fatalf("ensureCheck() error = %v, spawns = %d; want error %v and %d spawns", err, spawns, tt.wantErr, tt.wantSpawn)
 			}
-			want := suiteStart{PID: tt.wantPID, Log: filepath.Join(dir, suiteLogName), Record: filepath.Join(dir, checkRecordName)}
+			want := suiteStart{PID: tt.wantPID, Log: filepath.Join(dir, suiteLogName), Record: filepath.Join(dir, checkRecordName), AlreadyRunning: tt.wantRunning}
 			if tt.wantErr {
 				want = suiteStart{}
 			}
-			if got != want {
+			if !reflect.DeepEqual(got, want) {
 				t.Errorf("ensureCheck() = %+v; want %+v", got, want)
 			}
 		})
+	}
+}
+
+func TestAdoptGateTiers(t *testing.T) {
+	t.Parallel()
+
+	const declaredTiers = "slots: 2\ntiers:\n  tier0: {command: x, timeout_min: 5, counter: vstest}\n  tier1: {command: y, timeout_min: 5, counter: vstest}\n"
+	tests := []struct {
+		name string
+		gate string
+		want []int
+	}{
+		{name: "AdoptKeyReturnsItsTiers", gate: declaredTiers + "gates:\n  adopt: {tiers: [0, 1], scope: all}\n", want: []int{0, 1}},
+		{name: "AdoptKeyNamingAnUndeclaredTierReturnsNone", gate: declaredTiers + "gates:\n  adopt: {tiers: [5], scope: all}\n"},
+		{name: "ConfigThatDoesNotReadReturnsNone", gate: "slots: 0\n"},
+		{name: "AbsentConfigReturnsNone"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			prime := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime"}
+			if tt.gate != "" {
+				configDir := filepath.Join(prime.AnchorPath(), "_lym", "config")
+				if err := os.MkdirAll(configDir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(configDir, "gate.yaml"), []byte(tt.gate), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			if got := adoptGateTiers(prime); !slices.Equal(got, tt.want) {
+				t.Errorf("adoptGateTiers() = %v; want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStartCheckWithTiers(t *testing.T) {
+	t.Parallel()
+
+	prime := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime"}
+	configDir := filepath.Join(prime.AnchorPath(), "_lym", "config")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gate := "slots: 2\ntiers:\n  tier0: {command: x, timeout_min: 5, counter: vstest}\n  tier1: {command: y, timeout_min: 5, counter: vstest}\ngates:\n  adopt: {tiers: [0, 1], scope: all}\n"
+	if err := os.WriteFile(filepath.Join(configDir, "gate.yaml"), []byte(gate), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(t.TempDir(), "adopt")
+	running := CheckRecord{PID: 77, State: checkRunning, Gate: checkGateKey}
+	if err := state.WriteJSON(filepath.Join(dir, checkRecordName), filepath.Join(dir, checkRecordName+".lock"), running); err != nil {
+		t.Fatalf("write the record: %v", err)
+	}
+
+	got, err := startCheckWithTiers(prime, dir, func(CheckRecord) bool { return true }, func() (int, error) {
+		t.Error("startCheckWithTiers spawned a check over a running one")
+		return 0, nil
+	})
+
+	if err != nil || got.PID != 77 || !got.AlreadyRunning || !slices.Equal(got.Tiers, []int{0, 1}) {
+		t.Errorf("startCheckWithTiers() = %+v, %v; want the running check 77 with tiers [0 1]", got, err)
 	}
 }
 

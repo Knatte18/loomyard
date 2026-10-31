@@ -9,6 +9,7 @@ package reedengine
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -285,5 +286,56 @@ func TestBar_LineTwoListsSessionsPrimeFirst(t *testing.T) {
 		if at < strings.LastIndex(line, other) || at > strings.Index(line, "nolist align=right") {
 			t.Errorf("line 2 with follow %s = %q, want the follow button after the last session button and before the time", tt.name, line)
 		}
+	}
+}
+
+// TestBar_LineTwoShowsTheCheckMarkBeforeTheClock pins the check mark on line 2: absent while unset, its text and growing seconds styled by its running state, the green style without seconds once ended, and gone once cleared.
+func TestBar_LineTwoShowsTheCheckMarkBeforeTheClock(t *testing.T) {
+	t.Parallel()
+	f := newBarFixture(t)
+
+	if line := f.expand(t, "#{T:status-format[1]}"); strings.Contains(line, "adopt check") {
+		t.Fatalf("line 2 with no mark = %q, want no check mark", line)
+	}
+
+	if err := f.e.SetCheckMark("running", "adopt check: tier0 green 40s · tier1", time.Now().Add(-90*time.Second)); err != nil {
+		t.Fatalf("SetCheckMark(running): %v", err)
+	}
+	line := f.expand(t, "#{T:status-format[1]}")
+	running := regexp.MustCompile(`bg=colour236 fg=yellow\] adopt check: tier0 green 40s · tier1 (\d+)s `)
+	match := running.FindStringSubmatch(line)
+	if match == nil {
+		t.Fatalf("line 2 running = %q, want the yellow mark with its seconds", line)
+	}
+	if seconds, err := strconv.Atoi(match[1]); err != nil || seconds < 90 || seconds > 150 {
+		t.Errorf("line 2 running seconds = %s, want the 90 seconds since the start, give or take the test's own time", match[1])
+	}
+	if strings.Index(line, "adopt check") < strings.Index(line, "nolist align=right") {
+		t.Errorf("line 2 running = %q, want the mark right-aligned after the follow button", line)
+	}
+	clock := regexp.MustCompile(`\d\d:\d\d`).FindAllStringIndex(line, -1)
+	if len(clock) == 0 || strings.Index(line, "adopt check") > clock[len(clock)-1][0] {
+		t.Errorf("line 2 running = %q, want the mark before the clock", line)
+	}
+
+	if err := f.e.SetCheckMark("green", "adopt check green: tier0 40s", time.Time{}); err != nil {
+		t.Fatalf("SetCheckMark(green): %v", err)
+	}
+	if line := f.expand(t, "#{T:status-format[1]}"); !strings.Contains(line, "bg=green fg=black bold] adopt check green: tier0 40s #[default]") {
+		t.Errorf("line 2 green = %q, want the green mark with no seconds", line)
+	}
+
+	if err := f.e.SetCheckMark("failed", "adopt check failed: tier0 failed 40s", time.Time{}); err != nil {
+		t.Fatalf("SetCheckMark(failed): %v", err)
+	}
+	if line := f.expand(t, "#{T:status-format[1]}"); !strings.Contains(line, "bg=red fg=white bold] adopt check failed: tier0 failed 40s ") {
+		t.Errorf("line 2 failed = %q, want the red mark", line)
+	}
+
+	if err := f.e.SetCheckMark("", "", time.Time{}); err != nil {
+		t.Fatalf("SetCheckMark(clear): %v", err)
+	}
+	if line := f.expand(t, "#{T:status-format[1]}"); strings.Contains(line, "adopt check") {
+		t.Errorf("line 2 cleared = %q, want no check mark", line)
 	}
 }

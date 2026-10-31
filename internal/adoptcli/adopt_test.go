@@ -6,6 +6,7 @@ package adoptcli
 
 import (
 	"errors"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -49,8 +50,9 @@ type world struct {
 	childResumed []string
 	// moving is the target anchor of the move record standing in each worktree, "" keying the prime.
 	moving map[string]string
-	// order is the run resumes, child resumes, beam steps and suite starts in the order they came, and suiteErr what the suite start answers.
+	// order is the run resumes, child resumes, beam steps and suite starts in the order they came, and suite and suiteErr what the suite start answers.
 	order    []string
+	suite    suiteStart
 	suiteErr error
 	// beamUps are the worktrees the beam steps were run for, and beamUpErr what the steps of each worktree answer.
 	beamUps   []string
@@ -66,6 +68,7 @@ type world struct {
 func newWorld() *world {
 	running := shedengine.Status{State: shedengine.StateRunning}
 	return &world{
+		suite: testSuite,
 		owners: boardengine.Owners{Prime: here, Entries: map[string]boardengine.OwnerEntry{
 			"alpha": {Owner: there, IsProject: true, Beam: true, RunHeld: true},
 			"beta":  {Owner: there, IsProject: true, Beam: true, RunHeld: true},
@@ -194,13 +197,13 @@ func (w *world) deps() adoptDeps {
 			if w.suiteErr != nil {
 				return suiteStart{}, w.suiteErr
 			}
-			return testSuite, nil
+			return w.suite, nil
 		},
 	}
 }
 
-// testSuite is what the fake suite start answers.
-var testSuite = suiteStart{PID: 42, Log: "suite.log"}
+// testSuite is what the fake suite start answers unless a case sets another.
+var testSuite = suiteStart{PID: 42, Log: "suite.log", Tiers: []int{0, 1, 2}}
 
 // slugOf returns the outcome of slug, failing the test when the envelope lacks it.
 func slugOf(t *testing.T, got outcome, slug string) slugOutcome {
@@ -606,8 +609,11 @@ func TestAdopt(t *testing.T) {
 					t.Errorf("%s beam steps = %+v; want the beam's report", slug, steps)
 				}
 			}
-			if got.Suite == nil || *got.Suite != testSuite || got.SuiteWarning != "" {
+			if got.Suite == nil || !reflect.DeepEqual(*got.Suite, testSuite) || got.SuiteWarning != "" {
 				t.Errorf("suite = %+v, warning = %q; want %+v and no warning", got.Suite, got.SuiteWarning, testSuite)
+			}
+			if want := "adopt check started in the prime, tiers 0, 1, 2; the prime's reed status bar shows its progress and result"; got.SuiteMessage != want {
+				t.Errorf("suite message = %q; want %q", got.SuiteMessage, want)
 			}
 		}},
 		{name: "PrimeOwnerRecordedAloneRunsThePrimesBeamStepsAndStartsTheSuiteLast", req: request{Root: true}, setup: withoutAlphaAndBeta, check: func(t *testing.T, w *world, got outcome) {
@@ -672,10 +678,15 @@ func TestAdopt(t *testing.T) {
 				t.Errorf("steps = %v, suite = %+v, warning = %q; want no suite start", w.order, got.Suite, got.SuiteWarning)
 			}
 		}},
+		{name: "CheckFoundRunningWithNoTiersReadIsNamedAlreadyRunning", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.suite = suiteStart{PID: 7, AlreadyRunning: true} }, check: func(t *testing.T, _ *world, got outcome) {
+			if want := "adopt check already running in the prime; the prime's reed status bar shows its progress and result"; got.SuiteMessage != want {
+				t.Errorf("suite message = %q; want %q", got.SuiteMessage, want)
+			}
+		}},
 		{name: "FailedSuiteStartIsTheWarningNamingTheGate", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.suiteErr = errors.New("exec failed") }, check: func(t *testing.T, w *world, got outcome) {
 			want := "the adopt check was not started (exec failed); way forward: run lym fabric reconcile in the prime, then lym gate test --gate adopt there"
-			if got.SuiteWarning != want || got.Suite != nil {
-				t.Errorf("suite = %+v, warning = %q; want no suite and %q", got.Suite, got.SuiteWarning, want)
+			if got.SuiteWarning != want || got.Suite != nil || got.SuiteMessage != "" {
+				t.Errorf("suite = %+v, warning = %q, message = %q; want no suite, no message and %q", got.Suite, got.SuiteWarning, got.SuiteMessage, want)
 			}
 			if alpha := slugOf(t, got, "alpha"); !alpha.OwnerRecorded || alpha.Run != "resumed" || alpha.Error != "" {
 				t.Errorf("alpha = %+v, want it adopted and resumed beside the failed suite start", alpha)

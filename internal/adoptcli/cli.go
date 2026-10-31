@@ -42,11 +42,11 @@ Steps, in order:
      Finalize's owner check is resumed
   7. the beam steps of the prime with root and of each adopted beam, as "lym beam start"
      runs them: its dobby and orch; a beam whose landing holds it gets none
-  8. the adopt check starts detached in the prime and reports each tier to the orch; it shows
-     in lym beam status, and red only reports
+  8. the adopt check starts detached in the prime; the prime's status bar shows its
+     progress and result, the orch gets each tier, and red only reports
 
 The envelope carries reconcile, mutations, partial, per slug what happened and its
-beam_steps, prime_beam_steps, and suite (pid, log, record) or suite_warning.
+beam_steps, prime_beam_steps, and suite with message, or suite_warning.
 A slug's error never stops the others.
 
 Example:
@@ -83,28 +83,7 @@ Example:
 
 			req.Slugs = args
 			result, err := adopt(deps, req)
-			fields := map[string]any{
-				"reconcile":      result.Reconcile,
-				"mutations":      result.Mutations,
-				"partial":        result.Partial,
-				"slugs":          result.Slugs,
-				"prime_recorded": result.PrimeRecorded,
-			}
-			if result.PrimeLost != "" {
-				fields["prime_lost_to"] = result.PrimeLost
-			}
-			if result.PrimeBeamSteps != nil {
-				fields["prime_beam_steps"] = result.PrimeBeamSteps
-			}
-			if result.PrimeBeamWarning != "" {
-				fields["prime_beam_warning"] = result.PrimeBeamWarning
-			}
-			if result.Suite != nil {
-				fields["suite"] = result.Suite
-			}
-			if result.SuiteWarning != "" {
-				fields["suite_warning"] = result.SuiteWarning
-			}
+			fields := adoptFields(result)
 			if err != nil {
 				clihelp.SetExit(ctx, output.ErrFields(out, err.Error(), fields))
 				return nil
@@ -118,6 +97,37 @@ Example:
 	cmd.Flags().BoolVar(&req.DropLocal, "drop-local", false, "keep each local tip origin lacks under an archive tag and move the branches to origin's")
 	cmd.AddCommand(checkCmd())
 	return cmd
+}
+
+// adoptFields returns the fields of the adopt envelope for result.
+// The always-present fields are reconcile, mutations, partial, slugs and prime_recorded; every other field appears only when result holds its value.
+func adoptFields(result outcome) map[string]any {
+	fields := map[string]any{
+		"reconcile":      result.Reconcile,
+		"mutations":      result.Mutations,
+		"partial":        result.Partial,
+		"slugs":          result.Slugs,
+		"prime_recorded": result.PrimeRecorded,
+	}
+	if result.PrimeLost != "" {
+		fields["prime_lost_to"] = result.PrimeLost
+	}
+	if result.PrimeBeamSteps != nil {
+		fields["prime_beam_steps"] = result.PrimeBeamSteps
+	}
+	if result.PrimeBeamWarning != "" {
+		fields["prime_beam_warning"] = result.PrimeBeamWarning
+	}
+	if result.Suite != nil {
+		fields["suite"] = result.Suite
+	}
+	if result.SuiteMessage != "" {
+		fields["message"] = result.SuiteMessage
+	}
+	if result.SuiteWarning != "" {
+		fields["suite_warning"] = result.SuiteWarning
+	}
+	return fields
 }
 
 // RunCLI is the public seam for the adopt module CLI, delegating to clihelp.Execute for output capture.
