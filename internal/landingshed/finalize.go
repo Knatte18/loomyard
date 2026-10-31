@@ -161,11 +161,11 @@ func NewFinalize(deps Deps) (*Finalize, error) {
 //
 // Immediately before each landing attempt it re-reads the parent lock record, so a lock something released lands nothing and is a halting Stuck.
 // The re-read and the landing are not atomic: a release between them is caught only by the parent push's rejection.
-// The landing commit carries the change description and a trailer block ending in a `Lym-Task: <slug>` line.
+// The landing commit carries the change description and, after a blank line, the credit block, when the config yields one.
 //
 // Right after the lock it follows the pull-request resolver: a no closes a recorded open pull request, drops the record and lands locally;
 // a yes needs the recorded pull request and halts without one, and halts on one closed without the operator's ending;
-// the operator's ending, a closed pull request whose record is marked closed for continue, lands locally with the gate and trailer, and a merged one lands through the already-landed path.
+// the operator's ending, a closed pull request whose record is marked closed for continue, lands locally with the gate and credit block, and a merged one lands through the already-landed path.
 // An open pull request is merged on GitHub just before the parent-side merge, with the pushed task head as its expected head, and the parent pair is fast-forwarded to the merge, so the parent-side merge then finds the parent holding the task's work.
 //
 // Finalize is idempotent over an already-landed parent: when the parent already contains the task's
@@ -187,15 +187,12 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: parse change description: %w", finalizeName, err)
 	}
 
-	// Step 1a2: read the engines the task ran under, for the same reason: the trailer block is part of step 4's message.
-	var enginesRun []string
-	if fz.deps.EnginesRun != nil {
-		if enginesRun, err = fz.deps.EnginesRun(); err != nil {
-			return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: read the engines the task ran under: %w", finalizeName, err)
-		}
+	// Step 1a2: read the engines the task ran under, for the same reason: the credit block is part of step 4's message.
+	credit, err := fz.deps.creditBlock()
+	if err != nil {
+		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %w", finalizeName, err)
 	}
-	trailer := taskTrailer(fz.deps.Config.TrailerBlock(enginesRun), fz.deps.Slug)
-	landingMessage := summary.LandingMessage(trailer)
+	landingMessage := summary.LandingMessage(credit)
 
 	// Step 1b: commit the product's own status file, so the pair carries no tracked modification
 	// when the merge guard below runs. This must happen inside Call rather than once at bootstrap:
@@ -276,7 +273,7 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 	// Step 5b: a landing through an open pull request merges it on GitHub first, once, so the parent-side merge below finds the parent holding the task's work.
 	// The retry after a merge-in-required error never comes back here, since the GitHub merge is done.
 	if landing.merge {
-		if outcome, out, err, stop := fz.mergeOnGitHub(ctx, parentHandle, landing, summary.Title, pullRequestMergeMessage(summary.Body, trailer)); stop {
+		if outcome, out, err, stop := fz.mergeOnGitHub(ctx, parentHandle, landing, summary.Title, bodyWithCredit(summary.Body, credit)); stop {
 			return outcome, out, err
 		}
 	}
@@ -584,15 +581,6 @@ func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger, n
 		}
 	}
 	return shedengine.Done, shedengine.OutputPointer{}, nil
-}
-
-// taskTrailer appends the `Lym-Task: <slug>` line to block, the landing commit's trailer block, which is empty when the commit carries no other trailer.
-func taskTrailer(block, slug string) string {
-	line := "Lym-Task: " + slug
-	if block == "" {
-		return line
-	}
-	return block + "\n" + line
 }
 
 // recheckLock re-reads the parent lock record immediately before a landing attempt.

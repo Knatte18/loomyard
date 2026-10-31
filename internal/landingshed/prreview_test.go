@@ -103,8 +103,8 @@ func TestPRReview_Call(t *testing.T) {
 	created := scriptedCall{ref: pullrequest.Ref{Number: 7, URL: "https://github.com/acme/widgets/pull/7"}}
 	closed := scriptedCall{status: pullrequest.Status{State: pullrequest.StateClosed}}
 	const (
-		wantCreateCall  = "Create task main|Change title|\nChange body\n"
-		wantEditSeven   = "Edit 7|Change title|\nChange body\n"
+		wantCreateCall  = "Create task main|Change title|" + wantPRBody
+		wantEditSeven   = "Edit 7|Change title|" + wantPRBody
 		localNoReason   = "no pull request: the parent's beam.yaml pull_request is on and the task pair has no origin remote"
 		taskHead        = "head-new"
 		recordedGated   = "head-old"
@@ -191,7 +191,7 @@ func TestPRReview_Call(t *testing.T) {
 			name: "YesWithNoneRecordedButOneOpenReusesIt", parentMode: "on", origin: githubOrigin,
 			scripts:     map[string][]scriptedCall{"FindOpen": {{ref: pullrequest.Ref{Number: 9, URL: "u9"}, found: true}}, "Status": {mergedAtHead}},
 			wantOutcome: shedengine.Done, wantPushes: 1,
-			wantCalls:  []string{"FindOpen task main", "Edit 9|Change title|\nChange body\n", "Status 9"},
+			wantCalls:  []string{"FindOpen task main", "Edit 9|Change title|" + wantPRBody, "Status 9"},
 			wantRecord: &pullrequest.Record{Number: 9, URL: "u9", Base: "main", Head: "task", GatedHead: taskHead},
 		},
 		{
@@ -378,6 +378,37 @@ func TestPRReview_Call(t *testing.T) {
 		}
 	})
 
+	t.Run("CreditOffOpensThePullRequestWithTheDescriptionBodyAlone", func(t *testing.T) {
+		t.Parallel()
+		fx := newPRReviewFixture(t, "on", nil, "", githubOrigin, nil, map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}}, nil)
+		fx.deps.Config.Credit = false
+
+		if _, _, err := NewPRReview("PR-Review", fx.deps).Call(context.Background()); err != nil {
+			t.Fatalf("Call() error = %v", err)
+		}
+
+		want := []string{"FindOpen task main", "Create task main|Change title|Change body", "Status 7"}
+		if diff := cmp.Diff(want, fx.api.calls); diff != "" {
+			t.Errorf("GitHub calls mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("FailingEnginesRunReadIsAnErrorWithNoPullRequestCall", func(t *testing.T) {
+		t.Parallel()
+		fx := newPRReviewFixture(t, "on", nil, "", githubOrigin, nil, nil, nil)
+		readErr := errors.New("engines run unreadable")
+		fx.deps.EnginesRun = func() ([]string, error) { return nil, readErr }
+
+		_, _, err := NewPRReview("PR-Review", fx.deps).Call(context.Background())
+
+		if !errors.Is(err, readErr) {
+			t.Errorf("Call() error = %v; want one wrapping %v", err, readErr)
+		}
+		if len(fx.api.calls) != 0 {
+			t.Errorf("Call() made GitHub calls %v; want none", fx.api.calls)
+		}
+	})
+
 	t.Run("CancelledContextIsAnError", func(t *testing.T) {
 		t.Parallel()
 		fx := newPRReviewFixture(t, "on", nil, "", githubOrigin, nil, nil, nil)
@@ -412,7 +443,10 @@ type prReviewFixture struct {
 // prReviewFixtureNow is the instant every fake clock of the PR-Review tests starts at.
 var prReviewFixtureNow = time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
 
-// prReviewTestDeps builds a Deps over a temp record path and a change description titled "Change title" whose body, as summaryparser reads it, is "\nChange body\n".
+// wantPRBody is the pull request body prReviewTestDeps yields: the description's trimmed body, a blank line and the credit block of the one engine that ran.
+const wantPRBody = "Change body\n\nCreated using\n - LoomYard\n - Claude <c@x>"
+
+// prReviewTestDeps builds a Deps over a temp record path and a change description titled "Change title" whose body, as summaryparser reads it, is "\nChange body\n", with the credit on and claude the one engine that ran.
 // Every PullRequest seam is filled: the origin is a GitHub one, the parent's mode is on, the task head is "head-new", the worktree is clean, no pause covers the run, and the clock moves only when the wait sleeps.
 // A test replaces the seams it scripts.
 func prReviewTestDeps(t *testing.T, api *fakePullRequestAPI) Deps {
@@ -432,10 +466,17 @@ func prReviewTestDeps(t *testing.T, api *fakePullRequestAPI) Deps {
 		DescriptionPath: description,
 		StencilsDir:     stencilkit.Seed(t),
 		ParentName:      "parent-session",
-		Config:          Config{PRReviewer: "claude:fixture-model"},
-		TaskHead:        func() (string, error) { return "head-new", nil },
-		GateTiers:       func(string) ([]int, error) { return []int{0, 1}, nil },
-		Lock:            ParentLockDeps{Store: &parentlock.Store{Dir: filepath.Join(dir, "parent-lock")}},
+		Config: Config{
+			PRReviewer:     "claude:fixture-model",
+			Credit:         true,
+			CreditHeading:  "Created using",
+			CreditLoomYard: "LoomYard",
+			CreditEngines:  map[string]string{"claude": "Claude <c@x>"},
+		},
+		EnginesRun: func() ([]string, error) { return []string{"claude"}, nil },
+		TaskHead:   func() (string, error) { return "head-new", nil },
+		GateTiers:  func(string) ([]int, error) { return []int{0, 1}, nil },
+		Lock:       ParentLockDeps{Store: &parentlock.Store{Dir: filepath.Join(dir, "parent-lock")}},
 		PullRequest: PullRequestDeps{
 			Sessions:        sessions,
 			SessionLive:     sessions.isLive,

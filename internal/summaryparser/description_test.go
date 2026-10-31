@@ -75,21 +75,21 @@ func TestLandingMessage(t *testing.T) {
 	withBody := &summaryparser.Summary{Title: "T", Body: "\nbody\n"}
 	titleOnly := &summaryparser.Summary{Title: "T"}
 	tests := []struct {
-		name     string
-		summary  *summaryparser.Summary
-		trailers string
-		want     string
+		name    string
+		summary *summaryparser.Summary
+		credit  string
+		want    string
 	}{
-		{"BodyAndTrailers", withBody, "Created using Loomyard\nCo-Authored-By: A <a@b>", "T\n\nbody\n\n\nCreated using Loomyard\nCo-Authored-By: A <a@b>"},
-		{"BodyNoTrailers", withBody, "", "T\n\nbody\n"},
-		{"TitleOnlyAndTrailers", titleOnly, "Co-Authored-By: A", "T\n\nCo-Authored-By: A"},
-		{"TitleOnlyNoTrailers", titleOnly, "", "T"},
+		{"BodyAndCredit", withBody, "Created using Loomyard\nCo-Authored-By: A <a@b>", "T\n\nbody\n\n\nCreated using Loomyard\nCo-Authored-By: A <a@b>"},
+		{"BodyNoCredit", withBody, "", "T\n\nbody\n"},
+		{"TitleOnlyAndCredit", titleOnly, "Co-Authored-By: A", "T\n\nCo-Authored-By: A"},
+		{"TitleOnlyNoCredit", titleOnly, "", "T"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := tt.summary.LandingMessage(tt.trailers); got != tt.want {
-				t.Errorf("LandingMessage(%q) = %q; want %q", tt.trailers, got, tt.want)
+			if got := tt.summary.LandingMessage(tt.credit); got != tt.want {
+				t.Errorf("LandingMessage(%q) = %q; want %q", tt.credit, got, tt.want)
 			}
 		})
 	}

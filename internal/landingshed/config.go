@@ -12,7 +12,6 @@
 package landingshed
 
 import (
-	"bytes"
 	"fmt"
 	"slices"
 	"strings"
@@ -43,11 +42,15 @@ type Config struct {
 	DescribeTimeoutMin int `yaml:"describe_timeout_min"`
 	// PRReviewer is the model-spec string selecting the model the PR-Review row's interactive session runs under.
 	PRReviewer string `yaml:"pr_reviewer"`
-	// TrailerText is the landing commit's fixed trailer lines, copied verbatim; empty adds none.
-	TrailerText string `yaml:"trailer_text"`
-	// EngineTrailers maps an engine name to the trailer text the landing commit carries when that engine ran a session in the task.
+	// Credit selects whether the landing commit and the pull request's body end with the credit block.
+	Credit bool `yaml:"credit"`
+	// CreditHeading is the credit block's first line; empty leaves the items without a heading.
+	CreditHeading string `yaml:"credit_heading"`
+	// CreditLoomYard is the credit block's LoomYard item, listed whatever engines ran; empty adds none.
+	CreditLoomYard string `yaml:"credit_loomyard"`
+	// CreditEngines maps an engine name to the credit block's item for that engine, listed only when the engine ran a session in the task.
 	// An engine left out, or mapped to empty text, adds nothing.
-	EngineTrailers map[string]string `yaml:"engine_trailers"`
+	CreditEngines map[string]string `yaml:"credit_engines"`
 	// Deploy is the shell command batten's Land row runs in the prime after a landing into the prime's branch.
 	// Empty runs nothing.
 	Deploy string `yaml:"deploy"`
@@ -80,28 +83,42 @@ func (c Config) IdleRelease() time.Duration {
 	return time.Duration(c.ParentLockIdleReleaseMin) * time.Minute
 }
 
-// TrailerBlock returns the landing commit's trailer block: the trimmed TrailerText, then the trimmed EngineTrailers text of each name in enginesRun, in sorted name order, one per line.
-// An empty or whitespace-only text adds nothing, and an empty block means the commit carries no trailer block.
-func (c Config) TrailerBlock(enginesRun []string) string {
-	names := slices.Sorted(slices.Values(enginesRun))
-	var parts []string
-	if text := strings.TrimSpace(c.TrailerText); text != "" {
-		parts = append(parts, text)
+// CreditBlock returns the plain-text credit block that ends the landing commit and the pull request's body.
+// The block is the trimmed CreditHeading, then one ` - <item>` line for the trimmed CreditLoomYard and for the trimmed CreditEngines text of each name in enginesRun, in sorted name order, each name once.
+// An empty or whitespace-only text adds no line.
+// The block is empty when Credit is off or no item line remains, and an empty block means nothing follows the body.
+func (c Config) CreditBlock(enginesRun []string) string {
+	if !c.Credit {
+		return ""
 	}
-	for _, name := range slices.Compact(names) {
-		if text := strings.TrimSpace(c.EngineTrailers[name]); text != "" {
-			parts = append(parts, text)
+	var items []string
+	if text := strings.TrimSpace(c.CreditLoomYard); text != "" {
+		items = append(items, text)
+	}
+	for _, name := range slices.Compact(slices.Sorted(slices.Values(enginesRun))) {
+		if text := strings.TrimSpace(c.CreditEngines[name]); text != "" {
+			items = append(items, text)
 		}
 	}
-	return strings.Join(parts, "\n")
+	if len(items) == 0 {
+		return ""
+	}
+	var lines []string
+	if heading := strings.TrimSpace(c.CreditHeading); heading != "" {
+		lines = append(lines, heading)
+	}
+	for _, item := range items {
+		lines = append(lines, " - "+item)
+	}
+	return strings.Join(lines, "\n")
 }
 
-// engineTrailersKey is the landing.yaml key whose entries map engine names to trailer text.
-const engineTrailersKey = "engine_trailers"
+// creditEnginesKey is the landing.yaml key whose entries map engine names to credit block items.
+const creditEnginesKey = "credit_engines"
 
 // ConfigOpenMaps returns the landing.yaml keys whose entries belong to the operator, which configengine carries whole through reconcile and the layer stack.
 func ConfigOpenMaps() []string {
-	return []string{engineTrailersKey}
+	return []string{creditEnginesKey}
 }
 
 // ConfigSpec returns landing's layered-load spec.
@@ -120,8 +137,10 @@ func ConfigSpec() configengine.Spec {
 			"describe":             configengine.CategoryNone,
 			"describe_timeout_min": configengine.CategoryNone,
 			"pr_reviewer":          configengine.CategoryNone,
-			"trailer_text":         configengine.CategoryCrossPair,
-			engineTrailersKey:      configengine.CategoryCrossPair,
+			"credit":               configengine.CategoryCrossPair,
+			"credit_heading":       configengine.CategoryCrossPair,
+			"credit_loomyard":      configengine.CategoryCrossPair,
+			creditEnginesKey:       configengine.CategoryCrossPair,
 			"deploy":               configengine.CategoryExecutable,
 			// The idle bound decides when one pair's parent lock frees for the next pair waiting on it.
 			"parent_lock_idle_release_min": configengine.CategoryCrossPair,
@@ -132,15 +151,20 @@ func ConfigSpec() configengine.Spec {
 			"finalize_fix_attempts":     configengine.CategoryCrossPair,
 			"finalize_fix_max_lines":    configengine.CategoryCrossPair,
 		},
-		// publish_verify moved to the hub's publish gate; a file still holding it loads and reconcile prunes it.
+		// A file still holding a retired key loads and reconcile prunes it.
+		// publish_verify moved to the hub's publish gate.
+		// The co-author and trailer keys gave way to the credit keys; their values are co-author lines, so none is carried over.
 		RetiredKeys: map[string]configengine.Category{
-			"publish_verify": configengine.CategoryExecutable,
+			"publish_verify":  configengine.CategoryExecutable,
+			"co_authored_by":  configengine.CategoryCrossPair,
+			"trailer_text":    configengine.CategoryCrossPair,
+			"engine_trailers": configengine.CategoryCrossPair,
 		},
 	}
 }
 
 // LoadConfig loads and unmarshals configuration for the landing module strictly through the hub-wide layer stack under dirs.
-// It validates the conflict, describe, pr_reviewer and fixer keys' model-spec grammar at load time, refuses a fixer timeout, fixer attempt cap or fixer line cap below 1, and refuses an engine_trailers entry whose key names no engine.
+// It validates the conflict, describe, pr_reviewer and fixer keys' model-spec grammar at load time, refuses a fixer timeout, fixer attempt cap or fixer line cap below 1, and refuses a credit_engines entry whose key names no engine.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	spec := ConfigSpec()
 	spec.Name = module
@@ -186,9 +210,9 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		}
 	}
 	engines := modelspec.EngineNames()
-	for name := range cfg.EngineTrailers {
+	for name := range cfg.CreditEngines {
 		if !slices.Contains(engines, name) {
-			return Config{}, fmt.Errorf("landing config key %q: %q is no engine; use one of %v, or remove the entry", engineTrailersKey+"."+name, name, engines)
+			return Config{}, fmt.Errorf("landing config key %q: %q is no engine; use one of %v, or remove the entry", creditEnginesKey+"."+name, name, engines)
 		}
 	}
 
@@ -202,87 +226,16 @@ var retiredKeyRenames = []yamlengine.KeyRename{
 }
 
 // MigrateConfig rewrites a landing.yaml document for lym config reconcile and returns the rewritten bytes with one line per rewrite.
-// It moves a retired co_authored_by value into engine_trailers as the claude entry `Co-Authored-By: <value>`;
-// a document already holding engine_trailers keeps it and drops co_authored_by,
-// and an empty or non-scalar co_authored_by is dropped without an entry, as empty means off.
-// It then renames the retired require_pr_to_base key to deploy_branches, keeping its value, an empty list included;
+// It renames the retired require_pr_to_base key to deploy_branches, keeping its value, an empty list included;
 // a document already holding deploy_branches keeps it and drops the old key.
 // It likewise renames the retired merge_fix_attempts key to parent_align_fix_attempts, keeping its value;
 // a document already holding parent_align_fix_attempts keeps it and drops the old key.
 // A document without a retired key is returned unchanged, so a migrated file is unchanged on a second pass.
 // A document that does not parse, or whose root is not a mapping, returns an error marked configengine.ErrInvalid.
 func MigrateConfig(existing []byte) ([]byte, []string, error) {
-	migrated, line, err := migrateCoAuthoredBy(existing)
+	migrated, lines, err := yamlengine.RenameKeys([]byte(ConfigTemplate()), existing, retiredKeyRenames)
 	if err != nil {
 		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate landing config: %w", err))
 	}
-	var rewrites []string
-	if line == "" {
-		migrated = existing
-	} else {
-		rewrites = append(rewrites, line)
-	}
-	migrated, renameLines, err := yamlengine.RenameKeys([]byte(ConfigTemplate()), migrated, retiredKeyRenames)
-	if err != nil {
-		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate landing config: %w", err))
-	}
-	return migrated, append(rewrites, renameLines...), nil
-}
-
-// migrateCoAuthoredBy rewrites a top-level co_authored_by key in place into an engine_trailers mapping holding its claude line, or drops it beside an existing engine_trailers.
-// It returns the rewritten document and one line describing the rewrite, or the document unchanged and an empty line when the key is absent.
-func migrateCoAuthoredBy(existing []byte) ([]byte, string, error) {
-	var document yaml.Node
-	if err := yaml.Unmarshal(existing, &document); err != nil {
-		return nil, "", fmt.Errorf("unmarshal yaml: %w", err)
-	}
-	if document.Kind != yaml.DocumentNode || len(document.Content) == 0 {
-		return existing, "", nil
-	}
-	root := document.Content[0]
-	if root.Kind != yaml.MappingNode {
-		return nil, "", fmt.Errorf("yaml root is not a mapping")
-	}
-
-	legacyIndex, currentIndex := -1, -1
-	for i := 0; i+1 < len(root.Content); i += 2 {
-		switch root.Content[i].Value {
-		case "co_authored_by":
-			legacyIndex = i
-		case engineTrailersKey:
-			currentIndex = i
-		}
-	}
-	if legacyIndex < 0 {
-		return existing, "", nil
-	}
-
-	value := root.Content[legacyIndex+1].Value
-	var line string
-	switch {
-	case strings.TrimSpace(value) == "":
-		line = "co_authored_by: empty, dropped"
-		root.Content = append(root.Content[:legacyIndex], root.Content[legacyIndex+2:]...)
-	case currentIndex >= 0:
-		line = fmt.Sprintf("co_authored_by: %s dropped, %s already set", value, engineTrailersKey)
-		root.Content = append(root.Content[:legacyIndex], root.Content[legacyIndex+2:]...)
-	default:
-		root.Content[legacyIndex] = &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: engineTrailersKey}
-		root.Content[legacyIndex+1] = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map", Content: []*yaml.Node{
-			{Kind: yaml.ScalarNode, Tag: "!!str", Value: "claude"},
-			{Kind: yaml.ScalarNode, Tag: "!!str", Value: "Co-Authored-By: " + value},
-		}}
-		line = fmt.Sprintf("co_authored_by: moved to %s.claude", engineTrailersKey)
-	}
-
-	var out bytes.Buffer
-	encoder := yaml.NewEncoder(&out)
-	encoder.SetIndent(2)
-	if err := encoder.Encode(&document); err != nil {
-		return nil, "", fmt.Errorf("encode yaml: %w", err)
-	}
-	if err := encoder.Close(); err != nil {
-		return nil, "", fmt.Errorf("encode yaml: %w", err)
-	}
-	return out.Bytes(), line, nil
+	return migrated, lines, nil
 }

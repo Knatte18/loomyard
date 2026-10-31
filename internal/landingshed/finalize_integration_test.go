@@ -122,10 +122,12 @@ func newFinalizeAt(t *testing.T, taskBranch, taskCode, parentCode string, shuttl
 		Squash:             squash,
 		Conflict:           "claude:test-model",
 		ConflictTimeoutMin: 1,
-		TrailerText:        "Created using Loomyard\n",
-		EngineTrailers: map[string]string{
-			"claude": "Co-Authored-By: Test Author <test@example.com>",
-			"other":  "Co-Authored-By: Other <other@example.com>",
+		Credit:             true,
+		CreditHeading:      "Created using",
+		CreditLoomYard:     "LoomYard https://x/loomyard",
+		CreditEngines: map[string]string{
+			"claude": "Test Author <test@example.com>",
+			"other":  "Other <other@example.com>",
 		},
 	}
 	deps.EnginesRun = func() ([]string, error) { return []string{"claude"}, nil }
@@ -214,14 +216,14 @@ func TestFinalize_OverRealHub(t *testing.T) {
 		}
 
 		// The landing commit's subject is the description title, its body is the description body,
-		// and its trailer block is the fixed line, then the line of the one engine that ran, then the task's `Lym-Task` line.
+		// and its credit block is the heading, the LoomYard line and the line of the one engine that ran, as plain lines with no trailer.
 		msgCmd := exec.Command("git", "log", "-1", "--format=%B")
 		msgCmd.Dir = parentCode
 		msgOut, err := msgCmd.Output()
 		if err != nil {
 			t.Fatalf("git log -1 --format=%%B in %s: %v", parentCode, err)
 		}
-		wantMsg := "A landing title\n\nA landing body.\n\nCreated using Loomyard\nCo-Authored-By: Test Author <test@example.com>\nLym-Task: task"
+		wantMsg := "A landing title\n\nA landing body.\n\nCreated using\n - LoomYard https://x/loomyard\n - Test Author <test@example.com>"
 		if got := strings.TrimSpace(string(msgOut)); got != wantMsg {
 			t.Errorf("landing commit message = %q; want %q", got, wantMsg)
 		}

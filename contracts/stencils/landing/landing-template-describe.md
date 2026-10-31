@@ -48,7 +48,7 @@ Naming a module is fine when the change touches it.
 
 ## Rules
 
-- Write no `Co-Authored-By` line — the landing step appends the configured trailer block itself.
+- Write no `Co-Authored-By` line and no credit lines — the landing step appends the configured credit block itself.
 - Never commit, and never run any git command that changes the repository.
 - Before ending your turn, run `lym loom validate-description` and fix every finding it reports.
   A clean `validate-description` run is the last thing you do in this session.

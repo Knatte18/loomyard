@@ -65,7 +65,7 @@ func ValidateDescription(path string) ([]Finding, error) {
 	}
 	for _, line := range strings.Split(s.Body, "\n") {
 		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), "co-authored-by:") {
-			findings = append(findings, Finding{CheckCoAuthorTrail, "body contains a Co-Authored-By trailer; Go appends it at landing"})
+			findings = append(findings, Finding{CheckCoAuthorTrail, "body contains a Co-Authored-By trailer; the landing appends its own credit block"})
 			break
 		}
 	}

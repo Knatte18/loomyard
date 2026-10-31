@@ -81,7 +81,7 @@ var nilLegal = map[string]bool{
 	"Landing.FailingTests":             true,
 	"Landing.TraceFailure":             true,
 	"Landing.Registry":                 true,
-	"Landing.Config.EngineTrailers":    true,
+	"Landing.Config.CreditEngines":     true,
 	"WebsterDeps.Batcher":              true,
 	"WebsterDeps.Roles":                true,
 	"WebsterDeps.ParentBranch":         true,

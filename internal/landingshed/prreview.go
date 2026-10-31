@@ -25,7 +25,7 @@ const (
 )
 
 // PRReview is the ShedProducer that lands a run through a GitHub pull request when ResolvePullRequest says so.
-// A no closes any pull request the run recorded and passes; a yes pushes the task branch, finds or opens the pull request, sets its title and body from the change description, records it, keeps one interactive session for the operator to discuss it in, and waits on it.
+// A no closes any pull request the run recorded and passes; a yes pushes the task branch, finds or opens the pull request, sets its title from the change description and its body from the description's body and the credit block, records it, keeps one interactive session for the operator to discuss it in, and waits on it.
 // The wait gates and pushes the agent's commits, and ends when the pull request is merged or approved, or closed or continued by the operator.
 // It takes no parent lock.
 type PRReview struct {
@@ -181,7 +181,7 @@ func (p *PRReview) closeRecordedPullRequest(ctx context.Context, origin Origin, 
 	return shedengine.Done, shedengine.OutputPointer{}, nil
 }
 
-// openPullRequest pushes the task branch, then finds or opens the run's pull request, sets its title and body from the change description, records it and waits on it.
+// openPullRequest pushes the task branch, then finds or opens the run's pull request, sets its title from the change description and its body from the description's body and the credit block, records it and waits on it.
 // A pause that covers the run holds the call before the push.
 func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	pr := p.deps.PullRequest
@@ -224,6 +224,11 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) (shedengi
 	if err != nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: read the change description: %w", p.name, err)
 	}
+	credit, err := p.deps.creditBlock()
+	if err != nil {
+		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %w", p.name, err)
+	}
+	body := bodyWithCredit(summary.Body, credit)
 
 	// A recorded pull request GitHub no longer reports open is left as it is, for the wait to judge.
 	var ref pullrequest.Ref
@@ -254,7 +259,7 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) (shedengi
 		}
 		ref = existing
 		if !open {
-			ref, err = api.Create(ctx, p.deps.TaskBranch, p.deps.ParentBranch, summary.Title, summary.Body)
+			ref, err = api.Create(ctx, p.deps.TaskBranch, p.deps.ParentBranch, summary.Title, body)
 			if err != nil {
 				return p.githubFailure(ctx, "open the pull request", err)
 			}
@@ -262,7 +267,7 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) (shedengi
 		}
 	}
 	if editTitleAndBody {
-		if err := api.Edit(ctx, ref.Number, summary.Title, summary.Body); err != nil {
+		if err := api.Edit(ctx, ref.Number, summary.Title, body); err != nil {
 			return p.githubFailure(ctx, "set the pull request's title and body", err)
 		}
 	}

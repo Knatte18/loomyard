@@ -84,12 +84,12 @@ func (s *Summary) CommitMessage() string {
 	return s.Title + "\n\n" + strings.TrimLeft(s.Body, " \t\r\n")
 }
 
-// LandingMessage composes the landing commit message: CommitMessage's title/blank/body, then a blank line and trailers verbatim when trailers is non-empty.
-// An empty trailers yields CommitMessage alone.
+// LandingMessage composes the landing commit message: CommitMessage's title/blank/body, then a blank line and the credit block verbatim when credit is non-empty.
+// An empty credit yields CommitMessage alone.
 // It never inspects the body for an existing trailer; the description gate guarantees there is none.
-func (s *Summary) LandingMessage(trailers string) string {
-	if trailers == "" {
+func (s *Summary) LandingMessage(credit string) string {
+	if credit == "" {
 		return s.CommitMessage()
 	}
-	return s.CommitMessage() + "\n\n" + trailers
+	return s.CommitMessage() + "\n\n" + credit
 }

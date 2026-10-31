@@ -29,8 +29,8 @@ func TestFinalize_PullRequest(t *testing.T) {
 
 	githubOrigin := Origin{URL: "https://github.com/acme/widgets.git", Upstream: true}
 	const recordedURL = "https://github.com/acme/widgets/pull/7"
-	const wantTrailer = "Co-Authored-By: Test Author <test@example.com>\nLym-Task: me"
-	const wantGitHubMerge = "Merge 7|task-head|true|A landing title|A landing body.\n\n" + wantTrailer
+	const wantCredit = "Created using\n - LoomYard\n - Test Author <test@example.com>"
+	const wantGitHubMerge = "Merge 7|task-head|true|A landing title|A landing body.\n\n" + wantCredit
 	statusScript := func(calls ...scriptedCall) map[string][]scriptedCall {
 		return map[string][]scriptedCall{"Status": calls}
 	}

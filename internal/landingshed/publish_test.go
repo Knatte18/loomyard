@@ -59,7 +59,10 @@ func newTestDeps(t *testing.T) Deps {
 			Squash:             true,
 			Conflict:           "sonnet",
 			ConflictTimeoutMin: 30,
-			EngineTrailers:     map[string]string{"claude": "Co-Authored-By: Test Author <test@example.com>"},
+			Credit:             true,
+			CreditHeading:      "Created using",
+			CreditLoomYard:     "LoomYard",
+			CreditEngines:      map[string]string{"claude": "Test Author <test@example.com>"},
 		},
 		EnginesRun: func() ([]string, error) { return []string{"claude"}, nil },
 		Lock: ParentLockDeps{

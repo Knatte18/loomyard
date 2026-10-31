@@ -66,11 +66,17 @@ func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	if cfg.PRReviewer != "opus[high]" {
 		t.Errorf("cfg.PRReviewer = %q; want %q", cfg.PRReviewer, "opus[high]")
 	}
-	if cfg.TrailerText != "" {
-		t.Errorf("cfg.TrailerText = %q; want empty", cfg.TrailerText)
+	if !cfg.Credit {
+		t.Error("cfg.Credit = false; want true")
 	}
-	if want := map[string]string{"claude": "Co-Authored-By: Claude <noreply@anthropic.com>"}; !maps.Equal(cfg.EngineTrailers, want) {
-		t.Errorf("cfg.EngineTrailers = %v; want %v", cfg.EngineTrailers, want)
+	if cfg.CreditHeading != "Created using" {
+		t.Errorf("cfg.CreditHeading = %q; want %q", cfg.CreditHeading, "Created using")
+	}
+	if want := "LoomYard https://github.com/Knatte18/loomyard"; cfg.CreditLoomYard != want {
+		t.Errorf("cfg.CreditLoomYard = %q; want %q", cfg.CreditLoomYard, want)
+	}
+	if want := map[string]string{"claude": "Claude <noreply@anthropic.com>"}; !maps.Equal(cfg.CreditEngines, want) {
+		t.Errorf("cfg.CreditEngines = %v; want %v", cfg.CreditEngines, want)
 	}
 	if cfg.Deploy != "" {
 		t.Errorf("cfg.Deploy = %q; want empty", cfg.Deploy)
@@ -93,18 +99,24 @@ func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	if cfg.FinalizeFixMaxLines != 40 {
 		t.Errorf("cfg.FinalizeFixMaxLines = %d; want 40", cfg.FinalizeFixMaxLines)
 	}
-	if strings.Contains(ConfigTemplate(), "publish_verify") {
-		t.Error("ConfigTemplate() holds publish_verify; want the retired key gone from the template")
+	retiredKeys := []string{"publish_verify", "co_authored_by", "trailer_text", "engine_trailers"}
+	for _, key := range retiredKeys {
+		if strings.Contains(ConfigTemplate(), key) {
+			t.Errorf("ConfigTemplate() holds %s; want the retired key gone from the template", key)
+		}
 	}
 
 	retiredDir := t.TempDir()
-	seedLandingConfig(t, retiredDir, ConfigTemplate()+"publish_verify: go test -tags tmux ./...\n")
+	seedLandingConfig(t, retiredDir, ConfigTemplate()+"publish_verify: go test -tags tmux ./...\nco_authored_by: Someone <s@x>\ntrailer_text: Fixed\nengine_trailers:\n  claude: \"Co-Authored-By: Someone <s@x>\"\n")
 	retired, err := LoadConfig(configengine.Dirs{Board: retiredDir}, "landing")
 	if err != nil {
-		t.Fatalf("LoadConfig() over a file holding the retired publish_verify = _, %v; want nil error", err)
+		t.Fatalf("LoadConfig() over a file holding the retired keys %v = _, %v; want nil error", retiredKeys, err)
 	}
 	if retired.Conflict != cfg.Conflict {
 		t.Errorf("retired-key file cfg.Conflict = %q; want %q", retired.Conflict, cfg.Conflict)
+	}
+	if !maps.Equal(retired.CreditEngines, cfg.CreditEngines) {
+		t.Errorf("retired-key file cfg.CreditEngines = %v; want the template's %v", retired.CreditEngines, cfg.CreditEngines)
 	}
 }
 
@@ -128,61 +140,65 @@ func TestConfig_IdleRelease(t *testing.T) {
 	}
 }
 
-// TestConfig_TrailerBlock verifies the trailer block holds the fixed text, then the text of each engine that ran in name order, and drops an empty or whitespace-only text and an engine with no entry.
-func TestConfig_TrailerBlock(t *testing.T) {
+// TestConfig_CreditBlock verifies the credit block is the heading, then the LoomYard item, then the item of each engine that ran in name order, each once, and drops an empty or whitespace-only text, an engine with no entry, and the whole block when credit is off or no item remains.
+func TestConfig_CreditBlock(t *testing.T) {
 	t.Parallel()
 
-	engineTrailers := map[string]string{"alpha": "Co-Authored-By: Alpha <a@x>\n", "beta": "Co-Authored-By: Beta <b@x>", "blank": "  "}
+	engines := map[string]string{"alpha": "Alpha <a@x>\n", "beta": "Beta <b@x>", "blank": "  "}
+	full := Config{Credit: true, CreditHeading: "Created using\n", CreditLoomYard: "LoomYard https://x/loomyard", CreditEngines: engines}
+	withoutLoomYard := full
+	withoutLoomYard.CreditLoomYard = " "
+	withoutHeading := full
+	withoutHeading.CreditHeading = ""
+	off := full
+	off.Credit = false
 	tests := []struct {
 		name       string
 		cfg        Config
 		enginesRun []string
 		want       string
 	}{
-		{"FixedThenEnginesInNameOrder", Config{TrailerText: "Created using Loomyard\nSecond line\n", EngineTrailers: engineTrailers}, []string{"beta", "alpha"}, "Created using Loomyard\nSecond line\nCo-Authored-By: Alpha <a@x>\nCo-Authored-By: Beta <b@x>"},
-		{"EngineThatDidNotRunAddsNothing", Config{EngineTrailers: engineTrailers}, []string{"beta"}, "Co-Authored-By: Beta <b@x>"},
-		{"EngineWithoutEntryOrWithBlankTextAddsNothing", Config{TrailerText: "Fixed", EngineTrailers: engineTrailers}, []string{"gamma", "blank"}, "Fixed"},
-		{"EngineNamedTwiceAddsOneLine", Config{EngineTrailers: engineTrailers}, []string{"alpha", "alpha"}, "Co-Authored-By: Alpha <a@x>"},
-		{"BothEmpty", Config{TrailerText: " \n"}, []string{"alpha"}, ""},
-		{"NoEngineRan", Config{EngineTrailers: engineTrailers}, nil, ""},
+		{"HeadingLoomYardThenEnginesInNameOrder", full, []string{"beta", "alpha"}, "Created using\n - LoomYard https://x/loomyard\n - Alpha <a@x>\n - Beta <b@x>"},
+		{"EngineThatDidNotRunAddsNothing", full, []string{"beta"}, "Created using\n - LoomYard https://x/loomyard\n - Beta <b@x>"},
+		{"EngineWithoutEntryOrWithBlankTextAddsNothing", full, []string{"gamma", "blank"}, "Created using\n - LoomYard https://x/loomyard"},
+		{"EngineNamedTwiceAddsOneLine", full, []string{"alpha", "alpha"}, "Created using\n - LoomYard https://x/loomyard\n - Alpha <a@x>"},
+		{"NoEngineRanKeepsLoomYard", full, nil, "Created using\n - LoomYard https://x/loomyard"},
+		{"EmptyLoomYardAddsNoLine", withoutLoomYard, []string{"alpha"}, "Created using\n - Alpha <a@x>"},
+		{"EmptyHeadingLeavesItemsAlone", withoutHeading, []string{"alpha"}, " - LoomYard https://x/loomyard\n - Alpha <a@x>"},
+		{"NoItemLineIsEmpty", withoutLoomYard, nil, ""},
+		{"CreditOffIsEmpty", off, []string{"alpha"}, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := tt.cfg.TrailerBlock(tt.enginesRun); got != tt.want {
-				t.Errorf("TrailerBlock(%v) = %q; want %q", tt.enginesRun, got, tt.want)
+			if got := tt.cfg.CreditBlock(tt.enginesRun); got != tt.want {
+				t.Errorf("CreditBlock(%v) = %q; want %q", tt.enginesRun, got, tt.want)
 			}
 		})
 	}
 }
 
-// TestMigrateConfig verifies a retired co_authored_by moves into engine_trailers as the claude line, an engine_trailers already set wins over it, a retired require_pr_to_base moves to deploy_branches keeping its value, and a migrated document passes unchanged.
+// TestMigrateConfig verifies a retired require_pr_to_base moves to deploy_branches and a retired merge_fix_attempts to parent_align_fix_attempts keeping their values, the retired co-author and trailer keys are left for reconcile's prune with no value carried into credit_engines, and a migrated document passes unchanged.
 func TestMigrateConfig(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name         string
-		existing     string
-		wantTrailers map[string]string
-		wantLines    int
+		name      string
+		existing  string
+		wantLines int
 		// wantDeploy is deploy_branches as fmt.Sprint renders the decoded value; empty skips the check.
 		wantDeploy string
 		// wantAttempts is parent_align_fix_attempts as fmt.Sprint renders the decoded value; empty skips the check.
 		wantAttempts string
 	}{
-		{"MovesToClaudeLine", "squash: true\nco_authored_by: Someone <s@x>\n", map[string]string{"claude": "Co-Authored-By: Someone <s@x>"}, 1, "", ""},
-		{"ExistingEngineTrailersWins", "co_authored_by: Someone <s@x>\nengine_trailers: {}\n", map[string]string{}, 1, "", ""},
-		{"ExistingEntriesKept", "co_authored_by: Someone <s@x>\nengine_trailers:\n  claude: \"Co-Authored-By: Kept <k@x>\"\n", map[string]string{"claude": "Co-Authored-By: Kept <k@x>"}, 1, "", ""},
-		{"EmptyValueDroppedWithoutEntry", "squash: true\nco_authored_by: \"  \"\n", nil, 1, "", ""},
-		{"NonScalarValueDroppedWithoutEntry", "co_authored_by: [a, b]\n", nil, 1, "", ""},
-		{"NoRetiredKeyUnchanged", "engine_trailers:\n  claude: \"Co-Authored-By: Kept <k@x>\"\n", map[string]string{"claude": "Co-Authored-By: Kept <k@x>"}, 0, "", ""},
-		{"RetiredPublishVerifyLeftToReconcilesPrune", "publish_verify: go test -tags tmux ./...\n", nil, 0, "", ""},
-		{"RequirePRToBaseListMovesToDeployBranches", "require_pr_to_base: [main, develop]\nsquash: true\n", nil, 1, "[main develop]", ""},
-		{"RequirePRToBaseEmptyListStaysEmpty", "require_pr_to_base: []\nsquash: true\n", nil, 1, "[]", ""},
-		{"ExistingDeployBranchesWins", "require_pr_to_base: [old]\ndeploy_branches: [main]\n", nil, 1, "[main]", ""},
-		{"CoAuthoredByAndRequirePRToBaseBothMove", "co_authored_by: Someone <s@x>\nrequire_pr_to_base: [main]\n", map[string]string{"claude": "Co-Authored-By: Someone <s@x>"}, 2, "[main]", ""},
-		{"MergeFixAttemptsMovesToParentAlignFixAttempts", "merge_fix_attempts: 5\nsquash: true\n", nil, 1, "", "5"},
-		{"ExistingParentAlignFixAttemptsWins", "merge_fix_attempts: 5\nparent_align_fix_attempts: 3\n", nil, 1, "", "3"},
+		{"RetiredCoAuthorAndTrailerKeysLeftToReconcilesPrune", "squash: true\nco_authored_by: Someone <s@x>\ntrailer_text: Fixed\nengine_trailers:\n  claude: \"Co-Authored-By: Kept <k@x>\"\n", 0, "", ""},
+		{"RetiredPublishVerifyLeftToReconcilesPrune", "publish_verify: go test -tags tmux ./...\n", 0, "", ""},
+		{"RequirePRToBaseListMovesToDeployBranches", "require_pr_to_base: [main, develop]\nsquash: true\n", 1, "[main develop]", ""},
+		{"RequirePRToBaseEmptyListStaysEmpty", "require_pr_to_base: []\nsquash: true\n", 1, "[]", ""},
+		{"ExistingDeployBranchesWins", "require_pr_to_base: [old]\ndeploy_branches: [main]\n", 1, "[main]", ""},
+		{"CoAuthoredByLeftAndRequirePRToBaseMoves", "co_authored_by: Someone <s@x>\nrequire_pr_to_base: [main]\n", 1, "[main]", ""},
+		{"MergeFixAttemptsMovesToParentAlignFixAttempts", "merge_fix_attempts: 5\nsquash: true\n", 1, "", "5"},
+		{"ExistingParentAlignFixAttemptsWins", "merge_fix_attempts: 5\nparent_align_fix_attempts: 3\n", 1, "", "3"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -194,12 +210,15 @@ func TestMigrateConfig(t *testing.T) {
 			if len(lines) != tt.wantLines {
 				t.Errorf("MigrateConfig() lines = %q; want %d line(s)", lines, tt.wantLines)
 			}
+			if tt.wantLines == 0 && string(migrated) != tt.existing {
+				t.Errorf("MigrateConfig() = %q; want the document unchanged", migrated)
+			}
 			var got map[string]any
 			if err := yaml.Unmarshal(migrated, &got); err != nil {
 				t.Fatalf("unmarshal migrated document: %v", err)
 			}
-			if _, ok := got["co_authored_by"]; ok {
-				t.Errorf("migrated document %q still holds co_authored_by", migrated)
+			if _, ok := got[creditEnginesKey]; ok {
+				t.Errorf("migrated document %q holds %s; want no value carried into it", migrated, creditEnginesKey)
 			}
 			if _, ok := got["require_pr_to_base"]; ok {
 				t.Errorf("migrated document %q still holds require_pr_to_base", migrated)
@@ -216,15 +235,6 @@ func TestMigrateConfig(t *testing.T) {
 				if gotDeploy := fmt.Sprint(got["deploy_branches"]); gotDeploy != tt.wantDeploy {
 					t.Errorf("migrated deploy_branches = %s; want %s", gotDeploy, tt.wantDeploy)
 				}
-			}
-			var trailers struct {
-				EngineTrailers map[string]string `yaml:"engine_trailers"`
-			}
-			if err := yaml.Unmarshal(migrated, &trailers); err != nil {
-				t.Fatalf("unmarshal migrated engine_trailers: %v", err)
-			}
-			if !maps.Equal(trailers.EngineTrailers, tt.wantTrailers) {
-				t.Errorf("migrated engine_trailers = %v; want %v", trailers.EngineTrailers, tt.wantTrailers)
 			}
 			again, againLines, err := MigrateConfig(migrated)
 			if err != nil || len(againLines) != 0 || string(again) != string(migrated) {
@@ -263,20 +273,20 @@ func TestMigrateConfig_InvalidDocument(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_InvalidKeys verifies a hand-edited landing.yaml with an ungrammatical model-spec or an engine_trailers key naming no engine fails loud at load time, naming the key, rather than being silently carried into the site that reads it.
+// TestLoadConfig_InvalidKeys verifies a hand-edited landing.yaml with an ungrammatical model-spec or a credit_engines key naming no engine fails loud at load time, naming the key, rather than being silently carried into the site that reads it.
 func TestLoadConfig_InvalidKeys(t *testing.T) {
 	t.Parallel()
 
 	const wellFormed = "deploy_branches: [\"main\"]\nsquash: true\nconflict: opus[high]\nconflict_timeout_min: 60\n" +
 		"describe: sonnet[medium]\ndescribe_timeout_min: 30\npr_reviewer: opus[high]\nfixer: opus[high]\nfixer_timeout_min: 60\nparent_align_fix_attempts: 2\n" +
-		"finalize_fix_attempts: 2\nfinalize_fix_max_lines: 40\nengine_trailers:\n  claude: \"Co-Authored-By: Claude <noreply@anthropic.com>\"\n"
+		"finalize_fix_attempts: 2\nfinalize_fix_max_lines: 40\ncredit_engines:\n  claude: \"Claude <noreply@anthropic.com>\"\n"
 	cases := []struct {
 		name, valid, invalid, key string
 	}{
 		{"malformed conflict", "conflict: opus[high]", "conflict: \"opus[high\"", "conflict"},
 		{"malformed describe", "describe: sonnet[medium]", "describe: \"sonnet[medium\"", "describe"},
 		{"malformed pr_reviewer", "pr_reviewer: opus[high]", "pr_reviewer: not-a-spec[", "pr_reviewer"},
-		{"engine_trailers key naming no engine", "  claude:", "  claud:", "engine_trailers.claud"},
+		{"credit_engines key naming no engine", "  claude:", "  claud:", "credit_engines.claud"},
 		{"malformed fixer", "fixer: opus[high]", "fixer: \"opus[high\"", "fixer"},
 		{"fixer timeout below 1", "fixer_timeout_min: 60", "fixer_timeout_min: 0", "fixer_timeout_min"},
 		{"parent align fix attempts below 1", "parent_align_fix_attempts: 2", "parent_align_fix_attempts: 0", "parent_align_fix_attempts"},
@@ -378,9 +388,8 @@ func TestLoadConfig_OptionalStringKeys(t *testing.T) {
 		name, contents, want string
 		field                func(Config) string
 	}{
-		{"trailer_text set", withoutKeys + "trailer_text: |\n  Created using Loomyard\n  Second line\n", "Created using Loomyard\nSecond line\n", func(c Config) string { return c.TrailerText }},
-		{"trailer_text absent", withoutKeys, "", func(c Config) string { return c.TrailerText }},
-		{"engine_trailers empty names no engine", withoutKeys + "engine_trailers: {}\n", "map[]", func(c Config) string { return fmt.Sprint(c.EngineTrailers) }},
+		{"credit_heading set", withoutKeys + "credit_heading: Made with\n", "Made with", func(c Config) string { return c.CreditHeading }},
+		{"credit_engines empty names no engine", withoutKeys + "credit_engines: {}\n", "map[]", func(c Config) string { return fmt.Sprint(c.CreditEngines) }},
 		{"deploy set", withoutKeys + "deploy: ./update-plugins.sh\n", "./update-plugins.sh", func(c Config) string { return c.Deploy }},
 		{"deploy absent", withoutKeys, "", func(c Config) string { return c.Deploy }},
 	}

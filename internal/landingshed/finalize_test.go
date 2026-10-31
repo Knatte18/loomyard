@@ -260,7 +260,7 @@ func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 
 // TestFinalize_MergeOptionsCarriesComposedMessage asserts the merge-in runs first and a successful parent-side merge passes MergeOptions carrying the task branch as its source, both the composed final-summary message and the configured Squash value, for both merge shapes -- the message is set whether or not Squash is true.
 //
-//testtiming:keep pins the composed MergeOptions.Message, its engine trailer and the Squash value for both merge shapes, which its covering tests do not assert
+//testtiming:keep pins the composed MergeOptions.Message, its engine credit line and the Squash value for both merge shapes, which its covering tests do not assert
 func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -301,16 +301,18 @@ func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 				t.Errorf("parent-side merge source = %q; want %q", merger.calls[0].source, deps.TaskBranch)
 			}
 			got := merger.calls[0].opts
-			want := summary.LandingMessage(taskTrailer(deps.Config.TrailerBlock(enginesRun), "me"))
+			want := summary.LandingMessage(deps.Config.CreditBlock(enginesRun))
 			if got.Message != want {
 				t.Errorf("MergeOptions.Message = %q; want %q", got.Message, want)
 			}
-			trailer := deps.Config.EngineTrailers["claude"]
-			if hasLine := strings.HasSuffix(got.Message, "\n\n"+trailer+"\nLym-Task: me"); hasLine == tt.nilEnginesRun {
-				t.Errorf("MergeOptions.Message = %q; engine line %q present = %v; want %v", got.Message, trailer, hasLine, !tt.nilEnginesRun)
+			engineLine := " - " + deps.Config.CreditEngines["claude"]
+			if hasLine := strings.HasSuffix(got.Message, "\n"+engineLine); hasLine == tt.nilEnginesRun {
+				t.Errorf("MergeOptions.Message = %q; engine line %q present = %v; want %v", got.Message, engineLine, hasLine, !tt.nilEnginesRun)
 			}
-			if !strings.HasSuffix(got.Message, "\nLym-Task: me") {
-				t.Errorf("MergeOptions.Message = %q; want it to end in the Lym-Task trailer line", got.Message)
+			for _, absent := range []string{"Lym-Task", "Co-Authored-By"} {
+				if strings.Contains(got.Message, absent) {
+					t.Errorf("MergeOptions.Message = %q; want no %s line", got.Message, absent)
+				}
 			}
 			if got.Squash != tt.squash {
 				t.Errorf("MergeOptions.Squash = %v; want %v (threaded from configuration)", got.Squash, tt.squash)
@@ -438,7 +440,7 @@ func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 			if ptr.Reroute != tt.wantReroute {
 				t.Errorf("OutputPointer.Reroute = %v; want %v", ptr.Reroute, tt.wantReroute)
 			}
-			want := summary.LandingMessage(taskTrailer(deps.Config.TrailerBlock([]string{"claude"}), deps.Slug))
+			want := summary.LandingMessage(deps.Config.CreditBlock([]string{"claude"}))
 			for i, call := range merger.calls {
 				if call.opts.Message != want {
 					t.Errorf("attempt %d MergeOptions.Message = %q; want %q (the same composed message every attempt)", i+1, call.opts.Message, want)

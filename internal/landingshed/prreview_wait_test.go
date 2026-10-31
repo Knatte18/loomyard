@@ -122,7 +122,7 @@ func once(fn func()) func() {
 func TestPRReview_Wait(t *testing.T) {
 	// The wait captures the process-global logger, so this test and its subtests stay serial.
 	const continueClose = "Close 7 " + continueComment
-	const editSeven = "Edit 7|Change title|\nChange body\n"
+	const editSeven = "Edit 7|Change title|" + wantPRBody
 	open := scriptedCall{status: pullrequest.Status{State: pullrequest.StateOpen}}
 	closed := scriptedCall{status: pullrequest.Status{State: pullrequest.StateClosed}}
 	mergedAt := func(head string) scriptedCall {
@@ -310,7 +310,7 @@ func TestPRReview_Wait(t *testing.T) {
 					return w.dirty, nil
 				}
 			},
-			wantOutcome: shedengine.Done, wantCalls: []string{"FindOpen task main", "Create task main|Change title|\nChange body\n", "Status 7"},
+			wantOutcome: shedengine.Done, wantCalls: []string{"FindOpen task main", "Create task main|Change title|" + wantPRBody, "Status 7"},
 			check: func(t *testing.T, w *waitWorld, _ string) {
 				if diff := cmp.Diff([]bool{true, false}, w.liveAtRead); diff != "" {
 					t.Errorf("session liveness at each tree read mismatch (-want +got):\n%s", diff)
@@ -488,7 +488,7 @@ func TestPRReview_Wait(t *testing.T) {
 					}
 				}
 			},
-			wantOutcome: shedengine.Done, wantCalls: []string{"FindOpen task main", "Create task main|Change title|\nChange body\n", "Status 7"},
+			wantOutcome: shedengine.Done, wantCalls: []string{"FindOpen task main", "Create task main|Change title|" + wantPRBody, "Status 7"},
 		},
 		{
 			name: "TheContinueFlagWrittenBetweenWakesPollsAtOnceAndClosesThePullRequest", record: seed("h1"), scripts: statusScript(open),

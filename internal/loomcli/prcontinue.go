@@ -1,6 +1,6 @@
 // prcontinue.go implements the `pr-continue` loom verb: the PR-Review agent's flag that the operator is satisfied with the review and the run goes on.
 // The verb only sets Continue in the run's pull-request record.
-// The PR-Review row reads the flag, closes the pull request and ends the row, and Finalize then lands the run locally under its own gate and trailer.
+// The PR-Review row reads the flag, closes the pull request and ends the row, and Finalize then lands the run locally under its own gate and credit block.
 
 package loomcli
 

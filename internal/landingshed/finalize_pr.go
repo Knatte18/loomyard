@@ -63,17 +63,29 @@ func githubHaltReason(action string, err error) string {
 	return fmt.Sprintf("the GitHub call to %s failed: %v; way forward: fix what GitHub's message names, then run lym loom resume", action, err)
 }
 
-// pullRequestMergeMessage composes the commit message of a pull request's merge: the change description's body, then the trailer block.
-// The title travels separately as the commit title.
-func pullRequestMergeMessage(body, trailer string) string {
+// creditBlock reads the engines the task's sessions ran under and returns the credit block Config composes from them.
+func (d Deps) creditBlock() (string, error) {
+	var enginesRun []string
+	if d.EnginesRun != nil {
+		var err error
+		if enginesRun, err = d.EnginesRun(); err != nil {
+			return "", fmt.Errorf("read the engines the task ran under: %w", err)
+		}
+	}
+	return d.Config.CreditBlock(enginesRun), nil
+}
+
+// bodyWithCredit composes a pull request's body and its merge's commit message alike: the change description's trimmed body, then a blank line and the credit block when the block is not empty.
+// The title travels separately.
+func bodyWithCredit(body, credit string) string {
 	body = strings.TrimSpace(body)
-	if trailer == "" {
+	if credit == "" {
 		return body
 	}
 	if body == "" {
-		return trailer
+		return credit
 	}
-	return body + "\n\n" + trailer
+	return body + "\n\n" + credit
 }
 
 // githubFailure judges a failed GitHub call named by action, which is the whole of Finalize's disposition of one.
