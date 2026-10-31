@@ -193,6 +193,19 @@ func (b *Board) SetRunStatus(slug, status string) error {
 	return err
 }
 
+// ClearNotifyOnLand clears the notify_on_land field of the entry slug under the write lock, and writes nothing when the entry is absent or does not carry it.
+func (b *Board) ClearNotifyOnLand(slug string) error {
+	_, err := b.boardCriticalSection(func(store *Store) (any, error) {
+		i, found := store.index(slug)
+		if !found || !store.tasks[i].NotifyOnLand {
+			return noWrite{}, nil
+		}
+		store.tasks[i].NotifyOnLand = false
+		return nil, nil
+	}, nil)
+	return err
+}
+
 func (b *Board) RemoveTask(idOrSlug any) error {
 	_, err := b.boardCriticalSection(func(store *Store) (any, error) {
 		return nil, store.RemoveTask(idOrSlug)

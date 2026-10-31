@@ -377,7 +377,8 @@ func (r *orderedResolver) Resolve(ctx context.Context, source, tip string) (merg
 }
 
 // TestFinalize_MergeInRequiredRetry pins that an ErrMergeInRequired merge is retried exactly once with the same composed message, and that the board seam runs once, after the retry that lands, never after a failed attempt.
-// It also pins that the parent run records are committed after each merge-in and before the parent-side merge, on the first pass and on the retry alike.
+// It also pins that the parent run records are committed after each merge-in and before the parent-side merge, on the first pass and on the retry alike,
+// and that the parent pair's head is recorded as the landing commit after the board seam and before the push.
 func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -389,15 +390,16 @@ func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 		// parentMoves makes the parent tip read p2 until the first parent-side merge call and p3 after it, as a code-side commit arriving between the passes does.
 		parentMoves bool
 	}{
-		{"retry lands", mergeCallResult{result: fabricengine.MergeResult{Committed: true}}, shedengine.Done, "merge-in,records,merge,merge-in,records,merge,mark,push", 2, false, false},
+		{"retry lands", mergeCallResult{result: fabricengine.MergeResult{Committed: true}}, shedengine.Done, "merge-in,records,merge,merge-in,records,merge,mark,record landed1,push", 2, false, false},
 		{"retry also required stays Stuck", mergeCallResult{err: &fabricengine.ErrMergeInRequired{}}, shedengine.Stuck, "merge-in,records,merge,merge-in,records,merge", 2, false, false},
-		{"a code-side parent commit between the passes lands through the retry", mergeCallResult{result: fabricengine.MergeResult{Committed: true}}, shedengine.Done, "merge-in,records,merge,merge-in,records,merge,mark,push", 2, false, true},
+		{"a code-side parent commit between the passes lands through the retry", mergeCallResult{result: fabricengine.MergeResult{Committed: true}}, shedengine.Done, "merge-in,records,merge,merge-in,records,merge,mark,record landed1,push", 2, false, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var order []string
 			deps := newTestDeps(t)
 			deps.MarkTaskDone = func() error { order = append(order, "mark"); return nil }
+			deps.RecordLanding = func(commit string) error { order = append(order, "record "+commit); return nil }
 			deps.CommitParentRecords = func() error { order = append(order, "records"); return nil }
 			summary, err := summaryparser.Parse(deps.DescriptionPath)
 			if err != nil {
@@ -407,6 +409,7 @@ func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 			merger := &recordingParentMerger{
 				results: []mergeCallResult{{err: &fabricengine.ErrMergeInRequired{Source: deps.TaskBranch}}, tt.secondTry},
 				order:   &order,
+				headSHA: "landed1",
 			}
 			var changed []string
 			if tt.parentMoves {
@@ -446,6 +449,48 @@ func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 			}
 			if tt.wantOutcome == shedengine.Stuck {
 				requireFinalizeReason(t, ptr)
+			}
+		})
+	}
+}
+
+// TestFinalize_RecordsTheLandingCommitOnTheFirstTry pins that a parent-side merge landing at the first call records the parent pair's head after the board seam and before the push.
+func TestFinalize_RecordsTheLandingCommitOnTheFirstTry(t *testing.T) {
+	t.Parallel()
+
+	var order []string
+	deps := newTestDeps(t)
+	deps.MarkTaskDone = func() error { order = append(order, "mark"); return nil }
+	deps.RecordLanding = func(commit string) error { order = append(order, "record "+commit); return nil }
+	merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}, order: &order, headSHA: "landed1"}
+	fz := &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, guard: newParentGuard(deps), parentOpener: func() (parentMerger, error) { return merger, nil }}
+
+	shedfake.RequireOutcome(t, fz, shedengine.Done)
+	if got, want := strings.Join(order, ","), "merge,mark,record landed1,push"; got != want {
+		t.Errorf("call order = %q; want %q", got, want)
+	}
+}
+
+// TestFinalize_RecordLandingFailureKeepsDone pins that a failed head read or landing record is only logged: the landing pushes and is Done.
+func TestFinalize_RecordLandingFailureKeepsDone(t *testing.T) {
+	tests := []struct {
+		name      string
+		headErr   error
+		recordErr error
+	}{
+		{"HeadReadFails", errors.New("no head"), nil},
+		{"RecordFails", nil, errors.New("disk full")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			deps := newTestDeps(t)
+			deps.RecordLanding = func(string) error { return tt.recordErr }
+			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}, headSHA: "landed1", headErr: tt.headErr}
+			fz := &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, guard: newParentGuard(deps), parentOpener: func() (parentMerger, error) { return merger, nil }}
+
+			shedfake.RequireOutcome(t, fz, shedengine.Done)
+			if len(merger.pushCalls) != 1 {
+				t.Errorf("parent push calls = %d; want 1", len(merger.pushCalls))
 			}
 		})
 	}
@@ -619,6 +664,7 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			deps := newTestDeps(t)
 			markCalled := false
 			deps.MarkTaskDone = func() error { markCalled = true; return nil }
+			deps.RecordLanding = func(string) error { markCalled = true; return nil }
 			if tt.recordsErr != nil {
 				deps.CommitParentRecords = func() error { return tt.recordsErr }
 			}
@@ -663,7 +709,7 @@ func TestFinalize_StuckReasons(t *testing.T) {
 				t.Errorf("parent-side merge calls = %d; want %d", len(merger.calls), tt.wantMerges)
 			}
 			if markCalled {
-				t.Error("MarkTaskDone was called on a stuck landing; want it never called")
+				t.Error("MarkTaskDone or RecordLanding was called on a stuck landing; want neither called")
 			}
 			matches, err := filepath.Glob(filepath.Join(deps.ScratchDir, "*-stuck.md"))
 			if err != nil {

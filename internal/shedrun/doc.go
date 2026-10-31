@@ -32,6 +32,7 @@
 // DriverLock is the ephemeral Go-driver lock under ScratchDir, distinct from the run lock and the status lock.
 // TacklerDir is the durable directory of a run's tackler attempts, TacklerRel its anchor-relative form and TacklerAttemptDir one attempt's directory (attempt-<N>, 1-based).
 // TacklerMarker is the ephemeral in-flight marker under ScratchDir.
+// LandedCommitFile is the ephemeral file under ScratchDir holding the commit a run's landing put on its parent branch, which WriteLandedCommit writes and ReadLandedCommit reads, empty when none is recorded.
 // CancelMarker is the ephemeral marker `lym batten cancel` writes, and CancelMarkerLock the lock whose holder is its live writer.
 // Both sit directly under ScratchRoot beside the per-slug scratch directories, never inside RunDir or ScratchDir, so a slug's records removal leaves them.
 // Batten's verbs read the marker.

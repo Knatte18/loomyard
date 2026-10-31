@@ -32,6 +32,8 @@ type TaskView struct {
 	// StartRefusal is the refusal every start of the slug gets now, such as for a finished run record of the same slug, with its way forward; empty when none.
 	// Dobby spawns no pass for a task that carries one, and starts it on the first tick after the refusal is gone; read only for a released task.
 	StartRefusal string
+	// NotifyOnLand reports whether the entry carries notify_on_land, a request for a landing notice.
+	NotifyOnLand bool
 	// Fingerprint changes whenever the entry does.
 	Fingerprint string
 }

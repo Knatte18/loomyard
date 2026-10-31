@@ -210,7 +210,7 @@
 // An unreadable record is a Stuck with Halt too, as at the acquire, and both halts open with LandingStopPrefix, so only the orch's resume lifts them.
 // The resume re-runs Finalize from its first step under a lock taken afresh, so a resume made before the cause clears lands nothing.
 // The re-read and the landing are not atomic: a release between them is caught only by the parent push's rejection.
-// After the parent-side merge and before the push, Finalize marks the board task done.
+// After the parent-side merge and before the push, Finalize marks the board task done and hands the parent pair's head, the landing commit, to the told Deps.RecordLanding, whose failure is only logged.
 //
 // Finalize lands through the run's pull request, which it merges on GitHub only here, under the parent lock.
 // Right after it takes the lock it asks ResolvePullRequest the question PR-Review asked, from the same beam.yaml, entry field, origin and task-branch commits, and a Finalize with no `ParentMode` seam skips the step and lands locally.

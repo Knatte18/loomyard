@@ -31,13 +31,13 @@ func TestDobbyLines(t *testing.T) {
 		{
 			name: "AnAliveDobbyShowsItsRunsWithTheirCellsAndWhyEachTaskWaits",
 			view: dobbyengine.View{
-				Alive: true, MaxRuns: 2,
+				Alive: true, MaxRuns: 2, LandNotice: dobbyengine.LandNoticePerTask,
 				Runs: []dobbyengine.ViewRun{
-					{Slug: "flying", PassInFlight: true},
+					{Slug: "flying", PassInFlight: true, NotifyOnLand: true},
 					{Slug: "failing", LastPassExit: minutesAgo(12), FullPassOwed: true, FailingPassCount: 2, FailingPassError: "pre-run refused\nmore detail"},
 				},
 				Waiting: []dobbyengine.WaitingTask{
-					{Slug: "ready"},
+					{Slug: "ready", NotifyOnLand: true},
 					{Slug: "deps", Dependencies: []string{"x", "y"}, Paused: true},
 					{Slug: "refused", Refusal: "dirty source", NextTry: overviewNow.Add(4 * time.Minute)},
 					{Slug: "owned", OwnedElsewhere: true},
@@ -51,10 +51,10 @@ func TestDobbyLines(t *testing.T) {
 				"failing": {State: "blocked", Stage: "7. Land", InStage: "1h12m"},
 			},
 			want: []string{
-				"dobby prime: alive, max_runs 2",
-				"  flying   running  6.6 Plan-Write  30m    pass in flight",
+				"dobby prime: alive, max_runs 2, land_notice per-task",
+				"  flying   running  6.6 Plan-Write  30m    pass in flight, notify_on_land",
 				"  failing  blocked  7. Land         1h12m  last pass 12m ago, full pass owed, failing 2× in a row: pre-run refused",
-				"  ready    ready to start",
+				"  ready    ready to start, notify_on_land",
 				"  deps     waits on dependencies x, y; a pause",
 				"  refused  waits on a refused start (dirty source), retry in 4m",
 				"  owned    waits on another machine's ownership",
@@ -74,21 +74,21 @@ func TestDobbyLines(t *testing.T) {
 		},
 		{
 			name: "AnUnreadableRunTakesNoPartInTheColumnWidths",
-			view: dobbyengine.View{Alive: true, MaxRuns: 3, Runs: []dobbyengine.ViewRun{{Slug: "broken"}, {Slug: "ok"}}},
+			view: dobbyengine.View{Alive: true, MaxRuns: 3, LandNotice: dobbyengine.LandNoticeAll, Runs: []dobbyengine.ViewRun{{Slug: "broken"}, {Slug: "ok"}}},
 			cells: map[string]RunCells{
 				"broken": {Unreadable: true},
 				"ok":     {State: "running", Stage: "Plan", InStage: "5m"},
 			},
 			want: []string{
-				"dobby prime: alive, max_runs 3",
+				"dobby prime: alive, max_runs 3, land_notice all",
 				"  broken  status unreadable  no pass yet",
 				"  ok      running  Plan  5m  no pass yet",
 			},
 		},
 		{
 			name: "NoRunsSaysSo",
-			view: dobbyengine.View{Alive: true, MaxRuns: 3},
-			want: []string{"dobby prime: alive, max_runs 3", "  no runs driven"},
+			view: dobbyengine.View{Alive: true, MaxRuns: 3, LandNotice: dobbyengine.LandNoticeOff},
+			want: []string{"dobby prime: alive, max_runs 3, land_notice off", "  no runs driven"},
 		},
 	}
 	for _, tt := range tests {

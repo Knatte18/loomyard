@@ -158,6 +158,13 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 			return coverage.Covered, err
 		},
 		RunNotices: battencli.DobbyRunNotices(prime, pause.RecordPath, quiet),
+		ClearNotifyOnLand: func(slug string) error {
+			board, err := boardengine.OpenHub(prime.HubPath)
+			if err != nil {
+				return err
+			}
+			return board.ClearNotifyOnLand(slug)
+		},
 		Landings: machineLandings(machinename.Name, func(machine string) ([]string, error) {
 			return battencli.DobbyLandings(prime, geom, parents, machine)
 		}),

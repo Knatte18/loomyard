@@ -193,6 +193,10 @@ type Deps struct {
 	// its drift guard keeps it filled.
 	MarkTaskDone func() error
 
+	// RecordLanding records commit, the parent pair's head right after a parent-side merge that landed, as the run's landing commit, so the dobby driving the run can name it.
+	// Finalize calls it after MarkTaskDone and before the push, and only logs a failure, of the head read or of the record; nil records nothing.
+	RecordLanding func(commit string) error
+
 	// ConfigChanges returns the task's changes to its own per-worktree config files since its fork point.
 	// Finalize calls it before the catch-up merge-in, so before any parent-side mutation, and only reports the result through Notify:
 	// landing never carries those files to the parent.

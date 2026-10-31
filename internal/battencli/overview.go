@@ -482,9 +482,10 @@ func (c *battenCLI) overviewCmd() *cobra.Command {
 		Hidden:      true,
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
 		Long: `overview draws the window of the worktree it runs in, the prime or a beam.
-First comes the worktree's dobby: whether it is alive and its max_runs, each run
-it drives with its state, stage, time in the stage and last pass, and each
-released task it has not started with what the task waits on. Below it comes one
+First comes the worktree's dobby: whether it is alive, its max_runs and its
+land_notice, each run it drives with its state, stage, time in the stage and
+last pass, and each released task it has not started with what the task waits
+on; a run or task that asks for a landing notice shows notify_on_land. Below it comes one
 orch line per orch -- the session's context reading against the soft and hard
 thresholds, its cycle phase and cycle count -- for the worktree's own orch and
 the orch of every beam below it; the prime's window shows every orch. It redraws

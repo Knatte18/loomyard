@@ -122,6 +122,7 @@ func readDobbyRunStatus(path string) (shedengine.Status, bool, error) {
 }
 
 // DobbyRuns builds the RunView of every batten run whose parent worktree is geom's, with the pause coverage read from the record at pauseRecord.
+// A run's place against its Land row is battenrecipe.LandOutcomeOf's, and a landed run carries the landing commit its landing recorded, empty when none is readable.
 // A run's slot reading comes from its board entry on the local board at geom.BoardDir, which runTakesNoSlot judges.
 func DobbyRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *DobbyParents, pauseRecord string) ([]dobbyengine.RunView, error) {
 	runs, err := dobbyParentRuns(prime, geom, parents)
@@ -151,6 +152,8 @@ func DobbyRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *Dobby
 			Covered:  record.CoverageOf(slug, now).Covered,
 			NoSlot:   runTakesNoSlot(entryOf[slug]),
 		}
+		outcome := battenrecipe.LandOutcomeOf(run.status)
+		view.PastLand, view.Landed = outcome != battenrecipe.LandOutcomeAhead, outcome == battenrecipe.LandOutcomeLanded
 		pair, err := lymcwd.NamedWorktree(prime.HubPath, slug)
 		if err != nil {
 			return nil, fmt.Errorf("locate the pair %s: %w", slug, err)
@@ -164,6 +167,18 @@ func DobbyRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *Dobby
 			func() (err error) { view.CancelMarker, err = markerExists(shedrun.CancelMarker(prime, slug)); return },
 			func() (err error) { view.OriginOwed, err = markerExists(shedrun.OriginOwedMarker(prime, slug)); return },
 			func() (err error) { view.DriverLockHeld, err = lockHeld(shedrun.DriverLock(prime, slug)); return },
+			func() error {
+				if !view.Landed {
+					return nil
+				}
+				commit, err := shedrun.ReadLandedCommit(prime, slug)
+				if err != nil {
+					logger.Warn("battencli: a landed run's landing commit is unreadable and stays unknown", "slug", slug, "error", err)
+					return nil
+				}
+				view.LandingCommit = commit
+				return nil
+			},
 		}
 		for _, read := range reads {
 			if err := read(); err != nil {
@@ -250,7 +265,7 @@ func DobbyTasks(prime *lymcwd.Location, boardDir string, parents *DobbyParents) 
 	}
 	views := make([]dobbyengine.TaskView, 0, len(tasks))
 	for _, task := range tasks {
-		view := dobbyengine.TaskView{Slug: task.Slug, Kind: task.Kind, Status: task.Status}
+		view := dobbyengine.TaskView{Slug: task.Slug, Kind: task.Kind, Status: task.Status, NotifyOnLand: task.NotifyOnLand}
 		for _, dep := range task.DependsOn {
 			if status, present := statusOf[dep]; present && (status == nil || *status != "done") {
 				view.PendingDependencies = append(view.PendingDependencies, dep)

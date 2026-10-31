@@ -298,7 +298,7 @@ func triggerReading(deps Deps, r Request) (fire bool, reason string, err error) 
 			return false, "", err
 		case !found:
 			return false, "", runGoneError{slug: r.Slug}
-		case landFinished(status):
+		case battenrecipe.PastLand(status.State, status.Producer):
 			return true, "", nil
 		case status.State == shedengine.StateRunning:
 			return false, fmt.Sprintf("waiting for %s to finish Land, now at %s", r.Slug, status.Producer), nil
@@ -325,11 +325,6 @@ func triggerReading(deps Deps, r Request) (fire bool, reason string, err error) 
 		return false, "waiting for the batten runs in flight: " + strings.Join(inFlight, ", "), nil
 	}
 	return true, "", nil
-}
-
-// landFinished reports whether a run is past its Land row: done, or at the one row after Land in any state.
-func landFinished(s RunStatus) bool {
-	return s.State == shedengine.StateDone || s.Producer == battenrecipe.NameWorktreeTeardown
 }
 
 // confirmation is how the wait for a confirmed pause ended.

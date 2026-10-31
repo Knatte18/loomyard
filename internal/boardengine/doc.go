@@ -209,6 +209,12 @@
 // The field is scope for the run lock, so a held entry takes no change to it.
 // A landing reads it against the parent's beam.yaml `pull_request` mode to decide whether the landing goes through a pull request.
 //
+// # Landing notice
+//
+// A task or project may carry `notify_on_land`, true asking the dobby that drives its run for a creel line once the run lands or ends without landing, as the dobby's beam.yaml `land_notice` decides; false stores no key, and a note carrying it is refused.
+// The field is not scope, so the run lock and the revised date ignore it and a run-held entry takes it.
+// ClearNotifyOnLand clears it once the line went out, and writes nothing when the entry is gone or does not carry it.
+//
 // # Run lock
 //
 // A run holds a board entry while the entry's status has the run-status form "<state> · <producer>", which RunStatus composes and IsRunStatus recognizes.

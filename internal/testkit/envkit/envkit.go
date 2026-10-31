@@ -61,6 +61,7 @@ var nilLegal = map[string]bool{
 	"Landing.AbortMerge":               true,
 	"Landing.StopConflictSession":      true,
 	"Landing.MarkTaskDone":             true,
+	"Landing.RecordLanding":            true,
 	"Landing.ConfigChanges":            true,
 	"Landing.Notify":                   true,
 	"Landing.Reconcile":                true,

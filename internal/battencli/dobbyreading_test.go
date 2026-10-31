@@ -83,11 +83,11 @@ func writeDobbyState(pid int, sleeps ...pauserecord.Interval) func(t *testing.T,
 	}
 }
 
-func TestDobbyTasks_ReadsDependenciesAndParentOfAReleasedTask(t *testing.T) {
+func TestDobbyTasks_ReadsDependenciesParentAndNotifyOnLand(t *testing.T) {
 	t.Parallel()
 	boardDir := t.TempDir()
 	entries := strings.Join([]string{
-		`{"id":0,"slug":"released","title":"R","kind":"task","labels":["bug"],"depends_on":["open-dep","done-dep","pruned-dep"]}`,
+		`{"id":0,"slug":"released","title":"R","kind":"task","labels":["bug"],"depends_on":["open-dep","done-dep","pruned-dep"],"notify_on_land":true}`,
 		`{"id":1,"slug":"open-dep","title":"O","kind":"task","labels":["bug"],"status":"draft"}`,
 		`{"id":2,"slug":"done-dep","title":"D","kind":"task","labels":["bug"],"status":"done"}`,
 	}, ",")
@@ -113,6 +113,9 @@ func TestDobbyTasks_ReadsDependenciesAndParentOfAReleasedTask(t *testing.T) {
 	}
 	if released.Parent != "beam-a" {
 		t.Errorf("DobbyTasks() released Parent = %q; want %q", released.Parent, "beam-a")
+	}
+	if !released.NotifyOnLand || bySlug["open-dep"].NotifyOnLand {
+		t.Errorf("DobbyTasks() NotifyOnLand = %v, %v; want true for the entry carrying it and false for the other", released.NotifyOnLand, bySlug["open-dep"].NotifyOnLand)
 	}
 	if draft := bySlug["open-dep"]; draft.Parent != "" {
 		t.Errorf("DobbyTasks() draft Parent = %q; want none read for a task with a status", draft.Parent)

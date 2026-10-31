@@ -17,6 +17,7 @@
 //     A worktree with an anchor change standing on its own records worktree or the prime's is refused with the change's way forward and starts nothing, through StartDeps.MoveInProgress, and a nil one reads as no change standing.
 //   - Config is beam.yaml, loaded strictly because dobby only ever runs inside a hub.
 //     Its `pull_request` key is the receiving branch's pull-request mode, on, off or required, read with the receiving branch's worktree as the anchor.
+//     Its `land_notice` key, all, per-task or off, decides which runs get a landing notice.
 //   - Run is the daemon loop, with every seam it reads in Deps.
 //   - `dobby.log` holds the dobby's own lines only, each appended by AppendLog through its own open, which creates no directory, so a removed worktree gets nothing back.
 //     Only the holder of the file's dobby lock passes `rotate`: a write that would take the file past 1 MiB first renames it to `dobby.log.1`, replacing an older one.
@@ -134,6 +135,17 @@
 //   - A failed read is logged once per episode and sends nothing.
 //   - Bound: while an anchor change stands no notice goes, and a machine that takes a run over dates the child's since from its own first sight, so a driver-dead notice the other machine sent can go once more.
 //
+// The landing notice:
+//
+//   - Each tick with no anchor change standing, after the run notices, dobby remembers in the state record every listed run ahead of its Land row, with whether its board entry carries `notify_on_land`, refreshed while the entry is on the board, since Land prunes a landed entry.
+//     A RunView tells a run past its Land row, and whether it landed, from `battenrecipe.LandOutcomeOf`, with the landing commit Finalize recorded.
+//   - A remembered run seen past its Land row gets one line to the nearest live orch through Deps.Notice when beam.yaml's `land_notice` is all, or per-task with the entry's request, and none under off:
+//     `[dobby notice] <slug>: landed as <commit>`, `landed, commit unknown` with no commit recorded, or `ended without landing` with `lym batten status <slug>`.
+//     A beam's batten run is driven by its parent's dobby, so a beam's landing gets its line the same way.
+//   - Once a line for a run whose entry asked for it went out, Deps.ClearNotifyOnLand clears the entry's field, and a failed clear is only logged.
+//   - A failed post is tried on the next tick, at most three times, then dropped with a Warn; the run's memory goes once its notice is settled or the run is no longer listed.
+//   - Bound: a run first seen past its Land row gets no line, so a fresh state record notices no old landing; a request set after the run passed Land is not read.
+//
 // The board tidy:
 //
 //   - Each tick reads the batten history of every run whose parent worktree is this dobby's, whatever the run's state, and records each Land Done that names this machine as counted in the state record, so a landing a hand pass or a pass a dead dobby left made is counted and a restart counts none twice.
@@ -149,6 +161,7 @@
 //
 // The view:
 //
+//   - It carries beam.yaml's `max_runs` and `land_notice`, and marks each run and waiting task whose board entry asks for a landing notice, a run also when the state record remembers the request.
 //   - The runs are the listed ones that are not done, each with batten's state and producer, a pass in flight while its driver lock is held, and its last pass exit, owed full pass, owner mark and failing count from the state record.
 //   - A task waits while it is released to the worktree, a task with an empty status whose parent is the worktree, and not started.
 //     Its reasons are the start step's own conditions: the dependencies not done, another machine's ownership, a covering pause, a refused start whose backoff has not run out for the entry as it reads now, and `max_runs`.

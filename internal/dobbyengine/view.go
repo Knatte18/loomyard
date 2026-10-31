@@ -8,12 +8,14 @@ import (
 	"time"
 )
 
-// View is what one reading of a dobby shows: whether it lives, the runs it drives and the released tasks it has not started.
+// View is what one reading of a dobby shows: whether it lives, its max_runs and land_notice, the runs it drives and the released tasks it has not started, each with whether it asks for a landing notice.
 type View struct {
 	// Alive reports whether the dobby's lock is held.
 	Alive bool `json:"alive"`
 	// MaxRuns is beam.yaml's cap on the runs in flight.
 	MaxRuns int `json:"max_runs"`
+	// LandNotice is beam.yaml's land_notice: which runs get a landing notice.
+	LandNotice string `json:"land_notice"`
 	// Runs are the runs the dobby drives that are not done, by slug.
 	Runs []ViewRun `json:"runs"`
 	// Waiting are the released tasks not yet started, in board order.
@@ -33,6 +35,8 @@ type ViewRun struct {
 	OwnedElsewhere   bool      `json:"owned_elsewhere,omitempty"`
 	FailingPassError string    `json:"failing_pass_error,omitempty"`
 	FailingPassCount int       `json:"failing_pass_count,omitempty"`
+	// NotifyOnLand reports whether the run's board entry asks for a landing notice, or asked for it while the dobby saw the run ahead of its Land row.
+	NotifyOnLand bool `json:"notify_on_land,omitempty"`
 }
 
 // WaitingTask is one released task a dobby has not started, with everything that holds it back.
@@ -51,6 +55,8 @@ type WaitingTask struct {
 	NextTry time.Time `json:"next_try,omitzero"`
 	// AtMaxRuns reports whether the runs in flight fill max_runs before this task's turn.
 	AtMaxRuns bool `json:"at_max_runs,omitempty"`
+	// NotifyOnLand reports whether the task's board entry asks for a landing notice.
+	NotifyOnLand bool `json:"notify_on_land,omitempty"`
 }
 
 // Ready reports whether nothing holds the task back, so the dobby starts it on its next tick.
@@ -75,7 +81,11 @@ type ViewInput struct {
 // BuildView returns the View of the dobby in.
 // The runs are the listed ones that are not done, and a done run takes a slot only while its driver lock is held; a task waits while it is released to the worktree and not started, and its reasons are the conditions the dobby's start step checks, in the start step's own order for max_runs.
 func BuildView(in ViewInput) View {
-	view := View{Alive: in.Alive, MaxRuns: in.Config.MaxRuns, Runs: []ViewRun{}, Waiting: []WaitingTask{}}
+	view := View{Alive: in.Alive, MaxRuns: in.Config.MaxRuns, LandNotice: in.Config.LandNotice, Runs: []ViewRun{}, Waiting: []WaitingTask{}}
+	requested := make(map[string]bool, len(in.Tasks))
+	for _, task := range in.Tasks {
+		requested[task.Slug] = task.NotifyOnLand
+	}
 	// A done run whose driver lock is held has a pass in flight, which keeps it in the scheduler's list and so in its slot count.
 	// A reader outside the dobby's process cannot tell the dobby's own pass from a hand-run driver, so the count is the closest the held lock gives.
 	slotRuns := slices.DeleteFunc(slices.Clone(in.Runs), func(run RunView) bool { return run.State == runStateDone && !run.DriverLockHeld })
@@ -88,6 +98,7 @@ func BuildView(in ViewInput) View {
 			PassInFlight: run.DriverLockHeld, LastPassExit: rs.LastPassExit,
 			FullPassOwed: rs.FullPassOwed, OwnedElsewhere: rs.OwnedElsewhere,
 			FailingPassError: rs.FailingPassError, FailingPassCount: rs.FailingPassCount,
+			NotifyOnLand: requested[run.Slug] || in.Record.LandNotices[run.Slug].Requested,
 		})
 	}
 
@@ -97,7 +108,7 @@ func BuildView(in ViewInput) View {
 			continue
 		}
 		covered := in.Covers(task.Slug)
-		waiting := WaitingTask{Slug: task.Slug, Dependencies: task.PendingDependencies, OwnedElsewhere: task.OwnedElsewhere, Paused: covered, StartRefusal: task.StartRefusal}
+		waiting := WaitingTask{Slug: task.Slug, Dependencies: task.PendingDependencies, OwnedElsewhere: task.OwnedElsewhere, Paused: covered, StartRefusal: task.StartRefusal, NotifyOnLand: task.NotifyOnLand}
 		if attempt, found := in.Record.Starts[task.Slug]; found && attempt.EntryFingerprint == task.Fingerprint {
 			waiting.Refusal = attempt.Refusal
 			if in.Now.Before(attempt.NextTry) {

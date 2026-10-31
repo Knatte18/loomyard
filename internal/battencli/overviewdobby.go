@@ -17,16 +17,19 @@ const (
 	dobbyIndent = "  "
 	// dobbyNoRuns is the line of a dobby that drives no run.
 	dobbyNoRuns = "no runs driven"
+	// dobbyNotifyOnLand ends the line of a run or task whose board entry asks for a landing notice.
+	dobbyNotifyOnLand = "notify_on_land"
 	// dobbyUnreadableFormat is the one line of a dobby whose view does not read, filled with its label.
 	dobbyUnreadableFormat = "dobby %s: unreadable"
 )
 
 // DobbyLines renders view, the View of the dobby label names, as lines at now:
-// a header saying whether the dobby lives and its max_runs, one line per run it drives with its cells from runCells and its last pass, and one line per released task it has not started with everything that holds the task back.
+// a header saying whether the dobby lives with its max_runs and land_notice, one line per run it drives with its cells from runCells and its last pass, and one line per released task it has not started with everything that holds the task back;
+// a run or task whose board entry asks for a landing notice ends its line with notify_on_land.
 // A run whose cells are unreadable draws `status unreadable` in their place and takes no part in their column widths.
 // Every time still growing renders in whole minutes, so the lines change at most once a minute.
 func DobbyLines(label string, view dobbyengine.View, runCells map[string]RunCells, now time.Time) []string {
-	header := fmt.Sprintf("dobby %s: alive, max_runs %d", label, view.MaxRuns)
+	header := fmt.Sprintf("dobby %s: alive, max_runs %d, land_notice %s", label, view.MaxRuns, view.LandNotice)
 	if !view.Alive {
 		header = fmt.Sprintf("dobby %s: not running; way forward: lym beam start", label)
 	}
@@ -65,7 +68,11 @@ func DobbyLines(label string, view dobbyengine.View, runCells map[string]RunCell
 		lines = append(lines, dobbyIndent+strings.Join(drawn, overviewColumnGap))
 	}
 	for _, task := range view.Waiting {
-		lines = append(lines, dobbyIndent+padRight(task.Slug, slugWidth)+overviewColumnGap+dobbyTaskWait(task, view.MaxRuns, now))
+		wait := dobbyTaskWait(task, view.MaxRuns, now)
+		if task.NotifyOnLand {
+			wait += ", " + dobbyNotifyOnLand
+		}
+		lines = append(lines, dobbyIndent+padRight(task.Slug, slugWidth)+overviewColumnGap+wait)
 	}
 	return lines
 }
@@ -98,6 +105,9 @@ func dobbyRunPass(run dobbyengine.ViewRun, now time.Time) string {
 	}
 	if run.FailingPassCount > 0 {
 		notes = append(notes, fmt.Sprintf("failing %d× in a row: %s", run.FailingPassCount, firstLine(run.FailingPassError)))
+	}
+	if run.NotifyOnLand {
+		notes = append(notes, dobbyNotifyOnLand)
 	}
 	return strings.Join(notes, ", ")
 }

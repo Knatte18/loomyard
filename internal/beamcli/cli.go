@@ -68,8 +68,8 @@ func statusCmd() *cobra.Command {
 		Short:       "show the dobby and the orch of the prime and of every local beam",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Prints, once, what a beam's window draws for a dobby, for the hub's prime and
-for every local beam: whether the dobby is alive and its max_runs, each run it
-drives with its state, stage, time in the stage and last pass, and each released task it has not
+for every local beam: whether the dobby is alive with its max_runs and
+land_notice, each run it drives with its state, stage, time in the stage and last pass, and each released task it has not
 started with what the task waits on -- open dependencies, another machine's
 ownership, a pause, a start batten refuses, a refused start and its retry, or max_runs.
 A ready task shows its last refused start when one is recorded. Each entry

@@ -288,6 +288,7 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 	_, mergeErr := parentHandle.Merge(fz.deps.TaskBranch, mergeOpts)
 	if mergeErr == nil {
 		fz.markTaskDone()
+		fz.recordLanding(parentHandle)
 		return fz.pushParent(ctx, parentHandle, notice)
 	}
 
@@ -307,6 +308,7 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		_, retryErr := parentHandle.Merge(fz.deps.TaskBranch, mergeOpts)
 		if retryErr == nil {
 			fz.markTaskDone()
+			fz.recordLanding(parentHandle)
 			return fz.pushParent(ctx, parentHandle, notice)
 		}
 		mergeErr = retryErr
@@ -529,6 +531,21 @@ func (fz *Finalize) markTaskDone() {
 	}
 	if err := fz.deps.MarkTaskDone(); err != nil {
 		logger.Warn("landingshed: mark board task done failed", "producer", finalizeName, "cause", err)
+	}
+}
+
+// recordLanding hands the parent pair's head, the commit the landing put on the parent branch, to Deps.RecordLanding.
+// A failed head read or record is logged and never changes the verdict.
+func (fz *Finalize) recordLanding(parentHandle parentMerger) {
+	if fz.deps.RecordLanding == nil {
+		return
+	}
+	commit, err := parentHandle.HeadSHA()
+	if err == nil {
+		err = fz.deps.RecordLanding(commit)
+	}
+	if err != nil {
+		logger.Warn("landingshed: record the landing commit failed", "producer", finalizeName, "cause", err)
 	}
 }
 

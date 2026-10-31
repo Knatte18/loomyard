@@ -110,6 +110,7 @@ func TestRunLock(t *testing.T) {
 		{name: "status-only upsert", act: upsertLocked(map[string]any{"status": "done"})},
 		{name: "run settings change", act: upsertLocked(map[string]any{"run_settings": map[string]any{"loom": map[string]any{"review_max_bounces": 2}}})},
 		{name: "profile change", act: upsertLocked(map[string]any{"profile": "light"})},
+		{name: "notify_on_land change", act: upsertLocked(map[string]any{"notify_on_land": true})},
 		{name: "upsert naming the held entry's own effective owner", primeOwner: "box", unchanged: true, act: upsertLocked(map[string]any{"owner_machine": "box"})},
 		{name: "normal priority on an entry without one", act: upsertLocked(map[string]any{"priority": "normal"})},
 		{name: "batch whose only item on it is status-only", extra: []map[string]any{other}, act: func(b *boardengine.Board) error {

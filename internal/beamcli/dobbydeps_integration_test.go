@@ -203,3 +203,30 @@ func TestHubLandDeps_MarkReadyCommitsAnUncommittedFlaggedRecord(t *testing.T) {
 		t.Errorf("ready record = %+v, %v, %v; want the original, not rewritten", record, found, err)
 	}
 }
+
+func TestHubDobbyDeps_ClearNotifyOnLandClearsTheHubBoardEntry(t *testing.T) {
+	t.Parallel()
+
+	h, deps := landingHub(t)
+	cfg, err := boardengine.LoadConfig(configengine.Dirs{Board: h.BoardDir()}, "board")
+	if err != nil {
+		t.Fatalf("load board config: %v", err)
+	}
+	cfg.Path = h.BoardDir()
+	board := boardengine.New(cfg)
+	if _, err := board.UpsertTask(map[string]any{"slug": "b", "notify_on_land": true}); err != nil {
+		t.Fatalf("set notify_on_land on b: %v", err)
+	}
+
+	if err := deps.ClearNotifyOnLand("b"); err != nil {
+		t.Fatalf("ClearNotifyOnLand(b) = %v; want nil", err)
+	}
+
+	task, found, err := board.GetTask("b")
+	if err != nil || !found {
+		t.Fatalf("GetTask(b) = found %v, err %v; want found", found, err)
+	}
+	if task.NotifyOnLand {
+		t.Errorf("b.NotifyOnLand = true; want it cleared")
+	}
+}

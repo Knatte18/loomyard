@@ -1,6 +1,6 @@
 //go:build tier1
 
-// dobbypairanchor_test.go pins that dobby's two pair-reading callers place a task pair at the pair's own anchor, over a hubforge hub.
+// dobbypairanchor_test.go pins that dobby's two pair-reading callers place a task pair at the pair's own anchor, and what DobbyRuns reads of a run's place against its Land row, over a hubforge hub.
 
 package beamcli
 
@@ -146,5 +146,50 @@ func TestDobbyLandings_CountsOnlyThisMachine(t *testing.T) {
 
 	if err != nil || !reflect.DeepEqual(got, []string{"here"}) {
 		t.Errorf("DobbyLandings(m1) = %v, %v; want [here], nil", got, err)
+	}
+}
+
+func TestDobbyRuns_ReadsTheLandOutcomeAndTheLandingCommit(t *testing.T) {
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	prime := h.Location
+	statuses := map[string]string{
+		"ahead":      `{"state":"running","current_producer":"Run-Shed"}`,
+		"landed":     `{"state":"done","current_producer":"Worktree-Teardown","history":[{"producer":"Land","outcome":"done","output":"","at":"2026-10-31T10:00:00Z"}]}`,
+		"unlanded":   `{"state":"done","current_producer":"Worktree-Teardown"}`,
+		"unreadable": `{"state":"done","current_producer":"Worktree-Teardown","history":[{"producer":"Land","outcome":"done","output":"","at":"2026-10-31T10:00:00Z"}]}`,
+	}
+	for slug, status := range statuses {
+		hubforge.AddPair(t, h, slug)
+		seedBattenRun(t, prime, slug)
+		if err := os.WriteFile(shedrun.StatusFile(prime, slug), []byte(status), 0o644); err != nil {
+			t.Fatalf("write the status of %s: %v", slug, err)
+		}
+	}
+	if err := shedrun.WriteLandedCommit(prime, "landed", "abc123"); err != nil {
+		t.Fatalf("WriteLandedCommit() = %v; want nil", err)
+	}
+
+	// A directory where the landed-commit file belongs makes the read fail for a reason other than a missing file.
+	if err := os.MkdirAll(shedrun.LandedCommitFile(prime, "unreadable"), 0o755); err != nil {
+		t.Fatalf("make the landed-commit path a directory: %v", err)
+	}
+
+	views, err := battencli.DobbyRuns(prime, dobbyengine.Geometry{}, battencli.NewDobbyParents(prime), filepath.Join(t.TempDir(), "pause.json"))
+	if err != nil {
+		t.Fatalf("DobbyRuns() = _, %v; want nil", err)
+	}
+	type landing struct {
+		pastLand, landed bool
+		commit           string
+	}
+	got := map[string]landing{}
+	for _, view := range views {
+		got[view.Slug] = landing{view.PastLand, view.Landed, view.LandingCommit}
+	}
+	want := map[string]landing{"ahead": {}, "landed": {true, true, "abc123"}, "unlanded": {pastLand: true}, "unreadable": {pastLand: true, landed: true}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("DobbyRuns() land readings = %+v; want %+v", got, want)
 	}
 }

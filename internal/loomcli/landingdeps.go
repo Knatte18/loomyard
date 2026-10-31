@@ -196,6 +196,14 @@ func landingDeps(
 			done := "done"
 			return board.SetStatus(seedSlug(l.WorktreeName), &done)
 		},
+		// RecordLanding records the landing commit in the prime's scratch of the batten run of this worktree's slug, where that run's dobby reads it.
+		RecordLanding: func(commit string) error {
+			prime, err := primeOfHub(l)
+			if err != nil {
+				return err
+			}
+			return shedrun.WriteLandedCommit(prime, seedSlug(l.WorktreeName), commit)
+		},
 		// ConfigChanges reads the task's changes to its per-worktree config files since its fork point.
 		// A hub-wide module's file is never read: its worktree copy is not the one in force.
 		ConfigChanges: func() (fabricengine.ConfigChanges, error) {

@@ -476,7 +476,7 @@ func storeVerbs(board func() *boardengine.Board, profiles func() (runprofile.Pro
 	// upsert subcommand: create or update a single task.
 	var bodyFile string
 	upsertCmd := &cobra.Command{
-		Use:         "upsert {slug, title?, brief?, body?, depends_on?, isolated?, status?, kind?, labels?, recipe?, priority?, short_name?, issues?, created?, revised?, run_settings?, profile?, pull_request?, owner_machine?, project?, order?, beam?}",
+		Use:         "upsert {slug, title?, brief?, body?, depends_on?, isolated?, status?, kind?, labels?, recipe?, priority?, short_name?, issues?, created?, revised?, run_settings?, profile?, pull_request?, notify_on_land?, owner_machine?, project?, order?, beam?}",
 		Short:       "create or update a single task",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Create or update a task identified by its slug.
@@ -487,13 +487,13 @@ Required field:
 
 Optional fields:
   "title"      string — human-readable title
-  "brief"      string — one-line summary shown in board listings
+  "brief"      string — one-line summary
   "body"       string — full markdown body
   "depends_on" array  — slugs this task depends on
-  "isolated"   bool   — true if no dependencies by design
-  "status"     string — lifecycle status, e.g. "active"
+  "isolated"   bool   — no dependencies by design
+  "status"     string — lifecycle status
   "kind"       string — "task", "note" or "project", default "note"
-  "labels"     array  — labels replacing the whole list; a task needs a type label, a note exactly one
+  "labels"     array  — replaces the list; a task needs a type label, a note exactly one
   "recipe"    string — "darn" or "tapestry", the default
   "priority"   string — a note's "high", "normal" or "low"; "normal" clears it
   "short_name" string — display label; falls back to the slug
@@ -503,6 +503,7 @@ Optional fields:
   "run_settings" object — module name to config keys for the pair's local config; {} clears it
   "profile"    string — a "lym board profiles" name laid under run_settings; "" clears it
   "pull_request" string — "on" or "off" overrides beam.yaml's pull_request mode; "" clears it
+  "notify_on_land" bool — a line to the orch once the run lands
   "owner_machine" string — the effective owner only; "lym adopt" moves it
   "project"    string — slug of the open project holding the entry; "" leaves none
   "order"      array  — a project's member slugs in plan order

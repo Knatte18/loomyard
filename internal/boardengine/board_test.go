@@ -739,6 +739,85 @@ func TestSetRunStatus(t *testing.T) {
 	}
 }
 
+// TestNotifyOnLand pins the notify_on_land field: an upsert stores it only when true, and a note carrying it is refused.
+// ClearNotifyOnLand clears it, and leaves board.json byte-identical when the entry is absent or does not carry it.
+func TestNotifyOnLand(t *testing.T) {
+	t.Parallel()
+	rows := []struct {
+		name string
+		// seed is the entry written first; act runs on the board after it.
+		seed       map[string]any
+		act        func(b *boardengine.Board) error
+		wantErr    string
+		wantStored bool
+		// unchanged requires board.json to read byte-identical after act.
+		unchanged bool
+	}{
+		{name: "upsert sets it on a task", seed: map[string]any{"slug": "x", "kind": "task", "labels": bugLabels},
+			act: func(b *boardengine.Board) error {
+				_, err := b.UpsertTask(map[string]any{"slug": "x", "notify_on_land": true})
+				return err
+			}, wantStored: true},
+		{name: "upsert sets it on a project", seed: map[string]any{"slug": "x", "kind": "project", "labels": bugLabels},
+			act: func(b *boardengine.Board) error {
+				_, err := b.UpsertTask(map[string]any{"slug": "x", "notify_on_land": true})
+				return err
+			}, wantStored: true},
+		{name: "upsert false clears it", seed: map[string]any{"slug": "x", "kind": "task", "labels": bugLabels, "notify_on_land": true},
+			act: func(b *boardengine.Board) error {
+				_, err := b.UpsertTask(map[string]any{"slug": "x", "notify_on_land": false})
+				return err
+			}},
+		{name: "a note carrying it is refused", seed: map[string]any{"slug": "x", "kind": "note", "labels": bugLabels},
+			act: func(b *boardengine.Board) error {
+				_, err := b.UpsertTask(map[string]any{"slug": "x", "notify_on_land": true})
+				return err
+			}, wantErr: `note "x" has notify_on_land`, unchanged: true},
+		{name: "clear clears it", seed: map[string]any{"slug": "x", "kind": "task", "labels": bugLabels, "notify_on_land": true},
+			act: func(b *boardengine.Board) error { return b.ClearNotifyOnLand("x") }},
+		{name: "clear of an entry without it writes nothing", seed: map[string]any{"slug": "x", "kind": "task", "labels": bugLabels},
+			act: func(b *boardengine.Board) error { return b.ClearNotifyOnLand("x") }, unchanged: true},
+		{name: "clear of an absent slug writes nothing", seed: map[string]any{"slug": "x", "kind": "task", "labels": bugLabels, "notify_on_land": true},
+			act: func(b *boardengine.Board) error { return b.ClearNotifyOnLand("ghost") }, wantStored: true, unchanged: true},
+	}
+	for _, tc := range rows {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			boardPath := t.TempDir()
+			b := boardengine.New(boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true})
+			if _, err := b.UpsertTask(tc.seed); err != nil {
+				t.Fatalf("seed: %v", err)
+			}
+			before, err := os.ReadFile(filepath.Join(boardPath, "board.json"))
+			if err != nil {
+				t.Fatalf("read board.json: %v", err)
+			}
+
+			err = tc.act(b)
+			switch {
+			case tc.wantErr == "" && err != nil:
+				t.Fatalf("act = %v; want nil", err)
+			case tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)):
+				t.Fatalf("act = %v; want an error containing %q", err, tc.wantErr)
+			}
+
+			after, err := os.ReadFile(filepath.Join(boardPath, "board.json"))
+			if err != nil {
+				t.Fatalf("read board.json: %v", err)
+			}
+			if tc.unchanged && string(after) != string(before) {
+				t.Errorf("board.json changed:\n%s\nwant:\n%s", after, before)
+			}
+			if got := strings.Contains(string(after), `"notify_on_land": true`); got != tc.wantStored {
+				t.Errorf("board.json stores notify_on_land = %v; want %v:\n%s", got, tc.wantStored, after)
+			}
+			if strings.Contains(string(after), `"notify_on_land": false`) {
+				t.Errorf("board.json stores a false notify_on_land:\n%s", after)
+			}
+		})
+	}
+}
+
 // TestPriorityRoundTrip pins that every Board write path keeps a note's priority, and that board.json names it only on a high or low note.
 // It also pins that a write giving a task a priority is refused and that a promote clears the priority.
 //
@@ -825,7 +904,7 @@ func TestPriorityRoundTrip(t *testing.T) {
 }
 
 // TestEntryDates pins how every write stamps an entry's dates from the configured clock:
-// a new entry gets both, a status change or a promote revises nothing, a scope change revises (an upsert flipping a note to a task included), an upsert's own dates are kept even on a run-held entry, and a merge keeps the oldest creation date of the entries it joins.
+// a new entry gets both, a status change, a promote or a notify_on_land change revises nothing, a scope change revises (an upsert flipping a note to a task included), an upsert's own dates are kept even on a run-held entry, and a merge keeps the oldest creation date of the entries it joins.
 func TestEntryDates(t *testing.T) {
 	t.Parallel()
 	start := time.Date(2026, 10, 12, 9, 30, 0, 0, time.UTC)
@@ -870,6 +949,10 @@ func TestEntryDates(t *testing.T) {
 		}, "n", start.Add(6 * time.Hour), start.Add(6 * time.Hour)},
 		{"upsert flips a note to a task", func() error {
 			_, err := b.UpsertTask(map[string]any{"slug": "n", "kind": boardengine.KindTask})
+			return err
+		}, "n", start.Add(6 * time.Hour), start.Add(7 * time.Hour)},
+		{"notify_on_land revises nothing", func() error {
+			_, err := b.UpsertTask(map[string]any{"slug": "n", "notify_on_land": true})
 			return err
 		}, "n", start.Add(6 * time.Hour), start.Add(7 * time.Hour)},
 	}

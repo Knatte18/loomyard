@@ -19,6 +19,16 @@ func ConfigTemplate() string {
 	return configTemplate
 }
 
+// The values of beam.yaml's land_notice.
+const (
+	// LandNoticeAll sends a landing notice for every run the dobby drives.
+	LandNoticeAll = "all"
+	// LandNoticePerTask sends one only for a run whose board entry carried notify_on_land.
+	LandNoticePerTask = "per-task"
+	// LandNoticeOff sends none.
+	LandNoticeOff = "off"
+)
+
 // Config is the resolved beam.yaml.
 type Config struct {
 	// MaxRuns is the most runs dobby drives at once; 0 starts none.
@@ -31,6 +41,8 @@ type Config struct {
 	TaskHeadroom int `yaml:"task_headroom"`
 	// PullRequest is the receiving branch's pull-request mode: "on", "off" or "required".
 	PullRequest string `yaml:"pull_request"`
+	// LandNotice decides which runs the dobby sends a landing notice for: LandNoticeAll, LandNoticePerTask or LandNoticeOff.
+	LandNotice string `yaml:"land_notice"`
 }
 
 // ConfigSpec returns beam's layered-load spec: a per-worktree module whose keys are open to every layer but pull_request.
@@ -45,12 +57,13 @@ func ConfigSpec() configengine.Spec {
 			"board_tidy_timeout_min": configengine.CategoryNone,
 			"task_headroom":          configengine.CategoryNone,
 			"pull_request":           configengine.CategoryCrossPair,
+			"land_notice":            configengine.CategoryNone,
 		},
 	}
 }
 
 // LoadConfig resolves beam.yaml strictly from the layer stack under dirs, since dobby only ever runs inside a hub.
-// A negative value is refused naming its key, and so is a pull_request other than on, off or required.
+// A negative value is refused naming its key, and so is a pull_request other than on, off or required and a land_notice other than all, per-task or off.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.Load(dirs, ConfigSpec())
 	if err != nil {
@@ -77,6 +90,11 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	case "on", "off", "required":
 	default:
 		return Config{}, configengine.MarkInvalid(fmt.Errorf("beam config key %q is %q: must be on, off or required; way forward: fix it with lym config beam --set pull_request=<on|off|required>", "pull_request", cfg.PullRequest))
+	}
+	switch cfg.LandNotice {
+	case LandNoticeAll, LandNoticePerTask, LandNoticeOff:
+	default:
+		return Config{}, configengine.MarkInvalid(fmt.Errorf("beam config key %q is %q: must be all, per-task or off; way forward: fix it with lym config beam --set land_notice=<all|per-task|off>", "land_notice", cfg.LandNotice))
 	}
 	return cfg, nil
 }

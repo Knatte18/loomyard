@@ -34,11 +34,14 @@ func TestLoadConfig(t *testing.T) {
 		want     Config
 		wantErr  []string
 	}{
-		{name: "the template defaults", want: Config{MaxRuns: 3, BoardTidyEvery: 5, BoardTidyTimeoutMin: 30, TaskHeadroom: 500, PullRequest: "on"}},
-		{name: "a worktree layer's max_runs of 0 starts none", worktree: "max_runs: 0\n", want: Config{MaxRuns: 0, BoardTidyEvery: 5, BoardTidyTimeoutMin: 30, TaskHeadroom: 500, PullRequest: "on"}},
-		{name: "a worktree layer's pull_request of required resolves as set", worktree: "pull_request: required\n", want: Config{MaxRuns: 3, BoardTidyEvery: 5, BoardTidyTimeoutMin: 30, TaskHeadroom: 500, PullRequest: "required"}},
-		{name: "a worktree layer's pull_request of off resolves as set", worktree: "pull_request: \"off\"\n", want: Config{MaxRuns: 3, BoardTidyEvery: 5, BoardTidyTimeoutMin: 30, TaskHeadroom: 500, PullRequest: "off"}},
+		{name: "the template defaults", want: Config{MaxRuns: 3, BoardTidyEvery: 5, BoardTidyTimeoutMin: 30, TaskHeadroom: 500, PullRequest: "on", LandNotice: "per-task"}},
+		{name: "a worktree layer's max_runs of 0 starts none", worktree: "max_runs: 0\n", want: Config{MaxRuns: 0, BoardTidyEvery: 5, BoardTidyTimeoutMin: 30, TaskHeadroom: 500, PullRequest: "on", LandNotice: "per-task"}},
+		{name: "a worktree layer's pull_request of required resolves as set", worktree: "pull_request: required\n", want: Config{MaxRuns: 3, BoardTidyEvery: 5, BoardTidyTimeoutMin: 30, TaskHeadroom: 500, PullRequest: "required", LandNotice: "per-task"}},
+		{name: "a worktree layer's pull_request of off resolves as set", worktree: "pull_request: \"off\"\n", want: Config{MaxRuns: 3, BoardTidyEvery: 5, BoardTidyTimeoutMin: 30, TaskHeadroom: 500, PullRequest: "off", LandNotice: "per-task"}},
 		{name: "an unknown pull_request is refused naming the key and the way forward", worktree: "pull_request: maybe\n", wantErr: []string{"pull_request", "must be on, off or required", "lym config beam --set pull_request="}},
+		{name: "a worktree layer's land_notice of all resolves as set", worktree: "land_notice: all\n", want: Config{MaxRuns: 3, BoardTidyEvery: 5, BoardTidyTimeoutMin: 30, TaskHeadroom: 500, PullRequest: "on", LandNotice: "all"}},
+		{name: "a worktree layer's land_notice of off resolves as set", worktree: "land_notice: \"off\"\n", want: Config{MaxRuns: 3, BoardTidyEvery: 5, BoardTidyTimeoutMin: 30, TaskHeadroom: 500, PullRequest: "on", LandNotice: "off"}},
+		{name: "an unknown land_notice is refused naming the key and the way forward", worktree: "land_notice: some\n", wantErr: []string{"land_notice", "must be all, per-task or off", "lym config beam --set land_notice="}},
 		{name: "a negative board_tidy_every is refused naming the key", worktree: "board_tidy_every: -1\n", wantErr: []string{"board_tidy_every", "lym config beam --set"}},
 		{name: "a negative task_headroom is refused naming the key", worktree: "task_headroom: -1\n", wantErr: []string{"task_headroom", "lym config beam --set"}},
 	}

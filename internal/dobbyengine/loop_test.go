@@ -154,6 +154,7 @@ func newLoopHarness(t *testing.T, stopAt int) *loopHarness {
 		ProbeInterval: 10 * time.Second,
 		Runs:          func() ([]RunView, error) { return nil, nil },
 		LoadConfig:    func() (Config, error) { return Config{}, nil },
+		Tasks:         func() ([]TaskView, error) { return nil, nil },
 		Tick: func(_ context.Context, in TickInput) (bool, error) {
 			h.ticks = append(h.ticks, in)
 			var err error

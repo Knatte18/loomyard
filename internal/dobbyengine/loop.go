@@ -125,6 +125,8 @@ type Deps struct {
 	// Land asks the beam's pawl run to land the beam by writing its land request, and returns the refusal that kept it from writing one.
 	// It is set whenever CanLand is.
 	Land func() error
+	// ClearNotifyOnLand clears the notify_on_land field of the board entry slug once its landing notice went out; nil clears nothing.
+	ClearNotifyOnLand func(slug string) error
 	// Log writes one line to the dobby's log file at path; rotate is set for the dobby's own lines while it holds its lock.
 	// A nil Log logs nothing.
 	Log func(path, line string, rotate bool)
@@ -283,6 +285,11 @@ type daemon struct {
 	moveStands logger.Episode
 	landRead   logger.Episode
 	landPost   logger.Episode
+	// landNoticeConfig and landNoticeBoard are the failure episodes of the landing notices' beam.yaml and board reads.
+	landNoticeConfig logger.Episode
+	landNoticeBoard  logger.Episode
+	// listedRuns is the run listing of the tick's pass step, done runs included.
+	listedRuns []RunView
 
 	// tickCtx is the context of the tick in flight, for the seams a pass exit reaches.
 	tickCtx context.Context
@@ -568,6 +575,7 @@ func (d *daemon) tick(ctx context.Context, now time.Time) error {
 			return err
 		}
 		d.runNotices(ctx, now)
+		d.landNotices(ctx, now, d.listedRuns)
 		if err := d.startReady(ctx, now); err != nil {
 			return err
 		}

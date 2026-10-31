@@ -44,6 +44,8 @@ type Task struct {
 	Profile string `json:"profile,omitempty"`
 	// PullRequest overrides the receiving branch's beam.yaml pull_request mode for this entry's landing: "on" or "off"; empty means no override.
 	PullRequest string `json:"pull_request,omitempty"`
+	// NotifyOnLand asks the dobby that drives the entry's run for a creel line once the run lands or ends without landing; the dobby clears it once the line went out, and a note never carries it.
+	NotifyOnLand bool `json:"notify_on_land,omitempty"`
 	// OwnerMachine names the machine that owns the entry; empty means none is recorded, and a note never carries one.
 	OwnerMachine string `json:"owner_machine,omitempty"`
 	// Project names the project entry this entry belongs to; empty means it belongs to none.
@@ -266,6 +268,7 @@ const (
 
 // normalizeTask stores a normal priority and an empty run settings object as the empty value, clears the owner of every entry but a beam project and stores the dates in whole UTC seconds, then checks that the Kind is one of the three kinds, the Priority one of the accepted values and a task without one.
 // A PullRequest other than empty, on and off is refused for a task and a project alike.
+// A note carrying NotifyOnLand is refused.
 // A project carries none of depends_on, profile, run_settings or priority, and a recipe only when it is the project recipe; only a project carries order or beam, and only a project carries the project recipe.
 func normalizeTask(t *Task) error {
 	if t.Kind != KindTask && t.Kind != KindNote && t.Kind != KindProject {
@@ -293,6 +296,9 @@ func normalizeTask(t *Task) error {
 	}
 	if t.PullRequest != "" && t.PullRequest != "on" && t.PullRequest != "off" {
 		return fmt.Errorf("entry %q has pull_request %q, and pull_request is on, off or empty: correct it, or set \"\" to clear it", t.Slug, t.PullRequest)
+	}
+	if t.Kind == KindNote && t.NotifyOnLand {
+		return fmt.Errorf("note %q has notify_on_land, and only a task or a project runs and lands: set it to false, or make the note a task with \"lym board promote\"", t.Slug)
 	}
 	if t.Kind == KindProject {
 		return checkProjectFields(*t)

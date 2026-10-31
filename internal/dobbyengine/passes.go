@@ -43,6 +43,11 @@ type RunView struct {
 	Covered bool
 	// NoSlot reports whether the run takes no slot under max_runs: a pawl run whose landing hold does not stand.
 	NoSlot bool
+	// PastLand reports whether the run is past its Land row, and Landed whether it landed there rather than ending without landing.
+	PastLand bool
+	Landed   bool
+	// LandingCommit is the commit the run's landing put on its parent branch, empty when none is recorded.
+	LandingCommit string
 }
 
 // PassExit is how a `lym batten run` pass ended: its exit code and its last error text.
@@ -138,6 +143,7 @@ func (d *daemon) drivePasses(ctx context.Context, now time.Time) error {
 		return fmt.Errorf("list the runs: %w", err)
 	}
 	d.logRunChanges(now, runs)
+	d.listedRuns = slices.Clone(runs)
 	runs = slices.DeleteFunc(runs, func(run RunView) bool {
 		_, inFlight := d.flights[run.Slug]
 		return run.State == runStateDone && !inFlight

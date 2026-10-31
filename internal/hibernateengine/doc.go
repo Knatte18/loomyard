@@ -52,7 +52,7 @@
 //
 // The trigger wait reads the trigger and writes the reason it still waits into the request, so status shows it.
 // `now` fires at once.
-// `after` fires once the run is done or at the row after Land in any state; a run halted before Land keeps the wait going with the halt reason, and a status that is gone fails the request.
+// `after` fires once the run is past Land as `battenrecipe.PastLand` reads it, done or at the row after Land in any state; a run halted before Land keeps the wait going with the halt reason, and a status that is gone fails the request.
 // `after-all` fires once no run reads running, at once with none, and skips a listed slug whose status is missing.
 // The poll starts at one second, doubles to thirty seconds while the reason is unchanged and returns to one second when it changes.
 // Bound: the wait has no deadline, since the operator cancels a request whose run halted.

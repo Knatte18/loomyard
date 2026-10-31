@@ -298,3 +298,26 @@ func TestLandingDeps_TaskHasCommitsReadsTheTaskHeadAgainstTheParent(t *testing.T
 		}
 	})
 }
+
+// TestLandingDeps_RecordLandingWritesWhereTheDobbyReads asserts the RecordLanding seam of a pair writes the commit into the prime's scratch of the run named for that pair, where shedrun.ReadLandedCommit reads it.
+func TestLandingDeps_RecordLandingWritesWhereTheDobbyReads(t *testing.T) {
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPair(t, h, "task")
+	taskLocation, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("task"))
+	if err != nil {
+		t.Fatalf("lymcwd.ResolveWorktree(task) error = %v; want nil", err)
+	}
+	deps := landingDeps(taskLocation, shedrun.RecipeTapestry, websterengine.Geometry{}, "task", "main",
+		true, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(taskLocation), parentLockDeps(taskLocation, shedrun.SelfRunID, "", ""))
+
+	if err := deps.RecordLanding("abc123"); err != nil {
+		t.Fatalf("RecordLanding() error = %v; want nil", err)
+	}
+
+	got, err := shedrun.ReadLandedCommit(h.Location, "task")
+	if err != nil || got != "abc123" {
+		t.Errorf("ReadLandedCommit(prime, task) = %q, %v; want abc123, nil", got, err)
+	}
+}

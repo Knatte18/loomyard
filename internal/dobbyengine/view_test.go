@@ -153,6 +153,25 @@ func TestBuildView(t *testing.T) {
 			want: View{Alive: true, MaxRuns: 2, Runs: []ViewRun{}, Waiting: []WaitingTask{}},
 		},
 		{
+			name: "TheLandNoticeValueAndEachRequestShow",
+			mutate: func(in *ViewInput) {
+				in.Config.LandNotice = LandNoticePerTask
+				onBoard, remembered, plain := runningRun("on-board"), runningRun("remembered"), runningRun("plain")
+				in.Runs = []RunView{onBoard, remembered, plain}
+				in.Record.LandNotices = map[string]LandNoticeState{"remembered": {Requested: true}, "plain": {}}
+				asking := readyTask("asking")
+				asking.NotifyOnLand = true
+				running := "running · Run-Shed"
+				in.Tasks = []TaskView{{Slug: "on-board", Kind: "task", Status: &running, NotifyOnLand: true}, asking}
+				in.Config.MaxRuns = 4
+			},
+			want: View{Alive: true, MaxRuns: 4, LandNotice: LandNoticePerTask, Runs: []ViewRun{
+				{Slug: "on-board", State: runStateRunning, Producer: producerRunShed, NotifyOnLand: true},
+				{Slug: "plain", State: runStateRunning, Producer: producerRunShed},
+				{Slug: "remembered", State: runStateRunning, Producer: producerRunShed, NotifyOnLand: true},
+			}, Waiting: []WaitingTask{{Slug: "asking", NotifyOnLand: true}}},
+		},
+		{
 			name:   "ADeadDobbyReadsNotAlive",
 			mutate: func(in *ViewInput) { in.Alive = false },
 			want:   View{MaxRuns: 2, Runs: []ViewRun{}, Waiting: []WaitingTask{}},
