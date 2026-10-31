@@ -142,12 +142,13 @@ func newDarnDecisionFake(t *testing.T) *decisionFake {
 
 func (f *decisionFake) deps() decisionDeps {
 	return decisionDeps{
-		strandName:    f.strandName,
-		programName:   func() (string, error) { return "hub:LOOM", f.programNameErr },
-		parent:        func() (hubgeom.Parent, error) { return f.parent, f.parentErr },
-		arbiterStrand: func(name string) bool { return name == f.arbiterName },
-		readStatus:    func() (shedengine.Status, bool, error) { return f.status, f.found, f.statusErr },
-		recordPath:    f.path,
+		strandName:     f.strandName,
+		programName:    func() (string, error) { return "hub:LOOM", f.programNameErr },
+		parent:         func() (hubgeom.Parent, error) { return f.parent, f.parentErr },
+		arbiterStrand:  func(name string) bool { return name == f.arbiterName },
+		readStatus:     func() (shedengine.Status, bool, error) { return f.status, f.found, f.statusErr },
+		recordPath:     f.path,
+		recordUnderLym: "discussion/decision-record.md",
 		append: func(ds []discussionparser.AddedDecision) ([]discussionparser.Finding, error) {
 			f.appends++
 			f.lastBatch = ds

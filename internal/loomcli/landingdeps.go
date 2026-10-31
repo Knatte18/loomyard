@@ -252,7 +252,7 @@ func landingDeps(
 			return f.MergeBase(ref)
 		},
 		MergeRecordPath:    landingshed.MergeRecordPath(loomengine.LoomScratchDir(l)),
-		DecisionRecordPath: loomengine.DiscussionDecisionRecord(l),
+		DecisionRecordPath: runRecordOf(l, recipe).path,
 		PlanDir:            fixerPlanDir(l, recipe),
 		LineChange: func(from, to string) (fabricengine.LineChange, error) {
 			f, err := fabricengine.Open(l)
@@ -294,7 +294,6 @@ func pullRequestDeps(l *lymcwd.Location, parentBranch string, pushSkipped bool, 
 		RecordLockPath: shedrun.PullRequestRecordLock(l, shedrun.SelfRunID),
 		ParentMode:     parentPullRequestMode(l),
 		Sessions:       runner,
-		BoardEntryPath: loomengine.DiscussionBoardEntry(l),
 		EntryField: func() (string, error) {
 			board, err := boardengine.OpenHub(l.HubPath)
 			if err != nil {

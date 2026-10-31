@@ -47,8 +47,6 @@ type Deps struct {
 	DobbyLive func() (bool, error)
 	// Recheck returns the blockers the landing re-check finds, empty when it passes.
 	Recheck func() ([]string, error)
-	// WriteSnapshot writes the snapshot the perch compares against.
-	WriteSnapshot func() error
 	// Notify posts one line to the beam's own orch.
 	Notify func(line string) error
 	// Down takes the beam's dobby and orch down.

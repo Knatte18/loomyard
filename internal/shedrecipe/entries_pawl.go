@@ -31,7 +31,6 @@ func requirePawl(entry string, deps pawlengine.Deps, fields ...string) error {
 		"StartDobby":            deps.StartDobby,
 		"DobbyLive":             deps.DobbyLive,
 		"Recheck":               deps.Recheck,
-		"WriteSnapshot":         deps.WriteSnapshot,
 		"Notify":                deps.Notify,
 		"Down":                  deps.Down,
 		"Now":                   deps.Now,
@@ -77,7 +76,7 @@ func beamAwaitEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduc
 	}
 	fields := append(append([]string{}, pawlPathFields...),
 		"Slug", "RunID", "SetStatus", "EntryProducer", "OwnedElsewhere", "StopDobby", "StartDobby",
-		"DobbyLive", "Recheck", "WriteSnapshot", "Notify", "Now", "Sleep")
+		"DobbyLive", "Recheck", "Notify", "Now", "Sleep")
 	if err := requirePawl("BeamAwait", env.Pawl, fields...); err != nil {
 		return nil, err
 	}

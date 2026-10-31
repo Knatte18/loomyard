@@ -1,6 +1,6 @@
 //go:build tier0
 
-// recipekeys_test.go covers the recipe-keyed accessors: contract, served-by-loom, engines, record engine, verify source and retired rows.
+// recipekeys_test.go covers the recipe-keyed accessors: contract, engines, record engine, verify source and retired rows.
 
 package loomrecipe
 
@@ -19,7 +19,6 @@ func TestRecipeKeys(t *testing.T) {
 		name         string
 		recipe       string
 		wantLoom     bool
-		wantServed   bool
 		wantRecord   string
 		wantVerify   string
 		wantEngines  map[string]bool
@@ -30,7 +29,6 @@ func TestRecipeKeys(t *testing.T) {
 			name:       "Tapestry",
 			recipe:     shedrun.RecipeTapestry,
 			wantLoom:   true,
-			wantServed: true,
 			wantRecord: "DiscussionWrite",
 			wantVerify: "plan",
 			wantEngines: map[string]bool{
@@ -48,7 +46,6 @@ func TestRecipeKeys(t *testing.T) {
 			name:       "EmptyReadsAsTapestry",
 			recipe:     "",
 			wantLoom:   true,
-			wantServed: true,
 			wantRecord: "DiscussionWrite",
 			wantVerify: "plan",
 			wantEngines: map[string]bool{
@@ -64,17 +61,18 @@ func TestRecipeKeys(t *testing.T) {
 			name:        "Darn",
 			recipe:      shedrun.RecipeDarn,
 			wantLoom:    true,
-			wantServed:  true,
 			wantRecord:  "RecordWrite",
 			wantVerify:  "tree_scope",
 			wantEngines: map[string]bool{"DarnWrite": true, "RecordWrite": true, "PlanWrite": false},
 			wantRetired: map[string]string{"Darn": "Darn-Write"},
 		},
 		{
-			name:        "PawlIsServedButNotLoom",
+			name:        "Pawl",
 			recipe:      shedrun.RecipePawl,
-			wantServed:  true,
-			wantEngines: map[string]bool{"Implementer": false},
+			wantLoom:    true,
+			wantRecord:  "RecordWrite",
+			wantVerify:  "plan",
+			wantEngines: map[string]bool{"BeamAwait": true, "RecordWrite": true, "Bouncer": false, "Implementer": false},
 		},
 		{
 			name:        "BattenIsNeither",
@@ -96,10 +94,6 @@ func TestRecipeKeys(t *testing.T) {
 			gotLoom, err := IsLoom(tt.recipe)
 			if err != nil || gotLoom != tt.wantLoom {
 				t.Errorf("IsLoom(%q) = %v, %v; want %v, nil", tt.recipe, gotLoom, err, tt.wantLoom)
-			}
-			gotServed, err := ServedByLoom(tt.recipe)
-			if err != nil || gotServed != tt.wantServed {
-				t.Errorf("ServedByLoom(%q) = %v, %v; want %v, nil", tt.recipe, gotServed, err, tt.wantServed)
 			}
 			gotRecord, err := RecordEngine(tt.recipe)
 			if err != nil || gotRecord != tt.wantRecord {
@@ -126,12 +120,11 @@ func TestRecipeKeys(t *testing.T) {
 func assertRefusedByEveryAccessor(t *testing.T, recipe string) {
 	t.Helper()
 	_, errLoom := IsLoom(recipe)
-	_, errServed := ServedByLoom(recipe)
 	_, errHas := HasEngine(recipe, "Implementer")
 	_, errRecord := RecordEngine(recipe)
 	_, errVerify := VerifySource(recipe)
 	for accessor, err := range map[string]error{
-		"IsLoom": errLoom, "ServedByLoom": errServed, "HasEngine": errHas, "RecordEngine": errRecord, "VerifySource": errVerify,
+		"IsLoom": errLoom, "HasEngine": errHas, "RecordEngine": errRecord, "VerifySource": errVerify,
 	} {
 		if err == nil || !strings.Contains(err.Error(), recipe) {
 			t.Errorf("%s(%q) error = %v; want a refusal naming the recipe", accessor, recipe, err)

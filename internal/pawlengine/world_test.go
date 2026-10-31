@@ -42,8 +42,8 @@ type world struct {
 
 	blockers []string
 
-	recheckErr, stopErr, startErr, snapshotErr, notifyErr error
-	markErr, pushErr, workspaceErr                        error
+	recheckErr, stopErr, startErr, notifyErr error
+	markErr, pushErr, workspaceErr           error
 
 	events  []string
 	notices []string
@@ -169,8 +169,7 @@ func (w *world) deps() pawlengine.Deps {
 			w.dobbyReads++
 			return w.dobbyLive, nil
 		},
-		Recheck:       func() ([]string, error) { w.record("recheck"); return w.blockers, w.recheckErr },
-		WriteSnapshot: func() error { w.record("snapshot"); return w.snapshotErr },
+		Recheck: func() ([]string, error) { w.record("recheck"); return w.blockers, w.recheckErr },
 		Notify: func(line string) error {
 			w.mu.Lock()
 			defer w.mu.Unlock()

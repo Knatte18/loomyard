@@ -131,13 +131,6 @@ func pawlDeps(location *lymcwd.Location, slug string) (pawlengine.Deps, error) {
 			return dobbyengine.Live(geometry)
 		},
 		Recheck: func() ([]string, error) { return pawlRecheck(location, slug) },
-		WriteSnapshot: func() error {
-			if err := writeBoardEntrySnapshot(location); err != nil {
-				return err
-			}
-			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{loomengine.DiscussionDirRel()}, fmt.Sprintf("loom: board entry snapshot for %s", slug), fabricengine.EnvSyncOptions())
-			return err
-		},
 		Notify: func(line string) error {
 			_, err := orchcli.NotifyOrchAt(location, pawlProgram, line)
 			return err

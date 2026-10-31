@@ -118,8 +118,6 @@ func zeroEnvField(env Env, field string) Env {
 		env.Pawl.DobbyLive = nil
 	case "Pawl.Recheck":
 		env.Pawl.Recheck = nil
-	case "Pawl.WriteSnapshot":
-		env.Pawl.WriteSnapshot = nil
 	case "Pawl.Notify":
 		env.Pawl.Notify = nil
 	case "Pawl.Down":
@@ -218,7 +216,7 @@ func simpleEntryCases() []simpleEntryCase {
 			validatedFields: []string{
 				"Pawl.Paths.LandRequest", "Pawl.Paths.DobbyStopMarker", "Pawl.Paths.AwaitMarker", "Pawl.Slug", "Pawl.RunID",
 				"Pawl.SetStatus", "Pawl.EntryProducer", "Pawl.OwnedElsewhere", "Pawl.StopDobby", "Pawl.StartDobby", "Pawl.DobbyLive",
-				"Pawl.Recheck", "Pawl.WriteSnapshot", "Pawl.Notify", "Pawl.Now", "Pawl.Sleep",
+				"Pawl.Recheck", "Pawl.Notify", "Pawl.Now", "Pawl.Sleep",
 			},
 			unreadField: "Pawl.Down",
 		},

@@ -296,20 +296,17 @@ func (c *loomCLI) wireLightweight(location *lymcwd.Location, cwd string) error {
 	// exists to avoid.
 	c.env.AnchorPath = location.AnchorPath()
 	c.env.WorktreeRoot = location.WorktreePath()
-	c.env.DecisionRecordPath = loomengine.DiscussionDecisionRecord(location)
-	isLoom, err := loomrecipe.IsLoom(c.recipe)
-	if err != nil {
-		return err
+	record := runRecordOf(location, c.recipe)
+	c.env.DecisionRecordPath = record.path
+	// A task run takes its record's PATTERN declarations; a beam's project record declares none of its own.
+	if !record.project {
+		c.env.PatternRecordPath = record.path
 	}
-	// A loom recipe takes the record's PATTERN declarations; a pawl run takes none.
-	if isLoom {
-		c.env.PatternRecordPath = loomengine.DiscussionDecisionRecord(location)
-	}
-	c.env.SupportLogPath = loomengine.DiscussionSupportLog(location)
+	c.env.SupportLogPath = record.supportLog
 	c.env.RelevantPath = loomengine.DiscussionRelevant(location)
 	c.env.DescriptionPath = summaryparser.Path(loomengine.LandingDir(location))
 	c.env.Rework.ReadCommitted = committedAnchoredReader(location)
-	c.env.DiscussionHistory = discussionHistory(location)
+	c.env.DiscussionHistory = recordHistory(location, record)
 	recordEngine, err := loomrecipe.RecordEngine(c.recipe)
 	if err != nil {
 		return err
@@ -365,13 +362,13 @@ func commitDescription(location *lymcwd.Location) error {
 	return err
 }
 
-// recordWriteDeps returns the Record-Write row's deps for location's worktree: the record, support log and discussion paths, the run's board entry body, and the discussion commit.
+// recordWriteDeps returns the Record-Write row's deps for location's worktree: record's paths, the run's board entry body, and record's commit.
 // Building it opens nothing: the board is read on each call.
-func recordWriteDeps(l *lymcwd.Location) loomshed.RecordWriteDeps {
+func recordWriteDeps(l *lymcwd.Location, record runRecord) loomshed.RecordWriteDeps {
 	return loomshed.RecordWriteDeps{
-		RecordPath:     loomengine.DiscussionDecisionRecord(l),
-		SupportLogPath: loomengine.DiscussionSupportLog(l),
-		DiscussionDir:  loomengine.DiscussionDir(l),
+		RecordPath:     record.path,
+		SupportLogPath: record.supportLog,
+		DiscussionDir:  record.dir,
 		ReadBody: func() (string, bool, error) {
 			board, err := boardengine.OpenHub(l.HubPath)
 			if err != nil {
@@ -383,15 +380,7 @@ func recordWriteDeps(l *lymcwd.Location) loomshed.RecordWriteDeps {
 			}
 			return task.Body, found, nil
 		},
-		Commit: func() error { return commitDiscussion(l) },
-	}
-}
-
-// discussionHistory returns the seam that reads every committed version of location's decision record, newest first.
-// Building it opens nothing: the fabric is read on each call.
-func discussionHistory(location *lymcwd.Location) func() ([][]byte, error) {
-	return func() ([][]byte, error) {
-		return fabricengine.CommittedAnchoredFileHistory(location, loomengine.DiscussionDecisionRecordRel())
+		Commit: func() error { return commitRunRecord(l, record) },
 	}
 }
 
@@ -530,14 +519,11 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
-	// A loom recipe's review rows are told the record, so the Code-Review perch checks its declared PATTERN changes landed; a pawl run takes no PATTERN declaration and is told none.
-	isLoom, err := loomrecipe.IsLoom(c.recipe)
-	if err != nil {
-		return err
-	}
+	// A task run's review rows are told the record, so the Code-Review perch checks its declared PATTERN changes landed; a beam's project record declares none of its own and is told to none.
+	record := runRecordOf(location, c.recipe)
 	patternRecordPath := ""
-	if isLoom {
-		patternRecordPath = loomengine.DiscussionDecisionRecord(location)
+	if !record.project {
+		patternRecordPath = record.path
 	}
 	burlerGeom.PatternRecordPath = patternRecordPath
 	burlerEngine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, lensesCfg, websterGeom.StencilsDir, frictionDir, languageSkills)
@@ -643,9 +629,9 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		TierTags:           tierTags,
 		StatusPath:         statusPath,
 		StatusLockPath:     statusLockPath,
-		DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
+		DecisionRecordPath: record.path,
 		PatternRecordPath:  patternRecordPath,
-		SupportLogPath:     loomengine.DiscussionSupportLog(location),
+		SupportLogPath:     record.supportLog,
 		RelevantPath:       loomengine.DiscussionRelevant(location),
 		ParentName:         c.parentName,
 		// NotifyParent names the run first, since the orch reads the notices of every run of the hub.
@@ -689,7 +675,11 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		// Nothing compares it against the mode a live run was started with:
 		// the resume decision is made purely on live-agent evidence, so flipping the key between a crash and a resume is permitted and benign -- it means only that the next spawn is interviewed differently.
 		DiscussionTable: func() (seatengine.Table, error) {
-			return loomengine.DiscussionTable(location, fabricengine.ConfigDirs(location), websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry, seedSlug(location.WorktreeName))
+			table, err := loomengine.DiscussionTable(location, fabricengine.ConfigDirs(location), websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry, seedSlug(location.WorktreeName))
+			if err != nil {
+				return seatengine.Table{}, err
+			}
+			return withProjectDirective(table, location, websterGeom.StencilsDir)
 		},
 		// CommitDiscussion mirrors the seed commit start.go already performs, including its
 		// NewMutations("") record and its EnvSyncOptions(). The pathspec is the whole discussion
@@ -702,10 +692,10 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		// the row's commit_seam: discussion config key.
 		CommitDiscussion: func() error { return commitDiscussion(location) },
 		// DiscussionHistory and RecordEngine are filled for every recipe: the "discussion" gate and Darn-Write's guard check the record against its history, and the record row's engine selects the citation checks.
-		DiscussionHistory: discussionHistory(location),
+		DiscussionHistory: recordHistory(location, record),
 		RecordEngine:      recordEngine,
 		// RecordWrite is filled for every recipe: only a recipe with a RecordWrite row reads it, and it opens the board on a call, never at wire time.
-		RecordWrite: recordWriteDeps(location),
+		RecordWrite: recordWriteDeps(location, record),
 		// DescriptionPath is the change description Describe writes and its gate and the landing
 		// rows read.
 		DescriptionPath: summaryparser.Path(loomengine.LandingDir(location)),
@@ -887,23 +877,19 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		}
 	}
 
-	// A pawl run's description row reads the beam's board entry and its commits over the parent, with no agent, and its Go rows are told the hub seams of the beam's life.
-	if c.recipe == shedrun.RecipePawl {
+	// A beam run's description row reads the beam's board entry, its project record and its commits over the parent, with no agent, and its Go rows are told the hub seams of the beam's life.
+	if record.project {
 		parentBranch, err := beamParentBranch(location)
 		if err != nil {
 			return err
 		}
 		slug := seedSlug(location.WorktreeName)
-		c.env.BeamDescribe = beamDescribeDeps(location, slug, parentBranch)
+		c.env.BeamDescribe = beamDescribeDeps(location, slug, parentBranch, record.path)
 		pawl, err := pawlDeps(location, slug)
 		if err != nil {
 			return err
 		}
 		c.env.Pawl = pawl
-		// The perch's CIRCLING Reason names the budget the pawl routing applies.
-		c.env.SegmentBounces = segmentBounces(statusPath, statusLockPath, func() (shedengine.Routing, error) {
-			return loomrecipe.PawlRouting(loomSegmentBudgets(loomCfg))
-		})
 	}
 
 	c.location = location

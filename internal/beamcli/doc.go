@@ -25,7 +25,7 @@
 //     A run in flight, a batten status file not done, is reported live and starts nothing; a flagged beam with no run status, or a legacy beam with a marked pair and no pawl run, gets its pawl run.
 //     A first pass whose envelope is not ok, such as one a covering pause refused, is the verb's error carrying the envelope's error and leaves no run.
 //
-// The verb makes, marks and pushes no pair itself: the run's Worktree-Create makes the pair from the parent beam, unmarked, at the anchor the run's seed records, and its Beam-Up marks it and starts the beam's dobby and orch.
+// The verb makes, marks and pushes no pair itself: the run's Worktree-Create makes the pair from the parent beam, unmarked, at the anchor the run's seed records, its Record-Write writes the project record from the entry's body, and its Beam-Up marks the pair and starts the beam's dobby and orch.
 // `--anchor <dir>` is recorded in the seed's `anchor` param on the first pass only, so it rides in the run record and a resume keeps it.
 // A first pass a covering pause refused leaves no run, and the same `lym beam create <slug> [--anchor <dir>]` after the lift starts it; a flagged beam left by a first pass that died takes the same `--anchor` again, since its anchor reached no run record.
 // Dobby never starts a beam project, so only this verb, a hand pass or `lym adopt` starts or resumes its run.

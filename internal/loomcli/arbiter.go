@@ -120,6 +120,7 @@ func (c *loomCLI) arbiterDepsFor() (shedarbiter.Deps, error) {
 	}
 	location := c.location
 	runID := shedrun.ResolveRunID(location, c.runID)
+	record := runRecordOf(location, c.recipe)
 	planApproved := planApprovedReader(location.AnchorPath())
 	reviewsDir := loomengine.LoomReviewsDir(location)
 	bouncerRunDir := func(producer string) (string, bool, error) {
@@ -150,8 +151,8 @@ func (c *loomCLI) arbiterDepsFor() (shedarbiter.Deps, error) {
 			Recipe:             arbiterRecipeDescription(c.recipe),
 			Slug:               seedSlug(location.WorktreeName),
 			Worktree:           location.WorktreePath(),
-			DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
-			SupportLogPath:     loomengine.DiscussionSupportLog(location),
+			DecisionRecordPath: record.path,
+			SupportLogPath:     record.supportLog,
 		},
 		AmendmentTarget:    func() string { return arbiterAmendmentTarget(recipeTarget, planApproved) },
 		Shuttle:            sheddriver.RunnerShuttle{Runner: c.runner},

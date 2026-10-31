@@ -11,7 +11,7 @@
 // Beam-Await spawns no agent.
 // It holds the run until a land request naming this run passes the re-check, waking on a change in the request's directory and on a timer that starts at one second and doubles to one minute while idle.
 // An accepted request writes the status naming Parent-Align, so the landing hold stands, then writes the dobby-stop marker, stops the dobby and re-checks the beam through the told Recheck seam: its members and pairs, its owners and its ready record.
-// A passing re-check writes the snapshot and ends the row; a failing one lifts the hold again, restarts the dobby the marker says was stopped, removes the request and posts the blockers to the beam's orch.
+// A passing re-check ends the row; a failing one lifts the hold again, restarts the dobby the marker says was stopped, removes the request and posts the blockers to the beam's orch.
 // An await marker tells a re-entry from the first entry: a re-entry whose dobby is down (once until a re-entry sees it live, recorded in the marker), and a re-entry that finds the hold standing after a crash, post one notice naming `lym beam start` and `lym beam land`.
 // A beam another machine owns removes any request and yields, deciding nothing.
 //

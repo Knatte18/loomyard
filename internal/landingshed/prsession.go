@@ -151,11 +151,11 @@ func (p *PRReview) sessionSpec(rec pullrequest.Record) (shuttleengine.Spec, erro
 	}, nil
 }
 
-// runMaterial lists, one path per line, the decision record, plan directory and board entry snapshot the run has on disk.
+// runMaterial lists, one path per line, the decision record and plan directory the run has on disk.
 // The stencil needs a non-empty value, so a run with none of them lists that instead.
 func (p *PRReview) runMaterial() string {
 	var lines []string
-	for _, path := range []string{p.deps.DecisionRecordPath, p.deps.PlanDir, p.deps.PullRequest.BoardEntryPath} {
+	for _, path := range []string{p.deps.DecisionRecordPath, p.deps.PlanDir} {
 		if path == "" {
 			continue
 		}

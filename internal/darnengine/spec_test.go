@@ -123,6 +123,11 @@ func TestDarnSpec(t *testing.T) {
 			if err := table.Validate(in.StencilsDir); err != nil {
 				t.Fatalf("table.Validate() = %v; want nil", err)
 			}
+			// The loom wiring fills this marker blank for a pair under no beam, which only an Optional marker accepts.
+			table.Values["project_directive"] = ""
+			if err := table.Validate(in.StencilsDir); err != nil {
+				t.Errorf("table.Validate() with a blank project_directive = %v; want nil, the marker is optional", err)
+			}
 			if len(table.Seats) != 1 {
 				t.Fatalf("table has %d seats; want the lead alone", len(table.Seats))
 			}

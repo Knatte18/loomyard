@@ -38,18 +38,6 @@ func IsLoom(recipe string) (bool, error) {
 	return parsed.Contract == loomContract, nil
 }
 
-// ServedByLoom reports whether `lym loom` serves the named recipe: a recipe declaring `contract: loom`, or the pawl recipe.
-// Pawl is the single non-loom recipe `lym loom` still serves until it joins the loom contract; batten answers false.
-// An empty name reads as the tapestry recipe, and a name that selects no embedded recipe is refused.
-func ServedByLoom(recipe string) (bool, error) {
-	isLoom, err := IsLoom(recipe)
-	if err != nil {
-		return false, err
-	}
-
-	return isLoom || recipe == shedrun.RecipePawl, nil
-}
-
 // HasEngine reports whether some row of the named recipe runs the given engine.
 // An empty recipe name reads as the tapestry recipe, and a name that selects no embedded recipe is refused.
 func HasEngine(recipe, engine string) (bool, error) {

@@ -1,4 +1,4 @@
-// darnwiring.go holds the wiring only a darn run needs: the tree scope reader the darn recipe tells its verify gate, the verify source its landing producers read, the Darn-Write row's seams, the board entry snapshot a pawl run's Code-Review perch reads, the writer's Spec source, and the rename of retired darn rows in a run's status file.
+// darnwiring.go holds the wiring only a darn run needs: the tree scope reader the darn recipe tells its verify gate, the verify source its landing producers read, the Darn-Write row's seams, the writer's Spec source, and the rename of retired darn rows in a run's status file.
 // A tapestry run leaves all of it unwired, but shares the merge base readers `pairMergeBase` and `taskMergeBase` build.
 
 package loomcli
@@ -10,11 +10,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
@@ -163,7 +161,7 @@ func darnDeps(l *lymcwd.Location, runID string) loomshed.DarnDeps {
 			return loomshed.ValidateDiscussion(loomshed.DiscussionCheck{
 				RecordPath:     loomengine.DiscussionDecisionRecord(l),
 				SupportLogPath: loomengine.DiscussionSupportLog(l),
-				History:        discussionHistory(l),
+				History:        recordHistory(l, runRecordOf(l, shedrun.RecipeDarn)),
 			})
 		},
 	}
@@ -193,28 +191,6 @@ func (c *loomCLI) renameRetiredRows(renames map[string]string) error {
 	return nil
 }
 
-// writeBoardEntrySnapshot writes the snapshot of the board entry of location's pawl run, its beam project, to the discussion directory.
-// The snapshot is the Code-Review perch's answer key of a pawl run, kept apart from any decision record; the run's board lock keeps the entry's body and scope fixed from the point the snapshot is written.
-// A board that cannot be read, or holds no entry for the run, is refused.
-func writeBoardEntrySnapshot(location *lymcwd.Location) error {
-	board, err := boardengine.OpenHub(location.HubPath)
-	if err != nil {
-		return fmt.Errorf("loom: open the board to snapshot the run's entry: %w; way forward: fix the board, then hand off again", err)
-	}
-	slug := seedSlug(location.WorktreeName)
-	task, found, err := board.GetTask(slug)
-	if err != nil {
-		return fmt.Errorf("loom: read board entry %q to snapshot it: %w; way forward: fix the board, then hand off again", slug, err)
-	}
-	if !found {
-		return fmt.Errorf("loom: the board holds no entry %q to snapshot as the review's answer key; way forward: restore the entry with \"lym board upsert\", then hand off again", slug)
-	}
-	if err := fsx.AtomicWriteBytes(loomengine.DiscussionBoardEntry(location), darnengine.BoardEntrySnapshot(slug, task.Title, task.Brief, task.Body)); err != nil {
-		return fmt.Errorf("loom: write the board entry snapshot: %w", err)
-	}
-	return nil
-}
-
 // wireDarn fills the Env fields a darn run reads beyond the ones wire fills for every recipe.
 // It loads the hub-wide darn.yaml strictly, so start, run, step and resume refuse an absent or malformed file before any row builds.
 // A malformed tree_scope key is refused with the editor way forward instead of the hub reconcile one, since --set cannot remove a key the hub file holds.
@@ -241,7 +217,7 @@ func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, fri
 	})
 	c.env.Darn = darnDeps(location, c.runID)
 	c.env.DarnTable = func(told loomshed.DarnTold) (seatengine.Table, error) {
-		return darnengine.DarnTable(darnengine.DarnInputs{
+		table, err := darnengine.DarnTable(darnengine.DarnInputs{
 			StencilsDir:        stencilsDir,
 			SpecsDir:           specsDir,
 			WorktreeRoot:       location.WorktreePath(),
@@ -253,6 +229,10 @@ func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, fri
 			PriorWork:          told.PriorWork,
 			LanguageSkills:     c.languageSkills,
 		}, cfg, registry)
+		if err != nil {
+			return seatengine.Table{}, err
+		}
+		return withProjectDirective(table, location, stencilsDir)
 	}
 
 	return nil

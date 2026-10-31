@@ -52,6 +52,7 @@ func TestStencils_TopLevelMarkers(t *testing.T) {
 		{"bouncer-fragment-decide-capped", BouncerFragmentDecideCapped, []string{"slug"}},
 		{"bouncer-fragment-decision", BouncerFragmentDecision, []string{"blocking_findings", "decide_verbs", "decision_findings", "refusal", "slug"}},
 		{"pattern-fragment-changes", PatternFragmentChanges, []string{"pattern_change_list"}},
+		{"loom-directive-project-record", LoomDirectiveProjectRecord, []string{"project_records"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

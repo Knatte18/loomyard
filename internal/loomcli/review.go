@@ -56,7 +56,7 @@ func resolveReviewTarget(group, verb string, location *lymcwd.Location, slug str
 	}
 	recipe, err := d.seedRecipe(target)
 	if err != nil {
-		return nil, fmt.Errorf("loom: %s %s: read the run's seed: %w", group, verb, err)
+		return nil, fmt.Errorf("loom: %s %s: read the run's seed: %w; way forward: restore the run's seed, or begin the run again with `lym loom start`", group, verb, err)
 	}
 	switch serviceOfRecipe(recipe) {
 	case recipeNotLoom:

@@ -209,11 +209,11 @@ func TestNewDarn_Routing(t *testing.T) {
 		}
 	})
 
-	t.Run("New refuses the batten recipe naming NewPawl and lym shed", func(t *testing.T) {
+	t.Run("New refuses the batten recipe naming lym shed", func(t *testing.T) {
 		env, paths := testEnv(t)
 		_, err := New(shedrun.RecipeBatten, env, paths)
-		if err == nil || !strings.Contains(err.Error(), "NewPawl") || !strings.Contains(err.Error(), "lym shed") {
-			t.Errorf("New(batten) error = %v; want a refusal naming NewPawl and lym shed", err)
+		if err == nil || !strings.Contains(err.Error(), "lym shed") {
+			t.Errorf("New(batten) error = %v; want a refusal naming lym shed", err)
 		}
 	})
 

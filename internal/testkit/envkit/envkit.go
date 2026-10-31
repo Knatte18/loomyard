@@ -215,7 +215,6 @@ func LandingDeps(dir string) landingshed.Deps {
 			Sessions:        noopSessions{},
 			SessionLive:     func(string) (bool, error) { return false, nil },
 			RegisterSession: func(string) error { return nil },
-			BoardEntryPath:  filepath.Join(dir, "landing-scratch", "board-entry.md"),
 		},
 	}
 }
@@ -348,11 +347,12 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		},
 		CommitDescription: func() error { return nil },
 		BeamDescribe: landingshed.BeamDescribeDeps{
-			Slug:            "demo",
-			DescriptionPath: filepath.Join(dir, "beam-description.md"),
-			Entry:           func() (string, string, error) { return "Title", "Brief", nil },
-			CommitSubjects:  func() ([]string, error) { return nil, nil },
-			Commit:          func() error { return nil },
+			Slug:             "demo",
+			DescriptionPath:  filepath.Join(dir, "beam-description.md"),
+			ProjectDecisions: func() ([]string, error) { return nil, nil },
+			Entry:            func() (string, string, error) { return "Title", "Brief", nil },
+			CommitSubjects:   func() ([]string, error) { return nil, nil },
+			Commit:           func() error { return nil },
 		},
 		Pawl: pawlengine.Deps{
 			Slug:  "demo",
@@ -373,7 +373,6 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			StartDobby:          func() error { return nil },
 			DobbyLive:           func() (bool, error) { return false, nil },
 			Recheck:             func() ([]string, error) { return nil, nil },
-			WriteSnapshot:       func() error { return nil },
 			Notify:              func(string) error { return nil },
 			Down:                func() error { return nil },
 			Now:                 time.Now,

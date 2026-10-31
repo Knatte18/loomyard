@@ -16,9 +16,9 @@
 // PR-Review's Stuck is always a Halt, so it carries no on_stuck, and Finalize's reroute names Parent-Align.
 // The darn recipe reads `Preflight → Record-Write → Drift-Baseline → Drift-Await → Darn-Write → Drift-Verify → Code-Review → Describe → PR-Review → Finalize → Friction-Reflect`, with no Parent-Align, and Finalize's reroute names Code-Bouncer.
 // Every Drift row carries the entry gate `drift.enabled`, so a hub that leaves regression off records each of them skipped.
-// Its Code-Review rows are loom's, with the same names, segment, rubric and `loom.yaml` keys; only their answer key differs, the board entry snapshot and the decision record in place of the record and the plan.
+// Its Code-Review rows are loom's, with the same names, segment, rubric and `loom.yaml` keys; only their answer key differs, the decision record alone in place of the record and the plan.
 //
-// New and Routing take the recipe name and serve every embedded loom recipe; New builds it and Routing projects its routing.
+// New and Routing take the recipe name and serve every embedded loom recipe, tapestry, darn and pawl; New builds it and Routing projects its routing.
 // The darn recipe's verify budget is not declared in it: when a recipe's build row runs the DarnWrite engine, New stamps shedrecipe.Env.DarnVerifyAttempts, the `verify_attempts` of `darn.yaml`, onto the verify gates of that row and of the Code-Review segment's fix row at every build and refuses a value below 1.
 // Nor is the bounce budget of the darn perch: New takes it from shedrecipe.Env.Segments["Code-Review"], whose budget is the Code-Review perch's resolved soft cap from `loom.yaml`, and Routing from a map keyed by segment, and both set it on the perch's rows and refuse a missing Code-Review entry and a value below 0.
 // A budget of 0 turns the perch off as loom's does: New stamps `zero_rounds` on Code-Bouncer, which settles approved at once on both `Drift-Verify`'s Done and `Finalize`'s reroute, and every edge is kept.
@@ -26,20 +26,16 @@
 // RetiredRows keeps each recipe's retired row names as that recipe's data: the writer row's former name, `Darn`, maps onto `Darn-Write`, and the landing row's former name, `Merge-In`, onto `Parent-Align`, with the entry row's former names, `Loom-Preflight` and `Tapestry-Preflight`, onto `Preflight`.
 // The caller carries a run parked under an old name across with shedengine.RenameProducers.
 //
-// NewPawl is the pawl recipe's own builder, since pawl is not a loom recipe: it builds the embedded pawl recipe, a beam's life, and PawlRouting projects that recipe's routing.
-// The recipe reads `Preflight → Beam-Up → Beam-Await → Parent-Align → Code-Review → Beam-Describe → PR-Review → Finalize → Beam-Down`, with no reroute edge:
-// a merge Finalize cannot land halts the run for the orch.
-// Its Code-Review perch is darn's, with the same names, segment, rubric and `loom.yaml` keys, the project entry's board snapshot as its only answer key and no carry-over.
-// NewPawl takes the perch's budget from shedrecipe.Env.Segments["Code-Review"], and PawlRouting from a map keyed by segment, as New and Routing do, and both refuse a missing Code-Review entry and a value below 0.
-// A budget of 0 stamps `zero_rounds` on Code-Bouncer, which settles approved at once, and Beam-Describe carries no entry gate, so it writes from the entry and the commits whatever the budget.
+// The pawl recipe, a beam's life, is a loom recipe New builds like the others.
+// It reads `Preflight → Record-Write → Beam-Up → Beam-Await → Parent-Align → Beam-Describe → PR-Review → Finalize → Beam-Down`, with no review segment and no reroute edge:
+// Record-Write writes the project record, Beam-Await is its build row, held while the members' runs work in the beam, and a merge Finalize cannot land halts the run for the orch.
 // A run at Parent-Align or any row after it holds its beam; before it the beam is free to start members.
 //
 // Rows and RowNames serve the tapestry, darn, batten and pawl recipes, and EntryNumbers numbers any recipe's rows for the panes that draw them:
 // a review segment is one entry and every other row its own, so a recipe added to Rows is numbered with no change to its readers.
 //
-// IsLoom, ServedByLoom, HasEngine, RecordEngine, VerifySource and RetiredRows answer a recipe's contract, engines, record engine, verify source and retired rows by recipe name, so a consumer reads the recipe's rows and keys instead of comparing its name.
+// IsLoom, HasEngine, RecordEngine, VerifySource and RetiredRows answer a recipe's contract, engines, record engine, verify source and retired rows by recipe name, so a consumer reads the recipe's rows and keys instead of comparing its name.
 // An empty recipe name reads as the tapestry recipe, and a name that selects no embedded recipe is refused.
-// ServedByLoom is the one place that names pawl as the single non-loom recipe `lym loom` still serves.
 //
 // AmendmentTarget answers the optional `amendment_target` key of the tapestry, darn, batten or pawl recipe: the row a plan amendment routes to, empty when the recipe sets none.
 //

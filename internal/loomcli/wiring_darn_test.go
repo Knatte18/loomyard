@@ -1,6 +1,6 @@
 //go:build tier0
 
-// wiring_darn_test.go covers the wiring a darn run adds to wire: the darn seams, the verify source and attempts, the perch's settings taken from loom.yaml's Code-Review keys, the board entry snapshot its discussion commit writes, the early refusals of a malformed or absent darn.yaml, the routing per recipe, the rename of retired darn rows when a verb arms, and the Darn-Write row's status and failure-record seams.
+// wiring_darn_test.go covers the wiring a darn run adds to wire: the darn seams, the verify source and attempts, the perch's settings taken from loom.yaml's Code-Review keys, the early refusals of a malformed or absent darn.yaml, the routing per recipe, the rename of retired darn rows when a verb arms, and the Darn-Write row's status and failure-record seams.
 // Every test is Tier 1: wire resolves no cwd and spawns no process over a hand-built hub.
 
 package loomcli
@@ -12,19 +12,16 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
-	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 )
 
@@ -154,24 +151,6 @@ func TestWire_DarnRecipe(t *testing.T) {
 		}
 		if command, err := c.env.VerifyCommand("finalize"); err != nil || command != wantDarnLandingCall {
 			t.Errorf("c.env.VerifyCommand(finalize) = %q, %v; want the landing call %q, nil", command, err, wantDarnLandingCall)
-		}
-	})
-
-	t.Run("the discussion commit seam writes no board entry snapshot", func(t *testing.T) {
-		t.Parallel()
-		loc := hubLocation(t, "pair", ".")
-		seedDarnHubConfig(t, loc.HubPath, "3")
-		writeHubGateConfig(t, loc.HubPath, gateConfigWithTwoTiers())
-		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
-		if err := c.wire(loc, loc.AnchorPath()); err != nil {
-			t.Fatalf("wire() = %v; want nil", err)
-		}
-		// The hub holds no board entry, so a seam that wrote the snapshot would refuse naming it; the commit's own outcome is not this subtest's subject.
-		if err := c.env.CommitDiscussion(); err != nil && strings.Contains(err.Error(), "snapshot") {
-			t.Errorf("c.env.CommitDiscussion() = %v; want no board entry snapshot step", err)
-		}
-		if _, err := os.Stat(loomengine.DiscussionBoardEntry(loc)); !os.IsNotExist(err) {
-			t.Errorf("Stat(board-entry.md) = %v; want the darn commit seam to write none", err)
 		}
 	})
 
@@ -395,7 +374,7 @@ func TestRecipeRouting(t *testing.T) {
 		{shedrun.RecipeTapestry, loomshed.NameParentAlign, loomshed.NameDarnWrite},
 		{"", loomshed.NameParentAlign, loomshed.NameDarnWrite},
 		{shedrun.RecipeDarn, loomshed.NameDarnWrite, loomshed.NameParentAlign},
-		{shedrun.RecipePawl, "Beam-Describe", loomshed.NameDarnWrite},
+		{shedrun.RecipePawl, "Beam-Describe", loomshed.NameCodeBouncer},
 	}
 	for _, tt := range tests {
 		t.Run("recipe "+tt.recipe, func(t *testing.T) {
@@ -409,53 +388,12 @@ func TestRecipeRouting(t *testing.T) {
 			rows := map[string]bool{}
 			for _, p := range routing.Producers {
 				rows[p.Name] = true
-				if tt.recipe == shedrun.RecipePawl && p.Name == loomshed.NameCodeBouncer && p.MaxBounces != 3 {
-					t.Errorf("a pawl run's Code-Bouncer MaxBounces = %d; want the Code-Review budget 3", p.MaxBounces)
-				}
 			}
 			if !rows[tt.wantRow] || rows[tt.absent] {
 				t.Errorf("recipeRouting() rows = %v; want %q and not %q", rows, tt.wantRow, tt.absent)
 			}
 		})
 	}
-}
-
-// TestWriteBoardEntrySnapshot pins that a pawl run's snapshot holds the beam project's board entry, and that an entry the board lacks is refused with nothing written.
-// It sets the board skip variables, which are process-global, so it does not call t.Parallel.
-func TestWriteBoardEntrySnapshot(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-	t.Setenv("BOARD_SKIP_PUSH", "1")
-
-	t.Run("a pawl run's beam project entry is written", func(t *testing.T) {
-		location := &lymcwd.Location{HubPath: boardkit.HubWithBoardConfig(t), WorktreeName: "a-beam", AnchorRel: "."}
-		// A board write cannot make a beam, so the entry is written to the board file directly.
-		board := `{"version":1,"entries":[{"id":0,"slug":"a-beam","title":"A beam","kind":"project","labels":["bug"],"beam":true,"brief":"Land the members.","body":"## Idea\n\nOne beam."}]}`
-		if err := os.WriteFile(filepath.Join(fabricengine.BoardDir(location.HubPath), "board.json"), []byte(board), 0o644); err != nil {
-			t.Fatalf("write board.json: %v", err)
-		}
-
-		if err := writeBoardEntrySnapshot(location); err != nil {
-			t.Fatalf("writeBoardEntrySnapshot() = %v; want nil", err)
-		}
-		got, err := os.ReadFile(loomengine.DiscussionBoardEntry(location))
-		if err != nil {
-			t.Fatalf("read the snapshot: %v", err)
-		}
-		if want := darnengine.BoardEntrySnapshot("a-beam", "A beam", "Land the members.", "## Idea\n\nOne beam."); string(got) != string(want) {
-			t.Errorf("snapshot = %q; want %q", got, want)
-		}
-	})
-
-	t.Run("an entry the board lacks is refused with the way forward", func(t *testing.T) {
-		location := &lymcwd.Location{HubPath: boardkit.HubWithBoardConfig(t), WorktreeName: "no-entry", AnchorRel: "."}
-		err := writeBoardEntrySnapshot(location)
-		if err == nil || !strings.Contains(err.Error(), `"no-entry"`) || !strings.Contains(err.Error(), "lym board upsert") {
-			t.Errorf("writeBoardEntrySnapshot() = %v; want a refusal naming the slug and lym board upsert", err)
-		}
-		if _, statErr := os.Stat(loomengine.DiscussionBoardEntry(location)); !os.IsNotExist(statErr) {
-			t.Errorf("snapshot stat = %v; want no file written", statErr)
-		}
-	})
 }
 
 func TestLatestDarnOutcome(t *testing.T) {

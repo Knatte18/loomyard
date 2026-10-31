@@ -51,7 +51,6 @@ func validPawlDeps(dir string) pawlengine.Deps {
 		StartDobby:          noop,
 		DobbyLive:           func() (bool, error) { return false, nil },
 		Recheck:             func() ([]string, error) { return nil, nil },
-		WriteSnapshot:       noop,
 		Notify:              func(string) error { return nil },
 		Down:                noop,
 		Now:                 time.Now,

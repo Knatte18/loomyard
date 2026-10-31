@@ -44,11 +44,12 @@ func minimalEntries() map[string]minimalEntry {
 			env: func(t *testing.T) Env {
 				env := newTestEnv(t)
 				env.BeamDescribe = landingshed.BeamDescribeDeps{
-					Slug:            "demo",
-					DescriptionPath: filepath.Join(t.TempDir(), "summary.md"),
-					Entry:           func() (string, string, error) { return "Title", "Brief", nil },
-					CommitSubjects:  func() ([]string, error) { return nil, nil },
-					Commit:          func() error { return nil },
+					Slug:             "demo",
+					DescriptionPath:  filepath.Join(t.TempDir(), "summary.md"),
+					ProjectDecisions: func() ([]string, error) { return nil, nil },
+					Entry:            func() (string, string, error) { return "Title", "Brief", nil },
+					CommitSubjects:   func() ([]string, error) { return nil, nil },
+					Commit:           func() error { return nil },
 				}
 				return env
 			},

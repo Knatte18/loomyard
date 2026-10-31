@@ -156,7 +156,7 @@ func DiscussionTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDi
 			"pattern_directive":    patternDirective,
 			friction.MarkerName:    frictionDirective,
 		},
-		Optional: []string{"pattern_directive", friction.MarkerName, twilldirective.MarkerName},
+		Optional: []string{"pattern_directive", ProjectDirectiveMarker, friction.MarkerName, twilldirective.MarkerName},
 		Seats:    append([]seatengine.Seat{lead}, seats...),
 	}, nil
 }

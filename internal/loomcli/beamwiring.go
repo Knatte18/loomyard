@@ -1,4 +1,4 @@
-// beamwiring.go holds the wiring only a beam run needs: the BeamDescribe row's seams, which read the beam's board entry and the commits it adds over its parent.
+// beamwiring.go holds the wiring only a beam run needs: the BeamDescribe row's seams, which read the beam's board entry, its project record and the commits it adds over its parent.
 
 package loomcli
 
@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -19,13 +20,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
-// beamDescribeDeps assembles the BeamDescribe row's seams for the beam pair at location, whose slug names its board entry and whose parentBranch is the branch it lands on.
+// beamDescribeDeps assembles the BeamDescribe row's seams for the beam pair at location, whose slug names its board entry, whose parentBranch is the branch it lands on and whose project record is at recordPath.
 // Every closure reads or writes on demand and opens nothing at build time.
 // An empty parentBranch, a pair with no origin record, is refused when the commit subjects are read.
-func beamDescribeDeps(location *lymcwd.Location, slug, parentBranch string) landingshed.BeamDescribeDeps {
+func beamDescribeDeps(location *lymcwd.Location, slug, parentBranch, recordPath string) landingshed.BeamDescribeDeps {
 	return landingshed.BeamDescribeDeps{
 		Slug:            slug,
 		DescriptionPath: summaryparser.Path(loomengine.LandingDir(location)),
+		ProjectDecisions: func() ([]string, error) {
+			return discussionparser.AddedDecisionTexts(recordPath)
+		},
 		Entry: func() (string, string, error) {
 			board, err := boardengine.OpenHub(location.HubPath)
 			if err != nil {

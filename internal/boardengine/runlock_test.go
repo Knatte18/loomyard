@@ -54,6 +54,8 @@ func TestRunLock(t *testing.T) {
 		unchanged bool
 		// beamRefusal requires a refused row to be the *BeamRunLockedError of a beam project whose run holds nothing.
 		beamRefusal bool
+		// recordRefusal requires a refused row to be the *ProjectRecordLockedError of a beam project whose run holds its project record.
+		recordRefusal bool
 	}{
 		{name: "upsert body", refused: true, act: upsertLocked(map[string]any{"body": "new"})},
 		{name: "upsert brief", refused: true, act: upsertLocked(map[string]any{"brief": "new"})},
@@ -137,7 +139,10 @@ func TestRunLock(t *testing.T) {
 		{name: "beam at Parent-Align refuses a title edit as a held entry does", refused: true, unknown: beamKey, locked: heldBeam("running · Parent-Align"), act: upsertLocked(map[string]any{"title": "new"})},
 		{name: "beam at Beam-Await takes a title edit", unknown: beamKey, locked: heldBeam(awaiting), act: upsertLocked(map[string]any{"title": "new"})},
 		{name: "beam at Beam-Await takes a brief edit", unknown: beamKey, locked: heldBeam(awaiting), act: upsertLocked(map[string]any{"brief": "new"})},
-		{name: "beam at Beam-Await takes a body edit", unknown: beamKey, locked: heldBeam(awaiting), act: upsertLocked(map[string]any{"body": "new"})},
+		{name: "beam at Preflight takes a body edit, before its project record", unknown: beamKey, locked: heldBeam("running · Preflight"), act: upsertLocked(map[string]any{"body": "new"})},
+		{name: "beam at Record-Write refuses a body edit", refused: true, recordRefusal: true, unknown: beamKey, locked: heldBeam("running · Record-Write"), act: upsertLocked(map[string]any{"body": "new"})},
+		{name: "beam at Beam-Await refuses a body edit", refused: true, recordRefusal: true, unknown: beamKey, locked: heldBeam(awaiting), act: upsertLocked(map[string]any{"body": "new"})},
+		{name: "beam blocked at Beam-Await refuses a body edit", refused: true, recordRefusal: true, unknown: beamKey, locked: heldBeam("blocked · Beam-Await"), act: upsertLocked(map[string]any{"body": "new"})},
 		{name: "beam at Beam-Await takes a labels edit", unknown: beamKey, locked: heldBeam(awaiting), act: upsertLocked(map[string]any{"labels": []string{"enhancement"}})},
 		{name: "beam blocked at Beam-Await takes an edit", unknown: beamKey, locked: heldBeam("blocked · Beam-Await"), act: upsertLocked(map[string]any{"title": "new"})},
 		{name: "beam at Beam-Await takes a member and its order", unknown: beamKey, locked: heldBeam(awaiting), act: func(b *boardengine.Board) error {
@@ -218,6 +223,21 @@ func TestRunLock(t *testing.T) {
 				t.Fatalf("err = %v, want ErrRunLocked", err)
 			}
 			status, _ := fields["status"].(string)
+			if tc.recordRefusal {
+				var recordErr *boardengine.ProjectRecordLockedError
+				if !errors.As(err, &recordErr) {
+					t.Fatalf("err = %v, want a *ProjectRecordLockedError", err)
+				}
+				for _, want := range []string{`"locked"`, status, "lym loom decision add locked"} {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("message %q lacks %q", err.Error(), want)
+					}
+				}
+				if string(after) != string(before) {
+					t.Error("board.json changed on a refused write")
+				}
+				return
+			}
 			if tc.beamRefusal {
 				var beamErr *boardengine.BeamRunLockedError
 				if !errors.As(err, &beamErr) {

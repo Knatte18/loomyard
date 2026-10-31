@@ -6,6 +6,7 @@
 package loomcli
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -65,6 +67,35 @@ func TestWire_BeamRecipe(t *testing.T) {
 		if got, want := c.env.Pawl.Slug, "pair"; got != want {
 			t.Errorf("c.env.Pawl.Slug = %q; want %q", got, want)
 		}
+
+		wantRecord := loomengine.ProjectDecisionRecord(loc, "pair")
+		if c.env.DecisionRecordPath != wantRecord || c.env.SupportLogPath != loomengine.ProjectSupportLog(loc, "pair") {
+			t.Errorf("c.env record = %q, support log = %q; want the project record %q and its support log", c.env.DecisionRecordPath, c.env.SupportLogPath, wantRecord)
+		}
+		if c.env.PatternRecordPath != "" {
+			t.Errorf("c.env.PatternRecordPath = %q; want none for a beam's project record", c.env.PatternRecordPath)
+		}
+		if got := c.env.RecordWrite; got.RecordPath != wantRecord || got.SupportLogPath != loomengine.ProjectSupportLog(loc, "pair") || got.DiscussionDir != loomengine.ProjectDir(loc, "pair") {
+			t.Errorf("c.env.RecordWrite = %q, %q, %q; want the project record, its support log and the project directory", got.RecordPath, got.SupportLogPath, got.DiscussionDir)
+		}
+		// A project record carries an added decision that the discussion directory lacks, so the BeamDescribe seam can only read it from the project path.
+		if err := os.MkdirAll(filepath.Dir(wantRecord), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(wantRecord), err)
+		}
+		added := "### Added after Discussion (orch, 2026-01-02): Keep the cache\n\nDecision: Keep it per run.\n"
+		if err := os.WriteFile(wantRecord, []byte("## Goal\n\n## Decisions\n\n"+added), 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v; want nil", wantRecord, err)
+		}
+		if got, err := c.env.BeamDescribe.ProjectDecisions(); err != nil || len(got) != 1 || !strings.Contains(got[0], "Keep the cache") {
+			t.Errorf("c.env.BeamDescribe.ProjectDecisions() = %q, %v; want the project record's one added decision", got, err)
+		}
+		arbiter, err := c.arbiterDepsFor()
+		if err != nil {
+			t.Fatalf("arbiterDepsFor() = %v; want nil", err)
+		}
+		if arbiter.Prompt.DecisionRecordPath != wantRecord || arbiter.Prompt.SupportLogPath != loomengine.ProjectSupportLog(loc, "pair") {
+			t.Errorf("arbiter prompt record = %q, support log = %q; want the project record %q and its support log", arbiter.Prompt.DecisionRecordPath, arbiter.Prompt.SupportLogPath, wantRecord)
+		}
 		if want := hubgeom.PawlPaths(loc); c.env.Pawl.Paths != want {
 			t.Errorf("c.env.Pawl.Paths = %+v; want %+v", c.env.Pawl.Paths, want)
 		}
@@ -92,7 +123,7 @@ func TestWire_BeamRecipe(t *testing.T) {
 				t.Errorf("row %q OnReroute = %q; want none", producer.Name, producer.OnReroute)
 			}
 		}
-		if want := []string{"Preflight", "Beam-Up", "Beam-Await", "Parent-Align", "Code-Bouncer", "Code-Burler-Review", "Code-Burler-Fix", "Beam-Describe", "PR-Review", "Finalize", "Beam-Down"}; strings.Join(rows, ",") != strings.Join(want, ",") {
+		if want := []string{"Preflight", "Record-Write", "Beam-Up", "Beam-Await", "Parent-Align", "Beam-Describe", "PR-Review", "Finalize", "Beam-Down"}; strings.Join(rows, ",") != strings.Join(want, ",") {
 			t.Errorf("recipeRouting() rows = %v; want %v", rows, want)
 		}
 	})
@@ -112,7 +143,7 @@ func TestWire_BeamRecipe(t *testing.T) {
 		}
 	})
 
-	t.Run("the landing deps of a pawl run halt a spent fixer, and only a tapestry or darn run judges an escalate first", func(t *testing.T) {
+	t.Run("the landing deps of a pawl run halt a spent fixer, and every loom run judges an escalate first", func(t *testing.T) {
 		t.Parallel()
 		loc := hubLocation(t, "pair", ".")
 		runner := &shuttleengine.Runner{}
@@ -127,7 +158,7 @@ func TestWire_BeamRecipe(t *testing.T) {
 		}{
 			{shedrun.RecipeTapestry, true, false, true},
 			{shedrun.RecipeDarn, true, false, true},
-			{shedrun.RecipePawl, false, true, false},
+			{shedrun.RecipePawl, false, true, true},
 		}
 		for _, tt := range tests {
 			deps := landingDeps(
@@ -155,6 +186,13 @@ func TestWire_BeamRecipe(t *testing.T) {
 			}
 			if deps.EscalateJudgedFirst != tt.wantEscalateJudgedFirst {
 				t.Errorf("%s: EscalateJudgedFirst = %v; want %v", tt.recipe, deps.EscalateJudgedFirst, tt.wantEscalateJudgedFirst)
+			}
+			wantRecord := loomengine.DiscussionDecisionRecord(loc)
+			if tt.recipe == shedrun.RecipePawl {
+				wantRecord = loomengine.ProjectDecisionRecord(loc, "pair")
+			}
+			if deps.DecisionRecordPath != wantRecord {
+				t.Errorf("%s: DecisionRecordPath = %q; want %q", tt.recipe, deps.DecisionRecordPath, wantRecord)
 			}
 			if tt.recipe == shedrun.RecipePawl {
 				if deps.TraceFailure != nil {

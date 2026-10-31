@@ -32,9 +32,8 @@ func TestShippedRecipes_LanguageSkillsOnCodeRounds(t *testing.T) {
 			wantRows: []string{"Code-Burler-Fix", "Code-Burler-Review"},
 		},
 		{
-			name:     "pawl",
-			data:     recipes.PawlRecipe,
-			wantRows: []string{"Code-Burler-Fix", "Code-Burler-Review"},
+			name: "pawl",
+			data: recipes.PawlRecipe,
 		},
 	}
 	for _, tt := range tests {

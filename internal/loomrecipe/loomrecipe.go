@@ -36,7 +36,7 @@ import (
 // It refuses a review segment with no env.Segments entry, naming the segment and the loom wiring's segment-to-perch table, and a negative budget, naming the segment, its MaxBouncesKey and ConfigFile.
 // The recipe declares no max_bounces on those rows; the budget comes from loom.yaml.
 //
-// New refuses a recipe that does not declare `contract: loom`, naming NewPawl and `lym shed` as the way forward.
+// New refuses a recipe that does not declare `contract: loom`, naming `lym shed` as the way forward.
 //
 // A recipe whose verify_source is tree_scope also takes env.DarnVerifyAttempts, the `verify_attempts` of `darn.yaml`:
 // New refuses a value below 1 and stamps it onto the verify gate of its build row and of the Code-Review segment's BurlerFix row at every build.
@@ -59,7 +59,7 @@ func New(recipe string, env shedrecipe.Env, paths shedbuild.ShedPaths) (*shedeng
 		return nil, err
 	}
 	if parsed.Contract != loomContract {
-		return nil, fmt.Errorf("loomrecipe: recipe %q does not declare contract: %s; way forward: build a pawl recipe with NewPawl, or drive any other recipe with \"lym shed\"", recipe, loomContract)
+		return nil, fmt.Errorf("loomrecipe: recipe %q does not declare contract: %s; way forward: drive the recipe with \"lym shed\"", recipe, loomContract)
 	}
 
 	gatedRows := verifyGatedRows(parsed)

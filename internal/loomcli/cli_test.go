@@ -418,7 +418,7 @@ func TestSpecFor_RestepHold(t *testing.T) {
 		{shedrun.RecipeTapestry, true, "Finalize", "a plain reason", false},
 		{shedrun.RecipeDarn, true, "Parent-Align", landingshed.EscalateStopPrefix + "the fixer needs a decision", true},
 		{shedrun.RecipeDarn, true, "Parent-Align", "a plain reason", false},
-		{shedrun.RecipePawl, false, "", "", false},
+		{shedrun.RecipePawl, true, "Finalize", landingshed.EscalateStopPrefix + "the fixer needs a decision", true},
 		{"", true, "Finalize", landingshed.EscalateStopPrefix + "the fixer needs a decision", true},
 	}
 	for _, tt := range tests {

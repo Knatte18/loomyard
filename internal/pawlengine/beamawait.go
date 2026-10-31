@@ -46,7 +46,6 @@ func NewBeamAwait(name string, deps Deps) (*BeamAwait, error) {
 		seam{"StartDobby", deps.StartDobby != nil},
 		seam{"DobbyLive", deps.DobbyLive != nil},
 		seam{"Recheck", deps.Recheck != nil},
-		seam{"WriteSnapshot", deps.WriteSnapshot != nil},
 		seam{"Notify", deps.Notify != nil},
 		seam{"Now", deps.Now != nil},
 		seam{"Sleep", deps.Sleep != nil},
@@ -265,7 +264,7 @@ func (r *awaitRun) accept(ctx context.Context) (awaitWake, error) {
 	return awaitWake{outcome: shedengine.Done, finished: true}, nil
 }
 
-// landChecks writes the dobby-stop marker, stops the dobby, runs the re-check and writes the snapshot.
+// landChecks writes the dobby-stop marker, stops the dobby and runs the re-check.
 // It returns the blockers, empty when the beam may land; a failed step is one blocker naming its error.
 func (r *awaitRun) landChecks() []string {
 	if err := writeMarker(r.deps.Paths.DobbyStopMarker, r.deps.Now()); err != nil {
@@ -280,9 +279,6 @@ func (r *awaitRun) landChecks() []string {
 	}
 	if len(blockers) > 0 {
 		return blockers
-	}
-	if err := r.deps.WriteSnapshot(); err != nil {
-		return []string{fmt.Sprintf("the snapshot could not be written: %v", err)}
 	}
 	return nil
 }

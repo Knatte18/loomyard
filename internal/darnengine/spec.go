@@ -109,7 +109,7 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 			"pattern_directive":    patternDirective,
 			friction.MarkerName:    frictionDirective,
 		},
-		Optional: []string{"pattern_directive", friction.MarkerName},
+		Optional: []string{"pattern_directive", "project_directive", friction.MarkerName},
 		Seats: []seatengine.Seat{{
 			Stencil:     darnStencilName,
 			ModelChoice: shuttleengine.NewModelChoice(resolved),

@@ -331,7 +331,7 @@ type Deps struct {
 }
 
 // PullRequestDeps carries the told seams the PR-Review row decides and opens the run's pull request through.
-// The row treats every field but BoardEntryPath as required and returns an error naming the first one left unset.
+// The row treats every field as required and returns an error naming the first one left unset.
 type PullRequestDeps struct {
 	// RecordPath is the run's pull-request record file, and RecordLockPath the advisory lock that guards it.
 	RecordPath     string
@@ -366,9 +366,6 @@ type PullRequestDeps struct {
 	SessionLive func(guid string) (bool, error)
 	// RegisterSession registers the process of the session's pane under the run, so a teardown ends it.
 	RegisterSession func(guid string) error
-	// BoardEntryPath is the run's snapshot of its task's board entry, listed in the session's prompt when it exists.
-	// Empty means the run keeps none.
-	BoardEntryPath string
 }
 
 // ParentOwnership is who owns the parent a run lands on.

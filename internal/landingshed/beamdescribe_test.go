@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// TestBeamDescribe asserts the beam description carries the entry's title, brief and one bullet per commit subject, cuts an over-long title, refuses an empty body naming the way out, returns a failed seam, and rewrites the same bytes on a re-run.
+// TestBeamDescribe asserts the beam description carries the entry's title, brief, one bullet per commit subject and the project record's added entries, cuts an over-long title, refuses an empty body naming the way out, returns a failed seam, and rewrites the same bytes on a re-run.
 func TestBeamDescribe(t *testing.T) {
 	t.Parallel()
 
@@ -26,8 +26,11 @@ func TestBeamDescribe(t *testing.T) {
 		title    string
 		brief    string
 		subjects []string
-		entryErr error
-		subjErr  error
+		// decisions are the project record's added entries the seam returns.
+		decisions []string
+		decErr    error
+		entryErr  error
+		subjErr   error
 		// wantFile is the exact description written; empty wants the call to fail.
 		wantFile string
 		// wantErr are the substrings the failure carries; a seam failure wants wantIs as well.
@@ -37,6 +40,15 @@ func TestBeamDescribe(t *testing.T) {
 		{
 			name: "TitleBriefAndTwoSubjects", title: "Ship the beam", brief: "Groups the work.", subjects: []string{"first change", "second change"},
 			wantFile: "# Ship the beam\n\nGroups the work.\n\n- first change\n- second change\n",
+		},
+		{
+			name: "ProjectDecisionsFollowTheSubjects", title: "Ship the beam", brief: "Groups the work.", subjects: []string{"first change"},
+			decisions: []string{"### Added after Discussion (parent, 2026-10-31): Narrow the scope\n\n- **Decision:** Drop the CLI half.\n- **Rationale:** It belongs to a later beam."},
+			wantFile:  "# Ship the beam\n\nGroups the work.\n\n- first change\n\n## Project decisions\n\n### Added after Discussion (parent, 2026-10-31): Narrow the scope\n\n- **Decision:** Drop the CLI half.\n- **Rationale:** It belongs to a later beam.\n",
+		},
+		{
+			name: "ProjectDecisionsSeamErrorIsReturned", title: "Ship the beam", brief: "Groups the work.", decErr: readErr,
+			wantErr: []string{"read the project record"}, wantIs: readErr,
 		},
 		{
 			name: "OverLongTitleIsCut", title: strings.Repeat("a", 80), brief: "Groups the work.",
@@ -66,11 +78,12 @@ func TestBeamDescribe(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "landing", "summary.md")
 			commits := 0
 			producer, err := NewBeamDescribe("Beam-Describe", BeamDescribeDeps{
-				Slug:            slug,
-				DescriptionPath: path,
-				Entry:           func() (string, string, error) { return tt.title, tt.brief, tt.entryErr },
-				CommitSubjects:  func() ([]string, error) { return tt.subjects, tt.subjErr },
-				Commit:          func() error { commits++; return nil },
+				Slug:             slug,
+				DescriptionPath:  path,
+				ProjectDecisions: func() ([]string, error) { return tt.decisions, tt.decErr },
+				Entry:            func() (string, string, error) { return tt.title, tt.brief, tt.entryErr },
+				CommitSubjects:   func() ([]string, error) { return tt.subjects, tt.subjErr },
+				Commit:           func() error { commits++; return nil },
 			})
 			if err != nil {
 				t.Fatalf("NewBeamDescribe() error = %v; want nil", err)

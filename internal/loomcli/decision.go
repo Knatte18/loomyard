@@ -16,6 +16,9 @@
 // After the commit the committed record must hold every appended entry, so an entry a displacing write lost is refused rather than reported.
 // Each refusal on such a record names the way forward by the run's current row.
 //
+// On a beam's run, whose recipe has a Beam-Await row, the record is the beam's project record, `lym loom decision add <beam-slug>` is the one way its scope changes once Record-Write wrote it, and the caller rule names the beam's own orch, the nearest live orch from the beam itself.
+// Its notice reaches the beam's live runs and every live run of the member pairs under the beam, since each member works under the project's scope.
+//
 // The verb never routes the run, never touches the support log or the plan, and an approved plan is not re-planned by it.
 //
 // Once the entries are committed, the verb sends one creel notice to each live shuttle run of the target worktree but the tackler's, the arbiter's and the caller's own, so the LLM agent working for the run acts on the call.
@@ -35,6 +38,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -51,6 +55,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -82,10 +87,8 @@ const (
 	decisionWayRecordStart     = `the record exists once Record-Write has run; way forward: run "lym loom start", then re-run the verb once the run passed Record-Write`
 	decisionWayRecordResume    = `the record exists once Record-Write has run; way forward: run "lym loom resume", then re-run the verb`
 	decisionWayRecordGoto      = `way forward: run "lym loom goto --to Record-Write", then "lym loom resume", then re-run the verb`
-	decisionWayRecordRestore   = `way forward: restore the record from HEAD with "git -C _lym checkout HEAD -- discussion/decision-record.md", then re-run the verb`
 	decisionWayUncommitted     = `way forward: run "lym loom resume", which commits the record and support log, then re-run the verb`
 	decisionWayUncommittedGoto = `way forward: run "lym loom goto --to Record-Write", then "lym loom resume", which commits the existing record and support log without overwriting them, then re-run the verb`
-	decisionWayDiffers         = `way forward: when the working record differs from the committed one only by the entries or PATTERN bullets a failed call's commit-failed refusal reported, run "lym fabric commit" under _lym, which records that call's entries, then re-run the refused call alone, never the failed one; otherwise restore the record to its committed copy with "git -C _lym checkout HEAD -- discussion/decision-record.md", then re-run the verb`
 	decisionWayEntryMissing    = `way forward: restore the entry and commit the record under _lym, then re-run the verb`
 
 	decisionWayFromAlone = `way forward: put every entry's fields in the --from file and drop --title, --decision, --rationale and the --pattern-* flags`
@@ -100,6 +103,16 @@ const (
 	decisionWayAmendsDarn      = `way forward: record the decision without --amends-plan`
 	decisionWayNoticeTooLong   = "way forward: shorten the decision or rationale, put the detail in a file and name that file in the entry"
 )
+
+// decisionWayRecordRestore is the way forward of a run past its record row whose record is missing from the working copy but committed at HEAD; underLym is the record's path inside _lym.
+func decisionWayRecordRestore(underLym string) string {
+	return fmt.Sprintf(`way forward: restore the record from HEAD with "git -C _lym checkout HEAD -- %s", then re-run the verb`, underLym)
+}
+
+// decisionWayDiffers is the way forward of a record whose working copy differs from its committed one; underLym is the record's path inside _lym.
+func decisionWayDiffers(underLym string) string {
+	return fmt.Sprintf(`way forward: when the working record differs from the committed one only by the entries or PATTERN bullets a failed call's commit-failed refusal reported, run "lym fabric commit" under _lym, which records that call's entries, then re-run the refused call alone, never the failed one; otherwise restore the record to its committed copy with "git -C _lym checkout HEAD -- %s", then re-run the verb`, underLym)
+}
 
 // errPlanUnparsed marks an approval read that failed because the plan does not parse, as opposed to one that failed reading a file.
 var errPlanUnparsed = errors.New("the plan does not parse")
@@ -240,6 +253,8 @@ type decisionDeps struct {
 	readStatus reviewStatusReader
 	// recordPath is the decision record the entry lands in, reported on the success envelope.
 	recordPath string
+	// recordUnderLym is the record's path inside the _lym directory, which a restore way forward names.
+	recordUnderLym string
 	// append adds every entry of ds to the decision record in one write and re-runs the discussion check, restoring the record on a finding or an error.
 	append func(ds []discussionparser.AddedDecision) ([]discussionparser.Finding, error)
 	// commit commits the discussion artifacts, the record included.
@@ -402,7 +417,7 @@ func checkDarnRecord(deps decisionDeps, currentRow string) (string, error) {
 		return "the decision record is not committed at HEAD; " + decisionWayUncommittedGoto, nil
 	}
 	if !bytes.Equal(working, committed) {
-		return "the decision record differs from its committed copy; " + decisionWayDiffers, nil
+		return "the decision record differs from its committed copy; " + decisionWayDiffers(deps.recordUnderLym), nil
 	}
 	versions, err := deps.history()
 	if err != nil {
@@ -429,7 +444,7 @@ func missingRecordRefusal(deps decisionDeps, currentRow string) (string, error) 
 		return "", err
 	}
 	if found {
-		return prefix + decisionWayRecordRestore, nil
+		return prefix + decisionWayRecordRestore(deps.recordUnderLym), nil
 	}
 	return prefix + decisionWayRecordGoto, nil
 }
@@ -827,8 +842,21 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	s.slug = target.WorktreeName
-	recordPath := loomengine.DiscussionDecisionRecord(target)
-	supportLogPath := loomengine.DiscussionSupportLog(target)
+	recipe, err := seedRecipe(target)
+	if err != nil {
+		output.Err(out, fmt.Sprintf("loom: %s %s: read the run's seed: %s; way forward: restore the run's seed, or begin the run again with `lym loom start`", decisionGroup, cmd.Name(), err))
+		clihelp.Abort(ctx, 1)
+		return nil
+	}
+	record := runRecordOf(target, recipe)
+	recordPath := record.path
+	supportLogPath := record.supportLog
+	recordUnderLym, err := filepath.Rel(lymdirs.LymDirName, record.rel)
+	if err != nil {
+		output.Err(out, err.Error())
+		clihelp.Abort(ctx, 1)
+		return nil
+	}
 	s.deps = decisionDeps{
 		strandName: os.Getenv(agentname.StrandNameEnv),
 		programName: func() (string, error) {
@@ -838,7 +866,7 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 			}
 			return agentname.FormatProgram(geometry.NameShortname, loomProgram)
 		},
-		parent: func() (hubgeom.Parent, error) { return orchcli.NearestLiveParent(target) },
+		parent: func() (hubgeom.Parent, error) { return decisionParent(target, record, orchcli.OrchLive) },
 		arbiterStrand: func(name string) bool {
 			geometry, err := hubgeom.ReedGeometry(target)
 			if err != nil {
@@ -847,12 +875,13 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 			parsed, err := agentname.Parse(name)
 			return err == nil && parsed.Shortname == geometry.NameShortname && parsed.Slug == geometry.NameSlug && loomengine.IsArbiterStrand(name)
 		},
-		readStatus: circlingStatusReader(shedrun.StatusFile(target, shedrun.SelfRunID), shedrun.StatusLock(target, shedrun.SelfRunID)),
-		recordPath: recordPath,
+		readStatus:     circlingStatusReader(shedrun.StatusFile(target, shedrun.SelfRunID), shedrun.StatusLock(target, shedrun.SelfRunID)),
+		recordPath:     recordPath,
+		recordUnderLym: filepath.ToSlash(recordUnderLym),
 		append: func(ds []discussionparser.AddedDecision) ([]discussionparser.Finding, error) {
 			return discussionparser.AppendDecisions(recordPath, supportLogPath, ds)
 		},
-		commit: func() error { return commitDiscussion(target) },
+		commit: func() error { return commitRunRecord(target, record) },
 		now:    time.Now,
 		hasPlan: func() (bool, error) {
 			recipe, err := seedRecipe(target)
@@ -871,11 +900,11 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 		},
 		readRecord: func() ([]byte, error) { return os.ReadFile(recordPath) },
 		committed: func() ([]byte, bool, error) {
-			return fabricengine.CommittedAnchoredFile(target, loomengine.DiscussionDecisionRecordRel())
+			return fabricengine.CommittedAnchoredFile(target, record.rel)
 		},
-		history: discussionHistory(target),
+		history: recordHistory(target, record),
 		liveStrands: func() ([]string, error) {
-			return liveRunStrands(target)
+			return decisionReceivers(target, record, liveRunStrands)
 		},
 		notify: func(receiver, line string) error {
 			return postDecisionNotice(decisionNoticeClients(target), os.Getenv(agentname.StrandNameEnv), receiver, line)
@@ -903,6 +932,45 @@ func seedRecipe(target *lymcwd.Location) (string, error) {
 		return "", err
 	}
 	return resolveSeedRecipe(seed, found), nil
+}
+
+// decisionParent resolves the orch that may record a decision on target's run.
+// A beam's project record is the beam's own orch's to change, the nearest live orch from the beam itself; any other record is the run's parent orch's, the nearest live one up from the run's parent.
+// orchLive reports whether a worktree's orch is live.
+func decisionParent(target *lymcwd.Location, record runRecord, orchLive func(*lymcwd.Location) (bool, error)) (hubgeom.Parent, error) {
+	if record.project {
+		parent, err := hubgeom.NearestLiveOrch(target, orchLive)
+		if err != nil {
+			return hubgeom.Parent{}, err
+		}
+		if parent.Name == "" {
+			return hubgeom.Parent{}, fmt.Errorf("the hub records no repo shortname, so the orch of the beam %s, the one session that may record on the project, cannot be named; way forward: run `lym fabric shortname <shortname>`", seedSlug(target.WorktreeName))
+		}
+		return parent, nil
+	}
+	return orchcli.NearestLiveParent(target)
+}
+
+// decisionReceivers returns the strand names of the live shuttle runs a decision on target's record reaches.
+// A project record reaches the beam's own runs and the runs of every member pair under the beam, since every member works under the project's scope; any other record reaches target's own runs.
+// runStrands reads the live strand names of one worktree.
+func decisionReceivers(target *lymcwd.Location, record runRecord, runStrands func(*lymcwd.Location) ([]string, error)) ([]string, error) {
+	strands, err := runStrands(target)
+	if err != nil || !record.project {
+		return strands, err
+	}
+	pairs, err := memberPairs(target, seedSlug(target.WorktreeName))
+	if err != nil {
+		return nil, err
+	}
+	for _, pair := range pairs {
+		member, err := runStrands(pair)
+		if err != nil {
+			return nil, err
+		}
+		strands = append(strands, member...)
+	}
+	return strands, nil
 }
 
 // liveRunStrands returns the strand names of the live shuttle runs of target's worktree, read through the registered engines.
@@ -986,7 +1054,10 @@ func (c *loomCLI) decisionCmd() *cobra.Command {
 ended is recorded in the decision record. "decision add" is the only verb.
 
 The verb takes an optional slug naming the task worktree. A task worktree
-addresses itself; from the prime the slug is required. It refuses a task
+addresses itself; from the prime the slug is required. On a beam,
+"decision add <beam-slug>" records a change of the project's scope in the
+beam's project record; the beam's own orch runs it, and its notice reaches
+the live agents of every member run under the beam. It refuses a task
 session's label: a caller whose reed strand name differs from the run's
 parent orch is refused, and the operator's own unnamed shell always passes.
 The one other caller is the run's own arbiter strand, which passes --by arbiter.

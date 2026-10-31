@@ -1,4 +1,4 @@
-// beamdescribe.go implements NewBeamDescribe, the beam recipe's Describe row: a Go producer that writes a beam's change description from its board entry and the commits it adds, with no agent.
+// beamdescribe.go implements NewBeamDescribe, the beam recipe's Describe row: a Go producer that writes a beam's change description from its board entry, its project record and the commits it adds, with no agent.
 
 package landingshed
 
@@ -23,6 +23,8 @@ type BeamDescribeDeps struct {
 	Slug string
 	// DescriptionPath is the absolute path of the change description the producer writes.
 	DescriptionPath string
+	// ProjectDecisions reads the entries added to the beam's project record after it was written, each heading and body verbatim, in record order: the project's recorded scope changes.
+	ProjectDecisions func() ([]string, error)
 	// Entry reads the title and brief of the board entry of the run's slug, on every call.
 	Entry func() (title, brief string, err error)
 	// CommitSubjects lists the subjects of the commits the beam adds over its merge base with the parent, oldest first, merge commits left out.
@@ -40,7 +42,7 @@ type beamDescribeProducer struct {
 var _ shedengine.ShedProducer = (*beamDescribeProducer)(nil)
 
 // NewBeamDescribe returns the ShedProducer that writes and commits the change description of a beam.
-// The description is the entry's title cut to 72 characters as a heading, its brief and one bullet per commit subject.
+// The description is the entry's title cut to 72 characters as a heading, its brief, one bullet per commit subject and the project record's added entries verbatim under a `## Project decisions` heading.
 // It is validated like the Describe row's, and a finding is an error naming the finding and the way to end the landing and fix the entry.
 // An empty brief with no commit subjects leaves the body empty, which that validation refuses.
 // A re-run rewrites the same bytes.
@@ -51,6 +53,7 @@ func NewBeamDescribe(name string, deps BeamDescribeDeps) (shedengine.ShedProduce
 	}{
 		{"Slug", deps.Slug != ""},
 		{"DescriptionPath", deps.DescriptionPath != ""},
+		{"ProjectDecisions", deps.ProjectDecisions != nil},
 		{"Entry", deps.Entry != nil},
 		{"CommitSubjects", deps.CommitSubjects != nil},
 		{"Commit", deps.Commit != nil},
@@ -64,7 +67,7 @@ func NewBeamDescribe(name string, deps BeamDescribeDeps) (shedengine.ShedProduce
 }
 
 // Call implements shedengine.ShedProducer.
-// It reads the entry and the commit subjects, writes the description, validates it and commits it.
+// It reads the entry, the record's added entries and the commit subjects, writes the description, validates it and commits it.
 // A read, write or commit failure and a finding are errors; only a cancelled context is reported as the cancellation.
 func (p *beamDescribeProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
@@ -81,6 +84,10 @@ func (p *beamDescribeProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 	if err != nil {
 		return fail("read the board entry", err)
 	}
+	decisions, err := p.deps.ProjectDecisions()
+	if err != nil {
+		return fail("read the project record", err)
+	}
 	subjects, err := p.deps.CommitSubjects()
 	if err != nil {
 		return fail("read the beam's commit subjects", err)
@@ -88,7 +95,7 @@ func (p *beamDescribeProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 	if err := os.MkdirAll(filepath.Dir(p.deps.DescriptionPath), 0o755); err != nil {
 		return fail("create the description directory", err)
 	}
-	if err := os.WriteFile(p.deps.DescriptionPath, []byte(beamDescription(title, brief, subjects)), 0o644); err != nil {
+	if err := os.WriteFile(p.deps.DescriptionPath, []byte(beamDescription(title, brief, decisions, subjects)), 0o644); err != nil {
 		return fail("write the description", err)
 	}
 	findings, err := summaryparser.ValidateDescription(p.deps.DescriptionPath)
@@ -109,8 +116,8 @@ func (p *beamDescribeProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 	return shedengine.Done, shedengine.OutputPointer{}, nil
 }
 
-// beamDescription renders the description file: the title cut to beamDescriptionTitleMax characters as a heading, then the brief and one bullet per subject, each part set off by a blank line.
-func beamDescription(title, brief string, subjects []string) string {
+// beamDescription renders the description file: the title cut to beamDescriptionTitleMax characters as a heading, then the brief, one bullet per subject and the project decisions, each part set off by a blank line.
+func beamDescription(title, brief string, decisions, subjects []string) string {
 	title = strings.TrimSpace(title)
 	if runes := []rune(title); len(runes) > beamDescriptionTitleMax {
 		title = strings.TrimSpace(string(runes[:beamDescriptionTitleMax]))
@@ -125,6 +132,9 @@ func beamDescription(title, brief string, subjects []string) string {
 			bullets[i] = "- " + subject
 		}
 		sections = append(sections, strings.Join(bullets, "\n"))
+	}
+	if len(decisions) > 0 {
+		sections = append(sections, "## Project decisions\n\n"+strings.Join(decisions, "\n\n"))
 	}
 	description := "# " + title
 	if len(sections) > 0 {

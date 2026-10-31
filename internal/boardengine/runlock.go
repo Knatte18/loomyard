@@ -39,7 +39,10 @@ func RunStatusProducer(status *string) (string, bool) {
 
 // holdFreeProducers are the producer rows at which a beam project's run holds nothing of its entry: batten's claim row and the pawl run's rows before Parent-Align.
 // A halt at any of them holds nothing either, since the hold is judged from the producer half of the status alone.
-var holdFreeProducers = []string{"Worktree-Create", "Preflight", "Beam-Up", "Beam-Await"}
+var holdFreeProducers = []string{"Worktree-Create", "Preflight", "Record-Write", "Beam-Up", "Beam-Await"}
+
+// recordFreeProducers are the producer rows at which a beam project's run has not yet begun its project record: batten's claim row and the pawl run's Preflight.
+var recordFreeProducers = []string{"Worktree-Create", "Preflight"}
 
 // RunHolds reports whether the run behind task's status holds the entry: whether the entry's members may not join, fork from or run inside it, and its scope fields take no edit.
 // It is true for every entry whose status IsRunStatus accepts, except a beam project whose producer half is one of the hold-free rows.
@@ -52,6 +55,17 @@ func RunHolds(task Task) bool {
 		return false
 	}
 	return !(task.Kind == KindProject && task.Beam && slices.Contains(holdFreeProducers, producer))
+}
+
+// ProjectRecordHeld reports whether task is a beam project whose run has begun its project record, so its body changes only through the record.
+// It is true for a beam project whose status IsRunStatus accepts with a producer half past the record-free rows, a halt included.
+// The pawl run writes the record from the body at Record-Write, and `lym loom decision add <slug>` alone changes the record after that.
+// The hold is judged from the status alone, since this package reads no record file.
+// A run sent back to Preflight with a goto lifts it, and Record-Write keeps the record it finds, so a body edit made in that window never reaches the record.
+// The pawl recipe's rows are pinned against the record-free names by the recipe's own test, since this package imports no recipe package.
+func ProjectRecordHeld(task Task) bool {
+	producer, ok := RunStatusProducer(task.Status)
+	return ok && task.Kind == KindProject && task.Beam && !slices.Contains(recordFreeProducers, producer)
 }
 
 // ErrRunLocked matches, through errors.Is, a write refused because it would change the scope of an entry a run holds.
@@ -96,9 +110,29 @@ func (e *BeamRunLockedError) Is(target error) bool {
 	return target == ErrRunLocked
 }
 
+// ProjectRecordLockedError is the refusal of a write that changes the body of a beam project whose run holds its project record.
+type ProjectRecordLockedError struct {
+	Slug   string
+	Status string
+}
+
+// Error names the entry, its status and the verb that records a change of the project's scope.
+func (e *ProjectRecordLockedError) Error() string {
+	return fmt.Sprintf("beam project %q has a project record (status %q), so its body takes no edit: "+
+		"record the scope change with `lym loom decision add %s` from the beam's own orch, "+
+		"which appends it to the project record and tells the live agents of every member run under the beam",
+		e.Slug, e.Status, e.Slug)
+}
+
+// Is matches ErrRunLocked.
+func (e *ProjectRecordLockedError) Is(target error) bool {
+	return target == ErrRunLocked
+}
+
 // checkRunLocks judges each run-status entry of loaded by its net change to after.
 // An entry RunHolds accepts is refused when it is absent from after, or when any field but Status differs; Unknown is never compared, since this binary cannot change a kept key.
 // A beam project whose run holds nothing is refused only when it is absent from after, or its project, kind, recipe or beam differs, with a BeamRunLockedError.
+// Its body change is refused with a ProjectRecordLockedError once ProjectRecordHeld accepts it.
 // A dependency on a done entry that the same write removes does not count as a change, so prune passes.
 // It returns the first refusal in loaded order.
 func checkRunLocks(loaded, after []Task) error {
@@ -121,6 +155,9 @@ func checkRunLocks(loaded, after []Task) error {
 		}
 		if !kept || before.Project != now.Project || before.Kind != now.Kind || before.Recipe != now.Recipe || before.Beam != now.Beam {
 			return &BeamRunLockedError{Slug: before.Slug, Status: *before.Status}
+		}
+		if ProjectRecordHeld(before) && before.Body != now.Body {
+			return &ProjectRecordLockedError{Slug: before.Slug, Status: *before.Status}
 		}
 	}
 	return nil

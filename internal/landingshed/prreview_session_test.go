@@ -176,25 +176,21 @@ func TestPRReview_Session(t *testing.T) {
 			},
 		},
 		{
-			name: "RunMaterialListsTheDecisionRecordAndBoardEntryThatExistAndLeavesOutAMissingPlanDirectory", scripts: map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}},
+			name: "RunMaterialListsTheDecisionRecordThatExistsAndLeavesOutAMissingPlanDirectory", scripts: map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}},
 			setup: func(t *testing.T, fx *prReviewFixture, _ *fakePRSessions) {
 				dir := t.TempDir()
 				decision := filepath.Join(dir, "decision-record.md")
-				entry := filepath.Join(dir, "board-entry.md")
-				for _, path := range []string{decision, entry} {
-					if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
-						t.Fatalf("write %s: %v", path, err)
-					}
+				if err := os.WriteFile(decision, []byte("x"), 0o644); err != nil {
+					t.Fatalf("write %s: %v", decision, err)
 				}
 				fx.deps.DecisionRecordPath = decision
 				fx.deps.PlanDir = filepath.Join(dir, "plan")
-				fx.deps.PullRequest.BoardEntryPath = entry
 				fx.deps.LanguageSkills = []string{"scribe:prose", "scribe:golang-testing"}
 			},
 			wantOutcome: shedengine.Done, wantStarts: 1, wantStops: 1,
 			check: func(t *testing.T, fx *prReviewFixture, s *fakePRSessions) {
 				prompt := s.starts[0].Prompt
-				for _, want := range []string{"- " + fx.deps.DecisionRecordPath, "- " + fx.deps.PullRequest.BoardEntryPath} {
+				for _, want := range []string{"- " + fx.deps.DecisionRecordPath} {
 					if !strings.Contains(prompt, want) {
 						t.Errorf("prompt lacks the run material line %q:\n%s", want, prompt)
 					}

@@ -68,6 +68,11 @@ var LoomTemplateDiscussionChair []byte
 //go:embed loom/loom-template-discussion-advisor.md
 var LoomTemplateDiscussionAdvisor []byte
 
+// LoomDirectiveProjectRecord is the shipped-default project record directive a member run's Discussion-Write lead and darn writer render.
+//
+//go:embed loom/loom-directive-project-record.md
+var LoomDirectiveProjectRecord []byte
+
 // LoomTemplatePlan is the loom Plan producer's shipped-default autonomous prompt.
 //
 //go:embed loom/loom-template-plan.md
@@ -460,6 +465,7 @@ var entries = []registryEntry{
 	{"loom-template-discussion", &LoomTemplateDiscussion},
 	{"loom-template-discussion-chair", &LoomTemplateDiscussionChair},
 	{"loom-template-discussion-advisor", &LoomTemplateDiscussionAdvisor},
+	{"loom-directive-project-record", &LoomDirectiveProjectRecord},
 	{"loom-template-plan", &LoomTemplatePlan},
 	{"loom-template-arbiter", &LoomTemplateArbiter},
 	{"loom-rubric-discussion-review", &LoomRubricDiscussionReview},

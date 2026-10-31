@@ -15,6 +15,7 @@ import (
 )
 
 // TestDiscussionPaths pins the discussion directory, the decision record, the support log and the advisor notes at the anchor, and that DiscussionDirRel is the relative form DiscussionDir composes from.
+// It pins the project record's directory, record and support log the same way, one directory per beam slug.
 // The anchored row's AnchorRel differs from "." to prove the accessors follow the anchored subpath, not the bare worktree root; the unanchored row's anchor path equals the worktree path.
 //
 //testtiming:keep pins the exact discussion directory, decision record, support log and relevant list paths at an anchored and an unanchored location, which the covering spec tests only pass through unasserted
@@ -68,6 +69,20 @@ func TestDiscussionPaths(t *testing.T) {
 			}
 			if got, want := DiscussionDecisionRecord(l), filepath.Join(l.AnchorPath(), DiscussionDecisionRecordRel()); got != want {
 				t.Errorf("DiscussionDecisionRecord() = %q; want the anchor joined with DiscussionDecisionRecordRel(), %q", got, want)
+			}
+
+			wantProject := filepath.Join(l.AnchorPath(), lymdirs.LymDirName, "project", "beam")
+			if got := ProjectDir(l, "beam"); got != wantProject {
+				t.Errorf("ProjectDir(beam) = %q; want %q", got, wantProject)
+			}
+			if got, want := ProjectDecisionRecord(l, "beam"), filepath.Join(wantProject, "decision-record.md"); got != want {
+				t.Errorf("ProjectDecisionRecord(beam) = %q; want %q", got, want)
+			}
+			if got, want := ProjectSupportLog(l, "beam"), filepath.Join(wantProject, "support-log.md"); got != want {
+				t.Errorf("ProjectSupportLog(beam) = %q; want %q", got, want)
+			}
+			if ProjectDir(l, "beam") == ProjectDir(l, "inner") {
+				t.Errorf("ProjectDir() = %q for two beams; want one directory per beam slug", ProjectDir(l, "beam"))
 			}
 		})
 	}

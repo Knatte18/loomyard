@@ -45,7 +45,7 @@ func TestBeamAwait(t *testing.T) {
 			return nil
 		}
 	}
-	passing := []string{beamAwait, parentAlign, stopped, "recheck", "snapshot"}
+	passing := []string{beamAwait, parentAlign, stopped, "recheck"}
 	refused := []string{beamAwait, parentAlign, stopped, "recheck", beamAwait, "start"}
 	seconds := func(ns ...int) []time.Duration {
 		out := make([]time.Duration, len(ns))
@@ -141,7 +141,7 @@ func TestBeamAwait(t *testing.T) {
 				w.request(t, testRunID)
 			},
 			wantOutcome: shedengine.Done,
-			wantEvents:  []string{beamAwait, parentAlign + "(failed)", parentAlign, stopped, "recheck", "snapshot"},
+			wantEvents:  []string{beamAwait, parentAlign + "(failed)", parentAlign, stopped, "recheck"},
 			wantFiles:   map[string]bool{"request": false, "stop": false, "await": false},
 			wantSleeps:  seconds(1),
 		},
@@ -277,17 +277,6 @@ func TestBeamAwait(t *testing.T) {
 			},
 			wantCancelled: true, wantEvents: []string{beamAwait, parentAlign, stopped, beamAwait, "start"},
 			wantNotices: [][]string{{"no such process", "lym beam land my-beam"}},
-			wantFiles:   map[string]bool{"request": false, "stop": false},
-		},
-		{
-			name: "FailingSnapshotWriteIsAFailedRecheck",
-			setup: func(t *testing.T, w *world) {
-				w.snapshotErr = errors.New("disk full")
-				w.request(t, testRunID)
-				cancelAfter(w, 1)
-			},
-			wantCancelled: true, wantEvents: []string{beamAwait, parentAlign, stopped, "recheck", "snapshot", beamAwait, "start"},
-			wantNotices: [][]string{{"disk full", "lym beam land my-beam"}},
 			wantFiles:   map[string]bool{"request": false, "stop": false},
 		},
 		{

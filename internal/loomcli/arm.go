@@ -139,7 +139,7 @@ func (c *loomCLI) resolveRecipe(location *lymcwd.Location) error {
 type recipeService int
 
 const (
-	// recipeServed marks a recipe `lym loom` serves: one declaring the loom contract, or pawl.
+	// recipeServed marks a recipe `lym loom` serves: one declaring the loom contract.
 	recipeServed recipeService = iota
 	// recipeNotLoom marks an embedded recipe `lym loom` does not serve.
 	recipeNotLoom
@@ -149,7 +149,7 @@ const (
 
 // serviceOfRecipe reports how `lym loom` stands to recipe, an empty name reading as tapestry.
 func serviceOfRecipe(recipe string) recipeService {
-	served, err := loomrecipe.ServedByLoom(recipe)
+	served, err := loomrecipe.IsLoom(recipe)
 	switch {
 	case err != nil:
 		return recipeUnknown
@@ -294,25 +294,18 @@ func (c *loomCLI) loadRouting() error {
 	return nil
 }
 
-// recipeRouting returns the routing of the run's recipe, pawl's own for a pawl run and the recipe-keyed loom routing otherwise, with loom.yaml's review bounce budgets applied.
+// recipeRouting returns the recipe-keyed routing of the run's recipe, with loom.yaml's review bounce budgets applied.
 func (c *loomCLI) recipeRouting() (shedengine.Routing, error) {
 	budgets, err := c.reviewBudget()
 	if err != nil {
 		return shedengine.Routing{}, err
 	}
-	if c.recipe == shedrun.RecipePawl {
-		return loomrecipe.PawlRouting(budgets)
-	}
 
 	return loomrecipe.Routing(c.recipe, budgets)
 }
 
-// newShed builds the shed of the run's recipe over c.env and c.shedPaths: pawl's own for a pawl run, and loomrecipe.New's for the rest.
+// newShed builds the shed of the run's recipe over c.env and c.shedPaths.
 func (c *loomCLI) newShed() (*shedengine.Shed, error) {
-	if c.recipe == shedrun.RecipePawl {
-		return loomrecipe.NewPawl(c.env, c.shedPaths)
-	}
-
 	return loomrecipe.New(c.recipe, c.env, c.shedPaths)
 }
 
@@ -346,7 +339,7 @@ func recipeIsLoom(recipe string) bool {
 }
 
 // verifySource returns the verify source of the run's recipe: darn.yaml's for a recipe whose verify_source is tree_scope, and the hub's gate-call source otherwise.
-// A pawl run reads no plan and no `darn.yaml` tree scope, so its Finalize runs the `finalize` gate key over the whole merged tree.
+// A pawl run sets verify_source to plan and reads no plan, so its Finalize runs the `finalize` gate key over the whole merged tree.
 // A recipe that selects no embedded recipe reads as the tapestry recipe.
 func (c *loomCLI) verifySource() verifySource {
 	source, err := loomrecipe.VerifySource(c.recipe)

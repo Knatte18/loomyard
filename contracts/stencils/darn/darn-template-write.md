@@ -3,7 +3,8 @@
      and read from there at call time by internal/seatengine, which fills it from the lead's value map that darnengine's DarnTable builds, then hands it to
      shuttle as the writer's whole prompt.
      Every marker below is a top-level {{.X}} substitution;
-     stencil.FillWith requires every marker except pattern_directive, friction_directive and parent_directive non-empty, and there are no {{if}}/{{range}} conditionals anywhere in this file.
+     stencil.FillWith requires every marker except pattern_directive, project_directive, friction_directive and parent_directive non-empty, and there are no {{if}}/{{range}} conditionals anywhere in this file.
+     project_directive is rendered by internal/loomengine.ProjectRecordDirective for a run under a beam, and shares the pattern directive's line so an empty value leaves the prompt's bytes unchanged.
      decision_record_path is a required marker, naming the decision record the writer reads as its scope; stop_marker_path is a required marker, naming the file the writer creates when it stops.
      prior_work is never empty: DarnTable fills it with (none) when it has nothing to tell.
      edit_directive is a required marker, rendered unconditionally by internal/editdirective. -->
@@ -15,7 +16,7 @@ No operator is present, so make best-judgment calls and never block on a dialog.
 
 {{.parent_directive}}
 {{.edit_directive}}
-{{.pattern_directive}}
+{{.pattern_directive}}{{.project_directive}}
 {{.friction_directive}}
 ## Step 1 — Read the task
 

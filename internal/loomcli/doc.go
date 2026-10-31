@@ -7,30 +7,33 @@
 // It records the state the status file holds after the stop, which stays `paused` for a step that died before its resume write over a paused run,
 // and an error the status file holds that the stop did not write, such as the step's own producer failure, on a `status error:` line of its reason.
 //
-// A loom run's shed and routing come from one recipe-keyed builder in `internal/loomrecipe`, `loomrecipe.New` and `loomrecipe.Routing`, taking the run's recipe name; the pawl recipe keeps its own builder.
+// A loom run's shed and routing come from one recipe-keyed builder in `internal/loomrecipe`, `loomrecipe.New` and `loomrecipe.Routing`, taking the run's recipe name, pawl's included.
 // The row names a run parked under an old recipe may still carry are that recipe's retired-row data, read through `loomrecipe.RetiredRows`: arming renames them in the status file with no branch on the recipe name, and a recipe with none renames nothing.
 //
 // The wiring branches on the recipe's rows and keys, never its name, through the `loomrecipe` accessors on the run's recipe, an empty recipe reading as tapestry.
 // The verify source follows the recipe's `verify_source` key, the Darn-Write seams are filled for a recipe with a Darn-Write row, and the merge fixer's plan directory and failure tracer follow a Plan-Write row.
-// Every loom recipe's review rows are told the decision record as the PATTERN declaration path, and a loom recipe holds a landing's escalate halt for the arbiter first.
+// A run's decision record follows its recipe's rows through `runRecordOf`: a recipe with a Beam-Await row keeps the beam's project record under the beam's slug, and every other recipe the discussion record.
+// A task run's review rows are told its record as the PATTERN declaration path, a beam's project record declares none, and a loom recipe holds a landing's escalate halt for the arbiter first.
 //
 // The `lym loom` verbs serve loom runs only.
-// `arm`, the subtree's entry, sets `loomPath` before `armAt` and `armAt` then refuses, right after the recipe is resolved and before any wiring, a recipe `loomrecipe.ServedByLoom` does not admit: an embedded non-loom recipe is refused naming the `lym shed` verbs, and a seed naming no embedded recipe naming the re-seed.
+// `arm`, the subtree's entry, sets `loomPath` before `armAt` and `armAt` then refuses, right after the recipe is resolved and before any wiring, a recipe that does not declare the loom contract: an embedded non-loom recipe is refused naming the `lym shed` verbs, and a seed naming no embedded recipe naming the re-seed.
 // It then refuses `validate-plan`, `insert-card`, `remove-card` and `restore-renumber` on a recipe with no Plan-Write row, which has no plan.
 // The target resolver the `circling` and `decision` groups share judges the target's own seed recipe the same way.
 // `ArmAt`, which `lym shed` shares, leaves `loomPath` false and never refuses a recipe, and `lym loom checklist` is exempt, being a read-only pane the pre-run never arms.
 //
 // A run seeded with the recipe `pawl` is a beam's life, batten's Seed-Child seeds it in the beam's pair.
-// Its shed reads Preflight, Beam-Up, Beam-Await, Parent-Align, the Code-Review perch, Beam-Describe, PR-Review, Finalize and Beam-Down, with no plan and no reroute edge.
+// Its shed reads Preflight, Record-Write, Beam-Up, Beam-Await, Parent-Align, Beam-Describe, PR-Review, Finalize and Beam-Down, with no plan, no review round and no reroute edge.
+// Its Record-Write writes the project record and its support log from the project entry's body and commits them under the beam's slug.
 // wire fills `Env.Pawl` for it through `pawlDeps`: the run's seed id is the seed's start time, the status is written on the beam's project entry through the board, and Beam-Up's one step is `orchcli.BeamUp` with no prepare, since the run already judged origin.
 // The beam's dobby is stopped through `runproc.EndRole` by its `RoleDobby` record, and restarted through `dobbyengine.EnsureLive` naming the beam alone.
 // Beam-Await's re-check reads `battencli.ReadBeamLandBlockers` and `battencli.BeamLandRefusal` with the beam's owner, its parent's owner and the beam's ready record, and words each failure as `pawlRecheckLines` does, naming `lym adopt <beam>` or the parent's adopt subject, `root` for the prime, and `lym beam ready <slug>` for a beam not flagged ready.
-// Its snapshot is the beam project entry's, written and committed because the Code-Review perch reads its answer key from the committed tree; a darn run writes none, its perch measuring against the decision record.
 // A running shed also watches the land request's directory, so a request wakes Beam-Await at once.
-// Beam-Describe writes the change description from the beam's board entry and the commits the beam adds over the parent branch its pair records.
-// The perch's budget is `loom.yaml`'s Code-Review one, and a budget of 0 turns Parent-Align's review off as for a tapestry run.
+// Beam-Describe writes the change description from the beam's board entry, the commits the beam adds over the parent branch its pair records and the project record's added entries.
 // Its Finalize reads the hub's `finalize` gate key over the whole merged tree and halts for the orch on a fixer that is spent or over its caps.
 // A land check backstops the re-check: Finalize halts, behind its own prefix, while an open member or a pair forked from the beam still works, reading `pawlLandBlockers` and naming the beam's parent worktree as where a cancel runs.
+//
+// A member's Discussion-Write lead and darn writer get the project record directive, `loomengine.ProjectRecordDirective` over `projectRecordPaths`: the record of each beam above the pair, read in that beam's own worktree at each spawn, nearest first.
+// `decision add <beam-slug>` resolves the beam's project record, takes the beam's own orch as the caller its rule admits, and posts its notice to the live runs of the beam and of every member pair `memberPairs` reads under it.
 //
 // # Start
 //

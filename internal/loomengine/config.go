@@ -64,6 +64,10 @@ const discussionDirName = "discussion"
 // loomengine is this segment's sole declarer.
 const landingDirName = "landing"
 
+// projectDirName is the relative-path segment loomengine joins onto lymdirs.LymDirName to form the directory of every beam's project record, one subdirectory per beam slug.
+// loomengine is this segment's sole declarer.
+const projectDirName = "project"
+
 // loomReworkCoverageFileName is the filename of the rework agent's finding-to-card coverage map within LoomScratchDir.
 // loomengine is this segment's sole declarer.
 const loomReworkCoverageFileName = "rework-coverage.md"
@@ -163,11 +167,33 @@ func DiscussionRelevant(l *lymcwd.Location) string {
 	return filepath.Join(DiscussionDir(l), "relevant.md")
 }
 
-// DiscussionBoardEntry returns the path to the darn run's snapshot of its task's board entry, the Code-Review perch's answer key on that recipe.
-// It shares DiscussionDir's AnchorPath anchoring.
-// Per the Cwd Resolution Invariant, no other package may construct this path.
-func DiscussionBoardEntry(l *lymcwd.Location) string {
-	return filepath.Join(DiscussionDir(l), "board-entry.md")
+// ProjectDirRel returns the worktree-anchor-relative path of the directory holding the project record of the beam slug and its support log.
+// The slug keeps a beam's record apart from its members' own records and from an enclosing beam's, since a pair forked from a beam inherits every record the beam carries.
+func ProjectDirRel(slug string) string {
+	return filepath.Join(lymdirs.LymDirName, projectDirName, slug)
+}
+
+// ProjectDir returns the path of the directory holding the project record of the beam slug, in the worktree at l.
+// It is AnchorPath-anchored.
+func ProjectDir(l *lymcwd.Location, slug string) string {
+	return filepath.Join(l.AnchorPath(), ProjectDirRel(slug))
+}
+
+// ProjectDecisionRecordRel returns the worktree-anchor-relative path of the project record of the beam slug.
+func ProjectDecisionRecordRel(slug string) string {
+	return filepath.Join(ProjectDirRel(slug), "decision-record.md")
+}
+
+// ProjectDecisionRecord returns the path of the project record of the beam slug, in the worktree at l: the decision record that binds every member of the beam.
+// It is AnchorPath-anchored.
+func ProjectDecisionRecord(l *lymcwd.Location, slug string) string {
+	return filepath.Join(l.AnchorPath(), ProjectDecisionRecordRel(slug))
+}
+
+// ProjectSupportLog returns the path of the support log beside the project record of the beam slug, in the worktree at l.
+// It is AnchorPath-anchored.
+func ProjectSupportLog(l *lymcwd.Location, slug string) string {
+	return filepath.Join(ProjectDir(l, slug), "support-log.md")
 }
 
 // LoomDriverLog returns the path to the detached driver's captured stdout and stderr for this
