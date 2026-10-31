@@ -56,7 +56,7 @@ func (w *worktree) verbStatus() (driftengine.VerbStatus, error) {
 		return driftengine.VerbStatus{}, err
 	}
 	if !found {
-		return driftengine.VerbStatus{}, errors.New("drift: this worktree has no run status; way forward: lym drift verbs run inside a loom or darn run's worktree")
+		return driftengine.VerbStatus{}, errors.New("drift: this worktree has no run status; way forward: lym drift verbs run inside a tapestry or darn run's worktree")
 	}
 	captureHeld, err := driftengine.ProbeLock(w.paths.CaptureLock)
 	if err != nil {

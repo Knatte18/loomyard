@@ -96,7 +96,7 @@ request it accompanies. The label is recorded in the paused run's
 pause_reason; shed is reserved for lym's own automatic steps and refused.
 
 A bare pause, with no flag, requests a pause at the next producer boundary
-for a recipe that allows it, and refuses for a loom run, naming "lym tender
+for a recipe that allows it, and refuses for a run lym loom drives, naming "lym tender
 pause <slug>" to stop its agents now and "--after <current_producer>" to
 halt it at its next producer boundary.
 

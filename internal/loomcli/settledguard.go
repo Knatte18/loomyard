@@ -1,5 +1,5 @@
 // settledguard.go refuses a goto that would re-run a review segment whose verdict is settled.
-// It is the loom and darn recipes' goto guard, told to every goto, re-launch and verdict check of a run.
+// It is the tapestry and darn recipes' goto guard, told to every goto, re-launch and verdict check of a run.
 
 package loomcli
 

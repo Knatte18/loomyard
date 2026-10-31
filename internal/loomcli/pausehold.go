@@ -1,4 +1,4 @@
-// pausehold.go refuses the operator's restart verbs of a loom run while a pause covers its slug.
+// pausehold.go refuses the operator's restart verbs of a run while a pause covers its slug.
 
 package loomcli
 

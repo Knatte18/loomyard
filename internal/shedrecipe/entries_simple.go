@@ -1,6 +1,6 @@
 // entries_simple.go implements the registry entries that take an empty Config and validate only the
 // Env fields they read: preflightEntry, parentAlignEntry, finalizeEntry, frictionReflectEntry,
-// loomPreflightEntry, stubEntry, and websterEntry, the webster implementer.
+// tapestryPreflightEntry, stubEntry, and websterEntry, the webster implementer.
 
 package shedrecipe
 
@@ -104,23 +104,23 @@ func frictionReflectEntry(row RowIdentity, cfg Config, env Env) (shedengine.Shed
 	return p, nil
 }
 
-// loomPreflightEntry is the Constructor for the "LoomPreflight" registry row.
+// tapestryPreflightEntry is the Constructor for the "TapestryPreflight" registry row.
 // It validates Env.StatusPath, Env.StatusLockPath and Env.ConfigDirs.Anchor and returns
-// loomshed.NewLoomPreflight(name, env.StatusPath, env.StatusLockPath, env.ConfigDirs).
-func loomPreflightEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
+// loomshed.NewTapestryPreflight(name, env.StatusPath, env.StatusLockPath, env.ConfigDirs).
+func tapestryPreflightEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
 	}
-	if err := requireAbsRoot("LoomPreflight", "StatusPath", env.StatusPath); err != nil {
+	if err := requireAbsRoot("TapestryPreflight", "StatusPath", env.StatusPath); err != nil {
 		return nil, err
 	}
-	if err := requireAbsRoot("LoomPreflight", "StatusLockPath", env.StatusLockPath); err != nil {
+	if err := requireAbsRoot("TapestryPreflight", "StatusLockPath", env.StatusLockPath); err != nil {
 		return nil, err
 	}
-	if err := requireAbsRoot("LoomPreflight", "ConfigDirs.Anchor", env.ConfigDirs.Anchor); err != nil {
+	if err := requireAbsRoot("TapestryPreflight", "ConfigDirs.Anchor", env.ConfigDirs.Anchor); err != nil {
 		return nil, err
 	}
-	return loomshed.NewLoomPreflight(row.Name, env.StatusPath, env.StatusLockPath, env.ConfigDirs), nil
+	return loomshed.NewTapestryPreflight(row.Name, env.StatusPath, env.StatusLockPath, env.ConfigDirs), nil
 }
 
 // stubEntry is the Constructor for the "Stub" registry row: it validates no Env field and returns

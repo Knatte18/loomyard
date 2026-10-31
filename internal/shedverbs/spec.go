@@ -184,7 +184,7 @@ type Spec struct {
 	BuildShed func() (*shedengine.Shed, error)
 	// Hooks carries the module-specific extension points; see Hooks' own field docs.
 	Hooks Hooks
-	// StatusLabel is the --watch line's literal prefix -- "loom" for the loom recipe.
+	// StatusLabel is the --watch line's literal prefix -- "loom" for the tapestry recipe.
 	StatusLabel string
 	// DecodeErrPrefix is the told prefix for this spec's own state.ReadJSON failure on the
 	// status file -- "loom:" for loom and "lifecyclecli:" for lifecycle. It also seeds

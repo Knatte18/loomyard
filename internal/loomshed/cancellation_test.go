@@ -4,7 +4,7 @@
 // an already-cancelled context, plus the reduced fixture it drives from. It stays in
 // internal/loomshed rather than moving to internal/loomrecipe alongside the rest of the sequence
 // suite because it calls neither New nor Run: it constructs NewWebsterProducer and
-// NewLoomPreflight directly and calls Call on each.
+// NewTapestryPreflight directly and calls Call on each.
 //
 // This is the only test anywhere proving their real Call wiring
 // returns an error rather than a verdict under an already-cancelled context -- the shared
@@ -31,7 +31,7 @@ type cancellationFixture struct {
 }
 
 // buildCancellationFixture seeds only what the producers this test drives read:
-// NewWebsterProducer reads AnchorPath, and NewLoomPreflight reads the status seed the Seed(statusPath, statusLockPath, "fixture-slug", "fixture-parent") call below produces.
+// NewWebsterProducer reads AnchorPath, and NewTapestryPreflight reads the status seed the Seed(statusPath, statusLockPath, "fixture-slug", "fixture-parent") call below produces.
 func buildCancellationFixture(t *testing.T) cancellationFixture {
 	t.Helper()
 
@@ -66,7 +66,7 @@ func TestCancellation_RealProducersReturnErrorNotStuck(t *testing.T) {
 		}
 	}{
 		{NameWebster, NewWebsterProducer(NameWebster, configengine.Dirs{Anchor: fx.AnchorPath}, (&fakeWebsterRun{}).run, websterengine.RunDeps{}, func() error { return nil })},
-		{NameLoomPreflight, NewLoomPreflight(NameLoomPreflight, fx.StatusPath, fx.StatusLockPath, configengine.Dirs{Anchor: fx.AnchorPath})},
+		{NameTapestryPreflight, NewTapestryPreflight(NameTapestryPreflight, fx.StatusPath, fx.StatusLockPath, configengine.Dirs{Anchor: fx.AnchorPath})},
 	}
 
 	for _, tt := range producers {

@@ -1,4 +1,4 @@
-// subjects.go builds the identities a Bouncer re-entry compares: the document, code and merge-in subjects of a loom or darn run's review segments, the record head and merge-in-only reads that go with them, the review input seams, and the merge base reader of the task's diff.
+// subjects.go builds the identities a Bouncer re-entry compares: the document, code and merge-in subjects of a tapestry or darn run's review segments, the record head and merge-in-only reads that go with them, the review input seams, and the merge base reader of the task's diff.
 
 package loomcli
 
@@ -229,7 +229,7 @@ func documentSubjectWithHead(location *lymcwd.Location, head func() (string, err
 	}
 }
 
-// fixerReportInput returns the review input seam of a loom run: the merge fixer's latest Parent-Align report under scratchDir, with the time it was written.
+// fixerReportInput returns the review input seam of a tapestry run: the merge fixer's latest Parent-Align report under scratchDir, with the time it was written.
 // A run past the row under its former name, Merge-In, left its report under that name, so the seam reads it when the row's own is absent.
 // A session that never ran leaves no report, which answers not found.
 func fixerReportInput(scratchDir string) func() (string, time.Time, bool, error) {

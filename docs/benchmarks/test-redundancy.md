@@ -1552,13 +1552,13 @@ No coverage:
 | Test | Covering tests | Removable |
 |---|---|---|
 | `TestDiscussionWrite_PassesStuckReasonThrough` | `TestDiscussionWrite_Call` | yes |
-| `TestLoomPreflight_StuckSurfacesItsFailures` | `TestLoomPreflight_Call_ReentryWithOtherFailureStaysStuck`, `TestLoomPreflight_Call_StuckReasonNamesTheFailures`, `TestDiscussionGate_FailureSurfacesItsFindings` | yes |
+| `TestTapestryPreflight_StuckSurfacesItsFailures` | `TestTapestryPreflight_Call_ReentryWithOtherFailureStaysStuck`, `TestTapestryPreflight_Call_StuckReasonNamesTheFailures`, `TestDiscussionGate_FailureSurfacesItsFindings` | yes |
 | `TestBatcherRows_StuckSurfacesTheBatcherError` | `TestGateRows_StopsNameAWayForward`, `TestBatchifier_Call`, `TestDiscussionGate_FailureSurfacesItsFindings` | yes |
 | `TestHasBlockingFinding_AgainstTheGate` | `TestNewPlanGate` | yes |
 | `TestInterruptPolicies_ClosedVocabulary` | `TestArchivedWebsterDirs` | yes |
 | `TestPlanWrite_PassesStuckReasonThrough` | `TestPlanWrite_Call` | yes |
 | `TestSeed_WritesExpectedStatus` | `TestCancellation_RealProducersReturnErrorNotStuck` | yes |
-| `TestSeed_RefusesExistingFile` | `TestCancellation_RealProducersReturnErrorNotStuck`, `TestLoomPreflight_Call_GotoReentryPassesAndLeavesStatusUnchanged`, `TestSeed_RefusesUndecodableFileAsExists` | yes |
+| `TestSeed_RefusesExistingFile` | `TestCancellation_RealProducersReturnErrorNotStuck`, `TestTapestryPreflight_Call_GotoReentryPassesAndLeavesStatusUnchanged`, `TestSeed_RefusesUndecodableFileAsExists` | yes |
 | `TestWebsterProducer_PassesStuckReasonThrough` | `TestWebsterProducer_CommitsTheRunRecordOnDoneOnly`, `TestWebsterProducer_Call` | yes |
 
 No coverage:
@@ -1582,11 +1582,11 @@ No coverage:
 - `TestPlanReviewSkippable`: unclassifiable call
 - `TestPlanReviewSkippable_UndecodableRecordErrors`: unclassifiable call
 - `TestPlanReviewSkippable_UncommittedPlanErrors`: unclassifiable call
-- `TestLoomPreflight_Call_LockParentUncreatableReturnsError`: unclassifiable call
-- `TestLoomPreflight_Call_StuckReasonNamesTheFailures`: unclassifiable call
-- `TestLoomPreflight_Call_GotoReentryPassesAndLeavesStatusUnchanged`: unclassifiable call
-- `TestLoomPreflight_Call_GotoThenLaterRowIsNotReentry`: unclassifiable call
-- `TestLoomPreflight_Call_ReentryWithOtherFailureStaysStuck`: unclassifiable call
+- `TestTapestryPreflight_Call_LockParentUncreatableReturnsError`: unclassifiable call
+- `TestTapestryPreflight_Call_StuckReasonNamesTheFailures`: unclassifiable call
+- `TestTapestryPreflight_Call_GotoReentryPassesAndLeavesStatusUnchanged`: unclassifiable call
+- `TestTapestryPreflight_Call_GotoThenLaterRowIsNotReentry`: unclassifiable call
+- `TestTapestryPreflight_Call_ReentryWithOtherFailureStaysStuck`: unclassifiable call
 - `TestPlanWrite_Call`: unclassifiable call
 - `TestNewPlanDirRotator`: unclassifiable call
 - `TestPlanWrite_NilCommitSeamIsANamedError`: unclassifiable call

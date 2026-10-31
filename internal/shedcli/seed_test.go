@@ -42,7 +42,7 @@ func TestWriteSeed_SucceedsWithNoSeedPresent(t *testing.T) {
 
 			// loom, not batten: batten's own seed-location rule reaches a git worktree listing, which a
 			// hand-built Location cannot answer and this untagged suite may not spawn.
-			if _, err := writeSeed(loc, "some-slug", "loom", tt.driver, nil); err != nil {
+			if _, err := writeSeed(loc, "some-slug", "tapestry", tt.driver, nil); err != nil {
 				t.Fatalf("writeSeed = %v; want nil", err)
 			}
 
@@ -50,8 +50,8 @@ func TestWriteSeed_SucceedsWithNoSeedPresent(t *testing.T) {
 			if err != nil || !found {
 				t.Fatalf("ReadSeed after writeSeed = (found=%v, err=%v); want (true, nil)", found, err)
 			}
-			if seed.Recipe != "loom" {
-				t.Errorf("seed.Recipe = %q; want %q", seed.Recipe, "loom")
+			if seed.Recipe != "tapestry" {
+				t.Errorf("seed.Recipe = %q; want %q", seed.Recipe, "tapestry")
 			}
 			if seed.Driver != tt.wantDriver {
 				t.Errorf("seed.Driver = %q; want %q", seed.Driver, tt.wantDriver)
@@ -87,16 +87,23 @@ func TestResolveSeedDriver(t *testing.T) {
 // TestWriteSeed_UnknownRecipeRefusesWithTheAvailableNames asserts an unresolvable --recipe value
 // refuses via this package's own lookup, naming the available recipes.
 func TestWriteSeed_UnknownRecipeRefusesWithTheAvailableNames(t *testing.T) {
-	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+	for _, recipe := range []string{"bogus-recipe", "loom"} {
+		t.Run(recipe, func(t *testing.T) {
+			loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 
-	_, err := writeSeed(loc, "some-slug", "bogus-recipe", "", nil)
-	if err == nil {
-		t.Fatal("writeSeed(bogus-recipe) = nil; want a refusal")
-	}
-	for _, name := range names() {
-		if !strings.Contains(err.Error(), name) {
-			t.Errorf("writeSeed(bogus-recipe) error = %q; want it to name recipe %q", err.Error(), name)
-		}
+			_, err := writeSeed(loc, "some-slug", recipe, "", nil)
+			if err == nil {
+				t.Fatalf("writeSeed(%q) = nil; want a refusal", recipe)
+			}
+			if !strings.Contains(err.Error(), "unknown recipe") {
+				t.Errorf("writeSeed(%q) error = %q; want it to say unknown recipe", recipe, err.Error())
+			}
+			for _, name := range names() {
+				if !strings.Contains(err.Error(), name) {
+					t.Errorf("writeSeed(%q) error = %q; want it to name recipe %q", recipe, err.Error(), name)
+				}
+			}
+		})
 	}
 }
 
@@ -110,8 +117,8 @@ func TestWriteSeed_RecipeLocationRuleGatesTheWrite(t *testing.T) {
 
 	refusal := errors.New("this recipe seeds from prime only")
 	recipes = map[string]entry{
-		shedrun.RecipeBatten: {Arm: original[shedrun.RecipeBatten].Arm, Verbs: original[shedrun.RecipeBatten].Verbs, RefuseSeedAt: func(*lymcwd.Location) error { return refusal }},
-		shedrun.RecipeLoom:   {Arm: original[shedrun.RecipeLoom].Arm, Verbs: original[shedrun.RecipeLoom].Verbs, BootstrapVerb: "start"},
+		shedrun.RecipeBatten:   {Arm: original[shedrun.RecipeBatten].Arm, Verbs: original[shedrun.RecipeBatten].Verbs, RefuseSeedAt: func(*lymcwd.Location) error { return refusal }},
+		shedrun.RecipeTapestry: {Arm: original[shedrun.RecipeTapestry].Arm, Verbs: original[shedrun.RecipeTapestry].Verbs, BootstrapVerb: "start"},
 	}
 
 	t.Run("RefusingRuleWritesNothing", func(t *testing.T) {
@@ -127,7 +134,7 @@ func TestWriteSeed_RecipeLocationRuleGatesTheWrite(t *testing.T) {
 
 	t.Run("NilRuleWrites", func(t *testing.T) {
 		loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
-		if _, err := writeSeed(loc, "some-slug", shedrun.RecipeLoom, "", nil); err != nil {
+		if _, err := writeSeed(loc, "some-slug", shedrun.RecipeTapestry, "", nil); err != nil {
 			t.Fatalf("writeSeed(loom) = %v; want nil", err)
 		}
 	})
@@ -142,12 +149,12 @@ func TestWriteSeed_LLMDriverGatedOnBootstrapVerbCapability(t *testing.T) {
 	t.Cleanup(func() { recipes = original })
 
 	// The table entries are keyed by shedrun's own closed recipe vocabulary -- RecipeBatten and
-	// RecipeLoom -- because shedrun.WriteSeed validates the recipe name itself, on top of this
+	// RecipeTapestry -- because shedrun.WriteSeed validates the recipe name itself, on top of this
 	// package's own lookup; a test-local recipe name outside that vocabulary would refuse there
 	// instead of exercising the capability predicate this test targets.
 	recipes = map[string]entry{
-		shedrun.RecipeBatten: {Arm: original[shedrun.RecipeBatten].Arm, Verbs: original[shedrun.RecipeBatten].Verbs, BootstrapVerb: ""},
-		shedrun.RecipeLoom:   {Arm: original[shedrun.RecipeLoom].Arm, Verbs: original[shedrun.RecipeLoom].Verbs, BootstrapVerb: "start"},
+		shedrun.RecipeBatten:   {Arm: original[shedrun.RecipeBatten].Arm, Verbs: original[shedrun.RecipeBatten].Verbs, BootstrapVerb: ""},
+		shedrun.RecipeTapestry: {Arm: original[shedrun.RecipeTapestry].Arm, Verbs: original[shedrun.RecipeTapestry].Verbs, BootstrapVerb: "start"},
 	}
 
 	t.Run("EmptyBootstrapVerbRefuses", func(t *testing.T) {
@@ -169,7 +176,7 @@ func TestWriteSeed_LLMDriverGatedOnBootstrapVerbCapability(t *testing.T) {
 
 	t.Run("NonEmptyBootstrapVerbAccepts", func(t *testing.T) {
 		loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
-		if _, err := writeSeed(loc, "some-slug", shedrun.RecipeLoom, shedrun.DriverLLM, nil); err != nil {
+		if _, err := writeSeed(loc, "some-slug", shedrun.RecipeTapestry, shedrun.DriverLLM, nil); err != nil {
 			t.Fatalf("writeSeed(driver=llm) = %v; want nil", err)
 		}
 	})
@@ -219,13 +226,13 @@ func TestWriteSeed_IdempotentAgainstAnIdenticalSeedAndRefusesADisagreeingOne(t *
 	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 	params := map[string]string{"slug": "some-slug"}
 
-	if _, err := writeSeed(loc, "some-slug", "loom", shedrun.DriverGo, params); err != nil {
+	if _, err := writeSeed(loc, "some-slug", "tapestry", shedrun.DriverGo, params); err != nil {
 		t.Fatalf("writeSeed (first) = %v; want nil", err)
 	}
-	if _, err := writeSeed(loc, "some-slug", "loom", shedrun.DriverGo, params); err != nil {
+	if _, err := writeSeed(loc, "some-slug", "tapestry", shedrun.DriverGo, params); err != nil {
 		t.Fatalf("writeSeed (second, identical) = %v; want nil -- idempotent", err)
 	}
-	if _, err := writeSeed(loc, "some-slug", "loom", shedrun.DriverGo, map[string]string{"parent": "main"}); err == nil {
+	if _, err := writeSeed(loc, "some-slug", "tapestry", shedrun.DriverGo, map[string]string{"parent": "main"}); err == nil {
 		t.Fatal("writeSeed (disagreeing params) = nil; want a refusal")
 	}
 }
@@ -246,7 +253,7 @@ func TestWriteSeed_RefusesFabricsOwnCheckouts(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			loc := &lymcwd.Location{HubPath: hub, WorktreeName: tt.worktreeName, AnchorRel: "."}
-			_, err := writeSeed(loc, "a-run", shedrun.RecipeLoom, "", nil)
+			_, err := writeSeed(loc, "a-run", shedrun.RecipeTapestry, "", nil)
 			if err == nil {
 				t.Fatalf("writeSeed(%q) error = nil; want a refusal", tt.worktreeName)
 			}

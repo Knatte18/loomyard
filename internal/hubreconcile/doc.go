@@ -82,6 +82,6 @@
 //
 // # Accepted gaps
 //
-// A fabric add whose fork read the prime before a walk committed it, and whose pair became enumerable only after the walk's last listing, keeps the prime's older config; Loom-Preflight's retired-key refusal backs that up.
+// A fabric add whose fork read the prime before a walk committed it, and whose pair became enumerable only after the walk's last listing, keeps the prime's older config; Tapestry-Preflight's retired-key refusal backs that up.
 // Two risks are accepted: a downgrade flip-flops the stamp between two binaries, and a lym-authored records commit in a running pair can land beside a driver's own work.
 package hubreconcile

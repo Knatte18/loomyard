@@ -71,7 +71,7 @@ type Deps struct {
 	PushSkipped bool
 
 	// EscalateJudgedFirst is the told decision whether a merge fixer's escalate halts with EscalateStopPrefix, so the arbiter judges it before the orch, or with LandingStopPrefix as a hand-back.
-	// True on a loom or darn run, false on a pawl run, whose arbiter has no decision verb to settle it with.
+	// True on a tapestry or darn run, false on a pawl run, whose arbiter has no decision verb to settle it with.
 	EscalateJudgedFirst bool
 
 	// OpenFabric and OpenParentFabric are the two lazy opener closures Parent-Align and Finalize hold,
@@ -255,7 +255,7 @@ type Deps struct {
 	// It is told so this package stays free of the plan and quarry modules.
 	// Nil traces nothing, as for a run with no plan.
 	// A trace error is logged and leaves the record without the fields.
-	// internal/loomcli's landingDeps fills it for a loom run and leaves it nil for a darn run.
+	// internal/loomcli's landingDeps fills it for a tapestry run and leaves it nil for a darn run.
 	TraceFailure func(log, head string) (verifytree.FailureTrace, error)
 	// VerifyDir is the told directory internal/verifytree keeps the verified-tree record, the running marker and the verify log in.
 	// Every plan-verify site of the worktree shares it, so a pass at one site lets the next skip.

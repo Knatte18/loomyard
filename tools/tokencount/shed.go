@@ -1,5 +1,5 @@
 // shed.go reads a finished run's archived shed seed and status from its newest archive tag.
-// It decides from them whether the run is a full loom run, sets the run's span and splits that span by shed history entry into the Producers table.
+// It decides from them whether the run is a full tapestry run, sets the run's span and splits that span by shed history entry into the Producers table.
 
 package main
 
@@ -137,7 +137,7 @@ func inFlight(hub, slug string) (bool, error) {
 }
 
 // fullLoomRun reports whether the slug's latest run went through the whole loom lifecycle:
-// its worktree under hub is torn down, and the shed record at its newest archive tag, tags being ordered newest first, names the loom recipe and holds a Finalize entry.
+// its worktree under hub is torn down, and the shed record at its newest archive tag, tags being ordered newest first, names the tapestry recipe and holds a Finalize entry.
 // A run stopped partway, such as a bench pair parked after Discussion-Write or an abandoned run, is not one.
 func fullLoomRun(trees ArchiveTrees, hub, slug string, tags []ArchiveTag) (bool, error) {
 	running, err := inFlight(hub, slug)
@@ -145,7 +145,7 @@ func fullLoomRun(trees ArchiveTrees, hub, slug string, tags []ArchiveTag) (bool,
 		return false, err
 	}
 	record, err := readShedRecord(trees, slug, tags)
-	if err != nil || record == nil || record.Recipe != shedrun.RecipeLoom {
+	if err != nil || record == nil || record.Recipe != shedrun.RecipeTapestry {
 		return false, err
 	}
 	return slices.ContainsFunc(record.Entries, func(entry ShedEntry) bool { return entry.Producer == loomshed.NameFinalize }), nil

@@ -133,7 +133,7 @@ func TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver(t *testing.
 	// Seed the fixture worktree's own run with the llm driver directly, per shedrun's own
 	// sole-writer contract -- this test drives the launch machinery below the CLI's own bootstrap
 	// verb, so it needs no committed origin record and no "parent" param to agree with.
-	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverLLM}); err != nil {
+	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeTapestry, Driver: shedrun.DriverLLM}); err != nil {
 		t.Fatalf("seed the llm driver: %v", err)
 	}
 

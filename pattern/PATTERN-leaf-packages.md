@@ -25,12 +25,12 @@ Imports only the standard library, `configengine` and `gopkg.in/yaml.v3`.
 ## `internal/lenses`
 
 Imports only the standard library, `configengine` and `gopkg.in/yaml.v3`.
-It owns the `lenses.yaml` module and the fan key grammar loom and darn share, and imports no engine.
+It owns the `lenses.yaml` module and the fan key grammar tapestry and darn share, and imports no engine.
 
 ## `internal/reviewbudget`
 
 Imports only the standard library and `configengine`.
-It declares the review budget key family loom and darn config build on, and imports neither engine.
+It declares the review budget key family tapestry and darn config build on, and imports neither engine.
 
 ## `internal/buildinfo`
 

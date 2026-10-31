@@ -91,7 +91,7 @@ func TestResolveBattenPrime(t *testing.T) {
 	}
 
 	t.Run("BeamHeldByItsLandingNamesTheLandingAndItsParent", func(t *testing.T) {
-		seedBoardTask(t, h, "b", "loom")
+		seedBoardTask(t, h, "b", "tapestry")
 		board, err := boardengine.OpenHub(h.Path)
 		if err != nil {
 			t.Fatalf("open the hub board: %v", err)

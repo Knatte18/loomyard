@@ -164,7 +164,7 @@ func (c *loomCLI) resumeFromRunState(ctx context.Context, out io.Writer, bootstr
 func (c *loomCLI) awaitingResumability(row string) (resumeRefusal, bool) {
 	subdir, isBouncer, err := c.bouncerSubdir(row)
 	if err != nil {
-		return resumeRefusal{message: "loom resume: " + err.Error() + `; the embedded loom recipe failed to parse, so this lym build is broken; rebuild or reinstall lym, then re-run "` + retryResume + `"`}, false
+		return resumeRefusal{message: "loom resume: " + err.Error() + `; the embedded tapestry recipe failed to parse, so this lym build is broken; rebuild or reinstall lym, then re-run "` + retryResume + `"`}, false
 	}
 	if !isBouncer {
 		return resumeRefusal{message: `loom resume: the run is awaiting a decision, which resume does not give; answer it through the verb the run's waiting note names, such as "lym loom circling accept <slug>", after which a batten run watching the child resumes it, or run "lym batten run <slug>" from the prime when no batten run watches it`}, false

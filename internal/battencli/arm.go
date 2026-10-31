@@ -200,7 +200,7 @@ const anchorParam = "anchor"
 // armSeed gates batten's auto-seed: it reads the seed at runID, refuses a found seed that disagrees with this invocation (refuseAdoptedSeed) and otherwise leaves it untouched, writes a fresh one for "run" and "step" when absent, and refuses every other verb with shedrun.MissingSeedMessage naming "lym batten run <slug>" as the remedy.
 //
 // Prime's seed carries recipe: "batten", never the Board task's own type: the two are different
-// runs' recipes, and a prime seed carrying "loom" would make "lym shed status <slug>" from prime arm
+// runs' recipes, and a prime seed carrying "tapestry" would make "lym shed status <slug>" from prime arm
 // loomcli against prime -- the wrong recipe against the wrong worktree. The child worktree's own
 // recipe is chosen later, by battenshed's Seed-Child producer, from the Board task's type.
 //
@@ -958,7 +958,7 @@ const maxStatusHistoryEntries = 20
 // and Worktree-Teardown carry no on_stuck, so their reason is the persisted error, and this
 // extra is kept for the Run-Shed block through the budget arm, whose error stays the fixed budget
 // literal.
-// A batten run that stopped before its teardown while its child loom run is done also carries childDoneFlagKey, naming the step that closes it.
+// A batten run that stopped before its teardown while its child tapestry run is done also carries childDoneFlagKey, naming the step that closes it.
 // A run a live pause covers also carries paused_since and paused_by.
 // The slug's effective owner on the local Bolt rides along as owner_machine and owned_here; an unreadable board adds neither.
 func (c *battenCLI) battenStatusExtras(st shedengine.Status) (map[string]any, error) {
@@ -993,10 +993,10 @@ func (c *battenCLI) battenStatusExtras(st shedengine.Status) (map[string]any, er
 	return extras, nil
 }
 
-// childDoneFlagKey is the status envelope key that flags a batten run stopped before its teardown over a child loom run that is done.
+// childDoneFlagKey is the status envelope key that flags a batten run stopped before its teardown over a child tapestry run that is done.
 const childDoneFlagKey = "child_done_batten_halted"
 
-// haltedOverDoneChild returns the flag text and true when batten's own state st is failed, blocked or paused while the child loom run's status child, read when childFound, is done.
+// haltedOverDoneChild returns the flag text and true when batten's own state st is failed, blocked or paused while the child tapestry run's status child, read when childFound, is done.
 // The flag names the batten run that closes the pair: it resumes batten at the row it halted at, which lands the run through Land before Worktree-Teardown tears the pair down.
 func haltedOverDoneChild(slug string, st, child shedengine.Status, childFound bool) (string, bool) {
 	switch st.State {
@@ -1007,10 +1007,10 @@ func haltedOverDoneChild(slug string, st, child shedengine.Status, childFound bo
 	if !childFound || child.State != shedengine.StateDone {
 		return "", false
 	}
-	return fmt.Sprintf("batten is %s while its child loom run is done; run \"lym batten run %s\" from the prime, which resumes batten at the row it halted at and lands the run through Land before Worktree-Teardown tears the pair down", st.State, slug), true
+	return fmt.Sprintf("batten is %s while its child tapestry run is done; run \"lym batten run %s\" from the prime, which resumes batten at the row it halted at and lands the run through Land before Worktree-Teardown tears the pair down", st.State, slug), true
 }
 
-// readChildStatus reads the task worktree's own loom run status.
+// readChildStatus reads the task worktree's own tapestry run status.
 // Every failure to read it, an absent pair or status file included, answers found false, since failing to read the child must never change batten's own status answer.
 func (c *battenCLI) readChildStatus() (shedengine.Status, bool) {
 	task, err := taskWorktreeLocation(c.location, c.slug)

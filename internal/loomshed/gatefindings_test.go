@@ -3,7 +3,7 @@
 // gatefindings_test.go asserts that this package's mechanical gates surface the determined findings
 // they used to discard.
 // The rule matters most exactly where it is cheapest to skip, but the reason has changed with the
-// row-removal batch: Loom-Preflight still carries no OnStuck at all, so its Stuck still halts the
+// row-removal batch: Tapestry-Preflight still carries no OnStuck at all, so its Stuck still halts the
 // run for a human. NewDiscussionGate and NewPlanGate, though, no longer bounce to a respawned
 // writer on a failed attempt -- a gated writer row's exhausted gate halts the run for a human too,
 // so the logger.Warn line this file pins is not merely the best record of a refusal, it is the ONLY
@@ -124,7 +124,7 @@ func TestPlanGate_FailureSurfacesItsFindings(t *testing.T) {
 }
 
 //testtiming:keep pins the refusal log line and its failures field for a half-finished run, which its covering tests never read
-func TestLoomPreflight_StuckSurfacesItsFailures(t *testing.T) {
+func TestTapestryPreflight_StuckSurfacesItsFailures(t *testing.T) {
 	dir := t.TempDir()
 	statusPath := filepath.Join(dir, "status.json")
 	statusLockPath := filepath.Join(dir, "status.json.lock")
@@ -140,7 +140,7 @@ func TestLoomPreflight_StuckSurfacesItsFailures(t *testing.T) {
 	}
 
 	buf := logcapture.Capture(t)
-	p := NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: t.TempDir()})
+	p := NewTapestryPreflight(NameTapestryPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: t.TempDir()})
 
 	shedfake.RequireOutcome(t, p, shedengine.Stuck)
 

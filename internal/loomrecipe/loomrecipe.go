@@ -1,5 +1,5 @@
-// loomrecipe.go implements New and LoomRetiredRows.
-// New is the coherence guard across env and paths, then the parse of contracts/recipes.LoomRecipe, and the delegation to shedbuild.NewShedFrom.
+// loomrecipe.go implements New and TapestryRetiredRows.
+// New is the coherence guard across env and paths, then the parse of contracts/recipes.TapestryRecipe, and the delegation to shedbuild.NewShedFrom.
 // NewShedFrom builds the recipe against a caller-supplied shedrecipe.Env and returns the assembled *shedengine.Shed.
 
 package loomrecipe
@@ -14,12 +14,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 )
 
-// LoomRetiredRows maps each row name a loom run's status file may still carry from an earlier recipe onto the row that replaced it.
-func LoomRetiredRows() map[string]string {
-	return map[string]string{"Merge-In": loomshed.NameParentAlign}
+// TapestryRetiredRows maps each row name a tapestry run's status file may still carry from an earlier recipe onto the row that replaced it:
+// `Merge-In` onto the landing row, and `Loom-Preflight` onto the entry row the recipe's rename gave its own name.
+func TapestryRetiredRows() map[string]string {
+	return map[string]string{
+		"Merge-In":       loomshed.NameParentAlign,
+		"Loom-Preflight": loomshed.NameTapestryPreflight,
+	}
 }
 
-// New parses recipes.LoomRecipe, builds it against env, and returns a *shedengine.Shed carrying
+// New parses recipes.TapestryRecipe, builds it against env, and returns a *shedengine.Shed carrying
 // the built []shedengine.ProducerDef plus paths' five fields.
 //
 // New delegates its parse-and-build work to shedbuild.NewShed, wrapping a non-nil returned error
@@ -46,19 +50,19 @@ func LoomRetiredRows() map[string]string {
 // than a validation of either: it returns an error when env.StatusPath != paths.StatusPath, and
 // another when env.StatusLockPath != paths.StatusLockPath. Both run as New's first act, ahead of
 // the delegation to shedbuild.NewShed. The ordering is load-bearing, not stylistic:
-// loomPreflightEntry calls requireAbsRoot("LoomPreflight", "StatusPath", …) during Build, so a
+// tapestryPreflightEntry calls requireAbsRoot("TapestryPreflight", "StatusPath", …) during Build, so a
 // divergence involving an empty or relative value would otherwise surface as that entry's
 // absoluteness error and hide which of the two copies was wrong. Each error names both sides'
 // values so the divergence is readable without a debugger.
 //
 // StatusPath and StatusLockPath are deliberately told twice -- once in env (for
-// loomPreflightEntry) and once in paths (for Shed) -- and that duplication is inherent to the
+// tapestryPreflightEntry) and once in paths (for Shed) -- and that duplication is inherent to the
 // split between the two argument types New takes; it must not be collapsed. This check is the
 // guard the duplication needs. loomshed.Deps carried one StatusPath field feeding both
-// NewLoomPreflight and shedengine.Shed, so the two could not disagree; splitting it into an Env
-// copy (read by loomPreflightEntry) and a shedbuild.ShedPaths copy (read by Shed) makes a
+// NewTapestryPreflight and shedengine.Shed, so the two could not disagree; splitting it into an Env
+// copy (read by tapestryPreflightEntry) and a shedbuild.ShedPaths copy (read by Shed) makes a
 // divergent fill possible for the first time, and its consequence is silent: Shed would persist
-// its status to one file while Loom-Preflight reads another, which surfaces as a broken resume
+// its status to one file while Tapestry-Preflight reads another, which surfaces as a broken resume
 // rather than as any error. That is the same class of silent durable-identity hazard the
 // row-name-authority-stays-with-the-go-constants Shared Decision exists to machine-check, and New
 // is the only place in the tree where both copies are visible at once, so no other layer can make
@@ -68,12 +72,12 @@ func New(env shedrecipe.Env, paths shedbuild.ShedPaths) (*shedengine.Shed, error
 		return nil, err
 	}
 
-	parsed, err := shedbuild.Parse(recipes.LoomRecipe)
+	parsed, err := shedbuild.Parse(recipes.TapestryRecipe)
 	if err != nil {
 		return nil, fmt.Errorf("loomrecipe: %w", err)
 	}
 
-	segments, err := reviewSegments(recipes.LoomRecipe)
+	segments, err := reviewSegments(recipes.TapestryRecipe)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +112,7 @@ func checkStatusPaths(env shedrecipe.Env, paths shedbuild.ShedPaths) error {
 	return nil
 }
 
-// Routing projects the embedded loom recipe's routing without building any engine, so a caller
+// Routing projects the embedded tapestry recipe's routing without building any engine, so a caller
 // that never builds a Shed (the status verb) can compute progress. A parse error is returned
 // prefixed with "loomrecipe: ". Routing.MaxBounces is left 0.
 //
@@ -117,12 +121,12 @@ func checkStatusPaths(env shedrecipe.Env, paths shedbuild.ShedPaths) error {
 // The exception is a zero-round segment: its rows carry MaxBounces 0, which the progress projection reads as shedengine's inherited budget.
 // A review segment budgets lacks is refused naming the segment and the loom wiring's segment-to-perch table, and a negative entry is refused naming the segment.
 func Routing(budgets map[string]int) (shedengine.Routing, error) {
-	routing, err := shedbuild.RoutingOf(recipes.LoomRecipe)
+	routing, err := shedbuild.RoutingOf(recipes.TapestryRecipe)
 	if err != nil {
 		return shedengine.Routing{}, fmt.Errorf("loomrecipe: %w", err)
 	}
 
-	segments, err := reviewSegments(recipes.LoomRecipe)
+	segments, err := reviewSegments(recipes.TapestryRecipe)
 	if err != nil {
 		return shedengine.Routing{}, err
 	}

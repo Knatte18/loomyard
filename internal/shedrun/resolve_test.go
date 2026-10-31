@@ -95,7 +95,7 @@ func TestSelfResolvesAgainstTheToldLocation(t *testing.T) {
 	if got := ResolveRunID(b, SelfRunID); got != "child-slug" {
 		t.Errorf("ResolveRunID(b, self) = %q; want child-slug", got)
 	}
-	if err := WriteSeed(b, SelfRunID, Seed{Recipe: RecipeLoom, Driver: DriverGo}); err != nil {
+	if err := WriteSeed(b, SelfRunID, Seed{Recipe: RecipeTapestry, Driver: DriverGo}); err != nil {
 		t.Fatalf("WriteSeed: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(b.AnchorPath(), SeedRel(b, SelfRunID))); err != nil {
@@ -108,14 +108,14 @@ func TestSelfResolvesAgainstTheToldLocation(t *testing.T) {
 
 func TestReadWriteSeed_InvalidResolvedIDRefused(t *testing.T) {
 	l := syntheticLocation(t)
-	if err := WriteSeed(l, "../x", Seed{Recipe: RecipeLoom, Driver: DriverGo}); err == nil {
+	if err := WriteSeed(l, "../x", Seed{Recipe: RecipeTapestry, Driver: DriverGo}); err == nil {
 		t.Error("WriteSeed with an invalid id = nil; want error")
 	}
 	if _, _, err := ReadSeed(l, "a/b"); err == nil {
 		t.Error("ReadSeed with an invalid id = nil; want error")
 	}
 	empty := &lymcwd.Location{HubPath: l.HubPath, AnchorRel: "."}
-	if err := WriteSeed(empty, SelfRunID, Seed{Recipe: RecipeLoom, Driver: DriverGo}); err == nil {
+	if err := WriteSeed(empty, SelfRunID, Seed{Recipe: RecipeTapestry, Driver: DriverGo}); err == nil {
 		t.Error("WriteSeed(self) with an empty worktree name = nil; want error")
 	}
 }

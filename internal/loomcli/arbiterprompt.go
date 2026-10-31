@@ -22,5 +22,5 @@ func arbiterRecipeDescription(recipe string) string {
 	case shedrun.RecipePawl:
 		return "This is a pawl run, a beam's life driven through the loom engine. " + arbiterRepairVerbs
 	}
-	return "This is a loom run, a task driven from discussion to landing. " + arbiterRepairVerbs
+	return "This is a tapestry run, a task driven from discussion to landing. " + arbiterRepairVerbs
 }

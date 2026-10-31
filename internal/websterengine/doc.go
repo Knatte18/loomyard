@@ -574,7 +574,7 @@
 // # The plan fixer
 //
 // A `plan_conflict` refusal of begin-batch goes to a cold plan fixer before Master ends stuck:
-// Merriam runs `lym webster fix-plan` backgrounded, ends its turn, and on the verb's completion calls begin-batch again for the same batch on verdict `fixed`, and otherwise writes `outcome: stuck` quoting the begin-batch refusal, so a loom run still reroutes to plan review through the conflict record, which nothing but the next begin-batch removes.
+// Merriam runs `lym webster fix-plan` backgrounded, ends its turn, and on the verb's completion calls begin-batch again for the same batch on verdict `fixed`, and otherwise writes `outcome: stuck` quoting the begin-batch refusal, so a tapestry run still reroutes to plan review through the conflict record, which nothing but the next begin-batch removes.
 // A `plan_drifted` refusal gets no fixer.
 // FixPlanSpawnOrAttach reads the conflict record (ReadConflictRecord) and spawns the fixer as its own strand, role `plan-fixer`, at RoleMaster's model choice with recovery_timeout_min as its timeout, with RenderPlanFixPrompt's prompt carrying the parent, edit and friction directives.
 // The fixer edits only the target names, paths and glyphs the findings name in the cards they name, runs `lym webster rebaseline --card NN` for them, runs `lym webster restore-plan` when rebaseline refuses or a finding would change what a card does, and writes its reply (PlanFixReplyPath), whose first line is `verdict: fixed` or `verdict: plan_writer`.

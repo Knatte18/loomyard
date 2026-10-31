@@ -28,8 +28,8 @@ func TestChildDriverKind(t *testing.T) {
 		wantDriver string
 	}{
 		{name: "a darn recipe takes darn.yaml's go over loom.yaml's llm", recipe: shedrun.RecipeDarn, loomKind: "llm", darnKind: "go", wantDriver: "go"},
-		{name: "a loom recipe takes loom.yaml's llm over darn.yaml's go", recipe: shedrun.RecipeLoom, loomKind: "llm", darnKind: "go", wantDriver: "llm"},
-		{name: "empty overrides take shed.yaml's llm", recipe: shedrun.RecipeLoom, shedKind: "llm", wantDriver: "llm"},
+		{name: "a tapestry recipe takes loom.yaml's llm over darn.yaml's go", recipe: shedrun.RecipeTapestry, loomKind: "llm", darnKind: "go", wantDriver: "llm"},
+		{name: "empty overrides take shed.yaml's llm", recipe: shedrun.RecipeTapestry, shedKind: "llm", wantDriver: "llm"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

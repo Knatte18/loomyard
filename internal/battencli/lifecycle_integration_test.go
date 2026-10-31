@@ -359,7 +359,7 @@ func TestBattenIntegration_Rows(t *testing.T) {
 // It reconstructs that seed's shape from the recorded origin rather than importing internal/loomcli, and asserts the recorded parent is what landed in the param, so the shape cannot drift into agreeing with itself while disagreeing with loom.
 func stepSeedChild_WritesASeedTheChildBootstrapAgreesWith(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-seed-agrees"
-	seedBoardTask(t, h, slug, "loom")
+	seedBoardTask(t, h, slug, "tapestry")
 
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 		return shedengine.Status{State: shedengine.StateDone}, true, nil
@@ -419,7 +419,7 @@ func stepSeedChild_WritesASeedTheChildBootstrapAgreesWith(t *testing.T, h *hubfo
 // stepSeedChild_WriteSeedRewrapsARealDisagreeingChildSeed pins the WriteSeed closure's own rewrap of shedrun.ErrDisagreeingSeed into battenshed.ErrDisagreeingChildSeed (wire.go): plants a real, pre-existing child seed that disagrees with what the closure is about to write, then calls c.env.SeedChild.WriteSeed directly, the production closure, rather than stubbing the sentinel already wrapped -- so a future edit that drops the rewrap fails here rather than only in a test that never reaches the real shedrun.WriteSeed call.
 func stepSeedChild_WriteSeedRewrapsARealDisagreeingChildSeed(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-seed-disagrees"
-	seedBoardTask(t, h, slug, "loom")
+	seedBoardTask(t, h, slug, "tapestry")
 	hubforge.AddPair(t, h, slug)
 
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
@@ -434,11 +434,11 @@ func stepSeedChild_WriteSeedRewrapsARealDisagreeingChildSeed(t *testing.T, h *hu
 	// A driver of "llm" disagrees with the "go" driver this test's own ChildDriver seam (below)
 	// resolves to, the same way an operator's hand-seeded or otherwise pre-existing child seed
 	// might.
-	if err := shedrun.WriteSeed(childLocation, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverLLM}); err != nil {
+	if err := shedrun.WriteSeed(childLocation, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeTapestry, Driver: shedrun.DriverLLM}); err != nil {
 		t.Fatalf("plant a disagreeing child seed: %v", err)
 	}
 
-	err = c.env.SeedChild.WriteSeed(context.Background(), shedrun.RecipeLoom, shedrun.DriverGo)
+	err = c.env.SeedChild.WriteSeed(context.Background(), shedrun.RecipeTapestry, shedrun.DriverGo)
 	if !errors.Is(err, battenshed.ErrDisagreeingChildSeed) {
 		t.Fatalf("WriteSeed() error = %v; want it to wrap battenshed.ErrDisagreeingChildSeed", err)
 	}
@@ -477,7 +477,7 @@ func stepRealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring(t *testing.T
 // It asserts the pair exists on disk after the create row, that the child's own _lym/shed/<slug>/seed.json exists after the seed row, names the Board task's own "type" as its recipe, carries the pair's recorded parent branch as params.parent, and is committed (not merely written) on the child's own records pair, and that the pair is gone after the teardown row.
 // It runs once per recipe a child may run.
 func stepFourRowRun_SeedsChildCommitsAndTearsDown(t *testing.T, h *hubforge.Hub) {
-	for _, recipe := range []string{shedrun.RecipeLoom, shedrun.RecipeDarn} {
+	for _, recipe := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn} {
 		t.Run(recipe, func(t *testing.T) {
 			fourRowRunForRecipe(t, h, recipe)
 		})
@@ -924,7 +924,7 @@ func stepRunShedPausedChild_WaitsThenTearsDownOnceDone(t *testing.T, h *hubforge
 // Without the probe the row takes fabric's pre-existing-branch refusal, whose two named remedies both refuse in exactly this state, leaving the run unresumable.
 func stepCreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-create-idempotent"
-	seedBoardTask(t, h, slug, "loom")
+	seedBoardTask(t, h, slug, "tapestry")
 	// The pair the killed drive already created, with nothing recording it.
 	hubforge.AddPair(t, h, slug)
 
@@ -981,7 +981,7 @@ func stepCreateRow_PairWithoutOriginRecordIsIncomplete(t *testing.T, h *hubforge
 func stepCreateRow_LeftoverBranchIsRewordedForPrime(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-leftover-branch"
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "branch", slug)
-	seedBoardTask(t, h, slug, "loom")
+	seedBoardTask(t, h, slug, "tapestry")
 
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 		t.Fatal("ReadStatus must not be called: the create row must fail before the poll row ever runs")
@@ -1147,7 +1147,7 @@ func stepDirtyPrime_CreateRowBlocksBeforeAnythingCreated(t *testing.T, h *hubfor
 // The board default is set after the wiring, since the executable lookup reads it when the first row runs, and is emptied again when the step ends.
 func newCommandRowFixture(t *testing.T, h *hubforge.Hub, slug string) (*battenCLI, map[string]string, string) {
 	t.Helper()
-	seedBoardTask(t, h, slug, "loom")
+	seedBoardTask(t, h, slug, "tapestry")
 	hubforge.AddPair(t, h, slug)
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 		return shedengine.Status{State: shedengine.StateDone}, true, nil
@@ -1799,7 +1799,7 @@ func stepStatusFlagsAHaltedBattenOverADoneChild(t *testing.T, h *hubforge.Hub) {
 func stepSeedChild_WritesTheRunSettingsIntoThePairsLocalLayer(t *testing.T, h *hubforge.Hub) {
 	runWorktreeCreateAndSeedChild := func(t *testing.T, slug string, settings map[string]any) shedengine.StepResult {
 		t.Helper()
-		seedBoardTask(t, h, slug, "loom")
+		seedBoardTask(t, h, slug, "tapestry")
 		cfg, err := boardengine.LoadConfig(configengine.Dirs{Board: h.BoardDir()}, "board")
 		if err != nil {
 			t.Fatalf("load board config: %v", err)

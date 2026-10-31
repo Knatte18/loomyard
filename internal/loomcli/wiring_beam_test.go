@@ -99,7 +99,7 @@ func TestWire_BeamRecipe(t *testing.T) {
 	t.Run("a loom seed leaves the BeamDescribe seams unfilled", func(t *testing.T) {
 		t.Parallel()
 		loc := hubLocation(t, "pair", ".")
-		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeLoom}
+		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeTapestry}
 		if err := c.wire(loc, loc.AnchorPath()); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
 		}
@@ -111,7 +111,7 @@ func TestWire_BeamRecipe(t *testing.T) {
 		}
 	})
 
-	t.Run("the landing deps of a pawl run halt a spent fixer, and only a loom or darn run judges an escalate first", func(t *testing.T) {
+	t.Run("the landing deps of a pawl run halt a spent fixer, and only a tapestry or darn run judges an escalate first", func(t *testing.T) {
 		t.Parallel()
 		loc := hubLocation(t, "pair", ".")
 		runner := &shuttleengine.Runner{}
@@ -124,7 +124,7 @@ func TestWire_BeamRecipe(t *testing.T) {
 			wantLandBlockers        bool
 			wantEscalateJudgedFirst bool
 		}{
-			{shedrun.RecipeLoom, true, false, true},
+			{shedrun.RecipeTapestry, true, false, true},
 			{shedrun.RecipeDarn, true, false, true},
 			{shedrun.RecipePawl, false, true, false},
 		}

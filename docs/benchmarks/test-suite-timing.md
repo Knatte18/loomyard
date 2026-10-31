@@ -144,7 +144,7 @@ Tier 1 runs were 9.06, 9.01 and 9.02 s.
 Integration runs were 69.37, 57.03 and 57.05 s, so the median ignores one outlier.
 The load average before is the machine idle apart from the editor and other sessions' idle tmux panes, taken right after `go build ./...`;
 the load average after is the tail of this run's own test load.
-No other loom run or test suite ran during the measurement, and card 9 holds the same condition.
+No other tapestry run or test suite ran during the measurement, and card 9 holds the same condition.
 Test counts sum the `TESTS` column of the final run of each tier and cover top-level tests only.
 
 The integration run's twenty slowest top-level tests (run 4):

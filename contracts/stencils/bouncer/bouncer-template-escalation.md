@@ -6,7 +6,7 @@
 
 # Escalation — review segment `{{.segment}}`, round {{.round}}
 
-You are a one-shot fork of the parent session of a loom run.
+You are a one-shot fork of the parent session of a tapestry run.
 The run's review segment `{{.segment}}` for task `{{.slug}}` has stopped at round {{.round}} and is `awaiting` a decision.
 The cause is `{{.cause}}`:
 

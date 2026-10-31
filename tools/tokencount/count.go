@@ -475,7 +475,7 @@ func archivedSlugs(refs string) map[string][]ArchiveTag {
 	return slugs
 }
 
-// recentRuns names the full loom runs of the hub whose sessions changed most recently, newest first, at most last of them, and, newest first, the runs it skipped on the way because they are not full loom runs.
+// recentRuns names the full tapestry runs of the hub whose sessions changed most recently, newest first, at most last of them, and, newest first, the runs it skipped on the way because they are not full tapestry runs.
 // A candidate is the slug of an archive tag in finished, except the prime's own, with a session located at the worktree <hub>/<slug> through some engine;
 // its recency is the newest modification time among those sessions.
 // fullLoomRun decides it from the archive tags read through trees.

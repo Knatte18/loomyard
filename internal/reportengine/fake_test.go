@@ -378,14 +378,14 @@ func addedDecision(author, title string) string {
 	return fmt.Sprintf("### Added after Discussion (%s, 2026-01-05): %s", author, title)
 }
 
-// fullRun adds the archive tag of a full loom run of slug at hour holding extra files, with the batten snapshots committed before it and entries in the loom history before its Finalize.
+// fullRun adds the archive tag of a full tapestry run of slug at hour holding extra files, with the batten snapshots committed before it and entries in the loom history before its Finalize.
 func (w *world) fullRun(slug, sha string, hour int, snapshots []shedengine.Status, entries []shedengine.HistoryEntry, extra map[string]string) {
 	for i, snapshot := range snapshots {
 		w.battenRecord(fmt.Sprintf("%s-b%d", slug, i), hour-len(snapshots)+i, slug, snapshot)
 	}
 	history := append(entries, shedengine.HistoryEntry{Producer: loomshed.NameFinalize, Outcome: shedengine.Done, At: at(hour - 10).Format(time.RFC3339)})
 	status := statusJSON(w.t, shedengine.Status{State: shedengine.StateDone, History: history})
-	w.tagWith(slug, sha, at(hour), seedText("loom"), status, extra)
+	w.tagWith(slug, sha, at(hour), seedText("tapestry"), status, extra)
 }
 
 // alignmentAttemptFiles returns the files of attempt number of slug's alignment agent at point: attempt.json recording applied, and a verdict file unless verdict is empty.
@@ -573,9 +573,9 @@ func (w *world) tagOver(slug, sha, parent string, when time.Time, seed, status s
 	w.tags = append(w.tags, gitrepo.TagRef{Name: fabricengine.ArchiveTagPrefix + slug + "/" + sha, Commit: sha, Committed: when})
 }
 
-// finishedRun adds the archive tag of a full loom run of slug at hour.
+// finishedRun adds the archive tag of a full tapestry run of slug at hour.
 func (w *world) finishedRun(slug, sha string, hour int) {
-	w.tag(slug, sha, at(hour), seedText("loom"), statusText(w.t, "Plan-Write", "Finalize"))
+	w.tag(slug, sha, at(hour), seedText("tapestry"), statusText(w.t, "Plan-Write", "Finalize"))
 }
 
 // pairBranch adds the records branch of slug's pair: a commit off the main line at when holding the given seed, status and extra files, named sha.

@@ -390,7 +390,7 @@ defaults maps a recipe to the profile a task of that recipe takes when it names 
 Edit the profiles with "lym config profiles".
 
 Output:
-  {"ok":true,"defaults":{"loom":"light"},"profiles":[{"name":"light","settings":{"loom":{"loom":{"plan_max_bounces":1}}}}]}
+  {"ok":true,"defaults":{"tapestry":"light"},"profiles":[{"name":"light","settings":{"tapestry":{"loom":{"plan_max_bounces":1}}}}]}
 
 Example:
   lym board profiles`,
@@ -494,7 +494,7 @@ Optional fields:
   "status"     string — lifecycle status, e.g. "active"
   "kind"       string — "task", "note" or "project", default "note"
   "labels"     array  — labels replacing the whole list; a task needs a type label, a note exactly one
-  "recipe"    string — "loom" or "darn"; empty means "loom"
+  "recipe"    string — "darn" or "tapestry", the default
   "priority"   string — a note's "high", "normal" or "low"; "normal" clears it
   "short_name" string — display label; falls back to the slug
   "issues"     array  — the hub's issue numbers

@@ -19,11 +19,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 )
 
-// TestDecisionSwitches_SetTogetherOnLoomsDiscussionRowsOnly asserts both switches are true on exactly Discussion-Bouncer and Discussion-Burler-Fix in the loom recipe and on no row of the darn recipe.
+// TestDecisionSwitches_SetTogetherOnLoomsDiscussionRowsOnly asserts both switches are true on exactly Discussion-Bouncer and Discussion-Burler-Fix in the tapestry recipe and on no row of the darn recipe.
 // The Plan-Review and Code-Review rows therefore keep the fix row's own parent notice.
 func TestDecisionSwitches_SetTogetherOnLoomsDiscussionRowsOnly(t *testing.T) {
 	t.Parallel()
-	shipped := map[string][]byte{"loom": recipes.LoomRecipe, "darn": recipes.DarnRecipe}
+	shipped := map[string][]byte{"tapestry": recipes.TapestryRecipe, "darn": recipes.DarnRecipe}
 	for name, raw := range shipped {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -43,7 +43,7 @@ func TestDecisionSwitches_SetTogetherOnLoomsDiscussionRowsOnly(t *testing.T) {
 			sort.Strings(gotEscalate)
 			sort.Strings(gotEscalated)
 			var wantEscalate, wantEscalated []string
-			if name == "loom" {
+			if name == "tapestry" {
 				wantEscalate = []string{"Discussion-Bouncer"}
 				wantEscalated = []string{"Discussion-Burler-Fix"}
 			}

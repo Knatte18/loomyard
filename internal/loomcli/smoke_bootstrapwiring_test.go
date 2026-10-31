@@ -142,7 +142,7 @@ func TestSmokeStepBootstrapWiring(t *testing.T) {
 		if err != nil || !found {
 			t.Fatalf("ReadOrigin: found=%v err=%v", found, err)
 		}
-		wrong := shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo, Params: map[string]string{"parent": "wrong-branch"}}
+		wrong := shedrun.Seed{Recipe: shedrun.RecipeTapestry, Driver: shedrun.DriverGo, Params: map[string]string{"parent": "wrong-branch"}}
 		if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, wrong); err != nil {
 			t.Fatalf("WriteSeed(wrong-parent seed): %v", err)
 		}
@@ -155,7 +155,7 @@ func TestSmokeStepBootstrapWiring(t *testing.T) {
 		if err := os.Remove(shedrun.SeedFile(loc, shedrun.SelfRunID)); err != nil {
 			t.Fatalf("remove the wrong-parent seed: %v", err)
 		}
-		stdout, exit, err = runLoomCLINoFatal(exe, worktree, 60*time.Second, "shed", "seed", "self", "--recipe", "loom", "--driver", "go", "--param", "parent="+recorded.ParentBranch)
+		stdout, exit, err = runLoomCLINoFatal(exe, worktree, 60*time.Second, "shed", "seed", "self", "--recipe", "tapestry", "--driver", "go", "--param", "parent="+recorded.ParentBranch)
 		if err != nil || exit != 0 {
 			t.Fatalf("lym shed seed after the rm = exit %d, err %v; output: %s", exit, err, stdout)
 		}

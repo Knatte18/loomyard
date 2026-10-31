@@ -195,8 +195,8 @@ func simpleEntryCases() []simpleEntryCase {
 			unreadField:     "Cwd",
 		},
 		{
-			registryKey:     "LoomPreflight",
-			entry:           loomPreflightEntry,
+			registryKey:     "TapestryPreflight",
+			entry:           tapestryPreflightEntry,
 			buildEnv:        newTestEnv,
 			validatedFields: []string{"StatusPath", "StatusLockPath", "ConfigDirs.Anchor"},
 			unreadField:     "Cwd",
@@ -403,17 +403,17 @@ func TestFinalizeEntry_LandingRejected(t *testing.T) {
 	}
 }
 
-// TestLoomPreflightEntry_RelativeAnchorPath asserts a relative Env.ConfigDirs.Anchor fails, as the
+// TestTapestryPreflightEntry_RelativeAnchorPath asserts a relative Env.ConfigDirs.Anchor fails, as the
 // representative case for every entry's requireAbsRoot validation.
-func TestLoomPreflightEntry_RelativeAnchorPath(t *testing.T) {
+func TestTapestryPreflightEntry_RelativeAnchorPath(t *testing.T) {
 	env := newTestEnv(t)
 	env.ConfigDirs.Anchor = "relative/path"
-	_, err := loomPreflightEntry(RowIdentity{Name: "row-name"}, Config{}, env)
+	_, err := tapestryPreflightEntry(RowIdentity{Name: "row-name"}, Config{}, env)
 	if err == nil {
-		t.Fatalf("loomPreflightEntry() error = nil; want non-nil for a relative Env.ConfigDirs.Anchor")
+		t.Fatalf("tapestryPreflightEntry() error = nil; want non-nil for a relative Env.ConfigDirs.Anchor")
 	}
 	if !strings.Contains(err.Error(), "ConfigDirs.Anchor") {
-		t.Errorf("loomPreflightEntry() error = %v; want it to name field %q", err, "ConfigDirs.Anchor")
+		t.Errorf("tapestryPreflightEntry() error = %v; want it to name field %q", err, "ConfigDirs.Anchor")
 	}
 }
 

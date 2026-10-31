@@ -94,9 +94,9 @@ func runBoth(t *testing.T, label string, moduleFn, shedFn func() (exitCode int, 
 func parityLoomRunNoStatusFile(t *testing.T, h *hubforge.Hub) {
 	hubforge.AddPair(t, h, "parity-run")
 	cwd := h.PairCodeWorktree("parity-run")
-	seedRunForTest(t, cwd, shedrun.SelfRunID, shedrun.RecipeLoom)
+	seedRunForTest(t, cwd, shedrun.SelfRunID, shedrun.RecipeTapestry)
 
-	runBoth(t, "loom run (no status file)",
+	runBoth(t, "tapestry run (no status file)",
 		func() (int, string) {
 			var out bytes.Buffer
 			code := loomcli.RunCLIIn(cwd, &out, []string{"run"})
@@ -129,7 +129,7 @@ func readRecordedEnvelope(t *testing.T, label string, printed map[string]any) ma
 func parityLoomStepRunLockBusy(t *testing.T, h *hubforge.Hub) {
 	hubforge.AddPair(t, h, "parity-step")
 	cwd := h.PairCodeWorktree("parity-step")
-	seedRunForTest(t, cwd, shedrun.SelfRunID, shedrun.RecipeLoom)
+	seedRunForTest(t, cwd, shedrun.SelfRunID, shedrun.RecipeTapestry)
 
 	location, err := lymcwdResolveWorktreeForTest(t, cwd)
 	if err != nil {
@@ -253,7 +253,7 @@ func parityBattenStepRunLockBusy(t *testing.T, h *hubforge.Hub) {
 func parityLoomStatusSeeded(t *testing.T, h *hubforge.Hub) {
 	hubforge.AddPair(t, h, "parity-status")
 	cwd := h.PairCodeWorktree("parity-status")
-	seedRunForTest(t, cwd, shedrun.SelfRunID, shedrun.RecipeLoom)
+	seedRunForTest(t, cwd, shedrun.SelfRunID, shedrun.RecipeTapestry)
 
 	seedLoomStatus(t, cwd, shedengine.Status{
 		CurrentProducer: "Discussion-Write",
@@ -279,7 +279,7 @@ func parityLoomStatusSeeded(t *testing.T, h *hubforge.Hub) {
 func parityLoomPauseSeeded(t *testing.T, h *hubforge.Hub) {
 	hubforge.AddPair(t, h, "parity-pause")
 	cwd := h.PairCodeWorktree("parity-pause")
-	seedRunForTest(t, cwd, shedrun.SelfRunID, shedrun.RecipeLoom)
+	seedRunForTest(t, cwd, shedrun.SelfRunID, shedrun.RecipeTapestry)
 
 	seedLoomStatus(t, cwd, shedengine.Status{
 		CurrentProducer: "Discussion-Write",
@@ -345,7 +345,7 @@ func parityBattenRunStateDone(t *testing.T, h *hubforge.Hub) {
 func parityLightweightWiringStatusSucceedsWhenRunRefuses(t *testing.T, h *hubforge.Hub) {
 	hubforge.AddPair(t, h, "parity-lightweight")
 	cwd := h.PairCodeWorktree("parity-lightweight")
-	seedRunForTest(t, cwd, shedrun.SelfRunID, shedrun.RecipeLoom)
+	seedRunForTest(t, cwd, shedrun.SelfRunID, shedrun.RecipeTapestry)
 
 	location, err := lymcwdResolveWorktreeForTest(t, cwd)
 	if err != nil {
@@ -388,7 +388,7 @@ func TestParity_Scenario(t *testing.T) {
 		name string
 		run  func(t *testing.T, h *hubforge.Hub)
 	}{
-		{"loom run without a status file", parityLoomRunNoStatusFile},
+		{"tapestry run without a status file", parityLoomRunNoStatusFile},
 		{"loom step with the run lock busy", parityLoomStepRunLockBusy},
 		{"batten step with the run lock busy", parityBattenStepRunLockBusy},
 		{"loom status seeded", parityLoomStatusSeeded},

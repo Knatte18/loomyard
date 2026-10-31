@@ -80,7 +80,7 @@ func TestDarnPerch_SharesLoomsPerchBarTheAnswerKey(t *testing.T) {
 		}
 		return rows
 	}
-	darn, loom := rowsOf(recipes.DarnRecipe), rowsOf(recipes.LoomRecipe)
+	darn, loom := rowsOf(recipes.DarnRecipe), rowsOf(recipes.TapestryRecipe)
 	profileOf := func(row shedbuild.Row) map[string]any {
 		profile, _ := row.Config["profile"].(map[string]any)
 		return profile

@@ -29,7 +29,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// loomRunFixture is a real hub with one pair whose loom run is seeded and reads running, and whose hub-wide landing config is gone.
+// loomRunFixture is a real hub with one pair whose tapestry run is seeded and reads running, and whose hub-wide landing config is gone.
 type loomRunFixture struct {
 	t        *testing.T
 	loc      *lymcwd.Location
@@ -50,7 +50,7 @@ func newLoomRunFixture(t *testing.T) *loomRunFixture {
 	if err != nil || !found {
 		t.Fatalf("ReadOrigin: found=%v err=%v", found, err)
 	}
-	seed := shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo, Params: map[string]string{"parent": recorded.ParentBranch}}
+	seed := shedrun.Seed{Recipe: shedrun.RecipeTapestry, Driver: shedrun.DriverGo, Params: map[string]string{"parent": recorded.ParentBranch}}
 	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, seed); err != nil {
 		t.Fatalf("WriteSeed: %v", err)
 	}

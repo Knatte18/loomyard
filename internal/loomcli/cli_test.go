@@ -166,7 +166,7 @@ func loomVerbCommand(c *loomCLI, verb string) *cobra.Command {
 // and that step's help does not claim it bootstraps exactly as start does.
 func TestLoomVerbHelp_NamesBothSeedingRoutes(t *testing.T) {
 	t.Parallel()
-	const driverlessSeed = "lym shed seed self --recipe loom --driver go --param parent=<parent-branch>"
+	const driverlessSeed = "lym shed seed self --recipe tapestry --driver go --param parent=<parent-branch>"
 	tests := []struct {
 		verb       string
 		wantAbsent string
@@ -404,7 +404,7 @@ func TestPauseCmd_BareLoomPauseRefusesNamingBothWaysForward(t *testing.T) {
 	}
 }
 
-// TestSpecFor_RestepHold asserts specFor tells loom and darn the escalate-halt check as RestepHold, and pawl and a receiver with no recipe none.
+// TestSpecFor_RestepHold asserts specFor tells tapestry and darn the escalate-halt check as RestepHold, and pawl and a receiver with no recipe none.
 func TestSpecFor_RestepHold(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -414,8 +414,8 @@ func TestSpecFor_RestepHold(t *testing.T) {
 		reason   string
 		want     bool
 	}{
-		{shedrun.RecipeLoom, true, "Finalize", landingshed.EscalateStopPrefix + "the fixer needs a decision", true},
-		{shedrun.RecipeLoom, true, "Finalize", "a plain reason", false},
+		{shedrun.RecipeTapestry, true, "Finalize", landingshed.EscalateStopPrefix + "the fixer needs a decision", true},
+		{shedrun.RecipeTapestry, true, "Finalize", "a plain reason", false},
 		{shedrun.RecipeDarn, true, "Parent-Align", landingshed.EscalateStopPrefix + "the fixer needs a decision", true},
 		{shedrun.RecipeDarn, true, "Parent-Align", "a plain reason", false},
 		{shedrun.RecipePawl, false, "", "", false},

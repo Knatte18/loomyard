@@ -272,7 +272,7 @@ func gateTiersValue(read func() (gateslot.Config, error)) (string, error) {
 // cliwire.ResolveStandalone's own doc comment for the prologue's ordering obligation, which this
 // function's body no longer needs to restate.
 func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag string) error {
-	// c.frictionDir is left at its zero value: a standalone webster run is not a loom run and has no
+	// c.frictionDir is left at its zero value: a standalone webster run is not a tapestry run and has no
 	// friction directory.
 	res, err := wireModule.ResolveStandalone(cliwire.StandaloneRequest{
 		Cwd:             cwd,

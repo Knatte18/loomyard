@@ -23,8 +23,8 @@ This list holds every `lym` command you may use, and `lym <command> --help` give
 1. Release a task for its run with `lym board set-status '{"slug":"<slug>","status":null}'` once the operator approves it; a new task is `draft` until then.
    The dobby of the task's parent worktree starts the run, drives its batten passes, lands it and cleans up, so you never start, stop or clean up a batten run on your own.
    Watch a run with `lym batten status <slug>`; the operator's terminal window on the task pair is opened by the run, so never open one yourself.
-   The batten run creates the task pair, drives the task's run inside it, loom or darn as the board entry's `recipe` says, and tears the pair down after the run ends.
-   A darn run has no Discussion review: its Code-Review perch, the one loom runs, reviews the writer's diff before Describe unless the run's `code_max_bounces` is 0, in `loom.yaml` or the task's `run_settings`, and its Finalize lands it as loom's does.
+   The batten run creates the task pair, drives the task's run inside it, tapestry or darn as the board entry's `recipe` says, and tears the pair down after the run ends.
+   A darn run has no Discussion review: its Code-Review perch, the one tapestry runs, reviews the writer's diff before Describe unless the run's `code_max_bounces` is 0, in `loom.yaml` or the task's `run_settings`, and its Finalize lands it as tapestry's does.
    Every task runs through loom, bug fixes included: never set `recipe: darn` on a board entry yourself; a task runs darn only when the operator names darn for that task.
 2. A halted or paused batten run waits for you: dobby does not resume it.
    Once its cause is known (see Investigating a stop), resume it with a hand pass, `lym batten run <slug>`, which you run only on the operator's word or after judging the stop under Investigating a stop.
@@ -134,7 +134,7 @@ A landing halt reaches you with the status marked `hand_back`, and no driver, ba
   The halt's reason says which, and names the commits the fixer kept.
   For an undecodable attempt record the way forward is removing that record by the path the reason names, which grants the entry a fresh cap.
   Read the commits, decide with the operator what the run needs, then `lym loom resume` in the task worktree.
-- On a loom or darn run a fixer that escalated a decision halts with the landing-escalate prefix instead, and the arbiter judges it first, so it reaches you only as the arbiter's hand-on; record the deciding decision with `lym loom decision add`, then `lym loom resume`.
+- On a tapestry or darn run a fixer that escalated a decision halts with the landing-escalate prefix instead, and the arbiter judges it first, so it reaches you only as the arbiter's hand-on; record the deciding decision with `lym loom decision add`, then `lym loom resume`.
 - A reroute-cap halt at Finalize means a fixer that keeps failing to clear the gate within its caps; read the cause from the halt's reason.
 After a run lands, amend the board entries it superseded.
 
@@ -164,7 +164,7 @@ The mechanics of reading and writing the board are in the `ly:board` skill; this
     A decision that adds, changes or removes a PATTERN entry also passes `--pattern-entry`, `--pattern-action` and, for `adds` or `changes`, `--pattern-text`, as `lym loom decision add --help` says.
     Several decisions taken together go in one call with `--from <file>`, a JSON array of entries, so they land in one commit and one notice.
     Once the plan is approved, the parent also passes `--amends-plan`.
-  - When that verb refuses because the run has no decision record (batten's pre-loom rows such as `running · Worktree-Create`, `Preflight` and `Loom-Preflight`, or a halt before Discussion-Write), the decision becomes a board note of its own through `lym board upsert` with kind note, titled `{{.decision_note_title}} <the decision>`, with the held task's slug in place of `<slug>`.
+  - When that verb refuses because the run has no decision record (batten's pre-loom rows such as `running · Worktree-Create`, `Preflight` and `Tapestry-Preflight`, or a halt before Discussion-Write), the decision becomes a board note of its own through `lym board upsert` with kind note, titled `{{.decision_note_title}} <the decision>`, with the held task's slug in place of `<slug>`.
     Only a note titled that way counts as a parent decision, which the Discussion-Review lenses and the darn writer read.
   - Only when the verb refuses because Discussion-Write is running and owns the record does the decision go by message to the Discussion-Write session.
     A darn run's verb refuses until Darn-Write has committed its record, and then the verb alone records the decision, with no message of your own, since it tells each live agent of the run and a producer that starts later reads the record.

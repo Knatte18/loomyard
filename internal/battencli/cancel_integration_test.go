@@ -34,7 +34,7 @@ import (
 // seedCancelRun writes and commits a batten seed and a status at producer in rowState for slug on h's prime, and claims slug's board entry with claim.
 func seedCancelRun(t *testing.T, h *hubforge.Hub, slug, producer string, rowState shedengine.State, claim string) {
 	t.Helper()
-	seedBoardTask(t, h, slug, "loom")
+	seedBoardTask(t, h, slug, "tapestry")
 	board, err := boardengine.OpenHub(h.Path)
 	if err != nil {
 		t.Fatalf("open the hub board: %v", err)

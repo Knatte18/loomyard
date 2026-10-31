@@ -133,7 +133,7 @@ func newPairFixtureAt(t *testing.T, relPath string) (*lymcwd.Location, string) {
 		t.Fatalf("mkdir records loom scratch dir: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(loomScratchDir, "run.lock"), []byte("locked"), 0o644); err != nil {
-		t.Fatalf("write records loom run lock: %v", err)
+		t.Fatalf("write records tapestry run lock: %v", err)
 	}
 
 	seedRepoWideFabricConfig(t, hub)

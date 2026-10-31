@@ -153,7 +153,7 @@ func TestCompute_Weeks(t *testing.T) {
 			},
 			check: func(t *testing.T, report Report) {
 				week := weekOf(t, report, "2026-W02")
-				if want := map[string]int{"loom": 2, "darn": 1}; week.Runs != 3 || !reflect.DeepEqual(week.Recipes, want) {
+				if want := map[string]int{"tapestry": 2, "darn": 1}; week.Runs != 3 || !reflect.DeepEqual(week.Recipes, want) {
 					t.Errorf("runs, recipes = %d, %v; want 3, %v", week.Runs, week.Recipes, want)
 				}
 			},
@@ -332,7 +332,7 @@ func TestRenderMarkdown(t *testing.T) {
 
 	for _, week := range report.Weeks {
 		wakes := sectionRows(markdown, HeadingWakes, week.Week)
-		wantWakes := []string{week.Week, fmt.Sprint(week.Runs), fmt.Sprintf("loom %d", week.Runs), fmt.Sprint(week.WakeRuns), cellFloat(week.WakesPerRun)}
+		wantWakes := []string{week.Week, fmt.Sprint(week.Runs), fmt.Sprintf("tapestry %d", week.Runs), fmt.Sprint(week.WakeRuns), cellFloat(week.WakesPerRun)}
 		if len(wakes) != 1 || !slices.Equal(wakes[0][:5], wantWakes) {
 			t.Errorf("%s wake rows = %v; want one starting %v", week.Week, wakes, wantWakes)
 		}

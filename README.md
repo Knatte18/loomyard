@@ -55,7 +55,7 @@ A project groups entries, and a project can become a beam, described below.
 A task carries a title, a body that says what is wanted, labels and a **recipe**.
 The recipe names the kind of run the task gets:
 
-- `loom`, the default, for a task big enough to need a discussion and a plan.
+- `tapestry`, the default, for a task big enough to need a discussion and a plan.
 - `darn`, for a smaller change that one writer can make, test and commit.
 
 A new task is a draft, and nothing starts it until you release it.
@@ -106,13 +106,13 @@ When you release a task, this is what happens, with no step of it done by you:
 1. **Dobby starts the run.**
    The run first makes the task's worktree pair and seeds the run with the task's recipe and settings.
    Everything after that happens inside that worktree, so other tasks cannot see it.
-2. **Discussion** (loom recipe).
+2. **Discussion** (tapestry recipe).
    An agent turns the board entry into a **decision record**: the scope, the decisions taken and what is out of scope.
    A darn run has its writer write the same record before it writes any code.
-3. **Plan** (loom recipe).
+3. **Plan** (tapestry recipe).
    An agent writes a plan as a list of cards, each naming the code it touches by a symbol spelling that is looked up in the real tree, so a plan that names a function that does not exist fails before any code is written.
 4. **Implementation.**
-   In a loom run, the **Webster** step reads the plan once and forks one implementer per batch of cards, and Go code verifies and records each batch.
+   In a tapestry run, the **Webster** step reads the plan once and forks one implementer per batch of cards, and Go code verifies and records each batch.
    In a darn run, the one writer edits, tests and commits.
 5. **Review.**
    The decision record, the plan and the code are each reviewed in a **review segment**: a judge decides whether the artifact is clean, and if not, a fresh reviewer session and a fresh fixer session make another round, within a budget of rounds.

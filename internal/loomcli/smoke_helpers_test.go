@@ -175,7 +175,7 @@ func seedGoDriverRun(t *testing.T, loc *lymcwd.Location) {
 		t.Fatalf("ReadOrigin before seeding the go driver run: found=%v err=%v", found, err)
 	}
 	seed := shedrun.Seed{
-		Recipe: shedrun.RecipeLoom,
+		Recipe: shedrun.RecipeTapestry,
 		Driver: shedrun.DriverGo,
 		Params: map[string]string{"parent": recorded.ParentBranch},
 	}
@@ -223,7 +223,7 @@ func seedLLMDriver(t *testing.T, loc *lymcwd.Location) {
 		t.Fatalf("ReadOrigin before seeding the llm driver: found=%v err=%v", found, err)
 	}
 	seed := shedrun.Seed{
-		Recipe: shedrun.RecipeLoom,
+		Recipe: shedrun.RecipeTapestry,
 		Driver: shedrun.DriverLLM,
 		Params: map[string]string{"parent": recorded.ParentBranch},
 	}

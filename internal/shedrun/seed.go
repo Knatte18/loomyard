@@ -66,8 +66,8 @@ func ValidateDriver(driver string) error {
 // shedrun-owns-the-recipe-name-vocabulary Shared Decision; internal/shedcli's recipes map is the sole
 // name-to-arming-function table and stays in sync with this vocabulary via a meta-test there.
 const (
-	// RecipeLoom names the loom recipe.
-	RecipeLoom = "loom"
+	// RecipeTapestry names the tapestry recipe, the run that discusses and plans a task before building it.
+	RecipeTapestry = "tapestry"
 	// RecipeBatten names the batten recipe.
 	RecipeBatten = "batten"
 	// RecipeDarn names the darn recipe.
@@ -83,7 +83,7 @@ const legacyRecipeBeam = "beam"
 // Callers must not rely on a fixed order beyond "sorted" and must not mutate the vocabulary through
 // the returned slice affecting any other caller, since each call allocates its own.
 func RecipeNames() []string {
-	return []string{RecipeBatten, RecipeDarn, RecipeLoom, RecipePawl}
+	return []string{RecipeBatten, RecipeDarn, RecipePawl, RecipeTapestry}
 }
 
 // ValidateRecipe reports whether name is a legal Seed.Recipe value.

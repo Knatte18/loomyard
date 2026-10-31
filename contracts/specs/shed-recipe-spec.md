@@ -4,11 +4,11 @@
 > A recipe is assembled into the `[]shedengine.ProducerDef` `shedengine.Shed` consumes; `internal/shedcheck` checks the assembled list.
 > Kept as a durable Go-to-Go reference doc under `contracts/specs/`, not deleted on landing, per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle).
 > It is not a deployed spec: nothing outside this repository reads a recipe, and no agent ever writes one, so it carries no registry entry in `specs.go` and is never seeded into a target repo.
-> Shipped consumers: `contracts/recipes/loom-recipe.yaml` via `internal/loomrecipe`, and `contracts/recipes/batten-recipe.yaml` via `internal/battenrecipe`.
+> Shipped consumers: `contracts/recipes/tapestry-recipe.yaml` via `internal/loomrecipe`, and `contracts/recipes/batten-recipe.yaml` via `internal/battenrecipe`.
 
 ## The idea
 
-`internal/loomrecipe.New()` builds loom's `[]shedengine.ProducerDef` by parsing and building the **declarative recipe** at `contracts/recipes/loom-recipe.yaml` — a data file naming, per row, `{Name, Engine, Config, OnDone, OnStuck, Segment, MaxBounces}`, loaded and assembled into the same `[]shedengine.ProducerDef` `shedengine.Shed` already consumes, with no change to `shedengine` itself.
+`internal/loomrecipe.New()` builds tapestry's `[]shedengine.ProducerDef` by parsing and building the **declarative recipe** at `contracts/recipes/tapestry-recipe.yaml` — a data file naming, per row, `{Name, Engine, Config, OnDone, OnStuck, Segment, MaxBounces}`, loaded and assembled into the same `[]shedengine.ProducerDef` `shedengine.Shed` already consumes, with no change to `shedengine` itself.
 This replaces the earlier Go literal `internal/loomshed.New()` used to build directly.
 
 Motivation: several rows are already pure `Engine + Config` in spirit, exactly the shape a declarative recipe expresses cleanly — but not `Discussion-Write`, which turns out not to fit that mold.
@@ -18,7 +18,7 @@ The entry runs the lead and its advisors, when the table has any, on `MultiLLMPr
 It carries the row's gates on the lead.
 The recipe file names `DiscussionWrite`, and the built row carries that engine whatever `discussion_advisors` and `discussion_lenses` hold.
 `Plan-Write` is the second such row: its seat table is resolved from the `plan` role's own model-spec and timeout rather than from recipe strings, and building it needs a `*lymcwd.Location` to build the plan paths, so it ships as its own `PlanWrite` entry for the same reason.
-The question the discussion worked through was whether the *other* rows (the loom-specific ones, such as `Loom-Preflight`) resist this shape, and the answer was no: they don't need to be reusable to fit the pattern, they just need a name in the same registry as everything else — a bespoke, single-consumer `Engine` is exactly as valid a registry entry as a widely-shared one.
+The question the discussion worked through was whether the *other* rows (the loom-specific ones, such as `Tapestry-Preflight`) resist this shape, and the answer was no: they don't need to be reusable to fit the pattern, they just need a name in the same registry as everything else — a bespoke, single-consumer `Engine` is exactly as valid a registry entry as a widely-shared one.
 
 ## What's in a recipe row
 
@@ -100,17 +100,17 @@ It runs no reachability, cycle, blind-gate, dangling-target, or segment analysis
 **Building is not filesystem-free.** Three registry constructors reach disk of their own accord at construction time, producing four distinct effects, and `Build` is a pass-through for those effects rather than a suppressor or a wrapper of them — see `internal/shedbuild/doc.go` for the single site enumerating which constructor produces which effect.
 
 **No on-disk location.** This package defines no on-disk location for recipe files — no directory constant, no filename convention, no embedded default.
-Piece 4 settled that decision for loom's own recipe;
+Piece 4 settled that decision for the tapestry recipe;
 see "Decisions this piece settled" below.
 
 ## Decisions this piece settled
 
 Three decisions this doc originally deferred, settled by piece 4:
 
-- **On-disk location.** loom's recipe ships as an embedded default at `contracts/recipes/loom-recipe.yaml`, read through `shedbuild.Parse` on the embedded bytes (`contracts/recipes/recipes.go`'s `LoomRecipe`) — never `shedbuild.Load`.
+- **On-disk location.** the tapestry recipe ships as an embedded default at `contracts/recipes/tapestry-recipe.yaml`, read through `shedbuild.Parse` on the embedded bytes (`contracts/recipes/recipes.go`'s `TapestryRecipe`) — never `shedbuild.Load`.
   There is no seeding, no operator override, and no runtime on-disk path.
-- **The consumer.** `internal/loomrecipe` is the recipe's sole consumer, sitting above `internal/loomshed` rather than inside it: `internal/shedrecipe`'s registry already imports `loomshed` for its loom-specific constructors, so a `loomshed` → `shedbuild` → `shedrecipe` → `loomshed` production import cycle would not compile if the consumer lived inside `loomshed` instead.
-- **Test ownership.** The assembled-graph tests — the coverage guard driving loom's real row list against the registry, the sequencing/cancellation/resume tests that build the real row list — live in `internal/loomrecipe`, not `internal/loomshed`.
+- **The consumer.** `internal/loomrecipe` is the recipe's sole consumer, sitting above `internal/loomshed` rather than inside it: `internal/shedrecipe`'s registry already imports `loomshed` for its tapestry-specific constructors, so a `loomshed` → `shedbuild` → `shedrecipe` → `loomshed` production import cycle would not compile if the consumer lived inside `loomshed` instead.
+- **Test ownership.** The assembled-graph tests — the coverage guard driving tapestry's real row list against the registry, the sequencing/cancellation/resume tests that build the real row list — live in `internal/loomrecipe`, not `internal/loomshed`.
 
 **Accepted consequence.** `shedbuild.Load` now has no production caller — loom's only caller reaches its recipe through the embedded bytes, never a told path.
 This is deliberate: `Load` stays exported and covered because it is the entry a future non-embedded consumer needs, exactly the shape a second recipe-backed product would use.

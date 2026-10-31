@@ -50,9 +50,9 @@ func (c *loomCLI) driveCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "drive",
 		Hidden:      true,
-		Short:       "drive this worktree's go-seeded loom run, settling its stops by rule (spawned by lym loom start)",
+		Short:       "drive this worktree's go-seeded run, settling its stops by rule (spawned by lym loom start)",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
-		Long: `drive is the Go driver of a go-seeded loom run, spawned by lym loom start, by
+		Long: `drive is the Go driver of a go-seeded run, spawned by lym loom start, by
 lym loom resume and by a hand-over from a driver of an older build. It steps the
 run through the --until-stop loop, settles each stop by a closed rule table, asks
 a cold tackler agent about a stop no rule settles, and hands everything it cannot
@@ -126,7 +126,7 @@ func tacklerFor(dirs configengine.Dirs, recipe string, reg modelspec.Registry) (
 }
 
 // loomArbiterSeam builds the arbiter seam loom hands the shed driver.
-// Merriam reports a batch it cannot carry on only as a stuck outcome, and a loom or darn landing merge fixer reports an escalate as a halt of its own, so the arbiter, not the tackler, is the first to judge a blocked stop at the Webster row or a landing escalate before it reaches the parent; no other stop is marked.
+// Merriam reports a batch it cannot carry on only as a stuck outcome, and a tapestry or darn landing merge fixer reports an escalate as a halt of its own, so the arbiter, not the tackler, is the first to judge a blocked stop at the Webster row or a landing escalate before it reaches the parent; no other stop is marked.
 func loomArbiterSeam(arbiterDeps shedarbiter.Deps, runID string) *sheddriver.ArbiterSeam {
 	seam := shedarbiter.Seam(arbiterDeps, runID, func(producer string) bool {
 		return arbiterstop.EscalationEligible(producer, arbiterDeps.Stop)

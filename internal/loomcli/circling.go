@@ -45,7 +45,7 @@ const (
 	circlingWayMalformed = `way forward: fix or delete the named escalation file, then run "lym loom start", which re-escalates the round, and re-run the verb`
 	circlingWayDecided   = `way forward: the decision for this round is recorded and stays; run "lym loom resume" in the task worktree to resume the run`
 	circlingWayRetry     = `way forward: re-run the verb; if the failure persists, fix the file or directory the message names`
-	circlingWayRecipe    = `way forward: the embedded loom recipe failed to parse, so this lym build is broken; rebuild or reinstall lym, then re-run the verb`
+	circlingWayRecipe    = `way forward: the embedded tapestry recipe failed to parse, so this lym build is broken; rebuild or reinstall lym, then re-run the verb`
 )
 
 // circlingDeps is every side effect circlingVerb performs, injected so tests supply fakes.

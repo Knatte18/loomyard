@@ -19,7 +19,7 @@ import (
 func TestPrepareRunSettings(t *testing.T) {
 	t.Parallel()
 	const profiles = "defaults: {darn: light}\n" +
-		"light:\n  loom:\n    loom: {plan_max_bounces: 1, code_max_bounces: 1, merge_max_bounces: 1}\n  darn:\n    loom: {code_max_bounces: 2}\n" +
+		"light:\n  tapestry:\n    loom: {plan_max_bounces: 1, code_max_bounces: 1, merge_max_bounces: 1}\n  darn:\n    loom: {code_max_bounces: 2}\n" +
 		"docs:\n  darn:\n    darn: {writer: opus}\n"
 	tests := []struct {
 		name        string
@@ -31,7 +31,7 @@ func TestPrepareRunSettings(t *testing.T) {
 		{
 			name:        "no profile and no default for the recipe writes the task's settings alone",
 			profilesYML: profiles,
-			settings:    battenshed.RunSettings{Recipe: "loom", Settings: map[string]any{"darn": map[string]any{"verify_attempts": float64(1)}}},
+			settings:    battenshed.RunSettings{Recipe: "tapestry", Settings: map[string]any{"darn": map[string]any{"verify_attempts": float64(1)}}},
 			wantDocs:    map[string]string{"darn": "verify_attempts: 1\n"},
 		},
 		{
@@ -46,9 +46,9 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantDocs: map[string]string{"loom": "code_hard_max_bounces: 2\ncode_max_bounces: 1\ncode_reviewer_fan: \"\"\n"},
 		},
 		{
-			name:        "the task's settings lie over the loom block, and the profile's retired merge_max_bounces is dropped",
+			name:        "the task's settings lie over the tapestry block, and the profile's retired merge_max_bounces is dropped",
 			profilesYML: profiles,
-			settings:    battenshed.RunSettings{Recipe: "loom", Profile: "light", Settings: map[string]any{"loom": map[string]any{"plan_max_bounces": float64(3)}}},
+			settings:    battenshed.RunSettings{Recipe: "tapestry", Profile: "light", Settings: map[string]any{"loom": map[string]any{"plan_max_bounces": float64(3)}}},
 			wantDocs:    map[string]string{"loom": "code_max_bounces: 1\nplan_max_bounces: 3\n"},
 		},
 		{
@@ -60,31 +60,31 @@ func TestPrepareRunSettings(t *testing.T) {
 		{
 			name:        "an unknown profile is Stuck naming it",
 			profilesYML: profiles,
-			settings:    battenshed.RunSettings{Recipe: "loom", Profile: "heavy"},
+			settings:    battenshed.RunSettings{Recipe: "tapestry", Profile: "heavy"},
 			wantStuck:   []string{`"heavy"`, "known: docs, light"},
 		},
 		{
 			name:        "a profile without the recipe's block is Stuck naming it",
 			profilesYML: profiles,
-			settings:    battenshed.RunSettings{Recipe: "loom", Profile: "docs"},
-			wantStuck:   []string{`"docs"`, "no loom block"},
+			settings:    battenshed.RunSettings{Recipe: "tapestry", Profile: "docs"},
+			wantStuck:   []string{`"docs"`, "no tapestry block"},
 		},
 		{
 			name:        "a profiles file that does not decode is Stuck",
 			profilesYML: "light: 3\n",
-			settings:    battenshed.RunSettings{Recipe: "loom", Profile: "light"},
+			settings:    battenshed.RunSettings{Recipe: "tapestry", Profile: "light"},
 			wantStuck:   []string{`profile "light"`},
 		},
 		{
 			name:        "a profiles file that does not decode is Stuck for a task naming no profile",
 			profilesYML: "light: 3\n",
-			settings:    battenshed.RunSettings{Recipe: "loom"},
+			settings:    battenshed.RunSettings{Recipe: "tapestry"},
 			wantStuck:   []string{`profile "light"`},
 		},
 		{
 			name:        "a refused task key is Stuck naming it",
 			profilesYML: profiles,
-			settings:    battenshed.RunSettings{Recipe: "loom", Profile: "light", Settings: map[string]any{"loom": map[string]any{"no_such_key": float64(1)}}},
+			settings:    battenshed.RunSettings{Recipe: "tapestry", Profile: "light", Settings: map[string]any{"loom": map[string]any{"no_such_key": float64(1)}}},
 			wantStuck:   []string{"loom", "no_such_key"},
 		},
 	}

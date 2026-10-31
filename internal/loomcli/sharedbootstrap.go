@@ -66,7 +66,7 @@ const (
 //
 // The effective driver is read from any already-recorded seed, never taken from a flag, since this command declares no driver flag of its own.
 // It falls back to the driver_kind the loaded config resolves to (llm by default) only when no seed exists yet;
-// an operator who wants a driver on one run pre-seeds it with "lym shed seed self --recipe loom --driver go".
+// an operator who wants a driver on one run pre-seeds it with "lym shed seed self --recipe tapestry --driver go".
 // Without this read-through, a run already seeded for the llm driver would be refused here, because WriteSeed rejects a disagreeing existing seed.
 func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, string, bootstrapStage, error) {
 	// Step 1: resolve the recorded parent branch, writing the provenance record only for a legacy
@@ -190,12 +190,12 @@ func resolveSeedDriver(existing shedrun.Seed, found bool, kind string) string {
 	return existing.Driver
 }
 
-// resolveSeedRecipe reads the recipe seedAndCommitBootstrap's step 1b must write: the already-recorded seed's own Recipe when one exists, shedrun.RecipeLoom otherwise.
+// resolveSeedRecipe reads the recipe seedAndCommitBootstrap's step 1b must write: the already-recorded seed's own Recipe when one exists, shedrun.RecipeTapestry otherwise.
 // It is the read, not a choice, so `lym loom start` never writes a recipe over an existing seed;
 // the recipe of a run is set only by the seeding that created the seed.
 func resolveSeedRecipe(existing shedrun.Seed, found bool) string {
 	if !found {
-		return shedrun.RecipeLoom
+		return shedrun.RecipeTapestry
 	}
 	return existing.Recipe
 }

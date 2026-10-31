@@ -9,7 +9,7 @@
 // double-spawn window (the run lock being taken by the child long after the spawn call returns --
 // TestSmokeBootstrapLifecycle's concurrent-bootstrap step).
 //
-// A note on driver-liveness timing: loom's own producer table (contracts/recipes/loom-recipe.yaml) backs every row with a real producer -- no row reports Done unconditionally.
+// A note on driver-liveness timing: loom's own producer table (contracts/recipes/tapestry-recipe.yaml) backs every row with a real producer -- no row reports Done unconditionally.
 // A freshly-bootstrapped driver against a pair with no discussion or plan artifacts yet still bounces at Discussion-Write's own gate a bounded number of times (its "gates" entry's attempts budget) and then blocks, well before reaching any later row -- a lifecycle that can still complete in well under a second.
 // Tests here that assert "a driver process exists" treat that as a best-effort observation (logged, not failed, when the driver has already run to completion by check time) and lean on the STATUS FILE's own history -- durable regardless of whether the driver process itself is still alive -- for the assertions that must hold unconditionally.
 package loomcli
@@ -211,7 +211,7 @@ func lockFree(t *testing.T, path string) bool {
 // row is ESTABLISHED first, and a killed-at-an-arbitrary-moment driver lands on whichever row it
 // happened to reach. Killing without this wait made
 // TestSmokeRunStandalone's first step fail intermittently whenever the kill
-// landed while the driver was still on Loom-Preflight: the follow-up drive then legitimately
+// landed while the driver was still on Tapestry-Preflight: the follow-up drive then legitimately
 // completed that row and advanced to the next one, so both the current_producer-unchanged and the
 // history-unchanged assertions reported a routing bug that was not there (crucible round
 // opus5-high-r7, F5 -- reproduced on the pre-round tree, so it predates that round's own changes).
@@ -335,7 +335,7 @@ func TestSmokeRunStandalone(t *testing.T) {
 	tmuxBinaryPath(t)
 	exe := lymbin.Build(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
-	// "loom run" calls reed.Up() before the phase machine runs, so the second step brings a real tmux
+	// "tapestry run" calls reed.Up() before the phase machine runs, so the second step brings a real tmux
 	// server up even though it never reaches a producer.
 	registerBootstrapTeardown(t, loc, worktree)
 	seedGoDriverRun(t, loc)
@@ -388,9 +388,9 @@ func TestSmokeRunStandalone(t *testing.T) {
 		// the stale assertion.
 		driveOut, driveCode, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, 3*time.Minute, "loom", "run")
 		if err != nil {
-			t.Fatalf("loom run: %v; output: %s", err, driveOut)
+			t.Fatalf("tapestry run: %v; output: %s", err, driveOut)
 		}
-		t.Logf("loom run exited %d: %s", driveCode, strings.TrimSpace(driveOut))
+		t.Logf("tapestry run exited %d: %s", driveCode, strings.TrimSpace(driveOut))
 
 		after, foundAfter, err := state.ReadJSON[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
 		if err != nil || !foundAfter {
@@ -434,10 +434,10 @@ func TestSmokeRunStandalone(t *testing.T) {
 		runErr := cmd.Run()
 		_ = logFile.Close()
 		if ctx.Err() == context.DeadlineExceeded {
-			t.Fatalf("loom run against a poisoned status file timed out")
+			t.Fatalf("tapestry run against a poisoned status file timed out")
 		}
 		if runErr == nil {
-			t.Fatalf("loom run against a poisoned status file succeeded; want a failure before any persist")
+			t.Fatalf("tapestry run against a poisoned status file succeeded; want a failure before any persist")
 		}
 
 		content, err := os.ReadFile(logPath)

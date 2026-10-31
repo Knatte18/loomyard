@@ -27,14 +27,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 )
 
-// TestShippedRecipe_SeamsWiredOnPlanBouncerOnly parses the real embedded recipes.LoomRecipe and asserts each seam key's shipped shape: approve_seam: plan and skip_seam: rework-exempt sit on the Plan-Bouncer row, approve_seam: merge and skip_seam: merge-overlap sit on the Merge-Bouncer row, and no other row carries either key, and require_approved is present on no row at all -- the key is no longer recognized by any registry entry now that both rows sharing the old PlanValidate engine are deleted, and a row carrying it would fail construction outright rather than silently doing nothing.
+// TestShippedRecipe_SeamsWiredOnPlanBouncerOnly parses the real embedded recipes.TapestryRecipe and asserts each seam key's shipped shape: approve_seam: plan and skip_seam: rework-exempt sit on the Plan-Bouncer row, approve_seam: merge and skip_seam: merge-overlap sit on the Merge-Bouncer row, and no other row carries either key, and require_approved is present on no row at all -- the key is no longer recognized by any registry entry now that both rows sharing the old PlanValidate engine are deleted, and a row carrying it would fail construction outright rather than silently doing nothing.
 //
 //testtiming:keep pins which shipped rows carry approve_seam and skip_seam, which TestApproveSeam_FailsToBuild never reads off the shipped recipe
 func TestShippedRecipe_SeamsWiredOnPlanBouncerOnly(t *testing.T) {
 	t.Parallel()
-	r, err := shedbuild.Parse(recipes.LoomRecipe)
+	r, err := shedbuild.Parse(recipes.TapestryRecipe)
 	if err != nil {
-		t.Fatalf("shedbuild.Parse(recipes.LoomRecipe) error = %v; want nil", err)
+		t.Fatalf("shedbuild.Parse(recipes.TapestryRecipe) error = %v; want nil", err)
 	}
 
 	for _, row := range r.Producers {

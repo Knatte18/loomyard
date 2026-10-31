@@ -64,15 +64,15 @@ func gatedRowFanViolations(r shedbuild.Recipe, fans map[string][]string) []strin
 	return violations
 }
 
-// TestNoGatedRowAuthorizesForkSubagents asserts the fork rule over the shipped loom and darn recipes with a fan set for every row that names a fan setting, and over hand-authored recipes.
+// TestNoGatedRowAuthorizesForkSubagents asserts the fork rule over the shipped tapestry and darn recipes with a fan set for every row that names a fan setting, and over hand-authored recipes.
 // A gated writer or BurlerFix row receiving a fan, from its profile or from the map, fails; an ungated BurlerReview row with a fan passes.
 // It also pins that no shipped loom row carries a literal "cluster-fan" key, since a fan reaches a row only through the hub config.
 //
 //testtiming:keep pins that no gated shipped row authorizes fork subagents outside an ungated BurlerReview reviewer, a guard that fires on the recipe file, which TestApproveSeam_FailsToBuild never reads
 func TestNoGatedRowAuthorizesForkSubagents(t *testing.T) {
-	shipped, err := shedbuild.Parse(recipes.LoomRecipe)
+	shipped, err := shedbuild.Parse(recipes.TapestryRecipe)
 	if err != nil {
-		t.Fatalf("shedbuild.Parse(recipes.LoomRecipe) error = %v; want nil", err)
+		t.Fatalf("shedbuild.Parse(recipes.TapestryRecipe) error = %v; want nil", err)
 	}
 
 	gatedRowFound := false
@@ -139,7 +139,7 @@ func TestNoGatedRowAuthorizesForkSubagents(t *testing.T) {
 		fans           map[string][]string
 		wantViolations int
 	}{
-		{name: "shipped loom recipe with a fan on every review perch", recipe: shipped, fans: reviewFans},
+		{name: "shipped tapestry recipe with a fan on every review perch", recipe: shipped, fans: reviewFans},
 		{name: "shipped darn recipe with a Code-Review fan", recipe: shippedDarn, fans: darnFans},
 		{name: "gated writer row naming a fixer fan setting", recipe: shedbuild.Recipe{Producers: []shedbuild.Row{{Name: "Writer", Engine: "DiscussionWrite", Config: map[string]any{"gates": []any{map[string]any{"name": "discussion"}}, "fixer_fan_setting": "loom.discussion_fixer_fan"}}}}, wantViolations: 1},
 		{name: "gated writer row receiving a fan from the map", recipe: gatedWriter(nil), fans: map[string][]string{"Writer": {"", "standard"}}, wantViolations: 1},
@@ -171,9 +171,9 @@ func TestNoGatedRowAuthorizesForkSubagents(t *testing.T) {
 //
 //testtiming:keep pins that the shipped Webster round has no gates key, a guard that fires on the recipe file, which TestApproveSeam_FailsToBuild never reads
 func TestWebsterRoundCarriesNoGateKey(t *testing.T) {
-	r, err := shedbuild.Parse(recipes.LoomRecipe)
+	r, err := shedbuild.Parse(recipes.TapestryRecipe)
 	if err != nil {
-		t.Fatalf("shedbuild.Parse(recipes.LoomRecipe) error = %v; want nil", err)
+		t.Fatalf("shedbuild.Parse(recipes.TapestryRecipe) error = %v; want nil", err)
 	}
 
 	found := false

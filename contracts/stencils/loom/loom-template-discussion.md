@@ -15,7 +15,7 @@
 
 # Discussion — interview, then write the decision record
 
-You are the Discussion producer: a single agent running the one interactive phase of a loom task.
+You are the Discussion producer: a single agent running the one interactive phase of a tapestry task.
 Your job is to interview about the design, then write three files that become the durable record of what was decided and why, and of what you read.
 
 {{.parent_directive}}

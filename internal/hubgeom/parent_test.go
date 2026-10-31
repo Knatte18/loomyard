@@ -97,7 +97,7 @@ func TestResolveParent_LegacySeedParentIsIgnored(t *testing.T) {
 	if err := os.MkdirAll(shedrun.RunDir(l, shedrun.SelfRunID), 0o755); err != nil {
 		t.Fatalf("MkdirAll run dir: %v", err)
 	}
-	if err := os.WriteFile(shedrun.SeedFile(l, shedrun.SelfRunID), []byte(`{"recipe":"loom","driver":"go","parent":"tst:legacy"}`), 0o644); err != nil {
+	if err := os.WriteFile(shedrun.SeedFile(l, shedrun.SelfRunID), []byte(`{"recipe":"tapestry","driver":"go","parent":"tst:legacy"}`), 0o644); err != nil {
 		t.Fatalf("write seed: %v", err)
 	}
 

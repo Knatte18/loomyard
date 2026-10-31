@@ -466,9 +466,9 @@ func (c *loomCLI) startCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:         "start",
-		Short:       "bootstrap this worktree's loom task and launch its driver session",
+		Short:       "bootstrap this worktree's task and launch its driver session",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `start bootstraps this worktree's loom task and launches its driver: it seeds
+		Long: `start bootstraps this worktree's task and launches its driver: it seeds
 the status file and commits it into the fabric when absent, brings up the
 worktree's tmux session, and spawns the driver the run's seed records, the
 detached Go runner or a Claude strand running the loom driver. With a driver

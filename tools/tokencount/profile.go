@@ -26,7 +26,7 @@ type RunRecords interface {
 }
 
 // The run subdirectories under the reviews directory that hold the code review's round files:
-// codeReviewSubdir is the loom recipe's run_subdir value of the Code-Review segment, and websterReviewSubdir is the one an older run's Webster-Review segment wrote.
+// codeReviewSubdir is the tapestry recipe's run_subdir value of the Code-Review segment, and websterReviewSubdir is the one an older run's Webster-Review segment wrote.
 const (
 	codeReviewSubdir    = "code"
 	websterReviewSubdir = "webster"

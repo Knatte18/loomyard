@@ -38,10 +38,10 @@ var (
 	finalizeStuck = []shedengine.HistoryEntry{{Producer: loomshed.NameFinalize, Outcome: shedengine.Stuck}}
 )
 
-// exactRun adds a full loom run of slug tagged sha at hour, whose records history ends in a commit naming task in its trailer and whose loom history is history.
+// exactRun adds a full tapestry run of slug tagged sha at hour, whose records history ends in a commit naming task in its trailer and whose loom history is history.
 func (w *world) exactRun(slug, sha string, hour int, task string, history []shedengine.HistoryEntry) {
 	w.recordsCommit("r-"+sha, hour-1, task)
-	w.tagOver(slug, sha, "r-"+sha, at(hour), seedText("loom"), statusJSON(w.t, shedengine.Status{State: shedengine.StateDone, History: history}), nil)
+	w.tagOver(slug, sha, "r-"+sha, at(hour), seedText("tapestry"), statusJSON(w.t, shedengine.Status{State: shedengine.StateDone, History: history}), nil)
 }
 
 func TestCompute_Landings(t *testing.T) {
@@ -149,7 +149,7 @@ func TestCompute_Landings(t *testing.T) {
 				w.parentCommit("T1", 50, "land")
 				w.boardCommit("bd", 1, boardTask("partial", "", "chore"))
 				w.recordsCommit("r-tp", 99, "T1")
-				w.tagOver("partial", "tp", "r-tp", at(100), seedText("loom"), statusText(w.t, "Plan-Write"), nil)
+				w.tagOver("partial", "tp", "r-tp", at(100), seedText("tapestry"), statusText(w.t, "Plan-Write"), nil)
 				return landingExpectation{landings: []wantLanding{{commit: "T1", kind: "other", slug: "partial", tag: tagName("partial", "tp"), join: "exact", hand: true}}}
 			},
 		},
@@ -248,7 +248,7 @@ func TestCompute_Landings(t *testing.T) {
 				for _, sha := range []string{"r-a", "r-b", "r-c"} {
 					w.recordsCommit(sha, 60, "")
 				}
-				w.tagOver("merged", "tm", "r-c", at(100), seedText("loom"), statusJSON(w.t, shedengine.Status{History: finalizeDone}), nil)
+				w.tagOver("merged", "tm", "r-c", at(100), seedText("tapestry"), statusJSON(w.t, shedengine.Status{History: finalizeDone}), nil)
 				return landingExpectation{
 					landings: []wantLanding{
 						{commit: "X", kind: "unmapped", fresh: "no-pre-image"},
@@ -273,7 +273,7 @@ func TestCompute_Landings(t *testing.T) {
 					last = "r-" + strings.Repeat("x", i+1)
 					w.recordsCommit(last, 60, "")
 				}
-				w.tagOver("squashed", "tq", last, at(100), seedText("loom"), statusJSON(w.t, shedengine.Status{History: finalizeDone}), nil)
+				w.tagOver("squashed", "tq", last, at(100), seedText("tapestry"), statusJSON(w.t, shedengine.Status{History: finalizeDone}), nil)
 				return landingExpectation{
 					landings:    []wantLanding{{commit: "SQ", kind: "other", slug: "squashed", tag: tagName("squashed", "tq"), join: "exact"}},
 					runLandings: map[string]string{tagName("squashed", "tq"): "SQ"},

@@ -94,9 +94,9 @@ func TestCompute_SelectsRuns(t *testing.T) {
 			},
 		},
 		{
-			name: "a loom run that never finalized and a run of an unselected recipe are partial and in no run",
+			name: "a tapestry run that never finalized and a run of an unselected recipe are partial and in no run",
 			setup: func(w *world) expectation {
-				w.tag("parked", "t1", at(1), seedText("loom"), statusText(w.t, "Plan-Write", "Discussion-Write"))
+				w.tag("parked", "t1", at(1), seedText("tapestry"), statusText(w.t, "Plan-Write", "Discussion-Write"))
 				w.tag("battened", "t2", at(2), seedText("batten"), statusText(w.t, "Finalize"))
 				return expectation{partial: []string{tagName("parked", "t1"), tagName("battened", "t2")}}
 			},
@@ -115,8 +115,8 @@ func TestCompute_SelectsRuns(t *testing.T) {
 		{
 			name: "a seed or a status that does not decode is a finding and the tag is partial",
 			setup: func(w *world) expectation {
-				w.tag("broken", "t1", at(1), seedText("loom"), "{not json")
-				w.tag("badseed", "t2", at(2), `{"recipe":"loom","driver":"rust"}`, "")
+				w.tag("broken", "t1", at(1), seedText("tapestry"), "{not json")
+				w.tag("badseed", "t2", at(2), `{"recipe":"tapestry","driver":"rust"}`, "")
 				return expectation{
 					partial: []string{tagName("broken", "t1"), tagName("badseed", "t2")},
 					findings: []Finding{
@@ -130,7 +130,7 @@ func TestCompute_SelectsRuns(t *testing.T) {
 			name: "a seed and a status carrying unknown keys read and the run is full",
 			setup: func(w *world) expectation {
 				w.tag("newer", "t1", at(1),
-					`{"recipe":"loom","driver":"go","added_later":1}`,
+					`{"recipe":"tapestry","driver":"go","added_later":1}`,
 					`{"state":"done","added_later":true,"history":[{"producer":"Finalize","outcome":"done","output":"","at":"","added_later":2}]}`)
 				return expectation{runs: []wantRun{{tag: tagName("newer", "t1"), week: "2026-W02"}}}
 			},
@@ -152,7 +152,7 @@ func TestCompute_SelectsRuns(t *testing.T) {
 				mondayEarlyEast := time.Date(2026, 1, 19, 0, 30, 0, 0, time.FixedZone("east", 2*60*60))
 				for i, when := range []time.Time{sundayEnd, mondayStart, mondayEarlyEast} {
 					slug := []string{"sunday", "monday", "east"}[i]
-					w.tag(slug, "t"+slug, when, seedText("loom"), statusText(w.t, "Finalize"))
+					w.tag(slug, "t"+slug, when, seedText("tapestry"), statusText(w.t, "Finalize"))
 				}
 				return expectation{runs: []wantRun{
 					{tag: tagName("sunday", "tsunday"), week: "2026-W02"},
@@ -184,7 +184,7 @@ func TestCompute_SelectsRuns(t *testing.T) {
 				}
 				recipe := wantRun.recipe
 				if recipe == "" {
-					recipe = "loom"
+					recipe = "tapestry"
 				}
 				if run.Tag != wantRun.tag || run.Week != wantRun.week || run.Recipe != recipe || run.Sources[SourceBatten] != wantRun.batten || !slices.Equal(snapshots, wantRun.snapshots) {
 					t.Errorf("run %d = (%s, %s, %s, batten %v, snapshots %v); want (%s, %s, %s, batten %v, snapshots %v)",

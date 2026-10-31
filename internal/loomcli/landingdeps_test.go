@@ -84,7 +84,7 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 			lock,
 		)
 	}
-	deps := build(shedrun.RecipeLoom)
+	deps := build(shedrun.RecipeTapestry)
 
 	// A darn run has no plan to trace a failure to.
 	if build(shedrun.RecipeDarn).TraceFailure != nil {
@@ -123,7 +123,7 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 	v := reflect.ValueOf(deps)
 	typ := v.Type()
 	// FixerSeats is filled by wireLanding, from the seat engine wire built, and GateKey by each landing row's registry entry, on its own copy of Deps.
-	// LandBlockers and ParentWorktree are a pawl run's, which a loom run leaves unset.
+	// LandBlockers and ParentWorktree are a pawl run's, which a tapestry run leaves unset.
 	unfilled := map[string]bool{
 		"FixerSeats":     true,
 		"GateKey":        true,
@@ -182,7 +182,7 @@ func TestRowEntry(t *testing.T) {
 	}
 }
 
-// TestFixerTestFileMatcher asserts the matcher a darn run gets is the union over languages, and a loom run's follows the live plan's language.
+// TestFixerTestFileMatcher asserts the matcher a darn run gets is the union over languages, and a tapestry run's follows the live plan's language.
 func TestFixerTestFileMatcher(t *testing.T) {
 	t.Parallel()
 
@@ -214,11 +214,11 @@ func TestFixerTestFileMatcher(t *testing.T) {
 		{"DarnUnionGoTest", shedrun.RecipeDarn, "", "a/b_test.go", true},
 		{"DarnUnionCsharpTest", shedrun.RecipeDarn, "", "a/BTests.cs", true},
 		{"DarnUnionSource", shedrun.RecipeDarn, "", "a/b.go", false},
-		{"LoomNoLanguageReadsGo", shedrun.RecipeLoom, writePlan(t, ""), "a/b_test.go", true},
-		{"LoomNoLanguageSourceIsNotATest", shedrun.RecipeLoom, writePlan(t, ""), "a/b.go", false},
-		{"LoomCsharpPlanIgnoresGoTests", shedrun.RecipeLoom, writePlan(t, "csharp"), "a/b_test.go", false},
-		{"LoomCsharpPlanMatchesCsharpTests", shedrun.RecipeLoom, writePlan(t, "csharp"), "a/BTests.cs", true},
-		{"LoomUnparseablePlanCountsEveryFile", shedrun.RecipeLoom, unparseable, "a/b.go", true},
+		{"LoomNoLanguageReadsGo", shedrun.RecipeTapestry, writePlan(t, ""), "a/b_test.go", true},
+		{"LoomNoLanguageSourceIsNotATest", shedrun.RecipeTapestry, writePlan(t, ""), "a/b.go", false},
+		{"LoomCsharpPlanIgnoresGoTests", shedrun.RecipeTapestry, writePlan(t, "csharp"), "a/b_test.go", false},
+		{"LoomCsharpPlanMatchesCsharpTests", shedrun.RecipeTapestry, writePlan(t, "csharp"), "a/BTests.cs", true},
+		{"LoomUnparseablePlanCountsEveryFile", shedrun.RecipeTapestry, unparseable, "a/b.go", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

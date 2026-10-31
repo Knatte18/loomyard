@@ -1,7 +1,7 @@
 //go:build tier0
 
-// loompreflight_test.go is the Tier-1 suite for newLoomPreflight's outcome mapping, driving it
-// directly over status files under t.TempDir. It is untagged: no spawn, no git -- newLoomPreflight
+// tapestrypreflight_test.go is the Tier-1 suite for newTapestryPreflight's outcome mapping, driving it
+// directly over status files under t.TempDir. It is untagged: no spawn, no git -- newTapestryPreflight
 // only delegates to loomengine.CheckSeed, which itself only stats a file, MkdirAll's a lock parent,
 // and decodes JSON.
 //
@@ -27,17 +27,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
-// writeLoomPreflightFixture writes a shedengine.Status shell naming currentProducer as
+// writeTapestryPreflightFixture writes a shedengine.Status shell naming currentProducer as
 // current_producer, running, carrying one Done Preflight history entry and a coherent loom Status
 // product, to statusPath/statusLockPath via state.WriteJSON.
 //
 // This is deliberately NOT the shape production Seed writes: Seed writes
-// current_producer: "Preflight", which row 2 rejects because it tells NameLoomPreflight as the
+// current_producer: "Preflight", which row 2 rejects because it tells NameTapestryPreflight as the
 // expected value, so a Seed-built fixture would yield Stuck and the "coherent seed -> Done" case
 // below would silently assert the opposite of what it names. This helper instead writes the exact
 // shape Shed itself persists after row 1 finishes: current_producer already advanced to row 2's own
 // name, with row 1's Done entry appended to history.
-func writeLoomPreflightFixture(t *testing.T, statusPath, statusLockPath, currentProducer string) {
+func writeTapestryPreflightFixture(t *testing.T, statusPath, statusLockPath, currentProducer string) {
 	t.Helper()
 
 	product, err := json.Marshal(loomengine.Status{Slug: "fixture-slug", Parent: "fixture-parent"})
@@ -60,23 +60,23 @@ func writeLoomPreflightFixture(t *testing.T, statusPath, statusLockPath, current
 	}
 }
 
-func TestLoomPreflight_Call_CoherentSeedReportsDone(t *testing.T) {
+func TestTapestryPreflight_Call_CoherentSeedReportsDone(t *testing.T) {
 	dir := t.TempDir()
 	statusPath := filepath.Join(dir, "status.json")
 	statusLockPath := filepath.Join(dir, "status.json.lock")
-	writeLoomPreflightFixture(t, statusPath, statusLockPath, NameLoomPreflight)
+	writeTapestryPreflightFixture(t, statusPath, statusLockPath, NameTapestryPreflight)
 
-	p := NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: t.TempDir()})
+	p := NewTapestryPreflight(NameTapestryPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: t.TempDir()})
 	shedfake.RequireOutcome(t, p, shedengine.Done)
 }
 
-func TestLoomPreflight_Call_LockParentUncreatableReturnsError(t *testing.T) {
+func TestTapestryPreflight_Call_LockParentUncreatableReturnsError(t *testing.T) {
 	dir := t.TempDir()
 	statusPath := filepath.Join(dir, "status.json")
 	// The status file is written under a lock path distinct from the one Call is given below, so
 	// the status file itself exists and is coherent -- the failure this test drives is provably
 	// the lock-parent creation, not the stat.
-	writeLoomPreflightFixture(t, statusPath, filepath.Join(dir, "seed.lock"), NameLoomPreflight)
+	writeTapestryPreflightFixture(t, statusPath, filepath.Join(dir, "seed.lock"), NameTapestryPreflight)
 
 	// blocker is a regular file, not a directory. Pointing statusLockPath at a child path beneath
 	// it makes CheckSeed's os.MkdirAll(filepath.Dir(statusLockPath), ...) guard fail.
@@ -86,7 +86,7 @@ func TestLoomPreflight_Call_LockParentUncreatableReturnsError(t *testing.T) {
 	}
 	statusLockPath := filepath.Join(blocker, "status.json.lock")
 
-	p := NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: t.TempDir()})
+	p := NewTapestryPreflight(NameTapestryPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: t.TempDir()})
 	outcome, _, err := p.Call(context.Background())
 	if err == nil {
 		t.Fatalf("Call() error = nil; want non-nil (lock parent dir cannot be created)")
@@ -96,21 +96,21 @@ func TestLoomPreflight_Call_LockParentUncreatableReturnsError(t *testing.T) {
 	}
 }
 
-// TestLoomPreflight_Call_StuckReasonNamesTheFailures pins that the incoherent-seed Reason is the
+// TestTapestryPreflight_Call_StuckReasonNamesTheFailures pins that the incoherent-seed Reason is the
 // fixed prefix followed by formatSeedFailures of the same report, and that a seed failing a
 // different check yields a different Reason.
-func TestLoomPreflight_Call_StuckReasonNamesTheFailures(t *testing.T) {
+func TestTapestryPreflight_Call_StuckReasonNamesTheFailures(t *testing.T) {
 	reasonFor := func(currentProducer string) (string, string) {
 		dir := t.TempDir()
 		statusPath := filepath.Join(dir, "status.json")
 		statusLockPath := filepath.Join(dir, "status.json.lock")
-		writeLoomPreflightFixture(t, statusPath, statusLockPath, currentProducer)
+		writeTapestryPreflightFixture(t, statusPath, statusLockPath, currentProducer)
 
-		report, err := loomengine.CheckSeed(statusPath, statusLockPath, NameLoomPreflight, []string{NamePreflight, NameLoomPreflight})
+		report, err := loomengine.CheckSeed(statusPath, statusLockPath, NameTapestryPreflight, []string{NamePreflight, NameTapestryPreflight})
 		if err != nil {
 			t.Fatalf("CheckSeed() error = %v", err)
 		}
-		pointer := shedfake.RequireOutcome(t, NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: t.TempDir()}), shedengine.Stuck)
+		pointer := shedfake.RequireOutcome(t, NewTapestryPreflight(NameTapestryPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: t.TempDir()}), shedengine.Stuck)
 		return pointer.Reason, "seed is not a coherent fresh start: " + formatSeedFailures(report)
 	}
 
@@ -145,7 +145,7 @@ func halfFinishedRun(t *testing.T, slug string) (statusPath, statusLockPath stri
 		State:           shedengine.StateBlocked,
 		History: []shedengine.HistoryEntry{
 			{Producer: NamePreflight, Outcome: shedengine.Done, At: "2026-07-17T10:01:30Z"},
-			{Producer: NameLoomPreflight, Outcome: shedengine.Done, At: "2026-07-17T10:01:31Z"},
+			{Producer: NameTapestryPreflight, Outcome: shedengine.Done, At: "2026-07-17T10:01:31Z"},
 			{Producer: NameDiscussionWrite, Outcome: shedengine.Done, At: "2026-07-17T10:01:32Z"},
 		},
 		Product: product,
@@ -153,7 +153,7 @@ func halfFinishedRun(t *testing.T, slug string) (statusPath, statusLockPath stri
 		t.Fatalf("state.WriteJSON(...) = %v", err)
 	}
 
-	producers := []shedengine.ProducerDef{{Name: NamePreflight}, {Name: NameLoomPreflight}, {Name: NameDiscussionWrite}}
+	producers := []shedengine.ProducerDef{{Name: NamePreflight}, {Name: NameTapestryPreflight}, {Name: NameDiscussionWrite}}
 	gotoTo = func(target string) {
 		t.Helper()
 		if _, err := shedengine.Goto(shedengine.GotoRequest{
@@ -169,16 +169,16 @@ func halfFinishedRun(t *testing.T, slug string) (statusPath, statusLockPath stri
 	return statusPath, statusLockPath, gotoTo
 }
 
-// TestLoomPreflight_Call_GotoReentryPassesAndLeavesStatusUnchanged pins that a run deliberately moved back onto Loom-Preflight is a policy case: the half-finished failure is waived.
-func TestLoomPreflight_Call_GotoReentryPassesAndLeavesStatusUnchanged(t *testing.T) {
+// TestTapestryPreflight_Call_GotoReentryPassesAndLeavesStatusUnchanged pins that a run deliberately moved back onto Tapestry-Preflight is a policy case: the half-finished failure is waived.
+func TestTapestryPreflight_Call_GotoReentryPassesAndLeavesStatusUnchanged(t *testing.T) {
 	statusPath, statusLockPath, gotoTo := halfFinishedRun(t, "fixture-slug")
-	gotoTo(NameLoomPreflight)
+	gotoTo(NameTapestryPreflight)
 	before, err := os.ReadFile(statusPath)
 	if err != nil {
 		t.Fatalf("read status: %v", err)
 	}
 
-	outcome, pointer := shedfake.CallOK(t, NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: t.TempDir()}))
+	outcome, pointer := shedfake.CallOK(t, NewTapestryPreflight(NameTapestryPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: t.TempDir()}))
 	if outcome != shedengine.Done || pointer.Reason != "" {
 		t.Errorf("Call() = (%q, reason %q); want (%q, no reason)", outcome, pointer.Reason, shedengine.Done)
 	}
@@ -191,18 +191,18 @@ func TestLoomPreflight_Call_GotoReentryPassesAndLeavesStatusUnchanged(t *testing
 	}
 }
 
-func TestLoomPreflight_Call_HalfFinishedWithoutGotoStuckNamesReentry(t *testing.T) {
+func TestTapestryPreflight_Call_HalfFinishedWithoutGotoStuckNamesReentry(t *testing.T) {
 	statusPath, statusLockPath, _ := halfFinishedRun(t, "fixture-slug")
-	// Loom-Preflight is the current producer, but no goto entry marks a deliberate re-entry.
+	// Tapestry-Preflight is the current producer, but no goto entry marks a deliberate re-entry.
 	if err := state.UpdateJSON(statusPath, statusLockPath, func(cur shedengine.Status, _ bool) (shedengine.Status, error) {
-		cur.CurrentProducer = NameLoomPreflight
+		cur.CurrentProducer = NameTapestryPreflight
 		return cur, nil
 	}); err != nil {
 		t.Fatalf("UpdateJSON: %v", err)
 	}
 
-	pointer := shedfake.RequireOutcome(t, NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: t.TempDir()}), shedengine.Stuck)
-	for _, want := range []string{"seed a new run", "lym loom goto --to " + NameLoomPreflight} {
+	pointer := shedfake.RequireOutcome(t, NewTapestryPreflight(NameTapestryPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: t.TempDir()}), shedengine.Stuck)
+	for _, want := range []string{"seed a new run", "lym loom goto --to " + NameTapestryPreflight} {
 		if !strings.Contains(pointer.Reason, want) {
 			t.Errorf("Reason = %q; want it to contain %q", pointer.Reason, want)
 		}
@@ -212,9 +212,9 @@ func TestLoomPreflight_Call_HalfFinishedWithoutGotoStuckNamesReentry(t *testing.
 	}
 }
 
-func TestLoomPreflight_Call_GotoThenLaterRowIsNotReentry(t *testing.T) {
+func TestTapestryPreflight_Call_GotoThenLaterRowIsNotReentry(t *testing.T) {
 	statusPath, statusLockPath, gotoTo := halfFinishedRun(t, "fixture-slug")
-	gotoTo(NameLoomPreflight)
+	gotoTo(NameTapestryPreflight)
 	if err := state.UpdateJSON(statusPath, statusLockPath, func(cur shedengine.Status, _ bool) (shedengine.Status, error) {
 		cur.History = append(cur.History, shedengine.HistoryEntry{Producer: NameDiscussionWrite, Outcome: shedengine.Done, At: "2026-07-17T10:02:00Z"})
 		return cur, nil
@@ -222,22 +222,22 @@ func TestLoomPreflight_Call_GotoThenLaterRowIsNotReentry(t *testing.T) {
 		t.Fatalf("UpdateJSON: %v", err)
 	}
 
-	shedfake.RequireOutcome(t, NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: t.TempDir()}), shedengine.Stuck)
+	shedfake.RequireOutcome(t, NewTapestryPreflight(NameTapestryPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: t.TempDir()}), shedengine.Stuck)
 }
 
-func TestLoomPreflight_Call_ReentryWithOtherFailureStaysStuck(t *testing.T) {
+func TestTapestryPreflight_Call_ReentryWithOtherFailureStaysStuck(t *testing.T) {
 	// An empty slug fails CheckSeedIncoherent alongside the half-finished history.
 	statusPath, statusLockPath, gotoTo := halfFinishedRun(t, "")
-	gotoTo(NameLoomPreflight)
+	gotoTo(NameTapestryPreflight)
 
-	pointer := shedfake.RequireOutcome(t, NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: t.TempDir()}), shedengine.Stuck)
+	pointer := shedfake.RequireOutcome(t, NewTapestryPreflight(NameTapestryPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: t.TempDir()}), shedengine.Stuck)
 	if !strings.Contains(pointer.Reason, string(loomengine.CheckSeedIncoherent)) {
 		t.Errorf("Reason = %q; want it to name %q", pointer.Reason, loomengine.CheckSeedIncoherent)
 	}
 }
 
-// TestLoomPreflight_Call_BatcherConfig pins the batcher.yaml check that follows a passing seed check: a loadable config reports Done, a profile still carrying a retired key is Stuck with the reconcile way forward, and a malformed profile is Stuck with the fix-and-re-step way forward; each reason opens with the shared batchifier prefix and names batcher.yaml.
-func TestLoomPreflight_Call_BatcherConfig(t *testing.T) {
+// TestTapestryPreflight_Call_BatcherConfig pins the batcher.yaml check that follows a passing seed check: a loadable config reports Done, a profile still carrying a retired key is Stuck with the reconcile way forward, and a malformed profile is Stuck with the fix-and-re-step way forward; each reason opens with the shared batchifier prefix and names batcher.yaml.
+func TestTapestryPreflight_Call_BatcherConfig(t *testing.T) {
 	tests := []struct {
 		name string
 		// config is the batcher.yaml body; empty leaves the file absent, which loads the embedded template.
@@ -268,7 +268,7 @@ func TestLoomPreflight_Call_BatcherConfig(t *testing.T) {
 			dir := t.TempDir()
 			statusPath := filepath.Join(dir, "status.json")
 			statusLockPath := filepath.Join(dir, "status.json.lock")
-			writeLoomPreflightFixture(t, statusPath, statusLockPath, NameLoomPreflight)
+			writeTapestryPreflightFixture(t, statusPath, statusLockPath, NameTapestryPreflight)
 			configBaseDir := t.TempDir()
 			if tt.config != "" {
 				if err := os.MkdirAll(configengine.ConfigDir(configBaseDir), 0o755); err != nil {
@@ -279,7 +279,7 @@ func TestLoomPreflight_Call_BatcherConfig(t *testing.T) {
 				}
 			}
 
-			pointer := shedfake.RequireOutcome(t, NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: configBaseDir}), tt.wantOutcome)
+			pointer := shedfake.RequireOutcome(t, NewTapestryPreflight(NameTapestryPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: configBaseDir}), tt.wantOutcome)
 			for _, want := range tt.wantReason {
 				if !strings.Contains(pointer.Reason, want) {
 					t.Errorf("Reason = %q; want it to contain %q", pointer.Reason, want)

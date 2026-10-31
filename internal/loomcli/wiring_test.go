@@ -131,7 +131,7 @@ func TestWire_DefaultConfig(t *testing.T) {
 
 	// Every path field of the assembled shedrecipe.Env and shedbuild.ShedPaths equals the corresponding
 	// accessor's own output for the same location.
-	// StatusPath and StatusLockPath are told twice -- once on c.env (read by loomPreflightEntry) and
+	// StatusPath and StatusLockPath are told twice -- once on c.env (read by tapestryPreflightEntry) and
 	// once on c.shedPaths (read by shedengine.Shed) -- so both copies are asserted against the same
 	// accessor, per the deliberate duplication ShedPaths' own doc comment describes.
 	t.Run("path fields match the accessors", func(t *testing.T) {
@@ -717,9 +717,9 @@ func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
 	if c.env.Rework.ReadCommitted == nil {
 		t.Error("env.Rework.ReadCommitted = nil; want the committed-file seam validate-plan --rework reads")
 	}
-	// A loom run leaves the darn validate-discussion seams nil; a darn run fills both, still with no config load.
+	// A tapestry run leaves the darn validate-discussion seams nil; a darn run fills both, still with no config load.
 	if c.env.DiscussionHistory != nil || c.env.CommitDiscussion != nil {
-		t.Error("a loom-recipe wireLightweight filled the darn discussion seams; want both nil")
+		t.Error("a tapestry-recipe wireLightweight filled the darn discussion seams; want both nil")
 	}
 	darn := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
 	darn.wireLightweight(location, location.AnchorPath())

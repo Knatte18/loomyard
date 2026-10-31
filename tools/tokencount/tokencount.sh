@@ -10,7 +10,7 @@
 # segment's cost, time and models split into its parts; -detail adds the sessions and token
 # columns.
 # The arguments are the task slugs to count, partial runs included, and flags such as -hub
-# pass through; with no slugs it counts the most recently active full loom runs, those that
+# pass through; with no slugs it counts the most recently active full tapestry runs, those that
 # reached Finalize (-last, default 6):
 # tokencount.sh
 # tokencount.sh -last 10

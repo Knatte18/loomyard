@@ -1,4 +1,4 @@
-// anomaly.go implements the pure, in-memory, no-I/O, spawn-free classifier that names the structural anomalies a loom run can show: a crash-resume seen at entry, and the halt kinds seen in a run's final state.
+// anomaly.go implements the pure, in-memory, no-I/O, spawn-free classifier that names the structural anomalies a tapestry run can show: a crash-resume seen at entry, and the halt kinds seen in a run's final state.
 // It performs no reads and derives no paths, so it is exhaustively table-tested untagged (anomaly_test.go), exactly the shape coherence.go already established in this package.
 // The classifier feeds friction notes that the Tier 2 reflection reads; it files nothing itself.
 

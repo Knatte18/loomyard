@@ -321,7 +321,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
-				"| T2 | **Top \\| work**<br>• Builds on base. Second brief line.<br>• `darn: models.writer opus\\|fast`<br>• `` darn: note use `x` ``<br>• `darn: skip [\"a&b\",\"<c>\"]` | [`top`](design-top.md) | loom | T1 |  | area |\n" +
+				"| T2 | **Top \\| work**<br>• Builds on base. Second brief line.<br>• `darn: models.writer opus\\|fast`<br>• `` darn: note use `x` ``<br>• `darn: skip [\"a&b\",\"<c>\"]` | [`top`](design-top.md) | tapestry | T1 |  | area |\n" +
 				"\n" +
 				"#### Independent (1)\n" +
 				"\n" +
@@ -337,7 +337,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
-				"| T1 | `draft` **Base work**<br>• The foundation.<br>• `loom: review_hard_max_bounces 3`<br>• `loom: review_max_bounces 2` | `base` | loom |  | 5w<br>3d |  |\n" +
+				"| T1 | `draft` **Base work**<br>• The foundation.<br>• `loom: review_hard_max_bounces 3`<br>• `loom: review_max_bounces 2` | `base` | tapestry |  | 5w<br>3d |  |\n" +
 				"\n" +
 				"### Notes (5)\n" +
 				"\n" +
@@ -444,7 +444,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"| # | Task | Slug | Recipe | At | Owner | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
 				"| T2 | **Halted work** | `halted` | darn | paused · Plan-Write | neve |  |  |\n" +
-				"| T5 | **Held work** | `held` | loom | Webster | neve |  | area |\n" +
+				"| T5 | **Held work** | `held` | tapestry | Webster | neve |  | area |\n" +
 				"\n" +
 				"#### Ready (1)\n" +
 				"\n" +
@@ -452,7 +452,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
-				"| T1 | **Base work** | `base` | loom |  |  |  |\n" +
+				"| T1 | **Base work** | `base` | tapestry |  |  |  |\n" +
 				"\n" +
 				"#### Layer A (1)\n" +
 				"\n" +
@@ -460,7 +460,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
-				"| T3 | **Next work** | `next` | loom | T5 |  |  |\n" +
+				"| T3 | **Next work** | `next` | tapestry | T5 |  |  |\n" +
 				"\n" +
 				"#### Layer B (1)\n" +
 				"\n" +
@@ -468,7 +468,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
-				"| T4 | **Last work** | `last` | loom | T3 |  |  |\n" +
+				"| T4 | **Last work** | `last` | tapestry | T3 |  |  |\n" +
 				"\n" +
 				"### Notes (0)\n" +
 				"\n" +
@@ -561,7 +561,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
-				"| T7 | **Base** | `base` | loom |  |  |  |\n" +
+				"| T7 | **Base** | `base` | tapestry |  |  |  |\n" +
 				"\n" +
 				"### Notes (0)\n" +
 				"\n" +
@@ -604,7 +604,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 					"\n" +
 					"| # | Task | Slug | Recipe | At | Owner | Age<br>Revised | Labels |\n" +
 					"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
-					"| T2 | **Second step** | [`second`](design-second.md) | loom | Webster | box |  |  |\n" +
+					"| T2 | **Second step** | [`second`](design-second.md) | tapestry | Webster | box |  |  |\n" +
 					"\n" +
 					"### Ready (1)\n" +
 					"\n" +
@@ -612,7 +612,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 					"\n" +
 					"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 					"| --- | --- | --- | --- | --- | --- | --- |\n" +
-					"| T1 | **First step** | `first` | loom |  |  |  |\n" +
+					"| T1 | **First step** | `first` | tapestry |  |  |  |\n" +
 					"\n" +
 					"### Layer A (1)\n" +
 					"\n" +
@@ -620,7 +620,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 					"\n" +
 					"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 					"| --- | --- | --- | --- | --- | --- | --- |\n" +
-					"| T3 | **Third step** | `third` | loom | T2<br>T7<br>`ghost` |  |  |\n" +
+					"| T3 | **Third step** | `third` | tapestry | T2<br>T7<br>`ghost` |  |  |\n" +
 					"\n" +
 					"## Notes (1)\n" +
 					"\n" +
@@ -692,7 +692,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 					"\n" +
 					"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 					"| --- | --- | --- | --- | --- | --- | --- |\n" +
-					"| T5 | `draft` **Chore** | `chore` | loom |  |  |  |\n" +
+					"| T5 | `draft` **Chore** | `chore` | tapestry |  |  |  |\n" +
 					"\n" +
 					"## Notes (0)\n" +
 					"\n" +

@@ -597,7 +597,7 @@ func (p shuttlePair) SendConditioned(guid, text string, want shuttleengine.SendC
 	return p.runner.SendConditioned(guid, text, want)
 }
 
-// Running reports the pair's loom run's current producer and whether its status file reads running.
+// Running reports the pair's tapestry run's current producer and whether its status file reads running.
 func (p shuttlePair) Running() (string, bool, error) {
 	statusPath := shedrun.StatusFile(p.location, shedrun.SelfRunID)
 	if _, err := os.Stat(statusPath); os.IsNotExist(err) {

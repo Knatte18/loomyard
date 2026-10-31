@@ -42,10 +42,10 @@ func TestLoomPreBootstrapPair(t *testing.T) {
 
 		stdout, code, err := runLoomCLINoFatal(exe, worktree, 15*time.Second, "loom", "run")
 		if err != nil {
-			t.Fatalf("loom run: %v; output: %s", err, stdout)
+			t.Fatalf("tapestry run: %v; output: %s", err, stdout)
 		}
 		if code != 1 {
-			t.Fatalf("loom run on a never-seeded pair = %d; want 1", code)
+			t.Fatalf("tapestry run on a never-seeded pair = %d; want 1", code)
 		}
 
 		var envelope struct {
@@ -312,7 +312,7 @@ func TestLoomFailedReedUpRefuses(t *testing.T) {
 	t.Run("wrong-parent seed", func(t *testing.T) {
 		loc, worktree := newBadReedUpFixture(t, func(t *testing.T, loc *lymcwd.Location) {
 			t.Helper()
-			seed := shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo, Params: map[string]string{"parent": "wrong-branch"}}
+			seed := shedrun.Seed{Recipe: shedrun.RecipeTapestry, Driver: shedrun.DriverGo, Params: map[string]string{"parent": "wrong-branch"}}
 			if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, seed); err != nil {
 				t.Fatalf("WriteSeed(wrong-parent seed): %v", err)
 			}
@@ -342,7 +342,7 @@ func TestLoomFailedReedUpRefuses(t *testing.T) {
 		message, _ := env["error"].(string)
 		for _, want := range []string{
 			"rm " + shedrun.SeedFile(loc, shedrun.SelfRunID),
-			"lym shed seed self --recipe loom --driver go --param parent=" + recorded.ParentBranch,
+			"lym shed seed self --recipe tapestry --driver go --param parent=" + recorded.ParentBranch,
 		} {
 			if !strings.Contains(message, want) {
 				t.Errorf("step error lacks %q; got: %s", want, message)

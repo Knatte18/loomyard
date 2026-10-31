@@ -1,4 +1,4 @@
-// runs.go selects the finished runs of a report: one run per archive tag, full when its records show a finished run of a selected recipe, loom or darn, and partial otherwise.
+// runs.go selects the finished runs of a report: one run per archive tag, full when its records show a finished run of a selected recipe, tapestry or darn, and partial otherwise.
 
 package reportengine
 
@@ -20,8 +20,8 @@ import (
 // SourceBatten is the name of the source holding a run's batten status snapshots.
 const SourceBatten = "batten"
 
-// runRecipes are the recipes whose seeded runs a report selects: each writes the loom run directory, status and Finalize row the selection reads.
-var runRecipes = []string{shedrun.RecipeLoom, shedrun.RecipeDarn}
+// runRecipes are the recipes whose seeded runs a report selects: each writes the tapestry run directory, status and Finalize row the selection reads.
+var runRecipes = []string{shedrun.RecipeTapestry, shedrun.RecipeDarn}
 
 // RunRow is one full run.
 // Recipe is the recipe its seed names, one of the recipes a report selects.
@@ -73,7 +73,7 @@ type RunRow struct {
 	// battenCommit is the records commit holding the run's batten record, empty without one.
 	battenCommit string
 
-	// childSettles and battenSettles are the settle records read from the loom run's file and from batten's, in file order; only readSettles fills them.
+	// childSettles and battenSettles are the settle records read from the tapestry run's file and from batten's, in file order; only readSettles fills them.
 	childSettles  []shedrun.SettleRecord
 	battenSettles []shedrun.SettleRecord
 
@@ -233,7 +233,7 @@ type landingInputs struct {
 	newestTag   map[string]time.Time
 }
 
-// readLoomRecords reads the loom run directory's seed and status at tag's commit through the shared record parsers, and returns both.
+// readLoomRecords reads the tapestry run directory's seed and status at tag's commit through the shared record parsers, and returns both.
 // A non-empty reason means the tag is not a full run: its seed names a recipe a report does not select, a record is absent or does not decode, or the history holds no Finalize entry.
 // A record that exists but does not decode is also a finding.
 func readLoomRecords(records Reader, tag gitrepo.TagRef, slug string) (seed shedrun.Seed, status shedengine.Status, reason string, findings []Finding, err error) {

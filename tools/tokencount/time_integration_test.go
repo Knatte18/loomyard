@@ -1,7 +1,7 @@
 //go:build tier1
 
 // time_integration_test.go checks that run reads each finished run's archived shed status from a real git repository's archive tags,
-// and that with no slugs named it counts only full loom runs and says in the header which it counted and skipped.
+// and that with no slugs named it counts only full tapestry runs and says in the header which it counted and skipped.
 // It also checks that -no-cutoff counts every located session and keeps the span from the seed's start,
 // and that the header names an engine that has no transcript reader.
 
@@ -78,12 +78,12 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 		liveStatus: `{"history":[` + entry("OldLive", "2026-01-01T09:30:00Z") + `]}`,
 	})
 	newest := commit("2026-01-01T12:00:00Z", map[string]string{
-		doneSeed:    `{"recipe":"loom","driver":"go","started_at":"2026-01-01T09:58:00Z"}`,
+		doneSeed:    `{"recipe":"tapestry","driver":"go","started_at":"2026-01-01T09:58:00Z"}`,
 		doneStatus:  `{"history":[` + entry("Plan", "2026-01-01T10:03:00Z") + `,` + entry("Publish", "2026-01-01T10:12:00Z") + `]}`,
 		liveStatus:  `{"history":[` + entry("Plan", "2026-01-01T10:03:00Z") + `]}`,
-		fullSeed:    `{"recipe":"loom","driver":"go","started_at":"2026-01-01T10:58:00Z"}`,
+		fullSeed:    `{"recipe":"tapestry","driver":"go","started_at":"2026-01-01T10:58:00Z"}`,
 		fullStatus:  `{"history":[` + entry("Plan", "2026-01-01T11:03:00Z") + `,` + entry("Finalize", "2026-01-01T11:12:00Z") + `]}`,
-		earlySeed:   `{"recipe":"loom","driver":"go","started_at":"2026-01-01T08:30:00Z"}`,
+		earlySeed:   `{"recipe":"tapestry","driver":"go","started_at":"2026-01-01T08:30:00Z"}`,
 		earlyStatus: `{"history":[` + entry("Plan", "2026-01-01T10:03:00Z") + `,` + entry("Publish", "2026-01-01T10:12:00Z") + `]}`,
 	})
 	// Archive tags are lightweight.
@@ -191,22 +191,22 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 		t.Errorf("report without -no-cutoff holds the cutoff-off line:\n%s", report)
 	}
 
-	// With no slugs named, the default walks the runs newest session first and counts only full loom runs:
+	// With no slugs named, the default walks the runs newest session first and counts only full tapestry runs:
 	// done stopped before Finalize and live is in flight, so both are skipped ahead of full.
 	var defaulted bytes.Buffer
 	if err := run([]string{"-hub", hub, "-" + repositoryFlag, records, "-no-sleep", "-last", "1"}, &defaulted, readsFor(false)); err != nil {
 		t.Fatalf("run with no slugs: %v", err)
 	}
-	wantHeader := " for the 1 most recent full loom runs: full.\n" + sleepOffLine + "Skipped 2 more recent runs that are not full loom runs: done, live.\n\n"
+	wantHeader := " for the 1 most recent full tapestry runs: full.\n" + sleepOffLine + "Skipped 2 more recent runs that are not full tapestry runs: done, live.\n\n"
 	if !strings.Contains(defaulted.String(), wantHeader) {
 		t.Errorf("default report header lacks %q:\n%s", wantHeader, defaulted.String())
 	}
 
 	emptyHub := t.TempDir()
 	err = run([]string{"-hub", emptyHub, "-" + repositoryFlag, records}, &defaulted, readsFor(false))
-	wantErr := "no full loom runs of " + emptyHub + " from engines " + fakeEngine + "; name the slugs to count a partial run"
+	wantErr := "no full tapestry runs of " + emptyHub + " from engines " + fakeEngine + "; name the slugs to count a partial run"
 	if err == nil || err.Error() != wantErr {
-		t.Errorf("run with no full loom run = %v; want %q", err, wantErr)
+		t.Errorf("run with no full tapestry run = %v; want %q", err, wantErr)
 	}
 
 	// Under -no-cutoff the earlier sessions and the untimestamped one count, and the span keeps the seed's start instead of the older tag's date.

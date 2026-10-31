@@ -172,7 +172,7 @@ func applyRemove(cfg *Config) []string {
 // cfg is read alone, so a Config that did not come from Load resolves only the names it holds.
 func ResolveFan(cfg Config, name string) ([]Lens, error) {
 	if removedNames, emptied := cfg.EmptiedFans[name]; emptied {
-		return nil, fmt.Errorf("lenses: fan %q is empty after remove dropped %s; way forward: drop a name from remove, or point the loom or darn fan key at another fan or \"\" for a later run", name, strings.Join(removedNames, ", "))
+		return nil, fmt.Errorf("lenses: fan %q is empty after remove dropped %s; way forward: drop a name from remove, or point the tapestry or darn fan key at another fan or \"\" for a later run", name, strings.Join(removedNames, ", "))
 	}
 	entries, ok := cfg.Fans[name]
 	if !ok {

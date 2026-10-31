@@ -68,7 +68,7 @@
 //
 // # The Drift rows
 //
-// The DriftBaseline, DriftAwait and DriftVerify entries build the three regression rows of the loom and darn recipes.
+// The DriftBaseline, DriftAwait and DriftVerify entries build the three regression rows of the tapestry and darn recipes.
 // Each reads Env.Drift, a whole-struct passthrough to the producers, and fills its Seats and Now from Env.Seats and Env.Now, and DriftVerify its GateFindingsFile from Env.GateFindingsFile for the row, so a caller leaves those three unset.
 // Each checks the Env.Drift seams its producer reads, and Env.Seats for the two agent rows, and refuses a nil one naming the field.
 // None has a switch of its own: the recipe leaves a row out through its `entry_gate: drift.enabled`.

@@ -13,14 +13,14 @@
 //
 // Each argument is a task slug, read as the worktree <hub>/<slug>; -hub defaults to the
 // parent of the current directory, which is the hub when run from its prime.
-// With no slugs it counts the -last full loom runs whose sessions changed most recently,
+// With no slugs it counts the -last full tapestry runs whose sessions changed most recently,
 // leaving out the prime, the current directory.
 // A run is finished once its pair is torn down, which leaves an archive/<slug>/<sha> tag in
 // the prime's fabric repository (the one repository flag, -weft, default the current worktree's weft sibling).
-// A finished run is a full loom run when the seed.json and status.json at its newest tag name the loom recipe and hold a Finalize history entry;
+// A finished run is a full tapestry run when the seed.json and status.json at its newest tag name the tapestry recipe and hold a Finalize history entry;
 // a run stopped partway, such as a bench pair parked after Discussion-Write, or a run of another recipe, would count as one whose later steps cost nothing.
-// The report's header names the runs counted and, when the default skipped more recent runs that are not full loom runs, names those on one line.
-// Slugs named on the command line are counted as given, full loom runs or not.
+// The report's header names the runs counted and, when the default skipped more recent runs that are not full tapestry runs, names those on one line.
+// Slugs named on the command line are counted as given, full tapestry runs or not.
 // Sessions are found per worktree by every registered shuttle engine that can locate them, and read through the engine that found them;
 // a session's forks (the Webster master's sub-agents) are read with it.
 // An engine that cannot read transcripts is named in the report's header line "Not counted, no transcript reader:".
@@ -204,12 +204,12 @@ func main() {
 	}
 }
 
-// run counts the runs args name, or the most recent full loom runs, through the engines in reads, and writes the report to stdout or to the -out file.
+// run counts the runs args name, or the most recent full tapestry runs, through the engines in reads, and writes the report to stdout or to the -out file.
 func run(args []string, stdout io.Writer, reads ReadSet) error {
 	fs := flag.NewFlagSet("tokencount", flag.ContinueOnError)
 	hub := fs.String("hub", "", "hub directory holding the task worktrees (default: parent of the current directory)")
 	out := fs.String("out", "", "write the report to this file instead of stdout")
-	last := fs.Int("last", 6, "with no slugs named, count this many of the most recently active full loom runs")
+	last := fs.Int("last", 6, "with no slugs named, count this many of the most recently active full tapestry runs")
 	weft := fs.String(repositoryFlag, "", "the prime's fabric repository holding the archive tags of finished runs, the runs' plan commits and webster records (default: the current worktree's weft sibling)")
 	calibrate := fs.String("calibrate", "", "add the calibration section for this batcher.yaml profile")
 	configDir := fs.String("config", "", "directory whose batcher.yaml holds the profile (default: the current directory)")
@@ -250,11 +250,11 @@ func run(args []string, stdout io.Writer, reads ReadSet) error {
 			return err
 		}
 		if len(slugs) == 0 {
-			return fmt.Errorf("no full loom runs of %s from engines %s; name the slugs to count a partial run", *hub, strings.Join(readable, ", "))
+			return fmt.Errorf("no full tapestry runs of %s from engines %s; name the slugs to count a partial run", *hub, strings.Join(readable, ", "))
 		}
-		counted = fmt.Sprintf("the %d most recent full loom runs: %s", len(slugs), strings.Join(slugs, ", "))
+		counted = fmt.Sprintf("the %d most recent full tapestry runs: %s", len(slugs), strings.Join(slugs, ", "))
 		if len(skipped) > 0 {
-			skippedNote = fmt.Sprintf("Skipped %d more recent runs that are not full loom runs: %s.\n", len(skipped), strings.Join(skipped, ", "))
+			skippedNote = fmt.Sprintf("Skipped %d more recent runs that are not full tapestry runs: %s.\n", len(skipped), strings.Join(skipped, ", "))
 		}
 	}
 

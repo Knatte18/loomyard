@@ -154,7 +154,7 @@ func (c *burlerCLI) wireHub(loc *lymcwd.Location, stencilsDirOverride, targetDir
 		return err
 	})
 
-	// A `lym burler` run is not a loom run and has no friction directory in either mode.
+	// A `lym burler` run is not a tapestry run and has no friction directory in either mode.
 	burlerGeom, err := hubgeom.BurlerGeometry(loc)
 	if err != nil {
 		return err
@@ -228,7 +228,7 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirOverride, targetDirFlag strin
 		return err
 	}
 
-	// A `lym burler` run is not a loom run and has no friction directory in either mode.
+	// A `lym burler` run is not a tapestry run and has no friction directory in either mode.
 	c.engine = burlerengine.New(seatengine.RunnerShuttle(runner), standalonegeom.BurlerGeometry(res.Target, res.StateDir, res.Hash8), lensesCfg, res.StencilsDir, "", c.languageSkills)
 	c.mode = "standalone"
 	c.stateDir = res.StateDir

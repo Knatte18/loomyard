@@ -68,7 +68,7 @@ func frictionReflectProducerType() reflect.Type {
 
 var wantProducerTable = []wantProducerRow{
 	{loomshed.NamePreflight, "Preflight", reflect.TypeOf(preflightshed.NewPreflight("", ""))},
-	{loomshed.NameLoomPreflight, "LoomPreflight", reflect.TypeOf(loomshed.NewLoomPreflight("", "", "", configengine.Dirs{}))},
+	{loomshed.NameTapestryPreflight, "TapestryPreflight", reflect.TypeOf(loomshed.NewTapestryPreflight("", "", "", configengine.Dirs{}))},
 	{loomshed.NameDiscussionWrite, "DiscussionWrite", reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
 	{loomshed.NameDiscussionBouncer, "Bouncer", bouncerType},
 	{loomshed.NameDiscussionBurlerReview, "BurlerReview", burlerReviewType},

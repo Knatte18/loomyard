@@ -15,7 +15,7 @@ import (
 
 // defaultChildRecipe is the recipe a child worktree seeds when the Board task's own "type" field
 // is empty.
-const defaultChildRecipe = "loom"
+const defaultChildRecipe = "tapestry"
 
 // seedChildProducer writes, commits and pushes the child worktree's own seed file, deriving its
 // recipe from the Board task's own type and its driver from the prime seed's typed child_driver, else the recipe's driver_kind, then shed.yaml's.

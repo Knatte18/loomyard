@@ -244,7 +244,7 @@ func TestResumeVerb(t *testing.T) {
 				return 4242, nil
 			}
 			if tt.seedDriver != "" {
-				if err := shedrun.WriteSeed(c.location, c.runID, shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: tt.seedDriver}); err != nil {
+				if err := shedrun.WriteSeed(c.location, c.runID, shedrun.Seed{Recipe: shedrun.RecipeTapestry, Driver: tt.seedDriver}); err != nil {
 					t.Fatalf("write seed: %v", err)
 				}
 			}

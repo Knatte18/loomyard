@@ -463,17 +463,17 @@ func TestRecentRuns(t *testing.T) {
 	full := []string{"Plan-Write", "Webster", "Finalize", "Friction-Reflect"}
 	for slug, age := range map[string]time.Duration{"old": 5 * time.Hour, "mid": 4 * time.Hour, "new": 3 * time.Hour, "inflight": 2 * time.Hour, "prime": 0} {
 		touch(filepath.Join(hub, slug), age)
-		archive(slug, shedrun.RecipeLoom, full...)
+		archive(slug, shedrun.RecipeTapestry, full...)
 	}
 	touch(filepath.Join(hub, "darn"), 90*time.Minute)
 	archive("darn", "darn", "Darn-Write", "Finalize")
 	touch(filepath.Join(hub, "bench"), time.Hour)
-	archive("bench", shedrun.RecipeLoom, "Preflight", "Discussion-Write")
+	archive("bench", shedrun.RecipeTapestry, "Preflight", "Discussion-Write")
 	touch(filepath.Join(hub, "parked"), 0)
 	// A finished slug with no session located under the hub, and one whose session sits in another hub, are never candidates.
-	archive("empty", shedrun.RecipeLoom, full...)
+	archive("empty", shedrun.RecipeTapestry, full...)
 	touch("/other/newest", 0)
-	archive("newest", shedrun.RecipeLoom, full...)
+	archive("newest", shedrun.RecipeTapestry, full...)
 
 	counted, skipped, err := recentRuns(fakeReadSet(fake), hub, "prime", finished, trees, 2)
 	if err != nil {
@@ -585,9 +585,9 @@ func TestShedRecordSpanAndProducers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const seed = `{"recipe":"loom","driver":"go"}`
+	const seed = `{"recipe":"tapestry","driver":"go"}`
 	seedStarted := func(startedAt string) string {
-		return `{"recipe":"loom","driver":"go","started_at":"` + startedAt + `"}`
+		return `{"recipe":"tapestry","driver":"go","started_at":"` + startedAt + `"}`
 	}
 	newest := ArchiveTag{Name: "archive/r/new", Commit: "c2", Committed: at("11:00:00")}
 	older := func(committed string) ArchiveTag {

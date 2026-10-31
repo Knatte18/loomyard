@@ -3,7 +3,7 @@
 //
 // It takes every absolute path from its caller and has no direct production import of internal/lymcwd, per the Told-Geometry Invariant.
 //
-// The bounce budget of every review segment (a segment holding a Bouncer row) is not declared in the loom recipe.
+// The bounce budget of every review segment (a segment holding a Bouncer row) is not declared in the tapestry recipe.
 // It is the segment's own budget, 0 included:
 // New takes it from shedrecipe.Env.Segments, keyed by segment, and Routing takes a map of the same keys as its argument.
 // Both set the value on every row of the segment, the Bouncer, the review row and the fix row, so the engine and the routing projection hold one value per segment.
@@ -11,7 +11,7 @@
 // New refuses a review segment with no Env.Segments entry, naming the segment and the loom wiring's segment-to-perch table, and a negative budget, naming the segment, its config key and file.
 // Routing refuses a review segment its map lacks and a negative entry, each naming the segment.
 //
-// The loom recipe's tail after Webster reads `Parent-Align → Code-Review → Drift-Verify → Describe → PR-Review → Finalize → Friction-Reflect`.
+// The tapestry recipe's tail after Webster reads `Parent-Align → Code-Review → Drift-Verify → Describe → PR-Review → Finalize → Friction-Reflect`.
 // Drift-Baseline sits between the Discussion-Review ring and Plan-Write, and Drift-Await between the Plan-Review ring and Webster.
 // PR-Review's Stuck is always a Halt, so it carries no on_stuck, and Finalize's reroute names Parent-Align.
 // The darn recipe reads `Preflight → Drift-Baseline → Drift-Await → Darn-Write → Drift-Verify → Code-Review → Describe → PR-Review → Finalize → Friction-Reflect`, with no Parent-Align, and Finalize's reroute names Code-Bouncer.
@@ -24,7 +24,7 @@
 // A budget of 0 turns the perch off as loom's does: NewDarn stamps `zero_rounds` on Code-Bouncer, which settles approved at once on both `Drift-Verify`'s Done and `Finalize`'s reroute, and every edge is kept.
 // The `Describe` row carries the entry gate `budget.Code-Review`, so a budget of 0 skips it and the writer's own change description stands.
 // DarnRetiredRows maps the writer row's former name, `Darn`, onto `Darn-Write`, so the caller can carry a darn run parked under the old name across with shedengine.RenameProducers.
-// LoomRetiredRows maps the landing row's former name, `Merge-In`, onto `Parent-Align` for a loom run the same way.
+// TapestryRetiredRows maps the landing row's former name, `Merge-In`, onto `Parent-Align`, and the entry row's former name, `Loom-Preflight`, onto `Tapestry-Preflight`, for a tapestry run the same way.
 //
 // NewPawl is the third builder: it builds the embedded pawl recipe, a beam's life, and PawlRouting projects that recipe's routing.
 // The recipe reads `Preflight → Beam-Up → Beam-Await → Parent-Align → Code-Review → Beam-Describe → PR-Review → Finalize → Beam-Down`, with no reroute edge:
@@ -34,12 +34,12 @@
 // A budget of 0 stamps `zero_rounds` on Code-Bouncer, which settles approved at once, and Beam-Describe carries no entry gate, so it writes from the entry and the commits whatever the budget.
 // A run at Parent-Align or any row after it holds its beam; before it the beam is free to start members.
 //
-// Rows and RowNames serve the loom, darn, batten and pawl recipes, and EntryNumbers numbers any recipe's rows for the panes that draw them:
+// Rows and RowNames serve the tapestry, darn, batten and pawl recipes, and EntryNumbers numbers any recipe's rows for the panes that draw them:
 // a review segment is one entry and every other row its own, so a recipe added to Rows is numbered with no change to its readers.
 //
-// AmendmentTarget answers the optional `amendment_target` key of the loom, darn, batten or pawl recipe: the row a plan amendment routes to, empty when the recipe sets none.
+// AmendmentTarget answers the optional `amendment_target` key of the tapestry, darn, batten or pawl recipe: the row a plan amendment routes to, empty when the recipe sets none.
 //
-// Every review segment of the loom and darn recipes sets one `role_prefix` on its Bouncer, BurlerReview and BurlerFix rows, and no two segments share a value.
+// Every review segment of the tapestry and darn recipes sets one `role_prefix` on its Bouncer, BurlerReview and BurlerFix rows, and no two segments share a value.
 // A test pins that beside the carry-over check, which pins that each Bouncer row's `carry_over` names the row's own segment.
 //
 // This package sits above internal/loomshed rather than inside it because internal/shedrecipe's

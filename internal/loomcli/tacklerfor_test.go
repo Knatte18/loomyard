@@ -17,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// TestTacklerFor verifies a darn run takes darn.yaml's tackler_max_spawns and the darn recipe line, a loom run loom.yaml's and the loom line, so one module's choice never leaks into the other's run.
+// TestTacklerFor verifies a darn run takes darn.yaml's tackler_max_spawns and the darn recipe line, a tapestry run loom.yaml's and the loom line, so one module's choice never leaks into the other's run.
 func TestTacklerFor(t *testing.T) {
 	t.Parallel()
 	reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
@@ -35,7 +35,7 @@ func TestTacklerFor(t *testing.T) {
 	}{
 		{name: "darn takes darn.yaml's 0 over loom.yaml's 4", recipe: shedrun.RecipeDarn, loomSpawns: "4", darnSpawns: "0", wantSpawns: 0, wantRecipe: darnTacklerRecipe},
 		{name: "darn takes darn.yaml's 4 over loom.yaml's 0", recipe: shedrun.RecipeDarn, loomSpawns: "0", darnSpawns: "4", wantSpawns: 4, wantRecipe: darnTacklerRecipe},
-		{name: "loom takes loom.yaml's value", recipe: shedrun.RecipeLoom, loomSpawns: "2", darnSpawns: "0", wantSpawns: 2, wantRecipe: loomTacklerRecipe},
+		{name: "loom takes loom.yaml's value", recipe: shedrun.RecipeTapestry, loomSpawns: "2", darnSpawns: "0", wantSpawns: 2, wantRecipe: loomTacklerRecipe},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

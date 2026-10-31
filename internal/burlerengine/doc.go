@@ -249,7 +249,7 @@
 //
 // lenses.FanList is the value of a module's per-round fan key, one fan name or a list of them whose last entry serves every later round, an empty entry running its round solo or with the single fixer.
 // Its decoder refuses any other shape with a lenses.FanShapeError carrying the value's line, and lenses.ValidateFanKeys refuses an empty list and resolves every named fan through lenses.yaml, each refusal naming the module, the key and the entry.
-// loom and darn declare their review perches' fan keys in this one grammar.
+// tapestry and darn declare their review perches' fan keys in this one grammar.
 // ModelSpecList, declared in this package, is the matching value of a reviewer or fixer model key, one model-spec or a per-round list:
 // its decoder refuses any other shape with a ModelSpecShapeError carrying the value's line, its Unset reports the empty value a segment key reads as "take the shared list", and ValidateModelSpecList refuses an empty list and an entry that is no model-spec, naming the module, the key and the entry.
 //

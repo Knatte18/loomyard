@@ -118,14 +118,14 @@ func TestHubPeersDeps_OverRealHub(t *testing.T) {
 		}
 	})
 
-	t.Run("peers reports the embedded loom recipe's row for each peer and the caller", func(t *testing.T) {
-		rows, err := loomrecipe.RowNames(shedrun.RecipeLoom)
+	t.Run("peers reports the embedded tapestry recipe's row for each peer and the caller", func(t *testing.T) {
+		rows, err := loomrecipe.RowNames(shedrun.RecipeTapestry)
 		if err != nil {
 			t.Fatalf("loomrecipe.RowNames(loom) error = %v; want nil", err)
 		}
 		want := float64(slices.Index(rows, "Plan-Write") + 1)
 		if want == 0 {
-			t.Fatal("loom recipe has no Plan-Write row")
+			t.Fatal("tapestry recipe has no Plan-Write row")
 		}
 		var out bytes.Buffer
 		if code := peersVerb(&out, deps); code != 0 {

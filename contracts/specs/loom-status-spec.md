@@ -30,7 +30,7 @@ An optional thin `ly-spawn` skill may wrap it later,
 but `lym loom start` is always the writer.
 
 The file's existence *is* the handoff signal, but it is `Shed`'s own step-1 read gate that **requires the file to exist** and fails loud if it is missing — not loom's own row.
-loom's own row, `Loom-Preflight`, makes a narrower claim: that the file, once it exists, is a *coherent fresh seed* (no half-finished prior run).
+tapestry's own row, `Tapestry-Preflight`, makes a narrower claim: that the file, once it exists, is a *coherent fresh seed* (no half-finished prior run).
 
 A fresh seed carries `current_producer: "Preflight"`, `state: "running"`, empty `history`, and a `product` with only `slug`/`parent` populated (`start_sha: null`) — `Shed` fills the rest as it runs, and `Shed` itself owns `current_producer`/`state`/`error`/`activity`/`history` from the first persist onward.
 
@@ -93,15 +93,15 @@ Per-field notes — `product`'s three fields are the whole of loom's own half of
 
 `lym loom status` carries a top-level `hand_back` key, and the loop's stop envelope carries `loop.hand_back`.
 Both are true when the run is blocked and the recipe's told check answers true for the status's `current_producer` and `error`, and false otherwise, including when no check is told.
-For loom and darn the check is `landingshed.HandsBack`: a blocked stop at Parent-Align or Finalize whose reason opens with the landing-stop prefix, or a blocked stop at Finalize whose reason opens with the reroute-cap prefix.
+For tapestry and darn the check is `landingshed.HandsBack`: a blocked stop at Parent-Align or Finalize whose reason opens with the landing-stop prefix, or a blocked stop at Finalize whose reason opens with the reroute-cap prefix.
 A true key marks a halt that goes to the orch, so every driver hands it back instead of routing it.
-A loom or darn fixer's escalate halt opens with the landing-escalate prefix, `landingshed.EscalateHalt` answers true for it, and the key stays false: it goes to the arbiter first.
+A tapestry or darn fixer's escalate halt opens with the landing-escalate prefix, `landingshed.EscalateHalt` answers true for it, and the key stays false: it goes to the arbiter first.
 
 ## The `restep_hold` key
 
 `lym loom status` carries a top-level `restep_hold` key, and the loop's stop envelope carries `loop.restep_hold`.
 Both are true when the run is blocked and the recipe's told check answers true for the status's `current_producer` and `error`, and false otherwise, including when no check is told.
-For loom and darn the check is `landingshed.EscalateHalt`: a blocked stop at Parent-Align or Finalize whose reason opens with the landing-escalate prefix.
+For tapestry and darn the check is `landingshed.EscalateHalt`: a blocked stop at Parent-Align or Finalize whose reason opens with the landing-escalate prefix.
 A true key marks a halt the LLM driver's own build re-launch and binary watch leave alone; it still goes to the arbiter first, and only the arbiter's `resume` or the orch's `lym loom resume` moves it.
 
 ## The `waiting` key
@@ -144,15 +144,15 @@ loom never guesses a status.
 Spec for check 4, loom's own precondition layered over `Shed`'s shell (`internal/loomengine.checkCoherence`):
 
 - `product.slug` and `product.parent` are mandatory: an empty string counts as absent.
-- `shed.current_producer` must equal `"Loom-Preflight"` — that is what `Shed` persists before calling row 2, since `Run` writes the next row's name into `current_producer` and appends the finished row's history entry before making the call.
+- `shed.current_producer` must equal `"Tapestry-Preflight"` — that is what `Shed` persists before calling row 2, since `Run` writes the next row's name into `current_producer` and appends the finished row's history entry before making the call.
 - `shed.state` must be one of `Shed`'s six legal values and must not be `"done"`, a finished run.
 - `shed.error` is tolerated at any value, including non-empty — it is the previous halt's reason a human resumes after reading.
 - `shed.activity` is never validated — `Shed` recomposes it mechanically on every persist.
 - Every `shed.history[].outcome` must be `"done"`, `"stuck"`, `"awaiting"`, `"goto"` or `"reroute"` (the last two history-only: `goto` written by `lym shed goto`, `reroute` by the engine on a rerouted Stuck verdict, neither returned by a producer), and every `shed.history[].at` must be RFC3339 UTC.
-- **Fresh-start check:** a `shed.history[]` entry naming any producer other than `"Preflight"` or `"Loom-Preflight"` is a half-finished failure; entries naming either of those two are tolerated, since `Shed.Run` appends a history entry before persisting `state: "blocked"` on every `Stuck` route including the `OnStuck: ""` escalation, so a `Stuck` at either row 1 or row 2 leaves one matching entry behind and a resumable blocked run must not fail this check forever.
+- **Fresh-start check:** a `shed.history[]` entry naming any producer other than `"Preflight"` or `"Tapestry-Preflight"` is a half-finished failure; entries naming either of those two are tolerated, since `Shed.Run` appends a history entry before persisting `state: "blocked"` on every `Stuck` route including the `OnStuck: ""` escalation, so a `Stuck` at either row 1 or row 2 leaves one matching entry behind and a resumable blocked run must not fail this check forever.
 - A non-null `product.start_sha`, or `shed.pause_requested: true`, is also a half-finished failure — the task has already advanced past the point the two Preflight rows are meant to gate.
 - A `product` that fails to decode as loom's own shape is a `seed-incoherent` verdict, not an infra error.
-- **A fresh seed still carries `current_producer: "Preflight"`** (see [the schema](#the-schema) below), never `"Loom-Preflight"` — `internal/loomshed/seed.go` writes the seed once, at row 1, and `Shed` overwrites `current_producer` to `"Loom-Preflight"` itself as it advances past row 1.
+- **A fresh seed still carries `current_producer: "Preflight"`** (see [the schema](#the-schema) below), never `"Tapestry-Preflight"` — `internal/loomshed/seed.go` writes the seed once, at row 1, and `Shed` overwrites `current_producer` to `"Tapestry-Preflight"` itself as it advances past row 1.
   That divergence between the seed contract and this checklist's row-2 contract is real and deliberate, not a typo: the seed names the first row a fresh run starts at, the checklist names the row check 4 actually gates.
 
 ## Worked example

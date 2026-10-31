@@ -96,7 +96,7 @@ func TestNew_ShapeMatchesRecipe(t *testing.T) {
 // This goes through Parse/Build rather than through New deliberately: it needs the parsed Recipe
 // value, which New does not return, so it must not be "simplified" back onto New.
 func TestRecipe_StructuralCheckHasNoFindings(t *testing.T) {
-	for name, source := range map[string][]byte{"loom": recipes.LoomRecipe, "darn": recipes.DarnRecipe, "pawl": recipes.PawlRecipe} {
+	for name, source := range map[string][]byte{"tapestry": recipes.TapestryRecipe, "darn": recipes.DarnRecipe, "pawl": recipes.PawlRecipe} {
 		t.Run(name, func(t *testing.T) {
 			env, _ := testEnv(t)
 
@@ -119,9 +119,9 @@ func TestRecipe_StructuralCheckHasNoFindings(t *testing.T) {
 
 // TestNew_StatusPathCoherence protects the split ShedPaths carries a duplicate of Env.StatusPath and
 // Env.StatusLockPath needs: internal/loomshed.Deps carried a single field feeding both consumers, so
-// the two could not disagree. Splitting it into an Env copy (read by loomPreflightEntry) and a
+// the two could not disagree. Splitting it into an Env copy (read by tapestryPreflightEntry) and a
 // ShedPaths copy (read by Shed) makes a divergent fill possible for the first time, and its
-// consequence is silent -- Shed persisting to one file while Loom-Preflight reads another -- which
+// consequence is silent -- Shed persisting to one file while Tapestry-Preflight reads another -- which
 // is exactly why New checks it itself, ahead of shedbuild.Build.
 func TestNew_StatusPathCoherence(t *testing.T) {
 	t.Run("StatusPath", func(t *testing.T) {
@@ -180,8 +180,8 @@ func TestNew_ConstructionFailureNamesOffendingRow(t *testing.T) {
 
 // TestRecipe_SeedAndResumeRowNamesExist protects the two row names loom's seed and resume paths
 // hard-code outside the recipe: loomshed.NamePreflight, which Seed writes as CurrentProducer into a
-// fresh status file, and loomshed.NameLoomPreflight, which loomPreflightProducer.Call passes to
-// loomengine.CheckSeed as the expected name alongside []string{NamePreflight, NameLoomPreflight} as
+// fresh status file, and loomshed.NameTapestryPreflight, which tapestryPreflightProducer.Call passes to
+// loomengine.CheckSeed as the expected name alongside []string{NamePreflight, NameTapestryPreflight} as
 // the tolerated history set.
 //
 // Once the recipe is the row-name source, a recipe row renamed from Preflight would leave Seed
@@ -199,7 +199,7 @@ func TestRecipe_SeedAndResumeRowNamesExist(t *testing.T) {
 		haveNames = append(haveNames, p.Name)
 	}
 
-	for _, want := range []string{loomshed.NamePreflight, loomshed.NameLoomPreflight} {
+	for _, want := range []string{loomshed.NamePreflight, loomshed.NameTapestryPreflight} {
 		found := false
 		for _, name := range haveNames {
 			if name == want {
@@ -219,7 +219,7 @@ func TestRecipe_SeedAndResumeRowNamesExist(t *testing.T) {
 // gets this test: a silently empty return would disable the cross-consumer coverage guard rather
 // than fail it.
 func TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet(t *testing.T) {
-	// The darn recipe's writer and the pawl recipe's own rows are ones a loom row can reach, beside the loom recipe's.
+	// The darn recipe's writer and the pawl recipe's own rows are ones a loom row can reach, beside the tapestry recipe's.
 	want := []string{"DarnWrite", "BeamUp", "BeamAwait", "BeamDescribe", "BeamDown"}
 	seen := map[string]bool{}
 	for _, engine := range want {
@@ -253,7 +253,7 @@ func TestRowNames_FollowEachRecipesRowOrder(t *testing.T) {
 		recipe string
 		source []byte
 	}{
-		{shedrun.RecipeLoom, recipes.LoomRecipe},
+		{shedrun.RecipeTapestry, recipes.TapestryRecipe},
 		{shedrun.RecipeDarn, recipes.DarnRecipe},
 		{shedrun.RecipeBatten, recipes.BattenRecipe},
 		{shedrun.RecipePawl, recipes.PawlRecipe},
@@ -310,7 +310,7 @@ func TestAmendmentTarget(t *testing.T) {
 		recipe string
 		want   string
 	}{
-		{shedrun.RecipeLoom, "Plan-Burler-Review"},
+		{shedrun.RecipeTapestry, "Plan-Burler-Review"},
 		{shedrun.RecipeDarn, ""},
 		{shedrun.RecipeBatten, ""},
 	} {
@@ -346,7 +346,7 @@ func TestEntryNumbers(t *testing.T) {
 		recipe string
 		want   map[string]int
 	}{
-		{"loom", shedrun.RecipeLoom, map[string]int{
+		{"loom", shedrun.RecipeTapestry, map[string]int{
 			"Preflight": 1, "Discussion-Write": 3,
 			"Discussion-Bouncer": 4, "Discussion-Burler-Review": 4, "Discussion-Burler-Fix": 4,
 			"Drift-Baseline": 5,
@@ -403,7 +403,7 @@ func TestRecipe_WebsterReroutesToPlanReview(t *testing.T) {
 		}
 	}
 
-	recipe, err := shedbuild.Parse(recipes.LoomRecipe)
+	recipe, err := shedbuild.Parse(recipes.TapestryRecipe)
 	if err != nil {
 		t.Fatalf("shedbuild.Parse() error = %v; want nil", err)
 	}

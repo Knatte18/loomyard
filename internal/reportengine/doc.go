@@ -21,9 +21,9 @@
 //
 // Every archive tag whose slug parses is one run, so a reused slug yields one run per tag.
 // A tag committed before Options.Since is left out entirely; a tag whose slug does not parse is a Finding.
-// At the tag's commit the engine reads the seed and status of the loom run directory through their tolerant parses.
-// The run is full when the seed names the loom or the darn recipe, both of which write that directory, and the status history holds a Finalize entry; any other tag is a PartialRun that enters no per-run figure.
-// RunRow.Recipe is the recipe the seed names, and every figure reads a darn run's records as it reads a loom run's.
+// At the tag's commit the engine reads the seed and status of the tapestry run directory through their tolerant parses.
+// The run is full when the seed names the tapestry or the darn recipe, both of which write that directory, and the status history holds a Finalize entry; any other tag is a PartialRun that enters no per-run figure.
+// RunRow.Recipe is the recipe the seed names, and every figure reads a darn run's records as it reads a tapestry run's.
 // A record that exists but does not decode is a Finding naming the tag and the file, and the tag is partial.
 // A run's time is its tag's committer date in UTC, and its week is the ISO week with Monday as the first day.
 //
@@ -112,7 +112,7 @@
 // A landed run is exactly a full run as run selection picks it, of either recipe, read once with its seed, status and batten snapshots; a partial run enters neither the run table nor any bucket.
 // A run in flight is a pair records branch of Sources.Branches: a branch other than the records branch whose name is the one fabricengine.RecordsBranchName forms from a slug.
 // A branch whose tip is the commit of one of its slug's archive tags is landed and skipped; one whose slug TimingOptions.Live names is in flight; any other is abandoned and left out with a finding.
-// A pair not seeded yet, or seeded to a recipe other than loom or darn, is left out silently.
+// A pair not seeded yet, or seeded to a recipe other than tapestry or darn, is left out silently.
 // TimingRun.Recipe is the recipe the run's seed names.
 // A run in flight takes the batten snapshots committed after its slug's newest archive tag, so a reused slug never reads an earlier run's.
 // A run enters the report when its span overlaps the window.
@@ -127,7 +127,7 @@
 // Each interval counts under one phase, and the child's rows map to phases through a closed table per recipe.
 // Every run's setup holds every batten row before batten's first Run-Shed entry; land every batten row other than Run-Shed after batten's first Run-Shed entry;
 // paused every Run-Shed entry whose change is from paused, so the time the child stood paused at a producer boundary counts apart from the row it paused at.
-// A loom run's setup also holds Preflight and Loom-Preflight; discussion every Discussion row; plan every Plan row, Drift-Baseline and Drift-Await; webster every Webster row, every Code row (Code-Bouncer, Code-Burler-Review, Code-Burler-Fix), Drift-Verify, Describe and the retired Batchifier row, whose batching the implementer now does; merge Parent-Align and every Merge row; publish-finalize PR-Review, Finalize and Friction-Reflect.
+// A tapestry run's setup also holds Preflight and Tapestry-Preflight; discussion every Discussion row; plan every Plan row, Drift-Baseline and Drift-Await; webster every Webster row, every Code row (Code-Bouncer, Code-Burler-Review, Code-Burler-Fix), Drift-Verify, Describe and the retired Batchifier row, whose batching the implementer now does; merge Parent-Align and every Merge row; publish-finalize PR-Review, Finalize and Friction-Reflect.
 // The table also keeps the rows a past run's history holds and the recipes no longer do, by the literals the report declares: Publish, PR-Align, PR-Gate and PR-Rework count under publish-finalize, the Merge-In, Merge-Bouncer and Merge-Burler rows under merge, and the Webster-Bouncer and Webster-Burler rows under webster.
 // A darn run's setup also holds Preflight, Drift-Baseline and Drift-Await; write Darn-Write, its retired name Darn, and Describe; review every Code-Review row (Code-Bouncer, Code-Burler-Review, Code-Burler-Fix), Drift-Verify and a past run's retired Darn-Bouncer, Darn-Burler-Review and Darn-Burler-Fix; merge a past run's retired Merge-In; publish-finalize PR-Review, Finalize and Friction-Reflect, and a past run's Publish, PR-Align and PR-Gate.
 // Any other Run-Shed entry records a change of the child's state and counts under the phase the run's recipe table gives the producer its change names, else the latest child row before it, else under setup.
@@ -159,7 +159,7 @@
 // bounce is a loom stuck entry an OnStuck edge bounced, its routed_to set; batten-halt is a batten-row halt as above.
 //
 // Each stop's settler comes from the Go driver's settle records and the history's caller labels.
-// A run's records are two files read through shedrun.ParseSettleRecords, each at its run directory: the loom run's at the archive tag, or at the pair branch tip for a run in flight, and batten's at the commit holding the run's batten record.
+// A run's records are two files read through shedrun.ParseSettleRecords, each at its run directory: the tapestry run's at the archive tag, or at the pair branch tip for a run in flight, and batten's at the commit holding the run's batten record.
 // Only a landed run read by ComputeTiming and a run in flight read their settle files, so convergence reads none; an absent file holds no record, a record not committed at that tip is not there and its stop reads open, and a line that does not decode is a finding naming the file and the line.
 // A record's stop key holds the history length the driven history had when the driver saw the halt, so its last counted entry is the entry that halted.
 // A batten-file record names a batten-row halt when its producer and state equal the halt's and its history length is the 1-based position of the halt's entry in batten's history, and names nothing else.

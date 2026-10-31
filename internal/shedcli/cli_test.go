@@ -37,7 +37,7 @@ func fixtureLocation(t *testing.T) *lymcwd.Location {
 // explicit different run-id -- which has no seed -- refuses.
 func TestArmFromSeed_RunIDDefaultsToSelf(t *testing.T) {
 	loc := fixtureLocation(t)
-	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo}); err != nil {
+	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeTapestry, Driver: shedrun.DriverGo}); err != nil {
 		t.Fatalf("WriteSeed(self) = %v; want nil", err)
 	}
 
@@ -181,15 +181,15 @@ func TestArmFromSeed_RefusalEnvelopeKinds(t *testing.T) {
 		{
 			name: "error naming its own way forward on step",
 			setup: func(t *testing.T, loc *lymcwd.Location) {
-				seedRecipe("loom")(t, loc)
-				original := recipes["loom"]
-				recipes["loom"] = entry{
+				seedRecipe("tapestry")(t, loc)
+				original := recipes["tapestry"]
+				recipes["tapestry"] = entry{
 					Arm: func(*lymcwd.Location, string, string) (shedverbs.Spec, error) {
 						return shedverbs.Spec{}, errors.New("hub config missing; way forward: run it in the hub")
 					},
 					Verbs: original.Verbs,
 				}
-				t.Cleanup(func() { recipes["loom"] = original })
+				t.Cleanup(func() { recipes["tapestry"] = original })
 			},
 			verb:                "step",
 			wantKind:            "bootstrap",
@@ -313,7 +313,7 @@ func TestArmFromSeed_RefusalPrecedence(t *testing.T) {
 		{
 			name: "stage2_run-id-listing",
 			setup: func(t *testing.T, loc *lymcwd.Location) {
-				if err := shedrun.WriteSeed(loc, "alpha", shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo}); err != nil {
+				if err := shedrun.WriteSeed(loc, "alpha", shedrun.Seed{Recipe: shedrun.RecipeTapestry, Driver: shedrun.DriverGo}); err != nil {
 					t.Fatalf("WriteSeed(alpha) = %v; want nil", err)
 				}
 				if err := shedrun.WriteSeed(loc, "bravo", shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo}); err != nil {
@@ -344,21 +344,21 @@ func TestArmFromSeed_RefusalPrecedence(t *testing.T) {
 			// The shrink never reaches Arm: the verb gate refuses before armFromSeed calls it.
 			name: "stage3_verb-gate",
 			setup: func(t *testing.T, loc *lymcwd.Location) {
-				original := recipes["loom"]
-				recipes["loom"] = entry{Arm: original.Arm, Verbs: []string{"run", "status", "pause"}}
-				t.Cleanup(func() { recipes["loom"] = original })
-				if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo}); err != nil {
+				original := recipes["tapestry"]
+				recipes["tapestry"] = entry{Arm: original.Arm, Verbs: []string{"run", "status", "pause"}}
+				t.Cleanup(func() { recipes["tapestry"] = original })
+				if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeTapestry, Driver: shedrun.DriverGo}); err != nil {
 					t.Fatalf("WriteSeed = %v; want nil", err)
 				}
 			},
 			verb:  "step",
 			args:  nil,
-			wants: []string{"does not support verb", "step", "loom", "run", "status", "pause"},
+			wants: []string{"does not support verb", "step", "tapestry", "run", "status", "pause"},
 		},
 		{
 			name: "stage4_arms-own-refusal",
 			setup: func(t *testing.T, loc *lymcwd.Location) {
-				if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo}); err != nil {
+				if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeTapestry, Driver: shedrun.DriverGo}); err != nil {
 					t.Fatalf("WriteSeed = %v; want nil", err)
 				}
 				// loomcli's own wire() (called from ArmAt for the "run" verb) loads loom.yaml

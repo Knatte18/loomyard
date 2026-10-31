@@ -86,14 +86,14 @@ func fanSettingMismatches(r shedbuild.Recipe) []string {
 	return mismatches
 }
 
-// TestShippedRecipes_FanSettingsAgreeWithinSegment asserts the shipped loom and darn recipes have no fan-setting mismatch and that each shipped row names exactly the references its perch's wiring reads.
+// TestShippedRecipes_FanSettingsAgreeWithinSegment asserts the shipped tapestry and darn recipes have no fan-setting mismatch and that each shipped row names exactly the references its perch's wiring reads.
 // It also runs hand-authored three-row recipes through fanSettingMismatches, so a rule that stops firing fails here.
 //
 //testtiming:keep pins the exact references of the shipped recipes, which a recipe edit pointing a row at another key must fail, and self-checks each rule of fanSettingMismatches over hand-authored segments
 func TestShippedRecipes_FanSettingsAgreeWithinSegment(t *testing.T) {
-	loom, err := shedbuild.Parse(recipes.LoomRecipe)
+	loom, err := shedbuild.Parse(recipes.TapestryRecipe)
 	if err != nil {
-		t.Fatalf("shedbuild.Parse(recipes.LoomRecipe) error = %v; want nil", err)
+		t.Fatalf("shedbuild.Parse(recipes.TapestryRecipe) error = %v; want nil", err)
 	}
 	darn, err := shedbuild.Parse(recipes.DarnRecipe)
 	if err != nil {
@@ -106,7 +106,7 @@ func TestShippedRecipes_FanSettingsAgreeWithinSegment(t *testing.T) {
 	}
 
 	t.Run("ShippedRecipesAgree", func(t *testing.T) {
-		for name, recipe := range map[string]shedbuild.Recipe{"loom": loom, "darn": darn, "pawl": pawl} {
+		for name, recipe := range map[string]shedbuild.Recipe{"tapestry": loom, "darn": darn, "pawl": pawl} {
 			if mismatches := fanSettingMismatches(recipe); len(mismatches) != 0 {
 				t.Errorf("fanSettingMismatches(%s) = %q; want none", name, mismatches)
 			}

@@ -34,7 +34,7 @@ const (
 
 // The subject kinds a task's statement is read from.
 const (
-	// SubjectDecisionRecord reads the task from its decision record, as a loom run does.
+	// SubjectDecisionRecord reads the task from its decision record, as a tapestry run does.
 	SubjectDecisionRecord = "decision-record"
 	// SubjectBoardEntry reads the task from its board entry, as a darn run does.
 	SubjectBoardEntry = "board-entry"

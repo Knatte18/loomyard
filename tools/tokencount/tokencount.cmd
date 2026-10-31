@@ -9,7 +9,7 @@ REM The report opens with the most expensive parts and the cost per run, then gi
 REM segment's cost, time and models split into its parts; -detail adds the sessions and token
 REM columns.
 REM The arguments are the task slugs to count, partial runs included, and flags such as -hub
-REM pass through; with no slugs it counts the most recently active full loom runs, those that
+REM pass through; with no slugs it counts the most recently active full tapestry runs, those that
 REM reached Finalize (-last, default 6):
 REM tokencount.cmd
 REM tokencount.cmd -last 10

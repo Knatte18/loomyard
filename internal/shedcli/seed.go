@@ -139,8 +139,8 @@ branch, "parent".
 
 Example:
   lym shed seed some-slug --recipe batten
-  lym shed seed self --recipe loom --param parent=main
-  lym shed seed self --recipe loom --driver go --param parent=main`,
+  lym shed seed self --recipe tapestry --param parent=main
+  lym shed seed self --recipe tapestry --driver go --param parent=main`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()

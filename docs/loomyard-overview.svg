@@ -61,7 +61,7 @@
 
     <rect x="266" y="252" width="186" height="52" rx="8" fill="#feebc8" stroke="#dd6b20"/>
     <text x="359" y="274" text-anchor="middle" class="t">Seed-Child</text>
-    <text x="359" y="293" text-anchor="middle" class="s">pick recipe: loom | darn</text>
+    <text x="359" y="293" text-anchor="middle" class="s">pick recipe: tapestry | darn</text>
 
     <rect x="474" y="252" width="186" height="52" rx="8" fill="#fbd38d" stroke="#c05621" stroke-width="2"/>
     <text x="567" y="274" text-anchor="middle" class="t">Run-Shed</text>

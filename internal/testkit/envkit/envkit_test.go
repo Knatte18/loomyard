@@ -73,7 +73,7 @@ func TestFullEnv_FillsEverySeam(t *testing.T) {
 
 	t.Run("Segments_HoldEveryReviewSegmentOfTheEmbeddedRecipes", func(t *testing.T) {
 		segments := FullEnv(t).Segments
-		for name, data := range map[string][]byte{"loom": recipes.LoomRecipe, "darn": recipes.DarnRecipe} {
+		for name, data := range map[string][]byte{"tapestry": recipes.TapestryRecipe, "darn": recipes.DarnRecipe} {
 			recipe, err := shedbuild.Parse(data)
 			if err != nil {
 				t.Fatalf("parse the %s recipe: %v", name, err)

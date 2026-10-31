@@ -160,13 +160,13 @@ func assertCommitSeam(t testing.TB, r shedbuild.Recipe, burlerRow shedbuild.Row,
 	}
 }
 
-// TestShippedRecipe_OverlayBurlersCommitThroughSeam parses the real embedded recipes.LoomRecipe and runs assertOverlayBurlerCommitSeams against it, unmodified -- a straight read of the shipped file, never a mutated copy.
+// TestShippedRecipe_OverlayBurlersCommitThroughSeam parses the real embedded recipes.TapestryRecipe and runs assertOverlayBurlerCommitSeams against it, unmodified -- a straight read of the shipped file, never a mutated copy.
 //
 //testtiming:keep pins that the shipped overlay Burlers commit through their partner Bouncer's seam, which TestOverlayBurlerCommitSeams_RejectsBadShapes only checks on hand-written recipes
 func TestShippedRecipe_OverlayBurlersCommitThroughSeam(t *testing.T) {
-	r, err := shedbuild.Parse(recipes.LoomRecipe)
+	r, err := shedbuild.Parse(recipes.TapestryRecipe)
 	if err != nil {
-		t.Fatalf("shedbuild.Parse(recipes.LoomRecipe) error = %v; want nil", err)
+		t.Fatalf("shedbuild.Parse(recipes.TapestryRecipe) error = %v; want nil", err)
 	}
 	assertOverlayBurlerCommitSeams(t, r)
 }

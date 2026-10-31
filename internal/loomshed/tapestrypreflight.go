@@ -1,5 +1,5 @@
-// loompreflight.go wires loomengine.CheckSeed in behind the internal constructor, so this task has
-// a Loom-Preflight row something inside this package can construct.
+// tapestrypreflight.go wires loomengine.CheckSeed in behind the internal constructor, so this task has
+// a Tapestry-Preflight row something inside this package can construct.
 
 package loomshed
 
@@ -29,23 +29,23 @@ func formatSeedFailures(report loomengine.Report) string {
 	return strings.Join(parts, "; ")
 }
 
-// loomPreflightProducer is the Loom-Preflight producer: it validates that loom's own status file is
+// tapestryPreflightProducer is the Tapestry-Preflight producer: it validates that loom's own status file is
 // a coherent fresh seed at the told paths, mapping loomengine.CheckSeed's determined Report onto
 // shedengine's contract.
-type loomPreflightProducer struct {
+type tapestryPreflightProducer struct {
 	name           string
 	statusPath     string
 	statusLockPath string
 	dirs           configengine.Dirs
 }
 
-var _ shedengine.ShedProducer = (*loomPreflightProducer)(nil)
+var _ shedengine.ShedProducer = (*tapestryPreflightProducer)(nil)
 
-// NewLoomPreflight returns a *loomPreflightProducer named name, checking the status file at
+// NewTapestryPreflight returns a *tapestryPreflightProducer named name, checking the status file at
 // statusPath (guarded by the lock at statusLockPath) via loomengine.CheckSeed.
 // A passing seed check is followed by a check that batcher.yaml loads through the layer stack under dirs.
 // The return type is shedengine.ShedProducer, the seam interface, so the internal/shedrecipe registry can call this
-// constructor from outside this package while loomPreflightProducer itself stays unexported.
+// constructor from outside this package while tapestryPreflightProducer itself stays unexported.
 //
 // The constructor is exported for the internal/shedrecipe registry: row 2 spawns nothing and reads
 // one JSON file under a caller-supplied path, so it is not a row a tier-1 test substitutes a fake
@@ -56,19 +56,19 @@ var _ shedengine.ShedProducer = (*loomPreflightProducer)(nil)
 // seam_enforcement_test.go already allowlists -- that import does not compromise this package's
 // Told-Geometry position, since the invariant's membership predicate is about a direct production
 // import of internal/lymcwd and transitive is explicitly fine.
-func NewLoomPreflight(name, statusPath, statusLockPath string, dirs configengine.Dirs) shedengine.ShedProducer {
-	return &loomPreflightProducer{name: name, statusPath: statusPath, statusLockPath: statusLockPath, dirs: dirs}
+func NewTapestryPreflight(name, statusPath, statusLockPath string, dirs configengine.Dirs) shedengine.ShedProducer {
+	return &tapestryPreflightProducer{name: name, statusPath: statusPath, statusLockPath: statusLockPath, dirs: dirs}
 }
 
 // Call implements shedengine.ShedProducer: it invokes loomengine.CheckSeed(p.statusPath,
-// p.statusLockPath, NameLoomPreflight, []string{NamePreflight, NameLoomPreflight}) and maps its
+// p.statusLockPath, NameTapestryPreflight, []string{NamePreflight, NameTapestryPreflight}) and maps its
 // result -- a Report with OK true to shedengine.Done with an empty pointer, a Report with OK false
 // to shedengine.Stuck with an empty Path and the cause on Reason, and a non-nil error to a returned
 // error. That mapping is the whole producer -- CheckSeed reports a determined verdict rather than
 // erroring on anything short of an infra failure, so its OK false is a verdict to route and its
 // error is an undetermined failure to escalate.
 //
-// NameLoomPreflight and NamePreflight are passed as the expected name and the tolerated history set
+// NameTapestryPreflight and NamePreflight are passed as the expected name and the tolerated history set
 // directly, never p.name -- see the told-names-never-come-from-the-producer-name-field Shared
 // Decision: the two told names are the row's own durable on-disk identity and the set of history
 // producers a resumable blocked run may legitimately have left behind.
@@ -76,12 +76,12 @@ func NewLoomPreflight(name, statusPath, statusLockPath string, dirs configengine
 // A passing seed check, or a waived half-finished one, is followed by batcher.Active on the told dirs.
 // That is the load the Webster row makes, so a stale batcher.yaml stops the run here instead of rows later.
 // A seed failure is reported first and unchanged.
-func (p *loomPreflightProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
+func (p *tapestryPreflightProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
 
-	report, err := loomengine.CheckSeed(p.statusPath, p.statusLockPath, NameLoomPreflight, []string{NamePreflight, NameLoomPreflight})
+	report, err := loomengine.CheckSeed(p.statusPath, p.statusLockPath, NameTapestryPreflight, []string{NamePreflight, NameTapestryPreflight})
 	if err != nil {
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
@@ -104,7 +104,7 @@ func (p *loomPreflightProducer) Call(ctx context.Context) (shedengine.Outcome, s
 		reason := "seed is not a coherent fresh start: " + failures
 		for _, f := range report.Failures {
 			if f.Check == loomengine.CheckHalfFinished {
-				reason += fmt.Sprintf("; way forward: seed a new run, or \"lym loom goto --to %s\" accepts this run as a deliberate re-entry", NameLoomPreflight)
+				reason += fmt.Sprintf("; way forward: seed a new run, or \"lym loom goto --to %s\" accepts this run as a deliberate re-entry", NameTapestryPreflight)
 				break
 			}
 		}
@@ -121,7 +121,7 @@ const retiredKeyWayForward = ", then re-step"
 // A load error maps to Stuck with batchifierReasonPrefix leading the reason.
 // A retired-key error closes with the reconcile way forward, any other with the Webster row's own.
 // It reads and never writes, and validates no other module's config.
-func (p *loomPreflightProducer) checkBatcher(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
+func (p *tapestryPreflightProducer) checkBatcher(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if _, err := batcher.Active(p.dirs); err != nil {
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
@@ -137,9 +137,9 @@ func (p *loomPreflightProducer) checkBatcher(ctx context.Context) (shedengine.Ou
 }
 
 // waivesHalfFinished reports whether report's only failures are CheckHalfFinished ones on a deliberate goto re-entry.
-// A run an operator moved back onto Preflight or Loom-Preflight is not a fresh start this check protects, so those failures are waived and logged.
+// A run an operator moved back onto Preflight or Tapestry-Preflight is not a fresh start this check protects, so those failures are waived and logged.
 // Any other failure, or a history that is not a re-entry, leaves the report to stand.
-func (p *loomPreflightProducer) waivesHalfFinished(report loomengine.Report) bool {
+func (p *tapestryPreflightProducer) waivesHalfFinished(report loomengine.Report) bool {
 	halfFinished := false
 	for _, f := range report.Failures {
 		if f.Check != loomengine.CheckHalfFinished {
@@ -158,9 +158,9 @@ func (p *loomPreflightProducer) waivesHalfFinished(report loomengine.Report) boo
 	return true
 }
 
-// isGotoReentry reports whether the latest goto entry in history targets Preflight or Loom-Preflight and every entry after it names only those two rows.
+// isGotoReentry reports whether the latest goto entry in history targets Preflight or Tapestry-Preflight and every entry after it names only those two rows.
 func isGotoReentry(history []shedengine.HistoryEntry) bool {
-	tolerated := func(name string) bool { return name == NamePreflight || name == NameLoomPreflight }
+	tolerated := func(name string) bool { return name == NamePreflight || name == NameTapestryPreflight }
 	for i := len(history) - 1; i >= 0; i-- {
 		if history[i].Outcome != shedengine.OutcomeGoto {
 			continue

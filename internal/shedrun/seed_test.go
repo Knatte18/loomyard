@@ -20,8 +20,8 @@ func TestWriteSeed_ReadSeed_RoundTrip(t *testing.T) {
 		seed Seed
 	}{
 		{"go driver with params", Seed{Recipe: RecipeBatten, Driver: DriverGo, Params: map[string]string{"slug": "example"}}},
-		{"llm driver", Seed{Recipe: RecipeLoom, Driver: DriverLLM}},
-		{"a given start stamp is kept verbatim", Seed{Recipe: RecipeLoom, Driver: DriverGo, StartedAt: "2026-01-02T03:04:05Z"}},
+		{"llm driver", Seed{Recipe: RecipeTapestry, Driver: DriverLLM}},
+		{"a given start stamp is kept verbatim", Seed{Recipe: RecipeTapestry, Driver: DriverGo, StartedAt: "2026-01-02T03:04:05Z"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -84,7 +84,7 @@ func TestReadSeed_AbsentDriverDefaultsToGo(t *testing.T) {
 	if err := os.MkdirAll(RunDir(l, "self"), 0o755); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
-	if err := os.WriteFile(SeedFile(l, "self"), []byte(`{"recipe":"loom"}`), 0o644); err != nil {
+	if err := os.WriteFile(SeedFile(l, "self"), []byte(`{"recipe":"tapestry"}`), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
@@ -134,8 +134,8 @@ func TestParseSeed(t *testing.T) {
 		name string
 		data string
 	}{
-		{"unknown driver", `{"recipe":"loom","driver":"rust"}`},
-		{"empty params key", `{"recipe":"loom","driver":"go","params":{"":"v"}}`},
+		{"unknown driver", `{"recipe":"tapestry","driver":"rust"}`},
+		{"empty params key", `{"recipe":"tapestry","driver":"go","params":{"":"v"}}`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -164,11 +164,12 @@ func TestValidateRecipe(t *testing.T) {
 		recipe  string
 		wantErr bool
 	}{
-		{"loom", RecipeLoom, false},
+		{"tapestry", RecipeTapestry, false},
 		{"batten", RecipeBatten, false},
 		{"darn", RecipeDarn, false},
 		{"pawl", RecipePawl, false},
 		{"former beam name", "beam", true},
+		{"former loom name", "loom", true},
 		{"unknown", "someday", true},
 	}
 	for _, tt := range tests {
@@ -177,6 +178,14 @@ func TestValidateRecipe(t *testing.T) {
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ValidateRecipe(%q) = %v; want error = %v", tt.recipe, err, tt.wantErr)
 			}
+			if !tt.wantErr {
+				return
+			}
+			for _, want := range []string{"unknown recipe", RecipeTapestry} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("ValidateRecipe(%q) error = %q; want it to contain %q", tt.recipe, err.Error(), want)
+				}
+			}
 		})
 	}
 }
@@ -184,7 +193,7 @@ func TestValidateRecipe(t *testing.T) {
 //testtiming:keep pins the sorted order of the recipe vocabulary, which its covering test does not
 func TestRecipeNames(t *testing.T) {
 	got := RecipeNames()
-	want := []string{RecipeBatten, RecipeDarn, RecipeLoom, RecipePawl}
+	want := []string{RecipeBatten, RecipeDarn, RecipePawl, RecipeTapestry}
 	if len(got) != len(want) {
 		t.Fatalf("RecipeNames() = %v; want %v", got, want)
 	}
@@ -210,18 +219,18 @@ func writeLegacySeedFile(t *testing.T, l *lymcwd.Location, body string) {
 func TestSeed_UnknownKey(t *testing.T) {
 	t.Parallel()
 	l := syntheticLocation(t)
-	body := `{"recipe":"loom","driver":"go","parent":"ab:hub","future":{"x":1}}`
+	body := `{"recipe":"tapestry","driver":"go","parent":"ab:hub","future":{"x":1}}`
 	writeLegacySeedFile(t, l, body)
 
 	got, found, err := ReadSeed(l, "self")
 	if err != nil || !found {
 		t.Fatalf("ReadSeed() = (found=%v, err=%v); want (true, nil)", found, err)
 	}
-	if got.Recipe != RecipeLoom || got.Driver != DriverGo {
-		t.Errorf("ReadSeed() = %+v; want recipe %q and driver %q decoded", got, RecipeLoom, DriverGo)
+	if got.Recipe != RecipeTapestry || got.Driver != DriverGo {
+		t.Errorf("ReadSeed() = %+v; want recipe %q and driver %q decoded", got, RecipeTapestry, DriverGo)
 	}
 
-	if err := WriteSeed(l, "self", Seed{Recipe: RecipeLoom, Driver: DriverGo}); err != nil {
+	if err := WriteSeed(l, "self", Seed{Recipe: RecipeTapestry, Driver: DriverGo}); err != nil {
 		t.Fatalf("WriteSeed() = %v; want nil against an agreeing seed", err)
 	}
 	data, err := os.ReadFile(SeedFile(l, "self"))
@@ -235,7 +244,7 @@ func TestSeed_UnknownKey(t *testing.T) {
 
 func TestWriteSeed_RefusesDisagreeingSeed(t *testing.T) {
 	l := syntheticLocation(t)
-	first := Seed{Recipe: RecipeLoom, Driver: DriverGo}
+	first := Seed{Recipe: RecipeTapestry, Driver: DriverGo}
 	second := Seed{Recipe: RecipeBatten, Driver: DriverGo}
 
 	if err := WriteSeed(l, "self", first); err != nil {
@@ -249,8 +258,8 @@ func TestWriteSeed_RefusesDisagreeingSeed(t *testing.T) {
 	if !errors.Is(err, ErrDisagreeingSeed) {
 		t.Errorf("WriteSeed() error = %v; want it to wrap ErrDisagreeingSeed, so a caller can route it to a recoverable verdict rather than treating it as a mechanism failure", err)
 	}
-	if !strings.Contains(err.Error(), RecipeLoom) || !strings.Contains(err.Error(), RecipeBatten) {
-		t.Errorf("WriteSeed() error = %q; want it to name both the existing (%q) and incoming (%q) recipe", err.Error(), RecipeLoom, RecipeBatten)
+	if !strings.Contains(err.Error(), RecipeTapestry) || !strings.Contains(err.Error(), RecipeBatten) {
+		t.Errorf("WriteSeed() error = %q; want it to name both the existing (%q) and incoming (%q) recipe", err.Error(), RecipeTapestry, RecipeBatten)
 	}
 	if !strings.Contains(err.Error(), "way forward:") || !strings.Contains(err.Error(), "lym shed status self") {
 		t.Errorf("WriteSeed() error = %q; want a way forward naming lym shed status for the run", err.Error())
@@ -265,13 +274,13 @@ func TestWriteSeed_RefusesDisagreeingSeed(t *testing.T) {
 	}
 
 	// Params alone disagree: a different count of pairs, then a different value for the same key.
-	withSlug := Seed{Recipe: RecipeLoom, Driver: DriverGo, Params: map[string]string{"slug": "a"}}
+	withSlug := Seed{Recipe: RecipeTapestry, Driver: DriverGo, Params: map[string]string{"slug": "a"}}
 	if err := WriteSeed(l, "params-run", withSlug); err != nil {
 		t.Fatalf("WriteSeed() with params error = %v; want nil", err)
 	}
 	for name, incoming := range map[string]Seed{
-		"fewer params":  {Recipe: RecipeLoom, Driver: DriverGo},
-		"changed value": {Recipe: RecipeLoom, Driver: DriverGo, Params: map[string]string{"slug": "b"}},
+		"fewer params":  {Recipe: RecipeTapestry, Driver: DriverGo},
+		"changed value": {Recipe: RecipeTapestry, Driver: DriverGo, Params: map[string]string{"slug": "b"}},
 	} {
 		if err := WriteSeed(l, "params-run", incoming); !errors.Is(err, ErrDisagreeingSeed) {
 			t.Errorf("WriteSeed() with %s error = %v; want it to wrap ErrDisagreeingSeed", name, err)
@@ -283,7 +292,7 @@ func TestList(t *testing.T) {
 	l := syntheticLocation(t)
 
 	// One directory with a valid, readable seed.json.
-	if err := WriteSeed(l, "b-run", Seed{Recipe: RecipeLoom, Driver: DriverGo}); err != nil {
+	if err := WriteSeed(l, "b-run", Seed{Recipe: RecipeTapestry, Driver: DriverGo}); err != nil {
 		t.Fatalf("WriteSeed() error = %v", err)
 	}
 	if err := WriteSeed(l, "a-run", Seed{Recipe: RecipeBatten, Driver: DriverGo}); err != nil {
@@ -302,7 +311,7 @@ func TestList(t *testing.T) {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
 	unreadableSeed := filepath.Join(unreadableDir, "seed.json")
-	if err := os.WriteFile(unreadableSeed, []byte(`{"recipe":"loom"}`), 0o644); err != nil {
+	if err := os.WriteFile(unreadableSeed, []byte(`{"recipe":"tapestry"}`), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 	if err := os.Chmod(unreadableSeed, 0o000); err != nil {

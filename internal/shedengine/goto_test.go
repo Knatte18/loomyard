@@ -366,7 +366,7 @@ func TestStep_BudgetHaltResumeGrantsOneBudget(t *testing.T) {
 	})
 }
 
-// tailProducers is shaped like the loom recipe's tail: a segment with an offshoot, then the approval rows.
+// tailProducers is shaped like the tapestry recipe's tail: a segment with an offshoot, then the approval rows.
 func tailProducers() []ProducerDef {
 	return []ProducerDef{
 		{Name: "Webster", Segment: "Webster-Review", OnDone: "Webster-Bouncer", OnReroute: "Finalize"},

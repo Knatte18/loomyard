@@ -1112,10 +1112,10 @@ func TestDispatchSetProfiles(t *testing.T) {
 		},
 		{
 			name:     "a profile key no module takes is refused",
-			setFlag:  `odd={"loom":{"loom":{"no_such_key":1}}}`,
+			setFlag:  `odd={"tapestry":{"loom":{"no_such_key":1}}}`,
 			wantCode: 1,
 			wantFile: seeded,
-			wantErr:  `run profile "odd", recipe "loom"`,
+			wantErr:  `run profile "odd", recipe "tapestry"`,
 		},
 	}
 	for _, row := range rows {

@@ -410,7 +410,7 @@ func TestWire_ChildDriverDelegatesToChildDriverOf(t *testing.T) {
 				t.Fatalf("shedrun.WriteSeed = %v; want nil", err)
 			}
 
-			got, err := c.env.SeedChild.ChildDriver(shedrun.RecipeLoom)
+			got, err := c.env.SeedChild.ChildDriver(shedrun.RecipeTapestry)
 			if err != nil {
 				t.Fatalf("ChildDriver() error = %v; want nil", err)
 			}
@@ -427,7 +427,7 @@ func TestWire_ChildDriverDelegatesToChildDriverOf(t *testing.T) {
 // TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree pins the order inside the wired
 // WriteSeed seam: a registered recipe the task worktree cannot bootstrap is refused with
 // battenshed.ErrUnsupportedChildRecipe before the seam resolves the task worktree at all -- the
-// location here has no worktree, so a loom recipe reaches the absent-pair refusal instead, which
+// location here has no worktree, so a tapestry recipe reaches the absent-pair refusal instead, which
 // is an os.Stat, never the resolver, so this file stays Tier 1.
 func TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree(t *testing.T) {
 	c := &battenCLI{}
@@ -445,7 +445,7 @@ func TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree(t *testing.
 	if !errors.Is(err, battenshed.ErrUnsupportedChildRecipe) {
 		t.Fatalf("WriteSeed(batten) error = %v; want it to wrap ErrUnsupportedChildRecipe", err)
 	}
-	for _, admitted := range []string{shedrun.RecipeLoom, shedrun.RecipeDarn, shedrun.RecipePawl} {
+	for _, admitted := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipePawl} {
 		if !strings.Contains(err.Error(), admitted) {
 			t.Errorf("WriteSeed(batten) error = %q; want it to name the admitted recipe %q", err, admitted)
 		}
@@ -456,7 +456,7 @@ func TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree(t *testing.
 		t.Errorf("WriteSeed(unknown) error = %v; want it to wrap ErrUnknownRecipe", err)
 	}
 
-	for _, admitted := range []string{shedrun.RecipeLoom, shedrun.RecipeDarn, shedrun.RecipePawl} {
+	for _, admitted := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipePawl} {
 		err = c.env.SeedChild.WriteSeed(context.Background(), admitted, shedrun.DriverGo)
 		if errors.Is(err, battenshed.ErrUnsupportedChildRecipe) || errors.Is(err, battenshed.ErrUnknownRecipe) {
 			t.Fatalf("WriteSeed(%s) error = %v; want the child admitted past the recipe checks", admitted, err)
@@ -501,8 +501,8 @@ func TestBoardRecipe(t *testing.T) {
 func TestChildSeedFor_CarriesRecipeDriverAndParams(t *testing.T) {
 	params := map[string]string{"parent": "main"}
 
-	got := childSeedFor(shedrun.RecipeLoom, shedrun.DriverLLM, params)
-	if got.Recipe != shedrun.RecipeLoom || got.Driver != shedrun.DriverLLM || got.Params["parent"] != "main" {
+	got := childSeedFor(shedrun.RecipeTapestry, shedrun.DriverLLM, params)
+	if got.Recipe != shedrun.RecipeTapestry || got.Driver != shedrun.DriverLLM || got.Params["parent"] != "main" {
 		t.Errorf("childSeedFor() = %+v; want the given recipe, driver and params", got)
 	}
 }

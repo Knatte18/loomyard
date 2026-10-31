@@ -52,7 +52,7 @@
 // A run whose Finalize merged into the local parent here is never read as ended, so a Finalize re-entered after its done mark proceeds;
 // a Finalize entering with no such merge, its entry done on origin, stops with Halt, since another machine landed the run.
 //
-// The owner checks let a run land only on the machine that owns it and its parent, so a loom run and a darn run, landing with no orch turn, both pass them.
+// The owner checks let a run land only on the machine that owns it and its parent, so a tapestry run and a darn run, landing with no orch turn, both pass them.
 // Finalize reads Deps.ParentHoldsTaskWork first: a parent already holding the task's work marks a Finalize past its parent-side merge, which skips both owner checks and the unreachable halt.
 // Otherwise an unreachable origin halts, the run's owner is the owner of its owned_elsewhere entry, and the parent's owner comes from Deps.ParentOwner, read from the local board the reconcile left.
 // A run whose pair has no batten run record reads as owned here, since the reconcile judges only recorded pairs, but its parent's owner is still read.
@@ -92,7 +92,7 @@
 // Bound: the fix review lets an over-cap fixer change land behind one reviewer's explicit approval of the fixer's own commits instead of the run's full Code review, under the parent lock, for at most one `fixer_timeout_min` session and one re-prompt over an unparseable report.
 // A spent cap, and a change over the caps the fix review does not approve, keep the fixer's commits and reroute through the reroute reason when a review follows the reroute, and halt with LandingStopPrefix otherwise, naming the commits and noting `spent` or `over-cap` in the record's Halt.
 // A resume after an over-cap halt writes Baseline afresh at the HEAD the gate starts from, clears the note in the same record write, reads the operator's review as acceptance of the commits and runs the gate: a passing gate lands without judging the change, and a failing one runs the fixer on the attempts left.
-// An escalate report keeps the commits and halts naming the report, with EscalateStopPrefix on a loom or darn run; a turn that ended without a usable result halts, and a failed spawn is an error that spends no attempt.
+// An escalate report keeps the commits and halts naming the report, with EscalateStopPrefix on a tapestry or darn run; a turn that ended without a usable result halts, and a failed spawn is an error that spends no attempt.
 // An attempt record that does not decode halts naming the file, with removing it, which grants a fresh cap, as the way forward.
 // A Finalize reroute leaves the entry's attempt record for the next entry to clear, and a Done clears it.
 // The size and kind caps bound what a Finalize fix lets through without a reviewer: a fix within them lands with no perch, behind only the `finalize` gate it passed and the finalize mode's instruction to fix failing tests only.
@@ -158,7 +158,7 @@
 // No driver, batten, arbiter or record target routes a Parent-Align or Finalize failure to another row.
 // The recipe's owner tells it to shedverbs as Spec.HandBack, which marks the loop's stop envelope and the status as hand_back; the drivers read the predicate or that mark.
 //
-// An escalate report halts with a reason opening with EscalateStopPrefix on a loom or darn run, which Deps.EscalateJudgedFirst tells, and with LandingStopPrefix on a pawl run, whose arbiter has no decision verb.
+// An escalate report halts with a reason opening with EscalateStopPrefix on a tapestry or darn run, which Deps.EscalateJudgedFirst tells, and with LandingStopPrefix on a pawl run, whose arbiter has no decision verb.
 // EscalateHalt is the prefix's only reader: a blocked stop at Parent-Align, Finalize or Merge-In whose reason opens with it.
 // Such a halt is no hand-back, so the driver's arbiter judges it first and batten's binary re-step leaves it alone.
 // Only a fixer's escalate changes route; a halt an older build parked under LandingStopPrefix stays a hand-back.
@@ -243,7 +243,7 @@
 // The Describe session loads `scribe:prose` before its prompt.
 // Its stencil, like the conflict session's, carries the parent directive that internal/parentdirective renders from the told name:
 // the seat engine's geometry for Describe, and Deps.ParentName passed through to the resolver for Parent-Align and Finalize.
-// DescribeTable builds a loom run's session, which reads the decision record and the webster run records;
+// DescribeTable builds a tapestry run's session, which reads the decision record and the webster run records;
 // DarnDescribeTable builds a darn run's from its own stencil, `landing-template-describe-darn`, which reads the board entry, the decision record beside it, the diff and the review perch's run directory, under the same describe keys, role and skills.
 // NewBeamDescribe is the beam recipe's Describe row and starts no agent: it writes the description from the beam's board entry and the subjects of the commits the beam adds, validates it with the check the Describe gate runs, and commits it.
 // A finding is an error naming the finding and the way out, which is to end the landing with `lym batten cancel <slug>`, fix the entry with `lym board upsert` and run `lym beam land <slug>` again, since the landing's claim holds the entry under the run lock.

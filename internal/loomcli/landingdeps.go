@@ -71,9 +71,9 @@ func landingDeps(
 	verify verifySource,
 	lock landingshed.ParentLockDeps,
 ) landingshed.Deps {
-	// A darn run has no plan, so only a loom run traces a failed verify to its cards.
+	// A darn run has no plan, so only a tapestry run traces a failed verify to its cards.
 	var traceFailure func(log, head string) (verifytree.FailureTrace, error)
-	if recipe == shedrun.RecipeLoom {
+	if recipe == shedrun.RecipeTapestry {
 		traceFailure = failuretrace.NewTracer(l.WorktreePath(), l.AnchorPath())
 	}
 	// A pawl run has no reroute edge, so it has no review to follow one and a nil seam halts a spent or over-cap fixer for the orch.
@@ -102,7 +102,7 @@ func landingDeps(
 		StencilsDir:         geom.StencilsDir,
 		ScratchDir:          loomengine.LoomScratchDir(l),
 		PushSkipped:         pushSkipped,
-		EscalateJudgedFirst: recipe == shedrun.RecipeLoom || recipe == shedrun.RecipeDarn,
+		EscalateJudgedFirst: recipe == shedrun.RecipeTapestry || recipe == shedrun.RecipeDarn,
 		OpenFabric: func() (*fabricengine.Fabric, error) {
 			return fabricengine.Open(l)
 		},
@@ -381,7 +381,7 @@ func parentPullRequestMode(l *lymcwd.Location) func() (mode, worktree string, er
 }
 
 // codeReviewOff returns the seam Parent-Align reads: whether the Code-Perch's effective review budget is 0.
-// A darn run has no Parent-Align, and its seam reads false; a pawl run has one, and reads the perch's budget as a loom run does.
+// A darn run has no Parent-Align, and its seam reads false; a pawl run has one, and reads the perch's budget as a tapestry run does.
 func codeReviewOff(l *lymcwd.Location, recipe string) func() (bool, error) {
 	if recipe == shedrun.RecipeDarn {
 		return func() (bool, error) { return false, nil }
@@ -410,7 +410,7 @@ func codeBudgetZero(l *lymcwd.Location) func() (bool, error) {
 	}
 }
 
-// fixerPlanDir returns the plan directory the merge fixer reads: the run's plan directory on a loom run, and "" on a darn or pawl run, which has none.
+// fixerPlanDir returns the plan directory the merge fixer reads: the run's plan directory on a tapestry run, and "" on a darn or pawl run, which has none.
 func fixerPlanDir(l *lymcwd.Location, recipe string) string {
 	if recipe == shedrun.RecipeDarn || recipe == shedrun.RecipePawl {
 		return ""
@@ -420,7 +420,7 @@ func fixerPlanDir(l *lymcwd.Location, recipe string) string {
 
 // fixerTestFileMatcher returns the test-file predicate the fixer's kind cap judges a path by.
 // A darn or pawl run has no plan and so no language, and matches a test file of any language.
-// A loom run parses the live plan at call time, reading an absent `language:` as go and a plan that does not parse as none, whose matcher counts every file a test file and so over-covers.
+// A tapestry run parses the live plan at call time, reading an absent `language:` as go and a plan that does not parse as none, whose matcher counts every file a test file and so over-covers.
 func fixerTestFileMatcher(recipe, planDir string) func(path string) bool {
 	if recipe == shedrun.RecipeDarn || recipe == shedrun.RecipePawl {
 		return planparser.IsAnyLanguageTestFile

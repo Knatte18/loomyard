@@ -1081,7 +1081,7 @@ func TestReconcileHubWideAt_StripsAnUnmigratedBaseOnce(t *testing.T) {
 	loomFormer := strings.Replace(loomTemplate, "discussion_lenses: twill-discussion", `discussion_lenses: ""`, 1)
 	darnTuned := strings.Replace(darnTemplate, "writer_timeout_min: 180", "writer_timeout_min: 77", 1)
 	if loomFormer == loomTemplate || darnTuned == darnTemplate {
-		t.Fatal("the loom or darn template no longer holds the line this test rewrites")
+		t.Fatal("the tapestry or darn template no longer holds the line this test rewrites")
 	}
 
 	tests := []struct {

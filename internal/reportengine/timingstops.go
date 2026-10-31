@@ -50,7 +50,7 @@ type TimingStop struct {
 	position int
 }
 
-// readSettles reads the run's two settle-record files through shedrun.ParseSettleRecords: the loom run's at tag, and batten's at the commit holding the run's batten record.
+// readSettles reads the run's two settle-record files through shedrun.ParseSettleRecords: the tapestry run's at tag, and batten's at the commit holding the run's batten record.
 // An absent file holds no record, and a line that does not decode is a finding naming the file and the line.
 func (row *RunRow) readSettles(records Reader, tag gitrepo.TagRef) ([]Finding, error) {
 	rels, err := shedrun.TreeRunRels(row.Slug)

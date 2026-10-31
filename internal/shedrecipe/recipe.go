@@ -82,7 +82,7 @@ type Env struct {
 	Cwd string
 	// AnchorPath is the told anchor path, read by Webster, Bouncer and the gate resolver's "plan" gate.
 	AnchorPath string
-	// ConfigDirs is the told geometry of a layered config load, read by LoomPreflight and Webster, which load batcher through it.
+	// ConfigDirs is the told geometry of a layered config load, read by TapestryPreflight and Webster, which load batcher through it.
 	ConfigDirs configengine.Dirs
 	// WorktreeRoot is the told worktree root, read by the gate resolver's "plan", "verify" and loom "discussion" gates.
 	WorktreeRoot string
@@ -102,7 +102,7 @@ type Env struct {
 	VerifyMergeBase func() (string, error)
 	// VerifyTreeScope is the told lookup, keyed by a row's gate key, of the task diff's tree classification, read by the gate resolver's "verify" gate at each arrival.
 	// It answers the tree-scoped command and true for a diff wholly under the configured trees, and false otherwise.
-	// Set, it alone selects the gate's darn form and requires VerifyMergeBase; nil, which a loom run leaves, keeps the round form.
+	// Set, it alone selects the gate's darn form and requires VerifyMergeBase; nil, which a tapestry run leaves, keeps the round form.
 	VerifyTreeScope func(gateKey string) (string, bool, error)
 	// VerifyHold is the told pause hold of the worktree's verify sites, read by the gate resolver's "verify" gate.
 	// Nil holds nothing.
@@ -113,9 +113,9 @@ type Env struct {
 	// GateTiers is the hub's rendered tier and gate-list lines the Plan-Review rubric's gate_tiers marker renders, read by the BurlerReview and Bouncer entries each time a segment builds its producers.
 	// The empty string renders `none`.
 	GateTiers string
-	// StatusPath is the told status file path, read by LoomPreflight.
+	// StatusPath is the told status file path, read by TapestryPreflight.
 	StatusPath string
-	// StatusLockPath is the told status lock file path, read by LoomPreflight.
+	// StatusLockPath is the told status lock file path, read by TapestryPreflight.
 	StatusLockPath string
 	// StencilsDir is the told stencils directory, read by Bouncer.
 	StencilsDir string
@@ -141,7 +141,7 @@ type Env struct {
 	// SupportLogPath is the told support log path, read by the gate resolver's "discussion" gate.
 	SupportLogPath string
 	// RelevantPath is the told relevant list path.
-	// The gate resolver's "discussion" gate reads it on a loom run.
+	// The gate resolver's "discussion" gate reads it on a tapestry run.
 	RelevantPath string
 	// DescriptionPath is the told absolute path of the change description, read by the gate
 	// resolver's "description" gate.
@@ -208,7 +208,7 @@ type Env struct {
 	// The "discussion" gate invokes it when it passes on a darn run.
 	CommitDiscussion func() error
 	// DiscussionHistory returns every committed version of the decision record, newest first.
-	// Only the darn wiring sets it, together with CommitDiscussion; nil on a loom run, where the "discussion" gate resolves to the loom form.
+	// Only the darn wiring sets it, together with CommitDiscussion; nil on a tapestry run, where the "discussion" gate resolves to the loom form.
 	DiscussionHistory func() ([][]byte, error)
 	// DescribeTable is the injected shedadapters.TableSource the Describe entry evaluates once per Call.
 	// It arrives as a closure rather than as recipe Config because building the table needs the fabric's landing geometry, which the Shed Recipe Registry Invariant bars this package from deriving;

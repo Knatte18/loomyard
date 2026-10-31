@@ -64,7 +64,7 @@ func commitPrimeBattenRecords(t *testing.T, h *hubforge.Hub, slug, otherSlug str
 func stepSeedChild_IgnoresPrimesCommittedBattenRecords(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-leak-seed"
 	otherSlug := "batten-leak-other"
-	seedBoardTask(t, h, slug, "loom")
+	seedBoardTask(t, h, slug, "tapestry")
 	commitPrimeBattenRecords(t, h, slug, otherSlug)
 
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
@@ -100,7 +100,7 @@ func stepSeedChild_IgnoresPrimesCommittedBattenRecords(t *testing.T, h *hubforge
 	if err != nil || !found {
 		t.Fatalf("read child seed: found=%v err=%v", found, err)
 	}
-	if seed.Recipe != "loom" {
+	if seed.Recipe != "tapestry" {
 		t.Errorf("child seed recipe = %q; want loom", seed.Recipe)
 	}
 	if pathExists(shedrun.RunDir(childLocation, otherSlug)) {
@@ -112,7 +112,7 @@ func stepSeedChild_IgnoresPrimesCommittedBattenRecords(t *testing.T, h *hubforge
 // prime tracks a batten status for the child's slug, and the child must report its own status as simply absent.
 func stepRealReadStatus_IgnoresPrimesCommittedStatusForTheSameSlug(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-leak-status"
-	seedBoardTask(t, h, slug, "loom")
+	seedBoardTask(t, h, slug, "tapestry")
 	commitPrimeBattenRecords(t, h, slug, "batten-leak-status-other")
 
 	c := &battenCLI{}

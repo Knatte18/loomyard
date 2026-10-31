@@ -15,7 +15,7 @@
 // Its snapshot is the beam project entry's, written and committed because the Code-Review perch reads its answer key from the committed tree.
 // A running shed also watches the land request's directory, so a request wakes Beam-Await at once.
 // Beam-Describe writes the change description from the beam's board entry and the commits the beam adds over the parent branch its pair records.
-// The perch's budget is `loom.yaml`'s Code-Review one, and a budget of 0 turns Parent-Align's review off as for a loom run.
+// The perch's budget is `loom.yaml`'s Code-Review one, and a budget of 0 turns Parent-Align's review off as for a tapestry run.
 // Its Finalize reads the hub's `finalize` gate key over the whole merged tree and halts for the orch on a fixer that is spent or over its caps.
 // A land check backstops the re-check: Finalize halts, behind its own prefix, while an open member or a pair forked from the beam still works, reading `pawlLandBlockers` and naming the beam's parent worktree as where a cancel runs.
 //
@@ -123,7 +123,7 @@
 //
 // # Validate discussion
 //
-// `lym loom validate-discussion` on a loom run also runs the citation check of the loom discussion check, which tests the decision record's cited paths against the worktree and its cited symbols through the wired `PlanIndex`, so it reads that field beside the discussion paths.
+// `lym loom validate-discussion` on a tapestry run also runs the citation check of the loom discussion check, which tests the decision record's cited paths against the worktree and its cited symbols through the wired `PlanIndex`, so it reads that field beside the discussion paths.
 // A darn run tests no citation.
 //
 // # Validate plan lens review
@@ -193,7 +193,7 @@
 // # Go driver
 //
 // `lym loom drive` is the hidden role verb that drives a go-seeded run, spawned by `lym loom start`, by `lym loom resume` for a halted go run and by a hand-over.
-// It mounts `internal/sheddriver` with loom's seams, and serves darn runs as well as loom runs; the loop, rule table, hand-back and tackler below are that package's.
+// It mounts `internal/sheddriver` with loom's seams, and serves darn runs as well as tapestry runs; the loop, rule table, hand-back and tackler below are that package's.
 // It takes the run's driver lock, waiting a short grace for a momentary probe to let go, and holds it for its whole life, so a settling driver reads as live while the run lock is free between steps, and a second driver refuses once the grace runs out.
 // On start it removes the park marker and the resume report.
 //
@@ -253,7 +253,7 @@
 // An agent in one pair uses them to compare its run with the others without forming another worktree's path itself.
 //
 // The peer set is every board task whose status is a run status, whatever the run's state, with the caller's own slug left out.
-// Each peer line carries `slug`, `title`, `status`, `row` (the 1-based position of the status's producer in the loom recipe the binary embeds, 0 when it names no row), `parent_branch`, `changed_paths` (the committed paths between the peer's merge base with its parent branch and its head), `decision_record` and `plan` (whether the peer holds them) and `unreadable`.
+// Each peer line carries `slug`, `title`, `status`, `row` (the 1-based position of the status's producer in the tapestry recipe the binary embeds, 0 when it names no row), `parent_branch`, `changed_paths` (the committed paths between the peer's merge base with its parent branch and its head), `decision_record` and `plan` (whether the peer holds them) and `unreadable`.
 // A peer whose pair, origin record, branch or records cannot be read is listed with that reason in `unreadable`, never dropped and never an error.
 // From a task pair the list also carries `own_row`, the caller's own position by the same rule, 0 when the caller has no board task, and `parent_commits`, the commits on the pair's parent branch since the pair forked, as short SHA and subject, newest first; the prime has none.
 // Both verbs refuse in a hub with no board, and `show` refuses an unknown slug, a task holding no run status, the caller's own slug, an unknown record name and a record the peer lacks, each naming its way forward.
@@ -285,7 +285,7 @@
 // # Review subjects
 //
 // The wiring tells each Bouncer row what its segment judges, so a re-entry over an unchanged subject settles without a review and a changed one reviews only the change under `review_amend_max_bounces`.
-// A recipe row names its subject by its `subject` key: Discussion-Bouncer and Plan-Bouncer `document`, Code-Bouncer `code`, in the loom and darn recipes alike.
+// A recipe row names its subject by its `subject` key: Discussion-Bouncer and Plan-Bouncer `document`, Code-Bouncer `code`, in the tapestry and darn recipes alike.
 // A document subject hashes the row's artifact paths in order: the decision record through its identity text, a plan directory as its overview's identity text and its top-level card files, and an absent path as absent.
 // Its Base is the commit the run records' checkout stands at.
 // A code subject is the task worktree's change against the task's merge base, leaving out the run's own state directories and the harness's own files while untracked.

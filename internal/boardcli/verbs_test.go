@@ -338,14 +338,14 @@ func stepRetireLegacy(t *testing.T, f *cliFixture) {
 }
 
 func stepGetAndRemoveByID(t *testing.T, f *cliFixture) {
-	mustUpsert(t, `{"slug":"by-id","title":"By ID","kind":"task","labels":["bug"],"recipe":"loom"}`)
+	mustUpsert(t, `{"slug":"by-id","title":"By ID","kind":"task","labels":["bug"],"recipe":"tapestry"}`)
 
 	task := runJSON(t, 0, "get", `{"slug":"by-id"}`)["task"].(map[string]any)
 	if task["kind"] != "task" {
 		t.Fatalf("get: kind = %v, want task", task["kind"])
 	}
-	if labels, _ := task["labels"].([]any); len(labels) != 1 || labels[0] != "bug" || task["recipe"] != "loom" {
-		t.Fatalf("get: labels/recipe = %v/%v, want [bug]/loom", task["labels"], task["recipe"])
+	if labels, _ := task["labels"].([]any); len(labels) != 1 || labels[0] != "bug" || task["recipe"] != "tapestry" {
+		t.Fatalf("get: labels/recipe = %v/%v, want [bug]/tapestry", task["labels"], task["recipe"])
 	}
 	id := task["id"].(float64)
 
@@ -660,7 +660,7 @@ func stepProfiles(t *testing.T, f *cliFixture) {
 	if want := []string{"docs", "light", "solid", "speed", "wide"}; !slices.Equal(names, want) {
 		t.Errorf("profile names = %v, want %v", names, want)
 	}
-	if want := map[string]any{"loom": "solid", "darn": "light", "pawl": "light"}; !reflect.DeepEqual(result["defaults"], want) {
+	if want := map[string]any{"tapestry": "solid", "darn": "light", "pawl": "light"}; !reflect.DeepEqual(result["defaults"], want) {
 		t.Errorf("defaults = %v, want %v", result["defaults"], want)
 	}
 

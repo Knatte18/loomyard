@@ -32,7 +32,7 @@ func TestPrompt(t *testing.T) {
 
 	const battenRecipe = "This is a batten run; it has no repair verb."
 	in := PromptInput{
-		Recipe:             "This is a loom run. Its repair verbs: `lym loom decision add <slug>`.",
+		Recipe:             "This is a tapestry run. Its repair verbs: `lym loom decision add <slug>`.",
 		RunID:              "operator-surface",
 		Slug:               "operator-surface-task",
 		Worktree:           "/hub/wt",

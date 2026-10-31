@@ -37,7 +37,7 @@ func seedBattenRefusedOutsidePrime(t *testing.T, h *hubforge.Hub) {
 		t.Errorf("ReadSeed in the task worktree after the refusal = (found=%v, err=%v); want (false, nil)", found, readErr)
 	}
 
-	if _, err := writeSeed(taskLocation, "some-run", shedrun.RecipeLoom, "", nil); err != nil {
+	if _, err := writeSeed(taskLocation, "some-run", shedrun.RecipeTapestry, "", nil); err != nil {
 		t.Errorf("writeSeed(task worktree, loom) = %v; want nil: loom seeds wherever its verbs drive", err)
 	}
 }

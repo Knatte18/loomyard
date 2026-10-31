@@ -2,7 +2,7 @@
 
 package loomshed
 
-// The producer names, verbatim per contracts/recipes/loom-recipe.yaml's own rows. The name is
+// The producer names, verbatim per contracts/recipes/tapestry-recipe.yaml's own rows. The name is
 // the durable on-disk identity in current_producer; a later rename breaks resume for any in-flight
 // task, so every row below is built from these constants, never a repeated string literal.
 //
@@ -10,16 +10,16 @@ package loomshed
 // shared by reference with Hardener's own list (see internal/landingshed's own package
 // documentation) -- but the name constants live here regardless, same as every other row, because
 // loom's own producer table names them, and the table is now the recipe's:
-// contracts/recipes/loom-recipe.yaml spells the same names as yaml strings, these
+// contracts/recipes/tapestry-recipe.yaml spells the same names as yaml strings, these
 // constants remain the authority, and internal/loomrecipe's coverage guard is what pins the two
 // declarations together by keying its row table off these symbols rather than off string literals.
 //
-// The constants stay here rather than moving to internal/loomrecipe: seed.go and loompreflight.go
+// The constants stay here rather than moving to internal/loomrecipe: seed.go and tapestrypreflight.go
 // read two of them, so loomshed would have to import loomrecipe, and loomrecipe imports shedbuild
 // -> shedrecipe -> loomshed -- the production cycle the consumer-package split exists to avoid.
 const (
 	NamePreflight         = "Preflight"
-	NameLoomPreflight     = "Loom-Preflight"
+	NameTapestryPreflight = "Tapestry-Preflight"
 	NameDiscussionWrite   = "Discussion-Write"
 	NameDiscussionBouncer = "Discussion-Bouncer"
 	NamePlanWrite         = "Plan-Write"

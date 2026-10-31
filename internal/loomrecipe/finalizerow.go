@@ -1,4 +1,4 @@
-// finalizerow.go answers whether a row of the embedded loom and darn recipes is the Finalize row.
+// finalizerow.go answers whether a row of the embedded tapestry and darn recipes is the Finalize row.
 
 package loomrecipe
 
@@ -12,11 +12,11 @@ import (
 // finalizeEngine is the recipe engine name the Finalize row carries.
 const finalizeEngine = "Finalize"
 
-// IsFinalizeRow reports whether the named row of the loom or darn recipe has engine Finalize.
+// IsFinalizeRow reports whether the named row of the tapestry or darn recipe has engine Finalize.
 // The row is identified by its engine, never its name; an unknown name is false.
 // A recipe parse failure is a `loomrecipe:`-prefixed error.
 func IsFinalizeRow(row string) (bool, error) {
-	for _, source := range [][]byte{recipes.LoomRecipe, recipes.DarnRecipe} {
+	for _, source := range [][]byte{recipes.TapestryRecipe, recipes.DarnRecipe} {
 		recipe, err := shedbuild.Parse(source)
 		if err != nil {
 			return false, fmt.Errorf("loomrecipe: IsFinalizeRow: %w", err)

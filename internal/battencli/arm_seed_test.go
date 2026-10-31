@@ -233,7 +233,7 @@ func TestRefuseAdoptedSeed(t *testing.T) {
 		Params: map[string]string{"child_driver": shedrun.DriverLLM},
 	}
 	battenSeedNoChildParam := shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo}
-	loomSeed := shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo}
+	loomSeed := shedrun.Seed{Recipe: shedrun.RecipeTapestry, Driver: shedrun.DriverGo}
 
 	tests := []struct {
 		name            string
@@ -257,7 +257,7 @@ func TestRefuseAdoptedSeed(t *testing.T) {
 		{
 			name:       "a_loom_seed_is_refused_naming_the_verb_that_would_honour_it",
 			seed:       loomSeed,
-			wantSubstr: `already seeded with recipe "loom"`,
+			wantSubstr: `already seeded with recipe "tapestry"`,
 		},
 		{
 			name:       "a_typed_driver_that_cannot_take_effect_is_refused",

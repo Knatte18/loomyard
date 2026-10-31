@@ -89,17 +89,17 @@ func TestSeedAndCommitBootstrap_SecondCallDoesNotDivergeOnErrSeedExists(t *testi
 	}
 }
 
-// TestLoomSeedFor_WriteSeedIsIdempotent asserts loomSeedFor's shape carries RecipeLoom, the given driver and a single "parent" param.
+// TestLoomSeedFor_WriteSeedIsIdempotent asserts loomSeedFor's shape carries RecipeTapestry, the given driver and a single "parent" param.
 // It also asserts writing that shape twice, for the same parent and driver, at the same location and run-id, is a no-op the second time:
 // the idempotency seedAndCommitBootstrap's own comment relies on to make a crashed-and-resumed bootstrap safe to re-run.
 func TestLoomSeedFor_WriteSeedIsIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	loc := &lymcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."}
 
-	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, loomSeedFor(shedrun.RecipeLoom, "main", shedrun.DriverGo)); err != nil {
+	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, loomSeedFor(shedrun.RecipeTapestry, "main", shedrun.DriverGo)); err != nil {
 		t.Fatalf("first WriteSeed(...) = %v; want nil", err)
 	}
-	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, loomSeedFor(shedrun.RecipeLoom, "main", shedrun.DriverGo)); err != nil {
+	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, loomSeedFor(shedrun.RecipeTapestry, "main", shedrun.DriverGo)); err != nil {
 		t.Errorf("second WriteSeed(...) = %v; want nil (idempotent against a byte-identical seed)", err)
 	}
 
@@ -110,8 +110,8 @@ func TestLoomSeedFor_WriteSeedIsIdempotent(t *testing.T) {
 	if !found {
 		t.Fatal("ReadSeed(...) found = false; want true")
 	}
-	if seed.Recipe != shedrun.RecipeLoom {
-		t.Errorf("ReadSeed(...).Recipe = %q; want %q", seed.Recipe, shedrun.RecipeLoom)
+	if seed.Recipe != shedrun.RecipeTapestry {
+		t.Errorf("ReadSeed(...).Recipe = %q; want %q", seed.Recipe, shedrun.RecipeTapestry)
 	}
 	if seed.Driver != shedrun.DriverGo {
 		t.Errorf("ReadSeed(...).Driver = %q; want %q", seed.Driver, shedrun.DriverGo)
@@ -144,7 +144,7 @@ func TestResolveSeedDriver(t *testing.T) {
 				t.Errorf("resolveSeedDriver(%+v, %v, %q) = %q; want %q", tt.existing, tt.found, tt.kind, got, tt.want)
 			}
 			// A recorded driver survives this step's write: the seed built from the result carries it.
-			if seed := loomSeedFor(shedrun.RecipeLoom, "main", got); seed.Driver != tt.want {
+			if seed := loomSeedFor(shedrun.RecipeTapestry, "main", got); seed.Driver != tt.want {
 				t.Errorf("loomSeedFor(%q, %q).Driver = %q; want %q", "main", got, seed.Driver, tt.want)
 			}
 		})
@@ -159,8 +159,8 @@ func TestResolveSeedRecipe(t *testing.T) {
 		found    bool
 		want     string
 	}{
-		{"Unseeded_DefaultsToLoom", shedrun.Seed{}, false, shedrun.RecipeLoom},
-		{"AlreadySeededLoom_Preserved", shedrun.Seed{Recipe: shedrun.RecipeLoom}, true, shedrun.RecipeLoom},
+		{"Unseeded_DefaultsToLoom", shedrun.Seed{}, false, shedrun.RecipeTapestry},
+		{"AlreadySeededLoom_Preserved", shedrun.Seed{Recipe: shedrun.RecipeTapestry}, true, shedrun.RecipeTapestry},
 		{"AlreadySeededDarn_Preserved", shedrun.Seed{Recipe: shedrun.RecipeDarn}, true, shedrun.RecipeDarn},
 	}
 

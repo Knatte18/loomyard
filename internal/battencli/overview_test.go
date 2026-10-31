@@ -90,7 +90,7 @@ func TestOverviewRunCells(t *testing.T) {
 		{
 			name: "a run in Run-Shed shows the child's producer, numbered under Run-Shed's number, and its time",
 			run: overviewRun{
-				StartedAt: minutesAgo(100), Recipe: shedrun.RecipeBatten, ChildRecipe: shedrun.RecipeLoom,
+				StartedAt: minutesAgo(100), Recipe: shedrun.RecipeBatten, ChildRecipe: shedrun.RecipeTapestry,
 				Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameRunShed, shedengine.HistoryEntry{At: stamp(minutesAgo(90))}),
 				Child:  foundStatus(shedengine.StateRunning, "Plan-Write", shedengine.HistoryEntry{At: stamp(minutesAgo(30))}),
 			},
@@ -99,7 +99,7 @@ func TestOverviewRunCells(t *testing.T) {
 		{
 			name: "a child row in a review segment takes its segment's number",
 			run: overviewRun{
-				StartedAt: minutesAgo(100), Recipe: shedrun.RecipeBatten, ChildRecipe: shedrun.RecipeLoom,
+				StartedAt: minutesAgo(100), Recipe: shedrun.RecipeBatten, ChildRecipe: shedrun.RecipeTapestry,
 				Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameRunShed, shedengine.HistoryEntry{At: stamp(minutesAgo(90))}),
 				Child:  foundStatus(shedengine.StateRunning, "Plan-Burler-Review", shedengine.HistoryEntry{At: stamp(minutesAgo(30))}),
 			},
@@ -117,7 +117,7 @@ func TestOverviewRunCells(t *testing.T) {
 		{
 			name: "a child row shows alone when the child recipe does not hold it",
 			run: overviewRun{
-				StartedAt: minutesAgo(99), Recipe: shedrun.RecipeBatten, ChildRecipe: shedrun.RecipeLoom,
+				StartedAt: minutesAgo(99), Recipe: shedrun.RecipeBatten, ChildRecipe: shedrun.RecipeTapestry,
 				Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameRunShed, shedengine.HistoryEntry{At: stamp(minutesAgo(90))}),
 				Child:  foundStatus(shedengine.StateRunning, "Elsewhere", shedengine.HistoryEntry{At: stamp(minutesAgo(30))}),
 			},
@@ -131,7 +131,7 @@ func TestOverviewRunCells(t *testing.T) {
 		{
 			name: "a child with no history takes batten's last entry as its stage start",
 			run: overviewRun{
-				StartedAt: minutesAgo(100), Recipe: shedrun.RecipeBatten, ChildRecipe: shedrun.RecipeLoom,
+				StartedAt: minutesAgo(100), Recipe: shedrun.RecipeBatten, ChildRecipe: shedrun.RecipeTapestry,
 				Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameRunShed, shedengine.HistoryEntry{At: stamp(minutesAgo(40))}),
 				Child:  foundStatus(shedengine.StateRunning, "Plan-Write"),
 			},
@@ -353,7 +353,7 @@ func TestDobbyRunCells_ReadsTheRunsFromDisk(t *testing.T) {
 	cells.childStatus = func(string) (string, error) { return childStatusPath, nil }
 	childPair := locationkit.Location(t.TempDir(), "run-a", ".")
 	cells.childPair = func(string) (*lymcwd.Location, error) { return childPair, nil }
-	if err := shedrun.WriteSeed(childPair, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo}); err != nil {
+	if err := shedrun.WriteSeed(childPair, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeTapestry, Driver: shedrun.DriverGo}); err != nil {
 		t.Fatal(err)
 	}
 	runs := viewRuns("run-a", "run-b", "future-key")
@@ -483,7 +483,7 @@ func TestDobbyRunCells_ResolvesTheChildPairAgainInEachRunShedSpell(t *testing.T)
 	setAnchor(".")
 	writeChildStatus(".", "Plan-Write", minutesAgo(100))
 	writeOverviewStatus(t, battenStatus, shedengine.Status{State: shedengine.StateRunning, CurrentProducer: battenrecipe.NameRunShed}, minutesAgo(100))
-	if err := shedrun.WriteSeed(locationkit.Location(hub, slug, "."), shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo}); err != nil {
+	if err := shedrun.WriteSeed(locationkit.Location(hub, slug, "."), shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeTapestry, Driver: shedrun.DriverGo}); err != nil {
 		t.Fatal(err)
 	}
 	check("read in the first Run-Shed spell", RunCells{State: "running", Stage: "6.6 Plan-Write", InStage: "2h00m"})

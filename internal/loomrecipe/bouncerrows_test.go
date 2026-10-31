@@ -74,7 +74,7 @@ func TestBouncerRowsCarryOverTheirOwnSegment(t *testing.T) {
 			}
 			return recipe
 		}
-		for name, source := range map[string][]byte{"LoomRecipe": recipes.LoomRecipe, "DarnRecipe": recipes.DarnRecipe} {
+		for name, source := range map[string][]byte{"TapestryRecipe": recipes.TapestryRecipe, "DarnRecipe": recipes.DarnRecipe} {
 			if got := rolePrefixViolations(parse(t, source)); len(got) != 0 {
 				t.Errorf("%s: rolePrefixViolations = %v; want none", name, got)
 			}
@@ -108,7 +108,7 @@ func TestBouncerRowsCarryOverTheirOwnSegment(t *testing.T) {
 		}
 		for _, tt := range mutations {
 			t.Run(tt.name, func(t *testing.T) {
-				recipe := parse(t, recipes.LoomRecipe)
+				recipe := parse(t, recipes.TapestryRecipe)
 				tt.mutate(recipe)
 				if got := rolePrefixViolations(recipe); len(got) != 1 {
 					t.Errorf("rolePrefixViolations = %v; want exactly one violation", got)
@@ -117,7 +117,7 @@ func TestBouncerRowsCarryOverTheirOwnSegment(t *testing.T) {
 		}
 	})
 
-	for name, source := range map[string][]byte{"LoomRecipe": recipes.LoomRecipe, "DarnRecipe": recipes.DarnRecipe} {
+	for name, source := range map[string][]byte{"TapestryRecipe": recipes.TapestryRecipe, "DarnRecipe": recipes.DarnRecipe} {
 		recipe, err := shedbuild.Parse(source)
 		if err != nil {
 			t.Fatalf("shedbuild.Parse(%s) = %v; want nil", name, err)

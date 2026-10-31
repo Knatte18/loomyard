@@ -50,7 +50,7 @@ relevant list check when relevant.md exists -- and reports the result as one
 JSON envelope. It takes no arguments and no flags; it always checks the
 worktree's own discussion files.
 
-On a loom run the citation check refuses a path or symbol the decision record
+On a tapestry run the citation check refuses a path or symbol the decision record
 cites that does not exist in the worktree, unless marked (new) or (removed).
 
 On a darn run it is the Darn-Write row's gate check and does not read the

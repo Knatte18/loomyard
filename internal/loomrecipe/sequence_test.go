@@ -26,7 +26,7 @@ type wantSequenceEntry struct {
 
 // wantSequenceOrder is the row 1-through-Merge-In name/outcome sequence a clean Run over buildSequenceFixture must produce.
 // It follows wantProducerTable's row order, which TestNew_ShapeMatchesRecipe pins against New,
-// so a reordering in contracts/recipes/loom-recipe.yaml's row order is a test failure.
+// so a reordering in contracts/recipes/tapestry-recipe.yaml's row order is a test failure.
 //
 // Every entry but the three review segments and the trailing Merge-In carries a Done outcome by
 // rule; the segments themselves do not, so their entries are spelled out explicitly rather than
@@ -42,10 +42,10 @@ type wantSequenceEntry struct {
 // The fixture's fake tips report the local parent ahead of its upstream, which makes Merge-In report one before any merge.
 // Driving the landing producers' real merge logic through a Shed run needs a genuine two-worktree pair and therefore git, which stays out of this package's untagged tier.
 //
-// The real row 2 (Loom-Preflight) passes against this fixture rather than needing a substituted
+// The real row 2 (Tapestry-Preflight) passes against this fixture rather than needing a substituted
 // fake because buildSequenceFixture seeds through the production Seed, which writes a coherent
 // fresh seed, and by the instant row 2 runs, shedengine.Run has already persisted
-// current_producer: "Loom-Preflight" alongside a single Preflight Done history entry -- exactly the
+// current_producer: "Tapestry-Preflight" alongside a single Preflight Done history entry -- exactly the
 // shape row 2's told expected name and tolerated set accept.
 //
 // Row 3 (Discussion-Write) passes because the fixture's fake seat runner writes both discussion output

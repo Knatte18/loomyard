@@ -16,11 +16,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// seedRunID seeds a run-id under loc with shedrun.RecipeLoom/shedrun.DriverGo, t.Fatal-ing on
+// seedRunID seeds a run-id under loc with shedrun.RecipeTapestry/shedrun.DriverGo, t.Fatal-ing on
 // failure.
 func seedRunID(t *testing.T, loc *lymcwd.Location, runID string) {
 	t.Helper()
-	if err := shedrun.WriteSeed(loc, runID, shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo}); err != nil {
+	if err := shedrun.WriteSeed(loc, runID, shedrun.Seed{Recipe: shedrun.RecipeTapestry, Driver: shedrun.DriverGo}); err != nil {
 		t.Fatalf("shedrun.WriteSeed(%q) = %v; want nil", runID, err)
 	}
 }
@@ -80,7 +80,7 @@ func TestResolveRunID(t *testing.T) {
 			if !strings.Contains(err.Error(), "lym loom start") {
 				t.Errorf("resolveRunID(%q) error = %q; want it to name \"lym loom start\"", tt.verb, err.Error())
 			}
-			const driverlessSeed = "lym shed seed self --recipe loom --driver go --param parent=<parent-branch>"
+			const driverlessSeed = "lym shed seed self --recipe tapestry --driver go --param parent=<parent-branch>"
 			if got := strings.Contains(err.Error(), driverlessSeed) && strings.Contains(err.Error(), "lym loom step"); got != tt.wantDriverless {
 				t.Errorf("resolveRunID(%q) error = %q; names the driverless route = %v, want %v", tt.verb, err.Error(), got, tt.wantDriverless)
 			}
@@ -152,8 +152,8 @@ func TestResolveRecipe(t *testing.T) {
 		runID  string
 		seeded string
 	}{
-		{name: "no seed takes loom", want: shedrun.RecipeLoom, runID: shedrun.SelfRunID},
-		{name: "loom seed", seed: &shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo}, want: shedrun.RecipeLoom, runID: shedrun.SelfRunID, seeded: shedrun.SelfRunID},
+		{name: "no seed takes loom", want: shedrun.RecipeTapestry, runID: shedrun.SelfRunID},
+		{name: "loom seed", seed: &shedrun.Seed{Recipe: shedrun.RecipeTapestry, Driver: shedrun.DriverGo}, want: shedrun.RecipeTapestry, runID: shedrun.SelfRunID, seeded: shedrun.SelfRunID},
 		{name: "darn seed", seed: &shedrun.Seed{Recipe: shedrun.RecipeDarn, Driver: shedrun.DriverGo}, want: shedrun.RecipeDarn, runID: shedrun.SelfRunID, seeded: shedrun.SelfRunID},
 		{name: "the addressed run-id's seed is read", seed: &shedrun.Seed{Recipe: shedrun.RecipeDarn, Driver: shedrun.DriverGo}, want: shedrun.RecipeDarn, runID: "other", seeded: "other"},
 	}

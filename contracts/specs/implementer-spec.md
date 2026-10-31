@@ -1,6 +1,6 @@
-# Implementer contract: what loom's implementer row takes and delivers
+# Implementer contract: what tapestry's implementer row takes and delivers
 
-> **Status: Contract — pinned.** This doc pins what every implementer that runs loom's implementer row takes in and delivers, so the rows after it never depend on which implementer ran.
+> **Status: Contract — pinned.** This doc pins what every implementer that runs tapestry's implementer row takes in and delivers, so the rows after it never depend on which implementer ran.
 > Durable reference doc — kept, not deleted on landing.
 > How one implementer reaches these shapes is that implementer's own spec, such as [webster-spec.md](webster-spec.md).
 

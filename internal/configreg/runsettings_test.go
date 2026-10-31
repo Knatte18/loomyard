@@ -472,7 +472,7 @@ func TestProfilesCheckLoad(t *testing.T) {
 		{name: "a valid hub file passes", hubFile: "light:\n  loom:\n    loom: {plan_max_bounces: 1}\n  darn:\n    darn: {writer: opus}\n"},
 		{name: "a profile holding the retired webster_max_bounces and merge_max_bounces passes", hubFile: "light:\n  loom:\n    loom: {webster_max_bounces: 1, merge_max_bounces: 1}\n"},
 		{name: "an unknown key is refused naming the profile and the recipe", hubFile: "light:\n  loom:\n    loom: {plan_max_bounces: 1}\nodd:\n  loom:\n    loom: {plan_max_bounces: 1}\n  darn:\n    loom: {no_such_key: 1}\n", wantRefusal: []string{`run profile "odd", recipe "darn"`, "no_such_key"}},
-		{name: "an unknown module is refused naming the profile and the recipe", hubFile: "odd:\n  loom:\n    bogus: {x: 1}\n", wantRefusal: []string{`run profile "odd", recipe "loom"`, "bogus"}},
+		{name: "an unknown module is refused naming the profile and the recipe", hubFile: "odd:\n  tapestry:\n    bogus: {x: 1}\n", wantRefusal: []string{`run profile "odd", recipe "tapestry"`, "bogus"}},
 	}
 	module, _ := Lookup(runprofile.ModuleName)
 	for _, tt := range tests {

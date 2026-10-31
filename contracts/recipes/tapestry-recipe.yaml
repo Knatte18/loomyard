@@ -1,9 +1,9 @@
-# loom-recipe.yaml is loom's producer graph. It is embedded into the binary by the sibling
+# tapestry-recipe.yaml is loom's producer graph. It is embedded into the binary by the sibling
 # recipes.go rather than read from disk. The row names below are the durable on-disk
 # identities pinned against internal/loomshed's Name* constants by the coverage guard -- a rename
 # here without a matching constant rename breaks resume for any in-flight task.
 #
-# The main line is Preflight, Loom-Preflight, Discussion-Write, the Discussion-Review ring,
+# The main line is Preflight, Tapestry-Preflight, Discussion-Write, the Discussion-Review ring,
 # Drift-Baseline, Plan-Write, the Plan-Review ring, Drift-Await, Webster, Parent-Align, the
 # Code-Review ring, Drift-Verify, Describe, PR-Review, Finalize and Friction-Reflect.
 # The three Drift rows carry entry_gate: drift.enabled, so a hub that leaves regression off records
@@ -11,7 +11,7 @@
 #
 # Every gate and validator bounces back to the producer whose artifact it guards, and a gate whose
 # guarded artifact is produced by no row in the list escalates instead.
-# Preflight and Loom-Preflight carry no on_stuck for exactly that reason: nothing in the list
+# Preflight and Tapestry-Preflight carry no on_stuck for exactly that reason: nothing in the list
 # produces what each of them gates, so a human is the only thing that can fix either.
 # Parent-Align and Finalize carry none either, because each fixes its own merge and test failures in its
 # merge fixer, and a failure the fixer cannot fix halts the run for the orch instead of routing to another row.
@@ -54,9 +54,10 @@
 # resume identities, and a permanent migration table mapping retired names onto their successors is
 # carrying cost a pre-release, single-operator system does not need when the operator can simply
 # re-run.
-# A run parked on Merge-In, the row now named Parent-Align, is carried across by rename and not
-# restarted: `lym loom` rewrites the old name in its status file through LoomRetiredRows, and the row
-# keeps its position, so `lym loom peers` reports the same positions.
+# A run parked on Merge-In, the row now named Parent-Align, or on Loom-Preflight, the row now named
+# Tapestry-Preflight, is carried across by rename and not restarted: `lym loom` rewrites the old name
+# in its status file through TapestryRetiredRows, and the row keeps its position, so `lym loom peers`
+# reports the same positions.
 #
 # Every review segment follows the same shared-segment on_stuck ring: Discussion-Bouncer,
 # Discussion-Burler-Review and Discussion-Burler-Fix carry segment: Discussion-Review, the three
@@ -79,7 +80,7 @@
 # not migrated, as it is for the retired rows above.
 #
 # So is a run parked on the retired Batchifier row: the Webster row's implementer partitions the
-# plan itself, and Loom-Preflight's batcher.yaml load keeps the early failure the row gave.
+# plan itself, and Tapestry-Preflight's batcher.yaml load keeps the early failure the row gave.
 #
 # The Bouncer, review and fix rows of those segments declare no max_bounces: their budget is the
 # perch's own loom.yaml key (discussion_max_bounces, plan_max_bounces or code_max_bounces),
@@ -96,10 +97,10 @@ terminals:
 producers:
   - name: Preflight
     engine: Preflight
-    on_done: Loom-Preflight
+    on_done: Tapestry-Preflight
 
-  - name: Loom-Preflight
-    engine: LoomPreflight
+  - name: Tapestry-Preflight
+    engine: TapestryPreflight
     on_done: Discussion-Write
 
   - name: Discussion-Write

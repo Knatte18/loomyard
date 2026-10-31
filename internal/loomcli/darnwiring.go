@@ -1,5 +1,5 @@
 // darnwiring.go holds the wiring only a darn run needs: the tree scope reader the darn recipe tells its verify gate, the verify source its landing producers read, the Darn-Write row's seams, the board entry snapshot its discussion commit writes, the writer's and Describe's Spec sources, and the rename of retired darn rows in a run's status file.
-// A loom run leaves all of it unwired, but shares the merge base readers `pairMergeBase` and `taskMergeBase` build.
+// A tapestry run leaves all of it unwired, but shares the merge base readers `pairMergeBase` and `taskMergeBase` build.
 
 package loomcli
 
@@ -33,7 +33,7 @@ import (
 // command resolves at each call, never at construction, so an edit between steps is seen:
 // the key's call over the touched trees' targets when the task diff is wholly under the hub's configured trees, else the key's call alone;
 // a gate config refusal and a malformed tree key are errors naming the way forward.
-// baseCommand is the fix rows' `code-burler-fix` call, as in a loom run, and stays the base command of a tree-scoped site.
+// baseCommand is the fix rows' `code-burler-fix` call, as in a tapestry run, and stays the base command of a tree-scoped site.
 func darnVerifySource(l *lymcwd.Location) verifySource {
 	dirs := fabricengine.ConfigDirs(l)
 	treeScope := darnTreeScope(l)

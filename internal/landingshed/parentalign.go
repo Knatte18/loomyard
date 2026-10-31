@@ -119,7 +119,7 @@ func NewParentAlign(deps Deps) (*ParentAlign, error) {
 // It writes nothing in the parent pair and holds no parent lock across the merge; a paused lock wait and an unreadable lock record for the local-tip read are Stuck with Halt, so the run stops at this row.
 // After the merge and the `landing` gate it aligns: it runs the merge fixer when the parent brought in commits or the gate fails,
 // and every halt of that alignment is a Stuck with Halt whose reason opens with LandingStopPrefix.
-// A fixer's escalate on a loom or darn run (Deps.EscalateJudgedFirst) opens with EscalateStopPrefix instead.
+// A fixer's escalate on a tapestry or darn run (Deps.EscalateJudgedFirst) opens with EscalateStopPrefix instead.
 // A failed record write and every infrastructure fault are errors.
 func (m *ParentAlign) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, parentAlignName); err != nil {

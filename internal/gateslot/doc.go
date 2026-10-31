@@ -101,16 +101,16 @@
 //	loom        Webster, verify fixers                  webster-fix      diff
 //	loom        Webster, end gate                       webster          all
 //	loom        Parent-Align                            parent-align     all
-//	loom, darn  Code-Burler-Fix                         code-burler-fix  diff
-//	loom, darn  Drift-Verify                            drift-verify     diff
-//	loom, darn, pawl  PR-Review                         pr-review        diff
-//	loom, darn  Finalize                                finalize         all
+//	tapestry, darn  Code-Burler-Fix                         code-burler-fix  diff
+//	tapestry, darn  Drift-Verify                            drift-verify     diff
+//	tapestry, darn, pawl  PR-Review                         pr-review        diff
+//	tapestry, darn  Finalize                                finalize         all
 //	adopt       lym adopt check                         adopt            all
 //	darn        Darn-Write                              darn-write       diff
 //	darn        Darn-Write, Code-Burler-Fix, Finalize   the row's key    the touched trees' targets
 //
 // The last line holds for a diff wholly under darn's `tree_scope`: the row runs its own key's tiers over the targets of the trees the diff touches, in place of the key's scope.
-// Darn and loom share the keys of the rows they share.
+// Darn and tapestry share the keys of the rows they share.
 // Their writers' gates differ by operator decision: Webster's end gate runs whole, and darn's writer runs the diff.
 // A recipe row's `gate_key` setting names the key it reads in place of its lower-cased row name, and the merge fixer runs the key of the row that spawned it.
 //

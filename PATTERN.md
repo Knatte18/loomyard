@@ -36,7 +36,7 @@
 - `PATTERN-shed-stop-chain` — A shed run's stop: rule table, tackler, arbiter, then parent, for every recipe; a blocked stop the driver's arbiter seam marks as judged first, by its row and reason, goes rule table, arbiter, then parent; arbiter keys in shed.yaml with module overrides.
 - `PATTERN-dobby-starts-runs` — Starting or driving a board task's run: its parent's dobby, from an empty status, in batten passes; a hand `lym batten run` is one pass.
 - `PATTERN-transient-stop` — Marking a failure transient: only `internal/shedengine`'s mark, translated by `internal/shedtransient` at a producer or step-bootstrap boundary; never on a gate verdict.
-- `PATTERN-friction-capture` — Halting or crash-resuming a loom run, or refusing in webster: Go writes a note via `internal/friction`; none is archived before a reflection covers it. (test)
+- `PATTERN-friction-capture` — Halting or crash-resuming a run, or refusing in webster: Go writes a note via `internal/friction`; none is archived before a reflection covers it. (test)
 - `PATTERN-tolerant-records` — Go-written JSON records: never refuse an unknown key; rewrite via `internal/state`. (test) — [background](pattern/PATTERN-tolerant-records.md)
 - `PATTERN-gate-slot` — Running gate build, test or verify: in held `internal/gateslot` slots, verify via `verifytree.Verify`, a tier skipped only on `lym gate test`'s green record; a gate and its self-check call one function. (test) — [background](pattern/PATTERN-gate-slot.md)
 - `PATTERN-sole-parsers` — Parsing plan, discussion, summary, recipe or halt note, or classifying a plan ref: only its sole parser. (test) — [background](pattern/PATTERN-sole-parsers.md)

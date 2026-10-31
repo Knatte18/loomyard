@@ -56,7 +56,7 @@
 //
 // The Drift-Baseline and Drift-Verify agents are each one non-interactive lead seat, built by BaselineTable and VerifyTable over the stencils `drift-template-baseline` and `drift-template-verify`, which the seat engine reads at call time and renders with the parent and edit directives.
 // The baseline seat's only output is `baseline.md` and the verify seat's `verify-report.md`: the scope record is Go-written, and a fresh spawn archives its outputs.
-// The task's subject is read from the decision record in a loom run (SubjectDecisionRecord) and from the board entry in a darn run (SubjectBoardEntry), the record's `Added after Discussion` entries winning in both.
+// The task's subject is read from the decision record in a tapestry run (SubjectDecisionRecord) and from the board entry in a darn run (SubjectBoardEntry), the record's `Added after Discussion` entries winning in both.
 // The seats take the `plan` and `review` segment colors, their models from `baseline_model` and `verify_model`, and session timeouts that are package constants, since drift.yaml declares no timeout key.
 // The verify seat also carries the hub's language skills and the PATTERN implementer directive, since its agent changes code.
 // Neither table carries a gate; the Drift-Verify row sets it.

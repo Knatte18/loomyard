@@ -45,7 +45,7 @@ func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
 	if err := os.MkdirAll(fabricengine.BoardDir(loc.HubPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	deps := landingDeps(loc, shedrun.RecipeLoom, websterengine.Geometry{StencilsDir: "/stencils"}, "task/foo",
+	deps := landingDeps(loc, shedrun.RecipeTapestry, websterengine.Geometry{StencilsDir: "/stencils"}, "task/foo",
 		"main", true,
 		modelspec.Registry{"claude/sonnet-5": {}}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(loc), parentLockDeps(loc, shedrun.SelfRunID, "", ""))
 

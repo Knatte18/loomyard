@@ -13,7 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// battenPreGoto implements the PreGoto hook for batten's spec, locating the child loom run's status file the way wire's ResolveStatus does.
+// battenPreGoto implements the PreGoto hook for batten's spec, locating the child tapestry run's status file the way wire's ResolveStatus does.
 func (c *battenCLI) battenPreGoto(_ context.Context, target string) error {
 	childStatus := func() (string, error) {
 		taskLocation, err := taskWorktreeLocation(c.location, c.slug)

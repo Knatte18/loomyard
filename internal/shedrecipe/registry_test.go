@@ -103,7 +103,6 @@ func TestNames(t *testing.T) {
 			"Implementer",
 			"InnerRun",
 			"Land",
-			"LoomPreflight",
 			"MultiLLM",
 			"PRReview",
 			"ParentAlign",
@@ -111,6 +110,7 @@ func TestNames(t *testing.T) {
 			"Preflight",
 			"SeedChild",
 			"Stub",
+			"TapestryPreflight",
 			"WorktreeCreate",
 			"WorktreeTeardown",
 		}

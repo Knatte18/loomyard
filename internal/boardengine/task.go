@@ -25,7 +25,7 @@ type Task struct {
 	Kind      string   `json:"kind"`             // KindTask, KindNote or KindProject
 	Labels    []string `json:"labels"`           // type and plain labels, validated against the board's Vocabulary
 	Issues    []int    `json:"issues"`           // numbers of the GitHub issues this entry records; a number is not checked against GitHub
-	Recipe    string   `json:"recipe,omitempty"` // recipe name for the task's child worktree; empty means "loom". Resolved (and validated against the recipe vocabulary) at the seeding site, not here.
+	Recipe    string   `json:"recipe,omitempty"` // recipe name for the task's child worktree; empty means "tapestry". Resolved (and validated against the recipe vocabulary) at the seeding site, not here.
 	Priority  string   `json:"priority,omitempty"`
 	DependsOn []string `json:"depends_on"`
 	Isolated  bool     `json:"isolated"`
@@ -304,7 +304,7 @@ func normalizeTask(t *Task) error {
 		return fmt.Errorf("%s %q has beam, and only a project can be a beam: drop the beam field", t.Kind, t.Slug)
 	}
 	if t.Kind == KindTask && t.Recipe == ProjectRecipe {
-		return fmt.Errorf("task %q has recipe %q, and a task's recipe is loom or darn: %q belongs to a beam project, so set the recipe to loom or darn", t.Slug, t.Recipe, ProjectRecipe)
+		return fmt.Errorf("task %q has recipe %q, and a task's recipe is tapestry or darn: %q belongs to a beam project, so set the recipe to tapestry or darn", t.Slug, t.Recipe, ProjectRecipe)
 	}
 	return nil
 }

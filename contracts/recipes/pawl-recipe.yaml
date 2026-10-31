@@ -1,4 +1,4 @@
-# pawl-recipe.yaml is the pawl recipe, a beam's life: Preflight checks the pair, as loom and darn do, so the
+# pawl-recipe.yaml is the pawl recipe, a beam's life: Preflight checks the pair, as tapestry and darn do, so the
 # row the shared seed names is the recipe's entry, Beam-Up brings the beam up, Beam-Await holds the run
 # until a land request passes the landing re-check, Parent-Align brings the parent's upstream tip into the
 # beam, the Code-Review perch reviews the beam's diff, Beam-Describe writes the change description from the
@@ -18,7 +18,7 @@
 # claim row as the hold-free ones. A test pins that list against this recipe's row names.
 #
 # Code-Bouncer, Code-Burler-Review and Code-Burler-Fix are the Code-Review perch, the same perch the darn
-# and loom recipes run, with the same row names, segment, run_subdir, role_prefix, rubric, fan and
+# and tapestry recipes run, with the same row names, segment, run_subdir, role_prefix, rubric, fan and
 # auto-accept settings and loom.yaml code_* keys; only its answer key differs: the beam project entry's
 # board snapshot, _lym/discussion/board-entry.md, and nothing else. Its ring is the shared-segment one:
 # the Bouncer's on_stuck names the review row, the review row's on_stuck names the fix row, the fix row's

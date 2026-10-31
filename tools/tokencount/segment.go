@@ -17,7 +17,7 @@ import (
 // forkSuffix ends the role a session's forks count under.
 const forkSuffix = "+sub"
 
-// segmentDef is one segment the loom recipe's roles fall into.
+// segmentDef is one segment the tapestry recipe's roles fall into.
 type segmentDef struct {
 	Name string
 	// Key is the role of the segment's writer and, followed by "-", the prefix of its other roles.

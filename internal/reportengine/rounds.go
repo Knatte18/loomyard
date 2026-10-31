@@ -150,7 +150,7 @@ func (row *RunRow) readDriveReports(records Reader, tag gitrepo.TagRef) error {
 	return nil
 }
 
-// retiredReviewSubdirs maps a review directory a past run's loom recipe wrote to the segment it is read as;
+// retiredReviewSubdirs maps a review directory a past run's tapestry recipe wrote to the segment it is read as;
 // an old Webster-Review's rounds are Code-Review's, and Merge-Review's are dropped, which the empty segment marks.
 var retiredReviewSubdirs = map[string]string{
 	"webster": "code",

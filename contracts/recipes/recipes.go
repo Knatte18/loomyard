@@ -8,10 +8,10 @@ import (
 	_ "embed"
 )
 
-// LoomRecipe is loom's shipped-default producer graph, in internal/shedbuild's recipe format.
+// TapestryRecipe is loom's shipped-default producer graph, in internal/shedbuild's recipe format.
 //
-//go:embed loom-recipe.yaml
-var LoomRecipe []byte
+//go:embed tapestry-recipe.yaml
+var TapestryRecipe []byte
 
 // DarnRecipe is the darn task recipe's producer graph, in internal/shedbuild's recipe format.
 //

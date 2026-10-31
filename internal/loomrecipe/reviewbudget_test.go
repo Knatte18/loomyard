@@ -17,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
-// loomReviewSegments lists the loom recipe's review segments, the keys of the per-segment budget map.
+// loomReviewSegments lists the tapestry recipe's review segments, the keys of the per-segment budget map.
 var loomReviewSegments = []string{"Discussion-Review", "Plan-Review", "Code-Review"}
 
 // setBudgets sets every env.Segments entry's MaxBounces to runWide, then each segment of own to its own value.

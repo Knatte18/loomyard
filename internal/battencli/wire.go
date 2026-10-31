@@ -530,13 +530,13 @@ func boardRecipe(task boardengine.Task) string {
 // childRecipeSupported reports whether recipe is one a task worktree's bootstrap verb can run as the child's own run:
 // the three recipes `lym loom start` serves.
 func childRecipeSupported(recipe string) bool {
-	return recipe == shedrun.RecipeLoom || recipe == shedrun.RecipeDarn || recipe == shedrun.RecipePawl
+	return recipe == shedrun.RecipeTapestry || recipe == shedrun.RecipeDarn || recipe == shedrun.RecipePawl
 }
 
 // unsupportedChildRecipeRefusal is the refusal for a recipe childRecipeSupported rejects.
 // It wraps battenshed.ErrUnsupportedChildRecipe and names the three admitted recipes.
 func unsupportedChildRecipeRefusal(recipe string) error {
-	return fmt.Errorf("%w: only %q, %q and %q have a bootstrap verb Run-Shed can start in the task worktree, so a Board task's type must be %q, %q or empty, and a project entry seeds %q; got %q", battenshed.ErrUnsupportedChildRecipe, shedrun.RecipeLoom, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeLoom, shedrun.RecipeDarn, shedrun.RecipePawl, recipe)
+	return fmt.Errorf("%w: only %q, %q and %q have a bootstrap verb Run-Shed can start in the task worktree, so a Board task's type must be %q, %q or empty, and a project entry seeds %q; got %q", battenshed.ErrUnsupportedChildRecipe, shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipePawl, recipe)
 }
 
 // childSeedParams returns the seed params recipe's own bootstrap verb will itself write, read from
@@ -544,7 +544,7 @@ func unsupportedChildRecipeRefusal(recipe string) error {
 //
 // shedrun.WriteSeed is idempotent only against a seed agreeing on recipe, driver and params, so a
 // child seeded without a param its own bootstrap writes makes that bootstrap refuse.
-// Params are per-recipe: loom, darn and beam declare one each, params.parent, taken from the pair's recorded origin, which for a beam is the beam's parent branch.
+// Params are per-recipe: tapestry, darn and beam declare one each, params.parent, taken from the pair's recorded origin, which for a beam is the beam's parent branch.
 // An absent or empty recorded parent yields no param, leaving the bootstrap's own "pass --parent once" refusal as the one an operator sees.
 func childSeedParams(recipe string, childLocation *lymcwd.Location) (map[string]string, error) {
 	if !childRecipeSupported(recipe) {
@@ -1083,7 +1083,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				}
 				return sheddriver.RestepRecorded(records, status), nil
 			},
-			// HandBack marks a blocked landing halt, decision halt or loom or darn escalate halt, so the binary re-step leaves it alone.
+			// HandBack marks a blocked landing halt, decision halt or tapestry or darn escalate halt, so the binary re-step leaves it alone.
 			HandBack: restepSkips,
 			// PauseRequested reads batten's own status file, the one `lym batten pause` writes, so the in-call wait notices a pause within one check.
 			PauseRequested: pauseRequested(location, slug),
@@ -1270,7 +1270,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				if err != nil {
 					return err
 				}
-				// The bootstrap verb of loom and darn alike, not a per-recipe dispatch: the WriteSeed seam below admits
+				// The bootstrap verb of tapestry and darn alike, not a per-recipe dispatch: the WriteSeed seam below admits
 				// no other child recipe, so the two stay consistent by construction.
 				// Dir is the task worktree's AnchorPath(), never its bare worktree root: the resolver
 				// gates a child's working directory to the anchor, and a bare root fails on any
@@ -1479,7 +1479,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 }
 
 // restepSkips reports whether a child's status is a blocked halt the binary re-step leaves alone:
-// a landing halt or a decision halt for the orch, or a loom or darn fixer's escalate halt for the arbiter.
+// a landing halt or a decision halt for the orch, or a tapestry or darn fixer's escalate halt for the arbiter.
 // The halt is read over the status's current producer and error.
 func restepSkips(status shedengine.Status) bool {
 	if status.State != shedengine.StateBlocked {

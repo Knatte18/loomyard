@@ -112,7 +112,7 @@ func CheckSeed(statusPath, statusLockPath, expectedProducer string, toleratedPro
 //
 // A missing file, an empty recorded slug, a product that does not decode, and a decode failure on the outer shed envelope itself (malformed JSON) all pass: each is some other check's business — the caller's own missing-file handling, and, for the coherence cases (an empty slug and the like), CheckSeed's own rules.
 // A decode failure specifically is diagnosed one layer earlier than CheckSeed.
-// The spawned driver's Shed.Run step-1 read gate does the same ReadJSON read at the top of its loop and errors on it BEFORE any producer — the Loom-Preflight row that calls CheckSeed included — is ever looked up, so CheckSeed-as-producer never even runs on a decode failure (see CheckSeed's own doc comment on that step-1 pre-emption).
+// The spawned driver's Shed.Run step-1 read gate does the same ReadJSON read at the top of its loop and errors on it BEFORE any producer — the Tapestry-Preflight row that calls CheckSeed included — is ever looked up, so CheckSeed-as-producer never even runs on a decode failure (see CheckSeed's own doc comment on that step-1 pre-emption).
 // Either way this function answers ownership alone.
 // Escalating a decode failure here stopped the bootstrap before it ever spawned a driver or reached its success envelope, for a condition the driver's own run loop already surfaces in its own log —
 // reproduced live via a poisoned status file that made both "lym loom start" and "lym loom run" refuse on the envelope instead of letting the spawned driver's own step-1 gate report the decode failure.

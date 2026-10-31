@@ -34,6 +34,7 @@ const (
 	retiredPRGateRow              = "PR-Gate"
 	retiredPRReworkRow            = "PR-Rework"
 	retiredMergeInRow             = "Merge-In"
+	retiredLoomPreflightRow       = "Loom-Preflight"
 	retiredMergeBouncerRow        = "Merge-Bouncer"
 	retiredMergeBurlerReviewRow   = "Merge-Burler-Review"
 	retiredMergeBurlerFixRow      = "Merge-Burler-Fix"
@@ -56,6 +57,7 @@ var retiredRowNames = map[string]string{
 	retiredPRGateRow:              PhasePublishFinalize,
 	retiredPRReworkRow:            PhasePublishFinalize,
 	retiredMergeInRow:             PhaseMerge,
+	retiredLoomPreflightRow:       PhaseSetup,
 	retiredMergeBouncerRow:        PhaseMerge,
 	retiredMergeBurlerReviewRow:   PhaseMerge,
 	retiredMergeBurlerFixRow:      PhaseMerge,
@@ -66,7 +68,7 @@ var retiredRowNames = map[string]string{
 
 // recipePhaseTables holds the phase table of every recipe a report selects.
 var recipePhaseTables = map[string]phaseTable{
-	shedrun.RecipeLoom: {
+	shedrun.RecipeTapestry: {
 		exact: loomPhases(),
 		families: map[string]string{
 			rowFamily(loomshed.NameDiscussionWrite): PhaseDiscussion,
@@ -80,19 +82,19 @@ var recipePhaseTables = map[string]phaseTable{
 	shedrun.RecipeDarn: {exact: darnPhases()},
 }
 
-// loomPhases maps every row of a loom run that a phase table names whole, the retired rows of past runs included, to its phase.
+// loomPhases maps every row of a tapestry run that a phase table names whole, the retired rows of past runs included, to its phase.
 func loomPhases() map[string]string {
 	phases := map[string]string{
-		loomshed.NamePreflight:       PhaseSetup,
-		loomshed.NameLoomPreflight:   PhaseSetup,
-		retiredBatchifierRow:         PhaseWebster,
-		loomshed.NameDescribe:        PhaseWebster,
-		loomshed.NameDriftBaseline:   PhasePlan,
-		loomshed.NameDriftAwait:      PhasePlan,
-		loomshed.NameDriftVerify:     PhaseWebster,
-		loomshed.NamePRReview:        PhasePublishFinalize,
-		loomshed.NameFinalize:        PhasePublishFinalize,
-		loomshed.NameFrictionReflect: PhasePublishFinalize,
+		loomshed.NamePreflight:         PhaseSetup,
+		loomshed.NameTapestryPreflight: PhaseSetup,
+		retiredBatchifierRow:           PhaseWebster,
+		loomshed.NameDescribe:          PhaseWebster,
+		loomshed.NameDriftBaseline:     PhasePlan,
+		loomshed.NameDriftAwait:        PhasePlan,
+		loomshed.NameDriftVerify:       PhaseWebster,
+		loomshed.NamePRReview:          PhasePublishFinalize,
+		loomshed.NameFinalize:          PhasePublishFinalize,
+		loomshed.NameFrictionReflect:   PhasePublishFinalize,
 	}
 	maps.Copy(phases, retiredRowNames)
 	return phases

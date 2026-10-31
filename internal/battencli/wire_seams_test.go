@@ -194,7 +194,7 @@ func TestWire_EverySeamFilled(t *testing.T) {
 
 	escalated := shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "Finalize", Error: landingshed.EscalateStopPrefix + "the fixer escalated"}
 	if !c.env.InnerRun.HandBack(escalated) {
-		t.Errorf("InnerRun.HandBack(%+v) = false; want true, so the binary re-step leaves a loom or darn escalate halt alone", escalated)
+		t.Errorf("InnerRun.HandBack(%+v) = false; want true, so the binary re-step leaves a tapestry or darn escalate halt alone", escalated)
 	}
 }
 

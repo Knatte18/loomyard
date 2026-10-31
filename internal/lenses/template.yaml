@@ -8,7 +8,7 @@
 # and it drops an entry whose prose or ordered fan list equals the template's current value, reporting each drop, which leaves the loaded value unchanged.
 # Any other entry is kept as written; a lens or fan the template lacks is kept and reported, never pruned.
 #
-# A fan is turned off at the loom or darn fan key entry that names it, by pointing the entry at another fan or setting it to "".
+# A fan is turned off at the tapestry or darn fan key entry that names it, by pointing the entry at another fan or setting it to "".
 #
 # remove: lists lens names dropped after resolution from the lenses and from every fan; a fan left empty is dropped, and a name matching no lens is skipped with a warning.
 #

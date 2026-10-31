@@ -45,10 +45,10 @@ func changeAt(output string, when time.Time) shedengine.HistoryEntry {
 
 // seedStartedAt is the text of a loom seed started at start.
 func seedStartedAt(start time.Time) string {
-	return fmt.Sprintf(`{"recipe":"loom","driver":"go","started_at":%q}`, start.Format(time.RFC3339))
+	return fmt.Sprintf(`{"recipe":"tapestry","driver":"go","started_at":%q}`, start.Format(time.RFC3339))
 }
 
-// landedRun adds the archive tag of a full loom run of slug at hour holding the loom history and seed text, with each batten status committed in the hours before it.
+// landedRun adds the archive tag of a full tapestry run of slug at hour holding the loom history and seed text, with each batten status committed in the hours before it.
 // The loom history must hold a Finalize entry for the tag to be a full run.
 func landedRun(w *world, slug, sha string, hour int, seed string, loom []shedengine.HistoryEntry, batten ...shedengine.Status) {
 	landedRunWith(w, slug, sha, hour, seed, loom, nil, batten...)
@@ -146,7 +146,7 @@ func stopRun(w *world, slug string, loom, batten []shedengine.HistoryEntry, loom
 		files[recordPaths(w.t, slug).SettleRecords] = settleFile(w.t, loomRecords...)
 	}
 	w.battenSettles("bs-"+slug, 2, slug, battenRecordOf(batten...), battenRecords...)
-	landedRunWith(w, slug, "t1", 3, seedText("loom"), loom, files)
+	landedRunWith(w, slug, "t1", 3, seedText("tapestry"), loom, files)
 }
 
 // stopsOfKind returns the run's stops of kind.
@@ -274,7 +274,7 @@ func wantFindings(t *testing.T, report TimingReport, want ...[2]string) {
 // The Code and PR-Review rows come last, so the stamps of the rows before them stay where the batten rows' fixed times fall between them.
 var loomRowPhases = []struct{ row, phase string }{
 	{loomshed.NamePreflight, PhaseSetup},
-	{loomshed.NameLoomPreflight, PhaseSetup},
+	{loomshed.NameTapestryPreflight, PhaseSetup},
 	{loomshed.NameDiscussionWrite, PhaseDiscussion},
 	{loomshed.NameDiscussionBouncer, PhaseDiscussion},
 	{loomshed.NamePlanWrite, PhasePlan},
@@ -304,6 +304,7 @@ var loomRowPhases = []struct{ row, phase string }{
 	{loomshed.NameCodeBurlerReview, PhaseWebster},
 	{loomshed.NameCodeBurlerFix, PhaseWebster},
 	{loomshed.NamePRReview, PhasePublishFinalize},
+	{retiredLoomPreflightRow, PhaseSetup},
 }
 
 // darnRowPhases lists every darn row, the retired writer and perch row names included, with the phase it counts under, in the order the rows run.
@@ -371,7 +372,7 @@ func TestComputeTiming(t *testing.T) {
 					entryAt(battenrecipe.NameLand, secondsAfter(run, 2700)),
 					entryAt(battenrecipe.NameWorktreeTeardown, secondsAfter(run, 2760)),
 				)
-				landedRun(w, "both", "t1", 3, seedText("loom"), loom, batten)
+				landedRun(w, "both", "t1", 3, seedText("tapestry"), loom, batten)
 			},
 			check: func(t *testing.T, got TimingReport) {
 				got1 := runOf(t, got, "both")
@@ -471,7 +472,7 @@ func TestComputeTiming(t *testing.T) {
 		{
 			name: "a run with neither a batten record nor a seed stamp opens at its first loom row with a finding",
 			setup: func(w *world) {
-				landedRun(w, "unstamped", "t1", 3, seedText("loom"), []shedengine.HistoryEntry{
+				landedRun(w, "unstamped", "t1", 3, seedText("tapestry"), []shedengine.HistoryEntry{
 					entryAt(loomshed.NamePreflight, secondsAfter(run, 600)),
 					entryAt(loomshed.NameFinalize, secondsAfter(run, 1200)),
 				})
@@ -526,12 +527,12 @@ func TestComputeTiming(t *testing.T) {
 					entryAt(battenrecipe.NameLand, secondsAfter(run, 2400)),
 					entryAt(battenrecipe.NameWorktreeTeardown, secondsAfter(run, 2460)),
 				)
-				landedRun(w, "every", "t1", 3, seedText("loom"), loom, batten)
+				landedRun(w, "every", "t1", 3, seedText("tapestry"), loom, batten)
 			},
 			check: func(t *testing.T, got TimingReport) {
 				wantPhases(t, runOf(t, got, "every"), map[string]int64{
-					PhaseSetup: 600, PhaseDiscussion: 240, PhasePlan: 255, PhaseWebster: 540,
-					PhaseMerge: 300, PhasePublishFinalize: 405, PhaseLand: 120,
+					PhaseSetup: 660, PhaseDiscussion: 240, PhasePlan: 255, PhaseWebster: 540,
+					PhaseMerge: 300, PhasePublishFinalize: 405, PhaseLand: 60,
 				})
 				if len(got.Findings) != 0 {
 					t.Errorf("findings = %+v; want none, since every row names a phase", got.Findings)
@@ -615,8 +616,8 @@ func TestComputeTiming(t *testing.T) {
 			},
 			check: func(t *testing.T, got TimingReport) {
 				darned := runOf(t, got, "darned")
-				if darned.Recipe != shedrun.RecipeDarn || runOf(t, got, "loomed").Recipe != shedrun.RecipeLoom {
-					t.Errorf("recipes = %s, %s; want darn and loom", darned.Recipe, runOf(t, got, "loomed").Recipe)
+				if darned.Recipe != shedrun.RecipeDarn || runOf(t, got, "loomed").Recipe != shedrun.RecipeTapestry {
+					t.Errorf("recipes = %s, %s; want darn and tapestry", darned.Recipe, runOf(t, got, "loomed").Recipe)
 				}
 				wantPhases(t, darned, map[string]int64{PhaseSetup: 720, PhaseWrite: 180, PhaseReview: 420, PhaseMerge: 60, PhasePublishFinalize: 360})
 				flight := runOf(t, got, "darn-flight")
@@ -625,12 +626,12 @@ func TestComputeTiming(t *testing.T) {
 				}
 				wantPhases(t, flight, map[string]int64{PhaseWrite: 600, PhaseReview: int64(snapshotAt.Sub(secondsAfter(at(199), 600)) / time.Second)})
 
-				darnMedians, loomMedians := got.Phases[shedrun.RecipeDarn], got.Phases[shedrun.RecipeLoom]
+				darnMedians, loomMedians := got.Phases[shedrun.RecipeDarn], got.Phases[shedrun.RecipeTapestry]
 				if median := darnMedians[PhasePublishFinalize]; median == nil || median.Runs != 1 || median.Seconds == nil || *median.Seconds != 360 {
 					t.Errorf("darn publish-finalize median = %+v; want the landed darn run's 360 alone", median)
 				}
 				if median := loomMedians[PhasePublishFinalize]; median == nil || median.Runs != 1 || median.Seconds == nil || *median.Seconds != 900 {
-					t.Errorf("loom publish-finalize median = %+v; want the loom run's 900 alone", median)
+					t.Errorf("loom publish-finalize median = %+v; want the tapestry run's 900 alone", median)
 				}
 				darnKeys := slices.Sorted(maps.Keys(darnMedians))
 				wantKeys := []string{PhaseLand, PhaseMerge, PhaseOther, PhasePaused, PhasePublishFinalize, PhaseReview, PhaseSetup, PhaseWrite}
@@ -711,7 +712,7 @@ func TestComputeTiming(t *testing.T) {
 				landedRun(w, "early", "t1", 3, seedStartedAt(run), []shedengine.HistoryEntry{entryAt(loomshed.NameFinalize, secondsAfter(run, 600))})
 			},
 			check: func(t *testing.T, got TimingReport) {
-				if len(got.Runs) != 0 || len(got.Buckets) != 0 || got.Phases[shedrun.RecipeLoom][PhasePublishFinalize].Seconds != nil {
+				if len(got.Runs) != 0 || len(got.Buckets) != 0 || got.Phases[shedrun.RecipeTapestry][PhasePublishFinalize].Seconds != nil {
 					t.Errorf("report = %+v; want no run, no bucket and nil medians", got)
 				}
 			},
@@ -732,7 +733,7 @@ func TestComputeTiming(t *testing.T) {
 		{
 			name: "a partial run enters neither the run table nor any bucket",
 			setup: func(w *world) {
-				w.tag("partial", "t1", at(14), seedText("loom"), statusText(w.t, loomshed.NamePlanWrite))
+				w.tag("partial", "t1", at(14), seedText("tapestry"), statusText(w.t, loomshed.NamePlanWrite))
 			},
 			check: func(t *testing.T, got TimingReport) {
 				if len(got.Runs) != 0 {
@@ -752,11 +753,11 @@ func TestComputeTiming(t *testing.T) {
 				landedRun(w, "long", "t2", 14, seedStartedAt(at(11)), []shedengine.HistoryEntry{entryAt(loomshed.NameFinalize, secondsAfter(at(11), 301))})
 			},
 			check: func(t *testing.T, got TimingReport) {
-				median := got.Phases[shedrun.RecipeLoom][PhasePublishFinalize]
+				median := got.Phases[shedrun.RecipeTapestry][PhasePublishFinalize]
 				if median.Runs != 2 || median.Seconds == nil || *median.Seconds != 300 {
 					t.Errorf("publish-finalize median = %+v; want 300 over two runs", median)
 				}
-				if land := got.Phases[shedrun.RecipeLoom][PhaseLand]; land.Seconds != nil || land.Runs != 0 {
+				if land := got.Phases[shedrun.RecipeTapestry][PhaseLand]; land.Seconds != nil || land.Runs != 0 {
 					t.Errorf("land median = %+v; want nil over no run", land)
 				}
 			},
@@ -783,10 +784,10 @@ func TestComputeTiming(t *testing.T) {
 					t.Errorf("run = %s %s ending %v; want in-flight under its branch name and ending at the snapshot", flight.State, flight.Tag, flight.End)
 				}
 				wantPhases(t, flight, map[string]int64{PhaseSetup: 600, PhaseDiscussion: 1200, PhasePlan: 1800})
-				if median := got.Phases[shedrun.RecipeLoom][PhasePublishFinalize]; median.Runs != 1 || *median.Seconds != 300 {
+				if median := got.Phases[shedrun.RecipeTapestry][PhasePublishFinalize]; median.Runs != 1 || *median.Seconds != 300 {
 					t.Errorf("publish-finalize median = %+v; want the landed run's 300 alone", median)
 				}
-				if median := got.Phases[shedrun.RecipeLoom][PhasePlan]; median.Runs != 0 || median.Seconds != nil {
+				if median := got.Phases[shedrun.RecipeTapestry][PhasePlan]; median.Runs != 0 || median.Seconds != nil {
 					t.Errorf("plan median = %+v; want none, since a run in flight enters no median", median)
 				}
 				if bucket := bucketOf(t, got, "2026-01-13"); bucket.Runs != 1 || bucket.Phases[PhasePlan] != 1800 {
@@ -867,7 +868,7 @@ func TestComputeTiming(t *testing.T) {
 			name: "a live slug reused after a tag reads only the batten snapshots after that tag",
 			live: []string{"reuse"},
 			setup: func(w *world) {
-				landedRun(w, "reuse", "t1", 150, seedText("loom"),
+				landedRun(w, "reuse", "t1", 150, seedText("tapestry"),
 					[]shedengine.HistoryEntry{entryAt(loomshed.NameFinalize, at(149))},
 					battenRecordOf(entryAt(battenrecipe.NameWorktreeCreate, at(148))))
 				// Teardown removes the earlier run's batten record, so the next one is a fresh seed.
@@ -881,7 +882,7 @@ func TestComputeTiming(t *testing.T) {
 					CurrentProducer: loomshed.NameDiscussionWrite,
 					History:         []shedengine.HistoryEntry{entryAt(loomshed.NamePreflight, secondsAfter(at(198), 600))},
 				}
-				w.pairBranch("reuse", "pf1", at(199), seedText("loom"), statusJSON(w.t, status), nil)
+				w.pairBranch("reuse", "pf1", at(199), seedText("tapestry"), statusJSON(w.t, status), nil)
 			},
 			check: func(t *testing.T, got TimingReport) {
 				var flight TimingRun
@@ -909,7 +910,7 @@ func TestComputeTiming(t *testing.T) {
 					entryAt(loomshed.NamePlanWrite, secondsAfter(run, 1200)),
 					entryAt(loomshed.NameFinalize, secondsAfter(run, 2400)),
 				}
-				landedRunWith(w, "overlap", "t1", 3, seedText("loom"), loom, parentRoundTimed(1, secondsAfter(run, 300), secondsAfter(run, 900), time.Time{}), batten)
+				landedRunWith(w, "overlap", "t1", 3, seedText("tapestry"), loom, parentRoundTimed(1, secondsAfter(run, 300), secondsAfter(run, 900), time.Time{}), batten)
 			},
 			check: func(t *testing.T, got TimingReport) {
 				got1 := runOf(t, got, "overlap")
@@ -940,7 +941,7 @@ func TestComputeTiming(t *testing.T) {
 					entryAt(loomshed.NameFinalize, secondsAfter(start, 8300)),
 				}
 				round := parentRoundTimed(1, secondsAfter(start, 7000), secondsAfter(start, 7500), time.Time{})
-				landedRunWith(w, "paused", "t1", 30, seedText("loom"), loom, round, batten)
+				landedRunWith(w, "paused", "t1", 30, seedText("tapestry"), loom, round, batten)
 			},
 			check: func(t *testing.T, got TimingReport) {
 				got1 := runOf(t, got, "paused")
@@ -962,7 +963,7 @@ func TestComputeTiming(t *testing.T) {
 				if second.Phases[PhasePaused] != 3660 || second.ActiveSeconds != 1000 {
 					t.Errorf("bucket 2026-01-06 = %+v; want paused 3660 and active 1000", second)
 				}
-				if median := got.Phases[shedrun.RecipeLoom][PhasePaused]; median.Runs != 1 || median.Seconds == nil || *median.Seconds != 6000 {
+				if median := got.Phases[shedrun.RecipeTapestry][PhasePaused]; median.Runs != 1 || median.Seconds == nil || *median.Seconds != 6000 {
 					t.Errorf("paused median = %+v; want 6000 over one run", median)
 				}
 				if len(got.Findings) != 0 {
@@ -1015,7 +1016,7 @@ func TestComputeTiming(t *testing.T) {
 					changeAt("child failed → running", secondsAfter(run, 800)),
 					entryAt(battenrecipe.NameLand, secondsAfter(run, 900)),
 				)
-				landedRun(w, "kinds", "t1", 3, seedText("loom"), []shedengine.HistoryEntry{entryAt(loomshed.NameFinalize, secondsAfter(run, 850))}, batten)
+				landedRun(w, "kinds", "t1", 3, seedText("tapestry"), []shedengine.HistoryEntry{entryAt(loomshed.NameFinalize, secondsAfter(run, 850))}, batten)
 			},
 			check: func(t *testing.T, got TimingReport) {
 				wantWaits(t, runOf(t, got, "kinds"), map[string]int64{WaitPRGate: 100, WaitEscalation: 100, WaitHalt: 200})
@@ -1043,7 +1044,7 @@ func TestComputeTiming(t *testing.T) {
 					entryAt(battenrecipe.NameLand, secondsAfter(run, 500)),
 					entryAt(battenrecipe.NameWorktreeTeardown, secondsAfter(run, 600)),
 				)
-				landedRun(w, "rowhalts", "t1", 3, seedText("loom"), []shedengine.HistoryEntry{entryAt(loomshed.NameFinalize, secondsAfter(run, 50))}, batten)
+				landedRun(w, "rowhalts", "t1", 3, seedText("tapestry"), []shedengine.HistoryEntry{entryAt(loomshed.NameFinalize, secondsAfter(run, 50))}, batten)
 			},
 			check: func(t *testing.T, got TimingReport) {
 				got1 := runOf(t, got, "rowhalts")
@@ -1065,7 +1066,7 @@ func TestComputeTiming(t *testing.T) {
 					changeAt("child blocked → running", secondsAfter(run, 300)),
 					entryAt(battenrecipe.NameLand, secondsAfter(run, 400)),
 				)
-				landedRun(w, "sleepy", "t1", 3, seedText("loom"), []shedengine.HistoryEntry{entryAt(loomshed.NameFinalize, secondsAfter(run, 350))}, batten)
+				landedRun(w, "sleepy", "t1", 3, seedText("tapestry"), []shedengine.HistoryEntry{entryAt(loomshed.NameFinalize, secondsAfter(run, 350))}, batten)
 			},
 			check: func(t *testing.T, got TimingReport) {
 				got1 := runOf(t, got, "sleepy")
@@ -1086,7 +1087,7 @@ func TestComputeTiming(t *testing.T) {
 					parentRoundTimed(1, secondsAfter(run, 100), time.Time{}, time.Time{}),
 					parentRoundTimed(2, time.Time{}, time.Time{}, time.Time{}),
 				)
-				landedRunWith(w, "openround", "t1", 3, seedText("loom"), []shedengine.HistoryEntry{entryAt(loomshed.NameFinalize, secondsAfter(run, 500))}, extra, batten)
+				landedRunWith(w, "openround", "t1", 3, seedText("tapestry"), []shedengine.HistoryEntry{entryAt(loomshed.NameFinalize, secondsAfter(run, 500))}, extra, batten)
 			},
 			check: func(t *testing.T, got TimingReport) {
 				got1 := runOf(t, got, "openround")
@@ -1128,7 +1129,7 @@ func TestComputeTiming(t *testing.T) {
 					entryAt(battenrecipe.NameWorktreeCreate, run),
 					entryAt(battenrecipe.NameLand, secondsAfter(run, 1000)),
 				)
-				landedRunWith(w, "early", "t1", 3, seedText("loom"), []shedengine.HistoryEntry{entryAt(loomshed.NameFinalize, secondsAfter(run, 900))},
+				landedRunWith(w, "early", "t1", 3, seedText("tapestry"), []shedengine.HistoryEntry{entryAt(loomshed.NameFinalize, secondsAfter(run, 900))},
 					arbiterSpawnedFiles(w.t, "early", 1, at(0)), batten)
 			},
 			check: func(t *testing.T, got TimingReport) {
@@ -1150,7 +1151,7 @@ func TestComputeTiming(t *testing.T) {
 					arbiterSpawnedFiles(w.t, "late", 1, secondsAfter(run, 1000)),
 					arbiterSpawnedFiles(w.t, "late", 2, secondsAfter(run, 5000)),
 				)
-				landedRunWith(w, "late", "t1", 3, seedText("loom"), []shedengine.HistoryEntry{entryAt(loomshed.NameFinalize, secondsAfter(run, 900))}, extra, batten)
+				landedRunWith(w, "late", "t1", 3, seedText("tapestry"), []shedengine.HistoryEntry{entryAt(loomshed.NameFinalize, secondsAfter(run, 900))}, extra, batten)
 			},
 			check: func(t *testing.T, got TimingReport) {
 				wantFigure(t, "arbiter", runOf(t, got, "late").Attempts.Arbiter, 2, -1)
@@ -1176,7 +1177,7 @@ func TestComputeTiming(t *testing.T) {
 					alignmentSpawnedFiles(w.t, "aligned", "parent-review", 1, secondsAfter(run, 120), ""),
 					parentRoundTimed(1, secondsAfter(run, 150), secondsAfter(run, 300), secondsAfter(run, 160)),
 				)
-				landedRunWith(w, "aligned", "t1", 3, seedText("loom"), loom, extra, batten)
+				landedRunWith(w, "aligned", "t1", 3, seedText("tapestry"), loom, extra, batten)
 			},
 			check: func(t *testing.T, got TimingReport) {
 				got1 := runOf(t, got, "aligned")
@@ -1197,7 +1198,7 @@ func TestComputeTiming(t *testing.T) {
 					changeAt("child running → blocked at "+loomshed.NamePlanWrite, at(23)),
 					entryAt(battenrecipe.NameLand, at(26)),
 				)
-				landedRunWith(w, "midnightwait", "t1", 30, seedText("loom"),
+				landedRunWith(w, "midnightwait", "t1", 30, seedText("tapestry"),
 					[]shedengine.HistoryEntry{entryAt(loomshed.NameFinalize, secondsAfter(at(25), 1800))},
 					arbiterSpawnedFiles(w.t, "midnightwait", 1, secondsAfter(at(23), 1800)), batten)
 			},
@@ -1258,15 +1259,15 @@ func TestComputeTiming(t *testing.T) {
 					gotoAt(retiredPublishRow, secondsAfter(run, 4100), "orch"),
 					stuckAt(retiredPRReworkRow, secondsAfter(run, 4990)),
 					gotoAt(retiredPRReworkRow, secondsAfter(run, 5100), "orch"),
-					stuckAt(loomshed.NameLoomPreflight, secondsAfter(run, 5990)),
-					gotoAt(loomshed.NameLoomPreflight, secondsAfter(run, 6100), shedengine.CallerShed),
+					stuckAt(loomshed.NameTapestryPreflight, secondsAfter(run, 5990)),
+					gotoAt(loomshed.NameTapestryPreflight, secondsAfter(run, 6100), shedengine.CallerShed),
 					stuckAt(loomshed.NameDiscussionWrite, secondsAfter(run, 6990)),
 					entryAt(loomshed.NameDiscussionWrite, secondsAfter(run, 7100)),
 					stuckAt(loomshed.NameDescribe, secondsAfter(run, 7990)),
 					entryAt(loomshed.NameDescribe, secondsAfter(run, 8100)),
 					entryAt(loomshed.NameFinalize, secondsAfter(run, 8500)),
 				}
-				halted := []string{loomshed.NamePlanWrite, loomshed.NameWebster, loomshed.NameParentAlign, retiredPublishRow, retiredPRReworkRow, loomshed.NameLoomPreflight, loomshed.NameDiscussionWrite, loomshed.NameDescribe}
+				halted := []string{loomshed.NamePlanWrite, loomshed.NameWebster, loomshed.NameParentAlign, retiredPublishRow, retiredPRReworkRow, loomshed.NameTapestryPreflight, loomshed.NameDiscussionWrite, loomshed.NameDescribe}
 				batten := []shedengine.HistoryEntry{entryAt(battenrecipe.NameWorktreeCreate, run)}
 				extra := arbiterAttemptFiles(w.t, "settlers", 1, loomengine.ArbiterAttempt{
 					StopKey:   shedrun.StopKey{CurrentProducer: loomshed.NameParentAlign, State: "blocked"},
@@ -1327,7 +1328,7 @@ func TestComputeTiming(t *testing.T) {
 		{
 			name: "a record that settles nothing by itself leaves the stop to the entry that moved it on, here a goto by operator",
 			setup: func(w *world) {
-				producers := []string{loomshed.NamePlanWrite, loomshed.NameWebster, loomshed.NameDescribe, retiredPRReworkRow, loomshed.NameLoomPreflight, loomshed.NameDiscussionWrite}
+				producers := []string{loomshed.NamePlanWrite, loomshed.NameWebster, loomshed.NameDescribe, retiredPRReworkRow, loomshed.NameTapestryPreflight, loomshed.NameDiscussionWrite}
 				records := []shedrun.SettleRecord{
 					settleRecord(producers[0], 2, "blocked", shedrun.SettlerGoRule, shedrun.SettleBusyExit),
 					settleRecord(producers[1], 4, "blocked", shedrun.SettlerGoRule, shedrun.SettleRunningExit),
@@ -1459,7 +1460,7 @@ func TestComputeTiming(t *testing.T) {
 					changeAt("child running → blocked at "+loomshed.NamePlanWrite, secondsAfter(run, 150)),
 					entryAt(battenrecipe.NameLand, secondsAfter(run, 400)),
 				), settleRecord(battenrecipe.NameLand, 9, "blocked", shedrun.SettlerGoRule, shedrun.SettleRestep))
-				landedRunWith(w, "unmatched", "t1", 3, seedText("loom"), []shedengine.HistoryEntry{
+				landedRunWith(w, "unmatched", "t1", 3, seedText("tapestry"), []shedengine.HistoryEntry{
 					entryAt(loomshed.NamePreflight, secondsAfter(run, 100)),
 					entryAt(loomshed.NameFinalize, secondsAfter(run, 200)),
 				}, files)
@@ -1584,8 +1585,8 @@ func TestRenderTimingMarkdown(t *testing.T) {
 			{Slug: "long", State: RunStateInFlight, Start: at(2), SpanSeconds: 183600, Phases: map[string]*int64{}},
 		},
 		Phases: map[string]map[string]*PhaseMedian{
-			shedrun.RecipeLoom: {PhaseSetup: {Seconds: seconds(45), Runs: 1}, PhaseLand: {Runs: 0}},
-			shedrun.RecipeDarn: {PhaseWrite: {Seconds: seconds(300), Runs: 1}},
+			shedrun.RecipeTapestry: {PhaseSetup: {Seconds: seconds(45), Runs: 1}, PhaseLand: {Runs: 0}},
+			shedrun.RecipeDarn:     {PhaseWrite: {Seconds: seconds(300), Runs: 1}},
 		},
 		Buckets:   []TimingBucket{{Label: "2026-01-05", Runs: 2, SleepSeconds: 90, Settlers: map[string]map[string]int{StopKindStop: {"orch": 2, SettledByShed: 1}}}},
 		SleepNote: "from the test",
@@ -1624,7 +1625,7 @@ func TestRenderTimingMarkdown(t *testing.T) {
 		}
 	}
 	medians := markdownSection(t, got, HeadingTimingPhases)
-	for _, row := range []string{"| loom | setup | 45s | 1 |\n", "| loom | land | no data | 0 |\n", "| darn | write | 5m00s | 1 |\n"} {
+	for _, row := range []string{"| tapestry | setup | 45s | 1 |\n", "| tapestry | land | no data | 0 |\n", "| darn | write | 5m00s | 1 |\n"} {
 		if !strings.Contains(medians, row) {
 			t.Errorf("phase medians = %q; want the row %q", medians, row)
 		}

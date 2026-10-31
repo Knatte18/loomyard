@@ -64,7 +64,7 @@ func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
 	shed1.Producers[0].Producer = fakeAlwaysDoneProducer{}
-	// Loom-Preflight loads batcher.yaml too, so it is substituted to let the malformed config reach Webster.
+	// Tapestry-Preflight loads batcher.yaml too, so it is substituted to let the malformed config reach Webster.
 	shed1.Producers[1].Producer = fakeAlwaysDoneProducer{}
 	result1, err := shed1.Run(context.Background())
 	if err != nil {
@@ -118,7 +118,7 @@ func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 // After resetCurrentProducer(..., loomshed.NamePreflight, false), the second run re-calls row 1, Shed
 // advances to row 2, and row 2 finds a history carrying the first run's later producers -- exactly
 // the half-finished shape the fresh-start rule rejects -- so the second run blocks at
-// Loom-Preflight instead. This test's own point is the re-call count, not the terminal state.
+// Tapestry-Preflight instead. This test's own point is the re-call count, not the terminal state.
 //
 // It holds one counting := &countingProducer{} across both builds and asserts counting.calls == 2
 // at the end: substituting a fresh &countingProducer{} at the second site would leave the count at
@@ -280,7 +280,7 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
 	shed.Producers[0].Producer = fakeAlwaysDoneProducer{}
-	// Loom-Preflight loads batcher.yaml too, so it is substituted to let the malformed config reach Webster.
+	// Tapestry-Preflight loads batcher.yaml too, so it is substituted to let the malformed config reach Webster.
 	shed.Producers[1].Producer = fakeAlwaysDoneProducer{}
 	result, err := shed.Run(context.Background())
 	if err != nil {

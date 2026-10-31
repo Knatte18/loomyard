@@ -94,13 +94,13 @@ func TestRunStartTime(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(seed), 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
 	}
-	if err := os.WriteFile(seed, []byte(`{"recipe":"loom","driver":"go"}`), 0o644); err != nil {
+	if err := os.WriteFile(seed, []byte(`{"recipe":"tapestry","driver":"go"}`), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 	if _, ok := runStartTime(location); ok {
 		t.Error("runStartTime() with a seed without the stamp = ok, want none")
 	}
-	if err := os.WriteFile(seed, []byte(`{"recipe":"loom","driver":"go","started_at":"not a time"}`), 0o644); err != nil {
+	if err := os.WriteFile(seed, []byte(`{"recipe":"tapestry","driver":"go","started_at":"not a time"}`), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 	if _, ok := runStartTime(location); ok {
@@ -111,7 +111,7 @@ func TestRunStartTime(t *testing.T) {
 		t.Fatalf("Remove: %v", err)
 	}
 	want := time.Date(2026, 9, 1, 8, 30, 0, 0, time.UTC)
-	stamped := shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo, StartedAt: want.Format(time.RFC3339)}
+	stamped := shedrun.Seed{Recipe: shedrun.RecipeTapestry, Driver: shedrun.DriverGo, StartedAt: want.Format(time.RFC3339)}
 	if err := shedrun.WriteSeed(location, shedrun.SelfRunID, stamped); err != nil {
 		t.Fatalf("WriteSeed: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestRunStartTime(t *testing.T) {
 
 	// A seed written without a stamp is dated by WriteSeed.
 	unstamped := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
-	if err := shedrun.WriteSeed(unstamped, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo}); err != nil {
+	if err := shedrun.WriteSeed(unstamped, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeTapestry, Driver: shedrun.DriverGo}); err != nil {
 		t.Fatalf("WriteSeed unstamped: %v", err)
 	}
 	if got, ok := runStartTime(unstamped); !ok || got.IsZero() {

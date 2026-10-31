@@ -15,7 +15,7 @@
 // repository -- a bare "lym shed" listing is shedcli's own equivalent guard, not this module's.
 //
 // arm's --parent disposition differs by entry point, and that difference is real rather than an
-// oversight: "lym shed step --recipe loom" registers no --parent flag of its own, so c.parentFlag
+// oversight: "lym shed step --recipe tapestry" registers no --parent flag of its own, so c.parentFlag
 // is the empty string there -- exactly the value "lym loom step" passes when the operator omits
 // the flag, so the two paths agree and the provenance record is simply never written from the
 // shed path.
@@ -112,7 +112,7 @@ func (c *loomCLI) resolveRunID(location *lymcwd.Location, verb string, args []st
 	// A driverless seed gives status, pause and goto nothing to act on, and the bootstrap's seed-agreement check reads and writes only the self seed, so only run and step on self name that route.
 	remedy := `run "lym loom start" first to bootstrap this task`
 	if (verb == "run" || verb == "step") && runID == shedrun.SelfRunID {
-		remedy = `run "lym loom start" first to bootstrap this task, or seed it without a driver with "lym shed seed self --recipe loom --driver go --param parent=<parent-branch>" (<parent-branch> is the pair's recorded parent branch) and then run "lym loom step"`
+		remedy = `run "lym loom start" first to bootstrap this task, or seed it without a driver with "lym shed seed self --recipe tapestry --driver go --param parent=<parent-branch>" (<parent-branch> is the pair's recorded parent branch) and then run "lym loom step"`
 	}
 	// Rendered through shedrun.MissingSeedMessage, the shared renderer batch 1 card 3 declares, so
 	// this refusal words identically to battencli's own.
@@ -120,7 +120,7 @@ func (c *loomCLI) resolveRunID(location *lymcwd.Location, verb string, args []st
 	return shedverbs.KindlessRefusal{Err: errors.New(shedrun.MissingSeedMessage("loom", runID, existing, remedy))}
 }
 
-// resolveRecipe records on c the recipe the addressed run's seed names, shedrun.RecipeLoom when the run has no seed yet.
+// resolveRecipe records on c the recipe the addressed run's seed names, shedrun.RecipeTapestry when the run has no seed yet.
 // It runs once, right after resolveRunID, so every verb, the lightweight ones included, reads the same recipe.
 // Only the seed's recipe is read here; the driver choice stays with the verb that selects the driving surface.
 func (c *loomCLI) resolveRecipe(location *lymcwd.Location) error {
@@ -194,7 +194,7 @@ func (c *loomCLI) armAt(location *lymcwd.Location, verb string, args []string) (
 			return shedverbs.Spec{}, err
 		}
 	} else if c.recipe != shedrun.RecipePawl {
-		if err := c.renameRetiredRows(loomrecipe.LoomRetiredRows()); err != nil {
+		if err := c.renameRetiredRows(loomrecipe.TapestryRetiredRows()); err != nil {
 			return shedverbs.Spec{}, err
 		}
 	}
@@ -306,7 +306,7 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 			RefuseMessage: "loom: no status file at " + c.shedPaths.StatusPath + "; run \"lym loom start\" first to bootstrap this task",
 		},
 		PauseAbsentMessage: "loom: no status file at " + c.shedPaths.StatusPath + "; there is nothing running to pause -- run \"lym loom start\" first to bootstrap this task",
-		// The landing halts and the decision halt go to the orch on loom and darn runs alike, so both tell the one predicate.
+		// The landing halts and the decision halt go to the orch on tapestry and darn runs alike, so both tell the one predicate.
 		HandBack: arbiterstop.HandsBack,
 		Hooks: shedverbs.Hooks{
 			PreRun:             c.loomPreRun,
@@ -344,8 +344,8 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 		spec.Hooks.ConsumeAttempt = c.loomConsumeAttempt
 		spec.GotoGuard = c.settledGuard()
 	}
-	if c.recipe == shedrun.RecipeLoom || c.recipe == shedrun.RecipeDarn {
-		// A fixer escalate halt goes to the arbiter first on loom and darn runs, so a driver's build re-launch leaves it alone.
+	if c.recipe == shedrun.RecipeTapestry || c.recipe == shedrun.RecipeDarn {
+		// A fixer escalate halt goes to the arbiter first on tapestry and darn runs, so a driver's build re-launch leaves it alone.
 		spec.RestepHold = landingshed.EscalateHalt
 	}
 	spec.Routing = c.routing
@@ -573,13 +573,13 @@ func (c *loomCLI) pauseAfterCommand(currentProducer string) string {
 	return command
 }
 
-// loomBarePause implements the BarePause hook for loom's spec: a flagless pause no longer stops a loom run, so it refuses naming both ways forward.
+// loomBarePause implements the BarePause hook for loom's spec: a flagless pause no longer stops a tapestry run, so it refuses naming both ways forward.
 func (c *loomCLI) loomBarePause(st shedengine.Status) error {
 	slug := "<slug>"
 	if c.location != nil {
 		slug = c.location.WorktreeName
 	}
-	return errors.New("loom: a bare pause no longer stops a loom run; way forward: run \"lym tender pause " + slug + "\" to stop its agents now, or \"" + c.pauseAfterCommand(st.CurrentProducer) + "\" to halt it at its next producer boundary")
+	return errors.New("loom: a bare pause no longer stops a run; way forward: run \"lym tender pause " + slug + "\" to stop its agents now, or \"" + c.pauseAfterCommand(st.CurrentProducer) + "\" to halt it at its next producer boundary")
 }
 
 // loomStatusExtras implements the StatusExtras hook for loom's spec: loom's own three status keys

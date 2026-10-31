@@ -32,10 +32,10 @@ func TestSeedRunStart(t *testing.T) {
 		wantWarning bool
 		wantErr     bool
 	}{
-		{"ParseableStamp", `{"recipe":"loom","driver":"go","started_at":"2026-10-01T08:00:00Z"}`, true, time.Date(2026, 10, 1, 8, 0, 0, 0, time.UTC), false, false},
+		{"ParseableStamp", `{"recipe":"tapestry","driver":"go","started_at":"2026-10-01T08:00:00Z"}`, true, time.Date(2026, 10, 1, 8, 0, 0, 0, time.UTC), false, false},
 		{"NoSeedFile", "", false, time.Time{}, true, false},
-		{"NoStartedAtKey", `{"recipe":"loom","driver":"go"}`, true, time.Time{}, true, false},
-		{"UnparseableStamp", `{"recipe":"loom","driver":"go","started_at":"yesterday"}`, true, time.Time{}, true, false},
+		{"NoStartedAtKey", `{"recipe":"tapestry","driver":"go"}`, true, time.Time{}, true, false},
+		{"UnparseableStamp", `{"recipe":"tapestry","driver":"go","started_at":"yesterday"}`, true, time.Time{}, true, false},
 		{"UndecodableSeed", `{not json`, true, time.Time{}, false, true},
 	}
 	for _, tt := range tests {

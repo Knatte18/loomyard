@@ -27,7 +27,7 @@ exactly how an earlier reproduction attempt lost the finding.
 3. Before launching, prove that the child worktree's absolute path is untrusted:
    `jq --arg p "<abs worktree path>" '.projects | has($p)' ~/.claude.json` must print `false`.
    If it prints `true`, pick a new timestamp — the run would pass silently and prove nothing.
-4. In that worktree, run `lym shed seed self --recipe loom --driver llm --param parent=<recorded parent branch>`,
+4. In that worktree, run `lym shed seed self --recipe tapestry --driver llm --param parent=<recorded parent branch>`,
    then `lym loom start`.
    `lym loom start` reads and writes only the `self` run (`shedrun.SelfRunID`, via
    `seedAndCommitBootstrap` and `resolveRunID`).

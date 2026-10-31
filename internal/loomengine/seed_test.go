@@ -57,13 +57,13 @@ func coherentFreshProduct() Status {
 	}
 }
 
-// TestCheckSeed drives CheckSeed over each seed a run can be started from, against loom's own row ("Loom-Preflight", tolerating the generic "Preflight" row before it) unless a row names another producer.
+// TestCheckSeed drives CheckSeed over each seed a run can be started from, against loom's own row ("Tapestry-Preflight", tolerating the generic "Preflight" row before it) unless a row names another producer.
 // A coherent seed reports OK; each incoherent one reports the failure that names its defect:
 // a missing file, a file that does not decode (malformed JSON), a product that does not decode as loom's status shape, an out-of-vocabulary history outcome (the file a broken adapter leaves behind, since Shed records an outcome verbatim) whose failure ends in the seed-a-new-run way forward, and a told producer name that is genuinely told rather than assumed.
 // The deep-lock-parent row is the MkdirAll guard's regression: only the lock parent is missing, and that guard stops a worktree with no ephemeral tree from escalating the verdict to an infra error.
 func TestCheckSeed(t *testing.T) {
 	t.Parallel()
-	loomRowTolerated := []string{"Preflight", "Loom-Preflight"}
+	loomRowTolerated := []string{"Preflight", "Tapestry-Preflight"}
 	tests := []struct {
 		name string
 		// setup writes the status file under dir and returns the status and lock paths.
@@ -99,7 +99,7 @@ func TestCheckSeed(t *testing.T) {
 			setup: func(t *testing.T, dir string) (string, string) {
 				statusPath := filepath.Join(dir, "status.json")
 				statusLockPath := filepath.Join(dir, "ephemeral", "status.json.lock")
-				shed := coherentFreshShed("Loom-Preflight", "Loom-Preflight")
+				shed := coherentFreshShed("Tapestry-Preflight", "Tapestry-Preflight")
 				shed.Product = []byte(`{"slug": 7}`)
 				if err := os.MkdirAll(filepath.Dir(statusLockPath), 0o755); err != nil {
 					t.Fatalf("create status lock parent dir: %v", err)
@@ -117,7 +117,7 @@ func TestCheckSeed(t *testing.T) {
 			setup: func(t *testing.T, dir string) (string, string) {
 				statusPath := filepath.Join(dir, "status.json")
 				statusLockPath := filepath.Join(dir, "ephemeral", "status.json.lock")
-				shed := coherentFreshShed("Loom-Preflight", "Preflight")
+				shed := coherentFreshShed("Tapestry-Preflight", "Preflight")
 				shed.History[0].Outcome = "weird"
 				writeSeed(t, statusPath, statusLockPath, shed, coherentFreshProduct())
 				return statusPath, statusLockPath
@@ -130,7 +130,7 @@ func TestCheckSeed(t *testing.T) {
 			setup: func(t *testing.T, dir string) (string, string) {
 				statusPath := filepath.Join(dir, "status.json")
 				statusLockPath := filepath.Join(dir, "ephemeral", "status.json.lock")
-				writeSeed(t, statusPath, statusLockPath, coherentFreshShed("Loom-Preflight", "Preflight"), coherentFreshProduct())
+				writeSeed(t, statusPath, statusLockPath, coherentFreshShed("Tapestry-Preflight", "Preflight"), coherentFreshProduct())
 				return statusPath, statusLockPath
 			},
 			wantOK: true,
@@ -141,7 +141,7 @@ func TestCheckSeed(t *testing.T) {
 				statusPath := filepath.Join(dir, "status.json")
 				// The status file itself is written to an already-existing directory -- only the lock
 				// parent is missing, since that is what the guard exists to create.
-				shed := coherentFreshShed("Loom-Preflight", "Preflight")
+				shed := coherentFreshShed("Tapestry-Preflight", "Preflight")
 				raw, err := json.Marshal(coherentFreshProduct())
 				if err != nil {
 					t.Fatalf("marshal product: %v", err)
@@ -159,7 +159,7 @@ func TestCheckSeed(t *testing.T) {
 			setup: func(t *testing.T, dir string) (string, string) {
 				statusPath := filepath.Join(dir, "status.json")
 				statusLockPath := filepath.Join(dir, "ephemeral", "status.json.lock")
-				writeSeed(t, statusPath, statusLockPath, coherentFreshShed("Loom-Preflight", "Preflight"), coherentFreshProduct())
+				writeSeed(t, statusPath, statusLockPath, coherentFreshShed("Tapestry-Preflight", "Preflight"), coherentFreshProduct())
 				return statusPath, statusLockPath
 			},
 			producer:  "Some-Other-Producer",
@@ -174,7 +174,7 @@ func TestCheckSeed(t *testing.T) {
 			statusPath, statusLockPath := tt.setup(t, t.TempDir())
 			producer, tolerated := tt.producer, tt.tolerated
 			if producer == "" {
-				producer, tolerated = "Loom-Preflight", loomRowTolerated
+				producer, tolerated = "Tapestry-Preflight", loomRowTolerated
 			}
 
 			report, err := CheckSeed(statusPath, statusLockPath, producer, tolerated)

@@ -84,7 +84,7 @@ func TestSeedChild_RecipeFromTheBoardTypeAndDriverFromChildDriver(t *testing.T) 
 		wantRecipe   string
 	}{
 		{name: "TwoSourceSplit", typeAtWiring: "batten", typeAtCall: "batten", wantRecipe: "batten"},
-		{name: "BoardTypeCorrectedAfterWiringIsHonoured", typeAtWiring: "loom", typeAtCall: "batten", wantRecipe: "batten"},
+		{name: "BoardTypeCorrectedAfterWiringIsHonoured", typeAtWiring: "tapestry", typeAtCall: "batten", wantRecipe: "batten"},
 		{name: "EmptyBoardTypeDefaultsToLoom", typeAtWiring: "", typeAtCall: "", wantRecipe: defaultChildRecipe},
 	}
 	for _, tt := range tests {
@@ -171,7 +171,7 @@ func TestSeedChild_UnsupportedChildRecipeIsStuck(t *testing.T) {
 func TestSeedChild_DisagreeingChildSeedIsStuck(t *testing.T) {
 	scratchDir := t.TempDir()
 	writeErr := fmt.Errorf("%w: run \"self\" is already seeded with a different driver", ErrDisagreeingChildSeed)
-	calls, deps := newSeedChildDeps("loom", nil, "go", nil, writeErr, nil, nil)
+	calls, deps := newSeedChildDeps("tapestry", nil, "go", nil, writeErr, nil, nil)
 
 	producer := NewSeedChild("seedchild", "myslug", deps, scratchDir)
 	ptr := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
@@ -362,7 +362,7 @@ func TestSeedChild_RunSettings(t *testing.T) {
 		},
 		{
 			name:        "AbsentSettingsRemoveEveryLocalFile",
-			wantRecipe:  "loom",
+			wantRecipe:  "tapestry",
 			wantOutcome: shedengine.Done,
 			wantEvents:  []string{"remove", "driver", "seed"},
 			wantKeep:    []string{},
@@ -461,7 +461,7 @@ func TestSeedChild_RunSettings(t *testing.T) {
 		layer := map[string][]byte{"stale": []byte("stale: x\n")}
 		current := map[string]any{"loom": map[string]any{"a": 1}}
 		failRemoval := true
-		_, deps := newSeedChildDeps("loom", nil, "claude", nil, nil, nil, nil)
+		_, deps := newSeedChildDeps("tapestry", nil, "claude", nil, nil, nil, nil)
 		deps.ReadRunSettings = func(context.Context) (RunSettings, error) { return RunSettings{Settings: current}, nil }
 		deps.PrepareRunSettings = func(settings RunSettings) (map[string][]byte, error) {
 			documents := map[string][]byte{}

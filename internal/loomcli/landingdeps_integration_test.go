@@ -48,7 +48,7 @@ func TestLandingDeps_ConfigNoticeSeamsOverRealHub(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lymcwd.ResolveWorktree(task) error = %v; want nil", err)
 	}
-	deps := landingDeps(taskLocation, shedrun.RecipeLoom, websterengine.Geometry{}, "task", "main",
+	deps := landingDeps(taskLocation, shedrun.RecipeTapestry, websterengine.Geometry{}, "task", "main",
 		true, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(taskLocation), parentLockDeps(taskLocation, shedrun.SelfRunID, "", ""))
 
 	t.Run("ConfigChanges reports the per-worktree file and not the hub-wide one", func(t *testing.T) {
@@ -210,7 +210,7 @@ func TestLandingDeps_PullRequestModeReadsTheParent(t *testing.T) {
 		}
 	}
 	depsOf := func(location *lymcwd.Location) landingshed.Deps {
-		return landingDeps(location, shedrun.RecipeLoom, websterengine.Geometry{}, location.WorktreeName, "main",
+		return landingDeps(location, shedrun.RecipeTapestry, websterengine.Geometry{}, location.WorktreeName, "main",
 			true, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(location), parentLockDeps(location, shedrun.SelfRunID, "", ""))
 	}
 
@@ -269,7 +269,7 @@ func TestLandingDeps_TaskHasCommitsReadsTheTaskHeadAgainstTheParent(t *testing.T
 		t.Fatalf("lymcwd.ResolveWorktree(task) error = %v; want nil", err)
 	}
 	taskHasCommits := func(parentBranch string) (bool, error) {
-		deps := landingDeps(taskLocation, shedrun.RecipeLoom, websterengine.Geometry{}, "task", parentBranch,
+		deps := landingDeps(taskLocation, shedrun.RecipeTapestry, websterengine.Geometry{}, "task", parentBranch,
 			true, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(taskLocation), parentLockDeps(taskLocation, shedrun.SelfRunID, "", ""))
 		return deps.PullRequest.TaskHasCommits()
 	}

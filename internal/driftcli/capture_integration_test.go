@@ -141,7 +141,7 @@ func TestCapture_OutlivesCaller(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo}); err != nil {
+	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeTapestry, Driver: shedrun.DriverGo}); err != nil {
 		t.Fatal(err)
 	}
 	writeDrift("")

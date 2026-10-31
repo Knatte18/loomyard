@@ -117,7 +117,7 @@ func NewDiscussionGate(decisionRecordPath, supportLogPath, relevantPath, worktre
 	}
 }
 
-// ValidateLoomDiscussion is the loom run's discussion check: discussionparser.Validate's decision record and support log check, then discussionparser.CheckDecisionIDs' decision id and acceptance check, then the citation check, then discussionparser.CheckRelevant's relevant list check.
+// ValidateLoomDiscussion is the tapestry run's discussion check: discussionparser.Validate's decision record and support log check, then discussionparser.CheckDecisionIDs' decision id and acceptance check, then the citation check, then discussionparser.CheckRelevant's relevant list check.
 // The citation check tests the record's cited paths against the worktree at worktreeRoot and its cited symbols through index.
 // The later checks run even when Validate finds defects, so one re-prompt names every defect, and the findings come in that order.
 // A missing decision record adds no decision id or citation finding, and a missing relevant list adds no relevant finding.

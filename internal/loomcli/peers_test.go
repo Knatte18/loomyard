@@ -17,10 +17,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
-// loomRowNumber returns the 1-based position of row in the embedded loom recipe.
+// loomRowNumber returns the 1-based position of row in the embedded tapestry recipe.
 func loomRowNumber(t *testing.T, row string) int {
 	t.Helper()
-	rows, err := loomrecipe.RowNames(shedrun.RecipeLoom)
+	rows, err := loomrecipe.RowNames(shedrun.RecipeTapestry)
 	if err != nil {
 		t.Fatalf("loomrecipe.RowNames(loom) error = %v; want nil", err)
 	}
@@ -29,7 +29,7 @@ func loomRowNumber(t *testing.T, row string) int {
 			return i + 1
 		}
 	}
-	t.Fatalf("loom recipe has no row %q", row)
+	t.Fatalf("tapestry recipe has no row %q", row)
 	return 0
 }
 
@@ -54,7 +54,7 @@ func peersFakeTasks() []boardengine.Task {
 
 // peersFakeDeps is a peersDeps over peersFakeTasks whose caller, board and records the test sets.
 func peersFakeDeps(caller string) peersDeps {
-	loomRows, err := loomrecipe.RowNames(shedrun.RecipeLoom)
+	loomRows, err := loomrecipe.RowNames(shedrun.RecipeTapestry)
 	if err != nil {
 		panic(err)
 	}

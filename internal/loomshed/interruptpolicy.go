@@ -31,7 +31,7 @@ import "github.com/Knatte18/loomyard/internal/shedverbs"
 // supervisor skill's.
 var InterruptPolicies = map[string]string{
 	NamePreflight:         shedverbs.InterruptPolicyReinvoke,
-	NameLoomPreflight:     shedverbs.InterruptPolicyReinvoke,
+	NameTapestryPreflight: shedverbs.InterruptPolicyReinvoke,
 	NameDiscussionWrite:   shedverbs.InterruptPolicyReinvoke,
 	NameDiscussionBouncer: shedverbs.InterruptPolicyReinvoke,
 	NamePlanWrite:         shedverbs.InterruptPolicyReinvoke,

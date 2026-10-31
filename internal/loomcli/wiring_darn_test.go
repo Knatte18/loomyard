@@ -164,7 +164,7 @@ func TestWire_DarnRecipe(t *testing.T) {
 	t.Run("a loom seed leaves the darn seams nil", func(t *testing.T) {
 		t.Parallel()
 		loc := hubLocation(t, "pair", ".")
-		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeLoom}
+		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeTapestry}
 		if err := c.wire(loc, loc.AnchorPath()); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
 		}
@@ -186,7 +186,7 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if err := os.WriteFile(recordPath, []byte("{}"), 0o644); err != nil {
 			t.Fatalf("WriteFile(%q) = %v; want nil", recordPath, err)
 		}
-		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeLoom}
+		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeTapestry}
 		if err := c.wire(loc, loc.AnchorPath()); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
 		}
@@ -225,7 +225,7 @@ func TestWire_DarnRecipe(t *testing.T) {
 	})
 }
 
-// TestArmAt_RenamesRetiredDarnRows pins that arming any verb over a darn run carries a status file still naming the writer row's former name onto Darn-Write, and leaves a loom run's file alone.
+// TestArmAt_RenamesRetiredDarnRows pins that arming any verb over a darn run carries a status file still naming the writer row's former name onto Darn-Write, and leaves a tapestry run's file alone.
 // A live driver holding the run lock keeps the old name, and the verb still arms.
 func TestArmAt_RenamesRetiredDarnRows(t *testing.T) {
 	t.Parallel()
@@ -237,7 +237,7 @@ func TestArmAt_RenamesRetiredDarnRows(t *testing.T) {
 		want        string
 	}{
 		{name: "darn", recipe: shedrun.RecipeDarn, want: loomshed.NameDarnWrite},
-		{name: "loom", recipe: shedrun.RecipeLoom, want: "Darn"},
+		{name: "tapestry", recipe: shedrun.RecipeTapestry, want: "Darn"},
 		{name: "darn with a live driver", recipe: shedrun.RecipeDarn, holdRunLock: true, want: "Darn"},
 	}
 	for _, tt := range tests {
@@ -289,7 +289,8 @@ func TestRenameRetiredRows(t *testing.T) {
 		retired string
 		want    string
 	}{
-		{name: "a loom run parked on Merge-In", renames: loomrecipe.LoomRetiredRows(), retired: "Merge-In", want: loomshed.NameParentAlign},
+		{name: "a tapestry run parked on Merge-In", renames: loomrecipe.TapestryRetiredRows(), retired: "Merge-In", want: loomshed.NameParentAlign},
+		{name: "a tapestry run parked on Loom-Preflight", renames: loomrecipe.TapestryRetiredRows(), retired: "Loom-Preflight", want: loomshed.NameTapestryPreflight},
 		{name: "a darn run parked on Darn", renames: loomrecipe.DarnRetiredRows(), retired: "Darn", want: loomshed.NameDarnWrite},
 	}
 	for _, tt := range tests {
@@ -341,7 +342,7 @@ func TestRecipeRouting(t *testing.T) {
 		wantRow string
 		absent  string
 	}{
-		{shedrun.RecipeLoom, loomshed.NameParentAlign, loomshed.NameDarnWrite},
+		{shedrun.RecipeTapestry, loomshed.NameParentAlign, loomshed.NameDarnWrite},
 		{"", loomshed.NameParentAlign, loomshed.NameDarnWrite},
 		{shedrun.RecipeDarn, loomshed.NameDarnWrite, loomshed.NameParentAlign},
 		{shedrun.RecipePawl, "Beam-Describe", loomshed.NameDarnWrite},

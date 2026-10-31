@@ -181,7 +181,7 @@ func TestHealthCheck(t *testing.T) {
 
 // legacyTasksJSON and legacyNotesJSON are pre-upgrade store files: one task and one note, both with id 0.
 const (
-	legacyTasksJSON = `[{"id":0,"slug":"alpha","title":"Alpha","depends_on":[],"isolated":false,"deferred":false,"brief":"","body":"","type":"loom"}]`
+	legacyTasksJSON = `[{"id":0,"slug":"alpha","title":"Alpha","depends_on":[],"isolated":false,"deferred":false,"brief":"","body":"","type":"tapestry"}]`
 	legacyNotesJSON = `[{"id":0,"slug":"idea","title":"Idea","depends_on":[],"isolated":false,"deferred":false,"brief":"","body":""}]`
 )
 
@@ -245,8 +245,8 @@ func TestLegacyBoardReadsMigratedWithoutWriting(t *testing.T) {
 	for _, task := range tasks {
 		got[task.Slug] = task
 	}
-	if got["alpha"].Kind != boardengine.KindTask || got["alpha"].Recipe != "loom" {
-		t.Errorf("alpha: kind=%q recipe=%q; want task recipe loom", got["alpha"].Kind, got["alpha"].Recipe)
+	if got["alpha"].Kind != boardengine.KindTask || got["alpha"].Recipe != "tapestry" {
+		t.Errorf("alpha: kind=%q recipe=%q; want task recipe tapestry", got["alpha"].Kind, got["alpha"].Recipe)
 	}
 	if got["idea"].Kind != boardengine.KindNote {
 		t.Errorf("idea: kind=%q; want note", got["idea"].Kind)

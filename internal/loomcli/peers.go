@@ -50,7 +50,7 @@ type peerLine struct {
 	Slug   string `json:"slug"`
 	Title  string `json:"title"`
 	Status string `json:"status"`
-	// Row is the 1-based position of the status's producer in the loom recipe's rows, 0 when it names none.
+	// Row is the 1-based position of the status's producer in the tapestry recipe's rows, 0 when it names none.
 	Row          int      `json:"row"`
 	ParentBranch string   `json:"parent_branch"`
 	ChangedPaths []string `json:"changed_paths"`
@@ -73,7 +73,7 @@ type peersDeps struct {
 	parentCommits func() ([]string, error)
 	// readRecord returns one peer's record of the given kind, with false when the peer does not hold it.
 	readRecord func(slug, record string) (content string, found bool, err error)
-	// loomRows is the loom recipe's row names in file order.
+	// loomRows is the tapestry recipe's row names in file order.
 	loomRows []string
 }
 
@@ -85,7 +85,7 @@ func recipeRow(status *string, rows []string) int {
 		return 0
 	}
 	// A peer's status file is read unrenamed, so a peer parked on a retired row name is listed at its successor's position.
-	if successor, retired := loomrecipe.LoomRetiredRows()[producer]; retired {
+	if successor, retired := loomrecipe.TapestryRetiredRows()[producer]; retired {
 		producer = successor
 	} else if successor, retired := loomrecipe.DarnRetiredRows()[producer]; retired {
 		producer = successor
@@ -244,7 +244,7 @@ func recordExists(path string) (bool, error) {
 // hubPeersDeps fills peersDeps for the resolved location from the hub's board, its pairs' origin records, git history and run records.
 // The loom rows come from the recipe the running binary embeds; a parse failure there is a defect of the binary, so it panics.
 func hubPeersDeps(location *lymcwd.Location) peersDeps {
-	loomRows, err := loomrecipe.RowNames(shedrun.RecipeLoom)
+	loomRows, err := loomrecipe.RowNames(shedrun.RecipeTapestry)
 	if err != nil {
 		panic(err)
 	}
@@ -411,7 +411,7 @@ func (c *loomCLI) peersCmd() *cobra.Command {
 		Long: `peers lists every other run in flight in this hub: each board task holding
 a run status, whatever its state, except this worktree's own. Each peer line
 carries the slug, title, status, row (the 1-based position of its producer in
-the loom recipe, 0 when the recipe has no such row), parent branch, the paths
+the tapestry recipe, 0 when the recipe has no such row), parent branch, the paths
 the peer changed since it forked, whether it holds a decision record and a
 plan, and what could not be read. From a task worktree the output also gives
 own_row, this run's own position by the same rule, and lists the commits on

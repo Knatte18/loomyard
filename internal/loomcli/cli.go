@@ -119,7 +119,7 @@ type loomCLI struct {
 	// later card and batch 7's addressing surface can read it too.
 	runID string
 	// recipe is the name of the recipe the run's seed records, read once in armAt right after the run-id (resolveRecipe);
-	// shedrun.RecipeLoom when the run has no seed yet.
+	// shedrun.RecipeTapestry when the run has no seed yet.
 	// The routing, the shed builder, the wiring branch, the landing verify source and the reject rework row all read it.
 	recipe string
 	// caller is the caller label armAt classifies from the strand variable and specFor copies onto the Spec;
@@ -314,7 +314,7 @@ What run does not do is add the status strand or spawn a detached driver.
 
 run needs a seed and a status file, writes neither and commits nothing.
 The seed comes from "lym loom start", which seeds and spawns the LLM driver,
-or from "lym shed seed self --recipe loom --driver go --param
+or from "lym shed seed self --recipe tapestry --driver go --param
 parent=<parent-branch>", which writes a driverless seed; <parent-branch> is
 the pair's recorded parent branch, "parent_branch" in fabric's origin record.
 Only "lym loom start" or a first "lym loom step" writes the status file, so
@@ -336,7 +336,7 @@ status-seeding and commit block "lym loom start" runs, then drives exactly one
 producer through shedengine.Shed's own Step.
 
 Two routes write the seed: "lym loom start", which seeds and spawns the LLM
-driver, and "lym shed seed self --recipe loom --driver go --param
+driver, and "lym shed seed self --recipe tapestry --driver go --param
 parent=<parent-branch>", which writes a driverless seed; <parent-branch> is the
 pair's recorded parent branch, "parent_branch" in fabric's origin record. After
 a driverless seed the first driving call is "lym loom step", whose bootstrap
@@ -409,7 +409,7 @@ strand name, beside the condition it accompanies. The label is recorded in
 the paused run's pause_reason; shed is reserved for lym's own automatic steps
 and refused.
 
-A bare pause, with no flag, refuses for a loom run: it no longer stops
+A bare pause, with no flag, refuses for a run: it no longer stops
 anything. The refusal names the two ways forward: "lym tender pause <slug>"
 stops the run's agents now, and "--after <current_producer>" halts the run at
 its next producer boundary.
@@ -457,7 +457,7 @@ func Command() *cobra.Command {
 
 	parent := &cobra.Command{
 		Use:   "loom",
-		Short: "bootstrap and drive one loom task's phase machine for this worktree",
+		Short: "bootstrap and drive one task's phase machine for this worktree",
 		Long: `loom drives one task's phase machine over a per-worktree status.json, on
 the generic shed engine. The machine walks its producer rows: a two-row
 preflight, then Discussion, Plan and Webster, each followed by its own LLM

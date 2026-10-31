@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// TestRecipeOverride verifies the loom recipe and the empty recipe read loom.yaml's override and the darn recipe reads darn.yaml's, over files that set different values so a picker reading the wrong one fails.
+// TestRecipeOverride verifies the tapestry recipe and the empty recipe read loom.yaml's override and the darn recipe reads darn.yaml's, over files that set different values so a picker reading the wrong one fails.
 func TestRecipeOverride(t *testing.T) {
 	t.Parallel()
 	loomSpawns, darnSpawns := 4, 0
@@ -29,7 +29,7 @@ func TestRecipeOverride(t *testing.T) {
 		darnTreeScope string
 		wantErr       []string
 	}{
-		{name: "the loom recipe reads loom.yaml", recipe: shedrun.RecipeLoom, wantKind: "llm", wantSpawns: loomSpawns},
+		{name: "the tapestry recipe reads loom.yaml", recipe: shedrun.RecipeTapestry, wantKind: "llm", wantSpawns: loomSpawns},
 		{name: "the empty recipe reads loom.yaml", recipe: "", wantKind: "llm", wantSpawns: loomSpawns},
 		{name: "the darn recipe reads darn.yaml", recipe: shedrun.RecipeDarn, wantKind: "go", wantSpawns: darnSpawns},
 		{

@@ -29,7 +29,7 @@ type entry struct {
 	// but a recipe need not support every one of them.
 	Verbs []string
 	// BootstrapVerb answers "may a run seeded for this recipe be driven by an LLM": it is populated from the owning module's own exported constant (loomcli.BootstrapVerb, battencli.BootstrapVerb), never a literal, so this field cannot drift from the module that declares the fact.
-	// The "lym shed seed --driver llm" validator consults it by emptiness rather than by comparing the recipe name against the literal "loom".
+	// The "lym shed seed --driver llm" validator consults it by emptiness rather than by comparing the recipe name against a literal recipe name.
 	BootstrapVerb string
 	// RefuseSeedAt is the recipe's own answer to "may a seed for me be written in this worktree",
 	// consulted by "lym shed seed" after fabric's drivable-worktree check; nil means any drivable
@@ -47,7 +47,7 @@ type entry struct {
 // PreStep nil, emitting kind: "" -- a seventh value outside the six the Shed Verb-Set Invariant and
 // the driver stencil both pin closed -- and skipping that recipe's own PreRun pre-flight.
 var recipes = map[string]entry{
-	"loom": {
+	"tapestry": {
 		Arm:           loomcli.ArmAt,
 		Verbs:         []string{"run", "step", "status", "pause", "goto"},
 		BootstrapVerb: loomcli.BootstrapVerb,

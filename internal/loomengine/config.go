@@ -23,7 +23,7 @@
 // The retired discussion_producer and plan_producer keys are rewritten into these by MigrateConfig.
 // seed, discussion_judge, plan_judge, code_judge, discussion_seed, plan_seed and code_seed are role model-specs validated only when non-empty, an empty value meaning the fallback:
 // a per-segment judge takes judge, a per-segment seed takes seed, and seed takes that segment's resolved judge.
-// driver_kind is the driver a task's loom run is seeded with when nothing typed one, llm or go, an empty value reading as llm; tackler and arbiter are role model-specs validated only when non-empty, an empty value inheriting shed.yaml;
+// driver_kind is the driver a task's tapestry run is seeded with when nothing typed one, llm or go, an empty value reading as llm; tackler and arbiter are role model-specs validated only when non-empty, an empty value inheriting shed.yaml;
 // tackler_timeout_min, tackler_max_spawns, arbiter_timeout_min and arbiter_max_spawns are refused when negative, a zero timeout and a null spawn budget inheriting shed.yaml and a set zero spawn budget turning that role off.
 // friction and driver are the two role keys validated only when non-empty: a present-but-empty
 // value means, respectively, Tier 2 self-reporting is off or the engine default model runs the
@@ -423,7 +423,7 @@ type Config struct {
 	// It names the writer's lens fan, not the Plan-Review perch's PlanReviewerFan.
 	PlanLenses string `yaml:"plan_lenses"`
 
-	// The driver a task's loom run is seeded with when nothing typed one, and the tackler's and the arbiter's model-spec, timeout and spawn budget; each overrides shed.yaml's key.
+	// The driver a task's tapestry run is seeded with when nothing typed one, and the tackler's and the arbiter's model-spec, timeout and spawn budget; each overrides shed.yaml's key.
 	// An empty DriverKind, Tackler or Arbiter, a zero TacklerTimeoutMin or ArbiterTimeoutMin and a null TacklerMaxSpawns or ArbiterMaxSpawns inherit shed.yaml, and a set TacklerMaxSpawns or ArbiterMaxSpawns of 0 turns that role off.
 	DriverKind        string `yaml:"driver_kind"`
 	Tackler           string `yaml:"tackler"`
@@ -721,7 +721,7 @@ func MigrateConfig(existing []byte) ([]byte, []string, error) {
 // retiredShedKeyComments holds the line comment the retired loom template carried on each of the four driver and tackler keys, in the order the keys sit in loom.yaml.
 // migrateShedOverrides keys on them, so they are never edited.
 var retiredShedKeyComments = []struct{ key, comment string }{
-	{"driver_kind", "# the driver a task's loom run is seeded with when nothing typed one: llm or go; a seeded run keeps its recorded driver"},
+	{"driver_kind", "# the driver a task's tapestry run is seeded with when nothing typed one: llm or go; a seeded run keeps its recorded driver"},
 	{"tackler", "# model-spec for the tackler, the cold agent a Go driver asks to settle a stop its rules do not (see contracts/specs/llm-model-spec.md); empty takes haiku"},
 	{"tackler_timeout_min", "# minutes one tackler spawn is allowed to run; 0 takes 10"},
 	{"tackler_max_spawns", "# tackler spawns a run may use; 0 turns the tackler off, so every stop it would take hands back"},
@@ -1149,7 +1149,7 @@ func (c Config) ShedOverride() sheddriver.Override {
 }
 
 // RecipeOverride loads the shed override of a run's recipe from the config layers under dirs:
-// darn.yaml for shedrun.RecipeDarn, and loom.yaml for shedrun.RecipeLoom and the empty recipe.
+// darn.yaml for shedrun.RecipeDarn, and loom.yaml for shedrun.RecipeTapestry and the empty recipe.
 // A darn.yaml holding a malformed tree_scope key is refused with the editor way forward, since --set cannot remove a key the hub file holds.
 func RecipeOverride(dirs configengine.Dirs, recipe string) (sheddriver.Override, error) {
 	if recipe == shedrun.RecipeDarn {

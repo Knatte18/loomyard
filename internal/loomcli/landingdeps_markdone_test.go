@@ -32,7 +32,7 @@ func markDoneFixtureDir(t *testing.T) (markDone func() error, board *boardengine
 	location := &lymcwd.Location{HubPath: boardkit.HubWithBoardConfig(t), WorktreeName: slug, AnchorRel: "."}
 	boardDir = fabricengine.BoardDir(location.HubPath)
 
-	deps := landingDeps(location, shedrun.RecipeLoom, websterengine.Geometry{}, "task", "main",
+	deps := landingDeps(location, shedrun.RecipeTapestry, websterengine.Geometry{}, "task", "main",
 		true, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(location), parentLockDeps(location, shedrun.SelfRunID, "", ""))
 
 	board, err := boardengine.OpenHub(location.HubPath)

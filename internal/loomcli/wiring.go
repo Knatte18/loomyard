@@ -258,7 +258,7 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 // the identical reason: both writer agents' own stencils instruct them to run these two verbs as a
 // pre-handoff self-check, mid-run, while a sibling process may be actively rewriting any of the eight
 // configs wire() loads -- and validateDiscussionCmd/validatePlanCmd (validate.go) read only
-// DecisionRecordPath/SupportLogPath/AnchorPath/WorktreeRoot, and validate-discussion on a loom run also reads PlanIndex, none of which need any config load.
+// DecisionRecordPath/SupportLogPath/AnchorPath/WorktreeRoot, and validate-discussion on a tapestry run also reads PlanIndex, none of which need any config load.
 // validatePlanCmd reads language.yaml alone, on its own.
 // validate-description joined for the same reason, reading DescriptionPath alone.
 //
@@ -781,7 +781,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		// See landingDeps (landingdeps.go) and the env-landing-filled-in-run-not-wire design decision.
 	}
 
-	// The Drift rows read the task from the decision record in a loom run and from the board entry in a darn run.
+	// The Drift rows read the task from the decision record in a tapestry run and from the board entry in a darn run.
 	driftSubject := driftengine.SubjectDecisionRecord
 	if c.recipe == shedrun.RecipeDarn {
 		driftSubject = driftengine.SubjectBoardEntry
@@ -822,7 +822,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	c.languageSkills = languageSkills
 	c.language = language
 
-	// A darn run swaps in the darn recipe's verify source and Describe spec and fills the Darn-Write row's seams; a loom run leaves them nil.
+	// A darn run swaps in the darn recipe's verify source and Describe spec and fills the Darn-Write row's seams; a tapestry run leaves them nil.
 	if c.recipe == shedrun.RecipeDarn {
 		if err := c.wireDarn(location, websterGeom.StencilsDir, websterGeom.SpecsDir, frictionDir, landingCfg, registry, loomSegmentBudgets(loomCfg)); err != nil {
 			return err

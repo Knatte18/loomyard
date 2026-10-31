@@ -125,7 +125,7 @@ func TestReportVerbs_RefuseOutsideThePrimeThenReportTheSeededRun(t *testing.T) {
 		t.Fatalf("resolve the pair: %v", err)
 	}
 	loomStatus := shedengine.Status{State: shedengine.StateDone, History: []shedengine.HistoryEntry{{Producer: loomshed.NameFinalize, Outcome: shedengine.Done, At: stamp(1)}}}
-	writeFile(t, shedrun.SeedFile(pairLocation, slug), fmt.Sprintf(`{"recipe":%q,"driver":"go","started_at":%q}`, shedrun.RecipeLoom, stamp(0)))
+	writeFile(t, shedrun.SeedFile(pairLocation, slug), fmt.Sprintf(`{"recipe":%q,"driver":"go","started_at":%q}`, shedrun.RecipeTapestry, stamp(0)))
 	writeFile(t, shedrun.StatusFile(pairLocation, slug), marshalStatus(t, loomStatus))
 	writeFile(t, loomengine.DiscussionDecisionRecord(pairLocation), "# Decision record\n\n## Decisions\n\n### Added after Discussion (alice): a call with no date\n")
 	fabric, err := fabricengine.Open(pairLocation)
