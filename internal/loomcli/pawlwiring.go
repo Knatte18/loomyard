@@ -199,7 +199,7 @@ func ownerOfSubject(location *lymcwd.Location, slug string) (owner, subject stri
 	return owner, subject, err
 }
 
-// pawlRecheck reads what the landing re-check judges for the beam slug at location: the members and pairs working under it, the beam's owner and its parent's owner.
+// pawlRecheck reads what the landing re-check judges for the beam slug at location: the members and pairs working under it, the beam's owner, its parent's owner and its ready record.
 // It returns the lines of pawlRecheckLines, empty when the beam may land.
 func pawlRecheck(location *lymcwd.Location, slug string) ([]string, error) {
 	here, err := machinename.Name()
@@ -227,12 +227,16 @@ func pawlRecheck(location *lymcwd.Location, slug string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return pawlRecheckLines(slug, blockers, refusal, here, beamOwner, parentOwner, parentSubject), nil
+	ready, err := pawlengine.ReadyFor(loomengine.BeamReadyPath(location), loomengine.BeamReadyLockPath(location), slug)
+	if err != nil {
+		return nil, err
+	}
+	return pawlRecheckLines(slug, ready, blockers, refusal, here, beamOwner, parentOwner, parentSubject), nil
 }
 
 // pawlRecheckLines words the failed landing re-check of the beam slug, one line per blocker, empty when every check passes.
-// Each way forward of refusal, the text of the beam's blockers, is a line; a beam this machine does not own names `lym adopt <slug>`, and a parent another machine owns names `lym adopt <parentSubject>`, which is `root` for the prime.
-func pawlRecheckLines(slug string, blockers battencli.BeamLandBlockers, refusal error, here, beamOwner, parentOwner, parentSubject string) []string {
+// Each way forward of refusal, the text of the beam's blockers, is a line; a beam this machine does not own names `lym adopt <slug>`, a parent another machine owns names `lym adopt <parentSubject>`, which is `root` for the prime, and a beam not flagged ready names `lym beam ready <slug>`.
+func pawlRecheckLines(slug string, ready bool, blockers battencli.BeamLandBlockers, refusal error, here, beamOwner, parentOwner, parentSubject string) []string {
 	var lines []string
 	switch {
 	case refusal != nil:
@@ -245,6 +249,9 @@ func pawlRecheckLines(slug string, blockers battencli.BeamLandBlockers, refusal 
 	}
 	if boardengine.OwnedElsewhere(parentOwner, here) {
 		lines = append(lines, fmt.Sprintf("the beam's parent is owned by %s, not this machine (%s): run `lym adopt %s` to take it", parentOwner, here, parentSubject))
+	}
+	if !ready {
+		lines = append(lines, fmt.Sprintf("the beam %s is not flagged ready to merge: run `lym beam ready %s` to flag it", slug, slug))
 	}
 	return lines
 }

@@ -11,7 +11,7 @@
 // Its shed reads Preflight, Beam-Up, Beam-Await, Parent-Align, the Code-Review perch, Beam-Describe, PR-Review, Finalize and Beam-Down, with no plan and no reroute edge.
 // wire fills `Env.Pawl` for it through `pawlDeps`: the run's seed id is the seed's start time, the status is written on the beam's project entry through the board, and Beam-Up's one step is `orchcli.BeamUp` with no prepare, since the run already judged origin.
 // The beam's dobby is stopped through `runproc.EndRole` by its `RoleDobby` record, and restarted through `dobbyengine.EnsureLive` naming the beam alone.
-// Beam-Await's re-check reads `battencli.ReadBeamLandBlockers` and `battencli.BeamLandRefusal` with the beam's owner and its parent's owner, and words each failure as `pawlRecheckLines` does, naming `lym adopt <beam>` or the parent's adopt subject, `root` for the prime.
+// Beam-Await's re-check reads `battencli.ReadBeamLandBlockers` and `battencli.BeamLandRefusal` with the beam's owner, its parent's owner and the beam's ready record, and words each failure as `pawlRecheckLines` does, naming `lym adopt <beam>` or the parent's adopt subject, `root` for the prime, and `lym beam ready <slug>` for a beam not flagged ready.
 // Its snapshot is the beam project entry's, written and committed because the Code-Review perch reads its answer key from the committed tree.
 // A running shed also watches the land request's directory, so a request wakes Beam-Await at once.
 // Beam-Describe writes the change description from the beam's board entry and the commits the beam adds over the parent branch its pair records.

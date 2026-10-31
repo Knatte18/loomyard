@@ -1,4 +1,4 @@
-// cli.go builds the beam cobra command with its create, land, start, stop and status verbs and the RunCLI/RunCLIIn seams that wire it into the standard io.Writer-based call contract.
+// cli.go builds the beam cobra command with its create, ready, land, start and stop verbs and the RunCLI/RunCLIIn seams that wire it into the standard io.Writer-based call contract.
 
 package beamcli
 
@@ -31,17 +31,17 @@ import (
 func Command() *cobra.Command {
 	beam := &cobra.Command{
 		Use:   "beam",
-		Short: "make, land, start and stop beams, the long-lived pairs that group board work, and show their dobbies and orchs",
+		Short: "make, flag ready, land, start and stop beams, the long-lived pairs that group board work, and show their dobbies and orchs",
 		Long: `A beam is a long-lived pair that groups board work: its tasks fork from the
 beam's own branch and land back into it, and it is one unit of two parts, its dobby
 and its orch, that run on the machine owning it. The dobby drives the runs of the
 beam's tasks, and the orch is the session that works the beam with the operator.
-"lym beam start" brings both up and "lym beam stop" takes both down. Create, land
-and status run from the hub's prime worktree and from any beam, and act on the
-prime's location.`,
+"lym beam start" brings both up and "lym beam stop" takes both down. Create and
+status run from the hub's prime worktree and from any beam, ready and land from
+anywhere in the hub, and all act on the prime's location.`,
 		RunE: clihelp.GroupRunE,
 	}
-	beam.AddCommand(createCmd(), landCmd(), startCmd(), stopCmd(), statusCmd(), dobbyCmd())
+	beam.AddCommand(createCmd(), readyCmd(), landCmd(), startCmd(), stopCmd(), statusCmd(), dobbyCmd())
 	return beam
 }
 
@@ -540,6 +540,7 @@ each naming its way forward:
   - an entry that is not an open beam project, or a beam with no pair here
   - a beam with no pawl run, or whose run is not waiting at Beam-Await
   - a beam, or a beam's parent, that another machine owns
+  - a beam not flagged ready with "lym beam ready <slug>"
   - work under the beam: an open entry whose parent is the beam, through grouping
     projects, and a local pair forked from the beam
 Land or cancel the members first.
@@ -551,33 +552,64 @@ Example:
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
-			result, err := landFromHub(cmd, args[0])
+			result, err := onHubLandDeps(cmd, "lym beam land", func(deps landDeps) (map[string]any, error) { return land(deps, args[0]) })
 			return finishVerb(cmd, result, err)
 		},
 	}
 }
 
-// landFromHub runs `beam land` for slug over the hub the command's cwd belongs to.
+// readyCmd returns the `beam ready` verb.
+func readyCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:         "ready <slug>",
+		Short:       "flag a beam ready to be merged into its parent, so its dobby lands it",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `Flags the beam <slug> ready to be merged into its parent: the verb writes a
+ready record naming the beam into the beam worktree's _lym/landing directory,
+beside the beam's change description, and commits it. The flag does not say the
+project is finished: once it is set and nothing works under the beam, the beam's
+dobby asks its pawl run to land it, as "lym beam land" does, and the landing
+removes the beam's pair. Without the flag the dobby never lands the beam, and
+"lym beam land" refuses it. A beam already flagged is reported as such.
+
+The beam's orch or the operator runs it, from anywhere in the hub; dobby never
+does. It refuses an entry that is not an open beam project with a pair here,
+naming its way forward.
+
+Example:
+  lym beam ready payments`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if clihelp.ShouldAbort(cmd.Context()) {
+				return nil
+			}
+			result, err := onHubLandDeps(cmd, "lym beam ready", func(deps landDeps) (map[string]any, error) { return markReady(deps, args[0]) })
+			return finishVerb(cmd, result, err)
+		},
+	}
+}
+
+// onHubLandDeps runs verb, `beam land` or `beam ready`, over the land deps of the hub the command's cwd belongs to.
 // It resolves the hub's prime from the cwd's own worktree, so a task pair reaches the verb's own refusals.
 // A nil result is a refusal made before the request was written.
-func landFromHub(cmd *cobra.Command, slug string) (*map[string]any, error) {
+func onHubLandDeps(cmd *cobra.Command, verb string, run func(deps landDeps) (map[string]any, error)) (*map[string]any, error) {
 	location, err := lymcwd.CwdFrom(cmd.Context())
 	if err != nil {
-		return nil, fmt.Errorf("lym beam land: %w", err)
+		return nil, fmt.Errorf("%s: %w", verb, err)
 	}
 	acting, err := lymcwd.Resolve(location)
 	if err != nil {
-		return nil, fmt.Errorf("lym beam land: %w; way forward: run it inside a worktree of the hub", err)
+		return nil, fmt.Errorf("%s: %w; way forward: run it inside a worktree of the hub", verb, err)
 	}
 	primeName, err := fabricengine.PrimeName(acting)
 	if err != nil {
-		return nil, fmt.Errorf("lym beam land: cannot verify the hub's prime worktree: %w", err)
+		return nil, fmt.Errorf("%s: cannot verify the hub's prime worktree: %w", verb, err)
 	}
 	prime, err := lymcwd.ResolveWorktree(fabricengine.WorktreePath(acting, primeName))
 	if err != nil {
-		return nil, fmt.Errorf("lym beam land: resolve the hub's prime worktree: %w", err)
+		return nil, fmt.Errorf("%s: resolve the hub's prime worktree: %w", verb, err)
 	}
-	result, err := land(hubLandDeps(prime), slug)
+	result, err := run(hubLandDeps(prime))
 	if err != nil {
 		return nil, err
 	}

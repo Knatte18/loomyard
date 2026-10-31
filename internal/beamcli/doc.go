@@ -1,4 +1,4 @@
-// Package beamcli is the beam module: `lym beam create <slug>`, the making of a beam from a board project entry, `lym beam land <slug>`, the landing of a beam into its parent, `lym beam start [slug] [--all]`, the bring-up of a beam's dobby and orch, `lym beam stop [slug]`, their bring-down, `lym beam status`, the view of every local dobby and orch, and the hidden `lym beam dobby`, the dobby process itself.
+// Package beamcli is the beam module: `lym beam create <slug>`, the making of a beam from a board project entry, `lym beam ready <slug>`, the flag that a beam is ready to merge, `lym beam land <slug>`, the landing of a beam into its parent, `lym beam start [slug] [--all]`, the bring-up of a beam's dobby and orch, `lym beam stop [slug]`, their bring-down, `lym beam status`, the view of every local dobby and orch, and the hidden `lym beam dobby`, the dobby process itself.
 // The verbs only call each owning module's function in-process, so no module learns another's state; the daemon's engine is `internal/dobbyengine`, and this package wires its seams over the hub.
 //
 // # The verbs
@@ -34,6 +34,14 @@
 // Members already spawned under the grouping project keep the prime as their parent.
 // The envelope names `lym batten status <slug>` as the way to follow the run.
 //
+// # ready
+//
+// `ready <slug>` flags the beam ready to be merged into its parent: it writes a `pawlengine.ReadyRecord` naming the beam at `loomengine.BeamReadyPath` of the beam's pair, beside the change description, and commits the landing directory through `fabricengine.CommitAnchoredPaths`.
+// The flag does not say the project is finished; once it stands and nothing works under the beam, the beam's dobby writes the land request itself.
+// It runs anywhere in the hub, as `land` does, refuses what `land`'s entry check refuses, and reports a beam already flagged without writing.
+// The record names its beam because a pair forked from the beam inherits the beam's `_lym` records: `pawlengine.ReadyFor` reads a record naming another slug as no flag.
+// The beam's orch or the operator runs it; dobby never does.
+//
 // # land
 //
 // `land <slug>` asks the beam's pawl run to land the beam by writing a land request, and starts no run of its own.
@@ -45,6 +53,7 @@
 //   - an entry that is not an open beam project of this machine with a pair that carries the mark;
 //   - a beam with no pawl run, naming `lym beam create <slug>`, and a beam whose run is not running at Beam-Await, read from the beam pair's own child status, naming `lym batten status <slug>`;
 //   - a beam this machine does not own, naming `lym adopt <slug>`, and a beam whose parent another machine owns, naming the parent's adopt subject (`lym adopt root` for the prime);
+//   - a beam whose ready record does not flag it, naming `lym beam ready <slug>`;
 //   - `battencli.BeamLandRefusal`.
 //
 // The request is only a file: Beam-Await accepts only one naming its own run, writes the landing hold first, stops the dobby and re-runs every check above but the run-at-Beam-Await one before anything lands.
@@ -121,7 +130,7 @@
 // `hubDobbyDeps` fills every seam of the engine from told paths, the dobby's working directory being the hub root and never a worktree:
 //   - the local batten status files of the prime and the board's tasks through `battencli.DobbyRuns`, `battencli.DobbyLandings`, which reads the landings of this machine's name only, and `battencli.DobbyTasks`, which a beam's window reads too, and each run's parent through `hubgeom.ParentOf`;
 //   - `battencli.DobbyRuns` also marks each run `NoSlot` through the run's board entry, so a pawl run without its landing hold takes no slot under `max_runs`;
-//   - the "can land" reading of a beam's dobby, `CanLand`, through `beamLandReading`: `battencli.ReadBeamLandBlockers` says whether nothing works under the beam, and the parent through `hubgeom.ParentOf` with `Owners.Effective` and `Owners.AdoptSubject` says which other machine owns it and what `lym adopt` takes; the prime's dobby is given none;
+//   - the landing step of a beam's dobby: `CanLand` through `beamLandReading`, where the beam's ready record says whether it is flagged ready, `battencli.ReadBeamLandBlockers` whether nothing works under it, and the parent through `hubgeom.ParentOf` with `Owners.Effective` and `Owners.AdoptSubject` says which other machine owns it and what `lym adopt` takes, and `Land`, the `land` sequence of `lym beam land` itself; the prime's dobby is given neither;
 //   - the board and the owners through `boardengine`, and the pause record through `pauserecord`;
 //   - the file watch through `internal/fswatch`, one watcher per directory merged into the loop's one channel;
 //   - the pass spawn of `lym batten run`, started in the prime's anchor;
