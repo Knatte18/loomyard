@@ -241,49 +241,121 @@ func TestPushFailureClasses(t *testing.T) {
 		}
 	})
 
-	t.Run("ARecordsRetryWhoseSecondPushIsRejectedAgainWritesANotFastForwardRecord", func(t *testing.T) {
-		f, fake := newFailureFixture(t)
-		weft, branch := f.primeWeft()
-		f.originCommit(branch, "other.txt", "other\n", "other machine")
-		gitkit.CommitFile(t, weft, "local.txt", "local\n", "local")
-		// The first push never reaches the hook, since git refuses it against the other machine's tip; only the retry's push does.
-		installPreReceive(t, f.hub.RecordsBare, "#!/bin/sh\necho 'declined' >&2\nexit 1\n")
-		sleeps := 0
+	t.Run("ARejectionThatOutlastsTheBackoffWithOriginHoldingNothingTheBranchLacksIsNoDivergence", func(t *testing.T) {
+		// Every push the hook sees is declined, so the rejection outlasts the backoff while origin keeps no commit the branch lacks.
+		const declining = "#!/bin/sh\necho 'declined' >&2\nexit 1\n"
+		tests := []struct {
+			name string
+			push func(t *testing.T, f *recordsFixture, opts fabricengine.SyncOptions) (side string, err error)
+		}{
+			{"Code", func(t *testing.T, f *recordsFixture, opts fabricengine.SyncOptions) (string, error) {
+				gitkit.CommitFile(t, f.hub.PrimeWorktree(), "local.txt", "local\n", "local")
+				installPreReceive(t, f.hub.CodeBare, declining)
+				_, err := hubforge.OpenFabric(t, f.hub).PushBranch(opts)
+				return "code", err
+			}},
+			{"Records", func(t *testing.T, f *recordsFixture, opts fabricengine.SyncOptions) (string, error) {
+				weft, branch := f.primeWeft()
+				f.originCommit(branch, "other.txt", "other\n", "other machine")
+				gitkit.CommitFile(t, weft, "local.txt", "local\n", "local")
+				// The first push never reaches the hook, since git refuses it against the other machine's tip; the replay retry's pushes do.
+				installPreReceive(t, f.hub.RecordsBare, declining)
+				if _, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WeftPath: weft}, opts); err != nil {
+					t.Fatalf("CoalescePushRequest() error = %v; want nil", err)
+				}
+				return "records", nil
+			}},
+			{"Bolt", func(t *testing.T, f *recordsFixture, opts fabricengine.SyncOptions) (string, error) {
+				board := f.hub.BoardDir()
+				gitkit.CommitFile(t, board, "notes/a.md", "a\n", "board change")
+				installPreReceive(t, f.hub.RecordsBare, declining)
+				return "bolt", fabricengine.NewBolt(board).Push(opts)
+			}},
+			// A branch never pushed has no upstream to compare with, so the rejection cannot be judged a divergence.
+			{"RecordsWithNoUpstream", func(t *testing.T, f *recordsFixture, opts fabricengine.SyncOptions) (string, error) {
+				weft := f.hub.PrimeRecords()
+				gitkit.CommitFile(t, weft, "local.txt", "local\n", "local")
+				installPreReceive(t, f.hub.RecordsBare, declining)
+				if _, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WeftPath: weft}, opts); err != nil {
+					t.Fatalf("CoalescePushRequest() error = %v; want nil", err)
+				}
+				return "records", nil
+			}},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				f, fake := newFailureFixture(t)
+				sleeps := 0
 
-		if _, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WeftPath: weft}, fabricengine.SyncOptions{BackoffSleep: countingBackoff(&sleeps, nil)}); err != nil {
-			t.Fatalf("CoalescePushRequest() error = %v; want nil", err)
-		}
+				side, err := tt.push(t, f, fabricengine.SyncOptions{BackoffSleep: countingBackoff(&sleeps, nil)})
 
-		record := requireOneFailedPush(t, f.hub.Location.HubPath, "records", fabricengine.PushFailureNotFastForward)
-		if len(record.Commits) == 0 {
-			t.Errorf("record = %+v; want the unpushed local commits", record)
-		}
-		if len(fake.lines) != 1 {
-			t.Errorf("mails = %q; want one", fake.lines)
-		}
-		if want := len(gitrepo.PushBackoffDelays()); sleeps < want {
-			t.Errorf("backoff sleeps = %d; want at least %d, the whole backoff waited out before the record", sleeps, want)
+				if err != nil && !fabricengine.IsPushRejected(err) {
+					t.Errorf("push error = %v; want nil or IsPushRejected", err)
+				}
+				record := requireOneFailedPush(t, f.hub.Location.HubPath, side, fabricengine.PushFailureOther)
+				if want := "(pre-receive hook declined)"; !strings.Contains(record.Error, want) {
+					t.Errorf("record error = %q; want git's refusal line holding %q", record.Error, want)
+				}
+				if len(fake.lines) != 1 {
+					t.Fatalf("mails = %q; want one", fake.lines)
+				}
+				if mail := fake.lines[0]; strings.Contains(mail, "holds commits this branch lacks") || strings.Contains(mail, "git merge") {
+					t.Errorf("mail = %q; want no divergence and no merge named", mail)
+				}
+				if wayForward := fabricengine.FailedPushWayForward(record); !strings.Contains(wayForward, "to retry the push") || !strings.Contains(fake.lines[0], wayForward) {
+					t.Errorf("mail = %q; want it to carry the plain-retry way forward %q", fake.lines[0], wayForward)
+				}
+				if want := len(gitrepo.PushBackoffDelays()); sleeps < want {
+					t.Errorf("backoff sleeps = %d; want at least %d, the whole backoff waited out before the record", sleeps, want)
+				}
+			})
 		}
 	})
 
-	t.Run("ACodeRetryWhoseEveryPushIsRejectedWritesANotFastForwardRecordAndOneMail", func(t *testing.T) {
+	t.Run("ARejectionOfABranchWithNoUpstreamWhoseNameOriginAlreadyHoldsIsADivergence", func(t *testing.T) {
 		f, fake := newFailureFixture(t)
-		prime := f.hub.PrimeWorktree()
-		gitkit.CommitFile(t, prime, "local.txt", "local\n", "local")
-		installPreReceive(t, f.hub.CodeBare, "#!/bin/sh\necho 'declined' >&2\nexit 1\n")
-		sleeps := 0
+		weft := f.hub.PrimeRecords()
+		branch := gitkit.CurrentBranch(t, weft)
+		other := filepath.Join(t.TempDir(), "other")
+		gitkit.Git(t, filepath.Dir(other), "clone", f.hub.RecordsBare, other)
+		gitkit.Git(t, other, "checkout", "-B", branch)
+		gitkit.CommitFile(t, other, "other.txt", "other\n", "other machine")
+		gitkit.Git(t, other, "push", "origin", branch)
+		gitkit.CommitFile(t, weft, "local.txt", "local\n", "local")
 
-		_, err := hubforge.OpenFabric(t, f.hub).PushBranch(fabricengine.SyncOptions{BackoffSleep: countingBackoff(&sleeps, nil)})
-
-		if !fabricengine.IsPushRejected(err) {
-			t.Errorf("PushBranch() error = %v; want IsPushRejected", err)
+		if _, err := fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WeftPath: weft}, fabricengine.SyncOptions{BackoffSleep: countingBackoff(new(int), nil)}); err != nil {
+			t.Fatalf("CoalescePushRequest() error = %v; want nil", err)
 		}
-		requireOneFailedPush(t, f.hub.Location.HubPath, "code", fabricengine.PushFailureNotFastForward)
+
+		requireOneFailedPush(t, f.hub.Location.HubPath, "records", fabricengine.PushFailureNotFastForward)
 		if len(fake.lines) != 1 {
 			t.Errorf("mails = %q; want one", fake.lines)
 		}
-		if want := len(gitrepo.PushBackoffDelays()); sleeps < want {
-			t.Errorf("backoff sleeps = %d; want at least %d, the whole backoff waited out before the record", sleeps, want)
+	})
+
+	t.Run("AJudgmentFetchThatFailsAfterTheFinalRejectionIsRecordedAsOtherWithTheFetchError", func(t *testing.T) {
+		f, fake := newFailureFixture(t)
+		gitkit.CommitFile(t, f.hub.PrimeWorktree(), "local.txt", "local\n", "local")
+		// Every push is declined; the last one the backoff allows also breaks the bare repository, so the fetch that judges the rejection fails.
+		finalPush := len(gitrepo.PushBackoffDelays()) + 2
+		bare := filepath.ToSlash(f.hub.CodeBare)
+		marker := bare + "/declines"
+		installPreReceive(t, f.hub.CodeBare, fmt.Sprintf("#!/bin/sh\nn=$(cat '%s' 2>/dev/null || echo 0)\nn=$((n + 1))\necho $n > '%s'\nif [ \"$n\" -ge %d ]; then\n  rm '%s/HEAD'\nfi\necho 'declined' >&2\nexit 1\n", marker, marker, finalPush, bare))
+
+		_, err := hubforge.OpenFabric(t, f.hub).PushBranch(fabricengine.SyncOptions{BackoffSleep: countingBackoff(new(int), nil)})
+
+		var failed *fabricengine.PushFailedError
+		if !errors.As(err, &failed) {
+			t.Fatalf("PushBranch() error = %v; want a *PushFailedError", err)
+		}
+		record := requireOneFailedPush(t, f.hub.Location.HubPath, "code", fabricengine.PushFailureOther)
+		for _, want := range []string{"(pre-receive hook declined)", "gitrepo: fetch in"} {
+			if !strings.Contains(record.Error, want) {
+				t.Errorf("record error = %q; want it to hold both the rejection line and the fetch error, missing %q", record.Error, want)
+			}
+		}
+		if len(fake.lines) != 1 {
+			t.Errorf("mails = %q; want one", fake.lines)
 		}
 	})
 

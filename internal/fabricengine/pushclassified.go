@@ -89,6 +89,7 @@ type pushJob struct {
 // A records retry runs retryRecords, which replays the local commits onto origin's and pushes again;
 // a deferral it reports writes a deferred record and returns nil, leaving the commits to the next push of the branch.
 // A code-side retry fetches and pushes again only while origin's tip is contained in the local tip, and reports the rejection at once when origin holds commits the branch lacks.
+// A rejection the retry does not settle is recorded as not_fast_forward only when a fresh fetch shows origin holding commits the branch lacks, and as other otherwise.
 // Every other failure is recorded and returned as a *PushFailedError holding the push's own error, under the "other" class when it matches none.
 // A push that lands removes the record of its side and branch.
 func pushClassified(rec *Mutations, hubPath, side, path string, opts SyncOptions, retryRecords func() (deferred bool, err error)) error {
@@ -302,7 +303,7 @@ func (j *pushJob) classifyFailure(err error) (failed error, classified bool) {
 	case errors.Is(err, gitrepo.ErrPushAuthRefused):
 		return j.fail(PushFailureAuth, err, nil, nil, ""), true
 	case errors.Is(err, gitrepo.ErrPushRejected):
-		return j.fail(PushFailureNotFastForward, err, nil, j.unpushedCommits(), ""), true
+		return j.failRejection(err), true
 	case errors.Is(err, ErrReplayConflict), errors.As(err, &refusal):
 		var paths []string
 		if errors.As(err, &conflict) {
@@ -313,6 +314,37 @@ func (j *pushJob) classifyFailure(err error) (failed error, classified bool) {
 		return j.fail(PushFailureTransport, err, nil, nil, ""), true
 	default:
 		return err, false
+	}
+}
+
+// failRejection records a rejection the retry did not settle, classed by what a fresh fetch shows origin holding.
+// Only origin holding commits the branch lacks is a divergence, recorded as not_fast_forward with the local commits;
+// origin holding nothing the branch lacks, as after a push that overlapped another or under a declining hook, is recorded as other, so its notice names a retry and no merge.
+// Origin's tip is the branch's upstream, or origin's branch of the same name for a branch never given one.
+// A failed fetch, or a tip that cannot be read because origin has no such branch, leaves origin unknown, and is recorded as other with that error joined.
+func (j *pushJob) failRejection(rejected error) error {
+	if err := j.repo.Fetch(); err != nil {
+		return j.fail(PushFailureOther, errors.Join(rejected, err), nil, nil, "")
+	}
+	originTip, err := j.repo.UpstreamSHA()
+	if errors.Is(err, gitrepo.ErrNoUpstream) {
+		originTip, err = j.repo.ResolveSHA("refs/remotes/" + originRemoteName + "/" + j.branch)
+	}
+	if err != nil {
+		return j.fail(PushFailureOther, errors.Join(rejected, err), nil, nil, "")
+	}
+	head, err := j.repo.CurrentSHA()
+	if err != nil {
+		return j.fail(PushFailureOther, errors.Join(rejected, err), nil, nil, "")
+	}
+	originOnly, err := j.repo.CommitsNotIn(originTip, head)
+	switch {
+	case err != nil:
+		return j.fail(PushFailureOther, errors.Join(rejected, err), nil, nil, "")
+	case len(originOnly) > 0:
+		return j.fail(PushFailureNotFastForward, rejected, nil, j.unpushedCommits(), "")
+	default:
+		return j.fail(PushFailureOther, fmt.Errorf("%w; a fetch found origin holding nothing this branch lacks", rejected), nil, nil, "")
 	}
 }
 

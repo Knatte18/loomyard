@@ -1,10 +1,10 @@
 //go:build tier1
 
 // pushanchored_integration_test.go covers PushAnchored and PushPairAnchored against real hubforge pairs, the push lock both take, and PushAnchored against a hub's weft sibling:
-// SkipGit and SkipPush each short-circuit to an empty result and push nothing; a weft carrying an
-// unpushed commit is genuinely pushed and the mutation record carries exactly one KindBranchPushed
-// entry; and a diverged weft remote surfaces gitrepo.ErrPushRejected unwrapped, distinguishable via
-// errors.Is from a push error of a different kind.
+// SkipGit and SkipPush each short-circuit to an empty result and push nothing;
+// a weft carrying an unpushed commit is genuinely pushed and the mutation record carries exactly one KindBranchPushed entry.
+// A diverged weft remote surfaces an error satisfying errors.Is(err, gitrepo.ErrPushRejected) through the failed-push error.
+// That error is distinguishable via errors.Is from a push error of a different kind.
 // Reuses gitsha_integration_test.go's BareBranchSHAForTest re-export.
 
 package fabricengine_test
@@ -149,14 +149,14 @@ func TestPushAnchored_PushesAndRecordsBranchPush(t *testing.T) {
 	}
 }
 
-// TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejectedUnwrapped covers the rejection path a
+// TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejected covers the rejection path a
 // diverged weft remote produces: a second clone of the weft bare changes `status.json`, as this weft sibling does,
 // so this weft's next PushAnchored push is rejected and its replay stops on a conflict.
 // The returned error must satisfy errors.Is(err, gitrepo.ErrPushRejected) through the failed-push error that wraps it.
 // Every caller that discriminates a rejection depends on that, and the failed-push record names the conflicting path.
 //
 //testtiming:keep a diverged weft remote returning gitrepo.ErrPushRejected through its failed-push error; coverage of its blocks by other tests does not show an assertion of this
-func TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejectedUnwrapped(t *testing.T) {
+func TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejected(t *testing.T) {
 	t.Parallel()
 	boardkit.InstallReplay(t)
 
@@ -364,7 +364,7 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 	if want := len(gitrepo.PushBackoffDelays()); sleeps < want {
 		t.Errorf("backoff sleeps = %d; want at least %d, the whole backoff waited out before the record", sleeps, want)
 	}
-	requireOneFailedPush(t, p.hub.Location.HubPath, "code", fabricengine.PushFailureNotFastForward)
+	requireOneFailedPush(t, p.hub.Location.HubPath, "code", fabricengine.PushFailureOther)
 	if got := fabricengine.BareBranchSHAForTest(t, p.hub.CodeBare, p.warpBranch); got != declinedWarpBare {
 		t.Errorf("warp bare = %q; want it unmoved at %q", got, declinedWarpBare)
 	}

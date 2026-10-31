@@ -256,6 +256,11 @@ func TestPush(t *testing.T) {
 				t.Errorf("PushRebaseFree() error = %v; want it to satisfy errors.Is(err, gitrepo.ErrPushRejected)", err)
 			}
 
+			// A rejection names git's own line and claims no divergence, since a declining hook is rejected the same way.
+			if line := strings.TrimPrefix(err.Error(), gitrepo.ErrPushRejected.Error()+": "); strings.Contains(err.Error(), "remote diverged") || line == "" || line == err.Error() {
+				t.Errorf("PushRebaseFree() error = %q; want git's rejection line and no \"remote diverged\" claim", err)
+			}
+
 			// No pull --rebase ever ran, so the dirty tracked file must be exactly as left, and no rebase state must exist.
 			got, readErr := os.ReadFile(filepath.Join(cloneAPath, "a.txt"))
 			if readErr != nil {

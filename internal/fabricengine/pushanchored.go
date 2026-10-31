@@ -74,7 +74,7 @@ func pushLockBusyError(lockDir string, lockWait time.Duration) error {
 // The push marks the records side pending before it takes the lock and re-reads the flag after releasing it,
 // so a push that landed returns nil even when a later holder took the lock first.
 // A rejection is retried over the push backoff, through a fetch or a replay, before it is reported;
-// a rejection that stays still surfaces gitrepo.ErrPushRejected UNWRAPPED,
+// a rejection that stays still satisfies errors.Is(err, gitrepo.ErrPushRejected),
 // so a caller can discriminate it from every other push failure with errors.Is.
 // The underlying primitive is gitrepo.PushRebaseFree, never gitrepo.PushCoalesced, whose rejected-push path runs `git pull --rebase` and would rewrite this side's SHAs under a running weft.
 //

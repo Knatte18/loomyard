@@ -937,11 +937,14 @@
 // so `settleRejection` runs the retry again, one delay of `gitrepo.PushBackoffDelays` apart slept through `SyncOptions.BackoffSleep`, while it fails with a bare rejection or an error no class names, such as a failed fetch, and records the failure only once the backoff runs out.
 // A held write lock or an uncommitted change on a path the replay touches is a deferral:
 // the push returns nil, writes a `deferred` record that mails nothing, and leaves the commits to the next push of the branch, whose landing removes the record.
-// A replay that stops on a conflict, or a rejection that outlasts the backoff, is a `not_fast_forward` failure carrying the conflicting paths, if any, and the local commits.
-// Its way forward names no machine, since no commit names the machine that wrote it, and names paths only when a replay stopped on some.
+// A replay that stops on a conflict is a `not_fast_forward` failure carrying the conflicting paths and the local commits, since a replay runs only when origin held commits the branch lacked.
+// A rejection that outlasts the backoff is judged by a fresh fetch (`failRejection`): origin holding commits the branch lacks is a `not_fast_forward` failure carrying the local commits;
+// origin holding nothing the branch lacks, as after two pushes of the hub overlapped or under a declining hook, is an `other` failure whose way forward is a plain retry, so no notice names a divergence that does not exist;
+// a failed fetch, or a branch whose origin tip cannot be read after it, leaves origin unknown and is an `other` failure too.
+// A `not_fast_forward` way forward names no machine, since no commit names the machine that wrote it, and names paths only when a replay stopped on some.
 // An auth refusal (`gitrepo.ErrPushAuthRefused`) is class `auth` at once, and a transport failure of the push call, or an exhausted push retry, is class `transport`.
 // Any other failure of the push call is class `other`, so no refused push is left to a log line.
-// A retry that stops before it pushes, through the whole backoff, keeps the rejection as the class and joins the retry's error into the record.
+// A retry that stops before it pushes, through the whole backoff, keeps the rejection, joined with the retry's error, for that judgment.
 //
 // A failure `pushClassified` records returns a `*PushFailedError` holding the `FailedPush` record and the push's own error, which `Unwrap` returns, so `errors.Is` against `gitrepo.ErrPushRejected` or `gitrepo.ErrPushAuthRefused` still holds.
 // Its text is the push's error followed by `; way forward: ` and `FailedPushWayForward` of the record, so a caller that appends a way forward of its own does so only when `HasUnclassifiedFailure` reports a failure without one.

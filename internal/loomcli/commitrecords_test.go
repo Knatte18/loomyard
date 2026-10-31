@@ -94,7 +94,7 @@ func TestCommitRecordsVerb_ErrorEnvelopes(t *testing.T) {
 		{"push rejected", nil, nil, rejected, []string{pushFailedPrefix, rejectionWayForward, refusedVerbClause}, nil},
 		{"push failed", nil, nil, boom, []string{pushFailedPrefix, transientWayForward}, nil},
 		{"push lock busy", nil, nil, fmt.Errorf("push: %w", fabricengine.ErrPushLockBusy), []string{pushFailedPrefix, transientWayForward}, nil},
-		{"rejected beside another failure", nil, nil, errors.Join(rejected, boom), []string{pushFailedPrefix, rejectionWayForward, "boom", "remote diverged"}, nil},
+		{"rejected beside another failure", nil, nil, errors.Join(rejected, boom), []string{pushFailedPrefix, rejectionWayForward, "boom", "push rejected"}, nil},
 		{"push gone", nil, nil, gone, []string{pushFailedPrefix}, []string{goneLine}},
 		{"push rewound", nil, nil, rewound, []string{pushFailedPrefix}, []string{rewoundLine}},
 		{"push auth", nil, nil, auth, []string{pushFailedPrefix}, []string{authLine}},

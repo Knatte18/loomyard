@@ -616,7 +616,7 @@ func TestBolt_PushRecorded_DropsSeedCommitsOnRebaseConflict(t *testing.T) {
 		if want := len(gitrepo.PushBackoffDelays()); sleeps < want {
 			t.Errorf("backoff sleeps = %d, want at least %d, the whole backoff waited out before the record", sleeps, want)
 		}
-		requireOneFailedPush(t, f.hub.Path, "bolt", fabricengine.PushFailureNotFastForward)
+		requireOneFailedPush(t, f.hub.Path, "bolt", fabricengine.PushFailureOther)
 		if gitkit.IsAncestor(t, f.board, seed, "HEAD") || !gitkit.IsAncestor(t, f.board, upstream, "HEAD") {
 			t.Errorf("seed %s under HEAD or upstream %s missing from it; want the drop kept", seed, upstream)
 		}

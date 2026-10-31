@@ -13,9 +13,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 )
 
-// ErrPushRejected is returned by PushRebaseFree when push is rejected due to remote divergence.
-// It is a distinguishable error, not a failure.
-var ErrPushRejected = errors.New("gitrepo: push rejected (remote diverged)")
+// ErrPushRejected is matched with errors.Is against the error PushRebaseFree returns when the remote rejected the push, as not a fast-forward or for a remote reason such as a declining hook.
+// A rejection alone does not show that origin holds commits the branch lacks; a caller that must know fetches and compares.
+var ErrPushRejected = errors.New("gitrepo: push rejected")
 
 // ErrLeaseRejected is returned by UpdateRemoteBranchLeased when the remote branch no longer sits at the expected SHA.
 // It is a distinguishable error, not a failure of the push itself.
@@ -141,7 +141,8 @@ func (r *Repo) pushPlainWithRetry() error {
 
 // PushRebaseFree runs git push without rebasing, establishing upstream via
 // push.autoSetupRemote=true.
-// Returns ErrPushRejected on divergence, and an error satisfying errors.Is(err, ErrLocalBranch) for a branch carrying the local-only mark.
+// A rejection, as not a fast-forward or for a remote reason such as a declining hook, returns an error wrapping ErrPushRejected with git's rejection line;
+// it returns an error satisfying errors.Is(err, ErrLocalBranch) for a branch carrying the local-only mark.
 // A remote "(failed)" or "cannot lock ref" refusal is retried a bounded number of times, and an exhausted retry wraps ErrPushRetriesExhausted rather than mapping to ErrPushRejected.
 // A refusal for want of authentication or permission wraps ErrPushAuthRefused with git's refusal line, is never retried, and never maps to ErrPushRejected.
 // Lock-free.
@@ -156,24 +157,21 @@ func (r *Repo) PushRebaseFree() error {
 	var gitErr *gitexec.GitError
 	if errors.As(err, &gitErr) {
 		// A declined push prints a "rejected" line too, so the auth class is checked before the rejection class.
-		if line, found := authRefusalLine(gitErr.Stderr); found {
+		if line, found := lastLineHolding(gitErr.Stderr, authRefusalTriggers); found {
 			return fmt.Errorf("%w: %s", ErrPushAuthRefused, line)
 		}
-		// ErrPushRejected is a sentinel consumers match with errors.Is, so it is
-		// returned bare rather than wrapped with %w — a wrapper here would break
-		// internal/fabricengine/coalesce.go's identity check.
-		if containsAny(gitErr.Stderr, rebaseRetryTriggers) {
-			return ErrPushRejected
+		if line, found := lastLineHolding(gitErr.Stderr, rebaseRetryTriggers); found {
+			return fmt.Errorf("%w: %s", ErrPushRejected, line)
 		}
 	}
 	return fmt.Errorf("gitrepo: git push: %w", err)
 }
 
-// authRefusalLine returns the last line of stderr that holds an authRefusalTriggers substring, trimmed.
-func authRefusalLine(stderr string) (line string, found bool) {
+// lastLineHolding returns the last line of stderr that holds one of triggers, trimmed.
+func lastLineHolding(stderr string, triggers []string) (line string, found bool) {
 	lines := strings.Split(stderr, "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
-		if candidate := strings.TrimSpace(lines[i]); containsAny(candidate, authRefusalTriggers) {
+		if candidate := strings.TrimSpace(lines[i]); containsAny(candidate, triggers) {
 			return candidate, true
 		}
 	}
@@ -232,7 +230,7 @@ func (r *Repo) UpdateRemoteBranchLeased(remote, branch, sha, expectSHA string) e
 	if err == nil {
 		return nil
 	}
-	// ErrLeaseRejected is a sentinel consumers match with errors.Is, so it is returned bare rather than wrapped with %w, as ErrPushRejected is.
+	// ErrLeaseRejected is a sentinel consumers match with errors.Is, so it is returned bare.
 	var gitErr *gitexec.GitError
 	if errors.As(err, &gitErr) && strings.Contains(gitErr.Stderr, leaseRejectedTrigger) {
 		return ErrLeaseRejected
