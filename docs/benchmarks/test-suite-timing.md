@@ -483,3 +483,125 @@ The per-package counts above for the three prune leads do not match the packages
 Counted by `func Test` declarations, `internal/shell` went from 11 to 14 tests, `internal/boardengine/boardtest` stayed at 3 and `internal/battenrecipe` went from 8 to 9; a verbose run shows `internal/shell`'s 14 tests carrying 60 subtests, which neither count includes.
 `internal/reedengine`'s `tier2` time was no waited-out duration: its 32 tests ran serially, with the slowest at 11 s, and their times summed to the package's wall.
 A later audit counts per package from `go test -json` events keyed by package, or from a verbose run of the package alone.
+
+## test-time-audit-2: second recurring audit
+
+The second run of the recurring audit, measured by the first audit's route and method so the walls and counts compare.
+It compares against the first audit above (`ba2a346b`, 2026-10-28) and reads the effect of `test-prune-audit-leads`, which landed in `4a059d2a` on 2026-10-29.
+This section is a measurement report: it records one run and is not meant to stay true.
+
+### Audit state (2026-10-31)
+
+```yaml
+machine: AMD Ryzen AI 7 445 w/ Radeon 840M, 12 threads
+os: Linux 7.0.0-31-generic (Ubuntu), bare metal
+go: go1.26.8 linux/amd64
+revision: d0d2c1b1
+load_average_before: 3.04 5.60 5.91
+load_average_after: 8.11 8.28 7.30
+tier0_top_level_tests: 3769
+tier1_top_level_tests: 907
+tier2_top_level_tests: 70
+tier0_wall: 19.6 s
+tier1_wall: 62.9 s
+tier2_wall: 50.5 s
+```
+
+Route and method are the first audit's: every wall is the gate's summary-line wall for `lym gate test --tier N --all -- -count=1`, with one untracked file in the worktree for the length of the measurement so the gate reads no green record, removed afterwards.
+Per tier, one cold run discarded and three warm runs, the median of the three taken; twelve runs in all.
+`tier0` runs were 19.9 (discarded), 19.8, 19.6 and 19.5 s.
+`tier1` runs were 61.3 (discarded), 61.8, 62.9 and 68.6 s.
+`tier2` runs were 50.1 (discarded), 53.7, 50.5 and 50.4 s.
+All twelve passed: `tier0` discovered 21421 including subtests with 1 skipped, `tier1` 3611, `tier2` 266.
+Top-level counts are the `--- PASS|FAIL|SKIP` lines without a subtest path in the median-wall run's gate log, the first audit's counting.
+
+#### Machine state
+
+`lym tender status` and `lym gate status` ran before the first run: no gate slot held or awaited, and three sessions busy on a turn (this run's darn writer, the `landing-watch` darn writer and the `run-verbs-shared` discussion fixer) with the orch idle awaiting input.
+This machine was not as quiet as in the first audit: the load average before the first run was 3.04 against 0.68 then, and it rose to 11.6 during the `tier1` runs.
+The gate's run records show `landing-watch` ran scoped `tier0` and guard runs of its own, 0.8 to 33.3 s each, in the same gate while the measurement ran.
+They overlapped the last `tier1` run (68.6 s) and the second and third `tier2` runs (53.7 and 50.5 s), and the end of the last `tier2` run (50.4 s) by 4 s; no `tier0` run overlapped one.
+The medians are the middle runs and the spread is wider than the first audit's under 0.3 s: 0.3 s for `tier0`, 6.8 s for `tier1` and 3.3 s for `tier2`.
+The `tier1` and `tier2` walls are therefore an upper bound on the quiet-machine wall by a few seconds.
+
+### Wall time against the first audit
+
+| Tier | 2026-10-28 | 2026-10-31 | Change |
+|---|---|---|---|
+| `tier0` | 18.8 s | 19.6 s | +0.8 s |
+| `tier1` | 58.8 s | 62.9 s | +4.1 s |
+| `tier2` | 50.0 s | 50.5 s | +0.5 s |
+
+The `tier0` rise matches 35 more top-level tests and a busier machine; the `tier1` rise is within what the overlapping `landing-watch` runs and the higher load explain, given its spread, and is not evidence of growth by itself.
+The `tier2` wall is flat.
+
+The packages with the longest `ok` time in each tier, from the median-wall run:
+
+| Tier | Package | Time now | Time 2026-10-28 |
+|---|---|---|---|
+| `tier0` | `cmd/lym` | 5.82 s | 5.56 s |
+| `tier0` | `internal/lymcwd` | 1.70 s | 1.70 s |
+| `tier1` | `internal/fabricengine` | 45.69 s | 42.74 s |
+| `tier1` | `internal/fabriccli` | 17.46 s | 17.00 s |
+| `tier1` | `internal/gatecli` | 7.87 s | 7.75 s |
+| `tier2` | `internal/loomcli` | 40.78 s | 40.47 s |
+| `tier2` | `internal/reedcli` | 39.03 s | 38.15 s |
+| `tier2` | `internal/reedengine` | 12.75 s | 40.00 s |
+
+### Test counts against the first audit
+
+| Tier | 2026-10-28 | 2026-10-31 | Change |
+|---|---|---|---|
+| `tier0` | 3734 | 3769 | +35 |
+| `tier1` | 902 | 907 | +5 |
+| `tier2` | 69 | 70 | +1 |
+
+The three tiers together went from 4705 to 4746 top-level tests.
+
+The first audit's Correction block retracted its per-package split, so no per-package baseline is taken from it.
+The per-package comparison below counts `func Test` declarations in the `_test.go` files of both revisions with `git grep`, over the files that build on Linux under `tier0` to `tier2` or untagged and excluding `tier3`, so it needs no gate run.
+It totals 4878 at `ba2a346b` and 4921 now, +43 against the gate's +41, and a declaration count leaves out subtests and counts `TestMain`, so it is indicative and agrees with the gate at tier level only roughly.
+
+Packages that changed in declared tests since the first audit:
+
+| Package | `ba2a346b` | Now | Change |
+|---|---|---|---|
+| `cmd/lym` | 87 | 93 | +6 |
+| `internal/landingshed` | 74 | 79 | +5 |
+| `internal/pullrequest` | 0 | 4 | +4 |
+| `internal/loomcli` | 229 | 233 | +4 |
+| `internal/dobbyengine` | 29 | 33 | +4 |
+| `internal/beamcli` | 17 | 21 | +4 |
+| `internal/adoptcli` | 12 | 16 | +4 |
+| `tools/tapestryrename` | 0 | 3 | +3 |
+| `internal/battenshed` | 111 | 107 | -4 |
+| `internal/battenrecipe` | 10 | 9 | -1 |
+
+Twenty packages changed at all, ten of them shown, no package grew by more than six and none shrank by more than four.
+Net growth over three days is +43 declarations, against +905 top-level tests in `tier0` between the `test-tiers` state and the first audit: the suite has stopped growing at the pace the first audit read.
+`internal/pullrequest` and `tools/tapestryrename` are new packages, from the `PR-Review` landing row and the `tapestry` rename program.
+
+### What `test-prune-audit-leads` changed
+
+`4a059d2a` touched 23 test files with +78/-77 lines.
+It added `t.Parallel()` to the `internal/reedengine` `tier2` tests and folded one `internal/battenrecipe` duplicate, `TestNameRunShed_ValueIsPinnedAgainstASymmetryRename`.
+
+- **Counts:** one test fewer, in `internal/battenrecipe` (10 to 9 declarations); it is inside `tier0`'s +35, which the new guards and the new packages above outweigh. No tier count fell.
+- **Walls:** `internal/reedengine` in `tier2` fell from 40.00 s to 12.75 s, close to its slowest single test of about 11 s, so the package no longer runs its tests one after another.
+  The `tier2` wall did not move (50.0 to 50.5 s), because `internal/loomcli` (40.78 s) and `internal/reedcli` (39.03 s) bound it and run together with `internal/reedengine`.
+  The `tier0` and `tier1` walls were not meant to move.
+
+The first audit's reading of `internal/reedengine` as a waited-out 40 s duration was already corrected; the fix confirms it, since parallelism and no timeout change took 27 s off the package.
+
+### Prune-task candidates
+
+Each line is a lead for a prune task under `PATTERN-test-speed`, not a verdict; no board task was filed.
+
+- `tier2` is now bound by `internal/loomcli` (40.78 s) and `internal/reedcli` (39.03 s) together, so a further `tier2` gain needs both to fall, as `internal/reedengine` did by running its tests in parallel.
+  A verbose run of each package alone shows whether its slow tests run serially and which one is the longest.
+- `internal/fabricengine` in `tier1`: 45.69 s in the median run and 51.96 s in the last, against 42.74 s in the first audit, for 708 declared tests against 707; the rise follows load, not growth.
+  It is the largest package time of any tier and the floor of the `tier1` wall, so it stays the first candidate for a redundancy pass.
+- `internal/fabriccli` in `tier1`, 17.46 s, unchanged from the first audit and the second longest.
+- `cmd/lym` in `tier0`, 5.82 s and +6 tests since the first audit, the guard tests the new PATTERN entries added; it is the `tier0` floor.
+- The first audit's growth leads `internal/boardengine/boardtest`, `internal/shell`, `internal/battenrecipe` and `internal/shedrun` need no action: by declaration they changed by 0 (and `internal/battenrecipe` by -1) since `ba2a346b`.
+- `internal/battenshed` fell by 4 declarations, and `internal/landingshed` and `internal/loomcli` rose by 5 and 4: no lead, the size of change tracks new behavior.
