@@ -1,15 +1,18 @@
 //go:build tier0
 
-// owner_test.go covers batten's owner checks over fake owner seams: the start check, and the owner keys of the status envelope.
+// owner_test.go covers batten's owner checks over fake owner seams: the start check, the Worktree-Teardown owner pre-flight, the pass exit codes of the owner refusals, and the owner keys of the status envelope.
 
 package battencli
 
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -162,6 +165,107 @@ func TestRefuseStartOwnedElsewhere(t *testing.T) {
 	})
 }
 
+// TestOwnerPreflight_TeardownResume covers a resume at Worktree-Teardown whose task worktree is gone.
+// It runs no origin reconcile and writes no origin-owed marker.
+// It resumes when the local board shows the run owned here, and refuses naming the owner and the adopt, with no wait for origin, when it shows another.
+// A resume at another row with its pair gone, and a Worktree-Teardown resume with its pair present, still run the reconcile.
+func TestOwnerPreflight_TeardownResume(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		producer      string
+		owners        boardengine.Owners
+		wantErrors    []string
+		wantReconcile bool
+		// pairPresent creates the task worktree before the call.
+		pairPresent bool
+	}{
+		{
+			name:     "OwnedHereResumes",
+			producer: battenrecipe.NameWorktreeTeardown,
+			owners:   ownedBy("here", "here", true),
+		},
+		{
+			name:     "UnownedResumes",
+			producer: battenrecipe.NameWorktreeTeardown,
+			owners:   ownedBy("here", "", true),
+		},
+		{
+			name:          "TeardownWithPairPresentRunsTheReconcile",
+			producer:      battenrecipe.NameWorktreeTeardown,
+			owners:        ownedBy("here", "here", true),
+			wantReconcile: true,
+			pairPresent:   true,
+		},
+		{
+			name:       "OwnedElsewhereRefusesNamingTheAdopt",
+			producer:   battenrecipe.NameWorktreeTeardown,
+			owners:     ownedBy("here", "there", true),
+			wantErrors: []string{`"there"`, "`lym adopt some-beam`"},
+		},
+		{
+			name:          "OtherRowRunsTheReconcile",
+			producer:      battenrecipe.NameLand,
+			owners:        ownedBy("here", "here", true),
+			wantReconcile: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := newFakeReceiver(t, nil)
+			if tt.pairPresent {
+				// A directory whose .git holds HEAD, objects and refs is a worktree root to lymcwd.ResolveWorktree.
+				gitDir := filepath.Join(fabricengine.WorktreePath(c.location, c.slug), ".git")
+				for _, sub := range []string{"objects", "refs"} {
+					if err := os.MkdirAll(filepath.Join(gitDir, sub), 0o755); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			fake := fakeOwners{machine: "here", owners: tt.owners}
+			c.owner = fake.seams()
+			reconciled := false
+			c.reconcile = func(string) (fabricengine.OriginReport, error) {
+				reconciled = true
+				return fabricengine.OriginReport{}, nil
+			}
+
+			err := c.ownerPreflight(true, shedengine.Status{CurrentProducer: tt.producer})
+
+			if len(tt.wantErrors) == 0 && err != nil {
+				t.Fatalf("ownerPreflight() = %v; want nil", err)
+			}
+			if len(tt.wantErrors) > 0 {
+				var owned *OwnedElsewhereError
+				if !errors.As(err, &owned) {
+					t.Fatalf("ownerPreflight() = %v; want an *OwnedElsewhereError", err)
+				}
+				for _, want := range tt.wantErrors {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("ownerPreflight() = %q; want it to carry %q", err.Error(), want)
+					}
+				}
+				if strings.Contains(err.Error(), "once origin answers") {
+					t.Errorf("ownerPreflight() = %q; want no re-run once origin answers, since a re-run skips the reconcile again", err.Error())
+				}
+			}
+			if reconciled != tt.wantReconcile {
+				t.Errorf("reconcile ran = %v; want %v", reconciled, tt.wantReconcile)
+			}
+			stands, standsErr := OriginOwed(c.location, c.slug)
+			if standsErr != nil || stands {
+				t.Errorf("OriginOwed() = %v, %v; want false, nil", stands, standsErr)
+			}
+		})
+	}
+}
+
 // TestPassExitCode asserts a pass exits 77 for each refusal of a run another machine owns that the pre-run reaches, wrapped or not, 78 for a covered run, 79 for a continue pass of a run dobby may not continue, and 1 for any other error.
 // A claim the Worktree-Create row loses is not a row here, since no pre-run wraps it and its stop ends in the driver's own envelope.
 func TestPassExitCode(t *testing.T) {
@@ -181,7 +285,7 @@ func TestPassExitCode(t *testing.T) {
 		}, dobbyengine.PassExitOwnedElsewhere},
 		{"ResumeWithOriginUnreachableAndLocalBoardElsewhere", func() error {
 			fake := fakeOwners{machine: "here", owners: ownedBy("here", "there", true)}
-			return (&battenCLI{slug: slug, owner: fake.seams()}).refuseResumeUnreachable()
+			return (&battenCLI{slug: slug, owner: fake.seams()}).refuseOwnedElsewhereOnLocalBoard("")
 		}, dobbyengine.PassExitOwnedElsewhere},
 		{"WrappedOwnedElsewhere", func() error { return fmt.Errorf("outer: %w", ownedElsewhereFor(slug, "there", "some-beam")) }, dobbyengine.PassExitOwnedElsewhere},
 		{"Covered", func() error { return &coveredRefusal{err: errors.New("pause: held")} }, dobbyengine.PassExitCovered},

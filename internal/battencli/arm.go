@@ -710,7 +710,7 @@ func (c *battenCLI) pausedExtras() map[string]any {
 
 // battenPreRun implements the PreRun hook for batten's spec: run's whole existing pre-flight, in today's order: checkRunStatus, then seeding a fresh status when absent.
 // Each step's error becomes a returned error the generic body reports on the error envelope exactly as run's own inline handling did.
-// A found status file is resumed only after the owner pre-flight (ownerPreflight) lets it, which is the run-scope origin reconcile (reconcileResume) bar a run still at Worktree-Create whose pair is absent; a fresh start runs no reconcile, and armAt has already run its owner check.
+// A found status file is resumed only after the owner pre-flight (ownerPreflight) lets it, which is the run-scope origin reconcile (reconcileResume) bar a run still at Worktree-Create, or at Worktree-Teardown, whose pair is absent; a fresh start runs no reconcile, and armAt has already run its owner check.
 // Once the owner pre-flight lets a found status resume, reopenWindow reopens the terminal window when no client is attached, unless --no-reopen is set.
 // Under --continue-pass, refuseContinuePass runs first, and a run it lets through skips the pause refusal, the owner pre-flight and the reopening: the run is one dobby already drives, and the pass is not a resume.
 //

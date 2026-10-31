@@ -381,7 +381,7 @@ func finishRemoval(res fabricengine.RemoveResult, err error, slug string) error 
 		return teardownRefusal(err, slug)
 	}
 	if res.RemoteBranchError != "" {
-		return fmt.Errorf("the pair for %q was removed but its other-side branch's remote copy was not deleted: %s; resume this run to retry the deletion", slug, res.RemoteBranchError)
+		return fmt.Errorf("the pair for %q was removed but its other-side branch's remote copy was not deleted: %s; re-run lym batten run %s to retry the deletion", slug, res.RemoteBranchError, slug)
 	}
 	return nil
 }

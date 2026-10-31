@@ -61,6 +61,7 @@
 // A machine starts, resumes and claims only what it owns.
 // A start (no status file, or one still at Worktree-Create whose pair this machine does not hold) pulls the board, which needs origin, claims the hub's prime when none is recorded, and refuses a task another machine owns.
 // A resume refuses a task the origin reconcile or, with origin unreachable, the local board shows owned elsewhere; with origin answering it records this machine as the owner of a run-held entry with none.
+// A resume at Worktree-Teardown whose task worktree is gone runs no origin reconcile, since nothing of the pair is left to judge, and judges the owner on the local board alone, so the teardown retries what is left of the pair, such as its remote branch deletion, on any machine that owns the run.
 // Every such refusal names the owner and "lym adopt <slug>" as the way forward.
 // "lym batten status" reports the slug's effective owner as owner_machine and whether this machine holds it as owned_here.
 //

@@ -702,7 +702,7 @@ func stepTeardown_FailedRemoteDeletionHaltsResumably(t *testing.T, h *hubforge.H
 	if err == nil {
 		t.Fatal("Teardown.Remove() = nil with a remote refusing the deletion; want the failed remote deletion reported")
 	}
-	if !strings.Contains(err.Error(), "resume this run") {
+	if !strings.Contains(err.Error(), "re-run lym batten run "+slug+" to retry the deletion") {
 		t.Errorf("Teardown.Remove() error = %q; want it to name the resume", err.Error())
 	}
 	if pathExists(h.PairCodeWorktree(slug)) {

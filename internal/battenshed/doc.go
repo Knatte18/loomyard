@@ -61,6 +61,7 @@
 // an entry another machine owns refuses, naming the owner and "lym adopt <subject>", the beam or `root` that takes it over; an active entry resumes, and so does an unreachable origin, with a Warn.
 // With origin answering, the resume first records this machine as the hub's prime owner when none is recorded, and as the owner of a run-held entry that has none; a failed write refuses, naming the re-run once origin answers or the push's own way forward.
 // With origin unreachable the resume reads the local board instead, refuses a task it shows owned elsewhere, and writes no owner.
+// A resume at Worktree-Teardown whose task worktree is gone runs no reconcile and judges the owner on the local board alone, so the teardown retries what is left of the pair.
 // A reconcile error refuses, with fixing its cause and then the re-run as the way forward.
 // A fresh start runs no reconcile: creating the pair probes origin for it, and a parent behind origin costs only Parent-Align's merge.
 // It pulls the board instead, which needs origin, and refuses a task another machine owns before anything is seeded or claimed.

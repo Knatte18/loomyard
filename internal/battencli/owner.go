@@ -227,9 +227,21 @@ func (c *battenCLI) claimBoardEntry(slug string) error {
 
 // ownerPreflight is the owner check of a run about to be driven.
 // With no status file, or a status still at Worktree-Create whose pair this machine does not hold, it is the start check;
+// a status at Worktree-Teardown whose task worktree is gone takes no reconcile, since the run-scope reconcile refuses a slug with no pair worktree and the teardown only finishes what is left of the pair:
+// the local board alone judges its owner, and no origin-owed marker is written;
 // otherwise it is the resume reconcile, which also judges the owner.
-// A receiver with no owner seams runs the resume reconcile for a found status and checks nothing for an absent one.
+// A receiver with no owner seams runs the resume reconcile for a found status bar that teardown, and checks nothing for an absent one.
 func (c *battenCLI) ownerPreflight(found bool, status shedengine.Status) error {
+	if found && status.CurrentProducer == battenrecipe.NameWorktreeTeardown {
+		present, err := taskWorktreePresent(c.location, c.slug)
+		if err != nil {
+			return err
+		}
+		if !present {
+			logger.Info("battencli: teardown resume with its pair gone, judging the owner on the local board only", "slug", c.slug)
+			return c.refuseOwnedElsewhereOnLocalBoard("")
+		}
+	}
 	if c.owner.Machine == nil {
 		if !found {
 			return nil
@@ -260,9 +272,10 @@ func (c *battenCLI) preflightRunOwner() error {
 	return c.ownerPreflight(found, status)
 }
 
-// refuseResumeUnreachable judges a resume whose reconcile could not reach origin against the local Bolt.
-// A task the local board shows owned elsewhere refuses; a task owned here, run-held with no owner or unjudgeable resumes with the Warn the caller logged, and no owner write.
-func (c *battenCLI) refuseResumeUnreachable() error {
+// refuseOwnedElsewhereOnLocalBoard judges a resume that ran no origin reconcile against the local Bolt.
+// A task the local board shows owned elsewhere refuses naming its owner, then retry, a clause ending in ", or " or empty, then the adopt that takes the task over;
+// a task owned here, run-held with no owner or unjudgeable resumes with no owner write.
+func (c *battenCLI) refuseOwnedElsewhereOnLocalBoard(retry string) error {
 	if c.owner.Machine == nil {
 		return nil
 	}
@@ -290,7 +303,7 @@ func (c *battenCLI) refuseResumeUnreachable() error {
 			Slug:    c.slug,
 			Owner:   owner,
 			Subject: subject,
-			text:    fmt.Sprintf("battencli: the local board shows %q owned by %q; re-run `lym batten run %s` once origin answers, or run `lym adopt %s` from this machine's prime to take it over", c.slug, owner, c.slug, subject),
+			text:    fmt.Sprintf("battencli: the local board shows %q owned by %q; %srun `lym adopt %s` from this machine's prime to take it over", c.slug, owner, retry, subject),
 		}
 	}
 	return nil

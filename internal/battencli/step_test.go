@@ -111,7 +111,7 @@ func TestBattenPreStep_RefusalKinds(t *testing.T) {
 			name: "RunOwnedElsewhereIsBootstrap",
 			arrange: func(t *testing.T, c *battenCLI) {
 				writeStatus(t, c, shedengine.Status{
-					CurrentProducer: battenrecipe.NameWorktreeTeardown,
+					CurrentProducer: battenrecipe.NameLand,
 					State:           shedengine.StateRunning,
 				})
 				c.reconcile = func(string) (fabricengine.OriginReport, error) {

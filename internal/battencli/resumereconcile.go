@@ -89,7 +89,7 @@ func (c *battenCLI) reconcileResume() error {
 	}
 	if report.Unreachable {
 		logger.Warn("battencli: origin was unreachable, resuming without judging the run against it", "slug", c.slug)
-		if err := c.refuseResumeUnreachable(); err != nil {
+		if err := c.refuseOwnedElsewhereOnLocalBoard(fmt.Sprintf("re-run `lym batten run %s` once origin answers, or ", c.slug)); err != nil {
 			return err
 		}
 		if err := c.markOriginOwed(); err != nil {

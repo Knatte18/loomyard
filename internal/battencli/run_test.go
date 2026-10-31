@@ -189,7 +189,7 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 	t.Parallel()
 
 	const slug = "some-slug"
-	teardown := battenrecipe.NameWorktreeTeardown
+	land := battenrecipe.NameLand
 	activeReport := fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryActive}}}
 	elsewhereReport := fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryOwnedElsewhere, Owner: "there", AdoptSubject: "some-beam"}}}
 	unreachableReport := fabricengine.OriginReport{Unreachable: true}
@@ -231,7 +231,7 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 		{name: "paused", state: shedengine.StatePaused, wantOutcome: "done", wantReconcile: 1},
 		{name: "absent_status_file", wantOutcome: "done"},
 		{name: "pause_after_the_first_row", state: shedengine.StateRunning, pauseAfter: battenrecipe.NameWorktreeCreate, wantOutcome: "paused", wantReconcile: 1},
-		{name: "failed_again", state: shedengine.StateFailed, producer: battenrecipe.NameWorktreeTeardown, lockErr: errors.New("prime lock unavailable"), wantErrors: []string{"prime lock unavailable"}, wantReconcile: 1},
+		{name: "failed_again", state: shedengine.StateFailed, producer: battenrecipe.NameLand, lockErr: errors.New("prime lock unavailable"), wantErrors: []string{"prime lock unavailable"}, wantReconcile: 1},
 		{
 			name: "reconcile_active", state: shedengine.StateRunning, wantOutcome: "done", wantReconcile: 1,
 			report: fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryActive}}},
@@ -259,7 +259,7 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 			report: unreachableReport, markerBefore: true, wantMarker: true,
 		},
 		{
-			name: "a_pass_that_reached_origin_and_exits_non_zero_keeps_the_origin_owed_marker", state: shedengine.StateFailed, producer: battenrecipe.NameWorktreeTeardown, wantReconcile: 1,
+			name: "a_pass_that_reached_origin_and_exits_non_zero_keeps_the_origin_owed_marker", state: shedengine.StateFailed, producer: battenrecipe.NameLand, wantReconcile: 1,
 			lockErr: errors.New("prime lock unavailable"), wantErrors: []string{"prime lock unavailable"},
 			report: activeReport, markerBefore: true, wantMarker: true,
 		},
@@ -269,42 +269,42 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 			wantErrors:   []string{"origin refused the credentials", "fix the cause it names, then re-run lym batten run " + slug},
 		},
 		{
-			name: "owner_elsewhere_verdict_refuses_naming_the_adopt", state: shedengine.StateRunning, producer: teardown, wantReconcile: 1,
+			name: "owner_elsewhere_verdict_refuses_naming_the_adopt", state: shedengine.StateRunning, producer: land, wantReconcile: 1,
 			owner:      owning(fakeOwners{machine: "here", owners: ownedBy("here", "", false)}),
 			report:     elsewhereReport,
 			wantExit:   dobbyengine.PassExitOwnedElsewhere,
 			wantErrors: []string{"there", "`lym adopt some-beam`"},
 		},
 		{
-			name: "run_held_entry_with_no_owner_resumes_writing_no_owner", state: shedengine.StateRunning, producer: teardown, wantOutcome: "done", wantReconcile: 1,
+			name: "run_held_entry_with_no_owner_resumes_writing_no_owner", state: shedengine.StateRunning, producer: land, wantOutcome: "done", wantReconcile: 1,
 			owner:  owning(fakeOwners{machine: "here", owners: ownedBy("here", "", true)}),
 			report: activeReport,
 		},
 		{
-			name: "unreachable_origin_with_the_local_board_owned_elsewhere_refuses", state: shedengine.StateRunning, producer: teardown, wantReconcile: 1,
+			name: "unreachable_origin_with_the_local_board_owned_elsewhere_refuses", state: shedengine.StateRunning, producer: land, wantReconcile: 1,
 			owner:      owning(fakeOwners{machine: "here", owners: ownedBy("here", "there", true)}),
 			report:     unreachableReport,
 			wantExit:   dobbyengine.PassExitOwnedElsewhere,
 			wantErrors: []string{"the local board shows", "there", "once origin answers", "lym batten run " + slug, "`lym adopt some-beam`"},
 		},
 		{
-			name: "unreachable_origin_with_an_unowned_run_held_entry_resumes_without_a_write", state: shedengine.StateRunning, producer: teardown, wantOutcome: "done", wantReconcile: 1,
+			name: "unreachable_origin_with_an_unowned_run_held_entry_resumes_without_a_write", state: shedengine.StateRunning, producer: land, wantOutcome: "done", wantReconcile: 1,
 			owner:  owning(fakeOwners{machine: "here", owners: ownedBy("here", "", true)}),
 			report: unreachableReport, wantMarker: true,
 		},
 		{
-			name: "hub_with_no_prime_owner_records_this_machine_as_the_prime_owner", state: shedengine.StateRunning, producer: teardown, wantOutcome: "done", wantReconcile: 1,
+			name: "hub_with_no_prime_owner_records_this_machine_as_the_prime_owner", state: shedengine.StateRunning, producer: land, wantOutcome: "done", wantReconcile: 1,
 			owner:    owning(fakeOwners{machine: "here", owners: ownedBy("", "", false)}),
 			report:   activeReport,
 			wantSets: []string{"prime"},
 		},
 		{
-			name: "unreachable_origin_with_no_prime_owner_resumes_without_a_write", state: shedengine.StateRunning, producer: teardown, wantOutcome: "done", wantReconcile: 1,
+			name: "unreachable_origin_with_no_prime_owner_resumes_without_a_write", state: shedengine.StateRunning, producer: land, wantOutcome: "done", wantReconcile: 1,
 			owner:  owning(fakeOwners{machine: "here", owners: ownedBy("", "", false)}),
 			report: unreachableReport, wantMarker: true,
 		},
 		{
-			name: "failed_prime_claim_warns_and_still_reaches_the_owner_verdict", state: shedengine.StateRunning, producer: teardown, wantReconcile: 1,
+			name: "failed_prime_claim_warns_and_still_reaches_the_owner_verdict", state: shedengine.StateRunning, producer: land, wantReconcile: 1,
 			owner:      owning(fakeOwners{machine: "here", owners: ownedBy("", "", false), primeSetErr: errors.New("push refused")}),
 			report:     elsewhereReport,
 			wantSets:   []string{"prime"},

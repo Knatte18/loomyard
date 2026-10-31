@@ -837,7 +837,7 @@ func TestFinishRemoval(t *testing.T) {
 			name:       "RemoteBranchErrorHaltsResumable",
 			result:     fabricengine.RemoveResult{RemoteBranchError: "push refused"},
 			wantErr:    true,
-			wantSubstr: []string{slug, "push refused", "resume this run"},
+			wantSubstr: []string{slug, "push refused", "re-run lym batten run " + slug + " to retry the deletion"},
 		},
 	}
 	for _, tt := range tests {
