@@ -1,4 +1,4 @@
-// land.go is the "lym beam land" sequence: it judges the named beam, applies the refusal that stops a landing while work remains under it, and writes the land request the beam's pawl run consumes at Beam-Await.
+// land.go is the "lym beam land" and "lym beam ready" sequences: they judge the named beam; land applies the refusals that stop a landing of a beam not flagged ready or with work remaining under it and writes the land request the beam's pawl run consumes at Beam-Await, and ready writes the ready record.
 
 package beamcli
 
@@ -16,6 +16,7 @@ import (
 // ParentOf names the slug of the pair a slug was forked from, "" for the prime.
 // ChildStatus reads the status of the beam pair's own pawl run, found false when it has none.
 // RunID returns the seed id of that pawl run, which a land request names.
+// Ready reads whether the beam's ready record flags it, and MarkReady writes that record unless it already flags the beam, commits it and returns its path.
 // Refusal is the landing's refusal of a beam with work remaining under it.
 // WriteRequest writes the land request into the beam worktree and returns its path.
 type landDeps struct {
@@ -26,6 +27,8 @@ type landDeps struct {
 	OriginRecord func(slug string) (fabricengine.Origin, bool, error)
 	ChildStatus  func(slug string) (status shedengine.Status, found bool, err error)
 	RunID        func(slug string) (string, error)
+	Ready        func(slug string) (bool, error)
+	MarkReady    func(slug string, record pawlengine.ReadyRecord) (string, error)
 	Refusal      func(slug string) error
 	WriteRequest func(slug string, req pawlengine.LandRequest) (string, error)
 	Now          func() time.Time
@@ -42,7 +45,7 @@ func land(deps landDeps, slug string) (map[string]any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("lym beam land: read the board's owners: %w", err)
 	}
-	if err := judgeLandEntry(deps, owners, slug); err != nil {
+	if err := judgeLandEntry(deps, owners, "lym beam land", slug); err != nil {
 		return nil, err
 	}
 	if err := judgeLandRun(deps, slug); err != nil {
@@ -50,6 +53,13 @@ func land(deps landDeps, slug string) (map[string]any, error) {
 	}
 	if err := judgeLandOwners(deps, owners, here, slug); err != nil {
 		return nil, err
+	}
+	ready, err := deps.Ready(slug)
+	if err != nil {
+		return nil, fmt.Errorf("lym beam land: read the ready record of %s: %w; way forward: fix the cause it names, then run `lym beam land %s` again", slug, err, slug)
+	}
+	if !ready {
+		return nil, fmt.Errorf("lym beam land: the beam %s is not flagged ready to merge; way forward: run `lym beam ready %s`, after which its dobby lands it once nothing works under it", slug, slug)
 	}
 	if err := deps.Refusal(slug); err != nil {
 		return nil, err
@@ -71,30 +81,57 @@ func land(deps landDeps, slug string) (map[string]any, error) {
 	}, nil
 }
 
-// judgeLandEntry refuses the entry slug unless it is a beam project that is not done and whose pair is here, marked.
-func judgeLandEntry(deps landDeps, owners boardengine.Owners, slug string) error {
+// markReady flags the beam slug ready to be merged into its parent, and returns the ready record's path and how the landing follows.
+// A beam already flagged is reported as such and its record is not rewritten, but a record left uncommitted by a failed commit is committed.
+func markReady(deps landDeps, slug string) (map[string]any, error) {
+	owners, err := deps.ReadOwners()
+	if err != nil {
+		return nil, fmt.Errorf("lym beam ready: read the board's owners: %w", err)
+	}
+	if err := judgeLandEntry(deps, owners, "lym beam ready", slug); err != nil {
+		return nil, err
+	}
+	ready, err := deps.Ready(slug)
+	if err != nil {
+		return nil, fmt.Errorf("lym beam ready: read the ready record of %s: %w; way forward: fix the cause it names, then run `lym beam ready %s` again", slug, err, slug)
+	}
+	result := map[string]any{
+		"slug":        slug,
+		"already":     ready,
+		"way_forward": fmt.Sprintf("the beam's dobby lands %s once nothing works under it; run `lym batten status %s` to follow the landing", slug, slug),
+	}
+	path, err := deps.MarkReady(slug, pawlengine.ReadyRecord{Slug: slug, SetAt: deps.Now().UTC()})
+	if err != nil {
+		return nil, fmt.Errorf("lym beam ready: write the ready record of %s: %w; way forward: fix the cause it names, then run `lym beam ready %s` again", slug, err, slug)
+	}
+	result["record"] = path
+	return result, nil
+}
+
+// judgeLandEntry refuses the entry slug unless it is a beam project that is not done and whose pair is here, marked; verb opens each refusal.
+func judgeLandEntry(deps landDeps, owners boardengine.Owners, verb, slug string) error {
 	entry, held := owners.Entries[slug]
 	switch {
 	case !held || (!entry.IsTask && !entry.IsProject):
-		return fmt.Errorf("lym beam land: %q is not a beam, as an absent entry or a note is not; way forward: `lym board list` shows the entries", slug)
+		return fmt.Errorf("%s: %q is not a beam, as an absent entry or a note is not; way forward: `lym board list` shows the entries", verb, slug)
 	case entry.IsTask:
-		return fmt.Errorf("lym beam land: %q is a task, not a beam; way forward: land a task with `lym batten run %s`, or make a project entry with `lym board upsert` under a slug of its own, then run `lym beam create <that slug>`", slug, slug)
+		return fmt.Errorf("%s: %q is a task, not a beam; way forward: land a task with `lym batten run %s`, or make a project entry with `lym board upsert` under a slug of its own, then run `lym beam create <that slug>`", verb, slug, slug)
 	case entry.Done:
-		return fmt.Errorf("lym beam land: the beam %q is done and already landed", slug)
+		return fmt.Errorf("%s: the beam %q is done and already landed", verb, slug)
 	case !entry.Beam:
-		return fmt.Errorf("lym beam land: %q is a grouping project, not a beam; way forward: run `lym beam create %s` to make it a beam", slug, slug)
+		return fmt.Errorf("%s: %q is a grouping project, not a beam; way forward: run `lym beam create %s` to make it a beam", verb, slug, slug)
 	case !deps.PairPresent(slug):
-		return fmt.Errorf("lym beam land: the beam %s has no pair on this machine; way forward: run `lym beam create %s` to finish the create, or `lym adopt %s` when the beam's branch is on origin", slug, slug, slug)
+		return fmt.Errorf("%s: the beam %s has no pair on this machine; way forward: run `lym beam create %s` to finish the create, or `lym adopt %s` when the beam's branch is on origin", verb, slug, slug, slug)
 	}
 	origin, found, err := deps.OriginRecord(slug)
 	if err != nil {
-		return fmt.Errorf("lym beam land: read the origin record of %s: %w", slug, err)
+		return fmt.Errorf("%s: read the origin record of %s: %w", verb, slug, err)
 	}
 	if !found {
-		return fmt.Errorf("lym beam land: the pair of the beam %s has no readable origin record; way forward: run `lym fabric reconcile` to restore its records worktree, then `lym beam land %s`", slug, slug)
+		return fmt.Errorf("%s: the pair of the beam %s has no readable origin record; way forward: run `lym fabric reconcile` to restore its records worktree, then `%s %s`", verb, slug, verb, slug)
 	}
 	if !origin.Beam {
-		return fmt.Errorf("lym beam land: the pair of %s does not carry the beam mark; way forward: run `lym beam create %s`, which marks it", slug, slug)
+		return fmt.Errorf("%s: the pair of %s does not carry the beam mark; way forward: run `lym beam create %s`, which marks it", verb, slug, slug)
 	}
 	return nil
 }

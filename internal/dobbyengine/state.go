@@ -37,13 +37,15 @@ type State struct {
 	LandingsMachineOnly bool `json:"landings_machine_only,omitempty"`
 	// Tidy is the board-tidy agent in flight, nil when none is.
 	Tidy *TidyState `json:"tidy,omitempty"`
-	// LandNotice is the "can land" notice sent in the episode now standing, nil when none was sent or the beam can no longer land.
-	LandNotice *LandNoticeState `json:"land_notice,omitempty"`
+	// Land is the landing step taken in the episode now standing, a land request asked for or a notice posted, nil when none was taken or the beam can no longer land, and open to a retry when it holds only a posted refusal of Land.
+	Land *LandState `json:"land,omitempty"`
 }
 
-// LandNoticeState is the "can land" notice a beam's dobby sent, which a restarted dobby reads so it sends no second one.
-type LandNoticeState struct {
-	SentAt time.Time `json:"sent_at"`
+// LandState is the landing step a beam's dobby took, which a restarted dobby reads so it takes no second one.
+// Refused reports that Land refused and the refusal was posted, so the step stays open: the next tick asks again, as a refusal may only wait on the run, and posts nothing more.
+type LandState struct {
+	At      time.Time `json:"at"`
+	Refused bool      `json:"refused,omitempty"`
 }
 
 // RunState is dobby's record of one run it drives.
