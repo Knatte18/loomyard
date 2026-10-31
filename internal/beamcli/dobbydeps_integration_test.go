@@ -69,6 +69,20 @@ func TestHubDobbyDeps_PrimeTidyShuttle(t *testing.T) {
 	if primeDeps.TaskLimit == nil {
 		t.Errorf("prime TaskLimit = nil; want the task-limit reader")
 	}
+
+	// Both dobbies send the run notices, with the batten recipe's quiet window and the marker in the run's records directory.
+	for name, notices := range map[string]dobbyengine.RunNoticeDeps{"beam": beamDeps.RunNotices, "prime": primeDeps.RunNotices} {
+		if notices.ReadChild == nil || notices.DriverAlive == nil || notices.Agents == nil || notices.Pause == nil || notices.ReviveAPIError == nil || notices.MarkerPath == nil {
+			t.Errorf("%s RunNotices = %+v; want every seam filled", name, notices)
+			continue
+		}
+		if notices.Quiet != 30*time.Minute {
+			t.Errorf("%s RunNotices.Quiet = %s; want the Run-Shed row's 30m", name, notices.Quiet)
+		}
+		if got, want := notices.MarkerPath("task1"), shedrun.NoticeEpisodeFile(prime, "task1"); got != want {
+			t.Errorf("%s RunNotices.MarkerPath(task1) = %q; want %q", name, got, want)
+		}
+	}
 }
 
 // landingHub returns a hubforge hub holding the beam b, owned by this machine, whose pawl run waits at Beam-Await, and the seam set of b's dobby over it.

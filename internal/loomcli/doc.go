@@ -8,7 +8,7 @@
 // and an error the status file holds that the stop did not write, such as the step's own producer failure, on a `status error:` line of its reason.
 //
 // A run seeded with the recipe `pawl` is a beam's life, batten's Seed-Child seeds it in the beam's pair.
-// Its shed reads Beam-Up, Beam-Await, Parent-Align, the Code-Review perch, Beam-Describe, PR-Review, Finalize and Beam-Down, with no plan and no reroute edge.
+// Its shed reads Preflight, Beam-Up, Beam-Await, Parent-Align, the Code-Review perch, Beam-Describe, PR-Review, Finalize and Beam-Down, with no plan and no reroute edge.
 // wire fills `Env.Pawl` for it through `pawlDeps`: the run's seed id is the seed's start time, the status is written on the beam's project entry through the board, and Beam-Up's one step is `orchcli.BeamUp` with no prepare, since the run already judged origin.
 // The beam's dobby is stopped through `runproc.EndRole` by its `RoleDobby` record, and restarted through `dobbyengine.EnsureLive` naming the beam alone.
 // Beam-Await's re-check reads `battencli.ReadBeamLandBlockers` and `battencli.BeamLandRefusal` with the beam's owner, its parent's owner and the beam's ready record, and words each failure as `pawlRecheckLines` does, naming `lym adopt <beam>` or the parent's adopt subject, `root` for the prime, and `lym beam ready <slug>` for a beam not flagged ready.

@@ -316,20 +316,29 @@ func (b boardView) fileLink(project Task) string {
 	return "[" + cellText(project.Handle+" "+project.Title) + "](" + projectFileName(project.Slug) + ")"
 }
 
-// fileHeader is the opening of project's board file, the zero Task naming the root: the title, the render time, then the prime owner for the root, or for a project a link up to its parent's file, its brief, and for a beam the word beam and its effective owner.
+// fileHeader is the opening of project's board file, the zero Task naming the root: the title, the render time, then the prime owner for the root, or for a project a link up to its parent's file, its facts line, its brief, and for a beam the word beam.
 func (b boardView) fileHeader(project Task) []string {
 	rendered := "Rendered " + b.now.UTC().Format(renderedTimeLayout) + "; every age below is as of then."
 	if project.Slug == "" {
 		return []string{"# " + rootTitle, "", rendered, "Prime owner: " + primeOwnerText(b.primeOwner) + ".", ""}
 	}
-	lines := []string{"# " + cellText(project.Handle+" "+project.Title), "", rendered, "Under: " + b.fileLink(b.bySlug[project.Project].Task) + ".", ""}
+	lines := []string{"# " + cellText(project.Handle+" "+project.Title), "", rendered, "Under: " + b.fileLink(b.bySlug[project.Project].Task) + ".", "", b.projectFacts(project), ""}
 	if project.Brief != "" {
 		lines = append(lines, project.Brief, "")
 	}
 	if !project.Beam {
 		return lines
 	}
-	return append(lines, projectBeamText, "", "Owner: "+primeOwnerText(b.ownerOf(project.Slug))+".", "")
+	return append(lines, projectBeamText, "")
+}
+
+// projectFacts is the line naming project's slug, its age as of the render time and its effective owner, the age left out when its created date is unknown.
+func (b boardView) projectFacts(project Task) string {
+	parts := []string{codeSpan(project.Slug)}
+	if age := FormatAge(project.Created, b.now); age != "" {
+		parts = append(parts, "Age "+age)
+	}
+	return strings.Join(append(parts, "Owner "+primeOwnerText(b.ownerOf(project.Slug))), " · ")
 }
 
 // renderReadme builds the root project's board file: its header, the intro, one section per open project on the board, then the Prime section holding the root's own Tasks, Notes and Done one heading level down.
@@ -524,7 +533,7 @@ func (b boardView) projectsSection(project Task) []string {
 }
 
 // projectSections builds one README section per open project under parent, the zero Task naming the root, at any depth: each in childProjects' order, followed by the sections of the projects under it.
-// A section's heading links the project's handle and title to its file and counts its open members; under it come the brief and one table of those members in RenderOrder's order, laid out as a Notes type table, or _None._ when it has none.
+// A section's heading links the project's handle and title to its file and counts its open members; under it come the project's facts line, the brief and one table of those members in RenderOrder's order, laid out as a Notes type table, or _None._ when it has none.
 func (b boardView) projectSections(parent Task) []string {
 	memberTable := readmeTable{columns: []string{columnEntry}, cells: func(t Task) []string { return []string{entryCell(t)} }, priority: true}
 	var lines []string
@@ -535,7 +544,7 @@ func (b boardView) projectSections(parent Task) []string {
 				members = append(members, twl)
 			}
 		}
-		lines = append(lines, countedHeading("##", b.fileLink(child.Task), len(members)), "")
+		lines = append(lines, countedHeading("##", b.fileLink(child.Task), len(members)), "", b.projectFacts(child.Task), "")
 		if child.Brief != "" {
 			lines = append(lines, child.Brief, "")
 		}

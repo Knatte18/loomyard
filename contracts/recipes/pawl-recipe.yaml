@@ -1,4 +1,5 @@
-# pawl-recipe.yaml is the pawl recipe, a beam's life: Beam-Up brings the beam up, Beam-Await holds the run
+# pawl-recipe.yaml is the pawl recipe, a beam's life: Preflight checks the pair, as loom and darn do, so the
+# row the shared seed names is the recipe's entry, Beam-Up brings the beam up, Beam-Await holds the run
 # until a land request passes the landing re-check, Parent-Align brings the parent's upstream tip into the
 # beam, the Code-Review perch reviews the beam's diff, Beam-Describe writes the change description from the
 # beam's board entry and the commits it adds, PR-Review lands the beam through a pull request when the
@@ -7,14 +8,14 @@
 # It is embedded into the binary by the sibling recipes.go rather than read from disk. The row names below
 # are the durable on-disk identities that resume depends on.
 #
-# The rows are Beam-Up, Beam-Await, Parent-Align, the Code-Review perch (Code-Bouncer,
+# The rows are Preflight, Beam-Up, Beam-Await, Parent-Align, the Code-Review perch (Code-Bouncer,
 # Code-Burler-Review, Code-Burler-Fix), Beam-Describe, PR-Review, Finalize and Beam-Down.
 # Beam-Up, Beam-Await and Beam-Down are Go producers that spawn no agent, and Beam-Await returns Done only
 # for a land request that names this run and passes the re-check.
 #
-# The hold boundary: a beam project's run holds its beam from Parent-Align on, so Beam-Up and Beam-Await
-# leave the beam open to members, and boardengine.RunHolds names those two rows and batten's claim row as
-# the hold-free ones. A test pins that list against this recipe's row names.
+# The hold boundary: a beam project's run holds its beam from Parent-Align on, so Preflight, Beam-Up and
+# Beam-Await leave the beam open to members, and boardengine.RunHolds names those three rows and batten's
+# claim row as the hold-free ones. A test pins that list against this recipe's row names.
 #
 # Code-Bouncer, Code-Burler-Review and Code-Burler-Fix are the Code-Review perch, the same perch the darn
 # and loom recipes run, with the same row names, segment, run_subdir, role_prefix, rubric, fan and
@@ -34,16 +35,22 @@
 # halts for the orch. A conflict or a large merge lands through the gate in every recipe: the merge
 # fixer takes a failing merged tree.
 #
+# Preflight carries no on_stuck: nothing in the list produces what it gates, so a human is the only thing
+# that can fix it.
 # Parent-Align and Beam-Describe carry no on_stuck: Parent-Align fixes its own merge and test failures in
 # its merge fixer, and a description that fails validation halts the run for the orch, which ends the
 # landing and fixes the entry.
 
 version: 1
-entry: Beam-Up
+entry: Preflight
 terminals:
   - Beam-Down
 
 producers:
+  - name: Preflight
+    engine: Preflight
+    on_done: Beam-Up
+
   - name: Beam-Up
     engine: BeamUp
     on_done: Beam-Await

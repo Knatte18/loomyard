@@ -65,6 +65,8 @@ type RunState struct {
 	FailingPassCount int    `json:"failing_pass_count,omitempty"`
 	// Noticed holds the failing-pass texts already noticed.
 	Noticed []string `json:"noticed,omitempty"`
+	// Notice is the memory of the run notices of the run's child.
+	Notice RunNoticeState `json:"notice,omitzero"`
 }
 
 // StartState is dobby's record of one task it tries to start.

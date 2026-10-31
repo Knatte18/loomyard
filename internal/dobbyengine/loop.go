@@ -117,6 +117,8 @@ type Deps struct {
 	StencilsDir string
 	// NearestOrch returns the name of the nearest live orch the tidy agent's parent directive names; empty means there is none.
 	NearestOrch func() (string, error)
+	// RunNotices are the seams the run notices of the runs this dobby drives read; a nil RunNotices.ReadChild sends none.
+	RunNotices RunNoticeDeps
 	// CanLand reads whether the beam of this dobby is flagged ready with nothing working under it, and who owns its parent.
 	// A nil CanLand takes no landing step; the prime's dobby takes none whatever it returns.
 	CanLand func() (LandReading, error)
@@ -298,6 +300,10 @@ type daemon struct {
 	ownerPauses logger.EpisodeSet
 	// runs is the listing of the tick in flight.
 	runs []RunView
+	// deliveries holds the attempts to post each run notice not yet posted, by slug and episode key, in memory only.
+	deliveries map[string]*noticeDelivery
+	// noticeFailures guards each run notice read by its slug and seam: Warn at the first failure, Debug while it repeats, Info at recovery.
+	noticeFailures logger.EpisodeSet
 }
 
 // releaseLock releases the dobby lock when it is held.
@@ -561,6 +567,7 @@ func (d *daemon) tick(ctx context.Context, now time.Time) error {
 		if err := d.drivePasses(ctx, now); err != nil {
 			return err
 		}
+		d.runNotices(ctx, now)
 		if err := d.startReady(ctx, now); err != nil {
 			return err
 		}

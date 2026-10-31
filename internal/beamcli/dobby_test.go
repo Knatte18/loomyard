@@ -1,6 +1,6 @@
 //go:build tier0
 
-// dobby_test.go pins the pieces of dobby's hub wiring that need no hub: the run-process registration of the dobby, the error text read from what a pass printed and the machine-named landings seam.
+// dobby_test.go pins the pieces of dobby's hub wiring that need no hub: the run-process registration of the dobby, the error text read from what a pass printed, the machine-named landings seam and the recipe count-to-duration fallback behind the probe interval and quiet window.
 
 package beamcli
 
@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
@@ -110,4 +111,32 @@ func TestMachineLandings(t *testing.T) {
 			t.Error("landings() called read; want it never called after a failed name read")
 		}
 	})
+}
+
+func TestDurationFromCount(t *testing.T) {
+	t.Parallel()
+
+	const fallback = 30 * time.Minute
+	tests := []struct {
+		name  string
+		value any
+		want  time.Duration
+	}{
+		{"PositiveInt", 5, 5 * time.Minute},
+		{"PositiveInt64", int64(7), 7 * time.Minute},
+		{"PositiveFloat64", 1.5, 90 * time.Second},
+		{"ZeroFallsBack", 0, fallback},
+		{"NegativeFallsBack", -3, fallback},
+		{"ZeroFloatFallsBack", 0.0, fallback},
+		{"AbsentFallsBack", nil, fallback},
+		{"NonNumberFallsBack", "5", fallback},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := durationFromCount(tt.value, time.Minute, fallback); got != tt.want {
+				t.Errorf("durationFromCount(%v) = %v; want %v", tt.value, got, tt.want)
+			}
+		})
+	}
 }

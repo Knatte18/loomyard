@@ -359,7 +359,7 @@ User-facing modules each get one `lym <module>` namespace:
   `lym board intake` lists the open issues of the hub's own GitHub repository not yet on the board, imports one as a note or folds it into an entry, and closes noise with a stated reason.
   The hub's repository is the one its recorded binding names, else its origin remote, so only the loomyard hub's intake reads LoomYard's issues; intake never goes through selfreport.
   The README renders Tasks split into Running, Ready (waiting on nothing open) and dependency layers whose entries can run in parallel, then Notes grouped by type label, each subsection one numbered table that links each slug to its design doc;
-  it opens with one section per open project, listing that project's members, so no entry of an open project leaves its view, and holds the root's own entries under Prime below them.
+  it opens with one section per open project, naming that project's slug, age and owner and listing its members, so no entry of an open project leaves its view, and holds the root's own entries under Prime below them.
   An entry may carry a priority, `high` or `low`, absent meaning normal, which orders it first or last within its subsection.
   A task may name a run profile in its `profile` field, and `lym board profiles` prints the hub's profiles with their settings and each recipe's default profile.
   Agents use the board through the `ly:board` skill.
@@ -452,7 +452,7 @@ User-facing modules each get one `lym <module>` namespace:
   Start brings up a beam's dobby and orch, the one the acting worktree is or the one a slug names, or with `--all` the prime and every beam this machine owns, each part only when it is not live.
   Stop takes a beam's orch and dobby down.
   Status prints, once, the dobby section a beam's window draws, for the prime and for each local beam: alive or not, the runs it drives with their state, stage, time in stage and last pass, and each released task it has not started with what the task waits on, and the beam's orch: strand live, watcher live and the recorded session, then an adopt check section, shown only when the hub holds a record of one: its state, the tier in flight, the tiers done and the paths of its log and output.
-  Dobby starts the beam's released tasks from an empty status, drives their batten runs in short passes, notices the nearest live orch and spawns the board-tidy agent every few landings.
+  Dobby starts the beam's released tasks from an empty status, drives their batten runs in short passes, sends the nearest live orch its own notices and the `[dobby notice]` lines of a running child (a dead driver, an API-error stall, a usage limit, idle agents), and spawns the board-tidy agent every few landings.
   It logs to its `dobby.log` the changes it sees, such as a task start, a run changing state and a failing pass episode, plus a heartbeat line every ten minutes.
   The verbs call each owning module's function in-process, and `internal/dobbyengine` holds the daemon.
   ✅ Implemented. See the `internal/beamcli` package documentation.
@@ -709,8 +709,9 @@ User-facing modules each get one `lym <module>` namespace:
   `Run-Shed` checks its child once per call, and a call that ends nothing yields instead of waiting: its memory between calls rides in a per-run record, and the scheduling dobby runs the next pass.
   A pass returns a verdict only for a state change, an arm event, a pause or a failed status stat, each a budget-exempt `Stuck` that is its own history entry.
   Anything costing a process or a multiplexer round trip runs at most once per `notice_probe_s` (30 s).
-  A running child is checked without a time limit; `lym batten pause`, honoured at the next pass, cancellation and the notices bound it.
+  A running child is checked without a time limit; `lym batten pause`, honoured at the next pass, cancellation and the scheduling dobby's run notices bound it.
   The history writes of those returns rewrite the run's durable `status.json` without committing it — the status commit skips a transition it has already committed — so prime's own pair carries an uncommitted change at `_lym/shed/<slug>/status.json` while a watch goes between them.
+  The scheduling dobby keeps the episode keys of the run notices it sent in `_lym/shed/<slug>/notice-episode` beside it, which the next status commit carries.
   That is deliberate (the alternative is one identical commit per bounce), and it has one operator-visible consequence worth knowing: `lym fabric checkout` refuses hub-wide while a batten run is watching, because it requires a clean pair.
   `status` bounds the history it reports to the most recent entries, alongside the true `history_length` and a `history_truncated` flag — the history grows only on a state change, a pause or a failed status stat — and surfaces the blocked run's own producer-supplied `stuck_reason`, kept for the `Run-Shed` block through the budget arm, whose persisted `error` stays the fixed budget literal (the other rows carry no `on_stuck`,
   so their own reason is the persisted `error`), plus the teardown row's `abandonedSession` — recorded by the producer rather than only returned,

@@ -101,7 +101,7 @@
 //
 // The slot rule:
 //
-//   - A run whose RunView carries NoSlot takes no slot under `max_runs`, a pawl run whose landing hold does not stand, which only waits on its members at Worktree-Create, Beam-Up and Beam-Await; it takes one from Parent-Align on.
+//   - A run whose RunView carries NoSlot takes no slot under `max_runs`, a pawl run whose landing hold does not stand, which only waits on its members at Worktree-Create, Preflight, Beam-Up and Beam-Await; it takes one from Parent-Align on.
 //     The parent's dobby still schedules the run's passes, owed full passes and probes as for every run it drives, and the view's `max_runs` reasons follow, since BuildView counts through the same rule.
 //
 // The landing step:
@@ -115,6 +115,21 @@
 //     A reading that does not pass clears the episode, so a member opened again re-arms the step; a restarted dobby reads the record and takes no second step.
 //   - Bound: the step lands nothing by itself: Beam-Await re-checks the beam before anything lands, and a land request Beam-Await refuses is not asked for again in the same episode.
 //   - A failed read or post is logged once per episode and changes nothing: a failed post leaves the episode open for the next tick.
+//
+// The run notices:
+//
+//   - On each probe tick, after the scheduling steps, dobby reads the child of every listed run whose batten state is running with no cancel marker, through Deps.RunNotices, and sends the notice its condition calls for; a nil RunNotices.ReadChild sends none.
+//   - A child that is not running, or that a pause covers, is in no condition.
+//     A dead driver, no live driver strand and no held driver or run lock, is checked first, and names the respawn cap and `lym loom start` once batten respawned the child the cap of times with no progress.
+//     With a live driver, an agent run on the provider's usage limit, then one stalled on an API error, each inactive for two minutes, then every agent idle for the quiet window with no live wait, give the usage-limit, api-error and quiet notices; with no agent run read, quiet counts from the later of the child's newest history entry and its state's since.
+//     The idle clocks leave out the machine sleeps in the state record and the paused intervals, so a sleep or a pause can delay a notice and never raise one earlier.
+//   - With RunNotices.ReviveAPIError set, the first sight of an api-error episode revives the stalled sessions and notices nothing; the notice goes when the episode still stands at a later probe tick, or at the third revived episode in a row with no write of the child's status file between.
+//   - A notice reads `[dobby notice] <slug>: <state> at <row>; <condition>`, then the child's reason as `waiting:`, `since` and `history`, with paths under the task pair rendered relative to it, and goes through Deps.Notice; one not posted is tried on each probe tick, at most three times, then dropped with a Warn.
+//   - A notice goes once per episode: its key, the condition, the child's state and a stamp, is kept in the marker RunNotices.MarkerPath names, one per line, which the hub wiring places in the run's records directory so batten's status commit carries it to git.
+//     A driver-dead key ends when the child's state or its since changes, a quiet or api-error key when the newest agent activity moves, and a usage-limit key once no run reads usage-limited.
+//     The child's state, its since and the revive streak ride in the run's entry of the state record, so a re-exec sends no notice twice.
+//   - A failed read is logged once per episode and sends nothing.
+//   - Bound: while an anchor change stands no notice goes, and a machine that takes a run over dates the child's since from its own first sight, so a driver-dead notice the other machine sent can go once more.
 //
 // The board tidy:
 //
