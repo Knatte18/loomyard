@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/driftengine"
@@ -244,10 +245,9 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 // wireLightweight builds the minimum the verbUsesLightweightWiring set needs onto c: location, cwd,
 // the two status-file paths, and (for the validate verbs) the c.env path fields they read plus the
 // committed-file seam validate-plan --rework reads.
-// On a darn run it also fills the history and commit seams validate-discussion uses;
-// they read committed history and commit through the fabric at call time.
-// It loads no module config, constructs no engine, and can fail only if loomengine's own path accessors do,
-// which they cannot.
+// It also fills the history seam and the record row's engine that validate-discussion uses;
+// the seam reads committed history through the fabric at call time.
+// It loads no module config, constructs no engine, and can fail only if the run's recipe selects no embedded recipe.
 // validate-plan loads the hub-wide language.yaml itself for its rename-tool-missing check, and that read is none of wire()'s module configs.
 //
 // It exists because wire() below loads eight module configs, a model-spec registry and the active batchifier before any verb body runs, so a fault in ANY of them refused "lym loom status" and "lym loom pause" outright -- including a fault an agent loom itself spawned, which is how this was found: a Discussion-Write agent rewrote loom.yaml mid-run and from that moment the operator had neither the read-out nor the emergency brake for a run that was still going.
@@ -269,7 +269,7 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 // keep failing early on a bad config, because for them an unloadable config is a real refusal rather
 // than an unrelated one. That is the same reasoning wire()'s own landingCfg comment already gives
 // for loading landing.yaml eagerly.
-func (c *loomCLI) wireLightweight(location *lymcwd.Location, cwd string) {
+func (c *loomCLI) wireLightweight(location *lymcwd.Location, cwd string) error {
 	c.location = location
 	c.cwd = cwd
 	// CommitStatus is filled here too, even though no verb on this path writes the status file and so
@@ -297,18 +297,26 @@ func (c *loomCLI) wireLightweight(location *lymcwd.Location, cwd string) {
 	c.env.AnchorPath = location.AnchorPath()
 	c.env.WorktreeRoot = location.WorktreePath()
 	c.env.DecisionRecordPath = loomengine.DiscussionDecisionRecord(location)
-	if c.recipe != shedrun.RecipeDarn {
+	isLoom, err := loomrecipe.IsLoom(c.recipe)
+	if err != nil {
+		return err
+	}
+	// A loom recipe takes the record's PATTERN declarations; a pawl run takes none.
+	if isLoom {
 		c.env.PatternRecordPath = loomengine.DiscussionDecisionRecord(location)
 	}
 	c.env.SupportLogPath = loomengine.DiscussionSupportLog(location)
 	c.env.RelevantPath = loomengine.DiscussionRelevant(location)
 	c.env.DescriptionPath = summaryparser.Path(loomengine.LandingDir(location))
 	c.env.Rework.ReadCommitted = committedAnchoredReader(location)
-	if c.recipe == shedrun.RecipeDarn {
-		c.env.DiscussionHistory = discussionHistory(location)
-		c.env.CommitDiscussion = func() error { return commitDiscussion(location) }
+	c.env.DiscussionHistory = discussionHistory(location)
+	recordEngine, err := loomrecipe.RecordEngine(c.recipe)
+	if err != nil {
+		return err
 	}
+	c.env.RecordEngine = recordEngine
 	c.env.PlanIndex = planglyph.NewSlottedIndex(fabricengine.NewReferenceRule(), hubgeom.GateSlots(location), gateslot.WaitDir(location.AnchorPath()))
+	return nil
 }
 
 // committedAnchoredReader returns the seam that reads an anchor-relative file as committed at HEAD for location, with found false when HEAD has no such file.
@@ -349,6 +357,36 @@ func commitDiscussion(location *lymcwd.Location) error {
 	return err
 }
 
+// commitDescription commits the landing directory of location's worktree through the fabric with the change-description subject.
+// A repeat commit over an unchanged directory is a no-op.
+// It is the body of the CommitDescription seam and of the Darn-Write row's commit, so every loom recipe has one description commit.
+func commitDescription(location *lymcwd.Location) error {
+	_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{loomengine.LandingDirRel()}, fmt.Sprintf("loom: change description for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
+	return err
+}
+
+// recordWriteDeps returns the Record-Write row's deps for location's worktree: the record, support log and discussion paths, the run's board entry body, and the discussion commit.
+// Building it opens nothing: the board is read on each call.
+func recordWriteDeps(l *lymcwd.Location) loomshed.RecordWriteDeps {
+	return loomshed.RecordWriteDeps{
+		RecordPath:     loomengine.DiscussionDecisionRecord(l),
+		SupportLogPath: loomengine.DiscussionSupportLog(l),
+		DiscussionDir:  loomengine.DiscussionDir(l),
+		ReadBody: func() (string, bool, error) {
+			board, err := boardengine.OpenHub(l.HubPath)
+			if err != nil {
+				return "", false, fmt.Errorf("open the board: %w", err)
+			}
+			task, found, err := board.GetTask(seedSlug(l.WorktreeName))
+			if err != nil {
+				return "", false, fmt.Errorf("read the run's board entry: %w", err)
+			}
+			return task.Body, found, nil
+		},
+		Commit: func() error { return commitDiscussion(l) },
+	}
+}
+
 // discussionHistory returns the seam that reads every committed version of location's decision record, newest first.
 // Building it opens nothing: the fabric is read on each call.
 func discussionHistory(location *lymcwd.Location) func() ([][]byte, error) {
@@ -383,6 +421,10 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	anchorPath := location.AnchorPath()
 
 	loomCfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(location), "loom")
+	if err != nil {
+		return err
+	}
+	loomCfg, err = c.withTapestry(fabricengine.ConfigDirs(location), loomCfg)
 	if err != nil {
 		return err
 	}
@@ -488,9 +530,13 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
-	// A darn or pawl run takes no PATTERN declaration, so its review rows are told no record.
+	// A loom recipe's review rows are told the record, so the Code-Review perch checks its declared PATTERN changes landed; a pawl run takes no PATTERN declaration and is told none.
+	isLoom, err := loomrecipe.IsLoom(c.recipe)
+	if err != nil {
+		return err
+	}
 	patternRecordPath := ""
-	if c.recipe != shedrun.RecipeDarn && c.recipe != shedrun.RecipePawl {
+	if isLoom {
 		patternRecordPath = loomengine.DiscussionDecisionRecord(location)
 	}
 	burlerGeom.PatternRecordPath = patternRecordPath
@@ -552,11 +598,31 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		return fmt.Errorf("loomcli: stat the origin record: %w", err)
 	}
 
+	// Preflight loads batcher.yaml for a recipe with an Implementer row, so a broken file fails the first row; a darn or pawl run leaves it nil and skips the load.
+	var preflightBatcher func() error
+	holdsImplementer, err := loomrecipe.HasEngine(c.recipe, "Implementer")
+	if err != nil {
+		return err
+	}
+	if holdsImplementer {
+		configDirs := fabricengine.ConfigDirs(location)
+		preflightBatcher = func() error {
+			_, err := batcher.Active(configDirs)
+			return err
+		}
+	}
+
+	recordEngine, err := loomrecipe.RecordEngine(c.recipe)
+	if err != nil {
+		return err
+	}
+
 	c.env = shedrecipe.Env{
-		Cwd:          cwd,
-		AnchorPath:   anchorPath,
-		ConfigDirs:   fabricengine.ConfigDirs(location),
-		WorktreeRoot: location.WorktreePath(),
+		PreflightBatcher: preflightBatcher,
+		Cwd:              cwd,
+		AnchorPath:       anchorPath,
+		ConfigDirs:       fabricengine.ConfigDirs(location),
+		WorktreeRoot:     location.WorktreePath(),
 		// RunScratchDir is the directory the step envelope reports as scratch_dir.
 		RunScratchDir: shedrun.ScratchDir(location, c.runID),
 		GateFindingsFile: func(row string) string {
@@ -635,6 +701,11 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		// one, since the Discussion-Bouncer row's approved settle reaches this same closure through
 		// the row's commit_seam: discussion config key.
 		CommitDiscussion: func() error { return commitDiscussion(location) },
+		// DiscussionHistory and RecordEngine are filled for every recipe: the "discussion" gate and Darn-Write's guard check the record against its history, and the record row's engine selects the citation checks.
+		DiscussionHistory: discussionHistory(location),
+		RecordEngine:      recordEngine,
+		// RecordWrite is filled for every recipe: only a recipe with a RecordWrite row reads it, and it opens the board on a call, never at wire time.
+		RecordWrite: recordWriteDeps(location),
 		// DescriptionPath is the change description Describe writes and its gate and the landing
 		// rows read.
 		DescriptionPath: summaryparser.Path(loomengine.LandingDir(location)),
@@ -658,17 +729,9 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 			if err != nil {
 				return seatengine.Table{}, err
 			}
-			var priorRecords []string
-			for _, dir := range priorDirs {
-				record := summaryparser.Path(dir)
-				_, err := os.Stat(record)
-				if errors.Is(err, fs.ErrNotExist) {
-					continue
-				}
-				if err != nil {
-					return seatengine.Table{}, fmt.Errorf("loom: describe: stat prior run record %s: %w", record, err)
-				}
-				priorRecords = append(priorRecords, record)
+			priorRecords := make([]string, len(priorDirs))
+			for i, dir := range priorDirs {
+				priorRecords[i] = summaryparser.Path(dir)
 			}
 			return landingshed.DescribeTable(landingshed.DescribeInputs{
 				StencilsDir:         websterGeom.StencilsDir,
@@ -682,12 +745,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 				Slug:                seedSlug(location.WorktreeName),
 			}, landingCfg, registry)
 		},
-		// CommitDescription mirrors CommitDiscussion, including its discard of (sha, committed),
-		// which makes a repeat commit over an unchanged directory a no-op.
-		CommitDescription: func() error {
-			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{loomengine.LandingDirRel()}, fmt.Sprintf("loom: change description for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
-			return err
-		},
+		CommitDescription: func() error { return commitDescription(location) },
 		// PlanTable is evaluated per Call, not resolved here, so the stencil is read at call time -- what the Stencil Ownership Invariant requires.
 		// It takes no autonomous argument: the Plan producer is autonomous by design and its table is never interactive.
 		PlanTable: func() (seatengine.Table, error) {
@@ -762,7 +820,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		// Slug and SegmentBounces tell each Bouncer row the verbs' slug and the live bounce budget its CIRCLING Reason names.
 		Slug: seedSlug(location.WorktreeName),
 		SegmentBounces: segmentBounces(statusPath, statusLockPath, func() (shedengine.Routing, error) {
-			return loomrecipe.Routing(loomSegmentBudgets(loomCfg))
+			return loomrecipe.Routing(c.recipe, loomSegmentBudgets(loomCfg))
 		}),
 
 		Segments: loomSegmentSettings(loomCfg, reviewSettings, judgeSettings),
@@ -781,15 +839,11 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		// See landingDeps (landingdeps.go) and the env-landing-filled-in-run-not-wire design decision.
 	}
 
-	// The Drift rows read the task from the decision record in a tapestry run and from the board entry in a darn run.
-	driftSubject := driftengine.SubjectDecisionRecord
-	if c.recipe == shedrun.RecipeDarn {
-		driftSubject = driftengine.SubjectBoardEntry
-	}
+	// Every loom run's Drift rows read the task from the decision record.
 	c.env.Drift = driftDeps(location, statusPath, statusLockPath, driftTables{
 		stencilsDir:        websterGeom.StencilsDir,
 		registry:           registry,
-		subject:            driftSubject,
+		subject:            driftengine.SubjectDecisionRecord,
 		slug:               seedSlug(location.WorktreeName),
 		decisionRecordPath: loomengine.DiscussionDecisionRecord(location),
 		languageSkills:     languageSkills,
@@ -822,9 +876,13 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	c.languageSkills = languageSkills
 	c.language = language
 
-	// A darn run swaps in the darn recipe's verify source and Describe spec and fills the Darn-Write row's seams; a tapestry run leaves them nil.
-	if c.recipe == shedrun.RecipeDarn {
-		if err := c.wireDarn(location, websterGeom.StencilsDir, websterGeom.SpecsDir, frictionDir, landingCfg, registry, loomSegmentBudgets(loomCfg)); err != nil {
+	// A recipe with a Darn-Write row has its Darn-Write row's seams filled; any other leaves them nil.
+	hasDarnWrite, err := loomrecipe.HasEngine(c.recipe, darnWriteEngine)
+	if err != nil {
+		return err
+	}
+	if hasDarnWrite {
+		if err := c.wireDarn(location, websterGeom.StencilsDir, websterGeom.SpecsDir, frictionDir, registry, loomSegmentBudgets(loomCfg)); err != nil {
 			return err
 		}
 	}
@@ -871,6 +929,40 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	return nil
 }
 
+// planReviewSegment is the name of the recipe segment whose rows read tapestry.yaml's plan perch keys.
+const planReviewSegment = "Plan-Review"
+
+// recipeHoldsPlanReview reports whether the named recipe has a row of the Plan-Review segment; an empty name reads as the tapestry recipe.
+func recipeHoldsPlanReview(recipe string) (bool, error) {
+	if recipe == "" {
+		recipe = shedrun.RecipeTapestry
+	}
+	rows, err := loomrecipe.Rows(recipe)
+	if err != nil {
+		return false, err
+	}
+	for _, row := range rows {
+		if row.Segment == planReviewSegment {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// withTapestry returns cfg with tapestry.yaml's plan values applied when the run's recipe holds a Plan-Review row, and cfg itself otherwise.
+// A recipe without that segment never reads tapestry.yaml, so a fault in the file refuses none of its runs.
+func (c *loomCLI) withTapestry(dirs configengine.Dirs, cfg loomengine.Config) (loomengine.Config, error) {
+	holds, err := recipeHoldsPlanReview(c.recipe)
+	if err != nil || !holds {
+		return cfg, err
+	}
+	tapestry, err := loomengine.LoadTapestryConfig(dirs, "tapestry")
+	if err != nil {
+		return loomengine.Config{}, err
+	}
+	return cfg.WithTapestry(tapestry), nil
+}
+
 // loomPerches maps each loom Bouncer row's name to the review perch it belongs to.
 var loomPerches = map[string]loomengine.Perch{
 	loomshed.NameDiscussionBouncer: loomengine.PerchDiscussion,
@@ -882,7 +974,7 @@ var loomPerches = map[string]loomengine.Perch{
 // A new loom perch also adds a row to loomPerches, which keys the circling lookup by Bouncer row.
 var loomSegmentPerches = map[string]loomengine.Perch{
 	"Discussion-Review": loomengine.PerchDiscussion,
-	"Plan-Review":       loomengine.PerchPlan,
+	planReviewSegment:   loomengine.PerchPlan,
 	"Code-Review":       loomengine.PerchCode,
 }
 
@@ -928,10 +1020,18 @@ func loomSegmentSettings(cfg loomengine.Config, review loomengine.ReviewSettings
 			HardMaxBounces:    caps.Hard,
 			HardMaxBouncesKey: caps.HardKey,
 			AmendMaxBounces:   cfg.ReviewAmendMaxBounces,
-			ConfigFile:        "loom.yaml",
+			ConfigFile:        segmentConfigFile(perch),
 		}
 	}
 	return settings
+}
+
+// segmentConfigFile returns the config file that holds perch's keys: tapestry.yaml for the plan perch and loom.yaml for the others.
+func segmentConfigFile(perch loomengine.Perch) string {
+	if perch == loomengine.PerchPlan {
+		return "tapestry.yaml"
+	}
+	return "loom.yaml"
 }
 
 // segmentBounces returns the Env.SegmentBounces seam over the status file at statusPath, locked by statusLockPath.

@@ -167,7 +167,15 @@ func TestSmokeGate_RepromptsThroughARealPaneAndFixesTheArtifact(t *testing.T) {
 	}
 
 	// The same closure resolveGateSpec builds for a row's "gates" entry named "discussion" (see internal/shedrecipe/entries_gate.go), driven here over a real Runner instead of a fake one.
-	gate := loomshed.NewDiscussionGate(decisionRecordPath, supportLogPath, filepath.Join(filepath.Dir(supportLogPath), "relevant.md"), filepath.Dir(supportLogPath), planglyph.NewIndex(fabricengine.NewReferenceRule()))
+	gate := loomshed.NewDiscussionGate(loomshed.DiscussionCheck{
+		RecordPath:     decisionRecordPath,
+		SupportLogPath: supportLogPath,
+		RelevantPath:   filepath.Join(filepath.Dir(supportLogPath), "relevant.md"),
+		WorktreeRoot:   filepath.Dir(supportLogPath),
+		Index:          planglyph.NewIndex(fabricengine.NewReferenceRule()),
+		History:        func() ([][]byte, error) { return nil, nil },
+		Citations:      true,
+	})
 
 	// RunGated blocks until Wait reaches a terminal outcome, bounded by spec.Timeout above -- no
 	// separate test-level deadline is needed on top of it.

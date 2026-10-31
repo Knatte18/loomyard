@@ -71,9 +71,9 @@ func landingDeps(
 	verify verifySource,
 	lock landingshed.ParentLockDeps,
 ) landingshed.Deps {
-	// A darn run has no plan, so only a tapestry run traces a failed verify to its cards.
+	// A recipe with no Plan-Write row has no plan, so only a run with one traces a failed verify to its cards.
 	var traceFailure func(log, head string) (verifytree.FailureTrace, error)
-	if recipe == shedrun.RecipeTapestry {
+	if recipeHasEngine(recipe, planWriteEngine) {
 		traceFailure = failuretrace.NewTracer(l.WorktreePath(), l.AnchorPath())
 	}
 	// A pawl run has no reroute edge, so it has no review to follow one and a nil seam halts a spent or over-cap fixer for the orch.
@@ -102,7 +102,7 @@ func landingDeps(
 		StencilsDir:         geom.StencilsDir,
 		ScratchDir:          loomengine.LoomScratchDir(l),
 		PushSkipped:         pushSkipped,
-		EscalateJudgedFirst: recipe == shedrun.RecipeTapestry || recipe == shedrun.RecipeDarn,
+		EscalateJudgedFirst: recipeIsLoom(recipe),
 		OpenFabric: func() (*fabricengine.Fabric, error) {
 			return fabricengine.Open(l)
 		},
@@ -269,7 +269,7 @@ func landingDeps(
 			}
 			return rowEntry(status.History, row), nil
 		},
-		CodeReviewOff:   codeReviewOff(l, recipe),
+		CodeReviewOff:   codeBudgetZero(l),
 		RerouteReviewed: reviewFollowsReroute,
 		LandBlockers:    landBlockers,
 		PullRequest:     pullRequestDeps(l, parentBranch, pushSkipped, runner),
@@ -388,15 +388,6 @@ func parentPullRequestMode(l *lymcwd.Location) func() (mode, worktree string, er
 	}
 }
 
-// codeReviewOff returns the seam Parent-Align reads: whether the Code-Perch's effective review budget is 0.
-// A darn run has no Parent-Align, and its seam reads false; a pawl run has one, and reads the perch's budget as a tapestry run does.
-func codeReviewOff(l *lymcwd.Location, recipe string) func() (bool, error) {
-	if recipe == shedrun.RecipeDarn {
-		return func() (bool, error) { return false, nil }
-	}
-	return codeBudgetZero(l)
-}
-
 // rerouteReviewed returns the seam that reports whether a review follows Finalize's reroute: whether the Code-Perch's effective budget is above 0.
 // A loom Finalize reroutes through Parent-Align to the Code-Perch, and a darn Finalize to Code-Bouncer, which settles approved at once on a budget of 0.
 func rerouteReviewed(l *lymcwd.Location) func() (bool, error) {
@@ -418,19 +409,19 @@ func codeBudgetZero(l *lymcwd.Location) func() (bool, error) {
 	}
 }
 
-// fixerPlanDir returns the plan directory the merge fixer reads: the run's plan directory on a tapestry run, and "" on a darn or pawl run, which has none.
+// fixerPlanDir returns the plan directory the merge fixer reads: the run's plan directory on a recipe with a Plan-Write row, and "" on one with none.
 func fixerPlanDir(l *lymcwd.Location, recipe string) string {
-	if recipe == shedrun.RecipeDarn || recipe == shedrun.RecipePawl {
+	if !recipeHasEngine(recipe, planWriteEngine) {
 		return ""
 	}
 	return planparser.PlanDir(l.AnchorPath())
 }
 
 // fixerTestFileMatcher returns the test-file predicate the fixer's kind cap judges a path by.
-// A darn or pawl run has no plan and so no language, and matches a test file of any language.
-// A tapestry run parses the live plan at call time, reading an absent `language:` as go and a plan that does not parse as none, whose matcher counts every file a test file and so over-covers.
+// A recipe with no Plan-Write row has no plan and so no language, and matches a test file of any language.
+// A recipe with one parses the live plan at call time, reading an absent `language:` as go and a plan that does not parse as none, whose matcher counts every file a test file and so over-covers.
 func fixerTestFileMatcher(recipe, planDir string) func(path string) bool {
-	if recipe == shedrun.RecipeDarn || recipe == shedrun.RecipePawl {
+	if !recipeHasEngine(recipe, planWriteEngine) {
 		return planparser.IsAnyLanguageTestFile
 	}
 	return func(path string) bool {

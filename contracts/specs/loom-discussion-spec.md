@@ -48,12 +48,20 @@ An `### Added after Discussion` entry carries no id.
 Any other H3 there is refused, as a `decision-heading-malformed` finding, and a repeated id as a `decision-id-duplicate` finding.
 Each id appears as a whole word in a bullet of `## Acceptance criteria`, so `D1` is not met by `D10`, and a range such as "D1 to D4" covers only the ids it spells.
 An id no bullet names is a `decision-not-in-acceptance` finding.
-Both checks run for tapestry and darn records alike, in the discussion gates and `lym loom validate-discussion`, and not in `lym loom decision add`.
-Lines inside fenced blocks are not read.
+Both checks run for every loom record, in the discussion gates, Darn-Write's post-session guard and `lym loom validate-discussion`, and not in `lym loom decision add`.
+Lines inside fenced blocks are not read, and the section check counts a required heading only outside one.
+A fenced block follows CommonMark's rule for a top-level fence:
+
+- It opens on a line of at most three leading spaces and a run of at least three backticks or tildes; a backtick run whose info string holds a backtick opens none.
+- It closes only on a line of at most three leading spaces, a run of the opening character at least as long as the opening run, and nothing after the run but spaces or tabs.
+  Any other line inside it, a shorter run, the other character or a run followed by text such as ` ```js `, is body text.
+- A line indented four or more spaces neither opens nor closes.
+- An unclosed fence runs to the end of the document.
+- A list item or blockquote is not read, so a fence nested in one is read as a top-level line.
 
 ### Citations in a loom record
 
-On a tapestry run, the discussion check tests the paths and symbols the record cites in backticks; a darn record's citations are not tested.
+The discussion check tests the paths and symbols a record cites in backticks only when the run's record row is Discussion-Write; a Record-Write record's citations are not tested, and neither is its relevant list read.
 
 - A token is a path when it holds a `/`, none of `#>*{}$:`, no `...` segment, and its first segment is a root entry git tracks, an entry staged and never committed included; `_lym/` and `.lym/` paths are never tested.
   It must exist in the worktree, and a token ending in `/` must be a directory; otherwise the check reports `citation-path-missing`.
@@ -88,8 +96,8 @@ The Discussion-Write and Discussion-Burler-Fix gates halt on a quarry outage as 
 - `### Added after Discussion (<by>, <date>): <title>` entries under `## Decisions` are appended only by `lym loom decision add`.
   A writer never edits or removes one, and a record that drops an entry its history held fails the format check.
 - A `## PATTERN changes` bullet carrying the ` — added after Discussion (<by>, <date>)` suffix is appended only by `lym loom decision add`.
-  A writer never edits or removes one, and a record that drops a bullet its history held fails the format check wherever the check for dropped `### Added after Discussion` entries runs: the darn discussion gate, `lym loom validate-discussion` on a darn run and the verb's darn-record check.
-  A tapestry run's discussion check reads no history for either.
+  A writer never edits or removes one, and a record that drops a bullet its history held fails the format check wherever the check for dropped `### Added after Discussion` entries runs.
+  That check runs on every loom record, after the section check is clean: in the discussion gates, in Darn-Write's post-session guard and in `lym loom validate-discussion`, which commits nothing.
 - `<!-- lym:carry-over … -->` blocks under `## Open risks` are written only by Go.
   A writer never authors, edits or removes one.
 

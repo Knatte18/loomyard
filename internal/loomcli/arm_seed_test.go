@@ -181,3 +181,89 @@ func TestResolveRecipe(t *testing.T) {
 		})
 	}
 }
+
+// TestArmAt_RefusesOffLoomRecipes asserts the `lym loom` arming path refuses a run whose recipe lym loom does not serve, and a plan verb on a recipe with no Plan-Write row, before it writes anything;
+// a pawl run and a tapestry run pass both checks, and the arming `lym shed` shares never refuses a non-loom recipe.
+// The checks read a seed and a recipe's rows and write nothing, so a hand-built location with no git repository behind it drives them.
+func TestArmAt_RefusesOffLoomRecipes(t *testing.T) {
+	t.Parallel()
+
+	const (
+		notLoom = "is not a loom recipe"
+		unknown = "names no recipe this lym knows"
+		noPlan  = "does not apply to this run"
+	)
+	seeded := func(t *testing.T, recipe string) *lymcwd.Location {
+		t.Helper()
+		loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+		if recipe == "beam" {
+			// WriteSeed refuses the name no recipe carries any more, so the seed an older lym wrote is written by hand.
+			seedPath := shedrun.SeedFile(loc, shedrun.SelfRunID)
+			if err := os.MkdirAll(filepath.Dir(seedPath), 0o755); err != nil {
+				t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(seedPath), err)
+			}
+			if err := os.WriteFile(seedPath, []byte(`{"recipe":"beam","driver":"go"}`), 0o644); err != nil {
+				t.Fatalf("write the beam seed by hand: %v", err)
+			}
+			return loc
+		}
+		if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, shedrun.Seed{Recipe: recipe, Driver: shedrun.DriverGo}); err != nil {
+			t.Fatalf("shedrun.WriteSeed(%q) = %v; want nil", recipe, err)
+		}
+		return loc
+	}
+
+	tests := []struct {
+		name   string
+		recipe string
+		verb   string
+		// want is the refusal's marker and wayForward a phrase its way forward names; empty want means the verb passes both checks.
+		want       string
+		wayForward string
+	}{
+		{"BattenIsNotALoomRecipe", shedrun.RecipeBatten, "status", notLoom, "lym shed status"},
+		{"BeamNamesNoRecipe", "beam", "status", unknown, "seed the run again"},
+		{"DarnValidatePlan", shedrun.RecipeDarn, "validate-plan", noPlan, "lym loom validate-discussion"},
+		{"DarnInsertCard", shedrun.RecipeDarn, "insert-card", noPlan, "lym loom validate-discussion"},
+		{"DarnRemoveCard", shedrun.RecipeDarn, "remove-card", noPlan, "lym loom validate-discussion"},
+		{"DarnRestoreRenumber", shedrun.RecipeDarn, "restore-renumber", noPlan, "lym loom validate-discussion"},
+		{"PawlStatusPasses", shedrun.RecipePawl, "status", "", ""},
+		{"TapestryValidatePlanPasses", shedrun.RecipeTapestry, "validate-plan", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			loc := seeded(t, tt.recipe)
+			c := newLoomCLI()
+			c.loomPath = true
+
+			_, err := c.armAt(loc, tt.verb, nil)
+
+			if tt.want == "" {
+				for _, refusal := range []string{notLoom, unknown, noPlan} {
+					if err != nil && strings.Contains(err.Error(), refusal) {
+						t.Errorf("armAt(%q) on a %q seed = %v; want neither lym loom refusal", tt.verb, tt.recipe, err)
+					}
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.want) || !strings.Contains(err.Error(), "way forward:") || !strings.Contains(err.Error(), tt.wayForward) {
+				t.Fatalf("armAt(%q) on a %q seed = %v; want a refusal containing %q and a way forward naming %q", tt.verb, tt.recipe, err, tt.want, tt.wayForward)
+			}
+			if _, statErr := os.Stat(shedrun.StatusFile(loc, shedrun.SelfRunID)); !os.IsNotExist(statErr) {
+				t.Errorf("status file after a refused %q = %v; want it absent", tt.verb, statErr)
+			}
+		})
+	}
+
+	t.Run("ArmAtNeverRefusesAnUnservedRecipe", func(t *testing.T) {
+		t.Parallel()
+		loc := seeded(t, shedrun.RecipeBatten)
+
+		_, err := ArmAt(loc, "status", shedrun.SelfRunID)
+
+		if err != nil && strings.Contains(err.Error(), notLoom) {
+			t.Errorf("ArmAt(status) on a batten seed = %v; want lym shed's arming never to refuse it", err)
+		}
+	})
+}

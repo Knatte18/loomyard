@@ -45,11 +45,16 @@ type segmentModelSource struct {
 	review, fix       burlerengine.ModelSpecList
 }
 
-// loomSegmentModelSource returns the loom.yaml model lists of the review segment named segment, held by <segment>_reviewer_model and <segment>_fixer_model.
+// loomSegmentModelSource returns the model lists of the review segment named segment, held by <segment>_reviewer_model and <segment>_fixer_model.
+// The plan segment's keys are tapestry.yaml's and every other segment's are loom.yaml's, which the keys' module names.
 func loomSegmentModelSource(segment string, review, fix burlerengine.ModelSpecList) segmentModelSource {
+	module := loomModule
+	if Perch(segment) == PerchPlan {
+		module = tapestryModule
+	}
 	return segmentModelSource{
-		reviewKey: shuttleengine.ModelKey{Module: loomModule, Key: segment + "_reviewer_model"},
-		fixKey:    shuttleengine.ModelKey{Module: loomModule, Key: segment + "_fixer_model"},
+		reviewKey: shuttleengine.ModelKey{Module: module, Key: segment + "_reviewer_model"},
+		fixKey:    shuttleengine.ModelKey{Module: module, Key: segment + "_fixer_model"},
 		review:    review,
 		fix:       fix,
 	}

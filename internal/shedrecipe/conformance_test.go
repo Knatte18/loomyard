@@ -28,14 +28,14 @@ func minimalEntries() map[string]minimalEntry {
 		return env
 	}
 	return map[string]minimalEntry{
-		"Preflight":         {newTestEnv, emptyConfig},
-		"ParentAlign":       {withLanding, emptyConfig},
-		"DarnWrite":         {darnTestEnv, emptyConfig},
-		"Finalize":          {withLanding, emptyConfig},
-		"FrictionReflect":   {newTestEnv, emptyConfig},
-		"TapestryPreflight": {newTestEnv, emptyConfig},
-		"Implementer":       {newImplementerTestEnv, implementerTestConfig},
-		"DiscussionWrite":   {newTestEnv, emptyConfig},
+		"Preflight":       {newTestEnv, emptyConfig},
+		"ParentAlign":     {withLanding, emptyConfig},
+		"DarnWrite":       {darnTestEnv, emptyConfig},
+		"RecordWrite":     {newTestEnv, emptyConfig},
+		"Finalize":        {withLanding, emptyConfig},
+		"FrictionReflect": {newTestEnv, emptyConfig},
+		"Implementer":     {newImplementerTestEnv, implementerTestConfig},
+		"DiscussionWrite": {newTestEnv, emptyConfig},
 		"Describe": {
 			env: newDescribeTestEnv,
 			cfg: func(*testing.T, Env) Config { return gatesCfg("description", 3) },

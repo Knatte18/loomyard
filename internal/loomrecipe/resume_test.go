@@ -12,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
@@ -59,13 +60,11 @@ func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
 	writeBatcherConfig(t, env.AnchorPath, "active: [not valid yaml\n")
 
-	shed1, err := New(env, paths)
+	shed1, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
 	shed1.Producers[0].Producer = fakeAlwaysDoneProducer{}
-	// Tapestry-Preflight loads batcher.yaml too, so it is substituted to let the malformed config reach Webster.
-	shed1.Producers[1].Producer = fakeAlwaysDoneProducer{}
 	result1, err := shed1.Run(context.Background())
 	if err != nil {
 		t.Fatalf("first Run() error = %v; want nil", err)
@@ -79,7 +78,7 @@ func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 
 	writeBatcherConfig(t, env.AnchorPath, `active: "identity"`+"\n")
 
-	shed2, err := New(env, paths)
+	shed2, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
@@ -114,11 +113,9 @@ func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 // output already exists from the first pass -- still makes a fresh Shed call it again, rather than
 // skip it.
 //
-// The two runs do not end at the same halted row: the first run ends shedengine.RunBlocked at Merge-In (see sequence_test.go's wantSequenceOrder doc comment for why).
-// After resetCurrentProducer(..., loomshed.NamePreflight, false), the second run re-calls row 1, Shed
-// advances to row 2, and row 2 finds a history carrying the first run's later producers -- exactly
-// the half-finished shape the fresh-start rule rejects -- so the second run blocks at
-// Tapestry-Preflight instead. This test's own point is the re-call count, not the terminal state.
+// Both runs end shedengine.RunBlocked at Merge-In (see sequence_test.go's wantSequenceOrder doc comment for why):
+// after resetCurrentProducer(..., loomshed.NamePreflight, false), the second run re-calls row 1 and then runs the later rows over the first run's history.
+// This test's own point is the re-call count, not the terminal state.
 //
 // It holds one counting := &countingProducer{} across both builds and asserts counting.calls == 2
 // at the end: substituting a fresh &countingProducer{} at the second site would leave the count at
@@ -127,7 +124,7 @@ func TestResume_CrashRecoveryRecallsUnconditionally(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
 	counting := &countingProducer{}
 
-	shed1, err := New(env, paths)
+	shed1, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
@@ -145,7 +142,7 @@ func TestResume_CrashRecoveryRecallsUnconditionally(t *testing.T) {
 
 	resetCurrentProducer(t, paths.StatusPath, paths.StatusLockPath, loomshed.NamePreflight, false)
 
-	shed2, err := New(env, paths)
+	shed2, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
@@ -170,7 +167,7 @@ func TestResume_PauseStopsAtBoundaryAndClearsFlag(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
 	resetCurrentProducer(t, paths.StatusPath, paths.StatusLockPath, loomshed.NameWebster, true)
 
-	shed1, err := New(env, paths)
+	shed1, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
@@ -206,7 +203,7 @@ func TestResume_PauseStopsAtBoundaryAndClearsFlag(t *testing.T) {
 		t.Errorf("persisted CurrentProducer = %q; want %q", got.CurrentProducer, loomshed.NameWebster)
 	}
 
-	shed2, err := New(env, paths)
+	shed2, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
@@ -240,7 +237,7 @@ func TestBounceRouting_StuckContinuesAtDeclaredTarget(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
 	blockBouncerJudge(env)
 
-	shed, err := New(env, paths)
+	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
@@ -275,13 +272,11 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
 	writeBatcherConfig(t, env.AnchorPath, "active: [not valid yaml\n")
 
-	shed, err := New(env, paths)
+	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
 	shed.Producers[0].Producer = fakeAlwaysDoneProducer{}
-	// Tapestry-Preflight loads batcher.yaml too, so it is substituted to let the malformed config reach Webster.
-	shed.Producers[1].Producer = fakeAlwaysDoneProducer{}
 	result, err := shed.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run() error = %v; want nil", err)
@@ -323,7 +318,7 @@ func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
 	blockBouncerJudge(env)
 	discussionBouncerMaxBounces := env.Segments["Discussion-Review"].MaxBounces
 
-	shed, err := New(env, paths)
+	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
@@ -379,7 +374,7 @@ func TestResume_DiscussionWriteRespawnsRatherThanReportDoneOffFileExistence(t *t
 
 	resetCurrentProducer(t, paths.StatusPath, paths.StatusLockPath, loomshed.NameDiscussionWrite, false)
 
-	shed, err := New(env, paths)
+	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
@@ -440,7 +435,7 @@ func TestResume_LiveMatchingRunAttachesInsteadOfRespawning(t *testing.T) {
 
 	resetCurrentProducer(t, paths.StatusPath, paths.StatusLockPath, loomshed.NameDiscussionWrite, false)
 
-	shed, err := New(env, paths)
+	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}

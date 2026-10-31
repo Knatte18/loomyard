@@ -77,6 +77,55 @@ producers:
 			},
 		},
 		{
+			name: "contract and verify_source decode into the fields",
+			yaml: `
+version: 1
+entry: start
+contract: loom
+verify_source: tree_scope
+terminals: [done]
+producers:
+  - name: row1
+    engine: bouncer
+`,
+			wantRecipe: &Recipe{
+				Version:      1,
+				Entry:        "start",
+				Contract:     "loom",
+				VerifySource: "tree_scope",
+				Terminals:    []string{"done"},
+				Producers: []Row{
+					{Name: "row1", Engine: "bouncer"},
+				},
+			},
+		},
+		{
+			name: "unknown contract is refused naming the key, the legal value and the way forward",
+			yaml: `
+version: 1
+entry: start
+contract: weave
+terminals: [done]
+producers:
+  - name: row1
+    engine: bouncer
+`,
+			wantErrSub: `shedbuild: contract "weave" is not a legal value (legal: loom); way forward: set it to one of them or remove it`,
+		},
+		{
+			name: "unknown verify_source is refused naming the key, the legal values and the way forward",
+			yaml: `
+version: 1
+entry: start
+verify_source: elsewhere
+terminals: [done]
+producers:
+  - name: row1
+    engine: bouncer
+`,
+			wantErrSub: `shedbuild: verify_source "elsewhere" is not a legal value (legal: plan, tree_scope); way forward: set it to one of them or remove it`,
+		},
+		{
 			name: "row with no config block yields nil Config",
 			yaml: `
 version: 1

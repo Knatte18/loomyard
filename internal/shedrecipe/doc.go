@@ -14,6 +14,11 @@
 // Config is the portable per-row half: the recipe row's own static, already-decoded configuration,
 // which never contains an absolute path and which this package never learns the file format of.
 //
+// # The loom engine sets
+//
+// LoomRecordEngines, LoomBuildEngines and LoomFinalizeEngine name the engines a loom recipe's record row, build row and landing row use.
+// shedbuild reads them to check a recipe declaring `contract: loom`, so a new loom recipe needs no change to the check.
+//
 // # The MultiLLM row
 //
 // The MultiLLM entry builds a seatengine.Table from its row: a role prefix, a loom segment, an ordered list of seats, and optional gates, timeout, interactivity and table tokens.
@@ -27,6 +32,11 @@
 // The DiscussionWrite entry runs the Discussion-Write lead, and its advisors when the table has any, on a MultiLLM producer behind the discussion commit decorator.
 // Its table is told rather than built from Config: Env.DiscussionTable is a closure the caller supplies, evaluated once per call, because building the table needs a location this package may not import.
 // The row's "gates" key is stamped onto each table the closure returns, so the gate guards the lead whatever table the closure builds.
+//
+// # The RecordWrite row
+//
+// The RecordWrite entry builds a loom recipe's record row for a run whose task is a board entry: a Go producer that writes the decision record and support log with no agent.
+// It takes no Config key and reads Env.RecordWrite alone; the three paths must be absolute and both seams non-nil, or the row refuses when it is built.
 //
 // # The BeamDescribe row
 //
@@ -43,7 +53,7 @@
 //
 // The Implementer entry builds a recipe's implementer row with the engine a setting chooses, the one place a setting picks a row's engine.
 // Its "implementer_setting" key names that setting as `module.key`, read through Env.Setting, and its value names one implementer from a closed table in this package.
-// Every other key of the row's Config passes to that implementer's constructor unchanged.
+// Every other key of the row's Config passes to that implementer's constructor unchanged; the shipped tapestry recipe names `tapestry.implementer`.
 // Every implementer builds the same row with the same edges, so the choice never skips a row or enters one conditionally;
 // a row without the key, and a setting holding anything but one implementer name, refuse when the recipe builds.
 // contracts/specs/implementer-spec.md pins what every implementer takes in and delivers.

@@ -25,7 +25,7 @@ import (
 // It also asserts the perch shape over the built rows: every Bouncer's OnStuck names a review row whose OnStuck names a fix row whose OnStuck names the Bouncer back, with equal Segment and MaxBounces, and no row is unreachable through OnDone/OnStuck from the first row.
 func TestNew_ShapeMatchesRecipe(t *testing.T) {
 	env, paths := testEnv(t)
-	shed, err := New(env, paths)
+	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
@@ -117,18 +117,14 @@ func TestRecipe_StructuralCheckHasNoFindings(t *testing.T) {
 	}
 }
 
-// TestNew_StatusPathCoherence protects the split ShedPaths carries a duplicate of Env.StatusPath and
-// Env.StatusLockPath needs: internal/loomshed.Deps carried a single field feeding both consumers, so
-// the two could not disagree. Splitting it into an Env copy (read by tapestryPreflightEntry) and a
-// ShedPaths copy (read by Shed) makes a divergent fill possible for the first time, and its
-// consequence is silent -- Shed persisting to one file while Tapestry-Preflight reads another -- which
-// is exactly why New checks it itself, ahead of shedbuild.Build.
+// TestNew_StatusPathCoherence protects the split ShedPaths carries a duplicate of Env.StatusPath and Env.StatusLockPath needs.
+// A divergent fill between the Env copy and the ShedPaths copy (read by Shed) is silent, Shed persisting to one file while a row reads another, which is exactly why New checks it itself, ahead of shedbuild.Build.
 func TestNew_StatusPathCoherence(t *testing.T) {
 	t.Run("StatusPath", func(t *testing.T) {
 		env, paths := testEnv(t)
 		paths.StatusPath = paths.StatusPath + ".other"
 
-		shed, err := New(env, paths)
+		shed, err := New(shedrun.RecipeTapestry, env, paths)
 		if err == nil {
 			t.Fatalf("New() error = nil; want non-nil error for a divergent StatusPath pair")
 		}
@@ -144,7 +140,7 @@ func TestNew_StatusPathCoherence(t *testing.T) {
 		env, paths := testEnv(t)
 		paths.StatusLockPath = paths.StatusLockPath + ".other"
 
-		shed, err := New(env, paths)
+		shed, err := New(shedrun.RecipeTapestry, env, paths)
 		if err == nil {
 			t.Fatalf("New() error = nil; want non-nil error for a divergent StatusLockPath pair")
 		}
@@ -166,7 +162,7 @@ func TestNew_ConstructionFailureNamesOffendingRow(t *testing.T) {
 	env, paths := testEnv(t)
 	env.Cwd = ""
 
-	shed, err := New(env, paths)
+	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err == nil {
 		t.Fatalf("New() error = nil; want non-nil error for an Env with an empty Cwd")
 	}
@@ -178,18 +174,14 @@ func TestNew_ConstructionFailureNamesOffendingRow(t *testing.T) {
 	}
 }
 
-// TestRecipe_SeedAndResumeRowNamesExist protects the two row names loom's seed and resume paths
-// hard-code outside the recipe: loomshed.NamePreflight, which Seed writes as CurrentProducer into a
-// fresh status file, and loomshed.NameTapestryPreflight, which tapestryPreflightProducer.Call passes to
-// loomengine.CheckSeed as the expected name alongside []string{NamePreflight, NameTapestryPreflight} as
-// the tolerated history set.
+// TestRecipe_SeedAndResumeRowNamesExist protects the one row name loom's seed path hard-codes outside the recipe:
+// loomshed.NamePreflight, which Seed writes as CurrentProducer into a fresh status file.
 //
-// Once the recipe is the row-name source, a recipe row renamed from Preflight would leave Seed
-// writing a current_producer naming no row and CheckSeed's tolerated set no longer matching -- a
-// failure that is silent at build time and surfaces as a broken resume for an in-flight task.
+// Once the recipe is the row-name source, a recipe row renamed from Preflight would leave Seed writing a current_producer naming no row.
+// That failure is silent at build time and surfaces as a broken resume for an in-flight task.
 func TestRecipe_SeedAndResumeRowNamesExist(t *testing.T) {
 	env, paths := testEnv(t)
-	shed, err := New(env, paths)
+	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
@@ -199,7 +191,7 @@ func TestRecipe_SeedAndResumeRowNamesExist(t *testing.T) {
 		haveNames = append(haveNames, p.Name)
 	}
 
-	for _, want := range []string{loomshed.NamePreflight, loomshed.NameTapestryPreflight} {
+	for _, want := range []string{loomshed.NamePreflight} {
 		found := false
 		for _, name := range haveNames {
 			if name == want {
@@ -214,13 +206,13 @@ func TestRecipe_SeedAndResumeRowNamesExist(t *testing.T) {
 }
 
 // TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet asserts RecipeEngines() reports exactly loom's
-// own recipe's engine set plus the darn recipe's DarnWrite and the pawl recipe's BeamUp, BeamAwait, BeamDescribe and BeamDown, sorted and de-duplicated -- derived from wantProducerTable's own engine
+// own recipe's engine set plus the darn recipe's RecordWrite and DarnWrite and the pawl recipe's BeamUp, BeamAwait, BeamDescribe and BeamDown, sorted and de-duplicated -- derived from wantProducerTable's own engine
 // column rather than a second hand-written literal, for the same reason its battenrecipe twin
 // gets this test: a silently empty return would disable the cross-consumer coverage guard rather
 // than fail it.
 func TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet(t *testing.T) {
-	// The darn recipe's writer and the pawl recipe's own rows are ones a loom row can reach, beside the tapestry recipe's.
-	want := []string{"DarnWrite", "BeamUp", "BeamAwait", "BeamDescribe", "BeamDown"}
+	// The darn recipe's record row and writer and the pawl recipe's own rows are ones a loom row can reach, beside the tapestry recipe's.
+	want := []string{"DarnWrite", "RecordWrite", "BeamUp", "BeamAwait", "BeamDescribe", "BeamDown"}
 	seen := map[string]bool{}
 	for _, engine := range want {
 		seen[engine] = true
@@ -347,19 +339,19 @@ func TestEntryNumbers(t *testing.T) {
 		want   map[string]int
 	}{
 		{"loom", shedrun.RecipeTapestry, map[string]int{
-			"Preflight": 1, "Discussion-Write": 3,
-			"Discussion-Bouncer": 4, "Discussion-Burler-Review": 4, "Discussion-Burler-Fix": 4,
-			"Drift-Baseline": 5,
-			"Plan-Write":     6,
-			"Plan-Bouncer":   7, "Plan-Burler-Review": 7, "Plan-Burler-Fix": 7,
-			"Drift-Await": 8,
-			"Webster":     9, "Parent-Align": 10,
+			"Preflight": 1, "Discussion-Write": 2,
+			"Discussion-Bouncer": 3, "Discussion-Burler-Review": 3, "Discussion-Burler-Fix": 3,
+			"Drift-Baseline": 4,
+			"Plan-Write":     5,
+			"Plan-Bouncer":   6, "Plan-Burler-Review": 6, "Plan-Burler-Fix": 6,
+			"Drift-Await": 7,
+			"Webster":     8, "Parent-Align": 9,
+			"Drift-Verify": 10,
 			"Code-Bouncer": 11, "Code-Burler-Review": 11, "Code-Burler-Fix": 11,
-			"Drift-Verify": 12,
-			"Describe":     13, "PR-Review": 14, "Finalize": 15, "Friction-Reflect": 16,
+			"Describe": 12, "PR-Review": 13, "Finalize": 14, "Friction-Reflect": 15,
 		}},
 		{"batten", shedrun.RecipeBatten, map[string]int{"Run-Shed": 6, "Land": 7}},
-		{"darn", shedrun.RecipeDarn, map[string]int{"Drift-Baseline": 2, "Drift-Await": 3, "Drift-Verify": 5, "Code-Bouncer": 6, "Code-Burler-Review": 6, "Code-Burler-Fix": 6}},
+		{"darn", shedrun.RecipeDarn, map[string]int{"Record-Write": 2, "Drift-Baseline": 3, "Drift-Await": 4, "Drift-Verify": 6, "Code-Bouncer": 7, "Code-Burler-Review": 7, "Code-Burler-Fix": 7}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			got := numbersOf(t, tt.recipe)
@@ -393,7 +385,7 @@ func TestEntryNumbers(t *testing.T) {
 // TestRecipe_WebsterReroutesToPlanReview pins the edge a Webster plan conflict travels: the Webster row reroutes to Plan-Burler-Review, whose fasit instructions name the conflict record by the path websterengine declares.
 func TestRecipe_WebsterReroutesToPlanReview(t *testing.T) {
 	env, paths := testEnv(t)
-	shed, err := New(env, paths)
+	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}

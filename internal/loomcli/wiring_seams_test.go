@@ -53,6 +53,8 @@ var intentionallyNil = map[string]string{
 	"DarnTable":                           "darn-only seam, filled by wire for a darn seed",
 	"Darn.Commit":                         "darn-only seam, filled by wire for a darn seed",
 	"Darn.LatestOutcome":                  "darn-only seam, filled by wire for a darn seed",
+	"Darn.CheckRecord":                    "darn-only seam, filled by wire for a darn seed",
+	"Darn.CommittedRecord":                "darn-only seam, filled by wire for a darn seed",
 	"CreateWorktree":                      "batten-only seam, filled by battencli",
 	"ExecutableSetting":                   "no tapestry or darn row is a Command row; battencli alone fills it",
 	"Command.TaskDir":                     "no tapestry or darn row is a Command row; battencli alone fills it",
@@ -133,6 +135,7 @@ var intentionallyNil = map[string]string{
 //lym:seam internal/landingshed#ParentLockDeps
 //lym:seam internal/landingshed#PullRequestDeps
 //lym:seam internal/loomshed#DarnDeps
+//lym:seam internal/loomshed#RecordWriteDeps
 //lym:seam internal/loomshed#PRReworkDeps
 //lym:seam internal/pawlengine#Deps
 //lym:seam internal/pawlengine#Paths

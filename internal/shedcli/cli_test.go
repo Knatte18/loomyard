@@ -137,7 +137,7 @@ func (l *loopRun) assertLoop(t *testing.T, envelope map[string]any) {
 // every other arming refusal on step is a bootstrap error with a trace file and a way forward, and on any other verb it stays kind-less.
 // Rows replace an entry of the package-global recipes table, so neither the rows nor this test run in parallel.
 func TestArmFromSeed_RefusalEnvelopeKinds(t *testing.T) {
-	const genericWayForward = "escalating when the fix lies outside the repair verbs"
+	const reseedWayForward = `way forward: remove the run's seed.json and seed the run again with "lym shed seed <run-id> --recipe <recipe>"`
 	// The durable sink is package-level state, which is why the test stays serial.
 	logger.SetDurableSinkDir(t.TempDir())
 	t.Cleanup(func() { logger.SetDurableSinkDir("") })
@@ -175,7 +175,7 @@ func TestArmFromSeed_RefusalEnvelopeKinds(t *testing.T) {
 			setup:               seedRecipe("bogus-recipe"),
 			verb:                "step",
 			wantKind:            "bootstrap",
-			wantSuffix:          genericWayForward,
+			wantSuffix:          reseedWayForward,
 			wantWayForwardCount: 1,
 		},
 		{
@@ -197,16 +197,18 @@ func TestArmFromSeed_RefusalEnvelopeKinds(t *testing.T) {
 			wantWayForwardCount: 1,
 		},
 		{
-			name:  "unknown recipe on status",
-			setup: seedRecipe("bogus-recipe"),
-			verb:  "status",
+			name:                "unknown recipe on status",
+			setup:               seedRecipe("bogus-recipe"),
+			verb:                "status",
+			wantSuffix:          reseedWayForward,
+			wantWayForwardCount: 1,
 		},
 		{
 			name:                "loop: running status file is written failed",
 			setup:               seedRecipe("bogus-recipe"),
 			verb:                "step",
 			wantKind:            "bootstrap",
-			wantSuffix:          genericWayForward,
+			wantSuffix:          reseedWayForward,
 			wantWayForwardCount: 1,
 			loopRun:             &loopRun{wantStop: "error", wantState: "failed", seedStatus: true},
 		},
@@ -215,7 +217,7 @@ func TestArmFromSeed_RefusalEnvelopeKinds(t *testing.T) {
 			setup:               seedRecipe("bogus-recipe"),
 			verb:                "step",
 			wantKind:            "bootstrap",
-			wantSuffix:          genericWayForward,
+			wantSuffix:          reseedWayForward,
 			wantWayForwardCount: 1,
 			loopRun:             &loopRun{wantStop: "busy", wantState: "running", seedStatus: true, holdRunLock: true},
 		},
@@ -224,7 +226,7 @@ func TestArmFromSeed_RefusalEnvelopeKinds(t *testing.T) {
 			setup:               seedRecipe("bogus-recipe"),
 			verb:                "step",
 			wantKind:            "bootstrap",
-			wantSuffix:          genericWayForward,
+			wantSuffix:          reseedWayForward,
 			wantWayForwardCount: 1,
 			loopRun:             &loopRun{wantStop: "busy", wantState: "running", seedStatus: true, holdLoopLock: true},
 		},
@@ -233,7 +235,7 @@ func TestArmFromSeed_RefusalEnvelopeKinds(t *testing.T) {
 			setup:               seedRecipe("bogus-recipe"),
 			verb:                "step",
 			wantKind:            "bootstrap",
-			wantSuffix:          genericWayForward,
+			wantSuffix:          reseedWayForward,
 			wantWayForwardCount: 1,
 			loopRun:             &loopRun{wantStop: "error"},
 		},
@@ -274,6 +276,13 @@ func TestArmFromSeed_RefusalEnvelopeKinds(t *testing.T) {
 			if tt.wantKind == "" {
 				if len(envelope) != 2 {
 					t.Errorf("envelope = %v; want exactly the two keys \"ok\" and \"error\"", envelope)
+				}
+				msg, _ := envelope["error"].(string)
+				if !strings.HasSuffix(msg, tt.wantSuffix) {
+					t.Errorf("error = %q; want it to end with %q", msg, tt.wantSuffix)
+				}
+				if got := strings.Count(msg, "way forward:"); tt.wantWayForwardCount != 0 && got != tt.wantWayForwardCount {
+					t.Errorf("error = %q holds %d way-forward clauses; want %d", msg, got, tt.wantWayForwardCount)
 				}
 				return
 			}

@@ -1,15 +1,13 @@
-// darnrecipe.go implements NewDarn and DarnRouting, the builder and routing projection of the embedded darn recipe, and DarnRetiredRows, the row renames a darn run is carried across.
-// Neither of the recipe's budgets is declared in it: NewDarn stamps the verify budget `darn.yaml` supplies onto the verify gates of Darn-Write and Code-Burler-Fix, and both apply the Code-Review segment's budget to the perch, at every call.
+// darnrecipe.go implements the darn recipe's verify-budget helpers: the rows that carry the budget, its check and its stamp.
+// The budget is not declared in the recipe: New stamps the verify budget `darn.yaml` supplies onto those rows at every build.
 
 package loomrecipe
 
 import (
 	"fmt"
+	"slices"
 
-	"github.com/Knatte18/loomyard/contracts/recipes"
-	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
-	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 )
 
@@ -19,72 +17,34 @@ const verifyGateName = "verify"
 // codeReviewSegment is the review segment of the code review perch, the darn recipe's only one.
 const codeReviewSegment = "Code-Review"
 
-// darnVerifyGatedRows are the darn recipe's rows whose verify gate runs the tree-scoped command, or the command impactset derives from the merge base, and runs darn.yaml's verify where impactset falls back.
-var darnVerifyGatedRows = []string{loomshed.NameDarnWrite, loomshed.NameCodeBurlerFix}
+// treeScopeVerifySource is the verify_source value of a recipe whose verify targets come from the hub's configured trees.
+const treeScopeVerifySource = "tree_scope"
 
-// DarnRetiredRows maps each row name a darn run's status file may still carry from an earlier recipe onto the row that replaced it.
-func DarnRetiredRows() map[string]string {
-	return map[string]string{"Darn": loomshed.NameDarnWrite}
-}
+// burlerFixEngine is the recipe engine name of a review segment's fix row.
+const burlerFixEngine = "BurlerFix"
 
-// NewDarn parses recipes.DarnRecipe, stamps env.DarnVerifyAttempts onto the verify gates of Darn-Write and Code-Burler-Fix, builds it against env, applies env.Segments["Code-Review"].MaxBounces to the Code-Review perch, and returns the assembled *shedengine.Shed.
-// A review budget of 0 stamps zero_rounds on Code-Bouncer, which then settles approved at once, and Describe's entry gate skips Describe so the writer's change description stands.
-// It makes the status-path coherence checks New makes, then refuses an env.DarnVerifyAttempts below 1, a missing Code-Review entry in env.Segments, naming the loom wiring's segment table, and a Code-Review budget below 0 before any row builds.
-func NewDarn(env shedrecipe.Env, paths shedbuild.ShedPaths) (*shedengine.Shed, error) {
-	if err := checkStatusPaths(env, paths); err != nil {
-		return nil, err
+// verifyGatedRows returns the names of the rows whose verify gate carries the verify budget: the build row and the Code-Review segment's BurlerFix row.
+// A recipe whose verify_source is not tree_scope has none.
+func verifyGatedRows(recipe shedbuild.Recipe) []string {
+	if recipe.VerifySource != treeScopeVerifySource {
+		return nil
 	}
-	if err := checkVerifyAttempts(env.DarnVerifyAttempts); err != nil {
-		return nil, err
+	var names []string
+	for _, row := range recipe.Producers {
+		if slices.Contains(shedrecipe.LoomBuildEngines, row.Engine) {
+			names = append(names, row.Name)
+		}
 	}
-	segments, err := reviewSegments(recipes.DarnRecipe)
-	if err != nil {
-		return nil, err
+	if len(names) == 0 {
+		return nil
 	}
-	budgets, err := segmentBudgets(segments, env, loomSegmentTableWayForward)
-	if err != nil {
-		return nil, err
-	}
-
-	parsed, err := shedbuild.Parse(recipes.DarnRecipe)
-	if err != nil {
-		return nil, fmt.Errorf("loomrecipe: %w", err)
-	}
-	for _, row := range darnVerifyGatedRows {
-		if err := applyVerifyAttempts(&parsed, row, env.DarnVerifyAttempts); err != nil {
-			return nil, err
+	for _, row := range recipe.Producers {
+		if row.Engine == burlerFixEngine && row.Segment == codeReviewSegment {
+			names = append(names, row.Name)
 		}
 	}
 
-	stampZeroRounds(&parsed, segments, budgets)
-
-	shed, err := shedbuild.NewShedFrom(parsed, env, paths)
-	if err != nil {
-		return nil, fmt.Errorf("loomrecipe: %w", err)
-	}
-	applyReviewBudget(shed.Producers, segments, budgets)
-
-	return shed, nil
-}
-
-// DarnRouting projects the embedded darn recipe's routing without building any engine, with budgets' Code-Review entry applied to the perch as NewDarn applies it and every edge kept at any budget.
-// A budgets map lacking Code-Review is refused naming the segment and the loom wiring's segment table, and a negative entry is refused naming the segment.
-func DarnRouting(budgets map[string]int) (shedengine.Routing, error) {
-	segments, err := reviewSegments(recipes.DarnRecipe)
-	if err != nil {
-		return shedengine.Routing{}, err
-	}
-	if err := checkSegmentBudgets(segments, budgets, loomSegmentTableWayForward); err != nil {
-		return shedengine.Routing{}, err
-	}
-
-	routing, err := shedbuild.RoutingOf(recipes.DarnRecipe)
-	if err != nil {
-		return shedengine.Routing{}, fmt.Errorf("loomrecipe: %w", err)
-	}
-	applyReviewBudget(routing.Producers, segments, budgets)
-
-	return routing, nil
+	return names
 }
 
 // checkVerifyAttempts refuses a verify attempt budget below 1.

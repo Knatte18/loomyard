@@ -90,20 +90,29 @@ func AmendmentTarget(recipe string) (string, error) {
 	return parsed.AmendmentTarget, nil
 }
 
-// parseEmbeddedRecipe parses the embedded recipe the name selects, refusing a name that selects none.
-func parseEmbeddedRecipe(recipe string) (shedbuild.Recipe, error) {
-	var source []byte
+// embeddedRecipeSource returns the source of the embedded recipe the name selects, refusing a name that selects none.
+// An empty name reads as the tapestry recipe, as an unseeded run does.
+func embeddedRecipeSource(recipe string) ([]byte, error) {
 	switch recipe {
-	case shedrun.RecipeTapestry:
-		source = recipes.TapestryRecipe
+	case shedrun.RecipeTapestry, "":
+		return recipes.TapestryRecipe, nil
 	case shedrun.RecipeDarn:
-		source = recipes.DarnRecipe
+		return recipes.DarnRecipe, nil
 	case shedrun.RecipeBatten:
-		source = recipes.BattenRecipe
+		return recipes.BattenRecipe, nil
 	case shedrun.RecipePawl:
-		source = recipes.PawlRecipe
-	default:
-		return shedbuild.Recipe{}, fmt.Errorf("loomrecipe: no embedded recipe named %q", recipe)
+		return recipes.PawlRecipe, nil
+	}
+
+	return nil, fmt.Errorf("loomrecipe: no embedded recipe named %q", recipe)
+}
+
+// parseEmbeddedRecipe parses the embedded recipe the name selects, refusing a name that selects none.
+// An empty name reads as the tapestry recipe, as an unseeded run does.
+func parseEmbeddedRecipe(recipe string) (shedbuild.Recipe, error) {
+	source, err := embeddedRecipeSource(recipe)
+	if err != nil {
+		return shedbuild.Recipe{}, err
 	}
 	parsed, err := shedbuild.Parse(source)
 	if err != nil {

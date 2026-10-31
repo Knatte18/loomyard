@@ -17,7 +17,7 @@ import (
 func TestBuild_EntryGate(t *testing.T) {
 	t.Parallel()
 
-	const setting = "loom.plan_auto_accept"
+	const setting = "tapestry.plan_auto_accept"
 	tests := []struct {
 		name string
 		// gate is the YAML value of the row's entry_gate key; empty leaves the key out.
@@ -51,7 +51,7 @@ func TestBuild_EntryGate(t *testing.T) {
 			name:        "a bare setting holding a string is an evaluation error naming the config command and the resume command",
 			gate:        setting,
 			value:       "no",
-			wantErrSubs: []string{`row "Gated"`, setting, "holds no, not a bool", "lym config loom --resolved", "lym config loom --layer local --set plan_auto_accept=<bool>", "lym loom resume"},
+			wantErrSubs: []string{`row "Gated"`, setting, "holds no, not a bool", "lym config tapestry --resolved", "lym config tapestry --layer local --set plan_auto_accept=<bool>", "lym loom resume"},
 		},
 		{
 			name:        "a bare setting holding a number is an evaluation error",

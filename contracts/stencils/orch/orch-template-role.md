@@ -164,10 +164,10 @@ The mechanics of reading and writing the board are in the `ly:board` skill; this
     A decision that adds, changes or removes a PATTERN entry also passes `--pattern-entry`, `--pattern-action` and, for `adds` or `changes`, `--pattern-text`, as `lym loom decision add --help` says.
     Several decisions taken together go in one call with `--from <file>`, a JSON array of entries, so they land in one commit and one notice.
     Once the plan is approved, the parent also passes `--amends-plan`.
-  - When that verb refuses because the run has no decision record (batten's pre-loom rows such as `running · Worktree-Create`, `Preflight` and `Tapestry-Preflight`, or a halt before Discussion-Write), the decision becomes a board note of its own through `lym board upsert` with kind note, titled `{{.decision_note_title}} <the decision>`, with the held task's slug in place of `<slug>`.
-    Only a note titled that way counts as a parent decision, which the Discussion-Review lenses and the darn writer read.
+  - When that verb refuses because the run has no decision record (batten's pre-loom rows such as `running · Worktree-Create` and `Preflight`, or a halt before Discussion-Write), the decision becomes a board note of its own through `lym board upsert` with kind note, titled `{{.decision_note_title}} <the decision>`, with the held task's slug in place of `<slug>`.
+    Only a note titled that way counts as a parent decision, which the Discussion-Review lenses read.
   - Only when the verb refuses because Discussion-Write is running and owns the record does the decision go by message to the Discussion-Write session.
-    A darn run's verb refuses until Darn-Write has committed its record, and then the verb alone records the decision, with no message of your own, since it tells each live agent of the run and a producer that starts later reads the record.
+    A Record-Write run's verb refuses until Record-Write has committed the record, and each refusal names its own way forward, which you take in place of a board note; the verb alone then records the decision, with no message of your own, since it tells each live agent of the run and a producer that starts later reads the record.
   - The board's run lock is unchanged, so a held task's entry is never edited.
 - Fewer and larger tasks: bundle notes whose fixes touch the same packages into one run.
   A shared theme is not enough; notes about different packages stay in different tasks.

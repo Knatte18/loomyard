@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -101,28 +102,27 @@ const (
 	pawlTacklerRecipe = "pawl: a beam's life (its orch and dobby, the wait for its landing, its merge, review, description and Finalize into its parent)"
 )
 
-// tacklerFor resolves the tackler settings of a run of recipe from the config layers under dirs, and the one-line recipe description its prompt names:
-// shed.yaml's defaults under the recipe's own module overrides, so a darn run takes darn.yaml's keys and a loom or pawl run loom.yaml's.
+// tacklerFor resolves the tackler settings of a run of recipe from the shed.yaml config layers under dirs, and the one-line recipe description its prompt names.
 func tacklerFor(dirs configengine.Dirs, recipe string, reg modelspec.Registry) (sheddriver.TacklerSettings, string, error) {
 	shed, err := sheddriver.LoadConfig(dirs)
 	if err != nil {
 		return sheddriver.TacklerSettings{}, "", err
 	}
-	override, err := loomengine.RecipeOverride(dirs, recipe)
+	settings, err := sheddriver.ResolveTackler(shed, sheddriver.Override{}, reg)
 	if err != nil {
 		return sheddriver.TacklerSettings{}, "", err
 	}
-	settings, err := sheddriver.ResolveTackler(shed, override, reg)
-	if err != nil {
-		return sheddriver.TacklerSettings{}, "", err
-	}
-	switch recipe {
-	case shedrun.RecipeDarn:
-		return settings, darnTacklerRecipe, nil
-	case shedrun.RecipePawl:
+	if recipe == shedrun.RecipePawl {
 		return settings, pawlTacklerRecipe, nil
 	}
-	return settings, loomTacklerRecipe, nil
+	hasPlan, err := loomrecipe.HasEngine(recipe, planWriteEngine)
+	if err != nil {
+		return sheddriver.TacklerSettings{}, "", err
+	}
+	if hasPlan {
+		return settings, loomTacklerRecipe, nil
+	}
+	return settings, darnTacklerRecipe, nil
 }
 
 // loomArbiterSeam builds the arbiter seam loom hands the shed driver.

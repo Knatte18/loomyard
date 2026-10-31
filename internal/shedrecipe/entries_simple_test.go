@@ -68,10 +68,6 @@ func zeroEnvField(env Env, field string) Env {
 		env.ConfigDirs.Anchor = ""
 	case "WorktreeRoot":
 		env.WorktreeRoot = ""
-	case "StatusPath":
-		env.StatusPath = ""
-	case "StatusLockPath":
-		env.StatusLockPath = ""
 	case "StencilsDir":
 		env.StencilsDir = ""
 	case "RunRoot":
@@ -192,13 +188,6 @@ func simpleEntryCases() []simpleEntryCase {
 			entry:           frictionReflectEntry,
 			buildEnv:        newTestEnv,
 			validatedFields: nil,
-			unreadField:     "Cwd",
-		},
-		{
-			registryKey:     "TapestryPreflight",
-			entry:           tapestryPreflightEntry,
-			buildEnv:        newTestEnv,
-			validatedFields: []string{"StatusPath", "StatusLockPath", "ConfigDirs.Anchor"},
 			unreadField:     "Cwd",
 		},
 		{
@@ -400,20 +389,6 @@ func TestFinalizeEntry_LandingRejected(t *testing.T) {
 	}
 	if !strings.HasPrefix(err.Error(), "shedrecipe: Finalize: ") {
 		t.Errorf("finalizeEntry() error = %v; want it to carry this package's own %q prefix, not a raw pass-through", err, "shedrecipe: Finalize: ")
-	}
-}
-
-// TestTapestryPreflightEntry_RelativeAnchorPath asserts a relative Env.ConfigDirs.Anchor fails, as the
-// representative case for every entry's requireAbsRoot validation.
-func TestTapestryPreflightEntry_RelativeAnchorPath(t *testing.T) {
-	env := newTestEnv(t)
-	env.ConfigDirs.Anchor = "relative/path"
-	_, err := tapestryPreflightEntry(RowIdentity{Name: "row-name"}, Config{}, env)
-	if err == nil {
-		t.Fatalf("tapestryPreflightEntry() error = nil; want non-nil for a relative Env.ConfigDirs.Anchor")
-	}
-	if !strings.Contains(err.Error(), "ConfigDirs.Anchor") {
-		t.Errorf("tapestryPreflightEntry() error = %v; want it to name field %q", err, "ConfigDirs.Anchor")
 	}
 }
 

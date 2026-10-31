@@ -139,7 +139,7 @@ const (
 // awaitRunLockChildDied proceeds, and that is the whole point of this function existing rather than
 // the verb testing `result != awaitRunLockReady` inline. A child that is already gone before the
 // handshake's first poll is a driver that RAN AND FINISHED -- the common case, since a run that
-// halts fast (a blocked Preflight or Tapestry-Preflight, an exhausted bounce budget) exits within
+// halts fast (a blocked Preflight, an exhausted bounce budget) exits within
 // milliseconds, well inside the first poll interval. Refusing there tells the operator the bootstrap
 // broke when in fact their task halted, and withholds the success envelope that is the bootstrap's entire job.
 //

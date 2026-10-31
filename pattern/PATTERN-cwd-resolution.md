@@ -18,9 +18,9 @@ An engine is handed the absolute paths it operates on and derives none of its ow
 
 ### Tiers
 
-- Three tiers: `lymcwd.Resolve`, then `preflight.Check` (fabric wired, synced, clean), then `loomengine.CheckSeed`.
+- Two tiers: `lymcwd.Resolve`, then `preflight.Check` (fabric wired, synced, clean).
 - A producer needs none of the tiers.
-- An orchestrator needs tier 3.
+- An orchestrator needs tier 2.
 - A standalone CLI probes tier 1 through `preflight.ResolveMode` only.
 
 ### Constructors

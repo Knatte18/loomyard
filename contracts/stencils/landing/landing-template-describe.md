@@ -12,18 +12,20 @@
 
 You are writing the single change description for task `{{.slug}}`.
 It becomes the pull request's title and body and the landing commit's message, so it is written for a reviewer who knows the codebase but has not seen the run that produced the change.
+The change may have been fixed after an earlier description was written, so describe the diff as it stands now.
 
 ## What to read
 
 Read only these sources, and use read-only git for the diff:
 
 - The decision record, `{{.decision_record_path}}`.
+  Its `## Goal` is the task's scope as its `Added after Discussion` entries amend it.
   An entry between `<!-- lym:carry-over … -->` marker lines in `## Open risks` lists the findings a review left open.
   Each finding a Plan-Review or Code-Review entry lists becomes one item to check by hand in your description, worded as the finding and where it is, never as a review round.
   A Discussion-Review entry is not carried into the description.
 - The board entry, via `lym board get '{"slug":"{{.slug}}"}'`.
 - The diff of the task branch `{{.task_branch}}` against its merge base with the parent branch `{{.parent_branch}}`, read as `git diff {{.merge_base}} {{.task_branch}}`.
-- The run records, one per plan generation with the oldest first and the live one last, only as a source of manual-check items:
+- The run records, one per plan generation with the oldest first and the live one last, only as a source of manual-check items; `(none)` means the run has none:
 {{.run_record_paths}}
   A manual-check item from an older generation still counts when the live change does not make it obsolete.
   When a record carries an `## Integration suite failed` section, carry that failure into your description as an item for the reviewer to check.

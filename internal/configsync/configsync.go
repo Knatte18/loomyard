@@ -41,9 +41,10 @@ var legacyConfigModules = map[string][]string{
 // An open map is one unit, so a whole map is compared whole; under any other mapping, a per-name map included, each leaf unit is compared alone.
 // Only the replaced units are listed; an older template generation's value is kept as tuned.
 var formerTemplateValues = map[string]map[string]string{
-	"loom":   formerLoomValues(),
-	"shed":   {"driver_kind": "llm"},
-	"claude": {"prompt_cache_ttl_roles": "{driver: 1h, webster: 1h}"},
+	"loom":     formerLoomValues(),
+	"tapestry": formerTapestryValues(),
+	"shed":     {"driver_kind": "llm"},
+	"claude":   {"prompt_cache_ttl_roles": "{driver: 1h, webster: 1h}"},
 	"orch": {
 		"soft_threshold_tokens": "300000",
 		"threshold_tokens":      "400000",
@@ -61,14 +62,26 @@ func formerLoomValues() map[string]string {
 		"code_auto_accept":       "false",
 	}
 	for _, unit := range []string{
-		"discussion_lenses", "plan_lenses",
-		"discussion_reviewer_model", "plan_reviewer_model", "code_fixer_model",
+		"discussion_lenses",
+		"discussion_reviewer_model", "code_fixer_model",
 	} {
 		former[unit] = `""`
 	}
-	for _, segment := range []string{"discussion", "plan", "code"} {
+	for _, segment := range []string{"discussion", "code"} {
 		former[segment+"_reviewer_fan"] = `""`
 		former[segment+"_fixer_fan"] = `""`
+	}
+	return former
+}
+
+// formerTapestryValues returns tapestry's former template values, the ones the plan perch's keys held in loom.yaml before they moved.
+func formerTapestryValues() map[string]string {
+	former := map[string]string{}
+	for _, unit := range []string{
+		"plan_lenses", "plan_reviewer_model",
+		"plan_reviewer_fan", "plan_fixer_fan",
+	} {
+		former[unit] = `""`
 	}
 	return former
 }

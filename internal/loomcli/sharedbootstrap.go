@@ -108,11 +108,7 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, strin
 	if err != nil {
 		return "", "", bootstrapStageSeed, err
 	}
-	recipeOverride, err := loomengine.RecipeOverride(configDirs, seedRecipe)
-	if err != nil {
-		return "", "", bootstrapStageSeed, err
-	}
-	driver := resolveSeedDriver(existingSeed, seedFound, sheddriver.ResolveDriverKind(shedConfig, recipeOverride))
+	driver := resolveSeedDriver(existingSeed, seedFound, sheddriver.ResolveDriverKind(shedConfig, sheddriver.Override{}))
 	if err := shedrun.WriteSeed(c.location, shedrun.SelfRunID, loomSeedFor(seedRecipe, parent, driver)); err != nil {
 		if errors.Is(err, shedrun.ErrDisagreeingSeed) {
 			err = disagreeingSeedRefusal(shedrun.SeedFile(c.location, shedrun.SelfRunID), existingSeed, parent)

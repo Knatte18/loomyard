@@ -5,6 +5,7 @@ package configengine
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -71,20 +72,22 @@ const (
 // Categories classifies the template by dotted path: an entry covers its own path and every path under it.
 // RetiredKeys are the dotted keys the module no longer reads, each mapped to the category it held as a template key;
 // they stay out of Categories and OpenMaps, the local and machine layers admit them by that category, and a load drops them from the stacked document.
+// RetiredWayForward maps a retired key, by the same dotted key, to the text telling the operator where the key lives now; the local layer's refusal of that key ends with it as a way forward.
 // SeedOnly marks the module whose file is the operator's registry, seeded whole and never rewritten, so its base stays full in a hub too.
 // Overlay is the module's optional template overlay, picked by a selector key in the base layer; its zero value means none.
 type Spec struct {
-	Name         string
-	Template     []byte
-	OpenMaps     []string
-	PerNameMaps  []string
-	HubWide      bool
-	WholeEntries bool
-	JSONEntries  bool
-	Categories   map[string]Category
-	RetiredKeys  map[string]Category
-	SeedOnly     bool
-	Overlay      Overlay
+	Name              string
+	Template          []byte
+	OpenMaps          []string
+	PerNameMaps       []string
+	HubWide           bool
+	WholeEntries      bool
+	JSONEntries       bool
+	Categories        map[string]Category
+	RetiredKeys       map[string]Category
+	RetiredWayForward map[string]string
+	SeedOnly          bool
+	Overlay           Overlay
 }
 
 // LocalFile returns the path of a module's local override file under anchor:
@@ -273,9 +276,13 @@ func ValidateLocal(spec Spec, doc []byte) error {
 	}
 
 	for _, path := range paths {
-		if _, retiredCategory, retired := retiredCovering(spec, path); retired {
+		if retiredKey, retiredCategory, retired := retiredCovering(spec, path); retired {
 			if retiredCategory != CategoryNone {
-				return MarkInvalid(fmt.Errorf("key %q is %s and cannot be set in a local override", path, retiredCategory))
+				message := fmt.Sprintf("key %q is %s and cannot be set in a local override", path, retiredCategory)
+				if text := spec.RetiredWayForward[retiredKey]; text != "" {
+					message += "; way forward: " + text
+				}
+				return MarkInvalid(errors.New(message))
 			}
 			continue
 		}

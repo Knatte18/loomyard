@@ -21,12 +21,11 @@ func TestObserveEntry_GotoIsNotACrashResume(t *testing.T) {
 	voucherLockPath := filepath.Join(dir, "handoff-voucher.json.lock")
 
 	writeStatusFixture(t, statusPath, statusLockPath, shedengine.Status{
-		CurrentProducer: "Tapestry-Preflight",
+		CurrentProducer: "Discussion-Write",
 		State:           shedengine.StateBlocked,
 		History: []shedengine.HistoryEntry{
 			{Producer: "Preflight", Outcome: shedengine.Done, At: "2026-01-01T00:00:00Z"},
-			{Producer: "Discussion-Write", Outcome: shedengine.Done, At: "2026-01-01T00:00:01Z"},
-			{Producer: "Tapestry-Preflight", Outcome: shedengine.Stuck, At: "2026-01-01T00:00:02Z"},
+			{Producer: "Discussion-Write", Outcome: shedengine.Stuck, At: "2026-01-01T00:00:01Z"},
 		},
 		Product: productJSON(t, loomengine.Status{Slug: "a-task", Parent: "main"}),
 	})
@@ -36,10 +35,10 @@ func TestObserveEntry_GotoIsNotACrashResume(t *testing.T) {
 		LockPath:       runLockPath,
 		StatusLockPath: statusLockPath,
 		Producers: []shedengine.ProducerDef{
-			{Name: "Tapestry-Preflight"},
+			{Name: "Preflight"},
 			{Name: "Discussion-Write"},
 		},
-		Target: "Tapestry-Preflight",
+		Target: "Discussion-Write",
 	}); err != nil {
 		t.Fatalf("shedengine.Goto() error = %v", err)
 	}

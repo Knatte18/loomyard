@@ -390,7 +390,7 @@ defaults maps a recipe to the profile a task of that recipe takes when it names 
 Edit the profiles with "lym config profiles".
 
 Output:
-  {"ok":true,"defaults":{"tapestry":"light"},"profiles":[{"name":"light","settings":{"tapestry":{"loom":{"plan_max_bounces":1}}}}]}
+  {"ok":true,"defaults":{"tapestry":"light"},"profiles":[{"name":"light","settings":{"tapestry":{"tapestry":{"plan_max_bounces":1}}}}]}
 
 Example:
   lym board profiles`,

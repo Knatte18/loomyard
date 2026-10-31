@@ -10,11 +10,11 @@
 // The check reads only the exported strand name and the parent orch's name, so it guards a mistaken call, not a session that clears or forges the variable, and `--by` stays an unverified label.
 // That is bounded by each entry being append-only, under an `Added after Discussion` heading with the claimed label and the date, in the call's one committed diff.
 //
-// On a darn run the verb works once Darn-Write has validated and committed its record, and also while Darn-Write runs.
+// On a run whose recipe has a Record-Write row the verb works once that row has written and committed the record.
 // The caller rule and the append-only, labelled, committed entry are unchanged.
-// The one new edge is appending while the writer runs, bounded to a record the writer validated and has not touched.
 // The working copy must equal the committed copy and hold every added entry its history held.
-// After the commit the committed record must hold every appended entry, so an entry a writer write displaced is refused rather than reported.
+// After the commit the committed record must hold every appended entry, so an entry a displacing write lost is refused rather than reported.
+// Each refusal on such a record names the way forward by the run's current row.
 //
 // The verb never routes the run, never touches the support log or the plan, and an approved plan is not re-planned by it.
 //
@@ -48,10 +48,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
-	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
@@ -72,13 +72,21 @@ const (
 
 	decisionWayWriter = `way forward: Discussion-Write owns the record while it runs; message the Discussion-Write session with the decision instead, or re-run once the row has handed off`
 
-	decisionWayDarnWriter = `way forward: Darn-Write has not finished its record or is editing it after validating it; message the running Darn-Write session, and re-run "lym loom decision add" once the committed record is unchanged`
-	decisionWayEntryLost  = `way forward: a Darn-Write write landed during the append; message the running Darn-Write session to leave the record alone, then re-run "lym loom decision add"`
-	decisionWayNoHeading  = `way forward: restore the "## Decisions" heading in the decision record, then re-run the verb`
-	decisionWayRetry      = `way forward: re-run "lym loom decision add"; nothing is appended`
-	decisionWayFindings   = `way forward: the record is restored; fix the named section and re-run the verb`
-	decisionWayArbiter    = `way forward: the "arbiter" label is the run's own arbiter's; pass --by parent from the run's parent, or --by operator from the operator's own shell`
-	decisionWayPattern    = `way forward: pass --pattern-entry and --pattern-action together, and --pattern-text for adds or changes`
+	decisionWayEntryLost = `way forward: re-run "lym loom decision add"`
+	decisionWayNoHeading = `way forward: restore the "## Decisions" heading in the decision record, then re-run the verb`
+	decisionWayRetry     = `way forward: re-run "lym loom decision add"; nothing is appended`
+	decisionWayFindings  = `way forward: the record is restored; fix the named section and re-run the verb`
+	decisionWayArbiter   = `way forward: the "arbiter" label is the run's own arbiter's; pass --by parent from the run's parent, or --by operator from the operator's own shell`
+	decisionWayPattern   = `way forward: pass --pattern-entry and --pattern-action together, and --pattern-text for adds or changes`
+
+	decisionWayRecordStart     = `the record exists once Record-Write has run; way forward: run "lym loom start", then re-run the verb once the run passed Record-Write`
+	decisionWayRecordResume    = `the record exists once Record-Write has run; way forward: run "lym loom resume", then re-run the verb`
+	decisionWayRecordGoto      = `way forward: run "lym loom goto --to Record-Write", then "lym loom resume", then re-run the verb`
+	decisionWayRecordRestore   = `way forward: restore the record from HEAD with "git -C _lym checkout HEAD -- discussion/decision-record.md", then re-run the verb`
+	decisionWayUncommitted     = `way forward: run "lym loom resume", which commits the record and support log, then re-run the verb`
+	decisionWayUncommittedGoto = `way forward: run "lym loom goto --to Record-Write", then "lym loom resume", which commits the existing record and support log without overwriting them, then re-run the verb`
+	decisionWayDiffers         = `way forward: when the working record differs from the committed one only by the entries or PATTERN bullets a failed call's commit-failed refusal reported, run "lym fabric commit" under _lym, which records that call's entries, then re-run the refused call alone, never the failed one; otherwise restore the record to its committed copy with "git -C _lym checkout HEAD -- discussion/decision-record.md", then re-run the verb`
+	decisionWayEntryMissing    = `way forward: restore the entry and commit the record under _lym, then re-run the verb`
 
 	decisionWayFromAlone = `way forward: put every entry's fields in the --from file and drop --title, --decision, --rationale and the --pattern-* flags`
 	decisionWayFromFile  = `way forward: write the --from file as a non-empty JSON array of objects with the keys title, decision, rationale and, for a PATTERN change, pattern_entry, pattern_action and pattern_text, then re-run the verb`
@@ -96,9 +104,8 @@ const (
 // errPlanUnparsed marks an approval read that failed because the plan does not parse, as opposed to one that failed reading a file.
 var errPlanUnparsed = errors.New("the plan does not parse")
 
-// decisionWayNoRecord is the way forward of the refusal for a run with no decision record.
-// Its last clause names the title form a board note must carry to count as a decision.
-var decisionWayNoRecord = `way forward: the record exists once Discussion-Write has written it; "lym loom status <slug>" shows whether the run has reached that row, and "lym loom start" begins or resumes the run; on a darn run the record exists once Darn-Write has validated it, and until then message the running Darn-Write session with the call or, with no writer live, record the call as a board note titled "` + orchengine.DecisionNoteTitle("<slug>") + ` <the call>"`
+// decisionWayNoRecord is the way forward of the refusal for a Discussion-Write run with no decision record.
+const decisionWayNoRecord = `way forward: the record exists once Discussion-Write has written it; "lym loom status <slug>" shows whether the run has reached that row, and "lym loom start" begins or resumes the run`
 
 // decisionInput is the flag values of one `decision add` call.
 // The three pattern fields are the optional PATTERN-change form and are all empty without it.
@@ -239,8 +246,10 @@ type decisionDeps struct {
 	commit func() error
 	// now is the clock the entry's date comes from.
 	now func() time.Time
-	// darn reports whether the target's run is a darn run.
-	darn func() (bool, error)
+	// hasPlan reports whether the target's recipe has a Plan-Write row, so a plan exists to amend.
+	hasPlan func() (bool, error)
+	// rowWritten reports whether the target's recipe writes the decision record in its Record-Write row.
+	rowWritten func() (bool, error)
 	// readRecord reads the decision record's working copy.
 	readRecord func() ([]byte, error)
 	// committed reads the decision record as committed at HEAD; found is false when HEAD holds no record.
@@ -364,13 +373,20 @@ func notifyLiveRuns(deps decisionDeps, added []discussionparser.AddedDecision) (
 	return notified, failures
 }
 
-// checkDarnRecord returns the refusal text for a darn run's record that is not safe to append to, or empty when it is.
-// The record is safe once the writer has validated and committed it and not touched it since: it exists, is committed, equals its committed copy and holds every added entry its history held.
+// recordWritePending reports whether the run's current row is Record-Write or an earlier one, so Record-Write has yet to finish.
+// An empty row, a run with no status file, is such a run.
+func recordWritePending(currentRow string) bool {
+	return currentRow == "" || currentRow == loomshed.NamePreflight || currentRow == loomshed.NameRecordWrite
+}
+
+// checkDarnRecord returns the refusal text for a Record-Write run's record that is not safe to append to, or empty when it is.
+// The record is safe once Record-Write has committed it and nothing touched it since: it exists, is committed, equals its committed copy and holds every added entry its history held.
+// Each refusal names the way forward by currentRow, the run's current row, empty for a run with no status file.
 // A failed read of any of the four is returned as an error.
-func checkDarnRecord(deps decisionDeps) (string, error) {
+func checkDarnRecord(deps decisionDeps, currentRow string) (string, error) {
 	working, err := deps.readRecord()
 	if errors.Is(err, fs.ErrNotExist) {
-		return fmt.Sprintf("the run has no decision record at %s; %s", deps.recordPath, decisionWayNoRecord), nil
+		return missingRecordRefusal(deps, currentRow)
 	}
 	if err != nil {
 		return "", err
@@ -380,19 +396,42 @@ func checkDarnRecord(deps decisionDeps) (string, error) {
 		return "", err
 	}
 	if !found {
-		return "the darn run's decision record is not committed yet; " + decisionWayDarnWriter, nil
+		if recordWritePending(currentRow) {
+			return "the decision record is not committed at HEAD; " + decisionWayUncommitted, nil
+		}
+		return "the decision record is not committed at HEAD; " + decisionWayUncommittedGoto, nil
 	}
 	if !bytes.Equal(working, committed) {
-		return "the decision record differs from its committed copy; " + decisionWayDarnWriter, nil
+		return "the decision record differs from its committed copy; " + decisionWayDiffers, nil
 	}
 	versions, err := deps.history()
 	if err != nil {
 		return "", err
 	}
 	if findings := discussionparser.CheckAddedDecisionsKept(working, versions); len(findings) > 0 {
-		return "the decision record is missing an entry its history held: " + strings.Join(renderFindings(findings), "; ") + "; " + decisionWayDarnWriter, nil
+		return "the decision record is missing an entry its history held: " + strings.Join(renderFindings(findings), "; ") + "; " + decisionWayEntryMissing, nil
 	}
 	return "", nil
+}
+
+// missingRecordRefusal returns the refusal text for a Record-Write run whose decision record is absent from the working copy.
+// A run past Record-Write is sent to restore the record from HEAD when HEAD holds one, else to redo the row.
+func missingRecordRefusal(deps decisionDeps, currentRow string) (string, error) {
+	prefix := fmt.Sprintf("the run has no decision record at %s; ", deps.recordPath)
+	switch {
+	case currentRow == "":
+		return prefix + decisionWayRecordStart, nil
+	case recordWritePending(currentRow):
+		return prefix + decisionWayRecordResume, nil
+	}
+	_, found, err := deps.committed()
+	if err != nil {
+		return "", err
+	}
+	if found {
+		return prefix + decisionWayRecordRestore, nil
+	}
+	return prefix + decisionWayRecordGoto, nil
 }
 
 // committedLacksEntry returns the heading of the first entry of added that the record as committed at HEAD holds no `Added after Discussion` entry for, or empty when it holds them all.
@@ -567,7 +606,7 @@ func planApprovedReader(anchorPath string) func() (bool, error) {
 // decisionVerb appends the decisions in input to the record and commits them in one commit, or refuses with a way forward.
 //
 // With amendsPlan the verb also appends each entry's title to the plan amendment record, committed with the entries.
-// It is refused on a darn run and for a plan that is not approved, and a failed append or commit puts both records back.
+// It is refused on a recipe with no Plan-Write row and for a plan that is not approved, and a failed append or commit puts both records back.
 // The optional PATTERN-change form appends one bullet of the record's PATTERN-change shape beside its entry, in the same write.
 // It passes through the verb's existing checks and its --by parent|operator|arbiter caller guards, so only the run's parent, the operator's own shell or the run's own arbiter declares a change after Discussion.
 // The form rewrites only the record's bullet for the same entry ID, which its new bullet replaces, and removes nothing.
@@ -609,15 +648,23 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 		return refuse("%s is running and owns the decision record; %s", loomshed.NameDiscussionWrite, decisionWayWriter)
 	}
 
-	darn, err := deps.darn()
+	hasPlan, err := deps.hasPlan()
 	if err != nil {
 		return refuse("read the run's recipe: %s; %s", err, decisionWayRetry)
 	}
-	if input.amendsPlan && darn {
-		return refuse("--amends-plan has no plan to amend on a darn run; %s", decisionWayAmendsDarn)
+	if input.amendsPlan && !hasPlan {
+		return refuse("--amends-plan has no plan to amend on this run's recipe, which has no Plan-Write row; %s", decisionWayAmendsDarn)
 	}
-	if darn {
-		refusal, err := checkDarnRecord(deps)
+	rowWritten, err := deps.rowWritten()
+	if err != nil {
+		return refuse("read the run's recipe: %s; %s", err, decisionWayRetry)
+	}
+	if rowWritten {
+		currentRow := ""
+		if found {
+			currentRow = st.CurrentProducer
+		}
+		refusal, err := checkDarnRecord(deps, currentRow)
 		if err != nil {
 			return refuse("read the darn run's decision record: %s; %s", err, decisionWayRetry)
 		}
@@ -705,7 +752,7 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 			return refuse("%s", refusal)
 		}
 	}
-	if darn {
+	if rowWritten {
 		lacking, err := committedLacksEntry(deps, added)
 		if err != nil {
 			return refuse("the committed record could not be read: %s; %s", err, decisionWayEntryLost)
@@ -807,12 +854,20 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 		},
 		commit: func() error { return commitDiscussion(target) },
 		now:    time.Now,
-		darn: func() (bool, error) {
-			seed, found, err := shedrun.ReadSeed(target, shedrun.SelfRunID)
+		hasPlan: func() (bool, error) {
+			recipe, err := seedRecipe(target)
 			if err != nil {
 				return false, err
 			}
-			return resolveSeedRecipe(seed, found) == shedrun.RecipeDarn, nil
+			return loomrecipe.HasEngine(recipe, "PlanWrite")
+		},
+		rowWritten: func() (bool, error) {
+			recipe, err := seedRecipe(target)
+			if err != nil {
+				return false, err
+			}
+			engine, err := loomrecipe.RecordEngine(recipe)
+			return engine == "RecordWrite", err
 		},
 		readRecord: func() ([]byte, error) { return os.ReadFile(recordPath) },
 		committed: func() ([]byte, bool, error) {
@@ -839,6 +894,15 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 		},
 	}
 	return nil
+}
+
+// seedRecipe returns the recipe name target's seed records, tapestry for a run with no seed.
+func seedRecipe(target *lymcwd.Location) (string, error) {
+	seed, found, err := shedrun.ReadSeed(target, shedrun.SelfRunID)
+	if err != nil {
+		return "", err
+	}
+	return resolveSeedRecipe(seed, found), nil
 }
 
 // liveRunStrands returns the strand names of the live shuttle runs of target's worktree, read through the registered engines.
@@ -948,12 +1012,13 @@ notifies the run's other live agents ("notified", "notice_errors").
 --by is parent, operator or arbiter, the last only from the run's own arbiter
 strand. --title, --decision and --rationale are required unless --from is
 passed. A named session other than the run's parent orch or arbiter is
-refused. It is refused while Discussion-Write runs, and on a darn run until
-Darn-Write has validated and committed its record.
+refused. It is refused while Discussion-Write runs, and on a Record-Write
+record until Record-Write has committed it.
 
 --amends-plan marks a decision that amends the approved plan: the call also
 appends the title to the plan amendment record in the same commit. It is
-refused on a darn run and with no approved plan. Afterwards the parent runs
+refused on a recipe with no Plan-Write row and with no approved plan.
+Afterwards the parent runs
 "lym loom goto --to Plan-Burler-Review" and "lym loom resume".
 
 A decision on a PATTERN entry also passes --pattern-entry <PATTERN-id>,

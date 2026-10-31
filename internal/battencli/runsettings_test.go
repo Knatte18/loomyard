@@ -46,10 +46,10 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantDocs: map[string]string{"loom": "code_hard_max_bounces: 2\ncode_max_bounces: 1\ncode_reviewer_fan: \"\"\n"},
 		},
 		{
-			name:        "the task's settings lie over the tapestry block, and the profile's retired merge_max_bounces is dropped",
+			name:        "the task's settings lie over the tapestry block with its plan keys in the tapestry document, and the profile's retired merge_max_bounces is dropped",
 			profilesYML: profiles,
 			settings:    battenshed.RunSettings{Recipe: "tapestry", Profile: "light", Settings: map[string]any{"loom": map[string]any{"plan_max_bounces": float64(3)}}},
-			wantDocs:    map[string]string{"loom": "code_max_bounces: 1\nplan_max_bounces: 3\n"},
+			wantDocs:    map[string]string{"loom": "code_max_bounces: 1\n", "tapestry": "plan_max_bounces: 3\n"},
 		},
 		{
 			name:        "the same profile writes its darn block for a darn task",

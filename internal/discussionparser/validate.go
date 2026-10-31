@@ -97,9 +97,9 @@ func Validate(decisionRecordPath, supportLogPath string) ([]Finding, error) {
 	return findings, nil
 }
 
-// missingSections returns every heading in required that does not appear as its own line in
-// content, after right-trimming " \t\r" -- so a heading nested inside a fenced block or appearing
-// mid-sentence never counts. The result preserves required's own order.
+// missingSections returns every heading in required that does not appear as its own line in content outside a fenced block, after right-trimming " \t\r".
+// A heading nested inside a fenced block or appearing mid-sentence never counts.
+// The result preserves required's own order.
 //
 // It splits the string it was already handed rather than running a bufio.Scanner over it, and that
 // is a correctness choice, not a style one. Scanner stops at the first line longer than
@@ -113,8 +113,12 @@ func Validate(decisionRecordPath, supportLogPath string) ([]Finding, error) {
 func missingSections(content string, required []string) []string {
 	found := make(map[string]bool, len(required))
 
-	for _, raw := range strings.Split(content, "\n") {
-		found[strings.TrimRight(raw, " \t\r")] = true
+	lines := strings.Split(content, "\n")
+	fenced := fencedLines(lines)
+	for i, raw := range lines {
+		if !fenced[i] {
+			found[strings.TrimRight(raw, " \t\r")] = true
+		}
 	}
 
 	var missing []string

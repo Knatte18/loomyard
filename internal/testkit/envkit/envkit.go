@@ -51,8 +51,8 @@ var nilLegal = map[string]bool{
 	"VerifyMergeBase":                  true,
 	"ReviewBase":                       true,
 	"VerifyTreeScope":                  true,
-	"DiscussionHistory":                true,
 	"WebsterRecord":                    true,
+	"PreflightBatcher":                 true,
 	"Pawl.Watch":                       true,
 	"NotifyParent":                     true,
 	"Landing.CommitStatus":             true,
@@ -333,7 +333,9 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 				}},
 			}, nil
 		},
-		CommitDiscussion: func() error { return nil },
+		CommitDiscussion:  func() error { return nil },
+		DiscussionHistory: func() ([][]byte, error) { return nil, nil },
+		RecordEngine:      "DiscussionWrite",
 		DescribeTable: func() (seatengine.Table, error) {
 			return seatengine.Table{
 				RolePrefix: "describe",
@@ -415,8 +417,20 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			}, nil
 		},
 		Darn: loomshed.DarnDeps{
-			Commit:        func() error { return nil },
-			LatestOutcome: func() (loomshed.DarnOutcome, bool, error) { return loomshed.DarnOutcome{}, false, nil },
+			RecordPath:      filepath.Join(dir, "discussion", "decision-record.md"),
+			SupportLogPath:  filepath.Join(dir, "discussion", "support-log.md"),
+			StopMarkerPath:  filepath.Join(dir, "stop-marker"),
+			CommittedRecord: func() (bool, error) { return false, nil },
+			Commit:          func() error { return nil },
+			LatestOutcome:   func() (loomshed.DarnOutcome, bool, error) { return loomshed.DarnOutcome{}, false, nil },
+			CheckRecord:     func() ([]discussionparser.Finding, error) { return nil, nil },
+		},
+		RecordWrite: loomshed.RecordWriteDeps{
+			RecordPath:     filepath.Join(dir, "discussion", "decision-record.md"),
+			SupportLogPath: filepath.Join(dir, "discussion", "support-log.md"),
+			DiscussionDir:  filepath.Join(dir, "discussion"),
+			ReadBody:       func() (string, bool, error) { return "", true, nil },
+			Commit:         func() error { return nil },
 		},
 		Drift:     driftDeps(mustMkdir(t, filepath.Join(dir, "drift"))),
 		PlanIndex: noFindingsIndex{},

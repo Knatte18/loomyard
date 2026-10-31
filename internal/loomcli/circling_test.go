@@ -192,17 +192,35 @@ func TestPerchHardCap(t *testing.T) {
 		seed      func(t *testing.T, loc *lymcwd.Location)
 		wantHard  int
 		wantRaise []string
+		// rejectRaised lists what the raising route must not contain.
+		rejectRaised []string
 		// wantErr, when set, lists what the refusal of the cap's read names.
 		wantErr []string
 	}{
 		{
-			name: "a worktree plan cap",
+			name: "a plan cap in tapestry.yaml",
 			row:  loomshed.NamePlanBouncer,
 			seed: func(t *testing.T, loc *lymcwd.Location) {
 				seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"plan_hard_max_bounces": "6"})
 			},
 			wantHard:  6,
-			wantRaise: []string{"lym config loom --set plan_hard_max_bounces=<n>"},
+			wantRaise: []string{"lym config tapestry --set plan_hard_max_bounces=<n>"},
+		},
+		{
+			name: "a plan cap that falls back to the run-wide one routes through loom",
+			row:  loomshed.NamePlanBouncer,
+			seed: func(t *testing.T, loc *lymcwd.Location) {
+				localPath := configengine.LocalFile(loc.AnchorPath(), "loom")
+				if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
+					t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(localPath), err)
+				}
+				if err := os.WriteFile(localPath, []byte("review_hard_max_bounces: 5\n"), 0o644); err != nil {
+					t.Fatalf("WriteFile(%q) = %v; want nil", localPath, err)
+				}
+			},
+			wantHard:     5,
+			wantRaise:    []string{"lym config loom --layer local --set review_hard_max_bounces=<n>"},
+			rejectRaised: []string{"lym config tapestry"},
 		},
 		{
 			name: "a local run-wide cap",
@@ -253,6 +271,11 @@ func TestPerchHardCap(t *testing.T) {
 			for _, want := range tt.wantRaise {
 				if !strings.Contains(raise, want) {
 					t.Errorf("perchHardCap(%q) raise = %q; want it to contain %q", tt.row, raise, want)
+				}
+			}
+			for _, reject := range tt.rejectRaised {
+				if strings.Contains(raise, reject) {
+					t.Errorf("perchHardCap(%q) raise = %q; want it not to contain %q", tt.row, raise, reject)
 				}
 			}
 		})

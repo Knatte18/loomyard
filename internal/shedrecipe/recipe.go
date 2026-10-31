@@ -65,7 +65,7 @@ type SegmentSettings struct {
 	HardMaxBounces int
 	// HardMaxBouncesKey is the config key HardMaxBounces resolved from.
 	HardMaxBouncesKey string
-	// ConfigFile is the file both keys live in, loom.yaml or darn.yaml.
+	// ConfigFile is the file both keys live in, loom.yaml, tapestry.yaml or darn.yaml.
 	ConfigFile string
 	// AmendMaxBounces is the resolved review_amend_max_bounces, the bounces an amendment generation of the segment may spend; 0 settles an amendment without a review.
 	AmendMaxBounces int
@@ -80,9 +80,11 @@ type SegmentSettings struct {
 type Env struct {
 	// Cwd is the caller's told working directory, read by Preflight.
 	Cwd string
+	// PreflightBatcher is the batcher.yaml load Preflight runs, set by the wiring for a recipe with an Implementer row, nil otherwise.
+	PreflightBatcher func() error
 	// AnchorPath is the told anchor path, read by Webster, Bouncer and the gate resolver's "plan" gate.
 	AnchorPath string
-	// ConfigDirs is the told geometry of a layered config load, read by TapestryPreflight and Webster, which load batcher through it.
+	// ConfigDirs is the told geometry of a layered config load, read by Webster, which loads batcher through it.
 	ConfigDirs configengine.Dirs
 	// WorktreeRoot is the told worktree root, read by the gate resolver's "plan", "verify" and loom "discussion" gates.
 	WorktreeRoot string
@@ -113,9 +115,9 @@ type Env struct {
 	// GateTiers is the hub's rendered tier and gate-list lines the Plan-Review rubric's gate_tiers marker renders, read by the BurlerReview and Bouncer entries each time a segment builds its producers.
 	// The empty string renders `none`.
 	GateTiers string
-	// StatusPath is the told status file path, read by TapestryPreflight.
+	// StatusPath is the told status file path.
 	StatusPath string
-	// StatusLockPath is the told status lock file path, read by TapestryPreflight.
+	// StatusLockPath is the told status lock file path.
 	StatusLockPath string
 	// StencilsDir is the told stencils directory, read by Bouncer.
 	StencilsDir string
@@ -141,7 +143,7 @@ type Env struct {
 	// SupportLogPath is the told support log path, read by the gate resolver's "discussion" gate.
 	SupportLogPath string
 	// RelevantPath is the told relevant list path.
-	// The gate resolver's "discussion" gate reads it on a tapestry run.
+	// The gate resolver's "discussion" gate reads it when RecordEngine is DiscussionWrite.
 	RelevantPath string
 	// DescriptionPath is the told absolute path of the change description, read by the gate
 	// resolver's "description" gate.
@@ -205,11 +207,13 @@ type Env struct {
 	DiscussionTable shedadapters.TableSource
 	// CommitDiscussion is the injected closure that commits the discussion output directory.
 	// The commit decorator of every entry that wraps a discussion producer invokes it on a Done outcome.
-	// The "discussion" gate invokes it when it passes on a darn run.
 	CommitDiscussion func() error
 	// DiscussionHistory returns every committed version of the decision record, newest first.
-	// Only the darn wiring sets it, together with CommitDiscussion; nil on a tapestry run, where the "discussion" gate resolves to the loom form.
+	// Every loom wiring sets it, since the "discussion" gate and Darn-Write's post-session guard check the record against it.
 	DiscussionHistory func() ([][]byte, error)
+	// RecordEngine is the engine of the run's record row, read by the "discussion" gate to select the citation checks that a DiscussionWrite record takes.
+	// Every loom wiring sets it.
+	RecordEngine string
 	// DescribeTable is the injected shedadapters.TableSource the Describe entry evaluates once per Call.
 	// It arrives as a closure rather than as recipe Config because building the table needs the fabric's landing geometry, which the Shed Recipe Registry Invariant bars this package from deriving;
 	// internal/loomcli's wire() is what supplies it.
@@ -276,6 +280,8 @@ type Env struct {
 	// Darn is a whole-struct passthrough to loomshed.NewDarnWrite, following Env.Landing's own precedent:
 	// the producer has behaviour of its own that per-seam fakes must be able to substitute individually.
 	Darn loomshed.DarnDeps
+	// RecordWrite is a whole-struct passthrough to loomshed.NewRecordWrite, read by the RecordWrite entry only.
+	RecordWrite loomshed.RecordWriteDeps
 	// PlanIndex is the code index the "plan" gate resolves plan refs against, and the loom "discussion" gate resolves the symbols a decision record cites.
 	// It arrives as an interface so this package, and the recipe packages built on it, link no tree-sitter grammar.
 	PlanIndex planindex.Index

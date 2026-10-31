@@ -137,7 +137,7 @@ func formerUnits(t *testing.T, module, template string, former map[string]string
 	return strings.Join(lines, "\n")
 }
 
-// loomFormerUnits are loom's tuned units at their former template values: the lens fans, the models, the driver, the bounce budgets and the auto-accept.
+// loomFormerUnits are loom's tuned units at their former template values: the lens fans, the models, the driver, the bounce budgets and the auto-accept, the plan perch's units aside.
 func loomFormerUnits() map[string]string {
 	former := map[string]string{
 		"code_reviewer_model":    "sonnet[high]",
@@ -146,12 +146,21 @@ func loomFormerUnits() map[string]string {
 		"code_max_bounces":       "~",
 		"code_auto_accept":       "false",
 	}
-	for _, unit := range []string{"discussion_lenses", "plan_lenses", "discussion_reviewer_model", "plan_reviewer_model", "code_fixer_model"} {
+	for _, unit := range []string{"discussion_lenses", "discussion_reviewer_model", "code_fixer_model"} {
 		former[unit] = `""`
 	}
-	for _, segment := range []string{"discussion", "plan", "code"} {
+	for _, segment := range []string{"discussion", "code"} {
 		former[segment+"_reviewer_fan"] = `""`
 		former[segment+"_fixer_fan"] = `""`
+	}
+	return former
+}
+
+// tapestryFormerUnits are tapestry's tuned units at their former template values: the plan lens fan, the plan reviewer models and the plan fans.
+func tapestryFormerUnits() map[string]string {
+	former := map[string]string{}
+	for _, unit := range []string{"plan_lenses", "plan_reviewer_model", "plan_reviewer_fan", "plan_fixer_fan"} {
+		former[unit] = `""`
 	}
 	return former
 }
@@ -164,6 +173,8 @@ func preMigrationBase(t *testing.T, module configreg.Module) string {
 	switch module.Name {
 	case "loom":
 		return formerUnits(t, module.Name, template, loomFormerUnits())
+	case "tapestry":
+		return formerUnits(t, module.Name, template, tapestryFormerUnits())
 	case "shed":
 		return formerUnits(t, module.Name, template, map[string]string{"driver_kind": "llm"})
 	case "darn":

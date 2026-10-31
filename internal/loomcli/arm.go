@@ -33,8 +33,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/arbiterstop"
@@ -133,6 +135,69 @@ func (c *loomCLI) resolveRecipe(location *lymcwd.Location) error {
 	return nil
 }
 
+// recipeService says how `lym loom` stands to a recipe name.
+type recipeService int
+
+const (
+	// recipeServed marks a recipe `lym loom` serves: one declaring the loom contract, or pawl.
+	recipeServed recipeService = iota
+	// recipeNotLoom marks an embedded recipe `lym loom` does not serve.
+	recipeNotLoom
+	// recipeUnknown marks a name that selects no embedded recipe.
+	recipeUnknown
+)
+
+// serviceOfRecipe reports how `lym loom` stands to recipe, an empty name reading as tapestry.
+func serviceOfRecipe(recipe string) recipeService {
+	served, err := loomrecipe.ServedByLoom(recipe)
+	switch {
+	case err != nil:
+		return recipeUnknown
+	case !served:
+		return recipeNotLoom
+	default:
+		return recipeServed
+	}
+}
+
+// reseedWayForward is the way forward of a seed that records a recipe name no embedded recipe carries.
+const reseedWayForward = `remove the run's seed.json and seed the run again with "lym loom start" or "lym shed seed <run-id> --recipe <recipe>"`
+
+// shedVerbsWayForward is the way forward of a run of an embedded recipe `lym loom` does not serve.
+const shedVerbsWayForward = `drive the run with the lym shed verbs, "lym shed status <run-id>", "lym shed step <run-id>" and "lym shed goto <run-id>"`
+
+// refuseUnservedRecipe refuses a run whose recipe `lym loom` does not serve, and answers nil for one it does.
+// It names the lym shed verbs for an embedded non-loom recipe, and the re-seed for a name that selects no embedded recipe.
+func refuseUnservedRecipe(recipe string) error {
+	switch serviceOfRecipe(recipe) {
+	case recipeNotLoom:
+		return fmt.Errorf("loom: run recipe %q is not a loom recipe, and lym loom serves loom runs only; way forward: %s", recipe, shedVerbsWayForward)
+	case recipeUnknown:
+		return fmt.Errorf("loom: run recipe %q names no recipe this lym knows; way forward: %s", recipe, reseedWayForward)
+	default:
+		return nil
+	}
+}
+
+// planVerbs are the `lym loom` verbs that act on the run's plan.
+var planVerbs = []string{"validate-plan", "insert-card", "remove-card", "restore-renumber"}
+
+// refuseVerbOffRecipe refuses a plan verb on a recipe with no Plan-Write row, which has no plan, and answers nil for every other verb.
+func refuseVerbOffRecipe(verb, recipe string) error {
+	if !slices.Contains(planVerbs, verb) {
+		return nil
+	}
+	hasPlan, err := loomrecipe.HasEngine(recipe, planWriteEngine)
+	if err != nil {
+		return err
+	}
+	if hasPlan {
+		return nil
+	}
+
+	return fmt.Errorf("loom: %s does not apply to this run, whose %q recipe has no Plan-Write row and so no plan; way forward: none is needed, since the run's scope is its decision record, which \"lym loom validate-discussion\" checks", verb, recipe)
+}
+
 // arm resolves cwd into a *lymcwd.Location and delegates to armAt with the raw positional args,
 // which resolveRunID resolves into a run-id exactly as it always has. It is loom's own subtree
 // entry point: every "lym loom <verb>" invocation reaches Arm, never ArmAt directly, so its own
@@ -146,6 +211,7 @@ func (c *loomCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, e
 	}
 	// Recorded before the reconcile and armAt so a refusal from any later arming stage finds the location set.
 	c.location = location
+	c.loomPath = true
 
 	// A start verb reconciles the hub's config after a binary change before armAt loads any module config.
 	// A strict load of a file still carrying a retired key would otherwise refuse the verb before the reconcile that removes the key.
@@ -169,6 +235,8 @@ func (c *loomCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, e
 // the same value the caller holds: the pre-run's own c on the "lym loom" path, the wrapper's
 // freshly-constructed one on the "lym shed" path.
 //
+// On the `lym loom` path (loomPath) it also refuses a run whose recipe `lym loom` does not serve, and a plan verb on a recipe with no plan, right after the recipe is resolved.
+//
 // The seed-presence refusal runs before either wiring call -- before wireLightweight or wire have
 // touched the filesystem at all -- so a refusing run/step writes nothing to disk. cwd is derived as
 // location.AnchorPath() for wireLightweight/wire's own cwd parameter, since cwd is provably equal to
@@ -181,22 +249,27 @@ func (c *loomCLI) armAt(location *lymcwd.Location, verb string, args []string) (
 	if err := c.resolveRecipe(location); err != nil {
 		return shedverbs.Spec{}, err
 	}
+	// Only the `lym loom` subtree serves loom runs alone; the refusals come before any wiring, so a refused verb writes nothing.
+	if c.loomPath {
+		if err := refuseUnservedRecipe(c.recipe); err != nil {
+			return shedverbs.Spec{}, shedverbs.KindlessRefusal{Err: err}
+		}
+		if err := refuseVerbOffRecipe(verb, c.recipe); err != nil {
+			return shedverbs.Spec{}, shedverbs.KindlessRefusal{Err: err}
+		}
+	}
 
 	cwd := location.AnchorPath()
 	if verbUsesLightweightWiring(verb) {
-		c.wireLightweight(location, cwd)
+		if err := c.wireLightweight(location, cwd); err != nil {
+			return shedverbs.Spec{}, err
+		}
 	} else if err := c.wire(location, cwd); err != nil {
 		return shedverbs.Spec{}, err
 	}
 
-	if c.recipe == shedrun.RecipeDarn {
-		if err := c.renameRetiredRows(loomrecipe.DarnRetiredRows()); err != nil {
-			return shedverbs.Spec{}, err
-		}
-	} else if c.recipe != shedrun.RecipePawl {
-		if err := c.renameRetiredRows(loomrecipe.TapestryRetiredRows()); err != nil {
-			return shedverbs.Spec{}, err
-		}
+	if err := c.renameRetiredRows(loomrecipe.RetiredRows(c.recipe)); err != nil {
+		return shedverbs.Spec{}, err
 	}
 
 	if err := c.loadRouting(); err != nil {
@@ -221,38 +294,63 @@ func (c *loomCLI) loadRouting() error {
 	return nil
 }
 
-// recipeRouting returns the routing of the run's recipe: the pawl recipe's for a pawl run, the darn recipe's for a darn run and loom's for the rest, with loom.yaml's review bounce budgets applied.
+// recipeRouting returns the routing of the run's recipe, pawl's own for a pawl run and the recipe-keyed loom routing otherwise, with loom.yaml's review bounce budgets applied.
 func (c *loomCLI) recipeRouting() (shedengine.Routing, error) {
 	budgets, err := c.reviewBudget()
 	if err != nil {
 		return shedengine.Routing{}, err
 	}
-	switch c.recipe {
-	case shedrun.RecipePawl:
+	if c.recipe == shedrun.RecipePawl {
 		return loomrecipe.PawlRouting(budgets)
-	case shedrun.RecipeDarn:
-		return loomrecipe.DarnRouting(budgets)
 	}
 
-	return loomrecipe.Routing(budgets)
+	return loomrecipe.Routing(c.recipe, budgets)
 }
 
-// newShed builds the shed of the run's recipe over c.env and c.shedPaths.
+// newShed builds the shed of the run's recipe over c.env and c.shedPaths: pawl's own for a pawl run, and loomrecipe.New's for the rest.
 func (c *loomCLI) newShed() (*shedengine.Shed, error) {
-	switch c.recipe {
-	case shedrun.RecipePawl:
+	if c.recipe == shedrun.RecipePawl {
 		return loomrecipe.NewPawl(c.env, c.shedPaths)
-	case shedrun.RecipeDarn:
-		return loomrecipe.NewDarn(c.env, c.shedPaths)
 	}
 
-	return loomrecipe.New(c.env, c.shedPaths)
+	return loomrecipe.New(c.recipe, c.env, c.shedPaths)
 }
 
-// verifySource returns the verify source of the run's recipe: darn.yaml's for a darn run, and the hub's gate-call source otherwise.
-// A beam run reads no plan and no `darn.yaml` tree scope, so its Finalize runs the `finalize` gate key over the whole merged tree.
+// The engine names of the recipe rows loomcli's wiring keys on, and the verify_source value that selects the tree-scope source.
+const (
+	planWriteEngine       = "PlanWrite"
+	darnWriteEngine       = "DarnWrite"
+	treeScopeVerifySource = "tree_scope"
+)
+
+// recipeHasEngine reports whether some row of the named recipe runs engine.
+// A recipe that selects no embedded recipe reads as the tapestry recipe, for a caller that has no error to return.
+func recipeHasEngine(recipe, engine string) bool {
+	has, err := loomrecipe.HasEngine(recipe, engine)
+	if err != nil {
+		has, _ = loomrecipe.HasEngine(shedrun.RecipeTapestry, engine)
+	}
+
+	return has
+}
+
+// recipeIsLoom reports whether the named recipe declares the loom contract.
+// A recipe that selects no embedded recipe reads as the tapestry recipe, for a caller that has no error to return.
+func recipeIsLoom(recipe string) bool {
+	isLoom, err := loomrecipe.IsLoom(recipe)
+	if err != nil {
+		isLoom, _ = loomrecipe.IsLoom(shedrun.RecipeTapestry)
+	}
+
+	return isLoom
+}
+
+// verifySource returns the verify source of the run's recipe: darn.yaml's for a recipe whose verify_source is tree_scope, and the hub's gate-call source otherwise.
+// A pawl run reads no plan and no `darn.yaml` tree scope, so its Finalize runs the `finalize` gate key over the whole merged tree.
+// A recipe that selects no embedded recipe reads as the tapestry recipe.
 func (c *loomCLI) verifySource() verifySource {
-	if c.recipe == shedrun.RecipeDarn {
+	source, err := loomrecipe.VerifySource(c.recipe)
+	if err == nil && source == treeScopeVerifySource {
 		return darnVerifySource(c.location)
 	}
 
@@ -260,25 +358,33 @@ func (c *loomCLI) verifySource() verifySource {
 }
 
 // reviewBudget returns the per-segment review bounce budgets the routing projection reports.
-// The full wiring has already loaded loom.yaml into c.cfg, which holds a hard cap of at least 1 once loaded, since the run-wide budget may be 0; the lightweight wiring loads no config, so it reads loom.yaml here once more.
-// An unreadable loom.yaml degrades to the template's defaults with a warning, because the lightweight verbs (status, pause) must not refuse over a config they otherwise never read.
+// The full wiring has already loaded loom.yaml, and tapestry.yaml for a recipe with a Plan-Review row, into c.cfg, which holds a hard cap of at least 1 once loaded, since the run-wide budget may be 0; the lightweight wiring loads no config, so it reads both files here once more.
+// An unreadable loom.yaml or tapestry.yaml degrades to the templates' defaults with a warning, because the lightweight verbs (status, pause) must not refuse over a config they otherwise never read.
 func (c *loomCLI) reviewBudget() (map[string]int, error) {
 	if c.cfg.ReviewHardMaxBounces > 0 {
 		return loomSegmentBudgets(c.cfg), nil
 	}
 
-	cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(c.location), "loom")
+	dirs := fabricengine.ConfigDirs(c.location)
+	cfg, err := loomengine.LoadConfig(dirs, "loom")
+	if err == nil {
+		cfg, err = c.withTapestry(dirs, cfg)
+	}
 	if err == nil {
 		return loomSegmentBudgets(cfg), nil
 	}
-	logger.Warn("loom: could not read loom.yaml for the review bounce budget; reporting the template default", "error", err)
+	logger.Warn("loom: could not read loom.yaml or tapestry.yaml for the review bounce budget; reporting the template default", "error", err)
 
 	var template loomengine.Config
 	if err := yaml.Unmarshal([]byte(loomengine.ConfigTemplate()), &template); err != nil {
 		return nil, err
 	}
+	var tapestryTemplate loomengine.TapestryConfig
+	if err := yaml.Unmarshal([]byte(loomengine.TapestryConfigTemplate()), &tapestryTemplate); err != nil {
+		return nil, err
+	}
 
-	return loomSegmentBudgets(template), nil
+	return loomSegmentBudgets(template.WithTapestry(tapestryTemplate)), nil
 }
 
 // specFor fills a Spec from c's already-wired fields, performing no resolution, no wire call, and
@@ -344,8 +450,8 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 		spec.Hooks.ConsumeAttempt = c.loomConsumeAttempt
 		spec.GotoGuard = c.settledGuard()
 	}
-	if c.recipe == shedrun.RecipeTapestry || c.recipe == shedrun.RecipeDarn {
-		// A fixer escalate halt goes to the arbiter first on tapestry and darn runs, so a driver's build re-launch leaves it alone.
+	if recipeIsLoom(c.recipe) {
+		// A fixer escalate halt goes to the arbiter first on a loom run, so a driver's build re-launch leaves it alone.
 		spec.RestepHold = landingshed.EscalateHalt
 	}
 	spec.Routing = c.routing

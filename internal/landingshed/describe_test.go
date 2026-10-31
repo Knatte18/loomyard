@@ -1,12 +1,13 @@
 //go:build tier0
 
-// describe_test.go — tier0 unit tests for DescribeTable and DarnDescribeTable.
+// describe_test.go — tier0 unit tests for DescribeTable.
 // The stencil is a fixture written into a t.TempDir() stencils dir, so no shipped default is read;
 // the lead's prompt is composed through seatengine.Prompts, which starts nothing.
 
 package landingshed
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -23,6 +24,19 @@ import (
 const describeStencilFixture = "{{.parent_directive}}\n{{.edit_directive}}\nslug={{.slug}}\ndecision={{.decision_record_path}}\nrun={{.run_record_paths}}\n" +
 	"out={{.description_path}}\ntask={{.task_branch}}\nparent={{.parent_branch}}\nbase={{.merge_base}}\n"
 
+// writeRunRecord writes a run record file at <dir>/<name>/webster/summary.md and returns its path.
+func writeRunRecord(t *testing.T, dir, name string) string {
+	t.Helper()
+	path := filepath.Join(dir, name, "webster", "summary.md")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte("# Summary\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
+	}
+	return path
+}
+
 func newDescribeInputs(t *testing.T) DescribeInputs {
 	t.Helper()
 	stencilsDir := t.TempDir()
@@ -34,7 +48,7 @@ func newDescribeInputs(t *testing.T) DescribeInputs {
 	return DescribeInputs{
 		StencilsDir:        stencilsDir,
 		DecisionRecordPath: "/x/decision-record.md",
-		RunRecordPath:      "/x/webster/summary.md",
+		RunRecordPath:      writeRunRecord(t, t.TempDir(), "live"),
 		DescriptionPath:    "/x/landing/summary.md",
 		TaskBranch:         "task-branch",
 		ParentBranch:       "parent-branch",
@@ -151,39 +165,77 @@ func TestDescribeSpec_SkillsAndParentDirective(t *testing.T) {
 	}
 }
 
+// TestDescribeSpec_RunRecordsOldestFirstLiveLast asserts the prompt lists each run record that exists, prior generations oldest first and the live one last, and `(none)` when none exists.
 func TestDescribeSpec_RunRecordsOldestFirstLiveLast(t *testing.T) {
-	cfg := Config{Describe: "claude:sonnet[effort=high]", DescribeTimeoutMin: 7}
+	t.Parallel()
+	tests := []struct {
+		name string
+		// prior holds whether each told prior record exists, oldest first; live whether the told live record does.
+		prior []bool
+		live  bool
+	}{
+		{"prior records oldest first then the live one", []bool{true, true}, true},
+		{"the live record alone when no prior is told", nil, true},
+		{"none when neither a prior nor the live record exists", []bool{false}, false},
+		{"the prior record alone when the live one does not exist", []bool{true}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			in := newDescribeInputs(t)
+			var want []string
+			told := func(name string, exists bool) string {
+				if exists {
+					path := writeRunRecord(t, dir, name)
+					want = append(want, path)
+					return path
+				}
+				return filepath.Join(dir, name, "webster", "summary.md")
+			}
+			in.PriorRunRecordPaths = nil
+			for i, exists := range tt.prior {
+				in.PriorRunRecordPaths = append(in.PriorRunRecordPaths, told(fmt.Sprintf("round-%d", i+1), exists))
+			}
+			in.RunRecordPath = told("live", tt.live)
 
-	in := newDescribeInputs(t)
-	in.PriorRunRecordPaths = []string{"/x/round-1/webster/summary.md", "/x/round-2/webster/summary.md"}
-	table, err := DescribeTable(in, cfg, modelspec.Registry{})
-	if err != nil {
-		t.Fatalf("DescribeTable = _, %v; want nil error", err)
-	}
-	prompt := describeLeadPrompt(t, in.StencilsDir, "", table)
-	first := strings.Index(prompt, in.PriorRunRecordPaths[0])
-	second := strings.Index(prompt, in.PriorRunRecordPaths[1])
-	live := strings.Index(prompt, in.RunRecordPath)
-	if first < 0 || second < first || live < second {
-		t.Errorf("prompt %q must list prior records oldest first, then the live one (indexes %d, %d, %d)", prompt, first, second, live)
+			table, err := DescribeTable(in, Config{Describe: "claude:sonnet[effort=high]", DescribeTimeoutMin: 7}, modelspec.Registry{})
+			if err != nil {
+				t.Fatalf("DescribeTable = _, %v; want nil error", err)
+			}
+			prompt := describeLeadPrompt(t, in.StencilsDir, "", table)
+			if got := strings.Count(prompt, "  - `"); got != len(want) {
+				t.Errorf("prompt %q lists %d run records; want %d", prompt, got, len(want))
+			}
+			previous := -1
+			for _, path := range want {
+				index := strings.Index(prompt, path)
+				if index < previous {
+					t.Errorf("prompt %q lists %q out of order; want oldest first, the live one last", prompt, path)
+				}
+				previous = index
+			}
+			if hasNone := strings.Contains(prompt, "(none)"); hasNone != (len(want) == 0) {
+				t.Errorf("prompt %q has (none) = %t; want %t", prompt, hasNone, len(want) == 0)
+			}
+		})
 	}
 
-	in = newDescribeInputs(t)
-	table, err = DescribeTable(in, cfg, modelspec.Registry{})
-	if err != nil {
-		t.Fatalf("DescribeTable = _, %v; want nil error", err)
-	}
-	prompt = describeLeadPrompt(t, in.StencilsDir, "", table)
-	if strings.Count(prompt, "/webster/") != 1 || !strings.Contains(prompt, in.RunRecordPath) {
-		t.Errorf("prompt %q must list only the live record when none is told", prompt)
-	}
+	t.Run("a stat error other than not-exist is returned", func(t *testing.T) {
+		t.Parallel()
+		in := newDescribeInputs(t)
+		in.RunRecordPath = "bad\x00path"
+		_, err := DescribeTable(in, Config{Describe: "claude:sonnet", DescribeTimeoutMin: 1}, modelspec.Registry{})
+		if err == nil || !strings.Contains(err.Error(), "stat run record") {
+			t.Errorf("DescribeTable with an unstatable run record = _, %v; want a stat error", err)
+		}
+	})
 }
 
 func TestDescribeSpec_EmptyFieldIsError(t *testing.T) {
 	fields := map[string]func(*DescribeInputs){
 		"StencilsDir":        func(in *DescribeInputs) { in.StencilsDir = "" },
 		"DecisionRecordPath": func(in *DescribeInputs) { in.DecisionRecordPath = "" },
-		"RunRecordPath":      func(in *DescribeInputs) { in.RunRecordPath = "" },
 		"DescriptionPath":    func(in *DescribeInputs) { in.DescriptionPath = "" },
 		"TaskBranch":         func(in *DescribeInputs) { in.TaskBranch = "" },
 		"ParentBranch":       func(in *DescribeInputs) { in.ParentBranch = "" },
@@ -209,77 +261,6 @@ func TestDescribeSpec_EmptyFieldIsError(t *testing.T) {
 			t.Errorf("DescribeTable with no describe stencil = _, %v; want an error naming %q", err, describeStencilName)
 		}
 	})
-}
-
-// TestDarnDescribeSpec pins the darn Describe table: it fills the darn stencil with every told value under the describe keys, and refuses an empty required field by name.
-func TestDarnDescribeSpec(t *testing.T) {
-	t.Parallel()
-	const darnStencilFixture = "{{.parent_directive}}\n{{.edit_directive}}\nslug={{.slug}}\nreviews={{.review_dir}}\nrecord={{.decision_record_path}}\nout={{.description_path}}\ntask={{.task_branch}}\nparent={{.parent_branch}}\nbase={{.merge_base}}\n"
-	newInputs := func(t *testing.T) DarnDescribeInputs {
-		t.Helper()
-		stencilsDir := t.TempDir()
-		stencilkit.SeedInto(t, stencilsDir)
-		if err := os.WriteFile(filepath.Join(stencilsDir, "landing", "landing-template-describe-darn.md"), []byte(darnStencilFixture), 0o644); err != nil {
-			t.Fatalf("WriteFile(darn describe stencil) = %v; want nil", err)
-		}
-		return DarnDescribeInputs{
-			StencilsDir:        stencilsDir,
-			ReviewDir:          "/x/reviews/darn",
-			DecisionRecordPath: "/x/discussion/decision-record.md",
-			DescriptionPath:    "/x/landing/summary.md",
-			TaskBranch:         "task-branch",
-			ParentBranch:       "parent-branch",
-			MergeBase:          "merge-base-sha",
-			Slug:               "my-slug",
-		}
-	}
-	cfg := Config{Describe: "claude:sonnet[effort=high]", DescribeTimeoutMin: 7}
-
-	t.Run("composes from the darn stencil", func(t *testing.T) {
-		t.Parallel()
-		in := newInputs(t)
-		parentName := "ab:cd:webster"
-		table, err := DarnDescribeTable(in, cfg, modelspec.Registry{})
-		if err != nil {
-			t.Fatalf("DarnDescribeTable = _, %v; want nil error", err)
-		}
-		if err := table.Validate(in.StencilsDir); err != nil {
-			t.Fatalf("table.Validate() = %v; want nil", err)
-		}
-		lead := table.Chair()
-		if lead.Model != "sonnet" || table.Timeout != 7*time.Minute {
-			t.Errorf("lead model, table timeout = %q, %v; want sonnet, 7m", lead.Model, table.Timeout)
-		}
-		requireDescribeLead(t, table, in.DescriptionPath)
-
-		prompt := describeLeadPrompt(t, in.StencilsDir, parentName, table)
-		for _, v := range []string{"reviews=" + in.ReviewDir, "record=" + in.DecisionRecordPath, "out=" + in.DescriptionPath, "task=" + in.TaskBranch, "parent=" + in.ParentBranch, "base=" + in.MergeBase, "slug=" + in.Slug, "Edit or Write"} {
-			if !strings.Contains(prompt, v) {
-				t.Errorf("prompt %q does not contain %q", prompt, v)
-			}
-		}
-	})
-
-	fields := map[string]func(*DarnDescribeInputs){
-		"StencilsDir":        func(in *DarnDescribeInputs) { in.StencilsDir = "" },
-		"ReviewDir":          func(in *DarnDescribeInputs) { in.ReviewDir = "" },
-		"DecisionRecordPath": func(in *DarnDescribeInputs) { in.DecisionRecordPath = "" },
-		"DescriptionPath":    func(in *DarnDescribeInputs) { in.DescriptionPath = "" },
-		"TaskBranch":         func(in *DarnDescribeInputs) { in.TaskBranch = "" },
-		"ParentBranch":       func(in *DarnDescribeInputs) { in.ParentBranch = "" },
-		"MergeBase":          func(in *DarnDescribeInputs) { in.MergeBase = "" },
-		"Slug":               func(in *DarnDescribeInputs) { in.Slug = "" },
-	}
-	for name, blank := range fields {
-		t.Run("empty "+name, func(t *testing.T) {
-			t.Parallel()
-			in := newInputs(t)
-			blank(&in)
-			if _, err := DarnDescribeTable(in, cfg, modelspec.Registry{}); err == nil || !strings.Contains(err.Error(), name) {
-				t.Errorf("DarnDescribeTable with empty %s = _, %v; want an error naming the field", name, err)
-			}
-		})
-	}
 }
 
 func TestDescribeSpec_UnparsableModelSpecIsError(t *testing.T) {

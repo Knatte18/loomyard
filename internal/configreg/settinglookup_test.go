@@ -54,8 +54,8 @@ func TestSettingLookup(t *testing.T) {
 	}{
 		{
 			name:    "a key no layer sets answers its template default",
-			arrange: writeLoomDefault(""),
-			act:     lookupOnce("loom", "plan_auto_accept"),
+			arrange: writeTapestryDefault,
+			act:     lookupOnce("tapestry", "plan_auto_accept"),
 			want:    false,
 		},
 		{
@@ -76,11 +76,11 @@ func TestSettingLookup(t *testing.T) {
 		{
 			name: "a guard key in the local layer fails the call",
 			arrange: func(t *testing.T, dirs configengine.Dirs) {
-				writeLoomDefault("5")(t, dirs)
-				writeConfigFile(t, configengine.LocalFile(dirs.Anchor, "loom"), "plan_auto_accept: true\n")
+				writeTapestryDefault(t, dirs)
+				writeConfigFile(t, configengine.LocalFile(dirs.Anchor, "tapestry"), "plan_auto_accept: true\n")
 			},
-			act:       lookupOnce("loom", "plan_auto_accept"),
-			wantError: []string{"loom", "plan_auto_accept"},
+			act:       lookupOnce("tapestry", "plan_auto_accept"),
+			wantError: []string{"tapestry", "plan_auto_accept"},
 		},
 		{
 			name:    "a second key answers from the snapshot while a fresh lookup sees the rewrite",
@@ -190,6 +190,12 @@ func writeLoomDefault(bounces string) func(t *testing.T, dirs configengine.Dirs)
 		}
 		writeConfigFile(t, configengine.ConfigFile(dirs.Board, "loom"), content)
 	}
+}
+
+// writeTapestryDefault writes tapestry's default file from the template.
+func writeTapestryDefault(t *testing.T, dirs configengine.Dirs) {
+	t.Helper()
+	writeConfigFile(t, configengine.ConfigFile(dirs.Board, "tapestry"), loomengine.TapestryConfigTemplate())
 }
 
 // lookupOnce returns an action reading one key of one module through a fresh lookup.

@@ -1,7 +1,7 @@
 //go:build tier0
 
 // parity_test.go asserts the Gate Self-Check Parity Invariant for the gate sites the loomshed
-// gate closures cover: NewDiscussionGate and NewDarnDiscussionGate against validate-discussion, NewPlanGate against
+// gate closures cover: NewDiscussionGate against validate-discussion, NewPlanGate against
 // validate-plan's flag-absent mode. Both the gate closure and its loomcli verb must
 // reach the same three-way verdict over the identical fixture, because both sides call the
 // identical package function per the shared-implementation-is-the-whole-point Shared Decision.
@@ -119,7 +119,7 @@ func TestGateParity_DiscussionGate(t *testing.T) {
 			name: "Darn_Clean",
 			build: func(t *testing.T, dir string) *loomCLI {
 				record := allDiscussionSectionsContent() + addedDecisionEntryForTest
-				return darnRecordFixture(t, dir, record, [][]byte{[]byte(record)}, new(int), nil)
+				return darnRecordFixture(t, dir, record, [][]byte{[]byte(record)}, new(int))
 			},
 			want: verdictDone,
 		},
@@ -127,7 +127,7 @@ func TestGateParity_DiscussionGate(t *testing.T) {
 			name: "Darn_Stuck_DroppedEntry",
 			build: func(t *testing.T, dir string) *loomCLI {
 				held := allDiscussionSectionsContent() + addedDecisionEntryForTest
-				return darnRecordFixture(t, dir, allDiscussionSectionsContent(), [][]byte{[]byte(held)}, new(int), nil)
+				return darnRecordFixture(t, dir, allDiscussionSectionsContent(), [][]byte{[]byte(held)}, new(int))
 			},
 			want: verdictStuck,
 		},
@@ -137,10 +137,15 @@ func TestGateParity_DiscussionGate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			c := tc.build(t, t.TempDir())
 
-			gate := loomshed.NewDiscussionGate(c.env.DecisionRecordPath, c.env.SupportLogPath, c.env.RelevantPath, c.env.WorktreeRoot, c.env.PlanIndex)
-			if c.env.DiscussionHistory != nil {
-				gate = loomshed.NewDarnDiscussionGate(c.env.DecisionRecordPath, c.env.SupportLogPath, c.env.DiscussionHistory, c.env.CommitDiscussion)
-			}
+			gate := loomshed.NewDiscussionGate(loomshed.DiscussionCheck{
+				RecordPath:     c.env.DecisionRecordPath,
+				SupportLogPath: c.env.SupportLogPath,
+				RelevantPath:   c.env.RelevantPath,
+				WorktreeRoot:   c.env.WorktreeRoot,
+				Index:          c.env.PlanIndex,
+				History:        c.env.DiscussionHistory,
+				Citations:      c.env.RecordEngine == "DiscussionWrite",
+			})
 			result, err := gate()
 			pv := producerVerdict(result, err)
 

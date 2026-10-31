@@ -122,6 +122,9 @@ type loomCLI struct {
 	// shedrun.RecipeTapestry when the run has no seed yet.
 	// The routing, the shed builder, the wiring branch, the landing verify source and the reject rework row all read it.
 	recipe string
+	// loomPath is true when the `lym loom` subtree armed the receiver, which serves loom runs only;
+	// the arming `lym shed` shares leaves it false, so a refusal of a non-loom recipe never sits in `lym shed`'s path.
+	loomPath bool
 	// caller is the caller label armAt classifies from the strand variable and specFor copies onto the Spec;
 	// empty on a hand-populated receiver, which records none.
 	caller string

@@ -36,6 +36,7 @@ import (
 //lym:seam internal/landingshed#ParentLockDeps
 //lym:seam internal/landingshed#PullRequestDeps
 //lym:seam internal/loomshed#DarnDeps
+//lym:seam internal/loomshed#RecordWriteDeps
 //lym:seam internal/loomshed#PRReworkDeps
 //lym:seam internal/pawlengine#Deps
 //lym:seam internal/pawlengine#Paths

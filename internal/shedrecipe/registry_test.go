@@ -108,9 +108,9 @@ func TestNames(t *testing.T) {
 			"ParentAlign",
 			"PlanWrite",
 			"Preflight",
+			"RecordWrite",
 			"SeedChild",
 			"Stub",
-			"TapestryPreflight",
 			"WorktreeCreate",
 			"WorktreeTeardown",
 		}

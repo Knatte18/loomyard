@@ -201,6 +201,5 @@
 // start_sha -- inside the opaque Product passthrough field; every other field
 // (current_producer/state/error/pause_requested/activity/history) is this package's own shape,
 // documented above.
-// See contracts/specs/loom-status-spec.md for loom's own half of the schema and the additional
-// coherence rules loom's check 4 layers over this package's shell.
+// See contracts/specs/loom-status-spec.md for loom's own half of the schema.
 package shedengine

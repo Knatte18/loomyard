@@ -18,7 +18,7 @@ The entry runs the lead and its advisors, when the table has any, on `MultiLLMPr
 It carries the row's gates on the lead.
 The recipe file names `DiscussionWrite`, and the built row carries that engine whatever `discussion_advisors` and `discussion_lenses` hold.
 `Plan-Write` is the second such row: its seat table is resolved from the `plan` role's own model-spec and timeout rather than from recipe strings, and building it needs a `*lymcwd.Location` to build the plan paths, so it ships as its own `PlanWrite` entry for the same reason.
-The question the discussion worked through was whether the *other* rows (the loom-specific ones, such as `Tapestry-Preflight`) resist this shape, and the answer was no: they don't need to be reusable to fit the pattern, they just need a name in the same registry as everything else — a bespoke, single-consumer `Engine` is exactly as valid a registry entry as a widely-shared one.
+The question the discussion worked through was whether the *other* rows (the loom-specific ones, such as `Discussion-Write`) resist this shape, and the answer was no: they don't need to be reusable to fit the pattern, they just need a name in the same registry as everything else — a bespoke, single-consumer `Engine` is exactly as valid a registry entry as a widely-shared one.
 
 ## What's in a recipe row
 
@@ -84,6 +84,7 @@ Its production import set is one-way: it imports `internal/shedrecipe`, `interna
 **Document shape.** A recipe document decodes straight into the package's own `Recipe` type, with no intermediate struct.
 It requires a `version` (currently only `1` is accepted), a told `entry` producer name, a told `terminals` list, and a `producers` list.
 It may also set an optional top-level `amendment_target`, the name of the row a plan amendment routes to; `Parse` decodes it without checking that it names a row, since routing is `shedengine`'s and `shedcheck`'s.
+It may also set a top-level `contract`, empty or `loom`, and a top-level `verify_source`, empty, `plan` or `tree_scope`; `Parse` refuses any other value of either, naming the key, the legal values and the way forward.
 Each row carries `name`, `engine`, `config`, `on_done`, `on_stuck`, `on_reroute`, `segment`, and `max_bounces` — the same field set `shedengine.ProducerDef` itself carries, `segment` included per the reversal recorded above.
 
 **Four exported functions.** `Parse` decodes a byte slice into a `Recipe` and runs every shape check the value must pass before `Build` may consume it.
@@ -93,6 +94,17 @@ Each row carries `name`, `engine`, `config`, `on_done`, `on_stuck`, `on_reroute`
 
 **Strictness.** Unknown keys and duplicate keys are errors at both document level and row level, and every message the decoder produces keeps its own yaml line number.
 Every error this package raises itself, after a successful decode, names the offending row's zero-based list index and its `name`.
+
+**The loom contract.** A recipe declaring `contract: loom` is checked by `Build` before any registry lookup, and `Build` refuses one that breaks a clause, naming the clause and its way forward.
+The clauses are checked in this order:
+
+1. The recipe holds exactly one record row, an engine of `shedrecipe.LoomRecordEngines`.
+2. It holds exactly one build row, an engine of `shedrecipe.LoomBuildEngines`; the build segment is the rows a variant owns that turn the record into the change, and the contract checks the one row of it that is a build engine.
+3. The build row lies after the record row on the `on_done` path walked from `entry`, which ends at a terminal, an empty `on_done` or a revisited row.
+4. A row whose engine is `shedrecipe.LoomFinalizeEngine` exists, and every row reached by following `on_done` from it is in `terminals`.
+5. `verify_source` is set.
+
+A recipe without `contract: loom` is not checked and is no loom.
 
 **Validation split.** This package owns file shape and engine-name resolution alone.
 It runs no reachability, cycle, blind-gate, dangling-target, or segment analysis of its own, because `shedengine`'s own validation and `internal/shedcheck` already own routing, cycles, and reachability, and a third copy is what drifts.

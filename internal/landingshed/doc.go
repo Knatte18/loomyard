@@ -243,8 +243,7 @@
 // The Describe session loads `scribe:prose` before its prompt.
 // Its stencil, like the conflict session's, carries the parent directive that internal/parentdirective renders from the told name:
 // the seat engine's geometry for Describe, and Deps.ParentName passed through to the resolver for Parent-Align and Finalize.
-// DescribeTable builds a tapestry run's session, which reads the decision record and the webster run records;
-// DarnDescribeTable builds a darn run's from its own stencil, `landing-template-describe-darn`, which reads the board entry, the decision record beside it, the diff and the review perch's run directory, under the same describe keys, role and skills.
+// DescribeTable builds every loom recipe's session from one stencil, which reads the decision record, the board entry, the diff and the run records that exist, rendering an absent record as `(none)`.
 // NewBeamDescribe is the beam recipe's Describe row and starts no agent: it writes the description from the beam's board entry and the subjects of the commits the beam adds, validates it with the check the Describe gate runs, and commits it.
 // A finding is an error naming the finding and the way out, which is to end the landing with `lym batten cancel <slug>`, fix the entry with `lym board upsert` and run `lym beam land <slug>` again, since the landing's claim holds the entry under the run lock.
 //

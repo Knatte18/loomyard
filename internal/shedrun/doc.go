@@ -3,10 +3,8 @@
 // records a run's chosen recipe, driver, and parameters at seed time.
 //
 // "Seed" here names one thing only -- the run-identity artefact this package reads and writes via
-// ReadSeed/WriteSeed. It is never internal/loomengine's CheckSeed sense (the initial status.json for
-// a fresh run) and never shedverbs.KindUnseeded's sense (also a status file); a run addressed by this
-// package's seed.json is a different concern from either of those and this package does not touch
-// either of them.
+// ReadSeed/WriteSeed. It is never shedverbs.KindUnseeded's sense (a status file); a run addressed by this
+// package's seed.json is a different concern and this package does not touch a status file.
 //
 // The literal "self" is an alias for the worktree's own slug: ResolveRunID maps it to the told
 // location's WorktreeName, and a run's directory is named by that slug.

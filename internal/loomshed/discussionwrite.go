@@ -6,7 +6,6 @@ package loomshed
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
@@ -33,44 +32,10 @@ func NewDiscussionWrite(name string, inner shedengine.ShedProducer, commit func(
 	return &discussionWrite{name: name, inner: inner, commit: commit}
 }
 
-// Call implements shedengine.ShedProducer: it calls p.inner.Call(ctx) exactly once and returns its
-// three results verbatim whenever the error is non-nil or pointer.Path is empty. The commit seam
-// fires whenever the wrapped producer reports a non-empty output pointer with a nil error -- Done or
-// a gate-failed Stuck, the only two outcomes the wrapped *shedadapters.MultiLLMProducer can report
-// with a non-empty pointer -- and the returned triple is (outcome, pointer, nil) rather than being
-// forced to Done.
-//
-// A non-nil commit error maps to a returned error, never to shedengine.Stuck, on both the Done path
-// and the gate-failed Stuck path alike: a git fault is not something re-writing the discussion can
-// fix, the same reasoning this row's own gate (loomshed.NewDiscussionGate) already applies to a
-// non-not-exist read failure from discussionparser.Validate. The commit fires after this row's own
-// gate has already run: p.inner.Call holds the handoff inside the gate loop until the gate passes or
-// its re-prompt budget is exhausted, so by the time this decorator sees a non-empty pointer the
-// verdict is already settled -- Done because the gate passed, or a gate-failed Stuck because it did
-// not -- and the commit itself keeps the working tree clean and the artifact durable, it does not
-// certify it. Left alone, a gate-failed Stuck would skip the commit and halt the run with the invalid
-// artifact sitting uncommitted in a dirty working tree -- exactly the state this decorator's own
-// recorded rationale exists to prevent -- so committing it here means the human the run just halted
-// for finds the artifact committed and diagnosable.
+// Call implements shedengine.ShedProducer: it runs the wrapped producer once and commits its outputs through runAndCommit.
+// The commit fires for a non-empty output pointer, Done or a gate-failed Stuck, since the wrapped producer holds the handoff inside the gate loop and the verdict is settled by the time it returns.
+// Committing a gate-failed Stuck leaves the invalid artifact committed and diagnosable for the human the run halted for, instead of uncommitted in a dirty working tree.
+// The commit seam is checked at call time rather than at construction because the constructor returns the bare seam interface and so has no error to refuse a nil through.
 func (p *discussionWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	outcome, pointer, err := p.inner.Call(ctx)
-	if err != nil || pointer.Path == "" {
-		return outcome, pointer, err
-	}
-
-	// The seam is asserted here rather than at construction because this producer's constructor
-	// returns the bare seam interface every neighbouring row's shape test reflects over, so it has
-	// no error return to refuse a nil through. The registry entry does guard it (requireSeam in
-	// internal/shedrecipe), which is why no production path reaches this branch — but a nil deref
-	// several producers into a long unattended Shed run is exactly the failure this codebase
-	// already guards against elsewhere, and a named error is a diagnosable one where a panic is not.
-	if p.commit == nil {
-		return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: no commit seam wired; the produced discussion would never be committed", p.name)
-	}
-
-	if err := p.commit(); err != nil {
-		return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: commit produced artifacts: %w; way forward: the fault is transient, re-step the %s row", p.name, err, p.name)
-	}
-
-	return outcome, pointer, nil
+	return runAndCommit(ctx, p.name, p.inner, p.commit)
 }

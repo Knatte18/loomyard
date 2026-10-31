@@ -1,6 +1,6 @@
 //go:build tier0
 
-// childdriverkind_test.go pins childDriverKind's resolution of a child run's driver over temp config layers.
+// childdriverkind_test.go pins childDriverKind's resolution of a child run's driver from shed.yaml over temp config layers.
 
 package battencli
 
@@ -10,26 +10,20 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/darnengine"
-	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// TestChildDriverKind verifies the driver comes from the child recipe's own driver_kind override, else shed.yaml's, so a darn child takes darn.yaml and a loom child loom.yaml.
+// TestChildDriverKind verifies the driver comes from shed.yaml's driver_kind for a darn, a tapestry and a pawl child alike.
 func TestChildDriverKind(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name       string
-		recipe     string
-		loomKind   string
-		darnKind   string
-		shedKind   string
-		wantDriver string
+		name   string
+		recipe string
 	}{
-		{name: "a darn recipe takes darn.yaml's go over loom.yaml's llm", recipe: shedrun.RecipeDarn, loomKind: "llm", darnKind: "go", wantDriver: "go"},
-		{name: "a tapestry recipe takes loom.yaml's llm over darn.yaml's go", recipe: shedrun.RecipeTapestry, loomKind: "llm", darnKind: "go", wantDriver: "llm"},
-		{name: "empty overrides take shed.yaml's llm", recipe: shedrun.RecipeTapestry, shedKind: "llm", wantDriver: "llm"},
+		{name: "darn", recipe: shedrun.RecipeDarn},
+		{name: "tapestry", recipe: shedrun.RecipeTapestry},
+		{name: "pawl", recipe: shedrun.RecipePawl},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -38,35 +32,18 @@ func TestChildDriverKind(t *testing.T) {
 			if err := os.MkdirAll(configengine.ConfigDir(dir), 0o755); err != nil {
 				t.Fatalf("MkdirAll(%q) = %v; want nil", configengine.ConfigDir(dir), err)
 			}
-			withKind := func(template, kind string) string {
-				return strings.Replace(template, `driver_kind: ""`, "driver_kind: "+kind, 1)
-			}
-			documents := map[string]string{
-				"loom": loomengine.ConfigTemplate(),
-				"darn": darnengine.ConfigTemplate(),
-				"shed": sheddriver.ConfigTemplate(),
-			}
-			if tt.loomKind != "" {
-				documents["loom"] = withKind(documents["loom"], tt.loomKind)
-			}
-			if tt.darnKind != "" {
-				documents["darn"] = withKind(documents["darn"], tt.darnKind)
-			}
-			if tt.shedKind != "" {
-				documents["shed"] = strings.Replace(documents["shed"], "driver_kind: go", "driver_kind: "+tt.shedKind, 1)
-			}
-			for module, document := range documents {
-				if err := os.WriteFile(configengine.ConfigFile(dir, module), []byte(document), 0o644); err != nil {
-					t.Fatalf("WriteFile(%s.yaml) = %v; want nil", module, err)
-				}
+			const wantDriver = "llm"
+			document := strings.Replace(sheddriver.ConfigTemplate(), "driver_kind: go", "driver_kind: llm", 1)
+			if err := os.WriteFile(configengine.ConfigFile(dir, "shed"), []byte(document), 0o644); err != nil {
+				t.Fatalf("WriteFile(shed.yaml) = %v; want nil", err)
 			}
 
 			got, err := childDriverKind(configengine.Dirs{Anchor: dir}, tt.recipe)
 			if err != nil {
 				t.Fatalf("childDriverKind(%q) = _, %v; want nil error", tt.recipe, err)
 			}
-			if got != tt.wantDriver {
-				t.Errorf("childDriverKind(%q) = %q; want %q", tt.recipe, got, tt.wantDriver)
+			if got != wantDriver {
+				t.Errorf("childDriverKind(%q) = %q; want %q", tt.recipe, got, wantDriver)
 			}
 		})
 	}

@@ -25,6 +25,9 @@ type reviewTargetDeps struct {
 	dirExists func(path string) bool
 	// resolveWorktree resolves a worktree root into a Location with no cwd gate.
 	resolveWorktree func(worktreeRoot string) (*lymcwd.Location, error)
+	// seedRecipe returns the recipe name the target worktree's self run records, tapestry for a run with no seed.
+	// A nil seam reads the target as tapestry.
+	seedRecipe func(target *lymcwd.Location) (string, error)
 }
 
 // defaultReviewTargetDeps are the production seams.
@@ -36,12 +39,36 @@ func defaultReviewTargetDeps() reviewTargetDeps {
 			return err == nil && info.IsDir()
 		},
 		resolveWorktree: lymcwd.ResolveWorktree,
+		seedRecipe:      seedRecipe,
 	}
 }
 
 // resolveReviewTarget returns the worktree a verb of the named group (`circling` or `decision`) acts on.
 // A given slug resolves to its sibling worktree of the hub; with no slug a task worktree addresses itself and the prime refuses.
+// A target whose run records a recipe `lym loom` does not serve is refused, since it has no decision record or review perch the verb acts on.
 func resolveReviewTarget(group, verb string, location *lymcwd.Location, slug string, d reviewTargetDeps) (*lymcwd.Location, error) {
+	target, err := locateReviewTarget(group, verb, location, slug, d)
+	if err != nil {
+		return nil, err
+	}
+	if d.seedRecipe == nil {
+		return target, nil
+	}
+	recipe, err := d.seedRecipe(target)
+	if err != nil {
+		return nil, fmt.Errorf("loom: %s %s: read the run's seed: %w", group, verb, err)
+	}
+	switch serviceOfRecipe(recipe) {
+	case recipeNotLoom:
+		return nil, fmt.Errorf("loom: %s %s: run recipe %q is not a loom recipe, so it has no decision record or review perch this verb acts on; way forward: %s", group, verb, recipe, shedVerbsWayForward)
+	case recipeUnknown:
+		return nil, fmt.Errorf("loom: %s %s: run recipe %q names no recipe this lym knows; way forward: %s", group, verb, recipe, reseedWayForward)
+	}
+	return target, nil
+}
+
+// locateReviewTarget resolves the worktree a verb of the named group acts on, before the recipe of its run is judged.
+func locateReviewTarget(group, verb string, location *lymcwd.Location, slug string, d reviewTargetDeps) (*lymcwd.Location, error) {
 	if slug == "" {
 		prime, err := d.primeName(location)
 		if err != nil {

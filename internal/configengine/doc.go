@@ -74,6 +74,7 @@
 // A local file failing the rule is an [ErrInvalid] error naming the file and the key.
 // A [Spec] may also declare `RetiredKeys`: dotted keys the module no longer reads, each mapped to the category it held as a template key.
 // A unit a retired key covers is judged by that category alone, the longest covering key deciding, and its value shape is never checked, so [CategoryNone] admits it and any other category refuses it.
+// A [Spec] may map a retired key to a `RetiredWayForward` text, and the local layer's refusal of a unit that key covers then ends with `; way forward: ` and that text, the file and key already named.
 // Every load drops the retired keys from the stacked document before it fills the template, so a layer not yet reconciled still loads and no loader reads one.
 // No cleanup deletes a local override file.
 // Seed-Child removes a local file when it rewrites the pair's local layer to equal the task's run settings.

@@ -182,7 +182,7 @@ func TestRowEntry(t *testing.T) {
 	}
 }
 
-// TestFixerTestFileMatcher asserts the matcher a darn run gets is the union over languages, and a tapestry run's follows the live plan's language.
+// TestFixerTestFileMatcher asserts the matcher a recipe with no Plan-Write row gets is the union over languages, and one with a Plan-Write row follows the live plan's language.
 func TestFixerTestFileMatcher(t *testing.T) {
 	t.Parallel()
 
@@ -214,6 +214,7 @@ func TestFixerTestFileMatcher(t *testing.T) {
 		{"DarnUnionGoTest", shedrun.RecipeDarn, "", "a/b_test.go", true},
 		{"DarnUnionCsharpTest", shedrun.RecipeDarn, "", "a/BTests.cs", true},
 		{"DarnUnionSource", shedrun.RecipeDarn, "", "a/b.go", false},
+		{"PawlUnionCsharpTest", shedrun.RecipePawl, "", "a/BTests.cs", true},
 		{"LoomNoLanguageReadsGo", shedrun.RecipeTapestry, writePlan(t, ""), "a/b_test.go", true},
 		{"LoomNoLanguageSourceIsNotATest", shedrun.RecipeTapestry, writePlan(t, ""), "a/b.go", false},
 		{"LoomCsharpPlanIgnoresGoTests", shedrun.RecipeTapestry, writePlan(t, "csharp"), "a/b_test.go", false},

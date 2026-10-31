@@ -29,6 +29,8 @@ func TestPrepareRunSettings(t *testing.T) {
 		wantModule   string
 		wantInvalid  bool
 		wantNoModule string
+		// wantWayForwardOf names the retired key whose RetiredWayForward text the refusal must end with.
+		wantWayForwardOf string
 	}{
 		{
 			name:     "whole number becomes a YAML integer",
@@ -41,9 +43,9 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantDocs: map[string]string{"loom": "review_hard_max_bounces: 3\nreview_max_bounces: 2\n"},
 		},
 		{
-			name:     "a zero per-perch budget keeps its zero-rounds meaning through loom's Migrate",
+			name:     "a loom.plan_max_bounces lands in the tapestry document and keeps its zero-rounds meaning",
 			settings: map[string]any{"loom": map[string]any{"plan_max_bounces": float64(0)}},
-			wantDocs: map[string]string{"loom": "plan_max_bounces: 0\n"},
+			wantDocs: map[string]string{"tapestry": "plan_max_bounces: 0\n"},
 		},
 		{
 			name:        "a review hard cap of zero is refused by loom's CheckValues",
@@ -112,8 +114,8 @@ func TestPrepareRunSettings(t *testing.T) {
 		},
 		{
 			name:     "a retired merge_max_bounces is dropped by loom's Migrate and never refused",
-			settings: map[string]any{"loom": map[string]any{"merge_max_bounces": float64(1), "plan_max_bounces": float64(2)}},
-			wantDocs: map[string]string{"loom": "plan_max_bounces: 2\n"},
+			settings: map[string]any{"loom": map[string]any{"merge_max_bounces": float64(1), "code_max_bounces": float64(2)}},
+			wantDocs: map[string]string{"loom": "code_max_bounces: 2\n"},
 		},
 		{
 			name:        "a retired darn fan key moves to loom's code_fixer_fan and is refused as a guard key",
@@ -166,8 +168,8 @@ func TestPrepareRunSettings(t *testing.T) {
 		},
 		{
 			name:        "mapping where the template holds a scalar",
-			settings:    map[string]any{"loom": map[string]any{"plan": map[string]any{"a": "b"}}},
-			wantRefusal: "plan",
+			settings:    map[string]any{"loom": map[string]any{"discussion": map[string]any{"a": "b"}}},
+			wantRefusal: "discussion",
 			wantModule:  "loom",
 			wantInvalid: true,
 		},
@@ -234,44 +236,29 @@ func TestPrepareRunSettings(t *testing.T) {
 		},
 		{
 			name:     "a retired loom key migrates away at read time",
-			settings: map[string]any{"loom": map[string]any{"skip_alignment": true, "plan_max_bounces": float64(2)}},
-			wantDocs: map[string]string{"loom": "plan_max_bounces: 2\n"},
+			settings: map[string]any{"loom": map[string]any{"skip_alignment": true, "code_max_bounces": float64(2)}},
+			wantDocs: map[string]string{"loom": "code_max_bounces: 2\n"},
 		},
 		{
-			name:        "driver_kind outside llm and go is refused by loom's CheckValues",
-			settings:    map[string]any{"loom": map[string]any{"driver_kind": "fast"}},
-			wantRefusal: "driver_kind",
-			wantModule:  "loom",
-			wantInvalid: true,
+			name:             "a loom driver_kind is retired and refused with the shed way forward",
+			settings:         map[string]any{"loom": map[string]any{"driver_kind": "go"}},
+			wantRefusal:      "driver_kind",
+			wantModule:       "loom",
+			wantInvalid:      true,
+			wantWayForwardOf: "driver_kind",
 		},
 		{
-			name:     "driver_kind go is open to run settings",
-			settings: map[string]any{"loom": map[string]any{"driver_kind": "go"}},
-			wantDocs: map[string]string{"loom": "driver_kind: go\n"},
+			name:             "a darn arbiter is retired and refused with the shed way forward",
+			settings:         map[string]any{"darn": map[string]any{"arbiter": "opus"}},
+			wantRefusal:      "arbiter",
+			wantModule:       "darn",
+			wantInvalid:      true,
+			wantWayForwardOf: "arbiter",
 		},
 		{
-			name:        "negative tackler_max_spawns is refused by loom's CheckValues",
-			settings:    map[string]any{"loom": map[string]any{"tackler_max_spawns": float64(-1)}},
-			wantRefusal: "tackler_max_spawns",
-			wantModule:  "loom",
-			wantInvalid: true,
-		},
-		{
-			name:     "a loom tackler_max_spawns of 4 survives loom's Migrate as 4",
-			settings: map[string]any{"loom": map[string]any{"tackler_max_spawns": float64(4)}},
-			wantDocs: map[string]string{"loom": "tackler_max_spawns: 4\n"},
-		},
-		{
-			name:     "darn's tackler_max_spawns of 0 is open to run settings",
-			settings: map[string]any{"darn": map[string]any{"tackler_max_spawns": float64(0)}},
-			wantDocs: map[string]string{"darn": "tackler_max_spawns: 0\n"},
-		},
-		{
-			name:        "darn's negative tackler_max_spawns is refused by darn's CheckValues",
-			settings:    map[string]any{"darn": map[string]any{"tackler_max_spawns": float64(-1)}},
-			wantRefusal: "tackler_max_spawns",
-			wantModule:  "darn",
-			wantInvalid: true,
+			name:     "shed's driver_kind go is open to run settings",
+			settings: map[string]any{"shed": map[string]any{"driver_kind": "go"}},
+			wantDocs: map[string]string{"shed": "driver_kind: go\n"},
 		},
 		{
 			name:        "a batten driver_kind is refused naming the key",
@@ -327,6 +314,12 @@ func TestPrepareRunSettings(t *testing.T) {
 				}
 				if errors.Is(err, configengine.ErrInvalid) != tt.wantInvalid {
 					t.Errorf("errors.Is(err, ErrInvalid) = %v; want %v", !tt.wantInvalid, tt.wantInvalid)
+				}
+				if tt.wantWayForwardOf != "" {
+					module, _ := Lookup(tt.wantModule)
+					if want := module.Spec().RetiredWayForward[tt.wantWayForwardOf]; want == "" || !strings.HasSuffix(err.Error(), want) {
+						t.Errorf("error = %q; want it to end with the module Spec's RetiredWayForward text %q", err, want)
+					}
 				}
 				return
 			}
@@ -387,25 +380,25 @@ func TestLayerRunSettings(t *testing.T) {
 			name:     "a task key replaces the profile's and a profile key the task lacks stays",
 			profile:  map[string]any{"loom": map[string]any{"plan_max_bounces": float64(1), "code_max_bounces": float64(1)}},
 			settings: map[string]any{"loom": map[string]any{"plan_max_bounces": float64(3)}},
-			wantDocs: map[string]string{"loom": "code_max_bounces: 1\nplan_max_bounces: 3\n"},
+			wantDocs: map[string]string{"loom": "code_max_bounces: 1\n", "tapestry": "plan_max_bounces: 3\n"},
 		},
 		{
 			name:     "a profile's retired merge_max_bounces is dropped rather than refused",
-			profile:  map[string]any{"loom": map[string]any{"plan_max_bounces": float64(1), "merge_max_bounces": float64(1)}},
-			settings: map[string]any{"loom": map[string]any{"plan_max_bounces": float64(3)}},
-			wantDocs: map[string]string{"loom": "plan_max_bounces: 3\n"},
+			profile:  map[string]any{"loom": map[string]any{"code_max_bounces": float64(1), "merge_max_bounces": float64(1)}},
+			settings: map[string]any{"loom": map[string]any{"code_max_bounces": float64(3)}},
+			wantDocs: map[string]string{"loom": "code_max_bounces: 3\n"},
 		},
 		{
 			name:     "a task's retired webster_max_bounces layers as code_max_bounces and its merge_max_bounces is dropped",
 			profile:  map[string]any{"loom": map[string]any{"plan_max_bounces": float64(1)}},
 			settings: map[string]any{"loom": map[string]any{"webster_max_bounces": float64(2), "merge_max_bounces": float64(1)}},
-			wantDocs: map[string]string{"loom": "plan_max_bounces: 1\n" + renamedCodeMaxBounces},
+			wantDocs: map[string]string{"loom": renamedCodeMaxBounces, "tapestry": "plan_max_bounces: 1\n"},
 		},
 		{
 			name:     "a module only one side names is written as that side has it",
 			profile:  map[string]any{"darn": map[string]any{"verify_attempts": float64(2)}},
 			settings: map[string]any{"loom": map[string]any{"plan_max_bounces": float64(2)}},
-			wantDocs: map[string]string{"darn": "verify_attempts: 2\n", "loom": "plan_max_bounces: 2\n"},
+			wantDocs: map[string]string{"darn": "verify_attempts: 2\n", "tapestry": "plan_max_bounces: 2\n"},
 		},
 		{
 			name:     "no task settings writes the profile alone",

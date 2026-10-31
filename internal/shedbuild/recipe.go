@@ -9,16 +9,19 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Recipe is a decoded recipe document: the whole graph of producer rows plus the graph metadata
-// Build never consumes.
+// Recipe is a decoded recipe document: the whole graph of producer rows plus its graph metadata.
 //
 // Entry and Terminals are graph metadata Build never consumes, surfaced because shedcheck.Check
 // takes both as told arguments and refuses to infer either.
 // AmendmentTarget is optional graph metadata of the same kind: it names the row a plan amendment routes to, empty when the recipe sets none.
+// Contract is empty or `loom`, and `loom` declares the recipe a loom, which Build checks against the loom contract.
+// VerifySource is empty, `plan` or `tree_scope`, and a loom recipe must set it.
 type Recipe struct {
 	Version         int      `yaml:"version"`
 	Entry           string   `yaml:"entry"`
 	AmendmentTarget string   `yaml:"amendment_target"`
+	Contract        string   `yaml:"contract"`
+	VerifySource    string   `yaml:"verify_source"`
 	Terminals       []string `yaml:"terminals"`
 	Producers       []Row    `yaml:"producers"`
 }

@@ -122,6 +122,11 @@ var intentionallyNil = map[string]string{
 	"DarnTable":                           "darn-only seam, batten has no darn segment",
 	"Darn.Commit":                         "darn-only seam, batten has no darn segment",
 	"Darn.LatestOutcome":                  "darn-only seam, batten has no darn segment",
+	"Darn.CheckRecord":                    "darn-only seam, batten has no darn segment",
+	"Darn.CommittedRecord":                "darn-only seam, batten has no darn segment",
+	"DiscussionHistory":                   "loom-only seam, batten wires no loom record",
+	"RecordWrite.ReadBody":                "loom-only seam, batten wires no loom record",
+	"RecordWrite.Commit":                  "loom-only seam, batten wires no loom record",
 	"Drift.Config":                        "loom- and darn-only seam, batten has no Drift row",
 	"Drift.Status":                        "loom- and darn-only seam, batten has no Drift row",
 	"Drift.Head":                          "loom- and darn-only seam, batten has no Drift row",
@@ -151,6 +156,7 @@ var intentionallyNil = map[string]string{
 //lym:seam internal/landingshed#ParentLockDeps
 //lym:seam internal/landingshed#PullRequestDeps
 //lym:seam internal/loomshed#DarnDeps
+//lym:seam internal/loomshed#RecordWriteDeps
 //lym:seam internal/loomshed#PRReworkDeps
 //lym:seam internal/pawlengine#Deps
 //lym:seam internal/pawlengine#Paths

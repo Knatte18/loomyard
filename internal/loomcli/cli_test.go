@@ -404,7 +404,7 @@ func TestPauseCmd_BareLoomPauseRefusesNamingBothWaysForward(t *testing.T) {
 	}
 }
 
-// TestSpecFor_RestepHold asserts specFor tells tapestry and darn the escalate-halt check as RestepHold, and pawl and a receiver with no recipe none.
+// TestSpecFor_RestepHold asserts specFor tells a loom recipe, an empty recipe reading as tapestry, the escalate-halt check as RestepHold, and pawl none.
 func TestSpecFor_RestepHold(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -419,7 +419,7 @@ func TestSpecFor_RestepHold(t *testing.T) {
 		{shedrun.RecipeDarn, true, "Parent-Align", landingshed.EscalateStopPrefix + "the fixer needs a decision", true},
 		{shedrun.RecipeDarn, true, "Parent-Align", "a plain reason", false},
 		{shedrun.RecipePawl, false, "", "", false},
-		{"", false, "", "", false},
+		{"", true, "Finalize", landingshed.EscalateStopPrefix + "the fixer needs a decision", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.recipe+"/"+tt.reason, func(t *testing.T) {

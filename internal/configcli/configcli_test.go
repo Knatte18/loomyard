@@ -1159,6 +1159,9 @@ func TestDispatchLayers(t *testing.T) {
 	t.Parallel()
 
 	loomTemplate, _ := configreg.Template("loom")
+	tapestryTemplateFunc, _ := configreg.Template("tapestry")
+	// tapestryTemplate is the tapestry board file, and loomBoard the loom board file tapestry's load reads for the run-wide review keys.
+	tapestryTemplate, loomBoard := tapestryTemplateFunc(), loomTemplate()
 	gateTemplate, _ := configreg.Template("gate")
 	lensesTemplate := lenses.ConfigTemplate
 	taskSession, err := agentname.Format("ly", "task-a", "loom")
@@ -1192,7 +1195,9 @@ func TestDispatchLayers(t *testing.T) {
 		noTerminal bool
 		// seedBoard and seedLocal are the module's board file and local file before the call; empty seeds nothing.
 		seedBoard string
-		seedLocal string
+		// seedLoomBoard is the loom board file a call on tapestry also reads, for the run-wide review keys; empty seeds nothing.
+		seedLoomBoard string
+		seedLocal     string
 		// seedMachine is the module's machine file before the call; empty seeds nothing.
 		seedMachine string
 		// editor is the editor the call opens; nil fails the test if one opens.
@@ -1284,60 +1289,60 @@ func TestDispatchLayers(t *testing.T) {
 			},
 		},
 		{
-			name: "local layer refuses a value the loader rejects naming the key and leaves no file", module: "loom", layer: "local",
-			setFlags: []string{`plan=["opus[medium]", "sonnet[high]"]`}, seedBoard: loomTemplate(), wantCode: 1, wantErr: `loom config key "plan"`,
+			name: "local layer refuses a value the loader rejects naming the key and leaves no file", module: "tapestry", layer: "local",
+			setFlags: []string{`plan=["opus[medium]", "sonnet[high]"]`}, seedBoard: tapestryTemplate, seedLoomBoard: loomBoard, wantCode: 1, wantErr: `tapestry config key "plan"`,
 			check: func(t *testing.T, fx hubFixture, out string) {
-				if _, err := os.Stat(configengine.LocalFile(fx.worktree, "loom")); !os.IsNotExist(err) {
-					t.Errorf("local loom.yaml exists after a refused value; stat err = %v", err)
+				if _, err := os.Stat(configengine.LocalFile(fx.worktree, "tapestry")); !os.IsNotExist(err) {
+					t.Errorf("local tapestry.yaml exists after a refused value; stat err = %v", err)
 				}
 			},
 		},
 		{
-			name: "local layer refusing a value puts the present file back", module: "loom", layer: "local",
-			setFlags: []string{"plan=opus[medium] x"}, seedBoard: loomTemplate(), seedLocal: "review_max_bounces: 5\n", wantCode: 1, wantErr: `loom config key "plan"`,
+			name: "local layer refusing a value puts the present file back", module: "tapestry", layer: "local",
+			setFlags: []string{"plan=opus[medium] x"}, seedBoard: tapestryTemplate, seedLoomBoard: loomBoard, seedLocal: "plan_timeout_min: 5\n", wantCode: 1, wantErr: `tapestry config key "plan"`,
 			check: func(t *testing.T, fx hubFixture, out string) {
-				data, err := os.ReadFile(configengine.LocalFile(fx.worktree, "loom"))
-				if err != nil || string(data) != "review_max_bounces: 5\n" {
-					t.Errorf("local loom.yaml = %q, %v; want the file as seeded", data, err)
+				data, err := os.ReadFile(configengine.LocalFile(fx.worktree, "tapestry"))
+				if err != nil || string(data) != "plan_timeout_min: 5\n" {
+					t.Errorf("local tapestry.yaml = %q, %v; want the file as seeded", data, err)
 				}
 			},
 		},
 		{
-			name: "local layer still writes a per-round list the loader takes", module: "loom", layer: "local",
-			setFlags: []string{`plan_reviewer_model=["opus[medium]", "sonnet[high]"]`}, seedBoard: loomTemplate(),
+			name: "local layer still writes a per-round list the loader takes", module: "tapestry", layer: "local",
+			setFlags: []string{`plan_reviewer_model=["opus[medium]", "sonnet[high]"]`}, seedBoard: tapestryTemplate, seedLoomBoard: loomBoard,
 			check: func(t *testing.T, fx hubFixture, out string) {
-				data, err := os.ReadFile(configengine.LocalFile(fx.worktree, "loom"))
+				data, err := os.ReadFile(configengine.LocalFile(fx.worktree, "tapestry"))
 				if err != nil || string(data) != "plan_reviewer_model: [\"opus[medium]\", \"sonnet[high]\"]\n" {
-					t.Errorf("local loom.yaml = %q, %v; want plan_reviewer_model as a list", data, err)
+					t.Errorf("local tapestry.yaml = %q, %v; want plan_reviewer_model as a list", data, err)
 				}
 			},
 		},
 		{
-			name: "a write onto a stack already failing to load the same way still goes through", module: "loom", layer: "local",
-			setFlags: []string{"review_max_bounces=2"}, seedBoard: loomTemplate(), seedLocal: "plan: opus[medium] x\n",
+			name: "a write onto a stack already failing to load the same way still goes through", module: "tapestry", layer: "local",
+			setFlags: []string{"plan_timeout_min=2"}, seedBoard: tapestryTemplate, seedLoomBoard: loomBoard, seedLocal: "plan: opus[medium] x\n",
 			check: func(t *testing.T, fx hubFixture, out string) {
-				data, err := os.ReadFile(configengine.LocalFile(fx.worktree, "loom"))
-				if err != nil || !strings.Contains(string(data), "review_max_bounces: 2") {
-					t.Errorf("local loom.yaml = %q, %v; want review_max_bounces: 2", data, err)
+				data, err := os.ReadFile(configengine.LocalFile(fx.worktree, "tapestry"))
+				if err != nil || !strings.Contains(string(data), "plan_timeout_min: 2") {
+					t.Errorf("local tapestry.yaml = %q, %v; want plan_timeout_min: 2", data, err)
 				}
 			},
 		},
 		{
-			name: "worktree layer refuses a value the loader rejects and never syncs", module: "loom",
-			setFlags: []string{`plan=["opus[medium]", "sonnet[high]"]`}, seedBoard: loomTemplate(), wantCode: 1, wantErr: `loom config key "plan"`,
+			name: "worktree layer refuses a value the loader rejects and never syncs", module: "tapestry",
+			setFlags: []string{`plan=["opus[medium]", "sonnet[high]"]`}, seedBoard: tapestryTemplate, seedLoomBoard: loomBoard, wantCode: 1, wantErr: `tapestry config key "plan"`,
 			check: func(t *testing.T, fx hubFixture, out string) {
-				if _, err := os.Stat(configengine.ConfigFile(fx.worktree, "loom")); !os.IsNotExist(err) {
-					t.Errorf("worktree loom.yaml exists after a refused value; stat err = %v", err)
+				if _, err := os.Stat(configengine.ConfigFile(fx.worktree, "tapestry")); !os.IsNotExist(err) {
+					t.Errorf("worktree tapestry.yaml exists after a refused value; stat err = %v", err)
 				}
 			},
 		},
 		{
-			name: "default layer refuses a value the loader rejects and leaves the board file as it was", module: "loom", layer: "default",
-			setFlags: []string{`plan=["opus[medium]", "sonnet[high]"]`}, seedBoard: loomTemplate(), wantCode: 1, wantErr: `loom config key "plan"`, wantCommits: 1,
+			name: "default layer refuses a value the loader rejects and leaves the board file as it was", module: "tapestry", layer: "default",
+			setFlags: []string{`plan=["opus[medium]", "sonnet[high]"]`}, seedBoard: tapestryTemplate, seedLoomBoard: loomBoard, wantCode: 1, wantErr: `tapestry config key "plan"`, wantCommits: 1,
 			check: func(t *testing.T, fx hubFixture, out string) {
-				data, _ := os.ReadFile(configengine.ConfigFile(fx.board, "loom"))
-				if string(data) != loomTemplate() {
-					t.Errorf("board loom.yaml changed by a refused value")
+				data, _ := os.ReadFile(configengine.ConfigFile(fx.board, "tapestry"))
+				if string(data) != tapestryTemplate {
+					t.Errorf("board tapestry.yaml changed by a refused value")
 				}
 			},
 		},
@@ -1678,6 +1683,9 @@ func TestDispatchLayers(t *testing.T) {
 			if row.seedBoard != "" {
 				seedModuleConfig(t, fx.board, row.module, row.seedBoard)
 			}
+			if row.seedLoomBoard != "" {
+				seedModuleConfig(t, fx.board, "loom", row.seedLoomBoard)
+			}
 			if row.seedLocal != "" {
 				if err := os.MkdirAll(filepath.Dir(configengine.LocalFile(fx.worktree, row.module)), 0o755); err != nil {
 					t.Fatalf("mkdir: %v", err)
@@ -1750,13 +1758,23 @@ func TestPrintResolved(t *testing.T) {
 		if code := printResolved(configDirs{worktree: fx.worktree, board: fx.board}, &out, "loom"); code != 0 {
 			t.Fatalf("printResolved = %d; output: %s", code, out.String())
 		}
-		for _, want := range []string{"review_max_bounces: 2 # worktree", "discussion_timeout_min: 7 # local", "plan_timeout_min:"} {
+		for _, want := range []string{"review_max_bounces: 2 # worktree", "discussion_timeout_min: 7 # local", "step_idle_timeout_min:"} {
 			if !strings.Contains(out.String(), want) {
 				t.Errorf("output missing %q; output:\n%s", want, out.String())
 			}
 		}
 		if !strings.Contains(out.String(), "# default") {
 			t.Errorf("output holds no default-layer unit; output:\n%s", out.String())
+		}
+
+		tapestryTemplate, _ := configreg.Template("tapestry")
+		seedModuleConfig(t, fx.board, "tapestry", tapestryTemplate())
+		out.Reset()
+		if code := printResolved(configDirs{worktree: fx.worktree, board: fx.board}, &out, "tapestry"); code != 0 {
+			t.Fatalf("printResolved(tapestry) = %d; output: %s", code, out.String())
+		}
+		if !strings.Contains(out.String(), "plan_timeout_min:") {
+			t.Errorf("tapestry listing missing plan_timeout_min; output:\n%s", out.String())
 		}
 	})
 

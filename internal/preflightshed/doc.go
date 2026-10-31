@@ -12,6 +12,10 @@
 // A failure, a hub reconcile lock still held when the wait runs out included, is logged at Warn with its way forward and the row goes on to the check, no longer Stuck.
 // The config is left as it was and the stamp stays stale, so the next start verb or Preflight row retries the reconcile.
 //
+// A recipe row that holds an Implementer row tells NewPreflightWithBatcher a batcher check, which loads `batcher.yaml` after the reconcile and before the check, so a stale file in any layer stops the run before any agent row.
+// A retired key names the way forward its layer file calls for, `lym config reconcile --apply` for a worktree or local file and `lym fabric reconcile` for the repo default, which a session lym refuses the verb from reports status: FAILED and the orch runs;
+// any other load fault names the fix-and-re-step one.
+//
 // It declares its own unexported entryErr/cancelErr helpers (ctx.go) for the same
 // deliberate-duplication reason internal/loomshed/doc.go and internal/landingshed/ctx.go already
 // record.

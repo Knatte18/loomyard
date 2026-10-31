@@ -1,8 +1,7 @@
-// validate.go implements the `validate-discussion`, `validate-plan` and `validate-description` loom
-// verbs: standalone, zero-argument callers of the identical package functions the Discussion,
-// Plan, Describe and Darn-Write rows' own gates call, per the shared-implementation-is-the-whole-point Shared
-// Decision. No verb re-implements or re-derives any check; each maps its package's result onto the
-// envelope-and-exit-contract Shared Decision.
+// validate.go implements the `validate-discussion`, `validate-plan` and `validate-description` loom verbs.
+// Each is a standalone, zero-argument caller of the identical package function the Discussion, Plan or Describe row's own gate calls, per the shared-implementation-is-the-whole-point Shared Decision.
+// No verb re-implements or re-derives any check.
+// Each maps its package's result onto the envelope-and-exit-contract Shared Decision.
 
 package loomcli
 
@@ -10,7 +9,6 @@ import (
 	"errors"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
@@ -36,7 +34,7 @@ func renderFindings[T interface{ Error() string }](items []T) []string {
 // validateDiscussionCmd builds the `validate-discussion` subcommand: the standalone form of the
 // checks Discussion-Write's and Discussion-Burler-Fix's own gate runs, callable by the writer agent
 // before handoff.
-// A darn run's gate check is the darn one, which never reads the relevant list.
+// It checks every loom record with the one check the gates run, and commits nothing.
 func (c *loomCLI) validateDiscussionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "validate-discussion",
@@ -45,19 +43,16 @@ func (c *loomCLI) validateDiscussionCmd() *cobra.Command {
 		Long: `validate-discussion runs the loom gate's check against the current
 worktree's discussion files -- the identical check Discussion-Write's and
 Discussion-Burler-Fix's own gate runs: the decision record and support log
-check, the decision-id and acceptance checks, the citation check, plus the
-relevant list check when relevant.md exists -- and reports the result as one
-JSON envelope. It takes no arguments and no flags; it always checks the
-worktree's own discussion files.
+check, the decision-id and acceptance checks, and the check that the record
+keeps every "Added after Discussion" entry and appended PATTERN bullet its
+commit history held -- and reports the result as one JSON envelope. It takes
+no arguments and no flags; it always checks the worktree's own discussion
+files, and it commits nothing.
 
-On a tapestry run the citation check refuses a path or symbol the decision record
-cites that does not exist in the worktree, unless marked (new) or (removed).
-
-On a darn run it is the Darn-Write row's gate check and does not read the
-relevant list or test the citations: it runs the decision-id and acceptance
-checks, also refuses a record missing an "Added after Discussion" entry its
-commit history held, and a clean run commits the decision record and support
-log.
+On a run whose record Discussion-Write writes, it also runs the citation check,
+which refuses a path or symbol the decision record cites that does not exist in
+the worktree, unless marked (new) or (removed), and the relevant list check when
+relevant.md exists.
 
 Example:
   lym loom validate-discussion`,
@@ -68,14 +63,15 @@ Example:
 			}
 			out := cmd.OutOrStdout()
 
-			darn := c.env.DiscussionHistory != nil
-			var findings []discussionparser.Finding
-			var err error
-			if darn {
-				findings, err = loomshed.ValidateDarnDiscussion(c.env.DecisionRecordPath, c.env.SupportLogPath, c.env.DiscussionHistory)
-			} else {
-				findings, err = loomshed.ValidateLoomDiscussion(c.env.DecisionRecordPath, c.env.SupportLogPath, c.env.RelevantPath, c.env.WorktreeRoot, c.env.PlanIndex)
-			}
+			findings, err := loomshed.ValidateDiscussion(loomshed.DiscussionCheck{
+				RecordPath:     c.env.DecisionRecordPath,
+				SupportLogPath: c.env.SupportLogPath,
+				RelevantPath:   c.env.RelevantPath,
+				WorktreeRoot:   c.env.WorktreeRoot,
+				Index:          c.env.PlanIndex,
+				History:        c.env.DiscussionHistory,
+				Citations:      c.env.RecordEngine == "DiscussionWrite",
+			})
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate discussion: "+err.Error()))
 				return nil
@@ -85,12 +81,6 @@ Example:
 					"findings": renderFindings(findings),
 				}))
 				return nil
-			}
-			if darn {
-				if err := c.env.CommitDiscussion(); err != nil {
-					clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate discussion: commit the discussion files: "+err.Error()+`; way forward: re-run "lym loom validate-discussion"`))
-					return nil
-				}
 			}
 
 			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{

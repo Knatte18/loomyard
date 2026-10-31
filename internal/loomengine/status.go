@@ -2,16 +2,7 @@
 // shedengine.Status.Product: the thin, loom-owned handoff pointers a spawn-time lym command
 // writes at t=0 and Shed round-trips verbatim thereafter, never inspecting or interpreting them.
 
-// Package loomengine implements loom's own seed-coherence check, CheckSeed: one of the four
-// preconditions a task must meet before it is fit to run, with the other three now
-// internal/preflight's orchestrator-agnostic tier-1/tier-2 checks (worktree geometry, worktree
-// cleanliness, fabric readiness/sync). CheckSeed validates _lym/loom/status.json coherence over told
-// absolute paths, reporting a determined verdict rather than erroring on anything short of an infra
-// failure.
-//
-// Invoking the seed check on an already-advanced task (non-empty history, set start_sha, …) is a
-// caller error that will be reported as a half-finished precondition failure, not diagnosed as
-// misuse, because the check is a stateless validator.
+// Package loomengine holds loom's own engine pieces: its status product payload, the guard that refuses a status file inherited from another task, the loom and tapestry config modules, and the discussion, plan and review tables a loom run reads.
 package loomengine
 
 // Status is loom's product payload, carried verbatim inside shedengine.Status.Product per

@@ -38,6 +38,7 @@ import (
 //lym:seam internal/landingshed#ParentLockDeps
 //lym:seam internal/landingshed#PullRequestDeps
 //lym:seam internal/loomshed#DarnDeps
+//lym:seam internal/loomshed#RecordWriteDeps
 //lym:seam internal/loomshed#PRReworkDeps
 //lym:seam internal/pawlengine#Deps
 //lym:seam internal/pawlengine#Paths
@@ -53,12 +54,12 @@ func TestFullEnv_FillsEverySeam(t *testing.T) {
 	}
 
 	t.Run("TemplateSetting_AnswersATemplateKey", func(t *testing.T) {
-		got, err := TemplateSetting("loom", "plan_auto_accept")
+		got, err := TemplateSetting("tapestry", "plan_auto_accept")
 		if err != nil {
-			t.Fatalf("TemplateSetting(loom, plan_auto_accept): %v", err)
+			t.Fatalf("TemplateSetting(tapestry, plan_auto_accept): %v", err)
 		}
 		if got != false {
-			t.Errorf("TemplateSetting(loom, plan_auto_accept) = %v; want false", got)
+			t.Errorf("TemplateSetting(tapestry, plan_auto_accept) = %v; want false", got)
 		}
 	})
 
@@ -105,6 +106,7 @@ func TestFullEnv_FillsEverySeam(t *testing.T) {
 //lym:seam internal/landingshed#ParentLockDeps
 //lym:seam internal/landingshed#PullRequestDeps
 //lym:seam internal/loomshed#DarnDeps
+//lym:seam internal/loomshed#RecordWriteDeps
 //lym:seam internal/loomshed#PRReworkDeps
 //lym:seam internal/pawlengine#Deps
 //lym:seam internal/pawlengine#Paths
@@ -145,6 +147,7 @@ func TestNilSeams_ReportsExactPaths(t *testing.T) {
 //lym:seam internal/landingshed#ParentLockDeps
 //lym:seam internal/landingshed#PullRequestDeps
 //lym:seam internal/loomshed#DarnDeps
+//lym:seam internal/loomshed#RecordWriteDeps
 //lym:seam internal/loomshed#PRReworkDeps
 //lym:seam internal/pawlengine#Deps
 //lym:seam internal/pawlengine#Paths

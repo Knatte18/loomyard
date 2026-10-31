@@ -1,4 +1,4 @@
-# darn-recipe.yaml is the darn task recipe: Drift-Baseline records the regression scope and starts
+# darn-recipe.yaml is the darn task recipe: Record-Write writes the decision record from the board entry, Drift-Baseline records the regression scope and starts
 # the baseline capture, Drift-Await holds the run until the capture passed or the parent deferred it,
 # one gated writer reads the board entry, edits, tests and commits, Drift-Verify
 # compares the writer's code with the baseline, the Code-Review perch reviews the committed diff,
@@ -10,15 +10,15 @@
 # without a matching constant rename breaks resume for any in-flight task, unless internal/loomrecipe
 # maps the retired name onto its successor, as it maps the writer row's former name, Darn.
 #
-# The writer writes and validates the decision record before any code, and the perch's open findings
-# land in the record's `## Open risks`.
+# The writer reads the decision record Record-Write wrote and never writes it, and the perch's open
+# findings land in the record's `## Open risks`.
 # Darn has no Parent-Align row: Finalize merges the parent itself, under the parent lock it takes first.
 #
 # Preflight and Finalize carry no on_stuck: nothing in the list produces what each of them
 # gates, so a human is the only thing that can fix them.
 # Finalize fixes its own merge and test failures in its merge fixer, and a failure the fixer cannot
 # fix halts the run for the orch.
-# Drift-Baseline, Drift-Await, Darn-Write, Drift-Verify and Describe carry none either:
+# Record-Write, Drift-Baseline, Drift-Await, Darn-Write, Drift-Verify and Describe carry none either:
 # an exhausted writer gate halts the run for the parent, which resumes it with a fresh budget,
 # and a Stuck of a Drift row halts it with the ways forward in its reason.
 # Drift-Verify compares the code the writer committed, and the Code-Review perch reviews its fixes.
@@ -39,9 +39,8 @@
 # Bouncer settles approved at once and Describe's entry gate skips it, so the writer's own
 # description stands.
 #
-# The perch's answer key is the task's board entry, which the discussion gate's commit snapshots into
-# _lym/discussion/board-entry.md, as amended by the decision record's `Added after Discussion`
-# entries; the record's other sections are the writer's own claim, reviewed against the snapshot.
+# The perch's answer key is the decision record alone: its `## Goal` holds the task's board entry, as
+# amended by the record's `Added after Discussion` entries, which win where they differ.
 #
 # Finalize declares on_reroute: Code-Bouncer, the row a spent fixer change, or an over-cap one
 # Finalize's own solo fix review does not approve, sends the run back to, so the perch reviews
@@ -60,12 +59,21 @@
 
 version: 1
 entry: Preflight
+# The recipe declares the loom contract, which Shed checks when it builds the recipe; verify_source names where the verify targets come from.
+contract: loom
+verify_source: tree_scope
 terminals:
   - Friction-Reflect
 
 producers:
   - name: Preflight
     engine: Preflight
+    on_done: Record-Write
+
+  # Record-Write is a Go row: it writes the decision record and support log from the task's board entry, with no agent, and commits them.
+  # It writes only a file that is missing, so a resume or a goto back to it keeps every entry added after Discussion.
+  - name: Record-Write
+    engine: RecordWrite
     on_done: Drift-Baseline
 
   # Drift-Baseline has an agent record the task's regression scope and starts the baseline capture.
@@ -75,7 +83,7 @@ producers:
     entry_gate: drift.enabled
     on_done: Drift-Await
     config:
-      subject: board-entry
+      subject: decision-record
 
   # Drift-Await is mechanical and spawns nothing: it holds the run until the baseline capture passed
   # on the branch point, or the parent deferred it, since the writer edits the code the capture reads.
@@ -94,12 +102,9 @@ producers:
       # and lints the comments from the merge base on every attempt; gate_key names another key of
       # the hub's gate.yaml. The verify gate's attempts here is a
       # placeholder: the builder stamps darn.yaml's verify_attempts at every build.
+      # The decision record is no gate: Go checks it once the session returns and halts the run
+      # when the writer left it invalid.
       gates:
-        # On a darn run the discussion gate is the darn gate: it also refuses a record missing an
-        # entry its commit history held, and when it passes snapshots the task's board entry and
-        # commits it with the decision record and support log.
-        - name: discussion
-          attempts: 3
         - name: verify
           attempts: 3
         - name: description
@@ -113,7 +118,7 @@ producers:
     # With loom.yaml's code_max_bounces at 0 the Bouncer settles approved at once, so this edge is kept.
     on_done: Code-Bouncer
     config:
-      subject: board-entry
+      subject: decision-record
       gate_key: drift-verify
       gates:
         - name: verify
@@ -131,10 +136,8 @@ producers:
       reviewer_fan_setting: loom.code_reviewer_fan
       auto_accept_setting: loom.code_auto_accept
       # The subject under review is the committed diff, which artifact_paths cannot name; the key
-      # names the answer key instead: the board entry snapshot and the decision record. The rubric
-      # names the diff as the subject.
+      # names the answer key instead: the decision record. The rubric names the diff as the subject.
       artifact_paths:
-        - _lym/discussion/board-entry.md
         - _lym/discussion/decision-record.md
       rubric_stencil: loom-rubric-code-review
       # No commit_seam: Code-Burler-Fix runs fix-scope: source and commits each fix itself.
@@ -165,14 +168,11 @@ producers:
             section and derive the range exactly as written there.
         fasit:
           paths:
-            - _lym/discussion/board-entry.md
             - _lym/discussion/decision-record.md
           instructions: >
-            The board entry snapshot named above is the task's scope, as amended by the
-            `Added after Discussion` entries of the decision record named above, which win where
-            they differ. The record's other sections are the writer's own claim, checked against
-            the snapshot and never the answer key. The diff's job is to make the change the
-            amended entry asks for.
+            The decision record named above is the task's scope: the board entry's body under
+            `## Goal`, as amended by the record's `Added after Discussion` entries, which win where
+            they differ. The diff's job is to make the change the amended entry asks for.
         rubric_stencil: loom-rubric-code-review
         # fix-scope: source: the target is the repo's own source files, and a fixer that cannot
         # write and commit source cannot fix a diff.

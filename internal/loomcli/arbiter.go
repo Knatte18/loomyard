@@ -102,7 +102,7 @@ Example:
 }
 
 // arbiterDepsFor assembles the verb's seams for the run the pre-run armed.
-// The arbiter's settings are shed.yaml's under the run's recipe override, so a darn run takes darn.yaml's keys and a loom or beam run loom.yaml's.
+// The arbiter's settings are shed.yaml's and its layers', for every recipe.
 // Every closure reads on demand and opens nothing at build time.
 func (c *loomCLI) arbiterDepsFor() (shedarbiter.Deps, error) {
 	dirs := fabricengine.ConfigDirs(c.location)
@@ -110,11 +110,7 @@ func (c *loomCLI) arbiterDepsFor() (shedarbiter.Deps, error) {
 	if err != nil {
 		return shedarbiter.Deps{}, err
 	}
-	override, err := loomengine.RecipeOverride(dirs, c.recipe)
-	if err != nil {
-		return shedarbiter.Deps{}, err
-	}
-	settings, err := sheddriver.ResolveArbiter(shedConfig, override, c.registry)
+	settings, err := sheddriver.ResolveArbiter(shedConfig, sheddriver.Override{}, c.registry)
 	if err != nil {
 		return shedarbiter.Deps{}, err
 	}

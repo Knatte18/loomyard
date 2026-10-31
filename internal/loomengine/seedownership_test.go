@@ -72,10 +72,9 @@ func TestVerifySeedOwnership(t *testing.T) {
 
 	// DecodeFailurePasses pins that a malformed status file (exactly what a corrupted or hand-edited status.json produces) is ownership's business to pass on, not to refuse.
 	// A decode failure is diagnosed by the spawned driver's Shed.Run step-1 read gate,
-	// which does the same read at the top of its loop and errors on it before any producer
-	// (the Tapestry-Preflight row that calls CheckSeed included) is ever looked up.
-	// So CheckSeed itself never runs on a decode failure, and this ownership check must not stand in for the step-1 gate.
-	// Reproduced live: before this test existed, a poisoned status file made both "lym loom start" and "lym loom run" refuse on the envelope before ever spawning a driver, contradicting this function's own doc comment ("each is some other check's business").
+	// which does the same read at the top of its loop and errors on it before any producer is looked up,
+	// so this ownership check must not stand in for the step-1 gate.
+	// Reproduced live: before this test existed, a poisoned status file made both "lym loom start" and "lym loom run" refuse on the envelope before ever spawning a driver, contradicting this function's own doc comment.
 	t.Run("DecodeFailurePasses", func(t *testing.T) {
 		dir := t.TempDir()
 		statusPath := filepath.Join(dir, "status.json")
@@ -84,7 +83,7 @@ func TestVerifySeedOwnership(t *testing.T) {
 			t.Fatalf("write malformed status fixture: %v", err)
 		}
 		if err := VerifySeedOwnership(statusPath, lockPath, "any"); err != nil {
-			t.Errorf("VerifySeedOwnership(decode failure) = %v; want nil — a decode failure is CheckSeed's business, not ownership's", err)
+			t.Errorf("VerifySeedOwnership(decode failure) = %v; want nil — a decode failure is the driver's business, not ownership's", err)
 		}
 	})
 }

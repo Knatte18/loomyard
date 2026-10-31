@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
-	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -168,6 +167,13 @@ func TestHoldReading(t *testing.T) {
 	withMarks.HandOnAt, withMarks.AppliedAt = handOnAt, appliedAt
 	withHandOver := eligible
 	withHandOver.HandOverAt = handOnAt
+	arbiterOff := battenshed.ChildArbiterStop{Eligible: true, Timeout: timeout}
+	arbiterOffFor := func(recipe string) func(f *holdFixture, _ sheddriver.StopKey) {
+		return func(f *holdFixture, _ sheddriver.StopKey) {
+			f.seedRecipe(recipe)
+			f.writeModuleConfig("shed.yaml", strings.Replace(sheddriver.ConfigTemplate(), "arbiter_max_spawns: 3", "arbiter_max_spawns: 0", 1))
+		}
+	}
 
 	tests := []struct {
 		name     string
@@ -187,21 +193,9 @@ func TestHoldReading(t *testing.T) {
 			setup: func(f *holdFixture, _ sheddriver.StopKey) { f.escalate("circling", "") },
 			want:  eligible,
 		},
-		{
-			name: "loom.yaml's arbiter_max_spawns of 0 reads off", producer: "Plan-Write", state: shedengine.StateBlocked,
-			setup: func(f *holdFixture, _ sheddriver.StopKey) {
-				f.writeConfig(strings.Replace(loomengine.ConfigTemplate(), "arbiter_max_spawns: ~", "arbiter_max_spawns: 0", 1))
-			},
-			want: battenshed.ChildArbiterStop{Eligible: true, Timeout: timeout},
-		},
-		{
-			name: "a darn child reads darn.yaml's override, not loom.yaml's", producer: "Plan-Write", state: shedengine.StateBlocked,
-			setup: func(f *holdFixture, _ sheddriver.StopKey) {
-				f.seedRecipe(shedrun.RecipeDarn)
-				f.writeModuleConfig("darn.yaml", strings.Replace(darnengine.ConfigTemplate(), "arbiter_max_spawns: ~", "arbiter_max_spawns: 0", 1))
-			},
-			want: battenshed.ChildArbiterStop{Eligible: true, Timeout: timeout},
-		},
+		{name: "shed.yaml's arbiter_max_spawns of 0 reads off for a tapestry run", producer: "Plan-Write", state: shedengine.StateBlocked, setup: arbiterOffFor(shedrun.RecipeTapestry), want: arbiterOff},
+		{name: "shed.yaml's arbiter_max_spawns of 0 reads off for a darn run", producer: "Plan-Write", state: shedengine.StateBlocked, setup: arbiterOffFor(shedrun.RecipeDarn), want: arbiterOff},
+		{name: "shed.yaml's arbiter_max_spawns of 0 reads off for a pawl run", producer: "Plan-Write", state: shedengine.StateBlocked, setup: arbiterOffFor(shedrun.RecipePawl), want: arbiterOff},
 		{
 			name: "attempts at the cap, none at this key, read no spawns left", producer: "Plan-Write", state: shedengine.StateBlocked,
 			setup: func(f *holdFixture, _ sheddriver.StopKey) {

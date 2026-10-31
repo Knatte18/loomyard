@@ -17,20 +17,26 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
-// loomRowNumber returns the 1-based position of row in the embedded tapestry recipe.
-func loomRowNumber(t *testing.T, row string) int {
+// recipeRowNumber returns the 1-based position of row in the named embedded recipe.
+func recipeRowNumber(t *testing.T, recipe, row string) int {
 	t.Helper()
-	rows, err := loomrecipe.RowNames(shedrun.RecipeTapestry)
+	rows, err := loomrecipe.RowNames(recipe)
 	if err != nil {
-		t.Fatalf("loomrecipe.RowNames(loom) error = %v; want nil", err)
+		t.Fatalf("loomrecipe.RowNames(%q) error = %v; want nil", recipe, err)
 	}
 	for i, name := range rows {
 		if name == row {
 			return i + 1
 		}
 	}
-	t.Fatalf("tapestry recipe has no row %q", row)
+	t.Fatalf("recipe %q has no row %q", recipe, row)
 	return 0
+}
+
+// loomRowNumber returns the 1-based position of row in the embedded tapestry recipe.
+func loomRowNumber(t *testing.T, row string) int {
+	t.Helper()
+	return recipeRowNumber(t, shedrun.RecipeTapestry, row)
 }
 
 // peersFakeTasks holds one task per status shape the peer set must tell apart.
@@ -43,6 +49,8 @@ func peersFakeTasks() []boardengine.Task {
 		{Slug: "darn-peer", Title: "Darn peer", Status: status("blocked · Darn-Write")},
 		{Slug: "finalize-peer", Title: "Finalize peer", Status: status("awaiting · Finalize")},
 		{Slug: "retired-row-peer", Title: "Retired row peer", Status: status("blocked · Merge-In")},
+		// A beam that has reached Parent-Align holds its entry, so it is a peer; its row is read in the pawl recipe.
+		{Slug: "pawl-peer", Title: "Pawl peer", Kind: boardengine.KindProject, Beam: true, Status: status("running · Parent-Align")},
 		// A beam whose pawl run stands at Beam-Await holds nothing, so it is no in-flight peer.
 		{Slug: "awaiting-beam", Title: "Awaiting beam", Kind: boardengine.KindProject, Beam: true, Status: status("running · Beam-Await")},
 		{Slug: "idle", Title: "Idle", Status: nil},
@@ -53,15 +61,28 @@ func peersFakeTasks() []boardengine.Task {
 }
 
 // peersFakeDeps is a peersDeps over peersFakeTasks whose caller, board and records the test sets.
+// Its rows are darn's for darn-peer, pawl's for pawl-peer and tapestry's for every other task.
 func peersFakeDeps(caller string) peersDeps {
-	loomRows, err := loomrecipe.RowNames(shedrun.RecipeTapestry)
-	if err != nil {
-		panic(err)
+	rowsOf := func(recipe string) []string {
+		rows, err := loomrecipe.RowNames(recipe)
+		if err != nil {
+			panic(err)
+		}
+		return rows
 	}
+	tapestryRows, darnRows, pawlRows := rowsOf(shedrun.RecipeTapestry), rowsOf(shedrun.RecipeDarn), rowsOf(shedrun.RecipePawl)
 	return peersDeps{
-		loomRows: loomRows,
-		board:    func() ([]boardengine.Task, bool, error) { return peersFakeTasks(), true, nil },
-		caller:   func() (string, error) { return caller, nil },
+		rows: func(task boardengine.Task) []string {
+			switch task.Slug {
+			case "darn-peer":
+				return darnRows
+			case "pawl-peer":
+				return pawlRows
+			}
+			return tapestryRows
+		},
+		board:  func() ([]boardengine.Task, bool, error) { return peersFakeTasks(), true, nil },
+		caller: func() (string, error) { return caller, nil },
 		readPeer: func(slug string) peerLine {
 			if slug == "blocked-peer" {
 				return peerLine{Unreadable: []string{"pair: no worktree", "branch: no origin record", "decision: unreadable"}}
@@ -98,17 +119,19 @@ func TestPeersVerb(t *testing.T) {
 		for _, peer := range raw["peers"].([]any) {
 			slugs = append(slugs, peer.(map[string]any)["slug"].(string))
 		}
-		if want := []string{"running-peer", "awaiting-peer", "blocked-peer", "darn-peer", "finalize-peer", "retired-row-peer"}; !reflect.DeepEqual(slugs, want) {
+		if want := []string{"running-peer", "awaiting-peer", "blocked-peer", "darn-peer", "finalize-peer", "retired-row-peer", "pawl-peer"}; !reflect.DeepEqual(slugs, want) {
 			t.Errorf("peers = %v; want %v", slugs, want)
 		}
 		wantRows := map[string]int{
 			"running-peer":  0,
 			"awaiting-peer": loomRowNumber(t, "PR-Review"),
 			"blocked-peer":  loomRowNumber(t, "Plan-Write"),
-			"darn-peer":     0,
+			// A peer's row is read in its own recipe: Darn-Write is darn's row, and Parent-Align's position in pawl's recipe is not tapestry's.
+			"darn-peer":     recipeRowNumber(t, shedrun.RecipeDarn, "Darn-Write"),
 			"finalize-peer": loomRowNumber(t, "Finalize"),
 			// A peer parked on the row's name before its rename is listed at the renamed row's position.
 			"retired-row-peer": loomRowNumber(t, "Parent-Align"),
+			"pawl-peer":        recipeRowNumber(t, shedrun.RecipePawl, "Parent-Align"),
 		}
 		for _, peer := range raw["peers"].([]any) {
 			line := peer.(map[string]any)

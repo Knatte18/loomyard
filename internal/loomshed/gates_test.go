@@ -20,12 +20,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
@@ -80,6 +82,67 @@ func TestGateRows_StopsNameAWayForward(t *testing.T) {
 		})
 	}
 
+	t.Run("DarnWriteGuard", func(t *testing.T) {
+		f := newDarnFixture(t)
+		f.findings = []discussionparser.Finding{{Check: "discussion-section-missing", Detail: "no ## Goal section"}}
+		p := NewDarnWrite(NameDarnWrite, f.session, f.deps)
+		outcome, pointer, err := p.Call(context.Background())
+		if err != nil || outcome != shedengine.Stuck {
+			t.Fatalf("Call() = (%q, %v); want Stuck with no error", outcome, err)
+		}
+		for _, want := range []string{"way forward: ", "lym fabric commit", "lym loom resume"} {
+			if !strings.Contains(pointer.Reason, want) {
+				t.Errorf("Reason = %q; want it to contain %q", pointer.Reason, want)
+			}
+		}
+		f.findings = nil
+		outcome, _, err = p.Call(context.Background())
+		if err != nil || outcome != shedengine.Done {
+			t.Errorf("re-step Call() = (%q, %v); want Done once the record validates", outcome, err)
+		}
+	})
+
+	t.Run("DarnWriteMissingRecord", func(t *testing.T) {
+		f := newDarnFixture(t)
+		record := f.deps.RecordPath
+		f.deps.RecordPath += ".absent"
+		p := NewDarnWrite(NameDarnWrite, f.session, f.deps)
+		outcome, pointer, err := p.Call(context.Background())
+		if err != nil || outcome != shedengine.Stuck {
+			t.Fatalf("Call() = (%q, %v); want Stuck with no error", outcome, err)
+		}
+		for _, want := range []string{"way forward: ", "lym loom goto --to Record-Write", "lym loom resume"} {
+			if !strings.Contains(pointer.Reason, want) {
+				t.Errorf("Reason = %q; want it to contain %q", pointer.Reason, want)
+			}
+		}
+		f.deps.RecordPath = record
+		outcome, _, err = NewDarnWrite(NameDarnWrite, f.session, f.deps).Call(context.Background())
+		if err != nil || outcome != shedengine.Done {
+			t.Errorf("re-step Call() = (%q, %v); want Done once the record is back", outcome, err)
+		}
+	})
+
+	t.Run("DarnWriteStopMarker", func(t *testing.T) {
+		f := newDarnFixture(t)
+		f.writeMarker = true
+		p := NewDarnWrite(NameDarnWrite, f.session, f.deps)
+		outcome, pointer, err := p.Call(context.Background())
+		if err != nil || outcome != shedengine.Stuck {
+			t.Fatalf("Call() = (%q, %v); want Stuck with no error", outcome, err)
+		}
+		for _, want := range []string{"way forward: ", "lym loom decision add", "lym loom resume"} {
+			if !strings.Contains(pointer.Reason, want) {
+				t.Errorf("Reason = %q; want it to contain %q", pointer.Reason, want)
+			}
+		}
+		f.writeMarker = false
+		outcome, _, err = p.Call(context.Background())
+		if err != nil || outcome != shedengine.Done {
+			t.Errorf("re-step Call() = (%q, %v); want Done once the writer no longer stops", outcome, err)
+		}
+	})
+
 	for _, tt := range []struct {
 		name string
 		make func(anchorPath string) shedengine.ShedProducer
@@ -111,12 +174,26 @@ func TestGateRows_StopsNameAWayForward(t *testing.T) {
 }
 
 func TestNewDiscussionGate(t *testing.T) {
-	t.Run("Pass", func(t *testing.T) {
-		dir := t.TempDir()
-		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, validDecisionRecord, "support log")
+	index := planglyph.NewIndex(fabricengine.NewReferenceRule())
+	// gateOf builds the gate over a fixture directory holding record, with the citation checks on, and an empty history.
+	gateOf := func(t *testing.T, dir, record string) (DiscussionCheck, string) {
+		t.Helper()
+		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, record, "support log")
+		return DiscussionCheck{
+			RecordPath:     decisionRecordPath,
+			SupportLogPath: supportLogPath,
+			RelevantPath:   filepath.Join(dir, "relevant.md"),
+			WorktreeRoot:   dir,
+			Index:          index,
+			History:        func() ([][]byte, error) { return nil, nil },
+			Citations:      true,
+		}, decisionRecordPath
+	}
 
-		gate := NewDiscussionGate(decisionRecordPath, supportLogPath, filepath.Join(dir, "relevant.md"), dir, planglyph.NewIndex(fabricengine.NewReferenceRule()))
-		result, err := gate()
+	t.Run("Pass", func(t *testing.T) {
+		check, _ := gateOf(t, t.TempDir(), validDecisionRecord)
+
+		result, err := NewDiscussionGate(check)()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
 		}
@@ -131,12 +208,12 @@ func TestNewDiscussionGate(t *testing.T) {
 	// The gate reads the decision record, the support log and the relevant list, so an advisor's notes file beside them is never judged.
 	t.Run("AdvisorNotesAreNotRead", func(t *testing.T) {
 		dir := t.TempDir()
-		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, validDecisionRecord, "support log")
+		check, _ := gateOf(t, dir, validDecisionRecord)
 		if err := os.WriteFile(filepath.Join(dir, "advisor-1.md"), []byte("not a decision record, no required heading\n"), 0o644); err != nil {
 			t.Fatalf("write advisor notes: %v", err)
 		}
 
-		result, err := NewDiscussionGate(decisionRecordPath, supportLogPath, filepath.Join(dir, "relevant.md"), dir, planglyph.NewIndex(fabricengine.NewReferenceRule()))()
+		result, err := NewDiscussionGate(check)()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
 		}
@@ -146,13 +223,11 @@ func TestNewDiscussionGate(t *testing.T) {
 	})
 
 	t.Run("FindingsSurfaceAsAFailedGateAndAWarnLine", func(t *testing.T) {
-		dir := t.TempDir()
 		withoutGoal := strings.Replace(validDecisionRecord, "## Goal\n\nGoal text.\n\n", "", 1)
-		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, withoutGoal, "support log")
+		check, _ := gateOf(t, t.TempDir(), withoutGoal)
 
 		buf := logcapture.Capture(t)
-		gate := NewDiscussionGate(decisionRecordPath, supportLogPath, filepath.Join(dir, "relevant.md"), dir, planglyph.NewIndex(fabricengine.NewReferenceRule()))
-		result, err := gate()
+		result, err := NewDiscussionGate(check)()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
 		}
@@ -178,15 +253,13 @@ func TestNewDiscussionGate(t *testing.T) {
 
 	// A malformed relevant list fails the gate alongside the decision record's own findings, which come first.
 	t.Run("RelevantFindingsFollowTheRecordFindings", func(t *testing.T) {
-		dir := t.TempDir()
 		withoutGoal := strings.Replace(validDecisionRecord, "## Goal\n\nGoal text.\n\n", "", 1)
-		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, withoutGoal, "support log")
-		relevantPath := filepath.Join(dir, "relevant.md")
-		if err := os.WriteFile(relevantPath, []byte("a stray paragraph line\n"), 0o644); err != nil {
+		check, _ := gateOf(t, t.TempDir(), withoutGoal)
+		if err := os.WriteFile(check.RelevantPath, []byte("a stray paragraph line\n"), 0o644); err != nil {
 			t.Fatalf("write relevant list: %v", err)
 		}
 
-		result, err := NewDiscussionGate(decisionRecordPath, supportLogPath, relevantPath, dir, planglyph.NewIndex(fabricengine.NewReferenceRule()))()
+		result, err := NewDiscussionGate(check)()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
 		}
@@ -207,9 +280,8 @@ func TestNewDiscussionGate(t *testing.T) {
 			{"MalformedHeading", malformed, "decision-heading-malformed"},
 			{"SectionFindingFirst", withoutGoal, "discussion-section-missing"},
 		} {
-			dir := t.TempDir()
-			decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, tt.record, "support log")
-			result, err := NewDiscussionGate(decisionRecordPath, supportLogPath, filepath.Join(dir, "relevant.md"), dir, planglyph.NewIndex(fabricengine.NewReferenceRule()))()
+			check, _ := gateOf(t, t.TempDir(), tt.record)
+			result, err := NewDiscussionGate(check)()
 			if err != nil {
 				t.Fatalf("%s: gate() error = %v; want nil", tt.name, err)
 			}
@@ -227,14 +299,12 @@ func TestNewDiscussionGate(t *testing.T) {
 	// DecisionRecordUnreadableReturnsErrorNotStuck).
 	t.Run("ErrorReturnsRatherThanAFailedGate", func(t *testing.T) {
 		dir := t.TempDir()
-		_, supportLogPath := writeDiscussionFixture(t, dir, "", "support log")
-		decisionRecordPath := filepath.Join(dir, "decision-record.md")
-		if err := os.MkdirAll(decisionRecordPath, 0o755); err != nil {
+		check, _ := gateOf(t, dir, "")
+		if err := os.MkdirAll(check.RecordPath, 0o755); err != nil {
 			t.Fatalf("mkdir decision record: %v", err)
 		}
 
-		gate := NewDiscussionGate(decisionRecordPath, supportLogPath, filepath.Join(dir, "relevant.md"), dir, planglyph.NewIndex(fabricengine.NewReferenceRule()))
-		result, err := gate()
+		result, err := NewDiscussionGate(check)()
 		if err == nil {
 			t.Fatalf("gate() error = nil; want a non-nil error (decision record path is a directory)")
 		}
@@ -243,77 +313,78 @@ func TestNewDiscussionGate(t *testing.T) {
 		}
 	})
 
-	// The darn gate adds the history check and the commit to the section check, so each case drives it over a told history and a counting commit.
+	// One validator serves every loom record, so each case drives it over a told history, with the citation checks on and off.
 	const addedEntry = "\n### Added after Discussion (parent, 2026-03-04): Keep the cache\n\nDecision: Keep the cache per run.\n\nRationale: A shared cache races.\n"
 	const addedHeading = "### Added after Discussion (parent, 2026-03-04): Keep the cache"
+	const realSections = "\n## Scope\n\n## Decisions\n\n## Constraints\n\n## Auto-mode assumptions\n\n## Open risks\n\n## Acceptance criteria\n"
 	dupIDRecord := strings.Replace(strings.Replace(validDecisionRecord, "Decisions text.", "### D1 — a\n\nDecision: a.\n\n### D1 — b\n\nDecision: b.", 1), "Criteria text.", "- D1 holds.", 1)
 	historyError := errors.New("history unavailable")
-	commitError := errors.New("commit failed")
+	// A Record-Write record carries the board entry's body in a fenced block, so a heading in the body is no section of the record.
+	headingInBody := string(BoardRecord("## Open risks\n\nfrom the body"))
+	fencedDecisions := func(openFence, closeFence string) string {
+		return "## Goal\n\n" + openFence + "\n## Decisions\n" + closeFence + "\n" + realSections
+	}
 
-	darnTests := []struct {
+	tests := []struct {
 		name          string
 		record        string
 		history       [][]byte
 		historyErr    error
-		commitErr     error
 		wantPassed    bool
 		wantFindings  string
 		wantThen      string
 		wantErr       error
-		wantCommits   int
 		wantHistoryOn bool
 	}{
-		{name: "a record whose history holds no added entry passes and commits once", record: validDecisionRecord, history: [][]byte{[]byte(validDecisionRecord)}, wantPassed: true, wantCommits: 1, wantHistoryOn: true},
-		{name: "a record that keeps its added entry passes and commits once", record: validDecisionRecord + addedEntry, history: [][]byte{[]byte(validDecisionRecord + addedEntry)}, wantPassed: true, wantCommits: 1, wantHistoryOn: true},
-		{name: "a dropped added entry fails naming its heading and commits nothing", record: validDecisionRecord, history: [][]byte{[]byte(validDecisionRecord + addedEntry)}, wantFindings: addedHeading, wantHistoryOn: true},
+		{name: "a Record-Write record passes", record: string(BoardRecord("Do the task.")), history: [][]byte{BoardRecord("Do the task.")}, wantPassed: true, wantHistoryOn: true},
+		{name: "a heading in the Record-Write body opens no section", record: strings.Replace(headingInBody, "## Open risks\n\n## Acceptance criteria", "## Acceptance criteria", 1), wantFindings: "discussion-section-missing"},
+		{name: "a record whose history holds no added entry passes", record: validDecisionRecord, history: [][]byte{[]byte(validDecisionRecord)}, wantPassed: true, wantHistoryOn: true},
+		{name: "a record that keeps its added entry passes", record: validDecisionRecord + addedEntry, history: [][]byte{[]byte(validDecisionRecord + addedEntry)}, wantPassed: true, wantHistoryOn: true},
+		{name: "a dropped added entry fails naming its heading", record: validDecisionRecord, history: [][]byte{[]byte(validDecisionRecord + addedEntry)}, wantFindings: addedHeading, wantHistoryOn: true},
 		// A `lym fabric commit` of the overwrite leaves the dropping copy as the newest version, so the check must read the whole history.
 		{name: "a dropped entry fails when the newest version is the dropping copy", record: validDecisionRecord, history: [][]byte{[]byte(validDecisionRecord), []byte(validDecisionRecord + addedEntry)}, wantFindings: addedHeading, wantHistoryOn: true},
 		{name: "a record missing a section never reads the history", record: strings.Replace(validDecisionRecord, "## Goal\n\nGoal text.\n\n", "", 1), history: [][]byte{[]byte(validDecisionRecord + addedEntry)}, wantFindings: "discussion-section-missing"},
-		{name: "a repeated id fails, reads the history once and commits nothing", record: dupIDRecord, wantFindings: "decision-id-duplicate", wantHistoryOn: true},
+		{name: "a repeated id fails and reads the history once", record: dupIDRecord, wantFindings: "decision-id-duplicate", wantHistoryOn: true},
 		{name: "a repeated id beside a missing section names both, section first, and never reads the history", record: strings.Replace(dupIDRecord, "## Goal\n\nGoal text.\n\n", "", 1), wantFindings: "discussion-section-missing", wantThen: "decision-id-duplicate"},
 		{name: "a history error comes back as the gate's error", record: validDecisionRecord, historyErr: historyError, wantErr: historyError, wantHistoryOn: true},
-		{name: "a commit error comes back as the gate's error", record: validDecisionRecord, history: [][]byte{[]byte(validDecisionRecord)}, commitErr: commitError, wantErr: commitError, wantCommits: 1, wantHistoryOn: true},
+		{name: "a js fence line inside an open fence leaves a later heading fenced", record: fencedDecisions("```markdown\n```js", "```"), wantPassed: true, wantHistoryOn: true},
+		{name: "a fence indented three spaces fences its heading", record: fencedDecisions("   ```", "   ```"), wantPassed: true, wantHistoryOn: true},
+		{name: "a fenced heading is no section after a js fence line", record: strings.Replace(fencedDecisions("```markdown\n```js", "```"), "\n## Decisions\n\n## Constraints", "\n## Constraints", 1), wantFindings: "discussion-section-missing"},
+		{name: "a fenced heading is no section after an indented fence", record: strings.Replace(fencedDecisions("   ```", "   ```"), "\n## Decisions\n\n## Constraints", "\n## Constraints", 1), wantFindings: "discussion-section-missing"},
 	}
-	for _, tt := range darnTests {
-		t.Run("Darn/"+tt.name, func(t *testing.T) {
-			decisionRecordPath, supportLogPath := writeDiscussionFixture(t, t.TempDir(), tt.record, "support log")
-			historyCalls, commits := 0, 0
-			history := func() ([][]byte, error) {
-				historyCalls++
-				return tt.history, tt.historyErr
-			}
-			commit := func() error {
-				commits++
-				return tt.commitErr
-			}
+	for _, tt := range tests {
+		for _, citations := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s/Citations=%v", tt.name, citations), func(t *testing.T) {
+				check, _ := gateOf(t, t.TempDir(), tt.record)
+				check.Citations = citations
+				historyCalls := 0
+				check.History = func() ([][]byte, error) {
+					historyCalls++
+					return tt.history, tt.historyErr
+				}
 
-			result, err := NewDarnDiscussionGate(decisionRecordPath, supportLogPath, history, commit)()
-			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) {
-					t.Fatalf("gate() error = %v; want it to wrap %v", err, tt.wantErr)
+				result, err := NewDiscussionGate(check)()
+				if tt.wantErr != nil {
+					if !errors.Is(err, tt.wantErr) {
+						t.Fatalf("gate() error = %v; want it to wrap %v", err, tt.wantErr)
+					}
+				} else if err != nil {
+					t.Fatalf("gate() error = %v; want nil", err)
 				}
-				if tt.commitErr != nil && !strings.Contains(err.Error(), decisionRecordPath) {
-					t.Errorf("gate() error = %q; want it to name the decision record path %q", err, decisionRecordPath)
+				if result.Passed != tt.wantPassed {
+					t.Errorf("gate() Passed = %v; want %v; findings %q", result.Passed, tt.wantPassed, result.Findings)
 				}
-			} else if err != nil {
-				t.Fatalf("gate() error = %v; want nil", err)
-			}
-			if result.Passed != tt.wantPassed {
-				t.Errorf("gate() Passed = %v; want %v", result.Passed, tt.wantPassed)
-			}
-			if tt.wantFindings != "" && !strings.Contains(result.Findings, tt.wantFindings) {
-				t.Errorf("gate() Findings = %q; want it to contain %q", result.Findings, tt.wantFindings)
-			}
-			if tt.wantThen != "" && strings.Index(result.Findings, tt.wantThen) < strings.Index(result.Findings, tt.wantFindings) {
-				t.Errorf("gate() Findings = %q; want %q after %q", result.Findings, tt.wantThen, tt.wantFindings)
-			}
-			if commits != tt.wantCommits {
-				t.Errorf("commit calls = %d; want %d", commits, tt.wantCommits)
-			}
-			if (historyCalls > 0) != tt.wantHistoryOn {
-				t.Errorf("history calls = %d; want history read = %v", historyCalls, tt.wantHistoryOn)
-			}
-		})
+				if tt.wantFindings != "" && !strings.Contains(result.Findings, tt.wantFindings) {
+					t.Errorf("gate() Findings = %q; want it to contain %q", result.Findings, tt.wantFindings)
+				}
+				if tt.wantThen != "" && strings.Index(result.Findings, tt.wantThen) < strings.Index(result.Findings, tt.wantFindings) {
+					t.Errorf("gate() Findings = %q; want %q after %q", result.Findings, tt.wantThen, tt.wantFindings)
+				}
+				if (historyCalls > 0) != tt.wantHistoryOn {
+					t.Errorf("history calls = %d; want history read = %v", historyCalls, tt.wantHistoryOn)
+				}
+			})
+		}
 	}
 }
 

@@ -122,7 +122,9 @@ loom's config section overrides per role when loom drives the module.
 
 loom.yaml gives the Bouncer judge and seed passes keys of their own, each a model-spec validated only when non-empty:
 
-- A per-segment judge key (`discussion_judge`, `plan_judge`, `code_judge`) left empty takes `judge`.
-- A per-segment seed key (`discussion_seed`, `plan_seed`, `code_seed`) left empty takes `seed`, and `seed` left empty takes that segment's resolved judge.
+- A per-segment judge key (`discussion_judge`, `code_judge`) left empty takes `judge`.
+- A per-segment seed key (`discussion_seed`, `code_seed`) left empty takes `seed`, and `seed` left empty takes that segment's resolved judge.
+
+tapestry.yaml gives the plan segment's Bouncer passes the same two keys, `plan_judge` and `plan_seed`, each validated only when non-empty; an empty `plan_judge` still takes loom.yaml's `judge`, and an empty `plan_seed` its `seed`, and then the segment's resolved judge.
 
 landing.yaml's `fixer` is the model-spec of the merge fixer session that Parent-Align and Finalize run, and of the fix review session Finalize runs over an over-cap fixer change, `opus[high]` by default, and `fixer_timeout_min` bounds one of the fixer's turns or the fix review session.

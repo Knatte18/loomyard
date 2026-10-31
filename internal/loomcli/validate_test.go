@@ -11,7 +11,6 @@ package loomcli
 
 import (
 	"bytes"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -93,6 +92,8 @@ func decisionRecordFixture(t *testing.T, dir, decisionContent, supportContent st
 		DecisionRecordPath: decisionPath,
 		SupportLogPath:     supportPath,
 		RelevantPath:       filepath.Join(dir, "relevant.md"),
+		DiscussionHistory:  func() ([][]byte, error) { return nil, nil },
+		RecordEngine:       "DiscussionWrite",
 	}}
 }
 
@@ -118,20 +119,21 @@ func allDiscussionSectionsContent() string {
 // addedDecisionEntryForTest is one `Added after Discussion` entry, the kind `lym loom decision add` appends.
 const addedDecisionEntryForTest = "### Added after Discussion (parent, 2026-03-04): Keep the cache\n\nDecision: keep it.\n\nRationale: it is hot.\n\n"
 
-// darnRecordFixture is decisionRecordFixture over a clean record, with the darn history seam returning versions and a commit seam counting its calls into commits and returning commitErr.
-func darnRecordFixture(t *testing.T, dir, record string, versions [][]byte, commits *int, commitErr error) *loomCLI {
+// darnRecordFixture is decisionRecordFixture over a Record-Write record, with the history seam returning versions and a commit seam counting its calls into commits.
+func darnRecordFixture(t *testing.T, dir, record string, versions [][]byte, commits *int) *loomCLI {
 	t.Helper()
 
 	c := decisionRecordFixture(t, dir, record, "support log body", true)
+	c.env.RecordEngine = "RecordWrite"
 	c.env.DiscussionHistory = func() ([][]byte, error) { return versions, nil }
 	c.env.CommitDiscussion = func() error {
 		*commits++
-		return commitErr
+		return nil
 	}
 	return c
 }
 
-//testtiming:keep pins validate-discussion's exit code, ok value and findings key and text over a clean record, an absent support log, a missing heading, an unreadable decision record, a malformed relevant list and an unreadable relevant list, and a darn run's commit count, dropped added entry, commit failure way forward and disregard of a malformed relevant list; the parity test compares verdicts alone
+//testtiming:keep pins validate-discussion's exit code, ok value and findings key and text over a clean record, an absent support log, a missing heading, an unreadable decision record, a malformed relevant list and an unreadable relevant list, and a Record-Write run's empty commit count, dropped added entry and disregard of a malformed relevant list; the parity test compares verdicts alone
 func TestValidateDiscussionCmd(t *testing.T) {
 	var commits int
 	tests := []struct {
@@ -141,36 +143,25 @@ func TestValidateDiscussionCmd(t *testing.T) {
 		wantOK       bool
 		wantFindings bool
 		wantContains string
-		wantCommits  int
 	}{
 		{
-			name: "Darn_CleanCommitsOnce",
+			name: "Darn_CleanCommitsNothing",
 			build: func(dir string) *loomCLI {
 				record := allDiscussionSectionsContent() + addedDecisionEntryForTest
-				return darnRecordFixture(t, dir, record, [][]byte{[]byte(record)}, &commits, nil)
+				return darnRecordFixture(t, dir, record, [][]byte{[]byte(record)}, &commits)
 			},
-			wantExit:    0,
-			wantOK:      true,
-			wantCommits: 1,
+			wantExit: 0,
+			wantOK:   true,
 		},
 		{
 			name: "Darn_DroppedEntryCommitsNothing",
 			build: func(dir string) *loomCLI {
 				held := allDiscussionSectionsContent() + addedDecisionEntryForTest
-				return darnRecordFixture(t, dir, allDiscussionSectionsContent(), [][]byte{[]byte(held)}, &commits, nil)
+				return darnRecordFixture(t, dir, allDiscussionSectionsContent(), [][]byte{[]byte(held)}, &commits)
 			},
 			wantExit:     1,
 			wantFindings: true,
 			wantContains: "### Added after Discussion (parent, 2026-03-04): Keep the cache",
-		},
-		{
-			name: "Darn_CommitFailureNamesWayForward",
-			build: func(dir string) *loomCLI {
-				return darnRecordFixture(t, dir, allDiscussionSectionsContent(), nil, &commits, errors.New("index locked"))
-			},
-			wantExit:     1,
-			wantContains: "commit the discussion files: index locked; way forward: re-run",
-			wantCommits:  1,
 		},
 		{
 			name: "Clean",
@@ -224,13 +215,12 @@ func TestValidateDiscussionCmd(t *testing.T) {
 			name: "Darn_MalformedRelevantIgnored",
 			build: func(dir string) *loomCLI {
 				record := allDiscussionSectionsContent() + addedDecisionEntryForTest
-				c := darnRecordFixture(t, dir, record, [][]byte{[]byte(record)}, &commits, nil)
+				c := darnRecordFixture(t, dir, record, [][]byte{[]byte(record)}, &commits)
 				writeStrayRelevant(t, c.env.RelevantPath)
 				return c
 			},
-			wantExit:    0,
-			wantOK:      true,
-			wantCommits: 1,
+			wantExit: 0,
+			wantOK:   true,
 		},
 		{
 			name: "IOFault_RelevantIsDirectory",
@@ -275,8 +265,8 @@ func TestValidateDiscussionCmd(t *testing.T) {
 			if exitCode != tt.wantExit {
 				t.Errorf("exit code = %d; want %d (output: %q)", exitCode, tt.wantExit, out.String())
 			}
-			if commits != tt.wantCommits {
-				t.Errorf("commit seam calls = %d; want %d", commits, tt.wantCommits)
+			if commits != 0 {
+				t.Errorf("commit seam calls = %d; want none", commits)
 			}
 
 			env := envelope.Decode(t, out.String())

@@ -47,12 +47,12 @@ func TestDobbyLines(t *testing.T) {
 				},
 			},
 			cells: map[string]RunCells{
-				"flying":  {State: "running", Stage: "6.6 Plan-Write", InStage: "30m"},
+				"flying":  {State: "running", Stage: "6.5 Plan-Write", InStage: "30m"},
 				"failing": {State: "blocked", Stage: "7. Land", InStage: "1h12m"},
 			},
 			want: []string{
 				"dobby prime: alive, max_runs 2, land_notice per-task",
-				"  flying   running  6.6 Plan-Write  30m    pass in flight, notify_on_land",
+				"  flying   running  6.5 Plan-Write  30m    pass in flight, notify_on_land",
 				"  failing  blocked  7. Land         1h12m  last pass 12m ago, full pass owed, failing 2× in a row: pre-run refused",
 				"  ready    ready to start, notify_on_land",
 				"  deps     waits on dependencies x, y; a pause",

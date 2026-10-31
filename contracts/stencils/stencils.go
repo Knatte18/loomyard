@@ -23,11 +23,6 @@ var LandingTemplateConflict []byte
 //go:embed landing/landing-template-describe.md
 var LandingTemplateDescribe []byte
 
-// LandingTemplateDescribeDarn is the darn recipe's Describe producer's shipped-default prompt.
-//
-//go:embed landing/landing-template-describe-darn.md
-var LandingTemplateDescribeDarn []byte
-
 // LandingTemplateFixer is the landing merge fixer's shipped-default prompt.
 //
 //go:embed landing/landing-template-fixer.md
@@ -456,7 +451,6 @@ type registryEntry struct {
 var entries = []registryEntry{
 	{"landing-template-conflict", &LandingTemplateConflict},
 	{"landing-template-describe", &LandingTemplateDescribe},
-	{"landing-template-describe-darn", &LandingTemplateDescribeDarn},
 	{"landing-template-fixer", &LandingTemplateFixer},
 	{"landing-template-fix-review", &LandingTemplateFixReview},
 	{"landing-template-pr-review", &LandingTemplatePRReview},
@@ -566,7 +560,7 @@ var roleOpeningStencils = map[string][]string{
 	"treadle-targeting":  {"treadle-template-targeting"},
 	"treadle-judge":      {"treadle-template-judge-circling", "treadle-template-judge-milestone"},
 	"friction":           {"friction-template-reflection"},
-	"describe":           {"landing-template-describe", "landing-template-describe-darn"},
+	"describe":           {"landing-template-describe"},
 	"darn":               {"darn-template-write"},
 	"drift-baseline":     {"drift-template-baseline"},
 	"drift-verify":       {"drift-template-verify"},

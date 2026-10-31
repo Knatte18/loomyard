@@ -3,8 +3,7 @@
 // cancellation_test.go carries the one test whose subject is this package's own constructors under
 // an already-cancelled context, plus the reduced fixture it drives from. It stays in
 // internal/loomshed rather than moving to internal/loomrecipe alongside the rest of the sequence
-// suite because it calls neither New nor Run: it constructs NewWebsterProducer and
-// NewTapestryPreflight directly and calls Call on each.
+// suite because it calls neither New nor Run: it constructs NewWebsterProducer directly and calls Call on it.
 //
 // This is the only test anywhere proving their real Call wiring
 // returns an error rather than a verdict under an already-cancelled context -- the shared
@@ -14,7 +13,6 @@ package loomshed
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
@@ -22,36 +20,20 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// cancellationFixture carries the three told values TestCancellation_RealProducersReturnErrorNotStuck
-// reads.
+// cancellationFixture carries the one told value TestCancellation_RealProducersReturnErrorNotStuck reads.
 type cancellationFixture struct {
-	AnchorPath     string
-	StatusPath     string
-	StatusLockPath string
+	AnchorPath string
 }
 
-// buildCancellationFixture seeds only what the producers this test drives read:
-// NewWebsterProducer reads AnchorPath, and NewTapestryPreflight reads the status seed the Seed(statusPath, statusLockPath, "fixture-slug", "fixture-parent") call below produces.
+// buildCancellationFixture seeds only what the producers this test drives read: NewWebsterProducer reads AnchorPath.
 func buildCancellationFixture(t *testing.T) cancellationFixture {
 	t.Helper()
 
-	dir := t.TempDir()
-
-	statusPath := filepath.Join(dir, "status.json")
-	statusLockPath := filepath.Join(dir, "status.json.lock")
-	if err := Seed(statusPath, statusLockPath, "fixture-slug", "fixture-parent"); err != nil {
-		t.Fatalf("Seed(): %v", err)
-	}
-
-	return cancellationFixture{
-		AnchorPath:     dir,
-		StatusPath:     statusPath,
-		StatusLockPath: statusLockPath,
-	}
+	return cancellationFixture{AnchorPath: t.TempDir()}
 }
 
 // TestCancellation_RealProducersReturnErrorNotStuck asserts the one obligation shedengine cannot enforce for itself:
-// every real producer this test drives -- the Webster wrapper and loom's own seed row -- returns a non-nil error rather than shedengine.Stuck when called under an already-cancelled context.
+// every real producer this test drives -- the Webster wrapper -- returns a non-nil error rather than shedengine.Stuck when called under an already-cancelled context.
 // A Stuck under a cancelled context is indistinguishable to Shed from a genuine verdict and would silently consume bounce budget for what was actually an operator stop.
 func TestCancellation_RealProducersReturnErrorNotStuck(t *testing.T) {
 	fx := buildCancellationFixture(t)
@@ -66,7 +48,6 @@ func TestCancellation_RealProducersReturnErrorNotStuck(t *testing.T) {
 		}
 	}{
 		{NameWebster, NewWebsterProducer(NameWebster, configengine.Dirs{Anchor: fx.AnchorPath}, (&fakeWebsterRun{}).run, websterengine.RunDeps{}, func() error { return nil })},
-		{NameTapestryPreflight, NewTapestryPreflight(NameTapestryPreflight, fx.StatusPath, fx.StatusLockPath, configengine.Dirs{Anchor: fx.AnchorPath})},
 	}
 
 	for _, tt := range producers {

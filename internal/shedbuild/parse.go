@@ -11,12 +11,17 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
 // supportedVersion is the only Recipe.Version value Parse accepts.
 const supportedVersion = 1
+
+// legalVerifySources are the values Parse accepts for a recipe's verify_source.
+var legalVerifySources = []string{"plan", "tree_scope"}
 
 // Parse decodes data into a Recipe, then runs every shape check the decoded value must pass before
 // Build may consume it.
@@ -80,6 +85,12 @@ func checkRecipeShape(recipe Recipe) error {
 	}
 	if len(recipe.Producers) == 0 {
 		return errors.New("shedbuild: producers must not be empty")
+	}
+	if recipe.Contract != "" && recipe.Contract != loomContract {
+		return fmt.Errorf("shedbuild: contract %q is not a legal value (legal: %s); way forward: set it to one of them or remove it", recipe.Contract, loomContract)
+	}
+	if recipe.VerifySource != "" && !slices.Contains(legalVerifySources, recipe.VerifySource) {
+		return fmt.Errorf("shedbuild: verify_source %q is not a legal value (legal: %s); way forward: set it to one of them or remove it", recipe.VerifySource, strings.Join(legalVerifySources, ", "))
 	}
 
 	seen := make(map[string]int, len(recipe.Producers))

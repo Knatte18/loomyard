@@ -73,14 +73,15 @@ func TestResolveReview(t *testing.T) {
 		t.Errorf("ResolveReview(...).Timeout = %s; want %s", settings.Timeout, wantTimeout)
 	}
 
-	// Each segment records the key its models came from: its own key when set, else loom.yaml's shared key.
+	// Each segment records the key its models came from: its own key when set, in tapestry.yaml for the plan segment and loom.yaml for the others, else loom.yaml's shared key.
 	loomKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "loom", Key: key} }
+	tapestryKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "tapestry", Key: key} }
 	for _, tt := range []struct {
 		segment   string
 		got, want SegmentKeys
 	}{
 		{"Discussion", settings.DiscussionKeys, SegmentKeys{Review: loomKey("reviewer_model"), Fix: loomKey("discussion_fixer_model")}},
-		{"Plan", settings.PlanKeys, SegmentKeys{Review: loomKey("plan_reviewer_model"), Fix: loomKey("fixer_model")}},
+		{"Plan", settings.PlanKeys, SegmentKeys{Review: tapestryKey("plan_reviewer_model"), Fix: loomKey("fixer_model")}},
 		{"Code", settings.CodeKeys, SegmentKeys{Review: loomKey("reviewer_model"), Fix: loomKey("fixer_model")}},
 	} {
 		if tt.got != tt.want {

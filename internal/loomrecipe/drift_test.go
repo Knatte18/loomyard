@@ -9,9 +9,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/shedrecipe"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 )
@@ -21,12 +20,12 @@ func TestDriftRows_EntryGate(t *testing.T) {
 	t.Parallel()
 
 	recipes := []struct {
-		name  string
-		build func(shedrecipe.Env, shedbuild.ShedPaths) (*shedengine.Shed, error)
-		rows  []string
+		name   string
+		recipe string
+		rows   []string
 	}{
-		{"loom", New, []string{loomshed.NameDriftBaseline, loomshed.NameDriftAwait, loomshed.NameDriftVerify}},
-		{"darn", NewDarn, []string{loomshed.NameDriftBaseline, loomshed.NameDriftAwait, loomshed.NameDriftVerify}},
+		{"loom", shedrun.RecipeTapestry, []string{loomshed.NameDriftBaseline, loomshed.NameDriftAwait, loomshed.NameDriftVerify}},
+		{"darn", shedrun.RecipeDarn, []string{loomshed.NameDriftBaseline, loomshed.NameDriftAwait, loomshed.NameDriftVerify}},
 	}
 	for _, recipe := range recipes {
 		t.Run(recipe.name, func(t *testing.T) {
@@ -41,7 +40,7 @@ func TestDriftRows_EntryGate(t *testing.T) {
 						return envkit.TemplateSetting(module, key)
 					}
 				}
-				shed, err := recipe.build(env, paths)
+				shed, err := New(recipe.recipe, env, paths)
 				if err != nil {
 					t.Fatalf("%s build error = %v; want nil", recipe.name, err)
 				}
@@ -63,7 +62,7 @@ func TestDriftRows_EntryGate(t *testing.T) {
 		t.Run("entered "+row, func(t *testing.T) {
 			t.Parallel()
 			env, paths := testEnv(t)
-			shed, err := New(env, paths)
+			shed, err := New(shedrun.RecipeTapestry, env, paths)
 			if err != nil {
 				t.Fatalf("New() error = %v; want nil", err)
 			}

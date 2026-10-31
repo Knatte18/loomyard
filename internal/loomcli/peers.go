@@ -50,7 +50,7 @@ type peerLine struct {
 	Slug   string `json:"slug"`
 	Title  string `json:"title"`
 	Status string `json:"status"`
-	// Row is the 1-based position of the status's producer in the tapestry recipe's rows, 0 when it names none.
+	// Row is the 1-based position of the status's producer in the peer's own recipe's rows, 0 when it names none.
 	Row          int      `json:"row"`
 	ParentBranch string   `json:"parent_branch"`
 	ChangedPaths []string `json:"changed_paths"`
@@ -73,8 +73,8 @@ type peersDeps struct {
 	parentCommits func() ([]string, error)
 	// readRecord returns one peer's record of the given kind, with false when the peer does not hold it.
 	readRecord func(slug, record string) (content string, found bool, err error)
-	// loomRows is the tapestry recipe's row names in file order.
-	loomRows []string
+	// rows returns the row names of the task's own recipe in file order, none for a recipe that names no embedded recipe.
+	rows func(task boardengine.Task) []string
 }
 
 // recipeRow returns the 1-based position of status's producer among rows, and 0 when status is no run status or its producer names no row.
@@ -85,9 +85,9 @@ func recipeRow(status *string, rows []string) int {
 		return 0
 	}
 	// A peer's status file is read unrenamed, so a peer parked on a retired row name is listed at its successor's position.
-	if successor, retired := loomrecipe.TapestryRetiredRows()[producer]; retired {
+	if successor, retired := loomrecipe.RetiredRows(shedrun.RecipeTapestry)[producer]; retired {
 		producer = successor
-	} else if successor, retired := loomrecipe.DarnRetiredRows()[producer]; retired {
+	} else if successor, retired := loomrecipe.RetiredRows(shedrun.RecipeDarn)[producer]; retired {
 		producer = successor
 	}
 	if index := slices.Index(rows, producer); index >= 0 {
@@ -129,7 +129,7 @@ func peersVerb(out io.Writer, deps peersDeps) int {
 		}
 		line := deps.readPeer(task.Slug)
 		line.Slug, line.Title, line.Status = task.Slug, task.Title, *task.Status
-		line.Row = recipeRow(task.Status, deps.loomRows)
+		line.Row = recipeRow(task.Status, deps.rows(task))
 		if line.ChangedPaths == nil {
 			line.ChangedPaths = []string{}
 		}
@@ -144,7 +144,7 @@ func peersVerb(out io.Writer, deps peersDeps) int {
 		ownRow := 0
 		for _, task := range tasks {
 			if task.Slug == caller {
-				ownRow = recipeRow(task.Status, deps.loomRows)
+				ownRow = recipeRow(task.Status, deps.rows(task))
 				break
 			}
 		}
@@ -241,15 +241,40 @@ func recordExists(path string) (bool, error) {
 	}
 }
 
-// hubPeersDeps fills peersDeps for the resolved location from the hub's board, its pairs' origin records, git history and run records.
-// The loom rows come from the recipe the running binary embeds; a parse failure there is a defect of the binary, so it panics.
-func hubPeersDeps(location *lymcwd.Location) peersDeps {
-	loomRows, err := loomrecipe.RowNames(shedrun.RecipeTapestry)
-	if err != nil {
-		panic(err)
+// peerRecipe returns the name of the recipe a peer's run follows, the tapestry recipe's for an empty name.
+// A peer whose worktree is on this machine and holds a self-run seed follows the seed's recipe.
+// Otherwise it follows the recipe Seed-Child seeds for the board entry, pawl for a project entry and the entry's recipe field for any other.
+// That is the rule `boardRecipe` in `internal/battencli/wire.go` applies; a cli package never imports another, so the rule is restated here.
+// A nil peer is a worktree that is not on this machine.
+func peerRecipe(peer *lymcwd.Location, task boardengine.Task) string {
+	recipe := task.Recipe
+	if task.Kind == boardengine.KindProject {
+		recipe = shedrun.RecipePawl
 	}
+	if peer != nil {
+		if seed, found, err := shedrun.ReadSeed(peer, shedrun.SelfRunID); err == nil && found {
+			recipe = seed.Recipe
+		}
+	}
+	if recipe == "" {
+		return shedrun.RecipeTapestry
+	}
+
+	return recipe
+}
+
+// hubPeersDeps fills peersDeps for the resolved location from the hub's board, its pairs' origin records, git history and run records.
+func hubPeersDeps(location *lymcwd.Location) peersDeps {
 	return peersDeps{
-		loomRows: loomRows,
+		rows: func(task boardengine.Task) []string {
+			var peer *lymcwd.Location
+			if _, err := os.Stat(fabricengine.WorktreePath(location, task.Slug)); err == nil {
+				peer, _ = lymcwd.ResolveWorktree(fabricengine.WorktreePath(location, task.Slug))
+			}
+			// A recipe that names no embedded recipe gives no rows, so the peer's row reads 0, as a status naming no row does.
+			names, _ := loomrecipe.RowNames(peerRecipe(peer, task))
+			return names
+		},
 		board: func() ([]boardengine.Task, bool, error) {
 			info, err := os.Stat(fabricengine.BoardDir(location.HubPath))
 			if errors.Is(err, fs.ErrNotExist) || (err == nil && !info.IsDir()) {
@@ -411,7 +436,7 @@ func (c *loomCLI) peersCmd() *cobra.Command {
 		Long: `peers lists every other run in flight in this hub: each board task holding
 a run status, whatever its state, except this worktree's own. Each peer line
 carries the slug, title, status, row (the 1-based position of its producer in
-the tapestry recipe, 0 when the recipe has no such row), parent branch, the paths
+the peer's own recipe, 0 when the recipe has no such row), parent branch, the paths
 the peer changed since it forked, whether it holds a decision record and a
 plan, and what could not be read. From a task worktree the output also gives
 own_row, this run's own position by the same rule, and lists the commits on

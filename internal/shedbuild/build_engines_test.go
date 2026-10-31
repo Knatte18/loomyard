@@ -19,7 +19,7 @@ import (
 
 // engineMinimalConfig maps an engine name to its minimal Config, covering only the engines that need one.
 // They are Bouncer, BurlerReview, BurlerFix, Command, DriftBaseline, DriftVerify, Implementer and MultiLLM, whose lead and advisor both take a stencil name and the "opus" alias FullEnv's Models carries.
-// Implementer names loom.implementer, which FullEnv's template lookup answers with webster.
+// Implementer names tapestry.implementer, which FullEnv's template lookup answers with webster.
 // Every other engine takes no config at all and are given none in this test,
 // since a non-empty config block on any of them is an error from the constructor. All three
 // lifecycle engines join them: WorktreeCreate and WorktreeTeardown take no Config keys at
@@ -59,7 +59,7 @@ func engineMinimalConfig(advisorStencilName, leadStencilName, rubricStencilName 
 			"gates":    []any{map[string]any{"name": "verify", "attempts": 3}},
 		},
 		"Implementer": {
-			"implementer_setting": "loom.implementer",
+			"implementer_setting": "tapestry.implementer",
 		},
 		"PRReview": {},
 		"MultiLLM": {

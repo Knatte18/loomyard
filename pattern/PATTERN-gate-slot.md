@@ -25,8 +25,7 @@ A mechanical gate's **closure** and its CLI self-check verb call the same packag
 
 ### Pairs
 
-- Discussion-Write's and Discussion-Burler-Fix's gates and `validate-discussion`: `loomshed.ValidateLoomDiscussion` (`discussionparser.Validate`, `discussionparser.CheckDecisionIDs`, the citation check `citationFindings` over `discussionparser.Citations`, and `discussionparser.CheckRelevant`).
-- The Darn-Write row's `discussion` gate and `validate-discussion` on a darn run: `loomshed.ValidateDarnDiscussion`.
+- Discussion-Write's and Discussion-Burler-Fix's gates and `validate-discussion`: `loomshed.ValidateDiscussion` (`discussionparser.Validate`, `discussionparser.CheckDecisionIDs`, the history check `discussionparser.CheckAddedDecisionsKept`, and, for a Discussion-Write record, the citation check `citationFindings` over `discussionparser.Citations` and `discussionparser.CheckRelevant`).
 - Plan-Burler-Fix's gate, a Plan-Write run's gate whose record carries no fork authorization and `validate-plan`: `loomshed.ValidatePlan` (`planindex.Index.ValidateFormat`, implemented by `planglyph`, plus the done-card checks).
 - A twill-spawned Plan-Write run's gate and `validate-plan --lens-review`: `loomshed.ValidatePlanLensReview`, which adds the presence of `lens-review.md`, the run's recorded fork authorization selecting it.
 - PR-Rework's gate and `validate-plan --rework`: `loomshed.ValidateReworkPlan`, which checks the whole new plan plus the told `first_card`.

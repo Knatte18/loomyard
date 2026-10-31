@@ -97,23 +97,16 @@ func templateConfig() Config {
 		Discussion:               "opus[medium]",
 		DiscussionTimeoutMin:     480,
 		DiscussionInteractive:    false,
-		Plan:                     "opus[medium]",
-		PlanTimeoutMin:           120,
 		ReviewerModel:            burlerengine.ModelSpecList{"opus[medium]"},
 		FixerModel:               burlerengine.ModelSpecList{"opus[medium]"},
 		DiscussionLenses:         "twill-discussion",
-		PlanLenses:               "twill-plan",
 		DiscussionReviewerModel:  burlerengine.ModelSpecList{"opus[medium]", "opus[medium]", "sonnet[high]"},
 		DiscussionFixerModel:     burlerengine.ModelSpecList{""},
-		PlanReviewerModel:        burlerengine.ModelSpecList{"opus[medium]", "sonnet[high]"},
-		PlanFixerModel:           burlerengine.ModelSpecList{""},
 		CodeReviewerModel:        burlerengine.ModelSpecList{"sonnet[medium]"},
 		CodeFixerModel:           burlerengine.ModelSpecList{"sonnet[medium]"},
 		DiscussionReviewerFan:    lenses.FanList{"review-discussion", ""},
-		PlanReviewerFan:          lenses.FanList{"review-plan", ""},
 		CodeReviewerFan:          lenses.FanList{"review-code", ""},
 		DiscussionFixerFan:       lenses.FanList{"fix-discussion"},
-		PlanFixerFan:             lenses.FanList{"fix-plan"},
 		CodeFixerFan:             lenses.FanList{"fix-code"},
 		Judge:                    "sonnet[medium]",
 		ReviewTimeoutMin:         240,
@@ -121,22 +114,13 @@ func templateConfig() Config {
 		FrictionTimeoutMin:       30,
 		Driver:                   "haiku[medium]",
 		StepIdleTimeoutMin:       60,
-		Arbiter:                  "",
-		ArbiterTimeoutMin:        0,
-		ArbiterMaxSpawns:         nil,
-		DriverKind:               "",
-		Tackler:                  "",
-		TacklerTimeoutMin:        0,
-		TacklerMaxSpawns:         nil,
 		ReviewCirclingCheckpoint: 3,
 		ReviewMaxBounces:         3,
 		ReviewHardMaxBounces:     4,
 		ReviewAmendMaxBounces:    1,
 		DiscussionMaxBounces:     intPtr(2),
-		PlanMaxBounces:           nil,
 		CodeMaxBounces:           intPtr(1),
 		DiscussionAutoAccept:     false,
-		PlanAutoAccept:           false,
 		CodeAutoAccept:           true,
 	}
 }
@@ -149,8 +133,6 @@ func TestLoadConfig_Loads(t *testing.T) {
 	const legacyContents = `discussion: opus[effort=high]
 discussion_timeout_min: 480
 discussion_interactive: false
-plan: opus[effort=high]
-plan_timeout_min: 120
 reviewer_model: opus[effort=high]
 review_timeout_min: 240
 `
@@ -167,12 +149,12 @@ review_timeout_min: 240
 			name:       "empty fan keys never read a malformed lenses.yaml",
 			lensesYAML: malformedLensesYAML,
 			values: map[string]string{
-				"discussion_reviewer_fan": `""`, "plan_reviewer_fan": `""`, "code_reviewer_fan": `""`,
-				"discussion_fixer_fan": `""`, "plan_fixer_fan": `""`, "code_fixer_fan": `""`,
+				"discussion_reviewer_fan": `""`, "code_reviewer_fan": `""`,
+				"discussion_fixer_fan": `""`, "code_fixer_fan": `""`,
 			},
 			mutate: func(c *Config) {
-				c.DiscussionReviewerFan, c.PlanReviewerFan, c.CodeReviewerFan = lenses.FanList{""}, lenses.FanList{""}, lenses.FanList{""}
-				c.DiscussionFixerFan, c.PlanFixerFan, c.CodeFixerFan = lenses.FanList{""}, lenses.FanList{""}, lenses.FanList{""}
+				c.DiscussionReviewerFan, c.CodeReviewerFan = lenses.FanList{""}, lenses.FanList{""}
+				c.DiscussionFixerFan, c.CodeFixerFan = lenses.FanList{""}, lenses.FanList{""}
 			},
 		},
 		{
@@ -191,11 +173,6 @@ review_timeout_min: 240
 			mutate: func(c *Config) { c.FixerModel = burlerengine.ModelSpecList{"opus[low]", "opus[high]"} },
 		},
 		{
-			name:   "plan_reviewer_model as a per-round list",
-			values: map[string]string{"plan_reviewer_model": "\n  - sonnet[low]\n  - opus[high]"},
-			mutate: func(c *Config) { c.PlanReviewerModel = burlerengine.ModelSpecList{"sonnet[low]", "opus[high]"} },
-		},
-		{
 			name:   "code_fixer_model as one model-spec",
 			values: map[string]string{"code_fixer_model": "opus[low]"},
 			mutate: func(c *Config) { c.CodeFixerModel = burlerengine.ModelSpecList{"opus[low]"} },
@@ -207,11 +184,11 @@ review_timeout_min: 240
 		},
 		{
 			name:   "each fan key as one fan name",
-			values: map[string]string{"discussion_reviewer_fan": "standard", "plan_reviewer_fan": "full", "code_reviewer_fan": "review-code", "discussion_fixer_fan": "fix-discussion", "plan_fixer_fan": "fix-plan", "code_fixer_fan": "fix-code"},
+			values: map[string]string{"discussion_reviewer_fan": "standard", "code_reviewer_fan": "review-code", "discussion_fixer_fan": "fix-discussion", "code_fixer_fan": "fix-code"},
 			mutate: func(c *Config) {
-				c.DiscussionReviewerFan, c.PlanReviewerFan = lenses.FanList{"standard"}, lenses.FanList{"full"}
+				c.DiscussionReviewerFan = lenses.FanList{"standard"}
 				c.CodeReviewerFan = lenses.FanList{"review-code"}
-				c.DiscussionFixerFan, c.PlanFixerFan = lenses.FanList{"fix-discussion"}, lenses.FanList{"fix-plan"}
+				c.DiscussionFixerFan = lenses.FanList{"fix-discussion"}
 				c.CodeFixerFan = lenses.FanList{"fix-code"}
 			},
 		},
@@ -219,16 +196,14 @@ review_timeout_min: 240
 			name: "each fan key as a per-round list, an empty entry running its round solo",
 			values: map[string]string{
 				"discussion_reviewer_fan": "\n  - \"\"\n  - review-discussion",
-				"plan_reviewer_fan":       "\n  - review-plan\n  - \"\"",
 				"code_reviewer_fan":       "\n  - review-code\n  - \"\"",
 				"discussion_fixer_fan":    "\n  - \"\"\n  - fix-discussion",
-				"plan_fixer_fan":          "\n  - fix-plan\n  - \"\"",
 				"code_fixer_fan":          "\n  - fix-code\n  - \"\"",
 			},
 			mutate: func(c *Config) {
-				c.DiscussionReviewerFan, c.PlanReviewerFan = lenses.FanList{"", "review-discussion"}, lenses.FanList{"review-plan", ""}
+				c.DiscussionReviewerFan = lenses.FanList{"", "review-discussion"}
 				c.CodeReviewerFan = lenses.FanList{"review-code", ""}
-				c.DiscussionFixerFan, c.PlanFixerFan = lenses.FanList{"", "fix-discussion"}, lenses.FanList{"fix-plan", ""}
+				c.DiscussionFixerFan = lenses.FanList{"", "fix-discussion"}
 				c.CodeFixerFan = lenses.FanList{"fix-code", ""}
 			},
 		},
@@ -243,9 +218,9 @@ review_timeout_min: 240
 			mutate: func(c *Config) { c.DiscussionInteractive = true },
 		},
 		{
-			name:   "empty discussion_lenses and plan_lenses turn the writer forks off",
-			values: map[string]string{"discussion_lenses": `""`, "plan_lenses": `""`},
-			mutate: func(c *Config) { c.DiscussionLenses, c.PlanLenses = "", "" },
+			name:   "empty discussion_lenses turns the writer forks off",
+			values: map[string]string{"discussion_lenses": `""`},
+			mutate: func(c *Config) { c.DiscussionLenses = "" },
 		},
 		{
 			name:   "bare discussion_advisors key is null and means no advisors",
@@ -277,13 +252,13 @@ review_timeout_min: 240
 		{
 			name: "judge and seed override keys set",
 			values: map[string]string{
-				"seed": "haiku[low]", "discussion_judge": "opus[low]", "plan_judge": "opus[high]", "code_judge": "sonnet[low]",
-				"discussion_seed": "haiku[medium]", "plan_seed": "haiku[high]", "code_seed": "sonnet[high]",
+				"seed": "haiku[low]", "discussion_judge": "opus[low]", "code_judge": "sonnet[low]",
+				"discussion_seed": "haiku[medium]", "code_seed": "sonnet[high]",
 			},
 			mutate: func(c *Config) {
 				c.Seed = "haiku[low]"
-				c.DiscussionJudge, c.PlanJudge, c.CodeJudge = "opus[low]", "opus[high]", "sonnet[low]"
-				c.DiscussionSeed, c.PlanSeed, c.CodeSeed = "haiku[medium]", "haiku[high]", "sonnet[high]"
+				c.DiscussionJudge, c.CodeJudge = "opus[low]", "sonnet[low]"
+				c.DiscussionSeed, c.CodeSeed = "haiku[medium]", "sonnet[high]"
 			},
 		},
 		{
@@ -302,23 +277,6 @@ review_timeout_min: 240
 			mutate: func(c *Config) { c.Driver = "" },
 		},
 		{
-			name:   "explicit arbiter keys",
-			values: map[string]string{"arbiter": "sonnet[low]", "arbiter_timeout_min": "45", "arbiter_max_spawns": "5"},
-			mutate: func(c *Config) { c.Arbiter, c.ArbiterTimeoutMin, c.ArbiterMaxSpawns = "sonnet[low]", 45, intPtr(5) },
-		},
-		{
-			name:   "an arbiter_max_spawns of 0 reads as a set 0 that turns the arbiter off",
-			values: map[string]string{"arbiter": `""`, "arbiter_timeout_min": "0", "arbiter_max_spawns": "0"},
-			mutate: func(c *Config) { c.Arbiter, c.ArbiterTimeoutMin, c.ArbiterMaxSpawns = "", 0, intPtr(0) },
-		},
-		{
-			name:   "driver_kind go and explicit tackler keys, a tackler_max_spawns of 0 read as a set 0",
-			values: map[string]string{"driver_kind": "go", "tackler": "sonnet[low]", "tackler_timeout_min": "5", "tackler_max_spawns": "0"},
-			mutate: func(c *Config) {
-				c.DriverKind, c.Tackler, c.TacklerTimeoutMin, c.TacklerMaxSpawns = "go", "sonnet[low]", 5, intPtr(0)
-			},
-		},
-		{
 			name:   "explicit step_idle_timeout_min",
 			values: map[string]string{"step_idle_timeout_min": "15"},
 			mutate: func(c *Config) { c.StepIdleTimeoutMin = 15 },
@@ -335,8 +293,8 @@ review_timeout_min: 240
 		},
 		{
 			name:   "explicit hard caps",
-			values: map[string]string{"review_hard_max_bounces": "5", "plan_hard_max_bounces": "6"},
-			mutate: func(c *Config) { c.ReviewHardMaxBounces, c.PlanHardMaxBounces = 5, 6 },
+			values: map[string]string{"review_hard_max_bounces": "5", "discussion_hard_max_bounces": "6"},
+			mutate: func(c *Config) { c.ReviewHardMaxBounces, c.DiscussionHardMaxBounces = 5, 6 },
 		},
 		{
 			name:   "a hard cap equal to the soft cap loads",
@@ -346,19 +304,19 @@ review_timeout_min: 240
 		{
 			name: "explicit per-perch budgets and auto-accept flags",
 			values: map[string]string{
-				"discussion_max_bounces": "1", "plan_max_bounces": "2", "code_max_bounces": "4",
-				"discussion_auto_accept": "true", "plan_auto_accept": "true", "code_auto_accept": "true",
+				"discussion_max_bounces": "1", "code_max_bounces": "4",
+				"discussion_auto_accept": "true", "code_auto_accept": "true",
 			},
 			mutate: func(c *Config) {
-				c.DiscussionMaxBounces, c.PlanMaxBounces, c.CodeMaxBounces = intPtr(1), intPtr(2), intPtr(4)
-				c.DiscussionAutoAccept, c.PlanAutoAccept, c.CodeAutoAccept = true, true, true
+				c.DiscussionMaxBounces, c.CodeMaxBounces = intPtr(1), intPtr(4)
+				c.DiscussionAutoAccept, c.CodeAutoAccept = true, true
 			},
 		},
 		{
 			name:     "a zero per-perch budget loads as zero rounds, not as null",
-			values:   map[string]string{"plan_max_bounces": "0"},
-			mutate:   func(c *Config) { c.PlanMaxBounces = intPtr(0) },
-			wantSoft: map[Perch]int{PerchPlan: 0, PerchDiscussion: 2},
+			values:   map[string]string{"discussion_max_bounces": "0"},
+			mutate:   func(c *Config) { c.DiscussionMaxBounces = intPtr(0) },
+			wantSoft: map[Perch]int{PerchDiscussion: 0, PerchCode: 1},
 		},
 		{
 			name:     "a zero run-wide budget gives every null perch zero rounds",
@@ -375,18 +333,13 @@ review_timeout_min: 240
 			name:     "keys absent from a seeded file take template defaults",
 			contents: legacyContents,
 			mutate: func(c *Config) {
-				c.Discussion, c.Plan, c.ReviewerModel = "opus[effort=high]", "opus[effort=high]", burlerengine.ModelSpecList{"opus[effort=high]"}
+				c.Discussion, c.ReviewerModel = "opus[effort=high]", burlerengine.ModelSpecList{"opus[effort=high]"}
 			},
 		},
 		{
 			name:   "zero discussion timeout",
 			values: map[string]string{"discussion_timeout_min": "0"},
 			mutate: func(c *Config) { c.DiscussionTimeoutMin = 0 },
-		},
-		{
-			name:   "zero plan timeout",
-			values: map[string]string{"plan_timeout_min": "0"},
-			mutate: func(c *Config) { c.PlanTimeoutMin = 0 },
 		},
 		{
 			name:   "zero review timeout",
@@ -465,12 +418,6 @@ review_timeout_min: 240
 				name:       "a retired pr_review in the repo default is ignored",
 				boardExtra: "pr_review: true\n",
 				mutate:     func(*Config) {},
-			},
-			{
-				name:   "a local driver_kind go is open to the local layer",
-				board:  "driver_kind: llm\n",
-				local:  "driver_kind: go\n",
-				mutate: func(c *Config) { c.DriverKind = "go" },
 			},
 			{
 				name:   "a local code_reviewer_fan of \"\" is open to the local layer",
@@ -598,7 +545,6 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		lensesYAML string
 	}{
 		{"malformed discussion spec", "discussion", `"opus[effort"`, nil, ""},
-		{"malformed plan spec", "plan", `"opus[effort"`, nil, ""},
 		{"malformed reviewer_model spec", "reviewer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
 		{"malformed fixer_model spec", "fixer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
 		{"malformed later reviewer_model entry", "reviewer_model", "\n  - sonnet[low]\n  - \"opus[effort\"", []string{"entry 2", "a non-empty list of model-specs"}, ""},
@@ -606,21 +552,15 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"empty fixer_model list", "fixer_model", "[]", []string{"empty", "a non-empty list of model-specs"}, ""},
 		{"malformed discussion_reviewer_model spec", "discussion_reviewer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
 		{"malformed discussion_fixer_model spec", "discussion_fixer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
-		{"malformed plan_reviewer_model spec", "plan_reviewer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
-		{"malformed plan_fixer_model spec", "plan_fixer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
 		{"malformed code_reviewer_model spec", "code_reviewer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
 		{"malformed later code_fixer_model entry", "code_fixer_model", "\n  - sonnet[low]\n  - \"opus[effort\"", []string{"entry 2", "a non-empty list of model-specs"}, ""},
 		{"unknown discussion_reviewer_fan", "discussion_reviewer_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "standard", "entry 1", `set the entry to ""`}, ""},
-		{"unknown plan_reviewer_fan", "plan_reviewer_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "full", "entry 1", `set the entry to ""`}, ""},
 		{"unknown second discussion_fixer_fan entry", "discussion_fixer_fan", "\n  - \"\"\n  - nosuchfan", []string{"entry 2", `"nosuchfan"`, "known fans: ", "define the fan in lenses.yaml", `set the entry to ""`}, ""},
 		{"empty discussion_reviewer_fan list", "discussion_reviewer_fan", "[]", []string{"the list is empty", `write ""`}, ""},
-		{"empty plan_reviewer_fan list", "plan_reviewer_fan", "[]", []string{"the list is empty", `write ""`}, ""},
 		{"empty discussion_fixer_fan list", "discussion_fixer_fan", "[]", []string{"the list is empty", `write ""`}, ""},
-		{"empty plan_fixer_fan list", "plan_fixer_fan", "[]", []string{"the list is empty", `write ""`}, ""},
 		{"unknown code_reviewer_fan", "code_reviewer_fan", "nosuchfan", []string{`loom config key "code_reviewer_fan" entry 1`, `"nosuchfan"`, "known fans: ", `set the entry to ""`}, ""},
 		{"mapping code_fixer_fan value", "code_fixer_fan", "\n  model: opus", []string{`loom config key "code_fixer_fan"`, "neither a fan name nor a list of fan names"}, ""},
 		{"mapping discussion_fixer_fan value", "discussion_fixer_fan", "\n  model: opus", []string{"line ", "neither a fan name nor a list of fan names", "a list of fan names"}, ""},
-		{"mapping inside a plan_reviewer_fan list", "plan_reviewer_fan", "\n  - full\n  - model: opus", []string{"line ", "neither a fan name nor a list of fan names", "a list of fan names"}, ""},
 		{"set discussion_reviewer_fan with a malformed lenses.yaml", "discussion_reviewer_fan", "standard", []string{"lenses: config file ", "parse doc YAML", "fix lenses.yaml, or set the key to empty"}, malformedLensesYAML},
 		{"string discussion_advisors entry", "discussion_advisors", `["sonnet[high]"]`, []string{"entry 1", advisorEntryWayForward}, ""},
 		{"string discussion_advisors entry after a mapping", "discussion_advisors", `[{name: critic, model: "sonnet[high]"}, "sonnet[low]"]`, []string{"entry 2", advisorEntryWayForward}, ""},
@@ -638,35 +578,23 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"malformed judge spec", "judge", `"sonnet[medium"`, nil, ""},
 		{"malformed seed spec", "seed", `"opus[effort"`, nil, ""},
 		{"malformed discussion_judge spec", "discussion_judge", `"opus[effort"`, nil, ""},
-		{"malformed plan_judge spec", "plan_judge", `"opus[effort"`, nil, ""},
 		{"malformed code_judge spec", "code_judge", `"opus[effort"`, nil, ""},
 		{"malformed discussion_seed spec", "discussion_seed", `"opus[effort"`, nil, ""},
-		{"malformed plan_seed spec", "plan_seed", `"opus[effort"`, nil, ""},
 		{"malformed code_seed spec", "code_seed", `"opus[effort"`, nil, ""},
 		{"malformed friction spec", "friction", `"opus[effort"`, nil, ""},
 		{"malformed driver spec", "driver", `"opus[effort"`, nil, ""},
-		{"malformed arbiter spec", "arbiter", `"opus[effort"`, nil, ""},
-		{"unknown driver_kind", "driver_kind", "fast", []string{"llm or go"}, ""},
-		{"malformed tackler spec", "tackler", `"not a spec["`, nil, ""},
-		{"negative tackler_timeout_min", "tackler_timeout_min", "-1", []string{"must not be negative", "0 for the 10 minute default"}, ""},
-		{"negative tackler_max_spawns", "tackler_max_spawns", "-1", []string{"must not be negative", "0 to turn the tackler off"}, ""},
-		{"negative arbiter_timeout_min", "arbiter_timeout_min", "-1", []string{"must not be negative", "0 for the 30 minute default"}, ""},
-		{"negative arbiter_max_spawns", "arbiter_max_spawns", "-1", []string{"must not be negative", "0 to turn the arbiter off"}, ""},
 		{"zero review_circling_checkpoint", "review_circling_checkpoint", "0", []string{positiveIntegerForward}, ""},
 		{"negative review_circling_checkpoint", "review_circling_checkpoint", "-1", []string{positiveIntegerForward}, ""},
 		{"negative review_max_bounces", "review_max_bounces", "-1", []string{"must not be negative", "set it to 0 for no review round, or to a positive integer"}, ""},
 		{"negative discussion_max_bounces", "discussion_max_bounces", "-1", []string{"must not be negative", "set it to 0 for no review round, to a positive integer, or to null to take review_max_bounces"}, ""},
-		{"negative plan_max_bounces", "plan_max_bounces", "-1", []string{"must not be negative", "or to null to take review_max_bounces"}, ""},
 		{"negative code_max_bounces", "code_max_bounces", "-1", []string{"must not be negative", "or to null to take review_max_bounces"}, ""},
 		{"negative review_amend_max_bounces", "review_amend_max_bounces", "-1", []string{"must not be negative", "set it to 0 to settle every amendment with no review round", "lym config loom --set review_amend_max_bounces=<n>", `lym loom resume`}, ""},
 		{"zero review_hard_max_bounces", "review_hard_max_bounces", "0", []string{"must be at least 1", "lym config loom --set review_hard_max_bounces=<n>", `lym loom resume`}, ""},
 		{"negative discussion_hard_max_bounces", "discussion_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lym config loom --set discussion_hard_max_bounces=<n>", `lym loom resume`}, ""},
-		{"negative plan_hard_max_bounces", "plan_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lym config loom --set plan_hard_max_bounces=<n>", `lym loom resume`}, ""},
 		{"negative code_hard_max_bounces", "code_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lym config loom --set code_hard_max_bounces=<n>", `lym loom resume`}, ""},
 		{"review_max_bounces above the default hard cap", "review_max_bounces", "5", []string{"review_hard_max_bounces", "lym config loom --set review_hard_max_bounces=<n>", "in the task worktree", `lym loom resume`}, ""},
 		{"code_max_bounces above the default hard cap", "code_max_bounces", "5", []string{"review_hard_max_bounces", "code_max_bounces"}, ""},
 		{"negative discussion timeout", "discussion_timeout_min", "-1", []string{"must not be negative"}, ""},
-		{"negative plan timeout", "plan_timeout_min", "-1", []string{"must not be negative"}, ""},
 		{"negative review timeout", "review_timeout_min", "-1", []string{"must not be negative"}, ""},
 		{"negative friction timeout", "friction_timeout_min", "-1", []string{"must not be negative"}, ""},
 	}
@@ -694,7 +622,7 @@ func TestLoadConfig_Refuses(t *testing.T) {
 
 	t.Run("a local fan key is refused naming the local file and the key", func(t *testing.T) {
 		t.Parallel()
-		for _, key := range []string{"discussion_reviewer_fan", "plan_reviewer_fan", "discussion_fixer_fan", "plan_fixer_fan", "code_fixer_fan"} {
+		for _, key := range []string{"discussion_reviewer_fan", "discussion_fixer_fan", "code_fixer_fan"} {
 			t.Run(key, func(t *testing.T) {
 				t.Parallel()
 				board, anchor := t.TempDir(), t.TempDir()
@@ -706,6 +634,31 @@ func TestLoadConfig_Refuses(t *testing.T) {
 					t.Fatalf("LoadConfig() error = %v; want ErrInvalid", err)
 				}
 				for _, want := range []string{localPath, key} {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
+					}
+				}
+			})
+		}
+	})
+
+	t.Run("a shed key is refused in a local file naming the file, the key and shed.yaml, and dropped from a hub base file", func(t *testing.T) {
+		t.Parallel()
+		for _, key := range shedOnlyKeys {
+			t.Run(key, func(t *testing.T) {
+				t.Parallel()
+				board, anchor := t.TempDir(), t.TempDir()
+				seedLoomConfig(t, board, ConfigTemplate()+key+": 1\n")
+				if _, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "loom"); err != nil {
+					t.Errorf("LoadConfig() with %s in the hub base file = %v; want nil, the value dropped", key, err)
+				}
+
+				localPath := writeLocalLoomConfig(t, anchor, key+": 1\n")
+				_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "loom")
+				if !errors.Is(err, configengine.ErrInvalid) {
+					t.Fatalf("LoadConfig() with %s in a local file error = %v; want ErrInvalid", key, err)
+				}
+				for _, want := range []string{localPath, key, "shed.yaml"} {
 					if !strings.Contains(err.Error(), want) {
 						t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
 					}
@@ -1005,8 +958,8 @@ func TestMigrateConfig(t *testing.T) {
 		if err != nil {
 			t.Fatalf("LoadConfig(migrated hub file) = _, %v; want nil error", err)
 		}
-		if want := (DiscussionAdvisorList{{Name: "advisor-1", Model: "sonnet[high]"}}); !reflect.DeepEqual(got.DiscussionAdvisors, want) || got.DiscussionLenses != "" || got.PlanLenses != "twill-plan" {
-			t.Errorf("LoadConfig(migrated hub file) advisors/lenses/plan lenses = %v/%q/%q; want %v, no discussion lenses and twill-plan", got.DiscussionAdvisors, got.DiscussionLenses, got.PlanLenses, want)
+		if want := (DiscussionAdvisorList{{Name: "advisor-1", Model: "sonnet[high]"}}); !reflect.DeepEqual(got.DiscussionAdvisors, want) || got.DiscussionLenses != "" {
+			t.Errorf("LoadConfig(migrated hub file) advisors/lenses = %v/%q; want %v and no discussion lenses", got.DiscussionAdvisors, got.DiscussionLenses, want)
 		}
 
 		board, anchor := t.TempDir(), t.TempDir()
@@ -1016,8 +969,8 @@ func TestMigrateConfig(t *testing.T) {
 		if err != nil {
 			t.Fatalf("LoadConfig(migrated stack) = _, %v; want nil error", err)
 		}
-		if got.DiscussionAdvisors != nil || got.DiscussionLenses != "twill-discussion" || got.PlanLenses != "twill-plan" {
-			t.Errorf("LoadConfig(migrated stack) advisors/lenses/plan lenses = %v/%q/%q; want no advisors, twill-discussion and twill-plan", got.DiscussionAdvisors, got.DiscussionLenses, got.PlanLenses)
+		if got.DiscussionAdvisors != nil || got.DiscussionLenses != "twill-discussion" {
+			t.Errorf("LoadConfig(migrated stack) advisors/lenses = %v/%q; want no advisors and twill-discussion", got.DiscussionAdvisors, got.DiscussionLenses)
 		}
 	})
 }
@@ -1115,42 +1068,53 @@ func TestLandingAndApprovalAccessors(t *testing.T) {
 	}
 }
 
-// TestConfigTemplate_ContainsEveryConfigYAMLTag walks Config's fields via reflection and asserts every yaml tag appears in the template text -- so a struct field added without a matching template line is caught mechanically rather than relying on review to notice the gap.
+// TestConfigTemplate_ContainsEveryConfigYAMLTag walks the fields of Config and TapestryConfig via reflection and asserts every yaml tag appears in its module's template text -- so a struct field added without a matching template line is caught mechanically rather than relying on review to notice the gap.
 // The Config Strictness Invariant makes a struct field with no matching template key a silent hole rather than a load error, which is exactly what this check guards against.
 //
-//testtiming:keep pins that every Config yaml tag has a template line, a reflection check no LoadConfig case makes
+//testtiming:keep pins that every Config and TapestryConfig yaml tag has a template line, a reflection check no LoadConfig case makes
 //lym:seam internal/loomengine#Config
+//lym:seam internal/loomengine#TapestryConfig
 func TestConfigTemplate_ContainsEveryConfigYAMLTag(t *testing.T) {
 	t.Parallel()
-	text := ConfigTemplate()
-
-	typ := reflect.TypeOf(Config{})
-	for i := 0; i < typ.NumField(); i++ {
-		tag := typ.Field(i).Tag.Get("yaml")
-		if tag == "" {
-			t.Fatalf("Config field %q has no yaml tag", typ.Field(i).Name)
-		}
-		if !containsConfigKey(text, tag) {
-			t.Errorf("ConfigTemplate() does not contain key %q for field %q", tag, typ.Field(i).Name)
+	for _, tt := range []struct {
+		name     string
+		template string
+		typ      reflect.Type
+	}{
+		{"Config", ConfigTemplate(), reflect.TypeOf(Config{})},
+		{"TapestryConfig", TapestryConfigTemplate(), reflect.TypeOf(TapestryConfig{})},
+	} {
+		for i := 0; i < tt.typ.NumField(); i++ {
+			tag := tt.typ.Field(i).Tag.Get("yaml")
+			if tag == "" {
+				t.Fatalf("%s field %q has no yaml tag", tt.name, tt.typ.Field(i).Name)
+			}
+			// A "-" tag marks a Config field that tapestry.yaml supplies, checked through TapestryConfig.
+			if tag == "-" {
+				continue
+			}
+			if !containsConfigKey(tt.template, tag) {
+				t.Errorf("the %s template does not contain key %q for field %q", tt.name, tag, tt.typ.Field(i).Name)
+			}
 		}
 	}
 }
 
-// TestConfigTemplate_ImplementerDefaultsToWebsterAndAcceptsALocalValue pins the implementer key, which no Config field carries because the recipe reads it where it builds the Implementer row:
-// the template defaults it to webster and ConfigSpec leaves it unguarded, so the local layer may set it.
+// TestConfigTemplate_ImplementerDefaultsToWebsterAndAcceptsALocalValue pins the implementer key, which no config struct carries because the recipe reads it where it builds the Implementer row:
+// tapestry.yaml's template defaults it to webster and TapestryConfigSpec leaves it unguarded, so the local layer may set it.
 func TestConfigTemplate_ImplementerDefaultsToWebsterAndAcceptsALocalValue(t *testing.T) {
 	t.Parallel()
 	var template map[string]any
-	if err := yaml.Unmarshal([]byte(ConfigTemplate()), &template); err != nil {
-		t.Fatalf("parse ConfigTemplate(): %v", err)
+	if err := yaml.Unmarshal([]byte(TapestryConfigTemplate()), &template); err != nil {
+		t.Fatalf("parse TapestryConfigTemplate(): %v", err)
 	}
 	if got := template["implementer"]; got != "webster" {
-		t.Errorf("ConfigTemplate() implementer = %v; want webster", got)
+		t.Errorf("TapestryConfigTemplate() implementer = %v; want webster", got)
 	}
 	// CategoryNone is the zero Category, so a dropped entry reads the same as a declared one unless presence is checked.
-	got, declared := ConfigSpec().Categories["implementer"]
+	got, declared := TapestryConfigSpec().Categories["implementer"]
 	if !declared || got != configengine.CategoryNone {
-		t.Errorf("ConfigSpec() category of implementer = %v, declared %v; want %v, true", got, declared, configengine.CategoryNone)
+		t.Errorf("TapestryConfigSpec() category of implementer = %v, declared %v; want %v, true", got, declared, configengine.CategoryNone)
 	}
 }
 

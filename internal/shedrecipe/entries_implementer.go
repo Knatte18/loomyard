@@ -27,10 +27,10 @@ func implementerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProd
 	if raw, present := cfg[implementerSettingKey]; present {
 		text, isString := raw.(string)
 		if !isString {
-			return nil, fmt.Errorf("shedrecipe: Implementer: row %q: config key %q holds %#v, want a module.key string; way forward: set %s to a module.key string such as %q", row.Name, implementerSettingKey, raw, implementerSettingKey, "loom.implementer")
+			return nil, fmt.Errorf("shedrecipe: Implementer: row %q: config key %q holds %#v, want a module.key string; way forward: set %s to a module.key string such as %q", row.Name, implementerSettingKey, raw, implementerSettingKey, "tapestry.implementer")
 		}
 		if text == "" {
-			return nil, fmt.Errorf("shedrecipe: Implementer: row %q: config key %q is empty; way forward: set %s to the module.key setting naming the implementer, such as %q", row.Name, implementerSettingKey, implementerSettingKey, "loom.implementer")
+			return nil, fmt.Errorf("shedrecipe: Implementer: row %q: config key %q is empty; way forward: set %s to the module.key setting naming the implementer, such as %q", row.Name, implementerSettingKey, implementerSettingKey, "tapestry.implementer")
 		}
 	}
 	value, ref, named, err := readSetting("Implementer", row, cfg, implementerSettingKey, env)
@@ -38,7 +38,7 @@ func implementerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProd
 		return nil, err
 	}
 	if !named {
-		return nil, fmt.Errorf("shedrecipe: Implementer: row %q: config key %q is absent; way forward: set %s to the module.key setting naming the implementer, such as %q", row.Name, implementerSettingKey, implementerSettingKey, "loom.implementer")
+		return nil, fmt.Errorf("shedrecipe: Implementer: row %q: config key %q is absent; way forward: set %s to the module.key setting naming the implementer, such as %q", row.Name, implementerSettingKey, implementerSettingKey, "tapestry.implementer")
 	}
 	name, _ := value.(string)
 	build, ok := implementers[name]

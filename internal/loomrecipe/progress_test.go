@@ -10,12 +10,13 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // TestRouting_ProgressAt asserts, over loom's real recipe, that every row maps to a step, the three rows of each review segment map to the same step and a Burler row reports its segment's step name, Friction-Reflect is the last main-line step, and the rows after Webster follow the recipe's tail order and reroute edges.
 func TestRouting_ProgressAt(t *testing.T) {
 	t.Parallel()
-	routing, err := Routing(map[string]int{"Discussion-Review": 5, "Plan-Review": 5, "Code-Review": 5})
+	routing, err := Routing(shedrun.RecipeTapestry, map[string]int{"Discussion-Review": 5, "Plan-Review": 5, "Code-Review": 5})
 	if err != nil {
 		t.Fatalf("Routing() = _, %v; want nil", err)
 	}
@@ -52,7 +53,7 @@ func TestRouting_ProgressAt(t *testing.T) {
 		}
 	})
 
-	t.Run("the tail after Webster runs Merge-In, the Code-Review perch, Drift-Verify, Describe, PR-Review and Finalize", func(t *testing.T) {
+	t.Run("the tail after Webster runs Parent-Align, Drift-Verify, the Code-Review perch, Describe, PR-Review and Finalize", func(t *testing.T) {
 		t.Parallel()
 		rows := map[string]struct{ done, stuck, reroute string }{}
 		for _, def := range routing.Producers {
@@ -60,9 +61,9 @@ func TestRouting_ProgressAt(t *testing.T) {
 		}
 		for _, want := range []struct{ row, done, stuck, reroute string }{
 			{loomshed.NameWebster, loomshed.NameParentAlign, "", loomshed.NamePlanBurlerReview},
-			{loomshed.NameParentAlign, loomshed.NameCodeBouncer, "", ""},
-			{loomshed.NameCodeBouncer, loomshed.NameDriftVerify, loomshed.NameCodeBurlerReview, ""},
-			{loomshed.NameDriftVerify, loomshed.NameDescribe, "", ""},
+			{loomshed.NameParentAlign, loomshed.NameDriftVerify, "", ""},
+			{loomshed.NameDriftVerify, loomshed.NameCodeBouncer, "", ""},
+			{loomshed.NameCodeBouncer, loomshed.NameDescribe, loomshed.NameCodeBurlerReview, ""},
 			{loomshed.NameDescribe, loomshed.NamePRReview, "", ""},
 			{loomshed.NamePRReview, loomshed.NameFinalize, "", ""},
 			{loomshed.NameFinalize, loomshed.NameFrictionReflect, "", loomshed.NameParentAlign},

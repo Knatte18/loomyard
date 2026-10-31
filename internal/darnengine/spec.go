@@ -44,10 +44,10 @@ type DarnInputs struct {
 	Slug string
 	// DescriptionPath is the absolute path the writer writes the change description to.
 	DescriptionPath string
-	// DecisionRecordPath is the absolute path the writer writes the decision record to before any code.
+	// DecisionRecordPath is the absolute path of the decision record the writer reads as its scope.
 	DecisionRecordPath string
-	// SupportLogPath is the absolute path the writer writes the support log to before any code.
-	SupportLogPath string
+	// StopMarkerPath is the absolute path the writer creates a marker at when it stops instead of making the change.
+	StopMarkerPath string
 	// PriorWork names what an earlier spawn left unfinished or broken; empty on a first spawn.
 	PriorWork string
 	// LanguageSkills are the hub's language skills the writer loads after its own; empty for none.
@@ -68,7 +68,7 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 		{"Slug", in.Slug},
 		{"DescriptionPath", in.DescriptionPath},
 		{"DecisionRecordPath", in.DecisionRecordPath},
-		{"SupportLogPath", in.SupportLogPath},
+		{"StopMarkerPath", in.StopMarkerPath},
 	}
 	for _, r := range required {
 		if r.value == "" {
@@ -103,7 +103,7 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 			"slug":                 in.Slug,
 			"description_path":     in.DescriptionPath,
 			"decision_record_path": in.DecisionRecordPath,
-			"support_log_path":     in.SupportLogPath,
+			"stop_marker_path":     in.StopMarkerPath,
 			"specs_dir":            in.SpecsDir,
 			"prior_work":           orNone(in.PriorWork),
 			"pattern_directive":    patternDirective,

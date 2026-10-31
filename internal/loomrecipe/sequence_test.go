@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
@@ -42,18 +43,12 @@ type wantSequenceEntry struct {
 // The fixture's fake tips report the local parent ahead of its upstream, which makes Merge-In report one before any merge.
 // Driving the landing producers' real merge logic through a Shed run needs a genuine two-worktree pair and therefore git, which stays out of this package's untagged tier.
 //
-// The real row 2 (Tapestry-Preflight) passes against this fixture rather than needing a substituted
-// fake because buildSequenceFixture seeds through the production Seed, which writes a coherent
-// fresh seed, and by the instant row 2 runs, shedengine.Run has already persisted
-// current_producer: "Tapestry-Preflight" alongside a single Preflight Done history entry -- exactly the
-// shape row 2's told expected name and tolerated set accept.
-//
-// Row 3 (Discussion-Write) passes because the fixture's fake seat runner writes both discussion output
+// Discussion-Write passes because the fixture's fake seat runner writes both discussion output
 // files and reports Done, and Discussion-Write's own gate -- run inside that fake's gated method
 // rather than as a separate row below it -- accepts the pair it just wrote; the decorator's
 // injected commit closure then fires on the gate-passed Done.
 //
-// Row 6 (Plan-Write) passes for the same reason: the fixture's fake shuttle rewrites the whole plan
+// Plan-Write passes for the same reason: the fixture's fake shuttle rewrites the whole plan
 // directory on its "plan"-role branch, and Plan-Write's own gate, run inside that same gated
 // method, still finds a complete, zero-findings plan after the decorator's rotation archived the
 // seeded one away.
@@ -108,7 +103,7 @@ func TestSequence_FullRunBlocksAtMergeIn(t *testing.T) {
 		return nil
 	}
 
-	shed, err := New(env, paths)
+	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}

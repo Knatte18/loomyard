@@ -274,7 +274,6 @@ func wantFindings(t *testing.T, report TimingReport, want ...[2]string) {
 // The Code and PR-Review rows come last, so the stamps of the rows before them stay where the batten rows' fixed times fall between them.
 var loomRowPhases = []struct{ row, phase string }{
 	{loomshed.NamePreflight, PhaseSetup},
-	{loomshed.NameTapestryPreflight, PhaseSetup},
 	{loomshed.NameDiscussionWrite, PhaseDiscussion},
 	{loomshed.NameDiscussionBouncer, PhaseDiscussion},
 	{loomshed.NamePlanWrite, PhasePlan},
@@ -511,7 +510,7 @@ func TestComputeTiming(t *testing.T) {
 			setup: func(w *world) {
 				loom := make([]shedengine.HistoryEntry, len(loomRowPhases))
 				for k, row := range loomRowPhases {
-					loom[k] = entryAt(row.row, secondsAfter(run, 600+60*k))
+					loom[k] = entryAt(row.row, secondsAfter(run, 660+60*k))
 				}
 				batten := battenRecordOf(
 					entryAt(battenrecipe.NameWorktreeCreate, run),
@@ -1259,15 +1258,15 @@ func TestComputeTiming(t *testing.T) {
 					gotoAt(retiredPublishRow, secondsAfter(run, 4100), "orch"),
 					stuckAt(retiredPRReworkRow, secondsAfter(run, 4990)),
 					gotoAt(retiredPRReworkRow, secondsAfter(run, 5100), "orch"),
-					stuckAt(loomshed.NameTapestryPreflight, secondsAfter(run, 5990)),
-					gotoAt(loomshed.NameTapestryPreflight, secondsAfter(run, 6100), shedengine.CallerShed),
+					stuckAt(loomshed.NamePreflight, secondsAfter(run, 5990)),
+					gotoAt(loomshed.NamePreflight, secondsAfter(run, 6100), shedengine.CallerShed),
 					stuckAt(loomshed.NameDiscussionWrite, secondsAfter(run, 6990)),
 					entryAt(loomshed.NameDiscussionWrite, secondsAfter(run, 7100)),
 					stuckAt(loomshed.NameDescribe, secondsAfter(run, 7990)),
 					entryAt(loomshed.NameDescribe, secondsAfter(run, 8100)),
 					entryAt(loomshed.NameFinalize, secondsAfter(run, 8500)),
 				}
-				halted := []string{loomshed.NamePlanWrite, loomshed.NameWebster, loomshed.NameParentAlign, retiredPublishRow, retiredPRReworkRow, loomshed.NameTapestryPreflight, loomshed.NameDiscussionWrite, loomshed.NameDescribe}
+				halted := []string{loomshed.NamePlanWrite, loomshed.NameWebster, loomshed.NameParentAlign, retiredPublishRow, retiredPRReworkRow, loomshed.NamePreflight, loomshed.NameDiscussionWrite, loomshed.NameDescribe}
 				batten := []shedengine.HistoryEntry{entryAt(battenrecipe.NameWorktreeCreate, run)}
 				extra := arbiterAttemptFiles(w.t, "settlers", 1, loomengine.ArbiterAttempt{
 					StopKey:   shedrun.StopKey{CurrentProducer: loomshed.NameParentAlign, State: "blocked"},
@@ -1328,7 +1327,7 @@ func TestComputeTiming(t *testing.T) {
 		{
 			name: "a record that settles nothing by itself leaves the stop to the entry that moved it on, here a goto by operator",
 			setup: func(w *world) {
-				producers := []string{loomshed.NamePlanWrite, loomshed.NameWebster, loomshed.NameDescribe, retiredPRReworkRow, loomshed.NameTapestryPreflight, loomshed.NameDiscussionWrite}
+				producers := []string{loomshed.NamePlanWrite, loomshed.NameWebster, loomshed.NameDescribe, retiredPRReworkRow, loomshed.NamePreflight, loomshed.NameDiscussionWrite}
 				records := []shedrun.SettleRecord{
 					settleRecord(producers[0], 2, "blocked", shedrun.SettlerGoRule, shedrun.SettleBusyExit),
 					settleRecord(producers[1], 4, "blocked", shedrun.SettlerGoRule, shedrun.SettleRunningExit),

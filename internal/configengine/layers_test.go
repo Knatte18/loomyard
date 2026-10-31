@@ -617,6 +617,9 @@ func TestValidateLocal(t *testing.T) {
 		"old.open":    configengine.CategoryNone,
 	}
 
+	retiredWithText := retired
+	retiredWithText.RetiredWayForward = map[string]string{"gone_guard": "set it in shed.yaml"}
+
 	machine := machineSpec()
 	machine.RetiredKeys = map[string]configengine.Category{
 		"gone_machine": configengine.CategoryMachine,
@@ -640,6 +643,8 @@ func TestValidateLocal(t *testing.T) {
 		wantErr   string
 		// wantMore are further substrings the error must hold.
 		wantMore []string
+		// wantSuffix is what the error text must end with, when non-empty.
+		wantSuffix string
 	}{
 		{name: "machine key", spec: machine, validator: "machine", doc: "port: 8\n"},
 		{name: "machine empty document", spec: machine, validator: "machine", doc: ""},
@@ -657,6 +662,8 @@ func TestValidateLocal(t *testing.T) {
 		{name: "retired none key holding a mapping the template never held", spec: retired, doc: "gone_scalar:\n  a: 1\n"},
 		{name: "retired guard key", spec: retired, doc: "gone_guard: x\n", wantErr: "gone_guard"},
 		{name: "retired executable key", spec: retired, doc: "gone_run: x\n", wantErr: "gone_run"},
+		{name: "retired guard key with a way-forward text ends with it", spec: retiredWithText, doc: "gone_guard: x\n", wantErr: "gone_guard", wantSuffix: "; way forward: set it in shed.yaml"},
+		{name: "retired guard key without a text keeps the plain message", spec: retired, doc: "gone_guard: x\n", wantErr: "gone_guard", wantSuffix: "cannot be set in a local override"},
 		{name: "longest retired key admits its none entry", spec: retired, doc: "old:\n  open:\n    a: 1\n"},
 		{name: "longest retired key refuses the guard remainder", spec: retired, doc: "old:\n  shut: 1\n", wantErr: "old"},
 		{name: "empty document", spec: layerSpec(), doc: ""},
@@ -700,6 +707,9 @@ func TestValidateLocal(t *testing.T) {
 				if !strings.Contains(err.Error(), more) {
 					t.Errorf("validate error = %v; want it to contain %q", err, more)
 				}
+			}
+			if tc.wantSuffix != "" && !strings.HasSuffix(err.Error(), tc.wantSuffix) {
+				t.Errorf("validate error = %v; want it to end with %q", err, tc.wantSuffix)
 			}
 			if !errors.Is(err, configengine.ErrInvalid) {
 				t.Errorf("error is not marked ErrInvalid: %v", err)

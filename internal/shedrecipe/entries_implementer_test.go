@@ -12,17 +12,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 )
 
-// newImplementerTestEnv returns newTestEnv with a setting lookup answering loom.implementer with webster.
+// newImplementerTestEnv returns newTestEnv with a setting lookup answering tapestry.implementer with webster.
 func newImplementerTestEnv(t *testing.T) Env {
 	t.Helper()
 	env := newTestEnv(t)
-	env.Setting = fakeSetting(map[string]any{"loom.implementer": "webster"})
+	env.Setting = fakeSetting(map[string]any{"tapestry.implementer": "webster"})
 	return env
 }
 
-// implementerTestConfig is the Config of an Implementer row naming loom.implementer.
+// implementerTestConfig is the Config of an Implementer row naming tapestry.implementer.
 func implementerTestConfig(*testing.T, Env) Config {
-	return Config{implementerSettingKey: "loom.implementer"}
+	return Config{implementerSettingKey: "tapestry.implementer"}
 }
 
 func TestImplementerEntry_WebsterBuildsTheWebsterProducer(t *testing.T) {
@@ -52,8 +52,8 @@ func TestImplementerEntry_ForwardsTheRestOfTheRowConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			env := reworkTestEnv(t)
-			env.Setting = fakeSetting(map[string]any{"loom.implementer": "webster"})
-			cfg := Config{implementerSettingKey: "loom.implementer"}
+			env.Setting = fakeSetting(map[string]any{"tapestry.implementer": "webster"})
+			cfg := Config{implementerSettingKey: "tapestry.implementer"}
 			for key, value := range tt.extra {
 				cfg[key] = value
 			}
@@ -80,15 +80,15 @@ func TestImplementerEntry_RefusesAnUnusableSetting(t *testing.T) {
 		setting func(module, key string) (any, error)
 		want    string
 	}{
-		{"AbsentKey", Config{}, fakeSetting(nil), `way forward: set implementer_setting to the module.key setting naming the implementer, such as "loom.implementer"`},
+		{"AbsentKey", Config{}, fakeSetting(nil), `way forward: set implementer_setting to the module.key setting naming the implementer, such as "tapestry.implementer"`},
 		{"EmptyKey", Config{implementerSettingKey: ""}, fakeSetting(nil), `config key "implementer_setting" is empty; way forward: set implementer_setting to the module.key setting`},
-		{"NonStringKey", Config{implementerSettingKey: 3}, fakeSetting(nil), `holds 3, want a module.key string; way forward: set implementer_setting to a module.key string such as "loom.implementer"`},
-		{"UnknownImplementer", Config{implementerSettingKey: "loom.implementer"}, fakeSetting(map[string]any{"loom.implementer": "weaver"}), `holds "weaver", want one of webster; way forward: run "lym config loom --set implementer=<implementer>" with one of webster`},
-		{"EmptyImplementer", Config{implementerSettingKey: "loom.implementer"}, fakeSetting(map[string]any{"loom.implementer": ""}), `holds "", want one of webster; way forward`},
-		{"NonStringImplementer", Config{implementerSettingKey: "loom.implementer"}, fakeSetting(map[string]any{"loom.implementer": 3}), `holds 3, want one of webster; way forward`},
-		{"NullImplementer", Config{implementerSettingKey: "loom.implementer"}, fakeSetting(map[string]any{"loom.implementer": nil}), `holds <nil>, want one of webster; way forward`},
-		{"LookupError", Config{implementerSettingKey: "loom.implementer"}, func(string, string) (any, error) { return nil, errors.New("loom.yaml unreadable") }, `setting "loom.implementer": loom.yaml unreadable`},
-		{"NilLookup", Config{implementerSettingKey: "loom.implementer"}, nil, "way forward: fill Env.Setting in the caller that builds this recipe"},
+		{"NonStringKey", Config{implementerSettingKey: 3}, fakeSetting(nil), `holds 3, want a module.key string; way forward: set implementer_setting to a module.key string such as "tapestry.implementer"`},
+		{"UnknownImplementer", Config{implementerSettingKey: "tapestry.implementer"}, fakeSetting(map[string]any{"tapestry.implementer": "weaver"}), `holds "weaver", want one of webster; way forward: run "lym config tapestry --set implementer=<implementer>" with one of webster`},
+		{"EmptyImplementer", Config{implementerSettingKey: "tapestry.implementer"}, fakeSetting(map[string]any{"tapestry.implementer": ""}), `holds "", want one of webster; way forward`},
+		{"NonStringImplementer", Config{implementerSettingKey: "tapestry.implementer"}, fakeSetting(map[string]any{"tapestry.implementer": 3}), `holds 3, want one of webster; way forward`},
+		{"NullImplementer", Config{implementerSettingKey: "tapestry.implementer"}, fakeSetting(map[string]any{"tapestry.implementer": nil}), `holds <nil>, want one of webster; way forward`},
+		{"LookupError", Config{implementerSettingKey: "tapestry.implementer"}, func(string, string) (any, error) { return nil, errors.New("loom.yaml unreadable") }, `setting "tapestry.implementer": loom.yaml unreadable`},
+		{"NilLookup", Config{implementerSettingKey: "tapestry.implementer"}, nil, "way forward: fill Env.Setting in the caller that builds this recipe"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -4,6 +4,7 @@ package reviewbudget
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 )
@@ -69,13 +70,28 @@ func Resolve(perch string, runSoft, runHard int, ownSoft *int, ownHard int) Caps
 // Values holds the budget keys of one loaded config.
 // PerchSoft and PerchHard are keyed by perch name; a nil PerchSoft entry takes RunSoft and a PerchHard entry of 0 takes RunHard.
 // RunAmend is the amendment allowance, 0 meaning no review round for an amendment.
+// RunWideSpec is the spec of the module that holds RunSoftKey, RunHardKey and RunAmendKey; its zero value means the spec CheckResolved is given holds them.
+// A refusal names the module that owns the key it reports and routes the way forward through that module.
 type Values struct {
-	RunSoft   int
-	RunHard   int
-	RunAmend  int
-	Perches   []string
-	PerchSoft map[string]*int
-	PerchHard map[string]int
+	RunSoft     int
+	RunHard     int
+	RunAmend    int
+	Perches     []string
+	PerchSoft   map[string]*int
+	PerchHard   map[string]int
+	RunWideSpec configengine.Spec
+}
+
+// ownerSpec returns the spec of the module that holds key: RunWideSpec for a run-wide key when it is set, else spec.
+func (v Values) ownerSpec(spec configengine.Spec, key string) configengine.Spec {
+	if v.RunWideSpec.Name == "" {
+		return spec
+	}
+	switch key {
+	case RunSoftKey, RunHardKey, RunAmendKey:
+		return v.RunWideSpec
+	}
+	return spec
 }
 
 // Route returns the way forward that changes key, by the layer the resolved value comes from.
@@ -99,14 +115,16 @@ func Route(dirs configengine.Dirs, spec configengine.Spec, key string) (string, 
 }
 
 // CheckResolved refuses the first value of the family below its bound, and a resolved hard cap below its resolved soft cap.
-// Each refusal names the key and the Route of the layer its value comes from.
+// Each refusal names the key and the Route of the layer its value comes from, both through the module that owns the key.
+// The three run-wide keys belong to values.RunWideSpec when it is set, and every other key to spec.
 func CheckResolved(dirs configengine.Dirs, spec configengine.Spec, values Values) error {
 	refuse := func(key, detail string) error {
-		route, err := Route(dirs, spec, key)
+		owner := values.ownerSpec(spec, key)
+		route, err := Route(dirs, owner, key)
 		if err != nil {
 			return err
 		}
-		return fmt.Errorf("%s config key %q: %s; way forward: %s, then run \"lym loom resume\"", spec.Name, key, detail, route)
+		return fmt.Errorf("%s config key %q: %s; way forward: %s, then run \"lym loom resume\"", owner.Name, key, detail, route)
 	}
 
 	if values.RunSoft < 0 {
@@ -130,24 +148,23 @@ func CheckResolved(dirs configengine.Dirs, spec configengine.Spec, values Values
 	}
 
 	// Equal caps pass: a round at the budget is already at the hard cap.
-	perches := values.Perches
-	if len(perches) == 0 {
-		perches = []string{""}
-	}
+	// The run-wide pair is checked last on its own, since a perch holding its own budget never resolves to it.
+	perches := append(slices.Clone(values.Perches), "")
 	for _, perch := range perches {
 		caps := Resolve(perch, values.RunSoft, values.RunHard, values.PerchSoft[perch], values.PerchHard[perch])
 		if caps.Hard >= caps.Soft {
 			continue
 		}
-		hardRoute, err := Route(dirs, spec, caps.HardKey)
+		hardOwner := values.ownerSpec(spec, caps.HardKey)
+		hardRoute, err := Route(dirs, hardOwner, caps.HardKey)
 		if err != nil {
 			return err
 		}
-		softRoute, err := Route(dirs, spec, caps.SoftKey)
+		softRoute, err := Route(dirs, values.ownerSpec(spec, caps.SoftKey), caps.SoftKey)
 		if err != nil {
 			return err
 		}
-		return fmt.Errorf("%s config key %q: resolved hard cap %d is below %q's resolved soft cap %d; way forward: raise the hard cap: %s, or lower the soft cap: %s, then run \"lym loom resume\"", spec.Name, caps.HardKey, caps.Hard, caps.SoftKey, caps.Soft, hardRoute, softRoute)
+		return fmt.Errorf("%s config key %q: resolved hard cap %d is below %q's resolved soft cap %d; way forward: raise the hard cap: %s, or lower the soft cap: %s, then run \"lym loom resume\"", hardOwner.Name, caps.HardKey, caps.Hard, caps.SoftKey, caps.Soft, hardRoute, softRoute)
 	}
 	return nil
 }

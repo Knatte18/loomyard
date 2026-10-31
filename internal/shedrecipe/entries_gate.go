@@ -26,8 +26,8 @@ var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 // a present empty list is an error, since it is an author mistake rather than an ungated row.
 //
 // Each element carries a required "name", resolved against a closed four-value vocabulary:
-// "discussion" requires env.DecisionRecordPath and env.SupportLogPath to pass requireAbsRoot and returns loomshed.NewDiscussionGate over them, or, when env.DiscussionHistory is set, loomshed.NewDarnDiscussionGate over them, the history seam and a non-nil env.CommitDiscussion;
-// on a tapestry run, where env.DiscussionHistory is unset, "discussion" also requires env.RelevantPath and env.WorktreeRoot to pass requireAbsRoot and a non-nil env.PlanIndex, and passes them to the gate, whose citation check reads the worktree and the index;
+// "discussion" requires env.DecisionRecordPath and env.SupportLogPath to pass requireAbsRoot and a non-nil env.DiscussionHistory, and returns loomshed.NewDiscussionGate over them;
+// when env.RecordEngine is DiscussionWrite, "discussion" also requires env.RelevantPath and env.WorktreeRoot to pass requireAbsRoot and a non-nil env.PlanIndex, and passes them to the gate with the citation checks on, which read the worktree and the index;
 // "plan" requires env.AnchorPath, env.WorktreeRoot and a non-nil env.PlanIndex and returns loomshed.NewPlanGate over them;
 // "description" requires env.DescriptionPath to pass requireAbsRoot and returns landingshed.NewDescriptionGate over it;
 // "verify" requires the absolute env.WorktreeRoot and env.VerifyDir and a non-nil env.VerifyCommand, takes the optional env.VerifyMergeBase and env.VerifyTreeScope, and returns loomshed.NewVerifyGate over them, with the site label "<row name> gate";
@@ -145,22 +145,30 @@ func resolvePlainGateClosure(entry, row, gateKey string, index int, name string,
 		if err := requireAbsRoot(entry, "SupportLogPath", env.SupportLogPath); err != nil {
 			return nil, err
 		}
-		if env.DiscussionHistory != nil {
-			if err := requireSeam(entry, "CommitDiscussion", env.CommitDiscussion); err != nil {
+		if err := requireSeam(entry, "DiscussionHistory", env.DiscussionHistory); err != nil {
+			return nil, err
+		}
+		check := loomshed.DiscussionCheck{
+			RecordPath:     env.DecisionRecordPath,
+			SupportLogPath: env.SupportLogPath,
+			History:        env.DiscussionHistory,
+		}
+		if env.RecordEngine == "DiscussionWrite" {
+			if err := requireAbsRoot(entry, "RelevantPath", env.RelevantPath); err != nil {
 				return nil, err
 			}
-			return loomshed.NewDarnDiscussionGate(env.DecisionRecordPath, env.SupportLogPath, env.DiscussionHistory, env.CommitDiscussion), nil
+			if err := requireAbsRoot(entry, "WorktreeRoot", env.WorktreeRoot); err != nil {
+				return nil, err
+			}
+			if err := requireSeam(entry, "PlanIndex", env.PlanIndex); err != nil {
+				return nil, err
+			}
+			check.RelevantPath = env.RelevantPath
+			check.WorktreeRoot = env.WorktreeRoot
+			check.Index = env.PlanIndex
+			check.Citations = true
 		}
-		if err := requireAbsRoot(entry, "RelevantPath", env.RelevantPath); err != nil {
-			return nil, err
-		}
-		if err := requireAbsRoot(entry, "WorktreeRoot", env.WorktreeRoot); err != nil {
-			return nil, err
-		}
-		if err := requireSeam(entry, "PlanIndex", env.PlanIndex); err != nil {
-			return nil, err
-		}
-		return loomshed.NewDiscussionGate(env.DecisionRecordPath, env.SupportLogPath, env.RelevantPath, env.WorktreeRoot, env.PlanIndex), nil
+		return loomshed.NewDiscussionGate(check), nil
 	case "plan":
 		if err := requireAbsRoot(entry, "AnchorPath", env.AnchorPath); err != nil {
 			return nil, err

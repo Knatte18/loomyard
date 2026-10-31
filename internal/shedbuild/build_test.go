@@ -92,7 +92,7 @@ func TestBuild_Errors(t *testing.T) {
 		},
 		{
 			name:     "entry gate naming a setting while Env.SettingKnown is nil",
-			rows:     []Row{{Name: "Gated", Engine: "Stub", EntryGate: EntryChecks{"loom.plan_auto_accept"}}},
+			rows:     []Row{{Name: "Gated", Engine: "Stub", EntryGate: EntryChecks{"tapestry.plan_auto_accept"}}},
 			wantSubs: []string{"Gated", "Env.SettingKnown is nil", "fill Env.SettingKnown in the caller"},
 		},
 		{
@@ -122,4 +122,118 @@ func TestBuild_Errors(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestBuild_LoomContract asserts Build refuses a recipe declaring contract: loom that breaks a clause of the loom contract, naming the clause and its way forward, and never checks a recipe without the contract.
+func TestBuild_LoomContract(t *testing.T) {
+	t.Parallel()
+
+	// validLoom returns a recipe meeting every clause: a record row, a build row after it, and a Finalize row followed only by a terminal.
+	validLoom := func() Recipe {
+		return Recipe{
+			Contract:     "loom",
+			VerifySource: "plan",
+			Entry:        "Pre",
+			Terminals:    []string{"Reflect"},
+			Producers: []Row{
+				{Name: "Pre", Engine: "Stub", OnDone: "Record"},
+				{Name: "Record", Engine: "DiscussionWrite", OnDone: "Middle"},
+				{Name: "Middle", Engine: "Stub", OnDone: "Build"},
+				{Name: "Build", Engine: "Implementer", OnDone: "Land"},
+				{Name: "Land", Engine: "Finalize", OnDone: "Reflect"},
+				{Name: "Reflect", Engine: "Stub"},
+			},
+		}
+	}
+	setEngine := func(name, engine string) func(*Recipe) {
+		return func(r *Recipe) {
+			for i := range r.Producers {
+				if r.Producers[i].Name == name {
+					r.Producers[i].Engine = engine
+				}
+			}
+		}
+	}
+
+	tests := []struct {
+		name     string
+		mutate   func(*Recipe)
+		wantSubs []string
+	}{
+		{
+			name:     "no record row",
+			mutate:   setEngine("Record", "Stub"),
+			wantSubs: []string{"shedbuild: ", "0 record rows", "way forward: give the recipe exactly one record row, engine DiscussionWrite or RecordWrite"},
+		},
+		{
+			name:     "two record rows",
+			mutate:   setEngine("Middle", "RecordWrite"),
+			wantSubs: []string{"shedbuild: ", "2 record rows", "way forward: give the recipe exactly one record row, engine DiscussionWrite or RecordWrite"},
+		},
+		{
+			name:     "no build row",
+			mutate:   setEngine("Build", "Stub"),
+			wantSubs: []string{"shedbuild: ", "0 build rows", "way forward: give the recipe exactly one build row, engine Implementer or DarnWrite"},
+		},
+		{
+			name:     "two build rows",
+			mutate:   setEngine("Middle", "DarnWrite"),
+			wantSubs: []string{"shedbuild: ", "2 build rows", "way forward: give the recipe exactly one build row, engine Implementer or DarnWrite"},
+		},
+		{
+			name: "build row before the record row on the on_done path",
+			mutate: func(r *Recipe) {
+				setEngine("Record", "Implementer")(r)
+				setEngine("Build", "DiscussionWrite")(r)
+			},
+			wantSubs: []string{"shedbuild: ", "does not lie after the record row", "way forward: place the build row after the record row on the on_done path from the entry"},
+		},
+		{
+			name:     "no Finalize row",
+			mutate:   setEngine("Land", "Stub"),
+			wantSubs: []string{"shedbuild: ", "holds no Finalize row", "way forward: end the recipe's on_done path at Finalize followed only by terminals"},
+		},
+		{
+			name:     "Finalize followed by a row that is not a terminal",
+			mutate:   func(r *Recipe) { r.Terminals = []string{"Elsewhere"} },
+			wantSubs: []string{"shedbuild: ", `row "Reflect"`, "not a terminal", "way forward: end the recipe's on_done path at Finalize followed only by terminals"},
+		},
+		{
+			name:     "no verify_source",
+			mutate:   func(r *Recipe) { r.VerifySource = "" },
+			wantSubs: []string{"shedbuild: ", "verify_source", "way forward: set verify_source to plan or tree_scope"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			r := validLoom()
+			tt.mutate(&r)
+
+			_, err := Build(r, shedrecipe.Env{})
+			if err == nil {
+				t.Fatal("Build() error = nil; want the loom contract refusal")
+			}
+			for _, want := range tt.wantSubs {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("Build() error = %v; want it to contain %q", err, want)
+				}
+			}
+		})
+	}
+
+	t.Run("a valid recipe passes the check", func(t *testing.T) {
+		t.Parallel()
+		if err := checkLoomContract(validLoom()); err != nil {
+			t.Errorf("checkLoomContract(valid recipe) = %v; want nil", err)
+		}
+	})
+
+	t.Run("a recipe without the contract is not checked", func(t *testing.T) {
+		t.Parallel()
+		r := Recipe{Producers: []Row{{Name: "Only", Engine: "Stub"}}}
+		if _, err := Build(r, shedrecipe.Env{}); err != nil {
+			t.Errorf("Build(recipe without contract) error = %v; want nil", err)
+		}
+	})
 }

@@ -69,6 +69,19 @@ func citingRecord(body, appendix string) string {
 	return strings.Replace(validDecisionRecord, "Decisions text.", body, 1) + appendix
 }
 
+// citationCheck returns the discussion check with the citation checks on, over an empty record history.
+func citationCheck(decisionRecordPath, supportLogPath, relevantPath, worktreeRoot string, index planindex.Index) DiscussionCheck {
+	return DiscussionCheck{
+		RecordPath:     decisionRecordPath,
+		SupportLogPath: supportLogPath,
+		RelevantPath:   relevantPath,
+		WorktreeRoot:   worktreeRoot,
+		Index:          index,
+		History:        func() ([][]byte, error) { return nil, nil },
+		Citations:      true,
+	}
+}
+
 func TestValidateLoomDiscussion_Citations(t *testing.T) {
 	t.Parallel()
 
@@ -121,12 +134,12 @@ func TestValidateLoomDiscussion_Citations(t *testing.T) {
 			record := citingRecord(tt.body, tt.appendix)
 			decisionRecordPath, supportLogPath := writeDiscussionFixture(t, t.TempDir(), record, "support log")
 
-			findings, err := ValidateLoomDiscussion(decisionRecordPath, supportLogPath, filepath.Join(t.TempDir(), "relevant.md"), repo, index)
+			findings, err := ValidateDiscussion(citationCheck(decisionRecordPath, supportLogPath, filepath.Join(t.TempDir(), "relevant.md"), repo, index))
 			if err != nil {
-				t.Fatalf("ValidateLoomDiscussion() error = %v; want nil", err)
+				t.Fatalf("ValidateDiscussion() error = %v; want nil", err)
 			}
 			if len(findings) != len(tt.wantChecks) {
-				t.Fatalf("ValidateLoomDiscussion() = %v; want checks %v", findings, tt.wantChecks)
+				t.Fatalf("ValidateDiscussion() = %v; want checks %v", findings, tt.wantChecks)
 			}
 			wantLine := strings.Count(record[:strings.Index(record, tt.token+"`")+1], "\n") + 1
 			for i, finding := range findings {
@@ -150,9 +163,9 @@ func TestValidateLoomDiscussion_Citations(t *testing.T) {
 		empty := t.TempDir()
 		gitkit.Git(t, empty, "init", "-b", "main")
 		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, t.TempDir(), citingRecord("`internal/missing/file.go`", ""), "support log")
-		findings, err := ValidateLoomDiscussion(decisionRecordPath, supportLogPath, filepath.Join(t.TempDir(), "relevant.md"), empty, index)
+		findings, err := ValidateDiscussion(citationCheck(decisionRecordPath, supportLogPath, filepath.Join(t.TempDir(), "relevant.md"), empty, index))
 		if err != nil || len(findings) != 0 {
-			t.Errorf("ValidateLoomDiscussion() = %v, %v; want no findings and no error", findings, err)
+			t.Errorf("ValidateDiscussion() = %v, %v; want no findings and no error", findings, err)
 		}
 	})
 
@@ -167,27 +180,29 @@ func TestValidateLoomDiscussion_Citations(t *testing.T) {
 		}
 		gitkit.Git(t, staged, "add", "extra/present.md")
 		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, t.TempDir(), citingRecord("`extra/missing.md`", ""), "support log")
-		findings, err := ValidateLoomDiscussion(decisionRecordPath, supportLogPath, filepath.Join(t.TempDir(), "relevant.md"), staged, index)
+		findings, err := ValidateDiscussion(citationCheck(decisionRecordPath, supportLogPath, filepath.Join(t.TempDir(), "relevant.md"), staged, index))
 		if err != nil || len(findings) != 1 || findings[0].Check != "citation-path-missing" {
-			t.Errorf("ValidateLoomDiscussion() = %v, %v; want one citation-path-missing finding", findings, err)
+			t.Errorf("ValidateDiscussion() = %v, %v; want one citation-path-missing finding", findings, err)
 		}
 	})
 
 	t.Run("QuarryOutageIsAnErrorNotAFinding", func(t *testing.T) {
 		t.Parallel()
 		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, t.TempDir(), citingRecord("`internal/real#Thing`", ""), "support log")
-		findings, err := ValidateLoomDiscussion(decisionRecordPath, supportLogPath, filepath.Join(t.TempDir(), "relevant.md"), repo, unavailableIndex{})
+		findings, err := ValidateDiscussion(citationCheck(decisionRecordPath, supportLogPath, filepath.Join(t.TempDir(), "relevant.md"), repo, unavailableIndex{}))
 		if !errors.Is(err, planindex.ErrQuarryUnavailable) || findings != nil {
-			t.Errorf("ValidateLoomDiscussion() = %v, %v; want no findings and an error wrapping ErrQuarryUnavailable", findings, err)
+			t.Errorf("ValidateDiscussion() = %v, %v; want no findings and an error wrapping ErrQuarryUnavailable", findings, err)
 		}
 	})
 
-	t.Run("DarnRecordCitationsAreNotTested", func(t *testing.T) {
+	t.Run("CitationsUnsetAreNotTested", func(t *testing.T) {
 		t.Parallel()
 		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, t.TempDir(), citingRecord("`internal/missing/file.go`", ""), "support log")
-		findings, err := ValidateDarnDiscussion(decisionRecordPath, supportLogPath, func() ([][]byte, error) { return nil, nil })
+		check := citationCheck(decisionRecordPath, supportLogPath, filepath.Join(t.TempDir(), "relevant.md"), repo, index)
+		check.Citations = false
+		findings, err := ValidateDiscussion(check)
 		if err != nil || len(findings) != 0 {
-			t.Errorf("ValidateDarnDiscussion() = %v, %v; want no findings and no error", findings, err)
+			t.Errorf("ValidateDiscussion() = %v, %v; want no findings and no error", findings, err)
 		}
 	})
 }

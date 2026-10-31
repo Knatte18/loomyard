@@ -25,104 +25,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// TestReconcile_CopiesLoomArbiterKeysIntoDarn pins the declared loom-to-darn arbiter key copy at the board pass: what it places, what a darn value keeps, that a dry run writes nothing, that a second pass copies nothing, and that only the hub layer is read.
-func TestReconcile_CopiesLoomArbiterKeysIntoDarn(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name string
-		// board maps a module to its hub file's content.
-		board map[string]string
-		// worktreeLoom is a loom.yaml in a worktree's own config dir, which the copy never reads.
-		worktreeLoom string
-		dryRun       bool
-		// contains and excludes are substrings the board's darn.yaml must and must not hold after the run.
-		contains, excludes []string
-		// absent reports that the board has no darn.yaml after the run.
-		absent bool
-		// copied is the exact set of Copied lines the first run reports.
-		copied []string
-	}{
-		{
-			name:     "a base loom file's tuned arbiter keys are copied into a darn base with none",
-			board:    map[string]string{"loom": "arbiter_max_spawns: 0\narbiter: sonnet[high]\n", "darn": "arbiter_timeout_min: 3\n"},
-			contains: []string{"arbiter_max_spawns: 0", "arbiter: sonnet[high]", "arbiter_timeout_min: 3"},
-			copied:   []string{"loom.arbiter -> darn.arbiter", "loom.arbiter_max_spawns -> darn.arbiter_max_spawns"},
-		},
-		{
-			name:     "a darn base created by the copy starts as the header-only base",
-			board:    map[string]string{"loom": "arbiter_timeout_min: 7\n"},
-			contains: []string{"arbiter_timeout_min: 7", configengine.SparseBaseHeader},
-			copied:   []string{"loom.arbiter_timeout_min -> darn.arbiter_timeout_min"},
-		},
-		{
-			name:     "a darn base that already sets a key keeps its value",
-			board:    map[string]string{"loom": "arbiter_max_spawns: 0\n", "darn": "arbiter_max_spawns: 2\n"},
-			contains: []string{"arbiter_max_spawns: 2"},
-			excludes: []string{"arbiter_max_spawns: 0"},
-		},
-		{
-			name:   "a dry run reports the copy and writes nothing",
-			board:  map[string]string{"loom": "arbiter_max_spawns: 0\n"},
-			dryRun: true,
-			absent: true,
-			copied: []string{"loom.arbiter_max_spawns -> darn.arbiter_max_spawns"},
-		},
-		{
-			name:         "a worktree layer's loom file copies nothing into any darn file",
-			worktreeLoom: "arbiter_max_spawns: 0\n",
-			excludes:     []string{"arbiter_max_spawns"},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			boardDir, worktreeDir := t.TempDir(), t.TempDir()
-			for module, content := range tt.board {
-				writeModuleFile(t, boardDir, module, content)
-			}
-			writeModuleFile(t, worktreeDir, "loom", tt.worktreeLoom)
-
-			copiedBy := func(apply bool) []string {
-				results, err := ReconcileHubWideAt(boardDir, "", HubWideOptions{Apply: apply})
-				if err != nil {
-					t.Fatalf("ReconcileHubWideAt(apply=%v): %v", apply, err)
-				}
-				var copied []string
-				for _, result := range results {
-					copied = append(copied, result.Copied...)
-				}
-				return copied
-			}
-			if got := copiedBy(!tt.dryRun); !slices.Equal(got, tt.copied) {
-				t.Errorf("Copied = %v; want %v", got, tt.copied)
-			}
-			data, err := os.ReadFile(configengine.ConfigFile(boardDir, "darn"))
-			if tt.absent {
-				if err == nil {
-					t.Errorf("darn.yaml exists; want it absent")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("read darn.yaml: %v", err)
-			}
-			for _, want := range tt.contains {
-				if !strings.Contains(string(data), want) {
-					t.Errorf("darn.yaml lacks %q:\n%s", want, data)
-				}
-			}
-			for _, unwanted := range tt.excludes {
-				if strings.Contains(string(data), unwanted) {
-					t.Errorf("darn.yaml holds %q:\n%s", unwanted, data)
-				}
-			}
-			if got := copiedBy(true); len(got) != 0 {
-				t.Errorf("second run Copied = %v; want none", got)
-			}
-		})
-	}
-}
-
 // writeModuleFile writes content as module's config file under dir, creating the config directory.
 // It writes nothing for empty content.
 func writeModuleFile(t *testing.T, dir, module, content string) {
@@ -1580,10 +1482,10 @@ func TestReconcileAll_SparseLayers(t *testing.T) {
 func TestReconcileAll_MigratesToSparse(t *testing.T) {
 	t.Parallel()
 	const (
-		stripFile    = "discussion_timeout_min: 480\nreview_max_bounces: 99\n"
-		markerPlan   = "plan: \"${env:LYMMIG_PLAN:-sonnet}\"\n"
-		literalPlan  = "plan: sonnet\n"
-		defaultAlias = "zephyr:\n  engine: claude\n  model: claude-zephyr-1\n"
+		stripFile         = "discussion_timeout_min: 480\nreview_max_bounces: 99\n"
+		markerDiscussion  = "discussion: \"${env:LYMMIG_PLAN:-sonnet}\"\n"
+		literalDiscussion = "discussion: sonnet\n"
+		defaultAlias      = "zephyr:\n  engine: claude\n  model: claude-zephyr-1\n"
 	)
 	batcherTemplate := batcher.ConfigTemplate()
 	batcherDiffering := strings.Replace(batcherTemplate, "orientation: 31400", "orientation: 31401", 1)
@@ -1651,13 +1553,13 @@ func TestReconcileAll_MigratesToSparse(t *testing.T) {
 		},
 		{
 			name: "a literal equal to the expansion of a marker below is kept", module: "loom", opts: migrate,
-			defaultFile: loomTemplateWith(loomTemplate(), "plan", markerPlan), worktreeFile: literalPlan,
-			wantFile: ptr(literalPlan), wantMarker: true,
+			defaultFile: loomTemplateWith(loomTemplate(), "discussion", markerDiscussion), worktreeFile: literalDiscussion,
+			wantFile: ptr(literalDiscussion), wantMarker: true,
 		},
 		{
 			name: "a marker over a literal equal to its expansion is kept", module: "loom", opts: migrate,
-			defaultFile: loomTemplateWith(loomTemplate(), "plan", literalPlan), worktreeFile: markerPlan,
-			wantFile: ptr(markerPlan), wantMarker: true,
+			defaultFile: loomTemplateWith(loomTemplate(), "discussion", literalDiscussion), worktreeFile: markerDiscussion,
+			wantFile: ptr(markerDiscussion), wantMarker: true,
 		},
 		{
 			name: "a seed-only key the default holds and the file lacks is reported inherited", module: "models", opts: migrate,
@@ -2135,6 +2037,14 @@ func TestReconcile_MovesKeysAcrossModules(t *testing.T) {
 				"darn.review_hard_max_bounces -> loom.code_hard_max_bounces",
 			},
 			kept: []string{"darn.review_fan: review-plan dropped, loom.code_reviewer_fan: review-plan kept"},
+		},
+		{
+			name:     "a hub's tuned loom plan_max_bounces moves to a created tapestry.yaml",
+			files:    map[string]string{"board:loom": "plan_max_bounces: 5\n"},
+			call:     "board",
+			contains: map[string][]string{"board:tapestry": {"plan_max_bounces: 5"}, "board:loom": {configengine.SparseBaseHeader}},
+			excludes: map[string][]string{"board:loom": {"plan_max_bounces"}},
+			moved:    []string{"loom.plan_max_bounces -> tapestry.plan_max_bounces"},
 		},
 		{
 			name:     "an untuned darn.yaml's former defaults are dropped and leave loom's Code-Review keys as they are",

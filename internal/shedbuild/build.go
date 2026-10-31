@@ -19,6 +19,8 @@ import (
 // since Parse already rejects that, but Build also accepts a hand-built Recipe that never went
 // through Parse.
 //
+// A recipe declaring `contract: loom` is checked first by checkLoomContract, before any registry lookup, and refused when it breaks the loom contract.
+//
 // Build runs no reachability, cycle, blind-gate, dangling-target, or segment analysis, and never
 // calls into internal/shedcheck: a legitimately resumable graph starts mid-graph, so
 // reachability-from-entry is the wrong question at build time, and shedengine's own validation
@@ -32,6 +34,11 @@ import (
 func Build(r Recipe, env shedrecipe.Env) ([]shedengine.ProducerDef, error) {
 	if len(r.Producers) == 0 {
 		return nil, fmt.Errorf("shedbuild: recipe has no producers")
+	}
+	if r.Contract == loomContract {
+		if err := checkLoomContract(r); err != nil {
+			return nil, fmt.Errorf("shedbuild: %w", err)
+		}
 	}
 
 	defs := make([]shedengine.ProducerDef, len(r.Producers))

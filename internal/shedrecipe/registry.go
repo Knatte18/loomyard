@@ -21,36 +21,45 @@ import (
 // internal/battenshed), and registration would then depend on link-time blank imports of
 // packages this package already imports directly -- an indirection with no benefit here.
 var registry = map[string]Constructor{
-	"Preflight":         preflightEntry,
-	"ParentAlign":       parentAlignEntry,
-	"DarnWrite":         darnWriteEntry,
-	"Finalize":          finalizeEntry,
-	"FrictionReflect":   frictionReflectEntry,
-	"TapestryPreflight": tapestryPreflightEntry,
-	"Implementer":       implementerEntry,
-	"DiscussionWrite":   discussionWriteEntry,
-	"Describe":          describeEntry,
-	"BeamDescribe":      beamDescribeEntry,
-	"BeamUp":            beamUpEntry,
-	"BeamAwait":         beamAwaitEntry,
-	"BeamDown":          beamDownEntry,
-	"PlanWrite":         planWriteEntry,
-	"Stub":              stubEntry,
-	"MultiLLM":          multiLLMEntry,
-	"Bouncer":           bouncerEntry,
-	"BurlerReview":      burlerReviewEntry,
-	"BurlerFix":         burlerFixEntry,
-	"WorktreeCreate":    worktreeCreateEntry,
-	"InnerRun":          innerRunEntry,
-	"SeedChild":         seedChildEntry,
-	"WorktreeTeardown":  worktreeTeardownEntry,
-	"Land":              landEntry,
-	"Command":           commandEntry,
-	"PRReview":          prReviewEntry,
-	"DriftBaseline":     driftBaselineEntry,
-	"DriftAwait":        driftAwaitEntry,
-	"DriftVerify":       driftVerifyEntry,
+	"Preflight":        preflightEntry,
+	"ParentAlign":      parentAlignEntry,
+	"DarnWrite":        darnWriteEntry,
+	"RecordWrite":      recordWriteEntry,
+	"Finalize":         finalizeEntry,
+	"FrictionReflect":  frictionReflectEntry,
+	"Implementer":      implementerEntry,
+	"DiscussionWrite":  discussionWriteEntry,
+	"Describe":         describeEntry,
+	"BeamDescribe":     beamDescribeEntry,
+	"BeamUp":           beamUpEntry,
+	"BeamAwait":        beamAwaitEntry,
+	"BeamDown":         beamDownEntry,
+	"PlanWrite":        planWriteEntry,
+	"Stub":             stubEntry,
+	"MultiLLM":         multiLLMEntry,
+	"Bouncer":          bouncerEntry,
+	"BurlerReview":     burlerReviewEntry,
+	"BurlerFix":        burlerFixEntry,
+	"WorktreeCreate":   worktreeCreateEntry,
+	"InnerRun":         innerRunEntry,
+	"SeedChild":        seedChildEntry,
+	"WorktreeTeardown": worktreeTeardownEntry,
+	"Land":             landEntry,
+	"Command":          commandEntry,
+	"PRReview":         prReviewEntry,
+	"DriftBaseline":    driftBaselineEntry,
+	"DriftAwait":       driftAwaitEntry,
+	"DriftVerify":      driftVerifyEntry,
 }
+
+// LoomRecordEngines are the engines whose row is a loom recipe's record row, the row that writes the decision record before the build segment.
+var LoomRecordEngines = []string{"DiscussionWrite", "RecordWrite"}
+
+// LoomBuildEngines are the engines whose row is a loom recipe's build row, the one row of the build segment that turns the record into the change.
+var LoomBuildEngines = []string{"Implementer", "DarnWrite"}
+
+// LoomFinalizeEngine is the engine whose row lands a loom recipe's change and ends its on_done path.
+const LoomFinalizeEngine = "Finalize"
 
 // Lookup resolves name against the registry, returning its Constructor.
 //

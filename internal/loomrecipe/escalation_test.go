@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
@@ -46,7 +47,7 @@ func newEscalationShed(t *testing.T) (*shedengine.Shed, string, *shedfake.Burler
 		if err != nil || !found {
 			return 0, 0, false, err
 		}
-		routing, err := Routing(budgetsOf(env))
+		routing, err := Routing(shedrun.RecipeTapestry, budgetsOf(env))
 		if err != nil {
 			return 0, 0, false, err
 		}
@@ -54,7 +55,7 @@ func newEscalationShed(t *testing.T) (*shedengine.Shed, string, *shedfake.Burler
 		return count, budget, inSegment, nil
 	}
 
-	shed, err := New(env, paths)
+	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
@@ -110,7 +111,7 @@ func TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe(t *te
 		if err != nil || !found {
 			return 0, 0, false, err
 		}
-		routing, err := DarnRouting(budgetsOf(env))
+		routing, err := Routing(shedrun.RecipeDarn, budgetsOf(env))
 		if err != nil {
 			return 0, 0, false, err
 		}
@@ -118,9 +119,9 @@ func TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe(t *te
 		return count, budget, inSegment, nil
 	}
 
-	shed, err := NewDarn(env, paths)
+	shed, err := New(shedrun.RecipeDarn, env, paths)
 	if err != nil {
-		t.Fatalf("NewDarn() error = %v; want nil", err)
+		t.Fatalf("New() error = %v; want nil", err)
 	}
 	describe := &haltingProducer{}
 	for i := range shed.Producers {
@@ -294,7 +295,7 @@ func TestEscalation_PerchBudgetOneWithAutoAccept(t *testing.T) {
 				if err != nil || !found {
 					return 0, 0, false, err
 				}
-				routing, err := Routing(budgetsOf(env))
+				routing, err := Routing(shedrun.RecipeTapestry, budgetsOf(env))
 				if err != nil {
 					return 0, 0, false, err
 				}
@@ -302,7 +303,7 @@ func TestEscalation_PerchBudgetOneWithAutoAccept(t *testing.T) {
 				return count, budget, inSegment, nil
 			}
 
-			shed, err := New(env, paths)
+			shed, err := New(shedrun.RecipeTapestry, env, paths)
 			if err != nil {
 				t.Fatalf("New() error = %v; want nil", err)
 			}

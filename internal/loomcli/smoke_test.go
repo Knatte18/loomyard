@@ -211,7 +211,7 @@ func lockFree(t *testing.T, path string) bool {
 // row is ESTABLISHED first, and a killed-at-an-arbitrary-moment driver lands on whichever row it
 // happened to reach. Killing without this wait made
 // TestSmokeRunStandalone's first step fail intermittently whenever the kill
-// landed while the driver was still on Tapestry-Preflight: the follow-up drive then legitimately
+// landed while the driver was still on Preflight: the follow-up drive then legitimately
 // completed that row and advanced to the next one, so both the current_producer-unchanged and the
 // history-unchanged assertions reported a routing bug that was not there (crucible round
 // opus5-high-r7, F5 -- reproduced on the pre-round tree, so it predates that round's own changes).

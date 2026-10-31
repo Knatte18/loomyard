@@ -43,7 +43,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -180,18 +179,13 @@ func childDriverFrom(seed shedrun.Seed, found bool, resolveKind func() (string, 
 	return resolveKind()
 }
 
-// childDriverKind resolves the driver of a child run of recipe from the config layers under dirs:
-// the recipe's own driver_kind override, else shed.yaml's, else llm.
-func childDriverKind(dirs configengine.Dirs, recipe string) (string, error) {
+// childDriverKind resolves the driver of a child run from the config layers under dirs: shed.yaml's driver_kind, else llm, whatever the child's recipe.
+func childDriverKind(dirs configengine.Dirs, _ string) (string, error) {
 	shed, err := sheddriver.LoadConfig(dirs)
 	if err != nil {
 		return "", err
 	}
-	override, err := loomengine.RecipeOverride(dirs, recipe)
-	if err != nil {
-		return "", err
-	}
-	return sheddriver.ResolveDriverKind(shed, override), nil
+	return sheddriver.ResolveDriverKind(shed, sheddriver.Override{}), nil
 }
 
 // anchorParam is the seed param that carries a beam project's anchor from its first pass to Worktree-Create.

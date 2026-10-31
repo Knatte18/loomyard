@@ -57,8 +57,6 @@ func seedLoomConfigWithInteractive(t *testing.T, anchorPath string, discussionIn
 	contents := fmt.Sprintf(`discussion: opus[effort=high]
 discussion_timeout_min: 480
 discussion_interactive: %v
-plan: opus[effort=high]
-plan_timeout_min: 120
 review: opus[effort=high]
 review_timeout_min: 240
 friction: opus[effort=high]
@@ -83,8 +81,6 @@ func seedLoomConfigWithFriction(t *testing.T, anchorPath, friction string) {
 	contents := fmt.Sprintf(`discussion: opus[effort=high]
 discussion_timeout_min: 480
 discussion_interactive: false
-plan: opus[effort=high]
-plan_timeout_min: 120
 review: opus[effort=high]
 review_timeout_min: 240
 friction: %s
@@ -131,7 +127,7 @@ func TestWire_DefaultConfig(t *testing.T) {
 
 	// Every path field of the assembled shedrecipe.Env and shedbuild.ShedPaths equals the corresponding
 	// accessor's own output for the same location.
-	// StatusPath and StatusLockPath are told twice -- once on c.env (read by tapestryPreflightEntry) and
+	// StatusPath and StatusLockPath are told twice -- once on c.env and
 	// once on c.shedPaths (read by shedengine.Shed) -- so both copies are asserted against the same
 	// accessor, per the deliberate duplication ShedPaths' own doc comment describes.
 	t.Run("path fields match the accessors", func(t *testing.T) {
@@ -174,12 +170,20 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 	})
 
-	// c.env.Cwd is the only preflight-related property wire still owns: preflightEntry builds the
-	// Preflight row from Env.Cwd, and the row's engine name is pinned by the recipe-side coverage
-	// guard in internal/loomrecipe.
+	// c.env.Cwd is the Preflight row's cwd: preflightEntry builds the row from Env.Cwd,
+	// and the row's engine name is pinned by the recipe-side coverage guard in internal/loomrecipe.
 	t.Run("cwd is told to the env", func(t *testing.T) {
 		if c.env.Cwd != cwd {
 			t.Errorf("c.env.Cwd = %q; want %q", c.env.Cwd, cwd)
+		}
+	})
+
+	t.Run("a tapestry seed tells Preflight the batcher load", func(t *testing.T) {
+		if c.env.PreflightBatcher == nil {
+			t.Fatal("c.env.PreflightBatcher = nil; want the batcher.yaml load for a recipe with an Implementer row")
+		}
+		if err := c.env.PreflightBatcher(); err != nil {
+			t.Errorf("c.env.PreflightBatcher() = %v; want nil over the default config", err)
 		}
 	})
 
@@ -335,6 +339,19 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 	})
 
+	// A tapestry seed's Plan-Review segment is told the file that holds its keys, tapestry.yaml, and the other segments loom.yaml.
+	t.Run("segment settings name the config file of their keys", func(t *testing.T) {
+		for segment, wantFile := range map[string]string{
+			"Discussion-Review": "loom.yaml",
+			"Plan-Review":       "tapestry.yaml",
+			"Code-Review":       "loom.yaml",
+		} {
+			if got := c.env.Segments[segment].ConfigFile; got != wantFile {
+				t.Errorf("c.env.Segments[%q].ConfigFile = %q; want %q", segment, got, wantFile)
+			}
+		}
+	})
+
 	t.Run("plan table evaluates to the expected shape", func(t *testing.T) {
 		table, err := c.env.PlanTable()
 		if err != nil {
@@ -427,9 +444,9 @@ func TestWire_DefaultConfig(t *testing.T) {
 			t.Fatalf("WriteJSON(status) = %v; want nil", err)
 		}
 
-		routing, err := loomrecipe.Routing(loomSegmentBudgets(c.cfg))
+		routing, err := loomrecipe.Routing(c.recipe, loomSegmentBudgets(c.cfg))
 		if err != nil {
-			t.Fatalf("loomrecipe.Routing(loomSegmentBudgets) = %v; want nil", err)
+			t.Fatalf("loomrecipe.Routing(c.recipe, loomSegmentBudgets) = %v; want nil", err)
 		}
 		projected, err := c.recipeRouting()
 		if err != nil {
@@ -445,7 +462,7 @@ func TestWire_DefaultConfig(t *testing.T) {
 
 		// The landing deps are filled at arm time, after wire(); the Publish and Finalize rows refuse to build without them.
 		c.env.Landing = envkit.LandingDeps(t.TempDir())
-		shed, err := loomrecipe.New(c.env, c.shedPaths)
+		shed, err := loomrecipe.New(c.recipe, c.env, c.shedPaths)
 		if err != nil {
 			t.Fatalf("loomrecipe.New(wired env) = %v; want nil", err)
 		}
@@ -671,7 +688,9 @@ func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
 	location := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
-	c.wireLightweight(location, location.AnchorPath())
+	if err := c.wireLightweight(location, location.AnchorPath()); err != nil {
+		t.Fatalf("wireLightweight() = %v; want nil", err)
+	}
 
 	if c.location != location {
 		t.Errorf("location = %v; want the told location", c.location)
@@ -717,18 +736,20 @@ func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
 	if c.env.Rework.ReadCommitted == nil {
 		t.Error("env.Rework.ReadCommitted = nil; want the committed-file seam validate-plan --rework reads")
 	}
-	// A tapestry run leaves the darn validate-discussion seams nil; a darn run fills both, still with no config load.
-	if c.env.DiscussionHistory != nil || c.env.CommitDiscussion != nil {
-		t.Error("a tapestry-recipe wireLightweight filled the darn discussion seams; want both nil")
+	// validate-discussion reads the history seam and the record row's engine on every recipe, still with no config load.
+	if c.env.DiscussionHistory == nil || c.env.RecordEngine != "DiscussionWrite" {
+		t.Errorf("tapestry wireLightweight: DiscussionHistory nil = %v, RecordEngine = %q; want the history seam and DiscussionWrite", c.env.DiscussionHistory == nil, c.env.RecordEngine)
 	}
 	darn := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
-	darn.wireLightweight(location, location.AnchorPath())
-	if darn.env.DiscussionHistory == nil || darn.env.CommitDiscussion == nil {
-		t.Error("a darn-recipe wireLightweight left a discussion seam nil; want the history and commit seams")
+	if err := darn.wireLightweight(location, location.AnchorPath()); err != nil {
+		t.Fatalf("darn wireLightweight() = %v; want nil", err)
 	}
-	// A darn run takes no PATTERN declaration, so its review rows are told no record.
-	if darn.env.PatternRecordPath != "" {
-		t.Errorf("darn env.PatternRecordPath = %q; want empty", darn.env.PatternRecordPath)
+	if darn.env.DiscussionHistory == nil || darn.env.RecordEngine != "RecordWrite" {
+		t.Errorf("darn wireLightweight: DiscussionHistory nil = %v, RecordEngine = %q; want the history seam and RecordWrite", darn.env.DiscussionHistory == nil, darn.env.RecordEngine)
+	}
+	// A darn run is told the record as its PATTERN declaration path, as every loom recipe is.
+	if darn.env.PatternRecordPath != loomengine.DiscussionDecisionRecord(location) {
+		t.Errorf("darn env.PatternRecordPath = %q; want %q", darn.env.PatternRecordPath, loomengine.DiscussionDecisionRecord(location))
 	}
 	// Nothing that a module config would have filled may be populated: that is what proves no load
 	// happened rather than merely that none failed.
@@ -788,32 +809,38 @@ func TestWire_FrictionDirFillsBurlerAndWebster(t *testing.T) {
 	}
 }
 
-// seedLoomConfigWithKeys overwrites <anchorPath>/_lym/config/loom.yaml with the embedded template, each key line's value replaced by its entry in values.
+// seedLoomConfigWithKeys overwrites <anchorPath>/_lym/config/loom.yaml and tapestry.yaml with their embedded templates, each key line's value replaced by its entry in values.
+// A key goes into whichever of the two templates holds it, and a key neither holds fails the test.
 func seedLoomConfigWithKeys(t *testing.T, anchorPath string, values map[string]string) {
 	t.Helper()
-	var contents strings.Builder
 	replaced := map[string]bool{}
-	for _, line := range strings.Split(loomengine.ConfigTemplate(), "\n") {
-		for key, value := range values {
-			if strings.HasPrefix(line, key+":") {
-				line = key + ": " + value
-				replaced[key] = true
+	for _, file := range []struct{ name, template string }{
+		{"loom.yaml", loomengine.ConfigTemplate()},
+		{"tapestry.yaml", loomengine.TapestryConfigTemplate()},
+	} {
+		var contents strings.Builder
+		for _, line := range strings.Split(strings.TrimSuffix(file.template, "\n"), "\n") {
+			for key, value := range values {
+				if strings.HasPrefix(line, key+":") {
+					line = key + ": " + value
+					replaced[key] = true
+				}
 			}
+			contents.WriteString(line + "\n")
 		}
-		contents.WriteString(line + "\n")
+		cfgPath := filepath.Join(anchorPath, "_lym", "config", file.name)
+		if err := os.WriteFile(cfgPath, []byte(contents.String()), 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
+		}
 	}
 	for key := range values {
 		if !replaced[key] {
-			t.Fatalf("key %q not present in loomengine.ConfigTemplate(); the fixture would silently test nothing", key)
+			t.Fatalf("key %q not present in the loom or tapestry template; the fixture would silently test nothing", key)
 		}
-	}
-	cfgPath := filepath.Join(anchorPath, "_lym", "config", "loom.yaml")
-	if err := os.WriteFile(cfgPath, []byte(contents.String()), 0o644); err != nil {
-		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
 	}
 }
 
-// TestWire_ReviewKeysReachTheEnv verifies the loom.yaml keys that tune a review round reach the Env:
+// TestWire_ReviewKeysReachTheEnv verifies the loom.yaml and tapestry.yaml keys that tune a review round reach the Env:
 // plan_reviewer_model lands in the Plan-Review segment's models alone, and Discussion-Review takes the template's per-round discussion_reviewer_model with the run-wide fix models.
 // Code-Review takes the template's own reviewer and fixer models (one sonnet entry of effort medium each).
 // plan_judge, seed and code_seed land in each segment's Bouncer pair.
@@ -874,6 +901,7 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	// Each loom segment's entry joins the models, keys and Bouncer pair with its resolved budget and hard cap:
 	// plan_max_bounces, code_max_bounces and plan_hard_max_bounces name their own keys, the rest fall back to the run-wide ones.
 	loomKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "loom", Key: key} }
+	tapestryKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "tapestry", Key: key} }
 	wantSegments := map[string]shedrecipe.SegmentSettings{
 		"Discussion-Review": {
 			Models: c.env.Segments["Discussion-Review"].Models, ReviewKey: loomKey("discussion_reviewer_model"), FixKey: loomKey("fixer_model"),
@@ -882,10 +910,10 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 			HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "loom.yaml",
 		},
 		"Plan-Review": {
-			Models: plan, ReviewKey: loomKey("plan_reviewer_model"), FixKey: loomKey("fixer_model"),
+			Models: plan, ReviewKey: tapestryKey("plan_reviewer_model"), FixKey: loomKey("fixer_model"),
 			Bouncer:    wantBouncerModels["Plan-Review"],
 			MaxBounces: 2, MaxBouncesKey: "plan_max_bounces",
-			HardMaxBounces: 5, HardMaxBouncesKey: "plan_hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "loom.yaml",
+			HardMaxBounces: 5, HardMaxBouncesKey: "plan_hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "tapestry.yaml",
 		},
 		"Code-Review": {
 			Models: c.env.Segments["Code-Review"].Models, ReviewKey: loomKey("code_reviewer_model"), FixKey: loomKey("code_fixer_model"),
@@ -927,12 +955,12 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	if webster.FixKey != loomKey("code_fixer_model") {
 		t.Errorf("Segments[Code-Review].FixKey = %+v; want code_fixer_model", webster.FixKey)
 	}
-	// Setting answers a loom key from the pair's resolved config.
+	// Setting answers a tapestry key from the pair's resolved config.
 	if fanned.env.Setting == nil {
 		t.Fatal("env.Setting = nil; want the told setting lookup")
 	}
-	if got, err := fanned.env.Setting("loom", "plan_reviewer_fan"); err != nil || got != "full" {
-		t.Errorf("env.Setting(loom, plan_reviewer_fan) = %v, %v; want full, nil", got, err)
+	if got, err := fanned.env.Setting("tapestry", "plan_reviewer_fan"); err != nil || got != "full" {
+		t.Errorf("env.Setting(tapestry, plan_reviewer_fan) = %v, %v; want full, nil", got, err)
 	}
 	if got := discussion.Models.Review; len(got) != 1 || got[0].Model != "opus" || got[0].Effort != "low" {
 		t.Errorf("Segments[Discussion-Review].Models.Review = %+v; want the discussion_reviewer_model entry, opus of effort low", got)
@@ -1034,12 +1062,17 @@ func TestWire_LanguageSkills(t *testing.T) {
 			if got := table.Chair().Skills; !slices.Equal(got, want) {
 				t.Errorf("darn writer skills = %v; want %v", got, want)
 			}
-			planTable, err := c.env.PlanTable()
+			// The plan table reads the plan perch's values, which only a recipe with a Plan-Review row applies, so a tapestry wiring over the same hub builds it.
+			tapestry := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeTapestry}
+			if err := tapestry.wire(loc, loc.AnchorPath()); err != nil {
+				t.Fatalf("wire() of a tapestry seed = %v; want nil", err)
+			}
+			planTable, err := tapestry.env.PlanTable()
 			if err != nil {
 				t.Fatalf("PlanTable() = %v; want nil", err)
 			}
-			if got := planTable.Values["gate_tiers"]; got != c.env.GateTiers {
-				t.Errorf("plan table gate_tiers = %q; want %q", got, c.env.GateTiers)
+			if got := planTable.Values["gate_tiers"]; got != tapestry.env.GateTiers {
+				t.Errorf("plan table gate_tiers = %q; want %q", got, tapestry.env.GateTiers)
 			}
 		})
 	}

@@ -31,7 +31,6 @@ import "github.com/Knatte18/loomyard/internal/shedverbs"
 // supervisor skill's.
 var InterruptPolicies = map[string]string{
 	NamePreflight:         shedverbs.InterruptPolicyReinvoke,
-	NameTapestryPreflight: shedverbs.InterruptPolicyReinvoke,
 	NameDiscussionWrite:   shedverbs.InterruptPolicyReinvoke,
 	NameDiscussionBouncer: shedverbs.InterruptPolicyReinvoke,
 	NamePlanWrite:         shedverbs.InterruptPolicyReinvoke,
@@ -53,6 +52,9 @@ var InterruptPolicies = map[string]string{
 	NamePlanBurlerFix:          shedverbs.InterruptPolicyReinvoke,
 	NameCodeBurlerReview:       shedverbs.InterruptPolicyReinvoke,
 	NameCodeBurlerFix:          shedverbs.InterruptPolicyReinvoke,
+
+	// Record-Write writes its files only when missing and commits the pair, so a re-invocation completes whatever a crash left.
+	NameRecordWrite: shedverbs.InterruptPolicyReinvoke,
 
 	// The two agent rows probe for a live chair and reattach to it, and Drift-Await spawns nothing.
 	NameDriftBaseline: shedverbs.InterruptPolicyReinvoke,

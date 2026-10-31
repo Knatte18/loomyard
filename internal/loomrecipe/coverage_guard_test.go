@@ -17,6 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // TestCoverageGuard_EveryLoomRowHasAnEngine asserts three things about the row-to-engine mapping read off wantProducerTable (shape_test.go) against New's real, current row list:
@@ -25,7 +26,7 @@ import (
 // and every engine name the table maps to resolves through shedrecipe.Lookup without error.
 func TestCoverageGuard_EveryLoomRowHasAnEngine(t *testing.T) {
 	env, paths := testEnv(t)
-	shed, err := New(env, paths)
+	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -55,7 +56,7 @@ func TestCoverageGuard_EveryLoomRowHasAnEngine(t *testing.T) {
 // does not resolve.
 func TestCoverageGuard_EveryDirectionFailsOnItsOwnTrigger(t *testing.T) {
 	env, paths := testEnv(t)
-	shed, err := New(env, paths)
+	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -115,7 +116,7 @@ func TestCoverageGuard_EveryDirectionFailsOnItsOwnTrigger(t *testing.T) {
 // A renamed row would therefore produce a producer whose logged identity disagrees with its row name.
 func TestCoverageGuard_MergeInAndFinalizeRowNamesMatchTheirProducerIdentity(t *testing.T) {
 	env, paths := testEnv(t)
-	shed, err := New(env, paths)
+	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}

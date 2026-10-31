@@ -146,14 +146,14 @@ func TestParseSeed(t *testing.T) {
 		})
 	}
 
-	t.Run("former beam recipe reads as pawl", func(t *testing.T) {
+	t.Run("a beam seed keeps the recipe it records", func(t *testing.T) {
 		t.Parallel()
 		seed, err := ParseSeed([]byte(`{"recipe":"beam"}`))
 		if err != nil {
 			t.Fatalf("ParseSeed(beam seed) error = %v; want nil", err)
 		}
-		if seed.Recipe != RecipePawl {
-			t.Errorf("ParseSeed(beam seed).Recipe = %q; want %q", seed.Recipe, RecipePawl)
+		if seed.Recipe != "beam" {
+			t.Errorf("ParseSeed(beam seed).Recipe = %q; want %q", seed.Recipe, "beam")
 		}
 	})
 }

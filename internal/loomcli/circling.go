@@ -191,7 +191,8 @@ func (s *circlingState) preRun(cmd *cobra.Command, args []string) error {
 }
 
 // perchHardCap returns the resolved hard cap of the Bouncer row's perch and the way forward that raises it, by the layer its value comes from.
-// Every perch's cap is in loom.yaml, a darn run's Code-Review perch's included, and a load failure of that file is returned as is.
+// Every perch's cap is in loom.yaml, a darn run's Code-Review perch's included, bar the plan perch's own, which tapestry.yaml holds: the cap of Plan-Bouncer is tapestry.yaml's plan_hard_max_bounces, or loom.yaml's review_hard_max_bounces while that is 0.
+// The way forward is routed through the module that owns the key the cap resolves from, and a load failure of either file is returned as is.
 func perchHardCap(location *lymcwd.Location, row string) (int, string, error) {
 	dirs := fabricengine.ConfigDirs(location)
 	perch, ok := loomPerches[row]
@@ -202,8 +203,19 @@ func perchHardCap(location *lymcwd.Location, row string) (int, string, error) {
 	if err != nil {
 		return 0, "", err
 	}
+	if perch == loomengine.PerchPlan {
+		tapestry, err := loomengine.LoadTapestryConfig(dirs, "tapestry")
+		if err != nil {
+			return 0, "", err
+		}
+		cfg = cfg.WithTapestry(tapestry)
+	}
 	caps := cfg.Caps(perch)
-	raise, err := reviewbudget.Route(dirs, loomengine.ConfigSpec(), caps.HardKey)
+	owner := loomengine.ConfigSpec()
+	if caps.HardKey == reviewbudget.HardKey(string(loomengine.PerchPlan)) {
+		owner = loomengine.TapestryConfigSpec()
+	}
+	raise, err := reviewbudget.Route(dirs, owner, caps.HardKey)
 	if err != nil {
 		return 0, "", err
 	}

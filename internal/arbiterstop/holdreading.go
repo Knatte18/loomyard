@@ -62,20 +62,12 @@ func HoldReading(location *lymcwd.Location, status shedengine.Status) (battenshe
 		return battenshed.ChildArbiterStop{}, nil
 	}
 
-	seed, _, err := shedrun.ReadSeed(location, shedrun.SelfRunID)
-	if err != nil {
-		return battenshed.ChildArbiterStop{}, err
-	}
 	dirs := fabricengine.ConfigDirs(location)
 	shedConfig, err := sheddriver.LoadConfig(dirs)
 	if err != nil {
 		return battenshed.ChildArbiterStop{}, err
 	}
-	override, err := loomengine.RecipeOverride(dirs, seed.Recipe)
-	if err != nil {
-		return battenshed.ChildArbiterStop{}, err
-	}
-	timeout, maxSpawns := sheddriver.ArbiterLimits(shedConfig, override)
+	timeout, maxSpawns := sheddriver.ArbiterLimits(shedConfig, sheddriver.Override{})
 	if err := listAttempts(); err != nil {
 		return battenshed.ChildArbiterStop{}, err
 	}

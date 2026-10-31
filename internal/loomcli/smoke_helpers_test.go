@@ -183,12 +183,12 @@ func seedGoDriverRun(t *testing.T, loc *lymcwd.Location) {
 		t.Fatalf("WriteSeed(go driver): %v", err)
 	}
 	// Turns the tackler and the arbiter off, so a go-driven halt such as a failing Preflight hands back with no agent spawned and a tmux-tier smoke run reaches no LLM.
-	localPath := configengine.LocalFile(loc.AnchorPath(), "loom")
+	localPath := configengine.LocalFile(loc.AnchorPath(), "shed")
 	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
-		t.Fatalf("create the loom local layer directory: %v", err)
+		t.Fatalf("create the shed local layer directory: %v", err)
 	}
 	if err := os.WriteFile(localPath, []byte("tackler_max_spawns: 0\narbiter_max_spawns: 0\n"), 0o644); err != nil {
-		t.Fatalf("write the loom local layer: %v", err)
+		t.Fatalf("write the shed local layer: %v", err)
 	}
 }
 

@@ -327,6 +327,13 @@ func TestValidate_MissingHeadings(t *testing.T) {
 	}
 
 	several := []string{requiredDiscussionSections[0], requiredDiscussionSections[2], requiredDiscussionSections[5]}
+	const goal, decisions, openRisks = "## Goal", "## Decisions", "## Open risks"
+	var afterGoal strings.Builder
+	var afterGoalHeadings []string
+	for _, h := range requiredDiscussionSections[1:] {
+		afterGoal.WriteString(h + "\n\nbody text.\n\n")
+		afterGoalHeadings = append(afterGoalHeadings, h)
+	}
 	tests := []struct {
 		name        string
 		content     string
@@ -334,6 +341,33 @@ func TestValidate_MissingHeadings(t *testing.T) {
 	}{
 		{name: "several at once", content: sectionsWithout(several...), wantMissing: several},
 		{name: "in a fence or mid-sentence", content: hidden.String(), wantMissing: []string{fenced, midSentence}},
+		{
+			name:        "only Open risks line sits inside a fence",
+			content:     sectionsWithout(openRisks) + "```\n" + openRisks + "\n```\n",
+			wantMissing: []string{openRisks},
+		},
+		{
+			name:    "an info-string run inside an open fence is body text",
+			content: goal + "\n\n````\n```js\n" + decisions + "\n````\n\n" + allSectionsContent(),
+		},
+		{
+			name:        "an unclosed fence hides every later section",
+			content:     goal + "\n\n```\n" + afterGoal.String(),
+			wantMissing: afterGoalHeadings,
+		},
+		{
+			name:    "a line indented four spaces opens no fence",
+			content: "    ```\n" + allSectionsContent(),
+		},
+		{
+			name:    "a backtick run whose info string holds a backtick opens no fence",
+			content: sectionsWithout(decisions) + "```a`b\n" + decisions + "\n\nbody text.\n",
+		},
+		{
+			name:        "a run of the other character does not close a fence",
+			content:     sectionsWithout(decisions) + "```\n~~~\n" + decisions + "\n```\n",
+			wantMissing: []string{decisions},
+		},
 	}
 	for _, missing := range requiredDiscussionSections {
 		tests = append(tests, struct {

@@ -122,6 +122,15 @@ func RunDir(l *lymcwd.Location, runID string) string {
 	return filepath.Join(l.AnchorPath(), lymdirs.LymDirName, shedDirName, runSegment(l, runID))
 }
 
+// StopMarkerFileName is the filename of a run's writer stop marker, whose path StopMarker returns.
+const StopMarkerFileName = "stop-marker"
+
+// StopMarker returns the path to the marker a run's writer creates to say it stopped instead of making the change, StopMarkerFileName under RunDir(l, runID).
+// The run's producer removes it before each spawn and reads its presence after the session as a halt.
+func StopMarker(l *lymcwd.Location, runID string) string {
+	return filepath.Join(RunDir(l, runID), StopMarkerFileName)
+}
+
 // SeedFile returns the path to a run's durable seed.json, under RunDir(l, runID).
 func SeedFile(l *lymcwd.Location, runID string) string {
 	return filepath.Join(RunDir(l, runID), "seed.json")

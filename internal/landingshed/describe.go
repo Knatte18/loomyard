@@ -1,12 +1,15 @@
 // describe.go implements the Describe row's two halves.
-// DescribeTable and DarnDescribeTable are the pure builders that turn the row's told values into a seatengine.Table: the stencil, the model resolved from landing.yaml's describe key, and the one description file the session writes.
+// DescribeTable is the builder that turns the row's told values into a seatengine.Table: the stencil, the model resolved from landing.yaml's describe key, and the one description file the session writes.
 // NewDescriptionGate is the mechanical gate over that file.
 // Neither derives a path of its own (Told-Geometry Invariant).
 
 package landingshed
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"strings"
 	"time"
 
@@ -53,13 +56,14 @@ const describeRole = "describe"
 // describeSkills are the skills the Describe session loads before its prompt.
 var describeSkills = []string{"scribe:prose"}
 
-// DescribeInputs carries the told values one Describe session needs. Every field is required.
+// DescribeInputs carries the told values one Describe session needs. Every field but the run record paths is required.
 type DescribeInputs struct {
 	// StencilsDir is the absolute directory the landing stencils are read from.
 	StencilsDir string
 	// DecisionRecordPath is the run's decision record, which the agent reads.
 	DecisionRecordPath string
 	// RunRecordPath is the live generation's webster summary.md, read only for manual-check items.
+	// Optional: a run with no such record tells a path that does not exist, or none.
 	RunRecordPath string
 	// PriorRunRecordPaths are the summary.md files of the generations a rework round retired, oldest first.
 	// Optional: empty when no round has run.
@@ -76,41 +80,32 @@ type DescribeInputs struct {
 	Slug string
 }
 
-// runRecordBullets renders one bullet per run record: every prior generation oldest first, then the live record.
-func runRecordBullets(in DescribeInputs) string {
+// runRecordBullets renders one bullet per run record that exists on disk: every prior generation oldest first, then the live record.
+// A path that does not exist is skipped, and the single line `  - (none)` stands in when no record exists.
+// A stat error other than not-exist is returned.
+func runRecordBullets(in DescribeInputs) (string, error) {
 	paths := append(append([]string{}, in.PriorRunRecordPaths...), in.RunRecordPath)
-	lines := make([]string, len(paths))
-	for i, p := range paths {
-		lines[i] = "  - `" + p + "`"
+	var lines []string
+	for _, p := range paths {
+		if p == "" {
+			continue
+		}
+		if _, err := os.Stat(p); errors.Is(err, fs.ErrNotExist) {
+			continue
+		} else if err != nil {
+			return "", fmt.Errorf("stat run record %s: %w", p, err)
+		}
+		lines = append(lines, "  - `"+p+"`")
 	}
-	return strings.Join(lines, "\n")
-}
-
-// darnDescribeStencilName is the registered name of the darn recipe's Describe prompt.
-const darnDescribeStencilName = "landing-template-describe-darn"
-
-// DarnDescribeInputs carries the told values one Describe session of a darn run needs. Every field is required.
-type DarnDescribeInputs struct {
-	// StencilsDir is the absolute directory the landing stencils are read from.
-	StencilsDir string
-	// ReviewDir is the review perch's run directory, read only for the findings of a round the review passed unconverged.
-	ReviewDir string
-	// DecisionRecordPath is the decision record the darn writer wrote, read beside the board entry for the scope and decisions the description covers.
-	DecisionRecordPath string
-	// DescriptionPath is the file the agent writes: the change description.
-	DescriptionPath string
-	// TaskBranch is the branch whose diff the description covers.
-	TaskBranch string
-	// ParentBranch is the branch the task lands on.
-	ParentBranch string
-	// MergeBase is the commit the task's diff is taken from: the merge base of the task branch with the parent tip the task last merged.
-	MergeBase string
-	// Slug is the task's slug, the key for `lym board get`.
-	Slug string
+	if len(lines) == 0 {
+		return "  - (none)", nil
+	}
+	return strings.Join(lines, "\n"), nil
 }
 
 // DescribeTable builds the seatengine.Table of the Describe session: one lead that writes the change description.
-// An empty input field other than ParentName and PriorRunRecordPaths is an error naming the field, and so is a stencil missing from in.StencilsDir, so a mis-wired closure fails before the row runs rather than rendering a blank path into the prompt.
+// An empty input field other than RunRecordPath and PriorRunRecordPaths is an error naming the field, and so is a stencil missing from in.StencilsDir, so a mis-wired closure fails before the row runs rather than rendering a blank path into the prompt.
+// A run record that does not exist is left out of the prompt, and a stat error on one is returned.
 // The table's values are the stencil's markers; the seat engine renders the parent and edit directives from its geometry.
 // The table carries no gate; the producer entry sets it.
 // Segment is the describe segment, because the session writes the pull request description.
@@ -118,7 +113,6 @@ func DescribeTable(in DescribeInputs, cfg Config, reg modelspec.Registry) (seate
 	required := []struct{ name, value string }{
 		{"StencilsDir", in.StencilsDir},
 		{"DecisionRecordPath", in.DecisionRecordPath},
-		{"RunRecordPath", in.RunRecordPath},
 		{"DescriptionPath", in.DescriptionPath},
 		{"TaskBranch", in.TaskBranch},
 		{"ParentBranch", in.ParentBranch},
@@ -134,10 +128,15 @@ func DescribeTable(in DescribeInputs, cfg Config, reg modelspec.Registry) (seate
 		return seatengine.Table{}, fmt.Errorf("landingshed: DescribeTable: %w", err)
 	}
 
+	runRecords, err := runRecordBullets(in)
+	if err != nil {
+		return seatengine.Table{}, fmt.Errorf("landingshed: DescribeTable: %w", err)
+	}
+
 	table, err := describeSessionTable(describeStencilName, in.DescriptionPath, map[string]string{
 		"slug":                 in.Slug,
 		"decision_record_path": in.DecisionRecordPath,
-		"run_record_paths":     runRecordBullets(in),
+		"run_record_paths":     runRecords,
 		"description_path":     in.DescriptionPath,
 		"task_branch":          in.TaskBranch,
 		"parent_branch":        in.ParentBranch,
@@ -145,44 +144,6 @@ func DescribeTable(in DescribeInputs, cfg Config, reg modelspec.Registry) (seate
 	}, cfg, reg)
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("landingshed: DescribeTable: %w", err)
-	}
-
-	return table, nil
-}
-
-// DarnDescribeTable builds the seatengine.Table of the Describe session of a darn run, which describes the diff from the board entry and the decision record, and still reads no run record.
-// It is DescribeTable's twin in every other respect: the model and timeout come from cfg's describe keys, the role, segment and skills are the same, and an empty required field or a missing stencil is an error.
-func DarnDescribeTable(in DarnDescribeInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
-	required := []struct{ name, value string }{
-		{"StencilsDir", in.StencilsDir},
-		{"ReviewDir", in.ReviewDir},
-		{"DecisionRecordPath", in.DecisionRecordPath},
-		{"DescriptionPath", in.DescriptionPath},
-		{"TaskBranch", in.TaskBranch},
-		{"ParentBranch", in.ParentBranch},
-		{"MergeBase", in.MergeBase},
-		{"Slug", in.Slug},
-	}
-	for _, r := range required {
-		if r.value == "" {
-			return seatengine.Table{}, fmt.Errorf("landingshed: DarnDescribeTable: %s is empty", r.name)
-		}
-	}
-	if _, err := stencilstore.Read(in.StencilsDir, darnDescribeStencilName); err != nil {
-		return seatengine.Table{}, fmt.Errorf("landingshed: DarnDescribeTable: %w", err)
-	}
-
-	table, err := describeSessionTable(darnDescribeStencilName, in.DescriptionPath, map[string]string{
-		"slug":                 in.Slug,
-		"review_dir":           in.ReviewDir,
-		"decision_record_path": in.DecisionRecordPath,
-		"description_path":     in.DescriptionPath,
-		"task_branch":          in.TaskBranch,
-		"parent_branch":        in.ParentBranch,
-		"merge_base":           in.MergeBase,
-	}, cfg, reg)
-	if err != nil {
-		return seatengine.Table{}, fmt.Errorf("landingshed: DarnDescribeTable: %w", err)
 	}
 
 	return table, nil

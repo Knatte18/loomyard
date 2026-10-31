@@ -1,12 +1,14 @@
-// preflight.go implements NewPreflight, the general Preflight producer: a content-free
+// preflight.go implements NewPreflight and NewPreflightWithBatcher, the general Preflight producer: a content-free
 // shedengine.ShedProducer wrapping internal/preflight.Check, constructed with a told name and cwd.
 
 package preflightshed
 
 import (
 	"context"
+	"errors"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -61,12 +63,22 @@ func wayForward(report preflight.Report) string {
 // preflightProducer is the general Preflight producer: it wraps preflight.Check, mapping its
 // determined Report onto shedengine's contract.
 type preflightProducer struct {
-	name string
-	cwd  string
-	opts hubreconcile.Options
+	name    string
+	cwd     string
+	opts    hubreconcile.Options
+	batcher func() error
 }
 
 var _ shedengine.ShedProducer = (*preflightProducer)(nil)
+
+// batchifierReasonPrefix leads the Stuck reason of a failed batcher check; the error text follows.
+const batchifierReasonPrefix = "active batchifier did not resolve: "
+
+// batchifierWayForward closes that reason; the fault sits in batcher.yaml, so the operator fixes it there.
+const batchifierWayForward = "; way forward: fix batcher.yaml (its active: key or the profile it names), then re-step"
+
+// retiredKeyWayForward completes the way forward a retired-key error already ends with, running either lym config reconcile --apply, which migrates a worktree or local file, or lym fabric reconcile for the repo default.
+const retiredKeyWayForward = ", then re-step"
 
 // NewPreflight returns a shedengine.ShedProducer that validates cwd via preflight.Check.
 //
@@ -74,12 +86,42 @@ var _ shedengine.ShedProducer = (*preflightProducer)(nil)
 // Per internal/shedadapters' own package doc, the name is used only as a log field and in error
 // text -- never compared, parsed, or used for control flow.
 func NewPreflight(name, cwd string) shedengine.ShedProducer {
-	return newPreflightWith(name, cwd, hubreconcile.Options{})
+	return NewPreflightWithBatcher(name, cwd, nil)
+}
+
+// NewPreflightWithBatcher returns the Preflight producer with an optional batcher check.
+// A non-nil batcher runs after the hub reconcile and before preflight.Check, so a broken batcher.yaml stops the run before any agent spends tokens;
+// its error maps to Stuck with the batchifier reason and its way forward.
+// A nil batcher runs no check.
+func NewPreflightWithBatcher(name, cwd string, batcher func() error) shedengine.ShedProducer {
+	return &preflightProducer{name: name, cwd: cwd, batcher: batcher}
 }
 
 // newPreflightWith is NewPreflight with told options for the hub config reconcile that runs ahead of the check.
 func newPreflightWith(name, cwd string, opts hubreconcile.Options) shedengine.ShedProducer {
 	return &preflightProducer{name: name, cwd: cwd, opts: opts}
+}
+
+// batcherFailure runs the told batcher check and returns the Stuck reason for its failure, or "" when it passed or none is told.
+// A retired-key error closes with the reconcile way forward its own text already carries, any other with the fix-batcher.yaml one.
+// A cancelled context wins over the failure and comes back as the error.
+func (p *preflightProducer) batcherFailure(ctx context.Context) (string, error) {
+	if p.batcher == nil {
+		return "", nil
+	}
+	berr := p.batcher()
+	if berr == nil {
+		return "", nil
+	}
+	if cerr := cancelErr(ctx, p.name); cerr != nil {
+		return "", cerr
+	}
+	logger.Warn("preflightshed: batcher.yaml did not load", "producer", p.name, "cwd", p.cwd, "cause", berr)
+	wayForward := batchifierWayForward
+	if errors.Is(berr, batcher.ErrRetiredKey) {
+		wayForward = retiredKeyWayForward
+	}
+	return batchifierReasonPrefix + berr.Error() + wayForward, nil
 }
 
 // reconcileHub reconciles the hub's config when the build stamp is stale, and does nothing for a repository outside a hub.
@@ -112,6 +154,14 @@ func (p *preflightProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 	p.reconcileHub()
 	if cerr := cancelErr(ctx, p.name); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr
+	}
+
+	reason, err := p.batcherFailure(ctx)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
+	if reason != "" {
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 	}
 
 	report, _, err := preflight.Check(p.cwd)

@@ -27,7 +27,7 @@ const batchifierWayForward = "; way forward: fix batcher.yaml (its active: key o
 // shedadapters.WebsterProducer once the active batchifier is resolved.
 //
 // Batching is the implementer's own concern, so the producer resolves the batchifier itself at the start of every Call rather than taking one at construction:
-// a resumed run re-resolves it in the new process, and a config changed since Tapestry-Preflight loaded it is the config Webster partitions the plan with.
+// a resumed run re-resolves it in the new process, and a config changed since Preflight loaded it is the config Webster partitions the plan with.
 type websterProducer struct {
 	name   string
 	dirs   configengine.Dirs
@@ -52,7 +52,7 @@ func NewWebsterProducer(name string, dirs configengine.Dirs, run shedadapters.We
 // the resolved value into a copy of w.deps, constructs a shedadapters.WebsterProducer over the
 // result, and delegates to that producer's own Call.
 //
-// A batcher.Active error here maps to shedengine.Stuck, never to a returned error -- identically to Tapestry-Preflight's batcher.yaml check.
+// A batcher.Active error here maps to shedengine.Stuck, never to a returned error -- identically to Preflight's batcher.yaml check.
 // The two outcomes differ materially in shedengine.Run:
 // Stuck under OnStuck: "" persists blocked and returns RunBlocked, which a human resumes after fixing the config, whereas returning the error persists failed and aborts the run.
 // The same fault must not end the run one way before Webster and another way at Webster.
@@ -66,10 +66,10 @@ func (w *websterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 		if cerr := cancelErr(ctx, w.name); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
 		}
-		// Surfaced rather than discarded, exactly as Tapestry-Preflight surfaces the identical
+		// Surfaced rather than discarded, exactly as Preflight surfaces the identical
 		// failure. This row carries no OnStuck, so its Stuck halts the run for a human, and
 		// the resolved-batchifier fault is the sort that reaches this row only when the config
-		// changed after Tapestry-Preflight already passed -- which is precisely the case an operator will not
+		// changed after Preflight already passed -- which is precisely the case an operator will not
 		// guess without being told. The cause is returned as the row's reason, which reaches the
 		// persisted error and activity.wait, and also logged.
 		logger.Warn("loomshed: active batchifier did not resolve", "producer", w.name, "anchorPath", w.dirs.Anchor, "cause", err)

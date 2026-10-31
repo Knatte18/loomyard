@@ -1,13 +1,14 @@
 // Package darnengine owns the darn recipe's hub-wide configuration and the tree scope classification every darn verify site reads.
 //
-// `darn.yaml` is a hub-wide config module with these keys: `writer`, the model-spec of the darn writer's session; `writer_timeout_min`, its wall-clock budget in minutes; `tree_scope`, the key that lets a diff wholly under the hub's non-production trees run a narrower set of targets, described in the tree scope paragraph below; `verify_attempts`, how many times a verify gate, the writer's or a Code-Review fix round's, re-prompts its session before it halts the run for the parent; and the shed driver and tackler overrides.
+// `darn.yaml` is a hub-wide config module with these keys: `writer`, the model-spec of the darn writer's session; `writer_timeout_min`, its wall-clock budget in minutes; `tree_scope`, the key that lets a diff wholly under the hub's non-production trees run a narrower set of targets, described in the tree scope paragraph below; `verify_attempts`, how many times a verify gate, the writer's or a Code-Review fix round's, re-prompts its session before it halts the run for the parent.
 // The darn recipe's Code-Review perch takes its models, fans, budgets and auto-accept flag from `loom.yaml`'s Code-Review keys, as loom's does, so darn.yaml holds none of them.
 // The retired `verify` key, once the hub's whole verify command, is dropped at load and pruned by `lym config reconcile`: the hub's `landing` gate in `gate.yaml` replaces it.
+// The driver, tackler and arbiter keys that once overrode `shed.yaml` here are retired: `shed.yaml` holds them alone, a hub file that still sets one loads with the value dropped, and a local file, profile block or `run_settings` object that sets one is refused with the way forward of setting it under the `shed` module.
 // The retired `tree_scope_verify` key is dropped at load too, and MigrateConfig, darn's reconcile migration, prunes it while it is still in the hub file:
 // held empty it empties `tree_scope` so an off hub stays off, and held set it keeps `tree_scope`.
 // A hub file without the key is left alone, so trees the operator adds later are never touched.
 // The module is hub-wide, so a task cannot weaken `tree_scope` through its own tree, and `lym config darn --set` writes it from the prime.
-// LoadConfig loads the file strictly and validates the `writer` model-spec and the shed overrides at load time, leaving `verify_attempts` to its reader.
+// LoadConfig loads the file strictly and validates the `writer` model-spec at load time, leaving `verify_attempts` to its reader.
 //
 // Tree scope lets a diff wholly under the hub's non-production trees run each darn verify site's own gate key over the touched trees' targets, in place of the key's scope.
 // `tree_scope` maps a worktree-relative tree path to the test target the tree contributes, an empty target meaning the tree has no tests of its own.
@@ -23,8 +24,9 @@
 // A tree-scoped diff gets no whole-module run before it lands, so a break outside the listed trees that neither the trees' tests nor the guard-marked scans exercise can reach the parent; the bound is what the hub lists as non-production.
 //
 // DarnTable composes the darn writer's session as a one-seat seat table, from a DarnInputs the caller tells it, the resolved Config and a model registry.
-// The lead reads the board entry named by the slug, writes and validates the decision record and support log at the two told paths before it changes code, and follows the record's `Added after Discussion` entries over the board entry's body.
-// It then edits and tests the repository, commits on the task branch, and writes the change description at the told path in the format the final-summary spec defines.
+// The lead reads the decision record at the told path as its scope, the board entry's body under `## Goal` with the record's `Added after Discussion` entries over it, and writes neither the record nor the support log.
+// It checks that no landed work or other entry overtook the board entry, then edits and tests the repository, commits on the task branch, and writes the change description at the told path in the format the final-summary spec defines.
+// A lead that finds the entry outdated writes a stop report as its description and creates the marker at the told stop marker path, and the producer halts the run on the marker.
 // It is non-interactive, carries the description as its one output file, and renders `(none)` for prior work the spawn has nothing to tell for.
 // A spawn that continues earlier work is told so through that value, and its stencil continues from the commits already on the task branch.
 // The seat engine renders the parent and edit directives, so DarnTable reads no parent name.

@@ -18,8 +18,9 @@ const (
 	PerchCode Perch = "code"
 )
 
-// reviewPerches lists the loom review perches, the one place ConfigSpec, LoadConfig and ValidateLocalValues take them from.
-var reviewPerches = []Perch{PerchDiscussion, PerchPlan, PerchCode}
+// reviewPerches lists the review perches loom.yaml holds, the one place ConfigSpec, LoadConfig and ValidateLocalValues take them from.
+// The plan perch's keys live in tapestry.yaml.
+var reviewPerches = []Perch{PerchDiscussion, PerchCode}
 
 // reviewPerchNames returns reviewPerches' names as reviewbudget takes them.
 func reviewPerchNames() []string {

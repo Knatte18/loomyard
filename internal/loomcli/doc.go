@@ -7,12 +7,25 @@
 // It records the state the status file holds after the stop, which stays `paused` for a step that died before its resume write over a paused run,
 // and an error the status file holds that the stop did not write, such as the step's own producer failure, on a `status error:` line of its reason.
 //
+// A loom run's shed and routing come from one recipe-keyed builder in `internal/loomrecipe`, `loomrecipe.New` and `loomrecipe.Routing`, taking the run's recipe name; the pawl recipe keeps its own builder.
+// The row names a run parked under an old recipe may still carry are that recipe's retired-row data, read through `loomrecipe.RetiredRows`: arming renames them in the status file with no branch on the recipe name, and a recipe with none renames nothing.
+//
+// The wiring branches on the recipe's rows and keys, never its name, through the `loomrecipe` accessors on the run's recipe, an empty recipe reading as tapestry.
+// The verify source follows the recipe's `verify_source` key, the Darn-Write seams are filled for a recipe with a Darn-Write row, and the merge fixer's plan directory and failure tracer follow a Plan-Write row.
+// Every loom recipe's review rows are told the decision record as the PATTERN declaration path, and a loom recipe holds a landing's escalate halt for the arbiter first.
+//
+// The `lym loom` verbs serve loom runs only.
+// `arm`, the subtree's entry, sets `loomPath` before `armAt` and `armAt` then refuses, right after the recipe is resolved and before any wiring, a recipe `loomrecipe.ServedByLoom` does not admit: an embedded non-loom recipe is refused naming the `lym shed` verbs, and a seed naming no embedded recipe naming the re-seed.
+// It then refuses `validate-plan`, `insert-card`, `remove-card` and `restore-renumber` on a recipe with no Plan-Write row, which has no plan.
+// The target resolver the `circling` and `decision` groups share judges the target's own seed recipe the same way.
+// `ArmAt`, which `lym shed` shares, leaves `loomPath` false and never refuses a recipe, and `lym loom checklist` is exempt, being a read-only pane the pre-run never arms.
+//
 // A run seeded with the recipe `pawl` is a beam's life, batten's Seed-Child seeds it in the beam's pair.
 // Its shed reads Preflight, Beam-Up, Beam-Await, Parent-Align, the Code-Review perch, Beam-Describe, PR-Review, Finalize and Beam-Down, with no plan and no reroute edge.
 // wire fills `Env.Pawl` for it through `pawlDeps`: the run's seed id is the seed's start time, the status is written on the beam's project entry through the board, and Beam-Up's one step is `orchcli.BeamUp` with no prepare, since the run already judged origin.
 // The beam's dobby is stopped through `runproc.EndRole` by its `RoleDobby` record, and restarted through `dobbyengine.EnsureLive` naming the beam alone.
 // Beam-Await's re-check reads `battencli.ReadBeamLandBlockers` and `battencli.BeamLandRefusal` with the beam's owner, its parent's owner and the beam's ready record, and words each failure as `pawlRecheckLines` does, naming `lym adopt <beam>` or the parent's adopt subject, `root` for the prime, and `lym beam ready <slug>` for a beam not flagged ready.
-// Its snapshot is the beam project entry's, written and committed because the Code-Review perch reads its answer key from the committed tree.
+// Its snapshot is the beam project entry's, written and committed because the Code-Review perch reads its answer key from the committed tree; a darn run writes none, its perch measuring against the decision record.
 // A running shed also watches the land request's directory, so a request wakes Beam-Await at once.
 // Beam-Describe writes the change description from the beam's board entry and the commits the beam adds over the parent branch its pair records.
 // The perch's budget is `loom.yaml`'s Code-Review one, and a budget of 0 turns Parent-Align's review off as for a tapestry run.
@@ -23,7 +36,7 @@
 //
 // `lym loom start` works in order.
 // It resolves the recorded parent branch, seeds the status file when absent and commits the seed into the fabric before anything else touches it.
-// An unseeded run is seeded with the driver `loom.yaml`'s `driver_kind` resolves to over `shed.yaml`'s, `llm` by default;
+// An unseeded run is seeded with the driver `shed.yaml`'s `driver_kind` and its layers resolve to, `llm` by default;
 // a seeded run keeps its recorded driver whatever the key says later.
 // It brings up the worktree's tmux session;
 // it ensures the status strand on either driver, and the per-hub watchdog daemon is spawned best-effort.
@@ -145,7 +158,7 @@
 //
 // `lym loom arbiter <run-id> --envelope <path> [--report <path>]` is run only by the run's driver, at a stop it cannot settle.
 // It spawns a cold arbiter agent on the `arbiter` model through shuttle, waits for its verdict file and prints the validated verdict.
-// The arbiter's model, timeout and spawn budget are `shed.yaml`'s `arbiter`, `arbiter_timeout_min` and `arbiter_max_spawns` under the run's recipe override, `darn.yaml`'s for a darn run and `loom.yaml`'s otherwise.
+// The arbiter's model, timeout and spawn budget are `shed.yaml`'s `arbiter`, `arbiter_timeout_min` and `arbiter_max_spawns` and their layers, a loom recipe's own values coming through its profile block's `shed` object.
 // It is a role verb, so the orch's command index leaves it out.
 // The verb's body is `internal/shedarbiter`'s: the call, the prompt, the launch spec, the verdict gate and the consumption of a resume are that package's, and this package fills its deps with loom's seams.
 //
@@ -253,12 +266,13 @@
 // An agent in one pair uses them to compare its run with the others without forming another worktree's path itself.
 //
 // The peer set is every board task whose status is a run status, whatever the run's state, with the caller's own slug left out.
-// Each peer line carries `slug`, `title`, `status`, `row` (the 1-based position of the status's producer in the tapestry recipe the binary embeds, 0 when it names no row), `parent_branch`, `changed_paths` (the committed paths between the peer's merge base with its parent branch and its head), `decision_record` and `plan` (whether the peer holds them) and `unreadable`.
+// Each peer line carries `slug`, `title`, `status`, `row` (the 1-based position of the status's producer in the peer's own recipe, 0 when it names no row), `parent_branch`, `changed_paths` (the committed paths between the peer's merge base with its parent branch and its head), `decision_record` and `plan` (whether the peer holds them) and `unreadable`.
+// A peer's own recipe is the one its worktree's self-run seed records when the worktree is on this machine, and otherwise the one the board entry seeds: pawl for a project entry, else its `recipe` field, empty meaning tapestry; a recipe that names no embedded recipe gives row 0.
 // A peer whose pair, origin record, branch or records cannot be read is listed with that reason in `unreadable`, never dropped and never an error.
 // From a task pair the list also carries `own_row`, the caller's own position by the same rule, 0 when the caller has no board task, and `parent_commits`, the commits on the pair's parent branch since the pair forked, as short SHA and subject, newest first; the prime has none.
 // Both verbs refuse in a hub with no board, and `show` refuses an unknown slug, a task holding no run status, the caller's own slug, an unknown record name and a record the peer lacks, each naming its way forward.
 //
-// The verbs write nothing and read only the board, the peers' two records and git history through `internal/fabricengine`.
+// The verbs write nothing and read only the board, the peers' two records and self-run seed and git history through `internal/fabricengine`.
 // They resolve the location through `lymcwd` in the group's own pre-run, as the `review` and `decision` groups do; every loom verb is hub-only, so `internal/cliwire` does not apply.
 // A bare `lym loom peers` outside a lym worktree lists the group's verbs instead of resolving.
 //
@@ -267,7 +281,7 @@
 // `lym loom decision add --amends-plan` records a decision that amends the approved plan:
 // besides the entry, the call appends the title of each entry to the tracked plan amendment record, a `--from` batch appending every title in input order, and one commit lands the entries and the amendment record.
 // The commit pathspec of the discussion artifacts names the record when it exists or git tracks it, and nothing otherwise, so git is never handed a pathspec matching nothing.
-// The flag is refused on a darn run, which has no plan to amend, and while the current generation has no approved plan;
+// The flag is refused on a recipe with no Plan-Write row, which has no plan to amend, and while the current generation has no approved plan;
 // a plan that does not parse is refused naming `lym loom validate-plan`, and a plan or record read failure is refused with the verb's retry way forward.
 // Both refusals tell the caller to record the decision without the flag, since Plan-Write and Plan-Review read the decision record.
 // After a successful call the parent runs `lym loom goto --to Plan-Burler-Review` and `lym loom resume`.
@@ -296,6 +310,9 @@
 // It is the merge base of HEAD with the parent tip the merge record names, since the local parent branch can lag a tip the task merged.
 // With no merge record, or one that cannot be decoded and is logged at Warn, it falls back to the merge base with the local parent branch.
 //
+// Every loom recipe builds its Describe session from one `landingshed.DescribeTable`, which lists the run records that exist and renders `(none)` for a run that has none, as a darn run has no webster summary.
+// One `commitDescription` commits the landing directory for the Describe row and for the Darn-Write row, so every loom recipe has one description commit.
+//
 // # The recorded driver's one reading site
 //
 // A recorded seed driver value is read only in a recipe's bootstrap verbs: loom's start and resume, and `lym loom drive`'s own package.
@@ -306,7 +323,7 @@
 // A refusal decided by the recorded value alone, with nothing typed to compare it against, stays barred.
 // The rule governs the read, not the vocabulary: the driver constants are named at the seeding sites, which validate a flag before a seed exists.
 // Those constant consumers are the shed CLI's seed command, batten's flag validation in internal/battencli/arm.go, batten's child-driver reader in internal/battencli/wire.go, and loom's seed writer in sharedbootstrap.go.
-// The seed writer reads the recipe's driver_kind override, then shed.yaml's, only at seeding.
+// The seed writer reads `shed.yaml`'s driver_kind and its layers only at seeding, a loom recipe's own value coming through its profile block's `shed` object.
 // internal/sheddriver reads no seed driver field.
 //
 // bootstrap_test.go is a tripwire, not a completeness proof:

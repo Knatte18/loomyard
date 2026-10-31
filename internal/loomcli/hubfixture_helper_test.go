@@ -35,6 +35,20 @@ func seedLoomConfig(t *testing.T, anchorPath string) {
 	}
 }
 
+// seedTapestryConfig creates <anchorPath>/_lym/config/tapestry.yaml with the embedded template's contents.
+// It seeds the file loomengine.LoadTapestryConfig reads strictly for a recipe with a Plan-Review row.
+func seedTapestryConfig(t *testing.T, anchorPath string) {
+	t.Helper()
+	configDir := filepath.Join(anchorPath, "_lym", "config")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
+	}
+	cfgPath := filepath.Join(configDir, "tapestry.yaml")
+	if err := os.WriteFile(cfgPath, []byte(loomengine.TapestryConfigTemplate()), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
+	}
+}
+
 // hubDeploy is the deploy value the hub's landing.yaml carries in hubLocation, so a wired config reading a pair's copy instead differs from it.
 const hubDeploy = "./deploy-hub.sh"
 
@@ -54,8 +68,8 @@ func seedLandingConfig(t *testing.T, baseDir, deploy string) {
 }
 
 // hubLocation returns a *lymcwd.Location standing in for a real hub location.
-// Its anchor path is seeded on disk with loom.yaml and a pair landing.yaml that blanks deploy,
-// and its hub is seeded with loom's repo default, the hub-wide landing.yaml at the board dir and both loom stencils.
+// Its anchor path is seeded on disk with loom.yaml, tapestry.yaml and a pair landing.yaml that blanks deploy,
+// and its hub is seeded with loom's and tapestry's repo defaults, the hub-wide landing.yaml at the board dir and both loom stencils.
 func hubLocation(t *testing.T, worktreeName, anchorRel string) *lymcwd.Location {
 	t.Helper()
 	hub := t.TempDir()
@@ -66,6 +80,8 @@ func hubLocation(t *testing.T, worktreeName, anchorRel string) *lymcwd.Location 
 	}
 	seedLoomConfig(t, loc.AnchorPath())
 	seedLoomConfig(t, fabricengine.BoardDir(hub))
+	seedTapestryConfig(t, loc.AnchorPath())
+	seedTapestryConfig(t, fabricengine.BoardDir(hub))
 	seedLandingConfig(t, fabricengine.BoardDir(hub), hubDeploy)
 	seedLandingConfig(t, loc.AnchorPath(), "")
 	// stencilstore.Read hard-errors on a missing file, so the stencils the Spec closures read are seeded into the hub's stencils directory.

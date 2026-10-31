@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
+	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -46,6 +46,7 @@ const wantDarnLandingCall = "lym gate test --wait --gate finalize"
 //lym:seam internal/landingshed#ParentLockDeps
 //lym:seam internal/landingshed#PullRequestDeps
 //lym:seam internal/loomshed#DarnDeps
+//lym:seam internal/loomshed#RecordWriteDeps
 //lym:seam internal/loomshed#PRReworkDeps
 //lym:seam internal/pawlengine#Deps
 //lym:seam internal/pawlengine#Paths
@@ -58,13 +59,23 @@ const wantDarnLandingCall = "lym gate test --wait --gate finalize"
 func TestWire_DarnRecipe(t *testing.T) {
 	t.Parallel()
 
-	darnSeams := []string{"DarnTable", "Darn.Commit", "Darn.LatestOutcome"}
+	darnSeams := []string{"DarnTable", "Darn.Commit", "Darn.LatestOutcome", "Darn.CommittedRecord", "RecordWrite.ReadBody", "RecordWrite.Commit"}
 
 	t.Run("a darn seed fills the darn seams, the verify source and the attempts", func(t *testing.T) {
 		t.Parallel()
 		loc := hubLocation(t, "pair", ".")
+		// A darn seed has no Plan-Review row, so wire reads no tapestry.yaml and wires a hub that holds none.
+		for _, dir := range []string{loc.AnchorPath(), fabricengine.BoardDir(loc.HubPath)} {
+			if err := os.Remove(configengine.ConfigFile(dir, "tapestry")); err != nil {
+				t.Fatalf("Remove(tapestry.yaml in %q) = %v; want nil", dir, err)
+			}
+		}
 		seedDarnHubConfig(t, loc.HubPath, "5")
 		writeHubGateConfig(t, loc.HubPath, gateConfigWithTwoTiers())
+		driftConfig := filepath.Join(fabricengine.BoardDir(loc.HubPath), "_lym", "config", "drift.yaml")
+		if err := os.WriteFile(driftConfig, []byte(driftengine.ConfigTemplate()), 0o644); err != nil {
+			t.Fatalf("WriteFile drift.yaml = %v; want nil", err)
+		}
 		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
 		if err := c.wire(loc, loc.AnchorPath()); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
@@ -91,8 +102,43 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if c.env.DiscussionHistory == nil {
 			t.Error("c.env.DiscussionHistory is nil after wire() of a darn seed; want the history seam")
 		}
+		if c.env.RecordEngine != "RecordWrite" {
+			t.Errorf("c.env.RecordEngine = %q after wire() of a darn seed; want RecordWrite", c.env.RecordEngine)
+		}
+		if got, want := c.env.PatternRecordPath, loomengine.DiscussionDecisionRecord(loc); got != want {
+			t.Errorf("c.env.PatternRecordPath = %q after wire() of a darn seed; want %q, so its review rows check the record's PATTERN declarations", got, want)
+		}
 		if c.env.VerifyTreeScope == nil {
 			t.Error("c.env.VerifyTreeScope is nil after wire() of a darn seed; want the tree scope reader")
+		}
+		if c.env.PreflightBatcher != nil {
+			t.Error("c.env.PreflightBatcher is set after wire() of a darn seed; want nil, so a broken batcher.yaml fails no darn Preflight")
+		}
+		if got, want := c.env.RecordWrite.RecordPath, loomengine.DiscussionDecisionRecord(loc); got != want {
+			t.Errorf("c.env.RecordWrite.RecordPath = %q; want %q", got, want)
+		}
+		if got, want := c.env.RecordWrite.SupportLogPath, loomengine.DiscussionSupportLog(loc); got != want {
+			t.Errorf("c.env.RecordWrite.SupportLogPath = %q; want %q", got, want)
+		}
+		if got, want := c.env.RecordWrite.DiscussionDir, loomengine.DiscussionDir(loc); got != want {
+			t.Errorf("c.env.RecordWrite.DiscussionDir = %q; want %q", got, want)
+		}
+		for _, path := range []struct{ field, got, want string }{
+			{"RecordPath", c.env.Darn.RecordPath, loomengine.DiscussionDecisionRecord(loc)},
+			{"SupportLogPath", c.env.Darn.SupportLogPath, loomengine.DiscussionSupportLog(loc)},
+			{"StopMarkerPath", c.env.Darn.StopMarkerPath, shedrun.StopMarker(loc, c.runID)},
+		} {
+			if path.got != path.want {
+				t.Errorf("c.env.Darn.%s = %q; want %q", path.field, path.got, path.want)
+			}
+		}
+		// The Drift agents read the task from the decision record, never the board entry, in a darn run.
+		baseline, err := c.env.Drift.BaselineTable("")
+		if err != nil {
+			t.Fatalf("c.env.Drift.BaselineTable() = _, %v; want nil", err)
+		}
+		if reading := baseline.Values["subject_reading"]; !strings.Contains(reading, loomengine.DiscussionDecisionRecord(loc)) || strings.Contains(reading, "lym board get") {
+			t.Errorf("Drift baseline subject reading = %q; want the decision record and no board entry read", reading)
 		}
 		if c.env.DarnVerifyAttempts != 5 {
 			t.Errorf("c.env.DarnVerifyAttempts = %d; want 5", c.env.DarnVerifyAttempts)
@@ -111,7 +157,7 @@ func TestWire_DarnRecipe(t *testing.T) {
 		}
 	})
 
-	t.Run("the discussion commit seam snapshots the board entry before it commits", func(t *testing.T) {
+	t.Run("the discussion commit seam writes no board entry snapshot", func(t *testing.T) {
 		t.Parallel()
 		loc := hubLocation(t, "pair", ".")
 		seedDarnHubConfig(t, loc.HubPath, "3")
@@ -120,9 +166,12 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if err := c.wire(loc, loc.AnchorPath()); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
 		}
-		// The hub holds no board entry, so only the snapshot-writing seam refuses, and it names the snapshot.
-		if err := c.env.CommitDiscussion(); err == nil || !strings.Contains(err.Error(), "snapshot") {
-			t.Errorf("c.env.CommitDiscussion() = %v; want the board entry snapshot's refusal", err)
+		// The hub holds no board entry, so a seam that wrote the snapshot would refuse naming it; the commit's own outcome is not this subtest's subject.
+		if err := c.env.CommitDiscussion(); err != nil && strings.Contains(err.Error(), "snapshot") {
+			t.Errorf("c.env.CommitDiscussion() = %v; want no board entry snapshot step", err)
+		}
+		if _, err := os.Stat(loomengine.DiscussionBoardEntry(loc)); !os.IsNotExist(err) {
+			t.Errorf("Stat(board-entry.md) = %v; want the darn commit seam to write none", err)
 		}
 	})
 
@@ -161,15 +210,15 @@ func TestWire_DarnRecipe(t *testing.T) {
 		}
 	})
 
-	t.Run("a loom seed leaves the darn seams nil", func(t *testing.T) {
+	t.Run("a loom seed fills the record seams and leaves the darn seams nil", func(t *testing.T) {
 		t.Parallel()
 		loc := hubLocation(t, "pair", ".")
 		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeTapestry}
 		if err := c.wire(loc, loc.AnchorPath()); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
 		}
-		if c.env.DiscussionHistory != nil {
-			t.Error("a loom seed filled c.env.DiscussionHistory; want nil")
+		if c.env.DiscussionHistory == nil || c.env.RecordEngine != "DiscussionWrite" {
+			t.Errorf("a loom seed left DiscussionHistory nil = %v, RecordEngine = %q; want the history seam and DiscussionWrite", c.env.DiscussionHistory == nil, c.env.RecordEngine)
 		}
 		if c.env.DarnTable != nil || c.env.Darn.Commit != nil || c.env.VerifyMergeBase != nil || c.env.VerifyTreeScope != nil || c.env.DarnVerifyAttempts != 0 {
 			t.Errorf("a loom seed filled a darn seam: DarnTable nil = %v, Darn.Commit nil = %v, VerifyMergeBase nil = %v, VerifyTreeScope nil = %v, DarnVerifyAttempts = %d", c.env.DarnTable == nil, c.env.Darn.Commit == nil, c.env.VerifyMergeBase == nil, c.env.VerifyTreeScope == nil, c.env.DarnVerifyAttempts)
@@ -289,9 +338,10 @@ func TestRenameRetiredRows(t *testing.T) {
 		retired string
 		want    string
 	}{
-		{name: "a tapestry run parked on Merge-In", renames: loomrecipe.TapestryRetiredRows(), retired: "Merge-In", want: loomshed.NameParentAlign},
-		{name: "a tapestry run parked on Loom-Preflight", renames: loomrecipe.TapestryRetiredRows(), retired: "Loom-Preflight", want: loomshed.NameTapestryPreflight},
-		{name: "a darn run parked on Darn", renames: loomrecipe.DarnRetiredRows(), retired: "Darn", want: loomshed.NameDarnWrite},
+		{name: "a tapestry run parked on Merge-In", renames: loomrecipe.RetiredRows(shedrun.RecipeTapestry), retired: "Merge-In", want: loomshed.NameParentAlign},
+		{name: "a tapestry run parked on Loom-Preflight", renames: loomrecipe.RetiredRows(shedrun.RecipeTapestry), retired: "Loom-Preflight", want: loomshed.NamePreflight},
+		{name: "a tapestry run parked on Tapestry-Preflight", renames: loomrecipe.RetiredRows(shedrun.RecipeTapestry), retired: "Tapestry-Preflight", want: loomshed.NamePreflight},
+		{name: "a darn run parked on Darn", renames: loomrecipe.RetiredRows(shedrun.RecipeDarn), retired: "Darn", want: loomshed.NameDarnWrite},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -370,33 +420,11 @@ func TestRecipeRouting(t *testing.T) {
 	}
 }
 
-// TestWriteBoardEntrySnapshot pins that the darn discussion commit's snapshot holds the task's board entry, and that an entry the board lacks is refused with nothing written.
+// TestWriteBoardEntrySnapshot pins that a pawl run's snapshot holds the beam project's board entry, and that an entry the board lacks is refused with nothing written.
 // It sets the board skip variables, which are process-global, so it does not call t.Parallel.
 func TestWriteBoardEntrySnapshot(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	t.Setenv("BOARD_SKIP_PUSH", "1")
-
-	t.Run("the task's entry is written", func(t *testing.T) {
-		location := &lymcwd.Location{HubPath: boardkit.HubWithBoardConfig(t), WorktreeName: "one-perch", AnchorRel: "."}
-		board, err := boardengine.OpenHub(location.HubPath)
-		if err != nil {
-			t.Fatalf("OpenHub() error = %v; want nil", err)
-		}
-		if _, err := board.UpsertTask(map[string]any{"slug": "one-perch", "title": "One perch", "kind": "task", "labels": []string{"bug"}, "brief": "Merge the perches.", "body": "## Idea\n\nOne perch."}); err != nil {
-			t.Fatalf("UpsertTask() error = %v; want nil", err)
-		}
-
-		if err := writeBoardEntrySnapshot(location); err != nil {
-			t.Fatalf("writeBoardEntrySnapshot() = %v; want nil", err)
-		}
-		got, err := os.ReadFile(loomengine.DiscussionBoardEntry(location))
-		if err != nil {
-			t.Fatalf("read the snapshot: %v", err)
-		}
-		if want := darnengine.BoardEntrySnapshot("one-perch", "One perch", "Merge the perches.", "## Idea\n\nOne perch."); string(got) != string(want) {
-			t.Errorf("snapshot = %q; want %q", got, want)
-		}
-	})
 
 	t.Run("a pawl run's beam project entry is written", func(t *testing.T) {
 		location := &lymcwd.Location{HubPath: boardkit.HubWithBoardConfig(t), WorktreeName: "a-beam", AnchorRel: "."}

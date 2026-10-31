@@ -18,7 +18,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
-	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"gopkg.in/yaml.v3"
 )
 
@@ -48,28 +47,6 @@ type Config struct {
 	// An empty target means the tree has no tests of its own.
 	// Tree scope is on exactly when it holds a tree.
 	TreeScope map[string]string `yaml:"tree_scope"`
-	// DriverKind, Tackler, TacklerTimeoutMin, TacklerMaxSpawns, Arbiter, ArbiterTimeoutMin and ArbiterMaxSpawns override shed.yaml's keys of the same names for a darn run;
-	// an empty string, a zero and a null inherit shed.yaml, and a set TacklerMaxSpawns or ArbiterMaxSpawns of 0 turns that role off.
-	DriverKind        string `yaml:"driver_kind"`
-	Tackler           string `yaml:"tackler"`
-	TacklerTimeoutMin int    `yaml:"tackler_timeout_min"`
-	TacklerMaxSpawns  *int   `yaml:"tackler_max_spawns"`
-	Arbiter           string `yaml:"arbiter"`
-	ArbiterTimeoutMin int    `yaml:"arbiter_timeout_min"`
-	ArbiterMaxSpawns  *int   `yaml:"arbiter_max_spawns"`
-}
-
-// ShedOverride returns the driver, tackler and arbiter keys of darn.yaml as the override of shed.yaml's.
-func (c Config) ShedOverride() sheddriver.Override {
-	return sheddriver.Override{
-		DriverKind:        c.DriverKind,
-		Tackler:           c.Tackler,
-		TacklerTimeoutMin: c.TacklerTimeoutMin,
-		TacklerMaxSpawns:  c.TacklerMaxSpawns,
-		Arbiter:           c.Arbiter,
-		ArbiterTimeoutMin: c.ArbiterTimeoutMin,
-		ArbiterMaxSpawns:  c.ArbiterMaxSpawns,
-	}
 }
 
 // ConfigOpenMaps returns the darn.yaml keys whose value is the operator's own tree map, which configengine carries whole through reconcile and --set.
@@ -80,40 +57,44 @@ func ConfigOpenMaps() []string {
 // ConfigSpec returns darn's layered-load spec.
 // tree_scope picks which diffs run the narrower targets, so it is a guard key and closed to the local layer; no task run_settings sets it.
 // verify and tree_scope_verify are retired, as is pr_review, so a hub file that still sets any of them loads and reconcile prunes it.
+// The driver, tackler and arbiter keys are retired too, now read from shed.yaml alone, and closed to the local layer so a local file that still sets one is refused with the shed way forward.
 func ConfigSpec() configengine.Spec {
 	categories := map[string]configengine.Category{
 		"writer":             configengine.CategoryNone,
 		"writer_timeout_min": configengine.CategoryNone,
 		"verify_attempts":    configengine.CategoryNone,
 		"tree_scope":         configengine.CategoryGuard,
-
-		"driver_kind":         configengine.CategoryNone,
-		"tackler":             configengine.CategoryNone,
-		"tackler_timeout_min": configengine.CategoryNone,
-		"tackler_max_spawns":  configengine.CategoryNone,
-		"arbiter":             configengine.CategoryNone,
-		"arbiter_timeout_min": configengine.CategoryNone,
-		"arbiter_max_spawns":  configengine.CategoryNone,
+	}
+	retired := map[string]configengine.Category{
+		"verify":            configengine.CategoryExecutable,
+		"tree_scope_verify": configengine.CategoryExecutable,
+		"pr_review":         configengine.CategoryNone,
+	}
+	wayForward := map[string]string{}
+	for _, key := range shedOnlyKeys {
+		retired[key] = configengine.CategoryGuard
+		wayForward[key] = shedOnlyKeyWayForward
 	}
 	return configengine.Spec{
-		Name:       configModule,
-		Template:   []byte(ConfigTemplate()),
-		HubWide:    true,
-		OpenMaps:   ConfigOpenMaps(),
-		Categories: categories,
-		RetiredKeys: map[string]configengine.Category{
-			"verify":            configengine.CategoryExecutable,
-			"tree_scope_verify": configengine.CategoryExecutable,
-			"pr_review":         configengine.CategoryNone,
-		},
+		Name:              configModule,
+		Template:          []byte(ConfigTemplate()),
+		HubWide:           true,
+		OpenMaps:          ConfigOpenMaps(),
+		Categories:        categories,
+		RetiredKeys:       retired,
+		RetiredWayForward: wayForward,
 	}
 }
 
-// ValidateLocalValues checks the shed override keys a local-layer document sets against their bounds, and leaves every other key to LoadConfig.
-// A refusal is marked configengine.ErrInvalid and names the key.
-func ValidateLocalValues(document []byte) error {
-	return sheddriver.CheckLocalOverride(configModule, document)
+// shedOnlyKeys are the driver, tackler and arbiter keys that live in shed.yaml alone.
+var shedOnlyKeys = []string{
+	"driver_kind",
+	"tackler", "tackler_timeout_min", "tackler_max_spawns",
+	"arbiter", "arbiter_timeout_min", "arbiter_max_spawns",
 }
+
+// shedOnlyKeyWayForward is the way forward a refusal of a shedOnlyKeys key ends with.
+const shedOnlyKeyWayForward = "remove the key from the refused local file, profile block or run_settings object, and set it under the shed module instead: in a local file, in the pair's local shed.yaml; in a profile block or run_settings, in the shed object"
 
 // LoadConfig loads and unmarshals the darn module's configuration strictly through the hub-wide layer stack under dirs.
 // It validates the writer key's model-spec grammar at load time and leaves verify_attempts to its reader.
@@ -136,10 +117,6 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 
 	if _, err := modelspec.Parse(cfg.Writer); err != nil {
 		return Config{}, fmt.Errorf("darn config key %q: %w", "writer", err)
-	}
-
-	if err := sheddriver.CheckOverride(configModule, cfg.ShedOverride()); err != nil {
-		return Config{}, err
 	}
 
 	treeScope, err := normalizeTreeScope(cfg)

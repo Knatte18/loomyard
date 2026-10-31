@@ -26,7 +26,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
-// TestHubPeersDeps_OverRealHub asserts four behaviors of the real closures.
+// TestHubPeersDeps_OverRealHub asserts the behaviors of the real closures.
+// A peer's rows are those of its own recipe: its worktree's seed when it is on this machine, else the recipe the board entry seeds.
 // A peer's line lists exactly the paths it committed against its merge base with its parent and flags its decision record.
 // The caller's parent commits are the parent's two new commits, newest first.
 // A board task with no pair directory lists the pair as unreadable.
@@ -35,7 +36,7 @@ func TestHubPeersDeps_OverRealHub(t *testing.T) {
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	for _, slug := range []string{"caller", "peer", "no-origin"} {
+	for _, slug := range []string{"caller", "peer", "no-origin", "seeded-darn", "seeded-empty"} {
 		hubforge.AddPair(t, h, slug)
 	}
 
@@ -73,6 +74,26 @@ func TestHubPeersDeps_OverRealHub(t *testing.T) {
 	}
 	if err := os.Remove(fabricengine.OriginRecordPathFor(h.Location, "no-origin")); err != nil {
 		t.Fatalf("remove the origin record of no-origin: %v", err)
+	}
+
+	darnPeer, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("seeded-darn"))
+	if err != nil {
+		t.Fatalf("lymcwd.ResolveWorktree(seeded-darn) error = %v; want nil", err)
+	}
+	if err := shedrun.WriteSeed(darnPeer, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeDarn, Driver: shedrun.DriverGo}); err != nil {
+		t.Fatalf("write the darn seed: %v", err)
+	}
+	emptyPeer, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("seeded-empty"))
+	if err != nil {
+		t.Fatalf("lymcwd.ResolveWorktree(seeded-empty) error = %v; want nil", err)
+	}
+	// WriteSeed refuses an empty recipe, so the seed an older lym wrote with none is written by hand.
+	emptySeedPath := shedrun.SeedFile(emptyPeer, shedrun.SelfRunID)
+	if err := os.MkdirAll(filepath.Dir(emptySeedPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(emptySeedPath), err)
+	}
+	if err := os.WriteFile(emptySeedPath, []byte(`{"recipe":"","driver":"go"}`), 0o644); err != nil {
+		t.Fatalf("write the empty-recipe seed: %v", err)
 	}
 
 	callerLocation, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("caller"))
@@ -140,6 +161,32 @@ func TestHubPeersDeps_OverRealHub(t *testing.T) {
 			if line["slug"] == "peer" && line["row"] != want {
 				t.Errorf("peer row = %v; want %v", line["row"], want)
 			}
+		}
+	})
+
+	t.Run("rows read each peer against its own recipe", func(t *testing.T) {
+		tests := []struct {
+			name       string
+			task       boardengine.Task
+			wantRecipe string
+		}{
+			{"a seed recording darn", boardengine.Task{Slug: "seeded-darn"}, shedrun.RecipeDarn},
+			// The seed wins over the board entry's recipe field, and an empty seed recipe reads as tapestry.
+			{"a seed recording no recipe", boardengine.Task{Slug: "seeded-empty", Recipe: shedrun.RecipeDarn}, shedrun.RecipeTapestry},
+			{"no worktree on this machine, a project entry", boardengine.Task{Slug: "off-project", Kind: boardengine.KindProject}, shedrun.RecipePawl},
+			{"no worktree on this machine, a darn entry", boardengine.Task{Slug: "off-darn", Recipe: shedrun.RecipeDarn}, shedrun.RecipeDarn},
+			{"no worktree on this machine, an entry with no recipe", boardengine.Task{Slug: "off-plain"}, shedrun.RecipeTapestry},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				want, err := loomrecipe.RowNames(tt.wantRecipe)
+				if err != nil {
+					t.Fatalf("loomrecipe.RowNames(%q) error = %v; want nil", tt.wantRecipe, err)
+				}
+				if got := deps.rows(tt.task); !slices.Equal(got, want) {
+					t.Errorf("rows(%+v) = %v; want the %s recipe's rows %v", tt.task, got, tt.wantRecipe, want)
+				}
+			})
 		}
 	})
 

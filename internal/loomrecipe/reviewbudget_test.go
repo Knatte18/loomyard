@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
@@ -81,13 +82,13 @@ func TestReviewBudget_AppliedByNewAndRouting(t *testing.T) {
 			setBudgets(&env, budget, tt.own)
 			budgets := budgetsOf(env)
 
-			routing, err := Routing(budgets)
+			routing, err := Routing(shedrun.RecipeTapestry, budgets)
 			if err != nil {
 				t.Fatalf("Routing(%v) = _, %v; want nil", budgets, err)
 			}
 			assertReviewBudget(t, routing.Producers, budgets)
 
-			shed, err := New(env, paths)
+			shed, err := New(shedrun.RecipeTapestry, env, paths)
 			if err != nil {
 				t.Fatalf("New() = _, %v; want nil", err)
 			}
@@ -98,7 +99,7 @@ func TestReviewBudget_AppliedByNewAndRouting(t *testing.T) {
 
 // TestZeroBudget_BouncerSettlesAtOnce asserts a Bouncer whose segment budget is 0 settles Done with no shuttle start.
 // That proves loomrecipe stamped zero_rounds on its row; the settle's seam order is TestBouncerEntry_SkipSeam's to pin.
-// It also asserts New and Routing keep each perch's route: the writers and Merge-In still hand to their Bouncer.
+// It also asserts New and Routing keep each perch's route: the writers and Drift-Verify still hand to their Bouncer.
 func TestZeroBudget_BouncerSettlesAtOnce(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -115,11 +116,11 @@ func TestZeroBudget_BouncerSettlesAtOnce(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			env, paths := testEnv(t)
 			setBudgets(&env, tt.runWide, tt.own)
-			routing, err := Routing(budgetsOf(env))
+			routing, err := Routing(shedrun.RecipeTapestry, budgetsOf(env))
 			if err != nil {
 				t.Fatalf("Routing() = _, %v; want nil", err)
 			}
-			shed, err := New(env, paths)
+			shed, err := New(shedrun.RecipeTapestry, env, paths)
 			if err != nil {
 				t.Fatalf("New() = _, %v; want nil", err)
 			}
@@ -132,7 +133,7 @@ func TestZeroBudget_BouncerSettlesAtOnce(t *testing.T) {
 				for write, bouncer := range map[string]string{
 					loomshed.NameDiscussionWrite: loomshed.NameDiscussionBouncer,
 					loomshed.NamePlanWrite:       loomshed.NamePlanBouncer,
-					loomshed.NameParentAlign:     loomshed.NameCodeBouncer,
+					loomshed.NameDriftVerify:     loomshed.NameCodeBouncer,
 				} {
 					if got := rows[write].OnDone; got != bouncer {
 						t.Errorf("%s: %s OnDone = %q; want %q", name, write, got, bouncer)
@@ -156,9 +157,9 @@ func TestZeroBudget_BouncerSettlesAtOnce(t *testing.T) {
 	t.Run("darn Code-Review entry", func(t *testing.T) {
 		env, paths := testEnv(t)
 		setCodeBudget(&env, 0)
-		shed, err := NewDarn(env, paths)
+		shed, err := New(shedrun.RecipeDarn, env, paths)
 		if err != nil {
-			t.Fatalf("NewDarn() = _, %v; want nil", err)
+			t.Fatalf("New() = _, %v; want nil", err)
 		}
 
 		outcome, _, err := builtProducer(t, shed, loomshed.NameCodeBouncer).Call(context.Background())
@@ -187,7 +188,7 @@ func builtProducer(t *testing.T, shed *shedengine.Shed, name string) shedengine.
 // TestReviewBudget_NegativeRefused asserts New and Routing refuse a negative segment budget and a review segment with no budget, each naming the segment and its way forward, and accept a budget of 0.
 func TestReviewBudget_NegativeRefused(t *testing.T) {
 	zeroes := map[string]int{"Discussion-Review": 0, "Plan-Review": 0, "Code-Review": 0}
-	if _, err := Routing(zeroes); err != nil {
+	if _, err := Routing(shedrun.RecipeTapestry, zeroes); err != nil {
 		t.Errorf("Routing(%v) error = %v; want nil", zeroes, err)
 	}
 
@@ -201,7 +202,7 @@ func TestReviewBudget_NegativeRefused(t *testing.T) {
 	}
 	for _, tt := range routingTests {
 		t.Run("Routing "+tt.name, func(t *testing.T) {
-			_, err := Routing(tt.budgets)
+			_, err := Routing(shedrun.RecipeTapestry, tt.budgets)
 			if err == nil {
 				t.Fatalf("Routing(%v) error = nil; want one naming %v", tt.budgets, tt.want)
 			}
@@ -219,8 +220,8 @@ func TestReviewBudget_NegativeRefused(t *testing.T) {
 		want   []string
 	}{
 		{"a negative budget", func(env *shedrecipe.Env) {
-			env.Segments["Plan-Review"] = shedrecipe.SegmentSettings{MaxBounces: -1, MaxBouncesKey: "plan_max_bounces", ConfigFile: "loom.yaml"}
-		}, []string{"Plan-Review", "plan_max_bounces", "loom.yaml"}},
+			env.Segments["Plan-Review"] = shedrecipe.SegmentSettings{MaxBounces: -1, MaxBouncesKey: "plan_max_bounces", ConfigFile: "tapestry.yaml"}
+		}, []string{"Plan-Review", "plan_max_bounces", "tapestry.yaml"}},
 		{"a segment with no Env.Segments entry", func(env *shedrecipe.Env) {
 			delete(env.Segments, "Code-Review")
 		}, []string{"Code-Review", "segment-to-perch table"}},
@@ -229,7 +230,7 @@ func TestReviewBudget_NegativeRefused(t *testing.T) {
 		t.Run("New "+tt.name, func(t *testing.T) {
 			env, paths := testEnv(t)
 			tt.mutate(&env)
-			_, err := New(env, paths)
+			_, err := New(shedrun.RecipeTapestry, env, paths)
 			if err == nil {
 				t.Fatalf("New() error = nil; want one naming %v", tt.want)
 			}

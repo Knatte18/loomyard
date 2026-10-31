@@ -74,18 +74,19 @@ func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
 func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 	t.Parallel()
 	wantLocalKeys := map[string][]string{
-		"darn":    {"arbiter", "arbiter_max_spawns", "arbiter_timeout_min", "driver_kind", "tackler", "tackler_max_spawns", "tackler_timeout_min", "verify_attempts", "writer", "writer_timeout_min"},
+		"darn":    {"verify_attempts", "writer", "writer_timeout_min"},
 		"drift":   {"baseline_model", "enabled", "verify_max_runs", "verify_model"},
 		"landing": {"conflict", "conflict_timeout_min", "describe", "describe_timeout_min", "fixer", "fixer_timeout_min", "pr_reviewer"},
 	}
 	wantLocalDenied := map[string][]string{
-		"batten":  {"open_ide_command", "open_window_command", "seed_ide_command"},
-		"beam":    {"pull_request"},
-		"claude":  {"binary", "deny_agent_tool", "deny_ask_user_question"},
-		"reed":    {"debug_log", "mouse", "shell", "tmux", "tmux_conf"},
-		"shuttle": {"deny_python", "run_dir"},
-		"loom":    {"code_auto_accept", "code_fixer_fan", "discussion_advisors", "discussion_auto_accept", "discussion_fixer_fan", "discussion_lenses", "discussion_reviewer_fan", "plan_auto_accept", "plan_fixer_fan", "plan_lenses", "plan_reviewer_fan"},
-		"lenses":  {"fans", "lens_set", "lenses", "remove"},
+		"batten":   {"open_ide_command", "open_window_command", "seed_ide_command"},
+		"beam":     {"pull_request"},
+		"claude":   {"binary", "deny_agent_tool", "deny_ask_user_question"},
+		"reed":     {"debug_log", "mouse", "shell", "tmux", "tmux_conf"},
+		"shuttle":  {"deny_python", "run_dir"},
+		"loom":     {"code_auto_accept", "code_fixer_fan", "discussion_advisors", "discussion_auto_accept", "discussion_fixer_fan", "discussion_lenses", "discussion_reviewer_fan"},
+		"tapestry": {"plan_auto_accept", "plan_fixer_fan", "plan_lenses", "plan_reviewer_fan"},
+		"lenses":   {"fans", "lens_set", "lenses", "remove"},
 	}
 	for _, m := range Modules() {
 		t.Run(m.Name, func(t *testing.T) {
@@ -193,8 +194,8 @@ func TestModules_LocalLayerRefusals(t *testing.T) {
 		{"reed", "mouse: true\n", "mouse", false},
 		{"loom", "discussion_advisors:\n  - name: critic\n    model: sonnet[low]\n", "discussion_advisors", false},
 		{"loom", "discussion_lenses: twill-discussion\n", "discussion_lenses", false},
-		{"loom", "plan_lenses: twill-plan\n", "plan_lenses", false},
-		{"loom", "plan_reviewer_fan: \"\"\n", "plan_reviewer_fan", false},
+		{"tapestry", "plan_lenses: twill-plan\n", "plan_lenses", false},
+		{"tapestry", "plan_reviewer_fan: \"\"\n", "plan_reviewer_fan", false},
 		{"shuttle", "claude_prompt_cache_ttl_roles:\n  worker: 1h\n", "", true},
 	}
 	for _, tt := range tests {
@@ -269,12 +270,13 @@ func TestLookup(t *testing.T) {
 		{"board", true, []string{"types", "labels"}},
 		{"loom", true, []string{
 			"reviewer_model", "fixer_model",
-			"discussion_reviewer_model", "discussion_fixer_model", "plan_reviewer_model", "plan_fixer_model",
+			"discussion_reviewer_model", "discussion_fixer_model",
 			"code_reviewer_model", "code_fixer_model",
-			"discussion_reviewer_fan", "plan_reviewer_fan", "code_reviewer_fan",
-			"discussion_fixer_fan", "plan_fixer_fan", "code_fixer_fan",
+			"discussion_reviewer_fan", "code_reviewer_fan",
+			"discussion_fixer_fan", "code_fixer_fan",
 			"discussion_advisors",
 		}},
+		{"tapestry", true, []string{"plan_reviewer_model", "plan_fixer_model", "plan_reviewer_fan", "plan_fixer_fan"}},
 		{"darn", true, []string{"tree_scope"}},
 		{"shuttle", true, nil},
 		{"burler", false, nil},

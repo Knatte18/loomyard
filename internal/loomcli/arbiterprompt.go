@@ -15,12 +15,22 @@ const arbiterRepairVerbs = "Its repair verbs, run with `<slug>` the task named a
 	" A decision that adds, changes or removes a PATTERN entry also passes `--pattern-entry`, `--pattern-action` and, for `adds` or `changes`, `--pattern-text`, as `lym loom decision add --help` says."
 
 // arbiterRecipeDescription returns the description of recipe the arbiter stencil's recipe marker carries: what the run is and the repair verbs the arbiter may run.
+// A loom recipe with a Plan-Write row is described as a task driven from discussion to landing, and any other as a task's code change driven from its decision record through one build session.
 func arbiterRecipeDescription(recipe string) string {
-	switch recipe {
-	case shedrun.RecipeDarn:
-		return "This is a darn run, a task's code change driven through the loom engine. " + arbiterRepairVerbs
-	case shedrun.RecipePawl:
+	if recipe == shedrun.RecipePawl {
 		return "This is a pawl run, a beam's life driven through the loom engine. " + arbiterRepairVerbs
 	}
-	return "This is a tapestry run, a task driven from discussion to landing. " + arbiterRepairVerbs
+	if recipeHasEngine(recipe, planWriteEngine) {
+		return "This is a tapestry run, a task driven from discussion to landing. " + arbiterRepairVerbs
+	}
+	return "This is a " + recipeLabel(recipe) + " run, a task's code change driven from its decision record through one build session, its review and landing. " + arbiterRepairVerbs
+}
+
+// recipeLabel returns the recipe name a description shows, the tapestry recipe's for an empty name.
+func recipeLabel(recipe string) string {
+	if recipe == "" {
+		return shedrun.RecipeTapestry
+	}
+
+	return recipe
 }

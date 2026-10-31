@@ -17,7 +17,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/sheddriver"
 )
 
 // seedDarnConfig creates <baseDir>/_lym/config/darn.yaml with the given contents.
@@ -178,56 +177,28 @@ func TestLoadConfig(t *testing.T) {
 		})
 	}
 
-	t.Run("the shed override keys inherit by default, are read when set, and a local set 0 is a set 0", func(t *testing.T) {
+	t.Run("a shed key is refused in a local file naming the file, the key and shed.yaml, and dropped from a hub base file", func(t *testing.T) {
 		t.Parallel()
-		spawnsOff, spawnsOne, spawnsTwo := 0, 1, 2
-		tests := []struct {
-			name  string
-			board string
-			local string
-			want  sheddriver.Override
-		}{
-			{name: "the template inherits every key", board: ConfigTemplate()},
-			{
-				name:  "set values are read",
-				board: strings.NewReplacer(`driver_kind: ""`, "driver_kind: go", `tackler: ""`, "tackler: sonnet[low]", "tackler_timeout_min: 0", "tackler_timeout_min: 5", "tackler_max_spawns: ~", "tackler_max_spawns: 2", `arbiter: ""`, "arbiter: sonnet[low]", "arbiter_timeout_min: 0", "arbiter_timeout_min: 7", "arbiter_max_spawns: ~", "arbiter_max_spawns: 1").Replace(ConfigTemplate()),
-				want:  sheddriver.Override{DriverKind: "go", Tackler: "sonnet[low]", TacklerTimeoutMin: 5, TacklerMaxSpawns: &spawnsTwo, Arbiter: "sonnet[low]", ArbiterTimeoutMin: 7, ArbiterMaxSpawns: &spawnsOne},
-			},
-			{name: "a local tackler_max_spawns of 0 is a set 0", board: ConfigTemplate(), local: "tackler_max_spawns: 0\n", want: sheddriver.Override{TacklerMaxSpawns: &spawnsOff}},
-			{name: "a local arbiter_max_spawns of 0 is a set 0", board: ConfigTemplate(), local: "arbiter_max_spawns: 0\n", want: sheddriver.Override{ArbiterMaxSpawns: &spawnsOff}},
-		}
-		for _, tt := range tests {
-			board, anchor := t.TempDir(), t.TempDir()
-			seedDarnConfig(t, board, tt.board)
-			if tt.local != "" {
-				writeLocalDarnConfig(t, anchor, tt.local)
-			}
-			got, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "darn")
-			if err != nil {
-				t.Fatalf("%s: LoadConfig() = _, %v; want nil error", tt.name, err)
-			}
-			if !reflect.DeepEqual(got.ShedOverride(), tt.want) {
-				t.Errorf("%s: ShedOverride() = %+v; want %+v", tt.name, got.ShedOverride(), tt.want)
-			}
-		}
-	})
+		for _, key := range shedOnlyKeys {
+			t.Run(key, func(t *testing.T) {
+				t.Parallel()
+				board, anchor := t.TempDir(), t.TempDir()
+				seedDarnConfig(t, board, ConfigTemplate()+key+": 1\n")
+				if _, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "darn"); err != nil {
+					t.Errorf("LoadConfig() with %s in the hub base file = _, %v; want nil, the value dropped", key, err)
+				}
 
-	t.Run("an invalid shed override value is refused naming darn and the key", func(t *testing.T) {
-		t.Parallel()
-		for _, tt := range []struct{ old, new, key string }{
-			{`driver_kind: ""`, "driver_kind: fast", "driver_kind"},
-			{`tackler: ""`, `tackler: "not a spec["`, "tackler"},
-			{"tackler_timeout_min: 0", "tackler_timeout_min: -1", "tackler_timeout_min"},
-			{"tackler_max_spawns: ~", "tackler_max_spawns: -1", "tackler_max_spawns"},
-			{`arbiter: ""`, `arbiter: "not a spec["`, "arbiter"},
-			{"arbiter_max_spawns: ~", "arbiter_max_spawns: -1", "arbiter_max_spawns"},
-		} {
-			board := t.TempDir()
-			seedDarnConfig(t, board, strings.Replace(ConfigTemplate(), tt.old, tt.new, 1))
-			_, err := LoadConfig(configengine.Dirs{Board: board}, "darn")
-			if err == nil || !strings.Contains(err.Error(), "darn config key") || !strings.Contains(err.Error(), tt.key) {
-				t.Errorf("LoadConfig() with %q = _, %v; want a refusal naming %q and %q", tt.new, err, "darn config key", tt.key)
-			}
+				localPath := writeLocalDarnConfig(t, anchor, key+": 1\n")
+				_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "darn")
+				if !errors.Is(err, configengine.ErrInvalid) {
+					t.Fatalf("LoadConfig() with %s in a local file error = %v; want ErrInvalid", key, err)
+				}
+				for _, want := range []string{localPath, key, "shed.yaml"} {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
+					}
+				}
+			})
 		}
 	})
 }
@@ -292,7 +263,7 @@ func TestMigrateConfig(t *testing.T) {
 
 	const treesText = "\n  tools: ./tools/..."
 	withVerify := func(trees, verify string) string {
-		return strings.Replace(withTreeScope(trees), "driver_kind:", "tree_scope_verify: "+strconv.Quote(verify)+"\ndriver_kind:", 1)
+		return strings.Replace(withTreeScope(trees), "verify_attempts:", "tree_scope_verify: "+strconv.Quote(verify)+"\nverify_attempts:", 1)
 	}
 	tests := []struct {
 		name      string

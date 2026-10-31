@@ -3,20 +3,22 @@
 # identities pinned against internal/loomshed's Name* constants by the coverage guard -- a rename
 # here without a matching constant rename breaks resume for any in-flight task.
 #
-# The main line is Preflight, Tapestry-Preflight, Discussion-Write, the Discussion-Review ring,
+# The recipe declares contract: loom, so Shed checks the loom contract when it builds it.
+#
+# The main line is Preflight, Discussion-Write, the Discussion-Review ring,
 # Drift-Baseline, Plan-Write, the Plan-Review ring, Drift-Await, Webster, Parent-Align, the
-# Code-Review ring, Drift-Verify, Describe, PR-Review, Finalize and Friction-Reflect.
+# Drift-Verify, the Code-Review ring, Describe, PR-Review, Finalize and Friction-Reflect.
 # The three Drift rows carry entry_gate: drift.enabled, so a hub that leaves regression off records
 # each of them Skipped and spawns or runs nothing for them.
 #
 # Every gate and validator bounces back to the producer whose artifact it guards, and a gate whose
 # guarded artifact is produced by no row in the list escalates instead.
-# Preflight and Tapestry-Preflight carry no on_stuck for exactly that reason: nothing in the list
-# produces what each of them gates, so a human is the only thing that can fix either.
+# Preflight carries no on_stuck for exactly that reason: nothing in the list
+# produces what it gates, so a human is the only thing that can fix it.
 # Parent-Align and Finalize carry none either, because each fixes its own merge and test failures in its
 # merge fixer, and a failure the fixer cannot fix halts the run for the orch instead of routing to another row.
 #
-# Those four are not the whole escalate-to-a-human set, and the difference matters when auditing
+# Those are not the whole escalate-to-a-human set, and the difference matters when auditing
 # routing from this header.
 # These PRODUCER rows also carry no on_stuck -- Discussion-Write, Drift-Baseline, Plan-Write,
 # Drift-Await, Webster, Drift-Verify, Describe and PR-Review -- and their Stuck halts the whole run just
@@ -42,10 +44,14 @@
 # lock, then hands to the Code-Review perch.
 # Finalize takes the parent lock first and is the only row that lands on the parent.
 #
-# Drift-Verify compares the code after the Code-Review perch with the baseline Drift-Baseline captured
-# on the branch point, and spawns one agent to judge, accept and fix drift. Its fixes are not
-# reviewed again. A Finalize reroute re-enters it through Parent-Align and the Code-Review perch,
-# and the Code-Review perch's own fixes reach it as the code it compares.
+# Drift-Verify compares the code after Parent-Align, before the Code-Review perch, with the baseline
+# Drift-Baseline captured on the branch point, and spawns one agent to judge, accept and fix drift,
+# so the review sees Drift-Verify's fixes.
+# A Finalize reroute to Parent-Align passes Drift-Verify again, which compares whatever HEAD it meets
+# against the same baseline (internal/driftengine/doc.go).
+# A run in flight parked on Drift-Verify after its review runs the perch once more, and one inside the
+# perch exits to Describe without Drift-Verify, which the orch moves back with
+# `lym loom goto --to Drift-Verify`.
 # Drift-Await holds Webster until the baseline capture passed or the parent deferred it.
 #
 # An in-flight run parked on a row this recipe removed or renamed -- Webster-Bouncer and its
@@ -54,9 +60,9 @@
 # resume identities, and a permanent migration table mapping retired names onto their successors is
 # carrying cost a pre-release, single-operator system does not need when the operator can simply
 # re-run.
-# A run parked on Merge-In, the row now named Parent-Align, or on Loom-Preflight, the row now named
-# Tapestry-Preflight, is carried across by rename and not restarted: `lym loom` rewrites the old name
-# in its status file through TapestryRetiredRows, and the row keeps its position, so `lym loom peers`
+# A run parked on Merge-In, the row now named Parent-Align, or on Loom-Preflight or Tapestry-Preflight, both now named
+# Preflight, is carried across by rename and not restarted: `lym loom` rewrites the old name
+# in its status file through RetiredRows, and the row keeps its position, so `lym loom peers`
 # reports the same positions.
 #
 # Every review segment follows the same shared-segment on_stuck ring: Discussion-Bouncer,
@@ -80,27 +86,26 @@
 # not migrated, as it is for the retired rows above.
 #
 # So is a run parked on the retired Batchifier row: the Webster row's implementer partitions the
-# plan itself, and Tapestry-Preflight's batcher.yaml load keeps the early failure the row gave.
+# plan itself, and Preflight's batcher.yaml load keeps the early failure the row gave.
 #
 # The Bouncer, review and fix rows of those segments declare no max_bounces: their budget is the
-# perch's own loom.yaml key (discussion_max_bounces, plan_max_bounces or code_max_bounces),
-# an absent per-perch budget takes review_max_bounces, and a perch at 0 keeps its route while its
+# perch's own key (loom.yaml's discussion_max_bounces or code_max_bounces, tapestry.yaml's plan_max_bounces),
+# an absent per-perch budget takes loom.yaml's review_max_bounces, and a perch at 0 keeps its route while its
 # Bouncer settles at once, applied by internal/loomrecipe.
 
 version: 1
 entry: Preflight
 # The arbiter's prompt names this row once the plan is approved: a decision that amends the plan routes here.
 amendment_target: Plan-Burler-Review
+# The recipe declares the loom contract, which Shed checks when it builds the recipe; verify_source names where the verify targets come from.
+contract: loom
+verify_source: plan
 terminals:
   - Friction-Reflect
 
 producers:
   - name: Preflight
     engine: Preflight
-    on_done: Tapestry-Preflight
-
-  - name: Tapestry-Preflight
-    engine: TapestryPreflight
     on_done: Discussion-Write
 
   - name: Discussion-Write
@@ -240,8 +245,8 @@ producers:
       run_subdir: plan
       subject: document
       role_prefix: plan
-      reviewer_fan_setting: loom.plan_reviewer_fan
-      auto_accept_setting: loom.plan_auto_accept
+      reviewer_fan_setting: tapestry.plan_reviewer_fan
+      auto_accept_setting: tapestry.plan_auto_accept
       # A plan is 00-overview.md plus a variable number of card files, so no enumeration written
       # here stays correct across plans -- the single directory entry is what stays right. Both
       # consumers accept a directory: shedadapters.NewBouncer stats nothing, and burlerengine's own
@@ -270,8 +275,8 @@ producers:
       # carry_over names this row's own segment: the Bouncer files the round's still-open findings
       # under it in the decision record's Open risks section, and a test pins it equal to segment.
       carry_over: Plan-Review
-      # No model/effort/version key: the row refuses them as unknown keys, and loom.yaml's judge,
-      # seed and per-segment judge and seed keys are the only source of this row's passes' models.
+      # No model/effort/version key: the row refuses them as unknown keys, and loom.yaml's judge and seed, with tapestry.yaml's plan_judge and plan_seed,
+      # are the only source of this row's passes' models.
 
   - name: Plan-Burler-Review
     engine: BurlerReview
@@ -286,8 +291,8 @@ producers:
       # shared run directory.
       run_subdir: plan
       role_prefix: plan
-      reviewer_fan_setting: loom.plan_reviewer_fan
-      fixer_fan_setting: loom.plan_fixer_fan
+      reviewer_fan_setting: tapestry.plan_reviewer_fan
+      fixer_fan_setting: tapestry.plan_fixer_fan
       profile:
         target:
           paths:
@@ -348,7 +353,7 @@ producers:
     config:
       run_subdir: plan
       role_prefix: plan
-      fixer_fan_setting: loom.plan_fixer_fan
+      fixer_fan_setting: tapestry.plan_fixer_fan
       review_row: Plan-Burler-Review
       # gates holds this row's handoff until the artifact is mechanically valid: each entry names a
       # validator and re-prompts the live session up to its attempts times, so a failure never
@@ -371,27 +376,41 @@ producers:
     on_done: Webster
 
   # Webster is the implementer row: its Implementer engine builds the row with the implementer
-  # loom.implementer names, and batching the plan is that implementer's own business. Every
+  # tapestry.implementer names, and batching the plan is that implementer's own business. Every
   # implementer builds this row with these edges, as contracts/specs/implementer-spec.md pins.
   - name: Webster
     engine: Implementer
     on_done: Parent-Align
     on_reroute: Plan-Burler-Review
     config:
-      implementer_setting: loom.implementer
+      implementer_setting: tapestry.implementer
 
   # Parent-Align brings the parent's upstream tip into the task branch with no parent lock and runs the
   # merge fixer on a conflict or a failing merged tree, so the Code-Review perch below reviews code
   # that already carries the parent. A failure the fixer cannot fix halts the run for the orch.
   - name: Parent-Align
     engine: ParentAlign
+    on_done: Drift-Verify
+
+  # Drift-Verify compares the code after Parent-Align with the baseline and, when it drifted, spawns one
+  # agent that accepts the intended drift and fixes the rest. The verify gate runs the hub's
+  # drift-verify key once the agent committed code.
+  - name: Drift-Verify
+    engine: DriftVerify
+    entry_gate: drift.enabled
     on_done: Code-Bouncer
+    config:
+      subject: decision-record
+      gate_key: drift-verify
+      gates:
+        - name: verify
+          attempts: 3
 
   - name: Code-Bouncer
     engine: Bouncer
     segment: Code-Review
     on_stuck: Code-Burler-Review
-    on_done: Drift-Verify
+    on_done: Describe
     config:
       run_subdir: code
       subject: code
@@ -509,20 +528,6 @@ producers:
         fix-scope: source
         # The round fixes code, so its seat loads the hub's language skills after its own.
         language-skills: true
-
-  # Drift-Verify compares the committed code with the baseline and, when it drifted, spawns one
-  # agent that accepts the intended drift and fixes the rest. The verify gate runs the hub's
-  # drift-verify key once the agent committed code.
-  - name: Drift-Verify
-    engine: DriftVerify
-    entry_gate: drift.enabled
-    on_done: Describe
-    config:
-      subject: decision-record
-      gate_key: drift-verify
-      gates:
-        - name: verify
-          attempts: 3
 
   - name: Describe
     engine: Describe

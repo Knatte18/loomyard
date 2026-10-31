@@ -6,8 +6,7 @@
 
 ## The row
 
-Loom's implementer row is the recipe's `Webster` row, between `Plan-Bouncer` and `Parent-Align`, which the `Code-Review` perch follows.
-Its `Implementer` engine builds the row with the implementer `loom.yaml`'s `implementer` key names, read through the row's `implementer_setting: loom.implementer`.
+Tapestry's implementer row, the recipe's Webster row, is built by the `Implementer` engine with the implementer `tapestry.yaml`'s `implementer` key names, read through the row's `implementer_setting: tapestry.implementer`.
 The key is settable per task through `run_settings`, and a value outside the closed implementer table in `internal/shedrecipe` refuses when the recipe builds.
 Every implementer builds the same row with the same edges, so no row is skipped or entered conditionally on which one runs.
 

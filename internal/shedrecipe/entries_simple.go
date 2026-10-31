@@ -1,6 +1,5 @@
-// entries_simple.go implements the registry entries that take an empty Config and validate only the
-// Env fields they read: preflightEntry, parentAlignEntry, finalizeEntry, frictionReflectEntry,
-// tapestryPreflightEntry, stubEntry, and websterEntry, the webster implementer.
+// entries_simple.go implements the registry entries that take an empty Config and validate only the Env fields they read.
+// They are preflightEntry, parentAlignEntry, finalizeEntry, frictionReflectEntry, stubEntry, and websterEntry, the webster implementer.
 
 package shedrecipe
 
@@ -15,7 +14,7 @@ import (
 )
 
 // preflightEntry is the Constructor for the "Preflight" registry row: it validates Env.Cwd and
-// returns preflightshed.NewPreflight(name, env.Cwd).
+// returns preflightshed.NewPreflightWithBatcher(name, env.Cwd, env.PreflightBatcher).
 func preflightEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
@@ -23,7 +22,7 @@ func preflightEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduc
 	if err := requireAbsRoot("Preflight", "Cwd", env.Cwd); err != nil {
 		return nil, err
 	}
-	return preflightshed.NewPreflight(row.Name, env.Cwd), nil
+	return preflightshed.NewPreflightWithBatcher(row.Name, env.Cwd, env.PreflightBatcher), nil
 }
 
 // landingRowDeps returns a copy of env.Landing whose GateKey is the key the row's optional "gate_key" string names, else the row name in lower case.
@@ -102,25 +101,6 @@ func frictionReflectEntry(row RowIdentity, cfg Config, env Env) (shedengine.Shed
 		return nil, fmt.Errorf("shedrecipe: FrictionReflect: %w", err)
 	}
 	return p, nil
-}
-
-// tapestryPreflightEntry is the Constructor for the "TapestryPreflight" registry row.
-// It validates Env.StatusPath, Env.StatusLockPath and Env.ConfigDirs.Anchor and returns
-// loomshed.NewTapestryPreflight(name, env.StatusPath, env.StatusLockPath, env.ConfigDirs).
-func tapestryPreflightEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
-	if err := configRejectUnknown(cfg); err != nil {
-		return nil, err
-	}
-	if err := requireAbsRoot("TapestryPreflight", "StatusPath", env.StatusPath); err != nil {
-		return nil, err
-	}
-	if err := requireAbsRoot("TapestryPreflight", "StatusLockPath", env.StatusLockPath); err != nil {
-		return nil, err
-	}
-	if err := requireAbsRoot("TapestryPreflight", "ConfigDirs.Anchor", env.ConfigDirs.Anchor); err != nil {
-		return nil, err
-	}
-	return loomshed.NewTapestryPreflight(row.Name, env.StatusPath, env.StatusLockPath, env.ConfigDirs), nil
 }
 
 // stubEntry is the Constructor for the "Stub" registry row: it validates no Env field and returns

@@ -42,24 +42,32 @@ func TestCheckResolved(t *testing.T) {
 		HubWide:    true,
 		Categories: Categories(nil),
 	}
+	tapestry := configengine.Spec{
+		Name:       "tapestry",
+		Template:   []byte("plan_max_bounces: ~\nplan_hard_max_bounces: 0\n"),
+		Categories: Categories([]string{"plan"}),
+	}
 	plan := []string{"plan"}
 
 	const (
-		resumeTail    = `then run "lym loom resume"`
-		localRoute    = `run "lym config loom --layer local --set %s=<n>" in the task worktree, and correct the task's run_settings with "lym board upsert" too`
-		worktreeRoute = `run "lym config loom --set %s=<n>" in the task worktree`
-		defaultRoute  = `run "lym config loom --layer default --set %s=<n>" from the hub's prime worktree`
-		hubRoute      = `run "lym config darn --set %s=<n>" from the prime`
+		resumeTail           = `then run "lym loom resume"`
+		localRoute           = `run "lym config loom --layer local --set %s=<n>" in the task worktree, and correct the task's run_settings with "lym board upsert" too`
+		worktreeRoute        = `run "lym config loom --set %s=<n>" in the task worktree`
+		defaultRoute         = `run "lym config loom --layer default --set %s=<n>" from the hub's prime worktree`
+		tapestryDefaultRoute = `run "lym config tapestry --layer default --set %s=<n>" from the hub's prime worktree`
+		hubRoute             = `run "lym config darn --set %s=<n>" from the prime`
 	)
 	route := func(format, key string) string { return strings.Replace(format, "%s", key, 1) }
 
 	tests := []struct {
-		name      string
-		spec      configengine.Spec
-		layers    map[configengine.Layer]string
-		values    Values
-		wantParts []string
-		wantSoft  Caps
+		name   string
+		spec   configengine.Spec
+		layers map[configengine.Layer]string
+		// runWideLayers are the layers of values.RunWideSpec, the module holding the run-wide keys.
+		runWideLayers map[configengine.Layer]string
+		values        Values
+		wantParts     []string
+		wantSoft      Caps
 	}{
 		{
 			name:     "clean set with a null perch budget resolves to the run-wide caps",
@@ -175,6 +183,40 @@ func TestCheckResolved(t *testing.T) {
 				"or lower the soft cap: " + route("run \"lym config darn --layer local --set %s=<n>\" in the task worktree", RunSoftKey),
 			},
 		},
+		{
+			name: "plan perch hard cap below an inherited run-wide soft cap names tapestry for the hard cap and loom for the soft cap",
+			spec: tapestry,
+			layers: map[configengine.Layer]string{
+				configengine.LayerDefault: "plan_hard_max_bounces: 2\n",
+			},
+			runWideLayers: map[configengine.Layer]string{
+				configengine.LayerLocal: "review_max_bounces: 5\n",
+			},
+			values: Values{RunSoft: 5, RunHard: 4, Perches: plan, PerchHard: map[string]int{"plan": 2}, RunWideSpec: perWorktree},
+			wantParts: []string{
+				`tapestry config key "plan_hard_max_bounces": resolved hard cap 2 is below "review_max_bounces"'s resolved soft cap 5`,
+				"raise the hard cap: " + route(tapestryDefaultRoute, "plan_hard_max_bounces"),
+				"or lower the soft cap: " + route(localRoute, RunSoftKey),
+				resumeTail,
+			},
+		},
+		{
+			name: "plan perch budget above the run-wide hard cap names loom for the hard cap and tapestry for the soft cap",
+			spec: tapestry,
+			layers: map[configengine.Layer]string{
+				configengine.LayerDefault: "plan_max_bounces: 5\n",
+			},
+			runWideLayers: map[configengine.Layer]string{
+				configengine.LayerDefault: "review_hard_max_bounces: 4\n",
+			},
+			values: Values{RunSoft: 3, RunHard: 4, Perches: plan, PerchSoft: map[string]*int{"plan": intPtr(5)}, RunWideSpec: perWorktree},
+			wantParts: []string{
+				`loom config key "review_hard_max_bounces": resolved hard cap 4 is below "plan_max_bounces"'s resolved soft cap 5`,
+				"raise the hard cap: " + route(defaultRoute, RunHardKey),
+				"or lower the soft cap: " + route(tapestryDefaultRoute, "plan_max_bounces"),
+				resumeTail,
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -182,6 +224,9 @@ func TestCheckResolved(t *testing.T) {
 			dirs := configengine.Dirs{Anchor: t.TempDir(), Board: t.TempDir()}
 			for layer, content := range tt.layers {
 				writeLayer(t, dirs, tt.spec, layer, content)
+			}
+			for layer, content := range tt.runWideLayers {
+				writeLayer(t, dirs, tt.values.RunWideSpec, layer, content)
 			}
 
 			err := CheckResolved(dirs, tt.spec, tt.values)

@@ -1,4 +1,4 @@
-// darnwiring.go holds the wiring only a darn run needs: the tree scope reader the darn recipe tells its verify gate, the verify source its landing producers read, the Darn-Write row's seams, the board entry snapshot its discussion commit writes, the writer's and Describe's Spec sources, and the rename of retired darn rows in a run's status file.
+// darnwiring.go holds the wiring only a darn run needs: the tree scope reader the darn recipe tells its verify gate, the verify source its landing producers read, the Darn-Write row's seams, the board entry snapshot a pawl run's Code-Review perch reads, the writer's Spec source, and the rename of retired darn rows in a run's status file.
 // A tapestry run leaves all of it unwired, but shares the merge base readers `pairMergeBase` and `taskMergeBase` build.
 
 package loomcli
@@ -8,14 +8,13 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fsx"
-	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
@@ -149,13 +148,23 @@ func latestDarnOutcome(statusPath, statusLockPath, findingsPath string) (loomshe
 // Every closure reads or writes on demand and opens nothing at build time.
 func darnDeps(l *lymcwd.Location, runID string) loomshed.DarnDeps {
 	return loomshed.DarnDeps{
-		// Commit mirrors CommitDescription, including its discard of (sha, committed), which makes a repeat commit over an unchanged directory a no-op.
-		Commit: func() error {
-			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), l, []string{loomengine.LandingDirRel()}, fmt.Sprintf("loom: change description for %s", seedSlug(l.WorktreeName)), fabricengine.EnvSyncOptions())
-			return err
+		RecordPath:     loomengine.DiscussionDecisionRecord(l),
+		SupportLogPath: loomengine.DiscussionSupportLog(l),
+		StopMarkerPath: shedrun.StopMarker(l, runID),
+		CommittedRecord: func() (bool, error) {
+			_, found, err := fabricengine.CommittedAnchoredFile(l, loomengine.DiscussionDecisionRecordRel())
+			return found, err
 		},
+		Commit: func() error { return commitDescription(l) },
 		LatestOutcome: func() (loomshed.DarnOutcome, bool, error) {
 			return latestDarnOutcome(shedrun.StatusFile(l, runID), shedrun.StatusLock(l, runID), shedrun.GateFindingsFile(l, runID, loomshed.NameDarnWrite))
+		},
+		CheckRecord: func() ([]discussionparser.Finding, error) {
+			return loomshed.ValidateDiscussion(loomshed.DiscussionCheck{
+				RecordPath:     loomengine.DiscussionDecisionRecord(l),
+				SupportLogPath: loomengine.DiscussionSupportLog(l),
+				History:        discussionHistory(l),
+			})
 		},
 	}
 }
@@ -184,17 +193,8 @@ func (c *loomCLI) renameRetiredRows(renames map[string]string) error {
 	return nil
 }
 
-// commitDarnDiscussion writes the snapshot of location's task's board entry into the discussion directory, then commits the directory as commitDiscussion does.
-// A snapshot that cannot be written fails the commit with nothing committed.
-func commitDarnDiscussion(location *lymcwd.Location) error {
-	if err := writeBoardEntrySnapshot(location); err != nil {
-		return err
-	}
-	return commitDiscussion(location)
-}
-
-// writeBoardEntrySnapshot writes the snapshot of the board entry of location's run to the discussion directory: a darn run's task, and a pawl run's beam project.
-// The snapshot is the Code-Review perch's answer key of a darn or pawl run, kept apart from any decision record; the run's board lock keeps the entry's body and scope fixed from the point the snapshot is written.
+// writeBoardEntrySnapshot writes the snapshot of the board entry of location's pawl run, its beam project, to the discussion directory.
+// The snapshot is the Code-Review perch's answer key of a pawl run, kept apart from any decision record; the run's board lock keeps the entry's body and scope fixed from the point the snapshot is written.
 // A board that cannot be read, or holds no entry for the run, is refused.
 func writeBoardEntrySnapshot(location *lymcwd.Location) error {
 	board, err := boardengine.OpenHub(location.HubPath)
@@ -215,11 +215,11 @@ func writeBoardEntrySnapshot(location *lymcwd.Location) error {
 	return nil
 }
 
-// wireDarn fills the Env fields a darn run reads beyond the ones wire fills for every recipe, and replaces the loom DescribeTable with the darn one, which reads the decision record but no run record.
+// wireDarn fills the Env fields a darn run reads beyond the ones wire fills for every recipe.
 // It loads the hub-wide darn.yaml strictly, so start, run, step and resume refuse an absent or malformed file before any row builds.
 // A malformed tree_scope key is refused with the editor way forward instead of the hub reconcile one, since --set cannot remove a key the hub file holds.
 // budgets is the loom review segments' budgets, whose Code-Review entry the darn routing applies to the perch.
-func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, frictionDir string, landingCfg landingshed.Config, registry modelspec.Registry, budgets map[string]int) error {
+func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, frictionDir string, registry modelspec.Registry, budgets map[string]int) error {
 	dirs := fabricengine.ConfigDirs(location)
 	cfg, err := darnengine.LoadConfig(dirs, "darn")
 	if err != nil {
@@ -237,12 +237,9 @@ func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, fri
 	c.env.DarnVerifyAttempts = cfg.VerifyAttempts
 	// The perch's CIRCLING Reason names the budget the darn routing applies.
 	c.env.SegmentBounces = segmentBounces(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, func() (shedengine.Routing, error) {
-		return loomrecipe.DarnRouting(budgets)
+		return loomrecipe.Routing(c.recipe, budgets)
 	})
 	c.env.Darn = darnDeps(location, c.runID)
-	// The history seam turns the Darn-Write row's "discussion" gate into the darn gate, whose commit snapshots the board entry the perch reads.
-	c.env.DiscussionHistory = discussionHistory(location)
-	c.env.CommitDiscussion = func() error { return commitDarnDiscussion(location) }
 	c.env.DarnTable = func(told loomshed.DarnTold) (seatengine.Table, error) {
 		return darnengine.DarnTable(darnengine.DarnInputs{
 			StencilsDir:        stencilsDir,
@@ -252,42 +249,10 @@ func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, fri
 			Slug:               seedSlug(location.WorktreeName),
 			DescriptionPath:    summaryparser.Path(loomengine.LandingDir(location)),
 			DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
-			SupportLogPath:     loomengine.DiscussionSupportLog(location),
+			StopMarkerPath:     shedrun.StopMarker(location, c.runID),
 			PriorWork:          told.PriorWork,
 			LanguageSkills:     c.languageSkills,
 		}, cfg, registry)
-	}
-	reviewSubdir, isBouncer, err := loomrecipe.BouncerRunSubdir(loomshed.NameCodeBouncer)
-	if err != nil {
-		return err
-	}
-	if !isBouncer {
-		return fmt.Errorf("loom: the embedded darn recipe's %s row is not a Bouncer with a run_subdir, so this lym build is broken", loomshed.NameCodeBouncer)
-	}
-	// DescribeTable opens the fabric lazily, for the reason the loom DescribeTable gives.
-	c.env.DescribeTable = func() (seatengine.Table, error) {
-		handle, err := fabricengine.Open(location)
-		if err != nil {
-			return seatengine.Table{}, err
-		}
-		taskBranch, parentBranch, err := landingBranches(handle, location)
-		if err != nil {
-			return seatengine.Table{}, err
-		}
-		mergeBase, err := taskMergeBase(location)()
-		if err != nil {
-			return seatengine.Table{}, err
-		}
-		return landingshed.DarnDescribeTable(landingshed.DarnDescribeInputs{
-			StencilsDir:        stencilsDir,
-			ReviewDir:          filepath.Join(loomengine.LoomReviewsDir(location), reviewSubdir),
-			DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
-			DescriptionPath:    summaryparser.Path(loomengine.LandingDir(location)),
-			TaskBranch:         taskBranch,
-			ParentBranch:       parentBranch,
-			MergeBase:          mergeBase,
-			Slug:               seedSlug(location.WorktreeName),
-		}, landingCfg, registry)
 	}
 
 	return nil

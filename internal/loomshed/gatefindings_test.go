@@ -2,12 +2,8 @@
 
 // gatefindings_test.go asserts that this package's mechanical gates surface the determined findings
 // they used to discard.
-// The rule matters most exactly where it is cheapest to skip, but the reason has changed with the
-// row-removal batch: Tapestry-Preflight still carries no OnStuck at all, so its Stuck still halts the
-// run for a human. NewDiscussionGate and NewPlanGate, though, no longer bounce to a respawned
-// writer on a failed attempt -- a gated writer row's exhausted gate halts the run for a human too,
-// so the logger.Warn line this file pins is not merely the best record of a refusal, it is the ONLY
-// one that outlives the ephemeral run directory the findings file is deleted with.
+// The rule matters most exactly where it is cheapest to skip: NewDiscussionGate and NewPlanGate no longer bounce to a respawned writer on a failed attempt, and a gated writer row's exhausted gate halts the run for a human.
+// So the logger.Warn line this file pins is not merely the best record of a refusal, it is the ONLY one that outlives the ephemeral run directory the findings file is deleted with.
 //
 // This file and gates_test.go both drive the two gate closures and must not silently drift into
 // testing each other's subject: gates_test.go owns the closures' own pass/fail/error mapping,
@@ -50,7 +46,15 @@ func TestDiscussionGate_FailureSurfacesItsFindings(t *testing.T) {
 	}
 
 	buf := logcapture.Capture(t)
-	gate := NewDiscussionGate(decisionRecord, supportLog, filepath.Join(dir, "relevant.md"), dir, planglyph.NewIndex(fabricengine.NewReferenceRule()))
+	gate := NewDiscussionGate(DiscussionCheck{
+		RecordPath:     decisionRecord,
+		SupportLogPath: supportLog,
+		RelevantPath:   filepath.Join(dir, "relevant.md"),
+		WorktreeRoot:   dir,
+		Index:          planglyph.NewIndex(fabricengine.NewReferenceRule()),
+		History:        func() ([][]byte, error) { return nil, nil },
+		Citations:      true,
+	})
 
 	result, err := gate()
 	if err != nil {
@@ -120,36 +124,6 @@ func TestPlanGate_FailureSurfacesItsFindings(t *testing.T) {
 	}
 	if !strings.Contains(logged, "Plan-Gate") {
 		t.Errorf("log = %q; want it to name the gate", logged)
-	}
-}
-
-//testtiming:keep pins the refusal log line and its failures field for a half-finished run, which its covering tests never read
-func TestTapestryPreflight_StuckSurfacesItsFailures(t *testing.T) {
-	dir := t.TempDir()
-	statusPath := filepath.Join(dir, "status.json")
-	statusLockPath := filepath.Join(dir, "status.json.lock")
-	// A coherent status file that has already advanced past the fresh-seed point, which CheckSeed
-	// reports as half-finished.
-	status := `{"current_producer":"Plan-Write","state":"running","error":"","pause_requested":false,` +
-		`"activity":{"now":"Plan-Write","last":"Discussion-Bouncer → done","wait":""},` +
-		`"history":[{"producer":"Preflight","outcome":"done","output":"","at":"2026-08-26T00:00:00Z"},` +
-		`{"producer":"Discussion-Write","outcome":"done","output":"","at":"2026-08-26T00:01:00Z"}],` +
-		`"product":{"slug":"s","parent":"main"}}`
-	if err := os.WriteFile(statusPath, []byte(status), 0o644); err != nil {
-		t.Fatalf("WriteFile(%s): %v", statusPath, err)
-	}
-
-	buf := logcapture.Capture(t)
-	p := NewTapestryPreflight(NameTapestryPreflight, statusPath, statusLockPath, configengine.Dirs{Anchor: t.TempDir()})
-
-	shedfake.RequireOutcome(t, p, shedengine.Stuck)
-
-	logged := buf.String()
-	if !strings.Contains(logged, "seed is not a coherent fresh start") {
-		t.Errorf("log = %q; want it to report the seed refusal", logged)
-	}
-	if !strings.Contains(logged, "failures=") {
-		t.Errorf("log = %q; want it to carry a failures field -- this row has no OnStuck, so a human reads this line or nothing", logged)
 	}
 }
 

@@ -373,7 +373,7 @@ func TestConfigOverRealHub(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("reconcile --layer default = %d; want 0; result: %v", code, result)
 		}
-		loom := reconcileModule(t, result, "loom")
+		loom := reconcileBaseEntry(t, result, "loom")
 		if loom["layer"] != string(configengine.LayerDefault) || loom["seed"] != "hub" || loom["applied"] != false {
 			t.Errorf("dry-run loom entry = %v; want layer default, seed hub, applied false", loom)
 		}
@@ -456,15 +456,22 @@ func TestConfigOverRealHub(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read the board loom.yaml: %v", err)
 		}
-		for _, want := range []string{"\ncode_reviewer_fan: review-code", "\nplan_reviewer_fan: review-plan"} {
+		for _, want := range []string{"\ncode_reviewer_fan: review-code"} {
 			if !strings.Contains(string(after), want) {
 				t.Errorf("applied board loom.yaml lacks %q; got %q", want, after)
 			}
 		}
-		for _, gone := range []string{"\nwebster_fan:", "\nwebster_reviewer_fan:", "\nplan_fan:", "stale-fan"} {
+		for _, gone := range []string{"\nwebster_fan:", "\nwebster_reviewer_fan:", "\nplan_fan:", "\nplan_reviewer_fan:", "stale-fan"} {
 			if strings.Contains(string(after), gone) {
 				t.Errorf("applied board loom.yaml still holds %q; got %q", gone, after)
 			}
+		}
+		moved, err := os.ReadFile(configengine.ConfigFile(boardDir, "tapestry"))
+		if err != nil {
+			t.Fatalf("read the board tapestry.yaml: %v", err)
+		}
+		if !strings.Contains(string(moved), "plan_reviewer_fan: review-plan") {
+			t.Errorf("applied board tapestry.yaml lacks the moved plan_reviewer_fan: review-plan; got %q", moved)
 		}
 
 		show := exec.Command("git", "show", "--name-only", "--pretty=format:%s", "HEAD")
@@ -473,7 +480,10 @@ func TestConfigOverRealHub(t *testing.T) {
 		if err != nil {
 			t.Fatalf("git show in _board: %v", err)
 		}
-		wantShow := "config: reconcile the board dir's files\n" + strings.ReplaceAll(configengine.ConfigFileRel("lenses"), "\\", "/") + "\n" + strings.ReplaceAll(configengine.ConfigFileRel("loom"), "\\", "/")
+		wantShow := "config: reconcile the board dir's files"
+		for _, module := range []string{"lenses", "loom", "tapestry"} {
+			wantShow += "\n" + strings.ReplaceAll(configengine.ConfigFileRel(module), "\\", "/")
+		}
 		if strings.TrimSpace(string(showOut)) != wantShow {
 			t.Errorf("HEAD in _board = %q; want %q", showOut, wantShow)
 		}
@@ -624,4 +634,21 @@ func boardHead(t *testing.T, boardDir string) string {
 		t.Fatalf("git rev-parse HEAD in _board: %v", err)
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// reconcileBaseEntry returns the envelope's entry for module that records the reconcile of the module's own file, the one carrying a seed, failing the test when it is absent.
+// A key move reports apart, under the source module's name, so the first entry of a module is not always the reconcile one.
+func reconcileBaseEntry(t *testing.T, result map[string]any, module string) map[string]any {
+	t.Helper()
+	modules, ok := result["modules"].([]any)
+	if !ok {
+		t.Fatalf("modules is not an array; got %v", result)
+	}
+	for _, m := range modules {
+		if mod, ok := m.(map[string]any); ok && mod["module"] == module && mod["seed"] != nil {
+			return mod
+		}
+	}
+	t.Fatalf("no modules entry with a seed for %q; got %v", module, modules)
+	return nil
 }

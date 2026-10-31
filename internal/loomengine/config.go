@@ -1,30 +1,29 @@
 // config.go — configuration for the loom module.
 //
 // Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config file,
-// then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the shared reviewer_model and fixer_model lists' grammar via modelspec.Parse, plus every entry of each review segment's own <segment>_reviewer_model and <segment>_fixer_model list that is set, an empty value meaning the shared list, rejects a negative value on each of the four timeout knobs, and rejects a review_circling_checkpoint or review_hard_max_bounces below 1, rejects a review_max_bounces, discussion_max_bounces, plan_max_bounces or code_max_bounces below 0 (0 giving zero rounds, null taking review_max_bounces) or any per-perch hard cap below 0, rejects a perch whose resolved hard cap is below its resolved budget, and resolves each non-empty entry of every perch's fan and fix fan key through lenses.ValidateFanKeys,
-// so a mistake in any of those validated keys fails loud at load time rather than hours into a run when the discussion, plan, review, judge, friction, or driver producer first spawns.
-// implementer names the engine of the Webster row, the implementer; it is read and validated where the recipe builds that row, never here.
+// then validates the discussion, judge, friction, and driver role model-specs and every entry of the shared reviewer_model and fixer_model lists' grammar via modelspec.Parse, plus every entry of each review segment's own <segment>_reviewer_model and <segment>_fixer_model list that is set, an empty value meaning the shared list, rejects a negative value on each of the three timeout knobs, and rejects a review_circling_checkpoint or review_hard_max_bounces below 1, rejects a review_max_bounces, discussion_max_bounces or code_max_bounces below 0 (0 giving zero rounds, null taking review_max_bounces) or any per-perch hard cap below 0, rejects a perch whose resolved hard cap is below its resolved budget, and resolves each non-empty entry of every perch's fan and fix fan key through lenses.ValidateFanKeys,
+// so a mistake in any of those validated keys fails loud at load time rather than hours into a run when the discussion, review, judge, friction, or driver producer first spawns.
+// The plan perch's keys, plan, plan_timeout_min, implementer, plan_lenses and every plan_* model, fan, judge, seed and budget key, live in tapestry.yaml: LoadConfig never reads that file, and Config.WithTapestry copies the plan values in for the callers that serve the Plan-Review segment.
 // step_idle_timeout_min is the minutes a --until-stop step may show no activity before the loop kills it; a value below 1 is raised to 1 with one Warn and never refused.
-// discussion_reviewer_fan, plan_reviewer_fan and code_reviewer_fan each name a fan from lenses.yaml, or list one per round, and turn the lens fan on for Discussion-Review, Plan-Review and Code-Review; an empty entry, the default, runs that round solo.
-// discussion_fixer_fan, plan_fixer_fan and code_fixer_fan do the same for the fixer: an empty entry runs the single fixer, and a fan name runs the twill fixer with that fan's lenses.
+// discussion_reviewer_fan and code_reviewer_fan each name a fan from lenses.yaml, or list one per round, and turn the lens fan on for Discussion-Review and Code-Review; an empty entry, the default, runs that round solo.
+// discussion_fixer_fan and code_fixer_fan do the same for the fixer: an empty entry runs the single fixer, and a fan name runs the twill fixer with that fan's lenses.
 // A list's last entry serves every later round, and a reviewer fanned or not runs on its segment's own reviewer list, whose model the forks inherit.
 // fan_review is retired: MigrateConfig removes it.
 // The retired review, fix, <segment>_review, <segment>_fix, <segment>_fan and <segment>_fix_fan keys are renamed by MigrateConfig.
-// discussion_max_bounces, plan_max_bounces and code_max_bounces set one perch's bounce budget, null takes review_max_bounces and 0 gives the perch zero rounds, its Bouncer settling approved at once;
-// review_hard_max_bounces is the round number at or past which no perch continues a round, refused below 1, and discussion_hard_max_bounces, plan_hard_max_bounces and code_hard_max_bounces set one perch's own, where 0 takes review_hard_max_bounces and a negative value is refused;
+// discussion_max_bounces and code_max_bounces set one perch's bounce budget, null takes review_max_bounces and 0 gives the perch zero rounds, its Bouncer settling approved at once;
+// review_hard_max_bounces is the round number at or past which no perch continues a round, refused below 1, and discussion_hard_max_bounces and code_hard_max_bounces set one perch's own, where 0 takes review_hard_max_bounces and a negative value is refused;
 // review_amend_max_bounces is the review rounds an amendment generation gets after a settled segment's subject changed, clamped to the perch's own budget, refused below 0, where 0 settles every amendment approved with no review round;
 // a perch whose resolved hard cap is below its resolved budget is refused too, and every one of these refusals names the command that changes the key in the layer its value comes from.
-// discussion_auto_accept, plan_auto_accept and code_auto_accept make that perch accept a harvested round at a spent budget instead of running the soft-cap rule.
+// discussion_auto_accept and code_auto_accept make that perch accept a harvested round at a spent budget instead of running the soft-cap rule.
 // The Merge-Review perch's keys, merge_reviewer_model, merge_fixer_model, merge_reviewer_fan, merge_fixer_fan, merge_max_bounces, merge_hard_max_bounces and merge_auto_accept, are retired: MigrateConfig removes them, and skip_merge_review with them.
 // discussion_advisors lists the Discussion-Write advisors, each entry a {name, model} pair: name is the advisor's seat name and model its model-spec, resolved through the model registry at load, and an unset list loads as no advisors.
 // With no advisors the Discussion-Write lead decides each question itself.
-// discussion_lenses and plan_lenses each name the lenses.yaml fan whose lenses the Discussion-Write or Plan-Write lead forks itself for once its output is written and self-checked; empty, the default, turns the forks off.
-// Neither is the discussion_reviewer_fan or plan_reviewer_fan of a review perch, and all three of these keys are closed to the local layer.
-// The retired discussion_producer and plan_producer keys are rewritten into these by MigrateConfig.
-// seed, discussion_judge, plan_judge, code_judge, discussion_seed, plan_seed and code_seed are role model-specs validated only when non-empty, an empty value meaning the fallback:
+// discussion_lenses names the lenses.yaml fan whose lenses the Discussion-Write lead forks itself for once its output is written and self-checked; empty, the default, turns the forks off.
+// It is not the discussion_reviewer_fan of a review perch, and the key is closed to the local layer.
+// The retired discussion_producer and plan_producer keys are rewritten by MigrateConfig into discussion_lenses and plan_lenses.
+// seed, discussion_judge, code_judge, discussion_seed and code_seed are role model-specs validated only when non-empty, an empty value meaning the fallback:
 // a per-segment judge takes judge, a per-segment seed takes seed, and seed takes that segment's resolved judge.
-// driver_kind is the driver a task's tapestry run is seeded with when nothing typed one, llm or go, an empty value reading as llm; tackler and arbiter are role model-specs validated only when non-empty, an empty value inheriting shed.yaml;
-// tackler_timeout_min, tackler_max_spawns, arbiter_timeout_min and arbiter_max_spawns are refused when negative, a zero timeout and a null spawn budget inheriting shed.yaml and a set zero spawn budget turning that role off.
+// The retired driver_kind, tackler and arbiter keys are refused here, since shed.yaml holds them.
 // friction and driver are the two role keys validated only when non-empty: a present-but-empty
 // value means, respectively, Tier 2 self-reporting is off or the engine default model runs the
 // driver, and both must load cleanly, unlike the other role keys, which are always required.
@@ -41,7 +40,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -49,7 +47,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reviewbudget"
 	"github.com/Knatte18/loomyard/internal/seatengine"
-	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
@@ -372,12 +369,13 @@ func LoomFrictionLock(l *lymcwd.Location) string {
 }
 
 // Config represents the resolved loom.yaml configuration: role model-specs and timeout knobs.
+// Its Plan-prefixed fields hold the plan perch's values, which tapestry.yaml owns: LoadConfig leaves them at their zero value, and WithTapestry fills them.
 type Config struct {
 	Discussion            string `yaml:"discussion"`
 	DiscussionTimeoutMin  int    `yaml:"discussion_timeout_min"`
 	DiscussionInteractive bool   `yaml:"discussion_interactive"`
-	Plan                  string `yaml:"plan"`
-	PlanTimeoutMin        int    `yaml:"plan_timeout_min"`
+	Plan                  string `yaml:"-"`
+	PlanTimeoutMin        int    `yaml:"-"`
 
 	// ReviewerModel and FixerModel are the shared reviewer and fixer model lists, the fallback of every review segment whose own key is empty.
 	// Each segment's own pair replaces them for that segment when set.
@@ -385,26 +383,26 @@ type Config struct {
 	FixerModel              burlerengine.ModelSpecList `yaml:"fixer_model"`
 	DiscussionReviewerModel burlerengine.ModelSpecList `yaml:"discussion_reviewer_model"`
 	DiscussionFixerModel    burlerengine.ModelSpecList `yaml:"discussion_fixer_model"`
-	PlanReviewerModel       burlerengine.ModelSpecList `yaml:"plan_reviewer_model"`
-	PlanFixerModel          burlerengine.ModelSpecList `yaml:"plan_fixer_model"`
+	PlanReviewerModel       burlerengine.ModelSpecList `yaml:"-"`
+	PlanFixerModel          burlerengine.ModelSpecList `yaml:"-"`
 	CodeReviewerModel       burlerengine.ModelSpecList `yaml:"code_reviewer_model"`
 	CodeFixerModel          burlerengine.ModelSpecList `yaml:"code_fixer_model"`
 
 	// Each review segment's per-round reviewer and fixer fan lists.
 	DiscussionReviewerFan lenses.FanList `yaml:"discussion_reviewer_fan"`
-	PlanReviewerFan       lenses.FanList `yaml:"plan_reviewer_fan"`
+	PlanReviewerFan       lenses.FanList `yaml:"-"`
 	CodeReviewerFan       lenses.FanList `yaml:"code_reviewer_fan"`
 	DiscussionFixerFan    lenses.FanList `yaml:"discussion_fixer_fan"`
-	PlanFixerFan          lenses.FanList `yaml:"plan_fixer_fan"`
+	PlanFixerFan          lenses.FanList `yaml:"-"`
 	CodeFixerFan          lenses.FanList `yaml:"code_fixer_fan"`
 
 	Judge              string `yaml:"judge"`
 	Seed               string `yaml:"seed"`
 	DiscussionJudge    string `yaml:"discussion_judge"`
-	PlanJudge          string `yaml:"plan_judge"`
+	PlanJudge          string `yaml:"-"`
 	CodeJudge          string `yaml:"code_judge"`
 	DiscussionSeed     string `yaml:"discussion_seed"`
-	PlanSeed           string `yaml:"plan_seed"`
+	PlanSeed           string `yaml:"-"`
 	CodeSeed           string `yaml:"code_seed"`
 	ReviewTimeoutMin   int    `yaml:"review_timeout_min"`
 	Friction           string `yaml:"friction"`
@@ -421,17 +419,7 @@ type Config struct {
 
 	// PlanLenses names the lenses.yaml fan whose lenses the Plan-Write lead forks itself for once its plan is written and self-checked; empty turns the forks off.
 	// It names the writer's lens fan, not the Plan-Review perch's PlanReviewerFan.
-	PlanLenses string `yaml:"plan_lenses"`
-
-	// The driver a task's tapestry run is seeded with when nothing typed one, and the tackler's and the arbiter's model-spec, timeout and spawn budget; each overrides shed.yaml's key.
-	// An empty DriverKind, Tackler or Arbiter, a zero TacklerTimeoutMin or ArbiterTimeoutMin and a null TacklerMaxSpawns or ArbiterMaxSpawns inherit shed.yaml, and a set TacklerMaxSpawns or ArbiterMaxSpawns of 0 turns that role off.
-	DriverKind        string `yaml:"driver_kind"`
-	Tackler           string `yaml:"tackler"`
-	TacklerTimeoutMin int    `yaml:"tackler_timeout_min"`
-	TacklerMaxSpawns  *int   `yaml:"tackler_max_spawns"`
-	Arbiter           string `yaml:"arbiter"`
-	ArbiterTimeoutMin int    `yaml:"arbiter_timeout_min"`
-	ArbiterMaxSpawns  *int   `yaml:"arbiter_max_spawns"`
+	PlanLenses string `yaml:"-"`
 
 	ReviewCirclingCheckpoint int `yaml:"review_circling_checkpoint"`
 	ReviewMaxBounces         int `yaml:"review_max_bounces"`
@@ -443,13 +431,13 @@ type Config struct {
 	// A nil budget takes ReviewMaxBounces and a budget of 0 runs no review round for the perch; a hard cap of 0 takes ReviewHardMaxBounces;
 	// a flag true makes the perch accept a harvested round at a spent budget instead of running the soft-cap rule.
 	DiscussionMaxBounces     *int `yaml:"discussion_max_bounces"`
-	PlanMaxBounces           *int `yaml:"plan_max_bounces"`
+	PlanMaxBounces           *int `yaml:"-"`
 	CodeMaxBounces           *int `yaml:"code_max_bounces"`
 	DiscussionHardMaxBounces int  `yaml:"discussion_hard_max_bounces"`
-	PlanHardMaxBounces       int  `yaml:"plan_hard_max_bounces"`
+	PlanHardMaxBounces       int  `yaml:"-"`
 	CodeHardMaxBounces       int  `yaml:"code_hard_max_bounces"`
 	DiscussionAutoAccept     bool `yaml:"discussion_auto_accept"`
-	PlanAutoAccept           bool `yaml:"plan_auto_accept"`
+	PlanAutoAccept           bool `yaml:"-"`
 	CodeAutoAccept           bool `yaml:"code_auto_accept"`
 }
 
@@ -498,10 +486,10 @@ func (l *DiscussionAdvisorList) UnmarshalYAML(node *yaml.Node) error {
 func ConfigOpenMaps() []string {
 	return []string{
 		"reviewer_model", "fixer_model",
-		"discussion_reviewer_model", "discussion_fixer_model", "plan_reviewer_model", "plan_fixer_model",
+		"discussion_reviewer_model", "discussion_fixer_model",
 		"code_reviewer_model", "code_fixer_model",
-		"discussion_reviewer_fan", "plan_reviewer_fan", "code_reviewer_fan",
-		"discussion_fixer_fan", "plan_fixer_fan", "code_fixer_fan",
+		"discussion_reviewer_fan", "code_reviewer_fan",
+		"discussion_fixer_fan", "code_fixer_fan",
 		"discussion_advisors",
 	}
 }
@@ -509,7 +497,7 @@ func ConfigOpenMaps() []string {
 // ConfigSpec returns loom's layered-load spec.
 // Only the keys that can switch off or hollow a review or approval gate are barred from the local layer.
 // The budget, hard-cap and auto-accept keys come from reviewbudget: a budget of 0 is the per-run off switch and no guard, while the auto-accept keys are guards.
-// discussion_advisors, discussion_lenses and plan_lenses are barred too, so no local override or task run_settings can start advisors, turn the lens forks off or change their fan.
+// discussion_advisors and discussion_lenses are barred too, so no local override or task run_settings can start advisors, turn the lens forks off or change their fan.
 // code_reviewer_fan is the one reviewer fan key open to the local layer, since its value names only a fan the guarded lenses.yaml defines, or "" for a solo round, and the perch's round count, rubric and whole-diff read stay.
 func ConfigSpec() configengine.Spec {
 	none := configengine.CategoryNone
@@ -524,43 +512,26 @@ func ConfigSpec() configengine.Spec {
 			"discussion_interactive":     none,
 			"discussion_advisors":        guard,
 			"discussion_lenses":          guard,
-			"plan":                       none,
-			"plan_timeout_min":           none,
-			"plan_lenses":                guard,
-			"implementer":                none,
 			"reviewer_model":             none,
 			"fixer_model":                none,
 			"discussion_reviewer_model":  none,
 			"discussion_fixer_model":     none,
-			"plan_reviewer_model":        none,
-			"plan_fixer_model":           none,
 			"code_reviewer_model":        none,
 			"code_fixer_model":           none,
 			"discussion_reviewer_fan":    guard,
-			"plan_reviewer_fan":          guard,
 			"code_reviewer_fan":          none,
 			"discussion_fixer_fan":       guard,
-			"plan_fixer_fan":             guard,
 			"code_fixer_fan":             guard,
 			"judge":                      none,
 			"seed":                       none,
 			"discussion_judge":           none,
-			"plan_judge":                 none,
 			"code_judge":                 none,
 			"discussion_seed":            none,
-			"plan_seed":                  none,
 			"code_seed":                  none,
 			"review_timeout_min":         none,
 			"friction":                   none,
 			"friction_timeout_min":       none,
 			"driver":                     none,
-			"arbiter":                    none,
-			"arbiter_timeout_min":        none,
-			"arbiter_max_spawns":         none,
-			"driver_kind":                none,
-			"tackler":                    none,
-			"tackler_timeout_min":        none,
-			"tackler_max_spawns":         none,
 			"step_idle_timeout_min":      none,
 			"review_circling_checkpoint": none,
 		},
@@ -568,12 +539,28 @@ func ConfigSpec() configengine.Spec {
 			"fan_review": none,
 			"pr_review":  none,
 		},
+		RetiredWayForward: map[string]string{},
 	}
 	for key, category := range reviewbudget.Categories(reviewPerchNames()) {
 		spec.Categories[key] = category
 	}
+	for _, key := range shedOnlyKeys {
+		spec.RetiredKeys[key] = guard
+		spec.RetiredWayForward[key] = shedOnlyKeyWayForward
+	}
 	return spec
 }
+
+// shedOnlyKeys are the driver, tackler and arbiter keys that live in shed.yaml alone.
+// loom.yaml no longer reads them, and a local file, profile block or run_settings object that sets one is refused.
+var shedOnlyKeys = []string{
+	"driver_kind",
+	"tackler", "tackler_timeout_min", "tackler_max_spawns",
+	"arbiter", "arbiter_timeout_min", "arbiter_max_spawns",
+}
+
+// shedOnlyKeyWayForward is the way forward a refusal of a shedOnlyKeys key ends with.
+const shedOnlyKeyWayForward = "remove the key from the refused local file, profile block or run_settings object, and set it under the shed module instead: in a local file, in the pair's local shed.yaml; in a profile block or run_settings, in the shed object"
 
 // segmentModelList is one per-segment reviewer or fixer model-spec list with the loom.yaml key it came from.
 type segmentModelList struct {
@@ -586,8 +573,6 @@ func segmentModelKeys(cfg Config) []segmentModelList {
 	return []segmentModelList{
 		{"discussion_reviewer_model", cfg.DiscussionReviewerModel},
 		{"discussion_fixer_model", cfg.DiscussionFixerModel},
-		{"plan_reviewer_model", cfg.PlanReviewerModel},
-		{"plan_fixer_model", cfg.PlanFixerModel},
 		{"code_reviewer_model", cfg.CodeReviewerModel},
 		{"code_fixer_model", cfg.CodeFixerModel},
 	}
@@ -600,7 +585,8 @@ const (
 	discussionAdvisorsKey = "discussion_advisors"
 	// discussionLensesKey is the loom.yaml key naming the fan the Discussion-Write lead forks its lenses from.
 	discussionLensesKey = "discussion_lenses"
-	// planLensesKey is the loom.yaml key naming the fan the Plan-Write lead forks its lenses from.
+	// planLensesKey is the tapestry.yaml key naming the fan the Plan-Write lead forks its lenses from.
+	// MigrateConfig still writes it into a loom.yaml document, which the reconcile then moves to tapestry.yaml.
 	planLensesKey = "plan_lenses"
 )
 
@@ -637,10 +623,8 @@ func validateDiscussionAdvisors(advisors DiscussionAdvisorList, reg modelspec.Re
 func fanKeys(cfg Config) []lenses.FanKey {
 	return []lenses.FanKey{
 		{Key: "discussion_reviewer_fan", Fans: cfg.DiscussionReviewerFan},
-		{Key: "plan_reviewer_fan", Fans: cfg.PlanReviewerFan},
 		{Key: "code_reviewer_fan", Fans: cfg.CodeReviewerFan},
 		{Key: "discussion_fixer_fan", Fans: cfg.DiscussionFixerFan},
-		{Key: "plan_fixer_fan", Fans: cfg.PlanFixerFan},
 		{Key: "code_fixer_fan", Fans: cfg.CodeFixerFan},
 	}
 }
@@ -662,7 +646,6 @@ func fanKeys(cfg Config) []lenses.FanKey {
 // The retired reviewer, fixer and fan keys, review, fix, <segment>_review, <segment>_fix, <segment>_fan and <segment>_fix_fan, are renamed to reviewer_model, fixer_model, <segment>_reviewer_model, <segment>_fixer_model, <segment>_reviewer_fan and <segment>_fixer_fan with their values, and a document already holding the new name keeps its value and drops the old key.
 // Before the rename, a document holding webster_review or webster_fix and not merge_reviewer_model or merge_fixer_model gets that Merge key set to the Webster key's value, or to the renamed webster_reviewer_model or webster_fixer_model value when the document holds that too, so Merge-Review keeps the models it ran on.
 // After those renames, each webster_* review-perch key, webster_reviewer_model to webster_auto_accept, is renamed to its code_* successor with its value, so a retired webster_review ends as code_reviewer_model, and a document already holding the code_* name keeps its value and drops the webster_* key.
-// The driver_kind, tackler, tackler_timeout_min and tackler_max_spawns keys the retired template spelled out as llm, haiku, 10 and 4 become the values that inherit shed.yaml, and each of the four keys carrying the retired template's comment gets the current one.
 // A document without a retired key or comment is returned unchanged, so a migrated file is unchanged on a second pass.
 // Everything else is carried through yaml node editing with its comments;
 // the loader never calls it.
@@ -711,86 +694,7 @@ func MigrateConfig(existing []byte) ([]byte, []string, error) {
 		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate loom config: %w", err))
 	}
 	rewrites = append(rewrites, dropLines...)
-	migrated, shedLines, err := migrateShedOverrides(migrated)
-	if err != nil {
-		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate loom config: %w", err))
-	}
-	return migrated, append(rewrites, shedLines...), nil
-}
-
-// retiredShedKeyComments holds the line comment the retired loom template carried on each of the four driver and tackler keys, in the order the keys sit in loom.yaml.
-// migrateShedOverrides keys on them, so they are never edited.
-var retiredShedKeyComments = []struct{ key, comment string }{
-	{"driver_kind", "# the driver a task's tapestry run is seeded with when nothing typed one: llm or go; a seeded run keeps its recorded driver"},
-	{"tackler", "# model-spec for the tackler, the cold agent a Go driver asks to settle a stop its rules do not (see contracts/specs/llm-model-spec.md); empty takes haiku"},
-	{"tackler_timeout_min", "# minutes one tackler spawn is allowed to run; 0 takes 10"},
-	{"tackler_max_spawns", "# tackler spawns a run may use; 0 turns the tackler off, so every stop it would take hands back"},
-}
-
-// migrateShedOverrides moves the four driver and tackler keys of document off the retired template's defaults, in two steps of one pass, and returns document itself, with no lines, when neither fires.
-// First, when driver_kind, tackler, tackler_timeout_min and tackler_max_spawns hold exactly llm, haiku, 10 and 4 and driver_kind carries the retired comment, they become the inherit values "", "", 0 and null.
-// Second, each of the four keys whose line comment is the retired template's text gets the current template's comment, its value untouched.
-// A comment edited by hand is kept, and a document without comments, such as a run_settings document, fires neither step.
-func migrateShedOverrides(document []byte) ([]byte, []string, error) {
-	var tree yaml.Node
-	if err := yaml.Unmarshal(document, &tree); err != nil {
-		return nil, nil, err
-	}
-	if tree.Kind != yaml.DocumentNode || len(tree.Content) == 0 || tree.Content[0].Kind != yaml.MappingNode {
-		return document, nil, nil
-	}
-	root := tree.Content[0]
-
-	var current yaml.Node
-	if err := yaml.Unmarshal([]byte(ConfigTemplate()), &current); err != nil {
-		return nil, nil, fmt.Errorf("unmarshal loom config template: %w", err)
-	}
-
-	var lines []string
-	retiredValues := map[string]string{"driver_kind": "llm", "tackler": "haiku", "tackler_timeout_min": "10", "tackler_max_spawns": "4"}
-	allRetired := true
-	for key, retired := range retiredValues {
-		value := mappingValueNode(root, key)
-		if value == nil || value.Kind != yaml.ScalarNode || value.Value != retired {
-			allRetired = false
-		}
-	}
-	if allRetired && mappingValueNode(root, "driver_kind").LineComment == retiredShedKeyComments[0].comment {
-		inherit := map[string]yaml.Node{
-			"driver_kind":         {Kind: yaml.ScalarNode, Tag: "!!str", Style: yaml.DoubleQuotedStyle, Value: ""},
-			"tackler":             {Kind: yaml.ScalarNode, Tag: "!!str", Style: yaml.DoubleQuotedStyle, Value: ""},
-			"tackler_timeout_min": {Kind: yaml.ScalarNode, Tag: "!!int", Value: "0"},
-			"tackler_max_spawns":  {Kind: yaml.ScalarNode, Tag: "!!null", Value: "~"},
-		}
-		for key, replacement := range inherit {
-			value := mappingValueNode(root, key)
-			value.Tag, value.Style, value.Value = replacement.Tag, replacement.Style, replacement.Value
-		}
-		lines = append(lines, "driver_kind, tackler, tackler_timeout_min and tackler_max_spawns rewritten from the retired llm, haiku, 10 and 4 to the values that inherit shed.yaml")
-	}
-
-	for _, retired := range retiredShedKeyComments {
-		value := mappingValueNode(root, retired.key)
-		if value == nil || value.LineComment != retired.comment {
-			continue
-		}
-		value.LineComment = mappingValueNode(current.Content[0], retired.key).LineComment
-		lines = append(lines, retired.key+": comment refreshed to say it overrides shed.yaml")
-	}
-	if len(lines) == 0 {
-		return document, nil, nil
-	}
-
-	var out bytes.Buffer
-	encoder := yaml.NewEncoder(&out)
-	encoder.SetIndent(2)
-	if err := encoder.Encode(&tree); err != nil {
-		return nil, nil, fmt.Errorf("encode migrated loom config: %w", err)
-	}
-	if err := encoder.Close(); err != nil {
-		return nil, nil, fmt.Errorf("encode migrated loom config: %w", err)
-	}
-	return out.Bytes(), lines, nil
+	return migrated, rewrites, nil
 }
 
 // migrateProducerKeys replaces the retired discussion_producer and plan_producer keys of document, as MigrateConfig describes, and returns document itself, with no lines, when it holds neither.
@@ -948,7 +852,7 @@ func retireSkipMergeReview(document []byte) ([]byte, []string, error) {
 	}
 
 	var lines []string
-	for _, perch := range reviewPerches {
+	for _, perch := range []Perch{PerchDiscussion, PerchPlan, PerchCode} {
 		key := reviewbudget.SoftKey(string(perch))
 		at := mappingKeyIndex(root, key)
 		if at < 0 {
@@ -1135,43 +1039,9 @@ func mappingKeyIndex(mapping *yaml.Node, key string) int {
 	return -1
 }
 
-// ShedOverride returns the driver, tackler and arbiter keys of loom.yaml as the override of shed.yaml's.
-func (c Config) ShedOverride() sheddriver.Override {
-	return sheddriver.Override{
-		DriverKind:        c.DriverKind,
-		Tackler:           c.Tackler,
-		TacklerTimeoutMin: c.TacklerTimeoutMin,
-		TacklerMaxSpawns:  c.TacklerMaxSpawns,
-		Arbiter:           c.Arbiter,
-		ArbiterTimeoutMin: c.ArbiterTimeoutMin,
-		ArbiterMaxSpawns:  c.ArbiterMaxSpawns,
-	}
-}
-
-// RecipeOverride loads the shed override of a run's recipe from the config layers under dirs:
-// darn.yaml for shedrun.RecipeDarn, and loom.yaml for shedrun.RecipeTapestry and the empty recipe.
-// A darn.yaml holding a malformed tree_scope key is refused with the editor way forward, since --set cannot remove a key the hub file holds.
-func RecipeOverride(dirs configengine.Dirs, recipe string) (sheddriver.Override, error) {
-	if recipe == shedrun.RecipeDarn {
-		cfg, err := darnengine.LoadConfig(dirs, "darn")
-		if err != nil {
-			return sheddriver.Override{}, darnengine.WithEditorWayForward(err)
-		}
-		return cfg.ShedOverride(), nil
-	}
-	cfg, err := LoadConfig(dirs, "loom")
-	if err != nil {
-		return sheddriver.Override{}, err
-	}
-	return cfg.ShedOverride(), nil
-}
-
-// ValidateLocalValues checks the values of the driver_kind, tackler, tackler_timeout_min, tackler_max_spawns, arbiter, arbiter_timeout_min and arbiter_max_spawns keys a local-layer document sets, and of every review budget and hard-cap key through reviewbudget, and leaves every other key to LoadConfig.
+// ValidateLocalValues checks the values of every review budget and hard-cap key a local-layer document sets, through reviewbudget, and leaves every other key to LoadConfig.
 // A refusal is marked configengine.ErrInvalid and names the key.
 func ValidateLocalValues(document []byte) error {
-	if err := sheddriver.CheckLocalOverride("loom", document); err != nil {
-		return err
-	}
 	var budgets map[string]any
 	if err := yaml.Unmarshal(document, &budgets); err != nil {
 		return configengine.MarkInvalid(fmt.Errorf("unmarshal loom local values: %w", err))
@@ -1185,11 +1055,8 @@ func ValidateLocalValues(document []byte) error {
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	spec := ConfigSpec()
 	spec.Name = module
-	resolved, err := configengine.Load(dirs, spec)
+	resolved, err := loadResolved(dirs, spec)
 	if err != nil {
-		if strings.Contains(err.Error(), "not initialized") {
-			return Config{}, fmt.Errorf("not initialized here; run \"lym fabric reconcile\"; a session lym refuses the verb from reports status: FAILED and the orch runs it")
-		}
 		return Config{}, err
 	}
 
@@ -1212,10 +1079,6 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 
 	if _, err := modelspec.Parse(cfg.Discussion); err != nil {
 		return Config{}, fmt.Errorf("loom config key %q: %w", "discussion", err)
-	}
-
-	if _, err := modelspec.Parse(cfg.Plan); err != nil {
-		return Config{}, fmt.Errorf("loom config key %q: %w", "plan", err)
 	}
 
 	if err := burlerengine.ValidateModelSpecList(loomModule, "reviewer_model", cfg.ReviewerModel); err != nil {
@@ -1263,10 +1126,8 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	}{
 		{"seed", cfg.Seed},
 		{"discussion_judge", cfg.DiscussionJudge},
-		{"plan_judge", cfg.PlanJudge},
 		{"code_judge", cfg.CodeJudge},
 		{"discussion_seed", cfg.DiscussionSeed},
-		{"plan_seed", cfg.PlanSeed},
 		{"code_seed", cfg.CodeSeed},
 	} {
 		if override.value == "" {
@@ -1294,10 +1155,6 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		}
 	}
 
-	if err := sheddriver.CheckOverride("loom", cfg.ShedOverride()); err != nil {
-		return Config{}, err
-	}
-
 	// The four timeouts are checked here for the same reason the four model-specs above are: a
 	// value that can only be a mistake should fail at load time rather than hours into a run when
 	// the producer it governs first spawns. A negative minute count flows into
@@ -1311,7 +1168,6 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		minutes int
 	}{
 		{"discussion_timeout_min", cfg.DiscussionTimeoutMin},
-		{"plan_timeout_min", cfg.PlanTimeoutMin},
 		{"review_timeout_min", cfg.ReviewTimeoutMin},
 		{"friction_timeout_min", cfg.FrictionTimeoutMin},
 	} {
@@ -1338,12 +1194,10 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		Perches:  reviewPerchNames(),
 		PerchSoft: map[string]*int{
 			string(PerchDiscussion): cfg.DiscussionMaxBounces,
-			string(PerchPlan):       cfg.PlanMaxBounces,
 			string(PerchCode):       cfg.CodeMaxBounces,
 		},
 		PerchHard: map[string]int{
 			string(PerchDiscussion): cfg.DiscussionHardMaxBounces,
-			string(PerchPlan):       cfg.PlanHardMaxBounces,
 			string(PerchCode):       cfg.CodeHardMaxBounces,
 		},
 	}); err != nil {

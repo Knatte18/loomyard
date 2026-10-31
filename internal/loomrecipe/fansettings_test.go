@@ -122,7 +122,7 @@ func TestShippedRecipes_FanSettingsAgreeWithinSegment(t *testing.T) {
 		}
 		perches := []perch{
 			{loom, "Discussion-Review", "loom.discussion_reviewer_fan", "loom.discussion_fixer_fan", "loom.discussion_auto_accept"},
-			{loom, "Plan-Review", "loom.plan_reviewer_fan", "loom.plan_fixer_fan", "loom.plan_auto_accept"},
+			{loom, "Plan-Review", "tapestry.plan_reviewer_fan", "tapestry.plan_fixer_fan", "tapestry.plan_auto_accept"},
 			{loom, "Code-Review", "loom.code_reviewer_fan", "loom.code_fixer_fan", "loom.code_auto_accept"},
 			{darn, "Code-Review", "loom.code_reviewer_fan", "loom.code_fixer_fan", "loom.code_auto_accept"},
 			{pawl, "Code-Review", "loom.code_reviewer_fan", "loom.code_fixer_fan", "loom.code_auto_accept"},

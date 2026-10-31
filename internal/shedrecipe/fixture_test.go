@@ -138,7 +138,7 @@ func reviewRow(name string) RowIdentity {
 }
 
 // newTestEnv builds an Env whose every path field is an absolute path derived from a single t.TempDir(), one subdirectory per field: a directory field (Cwd, WorktreeRoot, StencilsDir, SpecsDir, RunRoot, AnchorPath, ScratchDir) is created with os.MkdirAll, while a file field (StatusPath, StatusLockPath, DecisionRecordPath, SupportLogPath, RelevantPath, PrimeLock.Path) is left as a joined path nobody creates.
-// It fills Shuttle and Burler with shedfake's fakes and WebsterRun with this file's fake, fills WebsterDeps with shedfake.WebsterSeams, fills DiscussionTable with a closure returning a one-chair seatengine.Table over one absolute output path under the same temp root, fills CommitDiscussion with a closure returning nil, fills PlanTable with a closure returning a one-lead seatengine.Table over one absolute output path under the same temp root, fills CommitPlan with a closure returning nil, leaves Landing zero, and leaves Now nil.
+// It fills Shuttle and Burler with shedfake's fakes and WebsterRun with this file's fake, fills WebsterDeps with shedfake.WebsterSeams, fills DiscussionTable with a closure returning a one-chair seatengine.Table over one absolute output path under the same temp root, fills CommitDiscussion with a closure returning nil, fills DiscussionHistory with an empty history, sets RecordEngine to DiscussionWrite, fills PlanTable with a closure returning a one-lead seatengine.Table over one absolute output path under the same temp root, fills CommitPlan with a closure returning nil, leaves Landing zero, and leaves Now nil.
 //
 // It also fills the six batten fields: a non-empty Slug, CreateWorktree returning nil, InnerRun
 // and Teardown whose own closures return nil or zero values, and a PrimeLock whose Path sits under
@@ -197,7 +197,9 @@ func newTestEnv(t *testing.T) Env {
 				}},
 			}, nil
 		},
-		CommitDiscussion: func() error { return nil },
+		CommitDiscussion:  func() error { return nil },
+		DiscussionHistory: func() ([][]byte, error) { return nil, nil },
+		RecordEngine:      "DiscussionWrite",
 		PlanTable: func() (seatengine.Table, error) {
 			return seatengine.Table{
 				RolePrefix: "plan",
@@ -210,6 +212,13 @@ func newTestEnv(t *testing.T) Env {
 		},
 		CommitPlan: func() error { return nil },
 		Rework:     loomshed.PRReworkDeps{ArchiveWebster: func(string) error { return nil }},
+		RecordWrite: loomshed.RecordWriteDeps{
+			RecordPath:     filepath.Join(dir, "decision-record.md"),
+			SupportLogPath: filepath.Join(dir, "support-log.md"),
+			DiscussionDir:  dir,
+			ReadBody:       func() (string, bool, error) { return "", true, nil },
+			Commit:         func() error { return nil },
+		},
 		Slug:       "test-slug",
 		ScratchDir: mustMkdir("scratch"),
 

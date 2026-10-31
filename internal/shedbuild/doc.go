@@ -5,6 +5,12 @@
 // A recipe may set an optional top-level amendment_target naming the row a plan amendment routes to.
 // Parse decodes it into Recipe.AmendmentTarget without checking that it names a row, since routing is shedengine's and shedcheck's.
 //
+// A recipe may set a top-level contract, empty or `loom`, and a top-level verify_source, empty, `plan` or `tree_scope`.
+// Parse refuses any other value of either.
+// Build checks a recipe declaring `contract: loom` against the loom contract before any registry lookup:
+// exactly one record row, exactly one build row after it on the on_done path from the entry, a Finalize row followed only by terminals, and a set verify_source.
+// The engine sets come from shedrecipe, so a new loom recipe needs no change to the check.
+//
 // # Entry gate
 //
 // A row may carry an optional entry_gate, one check or a list of checks that must all hold, which Build turns into the row's shedengine.EntryGate.

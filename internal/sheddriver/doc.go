@@ -94,9 +94,9 @@
 // # The shed config module
 //
 // `shed.yaml` holds the defaults every shed-driven recipe inherits: `driver_kind`, `tackler`, `tackler_timeout_min`, `tackler_max_spawns`, `arbiter`, `arbiter_timeout_min` and `arbiter_max_spawns`.
-// A module's own keys of the same names are an `Override` of them: an empty string, a zero and a null inherit, and a set `tackler_max_spawns` or `arbiter_max_spawns`, zero included, wins, since zero turns that role off.
+// `batten.yaml`'s keys of the same names are an `Override` of them, a loom recipe's own values come through its profile block's `shed` object, and in an `Override` an empty string, a zero and a null inherit, and a set `tackler_max_spawns` or `arbiter_max_spawns`, zero included, wins, since zero turns that role off.
 // `ResolveDriverKind`, `ResolveTackler` and `ResolveArbiter` take each key from the override, else `shed.yaml`, else the default: the `llm` driver, the `haiku` and `opus[high]` model-specs, and a ten and a thirty minute timeout.
 // `ResolveTackler` and `ResolveArbiter` return `TacklerSettings` and `ArbiterSettings`, which carry a model choice, engine included, beside the timeout and the spawn budget; `ArbiterLimits` returns the arbiter's timeout and spawn budget alone.
-// `loomengine.RecipeOverride` picks the module override by recipe, `darn.yaml`'s for a darn run and `loom.yaml`'s otherwise; batten's tackler keys sit in `batten.yaml`.
+// Batten's tackler and arbiter keys sit in `batten.yaml`.
 // `CheckOverride` and `CheckLocalOverride` refuse a bad value in any layer, naming the module, the key and the way to set it.
 package sheddriver

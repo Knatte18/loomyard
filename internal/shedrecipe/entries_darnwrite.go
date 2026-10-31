@@ -11,7 +11,7 @@ import (
 )
 
 // darnWriteEntry is the Constructor for the "DarnWrite" registry row:
-// it resolves the row's "gates" Config key through resolveRowGateSpec, so its "verify" gate runs the "gate_key" key and reads as "<row> gate", validates Env.DarnTable, Env.Seats and every seam of Env.Darn, then builds a seat-table producer behind loomshed.NewDarnWrite.
+// it resolves the row's "gates" Config key through resolveRowGateSpec, so its "verify" gate runs the "gate_key" key and reads as "<row> gate", validates Env.DarnTable, Env.Seats, the three absolute paths and every seam of Env.Darn, then builds a seat-table producer behind loomshed.NewDarnWrite.
 // Env.Shuttle is never read: the writer runs through Env.Seats.
 //
 // The table arrives as an injected func(loomshed.DarnTold) for the reason planWriteEntry gives, evaluated with the values the producer tells each session it builds.
@@ -35,12 +35,23 @@ func darnWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduc
 		return nil, err
 	}
 	dw := env.Darn
+	for _, path := range []struct{ field, value string }{
+		{"Darn.RecordPath", dw.RecordPath},
+		{"Darn.SupportLogPath", dw.SupportLogPath},
+		{"Darn.StopMarkerPath", dw.StopMarkerPath},
+	} {
+		if err := requireAbsRoot("DarnWrite", path.field, path.value); err != nil {
+			return nil, err
+		}
+	}
 	seams := []struct {
 		field string
 		seam  any
 	}{
 		{"Darn.Commit", dw.Commit},
 		{"Darn.LatestOutcome", dw.LatestOutcome},
+		{"Darn.CheckRecord", dw.CheckRecord},
+		{"Darn.CommittedRecord", dw.CommittedRecord},
 	}
 	for _, s := range seams {
 		if err := requireSeam("DarnWrite", s.field, s.seam); err != nil {

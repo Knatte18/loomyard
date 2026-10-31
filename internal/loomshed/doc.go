@@ -3,16 +3,16 @@
 // It takes told absolute paths and has no direct production import of internal/lymcwd -- see PATTERN-cwd-resolution.
 //
 // The stops its gate rows halt on each name a way forward, as contracts/specs/refusal-spec.md defines one.
-// Tapestry-Preflight's half-finished-run stop names `lym loom goto` as that way forward.
+// The Webster row loads `batcher.yaml` through the layer stack under the told `configengine.Dirs` when it partitions the plan, and a load fault stops the row with the fix-and-re-step way forward.
 //
-// Tapestry-Preflight also loads `batcher.yaml` through the layer stack under the told `configengine.Dirs` after a passing seed check, as the Webster row does when it partitions the plan, so a stale file in any layer stops the run before any LLM row.
-// A retired key names the way forward its layer file calls for, `lym config reconcile --apply` for a worktree or local file and `lym fabric reconcile` for the repo default, which a session lym refuses the verb from reports status: FAILED and the orch runs;
-// any other load fault names the fix-and-re-step one.
-// The check reads and never writes, and validates no other module's config.
-//
-// Its plan gates, and the loom discussion gate's citation check, resolve refs and symbols through a told planindex.Index, so the package links no tree-sitter grammar.
+// Its plan gates, and the discussion gate's citation check, resolve refs and symbols through a told planindex.Index, so the package links no tree-sitter grammar.
 // The citation check parses glyphs with the cgo-free `quarry/glyph` grammar.
 // It tests a loom decision record's cited paths and symbols against the worktree, and a quarry outage is a returned error, never a finding.
+//
+// Every loom record row's gate, `lym loom validate-discussion` and Darn-Write's post-session guard share ValidateDiscussion over a DiscussionCheck.
+// It runs the section check, the decision-id and acceptance check and, when the section check is clean, the history check that keeps every `Added after Discussion` entry and appended PATTERN bullet the record's committed versions held.
+// With the check's Citations set, which follows the record row's engine, it also runs the citation check and the relevant-list check.
+// NewDiscussionGate maps it onto the gate contract and commits nothing.
 // The plan gate and `lym loom validate-plan` share ValidatePlan, which reads webster's run record under the anchor and tells the index the cards of every batch it holds done.
 // A twill Plan-Write run's gate and `lym loom validate-plan --lens-review` share ValidatePlanLensReview, which adds the presence check on `lens-review.md`.
 // Those cards are history, not targets: a run moved back to the plan review after Webster executed batches has their work in the tree, so their tree-dependent checks are skipped.
@@ -75,7 +75,13 @@
 // Only PR-Rework archives a generation into a round, and this package declares the round layout once, building every path from the existing accessors and telling webster its archive destination.
 // Webster's run record and the Plan-Review and Code-Review run directories are generation-scoped: they move into the round with the plan, so the next generation starts with none.
 //
+// The Discussion-Write and Darn-Write producers share runAndCommit, which runs the session once and commits its outputs on a non-empty output pointer, Done or a gate-failed Stuck.
+// A nil commit seam is refused by name, and a commit failure is a returned error, never Stuck.
+//
 // The Darn-Write row's producer (NewDarnWrite) wraps the gated darn writer session and tells it a prior-work note, empty when absent.
+// The decision record Record-Write wrote is the writer's scope: a call that finds it missing, or finds the support log missing beside it, halts the run Stuck before any session, with the way forward that brings the file back.
+// A record the committed history holds but the working copy lacks is restored from there, never written again from the board entry.
+// The producer removes the stop marker before each session, and a marker the session wrote halts the run Stuck after the commit, Done or gate-failed alike, with the session's stop report as the reason and the way forward that records the parent's answer.
 // The note, written in Go, is told whenever the run's history holds a Darn-Write entry:
 // it says the change is already under way on the task branch, names that entry's outcome and the row's kept gate findings file when one exists, and lets a decision recorded after the Discussion win over a finding it forbids fixing.
 // It reads no halt reason, because the shed's resume write clears the status error before the row is called.
@@ -83,6 +89,12 @@
 // On a non-empty output pointer, Done or a gate-failed Stuck, it commits the landing directory.
 // A gate-failed Stuck keeps its record and gains the resume way forward.
 // A failed commit is a returned error, since re-running the session cannot fix a git or filesystem fault.
+// A Done session is then guarded by DarnDeps.CheckRecord, which the wiring points at ValidateDiscussion over the run's record with no citation checks:
+// findings halt the run Stuck with no re-prompt, and the reason names the findings and the way forward that restores the record, which keeps every `Added after Discussion` entry the record held.
+//
+// The Record-Write row's producer (NewRecordWrite) writes a darn run's decision record and support log from the run's board entry, with no agent.
+// BoardRecord renders the record with the entry's body verbatim in one fenced block under `## Goal`, so no line of the body starts a section of the record.
+// It writes only the file that is missing, commits the pair on every call, and reports a board with no entry for the run as Stuck.
 //
 // A rework round a run recorded before PR-Rework went stays readable.
 // PlanReviewSkippable classifies the live plan generation from the committed round records, and answers false while the plan amendment record exists, so the amended plan is judged and its settle records a round start.

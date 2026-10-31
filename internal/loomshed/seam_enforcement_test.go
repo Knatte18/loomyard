@@ -72,6 +72,9 @@ var loomshedAllowedImports = []string{
 	"github.com/Knatte18/quarry/glyph",
 	// internal/lymdirs names the two root directory names and resolves no geometry.
 	"github.com/Knatte18/loomyard/internal/lymdirs",
+	// internal/fsx writes the Record-Write row's files atomically.
+	// It is told absolute paths and resolves no geometry.
+	"github.com/Knatte18/loomyard/internal/fsx",
 	// gopkg.in/yaml.v3 decodes and encodes the amendment record, which is YAML.
 	// The package still resolves no geometry: the record's path is told.
 	"gopkg.in/yaml.v3",

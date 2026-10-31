@@ -10,6 +10,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -32,7 +33,7 @@ func (p *funcProducer) Call(context.Context) (shedengine.Outcome, shedengine.Out
 // finalize, so the real landing producer never runs.
 func buildFrictionShed(t *testing.T, env shedrecipe.Env, paths shedbuild.ShedPaths, finalize shedengine.ShedProducer) *shedengine.Shed {
 	t.Helper()
-	shed, err := New(env, paths)
+	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}

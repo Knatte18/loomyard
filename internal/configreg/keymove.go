@@ -34,6 +34,20 @@ func KeyMoves() []KeyMove {
 		{FromModule: "darn", FromKey: "review_max_bounces", ToModule: "loom", ToKey: "code_max_bounces"},
 		{FromModule: "darn", FromKey: "review_hard_max_bounces", ToModule: "loom", ToKey: "code_hard_max_bounces"},
 		{FromModule: "darn", FromKey: "review_amend_max_bounces", ToModule: "loom", ToKey: "review_amend_max_bounces"},
+		// The plan perch and the implementer are the tapestry recipe's alone, so loom.yaml's plan keys moved to tapestry.yaml under the same names.
+		{FromModule: "loom", FromKey: "plan", ToModule: "tapestry", ToKey: "plan"},
+		{FromModule: "loom", FromKey: "plan_timeout_min", ToModule: "tapestry", ToKey: "plan_timeout_min"},
+		{FromModule: "loom", FromKey: "implementer", ToModule: "tapestry", ToKey: "implementer"},
+		{FromModule: "loom", FromKey: "plan_lenses", ToModule: "tapestry", ToKey: "plan_lenses"},
+		{FromModule: "loom", FromKey: "plan_reviewer_model", ToModule: "tapestry", ToKey: "plan_reviewer_model"},
+		{FromModule: "loom", FromKey: "plan_fixer_model", ToModule: "tapestry", ToKey: "plan_fixer_model"},
+		{FromModule: "loom", FromKey: "plan_reviewer_fan", ToModule: "tapestry", ToKey: "plan_reviewer_fan"},
+		{FromModule: "loom", FromKey: "plan_fixer_fan", ToModule: "tapestry", ToKey: "plan_fixer_fan"},
+		{FromModule: "loom", FromKey: "plan_judge", ToModule: "tapestry", ToKey: "plan_judge"},
+		{FromModule: "loom", FromKey: "plan_seed", ToModule: "tapestry", ToKey: "plan_seed"},
+		{FromModule: "loom", FromKey: "plan_max_bounces", ToModule: "tapestry", ToKey: "plan_max_bounces"},
+		{FromModule: "loom", FromKey: "plan_hard_max_bounces", ToModule: "tapestry", ToKey: "plan_hard_max_bounces"},
+		{FromModule: "loom", FromKey: "plan_auto_accept", ToModule: "tapestry", ToKey: "plan_auto_accept"},
 	}
 }
 
@@ -49,12 +63,7 @@ type KeyCopy struct {
 // KeyCopies returns every declared key copy, in the order reconcile applies them.
 // A reconcile places the value in the target module's hub file when the source file sets it and the target file does not.
 func KeyCopies() []KeyCopy {
-	return []KeyCopy{
-		// Until the arbiter keys joined shed.yaml, darn read loom's arbiter keys, so a hub's tuned values carry over to darn's own keys.
-		{FromModule: "loom", FromKey: "arbiter", ToModule: "darn", ToKey: "arbiter"},
-		{FromModule: "loom", FromKey: "arbiter_timeout_min", ToModule: "darn", ToKey: "arbiter_timeout_min"},
-		{FromModule: "loom", FromKey: "arbiter_max_spawns", ToModule: "darn", ToKey: "arbiter_max_spawns"},
-	}
+	return []KeyCopy{}
 }
 
 // moveRunSettings returns settings with every declared key move applied, leaving the argument untouched.

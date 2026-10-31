@@ -85,16 +85,15 @@ var recipePhaseTables = map[string]phaseTable{
 // loomPhases maps every row of a tapestry run that a phase table names whole, the retired rows of past runs included, to its phase.
 func loomPhases() map[string]string {
 	phases := map[string]string{
-		loomshed.NamePreflight:         PhaseSetup,
-		loomshed.NameTapestryPreflight: PhaseSetup,
-		retiredBatchifierRow:           PhaseWebster,
-		loomshed.NameDescribe:          PhaseWebster,
-		loomshed.NameDriftBaseline:     PhasePlan,
-		loomshed.NameDriftAwait:        PhasePlan,
-		loomshed.NameDriftVerify:       PhaseWebster,
-		loomshed.NamePRReview:          PhasePublishFinalize,
-		loomshed.NameFinalize:          PhasePublishFinalize,
-		loomshed.NameFrictionReflect:   PhasePublishFinalize,
+		loomshed.NamePreflight:       PhaseSetup,
+		retiredBatchifierRow:         PhaseWebster,
+		loomshed.NameDescribe:        PhaseWebster,
+		loomshed.NameDriftBaseline:   PhasePlan,
+		loomshed.NameDriftAwait:      PhasePlan,
+		loomshed.NameDriftVerify:     PhaseWebster,
+		loomshed.NamePRReview:        PhasePublishFinalize,
+		loomshed.NameFinalize:        PhasePublishFinalize,
+		loomshed.NameFrictionReflect: PhasePublishFinalize,
 	}
 	maps.Copy(phases, retiredRowNames)
 	return phases
@@ -104,6 +103,7 @@ func loomPhases() map[string]string {
 func darnPhases() map[string]string {
 	phases := map[string]string{
 		loomshed.NamePreflight:        PhaseSetup,
+		loomshed.NameRecordWrite:      PhaseSetup,
 		loomshed.NameDriftBaseline:    PhaseSetup,
 		loomshed.NameDriftAwait:       PhaseSetup,
 		loomshed.NameDarnWrite:        PhaseWrite,
@@ -123,7 +123,7 @@ func darnPhases() map[string]string {
 		retiredDarnBurlerReviewRow:    PhaseReview,
 		retiredDarnBurlerFixRow:       PhaseReview,
 	}
-	for retired, successor := range loomrecipe.DarnRetiredRows() {
+	for retired, successor := range loomrecipe.RetiredRows(shedrun.RecipeDarn) {
 		phases[retired] = phases[successor]
 	}
 	return phases

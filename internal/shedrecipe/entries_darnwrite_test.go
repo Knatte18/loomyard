@@ -6,21 +6,30 @@ package shedrecipe
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
-// darnTestEnv returns newTestEnv(t) with DarnTable and every Darn seam filled.
+// darnTestEnv returns newTestEnv(t) with DarnTable and every Darn seam filled, over a decision record and a support log that exist.
 func darnTestEnv(t *testing.T) Env {
 	t.Helper()
 	env := newTestEnv(t)
 	dir := t.TempDir()
+	recordPath := filepath.Join(dir, "decision-record.md")
+	supportLogPath := filepath.Join(dir, "support-log.md")
+	for _, path := range []string{recordPath, supportLogPath} {
+		if err := os.WriteFile(path, nil, 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
+		}
+	}
 	env.DescriptionPath = filepath.Join(dir, "summary.md")
 	env.DarnTable = func(loomshed.DarnTold) (seatengine.Table, error) {
 		return seatengine.Table{
@@ -30,8 +39,13 @@ func darnTestEnv(t *testing.T) Env {
 		}, nil
 	}
 	env.Darn = loomshed.DarnDeps{
-		Commit:        func() error { return nil },
-		LatestOutcome: func() (loomshed.DarnOutcome, bool, error) { return loomshed.DarnOutcome{}, false, nil },
+		RecordPath:      recordPath,
+		SupportLogPath:  supportLogPath,
+		StopMarkerPath:  filepath.Join(dir, "stop-marker"),
+		CommittedRecord: func() (bool, error) { return false, nil },
+		Commit:          func() error { return nil },
+		LatestOutcome:   func() (loomshed.DarnOutcome, bool, error) { return loomshed.DarnOutcome{}, false, nil },
+		CheckRecord:     func() ([]discussionparser.Finding, error) { return nil, nil },
 	}
 	return env
 }
@@ -48,6 +62,11 @@ func TestDarnWriteEntry_ConstructionFailures(t *testing.T) {
 		{"NilSeats", "Seats", gated, func(e *Env) { e.Seats = nil }},
 		{"NilCommit", "Darn.Commit", gated, func(e *Env) { e.Darn.Commit = nil }},
 		{"NilLatestOutcome", "Darn.LatestOutcome", gated, func(e *Env) { e.Darn.LatestOutcome = nil }},
+		{"NilCheckRecord", "Darn.CheckRecord", gated, func(e *Env) { e.Darn.CheckRecord = nil }},
+		{"NilCommittedRecord", "Darn.CommittedRecord", gated, func(e *Env) { e.Darn.CommittedRecord = nil }},
+		{"RelativeRecordPath", "Darn.RecordPath", gated, func(e *Env) { e.Darn.RecordPath = "decision-record.md" }},
+		{"RelativeSupportLogPath", "Darn.SupportLogPath", gated, func(e *Env) { e.Darn.SupportLogPath = "support-log.md" }},
+		{"RelativeStopMarkerPath", "Darn.StopMarkerPath", gated, func(e *Env) { e.Darn.StopMarkerPath = "stop-marker" }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

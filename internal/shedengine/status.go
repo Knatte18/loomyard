@@ -27,10 +27,7 @@ const (
 // The empty string is rejected rather than tolerated: State is a mandatory enum string read from
 // a file an external actor seeds, so a typo or a partial seed would otherwise fall through to
 // undefined behaviour -- silently treated as running, or as done.
-// The in-repo precedent for this split is checkCoherence in internal/loomengine/coherence.go,
-// which treats an empty mandatory enum string as absent and therefore a violation, while
-// reserving zero-value tolerance for the nullable, bool, and slice fields. PauseRequested (bool)
-// and History (slice) below keep that zero-value tolerance here for the same reason.
+// PauseRequested (bool) and History (slice) below tolerate their zero value, since neither is a mandatory enum string.
 func (s State) valid() bool {
 	switch s {
 	case StateRunning, StatePaused, StateDone, StateBlocked, StateFailed, StateAwaiting:

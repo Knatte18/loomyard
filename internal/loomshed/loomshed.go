@@ -19,7 +19,6 @@ package loomshed
 // -> shedrecipe -> loomshed -- the production cycle the consumer-package split exists to avoid.
 const (
 	NamePreflight         = "Preflight"
-	NameTapestryPreflight = "Tapestry-Preflight"
 	NameDiscussionWrite   = "Discussion-Write"
 	NameDiscussionBouncer = "Discussion-Bouncer"
 	NamePlanWrite         = "Plan-Write"
@@ -28,6 +27,7 @@ const (
 	NameDescribe          = "Describe"
 	NameParentAlign       = "Parent-Align"
 	NameDarnWrite         = "Darn-Write"
+	NameRecordWrite       = "Record-Write"
 	NameFinalize          = "Finalize"
 	NameFrictionReflect   = "Friction-Reflect"
 

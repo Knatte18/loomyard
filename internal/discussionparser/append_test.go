@@ -62,6 +62,13 @@ func TestAppendDecision_AppendsAtEndOfDecisionsSection(t *testing.T) {
 	fenced := strings.Replace(allSectionsContent(), "## Decisions\n\nbody text.\n",
 		"## Decisions\n\n```\n## Not a heading\n```\n", 1)
 
+	inGoal := func(body string) string {
+		return strings.Replace(allSectionsContent(), "## Goal\n\nbody text.\n", "## Goal\n\n"+body, 1)
+	}
+	outerFence := inGoal("````\n`inline` code\n## Decisions\n```js\ncode\n```\n````\n")
+	indentedFence := inGoal("   ```\n## Decisions\n   ```\n")
+	unclosedInnerFence := inGoal("````\n```js\n## Decisions\n````\n")
+
 	// withEntry returns record with wantEntry placed after its Decisions section's body, where AppendDecision puts it.
 	withEntry := func(record string) string {
 		return strings.Replace(record, "## Decisions\n\nbody text.\n", "## Decisions\n\nbody text.\n"+wantEntry, 1)
@@ -132,6 +139,9 @@ func TestAppendDecision_AppendsAtEndOfDecisionsSection(t *testing.T) {
 			prior: fenced,
 			want:  strings.Replace(fenced, "```\n\n## Constraints", "```\n"+wantEntry+"\n## Constraints", 1),
 		},
+		{name: "four-backtick fence around a Decisions line and an inner block", prior: outerFence, want: withEntry(outerFence)},
+		{name: "fence indented three spaces around a Decisions line", prior: indentedFence, want: withEntry(indentedFence)},
+		{name: "inner fence never closed inside a longer outer fence", prior: unclosedInnerFence, want: withEntry(unclosedInnerFence)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

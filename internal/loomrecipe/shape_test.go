@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedcheck"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -68,7 +69,6 @@ func frictionReflectProducerType() reflect.Type {
 
 var wantProducerTable = []wantProducerRow{
 	{loomshed.NamePreflight, "Preflight", reflect.TypeOf(preflightshed.NewPreflight("", ""))},
-	{loomshed.NameTapestryPreflight, "TapestryPreflight", reflect.TypeOf(loomshed.NewTapestryPreflight("", "", "", configengine.Dirs{}))},
 	{loomshed.NameDiscussionWrite, "DiscussionWrite", reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
 	{loomshed.NameDiscussionBouncer, "Bouncer", bouncerType},
 	{loomshed.NameDiscussionBurlerReview, "BurlerReview", burlerReviewType},
@@ -81,10 +81,10 @@ var wantProducerTable = []wantProducerRow{
 	{loomshed.NameDriftAwait, "DriftAwait", driftAwaitType},
 	{loomshed.NameWebster, "Implementer", reflect.TypeOf(loomshed.NewWebsterProducer("", configengine.Dirs{}, nil, websterengine.RunDeps{}, nil))},
 	{loomshed.NameParentAlign, "ParentAlign", reflect.TypeOf(&landingshed.ParentAlign{})},
+	{loomshed.NameDriftVerify, "DriftVerify", driftVerifyType},
 	{loomshed.NameCodeBouncer, "Bouncer", bouncerType},
 	{loomshed.NameCodeBurlerReview, "BurlerReview", burlerReviewType},
 	{loomshed.NameCodeBurlerFix, "BurlerFix", burlerFixType},
-	{loomshed.NameDriftVerify, "DriftVerify", driftVerifyType},
 	{loomshed.NameDescribe, "Describe", reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
 	{loomshed.NamePRReview, "PRReview", reflect.TypeOf(&landingshed.PRReview{})},
 	{loomshed.NameFinalize, "Finalize", reflect.TypeOf(&landingshed.Finalize{})},
@@ -118,7 +118,7 @@ func testEnv(t *testing.T) (shedrecipe.Env, shedbuild.ShedPaths) {
 
 func TestNew_ToldShedFields(t *testing.T) {
 	env, paths := testEnv(t)
-	shed, err := New(env, paths)
+	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
@@ -142,7 +142,7 @@ func TestNew_ToldShedFields(t *testing.T) {
 // their escalate-on-stuck setting.
 func TestNew_MergeInAndFinalizeAreRealProducers(t *testing.T) {
 	env, paths := testEnv(t)
-	shed, err := New(env, paths)
+	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
@@ -184,7 +184,7 @@ func TestNew_MissingLandingClosureReturnsError(t *testing.T) {
 	env, paths := testEnv(t)
 	env.Landing.MergeBase = nil
 
-	shed, err := New(env, paths)
+	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err == nil {
 		t.Fatalf("New() error = nil; want non-nil error for an Env.Landing missing a required closure")
 	}
@@ -198,7 +198,7 @@ func TestNew_MissingLandingClosureReturnsError(t *testing.T) {
 
 func TestNew_PassesShedValidation(t *testing.T) {
 	env, paths := testEnv(t)
-	shed, err := New(env, paths)
+	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
@@ -238,7 +238,7 @@ func TestNew_PassesShedValidation(t *testing.T) {
 // shedcheck.Check never inspects. A comment claiming unqualified perch coverage would be false.
 func TestNew_RoutingGraphIsClean(t *testing.T) {
 	env, paths := testEnv(t)
-	shed, err := New(env, paths)
+	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}

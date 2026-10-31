@@ -27,16 +27,16 @@ const (
 )
 
 // twillLenses returns the lenses of the named fan, resolved against lenses.yaml's layer stack under dirs.
-// key is the loom.yaml key that names the fan, which the errors carry:
+// key is the key in module's config file that names the fan, and the errors carry both:
 // an unreadable lenses.yaml, a fan that is undefined or holds no lenses, and a fan naming an undefined lens are each refused naming the key and the way forward.
-func twillLenses(dirs configengine.Dirs, fan, key string) ([]twilldirective.Lens, error) {
+func twillLenses(dirs configengine.Dirs, fan, module, key string) ([]twilldirective.Lens, error) {
 	lensesConfig, err := lenses.Load(dirs)
 	if err != nil {
-		return nil, fmt.Errorf("loom config key %q: lenses.yaml unreadable for the %q fan: %w; fix lenses.yaml, or set the key to \"\" to turn the lens forks off", key, fan, err)
+		return nil, fmt.Errorf("%s config key %q: lenses.yaml unreadable for the %q fan: %w; fix lenses.yaml, or set the key to \"\" to turn the lens forks off", module, key, fan, err)
 	}
 	resolved, err := lenses.ResolveFan(lensesConfig, fan)
 	if err != nil {
-		return nil, fmt.Errorf("loom config key %q: fan %q unresolvable through lenses.yaml: %w; define the fan and its lenses in lenses.yaml, or set the key to \"\" to turn the lens forks off", key, fan, err)
+		return nil, fmt.Errorf("%s config key %q: fan %q unresolvable through lenses.yaml: %w; define the fan and its lenses in lenses.yaml, or set the key to \"\" to turn the lens forks off", module, key, fan, err)
 	}
 	fanLenses := make([]twilldirective.Lens, len(resolved))
 	for i, lens := range resolved {
@@ -49,7 +49,7 @@ func twillLenses(dirs configengine.Dirs, fan, key string) ([]twilldirective.Lens
 // The forks review the overview and every card file its Card Index names, and the writer records the lens review in the plan directory's lens review file and saves each fork's report beside it, in the format of the spec deployed under specsDir.
 // A fan that does not resolve is refused naming the plan_lenses key.
 func planLensDirective(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir, fan string) (string, error) {
-	fanLenses, err := twillLenses(dirs, fan, planLensesKey)
+	fanLenses, err := twillLenses(dirs, fan, tapestryModule, planLensesKey)
 	if err != nil {
 		return "", err
 	}
@@ -86,7 +86,7 @@ func planLensDirective(layout *lymcwd.Location, dirs configengine.Dirs, stencils
 // The writer saves each fork's report beside the support log, in the format of the spec deployed under specsDir.
 // An unreadable lenses.yaml, or a fan that does not resolve, is refused naming the discussion_lenses key and the way forward.
 func discussionLensDirective(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir, fan string) (string, error) {
-	fanLenses, err := twillLenses(dirs, fan, discussionLensesKey)
+	fanLenses, err := twillLenses(dirs, fan, loomModule, discussionLensesKey)
 	if err != nil {
 		return "", err
 	}

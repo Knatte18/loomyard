@@ -344,19 +344,52 @@ func decisionsInsertOffset(content string) (int, error) {
 	return starts[end], nil
 }
 
-// fencedLines reports for each line whether it is a ``` or ~~~ fence line or lies inside a fenced block.
+// fencedLines reports for each line whether it is a fence line or lies inside a fenced block.
 // A heading or marker on such a line is ordinary text.
+//
+// A fence follows CommonMark's rule for a top-level fenced code block.
+// It opens on a line of at most three leading spaces and a run of at least three backticks or tildes;
+// a backtick run whose info string holds a backtick opens none.
+// An open fence closes only on a line of at most three leading spaces, a run of the opening character at least as long as the opening run, and nothing after the run but spaces or tabs.
+// Any other line inside an open fence is body text, and an unclosed fence runs to the end of the lines.
+// A line indented four or more spaces neither opens nor closes.
+// A list item or blockquote is not read, so a fence nested in one counts as a top-level line.
 func fencedLines(lines []string) []bool {
 	fenced := make([]bool, len(lines))
-	inFence := false
+	var openChar byte
+	openRun := 0
 	for i, line := range lines {
-		trimmed := strings.TrimRight(line, " \t\r")
-		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
-			inFence = !inFence
-			fenced[i] = true
+		line = strings.TrimRight(line, "\r")
+		char, run, rest := fenceRun(line)
+		if openRun == 0 {
+			if run >= 3 && !(char == '`' && strings.Contains(rest, "`")) {
+				openChar, openRun = char, run
+				fenced[i] = true
+			}
 			continue
 		}
-		fenced[i] = inFence
+		fenced[i] = true
+		if char == openChar && run >= openRun && strings.Trim(rest, " \t") == "" {
+			openRun = 0
+		}
 	}
 	return fenced
+}
+
+// fenceRun splits line into the fence character, the length of its leading run and the text after the run.
+// It returns a zero run when the line is indented four or more spaces or does not start, after at most three spaces, with a backtick or tilde.
+func fenceRun(line string) (char byte, run int, rest string) {
+	indent := 0
+	for indent < len(line) && line[indent] == ' ' {
+		indent++
+	}
+	if indent > 3 || indent == len(line) || (line[indent] != '`' && line[indent] != '~') {
+		return 0, 0, ""
+	}
+	char = line[indent]
+	end := indent
+	for end < len(line) && line[end] == char {
+		end++
+	}
+	return char, end - indent, line[end:]
 }

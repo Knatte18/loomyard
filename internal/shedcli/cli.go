@@ -16,6 +16,7 @@ package shedcli
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 
@@ -245,6 +246,7 @@ func addressedRunID(args []string) string {
 // The missing-seed refusal and the unsupported-verb refusal are wrapped in shedverbs.KindlessRefusal.
 // shedverbs.ReportArmError prints them with no "kind" field even on step.
 // A missing run is not a seventh value in the closed step vocabulary, and a driver never re-seeds a run.
+// A seed naming a recipe the table does not hold is refused with the re-seed way forward.
 // Every other error it returns reaches the driver on step as a bootstrap refusal.
 func armFromSeed(location *lymcwd.Location, verb string, args []string) (shedverbs.Spec, error) {
 	runID := addressedRunID(args)
@@ -263,7 +265,7 @@ func armFromSeed(location *lymcwd.Location, verb string, args []string) (shedver
 
 	e, err := lookup(seed.Recipe)
 	if err != nil {
-		return shedverbs.Spec{}, err
+		return shedverbs.Spec{}, fmt.Errorf("%w; way forward: remove the run's seed.json and seed the run again with \"lym shed seed <run-id> --recipe <recipe>\"", err)
 	}
 
 	if !verbSupported(e.Verbs, verb) {
