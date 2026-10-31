@@ -498,6 +498,63 @@ func TestCompact_CycleReloadsPluginsThenPointerNamingTheNote(t *testing.T) {
 	}
 }
 
+// TestCompact_HookDeliveredPointerIsSkippedAndAStaleMarkIsTyped pins that the pointer the session-start hook delivered during a compact cycle is not typed, although the hook stamped its mark before the provider wrote the compaction boundary,
+// and that a mark older than the compaction baseline from before the cycle does not count as that delivery.
+func TestCompact_HookDeliveredPointerIsSkippedAndAStaleMarkIsTyped(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// markAt returns the time of the mark written before the boundary lands.
+		markAt    func(baseline, boundary time.Time) time.Time
+		wantTyped bool
+	}{
+		{"a mark stamped just before the boundary skips the pointer", func(_, boundary time.Time) time.Time {
+			return boundary.Add(-30 * time.Millisecond)
+		}, false},
+		{"a mark older than the previous baseline types the pointer", func(baseline, _ time.Time) time.Time {
+			return baseline.Add(-time.Second)
+		}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			e := newCompactEnv(t)
+			e.withSkills()
+			baseline := e.clock.now.Add(-time.Minute)
+			e.setState(func(st *State) { st.CompactionBaseline = baseline })
+			e.w = e.newWatcher()
+			e.reachCompacting()
+			boundary := e.state().PhaseEnteredAt.Add(time.Second)
+			pointer, err := RenderResumePrompt(e.stDir, e.paths.RolePath, e.state().LastHandoff)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := WriteResumeMark(e.paths, ResumeMark{At: tt.markAt(baseline, boundary), Text: pointer}); err != nil {
+				t.Fatal(err)
+			}
+			e.landBoundary(boundary, 150)
+			e.tick() // boundary read: the color queued
+			e.tick() // the color typed, the plugins queued
+			e.tick() // the plugins typed, the pointer step
+			if tt.wantTyped {
+				e.endTurn("resumed")
+			}
+
+			wantTyped := 0
+			if tt.wantTyped {
+				wantTyped = 1
+			}
+			if got := e.s.count("send:" + pointer); got != wantTyped {
+				t.Errorf("pointer typed %d times, want %d; calls = %q", got, wantTyped, e.s.calls)
+			}
+			if st := e.state(); st.Phase != PhaseIdle || st.LastAbortReason != "" || !st.PointerMarkSince.IsZero() {
+				t.Errorf("state = %+v, want idle with no abort reason and no pointer mark bound", st)
+			}
+		})
+	}
+}
+
 func TestCompact_TimeoutReturnsToIdleAndHoldsAutomaticTriggers(t *testing.T) {
 	t.Parallel()
 

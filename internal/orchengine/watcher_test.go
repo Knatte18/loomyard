@@ -1470,17 +1470,20 @@ func TestWatcher_HookDeliveredPointerIsSkippedAndAnythingElseIsTyped(t *testing.
 	tests := []struct {
 		name string
 		// mark returns the mark written before the reload starts, and false for none.
-		mark      func(boundary time.Time, pointer string) (ResumeMark, bool)
+		mark      func(baseline, boundary time.Time, pointer string) (ResumeMark, bool)
 		wantTyped bool
 	}{
-		{"a mark after the boundary holding the pointer skips it", func(boundary time.Time, pointer string) (ResumeMark, bool) {
+		{"a mark after the boundary holding the pointer skips it", func(_, boundary time.Time, pointer string) (ResumeMark, bool) {
 			return ResumeMark{At: boundary.Add(time.Second), Text: pointer}, true
 		}, false},
-		{"no mark types the pointer", func(time.Time, string) (ResumeMark, bool) { return ResumeMark{}, false }, true},
-		{"a mark older than the boundary types the pointer", func(boundary time.Time, pointer string) (ResumeMark, bool) {
-			return ResumeMark{At: boundary.Add(-time.Second), Text: pointer}, true
+		{"a mark the hook stamped before the boundary was written skips it", func(_, boundary time.Time, pointer string) (ResumeMark, bool) {
+			return ResumeMark{At: boundary.Add(-30 * time.Millisecond), Text: pointer}, true
+		}, false},
+		{"no mark types the pointer", func(time.Time, time.Time, string) (ResumeMark, bool) { return ResumeMark{}, false }, true},
+		{"a mark older than the previous baseline types the pointer", func(baseline, _ time.Time, pointer string) (ResumeMark, bool) {
+			return ResumeMark{At: baseline.Add(-time.Second), Text: pointer}, true
 		}, true},
-		{"a mark with other text types the pointer", func(boundary time.Time, _ string) (ResumeMark, bool) {
+		{"a mark with other text types the pointer", func(_, boundary time.Time, _ string) (ResumeMark, bool) {
 			return ResumeMark{At: boundary.Add(time.Second), Text: "something else"}, true
 		}, true},
 	}
@@ -1489,6 +1492,9 @@ func TestWatcher_HookDeliveredPointerIsSkippedAndAnythingElseIsTyped(t *testing.
 			t.Parallel()
 			e := newWatchEnv(t)
 			e.withSkills()
+			baseline := e.clock.now.Add(-time.Minute)
+			e.setState(func(st *State) { st.CompactionBaseline = baseline })
+			e.w = e.newWatcher()
 			boundary := e.clock.now.Add(time.Second)
 			e.s.autoCompact = map[string]shuttleengine.CompactionBoundary{"a": freshBoundary(boundary)}
 			e.s.usage["a"] = 100
@@ -1496,7 +1502,7 @@ func TestWatcher_HookDeliveredPointerIsSkippedAndAnythingElseIsTyped(t *testing.
 			if err != nil {
 				t.Fatal(err)
 			}
-			if mark, ok := tt.mark(boundary, pointer); ok {
+			if mark, ok := tt.mark(baseline, boundary, pointer); ok {
 				if err := WriteResumeMark(e.paths, mark); err != nil {
 					t.Fatal(err)
 				}
@@ -1516,13 +1522,38 @@ func TestWatcher_HookDeliveredPointerIsSkippedAndAnythingElseIsTyped(t *testing.
 			if !slices.Equal(e.s.calls, wantCalls) {
 				t.Errorf("calls = %q, want %q", e.s.calls, wantCalls)
 			}
-			if st := e.state(); st.Phase != PhaseIdle || st.LastAbortReason != "" {
-				t.Errorf("state = %+v, want idle with no abort reason", st)
+			if st := e.state(); st.Phase != PhaseIdle || st.LastAbortReason != "" || !st.PointerMarkSince.IsZero() {
+				t.Errorf("state = %+v, want idle with no abort reason and no pointer mark bound", st)
 			}
 			if _, found, err := ReadResumeMark(e.paths); err != nil || found {
 				t.Errorf("mark found = %v, %v after the reload ended; want none", found, err)
 			}
 		})
+	}
+}
+
+func TestWatcher_ClearCycleTypesThePointerWhenTheMarkPredatesTheBaseline(t *testing.T) {
+	t.Parallel()
+
+	e := newWatchEnv(t)
+	baseline := e.clock.now.Add(-time.Minute)
+	e.setState(func(st *State) { st.CompactionBaseline = baseline })
+	e.w = e.newWatcher()
+	e.reachClearing()
+	pointer := e.state().PendingResume
+	if err := WriteResumeMark(e.paths, ResumeMark{At: baseline.Add(-time.Second), Text: pointer}); err != nil {
+		t.Fatal(err)
+	}
+	e.tick() // the clear typed: the color queued
+	e.tick() // the color typed, the plugins queued
+	e.tick() // the plugins typed, the pointer step
+
+	if got := e.s.count("send:" + pointer); got != 1 {
+		t.Errorf("pointer typed %d times, want 1; calls = %q", got, e.s.calls)
+	}
+	e.endTurn("resumed")
+	if st := e.state(); st.Phase != PhaseIdle || !st.PointerMarkSince.IsZero() {
+		t.Errorf("state = %+v, want idle with no pointer mark bound", st)
 	}
 }
 

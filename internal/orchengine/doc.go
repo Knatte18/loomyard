@@ -326,7 +326,9 @@
 // The provider's session-start hook can deliver the pointer itself after a compaction:
 // the hidden `lym orch resume-context` verb renders it from the persisted state through ResumeContext, which renders the role file first in every phase but a resuming one with a pending pointer, and then writes the delivery mark, `resume-mark`.
 // The pointer step reads the mark first.
-// A mark dated at or after State.CompactionBaseline whose text equals the pending pointer means the hook delivered it, so the step injects nothing, logs `orch: pointer delivered by the session-start hook` at Info, and ends the phase at once with no abort reason.
+// A mark dated at or after State.PointerMarkSince whose text equals the pending pointer means the hook delivered it, so the step injects nothing, logs `orch: pointer delivered by the session-start hook` at Info, and ends the phase at once with no abort reason.
+// State.PointerMarkSince is the compaction baseline as it stood before the reload moved it to the new boundary, or the baseline itself for a reload after `/clear`:
+// the hook runs before the provider writes the compaction boundary, so its mark is older than the new baseline, while every earlier compaction's hook ran before the previous one.
 // It does not wait for a turn end, since the one that revealed the boundary was read before the step, and a skip waiting for another could end in `resume timed out`.
 // No mark, an older one or one with other text injects the pointer as before, so a hook that never fired costs nothing; a pointer delivered by both ways costs the session one redundant read.
 // Every return to idle clears the mark, so it never carries into the next compaction.

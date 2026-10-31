@@ -889,6 +889,7 @@ func (w *Watcher) toIdle(st State, abortReason string) error {
 	st.PhaseInjected = false
 	st.Pending, st.RequestID, st.RequestReadAt = nil, 0, time.Time{}
 	st.PendingHandoff, st.PendingResume = "", ""
+	st.PointerMarkSince = time.Time{}
 	st.ReloadStep, st.ReloadTypedAt, st.ReloadRetry, st.ReloadSkipsSkills = ReloadStepSkills, time.Time{}, nil, false
 	st.Stuck, st.StuckByCreel = "", false
 	st.LastInjectionOffset = w.cursor
@@ -1229,6 +1230,7 @@ func (w *Watcher) tickClearing(st State, now time.Time) error {
 	if err := w.removeSatisfiedRequest(CycleClear, now); err != nil {
 		return err
 	}
+	st.PointerMarkSince = st.CompactionBaseline
 	return w.startReload(st, now, false)
 }
 
@@ -1268,6 +1270,7 @@ func (w *Watcher) startAutoReload(st State, now time.Time) error {
 	if err != nil {
 		return err
 	}
+	st.PointerMarkSince = st.CompactionBaseline
 	st.CompactionBaseline = w.compactedAt
 	st.PendingResume = pointer
 	w.compactedAt = time.Time{}
@@ -1351,7 +1354,7 @@ func (w *Watcher) finishColorStep(st State, now time.Time) error {
 }
 
 // hookDelivered returns the delivery mark and true when the session-start hook already delivered the pending pointer:
-// a mark dated at or after the compaction baseline whose text is the pending pointer.
+// a mark dated at or after State.PointerMarkSince whose text is the pending pointer.
 // An unreadable mark counts as no delivery, so the pointer is typed.
 func (w *Watcher) hookDelivered(st State) (ResumeMark, bool) {
 	mark, found, err := ReadResumeMark(w.paths)
@@ -1359,7 +1362,7 @@ func (w *Watcher) hookDelivered(st State) (ResumeMark, bool) {
 		logger.Warn("orch: resume mark unreadable; the pointer is typed", "strandGUID", st.Strand, "cause", err)
 		return ResumeMark{}, false
 	}
-	return mark, found && !mark.At.Before(st.CompactionBaseline) && mark.Text == st.PendingResume
+	return mark, found && !mark.At.Before(st.PointerMarkSince) && mark.Text == st.PendingResume
 }
 
 // advanceReload persists the move to step, with retry as the skills its retry step loads and its offset taken at the cursor, and goes on to queue it.
@@ -1643,6 +1646,7 @@ func (w *Watcher) tickCompacting(st State, now time.Time) error {
 			return err
 		}
 		st.CycleCount++
+		st.PointerMarkSince = st.CompactionBaseline
 		st.CompactionBaseline = boundary.At
 		if err := w.removeSatisfiedRequest(CycleCompact, boundary.At); err != nil {
 			return err

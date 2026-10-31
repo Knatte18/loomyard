@@ -146,6 +146,10 @@ type State struct {
 	// CompactionBaseline is the time of the newest compaction boundary already handled, or the launch time of the session;
 	// only a boundary after it triggers a reload.
 	CompactionBaseline time.Time `json:"compaction_baseline"`
+	// PointerMarkSince is the earliest time a session-start hook's resume mark counts as delivering PendingResume: the compaction baseline as it stood before the reload moved it, or the baseline itself after `/clear`;
+	// zero outside a reload.
+	// The hook runs before the compaction boundary is written, so the new baseline is later than its mark, while every earlier compaction's hook ran before the previous one.
+	PointerMarkSince time.Time `json:"pointer_mark_since"`
 	// ReloadStep is the resuming phase's current step: ReloadStepColor, ReloadStepPlugins, ReloadStepSkills, ReloadStepRetry, or any other value for the pointer step.
 	ReloadStep int `json:"reload_step"`
 	// ReloadTypedAt is when the current step was first queued; zero while it has not been.
@@ -434,7 +438,7 @@ func NewHandoffPath(p Paths, now time.Time) string {
 // ResetForFreshLaunch returns s prepared for a newly launched session on strand.
 // A non-idle phase is recorded in LastAbortReason as abandoned;
 // the offsets are zeroed because a new run has a new events file.
-// The pending step, the note request's id, the stuck reason and the recorded fresh-launch failure are cleared too, since they belong to the abandoned phase or the earlier launch.
+// The pending step, the pointer mark bound, the note request's id, the stuck reason and the recorded fresh-launch failure are cleared too, since they belong to the abandoned phase or the earlier launch.
 // A usage limit the earlier session stood on is cleared, and the new session's first usage-limited turn end records it again.
 // The context reading and the turn end it was taken through are cleared, since they describe the previous session;
 // the new session's first turn end sets them again.
@@ -457,6 +461,7 @@ func ResetForFreshLaunch(s State, strand string, launchedAt time.Time) State {
 	s.PhaseInjected = false
 	s.PendingHandoff = ""
 	s.PendingResume = ""
+	s.PointerMarkSince = time.Time{}
 	s.Pending, s.RequestID, s.RequestReadAt = nil, 0, time.Time{}
 	s.Stuck, s.StuckByCreel = "", false
 	s.FreshLaunchFailure, s.ResumeLineWithdrawn = "", false
