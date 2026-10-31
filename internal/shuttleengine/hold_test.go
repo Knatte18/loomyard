@@ -98,7 +98,9 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 		// backgroundWake makes the engine meet RequirementBackgroundWake, and gated gives the run a gate entry that always passes.
 		backgroundWake bool
 		gated          bool
-		check          func(t *testing.T, got heldRun)
+		// sentTexts are recorded as sends into the run before Wait.
+		sentTexts []string
+		check     func(t *testing.T, got heldRun)
 	}{
 		{
 			name: "a stop with outputs missing notifies once with prefix, strand, tail and message start", events: "STOP:which approach?\n", strand: strandName,
@@ -332,6 +334,44 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 			},
 		},
 		{
+			name: "a held turn end of a turn the operator typed sends no notice and leaves the offset", events: "START\nSTART:what are you doing?\nSTOP:answered\n", session: true,
+			check: func(t *testing.T, got heldRun) {
+				if len(got.notices) != 0 || got.notifiedOffset != 0 || got.result.Outcome != OutcomeTimeout {
+					t.Errorf("notices = %q, NotifiedOffset = %d, outcome = %q; want none, 0 and a hold to the deadline", got.notices, got.notifiedOffset, got.result.Outcome)
+				}
+			},
+		},
+		{
+			name: "a deferred run whose held turn end followed an operator-typed turn neither queues nor sends a notice", events: "START\nSTART:what are you doing?\nSTOP:answered\n", session: true,
+			sleepJump: 5 * time.Minute, timeout: 2 * time.Hour,
+			deferral: func(*testing.T, func() time.Duration) func() bool { return func() bool { return false } },
+			check: func(t *testing.T, got heldRun) {
+				if len(got.notices) != 0 || got.notifiedOffset != 0 || got.result.Outcome != OutcomeTimeout {
+					t.Errorf("notices = %q, NotifiedOffset = %d, outcome = %q; want none, 0 and a hold to the deadline", got.notices, got.notifiedOffset, got.result.Outcome)
+				}
+			},
+		},
+		{
+			name: "held turn ends of the prompt turn, a turn with no instruction and a turn a send started are notified around an operator turn", events: "START\nSTOP:prompt turn\n", session: true,
+			sentTexts: []string{"a parent send"},
+			script: func(appendLine func(string), _ func(time.Duration)) []func() {
+				return []func(){
+					func() { appendLine("START:what are you doing?") }, func() { appendLine("STOP:answered") },
+					func() { appendLine("START") }, func() { appendLine("STOP:notification turn") },
+					func() { appendLine("START:a parent send") }, func() { appendLine("STOP:still missing") },
+				}
+			},
+			check: func(t *testing.T, got heldRun) {
+				var messages []string
+				for _, notice := range got.notices {
+					messages = append(messages, notice[strings.LastIndex(notice, "«"):])
+				}
+				if want := []string{"«prompt turn»", "«notification turn»", "«still missing»"}; !slices.Equal(messages, want) {
+					t.Errorf("notice messages = %q; want %q", messages, want)
+				}
+			},
+		},
+		{
 			name: "a deferred run whose predicate always reports outstanding work notifies once, only past the maximum deferral", events: "STOP:hello\n",
 			sleepJump: 5 * time.Minute, timeout: 2 * time.Hour,
 			deferral: func(*testing.T, func() time.Duration) func() bool { return func() bool { return true } },
@@ -470,6 +510,9 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 				runOpts = append(runOpts, withRunGate(GateSpec{{Name: "check", Gate: func() (GateResult, error) { return GateResult{Passed: true}, nil }}}))
 			}
 			run := fx.newRun(Spec{OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}, Timeout: timeout, Interactive: tt.interact, QuietHold: tt.quiet, HoldDeferral: holdDeferral}, runOpts...)
+			for _, text := range tt.sentTexts {
+				recordSentText(run.runDir, text)
+			}
 			if setSteps != nil {
 				setSteps(tt.script(func(line string) { appendEventsLine(t, run.state.EventsPath, line) }, fc.asleep))
 			}

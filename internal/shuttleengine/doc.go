@@ -106,7 +106,9 @@
 // The hold, the wait mark and the deadline are unchanged, and the next held turn end it does not read limited is notified as any other.
 // A held turn end built from a waiting turn end, one the gated run judged plain on un-awaited shells or one the ungated shell wait expired, sends no notice, defers none and leaves RunState.NotifiedOffset alone when the engine meets RequirementBackgroundWake.
 // The session wakes when its own background work completes, so the parent has nothing to answer; the hold, the wait mark and the deadline are unchanged, and an Info line records the skip.
-// A held turn end with nothing outstanding is notified as before, whoever typed the prompt that began its turn, since shuttle cannot tell an operator's typed text from a parent's answer.
+// A held turn end whose turn began with an operator instruction, read as the carry-over below reads one: a typed instruction past the prompt offset that is not the prompt and that the sent-texts file does not hold, sends no notice, defers none and leaves RunState.NotifiedOffset alone.
+// The operator is talking to the agent in its pane, so the parent has nothing to answer; the turn start is the newest one before the turn end, and an Info line records the skip.
+// Creel mail, re-prompts and continue lines go through the verified send, so a held end of a turn they started is notified as any other.
 // A held turn end that is an API error across a detected sleep of at least pauserecord.SleepTolerance is first given one automatic continue line, typed through the guarded paste-submit, and sends no notice and defers none:
 // no pause covers the run, the session state names the newest turn end an API error, and the sleep lies after the latest turn start Wait read.
 // RunState.APIContinued is persisted before typing and cleared by the next held turn end that is not an API error, so a turn gets at most one continue.
@@ -455,7 +457,7 @@
 // Like ReadWaitMarker it reads files only, so a process that runs no shuttle may call it.
 //
 // Operator instructions carried over: every verified send into a run appends the text it types, as one JSON string line, to the run directory's sent-texts file before typing.
-// A run's operator instructions are the SessionSignal.Instruction texts of its turn starts past its prompt offset, without the first, which is the run's prompt, and without any text the sent-texts file holds.
+// A run's operator instructions are the SessionSignal.Instruction texts of its turn starts past its prompt offset, without the turn start of the run's prompt, and without any text the sent-texts file holds.
 // RunState records a role key, the spec's NameOverride else its Role, and the instructions the run carried over.
 // Before its orphan sweep, a start finds the newest run under the root with the same role key;
 // when that run is unfinished, its record reading stopped, died or timeout or reading running with its waiter gone, its carried and operator instructions, without repeats, are appended to the new prompt as one block, recorded as the new run's carried instructions and named in one Warn log line and one notifier line.

@@ -796,7 +796,7 @@ func (r *skillReed) CapturePane(guid string) (string, error) {
 var _ ReedOps = (*skillReed)(nil)
 
 // sessionFakeEngine is waitingEngine plus the opt-in SessionSignalParser, SessionProber and ActivityReader capabilities.
-// ParseSessionSignals reads "START" as a turn start, "STOP:<message>" as a turn end, "WAIT:<message>" as a turn end carrying outstanding, "ASK" as an ask, "SESSIONSTART" or "SESSIONSTART:<source>" as a session start with that source and "SESSIONEND:<reason>" as a session end that ends the process unless its reason is "clear".
+// ParseSessionSignals reads "START" as a turn start, "START:<text>" as a turn start carrying <text> as its typed instruction, "STOP:<message>" as a turn end, "WAIT:<message>" as a turn end carrying outstanding, "ASK" as an ask, "SESSIONSTART" or "SESSIONSTART:<source>" as a session start with that source and "SESSIONEND:<reason>" as a session end that ends the process unless its reason is "clear".
 // Every signal names session-1, and the read consumes through the last complete line.
 // ProcessLiveness answers liveness for any session id, and TurnStartInterrupt answers interrupted and interruptAt for any turn start.
 // TurnEndActivity marks a turn end as an API error when its line is apiErrorLine.
@@ -853,6 +853,9 @@ func (e *sessionFakeEngine) ParseSessionSignals(data []byte) ([]SessionSignal, i
 			signal.Event = true
 		case trimmed == "START":
 			signal.Kind = SessionSignalTurnStart
+		case strings.HasPrefix(trimmed, "START:"):
+			signal.Kind = SessionSignalTurnStart
+			signal.Instruction = strings.TrimPrefix(trimmed, "START:")
 		case trimmed == "APIERR":
 			signal.Kind = SessionSignalAPIErrorTurnEnd
 		case trimmed == "ASK":

@@ -316,6 +316,9 @@ func (run *Run) Wait() (Result, error) {
 				case run.holdNoticePending() && run.usageLimited(held):
 					// The parent cannot act while the account is limited, and a notice sent now lands in its context as stale clutter after the reset.
 					logger.Info("shuttle: held turn end stopped on the usage limit; no hold notice", "strandGUID", run.state.StrandGUID, "offset", held.offset)
+				case run.holdNoticePending() && run.operatorStartedTurn(held):
+					// The operator is talking to the agent in its pane, so the turn end is no stall for the parent.
+					logger.Info("shuttle: held turn end of a turn the operator started; no hold notice", "strandGUID", run.state.StrandGUID, "offset", held.offset)
 				case run.holdNoticePending() && run.wakesOnBackground(held):
 					// The session wakes when its own background work completes, so the parent has nothing to answer.
 					logger.Info("shuttle: held turn end left background work running; no hold notice", "strandGUID", run.state.StrandGUID, "offset", held.offset)
@@ -940,12 +943,30 @@ func (run *Run) armHoldGuard() {
 // data is the slice of the events file that begins at startOffset.
 // An engine without SessionSignalParser reads none.
 func turnStartOffsets(engine Engine, data []byte, startOffset int64) []int64 {
+	starts := positionedTurnStarts(engine, data, startOffset)
+	offsets := make([]int64, len(starts))
+	for i, start := range starts {
+		offsets[i] = start.end
+	}
+	return offsets
+}
+
+// positionedTurnStart is one turn start read from an events file, with the offset just past its line.
+type positionedTurnStart struct {
+	signal SessionSignal
+	end    int64
+}
+
+// positionedTurnStarts returns each turn start the engine reads from data, in file order, with the events-file offset just past its line.
+// data is the slice of the events file that begins at startOffset.
+// An engine without SessionSignalParser reads none.
+func positionedTurnStarts(engine Engine, data []byte, startOffset int64) []positionedTurnStart {
 	parser, ok := engine.(SessionSignalParser)
 	if !ok {
 		return nil
 	}
 	signals, _ := parser.ParseSessionSignals(data)
-	var offsets []int64
+	var starts []positionedTurnStart
 	searchFrom := 0
 	for _, signal := range signals {
 		at := bytes.Index(data[searchFrom:], signal.Raw)
@@ -958,10 +979,10 @@ func turnStartOffsets(engine Engine, data []byte, startOffset int64) []int64 {
 		}
 		searchFrom = end
 		if signal.Kind == SessionSignalTurnStart {
-			offsets = append(offsets, startOffset+int64(end))
+			starts = append(starts, positionedTurnStart{signal: signal, end: startOffset + int64(end)})
 		}
 	}
-	return offsets
+	return starts
 }
 
 // heldTurnEnd is a plain Stop or a live ask that left the run's output files missing, so the run is held rather than ended.

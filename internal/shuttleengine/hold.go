@@ -1,6 +1,7 @@
 // hold.go builds the notice an autonomous run's held turn end sends its parent, and sends it once per held turn end through the runner's notifier.
 // It also declares the optional capability that tells a held turn end the provider's usage limit caused, which sends no notice.
 // Its background-wake check sends none for a held turn end left waiting on background work a session wakes from.
+// Its operator-turn check sends none for a held turn end of a turn the operator started by typing into the pane.
 
 package shuttleengine
 
@@ -101,6 +102,19 @@ func (run *Run) holdNoticePending() bool {
 func (run *Run) usageLimited(held *heldTurnEnd) bool {
 	reader, ok := run.engine.(UsageLimitReader)
 	return ok && reader.TurnEndUsageLimited(Event{Raw: held.raw})
+}
+
+// operatorStartedTurn reports whether the turn held ends began with an instruction the operator typed into the pane, rather than with the run's prompt, a send into the run or a turn the provider started itself.
+// The turn began at the newest turn start past the prompt offset whose line lies before held's offset; with none, the turn is not the operator's.
+func (run *Run) operatorStartedTurn(held *heldTurnEnd) bool {
+	instruction := ""
+	for _, start := range runTurnStarts(run.runDir, run.state, run.engine) {
+		if start.end >= held.offset {
+			break
+		}
+		instruction = start.operatorInstruction
+	}
+	return instruction != ""
 }
 
 // wakesOnBackground reports whether held left background work running on an engine whose sessions wake when their own background work completes.

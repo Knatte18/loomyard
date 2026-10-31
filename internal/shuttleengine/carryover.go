@@ -52,34 +52,55 @@ func sentTexts(runDir string) map[string]bool {
 	return texts
 }
 
-// operatorInstructions returns, in order, the instructions an operator typed into the run rs in runDir:
-// the instructions of its turn starts past its prompt offset, without the turn start of the run's prompt and without any text a send into the run typed.
+// runTurnStart is one turn start of a run past its prompt offset.
+type runTurnStart struct {
+	// end is the events-file offset just past the turn start's line.
+	end int64
+	// operatorInstruction is the instruction an operator typed to start the turn, empty when the run's prompt, a send into the run or the provider itself started it.
+	operatorInstruction string
+}
+
+// runTurnStarts returns, in file order, the turn starts of the run rs in runDir past its prompt offset.
+// A turn start's instruction is the operator's unless it is the turn start of the run's prompt or a send into the run typed its text.
 // The prompt's turn start is the first one when the record holds no deferred prompt line, else the one whose instruction is that line, so a run that died before its prompt landed keeps its first instruction.
+// A turn start the events file holds no Raw line for is not read.
 // An engine without a SessionSignalParser and an unreadable events file yield none.
-func operatorInstructions(runDir string, rs RunState, engine Engine) []string {
-	parser, ok := engine.(SessionSignalParser)
-	if !ok {
+func runTurnStarts(runDir string, rs RunState, engine Engine) []runTurnStart {
+	if _, ok := engine.(SessionSignalParser); !ok {
 		return nil
 	}
 	data, err := os.ReadFile(rs.EventsPath)
 	if err != nil {
 		return nil
 	}
-	signals, _ := parser.ParseSessionSignals(data[min(max(rs.PromptOffset, 0), int64(len(data))):])
+	promptOffset := min(max(rs.PromptOffset, 0), int64(len(data)))
 	sent := sentTexts(runDir)
-	var instructions []string
+	var starts []runTurnStart
 	promptLine := strings.TrimSpace(rs.PromptLine)
 	promptSeen := false
-	for _, signal := range signals {
-		if signal.Kind != SessionSignalTurnStart {
-			continue
-		}
-		if !promptSeen && (promptLine == "" || signal.Instruction == promptLine) {
+	for _, positioned := range positionedTurnStarts(engine, data[promptOffset:], promptOffset) {
+		start := runTurnStart{end: positioned.end}
+		instruction := positioned.signal.Instruction
+		switch {
+		case !promptSeen && (promptLine == "" || instruction == promptLine):
 			promptSeen = true
-			continue
+		case instruction != "" && !sent[instruction]:
+			start.operatorInstruction = instruction
 		}
-		if signal.Instruction != "" && !sent[signal.Instruction] {
-			instructions = append(instructions, signal.Instruction)
+		starts = append(starts, start)
+	}
+	return starts
+}
+
+// operatorInstructions returns, in order, the instructions an operator typed into the run rs in runDir:
+// the instructions of its turn starts past its prompt offset, without the turn start of the run's prompt and without any text a send into the run typed.
+// A turn start the events file holds no Raw line for is not read.
+// An engine without a SessionSignalParser and an unreadable events file yield none.
+func operatorInstructions(runDir string, rs RunState, engine Engine) []string {
+	var instructions []string
+	for _, start := range runTurnStarts(runDir, rs, engine) {
+		if start.operatorInstruction != "" {
+			instructions = append(instructions, start.operatorInstruction)
 		}
 	}
 	return instructions

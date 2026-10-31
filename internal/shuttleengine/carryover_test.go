@@ -26,7 +26,7 @@ func (e instructionEngine) ParseSessionSignals(data []byte) ([]SessionSignal, in
 	var signals []SessionSignal
 	for _, line := range strings.Split(string(data), "\n") {
 		if text, ok := strings.CutPrefix(line, "PROMPT:"); ok {
-			signals = append(signals, SessionSignal{Kind: SessionSignalTurnStart, Instruction: text})
+			signals = append(signals, SessionSignal{Kind: SessionSignalTurnStart, Instruction: text, Raw: []byte(line)})
 		}
 	}
 	return signals, len(data)
