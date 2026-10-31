@@ -1,250 +1,189 @@
 # LoomYard
 
-LoomYard is an autonomous software-development pipeline built on [Claude Code](https://claude.ai/code).
-You hand it a task, and it can discuss the task with you before it writes a plan.
-It then implements the plan batch by batch, has independent agents review every artifact, and lands the result on the parent branch itself.
-Each task runs in its own isolated git worktree pair, and many tasks can run at once.
+LoomYard turns a to-do list into landed commits.
+You write down what you want changed, and LoomYard has AI agents discuss it, plan it, implement it, review it and merge it into your project, many tasks at the same time, while you do other things.
 
-At its center is **`lym`**, a single Go binary (LoomYard eXecutable) that owns the task board, the git topology, every phase transition, and every agent launch.
+It is built on [Claude Code](https://claude.ai/code), and its command-line tool is called **`lym`**.
 
-**LoomYard is developed by LoomYard.**
-This repository's own tasks are discussed, planned, implemented, reviewed, and landed by its own pipeline, and that is its daily workload.
-A landing commit on `main` carries the change description its run wrote.
-Every run's records — the decision record, the plan, each review round, the agents' friction notes — are public in the companion repository [loomyard-weft](https://github.com/Knatte18/loomyard-weft) (see [The records of this repository](#the-records-of-this-repository)).
+LoomYard is developed by LoomYard.
+This repository's own tasks run through its own pipeline, and every run's records are public in the companion repository [loomyard-weft](https://github.com/Knatte18/loomyard-weft) (see [The records of this repository](#the-records-of-this-repository)).
 
-In short:
+## The problem
 
-- **Deterministic Go around narrow LLM calls.**
-  Control flow, state, git, and validation are a tested program;
-  inside a run, models do only the steps that need judgment, each through a file contract checked by a mechanical gate.
-- **Independent multi-agent review.**
-  Every artifact — decision record, plan, implementation — is reviewed and fixed by fresh agents that did not write it, under a judge with a bounce budget.
-- **Worktree isolation.**
-  Each task runs in its own git worktree pair, code and records, so many tasks run at once without seeing each other.
-- **Resumable runs.**
-  A run's state is versioned in git at producer granularity, so a crashed or paused run resumes where it stopped, on any machine.
+Asking one AI session to do a big task works until it does not:
+the session loses track of the plan, reviews its own work too kindly, and leaves half a change behind when it crashes.
+Running several sessions at once adds a second problem, because they overwrite each other's files and nobody keeps the state of each.
 
-## The central idea: deterministic Go around narrow LLM calls
+LoomYard's answer is to put an ordinary program around the agents.
+The program decides what happens next, keeps the state, runs git and checks every result.
+Agents are asked only for the work that needs judgment, such as writing a plan or reviewing a diff, and each of them is handed a narrow job and must hand back named files that a mechanical check accepts.
+An agent whose files fail the check is sent the findings in the same session, and does not get to move on.
 
-An agentic system built out of prompts asks a model to do work a program does better.
-Deciding what runs next, parsing a plan, staging a commit, checking an artifact against its format, retrying a failed step, resuming after a crash: each of these is a program, and each is slow, expensive, and non-reproducible when a model does it instead.
+The payoff is that a run is repeatable, a crashed run resumes where it stopped, and no agent grades its own work.
 
-LoomYard draws a hard line.
-Control flow, state, git, parsing, validation, routing, retry, and resume are Go — tested, deterministic, and cheap.
-Models do two kinds of work.
-Inside a run, they do the steps that need judgment: is this plan sound, does this diff match its plan, write this code.
-Above a run, an LLM driver steps it forward and supervises it: it reads what each step reported, repairs what went wrong, and escalates what it cannot fix.
-The driver never decides what runs next, though;
-the phase engine does.
-Every call inside a run goes through a narrow file contract — a prompt goes in, named files come out — and a mechanical gate checks the output before the run moves on.
-An agent whose output fails its gate is re-prompted in the same session with the findings, rather than trusted.
+## The concepts, in the order you meet them
 
-The payoff: the same run does the same thing twice, a crashed run resumes exactly where it stopped, and the parts most likely to break are covered by `go test` rather than by hope.
+### Hub and worktrees
 
-## What a task run looks like
+A **hub** is a directory that LoomYard creates for one project, and it holds everything LoomYard works with.
+Inside it, each line of work lives in its own git **worktree**, a separate checkout of your repository, so two tasks never touch the same files.
 
-A task's run is a flat list of producers, walked by a generic phase engine (`shed`).
-The list is data, not code — [`contracts/recipes/loom-recipe.yaml`](contracts/recipes/loom-recipe.yaml), embedded in the binary:
+Every worktree has a sibling that holds LoomYard's own files for it: configuration, plans, review verdicts and run status.
+Those files live in a second git repository, the **records repository**, so your project's history and `.gitignore` stay free of LoomYard.
+The two repositories branch together, which is why a task's whole state is versioned and a task can be picked up on another machine.
 
 ```
-Preflight → Loom-Preflight
-  → Discussion-Write → [Discussion review]
-  → Plan-Write       → [Plan review]
-  → Webster → Parent-Align → [Code review]
-  → Describe → PR-Review → Finalize → Friction-Reflect
+<hub>/
+  ├── <project>/             your repository, on its main branch (the prime)
+  ├── <project>-<records>/   its records sibling
+  ├── <task>/                a task's worktree, on the task's branch
+  ├── <task>-<records>/      its records sibling
+  └── _board/                the task board
 ```
 
-A smaller task can run the `darn` recipe instead ([`contracts/recipes/darn-recipe.yaml`](contracts/recipes/darn-recipe.yaml)): one writer that edits, tests, and commits, one review segment over the committed diff, then `Describe`, `PR-Review` and the same `Finalize`.
+The first worktree, on your main branch, is the **prime**.
+`lym fabric` is the command group that keeps the pairs of code and records in step; you rarely call it by hand after the first clone.
 
-- **Discussion** — an agent turns the task into a decision record: scope, decisions taken, what is out of scope.
-  It can stop and ask you when a decision is yours to make.
-- **Plan** — an agent writes a plan as a list of cards, each naming the code it touches by *glyph* — a stable symbol spelling resolved against the real tree through [quarry](https://github.com/Knatte18/quarry), so a plan that names a function that does not exist fails validation before any code is written.
-- **Webster** — the implementer.
-  One long-lived Master session reads the plan once and forks one implementer per batch inside its own session, bracketed by Go verbs (`begin-batch`, `await-batch`, `record-batch`) that verify and record each batch.
-  A stuck fork escalates to a cold recovery session.
-- **Review segments** — each `[… review]` is a judge (`Bouncer`) paired with a review-and-fix round (`burler`).
-  The judge approves or sends the artifact back for another round, within a bounce budget;
-  an exhausted budget halts the run for a human rather than looping.
-  The judge and the reviewer are fresh agents, independent of the one that wrote the artifact, so no agent ever reviews its own work.
-- **Landing** — `Parent-Align` merges the parent's upstream tip in with no lock, and a merge fixer settles a conflict or a failing merged tree and aligns the task to what the parent brought in.
-  The `Code review` perch then reviews the code, `Describe` writes the change description, and `PR-Review` lands the task through a GitHub pull request when the pull-request resolver says so, and the operator discusses the pull request with an interactive agent session in the task worktree.
-  `Finalize` takes the parent lock first, merges the parent again, runs the landing gate and lands on the parent.
-  A conflict or a merge too large to land reroutes to `Parent-Align`, and a halt at `Parent-Align` or `Finalize` is handed back to the orchestrator.
-- **Friction-Reflect** — the agents' own notes on what was hard or broken in the tooling are reflected on and can be filed as issues against LoomYard itself (`selfreport`).
+### The board and its tasks
 
-Routing is explicit per row (`on_done`, `on_stuck`), never positional, and the engine's validator refuses a recipe whose edges cross a review segment's boundary.
-Resume, pause, and crash recovery work uniformly at producer granularity.
+The **board** is the hub's task list, kept in the records repository and rendered as a README there.
+An entry is a **task**, a **note** or a **project**.
+A task is work to do, and it can depend on other tasks.
+A note is an idea that is not ready to be done, and you promote it to a task when it is.
+A project groups entries, and a project can become a beam, described below.
 
-## Three layers of driving
+A task carries a title, a body that says what is wanted, labels and a **recipe**.
+The recipe names the kind of run the task gets:
 
-The phase engine only moves one producer at a time;
-what calls it is a choice of driver.
+- `loom`, the default, for a task big enough to need a discussion and a plan.
+- `darn`, for a smaller change that one writer can make, test and commit.
 
-- **`lym shed step`** — drive one producer forward and report a JSON envelope naming its outcome and the trace it wrote.
-  This is the primitive every driver is built on.
-- **the loom driver** — a Claude Code session launched from the driver stencil (`contracts/stencils/shed/shed-template-driver.md`) that drives a run by repeated `lym shed step`, reads each envelope and trace, repairs what it can, re-steps after a transient failure, and escalates what it cannot.
-  It carries no phase knowledge: which recipe runs is a property of the run's seed alone.
-  `lym loom start` bootstraps a task worktree and launches its driver session.
-- **`lym batten`** — drives a task worktree's whole lifecycle from the hub's main worktree as one run of its own: create the worktree pair, seed the task's run, watch it to a terminal state, land it into the prime, tear the pair down.
-- **`lym orch`** — hosts the hub orchestrator: one long-lived Claude session that dispatches and supervises runs.
-  A detached watcher reads its context usage after each turn;
-  past a threshold, while idle, it has the session write a note, then clears it and resumes it from that note, or compacts it in place, so the orchestrator outlives any single context window.
-  `lym orch refresh` requests the clear cycle and `lym orch distill` the compact cycle; both write the note first.
+A new task is a draft, and nothing starts it until you release it.
 
-The split is the same principle again: the engine decides *what* runs next, and the LLM layers above it only decide how to recover when a step fails.
-
-## Agents run as interactive tmux sessions, never `claude -p`
-
-Every agent LoomYard launches is an interactive Claude Code session in a tmux pane, never headless `claude -p`.
-Interactive sessions keep subscription coverage;
-headless usage is moving to API billing.
-
-So launching an agent is not an `exec`: it is "place a pane, launch the provider, dismiss its startup dialogs, drive it, detect completion."
-That is a layered stack, each layer knowing only the one below:
-
-```
-proc     spawn any OS process, cross-OS
-reed     tmux overlay: strand bookkeeping, layout, a watchdog that reaps dead panes
-shuttle  run ONE agent over the file contract via a swappable provider engine
-burler   one review+fix round              webster   the batch implementer
-shed     walk a flat producer list to a terminal outcome
-loom     shed + the task recipe            batten    shed + the worktree-lifecycle recipe
+```bash
+lym board upsert '{"slug":"fix-login","title":"Fix the login redirect","brief":"Redirect loops after logout","kind":"task","labels":["bug"]}'
+lym board set-status '{"slug":"fix-login","status":null}'   # release the draft
 ```
 
-`shuttle` classifies every run as `done`, `died`, or `timeout`, holds a turn end that lacks its output files (an autonomous run notifies its parent once per held turn end), reads background work off the Stop payload first, and owns everything provider-specific — how Claude is launched and which startup gates it shows — behind an engine interface, so a second provider plugs in as another engine without any layer above changing.
+`lym board --help` lists the other verbs, among them `list`, `find` and `promote`.
 
-## Fabric: state that travels without touching your repo
+### Runs
 
-An orchestrator has to keep state somewhere: config, the task board, plans, review verdicts, run status.
-In your repo it pollutes your history;
-outside it, the state does not branch with the work and cannot resume on another machine.
+A **run** is one task's walk from its board entry to a landed commit.
+It is a fixed list of steps, each of them either plain Go code or one agent session, and the list is chosen by the task's recipe.
+The list is data: [`contracts/recipes/`](contracts/recipes/) holds the recipe files, and a run records which step it is on after each one, so it can pause, crash and resume at a step boundary.
 
-LoomYard keeps it in a second git repository woven into yours.
-Your repository holds the code;
-a companion repository carries everything LoomYard generates.
-Every code worktree gets a records sibling on a matching branch, wired together on disk, so state written while working in a worktree lands in the records without a single LoomYard file in your repo's history or `.gitignore`.
+An agent is always an interactive Claude Code session in a tmux pane, never headless `claude -p`, which keeps your subscription coverage.
+You can watch any of them:
 
-Together the two are the **Fabric**, and `lym fabric` is the seam that moves both sides as one: `add`/`remove` a worktree pair, `checkout` both branches together, `pull`, `status`, `diff`, `merge`, and `reconcile` a pair that drifted back onto the recorded layout.
-Every git operation LoomYard's own code performs goes through the `fabric` engine — never raw git, and never an agent.
-An agent commits its own code and nothing else;
-the records are committed by Go, at boundaries the orchestrator controls.
-
-Because the records branch in lockstep with the code, a task's whole state is versioned and pushed:
-pick the task up on another machine and it resumes where it stopped, and two tasks never see each other's plans or status.
-
+```bash
+lym reed attach    # or the shortcut: lym a
 ```
-<hub>/                    (not a git repo)
-  ├── <prime>/            your repo, main branch        ┐ one Fabric
-  ├── <prime>-<records>/  its records side              ┘
-  ├── <slug>/             a task worktree               ┐ likewise, on
-  ├── <slug>-<records>/   its records side              ┘ the task branch
-  ├── <RepoName>.code-workspace  the VS Code workspace of the hub
-  ├── _board/             the task store
-  └── _launchers/         per-worktree launcher scripts
+
+### Beams, dobby and orch
+
+A hub's prime is also the first **beam**: a long-lived unit that the tasks under it fork from and land back into.
+A project on the board can become a beam of its own with `lym beam create`, and its tasks then fork from the beam's branch and land into it; the beam lands into its parent when you flag it ready with `lym beam ready`.
+
+Each beam has two long-lived helpers.
+
+- **Dobby** is a background program, not an agent.
+  It watches the board, and when a task is released and the tasks it depends on are done, it starts the task's run, and it keeps driving that run in short passes until the run finishes.
+  Dobby is what makes "release a task" enough to get work started, and a setting in `beam.yaml` caps how many runs it drives at once.
+- **Orch** is the Claude session you talk to.
+  It knows the hub's rules, files board entries with you, reads what dobby and the runs report, and repairs or escalates what goes wrong.
+  A watcher clears or compacts its context before the window fills, so it lasts across a working day.
+
+`lym beam start` brings both up for the prime, and `lym s` is the shortcut that does that and then attaches to the tmux session.
+Orch and the agents of a run talk to each other through `lym creel`, a small message service in the hub.
+
+## From the board to a landed commit
+
+![A board task is woven into a landed commit](docs/loomyard-overview.svg)
+
+When you release a task, this is what happens, with no step of it done by you:
+
+1. **Dobby starts the run.**
+   The run first makes the task's worktree pair and seeds the run with the task's recipe and settings.
+   Everything after that happens inside that worktree, so other tasks cannot see it.
+2. **Discussion** (loom recipe).
+   An agent turns the board entry into a **decision record**: the scope, the decisions taken and what is out of scope.
+   A darn run has its writer write the same record before it writes any code.
+3. **Plan** (loom recipe).
+   An agent writes a plan as a list of cards, each naming the code it touches by a symbol spelling that is looked up in the real tree, so a plan that names a function that does not exist fails before any code is written.
+4. **Implementation.**
+   In a loom run, the **Webster** step reads the plan once and forks one implementer per batch of cards, and Go code verifies and records each batch.
+   In a darn run, the one writer edits, tests and commits.
+5. **Review.**
+   The decision record, the plan and the code are each reviewed in a **review segment**: a judge decides whether the artifact is clean, and if not, a fresh reviewer session and a fresh fixer session make another round, within a budget of rounds.
+   The agents that review and fix are never the one that wrote the artifact, and an exhausted budget halts the run for a human instead of looping.
+6. **Landing.**
+   The run merges the parent branch into the task, a **Describe** step writes the change description, and the task lands in its parent branch.
+   Depending on the `pull_request` setting in `beam.yaml`, the landing goes through a GitHub pull request that you can discuss with an agent session in the task's worktree, or straight into the parent.
+   The landing commit carries the change description as its message.
+   Only one landing at a time takes a parent branch's lock, so two tasks never land over each other.
+7. **Cleanup.**
+   The agents' notes on what was hard or broken in the tooling are collected and can be filed as issues against LoomYard, then the task's worktree pair is torn down and the board entry is marked done.
+
+If a step halts, the run stops and dobby tells the orch, which fixes what it can and asks you about the rest.
+`lym batten status <slug>` shows where any run stands.
+
+## Getting started
+
+### What you need
+
+- [Claude Code](https://claude.ai/code), logged in.
+- Go (the version in `go.mod`) and a C toolchain, since `lym` links tree-sitter grammars through cgo.
+- git and tmux at the version floors in [`internal/toolfloor`](internal/toolfloor/toolfloor.go); on Windows, psmux in place of tmux.
+- A GitHub token for pull requests and issue intake: `GH_TOKEN`, `GITHUB_TOKEN` or an authenticated `gh`.
+
+### Build and make a hub
+
+You need two empty-or-existing repositories on a remote: your project, and a records repository for LoomYard's files.
+
+```bash
+./update-plugins.sh                  # builds lym into your Go bin dir and installs the plugins
+lym fabric clone --shortname <short> <records-url> <project-url>
 ```
+
+`update-plugins.sh` (`update-plugins.cmd` on Windows) refuses a dirty tree and is the route to production.
+`./deploy-dev` builds the working tree into `.dev-bin` instead, to try a change without touching production.
+`lym fabric clone --help` describes `--shortname`, `--subpath` for a monorepo and `--reset`.
+
+### Work
+
+```bash
+cd <hub>/<project>
+lym s                                # bring up dobby and orch for the prime, then attach
+```
+
+Tell the orch what you want, or file a task yourself with `lym board upsert` and release it as shown above.
+Run `lym --help` for the full command list; every command takes `--help` and `--json`.
+Commands print a JSON envelope, `{"ok":true, ...}` or `{"ok":false,"error":"..."}`.
+
+If you want to try the real binary end to end without risk, the [sandbox hub](docs/sandbox-howto.md) is a throwaway hub with test suites an agent drives.
 
 ## The records of this repository
 
 This repository's records side is [loomyard-weft](https://github.com/Knatte18/loomyard-weft), public, so the runs that built LoomYard can be read artifact by artifact.
 
-- **The board** — the `main` branch is the task board.
-  Its [README](https://github.com/Knatte18/loomyard-weft/blob/main/README.md) is the board rendered by `lym board`: running, ready, and blocked tasks with their dependencies, and where each run stands.
-  `board.json` is the store, and each `design-<slug>.md` is the design of a task not yet built.
-- **Landed runs** — when a task lands, its records branch is deleted and an [`archive/<slug>/<tip>` tag](https://github.com/Knatte18/loomyard-weft/tags) keeps its whole run under `_lym/`.
-  - `discussion/decision-record.md` — scope, decisions, and what is out of scope.
-  - `plan/` — the plan's cards.
-  - `reviews/` — each review segment's rounds: reviewer findings, fixer report, judge verdict, token usage.
-  - `landing/summary.md` — the change description that became the landing commit's message.
-  - `loom/` — the agents' friction reflection.
-  - `shed/<slug>/drive-reports/` — the driver's reports.
+- **The board.** The `main` branch is the task board.
+  Its [README](https://github.com/Knatte18/loomyard-weft/blob/main/README.md) shows running, ready and blocked tasks and where each run stands.
+- **Landed runs.** When a task lands, its records branch is deleted and an [`archive/<slug>/<tip>` tag](https://github.com/Knatte18/loomyard-weft/tags) keeps its whole run under `_lym/`: the decision record, the plan's cards, each review round and the change description.
+  [`archive/driver-arbiter`](https://github.com/Knatte18/loomyard-weft/tree/archive/driver-arbiter/c1dbcb49a0f5/_lym) is one such run.
+- **Runs in flight.** A records branch per running task.
 
-  For example, [`archive/driver-arbiter`](https://github.com/Knatte18/loomyard-weft/tree/archive/driver-arbiter/c1dbcb49a0f5/_lym) is the run that built the driver arbiter.
-- **Runs in flight** — a records branch per running task, and the records branch of `main`, with the module configs and batten's status for each task it ran.
+## Where to read more
 
-## Engineering discipline
+- [`docs/overview.md`](docs/overview.md): the architecture, the naming and the map of every package.
+- [`PATTERN.md`](PATTERN.md): the structural rules of the code, most of them enforced by tests.
+- [`contracts/`](contracts/): the recipes, the on-disk format specs and the prompts every agent reads.
+- [`crucible/`](crucible/README.md): how the modules that drive live tmux and real agents are hardened.
+- [`plugins/`](plugins/): the Claude Code plugin with the `board` skill; the shared writing and code conventions come from the [scribe](https://github.com/Knatte18/scribe) plugin.
+- Each package's `doc.go`: the durable detail of that package.
 
-- **Structural invariants as tests.**
-  [`PATTERN.md`](PATTERN.md) records the repo's cross-cutting invariants, and most of them are enforced by `go test` scans rather than by review: one package owns path resolution, one parser exists per on-disk format, nothing outside `shuttle` touches provider readiness, and so on.
-- **Told, never derived.**
-  Every layer from `reed` up is handed its geometry — absolute, already-resolved paths — instead of computing it, which is what lets the same producer run inside a hub or against a plain checkout (`--target-dir`) with no hub at all.
-- **Prompts are versioned contracts.**
-  Every prompt an agent reads is a stencil under [`contracts/stencils/`](contracts/stencils/), embedded as a default and read from the hub at call time, so an operator can edit a live prompt without a rebuild and `lym stencil` shows the drift.
-- **Correctness by tool design, not by recall.**
-  A `lym` command makes the correct path the path of least resistance and makes drift detectable, instead of relying on an agent to remember a rule.
-- **Crucible.**
-  Modules that drive live tmux and real agents are hardened by [crucible](crucible/README.md): serial, model-rotating review-and-fix rounds against the live substrate, each finding proved by sabotage — revert the fix, watch the regression test fail, restore.
+## Lineage
 
-## Modules
-
-Every user-facing module is a `lym <module>` namespace;
-`lym --help` lists them, and every command takes `--help` (or `--json` for structured help).
-Commands print a JSON envelope: `{"ok":true, ...}` or `{"ok":false,"error":"..."}`.
-
-| Module | What it does |
-|---|---|
-| `board` | the task board, plus a not-yet-claimable notes surface |
-| `fabric` | the code and records topology, sync, and the merge lifecycle; `fabric clone` creates a hub in one call |
-| `config` | view, edit, and reconcile module configs against their templates |
-| `reed` | the tmux strand overlay and its watchdog |
-| `shuttle` | run one agent over the file contract |
-| `burler` | one review+fix round over an artifact |
-| `webster` | the batch implementer |
-| `shed` | the generic `seed`/`run`/`step`/`status`/`pause` verbs over any recipe |
-| `loom` | the task pipeline, plus the standalone validators its gates use |
-| `batten` | a task worktree's whole lifecycle as one run |
-| `orch` | the self-cycling hub orchestrator session |
-| `quarry` | glyph lookups against the worktree's own code, the planner's source of symbol spellings |
-| `stencil` | inspect, diff, and promote the prompts agents read |
-| `selfreport` | file a bug or enhancement against LoomYard's own repo |
-| `ide` | open a worktree in VS Code |
-
-[`docs/overview.md`](docs/overview.md) maps every package, including the internal layers under these.
-
-## Getting started
-
-```bash
-go build ./cmd/lym                                              # build the binary
-lym fabric clone --shortname <shortname> <records-url> <code-url>  # create a hub: both repos, wiring, config, board
-lym fabric add <slug>                                           # a task worktree pair
-cd <hub>/<slug> && lym loom start                               # bootstrap the task; "lym reed attach" shows its session
-```
-
-`./update-plugins.sh` (`update-plugins.cmd` on Windows) is the only route to production: from a clean tree pushed to `origin/main`, it installs the plugins and builds `lym` into the Go bin dir.
-`./deploy-dev` builds the working tree into `.dev-bin` for testing without touching production.
-
-The [sandbox Hub](docs/sandbox-howto.md) is a bench for running the real binary end to end against a throwaway hub, with per-module suites an agent drives and reports findings from.
-
-### Requirements
-
-- [Claude Code](https://claude.ai/code), logged in
-- Go (the version in `go.mod`) and a C toolchain — `lym` links quarry's tree-sitter grammars through cgo
-- Git 2.42+
-- tmux (on Windows, psmux)
-- A GitHub token for `selfreport` and the board's issue intake: `GH_TOKEN`, `GITHUB_TOKEN`, or an authenticated `gh` CLI
-
-## Plugins
-
-[`plugins/`](plugins/) holds this repo's Claude Code marketplace:
-
-- **ly** — the `board` skill.
-
-The writing and code conventions every agent loads come from the shared [scribe](https://github.com/Knatte18/scribe) plugin;
-its marketplace also carries `prowler`, the web-fetch plugin that used to live here.
-
-## Lineage: Millhouse
-
-LoomYard grew out of [Millhouse](https://github.com/Knatte18/millhouse), a set of Claude Code skills and Python tools for running parallel Claude Code sessions with minimal input:
-isolated worktrees per task, a wiki-backed task board, and subagents for discussion, planning, implementation, and review.
-Millhouse proved the workflow and built much of LoomYard before LoomYard took over its own development.
-LoomYard is the rebuild that moved the workflow out of prompts and into a program: the phase machine is data, review is a Go-owned gate loop, and the git topology is a model Millhouse has no equivalent of.
-
-Through Millhouse, LoomYard builds on ideas from [claude-code-plugins](https://github.com/motlin/claude-code-plugins) (Craig Motlin), [autoboard](https://github.com/willietran/autoboard) (Willie Tran), and [skills](https://github.com/mattpocock/skills) (Matt Pocock).
-
-## Documentation
-
-- [PATTERN.md](PATTERN.md) — the structural invariants (authoritative).
-- [docs/overview.md](docs/overview.md) — architecture, naming, and the module and package map.
-- [contracts/specs/](contracts/specs/) — the on-disk format contracts, each with exactly one parser.
-- [crucible/](crucible/README.md) — the hardening method for live-substrate modules.
-
-Per-package documentation lives in each package's `doc.go` and is the durable detail for anything shipped.
+LoomYard grew out of [Millhouse](https://github.com/Knatte18/millhouse), a set of Claude Code skills and Python tools for running parallel Claude Code sessions.
+LoomYard moved the workflow out of prompts and into a program.
+Through Millhouse it builds on ideas from [claude-code-plugins](https://github.com/motlin/claude-code-plugins) (Craig Motlin), [autoboard](https://github.com/willietran/autoboard) (Willie Tran) and [skills](https://github.com/mattpocock/skills) (Matt Pocock).

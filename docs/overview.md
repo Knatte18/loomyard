@@ -12,7 +12,7 @@ We get there by building these modules as self-contained toolkits first;
 orchestration comes last.
 See [Principles](#principles).
 
-[loomyard-overview.svg](loomyard-overview.svg) is a conceptual figure of how a board task becomes a landed commit, with a glossary of the weaving terms.
+[loomyard-overview.svg](loomyard-overview.svg) is a conceptual figure of how a board task becomes a landed commit, from the dobby that starts its run to the landing, with a glossary of the weaving terms.
 
 Module path: `github.com/Knatte18/loomyard`
 
