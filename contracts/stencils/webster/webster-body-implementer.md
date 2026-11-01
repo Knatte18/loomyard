@@ -50,8 +50,10 @@ Make exactly the changes the card describes, in exactly the targets its type lab
 
 {{.rename_tools}}
 
-   Locate them with one `lym quarry resolve <glyph>...` call over the card's target and `Uses:` glyphs: each answer gives the member's `file` and its `start` and `end` lines, so read those spans instead of grepping for them or reading whole files.
-   Read every span it names in one message before the card's first edit, put the card's edits that do not depend on each other in one message, and run the card's gate, as step 3 lists it, after the card's last edit rather than after each edit.
+   Locate them with one `lym quarry resolve <glyph>...` call over the card's target and `Uses:` glyphs: each answer gives the member's `file` and its `start` and `end` lines, so read those spans instead of grepping for them.
+   Before the card's first edit, read in one message every file the card needs: a file whole when you need most of it, otherwise every span you need from it, never one file in slices over several turns.
+   A file you have read in this batch stays in your context: read it again only where a change you did not make by hand, such as a rename tool's run, touched it since, never to check an edit of your own, which the Edit tool confirms.
+   Put the card's edits that do not depend on each other in one message, and run the card's gate, as step 3 lists it, after the card's last edit rather than after each edit.
    A card that removes or renames a name, such as a symbol, file, config key or string literal, retires the old name: sweep for it before the card's first hand edit, after any rename tool run.
    Grep the whole worktree for every retired name in one Bash call, test files, `testdata/` and other fixtures included, never only the card's targets or the non-test files.
    For a symbol rename this is the same grep the rename paragraph above requires for zero references to the old name, widened to those files, so run one grep rather than two.

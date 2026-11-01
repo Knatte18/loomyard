@@ -168,7 +168,7 @@ func TestStore(t *testing.T) {
 
 	t.Run("ShippedBatchingEntryIsPinned", func(t *testing.T) {
 		t.Parallel()
-		const batchingSentence = "Request every call whose arguments you already know in one message, and read what you need before you edit; wait for a result only to choose the next call."
+		const batchingSentence = "Request every call whose arguments you already know in one message, and read what you need before you edit: a file whole, or every span you need from it, in one message, and keep a file you have read in mind rather than reading it again unless something other than your own edit has changed it; wait for a result only to choose the next call."
 		first := shippedStore.Ordered()[0]
 		if first.Slug != "lym-batching" || len(first.Targets) != 1 || first.Targets[0] != "claude-file" || first.Text != batchingSentence {
 			t.Errorf("first shipped entry = %+v; want slug lym-batching aimed at claude-file with the batching sentence unchanged", first)
