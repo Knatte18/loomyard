@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/buildvcs"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 func TestBindingArgvs_BindsTheFiveAltKeysAndTheStatusClickInTheRootTableOnly(t *testing.T) {
@@ -31,7 +32,7 @@ func TestBindingArgvs_BindsTheFiveAltKeysAndTheStatusClickInTheRootTableOnly(t *
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			argvs := bindingArgvs(tt.prev, tt.next, false)
+			argvs := bindingArgvs(tt.prev, tt.next, false, true)
 			if want := []string{"unbind-key", "-n", "M-z"}; !slices.Equal(argvs[0], want) {
 				t.Fatalf("first binding argv = %q, want %q ahead of every bind-key", argvs[0], want)
 			}
@@ -52,7 +53,7 @@ func TestBindingArgvs_BindsTheFiveAltKeysAndTheStatusClickInTheRootTableOnly(t *
 		t.Parallel()
 
 		got := map[string][]string{}
-		for _, argv := range bindingArgvs(prev, next, true) {
+		for _, argv := range bindingArgvs(prev, next, true, true) {
 			got[argv[2]] = argv
 		}
 		if want := []string{"bind-key", "-n", "M-Left", "run-shell", "-b", prev}; !slices.Equal(got["M-Left"], want) {
@@ -67,7 +68,7 @@ func TestBindingArgvs_BindsTheFiveAltKeysAndTheStatusClickInTheRootTableOnly(t *
 		t.Parallel()
 
 		got := map[string][]string{}
-		for _, argv := range bindingArgvs(prev, next, true) {
+		for _, argv := range bindingArgvs(prev, next, true, true) {
 			got[argv[2]] = argv
 		}
 		want := map[string][]string{
@@ -84,7 +85,7 @@ func TestBindingArgvs_BindsTheFiveAltKeysAndTheStatusClickInTheRootTableOnly(t *
 	t.Run("the status click dispatches on every range type", func(t *testing.T) {
 		t.Parallel()
 
-		click := clickArgv(t, bindingArgvs(prev, next, true))
+		click := clickArgv(t, bindingArgvs(prev, next, true, true))
 		joined := strings.Join(click, " ")
 		for _, rangeType := range []string{"shell", "window", "session", "follow"} {
 			if !strings.Contains(joined, "#{==:#{mouse_status_range},"+rangeType+"}") {
@@ -94,16 +95,34 @@ func TestBindingArgvs_BindsTheFiveAltKeysAndTheStatusClickInTheRootTableOnly(t *
 		if strings.Contains(joined, "mouse_status_range},pane}") {
 			t.Errorf("status click binding %q dispatches on the retired pane range", joined)
 		}
-		// The three listed branches and the follow branch, joined by one separator fewer than the branch count.
-		if got := strings.Count(joined, `\;`); got != len(statusClickBranches) {
-			t.Errorf("status click binding joins its branches with %d escaped separators, want %d", got, len(statusClickBranches))
+		// The listed branches, the follow branch and the button branch, joined by one separator fewer than the branch count.
+		if got := strings.Count(joined, `\;`); got != len(statusClickBranches)+1 {
+			t.Errorf("status click binding joins its branches with %d escaped separators, want %d", got, len(statusClickBranches)+1)
+		}
+	})
+
+	t.Run("the button branch ends the click only when its line is pinned", func(t *testing.T) {
+		t.Parallel()
+
+		with := clickArgv(t, bindingArgvs(prev, next, true, true))
+		wantTail := []string{`\;`, "if-shell", "-F", "#{m:lymbtn*,#{mouse_status_range}}", `run-shell -b "#{E:@lym_button_command}"`}
+		if got := with[len(with)-len(wantTail):]; !slices.Equal(got, wantTail) {
+			t.Errorf("click binding ends with %q, want the button branch %q", got, wantTail)
+		}
+
+		without := clickArgv(t, bindingArgvs(prev, next, true, false))
+		if joined := strings.Join(without, " "); strings.Contains(joined, "lymbtn") {
+			t.Errorf("click binding without the button line = %q, want no button branch", joined)
+		}
+		if got := strings.Count(strings.Join(without, " "), `\;`); got != len(statusClickBranches) {
+			t.Errorf("click binding without the button line joins its branches with %d escaped separators, want %d", got, len(statusClickBranches))
 		}
 	})
 
 	t.Run("the shell and window clicks write follow off first and the session click does not", func(t *testing.T) {
 		t.Parallel()
 
-		click := clickArgv(t, bindingArgvs(prev, next, true))
+		click := clickArgv(t, bindingArgvs(prev, next, true, true))
 		for _, rangeType := range []string{"shell", "window"} {
 			if got := clickBranchCommand(t, click, rangeType); !strings.HasPrefix(got, "set-option @lym_follow off ; ") {
 				t.Errorf("%s click command = %q, want it to start with the follow-off write", rangeType, got)
@@ -117,13 +136,13 @@ func TestBindingArgvs_BindsTheFiveAltKeysAndTheStatusClickInTheRootTableOnly(t *
 	t.Run("the follow click toggles the state and runs the jump line only when it is pinned", func(t *testing.T) {
 		t.Parallel()
 
-		withJump := clickBranchCommand(t, clickArgv(t, bindingArgvs(prev, next, true)), "follow")
+		withJump := clickBranchCommand(t, clickArgv(t, bindingArgvs(prev, next, true, true)), "follow")
 		wantWithJump := `if-shell -F '#{==:#{@lym_follow},off}' 'set-option @lym_follow on ; run-shell -b "#{E:@lym_follow_command}"' 'set-option @lym_follow off'`
 		if withJump != wantWithJump {
 			t.Errorf("follow click command with the jump pinned = %q, want %q", withJump, wantWithJump)
 		}
 
-		withoutJump := clickBranchCommand(t, clickArgv(t, bindingArgvs(prev, next, false)), "follow")
+		withoutJump := clickBranchCommand(t, clickArgv(t, bindingArgvs(prev, next, false, true)), "follow")
 		wantWithoutJump := `if-shell -F '#{==:#{@lym_follow},off}' 'set-option @lym_follow on' 'set-option @lym_follow off'`
 		if withoutJump != wantWithoutJump {
 			t.Errorf("follow click command without the jump = %q, want %q", withoutJump, wantWithoutJump)
@@ -292,7 +311,49 @@ func TestBindingsBuildStamp(t *testing.T) {
 				if reads != wantReads {
 					t.Errorf("withOpLock read the build stamp %d times; want %d", reads, wantReads)
 				}
+				var formatPins [][]string
+				for _, call := range fake.Calls() {
+					if call[0] == "bind-key" {
+						break
+					}
+					if call[0] == "set-option" && slices.ContainsFunc(statusFormatPinArgvs(), func(pin []string) bool { return slices.Equal(pin, call) }) {
+						formatPins = append(formatPins, call)
+					}
+				}
+				wantFormatPins := [][]string(nil)
+				if tt.wantRepin {
+					wantFormatPins = statusFormatPinArgvs()
+				}
+				if !slices.EqualFunc(formatPins, wantFormatPins, slices.Equal[[]string]) {
+					t.Errorf("withOpLock issued the status format pins %q before the first bind-key; want %q", formatPins, wantFormatPins)
+				}
 			})
+		}
+	})
+
+	// This subtest reads the process-global logger output, so it does not run in parallel.
+	t.Run("FailedFormatRepinIsNonFatal", func(t *testing.T) {
+		e := newTestEngine(t)
+		e.build = running
+		fake := installFakeTmux(t, e)
+		fake.answerFormat("#{"+bindingsBuildOption+"}", bindingsBuildStamp(older), nil)
+		fake.answerFunc("set-option", func(args []string) (string, error) {
+			if strings.HasPrefix(args[2], "status-format") {
+				return "", errors.New("boom")
+			}
+			return "", nil
+		})
+		logs := logcapture.CaptureVerbose(t)
+
+		if err := e.withOpLock(func() error { return nil }); err != nil {
+			t.Fatalf("withOpLock() = %v; want nil", err)
+		}
+
+		if fake.Count("bind-key") == 0 {
+			t.Error("withOpLock issued no bind-key call after the failed format pins; want the bindings still re-pinned")
+		}
+		if got, want := strings.Count(logs.String(), "failed to re-pin a status bar option"), 3; got != want {
+			t.Errorf("log holds %d failed-pin Warns; want %d, one per failed status format", got, want)
 		}
 	})
 }

@@ -1,4 +1,4 @@
-// bar.go declares the tmux format strings of reed's two-line status bar.
+// bar.go declares the tmux format strings of reed's three-line status bar.
 // The strings are built from tmux 3.6's own default status-format shape (list mode, the #{W:}, #{P:} and #{S:} loops, the < and > markers).
 // They read strands through the pane user options @strand and @strand_color and the window user option @lym_strands, never through the current window.
 // They read own windows, the overview window among them, through the window user options @lym_own, @strand_color and @lym_unseen.
@@ -6,7 +6,9 @@
 // A window carrying the window user option @lym_hidden still gets no button.
 // Line 2 lists the session carrying the session user option @lym_prime_session first, then every other session in the #{S:} loop's own order.
 // Line 2 ends with the current session's check mark, the session user options @lym_check, @lym_check_state and @lym_check_start, before the clock.
-// Every option read here is display only but one: no Go decision reads @strand_color, @lym_unseen, @lym_prime_session or a check mark's options, while @lym_follow, which the follow button shows, is the follow state that followingLocked reads.
+// Line 3 is the follow button, then the action row read from the session user options @lym_buttons_plain and @lym_buttons_agent.
+// Every option read here is display only but one: no Go decision reads @strand_color, @lym_unseen, @lym_prime_session, a check mark's options or the action row's options, while @lym_follow, which the follow button shows, is the follow state that followingLocked reads.
+// The decision-bearing @lym_button_spec and @lym_button_dir are not read here; a button click reads them to decide what to run and where.
 
 package reedengine
 
@@ -63,6 +65,11 @@ const (
 	checkMarkStateOption = "@lym_check_state"
 	checkMarkStartOption = "@lym_check_start"
 
+	// buttonRowPlainOption and buttonRowAgentOption are the session user options holding the rendered action row: the plain one for a window whose active pane is no strand pane, the agent one for a window whose active pane carries @strand.
+	// Like the bar's other options they are display only, and no Go decision reads them.
+	buttonRowPlainOption = "@lym_buttons_plain"
+	buttonRowAgentOption = "@lym_buttons_agent"
+
 	// checkMarkStyleFormat expands to a check mark's style by its state: black on green for green, white on red for failed, and yellow on dark grey otherwise.
 	checkMarkStyleFormat = "#{?#{==:#{" + checkMarkStateOption + "},green},bg=green fg=black bold,#{?#{==:#{" + checkMarkStateOption + "},failed},bg=red fg=white bold,bg=colour236 fg=yellow}}"
 
@@ -74,15 +81,20 @@ const (
 	// The client's session shows its full name lit, every other session its name cut to 12 characters.
 	sessionButtonFormat = "#{?#{==:#{session_name},#{client_session}},#[range=session|#{session_id} list=focus bg=yellow fg=black bold] #{session_name} #[norange list=on default] ,#[range=session|#{session_id} " + unlitButtonStyle + "] #{=12:session_name} #[norange list=on default] }"
 
-	// followButtonFormat is the follow button, a user range labelled follow, lit green while the current session's @lym_follow is not off and unlit while it is.
+	// followButtonFormat is the follow button, the first entry of line 3, a user range labelled follow, lit green while the current session's @lym_follow is not off and unlit while it is.
 	followButtonFormat = "#[range=user|follow #{?#{!=:#{@lym_follow},off},bg=green fg=black bold," + unlitButtonStyle + "}] follow #[norange list=on default] "
 
-	// statusFormatSessions is status-format[1]: the prime's session button, then one button per other session, then the follow button, then, right-aligned, the current session's check mark and the time.
+	// statusFormatSessions is status-format[1]: the prime's session button, then one button per other session, then, right-aligned, the current session's check mark and the time.
 	// The first loop draws only a session matching both reedSessionFilter and the prime mark, and draws nothing when no session is marked.
 	// The second draws every other session matching reedSessionFilter, in the #{S:} loop's own order: session name on tmux 3.4 and session id on newer tmux.
 	// Each loop takes one format, the only shape tmux 3.4 accepts.
 	statusFormatSessions = listPrologueFormat +
 		"#{S:#{?#{&&:" + reedSessionFilter + ",#{==:#{" + primeSessionOption + "},1}}," + sessionButtonFormat + ",}}" +
 		"#{S:#{?#{&&:" + reedSessionFilter + ",#{!=:#{" + primeSessionOption + "},1}}," + sessionButtonFormat + ",}}" +
-		followButtonFormat + "#[nolist align=right]" + checkMarkFormat + "%H:%M "
+		"#[nolist align=right]" + checkMarkFormat + "%H:%M "
+
+	// statusFormatActions is status-format[2]: the follow button, then the action row.
+	// A window whose active pane carries @strand draws the row in buttonRowAgentOption and every other window the row in buttonRowPlainOption.
+	// Both options are unset until the render sets them, so the row is empty until then.
+	statusFormatActions = listPrologueFormat + followButtonFormat + "#{?#{@strand},#{E:" + buttonRowAgentOption + "},#{E:" + buttonRowPlainOption + "}}"
 )

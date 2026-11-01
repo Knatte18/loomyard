@@ -135,6 +135,51 @@ func composeFollowCommand(sh shell.Shell, executablePath func() (string, error),
 	return strings.Join(words, " "), true
 }
 
+// composeButtonCommand returns the shell line the click binding runs for a button range: a change into the session's run directory, then the absolute path of this binary with `reed button` and the told socket and tmux paths, the clicked session, range and client, on sh's dialect.
+// The run directory rides in the line because run-shell format-expands its command but not its start directory;
+// it is read from the session option #{@lym_button_dir}, which the render pins already quoted in sh's dialect, so the word is left for the click's expansion unquoted.
+// Every pinned token is quoted once and then has each # doubled, because the line is format-expanded when the button is clicked;
+// #{q:session_name}, #{q:mouse_status_range} and #{q:client_name} are left for that expansion, each as its own word.
+// The output of the directory change and of the verb is discarded and the line ends with status zero, so tmux opens no view mode whatever either does, a gone run directory included.
+// An unresolvable executable path logs a named logger.Warn and returns false, so the caller pins no button click.
+func composeButtonCommand(sh shell.Shell, executablePath func() (string, error), socketPath, tmuxPath string) (string, bool) {
+	exe, err := executablePath()
+	if err != nil {
+		logger.Warn("reed: could not resolve this binary, pinning no button click", "err", err)
+		return "", false
+	}
+	pinned := func(token string) string { return strings.ReplaceAll(token, "#", "##") }
+	words := []string{
+		pinned(sh.Invoke(exe)), "reed", "button",
+		"--socket", pinned(sh.Quote(socketPath)),
+		"--tmux", pinned(sh.Quote(tmuxPath)),
+		"--session", "#{q:session_name}",
+		"--range", "#{q:mouse_status_range}",
+		"--client", "#{q:client_name}",
+	}
+	return sh.Chain(sh.DiscardOutput(sh.ChangeDirToWord("#{"+buttonDirOption+"}")), sh.DiscardOutput(strings.Join(words, " ")), sh.ExitSuccess()), true
+}
+
+// composeConfirmedButtonLine returns the shell line a button's confirm prompt runs once answered yes: a change into dir, then exe invoked as `reed button` with req's values and `--confirmed --hash <hash>`, then `--strand <strand>` when strand is non-empty, on sh's dialect.
+// Every value is quoted as one word.
+// The line opens with the directory change because run-shell does not format-expand its start directory, so the confirmed verb starts in the run directory.
+// The output of the directory change and of the verb is discarded and the line ends with status zero, so tmux opens no view mode on the target pane whatever either does.
+func composeConfirmedButtonLine(sh shell.Shell, exe string, req ButtonRequest, dir, hash, strand string) string {
+	words := []string{
+		sh.Invoke(exe), "reed", "button",
+		"--socket", sh.Quote(req.SocketPath),
+		"--tmux", sh.Quote(req.TmuxPath),
+		"--session", sh.Quote(req.Session),
+		"--range", sh.Quote(req.Range),
+		"--client", sh.Quote(req.Client),
+		"--confirmed", "--hash", sh.Quote(hash),
+	}
+	if strand != "" {
+		words = append(words, "--strand", sh.Quote(strand))
+	}
+	return sh.Chain(sh.DiscardOutput(sh.ChangeDir(dir)), sh.DiscardOutput(strings.Join(words, " ")), sh.ExitSuccess())
+}
+
 // launchScriptReedSegment and launchScriptLaunchSegment are reed's own relative subpath under the state dir for per-strand launch scripts.
 const (
 	launchScriptReedSegment   = "reed"

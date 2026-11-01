@@ -7,6 +7,7 @@ package desktophook_test
 import (
 	"errors"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -24,6 +25,10 @@ func TestLoadConfig(t *testing.T) {
 		local   string
 		want    desktophook.Config
 		wantErr string
+		// wantTaskRuns holds the run text of each entry the resolved buttons node holds in its task group.
+		wantTaskRuns []string
+		// wantErrDetail is a second substring the error must hold, the reason beside the key wantErr names.
+		wantErrDetail string
 	}{
 		{name: "TemplateDefaults", machine: "", want: desktophook.Config{WindowWaitMs: 1500}},
 		{
@@ -33,6 +38,15 @@ func TestLoadConfig(t *testing.T) {
 		},
 		{name: "NegativeWaitRefused", machine: "window_wait_ms: -1\n", wantErr: `desktop config key "window_wait_ms" holds -1`},
 		{name: "LocalOverrideRefused", local: "window_command: \"true\"\n", wantErr: "window_command"},
+		{
+			name:         "MachineOverrideAddsButtons",
+			machine:      "buttons: {task: [{label: x, run: y}]}\n",
+			want:         desktophook.Config{WindowWaitMs: 1500},
+			wantTaskRuns: []string{"y"},
+		},
+		{name: "MachineGroupAsEmptyMappingRefused", machine: "buttons: {task: {}}\n", wantErr: "buttons.task", wantErrDetail: "different shape"},
+		{name: "MachineGroupAsMappingRefused", machine: "buttons: {task: {label: x}}\n", wantErr: "buttons.task.label", wantErrDetail: "not in the desktop template"},
+		{name: "LocalButtonsRefused", local: "buttons: {task: []}\n", wantErr: "buttons.task"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -52,7 +66,7 @@ func TestLoadConfig(t *testing.T) {
 
 			got, err := desktophook.LoadConfig(dirs)
 			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) || !errors.Is(err, configengine.ErrInvalid) {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) || !strings.Contains(err.Error(), tt.wantErrDetail) || !errors.Is(err, configengine.ErrInvalid) {
 					t.Fatalf("LoadConfig() error = %v; want an ErrInvalid error containing %q", err, tt.wantErr)
 				}
 				return
@@ -60,8 +74,23 @@ func TestLoadConfig(t *testing.T) {
 			if err != nil {
 				t.Fatalf("LoadConfig() error = %v; want nil", err)
 			}
-			if got != tt.want {
-				t.Errorf("LoadConfig() = %+v; want %+v", got, tt.want)
+			if got.WindowCommand != tt.want.WindowCommand || got.WindowWaitMs != tt.want.WindowWaitMs {
+				t.Errorf("LoadConfig() = {WindowCommand: %q, WindowWaitMs: %d}; want {WindowCommand: %q, WindowWaitMs: %d}", got.WindowCommand, got.WindowWaitMs, tt.want.WindowCommand, tt.want.WindowWaitMs)
+			}
+			var buttons struct {
+				Task []struct {
+					Run string `yaml:"run"`
+				} `yaml:"task"`
+			}
+			if err := got.Buttons.Decode(&buttons); err != nil {
+				t.Fatalf("decode Buttons node = %v; want nil", err)
+			}
+			gotRuns := []string{}
+			for _, entry := range buttons.Task {
+				gotRuns = append(gotRuns, entry.Run)
+			}
+			if !slices.Equal(gotRuns, append([]string{}, tt.wantTaskRuns...)) {
+				t.Errorf("LoadConfig() Buttons task runs = %v; want %v", gotRuns, tt.wantTaskRuns)
 			}
 		})
 	}

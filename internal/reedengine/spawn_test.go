@@ -641,6 +641,7 @@ func TestLaunchScriptDoesNotSurviveAFailedLaunch(t *testing.T) {
 // and therefore changes the pane's inherited PATH — and that pane resolves claude by bare name, so the change would stop the agent binary resolving at all.
 // The two title commands then run in order between the window creation and the send-keys, and carry the strand's full name;
 // a tmux whose version predates allow-set-title runs only the select-pane, with no log naming the option.
+// The strand's full name follows in @lym_strand_name, unset for an empty name, and a failure of that option leaves the rest of the sequence unchanged.
 // It captures the process-global logger, so it does not run in parallel.
 //
 //testtiming:keep pins the new-window argv ending with -c and the told cwd with no trailing shell command, which would make tmux exec a non-login shell, and the two title commands running in order between the window creation and the send-keys; its covering tests run this code without asserting it
@@ -653,6 +654,8 @@ func TestLaunchStrandLocked_SplitWindowAndPaneTitleCalls(t *testing.T) {
 		wantColorCall string
 		// failAllowSetTitle scripts the allow-set-title set-option to fail, as tmux 3.4 answers it.
 		failAllowSetTitle bool
+		// failStrandName scripts the @lym_strand_name set-option to fail.
+		failStrandName bool
 		// floorLine is the `tmux -V` line the fake reports; empty is an unknown version.
 		floorLine string
 		// skipsAllowSetTitle is whether the launch runs no allow-set-title set-option.
@@ -704,6 +707,19 @@ func TestLaunchStrandLocked_SplitWindowAndPaneTitleCalls(t *testing.T) {
 			wantLabel:     "plainname",
 			wantColorCall: "set-option -p -t %new @strand_color cyan",
 		},
+		{
+			name:          "EmptyNameUnsetsTheStrandNameOption",
+			strand:        Strand{GUID: "new", Segment: "review"},
+			wantLabel:     "",
+			wantColorCall: "set-option -p -t %new @strand_color colour208",
+		},
+		{
+			name:           "FailedStrandNameOptionWarnsAndTheLaunchContinues",
+			strand:         Strand{GUID: "new", Name: "tst:slug:worker", Segment: "review"},
+			wantLabel:      "worker",
+			wantColorCall:  "set-option -p -t %new @strand_color colour208",
+			failStrandName: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -711,10 +727,13 @@ func TestLaunchStrandLocked_SplitWindowAndPaneTitleCalls(t *testing.T) {
 			e.executablePath = func() (string, error) { return "/opt/lym/bin/lym", nil }
 			fake := launchFake(t, e, nil)
 			e.tmux.floorLine = tt.floorLine
-			if tt.failAllowSetTitle {
+			if tt.failAllowSetTitle || tt.failStrandName {
 				fake.answerFunc("set-option", func(args []string) (string, error) {
-					if slices.Contains(args, "allow-set-title") {
+					if tt.failAllowSetTitle && slices.Contains(args, "allow-set-title") {
 						return "", errors.New("invalid option: allow-set-title")
+					}
+					if tt.failStrandName && slices.Contains(args, strandNamePaneOption) {
+						return "", errors.New("boom")
 					}
 					return "", nil
 				})
@@ -729,6 +748,10 @@ func TestLaunchStrandLocked_SplitWindowAndPaneTitleCalls(t *testing.T) {
 			}
 			if got := strings.Contains(logs.String(), "allow-set-title"); got != tt.failAllowSetTitle {
 				t.Errorf("log names allow-set-title = %v, want %v; log = %q", got, tt.failAllowSetTitle, logs.String())
+			}
+
+			if got := strings.Contains(logs.String(), strandNamePaneOption); got != tt.failStrandName {
+				t.Errorf("log names %s = %v, want %v; log = %q", strandNamePaneOption, got, tt.failStrandName, logs.String())
 			}
 
 			newWindowArgs := fake.LastArgv("new-window")
@@ -758,7 +781,11 @@ func TestLaunchStrandLocked_SplitWindowAndPaneTitleCalls(t *testing.T) {
 			if !tt.skipsAllowSetTitle {
 				want = append(want, "set-option -p -t %new allow-set-title off")
 			}
-			want = append(want, "select-pane -t %new -T "+tt.strand.Name, "set-option -p -t %new @strand "+tt.wantLabel, tt.wantColorCall)
+			wantNameCall := "set-option -p -t %new @lym_strand_name " + tt.strand.Name
+			if tt.strand.Name == "" {
+				wantNameCall = "set-option -p -u -t %new @lym_strand_name"
+			}
+			want = append(want, "select-pane -t %new -T "+tt.strand.Name, "set-option -p -t %new @strand "+tt.wantLabel, wantNameCall, tt.wantColorCall)
 			if len(order) <= len(want) {
 				t.Fatalf("recorded calls = %v, want %v then send-keys", order, want)
 			}

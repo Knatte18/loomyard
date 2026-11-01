@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
@@ -23,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // TestReedGeometry pins every ReedGeometry field against a fixture whose hub, worktree root and anchor path are distinct directories.
@@ -114,8 +116,133 @@ func TestReedGeometry(t *testing.T) {
 			if pause.Slug != tt.wantSlug {
 				t.Errorf("pauseGeometry(l).Slug = %q; want %q", pause.Slug, tt.wantSlug)
 			}
+
+			if got.Buttons == nil {
+				t.Fatal("ReedGeometry(l).Buttons = nil, want the button-context teller")
+			}
+			buttons, err := got.Buttons()
+			if err != nil {
+				t.Fatalf("ReedGeometry(l).Buttons() error = %v; want nil", err)
+			}
+			wantPlace := reedengine.ButtonPlaceTask
+			if tt.isPrime {
+				wantPlace = reedengine.ButtonPlacePrime
+			}
+			if buttons.Place != wantPlace {
+				t.Errorf("Buttons().Place = %q; want %q", buttons.Place, wantPlace)
+			}
+			// The anchor path, not the worktree root: only the subpath-anchored row tells them apart.
+			if buttons.Worktree != anchorPath {
+				t.Errorf("Buttons().Worktree = %q; want %q (the anchor path)", buttons.Worktree, anchorPath)
+			}
+			if buttons.Slug != worktreeName {
+				t.Errorf("Buttons().Slug = %q; want %q", buttons.Slug, worktreeName)
+			}
+			if want := reedengine.SessionName(worktreeRoot); buttons.Session != want {
+				t.Errorf("Buttons().Session = %q; want %q", buttons.Session, want)
+			}
+			if tt.isPrime {
+				beam, err := buttons.Beam()
+				if err != nil || beam.Anchor != anchorPath {
+					t.Errorf("Buttons().Beam() = %+v, %v; want the anchor path %q with no error", beam, err, anchorPath)
+				}
+			}
 		})
 	}
+}
+
+// TestReedGeometry_ButtonContext pins how the button-context teller reads the place from the pair's origin record and the machine's buttons from the desktop machine layer.
+func TestReedGeometry_ButtonContext(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		record    string
+		wantPlace reedengine.ButtonPlace
+		wantErr   bool
+	}{
+		{"BeamMarkReadsBeam", `{"parent_branch":"main","beam":true}`, reedengine.ButtonPlaceBeam, false},
+		{"NoBeamMarkReadsTask", `{"parent_branch":"main"}`, reedengine.ButtonPlaceTask, false},
+		{"UnparseableRecordIsAnError", `{`, "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			l := hubWithOrigin(t, tt.record)
+
+			buttons, err := reedGeometry(l, false).Buttons()
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("Buttons() error = nil; want the origin read error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Buttons() error = %v; want nil", err)
+			}
+			if buttons.Place != tt.wantPlace {
+				t.Errorf("Buttons().Place = %q; want %q", buttons.Place, tt.wantPlace)
+			}
+		})
+	}
+
+	// writeMachineButtons gives l's hub a Bolt checkout whose desktop machine layer holds contents, and l's anchor a _lym directory.
+	writeMachineButtons := func(t *testing.T, contents string) *lymcwd.Location {
+		t.Helper()
+		l := hubWithOrigin(t, `{"parent_branch":"main"}`)
+		bolt := fabricengine.BoltDir(l.HubPath)
+		for _, dir := range []string{configengine.ScratchDir(bolt), filepath.Join(l.AnchorPath(), lymdirs.LymDirName)} {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatalf("MkdirAll(%q) = %v; want nil", dir, err)
+			}
+		}
+		if err := os.WriteFile(configengine.MachineFile(bolt, "desktop"), []byte(contents), 0o644); err != nil {
+			t.Fatalf("write machine file: %v", err)
+		}
+		return l
+	}
+
+	t.Run("MachineButtonsAreTold", func(t *testing.T) {
+		t.Parallel()
+		l := writeMachineButtons(t, "buttons: {task: [{label: x, run: y}]}\n")
+
+		buttons, err := reedGeometry(l, false).Buttons()
+		if err != nil {
+			t.Fatalf("Buttons() error = %v; want nil", err)
+		}
+		var task struct {
+			Task []struct {
+				Label string `yaml:"label"`
+				Run   string `yaml:"run"`
+			} `yaml:"task"`
+		}
+		if err := buttons.MachineButtons.Decode(&task); err != nil {
+			t.Fatalf("decode MachineButtons = %v; want nil", err)
+		}
+		if len(task.Task) != 1 || task.Task[0].Label != "x" || task.Task[0].Run != "y" {
+			t.Errorf("MachineButtons task = %+v; want the one entry x/y", task.Task)
+		}
+	})
+
+	// This subtest reads the process-global logger output, so it does not run in parallel.
+	t.Run("RefusedMachineLayerLeavesTheNodeZeroAndLogsAWarn", func(t *testing.T) {
+		logs := logcapture.CaptureVerbose(t)
+		l := writeMachineButtons(t, "buttons: {task: {}}\n")
+
+		buttons, err := reedGeometry(l, false).Buttons()
+		if err != nil {
+			t.Fatalf("Buttons() error = %v; want nil", err)
+		}
+		if buttons.MachineButtons.Kind != 0 {
+			t.Errorf("MachineButtons kind = %d; want the zero node", buttons.MachineButtons.Kind)
+		}
+		if buttons.Place != reedengine.ButtonPlaceTask {
+			t.Errorf("Buttons().Place = %q; want %q, intact", buttons.Place, reedengine.ButtonPlaceTask)
+		}
+		if !strings.Contains(logs.String(), "desktop config") {
+			t.Errorf("log = %q; want a Warn naming the desktop config", logs.String())
+		}
+	})
 }
 
 // TestBurlerGeometry pins BurlerGeometry's roots against a subpath-anchored fixture, whose hub, worktree root and anchor path are three distinct directories.

@@ -27,10 +27,14 @@ type Config struct {
 	WindowCommand string `yaml:"window_command"`
 	// WindowWaitMs is the milliseconds lym waits after opening a window before it runs WindowCommand.
 	WindowWaitMs int `yaml:"window_wait_ms"`
+
+	// Buttons is the machine's additional status-bar buttons, a mapping of groups task, beam and prime shaped as reed.yaml's buttons.
+	// The node is decoded and validated only where the status bar renders it.
+	Buttons yaml.Node `yaml:"buttons"`
 }
 
 // ConfigSpec returns the desktop module's layered-load spec.
-// Both keys describe the machine's desktop, so each machine sets them in its own machine override and the local layer refuses them.
+// Every key describes the machine's desktop, so each machine sets them in its own machine override and the local layer refuses them.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     configModule,
@@ -39,6 +43,7 @@ func ConfigSpec() configengine.Spec {
 		Categories: map[string]configengine.Category{
 			"window_command": configengine.CategoryMachine,
 			"window_wait_ms": configengine.CategoryMachine,
+			"buttons":        configengine.CategoryMachine,
 		},
 	}
 }

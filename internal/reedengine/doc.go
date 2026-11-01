@@ -62,6 +62,17 @@
 // Engine.CapturePaneStyled returns a pane's screen with its SGR attributes beside the plain CapturePane, for a caller that reads cell styles; reed interprets none of it.
 //
 // Segment colors are read from reed.yaml's segment_colors block, resolved only through Engine.segmentColor, and refused only at boot.
+// The buttons block of reed.yaml is carried as an uninterpreted node and decoded only at render.
+// The geometry tells the button context through Geometry.Buttons, nil in standalone mode.
+// buttons.go is the one decoder of button entries and applies the validity rules: a non-empty label and run, no '#', '%' or control character in a label or confirm text, a window of agents or none, and {strand} only with window: agents.
+//
+// The action row (buttonrow.go) is rendered by pinGeometryOptionsLocked, so at boot and at every attach pre-flight, in one tmux invocation of four set-option commands on the session.
+// composeButtonRowLocked takes reed's entries for the session's place first and the machine's after them, numbers the valid ones in that order, and draws entry N as the user range lymbtnN.
+// @lym_buttons_plain holds the entries without window: agents and @lym_buttons_agent every entry, so a window whose active pane carries @strand draws the second.
+// @lym_button_spec holds the JSON buttonSpec a click reads: the configured shell and its command flag, the run directory, and per entry its label, its run and confirm text with the static placeholders filled and whether {strand} is left for the click.
+// @lym_button_dir holds the run directory as one word quoted in reed's shell dialect.
+// The run directory is the beam's anchor for a task, else the prime's anchor when the beam is absent from this machine, and the session's own anchor for the prime and a beam.
+// A standalone geometry, a failed context, an unresolvable shell and a failed beam lookup render empty options, so line 3 shows follow alone.
 //
 // SwitchClient (switch.go) is the engine-less function behind `lym reed switch`: it addresses a told server by socket path and issues list-sessions, display-message and switch-client on it, and nothing else.
 // It is the only reed code that issues switch-client.
@@ -71,12 +82,23 @@
 // openOwnWindowLocked sets the window option @lym_overview beside @lym_own on an overview window, so that rule can tell the overview from an agent window; an overview window opened by an older lym carries no marker and counts as an agent window, which it can win only when no other agent is live, the same outcome as the overview fallback.
 // A failed listing, which is how an unknown session answers, returns an error before any write, a failed option write returns before any select, and a failed select returns an error naming the window.
 //
-// Every strand pane carries the user options @strand (the role segment of its name, or the full name when it does not parse) and @strand_color (the tmux color of its segment, unset when it has none),
+// RunButton (buttonclick.go) is the engine-less function behind `lym reed button`: it addresses a told session of a told server by socket path, reads the session's @lym_button_spec and runs the entry the clicked range `lymbtnN` names.
+// It reads no config and no reed state, and returns nothing: a failure is shown on the clicking client with display-message, and is logged.
+// The checks come in order: a spec that is missing, empty or not JSON, a range with no entry, a `{strand}` entry whose name cannot be read, a run directory that is gone.
+// A `{strand}` entry reads the clicking client's active pane for @lym_strand_name.
+// An entry with a confirm text raises `confirm-before` on the clicking client, whose command is a line (composeConfirmedButtonLine) that opens in the run directory and calls the verb again with `--confirmed`, the hash of the entry's run text and the strand name, discarding the output of the directory change and of the verb and ending with status zero.
+// A confirmed call runs the entry only when its hash still matches, so no run text crosses tmux's parsing.
+// The entry runs as `<shell> <flag> <run>` in the run directory (runButtonScript), waits with no timeout, and logs its spawn and end at Info with its exit code and combined output; it sets no caller identity and is registered in no process table.
+// A non-zero exit or a failed start shows `lym: <label> failed (exit <code>): <first output line>`.
+// The verb runs only what the session's spec holds at the clicked index; anything that can run it against the socket can run an entry as itself, adding nothing over running the command directly.
+//
+// Every strand pane carries the user options @strand (the role segment of its name, or the full name when it does not parse), @strand_color (the tmux color of its segment, unset when it has none) and @lym_strand_name (strandNamePaneOption, the strand's full name, unset when the name is empty),
 // and the strand window carries @lym_strands.
-// Launch sets the pane options and boot marks the strand window; every attach pre-flight marks the window and re-asserts both pane options on every strand bound to a live pane, so a session or strand spawned by an older lym gets them at its next attach.
+// Launch sets the pane options and boot marks the strand window; every attach pre-flight marks the window and re-asserts all three pane options on every strand bound to a live pane, so a session or strand spawned by an older lym gets them at its next attach.
 // The Selvage pane carries the user option @lym_console (consolePaneOption), set when it is split and re-asserted by every attach pre-flight.
-// The options are display only: the status bar and the key bindings read them, no Go decision does, and Selvage never gets @strand or @strand_color.
-// The session option @lym_follow is the one decision-bearing session option reed reads; @strand, @strand_color, @lym_unseen and the wait marks stay display only.
+// The options are display only but @lym_strand_name: the status bar and the key bindings read them, no Go decision does, and Selvage never gets @strand or @strand_color.
+// @lym_strand_name is the one pane option a Go decision reads: a button click fills {strand} from it.
+// The session options @lym_follow, @lym_button_spec and @lym_button_dir are the decision-bearing session options; @strand, @strand_color, @lym_unseen, the wait marks and the two action row options stay display only.
 // A strand's Segment is an opaque field its spawner names through AddSpec.Segment; reed reads it only to look up the segment's color, which the strand an add or replace returns and Status carry as Color.
 // An own window gets a status-bar button on line 1 in its segment's color, read from the window options @lym_own and @strand_color, labelled with the window name and carrying its panes' wait marks.
 // The button is lit while the window is current, and otherwise that color on dark grey, underscored while the window carries @lym_unseen.
@@ -85,17 +107,23 @@
 // The shell button is a range=user|shell button labelled shell, lit while the shell window is active; line 1 follows window index order, so the overview's button is first, the agents' follow in start order and the shell button comes last.
 // An overview window's button is an own-window button with no @strand_color, which renders as the plain window-button style.
 // A window carrying @lym_hidden still gets no button, and no Go decision reads @strand_color or @lym_unseen.
-// Line 2 lists the sessions, then the follow button, a range=user|follow button labelled follow that sits left of the time, lit green while the current session's @lym_follow is not off and unlit while it is.
+// Line 2 lists the sessions, then, right-aligned, the check mark and the time.
+// Line 3 starts with the follow button, a range=user|follow button labelled follow, lit green while the current session's @lym_follow is not off and unlit while it is, then the action row.
 //
 // The navigation bindings (bindings.go) are root-table bindings on the hub's reed server, issued by pinBindingsLocked at the end of the geometry pins, so boot and every attach pre-flight pin them.
 // The pin stamps the server-global option @lym_bindings_build with the pinning build's VCS commit time and revision label, and unsets it for a binary with no VCS stamp.
 // Every op under the blocking op lock reads the stamp before its step and re-pins the bindings when it is absent, unparseable or names another build whose commit time is not after the running one's, so a deployed lym reaches a running server at its first reed op.
 // Bound: an older build never re-pins over a newer one's stamp, so a long-lived process of an older lym cannot restore stale bindings, and an unstamped binary never re-pins; two builds of one commit time, such as a dirty build and its commit's clean one, can re-pin over each other.
-// The name-repair loop never re-pins, and the global status-bar options refresh only at boot and attach.
+// The name-repair loop never re-pins, and the global status-bar options refresh at boot and attach and with the bindings' stale-build re-pin, which pins the status formats and the bar style before the bindings.
+// Bound: between an older binary's boot or attach and the newest binary's next op, follow can show on lines 2 and 3; a session an older binary boots or attaches keeps status 2, without line 3, until the newest binary next attaches it, since the re-pin restores only the global options.
 // The pin starts with `unbind-key -n M-z`, which removes the Alt+z an older build bound, since a `bind-key` re-pin never removes a binding; reed binds no zoom key.
 // Alt+Up and Alt+Down step to the previous or next window in index order, in every window and wrapping with tmux's own window wrap: a step that lands on a window carrying @lym_hidden goes on, forward to the session's first window, the overview, and back to the strands' window, the shell, which is one conditional step since hidden windows sit after the shell (on psmux, where the order is best-effort, a step may land on a hidden window);
 // Alt+Left and Alt+Right run `lym reed switch --prev|--next` in the background through run-shell, naming the absolute path of the `lym` that pinned them (panebin.go's composeSwitchCommand), never PATH's;
-// and a left click on the status bar dispatches on its range: the shell button selects the strands' window, a window button selects that window, a session button switches the client to that session, and the follow button toggles the follow state.
+// and a left click on the status bar dispatches on its range: the shell button selects the strands' window, a window button selects that window, a session button switches the client to that session, the follow button toggles the follow state, and a button range named by buttonRangePrefix runs `lym reed button`.
+// The button line (panebin.go's composeButtonCommand) rides the server-global option @lym_button_command, set when it resolves and unset otherwise, and the one global binding resolves it through `#{E:...}` with the session's own options.
+// It changes into the session's run directory, read from @lym_button_dir, because tmux's run-shell format-expands its command but not its start directory, then runs the verb, discarding the output of both and forcing a zero status, so view mode stays shut on every path, a gone run directory included.
+// Bound: a click runs only the line the binding names, which runs only the spec entry at the clicked index; a click whose pinned binary is gone runs nothing, logs nothing and shows no message, until a reed op of another build not older than the pinned one re-pins the bindings.
+// A run directory removed after the render leaves the verb in the server's directory, where it shows the gone-directory message.
 // The status bar draws no button for a strand pane, so a click selects no pane.
 // The follow state is written off by the bindings that change window by hand: Alt+Up and Alt+Down start with `set-option @lym_follow off`, so the write lands also when the step wraps onto the current window, and the shell and window clicks start with the same write, also for a click on the current window.
 // Each write is untargeted, so it hits the session of the client that pressed the key or clicked; Alt+Left, Alt+Right and the session click leave the follow state alone.
@@ -378,7 +406,7 @@
 // Focus rules: an agent window is a window holding a pane bound to an own-window strand; the overview, the shell and hidden windows are not agent windows.
 // The follow state is the session option @lym_follow (followSessionOption): boot sets it on off Windows, and it is off only while it reads off, so an unset option, as on Windows or in a session booted by an older lym, reads on.
 // followingLocked reads it, and a failed read counts as off for that one decision and is logged at Warn, so a broken read never moves a viewer.
-// It is the one decision-bearing session option reed reads.
+// Only @lym_follow, @lym_button_spec and @lym_button_dir are decision-bearing session options.
 // An automatic window switch happens only at three points, each deciding from reed state, window ids, strand roles, pane liveness and the follow state alone, never from @lym_unseen, @lym_hidden or a wait mark.
 // relevantWindow is the target of two of them: among the listed windows not about to end, the highest-index agent window holding a pane that is not dead, else the overview strand's window, else none.
 // Attach (attachWindowSelectionLocked, resolved by AttachArgv right after the shell check) appends `; select-window -t <relevant window>` to every argv it returns, and appends nothing when a listing fails or no window is relevant.
@@ -680,7 +708,7 @@
 //     today fail at boot over a cosmetic feature.
 //   - The attach argv (attach.go): AttachArgv's argv is the bare "attach-session" argv, with a "; select-window -t <relevant window>" tail when the window selection applies, the separator a literal one-character ";" argv element — never "\;", since exec.Command passes argv directly to the child and no shell ever sees it to unescape.
 //     attach-session is first in the chain, so a failing select-window still leaves the operator attached.
-//   - The geometry option pins (windowsize.go): pinGeometryOptionsLocked pins the two-line status bar, whose format strings bar.go declares: "status-format[0]" (the window and shell buttons) and "status-format[1]" (the session buttons and the time), both with -g since tmux's status formats are one array; "status-style" (-g) with the dark grey statusBarStyle, so the gaps between the buttons are not tmux's default green; "status" "2" and "status-position" "bottom" on the session; and "window-size" "latest" (-w) on the strand window.
+//   - The geometry option pins (windowsize.go): pinGeometryOptionsLocked pins the three-line status bar, whose format strings bar.go declares: "status-format[0]" (the window and shell buttons), "status-format[1]" (the session buttons and the time) and "status-format[2]" (the follow button and the action row), all with -g since tmux's status formats are one array; "status-style" (-g) with the dark grey statusBarStyle, so the gaps between the buttons are not tmux's default green; "status" "3" and "status-position" "bottom" on the session; and "window-size" "latest" (-w) on the strand window.
 //     The window-targeted pin is targeted at the strand window (-t <strand window>, per the Strand window and Session targeting grammar above), both at boot and again in AttachArgv's pre-flight.
 //     The bar reads strands only through the @strand and @strand_color pane options and the @lym_strands window option, never through the current window.
 //     Line 2 is two single-format `#{S:}` loops, since tmux 3.4's loop takes one format: the first draws the session carrying the session user option @lym_prime_session, and the second every other reed session, in the loop's own order, which is session name on tmux 3.4 and session id on newer tmux.

@@ -1,4 +1,4 @@
-// windowsize.go owns the geometry option pins (the two-line status bar and window-size latest), the session shell options,
+// windowsize.go owns the geometry option pins (the three-line status bar and window-size latest), the session shell options,
 // and the unpin of the `window-resized` hook an older binary pinned on the shell window.
 // Every tmux interaction here is non-fatal, per the Shared Decision geometry-tmux-failures-are-non-fatal-everywhere:
 // a failure is logged via logger.Warn and answered with a safe fallback, never returned as an error.
@@ -42,13 +42,24 @@ func (e *Engine) primeGeometry() bool {
 	return e.geom.DiscoverSignalPath != "" && e.geom.NameSlug == ""
 }
 
-// pinGeometryOptionsLocked pins the two-line status bar (bar.go) and this session's window to "window-size latest".
+// statusFormatPinArgvs returns the global pins of every status format and the bar style, in order.
+// The status formats are one tmux array, so each is pinned with -g: a per-session index would drop the global lines for that session.
+func statusFormatPinArgvs() [][]string {
+	return [][]string{
+		{"set-option", "-g", "status-format[0]", statusFormatButtons},
+		{"set-option", "-g", "status-format[1]", statusFormatSessions},
+		{"set-option", "-g", "status-format[2]", statusFormatActions},
+		{"set-option", "-g", "status-style", statusBarStyle},
+	}
+}
+
+// pinGeometryOptionsLocked pins the three-line status bar (bar.go) and this session's window to "window-size latest".
 // It also clears the `window-resized` hook an older binary pinned on the shell window.
 //
-// It issues, in order: "status-format[0]" and "status-format[1]" with -g, because tmux's status formats are one array and a per-session index would drop the global lines for that session;
-// "status-style" with -g, like them, so the gaps between the buttons are dark grey instead of tmux's default green;
-// and "status" "2" and "status-position" "bottom" on the session.
+// It issues, in order: statusFormatPinArgvs, the three status formats and "status-style" with -g, so the gaps between the buttons are dark grey instead of tmux's default green;
+// and "status" "3" and "status-position" "bottom" on the session.
 // When primeGeometry holds it then marks the session with the user option "@lym_prime_session" "1", which line 2 of the bar lists first.
+// Right after those pins it renders the session's button row (buttonrow.go) in one tmux invocation, so a config edit or a pair marked a beam after boot reaches a live session at its next attach.
 // After the option pins it issues the navigation bindings (bindings.go), so a server booted by an older lym gets them at the next attach.
 // Then, everywhere but Windows, it pins the session hook `session-window-changed` with `set-option -w -u @lym_unseen`, which unsets the unseen mark on the window the client moved to and nothing else.
 // Last, everywhere but Windows, it unpins `window-resized` twice: `set-hook -u -w -t <target> window-resized`, the window-scoped clear, and `set-hook -u -t <target> window-resized`, the session-scoped form, so an entry an older binary pinned in either scope goes.
@@ -66,14 +77,17 @@ func (e *Engine) primeGeometry() bool {
 // After the option pins it issues shellOptionArgvs for shellPath, each non-fatal like them; the empty string skips both.
 // Assumes the op lock is already held.
 func (e *Engine) pinGeometryOptionsLocked(target, shellPath string) {
+	for _, argv := range statusFormatPinArgvs() {
+		if err := e.tmux.run(argv...); err != nil {
+			logger.Warn("reed: failed to pin a status bar option", "socket", e.Socket(), "session", e.SessionName(), "option", argv[2], "err", err)
+		}
+	}
+
 	pins := []struct {
 		option string
 		argv   []string
 	}{
-		{"status-format[0]", []string{"set-option", "-g", "status-format[0]", statusFormatButtons}},
-		{"status-format[1]", []string{"set-option", "-g", "status-format[1]", statusFormatSessions}},
-		{"status-style", []string{"set-option", "-g", "status-style", statusBarStyle}},
-		{"status", []string{"set-option", "-t", target, "status", "2"}},
+		{"status", []string{"set-option", "-t", target, "status", "3"}},
 		{"status-position", []string{"set-option", "-t", target, "status-position", "bottom"}},
 	}
 	if e.primeGeometry() {
@@ -87,6 +101,8 @@ func (e *Engine) pinGeometryOptionsLocked(target, shellPath string) {
 			logger.Warn("reed: failed to pin a status bar option", "socket", e.Socket(), "session", e.SessionName(), "option", pin.option, "err", err)
 		}
 	}
+
+	e.pinButtonRowLocked(target)
 
 	if err := e.tmux.run("set-option", "-w", "-t", target, "window-size", "latest"); err != nil {
 		logger.Warn("reed: failed to pin window-size latest", "socket", e.Socket(), "session", e.SessionName(), "option", "window-size", "err", err)

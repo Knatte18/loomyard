@@ -1,6 +1,6 @@
-// paneoptions.go sets the display-only tmux user options that identify strands: @strand and @strand_color on each strand pane, @lym_strands on the strand window.
+// paneoptions.go sets the tmux user options that identify strands: @strand, @strand_color and @lym_strand_name on each strand pane, @lym_strands on the strand window.
 // It also names @lym_console, the marker of the operator console pane that the key bindings read.
-// No Go decision reads them back; the status bar and the key bindings do.
+// No Go decision reads them back but the button click, which reads @lym_strand_name for {strand}; the status bar and the key bindings read the rest.
 
 package reedengine
 
@@ -23,11 +23,22 @@ func strandLabel(name string) string {
 	return parsed.Role
 }
 
-// setStrandPaneOptionsLocked sets @strand on a strand's pane, and @strand_color when the strand's segment resolves to a color, else unsets it.
+// strandNamePaneOption is the pane option holding a strand's full name, which a button click reads to fill {strand}; @strand holds only the role.
+const strandNamePaneOption = "@lym_strand_name"
+
+// setStrandPaneOptionsLocked sets @strand and strandNamePaneOption on a strand's pane, and @strand_color when the strand's segment resolves to a color, else unsets it.
+// An empty strand name unsets strandNamePaneOption, so a stale name never outlives a relaunch under no name.
 // A failure is logged and never fails the step.
 func (e *Engine) setStrandPaneOptionsLocked(paneID string, s Strand) {
 	if err := e.tmux.run("set-option", "-p", "-t", paneID, "@strand", strandLabel(s.Name)); err != nil {
 		logger.Warn("reed: could not set @strand", "strand", s.GUID, "pane", paneID, "err", err)
+	}
+	nameArgv := []string{"set-option", "-p", "-t", paneID, strandNamePaneOption, s.Name}
+	if s.Name == "" {
+		nameArgv = []string{"set-option", "-p", "-u", "-t", paneID, strandNamePaneOption}
+	}
+	if err := e.tmux.run(nameArgv...); err != nil {
+		logger.Warn("reed: could not set the strand name option", "option", strandNamePaneOption, "strand", s.GUID, "pane", paneID, "err", err)
 	}
 	if color, ok := e.segmentColor(s.Segment); ok {
 		if tmuxColor, ok := segmentcolor.TmuxColor(color); ok {

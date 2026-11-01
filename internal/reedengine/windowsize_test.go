@@ -26,12 +26,22 @@ func resizedUnpinCount() int {
 // bindKeyArgvCount is how many bind-key calls one pinBindingsLocked run issues with no session-switch command and no follow jump: every binding argv but the Alt+z unbind.
 func bindKeyArgvCount() int {
 	count := 0
-	for _, argv := range bindingArgvs("", "", false) {
+	for _, argv := range bindingArgvs("", "", false, false) {
 		if argv[0] == "bind-key" {
 			count++
 		}
 	}
 	return count
+}
+
+// wantButtonRowArgv is the single invocation pinButtonRowLocked issues for target: four set-option commands joined by ";" separators.
+func wantButtonRowArgv(target, plain, agent, specJSON, dirWord string) []string {
+	return []string{
+		"set-option", "-t", target, buttonRowPlainOption, plain, ";",
+		"set-option", "-t", target, buttonRowAgentOption, agent, ";",
+		"set-option", "-t", target, buttonSpecOption, specJSON, ";",
+		"set-option", "-t", target, buttonDirOption, dirWord,
+	}
 }
 
 // wantResizedUnpins is the window-scoped then the session-scoped unpin of the window-resized hook on target.
@@ -43,12 +53,12 @@ func wantResizedUnpins(target string) [][]string {
 }
 
 // TestPinGeometryOptionsLocked drives pinGeometryOptionsLocked against the fake tmux, recording every set-option argv issued.
-// It asserts the two-line bar's pins plus the window-size pin are all issued with the expected target and value:
-// both status formats global, status 2 and status-position on the session, and no pane-border pin.
+// It asserts the three-line bar's pins plus the window-size pin are all issued with the expected target and value:
+// all three status formats global, status 3 and status-position on the session, and no pane-border pin.
 // It asserts that no call's failure stops the calls after it,
 // and that the window-resized hook is unpinned in both scopes, whatever the watchdog value, and never installed.
 //
-//testtiming:keep pins the set-option calls issued to pin the geometry: the two global status formats, status 2 and the position on the session, the prime mark on the prime's session alone, window-size and no pane-border pin, no failure stopping the calls after it, and the window-resized unpin in both scopes on every watchdog value; its covering tests run this code without asserting it
+//testtiming:keep pins the set-option calls issued to pin the geometry: the three global status formats, status 3 and the position on the session, the prime mark on the prime's session alone, window-size and no pane-border pin, no failure stopping the calls after it, and the window-resized unpin in both scopes on every watchdog value; its covering tests run this code without asserting it
 func TestPinGeometryOptionsLocked(t *testing.T) {
 	t.Run("AllOptionsIssued", func(t *testing.T) {
 		e := newTestEngine(t)
@@ -61,12 +71,16 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		wantOptions := [][]string{
 			{"set-option", "-g", "status-format[0]", statusFormatButtons},
 			{"set-option", "-g", "status-format[1]", statusFormatSessions},
+			{"set-option", "-g", "status-format[2]", statusFormatActions},
 			{"set-option", "-g", "status-style", statusBarStyle},
-			{"set-option", "-t", target, "status", "2"},
+			{"set-option", "-t", target, "status", "3"},
 			{"set-option", "-t", target, "status-position", "bottom"},
+			// The fixture's geometry tells no button context, so the row renders empty.
+			wantButtonRowArgv(target, "", "", "", ""),
 			{"set-option", "-w", "-t", target, "window-size", "latest"},
 			// The fixture's tmux binary does not resolve, so the follow jump line is unset.
 			{"set-option", "-gu", "@lym_follow_command"},
+			{"set-option", "-gu", "@lym_button_command"},
 			// The test binary carries no VCS stamp, so the bindings' build stamp is unset.
 			{"set-option", "-gu", "@lym_bindings_build"},
 		}
@@ -90,16 +104,17 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		}
 		wantLast := [][]string{
 			{"set-option", "-gu", "@lym_follow_command"},
+			{"set-option", "-gu", "@lym_button_command"},
 			{"set-option", "-gu", "@lym_bindings_build"},
 		}
 		if len(calls) < len(wantTail)+len(wantLast) {
-			t.Fatalf("pinGeometryOptionsLocked set-option calls = %v, want at least the window-size pin, the two shell pins, the follow-command unset and the build-stamp unset", calls)
+			t.Fatalf("pinGeometryOptionsLocked set-option calls = %v, want at least the window-size pin, the two shell pins, the follow-command unset, the button-command unset and the build-stamp unset", calls)
 		}
 		if got := calls[len(calls)-len(wantLast):]; !slices.EqualFunc(got, wantLast, slices.Equal[[]string]) {
-			t.Errorf("last set-option calls = %v, want the follow-command and build-stamp unsets %v", got, wantLast)
+			t.Errorf("last set-option calls = %v, want the follow-command, button-command and build-stamp unsets %v", got, wantLast)
 		}
 		if got := calls[len(calls)-len(wantLast)-len(wantTail) : len(calls)-len(wantLast)]; !slices.EqualFunc(got, wantTail, slices.Equal[[]string]) {
-			t.Errorf("pinGeometryOptionsLocked set-option calls = %v, want them to end, before the follow-command and build-stamp unsets, with the window-size pin and the two session-scoped shell pins %v", calls, wantTail)
+			t.Errorf("pinGeometryOptionsLocked set-option calls = %v, want them to end, before the follow-command, button-command and build-stamp unsets, with the window-size pin and the two session-scoped shell pins %v", calls, wantTail)
 		}
 
 		fake = installFakeTmux(t, e)
@@ -151,7 +166,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		}
 		// The follow branch lives inside the one click argv, so only the argv itself shows that no jump is bound.
 		var wantClick []string
-		for _, argv := range bindingArgvs("", "", false) {
+		for _, argv := range bindingArgvs("", "", false, false) {
 			if argv[2] == "MouseDown1Status" {
 				wantClick = argv
 			}
@@ -248,8 +263,8 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 			wantCalls int
 			wantWarn  string
 		}{
-			{"Pair", false, func(call int, _ []string) bool { return call == 1 }, 8, ""},
-			{"PrimeMark", true, func(_ int, args []string) bool { return slices.Contains(args, primeSessionOption) }, 9, primeSessionOption},
+			{"Pair", false, func(call int, _ []string) bool { return call == 1 }, 11, ""},
+			{"PrimeMark", true, func(_ int, args []string) bool { return slices.Contains(args, primeSessionOption) }, 12, primeSessionOption},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -307,8 +322,8 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 
 		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()), "")
 
-		if got := fake.Count("set-option"); got != 8 {
-			t.Errorf("set-option calls = %d, want 8 (every pin still attempted)", got)
+		if got := fake.Count("set-option"); got != 11 {
+			t.Errorf("set-option calls = %d, want 11 (every pin still attempted)", got)
 		}
 		if got, want := fake.Count("bind-key"), bindKeyArgvCount(); got != want {
 			t.Errorf("bind-key calls = %d, want all %d still issued", got, want)

@@ -270,7 +270,7 @@ func TestSmokeSelvage(t *testing.T) {
 	}
 
 	// StatusLinePinsIdentityAndPosition pins pinGeometryOptionsLocked's status-bar pins after `up`:
-	// `#{status}` reads "2" (the two-line bar) and `#{status-position}` reads "bottom".
+	// `#{status}` reads "3" (the three-line bar) and `#{status-position}` reads "bottom".
 	// The bar's content is not a pane, so the assertion is a `display-message -p` readback rather than a pane-content poll.
 	//
 	// On Windows the identity values are not asserted directly — per the windows-status-line-is-an-unbranched-accepted-degrade Shared Decision, psmux may refuse some or all of the status-bar set-option calls, and reed does not branch to compensate.
@@ -335,8 +335,8 @@ func TestSmokeSelvage(t *testing.T) {
 			return
 		}
 
-		if got := readOption("status"); got != "2" {
-			t.Errorf("#{status} = %q; want \"2\"", got)
+		if got := readOption("status"); got != "3" {
+			t.Errorf("#{status} = %q; want \"3\"", got)
 		}
 		if got := readOption("status-position"); got != "bottom" {
 			t.Errorf("#{status-position} = %q; want \"bottom\"", got)

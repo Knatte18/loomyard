@@ -95,3 +95,23 @@ func (pwshShell) OrElse(first, second string) string {
 func (pwshShell) Exit() string {
 	return "exit"
 }
+
+// DiscardOutput returns cmd with every output stream redirected to $null.
+func (pwshShell) DiscardOutput(cmd string) string {
+	return cmd + " *> $null"
+}
+
+// ExitSuccess returns the pwsh `exit 0` statement.
+func (pwshShell) ExitSuccess() string {
+	return "exit 0"
+}
+
+// CommandFlag returns the `-Command` flag that makes pwsh run its next argument as a command line.
+func (pwshShell) CommandFlag() string {
+	return "-Command"
+}
+
+// ChangeDirToWord returns the pwsh `Set-Location -LiteralPath <word>` statement, word being one already-quoted shell word.
+func (pwshShell) ChangeDirToWord(word string) string {
+	return "Set-Location -LiteralPath " + word
+}

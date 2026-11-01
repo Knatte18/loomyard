@@ -40,6 +40,15 @@ type Config struct {
 
 	// SegmentColors maps a loom segment key to a palette color name.
 	SegmentColors map[string]string `yaml:"segment_colors"`
+
+	// Buttons is the buttons mapping of groups task, beam and prime, each the operator's own list of status-bar button entries.
+	// The node is decoded and validated only when the status bar renders, never by LoadConfig.
+	Buttons yaml.Node `yaml:"buttons"`
+}
+
+// ConfigOpenMaps returns the reed.yaml groups whose list is the operator's own button list, which a layer replaces whole.
+func ConfigOpenMaps() []string {
+	return []string{"buttons.task", "buttons.beam", "buttons.prime"}
 }
 
 // ConfigSpec returns reed's layered-load spec.
@@ -61,7 +70,9 @@ func ConfigSpec() configengine.Spec {
 			"window_split":     configengine.CategoryNone,
 			"tmux_conf":        configengine.CategorySourcedFile,
 			"segment_colors":   configengine.CategoryNone,
+			"buttons":          configengine.CategoryExecutable,
 		},
+		OpenMaps: ConfigOpenMaps(),
 		RetiredKeys: map[string]configengine.Category{
 			"collapsed_rows": configengine.CategoryNone,
 			"min_full_rows":  configengine.CategoryNone,

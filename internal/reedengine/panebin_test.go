@@ -337,6 +337,48 @@ func TestComposeSwitchCommand(t *testing.T) {
 		}
 	})
 
+	buttonTests := []struct {
+		name string
+		sh   shell.Shell
+		want string
+	}{
+		{
+			"button/posix",
+			shell.Posix(),
+			`cd #{@lym_button_dir} >/dev/null 2>&1; '/opt/it'\''s##here/lym' reed button --socket '/tmp/tmux-1000/it'\''s##socket' --tmux '/usr/local/it'\''s##bin/tmux' --session #{q:session_name} --range #{q:mouse_status_range} --client #{q:client_name} >/dev/null 2>&1; exit 0`,
+		},
+		{
+			"button/pwsh",
+			shell.Pwsh(),
+			`Set-Location -LiteralPath #{@lym_button_dir} *> $null; & '/opt/it''s##here/lym' reed button --socket '/tmp/tmux-1000/it''s##socket' --tmux '/usr/local/it''s##bin/tmux' --session #{q:session_name} --range #{q:mouse_status_range} --client #{q:client_name} *> $null; exit 0`,
+		},
+	}
+	for _, tt := range buttonTests {
+		t.Run(tt.name, func(t *testing.T) {
+			executablePath := func() (string, error) { return exe, nil }
+
+			got, ok := composeButtonCommand(tt.sh, executablePath, socketPath, tmuxPath)
+
+			if !ok || got != tt.want {
+				t.Errorf("composeButtonCommand = (%q, %v), want (%q, true)", got, ok, tt.want)
+			}
+		})
+	}
+
+	t.Run("button with an unresolvable executable pins nothing", func(t *testing.T) {
+		executablePath := func() (string, error) { return "", errors.New("no executable") }
+		logs := logcapture.CaptureVerbose(t)
+
+		got, ok := composeButtonCommand(shell.Posix(), executablePath, socketPath, tmuxPath)
+
+		if ok || got != "" {
+			t.Errorf("composeButtonCommand with an unresolvable executable = (%q, %v), want (\"\", false)", got, ok)
+		}
+		if !strings.Contains(logs.String(), "pinning no button click") {
+			t.Errorf("log = %q, want a named warning that no button click is pinned", logs.String())
+		}
+	})
+
 	t.Run("follow with an unresolvable executable pins nothing", func(t *testing.T) {
 		executablePath := func() (string, error) { return "", errors.New("no executable") }
 		logs := logcapture.CaptureVerbose(t)

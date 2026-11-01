@@ -11,6 +11,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -18,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"gopkg.in/yaml.v3"
 )
 
 // seedLymConfig creates the minimal on-disk config structure for LoadConfig.
@@ -89,6 +91,97 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	if !maps.Equal(cfg.SegmentColors, wantSegmentColors) {
 		t.Errorf("SegmentColors = %v, want %v", cfg.SegmentColors, wantSegmentColors)
 	}
+
+	wantTaskButtons := []buttonWant{
+		{Label: "HALT", Run: "lym tender pause {slug}"},
+		{Label: "CANCEL", Run: "lym batten cancel {slug}", Confirm: "Cancel {slug}?"},
+		{Label: "code", Run: "lym ide spawn {slug}"},
+		{Label: "term", Run: "lym reed window {worktree} --title {slug}"},
+		{Label: "agent", Run: "cd {worktree} && lym shuttle open --role agent --model 'opus[high]'"},
+	}
+	wantBeamButtons := []buttonWant{
+		{Label: "code", Run: "lym ide spawn {slug}"},
+		{Label: "term", Run: "lym reed window {worktree} --title {slug}"},
+		{Label: "agent", Run: "cd {worktree} && lym shuttle open --role agent --model 'opus[high]'"},
+		{Label: "distill", Run: "lym orch distill", Confirm: "Distill the orch?"},
+		{Label: "refresh", Run: "lym orch refresh", Confirm: "Refresh the orch?"},
+	}
+	if got := decodeButtons(t, cfg.Buttons); !reflect.DeepEqual(got, shippedButtons{Task: wantTaskButtons, Beam: wantBeamButtons, Prime: []buttonWant{}}) {
+		t.Errorf("Buttons = %+v; want task %+v, beam %+v and an empty prime", got, wantTaskButtons, wantBeamButtons)
+	}
+
+	t.Run("BothTemplatesShipTheSameButtons", func(t *testing.T) {
+		for _, file := range []string{"template_posix.yaml", "template_windows.yaml"} {
+			raw, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatalf("read %s: %v", file, err)
+			}
+			var doc struct {
+				Buttons yaml.Node `yaml:"buttons"`
+			}
+			if err := yaml.Unmarshal(raw, &doc); err != nil {
+				t.Fatalf("unmarshal %s: %v", file, err)
+			}
+			if got := decodeButtons(t, doc.Buttons); !reflect.DeepEqual(got, shippedButtons{Task: wantTaskButtons, Beam: wantBeamButtons, Prime: []buttonWant{}}) {
+				t.Errorf("%s buttons = %+v; want the shipped default set", file, got)
+			}
+		}
+	})
+
+	t.Run("ButtonsNullIsRefused", func(t *testing.T) {
+		anchor := t.TempDir()
+		seedLymConfig(t, anchor, "reed", "buttons: null\n")
+
+		_, err := reedengine.LoadConfig(configengine.Dirs{Anchor: anchor}, "reed")
+		if !errors.Is(err, configengine.ErrInvalid) || !strings.Contains(err.Error(), "buttons") {
+			t.Fatalf("err = %v; want ErrInvalid naming buttons", err)
+		}
+	})
+
+	t.Run("GroupWrittenAsMappingLoads", func(t *testing.T) {
+		anchor := t.TempDir()
+		seedLymConfig(t, anchor, "reed", "buttons: {task: {label: x}}\n")
+
+		if _, err := reedengine.LoadConfig(configengine.Dirs{Anchor: anchor}, "reed"); err != nil {
+			t.Fatalf("err = %v; want nil", err)
+		}
+	})
+
+	t.Run("GroupReplacesTheDefaultWhole", func(t *testing.T) {
+		anchor := t.TempDir()
+		seedLymConfig(t, anchor, "reed", "buttons: {task: [{label: x, run: y}]}\n")
+
+		cfg, err := reedengine.LoadConfig(configengine.Dirs{Anchor: anchor}, "reed")
+		if err != nil {
+			t.Fatalf("err = %v; want nil", err)
+		}
+		got := decodeButtons(t, cfg.Buttons)
+		if want := []buttonWant{{Label: "x", Run: "y"}}; !reflect.DeepEqual(got.Task, want) {
+			t.Errorf("task = %+v; want %+v", got.Task, want)
+		}
+		if !reflect.DeepEqual(got.Beam, wantBeamButtons) {
+			t.Errorf("beam = %+v; want the template default %+v", got.Beam, wantBeamButtons)
+		}
+	})
+
+	t.Run("LocalButtonsAreRefused", func(t *testing.T) {
+		anchor := t.TempDir()
+		localFile := configengine.LocalFile(anchor, "reed")
+		if err := os.MkdirAll(filepath.Dir(localFile), 0o755); err != nil {
+			t.Fatalf("mkdir local dir: %v", err)
+		}
+		if err := os.WriteFile(localFile, []byte("buttons: {task: []}\n"), 0o644); err != nil {
+			t.Fatalf("write local file: %v", err)
+		}
+
+		_, err := reedengine.LoadConfig(configengine.Dirs{Anchor: anchor}, "reed")
+		if !errors.Is(err, configengine.ErrInvalid) {
+			t.Fatalf("err = %v, want ErrInvalid", err)
+		}
+		if !strings.Contains(err.Error(), localFile) || !strings.Contains(err.Error(), `"buttons.task"`) {
+			t.Errorf("err = %q, want it to name %s and key buttons.task", err, localFile)
+		}
+	})
 
 	t.Run("RepoDefaultResolvesBeneathSparseWorktreeFile", func(t *testing.T) {
 		board, anchor := t.TempDir(), t.TempDir()
@@ -280,4 +373,28 @@ func TestLoadConfig_UnknownKeysFromAnOlderConfigAreIgnored(t *testing.T) {
 			}
 		})
 	}
+}
+
+// buttonWant is one button entry as the shipped default set spells it.
+type buttonWant struct {
+	Label   string `yaml:"label"`
+	Run     string `yaml:"run"`
+	Confirm string `yaml:"confirm"`
+}
+
+// shippedButtons is the buttons mapping decoded into its three groups.
+type shippedButtons struct {
+	Task  []buttonWant `yaml:"task"`
+	Beam  []buttonWant `yaml:"beam"`
+	Prime []buttonWant `yaml:"prime"`
+}
+
+// decodeButtons decodes a buttons node into its three groups.
+func decodeButtons(t *testing.T, node yaml.Node) shippedButtons {
+	t.Helper()
+	var got shippedButtons
+	if err := node.Decode(&got); err != nil {
+		t.Fatalf("decode buttons node: %v", err)
+	}
+	return got
 }

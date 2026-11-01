@@ -232,8 +232,8 @@ func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 	want := e.AttachArgv(80, 24)
 	assertBareArgv(t, e, want)
 
-	// The five bar pins plus the window-size pin, the one follow-command pin (set, or unset when the jump cannot be composed), the build-stamp unset, the window marker, the strand pane's two options and the console marker on the recorded Selvage pane.
-	wantSetOptionCalls := 12 + wantShellPins
+	// The six bar pins plus the button row invocation, the window-size pin, the follow-command and button-command pins (each set, or unset when its line cannot be composed), the build-stamp unset, the window marker, the strand pane's two options and the console marker on the recorded Selvage pane.
+	wantSetOptionCalls := 16 + wantShellPins
 	if setOptions := fake.ArgvFor("set-option"); len(setOptions) != wantSetOptionCalls {
 		t.Fatalf("AttachArgv() issued %d set-option calls, want %d: %v", len(setOptions), wantSetOptionCalls, setOptions)
 	}

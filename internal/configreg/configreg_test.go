@@ -83,7 +83,7 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 		"batten":   {"open_ide_command", "open_window_command", "seed_ide_command"},
 		"beam":     {"pull_request"},
 		"claude":   {"binary", "deny_agent_tool", "deny_ask_user_question"},
-		"reed":     {"debug_log", "mouse", "shell", "tmux", "tmux_conf"},
+		"reed":     {"buttons", "debug_log", "mouse", "shell", "tmux", "tmux_conf"},
 		"shuttle":  {"deny_python", "run_dir"},
 		"loom":     {"code_auto_accept", "code_fixer_fan", "discussion_advisors", "discussion_auto_accept", "discussion_fixer_fan", "discussion_lenses", "discussion_reviewer_fan"},
 		"tapestry": {"plan_auto_accept", "plan_fixer_fan", "plan_lenses", "plan_reviewer_fan"},
@@ -124,7 +124,7 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 				wantMachineKeys = []string{"slots", "tier_parallel"}
 			}
 			if m.Name == "desktop" {
-				wantMachineKeys = []string{"window_command", "window_wait_ms"}
+				wantMachineKeys = []string{"buttons", "window_command", "window_wait_ms"}
 			}
 			if got := configengine.MachineKeys(spec); !slices.Equal(got, wantMachineKeys) {
 				t.Errorf("%s MachineKeys = %v; want %v, so no stray machine file is read by a registered loader", m.Name, got, wantMachineKeys)
@@ -282,6 +282,7 @@ func TestLookup(t *testing.T) {
 		}},
 		{"tapestry", true, []string{"plan_reviewer_model", "plan_fixer_model", "plan_reviewer_fan", "plan_fixer_fan"}},
 		{"darn", true, []string{"tree_scope"}},
+		{"reed", true, []string{"buttons.task", "buttons.beam", "buttons.prime"}},
 		{"shuttle", true, nil},
 		{"burler", false, nil},
 		{"bogus", false, nil},

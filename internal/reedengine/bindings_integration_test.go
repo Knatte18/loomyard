@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -175,7 +176,8 @@ func wantFollowRecord(socketPath, session string) []string {
 // doubleClickGap is longer than tmux's own double-click window, so two clicks of a test never merge into a DoubleClick1Status event the bindings do not take.
 const doubleClickGap = 400 * time.Millisecond
 
-// click presses and releases the left mouse button on the status line row (0 or 1) at the first cell of label in that line's text.
+// click presses and releases the left mouse button on the status line row (0, 1 or 2) of the three-line bar at the first cell of label in that line's text.
+// The row sits 2 - row lines above the client's last row.
 func (f *bindingsFixture) click(t *testing.T, row int, label string) {
 	t.Helper()
 	time.Sleep(doubleClickGap)
@@ -186,7 +188,7 @@ func (f *bindingsFixture) click(t *testing.T, row int, label string) {
 		t.Fatalf("status line %d reads %q, want it to contain %q", row, text, label)
 	}
 	x := len([]rune(text[:at])) + 2
-	y := bindingsClientRows - 1 + row
+	y := bindingsClientRows - 2 + row
 	f.send(t, "\x1b[<0;"+strconv.Itoa(x)+";"+strconv.Itoa(y)+"M\x1b[<0;"+strconv.Itoa(x)+";"+strconv.Itoa(y)+"m")
 }
 
@@ -296,12 +298,12 @@ func TestBindings_StatusBarClicksSelectAndZoomByRangeType(t *testing.T) {
 		t.Errorf("the shell click with no strands' window left window %q current, want extra", got)
 	}
 
-	// The follow button on line 2 toggles the state: a click from on writes off, keeps the window and runs no recorder.
+	// The follow button on line 3 toggles the state: a click from on writes off, keeps the window and runs no recorder.
 	// A click from off writes on and runs the jump line with the told socket, this session and the tmux path.
 	f.setFollow(t, session, "on")
 	f.removeRecord(t)
 	windowBefore := f.currentWindow(t)
-	f.click(t, 1, " follow ")
+	f.click(t, 2, " follow ")
 	waitUntil(t, 5*time.Second, "a click on the lit follow button never turned follow off", func() bool { return f.follow(t, session) == "off" })
 	settle()
 	if got := f.currentWindow(t); got != windowBefore {
@@ -310,7 +312,7 @@ func TestBindings_StatusBarClicksSelectAndZoomByRangeType(t *testing.T) {
 	if _, err := os.Stat(f.recordPath); err == nil {
 		t.Errorf("a click on the lit follow button ran the recorder, want no jump")
 	}
-	f.click(t, 1, " follow ")
+	f.click(t, 2, " follow ")
 	waitUntil(t, 5*time.Second, "a click on the unlit follow button never turned follow on", func() bool { return f.follow(t, session) == "on" })
 	args := f.awaitRecord(t)
 	if want := wantFollowRecord(socketPath, session); !slices.Equal(args[:7], want) {
@@ -335,20 +337,20 @@ func TestBindings_StatusBarClicksSelectAndZoomByRangeType(t *testing.T) {
 	}
 
 	// The jump line names the clicking client's session as one argument, however the name is spelled.
-	// The session shows two status lines only because it is given them, since reed pins that on its own session alone.
+	// The session shows three status lines only because it is given them, since reed pins that on its own session alone.
 	const oddSession = "sp ace's #1"
 	if err := f.e.tmux.run("new-session", "-d", "-s", oddSession); err != nil {
 		t.Fatalf("new-session %q: %v", oddSession, err)
 	}
-	if err := f.e.tmux.run("set-option", "-t", "="+oddSession+":", "status", "2"); err != nil {
-		t.Fatalf("status 2 on %q: %v", oddSession, err)
+	if err := f.e.tmux.run("set-option", "-t", "="+oddSession+":", "status", "3"); err != nil {
+		t.Fatalf("status 3 on %q: %v", oddSession, err)
 	}
 	if err := f.e.tmux.run("switch-client", "-c", f.client, "-t", "="+oddSession); err != nil {
 		t.Fatalf("switch-client to %q: %v", oddSession, err)
 	}
 	f.setFollow(t, oddSession, "off")
 	f.removeRecord(t)
-	f.click(t, 1, " follow ")
+	f.click(t, 2, " follow ")
 	odd := f.awaitRecord(t)
 	if odd[5] != oddSession {
 		t.Errorf("recorded session = %q, want %q intact (full record %q)", odd[5], oddSession, odd)
@@ -388,4 +390,105 @@ func TestBindings_AltLeftRightRunTheSwitchCommandWithTheToldPaths(t *testing.T) 
 		}
 	}
 	f.assertFollow(t, "on")
+}
+
+// TestBindings_ButtonClickRunsTheVerbInTheRunDirectory clicks a rendered button and asserts what the pinned line runs: in which directory, with which arguments and environment, and that a failing verb leaves the pane out of view mode.
+// The executable is swapped for a script that records its working directory, whether the strand name variables are set and its arguments, then exits 3.
+func TestBindings_ButtonClickRunsTheVerbInTheRunDirectory(t *testing.T) {
+	t.Parallel()
+	f := newBindingsFixture(t)
+	beamDir := t.TempDir()
+	recordPath := filepath.Join(t.TempDir(), "record")
+	scriptPath := filepath.Join(t.TempDir(), "lym-button-recorder")
+	script := "#!/bin/sh\n{ pwd; echo \"strand=${LYM_STRAND_NAME+set}\"; echo \"parent=${LYM_PARENT+set}\"; printf '%s\\n' \"$@\"; } > " + recordPath + "\nexit 3\n"
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write recorder script: %v", err)
+	}
+
+	var holder struct {
+		Buttons yaml.Node `yaml:"buttons"`
+	}
+	if err := yaml.Unmarshal([]byte("buttons:\n  task:\n    - {label: HALT, run: 'true'}\n    - {label: AGENT, run: 'true', window: agents}\n"), &holder); err != nil {
+		t.Fatalf("decode buttons: %v", err)
+	}
+	f.e.cfg.Buttons = holder.Buttons
+	f.e.geom.Buttons = func() (ButtonContext, error) {
+		return ButtonContext{
+			Place: ButtonPlaceTask,
+			Beam: func() (ButtonBeam, error) {
+				return ButtonBeam{Anchor: beamDir, Name: "beam", PrimeAnchor: t.TempDir()}, nil
+			},
+		}, nil
+	}
+	f.e.executablePath = func() (string, error) { return scriptPath, nil }
+	if err := f.e.withOpLock(func() error {
+		f.e.pinGeometryOptionsLocked(f.strandWindow, "")
+		return nil
+	}); err != nil {
+		t.Fatalf("re-run the geometry pins: %v", err)
+	}
+
+	rowText := func(target string) string {
+		return styleDirective.ReplaceAllString(f.display(t, target, "#{T:status-format[2]}"), "")
+	}
+	if got := rowText(f.alpha.PaneID); !strings.Contains(got, "HALT") || !strings.Contains(got, "AGENT") {
+		t.Errorf("line 3 in a strand's own window = %q, want HALT and AGENT", got)
+	}
+	if got := rowText(f.strandWindow); !strings.Contains(got, "HALT") || strings.Contains(got, "AGENT") {
+		t.Errorf("line 3 in the shell window = %q, want HALT and not AGENT", got)
+	}
+
+	socketPath := strings.TrimSpace(mustTmuxOutput(t, f.e, "display-message", "-p", "#{socket_path}"))
+	f.click(t, 2, "HALT")
+	var lines []string
+	waitUntil(t, 5*time.Second, "the recorder never finished writing", func() bool {
+		raw, err := os.ReadFile(recordPath)
+		lines = strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
+		return err == nil && len(lines) >= 14
+	})
+	gotDir, _ := filepath.EvalSymlinks(lines[0])
+	wantDir, _ := filepath.EvalSymlinks(beamDir)
+	if gotDir != wantDir {
+		t.Errorf("the verb started in %q, want the beam's anchor %q", gotDir, wantDir)
+	}
+	if lines[1] != "strand=" || lines[2] != "parent=" {
+		t.Errorf("caller identity = %q and %q, want neither variable set", lines[1], lines[2])
+	}
+	args := lines[3:]
+	want := []string{"reed", "button", "--socket", socketPath, "--tmux"}
+	wantTail := []string{"--session", f.e.SessionName(), "--range", "lymbtn0", "--client", f.client}
+	if len(args) != len(want)+1+len(wantTail) || !slices.Equal(args[:len(want)], want) || !slices.Equal(args[len(want)+1:], wantTail) {
+		t.Errorf("recorded arguments = %q, want %q, the tmux path, then %q", args, want, wantTail)
+	}
+	if len(args) > len(want) && (filepath.Base(args[len(want)]) != filepath.Base(f.e.cfg.Tmux) || !filepath.IsAbs(args[len(want)])) {
+		t.Errorf("recorded tmux path = %q, want the absolute path of %q", args[len(want)], f.e.cfg.Tmux)
+	}
+
+	settle()
+	if got := f.display(t, f.activePane(t), "#{pane_in_mode}"); got != "0" {
+		t.Errorf("pane_in_mode after the verb exited 3 = %q, want 0", got)
+	}
+
+	// A click whose run directory is gone must not open view mode either: the failed directory change writes to stderr.
+	if err := os.Remove(recordPath); err != nil {
+		t.Fatalf("remove the record: %v", err)
+	}
+	if err := os.Remove(beamDir); err != nil {
+		t.Fatalf("remove the run directory: %v", err)
+	}
+	f.click(t, 2, "HALT")
+	waitUntil(t, 5*time.Second, "the recorder never ran after the run directory was removed", func() bool {
+		_, err := os.Stat(recordPath)
+		return err == nil
+	})
+	settle()
+	if got := f.display(t, f.activePane(t), "#{pane_in_mode}"); got != "0" {
+		t.Errorf("pane_in_mode after a click with a gone run directory = %q, want 0", got)
+	}
+
+	f.setFollow(t, f.e.SessionName(), "on")
+	f.click(t, 2, "follow")
+	waitUntil(t, 5*time.Second, "the follow click never toggled follow", func() bool {
+		return f.follow(t, f.e.SessionName()) == "off"
+	})
 }

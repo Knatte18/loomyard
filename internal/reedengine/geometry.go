@@ -1,9 +1,11 @@
-// geometry.go declares Geometry, the struct reed is told its coordinates through.
-// It declares the type only — New and every method stay in their existing files (lock.go,
+// geometry.go declares Geometry, the struct reed is told its coordinates through, and the two button types, ButtonContext and ButtonBeam, its Buttons field returns.
+// It declares types only — New and every method stay in their existing files (lock.go,
 // lifecycle.go, strand.go); this file adds no constructor, no validator, and no
 // default.
 
 package reedengine
+
+import "gopkg.in/yaml.v3"
 
 // Geometry is the set of paths and identity strings reed is told, once, at construction, and never derives itself.
 // reedengine.New validates no field of a Geometry, and no method recomputes any of them from the others — populating every field with a usable absolute path (or, for SocketKey, a socket-safe key) is entirely the caller's obligation.
@@ -62,6 +64,9 @@ type Geometry struct {
 	// SpawnOrder lists the hub's worktrees in spawn order, for the revival of a restarted server's sessions (revive.go).
 	// It is nil in standalone mode, and called only when a revival is due, so building an engine costs nothing.
 	SpawnOrder func() ([]ReviveEntry, error)
+	// Buttons tells the session's status-bar button context.
+	// It is nil in standalone mode, where the row shows follow alone, and is called by the status pins only, at boot and attach.
+	Buttons func() (ButtonContext, error)
 }
 
 // ReviveEntry is one worktree of a Geometry.SpawnOrder list.
@@ -70,4 +75,28 @@ type ReviveEntry struct {
 	Worktree string
 	// Revive brings that worktree's recorded session back when it is not live, and reports whether it did.
 	Revive func() (revived bool, err error)
+}
+
+// ButtonContext is what a Geometry.Buttons call tells reed of a session's status-bar buttons.
+type ButtonContext struct {
+	// Place is the kind of session the row is rendered for.
+	Place ButtonPlace
+	// Slug, Worktree and Session are the cheap placeholder values: the worktree's name, its anchor path and its tmux session name.
+	Slug     string
+	Worktree string
+	Session  string
+	// MachineButtons is desktop's buttons node, appended after reed's buttons of the same place; zero when the machine adds none.
+	MachineButtons yaml.Node
+	// Beam resolves the {beam} placeholder and is called only when the render needs it.
+	Beam func() (ButtonBeam, error)
+}
+
+// ButtonBeam is the beam a session's {beam} placeholder and run directory name.
+type ButtonBeam struct {
+	// Anchor is the beam's anchor path, empty when that directory is absent on this machine.
+	Anchor string
+	// Name is the beam's worktree name.
+	Name string
+	// PrimeAnchor is the prime's anchor path, the run directory of a task's button when Anchor is empty.
+	PrimeAnchor string
 }

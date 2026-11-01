@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
 // TestGeometryOverRealHub builds one hub and runs each geometry case as a step over it, in the order below.
@@ -118,6 +119,94 @@ func TestGeometryOverRealHub(t *testing.T) {
 		}
 		if none.ParentName != "" {
 			t.Errorf("ParentName without a parent worktree = %q; want empty", none.ParentName)
+		}
+	}) {
+		return
+	}
+
+	if !t.Run("reed task worktree tells the beam its button run directory resolves", func(t *testing.T) {
+		const slug = "buttons-task"
+		const parentSlug = "buttons-parent"
+		hubforge.AddPair(t, h, slug)
+		hubforge.AddPair(t, h, parentSlug)
+
+		l, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(slug))
+		if err != nil {
+			t.Fatalf("ResolveWorktree: %v", err)
+		}
+		parentLocation, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(parentSlug))
+		if err != nil {
+			t.Fatalf("ResolveWorktree parent: %v", err)
+		}
+		entries, err := fabricengine.List(h.Location.AnchorPath())
+		if err != nil {
+			t.Fatalf("List: %v", err)
+		}
+		var parentBranch string
+		for _, entry := range entries {
+			if filepath.Base(filepath.Clean(filepath.FromSlash(entry.Path))) == parentSlug {
+				parentBranch = entry.Branch
+			}
+		}
+		if parentBranch == "" {
+			t.Fatalf("no branch found for the worktree %q", parentSlug)
+		}
+
+		resolveBeam := func(t *testing.T) (reedengine.ButtonBeam, error) {
+			t.Helper()
+			geom, err := hubgeom.ReedGeometry(l)
+			if err != nil {
+				t.Fatalf("ReedGeometry(task): %v", err)
+			}
+			buttons, err := geom.Buttons()
+			if err != nil {
+				t.Fatalf("Buttons(): %v", err)
+			}
+			return buttons.Beam()
+		}
+		setOrigin := func(t *testing.T, parentWorktree, parentBranch string) {
+			t.Helper()
+			origin, found, err := fabricengine.ReadOriginFor(l, slug)
+			if err != nil || !found {
+				t.Fatalf("ReadOriginFor = %v, found %v", err, found)
+			}
+			origin.ParentWorktree, origin.ParentBranch = parentWorktree, parentBranch
+			if err := fabricengine.WriteOrigin(&fabricengine.Mutations{}, l, slug, origin); err != nil {
+				t.Fatalf("WriteOrigin: %v", err)
+			}
+		}
+		primeAnchor := h.Location.AnchorPath()
+
+		beam, err := resolveBeam(t)
+		if err != nil || beam.Anchor != primeAnchor || beam.PrimeAnchor != primeAnchor {
+			t.Errorf("Beam() for a task forked from the prime = %+v, %v; want the prime's anchor %q as Anchor and PrimeAnchor", beam, err, primeAnchor)
+		}
+
+		setOrigin(t, parentSlug, parentBranch)
+		beam, err = resolveBeam(t)
+		if err != nil || beam.Anchor != parentLocation.AnchorPath() || beam.PrimeAnchor != primeAnchor {
+			t.Errorf("Beam() for a task forked from a live pair = %+v, %v; want Anchor %q and PrimeAnchor %q", beam, err, parentLocation.AnchorPath(), primeAnchor)
+		}
+
+		setOrigin(t, "gone-beam", "no-such-branch")
+		beam, err = resolveBeam(t)
+		if err != nil || beam.Anchor != "" || beam.Name != "gone-beam" || beam.PrimeAnchor != primeAnchor {
+			t.Errorf("Beam() for a task whose parent is absent = %+v, %v; want an empty Anchor, Name %q and PrimeAnchor %q", beam, err, "gone-beam", primeAnchor)
+		}
+
+		geom, err := hubgeom.ReedGeometry(l)
+		if err != nil {
+			t.Fatalf("ReedGeometry(task): %v", err)
+		}
+		buttons, err := geom.Buttons()
+		if err != nil {
+			t.Fatalf("Buttons(): %v", err)
+		}
+		if err := os.WriteFile(fabricengine.OriginRecordPathFor(l, slug), []byte("{"), 0o644); err != nil {
+			t.Fatalf("overwrite the origin record: %v", err)
+		}
+		if _, err := buttons.Beam(); err == nil || !strings.Contains(err.Error(), "origin record") {
+			t.Errorf("Beam() after the origin record was overwritten = %v; want an error wrapping the parent read", err)
 		}
 	}) {
 		return

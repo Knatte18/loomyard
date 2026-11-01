@@ -136,6 +136,23 @@ func TestShell_ChangeDir(t *testing.T) {
 			}
 		})
 	}
+
+	wordTests := []struct {
+		name string
+		sh   Shell
+		want string
+	}{
+		{"pwsh/word_passed_through", Pwsh(), `Set-Location -LiteralPath '/a b'`},
+		{"posix/word_passed_through", Posix(), `cd '/a b'`},
+	}
+	for _, tt := range wordTests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := tt.sh.ChangeDirToWord("'/a b'"); got != tt.want {
+				t.Errorf("%s ChangeDirToWord(%q) = %q; want %q", tt.name, "'/a b'", got, tt.want)
+			}
+		})
+	}
 }
 
 // TestShell_ExportEnv pins that each dialect's export stands alone: a bare assignment with no trailing command fragment.
@@ -325,6 +342,34 @@ func TestShell_Exit(t *testing.T) {
 			t.Parallel()
 			if got := sh.Exit(); got != "exit" {
 				t.Errorf("Exit() = %q; want %q", got, "exit")
+			}
+			if got := sh.ExitSuccess(); got != "exit 0" {
+				t.Errorf("ExitSuccess() = %q; want %q", got, "exit 0")
+			}
+		})
+	}
+}
+
+// TestShell_DiscardOutputAndCommandFlag pins each dialect's output discard and command-line flag.
+func TestShell_DiscardOutputAndCommandFlag(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		sh          Shell
+		wantDiscard string
+		wantFlag    string
+	}{
+		{"posix", Posix(), "lym x >/dev/null 2>&1", "-c"},
+		{"pwsh", Pwsh(), "lym x *> $null", "-Command"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := tt.sh.DiscardOutput("lym x"); got != tt.wantDiscard {
+				t.Errorf("%s DiscardOutput(%q) = %q; want %q", tt.name, "lym x", got, tt.wantDiscard)
+			}
+			if got := tt.sh.CommandFlag(); got != tt.wantFlag {
+				t.Errorf("%s CommandFlag() = %q; want %q", tt.name, got, tt.wantFlag)
 			}
 		})
 	}

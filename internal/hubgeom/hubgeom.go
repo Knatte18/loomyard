@@ -84,6 +84,7 @@ func reedGeometry(l *lymcwd.Location, prime bool) reedengine.Geometry {
 	}
 	return reedengine.Geometry{
 		SpawnOrder:         spawnOrder(l),
+		Buttons:            buttonContext(l, prime),
 		SocketKey:          reedengine.ServerName(l.HubPath),
 		SessionName:        reedengine.SessionName(l.WorktreePath()),
 		AnchorPath:         l.AnchorPath(),

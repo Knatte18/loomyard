@@ -19,3 +19,30 @@ segment_colors:  # tmux color per loom segment; each value must be a palette col
   landing: pink
   darn: red
   merge: red
+buttons:  # status-bar buttons in the groups task, beam and prime; an entry has label, run, optional confirm (a prompt asked before run) and optional window: agents (the button shows only in a strand pane's window); run and confirm take the placeholders {slug}, {worktree}, {beam}, {session} and {strand}; the prime uses its own group when that is non-empty and otherwise falls back to beam; a group written in a layer replaces the default whole; an edit reaches a live session at its next attach or boot
+  task:
+    - label: HALT
+      run: lym tender pause {slug}
+    - label: CANCEL
+      run: lym batten cancel {slug}
+      confirm: Cancel {slug}?
+    - label: code
+      run: lym ide spawn {slug}
+    - label: term
+      run: lym reed window {worktree} --title {slug}
+    - label: agent
+      run: "cd {worktree} && lym shuttle open --role agent --model 'opus[high]'"
+  beam:
+    - label: code
+      run: lym ide spawn {slug}
+    - label: term
+      run: lym reed window {worktree} --title {slug}
+    - label: agent
+      run: "cd {worktree} && lym shuttle open --role agent --model 'opus[high]'"
+    - label: distill
+      run: lym orch distill
+      confirm: Distill the orch?
+    - label: refresh
+      run: lym orch refresh
+      confirm: Refresh the orch?
+  prime: []

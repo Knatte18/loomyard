@@ -2,7 +2,7 @@
 
 // stencilseedgate_test.go pins two things about the stencil-seed skip gate this batch adds:
 // skipStencilSeed's predicate against synthetic *cobra.Command values,
-// and that "lym reed switch", "lym reed follow" and every creel command actually carry the annotation the predicate reads. It deliberately does NOT pin any ordering
+// and that "lym reed switch", "lym reed follow", "lym reed button" and every creel command actually carry the annotation the predicate reads. It deliberately does NOT pin any ordering
 // between skipStencilSeed and stencilSeedTarget, and does NOT assert "no `git rev-parse` was
 // spawned": seedStencils returns under testing.Testing() before either step runs, so an in-process
 // test can never observe their relative order, and "no git rev-parse was spawned" is the unfalsifiable
@@ -33,7 +33,7 @@ func reedSubcommand(t *testing.T, name string) *cobra.Command {
 	return nil
 }
 
-// TestSkipStencilSeed_HonoursTheAnnotation drives skipStencilSeed directly against synthetic *cobra.Command values, and against the real "lym reed switch" and "lym reed follow" commands and every creel command, which must carry the annotation or the gate is worthless.
+// TestSkipStencilSeed_HonoursTheAnnotation drives skipStencilSeed directly against synthetic *cobra.Command values, and against the real "lym reed switch", "lym reed follow" and "lym reed button" commands and every creel command, which must carry the annotation or the gate is worthless.
 func TestSkipStencilSeed_HonoursTheAnnotation(t *testing.T) {
 	t.Parallel()
 
@@ -81,6 +81,11 @@ func TestSkipStencilSeed_HonoursTheAnnotation(t *testing.T) {
 		{
 			name: "reed follow carries the annotation",
 			cmd:  reedSubcommand(t, "follow"),
+			want: true,
+		},
+		{
+			name: "reed button carries the annotation",
+			cmd:  reedSubcommand(t, "button"),
 			want: true,
 		},
 	}

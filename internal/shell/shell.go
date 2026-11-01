@@ -1,4 +1,4 @@
-// shell.go defines the Shell interface — pane-shell mechanics (argument quoting, the call operator, session-scoped env export, live-PATH prepend, single-line statement chaining, script sourcing, the sourced-script file extension, and the key that discards an unsubmitted input line) that every provider engine composes its launch/resume command strings from — and the ForGOOS/Pwsh/Posix constructors that select or directly expose an implementation.
+// shell.go defines the Shell interface — pane-shell mechanics (argument quoting, the call operator, session-scoped env export, live-PATH prepend, single-line statement chaining, script sourcing, the sourced-script file extension, and the key that discards an unsubmitted input line, output discard, zero exit, the command-line flag, and a directory change to an already-quoted word) that every provider engine composes its launch/resume command strings from — and the ForGOOS/Pwsh/Posix constructors that select or directly expose an implementation.
 
 package shell
 
@@ -45,6 +45,17 @@ type Shell interface {
 	// Exit returns the statement that ends the pane's shell.
 	// Typed into a launch script the pane's shell sources in its own scope, it ends the shell.
 	Exit() string
+	// ExitSuccess returns the statement that ends the shell with status zero, whatever the previous statement returned.
+	// It closes a line typed into a pane whose exit status must not read as a failure.
+	ExitSuccess() string
+	// DiscardOutput returns cmd with its standard output and standard error discarded, so a pane running it shows nothing.
+	DiscardOutput(cmd string) string
+	// CommandFlag returns the flag that makes the shell binary run its next argument as a command line.
+	CommandFlag() string
+	// ChangeDirToWord returns a standalone statement that changes the shell's current directory to the directory word names.
+	// word is already one quoted shell word and is not quoted again,
+	// so a caller may pass an expansion another tool substitutes into the line.
+	ChangeDirToWord(word string) string
 	// Source returns a standalone statement that runs the statements in the file at path in the current shell's own scope,
 	// so exports and PATH changes land in the calling session.
 	Source(path string) string

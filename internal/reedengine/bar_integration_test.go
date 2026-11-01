@@ -1,6 +1,6 @@
 //go:build tier2 && linux
 
-// bar_integration_test.go expands the two-line status bar against a real tmux server and an attached client,
+// bar_integration_test.go expands the three-line status bar against a real tmux server and an attached client,
 // and asserts the acceptance rows: which button is lit, which windows get a button, the wait mark, and the session line.
 // The formats are expanded with display-message -c <client>, so the client's own session and current window are the context.
 // The client is attached through the pty harness attachgeometry_integration_test.go defines.
@@ -226,9 +226,12 @@ func TestBar_LineTwoListsSessionsPrimeFirst(t *testing.T) {
 		if strings.Count(line, "nolist align=right]") != 1 {
 			t.Errorf("line 2 = %q, want the right-aligned time segment once", line)
 		}
-		firstFollow := strings.Index(line, "range=user|follow")
-		if firstFollow < 0 || strings.Contains(line[strings.LastIndex(line[:firstFollow], "range=session|"):firstFollow], ",") {
-			t.Errorf("line 2 = %q, want no comma between the last session button and the follow button", line)
+		if strings.Contains(line, "range=user|follow") {
+			t.Errorf("line 2 = %q, want no follow button, which sits on line 3", line)
+		}
+		right := strings.Index(line, "nolist align=right")
+		if right < 0 || strings.Contains(line[strings.LastIndex(line[:right], "range=session|"):right], ",") {
+			t.Errorf("line 2 = %q, want no comma between the last session button and the right-aligned segment", line)
 		}
 	}
 	markPrime := func(t *testing.T, session string) {
@@ -262,7 +265,7 @@ func TestBar_LineTwoListsSessionsPrimeFirst(t *testing.T) {
 	}
 	markPrime(t, "")
 
-	// The follow button sits after the last session button and before the time: lit while @lym_follow is unset, unlit while it is off.
+	// The follow button is the first range of line 3: lit while @lym_follow is unset, unlit while it is off.
 	for _, tt := range []struct {
 		name, follow, want string
 	}{
@@ -277,14 +280,14 @@ func TestBar_LineTwoListsSessionsPrimeFirst(t *testing.T) {
 		if err := f.e.tmux.run(setArgv...); err != nil {
 			t.Fatalf("set %s to %q: %v", followSessionOption, tt.follow, err)
 		}
-		line := f.expand(t, "#{T:status-format[1]}")
+		line := f.expand(t, "#{T:status-format[2]}")
 		at := strings.Index(line, tt.want)
 		if at < 0 {
-			t.Errorf("line 2 with follow %s = %q, want it to contain %q", tt.name, line, tt.want)
+			t.Errorf("line 3 with follow %s = %q, want it to contain %q", tt.name, line, tt.want)
 			continue
 		}
-		if at < strings.LastIndex(line, other) || at > strings.Index(line, "nolist align=right") {
-			t.Errorf("line 2 with follow %s = %q, want the follow button after the last session button and before the time", tt.name, line)
+		if at != strings.Index(line, "range=") {
+			t.Errorf("line 3 with follow %s = %q, want the follow button to be its first range", tt.name, line)
 		}
 	}
 }
@@ -311,7 +314,7 @@ func TestBar_LineTwoShowsTheCheckMarkBeforeTheClock(t *testing.T) {
 		t.Errorf("line 2 running seconds = %s, want the 90 seconds since the start, give or take the test's own time", match[1])
 	}
 	if strings.Index(line, "adopt check") < strings.Index(line, "nolist align=right") {
-		t.Errorf("line 2 running = %q, want the mark right-aligned after the follow button", line)
+		t.Errorf("line 2 running = %q, want the mark right-aligned after the session buttons", line)
 	}
 	clock := regexp.MustCompile(`\d\d:\d\d`).FindAllStringIndex(line, -1)
 	if len(clock) == 0 || strings.Index(line, "adopt check") > clock[len(clock)-1][0] {

@@ -43,7 +43,7 @@ func sessionLoopTwoFormats(format string, loopStart int) int {
 func TestStatusFormats_SessionLoopsTakeOneFormat(t *testing.T) {
 	t.Parallel()
 	loops := 0
-	for name, format := range map[string]string{"statusFormatButtons": statusFormatButtons, "statusFormatSessions": statusFormatSessions} {
+	for name, format := range map[string]string{"statusFormatButtons": statusFormatButtons, "statusFormatSessions": statusFormatSessions, "statusFormatActions": statusFormatActions} {
 		for from := 0; ; {
 			at := strings.Index(format[from:], "#{S:")
 			if at < 0 {

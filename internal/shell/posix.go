@@ -83,3 +83,23 @@ func (posixShell) OrElse(first, second string) string {
 func (posixShell) Exit() string {
 	return "exit"
 }
+
+// DiscardOutput returns cmd with its standard output and standard error redirected to /dev/null.
+func (posixShell) DiscardOutput(cmd string) string {
+	return cmd + " >/dev/null 2>&1"
+}
+
+// ExitSuccess returns the POSIX `exit 0` statement.
+func (posixShell) ExitSuccess() string {
+	return "exit 0"
+}
+
+// CommandFlag returns the `-c` flag that makes a POSIX shell run its next argument as a command line.
+func (posixShell) CommandFlag() string {
+	return "-c"
+}
+
+// ChangeDirToWord returns the POSIX `cd <word>` statement, word being one already-quoted shell word.
+func (posixShell) ChangeDirToWord(word string) string {
+	return "cd " + word
+}

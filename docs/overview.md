@@ -271,7 +271,7 @@ github.com/Knatte18/loomyard/
 ├── internal/pawlengine/          the pawl recipe's own producers, Beam-Up, Beam-Await and Beam-Down, the land request Beam-Await consumes and the beam's ready record, told their geometry and seams by their caller
 ├── internal/failuretrace/        traces a failed Parent-Align or Finalize verify log to the plan cards, batch commit ranges and untraced locations the landing failure record carries
 ├── internal/darnengine/          the darn recipe's hub-wide `darn.yaml` config and the verify command every darn verify reads
-├── internal/desktophook/         the hub-wide `desktop.yaml` config and the machine's window command, run after `lym reed window` and `lym ide` open a window
+├── internal/desktophook/         the hub-wide `desktop.yaml` config and the machine's window command, run after `lym reed window` and `lym ide` open a window, and the machine's added status-bar buttons
 ├── internal/samplerengine/       the sampler recipe's hub-wide `sampler.yaml` config
 ├── internal/driftengine/         regression around a task: the hub-wide `drift.yaml` config, the drift paths and records, the capture and compare runs and the Drift rows' producers
 ├── internal/driftcli/            the `lym drift` commands (`scope`, `accept`, `withdraw`, `compare`, `capture`, `defer`, `waive`, `status` and the hidden `capture-child`) and their worktree wiring over `internal/driftengine`

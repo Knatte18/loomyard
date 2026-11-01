@@ -140,7 +140,7 @@ func Modules() []Module {
 		{Name: "models", Template: modelspec.ConfigTemplate, SeedOnly: true, CheckLoad: checkLoad(modelspec.LoadRegistry), Spec: modelspec.ConfigSpec},
 		{Name: "orch", Template: orchengine.ConfigTemplate, Migrate: orchengine.MigrateConfig, CheckLoad: checkLoadNamed(orchengine.LoadConfig, "orch"), Spec: orchengine.ConfigSpec},
 		{Name: runprofile.ModuleName, Template: runprofile.ConfigTemplate, HubWide: true, SeedOnly: true, CheckLoad: checkProfiles, Spec: runprofile.ConfigSpec},
-		{Name: "reed", Template: reedengine.ConfigTemplate, CheckLoad: checkLoadNamed(reedengine.LoadConfig, "reed"), Spec: reedengine.ConfigSpec},
+		{Name: "reed", Template: reedengine.ConfigTemplate, OpenMaps: reedengine.ConfigOpenMaps(), CheckLoad: checkLoadNamed(reedengine.LoadConfig, "reed"), Spec: reedengine.ConfigSpec},
 		{Name: "sampler", Template: samplerengine.ConfigTemplate, HubWide: true, CheckLoad: checkLoadNamed(samplerengine.LoadConfig, "sampler"), Spec: samplerengine.ConfigSpec},
 		{Name: "shed", Template: sheddriver.ConfigTemplate, CheckValues: sheddriver.ValidateLocalValues, CheckLoad: checkLoad(sheddriver.LoadConfig), Spec: sheddriver.ConfigSpec},
 		{Name: "shuttle", Template: shuttleengine.ConfigTemplate, Migrate: shuttleengine.MigrateConfig, CheckLoad: checkLoadNamed(shuttleengine.LoadConfig, "shuttle"), Spec: shuttleengine.ConfigSpec},

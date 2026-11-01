@@ -45,6 +45,9 @@
 // The answer's Name is that worktree's orch agent name, formed as ResolveParent forms it, and its Worktree names the worktree, empty for the prime.
 // A worktree with no origin record, an empty parent worktree or a parent worktree that is gone ends the walk at the prime, and so does a cycle; an error from the predicate is returned.
 //
+// ReedGeometry also tells reed a lazy button-context closure (buttons.go) carrying the place, the placeholder values and desktop's machine buttons,
+// and a {beam} resolver that reads the parent through ParentOf over the prime's location only when called.
+//
 // Standalone CLIs do not call hubgeom — they have no Location to convert, resolving their own
 // geometry from CLI flags and local paths instead.
 package hubgeom

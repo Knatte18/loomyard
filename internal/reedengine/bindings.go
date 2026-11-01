@@ -1,4 +1,4 @@
-// bindings.go declares the server-wide key and mouse bindings of reed's navigation: the four Alt keys and the left click on the status bar.
+// bindings.go declares the server-wide key and mouse bindings of reed's navigation: the four Alt keys and the left click on the status bar, whose branches cover the shell, window and session ranges, the follow button and the button ranges.
 // Alt+Up and Alt+Down step across windows in index order, and a left click on the shell button returns to the strands' window.
 // The builder is pure; pinBindingsLocked issues its argvs, each non-fatal, from the geometry pin path that boot and the attach pre-flight both run.
 // The pin stamps the server with the build that made it, and every op under the blocking op lock re-pins when the stamp is absent, unparseable or another build's with a commit time not after the running build's, so a deploy reaches a running server at its first reed op.
@@ -35,6 +35,10 @@ const (
 // followCommandOption is the server-global user option holding the shell line the follow button runs.
 // The button reads it through `#{E:...}` inside run-shell, which keeps the composed line out of tmux's nested command-string quoting.
 const followCommandOption = "@lym_follow_command"
+
+// buttonCommandOption is the server-global user option holding the shell line a click on a button range runs.
+// The click reads it through `#{E:...}` inside run-shell, like followCommandOption.
+const buttonCommandOption = "@lym_button_command"
 
 // bindingsBuildOption is the server-global user option naming the build whose bindings the server holds: its VCS commit time in RFC 3339 UTC, a space, then its revision label.
 // It is unset when no build pinned them, or when the one that did carries no VCS stamp.
@@ -105,8 +109,10 @@ func followClickCommand(followJump bool) string {
 // The write comes first so it lands also when the step wraps onto the current window.
 // Hidden windows sit after the shell window, so one conditional step reaches a visible window: forward onto the session's first window, the overview, and back onto the strands' window, the shell.
 // The status click and each step are dispatched by chained commands, joined by tmux's escaped `\;` separator argument, since only one range type matches a click.
-// The click dispatch ends in the follow button's branch.
-func bindingArgvs(switchPrev, switchNext string, followJump bool) [][]string {
+// The click dispatch ends in the follow button's branch, then, when buttonClick holds, the button branch:
+// a click on a range named by buttonRangePrefix runs the line pinned in buttonCommandOption, resolved through the session's own options.
+// buttonClick reports that the line is pinned; when false no button branch is bound.
+func bindingArgvs(switchPrev, switchNext string, followJump, buttonClick bool) [][]string {
 	argvs := [][]string{
 		{"unbind-key", "-n", "M-z"},
 		{"bind-key", "-n", "M-Up", "set-option", followSessionOption, "off", `\;`, "previous-window", `\;`, "if-shell", "-F", "-t", ":", hiddenWindowCondition, selectStrandsWindowCommand},
@@ -127,6 +133,9 @@ func bindingArgvs(switchPrev, switchNext string, followJump bool) [][]string {
 		click = append(click, "if-shell", "-F", "#{==:#{mouse_status_range},"+branch.rangeType+"}", branch.command)
 	}
 	click = append(click, `\;`, "if-shell", "-F", "#{==:#{mouse_status_range},follow}", followClickCommand(followJump))
+	if buttonClick {
+		click = append(click, `\;`, "if-shell", "-F", "#{m:"+buttonRangePrefix+"*,#{mouse_status_range}}", `run-shell -b "#{E:`+buttonCommandOption+`}"`)
+	}
 	return append(argvs, click)
 }
 
@@ -134,16 +143,24 @@ func bindingArgvs(switchPrev, switchNext string, followJump bool) [][]string {
 // Each call's failure is logged via logger.Warn and ignored, and no GOOS branch guards it: psmux may refuse some or all of them.
 // An unresolvable executable, socket path or tmux path logs a named warning, leaves M-Left and M-Right unbound and the follow button without its jump, the other bindings in place.
 // The follow jump line is set in followCommandOption when it resolves and unset otherwise, so a stale line never outlives the binary that pinned it.
+// The button click line is set in buttonCommandOption and unset the same way.
 // bindingsBuildOption is then set to this binary's build stamp, or unset for a binary with no VCS stamp, ahead of the bindings themselves.
 // Assumes the op lock is already held.
 func (e *Engine) pinBindingsLocked() {
-	switchPrev, switchNext, follow := e.switchBindingCommandsLocked()
+	switchPrev, switchNext, follow, button := e.switchBindingCommandsLocked()
 	if follow != "" {
 		if err := e.tmux.run("set-option", "-g", followCommandOption, follow); err != nil {
 			logger.Warn("reed: failed to pin the follow jump line", "socket", e.Socket(), "session", e.SessionName(), "err", err)
 		}
 	} else if err := e.tmux.run("set-option", "-gu", followCommandOption); err != nil {
 		logger.Warn("reed: failed to unset the follow jump line", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+	}
+	if button != "" {
+		if err := e.tmux.run("set-option", "-g", buttonCommandOption, button); err != nil {
+			logger.Warn("reed: failed to pin the button click line", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+		}
+	} else if err := e.tmux.run("set-option", "-gu", buttonCommandOption); err != nil {
+		logger.Warn("reed: failed to unset the button click line", "socket", e.Socket(), "session", e.SessionName(), "err", err)
 	}
 	if stamp := bindingsBuildStamp(e.build); stamp != "" {
 		if err := e.tmux.run("set-option", "-g", bindingsBuildOption, stamp); err != nil {
@@ -152,14 +169,14 @@ func (e *Engine) pinBindingsLocked() {
 	} else if err := e.tmux.run("set-option", "-gu", bindingsBuildOption); err != nil {
 		logger.Warn("reed: failed to unset the bindings' build stamp", "socket", e.Socket(), "session", e.SessionName(), "err", err)
 	}
-	for _, argv := range bindingArgvs(switchPrev, switchNext, follow != "") {
+	for _, argv := range bindingArgvs(switchPrev, switchNext, follow != "", button != "") {
 		if err := e.tmux.run(argv...); err != nil {
 			logger.Warn("reed: failed to pin a key binding", "socket", e.Socket(), "session", e.SessionName(), "binding", argv[2], "err", err)
 		}
 	}
 }
 
-// repinStaleBindingsLocked re-pins the navigation bindings when the server's bindingsBuildOption names a build bindingsStale finds stale against this binary.
+// repinStaleBindingsLocked re-pins the global status formats and the navigation bindings when the server's bindingsBuildOption names a build bindingsStale finds stale against this binary.
 // A binary with no VCS stamp reads nothing.
 // A failed read, as with no server up, is logged at Debug and pins nothing.
 // Assumes the op lock is already held.
@@ -176,16 +193,21 @@ func (e *Engine) repinStaleBindingsLocked() {
 		return
 	}
 	logger.Info("reed: re-pinning the navigation bindings another build pinned", "socket", e.Socket(), "session", e.SessionName(), "pinned", strings.TrimSpace(stamp), "running", bindingsBuildStamp(e.build))
+	for _, argv := range statusFormatPinArgvs() {
+		if err := e.tmux.run(argv...); err != nil {
+			logger.Warn("reed: failed to re-pin a status bar option another build pinned", "socket", e.Socket(), "session", e.SessionName(), "option", argv[2], "err", err)
+		}
+	}
 	e.pinBindingsLocked()
 }
 
-// switchBindingCommandsLocked returns the shell lines for M-Left, M-Right and the follow button's jump, all empty when the socket path, the tmux path or this binary cannot be resolved.
-func (e *Engine) switchBindingCommandsLocked() (prev, next, follow string) {
+// switchBindingCommandsLocked returns the shell lines for M-Left, M-Right, the follow button's jump and a button click, all empty when the socket path, the tmux path or this binary cannot be resolved.
+func (e *Engine) switchBindingCommandsLocked() (prev, next, follow, button string) {
 	socketPath, err := e.tmux.output("display-message", "-p", "#{socket_path}")
 	socketPath = strings.TrimSpace(socketPath)
 	if err != nil || socketPath == "" {
 		logger.Warn("reed: could not read the server's socket path, pinning no session-switch binding", "socket", e.Socket(), "err", err)
-		return "", "", ""
+		return "", "", "", ""
 	}
 	tmuxPath, err := exec.LookPath(e.cfg.Tmux)
 	if err == nil {
@@ -193,14 +215,15 @@ func (e *Engine) switchBindingCommandsLocked() (prev, next, follow string) {
 	}
 	if err != nil {
 		logger.Warn("reed: could not resolve the tmux binary, pinning no session-switch binding", "tmux", e.cfg.Tmux, "err", err)
-		return "", "", ""
+		return "", "", "", ""
 	}
 	sh := shell.ForGOOS()
 	prev, prevOK := composeSwitchCommand(sh, e.executablePath, false, socketPath, tmuxPath)
 	next, nextOK := composeSwitchCommand(sh, e.executablePath, true, socketPath, tmuxPath)
 	follow, followOK := composeFollowCommand(sh, e.executablePath, socketPath, tmuxPath)
-	if !prevOK || !nextOK || !followOK {
-		return "", "", ""
+	button, buttonOK := composeButtonCommand(sh, e.executablePath, socketPath, tmuxPath)
+	if !prevOK || !nextOK || !followOK || !buttonOK {
+		return "", "", "", ""
 	}
-	return prev, next, follow
+	return prev, next, follow, button
 }

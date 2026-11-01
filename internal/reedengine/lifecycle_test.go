@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"gopkg.in/yaml.v3"
 )
 
 func guids(strands []Strand) []string {
@@ -95,6 +96,16 @@ func TestUp_BootValidation(t *testing.T) {
 		{name: "WindowShareMaxNegative", configure: func(cfg *Config) { cfg.WindowShareMax = -1 }, wantErr: "window_share_max"},
 		{name: "WindowSplitHeightPasses", configure: func(cfg *Config) { cfg.WindowSplit = "height" }, notErr: "window_split"},
 		{name: "WindowShareMaxZeroPasses", configure: func(cfg *Config) { cfg.WindowShareMax = 0 }, notErr: "window_share_max"},
+		{
+			// A bad button costs only itself at render, so Up's eager validation never refuses on one.
+			name: "ButtonGroupMappingPasses",
+			configure: func(cfg *Config) {
+				if err := yaml.Unmarshal([]byte("task: {label: x}"), &cfg.Buttons); err != nil {
+					panic(err)
+				}
+			},
+			notErr: "buttons",
+		},
 	}
 	for _, tt := range tests {
 		if tt.posixOnly && runtime.GOOS == "windows" || tt.windowsOnly && runtime.GOOS != "windows" {

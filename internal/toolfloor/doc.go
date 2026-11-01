@@ -23,7 +23,7 @@
 // The git features found are `branch --show-current` (2.22), the `%(worktreepath)` format atom (2.23), `cherry-pick --skip` (2.23), `init --initial-branch` (2.28), `worktree repair` (2.29), the `maintenance.auto` key (2.29), the `receive.procReceiveRefs` key a test sets (2.29), `rev-parse --path-format=absolute` (2.31), the `push.autoSetupRemote` key (2.37), `merge-tree --write-tree` and `--no-messages` (2.38), and `worktree add --orphan` (2.42).
 // All are at or below the floor.
 //
-// The tmux features found are pane options and pane user options through `set-option -p` and `show-options -p`, the status-format list and range markup (`list=`, `range=window|`, `range=session|`, `norange`, `nolist`), `window-size latest`, the `-f` filter of `list-sessions`, `break-pane -b`, the `#{T:}`, `#{E:}`, `#{e|…}`, `#{>:}`, `#{&&:}` and `#{||:}` format modifiers and user ranges (`range=user|`).
+// The tmux features found are pane options and pane user options through `set-option -p` and `show-options -p`, the status-format list and range markup (`list=`, `range=window|`, `range=session|`, `norange`, `nolist`), `window-size latest`, the `-f` filter of `list-sessions`, `break-pane -b`, the `#{T:}`, `#{E:}`, `#{e|…}`, `#{>:}`, `#{&&:}`, `#{||:}` and `#{m:}` format modifiers, user ranges (`range=user|`) and `confirm-before -p`.
 // All are at or below the floor, tmux 3.4 being the release that added user ranges.
 //
 // No feature lym requires is newer than the floor.

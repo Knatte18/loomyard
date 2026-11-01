@@ -71,13 +71,16 @@ func TestRunCLI_NotAGitRepo(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Switch_RefusesBadFlagsAndNeedsNoRepository verifies that switch refuses a missing or doubled direction and a missing --client, and follow refuses a missing --socket, --session or --tmux, with a JSON error and a non-zero exit.
+// TestRunCLI_Switch_RefusesBadFlagsAndNeedsNoRepository verifies that switch refuses a missing or doubled direction and a missing --client, follow refuses a missing --socket, --session or --tmux, and button refuses a missing --socket, --tmux, --session, --range or --client and a --confirmed without --hash, with a JSON error and a non-zero exit.
+// It also verifies that button with every flag and a socket that does not exist exits 0 with no output.
 // It runs from a directory that is not a git repository, so a refusal naming the flag, not lymcwd.Resolve's not-a-git-repository error, proves the verb skips the root pre-run's resolution.
 func TestRunCLI_Switch_RefusesBadFlagsAndNeedsNoRepository(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    []string
 		wantErr string
+		// wantOK marks a call that passes its flag checks: it exits 0 and prints nothing.
+		wantOK bool
 	}{
 		{name: "neither direction", args: []string{"switch", "--socket", "/tmp/s", "--client", "c", "--tmux", "tmux"}, wantErr: "--next and --prev"},
 		{name: "both directions", args: []string{"switch", "--next", "--prev", "--socket", "/tmp/s", "--client", "c", "--tmux", "tmux"}, wantErr: "--next and --prev"},
@@ -85,6 +88,13 @@ func TestRunCLI_Switch_RefusesBadFlagsAndNeedsNoRepository(t *testing.T) {
 		{name: "follow missing session", args: []string{"follow", "--socket", "/tmp/s", "--tmux", "tmux"}, wantErr: "--session"},
 		{name: "follow missing socket", args: []string{"follow", "--session", "s", "--tmux", "tmux"}, wantErr: "--socket"},
 		{name: "follow missing tmux", args: []string{"follow", "--socket", "/tmp/s", "--session", "s"}, wantErr: "--tmux"},
+		{name: "button missing socket", args: []string{"button", "--tmux", "tmux", "--session", "s", "--range", "lymbtn0", "--client", "c"}, wantErr: "--socket"},
+		{name: "button missing tmux", args: []string{"button", "--socket", "/tmp/s", "--session", "s", "--range", "lymbtn0", "--client", "c"}, wantErr: "--tmux"},
+		{name: "button missing session", args: []string{"button", "--socket", "/tmp/s", "--tmux", "tmux", "--range", "lymbtn0", "--client", "c"}, wantErr: "--session"},
+		{name: "button missing range", args: []string{"button", "--socket", "/tmp/s", "--tmux", "tmux", "--session", "s", "--client", "c"}, wantErr: "--range"},
+		{name: "button missing client", args: []string{"button", "--socket", "/tmp/s", "--tmux", "tmux", "--session", "s", "--range", "lymbtn0"}, wantErr: "--client"},
+		{name: "button confirmed without hash", args: []string{"button", "--socket", "/tmp/s", "--tmux", "tmux", "--session", "s", "--range", "lymbtn0", "--client", "c", "--confirmed"}, wantErr: "--hash"},
+		{name: "button with every flag needs no repository", args: []string{"button", "--socket", "/nonexistent/lym-socket", "--tmux", "/nonexistent/lym-tmux", "--session", "s", "--range", "lymbtn0", "--client", "c"}, wantOK: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -93,6 +103,12 @@ func TestRunCLI_Switch_RefusesBadFlagsAndNeedsNoRepository(t *testing.T) {
 			var out bytes.Buffer
 			exitCode := RunCLI(&out, tt.args)
 
+			if tt.wantOK {
+				if exitCode != 0 || out.Len() != 0 {
+					t.Errorf("RunCLI(%v) = %d with output %q; want exit 0 and no output", tt.args, exitCode, out.String())
+				}
+				return
+			}
 			if exitCode == 0 {
 				t.Fatalf("RunCLI(%v) = 0; want non-zero", tt.args)
 			}
