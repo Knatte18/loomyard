@@ -63,7 +63,7 @@ type EntryObservation struct {
 // DetectCrashResume reports trigger 1: whether entry describes a driver that died mid-run rather than exiting cleanly.
 // It reports true when, and only when, entry.Observed is true, entry.RunLockHeld is false, entry.State is shedengine.StateRunning, entry.HistoryLength is greater than zero, and entry.Vouched is false.
 // A held run lock means a live driver, never a crash.
-// An empty history is a fresh seed at Preflight, byte-identical on disk to a crash at Preflight, so it is deliberately not reported -- the alternative would report a crash-resume for every ordinary first drive of every task.
+// An empty history is a fresh seed at the run's start, indistinguishable from a crash in the first row, so it is deliberately not reported -- the alternative would report a crash-resume for every ordinary first drive of every task.
 // A vouched entry is that exclusion's sibling one row further along:
 // a completed `lym loom step` also leaves state running with a live history and no lock held, so without its voucher every operator handing a supervised task to a driver would read as a crash-resume.
 // A paused, blocked, failed, or awaiting entry state is an ordinary human resume, not a crash.

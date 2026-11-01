@@ -21,10 +21,10 @@ import (
 // treat it as success, while every other Seed error still propagates.
 var ErrSeedExists = errors.New("loomshed: status file already exists")
 
-// Seed writes the initial status file at statusPath, guarded by statusLockPath: a shedengine.Status
-// with CurrentProducer naming Preflight, State running, an empty non-nil History, PauseRequested
-// false, and a Product carrying a marshalled loomengine.Status with the given slug and parent and a
-// nil StartSha.
+// Seed writes the initial status file at statusPath, guarded by statusLockPath: a shedengine.Status with an empty CurrentProducer, State running, an empty non-nil History, PauseRequested false, and a Product carrying a marshalled loomengine.Status with the given slug and parent and a nil StartSha.
+//
+// The empty CurrentProducer says only that the run starts at its start, which is the recipe's first row.
+// One seed therefore serves every loom recipe and never names a row a recipe lacks.
 //
 // Seeding happens before any Shed exists, so Seed takes the two told paths directly and couples to
 // nothing that builds producers.
@@ -54,11 +54,10 @@ func Seed(statusPath, statusLockPath, slug, parent string) error {
 			return shedengine.Status{}, fmt.Errorf("%w: %q already exists; Seed refuses to overwrite an in-flight run's history", ErrSeedExists, statusPath)
 		}
 		return shedengine.Status{
-			CurrentProducer: NamePreflight,
-			State:           shedengine.StateRunning,
-			History:         []shedengine.HistoryEntry{},
-			PauseRequested:  false,
-			Product:         product,
+			State:          shedengine.StateRunning,
+			History:        []shedengine.HistoryEntry{},
+			PauseRequested: false,
+			Product:        product,
 		}, nil
 	})
 	if err != nil && errors.Is(err, state.ErrDecode) {

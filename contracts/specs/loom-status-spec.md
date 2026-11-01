@@ -31,13 +31,13 @@ but `lym loom start` is always the writer.
 
 The file's existence *is* the handoff signal, and it is `Shed`'s own step-1 read gate that **requires the file to exist** and fails loud if it is missing.
 
-A fresh seed carries `current_producer: "Preflight"`, `state: "running"`, empty `history`, and a `product` with only `slug`/`parent` populated (`start_sha: null`) — `Shed` fills the rest as it runs, and `Shed` itself owns `current_producer`/`state`/`error`/`activity`/`history` from the first persist onward.
+A fresh seed carries an empty `current_producer`, which says only that the run starts at its start, the recipe's first row; it carries `state: "running"`, empty `history`, and a `product` with only `slug`/`parent` populated (`start_sha: null`) — `Shed` fills the rest as it runs, and `Shed` itself owns `current_producer`/`state`/`error`/`activity`/`history` from the first persist onward.
 
 ## The schema
 
 ```jsonc
 {
-  "current_producer": "Preflight",             // Shed-owned: which producer this run is at
+  "current_producer": "Preflight",             // Shed-owned: which producer this run is at; empty in a fresh seed, the run's start
   "state": "running",                          // Shed-owned: running | paused | done | blocked | awaiting | failed
   "error": "",                                 // Shed-owned: human-readable detail for a failed/blocked/awaiting halt (awaiting is a review segment's escalation to the parent at its Bouncer row); a blocked halt carries the producer's own stuck reason (the generic "stuck with no OnStuck target" when it supplied none) or, for an exhausted bounce budget, a reason that starts with "bounce budget exhausted" and carries the told resume clause after it, which names the parent's resume, never a goto; a producer sets a reason that starts with "precondition unmet" when a precondition the run cannot settle on its own is unmet, and the reason continues with what is unmet and a trailing way forward clause, and the driver hands such a halt back and never resumes it
   "parent_notice": "",                         // optional, Shed-owned: the one-line notice an awaiting escalation hands the run's parent; set only on an awaiting halt and absent on every other write
@@ -142,7 +142,7 @@ loom never guesses a status.
 
 `Shed`'s step-1 read gate refuses a missing file, a file that does not parse and a `shed.state` outside its six legal values.
 It finishes a run whose `shed.state` is `"done"` without calling a producer.
-No loom row re-validates the file: a fresh seed carries `current_producer: "Preflight"` (see [the schema](#the-schema) below), and the run resumes from whatever the file records.
+No loom row re-validates the file: a fresh seed carries an empty `current_producer` (see [the schema](#the-schema) below), which `Shed` reads as the recipe's first row, and the run resumes from whatever the file records.
 
 `lym loom` additionally verifies, before it spawns a driver, that the file records this worktree's own task (`internal/loomengine.VerifySeedOwnership`):
 

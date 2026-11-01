@@ -174,37 +174,6 @@ func TestNew_ConstructionFailureNamesOffendingRow(t *testing.T) {
 	}
 }
 
-// TestRecipe_SeedAndResumeRowNamesExist protects the one row name loom's seed path hard-codes outside the recipe:
-// loomshed.NamePreflight, which Seed writes as CurrentProducer into a fresh status file.
-//
-// Once the recipe is the row-name source, a recipe row renamed from Preflight would leave Seed writing a current_producer naming no row.
-// That failure is silent at build time and surfaces as a broken resume for an in-flight task.
-func TestRecipe_SeedAndResumeRowNamesExist(t *testing.T) {
-	env, paths := testEnv(t)
-	shed, err := New(shedrun.RecipeTapestry, env, paths)
-	if err != nil {
-		t.Fatalf("New() error = %v; want nil", err)
-	}
-
-	var haveNames []string
-	for _, p := range shed.Producers {
-		haveNames = append(haveNames, p.Name)
-	}
-
-	for _, want := range []string{loomshed.NamePreflight} {
-		found := false
-		for _, name := range haveNames {
-			if name == want {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("recipe row names %v do not contain %q", haveNames, want)
-		}
-	}
-}
-
 // TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet asserts RecipeEngines() reports exactly loom's
 // own recipe's engine set plus the darn recipe's RecordWrite and DarnWrite, the sampler recipe's SamplerSession and the pawl recipe's BeamUp, BeamAwait, BeamDescribe and BeamDown, sorted and de-duplicated -- derived from wantProducerTable's own engine
 // column rather than a second hand-written literal, for the same reason its battenrecipe twin

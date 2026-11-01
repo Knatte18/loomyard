@@ -130,6 +130,7 @@ type HistoryEntry struct {
 // EnteredRow is Shed-owned and written only by the entry evaluation, the routed writes, Goto, Relaunch and RenameProducers.
 // Product is external-writer-owned and only ever carried through.
 type Status struct {
+	// CurrentProducer names the row the run is at; empty means the run is at its start, the first row of its producer list.
 	CurrentProducer string `json:"current_producer"`
 	State           State  `json:"state"`
 	Error           string `json:"error"`

@@ -52,8 +52,8 @@ func checkSeedWritesExpectedStatus(t *testing.T, lockRel string) {
 		t.Fatalf("unmarshal status file: %v", err)
 	}
 
-	if got.CurrentProducer != NamePreflight {
-		t.Errorf("CurrentProducer = %q; want %q", got.CurrentProducer, NamePreflight)
+	if got.CurrentProducer != "" {
+		t.Errorf("CurrentProducer = %q; want empty, the run's start", got.CurrentProducer)
 	}
 	if got.State != shedengine.StateRunning {
 		t.Errorf("State = %q; want %q", got.State, shedengine.StateRunning)

@@ -32,6 +32,7 @@ func TestProgressAt(t *testing.T) {
 		want    Progress
 	}{
 		{"straight line", straight, "b", Progress{Step: 2, Steps: 3, Name: "b", Remaining: []string{"c"}}},
+		{"an empty producer is the start", straight, "", Progress{Step: 1, Steps: 3, Name: "a", Remaining: []string{"b", "c"}}},
 		{"a segment counts once", segmentedRouting(), "burn", Progress{Step: 2, Steps: 4, Name: "Review", Remaining: []string{"burn2", "publish"}}},
 		{"a burler maps to its segment", segmentedRouting(), "burler", Progress{Step: 2, Steps: 4, Name: "Review", Remaining: []string{"burn2", "publish"}}},
 		{"the terminal row has no remaining", segmentedRouting(), "publish", Progress{Step: 4, Steps: 4, Name: "publish"}},

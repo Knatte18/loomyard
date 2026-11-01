@@ -82,6 +82,16 @@ func findProducer(producers []ProducerDef, name string) (ProducerDef, bool) {
 	return ProducerDef{}, false
 }
 
+// RowAt returns the row a run whose status names current is at:
+// current itself, or the first producer's name when current is empty, the start a fresh seed records.
+// It returns current unchanged when producers is empty.
+func RowAt(producers []ProducerDef, current string) string {
+	if current == "" && len(producers) > 0 {
+		return producers[0].Name
+	}
+	return current
+}
+
 // StepResult is what stepLocked -- and therefore Step -- reports on one iteration of the loop.
 // Every field below is the same value Run's own loop would have carried into its next iteration
 // or returned in its Result: Step exists so a caller can observe and control that one iteration
@@ -222,9 +232,12 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 	// proceeds and re-calls current_producer, which is how a human resumes after fixing whatever
 	// caused the halt or finishing the hand-off.
 
-	// Step 2, the lookup. Not found is a hard error that changes nothing on disk: Shed
-	// never guesses, neither restarting from the first producer nor advancing to the
-	// nearest match, because both fabricate a status nobody confirmed.
+	// Step 2, the lookup.
+	// An empty current_producer is the run's start, the list's first row, so a seed never names a row the recipe lacks;
+	// every write this step makes then names the row itself.
+	// A named row not found is a hard error that changes nothing on disk.
+	// Shed never guesses, neither restarting from the first producer nor advancing to the nearest match, because both fabricate a status nobody confirmed.
+	st.CurrentProducer = RowAt(s.Producers, st.CurrentProducer)
 	def, ok := findProducer(s.Producers, st.CurrentProducer)
 	if !ok {
 		names := make([]string, len(s.Producers))
@@ -280,6 +293,8 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		if !found {
 			return StepResult{}, fmt.Errorf("shedengine: status file %q vanished mid-run; Shed refuses to create one", s.StatusPath)
 		}
+		// The status on disk still records the run's start as empty, so the resolved row is applied again.
+		st.CurrentProducer = RowAt(s.Producers, st.CurrentProducer)
 	}
 
 	// Step 3b, the resume write. A run resumed from paused, blocked, failed, or awaiting reaches

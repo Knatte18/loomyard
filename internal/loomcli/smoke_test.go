@@ -595,8 +595,9 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 		if err != nil || !found {
 			t.Fatalf("read status file after bootstrap: found=%v err=%v", found, err)
 		}
-		if st.CurrentProducer == "" {
-			t.Errorf("seeded status file has an empty current_producer")
+		// current_producer is empty until the driver's first step and names a row after it, so the seed is pinned by its state alone.
+		if st.State == "" {
+			t.Errorf("seeded status file has an empty state")
 		}
 	})
 

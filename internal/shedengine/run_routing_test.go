@@ -345,6 +345,94 @@ func TestRun_ProducerError(t *testing.T) {
 	}
 }
 
+func TestStep_EmptyCurrentProducerStartsAtTheFirstRow(t *testing.T) {
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+	first := fixedOutcomeProducer(Done, "")
+	second := fixedOutcomeProducer(Done, "")
+	shed.Producers = linearChain(t, []string{"Start", "Next"}, []ShedProducer{first, second})
+	seedStatus(t, statusPath, statusLockPath, commonSeed(""))
+
+	result, err := shed.Step(context.Background())
+	if err != nil {
+		t.Fatalf("Step(...) = _, %v; want nil error", err)
+	}
+	if result.Producer != "Start" {
+		t.Errorf("StepResult.Producer = %q; want %q", result.Producer, "Start")
+	}
+	if first.calls != 1 || second.calls != 0 {
+		t.Errorf("calls = (first %d, second %d); want (1, 0)", first.calls, second.calls)
+	}
+	got := readStatus(t, statusPath, statusLockPath)
+	if got.CurrentProducer != "Next" {
+		t.Errorf("persisted CurrentProducer = %q; want %q", got.CurrentProducer, "Next")
+	}
+	if len(got.History) != 1 || got.History[0].Producer != "Start" {
+		t.Errorf("persisted History = %+v; want one entry for %q", got.History, "Start")
+	}
+}
+
+func TestStep_EmptyCurrentProducerPausesBeforeTheFirstRow(t *testing.T) {
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+	first := fixedOutcomeProducer(Done, "")
+	shed.Producers = linearChain(t, []string{"Start"}, []ShedProducer{first})
+	seed := commonSeed("")
+	seed.PauseBefore = "Start"
+	seedStatus(t, statusPath, statusLockPath, seed)
+
+	result, err := shed.Step(context.Background())
+	if err != nil {
+		t.Fatalf("Step(...) = _, %v; want nil error", err)
+	}
+	if result.State != StatePaused || first.calls != 0 {
+		t.Errorf("Step(...) state = %q with %d calls; want %q with 0 calls", result.State, first.calls, StatePaused)
+	}
+	if got := readStatus(t, statusPath, statusLockPath); got.CurrentProducer != "Start" {
+		t.Errorf("persisted CurrentProducer = %q; want %q", got.CurrentProducer, "Start")
+	}
+}
+
+func TestStep_EmptyCurrentProducerOnAGatedFirstRowKeepsTheRowWhenItHalts(t *testing.T) {
+	t.Parallel()
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+	gate := &fakeGate{holds: true}
+	shed.Producers = []ProducerDef{{Name: "Start", Producer: outcomeSequence(Stuck), EntryGate: gate.evaluate}}
+	seedStatus(t, statusPath, statusLockPath, commonSeed(""))
+
+	result, err := shed.Step(context.Background())
+	if err != nil {
+		t.Fatalf("Step(...) = _, %v; want nil error", err)
+	}
+	if result.Next != "Start" {
+		t.Errorf("StepResult.Next = %q; want %q", result.Next, "Start")
+	}
+	if got := readStatus(t, statusPath, statusLockPath); got.CurrentProducer != "Start" {
+		t.Errorf("persisted CurrentProducer = %q; want %q", got.CurrentProducer, "Start")
+	}
+}
+
+func TestRowAt(t *testing.T) {
+	t.Parallel()
+	producers := []ProducerDef{{Name: "Start"}, {Name: "Next"}}
+	tests := []struct {
+		name      string
+		producers []ProducerDef
+		current   string
+		want      string
+	}{
+		{"a named row stays", producers, "Next", "Next"},
+		{"an empty current is the first row", producers, "", "Start"},
+		{"an empty current with no producers stays empty", nil, "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := RowAt(tt.producers, tt.current); got != tt.want {
+				t.Errorf("RowAt(%v, %q) = %q; want %q", tt.producers, tt.current, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestStep_NoOutcomeErrorKeepsEmptyHistoryAnArray(t *testing.T) {
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	shed.Producers = []ProducerDef{{Name: "Preflight", Producer: &funcProducer{fn: func(ctx context.Context) (Outcome, OutputPointer, error) {

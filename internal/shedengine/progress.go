@@ -83,8 +83,9 @@ func (r Routing) stepIndex(steps []progressStep, current string) int {
 	return -1
 }
 
-// ProgressAt reports where current sits on the main line.
+// ProgressAt reports where current sits on the main line, reading an empty current as the run's start, its first row.
 func (r Routing) ProgressAt(current string) Progress {
+	current = RowAt(r.Producers, current)
 	steps := r.mainLine()
 	names := make([]string, len(steps))
 	for i, s := range steps {

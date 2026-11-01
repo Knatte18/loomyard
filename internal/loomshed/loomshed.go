@@ -14,9 +14,8 @@ package loomshed
 // constants remain the authority, and internal/loomrecipe's coverage guard is what pins the two
 // declarations together by keying its row table off these symbols rather than off string literals.
 //
-// The constants stay here rather than moving to internal/loomrecipe: seed.go and tapestrypreflight.go
-// read two of them, so loomshed would have to import loomrecipe, and loomrecipe imports shedbuild
-// -> shedrecipe -> loomshed -- the production cycle the consumer-package split exists to avoid.
+// The constants stay here rather than moving to internal/loomrecipe, because interruptpolicy.go reads them.
+// Moving them would make loomshed import loomrecipe, while loomrecipe imports shedbuild -> shedrecipe -> loomshed: the production cycle the consumer-package split exists to avoid.
 const (
 	NamePreflight         = "Preflight"
 	NameDiscussionWrite   = "Discussion-Write"
