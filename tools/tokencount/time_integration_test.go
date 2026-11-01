@@ -1,5 +1,7 @@
-// time_integration_test.go checks that run reads each finished run's archived shed status from a real git repository's archive tags,
-// and that with no slugs named it counts only full tapestry runs and says in the header which it counted and skipped.
+// time_integration_test.go checks that run reads each finished run's archived shed status from a real git repository's archive tags.
+// It checks that with no slugs named it counts only finished runs and says in the header which it counted and skipped.
+// It checks that the Recipes section counts the lines of the commit a run landed on a real code repository, root commits included,
+// and that -since counts every finished run active since a date.
 // It also checks that -no-cutoff counts every located session and keeps the span from the seed's start,
 // and that the header names an engine that has no transcript reader.
 
@@ -10,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -30,17 +33,53 @@ func burlerSessions(section string) string {
 	return ""
 }
 
+// tapestryRow matches the Recipes row of one tapestry run that landed a commit of 3 changed lines.
+var tapestryRow = regexp.MustCompile(`(?m)^\| tapestry \| 1 \| [^|]+ \| [^|]+ \| 1 \| 3 \| [^|]+ \|$`)
+
+func TestCodeRepoChangedLines(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+	dir := t.TempDir()
+	gitkit.Git(t, dir, "init", "-b", "main")
+	write := func(content string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		gitkit.Git(t, dir, "add", ".")
+		gitkit.Git(t, dir, "commit", "-m", "change")
+	}
+	write("one\ntwo\n")
+	root := gitkit.Git(t, dir, "rev-parse", "HEAD")
+	write("one\ntwo\nthree\n")
+	child := gitkit.Git(t, dir, "rev-parse", "HEAD")
+	repo := codeRepo{dir: dir}
+	for _, c := range []struct {
+		name, sha string
+		want      int
+	}{
+		{"a root commit changes every line it holds", root, 2},
+		{"a commit changes the lines against its parent", child, 1},
+	} {
+		got, err := repo.ChangedLines(c.sha)
+		if err != nil || got != c.want {
+			t.Errorf("%s: ChangedLines = %d, %v; want %d", c.name, got, err, c.want)
+		}
+	}
+}
+
 func TestRunReadsArchivedShedStatus(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
-	records, hub := t.TempDir(), t.TempDir()
+	records, hub, code := t.TempDir(), t.TempDir(), t.TempDir()
 	gitkit.Git(t, records, "init", "-b", "main")
+	gitkit.Git(t, code, "init", "-b", "main")
 
-	// commit writes files into the records and commits them with the given committer date, returning the commit.
-	commit := func(date string, files map[string]string) string {
+	// commitIn writes files into the repository at dir and commits them under message with the given committer date, returning the commit.
+	commitIn := func(dir, message, date string, files map[string]string) string {
 		t.Helper()
 		for rel, content := range files {
-			full := filepath.Join(records, filepath.FromSlash(rel))
+			full := filepath.Join(dir, filepath.FromSlash(rel))
 			if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 				t.Fatal(err)
 			}
@@ -48,15 +87,23 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		gitkit.Git(t, records, "add", ".")
-		cmd := exec.Command("git", "commit", "--allow-empty", "-m", "archive")
-		cmd.Dir = records
+		gitkit.Git(t, dir, "add", ".")
+		cmd := exec.Command("git", "commit", "--allow-empty", "-m", message)
+		cmd.Dir = dir
 		cmd.Env = append(os.Environ(), "GIT_COMMITTER_DATE="+date, "GIT_AUTHOR_DATE="+date)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git commit: %v; output: %s", err, out)
 		}
-		return gitkit.Git(t, records, "rev-parse", "HEAD")
+		return gitkit.Git(t, dir, "rev-parse", "HEAD")
 	}
+	commit := func(date string, files map[string]string) string {
+		t.Helper()
+		return commitIn(records, "archive", date, files)
+	}
+	// The full run landed one commit of three new lines inside its span, after a base commit.
+	const landedTitle = "Land the full run"
+	commitIn(code, "base", "2026-01-01T09:00:00Z", map[string]string{"base.txt": "base\n"})
+	commitIn(code, landedTitle, "2026-01-01T11:10:00Z", map[string]string{"landed.txt": "one\ntwo\nthree\n"})
 	paths := func(slug string) (seedRel, statusRel string) {
 		t.Helper()
 		seedRel, statusRel, err := shedrun.TreeRunFileRels(slug)
@@ -85,6 +132,8 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 		fullStatus:  `{"history":[` + entry("Plan", "2026-01-01T11:03:00Z") + `,` + entry("Finalize", "2026-01-01T11:12:00Z") + `]}`,
 		earlySeed:   `{"recipe":"tapestry","driver":"go","started_at":"2026-01-01T08:30:00Z"}`,
 		earlyStatus: `{"history":[` + entry("Plan", "2026-01-01T10:03:00Z") + `,` + entry("Publish", "2026-01-01T10:12:00Z") + `]}`,
+		// Every slug tagged at this commit shares its change description; only the full run's span holds the landed commit.
+		summaryRel: "# " + landedTitle + "\n\nWhat changed.\n",
 	})
 	// Archive tags are lightweight.
 	gitkit.Git(t, records, "tag", "archive/done/aaaaaaa", older)
@@ -146,7 +195,7 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 	withBlind := readsFor(false)
 	withBlind["blind"] = shuttleengine.RecordReads{}
 	// -detail shows the sessions column the counted sessions are read from.
-	args := []string{"-hub", hub, "-" + repositoryFlag, records, "-out", reportPath, "-no-sleep", "-detail", "done", "live", "solo"}
+	args := []string{"-hub", hub, "-" + repositoryFlag, records, "-code", code, "-out", reportPath, "-no-sleep", "-detail", "done", "live", "solo"}
 	if err := run(args, &stdout, withBlind); err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -190,28 +239,47 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 	if strings.Contains(report, cutoffOffLine) {
 		t.Errorf("report without -no-cutoff holds the cutoff-off line:\n%s", report)
 	}
+	// The done run's span ends before the titled commit, and the other two runs have no shed record.
+	wantMissing := "No landed commit: done (" + noTitledCommit + "), live (" + noShedRecord + "), solo (" + noShedRecord + ").\n"
+	if !strings.Contains(report, wantMissing) {
+		t.Errorf("report lacks %q:\n%s", wantMissing, report)
+	}
 
-	// With no slugs named, the default walks the runs newest session first and counts only full tapestry runs:
+	// With no slugs named, the default walks the runs newest session first and counts only finished runs:
 	// done stopped before Finalize and live is in flight, so both are skipped ahead of full.
 	var defaulted bytes.Buffer
-	if err := run([]string{"-hub", hub, "-" + repositoryFlag, records, "-no-sleep", "-last", "1"}, &defaulted, readsFor(false)); err != nil {
+	if err := run([]string{"-hub", hub, "-" + repositoryFlag, records, "-code", code, "-no-sleep", "-last", "1"}, &defaulted, readsFor(false)); err != nil {
 		t.Fatalf("run with no slugs: %v", err)
 	}
-	wantHeader := " for the 1 most recent full tapestry runs: full.\n" + sleepOffLine + "Skipped 2 more recent runs that are not full tapestry runs: done, live.\n\n"
+	wantHeader := " for the 1 most recent finished tapestry and darn runs: full.\n" + sleepOffLine + "Skipped 2 runs that are not finished tapestry or darn runs: done, live.\n\n"
 	if !strings.Contains(defaulted.String(), wantHeader) {
 		t.Errorf("default report header lacks %q:\n%s", wantHeader, defaulted.String())
+	}
+	// The full run landed one commit of three changed lines.
+	if !tapestryRow.MatchString(defaulted.String()) {
+		t.Errorf("default report's Recipes section lacks the full run's landed commit of 3 lines:\n%s", defaulted.String())
+	}
+
+	// -since counts every finished run active since the day, whatever -last says, and heads the report with the date.
+	var sinceReport bytes.Buffer
+	if err := run([]string{"-hub", hub, "-" + repositoryFlag, records, "-code", code, "-no-sleep", "-last", "1", "-since", "2026-01-01"}, &sinceReport, readsFor(false)); err != nil {
+		t.Fatalf("run with -since: %v", err)
+	}
+	wantSinceHeader := " for the 1 finished tapestry and darn runs active since 2026-01-01: full.\n" + sleepOffLine + "Skipped 3 runs that are not finished tapestry or darn runs: done, live, solo.\n\n"
+	if !strings.Contains(sinceReport.String(), wantSinceHeader) {
+		t.Errorf("-since report header lacks %q:\n%s", wantSinceHeader, sinceReport.String())
 	}
 
 	emptyHub := t.TempDir()
 	err = run([]string{"-hub", emptyHub, "-" + repositoryFlag, records}, &defaulted, readsFor(false))
-	wantErr := "no full tapestry runs of " + emptyHub + " from engines " + fakeEngine + "; name the slugs to count a partial run"
+	wantErr := "no finished tapestry or darn runs of " + emptyHub + " from engines " + fakeEngine + "; name the slugs to count a partial run"
 	if err == nil || err.Error() != wantErr {
-		t.Errorf("run with no full tapestry run = %v; want %q", err, wantErr)
+		t.Errorf("run with no finished run = %v; want %q", err, wantErr)
 	}
 
 	// Under -no-cutoff the earlier sessions and the untimestamped one count, and the span keeps the seed's start instead of the older tag's date.
 	noCutoffPath := filepath.Join(t.TempDir(), "no-cutoff.md")
-	args = []string{"-hub", hub, "-" + repositoryFlag, records, "-out", noCutoffPath, "-no-cutoff", "-no-sleep", "-detail", "done", "live", "early"}
+	args = []string{"-hub", hub, "-" + repositoryFlag, records, "-code", code, "-out", noCutoffPath, "-no-cutoff", "-no-sleep", "-detail", "done", "live", "early"}
 	if err := run(args, &stdout, readsFor(true)); err != nil {
 		t.Fatalf("run with -no-cutoff: %v", err)
 	}

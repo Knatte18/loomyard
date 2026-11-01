@@ -469,7 +469,9 @@ func TestRecentRuns(t *testing.T) {
 		archive(slug, shedrun.RecipeTapestry, full...)
 	}
 	touch(filepath.Join(hub, "darn"), 90*time.Minute)
-	archive("darn", "darn", "Darn-Write", "Finalize")
+	archive("darn", shedrun.RecipeDarn, "Darn-Write", "Finalize")
+	touch(filepath.Join(hub, "sampled"), 80*time.Minute)
+	archive("sampled", shedrun.RecipeSampler, "Sampler-Session", "Finalize")
 	touch(filepath.Join(hub, "bench"), time.Hour)
 	archive("bench", shedrun.RecipeTapestry, "Preflight", "Discussion-Write")
 	touch(filepath.Join(hub, "parked"), 0)
@@ -478,19 +480,40 @@ func TestRecentRuns(t *testing.T) {
 	touch("/other/newest", 0)
 	archive("newest", shedrun.RecipeTapestry, full...)
 
-	counted, skipped, err := recentRuns(fakeReadSet(fake), hub, "prime", finished, trees, 2)
-	if err != nil {
-		t.Fatal(err)
+	// Finished tapestry and darn runs count; a stopped run, a run of another recipe and a run in flight are skipped.
+	tests := []struct {
+		name                  string
+		last                  int
+		since                 time.Time
+		wantCounted, wantSkip string
+	}{
+		{"the last two", 2, time.Time{}, "darn,new", "bench,sampled,inflight"},
+		{"every run since a time", 0, now.Add(-150 * time.Minute), "darn", "bench,sampled,inflight"},
 	}
-	if strings.Join(counted, ",") != "new,mid" {
-		t.Errorf("recentRuns counted = %v, want [new mid]", counted)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			counted, skipped, err := recentRuns(fakeReadSet(fake), hub, "prime", finished, trees, tt.last, tt.since)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.Join(counted, ","); got != tt.wantCounted {
+				t.Errorf("recentRuns counted = %s; want %s", got, tt.wantCounted)
+			}
+			if got := strings.Join(skipped, ","); got != tt.wantSkip {
+				t.Errorf("recentRuns skipped = %s; want %s", got, tt.wantSkip)
+			}
+		})
 	}
-	if strings.Join(skipped, ",") != "bench,darn,inflight" {
-		t.Errorf("recentRuns skipped = %v, want [bench darn inflight]", skipped)
-	}
+}
 
+func TestRecentRunsLocatorFailure(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	fake := newFakeTranscripts()
 	fake.locateErr = errors.New("locator down")
-	if _, _, err := recentRuns(fakeReadSet(fake), hub, "prime", finished, trees, 2); err == nil || !strings.Contains(err.Error(), "locator down") {
+	finished := map[string][]ArchiveTag{"s": {{Name: "archive/s/1", Commit: "s"}}}
+	if _, _, err := recentRuns(fakeReadSet(fake), t.TempDir(), "prime", finished, fakeArchiveTrees{}, 2, time.Time{}); err == nil || !strings.Contains(err.Error(), "locator down") {
 		t.Errorf("recentRuns with a failing locator = %v; want an error naming it", err)
 	}
 }

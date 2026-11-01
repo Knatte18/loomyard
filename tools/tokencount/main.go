@@ -3,6 +3,7 @@
 //
 //	go run ./tools/tokencount
 //	go run ./tools/tokencount -last 10
+//	go run ./tools/tokencount -since 2026-10-31
 //	go run ./tools/tokencount -detail bugfix-sessions bugfix-webster
 //	go run ./tools/tokencount -hub ~/Code/loomyard-LYMHUB -out .scratch/tokens.md test-suite-prune-core
 //
@@ -13,14 +14,15 @@
 //
 // Each argument is a task slug, read as the worktree <hub>/<slug>; -hub defaults to the
 // parent of the current directory, which is the hub when run from its prime.
-// With no slugs it counts the -last full tapestry runs whose sessions changed most recently,
-// leaving out the prime, the current directory.
-// A run is finished once its pair is torn down, which leaves an archive/<slug>/<sha> tag in
+// With no slugs it counts the -last finished runs whose sessions changed most recently, leaving out the prime, the current directory.
+// -last is at least 1.
+// -since <YYYY-MM-DD> counts instead every finished run whose sessions changed on or after the start of that local day, whatever -last says, so the runs of both recipes over one period stand side by side.
+// A run's pair is torn down when it ends, which leaves an archive/<slug>/<sha> tag in
 // the prime's fabric repository (the one repository flag, -weft, default the current worktree's weft sibling).
-// A finished run is a full tapestry run when the seed.json and status.json at its newest tag name the tapestry recipe and hold a Finalize history entry;
+// A torn-down run is finished when the seed.json and status.json at its newest tag name the tapestry or the darn recipe and hold a Finalize history entry;
 // a run stopped partway, such as a bench pair parked after Discussion-Write, or a run of another recipe, would count as one whose later steps cost nothing.
-// The report's header names the runs counted and, when the default skipped more recent runs that are not full tapestry runs, names those on one line.
-// Slugs named on the command line are counted as given, full tapestry runs or not.
+// The report's header names the runs counted and, when the default skipped runs that are not finished, names those on one line.
+// Slugs named on the command line are counted as given, finished or not.
 // Sessions are found per worktree by every registered shuttle engine that can locate them, and read through the engine that found them;
 // a session's forks (the Webster master's sub-agents) are read with it.
 // An engine that cannot read transcripts is named in the report's header line "Not counted, no transcript reader:".
@@ -42,7 +44,8 @@
 // A role ending in -chair, the role a seat table's lead carried before seats were named, counts under the role without that suffix, so burler-review-chair counts as burler-review and a report spanning the rename sums each role once.
 // A seat named chair after the rename counts under its table's lead role too.
 //
-// The report groups roles into segments by prefix: Discussion, Plan, Webster, Merge and Alignment hold the role equal to their key (discussion, plan, webster, merge, alignment) and every role leading with the key and "-".
+// The report groups roles into segments by prefix: Discussion, Plan, Webster, Merge, Alignment, Darn, Drift and Code-Review hold the role equal to their key (discussion, plan, webster, merge, alignment, darn, drift, code) and every role leading with the key and "-".
+// The Landing segment holds the roles of the landing rows' sessions, describe, pr-reviewer, fixer and fix-reviewer, each a part labelled by its own name.
 // The webster recovery strand's role is a Webster part, and every other role an Other part labelled by its own name.
 // Within a segment a role is a part: the key role is the writer, labelled "writer", Webster's "Master" and Alignment's "session";
 // the suffixes -burler-review, -burler-fix, -bouncer-judge and -bouncer-seed are labelled reviewer, fixer, judge and seed, and any other suffix by itself.
@@ -51,7 +54,16 @@
 // in "All runs" it also holds the orch usage charged to no run as its unattributed part, so it carries the whole orch cost of the counted period, and its row names that cost averaged per run.
 //
 // The report opens with "Most expensive parts": the ten costliest parts of "All runs", each named by segment and label ("Webster forks", "Plan reviewer"), with its cost, its share of the total cost and its cost per run.
-// "Cost per run" follows, one row per run of its segment costs, the Orch segment's without the unattributed part, and its total, with an average row.
+// "Cost per run" follows, one row per run of its recipe, its segment costs, the Orch segment's without the unattributed part, and its total, with an average row;
+// its segment columns are the segments some counted run holds.
+//
+// "Recipes" follows, one row per recipe the counted runs ran, "unknown" for a run whose archived seed was not read, such as a run in flight.
+// A row gives the runs, their cost per run, each run's total with its orch charge, their awake span per run, the runs that landed a commit, the changed lines per landed run, and the cost per changed line: the cost of the runs that landed a commit over the lines those commits changed.
+// A finished run's landed commit is the newest commit, reachable from a branch or tag of the code repository, whose subject is the title of the change description archived at its tag, _lym/landing/summary.md, and whose committer date lies within the run's span widened by a minute each way;
+// its changed lines are the lines it added and deleted against its first parent, binary files left out.
+// The match assumes the landing default, one squashed commit titled after the change description.
+// The section names each run without a landed commit and why, among them a run whose archived change description does not parse.
+//
 // Each segment table, "All runs" and each run's, gives a total row per segment and its parts indented below, both sorted by cost, most expensive first, then an idle row.
 // Its columns are cost, share, time, time share and models;
 // -detail adds the sessions, output, cache write, cache read, input and weight columns after them, and the total weight to the "All runs" total line.
@@ -71,7 +83,7 @@
 // its default, the current worktree's weft sibling, applies whenever the flag is empty, slugs named or not, so -calibrate needs no other flag.
 // A -hub naming a directory other than the current worktree's parent needs -weft, because the default would read another hub's records.
 // -config names the directory whose batcher.yaml holds the profile, default the current directory.
-// The code repository is the current directory.
+// -code names the code repository, read for each finished run's landed commit and for the calibration's base trees, default the current directory.
 //
 // A fork's position is one plus the card-naming forks before it in the same Merriam session, by start time, so a resumed session restarts its positions at 1.
 // The start table gives each fork's measured start context beside the run's computed Merriam base and the start the profile estimates for its position, base + orientation + (position - 1) x batch_growth.
@@ -197,6 +209,18 @@ func resolveHub(hub, wd, weft string) (string, error) {
 	return hub, nil
 }
 
+// parseSince parses the -since flag's value, a YYYY-MM-DD date, into the start of that day in local time; empty is the zero time.
+func parseSince(value string) (time.Time, error) {
+	if value == "" {
+		return time.Time{}, nil
+	}
+	day, err := time.ParseInLocation(time.DateOnly, value, time.Local)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("-since %q is not a YYYY-MM-DD date: %w", value, err)
+	}
+	return day, nil
+}
+
 func main() {
 	if err := run(os.Args[1:], os.Stdout, shuttleengines.RecordReaders()); err != nil {
 		fmt.Fprintln(os.Stderr, "tokencount:", err)
@@ -204,12 +228,14 @@ func main() {
 	}
 }
 
-// run counts the runs args name, or the most recent full tapestry runs, through the engines in reads, and writes the report to stdout or to the -out file.
+// run counts the runs args name, or the most recent finished runs, through the engines in reads, and writes the report to stdout or to the -out file.
 func run(args []string, stdout io.Writer, reads ReadSet) error {
 	fs := flag.NewFlagSet("tokencount", flag.ContinueOnError)
 	hub := fs.String("hub", "", "hub directory holding the task worktrees (default: parent of the current directory)")
 	out := fs.String("out", "", "write the report to this file instead of stdout")
-	last := fs.Int("last", 6, "with no slugs named, count this many of the most recently active full tapestry runs")
+	last := fs.Int("last", 6, "with no slugs named, count this many of the most recently active finished runs")
+	since := fs.String("since", "", "with no slugs named, count every finished run whose sessions changed on or after this local date, YYYY-MM-DD, instead of the -last most recent")
+	code := fs.String("code", "", "the code repository the runs landed on (default: the current directory)")
 	weft := fs.String(repositoryFlag, "", "the prime's fabric repository holding the archive tags of finished runs, the runs' plan commits and webster records (default: the current worktree's weft sibling)")
 	calibrate := fs.String("calibrate", "", "add the calibration section for this batcher.yaml profile")
 	configDir := fs.String("config", "", "directory whose batcher.yaml holds the profile (default: the current directory)")
@@ -219,10 +245,21 @@ func run(args []string, stdout io.Writer, reads ReadSet) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	sinceDay, err := parseSince(*since)
+	if err != nil {
+		return err
+	}
+	if len(fs.Args()) == 0 && sinceDay.IsZero() && *last < 1 {
+		return fmt.Errorf("-last %d counts no run; name at least 1, or give -since", *last)
+	}
 	wd, err := lymcwd.Getwd()
 	if err != nil {
 		return err
 	}
+	if *code == "" {
+		*code = wd
+	}
+	landings := codeRepo{Repo: gitrepo.New(*code), dir: *code}
 	*hub, err = resolveHub(*hub, wd, *weft)
 	if err != nil {
 		return err
@@ -245,16 +282,23 @@ func run(args []string, stdout io.Writer, reads ReadSet) error {
 	var skippedNote string
 	if len(slugs) == 0 {
 		var skipped []string
-		slugs, skipped, err = recentRuns(reads, *hub, filepath.Base(wd), finished, fabric, *last)
+		limit := *last
+		if !sinceDay.IsZero() {
+			limit = 0
+		}
+		slugs, skipped, err = recentRuns(reads, *hub, filepath.Base(wd), finished, fabric, limit, sinceDay)
 		if err != nil {
 			return err
 		}
 		if len(slugs) == 0 {
-			return fmt.Errorf("no full tapestry runs of %s from engines %s; name the slugs to count a partial run", *hub, strings.Join(readable, ", "))
+			return fmt.Errorf("no finished %s runs of %s from engines %s; name the slugs to count a partial run", recipeList("or"), *hub, strings.Join(readable, ", "))
 		}
-		counted = fmt.Sprintf("the %d most recent full tapestry runs: %s", len(slugs), strings.Join(slugs, ", "))
+		counted = fmt.Sprintf("the %d most recent finished %s runs: %s", len(slugs), recipeList("and"), strings.Join(slugs, ", "))
+		if !sinceDay.IsZero() {
+			counted = fmt.Sprintf("the %d finished %s runs active since %s: %s", len(slugs), recipeList("and"), *since, strings.Join(slugs, ", "))
+		}
 		if len(skipped) > 0 {
-			skippedNote = fmt.Sprintf("Skipped %d more recent runs that are not full tapestry runs: %s.\n", len(skipped), strings.Join(skipped, ", "))
+			skippedNote = fmt.Sprintf("Skipped %d runs that are not finished %s runs: %s.\n", len(skipped), recipeList("or"), strings.Join(skipped, ", "))
 		}
 	}
 
@@ -287,6 +331,11 @@ func run(args []string, stdout io.Writer, reads ReadSet) error {
 					record.Older = time.Time{}
 				}
 				r.useShedRecord(*record)
+				landing, err := findLanding(fabric, landings, slug, *record, r.Span)
+				if err != nil {
+					return err
+				}
+				r.Landing = &landing
 			}
 		}
 		r.subtractSleeps(sleeps)
@@ -304,7 +353,7 @@ func run(args []string, stdout io.Writer, reads ReadSet) error {
 		if *configDir == "" {
 			*configDir = wd
 		}
-		c, err := Calibrate(report.Runs, *calibrate, *configDir, fabric, gitrepo.New(wd), reads)
+		c, err := Calibrate(report.Runs, *calibrate, *configDir, fabric, landings.Repo, reads)
 		if err != nil {
 			return err
 		}

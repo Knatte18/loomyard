@@ -1,4 +1,4 @@
-// summary_test.go exercises Parse's accept/reject table, Path's join, and CommitMessage's
+// summary_test.go exercises Parse's and ParseData's accept/reject table, Path's join, and CommitMessage's
 // subject/body composition -- the read-side coverage this package owns as summaryparser-leaf's
 // external interface.
 
@@ -26,7 +26,7 @@ func writeSummaryFile(t *testing.T, path, content string) {
 	}
 }
 
-// TestParse asserts a well-formed summary.md parses into its Title and Body, with the heading line excluded from Body and Body's leading newline preserved, and that every malformed or missing file is rejected loud -- wrapping its own sentinel where the failure has one.
+// TestParse asserts a well-formed summary.md, read from its file or given as bytes, parses into its Title and Body, with the heading line excluded from Body and Body's leading newline preserved, and that every malformed or missing file is rejected loud -- wrapping its own sentinel where the failure has one.
 func TestParse(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -67,31 +67,41 @@ func TestParse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			path := filepath.Join(t.TempDir(), summaryparser.FileName)
+			// Every row with content parses the same from the file and from the bytes.
+			parses := map[string]func() (*summaryparser.Summary, error){
+				"Parse": func() (*summaryparser.Summary, error) { return summaryparser.Parse(path) },
+			}
 			if tt.content != missing {
 				writeSummaryFile(t, path, tt.content)
+				parses["ParseData"] = func() (*summaryparser.Summary, error) {
+					return summaryparser.ParseData([]byte(tt.content), "archived")
+				}
 			}
 
-			got, err := summaryparser.Parse(path)
-			if tt.wantAnyErr {
-				if err == nil {
-					t.Fatalf("Parse() error = nil; want an error")
+			for name, parse := range parses {
+				got, err := parse()
+				if tt.wantAnyErr {
+					if err == nil {
+						t.Errorf("%s() error = nil; want an error", name)
+					}
+					continue
 				}
-				return
-			}
-			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) {
-					t.Fatalf("Parse() error = %v; want errors.Is %v", err, tt.wantErr)
+				if tt.wantErr != nil {
+					if !errors.Is(err, tt.wantErr) {
+						t.Errorf("%s() error = %v; want errors.Is %v", name, err, tt.wantErr)
+					}
+					continue
 				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("Parse() error = %v; want nil", err)
-			}
-			if got.Title != tt.wantTitle {
-				t.Errorf("Parse() Title = %q; want %q", got.Title, tt.wantTitle)
-			}
-			if got.Body != tt.wantBody {
-				t.Errorf("Parse() Body = %q; want %q", got.Body, tt.wantBody)
+				if err != nil {
+					t.Errorf("%s() error = %v; want nil", name, err)
+					continue
+				}
+				if got.Title != tt.wantTitle {
+					t.Errorf("%s() Title = %q; want %q", name, got.Title, tt.wantTitle)
+				}
+				if got.Body != tt.wantBody {
+					t.Errorf("%s() Body = %q; want %q", name, got.Body, tt.wantBody)
+				}
 			}
 		})
 	}

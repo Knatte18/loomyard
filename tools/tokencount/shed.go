@@ -1,5 +1,5 @@
 // shed.go reads a finished run's archived shed seed and status from its newest archive tag.
-// It decides from them whether the run is a full tapestry run, sets the run's span and splits that span by shed history entry into the Producers table.
+// It decides from them whether the run finished under a counted recipe, sets the run's span and splits that span by shed history entry into the Producers table.
 
 package main
 
@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
@@ -136,16 +137,24 @@ func inFlight(hub, slug string) (bool, error) {
 	return err == nil, nil
 }
 
-// fullLoomRun reports whether the slug's latest run went through the whole loom lifecycle:
-// its worktree under hub is torn down, and the shed record at its newest archive tag, tags being ordered newest first, names the tapestry recipe and holds a Finalize entry.
-// A run stopped partway, such as a bench pair parked after Discussion-Write or an abandoned run, is not one.
-func fullLoomRun(trees ArchiveTrees, hub, slug string, tags []ArchiveTag) (bool, error) {
+// countedRecipes are the recipes whose finished runs the default selection counts.
+var countedRecipes = []string{shedrun.RecipeTapestry, shedrun.RecipeDarn}
+
+// recipeList joins countedRecipes for a sentence, conjunction between them.
+func recipeList(conjunction string) string {
+	return strings.Join(countedRecipes, " "+conjunction+" ")
+}
+
+// finishedRun reports whether the slug's latest run went through its whole lifecycle under one of countedRecipes:
+// its worktree under hub is torn down, and the shed record at its newest archive tag, tags being ordered newest first, names that recipe and holds a Finalize entry.
+// A run stopped partway, such as a bench pair parked after Discussion-Write or an abandoned run, is not one, nor is a run of another recipe.
+func finishedRun(trees ArchiveTrees, hub, slug string, tags []ArchiveTag) (bool, error) {
 	running, err := inFlight(hub, slug)
 	if err != nil || running {
 		return false, err
 	}
 	record, err := readShedRecord(trees, slug, tags)
-	if err != nil || record == nil || record.Recipe != shedrun.RecipeTapestry {
+	if err != nil || record == nil || !slices.Contains(countedRecipes, record.Recipe) {
 		return false, err
 	}
 	return slices.ContainsFunc(record.Entries, func(entry ShedEntry) bool { return entry.Producer == loomshed.NameFinalize }), nil

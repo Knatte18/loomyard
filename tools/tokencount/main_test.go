@@ -1,4 +1,4 @@
-// main_test.go checks tokencount's flag set: the retired history and projects flags and a foreign hub without a records repository are refused, and the hub flag resolves against the current directory.
+// main_test.go checks tokencount's flag set: the retired history and projects flags, a foreign hub without a records repository and a -since that is no date and a -last below 1 without -since are refused, a -since date parses to the start of its local day, and the hub flag resolves against the current directory.
 
 package main
 
@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -50,6 +51,22 @@ func TestResolveHub(t *testing.T) {
 	}
 }
 
+func TestParseSince(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	got, err := parseSince("2026-01-02")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := time.Date(2026, 1, 2, 0, 0, 0, 0, time.Local); !got.Equal(want) {
+		t.Errorf("parseSince(2026-01-02) = %v; want %v", got, want)
+	}
+	got, err = parseSince("")
+	if err != nil || !got.IsZero() {
+		t.Errorf("parseSince(\"\") = %v, %v; want the zero time and no error", got, err)
+	}
+}
+
 func TestRunRefuses(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -61,6 +78,9 @@ func TestRunRefuses(t *testing.T) {
 		{"the retired history flag", []string{"-history", "somewhere", "-calibrate", "fit", "slug"}, "flag provided but not defined: -history"},
 		{"the retired projects flag", []string{"-projects", "somewhere", "slug"}, "flag provided but not defined: -projects"},
 		{"a foreign hub without a records", []string{"-hub", t.TempDir(), "slug"}, "-" + repositoryFlag},
+		{"a since that is no date", []string{"-since", "yesterday"}, `-since "yesterday" is not a YYYY-MM-DD date`},
+		{"a last of zero without since", []string{"-last", "0"}, "-last 0 counts no run"},
+		{"a negative last without since", []string{"-last", "-1"}, "-last -1 counts no run"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

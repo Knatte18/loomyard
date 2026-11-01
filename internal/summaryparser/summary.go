@@ -1,7 +1,6 @@
-// summary.go implements the producer-agnostic final-summary artifact's read contract: FileName and
-// Path name the artifact, Parse reads and validates it with minimal fail-loud checks (presence,
-// non-empty, a "# <title>" first non-blank line with a non-empty title), and CommitMessage composes
-// the parsed Summary into a git-conventional subject/body commit message.
+// summary.go implements the producer-agnostic final-summary artifact's read contract: FileName and Path name the artifact.
+// Parse reads and validates it from a file and ParseData from content read elsewhere, with minimal fail-loud checks: non-empty, and a "# <title>" first non-blank line with a non-empty title.
+// CommitMessage composes the parsed Summary into a git-conventional subject/body commit message.
 
 package summaryparser
 
@@ -35,18 +34,23 @@ type Summary struct {
 	Body  string
 }
 
-// Parse reads and validates the final-summary artifact at path with minimal fail-loud validation:
-// file must exist, have at least one non-blank line, and that first line must be a "# <title>"
-// heading with a non-empty title.
-// Every violation is its own distinct wrapped error.
+// Parse reads the final-summary artifact at path and validates it as ParseData does;
+// a file that cannot be read is an error too.
 func Parse(path string) (*Summary, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("summaryparser: read summary file %s: %w", path, err)
 	}
+	return ParseData(data, path)
+}
 
+// ParseData validates final-summary content with minimal fail-loud validation:
+// it must have at least one non-blank line, and that first line must be a "# <title>" heading with a non-empty title.
+// source names the content in an error, such as the file or the archived revision it was read from.
+// Every violation is its own distinct wrapped error.
+func ParseData(data []byte, source string) (*Summary, error) {
 	if strings.TrimSpace(string(data)) == "" {
-		return nil, fmt.Errorf("summaryparser: summary file %s is empty: %w", path, errEmptyFile)
+		return nil, fmt.Errorf("summaryparser: summary file %s is empty: %w", source, errEmptyFile)
 	}
 
 	// The non-empty check above guarantees at least one line is non-blank,
@@ -59,11 +63,11 @@ func Parse(path string) (*Summary, error) {
 
 	heading := strings.TrimSpace(lines[headingIdx])
 	if !strings.HasPrefix(heading, "# ") {
-		return nil, fmt.Errorf("summaryparser: summary file %s: first non-blank line %q is not a %q heading: %w", path, heading, "# <title>", errNoHeading)
+		return nil, fmt.Errorf("summaryparser: summary file %s: first non-blank line %q is not a %q heading: %w", source, heading, "# <title>", errNoHeading)
 	}
 	title := strings.TrimSpace(strings.TrimPrefix(heading, "# "))
 	if title == "" {
-		return nil, fmt.Errorf("summaryparser: summary file %s: title heading has an empty title: %w", path, errEmptyTitle)
+		return nil, fmt.Errorf("summaryparser: summary file %s: title heading has an empty title: %w", source, errEmptyTitle)
 	}
 
 	body := strings.Join(lines[headingIdx+1:], "\n")

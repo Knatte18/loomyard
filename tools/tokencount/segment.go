@@ -17,7 +17,7 @@ import (
 // forkSuffix ends the role a session's forks count under.
 const forkSuffix = "+sub"
 
-// segmentDef is one segment the tapestry recipe's roles fall into.
+// segmentDef is one segment a run's roles fall into by prefix.
 type segmentDef struct {
 	Name string
 	// Key is the role of the segment's writer and, followed by "-", the prefix of its other roles.
@@ -33,11 +33,19 @@ var segmentDefs = []segmentDef{
 	{Name: "Webster", Key: websterMasterRole, Writer: "Master", WriterForks: "forks"},
 	{Name: "Merge", Key: "merge", Writer: "writer", WriterForks: "writer forks"},
 	{Name: "Alignment", Key: "alignment", Writer: "session", WriterForks: "session forks"},
+	{Name: "Darn", Key: "darn", Writer: "writer", WriterForks: "writer forks"},
+	{Name: "Drift", Key: "drift", Writer: "writer", WriterForks: "writer forks"},
+	{Name: "Code-Review", Key: "code", Writer: "writer", WriterForks: "writer forks"},
 }
+
+// landingRoles are the roles of the landing rows' sessions: Describe's writer, PR-Review's reviewer, and Finalize's merge fixer and its fix review.
+var landingRoles = []string{"describe", "pr-reviewer", "fixer", "fix-reviewer"}
 
 const (
 	// websterSegment holds the webster recovery strand beside its prefixed roles.
 	websterSegment = "Webster"
+	// landingSegment holds the landing roles, each a part labelled by its own name.
+	landingSegment = "Landing"
 	orchSegment    = "Orch"
 	// otherSegment holds every role no segment's prefix places.
 	otherSegment = "Other"
@@ -60,16 +68,16 @@ var roleSuffixLabels = map[string]string{
 
 // segmentNames is the order of the cost per run table's segment columns.
 func segmentNames() []string {
-	names := make([]string, 0, len(segmentDefs)+2)
+	names := make([]string, 0, len(segmentDefs)+3)
 	for _, def := range segmentDefs {
 		names = append(names, def.Name)
 	}
-	return append(names, orchSegment, otherSegment)
+	return append(names, landingSegment, orchSegment, otherSegment)
 }
 
 // partOf places a role in its segment and labels its part there.
 // A role equal to a segment's key is its writer, a role leading with the key and "-" is labelled by the rest, and a fork role by its parent's label with " forks" appended;
-// the webster recovery strand is a Webster part, and any other role an Other part labelled by its own name.
+// the webster recovery strand is a Webster part, a landing role a Landing part labelled by its own name, and any other role an Other part labelled by its own name.
 func partOf(role string) (segment, label string) {
 	base, forked := strings.CutSuffix(role, forkSuffix)
 	withForks := func(label string) string {
@@ -80,6 +88,9 @@ func partOf(role string) (segment, label string) {
 	}
 	if base == string(websterengine.RoleRecovery) {
 		return websterSegment, withForks(base)
+	}
+	if slices.Contains(landingRoles, base) {
+		return landingSegment, withForks(base)
 	}
 	for _, def := range segmentDefs {
 		if base == def.Key {
@@ -280,12 +291,21 @@ func writeMostExpensiveParts(w io.Writer, segments []Segment, runs int) {
 	fmt.Fprintln(w)
 }
 
-// writeCostPerRun writes one row per run of its segments' costs in segmentNames order and its total, then their average.
-func writeCostPerRun(w io.Writer, slugs []string, perRun [][]Segment) {
-	names := segmentNames()
+// writeCostPerRun writes one row per run of its recipe, its segments' costs and its total, then their average.
+// perRun holds each run's segments, and the segment columns are the segments some run holds, in segmentNames order.
+func writeCostPerRun(w io.Writer, runs []RunTally, perRun [][]Segment) {
+	var names []string
+	for _, name := range segmentNames() {
+		held := slices.ContainsFunc(perRun, func(segments []Segment) bool {
+			return slices.ContainsFunc(segments, func(s Segment) bool { return s.Name == name })
+		})
+		if held {
+			names = append(names, name)
+		}
+	}
 	fmt.Fprintf(w, "## Cost per run\n\n")
-	fmt.Fprintf(w, "| run | %s | Total |\n", strings.Join(names, " | "))
-	fmt.Fprintf(w, "|---|%s---|\n", strings.Repeat("---|", len(names)))
+	fmt.Fprintf(w, "| run | recipe | %s | Total |\n", strings.Join(names, " | "))
+	fmt.Fprintf(w, "|---|---|%s---|\n", strings.Repeat("---|", len(names)))
 	sums := make([]Cost, len(names)+1)
 	for i, segments := range perRun {
 		cells := make([]Cost, len(names)+1)
@@ -293,7 +313,7 @@ func writeCostPerRun(w io.Writer, slugs []string, perRun [][]Segment) {
 			cells[slices.Index(names, s.Name)] = s.Cost()
 		}
 		cells[len(names)] = totalCost(segments)
-		writeCostRow(w, slugs[i], cells)
+		writeCostRow(w, runs[i].Slug, runs[i].Recipe(), cells)
 		for j, c := range cells {
 			sums[j].add(c)
 		}
@@ -301,17 +321,17 @@ func writeCostPerRun(w io.Writer, slugs []string, perRun [][]Segment) {
 	for j := range sums {
 		sums[j] = sums[j].share(1 / float64(len(perRun)))
 	}
-	writeCostRow(w, "average", sums)
+	writeCostRow(w, "average", "", sums)
 	fmt.Fprintln(w)
 }
 
 // writeCostRow writes one cost per run row.
-func writeCostRow(w io.Writer, name string, cells []Cost) {
+func writeCostRow(w io.Writer, name, recipe string, cells []Cost) {
 	rendered := make([]string, len(cells))
 	for i, c := range cells {
 		rendered[i] = c.String()
 	}
-	fmt.Fprintf(w, "| %s | %s |\n", name, strings.Join(rendered, " | "))
+	fmt.Fprintf(w, "| %s | %s | %s |\n", name, recipe, strings.Join(rendered, " | "))
 }
 
 // segmentTable is what one segment table needs beside its segments.

@@ -234,6 +234,8 @@ type RunTally struct {
 	Sleeps []Interval
 	// Shed is the shed record read from the run's archive tag, nil when no shed status was read.
 	Shed *ShedRecord
+	// Landing is the commit the run landed on the code repository, nil when no shed record was read.
+	Landing *Landing
 	// Bound is the lower bound applied to the run's transcripts, zero for none.
 	Bound time.Time
 	// LeftOut counts the main-session transcripts left out for starting before Bound or having no timestamped line.
@@ -285,6 +287,14 @@ func (run RunTally) Cost() Cost {
 		total.add(t.Cost)
 	}
 	return total
+}
+
+// Recipe is the recipe the run's archived seed names, noRecipe when no shed record or no recipe was read.
+func (run RunTally) Recipe() string {
+	if run.Shed == nil || run.Shed.Recipe == "" {
+		return noRecipe
+	}
+	return run.Shed.Recipe
 }
 
 // observeTime widens the run's active window to hold an entry's timestamp, an entry without one leaving it as it is.
@@ -475,11 +485,12 @@ func archivedSlugs(refs string) map[string][]ArchiveTag {
 	return slugs
 }
 
-// recentRuns names the full tapestry runs of the hub whose sessions changed most recently, newest first, at most last of them, and, newest first, the runs it skipped on the way because they are not full tapestry runs.
+// recentRuns names the finished runs of the hub whose sessions changed most recently, newest first, and, newest first, the runs it skipped on the way because they are not finished runs.
+// It names at most last of them when last is positive, and when since is not zero only the runs whose sessions changed at or after it.
 // A candidate is the slug of an archive tag in finished, except the prime's own, with a session located at the worktree <hub>/<slug> through some engine;
 // its recency is the newest modification time among those sessions.
-// fullLoomRun decides it from the archive tags read through trees.
-func recentRuns(reads ReadSet, hub, prime string, finished map[string][]ArchiveTag, trees ArchiveTrees, last int) (counted, skipped []string, err error) {
+// finishedRun decides it from the archive tags read through trees.
+func recentRuns(reads ReadSet, hub, prime string, finished map[string][]ArchiveTag, trees ArchiveTrees, last int, since time.Time) (counted, skipped []string, err error) {
 	type candidate struct {
 		slug    string
 		touched time.Time
@@ -504,18 +515,18 @@ func recentRuns(reads ReadSet, hub, prime string, finished map[string][]ArchiveT
 				touched = s.session.Modified
 			}
 		}
-		if !touched.IsZero() {
+		if !touched.IsZero() && !touched.Before(since) {
 			found = append(found, candidate{slug, touched})
 		}
 	}
 	sort.SliceStable(found, func(i, j int) bool { return found[i].touched.After(found[j].touched) })
 	counted = []string{}
-	for i := 0; i < len(found) && len(counted) < last; i++ {
-		full, err := fullLoomRun(trees, hub, found[i].slug, finished[found[i].slug])
+	for i := 0; i < len(found) && (last <= 0 || len(counted) < last); i++ {
+		done, err := finishedRun(trees, hub, found[i].slug, finished[found[i].slug])
 		if err != nil {
 			return nil, nil, err
 		}
-		if full {
+		if done {
 			counted = append(counted, found[i].slug)
 		} else {
 			skipped = append(skipped, found[i].slug)
@@ -678,11 +689,10 @@ type Report struct {
 	Detail bool
 }
 
-// WriteMarkdown writes the most expensive parts over all runs, the cost per run, the segment table summed over all runs, then the orchestrator section, then one segment table per run.
+// WriteMarkdown writes the most expensive parts over all runs, the cost per run, the recipe comparison, the segment table summed over all runs, then the orchestrator section, then one segment table per run.
 // When the orch was counted, each segment table gains an Orch segment of the orch usage charged to its runs.
 func (r Report) WriteMarkdown(w io.Writer) error {
 	perRun := make([][]Segment, len(r.Runs))
-	slugs := make([]string, len(r.Runs))
 	duplicates := 0
 	all := segmentTable{Runs: len(r.Runs), Detail: r.Detail}
 	var slept time.Duration
@@ -692,7 +702,6 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 			charge = r.Orch.Charges[run.Slug]
 		}
 		perRun[i] = run.Segments(charge)
-		slugs[i] = run.Slug
 		duplicates += run.Duplicates
 		all.Idle += run.Idle()
 		all.Span += run.AwakeSpan()
@@ -710,7 +719,8 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 	cost := totalCost(total)
 
 	writeMostExpensiveParts(w, total, len(r.Runs))
-	writeCostPerRun(w, slugs, perRun)
+	writeCostPerRun(w, r.Runs, perRun)
+	writeRecipes(w, r.Runs, perRun)
 	fmt.Fprintf(w, "## All runs\n\n")
 	all.write(w, total)
 	fmt.Fprintf(w, "Total cost %s", cost)

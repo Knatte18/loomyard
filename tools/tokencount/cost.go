@@ -59,3 +59,15 @@ func (c Cost) String() string {
 		return fmt.Sprintf("$%.2f + unpriced", c.USD)
 	}
 }
+
+// precise renders the cost as String does but to a tenth of a cent, for a figure such as a cost per line that rounds to nothing at cents.
+func (c Cost) precise() string {
+	switch {
+	case len(c.Unpriced) == 0:
+		return fmt.Sprintf("$%.3f", c.USD)
+	case c.USD == 0:
+		return "unpriced"
+	default:
+		return fmt.Sprintf("$%.3f + unpriced", c.USD)
+	}
+}

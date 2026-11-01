@@ -33,8 +33,18 @@ func TestPartOf(t *testing.T) {
 		{"recovery+sub", "Webster", "recovery forks"},
 		{"merge-bouncer-seed", "Merge", "seed"},
 		{"alignment", "Alignment", "session"},
+		{"darn", "Darn", "writer"},
+		{"darn+sub", "Darn", "writer forks"},
+		{"drift-baseline", "Drift", "baseline"},
+		{"code-burler-review", "Code-Review", "reviewer"},
+		{"code-burler-fix+sub", "Code-Review", "fixer forks"},
+		{"code-bouncer-judge", "Code-Review", "judge"},
+		{"describe", "Landing", "describe"},
+		{"describe+sub", "Landing", "describe forks"},
+		{"pr-reviewer", "Landing", "pr-reviewer"},
+		{"fixer", "Landing", "fixer"},
+		{"fix-reviewer", "Landing", "fix-reviewer"},
 		{"planner", "Other", "planner"},
-		{"describe+sub", "Other", "describe forks"},
 		{"untitled", "Other", "untitled"},
 	}
 	for _, tt := range tests {
@@ -100,7 +110,7 @@ func TestSegmentReport(t *testing.T) {
 		t.Fatal(err)
 	}
 	report := buf.String()
-	// The ten costliest parts of both runs, $459 in all, each with its cost per run; Webster recovery, Other describe and Webster Master fall below them.
+	// The ten costliest parts of both runs, $459 in all, each with its cost per run; Webster recovery, Landing describe and Webster Master fall below them.
 	wantParts := "## Most expensive parts\n\n| part | cost | share | per run |\n|---|---|---|---|\n" +
 		"| Webster forks | $200.00 | 43.6% | $100.00 |\n" +
 		"| Plan writer | $60.00 | 13.1% | $30.00 |\n" +
@@ -112,12 +122,13 @@ func TestSegmentReport(t *testing.T) {
 		"| Discussion seed | $16.00 | 3.5% | $8.00 |\n" +
 		"| Merge judge | $14.00 | 3.1% | $7.00 |\n" +
 		"| Alignment session | $12.00 | 2.6% | $6.00 |\n\n"
-	wantPerRun := "## Cost per run\n\n| run | Discussion | Plan | Webster | Merge | Alignment | Orch | Other | Total |\n|---|---|---|---|---|---|---|---|---|\n" +
-		"| one | $54.00 | $155.00 | $116.00 | $14.00 | $12.00 | $0.00 | $8.00 | $359.00 |\n" +
-		"| two | $0.00 | $0.00 | $100.00 | $0.00 | $0.00 | $0.00 | $0.00 | $100.00 |\n" +
-		"| average | $27.00 | $77.50 | $108.00 | $7.00 | $6.00 | $0.00 | $4.00 | $229.50 |\n\n## All runs\n"
+	// Only the segments some run holds get a column, so no Orch or Other column shows.
+	wantPerRun := "## Cost per run\n\n| run | recipe | Discussion | Plan | Webster | Merge | Alignment | Landing | Total |\n|---|---|---|---|---|---|---|---|---|\n" +
+		"| one | unknown | $54.00 | $155.00 | $116.00 | $14.00 | $12.00 | $8.00 | $359.00 |\n" +
+		"| two | unknown | $0.00 | $0.00 | $100.00 | $0.00 | $0.00 | $0.00 | $100.00 |\n" +
+		"| average |  | $27.00 | $77.50 | $108.00 | $7.00 | $6.00 | $4.00 | $229.50 |\n\n## Recipes\n"
 	if !strings.HasPrefix(report, wantParts+wantPerRun) {
-		t.Errorf("report does not open with the most expensive parts and the cost per run:\n%s", report)
+		t.Errorf("report does not open with the most expensive parts, the cost per run and the recipes:\n%s", report)
 	}
 
 	all, _, _ := strings.Cut(report, "## one\n")
@@ -132,7 +143,7 @@ func TestSegmentReport(t *testing.T) {
 		"| **Discussion** | $54.00 | 11.8% |",
 		"| **Merge** | $14.00 | 3.1% |",
 		"| **Alignment** | $12.00 | 2.6% |",
-		"| **Other** | $8.00 | 1.7% |",
+		"| **Landing** | $8.00 | 1.7% |",
 		"| idle |",
 	} {
 		i := strings.Index(rest, want)

@@ -24,7 +24,7 @@ Everything after the heading line is the body, carried verbatim.
 ## Sole declarer, sole parser
 
 `internal/summaryparser` is the sole declarer of the artifact's filename and the sole parser of its format.
-It takes a told path — a caller resolves the containing directory and hands it in — and declares no location of its own.
+It takes a told path — a caller resolves the containing directory and hands it in — or content the caller read elsewhere, such as from an archived revision, and declares no location of its own.
 
 The contract names no location: the artifact's directory belongs to whichever producer writes it, and the consumer is handed the path, never a directory it derives itself.
 
