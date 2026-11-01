@@ -1,0 +1,85 @@
+role	class	command	removable_turns	removable_weight
+discussion-burler-fix	search	grep	15	248110
+discussion-burler-fix	read	cat	5	50037
+discussion-burler-fix	read	sed	5	81419
+discussion-burler-fix	search	cd	4	75991
+discussion-burler-fix	search	sed	4	72688
+discussion-burler-fix	search		2	19266
+discussion-burler-fix	search	cat	2	34873
+discussion-burler-fix	search	ls	2	23381
+discussion-burler-fix	read	cd	1	11426
+discussion-burler-fix	search	diff	1	11939
+discussion-burler-fix+fork	search	grep	13	175604
+discussion-burler-fix+fork	search	sed	8	105433
+discussion-burler-fix+fork	read	sed	3	33746
+discussion-burler-fix+fork	git-read	grep	1	14688
+discussion-burler-fix+fork	read	cat	1	20769
+discussion-burler-fix+fork	search	ls	1	9058
+discussion-burler-review	search	grep	38	642959
+discussion-burler-review	search	sed	17	269487
+discussion-burler-review	lym-read	lym board	14	200680
+discussion-burler-review	read	sed	9	142076
+discussion-burler-review	read	Read	6	118543
+discussion-burler-review	search	cd	4	91574
+discussion-burler-review	search	ls	4	58668
+discussion-burler-review	read	cat	3	40367
+discussion-burler-review	search	cat	2	31459
+discussion-burler-review	git-read	git ls-files	1	14021
+discussion-burler-review	git-read	grep	1	14096
+discussion-burler-review	read	cd	1	13129
+discussion-burler-review	search		1	28751
+discussion-burler-review	search	awk	1	19507
+discussion-burler-review	search	wc	1	16285
+discussion-burler-review+fork	search	grep	25	436041
+discussion-burler-review+fork	search	sed	7	150351
+discussion-burler-review+fork	read	sed	2	39855
+discussion-burler-review+fork	search	ls	2	39383
+discussion-burler-review+fork	search	awk	1	18117
+discussion-burler-review+fork	search	echo	1	22023
+discussion-burler-review@sonnet	search	grep	3	66831
+discussion-burler-review@sonnet	read	sed	1	18190
+discussion-burler-review@sonnet	search	ls	1	30709
+discussion-burler-review@sonnet	search	sed	1	18762
+plan-bouncer-seed	read	Read	2	32029
+plan-bouncer-seed	search	grep	2	44371
+plan-bouncer-seed	search	sed	1	5403
+plan-burler-fix	search	grep	10	158738
+plan-burler-fix	search	sed	10	173753
+plan-burler-fix	read	cat	3	33147
+plan-burler-fix	read	sed	3	41352
+plan-burler-fix	search	awk	2	53523
+plan-burler-fix	search	cat	2	64058
+plan-burler-fix	quarry	lym loom	1	28235
+plan-burler-fix	quarry	lym quarry	1	20057
+plan-burler-fix	read	Read	1	32958
+plan-burler-fix	search	cd	1	29320
+plan-burler-fix+fork	search	grep	12	220629
+plan-burler-fix+fork	search	awk	3	51365
+plan-burler-fix+fork	search	sed	2	35220
+plan-burler-fix+fork	read	sed	1	13696
+plan-burler-fix+fork	search	echo	1	28027
+plan-burler-fix+fork	search	ls	1	10316
+plan-burler-review	search	grep	55	1314864
+plan-burler-review	search	sed	13	293818
+plan-burler-review	read	sed	11	262430
+plan-burler-review	lym-read	lym board	5	114208
+plan-burler-review	search	ls	4	82142
+plan-burler-review	search	cat	3	65674
+plan-burler-review	read	Read	2	64143
+plan-burler-review	read	cat	2	46578
+plan-burler-review	git-read	git log	1	39432
+plan-burler-review	lym-read	pwd	1	13337
+plan-burler-review	search	echo	1	37451
+plan-burler-review	search	wc	1	25321
+plan-burler-review	search	which	1	37480
+plan-burler-review+fork	search	grep	17	463003
+plan-burler-review+fork	read	sed	1	28077
+plan-burler-review+fork	search	head	1	33692
+plan-burler-review+fork	search	ls	1	31499
+plan-burler-review@sonnet	search	grep	39	1225187
+plan-burler-review@sonnet	read	sed	6	160264
+plan-burler-review@sonnet	search	awk	5	148102
+plan-burler-review@sonnet	search	sed	3	88776
+plan-burler-review@sonnet	git-read	ls	1	27834
+plan-burler-review@sonnet	quarry	lym quarry	1	24911
+plan-burler-review@sonnet	search	head	1	32270

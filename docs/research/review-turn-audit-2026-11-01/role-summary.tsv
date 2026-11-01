@@ -1,0 +1,17 @@
+role	sessions	turns	turns_per_session	calls	calls_per_turn	single_share	zero_share	weight	m_saved_turns	m_saved_per_session	m_saved_weight_share	u_saved_turns	u_saved_per_session	u_saved_weight_share	edit_sessions	edit_calls	edit_turns	calls_per_edit_turn	reads_after_edit_per_edit_session	switches_per_edit_session	reedits_per_edit_session	gate_per_session	testlint_per_session	validate_per_session	weight_after_edit_share	check_pairs_per_session	edit_pairs_per_session	edit_pair_weight_share
+ALL main	50	1409	28.18	1918	1.36	0.67	0.13	29954791	345	6.90	0.24	441	8.82	0.28	48	503	156	3.22	1.75	2.96	5.85	0.02	0.00	1.48	0.34	0.56	0.14	0.01
+ALL fork	93	363	3.90	309	0.85	0.69	0.26	8150714	105	1.13	0.24	143	1.54	0.33	0	0	0					0.00	0.00	0.00		0.00	0.00	0.00
+discussion-burler-review	8	290	36.25	329	1.13	0.70	0.15	5611084	103	12.88	0.30	133	16.62	0.36	7	44	20	2.20	1.43	2.29	1.14	0.00	0.00	0.00	0.29	0.00	0.12	0.00
+plan-burler-fix	7	258	36.86	405	1.57	0.60	0.15	4536460	34	4.86	0.14	46	6.57	0.16	7	181	61	2.97	4.86	7.29	14.29	0.00	0.00	3.43	0.63	0.86	0.43	0.01
+plan-burler-review@sonnet	4	257	64.25	368	1.43	0.70	0.04	7786660	56	14.00	0.22	72	18.00	0.26	4	12	9	1.33	2.75	3.50	2.00	0.00	0.00	5.75	0.19	2.00	0.25	0.00
+plan-burler-review	3	231	77.00	243	1.05	0.89	0.05	5842740	100	33.33	0.41	113	37.67	0.44	3	14	8	1.75	1.33	2.67	0.33	0.00	0.00	6.67	0.18	4.00	0.33	0.01
+discussion-burler-fix	7	209	29.86	380	1.82	0.56	0.21	3593630	41	5.86	0.18	59	8.43	0.22	7	205	37	5.54	3.29	4.57	23.43	0.00	0.00	1.00	0.62	0.29	0.00	0.00
+discussion-burler-review+fork	28	118	4.21	107	0.91	0.69	0.24	3084711	38	1.36	0.23	46	1.64	0.27	0	0	0					0.00	0.00	0.00		0.00	0.00	0.00
+discussion-burler-fix+fork	28	97	3.46	72	0.74	0.68	0.29	1595643	27	0.96	0.23	39	1.39	0.33	0	0	0					0.00	0.00	0.00		0.00	0.00	0.00
+plan-burler-fix+fork	28	91	3.25	82	0.90	0.59	0.31	1716898	20	0.71	0.21	24	0.86	0.24	0	0	0					0.00	0.00	0.00		0.00	0.00	0.00
+plan-burler-review+fork	9	57	6.33	48	0.84	0.84	0.16	1753460	20	2.22	0.32	34	3.78	0.53	0	0	0					0.00	0.00	0.00		0.00	0.00	0.00
+plan-bouncer-judge	7	43	6.14	52	1.21	0.37	0.33	663112	0	0.00	0.00	0	0.00	0.00	7	20	8	2.50	0.00	1.00	0.00	0.00	0.00	0.00	0.43	0.00	0.14	0.02
+discussion-bouncer-judge	7	42	6.00	53	1.26	0.33	0.33	604622	0	0.00	0.00	0	0.00	0.00	7	21	7	3.00	0.00	1.00	0.00	0.00	0.00	0.00	0.45	0.00	0.00	0.00
+discussion-burler-review@sonnet	1	35	35.00	48	1.37	0.66	0.06	734654	6	6.00	0.18	11	11.00	0.28	1	1	1	1.00	2.00	2.00	0.00	0.00	0.00	0.00	0.14	0.00	0.00	0.00
+plan-bouncer-seed	3	26	8.67	22	0.85	0.73	0.23	344680	5	1.67	0.24	7	2.33	0.31	2	2	2	1.00	0.00	1.00	0.00	0.33	0.00	0.00	0.19	0.00	0.00	0.00
+discussion-bouncer-seed	3	18	6.00	18	1.00	0.50	0.33	237147	0	0.00	0.00	0	0.00	0.00	3	3	3	1.00	0.00	1.00	0.00	0.00	0.00	0.00	0.48	0.00	0.00	0.00
