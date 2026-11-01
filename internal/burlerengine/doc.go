@@ -292,9 +292,7 @@
 // git commands that read only, such as git diff, git log and git show, and none that changes the repository, its index, its refs or its working tree;
 // no touching the round's ReviewPath/FixerReportPath;
 // and no nested Agent calls (forks cannot spawn forks).
-// Two enforcement layers back this discipline mechanically rather than trusting the prompt alone:
-// a session-level PreToolUse(Agent) hook that allows only unnamed subagent_type:"fork" calls through and denies everything else (policing Agent calls made from inside a fork's own pane too, not just the handler's);
-// and, once the run reaches shuttleengine.OutcomeDone, auditClusterRound in cluster.go.
+// auditClusterRound in cluster.go backs this discipline mechanically, once the run reaches shuttleengine.OutcomeDone, rather than trusting the prompt alone.
 // auditClusterRound reads the shuttleengine.ForkAudit the engine attaches to the run (per-fork AgentCalls/WriteCalls/BashCommands facts from shuttleengine.AuditForks — never this package's own knowledge of the transcript layout).
 // It enforces the fail-loud posture:
 // exactly len(clusterLenses) fork transcripts or ErrClusterForksMissing (naming requested vs actual — a shortfall, including zero, is an infrastructure defect, never a degrade-to-solo);

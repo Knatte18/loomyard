@@ -215,10 +215,10 @@
 // A Run's record lock guards the stop mark, RunState.Outcome and every save of run.state, so a stop from another goroutine never interleaves with Wait's own record writes.
 // Shuttle's teardowns inside the run lifecycle (finalize's cleanup, abandonStartup) write the record themselves and do not go through the verb.
 //
-// Spec.PermissionMode, Spec.AllowAgentTool and Spec.ResumeSessionID are caller-owned engine vocabulary, like Spec.Effort: Spec.validate never inspects them,
+// Spec.PermissionMode and Spec.ResumeSessionID are caller-owned engine vocabulary, like Spec.Effort: Spec.validate never inspects them,
 // and the engine is the sole validator and realizer.
 // Empty PermissionMode selects the engine's bypass mode in both run modes, because every session lym launches into reed needs it.
-// AllowAgentTool left false keeps shuttle's config-driven Agent deny, and an empty ResumeSessionID mints a new session.
+// An empty ResumeSessionID mints a new session.
 // A non-empty ResumeSessionID launches that existing session instead.
 // OpenSpec.PermissionMode is the same vocabulary, carried blind by Runner.Open, with empty selecting bypass there too.
 // Each engine maps the default onto its own bypass flag and names its own per-call opt-out.

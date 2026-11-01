@@ -51,6 +51,10 @@ A follow-up a card files goes on the board as a note, never as a task, and no ca
 
 Before planning, start from the code the relevant list names, then read the other relevant parts of the codebase: check recent commits, and follow existing patterns and any PATTERN entries in this prompt rather than inventing new ones.
 
+Hand a batch of independent lookups, such as where a symbol is used or which files follow a pattern, to fresh subagents through the Agent tool, each with `subagent_type: "general-purpose"` and `model: "sonnet"`, all launched together in one message.
+A fresh subagent sees none of this session, so each prompt carries its whole question and asks for a short answer naming files and members.
+Keep in this session the reading the plan's design needs: the decision record, the relevant list and the code your cards change.
+
 {{template "loom-block-plan-glyphs"}}
 This is the hard rule behind the glyph spelling rules Step 3 spells out below: a bare package-qualified symbol (`pkg.Symbol`) is a hard finding precisely because it is the one spelling that cannot have come verbatim from a quarry answer.
 The verbs above are the whole of what `lym quarry` offers you — there is no further verb to ask for.

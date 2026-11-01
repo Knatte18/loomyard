@@ -46,12 +46,6 @@ type Spec struct {
 	// validate does not inspect this field at all.
 	// The run records it at spawn, and the record, not a later Call's Spec, decides the fork audit and a gate entry's Forked closure.
 	ForkSubagents bool
-	// AllowAgentTool, when true, lets this one run use the Agent tool for every subagent type:
-	// the engine installs no Agent deny and announces none, whatever claude.yaml's deny_agent_tool says.
-	// It is engine vocabulary exactly like ForkSubagents — validate does not inspect this field at all.
-	// No config key or CLI flag reaches it;
-	// only a caller that sets it gets the allowance.
-	AllowAgentTool bool
 	// DenyPublish, when true, makes the engine install a shell guard refusing git push and gh for this one run and announce it.
 	// It is engine vocabulary exactly like ForkSubagents — validate does not inspect this field at all.
 	DenyPublish bool

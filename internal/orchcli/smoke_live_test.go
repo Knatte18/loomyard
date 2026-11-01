@@ -267,10 +267,6 @@ func TestSmokeOrch_BypassAgentAndIdle(t *testing.T) {
 	if agentCalls == 0 {
 		t.Errorf("transcript %s holds no Agent call", transcript)
 	}
-	body, _ := os.ReadFile(transcript)
-	if bytes.Contains(body, []byte("nested agents are not available")) {
-		t.Errorf("transcript %s holds the Agent deny", transcript)
-	}
 
 	polls := 0
 	waitFor(t, 30, "the idle probe to pass", func() bool {

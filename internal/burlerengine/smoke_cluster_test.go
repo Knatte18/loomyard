@@ -41,26 +41,9 @@ import (
 // shuttleengine.OutcomeTimeout, never be misread as a fork-count shortfall.
 const clusterSmokeTimeout = 10 * time.Minute
 
-// steerAgentNonForkDenyPin is a verbatim copy of claudeengine's unexported
-// steerAgentNonForkDeny steer text (internal/shuttleengine/claudeengine/settings.go).
-// It is reproduced here, not imported — burlerengine_test cannot reach an
-// unexported claudeengine constant, and smoke files are self-contained by
-// convention (see smoke_round_test.go's doc comment on reproducing rather
-// than importing shuttlecli's smoke helpers). If claudeengine ever edits its
-// steer text, this pin must be updated in the same commit or this test
-// starts failing loudly — which is the point: TestSmokeBurlerClusterRogueFork
-// asserts this exact text lands in a denied fork's own transcript, the
-// empirical proof that Claude Code's PreToolUse hook fires INSIDE a fork
-// subagent, the one spike assumption this task set out to verify.
-const steerAgentNonForkDenyPin = "only fork subagents may be spawned here; other agents are unavailable — do the work in this session or in your forks"
-
-// clusterSmokeLenses is the Lenses map both cluster smoke tests share: a
-// plain "generic" lens (no emphasis, matches the standard library's
-// no-emphasis lens) and "rogue-agent" — a deliberately misbehaving lens
-// whose emphasis text instructs its fork to attempt an Agent-tool spawn,
-// overriding the cluster prompt's own read-only/no-nested-agent boilerplate
-// (prompt.go's clusterRulesBlock), so the fork-violation enforcement layers
-// (the session hook, then auditClusterRound) have something real to catch.
+// clusterSmokeLenses is the Lenses map both cluster smoke tests share: a plain "generic" lens (no emphasis, matches the standard library's no-emphasis lens) and "rogue-agent".
+// The rogue-agent lens's emphasis text instructs its fork to attempt an Agent-tool spawn, overriding the cluster prompt's own read-only/no-nested-agent boilerplate (prompt.go's clusterRulesBlock).
+// That gives auditClusterRound's fork-violation check something real to catch.
 var clusterSmokeLenses = map[string]string{
 	"generic": "Review broadly for correctness, clarity, and consistency; report anything " +
 		"you notice, with no single narrow focus.",
@@ -216,27 +199,10 @@ func TestSmokeBurlerClusterCleanFan(t *testing.T) {
 	}
 }
 
-// TestSmokeBurlerClusterRogueFork drives one cluster round naming the
-// "rogue" fan (one well-behaved generic fork plus the misbehaving
-// rogue-agent fork) against a REAL claude handler and REAL fork subagents,
-// and asserts BOTH enforcement layers actually fired:
-//
-//  1. Engine.Review returns the fork-violation hard error (auditClusterRound's
-//     Agent-call-in-fork check, cluster.go) — the rogue fork's attempted
-//     Agent call was recorded as an AgentCalls attempt regardless of
-//     whether the session hook allowed it through, and burlerengine treats
-//     any attempt as a hard error per the fail-loud posture.
-//  2. (LOAD-BEARING) The rogue fork's OWN transcript, under the session's
-//     subagents/ directory, contains the steerAgentNonForkDenyPin text —
-//     empirical proof that Claude Code's PreToolUse(Agent) hook fires
-//     INSIDE a fork subagent, not just in the parent session. This is the
-//     one assumption the session-fork-diversity-spike (docs/research/
-//     session-fork-spike.md) never verified: if a future Claude Code
-//     release stops firing PreToolUse hooks inside forks, assertion 2
-//     below is what will start failing and say so — assertion 1 alone
-//     (which only reads the mechanical AgentCalls count) would not
-//     distinguish "the hook denied it" from "the hook never ran and the
-//     model just narrated a call it made freely".
+// TestSmokeBurlerClusterRogueFork drives one cluster round naming the "rogue" fan (one well-behaved generic fork plus the misbehaving rogue-agent fork) against a REAL claude handler and REAL fork subagents,
+// and asserts auditClusterRound's Agent-call-in-fork check fired: Engine.Review returns the fork-violation hard error, and the rogue fork's own audit records the Agent call it attempted.
+// No hook refuses an Agent call, so the audit is the one layer that catches a fork spawning a subagent.
+// Burlerengine treats any attempt as a hard error per the fail-loud posture.
 func TestSmokeBurlerClusterRogueFork(t *testing.T) {
 	tiergate.Require(t, 3)
 	engine, h := newClusterSmokeEngine(t)
@@ -261,18 +227,15 @@ func TestSmokeBurlerClusterRogueFork(t *testing.T) {
 
 	result, err := engine.Review(profile, burlerengine.RunOpts{Timeout: clusterSmokeTimeout})
 
-	// A non-done outcome (died/timeout) means the round never even
-	// reached the audit — most likely a slow/serialized host tripping the
-	// explicit timeout above, per this file's clusterSmokeTimeout doc
-	// comment. Fail loud with the outcome so this is never confused with
-	// assertion 1 below.
+	// A non-done outcome (died/timeout) means the round never even reached the audit — most likely a slow/serialized host tripping the explicit timeout above, per this file's clusterSmokeTimeout doc comment.
+	// Fail loud with the outcome so this is never confused with the audit check below.
 	if err == nil {
 		t.Fatalf("cluster round: want a fork-violation hard error, got nil error (outcome %q)", result.Outcome)
 	}
 	if errors.Is(err, burlerengine.ErrClusterForksMissing) {
 		t.Fatalf("cluster round failed with a fork-count shortfall, not the expected Agent-call violation: %v", err)
 	}
-	// Assertion 1: the error names the Agent-call violation specifically —
+	// The error names the Agent-call violation specifically —
 	// auditClusterRound's message (cluster.go) says "attempted N Agent tool
 	// call(s)" for exactly this check.
 	if !strings.Contains(err.Error(), "Agent tool call") {
@@ -286,31 +249,13 @@ func TestSmokeBurlerClusterRogueFork(t *testing.T) {
 		t.Fatalf("len(result.ForkAudit.Forks) = %d; want exactly 2 (the rogue fan's length) — a shortfall would have failed on ErrClusterForksMissing above instead", got)
 	}
 
-	var rogueTranscript string
+	rogueForks := 0
 	for _, fork := range result.ForkAudit.Forks {
 		if fork.AgentCalls > 0 {
-			rogueTranscript = fork.TranscriptPath
-			break
+			rogueForks++
 		}
 	}
-	if rogueTranscript == "" {
+	if rogueForks == 0 {
 		t.Fatalf("no fork transcript recorded an AgentCalls attempt; want the rogue-agent fork's transcript to show at least one")
-	}
-
-	// Assertion 2 (LOAD-BEARING — see the doc comment above): read the
-	// rogue fork's own transcript and confirm the session-level
-	// PreToolUse(Agent) hook actually denied its call from INSIDE the
-	// fork's own pane, not just the parent's. A plain substring search over
-	// the raw JSONL bytes is deliberate — the deny reason rides back to the
-	// model as a tool_result the transcriptLine shape in claudeengine's
-	// audit.go does not bother modeling, but the literal steer text is
-	// still present verbatim in the file either way.
-	transcript, err := os.ReadFile(rogueTranscript)
-	if err != nil {
-		t.Fatalf("read rogue fork transcript %q: %v", rogueTranscript, err)
-	}
-	if !strings.Contains(string(transcript), steerAgentNonForkDenyPin) {
-		t.Fatalf("rogue fork transcript %q does not contain the steerAgentNonForkDeny steer text %q — "+
-			"the PreToolUse(Agent) hook may not have fired inside this fork subagent", rogueTranscript, steerAgentNonForkDenyPin)
 	}
 }

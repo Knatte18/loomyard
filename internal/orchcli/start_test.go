@@ -438,8 +438,8 @@ func TestStart_NoStrandLaunchesAndSpawnsWatcher(t *testing.T) {
 	if spec.PermissionMode != "bypass" {
 		t.Errorf("PermissionMode = %q; want bypass", spec.PermissionMode)
 	}
-	if !spec.AllowAgentTool || !spec.ForkSubagents {
-		t.Errorf("AllowAgentTool/ForkSubagents = %v/%v; want both true", spec.AllowAgentTool, spec.ForkSubagents)
+	if !spec.ForkSubagents {
+		t.Errorf("ForkSubagents = false; want true")
 	}
 	if !spec.Interactive || spec.NameOverride != "orch" || spec.Role != "orch" || !spec.Display.Focus {
 		t.Errorf("spec = %+v; want interactive, focused, named orch", spec)
@@ -1364,8 +1364,8 @@ func TestStart_ResumesTheRecordedSession(t *testing.T) {
 				t.Fatalf("starts = %d, spawns = %d; want %d and 1", len(h.starter.specs), h.spawns, c.wantStarts)
 			}
 			first := h.starter.specs[0]
-			if first.ResumeSessionID != c.wantResumeID || first.PermissionMode != "bypass" || !first.AllowAgentTool || !first.ForkSubagents {
-				t.Errorf("first spec = %+v; want resume id %q, bypass, AllowAgentTool and ForkSubagents", first, c.wantResumeID)
+			if first.ResumeSessionID != c.wantResumeID || first.PermissionMode != "bypass" || !first.ForkSubagents {
+				t.Errorf("first spec = %+v; want resume id %q, bypass and ForkSubagents", first, c.wantResumeID)
 			}
 			launched := h.starter.specs[len(h.starter.specs)-1]
 			switch c.wantSource {

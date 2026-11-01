@@ -207,6 +207,22 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 		{"machine-sleep", "restart_of_another_unit", "systemctl restart sshd", false},
 		{"machine-sleep", "inside_a_heredoc_body", "cat > .scratch/a <<EOF\nsystemctl hibernate\nEOF", false},
 
+		{"headless-claude", "short_flag", "claude -p 'write x'", true},
+		{"headless-claude", "print_flag_bundled_after_another_flag", "claude -cp hi", true},
+		{"headless-claude", "print_flag_bundled_before_another_flag", "claude -pc hi", true},
+		{"headless-claude", "single_dash_word_without_p", "claude -c", false},
+		{"headless-claude", "long_flag", "claude --print hi", true},
+		{"headless-claude", "long_flag_with_a_value", "claude --print=json hi", true},
+		{"headless-claude", "flag_after_other_arguments", "claude --model sonnet -p hi", true},
+		{"headless-claude", "path_prefixed", "/usr/local/bin/claude -p hi", true},
+		{"headless-claude", "windows_binary", "claude.exe -p hi", true},
+		{"headless-claude", "after_a_separator", "cd x && claude -p hi", true},
+		{"headless-claude", "interactive_launch", "claude --model sonnet", false},
+		{"headless-claude", "claude_as_an_argument", "grep claude -p f", false},
+		{"headless-claude", "inside_a_double_quoted_argument", `git commit -m "claude -p is refused"`, false},
+		{"headless-claude", "longer_command_word", "claudette -p", false},
+		{"headless-claude", "flag_of_a_later_command", "claude --version && ls -p", false},
+
 		{"publish", "git_push", "git push", true},
 		{"publish", "git_push_after_dash_c", "git -C x push origin b", true},
 		{"publish", "gh_pr_merge", "gh pr merge 3", true},
@@ -226,6 +242,7 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 		{"computed-rm", "x; rm $d"},
 		{"machine-sleep", "x; systemctl hibernate"},
 		{"shell-edit", "x; sed -i s/a/b/ f > g.go"},
+		{"headless-claude", "x; claude -p hi"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.row+"_"+tt.name, func(t *testing.T) {

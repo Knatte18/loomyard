@@ -17,7 +17,6 @@ type KeyMove struct {
 func KeyMoves() []KeyMove {
 	return []KeyMove{
 		{FromModule: "shuttle", FromKey: "claude", ToModule: "claude", ToKey: "binary"},
-		{FromModule: "shuttle", FromKey: "claude_deny_agent_tool", ToModule: "claude", ToKey: "deny_agent_tool"},
 		{FromModule: "shuttle", FromKey: "claude_deny_ask_user_question", ToModule: "claude", ToKey: "deny_ask_user_question"},
 		{FromModule: "shuttle", FromKey: "claude_prompt_cache_ttl", ToModule: "claude", ToKey: "prompt_cache_ttl"},
 		{FromModule: "shuttle", FromKey: "claude_prompt_cache_ttl_roles", ToModule: "claude", ToKey: "prompt_cache_ttl_roles"},

@@ -42,7 +42,6 @@ func TestLoadConfig(t *testing.T) {
 		}
 		want := Config{
 			Binary:              "",
-			DenyAgentTool:       true,
 			DenyAskUserQuestion: true,
 			PromptCacheTTL:      "5m",
 			PromptCacheTTLRoles: map[string]string{"driver": "5m", "webster": "1h", "orch": "1h"},
@@ -57,14 +56,28 @@ func TestLoadConfig(t *testing.T) {
 	t.Run("the worktree file wins over the repo default", func(t *testing.T) {
 		clearMarker(t)
 		board, anchor := t.TempDir(), t.TempDir()
-		writeClaudeLayer(t, configengine.ConfigFile(board, "claude"), strings.Replace(ConfigTemplate(), "deny_agent_tool: true", "deny_agent_tool: false", 1))
+		writeClaudeLayer(t, configengine.ConfigFile(board, "claude"), strings.Replace(ConfigTemplate(), "deny_ask_user_question: true", "deny_ask_user_question: false", 1))
 		writeClaudeLayer(t, configengine.ConfigFile(anchor, "claude"), "prompt_cache_ttl: 1h\n")
 		cfg, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board})
 		if err != nil {
 			t.Fatalf("LoadConfig() = _, %v; want nil error", err)
 		}
-		if cfg.PromptCacheTTL != "1h" || cfg.DenyAgentTool {
-			t.Errorf("LoadConfig() = %+v; want prompt_cache_ttl 1h from the worktree file and deny_agent_tool false from the repo default", cfg)
+		if cfg.PromptCacheTTL != "1h" || cfg.DenyAskUserQuestion {
+			t.Errorf("LoadConfig() = %+v; want prompt_cache_ttl 1h from the worktree file and deny_ask_user_question false from the repo default", cfg)
+		}
+	})
+
+	t.Run("a repo default holding the retired deny_agent_tool loads without it", func(t *testing.T) {
+		clearMarker(t)
+		board, anchor := t.TempDir(), t.TempDir()
+		writeClaudeLayer(t, configengine.ConfigFile(board, "claude"), ConfigTemplate()+"deny_agent_tool: false\n")
+		writeClaudeLayer(t, configengine.ConfigFile(anchor, "claude"), "")
+		cfg, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board})
+		if err != nil {
+			t.Fatalf("LoadConfig() = _, %v; want nil error", err)
+		}
+		if !cfg.DenyAskUserQuestion || cfg.PromptCacheTTL != "5m" {
+			t.Errorf("LoadConfig() = %+v; want the template's values", cfg)
 		}
 	})
 

@@ -5,13 +5,13 @@
 // the SessionStart hook of a run whose spec sets a context-after-compaction command runs that command on the compaction source, so its output joins the session's context.
 // Every recording hook writes a stamp line with the hook-side time before its payload, which ParseEvents skips.
 // The PostToolUse, PreCompact and PostCompact hooks of every session touch the run's activity stamp beside the events file, so a tool call, a fork's included, and a compaction read as activity.
-// The document also carries the PreToolUse guardrails that keep a run's work visible in its own pane —
-// denying the in-process Agent tool (or, in a fork-mode run, letting fork subagents through it while still denying every other subagent type; a run with Spec.AllowAgentTool set installs no Agent deny at all),
+// The document also carries the PreToolUse guardrails:
 // refusing `lym webster` verbs from inside a fork in a fork-mode run (the fork-context deadlock guard),
 // denying AskUserQuestion in autonomous runs (where there is no operator present to answer it),
 // and recording — never denying — a live AskUserQuestion call in interactive runs so the run loop holds it like any turn end without output.
+// No hook denies the Agent tool: a subagent or fork runs inside the session and shows in its own pane.
 // The Bash tool's default stdin is set by the env file Prepare writes (see command.go), not by a hook.
-// The Bash denies render the rows of internal/shellguard's table, which installs the machine sleep, raw go and computed-path rm denies for every run, the refuse-raw deny when the run's config lists a prefix, and the python deny unless the run's config switches it off.
+// The Bash denies render the rows of internal/shellguard's table, each installed as its row's switch says.
 // buildDenyNotice, built from the same standingDeniesFor list so the two cannot drift, is the one-line system-prompt notice announcing each installed deny to the session.
 // Every document also sets `promptSuggestionEnabled` to false for shuttle-launched sessions: a plain capture carries no styling,
 // so a greyed suggestion in an empty input box would read as a draft and IdleSession would never pass.
@@ -32,25 +32,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// steerAgentDeny redirects the model back into this pane; shuttle's design is that every agent runs in a separate visible tmux pane, not Claude Code's in-process Agent tool.
-const steerAgentDeny = "do the work in this session; nested agents are not available here — all work must stay visible in this pane"
-
-// steerAgentNonForkDeny is the PreToolUse(Agent) deny reason for fork-mode runs, where fork subagents are allowed and every other subagent type is refused.
-const steerAgentNonForkDeny = "only fork subagents may be spawned here; other agents are unavailable — do the work in this session or in your forks"
-
 // steerAskUserQuestionDeny denies AskUserQuestion in autonomous runs, where no operator is present to answer.
 const steerAskUserQuestionDeny = "you cannot open an interactive dialog here. If you are blocked or need operator input, state the question as your final message and end your turn WITHOUT writing the result file. The run then waits for the answer, which arrives as your next turn."
 
 // steerWebsterForkDeny guards against fork-context deadlock: a fork inherits Master's await-batch loop and polling it would livelock the run.
 // It refuses `lym webster` commands inside forks (detected by top-level agent_id in the payload). Must contain no single/double quote or backslash (checked at init).
 const steerWebsterForkDeny = "lym webster verbs belong to the Master session, never a fork. You are an implementer fork: do your batch work and write your report, and do NOT run any lym webster command (not await-batch, not anything) — polling for the report you must write only deadlocks the run. This call is refused."
-
-// noticeAgentDeny announces the Agent deny in a non-fork run;
-// it must hold for every session that receives it.
-const noticeAgentDeny = "The Agent tool is unavailable in this session: do all exploration and work in this session, with no subagents."
-
-// noticeAgentForkDeny announces the Agent deny in a fork run, where forks inherit this system prompt too.
-const noticeAgentForkDeny = "The Agent tool accepts only fork subagents and refuses every other subagent type; a fork does its own work and never spawns further subagents."
 
 // noticeAskUserQuestionDeny announces the AskUserQuestion deny in an autonomous run.
 const noticeAskUserQuestionDeny = "AskUserQuestion is unavailable: when blocked or needing operator input, state the question as your final message and end your turn without writing the result file; the run then waits for the answer, which arrives as your next turn."
@@ -198,14 +185,12 @@ func denyJSON(steer string) string {
 }
 
 // denyInputs are the run inputs that decide which standing denies a run installs.
-// allowAgentTool is the per-run override (Spec.AllowAgentTool): it removes the Agent deny whatever claude.DenyAgentTool says.
 type denyInputs struct {
-	interactive    bool
-	cfg            shuttleengine.Config
-	claude         Config
-	forkSubagents  bool
-	allowAgentTool bool
-	denyPublish    bool
+	interactive   bool
+	cfg           shuttleengine.Config
+	claude        Config
+	forkSubagents bool
+	denyPublish   bool
 }
 
 // standingDeny is one PreToolUse deny lym installs, with the system-prompt sentence announcing it.
@@ -226,25 +211,6 @@ type standingDeny struct {
 // claudeDenies returns the denies keyed on Claude's own tools and payload fields, in the order their PreToolUse entries appear.
 func claudeDenies() []standingDeny {
 	return []standingDeny{
-		{
-			// Grep the payload for a fork subagent_type; a match exits 0 allowing the call, no
-			// match echoes the deny JSON. Whether the fork carried a name is deliberately NOT
-			// part of this test — a named fork is a defect signal the AUDIT records as
-			// ForkAudit.NamedSpawns for the caller's policy to interpret, never something this
-			// hook refuses mid-run.
-			matcher:   "Agent",
-			command:   fmt.Sprintf(`grep -q '"subagent_type":"fork"' || echo '%s'`, denyJSON(steerAgentNonForkDeny)),
-			steer:     steerAgentNonForkDeny,
-			notice:    noticeAgentForkDeny,
-			installed: func(in denyInputs) bool { return in.claude.DenyAgentTool && !in.allowAgentTool && in.forkSubagents },
-		},
-		{
-			matcher:   "Agent",
-			command:   "echo '" + denyJSON(steerAgentDeny) + "'",
-			steer:     steerAgentDeny,
-			notice:    noticeAgentDeny,
-			installed: func(in denyInputs) bool { return in.claude.DenyAgentTool && !in.allowAgentTool && !in.forkSubagents },
-		},
 		{
 			// Fork-context webster-verb guard: deny `lym webster` inside forks (detected by top-level agent_id in payload).
 			// Ending with `; true` guarantees exit 0 so non-webster or non-fork calls are allowed.
@@ -320,8 +286,8 @@ func renderShellGuard(row shellguard.Row) standingDeny {
 }
 
 // buildDenyNotice returns the one-line system-prompt notice announcing each deny buildSettings installs under the same inputs, or "" when it installs none.
-func buildDenyNotice(interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, allowAgentTool, denyPublish bool) string {
-	in := denyInputs{interactive: interactive, cfg: cfg, claude: claude, forkSubagents: forkSubagents, allowAgentTool: allowAgentTool, denyPublish: denyPublish}
+func buildDenyNotice(interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, denyPublish bool) string {
+	in := denyInputs{interactive: interactive, cfg: cfg, claude: claude, forkSubagents: forkSubagents, denyPublish: denyPublish}
 	var sentences []string
 	for _, deny := range standingDeniesFor(cfg.RefuseRaw) {
 		if deny.notice != "" && deny.installed(in) {
@@ -351,8 +317,7 @@ func activityStampHook(eventsPathPosix string) []hookEntry {
 // The activity stamp hooks touch the file named shuttleengine.ActivityStampFileName in eventsPathPosix's directory.
 // eventsPathPosix must be a git-bash POSIX path (from shuttleengine.PosixPath); it's embedded via shQuote to escape any apostrophes.
 // The denies are the entries of standingDeniesFor(cfg.RefuseRaw).
-// Agent-tool and AskUserQuestion denies are controlled by claude, the python deny by cfg and the refuse-raw deny by cfg.RefuseRaw; forkSubagents narrows the Agent deny to non-fork subagent types and adds a webster-verb guard,
-// and allowAgentTool drops the Agent deny entirely while leaving the webster-verb guard keyed on forkSubagents alone.
+// The AskUserQuestion deny is controlled by claude, the python deny by cfg and the refuse-raw deny by cfg.RefuseRaw; forkSubagents adds a webster-verb guard.
 // denyPublish adds the publish deny of git push and gh.
 // Every SessionStart source is recorded exactly once.
 // A non-empty contextAfterCompaction splits the SessionStart hook in two: one entry records every source but compaction, and the compaction entry records the event and then runs that command verbatim, so its standard output reaches the session's context.
@@ -361,7 +326,7 @@ func activityStampHook(eventsPathPosix string) []hookEntry {
 // A non-empty creelFlagDirPosix is a git-bash POSIX path like eventsPathPosix.
 // It adds the PostToolUse creel mail hook, after the stamp, testing the strand's flag in that directory, replaces the Stop recording with the command that merges it with creel's turn-end delivery, and adds creel's idle waiter as a second Stop entry.
 // Empty adds none of them and keeps the plain Stop recording.
-func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, allowAgentTool, denyPublish bool, contextAfterCompaction, creelFlagDirPosix string) ([]byte, error) {
+func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, denyPublish bool, contextAfterCompaction, creelFlagDirPosix string) ([]byte, error) {
 	quotedEventsPath := shQuote(eventsPathPosix)
 	recordingHook := func(hookEventName string, alwaysSucceeds bool) []hookEntry {
 		command := recordingCommand(hookEventName, quotedEventsPath)
@@ -395,7 +360,7 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 		}
 	}
 
-	in := denyInputs{interactive: interactive, cfg: cfg, claude: claude, forkSubagents: forkSubagents, allowAgentTool: allowAgentTool, denyPublish: denyPublish}
+	in := denyInputs{interactive: interactive, cfg: cfg, claude: claude, forkSubagents: forkSubagents, denyPublish: denyPublish}
 	for _, deny := range standingDeniesFor(cfg.RefuseRaw) {
 		if deny.installed(in) {
 			doc.Hooks.PreToolUse = append(doc.Hooks.PreToolUse, hookEntry{

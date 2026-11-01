@@ -208,7 +208,7 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		}
 	}
 
-	settingsJSON, err := buildSettings(eventsPathForHook, spec.Interactive, cfg, claude, spec.ForkSubagents, spec.AllowAgentTool, spec.DenyPublish, spec.ContextAfterCompaction, creelFlagDirForHook)
+	settingsJSON, err := buildSettings(eventsPathForHook, spec.Interactive, cfg, claude, spec.ForkSubagents, spec.DenyPublish, spec.ContextAfterCompaction, creelFlagDirForHook)
 	if err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("build settings: %w", err)
 	}
@@ -231,7 +231,7 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	if err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("resolve append system prompt path: %w", err)
 	}
-	notice := buildDenyNotice(spec.Interactive, cfg, claude, spec.ForkSubagents, spec.AllowAgentTool, spec.DenyPublish)
+	notice := buildDenyNotice(spec.Interactive, cfg, claude, spec.ForkSubagents, spec.DenyPublish)
 	// The told Board dir is the hub's Bolt checkout, empty outside a hub.
 	passages := shuttleengine.StandingPassages(c.dirs.Board, "claude", spec.Role)
 	if err := os.WriteFile(appendPromptPath, []byte(appendPromptText(notice, passages)), 0o644); err != nil {

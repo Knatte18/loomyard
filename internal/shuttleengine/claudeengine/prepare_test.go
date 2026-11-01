@@ -292,7 +292,7 @@ type flagExpectation struct {
 // TestPrepare_ThreadsSpecIntoLaunchCmds proves Prepare threads the spec into the commands it returns.
 // A valid effort is rendered as buildLaunchCmd would; an empty effort emits no --effort flag at all, deferring entirely to claude's own default;
 // a bare-word model plus a dotted version composes the pinned id ("sonnet" + "4.5" -> "claude-sonnet-4-5") rather than the bare-word model;
-// ForkSubagents wraps the line in the CLAUDE_CODE_FORK_SUBAGENT env prefix, and AllowAgentTool does not remove it;
+// ForkSubagents wraps the line in the CLAUDE_CODE_FORK_SUBAGENT env prefix;
 // an empty ResumeSessionID mints a session as before;
 // and the resolved permission mode decides --dangerously-skip-permissions on the launch line and the resume line alike.
 func TestPrepare_ThreadsSpecIntoLaunchCmds(t *testing.T) {
@@ -300,8 +300,6 @@ func TestPrepare_ThreadsSpecIntoLaunchCmds(t *testing.T) {
 	t.Parallel()
 
 	const skipPermissions = "--dangerously-skip-permissions"
-	denyBoth := templateConfig(t)
-	denyBoth.DenyAgentTool, denyBoth.DenyAskUserQuestion = true, true
 	tests := []struct {
 		name        string
 		spec        shuttleengine.Spec
@@ -314,12 +312,6 @@ func TestPrepare_ThreadsSpecIntoLaunchCmds(t *testing.T) {
 		{name: "model_and_version", spec: shuttleengine.Spec{ModelChoice: shuttleengine.ModelChoice{Model: "sonnet", Version: "4.5"}}, claude: templateConfig(t), onLaunch: flagExpectation{present: []string{"--model 'claude-sonnet-4-5'"}}},
 		{name: "fork_subagents_on", spec: shuttleengine.Spec{ForkSubagents: true}, claude: templateConfig(t), onLaunch: flagExpectation{present: []string{"CLAUDE_CODE_FORK_SUBAGENT"}}},
 		{name: "fork_subagents_off", spec: shuttleengine.Spec{ForkSubagents: false}, claude: templateConfig(t), onLaunch: flagExpectation{absent: []string{"CLAUDE_CODE_FORK_SUBAGENT"}}},
-		{
-			name:     "fork_env_wrapping_stays_under_allow_agent_tool",
-			spec:     shuttleengine.Spec{ForkSubagents: true, AllowAgentTool: true},
-			claude:   denyBoth,
-			onLaunch: flagExpectation{present: []string{"CLAUDE_CODE_FORK_SUBAGENT"}},
-		},
 		{name: "empty_resume_session_id_mints_session", spec: shuttleengine.Spec{}, claude: templateConfig(t), onLaunch: flagExpectation{present: []string{"--session-id"}, absent: []string{"--resume"}}},
 		{name: "permission_interactive_bypass", spec: shuttleengine.Spec{PermissionMode: "bypass", Interactive: true}, claude: templateConfig(t), onBothLines: flagExpectation{present: []string{skipPermissions}}},
 		{name: "permission_interactive_empty", spec: shuttleengine.Spec{PermissionMode: "", Interactive: true}, claude: templateConfig(t), onBothLines: flagExpectation{present: []string{skipPermissions}}},
@@ -371,42 +363,40 @@ func TestPrepare_ThreadsSpecIntoLaunchCmds(t *testing.T) {
 //testtiming:keep pins append-system-prompt.txt equal to the notice and the trust sentence, named on both lines over every deny combination, which its covering tests do not assert
 func TestPrepare_AppendSystemPromptMatchesDenyNotice(t *testing.T) {
 	tiergate.Require(t, 0)
-	for _, denyAgent := range []bool{false, true} {
-		for _, denyAsk := range []bool{false, true} {
-			for _, denyPython := range []bool{false, true} {
-				for _, interactive := range []bool{false, true} {
-					for _, fork := range []bool{false, true} {
-						claude := templateConfig(t)
-						claude.DenyAgentTool, claude.DenyAskUserQuestion = denyAgent, denyAsk
-						cfg := shuttleengine.Config{DenyPython: denyPython}
-						spec := shuttleengine.Spec{Prompt: "do the thing", Interactive: interactive, ForkSubagents: fork}
-						notice := buildDenyNotice(interactive, cfg, claude, fork, false, false)
+	for _, denyAsk := range []bool{false, true} {
+		for _, denyPython := range []bool{false, true} {
+			for _, interactive := range []bool{false, true} {
+				for _, fork := range []bool{false, true} {
+					claude := templateConfig(t)
+					claude.DenyAskUserQuestion = denyAsk
+					cfg := shuttleengine.Config{DenyPython: denyPython}
+					spec := shuttleengine.Spec{Prompt: "do the thing", Interactive: interactive, ForkSubagents: fork}
+					notice := buildDenyNotice(interactive, cfg, claude, fork, false)
 
-						runDir := t.TempDir()
-						launch, err := engineWith(t, claude).Prepare(runDir, spec, cfg)
-						if err != nil {
-							t.Fatalf("Prepare(agent=%v ask=%v python=%v interactive=%v fork=%v) error: %v", denyAgent, denyAsk, denyPython, interactive, fork, err)
+					runDir := t.TempDir()
+					launch, err := engineWith(t, claude).Prepare(runDir, spec, cfg)
+					if err != nil {
+						t.Fatalf("Prepare(ask=%v python=%v interactive=%v fork=%v) error: %v", denyAsk, denyPython, interactive, fork, err)
+					}
+					promptFile, err := filepath.Abs(filepath.Join(runDir, "append-system-prompt.txt"))
+					if err != nil {
+						t.Fatalf("Abs: %v", err)
+					}
+					for name, cmd := range map[string]string{"Cmd": launch.Cmd, "ResumeCmd": launch.ResumeCmd} {
+						if !strings.Contains(cmd, " --append-system-prompt-file "+shell.ForGOOS().Quote(promptFile)) {
+							t.Errorf("ask=%v python=%v interactive=%v fork=%v: %s = %q; want --append-system-prompt-file naming %q", denyAsk, denyPython, interactive, fork, name, cmd, promptFile)
 						}
-						promptFile, err := filepath.Abs(filepath.Join(runDir, "append-system-prompt.txt"))
-						if err != nil {
-							t.Fatalf("Abs: %v", err)
+						if strings.Contains(cmd, "--append-system-prompt ") {
+							t.Errorf("ask=%v python=%v interactive=%v fork=%v: %s = %q; want no --append-system-prompt argument", denyAsk, denyPython, interactive, fork, name, cmd)
 						}
-						for name, cmd := range map[string]string{"Cmd": launch.Cmd, "ResumeCmd": launch.ResumeCmd} {
-							if !strings.Contains(cmd, " --append-system-prompt-file "+shell.ForGOOS().Quote(promptFile)) {
-								t.Errorf("agent=%v ask=%v python=%v interactive=%v fork=%v: %s = %q; want --append-system-prompt-file naming %q", denyAgent, denyAsk, denyPython, interactive, fork, name, cmd, promptFile)
-							}
-							if strings.Contains(cmd, "--append-system-prompt ") {
-								t.Errorf("agent=%v ask=%v python=%v interactive=%v fork=%v: %s = %q; want no --append-system-prompt argument", denyAgent, denyAsk, denyPython, interactive, fork, name, cmd)
-							}
-						}
-						want := creelTrustSentence
-						if notice != "" {
-							want = notice + " " + want
-						}
-						got, err := os.ReadFile(promptFile)
-						if err != nil || string(got) != want {
-							t.Errorf("agent=%v ask=%v python=%v interactive=%v fork=%v: append-system-prompt.txt = %q, %v; want %q", denyAgent, denyAsk, denyPython, interactive, fork, got, err, want)
-						}
+					}
+					want := creelTrustSentence
+					if notice != "" {
+						want = notice + " " + want
+					}
+					got, err := os.ReadFile(promptFile)
+					if err != nil || string(got) != want {
+						t.Errorf("ask=%v python=%v interactive=%v fork=%v: append-system-prompt.txt = %q, %v; want %q", denyAsk, denyPython, interactive, fork, got, err, want)
 					}
 				}
 			}
@@ -593,7 +583,7 @@ func TestPrepare_AppendsStandingPassages(t *testing.T) {
 			runDir := t.TempDir()
 			claude := templateConfig(t)
 			spec := shuttleengine.Spec{Prompt: "do the thing", Role: tt.role}
-			notice := buildDenyNotice(spec.Interactive, shuttleengine.Config{}, claude, false, false, false)
+			notice := buildDenyNotice(spec.Interactive, shuttleengine.Config{}, claude, false, false)
 			if _, err := engine.Prepare(runDir, spec, shuttleengine.Config{}); err != nil {
 				t.Fatalf("Prepare() error: %v; want nil", err)
 			}

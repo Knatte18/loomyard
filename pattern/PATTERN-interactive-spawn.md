@@ -11,3 +11,4 @@ Interactive sessions keep subscription coverage, while headless use is moving to
 - The scan's allowlist is keyed by file and admits every finding in that file, with a reason naming why the flag there launches no agent.
 - Bound: the scan sees static shapes only, so a flag built at runtime, or a launch line assembled from fragments outside the claude engine's directory, passes.
 - Bound: test files are not scanned, so a test may hold the forbidden text as data.
+- An agent session's own shell is guarded too: `internal/shellguard`'s headless-claude row refuses a Bash launch of claude with a print flag in every run, and its steer names a subagent through the Agent tool as the way to hand work off, since a subagent runs inside the session and shows in its pane.

@@ -1,6 +1,6 @@
 // smoke_guardrail_test.go is the live proof of the deny-and-steer guardrail path the hooks research flagged as unprobed
 // (docs/research/reed-hooks-exploration.md: "the deny-and-steer path itself is not yet probed"):
-// a REAL claude, when its Agent tool call is denied by the PreToolUse hook, actually resumes in-session on the steered instruction rather than stalling or aborting the turn,
+// a REAL claude, when its Bash launch of a headless claude is denied by the PreToolUse hook, resumes in-session on the steered instruction rather than stalling or aborting the turn,
 // and a REAL claude asked to pose a question stays held, notifies its parent once and finishes once answered.
 // Follows the same conventions as smoke_run_test.go,
 // whose helpers (deferHubRelease, reedStatusStrand) this
@@ -26,16 +26,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestSmokeGuardrailDeniesAgentTool proves the "deny-and-steer" path this round closes from the
-// hooks research's open item: the run's prompt explicitly instructs the agent to dispatch a
-// subagent via its in-process Agent tool to write the output file, falling back to writing it
-// directly only if the Agent tool turns out to be unavailable.
-// The PreToolUse(Agent) hook denies the call and steers the model back into this pane
-// (claudeengine's steerAgentDeny reason);
-// the run still reaching "done" with the file written is the direct, live proof that the deny fired
-// AND the steer redirected the work in-session, rather than the turn stalling or the agent giving
-// up once its preferred tool was refused.
-func TestSmokeGuardrailDeniesAgentTool(t *testing.T) {
+// TestSmokeGuardrailDeniesHeadlessClaude proves the deny-and-steer path for a headless claude launch.
+// The run's prompt tells the agent to have a headless claude, launched through its Bash tool, write the output file, and to fall back to another way only if that launch is refused.
+// The headless claude row's PreToolUse(Bash) hook denies the launch and steers the model to a subagent.
+// The run still reaching "done" with the file written is the live proof that the deny fired and the steer kept the work in this session, rather than the turn stalling.
+func TestSmokeGuardrailDeniesHeadlessClaude(t *testing.T) {
 	tiergate.Require(t, 3)
 	llmkit.Claude(t, "LYM_REED_CLAUDE")
 
@@ -53,10 +48,10 @@ func TestSmokeGuardrailDeniesAgentTool(t *testing.T) {
 		t.Fatalf("reed up = %d; want 0, output: %s", code, reedOut.String())
 	}
 
-	outputPath := filepath.Join(h.PrimeWorktree(), "smoke-guardrail-agent-output.txt")
+	outputPath := filepath.Join(h.PrimeWorktree(), "smoke-guardrail-headless-output.txt")
 	prompt := fmt.Sprintf(
-		"Dispatch a subagent via your Agent tool to write exactly DONE to %s and then stop. "+
-			"Only write the file yourself, directly, if the Agent tool turns out to be unavailable to you.",
+		"Run claude -p \"write exactly DONE to %s\" through your Bash tool, so a headless claude writes the file, and then stop. "+
+			"Only write the file another way if that command is refused.",
 		outputPath,
 	)
 
@@ -77,7 +72,7 @@ func TestSmokeGuardrailDeniesAgentTool(t *testing.T) {
 		t.Fatalf("parse run result: %v; output: %s", err, out.String())
 	}
 	if outcome, _ := result["outcome"].(string); outcome != "done" {
-		t.Fatalf("run outcome = %q; want \"done\" (the Agent-tool deny must steer the model back into this pane, not stall the turn); output: %s", outcome, out.String())
+		t.Fatalf("run outcome = %q; want \"done\" (the headless claude deny must steer the model to a subagent, not stall the turn); output: %s", outcome, out.String())
 	}
 
 	data, err := os.ReadFile(outputPath)

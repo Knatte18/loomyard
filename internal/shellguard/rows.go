@@ -133,6 +133,17 @@ const noticeSleepDeny = steerSleepDeny + "."
 // A word that is not a flag ends the match, so systemctl status and every other verb pass.
 const sleepCommandPattern = commandPositionPattern + `systemctl([[:space:]]+-` + goWordPattern + `)*[[:space:]]+(sleep|hibernate|suspend|hybrid-sleep|suspend-then-hibernate)([^A-Za-z0-9_.-]|$)`
 
+// steerHeadlessClaudeDeny refuses a Bash launch of a headless claude and names the subagent route in its place; it must contain no single/double quote or backslash (checked at init).
+const steerHeadlessClaudeDeny = "a headless claude launch, in print mode, is refused here because its work shows in no pane; hand the work to a subagent through the Agent tool instead, which runs inside this session and shows in its pane"
+
+// noticeHeadlessClaudeDeny announces the headless claude deny in the same wording as its steer.
+const noticeHeadlessClaudeDeny = steerHeadlessClaudeDeny + "."
+
+// headlessClaudeCommandPattern is the grep -E pattern the headless claude deny matches against the raw PreToolUse payload JSON.
+// It matches claude or claude.exe in command position, optionally path-prefixed, followed by any argument words and then the long print flag, or a single-dash flag word holding p such as -p or -pc, as a whole word, the long flag with an = value included.
+// A word that crosses a separator ends the match, so a print flag of a later command passes.
+const headlessClaudeCommandPattern = commandPositionPattern + `claude(\.exe)?([[:space:]]+` + shellArgumentPattern + `)*[[:space:]]+(-[a-z]*p[a-z]*|--print)([^A-Za-z0-9_./-]|$)`
+
 // steerPublishDeny refuses a Bash git push or gh; it must contain no single/double quote or backslash (checked at init).
 const steerPublishDeny = "git push and gh are refused in this session: lym pushes the task branch after it gates your commits, and only lym opens, merges or closes the pull request; commit your change and tell the operator"
 
@@ -322,6 +333,18 @@ func rowsAfterRawGo() []Row {
 				{"systemctl", "hybrid-sleep"},
 				{"systemctl", "suspend-then-hibernate"},
 			},
+		},
+		{
+			// Installed for every run, the orch included, with no config key, so no session hands work to an agent whose work shows in no pane.
+			// A guardrail, not a barrier: a launch behind bash -c, a script, an assignment prefix such as X=1 claude or env with an assignment passes.
+			// A claude subcommand, or a command launched through one, taking a single-dash flag word holding p of its own is falsely denied.
+			// So is a matching spelling after a separator inside a quote commandPositionPattern misreads.
+			Name:     "headless-claude",
+			Patterns: []string{headlessClaudeCommandPattern},
+			Steer:    steerHeadlessClaudeDeny,
+			Notice:   noticeHeadlessClaudeDeny,
+			Switch:   SwitchNone,
+			Forms:    [][]string{{"claude", "-p"}, {"claude", "--print"}},
 		},
 		{
 			// Installed only for a launch spec that sets DenyPublish, the PR-Review session.

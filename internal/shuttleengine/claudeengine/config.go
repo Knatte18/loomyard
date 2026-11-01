@@ -23,8 +23,6 @@ func ConfigTemplate() string {
 type Config struct {
 	// Binary is the path to the claude executable; empty falls back to "claude" on PATH.
 	Binary string `yaml:"binary"`
-	// DenyAgentTool switches the PreToolUse deny for the in-process Agent tool.
-	DenyAgentTool bool `yaml:"deny_agent_tool"`
 	// DenyAskUserQuestion switches the PreToolUse deny for the AskUserQuestion tool.
 	DenyAskUserQuestion bool `yaml:"deny_ask_user_question"`
 	// PromptCacheTTL is Claude Code's prompt-cache TTL for a role without a map entry; it is validated where a run starts, not by LoadConfig.
@@ -42,6 +40,12 @@ func ConfigOpenMaps() []string {
 	return []string{"prompt_cache_ttl_roles", "keep_warm_cap_roles"}
 }
 
+// retiredAgentDenyKey is the key that once switched the Agent tool deny; no run denies the Agent tool, so a layer holding it is read without it.
+const retiredAgentDenyKey = "deny_agent_tool"
+
+// retiredAgentDenyWayForward is the way forward a local override setting retiredAgentDenyKey is refused with.
+const retiredAgentDenyWayForward = "delete the key: no run denies the Agent tool, so it switches nothing"
+
 // ConfigSpec returns claude.yaml's layered-load spec: a per-worktree module whose binary and tool denies a local override may not set.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
@@ -50,13 +54,14 @@ func ConfigSpec() configengine.Spec {
 		OpenMaps: ConfigOpenMaps(),
 		Categories: map[string]configengine.Category{
 			"binary":                 configengine.CategoryExecutable,
-			"deny_agent_tool":        configengine.CategoryGuard,
 			"deny_ask_user_question": configengine.CategoryGuard,
 			"prompt_cache_ttl":       configengine.CategoryNone,
 			"prompt_cache_ttl_roles": configengine.CategoryNone,
 			"keep_warm_cap":          configengine.CategoryNone,
 			"keep_warm_cap_roles":    configengine.CategoryNone,
 		},
+		RetiredKeys:       map[string]configengine.Category{retiredAgentDenyKey: configengine.CategoryGuard},
+		RetiredWayForward: map[string]string{retiredAgentDenyKey: retiredAgentDenyWayForward},
 	}
 }
 

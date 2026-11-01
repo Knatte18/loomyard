@@ -62,7 +62,8 @@
 // A color outside the palette answers no inputs.
 //
 // The engine owns a layered config module, `claude.yaml`, declared in config.go:
-// `binary`, `deny_agent_tool`, `deny_ask_user_question`, `prompt_cache_ttl`, `prompt_cache_ttl_roles`, `keep_warm_cap` and `keep_warm_cap_roles`.
+// `binary`, `deny_ask_user_question`, `prompt_cache_ttl`, `prompt_cache_ttl_roles`, `keep_warm_cap` and `keep_warm_cap_roles`.
+// The retired `deny_agent_tool` key is read out of every layer, and a local override setting it is refused with the way forward of deleting it.
 // LoadConfig resolves it through the degrading loader, stacking the template, the repo default, the worktree file and the local override,
 // and a local override may set only the cache lifetimes.
 // It is told its directories and derives none.
@@ -239,6 +240,7 @@
 // Both the hooks and the notice are built from one deny list in settings.go, so the two cannot drift:
 // each row names its tool matcher, hook command, notice sentence and the run inputs that install it.
 // The webster fork guard has no notice sentence and is not announced.
+// No row denies the Agent tool: a subagent or fork runs inside the session and shows in its own pane, and its transcript lies under the session's subagents directory.
 // The Bash denies below are not declared here: they render the rows of `internal/shellguard`'s table as PreToolUse(Bash) hooks, every row in table order after the Claude rows.
 // The python row denies a Bash command that runs `python`, `python3` or `python3.<minor>` in command position, in every run mode;
 // `shuttle.yaml`'s `deny_python` switches it off for a Python target repo.
@@ -274,6 +276,10 @@
 // The steer names the literal path as the way forward.
 // It is a guardrail, not a barrier: its hook sees static text only, so a removal behind `find -delete`, `xargs rm` with no `$`, `bash -c` or a script passes, as does one through `$$`, `$?`, `$#` or `$!`,
 // and an `rm` of a literal path in a command that uses `$` elsewhere, or a `$` in another payload field such as the description beside an `rm` in command position, is falsely denied; an `rm` spelled inside quotes, a `grep` alternation or a heredoc body is not.
+//
+// The headless claude row denies a Bash launch of `claude` or `claude.exe` in command position with `--print` or a single-dash flag word holding `p`, such as `-p` or `-pc`, among its arguments, and every run installs it, the orch included.
+// A headless session runs in no pane, so its work is hidden from the session that launched it; the steer and notice name a subagent through the Agent tool as the way to hand work off.
+// It is a guardrail, not a barrier: a launch behind `bash -c`, a script, an assignment prefix or `env` with an assignment passes, and a claude subcommand, or a command launched through one, taking a single-dash flag word holding `p` of its own is falsely denied.
 //
 // The open launch (Claude.OpenLaunch) starts a named interactive session with no prompt.
 // Its line carries the session id and the strand-name reference, adds `--model` and `--effort` only when set, and passes no `--settings`, so the session takes the worktree's own settings.

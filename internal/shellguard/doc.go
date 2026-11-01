@@ -19,6 +19,7 @@
 // The raw go row's steer and notice also name a package-scoped go build or go vet as the compile check, each only while no refuse-raw prefix refuses it, so a refused ./... run has a way forward short of a gate run.
 // The edit rule, reading a file with Read and changing it with Edit or Write, is stated likewise: once in the system prompt, in the shell-edit row's notice, and in full in the steers of the shell-edit and python rows.
 // The python row's notice names a version check as refused, since agents otherwise probe for Python before choosing how to edit or parse.
+// The headless claude row's steer and notice name a subagent through the Agent tool as the way to hand work off, since a subagent's work shows in the session's own pane and a headless session's shows in none.
 //
 // A row hangs on a Switch.
 // A SwitchNone row is installed for every run, and SwitchDenyPython follows the shuttle config's python key.
