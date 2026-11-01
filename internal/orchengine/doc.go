@@ -41,17 +41,16 @@
 //
 // That order is ChooseStartPrompt's own.
 //
-// Every launch prompt is a one-line pointer: the orch's whole procedure lives in the role stencil, which RenderRoleFile renders to Paths.RolePath, and the pointer names that file.
+// Every launch prompt is a one-line pointer: the orch's whole procedure lives in the orch role, which RenderRoleFile renders to Paths.RolePath, and the pointer names that file.
+// The role is one fixed text for every orch in every repository, rendered from the bytes built into the binary (`contracts/orchrole`), and no board copy of it exists, so no hub can edit it.
 // The resume pointer also names the orch note to resume from.
 // A note request names the note path and Paths.NoteTemplatePath, the file RenderNoteTemplateFile renders from the note stencil: what the orch is doing, the agreed next step and the questions waiting on the operator.
-// Every delivery re-renders its file first, so a stencil edit applies from the next delivery:
+// Every delivery re-renders its file first, so a stencil edit, or a new binary's role, applies from the next delivery:
 // a start renders the role file before it launches, the watcher renders the note template before it posts a note request,
 // and renders the role file before it injects `/clear`.
 // A render failure is handled where a stencil render failure is: a start refuses, a note request changes nothing, and a clear that cannot render aborts the cycle.
 //
-// The role file's `## Commands` section carries the operator command index, which every role-file render is handed as a string;
-// a role stencil without the `command_index` marker fails the render naming the stencil.
-// A role stencil without the `decision_note_title` marker fails the render naming the stencil the same way.
+// The role file's `## Commands` section carries the operator command index, which every role-file render is handed as a string.
 // The role file carries no repository rules: a repository's orch rules reach the session appended to its system prompt, through heddle's `orch-prompt` target.
 // The watcher is told an index source through NewWatcher, calls it before each of its three role-file renders, and returns to idle with the reason when the source or the render fails.
 //
@@ -431,7 +430,7 @@
 // A usage-limited turn end records State.UsageLimitAt, the reset time the limit message states in State.UsageLimitResetsAt, and the next wake in State.UsageLimitWakeAt:
 // one minute past the reset time, at once when that has passed, and 30 minutes on when the limit states no reset time.
 // While the limit stands, the idle tick renews the watcher's creel hold on the orch strand, so no other sender's mail or inject reaches the orch, and starts no cycle.
-// Once the wake time has passed, the watcher injects one line rendered from the `orch-template-usage-limit-wake` stencil, its own delivery, which the hold lets through, telling the orch to run `lym tender revive` and check each run, and moves the wake 30 minutes on, so the line repeats until the orch answers.
+// Once the wake time has passed, the watcher injects one line rendered from the `orch-template-usage-limit-wake` stencil, its own delivery, which the hold lets through, telling the orch to run `lym tender revive` and wait for the notices of the runs that stopped, and moves the wake 30 minutes on, so the line repeats until the orch answers.
 // A later usage-limited turn end sets the reset and wake times afresh.
 // The first turn end that is not a usage limit clears the record and releases the hold, so the held notices are delivered.
 // A fresh launch clears the record.

@@ -34,7 +34,7 @@ type Paths struct {
 	RetiredNoticeLogPath string
 	WatchLogPath         string // Detached watcher's stdout and stderr.
 
-	RolePath         string // Role file rendered from the role stencil before every delivery.
+	RolePath         string // Role file rendered from the orch role before every delivery.
 	NoteTemplatePath string // Note template file rendered before every note request.
 	PrimeRoot        string // The prime's worktree root, which a relative note path resolves against.
 }

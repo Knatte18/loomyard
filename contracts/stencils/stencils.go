@@ -336,11 +336,6 @@ var OrchTemplateHandoffSoft []byte
 //go:embed orch/orch-template-compact.md
 var OrchTemplateCompact []byte
 
-// OrchTemplateRole is orch's shipped-default role stencil: the whole procedure, rendered to a file the session reads.
-//
-//go:embed orch/orch-template-role.md
-var OrchTemplateRole []byte
-
 // OrchTemplateNote is orch's shipped-default orch note template, rendered to a file the session fills in.
 //
 //go:embed orch/orch-template-note.md
@@ -577,7 +572,6 @@ var entries = []registryEntry{
 	{"orch-template-resume", &OrchTemplateResume},
 	{"orch-template-handoff-soft", &OrchTemplateHandoffSoft},
 	{"orch-template-compact", &OrchTemplateCompact},
-	{"orch-template-role", &OrchTemplateRole},
 	{"orch-template-note", &OrchTemplateNote},
 	{"orch-template-reload", &OrchTemplateReload},
 	{"orch-template-usage-limit-wake", &OrchTemplateUsageLimitWake},

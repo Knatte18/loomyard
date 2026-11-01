@@ -16,7 +16,7 @@
 //
 // # The role file and the note
 //
-// The procedure below lives in the role stencil, not in the launch prompt.
+// The procedure lives in the orch role, one fixed text for every orch built into the binary, not in the launch prompt.
 // `BeamUp` renders it to `.lym/orch/role.md` and launches the session with a one-line pointer at it; skills (`scribe:prose`, `scribe:conversation`, `ly:board`) are loaded by shuttle before that pointer on every launch path, a resume included.
 // `BeamUp` records the orch session's id in orch's state and resumes it after a reboot, a `stop` or a dead strand, falling back to the last note, else the start stencil, when the resume fails; see the internal/orchengine package documentation's `Continuing after a reboot` section.
 // A context cycle asks the session for an orch note at the path it names, following `.lym/orch/note-template.md`, in place of a general handoff skill.
@@ -64,24 +64,23 @@
 //
 // # The orchestrator acts and fixes
 //
-// The orchestrator talks to the operator about what to build, priorities and design choices.
-// Everything else is its own: start runs, un-wedge stuck runs, answer the landing halts, land, deploy, clean up, record findings and start the next task.
-// Un-wedging includes small code fixes committed and pushed to `main` from the prime, followed by the production deploy.
+// The orchestrator brings the operator design questions only: what to build, a task's scope and a choice between designs.
+// Every run-level call is its own and recorded as a parent decision: an arbiter's hand-on question, a `decision` escalation, a hard-cap accept, a landing stop.
+// It releases a task only on the operator's go-ahead naming it, watches runs through their notices rather than by polling their status, and never changes code in the prime.
 // Runs that can run in parallel do, and only a task whose packages overlap a running task is held back, through its board `depends_on`.
-// Findings go on the board, never into GitHub issues.
 // Every status report on a running run carries its `lym reed attach` command.
 //
 // # The run loop, per task
 //
 //  1. Create the task worktree with `lym fabric add <slug>`, then start its run from inside it with `lym loom start`.
 //     The run's status file is `_lym/shed/<slug>/status.json` under the worktree, and its `state` is one of running, awaiting, blocked, failed or done.
-//  2. Keep no watch loop of your own: a batten or dobby notice arrives in full as its own quoted `[creel] #<id> from "<sender>": …` line through the orch session's hooks, whichever claim it was posted under, and you check the run with `lym batten status <slug>`.
+//  2. Keep no watch loop of your own: a batten or dobby notice arrives in full as its own quoted `[creel] #<id> from "<sender>": …` line through the orch session's hooks, whichever claim it was posted under, and a stop it names is read with `lym batten status <slug>`.
 //  3. The run's own tail merges, reviews and lands without an approval step: Parent-Align and its fixer, the Code-Review ring, Describe and a Finalize that takes the parent lock first and lands on the parent.
 //     No approval step follows; a landing halt at Parent-Align or Finalize is the orchestrator's to read.
 //  4. On blocked or failed, read `error` in the status file and rerun the failing tests to tell a flaky failure from a real one.
 //     A landing halt at Parent-Align or Finalize reaches the orchestrator as it stands, since no driver, batten or arbiter routes it to another row, and the status marks it handed back.
 //     A real regression in the task is fixed in the task worktree by a background subagent, with code commits only, no `lym fabric`, no `_lym` or `.lym` edits and no push, and the run is started again.
-//     A lym bug is fixed on `main`, deployed, and the run is started again.
+//     A lym bug is fixed through a task of its own, never in the prime, and the run is started again once it lands.
 //     Never merge the parent into a task while webster is mid-batch, because record-batch then refuses the batch; a merge-in is safe only once every batch is recorded, for example at a blocked integration verify.
 //  5. Batten's Land row lands the run: it pulls the prime, runs the hub's landing `deploy` command and prunes the board, and Worktree-Teardown then removes the pair.
 //     The orchestrator acts on a Land or teardown failure notice and on a ready-task notice, starting the tasks it names, and deploys by hand with `update-plugins.sh` on a ready notice or at its next wake after a landing while the hub's landing `deploy` key is empty.

@@ -12,8 +12,32 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/contracts/orchrole"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
+
+// fixedStencils holds the instruction texts lym renders from embedded bytes alone and never seeds to a board copy, keyed by name.
+// They live outside this package's tree, so the registry never lists them, and every scan over the shipped stencils reads them through shippedStencils.
+var fixedStencils = map[string][]byte{"orch-role": orchrole.Role}
+
+// shippedStencils returns every registered stencil's shipped default and every fixed stencil's text, keyed by name.
+func shippedStencils(t *testing.T) map[string][]byte {
+	t.Helper()
+
+	reg := Registry()
+	texts := make(map[string][]byte, len(reg.Names())+len(fixedStencils))
+	for _, name := range reg.Names() {
+		def, ok := reg.Default(name)
+		if !ok {
+			t.Fatalf("Registry().Default(%q) = _, false; want true for a name Registry().Names() returned", name)
+		}
+		texts[name] = def
+	}
+	for name, text := range fixedStencils {
+		texts[name] = text
+	}
+	return texts
+}
 
 // stencilNamesOnDisk walks this package's own directory and returns the stencil name derived from
 // each *.md file found in a family subfolder: the filename without its ".md" extension.
@@ -114,6 +138,14 @@ func TestRegistry_DefaultsAndRelPathAreConsistent(t *testing.T) {
 		if !nameSet[name] {
 			t.Errorf("Registry().Names() = %v; want it to contain %q", names, name)
 		}
+	}
+
+	// The orch role is a fixed stencil rendered from embedded bytes; a registry entry would seed an editable board copy.
+	if nameSet["orch-template-role"] {
+		t.Errorf("Registry().Names() = %v; want it to lack %q", names, "orch-template-role")
+	}
+	if _, known := reg.Default("orch-template-role"); known {
+		t.Errorf("Registry().Default(%q) = _, true; want false", "orch-template-role")
 	}
 
 	for _, name := range reg.Names() {

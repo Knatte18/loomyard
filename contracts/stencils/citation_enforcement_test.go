@@ -18,6 +18,8 @@
 package stencils
 
 import (
+	"maps"
+	"slices"
 	"strings"
 	"testing"
 	"unicode"
@@ -120,17 +122,13 @@ func scanBareCitations(t *testing.T) ([]bareCitation, *scankit.Allowlist) {
 	t.Helper()
 
 	allow := scankit.NewAllowlist(citationAllowlist)
-	reg := Registry()
-	names := reg.Names()
+	texts := shippedStencils(t)
+	names := slices.Sorted(maps.Keys(texts))
 	scankit.RequireFloor(t, len(names), 1, "stencil citation scan")
 
 	var violations []bareCitation
 	for _, name := range names {
-		def, ok := reg.Default(name)
-		if !ok {
-			t.Fatalf("Registry().Default(%q) = _, false; want true for a name Registry().Names() returned", name)
-		}
-		body := stencil.StripLeadingComment(string(def))
+		body := stencil.StripLeadingComment(string(texts[name]))
 
 		for _, token := range citationCandidateTokens(body) {
 			if !citationIsBare(token) {

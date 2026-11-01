@@ -17,6 +17,7 @@ import (
 
 // orchengineAllowedImports are the only non-stdlib import paths production code in this package may use.
 var orchengineAllowedImports = []string{
+	"github.com/Knatte18/loomyard/contracts/orchrole",
 	"github.com/Knatte18/loomyard/internal/agentname",
 	"github.com/Knatte18/loomyard/internal/configengine",
 	"github.com/Knatte18/loomyard/internal/fsx",

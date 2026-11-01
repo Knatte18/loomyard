@@ -1,6 +1,8 @@
-// prompt.go renders the orch stencils (orch-template-role, orch-template-note, orch-template-start, orch-template-handoff, orch-template-resume, orch-template-handoff-soft, orch-template-compact, orch-template-reload, orch-template-usage-limit-wake).
-// Each is read from a told stencils directory at call time via stencilstore.Read, per the Stencil Ownership Invariant, and filled with stencil.Fill, which drops the leading comment.
-// The role and note stencils render to files the session reads, and the two note requests render to the mail body creel posts.
+// prompt.go renders the orch role and the orch stencils (orch-template-note, orch-template-start, orch-template-handoff, orch-template-resume, orch-template-handoff-soft, orch-template-compact, orch-template-reload, orch-template-usage-limit-wake).
+// The role is filled from its embedded bytes, since no hub may edit it.
+// Each stencil is read from a told stencils directory at call time via stencilstore.Read, per the Stencil Ownership Invariant.
+// Every text is filled with stencil.Fill, which drops the leading comment.
+// The role and the note stencil render to files the session reads, and the two note requests render to the mail body creel posts.
 // Every other render is injected as one creel text line or handed to shuttle as its launch pointer, and a creel text inject is one line,
 // so each of those must render to one line;
 // an operator override that breaks that fails here, naming the stencil to fix.
@@ -11,17 +13,18 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/contracts/orchrole"
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
 const (
-	roleStencilName = "orch-template-role"
+	// roleName names the orch role in a render error.
+	roleName        = "orch role"
 	noteStencilName = "orch-template-note"
 
 	startStencilName   = "orch-template-start"
@@ -35,33 +38,19 @@ const (
 )
 
 const (
-	// commandIndexMarker is the role stencil's marker that index fills.
+	// commandIndexMarker is the role's marker that index fills.
 	commandIndexMarker = "command_index"
-	// decisionNoteTitleMarker is the role stencil's marker that the decision-note title form fills.
+	// decisionNoteTitleMarker is the role's marker that the decision-note title form fills.
 	decisionNoteTitleMarker = "decision_note_title"
 )
 
-// RenderRoleFile renders the role stencil to path, creating its directory.
+// RenderRoleFile renders the orch role, the same for every orch in every repository, to path, creating its directory.
+// The role comes from the bytes built into the binary, never from a board copy, so no hub can change it.
 // The command-index marker is filled with index.
-// The decision-note title marker is filled with the title form for the placeholder slug "<slug>", since the role stencil is hub-wide.
-// A role stencil that lacks either marker fails the render naming the stencil, so an operator-edited copy never silently renders without them.
+// The decision-note title marker is filled with the title form for the placeholder slug "<slug>", since the role is hub-wide.
 // The write is a temporary file and a rename, so a reader never sees a partial file when two renders overlap.
-// The session reads the file through the one-line pointers, so a stencil edit applies from the next delivery.
-func RenderRoleFile(stencilsDir, path, index string) error {
-	template, err := stencilstore.Read(stencilsDir, roleStencilName)
-	if err != nil {
-		return fmt.Errorf("orch: read %s: %w", roleStencilName, err)
-	}
-	markers, err := stencil.TopLevelMarkers(template)
-	if err != nil {
-		return fmt.Errorf("orch: read markers of %s: %w", roleStencilName, err)
-	}
-	for _, marker := range []string{commandIndexMarker, decisionNoteTitleMarker} {
-		if !slices.Contains(markers, marker) {
-			return fmt.Errorf("orch: %s declares no {{.%s}} marker: restore the marker, or delete the override so the shipped stencil applies", roleStencilName, marker)
-		}
-	}
-	return renderFile(stencilsDir, roleStencilName, path, map[string]string{commandIndexMarker: index, decisionNoteTitleMarker: DecisionNoteTitle("<slug>")})
+func RenderRoleFile(path, index string) error {
+	return writeFilled(roleName, orchrole.Role, path, map[string]string{commandIndexMarker: index, decisionNoteTitleMarker: DecisionNoteTitle("<slug>")})
 }
 
 // DecisionNoteTitle returns the title prefix a decision note for the held task slug starts with: "Decision for <slug>:".
@@ -126,9 +115,18 @@ func RenderCompactFocus(stencilsDir string) (string, error) {
 	return render(stencilsDir, compactStencilName, nil, true)
 }
 
-// renderFile renders one stencil with values and writes it to path, creating the directory.
+// renderFile reads one stencil, fills it with values and writes it to path.
 func renderFile(stencilsDir, name, path string, values map[string]string) error {
-	out, err := render(stencilsDir, name, values, false)
+	template, err := stencilstore.Read(stencilsDir, name)
+	if err != nil {
+		return fmt.Errorf("orch: read %s: %w", name, err)
+	}
+	return writeFilled(name, template, path, values)
+}
+
+// writeFilled fills template, named name in errors, with values and writes it to path, creating the directory.
+func writeFilled(name string, template []byte, path string, values map[string]string) error {
+	out, err := fill(name, template, values, false)
 	if err != nil {
 		return err
 	}
@@ -148,6 +146,12 @@ func render(stencilsDir, name string, values map[string]string, singleLine bool)
 	if err != nil {
 		return "", fmt.Errorf("orch: read %s: %w", name, err)
 	}
+	return fill(name, template, values, singleLine)
+}
+
+// fill fills template, named name in errors, with values.
+// singleLine trims surrounding whitespace and errors when a newline remains.
+func fill(name string, template []byte, values map[string]string, singleLine bool) (string, error) {
 	filled, err := stencil.Fill(template, values)
 	if err != nil {
 		return "", fmt.Errorf("orch: fill %s: %w", name, err)

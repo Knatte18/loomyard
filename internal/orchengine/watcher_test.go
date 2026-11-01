@@ -1748,9 +1748,8 @@ func TestWatcher_FailingRenderAbortsWithoutClear(t *testing.T) {
 		// wantReason is the abort reason's prefix, which names the failing source.
 		wantReason string
 	}{
-		{name: "role", stencil: roleStencilName, content: "{{.nope}}", wantReason: "role file failed to render: orch: " + roleStencilName},
 		{name: "resume", stencil: resumeStencilName, content: "line one\nline two\n", wantReason: "resume stencil " + resumeStencilName},
-		{name: "index source", stencil: roleStencilName, indexErr: errBoom, wantReason: "command index unavailable: " + errBoom.Error()},
+		{name: "index source", indexErr: errBoom, wantReason: "command index unavailable: " + errBoom.Error()},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

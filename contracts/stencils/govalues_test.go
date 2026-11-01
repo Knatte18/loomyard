@@ -40,7 +40,7 @@ func TestStencils_NameGoValues(t *testing.T) {
 		value   string
 	}{
 		{"webster-body-implementer", "`" + strconv.Itoa(gatecli.SlotBusyExit) + "`"},
-		{"orch-template-role", shuttleengine.MessageTail},
+		{"orch-role", shuttleengine.MessageTail},
 		{"shed-template-driver-notify", shuttleengine.MessageTail},
 		{"shed-template-driver-notify-watched", shuttleengine.MessageTail},
 		{"shed-template-driver", "`" + shedrun.ParkMarkerFileName + "`"},
@@ -54,9 +54,9 @@ func TestStencils_NameGoValues(t *testing.T) {
 		t.Run(tt.stencil+"/"+tt.value, func(t *testing.T) {
 			t.Parallel()
 
-			text, ok := Registry().Default(tt.stencil)
+			text, ok := shippedStencils(t)[tt.stencil]
 			if !ok {
-				t.Fatalf("stencil %q is not registered", tt.stencil)
+				t.Fatalf("stencil %q is not shipped", tt.stencil)
 			}
 			if !strings.Contains(string(text), tt.value) {
 				t.Errorf("stencil %q does not contain %q", tt.stencil, tt.value)

@@ -33,7 +33,7 @@ func TestRenderFiles_WriteWithoutLeadingComment(t *testing.T) {
 		// gone lists text the render must not carry.
 		gone []string
 	}{
-		{name: "role", file: "role.md", render: func(dir, path string) error { return RenderRoleFile(dir, path, testIndex) },
+		{name: "role", file: "role.md", render: func(_, path string) error { return RenderRoleFile(path, testIndex) },
 			want: []string{"## Commands\n", testIndex, "Decision for <slug>:"},
 			gone: []string{"## Hub-wide rules", "## This orch's rules"}},
 		{name: "note template", file: "note-template.md", render: RenderNoteTemplateFile},
@@ -64,42 +64,6 @@ func TestRenderFiles_WriteWithoutLeadingComment(t *testing.T) {
 				if strings.Contains(string(data), gone) {
 					t.Errorf("%s file carries %q", c.name, gone)
 				}
-			}
-		})
-	}
-}
-
-func TestRenderRoleFile_RefusalsWriteNoFile(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		name string
-		// override replaces the shipped role stencil.
-		override string
-		// wantNamed lists substrings the error carries.
-		wantNamed []string
-	}{
-		{"no marker", "# Hub orchestrator\n\nNo marker here.\n", []string{roleStencilName, commandIndexMarker}},
-		{"no decision note title marker", "# Hub orchestrator\n\n{{.command_index}}\n", []string{roleStencilName, decisionNoteTitleMarker}},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			t.Parallel()
-			dir := seedStencils(t)
-			if err := os.WriteFile(stencilstore.Path(dir, roleStencilName), []byte(c.override), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			path := filepath.Join(t.TempDir(), "role.md")
-			err := RenderRoleFile(dir, path, testIndex)
-			if err == nil {
-				t.Fatal("RenderRoleFile = nil; want a refusal")
-			}
-			for _, want := range c.wantNamed {
-				if !strings.Contains(err.Error(), want) {
-					t.Errorf("RenderRoleFile error = %v; want it to name %q", err, want)
-				}
-			}
-			if _, statErr := os.Stat(path); statErr == nil {
-				t.Error("a refused render wrote the role file")
 			}
 		})
 	}

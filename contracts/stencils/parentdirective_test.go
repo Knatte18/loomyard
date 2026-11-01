@@ -96,17 +96,12 @@ func containsAny(text string, words []string) bool {
 	return false
 }
 
-// registeredBodies returns every registered stencil's agent-facing body keyed by name.
+// registeredBodies returns every shipped stencil's agent-facing body keyed by name, the orch role's included.
 func registeredBodies(t *testing.T) map[string]string {
 	t.Helper()
 
-	reg := Registry()
 	bodies := make(map[string]string)
-	for _, name := range reg.Names() {
-		def, ok := reg.Default(name)
-		if !ok {
-			t.Fatalf("Registry().Default(%q) = _, false; want true for a name Registry().Names() returned", name)
-		}
+	for name, def := range shippedStencils(t) {
 		bodies[name] = stencil.StripLeadingComment(string(def))
 	}
 	return bodies
