@@ -124,7 +124,7 @@
 //
 //   - On each probe tick, after the scheduling steps, dobby reads the child of every listed run whose batten state is running with no cancel marker, through Deps.RunNotices, and sends the notice its condition calls for; a nil RunNotices.ReadChild sends none.
 //   - A child that is not running, or that a pause covers, is in no condition.
-//     A dead driver, no live driver strand and no held driver or run lock, is checked first, and names the respawn cap and `lym loom start` once batten respawned the child the cap of times with no progress.
+//     A dead driver, no live driver strand and no held driver, run or loom bootstrap lock, is checked first once the child has been running for a minute of awake time, so a driver still starting is no dead one, and names the respawn cap and `lym loom start` once batten respawned the child the cap of times with no progress.
 //     With a live driver, an agent run on the provider's usage limit, then one stalled on an API error, each inactive for two minutes, then every agent idle for the quiet window with no live wait, give the usage-limit, api-error and quiet notices; with no agent run read, quiet counts from the later of the child's newest history entry and its state's since.
 //     The idle clocks leave out the machine sleeps in the state record and the paused intervals, so a sleep or a pause can delay a notice and never raise one earlier.
 //   - With RunNotices.ReviveAPIError set, the first sight of an api-error episode revives the stalled sessions and notices nothing; the notice goes when the episode still stands at a later probe tick, or at the third revived episode in a row with no write of the child's status file between.
@@ -133,7 +133,7 @@
 //     A driver-dead key ends when the child's state or its since changes, a quiet or api-error key when the newest agent activity moves, and a usage-limit key once no run reads usage-limited.
 //     The child's state, its since and the revive streak ride in the run's entry of the state record, so a re-exec sends no notice twice.
 //   - A failed read is logged once per episode and sends nothing.
-//   - Bound: while an anchor change stands no notice goes, and a machine that takes a run over dates the child's since from its own first sight, so a driver-dead notice the other machine sent can go once more.
+//   - Bound: while an anchor change stands no notice goes, and a machine that takes a run over dates the child's since from its own first sight, so a driver-dead notice the other machine sent can go once more, after the start grace counted from that first sight.
 //
 // The landing notice:
 //

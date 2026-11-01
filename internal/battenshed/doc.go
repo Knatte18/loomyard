@@ -116,7 +116,7 @@
 // and a marker from another pid or in the old layout reads as unconfirmed.
 // A child with a live or retiring driver strand in its reed state, a held run lock, or a held Go driver lock, is adopted instead, with the confirmation recorded for this process,
 // so a second driver is never stacked.
-// The driver lock is a liveness signal of its own: a Go driver holds it for life while the run lock is free between steps, so a running go child whose driver lock is held has a driver at work and sends no driver-dead notice, and one with neither lock and no strand is noticed as driver-dead.
+// The driver lock is a liveness signal of its own: a Go driver holds it for life while the run lock is free between steps, so a running go child whose driver lock is held has a driver at work and sends no driver-dead notice, and one with neither lock, no loom bootstrap lock and no strand is noticed as driver-dead once it has been running for a minute of awake time from its running episode's since.
 //
 // A child that halts (blocked, paused or failed) is a budget-exempt wait, not a failure of the Run-Shed row:
 // batten never spawns or resumes a halted child, bar the binary re-step below, logs one Info line per halt episode, and keeps yielding with the child's state, error, current producer and the resume command ("lym loom resume" in the task worktree) as its reason.

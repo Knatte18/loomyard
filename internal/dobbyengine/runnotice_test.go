@@ -100,8 +100,9 @@ func TestRunNotice_Conditions(t *testing.T) {
 	}{
 		{
 			name: "ADeadDriverReadsTheChildsStateAndReasonRelativeToThePair",
-			act: func(_ *passHarness, f *noticeFake) {
+			act: func(h *passHarness, f *noticeFake) {
 				f.alive = false
+				h.advance(driverStartGrace)
 				f.child.Error, f.child.HistoryLen = "waits on /wt/task/_lym/x.md", 4
 			},
 			want:  []string{"[dobby notice] task: running at Plan-Write; driver strand is dead; waiting: waits on _lym/x.md; since 2026-10-25T12:00:00Z; history 4"},
@@ -109,11 +110,36 @@ func TestRunNotice_Conditions(t *testing.T) {
 		},
 		{
 			name: "ADeadDriverAtTheRespawnCapNamesTheCapAndLoomStart",
-			act: func(_ *passHarness, f *noticeFake) {
+			act: func(h *passHarness, f *noticeFake) {
 				f.alive = false
+				h.advance(driverStartGrace)
 				f.child.RespawnCap = 3
 			},
 			want: []string{`running at Plan-Write; driver strand is dead; respawned 3 times without progress; run "lym loom start" in the task worktree`},
+		},
+		{
+			name: "AJustStartedChildWithNoDriverLockYetSendsNothing",
+			act: func(h *passHarness, f *noticeFake) {
+				f.alive = false
+				h.advance(driverStartGrace / 2)
+			},
+		},
+		{
+			name: "AMachineSleepDoesNotCountTowardTheStartGrace",
+			act: func(h *passHarness, f *noticeFake) {
+				f.alive = false
+				h.tick(false)
+				h.clock.suspend(3 * time.Hour)
+				h.tick(false)
+			},
+		},
+		{
+			name: "PausedTimeDoesNotCountTowardTheStartGrace",
+			act: func(h *passHarness, f *noticeFake) {
+				f.alive = false
+				f.pause = pauserecord.Coverage{Intervals: []pauserecord.Interval{{Start: start, End: start.Add(2 * driverStartGrace)}}}
+				h.advance(2 * driverStartGrace)
+			},
 		},
 		{
 			name: "ACoveredChildSendsNothing",
@@ -333,6 +359,7 @@ func TestRunNotice_OncePerEpisode(t *testing.T) {
 	h, f := newNoticeHarness(t)
 	f.alive = false
 	since := f.child.Modified
+	h.advance(driverStartGrace)
 
 	h.tick(false)
 	if got := h.runNotices(); len(got) != 0 {
@@ -365,6 +392,7 @@ func TestRunNotice_OncePerEpisode(t *testing.T) {
 		t.Fatalf("marker keys after the child halted = %q; want none", keys)
 	}
 	f.child.State, f.child.Modified = childStateRunning, h.clock.now()
+	h.advance(driverStartGrace)
 	h.tick(true)
 	if got := h.runNotices(); len(got) != 2 {
 		t.Fatalf("run notices = %q; want a second notice for the new running episode", got)
@@ -470,6 +498,7 @@ func TestRunNotice_DeliveryIsRetriedOnProbeTicksThenDropped(t *testing.T) {
 	t.Parallel()
 	h, f := newNoticeHarness(t)
 	f.alive = false
+	h.advance(driverStartGrace)
 	attempts := 0
 	h.d.deps.Notice = func(_ context.Context, line string) error {
 		if strings.HasPrefix(line, runNoticePrefix) {

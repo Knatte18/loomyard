@@ -36,6 +36,10 @@ const apiErrorReviveStreak = 3
 // childStateRunning is the child's state while its run has not halted, paused, failed or finished.
 const childStateRunning = "running"
 
+// driverStartGrace is how long a running child may read with no live driver before the driver-dead notice goes, measured in awake time from the since of its running episode.
+// A bootstrap writes the running status before its driver takes a lock, so a dead reading inside this grace is a driver still starting.
+const driverStartGrace = time.Minute
+
 // loomStartRemedy is the step the operator takes to bring a child's driver back, which `lym loom resume` does not: it never spawns an LLM driver.
 const loomStartRemedy = `run "lym loom start" in the task worktree to bring a driver back`
 
@@ -95,7 +99,7 @@ type AgentRun struct {
 type RunNoticeDeps struct {
 	// ReadChild reads the child of the run slug; found is false while the child has no status file.
 	ReadChild func(slug string) (child ChildReading, found bool, err error)
-	// DriverAlive reports whether the child has a live driver: a live driver strand, or a held driver or run lock.
+	// DriverAlive reports whether the child has a live driver: a live driver strand, or a held driver, run or bootstrap lock.
 	DriverAlive func(ctx context.Context, slug string) (bool, error)
 	// Agents reads the child's agent runs, and whether a Go-side wait is live, such as a verify, a parent lock wait or a pull request's review.
 	Agents func(ctx context.Context, slug string) (runs []AgentRun, waitLive bool, err error)
@@ -220,6 +224,7 @@ func (d *daemon) runNotice(ctx context.Context, now time.Time, slug string, memo
 
 // noticeCondition returns the condition the child is in, with the stamp of its episode key, and the newest agent activity it could read.
 // Only a running child that no pause covers is in a condition, and a dead driver is checked before the agents, so an agent-based condition needs a live driver.
+// A dead driver is a condition only once the child has been running for driverStartGrace of awake time.
 // A dead driver respawned the cap of times names the cap and `lym loom start`.
 func (d *daemon) noticeCondition(ctx context.Context, now time.Time, slug string, child ChildReading, memory RunNoticeState, sleeps []pauserecord.Interval) (noticeFinding, activityStamp) {
 	if child.State != childStateRunning {
@@ -243,6 +248,9 @@ func (d *daemon) noticeCondition(ctx context.Context, now time.Time, slug string
 	}
 	d.noticeFailures.Recover(slug+"|driver", "dobbyengine: the child's driver liveness reads again", "slug", slug)
 	if !alive {
+		if pauserecord.AwakeSince(memory.Since, now, sleeps, pause.Intervals) < driverStartGrace {
+			return noticeFinding{}, activityStamp{}
+		}
 		finding := noticeFinding{condition: conditionDriverDead, stamp: memory.Since.UnixNano(), text: "driver strand is dead"}
 		if child.RespawnCap > 0 {
 			finding.text = fmt.Sprintf("driver strand is dead; respawned %d times without progress; %s", child.RespawnCap, loomStartRemedy)

@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -158,6 +159,14 @@ func TestChildDriverLockHeld(t *testing.T) {
 			arrange: func(t *testing.T, taskLocation *lymcwd.Location) {
 				t.Helper()
 				holdLock(t, shedrun.RunLock(taskLocation, shedrun.SelfRunID))
+			},
+			want: true,
+		},
+		{
+			name: "AHeldLoomBootstrapLockReadsAlive",
+			arrange: func(t *testing.T, taskLocation *lymcwd.Location) {
+				t.Helper()
+				holdLock(t, loomengine.LoomBootstrapLock(taskLocation))
 			},
 			want: true,
 		},

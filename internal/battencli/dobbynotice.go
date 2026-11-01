@@ -12,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -109,7 +110,7 @@ func readNoticeChild(prime *lymcwd.Location, slug string, locateTask func() (*ly
 	return child, true, nil
 }
 
-// noticeDriverAlive reports whether the child of slug has a live driver: a live driver strand, or a held driver lock or run lock.
+// noticeDriverAlive reports whether the child of slug has a live driver: a live driver strand, or a held driver, run or bootstrap lock.
 // A lock that cannot be read reads as held, since a lock read must not make a working driver look dead.
 func noticeDriverAlive(prime *lymcwd.Location, slug string, locateTask func() (*lymcwd.Location, error)) (bool, error) {
 	alive, err := childDriverAlive(prime, slug, locateTask)
@@ -123,10 +124,11 @@ func noticeDriverAlive(prime *lymcwd.Location, slug string, locateTask func() (*
 	return childDriverLockHeld(slug, taskLocation), nil
 }
 
-// childDriverLockHeld reports whether the driver lock or the run lock of the child in taskLocation is held.
+// childDriverLockHeld reports whether the driver lock, the run lock or the loom bootstrap lock of the child in taskLocation is held.
+// The bootstrap lock counts because a loom bootstrap holds it from before it spawns the driver until the driver holds its own lock.
 // A lock that cannot be read reads as held, since a lock read must not make a working driver look dead.
 func childDriverLockHeld(slug string, taskLocation *lymcwd.Location) bool {
-	for _, lockPath := range []string{shedrun.DriverLock(taskLocation, shedrun.SelfRunID), shedrun.RunLock(taskLocation, shedrun.SelfRunID)} {
+	for _, lockPath := range []string{shedrun.DriverLock(taskLocation, shedrun.SelfRunID), shedrun.RunLock(taskLocation, shedrun.SelfRunID), loomengine.LoomBootstrapLock(taskLocation)} {
 		held, err := runLockHeld(lockPath)
 		if err != nil {
 			logger.Debug("battencli: a child lock is unreadable; the driver reads as alive", "slug", slug, "lock", lockPath, "error", err)
