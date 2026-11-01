@@ -56,6 +56,7 @@ var configStrictnessDegradingSet = map[string]bool{
 	"internal/sheddriver":                 true,
 	"internal/languageconfig":             true,
 	"internal/lenses":                     true,
+	"internal/desktophook":                true,
 }
 
 // configStrictnessStrictSet is the pinned set of module-relative, slash-separated package directories that call configengine.Load -- the strict loading policy, where an absent _lym/ directory or absent config file is an error.

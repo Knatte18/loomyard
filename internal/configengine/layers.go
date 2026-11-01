@@ -58,7 +58,7 @@ const (
 	CategoryCrossPair Category = "cross-pair"
 	// CategoryGuard is a key that switches off or hollows a guard, a review or an approval gate.
 	CategoryGuard Category = "guard"
-	// CategoryMachine is a key whose value is a property of the machine, bounding a resource every worktree of the hub on that machine shares.
+	// CategoryMachine is a key whose value is a property of the machine: a bound on a resource every worktree of the hub on that machine shares, or a fact of the machine's desktop.
 	// The machine layer holds it and the local layer refuses it.
 	CategoryMachine Category = "machine"
 )

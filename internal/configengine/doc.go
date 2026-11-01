@@ -83,7 +83,7 @@
 //
 // # The machine rule
 //
-// The machine layer holds only keys classified [CategoryMachine], a key whose value is a property of the machine, bounding a resource every worktree of the hub on that machine shares.
+// The machine layer holds only keys classified [CategoryMachine], a key whose value is a property of the machine: a bound on a resource every worktree of the hub on that machine shares, or a fact of the machine's desktop.
 // [MachineKeys] lists them, and the local layer keeps refusing them, since [CategoryMachine] is not [CategoryNone].
 // [ValidateMachine] checks a machine document with the units, template-existence and shape checks of [ValidateLocal], and admits a unit only when the longest covering `Categories` entry, or the covering retired key, is [CategoryMachine].
 // Every refusal is an [ErrInvalid] error naming the key and a way forward, and [Layers] wraps it with the machine file's path.

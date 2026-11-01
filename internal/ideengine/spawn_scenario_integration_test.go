@@ -66,6 +66,11 @@ func TestSpawnScenario(t *testing.T) {
 	}) {
 		return
 	}
+	if !step("window command follows a launch and never a failed one", func(t *testing.T) {
+		checkWindowCommandFollowsALaunch(t, h, "window-command")
+	}) {
+		return
+	}
 	if !step("prime writes the hub workspace", func(t *testing.T) {
 		checkPrimeWritesHubWorkspace(t, h)
 	}) {

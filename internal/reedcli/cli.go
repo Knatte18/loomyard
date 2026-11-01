@@ -65,6 +65,9 @@ type reedCLI struct {
 	// openTerminal is the test seam for the window verb; nil means termwindow.Resolve then Launcher.OpenAttach.
 	openTerminal func(dir, title, lymPath string) error
 
+	// placeWindow is the test seam for the window command the window verb runs after it opens a window; nil means placeTerminalWindow.
+	placeWindow func(dir string) error
+
 	// watchdogTiming, when non-nil, replaces watchdogDefaultTiming() in watchdogCmd's loop so a test can shorten how long it waits on the daemon.
 	// Production never sets it.
 	watchdogTiming *watchdogTiming

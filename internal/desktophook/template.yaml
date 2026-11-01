@@ -1,0 +1,2 @@
+window_command: ""  # shell command run after lym opens a desktop window (a run's terminal window, lym reed window, lym ide), such as a tiling script that snaps the new window into the active desktop's grid; empty runs nothing; set it per machine with `lym config desktop --layer machine --set window_command=<value>` from the prime
+window_wait_ms: 1500  # milliseconds lym waits after opening a window before it runs window_command, so the command sees the new window

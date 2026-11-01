@@ -1,5 +1,6 @@
 // spawn.go implements the ide entry point Spawn (`ide spawn`), and its two halves, Seed and OpenTask.
 // It resolves a worktree's window title and colours from the prime, the board's beams and the worktree's parent, generates the worktree's .vscode/ config, and launches VS Code;
+// after a launch it runs the machine's desktop window command through internal/desktophook;
 // it regenerates tasks.json on every call and keeps .vscode/ out of git through info/exclude.
 // A task slug opens its bare folder.
 // The prime instead opens the lym-generated hub workspace <hub>/<RepoName>.code-workspace (prime, Bolt, every task pair), regenerated on every prime spawn or seed.
@@ -14,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/desktophook"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -30,7 +32,7 @@ var CodeLauncher = vscode.Launch
 // It defaults to vscode.UserKeybindingsPath and is exported so that tests in other packages can point it at a temporary file.
 var KeybindingsPath = vscode.UserKeybindingsPath
 
-// Spawn writes the window title and colours and the .vscode/ config of the worktree slug and the user's lym key bindings, then launches VS Code.
+// Spawn writes the window title and colours and the .vscode/ config of the worktree slug and the user's lym key bindings, then launches VS Code and runs the machine's desktop window command.
 // A task slug launches its bare folder <hub>/<slug>/<its own anchor>.
 // When slug names the prime, Spawn first regenerates the hub workspace file <hub>/<RepoName>.code-workspace and launches that file instead;
 // every error on that path is returned, never degraded to the bare folder.
@@ -41,7 +43,11 @@ func Spawn(l *lymcwd.Location, slug string) (vscode.KeybindingsResult, error) {
 	if err != nil {
 		return result.keybindings, err
 	}
-	return result.keybindings, CodeLauncher(result.launchPath)
+	if err := CodeLauncher(result.launchPath); err != nil {
+		return result.keybindings, err
+	}
+	placeWindow(l, result.windowDir)
+	return result.keybindings, nil
 }
 
 // Seed writes the window title and colours and the .vscode/ config of the worktree slug, the prime or a pair, and launches nothing.
@@ -56,10 +62,12 @@ func Seed(l *lymcwd.Location, slug string) (vscode.KeybindingsResult, error) {
 	return result.keybindings, err
 }
 
-// seedResult is what seed did: the keybindings seed's outcome and the path a launch of the worktree opens.
+// seedResult is what seed did: the keybindings seed's outcome, the path a launch of the worktree opens and the directory the opened window is on.
+// The window directory is the launch path itself unless that is the hub workspace file.
 type seedResult struct {
 	keybindings vscode.KeybindingsResult
 	launchPath  string
+	windowDir   string
 }
 
 // seed writes slug's .vscode/ config, seeds the user's keybindings.json and, for the prime, regenerates the hub workspace file, which is then the launch path;
@@ -75,24 +83,39 @@ func seed(l *lymcwd.Location, slug string) (seedResult, error) {
 		return seedResult{}, err
 	}
 
-	result := seedResult{keybindings: seedKeybindings(), launchPath: filepath.Join(worktreeDir, own.AnchorRel)}
+	anchorPath := filepath.Join(worktreeDir, own.AnchorRel)
+	result := seedResult{keybindings: seedKeybindings(), launchPath: anchorPath, windowDir: anchorPath}
 	if primeResolved && slug == primeName {
 		workspacePath, err := fabricengine.RegenerateHubWorkspace(fabricengine.NewMutations(l.HubPath), l)
 		if err != nil {
 			return result, err
 		}
 		result.launchPath = workspacePath
+		result.windowDir = filepath.Dir(workspacePath)
 	}
 	return result, nil
 }
 
-// OpenTask launches VS Code on task slug's bare folder at the task's own anchor, as Spawn does for a task pair, and writes nothing.
+// OpenTask launches VS Code on task slug's bare folder at the task's own anchor, as Spawn does for a task pair, runs the machine's desktop window command and writes nothing.
 func OpenTask(l *lymcwd.Location, slug string) error {
 	own, err := lymcwd.NamedWorktree(l.HubPath, slug)
 	if err != nil {
 		return fmt.Errorf("read the anchor of %q: %w", slug, err)
 	}
-	return CodeLauncher(filepath.Join(fabricengine.WorktreePath(l, slug), own.AnchorRel))
+	launchPath := filepath.Join(fabricengine.WorktreePath(l, slug), own.AnchorRel)
+	if err := CodeLauncher(launchPath); err != nil {
+		return err
+	}
+	placeWindow(l, launchPath)
+	return nil
+}
+
+// placeWindow runs the machine's desktop window command, in the directory windowDir, for the VS Code window just launched, under l's config stack.
+// The window is open by then, so a failure of the command only warns.
+func placeWindow(l *lymcwd.Location, windowDir string) {
+	if err := desktophook.AfterWindow(fabricengine.ConfigDirs(l), windowDir); err != nil {
+		logger.Warn("ide: the window command failed; the window is open", "dir", windowDir, "cause", err)
+	}
 }
 
 // writeWorktreeConfig writes slug's .vscode/ config at own's anchor through writeVSCodeConfig, stamping in the absolute lym path.

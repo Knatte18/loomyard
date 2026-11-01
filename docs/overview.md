@@ -271,6 +271,7 @@ github.com/Knatte18/loomyard/
 ├── internal/pawlengine/          the pawl recipe's own producers, Beam-Up, Beam-Await and Beam-Down, the land request Beam-Await consumes and the beam's ready record, told their geometry and seams by their caller
 ├── internal/failuretrace/        traces a failed Parent-Align or Finalize verify log to the plan cards, batch commit ranges and untraced locations the landing failure record carries
 ├── internal/darnengine/          the darn recipe's hub-wide `darn.yaml` config and the verify command every darn verify reads
+├── internal/desktophook/         the hub-wide `desktop.yaml` config and the machine's window command, run after `lym reed window` and `lym ide` open a window
 ├── internal/samplerengine/       the sampler recipe's hub-wide `sampler.yaml` config
 ├── internal/driftengine/         regression around a task: the hub-wide `drift.yaml` config, the drift paths and records, the capture and compare runs and the Drift rows' producers
 ├── internal/driftcli/            the `lym drift` commands (`scope`, `accept`, `withdraw`, `compare`, `capture`, `defer`, `waive`, `status` and the hidden `capture-child`) and their worktree wiring over `internal/driftengine`
@@ -681,6 +682,8 @@ User-facing modules each get one `lym <module>` namespace:
   Between `Seed-Child` and `Run-Shed`, three `Command` rows each run one shell command from `internal/shedadapters`' `Command` producer, each run only when its entry gate's `batten.yaml` setting, which a task's `run_settings` may set, is on: `Open-Window` (`open_window`, on by default, command `open_window_command`) opens one desktop terminal window on the task worktree, titled with the slug, through `lym reed window`;
   `Seed-IDE` (`seed_ide`, on, command `seed_ide_command`) runs `lym ide seed`, which writes the task worktree's VS Code title, colours and `.vscode/` config and the user's key bindings as `lym ide spawn` does;
   `Open-IDE` (`open_ide`, off, command `open_ide_command`) runs `lym ide open`, which opens VS Code on it.
+  `lym reed window`, `lym ide spawn` and `lym ide open` each run, after the window opens, the machine's `desktop.window_command` once `desktop.window_wait_ms` has passed, such as a script that snaps the new window into the desktop's tiling;
+  both are machine keys, set per machine with `lym config desktop --layer machine --set <key>=<value>` from the prime, and with the command empty, the default, nothing runs.
   A command key is read from the template and the board default layer only; `lym config batten --layer default --set <key>=<value>` from the prime changes one, and a different value in the task worktree's own layers is ignored with a warning.
   A failed command only warns, and the row passes on.
   The Board task's `recipe` must be `tapestry`, `darn` or empty: `Run-Shed` starts `lym loom start` inside the task worktree, which serves both recipes, so `Seed-Child` refuses any other registered recipe before writing a seed rather than committing one the child's own bootstrap would refuse.

@@ -11,7 +11,7 @@ Machine alone opens a key to the machine layer.
 - **Cross-pair**: the key reaches across pairs, including a shared process's boot option or what lands on the parent branch.
 - **Guard**: the key switches off or hollows a guard, including a review or an approval gate, a timeout whose expiry lets that gate pass, and the prose or lens set a reviewer is given.
   `loom.code_reviewer_fan` is the one reviewer fan key open to the local layer: its value names only a fan the guarded `lenses.yaml` defines, or `""` for a solo round, and the perch's rounds, rubric and whole-diff read are unchanged.
-- **Machine**: the key's value is a property of the machine, bounding a resource every worktree of the hub on that machine shares.
+- **Machine**: the key's value is a property of the machine: a bound on a resource every worktree of the hub on that machine shares, or a fact of the machine's desktop, such as the command run after lym opens a window.
   It opens the key to the machine layer and keeps it closed to the local layer.
 
 The test asks what a key's value can do to a guard, not what kind of key it is.
@@ -49,7 +49,7 @@ Reconciling a hub's config after a binary change goes only through `hubreconcile
 
 `internal/configengine` offers `Load` (strict) and `LoadOrTemplate` (degrades to the embedded template); a caller adopts exactly one, except `runprofile`.
 
-- Degrading callers: `{shuttleengine, claudeengine, reedengine, websterengine, batcher, orchengine, loggerconfig, battenshed, languageconfig, lenses}`.
+- Degrading callers: `{shuttleengine, claudeengine, reedengine, websterengine, batcher, orchengine, loggerconfig, battenshed, languageconfig, lenses, desktophook}`.
 - Strict callers: `{fabricengine, boardengine, loomengine, landingshed, gateslot, configcli, configreg}`.
   `configcli` loads strictly only to validate a hub-wide module's file before committing it.
   `configreg` loads strictly only to answer a recipe row's setting.

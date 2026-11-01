@@ -1,5 +1,6 @@
 // window.go implements the `window` reed verb: it opens one desktop terminal window attached to a told worktree's reed session through internal/termwindow.
-// It needs no location, config or engine, so the root pre-run skips it.
+// It then runs the machine's window command through internal/desktophook with the config of the worktree holding the told directory.
+// It needs no acting location or engine, so the root pre-run skips it.
 
 package reedcli
 
@@ -9,6 +10,10 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/desktophook"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/termwindow"
 	"github.com/spf13/cobra"
@@ -23,6 +28,17 @@ func openTerminalWindow(dir, title, lymPath string) error {
 	return launcher.OpenAttach(dir, title, lymPath)
 }
 
+// placeTerminalWindow runs the machine's window command for a window just opened on dir, under the config stack of the worktree holding dir.
+// A dir in no worktree has no hub config to name a command, so nothing runs.
+func placeTerminalWindow(dir string) error {
+	l, err := lymcwd.ResolveWorktree(dir)
+	if err != nil {
+		logger.Debug("reed window: the window's directory is in no worktree, running no window command", "dir", dir, "cause", err)
+		return nil
+	}
+	return desktophook.AfterWindow(fabricengine.ConfigDirs(l), dir)
+}
+
 // windowCmd builds the `window` subcommand.
 // It opens a window on any directory the caller names; the window runs only `lym reed attach` there, which attaches to that worktree's own reed session and nothing else.
 func (c *reedCLI) windowCmd() *cobra.Command {
@@ -34,7 +50,9 @@ func (c *reedCLI) windowCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `window opens one desktop terminal window whose shell runs
 "lym reed attach" in the told worktree directory, and returns once the
-launcher process has started, so the window outlives this command. The
+launcher process has started, so the window outlives this command. When
+the machine names a window command in desktop.yaml, it runs it next, after
+the configured wait, and a failure of that command only warns. The
 title defaults to the directory's base name. A directory that does not
 exist is refused before any launcher runs, and a machine with no terminal
 launcher reports why on the envelope.
@@ -70,6 +88,13 @@ Example:
 			if err := open(dir, windowTitle, lymPath); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("window: %v", err)))
 				return nil
+			}
+			place := c.placeWindow
+			if place == nil {
+				place = placeTerminalWindow
+			}
+			if err := place(dir); err != nil {
+				logger.Warn("reed window: the window command failed; the window is open", "dir", dir, "cause", err)
 			}
 			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{"dir": dir, "title": windowTitle}))
 			return nil

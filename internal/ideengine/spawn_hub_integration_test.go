@@ -1,7 +1,7 @@
 //go:build tier1
 
-// spawn_hub_integration_test.go holds the Spawn checks that run against the prime and against a task pair of one hubforge hub:
-// the prime opens the lym-generated hub workspace, a task slug still opens its bare folder.
+// spawn_hub_integration_test.go holds the Spawn and OpenTask checks that run against the prime and against a task pair of one hubforge hub:
+// the prime opens the lym-generated hub workspace, a task slug still opens its bare folder, and the window command follows a launch.
 // Each check is a step of a scenario in spawn_scenario_integration_test.go, which names why they run serially.
 
 package ideengine
@@ -9,12 +9,14 @@ package ideengine
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -68,6 +70,7 @@ func checkPrimeWritesHubWorkspace(t *testing.T, h *hubforge.Hub) {
 	l := h.Location
 	prime := primeOf(t, h)
 	launched := recordLauncher(t)
+	markerPath := setDesktopWindowCommand(t, h)
 
 	if _, err := Spawn(l, prime); err != nil {
 		t.Fatalf("Spawn: %v", err)
@@ -76,6 +79,9 @@ func checkPrimeWritesHubWorkspace(t *testing.T, h *hubforge.Hub) {
 	wsPath := fabricengine.HubWorkspacePath(l)
 	if len(*launched) != 1 || (*launched)[0] != wsPath {
 		t.Fatalf("CodeLauncher calls = %v, want exactly [%s]", *launched, wsPath)
+	}
+	if runs := windowCommandRuns(t, markerPath); runs != 1 {
+		t.Errorf("window command runs after a prime Spawn = %d; want 1, since the command runs in the hub directory beside the workspace file", runs)
 	}
 	data, err := os.ReadFile(wsPath)
 	if err != nil {
@@ -143,6 +149,7 @@ func readOptionalFile(t *testing.T, path string) (data []byte, exists bool) {
 
 // checkTaskSlugOpensBareFolder asserts a task spawn launches its bare folder, and that a task seed and spawn leave the workspace file's bytes, or its absence, unchanged.
 // It also asserts Seed writes the same on-demand attach task Spawn does and seeds the keybindings.json as Spawn does, each into a missing file.
+// It also asserts Spawn, and never Seed, runs the machine's desktop window command.
 func checkTaskSlugOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 	resetPrimeEditorState(t, h)
 	l := h.Location
@@ -155,6 +162,7 @@ func checkTaskSlugOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 	if err := os.RemoveAll(keybindingsPath); err != nil {
 		t.Fatalf("remove keybindings: %v", err)
 	}
+	markerPath := setDesktopWindowCommand(t, h)
 	workspaceBefore, workspaceExisted := readOptionalFile(t, fabricengine.HubWorkspacePath(l))
 
 	keybindings, err := Seed(l, slug)
@@ -167,6 +175,9 @@ func checkTaskSlugOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 	}
 	if _, err := os.Stat(keybindingsPath); err != nil {
 		t.Errorf("keybindings.json missing after Seed: %v", err)
+	}
+	if _, err := os.Stat(markerPath); !os.IsNotExist(err) {
+		t.Errorf("window command marker after Seed: stat error %v; want it absent, since Seed opens no window", err)
 	}
 	if err := os.RemoveAll(keybindingsPath); err != nil {
 		t.Fatalf("remove keybindings: %v", err)
@@ -183,10 +194,56 @@ func checkTaskSlugOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 	if len(*launched) != 1 || (*launched)[0] != want {
 		t.Fatalf("CodeLauncher calls = %v, want [%s]", *launched, want)
 	}
+	if marker, err := os.ReadFile(markerPath); err != nil || strings.TrimSpace(string(marker)) != "ran" {
+		t.Errorf("window command marker = %q, %v; want one run of the window command", marker, err)
+	}
 	workspaceAfter, workspaceExists := readOptionalFile(t, fabricengine.HubWorkspacePath(l))
 	if workspaceExists != workspaceExisted || !bytes.Equal(workspaceAfter, workspaceBefore) {
 		t.Errorf("workspace file changed by a task seed and spawn: existed %v then, %v now; bytes before %q, after %q", workspaceExisted, workspaceExists, workspaceBefore, workspaceAfter)
 	}
+}
+
+// checkWindowCommandFollowsALaunch asserts OpenTask runs the machine's window command once after a launch,
+// and that a failing CodeLauncher makes Spawn and OpenTask return its error and run no command.
+func checkWindowCommandFollowsALaunch(t *testing.T, h *hubforge.Hub, slug string) {
+	resetPrimeEditorState(t, h)
+	l := h.Location
+	hubforge.AddPair(t, h, slug)
+	markerPath := setDesktopWindowCommand(t, h)
+
+	launched := recordLauncher(t)
+	if err := OpenTask(l, slug); err != nil {
+		t.Fatalf("OpenTask: %v", err)
+	}
+	want := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel)
+	if len(*launched) != 1 || (*launched)[0] != want {
+		t.Fatalf("CodeLauncher calls = %v, want [%s]", *launched, want)
+	}
+	if runs := windowCommandRuns(t, markerPath); runs != 1 {
+		t.Fatalf("window command runs after OpenTask = %d; want 1", runs)
+	}
+
+	launchErr := errors.New("code is not installed")
+	CodeLauncher = func(string) error { return launchErr }
+	if err := OpenTask(l, slug); !errors.Is(err, launchErr) {
+		t.Errorf("OpenTask error = %v; want the launcher's error", err)
+	}
+	if _, err := Spawn(l, slug); !errors.Is(err, launchErr) {
+		t.Errorf("Spawn error = %v; want the launcher's error", err)
+	}
+	if runs := windowCommandRuns(t, markerPath); runs != 1 {
+		t.Errorf("window command runs after failed launches = %d; want still 1, since a failed launch opens no window", runs)
+	}
+}
+
+// windowCommandRuns returns how many times the window command appended to the marker at markerPath.
+func windowCommandRuns(t *testing.T, markerPath string) int {
+	t.Helper()
+	data, exists := readOptionalFile(t, markerPath)
+	if !exists {
+		return 0
+	}
+	return len(strings.Fields(string(data)))
 }
 
 // checkPrimeSeedWritesHubWorkspace asserts a seed of the prime writes the hub workspace file with the workspace title and launches nothing.
@@ -367,4 +424,26 @@ func readPrimeLook(t *testing.T, path string) primeLook {
 		t.Fatalf("decode settings: %v\n%s", err, data)
 	}
 	return look
+}
+
+// setDesktopWindowCommand writes h's desktop machine override with a window command that appends "ran" to a marker file, in a form sh and cmd both run, and no wait.
+// It returns the marker's path and removes the override on cleanup.
+func setDesktopWindowCommand(t *testing.T, h *hubforge.Hub) string {
+	t.Helper()
+	markerPath := filepath.Join(t.TempDir(), "marker")
+	board := fabricengine.BoltDir(h.Location.HubPath)
+	if err := os.MkdirAll(configengine.ScratchDir(board), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q): %v", configengine.ScratchDir(board), err)
+	}
+	machinePath := configengine.MachineFile(board, "desktop")
+	contents := "window_command: 'echo ran>> \"" + markerPath + "\"'\nwindow_wait_ms: 0\n"
+	if err := os.WriteFile(machinePath, []byte(contents), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q): %v", machinePath, err)
+	}
+	t.Cleanup(func() {
+		if err := os.Remove(machinePath); err != nil {
+			t.Errorf("remove %s: %v", machinePath, err)
+		}
+	})
+	return markerPath
 }
