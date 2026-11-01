@@ -22,7 +22,7 @@
 // The geometry reads — GitDir and CommonDir — are the one local read beside go-git:
 // they resolve the checkout's `.git` entry through internal/dotgit once per handle, spawning nothing.
 // The worktree root is not among them: that query belongs to internal/lymcwd alone.
-// Every other CLI-bound method — StageAndCommit, StageAllAndCommit, Push, PushCoalesced, ResetHard, ResetKeep, CherryPick, CherryPickAbort, IsAncestor, CommitsNotIn, BlameLines (go-git's blame walks the whole history of the file per call and has no first-parent mode), UpdateRemoteBranchLeased, HasUnpulled, and HasUnpushed (measured and reverted from a go-git ancestry walk; see HasUnpushed's own godoc in push.go for the reversal criterion) — sits on runChecked.
+// Every other CLI-bound method — StageAndCommit, StageAllAndCommit, FetchWithArgs, Push, PushCoalesced, ResetHard, ResetKeep, CherryPick, CherryPickAbort, IsAncestor, CommitsNotIn, BlameLines (go-git's blame walks the whole history of the file per call and has no first-parent mode), UpdateRemoteBranchLeased, HasUnpulled, and HasUnpushed (measured and reverted from a go-git ancestry walk; see HasUnpushed's own godoc in push.go for the reversal criterion) — sits on runChecked.
 // See PATTERN-gitrepo-client-boundary for the enforced, exhaustive version of this split and the review obligation any new CLI call inside this package carries.
 // gitexec itself stays a low-level package gitrepo builds on, importing no gitrepo or feature package, regardless of which side of the boundary a gitrepo method is on — it has roughly seventy non-test call sites across gitrepo, fabricengine, fabriccli, lymcwd, and websterengine,
 // and gitrepo remains one of its many consumers, not merged into it.
@@ -53,6 +53,10 @@
 //   - Pull is the fast-forward-only pull surface (see below); Fetch is its
 //     fetch-without-merge sibling, refreshing remote-tracking refs without
 //     ever moving the local branch.
+//   - HoldRemoteRefs takes the repository's remote-refs lock, a file in the common git dir every worktree shares.
+//     Fetch, FetchWithArgs, Pull and every push method run git under it, waiting while it is held,
+//     since a fetch and a push both write the shared remote-tracking refs and two concurrent writers of one ref make the loser fail.
+//     A caller that reads origin and then judges the tracking refs holds it across both.
 //   - IsAncestor is the ancestry/reachability primitive: it answers "is sha
 //     an ancestor of ref" via `git merge-base --is-ancestor`, mapping git's
 //     tri-state exit code directly rather than folding any non-zero exit

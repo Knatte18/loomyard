@@ -4,6 +4,7 @@
 // Fetch sits alongside Pull as the fetch-without-merge primitive: it refreshes this checkout's
 // remote-tracking refs without ever touching the local branch, the split fabric.Fabric.Pull needs
 // to inspect what changed upstream before deciding how to reconcile.
+// Both run git under the repository's remote-refs lock, since both write remote-tracking refs.
 
 package gitrepo
 
@@ -16,8 +17,12 @@ import "fmt"
 // (pull_test.go pins that contract), so the reproduction pointer is what keeps a nonzero exit
 // diagnosable instead of a bare number.
 func (r *Repo) Pull() error {
-	//gitexec:raw — a non-zero exit here IS a failure, but folding git's stderr into the message would break pull_test.go's test-enforced no-`fatal:`-leak surface; the reproduction pointer stands in for the stderr.
-	_, _, code, err := r.run("pull", "--ff-only")
+	var code int
+	err := r.withRemoteRefs(func() (runErr error) {
+		//gitexec:raw — a non-zero exit here IS a failure, but folding git's stderr into the message would break pull_test.go's test-enforced no-`fatal:`-leak surface; the reproduction pointer stands in for the stderr.
+		_, _, code, runErr = r.run("pull", "--ff-only")
+		return runErr
+	})
 	if err != nil {
 		return fmt.Errorf("gitrepo: pull --ff-only in %s: %w", r.path, err)
 	}
@@ -31,8 +36,12 @@ func (r *Repo) Pull() error {
 // Pull.
 // Errors follow Pull's style: repo path, exit code, and the reproducing command, never raw stderr.
 func (r *Repo) Fetch() error {
-	//gitexec:raw — a non-zero exit here IS a failure, but folding git's stderr into the message would break fetch_integration_test.go's test-enforced no-`fatal:`-leak surface; the reproduction pointer stands in for the stderr.
-	_, _, code, err := r.run("fetch")
+	var code int
+	err := r.withRemoteRefs(func() (runErr error) {
+		//gitexec:raw — a non-zero exit here IS a failure, but folding git's stderr into the message would break fetch_integration_test.go's test-enforced no-`fatal:`-leak surface; the reproduction pointer stands in for the stderr.
+		_, _, code, runErr = r.run("fetch")
+		return runErr
+	})
 	if err != nil {
 		return fmt.Errorf("gitrepo: fetch in %s: %w", r.path, err)
 	}

@@ -96,7 +96,7 @@ func (t *Topology) cleanupRemoteWarp(l *lymcwd.Location, apply bool, openPRHeads
 	}
 
 	// One fetch makes every observed tip's objects local and brings the default branch's tracking ref up to date, which is the parent the landed check compares against.
-	if _, err := gitexec.Run([]string{"fetch", "--no-tags", originRemoteName}, repoDir); err != nil {
+	if _, err := gitrepo.New(repoDir).FetchWithArgs("--no-tags", originRemoteName); err != nil {
 		return res, fmt.Errorf("fetch %q: %w", originRemoteName, err)
 	}
 	parent := originRemoteName + "/" + defaultBranch

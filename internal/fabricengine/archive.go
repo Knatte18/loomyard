@@ -154,15 +154,20 @@ func resolveArchiveTip(weftRoot, weftBranch string) (string, error) {
 		}
 		return "", err
 	}
-	if strings.TrimSpace(listed) == "" {
+	// ls-remote matches a pattern by its tail, so only the line naming exactly this branch is its tip.
+	tip := ""
+	for _, line := range strings.Split(listed, "\n") {
+		sha, ref, found := strings.Cut(strings.TrimSpace(line), "\t")
+		if found && ref == "refs/heads/"+weftBranch {
+			tip = sha
+		}
+	}
+	if tip == "" {
 		return "", nil
 	}
-	if _, err := gitexec.Run([]string{"fetch", originRemoteName, "refs/heads/" + weftBranch}, weftRoot); err != nil {
+	// The tip is fetched by SHA so the answer never rests on FETCH_HEAD, which another fetch of the worktree can rewrite once the lock is released.
+	if _, err := gitrepo.New(weftRoot).FetchWithArgs(originRemoteName, tip); err != nil {
 		return "", fmt.Errorf("fetch weft branch %q from %q: %w", weftBranch, originRemoteName, err)
 	}
-	fetched, err := gitexec.Run([]string{"rev-parse", "--verify", "FETCH_HEAD^{commit}"}, weftRoot)
-	if err != nil {
-		return "", fmt.Errorf("resolve fetched weft branch %q: %w", weftBranch, err)
-	}
-	return strings.TrimSpace(fetched), nil
+	return tip, nil
 }

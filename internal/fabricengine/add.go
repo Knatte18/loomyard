@@ -412,7 +412,7 @@ func (t *Topology) add(l *lymcwd.Location, slug string, opts AddOptions, local b
 	warpStart, warpRemote := "", ""
 	if warpAdoptTip != "" {
 		warpStart, warpRemote = originRemoteName+"/"+warpBranch, originRemoteName
-		if _, err := gitexec.Run([]string{"fetch", "--no-tags", originRemoteName, "refs/heads/" + warpBranch + ":refs/remotes/" + warpStart}, l.WorktreePath()); err != nil {
+		if _, err := gitrepo.New(l.WorktreePath()).FetchWithArgs("--no-tags", originRemoteName, "refs/heads/"+warpBranch+":refs/remotes/"+warpStart); err != nil {
 			return AddResult{}, fmt.Errorf("fetch warp branch %q from %q: %w", warpBranch, originRemoteName, err)
 		}
 	}
@@ -466,7 +466,7 @@ func (t *Topology) add(l *lymcwd.Location, slug string, opts AddOptions, local b
 	// git refuses a fetch into a branch that is not a fast-forward,
 	// so a branch that moved since the pre-flight is never rewound or overwritten.
 	if weftOld.fastForwardTo != "" {
-		if _, err := gitexec.Run([]string{"fetch", "--no-tags", originRemoteName, "refs/heads/" + weftBranch + ":refs/heads/" + weftBranch}, weftRepoRoot); err != nil {
+		if _, err := gitrepo.New(weftRepoRoot).FetchWithArgs("--no-tags", originRemoteName, "refs/heads/"+weftBranch+":refs/heads/"+weftBranch); err != nil {
 			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 			return AddResult{}, fmt.Errorf("fast-forward weft branch %q to its tip on %q failed: %w", weftBranch, originRemoteName, err)
 		}

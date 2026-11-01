@@ -19,7 +19,9 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
@@ -99,6 +101,37 @@ func reconcile(t *testing.T, hub *originHub, scope fabricengine.ReconcileScope, 
 		t.Fatalf("ReconcileOrigin(%+v) error = %v; want nil", scope, err)
 	}
 	return report
+}
+
+// remoteRefsLockPaths returns where the remote-refs locks of the hub's code and records repositories live.
+func remoteRefsLockPaths(t *testing.T, hub *originHub) []string {
+	t.Helper()
+	var paths []string
+	for _, dir := range []string{hub.PrimeWorktree(), hub.PrimeRecords()} {
+		commonDir, err := gitrepo.New(dir).CommonDir()
+		if err != nil {
+			t.Fatalf("CommonDir(%s) error = %v", dir, err)
+		}
+		paths = append(paths, filepath.Join(commonDir, gitrepo.RemoteRefsLockFileName))
+	}
+	return paths
+}
+
+// freeRemoteRefsLocks returns the lock paths it could take, releasing each at once.
+func freeRemoteRefsLocks(t *testing.T, paths []string) []string {
+	t.Helper()
+	var free []string
+	for _, path := range paths {
+		held, acquired, err := lock.TryAcquireWriteLock(path)
+		if err != nil {
+			t.Errorf("TryAcquireWriteLock(%s) error = %v", path, err)
+		}
+		if acquired {
+			_ = held.Release()
+			free = append(free, path)
+		}
+	}
+	return free
 }
 
 // branchOf returns the outcome for the branch of repo side, failing the test when the report holds none.
@@ -219,6 +252,82 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 		}
 		if report.Summary() != "" {
 			t.Errorf("Summary() = %q; want empty for a level hub", report.Summary())
+		}
+	})
+
+	t.Run("A reconcile holds both repositories' remote-refs locks across its ls-remote calls, fetches and branch verdicts, and frees them once it returns", func(t *testing.T) {
+		hub := newOriginHub(t)
+		other := otherMachine(t, hub.CodeBare, hub.primeBranch)
+		gitkit.CommitFile(t, other, "moved.txt", "moved", "origin moved code")
+		gitkit.Git(t, other, "push", "origin", hub.primeBranch)
+		lockPaths := remoteRefsLockPaths(t, hub)
+
+		var calls callLog
+		var freeDuringCalls callLog
+		t.Cleanup(fabricengine.SetOriginCallHookForTest(func(args []string) {
+			calls.record(args)
+			if free := freeRemoteRefsLocks(t, lockPaths); len(free) > 0 {
+				freeDuringCalls.record(append([]string{args[0]}, free...))
+			}
+		}))
+		verdicts := 0
+		var freeDuringVerdicts [][]string
+		t.Cleanup(fabricengine.SetOriginVerdictHookForTest(func() {
+			verdicts++
+			if free := freeRemoteRefsLocks(t, lockPaths); len(free) > 0 {
+				freeDuringVerdicts = append(freeDuringVerdicts, free)
+			}
+		}))
+		report := reconcile(t, hub, fabricengine.ReconcileScope{}, fabricengine.ReconcileOptions{})
+
+		if len(calls.withVerb("ls-remote")) != 2 || len(calls.withVerb("fetch")) != 1 {
+			t.Fatalf("remote calls = %v; want two ls-remote calls and one fetch", calls.calls)
+		}
+		if len(freeDuringCalls.calls) != 0 {
+			t.Errorf("remote calls that ran with a remote-refs lock free = %v; want every lock held throughout", freeDuringCalls.calls)
+		}
+		if verdicts == 0 || verdicts < len(report.Branches) {
+			t.Errorf("branch verdicts reached = %d for %d reported branches; want one per branch", verdicts, len(report.Branches))
+		}
+		if len(freeDuringVerdicts) != 0 {
+			t.Errorf("branch verdicts that ran with a remote-refs lock free = %v; want every lock held through the last verdict", freeDuringVerdicts)
+		}
+		if free := freeRemoteRefsLocks(t, lockPaths); len(free) != len(lockPaths) {
+			t.Errorf("remote-refs locks free after the reconcile = %v; want all of %v", free, lockPaths)
+		}
+	})
+
+	t.Run("A reconcile frees both remote-refs locks on every return", func(t *testing.T) {
+		unreachableOptions := fabricengine.ReconcileOptions{
+			RetryBound:    3 * time.Second,
+			RetryInterval: time.Second,
+			Sleep:         func(time.Duration) {},
+		}
+		for _, row := range []struct {
+			name      string
+			breakURL  string
+			scope     fabricengine.ReconcileScope
+			options   fabricengine.ReconcileOptions
+			wantError bool
+		}{
+			{"a judge-only reconcile", "", fabricengine.ReconcileScope{JudgeOnly: true}, fabricengine.ReconcileOptions{}, false},
+			{"an unreachable origin", "http://127.0.0.1:1/x", fabricengine.ReconcileScope{}, unreachableOptions, false},
+			{"an origin that is no repository", filepath.Join(t.TempDir(), "no-repository"), fabricengine.ReconcileScope{}, unreachableOptions, true},
+		} {
+			hub := newOriginHub(t)
+			if row.breakURL != "" {
+				gitkit.Git(t, hub.PrimeRecords(), "remote", "set-url", "origin", row.breakURL)
+			}
+			lockPaths := remoteRefsLockPaths(t, hub)
+
+			_, err := fabricengine.ReconcileOrigin(hub.Location, row.scope, fabricengine.OriginSeams{}, row.options)
+
+			if (err != nil) != row.wantError {
+				t.Errorf("%s: ReconcileOrigin() error = %v; want error %v", row.name, err, row.wantError)
+			}
+			if free := freeRemoteRefsLocks(t, lockPaths); len(free) != len(lockPaths) {
+				t.Errorf("%s: remote-refs locks free after the reconcile = %v; want all of %v", row.name, free, lockPaths)
+			}
 		}
 	})
 
@@ -473,6 +582,7 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 		gitkit.Git(t, other, "push", "origin", hub.primeRecords)
 		refsBefore := refsOf(t, hub.PrimeRecords())
 		localBefore := gitkit.RevParse(t, hub.PrimeRecords(), "HEAD")
+		lockPaths := remoteRefsLockPaths(t, hub)
 		t.Cleanup(fabricengine.SetOriginCallHookForTest(func(args []string) {
 			if args[0] == "fetch" && slices.ContainsFunc(args, func(arg string) bool { return strings.Contains(arg, hub.primeRecords) }) {
 				gitkit.Git(t, hub.RecordsBare, "update-ref", "-d", "refs/heads/"+hub.primeRecords)
@@ -489,6 +599,9 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 		}
 		if got := gitkit.RevParse(t, hub.PrimeRecords(), "HEAD"); got != localBefore {
 			t.Errorf("records HEAD = %q; want %q, nothing moved", got, localBefore)
+		}
+		if free := freeRemoteRefsLocks(t, lockPaths); len(free) != len(lockPaths) {
+			t.Errorf("remote-refs locks free after the failed fetch = %v; want all of %v", free, lockPaths)
 		}
 	})
 

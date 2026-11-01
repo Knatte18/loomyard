@@ -1,0 +1,49 @@
+// remoterefslock.go holds the remote-refs lock: one lock per repository, in its common git dir, that every lym git call writing the repository's remote-tracking refs holds while git runs.
+
+package gitrepo
+
+import (
+	"fmt"
+	"path/filepath"
+
+	"github.com/Knatte18/loomyard/internal/lock"
+)
+
+// RemoteRefsLockFileName names the remote-refs lock file in a repository's common git dir.
+// A fetch and a push both write the remote-tracking refs every worktree of the repository shares, so two such calls racing on one ref make the loser fail with git's "incorrect old value provided" or "cannot lock ref".
+const RemoteRefsLockFileName = "lym-remote-refs.lock"
+
+// HoldRemoteRefs takes the remote-refs lock of the repository this checkout belongs to, waiting while another holder has it, and returns its release.
+// A holder that reads origin and then judges the tracking refs sees no push or fetch of the repository land in between.
+// The lock is not reentrant: a holder runs no fetch, pull or push through this package, since each takes the lock itself.
+func (r *Repo) HoldRemoteRefs() (release func() error, err error) {
+	commonDir, err := r.CommonDir()
+	if err != nil {
+		return nil, fmt.Errorf("gitrepo: hold the remote-refs lock of %s: %w", r.path, err)
+	}
+	held, err := lock.AcquireWriteLock(filepath.Join(commonDir, RemoteRefsLockFileName))
+	if err != nil {
+		return nil, fmt.Errorf("gitrepo: hold the remote-refs lock of %s: %w", r.path, err)
+	}
+	return held.Release, nil
+}
+
+// withRemoteRefs runs call under the remote-refs lock, releasing it once call returns.
+func (r *Repo) withRemoteRefs(call func() error) error {
+	release, err := r.HoldRemoteRefs()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = release() }()
+	return call()
+}
+
+// FetchWithArgs runs `git fetch` with args under the remote-refs lock and returns git's stdout.
+// It is the fetch for a caller naming its own remote and refspecs; a non-zero exit returns *gitexec.GitError.
+func (r *Repo) FetchWithArgs(args ...string) (stdout string, err error) {
+	err = r.withRemoteRefs(func() error {
+		stdout, err = r.runChecked(append([]string{"fetch"}, args...)...)
+		return err
+	})
+	return stdout, err
+}

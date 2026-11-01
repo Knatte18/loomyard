@@ -1,5 +1,5 @@
 // push.go implements the push surface: Push (a single synchronous push with rebase-retry resilience), PushCoalesced (a single-pusher lock plus one guarded push, coalescing across processes via the lock queue rather than an internal retry loop), PushRebaseFree (a single plain push that never rebases, for callers that supply their own serialization), and DeleteRemoteBranch (a single remote branch deletion, idempotent when the ref is already absent), DeleteRemoteBranchLeased (the same deletion, only while the remote branch sits at an expected SHA), and UpdateRemoteBranchLeased (a forced move of a remote branch, only while it sits at an expected SHA).
-// All of them are push-shaped remote calls; committing is always the caller's separate StageAndCommit or StageAllAndCommit call.
+// All of them are push-shaped remote calls, each git call run under the repository's remote-refs lock; committing is always the caller's separate StageAndCommit or StageAllAndCommit call.
 
 package gitrepo
 
@@ -93,7 +93,10 @@ func (r *Repo) pushWithRebaseRetry() error {
 		return fmt.Errorf("gitrepo: git push: %w", err)
 	}
 
-	_, rebaseErr := r.runChecked("pull", "--rebase")
+	rebaseErr := r.withRemoteRefs(func() error {
+		_, err := r.runChecked("pull", "--rebase")
+		return err
+	})
 	if rebaseErr != nil {
 		// The pull --rebase exit branch is control flow, not a message: only a
 		// *GitError means git ran and rejected the rebase, which is what
@@ -125,7 +128,7 @@ func (r *Repo) pushWithRebaseRetry() error {
 	return nil
 }
 
-// pushPlainWithRetry runs the plain push through PushWithRetry for the checked-out branch.
+// pushPlainWithRetry runs the plain push through PushWithRetry for the checked-out branch, each attempt under the remote-refs lock and every backoff outside it.
 // A branch carrying the local-only mark is refused with ErrLocalBranch before git runs, and a mark that cannot be read is returned as the error.
 // A branch that cannot be read leaves the ref empty, so nothing is retried.
 func (r *Repo) pushPlainWithRetry() error {
@@ -134,8 +137,10 @@ func (r *Repo) pushPlainWithRetry() error {
 	}
 	branch, _ := r.CurrentBranch()
 	return PushWithRetry(func() error {
-		_, err := r.runChecked("-c", "push.autoSetupRemote=true", "push")
-		return err
+		return r.withRemoteRefs(func() error {
+			_, err := r.runChecked("-c", "push.autoSetupRemote=true", "push")
+			return err
+		})
 	}, branch, PushBackoffDelays(), r.pushSleep)
 }
 
@@ -145,7 +150,7 @@ func (r *Repo) pushPlainWithRetry() error {
 // it returns an error satisfying errors.Is(err, ErrLocalBranch) for a branch carrying the local-only mark.
 // A remote "(failed)" or "cannot lock ref" refusal is retried a bounded number of times, and an exhausted retry wraps ErrPushRetriesExhausted rather than mapping to ErrPushRejected.
 // A refusal for want of authentication or permission wraps ErrPushAuthRefused with git's refusal line, is never retried, and never maps to ErrPushRejected.
-// Lock-free.
+// It takes no push-serialising lock of its own; each attempt runs under the repository's remote-refs lock.
 func (r *Repo) PushRebaseFree() error {
 	err := r.pushPlainWithRetry()
 	if err == nil {
@@ -185,7 +190,10 @@ func lastLineHolding(stderr string, triggers []string) (line string, found bool)
 // deleted is returned separately from err precisely so the caller can tell "removed it" from "there
 // was nothing there", which is what the caller's mutation record needs.
 func (r *Repo) DeleteRemoteBranch(remote, branch string) (deleted bool, err error) {
-	_, err = r.runChecked("push", remote, "--delete", branch)
+	err = r.withRemoteRefs(func() error {
+		_, err := r.runChecked("push", remote, "--delete", branch)
+		return err
+	})
 	if err == nil {
 		return true, nil
 	}
@@ -208,7 +216,10 @@ func (r *Repo) DeleteRemoteBranchLeased(remote, branch, expectSHA string) error 
 	}
 
 	lease := "--force-with-lease=refs/heads/" + branch + ":" + expectSHA
-	_, err := r.runChecked("push", lease, remote, "--delete", branch)
+	err := r.withRemoteRefs(func() error {
+		_, err := r.runChecked("push", lease, remote, "--delete", branch)
+		return err
+	})
 	if err != nil {
 		return fmt.Errorf("gitrepo: git push --delete (leased at %s): %w", expectSHA, err)
 	}
@@ -226,7 +237,10 @@ func (r *Repo) UpdateRemoteBranchLeased(remote, branch, sha, expectSHA string) e
 	}
 
 	lease := "--force-with-lease=refs/heads/" + branch + ":" + expectSHA
-	_, err := r.runChecked("push", lease, remote, sha+":refs/heads/"+branch)
+	err := r.withRemoteRefs(func() error {
+		_, err := r.runChecked("push", lease, remote, sha+":refs/heads/"+branch)
+		return err
+	})
 	if err == nil {
 		return nil
 	}

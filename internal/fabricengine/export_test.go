@@ -833,6 +833,14 @@ func SetOriginCallHookForTest(hook func(args []string)) (restore func()) {
 	return func() { originCallHook = previous }
 }
 
+// SetOriginVerdictHookForTest installs hook to run just before each branch verdict an origin reconcile reaches and returns the function that removes it.
+// It changes process-global state, so the calling test must not be parallel.
+func SetOriginVerdictHookForTest(hook func()) (restore func()) {
+	previous := originVerdictHook
+	originVerdictHook = hook
+	return func() { originVerdictHook = previous }
+}
+
 // HoldHubPauseForTest installs a Defer gate for slug over a temp pause record that holds one live hub entry, until the test ends.
 // It changes process-global state, so the calling test must not be parallel.
 func HoldHubPauseForTest(t *testing.T, slug string) {

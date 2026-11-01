@@ -67,6 +67,8 @@
 // The network work is two `git ls-remote origin` calls, one per repository, run in parallel under `ReconcileOptions`' per-attempt deadline and retried together after a transport failure until the bound is spent.
 // Only the heads origin moved past the local tracking ref are then fetched, one fetch per repository.
 // A judge-only reconcile fetches their objects by SHA into no ref and writes no FETCH_HEAD, so it moves nothing.
+// The reconcile holds each repository's remote-refs lock (`gitrepo.Repo.HoldRemoteRefs`) from the ls-remote pair through the last branch verdict, the code repository's first,
+// so a push or fetch of either repository waits for the verdicts, and a push already in flight lands before origin is read and is never judged a rewind.
 // A transport failure through the bound is `OriginReport.Unreachable`, with nothing judged and nothing moved, and a nil error.
 // Any other failure of the ls-remote pair, or a failed fetch after both answered, is the returned error.
 //
@@ -294,7 +296,7 @@
 // (`seedWeftArtifactExcludes`) and deliberately does not manage the warp repo's own git
 // configuration.
 // This asymmetry is now narrower than it was: the warp-via-fabric async push described above uses
-// the lock-free, rebase-free `PushRebaseFree` for both sides (per the
+// the rebase-free `PushRebaseFree`, which takes no push-serialising lock, for both sides (per the
 // no-warp-root-gitrepo-push-lock Shared Decision), so that path never creates a
 // `.gitrepo-push.lock` at the pristine warp worktree root at all anymore — `Fabric.Status`'s own
 // behavior of not suppressing a warp-side artifact is unchanged, but there is normally nothing
@@ -1209,7 +1211,6 @@
 // A `rev-parse` spawn survives only where git derives the answer from config or revision syntax:
 //
 //   - `InstallPostCheckoutHook` asks `--git-path hooks`, which honours `core.hooksPath`.
-//   - `resolveArchiveTip` resolves `FETCH_HEAD^{commit}`, revision syntax over git's fetch output.
 //   - websterengine's `--disambiguate` and `<commit>:<path>` probes are git's own disambiguation.
 //
 // # The records replay

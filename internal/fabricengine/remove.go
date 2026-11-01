@@ -703,7 +703,7 @@ func deleteTaskBranchOnOrigin(rec *Mutations, l *lymcwd.Location, warpBranch, pa
 	if tip == "" {
 		return false, ""
 	}
-	if _, err := gitexec.Run([]string{"fetch", originRemoteName, "refs/heads/" + warpBranch}, repoDir); err != nil {
+	if _, err := gitrepo.New(repoDir).FetchWithArgs(originRemoteName, "refs/heads/"+warpBranch); err != nil {
 		return false, fmt.Sprintf("fetch task branch %s from %s: %v", warpBranch, originRemoteName, err)
 	}
 	return deleteTaskBranchAtTip(rec, l, warpBranch, parentBranch, tip)

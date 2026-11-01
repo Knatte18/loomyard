@@ -419,6 +419,17 @@ func callOriginHook(args []string) {
 	}
 }
 
+// originVerdictHook runs just before each branch verdict a reconcile reaches.
+// It is nil in production; a test sets it through SetOriginVerdictHookForTest.
+var originVerdictHook func()
+
+// callOriginVerdictHook runs the verdict hook, if any.
+func callOriginVerdictHook() {
+	if originVerdictHook != nil {
+		originVerdictHook()
+	}
+}
+
 // lsRemotePair runs `git ls-remote origin` for the code repository and the records repository in parallel, each under the attempt deadline, and returns each one's branch heads by branch name.
 // While either call fails with a transport failure and attempts remain, the pair is retried together after one interval.
 // A failure that is not a transport failure is never retried; it is returned as soon as it is seen, naming the repository and git's error line.
@@ -482,6 +493,7 @@ func lsRemoteHeads(side, dir string, deadline time.Duration) (map[string]string,
 
 // fetchMovedHeads fetches, in one fetch, the heads of heads, which map a branch name to origin's head for it, and which a caller limits to those whose head differs from the local tracking ref.
 // It updates each branch's tracking ref, forcing it since origin may have rewound or rewritten the branch.
+// The caller holds the repository's remote-refs lock, which this fetch does not take.
 // With judgeOnly it fetches the objects by SHA into no ref and writes no FETCH_HEAD, so a dry run moves nothing.
 // No head makes no call.
 func fetchMovedHeads(dir string, heads map[string]string, judgeOnly bool) error {
@@ -677,7 +689,7 @@ func samePath(porcelain, built string) bool {
 }
 
 // ReconcileOrigin judges this machine's local branches against origin and returns the verdict on each, and on each entry whose pair has a batten run record.
-// It runs one ls-remote per repository and fetches only the heads origin moved.
+// It runs one ls-remote per repository and fetches only the heads origin moved, holding each repository's remote-refs lock from the ls-remote through the branch verdicts, so a push in flight is never judged a rewind.
 // It reads the ended set, and tears down through the seam the local pair of each run origin has ended, before any branch moves; a judge-only scope reports those teardowns and runs none.
 // It also asks the owner seam, over origin's Bolt tip, which recorded entries another machine owns, and reports those owned_elsewhere.
 // A judge-only scope stops there.
@@ -696,47 +708,9 @@ func ReconcileOrigin(l *lymcwd.Location, scope ReconcileScope, seams OriginSeams
 		return res, err
 	}
 
-	warpHeads, recordsHeads, err := lsRemotePair(warpDir, recordsDir, opts)
-	if gitexec.IsTransportFailure(err) {
-		res.Unreachable = true
-		return res, nil
-	}
-	if err != nil {
+	res.Branches, res.Unreachable, err = judgeAgainstOrigin(targets, warpDir, recordsDir, scope.JudgeOnly, opts)
+	if err != nil || res.Unreachable {
 		return res, err
-	}
-
-	moved := map[string]map[string]string{warpDir: {}, recordsDir: {}}
-	for _, target := range targets {
-		heads := recordsHeads
-		if target.side == failedPushSideCode {
-			heads = warpHeads
-		}
-		if head, found := heads[target.branch]; found && head != target.tracking {
-			moved[target.repoDir][target.branch] = head
-		}
-	}
-	for _, dir := range []string{warpDir, recordsDir} {
-		if err := fetchMovedHeads(dir, moved[dir], scope.JudgeOnly); err != nil {
-			return res, err
-		}
-	}
-
-	for _, target := range targets {
-		heads := recordsHeads
-		if target.side == failedPushSideCode {
-			heads = warpHeads
-		}
-		outcome, err := judgeBranch(target.repoDir, target.branch, heads[target.branch], target.side != failedPushSideCode)
-		if err != nil {
-			return res, err
-		}
-		outcome.Repo = target.side
-		outcome.Slug = target.slug
-		outcome.Prime = target.prime
-		outcome.Worktree = target.worktree
-		outcome.CodeWorktree = target.codeWorktree
-		outcome.WayForward = outcome.stopWayForward()
-		res.Branches = append(res.Branches, outcome)
 	}
 
 	recorded, err := recordedPairs(l, pairs)
@@ -774,6 +748,66 @@ func ReconcileOrigin(l *lymcwd.Location, scope ReconcileScope, seams OriginSeams
 
 	res.Entries = mergeEndedEntries(classifyEntries(scope, recorded, res.Branches, owners, subjects), endedEntries)
 	return res, nil
+}
+
+// judgeAgainstOrigin reads origin's heads of both repositories, fetches the heads origin moved past their tracking refs and returns the verdict on each target.
+// It holds the remote-refs lock of the code repository and then of the records repository throughout,
+// so a push or fetch of either repository finishes before origin is read, or starts after every verdict, and never lands between the read and the verdict.
+// The locks are held through the ls-remote retries and their sleeps, bounded by opts' RetryBound,
+// so an unreachable origin blocks every fetch and push of both repositories for that bound.
+// A transport failure that outlasts the retry bound returns unreachable true with no verdict and a nil error.
+func judgeAgainstOrigin(targets []originTarget, warpDir, recordsDir string, judgeOnly bool, opts ReconcileOptions) (branches []BranchOutcome, unreachable bool, err error) {
+	for _, dir := range []string{warpDir, recordsDir} {
+		release, err := gitrepo.New(dir).HoldRemoteRefs()
+		if err != nil {
+			return nil, false, err
+		}
+		defer func() { _ = release() }()
+	}
+
+	warpHeads, recordsHeads, err := lsRemotePair(warpDir, recordsDir, opts)
+	if gitexec.IsTransportFailure(err) {
+		return nil, true, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+
+	moved := map[string]map[string]string{warpDir: {}, recordsDir: {}}
+	for _, target := range targets {
+		heads := recordsHeads
+		if target.side == failedPushSideCode {
+			heads = warpHeads
+		}
+		if head, found := heads[target.branch]; found && head != target.tracking {
+			moved[target.repoDir][target.branch] = head
+		}
+	}
+	for _, dir := range []string{warpDir, recordsDir} {
+		if err := fetchMovedHeads(dir, moved[dir], judgeOnly); err != nil {
+			return nil, false, err
+		}
+	}
+
+	for _, target := range targets {
+		heads := recordsHeads
+		if target.side == failedPushSideCode {
+			heads = warpHeads
+		}
+		callOriginVerdictHook()
+		outcome, err := judgeBranch(target.repoDir, target.branch, heads[target.branch], target.side != failedPushSideCode)
+		if err != nil {
+			return nil, false, err
+		}
+		outcome.Repo = target.side
+		outcome.Slug = target.slug
+		outcome.Prime = target.prime
+		outcome.Worktree = target.worktree
+		outcome.CodeWorktree = target.codeWorktree
+		outcome.WayForward = outcome.stopWayForward()
+		branches = append(branches, outcome)
+	}
+	return branches, false, nil
 }
 
 // classifyEntries returns the verdict on each of the recorded pairs, from the verdicts on its branches.

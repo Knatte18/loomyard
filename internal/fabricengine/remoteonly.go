@@ -2,11 +2,7 @@
 
 package fabricengine
 
-import (
-	"fmt"
-
-	"github.com/Knatte18/loomyard/internal/gitexec"
-)
+import "fmt"
 
 // RemoteOnlyCommits fetches the warp origin and returns the tip of the remote branch named like the warp checkout's current branch, and the commits on it that HEAD lacks, newest first.
 // The tip and the commit list are both empty when the repository has no origin remote or the remote has no such branch;
@@ -38,7 +34,7 @@ func (f *Fabric) RemoteOnlyCommits() (tip string, commits []string, err error) {
 	}
 
 	// The fetch comes after the tip is read, so a tip that advances in between still has its ancestor's objects local.
-	if _, err := gitexec.Run([]string{"fetch", "--no-tags", originRemoteName}, f.warpPath); err != nil {
+	if _, err := f.code.FetchWithArgs("--no-tags", originRemoteName); err != nil {
 		return "", nil, fmt.Errorf("fabricengine: remote-only commits: fetch %q: %w", originRemoteName, err)
 	}
 

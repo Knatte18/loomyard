@@ -49,7 +49,7 @@ func (t *Topology) DiscardTaskBranch(l *lymcwd.Location, slug string) (res Disca
 		}
 	}
 	if originTip != "" {
-		if _, err := gitexec.Run([]string{"fetch", originRemoteName, "refs/heads/" + warpBranch}, repoDir); err != nil {
+		if _, err := gitrepo.New(repoDir).FetchWithArgs(originRemoteName, "refs/heads/"+warpBranch); err != nil {
 			return DiscardResult{}, fmt.Errorf("fetch task branch %q from %q: %w", warpBranch, originRemoteName, err)
 		}
 	}
