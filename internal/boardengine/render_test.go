@@ -272,8 +272,8 @@ func readmeFixture() []boardengine.Task {
 // A third row pins that a task with a run status renders under Running, before Ready and in no layer, ordered by handle over ID, its At cell dropping the state `running` and keeping any other, and its Owner cell holding the prime owner for a task outside every beam.
 // The same row pins that a task waiting on a running one lands in Layer A, not Ready, still naming its handle under After, and that a task after that one lands in Layer B.
 // A fourth row pins that README.md nests every open project under Prime one heading level per depth, root-level ones by handle and nested ones in their parent's order and then by handle, with an open project under a done one counted as root-level, each heading linking the project and counting its open members, then its facts, its brief, its sub-projects and its own Tasks, Notes and Done split as the root's.
-// The same row pins that Prime's own entries, only those under no project, come after its sub-projects, a done project a linked Done row there, and that every project, open or done, renders to project-<slug>.md.
-// A project file opens with its handle and title, a link up to its parent's file, the brief, and for a beam only, beam and its recorded owner, renders its nested projects as sections in its order and then by handle, and holds its own entries.
+// The same row pins that Prime's own entries, only those under no project, come after its sub-projects under a No project heading at their level, a done project a linked Done row there, that a project with sub-projects holds its own entries under an Own entries heading after them and one without holds them directly, and that every project, open or done, renders to project-<slug>.md.
+// A project file opens with its handle and title, a link up to its parent's file, the brief, and for a beam only, beam and its recorded owner, renders its nested projects as sections in its order and then by handle, and holds its own entries under Own entries after them.
 // A task there waiting on a running member and a root task stands in Layer A, its After cell one handle per line, and the running member shows the beam's recorded owner.
 // A dependency naming no board entry shows in the After cell as a code span of its slug, and a draft task in a project file stands in its own Draft subsection after Ready.
 // A fifth row pins that a beam with a recorded owner on a board with no prime owner shows that owner in its own file.
@@ -525,11 +525,12 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				emptyProjectEntries(5) +
 				"\n" +
-				"#### Tasks (3)\n" +
+				ownEntriesHeading(4) +
+				"##### Tasks (3)\n" +
 				"\n" +
 				"Concrete and claimable; only a task can run.\n" +
 				"\n" +
-				"##### Running (1)\n" +
+				"###### Running (1)\n" +
 				"\n" +
 				"Held by a run; its scope is locked until the run ends.\n" +
 				"\n" +
@@ -537,7 +538,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
 				"| T2 | **Second step** | [`second`](design-second.md) | tapestry | Webster | box |  |  |\n" +
 				"\n" +
-				"##### Ready (1)\n" +
+				"###### Ready (1)\n" +
 				"\n" +
 				"Waits on nothing open; can start now.\n" +
 				"\n" +
@@ -545,7 +546,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
 				"| T1 | **First step** | `first` | tapestry |  |  |  |\n" +
 				"\n" +
-				"##### Layer A (1)\n" +
+				"###### Layer A (1)\n" +
 				"\n" +
 				"Waits only on Running, Ready or Draft entries.\n" +
 				"\n" +
@@ -553,17 +554,17 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
 				"| T3 | **Third step** | `third` | tapestry | T2<br>T7<br>`ghost` |  |  |\n" +
 				"\n" +
-				"#### Notes (1)\n" +
+				"##### Notes (1)\n" +
 				"\n" +
 				"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
 				"\n" +
-				"##### Other (1)\n" +
+				"###### Other (1)\n" +
 				"\n" +
 				"| # | Prio | Note | Slug | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- |\n" +
 				"| E1 |  | **A thought** | `thought` |  |  |\n" +
 				"\n" +
-				"#### Done (1)\n" +
+				"##### Done (1)\n" +
 				"\n" +
 				"Finished, awaiting `lym board prune --apply`.\n" +
 				"\n" +
@@ -607,11 +608,12 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				emptyProjectEntries(4) +
 				"\n" +
-				"### Tasks (1)\n" +
+				noProjectHeading(3) +
+				"#### Tasks (1)\n" +
 				"\n" +
 				"Concrete and claimable; only a task can run.\n" +
 				"\n" +
-				"#### Ready (1)\n" +
+				"##### Ready (1)\n" +
 				"\n" +
 				"Waits on nothing open; can start now.\n" +
 				"\n" +
@@ -619,11 +621,11 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
 				"| T7 | **Base** | `base` | tapestry |  |  |  |\n" +
 				"\n" +
-				"### Notes (0)\n" +
+				"#### Notes (0)\n" +
 				"\n" +
 				"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
 				"\n" +
-				"### Done (1)\n" +
+				"#### Done (1)\n" +
 				"\n" +
 				"Finished, awaiting `lym board prune --apply`.\n" +
 				"\n" +
@@ -659,11 +661,12 @@ func TestRenderReadmeGolden(t *testing.T) {
 					"\n" +
 					emptyProjectEntries(3) +
 					"\n" +
-					"## Tasks (3)\n" +
+					ownEntriesHeading(2) +
+					"### Tasks (3)\n" +
 					"\n" +
 					"Concrete and claimable; only a task can run.\n" +
 					"\n" +
-					"### Running (1)\n" +
+					"#### Running (1)\n" +
 					"\n" +
 					"Held by a run; its scope is locked until the run ends.\n" +
 					"\n" +
@@ -671,7 +674,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 					"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
 					"| T2 | **Second step** | [`second`](design-second.md) | tapestry | Webster | box |  |  |\n" +
 					"\n" +
-					"### Ready (1)\n" +
+					"#### Ready (1)\n" +
 					"\n" +
 					"Waits on nothing open; can start now.\n" +
 					"\n" +
@@ -679,7 +682,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 					"| --- | --- | --- | --- | --- | --- | --- |\n" +
 					"| T1 | **First step** | `first` | tapestry |  |  |  |\n" +
 					"\n" +
-					"### Layer A (1)\n" +
+					"#### Layer A (1)\n" +
 					"\n" +
 					"Waits only on Running, Ready or Draft entries.\n" +
 					"\n" +
@@ -687,17 +690,17 @@ func TestRenderReadmeGolden(t *testing.T) {
 					"| --- | --- | --- | --- | --- | --- | --- |\n" +
 					"| T3 | **Third step** | `third` | tapestry | T2<br>T7<br>`ghost` |  |  |\n" +
 					"\n" +
-					"## Notes (1)\n" +
+					"### Notes (1)\n" +
 					"\n" +
 					"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
 					"\n" +
-					"### Other (1)\n" +
+					"#### Other (1)\n" +
 					"\n" +
 					"| # | Prio | Note | Slug | Age<br>Revised | Labels |\n" +
 					"| --- | --- | --- | --- | --- | --- |\n" +
 					"| E1 |  | **A thought** | `thought` |  |  |\n" +
 					"\n" +
-					"## Done (1)\n" +
+					"### Done (1)\n" +
 					"\n" +
 					"Finished, awaiting `lym board prune --apply`.\n" +
 					"\n" +
@@ -795,7 +798,8 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				emptyProjectEntries(4) +
 				"\n" +
-				emptyProjectEntries(3),
+				noProjectHeading(3) +
+				emptyProjectEntries(4),
 			files: map[string]string{
 				"project-lone.md": "# P1 Lone beam\n" +
 					"\n" +
@@ -860,39 +864,19 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"`four` · Owner none recorded\n" +
 				"\n" +
-				"###### Tasks (0)\n" +
+				emptyEntriesAtLevelSix +
 				"\n" +
-				"Concrete and claimable; only a task can run.\n" +
+				ownEntriesHeading(6) +
+				emptyEntriesAtLevelSix +
 				"\n" +
-				"###### Ready (0)\n" +
+				ownEntriesHeading(5) +
+				emptyEntriesAtLevelSix +
 				"\n" +
-				"Waits on nothing open; can start now.\n" +
-				"\n" +
-				"_None._\n" +
-				"\n" +
-				"###### Notes (0)\n" +
-				"\n" +
-				"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
-				"\n" +
-				"###### Tasks (0)\n" +
-				"\n" +
-				"Concrete and claimable; only a task can run.\n" +
-				"\n" +
-				"###### Ready (0)\n" +
-				"\n" +
-				"Waits on nothing open; can start now.\n" +
-				"\n" +
-				"_None._\n" +
-				"\n" +
-				"###### Notes (0)\n" +
-				"\n" +
-				"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
-				"\n" +
+				ownEntriesHeading(4) +
 				emptyProjectEntries(5) +
 				"\n" +
-				emptyProjectEntries(4) +
-				"\n" +
-				emptyProjectEntries(3),
+				noProjectHeading(3) +
+				emptyProjectEntries(4),
 		},
 	}
 	for _, tt := range tests {
@@ -947,6 +931,37 @@ func emptyProjectEntries(level int) string {
 		strings.Repeat("#", level) + " Notes (0)\n" +
 		"\n" +
 		"Not tasks: ideas and observations, merged into a task when one is promoted.\n"
+}
+
+// emptyEntriesAtLevelSix is the rendered own entries of a project holding none, nested so deep that its Tasks, Ready and Notes headings all stop at level six.
+const emptyEntriesAtLevelSix = "###### Tasks (0)\n" +
+	"\n" +
+	"Concrete and claimable; only a task can run.\n" +
+	"\n" +
+	"###### Ready (0)\n" +
+	"\n" +
+	"Waits on nothing open; can start now.\n" +
+	"\n" +
+	"_None._\n" +
+	"\n" +
+	"###### Notes (0)\n" +
+	"\n" +
+	"Not tasks: ideas and observations, merged into a task when one is promoted.\n"
+
+// noProjectHeading is the heading at level level and the meaning line over the root's own entries when the root has open projects.
+func noProjectHeading(level int) string {
+	return strings.Repeat("#", level) + " No project\n" +
+		"\n" +
+		"The entries under no project.\n" +
+		"\n"
+}
+
+// ownEntriesHeading is the heading at level level and the meaning line over a project's own entries when it has open sub-projects.
+func ownEntriesHeading(level int) string {
+	return strings.Repeat("#", level) + " Own entries\n" +
+		"\n" +
+		"The entries directly under this project and under none of its sub-projects.\n" +
+		"\n"
 }
 
 // TestRenderDesignDocGoldens pins the design-doc header, the Depends on line with one linked and one named dependency, and a multi-line body appearing byte-identical.

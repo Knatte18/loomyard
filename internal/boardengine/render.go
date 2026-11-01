@@ -1,7 +1,8 @@
 // render.go — turns the entry list into the wiki's output files.
 //
 // Render is a pure function: entries in, a map of filename → content out (README.md for the root project, built by renderReadme, and project-<slug>.md for each project, built by renderProjectFile, plus design-*.md for any entry with a body).
-// Every project, the root's Prime included, renders through one project section: its heading, facts and brief, then a section per open project directly under it one heading level down, nested to any depth with headings capped at level six, then its own entries one level down;
+// Every project, the root's Prime included, renders through one project section: its heading, facts and brief, then a section per open project directly under it one heading level down, nested to any depth with headings capped at level six, then its own entries;
+// with no open sub-project the own entries sit one level down, and with any they sit under a No project heading for the root or an Own entries heading for any other project, at the sub-projects' level, two levels down;
 // README.md holds the Prime section under its header, and a project file holds its project's sub-projects and own entries under its header.
 // A project's own entries split into Tasks, by Running, Ready, dependency layers, Independent and Draft, Notes with one subsection per type label, research first, then Done.
 // Each subsection holds one markdown table in RenderOrder's order, each row opening with the entry's handle, and a Notes table adds the priority as H or L after it, under Prio;
@@ -126,14 +127,16 @@ var boardIntro = []string{
 	"",
 }
 
-// The root project's section, the board files' Tasks, Notes and Done sections and the Running and Ready subsections of Tasks, declared here alone.
+// The root project's section, the headings over a project's own entries beside its sub-projects, the board files' Tasks, Notes and Done sections and the Running and Ready subsections of Tasks, declared here alone.
 var (
-	primeSection   = readmeSection{"Prime", "The root project: the entries under no other project."}
-	tasksSection   = readmeSection{"Tasks", "Concrete and claimable; only a task can run."}
-	runningSection = readmeSection{"Running", "Held by a run; its scope is locked until the run ends."}
-	readySection   = readmeSection{"Ready", "Waits on nothing open; can start now."}
-	notesSection   = readmeSection{"Notes", "Not tasks: ideas and observations, merged into a task when one is promoted."}
-	doneSection    = readmeSection{"Done", "Finished, awaiting `lym board prune --apply`."}
+	primeSection      = readmeSection{"Prime", "The root project: the entries under no other project."}
+	noProjectSection  = readmeSection{"No project", "The entries under no project."}
+	ownEntriesSection = readmeSection{"Own entries", "The entries directly under this project and under none of its sub-projects."}
+	tasksSection      = readmeSection{"Tasks", "Concrete and claimable; only a task can run."}
+	runningSection    = readmeSection{"Running", "Held by a run; its scope is locked until the run ends."}
+	readySection      = readmeSection{"Ready", "Waits on nothing open; can start now."}
+	notesSection      = readmeSection{"Notes", "Not tasks: ideas and observations, merged into a task when one is promoted."}
+	doneSection       = readmeSection{"Done", "Finished, awaiting `lym board prune --apply`."}
 )
 
 // otherNotesHeading is the Notes subsection for a note whose type label is no longer configured.
@@ -382,13 +385,24 @@ func (b boardView) projectSection(project Task, level int) []string {
 	return append(lines, b.projectBody(project, level)...)
 }
 
-// projectBody renders what sits under the heading of project, the zero Task naming the root, at heading level level: a section per open project directly under it, in childProjects' order, each one level down and holding its own sub-projects in turn, then project's own Tasks, Notes and Done one level down.
+// projectBody renders what sits under the heading of project, the zero Task naming the root, at heading level level: a section per open project directly under it, in childProjects' order, each one level down and holding its own sub-projects in turn, then project's own Tasks, Notes and Done.
+// With no open sub-project the own entries sit one level down;
+// with any, they sit under a heading of their own at the sub-projects' level, No project for the root and Own entries for any other project, so a reader sees where the last sub-project ends.
 func (b boardView) projectBody(project Task, level int) []string {
+	children := b.childProjects(project)
+	if len(children) == 0 {
+		return b.entrySections(project, level+1)
+	}
 	var lines []string
-	for _, child := range b.childProjects(project) {
+	for _, child := range children {
 		lines = append(lines, b.projectSection(child.Task, level+1)...)
 	}
-	return append(lines, b.entrySections(project, level+1)...)
+	own := ownEntriesSection
+	if project.Slug == "" {
+		own = noProjectSection
+	}
+	lines = append(lines, heading(level+1, own.name), "", own.meaning, "")
+	return append(lines, b.entrySections(project, level+2)...)
 }
 
 // joinLines joins a board file's lines into its content, ending in exactly one newline.

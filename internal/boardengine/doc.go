@@ -179,15 +179,17 @@
 // The root's section is `Prime` with one meaning line;
 // any other project's heading links its handle and title to its file and counts its open members, and its facts line and brief follow.
 // Under the heading come a section per open project directly under it, one heading level down, each holding its own sub-projects the same way, in the parent's order key and then by handle, the root's by handle;
-// then the project's own entries one level down.
+// then the project's own entries.
+// A project with no open sub-project has its own entries one level down;
+// a project with any has them under a heading of their own after its sub-projects, at their level, with a meaning line, `No project` for the root and `Own entries` for any other project, so its own entries never read as the last sub-project's.
 // Heading levels nest with the project depth and stop at six, so a deep project still renders.
 // An open project under a done project counts as under the root, since a done project has no section.
 // README.md holds the `## Prime` section after its header, so every open project shows there with its own Running, Ready, Tasks, Notes and Done, and the root's own entries come last.
-// A project file's header stands as its project's heading: after it come the project's sub-projects at `##` and its own entries at `##`.
+// A project file's header stands as its project's heading: after it come the project's sub-projects at `##`, then its own entries at `##`, or under `## Own entries` at `###` when it has open sub-projects.
 // A project's own entries are a Tasks section, a Notes section grouped by type label, research first under the heading `Research`, then the other types in the order of the types list and the remainder under Other, and a Done section.
 // An open project is in none of the Tasks layers: ComputeLayers puts it in its own Project layer, a run-held one in Running and a done one in the done layer, and RenderOrder places open projects by handle between open tasks and open notes, and a done project between done tasks and done notes.
 // No project is a row of Tasks or Notes; a done project is a row of its parent file's Done table, its title linked to its file.
-// Every section heading but Prime ends in the number of entries listed under it in parentheses, such as `## Tasks (10)` or `### Ready (0)` in a project file, never the highest handle number, since handles have gaps.
+// Every section heading but Prime, No project and Own entries ends in the number of entries listed under it in parentheses, such as `## Tasks (10)` or `### Ready (0)` in a project file, never the highest handle number, since handles have gaps.
 // Tasks splits into Running, Ready, the dependency layers A, B and on, Independent for an isolated task, and Draft for an unreleased one.
 // A task a run holds, by RunHolds as the run lock decides it, goes under Running and in no layer; Running is omitted when no task runs.
 // An open draft task a run does not hold goes under Draft, whatever its dependencies or isolation, since nothing starts it until it is released;
