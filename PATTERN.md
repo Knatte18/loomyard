@@ -1,5 +1,11 @@
 # PATTERN
 
+## Code
+
+- `PATTERN-doc-go-documentation` — Writing a package's `doc.go`: it documents the package; a rule other code must follow is a PATTERN entry, never a `doc.go` paragraph.
+- `PATTERN-named-constants` — Writing a name or path that can go stale: one named constant, declared once and referenced everywhere, never a repeated literal.
+- `PATTERN-no-hard-coded-choice` — Choosing a language, engine or branch: lym hard-codes none; it is read from config, the repository's git state or a table row keyed by name. — [background](pattern/PATTERN-no-hard-coded-choice.md)
+
 ## Paths and geometry
 
 - `PATTERN-cwd-resolution` — Resolving a cwd, worktree root or anchor: only `internal/lymcwd`, from the worktree's own weft-root `.lym-anchor`; only `fabricengine` writes or git-reads it; engines get absolute paths, never import lymcwd; hub containers and workspace files stay hub-reachable only. (test) — [background](pattern/PATTERN-cwd-resolution.md)
@@ -27,6 +33,7 @@
 - `PATTERN-owner-machine` — Starting, resuming or landing a run: only where its entry is not owned elsewhere; owners only on root and beam projects, set only by `boardengine`'s owner setter; any other entry reads its `hubgeom.ParentOf` owner; a dobby continue pass is no resume. — [background](pattern/PATTERN-owner-machine.md)
 - `PATTERN-pair-parent` — Picking a new pair's parent for a board entry or reading an entry's owner through its parent: only `ParentBeam` and hubgeom's one `ParentOf`, never the acting worktree.
 - `PATTERN-github-auth` — Calling GitHub: auth only via internal/githubclient; no other production package runs gh; only lym selfreport create files an issue; only PR-Review, Finalize and pair teardown open, merge or close a pull request. (test)
+- `PATTERN-fabric-isolation` — Changing fabric: it learns nothing of IDEs, shuttle, the board or heddle; a module reaches fabric through a general seam, never one tailored to it. — [background](pattern/PATTERN-fabric-isolation.md)
 
 ## Shed and loom
 
@@ -43,6 +50,7 @@
 - `PATTERN-tolerant-records` — Go-written JSON records: never refuse an unknown key; rewrite via `internal/state`. (test) — [background](pattern/PATTERN-tolerant-records.md)
 - `PATTERN-gate-slot` — Running gate build, test or verify: in held `internal/gateslot` slots, verify via `verifytree.Verify`, a tier skipped only on `lym gate test`'s green record; a gate and its self-check call one function. (test) — [background](pattern/PATTERN-gate-slot.md)
 - `PATTERN-sole-parsers` — Parsing plan, parts file, discussion, summary, recipe or halt note, or classifying a plan ref: only its sole parser. (test) — [background](pattern/PATTERN-sole-parsers.md)
+- `PATTERN-shed-shared-machinery` — Adding what every phase machine needs: once, in shed's packages, never in one recipe's or module's own package.
 
 ## Agents and prompts
 
@@ -56,6 +64,7 @@
 - `PATTERN-wait-mark-display-only` — Marking a pane waiting: only reed's `SetWaitMark`; no Go decision reads `@lym_wait` or `@lym_wait_start`.
 - `PATTERN-shell-guard-table` — Guarding a shell command or building a pane-shell string: only `internal/shellguard`'s table, every engine rendering every row, and `internal/shell`, importing only stdlib.
 - `PATTERN-heddle-instructions` — Rendering heddle entries into a worktree file or a session's system prompt: only from `heddle.json` in the Bolt checkout, through `internal/heddleengine` (new); that file written only by `lym heddle` verbs and heddle's Bolt replayer; fabric names no heddle file. — [background](pattern/PATTERN-heddle-instructions.md)
+- `PATTERN-lym-instructions-in-code` — Writing lym's own instructions to agents: in lym's code, its stencils and specs, never in heddle, which holds only a repository's own instructions.
 
 ## Processes and waits
 
