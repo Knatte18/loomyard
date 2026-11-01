@@ -333,7 +333,7 @@ Both also halt Stuck on a dirty tree, so only committed content is ever verified
 The tiers below match this repo's own test-tier discipline:
 
 - **Tier 1 (per card, automatic, no author action).**
-  Implemented as the Go-rendered per-card gate: the hub's `card` key call, `lym gate test --gate card --card <card id>` without `--wait`, then the comment line-break lint and the PATTERN headroom lint.
+  Implemented as the Go-rendered per-card gate: the hub's `card` key call, `lym gate test --gate card --card <card id>` without `--wait`, which also runs the comment line-break lint and the PATTERN headroom lint the key lists.
   The gate call computes the card's packages per module from the plan and runs the guard step over the `//lym:guard` tests itself, so the prompt names no package.
   The card gate does not build or test the rest of the module; a card that breaks a package outside its targets passes it unless the break is in a `//lym:guard` test, and the batch gate or the `webster` gate catches that.
   It runs only the tiers the `card` key lists, so a card that breaks a higher-tier test passes it too, and a passing call closes with a line naming the declared tiers it did not run, so its pass is never read as green for them.
@@ -420,7 +420,7 @@ It runs only on a tapestry run, and an absent record adds nothing; a record whos
 The four PATTERN checks run only in a worktree holding a `PATTERN.md` and with a base overview told to the gate, and read the overview at the task branch's merge base with its parent, or at `HEAD` with no parent recorded.
 `pattern-removes-prescribed` is one blocking finding per `removes` entry of the overview's `## PATTERN changes` section that a card not recorded done fences a line for; its way forward is to drop the fenced line from the card.
 `pattern-headroom` is one blocking finding when the overview projected from every card's fenced entry lines and the `removes` entries grows past the headroom line; its way forward is to shorten the prescribed lines or move detail into background files, and when that is not enough to record a `changes` decision that shortens other entries with `lym loom decision add`, passing `--amends-plan` once the plan is approved.
-`pattern-card-headroom` is one blocking finding per card not recorded done whose own step grows the projected overview past the headroom line, the bound that card's `lint-pattern` gate step applies against the commit before it, so a plan whose final size passes still fails when an intermediate card does not.
+`pattern-card-headroom` is one blocking finding per card not recorded done whose own step grows the projected overview past the headroom line, the bound that card's gate applies in its pattern lint against the commit before it, so a plan whose final size passes still fails when an intermediate card does not.
 The projection starts at the worktree's overview and takes those cards in plan order; a card's step applies its fenced entry lines, then drops each `removes` entry whose backticked ID it is the first such card to name, and a `removes` entry no such card names is dropped before the first card.
 Its way forward is `pattern-headroom`'s.
 `pattern-line-unprescribed` runs only on a tapestry run: it is one blocking finding per `adds` or `changes` entry that no card fences a line for and whose overview bullet still equals the base's; its way forward is to prescribe the entry's whole overview line in a fenced block on a pending card that edits `PATTERN.md`, or on a card inserted with `lym loom insert-card` when that card is done.

@@ -5,12 +5,14 @@
 package gatecli
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -359,6 +361,31 @@ func TestFrontReplay_DeliveredMark(t *testing.T) {
 				t.Errorf("delivered mark present = %v; want %v", delivered, tt.wantDelivered)
 			}
 		})
+	}
+}
+
+func TestFrontReplay_NamesALongStdoutOnStderrInsteadOfPrintingIt(t *testing.T) {
+	t.Parallel()
+
+	run := detachRun{dir: t.TempDir()}
+	body := strings.Repeat("=== RUN   TestA\n", replayStdoutBytes/8)
+	if err := os.WriteFile(run.path(stdoutFile), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out, stderr bytes.Buffer
+	f := &front{out: &out, stderr: &stderr}
+	if code := f.replay(run, detachExit{Code: 3}); code != 3 {
+		t.Errorf("replay = %d; want the run's code 3", code)
+	}
+	if out.Len() != 0 {
+		t.Errorf("replay printed %q to stdout; want the long stdout kept out of it", out.String())
+	}
+	if want := "is too long to print and stays in " + run.path(stdoutFile); !strings.Contains(stderr.String(), want) {
+		t.Errorf("replay stderr = %q; want it to hold %q", stderr.String(), want)
+	}
+	if _, err := os.Stat(run.path(deliveredFile)); err != nil {
+		t.Errorf("delivered mark: %v; want the run marked delivered", err)
 	}
 }
 

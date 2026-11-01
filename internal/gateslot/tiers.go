@@ -68,12 +68,14 @@ type tierFile struct {
 	Carry       *bool             `yaml:"carry"`
 }
 
-// GateKey is one gate.yaml key: the tier numbers a site runs and the scope form its call runs them over.
+// GateKey is one gate.yaml key: the tier numbers a site runs, the scope form its call runs them over and the lint steps it runs after them.
 type GateKey struct {
 	// Tiers are the tier numbers the key runs, in order.
 	Tiers []int `yaml:"tiers"`
 	// Scope is card, diff or all.
 	Scope string `yaml:"scope"`
+	// Lints are the lint steps the key's call runs after its tiers, in order, each LintComments or LintPattern; empty runs none.
+	Lints []string `yaml:"lints"`
 }
 
 // Scope values a gate key may hold.
@@ -81,6 +83,14 @@ const (
 	scopeCard = "card"
 	scopeDiff = "diff"
 	scopeAll  = "all"
+)
+
+// Lint step names a gate key's lints may hold.
+const (
+	// LintComments is the comment line-break lint: the fixed-column-wrapped breaks the working tree adds to `//` comment blocks against HEAD.
+	LintComments = "comments"
+	// LintPattern is the PATTERN headroom lint: growth of the working tree's PATTERN.md past its headroom line against HEAD's.
+	LintPattern = "pattern"
 )
 
 // goReadGates are the gate keys the Go verify sites read, in the order TiersValue lists them.
@@ -290,7 +300,7 @@ func (c Config) Gate(key string) (GateKey, error) {
 			return GateKey{}, useRefusal("gates.%s lists %s, which the hub does not declare", key, tierKey(number))
 		}
 	}
-	return GateKey{Tiers: slices.Clone(gate.Tiers), Scope: gate.Scope}, nil
+	return GateKey{Tiers: slices.Clone(gate.Tiers), Scope: gate.Scope, Lints: slices.Clone(gate.Lints)}, nil
 }
 
 // TierList returns the tier numbers the named gate key runs, in order, with the refusals Gate gives.

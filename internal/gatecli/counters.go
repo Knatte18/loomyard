@@ -46,9 +46,28 @@ type counter interface {
 	TestsRun() map[string]int
 	// Launches returns, per package whose test binary ran, how long the binary took to launch and how long the package took, in the order the packages started; nil for a counter that does not read packages.
 	Launches() []gateslot.PackageLaunch
-	// Failures returns the failed tests so far, leaves only, in the order they failed; nil for a counter that does not read tests.
-	Failures() []gateslot.TestFailure
+	// Failures returns the failures so far in the order they failed: the failed tests, leaves only, and the failed packages no failed test of theirs explains; nil for a counter that does not read tests.
+	Failures() []runFailure
+	// Unparsed returns the first non-empty lines of output that no test event carried, such as a `go build` or `go vet` step's errors, at most unparsedLines of them; nil for a counter that does not read events.
+	Unparsed() []string
 }
+
+// runFailure is one failure the failure report lists: a failed test, a failed package no failed test of it explains, or one lint finding.
+type runFailure struct {
+	// pkg is the import path of the failed test's or package's package, empty for a lint finding.
+	pkg string
+	// test is the failed test's path, subtests included; empty for a package failure and a lint finding.
+	test string
+	// lines are the first lines the failure printed beside go test's own status and summary lines, trimmed, at most failureLines of them; a lint finding's one line.
+	lines []string
+}
+
+const (
+	// failureLines caps the lines one failure keeps: enough for an error with its got and want, or a panic with its first frames.
+	failureLines = 8
+	// unparsedLines caps the lines a counter keeps of output no test event carried.
+	unparsedLines = 12
+)
 
 // newCounter returns the counter kind names, writing the tier's text output to out.
 // Any kind but `go-json` and `vstest` is an error.
@@ -114,7 +133,7 @@ func (r *lineReader) passThrough(line []byte, terminated bool) error {
 }
 
 // goJSONCounter reads `go test -json` events and writes their output text, so failures, panics and build errors read as plain `go test` prints them.
-// A line that is no JSON event, such as a `go build` or `go vet` step's output, passes through verbatim.
+// A line that is no JSON event, such as a `go build` or `go vet` step's output, passes through verbatim, and its first lines are kept for the failure report.
 type goJSONCounter struct {
 	lines  lineReader
 	counts tierCounts
@@ -123,10 +142,17 @@ type goJSONCounter struct {
 	order    []string
 	// testsRun holds, per package any event named, the number of tests that sent a run event.
 	testsRun map[string]int
-	// firstLines holds, per test in flight, the first line it printed beside go test's status lines; a test leaves it when it ends.
-	firstLines map[testKey]string
-	// failures holds every failed test, parents of failed subtests included, in the order they failed.
-	failures []gateslot.TestFailure
+	// testLines holds, per test in flight, the first lines it printed beside go test's status lines; a test leaves it when it ends.
+	testLines map[testKey][]string
+	// packageLines holds, per package, the first lines of its output outside any test, and buildLines, per build-output import path, the first lines of its build output.
+	packageLines map[string][]string
+	buildLines   map[string][]string
+	// failedPackages holds the packages with a failed test, whose own fail event the test explains.
+	failedPackages map[string]bool
+	// failures holds every failed test, parents of failed subtests included, and every failed package no test explains, in the order they failed.
+	failures []runFailure
+	// unparsed holds the first non-empty lines that were no JSON event.
+	unparsed []string
 }
 
 // testKey names one test of one package.
@@ -158,6 +184,9 @@ type goTestEvent struct {
 	// Time is the event's RFC 3339 timestamp, kept as text so a missing or odd one never turns the line into plain output.
 	Time    string
 	Elapsed float64
+	// ImportPath names the package a `build-output` event's line belongs to, and FailedBuild, on a package's fail event, the import path whose build failed.
+	ImportPath  string
+	FailedBuild string
 }
 
 func (c *goJSONCounter) Write(p []byte) (int, error) { return c.lines.Write(p) }
@@ -193,14 +222,14 @@ func (c *goJSONCounter) Launches() []gateslot.PackageLaunch {
 	return launches
 }
 
-// Failures returns the failed tests, leaving out a test with a failed subtest in the same package, since its own failure carries no line of its own.
-func (c *goJSONCounter) Failures() []gateslot.TestFailure {
+// Failures returns the failures, leaving out a test with a failed subtest in the same package, since its own failure carries no line of its own.
+func (c *goJSONCounter) Failures() []runFailure {
 	c.lines.mu.Lock()
 	defer c.lines.mu.Unlock()
-	var leaves []gateslot.TestFailure
+	var leaves []runFailure
 	for _, failure := range c.failures {
-		parent := slices.ContainsFunc(c.failures, func(other gateslot.TestFailure) bool {
-			return other.Package == failure.Package && strings.HasPrefix(other.Test, failure.Test+"/")
+		parent := failure.test != "" && slices.ContainsFunc(c.failures, func(other runFailure) bool {
+			return other.pkg == failure.pkg && strings.HasPrefix(other.test, failure.test+"/")
 		})
 		if !parent {
 			leaves = append(leaves, failure)
@@ -209,25 +238,74 @@ func (c *goJSONCounter) Failures() []gateslot.TestFailure {
 	return leaves
 }
 
-// observeTest folds a test's event into its first line and, on its fail event, into the failures.
+// Unparsed returns a copy of the first non-empty lines that were no JSON event.
+func (c *goJSONCounter) Unparsed() []string {
+	c.lines.mu.Lock()
+	defer c.lines.mu.Unlock()
+	return slices.Clone(c.unparsed)
+}
+
+// observeTest folds a test's event into its first lines and, on its fail event, into the failures.
 func (c *goJSONCounter) observeTest(event goTestEvent) {
 	key := testKey{event.Package, event.Test}
 	switch event.Action {
 	case "output":
-		line := strings.TrimSpace(event.Output)
-		if _, seen := c.firstLines[key]; seen || line == "" || strings.HasPrefix(line, "=== ") || strings.HasPrefix(line, "--- ") {
-			return
+		if line := strings.TrimSpace(event.Output); !isStatusLine(line) && len(c.testLines[key]) < failureLines {
+			if c.testLines == nil {
+				c.testLines = map[testKey][]string{}
+			}
+			c.testLines[key] = append(c.testLines[key], line)
 		}
-		if c.firstLines == nil {
-			c.firstLines = map[testKey]string{}
-		}
-		c.firstLines[key] = line
 	case "fail":
-		c.failures = append(c.failures, gateslot.TestFailure{Package: event.Package, Test: event.Test, FirstLine: c.firstLines[key]})
-		delete(c.firstLines, key)
+		c.failures = append(c.failures, runFailure{pkg: event.Package, test: event.Test, lines: c.testLines[key]})
+		if c.failedPackages == nil {
+			c.failedPackages = map[string]bool{}
+		}
+		c.failedPackages[event.Package] = true
+		delete(c.testLines, key)
 	case "pass", "skip":
-		delete(c.firstLines, key)
+		delete(c.testLines, key)
 	}
+}
+
+// observePackageOutcome folds a package-level output or build-output event into that package's first lines and, on a package's fail event that no failed test of it explains, adds the package to the failures with its own lines and those of its failed build.
+func (c *goJSONCounter) observePackageOutcome(event goTestEvent) {
+	switch {
+	case event.Action == "build-output" && event.ImportPath != "":
+		c.buildLines = appendCapped(c.buildLines, event.ImportPath, strings.TrimSpace(event.Output))
+	case event.Package == "" || event.Test != "":
+	case event.Action == "output":
+		c.packageLines = appendCapped(c.packageLines, event.Package, strings.TrimSpace(event.Output))
+	case event.Action == "fail" && !c.failedPackages[event.Package]:
+		lines := slices.Concat(c.packageLines[event.Package], c.buildLines[event.FailedBuild])
+		if len(lines) > failureLines {
+			lines = lines[:failureLines]
+		}
+		c.failures = append(c.failures, runFailure{pkg: event.Package, lines: lines})
+	}
+}
+
+// appendCapped appends line to the lines held under key, unless it is a status or summary line or key already holds failureLines lines, and returns the map, made when nil.
+func appendCapped(held map[string][]string, key, line string) map[string][]string {
+	if isStatusLine(line) || strings.HasPrefix(line, "# ") || len(held[key]) >= failureLines {
+		return held
+	}
+	if held == nil {
+		held = map[string][]string{}
+	}
+	held[key] = append(held[key], line)
+	return held
+}
+
+// isStatusLine reports whether line, trimmed, is empty or one of go test's own status and summary lines, which name no cause: a `=== ` or `--- ` test status, a bare `PASS` or `FAIL`, or a package's `ok`, `FAIL` or `?` result line.
+func isStatusLine(line string) bool {
+	switch {
+	case line == "", line == "PASS", line == "FAIL":
+		return true
+	case strings.HasPrefix(line, "=== "), strings.HasPrefix(line, "--- "), strings.HasPrefix(line, "ok  "), strings.HasPrefix(line, "FAIL\t"), strings.HasPrefix(line, "?   "):
+		return true
+	}
+	return false
 }
 
 // observePackage folds event into the launch timing of its package.
@@ -270,9 +348,13 @@ func (c *goJSONCounter) observePackage(event goTestEvent) {
 func (c *goJSONCounter) handle(line []byte, terminated bool) error {
 	var event goTestEvent
 	if len(line) == 0 || line[0] != '{' || json.Unmarshal(line, &event) != nil || event.Action == "" {
+		if text := strings.TrimSpace(string(line)); !isStatusLine(text) && len(c.unparsed) < unparsedLines {
+			c.unparsed = append(c.unparsed, text)
+		}
 		return c.lines.passThrough(line, terminated)
 	}
 	c.observePackage(event)
+	c.observePackageOutcome(event)
 	if event.Package != "" {
 		if c.testsRun == nil {
 			c.testsRun = map[string]int{}
@@ -327,7 +409,10 @@ func (c *vstestCounter) TestsRun() map[string]int { return nil }
 func (c *vstestCounter) Launches() []gateslot.PackageLaunch { return nil }
 
 // Failures returns nil: a VSTest summary line names no test.
-func (c *vstestCounter) Failures() []gateslot.TestFailure { return nil }
+func (c *vstestCounter) Failures() []runFailure { return nil }
+
+// Unparsed returns nil: a VSTest run's output is all text, so the failure report points at its log instead.
+func (c *vstestCounter) Unparsed() []string { return nil }
 
 // handle runs under the line reader's lock.
 func (c *vstestCounter) handle(line []byte, terminated bool) error {

@@ -33,9 +33,9 @@ A mechanical gate's **closure** and its CLI self-check verb call the same packag
 - Describe's gate and `validate-description`: `summaryparser.ValidateDescription`.
 - The webster `verify` gate (`websterengine.NewVerifyGate`) and `lym webster verify`: `verifytree.Verify`.
   Webster-Burler-Fix's `verify` gate (`loomshed.NewVerifyGate`) runs the comment lint and the derived round command through `verifytree.Verify`.
-- Every card gate's comment lint and `lym loom lint-comments`: `commentlint.Lint`.
+- A gate key's `comments` lint step in `lym gate test` and `lym loom lint-comments`: `commentlint.Lint`.
   The Webster-Burler-Fix round gate (`loomshed.NewVerifyGate`) joins this pair when it runs the lint.
-- Every card gate's headroom lint and `lym loom lint-pattern`: `patternlint.Lint` over `pattern.Headroom`.
+- A gate key's `pattern` lint step in `lym gate test` and `lym loom lint-pattern`: `patternlint.Lint` over `pattern.Headroom`.
   The Webster-Burler-Fix round gate (`loomshed.NewVerifyGate`) is the pair's third caller when it is told a merge base.
 - Every burler round's `review` gate and `lym burler validate-review`: `burlerengine.CheckReviewFile`, over `ParseReview`.
 

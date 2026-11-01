@@ -14,8 +14,19 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
+
 	"github.com/Knatte18/loomyard/internal/gateslot"
 )
+
+// buildEvent renders one `go test -json` event line of a package's build, which names its package by ImportPath, without its newline.
+func buildEvent(action, output string) string {
+	line := fmt.Sprintf(`{"Action":%q,"ImportPath":"example.com/p [example.com/p.test]"`, action)
+	if output != "" {
+		line += fmt.Sprintf(`,"Output":%q`, output)
+	}
+	return line + "}"
+}
 
 // goEvent renders one `go test -json` event line, without its newline.
 func goEvent(action, test, output string) string {
@@ -66,8 +77,10 @@ func TestCounters(t *testing.T) {
 		wantLaunches []gateslot.PackageLaunch
 		// wantTestsRun is the per-package count of tests that ran.
 		wantTestsRun map[string]int
-		// wantFailures is the failed leaf tests the counter reports.
-		wantFailures []gateslot.TestFailure
+		// wantFailures is the failed leaf tests and unexplained failed packages the counter reports.
+		wantFailures []runFailure
+		// wantUnparsed is the first lines that were no JSON event.
+		wantUnparsed []string
 	}{
 		{
 			name: "a package with start, a later event and a closing pass has one launch entry",
@@ -79,6 +92,7 @@ func TestCounters(t *testing.T) {
 			wantOut:      "ok  \texample.com/p\t1.5s\nFAIL\texample.com/q\t0.5s\n",
 			wantLaunches: []gateslot.PackageLaunch{{Package: "example.com/p", LaunchSeconds: 0.25, ElapsedSeconds: 1.5}, {Package: "example.com/q", LaunchSeconds: 0.75, ElapsedSeconds: 0.5}},
 			wantTestsRun: map[string]int{"example.com/p": 0, "example.com/q": 0},
+			wantFailures: []runFailure{{pkg: "example.com/q"}},
 		},
 		{
 			name: "a cached package and a package with no test files have no launch entry",
@@ -101,7 +115,7 @@ func TestCounters(t *testing.T) {
 			wantOut:      "=== RUN   TestA\n--- FAIL: TestB (0.00s)\nFAIL\n",
 			wantCounts:   tierCounts{discovered: 2, passed: 1, failed: 1},
 			wantTestsRun: map[string]int{"example.com/p": 2},
-			wantFailures: []gateslot.TestFailure{{Package: "example.com/p", Test: "TestB"}},
+			wantFailures: []runFailure{{pkg: "example.com/p", test: "TestB"}},
 		},
 		{
 			name:         "a skipped test",
@@ -120,7 +134,7 @@ func TestCounters(t *testing.T) {
 			wantTestsRun: map[string]int{"example.com/p": 2},
 		},
 		{
-			name: "a failed subtest is named with its first error line and its failed parent is left out",
+			name: "a failed subtest is named with its error lines and its failed parent is left out",
 			kind: "go-json",
 			writes: []string{strings.Join([]string{
 				goEvent("run", "TestA", ""), goEvent("output", "TestA", "=== RUN   TestA\n"),
@@ -134,7 +148,43 @@ func TestCounters(t *testing.T) {
 				"    b_test.go:5: passing note\n",
 			wantCounts:   tierCounts{discovered: 3, passed: 1, failed: 2},
 			wantTestsRun: map[string]int{"example.com/p": 3},
-			wantFailures: []gateslot.TestFailure{{Package: "example.com/p", Test: "TestA/sub", FirstLine: "a_test.go:12: got 1; want 2"}},
+			wantFailures: []runFailure{{pkg: "example.com/p", test: "TestA/sub", lines: []string{"a_test.go:12: got 1; want 2", "a_test.go:13: second"}}},
+		},
+		{
+			name: "a failed test keeps its first failureLines lines",
+			kind: "go-json",
+			writes: []string{strings.Join(append(
+				[]string{goEvent("run", "TestA", "")},
+				goEvent("output", "TestA", "l1\n"), goEvent("output", "TestA", "l2\n"), goEvent("output", "TestA", "l3\n"), goEvent("output", "TestA", "l4\n"), goEvent("output", "TestA", "l5\n"),
+				goEvent("output", "TestA", "l6\n"), goEvent("output", "TestA", "l7\n"), goEvent("output", "TestA", "l8\n"), goEvent("output", "TestA", "l9\n"), goEvent("fail", "TestA", ""),
+			), "\n") + "\n"},
+			wantOut:      "l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9\n",
+			wantCounts:   tierCounts{discovered: 1, failed: 1},
+			wantTestsRun: map[string]int{"example.com/p": 1},
+			wantFailures: []runFailure{{pkg: "example.com/p", test: "TestA", lines: []string{"l1", "l2", "l3", "l4", "l5", "l6", "l7", "l8"}}},
+		},
+		{
+			name: "a package whose build failed is a failure with its build output",
+			kind: "go-json",
+			writes: []string{strings.Join([]string{
+				buildEvent("build-output", "# example.com/p\n"), buildEvent("build-output", "x.go:3:2: undefined: y\n"), buildEvent("build-fail", ""),
+				goEvent("start", "", ""), goEvent("output", "", "FAIL\texample.com/p [build failed]\n"),
+				`{"Action":"fail","Package":"example.com/p","FailedBuild":"example.com/p [example.com/p.test]"}`,
+			}, "\n") + "\n"},
+			wantOut:      "# example.com/p\nx.go:3:2: undefined: y\nFAIL\texample.com/p [build failed]\n",
+			wantTestsRun: map[string]int{"example.com/p": 0},
+			wantFailures: []runFailure{{pkg: "example.com/p", lines: []string{"x.go:3:2: undefined: y"}}},
+		},
+		{
+			name: "a package that panics outside any test is a failure with its own lines",
+			kind: "go-json",
+			writes: []string{strings.Join([]string{
+				goEvent("start", "", ""), goEvent("output", "", "panic: init failed\n"), goEvent("output", "", "goroutine 1 [running]:\n"),
+				goEvent("output", "", "FAIL\texample.com/p\t0.01s\n"), goEvent("fail", "", ""),
+			}, "\n") + "\n"},
+			wantOut:      "panic: init failed\ngoroutine 1 [running]:\nFAIL\texample.com/p\t0.01s\n",
+			wantTestsRun: map[string]int{"example.com/p": 0},
+			wantFailures: []runFailure{{pkg: "example.com/p", lines: []string{"panic: init failed", "goroutine 1 [running]:"}}},
 		},
 		{
 			name: "a failed test whose name prefixes another failed test's name without a slash is still named",
@@ -145,10 +195,10 @@ func TestCounters(t *testing.T) {
 			}, "\n") + "\n"},
 			wantCounts:   tierCounts{discovered: 2, failed: 2},
 			wantTestsRun: map[string]int{"example.com/p": 2},
-			wantFailures: []gateslot.TestFailure{{Package: "example.com/p", Test: "TestA"}, {Package: "example.com/p", Test: "TestAB"}},
+			wantFailures: []runFailure{{pkg: "example.com/p", test: "TestA"}, {pkg: "example.com/p", test: "TestAB"}},
 		},
 		{
-			name: "a panic's output and a build error's non-JSON lines read as text",
+			name: "a panic's output and a build error's non-JSON lines read as text, the non-JSON ones kept as unparsed bar status lines",
 			kind: "go-json",
 			writes: []string{
 				"# example.com/p\nx.go:1:1: undefined: y\n" + goEvent("output", "TestA", "panic: boom\n") + "\n" + goEvent("fail", "TestA", "") + "\nFAIL\texample.com/p [build failed]\n",
@@ -156,7 +206,8 @@ func TestCounters(t *testing.T) {
 			wantOut:      "# example.com/p\nx.go:1:1: undefined: y\npanic: boom\nFAIL\texample.com/p [build failed]\n",
 			wantCounts:   tierCounts{failed: 1},
 			wantTestsRun: map[string]int{"example.com/p": 0},
-			wantFailures: []gateslot.TestFailure{{Package: "example.com/p", Test: "TestA", FirstLine: "panic: boom"}},
+			wantFailures: []runFailure{{pkg: "example.com/p", test: "TestA", lines: []string{"panic: boom"}}},
+			wantUnparsed: []string{"# example.com/p", "x.go:1:1: undefined: y"},
 		},
 		{
 			name:         "a line split across two writes",
@@ -167,12 +218,13 @@ func TestCounters(t *testing.T) {
 			wantTestsRun: map[string]int{"example.com/p": 0},
 		},
 		{
-			name:       "a trailing line with no newline comes out on Flush",
-			kind:       "go-json",
-			writes:     []string{"ok\n", "tail"},
-			held:       "tail",
-			wantOut:    "ok\ntail",
-			wantCounts: tierCounts{},
+			name:         "a trailing line with no newline comes out on Flush",
+			kind:         "go-json",
+			writes:       []string{"ok\n", "tail"},
+			held:         "tail",
+			wantOut:      "ok\ntail",
+			wantCounts:   tierCounts{},
+			wantUnparsed: []string{"ok", "tail"},
 		},
 		{
 			name: "package-level events alone, as an untagged TestMain gives, discover zero and count the package at zero",
@@ -231,8 +283,11 @@ func TestCounters(t *testing.T) {
 			if got := c.TestsRun(); !maps.Equal(got, tt.wantTestsRun) {
 				t.Errorf("TestsRun() = %v; want %v", got, tt.wantTestsRun)
 			}
-			if got := c.Failures(); !slices.Equal(got, tt.wantFailures) {
-				t.Errorf("Failures() = %+v; want %+v", got, tt.wantFailures)
+			if diff := cmp.Diff(tt.wantFailures, c.Failures(), cmp.AllowUnexported(runFailure{})); diff != "" {
+				t.Errorf("Failures() mismatch (-want +got):\n%s", diff)
+			}
+			if got := c.Unparsed(); !slices.Equal(got, tt.wantUnparsed) {
+				t.Errorf("Unparsed() = %q; want %q", got, tt.wantUnparsed)
 			}
 		})
 	}

@@ -166,10 +166,22 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 			if end.ran && code == 0 {
 				printLine(request.stderr, "gate test: the call was cancelled while its last run ended without a failure, so it exits 1; way forward: re-run the same command")
 			}
+			exe.printReport(inHub)
 			printFailedRuns(request.stderr, failures, firstFailed, true)
 			return exitAfterSignal(caught, haltExitCode(end, code))
 		}
 	}
+	// The lint steps run after the tiers, so a call that fails both reports the two in one go.
+	if request.gate != "" && runCtx.Err() == nil {
+		for _, lint := range runLints(request.root, cfg.Gates[request.gate].Lints) {
+			exe.failed = append(exe.failed, lint)
+			failures = append(failures, fmt.Sprintf("%s (%s)", lint.label, lint.outcome))
+			if code == 0 {
+				code, firstFailed = 1, lint.label
+			}
+		}
+	}
+	exe.printReport(inHub)
 	printFailedRuns(request.stderr, failures, firstFailed, false)
 	if code == 0 && sc.form == scopeCard {
 		printNotRunTiers(request.stderr, notRunTiers(cfg, plan))
@@ -389,6 +401,16 @@ type execution struct {
 	buildExit int
 	// callID identifies this call; every record the call writes carries it.
 	callID string
+	// failed holds the call's failed runs in plan order, its lint steps last, for the failure report.
+	failed []failedRun
+}
+
+// printReport writes the failure report of the call's failed runs to stderr, with the files the change touches, and nothing when no run failed.
+func (e *execution) printReport(inHub bool) {
+	if len(e.failed) == 0 {
+		return
+	}
+	printFailureReport(e.request.stderr, e.failed, touchedFiles(e.ctx, e.location, e.request.root, inHub))
 }
 
 // runListed runs one listed tier with its slots held, and returns how it ended.
@@ -496,6 +518,9 @@ func (e *execution) report(run tierRun, result tierResult, waitStart time.Time) 
 		printLine(e.request.stderr, result.trimpathNote)
 	}
 	printLine(e.request.stderr, gateslot.TierSummaryLine(record, logPath))
+	if record.ExitCode != 0 {
+		e.failed = append(e.failed, tierFailedRun(run, result, logPath, e.request.root))
+	}
 	if e.request.observer.Ended != nil {
 		e.request.observer.Ended(record)
 	}

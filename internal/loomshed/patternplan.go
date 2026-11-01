@@ -118,7 +118,7 @@ func patternPlanFindings(plan *planparser.Plan, cards []planparser.Card, worktre
 	return findings, nil
 }
 
-// cardHeadroomFindings returns one pattern-card-headroom finding per card of cards whose own step grows the projected overview past the headroom line, the bound each card's lint-pattern step applies against the commit before it.
+// cardHeadroomFindings returns one pattern-card-headroom finding per card of cards whose own step grows the projected overview past the headroom line, the bound each card's gate applies in its pattern lint against the commit before it.
 // The projection starts at overview and takes cards in order.
 // A card's step applies its fenced entry lines, then drops each entry of removed whose ID the card is the first of cards to name;
 // a removed entry no card names is dropped before the first card, so the check never flags a step its card gate would pass.
@@ -146,7 +146,7 @@ func cardHeadroomFindings(overview []byte, cards []planparser.Card, removed []st
 			findings = append(findings, planindex.Finding{
 				Check:    patternCardHeadroomCheck,
 				Card:     card.ID(),
-				Detail:   fmt.Sprintf("card %d: %s, so its lint-pattern step fails against the overview the cards before it leave; way forward: %s", card.Number, finding.Message, patternHeadroomWayForward),
+				Detail:   fmt.Sprintf("card %d: %s, so its card gate's pattern lint fails against the overview the cards before it leave; way forward: %s", card.Number, finding.Message, patternHeadroomWayForward),
 				Severity: planindex.SeverityBlocking,
 			})
 		}

@@ -362,6 +362,11 @@ func decodeGates(entries map[string]yaml.Node) (map[string]GateKey, error) {
 		default:
 			return nil, guidedError{fmt.Errorf("gate config key %q: scope %q; want card, diff or all; fix it with \"lym config gate\" from the prime%s", path, key.Scope, roleClause)}
 		}
+		for _, lint := range key.Lints {
+			if lint != LintComments && lint != LintPattern {
+				return nil, guidedError{fmt.Errorf("gate config key %q: lint %q; want %s or %s; fix it with \"lym config gate\" from the prime%s", path, lint, LintComments, LintPattern, roleClause)}
+			}
+		}
 		gates[name] = key
 	}
 	return gates, nil

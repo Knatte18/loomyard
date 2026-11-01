@@ -48,7 +48,8 @@ const (
 	// helperRoleStandIn records how it was invoked, then exits with helperExitEnv or, under helperHoldEnv, sleeps until killed with a sleeper child.
 	// Under helperShortageEnv a tier invocation prints a resource-shortage error and exits 1 instead.
 	// A build invocation instead writes helperBuildContentEnv to its `-o` file when it succeeds and exits with helperBuildExitEnv.
-	// The hub's shared build step is such an invocation too, with `sharedbuild` as its first argument, and holds under helperHoldEnv like a tier does.
+	// The hub's shared build step is such an invocation too, with `sharedbuild` as its first argument, and holds under helperHoldEnv like a tier does;
+	// when it exits non-zero it first prints helperBuildFailureLine.
 	helperRoleStandIn = "standin"
 	// helperRoleSleeper sleeps until killed.
 	helperRoleSleeper = "sleeper"
@@ -61,7 +62,9 @@ const (
 	helperGuardExitEnv    = "GATECLI_TEST_GUARD_EXIT"
 	helperBuildExitEnv    = "GATECLI_TEST_BUILD_EXIT"
 	helperBuildContentEnv = "GATECLI_TEST_BUILD_CONTENT"
-	helperHoldEnv         = "GATECLI_TEST_HOLD"
+	// helperBuildFailureLine is the line the shared build step prints before it exits non-zero.
+	helperBuildFailureLine = "sharedbuild: compile failed"
+	helperHoldEnv          = "GATECLI_TEST_HOLD"
 	// helperShortageEnv makes a tier invocation print a resource-shortage error and exit 1, on its first run when the value is `once` and on every run when it is `always`.
 	helperShortageEnv = "GATECLI_TEST_SHORTAGE"
 	// helperCeilingEnv and helperUnitEnv are durations the gate helper passes to newCommand in place of its defaults, and the helper always passes a shortage-rerun delay of 0.
@@ -295,6 +298,9 @@ func runStandIn() int {
 	}
 	if isBuild {
 		code, _ := strconv.Atoi(os.Getenv(helperBuildExitEnv))
+		if sharedBuild && code != 0 {
+			fmt.Println(helperBuildFailureLine)
+		}
 		if output := slices.Index(os.Args, "-o"); code == 0 && output >= 0 && output+1 < len(os.Args) {
 			if err := os.WriteFile(os.Args[output+1], []byte(os.Getenv(helperBuildContentEnv)), 0o755); err != nil {
 				return 1
@@ -823,6 +829,11 @@ func TestGateTest_Scenario(t *testing.T) {
 		if !strings.Contains(output, want+"\n") {
 			t.Errorf("stdout = %q; want the closing line %q", output, want)
 		}
+		wantReport := "build (exit 3), log " + buildLog + ":\n  its output:\n    " + helperBuildFailureLine + "\n"
+		report, closing := strings.Index(output, failureReportHeader), strings.Index(output, want)
+		if at := strings.Index(output, wantReport); report < 0 || at < report || closing < at {
+			t.Errorf("stdout = %q; want the failure report listing %q between its header and the closing line", output, wantReport)
+		}
 		requireFree(t)
 	})
 
@@ -1292,6 +1303,119 @@ func TestGateTest_Scenario(t *testing.T) {
 		run, log := runRecordOf(t, stdout, 5)
 		if run.Outcome != "failed" || run.ExitCode != 1 || !strings.Contains(log, "example.com/emptytier/p") {
 			t.Errorf("run record = %+v, log %q; want a failure whose log names the package", run, log)
+		}
+		requireFree(t)
+	})
+
+	t.Run("a real go test tier's failed test and broken package are both in the failure report, with file:line, values, the log and the touched files", func(t *testing.T) {
+		module := writeModule(t, "report", map[string]string{
+			"p/p.go":                "package p\n",
+			"p/p_test.go":           "package p\n\nimport \"testing\"\n\nfunc TestFails(t *testing.T) {\n\tt.Errorf(\"got %d; want %d\", 1, 2)\n}\n",
+			"broken/broken.go":      "package broken\n\nvar x = undefinedThing\n",
+			"broken/broken_test.go": "package broken\n\nimport \"testing\"\n\nfunc TestBuilds(t *testing.T) {}\n",
+		})
+		code, stdout := runGate(t, gateRun{cwd: t.TempDir(), realGo: true, args: []string{"test", "--tier", "5", "-C", module, "./..."}})
+		if code != 1 {
+			t.Errorf("exit code = %d, stdout %q; want 1", code, stdout)
+		}
+		logPath := summaryLogPath(t, stdout, 5)
+		for _, want := range []string{
+			failureReportHeader,
+			"tier5 (exit 1), log " + logPath + ":",
+			"  example.com/report/p TestFails:",
+			"    report/p/p_test.go:6: got 1; want 2",
+			"  example.com/report/broken, failed outside any test:",
+			"undefined: undefinedThing",
+			"gate test: the change touches ",
+			"report/p/p_test.go",
+		} {
+			if !strings.Contains(stdout, want) {
+				t.Errorf("stdout %q lacks %q", stdout, want)
+			}
+		}
+		if report, closing := strings.Index(stdout, failureReportHeader), strings.Index(stdout, gateslot.FailedRunsPrefix); report < 0 || closing < report {
+			t.Errorf("stdout %q; want the failure report before the closing line", stdout)
+		}
+		requireFree(t)
+	})
+
+	// wrapComment writes a Go file into the prime whose new comment wraps in the middle of a sentence, so the comments lint finds it, and removes the file when the test ends.
+	wrapComment := func(t *testing.T) {
+		t.Helper()
+		wrapped := filepath.Join(prime, "wrapped.go")
+		if err := os.WriteFile(wrapped, []byte("package hub\n\n// a fresh comment that wraps in the\n// middle of a sentence.\nfunc Fresh() {}\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Remove(wrapped) })
+	}
+
+	t.Run("a gate key's lint step runs after its tiers and fails the call with its findings in the report", func(t *testing.T) {
+		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+			cfg["gates"] = map[string]any{"linted": map[string]any{"tiers": []int{6}, "scope": "all", "lints": []string{"comments"}}}
+		}))
+		defer writeConfig(t, gateConfig)
+		wrapComment(t)
+
+		code, stdout := runGate(t, gateRun{cwd: prime, args: []string{"test", "--gate", "linted"}})
+		if code != 1 {
+			t.Errorf("exit code = %d, stdout %q; want 1 from the lint step", code, stdout)
+		}
+		for _, want := range []string{
+			"lint comments (1 finding); way forward: " + lintWayForward[gateslot.LintComments] + ":",
+			"  wrapped.go:3: // a fresh comment that wraps in the",
+			gateslot.FailedRunsPrefix + "lint comments (1 finding); the exit code is lint comments's",
+		} {
+			if !strings.Contains(stdout, want) {
+				t.Errorf("stdout %q lacks %q", stdout, want)
+			}
+		}
+		requireFree(t)
+	})
+
+	t.Run("a failing lint after a failing tier keeps the tier's exit code and is named last in the closing line", func(t *testing.T) {
+		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+			cfg["gates"] = map[string]any{"linted": map[string]any{"tiers": []int{6}, "scope": "all", "lints": []string{"comments"}}}
+		}))
+		defer writeConfig(t, gateConfig)
+		wrapComment(t)
+
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--gate", "linted"}, env: []string{helperExitEnv + "=7"}})
+		if code := g.wait(t); code != 7 {
+			t.Errorf("exit code = %d, stdout %q; want the failing tier's 7", code, g.stdout.String())
+		}
+		want := "gate test: failed runs: tier6 (exit 7), lint comments (1 finding); the exit code is tier6's"
+		if !strings.Contains(g.stdout.String(), want+"\n") {
+			t.Errorf("stdout = %q; want the closing line %q", g.stdout.String(), want)
+		}
+		requireFree(t)
+	})
+
+	t.Run("a halted call prints its failure report before the closing line and runs no lint", func(t *testing.T) {
+		if err := os.MkdirAll(filepath.Join(prime, "cmd", "lym"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(filepath.Join(prime, "cmd")) })
+		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+			cfg["gates"] = map[string]any{"halting": map[string]any{"tiers": []int{0, 3}, "scope": "all", "lints": []string{"comments"}}}
+		}))
+		defer writeConfig(t, gateConfig)
+		wrapComment(t)
+
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--gate", "halting"}, env: []string{helperExitEnv + "=7", helperBuildExitEnv + "=1"}})
+		if code := g.wait(t); code != 1 {
+			t.Errorf("exit code = %d, stdout %q; want the refusal's 1", code, g.stdout.String())
+		}
+		stdout := g.stdout.String()
+		closing := gateslot.FailedRunsPrefix + "tier0 (exit 7); the exit code is tier0's; the call stopped there, so later runs did not run"
+		report, end := strings.Index(stdout, failureReportHeader), strings.Index(stdout, closing)
+		if report < 0 || end < report {
+			t.Errorf("stdout = %q; want the failure report before the closing line %q", stdout, closing)
+		}
+		if !strings.Contains(stdout, "tier0 (exit 7), log ") {
+			t.Errorf("stdout = %q; want tier0 in the failure report", stdout)
+		}
+		if strings.Contains(stdout, "lint comments") {
+			t.Errorf("stdout = %q; want no lint run after the call halted", stdout)
 		}
 		requireFree(t)
 	})

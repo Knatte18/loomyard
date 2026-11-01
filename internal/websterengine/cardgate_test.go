@@ -33,18 +33,13 @@ func gateCard(groups ...planparser.TargetGroup) planparser.Card {
 func TestCardGateCommand(t *testing.T) {
 	t.Parallel()
 
-	const (
-		lintComments = "lym loom lint-comments"
-		lintPattern  = "lym loom lint-pattern"
-	)
-
-	t.Run("a card's gate call is followed by the two lints", func(t *testing.T) {
+	t.Run("a card's gate is its one gate call, which runs the key's lints itself", func(t *testing.T) {
 		t.Parallel()
 		got, err := cardGateCommand(gateCard(), gateTestConfig())
 		if err != nil {
 			t.Fatalf("cardGateCommand() error = %v; want nil", err)
 		}
-		want := []string{"lym gate test --gate card --card 1-gate", lintComments, lintPattern}
+		want := []string{"lym gate test --gate card --card 1-gate"}
 		if !slices.Equal(got, want) {
 			t.Errorf("cardGateCommand() = %q; want %q", got, want)
 		}
@@ -77,12 +72,8 @@ func TestRenderCardGates_OneBulletPerCardWithAStepSubBulletEach(t *testing.T) {
 	}
 	want := "- `_lym/plan/01-gate.md`:\n" +
 		"  - `lym gate test --gate card --card 1-gate`\n" +
-		"  - `lym loom lint-comments`\n" +
-		"  - `lym loom lint-pattern`\n" +
 		"- `_lym/plan/02-docs.md`:\n" +
-		"  - `lym gate test --gate card --card 2-docs`\n" +
-		"  - `lym loom lint-comments`\n" +
-		"  - `lym loom lint-pattern`"
+		"  - `lym gate test --gate card --card 2-docs`"
 	if got != want {
 		t.Errorf("renderCardGates() =\n%s\nwant\n%s", got, want)
 	}

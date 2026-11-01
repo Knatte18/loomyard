@@ -24,7 +24,7 @@ import (
 var templateDefaults = Config{
 	Slots: 2, BusyQuitSec: 120,
 	Gates: map[string]GateKey{
-		"card":            {Tiers: []int{0}, Scope: "card"},
+		"card":            {Tiers: []int{0}, Scope: "card", Lints: []string{"comments", "pattern"}},
 		"batch":           {Tiers: []int{0}, Scope: "card"},
 		"webster":         {Tiers: []int{0}, Scope: "all"},
 		"parent-align":    {Tiers: []int{0}, Scope: "all"},
@@ -118,15 +118,23 @@ func TestLoadConfig(t *testing.T) {
 			}), "",
 		},
 		{
-			"gate keys naming an undeclared tier still load", baseKeys + "gates:\n  card: {tiers: [3], scope: card}\n  push: {tiers: [0, 1], scope: diff}\n",
+			"gate keys naming an undeclared tier still load, a tuned key keeping the template's lints", baseKeys + "gates:\n  card: {tiers: [3], scope: card}\n  push: {tiers: [0, 1], scope: diff}\n",
 			hubWith(func(c *Config) {
 				c.Gates = maps.Clone(templateDefaults.Gates)
-				c.Gates["card"] = GateKey{Tiers: []int{3}, Scope: "card"}
+				c.Gates["card"] = GateKey{Tiers: []int{3}, Scope: "card", Lints: []string{"comments", "pattern"}}
 				c.Gates["push"] = GateKey{Tiers: []int{0, 1}, Scope: "diff"}
 			}), "",
 		},
 		{"scope card on a key but card and batch", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: card}\n", Config{}, `gate config key "gates.parent-align": scope card is only for the card and batch keys` + fixIt},
 		{"an unknown scope", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: some}\n", Config{}, `gate config key "gates.parent-align": scope "some"; want card, diff or all` + fixIt},
+		{"an unknown lint", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: all, lints: [spelling]}\n", Config{}, `gate config key "gates.parent-align": lint "spelling"; want comments or pattern` + fixIt},
+		{
+			"a key's lints load in order", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: all, lints: [pattern, comments]}\n",
+			hubWith(func(c *Config) {
+				c.Gates = maps.Clone(templateDefaults.Gates)
+				c.Gates["parent-align"] = GateKey{Tiers: []int{0}, Scope: "all", Lints: []string{"pattern", "comments"}}
+			}), "",
+		},
 		{"a key in the retired list shape", baseKeys + "gates:\n  card: [0]\n", Config{}, `gate config key "gates.card": the retired list shape; fix it with "lym fabric reconcile" (or "lym config reconcile --layer default --apply") from the prime, which migrates it` + roleClause},
 		{
 			"a manual tier above tier0 loads", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest}, tier3: {command: y, timeout_min: 5, counter: vstest, manual: true}}`,

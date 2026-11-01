@@ -1,4 +1,4 @@
-// lintpattern.go implements the `lint-pattern` loom verb, the standalone form of the PATTERN headroom lint every card gate runs.
+// lintpattern.go implements the `lint-pattern` loom verb, the standalone form of the PATTERN headroom lint that a gate key's `pattern` lint step also runs inside `lym gate test`.
 // It is a caller of the same patternlint.Lint the round gate calls.
 
 package loomcli
@@ -20,7 +20,7 @@ func (c *loomCLI) lintPatternCmd() *cobra.Command {
 		Short:       "find growth of the PATTERN overview past its headroom line in the current change",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `lint-pattern runs patternlint.Lint over the current worktree -- the check
-every card gate runs after lint-comments -- and reports the result as one JSON
+a gate key's pattern lint step also runs inside lym gate test -- and reports the result as one JSON
 envelope. Without --base it compares the working tree's PATTERN.md with
 HEAD's; with --base it compares HEAD's with that commit's. A finding is an
 overview that grew past the headroom line below its size cap; the envelope

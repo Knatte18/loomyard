@@ -65,6 +65,7 @@ Make exactly the changes the card describes, in exactly the targets its type lab
 
 {{.card_gates}}
 
+   A failing gate call closes with a failure report that lists every failure at once, its lint findings included, with each failure's `file:line` and the log path; fix every failure it lists before you run the gate again.
    The gate call computes the card's packages from the plan and runs the guard step itself, the step over the repository's `//lym:guard` tests, which can fail on a file the card does not list, such as the pinned set in a `cmd/lym` test.
    Fix it under the card's commit.
    Fix the code that broke the guard where that is the right fix, and change a pinned set or an allowlist only when the pin itself must move.

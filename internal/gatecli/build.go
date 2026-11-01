@@ -72,6 +72,7 @@ func (e *execution) runBuild(run tierRun, env []string) (result tierResult, ok b
 	if exit == 0 {
 		return tierResult{}, true
 	}
+	e.failed = append(e.failed, buildFailedRun(exit, timedOut, logPath, logBuffer.Bytes()))
 	e.buildFailure, e.buildExit = logPath, exit
 	return tierResult{buildFailed: true}, false
 }

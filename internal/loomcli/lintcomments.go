@@ -1,4 +1,4 @@
-// lintcomments.go implements the `lint-comments` loom verb, the standalone form of the comment line-break lint every card gate runs.
+// lintcomments.go implements the `lint-comments` loom verb, the standalone form of the comment line-break lint that a gate key's `comments` lint step also runs inside `lym gate test`.
 // It is a caller of the same commentlint.Lint the round gate calls.
 
 package loomcli
@@ -31,7 +31,7 @@ func (c *loomCLI) lintCommentsCmd() *cobra.Command {
 		Short:       "find fixed-column-wrapped line breaks in the comments the current change creates",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `lint-comments runs commentlint.Lint over the current worktree -- the check
-every card gate runs after its tests -- and reports the result as one JSON
+a gate key's comments lint step also runs inside lym gate test -- and reports the result as one JSON
 envelope. Without --base it lints the working tree against HEAD, untracked Go
 files included; with --base it lints that commit against HEAD. A finding is
 a line of a // comment block that a new break leaves ending in the middle of

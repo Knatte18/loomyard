@@ -39,7 +39,7 @@
 // Four PATTERN checks follow them, in this order, each reading `PATTERN.md` in the worktree and the overview PlanContext.PatternBase returns for the task branch's merge base, or for HEAD with no parent recorded.
 // `pattern-removes-prescribed` is one finding per removed entry that a card not recorded done fences a line for.
 // `pattern-headroom` is one finding when the overview projected from every card's fenced entry lines and the removed entries grows past the headroom line.
-// `pattern-card-headroom` is one finding per card not recorded done whose own step grows past the line, the bound its card gate's `lint-pattern` step applies:
+// `pattern-card-headroom` is one finding per card not recorded done whose own step grows past the line, the bound its card gate's pattern lint applies:
 // the projection starts at the worktree overview and takes those cards in plan order, each applying its fenced entry lines and dropping the removed entries it is the first to name in backticks, and a removed entry no such card names is dropped before the first.
 // `pattern-line-unprescribed` runs only with a decision record path, and is one finding per added or changed entry that no card fences a line for and whose bullet equals the base's.
 // A worktree with no `PATTERN.md`, or a nil PatternBase, runs none of the four and reads no base.

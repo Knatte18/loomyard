@@ -43,6 +43,10 @@ type tierResult struct {
 	buildFailed bool
 	// shortage is the resource-shortage marker of a tier that failed on one in its run and again in its one rerun; empty otherwise.
 	shortage string
+	// failures are the failed tests and packages the counter read, causes the lines the verb itself states a failure with, such as a timeout, and unparsed the first lines of output no test event carried, all for the failure report.
+	failures []runFailure
+	causes   []string
+	unparsed []string
 }
 
 // runTier runs the tier of run in ctx with its slots held: it prebuilds `lym` when the tier asks, then runs each invocation's command through the platform shell as a tied child, stopping at the first non-zero exit.
@@ -80,12 +84,14 @@ func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, requ
 		logger.Warn("gate test: could not flush the tier's output", "tier", tierName(run.number), "cause", err)
 	}
 
+	var causes []string
 	timedOut := ctx.Err() == nil && errors.Is(tierCtx.Err(), context.DeadlineExceeded) && exit != 0
 	if timedOut {
 		exit = 1
 		line := gateslot.TierTimeoutLine(tierName(run.number), timeout)
 		logBuffer.WriteString(line + "\n")
 		printLine(request.stderr, line)
+		causes = append(causes, line)
 	}
 
 	if exit == 0 {
@@ -93,6 +99,7 @@ func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, requ
 			exit = 1
 			logBuffer.WriteString(line + "\n")
 			printLine(request.stderr, line)
+			causes = append(causes, line)
 		}
 	}
 
@@ -112,8 +119,25 @@ func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, requ
 	}
 	record.Discovered, record.Passed, record.Failed, record.Skipped = counts.discovered, counts.passed, counts.failed, counts.skipped
 	record.Launches = counter.Launches()
-	record.Failures = counter.Failures()
-	return tierResult{record: record, log: logBuffer.Bytes(), trimpathNote: trimpathNote}
+	failures := counter.Failures()
+	record.Failures = testFailures(failures)
+	return tierResult{record: record, log: logBuffer.Bytes(), trimpathNote: trimpathNote, failures: failures, causes: causes, unparsed: counter.Unparsed()}
+}
+
+// testFailures returns the failed tests of failures as the run record carries them, each with its first line, leaving out the package failures.
+func testFailures(failures []runFailure) []gateslot.TestFailure {
+	var tests []gateslot.TestFailure
+	for _, failure := range failures {
+		if failure.test == "" {
+			continue
+		}
+		first := ""
+		if len(failure.lines) > 0 {
+			first = failure.lines[0]
+		}
+		tests = append(tests, gateslot.TestFailure{Package: failure.pkg, Test: failure.test, FirstLine: first})
+	}
+	return tests
 }
 
 // shortageMarkers are lowercase fragments of the errors a process or thread creation prints when the user's task limit or the machine's process table is momentarily exhausted:

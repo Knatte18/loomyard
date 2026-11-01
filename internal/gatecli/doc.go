@@ -6,7 +6,7 @@
 //
 // `lym gate test [-C <dir>] [--gate <key>] [--tier N]... [--upto N] [--card <id>]... [--base <rev>] [--all] [--guards] [--wait] [<targets>...] [-- <args>]` runs the tiers the hub declares in gate.yaml, in ascending tier number, and then the vet step and the guard step below when they are planned.
 // A run that fails does not stop the call: every later tier, vet and guard run still runs, so a failure the change under test did not cause, such as one present at the base, hides no later check.
-// When a run failed, the verb closes with one stderr line naming each failed run, a vet run as `vet tierN` and a guard run as `guard tierN`, with its exit code.
+// When a run failed, the verb closes with one stderr line naming each failed run, a vet run as `vet tierN`, a guard run as `guard tierN` and a lint step as `lint <name>`, with its exit code or its finding count, after the failure report the Failure report section describes.
 // When no run failed under the `--card` scope form, the verb closes with one stderr line naming each declared tier that no listed tier is or covers, manual tiers included, and saying the pass is not green for them, so a card gate that runs tier0 is never read as fully green;
 // a vet or guard run under a tier does not count as running it.
 // Bound: the line is output only and changes no exit code or record, and no other scope form prints it, since their tier lists are the coverage the hub chose for that site.
@@ -22,7 +22,7 @@
 // a key of scope `all` is the `--all` form, and a key of scope `diff` is the computed form.
 // `--card` ids beside a key of another scope are ignored, and explicit `<targets>` beside `--gate` replace the key's scope.
 // Each run record carries the key as `gate_key`, empty for a call with manual flags.
-// `--gate` opens no flag combination the manual flags lack.
+// `--gate` opens no flag combination the manual flags lack, bar the key's lint steps the Lint steps section describes.
 // `--tier` names a tier and may repeat; the default is tier0 when neither `--tier` nor `--upto` is given, and a tier another listed tier covers is dropped and named as covered on stderr.
 // `--upto N` adds every declared tier numbered 0 through N to the `--tier` values, skipping a gap in the numbers and a tier marked `manual`, which it names on stderr unless `--tier` names it.
 // A manual tier runs only when `--tier` names it, so a tier that spends tokens never starts from a range; a negative N is refused before hub resolution.
@@ -222,11 +222,29 @@
 // A write failure is logged and decides nothing.
 // The `go-json` counter also keeps, per package, the gap from its `start` event to its next event and its closing event's elapsed time, and the record carries them as `launches`; a cached package and one with no test files are left out, and a `vstest` run records none.
 // The `go-json` counter also keeps, per package, the number of tests that ran in it, and a `vstest` run keeps none.
-// The `go-json` counter also records each failed test with the first line it printed beside `go test`'s `=== ` and `--- ` status lines, leaving out a test whose subtest failed, and the record carries them as `failures`; a `vstest` run records none.
+// The `go-json` counter also keeps each failed test with the first lines it printed beside `go test`'s status and summary lines, leaving out a test whose subtest failed, each failed package no failed test of it explains with its own and its build's first lines, and the first lines that were no JSON event, for the failure report; the record carries each failed test with its first line as `failures`, and a `vstest` run keeps none.
 // A `go-json` tier under the `go` scoper fails when a package holding a test under the tier's tag ran none, since the tier's command then lacks its tag: a package with a `Test` function in a file whose build constraint holds under `tierN` on the host's GOOS and GOARCH.
 // The failure exits 1 and its line, naming the tier, the package and `lym config gate`, goes to stderr and the log before the summary line.
 // A run whose words after `--` carry `-run`, `-skip`, `-list` or `-bench` is exempt, since its filter may match nothing; the guard step's own `-run` filter exempts nothing.
 // Otherwise a tier that discovers no tests passes with zero counted, as a package with only a `TestMain` does.
+//
+// # Lint steps
+//
+// A `--gate` key's `lints` run after every tier, vet and guard run of a call that was not cancelled, in the key's order, each over the worktree against HEAD, untracked files included: `comments` through `commentlint.Lint` and `pattern` through `patternlint.Lint`.
+// A step that finds something, or cannot run, is a failed run labelled `lint <name>` with exit code 1 when no earlier run failed, and its findings go into the failure report with the step's way forward.
+// The template's `card` key lists both, so a card gate is one call, and a call with manual flags runs none.
+// Bound: a step reads only the working tree against HEAD, so on a clean tree it finds nothing; the round and darn gates lint their own range through `loomshed`.
+//
+// # Failure report
+//
+// A call with a failed run, a halted call included, prints the failure report to stderr before its closing line, so one read of the call's result shows every failure.
+// It opens with `gate test: failure report, every failure of this call:`, then names each failed run in plan order, lint steps last, with its outcome, the way forward of a lint step and its log path.
+// Under a run each failure follows: a failed test as its package and test path, a package that failed outside any test, such as a build error or a crash in `TestMain`, as its package, and a lint finding as its own `file:line` line.
+// Each carries up to `failureLines` lines it printed beside go test's own status and summary lines, so an error's got and want or a panic's first frames show, and a bare file name a test printed is prefixed with its package's worktree-relative directory.
+// A path a build error prints relative to the run directory, in a package that failed outside any test, is prefixed with that directory's worktree-relative path.
+// A run lists the verb's own cause line, such as a timeout, whether or not a failure was read; a run with no failure read also lists up to `unparsedLines` lines of its output that no test event carried, such as a `go vet` or `go build` error, or says its log holds the cause; a build step's run lists the last `unparsedLines` lines of its output.
+// The report holds at most `failureReportLines` lines below its header, each cut at `failureReportLineBytes`; past that a line names the lines each run lost, points at the logs for a run with one and at the standalone lint verb for a lint step, which has no log, and the report closes with the files the change touches, the diff from the merge base with the pair's parent branch, or from HEAD outside a hub or without a parent, untracked files included, at most `touchedFilesListed` named.
+// A failed test's first line is also its run record's `failures` entry.
 //
 // # Trimpath
 //
@@ -343,7 +361,8 @@
 // It holds the lock until the runner claimed the run, checking once a second for at most the claim bound.
 // A launch that failed, or a runner that ended or did not claim by the bound, is a failed start: the front claims the run itself so no runner can, expires the lease, prints the runner's log to stderr and exits 1 with an error whose way forward is to run the same command again and, when that fails again, to run it with `--wait`.
 // It then waits for the run's `exit.json` for what remains of its cap.
-// A result without the abandoned mark is printed: `stdout`, then `stderr`, then `delivered` is created, unless copying the output failed, which leaves the run joinable, and the call exits with the recorded code, except that a recorded 75 exits 1 after a stderr line saying the code was a test's own.
+// A result without the abandoned mark is printed: `stdout`, then `stderr`, then `delivered` is created;
+// a `stdout` past `replayStdoutBytes` is not printed but named on stderr with its size, its last line printed when it is a JSON envelope, so the answer reads as one tool result and the failure report on `stderr` carries the failures, unless copying the output failed, which leaves the run joinable, and the call exits with the recorded code, except that a recorded 75 exits 1 after a stderr line saying the code was a test's own.
 // A passed cap, and a result with the abandoned mark, answer ok with `done: false`, the phase from `phase.json` (`starting` when there is none), a message to run the same command again in a turn that does nothing else, and, while the run waits for its slots, `slot_free: false` with each holder's worktree, site and tier; the exit code is SlotBusyExit.
 // A fresh run removes the key directory's other run directories older than 14 days whose runner is not live.
 // A call with `--gate <key>` may wait one long call in place of many short ones.

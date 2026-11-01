@@ -512,7 +512,7 @@ func (f *front) answerGoing(run detachRun) int {
 // A run whose output could not be copied in full is not marked delivered, so the next call joins it again.
 // A recorded SlotBusyExit is a test's own code and exits 1, since the caller reads SlotBusyExit as a run still going.
 func (f *front) replay(run detachRun, exit detachExit) int {
-	copyErr := errors.Join(copyRunFile(f.out, run.path(stdoutFile)), copyRunFile(f.stderr, run.path(stderrFile)))
+	copyErr := errors.Join(replayStdout(f.out, f.stderr, f.call.verb, run.path(stdoutFile)), copyRunFile(f.stderr, run.path(stderrFile)))
 	if copyErr != nil {
 		logger.Warn("gate test: could not copy the run's output, so the run stays undelivered", "dir", run.dir, "cause", copyErr)
 	} else if err := os.WriteFile(run.path(deliveredFile), nil, 0o644); err != nil {
@@ -523,6 +523,34 @@ func (f *front) replay(run detachRun, exit detachExit) int {
 		return 1
 	}
 	return exit.Code
+}
+
+// replayStdoutBytes is the most of a run's stdout a front prints, so its answer reads as one tool result; a longer stdout stays in the run's file, and the run's stderr carries the summary lines and the failure report.
+const replayStdoutBytes = 4096
+
+// replayStdout prints the run's stdout file at path to out when it holds at most replayStdoutBytes, and otherwise writes a line to stderr naming the file and its size, the run of verb, and prints the file's last line to out when that line is a JSON envelope, such as a refusal.
+// A file that does not exist prints nothing and is no error.
+func replayStdout(out, stderr io.Writer, verb, path string) error {
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if info.Size() <= replayStdoutBytes {
+		return copyRunFile(out, path)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	printLine(stderr, fmt.Sprintf("%s: the run's output, %d bytes, is too long to print and stays in %s; the lines below hold its summary and, on a failure, the failure report", gateVerbName(verb), info.Size(), path))
+	trimmed := strings.TrimRight(string(data), "\n")
+	if last := trimmed[strings.LastIndexByte(trimmed, '\n')+1:]; strings.HasPrefix(last, "{") {
+		printLine(out, last)
+	}
+	return nil
 }
 
 // copyRunFile copies the run file at path to w and returns the error of a failed open or copy; a file that does not exist is no error.

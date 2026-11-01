@@ -12,14 +12,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// cardGateCommand returns the gate for card as its ordered steps: the hub's `card` gate call over the card's own scope, then the comment line-break lint and the PATTERN headroom lint.
+// cardGateCommand returns the gate for card as its ordered steps: the hub's `card` gate call over the card's own scope, which also runs the lint steps the `card` key lists.
 // It refuses, with the config's way forward, a hub whose `card` list the config does not hold.
 func cardGateCommand(card planparser.Card, gate gateslot.Config) ([]string, error) {
 	call, err := gate.AgentGateCall("card", card.ID())
 	if err != nil {
 		return nil, err
 	}
-	return []string{call, "lym loom lint-comments", "lym loom lint-pattern"}, nil
+	return []string{call}, nil
 }
 
 // renderCardGates renders each card in declared order as its pointer bullet with one indented sub-bullet per gate step.

@@ -58,6 +58,7 @@
 // The tier keys are `tiers`, `gates`, `scoper`, `refuse_raw`, `tier_parallel`, `build` and `inert_paths`.
 // `tiers` is an open map keyed `tier0`, `tier1`, and so on, each a Tier written whole with one `lym config gate --set 'tiers.tierN={...}'` flow mapping;
 // `gates` is a per-name map from a gate key to a GateKey written `{tiers: [<n>...], scope: card|diff|all}`, so a hub file that sets one key keeps the template's value for every other, and `tier_parallel` an open map from a tier name to this machine's parallel for it.
+// A GateKey may also hold `lints`, the lint steps its call runs after its tiers, each LintComments or LintPattern; the template's `card` key lists both.
 // The keys lym reads are `card` and `batch` (scope `card`), `webster`, `parent-align`, `finalize` and `adopt` (scope `all`), and `webster-fix`, `darn-write`, `code-burler-fix`, `drift-verify` and `pr-review` (scope `diff`).
 // `tiers` and `build` are executable keys, since a tier or build command runs any shell command in a task worktree, and `gates`, `scoper`, `refuse_raw` and `inert_paths` are guard keys, so all of them are hub-file only.
 // `build` is an open map, so its sub-keys travel whole through the layer stack and reconcile never prunes a hub's build.
@@ -74,7 +75,7 @@
 // `manual: true` on `tier0`, the tier a call with no tier flag runs; `parallel` or `timeout_min` below 1, `slots` neither `all` nor at least 1, a counter other than `go-json` or `vstest`, a scoper other than `go`, `none` or `dotnet`;
 // a tier `filter` whose command holds no `{filter}`, a non-empty `build` lacking `command` or `timeout_min`, a build `timeout_min` below 1, and a tier with `shared_build: true` while the hub declares no build step;
 // a `covers` entry not lower than its tier's number, a tier key not spelled `tier<N>`, a `refuse_raw` entry that is not words of letters, digits, `.`, `_` and `-` separated by single spaces, and a `tier_parallel` entry that is no integer of at least 1;
-// a gate key whose scope is not `card`, `diff` or `all`, and a `card` scope on any key but `card` and `batch`.
+// a gate key whose scope is not `card`, `diff` or `all`, a `card` scope on any key but `card` and `batch`, and a lint other than `comments` or `pattern`.
 // A `gates` entry still in the retired list shape, such as `card: [0]`, is refused naming `lym fabric reconcile` as the way forward, since the reconcile runs MigrateConfig.
 // A `tier_parallel` entry for a tier the config does not declare is dropped with a logged warning, so a tier the hub removes leaves no entry that fails the load.
 // Cross-references are checked at use, never at load, so the template and a hub whose gate keys name an undeclared tier both load.

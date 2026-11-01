@@ -77,7 +77,7 @@
 // After the last card the fork runs the batch gate once;
 // Go never runs it, and Webster's plan-level `webster` gate catches a fork that skips it.
 // The fork runs every card gate step, `lym gate card-verify` call and the batch gate in the foreground under the gate rule in its system prompt and never backgrounds a call, so its only turn end is its final report.
-// A card's own gate, which begin-batch and recover-batch render into the fork's prompt, is the hub's `card` gate call, `lym gate test --gate card --card <card id>` from `gateslot.Config.AgentGateCall`, which carries no `--wait` since an agent runs it, then `lym loom lint-comments`, the comment line-break lint, then `lym loom lint-pattern`, the PATTERN headroom lint, one step per line.
+// A card's own gate, which begin-batch and recover-batch render into the fork's prompt, is the hub's `card` gate call, `lym gate test --gate card --card <card id>` from `gateslot.Config.AgentGateCall`, which carries no `--wait` since an agent runs it, as its one step; the call itself runs the lint steps the hub's `card` key lists, the template's being the comment line-break lint and the PATTERN headroom lint.
 // The gate call computes the card's packages and runs the guard step itself, so Go renders no package list and scans for no guard test.
 // The batch gate is the hub's `batch` gate call, `lym gate test --gate batch`, over every card of the batch, `--card <card id>` once per card.
 // Both calls are rendered from `BeginDeps.Gate` and `RecoverDeps.Gate`, which `webstercli` loads from the hub's `gate.yaml`;
