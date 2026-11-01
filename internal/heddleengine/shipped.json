@@ -7,6 +7,14 @@
       "targets": [
         "claude-file"
       ]
+    },
+    {
+      "slug": "lym-plan-edits-before-gate",
+      "text": "Make every change in this order, and do not deviate from it.\n\n1. Read everything the change needs in one message: every Read and grep call together, a file whole when it fits and every span of it you need otherwise. Make a second round of reads only for files the first round named.\n2. Decide every edit across every file the card or task touches before you make any of them.\n3. Make all of those edits in one message, every Edit and Write call together in one turn.\n4. Run the gate once. Fix everything its report shows the same way: read what the fixes need in one message, decide every fix, make all of them in one message, then run the gate again.\n\nNever read one file per turn. Never read one file in slices over several turns. Never spread an edit, a read and another edit over turns. Never run the gate between the edits of one change.",
+      "order": 20,
+      "targets": [
+        "claude-file"
+      ]
     }
   ]
 }

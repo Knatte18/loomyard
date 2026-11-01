@@ -166,12 +166,29 @@ func TestStore(t *testing.T) {
 		}
 	})
 
-	t.Run("ShippedBatchingEntryIsPinned", func(t *testing.T) {
+	t.Run("ShippedEntriesArePinned", func(t *testing.T) {
 		t.Parallel()
 		const batchingSentence = "Request every call whose arguments you already know in one message, and read what you need before you edit: a file whole, or every span you need from it, in one message, and keep a file you have read in mind rather than reading it again unless something other than your own edit has changed it; wait for a result only to choose the next call."
-		first := shippedStore.Ordered()[0]
-		if first.Slug != "lym-batching" || len(first.Targets) != 1 || first.Targets[0] != "claude-file" || first.Text != batchingSentence {
-			t.Errorf("first shipped entry = %+v; want slug lym-batching aimed at claude-file with the batching sentence unchanged", first)
+		// The rows are the shipped layer in render order; wantText is empty for an entry whose text is not pinned.
+		tests := []struct {
+			slug     string
+			wantText string
+		}{
+			{"lym-batching", batchingSentence},
+			{"lym-plan-edits-before-gate", ""},
+		}
+		ordered := shippedStore.Ordered()
+		if len(ordered) != len(tests) {
+			t.Fatalf("shipped layer holds %d entries; want %d", len(ordered), len(tests))
+		}
+		for i, tt := range tests {
+			got := ordered[i]
+			if got.Slug != tt.slug || len(got.Targets) != 1 || got.Targets[0] != "claude-file" {
+				t.Errorf("shipped entry %d = %+v; want slug %s aimed at claude-file alone", i, got, tt.slug)
+			}
+			if tt.wantText != "" && got.Text != tt.wantText {
+				t.Errorf("shipped entry %s text = %q; want %q", tt.slug, got.Text, tt.wantText)
+			}
 		}
 	})
 
