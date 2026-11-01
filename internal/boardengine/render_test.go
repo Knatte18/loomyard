@@ -243,12 +243,12 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 // readmeTypes is the type-label order the README goldens render Notes sections in.
 var readmeTypes = []string{"bug", "enhancement", "research"}
 
-// readmeFixture holds tasks and notes with labels, two entries with dates and the rest without, plus a done task that another task depends on, an abandoned note, a body, an isolated task, a two-layer chain, a title with a pipe, a two-line brief, a research note, a note whose type label is not in readmeTypes, a high-priority note, a low-priority note listed before a normal one of the same type, and run settings on three tasks: two keys in one module, a nested key with a pipe in its value beside a list value, and one key with no brief.
+// readmeFixture holds tasks and notes with labels, two entries with dates and the rest without, plus a done task that another task depends on, an abandoned note, a body, an isolated task, a two-layer chain, a title with a pipe, a two-line brief, a research note, a note whose type label is not in readmeTypes, a high-priority note, a low-priority note listed before a normal one of the same type, a profile with a pipe on a task with no recipe, a recipe with a profile, and run settings on three tasks: two keys in one module, a nested key with a pipe in its value beside a list value, and one key with no brief.
 func readmeFixture() []boardengine.Task {
 	task, note := boardengine.KindTask, boardengine.KindNote
 	return []boardengine.Task{
 		{ID: 1, Handle: "T1", Slug: "base", Title: "Base work", Kind: task, Labels: []string{"enhancement"}, Status: stringPtr(boardengine.StatusDraft), Brief: "The foundation.", Created: renderTime.AddDate(0, 0, -40), Revised: renderTime.AddDate(0, 0, -3), RunSettings: map[string]any{"loom": map[string]any{"review_max_bounces": 2.0, "review_hard_max_bounces": 3.0}}},
-		{ID: 2, Handle: "T2", Slug: "top", Title: "Top | work", Kind: task, Labels: []string{"bug", "area"}, Status: stringPtr("running"), Brief: "Builds on base.\nSecond brief line.", Body: "Design.\nSecond line.", DependsOn: []string{"base", "shipped"}, RunSettings: map[string]any{"darn": map[string]any{"models": map[string]any{"writer": "opus|fast"}, "skip": []any{"a&b", "<c>"}, "note": "use `x`"}}},
+		{ID: 2, Handle: "T2", Slug: "top", Title: "Top | work", Kind: task, Labels: []string{"bug", "area"}, Status: stringPtr("running"), Profile: "a|b", Brief: "Builds on base.\nSecond brief line.", Body: "Design.\nSecond line.", DependsOn: []string{"base", "shipped"}, RunSettings: map[string]any{"darn": map[string]any{"models": map[string]any{"writer": "opus|fast"}, "skip": []any{"a&b", "<c>"}, "note": "use `x`"}}},
 		{ID: 6, Handle: "T3", Slug: "alone", Title: "Alone work", Kind: task, Labels: []string{"enhancement"}, Isolated: true, Recipe: "darn", Profile: "docs", RunSettings: map[string]any{"darn": map[string]any{"review_max_bounces": 1.0}}},
 		{ID: 3, Handle: "E2", Slug: "idea", Title: "An idea", Kind: note, Labels: []string{"enhancement", "undecided"}, Priority: boardengine.PriorityLow},
 		{ID: 8, Handle: "E1", Slug: "plain", Title: "Plain idea", Kind: note, Labels: []string{"enhancement"}},
@@ -264,7 +264,7 @@ func readmeFixture() []boardengine.Task {
 // It pins that among the root's tables only the Notes tables carry the priority column, headed Prio, H for high, L for low and blank for normal.
 // It pins that a pipe in a title is escaped and a line break in a brief becomes a space, so each row stays one table row.
 // The same row pins that each run setting stacks as a code-span bullet in the entry cell after any brief, sorted, a nested key as its dotted path, a non-string value as JSON and a pipe escaped, adding no column.
-// Every Tasks table pins a Recipe column after the slug, loom for an empty recipe and the stored name otherwise, and the Notes and Done tables pin its absence.
+// Every Tasks table pins a Recipe column after the slug, tapestry for an empty recipe and the stored name otherwise, followed by ` · ` and the profile, pipe escaped, when the task names one, and the Notes and Done tables pin its absence.
 // Every README pins the root's own sections under the root project's heading, P0 linked to project-root.md and counting its open entries, then its facts line naming only the prime owner, one heading level below a project file's.
 // Every README pins the render time at its top and the prime owner under it, the machine in a code span and none recorded when the board records none;
 // every table pins the one column before Labels holding the age above the time since revision, as of that time and blank for unknown dates.
@@ -322,7 +322,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
-				"| T2 | **Top \\| work**<br>• Builds on base. Second brief line.<br>• `darn: models.writer opus\\|fast`<br>• `` darn: note use `x` ``<br>• `darn: skip [\"a&b\",\"<c>\"]` | [`top`](design-top.md) | tapestry | T1 |  | area |\n" +
+				"| T2 | **Top \\| work**<br>• Builds on base. Second brief line.<br>• `darn: models.writer opus\\|fast`<br>• `` darn: note use `x` ``<br>• `darn: skip [\"a&b\",\"<c>\"]` | [`top`](design-top.md) | tapestry · a\\|b | T1 |  | area |\n" +
 				"\n" +
 				"#### Independent (1)\n" +
 				"\n" +
@@ -330,7 +330,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
-				"| T3 | **Alone work**<br>• `profile: docs`<br>• `darn: review_max_bounces 1` | `alone` | darn |  |  |  |\n" +
+				"| T3 | **Alone work**<br>• `darn: review_max_bounces 1` | `alone` | darn · docs |  |  |  |\n" +
 				"\n" +
 				"#### Draft (1)\n" +
 				"\n" +

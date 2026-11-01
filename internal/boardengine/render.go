@@ -193,6 +193,9 @@ const renderedTimeLayout = "2006-01-02 15:04 UTC"
 // defaultRecipe is the recipe the Recipe cell shows for a task with no recipe, since an empty recipe runs tapestry.
 const defaultRecipe = "tapestry"
 
+// recipeProfileSeparator stands between the recipe and the run profile in one Recipe cell.
+const recipeProfileSeparator = " · "
+
 // runningState is the run state the At cell leaves out, since the Running section already says it.
 const runningState = "running"
 
@@ -661,7 +664,7 @@ func ageCell(t Task, now time.Time) string {
 	return age + cellBreak + revised
 }
 
-// entryCell is the bold title, led by a `draft` code span for a draft task, with the brief as one bullet under it when there is one, then a code-span bullet naming the run profile when there is one and one per run setting.
+// entryCell is the bold title, led by a `draft` code span for a draft task, with the brief as one bullet under it when there is one, then one code-span bullet per run setting.
 func entryCell(t Task) string {
 	cell := "**" + cellText(t.Title) + "**"
 	if isDraft(t) {
@@ -669,9 +672,6 @@ func entryCell(t Task) string {
 	}
 	if t.Brief != "" {
 		cell += cellBullet + cellText(t.Brief)
-	}
-	if t.Profile != "" {
-		cell += cellBullet + codeSpan(cellText("profile: "+t.Profile))
 	}
 	for _, setting := range settingLines(t.RunSettings) {
 		cell += cellBullet + codeSpan(cellText(setting))
@@ -741,12 +741,17 @@ func codeSpan(s string) string {
 	return fence + s + fence
 }
 
-// recipeCell is the recipe the task runs, tapestry when its recipe field is empty.
+// recipeCell is the recipe the task runs, tapestry when its recipe field is empty, followed by the run profile it names, if any.
+// A task naming no profile takes its recipe's default profile, so the cell shows the recipe alone.
 func recipeCell(t Task) string {
-	if t.Recipe == "" {
-		return defaultRecipe
+	recipe := defaultRecipe
+	if t.Recipe != "" {
+		recipe = cellText(t.Recipe)
 	}
-	return cellText(t.Recipe)
+	if t.Profile == "" {
+		return recipe
+	}
+	return recipe + recipeProfileSeparator + cellText(t.Profile)
 }
 
 // atCell is where a run stands: the producer alone while it is running, else the whole run status.
