@@ -44,7 +44,7 @@ func TestCardGateCommand(t *testing.T) {
 		if err != nil {
 			t.Fatalf("cardGateCommand() error = %v; want nil", err)
 		}
-		want := []string{"lym gate test --wait --gate card --card 1-gate", lintComments, lintPattern}
+		want := []string{"lym gate test --gate card --card 1-gate", lintComments, lintPattern}
 		if !slices.Equal(got, want) {
 			t.Errorf("cardGateCommand() = %q; want %q", got, want)
 		}
@@ -76,11 +76,11 @@ func TestRenderCardGates_OneBulletPerCardWithAStepSubBulletEach(t *testing.T) {
 		t.Fatalf("renderCardGates() error = %v; want nil", err)
 	}
 	want := "- `_lym/plan/01-gate.md`:\n" +
-		"  - `lym gate test --wait --gate card --card 1-gate`\n" +
+		"  - `lym gate test --gate card --card 1-gate`\n" +
 		"  - `lym loom lint-comments`\n" +
 		"  - `lym loom lint-pattern`\n" +
 		"- `_lym/plan/02-docs.md`:\n" +
-		"  - `lym gate test --wait --gate card --card 2-docs`\n" +
+		"  - `lym gate test --gate card --card 2-docs`\n" +
 		"  - `lym loom lint-comments`\n" +
 		"  - `lym loom lint-pattern`"
 	if got != want {
@@ -98,7 +98,7 @@ func TestRenderBatchGate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("renderBatchGate() error = %v; want nil", err)
 		}
-		want := "- `lym gate test --wait --gate batch --card 1-gate --card 2-gate`"
+		want := "- `lym gate test --gate batch --card 1-gate --card 2-gate`"
 		if got != want {
 			t.Errorf("renderBatchGate() =\n%s\nwant\n%s", got, want)
 		}
@@ -144,8 +144,8 @@ func TestRenameBoundary_BatchesCheckAndGateTheirOwnTree(t *testing.T) {
 	}
 
 	for i, tree := range []struct{ root, wantGate string }{
-		{firstTree, "- `lym gate test --wait --gate batch --card 1-gate --card 2-gate`"},
-		{secondTree, "- `lym gate test --wait --gate batch --card 3-gate`"},
+		{firstTree, "- `lym gate test --gate batch --card 1-gate --card 2-gate`"},
+		{secondTree, "- `lym gate test --gate batch --card 3-gate`"},
 	} {
 		findings, err := planglyph.DoneChecks(plan, batches[i].Cards, tree.root)
 		if err != nil {

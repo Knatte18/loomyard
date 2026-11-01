@@ -104,7 +104,7 @@ func validateSessionID(id string) error {
 // Prepare writes prompt.md, settings.json and the Bash env file bash-env.sh into runDir and returns the Launch command strings.
 // The launch line carries a pointer to prompt.md rather than the prompt, so a prompt of any size launches.
 // A spec that names skills carries the skill-load message on the launch line instead and returns the pointer as Launch.PromptLine, for shuttle to send after the skills load.
-// It loads claude.yaml and the hub's gate config, whose refuse_raw list the run's shell guard installs and whose failure to load refuses the spawn, then validates spec.Effort, spec.Model, spec.PermissionMode, spec.ResumeSessionID and the prompt-cache TTL config before writing any artifacts.
+// It loads claude.yaml and the hub's gate config, whose refuse_raw list the run's shell guard installs and whose failure to load refuses the spawn, then validates spec.Effort, spec.Model, spec.PermissionMode, spec.ResumeSessionID, the prompt-cache TTL config and the keep-warm caps before writing any artifacts.
 func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
 	claude, err := loadConfigOrRefuse(c.dirs)
 	if err != nil {
@@ -141,6 +141,9 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		return shuttleengine.Launch{}, err
 	}
 	logger.Info("claudeengine: resolved the prompt-cache TTL", "role", spec.Role, "ttl", promptCacheTTL)
+	if err := ValidateKeepWarm(claude); err != nil {
+		return shuttleengine.Launch{}, err
+	}
 
 	// An adopted run takes over an existing session; reject a malformed id before any artifact is written.
 	resume := spec.ResumeSessionID != ""

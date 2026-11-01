@@ -58,8 +58,11 @@ var registry = map[string]entry{
 			OpenMaps: claudeengine.ConfigOpenMaps(),
 			Spec:     claudeengine.ConfigSpec,
 			CheckLoad: func(dirs configengine.Dirs) error {
-				_, err := claudeengine.LoadConfig(dirs)
-				return err
+				claude, err := claudeengine.LoadConfig(dirs)
+				if err != nil {
+					return err
+				}
+				return claudeengine.ValidateKeepWarm(claude)
 			},
 		},
 	},

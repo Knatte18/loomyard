@@ -4,6 +4,7 @@
 // so shell selection lives in one place.
 // The quoting of one literal argument for that shell, QuoteArg, sits beside the shell choice so the two cannot differ.
 // It cannot live in internal/shell: that package is stdlib-only under the Shell Mechanics Seam, and this one logs through internal/logger.
+// RunTied runs a command like Run for a caller that records the shell's process group and wants the shell to die with the calling process.
 // It imports only the standard library, internal/logger and internal/proc.
 package verifyrun
 
@@ -44,6 +45,14 @@ func Run(ctx context.Context, command, dir string, env []string, out io.Writer) 
 	return run(ctx, command, dir, env, out, waitDelay)
 }
 
+// RunTied is Run for a command tied to the calling process's life.
+// On Linux the shell gets a parent-death SIGKILL, so it dies when the calling process does;
+// elsewhere the caller's own job ends the tree.
+// started is called with the shell's pid, process-group id and start time once the shell runs and before the wait, so the caller can record the group.
+func RunTied(ctx context.Context, command, dir string, env []string, out io.Writer, started func(proc.TreeRecord)) (int, error) {
+	return runTied(ctx, command, dir, env, out, waitDelay, started)
+}
+
 // ErrPercentUnderCmd is returned by QuoteArg for a Windows value holding a percent sign:
 // cmd expands %NAME% even inside double quotes, so no quoting makes such a value one literal argument.
 var ErrPercentUnderCmd = errors.New("verifyrun: cmd expands % inside quotes; a value holding % cannot be passed as one literal argument")
@@ -74,6 +83,32 @@ func QuoteArg(goos, value string) (string, error) {
 
 // run is Run with the wait delay as a parameter, so a test can shorten the wait for a lingering pipe holder.
 func run(ctx context.Context, command, dir string, env []string, out io.Writer, delay time.Duration) (int, error) {
+	return runTied(ctx, command, dir, env, out, delay, nil)
+}
+
+// startAndWaitTied starts cmd and waits for it on one goroutine locked to its OS thread.
+// The parent-death signal follows the thread that started the child.
+// started is called with the child's record once it runs, before the wait.
+func startAndWaitTied(cmd *exec.Cmd, started func(proc.TreeRecord)) error {
+	result := make(chan error, 1)
+	go func() {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		if err := cmd.Start(); err != nil {
+			result <- err
+			return
+		}
+		pid := cmd.Process.Pid
+		startTime, _ := proc.StartTime(pid)
+		started(proc.TreeRecord{PID: pid, PGID: pid, StartTime: startTime})
+		result <- cmd.Wait()
+	}()
+	return <-result
+}
+
+// runTied is RunTied with the wait delay as a parameter.
+// A nil started runs the shell as Run does.
+func runTied(ctx context.Context, command, dir string, env []string, out io.Writer, delay time.Duration, started func(proc.TreeRecord)) (int, error) {
 	shellName, flag := ShellFor(runtime.GOOS)
 
 	cmd := exec.CommandContext(ctx, shellName, flag, command)
@@ -98,7 +133,13 @@ func run(ctx context.Context, command, dir string, env []string, out io.Writer, 
 	}
 
 	logger.Info("verifyrun: spawning verify command", "shell", shellName, "command", command, "dir", dir)
-	err := cmd.Run()
+	var err error
+	if started == nil {
+		err = cmd.Run()
+	} else {
+		tieToParent(cmd)
+		err = startAndWaitTied(cmd, started)
+	}
 	awaitGone()
 	if err == nil {
 		logger.Info("verifyrun: verify command exited", "command", command, "dir", dir, "exitCode", 0)

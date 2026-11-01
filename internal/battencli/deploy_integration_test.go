@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/agentname"
 )
 
 // TestRunDeploy_WritesTheLogAndReportsExitCodeAndTimeout asserts runDeploy writes the command's output to the log, reports a non-zero exit code, and reports TimedOut for a command that outlives a short timeout.
@@ -51,5 +53,23 @@ func TestRunDeploy_WritesTheLogAndReportsExitCodeAndTimeout(t *testing.T) {
 				t.Errorf("deploy log = %q; want it to contain %q", logged, tt.wantLog)
 			}
 		})
+	}
+}
+
+// TestCommandRunners_DropTheStrand asserts runDeploy and runRowCommand run their command without the strand-name variable and with the rest of the environment.
+// It does not run in parallel: it sets the process environment.
+func TestCommandRunners_DropTheStrand(t *testing.T) {
+	t.Setenv(agentname.StrandNameEnv, "sh:slug:implementer")
+	t.Setenv("LYM_STRAND_KEPT", "kept")
+	const command = `test -z "$LYM_STRAND_NAME" && test "$LYM_STRAND_KEPT" = kept`
+
+	dir := t.TempDir()
+	deploy, err := runDeploy(context.Background(), dir, command, filepath.Join(dir, "deploy.log"), time.Minute)
+	if err != nil || deploy.ExitCode != 0 {
+		t.Errorf("runDeploy() = %+v, %v; want exit code 0", deploy, err)
+	}
+	row, err := runRowCommand(context.Background(), dir, command, filepath.Join(dir, "row.log"), time.Minute)
+	if err != nil || row.ExitCode != 0 {
+		t.Errorf("runRowCommand() = %+v, %v; want exit code 0", row, err)
 	}
 }

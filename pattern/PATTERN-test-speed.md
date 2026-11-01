@@ -24,7 +24,7 @@ The hub declares its tiers in `gate.yaml`, numbered `tier0` through `tier3`, and
 
 ### Gate keys
 
-A gate key in `gate.yaml` names a site's tiers and its scope, and a site runs `lym gate test --wait --gate <key>`; no site spells a tier list, a scope or a test command.
+A gate key in `gate.yaml` names a site's tiers and its scope, and a Go site runs `lym gate test --wait --gate <key>`, and an agent's card, batch and `webster-fix` calls carry no `--wait`; no site spells a tier list, a scope or a test command.
 `internal/gateslot`'s doc holds the tier plan, which recipe row reads which key.
 
 | Key | Site | Template scope |

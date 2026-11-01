@@ -317,7 +317,7 @@ A departure from an entry the task declares changed in the overview's `## PATTER
 ## verify model
 
 The hub's tests run through `lym gate test`, which runs the numbered tiers `gate.yaml` declares over a scope lym computes.
-A gate key names a site's tiers and its scope, `card`, `diff` or `all`, and every site runs `lym gate test --wait --gate <key>`:
+A gate key names a site's tiers and its scope, `card`, `diff` or `all`, and a Go site runs `lym gate test --wait --gate <key>`, while an agent's card, batch and `webster-fix` calls carry no `--wait`:
 the `card` key runs per card and the `batch` key per batch, both over the cards' packages, `webster-fix` in Webster's verify fixers, `webster` once for the whole plan, and `parent-align` and `finalize` at Parent-Align and Finalize.
 The hub's tiers and gate keys reach the plan writer and the plan reviewer in their prompts, rendered from `gate.yaml`.
 A plan author names no gate, tier list or target list, because the Go-rendered prompts and the gates carry them.
@@ -333,7 +333,7 @@ Both also halt Stuck on a dirty tree, so only committed content is ever verified
 The tiers below match this repo's own test-tier discipline:
 
 - **Tier 1 (per card, automatic, no author action).**
-  Implemented as the Go-rendered per-card gate: the hub's `card` key call, `lym gate test --wait --gate card --card <card id>`, then the comment line-break lint and the PATTERN headroom lint.
+  Implemented as the Go-rendered per-card gate: the hub's `card` key call, `lym gate test --gate card --card <card id>` without `--wait`, then the comment line-break lint and the PATTERN headroom lint.
   The gate call computes the card's packages per module from the plan and runs the guard step over the `//lym:guard` tests itself, so the prompt names no package.
   The card gate does not build or test the rest of the module; a card that breaks a package outside its targets passes it unless the break is in a `//lym:guard` test, and the batch gate or the `webster` gate catches that.
   It runs only the tiers the `card` key lists, so a card that breaks a higher-tier test passes it too, and a passing call closes with a line naming the declared tiers it did not run, so its pass is never read as green for them.
@@ -341,7 +341,7 @@ The tiers below match this repo's own test-tier discipline:
   Fully mechanical — no author enumerates a file list, which is what made V1-style `verify:` lists grow long in practice.
 - **Tier 2 (per batch for its own packages, plan-level for the whole suite).**
   Real git-against-remote tests, built via `internal/hubforge` with real repository creation and a real clone, are genuinely slower.
-  The batch gate is the hub's `batch` key call, `lym gate test --wait --gate batch` with one `--card <card id>` per card of the batch, run once per batch by the fork after its last card; Go never runs it, and the `webster` gate catches a fork that skips it;
+  The batch gate is the hub's `batch` key call, `lym gate test --gate batch` without `--wait`, with one `--card <card id>` per card of the batch, run once per batch by the fork after its last card; Go never runs it, and the `webster` gate catches a fork that skips it;
   the `webster` gate stays the once-per-plan run, a must-pass gate on Merriam that sends a failure back to Merriam to fix.
   The Concurrency section's post-merge backstop assumes the same gate.
 - **Tier 3 (rare, explicit only, never automatic).**
@@ -593,7 +593,7 @@ The rows below stay in one fixed order regardless of which entry point runs them
     A done card is not read, since its file is frozen, and the rework gate reads the fresh generation's cards.
     It reads static text only: a test hidden behind a script in the line passes.
 45. `verify-gate-no-wait` — a `lym gate test` call in a card's `**Verify:**` line without `--wait`.
-    A call without it exits 75 on a busy slot instead of waiting for one, which fails a verify line no agent can re-run.
+    Go re-runs a `**Verify:**` line outside any agent hook, and a gate call without `--wait` is a slot-held line there, run inside one slot under `cardverify`'s per-line timeout instead of taking its tiers' own slots.
     It is appended and scoped as `verify-raw-command` is; one blocking finding per call, and its way forward is to add `--wait`.
 46. `plan-verify-retired` (informational) — an overview carrying a `## verify:` section.
     No gate runs it; the parser keeps accepting the section, so an in-flight plan still parses.

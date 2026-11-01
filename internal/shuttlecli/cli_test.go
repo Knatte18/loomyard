@@ -21,8 +21,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/google/go-cmp/cmp"
 	"github.com/spf13/cobra"
@@ -778,5 +781,63 @@ func TestOpenCmd_ListModelsRegistryLoadFailure(t *testing.T) {
 	}
 	if len(recorder.specs) != 0 {
 		t.Errorf("OpenLaunch saw specs %+v; want none", recorder.specs)
+	}
+}
+
+// TestAwaitCap pins where a call's cap comes from: a given --cap wins and calls neither function, a found worktree answers the resolver's cap, and no worktree answers the default without asking the resolver.
+func TestAwaitCap(t *testing.T) {
+	t.Parallel()
+
+	const strand = "sh:slug:implementer"
+	worktree := t.TempDir()
+	location := &lymcwd.Location{HubPath: worktree, WorktreeName: "wt"}
+	wantDirs := fabricengine.ConfigDirs(location)
+
+	tests := []struct {
+		name        string
+		flagCap     time.Duration
+		flagGiven   bool
+		resolveErr  error
+		answer      shuttleengines.KeepWarmAnswer
+		want        time.Duration
+		wantKeep    bool
+		wantResolve bool
+	}{
+		{name: "found worktree answers the resolver's cap", answer: shuttleengines.KeepWarmAnswer{Cap: 50 * time.Millisecond}, want: 50 * time.Millisecond, wantKeep: true, wantResolve: true},
+		{name: "a fallback answer still answers its cap", answer: shuttleengines.KeepWarmAnswer{Cap: 50 * time.Millisecond, Fallback: errors.New("no engine")}, want: 50 * time.Millisecond, wantKeep: true, wantResolve: true},
+		{name: "no git worktree answers the default", resolveErr: lymcwd.ErrNotAGitRepo, want: shuttleengine.DefaultAwaitCap, wantResolve: true},
+		{name: "a given cap wins and asks nothing", flagCap: 30 * time.Millisecond, flagGiven: true, answer: shuttleengines.KeepWarmAnswer{Cap: 50 * time.Millisecond}, want: 30 * time.Millisecond},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var keepCalls, resolveCalls int
+			var gotDirs configengine.Dirs
+			var gotStrand string
+			keepWarm := func(dirs configengine.Dirs, strand string) shuttleengines.KeepWarmAnswer {
+				keepCalls++
+				gotDirs, gotStrand = dirs, strand
+				return tt.answer
+			}
+			resolveWorktree := func(string) (*lymcwd.Location, error) {
+				resolveCalls++
+				if tt.resolveErr != nil {
+					return nil, tt.resolveErr
+				}
+				return location, nil
+			}
+
+			got := awaitCap(worktree, strand, tt.flagCap, tt.flagGiven, keepWarm, resolveWorktree)
+			if got != tt.want {
+				t.Errorf("awaitCap() = %v; want %v", got, tt.want)
+			}
+			if (keepCalls == 1) != tt.wantKeep || (resolveCalls == 1) != tt.wantResolve {
+				t.Errorf("awaitCap() made %d keep-warm and %d resolve calls; want keep-warm %v, resolve %v", keepCalls, resolveCalls, tt.wantKeep, tt.wantResolve)
+			}
+			if tt.wantKeep && (gotDirs != wantDirs || gotStrand != strand) {
+				t.Errorf("keepWarm called with %+v, %q; want %+v, %q", gotDirs, gotStrand, wantDirs, strand)
+			}
+		})
 	}
 }

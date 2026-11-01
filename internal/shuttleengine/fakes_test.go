@@ -462,6 +462,11 @@ func (e *fakeEngine) PromptCacheLifetime(spec Spec, cfg Config) (time.Duration, 
 	return 0, nil
 }
 
+// KeepWarmCaps answers zero caps and no error, so no test-built gate or wait keeps a session warm.
+func (e *fakeEngine) KeepWarmCaps(role string) (time.Duration, time.Duration, error) {
+	return 0, 0, nil
+}
+
 // AuditForks records the (sessionID, workdir) it was called with and returns
 // AuditForksResult/AuditForksErr — a test scripts the canned audit a fork-mode done classification
 // should attach to Result.ForkAudit.

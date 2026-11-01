@@ -8,12 +8,15 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/verifyrun"
 )
 
@@ -39,27 +42,35 @@ type Runner struct {
 	WaitDir string
 	// Timeout bounds a slot-held line from the moment its slot is held; zero means DefaultTimeout.
 	Timeout time.Duration
+	// Phase, when set, is called with true right before a slot-held line acquires its slot and with false right before any line runs, so a caller can tell the slot wait from the run.
+	Phase func(slotWait bool)
+	// Tied, when set, makes a line run tied to the calling process and is called with the line's process tree once the line runs, so a caller can record the tree.
+	Tied func(proc.TreeRecord)
 }
 
-// RunLine runs one `**Verify:**` line through verifyrun.Run in the worktree, its output to out, and returns how it failed, empty when it passed.
+// RunLine runs one `**Verify:**` line through verifyrun in the worktree, its output to out, and returns how it failed, empty when it passed.
+// Cancelling ctx during the slot wait fails the line, and during the line ends its process group.
 // A failure reads `exited <code>`, `failed to start: <err>`, `could not acquire a gate slot: <err>` or `timed out after <timeout>`.
 // A line IsGateCall accepts runs unslotted and outside the timeout, since the gate's own pre-tier ceiling and tier timeouts bound it.
 // Any other line takes one slot of the pool without a cap on the wait, and runs under the timeout counted from the moment the slot is held, with the environment gateslot.HolderEnv returns.
 // Neither sees gateslot.PrebuiltLymEnv: a line's own go test builds lym once per test binary.
-func (r Runner) RunLine(line string, out io.Writer) string {
-	return r.runLine(strings.TrimSpace(line), "card verify", out)
+func (r Runner) RunLine(ctx context.Context, line string, out io.Writer) string {
+	return r.runLine(ctx, strings.TrimSpace(line), "card verify", out)
 }
 
 // runLine is RunLine with site as the label of the slot holder and wait record.
-func (r Runner) runLine(line, site string, out io.Writer) string {
-	env := gateslot.StripPrebuilt(os.Environ())
+func (r Runner) runLine(ctx context.Context, line, site string, out io.Writer) string {
+	env := slices.DeleteFunc(gateslot.StripPrebuilt(os.Environ()), func(entry string) bool { return strings.HasPrefix(entry, agentname.StrandNameEnv+"=") })
 	if IsGateCall(line) {
-		return r.execute(context.Background(), line, env, out, 0)
+		r.phase(false)
+		return r.execute(ctx, line, env, out, 0)
 	}
 	if r.Slots == nil {
-		return r.execute(context.Background(), line, env, out, r.timeout())
+		r.phase(false)
+		return r.execute(ctx, line, env, out, r.timeout())
 	}
-	lease, err := r.acquire(site)
+	r.phase(true)
+	lease, err := r.acquire(ctx, site)
 	if err != nil {
 		return fmt.Sprintf("could not acquire a gate slot: %v", err)
 	}
@@ -72,13 +83,21 @@ func (r Runner) runLine(line, site string, out io.Writer) string {
 	if err != nil {
 		return fmt.Sprintf("could not acquire a gate slot: read gate limits: %v", err)
 	}
-	return r.execute(context.Background(), line, gateslot.HolderEnv(env, lease, limits.Tier0Parallel), out, r.timeout())
+	r.phase(false)
+	return r.execute(ctx, line, gateslot.HolderEnv(env, lease, limits.Tier0Parallel), out, r.timeout())
+}
+
+// phase reports a phase change to Phase when it is set.
+func (r Runner) phase(slotWait bool) {
+	if r.Phase != nil {
+		r.Phase(slotWait)
+	}
 }
 
 // RunCards runs each card's `**Verify:**` value in card order, its output to out, and returns one line per failing card, `card NN-<slug> verify <command> <how>`, where <how> is RunLine's failure.
 // A card with no `**Verify:**` passes, and stopAtFirst ends the run at the first failing card.
 // It returns no error: a line that cannot start is a failed line.
-func (r Runner) RunCards(cards []planparser.Card, out io.Writer, stopAtFirst bool) []string {
+func (r Runner) RunCards(ctx context.Context, cards []planparser.Card, out io.Writer, stopAtFirst bool) []string {
 	var failures []string
 	for _, card := range cards {
 		command := strings.TrimSpace(card.Verify)
@@ -86,7 +105,7 @@ func (r Runner) RunCards(cards []planparser.Card, out io.Writer, stopAtFirst boo
 			continue
 		}
 		label := fmt.Sprintf("%02d-%s", card.Number, card.Slug)
-		how := r.runLine(command, "card verify "+label, out)
+		how := r.runLine(ctx, command, "card verify "+label, out)
 		if how == "" {
 			continue
 		}
@@ -141,7 +160,13 @@ func (r Runner) execute(ctx context.Context, line string, env []string, out io.W
 		ctx, cancel = context.WithTimeout(ctx, bound)
 		defer cancel()
 	}
-	code, err := verifyrun.Run(ctx, line, r.Worktree, env, out)
+	var code int
+	var err error
+	if r.Tied != nil {
+		code, err = verifyrun.RunTied(ctx, line, r.Worktree, env, out, r.Tied)
+	} else {
+		code, err = verifyrun.Run(ctx, line, r.Worktree, env, out)
+	}
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
 		return fmt.Sprintf("timed out after %s", bound)
@@ -155,7 +180,7 @@ func (r Runner) execute(ctx context.Context, line string, env []string, out io.W
 
 // acquire takes one slot for site, keeping a wait record in the wait directory until the acquire returns.
 // A wait record that cannot be written is logged and skipped, since it only feeds the status display.
-func (r Runner) acquire(site string) (*gateslot.Lease, error) {
+func (r Runner) acquire(ctx context.Context, site string) (*gateslot.Lease, error) {
 	if r.WaitDir != "" {
 		waitPath, err := gateslot.WriteWait(r.WaitDir, gateslot.Wait{Site: site, PID: os.Getpid(), Started: time.Now()})
 		if err != nil {
@@ -164,5 +189,5 @@ func (r Runner) acquire(site string) (*gateslot.Lease, error) {
 			defer os.Remove(waitPath)
 		}
 	}
-	return r.Slots.Acquire(context.Background(), gateslot.Holder{Worktree: r.Worktree, Site: site})
+	return r.Slots.Acquire(ctx, gateslot.Holder{Worktree: r.Worktree, Site: site})
 }

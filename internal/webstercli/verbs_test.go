@@ -1033,7 +1033,7 @@ func TestRebaselineCmd_EditedCardOfFailedBatchThenRecover(t *testing.T) {
 	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &out, []string{"1", "--wait", "1ns"}); code != 0 {
 		t.Fatalf("recover-batch 1 = %d; want 0, output: %s", code, out.String())
 	}
-	if want := "  - `lym gate test --wait --gate card --card 1-only`\n"; !strings.Contains(prompt, want) {
+	if want := "  - `lym gate test --gate card --card 1-only`\n"; !strings.Contains(prompt, want) {
 		t.Errorf("recovery prompt lacks the edited card's gate call %q; got %q", want, prompt)
 	}
 

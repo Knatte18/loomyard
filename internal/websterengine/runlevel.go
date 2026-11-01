@@ -696,7 +696,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	if err != nil {
 		return RunResult{}, err
 	}
-	verifyFixGate, err := gateConfig.GateCall("webster-fix")
+	verifyFixGate, err := gateConfig.AgentGateCall("webster-fix")
 	if err != nil {
 		return RunResult{}, err
 	}

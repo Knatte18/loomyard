@@ -260,6 +260,11 @@ func (e *Engine) PromptCacheLifetime(spec shuttleengine.Spec, cfg shuttleengine.
 	return 0, nil
 }
 
+// KeepWarmCaps answers zero caps and no error, so no test-built gate or wait keeps a session warm, matching PromptCacheLifetime.
+func (e *Engine) KeepWarmCaps(role string) (time.Duration, time.Duration, error) {
+	return 0, 0, nil
+}
+
 // AuditForks answers AuditForksFn, else AuditErr, else Audit.
 func (e *Engine) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit, error) {
 	if e.AuditForksFn != nil {

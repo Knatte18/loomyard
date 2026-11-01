@@ -35,7 +35,7 @@ The run's parent can withdraw an acceptance; a withdrawn test is refused to you,
 ## Step 3 — Fix the rest
 
 For each drift you do not accept, find its cause in the task's code and fix it, committing each fix on its own with a commit that leaves the tree green.
-Test as you work with `lym gate test --wait`, which computes its scope from your changes.
+Test as you work with `lym gate test`, which computes its scope from your changes; when it answers `done: false` with exit 75, the run goes on, so run the same command again.
 Never push: the landing steps that follow push the branch.
 
 ## Step 4 — Check again within your budget

@@ -1,7 +1,7 @@
 //go:build tier1
 
 // test_integration_test.go drives `lym gate test` over one hubforge hub and a stand-in tier command, each run in a process of its own so a test can signal the gate it started:
-// the tier run, its slots, the wait bound, inheritance, hub resolution from -C, the unslotted run outside every hub, the child's lifetime under a catchable signal, a SIGKILL and a timeout, the prebuild, the run record, and the refusals that need a hub.
+// the tier run, its slots, the slot wait, inheritance, hub resolution from -C, the unslotted run outside every hub, the child's lifetime under a catchable signal, a SIGKILL and a timeout, the prebuild, the run record, and the refusals that need a hub.
 // It is Tier 2: it builds a real hub and spawns git, the stand-in and a few real go test runs, so it needs the integration build tag.
 
 package gatecli
@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -36,6 +37,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -61,16 +64,37 @@ const (
 	helperHoldEnv         = "GATECLI_TEST_HOLD"
 	// helperShortageEnv makes a tier invocation print a resource-shortage error and exit 1, on its first run when the value is `once` and on every run when it is `always`.
 	helperShortageEnv = "GATECLI_TEST_SHORTAGE"
-	// helperSlotWaitEnv, helperCeilingEnv and helperUnitEnv are durations the gate helper passes to newCommand in place of its defaults, and the helper always passes a shortage-rerun delay of 0.
-	helperSlotWaitEnv = "GATECLI_TEST_SLOT_WAIT"
-	helperCeilingEnv  = "GATECLI_TEST_CEILING"
-	helperUnitEnv     = "GATECLI_TEST_UNIT"
+	// helperCeilingEnv and helperUnitEnv are durations the gate helper passes to newCommand in place of its defaults, and the helper always passes a shortage-rerun delay of 0.
+	helperCeilingEnv = "GATECLI_TEST_CEILING"
+	helperUnitEnv    = "GATECLI_TEST_UNIT"
+	// helperDelayEnv is how long a tier invocation sleeps, after printing a line, before it exits with its code.
+	helperDelayEnv = "GATECLI_TEST_DELAY"
+	// helperCapEnv is the keep-warm cap the gate helper's resolver answers: a duration, `0` for a zero cap, or `fallback` for DefaultAwaitCap with a fallback cause, as the real resolver answers over an unloadable claude.yaml.
+	// Unset, the helper uses the real resolver.
+	helperCapEnv = "GATECLI_TEST_CAP"
+	// helperLongCapEnv and helperMaxRerunsEnv are the long cap and the break-even a numeric helperCapEnv adds to the resolver's answer: the long cap defaults to the cap and the break-even to 0.
+	helperLongCapEnv   = "GATECLI_TEST_LONG_CAP"
+	helperMaxRerunsEnv = "GATECLI_TEST_MAX_RERUNS"
+	// helperLockMarginEnv, helperClaimBoundEnv and helperGraceEnv are durations the gate helper's front uses in place of its production bounds.
+	helperLockMarginEnv = "GATECLI_TEST_LOCK_MARGIN"
+	helperClaimBoundEnv = "GATECLI_TEST_CLAIM_BOUND"
+	helperGraceEnv      = "GATECLI_TEST_GRACE"
+	// helperLaunchEnv picks how the gate helper's front launches its runner: `none` starts nothing, `late` starts it two seconds late and `error` fails the launch, and any other value, or none, starts it at once.
+	helperLaunchEnv = "GATECLI_TEST_LAUNCH"
+	// helperRoleRunGate calls RunGate over helperCwdEnv with the gate key in its first argument, in a process that carries a strand and helperCapEnv.
+	helperRoleRunGate = "rungate"
+	// helperRoleEnded exits at once, so a front's launch seam can name the pid of a process that already ended.
+	helperRoleEnded = "ended"
+	// runnerNeverStartedLine is what the launch mode `none` writes to the run's runner log in place of a runner.
+	runnerNeverStartedLine = "gate helper: the runner was never started"
 )
 
 func init() {
 	helperRoles[helperRoleGate] = runGateHelper
 	helperRoles[helperRoleStandIn] = runStandIn
 	helperRoles[helperRoleSleeper] = func() int { select {} }
+	helperRoles[helperRoleRunGate] = runGateRoleHelper
+	helperRoles[helperRoleEnded] = func() int { return 0 }
 }
 
 // standInRecord is what the stand-in appends to helperRecordEnv, one line of JSON per invocation.
@@ -110,7 +134,7 @@ func runGateHelper() int {
 	if standIn := os.Getenv(helperGoEnv); standIn != "" {
 		goBinary = standIn
 	}
-	durations := map[string]time.Duration{helperSlotWaitEnv: time.Second, helperCeilingEnv: 2 * time.Minute, helperUnitEnv: time.Minute}
+	durations := map[string]time.Duration{helperCeilingEnv: 2 * time.Minute, helperUnitEnv: time.Minute}
 	for name := range durations {
 		if value := os.Getenv(name); value != "" {
 			parsed, err := time.ParseDuration(value)
@@ -120,8 +144,118 @@ func runGateHelper() int {
 			durations[name] = parsed
 		}
 	}
-	code := clihelp.ExecuteIn(newCommand(goBinary, time.Second, durations[helperSlotWaitEnv], durations[helperCeilingEnv], durations[helperUnitEnv], 0), os.Getenv(helperCwdEnv), os.Stdout, os.Args[1:])
+	seams, ok := helperSeams()
+	if !ok {
+		return 1
+	}
+	code := clihelp.ExecuteIn(newCommand(goBinary, time.Second, durations[helperCeilingEnv], durations[helperUnitEnv], 0, seams), os.Getenv(helperCwdEnv), os.Stdout, os.Args[1:])
 	// The helper stands for `lym`'s main, which removes the process run directory on exit.
+	_ = lymtemp.Remove()
+	return code
+}
+
+// helperSeams returns the front seams the gate helper runs with: the production values with helperLaunch in place of the launcher, and the bounds and cap the helper's environment replaces.
+// It reports false when a duration in the environment does not parse.
+func helperSeams() (detachSeams, bool) {
+	seams := defaultDetachSeams()
+	seams.launch = helperLaunch
+	for name, target := range map[string]*time.Duration{helperLockMarginEnv: &seams.lockMargin, helperClaimBoundEnv: &seams.claimBound, helperGraceEnv: &seams.grace} {
+		if value := os.Getenv(name); value != "" {
+			parsed, err := time.ParseDuration(value)
+			if err != nil {
+				return seams, false
+			}
+			*target = parsed
+		}
+	}
+	switch value := os.Getenv(helperCapEnv); value {
+	case "":
+	case "0":
+		seams.keepWarm = func(configengine.Dirs, string) shuttleengines.KeepWarmAnswer { return shuttleengines.KeepWarmAnswer{} }
+	case "fallback":
+		seams.keepWarm = func(configengine.Dirs, string) shuttleengines.KeepWarmAnswer {
+			return shuttleengines.KeepWarmAnswer{Cap: shuttleengine.DefaultAwaitCap, LongCap: shuttleengine.DefaultAwaitCap, Fallback: errors.New("gate helper: no engine answered")}
+		}
+	default:
+		answer := shuttleengines.KeepWarmAnswer{}
+		var err error
+		if answer.Cap, err = time.ParseDuration(value); err != nil {
+			return seams, false
+		}
+		answer.LongCap = answer.Cap
+		if long := os.Getenv(helperLongCapEnv); long != "" {
+			if answer.LongCap, err = time.ParseDuration(long); err != nil {
+				return seams, false
+			}
+		}
+		if reruns := os.Getenv(helperMaxRerunsEnv); reruns != "" {
+			if answer.MaxReruns, err = strconv.Atoi(reruns); err != nil {
+				return seams, false
+			}
+		}
+		seams.keepWarm = func(configengine.Dirs, string) shuttleengines.KeepWarmAnswer { return answer }
+	}
+	return seams, true
+}
+
+// helperLaunch is the launcher of the gate helper's front: it re-runs this test binary in the gate helper role over `run-detached <run dir>`, detached, with the run's runner log as its output.
+// Under helperLaunchEnv `none` it starts nothing, writes runnerNeverStartedLine to the runner log and returns the pid of a process that already ended;
+// under `late` it starts the runner two seconds after it returned, naming the front's own pid meanwhile; under `error` it fails.
+func helperLaunch(spawn runnerSpawn) (int, error) {
+	switch os.Getenv(helperLaunchEnv) {
+	case "error":
+		return 0, errors.New("gate helper: the launch failed")
+	case "none":
+		if err := os.WriteFile(filepath.Join(spawn.runDir, runnerLogFile), []byte(runnerNeverStartedLine+"\n"), 0o644); err != nil {
+			return 0, err
+		}
+		ended := exec.Command(os.Args[0])
+		ended.Env = append(os.Environ(), helperEnv+"="+helperRoleEnded)
+		if err := ended.Run(); err != nil {
+			return 0, err
+		}
+		return ended.Process.Pid, nil
+	case "late":
+		go func() {
+			time.Sleep(2 * time.Second)
+			if _, err := startHelperRunner(spawn); err != nil {
+				logger.Warn("gate helper: the late runner did not start", "cause", err)
+			}
+		}()
+		return os.Getpid(), nil
+	}
+	return startHelperRunner(spawn)
+}
+
+// startHelperRunner starts the gate helper role over `run-detached <run dir>`, detached, without the strand name, and returns its pid.
+func startHelperRunner(spawn runnerSpawn) (int, error) {
+	logFile, err := os.OpenFile(filepath.Join(spawn.runDir, runnerLogFile), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return 0, err
+	}
+	defer logFile.Close()
+	cmd := exec.Command(os.Args[0], "run-detached", spawn.runDir)
+	cmd.Dir = spawn.runDir
+	cmd.Env = append(slices.DeleteFunc(os.Environ(), func(entry string) bool {
+		return strings.HasPrefix(entry, agentname.StrandNameEnv+"=") || strings.HasPrefix(entry, helperEnv+"=")
+	}), helperEnv+"="+helperRoleGate)
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+	proc.Detach(cmd)
+	if err := cmd.Start(); err != nil {
+		return 0, err
+	}
+	go func() { _ = cmd.Wait() }()
+	return cmd.Process.Pid, nil
+}
+
+// runGateRoleHelper calls RunGate over helperCwdEnv with the gate key in its first argument, as the stand-in's tier command runs under it.
+// It runs in a process the test starts with a strand name and helperCapEnv, which RunGate never reads.
+func runGateRoleHelper() int {
+	logger.SetOutput(os.Stderr)
+	logger.SetVerbosity(1)
+	os.Setenv(helperEnv, helperRoleStandIn)
+	code := RunGate(context.Background(), os.Getenv(helperCwdEnv), os.Args[1], os.Stdout, os.Stderr, TierObserver{})
 	_ = lymtemp.Remove()
 	return code
 }
@@ -176,6 +310,10 @@ func runStandIn() int {
 		fmt.Println("fork/exec /usr/bin/git: Resource temporarily unavailable")
 		return 1
 	}
+	if delay, err := time.ParseDuration(os.Getenv(helperDelayEnv)); err == nil {
+		fmt.Println("standin ran")
+		time.Sleep(delay)
+	}
 	code, _ := strconv.Atoi(os.Getenv(exitEnv))
 	return code
 }
@@ -211,9 +349,9 @@ func startGate(t *testing.T, run gateRun) *runningGate {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
 	g.cmd = exec.CommandContext(ctx, os.Args[0], run.args...)
-	// The outer environment's slot or enclosing gate, if any, must not make the gate think it is nested.
+	// The outer environment's slot, enclosing gate or strand, if any, must not make the gate think it is nested or an agent's.
 	g.cmd.Env = slices.DeleteFunc(os.Environ(), func(entry string) bool {
-		return strings.HasPrefix(entry, gateslot.InheritEnv+"=") || strings.HasPrefix(entry, enclosingGateEnv+"=")
+		return strings.HasPrefix(entry, gateslot.InheritEnv+"=") || strings.HasPrefix(entry, enclosingGateEnv+"=") || strings.HasPrefix(entry, agentname.StrandNameEnv+"=")
 	})
 	g.cmd.Env = append(g.cmd.Env, helperEnv+"="+helperRoleGate, helperCwdEnv+"="+run.cwd, helperRecordEnv+"="+g.record)
 	if !run.realGo {
@@ -461,6 +599,23 @@ func scenarioConfig(t *testing.T, mutate func(cfg map[string]any)) []byte {
 		t.Fatal(err)
 	}
 	return data
+}
+
+// standaloneWorktree returns a git worktree outside every hub, holding gate.yaml when withConfig is set.
+func standaloneWorktree(t *testing.T, withConfig bool) string {
+	t.Helper()
+	dir := t.TempDir()
+	gitkit.Git(t, dir, "init", "-q")
+	if withConfig {
+		file := configengine.ConfigFile(dir, "gate")
+		if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(file, scenarioConfig(t, func(cfg map[string]any) { cfg["scoper"] = "none" }), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
 }
 
 func TestGateTest_Scenario(t *testing.T) {
@@ -802,7 +957,7 @@ func TestGateTest_Scenario(t *testing.T) {
 	})
 
 	t.Run("a free slot runs the tier under its env, exits with its code and records the run", func(t *testing.T) {
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "./pkg", "--", "-run", "X"}, env: []string{helperExitEnv + "=7", strandEnvEntry, logger.TraceIDEnv + "=0123456789abcdef", "MSBUILDDISABLENODEREUSE=0", "DOTNET_CLI_USE_MSBUILD_SERVER=1"}})
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "./pkg", "--", "-run", "X"}, env: []string{helperExitEnv + "=7", strandEnvEntry, helperCapEnv + "=0", logger.TraceIDEnv + "=0123456789abcdef", "MSBUILDDISABLENODEREUSE=0", "DOTNET_CLI_USE_MSBUILD_SERVER=1"}})
 		if code := g.wait(t); code != 7 {
 			t.Errorf("exit code = %d; want the stand-in's 7", code)
 		}
@@ -896,34 +1051,6 @@ func TestGateTest_Scenario(t *testing.T) {
 		requireFree(t)
 	})
 
-	t.Run("every slot held past the wait cap answers slot_free false naming the holders and exits SlotBusyExit", func(t *testing.T) {
-		acquire(t, "holder one")
-		acquire(t, "holder two")
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "./pkg"}, env: []string{helperSlotWaitEnv + "=50ms"}})
-		code := g.wait(t)
-
-		var envelope struct {
-			OK       bool                `json:"ok"`
-			SlotFree *bool               `json:"slot_free"`
-			Message  string              `json:"message"`
-			Holders  []map[string]string `json:"holders"`
-		}
-		if err := json.Unmarshal(g.stdout.Bytes(), &envelope); err != nil {
-			t.Fatalf("stdout %q is not a JSON envelope: %v", g.stdout.String(), err)
-		}
-		var sites []string
-		for _, holder := range envelope.Holders {
-			sites = append(sites, holder["site"])
-		}
-		slices.Sort(sites)
-		if code != SlotBusyExit || !envelope.OK || envelope.SlotFree == nil || *envelope.SlotFree || !strings.Contains(envelope.Message, "run the same command again in a turn that does nothing else") || !slices.Equal(sites, []string{"holder one", "holder two"}) {
-			t.Errorf("gate = exit %d, %+v; want exit %d, ok true, slot_free false, a re-run message and both holders", code, envelope, SlotBusyExit)
-		}
-		if _, err := os.Stat(g.record); err == nil {
-			t.Error("the stand-in ran although no slot was free")
-		}
-	})
-
 	t.Run("status names each held slot's number, worktree, site, tier and start, the slot count and the drain", func(t *testing.T) {
 		acquire(t, "holder one")
 		lease, err := pool.AcquireSlots(context.Background(), gateslot.Holder{Worktree: "/tiered/worktree", Site: "lym gate test tier1", Tier: "tier1"}, 1)
@@ -1003,16 +1130,15 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 	})
 
-	t.Run("--wait blocks past the cap until a slot frees", func(t *testing.T) {
+	t.Run("--wait blocks until a slot frees", func(t *testing.T) {
 		first, second := acquire(t, "holder one"), acquire(t, "holder two")
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--wait", "./pkg"}, env: []string{helperSlotWaitEnv + "=50ms"}})
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--wait", "./pkg"}})
 		eventually(t, "the gate's wait record", func() bool {
 			waits, err := gateslot.ReadWaits(waitDir)
 			return err == nil && len(waits) == 1
 		})
 		ended := make(chan error, 1)
 		go func() { ended <- g.cmd.Wait() }()
-		// The cap is 50ms, so a gate that still waits several caps later has lifted it.
 		select {
 		case err := <-ended:
 			t.Fatalf("gate ended with %v while every slot was held; want it to keep waiting", err)
@@ -1035,10 +1161,21 @@ func TestGateTest_Scenario(t *testing.T) {
 
 	t.Run("a tier with slots all needs every slot and holds them", func(t *testing.T) {
 		held := acquire(t, "holder")
-		busy := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "1", "./pkg"}, env: []string{helperSlotWaitEnv + "=50ms"}})
-		if code := busy.wait(t); code != SlotBusyExit {
-			t.Errorf("exit code with one of two slots held = %d, stdout %q; want %d", code, busy.stdout.String(), SlotBusyExit)
+		// A call with no strand takes no cap: one that took the 50ms cap would have answered SlotBusyExit by now.
+		waiting := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "1", "./pkg"}, env: []string{helperCapEnv + "=50ms"}})
+		ended := make(chan error, 1)
+		go func() { ended <- waiting.cmd.Wait() }()
+		select {
+		case err := <-ended:
+			t.Fatalf("gate ended with %v, stdout %q, while one of two slots was held; want it to keep waiting for every slot", err, waiting.stdout.String())
+		case <-time.After(500 * time.Millisecond):
 		}
+		if runtime.GOOS == "windows" {
+			_ = waiting.cmd.Process.Kill()
+		} else if err := waiting.cmd.Process.Signal(syscall.SIGTERM); err != nil {
+			t.Fatal(err)
+		}
+		<-ended
 		if err := held.Release(); err != nil {
 			t.Fatal(err)
 		}
@@ -1197,10 +1334,19 @@ func TestGateTest_Scenario(t *testing.T) {
 		if strings.Contains(g.stdout.String(), "failed runs") {
 			t.Errorf("stdout = %q; want no closing line of failed runs when every tier passed", g.stdout.String())
 		}
+		var callIDs []string
 		for _, tier := range []int{0, 6} {
-			if run, _ := runRecordOf(t, g.stdout.String(), tier); !slices.Equal(run.TierList, []int{0, 6}) {
+			run, _ := runRecordOf(t, g.stdout.String(), tier)
+			if !slices.Equal(run.TierList, []int{0, 6}) {
 				t.Errorf("tier%d run record tier list = %v; want [0 6]", tier, run.TierList)
 			}
+			if run.Abandoned {
+				t.Errorf("tier%d run record is abandoned; want a finished call", tier)
+			}
+			callIDs = append(callIDs, run.CallID)
+		}
+		if callIDs[0] == "" || callIDs[0] != callIDs[1] {
+			t.Errorf("tier call ids = %q; want one non-empty id shared by both records", callIDs)
 		}
 	})
 
@@ -1280,6 +1426,9 @@ func TestGateTest_Scenario(t *testing.T) {
 				t.Errorf("exit code = %d; want 128 plus SIGTERM", code)
 			}
 			eventually(t, "the tier's command and its sleeper to end", func() bool { return processGone(record.PID) && processGone(record.Grandchild) })
+			if run, _ := runRecordOf(t, g.stdout.String(), 0); !run.Abandoned {
+				t.Errorf("run record of the signalled tier = %+v; want it marked abandoned", run)
+			}
 			requireFree(t)
 		})
 	}
@@ -1374,25 +1523,10 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 	})
 
-	// standalone returns a git worktree outside every hub, holding gate.yaml when withConfig is set.
-	standalone := func(t *testing.T, withConfig bool) string {
-		t.Helper()
-		dir := t.TempDir()
-		gitkit.Git(t, dir, "init", "-q")
-		if withConfig {
-			file := configengine.ConfigFile(dir, "gate")
-			if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(file, scenarioConfig(t, func(cfg map[string]any) { cfg["scoper"] = "none" }), 0o644); err != nil {
-				t.Fatal(err)
-			}
-		}
-		return dir
-	}
+	standalone := standaloneWorktree
 	t.Run("a worktree outside every hub runs unslotted under its own gate.yaml and records under its own .lym", func(t *testing.T) {
 		worktree := standalone(t, true)
-		g := startGate(t, gateRun{cwd: worktree, args: []string{"test", "./pkg"}, env: []string{strandEnvEntry}})
+		g := startGate(t, gateRun{cwd: worktree, args: []string{"test", "./pkg"}, env: []string{strandEnvEntry, helperCapEnv + "=0"}})
 		if code := g.wait(t); code != 0 {
 			t.Fatalf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
 		}
@@ -1801,4 +1935,175 @@ func TestGateTest_UnsetDirFollowsTheAnchor(t *testing.T) {
 	if want := []string{anchor, anchor, filepath.Join(prime, "sub"), prime}; !slices.Equal(cwds, want) {
 		t.Errorf("build, tier0, tier2 and tier6 ran in %q; want the build and tier0, which set no dir, in the anchor, tier2, whose dir is sub, in sub under the worktree root, and tier6, whose dir is ., in the worktree root: %q", cwds, want)
 	}
+}
+
+// TestGateRunner starts the gate helper as `run-detached` over run directories a test writes itself, with the stand-in as the tier command.
+func TestGateRunner(t *testing.T) {
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	if err := os.WriteFile(configengine.ConfigFile(h.BoardDir(), "gate"), scenarioConfig(t, nil), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	prime := h.PrimeWorktree()
+	pool := hubgeom.GateSlots(h.Location)
+	waitDir := gateslot.WaitDir(h.Location.AnchorPath())
+
+	// leaseLength outlasts the stand-in's start by a wide margin and is short enough to pass inside a row.
+	const leaseLength = 3 * time.Second
+
+	// startRunner writes a run directory holding a request for tier0 over ./pkg and a lease of length, and starts the runner over it.
+	startRunner := func(t *testing.T, length time.Duration, env ...string) (*runningGate, detachRun) {
+		t.Helper()
+		run := detachRun{dir: t.TempDir()}
+		data, err := json.Marshal(detachRequest{Verb: verbTest, Args: []string{"./pkg"}, Cwd: prime})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(run.dir, requestFile), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := run.writeLease(time.Now().Add(length)); err != nil {
+			t.Fatal(err)
+		}
+		return startGate(t, gateRun{cwd: prime, args: []string{"run-detached", run.dir}, env: env}), run
+	}
+	readJSONFile := func(t *testing.T, path string, into any) bool {
+		t.Helper()
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return false
+		}
+		if err := json.Unmarshal(data, into); err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		return true
+	}
+	waitForPhase := func(t *testing.T, run detachRun, want runPhase) {
+		t.Helper()
+		eventually(t, "phase "+want.State+" "+want.Tier, func() bool {
+			var got runPhase
+			return readJSONFile(t, filepath.Join(run.dir, phaseFile), &got) && got == want
+		})
+	}
+	readExit := func(t *testing.T, run detachRun) detachExit {
+		t.Helper()
+		var exit detachExit
+		if !readJSONFile(t, filepath.Join(run.dir, exitFile), &exit) {
+			t.Fatalf("run %s holds no exit file", run.dir)
+		}
+		return exit
+	}
+	readText := func(t *testing.T, run detachRun, name string) string {
+		t.Helper()
+		data, err := os.ReadFile(filepath.Join(run.dir, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(data)
+	}
+	requireFree := func(t *testing.T) {
+		t.Helper()
+		eventually(t, "the slots to be free", func() bool {
+			holders, err := pool.Holders()
+			return err == nil && len(holders) == 0
+		})
+		if waits, err := gateslot.ReadWaits(waitDir); err != nil || len(waits) != 0 {
+			t.Errorf("ReadWaits = (%+v, %v); want no wait record left", waits, err)
+		}
+	}
+	// requireAbandonedTierRecord fails unless the hub's run log holds an abandoned tier record that carries a call id.
+	requireAbandonedTierRecord := func(t *testing.T) {
+		t.Helper()
+		records, err := gateslot.ReadRunRecords(runLogDirOf(h.Location, true))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.ContainsFunc(records, func(record gateslot.RunRecord) bool { return record.Abandoned && record.CallID != "" && !record.Build }) {
+			t.Errorf("run records = %+v; want an abandoned tier record with a call id", records)
+		}
+	}
+
+	t.Run("a tier that runs a while shows its phase, then leaves its output and exit file", func(t *testing.T) {
+		g, run := startRunner(t, time.Hour, helperDelayEnv+"=2s", helperExitEnv+"=7")
+		waitForPhase(t, run, runPhase{State: phaseRunning, Tier: "tier0"})
+		if code := g.wait(t); code != 0 {
+			t.Fatalf("runner exit = %d, stdout %q; want 0", code, g.stdout.String())
+		}
+		if exit := readExit(t, run); exit != (detachExit{Code: 7}) {
+			t.Errorf("exit file = %+v; want code 7, not abandoned", exit)
+		}
+		if got := readText(t, run, stdoutFile); !strings.Contains(got, "standin ran") {
+			t.Errorf("stdout file = %q; want the tier's output", got)
+		}
+		if got := readText(t, run, stderrFile); !strings.Contains(got, "gate test: tier0") {
+			t.Errorf("stderr file = %q; want the tier's summary line", got)
+		}
+	})
+
+	t.Run("a lease that passes while the tier runs kills it, frees the slot and abandons the run", func(t *testing.T) {
+		g, run := startRunner(t, leaseLength, helperHoldEnv+"=1")
+		record := g.standIn(t)
+		g.wait(t)
+		if exit := readExit(t, run); exit != (detachExit{Code: 1, Abandoned: true}) {
+			t.Errorf("exit file = %+v; want code 1, abandoned", exit)
+		}
+		if got := readText(t, run, stderrFile); !strings.Contains(got, abandonedLine(verbTest)) {
+			t.Errorf("stderr file = %q; want the abandoned line", got)
+		}
+		eventually(t, "the tier's command and its sleeper to end", func() bool { return processGone(record.PID) && processGone(record.Grandchild) })
+		requireFree(t)
+		requireAbandonedTierRecord(t)
+	})
+
+	t.Run("a lease that passes in the slot wait runs no tier and leaves no wait record", func(t *testing.T) {
+		first, second := acquireAll(t, pool)
+		g, run := startRunner(t, leaseLength)
+		waitForPhase(t, run, runPhase{State: phaseSlots, Tier: "tier0"})
+		g.wait(t)
+		if exit := readExit(t, run); exit != (detachExit{Code: 1, Abandoned: true}) {
+			t.Errorf("exit file = %+v; want code 1, abandoned", exit)
+		}
+		if records := g.tierRecords(t); len(records) != 0 {
+			t.Errorf("tier invocations = %+v; want none", records)
+		}
+		var phase runPhase
+		if !readJSONFile(t, filepath.Join(run.dir, phaseFile), &phase) || phase != (runPhase{State: phaseSlots, Tier: "tier0"}) {
+			t.Errorf("phase file = %+v; want the slot wait of tier0", phase)
+		}
+		if err := errors.Join(first.Release(), second.Release()); err != nil {
+			t.Fatal(err)
+		}
+		requireFree(t)
+	})
+
+	if runtime.GOOS != "windows" {
+		t.Run("a SIGTERM to the runner abandons the run and frees the slot", func(t *testing.T) {
+			g, run := startRunner(t, time.Hour, helperHoldEnv+"=1")
+			record := g.standIn(t)
+			if err := g.cmd.Process.Signal(syscall.SIGTERM); err != nil {
+				t.Fatal(err)
+			}
+			g.wait(t)
+			if exit := readExit(t, run); exit != (detachExit{Code: 128 + int(syscall.SIGTERM), Abandoned: true}) {
+				t.Errorf("exit file = %+v; want 143, abandoned", exit)
+			}
+			eventually(t, "the tier's command and its sleeper to end", func() bool { return processGone(record.PID) && processGone(record.Grandchild) })
+			requireFree(t)
+		})
+	}
+}
+
+// acquireAll holds every slot of the scenario hub's two-slot pool until the test releases the returned leases.
+func acquireAll(t *testing.T, pool *gateslot.Pool) (first, second *gateslot.Lease) {
+	t.Helper()
+	acquire := func(site string) *gateslot.Lease {
+		lease, err := pool.Acquire(context.Background(), gateslot.Holder{Worktree: "/other/worktree", Site: site})
+		if err != nil {
+			t.Fatalf("Acquire: %v", err)
+		}
+		t.Cleanup(func() { _ = lease.Release() })
+		return lease
+	}
+	return acquire("holder one"), acquire("holder two")
 }

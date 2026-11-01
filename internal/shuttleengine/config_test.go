@@ -85,6 +85,9 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	if cfg.SubmitConfirmTimeoutS != 30 {
 		t.Errorf("SubmitConfirmTimeoutS = %d, want 30", cfg.SubmitConfirmTimeoutS)
 	}
+	if cfg.KeepWarmMaxReruns != 10 {
+		t.Errorf("KeepWarmMaxReruns = %d, want 10", cfg.KeepWarmMaxReruns)
+	}
 	if cfg.Engine != "claude" {
 		t.Errorf("Engine = %q, want claude", cfg.Engine)
 	}
@@ -132,6 +135,50 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 			t.Errorf("err = %q, want it to name %s and key deny_python", err, localFile)
 		}
 	})
+}
+
+// TestLoadConfig_KeepWarmMaxReruns pins that a local layer sets the break-even, 0 turns the long wait off, and a negative value is refused with its way forward.
+func TestLoadConfig_KeepWarmMaxReruns(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		value   string
+		want    int
+		wantErr bool
+	}{
+		{name: "Zero", value: "0", want: 0},
+		{name: "Three", value: "3", want: 3},
+		{name: "Negative", value: "-1", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			anchor := t.TempDir()
+			localFile := configengine.LocalFile(anchor, "shuttle")
+			if err := os.MkdirAll(filepath.Dir(localFile), 0o755); err != nil {
+				t.Fatalf("mkdir local dir: %v", err)
+			}
+			if err := os.WriteFile(localFile, []byte("keep_warm_max_reruns: "+tt.value+"\n"), 0o644); err != nil {
+				t.Fatalf("write local file: %v", err)
+			}
+
+			cfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: anchor}, "shuttle")
+			if tt.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "keep_warm_max_reruns") || !strings.Contains(err.Error(), "lym config shuttle") {
+					t.Fatalf("LoadConfig err = %v, want it to name keep_warm_max_reruns and lym config shuttle", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("LoadConfig: %v", err)
+			}
+			if cfg.KeepWarmMaxReruns != tt.want {
+				t.Errorf("KeepWarmMaxReruns = %d, want %d", cfg.KeepWarmMaxReruns, tt.want)
+			}
+		})
+	}
 }
 
 // TestLoadConfig_RetiredClaudeKeys pins that the Claude keys moved to claude.yaml still load from an unreconciled layer and are dropped.

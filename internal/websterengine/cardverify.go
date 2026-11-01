@@ -4,6 +4,7 @@
 package websterengine
 
 import (
+	"context"
 	"io"
 
 	"github.com/Knatte18/loomyard/internal/cardverify"
@@ -15,5 +16,5 @@ import (
 // A card with no Verify passes.
 // It returns no error: a verify that cannot start is a failed verify.
 func rerunCardVerifies(cards []planparser.Card, runner cardverify.Runner) []string {
-	return runner.RunCards(cards, io.Discard, false)
+	return runner.RunCards(context.Background(), cards, io.Discard, false)
 }

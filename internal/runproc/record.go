@@ -39,6 +39,8 @@ const (
 	RoleCapture = "capture"
 	// RoleSession is the pane process of an interactive agent session.
 	RoleSession = "session"
+	// RoleGate is a detached `lym gate` runner of a capped gate call.
+	RoleGate = "gate"
 )
 
 // Record is one registered process of a run.

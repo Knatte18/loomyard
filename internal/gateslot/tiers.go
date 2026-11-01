@@ -303,12 +303,29 @@ func (c Config) TierList(gate string) ([]int, error) {
 }
 
 // GateCall renders the one call a site runs for the named gate key: `lym gate test --wait --gate <key>` followed by one `--card <id>` per card id given.
+// Its `--wait` form is for a call Go runs, at a verify site or through `internal/cardverify` from a Go verb.
 // It refuses, with the refusals Gate gives, a key the config cannot run.
 func (c Config) GateCall(key string, cards ...string) (string, error) {
+	return c.renderGateCall(key, true, cards)
+}
+
+// AgentGateCall renders the one call an agent runs for the named gate key: `lym gate test --gate <key>` followed by one `--card <id>` per card id given.
+// It carries no `--wait`, so an agent strand's call takes the capped form and answers `done: false` with exit 75 when its keep-warm cap passes, instead of blocking one long call.
+// It refuses, with the refusals Gate gives, a key the config cannot run.
+func (c Config) AgentGateCall(key string, cards ...string) (string, error) {
+	return c.renderGateCall(key, false, cards)
+}
+
+// renderGateCall renders the gate call for key over cards, with `--wait` when wait is set.
+func (c Config) renderGateCall(key string, wait bool, cards []string) (string, error) {
 	if _, err := c.Gate(key); err != nil {
 		return "", err
 	}
-	words := []string{"lym", "gate", "test", "--wait", "--gate", key}
+	words := []string{"lym", "gate", "test"}
+	if wait {
+		words = append(words, "--wait")
+	}
+	words = append(words, "--gate", key)
 	for _, card := range cards {
 		words = append(words, "--card", card)
 	}

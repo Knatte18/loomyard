@@ -15,11 +15,10 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/impactset"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// SlotBusyExit is the exit code `lym gate test` returns when no slot frees within the keep-cache-warm cap.
-// It is EX_TEMPFAIL and no failure: the caller runs the same command again, and can tell a busy hub from a failing test run.
+// SlotBusyExit is the exit code of a capped `lym gate test` call whose run goes on after the caller's keep-warm cap passed.
+// It is EX_TEMPFAIL and no failure: the caller runs the same command again, and can tell a run still going from a failing test run.
 const SlotBusyExit = 75
 
 // defaultGoBinary is the go command `lym gate test` builds `lym` with.
@@ -33,11 +32,11 @@ const defaultShortageRetryDelay = 10 * time.Second
 
 // Command builds the cobra command tree for the gate module.
 func Command() *cobra.Command {
-	return newCommand(defaultGoBinary, defaultSamplePeriod, shuttleengine.DefaultAwaitCap, defaultPreTierCeiling, time.Minute, defaultShortageRetryDelay)
+	return newCommand(defaultGoBinary, defaultSamplePeriod, defaultPreTierCeiling, time.Minute, defaultShortageRetryDelay, defaultDetachSeams())
 }
 
-// newCommand builds the gate command tree over goBinary, the go command a prebuilding tier builds `lym` with, samplePeriod, how often the CPU watchdog samples a tier's process tree, slotWait, the longest the test verb waits for a free slot without --wait, preTierCeiling, the bound on the work before the first tier, timeoutUnit, the length of one `timeout_min` minute, and shortageRetryDelay, how long a tier that failed on a resource shortage waits before its one rerun.
-func newCommand(goBinary string, samplePeriod, slotWait, preTierCeiling, timeoutUnit, shortageRetryDelay time.Duration) *cobra.Command {
+// newCommand builds the gate command tree over goBinary, the go command a prebuilding tier builds `lym` with, samplePeriod, how often the CPU watchdog samples a tier's process tree, preTierCeiling, the bound on the work before the first tier, timeoutUnit, the length of one `timeout_min` minute, shortageRetryDelay, how long a tier that failed on a resource shortage waits before its one rerun, and seams, the bounds and launcher of a capped call's front.
+func newCommand(goBinary string, samplePeriod, preTierCeiling, timeoutUnit, shortageRetryDelay time.Duration, seams detachSeams) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "gate",
 		Short: "run the hub's test tiers inside the hub's gate-slot pool",
@@ -55,17 +54,16 @@ func newCommand(goBinary string, samplePeriod, slotWait, preTierCeiling, timeout
 		Use:         "test [<targets>...]",
 		Short:       "run the hub's test tiers once their gate slots are free",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: fmt.Sprintf(`test runs the tiers the hub declares in gate.yaml, in ascending tier number, going on past a failed one.
+		Long: `test runs the tiers the hub declares in gate.yaml, in ascending tier number, going on past a failed one.
 --gate K runs the tiers and the scope the gate key K of gate.yaml names, and goes with none of --tier, --upto, --all and --base.
 A key of scope card needs --card <id> per card, scope all runs every tier whole, and scope diff runs the diff from the merge base with the pair's parent branch.
 Explicit <targets> beside --gate replace the key's scope.
 --tier N names a tier and may repeat; the default is tier0 without --upto or --gate.
 --upto N adds every declared tier numbered 0 through N but a manual one, which runs only when --tier names it.
 Each tier takes the gate slots it asks for and runs its command through the platform shell, bounded by its timeout_min.
-Without --wait it waits for the slots for up to %s, under the prompt-cache lifetime.
-When they do not free, it prints ok with slot_free false naming the holders and exits %d, which is no failure:
-run the same command again in a turn that does nothing else, so the prompt cache stays warm between calls.
-With --wait it blocks until the slots free.
+Without --wait, an agent strand's call runs in a detached runner it starts or joins and answers done false with exit 75, no failure, once its keep-warm cap passes:
+run the same command again in a turn that does nothing else, so the prompt cache stays warm; it prints the result once the run ended.
+With --wait, and with no strand, the tiers run in this process.
 Inside a slot already held by an enclosing gate run it runs without acquiring another.
 Each tier prints a summary line to stderr and writes its record and log under the gate directory.
 The exit code is the first failing run's own, or 0.
@@ -82,19 +80,24 @@ Examples:
   lym gate test --wait --gate card --card 3
   lym gate test --upto 2
   lym gate test --base main
-  lym gate test ./... -- -run TestSomething -count=1`, slotWait, SlotBusyExit),
+  lym gate test ./... -- -run TestSomething -count=1`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
 			request := testRequest{
-				goBinary: goBinary, samplePeriod: samplePeriod, slotWait: slotWait, preTierCeiling: preTierCeiling, timeoutUnit: timeoutUnit, shortageRetryDelay: shortageRetryDelay,
-				stderr: cmd.ErrOrStderr(), dir: dir, tags: tags, gate: gate, tiers: tiers, cards: cards, base: base, all: all, guards: guards, wait: wait, targets: args,
+				goBinary: goBinary, samplePeriod: samplePeriod, preTierCeiling: preTierCeiling, timeoutUnit: timeoutUnit, shortageRetryDelay: shortageRetryDelay,
+				stderr: cmd.ErrOrStderr(), dir: dir, tags: tags, gate: gate, tiers: tiers, cards: cards, base: base, all: all, guards: guards, targets: args,
 				upto: upto, uptoGiven: cmd.Flags().Changed("upto"),
+				phase: phaseFrom(cmd.Context()),
 			}
 			if dash := cmd.ArgsLenAtDash(); dash >= 0 {
 				request.targets, request.args = args[:dash], args[dash:]
+			}
+			if call, capped := cappedCall(cmd.Context(), request, wait, seams); capped {
+				clihelp.SetExit(cmd.Context(), runFront(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), call, seams))
+				return nil
 			}
 			clihelp.SetExit(cmd.Context(), runTest(cmd.Context(), cmd.OutOrStdout(), request))
 			return nil
@@ -109,11 +112,14 @@ Examples:
 	testCmd.Flags().StringVar(&base, "base", "", "revision whose diff to the working tree is the scope")
 	testCmd.Flags().BoolVar(&all, "all", false, "run every tier over its all_targets")
 	testCmd.Flags().BoolVar(&guards, "guards", false, "after the listed tiers, run every //lym:guard test of the module under the tier its file belongs to")
-	testCmd.Flags().BoolVar(&wait, "wait", false, "block until the tiers' slots free instead of answering slot_free false after the keep-cache-warm cap")
+	testCmd.Flags().BoolVar(&wait, "wait", false, "run the tiers in this process and block until they end, instead of in the detached runner an agent call starts or joins")
 	cmd.AddCommand(testCmd)
 	cmd.AddCommand(statusCmd())
 	cmd.AddCommand(reportCmd())
-	cmd.AddCommand(cardVerifyCmd())
+	cmd.AddCommand(cardVerifyCmd(seams))
+	cmd.AddCommand(runnerCmd(func() *cobra.Command {
+		return newCommand(goBinary, samplePeriod, preTierCeiling, timeoutUnit, shortageRetryDelay, seams)
+	}))
 
 	return cmd
 }
@@ -138,8 +144,6 @@ type testRequest struct {
 	goBinary string
 	// samplePeriod is how often the CPU watchdog samples a tier's process tree.
 	samplePeriod time.Duration
-	// slotWait is the longest a run without wait waits for free slots.
-	slotWait time.Duration
 	// preTierCeiling bounds the work before the first tier.
 	preTierCeiling time.Duration
 	// timeoutUnit is the length of one `timeout_min` minute.
@@ -166,8 +170,6 @@ type testRequest struct {
 	all bool
 	// guards is the --guards flag: run the guard step after the listed tiers.
 	guards bool
-	// wait is the --wait flag: block until the slots free.
-	wait bool
 	// targets are the arguments before `--`.
 	targets []string
 	// args are the arguments after `--`, which fill each tier's {args}.
@@ -185,6 +187,8 @@ type testRequest struct {
 	watching bool
 	// observer hears each tier start and end; its zero value observes nothing.
 	observer TierObserver
+	// phase, when set, hears where the call stands as each tier waits for its slots and runs; only a detached runner sets it.
+	phase func(runPhase)
 }
 
 // absoluteDir returns the directory a request runs in: dir made absolute against the seam cwd, or the seam cwd itself when dir is empty.

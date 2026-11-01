@@ -100,7 +100,7 @@ func FixVerifySpawnOrAttach(deps FixVerifyDeps, st *State, clk Clock) (*VerifyFi
 	if err := roleAuditEngine(deps.Engines, RoleRecovery, choice); err != nil {
 		return nil, false, err
 	}
-	fixGate, err := deps.Gate.GateCall("webster-fix")
+	fixGate, err := deps.Gate.AgentGateCall("webster-fix")
 	if err != nil {
 		return nil, false, err
 	}

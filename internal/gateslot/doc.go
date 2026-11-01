@@ -48,7 +48,7 @@
 //
 // The hub-wide `gate` config module keeps `slots`, `busy_quit_sec` and the tier keys below at `<BoardDir>/_lym/config/gate.yaml`, seeded from template.yaml by the hub-wide reconcile.
 // `slots` and `tier_parallel` take a machine-local override at `<BoardDir>/.lym/config/gate.machine.yaml`, never reconciled and read at every acquire; every other key stays hub-file only.
-// `cli_wait_sec` is a retired key: every load drops it and reconcile prunes it, since the slot wait is bounded by the keep-cache-warm cap with no knob.
+// `cli_wait_sec` is a retired key: every load drops it and reconcile prunes it, since the slot wait of a call that runs in this process has no cap, and a capped call's front is bounded by the caller role's keep-warm cap.
 // `go_parallel` is retired in the hub and machine layers alike, in favor of `tier_parallel`, with the same load and prune behavior.
 // `guard_tier` is retired too: the guard step runs each guard test under the tier its file belongs to, so no key names one tier for them all, and the same load and prune behavior applies.
 // LoadConfig reads it strictly and refuses any value below 1 naming its key, except `busy_quit_sec`, which accepts 0 and is refused below it; Config.Limits converts it to the Limits a Pool reads.
@@ -81,7 +81,8 @@
 //
 // At use, Config.Gate returns a key's tiers and scope and refuses a hub with no `tier0`, a key the config does not hold, an empty tier list, and a listed tier the hub does not declare; Config.TierList returns its tiers; Config.Tier refuses an undeclared number.
 // Each refusal names `lym config gate` and closes with the clause that a session that is not the prime reports status: FAILED and the orch takes the steps.
-// Config.GateCall renders the one `lym gate test --wait --gate <key>` call a site runs, followed by one `--card <id>` per card given.
+// Config.GateCall renders the one `lym gate test --wait --gate <key>` call a site runs, followed by one `--card <id>` per card given; its `--wait` form is for a call Go runs.
+// Config.AgentGateCall renders the same call without `--wait`, the form for a call an agent runs, which an agent strand's capped front answers with `done: false` and exit 75 when its keep-warm cap passes.
 // MigrateConfig prunes the retired `gates.publish` list and the retired `guard_tier` key from a gate.yaml document and migrates the retired lists, so reconcile rewrites the hub file:
 // `landing` becomes `parent-align` and `finalize` with scope `all` and `darn-write` and `code-burler-fix` with scope `diff`, `final` becomes `webster` with scope `all`, `round` becomes `webster-fix` with scope `diff`, and a `card` or `batch` list becomes a mapping with scope `card`.
 // A `merge-in` key is renamed to `parent-align` with its value, and dropped beside an existing `parent-align`.
@@ -128,6 +129,7 @@
 // WriteRunRecord writes one RunRecord per tier run as `<stamp>-tier<N>-<pid>.json`, and the build step's record, whose `build` field is set, as `<stamp>-build-<pid>.json`, with the run's full output beside it as a `.log`, and prunes files older than 14 days first.
 // ReadRunRecords reads a directory's records tolerantly, skipping a file that does not decode, for the reports that total them.
 // The record is a domain log that no run reads to proceed.
+// Every record of one gate call carries the call's id, and a record written after the call was cancelled is marked abandoned; a record without either reads with them empty.
 // A tier the gate carried forward over an unchanged tree writes its record with `carried` set.
 // A go-json tier's record lists a PackageLaunch per package whose test binary ran; a record written without the list reads with none.
 // A tier the build step blocked by failing writes its record with `blocked_by` set to the failed build's log path.

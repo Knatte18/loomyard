@@ -31,6 +31,7 @@ func TestWriteRunRecord(t *testing.T) {
 			Discovered: 9, Passed: 7, Failed: 1, Skipped: 1,
 			Launches: []PackageLaunch{{Package: "example.com/p", LaunchSeconds: 0.25, ElapsedSeconds: 1.5}},
 			Failures: []TestFailure{{Package: "example.com/p", Test: "TestA/sub", FirstLine: "a_test.go:12: got 1; want 2"}, {Package: "example.com/q", Test: "TestB"}},
+			CallID:   "1700000000000000000-4242", Abandoned: true,
 		}
 		path, err := WriteRunRecord(dir, want, []byte("FAIL\n"), now)
 		if err != nil {
@@ -49,6 +50,10 @@ func TestWriteRunRecord(t *testing.T) {
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("record read back = %+v; want %+v", got, want)
+		}
+		read, err := ReadRunRecords(dir)
+		if err != nil || !reflect.DeepEqual(read, []RunRecord{want}) {
+			t.Errorf("ReadRunRecords() = %+v, %v; want the written record, call id and abandoned mark included", read, err)
 		}
 		logData, err := os.ReadFile(strings.TrimSuffix(path, ".json") + ".log")
 		if err != nil {
@@ -98,8 +103,8 @@ func TestWriteRunRecord(t *testing.T) {
 		if err := json.Unmarshal([]byte(`{"tier":0,"outcome":"passed","discovered":3}`), &got); err != nil {
 			t.Fatalf("decode record: %v", err)
 		}
-		if got.Launches != nil || got.Failures != nil || got.Discovered != 3 {
-			t.Errorf("record read back = %+v; want no launches, no failures and the other fields kept", got)
+		if got.Launches != nil || got.Failures != nil || got.Discovered != 3 || got.CallID != "" || got.Abandoned {
+			t.Errorf("record read back = %+v; want no launches, no failures, no call id, no abandoned mark and the other fields kept", got)
 		}
 		data, err := json.Marshal(RunRecord{})
 		if err != nil {

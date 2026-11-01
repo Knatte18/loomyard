@@ -32,7 +32,7 @@ import (
 // siteLabelPrefix starts every holder and wait record this verb writes, so `lym loom status` names the command that holds or waits for a slot.
 const siteLabelPrefix = "lym gate test"
 
-// runTest runs request and returns the verb's exit code: the first failing run's own, SlotBusyExit for a hub whose slots stay held past request.slotWait when no earlier run failed, 128 plus the signal number after a terminating signal, and 1 for a refusal or a timed-out tier.
+// runTest runs request in this process and returns the verb's exit code: the first failing run's own, 128 plus the signal number after a terminating signal, and 1 for a refusal or a timed-out tier.
 func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	if refusal := flagShapeRefusal(request); refusal != "" {
 		return output.Err(out, refusal)
@@ -106,6 +106,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 		runLogDir: runLogDirOf(location, inHub),
 		tierList:  tierNumbers(plan),
 		guards:    sc.guards,
+		callID:    fmt.Sprintf("%d-%d", time.Now().UnixNano(), os.Getpid()),
 	}
 	if inHub {
 		exe.pool = hubgeom.GateSlots(location)
@@ -178,12 +179,12 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 
 // haltExitCode returns the exit code of a call the run end halted, given the code of the first earlier or halting failed run, 0 when none failed.
 // A run that ran and halted the call exits with that first failure's code, or 1 when none failed, since a halt is never green.
-// A busy hub after a failed run exits with that failure's code, since SlotBusyExit reads as no failure; any other halt keeps its own code.
+// Any other halt keeps its own code.
 func haltExitCode(end runEnd, firstFailureCode int) int {
 	switch {
 	case end.ran && firstFailureCode == 0:
 		return 1
-	case end.ran || end.code == SlotBusyExit && firstFailureCode != 0:
+	case end.ran:
 		return firstFailureCode
 	}
 	return end.code
@@ -386,6 +387,8 @@ type execution struct {
 	buildFailure string
 	// buildExit is the exit code of the failed build.
 	buildExit int
+	// callID identifies this call; every record the call writes carries it.
+	callID string
 }
 
 // runListed runs one listed tier with its slots held, and returns how it ended.
@@ -467,6 +470,9 @@ func (e *execution) runWithSlots(run tierRun, empty bool, body func(env []string
 		defer releaseSlot(lease, e.request.root)
 		env = lease.InheritEnv(env)
 	}
+	if e.request.phase != nil {
+		e.request.phase(runPhase{State: phaseRunning, Tier: tierName(run.number)})
+	}
 	if e.request.observer.Started != nil {
 		e.request.observer.Started(run.number)
 	}
@@ -496,13 +502,15 @@ func (e *execution) report(run tierRun, result tierResult, waitStart time.Time) 
 	return runEnd{code: record.ExitCode, halt: e.ctx.Err() != nil, ran: true, shortage: result.shortage}
 }
 
-// writeRecord adds the call's worktree, slug, tier list and gate key to record, writes it with log under a stamp later than the previous record's, and returns the log's path, "(not written)" when the write failed.
+// writeRecord adds the call's worktree, slug, tier list, gate key and call id to record, marks it abandoned when the call's context is cancelled, writes it with log under a stamp later than the previous record's, and returns the log's path, "(not written)" when the write failed.
 // run names the record in a failure.
 func (e *execution) writeRecord(record gateslot.RunRecord, log []byte, run string) string {
 	record.Worktree = e.request.root
 	record.Slug = e.slug
 	record.TierList = e.tierList
 	record.GateKey = e.request.gate
+	record.CallID = e.callID
+	record.Abandoned = e.ctx.Err() != nil
 
 	stamp := time.Now()
 	if !stamp.After(e.lastStamp.Add(time.Second)) {
@@ -534,10 +542,13 @@ func resolveHub(dir string) (*lymcwd.Location, bool, error) {
 }
 
 // acquireSlot takes count slots of pool for tier, keeping a wait record in the worktree's wait directory until the acquire returns.
-// Without request.wait the wait lasts at most request.slotWait; with it the call blocks until the slots free.
-// It returns the held lease, or a nil lease and the exit code to return: SlotBusyExit with the holders named once the wait bound passes, and 1 for any other failure, a cancelled ctx included.
+// The wait has no cap of its own: it ends when the slots free or ctx is cancelled.
+// It returns the held lease, or a nil lease and the exit code to return, 1 for any failure, a cancelled ctx included.
 func acquireSlot(ctx context.Context, out io.Writer, pool *gateslot.Pool, location *lymcwd.Location, request testRequest, tier string, count int) (*gateslot.Lease, int) {
 	site := strings.TrimSpace(siteLabelPrefix + " " + tier + " " + strings.Join(request.targets, " "))
+	if request.phase != nil {
+		request.phase(runPhase{State: phaseSlots, Tier: tier})
+	}
 	waitPath, err := gateslot.WriteWait(gateslot.WaitDir(location.AnchorPath()), gateslot.Wait{Site: site, PID: os.Getpid(), Started: time.Now()})
 	if err != nil {
 		logger.Warn("gate test: could not write the gate wait record", "cause", err)
@@ -545,44 +556,15 @@ func acquireSlot(ctx context.Context, out io.Writer, pool *gateslot.Pool, locati
 		defer os.Remove(waitPath)
 	}
 
-	waitCtx := ctx
-	if !request.wait {
-		var cancel context.CancelFunc
-		waitCtx, cancel = context.WithTimeout(ctx, request.slotWait)
-		defer cancel()
-	}
-	lease, err := pool.AcquireSlots(waitCtx, gateslot.Holder{Worktree: location.WorktreePath(), Site: site, Tier: tier}, count)
+	lease, err := pool.AcquireSlots(ctx, gateslot.Holder{Worktree: location.WorktreePath(), Site: site, Tier: tier}, count)
 	switch {
 	case err == nil:
 		return lease, 0
 	case ctx.Err() != nil:
 		return nil, 1
-	case errors.Is(err, context.DeadlineExceeded):
-		return nil, answerSlotBusy(out, pool, request.slotWait)
 	default:
 		return nil, output.Err(out, fmt.Sprintf("gate test: cannot acquire a gate slot: %v; way forward: re-run the same command", err))
 	}
-}
-
-// answerSlotBusy writes the ok answer that no slot freed within waited, naming each holder's worktree, site and tier and telling the caller to run the same command again, and returns SlotBusyExit.
-func answerSlotBusy(out io.Writer, pool *gateslot.Pool, waited time.Duration) int {
-	holders, err := pool.Holders()
-	if err != nil {
-		logger.Warn("gate test: could not read the gate holders", "cause", err)
-	}
-	named := make([]map[string]string, 0, len(holders))
-	described := make([]string, 0, len(holders))
-	for _, holder := range holders {
-		entry := map[string]string{"worktree": holder.Worktree, "site": holder.Site}
-		if holder.Tier != "" {
-			entry["tier"] = holder.Tier
-		}
-		named = append(named, entry)
-		described = append(described, fmt.Sprintf("%s (%s)", holder.Worktree, holder.Site))
-	}
-	message := fmt.Sprintf("gate test: no gate slot is free yet after %s; held by %s; run the same command again in a turn that does nothing else, so the prompt cache stays warm between calls", waited, strings.Join(described, ", "))
-	output.Ok(out, map[string]any{"slot_free": false, "holders": named, "message": message})
-	return SlotBusyExit
 }
 
 func releaseSlot(lease *gateslot.Lease, dir string) {

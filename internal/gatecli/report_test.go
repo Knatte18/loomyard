@@ -29,6 +29,9 @@ func TestGateReport(t *testing.T) {
 		{Slug: "s2", GateKey: "finalize", TierList: []int{0}, ScopeForm: "all", WaitStart: at.Add(-time.Second), Start: at, WallSec: 5},
 		{Slug: "s2", GateKey: "finalize", TierList: []int{0}, ScopeForm: "all", Start: at.Add(-72 * time.Hour), WallSec: 7},
 		{Slug: "s3", GateKey: "batch", TierList: []int{0}, ScopeForm: "build", Build: true, WaitStart: at.Add(-time.Second), Start: at, WallSec: 4},
+		// Abandoned records count only in their row's abandoned totals.
+		{Slug: "s1", GateKey: "webster-fix", TierList: []int{0}, ScopeForm: "computed", WaitStart: at, Start: at.Add(3 * time.Second), WallSec: 6, Abandoned: true, CallID: "c2"},
+		{Slug: "s3", GateKey: "batch", TierList: []int{0}, ScopeForm: "build", Build: true, WaitStart: at.Add(-time.Second), Start: at, WallSec: 2, Abandoned: true, CallID: "c3"},
 	}
 	ptr := func(value float64) *float64 { return &value }
 	type row struct {
@@ -42,12 +45,16 @@ func TestGateReport(t *testing.T) {
 		LaunchShare   *float64 `json:"launch_share"`
 		BuildRuns     int      `json:"build_runs"`
 		BuildSeconds  float64  `json:"build_seconds"`
+		AbandonedRuns int      `json:"abandoned_runs"`
+		AbandonedWait float64  `json:"abandoned_wait_seconds"`
+		AbandonedWall float64  `json:"abandoned_wall_seconds"`
 	}
-	keyed := row{Slug: "s1", GateKey: "webster-fix", TierRuns: 1, Carried: 1, WaitSeconds: 2, WallSeconds: 10, LaunchSeconds: ptr(1), LaunchShare: ptr(0.25)}
+	keyed := row{Slug: "s1", GateKey: "webster-fix", TierRuns: 1, Carried: 1, WaitSeconds: 2, WallSeconds: 10, LaunchSeconds: ptr(1), LaunchShare: ptr(0.25), AbandonedRuns: 1, AbandonedWait: 3, AbandonedWall: 6}
 	unkeyed := row{Slug: "s1", GateKey: "tiers 0,1 all", TierRuns: 1, WallSeconds: 3}
 	finalize := row{Slug: "s2", GateKey: "finalize", TierRuns: 2, WaitSeconds: 1, WallSeconds: 12}
+	// An abandoned tier or build record counts in the abandoned totals alone, beside the finished records of its key.
 	// A build record counts in build_runs and build_seconds alone.
-	build := row{Slug: "s3", GateKey: "batch", BuildRuns: 1, BuildSeconds: 4}
+	build := row{Slug: "s3", GateKey: "batch", BuildRuns: 1, BuildSeconds: 4, AbandonedRuns: 1, AbandonedWait: 1, AbandonedWall: 2}
 
 	tests := []struct {
 		name  string

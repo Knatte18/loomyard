@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -152,7 +154,7 @@ func runDeploy(ctx context.Context, primeDir, command, logPath string, timeout t
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	logger.Info("battencli: deploy starting", "dir", primeDir, "command", command, "log", logPath, "timeout", timeout)
-	exitCode, err := verifyrun.Run(runCtx, command, primeDir, nil, logFile)
+	exitCode, err := verifyrun.Run(runCtx, command, primeDir, commandEnv(os.Environ()), logFile)
 	logger.Info("battencli: deploy ended", "dir", primeDir, "exitCode", exitCode, "error", err)
 	if err != nil {
 		if ctx.Err() == nil && errors.Is(runCtx.Err(), context.DeadlineExceeded) {
@@ -178,7 +180,7 @@ func runRowCommand(ctx context.Context, dir, command, logPath string, timeout ti
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	logger.Info("battencli: row command starting", "dir", dir, "command", command, "log", logPath, "timeout", timeout)
-	exitCode, err := verifyrun.Run(runCtx, command, dir, nil, logFile)
+	exitCode, err := verifyrun.Run(runCtx, command, dir, commandEnv(os.Environ()), logFile)
 	logger.Info("battencli: row command ended", "dir", dir, "exitCode", exitCode, "error", err)
 	if err != nil {
 		if ctx.Err() == nil && errors.Is(runCtx.Err(), context.DeadlineExceeded) {
@@ -187,4 +189,11 @@ func runRowCommand(ctx context.Context, dir, command, logPath string, timeout ti
 		return shedadapters.CommandResult{}, err
 	}
 	return shedadapters.CommandResult{ExitCode: exitCode}, nil
+}
+
+// commandEnv returns environ without the strand-name variable, so a command a batten row runs never reads as an agent's own and a gate call inside it runs in-process.
+func commandEnv(environ []string) []string {
+	return slices.DeleteFunc(slices.Clone(environ), func(entry string) bool {
+		return strings.HasPrefix(entry, agentname.StrandNameEnv+"=")
+	})
 }

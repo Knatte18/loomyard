@@ -123,7 +123,7 @@ tiers:
 
 `slots: all` waits for every running holder to finish and blocks every new gate run of the hub until the tier ends, so other worktrees' gate runs wait while their agents keep working.
 `manual: true` keeps it out of `--upto`, and `carry: false` keeps the green record from carrying it or recording it, and runs it whole under every scope form but explicit targets.
-Run it only through a direct call, which passes `--wait` so its drain is not dropped at the keep-cache-warm cap:
+Run it only through a direct call, which passes `--wait` so it runs its drain in-process to its end:
 
 ```
 lym gate test --wait --tier 2 -- <benchmark arguments>

@@ -6,3 +6,5 @@ prompt_cache_ttl_roles:  # prompt-cache TTL per role, keyed by a strand's role s
   driver: 5m
   webster: 1h
   orch: 1h
+keep_warm_cap: 250s  # the keep-warm cap for every role without an entry in keep_warm_cap_roles: the longest one wait an agent of the role blocks on; a Go duration, at least 60s, below the role's prompt-cache lifetime and at most 55m; validated when a run starts and on lym config claude; a cap above five minutes leaves that role's forks' caches cold, since forks run at Claude Code's 5-minute subagent lifetime
+keep_warm_cap_roles: {}  # keep-warm cap per role, keyed by a strand's role segment (Spec.Role), replacing keep_warm_cap for that role; the operator's own map, replacing the template's whole when present; values follow the same rules as keep_warm_cap and are validated when a run starts and on lym config claude

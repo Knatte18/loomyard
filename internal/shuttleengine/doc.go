@@ -55,6 +55,7 @@
 // run Spec and its validation, the run directory / run.json state and its age-guarded orphan sweep,
 // and the Windows-to-POSIX path helper the engine layer needs for hook commands.
 // shuttle.yaml carries no provider key but the neutral python guard switch `deny_python`; the keys a provider owns live in that engine's own config module.
+// Its `keep_warm_max_reruns` is the gate's break-even: the number of keep-warm re-runs one long gate wait is worth.
 // Its retired Claude keys still load from an unreconciled layer and are dropped.
 // MigrateConfig raises the module's below-floor poll_interval_ms to its floor and renames a legacy `claude_deny_python` to `deny_python` for lym config reconcile.
 // Start adds each run's engine name to `engines-run.json` at the run directory root before it registers the strand, a file the orphan sweep never removes.
@@ -133,7 +134,7 @@
 // The notice is never typed into the pane and changes no outcome.
 //
 // AwaitAny is the shared wait: it stats the told paths once a second until one exists or the cap elapses, and watches no directory.
-// It is the poll every capped keep-cache-warm wait verb runs on, and DefaultAwaitCap is the cap those verbs default to and the bound of the gate's slot wait.
+// It is the poll every capped keep-cache-warm wait verb runs on, and DefaultAwaitCap is the fallback of `shuttleengines.KeepWarm`, the resolver of the cap those verbs default to.
 //
 // # Pending prompt
 //

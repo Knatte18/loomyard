@@ -54,7 +54,7 @@ Check whether landed work, another board entry or another run overtook or contra
 1. Edit the repository to make the change.
    Follow the existing patterns, and the PATTERN entries in this prompt.
    Read every file the change touches, with the greps that find them, in one message before the first edit of each commit, and make independent edits in one message.
-2. Test with `lym gate test --wait` once, after the last edit of each commit, never after each edit; it computes its scope from your changes; never run a raw test command or a module-wide run.
+2. Test with `lym gate test` once, after the last edit of each commit, never after each edit; it computes its scope from your changes, and when it answers `done: false` with exit 75 the run goes on, so run the same command again; never run a raw test command or a module-wide run.
 3. Update, in the same commits as the code, the docs the change makes stale: the package doc of each package whose behavior changes, `doc.go` for a Go package;
    the repository's overview doc when a module table or execution stack it shows changes;
    and, when the repository has a `PATTERN.md`, its entry for a cross-cutting invariant the change adds or changes.

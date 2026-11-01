@@ -16,12 +16,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 )
 
+// verifyCard returns a plan card whose `**Verify:**` line is verify.
+func verifyCard(number int, slug, verify string) plankit.Card {
+	return plankit.Card{Number: number, Slug: slug, Verify: verify, Groups: []plankit.Group{{Label: "Edit", Targets: []string{"x.go"}}}}
+}
+
 func TestGateCardVerify(t *testing.T) {
 	t.Parallel()
 
-	card := func(number int, slug, verify string) plankit.Card {
-		return plankit.Card{Number: number, Slug: slug, Verify: verify, Groups: []plankit.Group{{Label: "Edit", Targets: []string{"x.go"}}}}
-	}
 	// worktree returns a git worktree outside every hub holding a plan of cards, or no plan when cards is empty.
 	worktree := func(t *testing.T, cards ...plankit.Card) string {
 		t.Helper()
@@ -42,7 +44,7 @@ func TestGateCardVerify(t *testing.T) {
 	}{
 		{
 			name:      "an unknown id is refused naming the plan's ids",
-			cards:     []plankit.Card{card(1, "alpha", "true"), card(2, "beta", "true")},
+			cards:     []plankit.Card{verifyCard(1, "alpha", "true"), verifyCard(2, "beta", "true")},
 			id:        "9",
 			wantExit:  1,
 			wantParts: []string{"names no card", "1-alpha, 2-beta", "way forward"},
@@ -55,20 +57,20 @@ func TestGateCardVerify(t *testing.T) {
 		},
 		{
 			name:      "a card with no verify line passes saying so",
-			cards:     []plankit.Card{card(1, "alpha", "")},
+			cards:     []plankit.Card{verifyCard(1, "alpha", "")},
 			id:        "1",
 			wantParts: []string{"card 1-alpha has no **Verify:** line"},
 		},
 		{
 			name:      "a line's output reaches the verb's output with its exit code",
-			cards:     []plankit.Card{card(1, "alpha", "echo from-the-line; exit 3")},
+			cards:     []plankit.Card{verifyCard(1, "alpha", "echo from-the-line; exit 3")},
 			id:        "1-alpha",
 			wantExit:  3,
 			wantParts: []string{"from-the-line", "exited 3"},
 		},
 		{
 			name:     "a worktree outside every hub runs the line unslotted and passes",
-			cards:    []plankit.Card{card(1, "alpha", "true")},
+			cards:    []plankit.Card{verifyCard(1, "alpha", "true")},
 			id:       "01",
 			wantExit: 0,
 		},
@@ -90,7 +92,7 @@ func TestGateCardVerify(t *testing.T) {
 
 	t.Run("the verb is annotated for the role audience", func(t *testing.T) {
 		t.Parallel()
-		if got := cardVerifyCmd().Annotations[clihelp.AudienceAnnotation]; got != clihelp.AudienceRole {
+		if got := cardVerifyCmd(defaultDetachSeams()).Annotations[clihelp.AudienceAnnotation]; got != clihelp.AudienceRole {
 			t.Errorf("audience annotation = %q; want %q", got, clihelp.AudienceRole)
 		}
 	})

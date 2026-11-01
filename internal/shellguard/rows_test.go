@@ -24,7 +24,7 @@ func TestLeafInvariant_AllowlistOnly(t *testing.T) {
 }
 
 // TestCheckTexts plants each forbidden character in a row's steer and notice and asserts checkTexts refuses it naming the row;
-// it also asserts the shipped rows, rendered over a sample refuse list, pass checkTexts and state the gate rule and the edit rule in one notice each, that the refuse-raw steer carries the full gate rule while its notice names only the refusal and the tier and card scopes, and that the python and shell-edit steers carry the full edit rule.
+// it also asserts the shipped rows, rendered over a sample refuse list, pass checkTexts and state the gate rule and the edit rule in one notice each, that the refuse-raw steer carries the full gate rule while its notice names only the refusal and the tier and card scopes, that the python and shell-edit steers carry the full edit rule, and that the raw-go steer names the done: false retry of lym gate card-verify.
 func TestCheckTexts(t *testing.T) {
 	t.Parallel()
 	t.Run("ShippedRows", func(t *testing.T) {
@@ -44,11 +44,18 @@ func TestCheckTexts(t *testing.T) {
 			if (row.Name == "python" || row.Name == "shell-edit") && !strings.Contains(row.Steer, editToolsRule) {
 				t.Errorf("%s steer %q: want it to carry the edit rule %q", row.Name, row.Steer, editToolsRule)
 			}
+			if row.Name == "raw-go" {
+				for _, want := range []string{"done: false", "lym gate card-verify"} {
+					if !strings.Contains(row.Steer, want) {
+						t.Errorf("raw-go steer %q: want it to name %q", row.Steer, want)
+					}
+				}
+			}
 			if row.Name != "refuse-raw" {
 				continue
 			}
 			found = true
-			for _, want := range []string{"Gate rule", "lym gate test", "--tier", "--card", "with a long timeout", "no gate slot is free"} {
+			for _, want := range []string{"Gate rule", "lym gate test", "--tier", "--card", "with a long timeout", "done: false", "lym gate card-verify"} {
 				if !strings.Contains(row.Steer, want) {
 					t.Errorf("refuse-raw steer %q: want it to name %q", row.Steer, want)
 				}

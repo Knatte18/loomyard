@@ -404,8 +404,8 @@ func TestBeginBatch_PromptFile(t *testing.T) {
 			name:   "each card carries its gate call and the two lints, and the batch carries the batch gate call",
 			number: 1,
 			want: []string{
-				"  - `lym gate test --wait --gate card --card 1-json-flag`\n  - `lym loom lint-comments`\n  - `lym loom lint-pattern`",
-				"- `lym gate test --wait --gate batch --card 1-json-flag`",
+				"  - `lym gate test --gate card --card 1-json-flag`\n  - `lym loom lint-comments`\n  - `lym loom lint-pattern`",
+				"- `lym gate test --gate batch --card 1-json-flag`",
 			},
 			wantNot: []string{"{{.", "## verify:", "-run '^("},
 		},

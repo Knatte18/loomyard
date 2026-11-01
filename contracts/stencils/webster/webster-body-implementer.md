@@ -97,9 +97,8 @@ A failure counts as a gate failure under the self-fix bound below and makes the 
 
 ## Slot-busy exits and test runs
 
-A gate call made without `--wait` that exits with code `75`, answering `slot_free: false` and naming the slot holders, found every gate slot held: that is not a failure.
-It costs no self-fix attempt, never makes the report `FAILED`, and you re-run the same call in a turn that does nothing else, so the prompt cache stays warm between calls.
-A call made with `--wait` queues for its slot and never exits `75`.
+A `lym gate test` or `lym gate card-verify` call that exits with code `75`, answering `done: false` with the run's phase and, while the run waits for slots, `slot_free: false` naming the slot holders, is not a failure: the run goes on.
+It costs no self-fix attempt, never makes the report `FAILED`, and you run the same command again in a turn that does nothing else, so the prompt cache stays warm between calls; the next call prints the run's result once it ended.
 
 The one route to a test run is `lym gate test` with a gate's tier list and a scope form, such as `--tier <n>` with `--card <card id>` or explicit packages, never a raw test command.
 The hub's tiers and gate lists follow:

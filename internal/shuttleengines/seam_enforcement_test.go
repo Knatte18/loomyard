@@ -1,6 +1,6 @@
 //go:build tier0
 
-// seam_enforcement_test.go enforces this package's told-geometry membership: production code in internal/shuttleengines imports only the engine packages it registers and reed's name seam, and never internal/lymcwd.
+// seam_enforcement_test.go enforces this package's told-geometry membership: production code in internal/shuttleengines imports only the engine packages it registers and reed's name seam, the agent-name parser, and never internal/lymcwd.
 
 package shuttleengines
 
@@ -12,6 +12,7 @@ import (
 
 // allowedImports are the only non-stdlib import paths production code in this package may use.
 var allowedImports = []string{
+	"github.com/Knatte18/loomyard/internal/agentname",
 	"github.com/Knatte18/loomyard/internal/configengine",
 	"github.com/Knatte18/loomyard/internal/shuttleengine",
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine",

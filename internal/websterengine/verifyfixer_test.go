@@ -165,7 +165,7 @@ func TestFixVerifySpawnOrAttach(t *testing.T) {
 		if !slices.Contains(spec.Skills, "scribe:prose") {
 			t.Errorf("spec skills = %v; want the role skills", spec.Skills)
 		}
-		for _, want := range []string{websterengine.VerifyGateReportPath(fx.ReportsDir), replyPath, "lym gate test --wait --gate webster-fix"} {
+		for _, want := range []string{websterengine.VerifyGateReportPath(fx.ReportsDir), replyPath, "lym gate test --gate webster-fix"} {
 			if !strings.Contains(fx.Engine.LastPrompt, want) {
 				t.Errorf("prompt lacks %q", want)
 			}

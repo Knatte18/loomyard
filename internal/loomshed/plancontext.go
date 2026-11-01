@@ -144,7 +144,7 @@ func verifyLineFindings(cards []planparser.Card, refuseRaw []string) []planindex
 				findings = append(findings, planindex.Finding{
 					Check:    verifyGateNoWaitCheck,
 					Card:     card.ID(),
-					Detail:   fmt.Sprintf("card %d Verify: `%s` lacks `--wait`, so a busy gate slot fails the line instead of waiting; way forward: add `--wait`", card.Number, command),
+					Detail:   fmt.Sprintf("card %d Verify: `%s` lacks `--wait`, and Go re-runs this line outside an agent hook, where a gate call without `--wait` is a slot-held line, run inside one slot under the per-line timeout instead of taking its tiers' own slots; way forward: add `--wait`", card.Number, command),
 					Severity: planindex.SeverityBlocking,
 				})
 			}

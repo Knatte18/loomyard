@@ -148,6 +148,11 @@ type Engine interface {
 	// Zero means the provider knows no warm lifetime, so a caller keeps nothing warm.
 	// An error means cfg cannot be resolved for spec.
 	PromptCacheLifetime(spec Spec, cfg Config) (time.Duration, error)
+	// KeepWarmCaps returns the longest one keep-warm wait a session of role blocks (capWait) and the long cap a long gate wait uses (longCap).
+	// role is a base role, with any numbered suffix already dropped.
+	// A zero cap means the engine keeps nothing warm, so a caller blocks to its end.
+	// An error means the engine's config cannot be resolved.
+	KeepWarmCaps(role string) (capWait, longCap time.Duration, err error)
 	// ParseEvents parses events.jsonl into Events (turn-end signal and live ask).
 	// It is lenient: malformed or unrecognized lines are skipped.
 	ParseEvents(data []byte) ([]Event, error)

@@ -71,6 +71,7 @@
 - `PATTERN-spawn-observability` — Starting OS process from `lym`: log the spawn via `internal/logger`; logging in a loop or poll follows its Level policy. — [background](pattern/PATTERN-spawn-observability.md)
 - `PATTERN-run-process-owner` — A run's processes: registered in `internal/runproc`, ended only via `runproc`'s `End`, `EndSparing` or `EndRole`. — [background](pattern/PATTERN-run-process-owner.md)
 - `PATTERN-daemon-wakeups` — Unbounded wait wakes at most once a second and backs off while idle. (test) — [background](pattern/PATTERN-daemon-wakeups.md)
+- `PATTERN-keep-warm-cap` — Bounding a wait an agent blocks on: the cap from `shuttleengines`' one keep-warm resolver for the caller's role, never a constant bar its fallback; a long gate run goes on in a detached runner the same command joins.
 
 ## Testing
 

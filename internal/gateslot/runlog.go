@@ -70,6 +70,10 @@ type RunRecord struct {
 	Launches []PackageLaunch `json:"launches,omitempty"`
 	// Failures lists the failed tests of a go-json tier in the order they failed, leaves only, so a test whose subtest failed is left out; empty for a tier that failed none and for a VSTest tier.
 	Failures []TestFailure `json:"failures,omitempty"`
+	// CallID identifies the gate call that wrote the record; every record of one call carries the same id, and a record from before the field reads with none.
+	CallID string `json:"call_id,omitempty"`
+	// Abandoned is set on a record written after its call was cancelled, such as by a terminating signal or a passed lease; reports count such a record apart.
+	Abandoned bool `json:"abandoned,omitempty"`
 }
 
 // TestFailure is one failed test of a tier run.

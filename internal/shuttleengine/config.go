@@ -32,6 +32,9 @@ type Config struct {
 	// StartRetries is how many extra launches a start gets after an attempt whose provider died before it took its first input and whose strand was removed; 0 turns the retry off, and LoadConfig refuses negative.
 	StartRetries int `yaml:"start_retries"`
 
+	// KeepWarmMaxReruns is how many keep-warm re-runs one long gate wait is worth, the break-even against a single cache write; 0 turns the long wait off, and LoadConfig refuses negative.
+	KeepWarmMaxReruns int `yaml:"keep_warm_max_reruns"`
+
 	BackgroundShellWaitMin int `yaml:"background_shell_wait_min"` // Minutes an outstanding background shell of either signal may run before the wait logs it and shows it in the wait marker; it also expires an ungated waiting turn end whose every outstanding task is a non-awaited shell into a held turn end. LoadConfig refuses non-positive.
 
 	SubmitSettleMS int `yaml:"submit_settle_ms"` // Interval between the two input-box reads that must agree before a verified send's Enter; 0 reads back to back, LoadConfig refuses negative.
@@ -67,6 +70,7 @@ func ConfigSpec() configengine.Spec {
 			"run_timeout_min":           configengine.CategoryNone,
 			"startup_timeout_s":         configengine.CategoryNone,
 			"start_retries":             configengine.CategoryNone,
+			"keep_warm_max_reruns":      configengine.CategoryNone,
 			"background_shell_wait_min": configengine.CategoryNone,
 			"send_ready_timeout_s":      configengine.CategoryNone,
 			"submit_confirm_timeout_s":  configengine.CategoryNone,
@@ -113,6 +117,10 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 
 	if cfg.StartRetries < 0 {
 		return Config{}, fmt.Errorf("shuttle config: start_retries must not be negative, got %d", cfg.StartRetries)
+	}
+
+	if cfg.KeepWarmMaxReruns < 0 {
+		return Config{}, fmt.Errorf("shuttle config: keep_warm_max_reruns must not be negative, got %d; way forward: set it to 0 or more with lym config shuttle", cfg.KeepWarmMaxReruns)
 	}
 
 	if cfg.BackgroundShellWaitMin <= 0 {

@@ -34,6 +34,7 @@ func reportCmd() *cobra.Command {
 		Long: `report reads this machine's tier run records, from the board's gate run directory inside a hub and the worktree's own outside every hub, and prints one row per slug and gate key.
 A row holds the tier runs, the carried tiers, the summed slot wait, the summed wall time, and the launch time with its share of the package time.
 The build step's records count apart, in build_runs and build_seconds, and add nothing to tier_runs or wall_seconds.
+A record written after its call was cancelled counts apart, in abandoned_runs, abandoned_wait_seconds and abandoned_wall_seconds, and adds nothing to the other totals, the build step's included.
 A record from before --gate has no key and groups under its tier list and scope form, such as "tiers 0,1 all".
 --slug keeps one slug's records, and --since YYYY-MM-DD drops the records started before that day.
 It takes no slot and changes nothing.`,
@@ -100,6 +101,10 @@ type reportGroup struct {
 	// buildRuns and buildSeconds total the build step's records apart from the tier runs.
 	buildRuns    int
 	buildSeconds float64
+	// abandonedRuns, abandonedWaitSeconds and abandonedWallSeconds total the records written after their call was cancelled apart from every other total.
+	abandonedRuns        int
+	abandonedWaitSeconds float64
+	abandonedWallSeconds float64
 	// launchSeconds and packageSeconds sum the launch gaps and the elapsed times of the records' launch lists; hasLaunches is set once a record holds a list.
 	launchSeconds  float64
 	packageSeconds float64
@@ -120,7 +125,7 @@ func recordLabel(record gateslot.RunRecord) string {
 
 // runReport prints an ok envelope holding one row per slug and gate key of records, in slug then key order.
 // A non-empty slug keeps that slug's records only, and a record started before since is dropped when since is set.
-// A row carries the tier runs and the carried tiers, the summed slot wait and wall time in seconds, the build step's runs and seconds counted apart, and, when a record holds a launch list, the launch time and its share of the packages' summed time.
+// A row carries the tier runs and the carried tiers, the summed slot wait and wall time in seconds, the build step's runs and seconds counted apart, the records of cancelled calls counted apart, and, when a record holds a launch list, the launch time and its share of the packages' summed time.
 func runReport(out io.Writer, records []gateslot.RunRecord, slug string, since time.Time) int {
 	var groups []*reportGroup
 	for _, record := range records {
@@ -134,6 +139,14 @@ func runReport(out io.Writer, records []gateslot.RunRecord, slug string, since t
 			index = len(groups) - 1
 		}
 		group := groups[index]
+		if record.Abandoned {
+			group.abandonedRuns++
+			if !record.WaitStart.IsZero() {
+				group.abandonedWaitSeconds += record.Start.Sub(record.WaitStart).Seconds()
+			}
+			group.abandonedWallSeconds += record.WallSec
+			continue
+		}
 		if record.Build {
 			group.buildRuns++
 			group.buildSeconds += record.WallSec
@@ -168,6 +181,7 @@ func runReport(out io.Writer, records []gateslot.RunRecord, slug string, since t
 			"tier_runs": group.runs, "carried": group.carried,
 			"wait_seconds": group.waitSeconds, "wall_seconds": group.wallSeconds,
 			"build_runs": group.buildRuns, "build_seconds": group.buildSeconds,
+			"abandoned_runs": group.abandonedRuns, "abandoned_wait_seconds": group.abandonedWaitSeconds, "abandoned_wall_seconds": group.abandonedWallSeconds,
 		}
 		if group.hasLaunches {
 			row["launch_seconds"] = group.launchSeconds

@@ -20,8 +20,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
-// ttlConfig returns a Config whose two prompt-cache TTL fields come from the shipped claude.yaml template, so fixtures follow the template rather than restating it.
-// A non-empty defaultTTL or a non-nil roles replaces the template's value for that field.
+// ttlConfig returns a Config whose prompt-cache TTL and keep-warm cap fields come from the shipped claude.yaml template, so fixtures follow the template rather than restating it.
+// A non-empty defaultTTL or a non-nil roles replaces the template's value for that TTL field.
 func ttlConfig(t testing.TB, defaultTTL string, roles map[string]string) Config {
 	t.Helper()
 	loaded, err := LoadConfig(configengine.Dirs{Anchor: t.TempDir()})
@@ -31,6 +31,8 @@ func ttlConfig(t testing.TB, defaultTTL string, roles map[string]string) Config 
 	claude := Config{
 		PromptCacheTTL:      loaded.PromptCacheTTL,
 		PromptCacheTTLRoles: loaded.PromptCacheTTLRoles,
+		KeepWarmCap:         loaded.KeepWarmCap,
+		KeepWarmCapRoles:    loaded.KeepWarmCapRoles,
 	}
 	if defaultTTL != "" {
 		claude.PromptCacheTTL = defaultTTL
@@ -41,7 +43,18 @@ func ttlConfig(t testing.TB, defaultTTL string, roles map[string]string) Config 
 	return claude
 }
 
-// templateConfig is the template's TTL fields alone.
+// keepWarmConfig returns the template's Config with the default keep-warm cap replaced by defaultCap and, when non-nil, the cap roles by capRoles.
+func keepWarmConfig(t testing.TB, defaultCap string, capRoles map[string]string) Config {
+	t.Helper()
+	claude := templateConfig(t)
+	claude.KeepWarmCap = defaultCap
+	if capRoles != nil {
+		claude.KeepWarmCapRoles = capRoles
+	}
+	return claude
+}
+
+// templateConfig is the template's TTL and keep-warm cap fields alone.
 func templateConfig(t testing.TB) Config {
 	t.Helper()
 	return ttlConfig(t, "", nil)
@@ -115,6 +128,7 @@ func TestPrepare_RejectedBeforeArtifacts(t *testing.T) {
 		{name: "ttl_default_bare_number", claude: ttlConfig(t, "5", nil), wantErrContains: `prompt_cache_ttl "5"`, wantTTLAdvice: true},
 		{name: "ttl_map_value_null", claude: ttlConfig(t, "", map[string]string{"orch": ""}), wantErrContains: "prompt_cache_ttl_roles[orch]", wantTTLAdvice: true},
 		{name: "ttl_map_entry_of_another_role", spec: shuttleengine.Spec{Role: "driver"}, claude: ttlConfig(t, "", map[string]string{"driver": "1h", "orch": "2h"}), wantErrContains: "prompt_cache_ttl_roles[orch]", wantTTLAdvice: true},
+		{name: "keep_warm_cap_below_floor", claude: keepWarmConfig(t, "30s", nil), wantErrContains: "keep_warm_cap"},
 		{name: "invalid_claude_config", invalidConfig: true, wantErrContains: "claude.local.yaml"},
 	}
 	for _, tt := range tests {
@@ -204,6 +218,64 @@ func TestPromptCacheLifetime(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Errorf("PromptCacheLifetime() = %v; want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestKeepWarmCaps proves KeepWarmCaps answers a role's cap with the long cap, and refuses an unusable cap or config naming the key and the file to fix.
+func TestKeepWarmCaps(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		role string
+		// claude is the claude.yaml the row's engine loads; invalidConfig replaces it with a file the loader refuses.
+		claude          Config
+		invalidConfig   bool
+		wantCap         time.Duration
+		wantErrContains []string
+	}{
+		{name: "template_driver", role: "driver", claude: templateConfig(t), wantCap: 250 * time.Second},
+		{name: "template_webster", role: "webster", claude: templateConfig(t), wantCap: 250 * time.Second},
+		{name: "template_orch", role: "orch", claude: templateConfig(t), wantCap: 250 * time.Second},
+		{name: "template_unmapped_role", role: "implementer", claude: templateConfig(t), wantCap: 250 * time.Second},
+		{name: "role_entry_replaces_default", role: "webster", claude: keepWarmConfig(t, "250s", map[string]string{"webster": "20m"}), wantCap: 20 * time.Minute},
+		{name: "role_entry_leaves_other_roles", role: "driver", claude: keepWarmConfig(t, "250s", map[string]string{"webster": "20m"}), wantCap: 250 * time.Second},
+		{name: "default_below_floor", role: "driver", claude: keepWarmConfig(t, "59s", nil), wantErrContains: []string{"keep_warm_cap", "59s", "lym config claude"}},
+		{name: "default_at_default_lifetime", role: "driver", claude: keepWarmConfig(t, "5m", nil), wantErrContains: []string{"keep_warm_cap", "5m", "lym config claude"}},
+		{name: "role_entry_above_long_cap", role: "webster", claude: keepWarmConfig(t, "250s", map[string]string{"webster": "56m"}), wantErrContains: []string{"keep_warm_cap_roles[webster]", "56m", "lym config claude"}},
+		{name: "role_entry_at_role_lifetime", role: "driver", claude: keepWarmConfig(t, "250s", map[string]string{"driver": "6m"}), wantErrContains: []string{"keep_warm_cap_roles[driver]", "6m", "lym config claude"}},
+		{name: "default_not_a_duration", role: "driver", claude: keepWarmConfig(t, "abc", nil), wantErrContains: []string{"keep_warm_cap", "abc", "lym config claude"}},
+		{name: "invalid_claude_config", role: "driver", invalidConfig: true, wantErrContains: invalidConfigWant},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var engine *Claude
+			if tt.invalidConfig {
+				engine = engineWithInvalidConfig(t)
+			} else {
+				engine = engineWith(t, tt.claude)
+			}
+			gotCap, gotLong, err := engine.KeepWarmCaps(tt.role)
+			if tt.wantErrContains != nil {
+				if err == nil {
+					t.Fatalf("KeepWarmCaps(%q) error = nil; want one containing %q", tt.role, tt.wantErrContains)
+				}
+				for _, want := range tt.wantErrContains {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("KeepWarmCaps(%q) error = %q; want it to contain %q", tt.role, err, want)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("KeepWarmCaps(%q) error = %v; want nil", tt.role, err)
+			}
+			if gotCap != tt.wantCap || gotLong != 55*time.Minute {
+				t.Errorf("KeepWarmCaps(%q) = %v, %v; want %v, 55m", tt.role, gotCap, gotLong, tt.wantCap)
 			}
 		})
 	}

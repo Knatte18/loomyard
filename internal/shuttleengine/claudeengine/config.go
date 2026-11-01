@@ -31,11 +31,15 @@ type Config struct {
 	PromptCacheTTL string `yaml:"prompt_cache_ttl"`
 	// PromptCacheTTLRoles maps a strand's role segment to Claude Code's prompt-cache TTL; it is validated where a run starts, not by LoadConfig.
 	PromptCacheTTLRoles map[string]string `yaml:"prompt_cache_ttl_roles"`
+	// KeepWarmCap is the longest one keep-warm wait for a role without a map entry, a Go duration; ValidateKeepWarm checks it where a run starts and on a config write, not LoadConfig.
+	KeepWarmCap string `yaml:"keep_warm_cap"`
+	// KeepWarmCapRoles maps a strand's role segment to its keep-warm cap, replacing KeepWarmCap for that role; ValidateKeepWarm checks it, not LoadConfig.
+	KeepWarmCapRoles map[string]string `yaml:"keep_warm_cap_roles"`
 }
 
 // ConfigOpenMaps returns the claude.yaml keys whose entries are the operator's own, which configengine carries whole through reconcile and --set.
 func ConfigOpenMaps() []string {
-	return []string{"prompt_cache_ttl_roles"}
+	return []string{"prompt_cache_ttl_roles", "keep_warm_cap_roles"}
 }
 
 // ConfigSpec returns claude.yaml's layered-load spec: a per-worktree module whose binary and tool denies a local override may not set.
@@ -50,6 +54,8 @@ func ConfigSpec() configengine.Spec {
 			"deny_ask_user_question": configengine.CategoryGuard,
 			"prompt_cache_ttl":       configengine.CategoryNone,
 			"prompt_cache_ttl_roles": configengine.CategoryNone,
+			"keep_warm_cap":          configengine.CategoryNone,
+			"keep_warm_cap_roles":    configengine.CategoryNone,
 		},
 	}
 }

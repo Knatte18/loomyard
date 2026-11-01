@@ -154,10 +154,9 @@
 // # Slots
 //
 // A tier first takes the slots it asks for through `gateslot.Pool.AcquireSlots`, with a holder that names the tier, writes a wait record under the worktree's wait directory while it waits, and releases them before the next tier.
-// Without `--wait` the wait keeps the keep-cache-warm cap, `shuttleengine.DefaultAwaitCap`, and a cap that passes with the slots held is no failure:
-// the verb prints an ok envelope with `slot_free: false`, each holder's worktree, site and tier, and a message to run the same command again in a turn that does nothing else, then exits with SlotBusyExit.
-// `--wait` lifts the cap, so the call blocks until its slots free, which costs only that caller's prompt cache.
-// The cap keeps one blocked Bash call under the prompt-cache lifetime, so an agent that re-runs the verb keeps its cache warm.
+// The wait of a call that runs in this process has no cap: it ends when the slots free, or when the caller interrupts the call, which cancels the wait and exits 128 plus the signal number.
+// Bound: a holder is bounded as before, a gate tier or the build step by its `timeout_min` and a slot-held card-verify line by the runner's per-line timeout, and any other slot taker of the pool, such as a drift step run or a plan-glyph type load, only by its own run.
+// A capped call's front is bounded by the caller role's keep-warm cap instead, as the next section says.
 // A tier with `slots: all` holds every slot and waits behind the pool's drain.
 // Outside a hub the tiers run unslotted.
 //
@@ -306,11 +305,62 @@
 //
 // A tier is written whole with one flow mapping, for example `lym config gate --set 'tiers.tier0={command: "go test -json {targets} {args}", all_targets: ./..., counter: go-json, timeout_min: 10}'`.
 //
+// # Detached run
+//
+// `lym gate run-detached <run-dir>` is a hidden internal-audience verb: the runner of a gate call that outlasts its caller.
+// A run lives in `gateslot.WaitDir(anchor)/detach/<key>/<run id>`, under the never-tracked gate directory.
+// Its directory holds `request.json` (the verb, `test` or `card-verify`, the call's words after it and the directory it ran in), `lease.json` (the deadline), `process.json` (the runner's pid and start reading), `tree.json` (HEAD's tree and the sorted dirty paths the front recorded), `phase.json` (`starting`, `slots` or `running`, with the tier name or the card line), `line.json` (the process tree of a card-verify run's line), `stdout`, `stderr`, `runner.log`, `exit.json` (the call's code and whether it was abandoned) and `delivered`.
+// The lease is the latest deadline any call wrote, and only an explicit expiry moves it earlier.
+//
+// The runner refuses, before it runs anything or writes an exit file, a directory with no live lease, a request that is missing or malformed, a verb it does not run and a run another runner already claimed, naming `lym gate test` and `lym gate card-verify` as the way forward.
+// The claim is an exclusive create of `process.json`, so it is the one check for a claimed run, and a reader that finds the file not yet decodable reads it again.
+// Bound: a direct call reaches only a directory a front made and refuses one its runner claimed, so a hand-written lease lets one run start, which ends at that lease.
+//
+// The runner runs the request in-process through a fresh gate tree exactly as a `--wait` call, its output in `stdout` and `stderr`, and reports the tier it waits for or runs to `phase.json`.
+// A `card-verify` request runs the card's line instead, as the Card verify section says.
+// It reads the lease once a second from its start, the slot wait included, and cancels the call once the lease is read as lapsed, an unreadable lease being read again a second later; a terminating signal cancels it too.
+// A call that ended on its own writes its own code to `exit.json`; a lease that lapsed while the call ran writes code 1 and the abandoned mark after appending an abandoned line, naming the request's verb, to `stderr`, and one that lapsed after the call returned abandons nothing; a signal writes 128 plus its number and the abandoned mark.
+// The cancelled call kills its tiers and releases its slots as a signal does, and the records it writes carry the abandoned mark.
+//
+// # Capped call
+//
+// A `lym gate test` call without `--wait` from an agent strand is capped: it starts or joins a detached runner and waits for the run's result up to the caller role's keep-warm cap, so a run that outlasts the cap keeps the agent's prompt cache warm instead of blocking one long call.
+// `frontDecision` makes the choice.
+// A call is not capped when it gives `--wait`, when `agentname.StrandNameEnv` is empty, when its directory is in no git worktree, when it runs inside a slot an enclosing gate run holds, and when the resolver's cap is zero.
+// The cap is the answer of `shuttleengines.KeepWarm` for the strand; a fallback answer is logged at Warn once per call and still caps, at its `DefaultAwaitCap`.
+// A call that is not capped runs in this process, `RunGate` and every call a verify or card-verify line makes among them, which never reach the front.
+// Bound: the strand is read from the caller's environment, so a forged or absent strand chooses only how long a call blocks, never what runs or its verdict.
+// Bound: the inherited-slot branch is reached only by a hand-set slot variable beside a strand, since every lym path that holds a slot runs its child without the strand; it stays so the choice is complete, and the standing agent deny on the variable keeps an agent from reaching it.
+//
+// A call's key is a hash of the verb, the resolved run directory and the call's words, and the key directory `detach/<key>` under the worktree's gate directory holds the key's lock, its `current.json` naming the current run id and one subdirectory per run.
+// The front counts its cap from its own start and catches terminating signals, which end the front alone with 128 plus the signal number while the runner goes on.
+// It takes the key directory's lock, trying once a second only while at least the lock margin of its cap remains; past that it answers as at a passed cap in the phase `starting`.
+// Under the lock it joins the key's current run when `joinable` holds, else it starts a fresh one.
+// A run is joinable only while its lease holds, when no front printed its result (`delivered` is absent), when HEAD's tree and the sorted dirty paths equal the run's `tree.json`, and when the run has ended without the abandoned mark or its runner's pid is live with the start reading the runner recorded, so a reused pid is no runner.
+// Joining writes the call's deadline plus the grace to the lease, which keeps the later one.
+// A fresh run expires the superseded run's lease, so a live runner of it ends at its next lease read, writes `request.json`, `tree.json` and the lease before launching, points `current.json` at the new id and launches `lym gate run-detached <run dir>` detached with the strand name dropped.
+// The front registers the runner under the pair's slug with `runproc.RoleGate` inside a hub, so the pair's teardown ends it; the prime and a worktree outside every hub register nothing.
+// It holds the lock until the runner claimed the run, checking once a second for at most the claim bound.
+// A launch that failed, or a runner that ended or did not claim by the bound, is a failed start: the front claims the run itself so no runner can, expires the lease, prints the runner's log to stderr and exits 1 with an error whose way forward is to run the same command again and, when that fails again, to run it with `--wait`.
+// It then waits for the run's `exit.json` for what remains of its cap.
+// A result without the abandoned mark is printed: `stdout`, then `stderr`, then `delivered` is created, unless copying the output failed, which leaves the run joinable, and the call exits with the recorded code, except that a recorded 75 exits 1 after a stderr line saying the code was a test's own.
+// A passed cap, and a result with the abandoned mark, answer ok with `done: false`, the phase from `phase.json` (`starting` when there is none), a message to run the same command again in a turn that does nothing else, and, while the run waits for its slots, `slot_free: false` with each holder's worktree, site and tier; the exit code is SlotBusyExit.
+// A fresh run removes the key directory's other run directories older than 14 days whose runner is not live.
+// A call with `--gate <key>` may wait one long call in place of many short ones.
+// When the resolver gave a break-even (`shuttle.yaml`'s `keep_warm_max_reruns`, 0 for none or for a fallback), `chooseCap` reads this machine's run records and `longWait` weighs the latest five full calls of the key, a call that ran every tier it listed to an outcome and was neither carried, abandoned nor of an empty scope;
+// when at least three exist and their median wall time exceeds the cap times the break-even, the front's cap is the resolver's long cap, 55 minutes from the claude engine, and so is its lease.
+// A read error, no key and no break-even keep the short cap.
+// Bound: an estimate from a few earlier calls can mis-pick, which costs cache money only, never a verdict.
+// Bound: the join compares the tree and the dirty paths, not the dirty files' content, so an edit to an already-dirty file between two calls with the same words gets the earlier content's run, and a second call with the same words after another took the result starts a fresh run.
+// Bound: the plan lives under `_lym`, which neither `headIdentity` nor `verifytree.DirtyPaths` reads, so a `--card` call made after an edit of the plan, with the same words and an unchanged code tree, joins the run of the plan as it was while its lease holds; the edit costs at most the earlier plan's verdict for the remaining lease, after which the same command starts afresh.
+//
 // # Report
 //
 // `lym gate report [--slug <slug>] [--since <YYYY-MM-DD>]` reads this machine's run records through `gateslot.ReadRunRecords`, from the board's gate run directory inside a hub and the worktree's own outside every hub, and prints one row per slug and gate key.
 // A row holds the tier runs, the carried tiers, the summed slot wait (a record's start minus its wait start), the summed wall time, and the launch time with its share, the launch time being the sum of the records' launch gaps and its share that sum over their summed package time.
 // A record from before `--gate` has no key and groups under its tier list and scope form, such as `tiers 0,1 all`; a record without a launch list adds nothing to the launch time, and a group whose records hold none shows no launch time.
+// A record marked abandoned, written after its call was cancelled by a terminating signal or a passed lease, counts apart in the row's `abandoned_runs`, `abandoned_wait_seconds` and `abandoned_wall_seconds`, and adds nothing to the tier runs, the carried tiers, the wait, the wall time, the build step or the launch totals.
+// Every record of one call carries the call's id.
 // A malformed `--since` is refused naming the expected form before hub resolution.
 // The verb carries the operator audience annotation, takes no slot and changes nothing.
 //
@@ -323,6 +373,20 @@
 // The line's output passes through to the terminal and the verb exits with the line's own code; a line that timed out or did not start exits 1.
 // Inside a hub a line that is not a `--wait` gate call takes one slot of the hub's pool; outside every hub it runs unslotted.
 //
+// The verb has no `--wait`, so `frontDecision` caps a call from an agent strand as it does a `lym gate test` call, and the line runs in a detached runner the call starts or joins.
+// The key is the verb `card-verify`, the worktree as run directory and the matched card's `N-slug` id as the only word, so a call with `4` and a call with `4-<slug>` share one run.
+// The runner reads the plan again in the request's directory and matches the card; a refusal there, as when the plan was edited since the front's read, is written to `stderr` with exit 1 and replayed by the front.
+// A card with no line in the runner's read answers the in-process message with exit 0.
+// The line runs through a `cardverify.Runner` over the worktree with the hub's pool and wait directory, under the runner's lease-cancelled context.
+// `phase.json` names `slots` with the line while a slot-held line waits for its slot, and `running` with the line once it runs, a `--wait` gate line included, since it takes its own slots inside its child and answers no `slot_free`.
+// The line's process tree goes to `line.json`.
+// On Windows the runner first holds the kill-on-close job `lym-gate-<run id>`, which the line's tree inherits; on Linux the line's shell carries the parent-death SIGKILL of `verifyrun.RunTied`.
+// A cancelled line's process group gets SIGTERM and then SIGKILL, and a `--wait` gate child cancels on that SIGTERM, killing its tiers and releasing its slots.
+// A front that supersedes a `card-verify` run whose runner is not live kills the group `line.json` records, which reaches the shell's descendants the parent-death signal misses, before it starts the fresh runner.
+// Bound: a job that cannot be held is logged and the line runs without it, so on Windows the runner's death then leaves the line's tree to its own end, since `proc.KillTree` kills nothing there.
+// Bound: on Linux a dead runner's line runs on until a front supersedes it, or to its own end when no front comes.
+// Bound: the key is the card's id, so a call after an edit of the card's `**Verify:**` line joins the run of the old line while its lease holds.
+//
 // # In-process run
 //
 // `RunGate(ctx, dir, gate, out, stderr, observer)` runs the gate key `gate` in `dir` through the same `runTest` as `lym gate test --wait --gate <gate>`, with the CLI's defaults and `dir` seeded as the context's working directory.
@@ -334,5 +398,5 @@
 //
 // # Exit codes
 //
-// The first failing run's own code, in plan order, which for a test binary the watchdog quit is the test run's failure code; 1 for a tier that timed out; SlotBusyExit (75) for a busy hub when no earlier run failed, and the first failed run's code when one did; 1 for a run that ended without a failure while the call was cancelled; 128 plus the signal number after a terminating signal; 1 for a refusal, with a JSON error envelope on stdout.
+// The first failing run's own code, in plan order, which for a test binary the watchdog quit is the test run's failure code; 1 for a tier that timed out; SlotBusyExit (75) only as a capped call's `done: false` answer, which is no failure and never the code of a call that runs in this process; 1 for a run that ended without a failure while the call was cancelled; 128 plus the signal number after a terminating signal; 1 for a refusal, with a JSON error envelope on stdout.
 package gatecli

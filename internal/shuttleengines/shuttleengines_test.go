@@ -350,3 +350,29 @@ func TestToolBoundaryRenderer(t *testing.T) {
 		t.Error("ToolBoundaryRenderer(nope) found one; want none")
 	}
 }
+
+// TestConfigModules_ClaudeCheckLoad pins that the claude module's load check passes the template and refuses a keep-warm cap a run start would refuse.
+func TestConfigModules_ClaudeCheckLoad(t *testing.T) {
+	t.Parallel()
+
+	var checkLoad func(configengine.Dirs) error
+	for _, module := range ConfigModules() {
+		if module.Name == "claude" {
+			checkLoad = module.CheckLoad
+		}
+	}
+	if checkLoad == nil {
+		t.Fatal("ConfigModules() holds no claude module")
+	}
+
+	if err := checkLoad(configengine.Dirs{Anchor: t.TempDir()}); err != nil {
+		t.Errorf("CheckLoad over the template = %v; want nil", err)
+	}
+
+	anchor := t.TempDir()
+	writeLocalLayer(t, anchor, "claude", "keep_warm_cap: 10s\n")
+	err := checkLoad(configengine.Dirs{Anchor: anchor})
+	if err == nil || !strings.Contains(err.Error(), "keep_warm_cap") || !strings.Contains(err.Error(), "lym config claude") {
+		t.Errorf("CheckLoad over keep_warm_cap: 10s = %v; want a refusal naming keep_warm_cap and lym config claude", err)
+	}
+}

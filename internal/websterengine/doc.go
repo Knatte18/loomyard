@@ -77,9 +77,9 @@
 // After the last card the fork runs the batch gate once;
 // Go never runs it, and Webster's plan-level `webster` gate catches a fork that skips it.
 // The fork runs every card gate step, `lym gate card-verify` call and the batch gate in the foreground under the gate rule in its system prompt and never backgrounds a call, so its only turn end is its final report.
-// A card's own gate, which begin-batch and recover-batch render into the fork's prompt, is the hub's `card` gate call, `lym gate test --wait --gate card --card <card id>` from `gateslot.Config.GateCall`, then `lym loom lint-comments`, the comment line-break lint, then `lym loom lint-pattern`, the PATTERN headroom lint, one step per line.
+// A card's own gate, which begin-batch and recover-batch render into the fork's prompt, is the hub's `card` gate call, `lym gate test --gate card --card <card id>` from `gateslot.Config.AgentGateCall`, which carries no `--wait` since an agent runs it, then `lym loom lint-comments`, the comment line-break lint, then `lym loom lint-pattern`, the PATTERN headroom lint, one step per line.
 // The gate call computes the card's packages and runs the guard step itself, so Go renders no package list and scans for no guard test.
-// The batch gate is the hub's `batch` gate call, `lym gate test --wait --gate batch`, over every card of the batch, `--card <card id>` once per card.
+// The batch gate is the hub's `batch` gate call, `lym gate test --gate batch`, over every card of the batch, `--card <card id>` once per card.
 // Both calls are rendered from `BeginDeps.Gate` and `RecoverDeps.Gate`, which `webstercli` loads from the hub's `gate.yaml`;
 // a hub whose `card` or `batch` list the config cannot give refuses begin-batch and recover-batch with the config's way forward before they mutate anything.
 // The implementer body tells a fork to fix a guard step failure on a file outside the card's list under the card's commit, moving a pin only when the pin itself must move.
@@ -548,7 +548,7 @@
 // The gate's re-prompt line and its findings both open with the way forward to the routed fixer, naming the fixer-fork step and the prompt file's path, or the backgrounded `lym webster fix-verify` call, so the rule stands where Merriam reads the failure.
 // The waiting turn end in between is no arrival.
 // Both fixers' prompts share one body, webster-body-verify-fix, behind a prefix of their own.
-// The fixer fixes the cause in source, never deletes, skips or weakens a test, never touches the plan directory or `_lym`, commits each fix as `fix: <summary>` and does not run the plan-level verify; before it reports it runs the hub's `webster-fix` gate call, `lym gate test --wait --gate webster-fix`, which Run renders from the told Geometry.GateConfig into the prompt's `fix_gate` marker.
+// The fixer fixes the cause in source, never deletes, skips or weakens a test, never touches the plan directory or `_lym`, commits each fix as `fix: <summary>` and does not run the plan-level verify; before it reports it runs the hub's `webster-fix` gate call, `lym gate test --gate webster-fix`, which Run and the cold fixer's spawn render from the told Geometry.GateConfig into the prompt's `fix_gate` marker.
 // Its commits skip record-batch's done-checks, drift detection and glyph scope guard.
 // They are bounded by the gate's commit check, the run-exit fork audit, the gate's own verify and the Code-Review perch after Parent-Align, which reviews the committed range.
 // The plan directory and `_lym` sit outside every code commit, so the run-exit fork audit is what catches a fixer write there:

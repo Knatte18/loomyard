@@ -179,6 +179,104 @@ func (c *Claude) PromptCacheLifetime(spec shuttleengine.Spec, cfg shuttleengine.
 	return time.ParseDuration(ttl)
 }
 
+// longKeepWarmCap is the long cap KeepWarmCaps answers and the ceiling of a configured keep-warm cap: the Bash tool timeout ceiling less five minutes, so a long wait ends before the tool kills it.
+const longKeepWarmCap = bashMaxTimeout - 5*time.Minute
+
+// minKeepWarmCap is the floor of a configured keep-warm cap.
+const minKeepWarmCap = 60 * time.Second
+
+// checkKeepWarmCap reports an error unless value parses as a Go duration within [minKeepWarmCap, longKeepWarmCap] and below lifetime, and returns the parsed cap.
+// key names the claude.yaml entry the value came from, so the error points at what to fix.
+func checkKeepWarmCap(key, value string, lifetime time.Duration) (time.Duration, error) {
+	capWait, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, fmt.Errorf("claudeengine: invalid %s %q; it must parse as a Go duration; fix it in claude.yaml with lym config claude", key, value)
+	}
+	switch {
+	case capWait < minKeepWarmCap:
+		return 0, fmt.Errorf("claudeengine: invalid %s %q; it must be at least %s; fix it in claude.yaml with lym config claude", key, value, minKeepWarmCap)
+	case capWait >= lifetime:
+		return 0, fmt.Errorf("claudeengine: invalid %s %q; it must be below the role's prompt-cache lifetime %s; fix it in claude.yaml with lym config claude", key, value, lifetime)
+	case capWait > longKeepWarmCap:
+		return 0, fmt.Errorf("claudeengine: invalid %s %q; it must be at most %s; fix it in claude.yaml with lym config claude", key, value, longKeepWarmCap)
+	}
+	return capWait, nil
+}
+
+// keepWarmCapFor returns the cap string claude holds for role: its keep_warm_cap_roles entry when one exists, else keep_warm_cap.
+func keepWarmCapFor(role string, claude Config) string {
+	if value, ok := claude.KeepWarmCapRoles[role]; ok {
+		return value
+	}
+	return claude.KeepWarmCap
+}
+
+// ValidateKeepWarm reports an error unless every keep-warm cap in claude is usable.
+// It first resolves the prompt-cache TTLs, so a bad TTL is reported before a bad cap.
+// It then checks the default cap against the default prompt-cache lifetime and, for every role named in prompt_cache_ttl_roles or keep_warm_cap_roles in sorted order, that role's cap against that role's lifetime.
+// A cap must parse as a Go duration, be at least 60s, be below its lifetime and be at most 55m.
+func ValidateKeepWarm(claude Config) error {
+	defaultTTL, err := resolvePromptCacheTTL("", claude)
+	if err != nil {
+		return err
+	}
+	defaultLifetime, err := time.ParseDuration(defaultTTL)
+	if err != nil {
+		return err
+	}
+	if _, err := checkKeepWarmCap("keep_warm_cap", claude.KeepWarmCap, defaultLifetime); err != nil {
+		return err
+	}
+	named := map[string]bool{}
+	for role := range claude.PromptCacheTTLRoles {
+		named[role] = true
+	}
+	for role := range claude.KeepWarmCapRoles {
+		named[role] = true
+	}
+	roles := make([]string, 0, len(named))
+	for role := range named {
+		roles = append(roles, role)
+	}
+	slices.Sort(roles)
+	for _, role := range roles {
+		ttl, err := resolvePromptCacheTTL(role, claude)
+		if err != nil {
+			return err
+		}
+		lifetime, err := time.ParseDuration(ttl)
+		if err != nil {
+			return err
+		}
+		key := "keep_warm_cap"
+		if _, ok := claude.KeepWarmCapRoles[role]; ok {
+			key = fmt.Sprintf("keep_warm_cap_roles[%s]", role)
+		}
+		if _, err := checkKeepWarmCap(key, keepWarmCapFor(role, claude), lifetime); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// KeepWarmCaps returns the longest one keep-warm wait of a session of role blocks and the long cap a long gate wait uses.
+// The cap is role's keep_warm_cap_roles entry, else keep_warm_cap, from claude.yaml.
+// It loads and validates claude.yaml first; a load or validation error is returned with its claude.yaml advice.
+func (c *Claude) KeepWarmCaps(role string) (time.Duration, time.Duration, error) {
+	claude, err := loadConfigOrRefuse(c.dirs)
+	if err != nil {
+		return 0, 0, err
+	}
+	if err := ValidateKeepWarm(claude); err != nil {
+		return 0, 0, err
+	}
+	capWait, err := time.ParseDuration(keepWarmCapFor(role, claude))
+	if err != nil {
+		return 0, 0, err
+	}
+	return capWait, longKeepWarmCap, nil
+}
+
 // envFileKey is the variable Claude Code reads to find a file whose content it runs in the Bash tool's shell before each command.
 // It rides the pane line for the same reason forkSubagentEnvKey does.
 const envFileKey = "CLAUDE_ENV_FILE"

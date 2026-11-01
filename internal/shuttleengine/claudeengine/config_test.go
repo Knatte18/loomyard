@@ -46,6 +46,8 @@ func TestLoadConfig(t *testing.T) {
 			DenyAskUserQuestion: true,
 			PromptCacheTTL:      "5m",
 			PromptCacheTTLRoles: map[string]string{"driver": "5m", "webster": "1h", "orch": "1h"},
+			KeepWarmCap:         "250s",
+			KeepWarmCapRoles:    map[string]string{},
 		}
 		if !reflect.DeepEqual(cfg, want) {
 			t.Errorf("LoadConfig() = %+v; want %+v", cfg, want)

@@ -759,19 +759,28 @@ func TestConfig_TierUse(t *testing.T) {
 			gate  string
 			cards []string
 			want  string
+			// wantAgent is the call AgentGateCall renders, the same without --wait.
+			wantAgent string
 		}{
-			{"batch", []string{"01", "02"}, "lym gate test --wait --gate batch --card 01 --card 02"},
-			{"card", []string{"03"}, "lym gate test --wait --gate card --card 03"},
-			{"webster", nil, "lym gate test --wait --gate webster"},
+			{"batch", []string{"01", "02"}, "lym gate test --wait --gate batch --card 01 --card 02", "lym gate test --gate batch --card 01 --card 02"},
+			{"card", []string{"03"}, "lym gate test --wait --gate card --card 03", "lym gate test --gate card --card 03"},
+			{"webster", nil, "lym gate test --wait --gate webster", "lym gate test --gate webster"},
 		}
 		for _, tt := range tests {
 			got, err := twoTier.GateCall(tt.gate, tt.cards...)
 			if err != nil || got != tt.want {
 				t.Errorf("GateCall(%q, %v) = (%q, %v); want (%q, nil)", tt.gate, tt.cards, got, err, tt.want)
 			}
+			gotAgent, err := twoTier.AgentGateCall(tt.gate, tt.cards...)
+			if err != nil || gotAgent != tt.wantAgent {
+				t.Errorf("AgentGateCall(%q, %v) = (%q, %v); want (%q, nil)", tt.gate, tt.cards, gotAgent, err, tt.wantAgent)
+			}
 		}
 		if _, err := twoTier.GateCall("nope"); err == nil {
 			t.Error("GateCall(nope) error = nil; want the Gate refusal")
+		}
+		if _, err := twoTier.AgentGateCall("nope"); err == nil {
+			t.Error("AgentGateCall(nope) error = nil; want the Gate refusal")
 		}
 	})
 

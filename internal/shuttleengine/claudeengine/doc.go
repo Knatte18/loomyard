@@ -56,13 +56,13 @@
 // A color outside the palette answers no inputs.
 //
 // The engine owns a layered config module, `claude.yaml`, declared in config.go:
-// `binary`, `deny_agent_tool`, `deny_ask_user_question`, `prompt_cache_ttl` and `prompt_cache_ttl_roles`.
+// `binary`, `deny_agent_tool`, `deny_ask_user_question`, `prompt_cache_ttl`, `prompt_cache_ttl_roles`, `keep_warm_cap` and `keep_warm_cap_roles`.
 // LoadConfig resolves it through the degrading loader, stacking the template, the repo default, the worktree file and the local override,
 // and a local override may set only the cache lifetimes.
 // It is told its directories and derives none.
-// NewFromConfig takes them, and Prepare, OpenLaunch and PromptCacheLifetime each load claude.yaml through them before anything else,
+// NewFromConfig takes them, and Prepare, OpenLaunch, PromptCacheLifetime and KeepWarmCaps each load claude.yaml through them before anything else,
 // so an invalid file refuses a run start, a resume and an open with the file, the key and the way forward, `lym config claude`.
-// No other method and neither constructor loads it, and an engine built by New, with zero directories, refuses those three methods.
+// No other method and neither constructor loads it, and an engine built by New, with zero directories, refuses those four methods.
 //
 // Both lines carry `CLAUDE_CODE_PROMPT_CACHE_TTL`, so a session writes its prompt cache at the TTL its role needs rather than at Claude Code's subscription default.
 // Prepare resolves the value from `Spec.Role` through `claude.yaml`'s `prompt_cache_ttl_roles` map, with `prompt_cache_ttl` as the fallback for an empty or unmapped role,
@@ -70,6 +70,9 @@
 // It logs the resolved value with the role.
 // The value is fixed for the session's life, since a resume line is never rebuilt.
 // PromptCacheLifetime answers the same resolved value as a duration, so a caller can keep an idle session's cache warm inside it.
+// `keep_warm_cap` and the per-role `keep_warm_cap_roles` are the longest one wait an agent of a role blocks on, Go durations of at least 60s, below the role's prompt-cache lifetime and at most 55m (the Bash ceiling less five minutes).
+// ValidateKeepWarm checks them where a run starts, in Prepare after the TTLs, and KeepWarmCaps answers a role's cap with the 55m long cap.
+// A cap above five minutes leaves that role's forks' caches cold, since forks run at Claude Code's 5-minute subagent lifetime.
 // The subagent bucket (`CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL`) is left at Claude Code's default,
 // and a `FORCE_PROMPT_CACHING_5M` in Claude Code's own environment still wins.
 //

@@ -5,17 +5,21 @@
 package cardverify
 
 import (
+	"context"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/proc"
 )
 
 func verifyCard(n int, slug, command string) planparser.Card {
@@ -34,8 +38,19 @@ func TestRunner(t *testing.T) {
 		t.Setenv(gateslot.PrebuiltLymEnv, "/stale/lym")
 		runner := Runner{Worktree: t.TempDir()}
 		cards := []planparser.Card{verifyCard(1, "a", "true"), verifyCard(2, "b", ""), verifyCard(3, "c", `test -z "$`+gateslot.PrebuiltLymEnv+`"`)}
-		if got := runner.RunCards(cards, io.Discard, false); len(got) != 0 {
+		if got := runner.RunCards(context.Background(), cards, io.Discard, false); len(got) != 0 {
 			t.Fatalf("RunCards() = %v; want no failures", got)
+		}
+	})
+
+	t.Run("the strand name never reaches a line", func(t *testing.T) {
+		t.Setenv(agentname.StrandNameEnv, "sh:slug:implementer")
+		const line = `test -z "$` + agentname.StrandNameEnv + `"`
+		pool := newPool(t, func() (gateslot.Limits, error) { return gateslot.Limits{Slots: 1}, nil })
+		for name, runner := range map[string]Runner{"unslotted": {Worktree: t.TempDir()}, "slot-held": {Worktree: t.TempDir(), Slots: pool}} {
+			if got := runner.RunLine(context.Background(), line, io.Discard); got != "" {
+				t.Errorf("RunLine(%s) = %q; want a pass", name, got)
+			}
 		}
 	})
 
@@ -49,10 +64,10 @@ func TestRunner(t *testing.T) {
 		pool := newPool(t, func() (gateslot.Limits, error) { return gateslot.Limits{}, errors.New("a gate call reads no limits") })
 		runner := Runner{Worktree: t.TempDir(), Slots: pool, Timeout: 200 * time.Millisecond}
 
-		if got := runner.RunLine("lym gate test --wait ./x", io.Discard); got != "" {
+		if got := runner.RunLine(context.Background(), "lym gate test --wait ./x", io.Discard); got != "" {
 			t.Errorf("RunLine(gate call) = %q; want a pass", got)
 		}
-		if got := runner.RunLine("lym gate test ./x", io.Discard); !strings.Contains(got, "could not acquire a gate slot") {
+		if got := runner.RunLine(context.Background(), "lym gate test ./x", io.Discard); !strings.Contains(got, "could not acquire a gate slot") {
 			t.Errorf("RunLine(gate call without --wait) = %q; want it slot-held", got)
 		}
 	})
@@ -115,7 +130,7 @@ func TestRunner(t *testing.T) {
 					worktree = t.TempDir()
 				}
 				runner := Runner{Worktree: worktree, Timeout: tt.timeout}
-				if got := runner.RunCards(tt.cards, io.Discard, tt.stop); !tt.want(got) {
+				if got := runner.RunCards(context.Background(), tt.cards, io.Discard, tt.stop); !tt.want(got) {
 					t.Errorf("RunCards() = %v; want %s", got, tt.wantDesc)
 				}
 			})
@@ -159,7 +174,7 @@ func TestRunner(t *testing.T) {
 				waitDir := filepath.Join(t.TempDir(), "wait")
 				runner := Runner{Worktree: t.TempDir(), Slots: pool, WaitDir: waitDir, Timeout: tt.timeout}
 
-				got := runner.RunCards([]planparser.Card{verifyCard(7, "slotted", tt.command)}, io.Discard, false)
+				got := runner.RunCards(context.Background(), []planparser.Card{verifyCard(7, "slotted", tt.command)}, io.Discard, false)
 
 				switch {
 				case tt.wantFailure == "" && len(got) != 0:
@@ -176,4 +191,121 @@ func TestRunner(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("context, phase and process tree", func(t *testing.T) {
+		t.Parallel()
+
+		oneSlot := func() (gateslot.Limits, error) { return gateslot.Limits{Slots: 1}, nil }
+
+		t.Run("a context cancelled in the slot wait fails the line and leaves the slot to its holder", func(t *testing.T) {
+			t.Parallel()
+			pool := newPool(t, oneSlot)
+			held, err := pool.Acquire(context.Background(), gateslot.Holder{Worktree: t.TempDir(), Site: "test holder"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = held.Release() })
+			ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+			defer cancel()
+
+			got := Runner{Worktree: t.TempDir(), Slots: pool}.RunLine(ctx, "true", io.Discard)
+
+			if !strings.Contains(got, "could not acquire a gate slot") {
+				t.Errorf("RunLine() = %q; want a could not acquire a gate slot failure", got)
+			}
+			if holders, err := pool.Holders(); err != nil || len(holders) != 1 {
+				t.Errorf("Holders() = (%v, %v); want the test's holder alone", holders, err)
+			}
+		})
+
+		t.Run("a context cancelled while the line runs ends its process group", func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			pidFile := filepath.Join(dir, "sleeper.pid")
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			go func() {
+				waitForPID(t, pidFile)
+				cancel()
+			}()
+
+			start := time.Now()
+			got := Runner{Worktree: dir}.RunLine(ctx, "sleep 30 & echo $! > "+pidFile+"; wait", io.Discard)
+
+			if got == "" {
+				t.Error("RunLine() passed; want a failure for the cancelled line")
+			}
+			if elapsed := time.Since(start); elapsed > 10*time.Second {
+				t.Errorf("RunLine took %s; want it back within the wait delay", elapsed)
+			}
+			waitUntilGone(t, waitForPID(t, pidFile))
+		})
+
+		t.Run("Phase reports the slot wait before the run for a slot-held line and the run alone otherwise", func(t *testing.T) {
+			t.Parallel()
+			tests := []struct {
+				name  string
+				slots *gateslot.Pool
+				want  []bool
+			}{
+				{"slot-held", newPool(t, oneSlot), []bool{true, false}},
+				{"unslotted", nil, []bool{false}},
+			}
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					t.Parallel()
+					var seen []bool
+					runner := Runner{Worktree: t.TempDir(), Slots: tt.slots, Phase: func(slotWait bool) { seen = append(seen, slotWait) }}
+					if got := runner.RunLine(context.Background(), "true", io.Discard); got != "" {
+						t.Fatalf("RunLine() = %q; want a pass", got)
+					}
+					if !slices.Equal(seen, tt.want) {
+						t.Errorf("Phase saw %v; want %v", seen, tt.want)
+					}
+				})
+			}
+		})
+
+		t.Run("Tied receives the process tree of the line's shell", func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			pidFile := filepath.Join(dir, "shell.pid")
+			var tied proc.TreeRecord
+			runner := Runner{Worktree: dir, Tied: func(record proc.TreeRecord) { tied = record }}
+
+			if got := runner.RunLine(context.Background(), "echo $$ > "+pidFile, io.Discard); got != "" {
+				t.Fatalf("RunLine() = %q; want a pass", got)
+			}
+			if tied.PID != waitForPID(t, pidFile) || tied.PGID != tied.PID {
+				t.Errorf("Tied got %+v; want the shell's pid %d as pid and group", tied, waitForPID(t, pidFile))
+			}
+		})
+	})
+}
+
+// waitForPID polls a file a shell line writes its pid to and returns the pid.
+func waitForPID(t *testing.T, path string) int {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		raw, err := os.ReadFile(path)
+		if pid, convErr := strconv.Atoi(strings.TrimSpace(string(raw))); err == nil && convErr == nil {
+			return pid
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Errorf("no pid written to %s", path)
+	return 0
+}
+
+// waitUntilGone fails the test unless pid is gone within a deadline.
+func waitUntilGone(t *testing.T, pid int) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for proc.IsAlive(pid) {
+		if time.Now().After(deadline) {
+			t.Fatalf("process %d still alive", pid)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }

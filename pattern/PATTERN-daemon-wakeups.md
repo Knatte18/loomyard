@@ -18,6 +18,8 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
 - webster's long poll,
 - `lym shed status --watch`,
 - the gate test's CPU watchdog in `internal/gatecli/watchdog.go`, which samples once per period, 5 seconds in production, for as long as go test runs and spawns nothing,
+- the detached gate runner's lease read in `internal/gatecli/detachrun.go`, which wakes once a second for as long as the run's lease lasts,
+- the capped gate call's front in `internal/gatecli/detachfront.go`, which tries the key directory's lock, looks for the runner's claim and polls the run's exit file, each once a second and bounded by the call's keep-warm cap,
 - the `--until-stop` waiter in `internal/shedverbs/loopwait.go`, whose event source is `internal/fswatch` on the run's steps directory and whose timer starts at the one-second floor,
 - the PR-Review row's wait in `internal/landingshed/prreview.go`, which wakes from one second, doubling to a minute while nothing changes, and on an `internal/fswatch` event on the run's pull-request record, still a second after its last wake began,
 - the Sampler-Session row's wait in `internal/loomshed/samplersession.go`, which wakes from one second, doubling to a minute while nothing changes, and on an `internal/fswatch` event on the run's sampler record, still a second after its last wake began,
