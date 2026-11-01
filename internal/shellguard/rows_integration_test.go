@@ -137,6 +137,46 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 		{"python", "after_a_command_substitution", "echo $(python3 x)", true},
 		{"python", "after_a_subshell_paren", "(python3 x)", true},
 
+		{"shell-edit", "sed_in_place", "sed -i 's/a/b/' internal/x/f.go", true},
+		{"shell-edit", "sed_in_place_with_a_suffix", "sed -i.bak s/a/b/ f", true},
+		{"shell-edit", "sed_in_place_in_a_flag_cluster", "sed -Ei 's/a/b/' f", true},
+		{"shell-edit", "sed_in_place_after_the_script", `sed "s/a/b/" -i f`, true},
+		{"shell-edit", "sed_long_in_place_flag", "sed --in-place s/a/b/ f", true},
+		{"shell-edit", "sed_in_place_after_a_separator", "cd x && sed -i s/a/b/ f", true},
+		{"shell-edit", "perl_in_place_cluster", "perl -pi -e s/a/b/ f", true},
+		{"shell-edit", "perl_in_place_before_the_script", "perl -0777 -i -pe 's/a/b/' f", true},
+		{"shell-edit", "redirect_into_a_project_file", "echo x > docs/a.md", true},
+		{"shell-edit", "append_redirect_without_a_space", "echo x >>internal/x/f.go", true},
+		{"shell-edit", "redirect_on_a_second_line", "cd x\nprintf y > go.mod", true},
+		{"shell-edit", "heredoc_after_the_redirect", "cat > internal/x/f.go <<EOF\npackage x\nEOF", true},
+		{"shell-edit", "redirect_on_the_heredoc_line", "cat <<'EOF' >> docs/x.md\n## New\nEOF", true},
+		{"shell-edit", "tee_into_a_project_file", "cat <<EOF | tee -a docs/a.md\nx\nEOF", true},
+		{"shell-edit", "clobber_redirect", "echo x >| f.go", true},
+		{"shell-edit", "redirect_into_a_yaml_file", "echo x > f.yaml", true},
+		{"shell-edit", "redirect_into_a_yml_file", "echo x > f.yml", true},
+		{"shell-edit", "redirect_into_a_toml_file", "echo x > f.toml", true},
+		{"shell-edit", "redirect_into_a_shell_file", "echo x > f.sh", true},
+		{"shell-edit", "redirect_into_a_powershell_file", "echo x > f.ps1", true},
+		{"shell-edit", "redirect_into_a_mod_file", "echo x > go.mod", true},
+		{"shell-edit", "redirect_into_a_sum_file", "echo x > go.sum", true},
+		{"shell-edit", "redirect_into_a_csharp_file", "echo x > f.cs", true},
+		{"shell-edit", "redirect_into_a_csproj_file", "echo x > f.csproj", true},
+		{"shell-edit", "redirect_into_a_sln_file", "echo x > f.sln", true},
+		{"shell-edit", "redirect_into_a_props_file", "echo x > f.props", true},
+		{"shell-edit", "redirect_into_a_targets_file", "echo x > f.targets", true},
+		{"shell-edit", "redirect_into_a_quoted_target", `echo x > "f.go"`, false},
+		{"shell-edit", "sed_read", "sed -n '1,20p' internal/x/f.go", false},
+		{"shell-edit", "sed_to_standard_output", "sed 's/a/b/' f.go", false},
+		{"shell-edit", "grep_flag_after_a_pipe_from_sed", "sed -n 1p f | grep -i x", false},
+		{"shell-edit", "perl_module_switch", "perl -Mstrict -ne 'print' f.go", false},
+		{"shell-edit", "output_captured_into_a_json_file", "lym board list > .scratch/board.json", false},
+		{"shell-edit", "redirect_to_dev_null", "go vet ./internal/x > /dev/null 2>&1", false},
+		{"shell-edit", "redirect_inside_quotes", `grep -n "x > y.go" f`, false},
+		{"shell-edit", "redirect_inside_a_heredoc_body", "cat <<EOF\nx > y.go\nEOF", false},
+		{"shell-edit", "sed_in_place_inside_single_quotes", "grep -rn 'sed -i' internal", false},
+		{"shell-edit", "tee_into_a_log", "lym gate test ./internal/x | tee .scratch/gate.log", false},
+		{"shell-edit", "redirect_into_a_longer_extension", "cp f.go f.go.orig && echo x > f.go.orig", false},
+
 		{"computed-rm", "command_substitution", `rm -rf "$(cat x)"`, true},
 		{"computed-rm", "variable_path", "rm $DIR/f", true},
 		{"computed-rm", "positional_parameter", "rm $1", true},
@@ -182,6 +222,7 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 		{"python", "x; python3 x.py"},
 		{"computed-rm", "x; rm $d"},
 		{"machine-sleep", "x; systemctl hibernate"},
+		{"shell-edit", "x; sed -i s/a/b/ f > g.go"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.row+"_"+tt.name, func(t *testing.T) {
@@ -209,16 +250,13 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 			}
 		})
 	}
-	// Commands no row may take away: the one that reproduces a failing tmux-tier test, and scripted edits of a project file.
+	// Commands no row may take away: the one that reproduces a failing tmux-tier test, and reading a range of a file.
 	allowedEverywhere := []struct {
 		name    string
 		command string
 	}{
 		{"tmux_tier_reproduce_command", "lym gate test --wait --tier 2 github.com/Knatte18/loomyard/internal/x -- -run '^TestX$'"},
-		{"sed_in_place_edit", "sed -i 's/a/b/' internal/x/f.go"},
-		{"perl_in_place_edit", "perl -pi -e s/a/b/ f"},
-		{"redirect_into_a_project_file", "echo x > docs/a.md"},
-		{"heredoc_appended_to_a_project_file", "cat >> docs/x.md <<EOF\n## New\nEOF"},
+		{"sed_range_read", "sed -n '10,40p' internal/x/f.go"},
 	}
 	for name, row := range rows {
 		for _, tt := range allowedEverywhere {

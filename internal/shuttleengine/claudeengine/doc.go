@@ -255,7 +255,9 @@
 // Settings render at spawn, so a running session keeps the list it started with.
 // It is a guardrail, not a barrier: its hook sees static text only, so a run behind a script or `bash -c`, a flag between the prefix's words such as `go -C dir test`, and an assignment prefix such as `GOFLAGS=x go test` pass.
 //
-// No row denies a scripted edit: `sed -i`, `perl -i`, `awk` and a shell redirect or heredoc into a project file pass in every run.
+// The shell-edit row denies a Bash `sed -i` or `perl -i` in command position, and a `>`, `>>` or `tee` into a file with a source extension, a heredoc's included, and every run installs it, the orch included.
+// It keeps a session on the Edit tool, which takes only a file read with Read; its notice is the session's one statement of the edit rule, which the python row's steer carries too.
+// It is a guardrail, not a barrier: an edit behind `bash -c`, a script or `awk`, a `sed -i` after `do` or `then`, behind `find -exec` or behind `xargs` with a flag, a redirect into a quoted target or a file of another extension, and anything after a heredoc operator's line pass.
 //
 // The computed-rm row denies a Bash `rm` in command position when the same payload also holds a command substitution (`$(` or a backtick) or a shell variable expansion (`$` followed by a letter, a digit, `_`, `{`, `@` or `*`), and every run installs it, the orch included.
 // It is a deny and not a prompt because Claude Code raises a statically-unresolvable-target dialog for an `rm` on a computed path, which shows even in bypass mode and stalls an unwatched run.

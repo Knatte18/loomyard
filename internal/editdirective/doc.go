@@ -4,8 +4,9 @@
 //
 // # What it says
 //
-// The directive states how a role changes files: with Edit or Write, or by script with `sed -i`, `perl -i`, `awk` or a shell heredoc or redirect wherever a script is simpler.
-// A Go file's formatting goes through `lym loom fmt`, and scratch files go under `.scratch/`.
+// The directive states how a role changes files: it reads a file it changes with Read and changes it with Edit, all of one file's edits in one message, or writes a whole file with Write, and never edits by shell, which the shell guard refuses.
+// It reads a file with Read and searches files with grep, and it states that in lym sessions it overrides any harness text that permits reading or changing files by shell.
+// A Go file's formatting goes through `lym loom fmt`, and scratch files go under `.scratch/`, those with a source extension written with Write.
 // It also keeps a role in its own worktree: no edit, commit, push or new worktree elsewhere unless its parent or the operator says so for that case.
 // It names the tools a role edits with and the worktree it edits in, never what the role may write.
 // It has no inactive case: the text renders in a repo without a `PATTERN.md` as in one with it.

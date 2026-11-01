@@ -24,19 +24,25 @@ func TestLeafInvariant_AllowlistOnly(t *testing.T) {
 }
 
 // TestCheckTexts plants each forbidden character in a row's steer and notice and asserts checkTexts refuses it naming the row;
-// it also asserts the shipped rows, rendered over a sample refuse list, pass checkTexts and state the gate rule in one notice, and that the refuse-raw steer carries the full rule while its notice names only the refusal and the tier and card scopes.
+// it also asserts the shipped rows, rendered over a sample refuse list, pass checkTexts and state the gate rule and the edit rule in one notice each, that the refuse-raw steer carries the full gate rule while its notice names only the refusal and the tier and card scopes, and that the python and shell-edit steers carry the full edit rule.
 func TestCheckTexts(t *testing.T) {
 	t.Parallel()
-	t.Run("ShippedRefuseRawRow", func(t *testing.T) {
+	t.Run("ShippedRows", func(t *testing.T) {
 		t.Parallel()
 		found := false
-		gateRuleNotices := 0
+		gateRuleNotices, editRuleNotices := 0, 0
 		for _, row := range Rows("with a long timeout", []string{"go test", "dotnet test"}) {
 			if err := checkTexts([]Row{row}); err != nil {
 				t.Errorf("checkTexts(%q row) = %v; want nil", row.Name, err)
 			}
 			if strings.Contains(row.Notice, "Gate rule") {
 				gateRuleNotices++
+			}
+			if strings.Contains(row.Notice, editToolsRule) {
+				editRuleNotices++
+			}
+			if (row.Name == "python" || row.Name == "shell-edit") && !strings.Contains(row.Steer, editToolsRule) {
+				t.Errorf("%s steer %q: want it to carry the edit rule %q", row.Name, row.Steer, editToolsRule)
 			}
 			if row.Name != "refuse-raw" {
 				continue
@@ -57,6 +63,9 @@ func TestCheckTexts(t *testing.T) {
 		}
 		if gateRuleNotices != 1 {
 			t.Errorf("Rows() notices state the gate rule %d times; want once", gateRuleNotices)
+		}
+		if editRuleNotices != 1 {
+			t.Errorf("Rows() notices state the edit rule %d times; want once", editRuleNotices)
 		}
 	})
 	tests := []struct {

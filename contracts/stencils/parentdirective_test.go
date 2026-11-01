@@ -219,9 +219,9 @@ func TestParentDirectiveScans_SyntheticRows(t *testing.T) {
 			t.Errorf("editRuleSentences = %v; want one sentence naming %q", got, "heredoc")
 		}
 
-		got = editRuleSentences("Fix it with `sed -i`.")
-		if len(got) != 1 || !strings.Contains(got[0], "sed -i") {
-			t.Errorf("editRuleSentences = %v; want one sentence naming %q", got, "sed -i")
+		got = editRuleSentences("Change the file never by shell.")
+		if len(got) != 1 || !strings.Contains(got[0], "never by shell") {
+			t.Errorf("editRuleSentences = %v; want one sentence naming %q", got, "never by shell")
 		}
 
 		if got := editRuleSentences("Read the range with `sed -n`."); len(got) != 0 {

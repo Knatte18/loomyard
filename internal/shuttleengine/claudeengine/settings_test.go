@@ -403,10 +403,11 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 					t.Errorf("autonomous AskUserQuestion command = %q; want the deny JSON payload", command)
 				}
 			}
-			pythonInstalled, rawGoInstalled, computedRmInstalled, sleepInstalled, publishInstalled := false, false, false, false, false
+			pythonInstalled, rawGoInstalled, shellEditInstalled, computedRmInstalled, sleepInstalled, publishInstalled := false, false, false, false, false, false
 			for _, command := range matcherCommands(doc, "Bash") {
 				pythonInstalled = pythonInstalled || strings.Contains(command, shellRow(t, "python").Steer)
 				rawGoInstalled = rawGoInstalled || strings.Contains(command, shellRow(t, "raw-go").Steer)
+				shellEditInstalled = shellEditInstalled || strings.Contains(command, shellRow(t, "shell-edit").Steer)
 				computedRmInstalled = computedRmInstalled || strings.Contains(command, shellRow(t, "computed-rm").Steer)
 				sleepInstalled = sleepInstalled || strings.Contains(command, shellRow(t, "machine-sleep").Steer)
 				publishInstalled = publishInstalled || strings.Contains(command, shellRow(t, "publish").Steer)
@@ -418,7 +419,10 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 			if !rawGoInstalled {
 				t.Errorf("raw go Bash PreToolUse entry present = false; want it installed under every input (preToolUse: %v)", preToolUse)
 			}
-			// The computed-rm and sleep denies have no toggle either.
+			// The shell-edit, computed-rm and sleep denies have no toggle either.
+			if !shellEditInstalled {
+				t.Errorf("shell-edit Bash PreToolUse entry present = false; want it installed under every input (preToolUse: %v)", preToolUse)
+			}
 			if !computedRmInstalled {
 				t.Errorf("computed-rm Bash PreToolUse entry present = false; want it installed under every input (preToolUse: %v)", preToolUse)
 			}
@@ -428,8 +432,8 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 			if publishInstalled != tt.denyPublish {
 				t.Errorf("publish Bash PreToolUse entry present = %v; want %v (preToolUse: %v)", publishInstalled, tt.denyPublish, preToolUse)
 			}
-			if !tt.wantAgentEntry && !tt.wantAskUserEntry && !tt.pythonDeny && !tt.denyPublish && len(preToolUse) != 3 {
-				t.Errorf("PreToolUse = %v with no denies/marker configured; want only the raw go, computed-rm and sleep denies", preToolUse)
+			if !tt.wantAgentEntry && !tt.wantAskUserEntry && !tt.pythonDeny && !tt.denyPublish && len(preToolUse) != 4 {
+				t.Errorf("PreToolUse = %v with no denies/marker configured; want only the raw go, shell-edit, computed-rm and sleep denies", preToolUse)
 			}
 		})
 	}
@@ -568,12 +572,14 @@ func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
 				}
 			}
 
-			// The raw go, computed-rm and sleep denies are installed under every input; the rest of the Bash entries are the fork guard.
-			var bashCommands, rawGoCommands, computedRmCommands, sleepCommands []string
+			// The raw go, shell-edit, computed-rm and sleep denies are installed under every input; the rest of the Bash entries are the fork guard.
+			var bashCommands, rawGoCommands, shellEditCommands, computedRmCommands, sleepCommands []string
 			for _, command := range matcherCommands(doc, "Bash") {
 				switch {
 				case strings.Contains(command, shellRow(t, "raw-go").Steer):
 					rawGoCommands = append(rawGoCommands, command)
+				case strings.Contains(command, shellRow(t, "shell-edit").Steer):
+					shellEditCommands = append(shellEditCommands, command)
 				case strings.Contains(command, shellRow(t, "computed-rm").Steer):
 					computedRmCommands = append(computedRmCommands, command)
 				case strings.Contains(command, shellRow(t, "machine-sleep").Steer):
@@ -584,6 +590,9 @@ func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
 			}
 			if len(rawGoCommands) != 1 {
 				t.Errorf("raw go Bash PreToolUse entries = %q; want exactly one (data: %s)", rawGoCommands, data)
+			}
+			if len(shellEditCommands) != 1 {
+				t.Errorf("shell-edit Bash PreToolUse entries = %q; want exactly one (data: %s)", shellEditCommands, data)
 			}
 			if len(computedRmCommands) != 1 {
 				t.Errorf("computed-rm Bash PreToolUse entries = %q; want exactly one (data: %s)", computedRmCommands, data)
@@ -850,8 +859,8 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 		wantRefused bool
 		wantErr     bool
 	}{
-		{"SeededRefuseRawReachesSettingsAndNotice", "slots: 2\nrefuse_raw: [\"go test\"]\n", 4, true, false},
-		{"AbsentGateConfigRendersNoRefuseRawRow", "", 3, false, false},
+		{"SeededRefuseRawReachesSettingsAndNotice", "slots: 2\nrefuse_raw: [\"go test\"]\n", 5, true, false},
+		{"AbsentGateConfigRendersNoRefuseRawRow", "", 4, false, false},
 		{"UnparsableGateConfigRefusesBeforeArtifacts", "slots: [\n", 0, false, true},
 	}
 	for _, tt := range gateTests {

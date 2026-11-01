@@ -237,6 +237,8 @@ func TestShellGuardDenies_RenderedCommandsGrepThePayload(t *testing.T) {
 		{"machine-sleep", "systemctl hibernate", true},
 		{"machine-sleep", "systemctl status", false},
 		{"machine-sleep", "grep 'x; systemctl hibernate' f", false},
+		{"shell-edit", "sed -i s/a/b/ f", true},
+		{"shell-edit", "sed -n 1p f", false},
 		{"computed-rm", "rm $DIR/f", true},
 		{"computed-rm", "rm .scratch/a", false},
 	}

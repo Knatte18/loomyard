@@ -38,11 +38,20 @@ type Row struct {
 	Forms [][]string
 }
 
-// steerPythonDeny refuses a Bash python invocation; it must contain no single/double quote or backslash (checked at init).
-const steerPythonDeny = "lym agents never run Python; edit files with Edit or Write, search and read with grep, awk, cat or sed -n"
+// editToolsRule is the way an agent changes and reads files, which the steers of the python and shell-edit rows carry and only the shell-edit row's notice states, so the system prompt states it once.
+const editToolsRule = "change a file by reading it with Read, whole or a span through offset and limit, and then editing it with Edit, all edits of one file in one message, or write a whole file with Write; search files with grep"
 
-// noticePythonDeny announces the python deny in the same wording as its steer.
-const noticePythonDeny = steerPythonDeny + "."
+// steerPythonDeny refuses a Bash python invocation; it must contain no single/double quote or backslash (checked at init).
+const steerPythonDeny = "lym agents never run Python; " + editToolsRule
+
+// noticePythonDeny announces the python deny; the edit rule its steer carries is announced by the shell-edit row's notice.
+const noticePythonDeny = "lym agents never run Python."
+
+// steerShellEditDeny refuses a Bash edit of a file; it must contain no single/double quote or backslash (checked at init).
+const steerShellEditDeny = "sed -i, perl -i, and a heredoc, redirect or tee into a source file are refused here; " + editToolsRule
+
+// noticeShellEditDeny announces the shell-edit deny in the same wording as its steer.
+const noticeShellEditDeny = steerShellEditDeny + "."
 
 // commandFieldPattern is the grep -E pattern matching the opening of the "command" key's string value in the raw PreToolUse payload JSON.
 const commandFieldPattern = `"command"[[:space:]]*:[[:space:]]*"`
@@ -84,6 +93,30 @@ const rmCommandPattern = commandPositionPattern + `rm([^A-Za-z0-9_./-]|$)`
 // shellExpansionPattern is the grep -E pattern matching a command substitution, $( or a backtick, or a shell variable expansion, $ followed by a letter, a digit, _, {, @ or *.
 // The @ and * take in the positional parameters $@ and $*; the special parameters $$, $?, $# and $! are not matched.
 const shellExpansionPattern = "[$][A-Za-z0-9_{@*(]|`"
+
+// shellArgumentPattern matches one argument word of a command as JSON encodes it: unquoted characters, single-quoted strings and double-quoted strings run together.
+// A backslash, a separator, a parenthesis, a redirect operator or a backtick ends the word, so a run of arguments stays inside one command on one line.
+const shellArgumentPattern = `([^[:space:]"\\;&|()'<>` + "`" + `]|'[^']*'|` + doubleQuotedOpenPattern + `\\")+`
+
+// sourceFilePattern matches a file path word ending in a source file's extension, followed by a word end.
+// It names Go, markdown, YAML, TOML, shell and .NET sources; a .json, .txt or .log target passes, so command output captured into a scratch file with one of those three extensions is not refused.
+// A scratch file with a listed extension is written with Write.
+const sourceFilePattern = `[^[:space:]"\\;&|()<>'` + "`" + `]*\.(go|mod|sum|md|ya?ml|toml|sh|ps1|cs|csproj|sln|props|targets)([^A-Za-z0-9_./-]|$)`
+
+// inPlaceEditCommandPattern matches, in command position, sed with an in-place flag, perl with an in-place switch, or tee writing a source file.
+// The flag may follow any argument words: sed takes -i, --in-place, or -i at the end of a cluster of its argument-free flags such as -Ei; perl takes -i at the end of a cluster of its argument-free switches such as -pi or -0777i.
+// A cluster holding a switch that takes the rest of the word as its value, such as perl -Mstrict, is no in-place switch.
+const inPlaceEditCommandPattern = commandPositionPattern + `(sed([[:space:]]+` + shellArgumentPattern + `)*[[:space:]]+(-[nsuzEr]*i|--in-place)` +
+	`|perl([[:space:]]+` + shellArgumentPattern + `)*[[:space:]]+-[nlpaswcTtWX0-9]*i` +
+	`|tee([[:space:]]+` + shellArgumentPattern + `)*[[:space:]]+` + sourceFilePattern + `)`
+
+// redirectWritePattern matches a > or >> redirect, a >| clobbering one included, into a source file, reached through a run of shell units from the start of the command.
+// A redirect on a heredoc operator's line counts, as in cat <<EOF > f.go; one inside a heredoc body or a quoted string does not.
+// A fd duplication such as 2>&1 and a target in quotes are no match.
+const redirectWritePattern = commandFieldPattern + shellUnitPattern + `*(<<-?` + shellLineUnitPattern + `*)?>[>|]?[[:space:]]*` + sourceFilePattern
+
+// shellEditPattern is the grep -E pattern the shell-edit deny matches against the raw PreToolUse payload JSON: an in-place edit command or a redirect into a source file.
+const shellEditPattern = `(` + inPlaceEditCommandPattern + `)|(` + redirectWritePattern + `)`
 
 // steerSleepDeny refuses a Bash systemctl machine sleep command; it must contain no single/double quote or backslash (checked at init).
 const steerSleepDeny = "the machine sleep commands are refused here; a hibernate goes through lym hibernate request, which waits until every session is paused, and a pair agent asks its parent session to run it"
@@ -216,6 +249,17 @@ func rowsBeforeRefuseRaw(rawGoSteer string) []Row {
 // rowsAfterRawGo returns the rows that follow the raw go and refuse-raw rows.
 func rowsAfterRawGo() []Row {
 	return []Row{
+		{
+			// Installed for every run, the orch included, with no config key, so every session edits through the Edit tool, which takes only a file read with Read.
+			// A guardrail, not a barrier: an edit behind bash -c, a script, awk, cp or mv, a sed -i after do or then, behind find -exec or behind xargs with a flag, a redirect into a quoted target or into a file whose extension sourceFilePattern does not name, and anything after a heredoc operator's line pass.
+			// It falsely denies a matching spelling after a separator inside a quote commandPositionPattern misreads.
+			Name:     "shell-edit",
+			Patterns: []string{shellEditPattern},
+			Steer:    steerShellEditDeny,
+			Notice:   noticeShellEditDeny,
+			Switch:   SwitchNone,
+			Forms:    [][]string{{"sed", "-i"}, {"perl", "-i"}, {"perl", "-pi"}},
+		},
 		{
 			// Refuses before Claude Code raises its statically-unresolvable-target dialog, which shows even in bypass mode and stalls an unwatched run.
 			// Installed for every run, the orch included, with no config key.
