@@ -1,6 +1,6 @@
 // Package sheddriver is the shed layer's Go driver and its tackler.
 // It steps a run to each stop, decides the stop by a closed rule table, asks a cold tackler agent about a stop no rule settles, and hands back to the run's parent everything it cannot settle.
-// Tapestry and darn mount it through `lym loom drive`, and batten's `lym batten run` runs it in-process over its own run.
+// Tapestry, darn and sampler mount it through `lym loom drive`, and batten's `lym batten run` runs it in-process over its own run.
 //
 // # Told geometry
 //
@@ -70,7 +70,7 @@
 // A stop a removed row would have caught meets the later rows unchanged, so it ends in the tackler under its spawn budget, a re-step under the repair cap, or a hand-back.
 // No unwired seam adds a resume path: a tackler escalation with no arbiter hands back, naming the tackler's case brief.
 // Loom's, darn's and batten's drivers all wire the arbiter after the tackler, batten's with `batten.yaml`'s arbiter overrides of `shed.yaml`.
-// The loom CLI's wiring, which tapestry and darn share, marks two kinds of blocked stop the arbiter judges first: the Webster row, whose blocked stop is Merriam's stuck outcome, and a tapestry or darn landing escalate, a merge fixer's halt that opens with the escalate prefix.
+// The loom CLI's wiring, which tapestry, darn and sampler share, marks two kinds of blocked stop the arbiter judges first: the Webster row, whose blocked stop is Merriam's stuck outcome, and a tapestry, darn or sampler landing escalate, a merge fixer's halt that opens with the escalate prefix.
 //
 // # The hand-back
 //

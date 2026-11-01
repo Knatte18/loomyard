@@ -75,6 +75,15 @@ var loomshedAllowedImports = []string{
 	// internal/fsx writes the Record-Write row's files atomically.
 	// It is told absolute paths and resolves no geometry.
 	"github.com/Knatte18/loomyard/internal/fsx",
+	// internal/samplerengine holds the Sampler-Session row's record and reads and writes it at the paths it is told.
+	// It resolves no geometry.
+	"github.com/Knatte18/loomyard/internal/samplerengine",
+	// internal/pawlengine supplies the Beam-Await row-name constant for the operator-wait list.
+	// It resolves no geometry here.
+	"github.com/Knatte18/loomyard/internal/pawlengine",
+	// internal/shedtransient classifies a session start failure as transient or not.
+	// It resolves no geometry.
+	"github.com/Knatte18/loomyard/internal/shedtransient",
 	// gopkg.in/yaml.v3 decodes and encodes the amendment record, which is YAML.
 	// The package still resolves no geometry: the record's path is told.
 	"gopkg.in/yaml.v3",

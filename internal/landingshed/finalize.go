@@ -618,7 +618,7 @@ func (fz *Finalize) mergeAndGate(ctx context.Context) (shedengine.Outcome, shede
 // A change over the caps, when a review follows the reroute (Deps.RerouteReviewed), goes to the fix review, whose approval lets Finalize land.
 // A spent cap, and a change over the caps the fix review does not approve, keep the fixer's commits and reroute when a review follows the reroute, and halt with LandingStopPrefix otherwise, noting the cause in the attempt record's Halt.
 // A resume after such an over-cap halt writes Baseline afresh at the HEAD the gate starts from and reads the operator's review as acceptance of the fixer's commits.
-// An escalate report halts with EscalateStopPrefix on a tapestry or darn run (Deps.EscalateJudgedFirst) and with LandingStopPrefix on a pawl run;
+// An escalate report halts with EscalateStopPrefix on a tapestry, darn or sampler run (Deps.EscalateJudgedFirst) and with LandingStopPrefix on a pawl run;
 // an unusable turn and an attempt record that does not decode each halt with LandingStopPrefix, and a failed spawn is an error that spends no attempt.
 // done is false when the tree passed within the caps and Call proceeds; otherwise the other values are what Call returns at once.
 func (fz *Finalize) gateAndFix(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {

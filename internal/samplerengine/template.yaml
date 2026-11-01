@@ -1,0 +1,2 @@
+agent: opus[high]  # model-spec for the sampler agent's interactive session (see contracts/specs/llm-model-spec.md)
+code_review: false  # whether the Code-Review perch runs on a sampler run

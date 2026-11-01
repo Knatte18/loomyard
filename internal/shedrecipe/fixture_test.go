@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
@@ -23,11 +24,40 @@ import (
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
+
+// noopSamplerSessions is a loomshed.SamplerSessions that starts and stops nothing.
+type noopSamplerSessions struct{}
+
+func (noopSamplerSessions) StartSession(shuttleengine.Spec) (shuttleengine.OpenResult, error) {
+	return shuttleengine.OpenResult{}, nil
+}
+
+func (noopSamplerSessions) StopStrand(string) error { return nil }
+
+// validSamplerDeps returns a loomshed.SamplerDeps with every required seam filled with a no-op and its record paths under dir; Watch is left nil.
+func validSamplerDeps(dir string) loomshed.SamplerDeps {
+	return loomshed.SamplerDeps{
+		RecordPath:      filepath.Join(dir, "sampler.json"),
+		RecordLockPath:  filepath.Join(dir, "sampler.json.lock"),
+		Spec:            func() (shuttleengine.Spec, error) { return shuttleengine.Spec{}, nil },
+		Sessions:        noopSamplerSessions{},
+		SessionLive:     func(string) (bool, error) { return false, nil },
+		RegisterSession: func(string) error { return nil },
+		Stamp:           func() (int, error) { return 1, nil },
+		DirtyPaths:      func() ([]string, error) { return nil, nil },
+		CheckRecord:     func() ([]discussionparser.Finding, error) { return nil, nil },
+		MailAgent:       func(string, string) error { return nil },
+		PauseCovered:    func() (bool, error) { return false, nil },
+		Now:             time.Now,
+		Sleep:           func(context.Context, time.Duration) error { return nil },
+	}
+}
 
 // validPawlDeps returns a pawlengine.Deps with every seam the pawl producers use filled with a no-op, its paths under dir.
 func validPawlDeps(dir string) pawlengine.Deps {
@@ -186,6 +216,7 @@ func newTestEnv(t *testing.T) Env {
 		WebsterDeps:        shedfake.WebsterSeams(),
 		PlanIndex:          placeholderIndex{},
 		Pawl:               validPawlDeps(dir),
+		Sampler:            validSamplerDeps(dir),
 		DiscussionTable: func() (seatengine.Table, error) {
 			return seatengine.Table{
 				RolePrefix: "discussion",

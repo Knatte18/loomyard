@@ -92,6 +92,20 @@
 // A Done session is then guarded by DarnDeps.CheckRecord, which the wiring points at ValidateDiscussion over the run's record with no citation checks:
 // findings halt the run Stuck with no re-prompt, and the reason names the findings and the way forward that restores the record, which keeps every `Added after Discussion` entry the record held.
 //
+// The Sampler-Session row's producer (NewSamplerSession) keeps one interactive agent session in the run's worktree and waits in process, with no timeout, for the done flag `lym loom sampler-done` writes into the sampler record.
+// A recorded strand that is live is reused, a recorded session id whose strand is gone is resumed, and with none recorded a session starts; the started strand is recorded each time.
+// A flag counts only at the row's current entry stamp.
+// Judging one stops the session, then reads the code checkout: uncommitted paths clear the flag, bring the session back and mail it the paths, a decision record with findings is Stuck with Halt and the restore way forward, and an intact record on a clean checkout is Done.
+// A flag written while the run was halted at the row is judged on entry, so the resume ends the row without starting or resuming a session.
+// A covered pause stops the session and the next uncovered wake resumes it.
+// A strand that dies with nothing having stopped it is Stuck with Halt, and so is a start failure that is not transient, each naming `lym loom resume` and the commit-then-`sampler-done` way out for a session that can no longer be resumed.
+// Wakes are at least a second apart and double to a minute while nothing changes; a Watch delivery cuts a sleep short.
+// Every verdict, Stuck or error stops a live session, but a cancelled context leaves it running.
+//
+// OperatorWaitRows lists the rows at which a running child waits on something outside it with no agent working, Beam-Await, PR-Review and Sampler-Session, and WaitsOnOperator reads the list.
+// Dobby reads a child at a listed row as a live wait, and the loop's step watchdog reads a step at one as active, so neither ends a wait on the operator.
+// A wedged step at a listed row is ended only by `lym batten cancel` or the row's own halts.
+//
 // The Record-Write row's producer (NewRecordWrite) writes a darn run's decision record and support log from the run's board entry, with no agent.
 // BoardRecord renders the record with the entry's body verbatim in one fenced block under `## Goal`, so no line of the body starts a section of the record.
 // It writes only the file that is missing, commits the pair on every call, and reports a board with no entry for the run as Stuck.

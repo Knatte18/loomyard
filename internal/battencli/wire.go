@@ -44,7 +44,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
-	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -528,15 +527,15 @@ func boardRecipe(task boardengine.Task) string {
 }
 
 // childRecipeSupported reports whether recipe is one a task worktree's bootstrap verb can run as the child's own run:
-// the three recipes `lym loom start` serves.
+// the four recipes `lym loom start` serves.
 func childRecipeSupported(recipe string) bool {
-	return recipe == shedrun.RecipeTapestry || recipe == shedrun.RecipeDarn || recipe == shedrun.RecipePawl
+	return recipe == shedrun.RecipeTapestry || recipe == shedrun.RecipeDarn || recipe == shedrun.RecipePawl || recipe == shedrun.RecipeSampler
 }
 
 // unsupportedChildRecipeRefusal is the refusal for a recipe childRecipeSupported rejects.
-// It wraps battenshed.ErrUnsupportedChildRecipe and names the three admitted recipes.
+// It wraps battenshed.ErrUnsupportedChildRecipe and names the four admitted recipes.
 func unsupportedChildRecipeRefusal(recipe string) error {
-	return fmt.Errorf("%w: only %q, %q and %q have a bootstrap verb Run-Shed can start in the task worktree, so a Board task's type must be %q, %q or empty, and a project entry seeds %q; got %q", battenshed.ErrUnsupportedChildRecipe, shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipePawl, recipe)
+	return fmt.Errorf("%w: only %q, %q, %q and %q have a bootstrap verb Run-Shed can start in the task worktree, so a Board task's type must be %q, %q, %q or empty, and a project entry seeds %q; got %q", battenshed.ErrUnsupportedChildRecipe, shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeSampler, shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipeSampler, shedrun.RecipePawl, recipe)
 }
 
 // childSeedParams returns the seed params recipe's own bootstrap verb will itself write, read from
@@ -544,7 +543,7 @@ func unsupportedChildRecipeRefusal(recipe string) error {
 //
 // shedrun.WriteSeed is idempotent only against a seed agreeing on recipe, driver and params, so a
 // child seeded without a param its own bootstrap writes makes that bootstrap refuse.
-// Params are per-recipe: tapestry, darn and beam declare one each, params.parent, taken from the pair's recorded origin, which for a beam is the beam's parent branch.
+// Params are per-recipe: tapestry, darn, sampler and beam declare one each, params.parent, taken from the pair's recorded origin, which for a beam is the beam's parent branch.
 // An absent or empty recorded parent yields no param, leaving the bootstrap's own "pass --parent once" refusal as the one an operator sees.
 func childSeedParams(recipe string, childLocation *lymcwd.Location) (map[string]string, error) {
 	if !childRecipeSupported(recipe) {
@@ -612,7 +611,7 @@ func readStopReport(taskLocation *lymcwd.Location) (path string, at time.Time, f
 }
 
 // readAgentActivity reads the running agent runs of the task worktree, those whose waiting process is gone included, through the shuttle config and its registered engines, mapped onto dobbyengine's neutral type,
-// and reports whether a Go-side wait is live: a running verify, a parent lock wait, a child running at Beam-Await or at PR-Review, or a shuttle wait that is not a held turn end.
+// and reports whether a Go-side wait is live: a running verify, a parent lock wait, a child running at a row of loomshed.OperatorWaitRows, or a shuttle wait that is not a held turn end.
 // A held run is idle at its turn end, so it does not suppress the quiet notice, and neither does a verify held by a pause.
 // A lock wait record whose writer is dead is ignored.
 // The waits are read from their marker and record files, never from the pane options that display them.
@@ -671,8 +670,8 @@ func readAgentActivity(taskLocation *lymcwd.Location) (runs []dobbyengine.AgentR
 	return runs, false, nil
 }
 
-// childAtWaitingRow reports whether the child's own status file reads running at the pawl recipe's Beam-Await row, which waits on its beam's members with no agent running, or at the PR-Review row, which waits on the run's pull request.
-// The wait is live for as long as the status reads running at either row.
+// childAtWaitingRow reports whether the child's own status file reads running at a row of loomshed.OperatorWaitRows, which wait with no agent running.
+// The wait is live for as long as the status reads running at such a row.
 // An unreadable child status reads as no such wait, as an absent one does.
 func childAtWaitingRow(taskLocation *lymcwd.Location) bool {
 	statusPath := shedrun.StatusFile(taskLocation, shedrun.SelfRunID)
@@ -692,7 +691,7 @@ func childAtWaitingRow(taskLocation *lymcwd.Location) bool {
 	if !found || status.State != shedengine.StateRunning {
 		return false
 	}
-	return status.CurrentProducer == pawlengine.NameBeamAwait || status.CurrentProducer == loomshed.NamePRReview
+	return loomshed.WaitsOnOperator(status.CurrentProducer)
 }
 
 // readSessionStatesByStrand reads the session state of every running shuttle run under anchor, keyed by strand name.
@@ -1083,7 +1082,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				}
 				return sheddriver.RestepRecorded(records, status), nil
 			},
-			// HandBack marks a blocked landing halt, decision halt or tapestry or darn escalate halt, so the binary re-step leaves it alone.
+			// HandBack marks a blocked landing halt, decision halt or tapestry, darn or sampler escalate halt, so the binary re-step leaves it alone.
 			HandBack: restepSkips,
 			// PauseRequested reads batten's own status file, the one `lym batten pause` writes, so the in-call wait notices a pause within one check.
 			PauseRequested: pauseRequested(location, slug),
@@ -1479,7 +1478,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 }
 
 // restepSkips reports whether a child's status is a blocked halt the binary re-step leaves alone:
-// a landing halt or a decision halt for the orch, or a tapestry or darn fixer's escalate halt for the arbiter.
+// a landing halt or a decision halt for the orch, or a tapestry, darn or sampler fixer's escalate halt for the arbiter.
 // The halt is read over the status's current producer and error.
 func restepSkips(status shedengine.Status) bool {
 	if status.State != shedengine.StateBlocked {

@@ -16,13 +16,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
 
-// TestInterruptPolicies_MatchAssembledRows asserts, in both directions, that loomshed.InterruptPolicies covers exactly the rows New assembles for the tapestry and darn recipes.
+// TestInterruptPolicies_MatchAssembledRows asserts, in both directions, that loomshed.InterruptPolicies covers exactly the rows New assembles for the tapestry, darn and sampler recipes.
 // Every row either's real, current output has must carry an entry in the table (the direction that catches a row added to a recipe with no policy assigned),
 // and every key in the table must name a row one of them actually has (the direction that keeps the table from accumulating dead entries for a renamed or removed row).
 func TestInterruptPolicies_MatchAssembledRows(t *testing.T) {
 	env, paths := testEnv(t)
 	rowNames := map[string]bool{}
-	for _, name := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn} {
+	for _, name := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipeSampler} {
 		shed, err := New(name, env, paths)
 		if err != nil {
 			t.Fatalf("New(%s) error = %v, want nil", name, err)
@@ -37,7 +37,7 @@ func TestInterruptPolicies_MatchAssembledRows(t *testing.T) {
 
 	for rowName := range loomshed.InterruptPolicies {
 		if !rowNames[rowName] {
-			t.Errorf("loomshed.InterruptPolicies names row %q, which neither tapestry nor darn has", rowName)
+			t.Errorf("loomshed.InterruptPolicies names row %q, which none of tapestry, darn and sampler has", rowName)
 		}
 	}
 }

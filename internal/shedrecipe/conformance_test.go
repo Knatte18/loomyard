@@ -31,6 +31,7 @@ func minimalEntries() map[string]minimalEntry {
 		"Preflight":       {newTestEnv, emptyConfig},
 		"ParentAlign":     {withLanding, emptyConfig},
 		"DarnWrite":       {darnTestEnv, emptyConfig},
+		"SamplerSession":  {newTestEnv, emptyConfig},
 		"RecordWrite":     {newTestEnv, emptyConfig},
 		"Finalize":        {withLanding, emptyConfig},
 		"FrictionReflect": {newTestEnv, emptyConfig},

@@ -110,6 +110,17 @@ func parseEntryLiteral(text string) (any, error) {
 	return value, nil
 }
 
+// RowEntryGate parses row's entry_gate checks and builds them into the row's EntryGate as Build does, nil for a row with none.
+// It refuses a malformed check, and an operand env cannot answer, each naming the row and the way forward.
+// The returned gate reads its operands from env at each evaluation.
+func RowEntryGate(row Row, env shedrecipe.Env) (shedengine.EntryGate, error) {
+	checks, err := parseEntryGate(row)
+	if err != nil {
+		return nil, err
+	}
+	return entryGateOf(row, checks, env)
+}
+
 // entryGateOf builds the EntryGate row's checks make, nil for a row with none.
 // It refuses, naming the row and the way forward, an operand the told Env cannot answer: a `module.key` that Env.SettingKnown rejects or that meets a nil Env.SettingKnown or Env.Setting, and a segment with no Env.Segments entry.
 // The returned gate reads every operand at each evaluation: a setting through Env.Setting and a segment budget as Env.Segments[<Segment>].MaxBounces.

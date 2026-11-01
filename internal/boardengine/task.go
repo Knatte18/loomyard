@@ -310,7 +310,7 @@ func normalizeTask(t *Task) error {
 		return fmt.Errorf("%s %q has beam, and only a project can be a beam: drop the beam field", t.Kind, t.Slug)
 	}
 	if t.Kind == KindTask && t.Recipe == ProjectRecipe {
-		return fmt.Errorf("task %q has recipe %q, and a task's recipe is tapestry or darn: %q belongs to a beam project, so set the recipe to tapestry or darn", t.Slug, t.Recipe, ProjectRecipe)
+		return fmt.Errorf("task %q has recipe %q, and a task's recipe is tapestry, darn or sampler: %q belongs to a beam project, so set the recipe to tapestry, darn or sampler", t.Slug, t.Recipe, ProjectRecipe)
 	}
 	return nil
 }

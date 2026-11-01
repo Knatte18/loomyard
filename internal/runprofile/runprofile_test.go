@@ -93,6 +93,7 @@ func TestLoad(t *testing.T) {
 }
 
 // TestTemplateLadder pins the template's ladder: each profile's review rounds and hard caps per perch for loom, and the Code perch's for darn, every hard cap its rounds plus one.
+// It also pins that each profile's sampler block carries its darn block's loom values, with sampler.code_review on from light up, and that sampler has no default profile.
 func TestTemplateLadder(t *testing.T) {
 	t.Parallel()
 	profiles, err := runprofile.Load(configengine.Dirs{})
@@ -104,6 +105,9 @@ func TestTemplateLadder(t *testing.T) {
 	}
 	if got := profiles.Default("pawl"); got != "light" {
 		t.Errorf("Default(pawl) = %q; want light", got)
+	}
+	if got := profiles.Default("sampler"); got != "" {
+		t.Errorf("Default(sampler) = %q; want none, so a sampler task naming no profile runs on the hub's config", got)
 	}
 	tests := []struct {
 		profile                string
@@ -144,6 +148,21 @@ func TestTemplateLadder(t *testing.T) {
 			want["pawl code"] = perch(tt.darnCode)
 			if !reflect.DeepEqual(got, want) {
 				t.Errorf("Settings(%s) rounds = %v; want %v", tt.profile, got, want)
+			}
+			sampler, err := profiles.Settings(tt.profile, "sampler")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(sampler["loom"], darn["loom"]) {
+				t.Errorf("Settings(%s, sampler) loom = %v; want darn's %v", tt.profile, sampler["loom"], darn["loom"])
+			}
+			wantReview := tt.profile != "speed"
+			samplerKeys, _ := sampler["sampler"].(map[string]any)
+			if wantReview && samplerKeys["code_review"] != true {
+				t.Errorf("Settings(%s, sampler) sampler.code_review = %v; want true", tt.profile, samplerKeys["code_review"])
+			}
+			if !wantReview && sampler["sampler"] != nil {
+				t.Errorf("Settings(%s, sampler) sampler = %v; want no sampler key, leaving code_review false", tt.profile, sampler["sampler"])
 			}
 			blockKeys := map[string]map[string]any{"tapestry": tapestry["loom"].(map[string]any), "darn": darnKeys, "pawl": pawlKeys}
 			for block, keys := range blockKeys {

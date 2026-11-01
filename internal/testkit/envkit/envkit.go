@@ -54,6 +54,7 @@ var nilLegal = map[string]bool{
 	"WebsterRecord":                    true,
 	"PreflightBatcher":                 true,
 	"Pawl.Watch":                       true,
+	"Sampler.Watch":                    true,
 	"NotifyParent":                     true,
 	"Landing.CommitStatus":             true,
 	"Landing.CommitParentRecords":      true,
@@ -118,6 +119,15 @@ var nilLegal = map[string]bool{
 	"RecordHead":                       true,
 	"ReviewInput":                      true,
 }
+
+// noopSamplerSessions is a loomshed.SamplerSessions that starts and stops nothing.
+type noopSamplerSessions struct{}
+
+func (noopSamplerSessions) StartSession(shuttleengine.Spec) (shuttleengine.OpenResult, error) {
+	return shuttleengine.OpenResult{}, nil
+}
+
+func (noopSamplerSessions) StopStrand(string) error { return nil }
 
 // noFindingsIndex is a planindex.Index that answers no findings, so the packages built on the kit do not link the resolve-backed index.
 // Its Delta panics: a test that needs a delta supplies its own index.
@@ -424,6 +434,21 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			Commit:          func() error { return nil },
 			LatestOutcome:   func() (loomshed.DarnOutcome, bool, error) { return loomshed.DarnOutcome{}, false, nil },
 			CheckRecord:     func() ([]discussionparser.Finding, error) { return nil, nil },
+		},
+		Sampler: loomshed.SamplerDeps{
+			RecordPath:      filepath.Join(dir, "sampler", "sampler.json"),
+			RecordLockPath:  filepath.Join(dir, "sampler", "sampler.json.lock"),
+			Spec:            func() (shuttleengine.Spec, error) { return shuttleengine.Spec{}, nil },
+			Sessions:        noopSamplerSessions{},
+			SessionLive:     func(string) (bool, error) { return false, nil },
+			RegisterSession: func(string) error { return nil },
+			Stamp:           func() (int, error) { return 1, nil },
+			DirtyPaths:      func() ([]string, error) { return nil, nil },
+			CheckRecord:     func() ([]discussionparser.Finding, error) { return nil, nil },
+			MailAgent:       func(string, string) error { return nil },
+			PauseCovered:    func() (bool, error) { return false, nil },
+			Now:             time.Now,
+			Sleep:           func(context.Context, time.Duration) error { return nil },
 		},
 		RecordWrite: loomshed.RecordWriteDeps{
 			RecordPath:     filepath.Join(dir, "discussion", "decision-record.md"),

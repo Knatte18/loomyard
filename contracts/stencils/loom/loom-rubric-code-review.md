@@ -1,4 +1,4 @@
-<!-- This is the Code-Review rubric. It is read by the Bouncer row and the review row of the Code-Review perch, in the tapestry and darn recipes alike:
+<!-- This is the Code-Review rubric. It is read by the Bouncer row and the review row of the Code-Review perch, in the tapestry, darn and sampler recipes alike:
      the Code-Bouncer row interpolates it as bouncer-template-seed.md's and
      bouncer-template-judge.md's rubric marker value, and the Code-Burler-Review row interpolates it
      the same way into internal/burlerengine's own review prompt.

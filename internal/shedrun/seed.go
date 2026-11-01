@@ -74,13 +74,15 @@ const (
 	RecipeDarn = "darn"
 	// RecipePawl names the pawl recipe, a beam's life.
 	RecipePawl = "pawl"
+	// RecipeSampler names the sampler recipe, a run whose build is one interactive agent session with the operator.
+	RecipeSampler = "sampler"
 )
 
 // RecipeNames returns the closed recipe-name vocabulary as a freshly allocated, sorted slice.
 // Callers must not rely on a fixed order beyond "sorted" and must not mutate the vocabulary through
 // the returned slice affecting any other caller, since each call allocates its own.
 func RecipeNames() []string {
-	return []string{RecipeBatten, RecipeDarn, RecipePawl, RecipeTapestry}
+	return []string{RecipeBatten, RecipeDarn, RecipePawl, RecipeSampler, RecipeTapestry}
 }
 
 // ValidateRecipe reports whether name is a legal Seed.Recipe value.

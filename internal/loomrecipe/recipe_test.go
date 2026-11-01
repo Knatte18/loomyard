@@ -206,13 +206,13 @@ func TestRecipe_SeedAndResumeRowNamesExist(t *testing.T) {
 }
 
 // TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet asserts RecipeEngines() reports exactly loom's
-// own recipe's engine set plus the darn recipe's RecordWrite and DarnWrite and the pawl recipe's BeamUp, BeamAwait, BeamDescribe and BeamDown, sorted and de-duplicated -- derived from wantProducerTable's own engine
+// own recipe's engine set plus the darn recipe's RecordWrite and DarnWrite, the sampler recipe's SamplerSession and the pawl recipe's BeamUp, BeamAwait, BeamDescribe and BeamDown, sorted and de-duplicated -- derived from wantProducerTable's own engine
 // column rather than a second hand-written literal, for the same reason its battenrecipe twin
 // gets this test: a silently empty return would disable the cross-consumer coverage guard rather
 // than fail it.
 func TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet(t *testing.T) {
-	// The darn recipe's record row and writer and the pawl recipe's own rows are ones a loom row can reach, beside the tapestry recipe's.
-	want := []string{"DarnWrite", "RecordWrite", "BeamUp", "BeamAwait", "BeamDescribe", "BeamDown"}
+	// The darn recipe's record row and writer, the sampler recipe's session row and the pawl recipe's own rows are ones a loom row can reach, beside the tapestry recipe's.
+	want := []string{"DarnWrite", "RecordWrite", "SamplerSession", "BeamUp", "BeamAwait", "BeamDescribe", "BeamDown"}
 	seen := map[string]bool{}
 	for _, engine := range want {
 		seen[engine] = true
@@ -249,6 +249,7 @@ func TestRowNames_FollowEachRecipesRowOrder(t *testing.T) {
 		{shedrun.RecipeDarn, recipes.DarnRecipe},
 		{shedrun.RecipeBatten, recipes.BattenRecipe},
 		{shedrun.RecipePawl, recipes.PawlRecipe},
+		{shedrun.RecipeSampler, recipes.SamplerRecipe},
 	} {
 		t.Run(tt.recipe, func(t *testing.T) {
 			parsed, err := shedbuild.Parse(tt.source)
@@ -276,7 +277,7 @@ func TestRowNames_FollowEachRecipesRowOrder(t *testing.T) {
 				t.Fatalf("Rows(%q) has %d rows; want %d", tt.recipe, len(rows), len(parsed.Producers))
 			}
 			for i, row := range parsed.Producers {
-				wantRow := RecipeRow{Name: row.Name, Segment: row.Segment, OnStuck: row.OnStuck, Bouncer: row.Engine == "Bouncer"}
+				wantRow := RecipeRow{Name: row.Name, Segment: row.Segment, OnStuck: row.OnStuck, OnDone: row.OnDone, Bouncer: row.Engine == "Bouncer"}
 				if rows[i] != wantRow {
 					t.Errorf("Rows(%q)[%d] = %+v; want %+v", tt.recipe, i, rows[i], wantRow)
 				}

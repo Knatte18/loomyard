@@ -60,6 +60,9 @@ var InterruptPolicies = map[string]string{
 	NameDriftBaseline: shedverbs.InterruptPolicyReinvoke,
 	NameDriftAwait:    shedverbs.InterruptPolicyReinvoke,
 	NameDriftVerify:   shedverbs.InterruptPolicyReinvoke,
+
+	// Sampler-Session reattaches the live session or resumes the recorded one rather than spawning a second.
+	NameSamplerSession: shedverbs.InterruptPolicyReinvoke,
 }
 
 // InterruptPolicyFor returns InterruptPolicies' entry for name, or the empty string when name is

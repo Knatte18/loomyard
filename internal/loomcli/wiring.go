@@ -39,6 +39,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/samplerengine"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -866,15 +867,46 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	c.languageSkills = languageSkills
 	c.language = language
 
-	// A recipe with a Darn-Write row has its Darn-Write row's seams filled; any other leaves them nil.
+	// A recipe whose verify_source is tree_scope has the tree-scope verify seams filled, and one with a Darn-Write row its Darn-Write seams; any other leaves them nil.
+	verifySourceKey, err := loomrecipe.VerifySource(c.recipe)
+	if err != nil {
+		return err
+	}
+	if verifySourceKey == treeScopeVerifySource {
+		if err := c.wireTreeScope(location); err != nil {
+			return err
+		}
+	}
 	hasDarnWrite, err := loomrecipe.HasEngine(c.recipe, darnWriteEngine)
 	if err != nil {
 		return err
 	}
 	if hasDarnWrite {
-		if err := c.wireDarn(location, websterGeom.StencilsDir, websterGeom.SpecsDir, frictionDir, registry, loomSegmentBudgets(loomCfg)); err != nil {
+		if err := c.wireDarn(location, websterGeom.StencilsDir, websterGeom.SpecsDir, frictionDir, registry); err != nil {
 			return err
 		}
+	}
+
+	// A recipe with a SamplerSession row has the row's seams filled from the hub's sampler.yaml, loaded strictly so a malformed file is refused before any row builds.
+	// The seams that need reed's strand table are filled by wireLanding.
+	samplerRow, hasSampler, err := loomrecipe.EngineRow(c.recipe, samplerSessionEngine)
+	if err != nil {
+		return err
+	}
+	if hasSampler {
+		samplerCfg, err := samplerengine.LoadConfig(fabricengine.ConfigDirs(location), "sampler")
+		if err != nil {
+			return fmt.Errorf("%w; %s", err, samplerConfigWayForward)
+		}
+		c.env.Sampler = samplerDeps(location, c.runID, c.recipe, samplerRow, func() (shuttleengine.Spec, error) {
+			return samplerengine.SessionSpec(samplerengine.SessionInputs{
+				StencilsDir:        websterGeom.StencilsDir,
+				ParentName:         c.parentName,
+				Slug:               seedSlug(location.WorktreeName),
+				WorktreeRoot:       location.WorktreePath(),
+				DecisionRecordPath: record.path,
+			}, samplerCfg, registry)
+		})
 	}
 
 	// A beam run's description row reads the beam's board entry, its project record and its commits over the parent, with no agent, and its Go rows are told the hub seams of the beam's life.

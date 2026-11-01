@@ -43,6 +43,11 @@ var LandingTemplatePRReview []byte
 //go:embed darn/darn-template-write.md
 var DarnTemplateWrite []byte
 
+// SamplerTemplateAgent is the sampler agent's shipped-default prompt: the whole instruction set of the interactive session the operator works a change out with.
+//
+//go:embed sampler/sampler-template-agent.md
+var SamplerTemplateAgent []byte
+
 // DriftTemplateBaseline is the drift baseline agent's shipped-default prompt: the whole instruction set of the session that scopes a task's regression and writes down the drift it expects.
 //
 //go:embed drift/drift-template-baseline.md
@@ -94,7 +99,7 @@ var LoomRubricDiscussionReview []byte
 //go:embed loom/loom-rubric-plan-review.md
 var LoomRubricPlanReview []byte
 
-// LoomRubricCodeReview is the Code-Review rubric, read by both rows of the Code-Review perch in the tapestry and darn recipes.
+// LoomRubricCodeReview is the Code-Review rubric, read by both rows of the Code-Review perch in the tapestry, darn and sampler recipes.
 //
 //go:embed loom/loom-rubric-code-review.md
 var LoomRubricCodeReview []byte
@@ -460,6 +465,7 @@ var entries = []registryEntry{
 	{"landing-template-fix-review", &LandingTemplateFixReview},
 	{"landing-template-pr-review", &LandingTemplatePRReview},
 	{"darn-template-write", &DarnTemplateWrite},
+	{"sampler-template-agent", &SamplerTemplateAgent},
 	{"drift-template-baseline", &DriftTemplateBaseline},
 	{"drift-template-verify", &DriftTemplateVerify},
 	{"loom-template-discussion", &LoomTemplateDiscussion},
@@ -568,6 +574,7 @@ var roleOpeningStencils = map[string][]string{
 	"friction":           {"friction-template-reflection"},
 	"describe":           {"landing-template-describe"},
 	"darn":               {"darn-template-write"},
+	"sampler":            {"sampler-template-agent"},
 	"drift-baseline":     {"drift-template-baseline"},
 	"drift-verify":       {"drift-template-verify"},
 	"board-tidy":         {"beam-template-board-tidy"},

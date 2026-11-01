@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
@@ -40,6 +41,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -80,7 +82,7 @@ func landingDeps(
 	// A pawl run has no reroute edge, so it has no review to follow one and a nil seam halts a spent or over-cap fixer for the orch.
 	var reviewFollowsReroute func() (bool, error)
 	if recipe != shedrun.RecipePawl {
-		reviewFollowsReroute = rerouteReviewed(l)
+		reviewFollowsReroute = rerouteReviewed(l, recipe)
 	}
 	// Only a pawl run lands a beam, so only its Finalize backstops the landing re-check with a land check over the members and pairs still working under it.
 	var landBlockers func() ([]landingshed.LandBlocker, error)
@@ -270,7 +272,7 @@ func landingDeps(
 			}
 			return rowEntry(status.History, row), nil
 		},
-		CodeReviewOff:   codeBudgetZero(l),
+		CodeReviewOff:   codeBudgetZero(l, recipe),
 		RerouteReviewed: reviewFollowsReroute,
 		LandBlockers:    landBlockers,
 		PullRequest:     pullRequestDeps(l, parentBranch, pushSkipped, runner),
@@ -418,24 +420,37 @@ func parentPullRequestMode(l *lymcwd.Location) func() (mode, worktree string, er
 	}
 }
 
-// rerouteReviewed returns the seam that reports whether a review follows Finalize's reroute: whether the Code-Perch's effective budget is above 0.
-// A loom Finalize reroutes through Parent-Align to the Code-Perch, and a darn Finalize to Code-Bouncer, which settles approved at once on a budget of 0.
-func rerouteReviewed(l *lymcwd.Location) func() (bool, error) {
-	budgetZero := codeBudgetZero(l)
+// rerouteReviewed returns the seam that reports whether a review follows Finalize's reroute: whether the Code-Perch is on for recipe, with an effective budget above 0.
+// A loom Finalize reroutes through Parent-Align to the Code-Perch, and a darn or sampler Finalize to Code-Bouncer, which settles approved at once on a budget of 0.
+func rerouteReviewed(l *lymcwd.Location, recipe string) func() (bool, error) {
+	budgetZero := codeBudgetZero(l, recipe)
 	return func() (bool, error) {
 		zero, err := budgetZero()
 		return !zero, err
 	}
 }
 
-// codeBudgetZero returns the seam that reports whether the Code-Perch's effective review budget is 0, read from loom.yaml at call time.
-func codeBudgetZero(l *lymcwd.Location) func() (bool, error) {
+// codeBudgetZero returns the seam that reports whether the Code-Perch is off for recipe, read at call time.
+// The perch is off when loom.yaml's effective review budget is 0, and when the recipe's Code-Review rows carry an entry gate that does not hold.
+func codeBudgetZero(l *lymcwd.Location, recipe string) func() (bool, error) {
 	return func() (bool, error) {
 		cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(l), "loom")
 		if err != nil {
 			return false, err
 		}
-		return cfg.Caps(loomengine.PerchCode).Soft == 0, nil
+		if cfg.Caps(loomengine.PerchCode).Soft == 0 {
+			return true, nil
+		}
+		gate, err := loomrecipe.CodePerchGate(recipe, shedrecipe.Env{
+			Setting:      configreg.SettingLookup(fabricengine.ConfigDirs(l)),
+			SettingKnown: configreg.CheckSettingKey,
+			Resume:       "lym loom resume",
+		})
+		if err != nil || gate == nil {
+			return false, err
+		}
+		holds, _, err := gate()
+		return !holds, err
 	}
 }
 

@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/samplerengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -45,6 +46,7 @@ const wantDarnLandingCall = "lym gate test --wait --gate finalize"
 //lym:seam internal/loomshed#DarnDeps
 //lym:seam internal/loomshed#RecordWriteDeps
 //lym:seam internal/loomshed#PRReworkDeps
+//lym:seam internal/loomshed#SamplerDeps
 //lym:seam internal/pawlengine#Deps
 //lym:seam internal/pawlengine#Paths
 //lym:seam internal/shedadapters#CommandDeps
@@ -249,6 +251,132 @@ func TestWire_DarnRecipe(t *testing.T) {
 		err := c.wire(loc, loc.AnchorPath())
 		if err == nil || !strings.HasSuffix(err.Error(), hubConfigWayForward) {
 			t.Errorf("wire() error = %v; want it to end with %q", err, hubConfigWayForward)
+		}
+	})
+}
+
+// TestWire_SamplerRecipe pins the wiring a sampler seed adds to wire: the Sampler-Session row's seams, the tree-scope verify seams and attempts it shares with darn, and the strict load of sampler.yaml.
+// The four seams that need reed's strand table are left to wireLanding.
+//
+//lym:seam internal/battenshed#InnerRunDeps
+//lym:seam internal/battenshed#LandDeps
+//lym:seam internal/battenshed#PrimeLock
+//lym:seam internal/battenshed#RowNoticeDeps
+//lym:seam internal/battenshed#SeedChildDeps
+//lym:seam internal/battenshed#TeardownDeps
+//lym:seam internal/configengine#Dirs
+//lym:seam internal/driftengine#Deps
+//lym:seam internal/driftengine#Paths
+//lym:seam internal/landingshed#BeamDescribeDeps
+//lym:seam internal/landingshed#Config
+//lym:seam internal/landingshed#Deps
+//lym:seam internal/landingshed#ParentLockDeps
+//lym:seam internal/landingshed#PullRequestDeps
+//lym:seam internal/loomshed#DarnDeps
+//lym:seam internal/loomshed#RecordWriteDeps
+//lym:seam internal/loomshed#PRReworkDeps
+//lym:seam internal/loomshed#SamplerDeps
+//lym:seam internal/pawlengine#Deps
+//lym:seam internal/pawlengine#Paths
+//lym:seam internal/shedadapters#CommandDeps
+//lym:seam internal/shedrecipe#Env
+//lym:seam internal/shuttleengine#Config
+//lym:seam internal/websterengine#Config
+//lym:seam internal/websterengine#Geometry
+//lym:seam internal/websterengine#RunDeps
+func TestWire_SamplerRecipe(t *testing.T) {
+	t.Parallel()
+
+	writeSamplerConfig := func(t *testing.T, hubPath, contents string) {
+		t.Helper()
+		path := configengine.ConfigFile(fabricengine.BoardDir(hubPath), "sampler")
+		if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
+		}
+	}
+
+	t.Run("a sampler seed fills the sampler seams, the tree scope and the attempts", func(t *testing.T) {
+		t.Parallel()
+		loc := hubLocation(t, "pair", ".")
+		seedDarnHubConfig(t, loc.HubPath, "5")
+		writeHubGateConfig(t, loc.HubPath, gateConfigWithTwoTiers())
+		writeSamplerConfig(t, loc.HubPath, samplerengine.ConfigTemplate())
+		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeSampler}
+		if err := c.wire(loc, loc.AnchorPath()); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+
+		sampler := c.env.Sampler
+		for _, seam := range []struct {
+			name string
+			set  bool
+		}{
+			{"Spec", sampler.Spec != nil},
+			{"Stamp", sampler.Stamp != nil},
+			{"DirtyPaths", sampler.DirtyPaths != nil},
+			{"CheckRecord", sampler.CheckRecord != nil},
+			{"MailAgent", sampler.MailAgent != nil},
+			{"PauseCovered", sampler.PauseCovered != nil},
+			{"Now", sampler.Now != nil},
+			{"Sleep", sampler.Sleep != nil},
+		} {
+			if !seam.set {
+				t.Errorf("c.env.Sampler.%s is nil after wire() of a sampler seed", seam.name)
+			}
+		}
+		if got, want := sampler.RecordPath, shedrun.SamplerRecord(loc, c.runID); got != want {
+			t.Errorf("c.env.Sampler.RecordPath = %q; want %q", got, want)
+		}
+		if got, want := sampler.RecordLockPath, shedrun.SamplerRecordLock(loc, c.runID); got != want {
+			t.Errorf("c.env.Sampler.RecordLockPath = %q; want %q", got, want)
+		}
+		if sampler.Sessions != nil || sampler.SessionLive != nil || sampler.RegisterSession != nil || sampler.Watch != nil {
+			t.Errorf("wire() of a sampler seed filled a wireLanding seam: Sessions nil = %v, SessionLive nil = %v, RegisterSession nil = %v, Watch nil = %v", sampler.Sessions == nil, sampler.SessionLive == nil, sampler.RegisterSession == nil, sampler.Watch == nil)
+		}
+		if c.env.VerifyTreeScope == nil || c.env.VerifyMergeBase == nil {
+			t.Errorf("a sampler seed: VerifyTreeScope nil = %v, VerifyMergeBase nil = %v; want both set, the tree scope darn's", c.env.VerifyTreeScope == nil, c.env.VerifyMergeBase == nil)
+		}
+		if c.env.DarnVerifyAttempts != 5 {
+			t.Errorf("c.env.DarnVerifyAttempts = %d; want darn.yaml's 5", c.env.DarnVerifyAttempts)
+		}
+		if c.env.DarnTable != nil {
+			t.Error("c.env.DarnTable is set after wire() of a sampler seed; want nil, since the recipe has no Darn-Write row")
+		}
+
+		if stamp, err := sampler.Stamp(); err != nil || stamp != 0 {
+			t.Errorf("Sampler.Stamp() with no status file = %d, %v; want 0, nil", stamp, err)
+		}
+		statusPath, statusLock := shedrun.StatusFile(loc, c.runID), shedrun.StatusLock(loc, c.runID)
+		if err := os.MkdirAll(filepath.Dir(statusLock), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		status := shedengine.Status{
+			CurrentProducer: loomshed.NameSamplerSession,
+			State:           shedengine.StateRunning,
+			History:         []shedengine.HistoryEntry{{Producer: loomshed.NameRecordWrite, Outcome: shedengine.Done}},
+		}
+		if err := state.WriteJSON(statusPath, statusLock, status); err != nil {
+			t.Fatalf("state.WriteJSON() = %v; want nil", err)
+		}
+		if stamp, err := sampler.Stamp(); err != nil || stamp != 1 {
+			t.Errorf("Sampler.Stamp() after Record-Write is Done = %d, %v; want 1, nil", stamp, err)
+		}
+	})
+
+	t.Run("a malformed sampler.yaml is refused naming the key and the editor", func(t *testing.T) {
+		t.Parallel()
+		loc := hubLocation(t, "pair", ".")
+		seedDarnHubConfig(t, loc.HubPath, "5")
+		writeSamplerConfig(t, loc.HubPath, strings.Replace(samplerengine.ConfigTemplate(), "agent: opus[high]", `agent: "opus[[bad"`, 1))
+		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeSampler}
+		err := c.wire(loc, loc.AnchorPath())
+		if err == nil {
+			t.Fatal("wire() of a sampler seed with a malformed agent = nil; want a refusal")
+		}
+		for _, want := range []string{"agent", "lym config sampler", "lym loom resume"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("wire() error = %q; want it to contain %q", err.Error(), want)
+			}
 		}
 	})
 }
@@ -517,7 +645,7 @@ func TestDarnDeps_LatestOutcomeNamesTheRowsFindingsFile(t *testing.T) {
 		t.Fatalf("write the findings file: %v", err)
 	}
 
-	got, found, err := darnDeps(loc, shedrun.SelfRunID).LatestOutcome()
+	got, found, err := darnDeps(loc, shedrun.SelfRunID, shedrun.RecipeDarn).LatestOutcome()
 	want := loomshed.DarnOutcome{Outcome: shedengine.Stuck, FindingsPath: findingsPath}
 	if err != nil || !found || got != want {
 		t.Errorf("LatestOutcome() = %+v, %v, %v; want %+v, true, nil", got, found, err, want)

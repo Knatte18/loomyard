@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -26,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/samplerengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -508,28 +510,53 @@ func TestMergeableTips(t *testing.T) {
 	}
 }
 
-// TestRerouteReviewed_ReadsTheCodeBudgetFromLoomYaml pins that the reroute and budget-zero seams read loom.yaml's Code-Review budget at call time:
-// a budget of 0 reports no review after the reroute and a budget above 0 reports one, and a loom.yaml that fails to load is returned as the seams' error.
+// TestRerouteReviewed_ReadsTheCodeBudgetFromLoomYaml pins that the reroute and budget-zero seams read the Code-Review perch at call time:
+// a budget of 0 reports no review after the reroute and a budget above 0 reports one.
+// A loom.yaml that fails to load is returned as the seams' error.
+// On a sampler run the perch also reads off when sampler.yaml's code_review leaves the rows out, and a non-bool value is returned as the gate's error.
 func TestRerouteReviewed_ReadsTheCodeBudgetFromLoomYaml(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name         string
+		recipe       string
 		codeBudget   string
+		codeReview   string
+		localSampler string
 		wantReviewed bool
 		wantErr      bool
 	}{
-		{name: "a zero budget leaves no review after the reroute", codeBudget: "0", wantReviewed: false},
-		{name: "a budget above zero leaves a review after the reroute", codeBudget: "2", wantReviewed: true},
-		{name: "a loom.yaml that fails to load is returned as the error", codeBudget: "-1", wantErr: true},
+		{name: "a zero budget leaves no review after the reroute", recipe: shedrun.RecipeDarn, codeBudget: "0", wantReviewed: false},
+		{name: "a budget above zero leaves a review after the reroute", recipe: shedrun.RecipeDarn, codeBudget: "2", wantReviewed: true},
+		{name: "a loom.yaml that fails to load is returned as the error", recipe: shedrun.RecipeDarn, codeBudget: "-1", wantErr: true},
+		{name: "a sampler run with code_review false and a budget reads no review", recipe: shedrun.RecipeSampler, codeBudget: "2", codeReview: "false", wantReviewed: false},
+		{name: "a sampler run with code_review true and a budget reads a review", recipe: shedrun.RecipeSampler, codeBudget: "2", codeReview: "true", wantReviewed: true},
+		{name: "a sampler run with code_review true and a zero budget reads no review", recipe: shedrun.RecipeSampler, codeBudget: "0", codeReview: "true", wantReviewed: false},
+		{name: "a sampler run whose local code_review is not a bool returns the gate's error", recipe: shedrun.RecipeSampler, codeBudget: "2", codeReview: "false", localSampler: "code_review: \"yes\"\n", wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			loc := hubLocation(t, "pair", ".")
 			seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"code_max_bounces": tt.codeBudget})
+			if tt.codeReview != "" {
+				hubConfig := configengine.ConfigFile(fabricengine.BoardDir(loc.HubPath), "sampler")
+				contents := strings.Replace(samplerengine.ConfigTemplate(), "code_review: false", "code_review: "+tt.codeReview, 1)
+				if err := os.WriteFile(hubConfig, []byte(contents), 0o644); err != nil {
+					t.Fatalf("WriteFile(%q) = %v; want nil", hubConfig, err)
+				}
+			}
+			if tt.localSampler != "" {
+				localConfig := configengine.LocalFile(loc.AnchorPath(), "sampler")
+				if err := os.MkdirAll(filepath.Dir(localConfig), 0o755); err != nil {
+					t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(localConfig), err)
+				}
+				if err := os.WriteFile(localConfig, []byte(tt.localSampler), 0o644); err != nil {
+					t.Fatalf("WriteFile(%q) = %v; want nil", localConfig, err)
+				}
+			}
 
-			reviewed, err := rerouteReviewed(loc)()
-			zero, zeroErr := codeBudgetZero(loc)()
+			reviewed, err := rerouteReviewed(loc, tt.recipe)()
+			zero, zeroErr := codeBudgetZero(loc, tt.recipe)()
 			if tt.wantErr {
 				if err == nil || zeroErr == nil {
 					t.Fatalf("rerouteReviewed() error = %v, codeBudgetZero() error = %v; want both to return the load error", err, zeroErr)

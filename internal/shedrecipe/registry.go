@@ -24,6 +24,7 @@ var registry = map[string]Constructor{
 	"Preflight":        preflightEntry,
 	"ParentAlign":      parentAlignEntry,
 	"DarnWrite":        darnWriteEntry,
+	"SamplerSession":   samplerSessionEntry,
 	"RecordWrite":      recordWriteEntry,
 	"Finalize":         finalizeEntry,
 	"FrictionReflect":  frictionReflectEntry,
@@ -57,7 +58,7 @@ var LoomRecordEngines = []string{"DiscussionWrite", "RecordWrite"}
 
 // LoomBuildEngines are the engines whose row is a loom recipe's build row, the one row of the build segment that turns the record into the change.
 // A beam's BeamAwait row is one: the members' runs make the change while it holds the run.
-var LoomBuildEngines = []string{"Implementer", "DarnWrite", "BeamAwait"}
+var LoomBuildEngines = []string{"Implementer", "DarnWrite", "BeamAwait", "SamplerSession"}
 
 // LoomFinalizeEngine is the engine whose row lands a loom recipe's change and ends its on_done path.
 const LoomFinalizeEngine = "Finalize"

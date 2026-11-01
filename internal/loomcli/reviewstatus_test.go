@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/verifytree"
@@ -370,7 +371,7 @@ func TestParentLockWaiting(t *testing.T) {
 	}
 }
 
-// TestAgentActivity_LiveLockWaitReadsAsActivity asserts a live parent lock wait record, a live running verify marker, a held drift capture lock, a held compare marker and a running agent run with a live waiter read as activity now, and a dead writer's record, a dead marker, a verify marker held by a pause, a lock file with no holder and a running agent run whose waiter is gone do not.
+// TestAgentActivity_LiveLockWaitReadsAsActivity asserts a live parent lock wait record, a live running verify marker, a held drift capture lock, a held compare marker and a running agent run with a live waiter and a run status running at Sampler-Session, PR-Review or Beam-Await read as activity now, and a dead writer's record, a dead marker, a verify marker held by a pause, a lock file with no holder, a running agent run whose waiter is gone, a status running at Describe, a blocked status at Sampler-Session and an unreadable status file do not.
 // A capture lock path the probe cannot take returns the probe's error.
 func TestAgentActivity_LiveLockWaitReadsAsActivity(t *testing.T) {
 	t.Parallel()
@@ -410,6 +411,17 @@ func TestAgentActivity_LiveLockWaitReadsAsActivity(t *testing.T) {
 			t.Cleanup(func() { _ = held.Release() })
 		}
 	}
+	writeRunStatus := func(body string) func(t *testing.T, loc *lymcwd.Location) {
+		return func(t *testing.T, loc *lymcwd.Location) {
+			path := shedrun.StatusFile(loc, shedrun.SelfRunID)
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	captureLock := func(p driftengine.Paths) string { return p.CaptureLock }
 	tests := []struct {
 		name         string
@@ -444,6 +456,12 @@ func TestAgentActivity_LiveLockWaitReadsAsActivity(t *testing.T) {
 		{"running agent run with a gone waiter", func(t *testing.T, loc *lymcwd.Location) {
 			writeRunningShuttleRun(t, loc, "waiterless-run", 1<<30)
 		}, false, false},
+		{"status running at Sampler-Session", writeRunStatus(`{"current_producer":"Sampler-Session","state":"running"}`), true, false},
+		{"status running at PR-Review", writeRunStatus(`{"current_producer":"PR-Review","state":"running"}`), true, false},
+		{"status running at Beam-Await", writeRunStatus(`{"current_producer":"Beam-Await","state":"running"}`), true, false},
+		{"status running at Describe", writeRunStatus(`{"current_producer":"Describe","state":"running"}`), false, false},
+		{"status blocked at Sampler-Session", writeRunStatus(`{"current_producer":"Sampler-Session","state":"blocked"}`), false, false},
+		{"unreadable status", writeRunStatus(`{"current_producer":`), false, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -452,7 +470,7 @@ func TestAgentActivity_LiveLockWaitReadsAsActivity(t *testing.T) {
 			tt.setup(t, loc)
 
 			before := time.Now()
-			last, live, err := agentActivityFor(loc, shuttleengine.Config{Engine: "claude"})()
+			last, live, err := agentActivityFor(loc, shedrun.SelfRunID, shuttleengine.Config{Engine: "claude"})()
 
 			if tt.wantErr {
 				if err == nil {

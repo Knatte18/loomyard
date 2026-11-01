@@ -1,0 +1,192 @@
+# sampler-recipe.yaml is the sampler task recipe: Record-Write writes the decision record from the board entry,
+# Sampler-Session keeps one interactive agent session in the run's worktree that works with the operator and
+# commits as it goes until the operator ends it with `lym loom sampler-done`, the Code-Review perch reviews the
+# committed diff, Describe writes the change description from the final diff, then PR-Review and Finalize land it.
+# It is embedded into the binary by the sibling recipes.go rather than read from disk. The row names below are the
+# durable on-disk identities pinned against internal/loomshed's Name* constants -- a rename here
+# without a matching constant rename breaks resume for any in-flight task.
+#
+# The recipe has no Drift rows and no Parent-Align row: a sampler run's work is prose, board entries and trials,
+# and Finalize merges the parent itself, under the parent lock it takes first.
+# The build row runs no verify gate; Finalize's gate checks any code the run lands.
+#
+# The three Code-Review perch rows carry entry_gate: sampler.code_review, so with that key false each of them is
+# recorded Skipped and spawns nothing, and the run goes on from Code-Bouncer's on_done to Describe.
+# Describe carries no entry_gate: the agent writes no description and Finalize parses one, so Describe runs
+# with the perch on or off.
+#
+# Code-Bouncer, Code-Burler-Review and Code-Burler-Fix are the Code-Review perch, the same perch
+# darn's recipe runs, with the same row names, segment, run_subdir, role_prefix, rubric and loom.yaml
+# code_* keys. Its ring is the shared-segment one: the Bouncer's on_stuck
+# names the review row, the review row's on_stuck names the fix row, the fix row's on_stuck names the
+# Bouncer, and each Burler row's on_done names the same row as its on_stuck, since neither ever
+# returns Done. The segment's rows declare no max_bounces: their budget is loom.yaml's
+# code_max_bounces, applied by internal/loomrecipe.
+#
+# The perch's answer key is the decision record alone: its `## Goal` holds the task's board entry, as
+# amended by the record's `Added after Discussion` entries, which win where they differ.
+#
+# Preflight and Finalize carry no on_stuck: nothing in the list produces what each of them
+# gates, so a human is the only thing that can fix them.
+# Finalize fixes its own merge and test failures in its merge fixer, and a failure the fixer cannot
+# fix halts the run for the orch.
+# Record-Write, Sampler-Session and Describe carry none either: a Stuck of each halts the run for the parent
+# with the ways forward in its reason.
+# PR-Review carries no on_stuck because its Stuck is always a Halt, and Friction-Reflect none because it
+# never returns Stuck.
+# PR-Review carries no entry_gate either: whether it opens a pull request reads the parent's anchor, a
+# board field and the origin, which the row decides in its own call.
+#
+# Finalize declares on_reroute: Code-Bouncer, the row a spent fixer change, or an over-cap one
+# Finalize's own solo fix review does not approve, sends the run back to, so the perch reviews
+# the code the fixer changed in answer.
+# Shed's reroute cap bounds that edge, and a reroute spends no bounce budget.
+
+version: 1
+entry: Preflight
+# The recipe declares the loom contract, which Shed checks when it builds the recipe; verify_source names where the verify targets come from.
+contract: loom
+verify_source: tree_scope
+terminals:
+  - Friction-Reflect
+
+producers:
+  - name: Preflight
+    engine: Preflight
+    on_done: Record-Write
+
+  # Record-Write is a Go row: it writes the decision record and support log from the task's board entry, with no agent, and commits them.
+  # It writes only a file that is missing, so a resume or a goto back to it keeps every entry added after Discussion.
+  - name: Record-Write
+    engine: RecordWrite
+    on_done: Sampler-Session
+
+  # Sampler-Session keeps one interactive agent session and waits, with no timeout, for the operator to end the build.
+  # It takes no config key: the agent comes from sampler.yaml and the row's paths and seams from the run's wiring.
+  - name: Sampler-Session
+    engine: SamplerSession
+    on_done: Code-Bouncer
+
+  - name: Code-Bouncer
+    engine: Bouncer
+    segment: Code-Review
+    entry_gate: sampler.code_review
+    on_stuck: Code-Burler-Review
+    on_done: Describe
+    config:
+      run_subdir: code
+      subject: code
+      role_prefix: code
+      reviewer_fan_setting: loom.code_reviewer_fan
+      auto_accept_setting: loom.code_auto_accept
+      # The subject under review is the committed diff, which artifact_paths cannot name; the key
+      # names the answer key instead: the decision record. The rubric names the diff as the subject.
+      artifact_paths:
+        - _lym/discussion/decision-record.md
+      rubric_stencil: loom-rubric-code-review
+      # No commit_seam: Code-Burler-Fix runs fix-scope: source and commits each fix itself.
+      # carry_over names this row's own segment: the Bouncer files the round's still-open findings
+      # under it in the decision record's Open risks section, and a test pins it equal to segment.
+      carry_over: Code-Review
+
+  - name: Code-Burler-Review
+    engine: BurlerReview
+    segment: Code-Review
+    entry_gate: sampler.code_review
+    on_stuck: Code-Burler-Fix
+    # BurlerReviewProducer never returns Done, so this edge is unreachable -- but an empty on_done
+    # is load-bearing and ends the whole run silently, so it names the row it can never reach.
+    on_done: Code-Burler-Fix
+    config:
+      # The same run_subdir value as Code-Bouncer is what makes the three rows write into one
+      # shared run directory.
+      run_subdir: code
+      role_prefix: code
+      reviewer_fan_setting: loom.code_reviewer_fan
+      fixer_fan_setting: loom.code_fixer_fan
+      profile:
+        target:
+          # No paths key: a diff has no file on disk for the profile's path check to stat.
+          instructions: >
+            The subject under review is the committed diff. The rubric supplied in this prompt is
+            the single definition of the review range: read its "Determining the review range"
+            section and derive the range exactly as written there.
+        fasit:
+          paths:
+            - _lym/discussion/decision-record.md
+          instructions: >
+            The decision record named above is the task's scope: the board entry's body under
+            `## Goal`, as amended by the record's `Added after Discussion` entries, which win where
+            they differ. The diff's job is to make the change the amended entry asks for.
+        rubric_stencil: loom-rubric-code-review
+        # fix-scope: source: the target is the repo's own source files, and a fixer that cannot
+        # write and commit source cannot fix a diff.
+        fix-scope: source
+        # tool-use is required: the round runs read-only git to obtain the diff.
+        tool-use: true
+        # The round reviews code, so its seats load the hub's language skills after their own.
+        language-skills: true
+        # No cluster-fan key: the row's reviewer_fan_setting and fixer_fan_setting keys name loom.yaml's
+        # code_reviewer_fan and code_fixer_fan.
+
+  - name: Code-Burler-Fix
+    engine: BurlerFix
+    segment: Code-Review
+    entry_gate: sampler.code_review
+    on_stuck: Code-Bouncer
+    # BurlerFixProducer never returns Done, so this edge is unreachable -- but an empty on_done is
+    # load-bearing and ends the whole run silently, so it names the row it can never reach.
+    on_done: Code-Bouncer
+    config:
+      run_subdir: code
+      role_prefix: code
+      fixer_fan_setting: loom.code_fixer_fan
+      review_row: Code-Burler-Review
+      # The verify gate runs the tree-scoped command, or the hub's `code-burler-fix` key, on the
+      # committed tree after each round, lints the comments from the merge base on every attempt,
+      # and re-prompts the fix session with the findings until it passes. The row runs its own key
+      # and shares no pass with the build row; gate_key names another key of the hub's gate.yaml.
+      # Its attempts here is a placeholder: the builder stamps darn.yaml's verify_attempts at every build.
+      gates:
+        - name: verify
+          attempts: 3
+      profile:
+        # No target key: a diff names no file, so the fixer finds its files from the review's
+        # findings and the gate's findings alone.
+        fix-scope: source
+        # The round fixes code, so its seat loads the hub's language skills after its own.
+        language-skills: true
+
+  # Describe writes the change description from the final diff; the agent writes none.
+  - name: Describe
+    engine: Describe
+    on_done: PR-Review
+    config:
+      gates:
+        - name: description
+          attempts: 3
+
+  # PR-Review lands the task through a GitHub pull request when the pull-request resolver says so.
+  # It carries no entry_gate and no on_stuck, because its Stuck is always a Halt.
+  - name: PR-Review
+    engine: PRReview
+    on_done: Finalize
+
+  # Finalize takes the parent lock first, merges the parent into the task branch, runs the landing
+  # gate and the merge fixer, then fast-forwards the parent and releases the lock on every way out.
+  # An over-cap fixer change goes to Finalize's own solo fix review first, and lands on its approval.
+  # Only a spent fixer change, or an over-cap one the fix review does not approve, reroutes to Code-Bouncer;
+  # a conflict or a large merge lands through the gate.
+  - name: Finalize
+    engine: Finalize
+    on_reroute: Code-Bouncer
+    # Hands off to the reflection row rather than ending the run.
+    on_done: Friction-Reflect
+
+  # Friction-Reflect runs the Tier 2 friction reflection under the run lock and is the recipe's
+  # sole terminal, so the engine persists state.
+  - name: Friction-Reflect
+    engine: FrictionReflect
+    # on_done is explicitly empty: the empty value is load-bearing and is what ends the whole run
+    # quietly, per shedengine.ProducerDef.OnDone's own field doc.
+    on_done: ""

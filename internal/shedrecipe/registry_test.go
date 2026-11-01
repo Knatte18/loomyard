@@ -109,6 +109,7 @@ func TestNames(t *testing.T) {
 			"PlanWrite",
 			"Preflight",
 			"RecordWrite",
+			"SamplerSession",
 			"SeedChild",
 			"Stub",
 			"WorktreeCreate",

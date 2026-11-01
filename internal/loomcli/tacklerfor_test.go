@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// TestTacklerFor verifies a darn, a tapestry and a pawl run all take shed.yaml's tackler_max_spawns, each with the recipe line its rows select: a Plan-Write row the phased line, none the one-writer line, and pawl its own.
+// TestTacklerFor verifies a darn, a tapestry, a pawl and a sampler run all take shed.yaml's tackler_max_spawns, each with the recipe line its rows select: a Sampler-Session row the interactive line, a Plan-Write row the phased line, none the one-writer line, and pawl its own.
 func TestTacklerFor(t *testing.T) {
 	t.Parallel()
 	reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
@@ -31,6 +31,7 @@ func TestTacklerFor(t *testing.T) {
 		{name: "darn", recipe: shedrun.RecipeDarn, wantRecipe: darnTacklerRecipe},
 		{name: "tapestry", recipe: shedrun.RecipeTapestry, wantRecipe: loomTacklerRecipe},
 		{name: "pawl", recipe: shedrun.RecipePawl, wantRecipe: pawlTacklerRecipe},
+		{name: "sampler", recipe: shedrun.RecipeSampler, wantRecipe: samplerTacklerRecipe},
 		{name: "empty reads as tapestry", recipe: "", wantRecipe: loomTacklerRecipe},
 	}
 	for _, tt := range tests {

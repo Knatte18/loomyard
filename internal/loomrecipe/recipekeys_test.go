@@ -75,6 +75,14 @@ func TestRecipeKeys(t *testing.T) {
 			wantEngines: map[string]bool{"BeamAwait": true, "RecordWrite": true, "Bouncer": false, "Implementer": false},
 		},
 		{
+			name:        "Sampler",
+			recipe:      shedrun.RecipeSampler,
+			wantLoom:    true,
+			wantRecord:  "RecordWrite",
+			wantVerify:  "tree_scope",
+			wantEngines: map[string]bool{"SamplerSession": true, "RecordWrite": true, "DarnWrite": false},
+		},
+		{
 			name:        "BattenIsNeither",
 			recipe:      shedrun.RecipeBatten,
 			wantEngines: map[string]bool{"Implementer": false},

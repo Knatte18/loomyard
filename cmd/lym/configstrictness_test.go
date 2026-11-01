@@ -61,16 +61,17 @@ var configStrictnessDegradingSet = map[string]bool{
 // configStrictnessStrictSet is the pinned set of module-relative, slash-separated package directories that call configengine.Load -- the strict loading policy, where an absent _lym/ directory or absent config file is an error.
 // See `PATTERN-config-layers`: a module stays here when it only ever runs inside a hub, where an absent config means the hub is broken.
 var configStrictnessStrictSet = map[string]bool{
-	"internal/fabricengine": true,
-	"internal/boardengine":  true,
-	"internal/loomengine":   true,
-	"internal/landingshed":  true,
-	"internal/darnengine":   true,
-	"internal/driftengine":  true,
-	"internal/dobbyengine":  true,
-	"internal/gateslot":     true,
-	"internal/configcli":    true,
-	"internal/configreg":    true,
+	"internal/fabricengine":  true,
+	"internal/boardengine":   true,
+	"internal/loomengine":    true,
+	"internal/landingshed":   true,
+	"internal/darnengine":    true,
+	"internal/driftengine":   true,
+	"internal/samplerengine": true,
+	"internal/dobbyengine":   true,
+	"internal/gateslot":      true,
+	"internal/configcli":     true,
+	"internal/configreg":     true,
 }
 
 // configStrictnessMinScannedFiles is the vacuous-scan floor for this guard's

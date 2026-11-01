@@ -178,6 +178,16 @@ func PullRequestRecordLock(l *lymcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), "pull-request.json.lock")
 }
 
+// SamplerRecord returns the path to the ephemeral, never-tracked record of the run's Sampler-Session row, sampler.json under ScratchDir(l, runID).
+func SamplerRecord(l *lymcwd.Location, runID string) string {
+	return filepath.Join(ScratchDir(l, runID), "sampler.json")
+}
+
+// SamplerRecordLock returns the path to the advisory lock guarding SamplerRecord(l, runID), beside it under ScratchDir(l, runID).
+func SamplerRecordLock(l *lymcwd.Location, runID string) string {
+	return filepath.Join(ScratchDir(l, runID), "sampler.json.lock")
+}
+
 // LastCommitMarker returns the path to the ephemeral marker recording the last commit this run's
 // fabric sync observed, under ScratchDir(l, runID).
 func LastCommitMarker(l *lymcwd.Location, runID string) string {

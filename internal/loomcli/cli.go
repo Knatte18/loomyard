@@ -78,6 +78,7 @@ type loomCLI struct {
 	// zero under the lightweight wiring, whose verbs never run the loop.
 	shuttleCfg shuttleengine.Config
 	// stepIdleTimeout is the window after which a --until-stop step showing no activity is killed, from loom.yaml's step_idle_timeout_min;
+	// a step at a row waiting on the operator (Beam-Await, PR-Review, Sampler-Session) reads as active and is never killed;
 	// zero under the lightweight wiring.
 	stepIdleTimeout time.Duration
 	// landingCfg is the loaded landing.yaml configuration, loaded once in wire() per the
@@ -496,7 +497,7 @@ Example:
 	pauseVerb.Args = cobra.MaximumNArgs(1)
 	gotoVerb.Args = cobra.MaximumNArgs(1)
 
-	parent.AddCommand(c.startCmd(), c.resumeCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.insertCardCmd(), c.removeCardCmd(), c.restoreRenumberCmd(), c.validateDescriptionCmd(), c.lintCommentsCmd(), c.lintPatternCmd(), c.fmtCmd(), c.commitRecordsCmd(), c.prContinueCmd(), c.circlingCmd(), c.decisionCmd(), c.peersCmd(), c.arbiterCmd(), c.checklistCmd(), c.driveCmd())
+	parent.AddCommand(c.startCmd(), c.resumeCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.insertCardCmd(), c.removeCardCmd(), c.restoreRenumberCmd(), c.validateDescriptionCmd(), c.lintCommentsCmd(), c.lintPatternCmd(), c.fmtCmd(), c.commitRecordsCmd(), c.prContinueCmd(), c.samplerDoneCmd(), c.circlingCmd(), c.decisionCmd(), c.peersCmd(), c.arbiterCmd(), c.checklistCmd(), c.driveCmd())
 
 	return parent
 }

@@ -7,7 +7,8 @@
 //
 // The verb refuses a task session's label: a caller whose exported strand name differs from the run's parent orch, the nearest live orch up its beam chain, is refused, and the operator's own unnamed shell always passes.
 // The one other caller is the run's own arbiter strand, which alone may pass `--by arbiter`; any other caller of that label is refused.
-// The check reads only the exported strand name and the parent orch's name, so it guards a mistaken call, not a session that clears or forges the variable, and `--by` stays an unverified label.
+// A sampler run adds a third: the strand its Sampler-Session row has recorded as its session, while the run stands at that row, which passes only `--by operator`, since it records only what the operator settled in its pane.
+// The check reads only the exported strand name, the parent orch's name and the recorded sampler strand, so it guards a mistaken call, not a session that clears or forges the variable, and `--by` stays an unverified label.
 // That is bounded by each entry being append-only, under an `Added after Discussion` heading with the claimed label and the date, in the call's one committed diff.
 //
 // On a run whose recipe has a Record-Write row the verb works once that row has written and committed the record.
@@ -59,6 +60,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/samplerengine"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -82,6 +84,7 @@ const (
 	decisionWayRetry     = `way forward: re-run "lym loom decision add"; nothing is appended`
 	decisionWayFindings  = `way forward: the record is restored; fix the named section and re-run the verb`
 	decisionWayArbiter   = `way forward: the "arbiter" label is the run's own arbiter's; pass --by parent from the run's parent, or --by operator from the operator's own shell`
+	decisionWaySampler   = `way forward: pass --by operator for a call the operator settled in the pane, or ask the run's parent to record its own call`
 	decisionWayPattern   = `way forward: pass --pattern-entry and --pattern-action together, and --pattern-text for adds or changes`
 
 	decisionWayRecordStart     = `the record exists once Record-Write has run; way forward: run "lym loom start", then re-run the verb once the run passed Record-Write`
@@ -249,6 +252,8 @@ type decisionDeps struct {
 	parent func() (hubgeom.Parent, error)
 	// arbiterStrand reports whether name is the target run's own arbiter strand, called only for a named caller.
 	arbiterStrand func(name string) bool
+	// samplerStrand reports whether name is the strand the target run's Sampler-Session row has recorded as its session while the run's current row is that row, called only for a named caller.
+	samplerStrand func(name string) (bool, error)
 	// readStatus reads the target worktree's default run status; found is false when the run has no status file.
 	readStatus reviewStatusReader
 	// recordPath is the decision record the entry lands in, reported on the success envelope.
@@ -643,15 +648,32 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 			return refuse("the caller %q is not the run's arbiter; %s", deps.strandName, decisionWayArbiter)
 		}
 	} else if deps.strandName != "" {
-		parent, err := deps.parent()
-		if err != nil {
-			return refuse("the caller %q is a named session; way forward: the run's parent could not be resolved (%s); the operator's own unnamed shell may still run the verb", deps.strandName, err)
-		}
-		if deps.strandName != parent.Name {
-			if parent.Name == "" {
-				return refuse("the caller %q is a task session; way forward: a design call after the Discussion is the operator's to record; the operator's own unnamed shell may always run it", deps.strandName)
+		sampler, samplerErr := deps.samplerStrand(deps.strandName)
+		if sampler && samplerErr == nil {
+			if input.by != decisionByOperator {
+				return refuse("the caller %q is the run's sampler session, which records only what the operator settled; %s", deps.strandName, decisionWaySampler)
 			}
-			return refuse("the caller %q is a task session; way forward: a design call after the Discussion is the parent's to record; ask %s to run the verb; the operator's own unnamed shell may always run it", deps.strandName, parent.Name)
+		} else {
+			// An unreadable sampler record refuses only a caller that is not the run's parent, whose call never depended on it.
+			refuseSamplerRead := func() int {
+				return refuse("read the run's sampler session: %s; %s", samplerErr, decisionWayRetry)
+			}
+			parent, err := deps.parent()
+			if err != nil {
+				if samplerErr != nil {
+					return refuseSamplerRead()
+				}
+				return refuse("the caller %q is a named session; way forward: the run's parent could not be resolved (%s); the operator's own unnamed shell may still run the verb", deps.strandName, err)
+			}
+			if deps.strandName != parent.Name {
+				if samplerErr != nil {
+					return refuseSamplerRead()
+				}
+				if parent.Name == "" {
+					return refuse("the caller %q is a task session; way forward: a design call after the Discussion is the operator's to record; the operator's own unnamed shell may always run it", deps.strandName)
+				}
+				return refuse("the caller %q is a task session; way forward: a design call after the Discussion is the parent's to record; ask %s to run the verb; the operator's own unnamed shell may always run it", deps.strandName, parent.Name)
+			}
 		}
 	}
 
@@ -875,6 +897,7 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 			parsed, err := agentname.Parse(name)
 			return err == nil && parsed.Shortname == geometry.NameShortname && parsed.Slug == geometry.NameSlug && loomengine.IsArbiterStrand(name)
 		},
+		samplerStrand:  samplerStrandReader(target, recipe),
 		readStatus:     circlingStatusReader(shedrun.StatusFile(target, shedrun.SelfRunID), shedrun.StatusLock(target, shedrun.SelfRunID)),
 		recordPath:     recordPath,
 		recordUnderLym: filepath.ToSlash(recordUnderLym),
@@ -923,6 +946,28 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 		},
 	}
 	return nil
+}
+
+// samplerStrandReader returns the seam that reports whether name is the target run's sampler session: the strand its Sampler-Session row has recorded, while the run's current row is that row.
+// It answers false for a recipe with no SamplerSession row, judged by the recipe's rows, for a status file whose current producer is another row, and for an absent record.
+// The run's state is not read, so a run halted at the row still admits its strand, which the row re-records on each of its own starts and resumes.
+func samplerStrandReader(target *lymcwd.Location, recipe string) func(name string) (bool, error) {
+	readStatus := circlingStatusReader(shedrun.StatusFile(target, shedrun.SelfRunID), shedrun.StatusLock(target, shedrun.SelfRunID))
+	return func(name string) (bool, error) {
+		row, hasRow, err := loomrecipe.EngineRow(recipe, samplerSessionEngine)
+		if err != nil || !hasRow {
+			return false, err
+		}
+		status, found, err := readStatus()
+		if err != nil || !found || status.CurrentProducer != row {
+			return false, err
+		}
+		record, found, err := samplerengine.ReadRecord(shedrun.SamplerRecord(target, shedrun.SelfRunID), shedrun.SamplerRecordLock(target, shedrun.SelfRunID))
+		if err != nil || !found {
+			return false, err
+		}
+		return record.StrandName == name, nil
+	}
 }
 
 // seedRecipe returns the recipe name target's seed records, tapestry for a run with no seed.
@@ -1061,6 +1106,8 @@ the live agents of every member run under the beam. It refuses a task
 session's label: a caller whose reed strand name differs from the run's
 parent orch is refused, and the operator's own unnamed shell always passes.
 The one other caller is the run's own arbiter strand, which passes --by arbiter.
+On a sampler run the strand its Sampler-Session row recorded as its session is
+also admitted while the run stands at that row, and only with --by operator.
 --by is a label that is not verified.
 
 Example:
@@ -1082,8 +1129,9 @@ notifies the run's other live agents ("notified", "notice_errors").
 
 --by is parent, operator or arbiter, the last only from the run's own arbiter
 strand. --title, --decision and --rationale are required unless --from is
-passed. A named session other than the run's parent orch or arbiter is
-refused. It is refused while Discussion-Write runs, and on a Record-Write
+passed. A named session other than the run's parent orch, arbiter or, on a
+sampler run, its sampler session (with --by operator, for a call the operator
+settled in the pane) is refused. It is refused while Discussion-Write runs, and on a Record-Write
 record until Record-Write has committed it.
 
 --amends-plan marks a decision that amends the approved plan: the call also

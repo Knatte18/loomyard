@@ -71,7 +71,7 @@ type Deps struct {
 	PushSkipped bool
 
 	// EscalateJudgedFirst is the told decision whether a merge fixer's escalate halts with EscalateStopPrefix, so the arbiter judges it before the orch, or with LandingStopPrefix as a hand-back.
-	// True on a tapestry or darn run, false on a pawl run, whose arbiter has no decision verb to settle it with.
+	// True on a tapestry, darn or sampler run, false on a pawl run, whose arbiter has no decision verb to settle it with.
 	EscalateJudgedFirst bool
 
 	// OpenFabric and OpenParentFabric are the two lazy opener closures Parent-Align and Finalize hold,
@@ -317,11 +317,12 @@ type Deps struct {
 	// TaskRemoteTip reads the task branch's remote-tracking tip, `origin/<task branch>`, without a fetch, and answers "" when there is none.
 	// A push the fixer session makes from the task pair updates that ref, so a changed tip shows the push.
 	TaskRemoteTip func() (string, error)
-	// CodeReviewOff reports whether the Code-Perch's effective review budget is 0, so no review follows Parent-Align and its fixer's change is judged against the caps instead.
+	// CodeReviewOff reports whether the Code-Perch reads as off: its effective review budget is 0, or the Code-Review rows' entry gate leaves them out.
+	// With the perch off no review follows Parent-Align and its fixer's change is judged against the caps instead.
 	// A nil CodeReviewOff reads as the budget being 0, and a returned error is an error stop of the row.
 	CodeReviewOff func() (bool, error)
 	// RerouteReviewed reports whether a review follows Finalize's reroute, so a fixer change it keeps is seen before the run lands.
-	// For loom that is the Code-Review perch's effective budget being above 0, and for darn Finalize's reroute edge reaching the same perch's Code-Bouncer, under that budget above 0, rather than PR-Review.
+	// For loom that is the Code-Review perch's effective budget being above 0, and for darn and sampler Finalize's reroute edge reaching the same perch's Code-Bouncer, under that budget above 0 and with the perch's rows not left out by their entry gate, rather than PR-Review.
 	// It is read each time Finalize ends on a spent cap or an over-cap change.
 	// A nil RerouteReviewed reads as no review, so Finalize halts instead of rerouting, and a returned error is an error stop of the row.
 	RerouteReviewed func() (bool, error)

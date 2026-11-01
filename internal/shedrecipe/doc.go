@@ -64,6 +64,12 @@
 // The row takes no config key and carries no `entry_gate`, since whether it opens a pull request reads the parent's anchor, a board field and the origin, which the row decides in its own call.
 // Every key is refused when the row is built, with the way forward in the message.
 //
+// # The SamplerSession row
+//
+// The SamplerSession entry builds the sampler recipe's build row, one interactive agent session that works with the operator in the run's worktree.
+// It takes no Config key and reads Env.Sampler alone; the two record paths must be absolute and every seam but Watch non-nil, or the row refuses when it is built.
+// It is a loom build engine, so a recipe whose build row runs it passes the loom contract.
+//
 // # The review segment rows
 //
 // The Bouncer, BurlerReview and BurlerFix rows each take the optional keys "color_segment" and "role_prefix".

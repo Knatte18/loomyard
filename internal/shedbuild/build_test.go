@@ -173,12 +173,12 @@ func TestBuild_LoomContract(t *testing.T) {
 		{
 			name:     "no build row",
 			mutate:   setEngine("Build", "Stub"),
-			wantSubs: []string{"shedbuild: ", "0 build rows", "way forward: give the recipe exactly one build row, engine Implementer, DarnWrite or BeamAwait"},
+			wantSubs: []string{"shedbuild: ", "0 build rows", "way forward: give the recipe exactly one build row, engine Implementer, DarnWrite, BeamAwait or SamplerSession"},
 		},
 		{
 			name:     "two build rows",
 			mutate:   setEngine("Middle", "DarnWrite"),
-			wantSubs: []string{"shedbuild: ", "2 build rows", "way forward: give the recipe exactly one build row, engine Implementer, DarnWrite or BeamAwait"},
+			wantSubs: []string{"shedbuild: ", "2 build rows", "way forward: give the recipe exactly one build row, engine Implementer, DarnWrite, BeamAwait or SamplerSession"},
 		},
 		{
 			name: "build row before the record row on the on_done path",

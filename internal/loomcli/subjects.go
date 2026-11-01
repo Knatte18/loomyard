@@ -1,4 +1,4 @@
-// subjects.go builds the identities a Bouncer re-entry compares: the document, code and merge-in subjects of a tapestry or darn run's review segments, the record head and merge-in-only reads that go with them, the review input seams, and the merge base reader of the task's diff.
+// subjects.go builds the identities a Bouncer re-entry compares: the document, code and merge-in subjects of a tapestry, darn or sampler run's review segments, the record head and merge-in-only reads that go with them, the review input seams, and the merge base reader of the task's diff.
 
 package loomcli
 

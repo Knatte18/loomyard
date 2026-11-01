@@ -1,4 +1,4 @@
-// darnwiring.go holds the wiring only a darn run needs: the tree scope reader the darn recipe tells its verify gate, the verify source its landing producers read, the Darn-Write row's seams, the writer's Spec source, and the rename of retired darn rows in a run's status file.
+// darnwiring.go holds the wiring only a tree-scoped or darn run needs: the tree scope reader a recipe with `verify_source: tree_scope` tells its verify gate, the verify source its landing producers read, the Darn-Write row's seams, the writer's Spec source, the record check the agent rows run, and the rename of retired darn rows in a run's status file.
 // A tapestry run leaves all of it unwired, but shares the merge base readers `pairMergeBase` and `taskMergeBase` build.
 
 package loomcli
@@ -15,7 +15,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -142,9 +141,21 @@ func latestDarnOutcome(statusPath, statusLockPath, findingsPath string) (loomshe
 	return loomshed.DarnOutcome{}, false, nil
 }
 
-// darnDeps assembles the Darn-Write row's seams for location and the run addressed by runID.
+// discussionRecordCheck returns the record check a recipe's agent rows run: loomshed.ValidateDiscussion over the run's decision record, support log and the committed history of the record recipe keeps.
+// It reads on demand and opens nothing at build time.
+func discussionRecordCheck(l *lymcwd.Location, recipe string) func() ([]discussionparser.Finding, error) {
+	return func() ([]discussionparser.Finding, error) {
+		return loomshed.ValidateDiscussion(loomshed.DiscussionCheck{
+			RecordPath:     loomengine.DiscussionDecisionRecord(l),
+			SupportLogPath: loomengine.DiscussionSupportLog(l),
+			History:        recordHistory(l, runRecordOf(l, recipe)),
+		})
+	}
+}
+
+// darnDeps assembles the Darn-Write row's seams for location and the run addressed by runID, whose recipe is recipe.
 // Every closure reads or writes on demand and opens nothing at build time.
-func darnDeps(l *lymcwd.Location, runID string) loomshed.DarnDeps {
+func darnDeps(l *lymcwd.Location, runID, recipe string) loomshed.DarnDeps {
 	return loomshed.DarnDeps{
 		RecordPath:     loomengine.DiscussionDecisionRecord(l),
 		SupportLogPath: loomengine.DiscussionSupportLog(l),
@@ -157,13 +168,7 @@ func darnDeps(l *lymcwd.Location, runID string) loomshed.DarnDeps {
 		LatestOutcome: func() (loomshed.DarnOutcome, bool, error) {
 			return latestDarnOutcome(shedrun.StatusFile(l, runID), shedrun.StatusLock(l, runID), shedrun.GateFindingsFile(l, runID, loomshed.NameDarnWrite))
 		},
-		CheckRecord: func() ([]discussionparser.Finding, error) {
-			return loomshed.ValidateDiscussion(loomshed.DiscussionCheck{
-				RecordPath:     loomengine.DiscussionDecisionRecord(l),
-				SupportLogPath: loomengine.DiscussionSupportLog(l),
-				History:        recordHistory(l, runRecordOf(l, shedrun.RecipeDarn)),
-			})
-		},
+		CheckRecord: discussionRecordCheck(l, recipe),
 	}
 }
 
@@ -191,11 +196,10 @@ func (c *loomCLI) renameRetiredRows(renames map[string]string) error {
 	return nil
 }
 
-// wireDarn fills the Env fields a darn run reads beyond the ones wire fills for every recipe.
+// wireTreeScope fills the verify Env fields a recipe whose verify_source is tree_scope reads beyond the ones wire fills for every recipe.
 // It loads the hub-wide darn.yaml strictly, so start, run, step and resume refuse an absent or malformed file before any row builds.
 // A malformed tree_scope key is refused with the editor way forward instead of the hub reconcile one, since --set cannot remove a key the hub file holds.
-// budgets is the loom review segments' budgets, whose Code-Review entry the darn routing applies to the perch.
-func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, frictionDir string, registry modelspec.Registry, budgets map[string]int) error {
+func (c *loomCLI) wireTreeScope(location *lymcwd.Location) error {
 	dirs := fabricengine.ConfigDirs(location)
 	cfg, err := darnengine.LoadConfig(dirs, "darn")
 	if err != nil {
@@ -211,11 +215,24 @@ func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, fri
 	c.env.VerifyMergeBase = taskMergeBase(location)
 	c.env.VerifyTreeScope = darnTreeScope(location)
 	c.env.DarnVerifyAttempts = cfg.VerifyAttempts
-	// The perch's CIRCLING Reason names the budget the darn routing applies.
-	c.env.SegmentBounces = segmentBounces(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, func() (shedengine.Routing, error) {
-		return loomrecipe.Routing(c.recipe, budgets)
-	})
-	c.env.Darn = darnDeps(location, c.runID)
+
+	return nil
+}
+
+// wireDarn fills the Env fields a recipe with a Darn-Write row reads beyond the ones wire and wireTreeScope fill: the writer's seams and its table.
+// It loads the hub-wide darn.yaml strictly, so start, run, step and resume refuse an absent or malformed file before any row builds.
+// A malformed tree_scope key is refused with the editor way forward instead of the hub reconcile one, since --set cannot remove a key the hub file holds.
+func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, frictionDir string, registry modelspec.Registry) error {
+	dirs := fabricengine.ConfigDirs(location)
+	cfg, err := darnengine.LoadConfig(dirs, "darn")
+	if err != nil {
+		if errors.Is(err, darnengine.ErrTreeScopeKey) {
+			return darnengine.WithEditorWayForward(err)
+		}
+		return fmt.Errorf("%w; %s", err, hubConfigWayForward)
+	}
+
+	c.env.Darn = darnDeps(location, c.runID, c.recipe)
 	c.env.DarnTable = func(told loomshed.DarnTold) (seatengine.Table, error) {
 		table, err := darnengine.DarnTable(darnengine.DarnInputs{
 			StencilsDir:        stencilsDir,

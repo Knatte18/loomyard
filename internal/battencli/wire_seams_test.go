@@ -140,6 +140,17 @@ var intentionallyNil = map[string]string{
 	"Drift.Sleep":                         "loom- and darn-only seam, batten has no Drift row",
 	"Drift.VerifyTable":                   "loom- and darn-only seam, batten has no Drift row",
 	"Drift.Compare":                       "loom- and darn-only seam, batten has no Drift row",
+	"Sampler.Spec":                        "sampler-only seam, batten runs no sampler row",
+	"Sampler.Sessions":                    "sampler-only seam, batten runs no sampler row",
+	"Sampler.SessionLive":                 "sampler-only seam, batten runs no sampler row",
+	"Sampler.RegisterSession":             "sampler-only seam, batten runs no sampler row",
+	"Sampler.Stamp":                       "sampler-only seam, batten runs no sampler row",
+	"Sampler.DirtyPaths":                  "sampler-only seam, batten runs no sampler row",
+	"Sampler.CheckRecord":                 "sampler-only seam, batten runs no sampler row",
+	"Sampler.MailAgent":                   "sampler-only seam, batten runs no sampler row",
+	"Sampler.PauseCovered":                "sampler-only seam, batten runs no sampler row",
+	"Sampler.Now":                         "sampler-only seam, batten runs no sampler row",
+	"Sampler.Sleep":                       "sampler-only seam, batten runs no sampler row",
 }
 
 //lym:seam internal/battenshed#InnerRunDeps
@@ -159,6 +170,7 @@ var intentionallyNil = map[string]string{
 //lym:seam internal/loomshed#DarnDeps
 //lym:seam internal/loomshed#RecordWriteDeps
 //lym:seam internal/loomshed#PRReworkDeps
+//lym:seam internal/loomshed#SamplerDeps
 //lym:seam internal/pawlengine#Deps
 //lym:seam internal/pawlengine#Paths
 //lym:seam internal/shedadapters#CommandDeps
@@ -372,7 +384,7 @@ func TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree(t *testing.T) {
 	}
 }
 
-// TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker asserts the Activity seam's reading maps a task worktree's live shuttle run onto dobbyengine's type, with the session state of its stamped turn end, skips a run whose record reads stopped, and reports a live wait marker, a live parent lock wait record or a child running at Beam-Await or at PR-Review, ignoring a lock wait record whose writer is dead.
+// TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker asserts the Activity seam's reading maps a task worktree's live shuttle run onto dobbyengine's type, with the session state of its stamped turn end, skips a run whose record reads stopped, and reports a live wait marker, a live parent lock wait record or a child running at Beam-Await, PR-Review or Sampler-Session, ignoring a lock wait record whose writer is dead.
 // It points HOME at a session registry through t.Setenv, so it does not run in parallel.
 func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 	home := t.TempDir()
@@ -506,9 +518,11 @@ func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 	}{
 		{"RunningAtBeamAwaitWithNoAgentIsAWait", `{"current_producer":"Beam-Await","state":"running"}`, true},
 		{"RunningAtPRReviewIsAWait", `{"current_producer":"PR-Review","state":"running"}`, true},
+		{"RunningAtSamplerSessionIsAWait", `{"current_producer":"Sampler-Session","state":"running"}`, true},
 		{"RunningAtParentAlignIsNoWait", `{"current_producer":"Parent-Align","state":"running"}`, false},
 		{"BlockedAtBeamAwaitIsNoWait", `{"current_producer":"Beam-Await","state":"blocked"}`, false},
 		{"BlockedAtPRReviewIsNoWait", `{"current_producer":"PR-Review","state":"blocked"}`, false},
+		{"BlockedAtSamplerSessionIsNoWait", `{"current_producer":"Sampler-Session","state":"blocked"}`, false},
 		{"UnreadableStatusIsNoWait", `{"current_producer":`, false},
 	} {
 		if err := os.WriteFile(childStatusPath, []byte(step.status), 0o644); err != nil {

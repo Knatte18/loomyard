@@ -94,7 +94,7 @@ Per-field notes — `product`'s three fields are the whole of loom's own half of
 Both are true when the run is blocked and the recipe's told check answers true for the status's `current_producer` and `error`, and false otherwise, including when no check is told.
 For tapestry and darn the check is `landingshed.HandsBack`: a blocked stop at Parent-Align or Finalize whose reason opens with the landing-stop prefix, or a blocked stop at Finalize whose reason opens with the reroute-cap prefix.
 A true key marks a halt that goes to the orch, so every driver hands it back instead of routing it.
-A tapestry or darn fixer's escalate halt opens with the landing-escalate prefix, `landingshed.EscalateHalt` answers true for it, and the key stays false: it goes to the arbiter first.
+A tapestry, darn or sampler fixer's escalate halt opens with the landing-escalate prefix, `landingshed.EscalateHalt` answers true for it, and the key stays false: it goes to the arbiter first.
 
 ## The `restep_hold` key
 

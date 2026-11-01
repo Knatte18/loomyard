@@ -280,6 +280,9 @@ type Env struct {
 	// Darn is a whole-struct passthrough to loomshed.NewDarnWrite, following Env.Landing's own precedent:
 	// the producer has behaviour of its own that per-seam fakes must be able to substitute individually.
 	Darn loomshed.DarnDeps
+	// Sampler is a whole-struct passthrough to loomshed.NewSamplerSession, following Env.Darn's precedent, read by the SamplerSession entry only.
+	// Only its Watch seam may be nil.
+	Sampler loomshed.SamplerDeps
 	// RecordWrite is a whole-struct passthrough to loomshed.NewRecordWrite, read by the RecordWrite entry only.
 	RecordWrite loomshed.RecordWriteDeps
 	// PlanIndex is the code index the "plan" gate resolves plan refs against, and the loom "discussion" gate resolves the symbols a decision record cites.

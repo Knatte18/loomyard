@@ -93,7 +93,7 @@
 // Bound: the fix review lets an over-cap fixer change land behind one reviewer's explicit approval of the fixer's own commits instead of the run's full Code review, under the parent lock, for at most one `fixer_timeout_min` session and one re-prompt over an unparseable report.
 // A spent cap, and a change over the caps the fix review does not approve, keep the fixer's commits and reroute through the reroute reason when a review follows the reroute, and halt with LandingStopPrefix otherwise, naming the commits and noting `spent` or `over-cap` in the record's Halt.
 // A resume after an over-cap halt writes Baseline afresh at the HEAD the gate starts from, clears the note in the same record write, reads the operator's review as acceptance of the commits and runs the gate: a passing gate lands without judging the change, and a failing one runs the fixer on the attempts left.
-// An escalate report keeps the commits and halts naming the report, with EscalateStopPrefix on a tapestry or darn run; a turn that ended without a usable result halts, and a failed spawn is an error that spends no attempt.
+// An escalate report keeps the commits and halts naming the report, with EscalateStopPrefix on a tapestry, darn or sampler run; a turn that ended without a usable result halts, and a failed spawn is an error that spends no attempt.
 // An attempt record that does not decode halts naming the file, with removing it, which grants a fresh cap, as the way forward.
 // A Finalize reroute leaves the entry's attempt record for the next entry to clear, and a Done clears it.
 // The size and kind caps bound what a Finalize fix lets through without a reviewer: a fix within them lands with no perch, behind only the `finalize` gate it passed and the finalize mode's instruction to fix failing tests only.
@@ -159,7 +159,7 @@
 // No driver, batten, arbiter or record target routes a Parent-Align or Finalize failure to another row.
 // The recipe's owner tells it to shedverbs as Spec.HandBack, which marks the loop's stop envelope and the status as hand_back; the drivers read the predicate or that mark.
 //
-// An escalate report halts with a reason opening with EscalateStopPrefix on a tapestry or darn run, which Deps.EscalateJudgedFirst tells, and with LandingStopPrefix on a pawl run, whose arbiter has no decision verb.
+// An escalate report halts with a reason opening with EscalateStopPrefix on a tapestry, darn or sampler run, which Deps.EscalateJudgedFirst tells, and with LandingStopPrefix on a pawl run, whose arbiter has no decision verb.
 // EscalateHalt is the prefix's only reader: a blocked stop at Parent-Align, Finalize or Merge-In whose reason opens with it.
 // Such a halt is no hand-back, so the driver's arbiter judges it first and batten's binary re-step leaves it alone.
 // Only a fixer's escalate changes route; a halt an older build parked under LandingStopPrefix stays a hand-back.

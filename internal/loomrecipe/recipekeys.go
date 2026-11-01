@@ -1,4 +1,4 @@
-// recipekeys.go implements the accessors that answer a recipe's contract, engines, record engine, verify source and retired rows by recipe name.
+// recipekeys.go implements the accessors that answer a recipe's contract, engines, Code-Review perch gate, record engine, verify source and retired rows by recipe name.
 // Consumers read a recipe's rows and keys through them instead of comparing the recipe name.
 
 package loomrecipe
@@ -7,6 +7,8 @@ import (
 	"slices"
 
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -52,6 +54,39 @@ func HasEngine(recipe, engine string) (bool, error) {
 	}
 
 	return false, nil
+}
+
+// EngineRow returns the name of the first row of the named recipe that runs the given engine, and false when no row does.
+// An empty recipe name reads as the tapestry recipe, and a name that selects no embedded recipe is refused.
+func EngineRow(recipe, engine string) (string, bool, error) {
+	parsed, err := parseEmbeddedRecipe(recipe)
+	if err != nil {
+		return "", false, err
+	}
+	for _, row := range parsed.Producers {
+		if row.Engine == engine {
+			return row.Name, true, nil
+		}
+	}
+
+	return "", false, nil
+}
+
+// CodePerchGate returns the entry gate of the named recipe's Code-Review segment Bouncer row, built over env.
+// It is nil for a recipe with no such row and for a Bouncer row with no entry_gate, which leaves the perch's on or off to its budget alone.
+// An empty recipe name reads as the tapestry recipe, and a name that selects no embedded recipe is refused.
+func CodePerchGate(recipe string, env shedrecipe.Env) (shedengine.EntryGate, error) {
+	parsed, err := parseEmbeddedRecipe(recipe)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range parsed.Producers {
+		if row.Engine == bouncerEngine && row.Segment == codeReviewSegment {
+			return shedbuild.RowEntryGate(row, env)
+		}
+	}
+
+	return nil, nil
 }
 
 // RecordEngine returns the engine of the named recipe's row that writes the decision record, empty when the recipe has none.

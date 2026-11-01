@@ -331,10 +331,19 @@ func (c *loomCLI) wireLanding() error {
 	)
 	// The PR-Review session's liveness and process registration read reed's strand table, as the wait-mark and conflict-stopper seams do.
 	slug := seedSlug(c.location.WorktreeName)
-	c.env.Landing.PullRequest.SessionLive = sessionLiveness(c.reed.Status)
-	c.env.Landing.PullRequest.RegisterSession = sessionRegistrar(c.reed.Status, func(pid int) error {
+	registerPane := func(pid int) error {
 		return runproc.Register(fabricengine.RunProcDir(c.location.HubPath), slug, runproc.ChildRecord(pid, runproc.RoleSession, nil))
-	})
+	}
+	c.env.Landing.PullRequest.SessionLive = sessionLiveness(c.reed.Status)
+	c.env.Landing.PullRequest.RegisterSession = sessionRegistrar(c.reed.Status, registerPane)
+	// A sampler run's session is kept like PR-Review's, and the row wakes on its record's file event.
+	// Both building paths pass through here and status and pause never do, so the watch opens only for a run that drives the row.
+	if recipeHasEngine(c.recipe, samplerSessionEngine) {
+		c.env.Sampler.Sessions = c.runner
+		c.env.Sampler.SessionLive = sessionLiveness(c.reed.Status)
+		c.env.Sampler.RegisterSession = sessionRegistrar(c.reed.Status, registerPane)
+		c.env.Sampler.Watch = openRecordWatch(shedrun.SamplerRecord(c.location, c.runID))
+	}
 	// The fixer runs on the seat engine wire already built, so no second engine is constructed.
 	c.env.Landing.FixerSeats = c.env.Seats
 	// A pawl run's land check names the beam's parent worktree as where a cancel runs, read from the beam's origin record.

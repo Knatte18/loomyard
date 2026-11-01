@@ -117,6 +117,17 @@ var intentionallyNil = map[string]string{
 	"Land.Notices.OrchStrandRecorded":     "batten-only seam, filled by battencli",
 	"Land.Notices.BattenHistoryLen":       "batten-only seam, filled by battencli",
 	"PrimeLock.Acquire":                   "batten-only seam, filled by battencli",
+	"Sampler.Spec":                        "sampler-only seam, filled by wire for a sampler seed",
+	"Sampler.Sessions":                    "sampler-only seam, filled by wire for a sampler seed",
+	"Sampler.SessionLive":                 "sampler-only seam, filled by wire for a sampler seed",
+	"Sampler.RegisterSession":             "sampler-only seam, filled by wire for a sampler seed",
+	"Sampler.Stamp":                       "sampler-only seam, filled by wire for a sampler seed",
+	"Sampler.DirtyPaths":                  "sampler-only seam, filled by wire for a sampler seed",
+	"Sampler.CheckRecord":                 "sampler-only seam, filled by wire for a sampler seed",
+	"Sampler.MailAgent":                   "sampler-only seam, filled by wire for a sampler seed",
+	"Sampler.PauseCovered":                "sampler-only seam, filled by wire for a sampler seed",
+	"Sampler.Now":                         "sampler-only seam, filled by wire for a sampler seed",
+	"Sampler.Sleep":                       "sampler-only seam, filled by wire for a sampler seed",
 }
 
 // TestWire_EverySeamFilled pins that wire fills every shedrecipe.Env seam, VerifyHold among them, bar the batten-only ones.
@@ -138,6 +149,7 @@ var intentionallyNil = map[string]string{
 //lym:seam internal/loomshed#DarnDeps
 //lym:seam internal/loomshed#RecordWriteDeps
 //lym:seam internal/loomshed#PRReworkDeps
+//lym:seam internal/loomshed#SamplerDeps
 //lym:seam internal/pawlengine#Deps
 //lym:seam internal/pawlengine#Paths
 //lym:seam internal/shedadapters#CommandDeps

@@ -22,7 +22,7 @@ var ErrUnknownRecipe = errors.New("battenshed: unknown recipe name")
 
 // ErrUnsupportedChildRecipe is the sentinel a SeedChildDeps.WriteSeed closure wraps when recipe is a
 // registered recipe the task worktree's bootstrap cannot run -- InnerRun spawns the one bootstrap verb
-// that exists, `lym loom start`, which serves the tapestry and darn recipes. SeedChild routes it to Stuck exactly as ErrUnknownRecipe, before any seed is
+// that exists, `lym loom start`, which serves the tapestry, darn, pawl and sampler recipes. SeedChild routes it to Stuck exactly as ErrUnknownRecipe, before any seed is
 // written or committed, so a Board task typed with such a recipe halts at Seed-Child with the recipe
 // named rather than failing inside the child after a wrong seed has already been pushed.
 var ErrUnsupportedChildRecipe = errors.New("battenshed: recipe cannot be a task worktree's own run")
@@ -274,7 +274,7 @@ type InnerRunDeps struct {
 	// Restepped reports whether the child's settle records hold a re-step of the stop status names.
 	// A nil Restepped resolves to reporting false in NewInnerRun.
 	Restepped func(status shedengine.Status) (bool, error)
-	// HandBack reports whether the child's blocked status is a landing halt, a decision halt or a tapestry or darn escalate halt, which the binary re-step then leaves alone.
+	// HandBack reports whether the child's blocked status is a landing halt, a decision halt or a tapestry, darn or sampler escalate halt, which the binary re-step then leaves alone.
 	// A nil HandBack resolves to marking nothing in NewInnerRun.
 	HandBack func(status shedengine.Status) bool
 }

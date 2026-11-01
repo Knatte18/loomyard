@@ -9,7 +9,7 @@
 // layer (this package), which is what the dependency direction already demands.
 //
 // The table this package declares (table.go) is a different table from internal/shedrecipe's own registry, and the two must never be merged:
-// this package's table maps the three recipe names ("tapestry", "batten", "darn") to arming functions, while internal/shedrecipe's registry maps engine names to shedengine.ShedProducer constructors.
+// this package's table maps the recipe names ("tapestry", "batten", "darn", "pawl", "sampler") to arming functions, while internal/shedrecipe's registry maps engine names to shedengine.ShedProducer constructors.
 // The two tables answer different questions for different callers.
 // This one is read by shedcli's own pre-run to decide which module arms a given "lym shed" invocation.
 // The other is read by every recipe's own row list to decide which producer constructor backs a given row.

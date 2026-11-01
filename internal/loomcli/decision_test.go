@@ -20,7 +20,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/samplerengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
@@ -45,6 +48,9 @@ type decisionFake struct {
 	parentErr  error
 	// arbiterName is the one strand name the run's arbiter check accepts.
 	arbiterName string
+	// samplerName is the one strand name the run's sampler session check accepts, and samplerErr what that check returns in place of an answer.
+	samplerName string
+	samplerErr  error
 	appends     int
 	commits     int
 	// lastBatch is every entry of the last append, and lastAdded its last entry.
@@ -146,6 +152,7 @@ func (f *decisionFake) deps() decisionDeps {
 		programName:    func() (string, error) { return "hub:LOOM", f.programNameErr },
 		parent:         func() (hubgeom.Parent, error) { return f.parent, f.parentErr },
 		arbiterStrand:  func(name string) bool { return name == f.arbiterName },
+		samplerStrand:  func(name string) (bool, error) { return f.samplerName != "" && name == f.samplerName, f.samplerErr },
 		readStatus:     func() (shedengine.Status, bool, error) { return f.status, f.found, f.statusErr },
 		recordPath:     f.path,
 		recordUnderLym: "discussion/decision-record.md",
@@ -300,6 +307,9 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 		strandName  string
 		parentName  string
 		arbiterName string
+		samplerName string
+		// samplerErr makes the read of the run's sampler record fail.
+		samplerErr error
 		// recordRow runs the case on a Record-Write record that is committed and unchanged.
 		recordRow bool
 		// pattern sets the three PATTERN-change flags.
@@ -317,6 +327,8 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 		{name: "recorded parent's own name", by: "parent", strandName: "hub:orch", parentName: "hub:orch"},
 		{name: "slug-bearing recorded parent's own name", by: "parent", strandName: "hub:other:orch", parentName: "hub:other:orch"},
 		{name: "the run's arbiter strand with the arbiter label", by: "arbiter", strandName: "hub:slug:arbiter", parentName: "hub:orch", arbiterName: "hub:slug:arbiter"},
+		{name: "the run's sampler session with the operator label on a Record-Write record", by: "operator", strandName: "hub:slug:sampler", parentName: "hub:orch", samplerName: "hub:slug:sampler", recordRow: true},
+		{name: "the recorded parent with an unreadable sampler record", by: "parent", strandName: "hub:orch", parentName: "hub:orch", samplerErr: errors.New("record boom")},
 	}
 	for _, tc := range tests {
 		by := tc.by
@@ -327,6 +339,8 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 			}
 			f.strandName = tc.strandName
 			f.arbiterName = tc.arbiterName
+			f.samplerName = tc.samplerName
+			f.samplerErr = tc.samplerErr
 			if tc.programNameFails {
 				f.programNameErr = errors.New("geometry boom")
 			}
@@ -632,6 +646,27 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 			},
 			inputRefusal: true,
 			want:         []string{`"hub:slug:arbiter"`, "task session", "way forward:", "ask hub:orch to run the verb"},
+		},
+		{
+			name: "sampler session passing the parent label",
+			setup: func(f *decisionFake, _ *decisionInput) {
+				f.strandName = "hub:slug:sampler"
+				f.samplerName = "hub:slug:sampler"
+				f.parent = hubgeom.Parent{Name: "hub:orch"}
+			},
+			inputRefusal: true,
+			noDarnReads:  true,
+			want:         []string{`"hub:slug:sampler"`, "the run's sampler session", "way forward:", "--by operator"},
+		},
+		{
+			name: "sampler session check failure",
+			setup: func(f *decisionFake, _ *decisionInput) {
+				f.strandName = "hub:slug:sampler"
+				f.samplerErr = errors.New("record boom")
+			},
+			inputRefusal: true,
+			noDarnReads:  true,
+			want:         []string{"read the run's sampler session: record boom", "way forward:", "nothing is appended"},
 		},
 		{
 			name: "check finding after the append",
@@ -1474,4 +1509,82 @@ func writeDecisionPlan(t *testing.T, anchor string, approved bool) {
 			ImpactSummary: "none",
 		}},
 	})
+}
+
+// TestSamplerStrandReader pins which strand the sampler session check admits: the one the Sampler-Session row recorded, while the run stands at that row, running or halted, and not a darn run's.
+func TestSamplerStrandReader(t *testing.T) {
+	t.Parallel()
+
+	const sampler = "hub:slug:sampler"
+	type ask struct {
+		name string
+		want bool
+	}
+	tests := []struct {
+		name   string
+		recipe string
+		// status is the run's status file, absent when nil, and record the sampler record, absent when nil.
+		status *shedengine.Status
+		record *samplerengine.Record
+		// rerecord, when set, replaces the record's strand name before the asks, as a resume under a new strand does.
+		rerecord string
+		asks     []ask
+	}{
+		{name: "the recorded strand at a running session row is admitted", recipe: shedrun.RecipeSampler,
+			status: &shedengine.Status{CurrentProducer: loomshed.NameSamplerSession, State: shedengine.StateRunning},
+			record: &samplerengine.Record{StrandName: sampler}, asks: []ask{{sampler, true}}},
+		{name: "the recorded strand at a blocked session row stays admitted", recipe: shedrun.RecipeSampler,
+			status: &shedengine.Status{CurrentProducer: loomshed.NameSamplerSession, State: shedengine.StateBlocked},
+			record: &samplerengine.Record{StrandName: sampler}, asks: []ask{{sampler, true}}},
+		{name: "the strand is refused once the current row is Code-Bouncer", recipe: shedrun.RecipeSampler,
+			status: &shedengine.Status{CurrentProducer: loomshed.NameCodeBouncer, State: shedengine.StateRunning},
+			record: &samplerengine.Record{StrandName: sampler}, asks: []ask{{sampler, false}}},
+		{name: "a different name is refused", recipe: shedrun.RecipeSampler,
+			status: &shedengine.Status{CurrentProducer: loomshed.NameSamplerSession, State: shedengine.StateRunning},
+			record: &samplerengine.Record{StrandName: sampler}, asks: []ask{{"hub:slug:plan", false}}},
+		{name: "a new recorded strand is admitted and the old one is refused", recipe: shedrun.RecipeSampler,
+			status: &shedengine.Status{CurrentProducer: loomshed.NameSamplerSession, State: shedengine.StateRunning},
+			record: &samplerengine.Record{StrandName: sampler}, rerecord: "hub:slug:sampler-2", asks: []ask{{"hub:slug:sampler-2", true}, {sampler, false}}},
+		{name: "an absent record admits nobody", recipe: shedrun.RecipeSampler,
+			status: &shedengine.Status{CurrentProducer: loomshed.NameSamplerSession, State: shedengine.StateRunning}, asks: []ask{{sampler, false}}},
+		{name: "an absent status file admits nobody", recipe: shedrun.RecipeSampler,
+			record: &samplerengine.Record{StrandName: sampler}, asks: []ask{{sampler, false}}},
+		{name: "a darn run admits nobody", recipe: shedrun.RecipeDarn,
+			status: &shedengine.Status{CurrentProducer: loomshed.NameDarnWrite, State: shedengine.StateRunning},
+			record: &samplerengine.Record{StrandName: sampler}, asks: []ask{{sampler, false}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			loc := hubLocation(t, "pair", ".")
+			if tt.status != nil {
+				statusPath, statusLock := shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID)
+				if err := os.MkdirAll(filepath.Dir(statusLock), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := state.WriteJSON(statusPath, statusLock, *tt.status); err != nil {
+					t.Fatalf("state.WriteJSON() = %v; want nil", err)
+				}
+			}
+			recordPath, recordLock := shedrun.SamplerRecord(loc, shedrun.SelfRunID), shedrun.SamplerRecordLock(loc, shedrun.SelfRunID)
+			if tt.record != nil {
+				seed := *tt.record
+				if err := samplerengine.UpdateRecord(recordPath, recordLock, func(stored *samplerengine.Record) { *stored = seed }); err != nil {
+					t.Fatalf("seed the record: %v", err)
+				}
+			}
+			if tt.rerecord != "" {
+				if err := samplerengine.UpdateRecord(recordPath, recordLock, func(stored *samplerengine.Record) { stored.StrandName = tt.rerecord }); err != nil {
+					t.Fatalf("rewrite the record: %v", err)
+				}
+			}
+
+			admits := samplerStrandReader(loc, tt.recipe)
+			for _, a := range tt.asks {
+				if got, err := admits(a.name); err != nil || got != a.want {
+					t.Errorf("samplerStrandReader(%q)(%q) = %v, %v; want %v, nil", tt.recipe, a.name, got, err, a.want)
+				}
+			}
+		})
+	}
 }

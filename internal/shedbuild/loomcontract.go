@@ -22,7 +22,7 @@ func checkLoomContract(r Recipe) error {
 	if err != nil {
 		return err
 	}
-	buildRow, err := onlyRowOf(r, shedrecipe.LoomBuildEngines, "build", "Implementer, DarnWrite or BeamAwait")
+	buildRow, err := onlyRowOf(r, shedrecipe.LoomBuildEngines, "build", "Implementer, DarnWrite, BeamAwait or SamplerSession")
 	if err != nil {
 		return err
 	}

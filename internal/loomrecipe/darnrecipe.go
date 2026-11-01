@@ -23,28 +23,45 @@ const treeScopeVerifySource = "tree_scope"
 // burlerFixEngine is the recipe engine name of a review segment's fix row.
 const burlerFixEngine = "BurlerFix"
 
-// verifyGatedRows returns the names of the rows whose verify gate carries the verify budget: the build row and the Code-Review segment's BurlerFix row.
-// A recipe whose verify_source is not tree_scope has none.
+// verifyGatedRows returns the names of the rows whose verify gate carries the verify budget: the build row and the Code-Review segment's BurlerFix row, each only when it declares a verify gate entry.
+// A recipe whose verify_source is not tree_scope has none, and neither has one with no build row.
 func verifyGatedRows(recipe shedbuild.Recipe) []string {
 	if recipe.VerifySource != treeScopeVerifySource {
 		return nil
 	}
 	var names []string
+	hasBuildRow := false
 	for _, row := range recipe.Producers {
-		if slices.Contains(shedrecipe.LoomBuildEngines, row.Engine) {
+		if !slices.Contains(shedrecipe.LoomBuildEngines, row.Engine) {
+			continue
+		}
+		hasBuildRow = true
+		if hasVerifyGate(row) {
 			names = append(names, row.Name)
 		}
 	}
-	if len(names) == 0 {
+	if !hasBuildRow {
 		return nil
 	}
 	for _, row := range recipe.Producers {
-		if row.Engine == burlerFixEngine && row.Segment == codeReviewSegment {
+		if row.Engine == burlerFixEngine && row.Segment == codeReviewSegment && hasVerifyGate(row) {
 			names = append(names, row.Name)
 		}
 	}
 
 	return names
+}
+
+// hasVerifyGate reports whether the recipe row declares a verify gate entry.
+func hasVerifyGate(row shedbuild.Row) bool {
+	gates, _ := row.Config["gates"].([]any)
+	for _, raw := range gates {
+		if entry, ok := raw.(map[string]any); ok && entry["name"] == verifyGateName {
+			return true
+		}
+	}
+
+	return false
 }
 
 // checkVerifyAttempts refuses a verify attempt budget below 1.

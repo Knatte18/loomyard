@@ -100,6 +100,8 @@ const (
 	loomTacklerRecipe = "loom: a phased task run (discussion, plan, webster's coded batches, reviews, landing)"
 	darnTacklerRecipe = "darn: a one-writer task run (one darn writer session, its review, verify and landing)"
 	pawlTacklerRecipe = "pawl: a beam's life (its orch and dobby, the wait for its landing, its merge, review, description and Finalize into its parent)"
+
+	samplerTacklerRecipe = "sampler: an interactive task run (one agent session working with the operator, its optional review, description and landing)"
 )
 
 // tacklerFor resolves the tackler settings of a run of recipe from the shed.yaml config layers under dirs, and the one-line recipe description its prompt names.
@@ -115,6 +117,13 @@ func tacklerFor(dirs configengine.Dirs, recipe string, reg modelspec.Registry) (
 	if recipe == shedrun.RecipePawl {
 		return settings, pawlTacklerRecipe, nil
 	}
+	hasSampler, err := loomrecipe.HasEngine(recipe, samplerSessionEngine)
+	if err != nil {
+		return sheddriver.TacklerSettings{}, "", err
+	}
+	if hasSampler {
+		return settings, samplerTacklerRecipe, nil
+	}
 	hasPlan, err := loomrecipe.HasEngine(recipe, planWriteEngine)
 	if err != nil {
 		return sheddriver.TacklerSettings{}, "", err
@@ -126,7 +135,7 @@ func tacklerFor(dirs configengine.Dirs, recipe string, reg modelspec.Registry) (
 }
 
 // loomArbiterSeam builds the arbiter seam loom hands the shed driver.
-// Merriam reports a batch it cannot carry on only as a stuck outcome, and a tapestry or darn landing merge fixer reports an escalate as a halt of its own, so the arbiter, not the tackler, is the first to judge a blocked stop at the Webster row or a landing escalate before it reaches the parent; no other stop is marked.
+// Merriam reports a batch it cannot carry on only as a stuck outcome, and a tapestry, darn or sampler landing merge fixer reports an escalate as a halt of its own, so the arbiter, not the tackler, is the first to judge a blocked stop at the Webster row or a landing escalate before it reaches the parent; no other stop is marked.
 func loomArbiterSeam(arbiterDeps shedarbiter.Deps, runID string) *sheddriver.ArbiterSeam {
 	seam := shedarbiter.Seam(arbiterDeps, runID, func(producer string) bool {
 		return arbiterstop.EscalationEligible(producer, arbiterDeps.Stop)

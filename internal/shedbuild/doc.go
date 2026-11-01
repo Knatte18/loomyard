@@ -31,6 +31,7 @@
 // A comparison compares the value with the literal, numbers by value.
 // A gate that does not hold returns the check's text with the value it read.
 // A gate skips only its own row.
+// RowEntryGate builds one row's gate the same way for a caller that reads a row's gate without building the recipe.
 //
 // This package holds PATTERN-cwd-resolution: Load reads
 // exactly the absolute path it is told, and the package derives no path of its own.

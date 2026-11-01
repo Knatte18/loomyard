@@ -23,6 +23,11 @@ var DarnRecipe []byte
 //go:embed pawl-recipe.yaml
 var PawlRecipe []byte
 
+// SamplerRecipe is the sampler recipe's producer graph, one interactive agent session between the decision record and the landing, in internal/shedbuild's recipe format.
+//
+//go:embed sampler-recipe.yaml
+var SamplerRecipe []byte
+
 // BattenRecipe is the task-worktree batten's producer graph, in internal/shedbuild's recipe
 // format.
 //

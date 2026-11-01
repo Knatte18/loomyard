@@ -305,6 +305,37 @@ func TestDarnVerifyBudget(t *testing.T) {
 		}
 	})
 
+	t.Run("on the sampler recipe only Code-Burler-Fix is stamped and Describe keeps its gate", func(t *testing.T) {
+		recipe, err := shedbuild.Parse(recipes.SamplerRecipe)
+		if err != nil {
+			t.Fatalf("shedbuild.Parse() error = %v; want nil", err)
+		}
+		gatedRows := verifyGatedRows(recipe)
+		if want := []string{loomshed.NameCodeBurlerFix}; !reflect.DeepEqual(gatedRows, want) {
+			t.Fatalf("verifyGatedRows() = %v; want %v", gatedRows, want)
+		}
+		for _, row := range gatedRows {
+			if err := applyVerifyAttempts(&recipe, row, 7); err != nil {
+				t.Fatalf("applyVerifyAttempts(%q) error = %v; want nil", row, err)
+			}
+		}
+		want := map[string]map[any]any{
+			loomshed.NameCodeBurlerFix: {"verify": 7},
+			loomshed.NameDescribe:      {"description": 3},
+		}
+		for _, row := range recipe.Producers {
+			gates, _ := row.Config["gates"].([]any)
+			got := map[any]any{}
+			for _, g := range gates {
+				entry := g.(map[string]any)
+				got[entry["name"]] = entry["attempts"]
+			}
+			if wantGates, ok := want[row.Name]; ok && !reflect.DeepEqual(got, wantGates) {
+				t.Errorf("%s gates attempts = %v; want %v", row.Name, got, wantGates)
+			}
+		}
+	})
+
 	t.Run("a missing row or gate entry is an error", func(t *testing.T) {
 		recipe, err := shedbuild.Parse(recipes.DarnRecipe)
 		if err != nil {

@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -125,11 +127,13 @@ func (c *loomCLI) stopStepRuns(tie shuttleengine.StepTie) (shuttleengine.StepSto
 // agentActivityFor returns the reading of the run's agent activity: the newest LastActivity over every live agent run of loc's worktree.
 // A running run whose waiting process is gone is not live here.
 // The runs come from shuttle through its registered engines, which list every strand, so a MultiLLM row's chair and each of its advisors count.
-// A running verify, a live parent lock wait, a held drift capture lock or compare marker, or a shuttle wait that is not a held turn end, reads as activity now.
+// A running verify, a live parent lock wait, a held drift capture lock or compare marker, a run's status running at a row of loomshed.OperatorWaitRows, or a shuttle wait that is not a held turn end, reads as activity now.
+// A step at such a row is therefore never killed for idleness; only `lym batten cancel` or the row's own halts end a wedged one.
 // A verify held by a pause does no work and reads as none, and a drift lock a dead process left reads free.
-// All of them are read from their marker, lock or record files.
+// An absent or unreadable status file reads as no wait, with no error.
+// All of them are read from their marker, lock, status or record files.
 // The boolean is false when nothing is live.
-func agentActivityFor(loc *lymcwd.Location, cfg shuttleengine.Config) func() (time.Time, bool, error) {
+func agentActivityFor(loc *lymcwd.Location, runID string, cfg shuttleengine.Config) func() (time.Time, bool, error) {
 	return func() (time.Time, bool, error) {
 		anchor := loc.AnchorPath()
 		verifyMarker, verifyLive, err := verifytree.ReadMarker(verifytree.NewPaths(loc.WorktreePath(), verifytree.Dir(anchor)).Marker)
@@ -151,6 +155,9 @@ func agentActivityFor(loc *lymcwd.Location, cfg shuttleengine.Config) func() (ti
 			return time.Time{}, false, err
 		}
 		if driftActive {
+			return time.Now(), true, nil
+		}
+		if runWaitsOnOperator(loc, runID) {
 			return time.Now(), true, nil
 		}
 		markers, err := shuttleengine.ReadWaitMarkers(cfg, anchor)
@@ -183,6 +190,26 @@ func agentActivityFor(loc *lymcwd.Location, cfg shuttleengine.Config) func() (ti
 		}
 		return newest, live, nil
 	}
+}
+
+// runWaitsOnOperator reports whether the status file of the run runID in loc reads running at a row of loomshed.OperatorWaitRows.
+// An absent or unreadable status reads as no wait.
+func runWaitsOnOperator(loc *lymcwd.Location, runID string) bool {
+	statusPath := shedrun.StatusFile(loc, runID)
+	if _, err := os.Stat(statusPath); err != nil {
+		return false
+	}
+	statusLockPath := shedrun.StatusLock(loc, runID)
+	if err := os.MkdirAll(filepath.Dir(statusLockPath), 0o755); err != nil {
+		logger.Debug("loom: the run's status lock directory could not be made; it reads as no operator wait", "path", statusLockPath, "cause", err)
+		return false
+	}
+	status, found, err := state.ReadJSON[shedengine.Status](statusPath, statusLockPath)
+	if err != nil {
+		logger.Debug("loom: the run's status is unreadable; it reads as no operator wait", "path", statusPath, "cause", err)
+		return false
+	}
+	return found && status.State == shedengine.StateRunning && loomshed.WaitsOnOperator(status.CurrentProducer)
 }
 
 // loomAfterInterrupt is loom's AfterInterrupt hook and returns the envelope's "friction" key.

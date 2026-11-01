@@ -11,7 +11,10 @@
 // The row names a run parked under an old recipe may still carry are that recipe's retired-row data, read through `loomrecipe.RetiredRows`: arming renames them in the status file with no branch on the recipe name, and a recipe with none renames nothing.
 //
 // The wiring branches on the recipe's rows and keys, never its name, through the `loomrecipe` accessors on the run's recipe, an empty recipe reading as tapestry.
-// The verify source follows the recipe's `verify_source` key, the Darn-Write seams are filled for a recipe with a Darn-Write row, and the merge fixer's plan directory and failure tracer follow a Plan-Write row.
+// The verify source follows the recipe's `verify_source` key, the tree-scope verify seams follow `verify_source: tree_scope`, the Darn-Write seams are filled for a recipe with a Darn-Write row, the perch-off reading follows the Code-Review rows' entry gate as well as the budget, and the merge fixer's plan directory and failure tracer follow a Plan-Write row.
+// A recipe with a SamplerSession row loads the hub's `sampler.yaml` strictly in `wire`, which refuses a malformed file before any row builds, and fills the row's seams from `samplerDeps`.
+// The row's entry stamp counts the times the run entered it, from the status file and the rows that route into it.
+// `wireLanding`, which both the `run` and `step` building paths pass through and `status` and `pause` never do, fills the session's start and stop, its liveness and its process registration as for PR-Review's session, and the watch on the row's record that wakes the wait.
 // A run's decision record follows its recipe's rows through `runRecordOf`: a recipe with a Beam-Await row keeps the beam's project record under the beam's slug, and every other recipe the discussion record.
 // A task run's review rows are told its record as the PATTERN declaration path, a beam's project record declares none, and a loom recipe holds a landing's escalate halt for the arbiter first.
 //
@@ -34,6 +37,10 @@
 //
 // A member's Discussion-Write lead and darn writer get the project record directive, `loomengine.ProjectRecordDirective` over `projectRecordPaths`: the record of each beam above the pair, read in that beam's own worktree at each spawn, nearest first.
 // `decision add <beam-slug>` resolves the beam's project record, takes the beam's own orch as the caller its rule admits, and posts its notice to the live runs of the beam and of every member pair `memberPairs` reads under it.
+//
+// The caller rule of `decision add` admits a named session that is the run's parent orch, the run's own arbiter strand with `--by arbiter`, or the strand a sampler run's Sampler-Session row has recorded as its session.
+// `samplerStrandReader` admits that strand by the recipe's rows, only while the run's current row is the session row and whether or not the run is halted there, and only with `--by operator`; any other label from it is refused naming `--by operator`.
+// A strand it does not admit meets the parent rule.
 //
 // # Start
 //
@@ -216,6 +223,8 @@
 // The driver registers itself in the owner record under the run's slug with the role `driver`, before it takes the driver lock, and the run's step loop registers itself with the role `loop` once its pid file is written, through the loop's `OnStart` hook;
 // a driver the lock refuses exits at once and its record is pruned at the next read.
 //
+// A step at a row waiting on the operator (Beam-Await, PR-Review, Sampler-Session) reads as active to the step watchdog and as a live wait to dobby, so neither kills it nor sends a quiet notice.
+//
 // The loop steps the run through the shared `--until-stop` body, saves each stop envelope under the run's drive-reports directory and decides the stop by a closed rule table over the envelope's fields and the facts it reads from disk, never over a row name or the reason text.
 // The table settles a done run, a busy exit, a re-step of an interrupted step under the `reinvoke` policy up to a cap of two per stop key, and the one verify goto to the Publish failure record's target;
 // it asks the tackler at a stop no rule settles, the arbiter at an awaiting stop with a pending hard-cap or circling escalation only, after a tackler `escalate` and when an applied tackler `resume` returns to the same stop, and hands over at a binary-eligible stop whose last step ran another build than the `lym` on disk.
@@ -228,6 +237,10 @@
 // While a pause covers the slug the driver holds in the pause wait before any re-step, goto, agent spawn or hand-over.
 //
 // `lym loom pr-continue` is the PR-Review agent's verb for the operator's ending of a review: it sets the continue flag in the run's pull-request record and nothing else, and is refused until the PR-Review row has opened the pull request.
+//
+// `lym loom sampler-done` ends a sampler run's build: it sets the done flag in the Sampler-Session record to the row's current entry stamp and nothing else.
+// It is refused by the recipe's rows on a recipe with no SamplerSession row, and while the run stands at another row, the record names no session or the task worktree has uncommitted paths, each with its way forward.
+// It is not limited to the sampler agent's strand, so the operator's own shell may run it, and it is accepted while the run is halted at the row, so the next `lym loom resume` ends the row Done at once.
 //
 // A hand-back leaves a Go-authored stop report, commits the run records and writes the park marker through the code `lym loom commit-records --park` runs, and queues the parent messages the LLM driver's notify rules send.
 // A watching batten announces the run and retries a matching verify halt itself, so only the parent notice, a question and a friction-failed done are sent; an unwatched run also gets one line naming the run-id and the report.

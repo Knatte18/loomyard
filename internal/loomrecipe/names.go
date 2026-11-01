@@ -12,8 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// RecipeEngines parses recipes.TapestryRecipe, recipes.DarnRecipe and recipes.PawlRecipe, collects each row's engine name, de-duplicates, and returns the result sorted.
-// All three recipes are the loom module's, so the set is their union.
+// RecipeEngines parses recipes.TapestryRecipe, recipes.DarnRecipe, recipes.PawlRecipe and recipes.SamplerRecipe, collects each row's engine name, de-duplicates, and returns the result sorted.
+// All four recipes are the loom module's, so the set is their union.
 // It exists as the input to the cross-consumer coverage guard, which
 // unions every recipe consumer's engine set -- deriving the set from the recipe rather than
 // writing it down is what keeps that union honest without a second hand-maintained table alongside
@@ -25,7 +25,7 @@ import (
 func RecipeEngines() []string {
 	seen := map[string]bool{}
 	var engines []string
-	for _, source := range [][]byte{recipes.TapestryRecipe, recipes.DarnRecipe, recipes.PawlRecipe} {
+	for _, source := range [][]byte{recipes.TapestryRecipe, recipes.DarnRecipe, recipes.PawlRecipe, recipes.SamplerRecipe} {
 		recipe, err := shedbuild.Parse(source)
 		if err != nil {
 			panic(fmt.Sprintf("loomrecipe: RecipeEngines: %v", err))
@@ -44,15 +44,17 @@ func RecipeEngines() []string {
 }
 
 // RecipeRow is one recipe row as a status reader needs it.
+// OnDone is the row its Done outcome routes to, empty for a row that ends the run.
 // Bouncer is true when the row's engine is the Bouncer.
 type RecipeRow struct {
 	Name    string
 	Segment string
 	OnStuck string
+	OnDone  string
 	Bouncer bool
 }
 
-// RowNames returns the row names of the named recipe in file order: shedrun.RecipeTapestry is the tapestry recipe, shedrun.RecipeDarn the darn recipe, shedrun.RecipeBatten the batten recipe and shedrun.RecipePawl the pawl recipe.
+// RowNames returns the row names of the named recipe in file order: shedrun.RecipeTapestry is the tapestry recipe, shedrun.RecipeDarn the darn recipe, shedrun.RecipeBatten the batten recipe, shedrun.RecipePawl the pawl recipe and shedrun.RecipeSampler the sampler recipe.
 // Any other recipe name is refused with an error naming it.
 func RowNames(recipe string) ([]string, error) {
 	rows, err := Rows(recipe)
@@ -66,7 +68,7 @@ func RowNames(recipe string) ([]string, error) {
 	return names, nil
 }
 
-// Rows returns the rows of the named recipe in file order: shedrun.RecipeTapestry is the tapestry recipe, shedrun.RecipeDarn the darn recipe, shedrun.RecipeBatten the batten recipe and shedrun.RecipePawl the pawl recipe.
+// Rows returns the rows of the named recipe in file order: shedrun.RecipeTapestry is the tapestry recipe, shedrun.RecipeDarn the darn recipe, shedrun.RecipeBatten the batten recipe, shedrun.RecipePawl the pawl recipe and shedrun.RecipeSampler the sampler recipe.
 // Any other recipe name is refused with an error naming it.
 func Rows(recipe string) ([]RecipeRow, error) {
 	parsed, err := parseEmbeddedRecipe(recipe)
@@ -75,13 +77,13 @@ func Rows(recipe string) ([]RecipeRow, error) {
 	}
 	rows := make([]RecipeRow, 0, len(parsed.Producers))
 	for _, row := range parsed.Producers {
-		rows = append(rows, RecipeRow{Name: row.Name, Segment: row.Segment, OnStuck: row.OnStuck, Bouncer: row.Engine == bouncerEngine})
+		rows = append(rows, RecipeRow{Name: row.Name, Segment: row.Segment, OnStuck: row.OnStuck, OnDone: row.OnDone, Bouncer: row.Engine == bouncerEngine})
 	}
 	return rows, nil
 }
 
 // AmendmentTarget returns the optional `amendment_target` of the named recipe: the row a plan amendment routes to, empty when the recipe sets none.
-// The recipe names are Rows': shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipeBatten and shedrun.RecipePawl, and any other name is refused with an error naming it.
+// The recipe names are Rows': shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipeBatten, shedrun.RecipePawl and shedrun.RecipeSampler, and any other name is refused with an error naming it.
 func AmendmentTarget(recipe string) (string, error) {
 	parsed, err := parseEmbeddedRecipe(recipe)
 	if err != nil {
@@ -102,6 +104,8 @@ func embeddedRecipeSource(recipe string) ([]byte, error) {
 		return recipes.BattenRecipe, nil
 	case shedrun.RecipePawl:
 		return recipes.PawlRecipe, nil
+	case shedrun.RecipeSampler:
+		return recipes.SamplerRecipe, nil
 	}
 
 	return nil, fmt.Errorf("loomrecipe: no embedded recipe named %q", recipe)

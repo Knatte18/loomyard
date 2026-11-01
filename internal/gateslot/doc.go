@@ -101,10 +101,10 @@
 //	loom        Webster, verify fixers                  webster-fix      diff
 //	loom        Webster, end gate                       webster          all
 //	loom        Parent-Align                            parent-align     all
-//	tapestry, darn  Code-Burler-Fix                         code-burler-fix  diff
+//	tapestry, darn, sampler  Code-Burler-Fix                         code-burler-fix  diff
 //	tapestry, darn  Drift-Verify                            drift-verify     diff
-//	tapestry, darn, pawl  PR-Review                         pr-review        diff
-//	tapestry, darn  Finalize                                finalize         all
+//	tapestry, darn, pawl, sampler  PR-Review                         pr-review        diff
+//	tapestry, darn, sampler  Finalize                                finalize         all
 //	adopt       lym adopt check                         adopt            all
 //	darn        Darn-Write                              darn-write       diff
 //	darn        Darn-Write, Code-Burler-Fix, Finalize   the row's key    the touched trees' targets

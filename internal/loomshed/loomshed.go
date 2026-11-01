@@ -27,6 +27,7 @@ const (
 	NameDescribe          = "Describe"
 	NameParentAlign       = "Parent-Align"
 	NameDarnWrite         = "Darn-Write"
+	NameSamplerSession    = "Sampler-Session"
 	NameRecordWrite       = "Record-Write"
 	NameFinalize          = "Finalize"
 	NameFrictionReflect   = "Friction-Reflect"
