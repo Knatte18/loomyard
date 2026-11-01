@@ -72,7 +72,7 @@
 // A normal priority is stored as no key, so board.json names a priority only on a high or low note;
 // a write of "normal" clears the field, and a write of any other value is refused.
 // A write that leaves a task with a priority is refused, Promote clears the note's priority, and a task stored with one loses it on load, so the next write drops it and a run-held such task is still writable.
-// The README shows a note's priority as H or L in the Prio column of the Notes tables and the project sections, and no view orders by it.
+// The README shows a note's priority as H or L in the Prio column of the Notes tables, and no view orders by it.
 // Priority is part of an entry's scope, so the run lock refuses a change to it on a run-held note.
 //
 // # Run settings
@@ -169,13 +169,16 @@
 // a project file opens with its handle and title, the render time, a link up to its parent's file, its facts line, its brief, and for a beam the word `beam`.
 // A project's facts line is its slug as a code span, then `Age` and its created age when its created date is known, then `Owner` and its effective owner, its recorded owner_machine for a beam else its parent's, resolved through ParentBeam over the rendered entries with the prime owner as the root's, or none recorded, parts joined by a middle dot.
 // The Running table's Owner column shows a task's effective owner the same way.
-// After its header, README.md holds one section per open project on the board, nested ones included, so the entries of every open project show in the README:
-// the projects under the root by handle, each followed by the sections of the projects under it in their parent's order key, then by handle.
+// Every project, the root included, renders through one project section at a given heading level.
+// The root's section is `Prime` with one meaning line;
+// any other project's heading links its handle and title to its file and counts its open members, and its facts line and brief follow.
+// Under the heading come a section per open project directly under it, one heading level down, each holding its own sub-projects the same way, in the parent's order key and then by handle, the root's by handle;
+// then the project's own entries one level down.
+// Heading levels nest with the project depth and stop at six, so a deep project still renders.
 // An open project under a done project counts as under the root, since a done project has no section.
-// A project section's `##` heading links the project's handle and title to its file and counts its open members, and under it come its facts line, the brief and one table of those members, every kind in RenderOrder's order, laid out as a Notes table with the Entry column in place of Note, or `_None._` when it has none.
-// Below them, a `## Prime` section with one meaning line holds the root's own Tasks, Notes and Done sections, each one heading level below a project file's.
-// Each file then holds, for its own entries only, a Projects section in a project file when an open project sits directly under it, a Tasks section, a Notes section grouped by type label, research first under the heading `Research`, then the other types in the order of the types list and the remainder under Other, and a Done section.
-// Projects lists each open project directly under the file's project as a bullet linking its handle and title to its file, followed by its brief, in the order of the parent's order key, then by handle, and carries no meaning line.
+// README.md holds the `## Prime` section after its header, so every open project shows there with its own Running, Ready, Tasks, Notes and Done, and the root's own entries come last.
+// A project file's header stands as its project's heading: after it come the project's sub-projects at `##` and its own entries at `##`.
+// A project's own entries are a Tasks section, a Notes section grouped by type label, research first under the heading `Research`, then the other types in the order of the types list and the remainder under Other, and a Done section.
 // An open project is in none of the Tasks layers: ComputeLayers puts it in its own Project layer, a run-held one in Running and a done one in the done layer, and RenderOrder places open projects by handle between open tasks and open notes, and a done project between done tasks and done notes.
 // No project is a row of Tasks or Notes; a done project is a row of its parent file's Done table, its title linked to its file.
 // Every section heading but Prime ends in the number of entries listed under it in parentheses, such as `## Tasks (10)` or `### Ready (0)` in a project file, never the highest handle number, since handles have gaps.
@@ -187,7 +190,7 @@
 // A dependency on a done task does not count, and one on a running task does, so a task waiting on a run is not Ready.
 // Layer A holds the tasks that wait only on Running, Ready or Draft entries, Layer B those that wait on something in Layer A, and so on; ComputeLayers names each task's subsection, and the same name is the layer field of `lym board list`.
 // Each subsection, Done included, is one markdown table in RenderOrder's order: a task subsection and a Notes type subsection by handle, and Done its tasks before its notes, each by handle, so `lym board list` and `find` follow the same order.
-// A row opens with the entry's handle, and a Notes or project-section row adds the Prio column after it, H for a high priority, L for a low one and blank for normal.
+// A row opens with the entry's handle, and a Notes row adds the Prio column after it, H for a high priority, L for a low one and blank for normal.
 // The row then holds the bold title, with the brief as a `• ` bullet under it in the same cell, then a `• ` bullet `profile: <name>` when the task names a run profile, and then one `• ` bullet per run setting, a code span such as `loom: code_max_bounces 1` with a nested key as its dotted path, sorted, so the settings stack in height and add no column, the slug linked to its design doc when the entry has a body, the one `Age<br>Revised` cell, the entry's age above the time since its last revision, blank for an unknown date, and the labels that are not type labels.
 // The Running, Ready, layer and Draft tables add a Recipe column after the slug, the recipe the task runs, `tapestry` when its recipe field is empty; the Notes and Done tables have none.
 // Running adds an At column, the run status without the state when the state is `running`, and an Owner column, the entry's effective owner machine, blank when none is recorded, and Ready, the layers and Draft add an After column, the handles of the open entries named in depends_on, one per line, an entry with no handle or no longer on the board named by its slug.

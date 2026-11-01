@@ -1,9 +1,10 @@
 // render.go — turns the entry list into the wiki's output files.
 //
 // Render is a pure function: entries in, a map of filename → content out (README.md for the root project, built by renderReadme, and project-<slug>.md for each project, built by renderProjectFile, plus design-*.md for any entry with a body).
-// Under its header, README.md holds one section per open project on the board, its members in one table, then a Prime section holding the root's own entries;
-// each board file reads like a roadmap of its project's own entries: in a project file the projects directly under it, then Tasks split into Running, Ready, dependency layers, Independent and Draft, Notes with one subsection per type label, research first, then Done.
-// Each subsection holds one markdown table in RenderOrder's order, each row opening with the entry's handle, and a Notes or project-section table adds the priority as H or L after it, under Prio;
+// Every project, the root's Prime included, renders through one project section: its heading, facts and brief, then a section per open project directly under it one heading level down, nested to any depth with headings capped at level six, then its own entries one level down;
+// README.md holds the Prime section under its header, and a project file holds its project's sub-projects and own entries under its header.
+// A project's own entries split into Tasks, by Running, Ready, dependency layers, Independent and Draft, Notes with one subsection per type label, research first, then Done.
+// Each subsection holds one markdown table in RenderOrder's order, each row opening with the entry's handle, and a Notes table adds the priority as H or L after it, under Prio;
 // README.md opens with the time it was rendered and the machine that owns the hub's prime, and a project file with the time, a link up to its parent's file and the project's brief and, for a beam, its owner;
 // the rows show the bold title with the brief, the run profile and each run setting as a bullet under it, the linked slug, the entry's age above its time since its last revision as of that time, and the labels that are not type labels;
 // every Tasks table adds the recipe after the slug, tapestry for an empty one;
@@ -118,9 +119,6 @@ type readmeSection struct {
 	meaning string
 }
 
-// projectsHeading names the section of a project file listing the projects directly under its project; it has no meaning line, since most projects only group entries.
-const projectsHeading = "Projects"
-
 // boardIntro is the paragraph every board file holds under its header.
 var boardIntro = []string{
 	"Tasks are grouped by dependency layer and notes by type.",
@@ -128,7 +126,7 @@ var boardIntro = []string{
 	"",
 }
 
-// The README's Prime section, the board files' Tasks, Notes and Done sections and the Running and Ready subsections of Tasks, declared here alone.
+// The root project's section, the board files' Tasks, Notes and Done sections and the Running and Ready subsections of Tasks, declared here alone.
 var (
 	primeSection   = readmeSection{"Prime", "The root project: the entries under no other project."}
 	tasksSection   = readmeSection{"Tasks", "Concrete and claimable; only a task can run."}
@@ -191,9 +189,17 @@ const runningState = "running"
 // cellBullet starts one detail line under the title inside one table cell; a markdown list does not render in a table cell.
 const cellBullet = cellBreak + "• "
 
-// countedHeading is a README heading of the given markdown level, its name followed by the number of entries the section lists.
-func countedHeading(level, name string, count int) string {
-	return fmt.Sprintf("%s %s (%d)", level, name, count)
+// maxHeadingLevel is the deepest markdown heading level; a section nested deeper renders at this level.
+const maxHeadingLevel = 6
+
+// heading is a markdown heading of the given level, capped at maxHeadingLevel, holding text.
+func heading(level int, text string) string {
+	return strings.Repeat("#", min(level, maxHeadingLevel)) + " " + text
+}
+
+// countedHeading is a board heading of the given level, its name followed by the number of entries the section lists.
+func countedHeading(level int, name string, count int) string {
+	return heading(level, fmt.Sprintf("%s (%d)", name, count))
 }
 
 // kindName is the capitalised display name of an entry kind.
@@ -341,21 +347,48 @@ func (b boardView) projectFacts(project Task) string {
 	return strings.Join(append(parts, "Owner "+primeOwnerText(b.ownerOf(project.Slug))), " · ")
 }
 
-// renderReadme builds the root project's board file: its header, the intro, one section per open project on the board, then the Prime section holding the root's own Tasks, Notes and Done one heading level down.
+// renderReadme builds the root project's board file: its header, the intro, then the Prime project section at heading level two.
 func (b boardView) renderReadme() string {
 	lines := append(b.fileHeader(Task{}), boardIntro...)
-	lines = append(lines, b.projectSections(Task{})...)
-	lines = append(lines, "## "+primeSection.name, "", primeSection.meaning, "")
-	lines = append(lines, b.entrySections(Task{}, "###")...)
+	lines = append(lines, b.projectSection(Task{}, 2)...)
 	return joinLines(lines)
 }
 
-// renderProjectFile builds project's board file: its header, the intro, Projects when an open project sits directly under it, then its own Tasks, Notes and Done.
+// renderProjectFile builds project's board file: its header, which stands as the project's level-one heading, the intro, then the project's sub-projects and own entries.
 func (b boardView) renderProjectFile(project Task) string {
 	lines := append(b.fileHeader(project), boardIntro...)
-	lines = append(lines, b.projectsSection(project)...)
-	lines = append(lines, b.entrySections(project, "##")...)
+	lines = append(lines, b.projectBody(project, 1)...)
 	return joinLines(lines)
+}
+
+// projectSection renders project, the zero Task naming the root, as one section at heading level level, then its body.
+// The root's heading is Prime with its meaning line;
+// any other project's heading links its handle and title to its file and counts its open members, and its facts line and brief follow.
+func (b boardView) projectSection(project Task, level int) []string {
+	if project.Slug == "" {
+		lines := []string{heading(level, primeSection.name), "", primeSection.meaning, ""}
+		return append(lines, b.projectBody(Task{}, level)...)
+	}
+	members := 0
+	for _, twl := range b.ordered {
+		if twl.Project == project.Slug && !isDone(twl.Task) {
+			members++
+		}
+	}
+	lines := []string{countedHeading(level, b.fileLink(project), members), "", b.projectFacts(project), ""}
+	if project.Brief != "" {
+		lines = append(lines, project.Brief, "")
+	}
+	return append(lines, b.projectBody(project, level)...)
+}
+
+// projectBody renders what sits under the heading of project, the zero Task naming the root, at heading level level: a section per open project directly under it, in childProjects' order, each one level down and holding its own sub-projects in turn, then project's own Tasks, Notes and Done one level down.
+func (b boardView) projectBody(project Task, level int) []string {
+	var lines []string
+	for _, child := range b.childProjects(project) {
+		lines = append(lines, b.projectSection(child.Task, level+1)...)
+	}
+	return append(lines, b.entrySections(project, level+1)...)
 }
 
 // joinLines joins a board file's lines into its content, ending in exactly one newline.
@@ -384,10 +417,10 @@ func (b boardView) table(entries []TaskWithLayer, table readmeTable) []string {
 	return append(lines, "")
 }
 
-// entrySections builds the Tasks, Notes and Done sections of project, the zero Task naming the root, with level the markdown level of their headings: Tasks split into Running, Ready, dependency layers, Independent and Draft, Notes split by type label, then Done when any of its entries is done.
+// entrySections builds the Tasks, Notes and Done sections of project, the zero Task naming the root, with level the heading level of their headings and their subsections one level down: Tasks split into Running, Ready, dependency layers, Independent and Draft, Notes split by type label, then Done when any of its entries is done.
 // Every section holds only the entries whose project is project, while layers, After cells and owners read the whole board.
-func (b boardView) entrySections(project Task, level string) []string {
-	sublevel := level + "#"
+func (b boardView) entrySections(project Task, level int) []string {
+	sublevel := level + 1
 	var own []TaskWithLayer
 	for _, twl := range b.ordered {
 		if twl.Project == project.Slug {
@@ -458,11 +491,11 @@ func (b boardView) entrySections(project Task, level string) []string {
 		if len(entries) == 0 {
 			continue
 		}
-		heading := otherNotesHeading
+		sectionName := otherNotesHeading
 		if typeLabel != "" {
-			heading = typeHeading(typeLabel)
+			sectionName = typeHeading(typeLabel)
 		}
-		lines = append(lines, countedHeading(sublevel, heading, len(entries)), "")
+		lines = append(lines, countedHeading(sublevel, sectionName, len(entries)), "")
 		lines = append(lines, b.table(entries, noteTable)...)
 	}
 
@@ -512,50 +545,6 @@ func (b boardView) childProjects(project Task) []TaskWithLayer {
 		return x.ID - y.ID
 	})
 	return children
-}
-
-// projectsSection builds the Projects section of project's file: a heading counting the open projects directly under it, then one bullet per such project, in childProjects' order, linking to its file, followed by its brief.
-// It returns no lines when no open project sits under it.
-func (b boardView) projectsSection(project Task) []string {
-	children := b.childProjects(project)
-	if len(children) == 0 {
-		return nil
-	}
-	lines := []string{countedHeading("##", projectsHeading, len(children)), ""}
-	for _, child := range children {
-		line := "- " + b.fileLink(child.Task)
-		if child.Brief != "" {
-			line += " — " + cellText(child.Brief)
-		}
-		lines = append(lines, line)
-	}
-	return append(lines, "")
-}
-
-// projectSections builds one README section per open project under parent, the zero Task naming the root, at any depth: each in childProjects' order, followed by the sections of the projects under it.
-// A section's heading links the project's handle and title to its file and counts its open members; under it come the project's facts line, the brief and one table of those members in RenderOrder's order, laid out as a Notes type table, or _None._ when it has none.
-func (b boardView) projectSections(parent Task) []string {
-	memberTable := readmeTable{columns: []string{columnEntry}, cells: func(t Task) []string { return []string{entryCell(t)} }, priority: true}
-	var lines []string
-	for _, child := range b.childProjects(parent) {
-		var members []TaskWithLayer
-		for _, twl := range b.ordered {
-			if twl.Project == child.Slug && !isDone(twl.Task) {
-				members = append(members, twl)
-			}
-		}
-		lines = append(lines, countedHeading("##", b.fileLink(child.Task), len(members)), "", b.projectFacts(child.Task), "")
-		if child.Brief != "" {
-			lines = append(lines, child.Brief, "")
-		}
-		if len(members) > 0 {
-			lines = append(lines, b.table(members, memberTable)...)
-		} else {
-			lines = append(lines, emptySectionLine, "")
-		}
-		lines = append(lines, b.projectSections(child.Task)...)
-	}
-	return lines
 }
 
 // afterCell is the handles of the open entries t depends on, one per line in depends_on order, a dependency the board holds no handle for shown by its slug.

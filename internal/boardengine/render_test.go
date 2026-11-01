@@ -271,12 +271,13 @@ func readmeFixture() []boardengine.Task {
 // Neither row has a run status, the first only the hand-set word "running", so neither renders a Running subsection.
 // A third row pins that a task with a run status renders under Running, before Ready and in no layer, ordered by handle over ID, its At cell dropping the state `running` and keeping any other, and its Owner cell holding the prime owner for a task outside every beam.
 // The same row pins that a task waiting on a running one lands in Layer A, not Ready, still naming its handle under After, and that a task after that one lands in Layer B.
-// A fourth row pins that README.md holds one section per open project, nested ones included, depth-first, root-level ones by handle and nested ones in their parent's order and then by handle, with an open project under a done one counted as root-level, before Prime, each heading linking the project and counting its open members, with its brief and a Prio table of its open members of every kind, or _None._.
-// The same row pins that Prime holds only the entries under no project, a done project a linked Done row there, and that every project, open or done, renders to project-<slug>.md.
-// A project file opens with its handle and title, a link up to its parent's file, the brief, and for a beam only, beam and its recorded owner, lists its nested projects in its order and then by handle, and holds its own entries.
+// A fourth row pins that README.md nests every open project under Prime one heading level per depth, root-level ones by handle and nested ones in their parent's order and then by handle, with an open project under a done one counted as root-level, each heading linking the project and counting its open members, then its facts, its brief, its sub-projects and its own Tasks, Notes and Done split as the root's.
+// The same row pins that Prime's own entries, only those under no project, come after its sub-projects, a done project a linked Done row there, and that every project, open or done, renders to project-<slug>.md.
+// A project file opens with its handle and title, a link up to its parent's file, the brief, and for a beam only, beam and its recorded owner, renders its nested projects as sections in its order and then by handle, and holds its own entries.
 // A task there waiting on a running member and a root task stands in Layer A, its After cell one handle per line, and the running member shows the beam's recorded owner.
 // A dependency naming no board entry shows in the After cell as a code span of its slug, and a draft task in a project file stands in its own Draft subsection after Ready.
 // A fifth row pins that a beam with a recorded owner on a board with no prime owner shows that owner in its own file.
+// A sixth row pins that a chain of nested projects stops deepening its headings at level six.
 func TestRenderReadmeGolden(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -500,56 +501,111 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"Tasks are grouped by dependency layer and notes by type.\n" +
 				"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
 				"\n" +
-				"## [P1 Ship it](project-ship.md) (6)\n" +
+				"## Prime\n" +
+				"\n" +
+				"The root project: the entries under no other project.\n" +
+				"\n" +
+				"### [P1 Ship it](project-ship.md) (6)\n" +
 				"\n" +
 				"`ship` · Age 3d · Owner `box`\n" +
 				"\n" +
 				"Ships the thing.\n" +
 				"\n" +
-				"| # | Prio | Entry | Slug | Age<br>Revised | Labels |\n" +
-				"| --- | --- | --- | --- | --- | --- |\n" +
-				"| T2 | H | **Second step** | [`second`](design-second.md) |  |  |\n" +
-				"| T1 | L | **First step** | `first` |  |  |\n" +
-				"| T3 |  | **Third step** | `third` |  |  |\n" +
-				"| P4 |  | **Inner**<br>• Nested work. | `inner` |  |  |\n" +
-				"| P5 |  | **Later** | `later` |  |  |\n" +
-				"| E1 |  | **A thought** | `thought` |  |  |\n" +
-				"\n" +
-				"## [P5 Later](project-later.md) (0)\n" +
+				"#### [P5 Later](project-later.md) (0)\n" +
 				"\n" +
 				"`later` · Owner `box`\n" +
 				"\n" +
-				"_None._\n" +
+				emptyProjectEntries(5) +
 				"\n" +
-				"## [P4 Inner](project-inner.md) (0)\n" +
+				"#### [P4 Inner](project-inner.md) (0)\n" +
 				"\n" +
 				"`inner` · Owner `box`\n" +
 				"\n" +
 				"Nested work.\n" +
 				"\n" +
-				"_None._\n" +
+				emptyProjectEntries(5) +
 				"\n" +
-				"## [P2 Tidy up](project-tidy.md) (1)\n" +
+				"#### Tasks (3)\n" +
+				"\n" +
+				"Concrete and claimable; only a task can run.\n" +
+				"\n" +
+				"##### Running (1)\n" +
+				"\n" +
+				"Held by a run; its scope is locked until the run ends.\n" +
+				"\n" +
+				"| # | Task | Slug | Recipe | At | Owner | Age<br>Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
+				"| T2 | **Second step** | [`second`](design-second.md) | tapestry | Webster | box |  |  |\n" +
+				"\n" +
+				"##### Ready (1)\n" +
+				"\n" +
+				"Waits on nothing open; can start now.\n" +
+				"\n" +
+				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- | --- |\n" +
+				"| T1 | **First step** | `first` | tapestry |  |  |  |\n" +
+				"\n" +
+				"##### Layer A (1)\n" +
+				"\n" +
+				"Waits only on Running, Ready or Draft entries.\n" +
+				"\n" +
+				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- | --- |\n" +
+				"| T3 | **Third step** | `third` | tapestry | T2<br>T7<br>`ghost` |  |  |\n" +
+				"\n" +
+				"#### Notes (1)\n" +
+				"\n" +
+				"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
+				"\n" +
+				"##### Other (1)\n" +
+				"\n" +
+				"| # | Prio | Note | Slug | Age<br>Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- |\n" +
+				"| E1 |  | **A thought** | `thought` |  |  |\n" +
+				"\n" +
+				"#### Done (1)\n" +
+				"\n" +
+				"Finished, awaiting `lym board prune --apply`.\n" +
+				"\n" +
+				"| # | Entry | Slug | Age<br>Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- |\n" +
+				"| T4 | **Shipped step** | `shipped` |  |  |\n" +
+				"\n" +
+				"### [P2 Tidy up](project-tidy.md) (1)\n" +
 				"\n" +
 				"`tidy` · Owner `neve`\n" +
 				"\n" +
 				"Loose ends.\n" +
 				"\n" +
-				"| # | Prio | Entry | Slug | Age<br>Revised | Labels |\n" +
-				"| --- | --- | --- | --- | --- | --- |\n" +
-				"| T5 |  | `draft` **Chore** | `chore` |  |  |\n" +
+				"#### Tasks (1)\n" +
 				"\n" +
-				"## [P6 Orphan](project-orphan.md) (0)\n" +
+				"Concrete and claimable; only a task can run.\n" +
+				"\n" +
+				"##### Ready (0)\n" +
+				"\n" +
+				"Waits on nothing open; can start now.\n" +
+				"\n" +
+				"_None._\n" +
+				"\n" +
+				"##### Draft (1)\n" +
+				"\n" +
+				"Not released; nothing starts it until its status is cleared.\n" +
+				"\n" +
+				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- | --- |\n" +
+				"| T5 | `draft` **Chore** | `chore` | tapestry |  |  |  |\n" +
+				"\n" +
+				"#### Notes (0)\n" +
+				"\n" +
+				"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
+				"\n" +
+				"### [P6 Orphan](project-orphan.md) (0)\n" +
 				"\n" +
 				"`orphan` · Owner `neve`\n" +
 				"\n" +
 				"Outlived its parent.\n" +
 				"\n" +
-				"_None._\n" +
-				"\n" +
-				"## Prime\n" +
-				"\n" +
-				"The root project: the entries under no other project.\n" +
+				emptyProjectEntries(4) +
 				"\n" +
 				"### Tasks (1)\n" +
 				"\n" +
@@ -589,10 +645,19 @@ func TestRenderReadmeGolden(t *testing.T) {
 					"Tasks are grouped by dependency layer and notes by type.\n" +
 					"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
 					"\n" +
-					"## Projects (2)\n" +
+					"## [P5 Later](project-later.md) (0)\n" +
 					"\n" +
-					"- [P5 Later](project-later.md)\n" +
-					"- [P4 Inner](project-inner.md) — Nested work.\n" +
+					"`later` · Owner `box`\n" +
+					"\n" +
+					emptyProjectEntries(3) +
+					"\n" +
+					"## [P4 Inner](project-inner.md) (0)\n" +
+					"\n" +
+					"`inner` · Owner `box`\n" +
+					"\n" +
+					"Nested work.\n" +
+					"\n" +
+					emptyProjectEntries(3) +
 					"\n" +
 					"## Tasks (3)\n" +
 					"\n" +
@@ -714,35 +779,23 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"Tasks are grouped by dependency layer and notes by type.\n" +
 				"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
 				"\n" +
-				"## [P1 Lone beam](project-lone.md) (0)\n" +
-				"\n" +
-				"`lone` · Owner `box`\n" +
-				"\n" +
-				"_None._\n" +
-				"\n" +
-				"## [P2 Loose](project-loose.md) (0)\n" +
-				"\n" +
-				"`loose` · Owner none recorded\n" +
-				"\n" +
-				"_None._\n" +
-				"\n" +
 				"## Prime\n" +
 				"\n" +
 				"The root project: the entries under no other project.\n" +
 				"\n" +
-				"### Tasks (0)\n" +
+				"### [P1 Lone beam](project-lone.md) (0)\n" +
 				"\n" +
-				"Concrete and claimable; only a task can run.\n" +
+				"`lone` · Owner `box`\n" +
 				"\n" +
-				"#### Ready (0)\n" +
+				emptyProjectEntries(4) +
 				"\n" +
-				"Waits on nothing open; can start now.\n" +
+				"### [P2 Loose](project-loose.md) (0)\n" +
 				"\n" +
-				"_None._\n" +
+				"`loose` · Owner none recorded\n" +
 				"\n" +
-				"### Notes (0)\n" +
+				emptyProjectEntries(4) +
 				"\n" +
-				"Not tasks: ideas and observations, merged into a task when one is promoted.\n",
+				emptyProjectEntries(3),
 			files: map[string]string{
 				"project-lone.md": "# P1 Lone beam\n" +
 					"\n" +
@@ -770,6 +823,76 @@ func TestRenderReadmeGolden(t *testing.T) {
 					"\n" +
 					"Not tasks: ideas and observations, merged into a task when one is promoted.\n",
 			},
+		},
+		{
+			name: "nested projects stop deepening their headings at level six",
+			tasks: []boardengine.Task{
+				{ID: 1, Handle: "P1", Slug: "one", Title: "One", Kind: boardengine.KindProject},
+				{ID: 2, Handle: "P2", Slug: "two", Title: "Two", Kind: boardengine.KindProject, Project: "one"},
+				{ID: 3, Handle: "P3", Slug: "three", Title: "Three", Kind: boardengine.KindProject, Project: "two"},
+				{ID: 4, Handle: "P4", Slug: "four", Title: "Four", Kind: boardengine.KindProject, Project: "three"},
+			},
+			want: "# Board\n" +
+				"\n" +
+				"Rendered 2026-10-12 09:30 UTC; every age below is as of then.\n" +
+				"Prime owner: none recorded.\n" +
+				"\n" +
+				"Tasks are grouped by dependency layer and notes by type.\n" +
+				"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
+				"\n" +
+				"## Prime\n" +
+				"\n" +
+				"The root project: the entries under no other project.\n" +
+				"\n" +
+				"### [P1 One](project-one.md) (1)\n" +
+				"\n" +
+				"`one` · Owner none recorded\n" +
+				"\n" +
+				"#### [P2 Two](project-two.md) (1)\n" +
+				"\n" +
+				"`two` · Owner none recorded\n" +
+				"\n" +
+				"##### [P3 Three](project-three.md) (1)\n" +
+				"\n" +
+				"`three` · Owner none recorded\n" +
+				"\n" +
+				"###### [P4 Four](project-four.md) (0)\n" +
+				"\n" +
+				"`four` · Owner none recorded\n" +
+				"\n" +
+				"###### Tasks (0)\n" +
+				"\n" +
+				"Concrete and claimable; only a task can run.\n" +
+				"\n" +
+				"###### Ready (0)\n" +
+				"\n" +
+				"Waits on nothing open; can start now.\n" +
+				"\n" +
+				"_None._\n" +
+				"\n" +
+				"###### Notes (0)\n" +
+				"\n" +
+				"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
+				"\n" +
+				"###### Tasks (0)\n" +
+				"\n" +
+				"Concrete and claimable; only a task can run.\n" +
+				"\n" +
+				"###### Ready (0)\n" +
+				"\n" +
+				"Waits on nothing open; can start now.\n" +
+				"\n" +
+				"_None._\n" +
+				"\n" +
+				"###### Notes (0)\n" +
+				"\n" +
+				"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
+				"\n" +
+				emptyProjectEntries(5) +
+				"\n" +
+				emptyProjectEntries(4) +
+				"\n" +
+				emptyProjectEntries(3),
 		},
 	}
 	for _, tt := range tests {
@@ -807,6 +930,23 @@ func TestRenderReadmeGolden(t *testing.T) {
 			}
 		})
 	}
+}
+
+// emptyProjectEntries is the rendered own entries of a project holding none, its Tasks and Notes at heading level level and Ready one level down.
+func emptyProjectEntries(level int) string {
+	return strings.Repeat("#", level) + " Tasks (0)\n" +
+		"\n" +
+		"Concrete and claimable; only a task can run.\n" +
+		"\n" +
+		strings.Repeat("#", level+1) + " Ready (0)\n" +
+		"\n" +
+		"Waits on nothing open; can start now.\n" +
+		"\n" +
+		"_None._\n" +
+		"\n" +
+		strings.Repeat("#", level) + " Notes (0)\n" +
+		"\n" +
+		"Not tasks: ideas and observations, merged into a task when one is promoted.\n"
 }
 
 // TestRenderDesignDocGoldens pins the design-doc header, the Depends on line with one linked and one named dependency, and a multi-line body appearing byte-identical.
