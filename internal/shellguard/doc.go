@@ -16,7 +16,9 @@
 //
 // The gate rule, how to run lym gate test, is stated once in the system prompt, in the raw go row's notice;
 // the refuse-raw row's notice names only what it refuses, while the steers of the raw go and refuse-raw rows each carry the full rule, so a denied call has the way forward at hand.
+// The raw go row's steer and notice also name a package-scoped go build or go vet as the compile check, each only while no refuse-raw prefix refuses it, so a refused ./... run has a way forward short of a gate run.
 // The edit rule, reading a file with Read and changing it with Edit or Write, is stated likewise: once in the system prompt, in the shell-edit row's notice, and in full in the steers of the shell-edit and python rows.
+// The python row's notice names a version check as refused, since agents otherwise probe for Python before choosing how to edit or parse.
 //
 // A row hangs on a Switch.
 // A SwitchNone row is installed for every run, and SwitchDenyPython follows the shuttle config's python key.

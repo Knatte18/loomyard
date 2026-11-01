@@ -15,7 +15,7 @@ It is reviewed by `Plan-Review`.
 
 The smallest change that:
 
-1. **Compiles/builds on its own** — `go build ./...` succeeds immediately after the card's commit.
+1. **Compiles/builds on its own** — the whole module builds immediately after the card's commit.
    No broken syntax, no reference to a symbol that doesn't yet exist.
 2. **Is independently committable** — a meaningful, revertible git commit on its own.
 3. **Carries the coverage for any new behavior it introduces**; the card's own targets include the test that covers it.

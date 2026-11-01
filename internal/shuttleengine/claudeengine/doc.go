@@ -236,6 +236,7 @@
 // The Bash denies below are not declared here: they render the rows of `internal/shellguard`'s table as PreToolUse(Bash) hooks, every row in table order after the Claude rows.
 // The python row denies a Bash command that runs `python`, `python3` or `python3.<minor>` in command position, in every run mode;
 // `shuttle.yaml`'s `deny_python` switches it off for a Python target repo.
+// Its notice names a version check as refused, so a session does not probe for Python, and its steer names jq, grep and awk for parsing and the edit rule.
 // The publish row denies a Bash `git push`, with any flag words before `push`, and `gh`, in command position;
 // it is installed only for a run whose spec sets `DenyPublish`, which the `deny_publish` switch of the shell guard table names, and announced like every other row.
 // The command-shaped rows read the command as the shell would, so a command word in quoted text, a heredoc body or another payload field such as the description does not trip a row.
@@ -247,7 +248,7 @@
 // a `go test` whose `-tags` value names `tmux` or `llm`;
 // and any command setting or reading the slot-inheritance variable, the strand-name variable or the prebuilt-binary variable, each spelled into the pattern from its constant, when it is named outside quotes or expanded inside a double-quoted string.
 // `go` must stand in command position directly before the subcommand, so `go test ./internal/x` and `lym gate test ./...` pass.
-// The steer is the gate rule: it names `lym gate test` run in the foreground with the Bash tool's `timeout` at the ceiling, every other check in the foreground, and no `cd` into the session's own working directory.
+// The steer names a package-scoped `go build` or `go vet` as the compile check, each only while the hub's `refuse_raw` does not refuse it, and then the gate rule: it names `lym gate test` run in the foreground with the Bash tool's `timeout` at the ceiling, every other check in the foreground, and no `cd` into the session's own working directory.
 // It is a guardrail, not a barrier: its hook sees static text only, so a run hidden behind a script, `bash -c`, a `cd` plus a relative pattern it does not cover, a shell variable or a command substitution inside a double-quoted string passes, as does any raw package-scoped `go test`,
 // and a pattern word inside a quoted argument of the go command itself, such as a `-run` filter, is falsely denied; a spelling in a commit message, a `grep` or a heredoc body is not.
 //

@@ -95,6 +95,8 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 		{"raw-go", "tier1_with_a_filter", "go test -tags tier1 ./internal/x -run Foo", false},
 		{"raw-go", "gate_route_module_wide", "lym gate test ./...", false},
 		{"raw-go", "gate_route_tier2", "lym gate test --tags tier2 ./internal/x", false},
+		{"raw-go", "steered_package_scoped_build", "go build ./internal/x", false},
+		{"raw-go", "steered_package_scoped_vet", "go vet ./internal/x", false},
 		{"raw-go", "build_of_one_main_package", "go build -o bin/lym ./cmd/lym", false},
 		{"raw-go", "go_as_an_argument", "grep -r go ./...", false},
 		{"raw-go", "pattern_after_a_separator", "go test ./internal/x && ls ./...", false},

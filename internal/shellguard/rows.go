@@ -4,6 +4,7 @@ package shellguard
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
@@ -41,11 +42,14 @@ type Row struct {
 // editToolsRule is the way an agent changes and reads files, which the steers of the python and shell-edit rows carry and only the shell-edit row's notice states, so the system prompt states it once.
 const editToolsRule = "change a file by reading it with Read, whole or a span through offset and limit, and then editing it with Edit, all edits of one file in one message, or write a whole file with Write; search files with grep"
 
-// steerPythonDeny refuses a Bash python invocation; it must contain no single/double quote or backslash (checked at init).
-const steerPythonDeny = "lym agents never run Python; " + editToolsRule
+// pythonRefusal states the python deny and names the version check, which agents otherwise run as a probe before choosing how to edit or parse.
+const pythonRefusal = "python and python3 are refused in every lym session, a version check included, so never probe for Python"
+
+// steerPythonDeny refuses a Bash python invocation and names the parse and edit routes in its place; it must contain no single/double quote or backslash (checked at init).
+const steerPythonDeny = pythonRefusal + "; parse JSON with jq and text with grep or awk; " + editToolsRule
 
 // noticePythonDeny announces the python deny; the edit rule its steer carries is announced by the shell-edit row's notice.
-const noticePythonDeny = "lym agents never run Python."
+const noticePythonDeny = pythonRefusal + "."
 
 // steerShellEditDeny refuses a Bash edit of a file; it must contain no single/double quote or backslash (checked at init).
 const steerShellEditDeny = "sed -i, perl -i, and a heredoc, redirect or tee into a source file are refused here; " + editToolsRule
@@ -190,13 +194,44 @@ const forbiddenNoticeChars = forbiddenSteerChars + "\n\r"
 // Rows returns a fresh slice of the shell guard rows in table order.
 // foreground is the engine's phrase for running a long command in the foreground, which the gate rule in the raw go row's steer and notice and the refuse-raw row's steer carries.
 // refuseRaw lists the command prefixes the hub refuses to run raw; a non-empty list adds the refuse-raw row after the raw go row, and an empty one adds none.
+// The raw go row's steer names only the compile checks refuseRaw does not refuse.
 func Rows(foreground string, refuseRaw []string) []Row {
-	rawGoSteer := "raw module-wide, tmux-tier and llm-tier go runs are refused here. Gate rule: run lym gate test in the foreground " + foreground + ", never in the background, for example lym gate test ./internal/x, and use its --tier flag for a tier. When lym gate test or lym gate card-verify answers done: false, run the same command again in a turn that does nothing else, so the prompt cache stays warm between calls. Run every other check in the foreground too, and never cd into the directory you already work in. The slot, strand and prebuilt-binary environment variables belong to lym, and a command setting or reading any of them is refused"
+	rawGoSteer := "raw module-wide, tmux-tier and llm-tier go runs are refused here." + compileCheckSentence(refuseRaw) + " Gate rule: run lym gate test in the foreground " + foreground + ", never in the background, for example lym gate test ./internal/x, and use its --tier flag for a tier. When lym gate test or lym gate card-verify answers done: false, run the same command again in a turn that does nothing else, so the prompt cache stays warm between calls. Run every other check in the foreground too, and never cd into the directory you already work in. The slot, strand and prebuilt-binary environment variables belong to lym, and a command setting or reading any of them is refused"
 	rows := rowsBeforeRefuseRaw(rawGoSteer)
 	if len(refuseRaw) > 0 {
 		rows = append(rows, refuseRawRow(foreground, refuseRaw))
 	}
 	return append(rows, rowsAfterRawGo()...)
+}
+
+// compileCheckForms are the package-scoped compile checks the raw go row's steer offers in place of a refused ./... or all run.
+var compileCheckForms = []string{"go build ./internal/x", "go vet ./internal/x"}
+
+// compileCheckSentence returns the raw go steer's sentence, with its leading space, naming each compile check no refuseRaw prefix refuses,
+// so the steer never offers a refused command; it returns "" when the prefixes refuse every one.
+func compileCheckSentence(refuseRaw []string) string {
+	var allowed []string
+	for _, form := range compileCheckForms {
+		if !refusedRaw(form, refuseRaw) {
+			allowed = append(allowed, form)
+		}
+	}
+	if len(allowed) == 0 {
+		return ""
+	}
+	return " A compile check names its packages, as in " + strings.Join(allowed, " or ") + ", never ./... or all."
+}
+
+// refusedRaw reports whether a refuseRaw prefix refuses command, that is whether the prefix's words open command's words.
+func refusedRaw(command string, refuseRaw []string) bool {
+	words := strings.Fields(command)
+	for _, prefix := range refuseRaw {
+		prefixWords := strings.Fields(prefix)
+		if len(prefixWords) <= len(words) && slices.Equal(prefixWords, words[:len(prefixWords)]) {
+			return true
+		}
+	}
+	return false
 }
 
 // refuseRawRow returns the refuse-raw row over the listed prefixes.

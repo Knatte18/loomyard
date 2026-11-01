@@ -98,3 +98,35 @@ func TestCheckTexts(t *testing.T) {
 		})
 	}
 }
+
+// TestRows_RawGoSteerNamesOnlyUnrefusedCompileChecks asserts the raw go row's steer and notice offer each package-scoped compile check only while no refuse-raw prefix refuses it.
+func TestRows_RawGoSteerNamesOnlyUnrefusedCompileChecks(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		refuseRaw []string
+		want      string
+	}{
+		{"NoRefuseList", nil, " A compile check names its packages, as in go build ./internal/x or go vet ./internal/x, never ./... or all. Gate rule"},
+		{"GoTestRefused", []string{"go test"}, " A compile check names its packages, as in go build ./internal/x or go vet ./internal/x, never ./... or all. Gate rule"},
+		{"GoBuildRefused", []string{"go test", "go build"}, " A compile check names its packages, as in go vet ./internal/x, never ./... or all. Gate rule"},
+		{"PrefixLongerThanForm", []string{"go build ./internal/x extra"}, " A compile check names its packages, as in go build ./internal/x or go vet ./internal/x, never ./... or all. Gate rule"},
+		{"EveryGoCommandRefused", []string{"go"}, "are refused here. Gate rule"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			for _, row := range Rows("with a long timeout", tt.refuseRaw) {
+				if row.Name != "raw-go" {
+					continue
+				}
+				if !strings.Contains(row.Steer, tt.want) {
+					t.Errorf("raw-go steer with refuse list %q = %q; want it to contain %q", tt.refuseRaw, row.Steer, tt.want)
+				}
+				if row.Notice != row.Steer+"." {
+					t.Errorf("raw-go notice = %q; want the steer and a full stop", row.Notice)
+				}
+			}
+		})
+	}
+}
